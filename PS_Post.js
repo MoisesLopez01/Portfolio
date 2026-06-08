@@ -6,14 +6,20 @@
 // and all other helpers are available without imports.
 //
 // One-time admin setup — set these Script Properties:
-//   CONFLUENCE_CLOUD_ID       e.g. "a1b2c3d4-..."
-//   CONFLUENCE_SPACE_KEY      e.g. "ABCT"
-//   CONFLUENCE_PARENT_PAGE_ID e.g. "5346983953"
-//   CONFLUENCE_API_TOKEN      Atlassian API token
+//   CONFLUENCE_CLOUD_ID   (required — Atlassian Cloud instance ID)
+//   CONFLUENCE_API_TOKEN  (required — Atlassian API token)
+//
+// Space key and parent page ID have code-level defaults below
+// and can be overridden via Script Properties if needed.
 //
 // The caller's email is resolved from Session.getActiveUser()
 // and must have admin role in checkDashboardAccess().
 // ============================================================
+
+const CONFIG_POST = {
+  SPACE_KEY:      'ABCT',
+  PARENT_PAGE_ID: '5346983953',
+};
 
 /**
  * Creates (or overwrites) a Confluence child page for the Executive Brief.
@@ -38,16 +44,15 @@ function publishToConfluence(payload) {
     }
     const callerEmail = access.email;
 
-    // 2. Read Script Properties
+    // 2. Read Script Properties (space key + parent page fall back to CONFIG_POST defaults)
     const p = PropertiesService.getScriptProperties();
-    const required = ['CONFLUENCE_CLOUD_ID', 'CONFLUENCE_SPACE_KEY', 'CONFLUENCE_PARENT_PAGE_ID', 'CONFLUENCE_API_TOKEN'];
-    const missing  = required.filter(k => !p.getProperty(k));
+    const missing = ['CONFLUENCE_CLOUD_ID', 'CONFLUENCE_API_TOKEN'].filter(k => !p.getProperty(k));
     if (missing.length) {
       return { ok: false, error: `Missing Script Properties: ${missing.join(', ')}` };
     }
     const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID');
-    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY');
-    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID');
+    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')      || CONFIG_POST.SPACE_KEY;
+    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID') || CONFIG_POST.PARENT_PAGE_ID;
     const apiToken = p.getProperty('CONFLUENCE_API_TOKEN');
 
     const authHeader = 'Basic ' + Utilities.base64Encode(`${callerEmail}:${apiToken}`);
