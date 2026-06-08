@@ -72,10 +72,11 @@ function publishToConfluence(payload) {
       return { ok: false, error: `Could not resolve space "${spaceKey}" — check CONFLUENCE_SPACE_KEY and that the caller has read access to the space.` };
     }
 
-    // 4. Duplicate check via v2
+    // 4. Duplicate check via v2 — scoped to direct children of parentId so a
+    //    same-titled page elsewhere in the space does not trigger a false positive
     if (!payload.existingPageId) {
       const dupResp = UrlFetchApp.fetch(
-        `${v2Base}/pages?spaceId=${spaceId}&title=${encodeURIComponent(pageTitle)}&status=current`,
+        `${v2Base}/pages?spaceId=${spaceId}&title=${encodeURIComponent(pageTitle)}&status=current&ancestor-id=${encodeURIComponent(parentId)}`,
         { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, muteHttpExceptions: true }
       );
       const dupJson = JSON.parse(dupResp.getContentText());
@@ -101,9 +102,11 @@ function publishToConfluence(payload) {
         headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
         muteHttpExceptions: true,
       });
-      const vJson = JSON.parse(vResp.getContentText());
+      const vBody = vResp.getContentText();
+      const vJson = JSON.parse(vBody);
       if (vResp.getResponseCode() >= 400) {
-        return { ok: false, error: `Could not fetch page to overwrite: ${vJson.message || vResp.getContentText().substring(0, 200)}` };
+        Logger.log(`❌ fetchPageForOverwrite HTTP ${vResp.getResponseCode()}: ${vBody}`);
+        return { ok: false, error: `Could not fetch page to overwrite: ${vJson.message || vBody.substring(0, 200)}` };
       }
       const newVersion = ((vJson.version && vJson.version.number) || 1) + 1;
 
@@ -120,9 +123,11 @@ function publishToConfluence(payload) {
         }),
         muteHttpExceptions: true,
       });
-      const upJson = JSON.parse(upResp.getContentText());
+      const upBody = upResp.getContentText();
+      const upJson = JSON.parse(upBody);
       if (upResp.getResponseCode() >= 400) {
-        return { ok: false, error: `Page update failed: ${upJson.message || upJson.title || upResp.getContentText().substring(0, 200)}` };
+        Logger.log(`❌ pageUpdate HTTP ${upResp.getResponseCode()}: ${upBody}`);
+        return { ok: false, error: `Page update failed: ${upJson.message || upJson.title || upBody.substring(0, 200)}` };
       }
       pageId    = upJson.id;
       pageWebUi = upJson._links && upJson._links.webui;
@@ -141,9 +146,11 @@ function publishToConfluence(payload) {
         }),
         muteHttpExceptions: true,
       });
-      const crJson = JSON.parse(crResp.getContentText());
+      const crBody = crResp.getContentText();
+      const crJson = JSON.parse(crBody);
       if (crResp.getResponseCode() >= 400) {
-        return { ok: false, error: `Page creation failed: ${crJson.message || crJson.title || crResp.getContentText().substring(0, 200)}` };
+        Logger.log(`❌ pageCreate HTTP ${crResp.getResponseCode()}: ${crBody}`);
+        return { ok: false, error: `Page creation failed: ${crJson.message || crJson.title || crBody.substring(0, 200)}` };
       }
       pageId    = crJson.id;
       pageWebUi = crJson._links && crJson._links.webui;
