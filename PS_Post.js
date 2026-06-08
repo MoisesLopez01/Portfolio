@@ -7,7 +7,14 @@
 //
 // Required Script Properties (set via GAS project settings):
 //   CONFLUENCE_CLOUD_ID   — Atlassian Cloud instance ID
-//   CONFLUENCE_API_TOKEN  — Atlassian API token for the calling admin
+//   CONFLUENCE_API_TOKEN  — Atlassian API token
+//
+// IMPORTANT — Basic Auth email:
+//   CONFLUENCE_EMAIL (optional but recommended) — the Atlassian account
+//   email that OWNS the API token above. If omitted, falls back to
+//   Session.getActiveUser().getEmail() (GAS caller), which only works
+//   when the GAS session user and the Atlassian token owner are the same
+//   account. Mismatch = 401 = "Could not resolve space" error.
 //
 // Optional overrides (defaults below in CONFIG_POST):
 //   CONFLUENCE_SPACE_KEY        default: 'ABCT'
@@ -46,17 +53,20 @@ function publishToConfluence(payload) {
     }
     const callerEmail = access.email;
 
-    // 2. Resolve credentials — cloudId and apiToken must be in Script Properties
-    const p        = PropertiesService.getScriptProperties();
-    const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID');
-    const apiToken = p.getProperty('CONFLUENCE_API_TOKEN');
+    // 2. Resolve credentials — cloudId and apiToken must be in Script Properties.
+    //    atlassianEmail must match the Atlassian account that owns the API token;
+    //    it defaults to the GAS session email only when both are the same account.
+    const p             = PropertiesService.getScriptProperties();
+    const cloudId       = p.getProperty('CONFLUENCE_CLOUD_ID');
+    const apiToken      = p.getProperty('CONFLUENCE_API_TOKEN');
     if (!cloudId || !apiToken) {
       return { ok: false, error: 'Set CONFLUENCE_CLOUD_ID and CONFLUENCE_API_TOKEN in Script Properties.' };
     }
-    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')      || CONFIG_POST.SPACE_KEY;
-    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID') || CONFIG_POST.PARENT_PAGE_ID;
+    const atlassianEmail = p.getProperty('CONFLUENCE_EMAIL') || callerEmail;
+    const spaceKey       = p.getProperty('CONFLUENCE_SPACE_KEY')      || CONFIG_POST.SPACE_KEY;
+    const parentId       = p.getProperty('CONFLUENCE_PARENT_PAGE_ID') || CONFIG_POST.PARENT_PAGE_ID;
 
-    const authHeader = 'Basic ' + Utilities.base64Encode(`${callerEmail}:${apiToken}`);
+    const authHeader = 'Basic ' + Utilities.base64Encode(`${atlassianEmail}:${apiToken}`);
     const v1Base     = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api`;
     const v2Base     = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/api/v2`;
     const pageTitle  = `${payload.weekLabel} Contribution Satellites`;
@@ -66,10 +76,20 @@ function publishToConfluence(payload) {
       `${v2Base}/spaces?keys=${encodeURIComponent(spaceKey)}`,
       { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, muteHttpExceptions: true }
     );
-    const spacesJson = JSON.parse(spacesResp.getContentText());
+    const spacesCode = spacesResp.getResponseCode();
+    const spacesBody = spacesResp.getContentText();
+    if (spacesCode === 401 || spacesCode === 403) {
+      Logger.log(`❌ spacesLookup HTTP ${spacesCode}: ${spacesBody}`);
+      return { ok: false, error: `Confluence auth failed (HTTP ${spacesCode}) — verify CONFLUENCE_EMAIL matches the Atlassian account that owns the API token.` };
+    }
+    if (spacesCode >= 400) {
+      Logger.log(`❌ spacesLookup HTTP ${spacesCode}: ${spacesBody}`);
+      return { ok: false, error: `Spaces lookup failed (HTTP ${spacesCode}) — check CONFLUENCE_CLOUD_ID.` };
+    }
+    const spacesJson = JSON.parse(spacesBody);
     const spaceId = spacesJson.results && spacesJson.results[0] && spacesJson.results[0].id;
     if (!spaceId) {
-      return { ok: false, error: `Could not resolve space "${spaceKey}" — check CONFLUENCE_SPACE_KEY and that the caller has read access to the space.` };
+      return { ok: false, error: `Space "${spaceKey}" not found — check CONFLUENCE_SPACE_KEY.` };
     }
 
     // 4. Duplicate check via v2 — scoped to direct children of parentId so a
@@ -139,7 +159,7 @@ function publishToConfluence(payload) {
         headers: { 'Authorization': authHeader },
         payload: JSON.stringify({
           spaceId:  spaceId,
-          parentId: parentId,
+          parentId: Number(parentId),
           status:   'current',
           title:    pageTitle,
           body:     { representation: 'storage', value: storageXml },
