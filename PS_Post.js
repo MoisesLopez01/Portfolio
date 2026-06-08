@@ -5,22 +5,22 @@
 // GAS project scope, so checkDashboardAccess() (PS Security.js)
 // and all other helpers are available without imports.
 //
-// One-time admin setup — set these Script Properties:
-//   CONFLUENCE_CLOUD_ID   (required — Atlassian Cloud instance ID)
-//   CONFLUENCE_API_TOKEN  (required — Atlassian API token)
+// Required Script Properties (set via GAS project settings):
+//   CONFLUENCE_CLOUD_ID   — Atlassian Cloud instance ID
+//   CONFLUENCE_API_TOKEN  — Atlassian API token for the calling admin
 //
-// Space key and parent page ID have code-level defaults below
-// and can be overridden via Script Properties if needed.
+// Optional overrides (defaults below in CONFIG_POST):
+//   CONFLUENCE_SPACE_KEY        default: 'ABCT'
+//   CONFLUENCE_PARENT_PAGE_ID   default: '5346983953'
 //
-// The caller's email is resolved from Session.getActiveUser()
-// and must have admin role in checkDashboardAccess().
+// Uses Confluence REST API v2 for page create/update/read.
+// Attachment upload uses v1 (v2 attachment endpoint is identical in
+// behaviour but v1 is more widely tested for multipart uploads).
 // ============================================================
 
 const CONFIG_POST = {
   SPACE_KEY:      'ABCT',
   PARENT_PAGE_ID: '5346983953',
-  Conf_API_Token: 'ATATT3xFfGF0XofRweuE55JHmhsCWhHcw1msQ7tl8bolxXOtBtLW2V7fzbHjudVs22ycDW8WSDcToAh00H3HTHgVtf0GmdLK9tqF04nw81iEU5xTJw58tkcPeQmiHPkNSLnofetj9SUaDOSoglA_7DnTttdB-IuWpUHSvwOYu1LTdjcwHZtwzwE=FC0F2BBA',
-  Atlass_clod_ID: '5f30505b-505b-4b74-9d74-aa4d5199a256'
 };
 
 /**
@@ -30,8 +30,8 @@ const CONFIG_POST = {
  *   weekLabel: string,
  *   facts: string[], highlights: string[], notes: string[], concerns: string[],
  *   narrative: string|null,
- *   pulseB64: string|null,   base64 PNG of the Team Contribution Pulse card
- *   goalsB64: string|null,   base64 PNG of the Goals Standing card
+ *   pulseB64: string|null,    base64 PNG of the Team Contribution Pulse card
+ *   goalsB64: string|null,    base64 PNG of the Goals Standing card
  *   existingPageId: string|null  set only for overwrite
  * }} payload
  * @returns {{ ok: boolean, url?: string, title?: string, duplicate?: boolean,
@@ -46,30 +46,41 @@ function publishToConfluence(payload) {
     }
     const callerEmail = access.email;
 
-    // 2. Resolve credentials — Script Properties override CONFIG_POST defaults
+    // 2. Resolve credentials — cloudId and apiToken must be in Script Properties
     const p        = PropertiesService.getScriptProperties();
-    const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID')        || CONFIG_POST.Atlass_clod_ID;
-    const apiToken = p.getProperty('CONFLUENCE_API_TOKEN')        || CONFIG_POST.Conf_API_Token;
-    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')        || CONFIG_POST.SPACE_KEY;
-    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID')   || CONFIG_POST.PARENT_PAGE_ID;
+    const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID');
+    const apiToken = p.getProperty('CONFLUENCE_API_TOKEN');
     if (!cloudId || !apiToken) {
-      return { ok: false, error: 'Confluence Cloud ID and API token are required (set CONFLUENCE_CLOUD_ID / CONFLUENCE_API_TOKEN in Script Properties or CONFIG_POST).' };
+      return { ok: false, error: 'Set CONFLUENCE_CLOUD_ID and CONFLUENCE_API_TOKEN in Script Properties.' };
     }
+    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')      || CONFIG_POST.SPACE_KEY;
+    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID') || CONFIG_POST.PARENT_PAGE_ID;
 
     const authHeader = 'Basic ' + Utilities.base64Encode(`${callerEmail}:${apiToken}`);
-    const baseUrl    = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api`;
+    const v1Base     = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api`;
+    const v2Base     = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/api/v2`;
     const pageTitle  = `${payload.weekLabel} Contribution Satellites`;
 
-    // 3. Duplicate check (skip when caller has already confirmed overwrite)
+    // 3. Resolve numeric spaceId from spaceKey (required by v2 create endpoint)
+    const spacesResp = UrlFetchApp.fetch(
+      `${v2Base}/spaces?keys=${encodeURIComponent(spaceKey)}`,
+      { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, muteHttpExceptions: true }
+    );
+    const spacesJson = JSON.parse(spacesResp.getContentText());
+    const spaceId = spacesJson.results && spacesJson.results[0] && spacesJson.results[0].id;
+    if (!spaceId) {
+      return { ok: false, error: `Could not resolve space "${spaceKey}" — check CONFLUENCE_SPACE_KEY and that the caller has read access to the space.` };
+    }
+
+    // 4. Duplicate check via v2
     if (!payload.existingPageId) {
-      const checkUrl  = `${baseUrl}/content?title=${encodeURIComponent(pageTitle)}&spaceKey=${encodeURIComponent(spaceKey)}&expand=space`;
-      const checkResp = UrlFetchApp.fetch(checkUrl, {
-        headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
-        muteHttpExceptions: true,
-      });
-      const checkJson = JSON.parse(checkResp.getContentText());
-      if (checkJson.results && checkJson.results.length > 0) {
-        const ex = checkJson.results[0];
+      const dupResp = UrlFetchApp.fetch(
+        `${v2Base}/pages?spaceId=${spaceId}&title=${encodeURIComponent(pageTitle)}&status=current`,
+        { headers: { 'Authorization': authHeader, 'Accept': 'application/json' }, muteHttpExceptions: true }
+      );
+      const dupJson = JSON.parse(dupResp.getContentText());
+      if (dupJson.results && dupJson.results.length > 0) {
+        const ex = dupJson.results[0];
         return {
           ok: false, duplicate: true,
           existingId: ex.id,
@@ -79,70 +90,71 @@ function publishToConfluence(payload) {
       }
     }
 
-    // 4. Build Storage XML
+    // 5. Build Storage XML
     const storageXml = buildConfluenceStorageXml_(payload);
 
-    // 5. Create or update page
+    // 6. Create or update page via v2
     let pageId, pageWebUi;
 
     if (payload.existingPageId) {
-      const vResp = UrlFetchApp.fetch(`${baseUrl}/content/${payload.existingPageId}`, {
+      const vResp = UrlFetchApp.fetch(`${v2Base}/pages/${payload.existingPageId}`, {
         headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
         muteHttpExceptions: true,
       });
       const vJson = JSON.parse(vResp.getContentText());
-      if (vJson.error || vResp.getResponseCode() >= 400) {
+      if (vResp.getResponseCode() >= 400) {
         return { ok: false, error: `Could not fetch page to overwrite: ${vJson.message || vResp.getContentText().substring(0, 200)}` };
       }
       const newVersion = ((vJson.version && vJson.version.number) || 1) + 1;
 
-      const upResp = UrlFetchApp.fetch(`${baseUrl}/content/${payload.existingPageId}`, {
+      const upResp = UrlFetchApp.fetch(`${v2Base}/pages/${payload.existingPageId}`, {
         method: 'put',
         contentType: 'application/json',
         headers: { 'Authorization': authHeader },
         payload: JSON.stringify({
+          id:      payload.existingPageId,
+          status:  'current',
+          title:   pageTitle,
           version: { number: newVersion },
-          title: pageTitle,
-          type: 'page',
-          body: { storage: { value: storageXml, representation: 'storage' } },
+          body:    { representation: 'storage', value: storageXml },
         }),
         muteHttpExceptions: true,
       });
       const upJson = JSON.parse(upResp.getContentText());
-      if (upResp.getResponseCode() >= 400 || upJson.error) {
-        return { ok: false, error: `Page update failed: ${upJson.message || upResp.getContentText().substring(0, 200)}` };
+      if (upResp.getResponseCode() >= 400) {
+        return { ok: false, error: `Page update failed: ${upJson.message || upJson.title || upResp.getContentText().substring(0, 200)}` };
       }
       pageId    = upJson.id;
       pageWebUi = upJson._links && upJson._links.webui;
 
     } else {
-      const crResp = UrlFetchApp.fetch(`${baseUrl}/content`, {
+      const crResp = UrlFetchApp.fetch(`${v2Base}/pages`, {
         method: 'post',
         contentType: 'application/json',
         headers: { 'Authorization': authHeader },
         payload: JSON.stringify({
-          type: 'page',
-          title: pageTitle,
-          ancestors: [{ id: parentId }],
-          space: { key: spaceKey },
-          body: { storage: { value: storageXml, representation: 'storage' } },
+          spaceId:  spaceId,
+          parentId: parentId,
+          status:   'current',
+          title:    pageTitle,
+          body:     { representation: 'storage', value: storageXml },
         }),
         muteHttpExceptions: true,
       });
       const crJson = JSON.parse(crResp.getContentText());
-      if (crResp.getResponseCode() >= 400 || crJson.error) {
-        return { ok: false, error: `Page creation failed: ${crJson.message || crResp.getContentText().substring(0, 200)}` };
+      if (crResp.getResponseCode() >= 400) {
+        return { ok: false, error: `Page creation failed: ${crJson.message || crJson.title || crResp.getContentText().substring(0, 200)}` };
       }
       pageId    = crJson.id;
       pageWebUi = crJson._links && crJson._links.webui;
     }
 
-    // 6. Upload image attachments (errors are logged but don't fail the publish)
+    // 7. Upload image attachments via v1 (soft failure — logged but does not abort)
     if (payload.pulseB64) {
-      uploadAttachment_(baseUrl, authHeader, pageId, payload.pulseB64, `pulse-${payload.weekLabel}.png`);
+      uploadAttachment_(v1Base, authHeader, pageId, payload.pulseB64, `pulse-${payload.weekLabel}.png`);
     }
     if (payload.goalsB64) {
-      uploadAttachment_(baseUrl, authHeader, pageId, payload.goalsB64, `goals-${payload.weekLabel}.png`);
+      uploadAttachment_(v1Base, authHeader, pageId, payload.goalsB64, `goals-${payload.weekLabel}.png`);
     }
 
     const pageUrl = pageWebUi ? `https://rocketeers.atlassian.net/wiki${pageWebUi}` : '';
@@ -210,22 +222,22 @@ function buildConfluenceStorageXml_(payload) {
       `</ac:image></p>`
     );
   }
-  parts.push(panel('warning', 'Concerns',   concernsBody));
+  parts.push(panel('warning', 'Concerns', concernsBody));
 
   return parts.join('\n');
 }
 
-function uploadAttachment_(baseUrl, authHeader, pageId, b64DataUrl, filename) {
+function uploadAttachment_(v1Base, authHeader, pageId, b64DataUrl, filename) {
   try {
     const b64   = b64DataUrl.replace(/^data:[^;]+;base64,/, '');
     const bytes = Utilities.base64Decode(b64);
     const blob  = Utilities.newBlob(bytes, 'image/png', filename);
 
-    const resp = UrlFetchApp.fetch(`${baseUrl}/content/${pageId}/child/attachment`, {
+    const resp = UrlFetchApp.fetch(`${v1Base}/content/${pageId}/child/attachment`, {
       method: 'post',
       headers: {
-        'Authorization':       authHeader,
-        'X-Atlassian-Token':   'no-check',
+        'Authorization':     authHeader,
+        'X-Atlassian-Token': 'no-check',
       },
       payload: { file: blob },
       muteHttpExceptions: true,
