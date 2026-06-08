@@ -14,37 +14,49 @@ Add a "Publish to Confluence" button to the Executive Brief that creates a child
 ## Architecture
 
 ### Credential storage
-Five Script Properties, set once by an admin — same pattern as `GEMINI_API_KEY`:
+Four Script Properties, set once by an admin — same pattern as `GEMINI_API_KEY`.
+`CONFLUENCE_EMAIL` is **not** a Script Property — it is resolved at runtime from the authenticated session via `Session.getActiveUser().getEmail()`, ensuring the publish is attributed to the actual logged-in admin and reuses the existing access control model in `PS Security.js`.
 
 | Property | Example |
 |---|---|
 | `CONFLUENCE_CLOUD_ID` | `a1b2c3d4-…` |
 | `CONFLUENCE_SPACE_KEY` | `ABCT` |
 | `CONFLUENCE_PARENT_PAGE_ID` | `5346983953` |
-| `CONFLUENCE_EMAIL` | `admin@servicerocket.com` |
 | `CONFLUENCE_API_TOKEN` | `ATATTxxx…` |
 
 If any property is missing, the GAS function returns `{ ok: false, error: 'CONFLUENCE_… not set in Script Properties.' }` before making any API call.
 
+The function also verifies that `Session.getActiveUser().getEmail()` resolves to an admin role via `checkDashboardAccess()` before proceeding. Non-admin callers receive `{ ok: false, error: 'Publish requires admin access.' }`.
+
 ### Data flow
 
 ```
-Browser                              GAS (PS Contribution Report.js)
-──────                               ──────────────────────────────
+Browser                              GAS (PS_Post.js)
+──────                               ────────────────
 1. User clicks "Publish"
 2. Show confirmation strip
 3. User clicks "Confirm"
 4. html2canvas(summarySectionCard)  →  pulseB64
    html2canvas(goalsStandingCard)   →  goalsB64
 5. google.script.run
-   .publishToConfluence(payload)   →  6. Read Script Properties
-                                       7. GET /content?title=…  (duplicate check)
-                                       8a. duplicate? return { ok:false, duplicate:true, url }
-                                       8b. POST /content (create page with Storage XML)
-                                       9. POST /content/{id}/child/attachment (pulse image)
-                                       10. POST /content/{id}/child/attachment (goals image)
-                                       11. return { ok:true, url, title }
+   .publishToConfluence(payload)   →  6. Session.getActiveUser().getEmail()
+                                       7. checkDashboardAccess() → must be admin
+                                       8. Read Script Properties (4 keys)
+                                       9. GET /content?title=…  (duplicate check)
+                                       10a. duplicate? return { ok:false, duplicate:true, url }
+                                       10b. POST /content (create page with Storage XML)
+                                       11. POST /content/{id}/child/attachment (pulse image)
+                                       12. POST /content/{id}/child/attachment (goals image)
+                                       13. return { ok:true, url, title }
 ```
+
+---
+
+## New GAS file: `PS_Post.js`
+
+This is a new code tab in the same GAS project. It keeps Confluence publish logic separate from the data-assembly logic in `PS Contribution Report.js` while sharing the same global scope — meaning it can call `checkDashboardAccess()` from `PS Security.js` and any helper from `PS Contribution Report.js` without imports.
+
+`PS_Post.js` contains one public function: `publishToConfluence(payload)`.
 
 ---
 
@@ -98,45 +110,49 @@ The `#summaryActionBtns` row is temporarily hidden during capture (same as `save
 ### Payload shape (passed to GAS)
 ```js
 {
-  weekLabel:     "2026.W24",
-  facts:         [...],      // from _teamBriefStore (Gemini-enhanced if available)
-  highlights:    [...],
-  notes:         [...],
-  concerns:      [...],
-  narrative:     "…" | null, // null if Gemini hasn't run
-  pulseB64:      "data:image/png;base64,…",
-  goalsB64:      "data:image/png;base64,…",
+  weekLabel:      "2026.W24",
+  facts:          [...],      // from _teamBriefStore (Gemini-enhanced if available)
+  highlights:     [...],
+  notes:          [...],
+  concerns:       [...],
+  narrative:      "…" | null, // null if Gemini hasn't run
+  pulseB64:       "data:image/png;base64,…",
+  goalsB64:       "data:image/png;base64,…",
   existingPageId: null | "12345"  // set only for overwrite
 }
 ```
 
 ---
 
-## Backend — PS Contribution Report.js
+## Backend — PS_Post.js
 
-### New function: `publishToConfluence(payload)`
+### Function: `publishToConfluence(payload)`
 
 ```
-1. Read all five Script Properties; return error if any missing.
-2. Build page title: `{weekLabel} Contribution Satellites`
-3. Duplicate check:
+1. Resolve caller: const email = Session.getActiveUser().getEmail()
+2. Verify admin: checkDashboardAccess(email).role must equal "admin"
+   → if not: return { ok: false, error: 'Publish requires admin access.' }
+3. Read 4 Script Properties; return error if any missing.
+4. Build page title: `{weekLabel} Contribution Satellites`
+5. Duplicate check:
    GET /wiki/rest/api/content?title={title}&spaceKey={key}&expand=space
    - If result.size > 0 AND payload.existingPageId is null:
      return { ok: false, duplicate: true, url: existingPage.webui, existingId }
-4. Build Confluence Storage Format XML (see below).
-5. If existingPageId:
+6. Build Confluence Storage Format XML (see below).
+7. If existingPageId:
    GET /wiki/rest/api/content/{id} to fetch current version.number
    PUT /wiki/rest/api/content/{id} with version.number + 1
-else:
+   else:
    POST /wiki/rest/api/content with ancestors:[{id: PARENT_PAGE_ID}]
-6. Extract new/updated page ID from response.
-7. Upload pulse image: POST /wiki/rest/api/content/{id}/child/attachment
-   (header: `X-Atlassian-Token: no-check`; same filename on overwrite creates a new attachment version, preserving history)
-8. Upload goals image: POST /wiki/rest/api/content/{id}/child/attachment (same header)
-9. Return { ok: true, url: page._links.webui, title }
+8. Extract new/updated page ID from response.
+9. Upload pulse image: POST /wiki/rest/api/content/{id}/child/attachment
+   (header: `X-Atlassian-Token: no-check`; same filename on overwrite creates a new
+   attachment version, preserving history)
+10. Upload goals image: POST /wiki/rest/api/content/{id}/child/attachment (same header)
+11. Return { ok: true, url: page._links.webui, title }
 ```
 
-All `UrlFetchApp` calls use Basic auth (`base64(email:token)`), `muteHttpExceptions: true`, and surface API-level errors the same way as `callGeminiNarrative`.
+All `UrlFetchApp` calls use Basic auth (`base64(email:token)` where email is from step 1), `muteHttpExceptions: true`, and surface API-level errors the same way as `callGeminiNarrative`.
 
 ---
 
@@ -193,10 +209,11 @@ All `UrlFetchApp` calls use Basic auth (`base64(email:token)`), `muteHttpExcepti
 
 | Scenario | Behaviour |
 |---|---|
+| Caller is not admin | Return `{ ok: false, error: 'Publish requires admin access.' }` |
 | Any Script Property missing | Return `{ ok: false, error: 'CONFLUENCE_X not set…' }` before API calls |
 | Duplicate page, no overwrite flag | Return `{ ok: false, duplicate: true, url, existingId }` |
 | `html2canvas` not loaded | Show error: "Page not fully loaded — try again after charts render" |
-| `goalsStandingCard` hidden (card not visible) | Capture skipped; goals image omitted from XML and attachment upload |
+| `goalsStandingCard` hidden (not visible) | Capture skipped; goals image omitted from XML and attachment upload |
 | Confluence API error (4xx/5xx) | Surface `error.message` from response JSON in the strip |
 | GAS call timeout (45 s client-side guard) | Same timeout pattern as `callGeminiNarrative` |
 
@@ -207,9 +224,9 @@ All `UrlFetchApp` calls use Basic auth (`base64(email:token)`), `muteHttpExcepti
 | File | Change |
 |---|---|
 | `PS Dashboard.html` | Add button, confirmation strip, `triggerConfluencePublish()`, `captureCardPNG()` helper |
-| `PS Contribution Report.js` | Add `publishToConfluence(payload)` function |
+| `PS_Post.js` | **New file** — `publishToConfluence(payload)` function |
 
-No new files. No changes to other functions.
+No changes to `PS Contribution Report.js` or `PS Security.js`.
 
 ---
 
