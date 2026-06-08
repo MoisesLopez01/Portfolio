@@ -19,6 +19,8 @@
 const CONFIG_POST = {
   SPACE_KEY:      'ABCT',
   PARENT_PAGE_ID: '5346983953',
+  Conf_API_Token: 'ATATT3xFfGF0XofRweuE55JHmhsCWhHcw1msQ7tl8bolxXOtBtLW2V7fzbHjudVs22ycDW8WSDcToAh00H3HTHgVtf0GmdLK9tqF04nw81iEU5xTJw58tkcPeQmiHPkNSLnofetj9SUaDOSoglA_7DnTttdB-IuWpUHSvwOYu1LTdjcwHZtwzwE=FC0F2BBA',
+  Atlass_clod_ID: '5f30505b-505b-4b74-9d74-aa4d5199a256'
 };
 
 /**
@@ -44,16 +46,15 @@ function publishToConfluence(payload) {
     }
     const callerEmail = access.email;
 
-    // 2. Read Script Properties (space key + parent page fall back to CONFIG_POST defaults)
-    const p = PropertiesService.getScriptProperties();
-    const missing = ['CONFLUENCE_CLOUD_ID', 'CONFLUENCE_API_TOKEN'].filter(k => !p.getProperty(k));
-    if (missing.length) {
-      return { ok: false, error: `Missing Script Properties: ${missing.join(', ')}` };
+    // 2. Resolve credentials — Script Properties override CONFIG_POST defaults
+    const p        = PropertiesService.getScriptProperties();
+    const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID')        || CONFIG_POST.Atlass_clod_ID;
+    const apiToken = p.getProperty('CONFLUENCE_API_TOKEN')        || CONFIG_POST.Conf_API_Token;
+    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')        || CONFIG_POST.SPACE_KEY;
+    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID')   || CONFIG_POST.PARENT_PAGE_ID;
+    if (!cloudId || !apiToken) {
+      return { ok: false, error: 'Confluence Cloud ID and API token are required (set CONFLUENCE_CLOUD_ID / CONFLUENCE_API_TOKEN in Script Properties or CONFIG_POST).' };
     }
-    const cloudId  = p.getProperty('CONFLUENCE_CLOUD_ID');
-    const spaceKey = p.getProperty('CONFLUENCE_SPACE_KEY')      || CONFIG_POST.SPACE_KEY;
-    const parentId = p.getProperty('CONFLUENCE_PARENT_PAGE_ID') || CONFIG_POST.PARENT_PAGE_ID;
-    const apiToken = p.getProperty('CONFLUENCE_API_TOKEN');
 
     const authHeader = 'Basic ' + Utilities.base64Encode(`${callerEmail}:${apiToken}`);
     const baseUrl    = `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api`;
