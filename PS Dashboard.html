@@ -2767,7 +2767,9 @@ function triggerConfluencePublish() {
   var btn   = document.getElementById('tbPublishBtn');
   if (!store || !strip || !btn) return;
 
-  var weekLabel = store.weekLabel || '';
+  // Use the current week as the post title (W24 now), while the brief
+  // content comes from the last closed week's analysis (W23).
+  var weekLabel = (DATA && DATA.meta && DATA.meta.currentWeekLabel) || store.weekLabel || '';
   var pageTitle = weekLabel + ' Contribution Satellites';
 
   function setStrip(cls, html) {
