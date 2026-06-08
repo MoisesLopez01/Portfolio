@@ -46,6 +46,14 @@ const CONFIG_POST = {
  */
 function publishToConfluence(payload) {
   try {
+    // Guard: called with no args when Run is clicked directly in the GAS editor
+    if (!payload || typeof payload !== 'object') {
+      return { ok: false, error: 'No payload — use _testPublish() to test from the editor, or call via the dashboard.' };
+    }
+    if (!payload.weekLabel) {
+      return { ok: false, error: 'Payload missing required field: weekLabel.' };
+    }
+
     // 1. Verify caller is admin
     const access = checkDashboardAccess();
     if (access.role !== 'admin') {
@@ -277,4 +285,21 @@ function uploadAttachment_(v1Base, authHeader, pageId, b64DataUrl, filename) {
   } catch(e) {
     Logger.log(`⚠️ Attachment upload error (${filename}): ${e.message}`);
   }
+}
+
+// ── TEST HARNESS (run from GAS editor, delete after use) ─────
+function _testPublish() {
+  const result = publishToConfluence({
+    weekLabel:      '2026.W24',
+    facts:          ['Test fact — delete this page after confirming.'],
+    highlights:     [],
+    notes:          [],
+    concerns:       [],
+    narrative:      null,
+    pulseB64:       null,
+    goalsB64:       null,
+    existingPageId: null,
+  });
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
 }
