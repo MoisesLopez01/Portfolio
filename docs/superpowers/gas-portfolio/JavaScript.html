@@ -1,0 +1,552 @@
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// Alex López Portfolio — Client-Side Modules
+// Included via <?!= include('JavaScript') ?> inside index.html
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function runServer(fn, args, onSuccess, onError) {
+  var runner = google.script.run
+    .withSuccessHandler(function(result) { onSuccess && onSuccess(result); })
+    .withFailureHandler(function(err)    { onError   && onError(err);     });
+  runner[fn].apply(runner, args || []);
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+
+var Toast = (function() {
+  function show(message, type) {
+    type = type || 'success';
+    var container = document.getElementById('toast-container');
+    var el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = '<span class="toast-icon">' + (type === 'success' ? '✓' : '✕') + '</span>' + escHtml(message);
+    container.appendChild(el);
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() { el.classList.add('in'); });
+    });
+    setTimeout(function() {
+      el.classList.remove('in');
+      el.classList.add('out');
+      setTimeout(function() { el.remove(); }, 350);
+    }, 3200);
+  }
+  return { show: show };
+}());
+
+// ── DOMAIN GRID ───────────────────────────────────────────────────────────────
+
+var DomainGrid = (function() {
+  function render() {
+    var grid = document.getElementById('domain-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    var projects = window.PROJECTS || [];
+    var domains  = window.DOMAINS  || [];
+
+    domains.forEach(function(domain) {
+      var dp = projects.filter(function(p) { return p.domain === domain.id; });
+      if (!dp.length) return;
+      var card = document.createElement('div');
+      card.className = 'domain-card';
+      card.innerHTML =
+        '<div class="domain-hd ' + escHtml(domain.color) + '">' +
+          '<div class="domain-icon">' + domain.icon + '</div>' +
+          '<div class="domain-name">' + escHtml(domain.label) + '</div>' +
+          '<div class="domain-tagline">' + escHtml(domain.tagline) + '</div>' +
+        '</div>' +
+        '<div class="domain-tiles">' + dp.map(renderTile).join('') + '</div>';
+      grid.appendChild(card);
+    });
+  }
+
+  function renderTile(p) {
+    var chips = (p.tech || []).slice(0, 3).map(function(t) {
+      return '<span class="tile-chip">' + escHtml(t) + '</span>';
+    }).join('');
+    var del = p.id.indexOf('custom-') === 0
+      ? '<button class="btn-delete" onclick="event.stopPropagation();AdminPanel&&AdminPanel.deleteProject(\'' + escHtml(p.id) + '\')">Delete</button>'
+      : '';
+    return (
+      '<div class="domain-tile" onclick="ProjectModal.open(\'' + escHtml(p.id) + '\')" role="button" tabindex="0">' +
+        '<div class="tile-row1">' +
+          '<div class="tile-title">' + escHtml(p.title) + '</div>' +
+          '<div class="tile-impact">⚡ ' + escHtml(p.impact) + '</div>' +
+        '</div>' +
+        '<div class="tile-chips">' + chips + del + '</div>' +
+      '</div>'
+    );
+  }
+
+  return { render: render };
+}());
+
+// ── PROJECT MODAL ─────────────────────────────────────────────────────────────
+
+var ProjectModal = (function() {
+  function open(id) {
+    var projects = window.PROJECTS || [];
+    var p = null;
+    for (var i = 0; i < projects.length; i++) {
+      if (projects[i].id === id) { p = projects[i]; break; }
+    }
+    if (!p) return;
+
+    document.getElementById('pm-badges').innerHTML =
+      '<span class="badge-category">' + escHtml(p.category) + '</span>' +
+      '<span class="badge-impact">⚡ ' + escHtml(p.impact)  + '</span>';
+
+    document.getElementById('pm-title').textContent   = p.title;
+    document.getElementById('pm-tagline').textContent = p.tagline;
+
+    document.getElementById('pm-car').innerHTML =
+      '<div class="car-block context"><div class="car-label">Context</div><div class="car-text">'    + escHtml(p.context)    + '</div></div>' +
+      '<div class="car-block action"><div class="car-label">Action</div><div class="car-text">'      + escHtml(p.action)     + '</div></div>' +
+      '<div class="car-block resolution"><div class="car-label">Resolution</div><div class="car-text">' + escHtml(p.resolution) + '</div></div>';
+
+    document.getElementById('pm-ba').innerHTML =
+      '<div class="ba-card bef">' +
+        '<div class="ba-label">BEFORE</div>' +
+        '<div class="ba-process">' + escHtml(p.before.process) + '</div>' +
+        '<div class="ba-metric">'  + escHtml(p.before.metrics) + '</div>' +
+      '</div>' +
+      '<div class="ba-arrow">→</div>' +
+      '<div class="ba-card aft">' +
+        '<div class="ba-label">AFTER</div>' +
+        '<div class="ba-process">' + escHtml(p.after.process) + '</div>' +
+        '<div class="ba-metric">'  + escHtml(p.after.metrics) + '</div>' +
+      '</div>';
+
+    var codeSection = document.getElementById('pm-code-section');
+    if (p.codeSnippet) {
+      document.getElementById('pm-code-lang').textContent     = p.codeSnippet.lang;
+      document.getElementById('pm-code-lang-tag').textContent = p.codeSnippet.tag;
+      document.getElementById('pm-code-pre').textContent      = p.codeSnippet.code;
+      codeSection.style.display = 'block';
+      document.getElementById('pm-code-toggle').classList.remove('open');
+      document.getElementById('pm-code-body').classList.remove('open');
+    } else {
+      codeSection.style.display = 'none';
+    }
+
+    document.getElementById('pm-tech').innerHTML = (p.tech || []).map(function(t, i) {
+      return '<span class="tech-chip' + (i < 2 ? ' highlight' : '') + '">' + escHtml(t) + '</span>';
+    }).join('');
+
+    document.getElementById('pm-metrics').innerHTML = (p.metrics || []).map(function(m) {
+      return '<div class="inline-metric">' +
+        '<div class="inline-metric-num">'   + escHtml(m.val)   + '</div>' +
+        '<div class="inline-metric-label">' + escHtml(m.label) + '</div>' +
+      '</div>';
+    }).join('');
+
+    document.getElementById('pmodal-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function close() {
+    document.getElementById('pmodal-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function toggleCode() {
+    document.getElementById('pm-code-toggle').classList.toggle('open');
+    document.getElementById('pm-code-body').classList.toggle('open');
+  }
+
+  return { open: open, close: close, toggleCode: toggleCode };
+}());
+
+// ── ADMIN PANEL ───────────────────────────────────────────────────────────────
+
+var AdminPanel = (function() {
+  var currentTab = 'add';
+
+  function open() {
+    document.getElementById('admin-panel').classList.add('open');
+    refreshManageList();
+  }
+
+  function close() {
+    document.getElementById('admin-panel').classList.remove('open');
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.admin-tab').forEach(function(el, i) {
+      el.classList.toggle('active', ['add','manage','settings'][i] === tab);
+    });
+    document.querySelectorAll('.admin-tab-pane').forEach(function(el) {
+      el.classList.remove('active');
+    });
+    var pane = document.getElementById('tab-' + tab);
+    if (pane) pane.classList.add('active');
+    if (tab === 'manage') refreshManageList();
+  }
+
+  function submitProject() {
+    var title = (document.getElementById('ap-title').value || '').trim();
+    if (!title) { Toast.show('Please enter a project title', 'error'); return; }
+    var impact    = (document.getElementById('ap-impact').value    || '').trim() || 'High impact';
+    var category  = (document.getElementById('ap-category').value  || '').trim() || 'Analytics';
+    var domain    = document.getElementById('ap-domain').value || 'ops';
+    var tagline   = (document.getElementById('ap-tagline').value   || '').trim() || category + ' · ' + impact;
+    var context   = (document.getElementById('ap-context').value   || '').trim() || '—';
+    var action    = (document.getElementById('ap-action').value    || '').trim() || '—';
+    var resolution= (document.getElementById('ap-resolution').value|| '').trim() || '—';
+    var techRaw   = (document.getElementById('ap-tech').value      || '').trim();
+    var tech = techRaw ? techRaw.split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
+
+    var projectData = {
+      id:         'custom-' + Date.now(),
+      domain:     domain,
+      title:      title,
+      tagline:    tagline,
+      category:   category,
+      impact:     impact,
+      context:    context,
+      action:     action,
+      resolution: resolution,
+      tech:       tech,
+      metrics:    [{ val: '✓', label: 'delivered' }],
+      before:     { process: 'Previous manual process', metrics: 'Time-intensive, error-prone' },
+      after:      { process: 'Automated solution: ' + title, metrics: impact },
+      codeSnippet: null
+    };
+
+    runServer('saveProject', [projectData],
+      function(result) {
+        window.PROJECTS.push(projectData);
+        DomainGrid.render();
+        clearAddForm();
+        Toast.show('Project saved!', 'success');
+      },
+      function(err) { Toast.show(String(err.message || err), 'error'); }
+    );
+  }
+
+  function clearAddForm() {
+    ['ap-title','ap-impact','ap-category','ap-tagline','ap-context','ap-action','ap-resolution','ap-tech']
+      .forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  }
+
+  function deleteProject(projectId) {
+    if (!confirm('Delete this custom project? This cannot be undone.')) return;
+    runServer('deleteProject', [projectId],
+      function() {
+        window.PROJECTS = window.PROJECTS.filter(function(p){ return p.id !== projectId; });
+        DomainGrid.render();
+        refreshManageList();
+        Toast.show('Project deleted', 'success');
+      },
+      function(err) { Toast.show(String(err.message || err), 'error'); }
+    );
+  }
+
+  function refreshManageList() {
+    var list = document.getElementById('ap-custom-list');
+    if (!list) return;
+    var custom = (window.PROJECTS || []).filter(function(p){ return p.id.indexOf('custom-') === 0; });
+    if (!custom.length) {
+      list.innerHTML = '<div class="admin-empty">No custom projects yet.<br>Add one from the "Add Project" tab.</div>';
+      return;
+    }
+    list.innerHTML = custom.map(function(p) {
+      return '<div class="custom-project-item">' +
+        '<div>' +
+          '<div class="custom-project-name">'   + escHtml(p.title)  + '</div>' +
+          '<div class="custom-project-domain">' + escHtml(p.domain) + '</div>' +
+        '</div>' +
+        '<button class="btn-delete" onclick="AdminPanel.deleteProject(\'' + escHtml(p.id) + '\')">Delete</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function saveApiKey() {
+    var key = (document.getElementById('ap-apikey').value || '').trim();
+    if (!key) { Toast.show('Please enter an API key', 'error'); return; }
+    runServer('saveApiKey', [key],
+      function() {
+        document.getElementById('ap-apikey').value = '';
+        document.getElementById('chat-no-key').classList.remove('visible');
+        Toast.show('API key saved!', 'success');
+      },
+      function(err) { Toast.show(String(err.message || err), 'error'); }
+    );
+  }
+
+  return {
+    open: open, close: close, switchTab: switchTab,
+    submitProject: submitProject, deleteProject: deleteProject,
+    saveApiKey: saveApiKey
+  };
+}());
+
+// ── CHAT ──────────────────────────────────────────────────────────────────────
+
+var Chat = (function() {
+  var history = [];
+  var sending = false;
+
+  function init() {
+    var input = document.getElementById('chat-input');
+    if (!input) return;
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  }
+
+  function send() {
+    if (sending) return;
+    var input = document.getElementById('chat-input');
+    var text  = (input.value || '').trim();
+    if (!text) return;
+    input.value = '';
+    document.getElementById('chat-suggestions').style.display = 'none';
+    addMessage('user', text);
+    var typingEl = addTyping();
+    sending = true;
+    document.getElementById('chat-send-btn').disabled = true;
+
+    runServer('proxyClaudeAPI', [text, history.slice()],
+      function(responseText) {
+        typingEl.remove();
+        addMessage('ai', responseText || 'No response received.');
+        history.push({ role: 'user',      content: text });
+        history.push({ role: 'assistant', content: responseText || '' });
+        if (history.length > 12) history = history.slice(-12);
+        sending = false;
+        document.getElementById('chat-send-btn').disabled = false;
+      },
+      function(err) {
+        typingEl.remove();
+        var msg = String(err.message || err);
+        if (msg.indexOf('not configured') !== -1) {
+          document.getElementById('chat-no-key').classList.add('visible');
+          addMessage('ai', 'The AI assistant isn\'t configured yet. The admin needs to set the API key.');
+        } else {
+          addMessage('ai', 'Error: ' + msg);
+        }
+        sending = false;
+        document.getElementById('chat-send-btn').disabled = false;
+      }
+    );
+  }
+
+  function sendSuggestion(el) {
+    var input = document.getElementById('chat-input');
+    input.value = el.textContent;
+    send();
+  }
+
+  function addMessage(role, text) {
+    var container = document.getElementById('chat-messages');
+    var msg = document.createElement('div');
+    msg.className = 'msg ' + role;
+    var bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = text;
+    msg.appendChild(bubble);
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+    return msg;
+  }
+
+  function addTyping() {
+    var container = document.getElementById('chat-messages');
+    var el = document.createElement('div');
+    el.className = 'msg-typing';
+    el.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+    return el;
+  }
+
+  return { init: init, send: send, sendSuggestion: sendSuggestion };
+}());
+
+// ── UI UTILITIES ──────────────────────────────────────────────────────────────
+
+var UI = (function() {
+
+  // Counter animation (hero metrics)
+  function initCounters() {
+    document.querySelectorAll('.counter').forEach(function(el) {
+      var target  = parseInt(el.getAttribute('data-target'), 10) || 0;
+      var current = 0;
+      var duration = 1400;
+      var start = null;
+      function step(timestamp) {
+        if (!start) start = timestamp;
+        var progress = Math.min((timestamp - start) / duration, 1);
+        var ease = 1 - Math.pow(1 - progress, 3);
+        current = Math.round(ease * target);
+        el.textContent = current;
+        if (progress < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  // Scroll-reveal (IntersectionObserver)
+  function initScrollReveal() {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('.reveal').forEach(function(el) {
+        el.classList.add('visible');
+      });
+      return;
+    }
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          obs.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(function(el) { obs.observe(el); });
+  }
+
+  // Skill bars (animate width on scroll)
+  function initSkillBars() {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('.skill-bar-fill').forEach(function(el) {
+        el.style.width = (el.getAttribute('data-pct') || 0) + '%';
+      });
+      return;
+    }
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var pct = entry.target.getAttribute('data-pct') || 0;
+          entry.target.style.width = pct + '%';
+          obs.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.3 });
+    document.querySelectorAll('.skill-bar-fill').forEach(function(el) { obs.observe(el); });
+  }
+
+  // Mobile nav hamburger
+  function initMobileNav() {
+    var btn   = document.getElementById('nav-hamburger');
+    var links = document.getElementById('nav-links');
+    if (!btn || !links) return;
+    btn.addEventListener('click', function() {
+      var open = links.classList.toggle('open');
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    // Close on link click
+    links.querySelectorAll('a').forEach(function(a) {
+      a.addEventListener('click', function() {
+        links.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+      });
+    });
+  }
+
+  // Nav active-section highlight
+  function initNavHighlight() {
+    var sections = ['hero','projects','chat-section','about'];
+    var links    = document.querySelectorAll('.nav-link');
+    if (!('IntersectionObserver' in window) || !links.length) return;
+    var active = '';
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          active = entry.target.id;
+          links.forEach(function(a) {
+            var href = (a.getAttribute('href') || '').replace('#','');
+            a.classList.toggle('active', href === active);
+          });
+        }
+      });
+    }, { threshold: 0.35 });
+    sections.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) obs.observe(el);
+    });
+  }
+
+  // Stack bar marquee — duplicate pills so loop is seamless
+  function initStackBar() {
+    var stack = [
+      'Python','SQL · SuiteQL','Gemini Pro API','Google Apps Script',
+      'Tableau','Looker','HubSpot API v3/v4','NetSuite · Oracle',
+      'Vertex AI','Claude API','pandas','ETL Pipelines',
+      'Prompt Engineering','PDF Automation','RBAC','Time Decay Forecasting'
+    ];
+    var track = document.getElementById('stack-track');
+    if (!track) return;
+    var html = '';
+    var doubled = stack.concat(stack);
+    doubled.forEach(function(t, i) {
+      html += '<span class="stack-pill">' + escHtml(t) + '</span>';
+      if (i < doubled.length - 1) html += '<span class="stack-sep">·</span>';
+    });
+    track.innerHTML = html;
+  }
+
+  return {
+    initCounters:      initCounters,
+    initScrollReveal:  initScrollReveal,
+    initSkillBars:     initSkillBars,
+    initMobileNav:     initMobileNav,
+    initNavHighlight:  initNavHighlight,
+    initStackBar:      initStackBar
+  };
+}());
+
+// ── MODAL EVENT WIRING ────────────────────────────────────────────────────────
+
+function wireModalEvents() {
+  var overlay = document.getElementById('pmodal-overlay');
+  var closeBtn = document.getElementById('pmodal-close');
+  if (overlay) {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) ProjectModal.close();
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener('click', ProjectModal.close);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') ProjectModal.close();
+  });
+  // Keyboard support for tiles
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && e.target.classList.contains('domain-tile')) {
+      e.target.click();
+    }
+  });
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function() {
+  DomainGrid.render();
+  Chat.init();
+  wireModalEvents();
+
+  UI.initStackBar();
+  UI.initCounters();
+  UI.initScrollReveal();
+  UI.initSkillBars();
+  UI.initMobileNav();
+  UI.initNavHighlight();
+
+  // Admin-only module guard
+  if (window.IS_ADMIN) {
+    // Admin panel is already in DOM (injected by GAS template)
+    // AdminPanel is fully wired via onclick attributes
+  }
+});
+
+</script>
