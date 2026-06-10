@@ -238,6 +238,8 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
 .wc-null { color: var(--muted); text-align: center; }
 .kudos-pill { display: inline-flex; align-items: center; gap: 2px; background: #FFF0ED;
               color: var(--june); border-radius: 99px; padding: 1px 6px; font-size: 9px; font-weight: 800; }
+.kudos-val-tag { display: inline-block; background: #EEF9F0; color: #166534; border-radius: 4px;
+                 padding: 0 5px; font-size: 9px; font-weight: 700; margin: 1px 2px 0 0; }
 .pto-pill   { display: inline-flex; align-items: center; gap: 2px; border-radius: 99px; padding: 1px 6px; font-size: 9px; font-weight: 800; }
 .pto-good   { background: #dcfce7; color: #166534; }
 .pto-risk   { background: #fef9c3; color: #854d0e; }
@@ -344,7 +346,7 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .copy-btn.copied { background: #DCFCE7; border-color: #BBF7D0; color: #166534; }
 .copy-btn svg { width: 13px; height: 13px; }
 
-/* ── TOP ROCKETEERS ── */
+/* ── LEADING BEHAVIOURS ── */
 .top-rk-table { width: 100%; border-collapse: collapse; }
 .top-rk-table tr { border-bottom: 1px solid var(--border); transition: background .1s; }
 .top-rk-table tr:last-child { border-bottom: none; }
@@ -569,25 +571,29 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
   font-size: 11px; color: var(--muted); font-weight: 600;
   text-transform: uppercase; letter-spacing: .05em;
 }
-.brief-section { display: flex; flex-direction: column; gap: 6px; }
-.brief-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
-.brief-label.facts { color: #475569; }
-.brief-label.hl  { color: #00A86B; }
-.brief-label.nt  { color: #058CDC; }
-.brief-label.nc  { color: #D97706; }
-.brief-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.brief-list li {
-  font-size: 12px; line-height: 1.6;
-  padding-left: 16px; position: relative; color: var(--slate);
+/* Confluence-style brief panels — Info / Success / Note / Warning */
+.cf-panel { border-radius: 5px; border: 1px solid; overflow: hidden; }
+.cf-panel-hdr {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 12px; font-size: 11px; font-weight: 700;
 }
-.brief-list li::before { content: '•'; position: absolute; left: 0; font-size: 11px; top: 1px; color: var(--muted); }
-.brief-list li.hl { color: #1B5E20; }
-.brief-list li.hl::before { color: #00A86B; }
-.brief-list li.nt { color: #1E3A5F; }
-.brief-list li.nt::before { color: #058CDC; }
-.brief-list li.nc { color: #7B4800; }
-.brief-list li.nc::before { color: #D97706; }
-.team-brief-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+.cf-panel-hdr svg { flex-shrink: 0; }
+.cf-panel-body { background: #fff; padding: 8px 14px 10px; }
+.cf-panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.cf-panel-list li { font-size: 12px; line-height: 1.6; padding-left: 14px; position: relative; color: var(--slate); }
+.cf-panel-list li::before { content: '•'; position: absolute; left: 0; top: 1px; }
+.cf-panel-info    { border-color: #4C9AFF; }
+.cf-panel-info    .cf-panel-hdr { background: #DEEBFF; color: #0052CC; }
+.cf-panel-info    .cf-panel-list li::before { color: #4C9AFF; }
+.cf-panel-success { border-color: #00875A; }
+.cf-panel-success .cf-panel-hdr { background: #E3FCEF; color: #006644; }
+.cf-panel-success .cf-panel-list li::before { color: #00875A; }
+.cf-panel-note    { border-color: #8777D9; }
+.cf-panel-note    .cf-panel-hdr { background: #EAE6FF; color: #403294; }
+.cf-panel-note    .cf-panel-list li::before { color: #8777D9; }
+.cf-panel-warning { border-color: #FF8B00; }
+.cf-panel-warning .cf-panel-hdr { background: #FFFAE6; color: #FF8B00; }
+.cf-panel-warning .cf-panel-list li::before { color: #FF991F; }
 .team-brief-narrative {
   padding: 12px 16px; background: #F8FAFF; border: 1px solid #BFDBFE;
   border-radius: 8px; font-size: 12px; color: var(--void);
@@ -756,7 +762,7 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
   .kpi-grid { grid-template-columns: 1fr; }
   .kpi-value { font-size: 24px; }
 
-  /* Top Rocketeers grid: single column */
+  /* LEADING BEHAVIOURS grid: single column */
   .perf-grid { grid-template-columns: 1fr; padding: 12px; }
 
   /* Radar canvas: full width */
@@ -858,7 +864,7 @@ body { font-size: 15px; }
 .wow-badge,
 .ts-card-hdr, .ts-field-lbl, .det-ts-row-lbl,
 .perf-weights, .perf-score-sub, .perf-mpts,
-.brief-label, .fb-group label, .fb-search label,
+.cf-panel-hdr, .fb-group label, .fb-search label,
 .wc-plan-lbl, .wc-delta, .kudos-pill, .pto-pill,
 .metrics-table tr.quarterly-divider span,
 .ws-label { font-size: 11px; }
@@ -879,7 +885,7 @@ body { font-size: 15px; }
 
 /* 13px tier — was 11px */
 .week-badge, .section-sub, .copy-btn, .fb-reset,
-.brief-list li::before, .team-brief-week,
+.cf-panel-list li::before, .team-brief-week,
 .dr-rule-note, .dr-score-label, .dr-score-pct,
 .settings-note, .sec-hint,
 .sec-toggle-info .sec-toggle-desc, .sec-bootstrap-note,
@@ -889,7 +895,7 @@ body { font-size: 15px; }
 /* 14px tier — was 12px */
 .emp-table td, .metrics-table th, .metrics-table td,
 .fb-group select, .fb-search-wrap input,
-.brief-list li, .dr-metric-desc, .dr-rule-desc,
+.cf-panel-list li, .dr-metric-desc, .dr-rule-desc,
 .dr-note, .settings-btn, .weight-pct, .weight-total-label,
 .sec-sub, .sec-user-chip, .sec-textarea,
 .top-rk-table td, .det-strip, .team-brief-narrative,
@@ -1078,19 +1084,23 @@ body.dark-mode .weight-num      { background: var(--input-bg); border-color: var
 /* Data Reference note callout */
 body.dark-mode .dr-note { background: #0d2060; border-color: var(--orbe); color: var(--text); }
 
-/* Team brief facts label */
-body.dark-mode .brief-label.facts { color: var(--muted); }
-
 /* Team brief header — pin background to navy; --void flips to cream in dark mode */
 body.dark-mode .team-brief-head { background: var(--tab-bg); }
 
-/* Team brief note / caution / highlight bullets — hardcoded dark fg invisible on dark bg */
-body.dark-mode .brief-list li.hl       { color: #6EE7B7; }
-body.dark-mode .brief-list li.nt       { color: #93C5FD; }
-body.dark-mode .brief-list li.nc       { color: #FCD34D; }
-body.dark-mode .brief-label.hl         { color: #6EE7B7; }
-body.dark-mode .brief-label.nt         { color: #7DD3FC; }
-body.dark-mode .brief-label.nc         { color: #FCD34D; }
+/* Confluence panels — dark mode overrides */
+body.dark-mode .cf-panel-body             { background: #1E2A4A; }
+body.dark-mode .cf-panel-info             { border-color: #2d5fa6; }
+body.dark-mode .cf-panel-info    .cf-panel-hdr { background: #0d2060; color: #7DD3FC; }
+body.dark-mode .cf-panel-info    .cf-panel-list li::before { color: #4C9AFF; }
+body.dark-mode .cf-panel-success          { border-color: #005e3e; }
+body.dark-mode .cf-panel-success .cf-panel-hdr { background: #0d3320; color: #6EE7B7; }
+body.dark-mode .cf-panel-success .cf-panel-list li::before { color: #34D399; }
+body.dark-mode .cf-panel-note             { border-color: #5a3ea6; }
+body.dark-mode .cf-panel-note    .cf-panel-hdr { background: #1a1245; color: #A78BFA; }
+body.dark-mode .cf-panel-note    .cf-panel-list li::before { color: #A78BFA; }
+body.dark-mode .cf-panel-warning          { border-color: #8b5e00; }
+body.dark-mode .cf-panel-warning .cf-panel-hdr { background: #3d2b00; color: #FCD34D; }
+body.dark-mode .cf-panel-warning .cf-panel-list li::before { color: #FF991F; }
 
 /* Metric pills — hardcoded light-mode backgrounds */
 body.dark-mode .mpill-on   { background: #0d3320; color: #6EE7B7; }
@@ -1232,7 +1242,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <div class="tab-nav" id="tabNav">
     <button class="tab-btn active" id="tabBtnOverview"    onclick="switchTab('overview')">Overview</button>
     <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')">Team Radar</button>
-    <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">Top Rocketeers</button>
+    <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">LEADING BEHAVIOURS</button>
     <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')">Trends</button>
     <button class="tab-btn"        id="tabBtnDataRef"     onclick="switchTab('dataref')">Data Reference</button>
     <button class="tab-btn"        id="tabBtnSettings"    onclick="switchTab('settings')">⚙ Settings</button>
@@ -1282,7 +1292,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <div class="section-card" id="kudosCalloutCard" style="display:none"></div>
 
     <!-- Main Radar -->
-    <div class="section-card">
+    <div class="section-card" id="radarMainCard">
       <div class="section-head" style="flex-wrap:wrap;gap:12px">
         <div style="flex:1;min-width:200px">
           <h2 id="radarInsightTitle" style="font-size:15px;line-height:1.4">—</h2>
@@ -1307,6 +1317,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             <span title="RCR and Manager Rating appear when evaluating supervisors or individuals, where they carry meaningful variation across groups. At whole-team level they produce a single average that adds no signal."
               style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--muted);font-size:10px;font-weight:800;cursor:help;flex-shrink:0">?</span>
           </div>
+          <div id="radarMainCardActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+            <button class="copy-btn" onclick="saveCardPNG('radarMainCard','team-radar')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Save PNG
+            </button>
+          </div>
         </div>
       </div>
       <div class="radar-body">
@@ -1322,12 +1338,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
   </div>
 
-  <!-- TOP ROCKETEERS TAB -->
+  <!-- LEADING BEHAVIOURS TAB -->
   <div id="tabRocketeers" class="tab-pane">
     <div class="section-card">
       <div class="section-head" style="flex-wrap:wrap;gap:12px">
         <div style="flex:1;min-width:200px">
-          <h2>Top Rocketeers</h2>
+          <h2>LEADING BEHAVIOURS</h2>
           <p class="section-sub" id="topRkSub">Loading weights…</p>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -1371,7 +1387,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             </tbody>
           </table>
           <div class="dr-note" style="margin-top:4px"><strong>Ramp-Up employees</strong> (hired within the last 3 months, or flagged as Ramp-Up in the roster) are shown in the employee table with an amber badge, but are excluded from performance metrics — RCR, SI, Goals Commented, and Kudos given. They remain included in time-based metrics: Tracked Time, Planned Time, and PTO.</div>
-          <div class="dr-note" style="margin-top:4px"><strong>Tempo-Exempt employees</strong> (roles not expected to log or plan hours, such as certain Solution Architecture titles) are shown in the employee table with a blue <em>No Tempo</em> badge, but are excluded from the Time Tracked and Time Planned KPI headcounts so team scores remain fair. To add or remove titles from this list, update <code>TEMPO_EXEMPT_TITLES</code> in the script configuration.</div>
         </div>
 
         <div class="dr-section">
@@ -1474,7 +1489,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
 
         <div class="dr-section">
-          <div class="dr-section-title">Top Rocketeers — Composite Score</div>
+          <div class="dr-section-title">LEADING BEHAVIOURS — Composite Score</div>
           <div id="drScoreBarsContainer">
             <!-- Rendered dynamically by renderDrScoreBars() so this always reflects
                  the live weight configuration from Settings. -->
@@ -1556,6 +1571,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <h2>Revenue Contribution Rate — Monthly</h2>
           <p class="section-sub">Revenue earned relative to total team cost · last 6 closed months · Healthy ≥ 1.5 · Champion ≥ 2.5</p>
         </div>
+        <div id="trendsRcrActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <button class="copy-btn" onclick="saveCardPNG('trendsRcrCard','rcr-monthly')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Save PNG
+          </button>
+        </div>
       </div>
       <div style="position:relative;height:220px;padding:0 12px 12px">
         <canvas id="trendsRcrChart"></canvas>
@@ -1569,6 +1590,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div>
           <h2>Goals standing — <span id="goalsStandingWeek"></span></h2>
           <p class="section-sub" id="goalsStandingSub">FY26Q4 · weeks to close</p>
+        </div>
+        <div id="goalsStandingActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <button class="copy-btn" onclick="saveCardPNG('goalsStandingCard','goals-standing')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Save PNG
+          </button>
         </div>
       </div>
       <div id="goalsStandingKpis" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 16px 16px"></div>
@@ -1592,9 +1619,17 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <h2>Team Delivery Rate <span id="timeMomentumWeek" style="font-weight:400;font-size:13px;color:var(--slate)"></span></h2>
           <p class="section-sub" id="timeMomentumSub">Tracked hours as % of committed capacity</p>
         </div>
-        <div style="text-align:right;white-space:nowrap;padding-left:16px;flex-shrink:0">
-          <div id="timeMomentumPct" style="font-size:30px;font-weight:800;color:var(--void);line-height:1.1">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Q4 delivery rate</div>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div style="text-align:right;white-space:nowrap;flex-shrink:0">
+            <div id="timeMomentumPct" style="font-size:30px;font-weight:800;color:var(--void);line-height:1.1">—</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Q4 delivery rate</div>
+          </div>
+          <div id="timeMomentumActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+            <button class="copy-btn" onclick="saveCardPNG('timeMomentumCard','team-delivery-rate')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Save PNG
+            </button>
+          </div>
         </div>
       </div>
       <div style="position:relative;height:240px;padding:0 4px 12px">
@@ -1608,6 +1643,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div>
           <h2>Effort is consistent. Documentation is catching up.</h2>
           <p class="section-sub" id="corrFilterSub">% of team doing the work vs. unique team members self-commenting on the goal that week · 9-week window · numbers on documentation line = team member count · shaded gap = undocumented effort</p>
+        </div>
+        <div id="correlationActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <button class="copy-btn" onclick="saveCardPNG('correlationCard','correlation-charts')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Save PNG
+          </button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 4px 12px">
@@ -1635,6 +1676,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div>
           <h2>PTO Planning — Team Health Trend</h2>
           <p class="section-sub" id="ptoTrendSub">% of team with an active leave plan · At Risk = balance ≥ 100h with no upcoming leave</p>
+        </div>
+        <div id="ptoTrendActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+          <button class="copy-btn" onclick="saveCardPNG('ptoTrendCard','pto-health-trend')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Save PNG
+          </button>
         </div>
       </div>
       <div style="position:relative;height:220px;padding:0 12px 12px">
@@ -1698,6 +1745,15 @@ var RADAR_AXIS_BY_GROUP = {
   jobTitle:   ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr'],
   individual: ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
 };
+// Crew members / contractors have no Goals, PTO, or SI data — evaluate them only on
+// RCR, Planned, Tracked, and Kudos. These axes/metrics are dropped in crew contexts.
+var RADAR_CREW_EXCLUDE = ['goals', 'pto', 'si'];
+function isCrewEmp(e) {
+  return !!(e && (e.isCrewMember || /crew member|contractor/i.test(e.jobTitle || "")));
+}
+function axisIdsForCrew(ids, isCrew) {
+  return isCrew ? ids.filter(function(id) { return RADAR_CREW_EXCLUDE.indexOf(id) === -1; }) : ids;
+}
 
 // ── STATE ─────────────────────────────────────────────────
 var DATA = null;
@@ -2082,7 +2138,7 @@ function buildFilteredSummary(filtered, weeks) {
   });
 }
 
-// ── TOP ROCKETEERS ────────────────────────────────────────
+// ── LEADING BEHAVIOURS ────────────────────────────────────────
 var SCORE_W = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
 
 function viewRocketeerDetails(normName) {
@@ -2150,15 +2206,19 @@ function computeRkScore(emp, weekLabel) {
   var pto     = wd.ptoHealth ? (wd.ptoHealth.status === "Good" ? 1 : 0) : null;
 
   var W = SCORE_W;
-  var availW = W.goals + W.tracked + W.planned + W.kudos;
-  var earned = goals * W.goals + tracked * W.tracked + planned * W.planned + kudos * W.kudos;
+  // Crew/contractors have no Goals, PTO, or SI — exclude those weights entirely so
+  // they're scored only on Tracked, Planned, RCR, and Kudos (not penalized for data
+  // they can't have). FTE keep the full weighting.
+  var crew = isCrewEmp(emp);
+  var availW = W.tracked + W.planned + W.kudos + (crew ? 0 : W.goals);
+  var earned = tracked * W.tracked + planned * W.planned + kudos * W.kudos + (crew ? 0 : goals * W.goals);
 
   if (rcr !== null) { availW += (W.rcr || 0); earned += rcr * (W.rcr || 0); }
-  // SI and PTO weights always count when configured — null value = 0 pts, not excluded.
-  // Without this, an employee with no SI rating has the 40% weight dropped from the
-  // denominator, inflating their score above employees who actually have a rating.
-  if ((W.si  || 0) > 0) { availW += W.si;  earned += (si  !== null ? si  : 0) * W.si;  }
-  if ((W.pto || 0) > 0) { availW += W.pto; earned += (pto !== null ? pto : 0) * W.pto; }
+  // SI and PTO weights count for FTE when configured — null value = 0 pts, not excluded.
+  // Without this, an FTE with no SI rating has the weight dropped from the denominator,
+  // inflating their score above employees who actually have a rating. Crew skip both.
+  if (!crew && (W.si  || 0) > 0) { availW += W.si;  earned += (si  !== null ? si  : 0) * W.si;  }
+  if (!crew && (W.pto || 0) > 0) { availW += W.pto; earned += (pto !== null ? pto : 0) * W.pto; }
 
   var score = availW > 0 ? Math.round((earned / availW) * 100) : 0;
 
@@ -2190,6 +2250,7 @@ window._teamBriefStore = null;
 function generateTeamBrief(weekLabel, prevWeekLabel) {
   var facts = [], highlights = [], notes = [], concerns = [];
   if (!DATA) return { facts: ['Data loading…'], highlights: [], notes: [], concerns: [] };
+  var allEmps = getFilteredEmployees();
 
   function getRow(id) {
     return (DATA.teamSummary || []).find(function(r) { return r.id === id; });
@@ -2221,7 +2282,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     if (!ph || !ph.entries.length) return;
     var locations = ph.entries.map(function(e) { return e.location + ': ' + e.holiday; }).join('; ');
     facts.push(ph.totalAffected + ' rocketeer' + (ph.totalAffected !== 1 ? 's' : '') +
-      ' in public holiday regions · ' + w.label.replace(/\d{4}\./, '') + ' · ' + locations);
+      ' in public holiday regions · ' + w.label + ' · ' + locations);
     if (w.label === weekLabel && ph.totalAffected > 0) {
       notes.push(ph.totalAffected + ' team member' + (ph.totalAffected !== 1 ? 's' : '') +
         ' were in a public holiday week (' + locations + ') — lower time tracking or planning may reflect this.');
@@ -2232,7 +2293,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var ph = phMap[w.label];
     if (!ph || !ph.entries.length) return;
     var locations = ph.entries.map(function(e) { return e.location + ': ' + e.holiday; }).join('; ');
-    notes.push('Heads up · ' + w.label.replace(/\d{4}\./, '') + ' — ' +
+    notes.push('Heads up · ' + w.label + ' — ' +
       ph.totalAffected + ' rocketeer' + (ph.totalAffected !== 1 ? 's' : '') +
       ' in public holiday regions (' + locations + ').');
   });
@@ -2267,7 +2328,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
 
   // ── Tracked time ──────────────────────────────────────────────────────────
   if (isCrewMode) {
-    var cEmps   = getFilteredEmployees();
+    var cEmps   = allEmps;
     var cHC     = cEmps.length;
     var cLogged = cEmps.filter(function(e) { return ((e.weeks[weekLabel] || {}).trackedHrs || 0) > 0; });
     var cTotalH = Math.round(cLogged.reduce(function(s, e) { return s + ((e.weeks[weekLabel] || {}).trackedHrs || 0); }, 0));
@@ -2316,7 +2377,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
 
   // ── Planned time ──────────────────────────────────────────────────────────
   if (isCrewMode) {
-    var cEmpsP    = getFilteredEmployees();
+    var cEmpsP    = allEmps;
     var cHCP      = cEmpsP.length;
     var cPlanned  = cEmpsP.filter(function(e) { return ((e.weeks[weekLabel] || {}).plannedHrs || 0) > 0; });
     var cPlanH    = Math.round(cPlanned.reduce(function(s, e) { return s + ((e.weeks[weekLabel] || {}).plannedHrs || 0); }, 0));
@@ -2355,6 +2416,8 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var kWowStr       = kWow !== null ? (kWow > 0 ? ' +' + kWow + ' WoW' : kWow < 0 ? ' ' + kWow + ' WoW' : ' flat WoW') : '';
     facts.push('Kudos: ' + kudosCell.value + ' given this week' + kWowStr);
     if (kudosCell.value > 0) {
+      // Count headline goes to Notes on a down week, Highlights otherwise.
+      // The per-post recognition detail (below) always goes to Highlights.
       if (kWow !== null && kWow >= 0) {
         highlights.push(kudosCell.value + ' kudos given' + (kWow > 0 ? ', up ' + kWow + ' from last week' : ', matching last week') + ' — recognition momentum sustained (Think Team)');
       } else if (kWow !== null && kWow < 0) {
@@ -2362,6 +2425,34 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
       } else {
         highlights.push(kudosCell.value + ' kudos given this week — Think Team value in practice');
       }
+      // Build per-post recognition detail.
+      // Entries are stored per recipient in the normalized data, so group by giver+desc
+      // to reconstruct the original post (one post can recognise multiple people).
+      var kudosEmps = allEmps;
+      var postMap   = {};
+      kudosEmps.forEach(function(emp) {
+        var kd = emp.weeks[weekLabel] && emp.weeks[weekLabel].kudos;
+        if (!kd || !kd.entries || !kd.entries.length) return;
+        kd.entries.forEach(function(e) {
+          var key = '\x01' + (e.giver || '') + '\x02' + (e.desc || '');
+          if (!postMap[key]) postMap[key] = { giver: e.giver || '', orgValues: e.orgValues || '', recipients: [] };
+          if (postMap[key].recipients.indexOf(emp.name) === -1)
+            postMap[key].recipients.push(emp.name);
+        });
+      });
+      var posts = Object.keys(postMap).map(function(k) { return postMap[k]; });
+      // Sort: most recipients per post first, then by giver name
+      posts.sort(function(a, b) {
+        if (b.recipients.length !== a.recipients.length) return b.recipients.length - a.recipients.length;
+        return a.giver.localeCompare(b.giver);
+      });
+      posts.forEach(function(post) {
+        var stars = '';
+        for (var i = 0; i < post.recipients.length; i++) stars += '★';
+        var line = post.recipients.join(', ') + ' ' + stars + ' — Given by ' + (post.giver || '—');
+        if (post.orgValues) line += ' · ' + post.orgValues;
+        highlights.push(line);
+      });
     } else {
       if (kudosPrev !== null && kudosPrev === 0) {
         concerns.push('No kudos given for the second consecutive week — managers should actively prompt recognition (Think Team)');
@@ -2438,7 +2529,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   var closedH = hist.filter(function(h) { return !h.isCurrentWeek; });
   if (closedH.length >= 3) {
     var recent  = closedH.slice(-4);
-    var shortLbl = function(l) { return (l || '').replace(/\d{4}\./, ''); };
+    var shortLbl = function(l) { return l || ''; };
 
     // Tracked time trend
     var tAvg = recent.map(function(h) { return +(h.avgHrs || 0).toFixed(1); });
@@ -2532,8 +2623,13 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief) {
     narrative:     null,
   };
 
-  function makeItems(arr, cls) {
-    return arr.map(function(t) { return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(t) + '</li>'; }).join('');
+  var ICO_INFO    = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path fill="white" d="M11 11h2v7h-2zm0-4.5h2v2h-2z"/></svg>';
+  var ICO_SUCCESS = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="8,12.5 11,15.5 16,9.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ICO_NOTE    = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" d="M8 9h8M8 13h8M8 17h5"/></svg>';
+  var ICO_WARNING = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 22h20L12 2z"/><path fill="white" d="M11 9h2v6h-2zm0 7h2v2h-2z"/></svg>';
+
+  function makeItems(arr) {
+    return arr.map(function(t) { return '<li>' + esc(t) + '</li>'; }).join('');
   }
 
   return (
@@ -2554,27 +2650,24 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief) {
           ' · ' + esc(String(headcount)) + ' rocketeers' +
         '</div>' +
 
-        '<div class="brief-section">' +
-          '<div class="brief-label facts">◉ Facts</div>' +
-          '<ul class="brief-list" id="tbFactsList">' + makeItems(brief.facts, '') + '</ul>' +
+        '<div class="cf-panel cf-panel-info">' +
+          '<div class="cf-panel-hdr">' + ICO_INFO + '<span>Facts</span></div>' +
+          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbFactsList">' + makeItems(brief.facts) + '</ul></div>' +
         '</div>' +
-        '<hr class="team-brief-divider">' +
 
-        '<div class="brief-section">' +
-          '<div class="brief-label hl">✦ Highlights</div>' +
-          '<ul class="brief-list" id="tbHighlightsList">' + makeItems(brief.highlights, 'hl') + '</ul>' +
+        '<div class="cf-panel cf-panel-success">' +
+          '<div class="cf-panel-hdr">' + ICO_SUCCESS + '<span>Highlights</span></div>' +
+          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbHighlightsList">' + makeItems(brief.highlights) + '</ul></div>' +
         '</div>' +
-        '<hr class="team-brief-divider">' +
 
-        '<div class="brief-section">' +
-          '<div class="brief-label nt">○ Notes</div>' +
-          '<ul class="brief-list" id="tbNotesList">' + makeItems(brief.notes, 'nt') + '</ul>' +
+        '<div class="cf-panel cf-panel-note">' +
+          '<div class="cf-panel-hdr">' + ICO_NOTE + '<span>Notes</span></div>' +
+          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbNotesList">' + makeItems(brief.notes) + '</ul></div>' +
         '</div>' +
-        '<hr class="team-brief-divider">' +
 
-        '<div class="brief-section">' +
-          '<div class="brief-label nc">⚑ Concerns</div>' +
-          '<ul class="brief-list" id="tbConcernsList">' + makeItems(brief.concerns, 'nc') + '</ul>' +
+        '<div class="cf-panel cf-panel-warning">' +
+          '<div class="cf-panel-hdr">' + ICO_WARNING + '<span>Concerns</span></div>' +
+          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbConcernsList">' + makeItems(brief.concerns) + '</ul></div>' +
         '</div>' +
 
         '<div class="team-brief-narrative" id="tbNarrative" style="display:none"></div>' +
@@ -2666,10 +2759,10 @@ function triggerTeamGemini() {
           return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(String(t)) + '</li>';
         }).join('');
       }
-      _setList('tbFactsList',      enhanced.facts,       '');
-      _setList('tbHighlightsList', enhanced.highlights,  'hl');
-      _setList('tbNotesList',      enhanced.notes,       'nt');
-      _setList('tbConcernsList',   enhanced.concerns,    'nc');
+      _setList('tbFactsList',      enhanced.facts,      '');
+      _setList('tbHighlightsList', enhanced.highlights, '');
+      _setList('tbNotesList',      enhanced.notes,      '');
+      _setList('tbConcernsList',   enhanced.concerns,   '');
       // Narrative below
       if (enhanced.narrative) {
         out.textContent   = enhanced.narrative;
@@ -2761,6 +2854,47 @@ function captureCardPNG(elementId) {
   });
 }
 
+/**
+ * Captures a card that lives on an INACTIVE tab — used by the publish flow so
+ * images render regardless of which tab the user is on. The tab's pane is made
+ * laid-out but positioned offscreen (so Chart.js sizes its canvases correctly),
+ * renderFn() draws the charts, we snapshot, then the pane is restored. The active
+ * tab is never changed, so the in-progress publish strip is preserved.
+ * If the pane is already active, captures it in place. Returns Promise<string|null>.
+ */
+function captureOffscreenCard(paneId, cardId, renderFn) {
+  return new Promise(function(resolve) {
+    var pane = document.getElementById(paneId);
+    if (!pane || typeof html2canvas === 'undefined') { resolve(null); return; }
+
+    var alreadyActive = pane.classList.contains('active');
+    var savedStyle    = pane.getAttribute('style') || '';
+    if (!alreadyActive) {
+      // position:absolute (not fixed) keeps a non-null offsetParent so captureCardPNG runs.
+      var mainEl = document.querySelector('main');
+      pane.classList.add('active');
+      pane.style.position = 'absolute';
+      pane.style.left     = '-100000px';
+      pane.style.top      = '0';
+      pane.style.width    = (mainEl ? mainEl.clientWidth : 1280) + 'px';
+      pane.style.zIndex   = '-1';
+    }
+
+    try { if (renderFn) renderFn(); } catch (e) { console.warn('captureOffscreenCard render failed:', e); }
+
+    // Let layout reflow and Chart.js draw/animate (≤300ms configured) settle.
+    setTimeout(function() {
+      captureCardPNG(cardId).then(function(dataUrl) {
+        if (!alreadyActive) {
+          pane.setAttribute('style', savedStyle);
+          pane.classList.remove('active');
+        }
+        resolve(dataUrl);
+      });
+    }, 700);
+  });
+}
+
 function triggerConfluencePublish() {
   var store = window._teamBriefStore;
   var strip = document.getElementById('tbPublishStrip');
@@ -2770,7 +2904,7 @@ function triggerConfluencePublish() {
   // Use the current week as the post title (W24 now), while the brief
   // content comes from the last closed week's analysis (W23).
   var weekLabel = (DATA && DATA.meta && DATA.meta.currentWeekLabel) || store.weekLabel || '';
-  var pageTitle = weekLabel + ' Contribution Satellites';
+  var pageTitle = 'Contribution — Executive Brief ' + weekLabel;
 
   function setStrip(cls, html) {
     strip.className = 'team-brief-publish-strip ' + cls;
@@ -2789,11 +2923,7 @@ function triggerConfluencePublish() {
   setStrip('confirm',
     '<span>Publish “' + pageTitle + '” to Confluence?</span>' +
     '<button class="ps-btn" id="tbPublishConfirm">Confirm</button>' +
-    '<button class="ps-btn" onclick="(function(){' +
-      'document.getElementById(\'tbPublishBtn\').disabled=false;' +
-      'var s=document.getElementById(\'tbPublishStrip\');' +
-      's.className=\'team-brief-publish-strip\';s.style.display=\'none\';' +
-    '})()">Cancel</button>'
+    '<button class="ps-btn" id="tbPublishCancel">Cancel</button>'
   );
 
   function doPublish(existingPageId) {
@@ -2810,10 +2940,22 @@ function triggerConfluencePublish() {
       btn.disabled = false;
     }, 60000);
 
-    Promise.all([
-      captureCardPNG('summarySectionCard'),
-      captureCardPNG('goalsStandingCard'),
-    ]).then(function(images) {
+    // Render and capture both cards regardless of the active tab. Each renders its
+    // tab's pane offscreen, so the user stays on the brief and the strip is preserved.
+    setStrip('busy', '⏳ Work in progress — rendering dashboard images…');
+
+    var filteredSummary = isFiltered()
+      ? buildFilteredSummary(getFilteredEmployees(), DATA.weeks)
+      : DATA.teamSummary;
+
+    captureOffscreenCard('tabOverview', 'summarySectionCard', function() {
+      renderTeamTable(filteredSummary);
+    }).then(function(pulse) {
+      return captureOffscreenCard('tabTrends', 'goalsStandingCard', function() {
+        renderTrendsTab();
+      }).then(function(goals) { return [pulse, goals]; });
+    }).then(function(images) {
+      setStrip('busy', '⏳ Publishing to Confluence…');
       var payload = {
         weekLabel:      weekLabel,
         facts:          store.facts      || [],
@@ -2831,18 +2973,19 @@ function triggerConfluencePublish() {
           clearTimeout(timeout);
           if (!result || !result.ok) {
             if (result && result.duplicate) {
+              var dupMsg = result.legacyTitle
+                ? '⚠ Found older page “' + weekLabel + ' Contribution Satellites”. Overwrite with new format?'
+                : '⚠ “' + pageTitle + '” already exists in Confluence.';
               setStrip('warn',
-                '⚠ “' + pageTitle + '” already exists in Confluence. ' +
-                '<a class="ps-btn" href="' + result.url + '" target="_blank">View</a>' +
+                '<span>' + dupMsg + '</span>' +
+                (result.url ? '<a class="ps-btn" href="' + result.url + '" target="_blank">View</a>' : '') +
                 '<button class="ps-btn" id="tbPublishOverwrite">Overwrite</button>' +
-                '<button class="ps-btn" onclick="(function(){' +
-                  'document.getElementById(\'tbPublishBtn\').disabled=false;' +
-                  'var s=document.getElementById(\'tbPublishStrip\');' +
-                  's.className=\'team-brief-publish-strip\';s.style.display=\'none\';' +
-                '})()">Cancel</button>'
+                '<button class="ps-btn" id="tbPublishCancelWarn">Cancel</button>'
               );
               var owBtn = document.getElementById('tbPublishOverwrite');
+              var cwBtn = document.getElementById('tbPublishCancelWarn');
               if (owBtn) owBtn.onclick = function() { doPublish(result.existingId); };
+              if (cwBtn) cwBtn.onclick = reset;
               btn.disabled = false;
             } else {
               setStrip('error', '❌ ' + ((result && result.error) || 'Unknown error.'));
@@ -2865,9 +3008,11 @@ function triggerConfluencePublish() {
     });
   }
 
-  // Wire Confirm button after it is in the DOM
+  // Wire Confirm and Cancel buttons after they are in the DOM
   var confirmBtn = document.getElementById('tbPublishConfirm');
+  var cancelBtn  = document.getElementById('tbPublishCancel');
   if (confirmBtn) confirmBtn.onclick = function() { doPublish(null); };
+  if (cancelBtn)  cancelBtn.onclick  = reset;
 }
 
 var METRIC_COLORS = {
@@ -2942,9 +3087,13 @@ function renderTopRocketeers(filtered) {
       ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + prevWeek.label + ': ' + x.sP.score + '</div>'
       : '';
 
-    var rows = [
+    var crewE = isCrewEmp(e);
+    var rows = [];
+    // Goals — FTE only (crew have no goals data)
+    if (!crewE) rows.push(
       { label:"Goals",   norm: sL.goalsNorm,   val: sL.goalsOk ? "Compliant ✓" : "Not met",
-        pts: Math.round((sL.goalsNorm   || 0) * SCORE_W.goals),   color: METRIC_COLORS.goals   },
+        pts: Math.round((sL.goalsNorm   || 0) * SCORE_W.goals),   color: METRIC_COLORS.goals   });
+    rows.push(
       { label:"Tracked", norm: sL.trackedNorm, val: sL.trackedHrs !== null ? Math.round(sL.trackedHrs) + "h" : "—",
         pts: Math.round((sL.trackedNorm || 0) * SCORE_W.tracked), color: METRIC_COLORS.tracked },
       { label:"Planned", norm: sL.plannedNorm, val: sL.plannedHrs !== null ? Math.round(sL.plannedHrs) + "h" : "—",
@@ -2958,12 +3107,13 @@ function renderTopRocketeers(filtered) {
           if (sL.kudosGivenCount > 0) parts.push(sL.kudosGivenCount + " given");
           return parts.length ? parts.join(" · ") : "—";
         })(),
-        pts: Math.round((sL.kudosNorm || 0) * SCORE_W.kudos), color: METRIC_COLORS.kudos },
-    ];
-    if ((SCORE_W.si || 0) > 0) rows.push(
+        pts: Math.round((sL.kudosNorm || 0) * SCORE_W.kudos), color: METRIC_COLORS.kudos }
+    );
+    // SI and PTO — FTE only (crew have neither)
+    if (!crewE && (SCORE_W.si || 0) > 0) rows.push(
       { label:"SI Rating",  norm: sL.siNorm,  val: sL.siVal  !== null ? (+sL.siVal).toFixed(1) : "—",
         pts: Math.round((sL.siNorm  || 0) * SCORE_W.si),  color: METRIC_COLORS.si  });
-    if ((SCORE_W.pto || 0) > 0) rows.push(
+    if (!crewE && (SCORE_W.pto || 0) > 0) rows.push(
       { label:"PTO Health", norm: sL.ptoNorm, val: sL.ptoStatus || "—",
         pts: Math.round((sL.ptoNorm || 0) * SCORE_W.pto), color: METRIC_COLORS.pto });
 
@@ -3074,14 +3224,12 @@ function renderKPIs(m, filtered, filtering) {
   // "x / N" fractions reflect the visible group, not the entire team.
   var hcDenom = (isActualFilter && filtered.length > 0) ? filtered.length : DATA.headcount;
 
-  // Tempo-active employees: exclude roles not expected to log or plan time.
-  // Used only for Tracked Time and Planned Time KPIs so scores stay fair.
-  var tempoFiltered   = filtered.filter(function(e) { return !e.isTempoExempt; });
-  var hcDenomTempo    = tempoFiltered.length;
-  var s1tempo         = w1 ? getWeekStats(tempoFiltered, w1.label) : null;
-  var s2tempo         = w2 ? getWeekStats(tempoFiltered, w2.label) : null;
+  // Tracked/Planned time covers all visible FTE — no Tempo-exempt carve-out.
+  var hcDenomTempo    = filtered.length;
+  var s1tempo         = s1;
+  var s2tempo         = s2;
 
-  // Time tracked — target: 85% of Tempo-active headcount logging each week
+  // Time tracked — target: 85% of headcount logging each week
   var hcTarget      = Math.ceil(hcDenomTempo * 0.85);
   var hcLogged      = s1tempo ? s1tempo.trackedHC : 0;
   var trackedPct1   = hcDenomTempo > 0 ? Math.round(hcLogged / hcDenomTempo * 100) : 0;
@@ -3259,8 +3407,8 @@ function renderKPIs(m, filtered, filtering) {
   }
 
   // Education banner — explains what the weekly KPIs compare
-  var w1Short = w1 ? w1.label.replace(/\d{4}\./, "") : "—";
-  var w2Short = w2 ? w2.label.replace(/\d{4}\./, "") : "—";
+  var w1Short = w1 ? w1.label : "—";
+  var w2Short = w2 ? w2.label : "—";
   var kpiBanner = isCrewMode
     ? '<div class="kpi-context-banner">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -3465,7 +3613,7 @@ function renderCorrelationCharts(filtered) {
   var allFTE = (DATA.employees || []).filter(function(e) { return !e.isCrewMember && !/contractor/i.test(e.jobTitle || ""); });
   var isActiveFilter = filtered && filtered.length > 0 && filtered.length < allFTE.length;
   var chartDenom = isActiveFilter
-    ? filtered.filter(function(e) { return !e.isTempoExempt; }).length || 1
+    ? filtered.length || 1
     : (DATA && DATA.headcount || 1);
 
   // When filter is active, per-employee tracked/planned data only exists for the rolling window
@@ -3492,11 +3640,9 @@ function renderCorrelationCharts(filtered) {
   }
 
   // Recompute activity pct from filtered employees when filter is active.
-  // Excludes Tempo-exempt roles (Job Family 18) — they don't log/plan time.
   function computeActivityPct_(weekLabel, field) {
     var total = 0, active = 0;
     filtered.forEach(function(e) {
-      if (e.isTempoExempt) return;
       var wd = e.weeks && e.weeks[weekLabel];
       if (!wd) return;
       total++;
@@ -3508,11 +3654,9 @@ function renderCorrelationCharts(filtered) {
 
   // Recompute documentation pct from per-employee goal flags when filter is active.
   // Uses rolling-week goalsDetail for recent weeks, goalsQ4Hist for earlier Q4 weeks.
-  // Excludes Tempo-exempt roles to keep the correlation population consistent with the time axis.
   function computeDocPct_(weekLabel, goalKey) {
     var commented = 0, total = 0;
     filtered.forEach(function(e) {
-      if (e.isTempoExempt) return;
       var gd = e.weeks && e.weeks[weekLabel] && e.weeks[weekLabel].goalsDetail;
       if (!gd && DATA.goalsQ4Hist && DATA.goalsQ4Hist[weekLabel]) gd = DATA.goalsQ4Hist[weekLabel][e.normName];
       if (!gd) return;
@@ -3524,7 +3668,6 @@ function renderCorrelationCharts(filtered) {
   function computeDocHC_(weekLabel, goalKey) {
     var commented = 0;
     filtered.forEach(function(e) {
-      if (e.isTempoExempt) return;
       var gd = e.weeks && e.weeks[weekLabel] && e.weeks[weekLabel].goalsDetail;
       if (!gd && DATA.goalsQ4Hist && DATA.goalsQ4Hist[weekLabel]) gd = DATA.goalsQ4Hist[weekLabel][e.normName];
       if (gd && gd[goalKey]) commented++;
@@ -3712,7 +3855,7 @@ function buildMetricsTableHTML(rows, weeks) {
   html += "<thead><tr><th>Metric</th>";
   weeks.forEach(function(w) {
     var cls = w.isCurrentWeek ? "col-current" : w.isFuture ? "col-future" : "";
-    var wShortM = (w.label || '').replace(/^\d{4}\./, '');
+    var wShortM = w.label || '';
     html += '<th class="' + cls + '">' + esc(wShortM) + (w.isCurrentWeek ? " ←" : "") +
             '<br><span style="font-weight:500;font-size:9px;opacity:.7;white-space:nowrap">' + esc(w.dateRange) + '</span></th>';
   });
@@ -4134,7 +4277,6 @@ function renderEmployeeTable() {
     { key:"name",        label:"Rocketeer",  sortable:true  },
     { key:"keyLocation", label:"Location",   sortable:true  },
     { key:"supervisor",  label:"Supervisor", sortable:true  },
-    { key:"jobTitle",    label:"Job Title",  sortable:true  },
   ];
 
   var showAll      = STATE.empTableExpanded || list.length <= EMP_PREVIEW;
@@ -4158,7 +4300,7 @@ function renderEmployeeTable() {
     var sortCls = STATE.sort.key === sortKey ? " sort-" + STATE.sort.dir : "";
     var statusCls = w.isCurrentWeek ? "ws-current" : w.isFuture ? "ws-planned" : "ws-tracked";
     var statusLbl = w.isCurrentWeek ? "in progress" : w.isFuture ? "planned" : "tracked";
-    var wShortHdr = (w.label || '').replace(/^\d{4}\./, '');
+    var wShortHdr = w.label || '';
     html += '<th class="' + cls + sortCls + '" style="text-align:center;cursor:pointer" onclick="setSort(\'' + sortKey + '\')">' +
       esc(wShortHdr) +
       '<br><span style="font-weight:500;font-size:9px;opacity:.6;white-space:nowrap">' + esc(w.dateRange || "") + '</span>' +
@@ -4173,11 +4315,11 @@ function renderEmployeeTable() {
 
   displayList.forEach(function(emp) {
     var isExpanded = STATE.expanded === emp.normName;
+    var crewE      = isCrewEmp(emp);  // crew/contractors have no Goals — suppress goal markers
     html += '<tr class="' + (isExpanded ? "expanded" : "") + '" data-norm-name="' + emp.normName.replace(/"/g,'&quot;') + '">';
     var rampBadge   = emp.isRampUp      ? ' <span style="font-size:10px;font-weight:600;background:#FFF3CD;color:#7B4800;border-radius:3px;padding:1px 5px;vertical-align:middle">Ramp-Up</span>'  : "";
-    var exemptBadge = emp.isTempoExempt ? ' <span style="font-size:10px;font-weight:600;background:#F0F4FF;color:#1E3A8A;border-radius:3px;padding:1px 5px;vertical-align:middle" title="This role is not expected to log or plan time in Tempo">No Tempo</span>' : "";
     var goalsDot = "";
-    if (!emp.isRampUp && refWeekDot) {
+    if (!emp.isRampUp && !crewE && refWeekDot) {
       var refGD = ((emp.weeks || {})[refWeekDot.label] || {}).goalsDetail;
       if (refGD) {
         goalsDot = refGD.compliant
@@ -4185,10 +4327,9 @@ function renderEmployeeTable() {
           : '<span class="goals-dot goals-dot-fail" title="Goals not Commented · ' + refWeekDot.label + '"></span>';
       }
     }
-    html += '<td><div class="emp-name">' + esc(emp.name) + goalsDot + rampBadge + exemptBadge + '</div><div class="emp-title">' + esc(emp.jobTitle) + '</div></td>';
+    html += '<td><div class="emp-name">' + esc(emp.name) + goalsDot + rampBadge + '</div><div class="emp-title">' + esc(emp.jobTitle) + '</div></td>';
     html += '<td>' + esc(emp.keyLocation) + '</td>';
     html += '<td>' + esc(emp.supervisor)  + '</td>';
-    html += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--slate)">' + esc(emp.jobTitle) + '</td>';
 
     weeks.forEach(function(w) {
       var cls = w.isCurrentWeek ? "col-current" : w.isFuture ? "col-future" : "";
@@ -4208,7 +4349,7 @@ function renderEmployeeTable() {
         }
         if (wd.ptoPlannedHrs != null && wd.ptoPlannedHrs > 0)
           html += '<div class="wc-plan-pto">' + fmtHrs(wd.ptoPlannedHrs) + ' PTO</div>';
-        var metaFut = '<span class="wc-goal-pending">Goals —</span>';
+        var metaFut = crewE ? '' : '<span class="wc-goal-pending">Goals —</span>';
         if (phHit) metaFut += '<span class="ph-pill" title="' + esc(phHit.holiday) + '">PH</span>';
         html += '<div class="wc-meta">' + metaFut + '</div>';
       } else if (w.isCurrentWeek) {
@@ -4226,7 +4367,7 @@ function renderEmployeeTable() {
           html += '<div class="wc-plan-pto">' + fmtHrs(wd.ptoPlannedHrs) + ' PTO</div>';
         var metaCur = "";
         var gdCur = wd.goalsDetail;
-        if (gdCur && gdCur.compliant) metaCur += '<span class="wc-goal-ok">Goals ✓</span>';
+        if (!crewE && gdCur && gdCur.compliant) metaCur += '<span class="wc-goal-ok">Goals ✓</span>';
         // Non-compliant current week shows nothing — it's in progress, not a confirmed failure
         var kdCur = wd.kudos;
         if (kdCur && kdCur.count > 0) metaCur += '<span class="kudos-pill">♥ ' + kdCur.count + '</span>';
@@ -4241,7 +4382,7 @@ function renderEmployeeTable() {
           html += '<div class="wc-plan-pto">' + fmtHrs(wd.ptoPlannedHrs) + ' PTO</div>';
         var meta = "";
         var gd = wd.goalsDetail;
-        if (gd) meta += gd.compliant
+        if (!crewE && gd) meta += gd.compliant
           ? '<span class="wc-goal-ok">Goals ✓</span>'
           : '<span class="wc-goal-err">Goals ✗</span>';
         var kd = wd.kudos;
@@ -4319,7 +4460,7 @@ function buildDetailHTML(emp) {
   }
 
   // ── Expandable metric table ───────────────────────────────────────
-  var indivAxes = (RADAR_AXIS_BY_GROUP.individual || []);
+  var indivAxes = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], isCrewEmp(emp));
   var hasRadar  = indivAxes.length >= 3;
   var safeId    = hasRadar ? 'idr-' + uid : null;
 
@@ -4327,7 +4468,7 @@ function buildDetailHTML(emp) {
   html += '<table class="det-ts-tbl"><thead><tr>';
   html += '<th class="det-expand-lbl-cell" style="font-size:9px;color:var(--muted);font-weight:500;padding:5px 10px;background:var(--surface);border-bottom:1px solid var(--border)"></th>';
   weeks.forEach(function(w) {
-    var wShort = (w.label || '').replace(/^\d{4}\./, '');
+    var wShort = w.label || '';
     var wColor = w.isCurrentWeek ? 'color:var(--orbe);' : w.isFuture ? 'color:var(--muted);opacity:.55;' : 'color:var(--slate);';
     html += '<th style="text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:5px 8px;background:var(--surface);border-bottom:1px solid var(--border);' + wColor + '">' + esc(wShort) + '</th>';
   });
@@ -4445,7 +4586,14 @@ function buildDetailHTML(emp) {
         if (kd.count > 0 && kd.entries && kd.entries.length > 0) {
           html += '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">Received</div>';
           kd.entries.slice(0, 3).forEach(function(e) {
-            html += '<span>from ' + esc(e.giver || '—') + '</span><br>';
+            html += '<div style="margin-bottom:3px"><span>from ' + esc(e.giver || '—') + '</span>';
+            if (e.orgValues) {
+              e.orgValues.split(',').forEach(function(v) {
+                v = v.trim();
+                if (v) html += '<span class="kudos-val-tag">' + esc(v) + '</span>';
+              });
+            }
+            html += '</div>';
           });
           if (kd.entries.length > 3) html += '<span style="color:var(--muted)">+' + (kd.entries.length - 3) + ' more</span>';
         }
@@ -4453,7 +4601,14 @@ function buildDetailHTML(emp) {
           if (kd.count > 0) html += '<div style="height:5px"></div>';
           html += '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#0D3B8C;margin-bottom:2px">Given</div>';
           kd.givenEntries.slice(0, 3).forEach(function(e) {
-            html += '<span>to ' + esc(e.recipient || '—') + '</span><br>';
+            html += '<div style="margin-bottom:3px"><span>to ' + esc(e.recipient || '—') + '</span>';
+            if (e.orgValues) {
+              e.orgValues.split(',').forEach(function(v) {
+                v = v.trim();
+                if (v) html += '<span class="kudos-val-tag">' + esc(v) + '</span>';
+              });
+            }
+            html += '</div>';
           });
           if (kd.givenEntries.length > 3) html += '<span style="color:var(--muted)">+' + (kd.givenEntries.length - 3) + ' more</span>';
         }
@@ -4646,12 +4801,10 @@ function initDetailRadars() {
   var refWeek   = pastWeeks.length > 0 ? pastWeeks[pastWeeks.length - 1] : curWeek;
   var refLabel  = refWeek ? refWeek.label : null;
 
-  // Team average — compute once
+  // Team average — compute once; reference polygons are sliced per employee's axis set.
   var teamMetrics = computeGroupMetrics(DATA.employees, weeks, refLabel);
-  var indivAxisObjs = (RADAR_AXIS_BY_GROUP.individual || []).map(function(id) {
-    return RADAR_AXIS_DEFS.find(function(d) { return d.id === id; });
-  }).filter(Boolean);
-  var teamData = indivAxisObjs.map(function(a) { return normalizeAxisValue(a.id, teamMetrics); });
+  // Crew avg reference (RCR/Planned/Tracked/Kudos) for crew members, vs whole-team for FTE.
+  var crewMetrics = computeGroupMetrics(DATA.employees.filter(isCrewEmp), weeks, refLabel);
 
   canvases.forEach(function(canvas) {
     var normName = canvas.getAttribute('data-emp-radar');
@@ -4659,11 +4812,20 @@ function initDetailRadars() {
     if (!emp) return;
     destroyRadarChart(canvas.id);
 
-    var indivMetrics = computeGroupMetrics([emp], weeks, refLabel);
-    var indivData    = indivAxisObjs.map(function(a) { return normalizeAxisValue(a.id, indivMetrics); });
+    // Crew/contractor charts drop Goals, PTO, and SI (no data for those axes).
+    var crew = isCrewEmp(emp);
+    var axisObjs = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], crew).map(function(id) {
+      return RADAR_AXIS_DEFS.find(function(d) { return d.id === id; });
+    }).filter(Boolean);
 
-    var refDataset = { label: 'Team avg', data: teamData };
-    buildRadarChart(canvas.id, [{ name: emp.name || normName, metrics: indivMetrics }], indivAxisObjs, refDataset);
+    var refMetrics   = (crew && crewMetrics) ? crewMetrics : teamMetrics;
+    var indivMetrics = computeGroupMetrics([emp], weeks, refLabel);
+
+    var refDataset = {
+      label: crew ? 'Crew avg' : 'Team avg',
+      data:  axisObjs.map(function(a) { return normalizeAxisValue(a.id, refMetrics); })
+    };
+    buildRadarChart(canvas.id, [{ name: emp.name || normName, metrics: indivMetrics }], axisObjs, refDataset);
   });
 }
 
@@ -4890,10 +5052,10 @@ function buildAxisSublabel(axisId, m) {
 
 // Returns { axes: [axisDef, …], hidden: [{id, label}, …] }
 // Applies variance threshold: hide axes where std-dev across groups < 5 pts (0-100 scale)
-function getActiveAxes(groupBy, groups) {
+function getActiveAxes(groupBy, groups, isCrewMode) {
   var axisMap = {};
   RADAR_AXIS_DEFS.forEach(function(d) { axisMap[d.id] = d; });
-  var baseIds = (RADAR_AXIS_BY_GROUP[groupBy] || RADAR_AXIS_BY_GROUP.all).slice();
+  var baseIds = axisIdsForCrew((RADAR_AXIS_BY_GROUP[groupBy] || RADAR_AXIS_BY_GROUP.all).slice(), isCrewMode);
 
   if (groups.length < 2) {
     return { axes: baseIds.map(function(id) { return axisMap[id]; }), hidden: [] };
@@ -5123,9 +5285,9 @@ function renderKudosCallout(filtered, weeks, refWeekLabel) {
       var wd = e.weeks && e.weeks[w.label];
       if (wd && wd.kudos) total += (wd.kudos.count || 0);
     });
-    return { label: w.label.replace(/\d{4}\./, ''), val: filtered.length ? total / filtered.length : 0 };
+    return { label: w.label, val: filtered.length ? total / filtered.length : 0 };
   });
-  var refLabel = (refWeekLabel || '').replace(/\d{4}\./, '');
+  var refLabel = refWeekLabel || '';
   var curBar = bars.find(function(b) { return b.label === refLabel; }) || bars[bars.length - 1];
   var isAlert = curBar && curBar.val < 0.5;
   card.style.display = isAlert ? '' : 'none';
@@ -5133,7 +5295,7 @@ function renderKudosCallout(filtered, weeks, refWeekLabel) {
   var maxVal = Math.max.apply(null, bars.map(function(b) { return b.val; })) || 1;
   var sparkHtml = bars.map(function(b) {
     var h    = Math.max(4, Math.round(b.val / maxVal * 40));
-    var isRef = b.label === (refWeekLabel || '').replace(/\d{4}\./, '');
+    var isRef = b.label === (refWeekLabel || '');
     return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
       '<div style="width:20px;height:' + h + 'px;background:' + (isRef ? '#FF9B87' : 'rgba(255,155,135,0.35)') + ';border-radius:3px 3px 0 0"></div>' +
       '<span style="font-size:8px;color:var(--muted)">' + esc(b.label) + '</span>' +
@@ -5198,6 +5360,7 @@ function renderRadarTab(filtered) {
   var weeks        = DATA.q4Weeks || DATA.weeks;
   var refWeekLabel = (document.getElementById("radarWeekSelect") || {}).value || null;
   var groupBy      = (document.getElementById("radarGroupBy")    || {}).value || "all";
+  var isCrewMode   = ((document.getElementById("fbMemberType")   || {}).value || "fte") === "crew";
 
   // Build groups
   var groups;
@@ -5218,8 +5381,9 @@ function renderRadarTab(filtered) {
     }).filter(function(g) { return g.metrics && g.metrics.headcount > 0; });
   }
 
-  // Determine active axes for this grouping level + variance threshold
-  var axisResult = getActiveAxes(groupBy, groups);
+  // Determine active axes for this grouping level + variance threshold.
+  // Crew/contractor view drops Goals, PTO, and SI (no data for those metrics).
+  var axisResult = getActiveAxes(groupBy, groups, isCrewMode);
   var activeAxes = axisResult.axes;
 
   // Prior-week polygon — Whole Team view only (multi-group overlay would be unreadable)
@@ -5344,7 +5508,10 @@ function renderDrScoreBars() {
     '<p class="dr-p" style="margin-bottom:14px">' + intro + '</p>' +
     '<div class="dr-score-bars">' + barsHtml + '</div>' +
     '<div class="dr-note" style="margin-top:12px">Weights are configured by admins in the <strong>Settings</strong> tab. ' +
-    'Changes take effect immediately and are shared with all users on the next page refresh.</div>';
+    'Changes take effect immediately and are shared with all users on the next page refresh.</div>' +
+    '<div class="dr-note" style="margin-top:6px"><strong>Family × Level overrides:</strong> the weights shown above are the company base. ' +
+    'Admins can tune them per job family and level (Settings → Scoring Weights by Family &amp; Level) — a rocketeer\'s composite score ' +
+    'uses their family\'s weights for their level, resolved via the Job Catalog; unmapped titles fall back to the base weights shown here.</div>';
 }
 
 function renderSettingsTab() {
@@ -5408,9 +5575,14 @@ function renderSettingsTab() {
 
   html += '</div>';
 
-  // Security section — admin only, loaded async
+  // Scoring matrix + Security sections — admin only, loaded async
   if (STATE.userRole === "admin") {
     html += '<hr class="sec-divider">' +
+      '<div id="matrixSection">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+        '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
+      '</div>' +
+      '<hr class="sec-divider">' +
       '<div id="securitySection">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
         '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>' +
@@ -5422,6 +5594,7 @@ function renderSettingsTab() {
   updateWeightTotal();
 
   if (STATE.userRole === "admin") {
+    loadScoringMatrix_();
     google.script.run
       .withSuccessHandler(function(s) { populateSecuritySection_(s); })
       .withFailureHandler(function(e) {
@@ -5430,6 +5603,228 @@ function renderSettingsTab() {
       })
       .getAccessSettings();
   }
+}
+
+// ── SCORING MATRIX EDITOR — Family × Level weights (admin only) ──────────────
+// Backed by getScoringConfig() / saveScoringMatrix() in PS Contribution Report.js.
+// Blank cells inherit the DEFAULT block, then the flat base weights.
+var MATRIX_CFG = null;
+
+function loadScoringMatrix_() {
+  google.script.run
+    .withSuccessHandler(function(cfg) { MATRIX_CFG = cfg; renderMatrixSection_(); })
+    .withFailureHandler(function(e) {
+      var el = document.getElementById("matrixSection");
+      if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load scoring matrix: ' + esc(String(e.message || e)) + '</p>';
+    })
+    .getScoringConfig();
+}
+
+function renderMatrixSection_() {
+  var el = document.getElementById("matrixSection");
+  if (!el) return;
+  var cfg = MATRIX_CFG;
+  if (!cfg || !cfg.ok) {
+    el.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:8px 0">Scoring matrix unavailable' +
+      (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</p>';
+    return;
+  }
+
+  var html = '<div class="sec-header">⚖️ Scoring Weights by Family &amp; Level</div>' +
+    '<p class="sec-sub">Company-wide weight matrix. Each job family can weigh the seven metrics differently per level ' +
+    '(Individual Contributor I1–I8 · Management M4–M10). Role rows show who sits at each level — they are reference only. ' +
+    'Blank cells inherit the Company Default block. Each level column should total 100%; other totals are allowed and ' +
+    'renormalized at scoring time. Rocketeers whose Job Title is not in the Job Catalog use the default weights.</p>';
+
+  if (cfg.unmappedTitles && cfg.unmappedTitles.length) {
+    html += '<div style="margin:10px 0;padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px">' +
+      '<div style="font-size:11px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">' +
+        'Unmapped job titles — these rocketeers use default weights</div>' +
+      cfg.unmappedTitles.map(function(u) {
+        return '<div style="font-size:12px;color:#7C2D12">' + esc(u.jobTitle) +
+          ' <span style="color:#9A3412">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
+      }).join('') +
+      '<div style="font-size:11px;color:#9A3412;margin-top:4px">Add these titles to the <strong>Job Catalog</strong> sheet to map them to a family &amp; level.</div>' +
+    '</div>';
+  }
+
+  html += renderFamilyBlock_('DEFAULT', 'Company Default', cfg.levelCols, null);
+  cfg.families.forEach(function(f) {
+    var fam = cfg.rolesByFamily[f.code];
+    var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
+    if (!levels.length) return;
+    html += renderFamilyBlock_(f.code, f.name, levels, fam);
+  });
+
+  html += '<div class="settings-actions" style="margin-top:14px">' +
+    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Scoring Matrix</button>' +
+    '<span id="matrixSaveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
+  '</div>' +
+  '<div id="matrixSaveError" style="display:none;margin-top:8px;padding:8px 12px;background:#FEE2E2;border-radius:6px;font-size:12px;color:#B71C1C;font-weight:600"></div>' +
+  '<p class="settings-note">Weights are stored in the <strong>PS Scoring Matrix</strong> sheet; role mappings in <strong>Job Catalog</strong>. ' +
+  'Both can also be edited directly in the spreadsheet. Changes apply on the next data refresh.</p>';
+
+  el.innerHTML = html;
+}
+
+function shortRole_(t) {
+  var i = t.lastIndexOf(', ');
+  return i > 0 ? t.slice(0, i) : t;
+}
+
+// Effective weight of a cell after inheritance: cell → DEFAULT block → base weights.
+function matrixEffectiveW_(fam, lk, met) {
+  var m = MATRIX_CFG.matrix || {};
+  if (m[fam] && m[fam][lk] && m[fam][lk][met] !== undefined) return m[fam][lk][met];
+  if (fam !== 'DEFAULT' && m.DEFAULT && m.DEFAULT[lk] && m.DEFAULT[lk][met] !== undefined) return m.DEFAULT[lk][met];
+  return (MATRIX_CFG.baseWeights && MATRIX_CFG.baseWeights[met]) || 0;
+}
+
+function matrixColSum_(fam, lk) {
+  var s = 0;
+  MATRIX_CFG.metrics.forEach(function(met) { s += +matrixEffectiveW_(fam, lk, met) || 0; });
+  return Math.round(s * 10) / 10;
+}
+
+function renderFamilyBlock_(code, name, levels, famData) {
+  var cfg = MATRIX_CFG;
+  var m = cfg.matrix[code] || {};
+  var roleCount = 0, groupSet = {};
+  if (famData) {
+    levels.forEach(function(lk) {
+      (famData.levels[lk] || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
+    });
+  }
+  var groups = Object.keys(groupSet);
+  var sub = famData
+    ? roleCount + ' roles · ' + groups.length + ' role group' + (groups.length !== 1 ? 's' : '')
+    : 'base weights — blank cells in family blocks inherit these';
+
+  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
+  var icBg = 'background:#F0FAF9', mgBg = 'background:#F4F4FD';
+
+  var html = '<details ' + (code === 'DEFAULT' ? 'open ' : '') +
+    'style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+    '<summary style="cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;color:var(--void);background:var(--th-bg)">' +
+      esc(code) + ' · ' + esc(name) +
+      ' <span style="font-weight:600;color:var(--muted);font-size:11px">— ' + esc(sub) + '</span>' +
+    '</summary>' +
+    '<div style="padding:6px 14px 12px;overflow-x:auto">';
+
+  // Read-only roles reference (real families only), one row per role group
+  if (famData && groups.length) {
+    html += '<table style="border-collapse:collapse;margin:6px 0 10px;width:max-content"><thead><tr>' +
+      '<th style="' + thStyle + ';text-align:left;min-width:150px">Roles at each level</th>' +
+      levels.map(function(lk) {
+        return '<th style="' + thStyle + ';' + (lk.charAt(0) === 'I' ? icBg : mgBg) + '">' + lk + '</th>';
+      }).join('') + '</tr></thead><tbody>';
+    groups.forEach(function(g) {
+      html += '<tr><th style="padding:5px 6px;font-size:11px;font-weight:700;color:var(--slate);text-align:left;border-bottom:1px solid var(--border)">' + esc(g) + '</th>' +
+        levels.map(function(lk) {
+          var roles = (famData.levels[lk] || []).filter(function(r) { return (r.group || name) === g; });
+          return '<td style="padding:4px 6px;font-size:10px;color:var(--slate);border-bottom:1px solid var(--border);vertical-align:top;max-width:150px">' +
+            roles.map(function(r) { return '<div title="' + esc(r.code + ' — ' + r.title) + '">' + esc(shortRole_(r.title)) + '</div>'; }).join('') +
+          '</td>';
+        }).join('') + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Editable weights grid: metric rows × level columns
+  html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
+    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
+    levels.map(function(lk) {
+      return '<th style="' + thStyle + ';' + (lk.charAt(0) === 'I' ? icBg : mgBg) + '">' + lk + '</th>';
+    }).join('') + '</tr></thead><tbody>';
+
+  WEIGHT_DEFS.forEach(function(d) {
+    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
+      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
+      esc(d.label) + '</th>' +
+      levels.map(function(lk) {
+        var v = (m[lk] && m[lk][d.key] !== undefined) ? m[lk][d.key] : '';
+        return '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
+          '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
+          'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
+          'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px" ' +
+          'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td>';
+      }).join('') + '</tr>';
+  });
+
+  // Live per-column totals (soft warn ≠ 100%)
+  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
+    levels.map(function(lk) {
+      var t = matrixColSum_(code, lk);
+      return '<td id="msum-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
+        (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td>';
+    }).join('') + '</tr>';
+  html += '</tbody></table>';
+
+  if (code !== 'DEFAULT') {
+    html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
+      'onclick="resetFamilyMatrix_(\'' + code + '\')">Reset family — inherit company default</button>';
+  }
+  html += '</div></details>';
+  return html;
+}
+
+function matrixCellInput_(fam, lk, met, val) {
+  var m = MATRIX_CFG.matrix;
+  if (!m[fam]) m[fam] = {};
+  if (!m[fam][lk]) m[fam][lk] = {};
+  if (val === '' || val === null) {
+    delete m[fam][lk][met]; // blank → inherit
+  } else {
+    m[fam][lk][met] = Math.max(0, Math.min(100, parseFloat(val) || 0));
+  }
+  if (fam === 'DEFAULT') updateAllMatrixSums_(); // default feeds every inheriting column
+  else updateMatrixSum_(fam, lk);
+}
+
+function updateMatrixSum_(fam, lk) {
+  var cell = document.getElementById('msum-' + fam + '-' + lk);
+  if (!cell) return;
+  var t = matrixColSum_(fam, lk);
+  cell.textContent = t + '%';
+  cell.style.color = t === 100 ? '#00A86B' : '#D97706';
+}
+
+function updateAllMatrixSums_() {
+  var cells = document.querySelectorAll('[id^="msum-"]');
+  for (var i = 0; i < cells.length; i++) {
+    var parts = cells[i].id.split('-'); // ["msum", fam, levelKey]
+    updateMatrixSum_(parts[1], parts[2]);
+  }
+}
+
+function resetFamilyMatrix_(fam) {
+  if (MATRIX_CFG && MATRIX_CFG.matrix) {
+    delete MATRIX_CFG.matrix[fam];
+    renderMatrixSection_(); // re-render from state; other unsaved edits are kept
+  }
+}
+
+function saveMatrixToSheet_() {
+  var btn = document.getElementById('saveMatrixBtn');
+  var err = document.getElementById('matrixSaveError');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (err) err.style.display = 'none';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Scoring Matrix'; }
+      if (res && res.ok) {
+        var flash = document.getElementById('matrixSaveFlash');
+        if (flash) { flash.style.display = 'inline'; setTimeout(function() { flash.style.display = 'none'; }, 2500); }
+      } else if (err) {
+        err.textContent = 'Save failed: ' + ((res && res.error) || 'unknown error');
+        err.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Scoring Matrix'; }
+      if (err) { err.textContent = 'Save failed: ' + String(e.message || e); err.style.display = 'block'; }
+    })
+    .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
 }
 
 function populateSecuritySection_(s) {
@@ -5467,7 +5862,7 @@ function populateSecuritySection_(s) {
       '<div>' +
         '<div class="sec-field-label"><span class="sec-badge sec-badge-admin">Admin</span> Admins — can view + edit settings</div>' +
         '<textarea class="sec-textarea" id="secAdmins" placeholder="One email per line…">' + esc(adminsVal) + '</textarea>' +
-        '<div class="sec-hint">One email per line · Bootstrap admin (' + esc(s.bootstrapAdmin || "") + ') always has access</div>' +
+        '<div class="sec-hint">One email per line · Bootstrap admin</div>' +
       '</div>' +
       '<div>' +
         '<div class="sec-field-label"><span class="sec-badge sec-badge-viewer">Viewer</span> Viewers — can view only</div>' +
@@ -5710,17 +6105,55 @@ function _cfCellColor(rowId, value) {
   return null;
 }
 
-// Returns a WoW trend arrow (↑ ↓ →) for the last 2 completed weeks (W-1 and W0).
-// Compares cell[i] with cell[i-1]; skips W-2 (first col) and future weeks.
-function _cfWoW(cells, idx, week) {
-  if (week.isFuture || idx === 0) return "";
-  var curr = cells[idx].value, prev = cells[idx - 1].value;
-  if (curr === null || prev === null || curr === undefined || prev === undefined) return "";
-  var cn = Number(curr), pn = Number(prev);
-  if (isNaN(cn) || isNaN(pn)) return "";
-  if (cn > pn) return " <span style='color:#1b5e20;font-weight:800'>↑</span>";
-  if (cn < pn) return " <span style='color:#b71c1c;font-weight:800'>↓</span>";
-  return " <span style='color:#64748b;font-weight:600'>→</span>";
+// Row accent colours for the in-table Trend sparkline (mirror rowColors in buildMetricsTableHTML).
+var _CF_ROW_COLORS = { goals: "#00A86B", planned: "#058CDC", tracked: "#058CDC", kudos: "#FF9B87", pto: "#00A86B", rcr: "#7B4800", si: "#0F1941" };
+
+// Unicode block sparkline (8 levels) — text-based so it survives the Confluence paste
+// sanitizer, which strips SVG/canvas. Mirrors miniAreaChart's data scaling.
+function _cfSparkline(cells, weeks, rowId) {
+  var BARS = "▁▂▃▄▅▆▇█";
+  var clip = (rowId === 'goals' || rowId === 'tracked');  // no future data → clip to past+current
+  var vals = cells.map(function(c, i) {
+    if (clip && weeks[i] && weeks[i].isFuture) return null;
+    return (c && c.value !== null && c.value !== undefined && !isNaN(+c.value)) ? +c.value : null;
+  });
+  var nn = vals.filter(function(v) { return v !== null; });
+  if (nn.length < 2) return "—";
+  var min = Math.min.apply(null, nn), max = Math.max.apply(null, nn), span = (max - min) || 1;
+  return vals.map(function(v) {
+    if (v === null) return " ";
+    return BARS.charAt(Math.round((v - min) / span * (BARS.length - 1)));
+  }).join("");
+}
+
+// Plain-text WoW delta + colour for the Confluence copy — mirrors computeRowDelta,
+// which returns class-styled HTML that Confluence would strip.
+function _cfDelta(rowId, c1, c2) {
+  if (!c1 || !c2 || c1.value === null || c2.value === null) return null;
+  if (rowId === 'rcr' || rowId === 'si') return null;
+  var UP = "#1b5e20", DOWN = "#b71c1c", NEU = "#64748b", d;
+  if (rowId === 'goals') {
+    d = (c1.compliant || 0) - (c2.compliant || 0);
+    if (d === 0) return { t: "same", c: NEU };
+    return d > 0 ? { t: "↑" + d + " people", c: UP } : { t: "↓" + Math.abs(d) + " people", c: DOWN };
+  }
+  if (rowId === 'tracked' || rowId === 'planned') {
+    if (c2.value === 0) return (c1.value || 0) > 0 ? { t: "↑ from 0", c: UP } : { t: "same", c: NEU };
+    var pct = Math.round((c1.value - c2.value) / c2.value * 100);
+    if (pct === 0) return { t: "same", c: NEU };
+    return pct > 0 ? { t: "↑" + pct + "%", c: UP } : { t: "↓" + Math.abs(pct) + "%", c: DOWN };
+  }
+  if (rowId === 'kudos') {
+    d = (c1.value || 0) - (c2.value || 0);
+    if (d === 0) return { t: "same as prev", c: NEU };
+    return d > 0 ? { t: "↑" + d + " given", c: UP } : { t: "↓" + Math.abs(d) + " · building", c: NEU };
+  }
+  if (rowId === 'pto') {
+    d = (c1.value || 0) - (c2.value || 0);
+    if (d === 0) return { t: "same", c: NEU };
+    return d > 0 ? { t: "↑" + Math.round(d) + " pts", c: UP } : { t: "↓" + Math.round(Math.abs(d)) + " pts", c: DOWN };
+  }
+  return null;
 }
 
 function copyToConfluence() {
@@ -5734,78 +6167,110 @@ function copyToConfluence() {
   var curIdx = 2;
   weeks.forEach(function(w, i) { if (w.isCurrentWeek) curIdx = i; });
 
-  var TD = "padding:8px 14px;text-align:center;border:1px solid #e2e8f0;vertical-align:top;font-size:13px;line-height:1.45";
-  var TH = "padding:9px 14px;text-align:center;border:1px solid #1e3a5f;font-size:12px;font-weight:700;white-space:nowrap;line-height:1.3";
+  // Confluence's paste handler strips style="" and class="" but preserves bgcolor,
+  // color, align, valign and <font> — use those so colours survive the paste.
+  // SVG/canvas and large data-URI images are dropped (and can truncate the whole
+  // paste), so the per-row Trend column uses a text-based Unicode sparkline instead.
+
+  // Map each past-week index → the preceding past-week index (for WoW deltas).
+  var prevPastByIdx = {}, _ls = -1;
+  weeks.forEach(function(w, i) { if (w.isPast) { if (_ls !== -1) prevPastByIdx[i] = _ls; _ls = i; } });
+
+  var COLSPAN = weeks.length + 2;  // Metric + week cols + Trend
 
   // ── Header row ──────────────────────────────────────────
-  var html = '<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;border:1px solid #e2e8f0">'
-           + '<thead><tr>'
-           + '<th style="' + TH + ';text-align:left;background-color:' + _CF.VOID + ';color:' + _CF.FG + ';min-width:135px;padding-left:16px">Metric</th>';
-
+  var html = '<table border="1" cellpadding="7" cellspacing="0" style="border-collapse:collapse;width:100%">'
+           + '<thead><tr>';
+  html += '<th bgcolor="' + _CF.VOID + '" align="left" valign="middle">'
+        + '<font color="' + _CF.FG + '"><strong>Metric</strong></font></th>';
   weeks.forEach(function(w) {
-    var bg     = w.isCurrentWeek ? _CF.ORBE : _CF.VOID;
-    var prefix = w.isFuture ? ") " : "";
-    var label  = prefix + w.label + (w.isCurrentWeek ? " ✦" : "");
-    var sub    = w.dateRange ? "<br><span style='font-weight:400;font-size:10px;opacity:0.9'>" + w.dateRange + "</span>" : "";
-    var fgOp   = w.isFuture ? ";opacity:0.82" : "";
-    html += '<th style="' + TH + ';background-color:' + bg + ';color:' + _CF.FG + fgOp + ';min-width:105px">'
-          + label + sub + '</th>';
+    var bg    = w.isCurrentWeek ? _CF.ORBE : _CF.VOID;
+    var short = (w.label || '').replace(/^\d{4}\./, '');
+    var label = (w.isFuture ? "(forecast) " : "") + short + (w.isCurrentWeek ? " ←" : "");
+    html += '<th bgcolor="' + bg + '" align="center" valign="middle">'
+          + '<font color="' + _CF.FG + '"><strong>' + esc(label) + '</strong></font>';
+    if (w.dateRange) html += '<br><font color="#ccd6e0">' + esc(w.dateRange) + '</font>';
+    html += '</th>';
   });
+  html += '<th bgcolor="' + _CF.VOID + '" align="center" valign="middle">'
+        + '<font color="' + _CF.FG + '"><strong>Trend</strong></font></th>';
   html += '</tr></thead><tbody>';
 
   // ── Data rows ────────────────────────────────────────────
+  var quarterlyStarted = false;
   rows.forEach(function(row, ri) {
-    var isStatic   = !!_CF.STATIC[row.id];
-    var accentClr  = isStatic ? _CF.VOID : _CF.ORBE;
-    var altBg      = ri % 2 === 0 ? "#ffffff" : "#f8fafc";
+    // Visual separator before the first quarterly-benchmark row (RCR / SI)
+    if (row.quarterly && !quarterlyStarted) {
+      quarterlyStarted = true;
+      html += '<tr><td colspan="' + COLSPAN + '" bgcolor="#f1f5f9" align="left">'
+            + '<font color="#64748b"><em>Quarterly benchmarks · static until next refresh</em></font></td></tr>';
+    }
 
-    // Label cell inherits W0 theme background (e.g. pink for critical Goals row)
+    var altBg    = ri % 2 === 0 ? "#ffffff" : "#f8fafc";
     var w0cell   = row.cells[curIdx];
     var rowTheme = w0cell ? _cfCellColor(row.id, w0cell.value) : null;
     var labelBg  = rowTheme ? rowTheme.bg : altBg;
+    var labelFg  = rowTheme ? rowTheme.fg : _CF.VOID;
+
+    var rowLabel = (row.id === "rcr" && DATA && DATA.meta && DATA.meta.rcrLastMonth)
+      ? row.label + " (" + DATA.meta.rcrLastMonth + ")"
+      : row.label;
 
     html += '<tr>';
-    html += '<td style="' + TD + ';text-align:left;padding-left:16px;background-color:' + labelBg
-          + ';font-weight:700;color:' + accentClr
-          + ';border-left:3px solid ' + accentClr + '">'
-          + esc(row.label) + '</td>';
+    html += '<td bgcolor="' + labelBg + '" align="left" valign="top">'
+          + '<font color="' + labelFg + '"><strong>' + esc(rowLabel) + '</strong></font></td>';
 
     row.cells.forEach(function(cell, ci) {
-      var w   = weeks[ci];
-      var val = (cell.display !== undefined && cell.display !== null && cell.display !== "") ? cell.display : "—";
-      var clr = _cfCellColor(row.id, cell.value);
-      var wow = _cfWoW(row.cells, ci, w);
-      var sub = cell.sub
-        ? "<br><span style='font-size:11px;color:#64748b'>" + cell.sub + "</span>"
-        : "";
+      var w      = weeks[ci];
+      var clr    = _cfCellColor(row.id, cell ? cell.value : null);
+      var cellBg = clr ? clr.bg : altBg;
+      var cellFg = clr ? clr.fg : "#1e293b";
 
-      var cellBg  = clr ? clr.bg : altBg;
-      var cellFg  = clr ? clr.fg : "#1e293b";
-      var dimStyle = w.isFuture ? ";opacity:0.6" : "";
-
-      html += '<td style="' + TD + ';background-color:' + cellBg + ';color:' + cellFg + dimStyle + '">'
-            + '<strong>' + val + '</strong>' + wow + sub + '</td>';
+      html += '<td bgcolor="' + cellBg + '" align="center" valign="top">';
+      if (!cell || cell.value === null || cell.value === undefined) {
+        html += '<font color="#94a3b8">—</font>';
+      } else {
+        var val = (cell.display !== undefined && cell.display !== null && cell.display !== "") ? cell.display : "—";
+        html += '<font color="' + cellFg + '"><strong>' + esc(String(val)) + '</strong></font>';
+        if (cell.sub) html += '<br><font color="#64748b">' + esc(cell.sub) + '</font>';
+        if (w.isPast && !row.quarterly && prevPastByIdx[ci] !== undefined) {
+          var dl = _cfDelta(row.id, cell, row.cells[prevPastByIdx[ci]]);
+          if (dl) html += '<br><font color="' + dl.c + '">' + dl.t + '</font>';
+        }
+      }
+      html += '</td>';
     });
+
+    // Trend column — text sparkline, coloured by row accent
+    var sparkColor = _CF_ROW_COLORS[row.id] || "#058CDC";
+    html += '<td align="center" valign="middle">'
+          + '<font color="' + sparkColor + '"><tt>' + _cfSparkline(row.cells, weeks, row.id) + '</tt></font></td>';
     html += '</tr>';
   });
 
-  // ── Footer ────────────────────────────────────────────────
-  var note    = isFiltered() ? " · Filtered view" : "";
-  var dateStr = new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
-  html += '<tr><td colspan="' + (weeks.length + 1) + '" style="padding:8px 16px;font-size:11px;color:#94a3b8;border-top:2px solid #e2e8f0;text-align:left">'
-        + 'PS Weekly Contribution Report · Generated ' + dateStr + note + '</td></tr>';
+  // Scope indicator — only when filtered, so the pasted table is never mistaken
+  // for the whole team. (Generation date intentionally omitted.)
+  var filteredNote = isFiltered() ? "Filtered view — subset of the team, not the full roster" : "";
+  if (filteredNote) {
+    html += '<tr><td colspan="' + COLSPAN + '" bgcolor="#fff8e1" align="left">'
+          + '<font color="#7b4800"><em>' + esc(filteredNote) + '</em></font></td></tr>';
+  }
 
   html += '</tbody></table>';
 
   // ── Plain-text fallback ───────────────────────────────────
-  var text = "Metric\t" + weeks.map(function(w) {
-    return w.label + (w.dateRange ? " (" + w.dateRange + ")" : "");
-  }).join("\t") + "\n";
+  var text = (filteredNote ? filteredNote + "\n" : "")
+    + "Metric\t" + weeks.map(function(w) {
+    return (w.label || '') + (w.dateRange ? " (" + w.dateRange + ")" : "");
+  }).join("\t") + "\tTrend\n";
   rows.forEach(function(row) {
-    text += row.label + "\t" + row.cells.map(function(c) {
-      var val = (c.display !== undefined && c.display !== null && c.display !== "") ? c.display : "—";
-      return c.sub ? val + " (" + c.sub + ")" : val;
-    }).join("\t") + "\n";
+    var rl = (row.id === "rcr" && DATA && DATA.meta && DATA.meta.rcrLastMonth)
+      ? row.label + " (" + DATA.meta.rcrLastMonth + ")"
+      : row.label;
+    text += rl + "\t" + row.cells.map(function(c) {
+      var val = (c && c.display !== undefined && c.display !== null && c.display !== "") ? c.display : "—";
+      return c && c.sub ? val + " (" + c.sub + ")" : val;
+    }).join("\t") + "\t" + _cfSparkline(row.cells, weeks, row.id) + "\n";
   });
 
   var btn = document.getElementById("copyBtn");
@@ -5814,54 +6279,43 @@ function copyToConfluence() {
     var blobT = new Blob([text], { type: "text/plain" });
     navigator.clipboard.write([
       new ClipboardItem({ "text/html": blobH, "text/plain": blobT })
-    ]).then(function() { flashCopied(btn); }).catch(function() { fallbackCopy(text, btn); });
+    ]).then(function() {
+      flashCopied(btn);
+    }).catch(function() {
+      // Distinct message so the user knows only plain text landed on the clipboard
+      fallbackCopy(text, btn, "Copied (plain text)");
+    });
   } else {
-    fallbackCopy(text, btn);
+    fallbackCopy(text, btn, "Copied (plain text)");
   }
 }
 
 function saveSummaryPNG() {
-  var el      = document.getElementById("summarySectionCard");
-  var btn     = document.getElementById("pngBtn");
-  var actions = document.getElementById("summaryActionBtns");
-  if (!el || typeof html2canvas === "undefined") {
+  var btn = document.getElementById("pngBtn");
+  if (typeof html2canvas === "undefined") {
     alert("PNG export is not available yet — try again after the page fully loads.");
     return;
   }
-  var origText = btn.innerHTML;
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Saving…';
-  btn.disabled = true;
-
-  var _curW = DATA && DATA.weeks && DATA.weeks.find(function(w) { return w.isCurrentWeek; });
-  var weekLabel = _curW ? _curW.label : (DATA && DATA.meta && DATA.meta.currentWeekLabel) || "week";
+  var _curW      = DATA && DATA.weeks && DATA.weeks.find(function(w) { return w.isCurrentWeek; });
+  var weekLabel  = _curW ? _curW.label : (DATA && DATA.meta && DATA.meta.currentWeekLabel) || "week";
   var filterNote = isFiltered() ? "-filtered" : "";
-  var filename = "PS-Team-Summary-" + weekLabel + filterNote + ".png";
+  var origText   = btn.innerHTML;
+  btn.innerHTML  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Saving…';
+  btn.disabled   = true;
 
-  if (actions) actions.style.visibility = "hidden";
-  html2canvas(el, {
-    scale: 2,
-    backgroundColor: "#ffffff",
-    useCORS: true,
-    logging: false
-  }).then(function(canvas) {
-    if (actions) actions.style.visibility = "";
-    var link = document.createElement("a");
-    link.download = filename;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+  captureCardPNG("summarySectionCard").then(function(dataUrl) {
+    if (!dataUrl) {
+      btn.innerHTML = origText; btn.disabled = false;
+      alert("PNG export failed — check browser console for details.");
+      return;
+    }
+    var a = document.createElement("a");
+    a.download = "PS-Team-Summary-" + weekLabel + filterNote + ".png";
+    a.href = dataUrl;
+    a.click();
     btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
     btn.classList.add("copied");
-    setTimeout(function() {
-      btn.innerHTML = origText;
-      btn.classList.remove("copied");
-      btn.disabled = false;
-    }, 2500);
-  }).catch(function(err) {
-    if (actions) actions.style.visibility = "";
-    console.error("PNG export failed:", err);
-    btn.innerHTML = origText;
-    btn.disabled = false;
-    alert("PNG export failed. Check browser console for details.");
+    setTimeout(function() { btn.innerHTML = origText; btn.classList.remove("copied"); btn.disabled = false; }, 2500);
   });
 }
 
@@ -5872,6 +6326,23 @@ var _corrG01Chart          = null;
 var _goalsCommentPaceChart = null;
 var _ptoTrendChart         = null;
 var _timeMomentumChart     = null;
+
+function saveCardPNG(cardId, filename) {
+  if (typeof html2canvas === 'undefined') {
+    alert('PNG export is not available yet — try again after the page fully loads.');
+    return;
+  }
+  captureCardPNG(cardId).then(function(dataUrl) {
+    if (!dataUrl) {
+      alert('PNG export failed — the card may not be visible. Navigate to the Trends tab and try again.');
+      return;
+    }
+    var a = document.createElement('a');
+    a.download = filename + '.png';
+    a.href = dataUrl;
+    a.click();
+  });
+}
 
 // ── GOALS STANDING ───────────────────────────────────────
 function buildGoalKPI_(label, value, sub, color) {
@@ -6065,7 +6536,7 @@ function renderGoalsStanding(filtered) {
   // Chart — bar chart of avgCommentsPerPerson for Q4 weeks only
   if (!q4Hist.length) q4Hist = fullHist.slice(-9);
 
-  var chartLabels = q4Hist.map(function(h) { return h.label.replace(Q4_YEAR + ".", ""); });
+  var chartLabels = q4Hist.map(function(h) { return h.label; });
   var chartValues = q4Hist.map(function(h) { return computeWeekAvg_(h.label); });
   var chartTotals = q4Hist.map(function(h) { return computeWeekTotal_(h.label); });
   var barColors   = q4Hist.map(function(h, i) {
@@ -6440,7 +6911,7 @@ function renderPTOTrend(filtered) {
   var sub = document.getElementById("ptoTrendSub");
   if (sub) sub.textContent = "Headcount by PTO compliance status" + filterNote;
 
-  var labels     = weekData.map(function(d) { return d.label.replace(/\d{4}\./, ""); });
+  var labels     = weekData.map(function(d) { return d.label; });
   var goodCounts = weekData.map(function(d) { return d.good; });
   var riskCounts = weekData.map(function(d) { return d.atRisk; });
   var curIdx     = weekData.findIndex(function(d) { return d.isCurrent; });
@@ -6628,11 +7099,11 @@ function renderTimeMomentum(filtered) {
   if (!fullHist.length) { card.style.display = "none"; return; }
   card.style.display = "";
 
-  var isFiltering_ = !!(filtered && filtered.length < (DATA.employees || []).filter(function(e) { return !e.isCrewMember && !e.isTempoExempt; }).length);
-  var totalEmps    = (DATA.employees || []).filter(function(e) { return !e.isCrewMember && !e.isTempoExempt; }).length || 1;
+  var isFiltering_ = !!(filtered && filtered.length < (DATA.employees || []).filter(function(e) { return !e.isCrewMember; }).length);
+  var totalEmps    = (DATA.employees || []).filter(function(e) { return !e.isCrewMember; }).length || 1;
   var scale        = isFiltering_ && filtered.length > 0 ? filtered.length / totalEmps : 1;
 
-  var labels      = fullHist.map(function(h) { return h.label.replace(/\d{4}\./, ""); });
+  var labels      = fullHist.map(function(h) { return h.label; });
   var plannedData = fullHist.map(function(h) {
     if (isFiltering_) {
       var t = 0;
@@ -6957,17 +7428,20 @@ function renderTrendsTab() {
   } else if (rcrCard) { rcrCard.style.display = "none"; }
 }
 
-function fallbackCopy(text, btn) {
+function fallbackCopy(text, btn, msg) {
   var ta = document.createElement("textarea");
   ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
   document.body.appendChild(ta); ta.select();
-  try { document.execCommand("copy"); flashCopied(btn); } catch(e) {}
+  try { document.execCommand("copy"); flashCopiedMsg(btn, msg); } catch(e) {}
   document.body.removeChild(ta);
 }
 
-function flashCopied(btn) {
+function flashCopied(btn) { flashCopiedMsg(btn, "Copied!"); }
+
+// Flash a confirmation label on the copy button, then revert to its resting state.
+function flashCopiedMsg(btn, msg) {
   btn.classList.add("copied");
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> ' + (msg || "Copied!");
   setTimeout(function() {
     btn.classList.remove("copied");
     btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy for Confluence';
