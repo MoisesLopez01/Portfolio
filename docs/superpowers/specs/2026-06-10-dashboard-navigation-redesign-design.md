@@ -128,7 +128,8 @@ In-app text that references the old structure is updated, e.g.:
   from the new tab; Leading Behaviours shows no brief for any role.
 - Run `_test_weightsResolver()` in the GAS editor to confirm no scoring regressions
   (the weights logic is untouched; this is a guard).
-- Dark mode + mobile spot-checks on the header (☰ button, chip-free tab bar, dropdown).
+- Dark mode + mobile spot-checks on the header (☰ button, dropdown panel, tab bar with a
+  temporary tab open).
 
 ## Out of scope
 
