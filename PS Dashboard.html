@@ -594,6 +594,26 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .cf-panel-warning { border-color: #FF8B00; }
 .cf-panel-warning .cf-panel-hdr { background: #FFFAE6; color: #FF8B00; }
 .cf-panel-warning .cf-panel-list li::before { color: #FF991F; }
+
+/* ── Scoring matrix editor — theme-aware ── */
+.mx-lvl-ic { background: #F0FAF9; }
+.mx-lvl-mg { background: #F4F4FD; }
+.mx-badge { display:inline-block; font-size:10px; font-weight:800; padding:2px 8px; border-radius:999px;
+  text-transform:uppercase; letter-spacing:.04em; line-height:1.5; white-space:nowrap; }
+.mx-badge-custom  { background:#E0E7FF; color:#3730A3; }
+.mx-badge-default { background:#E2E8F0; color:#475569; }
+.mx-default-ref { margin:10px 0 16px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:var(--th-bg); }
+.mx-unmapped { margin:10px 0; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.mx-unmapped > summary { cursor:pointer; padding:8px 12px; font-size:12px; font-weight:700; color:#9A3412; background:#FFF7ED; list-style:none; }
+.mx-unmapped > summary::-webkit-details-marker { display:none; }
+.mx-err { font-size:12px; padding:8px 12px; border-radius:6px; background:#FEE2E2; color:#B71C1C; font-weight:600; }
+
+body.dark-mode .mx-lvl-ic { background:#0d2b27; }
+body.dark-mode .mx-lvl-mg { background:#1a1838; }
+body.dark-mode .mx-badge-custom  { background:#312e81; color:#C7D2FE; }
+body.dark-mode .mx-badge-default { background:#1e293b; color:#94A3B8; }
+body.dark-mode .mx-unmapped > summary { color:#FCD34D; background:#3d2b00; }
+body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .team-brief-narrative {
   padding: 12px 16px; background: #F8FAFF; border: 1px solid #BFDBFE;
   border-radius: 8px; font-size: 12px; color: var(--void);
@@ -1771,6 +1791,38 @@ var STATE = {
   lvFilter:         new Set(),
 };
 
+// ── VIEWS — single source of truth for navigation ─────────
+// location: "tabbar" = always-visible tab; "menu" = behind the ☰ menu (opens as a closable tab).
+// roles: null = every role; otherwise an allow-list checked by canSeeView_().
+var VIEWS = [
+  { id: "overview",   btnId: "tabBtnOverview",   paneId: "tabOverview",   label: "Overview",           location: "tabbar", roles: null },
+  { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
+  { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
+  { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: ["admin", "viewer"] },
+  { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "Data Reference",     location: "tabbar", roles: null },
+  { id: "settings",   btnId: "tabBtnSettings",   paneId: "tabSettings",   label: "⚙ Settings",         location: "tabbar", roles: ["admin"] },
+];
+
+function viewById_(id) {
+  for (var i = 0; i < VIEWS.length; i++) if (VIEWS[i].id === id) return VIEWS[i];
+  return null;
+}
+
+function canSeeView_(view) {
+  if (!view) return false;
+  if (!view.roles) return true;
+  if (!STATE.userRole) return true; // role not resolved yet — guard applies once payload arrives
+  return view.roles.indexOf(STATE.userRole) !== -1;
+}
+
+// Show/hide nav buttons to match the current role.
+function applyRoleToNav_() {
+  VIEWS.forEach(function(v) {
+    var btn = document.getElementById(v.btnId);
+    if (btn) btn.style.display = canSeeView_(v) ? "" : "none";
+  });
+}
+
 // ── Q4 CONSTANTS — UPDATE EACH QUARTER to match CONFIG_PS in PS Contribution Report.js ──
 // (Q4_BASE_ISO_WEEK → START_W, Q4_END → END_W, Q4_BASE_YEAR → YEAR)
 var Q4 = { START_W: 14, END_W: 26, YEAR: 2026 };
@@ -1805,11 +1857,10 @@ function loadData(forceRefresh) {
 
   document.getElementById("loadingState").style.display  = "flex";
   document.getElementById("tabNav").classList.remove("visible");
-  document.getElementById("tabOverview").classList.remove("active");
-  document.getElementById("tabRadar").classList.remove("active");
-  document.getElementById("tabRocketeers").classList.remove("active");
-  document.getElementById("tabTrends").classList.remove("active");
-  document.getElementById("tabDataRef").classList.remove("active");
+  VIEWS.forEach(function(v) {
+    var pane = document.getElementById(v.paneId);
+    if (pane) pane.classList.remove("active");
+  });
   google.script.run
     .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p); })
     .withFailureHandler(function(e) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataError(e);  })
@@ -1844,11 +1895,8 @@ function onDataLoaded(payload) {
     badge.style.display = "";
   }
 
-  // Settings tab is admin-only; Trends tab is hidden for managers
-  var settingsBtn = document.getElementById("tabBtnSettings");
-  var trendsBtn   = document.getElementById("tabBtnTrends");
-  if (settingsBtn) settingsBtn.style.display = STATE.userRole === "admin" ? "" : "none";
-  if (trendsBtn)   trendsBtn.style.display   = STATE.userRole === "manager" ? "none" : "";
+  // Hide nav entries the current role cannot access (enforced again in switchTab)
+  applyRoleToNav_();
 
   document.getElementById("loadingState").style.display = "none";
   document.getElementById("tabNav").classList.add("visible");
@@ -1900,22 +1948,16 @@ function onDataError(err) {
 
 // ── TAB SWITCHING ─────────────────────────────────────────
 function switchTab(tab) {
-  if (tab === "settings" && STATE.userRole && STATE.userRole !== "admin") tab = "overview";
-  if (tab === "trends"   && STATE.userRole === "manager")                 tab = "overview";
+  var view = viewById_(tab);
+  if (!view || !canSeeView_(view)) { tab = "overview"; view = viewById_(tab); }
   STATE.activeTab = tab;
 
-  document.getElementById("tabOverview").classList.toggle("active",     tab === "overview");
-  document.getElementById("tabRadar").classList.toggle("active",        tab === "radar");
-  document.getElementById("tabRocketeers").classList.toggle("active",   tab === "rocketeers");
-  document.getElementById("tabTrends").classList.toggle("active",       tab === "trends");
-  document.getElementById("tabDataRef").classList.toggle("active",      tab === "dataref");
-  document.getElementById("tabSettings").classList.toggle("active",     tab === "settings");
-  document.getElementById("tabBtnOverview").classList.toggle("active",    tab === "overview");
-  document.getElementById("tabBtnRadar").classList.toggle("active",       tab === "radar");
-  document.getElementById("tabBtnRocketeers").classList.toggle("active",  tab === "rocketeers");
-  document.getElementById("tabBtnTrends").classList.toggle("active",      tab === "trends");
-  document.getElementById("tabBtnDataRef").classList.toggle("active",     tab === "dataref");
-  document.getElementById("tabBtnSettings").classList.toggle("active",    tab === "settings");
+  VIEWS.forEach(function(v) {
+    var pane = document.getElementById(v.paneId);
+    var btn  = document.getElementById(v.btnId);
+    if (pane) pane.classList.toggle("active", v.id === tab);
+    if (btn)  btn.classList.toggle("active",  v.id === tab);
+  });
 
   if (DATA) renderAll();
 }
@@ -1940,21 +1982,15 @@ function renderAll() {
   var meta    = filtering ? buildFilteredMeta(filtered)             : DATA.meta;
   var summary = filtering ? buildFilteredSummary(filtered, DATA.weeks) : DATA.teamSummary;
 
-  if (STATE.activeTab === "overview") {
-    renderKPIs(meta, filtered, filtering);
-    renderTeamTable(summary);
-    renderEmployeeTable();
-  } else if (STATE.activeTab === "radar") {
-    renderRadarTab(filtered);
-  } else if (STATE.activeTab === "rocketeers") {
-    renderTopRocketeers(filtered);
-  } else if (STATE.activeTab === "trends") {
-    renderTrendsTab();
-  } else if (STATE.activeTab === "settings") {
-    renderSettingsTab();
-  } else if (STATE.activeTab === "dataref") {
-    renderDrScoreBars();
-  }
+  var RENDERERS = {
+    overview:   function() { renderKPIs(meta, filtered, filtering); renderTeamTable(summary); renderEmployeeTable(); },
+    radar:      function() { renderRadarTab(filtered); },
+    rocketeers: function() { renderTopRocketeers(filtered); },
+    trends:     function() { renderTrendsTab(); },
+    settings:   function() { renderSettingsTab(); },
+    dataref:    function() { renderDrScoreBars(); },
+  };
+  if (RENDERERS[STATE.activeTab]) RENDERERS[STATE.activeTab]();
 }
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -5519,6 +5555,16 @@ function renderSettingsTab() {
   if (!container) return;
 
   var html = '<div class="settings-body">';
+
+  // Access Control first — high-stakes security setting must not be buried below the weights.
+  if (STATE.userRole === "admin") {
+    html += '<div id="securitySection">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+        '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>' +
+      '</div><hr class="sec-divider">';
+  }
+
+  html += '<div class="sec-header" style="margin-bottom:8px">⚖️ Scoring Weights</div>';
   html += '<p class="settings-intro">Each rocketeer receives a composite score (0–100) that blends the metrics below. ' +
     'Adjust the percentage each metric contributes to reflect your team\'s priorities. ' +
     '<strong>Set a metric\'s weight to 0 to exclude it from scoring entirely.</strong> ' +
@@ -5575,17 +5621,12 @@ function renderSettingsTab() {
 
   html += '</div>';
 
-  // Scoring matrix + Security sections — admin only, loaded async
+  // Family × Level overrides — admin only, loaded async (Access Control is rendered up top)
   if (STATE.userRole === "admin") {
     html += '<hr class="sec-divider">' +
       '<div id="matrixSection">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
         '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
-      '</div>' +
-      '<hr class="sec-divider">' +
-      '<div id="securitySection">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
-        '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>' +
       '</div>';
   }
 
@@ -5625,30 +5666,35 @@ function renderMatrixSection_() {
   if (!el) return;
   var cfg = MATRIX_CFG;
   if (!cfg || !cfg.ok) {
-    el.innerHTML = '<p style="font-size:12px;color:var(--muted);padding:8px 0">Scoring matrix unavailable' +
-      (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</p>';
+    el.innerHTML = '<div class="mx-err">Scoring matrix unavailable' +
+      (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</div>';
     return;
   }
 
   var html = '<div class="sec-header">⚖️ Scoring Weights by Family &amp; Level</div>' +
-    '<p class="sec-sub">Company-wide weight matrix. Each job family can weigh the seven metrics differently per level ' +
-    '(Individual Contributor I1–I8 · Management M4–M10). Role rows show who sits at each level — they are reference only. ' +
-    'Blank cells inherit the Company Default block. Each level column should total 100%; other totals are allowed and ' +
-    'renormalized at scoring time. Rocketeers whose Job Title is not in the Job Catalog use the default weights.</p>';
+    '<p class="sec-sub">The <strong>Company Default</strong> below is the single source for everyone — it mirrors the ' +
+    'Scoring Weights set above. A job family only needs entries here when it should score <em>differently</em> from that ' +
+    'default; blank cells inherit it. Each level column should total 100% (other totals are renormalized at scoring time).</p>';
 
+  // Company Default — read-only mirror of the flat base weights (single source of truth).
+  html += renderDefaultRef_(cfg);
+
+  // Unmapped titles — collapsed diagnostic, surfaced only when there is an actual gap.
   if (cfg.unmappedTitles && cfg.unmappedTitles.length) {
-    html += '<div style="margin:10px 0;padding:10px 12px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px">' +
-      '<div style="font-size:11px;font-weight:800;color:#9A3412;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">' +
-        'Unmapped job titles — these rocketeers use default weights</div>' +
-      cfg.unmappedTitles.map(function(u) {
-        return '<div style="font-size:12px;color:#7C2D12">' + esc(u.jobTitle) +
-          ' <span style="color:#9A3412">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
-      }).join('') +
-      '<div style="font-size:11px;color:#9A3412;margin-top:4px">Add these titles to the <strong>Job Catalog</strong> sheet to map them to a family &amp; level.</div>' +
-    '</div>';
+    var nUnmapped = cfg.unmappedTitles.reduce(function(s, u) { return s + (u.count || 1); }, 0);
+    html += '<details class="mx-unmapped"><summary>⚠️ ' + cfg.unmappedTitles.length + ' unmapped title' +
+        (cfg.unmappedTitles.length !== 1 ? 's' : '') + ' · ' + nUnmapped + ' rocketeer' + (nUnmapped !== 1 ? 's' : '') +
+        ' on default weights — click to review</summary>' +
+      '<div style="padding:8px 12px">' +
+        cfg.unmappedTitles.map(function(u) {
+          return '<div style="font-size:12px;color:var(--slate)">' + esc(u.jobTitle) +
+            ' <span style="color:var(--muted)">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
+        }).join('') +
+        '<div style="font-size:11px;color:var(--muted);margin-top:6px">Add these titles to the <strong>Job Catalog</strong> sheet to map them to a family &amp; level.</div>' +
+      '</div></details>';
   }
 
-  html += renderFamilyBlock_('DEFAULT', 'Company Default', cfg.levelCols, null);
+  // Family override blocks (no editable DEFAULT block — base is the company default).
   cfg.families.forEach(function(f) {
     var fam = cfg.rolesByFamily[f.code];
     var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
@@ -5657,14 +5703,35 @@ function renderMatrixSection_() {
   });
 
   html += '<div class="settings-actions" style="margin-top:14px">' +
-    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Scoring Matrix</button>' +
+    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Family Overrides</button>' +
     '<span id="matrixSaveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
   '</div>' +
-  '<div id="matrixSaveError" style="display:none;margin-top:8px;padding:8px 12px;background:#FEE2E2;border-radius:6px;font-size:12px;color:#B71C1C;font-weight:600"></div>' +
-  '<p class="settings-note">Weights are stored in the <strong>PS Scoring Matrix</strong> sheet; role mappings in <strong>Job Catalog</strong>. ' +
+  '<div id="matrixSaveError" class="mx-err" style="display:none;margin-top:8px"></div>' +
+  '<p class="settings-note">Overrides are stored in the <strong>PS Scoring Matrix</strong> sheet; role mappings in <strong>Job Catalog</strong>. ' +
   'Both can also be edited directly in the spreadsheet. Changes apply on the next data refresh.</p>';
 
   el.innerHTML = html;
+}
+
+// Read-only Company Default panel — mirrors the flat base weights (the single source).
+function renderDefaultRef_(cfg) {
+  var bw = cfg.baseWeights || {};
+  var chips = WEIGHT_DEFS.map(function(d) {
+    var v = bw[d.key] || 0;
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--void);' +
+      'border:1px solid var(--border);border-radius:999px;padding:3px 10px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:' + d.color + '"></span>' +
+      esc(d.label) + ' ' + v + '%</span>';
+  }).join('');
+  return '<div class="mx-default-ref">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">Company Default</span>' +
+      '<span class="mx-badge mx-badge-default">applies to everyone</span>' +
+    '</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">' + chips + '</div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:8px">Edit these in <strong>Scoring Weights</strong> above. ' +
+    'Each family inherits this unless it sets an override below.</div>' +
+  '</div>';
 }
 
 function shortRole_(t) {
@@ -5672,12 +5739,24 @@ function shortRole_(t) {
   return i > 0 ? t.slice(0, i) : t;
 }
 
-// Effective weight of a cell after inheritance: cell → DEFAULT block → base weights.
+// Effective weight of a family cell after inheritance: family cell → flat base weight.
 function matrixEffectiveW_(fam, lk, met) {
   var m = MATRIX_CFG.matrix || {};
   if (m[fam] && m[fam][lk] && m[fam][lk][met] !== undefined) return m[fam][lk][met];
-  if (fam !== 'DEFAULT' && m.DEFAULT && m.DEFAULT[lk] && m.DEFAULT[lk][met] !== undefined) return m.DEFAULT[lk][met];
   return (MATRIX_CFG.baseWeights && MATRIX_CFG.baseWeights[met]) || 0;
+}
+
+// A family is "custom" once it carries any explicit (non-blank) weight.
+function familyHasOverride_(code) {
+  var m = (MATRIX_CFG.matrix || {})[code];
+  if (!m) return false;
+  for (var lk in m) {
+    if (!m.hasOwnProperty(lk)) continue;
+    for (var met in m[lk]) {
+      if (m[lk].hasOwnProperty(met) && m[lk][met] !== undefined && m[lk][met] !== '') return true;
+    }
+  }
+  return false;
 }
 
 function matrixColSum_(fam, lk) {
@@ -5689,34 +5768,35 @@ function matrixColSum_(fam, lk) {
 function renderFamilyBlock_(code, name, levels, famData) {
   var cfg = MATRIX_CFG;
   var m = cfg.matrix[code] || {};
+  var isCustom = familyHasOverride_(code);
   var roleCount = 0, groupSet = {};
-  if (famData) {
-    levels.forEach(function(lk) {
-      (famData.levels[lk] || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
-    });
-  }
+  levels.forEach(function(lk) {
+    (famData.levels[lk] || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
+  });
   var groups = Object.keys(groupSet);
-  var sub = famData
-    ? roleCount + ' roles · ' + groups.length + ' role group' + (groups.length !== 1 ? 's' : '')
-    : 'base weights — blank cells in family blocks inherit these';
 
   var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
-  var icBg = 'background:#F0FAF9', mgBg = 'background:#F4F4FD';
+  function lvlCls(lk) { return lk.charAt(0) === 'I' ? 'mx-lvl-ic' : 'mx-lvl-mg'; }
 
-  var html = '<details ' + (code === 'DEFAULT' ? 'open ' : '') +
+  // Scope is the headline; the Custom/Inheriting badge tells the story at a glance.
+  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
+    (isCustom ? 'Custom' : 'Inheriting default') + '</span>';
+
+  var html = '<details ' + (isCustom ? 'open ' : '') +
     'style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;color:var(--void);background:var(--th-bg)">' +
-      esc(code) + ' · ' + esc(name) +
-      ' <span style="font-weight:600;color:var(--muted);font-size:11px">— ' + esc(sub) + '</span>' +
+    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">' + esc(name) + '</span>' + badge +
+      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · ' + roleCount + ' role' +
+        (roleCount !== 1 ? 's' : '') + ' · ' + groups.length + ' role group' + (groups.length !== 1 ? 's' : '') + '</span>' +
     '</summary>' +
     '<div style="padding:6px 14px 12px;overflow-x:auto">';
 
-  // Read-only roles reference (real families only), one row per role group
-  if (famData && groups.length) {
+  // Read-only roles reference, one row per role group
+  if (groups.length) {
     html += '<table style="border-collapse:collapse;margin:6px 0 10px;width:max-content"><thead><tr>' +
       '<th style="' + thStyle + ';text-align:left;min-width:150px">Roles at each level</th>' +
       levels.map(function(lk) {
-        return '<th style="' + thStyle + ';' + (lk.charAt(0) === 'I' ? icBg : mgBg) + '">' + lk + '</th>';
+        return '<th class="' + lvlCls(lk) + '" style="' + thStyle + '">' + lk + '</th>';
       }).join('') + '</tr></thead><tbody>';
     groups.forEach(function(g) {
       html += '<tr><th style="padding:5px 6px;font-size:11px;font-weight:700;color:var(--slate);text-align:left;border-bottom:1px solid var(--border)">' + esc(g) + '</th>' +
@@ -5734,7 +5814,7 @@ function renderFamilyBlock_(code, name, levels, famData) {
   html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
     '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
     levels.map(function(lk) {
-      return '<th style="' + thStyle + ';' + (lk.charAt(0) === 'I' ? icBg : mgBg) + '">' + lk + '</th>';
+      return '<th class="' + lvlCls(lk) + '" style="' + thStyle + '">' + lk + '</th>';
     }).join('') + '</tr></thead><tbody>';
 
   WEIGHT_DEFS.forEach(function(d) {
@@ -5746,7 +5826,7 @@ function renderFamilyBlock_(code, name, levels, famData) {
         return '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
           '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
           'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
-          'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px" ' +
+          'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
           'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td>';
       }).join('') + '</tr>';
   });
@@ -5760,10 +5840,8 @@ function renderFamilyBlock_(code, name, levels, famData) {
     }).join('') + '</tr>';
   html += '</tbody></table>';
 
-  if (code !== 'DEFAULT') {
-    html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-      'onclick="resetFamilyMatrix_(\'' + code + '\')">Reset family — inherit company default</button>';
-  }
+  html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
+    'onclick="resetFamilyMatrix_(\'' + code + '\')">Reset — inherit company default</button>';
   html += '</div></details>';
   return html;
 }
@@ -5773,12 +5851,12 @@ function matrixCellInput_(fam, lk, met, val) {
   if (!m[fam]) m[fam] = {};
   if (!m[fam][lk]) m[fam][lk] = {};
   if (val === '' || val === null) {
-    delete m[fam][lk][met]; // blank → inherit
+    delete m[fam][lk][met]; // blank → inherit base
   } else {
     m[fam][lk][met] = Math.max(0, Math.min(100, parseFloat(val) || 0));
   }
-  if (fam === 'DEFAULT') updateAllMatrixSums_(); // default feeds every inheriting column
-  else updateMatrixSum_(fam, lk);
+  updateMatrixSum_(fam, lk);
+  updateFamilyBadge_(fam);
 }
 
 function updateMatrixSum_(fam, lk) {
@@ -5789,12 +5867,13 @@ function updateMatrixSum_(fam, lk) {
   cell.style.color = t === 100 ? '#00A86B' : '#D97706';
 }
 
-function updateAllMatrixSums_() {
-  var cells = document.querySelectorAll('[id^="msum-"]');
-  for (var i = 0; i < cells.length; i++) {
-    var parts = cells[i].id.split('-'); // ["msum", fam, levelKey]
-    updateMatrixSum_(parts[1], parts[2]);
-  }
+// Live Custom/Inheriting badge update as the admin edits a family's cells.
+function updateFamilyBadge_(fam) {
+  var b = document.getElementById('mxbadge-' + fam);
+  if (!b) return;
+  var custom = familyHasOverride_(fam);
+  b.className = 'mx-badge ' + (custom ? 'mx-badge-custom' : 'mx-badge-default');
+  b.textContent = custom ? 'Custom' : 'Inheriting default';
 }
 
 function resetFamilyMatrix_(fam) {
