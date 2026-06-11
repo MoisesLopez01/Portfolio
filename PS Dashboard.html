@@ -3487,7 +3487,7 @@ function renderKPIs(m, filtered, filtering) {
                if (auditCount > 0) parts.push(auditCount + " flagged for inactivity (STF risk)");
                return parts.length ? "<span style='color:var(--slate)'>" + parts.join(" · ") + " — see Goals Standing for details</span>" : "";
              })(),
-      tipText: "FY26Q4 goals compliance. Rules are in the Data Reference tab.\nDenominator = active employees only (ramp-up excluded).",
+      tipText: "FY26Q4 goals compliance. Rules are in 📊 Data Reference (☰ menu).\nDenominator = active employees only (ramp-up excluded).",
       color: pct1 >= 80 ? "#00A86B" : pct1 >= 60 ? "#D97706" : "var(--slate)",
       alertBorder: false,
       icon: "check" },

@@ -20,6 +20,23 @@ It reads from multiple Google Sheets, assembles a 5-week rolling view of PS team
 
 ---
 
+## Dashboard navigation (PS Dashboard.html)
+
+Navigation is driven by the `VIEWS` array — single source of truth for every view's
+button/pane ids, label, location, and role allow-list. `switchTab()`, `renderAll()`'s
+renderer dispatch, role hiding (`applyRoleToNav_()`), and the ☰ menu all derive from it.
+Spec: `docs/superpowers/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
+
+- **Tab bar** (always visible): Overview, Team Radar, Leading Behaviours, Trends —
+  plus 📋 Team Executive Brief for admins only.
+- **☰ menu** (top-left in header): 📊 Data Reference (everyone), ⚖️ Scoring Weights and
+  🔒 Access Control (admins only). Selecting one opens an IDE-style closable temp tab
+  (`STATE.openMenuTabs`); closing it returns to `STATE.lastRegularTab`.
+- Role gating is enforced inside `switchTab()` (forbidden id → Overview), not just by
+  hiding buttons.
+
+---
+
 ## Access control model (PS Security.js)
 
 There are **three layers** of access, applied in order:
@@ -39,13 +56,13 @@ These survive a Script Properties reset. Edit this file to add permanent stakeho
 - **Delegate**: manager-scoped — sees only their org tree.
   Format: `{ email: "peer@servicerocket.com", scopeName: "Full Name of Roster Supervisor" }`.
 
-### 3. Runtime access — stored in Script Properties, managed via ⚙ Settings tab
+### 3. Runtime access — stored in Script Properties, managed via 🔒 Access Control (☰ menu, admin only)
 Any Admin can add/remove emails without touching code. Additive on top of defaults.
 Property keys: `PS_DASH_ADMINS`, `PS_DASH_VIEWERS`, `PS_DASH_DELEGATES`.
 
 ### Open access flag
 `SEC_.OPEN_ACCESS_DEFAULT = false` (default). Set to `true` temporarily for demos/all-hands.
-Can also be toggled from the Settings tab.
+Can also be toggled from the 🔒 Access Control page (☰ menu).
 
 ### Role resolution flow (checkDashboardAccess)
 ```
@@ -135,7 +152,7 @@ FTE vs crew toggle in the UI.
 ## Scoring weights (Top Rocketeers)
 
 Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 }`
-Configurable per deployment via the Settings tab → saved to `PS Settings` sheet.
+Configurable per deployment via ⚖️ Scoring Weights (☰ menu, admin only) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
 ### Family × Level weight matrix (company-wide)
@@ -143,19 +160,26 @@ Configurable per deployment via the Settings tab → saved to `PS Settings` shee
 Weights can be tuned **per job family and level** on top of the flat base above.
 Spec: `docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-design.md`.
 
-- **Sheets of record** (auto-seeded on first Settings open by an admin):
+- **Sheets of record** (auto-seeded the first time an admin opens ⚖️ Scoring Weights):
   - `Job Catalog` — Job Title → Code / Family / Track / Level / Role Group.
     Seeded from `COMPANY_ROLES_`; titles matched via `normPS_()`. Role groups are display-only.
   - `PS Scoring Matrix` — rows = `Family × Metric`, columns = levels `I1–I8, M4–M10`.
-    Reserved `DEFAULT` family block = company base per level. Blank cell = inherit.
+    Stores per-family overrides only; blank cell = inherit the flat base weight. (No `DEFAULT`
+    block — the company default lives solely in the flat Scoring Weights / `PS Settings` sheet.)
+- **Single source for the company default**: the flat base weights (Scoring Weights section →
+  `readWeightSettings_()`). There is **no editable/stored `DEFAULT` matrix block** — the matrix
+  holds only per-family *overrides*. The Scoring Weights page shows the company default as a
+  read-only mirror of the flat weights.
 - **Resolution order per employee** (`weightsForEmployee_`):
-  Job Title → catalog → `(family, levelKey)` → matrix cell (blanks inherit `DEFAULT[levelKey]`,
-  then base) → `DEFAULT[levelKey]` → `readWeightSettings_()` → `DEFAULT_WEIGHTS_`.
-  Any miss falls back to defaults — an unseeded deployment scores exactly as before.
-- Misses are surfaced in the payload as `weightAudit` and in the Settings-tab
+  Job Title → catalog → `(family, levelKey)` → matrix cell (blank metric inherits the flat base
+  weight) → `readWeightSettings_()` → `DEFAULT_WEIGHTS_`.
+  Any miss falls back to base — an unseeded deployment scores exactly as before. The matrix is
+  seeded with blank cells (structure only), so every family reads as "inheriting default" until
+  an admin enters an explicit override.
+- Misses are surfaced in the payload as `weightAudit` and in the Scoring Weights page's
   "Unmapped job titles" panel.
 - Archived families `JF006/JF010/JF011/JF012` are never seeded.
-- Editor: Settings tab → "Scoring Weights by Family & Level" (admin only) →
+- Editor: ☰ menu → ⚖️ Scoring Weights → "Scoring Weights by Family & Level" (admin only) →
   `getScoringConfig()` / `saveScoringMatrix()` (busts the report cache on save).
 - Tests: run `_test_weightsResolver()` in the GAS editor (also runnable in Node with a
   stubbed `Logger`).
@@ -186,5 +210,8 @@ All `⚠️` and `❌` prefixed calls use `Logger.log` directly and are always o
 ## Cache
 
 `getPSReportData()` caches its JSON response in `CacheService.getScriptCache()` for 5 minutes.
-Cache key: `ps_v1_admin` (for admin/viewer) or `ps_v1_<email>` (for manager-scoped views).
-Force-bypass: use the Refresh button in the dashboard (calls `loadData(true)`).
+Cache key: `ps_v<VER>_admin` (for admin/viewer) or `ps_v<VER>_<email>` (for manager-scoped views),
+where `<VER>` is `PS_CACHE_VER` in Script Properties. `saveWeightSettings()` and `saveScoringMatrix()`
+call `bustReportCache_()` which bumps `PS_CACHE_VER`, stranding **all** prior-version entries at once
+(admin + every manager scope) — CacheService can't enumerate keys, so versioning is how a save takes
+effect immediately for everyone, not just the saver. Force-bypass: the Refresh button (`loadData(true)`).
