@@ -10,16 +10,38 @@
 
 ---
 
+## Execution status (paused 2026-06-11, 2026.W24)
+
+Executed via subagent-driven development on branch `feature/portfolio-live-demos`.
+
+| Task | Status | Commits |
+|---|---|---|
+| 1 — DealRiskDemo refactor | ✅ Done | `6a8af3f`, `810c1ab`, `ebbfec9` |
+| 2 — Demo registry + badge | ❌ **Not started** (despite Task-3 commit order — verified: no `DEMOS` map, no badge in code) | — |
+| 3 — TCC Impact Simulator | ✅ Done | `784a64b` |
+| 4 — Global Comp Normalizer | ✅ Implemented + spec review passed; **code-quality review still pending** | `e980a4b`, `6a82e5e` |
+| 5 — Contribution Scoring Engine | ❌ Not started | — |
+| 6 — Try-it-live section/nav/CTA/pill | ❌ Not started | — |
+| 7 — Tests + final verification | ❌ Not started | — |
+
+**Revised execution order** (Task 2's `DEMOS` map references all four demo modules, so it runs after them): 4 → 5 → 2 → 6 → 7. **Resume point: code-quality review of `784a64b..6a82e5e`, then Task 5.**
+
+Task 4 spec-review fixes already applied in `6a82e5e`: zero salary shows "Below band" (not "—"), level change re-derives default salary, dead `fmtLocal` removed.
+
+Reference pattern for new demos: `TccDemo` module in `JavaScript.html` (constants → format helpers → `createInstance(mount)` closure with `refs` via `mount.querySelector` → `inject(containerEl)` capturing `.pm-demo-mount` from the fragment pre-append) + `#tcc-demo-tpl` template in `index.html` (classes only, no ids, no inline handlers, synthetic-data footnote). Commit only the two portfolio files per task — the repo has unrelated dirty files (`Code.gs` JSDoc additions, untracked `projects/`) that are not part of this plan.
+
+---
+
 ### Task 1: Refactor DealRiskDemo to container-scoped pattern
 
 **Files:**
 - Modify: `docs/superpowers/gas-portfolio/index.html` (template `#deal-risk-demo-tpl`, ~line 1568)
 - Modify: `docs/superpowers/gas-portfolio/JavaScript.html` (`DealRiskDemo`, ~line 464; `ProjectModal.open` ~line 154; `ProjectModal.close` ~line 160)
 
-- [ ] **Step 1: De-id the template.** In `#deal-risk-demo-tpl`, convert all internal `id="pl-*"` / `id="pm-demo-section"` attributes to classes (`class="pl-forecast"`, etc.). Keep the outer wrapper's class `demo-section` and add class `pm-demo-mount`. Replace the inline `onclick="DealRiskDemo.scoreAll()"` on the AI button with nothing (bound in JS).
-- [ ] **Step 2: Scope the module.** Change `inject()` → `inject(containerEl)`: clone the template into `containerEl`, capture a `refs` object via `containerEl.querySelector('.pl-…')` for every element the module touches, bind the slider `input` and the AI button `click` inside `inject`, and route `renderTable` / `renderSummary` / `update` / `scoreAll` through `refs` instead of `document.getElementById`. Multiple `inject` calls must produce independent instances (move per-instance state like `_aiScores` into the closure created per inject).
-- [ ] **Step 3: Update modal hooks.** In `ProjectModal.open`, replace `if (p.id === 'ai-sales') DealRiskDemo.inject();` with the registry lookup (Task 2 introduces `DEMOS`; for now keep behavior identical). In `ProjectModal.close`, replace the `#pm-demo-section` removal with removing every `.pm-demo-mount` node inside the modal body.
-- [ ] **Step 4: Verify.** Open the AI Sales modal — slider and AI button work exactly as before; closing and reopening the modal does not duplicate the demo.
+- [x] **Step 1: De-id the template.** In `#deal-risk-demo-tpl`, convert all internal `id="pl-*"` / `id="pm-demo-section"` attributes to classes (`class="pl-forecast"`, etc.). Keep the outer wrapper's class `demo-section` and add class `pm-demo-mount`. Replace the inline `onclick="DealRiskDemo.scoreAll()"` on the AI button with nothing (bound in JS).
+- [x] **Step 2: Scope the module.** Change `inject()` → `inject(containerEl)`: clone the template into `containerEl`, capture a `refs` object via `containerEl.querySelector('.pl-…')` for every element the module touches, bind the slider `input` and the AI button `click` inside `inject`, and route `renderTable` / `renderSummary` / `update` / `scoreAll` through `refs` instead of `document.getElementById`. Multiple `inject` calls must produce independent instances (move per-instance state like `_aiScores` into the closure created per inject).
+- [x] **Step 3: Update modal hooks.** In `ProjectModal.open`, replace `if (p.id === 'ai-sales') DealRiskDemo.inject();` with the registry lookup (Task 2 introduces `DEMOS`; for now keep behavior identical). In `ProjectModal.close`, replace the `#pm-demo-section` removal with removing every `.pm-demo-mount` node inside the modal body.
+- [x] **Step 4: Verify.** Open the AI Sales modal — slider and AI button work exactly as before; closing and reopening the modal does not duplicate the demo.
 
 ---
 
@@ -40,10 +62,10 @@
 - Modify: `docs/superpowers/gas-portfolio/index.html` (new `<template id="tcc-demo-tpl">` + CSS)
 - Modify: `docs/superpowers/gas-portfolio/JavaScript.html` (new `TccDemo` module)
 
-- [ ] **Step 1: Template.** Wrapper `.demo-section.pm-demo-mount`, header "💰 TCC Impact Simulator — Cost-Driver Forecast", synthetic-data footnote. Four labeled range sliders (classes `tcc-merit` 0–10 step .5 default 3, `tcc-attr` 0–30 default 12, `tcc-hires` 0–40 default 10, `tcc-promo` 0–15 default 5) each with a live value span. KPI row: baseline TCC, forecast TCC, net delta ($ + %). Waterfall area (`.tcc-waterfall`) and "Top department variance" list (`.tcc-var-rows`).
-- [ ] **Step 2: Module.** `TccDemo` IIFE with `DEPTS` constant — 8 departments `{ name, hc, avgTcc }` totaling ≈200 heads (Engineering 52/165K, Sales 30/150K, Customer Success 25/110K, Professional Services 28/120K, Marketing 15/125K, Product 18/155K, Support 22/85K, G&A 10/130K). Model per spec: merit = base×m%; promo = hc×p%×avgTcc×0.10; attrition = −hc×a%×avgTcc×0.5; newHire = hires×orgAvgTcc×0.5. Render KPIs, five-segment CSS waterfall (Baseline → +Merit → +Promo → −Attrition → +Hires → Forecast) with labeled bars scaled to the max value, and departments sorted by |delta| (delta excludes new hires, which are org-level). All sliders re-render on `input`.
-- [ ] **Step 3: CSS.** Waterfall bars (positive teal/negative red), variance rows; reuse existing `demo-*` and `pl-kpi*` styles where they fit.
-- [ ] **Step 4: Verify.** Defaults produce plausible numbers (baseline ≈ $25M); each slider visibly moves the waterfall; attrition slider can push net delta negative.
+- [x] **Step 1: Template.** Wrapper `.demo-section.pm-demo-mount`, header "💰 TCC Impact Simulator — Cost-Driver Forecast", synthetic-data footnote. Four labeled range sliders (classes `tcc-merit` 0–10 step .5 default 3, `tcc-attr` 0–30 default 12, `tcc-hires` 0–40 default 10, `tcc-promo` 0–15 default 5) each with a live value span. KPI row: baseline TCC, forecast TCC, net delta ($ + %). Waterfall area (`.tcc-waterfall`) and "Top department variance" list (`.tcc-var-rows`).
+- [x] **Step 2: Module.** `TccDemo` IIFE with `DEPTS` constant — 8 departments `{ name, hc, avgTcc }` totaling ≈200 heads (Engineering 52/165K, Sales 30/150K, Customer Success 25/110K, Professional Services 28/120K, Marketing 15/125K, Product 18/155K, Support 22/85K, G&A 10/130K). Model per spec: merit = base×m%; promo = hc×p%×avgTcc×0.10; attrition = −hc×a%×avgTcc×0.5; newHire = hires×orgAvgTcc×0.5. Render KPIs, five-segment CSS waterfall (Baseline → +Merit → +Promo → −Attrition → +Hires → Forecast) with labeled bars scaled to the max value, and departments sorted by |delta| (delta excludes new hires, which are org-level). All sliders re-render on `input`.
+- [x] **Step 3: CSS.** Waterfall bars (positive teal/negative red), variance rows; reuse existing `demo-*` and `pl-kpi*` styles where they fit.
+- [x] **Step 4: Verify.** Defaults produce plausible numbers (baseline ≈ $25M); each slider visibly moves the waterfall; attrition slider can push net delta negative.
 
 ---
 
@@ -53,10 +75,10 @@
 - Modify: `docs/superpowers/gas-portfolio/index.html` (new `<template id="comp-demo-tpl">` + CSS)
 - Modify: `docs/superpowers/gas-portfolio/JavaScript.html` (new `CompNormalizerDemo` module)
 
-- [ ] **Step 1: Template.** Wrapper `.demo-section.pm-demo-mount`, header "🌍 Global Comp Normalizer — Multi-Currency Band Positioning", synthetic-data footnote (FX/COL values are illustrative). Inputs: country `<select>` (`.cn-country`), level `<select>` L1–L5 (`.cn-level`), salary `<input type="number">` (`.cn-salary`) with currency suffix span. Result cards: nominal USD, COL-adjusted USD, compa-ratio. Band strip `.cn-band` with four quartile zones and a position marker `.cn-marker`.
-- [ ] **Step 2: Module.** `COUNTRIES` constant (~10 entries `{ name, ccy, fx, col }`: US 1/1.00, Canada 1.36/0.92, Mexico 17.1/0.55, Colombia 3900/0.45, UK 0.79/0.98, Germany 0.92/0.90, Poland 4.0/0.60, India 83/0.35, Philippines 56/0.40, Australia 1.52/0.95). `BANDS` per level in COL-adjusted USD (L1 45–65K mid 55K … L5 150–210K mid 180K, monotonically increasing). Math per spec: `nominalUsd = salary / fx`; `colAdjusted = nominalUsd / col`; `compaRatio = colAdjusted / band.mid`; quartile from position in min→max, with "Below band"/"Above band" outside. On country change, set a sensible default salary (≈ band-mid for selected level converted back to local currency) so first render always shows a meaningful result. Marker position clamps to the strip; zone color shifts (below = amber, Q1–Q4 gradient, above = red).
-- [ ] **Step 3: CSS.** Band strip with quartile segments, marker, result cards.
-- [ ] **Step 4: Verify.** US + L3 + band mid salary → compa-ratio ≈ 1.00 in Q2/Q3 boundary; Colombia entry at local mid-band equivalent lands mid-band (COL math works); zero/empty salary input guards (treat as 0, "Below band").
+- [x] **Step 1: Template.** Wrapper `.demo-section.pm-demo-mount`, header "🌍 Global Comp Normalizer — Multi-Currency Band Positioning", synthetic-data footnote (FX/COL values are illustrative). Inputs: country `<select>` (`.cn-country`), level `<select>` L1–L5 (`.cn-level`), salary `<input type="number">` (`.cn-salary`) with currency suffix span. Result cards: nominal USD, COL-adjusted USD, compa-ratio. Band strip `.cn-band` with four quartile zones and a position marker `.cn-marker`.
+- [x] **Step 2: Module.** `COUNTRIES` constant (~10 entries `{ name, ccy, fx, col }`: US 1/1.00, Canada 1.36/0.92, Mexico 17.1/0.55, Colombia 3900/0.45, UK 0.79/0.98, Germany 0.92/0.90, Poland 4.0/0.60, India 83/0.35, Philippines 56/0.40, Australia 1.52/0.95). `BANDS` per level in COL-adjusted USD (L1 45–65K mid 55K … L5 150–210K mid 180K, monotonically increasing). Math per spec: `nominalUsd = salary / fx`; `colAdjusted = nominalUsd / col`; `compaRatio = colAdjusted / band.mid`; quartile from position in min→max, with "Below band"/"Above band" outside. On country change, set a sensible default salary (≈ band-mid for selected level converted back to local currency) so first render always shows a meaningful result. Marker position clamps to the strip; zone color shifts (below = amber, Q1–Q4 gradient, above = red).
+- [x] **Step 3: CSS.** Band strip with quartile segments, marker, result cards.
+- [x] **Step 4: Verify.** US + L3 + band mid salary → hand-verified (compa 1.00 @ 48.6% of strip; Colombia COL round-trip OK; zero-salary guard OK) — → compa-ratio ≈ 1.00 in Q2/Q3 boundary; Colombia entry at local mid-band equivalent lands mid-band (COL math works); zero/empty salary input guards (treat as 0, "Below band").
 
 ---
 
