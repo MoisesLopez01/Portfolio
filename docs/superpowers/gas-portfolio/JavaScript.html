@@ -892,12 +892,6 @@ var CompNormalizerDemo = (function() {
     return '$' + Math.round(v);
   }
 
-  function fmtLocal(v, ccy) {
-    if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M ' + ccy;
-    if (v >= 1000)    return Math.round(v / 1000) + 'K ' + ccy;
-    return Math.round(v) + ' ' + ccy;
-  }
-
   // Default salary for a country+level: band mid converted to local currency
   function defaultSalary(country, levelKey) {
     var band = BANDS[levelKey];
@@ -971,7 +965,7 @@ var CompNormalizerDemo = (function() {
       var stateClass = '';
 
       if (salary <= 0 || colAdjusted < band.min) {
-        quartile   = salary <= 0 ? '—' : 'Below band';
+        quartile   = 'Below band';
         stateClass = 'cn-below';
       } else if (colAdjusted > band.max) {
         quartile   = 'Above band';
@@ -1024,7 +1018,10 @@ var CompNormalizerDemo = (function() {
       render();
     });
 
-    refs.levelSelect.addEventListener('change', render);
+    refs.levelSelect.addEventListener('change', function() {
+      setDefaultSalary();
+      render();
+    });
     refs.salaryInput.addEventListener('input', render);
 
     // Initial state
