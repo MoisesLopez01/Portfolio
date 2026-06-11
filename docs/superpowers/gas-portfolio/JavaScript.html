@@ -860,6 +860,192 @@ var TccDemo = (function() {
   return { inject: inject };
 }());
 
+// ── GLOBAL COMP NORMALIZER ────────────────────────────────────────────────────
+
+var CompNormalizerDemo = (function() {
+
+  var COUNTRIES = [
+    { name: 'United States',  ccy: 'USD', fx: 1,    col: 1.00 },
+    { name: 'Canada',         ccy: 'CAD', fx: 1.36, col: 0.92 },
+    { name: 'Mexico',         ccy: 'MXN', fx: 17.1, col: 0.55 },
+    { name: 'Colombia',       ccy: 'COP', fx: 3900, col: 0.45 },
+    { name: 'United Kingdom', ccy: 'GBP', fx: 0.79, col: 0.98 },
+    { name: 'Germany',        ccy: 'EUR', fx: 0.92, col: 0.90 },
+    { name: 'Poland',         ccy: 'PLN', fx: 4.0,  col: 0.60 },
+    { name: 'India',          ccy: 'INR', fx: 83,   col: 0.35 },
+    { name: 'Philippines',    ccy: 'PHP', fx: 56,   col: 0.40 },
+    { name: 'Australia',      ccy: 'AUD', fx: 1.52, col: 0.95 }
+  ];
+
+  // Bands in COL-adjusted USD: { min, max, mid }
+  var BANDS = {
+    L1: { min: 45000,  max: 65000,  mid: 55000  },
+    L2: { min: 60000,  max: 85000,  mid: 72000  },
+    L3: { min: 80000,  max: 115000, mid: 97000  },
+    L4: { min: 110000, max: 155000, mid: 132000 },
+    L5: { min: 150000, max: 210000, mid: 180000 }
+  };
+
+  function fmtUsd(v) {
+    if (v >= 1000000) return '$' + (v / 1000000).toFixed(2) + 'M';
+    if (v >= 1000)    return '$' + Math.round(v / 1000) + 'K';
+    return '$' + Math.round(v);
+  }
+
+  function fmtLocal(v, ccy) {
+    if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M ' + ccy;
+    if (v >= 1000)    return Math.round(v / 1000) + 'K ' + ccy;
+    return Math.round(v) + ' ' + ccy;
+  }
+
+  // Default salary for a country+level: band mid converted to local currency
+  function defaultSalary(country, levelKey) {
+    var band = BANDS[levelKey];
+    // mid is COL-adjusted USD → reverse: local = mid * col * fx
+    return Math.round(band.mid * country.col * country.fx);
+  }
+
+  // ── per-instance factory ──────────────────────────────────────────────────
+
+  function createInstance(mount) {
+    var refs = {
+      countrySelect: mount.querySelector('.cn-country'),
+      levelSelect:   mount.querySelector('.cn-level'),
+      salaryInput:   mount.querySelector('.cn-salary'),
+      ccySuffix:     mount.querySelector('.cn-ccy-suffix'),
+      nominal:       mount.querySelector('.cn-nominal'),
+      colAdj:        mount.querySelector('.cn-col-adj'),
+      compa:         mount.querySelector('.cn-compa'),
+      bandMin:       mount.querySelector('.cn-band-min'),
+      bandMax:       mount.querySelector('.cn-band-max'),
+      marker:        mount.querySelector('.cn-marker'),
+      quartileLbl:   mount.querySelector('.cn-quartile-lbl')
+    };
+
+    // Populate country options
+    for (var i = 0; i < COUNTRIES.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = COUNTRIES[i].name + ' (' + COUNTRIES[i].ccy + ')';
+      refs.countrySelect.appendChild(opt);
+    }
+    refs.countrySelect.value = '0'; // default: United States
+
+    function selectedCountry() {
+      return COUNTRIES[parseInt(refs.countrySelect.value, 10) || 0];
+    }
+    function selectedLevel() {
+      return refs.levelSelect.value || 'L3';
+    }
+
+    function setDefaultSalary() {
+      var country = selectedCountry();
+      var levelKey = selectedLevel();
+      refs.salaryInput.value = defaultSalary(country, levelKey);
+      refs.ccySuffix.textContent = country.ccy;
+    }
+
+    function render() {
+      var country  = selectedCountry();
+      var levelKey = selectedLevel();
+      var band     = BANDS[levelKey];
+      var raw      = parseFloat(refs.salaryInput.value);
+      var salary   = (isNaN(raw) || raw <= 0) ? 0 : raw;
+
+      refs.ccySuffix.textContent = country.ccy;
+      refs.bandMin.textContent = fmtUsd(band.min);
+      refs.bandMax.textContent = fmtUsd(band.max);
+
+      var nominalUsd  = salary / country.fx;
+      var colAdjusted = nominalUsd / country.col;
+      var compaRatio  = (band.mid > 0) ? colAdjusted / band.mid : 0;
+
+      refs.nominal.textContent = salary > 0 ? fmtUsd(nominalUsd)  : '—';
+      refs.colAdj.textContent  = salary > 0 ? fmtUsd(colAdjusted) : '—';
+      refs.compa.textContent   = salary > 0 ? compaRatio.toFixed(2) : '—';
+
+      // Determine quartile position
+      var bandRange = band.max - band.min;
+      var posFrac   = bandRange > 0 ? (colAdjusted - band.min) / bandRange : 0;
+      var quartile  = '';
+      var stateClass = '';
+
+      if (salary <= 0 || colAdjusted < band.min) {
+        quartile   = salary <= 0 ? '—' : 'Below band';
+        stateClass = 'cn-below';
+      } else if (colAdjusted > band.max) {
+        quartile   = 'Above band';
+        stateClass = 'cn-above';
+      } else if (posFrac < 0.25) {
+        quartile   = 'Q1 — Entry of band';
+        stateClass = '';
+      } else if (posFrac < 0.50) {
+        quartile   = 'Q2 — Lower-mid of band';
+        stateClass = '';
+      } else if (posFrac < 0.75) {
+        quartile   = 'Q3 — Upper-mid of band';
+        stateClass = 'cn-mid';
+      } else {
+        quartile   = 'Q4 — Top of band';
+        stateClass = '';
+      }
+
+      // Apply colour classes to compa value
+      refs.compa.className = 'cn-card-val cn-compa' + (stateClass ? ' ' + stateClass : '');
+      refs.colAdj.className = 'cn-card-val cn-col-adj' + (stateClass ? ' ' + stateClass : '');
+
+      // Quartile label
+      refs.quartileLbl.textContent = quartile;
+      refs.quartileLbl.className = 'cn-quartile-lbl' +
+        (stateClass === 'cn-below' ? ' cn-lbl-below' :
+         stateClass === 'cn-above' ? ' cn-lbl-above' : '');
+
+      // Marker position — clamp to [1%, 99%] of strip width
+      var markerPct;
+      if (salary <= 0 || colAdjusted < band.min) {
+        markerPct = 0;
+      } else if (colAdjusted > band.max) {
+        markerPct = 100;
+      } else {
+        markerPct = posFrac * 100;
+      }
+      markerPct = Math.max(1, Math.min(99, markerPct));
+      refs.marker.style.left = markerPct + '%';
+
+      // Marker colour class
+      refs.marker.className = 'cn-marker' +
+        (stateClass === 'cn-below' ? ' cn-below-band' :
+         stateClass === 'cn-above' ? ' cn-above-band' : '');
+    }
+
+    // On country change: update currency suffix + reset salary to sensible default
+    refs.countrySelect.addEventListener('change', function() {
+      setDefaultSalary();
+      render();
+    });
+
+    refs.levelSelect.addEventListener('change', render);
+    refs.salaryInput.addEventListener('input', render);
+
+    // Initial state
+    setDefaultSalary();
+    render();
+  }
+
+  // ── inject ──────────────────────────────────────────────────────────────────
+
+  function inject(containerEl) {
+    var tpl = document.getElementById('comp-demo-tpl');
+    if (!tpl || !containerEl) return;
+    var clone = tpl.content.cloneNode(true);
+    var mount = clone.querySelector('.pm-demo-mount');
+    containerEl.appendChild(clone);
+    if (mount) createInstance(mount);
+  }
+
+  return { inject: inject };
+}());
+
 // ── UI UTILITIES ──────────────────────────────────────────────────────────────
 
 var UI = (function() {

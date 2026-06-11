@@ -1246,6 +1246,82 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   .tcc-wf-val { min-width: 54px; font-size: 9px; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   GLOBAL COMP NORMALIZER
+═══════════════════════════════════════════════════════════════════════ */
+.cn-inputs {
+  display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 14px 20px;
+  margin-bottom: 20px;
+}
+@media (max-width: 540px) { .cn-inputs { grid-template-columns: 1fr 1fr; } }
+.cn-label {
+  display: block; font-size: 10px; color: var(--dark-muted);
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.cn-select, .cn-num-input {
+  width: 100%; background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(168,85,247,0.25); border-radius: 7px;
+  color: var(--dark-text); font-family: var(--mono); font-size: 13px;
+  padding: 7px 10px; outline: none; transition: border-color 0.15s;
+}
+.cn-select:focus, .cn-num-input:focus { border-color: var(--purple); }
+.cn-select option { background: #0a1f1a; }
+.cn-salary-wrap { display: flex; align-items: center; gap: 6px; }
+.cn-salary-wrap .cn-num-input { flex: 1; }
+.cn-ccy-suffix {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--purple); flex-shrink: 0; min-width: 28px;
+}
+.cn-cards {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-bottom: 22px;
+}
+.cn-card { text-align: center; flex: 1; min-width: 80px; }
+.cn-card-val {
+  font-family: var(--mono); font-size: 19px; font-weight: 600;
+  color: var(--purple); line-height: 1.1;
+}
+.cn-card-val.cn-below { color: var(--amber); }
+.cn-card-val.cn-above { color: #f87171; }
+.cn-card-val.cn-mid   { color: #4ade80; }
+.cn-card-lbl { font-size: 9px; color: var(--dark-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 3px; }
+.cn-band-section { margin-bottom: 12px; }
+.cn-band-labels {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 5px;
+}
+.cn-band-labels span {
+  font-family: var(--mono); font-size: 9.5px; color: var(--dark-muted);
+}
+.cn-band-mid-lbl { color: rgba(168,85,247,0.7); font-weight: 600; }
+.cn-band {
+  position: relative; height: 18px; border-radius: 9px;
+  display: flex; overflow: visible;
+}
+.cn-zone { flex: 1; height: 100%; }
+.cn-q1 { background: rgba(168,85,247,0.18); border-radius: 9px 0 0 9px; }
+.cn-q2 { background: rgba(168,85,247,0.30); }
+.cn-q3 { background: rgba(168,85,247,0.46); }
+.cn-q4 { background: rgba(168,85,247,0.65); border-radius: 0 9px 9px 0; }
+.cn-marker {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--purple);
+  box-shadow: 0 0 8px rgba(168,85,247,0.60);
+  transition: left 0.22s var(--ease);
+  z-index: 2;
+}
+.cn-marker.cn-below-band { border-color: var(--amber); box-shadow: 0 0 8px rgba(245,158,11,0.60); }
+.cn-marker.cn-above-band { border-color: #f87171;      box-shadow: 0 0 8px rgba(248,113,113,0.60); }
+.cn-quartile-lbl {
+  margin-top: 8px; font-family: var(--mono); font-size: 11px;
+  font-weight: 600; color: var(--purple); text-align: center;
+  min-height: 16px;
+}
+.cn-quartile-lbl.cn-lbl-below { color: var(--amber); }
+.cn-quartile-lbl.cn-lbl-above { color: #f87171; }
+
 </style>
 </head>
 <body>
@@ -1757,6 +1833,74 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
     </div>
 
     <div class="tcc-footnote">Synthetic data — runs entirely in your browser. No real company data.</div>
+  </div>
+</template>
+
+<template id="comp-demo-tpl">
+  <div class="demo-section pm-demo-mount">
+    <div class="demo-hd">🌍 Global Comp Normalizer — Multi-Currency Band Positioning</div>
+
+    <!-- Inputs row -->
+    <div class="cn-inputs">
+      <div class="cn-input-group">
+        <label class="cn-label">Country</label>
+        <select class="cn-country cn-select"></select>
+      </div>
+      <div class="cn-input-group">
+        <label class="cn-label">Level</label>
+        <select class="cn-level cn-select">
+          <option value="L1">L1</option>
+          <option value="L2">L2</option>
+          <option value="L3" selected>L3</option>
+          <option value="L4">L4</option>
+          <option value="L5">L5</option>
+        </select>
+      </div>
+      <div class="cn-input-group cn-salary-group">
+        <label class="cn-label">Annual Salary</label>
+        <div class="cn-salary-wrap">
+          <input class="cn-salary cn-num-input" type="number" min="0" step="1000">
+          <span class="cn-ccy-suffix"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result cards -->
+    <div class="cn-cards">
+      <div class="cn-card">
+        <div class="cn-card-val cn-nominal">—</div>
+        <div class="cn-card-lbl">Nominal USD</div>
+      </div>
+      <div class="pl-kpi-div"></div>
+      <div class="cn-card">
+        <div class="cn-card-val cn-col-adj">—</div>
+        <div class="cn-card-lbl">COL-Adjusted USD</div>
+      </div>
+      <div class="pl-kpi-div"></div>
+      <div class="cn-card">
+        <div class="cn-card-val cn-compa">—</div>
+        <div class="cn-card-lbl">Compa-Ratio</div>
+      </div>
+    </div>
+
+    <!-- Band strip -->
+    <div class="cn-band-section">
+      <div class="cn-band-labels">
+        <span class="cn-band-min"></span>
+        <span class="cn-band-mid-lbl">Mid</span>
+        <span class="cn-band-max"></span>
+      </div>
+      <div class="cn-band">
+        <div class="cn-zone cn-q1"></div>
+        <div class="cn-zone cn-q2"></div>
+        <div class="cn-zone cn-q3"></div>
+        <div class="cn-zone cn-q4"></div>
+        <div class="cn-marker"></div>
+      </div>
+      <div class="cn-quartile-lbl"></div>
+    </div>
+
+    <div class="tcc-footnote">FX rates and COL indices are illustrative. Synthetic data — runs entirely in your browser.</div>
   </div>
 </template>
 
