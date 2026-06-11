@@ -93,6 +93,15 @@ var DomainGrid = (function() {
 // ── PROJECT MODAL ─────────────────────────────────────────────────────────────
 
 var ProjectModal = (function() {
+  function modalBody_() {
+    return document.getElementById('pmodal').querySelector('.pmodal-body');
+  }
+
+  function removeMounts_(body) {
+    var mounts = body.querySelectorAll('.pm-demo-mount');
+    for (var i = 0; i < mounts.length; i++) { mounts[i].remove(); }
+  }
+
   function open(id) {
     var projects = window.PROJECTS || [];
     var p = null;
@@ -151,17 +160,17 @@ var ProjectModal = (function() {
 
     document.getElementById('pmodal-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
-    if (p.id === 'ai-sales') DealRiskDemo.inject(document.getElementById('pmodal').querySelector('.pmodal-body'));
+    if (p.id === 'ai-sales') {
+      var body = modalBody_();
+      removeMounts_(body);
+      DealRiskDemo.inject(body);
+    }
   }
 
   function close() {
     document.getElementById('pmodal-overlay').classList.remove('open');
     document.body.style.overflow = '';
-    var body = document.getElementById('pmodal').querySelector('.pmodal-body');
-    if (body) {
-      var mounts = body.querySelectorAll('.pm-demo-mount');
-      for (var i = 0; i < mounts.length; i++) { mounts[i].remove(); }
-    }
+    removeMounts_(modalBody_());
   }
 
   function toggleCode() {
@@ -493,9 +502,6 @@ var DealRiskDemo = (function() {
   // ── per-instance factory (called once per inject) ────────────────────────────
 
   function createInstance(containerEl) {
-    // per-instance state
-    var _aiScores = null;
-
     // capture refs via container-scoped queries
     var refs = {
       forecast:   containerEl.querySelector('.pl-forecast'),
@@ -513,7 +519,6 @@ var DealRiskDemo = (function() {
     // ── render ────────────────────────────────────────────────────────────────
 
     function renderTable(fwd) {
-      if (!refs.rows) return;
       refs.rows.innerHTML = DEALS.map(function(d) {
         var nowP  = closePct(d.ageDays,       d.amountK);
         var projP = closePct(d.ageDays + fwd, d.amountK);
@@ -545,21 +550,19 @@ var DealRiskDemo = (function() {
       var pct = Math.min(1, forecast / TARGET_K);
       var gap = forecast - TARGET_K;
 
-      if (refs.forecast) refs.forecast.textContent = fmt(forecast);
-      if (refs.gap) {
-        refs.gap.textContent = (gap >= 0 ? '+' : '') + fmt(Math.abs(gap));
-        refs.gap.className   = 'pl-kpi-val pl-gap ' + (gap >= 0 ? 'pl-pos' : 'pl-neg');
-      }
-      if (refs.atRisk) {
-        refs.atRisk.textContent = atRisk + ' deal' + (atRisk !== 1 ? 's' : '');
-        refs.atRisk.className   = 'pl-kpi-val pl-at-risk ' + (atRisk > 0 ? 'pl-neg' : 'pl-pos');
-      }
-      if (refs.barFill) refs.barFill.style.width = Math.round(pct * 100) + '%';
+      refs.forecast.textContent = fmt(forecast);
+      refs.gap.textContent = (gap >= 0 ? '+' : '') + fmt(Math.abs(gap));
+      refs.gap.classList.toggle('pl-pos', gap >= 0);
+      refs.gap.classList.toggle('pl-neg', gap < 0);
+      refs.atRisk.textContent = atRisk + ' deal' + (atRisk !== 1 ? 's' : '');
+      refs.atRisk.classList.toggle('pl-neg', atRisk > 0);
+      refs.atRisk.classList.toggle('pl-pos', atRisk === 0);
+      refs.barFill.style.width = Math.round(pct * 100) + '%';
     }
 
     function update() {
       var fwd = parseInt(refs.forward.value, 10) || 0;
-      if (refs.forwardVal) refs.forwardVal.textContent = fwd === 0 ? 'Today' : '+' + fwd + ' days';
+      refs.forwardVal.textContent = fwd === 0 ? 'Today' : '+' + fwd + ' days';
       renderTable(fwd);
       renderSummary(fwd);
     }
@@ -567,14 +570,9 @@ var DealRiskDemo = (function() {
     // ── Groq batch scoring ────────────────────────────────────────────────────
 
     function scoreAll() {
-      var btn       = refs.aiBtn;
-      var noteEl    = refs.aiNote;
-      var resultsEl = refs.aiResults;
-      if (!btn) return;
-
-      btn.disabled = true;
-      if (noteEl) noteEl.textContent = 'Scoring 5 deals in parallel…';
-      if (resultsEl) resultsEl.innerHTML =
+      refs.aiBtn.disabled = true;
+      refs.aiNote.textContent = 'Scoring 5 deals in parallel…';
+      refs.aiResults.innerHTML =
         '<div class="demo-loading-row">' +
           '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
           '<span class="demo-loading-text">Groq AI analyzing pipeline…</span>' +
@@ -586,48 +584,42 @@ var DealRiskDemo = (function() {
 
       runServer('calculatePipelineRisk', [payload],
         function(scores) {
-          btn.disabled = false;
-          _aiScores = scores;
-          if (noteEl) noteEl.textContent = 'AI recommendations loaded';
-          if (resultsEl) {
-            resultsEl.innerHTML = scores.map(function(s, i) {
-              var lvl = ['Low','Medium','High','Critical'].indexOf(s.level) >= 0 ? s.level : 'Medium';
-              return (
-                '<div class="pl-ai-card">' +
-                  '<div class="pl-ai-card-name">' +
-                    escHtml(DEALS[i].name) +
-                    ' <span class="demo-level ' + lvl + '">' + escHtml(s.level || '—') + '</span>' +
-                  '</div>' +
-                  '<div class="pl-ai-action">' + escHtml(s.nextAction || '—') + '</div>' +
-                '</div>'
-              );
-            }).join('');
-          }
+          refs.aiBtn.disabled = false;
+          refs.aiNote.textContent = 'AI recommendations loaded';
+          refs.aiResults.innerHTML = scores.map(function(s, i) {
+            var lvl = ['Low','Medium','High','Critical'].indexOf(s.level) >= 0 ? s.level : 'Medium';
+            return (
+              '<div class="pl-ai-card">' +
+                '<div class="pl-ai-card-name">' +
+                  escHtml(DEALS[i].name) +
+                  ' <span class="demo-level ' + lvl + '">' + escHtml(s.level || '—') + '</span>' +
+                '</div>' +
+                '<div class="pl-ai-action">' + escHtml(s.nextAction || '—') + '</div>' +
+              '</div>'
+            );
+          }).join('');
         },
         function(err) {
-          btn.disabled = false;
+          refs.aiBtn.disabled = false;
           var msg = String(err.message || err);
-          if (noteEl) noteEl.textContent = '';
-          if (resultsEl) {
-            var colour = msg.indexOf('not configured') !== -1 ? '#fbbf24' : '#f87171';
-            var label  = msg.indexOf('not configured') !== -1
-              ? '⚠ Groq API key not set — admin must configure it.'
-              : 'Error: ' + escHtml(msg);
-            resultsEl.innerHTML =
-              '<div class="demo-loading-row">' +
-                '<span class="demo-loading-text" style="color:' + colour + '">' + label + '</span>' +
-              '</div>';
-          }
+          refs.aiNote.textContent = '';
+          var colour = msg.indexOf('not configured') !== -1 ? '#fbbf24' : '#f87171';
+          var label  = msg.indexOf('not configured') !== -1
+            ? '⚠ Groq API key not set — admin must configure it.'
+            : 'Error: ' + escHtml(msg);
+          refs.aiResults.innerHTML =
+            '<div class="demo-loading-row">' +
+              '<span class="demo-loading-text" style="color:' + colour + '">' + label + '</span>' +
+            '</div>';
         }
       );
     }
 
     // bind events
-    if (refs.forward) refs.forward.addEventListener('input', update);
-    if (refs.aiBtn)   refs.aiBtn.addEventListener('click', scoreAll);
+    refs.forward.addEventListener('input', update);
+    refs.aiBtn.addEventListener('click', scoreAll);
 
     // initial render
-    _aiScores = null;
     update();
   }
 
