@@ -1750,17 +1750,32 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
   </div>
 
-  <!-- SETTINGS TAB -->
-  <div id="tabSettings" class="tab-pane">
+  <!-- SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) -->
+  <div id="tabWeights" class="tab-pane">
     <div class="section-card">
       <div class="section-head">
         <div>
-          <h2>Score Weight Settings</h2>
+          <h2>Scoring Weights</h2>
           <p class="section-sub">Adjust the composite score weights · Changes are shared with all users via the spreadsheet</p>
         </div>
       </div>
-      <div id="settingsBody">
-        <!-- Rendered by renderSettingsTab() after data loads -->
+      <div id="weightsBody">
+        <!-- Rendered by renderWeightsTab_() after data loads -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCESS CONTROL TAB (admin only, opened from the ☰ menu) -->
+  <div id="tabAccess" class="tab-pane">
+    <div class="section-card">
+      <div class="section-head">
+        <div>
+          <h2>Access Control</h2>
+          <p class="section-sub">Manage who can view the dashboard · Admins, viewers, and manager-scoped delegates</p>
+        </div>
+      </div>
+      <div id="accessBody">
+        <!-- Rendered by renderAccessTab_() after data loads -->
       </div>
     </div>
   </div>
@@ -1840,7 +1855,8 @@ var VIEWS = [
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
-  { id: "settings",   btnId: "tabBtnSettings",   paneId: "tabSettings",   label: "⚙ Settings",         location: "menu",   roles: ["admin"] },
+  { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["admin"] },
+  { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["admin"] },
 ];
 
 function viewById_(id) {
@@ -2096,7 +2112,8 @@ function renderAll() {
     radar:      function() { renderRadarTab(filtered); },
     rocketeers: function() { renderTopRocketeers(filtered); },
     trends:     function() { renderTrendsTab(); },
-    settings:   function() { renderSettingsTab(); },
+    weights:    function() { renderWeightsTab_(); },
+    access:     function() { renderAccessTab_(); },
     dataref:    function() { renderDrScoreBars(); },
   };
   if (RENDERERS[STATE.activeTab]) RENDERERS[STATE.activeTab]();
@@ -5652,26 +5669,40 @@ function renderDrScoreBars() {
   el.innerHTML =
     '<p class="dr-p" style="margin-bottom:14px">' + intro + '</p>' +
     '<div class="dr-score-bars">' + barsHtml + '</div>' +
-    '<div class="dr-note" style="margin-top:12px">Weights are configured by admins in the <strong>Settings</strong> tab. ' +
+    '<div class="dr-note" style="margin-top:12px">Weights are configured by admins in <strong>⚖️ Scoring Weights</strong> (☰ menu). ' +
     'Changes take effect immediately and are shared with all users on the next page refresh.</div>' +
     '<div class="dr-note" style="margin-top:6px"><strong>Family × Level overrides:</strong> the weights shown above are the company base. ' +
-    'Admins can tune them per job family and level (Settings → Scoring Weights by Family &amp; Level) — a rocketeer\'s composite score ' +
+    'Admins can tune them per job family and level (☰ menu → ⚖️ Scoring Weights) — a rocketeer\'s composite score ' +
     'uses their family\'s weights for their level, resolved via the Job Catalog; unmapped titles fall back to the base weights shown here.</div>';
 }
 
-function renderSettingsTab() {
-  var container = document.getElementById("settingsBody");
+// ── ACCESS CONTROL TAB (admin only, opened from the ☰ menu) ──
+function renderAccessTab_() {
+  var container = document.getElementById("accessBody");
+  if (!container) return;
+
+  container.innerHTML = '<div class="settings-body">' +
+      '<div id="securitySection">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+        '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>' +
+      '</div>' +
+    '</div>';
+
+  google.script.run
+    .withSuccessHandler(function(s) { populateSecuritySection_(s); })
+    .withFailureHandler(function(e) {
+      var el = document.getElementById("securitySection");
+      if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load access settings: ' + esc(String(e.message || e)) + '</p>';
+    })
+    .getAccessSettings();
+}
+
+// ── SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) ──
+function renderWeightsTab_() {
+  var container = document.getElementById("weightsBody");
   if (!container) return;
 
   var html = '<div class="settings-body">';
-
-  // Access Control first — high-stakes security setting must not be buried below the weights.
-  if (STATE.userRole === "admin") {
-    html += '<div id="securitySection">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
-        '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>' +
-      '</div><hr class="sec-divider">';
-  }
 
   html += '<div class="sec-header" style="margin-bottom:8px">⚖️ Scoring Weights</div>';
   html += '<p class="settings-intro">Each rocketeer receives a composite score (0–100) that blends the metrics below. ' +
@@ -5730,29 +5761,17 @@ function renderSettingsTab() {
 
   html += '</div>';
 
-  // Family × Level overrides — admin only, loaded async (Access Control is rendered up top)
-  if (STATE.userRole === "admin") {
-    html += '<hr class="sec-divider">' +
-      '<div id="matrixSection">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
-        '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
-      '</div>';
-  }
+  // Family × Level overrides — loaded async
+  html += '<hr class="sec-divider">' +
+    '<div id="matrixSection">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+      '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
+    '</div>';
 
   html += '</div>';
   container.innerHTML = html;
   updateWeightTotal();
-
-  if (STATE.userRole === "admin") {
-    loadScoringMatrix_();
-    google.script.run
-      .withSuccessHandler(function(s) { populateSecuritySection_(s); })
-      .withFailureHandler(function(e) {
-        var el = document.getElementById("securitySection");
-        if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load access settings: ' + esc(String(e.message || e)) + '</p>';
-      })
-      .getAccessSettings();
-  }
+  loadScoringMatrix_();
 }
 
 // ── SCORING MATRIX EDITOR — Family × Level weights (admin only) ──────────────
