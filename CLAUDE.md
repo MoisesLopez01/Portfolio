@@ -176,8 +176,15 @@ Spec: `docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-d
   Any miss falls back to base — an unseeded deployment scores exactly as before. The matrix is
   seeded with blank cells (structure only), so every family reads as "inheriting default" until
   an admin enters an explicit override.
+- **Services Team catch-all**: the roster is filtered to Department = "Services"
+  (`CONFIG_PS.PS_DEPT`), so titles missing from the Job Catalog are still Services-team
+  members — they score with the `SERVICES`/`ALL` matrix block (one weight set, all levels;
+  blank = inherit base) instead of silently using the company default. Rendered as the
+  "Services Team" block (with the uncatalogued-titles list) at the top of the matrix editor.
 - Misses are surfaced in the payload as `weightAudit` and in the Scoring Weights page's
-  "Unmapped job titles" panel.
+  Services Team block ("view list").
+- All family blocks render **collapsed**; the Custom/Inheriting badge signals which have
+  overrides.
 - Archived families `JF006/JF010/JF011/JF012` are never seeded.
 - Editor: ☰ menu → ⚖️ Scoring Weights → "Scoring Weights by Family & Level" (admin only) →
   `getScoringConfig()` / `saveScoringMatrix()` (busts the report cache on save).

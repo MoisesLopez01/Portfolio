@@ -104,6 +104,31 @@ function getExternalSSIds_() {
 const SETTINGS_SHEET_NAME_ = "PS Settings";
 const DEFAULT_WEIGHTS_ = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
 
+// ── Report cache versioning ────────────────────────────────────────────────
+// getPSReportData caches one entry per scope (ps_v<VER>_admin and ps_v<VER>_<email>).
+// CacheService can't enumerate keys, so bumping a single version number stored in
+// Script Properties strands ALL prior-version entries at once (they expire on TTL).
+// This is how a weight/matrix save takes effect immediately for every viewer and
+// manager, not just the admin who saved.
+function reportCacheVer_() {
+  try {
+    const v = parseInt(PropertiesService.getScriptProperties().getProperty("PS_CACHE_VER"), 10);
+    return v > 0 ? v : 1;
+  } catch(e) { return 1; }
+}
+
+function bustReportCache_() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const next  = (parseInt(props.getProperty("PS_CACHE_VER"), 10) || 1) + 1;
+    props.setProperty("PS_CACHE_VER", String(next));
+    return next;
+  } catch(e) {
+    Logger.log(`⚠️ bustReportCache_: ${e.message}`);
+    return null;
+  }
+}
+
 function readWeightSettings_() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -139,6 +164,7 @@ function saveWeightSettings(weightsObj) {
     sh.getRange(rows.length + 2, 1).setValue("lastSaved");
     sh.getRange(rows.length + 2, 2).setValue(savedAt);
     SpreadsheetApp.flush();
+    bustReportCache_(); // base weights are the company default — invalidate every cached scope
     Logger.log(`Weights saved: ${JSON.stringify(weightsObj)}`);
     return { ok: true, savedAt: savedAt };
   } catch(e) {
@@ -151,11 +177,15 @@ function saveWeightSettings(weightsObj) {
 // SCORING MATRIX — Family × Level weights + Job Catalog
 // Spec: docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-design.md
 //
+// Single source of truth for the company default = the flat base weights
+// (the "Scoring Weights" Settings section → readWeightSettings_()). The matrix
+// only stores per-family OVERRIDES; there is no separate editable DEFAULT block.
+//
 // Resolution order per employee:
 //   Job Title → Job Catalog → (family, levelKey) → matrix cell
-//   (blank metric inherits matrix.DEFAULT[levelKey], then base weights)
-//   → matrix.DEFAULT[levelKey] → readWeightSettings_() → DEFAULT_WEIGHTS_.
-// Any miss falls back to defaults, so behavior never regresses below the
+//   (blank metric in a family cell inherits the flat base weight)
+//   → base weights (readWeightSettings_) → DEFAULT_WEIGHTS_.
+// Any miss falls back to base, so behaviour never regresses below the
 // single-global-weights model.
 // ============================================================
 
@@ -163,6 +193,13 @@ const SCORING_MATRIX_SHEET_ = "PS Scoring Matrix";
 const JOB_CATALOG_SHEET_    = "Job Catalog";
 const WEIGHT_METRICS_       = ["goals", "tracked", "planned", "rcr", "kudos", "si", "pto"];
 const LEVEL_COLS_ = ["I1","I2","I3","I4","I5","I6","I7","I8","M4","M5","M6","M7","M8","M9","M10"];
+
+// Services Team catch-all: the roster is already filtered to Department = "Services",
+// so any roster title missing from the Job Catalog is still a Services-team member.
+// Those people score with the SERVICES/ALL matrix block (one weight set, all levels)
+// instead of silently falling back to the company default.
+const SERVICES_TEAM_CODE_ = "SERVICES";
+const SERVICES_TEAM_KEY_  = "ALL";
 
 // Active job families (JF006/JF010/JF011/JF012 are archived and never seeded).
 // `role` is the single display role-group name; null = family has split groups
@@ -360,7 +397,7 @@ function readScoringMatrix_() {
     const iMet = hdrs.findIndex(h => h.toLowerCase() === "metric");
     if (iFam === -1 || iMet === -1) return out;
     const levelCols = [];
-    hdrs.forEach((h, i) => { if (/^[IM]\d+$/i.test(h)) levelCols.push({ idx: i, key: h.toUpperCase() }); });
+    hdrs.forEach((h, i) => { if (/^([IM]\d+|ALL)$/i.test(h)) levelCols.push({ idx: i, key: h.toUpperCase() }); });
     data.slice(1).forEach(r => {
       const fam = String(r[iFam] || "").trim().toUpperCase();
       const met = String(r[iMet] || "").trim().toLowerCase();
@@ -399,19 +436,22 @@ function weightsForEmployee_(emp, matrix, catalog, base, audit) {
     if (audit && catalog.size > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", reason: "unmapped-title" });
     }
-    return W;
+    // Services Team catch-all: roster is Services-dept only, so uncatalogued titles
+    // score with the SERVICES/ALL block when it carries any explicit weight.
+    const svc = (matrix[SERVICES_TEAM_CODE_] || {})[SERVICES_TEAM_KEY_];
+    return svc ? fillWeights_(svc, W) : W;
   }
-  const defCell = (matrix.DEFAULT || {})[hit.levelKey] || null;
-  const defW    = defCell ? fillWeights_(defCell, W) : W;
-  const cell    = (matrix[hit.family] || {})[hit.levelKey] || null;
+  // Company default = flat base weights. A family may override per level; blank
+  // metrics within a family cell inherit the base weight for that metric.
+  const cell = (matrix[hit.family] || {})[hit.levelKey] || null;
   if (!cell) {
     if (audit && Object.keys(matrix).length > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", family: hit.family,
         levelKey: hit.levelKey, reason: matrix[hit.family] ? "level-missing" : "family-missing" });
     }
-    return defW;
+    return W;
   }
-  return fillWeights_(cell, defW);
+  return fillWeights_(cell, W);
 }
 
 // Seeds the Job Catalog sheet from COMPANY_ROLES_ (idempotent: clear + rewrite).
@@ -436,40 +476,33 @@ function seedJobCatalog_() {
   return rows.length - 1;
 }
 
-// Seeds the scoring matrix: DEFAULT block + every active family × its actual
-// levels, all cells = current base weights — guarantees day-one score parity.
+// Seeds the scoring matrix with the per-family row structure but BLANK cells.
+// Blank = inherit the company base weight, so a freshly-seeded deployment scores
+// exactly as the flat-weights model (day-one parity) and every family correctly
+// reads as "inheriting default" until an admin enters an explicit override.
 function seedScoringMatrix_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SCORING_MATRIX_SHEET_);
   if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
   sh.clearContents();
-  const base = readWeightSettings_();
-  const levelsByFam = {};
-  COMPANY_ROLES_.forEach(s => {
-    const p = parseJobCode_(s.slice(0, s.indexOf("|")));
-    if (!p) return;
-    if (!levelsByFam[p.family]) levelsByFam[p.family] = {};
-    levelsByFam[p.family][p.levelKey] = true;
-  });
-  const header = ["Family", "Metric"].concat(LEVEL_COLS_);
+  const cols   = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
+  const header = ["Family", "Metric"].concat(cols);
   const rows = [header];
-  const blocks = [{ code: "DEFAULT", levels: null }] // null = all level columns
-    .concat(ACTIVE_FAMILIES_.map(f => ({ code: f.code, levels: levelsByFam[f.code] || {} })));
-  blocks.forEach(b => {
+  ACTIVE_FAMILIES_.forEach(f => {
     WEIGHT_METRICS_.forEach(met => {
-      const row = [b.code, met];
-      LEVEL_COLS_.forEach(lk => {
-        row.push((b.levels === null || b.levels[lk]) ? base[met] : "");
-      });
-      rows.push(row);
+      rows.push([f.code, met].concat(cols.map(() => ""))); // blank → inherit base
     });
+  });
+  // Services Team catch-all block — single ALL column, blank = inherit base.
+  WEIGHT_METRICS_.forEach(met => {
+    rows.push([SERVICES_TEAM_CODE_, met].concat(cols.map(() => "")));
   });
   sh.getRange(1, 1, rows.length, header.length).setValues(rows);
   const savedAt = new Date().toISOString();
   sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
   SpreadsheetApp.flush();
-  Logger.log(`Scoring matrix seeded: ${blocks.length - 1} families + DEFAULT, base=${JSON.stringify(base)}`);
-  return { families: blocks.length - 1, savedAt };
+  Logger.log(`Scoring matrix seeded: ${ACTIVE_FAMILIES_.length} families + Services Team (blank → inherit base).`);
+  return { families: ACTIVE_FAMILIES_.length, savedAt };
 }
 
 // Exported — full config for the Settings-tab matrix editor (Admin only).
@@ -486,6 +519,7 @@ function getScoringConfig() {
 
     const catalog = readJobCatalog_();
     const matrix  = readScoringMatrix_();
+    delete matrix.DEFAULT; // company default now lives only in the flat base weights
 
     // Roles grouped per family/level for the editor's read-only reference rows.
     const rolesByFamily = {};
@@ -532,15 +566,17 @@ function saveScoringMatrix(payload) {
     if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
     sh.clearContents();
 
-    const validFams = ["DEFAULT"].concat(ACTIVE_FAMILIES_.map(f => f.code));
-    const header = ["Family", "Metric"].concat(LEVEL_COLS_);
+    // No DEFAULT block — base is the company default. SERVICES is the catch-all pseudo-family.
+    const validFams = ACTIVE_FAMILIES_.map(f => f.code).concat([SERVICES_TEAM_CODE_]);
+    const cols      = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
+    const header = ["Family", "Metric"].concat(cols);
     const rows = [header];
     validFams.forEach(fam => {
       const block = matrix[fam];
       if (!block) return;
       WEIGHT_METRICS_.forEach(met => {
         const row = [fam, met];
-        LEVEL_COLS_.forEach(lk => {
+        cols.forEach(lk => {
           const cell = block[lk];
           const raw  = cell ? cell[met] : undefined;
           const v    = (raw === undefined || raw === null || raw === "") ? NaN : parseFloat(raw);
@@ -553,7 +589,7 @@ function saveScoringMatrix(payload) {
     const savedAt = new Date().toISOString();
     sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
     SpreadsheetApp.flush();
-    try { CacheService.getScriptCache().remove("ps_v1_admin"); } catch(ce) { /* non-fatal */ }
+    bustReportCache_(); // invalidate every cached scope (admin + manager) so scores refresh now
     Logger.log(`Scoring matrix saved by ${access.email}: ${rows.length - 1} data rows`);
     return { ok: true, savedAt };
   } catch(e) {
@@ -570,8 +606,7 @@ function _test_weightsResolver() {
     [normPS_("Associate, Solution Architecture"),          { family: "JF018", track: "I", level: 2, levelKey: "I2" }],
   ]);
   const matrix = {
-    DEFAULT: { I4: { goals: 25, tracked: 25, planned: 20, rcr: 15, kudos: 15, si: 0, pto: 0 } },
-    JF009:   { I4: { goals: 40, tracked: 20 } }, // partial cell — planned/rcr/… inherit
+    JF009:   { I4: { goals: 40, tracked: 20 } }, // partial cell — planned/rcr/… inherit base
   };
   const results = [];
   const check = (label, got, want) => {
@@ -579,13 +614,22 @@ function _test_weightsResolver() {
     results.push(`${pass ? "PASS" : "FAIL"} ${label}${pass ? "" : ` — got ${JSON.stringify(got)} want ${JSON.stringify(want)}`}`);
   };
 
-  // 1. Full hit with partial cell: explicit values win, blanks inherit DEFAULT[I4]
+  // 1. Full hit with partial cell: explicit values win, blank metrics inherit the flat base
   check("hit+inherit", weightsForEmployee_({ name: "A", jobTitle: "Senior Consultant I,  TECHNICAL consulting" }, matrix, catalog, base),
-    { goals: 40, tracked: 20, planned: 20, rcr: 15, kudos: 15, si: 0, pto: 0 });
-  // 2. Family missing from matrix → DEFAULT[levelKey]… I2 has no DEFAULT row → base
+    { goals: 40, tracked: 20, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 });
+  // 2. Family missing from matrix → base (no separate DEFAULT block)
   check("family-missing", weightsForEmployee_({ name: "B", jobTitle: "Associate, Solution Architecture" }, matrix, catalog, base), base);
-  // 3. Unmapped title → base
+  // 3. Unmapped title, no SERVICES block → base
   check("unmapped", weightsForEmployee_({ name: "C", jobTitle: "Wizard, Hogwarts" }, matrix, catalog, base), base);
+  // 3b. Unmapped title + SERVICES catch-all → services weights, blanks inherit base
+  const matrixSvc = { JF009: matrix.JF009, SERVICES: { ALL: { goals: 50, kudos: 10 } } };
+  check("unmapped-services-fallback",
+    weightsForEmployee_({ name: "C2", jobTitle: "Wizard, Hogwarts" }, matrixSvc, catalog, base),
+    { goals: 50, tracked: 30, planned: 20, rcr: 15, kudos: 10, si: 0, pto: 0 });
+  // 3c. Mapped title is NOT affected by the SERVICES block
+  check("mapped-ignores-services",
+    weightsForEmployee_({ name: "A2", jobTitle: "Senior Consultant I, Technical Consulting" }, matrixSvc, catalog, base),
+    { goals: 40, tracked: 20, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 });
   // 4. Empty catalog → base, no audit noise
   const audit = [];
   check("empty-catalog", weightsForEmployee_({ name: "D", jobTitle: "Anything" }, {}, new Map(), base, audit), base);
@@ -2290,9 +2334,10 @@ function getPSReportData() {
 
     // ── CacheService — 5-min cache per user scope to reduce concurrent sheet reads ──
     const _sCache   = CacheService.getScriptCache();
+    const _cacheVer = reportCacheVer_();
     const _cacheKey = (access.role === "admin" || access.role === "viewer")
-      ? "ps_v1_admin"
-      : "ps_v1_" + access.email;
+      ? "ps_v" + _cacheVer + "_admin"
+      : "ps_v" + _cacheVer + "_" + access.email;
     const _hit = _sCache.get(_cacheKey);
     if (_hit) {
       try { return JSON.parse(_hit); } catch(ce) { /* corrupt entry — fall through to live read */ }
