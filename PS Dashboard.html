@@ -74,6 +74,35 @@ a { color: var(--orbe); text-decoration: none; }
 .header-btn:hover { background: var(--surface); }
 .header-btn svg { width: 14px; height: 14px; }
 
+/* ── NAV MENU (☰) ── */
+.nav-menu-wrap { position: relative; flex-shrink: 0; }
+.nav-menu-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 9px; font-size: 17px; cursor: pointer;
+  border: 1px solid var(--border); background: #fff; color: var(--slate);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.nav-menu-btn:hover { background: var(--surface); color: var(--void); }
+.nav-menu-btn.open  { border-color: var(--orbe); color: var(--orbe); }
+.nav-menu-panel {
+  display: none; position: absolute; top: calc(100% + 7px); left: 0; min-width: 220px;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15,25,65,.16); padding: 6px; z-index: 60;
+}
+.nav-menu-panel.open { display: block; }
+.nav-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 9px 12px; border: none; background: transparent; border-radius: 7px;
+  cursor: pointer; font-size: 12px; font-weight: 700; color: var(--slate); font-family: inherit;
+}
+.nav-menu-item:hover  { background: var(--surface); color: var(--void); }
+.nav-menu-item.active { color: var(--orbe); }
+.nav-menu-divider { border-top: 1px solid var(--border); margin: 5px 4px; }
+
+/* Closable temp tabs opened from the ☰ menu */
+.tab-close { margin-left: 7px; font-weight: 800; opacity: .55; padding: 0 3px; border-radius: 4px; }
+.tab-btn:hover .tab-close, .tab-close:hover { opacity: 1; }
+
 /* ── MAIN ── */
 main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 0; }
 
@@ -770,6 +799,7 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
   .header { padding: 10px 14px; gap: 8px; }
   .header-logo { width: 30px; height: 30px; border-radius: 8px; }
   .header-logo svg { width: 14px; height: 14px; }
+  .nav-menu-btn { width: 32px; height: 32px; font-size: 15px; border-radius: 8px; }
 
   /* Filter bar: stack filters vertically */
   .filter-bar { flex-direction: column; align-items: stretch; padding: 10px 14px; gap: 8px; }
@@ -1033,6 +1063,12 @@ body.dark-mode .header-btn:hover           { background: var(--hover-row); }
 body.dark-mode .copy-btn                   { background: var(--card-bg); border-color: var(--border); color: var(--muted); }
 body.dark-mode .copy-btn:hover             { background: var(--hover-row); }
 body.dark-mode .tab-btn:hover              { color: var(--text); }
+body.dark-mode .nav-menu-btn               { background: var(--card-bg); color: var(--muted); border-color: var(--border); }
+body.dark-mode .nav-menu-btn:hover         { background: var(--hover-row); color: var(--text); }
+body.dark-mode .nav-menu-btn.open          { border-color: var(--orbe); color: var(--orbe); }
+body.dark-mode .nav-menu-panel             { background: var(--card-bg); border-color: var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+body.dark-mode .nav-menu-item:hover        { background: var(--hover-row); color: var(--text); }
+body.dark-mode .nav-menu-divider           { border-color: var(--border); }
 
 /* Detail / expanded rows */
 body.dark-mode .detail-inner                          { background: #090F26; }
@@ -1158,6 +1194,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
 <!-- HEADER -->
 <header class="header">
+  <div class="nav-menu-wrap" id="navMenuWrap">
+    <button class="nav-menu-btn" id="navMenuBtn" onclick="toggleNavMenu()" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
+    <div class="nav-menu-panel" id="navMenuPanel" role="menu"></div>
+  </div>
   <div class="header-logo">
     <img id="srLogo"
          src="https://drive.google.com/uc?id=1HIRAMuKZAfPWgOsbFw-r_6UmxgfSUHZC&export=view"
@@ -1264,8 +1304,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')">Team Radar</button>
     <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">LEADING BEHAVIOURS</button>
     <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')">Trends</button>
-    <button class="tab-btn"        id="tabBtnDataRef"     onclick="switchTab('dataref')">Data Reference</button>
-    <button class="tab-btn"        id="tabBtnSettings"    onclick="switchTab('settings')">⚙ Settings</button>
   </div>
 
   <!-- OVERVIEW TAB -->
@@ -1789,6 +1827,8 @@ var STATE = {
   jobTitleFilter:   new Set(),
   jfFilter:         new Set(),
   lvFilter:         new Set(),
+  openMenuTabs:     [],          // ids of ☰-menu views currently open as temp tabs
+  lastRegularTab:   "overview",  // fallback target when the active temp tab closes
 };
 
 // ── VIEWS — single source of truth for navigation ─────────
@@ -1799,8 +1839,8 @@ var VIEWS = [
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
-  { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "Data Reference",     location: "tabbar", roles: null },
-  { id: "settings",   btnId: "tabBtnSettings",   paneId: "tabSettings",   label: "⚙ Settings",         location: "tabbar", roles: ["admin"] },
+  { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
+  { id: "settings",   btnId: "tabBtnSettings",   paneId: "tabSettings",   label: "⚙ Settings",         location: "menu",   roles: ["admin"] },
 ];
 
 function viewById_(id) {
@@ -1815,12 +1855,73 @@ function canSeeView_(view) {
   return view.roles.indexOf(STATE.userRole) !== -1;
 }
 
-// Show/hide nav buttons to match the current role.
+// Show/hide nav buttons and rebuild the ☰ menu to match the current role.
 function applyRoleToNav_() {
   VIEWS.forEach(function(v) {
     var btn = document.getElementById(v.btnId);
-    if (btn) btn.style.display = canSeeView_(v) ? "" : "none";
+    if (!btn) return;
+    if (!canSeeView_(v)) {
+      if (v.location === "menu") closeMenuTab(v.id);
+      else btn.style.display = "none";
+    } else {
+      btn.style.display = "";
+    }
   });
+  renderNavMenu_();
+}
+
+// ── ☰ NAV MENU + TEMP TABS ────────────────────────────────
+function renderNavMenu_() {
+  var panel = document.getElementById("navMenuPanel");
+  if (!panel) return;
+  var items = VIEWS.filter(function(v) { return v.location === "menu" && canSeeView_(v); });
+  var html  = "";
+  items.forEach(function(v, i) {
+    // Divider between the everyone-visible pages and the admin-only block
+    if (i > 0 && v.roles && !items[i - 1].roles) html += '<div class="nav-menu-divider"></div>';
+    html += '<button class="nav-menu-item' + (STATE.activeTab === v.id ? ' active' : '') + '" role="menuitem"' +
+            ' onclick="openMenuView(\'' + v.id + '\')">' + v.label + '</button>';
+  });
+  panel.innerHTML = html;
+}
+
+function toggleNavMenu(forceClose) {
+  var btn   = document.getElementById("navMenuBtn");
+  var panel = document.getElementById("navMenuPanel");
+  if (!btn || !panel) return;
+  var open = forceClose === true ? false : !panel.classList.contains("open");
+  if (open) renderNavMenu_();
+  panel.classList.toggle("open", open);
+  btn.classList.toggle("open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+// Create the temp tab button for a menu view if it isn't open yet.
+function ensureMenuTabOpen_(view) {
+  if (STATE.openMenuTabs.indexOf(view.id) !== -1) return;
+  STATE.openMenuTabs.push(view.id);
+  var btn = document.createElement("button");
+  btn.className = "tab-btn tab-btn-temp";
+  btn.id        = view.btnId;
+  btn.setAttribute("onclick", "switchTab('" + view.id + "')");
+  btn.innerHTML = view.label +
+    '<span class="tab-close" title="Close" onclick="event.stopPropagation();closeMenuTab(\'' + view.id + '\')">×</span>';
+  document.getElementById("tabNav").appendChild(btn);
+}
+
+function openMenuView(id) {
+  toggleNavMenu(true);
+  switchTab(id);
+}
+
+function closeMenuTab(id) {
+  var idx = STATE.openMenuTabs.indexOf(id);
+  if (idx === -1) return;
+  STATE.openMenuTabs.splice(idx, 1);
+  var view = viewById_(id);
+  var btn  = view && document.getElementById(view.btnId);
+  if (btn) btn.parentNode.removeChild(btn);
+  if (STATE.activeTab === id) switchTab(STATE.lastRegularTab || "overview");
 }
 
 // ── Q4 CONSTANTS — UPDATE EACH QUARTER to match CONFIG_PS in PS Contribution Report.js ──
@@ -1845,6 +1946,11 @@ var _loadSeq = 0;
       var panel = document.getElementById(pair[1]);
       if (wrap && panel && !wrap.contains(e.target)) panel.style.display = 'none';
     });
+    var menuWrap = document.getElementById('navMenuWrap');
+    if (menuWrap && !menuWrap.contains(e.target)) toggleNavMenu(true);
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') toggleNavMenu(true);
   });
 })();
 
@@ -1950,6 +2056,9 @@ function onDataError(err) {
 function switchTab(tab) {
   var view = viewById_(tab);
   if (!view || !canSeeView_(view)) { tab = "overview"; view = viewById_(tab); }
+
+  if (view.location === "menu") ensureMenuTabOpen_(view); // programmatic calls behave like menu clicks
+  else STATE.lastRegularTab = tab;
   STATE.activeTab = tab;
 
   VIEWS.forEach(function(v) {
