@@ -23,12 +23,14 @@
 3. Click **＋** → **HTML** → name it `JavaScript` (without extension) → paste `JavaScript.html`
 4. Save all (Ctrl+S / Cmd+S)
 
-### 3. Set the Claude API key
+### 3. Set the Groq API key
 
-1. In the script editor: **Project Settings** (⚙ gear icon)
-2. Scroll to **Script Properties** → **Add script property**
-3. Property: `CLAUDE_API_KEY`  Value: your Anthropic API key (`sk-ant-api03-…`)
-4. Click **Save script properties**
+1. Deploy the app first (step 4 below)
+2. Visit the deployed URL while logged in as the admin Google account
+3. Click the **＋** button (bottom-right) → Admin Panel → **Settings** tab
+4. Paste your Groq API key (`gsk_…`) → **Save API Key**
+
+**Do NOT paste the key into `Code.gs` or any tracked file** — it would be committed to git history.
 
 ### 4. Deploy as a web app
 
@@ -49,13 +51,13 @@
 
 ## Admin access
 
-When you visit the URL while logged into Google as `moises.lopez@servicerocket.com`:
+When you visit the URL while logged into Google as the admin email:
 - An **Admin** badge appears in the nav
 - A floating **+** button appears bottom-right → opens the Admin Panel
 - From the Admin Panel you can:
-  - Add custom projects (stored server-side in ScriptProperties)
-  - Delete custom projects
-  - Set/update the Claude API key (Settings tab)
+  - Add / delete custom projects
+  - Set / update the Groq API key (Settings tab)
+  - View chat analytics and toggle logging (Analytics tab)
 
 ## Updating the app
 
@@ -65,11 +67,13 @@ After any code change: **Deploy** → **Manage deployments** → edit your deplo
 
 | Key | Set by | Used by |
 |---|---|---|
-| `CLAUDE_API_KEY` | Admin panel → Settings tab | `proxyClaudeAPI()` |
+| `GROQ_API_KEY` | Admin panel → Settings tab | `proxyGroqChat()`, `calculateDealRisk()` |
 | `CUSTOM_PROJECTS` | Admin panel → Add Project | `getProjectsData()`, `saveProject()`, `deleteProject()` |
+| `ANALYTICS_SS_ID` | Auto-created on first chat | `logChatEvent_()`, `getAnalyticsSummary()` |
+| `CHAT_LOGGING` | Admin panel → Settings tab | `logChatEvent_()` |
 
 ## Notes
 
-- Public visitors (no Google login, or any non-admin Google account) see the full portfolio and can use the AI chat. They never see the Admin Panel.
-- The Claude API key is stored in `PropertiesService` and is never sent to the browser.
+- Public visitors (no Google login, or any non-admin account) see the full portfolio and can use the AI chat. They never see the Admin Panel.
+- The Groq API key is stored in `PropertiesService` and is never sent to the browser.
 - Custom projects are limited to the ~9 KB ScriptProperties value size. For heavy use, migrate `CUSTOM_PROJECTS` to a Google Sheet.

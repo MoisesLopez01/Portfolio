@@ -151,11 +151,14 @@ var ProjectModal = (function() {
 
     document.getElementById('pmodal-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
+    if (p.id === 'ai-sales') DealRiskDemo.inject();
   }
 
   function close() {
     document.getElementById('pmodal-overlay').classList.remove('open');
     document.body.style.overflow = '';
+    var existing = document.getElementById('pm-demo-section');
+    if (existing) existing.remove();
   }
 
   function toggleCode() {
@@ -170,6 +173,7 @@ var ProjectModal = (function() {
 
 var AdminPanel = (function() {
   var currentTab = 'add';
+  var _loggingEnabled = null;  // tracks server state; null = not yet loaded
 
   function open() {
     document.getElementById('admin-panel').classList.add('open');
@@ -182,15 +186,18 @@ var AdminPanel = (function() {
 
   function switchTab(tab) {
     currentTab = tab;
-    document.querySelectorAll('.admin-tab').forEach(function(el, i) {
-      el.classList.toggle('active', ['add','manage','settings'][i] === tab);
+    document.querySelectorAll('.admin-tab').forEach(function(el) {
+      var match = (el.getAttribute('onclick') || '').match(/switchTab\('([^']+)'\)/);
+      el.classList.toggle('active', match && match[1] === tab);
     });
     document.querySelectorAll('.admin-tab-pane').forEach(function(el) {
       el.classList.remove('active');
     });
     var pane = document.getElementById('tab-' + tab);
     if (pane) pane.classList.add('active');
-    if (tab === 'manage') refreshManageList();
+    if (tab === 'manage')    refreshManageList();
+    if (tab === 'analytics') loadAnalytics();
+    if (tab === 'settings')  loadLoggingStatus();
   }
 
   function submitProject() {
@@ -284,10 +291,88 @@ var AdminPanel = (function() {
     );
   }
 
+  function loadAnalytics() {
+    var statsEl = document.getElementById('analytics-stats');
+    var logEl   = document.getElementById('analytics-log');
+    if (!statsEl) return;
+    statsEl.innerHTML = '<div class="admin-empty">Loading…</div>';
+    if (logEl) logEl.innerHTML = '';
+    runServer('getAnalyticsSummary', [],
+      function(data) {
+        var ssLink = data.ssUrl
+          ? '<div class="analytics-stat" onclick="window.open(\'' + data.ssUrl + '\',\'_blank\')" title="Open in Sheets" style="cursor:pointer;">' +
+            '<span class="analytics-num" style="font-size:20px;">&#x2197;</span><span class="analytics-lbl">View Sheet</span></div>'
+          : '';
+        statsEl.innerHTML =
+          '<div class="analytics-stat"><span class="analytics-num">' + data.sessions + '</span><span class="analytics-lbl">Sessions</span></div>' +
+          '<div class="analytics-stat"><span class="analytics-num">' + data.messages + '</span><span class="analytics-lbl">Messages</span></div>' +
+          ssLink;
+        updateLoggingBadge(data.loggingEnabled);
+        if (!data.rows || !data.rows.length) {
+          if (logEl) logEl.innerHTML = '<div class="admin-empty">No interactions recorded yet.</div>';
+          return;
+        }
+        if (logEl) logEl.innerHTML = data.rows.slice().reverse().map(function(r) {
+          var d = r.ts ? new Date(r.ts) : null;
+          var ts = d ? ((d.getMonth()+1) + '/' + d.getDate() + ' ' + d.toTimeString().substr(0,5)) : '—';
+          var msg = String(r.message || '');
+          if (msg.length > 100) msg = msg.substring(0, 100) + '…';
+          return '<div class="analytics-row ' + escHtml(r.role || 'user') + '">' +
+            '<span class="analytics-ts">' + ts + '</span>' +
+            '<span class="analytics-role">' + escHtml(r.role || '—') + '</span>' +
+            '<span class="analytics-msg">' + escHtml(msg) + '</span>' +
+          '</div>';
+        }).join('');
+      },
+      function(err) {
+        statsEl.innerHTML = '<div class="admin-empty" style="color:#f87171;">' + escHtml(String(err.message || err)) + '</div>';
+      }
+    );
+  }
+
+  function clearLogs() {
+    if (!confirm('Clear all chat logs? This cannot be undone.')) return;
+    runServer('clearChatLogs', [],
+      function() { Toast.show('Logs cleared', 'success'); loadAnalytics(); },
+      function(err) { Toast.show(String(err.message || err), 'error'); }
+    );
+  }
+
+  function loadLoggingStatus() {
+    var el = document.getElementById('ap-logging-status');
+    if (!el) return;
+    el.textContent = '…';
+    runServer('getAnalyticsSummary', [],
+      function(data) { updateLoggingBadge(data.loggingEnabled); },
+      function()     { el.textContent = '—'; }
+    );
+  }
+
+  function updateLoggingBadge(enabled) {
+    _loggingEnabled = enabled;
+    var el = document.getElementById('ap-logging-status');
+    if (!el) return;
+    el.textContent = enabled ? 'ON' : 'OFF';
+    el.style.color = enabled ? 'var(--teal-vivid)' : 'var(--light-muted)';
+  }
+
+  function toggleLogging() {
+    if (_loggingEnabled === null) {
+      Toast.show('Status still loading — try again in a moment', 'error');
+      return;
+    }
+    var newState = !_loggingEnabled;
+    runServer('toggleChatLogging', [newState],
+      function() { updateLoggingBadge(newState); Toast.show('Chat logging ' + (newState ? 'enabled' : 'disabled'), 'success'); },
+      function(err) { Toast.show(String(err.message || err), 'error'); }
+    );
+  }
+
   return {
     open: open, close: close, switchTab: switchTab,
     submitProject: submitProject, deleteProject: deleteProject,
-    saveApiKey: saveApiKey
+    saveApiKey: saveApiKey, loadAnalytics: loadAnalytics, clearLogs: clearLogs,
+    toggleLogging: toggleLogging
   };
 }());
 
@@ -317,7 +402,7 @@ var Chat = (function() {
     sending = true;
     document.getElementById('chat-send-btn').disabled = true;
 
-    runServer('proxyClaudeAPI', [text, history.slice()],
+    runServer('proxyGroqChat', [text, history.slice(), window.SESSION_ID || 'anon'],
       function(responseText) {
         typingEl.remove();
         addMessage('ai', responseText || 'No response received.');
@@ -332,7 +417,7 @@ var Chat = (function() {
         var msg = String(err.message || err);
         if (msg.indexOf('not configured') !== -1) {
           document.getElementById('chat-no-key').classList.add('visible');
-          addMessage('ai', 'The AI assistant isn\'t configured yet. The admin needs to set the API key.');
+          addMessage('ai', 'The AI assistant isn\'t configured yet. The admin needs to set the Groq API key.');
         } else {
           addMessage('ai', 'Error: ' + msg);
         }
@@ -372,6 +457,169 @@ var Chat = (function() {
   }
 
   return { init: init, send: send, sendSuggestion: sendSuggestion };
+}());
+
+// ── PIPELINE RISK SIMULATOR ───────────────────────────────────────────────────
+
+var DealRiskDemo = (function() {
+
+  // 5 sample deals representing a realistic Q-end pipeline
+  var DEALS = [
+    { name: 'Enterprise Renewal',  amountK: 350, ageDays: 45 },
+    { name: 'New Logo — SaaS Co',  amountK: 180, ageDays: 30 },
+    { name: 'Platform Expansion',  amountK:  95, ageDays: 60 },
+    { name: 'Mid-Market Suite',    amountK: 120, ageDays: 90 },
+    { name: 'SMB Starter Pack',    amountK:  40, ageDays: 15 },
+  ];
+  var TARGET_K = 600;
+  var _aiScores = null;
+
+  // Matches the Groq prompt rules: 15% multiplicative decay per 30d, larger deals decay slower
+  function closePct(ageDays, amountK) {
+    var start    = amountK > 250 ? 0.82 : amountK > 100 ? 0.78 : 0.74;
+    var discount = amountK > 250 ? 0.50 : amountK > 100 ? 0.30 : 0;
+    var decay    = 0.15 * (1 - discount);   // decay per 30-day period
+    return Math.max(0.04, start * Math.pow(1 - decay, ageDays / 30));
+  }
+
+  function fmt(k) {
+    return k >= 1000 ? '$' + (k / 1000).toFixed(1) + 'M' : '$' + Math.round(k) + 'K';
+  }
+
+  function probCls(p) { return p >= 0.60 ? 'g' : p >= 0.40 ? 'w' : 'b'; }
+
+  // ── render ──────────────────────────────────────────────────────────────────
+
+  function renderTable(fwd) {
+    var rows = document.getElementById('pl-rows');
+    if (!rows) return;
+    rows.innerHTML = DEALS.map(function(d, i) {
+      var nowP  = closePct(d.ageDays,       d.amountK);
+      var projP = closePct(d.ageDays + fwd, d.amountK);
+      var delta = Math.round((projP - nowP) * 100);
+      var deltaStr = fwd > 0
+        ? '<span class="pl-delta">' + (delta >= 0 ? '+' : '') + delta + '%</span>'
+        : '';
+      var rowCls = projP < 0.35 ? ' pl-crit' : projP < 0.50 ? ' pl-warn' : '';
+      return (
+        '<div class="pl-row' + rowCls + '">' +
+          '<span class="pl-cell-name">' + escHtml(d.name) + '</span>' +
+          '<span class="pl-cell">'      + fmt(d.amountK)  + '</span>' +
+          '<span class="pl-cell">'      + d.ageDays + 'd' + '</span>' +
+          '<span class="pl-prob ' + probCls(nowP)  + '">' + Math.round(nowP  * 100) + '%</span>' +
+          '<span class="pl-prob ' + probCls(projP) + '">' + Math.round(projP * 100) + '%' + deltaStr + '</span>' +
+          '<span class="pl-cell">'      + fmt(d.amountK * projP) + '</span>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function renderSummary(fwd) {
+    var forecast = DEALS.reduce(function(s, d) {
+      return s + d.amountK * closePct(d.ageDays + fwd, d.amountK);
+    }, 0);
+    var atRisk = DEALS.filter(function(d) {
+      return closePct(d.ageDays + fwd, d.amountK) < 0.40;
+    }).length;
+    var pct = Math.min(1, forecast / TARGET_K);
+    var gap = forecast - TARGET_K;
+
+    var fEl = document.getElementById('pl-forecast');
+    var gEl = document.getElementById('pl-gap');
+    var rEl = document.getElementById('pl-at-risk');
+    var bEl = document.getElementById('pl-bar-fill');
+    if (fEl) fEl.textContent = fmt(forecast);
+    if (gEl) {
+      gEl.textContent  = (gap >= 0 ? '+' : '') + fmt(Math.abs(gap));
+      gEl.className    = 'pl-kpi-val ' + (gap >= 0 ? 'pl-pos' : 'pl-neg');
+    }
+    if (rEl) {
+      rEl.textContent = atRisk + ' deal' + (atRisk !== 1 ? 's' : '');
+      rEl.className   = 'pl-kpi-val ' + (atRisk > 0 ? 'pl-neg' : 'pl-pos');
+    }
+    if (bEl) bEl.style.width = Math.round(pct * 100) + '%';
+  }
+
+  function update() {
+    var fwd = parseInt(document.getElementById('pl-forward').value, 10) || 0;
+    var valEl = document.getElementById('pl-forward-val');
+    if (valEl) valEl.textContent = fwd === 0 ? 'Today' : '+' + fwd + ' days';
+    renderTable(fwd);
+    renderSummary(fwd);
+  }
+
+  // ── inject / destroy ────────────────────────────────────────────────────────
+
+  function inject() {
+    var tpl = document.getElementById('deal-risk-demo-tpl');
+    if (!tpl) return;
+    document.getElementById('pmodal').querySelector('.pmodal-body')
+      .appendChild(tpl.content.cloneNode(true));
+    var slider = document.getElementById('pl-forward');
+    if (slider) slider.addEventListener('input', update);
+    _aiScores = null;
+    update();
+  }
+
+  // ── Groq batch scoring ───────────────────────────────────────────────────────
+
+  function scoreAll() {
+    var btn      = document.getElementById('pl-ai-btn');
+    var noteEl   = document.getElementById('pl-ai-note');
+    var resultsEl = document.getElementById('pl-ai-results');
+    if (!btn) return;
+
+    btn.disabled = true;
+    if (noteEl) noteEl.textContent = 'Scoring 5 deals in parallel…';
+    if (resultsEl) resultsEl.innerHTML =
+      '<div class="demo-loading-row">' +
+        '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
+        '<span class="demo-loading-text">Groq AI analyzing pipeline…</span>' +
+      '</div>';
+
+    var payload = DEALS.map(function(d) {
+      return { ageDays: d.ageDays, amountK: d.amountK };
+    });
+
+    runServer('calculatePipelineRisk', [payload],
+      function(scores) {
+        btn.disabled = false;
+        _aiScores = scores;
+        if (noteEl) noteEl.textContent = 'AI recommendations loaded';
+        if (resultsEl) {
+          resultsEl.innerHTML = scores.map(function(s, i) {
+            var lvl = ['Low','Medium','High','Critical'].indexOf(s.level) >= 0 ? s.level : 'Medium';
+            return (
+              '<div class="pl-ai-card">' +
+                '<div class="pl-ai-card-name">' +
+                  escHtml(DEALS[i].name) +
+                  ' <span class="demo-level ' + lvl + '">' + escHtml(s.level || '—') + '</span>' +
+                '</div>' +
+                '<div class="pl-ai-action">' + escHtml(s.nextAction || '—') + '</div>' +
+              '</div>'
+            );
+          }).join('');
+        }
+      },
+      function(err) {
+        btn.disabled = false;
+        var msg = String(err.message || err);
+        if (noteEl) noteEl.textContent = '';
+        if (resultsEl) {
+          var colour = msg.indexOf('not configured') !== -1 ? '#fbbf24' : '#f87171';
+          var label  = msg.indexOf('not configured') !== -1
+            ? '⚠ Groq API key not set — admin must configure it.'
+            : 'Error: ' + escHtml(msg);
+          resultsEl.innerHTML =
+            '<div class="demo-loading-row">' +
+              '<span class="demo-loading-text" style="color:' + colour + '">' + label + '</span>' +
+            '</div>';
+        }
+      }
+    );
+  }
+
+  return { inject: inject, scoreAll: scoreAll, score: scoreAll };
 }());
 
 // ── UI UTILITIES ──────────────────────────────────────────────────────────────
@@ -452,11 +700,19 @@ var UI = (function() {
         btn.setAttribute('aria-expanded', 'false');
       });
     });
+    // Close on outside tap
+    document.addEventListener('click', function(e) {
+      if (links.classList.contains('open') &&
+          !links.contains(e.target) && !btn.contains(e.target)) {
+        links.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
   }
 
   // Nav active-section highlight
   function initNavHighlight() {
-    var sections = ['hero','projects','chat-section','about'];
+    var sections = ['hero','projects','chat-section','about','contact'];
     var links    = document.querySelectorAll('.nav-link');
     if (!('IntersectionObserver' in window) || !links.length) return;
     var active = '';
@@ -483,7 +739,8 @@ var UI = (function() {
       'Python','SQL · SuiteQL','Gemini Pro API','Google Apps Script',
       'Tableau','Looker','HubSpot API v3/v4','NetSuite · Oracle',
       'Vertex AI','Claude API','pandas','ETL Pipelines',
-      'Prompt Engineering','PDF Automation','RBAC','Time Decay Forecasting'
+      'Prompt Engineering','PDF Automation','RBAC','Time Decay Forecasting',
+      'Bitbucket Pipelines','Google Clasp · GitOps','Claude Code','Rovo Agents','MCP Integration'
     ];
     var track = document.getElementById('stack-track');
     if (!track) return;
@@ -527,6 +784,32 @@ function wireModalEvents() {
     }
   });
 }
+
+// ── GAS BANNER SUPPRESSION ────────────────────────────────────────────────────
+// GAS injects a "created by a Google Apps Script user" notice into the DOM
+// after the page loads. CSS alone may not be enough if GAS injects inline
+// styles; the MutationObserver catches and removes the elements in real time.
+(function() {
+  var SELS = [
+    '.script-application-banner',
+    '.docs-butterbar-container',
+    '[id^="docs-butterbar"]',
+    '[class*="docs-butterbar"]'
+  ];
+  function nuke() {
+    SELS.forEach(function(s) {
+      document.querySelectorAll(s).forEach(function(el) {
+        el.style.cssText += ';display:none!important;height:0!important;';
+      });
+    });
+    // GAS adds margin-top to body to make room for the banner
+    document.body.style.removeProperty('margin-top');
+    document.body.style.removeProperty('padding-top');
+  }
+  nuke();
+  var mo = new MutationObserver(nuke);
+  mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+}());
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 
