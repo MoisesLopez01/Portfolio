@@ -311,14 +311,18 @@ var AdminPanel = (function() {
     if (logEl) logEl.innerHTML = '';
     runServer('getAnalyticsSummary', [],
       function(data) {
+        // The sheet URL is attached via addEventListener (not an inline onclick
+        // string) so it never enters an HTML attribute — no escaping pitfalls.
         var ssLink = data.ssUrl
-          ? '<div class="analytics-stat" onclick="window.open(\'' + data.ssUrl + '\',\'_blank\')" title="Open in Sheets" style="cursor:pointer;">' +
+          ? '<div class="analytics-stat" id="analytics-ss-link" title="Open in Sheets" style="cursor:pointer;">' +
             '<span class="analytics-num" style="font-size:20px;">&#x2197;</span><span class="analytics-lbl">View Sheet</span></div>'
           : '';
         statsEl.innerHTML =
           '<div class="analytics-stat"><span class="analytics-num">' + data.sessions + '</span><span class="analytics-lbl">Sessions</span></div>' +
           '<div class="analytics-stat"><span class="analytics-num">' + data.messages + '</span><span class="analytics-lbl">Messages</span></div>' +
           ssLink;
+        var ssLinkEl = document.getElementById('analytics-ss-link');
+        if (ssLinkEl) ssLinkEl.addEventListener('click', function() { window.open(data.ssUrl, '_blank'); });
         updateLoggingBadge(data.loggingEnabled);
         if (!data.rows || !data.rows.length) {
           if (logEl) logEl.innerHTML = '<div class="admin-empty">No interactions recorded yet.</div>';
@@ -631,6 +635,223 @@ var DealRiskDemo = (function() {
     var clone = tpl.content.cloneNode(true);
     // capture the mount from the fragment before appending — the element
     // reference survives the append, so no sibling-position selector needed
+    var mount = clone.querySelector('.pm-demo-mount');
+    containerEl.appendChild(clone);
+    if (mount) createInstance(mount);
+  }
+
+  return { inject: inject };
+}());
+
+// ── TCC IMPACT SIMULATOR ──────────────────────────────────────────────────────
+
+var TccDemo = (function() {
+
+  // 8 departments — 200 heads total, avgTcc in dollars
+  var DEPTS = [
+    { name: 'Engineering',          hc: 52, avgTcc: 165000 },
+    { name: 'Sales',                hc: 30, avgTcc: 150000 },
+    { name: 'Customer Success',     hc: 25, avgTcc: 110000 },
+    { name: 'Professional Services',hc: 28, avgTcc: 120000 },
+    { name: 'Marketing',            hc: 15, avgTcc: 125000 },
+    { name: 'Product',              hc: 18, avgTcc: 155000 },
+    { name: 'Support',              hc: 22, avgTcc:  85000 },
+    { name: 'G&A',                  hc: 10, avgTcc: 130000 }
+  ];
+
+  // Format dollar amounts: ≥$1M → "$X.XM", else "$XXXK"
+  function fmtD(v) {
+    var abs = Math.abs(v);
+    var sign = v < 0 ? '-' : '';
+    if (abs >= 1000000) return sign + '$' + (abs / 1000000).toFixed(1) + 'M';
+    return sign + '$' + Math.round(abs / 1000) + 'K';
+  }
+
+  function fmtPct(v) {
+    return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  }
+
+  // ── per-instance factory ────────────────────────────────────────────────────
+
+  function createInstance(mount) {
+    var refs = {
+      meritSlider:  mount.querySelector('.tcc-merit'),
+      attrSlider:   mount.querySelector('.tcc-attr'),
+      hiresSlider:  mount.querySelector('.tcc-hires'),
+      promoSlider:  mount.querySelector('.tcc-promo'),
+      meritVal:     mount.querySelector('.tcc-merit-val'),
+      attrVal:      mount.querySelector('.tcc-attr-val'),
+      hiresVal:     mount.querySelector('.tcc-hires-val'),
+      promoVal:     mount.querySelector('.tcc-promo-val'),
+      baseline:     mount.querySelector('.tcc-baseline'),
+      forecast:     mount.querySelector('.tcc-forecast'),
+      delta:        mount.querySelector('.tcc-delta'),
+      deltaPct:     mount.querySelector('.tcc-delta-pct'),
+      waterfall:    mount.querySelector('.tcc-waterfall'),
+      varRows:      mount.querySelector('.tcc-var-rows')
+    };
+
+    function compute() {
+      var meritPct = parseFloat(refs.meritSlider.value) / 100;
+      var attrPct  = parseFloat(refs.attrSlider.value)  / 100;
+      var hires    = parseInt(refs.hiresSlider.value, 10);
+      var promoPct = parseFloat(refs.promoSlider.value) / 100;
+
+      // Baseline
+      var baseline = 0;
+      for (var i = 0; i < DEPTS.length; i++) {
+        baseline += DEPTS[i].hc * DEPTS[i].avgTcc;
+      }
+
+      // Merit cost
+      var meritCost = baseline * meritPct;
+
+      // Promotion cost — 10% lift on promoted employees
+      var promoCost = 0;
+      for (var j = 0; j < DEPTS.length; j++) {
+        promoCost += DEPTS[j].hc * promoPct * DEPTS[j].avgTcc * 0.10;
+      }
+
+      // Attrition credit — mid-year departure (0.5 proration)
+      var attrCredit = 0;
+      for (var k = 0; k < DEPTS.length; k++) {
+        attrCredit += DEPTS[k].hc * attrPct * DEPTS[k].avgTcc * 0.5;
+      }
+      attrCredit = -attrCredit;   // negative (savings)
+
+      // New-hire cost — mid-year start (0.5 proration)
+      var totalHc = 0;
+      for (var m = 0; m < DEPTS.length; m++) { totalHc += DEPTS[m].hc; }
+      var orgAvgTcc   = baseline / totalHc;
+      var hireCost    = hires * orgAvgTcc * 0.5;
+
+      var forecast    = baseline + meritCost + promoCost + attrCredit + hireCost;
+      var netDelta    = forecast - baseline;
+      var netDeltaPct = (netDelta / baseline) * 100;
+
+      // Per-department variance (merit + promo - attrition only; hires are org-level)
+      var deptDeltas = [];
+      for (var d = 0; d < DEPTS.length; d++) {
+        var dept     = DEPTS[d];
+        var dMerit   = dept.hc * dept.avgTcc * meritPct;
+        var dPromo   = dept.hc * promoPct * dept.avgTcc * 0.10;
+        var dAttr    = -(dept.hc * attrPct * dept.avgTcc * 0.5);
+        var dDelta   = dMerit + dPromo + dAttr;
+        deptDeltas.push({ name: dept.name, delta: dDelta });
+      }
+      deptDeltas.sort(function(a, b) {
+        return Math.abs(b.delta) - Math.abs(a.delta);
+      });
+
+      return {
+        baseline:   baseline,
+        meritCost:  meritCost,
+        promoCost:  promoCost,
+        attrCredit: attrCredit,
+        hireCost:   hireCost,
+        forecast:   forecast,
+        netDelta:   netDelta,
+        netDeltaPct:netDeltaPct,
+        deptDeltas: deptDeltas
+      };
+    }
+
+    function renderWaterfall(c) {
+      var steps = [
+        { label: 'Baseline',    value: c.baseline,   abs: c.baseline   },
+        { label: '+Merit',      value: c.meritCost,  abs: c.meritCost  },
+        { label: '+Promotions', value: c.promoCost,  abs: c.promoCost  },
+        { label: '−Attrition',  value: c.attrCredit, abs: Math.abs(c.attrCredit) },
+        { label: '+New Hires',  value: c.hireCost,   abs: c.hireCost   },
+        { label: 'Forecast',    value: c.forecast,   abs: c.forecast   }
+      ];
+
+      // Scale bars relative to the largest absolute value
+      var maxAbs = 0;
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].abs > maxAbs) maxAbs = steps[i].abs;
+      }
+
+      var html = '';
+      for (var j = 0; j < steps.length; j++) {
+        var s       = steps[j];
+        var widthPct = maxAbs > 0 ? Math.round((s.abs / maxAbs) * 100) : 0;
+        var isNeg   = s.value < 0;
+        var barCls  = isNeg ? 'neg' : 'pos';
+        var valStr  = (j === 0 || j === steps.length - 1)
+          ? fmtD(s.value)
+          : (isNeg ? '' : '+') + fmtD(s.value);
+        html +=
+          '<div class="tcc-wf-row">' +
+            '<div class="tcc-wf-lbl">' + escHtml(s.label) + '</div>' +
+            '<div class="tcc-wf-bar-wrap">' +
+              '<div class="tcc-wf-bar ' + barCls + '" style="width:' + widthPct + '%"></div>' +
+            '</div>' +
+            '<div class="tcc-wf-val">' + escHtml(valStr) + '</div>' +
+          '</div>';
+      }
+      refs.waterfall.innerHTML = html;
+    }
+
+    function renderVarRows(deptDeltas) {
+      var html = '';
+      var top = deptDeltas.length > 5 ? 5 : deptDeltas.length;
+      for (var i = 0; i < top; i++) {
+        var row    = deptDeltas[i];
+        var isNeg  = row.delta < 0;
+        var cls    = isNeg ? 'neg' : 'pos';
+        var prefix = isNeg ? '' : '+';
+        html +=
+          '<div class="tcc-var-row">' +
+            '<span class="tcc-var-name">' + escHtml(row.name) + '</span>' +
+            '<span class="tcc-var-delta ' + cls + '">' + prefix + escHtml(fmtD(row.delta)) + '</span>' +
+          '</div>';
+      }
+      refs.varRows.innerHTML = html;
+    }
+
+    function render() {
+      var meritRaw = parseFloat(refs.meritSlider.value);
+      var attrRaw  = parseFloat(refs.attrSlider.value);
+      var hiresRaw = parseInt(refs.hiresSlider.value, 10);
+      var promoRaw = parseFloat(refs.promoSlider.value);
+
+      refs.meritVal.textContent = meritRaw.toFixed(1) + '%';
+      refs.attrVal.textContent  = attrRaw + '%';
+      refs.hiresVal.textContent = hiresRaw;
+      refs.promoVal.textContent = promoRaw + '%';
+
+      var c = compute();
+
+      refs.baseline.textContent  = fmtD(c.baseline);
+      refs.forecast.textContent  = fmtD(c.forecast);
+      refs.delta.textContent     = (c.netDelta >= 0 ? '+' : '') + fmtD(c.netDelta);
+      refs.delta.classList.toggle('pl-pos', c.netDelta >= 0);
+      refs.delta.classList.toggle('pl-neg', c.netDelta < 0);
+      refs.deltaPct.textContent  = fmtPct(c.netDeltaPct);
+      refs.deltaPct.classList.toggle('pl-pos', c.netDelta >= 0);
+      refs.deltaPct.classList.toggle('pl-neg', c.netDelta < 0);
+
+      renderWaterfall(c);
+      renderVarRows(c.deptDeltas);
+    }
+
+    // bind sliders
+    refs.meritSlider.addEventListener('input', render);
+    refs.attrSlider.addEventListener('input',  render);
+    refs.hiresSlider.addEventListener('input', render);
+    refs.promoSlider.addEventListener('input', render);
+
+    // initial render
+    render();
+  }
+
+  // ── inject ───────────────────────────────────────────────────────────────────
+
+  function inject(containerEl) {
+    var tpl = document.getElementById('tcc-demo-tpl');
+    if (!tpl || !containerEl) return;
+    var clone = tpl.content.cloneNode(true);
     var mount = clone.querySelector('.pm-demo-mount');
     containerEl.appendChild(clone);
     if (mount) createInstance(mount);

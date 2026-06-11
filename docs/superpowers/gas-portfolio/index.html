@@ -1178,6 +1178,74 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   .pl-kpi-val { font-size: 16px; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   TCC IMPACT SIMULATOR
+═══════════════════════════════════════════════════════════════════════ */
+.tcc-sliders {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;
+  margin-bottom: 20px;
+}
+@media (max-width: 540px) { .tcc-sliders { grid-template-columns: 1fr; } }
+.tcc-summary {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin-bottom: 18px;
+}
+.tcc-waterfall { margin-bottom: 18px; }
+.tcc-wf-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px;
+}
+.tcc-wf-lbl {
+  font-family: var(--mono); font-size: 10px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  width: 100px; flex-shrink: 0; text-align: right;
+}
+.tcc-wf-bar-wrap {
+  flex: 1; height: 22px; position: relative;
+  background: rgba(93,202,165,0.06);
+  border-radius: 4px; overflow: hidden;
+}
+.tcc-wf-bar {
+  height: 100%; border-radius: 4px;
+  transition: width 0.22s ease;
+  position: relative;
+}
+.tcc-wf-bar.pos { background: linear-gradient(90deg, #2dd4bf, #0d9488); }
+.tcc-wf-bar.neg { background: linear-gradient(90deg, #f87171, #dc2626); }
+.tcc-wf-val {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  color: var(--dark-text); flex-shrink: 0; min-width: 68px; text-align: left;
+}
+.tcc-var-section { margin-top: 6px; }
+.tcc-var-hd {
+  font-family: var(--mono); font-size: 9.5px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 8px;
+}
+.tcc-var-rows { display: flex; flex-direction: column; gap: 5px; }
+.tcc-var-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 10px; border-radius: 7px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(93,202,165,0.10);
+  font-size: 12px;
+}
+.tcc-var-name { color: var(--dark-text); }
+.tcc-var-delta {
+  font-family: var(--mono); font-weight: 600; font-size: 12px;
+}
+.tcc-var-delta.pos { color: #2dd4bf; }
+.tcc-var-delta.neg { color: #f87171; }
+.tcc-footnote {
+  margin-top: 16px;
+  font-size: 10px; color: var(--dark-muted); font-family: var(--mono);
+  text-align: center; opacity: 0.7;
+}
+@media (max-width: 540px) {
+  .tcc-wf-lbl { width: 72px; font-size: 9px; }
+  .tcc-wf-val { min-width: 54px; font-size: 9px; }
+}
+
 </style>
 </head>
 <body>
@@ -1625,6 +1693,70 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       <span class="pl-ai-note">Get AI next-action recommendations per deal</span>
     </div>
     <div class="pl-ai-results"></div>
+  </div>
+</template>
+
+<template id="tcc-demo-tpl">
+  <div class="demo-section pm-demo-mount">
+    <div class="demo-hd">💰 TCC Impact Simulator — Cost-Driver Forecast</div>
+
+    <!-- Sliders -->
+    <div class="tcc-sliders">
+      <div class="demo-slider-group">
+        <label>Merit Increase <span class="tcc-merit-val">3.0%</span>
+          <input class="demo-range tcc-merit" type="range" min="0" max="10" step="0.5" value="3">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>Attrition Rate <span class="tcc-attr-val">12%</span>
+          <input class="demo-range tcc-attr" type="range" min="0" max="30" step="1" value="12">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>New Hires (FY) <span class="tcc-hires-val">10</span>
+          <input class="demo-range tcc-hires" type="range" min="0" max="40" step="1" value="10">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>Promotion Rate <span class="tcc-promo-val">5%</span>
+          <input class="demo-range tcc-promo" type="range" min="0" max="15" step="1" value="5">
+        </label>
+      </div>
+    </div>
+
+    <!-- KPI row -->
+    <div class="tcc-summary">
+      <div class="pl-kpi">
+        <div class="pl-kpi-val tcc-baseline">—</div>
+        <div class="pl-kpi-lbl">Baseline TCC</div>
+      </div>
+      <div class="pl-kpi-div"></div>
+      <div class="pl-kpi">
+        <div class="pl-kpi-val tcc-forecast">—</div>
+        <div class="pl-kpi-lbl">Forecast TCC</div>
+      </div>
+      <div class="pl-kpi-div"></div>
+      <div class="pl-kpi">
+        <div class="pl-kpi-val tcc-delta">—</div>
+        <div class="pl-kpi-lbl">Net Delta</div>
+      </div>
+      <div class="pl-kpi-div"></div>
+      <div class="pl-kpi">
+        <div class="pl-kpi-val tcc-delta-pct">—</div>
+        <div class="pl-kpi-lbl">Delta %</div>
+      </div>
+    </div>
+
+    <!-- Waterfall chart -->
+    <div class="tcc-waterfall"></div>
+
+    <!-- Department variance list -->
+    <div class="tcc-var-section">
+      <div class="tcc-var-hd">Top department variance</div>
+      <div class="tcc-var-rows"></div>
+    </div>
+
+    <div class="tcc-footnote">Synthetic data — runs entirely in your browser. No real company data.</div>
   </div>
 </template>
 
