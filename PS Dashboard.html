@@ -1304,6 +1304,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')">Team Radar</button>
     <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">LEADING BEHAVIOURS</button>
     <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')">Trends</button>
+    <button class="tab-btn"        id="tabBtnExecBrief"   onclick="switchTab('execbrief')">📋 Team Executive Brief</button>
   </div>
 
   <!-- OVERVIEW TAB -->
@@ -1750,6 +1751,23 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
   </div>
 
+  <!-- TEAM EXECUTIVE BRIEF TAB (admin only) -->
+  <div id="tabExecBrief" class="tab-pane">
+    <div class="section-card">
+      <div class="section-head" style="flex-wrap:wrap;gap:12px">
+        <div style="flex:1;min-width:200px">
+          <h2>Team Executive Brief</h2>
+          <p class="section-sub" id="execBriefSub"></p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
+          <select id="ebWeekSelect" onchange="renderExecBriefTab_()" class="inline-select"></select>
+        </div>
+      </div>
+      <div id="execBriefBody" style="min-height:60px;padding-bottom:16px"></div>
+    </div>
+  </div>
+
   <!-- SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) -->
   <div id="tabWeights" class="tab-pane">
     <div class="section-card">
@@ -1854,6 +1872,7 @@ var VIEWS = [
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
+  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["admin"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
   { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["admin"] },
   { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["admin"] },
@@ -2048,6 +2067,7 @@ function onDataLoaded(payload) {
   buildFilterBar();
   populateRkWeekSelect();
   populateRadarWeekSelect();
+  populateEbWeekSelect();
   switchTab(STATE.activeTab);
 }
 
@@ -2112,6 +2132,7 @@ function renderAll() {
     radar:      function() { renderRadarTab(filtered); },
     rocketeers: function() { renderTopRocketeers(filtered); },
     trends:     function() { renderTrendsTab(); },
+    execbrief:  function() { renderExecBriefTab_(); },
     weights:    function() { renderWeightsTab_(); },
     access:     function() { renderAccessTab_(); },
     dataref:    function() { renderDrScoreBars(); },
@@ -2344,6 +2365,7 @@ function populateWeekSelect_(selId) {
 
 function populateRkWeekSelect()    { populateWeekSelect_("rkWeekSelect"); }
 function populateRadarWeekSelect() { populateWeekSelect_("radarWeekSelect"); }
+function populateEbWeekSelect()    { populateWeekSelect_("ebWeekSelect"); }
 
 function computeRkScore(emp, weekLabel) {
   var wd = emp.weeks && emp.weeks[weekLabel];
@@ -3199,10 +3221,6 @@ function renderTopRocketeers(filtered) {
   var selIdx   = q4w.indexOf(selWeek);
   var prevWeek = (selIdx > 0 && !q4w[selIdx - 1].isFuture) ? q4w[selIdx - 1] : null;
 
-  // Generate team executive brief (rendered above the performer cards)
-  var teamBrief     = generateTeamBrief(selLabel, prevWeek ? prevWeek.label : null);
-  var teamBriefHTML = buildTeamBriefHTML(selLabel, prevWeek ? prevWeek.label : null, teamBrief);
-
   if (sub && selWeek) {
     var inProgress = !selWeek.isPast ? " (in progress)" : "";
     var wParts = WEIGHT_DEFS
@@ -3227,8 +3245,7 @@ function renderTopRocketeers(filtered) {
     .slice(0, 10);
 
   if (!scored.length) {
-    el.innerHTML = '<p style="padding:24px;color:var(--muted);text-align:center;font-size:12px">No individual scores for ' + esc(selLabel) + '</p>' +
-                   (STATE.userRole === 'admin' ? teamBriefHTML : '');
+    el.innerHTML = '<p style="padding:24px;color:var(--muted);text-align:center;font-size:12px">No individual scores for ' + esc(selLabel) + '</p>';
     return;
   }
 
@@ -3323,7 +3340,35 @@ function renderTopRocketeers(filtered) {
       '</div>';
   });
   html += '</div>';
-  el.innerHTML = html + (STATE.userRole === 'admin' ? teamBriefHTML : '');
+  el.innerHTML = html;
+}
+
+// ── TEAM EXECUTIVE BRIEF TAB (admin only) ─────────────────
+function renderExecBriefTab_() {
+  var el = document.getElementById("execBriefBody");
+  if (!el || !DATA) return;
+
+  // Selected week from picker; default = last completed (W-1) — mirrors LEADING BEHAVIOURS
+  var sel      = document.getElementById("ebWeekSelect");
+  var selLabel = sel && sel.value ? sel.value : null;
+  var q4w      = DATA.q4Weeks || DATA.weeks;
+  if (!selLabel) {
+    var pastW = q4w.filter(function(w) { return w.isPast; });
+    selLabel  = pastW.length > 0 ? pastW[pastW.length - 1].label : DATA.meta.currentWeekLabel;
+  }
+  var selWeek  = q4w.find(function(w) { return w.label === selLabel; });
+  var selIdx   = q4w.indexOf(selWeek);
+  var prevWeek = (selIdx > 0 && !q4w[selIdx - 1].isFuture) ? q4w[selIdx - 1] : null;
+
+  var sub = document.getElementById("execBriefSub");
+  if (sub && selWeek) {
+    var inProgress = !selWeek.isPast ? " (in progress)" : "";
+    sub.textContent = "Weekly leadership summary · " + selLabel + " (" + selWeek.dateRange + ")" + inProgress
+      + (prevWeek ? "  ·  vs " + prevWeek.label : "");
+  }
+
+  var brief = generateTeamBrief(selLabel, prevWeek ? prevWeek.label : null);
+  el.innerHTML = buildTeamBriefHTML(selLabel, prevWeek ? prevWeek.label : null, brief);
 }
 
 // ── KPI HELPERS ───────────────────────────────────────────
