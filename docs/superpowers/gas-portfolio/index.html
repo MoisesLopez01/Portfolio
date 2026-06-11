@@ -1155,7 +1155,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   flex-wrap: wrap; margin-top: 4px;
 }
 .pl-ai-note  { font-size: 11px; color: var(--dark-muted); font-family: var(--mono); }
-#pl-ai-results { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
+.pl-ai-results { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
 .pl-ai-card {
   padding: 10px 12px; border-radius: 8px;
   background: rgba(255,255,255,0.03);
@@ -1566,13 +1566,13 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 
 <!-- ── PIPELINE RISK SIMULATOR TEMPLATE (injected into ai-sales modal) ── -->
 <template id="deal-risk-demo-tpl">
-  <div class="demo-section" id="pm-demo-section">
+  <div class="demo-section pm-demo-mount">
     <div class="demo-hd">⚡ Live Pipeline Risk Simulator — Time Decay Model</div>
 
     <!-- KPI summary row -->
     <div class="pl-summary">
       <div class="pl-kpi">
-        <div class="pl-kpi-val" id="pl-forecast">—</div>
+        <div class="pl-kpi-val pl-forecast">—</div>
         <div class="pl-kpi-lbl">Wtd Forecast</div>
       </div>
       <div class="pl-kpi-div"></div>
@@ -1582,28 +1582,28 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       </div>
       <div class="pl-kpi-div"></div>
       <div class="pl-kpi">
-        <div class="pl-kpi-val" id="pl-gap">—</div>
+        <div class="pl-kpi-val pl-gap">—</div>
         <div class="pl-kpi-lbl">Gap</div>
       </div>
       <div class="pl-kpi-div"></div>
       <div class="pl-kpi">
-        <div class="pl-kpi-val" id="pl-at-risk">—</div>
+        <div class="pl-kpi-val pl-at-risk">—</div>
         <div class="pl-kpi-lbl">At Risk</div>
       </div>
     </div>
 
     <!-- Forecast progress bar -->
     <div class="pl-bar-wrap">
-      <div class="pl-bar-fill" id="pl-bar-fill" style="width:0%"></div>
+      <div class="pl-bar-fill" style="width:0%"></div>
     </div>
 
     <!-- Time-forward slider -->
     <div class="pl-time-row">
       <span class="pl-time-lbl">Simulate time forward:</span>
       <span class="pl-time-edge">Today</span>
-      <input class="demo-range pl-range" type="range" id="pl-forward" min="0" max="90" value="0">
+      <input class="demo-range pl-range pl-forward" type="range" min="0" max="90" value="0">
       <span class="pl-time-edge">+90d</span>
-      <span class="pl-time-val" id="pl-forward-val">Today</span>
+      <span class="pl-time-val pl-forward-val">Today</span>
     </div>
 
     <!-- Deal table -->
@@ -1616,15 +1616,15 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         <span>At +Xd</span>
         <span>Wtd Value</span>
       </div>
-      <div id="pl-rows"></div>
+      <div class="pl-rows"></div>
     </div>
 
     <!-- AI score button -->
     <div class="pl-ai-row">
-      <button class="demo-btn" id="pl-ai-btn" onclick="DealRiskDemo.scoreAll()">Score with Groq AI →</button>
-      <span class="pl-ai-note" id="pl-ai-note">Get AI next-action recommendations per deal</span>
+      <button class="demo-btn pl-ai-btn">Score with Groq AI →</button>
+      <span class="pl-ai-note">Get AI next-action recommendations per deal</span>
     </div>
-    <div id="pl-ai-results"></div>
+    <div class="pl-ai-results"></div>
   </div>
 </template>
 
