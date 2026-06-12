@@ -933,10 +933,7 @@ var CompNormalizerDemo = (function() {
     }
 
     function setDefaultSalary() {
-      var country = selectedCountry();
-      var levelKey = selectedLevel();
-      refs.salaryInput.value = defaultSalary(country, levelKey);
-      refs.ccySuffix.textContent = country.ccy;
+      refs.salaryInput.value = defaultSalary(selectedCountry(), selectedLevel());
     }
 
     function render() {
@@ -952,64 +949,38 @@ var CompNormalizerDemo = (function() {
 
       var nominalUsd  = salary / country.fx;
       var colAdjusted = nominalUsd / country.col;
-      var compaRatio  = (band.mid > 0) ? colAdjusted / band.mid : 0;
+      var compaRatio  = colAdjusted / band.mid;
 
       refs.nominal.textContent = salary > 0 ? fmtUsd(nominalUsd)  : '—';
       refs.colAdj.textContent  = salary > 0 ? fmtUsd(colAdjusted) : '—';
       refs.compa.textContent   = salary > 0 ? compaRatio.toFixed(2) : '—';
 
-      // Determine quartile position
+      // Band position — single derivation drives label, card colours, and marker
       var bandRange = band.max - band.min;
       var posFrac   = bandRange > 0 ? (colAdjusted - band.min) / bandRange : 0;
-      var quartile  = '';
-      var stateClass = '';
+      var isBelow   = salary <= 0 || colAdjusted < band.min;
+      var isAbove   = !isBelow && colAdjusted > band.max;
+      var isQ3      = !isBelow && !isAbove && posFrac >= 0.50 && posFrac < 0.75;
 
-      if (salary <= 0 || colAdjusted < band.min) {
-        quartile   = 'Below band';
-        stateClass = 'cn-below';
-      } else if (colAdjusted > band.max) {
-        quartile   = 'Above band';
-        stateClass = 'cn-above';
-      } else if (posFrac < 0.25) {
-        quartile   = 'Q1 — Entry of band';
-        stateClass = '';
-      } else if (posFrac < 0.50) {
-        quartile   = 'Q2 — Lower-mid of band';
-        stateClass = '';
-      } else if (posFrac < 0.75) {
-        quartile   = 'Q3 — Upper-mid of band';
-        stateClass = 'cn-mid';
-      } else {
-        quartile   = 'Q4 — Top of band';
-        stateClass = '';
-      }
-
-      // Apply colour classes to compa value
-      refs.compa.className = 'cn-card-val cn-compa' + (stateClass ? ' ' + stateClass : '');
-      refs.colAdj.className = 'cn-card-val cn-col-adj' + (stateClass ? ' ' + stateClass : '');
-
-      // Quartile label
+      var quartile;
+      if (isBelow)              quartile = 'Below band';
+      else if (isAbove)         quartile = 'Above band';
+      else if (posFrac < 0.25)  quartile = 'Q1 — Entry of band';
+      else if (posFrac < 0.50)  quartile = 'Q2 — Lower-mid of band';
+      else if (posFrac < 0.75)  quartile = 'Q3 — Upper-mid of band';
+      else                      quartile = 'Q4 — Top of band';
       refs.quartileLbl.textContent = quartile;
-      refs.quartileLbl.className = 'cn-quartile-lbl' +
-        (stateClass === 'cn-below' ? ' cn-lbl-below' :
-         stateClass === 'cn-above' ? ' cn-lbl-above' : '');
+
+      [refs.compa, refs.colAdj, refs.quartileLbl, refs.marker].forEach(function(el) {
+        el.classList.toggle('cn-below', isBelow);
+        el.classList.toggle('cn-above', isAbove);
+      });
+      refs.compa.classList.toggle('cn-q3', isQ3);
+      refs.colAdj.classList.toggle('cn-q3', isQ3);
 
       // Marker position — clamp to [1%, 99%] of strip width
-      var markerPct;
-      if (salary <= 0 || colAdjusted < band.min) {
-        markerPct = 0;
-      } else if (colAdjusted > band.max) {
-        markerPct = 100;
-      } else {
-        markerPct = posFrac * 100;
-      }
-      markerPct = Math.max(1, Math.min(99, markerPct));
-      refs.marker.style.left = markerPct + '%';
-
-      // Marker colour class
-      refs.marker.className = 'cn-marker' +
-        (stateClass === 'cn-below' ? ' cn-below-band' :
-         stateClass === 'cn-above' ? ' cn-above-band' : '');
+      var markerPct = isBelow ? 0 : isAbove ? 100 : posFrac * 100;
+      refs.marker.style.left = Math.max(1, Math.min(99, markerPct)) + '%';
     }
 
     // On country change: update currency suffix + reset salary to sensible default

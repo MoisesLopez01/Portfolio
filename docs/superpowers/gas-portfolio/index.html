@@ -1266,7 +1266,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   padding: 7px 10px; outline: none; transition: border-color 0.15s;
 }
 .cn-select:focus, .cn-num-input:focus { border-color: var(--purple); }
-.cn-select option { background: #0a1f1a; }
+.cn-select option { background: var(--dark-surf); }
 .cn-salary-wrap { display: flex; align-items: center; gap: 6px; }
 .cn-salary-wrap .cn-num-input { flex: 1; }
 .cn-ccy-suffix {
@@ -1284,7 +1284,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 }
 .cn-card-val.cn-below { color: var(--amber); }
 .cn-card-val.cn-above { color: #f87171; }
-.cn-card-val.cn-mid   { color: #4ade80; }
+.cn-card-val.cn-q3    { color: #4ade80; }
 .cn-card-lbl { font-size: 9px; color: var(--dark-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 3px; }
 .cn-band-section { margin-bottom: 12px; }
 .cn-band-labels {
@@ -1312,15 +1312,15 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   transition: left 0.22s var(--ease);
   z-index: 2;
 }
-.cn-marker.cn-below-band { border-color: var(--amber); box-shadow: 0 0 8px rgba(245,158,11,0.60); }
-.cn-marker.cn-above-band { border-color: #f87171;      box-shadow: 0 0 8px rgba(248,113,113,0.60); }
+.cn-marker.cn-below { border-color: var(--amber); box-shadow: 0 0 8px rgba(245,158,11,0.60); }
+.cn-marker.cn-above { border-color: #f87171;      box-shadow: 0 0 8px rgba(248,113,113,0.60); }
 .cn-quartile-lbl {
   margin-top: 8px; font-family: var(--mono); font-size: 11px;
   font-weight: 600; color: var(--purple); text-align: center;
   min-height: 16px;
 }
-.cn-quartile-lbl.cn-lbl-below { color: var(--amber); }
-.cn-quartile-lbl.cn-lbl-above { color: #f87171; }
+.cn-quartile-lbl.cn-below { color: var(--amber); }
+.cn-quartile-lbl.cn-above { color: #f87171; }
 
 </style>
 </head>
@@ -1856,7 +1856,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
           <option value="L5">L5</option>
         </select>
       </div>
-      <div class="cn-input-group cn-salary-group">
+      <div class="cn-input-group">
         <label class="cn-label">Annual Salary</label>
         <div class="cn-salary-wrap">
           <input class="cn-salary cn-num-input" type="number" min="0" step="1000">
