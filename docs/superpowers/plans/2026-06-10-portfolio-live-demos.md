@@ -10,23 +10,25 @@
 
 ---
 
-## Execution status (paused 2026-06-11, 2026.W24)
+## Execution status (paused 2026-06-11, 2026.W24 — second pause)
 
 Executed via subagent-driven development on branch `feature/portfolio-live-demos`.
 
 | Task | Status | Commits |
 |---|---|---|
 | 1 — DealRiskDemo refactor | ✅ Done | `6a8af3f`, `810c1ab`, `ebbfec9` |
-| 2 — Demo registry + badge | ❌ **Not started** (despite Task-3 commit order — verified: no `DEMOS` map, no badge in code) | — |
+| 2 — Demo registry + badge | ✅ Done (spec + quality approved) | `3772274`, `177a695` |
 | 3 — TCC Impact Simulator | ✅ Done | `784a64b` |
-| 4 — Global Comp Normalizer | ✅ Implemented + spec review passed; **code-quality review still pending** | `e980a4b`, `6a82e5e` |
-| 5 — Contribution Scoring Engine | ❌ Not started | — |
-| 6 — Try-it-live section/nav/CTA/pill | ❌ Not started | — |
+| 4 — Global Comp Normalizer | ✅ Done (spec + quality approved) | `e980a4b`, `6a82e5e`, `08b5bfe`, `04816be` |
+| 5 — Contribution Scoring Engine | ✅ Done (spec + quality approved) | `d63a7ce`, `1d277b7` |
+| 6 — Try-it-live section/nav/CTA/pill | 🔶 Implemented; **spec review + quality review pending** | `1050c30` |
 | 7 — Tests + final verification | ❌ Not started | — |
 
-**Revised execution order** (Task 2's `DEMOS` map references all four demo modules, so it runs after them): 4 → 5 → 2 → 6 → 7. **Resume point: code-quality review of `784a64b..6a82e5e`, then Task 5.**
+**Resume point: spec-compliance review of `1050c30` (Task 6), then quality review, then Task 7, then the final whole-implementation review.**
 
-Task 4 spec-review fixes already applied in `6a82e5e`: zero salary shows "Below band" (not "—"), level change re-derives default salary, dead `fmtLocal` removed.
+Task 6 implementer notes to carry into review: tab labels ("Ops · Contribution Scorer" etc.) were not specced — chosen from DOMAINS data; `initNavHighlight` hardcodes its section array, so `'demos'` was added to it (justified deviation); hero CTA inserted after the primary button but before the pre-existing "Ask the AI assistant" ghost button; blue/purple active-tab text uses lighter tints `#93c5fd`/`#d8b4fe` for contrast on the dark band; `.demo-tab-panel` capped at 760px with a `.demo-section { margin-top: 0 }` override.
+
+Quality-review fix commits this session: Task 4 — consolidated band-state rendering to `classList.toggle` single vocabulary (`08b5bfe`) and scoped `.cn-zone.cn-q1..q4` selectors after the `cn-q3` rename collided with the zone rule (`04816be`). Task 5 — z-index on hover/selected rows, named `ROW_INNER_H`/`ROW_GAP` constants, dead `aiBusy` flag removed, keyboard-accessible rows (`1d277b7`). Task 2 — `flex: 1` on `.tile-title` instead of `space-between` so pills stay right-aligned (`177a695`). Deferred (flagged Minor, fix when next touched): Groq error handler is now a third verbatim copy (DealRiskDemo / chat / ContribScoreDemo) — extract a shared `groqErrorHtml(err)` helper.
 
 Reference pattern for new demos: `TccDemo` module in `JavaScript.html` (constants → format helpers → `createInstance(mount)` closure with `refs` via `mount.querySelector` → `inject(containerEl)` capturing `.pm-demo-mount` from the fragment pre-append) + `#tcc-demo-tpl` template in `index.html` (classes only, no ids, no inline handlers, synthetic-data footnote). Commit only the two portfolio files per task — the repo has unrelated dirty files (`Code.gs` JSDoc additions, untracked `projects/`) that are not part of this plan.
 
