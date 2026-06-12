@@ -1042,7 +1042,9 @@ var ContribScoreDemo = (function() {
     { key: 'kudos',   label: 'Kudos' }
   ];
 
-  var ROW_H = 40;   // leaderboard row pitch in px (34px row + 6px gap)
+  var ROW_INNER_H = 34;                     // must match .cs-row height in CSS
+  var ROW_GAP     = 6;
+  var ROW_H       = ROW_INNER_H + ROW_GAP;  // leaderboard row pitch in px
 
   // Normalization mirrors the production scoring spec
   function normsFor(m) {
@@ -1121,24 +1123,28 @@ var ContribScoreDemo = (function() {
 
     // per-instance state
     var selectedIdx = -1;
-    var aiBusy      = false;
     var lastScores  = [];
     var lastOrder   = [];
     var rowEls      = [];
 
     // Build one DOM node per member — reordering moves stable nodes via
     // transform so CSS can animate the rank changes
-    refs.board.style.height = (TEAM.length * ROW_H - 6) + 'px';
+    refs.board.style.height = ((TEAM.length - 1) * ROW_H + ROW_INNER_H) + 'px';
     for (var i = 0; i < TEAM.length; i++) {
       (function(idx) {
         var row = document.createElement('div');
         row.className = 'cs-row';
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
         row.innerHTML =
           '<span class="cs-rank">—</span>' +
           '<span class="cs-name">' + escHtml(TEAM[idx].name) + '</span>' +
           '<span class="cs-bar-wrap"><span class="cs-bar" style="width:0%"></span></span>' +
           '<span class="cs-score">—</span>';
         row.addEventListener('click', function() { select(idx); });
+        row.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(idx); }
+        });
         refs.board.appendChild(row);
         rowEls.push(row);
       }(i));
@@ -1226,8 +1232,6 @@ var ContribScoreDemo = (function() {
     // ── AI executive brief ────────────────────────────────────────────────────
 
     function generateBrief() {
-      if (aiBusy) return;
-      aiBusy = true;
       refs.aiBtn.disabled = true;
       refs.aiNote.textContent = 'Generating brief…';
       refs.aiResults.innerHTML =
@@ -1250,7 +1254,6 @@ var ContribScoreDemo = (function() {
 
       runServer('proxyGroqChat', [prompt, [], window.SESSION_ID || 'anon'],
         function(reply) {
-          aiBusy = false;
           refs.aiBtn.disabled = false;
           refs.aiNote.textContent = 'Executive brief generated';
           refs.aiResults.innerHTML =
@@ -1259,7 +1262,6 @@ var ContribScoreDemo = (function() {
             '</div>';
         },
         function(err) {
-          aiBusy = false;
           refs.aiBtn.disabled = false;
           var msg = String(err.message || err);
           refs.aiNote.textContent = '';
