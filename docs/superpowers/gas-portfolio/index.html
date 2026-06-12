@@ -356,8 +356,8 @@ section { padding: 88px 2rem; }
 .domain-tile:hover { background: white; border-color: rgba(0,200,150,0.3); transform: translateX(3px); box-shadow: var(--shadow-sm); }
 .domain-tile:hover::before { opacity: 1; }
 
-.tile-row1 { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
-.tile-title { font-size: 13px; font-weight: 600; color: var(--light-text); line-height: 1.35; }
+.tile-row1 { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 7px; }
+.tile-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--light-text); line-height: 1.35; }
 .tile-impact {
   font-family: var(--mono); font-size: 10px;
   padding: 2px 8px; border-radius: 10px;
@@ -369,6 +369,7 @@ section { padding: 88px 2rem; }
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   padding: 2px 8px; border-radius: 10px;
   background: var(--light-text); color: var(--light-surf);
+  border: 1px solid transparent;
   white-space: nowrap; flex-shrink: 0;
 }
 .tile-chips { display: flex; gap: 4px; flex-wrap: wrap; }
