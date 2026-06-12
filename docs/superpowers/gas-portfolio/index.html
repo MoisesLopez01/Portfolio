@@ -1322,6 +1322,129 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 .cn-quartile-lbl.cn-below { color: var(--amber); }
 .cn-quartile-lbl.cn-above { color: #f87171; }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   CONTRIBUTION SCORING ENGINE
+═══════════════════════════════════════════════════════════════════════ */
+.cs-sliders {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;
+  margin-bottom: 12px;
+}
+@media (max-width: 540px) { .cs-sliders { grid-template-columns: 1fr; } }
+.cs-sliders .demo-slider-group label span { color: var(--amber); }
+.cs-sliders .demo-range::-webkit-slider-thumb {
+  background: var(--amber);
+  box-shadow: 0 0 8px rgba(245,158,11,0.50);
+}
+.cs-total-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px;
+}
+.cs-total-lbl {
+  font-family: var(--mono); font-size: 10px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.cs-total {
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  color: var(--amber);
+}
+.cs-total.cs-total-zero { color: #f87171; }
+.cs-board { position: relative; }
+.cs-row {
+  position: absolute; left: 0; right: 0; height: 34px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 10px; border-radius: 7px; cursor: pointer;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(245,158,11,0.10);
+  transition: transform 0.35s var(--ease), background 0.15s, border-color 0.15s;
+}
+.cs-row:hover { background: rgba(245,158,11,0.07); }
+.cs-row.cs-sel {
+  background: rgba(245,158,11,0.10);
+  border-color: rgba(245,158,11,0.55);
+}
+.cs-rank {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--dark-muted); width: 18px; text-align: right; flex-shrink: 0;
+}
+.cs-name {
+  font-size: 12.5px; color: var(--dark-text); width: 130px; flex-shrink: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cs-bar-wrap {
+  flex: 1; height: 6px;
+  background: rgba(245,158,11,0.10); border-radius: 3px; overflow: hidden;
+}
+.cs-bar {
+  display: block; height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--amber), #fbbf24);
+  transition: width 0.25s ease;
+}
+.cs-score {
+  font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+  color: var(--amber); width: 28px; text-align: right; flex-shrink: 0;
+}
+.cs-board-hint {
+  font-family: var(--mono); font-size: 9.5px; color: var(--dark-muted);
+  margin: 8px 0 16px; opacity: 0.8;
+}
+.cs-detail {
+  display: none; margin-bottom: 16px;
+  padding: 14px 16px; border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(245,158,11,0.15);
+  animation: fadeIn .25s var(--ease);
+}
+.cs-detail.cs-open { display: block; }
+.cs-detail-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 10.5px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 12px;
+}
+.cs-detail-name { color: var(--amber); font-weight: 600; }
+.cs-legend {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 9px; text-transform: none; letter-spacing: 0.04em;
+}
+.cs-leg-swatch {
+  display: inline-block; width: 14px; height: 6px; border-radius: 3px;
+}
+.cs-d-metric { margin-bottom: 10px; }
+.cs-d-metric:last-child { margin-bottom: 0; }
+.cs-d-lbl {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: 10px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+}
+.cs-d-raw { color: var(--dark-text); text-transform: none; letter-spacing: 0; }
+.cs-d-pair { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.cs-d-track {
+  flex: 1; height: 6px;
+  background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;
+}
+.cs-d-fill { height: 100%; border-radius: 3px; transition: width 0.25s ease; }
+.cs-d-fill.cs-d-me, .cs-leg-swatch.cs-d-me {
+  background: linear-gradient(90deg, var(--amber), #fbbf24);
+}
+.cs-d-fill.cs-d-avg, .cs-leg-swatch.cs-d-avg { background: rgba(255,255,255,0.28); }
+.cs-d-val {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  color: var(--amber); width: 34px; text-align: right; flex-shrink: 0;
+}
+.cs-d-val.cs-d-val-avg { color: var(--dark-muted); }
+.cs-ai-results { margin-top: 12px; }
+.cs-ai-card {
+  padding: 12px 14px; border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(245,158,11,0.18);
+  font-size: 13px; color: var(--dark-text); line-height: 1.6;
+  animation: fadeIn .25s var(--ease);
+}
+@media (max-width: 540px) {
+  .cs-name { width: 96px; font-size: 11.5px; }
+}
+
 </style>
 </head>
 <body>
@@ -1901,6 +2024,70 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
     </div>
 
     <div class="tcc-footnote">FX rates and COL indices are illustrative. Synthetic data — runs entirely in your browser.</div>
+  </div>
+</template>
+
+<template id="contrib-demo-tpl">
+  <div class="demo-section pm-demo-mount">
+    <div class="demo-hd">🏆 Contribution Scoring Engine — Weighted Team Scoring</div>
+
+    <!-- Weight sliders -->
+    <div class="cs-sliders">
+      <div class="demo-slider-group">
+        <label>Goals Weight <span class="cs-w-goals-val">30</span>
+          <input class="demo-range cs-w-goals" type="range" min="0" max="50" step="1" value="30">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>Tracked Time Weight <span class="cs-w-tracked-val">30</span>
+          <input class="demo-range cs-w-tracked" type="range" min="0" max="50" step="1" value="30">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>Planned Time Weight <span class="cs-w-planned-val">20</span>
+          <input class="demo-range cs-w-planned" type="range" min="0" max="50" step="1" value="20">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>RCR Weight <span class="cs-w-rcr-val">15</span>
+          <input class="demo-range cs-w-rcr" type="range" min="0" max="50" step="1" value="15">
+        </label>
+      </div>
+      <div class="demo-slider-group">
+        <label>Kudos Weight <span class="cs-w-kudos-val">5</span>
+          <input class="demo-range cs-w-kudos" type="range" min="0" max="50" step="1" value="5">
+        </label>
+      </div>
+    </div>
+    <div class="cs-total-row">
+      <span class="cs-total-lbl">Weights total:</span>
+      <span class="cs-total">100</span>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="cs-board"></div>
+    <div class="cs-board-hint">Click a row for a per-metric breakdown vs team average</div>
+
+    <!-- Detail panel (hidden until a row is clicked) -->
+    <div class="cs-detail">
+      <div class="cs-detail-hd">
+        <span><span class="cs-detail-name"></span> vs team average</span>
+        <span class="cs-legend">
+          <span class="cs-leg-swatch cs-d-me"></span>Member
+          <span class="cs-leg-swatch cs-d-avg"></span>Team avg
+        </span>
+      </div>
+      <div class="cs-detail-rows"></div>
+    </div>
+
+    <!-- AI executive brief -->
+    <div class="pl-ai-row">
+      <button class="demo-btn cs-ai-btn">✨ Generate executive brief</button>
+      <span class="pl-ai-note cs-ai-note">AI summary of the team under current weights</span>
+    </div>
+    <div class="cs-ai-results"></div>
+
+    <div class="tcc-footnote">Synthetic data — runs entirely in your browser. No real employee data.</div>
   </div>
 </template>
 

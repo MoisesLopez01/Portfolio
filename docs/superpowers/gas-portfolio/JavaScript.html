@@ -1014,6 +1014,291 @@ var CompNormalizerDemo = (function() {
   return { inject: inject };
 }());
 
+// ── CONTRIBUTION SCORING ENGINE ───────────────────────────────────────────────
+
+var ContribScoreDemo = (function() {
+
+  // 8 synthetic team members — profiles vary so weight changes visibly re-rank:
+  // a goals star with low hours (Priya), an hours grinder with weak goals
+  // (Marcus), a balanced lead (Elena), a kudos magnet (Aisha), an RCR
+  // specialist (Daniel), a steady mid (Sofia), an over-planner (Jonas),
+  // and a low performer (Tom).
+  var TEAM = [
+    { name: 'Priya Sharma',    goalsPct: 100, tracked: 22, planned: 28, rcr: 1.8, kudos: 2 },
+    { name: 'Marcus Webb',     goalsPct:  40, tracked: 41, planned: 42, rcr: 2.4, kudos: 1 },
+    { name: 'Elena Rodríguez', goalsPct:  90, tracked: 36, planned: 40, rcr: 2.2, kudos: 3 },
+    { name: 'Aisha Khan',      goalsPct:  70, tracked: 30, planned: 38, rcr: 1.6, kudos: 5 },
+    { name: 'Daniel Osei',     goalsPct:  60, tracked: 33, planned: 36, rcr: 2.5, kudos: 1 },
+    { name: 'Sofia Almeida',   goalsPct:  75, tracked: 32, planned: 40, rcr: 1.9, kudos: 2 },
+    { name: 'Jonas Berg',      goalsPct:  55, tracked: 20, planned: 40, rcr: 1.4, kudos: 1 },
+    { name: 'Tom Fletcher',    goalsPct:  25, tracked: 18, planned: 32, rcr: 0.9, kudos: 0 }
+  ];
+
+  var METRICS = [
+    { key: 'goals',   label: 'Goals' },
+    { key: 'tracked', label: 'Tracked Time' },
+    { key: 'planned', label: 'Planned Time' },
+    { key: 'rcr',     label: 'RCR' },
+    { key: 'kudos',   label: 'Kudos' }
+  ];
+
+  var ROW_H = 40;   // leaderboard row pitch in px (34px row + 6px gap)
+
+  // Normalization mirrors the production scoring spec
+  function normsFor(m) {
+    return {
+      goals:   m.goalsPct / 100,
+      tracked: m.planned > 0 ? Math.min((m.tracked / m.planned) / 0.9, 1) : 0,
+      planned: Math.min(m.planned / 40, 1),
+      rcr:     Math.min(m.rcr / 2.5, 1),
+      kudos:   Math.min(m.kudos / 3, 1)
+    };
+  }
+
+  var NORMS = TEAM.map(normsFor);
+
+  // Team-average norm per metric (constant — norms are weight-independent)
+  var AVG = (function() {
+    var avg = { goals: 0, tracked: 0, planned: 0, rcr: 0, kudos: 0 };
+    for (var i = 0; i < NORMS.length; i++) {
+      for (var k = 0; k < METRICS.length; k++) {
+        avg[METRICS[k].key] += NORMS[i][METRICS[k].key];
+      }
+    }
+    for (var j = 0; j < METRICS.length; j++) {
+      avg[METRICS[j].key] /= NORMS.length;
+    }
+    return avg;
+  }());
+
+  // score = 100 × Σ(wᵢ·normᵢ) / Σwᵢ — guard Σw = 0 → 0
+  function scoreFor(norms, w) {
+    var sumW = 0, sum = 0;
+    for (var i = 0; i < METRICS.length; i++) {
+      var key = METRICS[i].key;
+      sumW += w[key];
+      sum  += w[key] * norms[key];
+    }
+    return sumW > 0 ? (100 * sum / sumW) : 0;
+  }
+
+  // Raw value shown next to each metric in the detail panel
+  function rawLabel(m, key) {
+    if (key === 'goals')   return m.goalsPct + '%';
+    if (key === 'tracked') return m.tracked + 'h / ' + m.planned + 'h planned';
+    if (key === 'planned') return m.planned + 'h';
+    if (key === 'rcr')     return m.rcr.toFixed(1);
+    return m.kudos + ' kudos';
+  }
+
+  // ── per-instance factory ────────────────────────────────────────────────────
+
+  function createInstance(mount) {
+    var refs = {
+      sliders: {
+        goals:   mount.querySelector('.cs-w-goals'),
+        tracked: mount.querySelector('.cs-w-tracked'),
+        planned: mount.querySelector('.cs-w-planned'),
+        rcr:     mount.querySelector('.cs-w-rcr'),
+        kudos:   mount.querySelector('.cs-w-kudos')
+      },
+      vals: {
+        goals:   mount.querySelector('.cs-w-goals-val'),
+        tracked: mount.querySelector('.cs-w-tracked-val'),
+        planned: mount.querySelector('.cs-w-planned-val'),
+        rcr:     mount.querySelector('.cs-w-rcr-val'),
+        kudos:   mount.querySelector('.cs-w-kudos-val')
+      },
+      total:      mount.querySelector('.cs-total'),
+      board:      mount.querySelector('.cs-board'),
+      detail:     mount.querySelector('.cs-detail'),
+      detailName: mount.querySelector('.cs-detail-name'),
+      detailRows: mount.querySelector('.cs-detail-rows'),
+      aiBtn:      mount.querySelector('.cs-ai-btn'),
+      aiNote:     mount.querySelector('.cs-ai-note'),
+      aiResults:  mount.querySelector('.cs-ai-results')
+    };
+
+    // per-instance state
+    var selectedIdx = -1;
+    var aiBusy      = false;
+    var lastScores  = [];
+    var lastOrder   = [];
+    var rowEls      = [];
+
+    // Build one DOM node per member — reordering moves stable nodes via
+    // transform so CSS can animate the rank changes
+    refs.board.style.height = (TEAM.length * ROW_H - 6) + 'px';
+    for (var i = 0; i < TEAM.length; i++) {
+      (function(idx) {
+        var row = document.createElement('div');
+        row.className = 'cs-row';
+        row.innerHTML =
+          '<span class="cs-rank">—</span>' +
+          '<span class="cs-name">' + escHtml(TEAM[idx].name) + '</span>' +
+          '<span class="cs-bar-wrap"><span class="cs-bar" style="width:0%"></span></span>' +
+          '<span class="cs-score">—</span>';
+        row.addEventListener('click', function() { select(idx); });
+        refs.board.appendChild(row);
+        rowEls.push(row);
+      }(i));
+    }
+
+    function weights() {
+      var w = {};
+      for (var i = 0; i < METRICS.length; i++) {
+        var key = METRICS[i].key;
+        w[key] = parseInt(refs.sliders[key].value, 10) || 0;
+      }
+      return w;
+    }
+
+    // ── render ────────────────────────────────────────────────────────────────
+
+    function render() {
+      var w = weights();
+      var sumW = 0;
+      for (var i = 0; i < METRICS.length; i++) {
+        var key = METRICS[i].key;
+        refs.vals[key].textContent = w[key];
+        sumW += w[key];
+      }
+      refs.total.textContent = sumW === 0 ? '0 — all scores 0' : String(sumW);
+      refs.total.classList.toggle('cs-total-zero', sumW === 0);
+
+      var scores = NORMS.map(function(n) { return scoreFor(n, w); });
+      var order = TEAM.map(function(_, idx) { return idx; });
+      order.sort(function(a, b) {
+        return (scores[b] - scores[a]) || TEAM[a].name.localeCompare(TEAM[b].name);
+      });
+
+      for (var r = 0; r < order.length; r++) {
+        var idx = order[r];
+        var row = rowEls[idx];
+        row.style.transform = 'translateY(' + (r * ROW_H) + 'px)';
+        row.querySelector('.cs-rank').textContent  = String(r + 1);
+        row.querySelector('.cs-score').textContent = String(Math.round(scores[idx]));
+        row.querySelector('.cs-bar').style.width   = Math.round(scores[idx]) + '%';
+      }
+
+      lastScores = scores;
+      lastOrder  = order;
+    }
+
+    // ── detail panel ──────────────────────────────────────────────────────────
+
+    function select(idx) {
+      selectedIdx = idx;
+      for (var i = 0; i < rowEls.length; i++) {
+        rowEls[i].classList.toggle('cs-sel', i === idx);
+      }
+      renderDetail();
+    }
+
+    function renderDetail() {
+      if (selectedIdx < 0) return;
+      var m = TEAM[selectedIdx];
+      var n = NORMS[selectedIdx];
+      refs.detailName.textContent = m.name;
+      var html = '';
+      for (var i = 0; i < METRICS.length; i++) {
+        var key    = METRICS[i].key;
+        var mePct  = Math.round(n[key] * 100);
+        var avgPct = Math.round(AVG[key] * 100);
+        html +=
+          '<div class="cs-d-metric">' +
+            '<div class="cs-d-lbl">' + escHtml(METRICS[i].label) +
+              '<span class="cs-d-raw">' + escHtml(rawLabel(m, key)) + '</span></div>' +
+            '<div class="cs-d-pair">' +
+              '<div class="cs-d-track"><div class="cs-d-fill cs-d-me" style="width:' + mePct + '%"></div></div>' +
+              '<span class="cs-d-val">' + mePct + '%</span>' +
+            '</div>' +
+            '<div class="cs-d-pair">' +
+              '<div class="cs-d-track"><div class="cs-d-fill cs-d-avg" style="width:' + avgPct + '%"></div></div>' +
+              '<span class="cs-d-val cs-d-val-avg">' + avgPct + '%</span>' +
+            '</div>' +
+          '</div>';
+      }
+      refs.detailRows.innerHTML = html;
+      refs.detail.classList.add('cs-open');
+    }
+
+    // ── AI executive brief ────────────────────────────────────────────────────
+
+    function generateBrief() {
+      if (aiBusy) return;
+      aiBusy = true;
+      refs.aiBtn.disabled = true;
+      refs.aiNote.textContent = 'Generating brief…';
+      refs.aiResults.innerHTML =
+        '<div class="demo-loading-row">' +
+          '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>' +
+          '<span class="demo-loading-text">Groq AI drafting executive brief…</span>' +
+        '</div>';
+
+      var w = weights();
+      var ranked = lastOrder.map(function(idx, r) {
+        return (r + 1) + '. ' + TEAM[idx].name + ' — ' + Math.round(lastScores[idx]);
+      });
+      var prompt =
+        'You are an operations analyst. Write a concise executive brief (under 120 words, ' +
+        'plain text, no markdown) on this synthetic team\'s weekly contribution scores (0-100). ' +
+        'Scoring weights: Goals ' + w.goals + ', Tracked Time ' + w.tracked +
+        ', Planned Time ' + w.planned + ', RCR ' + w.rcr + ', Kudos ' + w.kudos + '. ' +
+        'Ranked scores: ' + ranked.join('; ') + '. ' +
+        'Highlight the top performer, who is at risk, and one coaching recommendation.';
+
+      runServer('proxyGroqChat', [prompt, [], window.SESSION_ID || 'anon'],
+        function(reply) {
+          aiBusy = false;
+          refs.aiBtn.disabled = false;
+          refs.aiNote.textContent = 'Executive brief generated';
+          refs.aiResults.innerHTML =
+            '<div class="cs-ai-card">' +
+              escHtml(reply || 'No response received.').replace(/\n/g, '<br>') +
+            '</div>';
+        },
+        function(err) {
+          aiBusy = false;
+          refs.aiBtn.disabled = false;
+          var msg = String(err.message || err);
+          refs.aiNote.textContent = '';
+          var colour = msg.indexOf('not configured') !== -1 ? '#fbbf24' : '#f87171';
+          var label  = msg.indexOf('not configured') !== -1
+            ? '⚠ Groq API key not set — admin must configure it.'
+            : 'Error: ' + escHtml(msg);
+          refs.aiResults.innerHTML =
+            '<div class="demo-loading-row">' +
+              '<span class="demo-loading-text" style="color:' + colour + '">' + label + '</span>' +
+            '</div>';
+        }
+      );
+    }
+
+    // bind events
+    for (var s = 0; s < METRICS.length; s++) {
+      refs.sliders[METRICS[s].key].addEventListener('input', render);
+    }
+    refs.aiBtn.addEventListener('click', generateBrief);
+
+    // initial render
+    render();
+  }
+
+  // ── inject ──────────────────────────────────────────────────────────────────
+
+  function inject(containerEl) {
+    var tpl = document.getElementById('contrib-demo-tpl');
+    if (!tpl || !containerEl) return;
+    var clone = tpl.content.cloneNode(true);
+    var mount = clone.querySelector('.pm-demo-mount');
+    containerEl.appendChild(clone);
+    if (mount) createInstance(mount);
+  }
+
+  return { inject: inject };
+}());
+
 // ── UI UTILITIES ──────────────────────────────────────────────────────────────
 
 var UI = (function() {
