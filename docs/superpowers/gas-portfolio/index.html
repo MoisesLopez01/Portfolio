@@ -381,6 +381,39 @@ section { padding: 88px 2rem; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   LIVE DEMOS SECTION
+═══════════════════════════════════════════════════════════════════════ */
+#demos {
+  background: linear-gradient(180deg, var(--teal-900) 0%, var(--teal-800) 100%);
+  border-top: 1px solid var(--dark-border);
+}
+#demos .section-title   { color: white; }
+#demos .section-desc    { color: var(--dark-muted); }
+#demos .section-eyebrow { color: var(--teal-vivid); }
+
+.demo-tabs {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.demo-tab {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  padding: 8px 16px; border-radius: 20px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--dark-border);
+  color: var(--dark-muted);
+  transition: all .2s var(--ease);
+  white-space: nowrap;
+}
+.demo-tab:hover { color: var(--dark-text); border-color: rgba(255,255,255,0.25); }
+.demo-tab.active[data-demo="ps-dashboard"]   { background: rgba(245,158,11,0.14); color: var(--amber);      border-color: rgba(245,158,11,0.45); }
+.demo-tab.active[data-demo="tcc-forecast"]   { background: rgba(59,130,246,0.14); color: #93c5fd;           border-color: rgba(59,130,246,0.45); }
+.demo-tab.active[data-demo="comp-reporting"] { background: rgba(168,85,247,0.14); color: #d8b4fe;           border-color: rgba(168,85,247,0.45); }
+.demo-tab.active[data-demo="ai-sales"]       { background: var(--teal-dim);       color: var(--teal-vivid); border-color: rgba(0,200,150,0.45); }
+
+.demo-tab-panel { max-width: 760px; }
+.demo-tab-panel .demo-section { margin-top: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════
    PROJECT DETAIL MODAL
 ═══════════════════════════════════════════════════════════════════════ */
 .pmodal-overlay {
@@ -1479,6 +1512,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   </div>
   <ul class="nav-links" id="nav-links">
     <li><a href="#projects"     class="nav-link"><span class="nav-dot"></span>Projects</a></li>
+    <li><a href="#demos"        class="nav-link"><span class="nav-dot"></span>Live Demos</a></li>
     <li><a href="#chat-section" class="nav-link"><span class="nav-dot"></span>AI Chat</a></li>
     <li><a href="#about"        class="nav-link"><span class="nav-dot"></span>About</a></li>
     <li><a href="#contact"      class="nav-link"><span class="nav-dot"></span>Contact</a></li>
@@ -1531,6 +1565,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm2 0v8h8V4H4z"/></svg>
         View Projects
       </a>
+      <a href="#demos" class="btn-ghost">Try the live demos →</a>
       <a href="#chat-section" class="btn-ghost">Ask the AI assistant →</a>
       <a href="mailto:moisesalex.01@gmail.com" class="btn-ghost">Let's Talk →</a>
     </div>
@@ -1555,6 +1590,24 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
     <div class="domain-grid reveal reveal-delay-3" id="domain-grid">
       <!-- populated by DomainGrid.render() -->
     </div>
+  </div>
+</section>
+
+<!-- ── LIVE DEMOS ────────────────────────────────────────────────────── -->
+<section id="demos">
+  <div class="section-inner">
+    <p class="section-eyebrow reveal">Try it live</p>
+    <h2 class="section-title reveal reveal-delay-1">Don't take my word for it.<br>Touch the work.</h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Four working simulators built from real projects. Synthetic data — everything runs in your browser.
+    </p>
+    <div class="demo-tabs reveal reveal-delay-3" role="tablist" aria-label="Live demos">
+      <button class="demo-tab active" data-demo="ps-dashboard"   role="tab" aria-selected="true">Ops · Contribution Scorer</button>
+      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false">Finance · TCC Simulator</button>
+      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false">HR · Comp Normalizer</button>
+      <button class="demo-tab"        data-demo="ai-sales"       role="tab" aria-selected="false">Sales · Pipeline Risk</button>
+    </div>
+    <div class="demo-tab-panel reveal reveal-delay-3" id="demo-panel"></div>
   </div>
 </section>
 
@@ -1609,7 +1662,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What's your biggest impact project?</button>
         <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Explain the TCC Forecasting System</button>
         <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What's your AI/LLM stack?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">How did you use SuiteQL?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What do the live demos show?</button>
       </div>
       <div class="chat-input-row">
         <input class="chat-input" id="chat-input" type="text" placeholder="Ask about any project, skill, or impact…" autocomplete="off">

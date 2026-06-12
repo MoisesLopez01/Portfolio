@@ -1316,6 +1316,41 @@ var DEMOS = {
   'ps-dashboard':   ContribScoreDemo
 };
 
+// ── LIVE DEMOS SECTION (#demos) ───────────────────────────────────────────────
+// Standalone "Try it live" section: a tab bar that mounts one demo at a time
+// into #demo-panel. Switching tabs wipes the panel (innerHTML = ''), which
+// destroys the previous instance — demo modules are self-contained closures
+// scoped to their mount, so no further cleanup is needed.
+
+var DemosSection = (function() {
+
+  function mount(key) {
+    var panel = document.getElementById('demo-panel');
+    if (!panel || !DEMOS[key]) return;
+    panel.innerHTML = '';
+    DEMOS[key].inject(panel);
+  }
+
+  function init() {
+    var tabs = document.querySelectorAll('#demos .demo-tab');
+    if (!tabs.length) return;
+    tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        tabs.forEach(function(t) {
+          t.classList.toggle('active', t === tab);
+          t.setAttribute('aria-selected', String(t === tab));
+        });
+        mount(tab.getAttribute('data-demo'));
+      });
+    });
+    // Mount the default tab (Ops / ps-dashboard, marked .active in the markup)
+    var activeTab = document.querySelector('#demos .demo-tab.active');
+    mount(activeTab ? activeTab.getAttribute('data-demo') : 'ps-dashboard');
+  }
+
+  return { init: init };
+}());
+
 // ── UI UTILITIES ──────────────────────────────────────────────────────────────
 
 var UI = (function() {
@@ -1406,7 +1441,7 @@ var UI = (function() {
 
   // Nav active-section highlight
   function initNavHighlight() {
-    var sections = ['hero','projects','chat-section','about','contact'];
+    var sections = ['hero','projects','demos','chat-section','about','contact'];
     var links    = document.querySelectorAll('.nav-link');
     if (!('IntersectionObserver' in window) || !links.length) return;
     var active = '';
@@ -1510,6 +1545,7 @@ function wireModalEvents() {
 document.addEventListener('DOMContentLoaded', function() {
   DomainGrid.render();
   Chat.init();
+  DemosSection.init();
   wireModalEvents();
 
   UI.initStackBar();
