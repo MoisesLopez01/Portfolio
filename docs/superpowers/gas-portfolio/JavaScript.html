@@ -76,11 +76,15 @@ var DomainGrid = (function() {
     var del = p.id.indexOf('custom-') === 0
       ? '<button class="btn-delete" onclick="event.stopPropagation();AdminPanel&&AdminPanel.deleteProject(\'' + escHtml(p.id) + '\')">Delete</button>'
       : '';
+    var demoBadge = DEMOS[p.id]
+      ? '<span class="tile-demo-badge">▶ Live demo</span>'
+      : '';
     return (
       '<div class="domain-tile" onclick="ProjectModal.open(\'' + escHtml(p.id) + '\')" role="button" tabindex="0">' +
         '<div class="tile-row1">' +
           '<div class="tile-title">' + escHtml(p.title) + '</div>' +
           '<div class="tile-impact">⚡ ' + escHtml(p.impact) + '</div>' +
+          demoBadge +
         '</div>' +
         '<div class="tile-chips">' + chips + del + '</div>' +
       '</div>'
@@ -160,10 +164,10 @@ var ProjectModal = (function() {
 
     document.getElementById('pmodal-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
-    if (p.id === 'ai-sales') {
+    if (DEMOS[p.id]) {
       var body = modalBody_();
       removeMounts_(body);
-      DealRiskDemo.inject(body);
+      DEMOS[p.id].inject(body);
     }
   }
 
@@ -1300,6 +1304,17 @@ var ContribScoreDemo = (function() {
 
   return { inject: inject };
 }());
+
+// ── DEMO REGISTRY ─────────────────────────────────────────────────────────────
+// Maps project ids to their live-demo modules. Must be declared after all demo
+// modules above; consumed by ProjectModal.open and DomainGrid.renderTile.
+
+var DEMOS = {
+  'ai-sales':       DealRiskDemo,
+  'tcc-forecast':   TccDemo,
+  'comp-reporting': CompNormalizerDemo,
+  'ps-dashboard':   ContribScoreDemo
+};
 
 // ── UI UTILITIES ──────────────────────────────────────────────────────────────
 
