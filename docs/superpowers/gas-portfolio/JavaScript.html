@@ -1187,9 +1187,9 @@ var ContribScoreDemo = (function() {
   function normsFor(m) {
     return {
       alignment:   m.goalsPct / 100,
-      performance: m.planned > 0 ? Math.min((m.tracked / m.planned) / 0.9, 1) : 0,
-      health:      Math.max(0, 1 - Math.abs(m.planned - 40) / 20),
-      recognition: Math.min(m.kudos / 3, 1)
+      performance: m.planned > 0 ? Math.min((m.tracked / m.planned) / 0.9, 1) : 0, // 90% utilization = full credit
+      health:      Math.max(0, 1 - Math.abs(m.planned - 40) / 20),                  // sweet spot: 40h = 1.0, 20h/60h = 0
+      recognition: Math.min(m.kudos / 3, 1)                                         // 3 kudos = full recognition
     };
   }
 
@@ -1197,7 +1197,8 @@ var ContribScoreDemo = (function() {
 
   // Team-average norm per metric (constant — norms are weight-independent)
   var AVG = (function() {
-    var avg = { alignment: 0, performance: 0, health: 0, recognition: 0 };
+    var avg = {};
+    for (var m = 0; m < METRICS.length; m++) { avg[METRICS[m].key] = 0; } // keys derive from METRICS — single source of truth
     for (var i = 0; i < NORMS.length; i++) {
       for (var k = 0; k < METRICS.length; k++) {
         avg[METRICS[k].key] += NORMS[i][METRICS[k].key];
