@@ -43,6 +43,64 @@ var Toast = (function() {
   return { show: show };
 }());
 
+// ── CONTACT (email) ─────────────────────────────────────────────────────────────
+// mailto: only does something when the visitor's machine has a registered desktop
+// mail handler. Many visitors (recruiters on locked-down laptops, browser-only Gmail
+// users) don't have one, so the link silently fails inside the GAS iframe. Instead we
+// open a Gmail compose tab — works for anyone with a Google account, no local client
+// needed — and if the popup is blocked we copy the address to the clipboard and toast
+// it, so the visitor always walks away with a way to reach Alex.
+var Contact = (function() {
+  function gmailUrl(to, subject, body) {
+    return 'https://mail.google.com/mail/?view=cm&fs=1'
+      + '&to=' + encodeURIComponent(to)
+      + (subject ? '&su='   + encodeURIComponent(subject) : '')
+      + (body    ? '&body=' + encodeURIComponent(body)    : '');
+  }
+  function fallbackCopy(to, done) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = to;
+      ta.style.position = 'fixed';
+      ta.style.opacity  = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      done();
+    } catch (e) {
+      Toast.show('Reach Alex at ' + to, 'success');
+    }
+  }
+  function copy(to) {
+    var done = function() { Toast.show('Email copied: ' + to, 'success'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(to).then(done, function() { fallbackCopy(to, done); });
+    } else {
+      fallbackCopy(to, done);
+    }
+  }
+  function open(to, subject, body) {
+    if (!to) return;
+    var win = window.open(gmailUrl(to, subject, body), '_blank', 'noopener');
+    if (!win) copy(to);  // popup blocked → graceful fallback
+  }
+  // Delegated handler: any <a class="js-email" data-email href="<gmail compose url>">.
+  // We open the anchor's own href (so its prefilled subject/body are preserved) in a
+  // new tab; if the popup is blocked we copy data-email. Keeping a real Gmail href means
+  // the link still works if JS is disabled.
+  function init() {
+    document.addEventListener('click', function(e) {
+      var a = e.target.closest && e.target.closest('a.js-email');
+      if (!a) return;
+      e.preventDefault();
+      var win = window.open(a.href, '_blank', 'noopener');
+      if (!win) copy(a.getAttribute('data-email') || '');
+    });
+  }
+  return { open: open, gmailUrl: gmailUrl, init: init };
+}());
+
 // ── DOMAIN GRID ───────────────────────────────────────────────────────────────
 
 var DomainGrid = (function() {
@@ -106,6 +164,26 @@ var ProjectModal = (function() {
     for (var i = 0; i < mounts.length; i++) { mounts[i].remove(); }
   }
 
+  // Escape, then render lightweight **bold** markup so case-study keywords/metrics
+  // stand out. Keeps everything XSS-safe (escape runs before any markup is added).
+  function fmtRich_(text) {
+    return escHtml(String(text)).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  }
+
+  // Renders a Context/Action/Resolution block. Accepts a string (paragraph) or
+  // an array of strings (scannable bullet list) — both pass through fmtRich_.
+  function carBlock_(kind, label, value) {
+    var inner;
+    if (Array.isArray(value)) {
+      inner = '<ul class="car-list">' + value.map(function(item) {
+        return '<li>' + fmtRich_(item) + '</li>';
+      }).join('') + '</ul>';
+    } else {
+      inner = '<div class="car-text">' + fmtRich_(value) + '</div>';
+    }
+    return '<div class="car-block ' + kind + '"><div class="car-label">' + label + '</div>' + inner + '</div>';
+  }
+
   function open(id) {
     var projects = window.PROJECTS || [];
     var p = null;
@@ -122,9 +200,9 @@ var ProjectModal = (function() {
     document.getElementById('pm-tagline').textContent = p.tagline;
 
     document.getElementById('pm-car').innerHTML =
-      '<div class="car-block context"><div class="car-label">Context</div><div class="car-text">'    + escHtml(p.context)    + '</div></div>' +
-      '<div class="car-block action"><div class="car-label">Action</div><div class="car-text">'      + escHtml(p.action)     + '</div></div>' +
-      '<div class="car-block resolution"><div class="car-label">Resolution</div><div class="car-text">' + escHtml(p.resolution) + '</div></div>';
+      carBlock_('context',    'Context',    p.context) +
+      carBlock_('action',     'Action',     p.action) +
+      carBlock_('resolution', 'Resolution', p.resolution);
 
     document.getElementById('pm-ba').innerHTML =
       '<div class="ba-card bef">' +
@@ -401,13 +479,46 @@ var AdminPanel = (function() {
 var Chat = (function() {
   var history = [];
   var sending = false;
+  // Snapshot of the opening greeting so "New chat" can restore it (single source: the HTML).
+  var initialMessagesHTML = null;
 
   function init() {
+    var msgs = document.getElementById('chat-messages');
+    if (msgs && initialMessagesHTML === null) initialMessagesHTML = msgs.innerHTML;
     var input = document.getElementById('chat-input');
     if (!input) return;
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
+    // Auto-grow the textarea as the visitor types (capped by max-height in CSS).
+    input.addEventListener('input', function() { autoGrow(input); });
+  }
+
+  // Reset to one row, then grow to fit content up to the CSS max-height.
+  function autoGrow(input) {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 148) + 'px';
+  }
+
+  // Escape, then turn bare URLs and email addresses into clickable links (used for Donna's
+  // replies — e.g. the LinkedIn profile invite and Alex's contact email).
+  function linkify(text) {
+    var out = escHtml(text);
+    // Bare http(s) URLs → links (LinkedIn, demos, etc.)
+    out = out.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, function(url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
+    // Bare email addresses → mailto links. Trailing punctuation (e.g. "…@gmail.com.")
+    // stays outside the link. URLs above contain no "@", so they're never re-matched.
+    out = out.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, function(email) {
+      // Route through Contact (Gmail compose + copy fallback) instead of mailto:, which
+      // silently fails for visitors without a registered desktop mail handler. The href
+      // is a real Gmail compose URL so it still works if JS is disabled; Contact.init()'s
+      // delegated handler upgrades the click to include the popup-blocked copy fallback.
+      return '<a class="js-email" data-email="' + email + '" target="_blank" rel="noopener" '
+        + 'href="' + Contact.gmailUrl(email) + '">' + email + '</a>';
+    });
+    return out;
   }
 
   function send() {
@@ -416,6 +527,7 @@ var Chat = (function() {
     var text  = (input.value || '').trim();
     if (!text) return;
     input.value = '';
+    autoGrow(input);
     document.getElementById('chat-suggestions').style.display = 'none';
     addMessage('user', text);
     var typingEl = addTyping();
@@ -437,7 +549,7 @@ var Chat = (function() {
         var msg = String(err.message || err);
         if (msg.indexOf('not configured') !== -1) {
           document.getElementById('chat-no-key').classList.add('visible');
-          addMessage('ai', 'The AI assistant isn\'t configured yet. The admin needs to set the Groq API key.');
+          addMessage('ai', 'Donna isn\'t configured yet. The admin needs to set the Groq API key.');
         } else {
           addMessage('ai', 'Error: ' + msg);
         }
@@ -453,13 +565,35 @@ var Chat = (function() {
     send();
   }
 
+  // Reset the conversation: clear history, restore the opening greeting and suggestions,
+  // and start a fresh session id so the new chat logs separately on the server.
+  function newChat() {
+    if (sending) return;
+    history = [];
+    try {
+      var id = Math.random().toString(36).substr(2, 9);
+      sessionStorage.setItem('pf_sid', id);
+      window.SESSION_ID = id;
+    } catch (e) {}
+    var container = document.getElementById('chat-messages');
+    if (container && initialMessagesHTML !== null) container.innerHTML = initialMessagesHTML;
+    var sugg = document.getElementById('chat-suggestions');
+    if (sugg) sugg.style.display = '';
+    var input = document.getElementById('chat-input');
+    if (input) { input.value = ''; autoGrow(input); input.focus(); }
+    var sendBtn = document.getElementById('chat-send-btn');
+    if (sendBtn) sendBtn.disabled = false;
+  }
+
   function addMessage(role, text) {
     var container = document.getElementById('chat-messages');
     var msg = document.createElement('div');
     msg.className = 'msg ' + role;
     var bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
-    bubble.textContent = text;
+    // Donna's replies may include a clickable LinkedIn/URL; visitor text stays literal.
+    if (role === 'ai') { bubble.innerHTML = linkify(text); }
+    else { bubble.textContent = text; }
     msg.appendChild(bubble);
     container.appendChild(msg);
     container.scrollTop = container.scrollHeight;
@@ -476,7 +610,7 @@ var Chat = (function() {
     return el;
   }
 
-  return { init: init, send: send, sendSuggestion: sendSuggestion };
+  return { init: init, send: send, sendSuggestion: sendSuggestion, newChat: newChat };
 }());
 
 // ── PIPELINE RISK SIMULATOR ───────────────────────────────────────────────────
@@ -1022,42 +1156,40 @@ var CompNormalizerDemo = (function() {
 
 var ContribScoreDemo = (function() {
 
-  // 8 synthetic team members — profiles vary so weight changes visibly re-rank:
-  // a goals star with low hours (Priya), an hours grinder with weak goals
-  // (Marcus), a balanced lead (Elena), a kudos magnet (Aisha), an RCR
-  // specialist (Daniel), a steady mid (Sofia), an over-planner (Jonas),
-  // and a low performer (Tom).
+  // 8 synthetic team members — profiles vary so weight changes visibly re-rank.
+  // Includes one over-loaded member (Marcus, 54h → burnout) and one
+  // under-loaded (Jonas, 24h → under-utilized) so Workload Health spreads.
   var TEAM = [
-    { name: 'Priya Sharma',    goalsPct: 100, tracked: 22, planned: 28, rcr: 1.8, kudos: 2 },
-    { name: 'Marcus Webb',     goalsPct:  40, tracked: 41, planned: 42, rcr: 2.4, kudos: 1 },
-    { name: 'Elena Rodríguez', goalsPct:  90, tracked: 36, planned: 40, rcr: 2.2, kudos: 3 },
-    { name: 'Aisha Khan',      goalsPct:  70, tracked: 30, planned: 38, rcr: 1.6, kudos: 5 },
-    { name: 'Daniel Osei',     goalsPct:  60, tracked: 33, planned: 36, rcr: 2.5, kudos: 1 },
-    { name: 'Sofia Almeida',   goalsPct:  75, tracked: 32, planned: 40, rcr: 1.9, kudos: 2 },
-    { name: 'Jonas Berg',      goalsPct:  55, tracked: 20, planned: 40, rcr: 1.4, kudos: 1 },
-    { name: 'Tom Fletcher',    goalsPct:  25, tracked: 18, planned: 32, rcr: 0.9, kudos: 0 }
+    { name: 'Priya Sharma',    goalsPct: 100, tracked: 26, planned: 28, kudos: 2 },
+    { name: 'Marcus Webb',     goalsPct:  45, tracked: 50, planned: 54, kudos: 1 },
+    { name: 'Elena Rodríguez', goalsPct:  90, tracked: 37, planned: 40, kudos: 3 },
+    { name: 'Aisha Khan',      goalsPct:  70, tracked: 30, planned: 38, kudos: 5 },
+    { name: 'Daniel Osei',     goalsPct:  65, tracked: 35, planned: 38, kudos: 1 },
+    { name: 'Sofia Almeida',   goalsPct:  78, tracked: 33, planned: 40, kudos: 2 },
+    { name: 'Jonas Berg',      goalsPct:  55, tracked: 20, planned: 24, kudos: 1 },
+    { name: 'Tom Fletcher',    goalsPct:  25, tracked: 16, planned: 30, kudos: 0 }
   ];
 
+  // Four manager-facing pillars (radar axes). `pillar` = full market name,
+  // `axis` = short radar label, `metric` = the underlying measure.
   var METRICS = [
-    { key: 'goals',   label: 'Goals' },
-    { key: 'tracked', label: 'Tracked Time' },
-    { key: 'planned', label: 'Planned Time' },
-    { key: 'rcr',     label: 'RCR' },
-    { key: 'kudos',   label: 'Kudos' }
+    { key: 'alignment',   pillar: 'Company Alignment', axis: 'Alignment',   metric: 'Goal Attainment' },
+    { key: 'performance', pillar: 'Performance',       axis: 'Performance', metric: 'Utilization' },
+    { key: 'health',      pillar: 'Employee Health',   axis: 'Health',      metric: 'Workload Health' },
+    { key: 'recognition', pillar: 'Recognition',       axis: 'Recognition', metric: 'Peer Recognition' }
   ];
 
   var ROW_INNER_H = 34;                     // must match .cs-row height in CSS
   var ROW_GAP     = 6;
   var ROW_H       = ROW_INNER_H + ROW_GAP;  // leaderboard row pitch in px
 
-  // Normalization mirrors the production scoring spec
+  // Four pillar normalizations, each 0–1.
   function normsFor(m) {
     return {
-      goals:   m.goalsPct / 100,
-      tracked: m.planned > 0 ? Math.min((m.tracked / m.planned) / 0.9, 1) : 0,
-      planned: Math.min(m.planned / 40, 1),
-      rcr:     Math.min(m.rcr / 2.5, 1),
-      kudos:   Math.min(m.kudos / 3, 1)
+      alignment:   m.goalsPct / 100,
+      performance: m.planned > 0 ? Math.min((m.tracked / m.planned) / 0.9, 1) : 0,
+      health:      Math.max(0, 1 - Math.abs(m.planned - 40) / 20),
+      recognition: Math.min(m.kudos / 3, 1)
     };
   }
 
@@ -1065,7 +1197,7 @@ var ContribScoreDemo = (function() {
 
   // Team-average norm per metric (constant — norms are weight-independent)
   var AVG = (function() {
-    var avg = { goals: 0, tracked: 0, planned: 0, rcr: 0, kudos: 0 };
+    var avg = { alignment: 0, performance: 0, health: 0, recognition: 0 };
     for (var i = 0; i < NORMS.length; i++) {
       for (var k = 0; k < METRICS.length; k++) {
         avg[METRICS[k].key] += NORMS[i][METRICS[k].key];
@@ -1088,12 +1220,11 @@ var ContribScoreDemo = (function() {
     return sumW > 0 ? (100 * sum / sumW) : 0;
   }
 
-  // Raw value shown next to each metric in the detail panel
+  // Raw value shown beside each pillar in the radar value list
   function rawLabel(m, key) {
-    if (key === 'goals')   return m.goalsPct + '%';
-    if (key === 'tracked') return m.tracked + 'h / ' + m.planned + 'h planned';
-    if (key === 'planned') return m.planned + 'h';
-    if (key === 'rcr')     return m.rcr.toFixed(1);
+    if (key === 'alignment')   return m.goalsPct + '% of goals';
+    if (key === 'performance') return m.tracked + 'h / ' + m.planned + 'h utilized';
+    if (key === 'health')      return m.planned + 'h planned';
     return m.kudos + ' kudos';
   }
 
@@ -1102,18 +1233,16 @@ var ContribScoreDemo = (function() {
   function createInstance(mount) {
     var refs = {
       sliders: {
-        goals:   mount.querySelector('.cs-w-goals'),
-        tracked: mount.querySelector('.cs-w-tracked'),
-        planned: mount.querySelector('.cs-w-planned'),
-        rcr:     mount.querySelector('.cs-w-rcr'),
-        kudos:   mount.querySelector('.cs-w-kudos')
+        alignment:   mount.querySelector('.cs-w-alignment'),
+        performance: mount.querySelector('.cs-w-performance'),
+        health:      mount.querySelector('.cs-w-health'),
+        recognition: mount.querySelector('.cs-w-recognition')
       },
       vals: {
-        goals:   mount.querySelector('.cs-w-goals-val'),
-        tracked: mount.querySelector('.cs-w-tracked-val'),
-        planned: mount.querySelector('.cs-w-planned-val'),
-        rcr:     mount.querySelector('.cs-w-rcr-val'),
-        kudos:   mount.querySelector('.cs-w-kudos-val')
+        alignment:   mount.querySelector('.cs-w-alignment-val'),
+        performance: mount.querySelector('.cs-w-performance-val'),
+        health:      mount.querySelector('.cs-w-health-val'),
+        recognition: mount.querySelector('.cs-w-recognition-val')
       },
       total:      mount.querySelector('.cs-total'),
       board:      mount.querySelector('.cs-board'),
@@ -1217,7 +1346,7 @@ var ContribScoreDemo = (function() {
         var avgPct = Math.round(AVG[key] * 100);
         html +=
           '<div class="cs-d-metric">' +
-            '<div class="cs-d-lbl">' + escHtml(METRICS[i].label) +
+            '<div class="cs-d-lbl">' + escHtml(METRICS[i].pillar) +
               '<span class="cs-d-raw">' + escHtml(rawLabel(m, key)) + '</span></div>' +
             '<div class="cs-d-pair">' +
               '<div class="cs-d-track"><div class="cs-d-fill cs-d-me" style="width:' + mePct + '%"></div></div>' +
@@ -1251,8 +1380,8 @@ var ContribScoreDemo = (function() {
       var prompt =
         'You are an operations analyst. Write a concise executive brief (under 120 words, ' +
         'plain text, no markdown) on this synthetic team\'s weekly contribution scores (0-100). ' +
-        'Scoring weights: Goals ' + w.goals + ', Tracked Time ' + w.tracked +
-        ', Planned Time ' + w.planned + ', RCR ' + w.rcr + ', Kudos ' + w.kudos + '. ' +
+        'Scoring weights: Company Alignment ' + w.alignment + ', Performance ' + w.performance +
+        ', Employee Health ' + w.health + ', Recognition ' + w.recognition + '. ' +
         'Ranked scores: ' + ranked.join('; ') + '. ' +
         'Highlight the top performer, who is at risk, and one coaching recommendation.';
 
@@ -1302,8 +1431,37 @@ var ContribScoreDemo = (function() {
     if (mount) createInstance(mount);
   }
 
-  return { inject: inject };
+  return { inject: inject, _normsFor: normsFor, _scoreFor: scoreFor };
 }());
+
+// Dev test — run _test_contribMath() in the browser console.
+function _test_contribMath() {
+  var N = ContribScoreDemo._normsFor;
+  var S = ContribScoreDemo._scoreFor;
+
+  // Sweet-spot Employee Health band: peak at 40h, zero at 20h/60h, 0.5 at 30h
+  console.assert(N({ goalsPct: 0, tracked: 0, planned: 40, kudos: 0 }).health === 1,
+    'health: 40h should be 1.0');
+  console.assert(N({ goalsPct: 0, tracked: 0, planned: 20, kudos: 0 }).health === 0,
+    'health: 20h should be 0');
+  console.assert(N({ goalsPct: 0, tracked: 0, planned: 60, kudos: 0 }).health === 0,
+    'health: 60h should be 0');
+  console.assert(Math.abs(N({ goalsPct: 0, tracked: 0, planned: 30, kudos: 0 }).health - 0.5) < 1e-9,
+    'health: 30h should be 0.5');
+
+  // Performance (utilization) guards division by zero
+  console.assert(N({ goalsPct: 0, tracked: 10, planned: 0, kudos: 0 }).performance === 0,
+    'performance: planned 0 should be 0');
+
+  // Composite with default weights for a known row (Elena: 90% goals, 37/40, 40h, 3 kudos)
+  // norms: alignment .9, performance 1, health 1, recognition 1
+  // score = 100*(30*.9 + 35*1 + 20*1 + 15*1)/100 = 97
+  var elena = N({ goalsPct: 90, tracked: 37, planned: 40, kudos: 3 });
+  var w = { alignment: 30, performance: 35, health: 20, recognition: 15 };
+  console.assert(Math.round(S(elena, w)) === 97, 'score: Elena should round to 97');
+
+  console.log('✓ contrib math tests passed');
+}
 
 // ── DEMO REGISTRY ─────────────────────────────────────────────────────────────
 // Maps project ids to their live-demo modules. Must be declared after all demo
@@ -1313,7 +1471,7 @@ var DEMOS = {
   'ai-sales':       DealRiskDemo,
   'tcc-forecast':   TccDemo,
   'comp-reporting': CompNormalizerDemo,
-  'ps-dashboard':   ContribScoreDemo
+  'Performance-Dashboard':   ContribScoreDemo
 };
 
 // ── LIVE DEMOS SECTION (#demos) ───────────────────────────────────────────────
@@ -1343,9 +1501,9 @@ var DemosSection = (function() {
         mount(tab.getAttribute('data-demo'));
       });
     });
-    // Mount the default tab (Ops / ps-dashboard, marked .active in the markup)
+    // Mount the default tab (Ops / Performance-Dashboard, marked .active in the markup)
     var activeTab = document.querySelector('#demos .demo-tab.active');
-    mount(activeTab ? activeTab.getAttribute('data-demo') : 'ps-dashboard');
+    mount(activeTab ? activeTab.getAttribute('data-demo') : 'Performance-Dashboard');
   }
 
   return { init: init };
@@ -1546,6 +1704,7 @@ document.addEventListener('DOMContentLoaded', function() {
   DomainGrid.render();
   Chat.init();
   DemosSection.init();
+  Contact.init();
   wireModalEvents();
 
   UI.initStackBar();

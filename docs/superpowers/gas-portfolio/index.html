@@ -201,8 +201,9 @@ nav {
 }
 .hero h1 em { font-style: normal; color: var(--teal-vivid); }
 .hero-sub {
-  font-size: 17px;
-  color: var(--dark-muted);
+  font-size: 18px;
+  font-weight: 450;
+  color: rgba(255,255,255,0.62);
   max-width: 580px;
   line-height: 1.75;
   margin-bottom: 44px;
@@ -220,7 +221,7 @@ nav {
   display: block;
   letter-spacing: -0.02em;
 }
-.hero-metric-label { font-size: 12px; color: var(--dark-muted); margin-top: 5px; letter-spacing: 0.04em; }
+.hero-metric-label { font-size: 13px; color: rgba(255,255,255,0.62); margin-top: 5px; letter-spacing: 0.04em; }
 .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
@@ -269,12 +270,12 @@ nav {
 }
 .stack-pill {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px 12px;
   border-radius: 4px;
-  background: rgba(93,202,165,0.08);
-  color: var(--teal-muted);
-  border: 1px solid rgba(93,202,165,0.18);
+  background: rgba(93,202,165,0.12);
+  color: #7FE0BE;
+  border: 1px solid rgba(93,202,165,0.30);
   margin: 0 6px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -486,6 +487,17 @@ section { padding: 88px 2rem; }
 .car-block.action    .car-label { color: var(--blue); }
 .car-block.resolution .car-label { color: var(--purple); }
 .car-text { font-size: 13.5px; color: var(--light-muted); line-height: 1.7; }
+.car-text strong, .car-list strong { color: var(--light-text); font-weight: 700; }
+.car-list { margin: 0; padding-left: 0; list-style: none; }
+.car-list li {
+  font-size: 13.5px; color: var(--light-muted); line-height: 1.55;
+  padding-left: 16px; position: relative; margin-bottom: 9px;
+}
+.car-list li:last-child { margin-bottom: 0; }
+.car-list li::before {
+  content: ""; position: absolute; left: 0; top: 8px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--blue);
+}
 
 /* Before / After */
 .ba-strip { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 0; margin-bottom: 28px; align-items: stretch; }
@@ -590,6 +602,20 @@ section { padding: 88px 2rem; }
   overflow: hidden;
   max-width: 720px;
 }
+.chat-toolbar {
+  display: flex; justify-content: flex-end;
+  padding: 12px 14px 0;
+}
+.chat-newchat-btn {
+  font-size: 12px; font-family: var(--sans);
+  padding: 5px 12px; border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--dark-border);
+  color: var(--dark-muted);
+  cursor: pointer; transition: all .2s var(--ease);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chat-newchat-btn:hover { background: var(--teal-dim); color: var(--teal-vivid); border-color: rgba(0,200,150,0.3); }
 .chat-messages {
   padding: 20px;
   min-height: 280px;
@@ -619,6 +645,12 @@ section { padding: 88px 2rem; }
   color: var(--dark-text);
   border-radius: 14px 14px 14px 4px;
 }
+.msg.ai .msg-bubble a {
+  color: var(--teal-vivid);
+  text-decoration: underline; text-underline-offset: 2px;
+  word-break: break-word;
+}
+.msg.ai .msg-bubble a:hover { color: #00dfa8; }
 .msg-typing {
   align-self: flex-start;
   padding: 11px 16px;
@@ -663,7 +695,7 @@ section { padding: 88px 2rem; }
 
 .chat-input-row {
   padding: 14px 16px 16px;
-  display: flex; gap: 10px; align-items: center;
+  display: flex; gap: 10px; align-items: flex-end;
   border-top: 1px solid var(--dark-border);
 }
 .chat-input {
@@ -673,6 +705,9 @@ section { padding: 88px 2rem; }
   font-size: 13.5px; font-family: var(--sans);
   color: var(--dark-text); outline: none;
   transition: border-color .2s var(--ease);
+  /* Multi-line: starts at one row, auto-grows up to ~6 lines via JS */
+  line-height: 1.45; resize: none; overflow-y: auto;
+  min-height: 42px; max-height: 148px;
 }
 .chat-input::placeholder { color: rgba(255,255,255,0.28); }
 .chat-input:focus { border-color: rgba(0,200,150,0.50); }
@@ -689,6 +724,15 @@ section { padding: 88px 2rem; }
    ABOUT
 ═══════════════════════════════════════════════════════════════════════ */
 #about { background: var(--light-surf); }
+
+/* Bridge the dark↔light contrast: a subtle teal accent + soft top wash on the
+   light sections so the transition from the dark terminal-green sections is
+   gradual rather than stark. */
+#projects, #about {
+  border-top: 1px solid rgba(29,158,117,0.16);
+  background-image: linear-gradient(to bottom, rgba(0,200,150,0.05), rgba(0,200,150,0) 170px);
+}
+#about { border-bottom: 1px solid rgba(29,158,117,0.16); }
 .about-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 64px; align-items: start; }
 @media (max-width: 680px) { .about-grid { grid-template-columns: 1fr; gap: 40px; } }
 .about-copy .section-desc { margin-bottom: 28px; }
@@ -700,10 +744,12 @@ section { padding: 88px 2rem; }
   border: 1px solid var(--light-border);
 }
 .skills-label { font-size: 12px; font-weight: 600; color: var(--light-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 18px; }
-.skill-row { margin-bottom: 16px; }
-.skill-row-top { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.skill-row { margin-bottom: 18px; }
+.skill-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px; }
 .skill-name  { font-size: 13px; font-weight: 600; color: var(--light-text); }
 .skill-pct   { font-family: var(--mono); font-size: 12px; color: var(--teal-vivid); }
+.skill-level { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--teal-600); white-space: nowrap; letter-spacing: 0.02em; }
+.skill-proof { font-size: 12px; color: var(--light-muted); line-height: 1.5; margin-top: 6px; }
 .skill-bar-track { height: 5px; background: var(--light-border); border-radius: 3px; overflow: hidden; }
 .skill-bar-fill  { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--teal-600), var(--teal-vivid)); width: 0; transition: width 1.1s var(--ease); }
 
@@ -1513,7 +1559,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   <ul class="nav-links" id="nav-links">
     <li><a href="#projects"     class="nav-link"><span class="nav-dot"></span>Projects</a></li>
     <li><a href="#demos"        class="nav-link"><span class="nav-dot"></span>Live Demos</a></li>
-    <li><a href="#chat-section" class="nav-link"><span class="nav-dot"></span>AI Chat</a></li>
+    <li><a href="#chat-section" class="nav-link"><span class="nav-dot"></span>Ask Donna</a></li>
     <li><a href="#about"        class="nav-link"><span class="nav-dot"></span>About</a></li>
     <li><a href="#contact"      class="nav-link"><span class="nav-dot"></span>Contact</a></li>
     <? if (isAdmin) { ?>
@@ -1565,9 +1611,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm2 0v8h8V4H4z"/></svg>
         View Projects
       </a>
-      <a href="#demos" class="btn-ghost">Try the live demos →</a>
-      <a href="#chat-section" class="btn-ghost">Ask the AI assistant →</a>
-      <a href="mailto:moisesalex.01@gmail.com" class="btn-ghost">Let's Talk →</a>
+      <a href="#chat-section" class="btn-ghost">Ask Donna, the AI assistant →</a>
     </div>
   </div>
 </section>
@@ -1646,26 +1690,29 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 <!-- ── AI CHAT ───────────────────────────────────────────────────────── -->
 <section id="chat-section">
   <div class="section-inner">
-    <p class="section-eyebrow reveal">AI Assistant</p>
-    <h2 class="section-title reveal reveal-delay-1">Ask me anything about Alex's work.</h2>
-    <p class="section-desc reveal reveal-delay-2">Powered by Llama 3.3 via Groq — ask about specific projects, tech stack, impact metrics, or career trajectory.</p>
+    <p class="section-eyebrow reveal">Meet Donna</p>
+    <h2 class="section-title reveal reveal-delay-1">Ask Donna anything about Alex's work.</h2>
+    <p class="section-desc reveal reveal-delay-2">Donna is Alex's AI assistant, powered by Llama 3.3 — ask about specific projects, tech stack, impact metrics, role fit, or availability.</p>
     <div class="chat-container reveal reveal-delay-3">
+      <div class="chat-toolbar">
+        <button class="chat-newchat-btn" id="chat-newchat-btn" onclick="Chat.newChat()" aria-label="Start a new chat">↺ New chat</button>
+      </div>
       <div class="chat-messages" id="chat-messages">
         <div class="msg ai">
           <div class="msg-bubble">
-            Hi! I'm Alex's portfolio assistant. I can tell you about any of his 10 projects, his tech stack, or his analytics work across AI, Finance, HR, and Ops. What would you like to know?
+            Hi! I'm Donna, Alex's AI assistant. I can walk you through any of his projects, his tech stack and impact — or, if you're hiring, whether Alex is a fit for the role you have in mind. What would you like to know?
           </div>
         </div>
       </div>
-      <div class="chat-no-key" id="chat-no-key">⚠ The AI assistant isn't configured yet — please check back soon.</div>
+      <div class="chat-no-key" id="chat-no-key">⚠ Donna isn't configured yet — please check back soon.</div>
       <div class="chat-suggestions" id="chat-suggestions">
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What's your biggest impact project?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Explain the TCC Forecasting System</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What's your AI/LLM stack?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What do the live demos show?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Is Alex open to new roles right now?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What roles is Alex a fit for?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What are Alex's salary expectations?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Does Alex work remotely? What timezone?</button>
       </div>
       <div class="chat-input-row">
-        <input class="chat-input" id="chat-input" type="text" placeholder="Ask about any project, skill, or impact…" autocomplete="off">
+        <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask Donna about a project, skill, role fit, or availability…  (Shift+Enter for a new line)" autocomplete="off"></textarea>
         <button class="chat-send-btn" id="chat-send-btn" onclick="Chat.send()" aria-label="Send">→</button>
       </div>
     </div>
@@ -1706,7 +1753,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
             <svg viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
             LinkedIn
           </a>
-          <a href="mailto:moisesalex.01@gmail.com" class="social-btn">
+          <a href="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=moisesalex.01@gmail.com" target="_blank" rel="noopener" data-email="moisesalex.01@gmail.com" class="social-btn js-email">
             <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
             Email
           </a>
@@ -1719,36 +1766,44 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       <div class="about-skills reveal reveal-delay-1">
         <div class="skills-label">Core Competencies</div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Python · Data Engineering</span><span class="skill-pct">95%</span></div>
+          <div class="skill-row-top"><span class="skill-name">Python · Data Engineering</span><span class="skill-level">Expert · 3 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="95"></div></div>
+          <div class="skill-proof">Parallelized ETL pipelines + Gemini/Claude LLM integrations</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Google Apps Script / GAS</span><span class="skill-pct">95%</span></div>
+          <div class="skill-row-top"><span class="skill-name">Google Apps Script / GAS</span><span class="skill-level">Expert · 3 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="95"></div></div>
+          <div class="skill-proof">Production web apps with RBAC, CI/CD &amp; live dashboards</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">SQL · SuiteQL · Oracle</span><span class="skill-pct">90%</span></div>
+          <div class="skill-row-top"><span class="skill-name">SQL · SuiteQL · Oracle</span><span class="skill-level">Advanced · 5 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="90"></div></div>
+          <div class="skill-proof">Attrition-proration &amp; audit queries against NetSuite</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">AI/LLM Integration (Gemini, Claude, MCP)</span><span class="skill-pct">92%</span></div>
+          <div class="skill-row-top"><span class="skill-name">AI/LLM Integration (Gemini, Claude, MCP)</span><span class="skill-level">Advanced · 3 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="92"></div></div>
+          <div class="skill-proof">9 production systems with prompt engineering &amp; validation</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Tableau · Looker · BI Visualization</span><span class="skill-pct">85%</span></div>
+          <div class="skill-row-top"><span class="skill-name">Tableau · Looker · BI Visualization</span><span class="skill-level">Advanced · 4 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="85"></div></div>
+          <div class="skill-proof">Board-ready P&amp;L, variance &amp; headcount dashboards</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Financial Modeling · TCC Analysis</span><span class="skill-pct">85%</span></div>
+          <div class="skill-row-top"><span class="skill-name">Financial Modeling · TCC Analysis</span><span class="skill-level">Advanced · 3 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="85"></div></div>
+          <div class="skill-proof">CFO forecasting: actuals vs forecast, LOB cost drivers</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">HR Analytics · Workforce Planning</span><span class="skill-pct">88%</span></div>
+          <div class="skill-row-top"><span class="skill-name">HR Analytics · Workforce Planning</span><span class="skill-level">Advanced · 6 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="88"></div></div>
+          <div class="skill-proof">Forecasting, headcount planning &amp; comp benchmarking</div>
         </div>
         <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">HubSpot / NetSuite / APIs</span><span class="skill-pct">82%</span></div>
+          <div class="skill-row-top"><span class="skill-name">HubSpot / NetSuite / APIs</span><span class="skill-level">Proficient · 3 yrs</span></div>
           <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="82"></div></div>
+          <div class="skill-proof">REST integrations: HubSpot CRM v3/v4, SuiteQL</div>
         </div>
       </div>
     </div>
@@ -1764,7 +1819,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       <p class="cta-strip-desc">Open to senior data &amp; AI engineering roles. Response within 24h.</p>
     </div>
     <div class="cta-strip-actions">
-      <a href="mailto:moisesalex.01@gmail.com" class="btn-primary">
+      <a href="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=moisesalex.01@gmail.com&amp;su=Opportunity%20for%20Alex%20L%C3%B3pez&amp;body=Hi%20Alex%2C%0D%0A%0D%0AI%20came%20across%20your%20portfolio%20and%20would%20like%20to%20discuss%20a%20role.%0D%0A%0D%0A-%20Role%20%2F%20Title%3A%0D%0A-%20Company%3A%0D%0A-%20Salary%20range%3A%0D%0A-%20Work%20arrangement%20(remote%20%2F%20hybrid%20%2F%20onsite)%3A%0D%0A-%20Timeline%3A%0D%0A%0D%0AThanks!" target="_blank" rel="noopener" data-email="moisesalex.01@gmail.com" class="btn-primary js-email">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
         Send a message
       </a>
@@ -2090,33 +2145,28 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 
 <template id="contrib-demo-tpl">
   <div class="demo-section pm-demo-mount">
-    <div class="demo-hd">🏆 Contribution Scoring Engine — Weighted Team Scoring</div>
+    <div class="demo-hd">🏆 Contributor Intelligence — Weighted Team Scoring</div>
 
     <!-- Weight sliders -->
     <div class="cs-sliders">
       <div class="demo-slider-group">
-        <label>Goals Weight <span class="cs-w-goals-val">30</span>
-          <input class="demo-range cs-w-goals" type="range" min="0" max="50" step="1" value="30">
+        <label>Company Alignment — Goal Attainment <span class="cs-w-alignment-val">30</span>
+          <input class="demo-range cs-w-alignment" type="range" min="0" max="50" step="1" value="30">
         </label>
       </div>
       <div class="demo-slider-group">
-        <label>Tracked Time Weight <span class="cs-w-tracked-val">30</span>
-          <input class="demo-range cs-w-tracked" type="range" min="0" max="50" step="1" value="30">
+        <label>Performance — Utilization <span class="cs-w-performance-val">35</span>
+          <input class="demo-range cs-w-performance" type="range" min="0" max="50" step="1" value="35">
         </label>
       </div>
       <div class="demo-slider-group">
-        <label>Planned Time Weight <span class="cs-w-planned-val">20</span>
-          <input class="demo-range cs-w-planned" type="range" min="0" max="50" step="1" value="20">
+        <label>Employee Health — Workload Health <span class="cs-w-health-val">20</span>
+          <input class="demo-range cs-w-health" type="range" min="0" max="50" step="1" value="20">
         </label>
       </div>
       <div class="demo-slider-group">
-        <label>RCR Weight <span class="cs-w-rcr-val">15</span>
-          <input class="demo-range cs-w-rcr" type="range" min="0" max="50" step="1" value="15">
-        </label>
-      </div>
-      <div class="demo-slider-group">
-        <label>Kudos Weight <span class="cs-w-kudos-val">5</span>
-          <input class="demo-range cs-w-kudos" type="range" min="0" max="50" step="1" value="5">
+        <label>Recognition — Peer Recognition <span class="cs-w-recognition-val">15</span>
+          <input class="demo-range cs-w-recognition" type="range" min="0" max="50" step="1" value="15">
         </label>
       </div>
     </div>
