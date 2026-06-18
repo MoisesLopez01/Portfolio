@@ -1224,7 +1224,7 @@ var ContribScoreDemo = (function() {
   // Raw value shown beside each pillar in the radar value list
   function rawLabel(m, key) {
     if (key === 'alignment')   return m.goalsPct + '% of goals';
-    if (key === 'performance') return m.tracked + 'h / ' + m.planned + 'h utilized';
+    if (key === 'performance') return m.tracked + 'h / ' + m.planned + 'h tracked';
     if (key === 'health')      return m.planned + 'h planned';
     return m.kudos + ' kudos';
   }
@@ -1731,6 +1731,136 @@ var UI = (function() {
     initNavHighlight:  initNavHighlight,
     initStackBar:      initStackBar
   };
+}());
+
+// ── RESUME / ATS ONE-PAGER ──────────────────────────────────────────────────────
+// Recruiter affordance: a "Copy as text" button (ATS-clean plain text → clipboard)
+// and a "Print one-pager" button (populates #onepager and triggers window.print();
+// the print stylesheet hides everything else). Both are built from the same profile
+// data + the live window.PROJECTS, so they stay in sync with the portfolio.
+
+var Resume = (function() {
+  var PROFILE = {
+    name:    'Alex López',
+    title:   'Senior Data Analyst · Data Strategist',
+    email:   'moisesalex.01@gmail.com',
+    linkedin:'linkedin.com/in/analystd',
+    github:  'github.com/MoisesLopez01/Portfolio',
+    location:'Remote · Central Time (UTC-6) · EN / ES',
+    summary: '5+ years engineering analytics systems that close the gap between raw business data and executive-level clarity — AI-powered compensation engines, real-time financial dashboards, and the automation underneath both. I design and ship production web apps (Google Apps Script, RBAC, CI/CD) that serve the daily decisions managers and operations leaders depend on.',
+    education:'MSc, Data Science Applied to Business Intelligence — European University of the Atlantic (2024–2026)',
+    availability:'Open to senior Data / AI engineering roles. Remote-first with US & LatAm overlap. Response within 24h.'
+  };
+
+  var SKILLS = [
+    { name: 'Python · Data Engineering',                level: 'Expert',     yrs: '3 yrs', proof: 'Parallelized ETL pipelines + Gemini/Claude LLM integrations' },
+    { name: 'Google Apps Script / GAS',                 level: 'Expert',     yrs: '3 yrs', proof: 'Production web apps with RBAC, CI/CD & live dashboards' },
+    { name: 'SQL · SuiteQL · Oracle',                   level: 'Advanced',   yrs: '5 yrs', proof: 'Attrition-proration & audit queries against NetSuite' },
+    { name: 'AI/LLM Integration (Gemini, Claude, MCP)', level: 'Advanced',   yrs: '3 yrs', proof: '9 production systems with prompt engineering & validation' },
+    { name: 'Tableau · Looker · BI Visualization',      level: 'Advanced',   yrs: '4 yrs', proof: 'Board-ready P&L, variance & headcount dashboards' },
+    { name: 'Financial Modeling · TCC Analysis',        level: 'Advanced',   yrs: '3 yrs', proof: 'CFO forecasting: actuals vs forecast, LOB cost drivers' },
+    { name: 'HR Analytics · Workforce Planning',        level: 'Advanced',   yrs: '6 yrs', proof: 'Forecasting, headcount planning & comp benchmarking' },
+    { name: 'HubSpot / NetSuite / APIs',                level: 'Proficient', yrs: '3 yrs', proof: 'REST integrations: HubSpot CRM v3/v4, SuiteQL' }
+  ];
+
+  function projects() {
+    return (window.PROJECTS || []).map(function(p) {
+      return {
+        title:    p.title || '',
+        impact:   p.impact || '',
+        category: p.category || '',
+        tech:     (p.tech || []).slice(0, 4).join(', ')
+      };
+    });
+  }
+
+  function plainText() {
+    var L = [];
+    L.push(PROFILE.name.toUpperCase());
+    L.push(PROFILE.title);
+    L.push([PROFILE.email, PROFILE.linkedin, PROFILE.github, PROFILE.location].join(' · '));
+    L.push('');
+    L.push('SUMMARY');
+    L.push(PROFILE.summary);
+    L.push('');
+    L.push('CORE COMPETENCIES');
+    SKILLS.forEach(function(s) {
+      L.push('- ' + s.name + ' — ' + s.level + ' (' + s.yrs + '): ' + s.proof);
+    });
+    L.push('');
+    L.push('SELECTED PROJECTS');
+    projects().forEach(function(p) {
+      var line = '- ' + p.title;
+      if (p.impact)   line += ' — ' + p.impact;
+      if (p.category) line += ' [' + p.category + ']';
+      L.push(line);
+      if (p.tech) L.push('  Tech: ' + p.tech);
+    });
+    L.push('');
+    L.push('EDUCATION');
+    L.push(PROFILE.education);
+    L.push('');
+    L.push('AVAILABILITY');
+    L.push(PROFILE.availability);
+    return L.join('\n');
+  }
+
+  function copy() {
+    var text = plainText();
+    var done = function() { Toast.show('Résumé copied — paste into your ATS', 'success'); };
+    var fail = function() {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta); done();
+      } catch (e) { Toast.show('Copy unavailable — use Print one-pager instead', 'error'); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fail);
+    } else { fail(); }
+  }
+
+  function buildOnePager() {
+    var el = document.getElementById('onepager');
+    if (!el) return;
+    var html = '';
+    html += '<h1>' + escHtml(PROFILE.name) + '</h1>';
+    html += '<div class="op-title">' + escHtml(PROFILE.title) + '</div>';
+    html += '<div class="op-contact">' +
+      escHtml(PROFILE.email) + ' &nbsp;·&nbsp; ' + escHtml(PROFILE.linkedin) +
+      ' &nbsp;·&nbsp; ' + escHtml(PROFILE.github) + '<br>' + escHtml(PROFILE.location) + '</div>';
+
+    html += '<h2>Summary</h2><p>' + escHtml(PROFILE.summary) + '</p>';
+
+    html += '<h2>Core Competencies</h2><ul>';
+    SKILLS.forEach(function(s) {
+      html += '<li><span class="op-k">' + escHtml(s.name) + '</span> — ' +
+        '<span class="op-meta">' + escHtml(s.level) + ' · ' + escHtml(s.yrs) + '</span> — ' +
+        escHtml(s.proof) + '</li>';
+    });
+    html += '</ul>';
+
+    html += '<h2>Selected Projects</h2><ul>';
+    projects().forEach(function(p) {
+      var meta = [p.impact, p.category].filter(Boolean).join(' · ');
+      html += '<li><span class="op-k">' + escHtml(p.title) + '</span>' +
+        (meta ? ' — <span class="op-meta">' + escHtml(meta) + '</span>' : '') +
+        (p.tech ? '<br>' + escHtml(p.tech) : '') + '</li>';
+    });
+    html += '</ul>';
+
+    html += '<h2>Education</h2><p>' + escHtml(PROFILE.education) + '</p>';
+    html += '<h2>Availability</h2><p>' + escHtml(PROFILE.availability) + '</p>';
+    el.innerHTML = html;
+  }
+
+  function print() {
+    buildOnePager();
+    window.print();
+  }
+
+  return { copy: copy, print: print };
 }());
 
 // ── MODAL EVENT WIRING ────────────────────────────────────────────────────────

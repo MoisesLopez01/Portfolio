@@ -1547,29 +1547,9 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 .cs-rv-lbl { color: var(--dark-text); width: 130px; flex-shrink: 0; }
 .cs-rv-raw { color: var(--dark-muted); flex: 1; white-space: nowrap; }
 .cs-rv-pct { color: var(--amber); font-weight: 600; width: 34px; text-align: right; flex-shrink: 0; }
-.cs-d-metric { margin-bottom: 10px; }
-.cs-d-metric:last-child { margin-bottom: 0; }
-.cs-d-lbl {
-  display: flex; justify-content: space-between; align-items: center;
-  font-family: var(--mono); font-size: 10px; color: var(--dark-muted);
-  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
-}
-.cs-d-raw { color: var(--dark-text); text-transform: none; letter-spacing: 0; }
-.cs-d-pair { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-.cs-d-track {
-  flex: 1; height: 6px;
-  background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;
-}
-.cs-d-fill { height: 100%; border-radius: 3px; transition: width 0.25s ease; }
-.cs-d-fill.cs-d-me, .cs-leg-swatch.cs-d-me {
-  background: linear-gradient(90deg, var(--amber), #fbbf24);
-}
-.cs-d-fill.cs-d-avg, .cs-leg-swatch.cs-d-avg { background: rgba(255,255,255,0.28); }
-.cs-d-val {
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
-  color: var(--amber); width: 34px; text-align: right; flex-shrink: 0;
-}
-.cs-d-val.cs-d-val-avg { color: var(--dark-muted); }
+/* Legend swatches (radar panel header): member = amber, team avg = grey */
+.cs-leg-swatch.cs-d-me { background: linear-gradient(90deg, var(--amber), #fbbf24); }
+.cs-leg-swatch.cs-d-avg { background: rgba(255,255,255,0.28); }
 .cs-ai-results { margin-top: 12px; }
 .cs-ai-card {
   padding: 12px 14px; border-radius: 8px;
@@ -1710,6 +1690,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 /* Neutralize the old wide-screen 2-panel hero (cell-range spans full width now) */
 @media (min-width: 1280px) {
   .hero-inner { display: block; }
+  .hero-sub { margin-bottom: 44px; }
 }
 
 /* ── Recruiter / ATS one-pager ── */
