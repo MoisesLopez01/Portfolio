@@ -1547,7 +1547,7 @@ var DEMOS = {
   'ai-sales':       DealRiskDemo,
   'tcc-forecast':   TccDemo,
   'comp-reporting': CompNormalizerDemo,
-  'Performance-Dashboard':   ContribScoreDemo
+  'ps-dashboard':   ContribScoreDemo
 };
 
 // ── LIVE DEMOS SECTION (#demos) ───────────────────────────────────────────────
@@ -1583,10 +1583,10 @@ var DemosSection = (function() {
         mount(tab.getAttribute('data-demo'));
       });
     });
-    // Mount the default tab (Ops / Performance-Dashboard, marked .active in the markup)
+    // Mount the default tab (Ops / ps-dashboard, marked .active in the markup)
     var activeTab = document.querySelector('#demos .demo-tab.active');
     setFormula(activeTab);
-    mount(activeTab ? activeTab.getAttribute('data-demo') : 'Performance-Dashboard');
+    mount(activeTab ? activeTab.getAttribute('data-demo') : 'ps-dashboard');
   }
 
   return { init: init };
