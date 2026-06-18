@@ -1428,12 +1428,15 @@ var ContribScoreDemo = (function() {
         return (r + 1) + '. ' + TEAM[idx].name + ' — ' + Math.round(lastScores[idx]);
       });
       var prompt =
-        'You are an operations analyst. Write a concise executive brief (under 120 words, ' +
+        'You are an operations manager. Write a concise executive brief (under 120 words, ' +
         'plain text, no markdown) on this synthetic team\'s weekly contribution scores (0-100). ' +
-        'Scoring weights: Company Alignment ' + w.alignment + ', Performance ' + w.performance +
-        ', Employee Health ' + w.health + ', Recognition ' + w.recognition + '. ' +
+        'The score blends four pillars with these weights: Company Alignment (goal attainment) ' +
+        w.alignment + ', Performance (utilization) ' + w.performance +
+        ', Employee Health (sustainable workload) ' + w.health +
+        ', Recognition (peer kudos) ' + w.recognition + '. ' +
         'Ranked scores: ' + ranked.join('; ') + '. ' +
-        'Highlight the top performer, who is at risk, and one coaching recommendation.';
+        'Highlight the top performer, anyone at risk (especially on Employee Health or ' +
+        'Company Alignment), and one coaching recommendation.';
 
       runServer('proxyGroqChat', [prompt, [], window.SESSION_ID || 'anon'],
         function(reply) {
@@ -1562,6 +1565,11 @@ var DemosSection = (function() {
     DEMOS[key].inject(panel);
   }
 
+  function setFormula(tab) {
+    var fx = document.getElementById('fx-formula');
+    if (fx && tab) fx.textContent = tab.getAttribute('data-formula') || '';
+  }
+
   function init() {
     var tabs = document.querySelectorAll('#demos .demo-tab');
     if (!tabs.length) return;
@@ -1571,11 +1579,13 @@ var DemosSection = (function() {
           t.classList.toggle('active', t === tab);
           t.setAttribute('aria-selected', String(t === tab));
         });
+        setFormula(tab);
         mount(tab.getAttribute('data-demo'));
       });
     });
     // Mount the default tab (Ops / Performance-Dashboard, marked .active in the markup)
     var activeTab = document.querySelector('#demos .demo-tab.active');
+    setFormula(activeTab);
     mount(activeTab ? activeTab.getAttribute('data-demo') : 'Performance-Dashboard');
   }
 
