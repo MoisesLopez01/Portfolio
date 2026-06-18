@@ -1300,6 +1300,7 @@ var ContribScoreDemo = (function() {
       },
       total:      mount.querySelector('.cs-total'),
       board:      mount.querySelector('.cs-board'),
+      team:       mount.querySelector('.cs-team'),
       detail:     mount.querySelector('.cs-detail'),
       detailName: mount.querySelector('.cs-detail-name'),
       detailBody:  mount.querySelector('.cs-detail-rows'),
@@ -1464,6 +1465,20 @@ var ContribScoreDemo = (function() {
       refs.sliders[METRICS[s].key].addEventListener('input', render);
     }
     refs.aiBtn.addEventListener('click', generateBrief);
+
+    // Team-average score per pillar (constant — norms are weight-independent)
+    (function renderTeamSummary() {
+      var html = '';
+      for (var i = 0; i < METRICS.length; i++) {
+        var key = METRICS[i].key;
+        html +=
+          '<div class="cs-team-cell">' +
+            '<div class="cs-team-cell-lbl">' + escHtml(METRICS[i].axis) + '</div>' +
+            '<div class="cs-team-cell-val">' + Math.round(AVG[key] * 100) + '%</div>' +
+          '</div>';
+      }
+      refs.team.innerHTML = html;
+    }());
 
     // initial render
     render();

@@ -7,44 +7,55 @@
 <title>Alex López — Data Strategist</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
    DESIGN TOKENS
 ═══════════════════════════════════════════════════════════════════════ */
 :root {
-  /* Brand */
-  --teal-900:   #04342C;
+  /* ── Ink palette — "data strategist" dark theme ─────────────────────────
+     The site is now dark ink-green throughout. The legacy --light-* tokens
+     are retained (to keep the diff small) but now resolve to RAISED ink
+     panels, so the hundreds of rules referencing them flip to dark cleanly.
+     Inset wells (--light-bg) sit darker than cards (--light-surf), which sit
+     above the page ink (--ink). */
+  --ink:        #081512;
+  --panel:      #0e2118;
+  --panel-2:    #122a1f;
+
+  /* Brand greens */
+  --teal-900:   #07211a;   /* deep section base (nav/hero/footer/cta) */
   --teal-800:   #0a1f1a;
   --teal-700:   #0F6E56;
-  --teal-600:   #1D9E75;
-  --teal-vivid: #00c896;
-  --teal-muted: #5DCAA5;
-  --teal-dim:   rgba(0,200,150,0.12);
-  --teal-dim2:  rgba(93,202,165,0.15);
+  --teal-600:   #2ea86c;   /* mid green — reads on dark surfaces */
+  --teal-vivid: #4cc98a;   /* primary bright accent */
+  --teal-muted: #7fd9b4;
+  --teal-dim:   rgba(76,201,138,0.12);
+  --teal-dim2:  rgba(76,201,138,0.15);
 
-  /* Domain accents */
-  --blue:   #3b82f6;
-  --purple: #a855f7;
-  --amber:  #f59e0b;
+  /* Domain accents — softened for dark */
+  --blue:   #7fa9c9;
+  --purple: #a78bc9;
+  --amber:  #e8a33d;
 
-  /* Surfaces — dark */
-  --dark-bg:     #04342C;
-  --dark-surf:   #0a1f1a;
-  --dark-border: rgba(93,202,165,0.15);
-  --dark-text:   rgba(255,255,255,0.88);
-  --dark-muted:  rgba(255,255,255,0.48);
+  /* Surfaces — dark (cohesive ink) */
+  --dark-bg:     #081512;
+  --dark-surf:   #0e2118;
+  --dark-border: rgba(124,224,190,0.14);
+  --dark-text:   #f2f1ea;
+  --dark-muted:  rgba(242,241,234,0.52);
 
-  /* Surfaces — light */
-  --light-bg:    #f8fafc;
-  --light-surf:  #ffffff;
-  --light-border:#e2e8f0;
-  --light-text:  #0f172a;
-  --light-muted: #64748b;
+  /* Legacy "light" tokens → raised ink panels */
+  --light-bg:    #0b1d16;
+  --light-surf:  #0e2118;
+  --light-border:rgba(124,224,190,0.13);
+  --light-text:  #f2f1ea;
+  --light-muted: #93a69c;
 
   /* Typography */
-  --sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --mono: 'JetBrains Mono', 'Courier New', monospace;
+  --sans:  'Inter', system-ui, -apple-system, sans-serif;
+  --mono:  'IBM Plex Mono', 'JetBrains Mono', 'Courier New', monospace;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
@@ -64,11 +75,12 @@
 html { scroll-behavior: smooth; font-size: 16px; }
 body {
   font-family: var(--sans);
-  background: var(--light-bg);
-  color: var(--light-text);
+  background: var(--ink);
+  color: var(--dark-text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  position: relative;
 }
 a { text-decoration: none; color: inherit; }
 img { display: block; max-width: 100%; }
@@ -1434,6 +1446,23 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   color: var(--amber);
 }
 .cs-total.cs-total-zero { color: #f87171; }
+.cs-team-lbl-row {
+  font-family: var(--mono); font-size: 9px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.07em; margin: 4px 0 6px;
+}
+.cs-team { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.cs-team-cell {
+  flex: 1; min-width: 92px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(245,158,11,0.12);
+}
+.cs-team-cell-lbl {
+  font-family: var(--mono); font-size: 8.5px; color: var(--dark-muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cs-team-cell-val {
+  font-family: var(--mono); font-size: 15px; font-weight: 600;
+  color: var(--amber); margin-top: 3px;
+}
 .cs-board { position: relative; }
 .cs-row {
   position: absolute; left: 0; right: 0; height: 34px;
@@ -2195,6 +2224,10 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       <span class="cs-total-lbl">Weights total:</span>
       <span class="cs-total">100</span>
     </div>
+
+    <!-- Team summary: average per pillar (the team level the manager tunes) -->
+    <div class="cs-team-lbl-row">Team average by pillar</div>
+    <div class="cs-team"></div>
 
     <!-- Leaderboard -->
     <div class="cs-board"></div>
