@@ -1231,6 +1231,7 @@ var ContribScoreDemo = (function() {
 
   // ── radar geometry ──────────────────────────────────────────────────────────
   var RADAR_CX = 100, RADAR_CY = 100, RADAR_R = 64;
+  var RADAR_LABEL_R = 1.22;   // label ring: 22% beyond the outer ring (svg uses overflow:visible)
 
   // Point on axis i (0=top,1=right,2=bottom,3=left) at value v (0–1)
   function radarPt(v, i) {
@@ -1251,8 +1252,9 @@ var ContribScoreDemo = (function() {
 
   // Build the inline SVG: grid rings, axes, team-avg + member polygons, labels
   function buildRadarSvg(me, avg) {
-    var anchors = ['middle', 'start', 'middle', 'end'];   // per axis index
-    var dy      = [-7, 4, 15, 4];                         // label vertical nudge
+    // Parallel to METRICS order (0=top,1=right,2=bottom,3=left) — keep in sync.
+    var anchors = ['middle', 'start', 'middle', 'end'];   // text-anchor per axis
+    var dy      = [-7, 4, 15, 4];                         // label vertical nudge per axis
     var rings = '';
     [0.25, 0.5, 0.75, 1].forEach(function(r) {
       var rp = [];
@@ -1267,7 +1269,7 @@ var ContribScoreDemo = (function() {
       var edge = radarPt(1, i);
       axes += '<line class="cs-radar-axis" x1="' + RADAR_CX + '" y1="' + RADAR_CY +
               '" x2="' + edge[0].toFixed(1) + '" y2="' + edge[1].toFixed(1) + '"></line>';
-      var lp = radarPt(1.22, i);
+      var lp = radarPt(RADAR_LABEL_R, i);
       labels += '<text class="cs-radar-lbl" x="' + lp[0].toFixed(1) + '" y="' +
                 (lp[1] + dy[i]).toFixed(1) + '" text-anchor="' + anchors[i] + '">' +
                 escHtml(METRICS[i].axis) + '</text>';
