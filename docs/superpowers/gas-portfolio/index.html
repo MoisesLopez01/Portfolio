@@ -1582,9 +1582,208 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   .cs-name { width: 96px; font-size: 11.5px; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   DARK INK THEME — overrides, ambient texture, serif headlines, sheet tabs
+   (loaded last so it wins the cascade over hardcoded light-theme colors)
+═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Ambient texture: film grain over everything + faint grid on flat panels ── */
+.noise {
+  position: fixed; inset: 0; pointer-events: none; z-index: 3;
+  opacity: .045; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#projects, #about {
+  background-image:
+    linear-gradient(to bottom, rgba(76,201,138,0.05), rgba(76,201,138,0) 170px),
+    linear-gradient(rgba(244,243,238,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244,243,238,0.022) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+
+/* ── Serif display headlines (Fraunces) ── */
+.hero h1, .section-title, .cta-strip-title, .pmodal-title, .demo-placeholder h4 {
+  font-family: var(--serif);
+  font-weight: 560;
+  letter-spacing: -0.012em;
+}
+.hero h1 { font-weight: 580; }
+.hero h1 em { font-style: italic; color: var(--teal-vivid); }
+
+/* ── Nav as spreadsheet "sheet tabs" ── */
+.nav-links a { position: relative; }
+.nav-links a::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -20px;
+  height: 2px; border-radius: 2px 2px 0 0;
+  background: var(--teal-vivid);
+  transform: scaleX(0); transform-origin: center;
+  transition: transform .22s var(--ease);
+}
+.nav-links a.active::after { transform: scaleX(1); }
+.nav-brand .nav-brand-dot { box-shadow: 0 0 8px var(--teal-vivid); }
+@media (max-width: 768px) {
+  .nav-links a::after { display: none; }
+}
+
+/* ── Hardcoded light-color fixes ── */
+.domain-hd.teal   { background: linear-gradient(135deg, rgba(76,201,138,0.12), var(--panel)); }
+.domain-hd.blue   { background: linear-gradient(135deg, rgba(127,169,201,0.12), var(--panel)); }
+.domain-hd.purple { background: linear-gradient(135deg, rgba(167,139,201,0.12), var(--panel)); }
+.domain-hd.amber  { background: linear-gradient(135deg, rgba(232,163,61,0.12), var(--panel)); }
+
+.tile-impact {
+  background: rgba(232,163,61,0.13); color: var(--amber);
+  border: 1px solid rgba(232,163,61,0.30);
+}
+.tile-demo-badge { background: var(--teal-vivid); color: #07211a; border-color: transparent; }
+.tile-chip { background: rgba(255,255,255,0.03); color: var(--light-muted); border-color: var(--light-border); }
+.domain-tile:hover { background: var(--panel-2); }
+
+.ba-card.bef { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.22); }
+.ba-card.aft { background: rgba(76,201,138,0.08); border-color: rgba(76,201,138,0.22); }
+.ba-card.bef .ba-label { color: #f87171; }
+
+.toast.success { background: rgba(76,201,138,0.13); border: 1px solid rgba(76,201,138,0.30); color: var(--teal-muted); }
+.toast.error   { background: rgba(239,68,68,0.13);  border: 1px solid rgba(239,68,68,0.30);  color: #fca5a5; }
+
+.btn-delete { background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.28); color: #fca5a5; }
+.btn-delete:hover { background: #dc2626; color: #fff; }
+
+.admin-tab.active { background: var(--panel-2); color: var(--light-text); box-shadow: none; }
+.about-tag { background: var(--panel-2); }
+
+/* ── ƒx formula bar (above live-demo panel) ── */
+.formula-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border: 1px solid var(--dark-border);
+  border-radius: 8px; padding: 11px 16px; margin-bottom: 22px;
+  font-family: var(--mono); font-size: 12.5px; color: var(--teal-vivid);
+  overflow-x: auto; white-space: nowrap;
+}
+.formula-bar .fx {
+  color: var(--dark-muted); font-style: italic; flex-shrink: 0;
+  padding-right: 10px; border-right: 1px solid var(--dark-border);
+}
+.formula-bar::-webkit-scrollbar { height: 4px; }
+.formula-bar::-webkit-scrollbar-thumb { background: var(--dark-border); border-radius: 2px; }
+
+/* ── Hero cell-range (spreadsheet stat grid) ── */
+.cell-range {
+  display: grid;
+  grid-template-columns: 30px repeat(4, 1fr);
+  border: 1px solid var(--dark-border);
+  border-radius: 14px; overflow: hidden;
+  background: var(--panel);
+  box-shadow: 0 28px 56px -28px rgba(0,0,0,0.55);
+  max-width: 620px; margin-bottom: 44px;
+}
+.cr-corner, .cr-col, .cr-row {
+  background: var(--panel-2);
+  border-right: 1px solid var(--dark-border);
+  border-bottom: 1px solid var(--dark-border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; color: var(--text-low, #5e7068);
+  text-transform: uppercase; min-height: 26px;
+}
+.cr-col:last-child { border-right: none; }
+.cr-row { border-bottom: none; }
+.cr-cell {
+  position: relative; border-right: 1px solid var(--dark-border);
+  padding: 20px 12px; cursor: default;
+  transition: background .2s var(--ease);
+}
+.cr-cell:last-child { border-right: none; }
+.cr-cell:hover { background: rgba(255,255,255,0.025); }
+.cr-cell .cr-v {
+  display: block; font-family: var(--mono); font-weight: 600;
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  font-variant-numeric: tabular-nums; color: var(--teal-vivid); line-height: 1;
+}
+.cr-cell .cr-l { display: block; font-size: 10.5px; color: var(--dark-muted); margin-top: 7px; line-height: 1.3; }
+.cr-cell.selected { box-shadow: inset 0 0 0 2px var(--teal-vivid); background: rgba(76,201,138,0.07); z-index: 2; }
+@media (max-width: 560px) {
+  .cell-range { grid-template-columns: 1fr 1fr; max-width: 100%; }
+  .cr-corner, .cr-col, .cr-row { display: none; }
+  .cr-cell { border-bottom: 1px solid var(--dark-border); }
+  .cr-cell .cr-v { font-size: 1.3rem; }
+}
+/* Neutralize the old wide-screen 2-panel hero (cell-range spans full width now) */
+@media (min-width: 1280px) {
+  .hero-inner { display: block; }
+}
+
+/* ── Recruiter / ATS one-pager ── */
+.skills-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.skills-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.skills-action {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 7px;
+  background: rgba(76,201,138,0.07); border: 1px solid var(--dark-border);
+  color: var(--teal-muted); cursor: pointer; transition: all .2s var(--ease);
+}
+.skills-action:hover { border-color: rgba(76,201,138,0.40); color: var(--teal-vivid); background: rgba(76,201,138,0.12); }
+
+.skills-table { border: 1px solid var(--dark-border); border-radius: 14px; overflow: hidden; }
+.st-head, .st-row {
+  display: grid; grid-template-columns: 22px 1.25fr 0.85fr 1.9fr; gap: 14px;
+  padding: 12px 16px; align-items: center;
+}
+.st-head {
+  background: var(--panel-2);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  color: var(--text-low, #5e7068); text-transform: uppercase;
+}
+.st-row { border-top: 1px solid var(--dark-border); background: var(--panel); transition: background .18s var(--ease); }
+.st-row:hover { background: rgba(255,255,255,0.025); }
+.st-num { font-family: var(--mono); font-size: 11px; color: var(--text-low, #5e7068); }
+.st-skill { font-size: 13.5px; font-weight: 600; color: var(--light-text); }
+.st-level { font-family: var(--mono); font-size: 10.5px; color: var(--dark-muted); }
+.st-level .lv {
+  display: inline-block; padding: 3px 7px; border-radius: 4px; margin-right: 6px;
+  background: var(--panel-2); color: var(--teal-vivid); font-weight: 500;
+}
+.st-proof { font-size: 12px; color: var(--light-muted); line-height: 1.45; }
+@media (max-width: 760px) {
+  .st-head { display: none; }
+  .st-row { grid-template-columns: 1fr; gap: 5px; }
+  .st-num { display: none; }
+}
+
+/* Printable one-pager — hidden on screen, the only thing printed */
+.onepager { display: none; }
+@media print {
+  body { background: #fff !important; }
+  .noise, nav, .stack-bar, #hero, #projects, #demos, #chat-section,
+  #about, #contact, footer, .admin-fab, .admin-panel, .toast-container,
+  .pmodal-overlay { display: none !important; }
+  .onepager {
+    display: block !important; position: static;
+    color: #111; background: #fff; font-family: 'Inter', Arial, sans-serif;
+    max-width: 720px; margin: 0 auto; padding: 0;
+  }
+  .onepager h1 { font-family: 'Fraunces', Georgia, serif; font-size: 26px; margin-bottom: 2px; color: #111; }
+  .onepager .op-title { font-size: 13px; color: #444; margin-bottom: 4px; }
+  .onepager .op-contact { font-size: 11px; color: #555; margin-bottom: 14px; }
+  .onepager h2 {
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #0a7a52; border-bottom: 1px solid #cbd5d1;
+    padding-bottom: 3px; margin: 16px 0 8px;
+  }
+  .onepager p, .onepager li { font-size: 11.5px; line-height: 1.5; color: #222; }
+  .onepager ul { list-style: none; padding: 0; margin: 0; }
+  .onepager li { margin-bottom: 5px; }
+  .onepager .op-k { font-weight: 700; }
+  .onepager .op-meta { color: #0a7a52; font-weight: 600; }
+}
+
 </style>
 </head>
 <body>
+<div class="noise" aria-hidden="true"></div>
 
 <!-- TEMPLATE DATA INJECTION -->
 <script>
@@ -1638,22 +1837,28 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       I build AI-powered analytics systems, automate financial reporting pipelines,
       and engineer the tools that give C-suites the clarity they need — fast.
     </p>
-    <div class="hero-metrics">
-      <div class="hero-metric">
-        <span class="hero-metric-num"><span class="counter" data-target="11">0</span>+</span>
-        <span class="hero-metric-label">Production Projects</span>
+    <div class="cell-range" id="cell-range" aria-label="Career metrics">
+      <div class="cr-corner"></div>
+      <div class="cr-col">A</div>
+      <div class="cr-col">B</div>
+      <div class="cr-col">C</div>
+      <div class="cr-col">D</div>
+      <div class="cr-row">1</div>
+      <div class="cr-cell">
+        <span class="cr-v"><span class="counter" data-target="11">0</span>+</span>
+        <span class="cr-l">Production Projects</span>
       </div>
-      <div class="hero-metric">
-        <span class="hero-metric-num"><span class="counter" data-target="5">0</span>+</span>
-        <span class="hero-metric-label">Years Experience</span>
+      <div class="cr-cell">
+        <span class="cr-v"><span class="counter" data-target="5">0</span>+</span>
+        <span class="cr-l">Years Experience</span>
       </div>
-      <div class="hero-metric">
-        <span class="hero-metric-num"><span class="counter" data-target="15">0</span>+</span>
-        <span class="hero-metric-label">Countries Covered</span>
+      <div class="cr-cell">
+        <span class="cr-v"><span class="counter" data-target="15">0</span>+</span>
+        <span class="cr-l">Countries Covered</span>
       </div>
-      <div class="hero-metric">
-        <span class="hero-metric-num"><span class="counter" data-target="90">0</span>%</span>
-        <span class="hero-metric-label">Avg. Process Automation</span>
+      <div class="cr-cell selected">
+        <span class="cr-v"><span class="counter" data-target="90">0</span>%</span>
+        <span class="cr-l">Avg. Process Automation</span>
       </div>
     </div>
     <div class="hero-actions">
@@ -1696,11 +1901,12 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
       Four working simulators built from real projects. Synthetic data — everything runs in your browser.
     </p>
     <div class="demo-tabs reveal reveal-delay-3" role="tablist" aria-label="Live demos">
-      <button class="demo-tab active" data-demo="ps-dashboard"   role="tab" aria-selected="true">Ops · Contribution Scorer</button>
-      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false">Finance · TCC Simulator</button>
-      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false">HR · Comp Normalizer</button>
-      <button class="demo-tab"        data-demo="ai-sales"       role="tab" aria-selected="false">Sales · Pipeline Risk</button>
+      <button class="demo-tab active" data-demo="ps-dashboard"   role="tab" aria-selected="true"  data-formula="=WEIGHTED(Goals×0.30 + Tracked×0.30 + Planned×0.20 + RCR×0.15 + Kudos×0.05)">Ops · Contribution Scorer</button>
+      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false" data-formula="=FORECAST(Actuals, Plan) → Σ(LOB variance) ÷ Budget">Finance · TCC Simulator</button>
+      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false" data-formula="=NORMALIZE(Salary ÷ PPP_index[region]) × Band_midpoint">HR · Comp Normalizer</button>
+      <button class="demo-tab"        data-demo="ai-sales"       role="tab" aria-selected="false" data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Sales · Pipeline Risk</button>
     </div>
+    <div class="formula-bar reveal reveal-delay-3" id="fx-bar"><span class="fx">ƒx</span><span id="fx-formula"></span></div>
     <div class="demo-tab-panel reveal reveal-delay-3" id="demo-panel"></div>
   </div>
 </section>
@@ -1814,46 +2020,23 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         </div>
       </div>
       <div class="about-skills reveal reveal-delay-1">
-        <div class="skills-label">Core Competencies</div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Python · Data Engineering</span><span class="skill-level">Expert · 3 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="95"></div></div>
-          <div class="skill-proof">Parallelized ETL pipelines + Gemini/Claude LLM integrations</div>
+        <div class="skills-head">
+          <div class="skills-label">Core Competencies</div>
+          <div class="skills-actions">
+            <button class="skills-action" type="button" onclick="Resume.copy()" aria-label="Copy résumé as plain text">⧉ Copy as text</button>
+            <button class="skills-action" type="button" onclick="Resume.print()" aria-label="Print recruiter one-pager">⎙ Print one-pager</button>
+          </div>
         </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Google Apps Script / GAS</span><span class="skill-level">Expert · 3 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="95"></div></div>
-          <div class="skill-proof">Production web apps with RBAC, CI/CD &amp; live dashboards</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">SQL · SuiteQL · Oracle</span><span class="skill-level">Advanced · 5 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="90"></div></div>
-          <div class="skill-proof">Attrition-proration &amp; audit queries against NetSuite</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">AI/LLM Integration (Gemini, Claude, MCP)</span><span class="skill-level">Advanced · 3 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="92"></div></div>
-          <div class="skill-proof">9 production systems with prompt engineering &amp; validation</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Tableau · Looker · BI Visualization</span><span class="skill-level">Advanced · 4 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="85"></div></div>
-          <div class="skill-proof">Board-ready P&amp;L, variance &amp; headcount dashboards</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">Financial Modeling · TCC Analysis</span><span class="skill-level">Advanced · 3 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="85"></div></div>
-          <div class="skill-proof">CFO forecasting: actuals vs forecast, LOB cost drivers</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">HR Analytics · Workforce Planning</span><span class="skill-level">Advanced · 6 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="88"></div></div>
-          <div class="skill-proof">Forecasting, headcount planning &amp; comp benchmarking</div>
-        </div>
-        <div class="skill-row">
-          <div class="skill-row-top"><span class="skill-name">HubSpot / NetSuite / APIs</span><span class="skill-level">Proficient · 3 yrs</span></div>
-          <div class="skill-bar-track"><div class="skill-bar-fill" data-pct="82"></div></div>
-          <div class="skill-proof">REST integrations: HubSpot CRM v3/v4, SuiteQL</div>
+        <div class="skills-table">
+          <div class="st-head"><span></span><span>Skill</span><span>Level</span><span>Proof</span></div>
+          <div class="st-row"><span class="st-num">1</span><span class="st-skill">Python · Data Engineering</span><span class="st-level"><span class="lv">Expert</span>3 yrs</span><span class="st-proof">Parallelized ETL pipelines + Gemini/Claude LLM integrations</span></div>
+          <div class="st-row"><span class="st-num">2</span><span class="st-skill">Google Apps Script / GAS</span><span class="st-level"><span class="lv">Expert</span>3 yrs</span><span class="st-proof">Production web apps with RBAC, CI/CD &amp; live dashboards</span></div>
+          <div class="st-row"><span class="st-num">3</span><span class="st-skill">SQL · SuiteQL · Oracle</span><span class="st-level"><span class="lv">Advanced</span>5 yrs</span><span class="st-proof">Attrition-proration &amp; audit queries against NetSuite</span></div>
+          <div class="st-row"><span class="st-num">4</span><span class="st-skill">AI/LLM Integration (Gemini, Claude, MCP)</span><span class="st-level"><span class="lv">Advanced</span>3 yrs</span><span class="st-proof">9 production systems with prompt engineering &amp; validation</span></div>
+          <div class="st-row"><span class="st-num">5</span><span class="st-skill">Tableau · Looker · BI Visualization</span><span class="st-level"><span class="lv">Advanced</span>4 yrs</span><span class="st-proof">Board-ready P&amp;L, variance &amp; headcount dashboards</span></div>
+          <div class="st-row"><span class="st-num">6</span><span class="st-skill">Financial Modeling · TCC Analysis</span><span class="st-level"><span class="lv">Advanced</span>3 yrs</span><span class="st-proof">CFO forecasting: actuals vs forecast, LOB cost drivers</span></div>
+          <div class="st-row"><span class="st-num">7</span><span class="st-skill">HR Analytics · Workforce Planning</span><span class="st-level"><span class="lv">Advanced</span>6 yrs</span><span class="st-proof">Forecasting, headcount planning &amp; comp benchmarking</span></div>
+          <div class="st-row"><span class="st-num">8</span><span class="st-skill">HubSpot / NetSuite / APIs</span><span class="st-level"><span class="lv">Proficient</span>3 yrs</span><span class="st-proof">REST integrations: HubSpot CRM v3/v4, SuiteQL</span></div>
         </div>
       </div>
     </div>
@@ -2195,7 +2378,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 
 <template id="contrib-demo-tpl">
   <div class="demo-section pm-demo-mount">
-    <div class="demo-hd">🏆 Contributor Intelligence — Weighted Team Scoring</div>
+    <div class="demo-hd">🏆 Team Performance Control — Weighted Pillar Scoring</div>
 
     <!-- Weight sliders -->
     <div class="cs-sliders">
@@ -2258,6 +2441,9 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 
 <!-- ── TOAST CONTAINER ───────────────────────────────────────────────── -->
 <div class="toast-container" id="toast-container"></div>
+
+<!-- ── RECRUITER ONE-PAGER (screen-hidden; only this prints) ──────────── -->
+<div class="onepager" id="onepager" aria-hidden="true"></div>
 
 <!-- ── JAVASCRIPT MODULE ─────────────────────────────────────────────── -->
 <?!= include('JavaScript') ?>
