@@ -1229,6 +1229,57 @@ var ContribScoreDemo = (function() {
     return m.kudos + ' kudos';
   }
 
+  // ── radar geometry ──────────────────────────────────────────────────────────
+  var RADAR_CX = 100, RADAR_CY = 100, RADAR_R = 64;
+
+  // Point on axis i (0=top,1=right,2=bottom,3=left) at value v (0–1)
+  function radarPt(v, i) {
+    var ang = (-90 + i * 90) * Math.PI / 180;
+    return [RADAR_CX + RADAR_R * v * Math.cos(ang),
+            RADAR_CY + RADAR_R * v * Math.sin(ang)];
+  }
+
+  // "x,y" strings for each pillar's value (used by the test + polygon builder)
+  function radarPoints(norms) {
+    var out = [];
+    for (var i = 0; i < METRICS.length; i++) {
+      var p = radarPt(norms[METRICS[i].key], i);
+      out.push(p[0].toFixed(1) + ',' + p[1].toFixed(1));
+    }
+    return out;
+  }
+
+  // Build the inline SVG: grid rings, axes, team-avg + member polygons, labels
+  function buildRadarSvg(me, avg) {
+    var anchors = ['middle', 'start', 'middle', 'end'];   // per axis index
+    var dy      = [-7, 4, 15, 4];                         // label vertical nudge
+    var rings = '';
+    [0.25, 0.5, 0.75, 1].forEach(function(r) {
+      var rp = [];
+      for (var i = 0; i < METRICS.length; i++) {
+        var p = radarPt(r, i);
+        rp.push(p[0].toFixed(1) + ',' + p[1].toFixed(1));
+      }
+      rings += '<polygon class="cs-radar-ring" points="' + rp.join(' ') + '"></polygon>';
+    });
+    var axes = '', labels = '';
+    for (var i = 0; i < METRICS.length; i++) {
+      var edge = radarPt(1, i);
+      axes += '<line class="cs-radar-axis" x1="' + RADAR_CX + '" y1="' + RADAR_CY +
+              '" x2="' + edge[0].toFixed(1) + '" y2="' + edge[1].toFixed(1) + '"></line>';
+      var lp = radarPt(1.22, i);
+      labels += '<text class="cs-radar-lbl" x="' + lp[0].toFixed(1) + '" y="' +
+                (lp[1] + dy[i]).toFixed(1) + '" text-anchor="' + anchors[i] + '">' +
+                escHtml(METRICS[i].axis) + '</text>';
+    }
+    return '<svg viewBox="0 0 200 200" role="img" aria-label="Pillar radar chart">' +
+             rings + axes +
+             '<polygon class="cs-radar-avg" points="' + radarPoints(avg).join(' ') + '"></polygon>' +
+             '<polygon class="cs-radar-me" points="' + radarPoints(me).join(' ') + '"></polygon>' +
+             labels +
+           '</svg>';
+  }
+
   // ── per-instance factory ────────────────────────────────────────────────────
 
   function createInstance(mount) {
@@ -1249,7 +1300,7 @@ var ContribScoreDemo = (function() {
       board:      mount.querySelector('.cs-board'),
       detail:     mount.querySelector('.cs-detail'),
       detailName: mount.querySelector('.cs-detail-name'),
-      detailRows: mount.querySelector('.cs-detail-rows'),
+      detailBody:  mount.querySelector('.cs-detail-rows'),
       aiBtn:      mount.querySelector('.cs-ai-btn'),
       aiNote:     mount.querySelector('.cs-ai-note'),
       aiResults:  mount.querySelector('.cs-ai-results')
@@ -1340,26 +1391,21 @@ var ContribScoreDemo = (function() {
       var m = TEAM[selectedIdx];
       var n = NORMS[selectedIdx];
       refs.detailName.textContent = m.name;
-      var html = '';
+
+      var vals = '';
       for (var i = 0; i < METRICS.length; i++) {
-        var key    = METRICS[i].key;
-        var mePct  = Math.round(n[key] * 100);
-        var avgPct = Math.round(AVG[key] * 100);
-        html +=
-          '<div class="cs-d-metric">' +
-            '<div class="cs-d-lbl">' + escHtml(METRICS[i].pillar) +
-              '<span class="cs-d-raw">' + escHtml(rawLabel(m, key)) + '</span></div>' +
-            '<div class="cs-d-pair">' +
-              '<div class="cs-d-track"><div class="cs-d-fill cs-d-me" style="width:' + mePct + '%"></div></div>' +
-              '<span class="cs-d-val">' + mePct + '%</span>' +
-            '</div>' +
-            '<div class="cs-d-pair">' +
-              '<div class="cs-d-track"><div class="cs-d-fill cs-d-avg" style="width:' + avgPct + '%"></div></div>' +
-              '<span class="cs-d-val cs-d-val-avg">' + avgPct + '%</span>' +
-            '</div>' +
+        var key = METRICS[i].key;
+        vals +=
+          '<div class="cs-rv">' +
+            '<span class="cs-rv-lbl">' + escHtml(METRICS[i].pillar) + '</span>' +
+            '<span class="cs-rv-raw">' + escHtml(rawLabel(m, key)) + '</span>' +
+            '<span class="cs-rv-pct">' + Math.round(n[key] * 100) + '%</span>' +
           '</div>';
       }
-      refs.detailRows.innerHTML = html;
+
+      refs.detailBody.innerHTML =
+        '<div class="cs-radar">' + buildRadarSvg(n, AVG) + '</div>' +
+        '<div class="cs-radar-vals">' + vals + '</div>';
       refs.detail.classList.add('cs-open');
     }
 
@@ -1432,7 +1478,7 @@ var ContribScoreDemo = (function() {
     if (mount) createInstance(mount);
   }
 
-  return { inject: inject, _normsFor: normsFor, _scoreFor: scoreFor };
+  return { inject: inject, _normsFor: normsFor, _scoreFor: scoreFor, _radarPoints: radarPoints };
 }());
 
 // Dev test — run _test_contribMath() in the browser console.
@@ -1460,6 +1506,15 @@ function _test_contribMath() {
   var elena = N({ goalsPct: 90, tracked: 37, planned: 40, kudos: 3 });
   var w = { alignment: 30, performance: 35, health: 20, recognition: 15 };
   console.assert(Math.round(S(elena, w)) === 97, 'score: Elena should round to 97');
+
+  // Radar geometry: full-value point on each of the 4 axes (cx=cy=100, R=64)
+  var pts = ContribScoreDemo._radarPoints(
+    { alignment: 1, performance: 1, health: 1, recognition: 1 });
+  // axis 0 top (100,36), 1 right (164,100), 2 bottom (100,164), 3 left (36,100)
+  console.assert(pts[0] === '100.0,36.0',  'radar: alignment apex at top');
+  console.assert(pts[1] === '164.0,100.0', 'radar: performance apex at right');
+  console.assert(pts[2] === '100.0,164.0', 'radar: health apex at bottom');
+  console.assert(pts[3] === '36.0,100.0',  'radar: recognition apex at left');
 
   console.log('✓ contrib math tests passed');
 }

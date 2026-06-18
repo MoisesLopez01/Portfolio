@@ -1497,6 +1497,27 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 .cs-leg-swatch {
   display: inline-block; width: 14px; height: 6px; border-radius: 3px;
 }
+.cs-detail-rows { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.cs-radar { flex: 0 0 auto; padding: 8px 26px; }
+.cs-radar svg { width: 200px; height: 200px; display: block; overflow: visible; }
+.cs-radar-ring { fill: none; stroke: rgba(255,255,255,0.07); }
+.cs-radar-axis { stroke: rgba(255,255,255,0.12); }
+.cs-radar-lbl {
+  fill: var(--dark-muted); font-family: var(--mono); font-size: 8px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.cs-radar-avg { fill: none; stroke: rgba(255,255,255,0.45); stroke-width: 1.2; stroke-dasharray: 3 3; }
+.cs-radar-me  { fill: rgba(245,158,11,0.22); stroke: var(--amber); stroke-width: 1.5; }
+.cs-radar-vals { flex: 1; min-width: 190px; }
+.cs-rv {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-family: var(--mono); font-size: 10.5px;
+}
+.cs-rv:last-child { border-bottom: none; }
+.cs-rv-lbl { color: var(--dark-text); width: 130px; flex-shrink: 0; }
+.cs-rv-raw { color: var(--dark-muted); flex: 1; white-space: nowrap; }
+.cs-rv-pct { color: var(--amber); font-weight: 600; width: 34px; text-align: right; flex-shrink: 0; }
 .cs-d-metric { margin-bottom: 10px; }
 .cs-d-metric:last-child { margin-bottom: 0; }
 .cs-d-lbl {
@@ -2177,7 +2198,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 
     <!-- Leaderboard -->
     <div class="cs-board"></div>
-    <div class="cs-board-hint">Click a row for a per-metric breakdown vs team average</div>
+    <div class="cs-board-hint">Click a row for a per-pillar radar vs the team average</div>
 
     <!-- Detail panel (hidden until a row is clicked) -->
     <div class="cs-detail">
