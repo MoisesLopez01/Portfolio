@@ -217,16 +217,20 @@ var ProjectModal = (function() {
         '<div class="ba-metric">'  + escHtml(p.after.metrics) + '</div>' +
       '</div>';
 
-    var codeSection = document.getElementById('pm-code-section');
-    if (p.codeSnippet) {
-      document.getElementById('pm-code-lang').textContent     = p.codeSnippet.lang;
-      document.getElementById('pm-code-lang-tag').textContent = p.codeSnippet.tag;
-      document.getElementById('pm-code-pre').textContent      = p.codeSnippet.code;
-      codeSection.style.display = 'block';
-      document.getElementById('pm-code-toggle').classList.remove('open');
-      document.getElementById('pm-code-body').classList.remove('open');
-    } else {
-      codeSection.style.display = 'none';
+    var githubWrap = document.getElementById('pm-github-btn');
+    if (githubWrap) {
+      if (p.repoUrl) {
+        var safeUrl = escHtml(p.repoUrl);
+        githubWrap.innerHTML =
+          '<a class="pm-github-link" href="' + safeUrl + '" target="_blank" rel="noopener" aria-label="View full code on GitHub">' +
+            '<svg class="pm-github-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+              '<path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>' +
+            '</svg>' +
+            'View full code on GitHub →' +
+          '</a>';
+      } else {
+        githubWrap.innerHTML = '';
+      }
     }
 
     document.getElementById('pm-tech').innerHTML = (p.tech || []).map(function(t, i) {
@@ -255,12 +259,7 @@ var ProjectModal = (function() {
     removeMounts_(modalBody_());
   }
 
-  function toggleCode() {
-    document.getElementById('pm-code-toggle').classList.toggle('open');
-    document.getElementById('pm-code-body').classList.toggle('open');
-  }
-
-  return { open: open, close: close, toggleCode: toggleCode };
+  return { open: open, close: close };
 }());
 
 // ── ADMIN PANEL ───────────────────────────────────────────────────────────────
@@ -1933,5 +1932,86 @@ document.addEventListener('DOMContentLoaded', function() {
     // AdminPanel is fully wired via onclick attributes
   }
 });
+
+// ── HERO DATA-NODE CANVAS ───────────────────────────────────────────────────────
+// Lightweight animated "neural network" of drifting nodes + proximity links in the
+// hero's right column. Self-contained, density scales to canvas size, skips entirely
+// when the canvas is hidden (≤900px) and renders a single static frame when the
+// visitor prefers reduced motion.
+(function() {
+  function start() {
+    var canvas = document.getElementById('data-nodes');
+    if (!canvas || !canvas.getContext) return;
+    var parent = canvas.parentElement;
+    var ctx    = canvas.getContext('2d');
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var DOT = 'rgba(56,189,248,0.85)', LINE = 'rgba(56,189,248,0.16)', LINK = 120;
+    var nodes = [], raf = null, t = null;
+
+    function sizeCanvas() {
+      canvas.width  = parent.clientWidth;
+      canvas.height = parent.clientHeight;
+    }
+    function build() {
+      nodes = [];
+      if (!canvas.width || !canvas.height) return;
+      var count = Math.min(70, Math.round(canvas.width * canvas.height / 6000));
+      for (var i = 0; i < count; i++) {
+        nodes.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          r: Math.random() * 2 + 1,
+          vx: (Math.random() - 0.5) * 0.6,
+          vy: (Math.random() - 0.5) * 0.6
+        });
+      }
+    }
+    function links() {
+      for (var i = 0; i < nodes.length; i++) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          var d = Math.sqrt(dx * dx + dy * dy);
+          if (d < LINK) {
+            ctx.strokeStyle = LINE; ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+    function dots() {
+      ctx.fillStyle = DOT;
+      for (var i = 0; i < nodes.length; i++) {
+        ctx.beginPath();
+        ctx.arc(nodes[i].x, nodes[i].y, nodes[i].r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    function frame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (var i = 0; i < nodes.length; i++) {
+        var p = nodes[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width)  p.vx = -p.vx;
+        if (p.y < 0 || p.y > canvas.height) p.vy = -p.vy;
+      }
+      links(); dots();
+      raf = requestAnimationFrame(frame);
+    }
+    function boot() {
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      sizeCanvas(); build();
+      if (!nodes.length) return;               // hidden → clientWidth 0
+      if (reduce) { ctx.clearRect(0, 0, canvas.width, canvas.height); links(); dots(); }
+      else frame();
+    }
+    boot();
+    window.addEventListener('resize', function() { clearTimeout(t); t = setTimeout(boot, 200); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+}());
 
 </script>
