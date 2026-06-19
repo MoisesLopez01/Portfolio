@@ -320,7 +320,7 @@ var AdminPanel = (function() {
       metrics:    [{ val: '✓', label: 'delivered' }],
       before:     { process: 'Previous manual process', metrics: 'Time-intensive, error-prone' },
       after:      { process: 'Automated solution: ' + title, metrics: impact },
-      codeSnippet: null
+      repoUrl:    ''
     };
 
     runServer('saveProject', [projectData],
