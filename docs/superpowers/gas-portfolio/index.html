@@ -1665,6 +1665,58 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   .cr-cell { border-bottom: 1px solid var(--dark-border); }
   .cr-cell .cr-v { font-size: 1.3rem; }
 }
+
+/* ── Hero: 90% automation footnote ── */
+.cr-footnote-mark {
+  font-family: var(--mono); font-size: 0.65em; font-weight: 400;
+  color: var(--dark-muted); vertical-align: super; margin-left: 1px;
+  line-height: 1;
+}
+sup.cr-footnote-mark { font-size: 0.55em; }
+.cell-range-note {
+  font-size: 11px; line-height: 1.5; color: var(--dark-muted);
+  max-width: 620px; margin-top: -28px; margin-bottom: 28px;
+  padding: 0 2px;
+}
+.cell-range-note .cr-footnote-mark { font-size: 11px; vertical-align: baseline; }
+
+/* ── Hero: condensed competencies strip ── */
+.hero-skills-strip {
+  max-width: 620px; margin-bottom: 36px;
+  border: 1px solid var(--dark-border); border-radius: 10px; overflow: hidden;
+}
+.hss-row {
+  display: grid; grid-template-columns: 1.3fr 0.75fr 1.95fr; gap: 12px;
+  padding: 10px 14px; align-items: center;
+  border-top: 1px solid var(--dark-border);
+  background: var(--panel); transition: background .18s var(--ease);
+}
+.hss-row:first-child { border-top: none; }
+.hss-row:hover { background: rgba(255,255,255,0.025); }
+.hss-skill { font-size: 12.5px; font-weight: 600; color: var(--light-text); }
+.hss-level { font-family: var(--mono); font-size: 10px; color: var(--dark-muted); white-space: nowrap; }
+.hss-lv {
+  display: inline-block; padding: 2px 6px; border-radius: 4px; margin-right: 5px;
+  background: var(--panel-2); color: var(--teal-vivid); font-weight: 500; font-size: 10px;
+}
+.hss-proof { font-size: 11.5px; color: var(--light-muted); line-height: 1.4; }
+.hss-more {
+  display: block; text-align: right; padding: 7px 14px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--dark-muted);
+  text-decoration: none; border-top: 1px solid var(--dark-border);
+  background: var(--panel-2); transition: color .18s var(--ease);
+}
+.hss-more:hover, .hss-more:focus { color: var(--teal-vivid); outline: none; }
+.hss-more:focus-visible { outline: 2px solid var(--teal-vivid); outline-offset: -2px; }
+@media (max-width: 640px) {
+  .hss-row { grid-template-columns: 1fr; gap: 4px; }
+  .hss-proof { font-size: 11px; }
+  .hss-level { white-space: normal; }
+}
+@media (max-width: 560px) {
+  .cell-range-note { margin-top: -20px; }
+}
+
 /* ── Ocean hero: text column + animated data-node canvas ── */
 .hero-inner {
   display: grid; grid-template-columns: 1.05fr 1fr;
@@ -1831,10 +1883,39 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
         <span class="cr-l">Countries Covered</span>
       </div>
       <div class="cr-cell selected">
-        <span class="cr-v"><span class="counter" data-target="90">0</span>%</span>
+        <span class="cr-v"><span class="counter" data-target="90">0</span>%<sup class="cr-footnote-mark" aria-describedby="auto-stat-note">†</sup></span>
         <span class="cr-l">Avg. Process Automation</span>
       </div>
     </div>
+    <p class="cell-range-note" id="auto-stat-note" role="note">
+      <span class="cr-footnote-mark" aria-hidden="true">†</span> 90% avg. process automation — measured across 6 recurring reporting pipelines, from manual hours per cycle to scheduled triggers.
+    </p>
+
+    <!-- ── CONDENSED COMPETENCIES STRIP ── -->
+    <div class="hero-skills-strip" aria-label="Core competencies">
+      <div class="hss-row">
+        <span class="hss-skill">Python · Data Engineering</span>
+        <span class="hss-level"><span class="hss-lv">Expert</span>3 yrs</span>
+        <span class="hss-proof">Parallelized ETL pipelines + Gemini/Claude LLM integrations</span>
+      </div>
+      <div class="hss-row">
+        <span class="hss-skill">Google Apps Script / GAS</span>
+        <span class="hss-level"><span class="hss-lv">Expert</span>3 yrs</span>
+        <span class="hss-proof">Production web apps with RBAC, CI/CD &amp; live dashboards</span>
+      </div>
+      <div class="hss-row">
+        <span class="hss-skill">SQL · SuiteQL · Oracle</span>
+        <span class="hss-level"><span class="hss-lv">Advanced</span>5 yrs</span>
+        <span class="hss-proof">Attrition-proration &amp; audit queries against NetSuite</span>
+      </div>
+      <div class="hss-row">
+        <span class="hss-skill">AI/LLM Integration (Gemini, Claude, MCP)</span>
+        <span class="hss-level"><span class="hss-lv">Advanced</span>3 yrs</span>
+        <span class="hss-proof">9 production systems with prompt engineering &amp; validation</span>
+      </div>
+      <a href="#about" class="hss-more" aria-label="View full competencies in About section">Full competencies →</a>
+    </div>
+
     <div class="hero-actions">
       <a href="#projects" class="btn-primary">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm2 0v8h8V4H4z"/></svg>
