@@ -597,6 +597,16 @@ section { padding: 88px 2rem; }
 #chat-section .section-title { color: white; }
 #chat-section .section-desc  { color: var(--dark-muted); }
 #chat-section .section-eyebrow { color: var(--teal-vivid); }
+.donna-scope-note {
+  font-size: 13px;
+  color: var(--dark-muted);
+  max-width: 560px;
+  margin-bottom: 28px;
+  line-height: 1.6;
+  opacity: 0.75;
+}
+.donna-scope-note a { color: var(--teal-vivid); text-decoration: none; }
+.donna-scope-note a:hover { text-decoration: underline; }
 
 .chat-container {
   background: rgba(255,255,255,0.04);
@@ -2011,6 +2021,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <p class="section-eyebrow reveal">Meet Donna</p>
     <h2 class="section-title reveal reveal-delay-1">Ask Donna anything about Alex's work.</h2>
     <p class="section-desc reveal reveal-delay-2">Donna is Alex's AI assistant, powered by Llama 3.3 — ask about specific projects, tech stack, impact metrics, role fit, or availability.</p>
+    <p class="donna-scope-note reveal reveal-delay-2">Donna only knows what's in Alex's documented projects — ask her anything about those. For anything beyond, reach him at <a href="mailto:moisesalex.01@gmail.com">moisesalex.01@gmail.com</a>.</p>
     <div class="chat-container reveal reveal-delay-3">
       <div class="chat-toolbar">
         <button class="chat-newchat-btn" id="chat-newchat-btn" onclick="Chat.newChat()" aria-label="Start a new chat">↺ New chat</button>
