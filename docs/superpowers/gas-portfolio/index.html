@@ -1673,9 +1673,13 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
   line-height: 1;
 }
 sup.cr-footnote-mark { font-size: 0.55em; }
+/* Positive-gap tuck: shrink the grid's own bottom margin when a note follows,
+   so the gap is fixed regardless of the grid's (variable) height — no fragile
+   negative-margin overlap at narrow single-column widths. */
+.cell-range:has(+ .cell-range-note) { margin-bottom: 12px; }
 .cell-range-note {
   font-size: 11px; line-height: 1.5; color: var(--dark-muted);
-  max-width: 620px; margin-top: -28px; margin-bottom: 28px;
+  max-width: 620px; margin-top: 0; margin-bottom: 28px;
   padding: 0 2px;
 }
 .cell-range-note .cr-footnote-mark { font-size: 11px; vertical-align: baseline; }
@@ -1712,9 +1716,6 @@ sup.cr-footnote-mark { font-size: 0.55em; }
   .hss-row { grid-template-columns: 1fr; gap: 4px; }
   .hss-proof { font-size: 11px; }
   .hss-level { white-space: normal; }
-}
-@media (max-width: 560px) {
-  .cell-range-note { margin-top: -20px; }
 }
 
 /* ── Ocean hero: text column + animated data-node canvas ── */
@@ -1883,7 +1884,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
         <span class="cr-l">Countries Covered</span>
       </div>
       <div class="cr-cell selected">
-        <span class="cr-v"><span class="counter" data-target="90">0</span>%<sup class="cr-footnote-mark" aria-describedby="auto-stat-note">†</sup></span>
+        <span class="cr-v" aria-describedby="auto-stat-note"><span class="counter" data-target="90">0</span>%<sup class="cr-footnote-mark" aria-hidden="true">†</sup></span>
         <span class="cr-l">Avg. Process Automation</span>
       </div>
     </div>
@@ -1891,7 +1892,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
       <span class="cr-footnote-mark" aria-hidden="true">†</span> 90% avg. process automation — measured across 6 recurring reporting pipelines, from manual hours per cycle to scheduled triggers.
     </p>
 
-    <!-- ── CONDENSED COMPETENCIES STRIP ── -->
+    <!-- ── CONDENSED COMPETENCIES STRIP — KEEP IN SYNC with #about .skills-table rows 1-4 ── -->
     <div class="hero-skills-strip" aria-label="Core competencies">
       <div class="hss-row">
         <span class="hss-skill">Python · Data Engineering</span>
