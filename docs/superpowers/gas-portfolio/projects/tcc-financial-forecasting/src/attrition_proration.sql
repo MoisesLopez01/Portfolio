@@ -18,7 +18,7 @@ SELECT
   e.employee_id,
   e.department,
   e.annual_tcc,
-  ROUND(e.annual_tcc * (t.term_day / t.days_in_month), 2) AS prorated_cost,
+  ROUND(e.annual_tcc * (t.term_day * 1.0 / t.days_in_month), 2) AS prorated_cost,
   'ATTRITION' AS cost_driver,
   t.term_date
 FROM employees e

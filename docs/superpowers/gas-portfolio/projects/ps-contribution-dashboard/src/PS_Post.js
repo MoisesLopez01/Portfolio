@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // PS_POST — Confluence publish for the PS Executive Brief
 //
 // Companion file to PS Contribution Report.js. Shares the same
