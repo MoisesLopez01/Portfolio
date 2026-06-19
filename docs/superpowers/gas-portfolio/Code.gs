@@ -54,7 +54,7 @@ var PROJECTS = [
       "Engineered an end-to-end pipeline integrating the **HubSpot CRM API (v3/v4)** with a **parallelized ETL** layer in Apps Script.",
       "Added **Google Gemini LLM** for semantic analysis of unstructured deal notes — auto-detecting **deal blockers** and generating human-readable weekly summaries.",
       "Layered a custom **Time Decay forecasting model** to improve revenue forecast accuracy.",
-      "Built in **Google Apps Script** to eliminate infrastructure overhead and deliver the brief straight into the Google Workspace tools sales leadership already lives in — no new infra, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and deliver the brief straight into the Google Workspace tools sales leadership already lives in — no new platform for the team to learn, and no IT provisioning to wait on.",
     ],
     resolution:
       "Eliminated **10+ hours/week** of manual reporting. Sales leadership now receives **AI-generated deal-risk flags** and narrative summaries **every Monday** — giving the C-suite a data-driven foundation for quarterly planning.",
@@ -138,7 +138,7 @@ var PROJECTS = [
       "Automated the full **360 Leadership Evaluation** workflow with the **Gemini API** and Google Apps Script.",
       "Built pipelines for **multi-source survey ingestion** and response normalization.",
       "Applied Gemini to generate **executive-ready narrative summaries**, with embedded quality checks for data accuracy.",
-      "Built in **Google Apps Script** so the workflow runs natively inside the Google Workspace tools HR already uses — eliminating infrastructure overhead with no new platform, no IT tickets, and no access requests.",
+      "Built in **Google Apps Script** so the workflow runs natively inside the Google Workspace tools HR already uses — eliminating infrastructure overhead with no procurement cycle and nothing for HR to install.",
     ],
     resolution:
       "Reduced manual HR cycle time by **40%**. Evaluations now produce **consistent, executive-grade summaries** with improved accuracy, and the freed capacity let HR run them more frequently.",
@@ -180,7 +180,7 @@ var PROJECTS = [
       "Built a pipeline for automated **transcript ingestion from Confluence** via REST API.",
       "Used the **Claude API** for structured signal extraction — each decision classified by **strategic theme and OKR-alignment score**.",
       "Auto-published the weekly brief to Confluence and wired up **Rovo agents** for on-demand strategy Q&A against the live corpus.",
-      "Built in **Google Apps Script** to avoid standing up dedicated infrastructure — the brief publishes straight into the Atlassian and Workspace tools leadership already works in, with no IT tickets or access requests.",
+      "Built in **Google Apps Script** to avoid standing up dedicated infrastructure — the brief publishes straight into the Atlassian and Workspace tools leadership already works in, so there was nothing new for leadership to adopt.",
     ],
     resolution:
       "Strategic alignment reviews dropped from **3+ hours to under 15 minutes** per week. Leadership receives an **automated Confluence brief every Monday** mapping meeting decisions to **FY27 OKRs**.",
@@ -222,7 +222,7 @@ var PROJECTS = [
       "Developed a Financial Forecasting & TCC Impact System in Apps Script with smart **attrition-proration** logic.",
       "Built dynamic **Line-of-Business budget allocation** engines and automated board dashboards.",
       "Delivered views for **Quarterly Actuals vs. Forecast**, **Top 15 Department Variance**, and full P&L cost-driver breakdowns (merit, promotion, attrition, new hire).",
-      "Built in **Google Apps Script** to eliminate infrastructure overhead and deploy directly inside the Google Sheets the finance team already uses — no new platform, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and deploy directly inside the Google Sheets the finance team already uses — no new platform for the team to learn, and no IT tickets to file.",
     ],
     resolution:
       "Delivered **CFO-level visibility** into labor cost drivers through fully automated dashboards. Monthly department-level analysis now informs C-suite compensation decisions, and post-adjustment audits reached **100% accuracy** across all sheets.",
@@ -307,7 +307,7 @@ var PROJECTS = [
       "Built an Employee Compensation Analysis module in **Google Apps Script** on NetSuite data.",
       "Implemented **band positioning (Q1–Q4)** with **comp-ratio** calculations and automated percentile mapping against internal pay bands.",
       "Integrated with the **TCC Forecasting System** for unified compensation views.",
-      "Built in **Google Apps Script** to skip infrastructure overhead entirely and put band analysis directly inside the Google Sheets the People and Finance teams already use — no new platform, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to skip infrastructure overhead entirely and put band analysis directly inside the Google Sheets the People and Finance teams already use — sidestepping procurement and onboarding entirely.",
     ],
     resolution:
       "Delivered standardized **band positioning and comp-ratio** analysis across all roles and levels — **18 job families and 12 countries**. Review cycles that previously took days of manual spreadsheet work now run in **minutes**.",
@@ -391,7 +391,7 @@ var PROJECTS = [
       "Built a headcount analytics pipeline using **SuiteQL** against NetSuite, processed via Apps Script for automated monthly reporting.",
       "Implemented **LOB-level aggregations** and **attrition-rate** calculations.",
       "Surfaced **growth-trend visualizations** in Automated GAS code in spreadsheet dashboards for HR and Finance leadership.",
-      "Built in **Google Apps Script** to avoid infrastructure overhead and surface trends directly in the spreadsheet dashboards HR and Finance leadership already open daily — no new platform, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to avoid infrastructure overhead and surface trends directly in the spreadsheet dashboards HR and Finance leadership already open daily — with zero new tools to roll out across the org.",
     ],
     resolution:
       "Delivered **live headcount visibility** across all lines of business. Monthly reporting dropped from a **2-day manual effort** to fully automated — letting leadership proactively identify gaps and model **workforce-planning** scenarios.",
@@ -433,7 +433,7 @@ var PROJECTS = [
       "Built a full-stack web app in **Google Apps Script** with a **3-layer RBAC** model and **Jira + Tempo** data aggregation.",
       "Engineered a **weighted composite scoring engine** plus a goals-compliance override that backfills Q4 comment thresholds across all weeks.",
       "Automated **Confluence executive briefs** via REST API and set up **Bitbucket Pipelines + clasp** for staged GAS deployments.",
-      "Built in **Google Apps Script** to eliminate infrastructure overhead and run the whole web app inside the Google Workspace and Atlassian tools the PS team and its leadership already use — no new platform, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and run the whole web app inside the Google Workspace and Atlassian tools the PS team and its leadership already use — no separate app to provision and grant access to for 180+ people.",
     ],
     resolution:
       "Delivered automated team-health visibility for the **Professional Services** org. Weekly reports and **executive Confluence briefs** run with **zero manual intervention**, and a **GitOps pipeline** validates every change before it reaches production.",
@@ -477,7 +477,7 @@ var PROJECTS = [
       "Built a Performance Engine in **Google Apps Script** that normalizes raw signals to a **0–100 scale**.",
       "Assigns **performance tiers** (Top Performer, Strong, Developing, Below Band) with **configurable role weights**.",
       "Produces **ranked comparison reports** across roles and departments.",
-      "Built in **Google Apps Script** to skip dedicated infrastructure and run calibration reports directly in the Google Sheets managers already use — no new platform, no IT tickets, no access requests.",
+      "Built in **Google Apps Script** to skip dedicated infrastructure and run calibration reports directly in the Google Sheets managers already use — nothing new for anyone to log into.",
     ],
     resolution:
       "Delivered **standardized, objective** performance benchmarks across all functions. Calibration sessions now start from a **consistent data baseline** instead of subjective manager discussion.",
