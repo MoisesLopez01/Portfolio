@@ -91,6 +91,7 @@ var PROJECTS = [
       "Gemini Pro API across 15+ countries → 90% faster compensation research",
     category: "AI · Compensation",
     impact: "90% faster",
+    langScale: "15+ countries",
     context:
       "Manually benchmarking compensation for **all roles and departments** across **15+ countries** was a **multi-day** exercise for the People team — involving market reports, currency adjustments, COL indexes, and tax-rate research. The process was inconsistent, slow, and couldn't scale with global headcount growth.",
     action: [
@@ -259,6 +260,7 @@ var PROJECTS = [
       "SuiteQL + Python → 100% bonus-eligibility compliance enforced automatically",
     category: "Finance · Compliance",
     impact: "100% compliant",
+    langScale: "60K+ data points",
     context:
       "The bonus eligibility process required every employee to have at least **10 active goals** in the performance system — at scale, roughly **230 employees × 10 goals × up to 26 self-comments per quarter ≈ ~60K data points per cycle**. **Manual checks were inconsistent** — some employees reached bonus payout with fewer goals.",
     action: [
@@ -292,6 +294,41 @@ var PROJECTS = [
       metrics: "100% enforcement · Zero manual intervention",
     },
     repoUrl: "https://github.com/MoisesLopez01/goals-quality-audit",
+  },
+  {
+    id: "netsuite-suitelet",
+    domain: "finance",
+    title: "NetSuite Suitelet LOB Dashboard",
+    tagline:
+      "Custom Suitelet pulling live ERP data via SuiteQL — real-time LOB views replacing static exports",
+    category: "ERP · NetSuite",
+    impact: "Building now",
+    wip: true,
+    context:
+      "LOB reporting still depends on **static NetSuite exports** — point-in-time CSVs stale the moment they're pulled. There is no live, drill-down view of ERP data by line of business: Finance and Ops leadership are forced to interpret month-old snapshots when they need current operational data.",
+    action: [
+      "Building a custom **Suitelet** that queries live ERP data via **SuiteQL** — no CSV intermediary, no manual refresh.",
+      "Rendering **real-time LOB views** in-app — embedded directly inside NetSuite, replacing the static export workflow.",
+      "Developing with **Claude Code** as a pair-programming accelerator for SuiteScript, compressing research and iteration cycles.",
+    ],
+    resolution:
+      "**In progress.** Early Suitelet already renders live LOB tables from SuiteQL queries. Goal: replace static CSV exports with a real-time, drill-down ERP dashboard embedded directly in NetSuite — available to Finance and Ops without leaving the platform.",
+    tech: ["NetSuite", "SuiteQL", "SuiteScript", "Suitelet", "Claude Code"],
+    metrics: [
+      { val: "WIP", label: "building now" },
+      { val: "Live", label: "ERP data" },
+      { val: "SuiteQL", label: "queries" },
+    ],
+    before: {
+      process:
+        "Static NetSuite CSV exports — stale on arrival, no drill-down, manual refresh cycle",
+      metrics: "Point-in-time only · Finance/Ops bottleneck",
+    },
+    after: {
+      process:
+        "Live Suitelet dashboard querying ERP via SuiteQL (in progress)",
+      metrics: "Real-time LOB views · Embedded in NetSuite · No manual exports",
+    },
   },
   {
     id: "total-rewards",

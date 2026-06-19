@@ -129,6 +129,11 @@ var DomainGrid = (function() {
 
   function renderTile(p) {
     var chips = (p.tech || []).slice(0, 3).map(function(t) {
+      // Python chips get a distinct .py accent; volume-driven projects show scale context
+      if (t === 'Python') {
+        var label = p.langScale ? 'Python · ' + p.langScale : 'Python';
+        return '<span class="tile-chip py">' + escHtml(label) + '</span>';
+      }
       return '<span class="tile-chip">' + escHtml(t) + '</span>';
     }).join('');
     var del = p.id.indexOf('custom-') === 0
@@ -137,12 +142,16 @@ var DomainGrid = (function() {
     var demoBadge = DEMOS[p.id]
       ? '<span class="tile-demo-badge">▶ Live demo</span>'
       : '';
+    var wipBadge = p.wip
+      ? '<span class="tile-wip-badge" aria-label="Work in progress">🚧 Building now</span>'
+      : '';
     return (
       '<div class="domain-tile" onclick="ProjectModal.open(\'' + escHtml(p.id) + '\')" role="button" tabindex="0">' +
         '<div class="tile-row1">' +
           '<div class="tile-title">' + escHtml(p.title) + '</div>' +
           '<div class="tile-impact">⚡ ' + escHtml(p.impact) + '</div>' +
           demoBadge +
+          wipBadge +
         '</div>' +
         '<div class="tile-chips">' + chips + del + '</div>' +
       '</div>'
