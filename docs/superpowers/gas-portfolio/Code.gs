@@ -302,7 +302,7 @@ var PROJECTS = [
     tagline:
       "Custom Suitelet pulling live ERP data via SuiteQL — real-time LOB views replacing static exports",
     category: "ERP · NetSuite",
-    impact: "Building now",
+    impact: "Real-time LOB views",
     wip: true,
     context:
       "LOB reporting still depends on **static NetSuite exports** — point-in-time CSVs stale the moment they're pulled. There is no live, drill-down view of ERP data by line of business: Finance and Ops leadership are forced to interpret month-old snapshots when they need current operational data.",

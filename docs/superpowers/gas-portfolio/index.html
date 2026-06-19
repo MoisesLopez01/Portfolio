@@ -402,11 +402,13 @@ section { padding: 88px 2rem; }
   background: rgba(59,130,246,0.08); color: #2563eb;
   border-color: rgba(59,130,246,0.28); font-weight: 600;
 }
+/* WIP badge: deliberately distinct from the solid .tile-impact pill —
+   a dashed "under construction" treatment in neutral tones, brand vars only. */
 .tile-wip-badge {
   font-family: var(--mono); font-size: 10px; font-weight: 600;
   padding: 2px 8px; border-radius: 10px;
-  background: #fef3c7; color: #92400e;
-  border: 1px solid #fcd34d;
+  background: transparent; color: var(--light-muted);
+  border: 1px dashed var(--light-border);
   white-space: nowrap; flex-shrink: 0;
 }
 
@@ -1607,7 +1609,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 .tile-demo-badge { background: var(--teal-vivid); color: #03162b; border-color: transparent; }
 .tile-chip { background: rgba(255,255,255,0.03); color: var(--light-muted); border-color: var(--light-border); }
 .tile-chip.py { background: rgba(59,130,246,0.10); color: #93c5fd; border-color: rgba(59,130,246,0.30); }
-.tile-wip-badge { background: rgba(232,163,61,0.13); color: var(--amber); border-color: rgba(232,163,61,0.35); }
+.tile-wip-badge { background: transparent; color: var(--light-muted); border: 1px dashed var(--light-border); }
 .domain-tile:hover { background: var(--panel-2); }
 
 .ba-card.bef { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.22); }
