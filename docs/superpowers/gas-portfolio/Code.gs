@@ -49,11 +49,12 @@ var PROJECTS = [
     category: "AI · Sales Analytics",
     impact: "10h/week saved",
     context:
-      "A global SaaS company's sales leadership was drowning in manual reporting — deal notes were **unstructured**, revenue forecasts were unreliable, and analysts spent **10+ hours per week** consolidating CRM data into reports. There was no systematic way to surface **deal blockers** or forecast with confidence.",
+      "At a globally distributed SaaS company (HR-tech / EdTech) with teams across **15+ countries**, sales leadership was drowning in manual reporting — analysts spent **10+ hours per week** consolidating the **full weekly HubSpot deal pipeline** by hand. Deal notes were **unstructured**, forecasts were unreliable, and there was no systematic way to surface **deal blockers** or forecast with confidence.",
     action: [
       "Engineered an end-to-end pipeline integrating the **HubSpot CRM API (v3/v4)** with a **parallelized ETL** layer in Apps Script.",
       "Added **Google Gemini LLM** for semantic analysis of unstructured deal notes — auto-detecting **deal blockers** and generating human-readable weekly summaries.",
       "Layered a custom **Time Decay forecasting model** to improve revenue forecast accuracy.",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and deliver the brief straight into the Google Workspace tools sales leadership already lives in — no new infra, no IT tickets, no access requests.",
     ],
     resolution:
       "Eliminated **10+ hours/week** of manual reporting. Sales leadership now receives **AI-generated deal-risk flags** and narrative summaries **every Monday** — giving the C-suite a data-driven foundation for quarterly planning.",
@@ -91,7 +92,7 @@ var PROJECTS = [
     category: "AI · Compensation",
     impact: "90% faster",
     context:
-      "Manually benchmarking compensation across **15+ countries** was a **multi-day** exercise for the People team — involving market reports, currency adjustments, COL indexes, and tax-rate research. The process was inconsistent, slow, and couldn't scale with global headcount growth.",
+      "Manually benchmarking compensation for **all roles and departments** across **15+ countries** was a **multi-day** exercise for the People team — involving market reports, currency adjustments, COL indexes, and tax-rate research. The process was inconsistent, slow, and couldn't scale with global headcount growth.",
     action: [
       "Architected the engine on the **Gemini Pro API** with advanced **prompt engineering** that simulates a senior compensation analyst's methodology.",
       "Built dynamic **COL, tax-rate, and market-maturity adjustments** into the prompting logic.",
@@ -132,11 +133,12 @@ var PROJECTS = [
     category: "AI · HR Automation",
     impact: "40% cycle reduction",
     context:
-      "The annual 360 Leadership Evaluation process was a manual, **time-intensive** effort — collecting multi-source survey data, normalizing responses, and producing executive summaries. **Cycle time was long**, data accuracy was inconsistent, and HR lacked capacity to run continuous evaluations.",
+      "The annual 360 Leadership Evaluation process was a manual, **time-intensive** effort — collecting **multi-source survey data across the entire leadership cohort**, normalizing responses, and producing executive summaries. **Cycle time was long**, data accuracy was inconsistent, and HR lacked capacity to run continuous evaluations.",
     action: [
       "Automated the full **360 Leadership Evaluation** workflow with the **Gemini API** and Google Apps Script.",
       "Built pipelines for **multi-source survey ingestion** and response normalization.",
       "Applied Gemini to generate **executive-ready narrative summaries**, with embedded quality checks for data accuracy.",
+      "Built in **Google Apps Script** so the workflow runs natively inside the Google Workspace tools HR already uses — eliminating infrastructure overhead with no new platform, no IT tickets, and no access requests.",
     ],
     resolution:
       "Reduced manual HR cycle time by **40%**. Evaluations now produce **consistent, executive-grade summaries** with improved accuracy, and the freed capacity let HR run them more frequently.",
@@ -173,11 +175,12 @@ var PROJECTS = [
     category: "AI · Productivity Engineering",
     impact: "< 15 min strategy review",
     context:
-      "Leadership reviews of weekly Jira discussions and Confluence meeting notes consumed **3+ hours per cycle** — with no systematic way to surface which decisions mapped to **FY27 strategic OKRs**.",
+      "Leadership reviews of the **full weekly stream of Jira discussions and Confluence meeting transcripts** consumed **3+ hours per cycle** — with no systematic way to surface which decisions mapped to **FY27 strategic OKRs**.",
     action: [
       "Built a pipeline for automated **transcript ingestion from Confluence** via REST API.",
       "Used the **Claude API** for structured signal extraction — each decision classified by **strategic theme and OKR-alignment score**.",
       "Auto-published the weekly brief to Confluence and wired up **Rovo agents** for on-demand strategy Q&A against the live corpus.",
+      "Built in **Google Apps Script** to avoid standing up dedicated infrastructure — the brief publishes straight into the Atlassian and Workspace tools leadership already works in, with no IT tickets or access requests.",
     ],
     resolution:
       "Strategic alignment reviews dropped from **3+ hours to under 15 minutes** per week. Leadership receives an **automated Confluence brief every Monday** mapping meeting decisions to **FY27 OKRs**.",
@@ -214,11 +217,12 @@ var PROJECTS = [
     category: "Finance · Forecasting",
     impact: "CFO-level visibility",
     context:
-      "The Finance and People teams were manually consolidating **P&L data** across departments, creating **error-prone quarterly** reporting cycles with no systematic way to model the cost impact of attrition, promotions, merit increases, or new hires.",
+      "The Finance and People teams were manually consolidating **P&L data across all departments**, creating **error-prone quarterly** reporting cycles with no systematic way to model the **four core cost drivers** — attrition, promotions, merit increases, and new hires — or to rank where variance was concentrated.",
     action: [
       "Developed a Financial Forecasting & TCC Impact System in Apps Script with smart **attrition-proration** logic.",
       "Built dynamic **Line-of-Business budget allocation** engines and automated board dashboards.",
       "Delivered views for **Quarterly Actuals vs. Forecast**, **Top 15 Department Variance**, and full P&L cost-driver breakdowns (merit, promotion, attrition, new hire).",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and deploy directly inside the Google Sheets the finance team already uses — no new platform, no IT tickets, no access requests.",
     ],
     resolution:
       "Delivered **CFO-level visibility** into labor cost drivers through fully automated dashboards. Monthly department-level analysis now informs C-suite compensation decisions, and post-adjustment audits reached **100% accuracy** across all sheets.",
@@ -256,7 +260,7 @@ var PROJECTS = [
     category: "Finance · Compliance",
     impact: "100% compliant",
     context:
-      "The bonus eligibility process required every employee to have at least **10 active goals** in the performance system. **Manual checks were inconsistent** — some employees reached bonus payout with fewer goals.",
+      "The bonus eligibility process required every employee to have at least **10 active goals** in the performance system — at scale, roughly **230 employees × 10 goals × up to 26 self-comments per quarter ≈ ~60K data points per cycle**. **Manual checks were inconsistent** — some employees reached bonus payout with fewer goals.",
     action: [
       "Built an automated pipeline using **SuiteQL** queries to extract goal data from NetSuite.",
       "Added a **Python JSON-to-CSV** transformation layer that applies the **10-goal compliance rule**.",
@@ -298,11 +302,12 @@ var PROJECTS = [
     category: "Finance · Compensation",
     impact: "Standardized bands",
     context:
-      "Compensation decisions at a 500–1,000-employee SaaS company were made with **ad hoc spreadsheet comparisons** — no consistent band framework, **no comp-ratio tracking**, and no visibility into where each employee sat relative to market.",
+      "Compensation decisions at a globally distributed **500–1,000-employee SaaS company (HR-tech / EdTech)** — spanning **18 job families across 12 countries** — were made with **ad hoc spreadsheet comparisons**: no consistent band framework, **no comp-ratio tracking**, and no visibility into where each employee sat relative to market.",
     action: [
       "Built an Employee Compensation Analysis module in **Google Apps Script** on NetSuite data.",
       "Implemented **band positioning (Q1–Q4)** with **comp-ratio** calculations and automated percentile mapping against internal pay bands.",
       "Integrated with the **TCC Forecasting System** for unified compensation views.",
+      "Built in **Google Apps Script** to skip infrastructure overhead entirely and put band analysis directly inside the Google Sheets the People and Finance teams already use — no new platform, no IT tickets, no access requests.",
     ],
     resolution:
       "Delivered standardized **band positioning and comp-ratio** analysis across all roles and levels — **18 job families and 12 countries**. Review cycles that previously took days of manual spreadsheet work now run in **minutes**.",
@@ -339,7 +344,7 @@ var PROJECTS = [
     category: "HR · Global Comp",
     impact: "10+ regions",
     context:
-      "A globally distributed SaaS company was managing compensation across **10+ regions** without a unified framework — each region used separate spreadsheets with **no consistent methodology** for currency conversion, benefit valuation, or band positioning.",
+      "A globally distributed SaaS company (HR-tech / EdTech) was managing **multi-currency** compensation across **10+ regions** without a unified framework — each region used separate spreadsheets with **no consistent methodology** for currency conversion, benefit valuation, or band positioning.",
     action: [
       "Built a Global Compensation Reporting Tool in **Python** with the **Gemini Pro API**.",
       "Implemented **multi-currency normalization** (FX-rate injection), **regional COL adjustments**, and micro-banding co-designed with the CEO and VP of TA.",
@@ -381,11 +386,12 @@ var PROJECTS = [
     category: "HR · Workforce Analytics",
     impact: "Live visibility",
     context:
-      "The People team had no systematic way to track headcount trends across lines of business. **Monthly point-in-time snapshots** from NetSuite were the only data source — no trend lines, **no attrition forecasting**, no LOB-level drill-down.",
+      "The People team had no systematic way to track headcount trends across **every line of business, month over month**. **Monthly point-in-time snapshots** from NetSuite were the only data source — no trend lines, **no attrition forecasting**, no LOB-level drill-down.",
     action: [
       "Built a headcount analytics pipeline using **SuiteQL** against NetSuite, processed via Apps Script for automated monthly reporting.",
       "Implemented **LOB-level aggregations** and **attrition-rate** calculations.",
       "Surfaced **growth-trend visualizations** in Automated GAS code in spreadsheet dashboards for HR and Finance leadership.",
+      "Built in **Google Apps Script** to avoid infrastructure overhead and surface trends directly in the spreadsheet dashboards HR and Finance leadership already open daily — no new platform, no IT tickets, no access requests.",
     ],
     resolution:
       "Delivered **live headcount visibility** across all lines of business. Monthly reporting dropped from a **2-day manual effort** to fully automated — letting leadership proactively identify gaps and model **workforce-planning** scenarios.",
@@ -422,11 +428,12 @@ var PROJECTS = [
     category: "Ops · Engineering",
     impact: "Weekly auto-reports",
     context:
-      "The Professional Services team had no systematic way to track contribution quality or team health metrics. Managers relied on **ad hoc manual reports** compiled from Jira tickets and Tempo timesheets — time-consuming, with no standardized scoring, **no role-based access control**, and no historical trend visibility.",
+      "The Professional Services org — **146 FTEs + 35 crew members tracked weekly** — had no systematic way to measure contribution quality or team health. Managers relied on **ad hoc manual reports** compiled from Jira tickets and Tempo timesheets — time-consuming, with no standardized scoring, **no role-based access control**, and no historical trend visibility.",
     action: [
       "Built a full-stack web app in **Google Apps Script** with a **3-layer RBAC** model and **Jira + Tempo** data aggregation.",
       "Engineered a **weighted composite scoring engine** plus a goals-compliance override that backfills Q4 comment thresholds across all weeks.",
       "Automated **Confluence executive briefs** via REST API and set up **Bitbucket Pipelines + clasp** for staged GAS deployments.",
+      "Built in **Google Apps Script** to eliminate infrastructure overhead and run the whole web app inside the Google Workspace and Atlassian tools the PS team and its leadership already use — no new platform, no IT tickets, no access requests.",
     ],
     resolution:
       "Delivered automated team-health visibility for the **Professional Services** org. Weekly reports and **executive Confluence briefs** run with **zero manual intervention**, and a **GitOps pipeline** validates every change before it reaches production.",
@@ -465,11 +472,12 @@ var PROJECTS = [
     category: "Ops · Analytics",
     impact: "Standardized scoring",
     context:
-      "Performance benchmarking across roles was done with **inconsistent criteria** — different managers applied different standards, making cross-team comparisons unreliable. There was **no normalized scoring methodology**.",
+      "Performance benchmarking across **all roles and departments** was done with **inconsistent criteria** — different managers applied different standards, making cross-team comparisons unreliable. There was **no normalized scoring methodology**.",
     action: [
       "Built a Performance Engine in **Google Apps Script** that normalizes raw signals to a **0–100 scale**.",
       "Assigns **performance tiers** (Top Performer, Strong, Developing, Below Band) with **configurable role weights**.",
       "Produces **ranked comparison reports** across roles and departments.",
+      "Built in **Google Apps Script** to skip dedicated infrastructure and run calibration reports directly in the Google Sheets managers already use — no new platform, no IT tickets, no access requests.",
     ],
     resolution:
       "Delivered **standardized, objective** performance benchmarks across all functions. Calibration sessions now start from a **consistent data baseline** instead of subjective manager discussion.",
