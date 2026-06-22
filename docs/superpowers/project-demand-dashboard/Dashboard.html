@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<base target="_top">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Project Demand — Week over Week</title>
+<style>
+:root{
+  --void:#0F1941; --orbe:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5;
+  --royal:#2864E6; --june:#FF9B87; --slate:#64748B;
+  --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
+  --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
+  --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
+  --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C;
+  --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
+}
+[data-theme="dark"]{
+  --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
+  --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
+  --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
+  --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:'Roboto','Franklin Gothic Book',system-ui,sans-serif;
+  background:var(--bg); color:var(--text); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.title{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;margin:0}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 22px 64px}
+.mono{font-variant-numeric:tabular-nums}
+
+/* Header */
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:6px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--void),var(--orbe));
+  display:grid;place-items:center;color:#fff;font-family:'Roboto Condensed';font-weight:700;font-size:20px;flex:none}
+.eyebrow{font-family:'Roboto Condensed';letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--orbe);font-weight:700}
+h1{font-size:30px;line-height:1.05;font-weight:700;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,.btn{font-family:'Roboto';font-size:12.5px;font-weight:600;cursor:pointer;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 12px;transition:.15s}
+button:hover,.btn:hover{border-color:var(--orbe)}
+.btn-primary{background:var(--orbe);color:#fff;border-color:var(--orbe)}
+.btn-primary:hover{background:var(--royal);border-color:var(--royal)}
+.srcbadge{font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.srcbadge.live{color:#fff;background:var(--pos);border-color:var(--pos)}
+.srcbadge.offline{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--border))}
+.chip-toggle{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.chip-toggle button{border:none;border-radius:0;background:transparent;padding:8px 12px}
+.chip-toggle button.on{background:var(--void);color:#fff}
+[data-theme="dark"] .chip-toggle button.on{background:var(--orbe)}
+
+/* state message */
+.stateMsg{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
+  padding:28px;text-align:center;color:var(--muted);font-size:14px;margin:22px 0}
+
+/* Panels */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px 18px 20px;margin-bottom:20px}
+.panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.panel-h h2{font-size:18px;font-weight:700}
+.panel-h .hint{font-size:12px;color:var(--muted)}
+
+/* Week selector */
+.weekbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.weekbtn{position:relative;min-width:96px;text-align:left;padding:10px 12px;border-radius:11px;border:1px solid var(--border);background:var(--surface)}
+.weekbtn .wk{font-family:'Roboto Condensed';font-weight:700;font-size:15px}
+.weekbtn .st{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted)}
+.weekbtn.sel{border-color:var(--orbe);box-shadow:0 0 0 2px color-mix(in srgb,var(--orbe) 30%,transparent)}
+.weekbtn.current{background:linear-gradient(180deg,color-mix(in srgb,var(--orbe) 10%,var(--surface)),var(--surface))}
+.dotrow{display:flex;gap:3px;margin-top:6px}
+.dotrow i{height:4px;border-radius:2px;flex:1;background:var(--border)}
+
+/* Hero week strip */
+.heroStrip{display:grid;grid-template-columns:repeat(8,1fr);gap:10px}
+.heroCard{border:1px solid var(--border);border-radius:13px;padding:12px;background:var(--surface-2);display:flex;flex-direction:column;gap:8px;min-height:128px}
+.heroCard.current{border-color:var(--orbe)}
+.heroCard .wlbl{font-family:'Roboto Condensed';font-weight:700;font-size:13px}
+.heroCard .pill{align-self:flex-start;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.heroCard .pill.done{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 40%,var(--border))}
+.heroCard .pill.now{color:#fff;background:var(--orbe);border-color:var(--orbe)}
+.heroCard .pill.plan{color:var(--royal);border-color:color-mix(in srgb,var(--royal) 40%,var(--border))}
+.heroCard .winkey{display:flex;align-items:center;gap:7px;margin-top:auto}
+.heroCard .winkey .keychip{font-size:13px;padding:3px 9px}
+.heroCard .wname{font-size:11px;color:var(--muted);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.heroCard .fte{font-family:'Roboto Condensed';font-weight:700;font-size:20px}
+.heroCard .fte small{font-size:11px;color:var(--muted);font-weight:500}
+
+.keychip{display:inline-block;font-family:'Roboto Condensed';font-weight:700;font-size:12px;letter-spacing:.03em;
+  color:#fff;padding:2px 8px;border-radius:6px;line-height:1.4}
+
+/* Heatmap */
+.gridScroll{overflow-x:auto}
+.hgrid{border-collapse:separate;border-spacing:0;width:100%;min-width:640px}
+.hgrid th,.hgrid td{padding:0}
+.hgrid thead th{position:sticky;top:0;background:var(--surface);z-index:2;font-family:'Roboto Condensed';font-weight:700;
+  font-size:12px;color:var(--muted);text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)}
+.hgrid thead th.rowhdr{text-align:left;padding-left:4px}
+.rowlabel{display:flex;align-items:center;gap:9px;padding:5px 8px 5px 4px;white-space:nowrap;cursor:pointer}
+.rowlabel:hover{background:var(--surface-2)}
+.rowlabel .nm{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.rowlabel.active .nm{font-weight:700}
+.hcell{height:30px;border:2px solid var(--surface);border-radius:6px;text-align:center;font-size:11px;font-weight:600;
+  cursor:default;position:relative;display:flex;align-items:center;justify-content:center}
+.hcell.win{border-color:var(--winner);box-shadow:inset 0 0 0 1px var(--winner)}
+.hcell .star{position:absolute;top:-1px;right:1px;font-size:9px;color:var(--winner)}
+.legend{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.legbar{width:140px;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--heat-lo),var(--heat-mid),var(--heat-hi));border:1px solid var(--border)}
+
+/* two-col */
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:20px}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+
+/* bars */
+.bars{display:flex;flex-direction:column;gap:7px}
+.bar{display:grid;grid-template-columns:64px 1fr 56px;align-items:center;gap:10px}
+.bar .track{height:18px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+.bar .fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--orbe),var(--royal))}
+.bar .fill.win{background:linear-gradient(90deg,var(--june),var(--royal))}
+.bar .v{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+
+/* blending */
+.blend-row{display:grid;grid-template-columns:90px 1fr 70px;gap:10px;align-items:center;margin-bottom:9px}
+.blend-row .lab{font-size:12.5px}
+.blend-row .track{height:16px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+.blend-row .fill{height:100%;border-radius:5px}
+.note{font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
+  border-left:3px solid var(--june);border-radius:8px;padding:10px 12px;margin-top:14px}
+.note b{color:var(--text)}
+
+/* trend svg */
+svg .axis{stroke:var(--border)}
+.trend-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px}
+.trend-legend span{display:inline-flex;align-items:center;gap:6px}
+.trend-legend i{width:18px;height:3px;border-radius:2px;display:inline-block}
+
+/* tooltip */
+#tip{position:fixed;pointer-events:none;z-index:50;background:var(--void);color:#fff;border-radius:8px;
+  padding:8px 10px;font-size:11.5px;box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transition:opacity .1s;max-width:220px}
+[data-theme="dark"] #tip{background:#000;border:1px solid var(--border)}
+#tip b{font-family:'Roboto Condensed'}
+.search{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;width:160px}
+.foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
+@media(max-width:1080px){.heroStrip{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:560px){.heroStrip{grid-template-columns:repeat(2,1fr)} h1{font-size:24px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">
+      <div class="logo">SR</div>
+      <div>
+        <div class="eyebrow">ServiceRocket · C-Suite Resourcing Review</div>
+        <h1>Project Demand — Week over Week</h1>
+        <div class="sub" id="rangeSub">Loading…</div>
+      </div>
+    </div>
+    <div class="head-actions">
+      <span class="srcbadge" id="srcBadge">…</span>
+      <label class="btn" for="csvUp">⬆ Load CSV (offline)</label>
+      <input id="csvUp" type="file" accept=".csv,text/csv" />
+      <button id="dlTemplate">⬇ CSV template</button>
+      <button id="reloadBtn">⟳ Reload live</button>
+      <button id="themeBtn">◐ Theme</button>
+    </div>
+  </div>
+
+  <div class="stateMsg" id="stateMsg">Loading live data from “Planned Time Tempo”…</div>
+
+  <div id="dash" style="display:none">
+
+    <div class="weekbar" id="weekbar"></div>
+
+    <div class="panel">
+      <div class="panel-h">
+        <h2>Most demanded project — each week</h2>
+        <div class="hint">Top project by planned hours. ★ = week winner.</div>
+      </div>
+      <div class="heroStrip" id="heroStrip"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h">
+        <h2>Project key heatmap</h2>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <input class="search" id="search" placeholder="Filter key or name…" />
+          <div class="chip-toggle" id="topToggle">
+            <button data-n="15" class="on">Top 15</button>
+            <button data-n="30">Top 30</button>
+            <button data-n="999">All</button>
+          </div>
+        </div>
+      </div>
+      <div class="gridScroll"><div id="heat"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
+        <div class="legend"><span>Lower</span><div class="legbar"></div><span>Higher planned hours</span></div>
+        <div class="hint" id="heatNote"></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="panel">
+        <div class="panel-h">
+          <h2 id="rankTitle">Ranked demand</h2>
+          <div class="hint">Top 12 · selected week</div>
+        </div>
+        <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <h2>People &amp; blending</h2>
+          <div class="hint">How thinly are people spread? · selected week</div>
+        </div>
+        <div id="blend"></div>
+        <div class="note" id="blendNote"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h">
+        <h2>8-week trend — top movers</h2>
+        <div class="hint">Planned hours across <span id="trendRange"></span></div>
+      </div>
+      <div id="trend"></div>
+      <div class="trend-legend" id="trendLegend"></div>
+    </div>
+
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+<div id="tip"></div>
+
+<script>
+"use strict";
+
+/* ---------------- State ---------------- */
+var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
+var SEL_ISO = "", CURRENT_ISO = "";
+var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
+
+var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
+var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
+function keyColor(i){ return KEY_COLORS[(i||0) % KEY_COLORS.length]; }
+
+var $=function(id){ return document.getElementById(id); };
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function fmt(n){ return Math.round(n||0); }                 /* hours, whole numbers */
+function chip(key){ return '<span class="keychip" style="background:'+keyColor(KEYINDEX[key])+'">'+esc(key)+'</span>'; }
+
+/* ---------------- Client ISO helpers (used only for CSV offline windowing) ---------------- */
+function isoWeekNumC(d){ var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7)); var y=new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil(((x-y)/86400000+1)/7); }
+function isoWeekYearC(d){ var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7)); return x.getUTCFullYear(); }
+function isoOrd(iso){ var m=String(iso).match(/(\d{4})\.W(\d+)/); return m?parseInt(m[1],10)*100+parseInt(m[2],10):0; }
+
+/* ---------------- Boot / data load ---------------- */
+function boot(){
+  setState("Loading live data from “Planned Time Tempo”…");
+  if (typeof google !== "undefined" && google.script && google.script.run){
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getDemandData();
+  } else {
+    SOURCE="offline"; updateBadge();
+    setState("Opened as a static file — no live connection. Use “Load CSV (offline)” to preview, or open the deployed web-app URL for live data.");
+  }
+}
+function onData(model){
+  if (!model || model.error){ SOURCE="offline"; updateBadge(); setState((model && model.error) ? ("Live load problem: "+model.error) : "No data returned from the source sheet."); return; }
+  SOURCE="live"; applyModel(model); showDash(); renderAll();
+}
+function onErr(err){ SOURCE="offline"; updateBadge(); setState("Could not load live data: "+(err && err.message ? err.message : err)+"  ·  You can still load a CSV offline."); }
+
+function applyModel(model){
+  DATA = model;
+  WEEKS = model.weeks || [];
+  NWEEKS = WEEKS.length;
+  KEYNAME = model.keyName || {};
+  KEYINDEX = {};
+  (model.order||[]).forEach(function(k,i){ KEYINDEX[k]=i; });
+  var now = WEEKS.filter(function(w){return w.status==="now";})[0] || WEEKS[Math.floor(NWEEKS/2)] || WEEKS[0];
+  CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
+  SEL_ISO = CURRENT_ISO;
+  updateBadge();
+}
+
+function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
+function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; }
+function updateBadge(){
+  var b=$('srcBadge'); if(!b) return;
+  if(SOURCE==="live"){ b.className="srcbadge live"; b.textContent="● Live data"; }
+  else { b.className="srcbadge offline"; b.textContent="○ Offline / CSV"; }
+}
+
+/* ---------------- Heat color ---------------- */
+function lerp(a,b,t){return a+(b-a)*t;}
+function hx(c){c=c.replace('#','');return [parseInt(c.slice(0,2),16),parseInt(c.slice(2,4),16),parseInt(c.slice(4,6),16)];}
+function mix(c1,c2,t){var a=hx(c1),b=hx(c2);return 'rgb('+Math.round(lerp(a[0],b[0],t))+','+Math.round(lerp(a[1],b[1],t))+','+Math.round(lerp(a[2],b[2],t))+')';}
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function heatColor(t){var lo=css('--heat-lo'),mid=css('--heat-mid'),hi=css('--heat-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
+function heatText(t){return t>0.55?'#fff':css('--text');}
+
+/* ---------------- Render ---------------- */
+function renderRange(){
+  if(!NWEEKS) return;
+  $('rangeSub').textContent = WEEKS[0].iso+" → "+WEEKS[NWEEKS-1].iso+"  ·  "+NWEEKS+"-week window  ·  current week "+CURRENT_ISO;
+  $('trendRange').textContent = WEEKS[0].iso+"–"+WEEKS[NWEEKS-1].iso;
+}
+
+function renderWeekbar(){
+  $('weekbar').innerHTML = WEEKS.map(function(w){
+    var sel=w.iso===SEL_ISO?'sel':''; var cur=w.status==='now'?'current':'';
+    var win=DATA.winners[w.iso]||{key:null};
+    var col=win.key?keyColor(KEYINDEX[win.key]):'var(--border)';
+    return '<button class="weekbtn '+sel+' '+cur+'" data-iso="'+w.iso+'">'
+      +'<div class="wk">'+esc(w.iso)+'</div>'
+      +'<div class="st">'+STATUS_LABEL[w.status]+'</div>'
+      +'<div class="dotrow">'+WEEKS.map(function(x){return '<i style="background:'+(x.iso===w.iso?col:'')+'"></i>';}).join('')+'</div>'
+      +'</button>';
+  }).join('');
+  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; renderAll(); }; });
+}
+
+function renderHero(){
+  $('heroStrip').innerHTML = WEEKS.map(function(w){
+    var win=DATA.winners[w.iso]||{key:null,hours:0};
+    var pillc=w.status==='done'?'done':w.status==='now'?'now':'plan';
+    var keyHtml=win.key?chip(win.key):'<span class="keychip" style="background:var(--slate)">—</span>';
+    var nm=win.key?(KEYNAME[win.key]||win.key):'No demand';
+    return '<div class="heroCard '+(w.status==='now'?'current':'')+'">'
+      +'<div class="wlbl">'+esc(w.iso)+'</div>'
+      +'<span class="pill '+pillc+'">'+STATUS_LABEL[w.status]+'</span>'
+      +'<div class="fte">'+fmt(win.hours)+' <small>hrs</small></div>'
+      +'<div class="winkey">'+keyHtml+'</div>'
+      +'<div class="wname">'+esc(nm)+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function visibleOrder(){
+  var order=DATA.order.slice();
+  if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
+  return order.slice(0,TOPN);
+}
+
+function renderHeat(){
+  var order=visibleOrder();
+  var max=DATA.maxCell||1;
+  var html='<table class="hgrid"><thead><tr><th class="rowhdr">Project</th>'+WEEKS.map(function(w){
+    return '<th>'+esc((w.iso.split('.')[1]||w.iso))+'<div style="font-weight:400;color:var(--muted);font-size:9.5px">'+STATUS_LABEL[w.status]+'</div></th>';
+  }).join('')+'</tr></thead><tbody>';
+  order.forEach(function(k){
+    var act=ACTIVE_ROW===k?'active':'';
+    html+='<tr><td><div class="rowlabel '+act+'" data-key="'+esc(k)+'">'+chip(k)+'<span class="nm">'+esc(KEYNAME[k]||k)+'</span></div></td>';
+    WEEKS.forEach(function(w){
+      var v=(DATA.cap[k]&&DATA.cap[k][w.iso])||0; var t=Math.min(1,v/max);
+      var win=(DATA.winners[w.iso]&&DATA.winners[w.iso].key===k);
+      var hd=(DATA.head[k]&&DATA.head[k][w.iso])||0;
+      html+='<td style="padding:2px"><div class="hcell '+(win?'win':'')+'" data-key="'+esc(k)+'" data-iso="'+w.iso+'" data-v="'+fmt(v)+'" data-h="'+hd+'"'
+        +' style="background:'+heatColor(t)+';color:'+heatText(t)+'">'+(v>=0.5?fmt(v):'')+(win?'<span class="star">★</span>':'')+'</div></td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  $('heat').innerHTML=html;
+  $('heatNote').textContent='Showing '+order.length+' of '+DATA.order.length+' projects with demand · ★ marks each week’s most-demanded';
+  Array.prototype.forEach.call($('heat').querySelectorAll('.hcell'),function(c){
+    c.onmousemove=function(e){ showTip(e,'<b>'+esc(c.dataset.key)+'</b> · '+esc(KEYNAME[c.dataset.key]||c.dataset.key)+'<br>'+c.dataset.iso+'<br>'+c.dataset.v+' hrs · '+c.dataset.h+' people'); };
+    c.onmouseleave=hideTip;
+  });
+  Array.prototype.forEach.call($('heat').querySelectorAll('.rowlabel'),function(rl){
+    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderTrend(); };
+  });
+}
+
+function renderBars(){
+  var iso=SEL_ISO;
+  var win=(DATA.winners[iso]&&DATA.winners[iso].key)||null;
+  var arr=DATA.order.map(function(k){return {k:k,v:(DATA.cap[k]&&DATA.cap[k][iso])||0};}).filter(function(x){return x.v>0.001;}).sort(function(a,b){return b.v-a.v;}).slice(0,12);
+  var max=arr.length?arr[0].v:1;
+  $('rankTitle').textContent='Ranked demand · '+iso;
+  $('bars').innerHTML=arr.length?arr.map(function(x){
+    return '<div class="bar"><div>'+chip(x.k)+'</div>'
+      +'<div class="track"><div class="fill '+(x.k===win?'win':'')+'" style="width:'+Math.max(3,x.v/max*100)+'%"></div></div>'
+      +'<div class="v">'+fmt(x.v)+' h</div></div>';
+  }).join(''):'<div class="hint">No demand recorded for '+esc(iso)+'.</div>';
+}
+
+function renderBlend(){
+  var iso=SEL_ISO;
+  var d=DATA.blendByWeek[iso]||{1:0,2:0,3:0,4:0};
+  var total=(d[1]+d[2]+d[3]+d[4])||1;
+  var rows=[
+    {lab:"1 project",n:d[1],c:"#15803D"},
+    {lab:"2 projects",n:d[2],c:css('--orbe')},
+    {lab:"3 projects",n:d[3],c:css('--royal')},
+    {lab:"4+ projects",n:d[4],c:css('--june')}
+  ];
+  $('blend').innerHTML=rows.map(function(r){
+    return '<div class="blend-row"><div class="lab">'+r.lab+'</div>'
+      +'<div class="track"><div class="fill" style="width:'+(r.n/total*100)+'%;background:'+r.c+'"></div></div>'
+      +'<div class="v mono" style="text-align:right;color:var(--muted)">'+r.n+' ppl</div></div>';
+  }).join('');
+  var st=DATA.stretched[iso]||0, avg=DATA.avgBlend[iso]||0;
+  $('blendNote').innerHTML = st>0
+    ? '<b>'+st+' '+(st===1?'person is':'people are')+' spread across 4+ projects</b> in '+esc(iso)+' (avg blend '+avg.toFixed(2)+'). Worth a sustainable-workload check before adding more — protecting focus keeps delivery quality high.'
+    : 'Healthy spread in '+esc(iso)+' — avg blend '+avg.toFixed(2)+' projects per person, nobody stretched across 4+. Capacity has headroom to absorb a new ask.';
+}
+
+function renderTrend(){
+  var w=860,h=240,pad={l:42,r:14,t:14,b:26};
+  var iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
+  var leaders=(ACTIVE_ROW?[ACTIVE_ROW].concat(DATA.order.filter(function(k){return k!==ACTIVE_ROW;})):DATA.order).slice(0,5);
+  var max=Math.max.apply(null,leaders.map(function(k){return Math.max.apply(null,WEEKS.map(function(wk){return (DATA.cap[k]&&DATA.cap[k][wk.iso])||0;}));}).concat([1]));
+  var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
+  var y=function(v){return pad.t+ih-v/max*ih;};
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="trend">';
+  for(var gl=0;gl<=4;gl++){var yy=pad.t+ih*gl/4; var val=max*(1-gl/4);
+    g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';
+    g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="10" fill="'+css('--muted')+'">'+val.toFixed(0)+'</text>';}
+  WEEKS.forEach(function(wk,i){
+    g+='<text x="'+x(i)+'" y="'+(h-8)+'" text-anchor="middle" font-size="10" fill="'+css('--muted')+'">W'+wk.wk+'</text>';
+    if(wk.status==='now') g+='<line x1="'+x(i)+'" y1="'+pad.t+'" x2="'+x(i)+'" y2="'+(pad.t+ih)+'" stroke="'+css('--orbe')+'" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>';
+  });
+  leaders.forEach(function(k){
+    var col=keyColor(KEYINDEX[k]); var dim=ACTIVE_ROW&&ACTIVE_ROW!==k;
+    var pts=WEEKS.map(function(wk,i){return x(i)+','+y((DATA.cap[k]&&DATA.cap[k][wk.iso])||0);}).join(' ');
+    g+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="'+(ACTIVE_ROW===k?3.2:2)+'" opacity="'+(dim?.18:1)+'" stroke-linejoin="round" stroke-linecap="round"/>';
+    WEEKS.forEach(function(wk,i){ g+='<circle cx="'+x(i)+'" cy="'+y((DATA.cap[k]&&DATA.cap[k][wk.iso])||0)+'" r="'+(ACTIVE_ROW===k?3.4:2.6)+'" fill="'+col+'" opacity="'+(dim?.18:1)+'"/>'; });
+  });
+  g+='</svg>';
+  $('trend').innerHTML=g;
+  $('trendLegend').innerHTML=leaders.map(function(k){return '<span style="opacity:'+(ACTIVE_ROW&&ACTIVE_ROW!==k?.4:1)+'"><i style="background:'+keyColor(KEYINDEX[k])+'"></i>'+chip(k)+' '+esc(KEYNAME[k]||k)+'</span>';}).join('');
+}
+
+function renderFoot(){
+  var src = SOURCE==='live' ? 'Live read of the “Planned Time Tempo” tab' : 'Offline CSV preview';
+  $('foot').innerHTML='Demand = planned hours per project per week (time-off / NETSUITE excluded). “Most demanded” = highest planned hours. Blend = distinct projects a person is planned on that week. Weeks in ISO format ('+(NWEEKS?WEEKS[0].iso+'–'+WEEKS[NWEEKS-1].iso:'')+'). '+src+'.';
+}
+
+function renderAll(){
+  renderRange(); renderWeekbar(); renderHero(); renderHeat(); renderBars(); renderBlend(); renderTrend(); renderFoot();
+}
+
+/* ---------------- Tooltip ---------------- */
+var tip;
+function showTip(e,html){ if(!tip)tip=$('tip'); tip.innerHTML=html; tip.style.opacity=1; var x=e.clientX+14,y=e.clientY+14; tip.style.left=Math.min(x,innerWidth-230)+'px'; tip.style.top=y+'px'; }
+function hideTip(){ if(tip) tip.style.opacity=0; }
+
+/* ---------------- CSV offline: parse + client aggregate ---------------- */
+function parseCSV(text){
+  var lines=text.split(/\r?\n/).filter(function(l){return l.trim().length;});
+  if(!lines.length) return [];
+  var head=lines[0].split(',').map(function(s){return s.trim().toLowerCase();});
+  var ci={person:head.indexOf('person'),iso:head.indexOf('week'),key:head.indexOf('project_key'),name:head.indexOf('project_name'),hours:head.indexOf('allocation')};
+  var out=[];
+  for(var i=1;i<lines.length;i++){
+    var c=lines[i].split(',');
+    var r={person:(c[ci.person]||'').trim(),iso:(c[ci.iso]||'').trim(),key:(c[ci.key]||'').trim().toUpperCase(),
+           name:ci.name>=0?(c[ci.name]||'').replace(/^"|"$/g,'').trim():'',hours:parseFloat(c[ci.hours])};
+    if(r.person&&r.iso&&r.key&&!isNaN(r.hours)&&r.key!=='NETSUITE') out.push(r);
+  }
+  return out;
+}
+
+/* Builds the same model shape as the server, for an arbitrary set of CSV records. */
+function clientAggregate(recs){
+  // Window: distinct isos sorted; status by comparison to today's ISO week; keep ≤8 around current.
+  var today=new Date(); var curIso=isoWeekYearC(today)+'.W'+isoWeekNumC(today); var curOrd=isoOrd(curIso);
+  var isos=Object.keys(recs.reduce(function(a,r){a[r.iso]=1;return a;},{})).sort(function(a,b){return isoOrd(a)-isoOrd(b);});
+  if(isos.length>8){ var ci=isos.indexOf(curIso); if(ci<0){ isos=isos.slice(-8); } else { isos=isos.slice(Math.max(0,ci-4),Math.max(0,ci-4)+8); } }
+  var weeks=isos.map(function(iso){ var o=isoOrd(iso); var m=iso.match(/W(\d+)/); return {iso:iso,wk:m?parseInt(m[1],10):0,status:o<curOrd?'done':(o===curOrd?'now':'plan')}; });
+  // Reuse the same aggregation math as the server.
+  return aggregateClient(recs,weeks);
+}
+
+function aggregateClient(recs,weeks){
+  var isoList=weeks.map(function(w){return w.iso;});
+  var inW={}; isoList.forEach(function(iso){inW[iso]=1;});
+  var cap={},headSets={},peopleProj={},keyName={};
+  isoList.forEach(function(iso){peopleProj[iso]={};});
+  recs.forEach(function(r){
+    if(!inW[r.iso])return;
+    if(!keyName[r.key]&&r.name)keyName[r.key]=r.name;
+    cap[r.key]=cap[r.key]||{}; cap[r.key][r.iso]=(cap[r.key][r.iso]||0)+r.hours;
+    headSets[r.key]=headSets[r.key]||{}; headSets[r.key][r.iso]=headSets[r.key][r.iso]||{}; headSets[r.key][r.iso][r.person]=1;
+    peopleProj[r.iso][r.person]=(peopleProj[r.iso][r.person]||0)+1;
+  });
+  var head={}; Object.keys(headSets).forEach(function(k){head[k]={};Object.keys(headSets[k]).forEach(function(iso){head[k][iso]=Object.keys(headSets[k][iso]).length;});});
+  var blendByWeek={},avgBlend={},stretched={},activePeople={};
+  isoList.forEach(function(iso){
+    var counts=peopleProj[iso]; var arr=Object.keys(counts).map(function(p){return counts[p];});
+    blendByWeek[iso]={1:0,2:0,3:0,4:0}; var sum=0,st=0;
+    arr.forEach(function(n){sum+=n;blendByWeek[iso][Math.min(n,4)]++;if(n>=4)st++;});
+    activePeople[iso]=arr.length; avgBlend[iso]=arr.length?sum/arr.length:0; stretched[iso]=st;
+  });
+  var winners={},activeProj={},weekTotal={};
+  isoList.forEach(function(iso){
+    var best=null,bestv=-1,cnt=0,tot=0;
+    Object.keys(cap).forEach(function(k){var v=cap[k][iso]||0; if(v>0.001){cnt++;tot+=v;} if(v>bestv){bestv=v;best=k;}});
+    winners[iso]={key:best,hours:bestv>0?bestv:0}; activeProj[iso]=cnt; weekTotal[iso]=tot;
+  });
+  var totals=Object.keys(cap).map(function(k){var t=0;isoList.forEach(function(iso){t+=(cap[k][iso]||0);});return {key:k,total:t};});
+  totals.sort(function(a,b){return b.total-a.total;});
+  var maxCell=0.001; Object.keys(cap).forEach(function(k){isoList.forEach(function(iso){if((cap[k][iso]||0)>maxCell)maxCell=cap[k][iso];});});
+  Object.keys(cap).forEach(function(k){if(!keyName[k])keyName[k]=k;});
+  return {weeks:weeks,isoList:isoList,cap:cap,head:head,winners:winners,activeProj:activeProj,weekTotal:weekTotal,
+    blendByWeek:blendByWeek,avgBlend:avgBlend,stretched:stretched,activePeople:activePeople,
+    order:totals.map(function(t){return t.key;}),keyName:keyName,maxCell:maxCell,capacity:40,error:null};
+}
+
+/* ---------------- Controls ---------------- */
+$('csvUp').addEventListener('change',function(ev){
+  var f=ev.target.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{
+      var recs=parseCSV(rd.result);
+      if(!recs.length){ alert('No valid rows found. Expected columns: person, week, project_key, project_name, allocation(hours)'); return; }
+      SOURCE="offline"; applyModel(clientAggregate(recs)); showDash(); renderAll();
+    }catch(err){ alert('Could not parse that file: '+err.message); }
+  };
+  rd.readAsText(f);
+});
+$('dlTemplate').onclick=function(){
+  var header='person,week,project_key,project_name,allocation\n';
+  var sample='P1,2026.W22,ACME,"Acme Project",18\nP1,2026.W22,BETA,"Beta Project",12\nP2,2026.W22,ACME,"Acme Project",20\n';
+  var blob=new Blob([header+sample],{type:'text/csv'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='project-demand-template.csv'; a.click();
+};
+$('reloadBtn').onclick=function(){ ACTIVE_ROW=null; boot(); };
+$('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA) renderHeat(); });
+Array.prototype.forEach.call($('topToggle').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('topToggle').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; if(DATA) renderHeat(); }; });
+$('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
+
+/* ---------------- Go ---------------- */
+boot();
+</script>
+</body>
+</html>
