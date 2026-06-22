@@ -1633,21 +1633,27 @@ function readTrackedTimeByWeek_(psNames, weeks) {
 }
 
 function readPlannedTimeByWeek_(psNames, weeks) {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
-  const sh   = ss.getSheetByName(CONFIG_PS.SHEET_PLANNED);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG_PS.SHEET_PLANNED);
+  if (!sh) Logger.log(`⚠️ Planned Time sheet not found.`);
+  const vals = sh ? sh.getDataRange().getValues() : [];
+  return buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.PLANNED_NONPROJECT_KEYS);
+}
+
+// Pure parser for the Planned Time Tempo matrix. Separated from the sheet fetch so it
+// can be unit-tested (see _test_projectContext_). Returns, per week label:
+//   { totalHrs, headcount, byEmployee:{norm:hrs}, byEmployeeProjects:{norm:{KEY:hrs}} }
+// The total/headcount/byEmployee math is identical to the previous inline version
+// (it still sums every week-column hour, time-off rows included). byEmployeeProjects
+// is a parallel accumulation that additionally drops blank and non-project keys.
+function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys) {
   const result = {};
-  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {} }; });
-  if (!sh) { Logger.log(`⚠️ Planned Time sheet not found.`); return result; }
+  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {} }; });
+  if (!vals || vals.length < 2) return result;
 
-  const vals = sh.getDataRange().getValues();
-  if (vals.length < 2) return result;
-
-  // The Tempo export (TempoPlanExport.js) writes a TWO-ROW stacked header:
-  //   Row 1 = ISO week labels ("2026.W14") over the week columns, blank over the fixed columns
-  //   Row 2 = field names ("User", "Space", "Key", "Planned (hrs)", date ranges, "Total (hrs)")
-  // Older single-row exports put "W14"-style week labels in the same row as "User".
-  // Locate the field-header row by its employee column, then take week labels from the
-  // ISO-label row above it when present (new format) or from that same row (old format).
+  // The Tempo export writes a TWO-ROW stacked header (ISO labels over week columns in
+  // row 1; field names in row 2). Locate the field-header row by its employee column,
+  // then take week labels from the ISO-label row above it (new format) or that same row.
   const isEmpHdr_ = h => /user|resource|rocketeer|name|employee/i.test(h) && !/type|role|skill|program|team/i.test(h);
   let hr = -1, iEmp = -1;
   for (let r = 0; r < Math.min(vals.length, 5); r++) {
@@ -1656,13 +1662,14 @@ function readPlannedTimeByWeek_(psNames, weeks) {
   }
   if (hr === -1) { Logger.log(`⚠️ Planned Time: employee column not found.`); return result; }
 
+  // Project key column ("Key"). Absent in legacy single-row exports → no project context.
+  const iKey = vals[hr].findIndex(c => String(c).trim().toLowerCase() === "key");
+  const excludeKeys = new Set((nonProjectKeys || []).map(k => String(k).trim().toUpperCase()));
+
   const isoRe   = /^\s*\d{4}\.?W\d+\s*$/i;
   const labelRow = (hr > 0 && vals[hr - 1].some(c => isoRe.test(String(c)))) ? vals[hr - 1] : vals[hr];
   const defYear = isoWeekYear_PS_(new Date());
 
-  // Match each labelled column to a window week. weekToKey_PS_ accepts both the new
-  // "2026.W14" ISO labels and the legacy "W14" short form, so the match is by full
-  // year+week label — correct across the Dec/Jan ISO-year boundary.
   const wCols = [];
   labelRow.forEach((cell, idx) => {
     const key = weekToKey_PS_(cell, defYear);
@@ -1691,6 +1698,8 @@ function readPlannedTimeByWeek_(psNames, weeks) {
   vals.slice(hr + 1).forEach(row => {
     const norm = lookupPlanned_(row[iEmp]);
     if (!norm) return;
+    const rawKey    = iKey !== -1 ? String(row[iKey] || '').trim() : '';
+    const isProject = !!rawKey && !excludeKeys.has(rawKey.toUpperCase());
     wCols.forEach(({ key, idx }) => {
       const hrs = parseFloat(row[idx]) || 0;
       if (hrs <= 0) return;
@@ -1698,6 +1707,10 @@ function readPlannedTimeByWeek_(psNames, weeks) {
       if (!b.byEmployee[norm]) { b.headcount++; b.byEmployee[norm] = 0; }
       b.byEmployee[norm] += hrs;
       b.totalHrs += hrs;
+      if (isProject) {
+        if (!b.byEmployeeProjects[norm]) b.byEmployeeProjects[norm] = {};
+        b.byEmployeeProjects[norm][rawKey] = (b.byEmployeeProjects[norm][rawKey] || 0) + hrs;
+      }
     });
   });
 
@@ -2679,4 +2692,39 @@ function callGeminiNarrative(prompt) {
     Logger.log(`❌ callGeminiNarrative: ${e.message}`);
     return { ok: false, error: e.message || String(e) };
   }
+}
+
+// Unit test for project-context capture. Run in the GAS editor, or in Node
+// (per the _test_weightsResolver convention — stub Logger if running standalone).
+function _test_projectContext_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_projectContext_: " + msg); }
+
+  // Fake Planned Time Tempo matrix: two-row stacked header + 3 project rows + TOTAL footer.
+  // Ana is planned ACME(10/10), BETA(10/10), and NETSUITE time-off(8/8) across W14 + W15.
+  const vals = [
+    ["", "", "", "", "2026.W14", "2026.W15", ""],
+    ["User", "Space", "Key", "Planned (hrs)", "Mar 30 - Apr 05 2026", "Apr 06 - Apr 12 2026", "Total (hrs)"],
+    ["Ana Smith", "Acme Project", "ACME", 20, 10, 10, 20],
+    ["Ana Smith", "Beta Project", "BETA", 20, 10, 10, 20],
+    ["Ana Smith", "Time off", "NETSUITE", 16, 8, 8, 16],
+    ["TOTAL", "", "", 56, 28, 28, 56],
+  ];
+  const psNames = new Map([[normPS_("Ana Smith"), { name: "Ana Smith" }]]);
+  const weeks = [{ label: "2026.W14" }, { label: "2026.W15" }];
+
+  const res = buildPlannedResult_(vals, psNames, weeks, ["NETSUITE"]);
+  const norm = normPS_("Ana Smith");
+
+  // Total planned hours are UNCHANGED — they still include the NETSUITE time-off rows.
+  assert_(res["2026.W14"].byEmployee[norm] === 28, "W14 total should be 28, got " + res["2026.W14"].byEmployee[norm]);
+
+  // Project map EXCLUDES NETSUITE → exactly ACME + BETA.
+  const projs = res["2026.W14"].byEmployeeProjects[norm] || {};
+  const keys = Object.keys(projs).sort();
+  assert_(keys.length === 2, "expected 2 project keys, got " + keys.join(","));
+  assert_(keys[0] === "ACME" && keys[1] === "BETA", "expected ACME+BETA, got " + keys.join(","));
+  assert_(projs.ACME === 10 && projs.BETA === 10, "expected 10h each, got ACME=" + projs.ACME + " BETA=" + projs.BETA);
+  assert_(!("NETSUITE" in projs), "NETSUITE must be excluded from project map");
+
+  Logger.log("✅ _test_projectContext_ passed");
 }
