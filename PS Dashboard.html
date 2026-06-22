@@ -354,18 +354,6 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .proj-pill-new { background:#FEF3C7; color:#92400E; }
 .proj-hrs-line { font-size:9px; color:var(--slate); margin-top:3px; font-weight:700; letter-spacing:.02em; }
 
-/* ── Trends: project-context week blocks ── */
-.projctx-wk { border:1px solid var(--border); border-radius:8px; padding:8px 12px; margin-bottom:9px; }
-.projctx-wk-cur { border-color:#FDBA74; background:#FFFBF5; }
-.projctx-wklbl { font-size:9px; font-weight:800; text-transform:uppercase; color:var(--muted); letter-spacing:.06em; }
-.projctx-wk-cur .projctx-wklbl { color:var(--orbe); }
-.projctx-cap { font-size:9px; color:var(--muted); font-weight:600; margin-left:6px; }
-.projctx-tags { margin-top:4px; }
-.projctx-toggle { font-size:10px; font-weight:700; color:var(--orbe); cursor:pointer; user-select:none; margin-top:6px; display:inline-block; }
-.projctx-hrs { margin-top:7px; border-top:1px dashed var(--border); padding-top:7px; font-size:10.5px; color:var(--slate); line-height:1.9; }
-.projctx-h { font-weight:800; color:var(--slate); }
-.projctx-pp { color:var(--muted); font-size:9.5px; }
-
 /* ── Actionable prompt at bottom of expanded row ── */
 .det-action { margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; border-left: 3px solid; line-height: 1.4; }
 .det-action-goals { background: #FFF7ED; color: #92400E; border-color: #F59E0B; }
@@ -1096,7 +1084,6 @@ body.dark-mode .det-expand-lbl-cell                   { background: #141C3D !imp
 body.dark-mode .det-row-open .det-expand-lbl-cell     { background: #1a2a5e !important; }
 body.dark-mode .proj-pill     { background:#1E295A; color:#A9C2FF; }
 body.dark-mode .proj-pill-new { background:#3A2E10; color:#FCD34D; }
-body.dark-mode .projctx-wk-cur { background:#2A2410; border-color:#7C5A1F; }
 body.dark-mode .det-expand-hdr:hover td               { background: #1a2a5e; }
 body.dark-mode .ts-card                               { border-color: var(--border); }
 
@@ -1786,15 +1773,16 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div id="ptoAtRiskBody" style="padding:0 16px 16px"></div>
     </div>
 
-    <!-- Project context — planned-project demand by week (no charts) -->
-    <div class="section-card" id="projCtxCard" style="display:none">
+    <!-- Link out to the standalone C-Suite Project Demand dashboard -->
+    <div class="section-card" id="projDemandCard">
       <div class="section-head">
         <div>
-          <h2>Project context — planned demand by week</h2>
-          <p class="section-sub" id="projCtxSub">Projects each rocketeer is planned across · amber = new vs. prior week</p>
+          <h2>Project Demand — Week over Week</h2>
+          <p class="section-sub">Team-level project demand &amp; blending for CEO / C-suite — opens the dedicated dashboard in a new tab.</p>
         </div>
+        <a id="projDemandLink" class="copy-btn" href="#" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0">Open C-Suite view ↗</a>
       </div>
-      <div id="projCtxBody" style="padding:4px 16px 16px"></div>
+      <p id="projDemandNote" class="section-sub" style="padding:0 4px;margin:0"></p>
     </div>
 
   </div>
@@ -7704,7 +7692,7 @@ function renderTrendsTab() {
   renderTimeMomentum(_tf);
   renderCorrelationCharts(_tf);
   renderPTOTrend(_tf);
-  renderProjectContext(_tf);
+  renderProjectDemandLink();
   renderRcrSupport(_tf);
 
   // ── RCR monthly bar chart ──
@@ -8016,74 +8004,26 @@ function toggleFullTrends(linkEl, bodyId) {
   linkEl.innerHTML = opening ? 'Hide full charts ▴' : 'View full charts ↗';
 }
 
-function toggleProjCtxHrs(linkEl, bodyId) {
-  var body = document.getElementById(bodyId);
-  if (!body) return;
-  var opening = body.style.display === 'none';
-  body.style.display = opening ? 'block' : 'none';
-  linkEl.innerHTML = opening ? '− planned hours' : '+ planned hours';
-}
+// Paste the deployed "Project Demand — Week over Week" web-app /exec URL here.
+// While empty, the Trends link renders disabled with a "pending deployment" note.
+var PROJECT_DEMAND_URL = "";
 
-// Trends card: per-week project demand across the FILTERED team. Pure context.
-function renderProjectContext(filtered) {
-  var card = document.getElementById("projCtxCard");
-  var body = document.getElementById("projCtxBody");
-  if (!DATA || !card || !body) return;
-  var weeks = DATA.weeks || [];
-  if (!weeks.length || !filtered || !filtered.length) { card.style.display = "none"; return; }
-
-  // Aggregate per week: key -> { key, hrs, people } across the filtered team.
-  var perWeek = weeks.map(function(w) {
-    var byKey = {};
-    filtered.forEach(function(e) {
-      var ps = (e.weeks && e.weeks[w.label] && e.weeks[w.label].projects) || [];
-      ps.forEach(function(p) {
-        if (!byKey[p.key]) byKey[p.key] = { key: p.key, hrs: 0, people: 0 };
-        byKey[p.key].hrs    += (p.hrs || 0);
-        byKey[p.key].people += 1;
-      });
-    });
-    var keys = Object.keys(byKey).map(function(k) { return byKey[k]; })
-                     .sort(function(a, b) { return b.hrs - a.hrs; });
-    return { w: w, keys: keys, keySet: keys.map(function(k) { return k.key; }) };
-  });
-
-  if (!perWeek.some(function(d) { return d.keys.length; })) { card.style.display = "none"; return; }
-  card.style.display = "";
-
-  var note = filtered.length < (DATA.employees || []).length ? " · filtered: " + filtered.length : "";
-  var sub = document.getElementById("projCtxSub");
-  if (sub) sub.textContent = "Projects each rocketeer is planned across · amber = new vs. prior week" + note;
-
-  var html = "";
-  perWeek.forEach(function(d, i) {
-    var prev = i > 0 ? perWeek[i - 1].keySet : null; // prior in-window week (null → baseline)
-    var newCount = prev ? d.keySet.filter(function(k) { return prev.indexOf(k) === -1; }).length : 0;
-    var wkCls = d.w.isCurrentWeek ? "projctx-wk projctx-wk-cur" : "projctx-wk";
-    var wkLbl = esc(d.w.label) + (d.w.isCurrentWeek ? " — current" : d.w.isFuture ? " — planned" : "");
-    var cap = d.keys.length + " project" + (d.keys.length !== 1 ? "s" : "") + " active" + (newCount ? " · " + newCount + " new" : "");
-    var bodyId = "projctx_" + i;
-
-    html += '<div class="' + wkCls + '">';
-    html += '<span class="projctx-wklbl">' + wkLbl + '</span><span class="projctx-cap">' + cap + '</span>';
-    html += '<div class="projctx-tags">';
-    d.keys.forEach(function(k) {
-      var isNew = prev && prev.indexOf(k.key) === -1;
-      html += '<span class="proj-pill' + (isNew ? ' proj-pill-new' : '') + '">' + esc(k.key) + '</span>';
-    });
-    html += '</div>';
-    html += '<span class="projctx-toggle" onclick="toggleProjCtxHrs(this,\'' + bodyId + '\')">+ planned hours</span>';
-    html += '<div id="' + bodyId + '" class="projctx-hrs" style="display:none">';
-    d.keys.forEach(function(k) {
-      var isNew = prev && prev.indexOf(k.key) === -1;
-      html += '<div><span class="proj-pill' + (isNew ? ' proj-pill-new' : '') + '">' + esc(k.key) + '</span> ' +
-              '<span class="projctx-h">' + Math.round(k.hrs) + 'h</span> ' +
-              '<span class="projctx-pp">· ' + k.people + ' ' + (k.people === 1 ? 'person' : 'people') + '</span></div>';
-    });
-    html += '</div>';
-    html += '</div>';
-  });
-  body.innerHTML = html;
+// Enables/points the Trends hyperlink card to the standalone C-Suite dashboard.
+function renderProjectDemandLink() {
+  var link = document.getElementById("projDemandLink");
+  var note = document.getElementById("projDemandNote");
+  if (!link) return;
+  if (PROJECT_DEMAND_URL) {
+    link.href = PROJECT_DEMAND_URL;
+    link.style.opacity = "";
+    link.style.pointerEvents = "";
+    if (note) note.textContent = "";
+  } else {
+    link.href = "#";
+    link.style.opacity = ".5";
+    link.style.pointerEvents = "none";
+    if (note) note.textContent = "Link pending deployment — paste the Project Demand web-app URL into PROJECT_DEMAND_URL.";
+  }
 }
 
 function renderRcrSupport(filtered) {
