@@ -384,6 +384,9 @@ body.dark-mode .pkh-toggle button.on { background:var(--orbe); }
 .pkh-grid th.pkh-th-plan { background:rgba(5,140,220,.07); }
 .pkh-grid th.pkh-th-now, .pkh-grid td.pkh-col-now { border-left:2px solid var(--orbe); }
 body.dark-mode .pkh-grid th.pkh-th-plan { background:rgba(5,140,220,.14); }
+/* Parked projects: no current/planned hours (completed or awaiting planning) → sorted last */
+.pkh-rowlabel.pkh-parked .pkh-keychip { opacity:.5; }
+.pkh-parked-tag { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:1px 6px; }
 
 /* ── Actionable prompt at bottom of expanded row ── */
 .det-action { margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; border-left: 3px solid; line-height: 1.4; }
@@ -1809,7 +1812,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div class="section-head">
         <div>
           <h2>Project key heatmap</h2>
-          <p class="section-sub" id="pkhSub">Planned hours by project × week · ★ = week's most-demanded · time-off excluded · respects the active filters</p>
+          <p class="section-sub" id="pkhSub">Planned hours by project × week · ★ = week's most-demanded · time-off excluded · respects active filters · projects with no current/planned hours sort last (completed or awaiting planning)</p>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0">
           <input class="pkh-search" id="pkhSearch" placeholder="Filter key…" />
@@ -8115,9 +8118,24 @@ function pkhBuildModel(filtered){
     Object.keys(cap).forEach(function(k){ var v = cap[k][w.label] || 0; if (v > bestv){ bestv = v; best = k; } if (v > maxCell) maxCell = v; });
     winners[w.label] = { key: best, hours: bestv > 0 ? bestv : 0 };
   });
-  var totals = Object.keys(cap).map(function(k){ var t = 0; weeks.forEach(function(w){ t += (cap[k][w.label] || 0); }); return { key: k, total: t }; });
-  totals.sort(function(a,b){ return b.total - a.total; });
-  return { weeks: weeks, cap: cap, head: head, winners: winners, order: totals.filter(function(t){ return t.total > 0.001; }).map(function(t){ return t.key; }), maxCell: maxCell };
+  // "forward" = hours in the current + future (planned) weeks. Projects with none are
+  // likely completed or awaiting planning, so they sort to the bottom (parked).
+  var fwdLabels = {};
+  weeks.forEach(function(w){ if (w.isCurrentWeek || w.isFuture) fwdLabels[w.label] = 1; });
+  var forward = {};
+  var totals = Object.keys(cap).map(function(k){
+    var t = 0, f = 0;
+    weeks.forEach(function(w){ var v = cap[k][w.label] || 0; t += v; if (fwdLabels[w.label]) f += v; });
+    forward[k] = f;
+    return { key: k, total: t, forward: f };
+  });
+  // Primary: projects with any current/planned hours first; secondary: total hours desc.
+  totals.sort(function(a,b){
+    var fa = a.forward > 0.001 ? 1 : 0, fb = b.forward > 0.001 ? 1 : 0;
+    return (fb - fa) || (b.total - a.total);
+  });
+  return { weeks: weeks, cap: cap, head: head, winners: winners, forward: forward,
+    order: totals.filter(function(t){ return t.total > 0.001; }).map(function(t){ return t.key; }), maxCell: maxCell };
 }
 
 function pkhWireControls(){
@@ -8163,8 +8181,10 @@ function pkhRenderGrid(){
   }).join('') + '</tr></thead><tbody>';
   order.forEach(function(k){
     var act = PKH_ACTIVE === k ? 'active' : '';
-    html += '<tr><td><div class="pkh-rowlabel ' + act + '" data-key="' + esc(k) + '">'
-      + '<span class="pkh-keychip" style="background:' + pkhColor(idx[k]) + '">' + esc(k) + '</span></div></td>';
+    var parked = !(m.forward[k] > 0.001);
+    html += '<tr><td><div class="pkh-rowlabel ' + act + (parked ? ' pkh-parked' : '') + '" data-key="' + esc(k) + '">'
+      + '<span class="pkh-keychip" style="background:' + pkhColor(idx[k]) + '">' + esc(k) + '</span>'
+      + (parked ? '<span class="pkh-parked-tag">no current/planned</span>' : '') + '</div></td>';
     weeks.forEach(function(w){
       var v = (m.cap[k] && m.cap[k][w.label]) || 0;
       var t = Math.min(1, v / max);
