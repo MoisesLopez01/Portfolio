@@ -25,6 +25,10 @@ var CONFIG_PS = {
   PTO_TEAM_TARGET_PCT:        80,    // celebrate at this team-level score
   SHEET_TEMPO_TRACKED:   "Tempo Transposed",
   SHEET_PLANNED:         "Planned Time Tempo",
+  // Project keys in the Planned Time Tempo "Key" column that are NOT real projects
+  // and must be excluded from project-context counts. "NETSUITE" = time-off synced
+  // from NetSuite (already represented elsewhere in the report). Matched case-insensitively.
+  PLANNED_NONPROJECT_KEYS: ["NETSUITE"],
   SHEET_GOALS:       "RD",
   SHEET_PH:          "PH",
 
@@ -1096,10 +1100,13 @@ function readRCR_PS_(roster, teamSubset) {
     }
   }
 
-  // Build 6-month RCR history (oldest → newest) using 3.RCR individual averages per month
+  // Build full fiscal-year-to-date RCR history (oldest → newest) using 3.RCR
+  // individual averages per month. Starts at the first month (Jul) through the
+  // last completed month; months with no data are skipped below (empty `vals`).
+  // The full range also feeds the per-employee "who needs support" table client-side.
   const rcrHistory = [];
   const rcrByEmployee = {};  // norm → { monthName: rcrValue } — all roster members, for client-side filter slicing
-  const histStart = Math.max(0, lastMonthPos - 5);
+  const histStart = 0;
   for (let mi = histStart; mi <= lastMonthPos; mi++) {
     const col = rcrMonthIdxs[mi];
     if (col === -1) continue;
@@ -1197,8 +1204,24 @@ function readSI_PS_(roster, teamSubset) {
     return c > 0 ? { quarter, avg: Math.round(t / c * 100) / 100 } : null;
   }).filter(Boolean);
 
+  // Per-employee SI by quarter (all roster) — feeds the per-rocketeer historical
+  // trend in the Overview detail drawer. 0 / "-" means not yet rated → omitted.
+  const byEmployeeQ = {};
+  data.rows.forEach(row => {
+    const nm = resolveSIRowNorm_(row, iEmpNum, empNumToNorm, siNameCol, roster);
+    if (!nm) return;
+    siHistCols.forEach(({ quarter, col }) => {
+      if (isNA_PS_(row[col])) return;
+      const n = parseFloat(row[col]);
+      if (!isNaN(n) && n > 0) {
+        if (!byEmployeeQ[nm]) byEmployeeQ[nm] = {};
+        byEmployeeQ[nm][quarter] = n;
+      }
+    });
+  });
+
   Logger.log(`SI: count=${count}, avg=${teamAvg}, history quarters=${siHistory.length}`);
-  return { teamAvg, quarter, byEmployee, siHistory };
+  return { teamAvg, quarter, byEmployee, siHistory, byEmployeeQ, siQuarters: siHistCols.map(c => c.quarter) };
 }
 
 // Reads the Accumulation Cost sheet and builds a per-employee profile keyed by Employee Number:
@@ -1611,17 +1634,42 @@ function readTrackedTimeByWeek_(psNames, weeks) {
 
 function readPlannedTimeByWeek_(psNames, weeks) {
   const ss   = SpreadsheetApp.getActiveSpreadsheet();
-  const data = loadSheet_PS_(ss, CONFIG_PS.SHEET_PLANNED);
+  const sh   = ss.getSheetByName(CONFIG_PS.SHEET_PLANNED);
   const result = {};
   weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {} }; });
-  if (!data) { Logger.log(`⚠️ Planned Time sheet not found.`); return result; }
+  if (!sh) { Logger.log(`⚠️ Planned Time sheet not found.`); return result; }
 
-  const hdrs = data.headers;
-  let iEmp = -1;
-  for (let j = 0; j < hdrs.length; j++) {
-    if (/user|resource|rocketeer|name|employee/i.test(hdrs[j]) && !/type|role|skill|program|team/i.test(hdrs[j])) { iEmp = j; break; }
+  const vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return result;
+
+  // The Tempo export (TempoPlanExport.js) writes a TWO-ROW stacked header:
+  //   Row 1 = ISO week labels ("2026.W14") over the week columns, blank over the fixed columns
+  //   Row 2 = field names ("User", "Space", "Key", "Planned (hrs)", date ranges, "Total (hrs)")
+  // Older single-row exports put "W14"-style week labels in the same row as "User".
+  // Locate the field-header row by its employee column, then take week labels from the
+  // ISO-label row above it when present (new format) or from that same row (old format).
+  const isEmpHdr_ = h => /user|resource|rocketeer|name|employee/i.test(h) && !/type|role|skill|program|team/i.test(h);
+  let hr = -1, iEmp = -1;
+  for (let r = 0; r < Math.min(vals.length, 5); r++) {
+    const idx = vals[r].findIndex(c => isEmpHdr_(String(c).trim()));
+    if (idx !== -1) { hr = r; iEmp = idx; break; }
   }
-  if (iEmp === -1) { Logger.log(`⚠️ Planned Time: employee column not found.`); return result; }
+  if (hr === -1) { Logger.log(`⚠️ Planned Time: employee column not found.`); return result; }
+
+  const isoRe   = /^\s*\d{4}\.?W\d+\s*$/i;
+  const labelRow = (hr > 0 && vals[hr - 1].some(c => isoRe.test(String(c)))) ? vals[hr - 1] : vals[hr];
+  const defYear = isoWeekYear_PS_(new Date());
+
+  // Match each labelled column to a window week. weekToKey_PS_ accepts both the new
+  // "2026.W14" ISO labels and the legacy "W14" short form, so the match is by full
+  // year+week label — correct across the Dec/Jan ISO-year boundary.
+  const wCols = [];
+  labelRow.forEach((cell, idx) => {
+    const key = weekToKey_PS_(cell, defYear);
+    if (!key) return;
+    const match = weeks.find(w => w.label === key);
+    if (match) wCols.push({ key: match.label, idx });
+  });
 
   const plannedAliases = new Map();
   for (const rosterNorm of psNames.keys()) {
@@ -1638,16 +1686,9 @@ function readPlannedTimeByWeek_(psNames, weeks) {
     return psNames.has(n) ? n : (plannedAliases.has(n) ? plannedAliases.get(n) : null);
   };
 
-  const wCols = [];
-  hdrs.forEach((h, idx) => {
-    const m = h.match(/^W(\d+)$/i);
-    if (!m) return;
-    const wn = parseInt(m[1]);
-    const match = weeks.find(w => w.isoWeek === wn);
-    if (match) wCols.push({ key: match.label, idx });
-  });
-
-  data.rows.forEach(row => {
+  // Data rows start after the field-header row; the export's "TOTAL" footer row is
+  // skipped naturally since "TOTAL" resolves to no roster member.
+  vals.slice(hr + 1).forEach(row => {
     const norm = lookupPlanned_(row[iEmp]);
     if (!norm) return;
     wCols.forEach(({ key, idx }) => {
@@ -2577,6 +2618,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
       rcrHistory:       rcrAll.rcrHistory    || [],
       rcrByEmployee:    rcrAll.rcrByEmployee || {},
       siHistory:        siAll.siHistory      || [],
+      siByEmployee:     siAll.byEmployeeQ    || {},
+      siQuarters:       siAll.siQuarters     || [],
     },
   };
 }
