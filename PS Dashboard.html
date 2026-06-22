@@ -354,6 +354,33 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .proj-pill-new { background:#FEF3C7; color:#92400E; }
 .proj-hrs-line { font-size:9px; color:var(--slate); margin-top:3px; font-weight:700; letter-spacing:.02em; }
 
+/* ── Project key heatmap (Trends) — ported from the C-Suite Project Demand dashboard ── */
+:root { --pkh-lo:#FFFAF5; --pkh-mid:#058CDC; --pkh-hi:#0F1941; --pkh-win:#FF9B87; }
+body.dark-mode { --pkh-lo:#16203F; --pkh-mid:#058CDC; --pkh-hi:#FF9B87; }
+.pkh-scroll { overflow-x:auto; }
+.pkh-grid { border-collapse:separate; border-spacing:0; width:100%; min-width:640px; }
+.pkh-grid th, .pkh-grid td { padding:0; }
+.pkh-grid thead th { position:sticky; top:0; background:var(--card-bg); z-index:2; font-family:'Roboto Condensed',sans-serif; font-weight:800; font-size:12px; color:var(--muted); text-align:center; padding:6px 4px; border-bottom:1px solid var(--border); }
+.pkh-grid thead th.rowhdr { text-align:left; padding-left:4px; }
+.pkh-rowlabel { display:flex; align-items:center; gap:9px; padding:5px 8px 5px 4px; white-space:nowrap; cursor:pointer; }
+.pkh-rowlabel:hover { background:var(--hover-row); }
+.pkh-rowlabel .nm { font-size:12px; color:var(--text); overflow:hidden; text-overflow:ellipsis; max-width:160px; }
+.pkh-rowlabel.active .nm { font-weight:700; }
+.pkh-keychip { display:inline-block; font-family:'Roboto Condensed',sans-serif; font-weight:800; font-size:12px; letter-spacing:.03em; color:#fff; padding:2px 8px; border-radius:6px; line-height:1.4; }
+.pkh-cell { height:30px; border:2px solid var(--card-bg); border-radius:6px; text-align:center; font-size:11px; font-weight:600; position:relative; display:flex; align-items:center; justify-content:center; }
+.pkh-cell.win { border-color:var(--pkh-win); box-shadow:inset 0 0 0 1px var(--pkh-win); }
+.pkh-cell .star { position:absolute; top:-1px; right:1px; font-size:9px; color:var(--pkh-win); }
+.pkh-legend { display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted); }
+.pkh-legbar { width:140px; height:10px; border-radius:5px; background:linear-gradient(90deg,var(--pkh-lo),var(--pkh-mid),var(--pkh-hi)); border:1px solid var(--border); }
+.pkh-note { font-size:12px; color:var(--muted); }
+.pkh-search { padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:var(--input-bg); color:var(--text); font-size:12.5px; width:150px; }
+.pkh-toggle { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.pkh-toggle button { border:none; border-radius:0; background:transparent; padding:7px 11px; font-size:12px; font-weight:600; cursor:pointer; color:var(--text); }
+.pkh-toggle button.on { background:var(--void); color:#fff; }
+body.dark-mode .pkh-toggle button.on { background:var(--orbe); }
+.pkh-tip { position:fixed; pointer-events:none; z-index:60; background:var(--void); color:#fff; border-radius:8px; padding:8px 10px; font-size:11.5px; box-shadow:0 8px 24px rgba(0,0,0,.3); opacity:0; transition:opacity .1s; max-width:230px; }
+.pkh-tip b { font-family:'Roboto Condensed',sans-serif; }
+
 /* ── Actionable prompt at bottom of expanded row ── */
 .det-action { margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; border-left: 3px solid; line-height: 1.4; }
 .det-action-goals { background: #FFF7ED; color: #92400E; border-color: #F59E0B; }
@@ -1773,17 +1800,31 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div id="ptoAtRiskBody" style="padding:0 16px 16px"></div>
     </div>
 
-    <!-- Link out to the standalone C-Suite Project Demand dashboard -->
-    <div class="section-card" id="projDemandCard">
+    <!-- Project key heatmap (ported from the C-Suite Project Demand dashboard) -->
+    <div class="section-card" id="pkhCard" style="display:none">
       <div class="section-head">
         <div>
-          <h2>Project Demand — Week over Week</h2>
-          <p class="section-sub">Team-level project demand &amp; blending for CEO / C-suite — opens the dedicated dashboard in a new tab.</p>
+          <h2>Project key heatmap</h2>
+          <p class="section-sub" id="pkhSub">Planned hours by project × week · ★ = week's most-demanded · time-off excluded · respects the active filters</p>
         </div>
-        <a id="projDemandLink" class="copy-btn" href="#" target="_blank" rel="noopener" style="text-decoration:none;flex-shrink:0">Open C-Suite view ↗</a>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0">
+          <input class="pkh-search" id="pkhSearch" placeholder="Filter key…" />
+          <div class="pkh-toggle" id="pkhToggle">
+            <button data-n="15" class="on">Top 15</button>
+            <button data-n="30">Top 30</button>
+            <button data-n="999">All</button>
+          </div>
+          <a id="projDemandLink" class="copy-btn" href="#" target="_blank" rel="noopener" style="text-decoration:none">More detail ↗</a>
+        </div>
       </div>
-      <p id="projDemandNote" class="section-sub" style="padding:0 4px;margin:0"></p>
+      <div class="pkh-scroll"><div id="pkhGrid"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
+        <div class="pkh-legend"><span>Lower</span><div class="pkh-legbar"></div><span>Higher planned hours</span></div>
+        <div class="pkh-note" id="pkhNote"></div>
+      </div>
+      <p id="projDemandNote" class="section-sub" style="padding:6px 4px 0;margin:0"></p>
     </div>
+    <div id="pkhTip" class="pkh-tip"></div>
 
   </div>
 
@@ -7693,6 +7734,7 @@ function renderTrendsTab() {
   renderCorrelationCharts(_tf);
   renderPTOTrend(_tf);
   renderProjectDemandLink();
+  renderProjectHeatmap(_tf);
   renderRcrSupport(_tf);
 
   // ── RCR monthly bar chart ──
@@ -8024,6 +8066,124 @@ function renderProjectDemandLink() {
     link.style.pointerEvents = "none";
     if (note) note.textContent = "Link pending deployment — paste the Project Demand web-app URL into PROJECT_DEMAND_URL.";
   }
+}
+
+// ── Project key heatmap (Trends) — ported from the C-Suite Project Demand dashboard ──
+// Aggregates the FILTERED employees' per-week planned projects (emp.weeks[label].projects =
+// [{key,hrs}]) into a project × week hours grid. Filter-aware like every other Trends card.
+var PKH_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
+function pkhColor(i){ return PKH_COLORS[(i || 0) % PKH_COLORS.length]; }
+var PKH_TOPN = 15, PKH_SEARCH = "", PKH_ACTIVE = null, PKH_MODEL = null, PKH_WIRED = false;
+
+function pkhCssVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function pkhLerp(a,b,t){ return a + (b - a) * t; }
+function pkhHex(c){ c = c.replace('#',''); return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)]; }
+function pkhMix(c1,c2,t){ var a = pkhHex(c1), b = pkhHex(c2); return 'rgb(' + Math.round(pkhLerp(a[0],b[0],t)) + ',' + Math.round(pkhLerp(a[1],b[1],t)) + ',' + Math.round(pkhLerp(a[2],b[2],t)) + ')'; }
+function pkhHeatColor(t){ var lo = pkhCssVar('--pkh-lo'), mid = pkhCssVar('--pkh-mid'), hi = pkhCssVar('--pkh-hi'); return t < 0.5 ? pkhMix(lo,mid,t/0.5) : pkhMix(mid,hi,(t-0.5)/0.5); }
+function pkhHeatText(t){ return t > 0.55 ? '#fff' : pkhCssVar('--text'); }
+
+// Builds {weeks, cap[key][label]=hours, head[key][label]=people, winners[label], order[], maxCell}.
+function pkhBuildModel(filtered){
+  var weeks = (DATA && DATA.weeks) || [];
+  var cap = {}, headSets = {};
+  (filtered || []).forEach(function(e){
+    weeks.forEach(function(w){
+      var ps = (e.weeks && e.weeks[w.label] && e.weeks[w.label].projects) || [];
+      ps.forEach(function(p){
+        if (!p || !p.key) return;
+        cap[p.key] = cap[p.key] || {};
+        cap[p.key][w.label] = (cap[p.key][w.label] || 0) + (p.hrs || 0);
+        headSets[p.key] = headSets[p.key] || {};
+        headSets[p.key][w.label] = headSets[p.key][w.label] || {};
+        headSets[p.key][w.label][e.normName || e.name] = 1;
+      });
+    });
+  });
+  var head = {};
+  Object.keys(headSets).forEach(function(k){ head[k] = {}; Object.keys(headSets[k]).forEach(function(l){ head[k][l] = Object.keys(headSets[k][l]).length; }); });
+  var winners = {}, maxCell = 0.001;
+  weeks.forEach(function(w){
+    var best = null, bestv = -1;
+    Object.keys(cap).forEach(function(k){ var v = cap[k][w.label] || 0; if (v > bestv){ bestv = v; best = k; } if (v > maxCell) maxCell = v; });
+    winners[w.label] = { key: best, hours: bestv > 0 ? bestv : 0 };
+  });
+  var totals = Object.keys(cap).map(function(k){ var t = 0; weeks.forEach(function(w){ t += (cap[k][w.label] || 0); }); return { key: k, total: t }; });
+  totals.sort(function(a,b){ return b.total - a.total; });
+  return { weeks: weeks, cap: cap, head: head, winners: winners, order: totals.filter(function(t){ return t.total > 0.001; }).map(function(t){ return t.key; }), maxCell: maxCell };
+}
+
+function pkhWireControls(){
+  if (PKH_WIRED) return; PKH_WIRED = true;
+  var s = document.getElementById('pkhSearch');
+  if (s) s.addEventListener('input', function(e){ PKH_SEARCH = e.target.value; if (PKH_MODEL) pkhRenderGrid(); });
+  var tg = document.getElementById('pkhToggle');
+  if (tg) Array.prototype.forEach.call(tg.children, function(b){
+    b.onclick = function(){ Array.prototype.forEach.call(tg.children, function(x){ x.classList.remove('on'); }); b.classList.add('on'); PKH_TOPN = +b.dataset.n; if (PKH_MODEL) pkhRenderGrid(); };
+  });
+}
+
+function renderProjectHeatmap(filtered){
+  var card = document.getElementById('pkhCard');
+  if (!card) return;
+  card.style.display = '';            // keep visible (so "More detail ↗" stays reachable)
+  pkhWireControls();
+  PKH_MODEL = pkhBuildModel(filtered);
+  if (!PKH_MODEL.order.length){
+    document.getElementById('pkhGrid').innerHTML = '<p class="pkh-note" style="padding:8px 4px">No planned-project demand in this window for the current filter.</p>';
+    var n0 = document.getElementById('pkhNote'); if (n0) n0.textContent = '';
+    return;
+  }
+  pkhRenderGrid();
+}
+
+function pkhRenderGrid(){
+  var m = PKH_MODEL; if (!m) return;
+  var weeks = m.weeks;
+  var idx = {}; m.order.forEach(function(k,i){ idx[k] = i; });
+  var order = m.order.slice();
+  if (PKH_SEARCH){ var q = PKH_SEARCH.toLowerCase(); order = order.filter(function(k){ return k.toLowerCase().indexOf(q) >= 0; }); }
+  order = order.slice(0, PKH_TOPN);
+  var max = m.maxCell || 1;
+
+  var html = '<table class="pkh-grid"><thead><tr><th class="rowhdr">Project</th>' + weeks.map(function(w){
+    var lbl = (String(w.label).split('.')[1] || w.label);
+    var st = w.isCurrentWeek ? 'Current' : (w.isFuture ? 'Planned' : 'Actual');
+    return '<th>' + esc(lbl) + '<div style="font-weight:400;color:var(--muted);font-size:9.5px">' + st + '</div></th>';
+  }).join('') + '</tr></thead><tbody>';
+  order.forEach(function(k){
+    var act = PKH_ACTIVE === k ? 'active' : '';
+    html += '<tr><td><div class="pkh-rowlabel ' + act + '" data-key="' + esc(k) + '">'
+      + '<span class="pkh-keychip" style="background:' + pkhColor(idx[k]) + '">' + esc(k) + '</span></div></td>';
+    weeks.forEach(function(w){
+      var v = (m.cap[k] && m.cap[k][w.label]) || 0;
+      var t = Math.min(1, v / max);
+      var win = (m.winners[w.label] && m.winners[w.label].key === k);
+      var hd = (m.head[k] && m.head[k][w.label]) || 0;
+      html += '<td style="padding:2px"><div class="pkh-cell ' + (win ? 'win' : '') + '" data-key="' + esc(k) + '" data-lbl="' + esc(w.label) + '" data-v="' + Math.round(v) + '" data-h="' + hd + '"'
+        + ' style="background:' + pkhHeatColor(t) + ';color:' + pkhHeatText(t) + '">' + (v >= 0.5 ? Math.round(v) : '') + (win ? '<span class="star">★</span>' : '') + '</div></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('pkhGrid').innerHTML = html;
+  var note = document.getElementById('pkhNote');
+  if (note) note.textContent = 'Showing ' + order.length + ' of ' + m.order.length + ' projects with planned demand · ★ = week’s most-demanded';
+
+  var tip = document.getElementById('pkhTip');
+  var grid = document.getElementById('pkhGrid');
+  Array.prototype.forEach.call(grid.querySelectorAll('.pkh-cell'), function(c){
+    c.onmousemove = function(e){
+      if (!tip) return;
+      tip.innerHTML = '<b>' + esc(c.dataset.key) + '</b><br>' + esc(c.dataset.lbl) + '<br>' + c.dataset.v + ' hrs · ' + c.dataset.h + ' ' + (c.dataset.h === '1' ? 'person' : 'people');
+      tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - 240) + 'px';
+      tip.style.top = (e.clientY + 14) + 'px';
+    };
+    c.onmouseleave = function(){ if (tip) tip.style.opacity = 0; };
+  });
+  Array.prototype.forEach.call(grid.querySelectorAll('.pkh-rowlabel'), function(rl){
+    rl.onclick = function(){ PKH_ACTIVE = PKH_ACTIVE === rl.dataset.key ? null : rl.dataset.key; pkhRenderGrid(); };
+  });
 }
 
 function renderRcrSupport(filtered) {
