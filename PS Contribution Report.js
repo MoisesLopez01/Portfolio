@@ -2043,6 +2043,13 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
         ptoHealth:   pto[l]     && pto[l].byEmployee[norm]     ? pto[l].byEmployee[norm]     : null,
         kudos:       w.isFuture  ? null : (kudos[l]   && kudos[l].byEmployee[norm]    != null ? kudos[l].byEmployee[norm]    : null),
         goalsDetail: w.isFuture  ? null : (goals[l]  && goals[l].byEmployee[norm]    != null ? goals[l].byEmployee[norm]    : null),
+        projects: (function() {
+          var m = planned[l] && planned[l].byEmployeeProjects && planned[l].byEmployeeProjects[norm];
+          if (!m) return [];
+          return Object.keys(m)
+            .map(function(k) { return { key: k, hrs: m[k] }; })
+            .sort(function(a, b) { return b.hrs - a.hrs; });
+        })(),
       };
     });
 
@@ -2373,6 +2380,7 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
       headcount:     hcNet,
       byEmployee:    netByEmp,
       ptoByEmployee: ptoByEmp,
+      byEmployeeProjects: src.byEmployeeProjects || {},
     };
   });
   return out;
