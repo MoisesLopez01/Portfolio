@@ -1,60 +1,116 @@
 # Project Demand — Week over Week (C-Suite Dashboard)
 
 A standalone Google Apps Script (GAS) web app for the CEO / C-suite. It reads **live**
-planned-time data from the `Planned Time Tempo` tab and shows, week over week:
+planned-time data from the `Planned Time Tempo` tab, cross-reads the **Roster** for an
+available-capacity denominator, and shows — week over week — not just *what* the demand is but
+*what's changing and whether we're over- or under-staffed*. Every tile ends in a *so-what*.
 
-- **Most demanded project — each week** (hero strip, top project by planned hours, ★ winner)
-- **Project key heatmap** (projects × 8 weeks, cell = planned hours; Top 15/30/All + search)
-- **Ranked demand · `<week>`** (horizontal bars in hours for the selected week)
-- **People & blending** (distinct projects per person: 1/2/3/4+, avg blend, "stretched ≥ 4")
-- **8-week trend — top movers** (multi-line hours trend; click a heatmap row to highlight)
+Panels (top → bottom):
+
+- **Demand vs capacity** — headline. Planned project hours vs available hours
+  (active Services headcount × 40). Utilization chip (Headroom / Tight / Over), 8-week area chart
+  with actual/planned separated, and a suggested-action line.
+- **Risers & fallers** — biggest week-over-week movers (replaces the old "winner each week" strip,
+  which repeated the same project 8×). Ramping-up vs falling-off, with a risk flag for projects
+  dropping to zero.
+- **Ranked demand · `<week>`** — horizontal bars in hours for the selected week.
+- **People & blending** — distinct projects per person (1/2/3/4+), an 8-week sparkline of people on
+  4+ projects (climbing/easing), and a click-to-drill list of *who* is fragmented across *which*
+  projects (top-demand projects badged).
+- **8-week trend — biggest movers** — multi-line hours trend; "movers" = steepest week-over-week
+  slope (toggle to "Top by volume"); end-of-line labels; actual solid / planned dashed; drop-to-zero
+  annotated. Click a heatmap row to highlight.
+- **Project key heatmap** (drill-down) — color by **Change** (default), **Risk**, or **Hours**;
+  question-filter chips (*Losing >20% WoW · Dropping to zero · New this window · Volatile*);
+  Top 15/30/All + search.
+
+Plus **⬇ Save PNG** (full-board export) in the header.
 
 Headline unit is **planned hours**. Time-off (`NETSUITE`) and blank keys are excluded.
 Window = **4 past + current + 3 future** ISO weeks, anchored on today.
 
-Spec: `../specs/2026-06-22-project-demand-dashboard-design.md`
+Spec: `../specs/2026-06-22-project-demand-dashboard-v2-design.md`
+(v1: `../specs/2026-06-22-project-demand-dashboard-design.md`)
 
 ## Files
 
 | File | Role |
 |---|---|
-| `Code.js` | GAS server — `doGet()` serves the HTML; `getDemandData()` reads the sheet by ID, parses the two-row stacked header, aggregates, returns JSON. `_test_demandParse_()` unit test. |
+| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDemandData()` reads the Tempo sheet + Roster by ID, parses the two-row stacked header, aggregates, returns JSON. `readActiveHeadcount_()` for capacity. `_test_demandParse_()` + `_test_headcount_()` unit tests. |
+| `Security.js` | Email allowlist (admin / viewer / open-access), inherited from the PS report's `PS Security.js`. `checkDemandAccess()`, `getDemandAccessSettings()`, `saveDemandAccessSettings()`, `buildAccessDeniedPage_()`. |
 | `Dashboard.html` | Client — loads live via `google.script.run.getDemandData()`; renders all panels. CSV upload is an offline fallback. |
 
-## Data source
+## Data sources
 
-- Spreadsheet ID: `1_V-i2BHvk6RFOdksYSpyW_hrPVJ-pIyAWSN5timy5fw`
-- Tab: `Planned Time Tempo` (produced by `TempoPlanExport.js`)
-- Configurable in the `CONFIG` block at the top of `Code.js`
-  (`SOURCE_SS_ID`, `SHEET_NAME`, `NONPROJECT_KEYS`, `WEEKS_PAST`/`WEEKS_FUTURE`, `WEEKLY_CAPACITY_HRS`).
+- **Demand:** spreadsheet `1_V-i2BHvk6RFOdksYSpyW_hrPVJ-pIyAWSN5timy5fw`, tab `Planned Time Tempo`
+  (produced by `TempoPlanExport.js`).
+- **Capacity:** spreadsheet `1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0`, tab `Roster`. Counts
+  active **Class = Professional Services / Department = Services** people (excluding
+  terminated/inactive; ramp-up and crew **included** since they appear in the plan). Capacity =
+  headcount × `WEEKLY_CAPACITY_HRS` (40).
+- All configurable in the `CONFIG` block at the top of `Code.js`: `SOURCE_SS_ID`, `SHEET_NAME`,
+  `NONPROJECT_KEYS`, `WEEKS_PAST`/`WEEKS_FUTURE`, `WEEKLY_CAPACITY_HRS`, `ROSTER_SS_ID`,
+  `ROSTER_SHEET`, `ROSTER_CLASS`, `ROSTER_DEPT`, `UTIL_TIGHT`, `UTIL_OVER`, `FRAG_MIN`,
+  `TOPN_STRATEGIC`, `MOVERS_N`.
+
+If the roster can't be read (no access / missing), capacity **falls back** to
+`planned people × 40` and the tile is labeled *"capacity estimated from planned roster"* — the
+demand panels are unaffected.
+
+## Access control (`Security.js`)
+
+Inherited from `PS Security.js`, scoped to an exec view (no manager org-tree scoping):
+
+- **Bootstrap admin** (`SEC_PD.BOOTSTRAP_ADMIN`) — always Admin, not removable via UI.
+- **Default admins / viewers** (`SEC_PD.DEFAULT_ADMINS` / `DEFAULT_VIEWERS`) — code-level, always
+  active. Add permanent C-suite / PS-leadership stakeholders here.
+- **Runtime admins / viewers** — Script Properties `PD_DASH_ADMINS` / `PD_DASH_VIEWERS`
+  (comma-separated), additive on top of defaults, managed by `saveDemandAccessSettings()`.
+- **Open access** — `SEC_PD.OPEN_ACCESS_DEFAULT` (default `false`) or `PD_DASH_OPEN_ACCESS`. Set
+  `true` only for an all-hands/demo, then flip back.
+
+Enforced **server-side** in both `doGet()` (denied users get a minimal "access restricted" page)
+and `getDemandData()` (returns an error model) — defense in depth, never client-only.
 
 ## Deploy
 
 1. Create a new Apps Script project (script.google.com → New project). This is **separate**
    from the PS report project.
-2. Add a script file named **`Code`** and paste `Code.js`. Add an HTML file named **`Dashboard`**
-   and paste `Dashboard.html` (the file name must be `Dashboard` so `doGet()` finds it).
-3. In the editor, run `_test_demandParse_` once and confirm the log shows
-   `✅ _test_demandParse_ passed`.
-4. Run `getDemandData` once to trigger the authorization prompt — grant the
-   `SpreadsheetApp` (read external spreadsheets) scope. The account you authorize with must be
-   able to open the source spreadsheet.
-5. Deploy → **New deployment** → type **Web app**. Execute as **Me**, who has access:
-   **Anyone within ServiceRocket with the link** (no code-level allowlist in v1). Copy the
-   `/exec` URL.
-6. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card
-   on the Trends tab) so the PS dashboard links here.
+2. Add three files: `Code` (paste `Code.js`), `Security` (paste `Security.js`), and an **HTML**
+   file named `Dashboard` (paste `Dashboard.html` — the name must be `Dashboard` so `doGet()`
+   finds it).
+3. In the editor, run `_test_demandParse_` and `_test_headcount_` once; confirm both log
+   `✅ … passed`.
+4. Run `getDemandData` once to trigger the authorization prompt — grant the `SpreadsheetApp` scope.
+   The account you authorize with must be able to open **both** the Tempo and Roster spreadsheets.
+   (Reading the Roster is a **new auth scope** vs v1 — re-authorize on redeploy.)
+5. Confirm your email is covered by `Security.js` (the bootstrap admin is, by default).
+6. Deploy → **New deployment** → **Web app**. Execute as **Me**; who has access:
+   **Anyone within ServiceRocket with the link** (the email allowlist in `Security.js` is the real
+   gate). Copy the `/exec` URL.
+7. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card on
+   the Trends tab) so the PS dashboard links here.
+
+## Save PNG
+
+The **⬇ Save PNG** button lazy-loads `html2canvas` from a pinned CDN on first click and exports the
+whole board as `project-demand-<currentISO>.png` (forced to the light theme for decks). If the
+sandbox blocks the script, it shows *"PNG export unavailable"* and the dashboard is otherwise
+unaffected. To make export fully offline, vendor `html2canvas` into the project and load it locally.
 
 ## Offline / CSV fallback
 
-If opened outside the web app (e.g. the raw file) or if the live read fails, use
-**Load CSV (offline)**. Columns: `person, week, project_key, project_name, allocation` where
-`allocation` is **planned hours** and `week` is an ISO label like `2026.W22`. Use **CSV template**
-for a starter file. The dashboard derives its window from the weeks present in the file.
+If opened outside the web app, or the live read fails, use **Load CSV (offline)**. Columns:
+`person, week, project_key, project_name, allocation` (planned hours; `week` is an ISO label like
+`2026.W22`). Use **CSV template** for a starter file. In offline mode capacity uses the
+`planned people × 40` estimate (no roster).
 
 ## Notes
 
-- No caching layer in v1 — each load is a single `getValues()` read. Add `CacheService` later
-  only if load latency warrants it.
-- If the current ISO week is outside the sheet's exported date range, the out-of-range weeks
-  simply show zero demand (no error).
+- No caching layer — each load is two `getValues()` reads (Tempo + Roster). Add `CacheService`
+  later only if load latency warrants it.
+- Capacity is static headcount × 40 (no per-week PTO adjustment yet); the per-week `capByWeek` map
+  shape is in place so PTO-adjusted capacity can be added without a client change.
+- "Strategic" projects are a **top-N-by-hours proxy** (`TOPN_STRATEGIC`), not a maintained list.
+- If the current ISO week is outside the sheet's exported range, those weeks simply show zero
+  demand (no error).

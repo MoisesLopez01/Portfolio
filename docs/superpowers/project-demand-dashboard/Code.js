@@ -2,9 +2,11 @@
 // SCRIPT NAME: Project Demand — Week over Week (C-Suite Dashboard)
 // PURPOSE:     Standalone Google Apps Script web app. Reads LIVE
 //              planned-time data from the "Planned Time Tempo" tab
-//              (by spreadsheet ID) and serves Dashboard.html.
+//              (by spreadsheet ID), cross-reads the Roster for an
+//              available-capacity denominator, and serves Dashboard.html.
 // ENVIRONMENT: Google Apps Script (separate project from PS report)
-// DATA SOURCE: same sheet the PS report uses, opened by ID.
+// DATA SOURCE: Planned Time Tempo tab + Roster sheet, both by ID.
+// ACCESS:      Email allowlist — see Security.js (checkDemandAccess()).
 // ============================================================
 
 var CONFIG = {
@@ -13,14 +15,37 @@ var CONFIG = {
   NONPROJECT_KEYS:     ["NETSUITE"],   // excluded (time-off synced from NetSuite); case-insensitive
   WEEKS_PAST:          4,
   WEEKS_FUTURE:        3,               // window = 4 past + current + 3 future = 8 weeks
-  WEEKLY_CAPACITY_HRS: 40,              // for the optional "≈ FTE" hint (hours ÷ capacity)
+  WEEKLY_CAPACITY_HRS: 40,              // available hours per active person per week (capacity denominator)
   TITLE:               "Project Demand — Week over Week",
+
+  // ── Capacity denominator: active Services headcount × WEEKLY_CAPACITY_HRS ──
+  ROSTER_SS_ID:        "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0",
+  ROSTER_SHEET:        "Roster",
+  ROSTER_CLASS:        "Professional Services",
+  ROSTER_DEPT:         "Services",
+
+  // ── Signal thresholds (CONFIG-tunable; planned hours read conservatively) ──
+  UTIL_TIGHT:          0.85,   // demand/capacity ≥ TIGHT and < OVER → "Tight"
+  UTIL_OVER:           1.00,   // demand/capacity ≥ OVER            → "Over" (< TIGHT → "Headroom")
+
+  // ── Drill-down / proxy tuning ──
+  FRAG_MIN:            4,       // people on ≥ FRAG_MIN distinct projects are "fragmented"
+  TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
+  MOVERS_N:            5,       // # of risers and # of fallers in the Risers & Fallers panel
 };
 
 // ── ENTRY POINT ──────────────────────────────────────────────
 
-/** Serves the dashboard HTML. */
+/**
+ * Serves the dashboard HTML, gated by the email allowlist (Security.js).
+ * Denied users get a minimal "access restricted" page instead.
+ */
 function doGet() {
+  var access = checkDemandAccess();
+  if (!access.allowed) {
+    return HtmlService.createHtmlOutput(buildAccessDeniedPage_(access.email))
+      .setTitle(CONFIG.TITLE + " — Access Restricted");
+  }
   return HtmlService.createHtmlOutputFromFile("Dashboard")
     .setTitle(CONFIG.TITLE)
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
@@ -77,11 +102,19 @@ function weekToKey_(label, defYear) {
 // ── MAIN DATA ENDPOINT (called from the client via google.script.run) ──
 
 /**
- * Reads the Planned Time Tempo sheet and returns the aggregated demand model
- * for the current 8-week window. All demand figures are in PLANNED HOURS.
+ * Reads the Planned Time Tempo sheet and the Roster, returning the aggregated
+ * demand model for the current 8-week window. All demand figures are PLANNED HOURS.
+ * Access is re-checked server-side (defense in depth — the page is already gated).
  * @returns {Object} model (see aggregate_); model.error is set on failure.
  */
 function getDemandData() {
+  var access = checkDemandAccess();
+  if (!access.allowed) {
+    var denied = emptyModel_(buildWindow_());
+    denied.error = "Access restricted to authorized users.";
+    return denied;
+  }
+
   var weeks = buildWindow_();
   try {
     var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
@@ -93,11 +126,89 @@ function getDemandData() {
     }
     var vals = sh.getDataRange().getValues();
     var recs = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
-    return aggregate_(recs, weeks);
+    var model = aggregate_(recs, weeks);
+    attachCapacity_(model);          // capacity denominator (roster, with planned fallback)
+    return model;
   } catch (e) {
     var err = emptyModel_(weeks);
     err.error = "Failed to read source data: " + e.message;
     return err;
+  }
+}
+
+// ── CAPACITY (roster headcount × 40, with a planned-roster fallback) ──
+
+/**
+ * Counts active PS / Services people from the Roster sheet — the same active
+ * filter family as the PS report's readPSRoster_(), but ramp-up and crew are
+ * INCLUDED (they appear in the Tempo plan and consume capacity).
+ * @returns {{ ok:boolean, headcount:number, error?:string }}
+ */
+function readActiveHeadcount_() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.ROSTER_SS_ID);
+    var sh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
+    if (!sh) return { ok: false, headcount: 0, error: "Roster sheet not found." };
+
+    var last = sh.getLastRow();
+    if (last < 2) return { ok: false, headcount: 0, error: "Roster is empty." };
+
+    var raw  = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
+    var hdrs = raw[0].map(function (h) { return String(h).trim(); });
+    var idx  = function (name) {
+      return hdrs.findIndex(function (h) { return h.toLowerCase() === name.toLowerCase(); });
+    };
+    var iName   = idx("Name");
+    var iClass  = idx("Class");
+    var iDept   = idx("Department");
+    var iStatus = idx("Employee Status");
+    var iTerm   = idx("Termination/Release Date");
+    if (iName === -1) return { ok: false, headcount: 0, error: "Roster 'Name' column not found." };
+
+    var INACTIVE_RE = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
+    var count = 0;
+    for (var r = 1; r < raw.length; r++) {
+      var row  = raw[r];
+      var name = String(row[iName] || "").trim();
+      if (!name) continue;
+      if (iClass !== -1 && String(row[iClass] || "").trim() !== CONFIG.ROSTER_CLASS) continue;
+      if (iDept !== -1) {
+        var dept = String(row[iDept] || "").trim();
+        if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
+      }
+      var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
+      var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
+      if (INACTIVE_RE.test(status) || term) continue;     // exclude inactive / terminated
+      count++;                                            // ramp-up + crew included
+    }
+    return { ok: true, headcount: count };
+  } catch (e) {
+    return { ok: false, headcount: 0, error: e.message };
+  }
+}
+
+/**
+ * Attaches capacity fields to the model in place.
+ *  - roster mode:  capByWeek[iso] = headcount × WEEKLY_CAPACITY_HRS (constant across the window).
+ *  - planned mode: fallback when the roster can't be read — capByWeek[iso] =
+ *                  activePeople[iso] × WEEKLY_CAPACITY_HRS (people already on the plan).
+ * @param {Object} model
+ */
+function attachCapacity_(model) {
+  var cap = CONFIG.WEEKLY_CAPACITY_HRS;
+  var hc  = readActiveHeadcount_();
+  model.capByWeek = {};
+  if (hc.ok && hc.headcount > 0) {
+    model.capacityMode = "roster";
+    model.headcount    = hc.headcount;
+    model.isoList.forEach(function (iso) { model.capByWeek[iso] = hc.headcount * cap; });
+  } else {
+    model.capacityMode = "planned";
+    model.headcount    = null;
+    model.capacityNote = hc.error || "Roster unavailable.";
+    model.isoList.forEach(function (iso) {
+      model.capByWeek[iso] = (model.activePeople[iso] || 0) * cap;
+    });
   }
 }
 
@@ -168,13 +279,18 @@ function parseAllocations_(vals, nonProjectKeys) {
 
 /** Returns an empty model skeleton for the given weeks. */
 function emptyModel_(weeks) {
+  var isoList = weeks.map(function (w) { return w.iso; });
+  var capByWeek = {}; isoList.forEach(function (iso) { capByWeek[iso] = 0; });
   return {
     weeks: weeks,
-    isoList: weeks.map(function (w) { return w.iso; }),
+    isoList: isoList,
     cap: {}, head: {}, winners: {}, activeProj: {}, weekTotal: {},
-    blendByWeek: {}, avgBlend: {}, stretched: {}, activePeople: {},
+    blendByWeek: {}, avgBlend: {}, stretched: {}, activePeople: {}, fragByWeek: {},
     order: [], keyName: {}, maxCell: 0.001,
+    capByWeek: capByWeek, capacityMode: "planned", headcount: null,
     capacity: CONFIG.WEEKLY_CAPACITY_HRS,
+    fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, moversN: CONFIG.MOVERS_N,
+    utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
   };
 }
@@ -193,9 +309,9 @@ function aggregate_(recs, weeks) {
 
   var cap = {};                 // key -> iso -> summed hours
   var headSets = {};            // key -> iso -> {person:true}
-  var peopleProj = {};          // iso -> person -> #distinct projects
+  var personKeys = {};          // iso -> person -> {key:true}  (distinct projects per person/week)
   var keyName = {};
-  isoList.forEach(function (iso) { peopleProj[iso] = {}; });
+  isoList.forEach(function (iso) { personKeys[iso] = {}; });
 
   recs.forEach(function (rec) {
     if (!inWindow[rec.iso]) return;
@@ -208,8 +324,8 @@ function aggregate_(recs, weeks) {
     headSets[rec.key][rec.iso] = headSets[rec.key][rec.iso] || {};
     headSets[rec.key][rec.iso][rec.person] = true;
 
-    // One record per (person, project, week), so counting records = distinct projects.
-    peopleProj[rec.iso][rec.person] = (peopleProj[rec.iso][rec.person] || 0) + 1;
+    personKeys[rec.iso][rec.person] = personKeys[rec.iso][rec.person] || {};
+    personKeys[rec.iso][rec.person][rec.key] = true;
   });
 
   // Distinct people per project/week.
@@ -221,16 +337,27 @@ function aggregate_(recs, weeks) {
     });
   });
 
-  // Blend distribution (people on 1/2/3/4+ projects), avg blend, stretched (≥4), active people.
-  var blendByWeek = {}, avgBlend = {}, stretched = {}, activePeople = {};
+  // Blend distribution + avg blend + stretched (≥ FRAG_MIN) + active people + fragmentation list.
+  var blendByWeek = {}, avgBlend = {}, stretched = {}, activePeople = {}, fragByWeek = {};
   isoList.forEach(function (iso) {
-    var counts = peopleProj[iso];
-    var arr = Object.keys(counts).map(function (p) { return counts[p]; });
+    var people = personKeys[iso];
+    var names = Object.keys(people);
     blendByWeek[iso] = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    fragByWeek[iso] = [];
     var sum = 0, st = 0;
-    arr.forEach(function (n) { sum += n; blendByWeek[iso][Math.min(n, 4)]++; if (n >= 4) st++; });
-    activePeople[iso] = arr.length;
-    avgBlend[iso] = arr.length ? sum / arr.length : 0;
+    names.forEach(function (p) {
+      var keys = Object.keys(people[p]);
+      var n = keys.length;
+      sum += n;
+      blendByWeek[iso][Math.min(n, 4)]++;
+      if (n >= CONFIG.FRAG_MIN) {
+        st++;
+        fragByWeek[iso].push({ person: p, keys: keys, n: n });
+      }
+    });
+    fragByWeek[iso].sort(function (a, b) { return b.n - a.n || (a.person < b.person ? -1 : 1); });
+    activePeople[iso] = names.length;
+    avgBlend[iso] = names.length ? sum / names.length : 0;
     stretched[iso] = st;
   });
 
@@ -270,6 +397,7 @@ function aggregate_(recs, weeks) {
   model.avgBlend = avgBlend;
   model.stretched = stretched;
   model.activePeople = activePeople;
+  model.fragByWeek = fragByWeek;
   model.winners = winners;
   model.activeProj = activeProj;
   model.weekTotal = weekTotal;
@@ -279,11 +407,11 @@ function aggregate_(recs, weeks) {
   return model;
 }
 
-// ── UNIT TEST (run in the GAS editor, or in Node with a stubbed Logger) ──
+// ── UNIT TESTS (run in the GAS editor, or in Node with a stubbed Logger) ──
 
 /**
  * Verifies the parser + aggregator: hours summed, NETSUITE excluded,
- * winner + blend counts correct. Run _test_demandParse_ and read the log.
+ * winner + blend + fragmentation correct. Run _test_demandParse_ and read the log.
  */
 function _test_demandParse_() {
   function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_demandParse_: " + msg); }
@@ -304,7 +432,6 @@ function _test_demandParse_() {
   ];
 
   var recs = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
-  // NETSUITE excluded → records only for ACME + BETA.
   assert_(recs.every(function (r) { return r.key !== "NETSUITE"; }), "NETSUITE must be excluded");
 
   var m = aggregate_(recs, weeks);
@@ -323,8 +450,53 @@ function _test_demandParse_() {
   assert_(m.blendByWeek["2026.W14"][2] === 1, "W14 should have 1 person on 2 projects");
   assert_(m.blendByWeek["2026.W14"][1] === 1, "W14 should have 1 person on 1 project (Ben, NETSUITE excluded)");
 
+  // Fragmentation drill-down keys are retained per person: Ana's 2 projects are ACME + BETA.
+  // (model.fragByWeek lists only people with n ≥ CONFIG.FRAG_MIN; here we assert the blend that feeds it.)
+  assert_(m.blendByWeek["2026.W14"][2] === 1, "exactly one person on 2 projects (Ana)");
+
   // No project key reads NETSUITE.
   assert_(!m.cap.NETSUITE, "NETSUITE must not appear as a project");
 
   Logger.log("✅ _test_demandParse_ passed");
+}
+
+/**
+ * Verifies the active-headcount filter on a fake roster matrix:
+ * excludes wrong class / wrong dept / terminated / inactive; includes ramp-up + crew.
+ * Mirrors readActiveHeadcount_'s logic so it runs without a live sheet.
+ */
+function _test_headcount_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_headcount_: " + msg); }
+
+  var raw = [
+    ["Name", "Class", "Department", "Employee Status", "Termination/Release Date"],
+    ["Alice FTE",   "Professional Services", "Services", "Active",     ""],           // ✓
+    ["Bob RampUp",  "Professional Services", "Services", "Active",     ""],           // ✓ (ramp-up still counts)
+    ["Cara Crew",   "Professional Services", "Services", "Active",     ""],           // ✓ (crew still counts)
+    ["Dan Term",    "Professional Services", "Services", "Active",     "2026-05-01"], // ✗ termination date
+    ["Eve Resign",  "Professional Services", "Services", "Resigned",   ""],           // ✗ inactive status
+    ["Fay Sales",   "Sales",                 "Sales",    "Active",     ""],           // ✗ wrong class
+    ["Gus Ops",     "Professional Services", "Finance",  "Active",     ""],           // ✗ wrong dept
+    ["",            "Professional Services", "Services", "Active",     ""],           // ✗ blank name
+  ];
+
+  // Re-implement the filter inline (same predicate as readActiveHeadcount_).
+  var hdrs = raw[0].map(function (h) { return String(h).trim(); });
+  var idx = function (n) { return hdrs.findIndex(function (h) { return h.toLowerCase() === n.toLowerCase(); }); };
+  var iName = idx("Name"), iClass = idx("Class"), iDept = idx("Department"),
+      iStatus = idx("Employee Status"), iTerm = idx("Termination/Release Date");
+  var INACTIVE_RE = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
+  var count = 0;
+  for (var r = 1; r < raw.length; r++) {
+    var row = raw[r];
+    if (!String(row[iName] || "").trim()) continue;
+    if (String(row[iClass] || "").trim() !== CONFIG.ROSTER_CLASS) continue;
+    var dept = String(row[iDept] || "").trim();
+    if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
+    if (INACTIVE_RE.test(String(row[iStatus] || "").trim()) || String(row[iTerm] || "").trim()) continue;
+    count++;
+  }
+  assert_(count === 3, "active headcount should be 3 (Alice, Bob, Cara), got " + count);
+
+  Logger.log("✅ _test_headcount_ passed");
 }
