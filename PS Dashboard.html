@@ -355,7 +355,7 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .proj-hrs-line { font-size:9px; color:var(--slate); margin-top:3px; font-weight:700; letter-spacing:.02em; }
 
 /* ── Project key heatmap (Trends) — ported from the C-Suite Project Demand dashboard ── */
-:root { --pkh-lo:#FFFAF5; --pkh-mid:#058CDC; --pkh-hi:#0F1941; --pkh-win:#FF9B87; }
+:root { --pkh-lo:#FFFAF5; --pkh-mid:#058CDC; --pkh-hi:#0F1941; }
 body.dark-mode { --pkh-lo:#16203F; --pkh-mid:#058CDC; --pkh-hi:#FF9B87; }
 .pkh-scroll { overflow-x:auto; }
 .pkh-grid { border-collapse:separate; border-spacing:0; width:100%; min-width:640px; }
@@ -368,8 +368,6 @@ body.dark-mode { --pkh-lo:#16203F; --pkh-mid:#058CDC; --pkh-hi:#FF9B87; }
 .pkh-rowlabel.active .nm { font-weight:700; }
 .pkh-keychip { display:inline-block; font-family:'Roboto Condensed',sans-serif; font-weight:800; font-size:12px; letter-spacing:.03em; color:#fff; padding:2px 8px; border-radius:6px; line-height:1.4; }
 .pkh-cell { height:30px; border:2px solid var(--card-bg); border-radius:6px; text-align:center; font-size:11px; font-weight:600; position:relative; display:flex; align-items:center; justify-content:center; }
-.pkh-cell.win { border-color:var(--pkh-win); box-shadow:inset 0 0 0 1px var(--pkh-win); }
-.pkh-cell .star { position:absolute; top:-1px; right:1px; font-size:9px; color:var(--pkh-win); }
 .pkh-legend { display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted); }
 .pkh-legbar { width:140px; height:10px; border-radius:5px; background:linear-gradient(90deg,var(--pkh-lo),var(--pkh-mid),var(--pkh-hi)); border:1px solid var(--border); }
 .pkh-note { font-size:12px; color:var(--muted); }
@@ -394,6 +392,20 @@ body.dark-mode .pkh-grid th.pkh-th-plan { background:rgba(5,140,220,.14); }
 .det-action-warn  { background: #FFF7ED; color: #92400E; border-color: #F59E0B; }
 .det-action-ok    { background: #F0FDF4; color: #166534; border-color: #22C55E; }
 .det-action-muted { background: #F8FAFC; color: var(--slate); border-color: var(--border); }
+
+/* ── Trends "verdict" line: target → gap → direction → action → owner (board-approved 2026.W26) ── */
+.verdict-slot { padding: 0 16px; margin: 4px 0 14px; }
+.verdict { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--border);
+           border-left-width:4px; border-radius:10px; padding:11px 14px; background:var(--surface); }
+.verdict-icon { font-size:14px; line-height:1.5; flex-shrink:0; }
+.verdict-body { min-width:0; }
+.verdict-headline { font-size:13px; font-weight:700; color:var(--text); line-height:1.45; }
+.verdict-action { font-size:12px; color:var(--text); margin-top:3px; line-height:1.45; }
+.verdict-meta { font-size:10.5px; color:var(--muted); margin-top:5px; }
+.verdict-ok   { border-left-color:var(--success); }
+.verdict-warn { border-left-color:#D97706; }
+.verdict-risk { border-left-color:#EF4444; }
+.verdict-info { border-left-color:var(--orbe); }
 
 /* ── Goals "pending" indicator for future week columns ── */
 .wc-goal-pending { font-size: 10px; font-weight: 600; color: var(--muted); }
@@ -1686,6 +1698,16 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
+      <div class="verdict-slot">
+        <div class="verdict verdict-info">
+          <span class="verdict-icon">ℹ</span>
+          <div class="verdict-body">
+            <div class="verdict-headline">Monthly cadence — context, not a weekly signal.</div>
+            <div class="verdict-action">RCR only updates at month-end, so it doesn't move week to week. Read it as the quarter's revenue-health backdrop, not a card to action this week.</div>
+            <div class="verdict-meta">A services-team context metric, not a per-rocketeer signal — don't use for ranking.</div>
+          </div>
+        </div>
+      </div>
       <div style="position:relative;height:220px;padding:0 12px 12px">
         <canvas id="trendsRcrChart"></canvas>
       </div>
@@ -1715,6 +1737,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
+      <div id="goalsVerdict" class="verdict-slot"></div>
       <div id="goalsStandingKpis" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 16px 16px"></div>
       <div style="position:relative;height:200px;padding:0 12px 0">
         <canvas id="goalsCommentPaceChart"></canvas>
@@ -1749,6 +1772,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </div>
         </div>
       </div>
+      <div id="timeMomentumVerdict" class="verdict-slot"></div>
       <div style="position:relative;height:240px;padding:0 4px 12px">
         <canvas id="timeMomentumChart"></canvas>
       </div>
@@ -1801,6 +1825,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
+      <div id="ptoVerdict" class="verdict-slot"></div>
       <div style="position:relative;height:220px;padding:0 12px 12px">
         <canvas id="ptoTrendChart"></canvas>
       </div>
@@ -1812,7 +1837,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div class="section-head">
         <div>
           <h2>Project key heatmap</h2>
-          <p class="section-sub" id="pkhSub">Planned hours by project × week · ★ = week's most-demanded · time-off excluded · respects active filters · projects with no current/planned hours sort last (completed or awaiting planning)</p>
+          <p class="section-sub" id="pkhSub">Planned hours by project × week · time-off excluded · respects active filters · projects with no current/planned hours sort last (completed or awaiting planning)</p>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0">
           <input class="pkh-search" id="pkhSearch" placeholder="Filter key…" />
@@ -6825,6 +6850,25 @@ function buildGoalKPI_(label, value, sub, color) {
     '</div>';
 }
 
+// ── Trends verdict line: compact "target → gap → direction → action → owner" callout.
+// Board-approved (2026.W26): give each LIVE Trends card a one-line decision verdict.
+// RCR is excluded (monthly cadence — static context note in the HTML instead).
+function verdictHTML_(v) {
+  var tone = v.tone || 'info';
+  var icon = tone === 'ok' ? '✓' : tone === 'risk' ? '⚑' : tone === 'warn' ? '⚠' : 'ℹ';
+  return '<div class="verdict verdict-' + tone + '">' +
+    '<span class="verdict-icon">' + icon + '</span>' +
+    '<div class="verdict-body">' +
+      '<div class="verdict-headline">' + v.headline + '</div>' +
+      (v.action ? '<div class="verdict-action">' + v.action + '</div>' : '') +
+      (v.meta ? '<div class="verdict-meta">' + v.meta + '</div>' : '') +
+    '</div></div>';
+}
+function setVerdict_(slotId, v) {
+  var el = document.getElementById(slotId);
+  if (el) el.innerHTML = v ? verdictHTML_(v) : '';
+}
+
 function renderGoalsStanding(filtered) {
   if (!DATA) return;
   var card = document.getElementById("goalsStandingCard");
@@ -6973,6 +7017,30 @@ function renderGoalsStanding(filtered) {
       '<div style="font-size:32px;font-weight:800;color:' + urgColor + ';line-height:1.1">' + weeksRemainingDisplay + ' wks left</div>' +
       '<div style="font-size:12px;font-weight:700;color:var(--slate);margin-top:4px">target: ' + targetPace + ' comments / week</div>' +
     '</div>';
+
+  // ── Verdict line ──────────────────────────────────────────────────────────
+  // Direction = comment-pace move across the two most recent CLOSED Q4 weeks.
+  var _gsClosed = q4Hist.filter(function(h) { return !h.isCurrentWeek && !h.isFuture; });
+  var _gsPace   = _gsClosed.map(function(h) { return computeWeekAvg_(h.label); });
+  var _gsDir    = "";
+  if (_gsPace.length >= 2) {
+    var _gsD = _gsPace[_gsPace.length - 1] - _gsPace[_gsPace.length - 2];
+    _gsDir = _gsD > 0.3 ? "pace rising" : _gsD < -0.3 ? "pace falling" : "pace flat";
+  }
+  var _gsTone = compPct >= 70 ? "ok" : compPct >= 40 ? "warn" : "risk";
+  var _gsGap  = compPct >= 70 ? "on the 70% bar" : (70 - compPct) + " pts below the 70% bar";
+  var _gsFlag = _noActivityList.concat(_supOnlyList);
+  var _gsNames = _gsFlag.slice(0, 3).map(function(a) { return esc((a.name || "").split(" ")[0]); }).filter(Boolean).join(", ");
+  var _gsAction = (weeklyNeeded !== "—" ? "Do: hold ~" + targetPace + " comments/rocketeer/week for the " + weeksRemainingDisplay + " week" + (weeksRemaining <= 1 ? "" : "s") + " left to close. " : "") +
+    (_gsFlag.length > 0
+      ? "Follow up with " + _gsFlag.length + " flagged" + (_gsNames ? " (" + _gsNames + (_gsFlag.length > 3 ? ", …" : "") + ")" : "") + "."
+      : "No one currently flagged.");
+  setVerdict_("goalsVerdict", {
+    tone: _gsTone,
+    headline: (compPct >= 70 ? "On track. " : "Needs a push. ") + compliant + " / " + total + " (" + compPct + "%) meeting all 3 rules · " + _gsGap + (_gsDir ? " · " + _gsDir : ""),
+    action: _gsAction,
+    meta: "Owner: supervisors of flagged rocketeers · for support, not ranking — effort may be undocumented (see correlation card)"
+  });
 
   // Audit panel — always visible when there are flagged employees
   var auditPanel = document.getElementById("goalsAuditPanel");
@@ -7378,6 +7446,17 @@ function renderPTOTrend(filtered) {
   if (!hasData) { card.style.display = "none"; return; }
   card.style.display = "";
 
+  // ── Verdict inputs: latest %-with-a-plan + direction across closed weeks ──
+  var _ptoLatest = null;
+  for (var _pi = weekData.length - 1; _pi >= 0; _pi--) { if (weekData[_pi].pct !== null) { _ptoLatest = weekData[_pi]; break; } }
+  var _ptoPctNow = _ptoLatest ? _ptoLatest.pct : null;
+  var _ptoClosed = weekData.filter(function(d) { return !d.isCurrent && d.pct !== null; });
+  var _ptoDir = "";
+  if (_ptoClosed.length >= 2) {
+    var _ptoD = _ptoClosed[_ptoClosed.length - 1].pct - _ptoClosed[0].pct;
+    _ptoDir = _ptoD > 5 ? "improving" : _ptoD < -5 ? "slipping" : "steady";
+  }
+
   var filterNote = isPTOFiltered ? " · filtered: " + filtered.length + " rocketeer" + (filtered.length !== 1 ? "s" : "") : "";
 
   var sub = document.getElementById("ptoTrendSub");
@@ -7514,10 +7593,26 @@ function renderPTOTrend(filtered) {
 
   if (atRisk.length === 0) {
     atRiskBody.innerHTML = '<p style="font-size:12px;color:var(--success);font-weight:700;padding:4px 0 2px">All members have an active leave plan</p>';
+    setVerdict_("ptoVerdict", {
+      tone: "ok",
+      headline: "Healthy. " + (_ptoPctNow !== null ? _ptoPctNow + "% have an active leave plan" : "all members have a plan") + " · 80% target" + (_ptoDir ? " · " + _ptoDir : ""),
+      action: "No one needs a nudge this week.",
+      meta: "Owner: supervisors · a planning prompt, not a mandate"
+    });
     return;
   }
 
   atRisk.sort(function(a, b) { return (b.ph.balance || 0) - (a.ph.balance || 0); });
+
+  var _ptoTop     = atRisk[0];
+  var _ptoTopName = esc((_ptoTop.name || "").split(" ")[0]);
+  var _ptoTopBal  = _ptoTop.ph.balance !== null ? Math.round(_ptoTop.ph.balance) + "h" : "a high balance";
+  setVerdict_("ptoVerdict", {
+    tone: (_ptoPctNow !== null && _ptoPctNow >= 80) ? "warn" : "risk",
+    headline: (_ptoPctNow !== null ? _ptoPctNow + "% have a plan vs 80% target" : "Plan coverage below target") + " · " + atRisk.length + " need one" + (_ptoDir ? " · " + _ptoDir : ""),
+    action: "Prompt the " + atRisk.length + " without a plan to book leave — start with " + _ptoTopName + " (" + _ptoTopBal + " accrued).",
+    meta: "Owner: each rocketeer’s supervisor · burnout/liability prompt, not ranking"
+  });
 
   var isDarkPto = document.body.classList.contains('dark-mode');
   var ptoSummaryColor = isDarkPto ? '#FCD34D' : '#D97706';
@@ -7619,6 +7714,19 @@ function renderTimeMomentum(filtered) {
   }
   if (subEl) subEl.textContent = signalStr + trendStr + " · " + totalPlanned.toLocaleString() + " hrs planned · " + totalTracked.toLocaleString() + " hrs tracked · Q4 W" + Q4_START_W + "–W" + Q4_END_W;
   if (weekEl) weekEl.textContent = isFiltering_ ? "· " + filtered.length + " rocketeers" : "";
+
+  // ── Verdict line ──────────────────────────────────────────────────────────
+  var _tmTone = overallPct >= 90 ? "ok" : overallPct >= 75 ? "warn" : "risk";
+  var _tmGap  = overallPct >= 90 ? "at/above the 90% target" : (90 - overallPct) + " pts below the 90% target";
+  var _tmDir  = trendStr ? trendStr.replace(" · ", "") : "";
+  setVerdict_("timeMomentumVerdict", {
+    tone: _tmTone,
+    headline: signalStr + ". " + overallPct + "% of committed capacity delivered · " + _tmGap + (_tmDir ? " · " + _tmDir : ""),
+    action: overallPct >= 90
+      ? "Hold the line — planned capacity and delivered hours are matched this quarter."
+      : "Re-check commitments vs reality: confirm planned hours are realistic and that tracking is current before re-committing capacity.",
+    meta: "Owner: PS delivery leads · " + totalTracked.toLocaleString() + " of " + totalPlanned.toLocaleString() + " planned hrs delivered"
+  });
 
   if (_timeMomentumChart) { _timeMomentumChart.destroy(); _timeMomentumChart = null; }
   var ctx = document.getElementById("timeMomentumChart");
@@ -8086,14 +8194,17 @@ var PKH_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#
 function pkhColor(i){ return PKH_COLORS[(i || 0) % PKH_COLORS.length]; }
 var PKH_TOPN = 15, PKH_SEARCH = "", PKH_ACTIVE = null, PKH_MODEL = null, PKH_WIRED = false;
 
-function pkhCssVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+// Read from <body>, not <html>: the --pkh-* / --text dark overrides live on
+// `body.dark-mode`, and CSS custom properties only cascade downward — reading off
+// documentElement would always return the light :root values, even in dark mode.
+function pkhCssVar(v){ return getComputedStyle(document.body).getPropertyValue(v).trim(); }
 function pkhLerp(a,b,t){ return a + (b - a) * t; }
 function pkhHex(c){ c = c.replace('#',''); return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)]; }
 function pkhMix(c1,c2,t){ var a = pkhHex(c1), b = pkhHex(c2); return 'rgb(' + Math.round(pkhLerp(a[0],b[0],t)) + ',' + Math.round(pkhLerp(a[1],b[1],t)) + ',' + Math.round(pkhLerp(a[2],b[2],t)) + ')'; }
 function pkhHeatColor(t){ var lo = pkhCssVar('--pkh-lo'), mid = pkhCssVar('--pkh-mid'), hi = pkhCssVar('--pkh-hi'); return t < 0.5 ? pkhMix(lo,mid,t/0.5) : pkhMix(mid,hi,(t-0.5)/0.5); }
 function pkhHeatText(t){ return t > 0.55 ? '#fff' : pkhCssVar('--text'); }
 
-// Builds {weeks, cap[key][label]=hours, head[key][label]=people, winners[label], order[], maxCell}.
+// Builds {weeks, cap[key][label]=hours, head[key][label]=people, order[], maxCell}.
 function pkhBuildModel(filtered){
   var weeks = (DATA && DATA.weeks) || [];
   var cap = {}, headSets = {};
@@ -8112,11 +8223,9 @@ function pkhBuildModel(filtered){
   });
   var head = {};
   Object.keys(headSets).forEach(function(k){ head[k] = {}; Object.keys(headSets[k]).forEach(function(l){ head[k][l] = Object.keys(headSets[k][l]).length; }); });
-  var winners = {}, maxCell = 0.001;
+  var maxCell = 0.001;
   weeks.forEach(function(w){
-    var best = null, bestv = -1;
-    Object.keys(cap).forEach(function(k){ var v = cap[k][w.label] || 0; if (v > bestv){ bestv = v; best = k; } if (v > maxCell) maxCell = v; });
-    winners[w.label] = { key: best, hours: bestv > 0 ? bestv : 0 };
+    Object.keys(cap).forEach(function(k){ var v = cap[k][w.label] || 0; if (v > maxCell) maxCell = v; });
   });
   // "forward" = hours in the current + future (planned) weeks. Projects with none are
   // likely completed or awaiting planning, so they sort to the bottom (parked).
@@ -8134,7 +8243,7 @@ function pkhBuildModel(filtered){
     var fa = a.forward > 0.001 ? 1 : 0, fb = b.forward > 0.001 ? 1 : 0;
     return (fb - fa) || (b.total - a.total);
   });
-  return { weeks: weeks, cap: cap, head: head, winners: winners, forward: forward,
+  return { weeks: weeks, cap: cap, head: head, forward: forward,
     order: totals.filter(function(t){ return t.total > 0.001; }).map(function(t){ return t.key; }), maxCell: maxCell };
 }
 
@@ -8188,17 +8297,16 @@ function pkhRenderGrid(){
     weeks.forEach(function(w){
       var v = (m.cap[k] && m.cap[k][w.label]) || 0;
       var t = Math.min(1, v / max);
-      var win = (m.winners[w.label] && m.winners[w.label].key === k);
       var hd = (m.head[k] && m.head[k][w.label]) || 0;
-      html += '<td class="' + (w.isCurrentWeek ? 'pkh-col-now' : '') + '" style="padding:2px"><div class="pkh-cell ' + (win ? 'win' : '') + '" data-key="' + esc(k) + '" data-lbl="' + esc(w.label) + '" data-v="' + Math.round(v) + '" data-h="' + hd + '"'
-        + ' style="background:' + pkhHeatColor(t) + ';color:' + pkhHeatText(t) + '">' + (v >= 0.5 ? Math.round(v) : '') + (win ? '<span class="star">★</span>' : '') + '</div></td>';
+      html += '<td class="' + (w.isCurrentWeek ? 'pkh-col-now' : '') + '" style="padding:2px"><div class="pkh-cell" data-key="' + esc(k) + '" data-lbl="' + esc(w.label) + '" data-v="' + Math.round(v) + '" data-h="' + hd + '"'
+        + ' style="background:' + pkhHeatColor(t) + ';color:' + pkhHeatText(t) + '">' + (v >= 0.5 ? Math.round(v) : '') + '</div></td>';
     });
     html += '</tr>';
   });
   html += '</tbody></table>';
   document.getElementById('pkhGrid').innerHTML = html;
   var note = document.getElementById('pkhNote');
-  if (note) note.textContent = 'Showing ' + order.length + ' of ' + m.order.length + ' projects with planned demand · ★ = week’s most-demanded';
+  if (note) note.textContent = 'Showing ' + order.length + ' of ' + m.order.length + ' projects with planned demand';
 
   var tip = document.getElementById('pkhTip');
   var grid = document.getElementById('pkhGrid');

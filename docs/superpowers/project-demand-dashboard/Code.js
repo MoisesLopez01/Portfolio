@@ -15,10 +15,13 @@ var CONFIG = {
   NONPROJECT_KEYS:     ["NETSUITE"],   // excluded (time-off synced from NetSuite); case-insensitive
   WEEKS_PAST:          4,
   WEEKS_FUTURE:        3,               // window = 4 past + current + 3 future = 8 weeks
-  WEEKLY_CAPACITY_HRS: 40,              // available hours per active person per week (capacity denominator)
+  WEEKLY_CAPACITY_HRS: 40,              // available hours per active person per week (default region)
+  ANZ_LOCATION:        "Australia & New Zealand", // Roster "Key Location" value → 38 hr week
+  ANZ_CAPACITY_HRS:    38,              // weekly base capacity for ANZ people
+  PLAN_TARGET:         0.90,            // 90% planning-target reference line on the chart
   TITLE:               "Project Demand — Week over Week",
 
-  // ── Capacity denominator: active Services headcount × WEEKLY_CAPACITY_HRS ──
+  // ── Capacity denominator: active Services base hours (38 ANZ / 40 else), minus PTO/holidays ──
   ROSTER_SS_ID:        "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0",
   ROSTER_SHEET:        "Roster",
   ROSTER_CLASS:        "Professional Services",
@@ -89,6 +92,19 @@ function buildWindow_() {
   return weeks;
 }
 
+/**
+ * ISO label of the week immediately before the given week — used as a hidden
+ * baseline so the first DISPLAYED week still has a prior week for week-over-week
+ * comparisons (Risers & Fallers, heatmap Change/Risk).
+ * @param {{wk:number, year:number}} week
+ * @returns {string} e.g. "2026.W21"
+ */
+function priorWeekIso_(week) {
+  var w = week.wk - 1, y = week.year;
+  if (w <= 0) { y--; w = weeksInYear_(y) + w; }
+  return y + ".W" + w;
+}
+
 /** Canonicalizes a week label cell ("2026.W14" or legacy "W14") → "2026.W14". */
 function weekToKey_(label, defYear) {
   var s = String(label == null ? "" : label).trim();
@@ -125,9 +141,11 @@ function getDemandData() {
       return m;
     }
     var vals = sh.getDataRange().getValues();
-    var recs = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
-    var model = aggregate_(recs, weeks);
-    attachCapacity_(model);          // capacity denominator (roster, with planned fallback)
+    var parsed = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
+    var baselineIso = priorWeekIso_(weeks[0]);    // hidden lookback week → first week gets a WoW prior
+    var model = aggregate_(parsed.recs, weeks, baselineIso);
+    model.timeOffByWeek = parsed.timeOffByWeek;   // PTO + public holidays (NETSUITE rows), per week
+    attachCapacity_(model);          // net capacity (roster base − time-off, with planned fallback)
     return model;
   } catch (e) {
     var err = emptyModel_(weeks);
@@ -136,22 +154,24 @@ function getDemandData() {
   }
 }
 
-// ── CAPACITY (roster headcount × 40, with a planned-roster fallback) ──
+// ── CAPACITY (roster base hours 38 ANZ / 40 else, minus PTO/holidays; planned fallback) ──
 
 /**
- * Counts active PS / Services people from the Roster sheet — the same active
- * filter family as the PS report's readPSRoster_(), but ramp-up and crew are
- * INCLUDED (they appear in the Tempo plan and consume capacity).
- * @returns {{ ok:boolean, headcount:number, error?:string }}
+ * Reads active PS / Services people from the Roster sheet and sums their weekly
+ * BASE capacity — the same active filter family as the PS report's readPSRoster_(),
+ * but ramp-up and crew are INCLUDED (they appear in the Tempo plan and consume
+ * capacity). People whose "Key Location" is CONFIG.ANZ_LOCATION are credited
+ * CONFIG.ANZ_CAPACITY_HRS (38); everyone else CONFIG.WEEKLY_CAPACITY_HRS (40).
+ * @returns {{ ok:boolean, headcount:number, baseCapacity:number, anzCount:number, error?:string }}
  */
-function readActiveHeadcount_() {
+function readActiveCapacity_() {
   try {
     var ss = SpreadsheetApp.openById(CONFIG.ROSTER_SS_ID);
     var sh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
-    if (!sh) return { ok: false, headcount: 0, error: "Roster sheet not found." };
+    if (!sh) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster sheet not found." };
 
     var last = sh.getLastRow();
-    if (last < 2) return { ok: false, headcount: 0, error: "Roster is empty." };
+    if (last < 2) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster is empty." };
 
     var raw  = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
     var hdrs = raw[0].map(function (h) { return String(h).trim(); });
@@ -163,10 +183,12 @@ function readActiveHeadcount_() {
     var iDept   = idx("Department");
     var iStatus = idx("Employee Status");
     var iTerm   = idx("Termination/Release Date");
-    if (iName === -1) return { ok: false, headcount: 0, error: "Roster 'Name' column not found." };
+    var iLoc    = idx("Key Location");
+    if (iName === -1) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster 'Name' column not found." };
 
+    var anzLoc = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
     var INACTIVE_RE = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
-    var count = 0;
+    var count = 0, base = 0, anz = 0;
     for (var r = 1; r < raw.length; r++) {
       var row  = raw[r];
       var name = String(row[iName] || "").trim();
@@ -179,35 +201,51 @@ function readActiveHeadcount_() {
       var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
       var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
       if (INACTIVE_RE.test(status) || term) continue;     // exclude inactive / terminated
+      var loc = iLoc !== -1 ? String(row[iLoc] || "").trim().toLowerCase() : "";
+      var isANZ = (loc === anzLoc);
+      base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
+      if (isANZ) anz++;
       count++;                                            // ramp-up + crew included
     }
-    return { ok: true, headcount: count };
+    return { ok: true, headcount: count, baseCapacity: base, anzCount: anz };
   } catch (e) {
-    return { ok: false, headcount: 0, error: e.message };
+    return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: e.message };
   }
 }
 
 /**
- * Attaches capacity fields to the model in place.
- *  - roster mode:  capByWeek[iso] = headcount × WEEKLY_CAPACITY_HRS (constant across the window).
- *  - planned mode: fallback when the roster can't be read — capByWeek[iso] =
- *                  activePeople[iso] × WEEKLY_CAPACITY_HRS (people already on the plan).
+ * Attaches capacity fields to the model in place. Capacity is NET of PTO and
+ * public holidays (the NETSUITE time-off rows, summed per week in model.timeOffByWeek).
+ *  - roster mode:  gross = baseCapacity (38 ANZ / 40 else, constant across the window);
+ *                  capByWeek[iso] = max(0, gross − timeOff[iso]).
+ *  - planned mode: fallback when the roster can't be read — gross =
+ *                  activePeople[iso] × WEEKLY_CAPACITY_HRS; capByWeek[iso] = max(0, gross − timeOff[iso]).
  * @param {Object} model
  */
 function attachCapacity_(model) {
   var cap = CONFIG.WEEKLY_CAPACITY_HRS;
-  var hc  = readActiveHeadcount_();
+  var hc  = readActiveCapacity_();
+  var timeOff = model.timeOffByWeek || {};
   model.capByWeek = {};
+  model.grossCapByWeek = {};
   if (hc.ok && hc.headcount > 0) {
     model.capacityMode = "roster";
     model.headcount    = hc.headcount;
-    model.isoList.forEach(function (iso) { model.capByWeek[iso] = hc.headcount * cap; });
+    model.anzCount     = hc.anzCount;
+    model.baseCapacity = hc.baseCapacity;
+    model.isoList.forEach(function (iso) {
+      model.grossCapByWeek[iso] = hc.baseCapacity;
+      model.capByWeek[iso] = Math.max(0, hc.baseCapacity - (timeOff[iso] || 0));
+    });
   } else {
     model.capacityMode = "planned";
     model.headcount    = null;
+    model.anzCount     = 0;
     model.capacityNote = hc.error || "Roster unavailable.";
     model.isoList.forEach(function (iso) {
-      model.capByWeek[iso] = (model.activePeople[iso] || 0) * cap;
+      var gross = (model.activePeople[iso] || 0) * cap;
+      model.grossCapByWeek[iso] = gross;
+      model.capByWeek[iso] = Math.max(0, gross - (timeOff[iso] || 0));
     });
   }
 }
@@ -215,14 +253,18 @@ function attachCapacity_(model) {
 // ── SHEET PARSING ────────────────────────────────────────────
 
 /**
- * Parses the two-row stacked-header matrix into allocation records.
+ * Parses the two-row stacked-header matrix into allocation records, and separately
+ * sums the excluded non-project keys (NETSUITE = PTO + public holidays) per ISO week
+ * so capacity can be reduced by time-off downstream.
  * @param {Array<Array>} vals - sheet getValues()
  * @param {string[]} nonProjectKeys
- * @returns {Array<{person:string, iso:string, key:string, name:string, hours:number}>}
+ * @returns {{ recs:Array<{person:string, iso:string, key:string, name:string, hours:number}>,
+ *             timeOffByWeek:Object<string,number> }}
  */
 function parseAllocations_(vals, nonProjectKeys) {
   var out = [];
-  if (!vals || vals.length < 2) return out;
+  var timeOffByWeek = {};
+  if (!vals || vals.length < 2) return { recs: out, timeOffByWeek: timeOffByWeek };
 
   // Locate the field-header row by its employee column.
   var isEmpHdr = function (h) {
@@ -234,7 +276,7 @@ function parseAllocations_(vals, nonProjectKeys) {
       if (isEmpHdr(String(vals[r][c]).trim())) { hr = r; iEmp = c; break; }
     }
   }
-  if (hr === -1) return out;
+  if (hr === -1) return { recs: out, timeOffByWeek: timeOffByWeek };
 
   // "Key" (project) and "Space" (project name) columns.
   var iKey = -1, iSpace = -1;
@@ -264,15 +306,20 @@ function parseAllocations_(vals, nonProjectKeys) {
     var person = String(row[iEmp] || "").trim();
     if (!person || person.toUpperCase() === "TOTAL") continue;     // skip footer / blanks
     var rawKey = iKey !== -1 ? String(row[iKey] || "").trim() : "";
-    if (!rawKey || exclude[rawKey.toUpperCase()]) continue;        // skip blank + non-project keys
+    if (!rawKey) continue;                                          // skip blank keys
+    var isTimeOff = !!exclude[rawKey.toUpperCase()];                // NETSUITE = PTO + public holidays
     var name = iSpace !== -1 ? String(row[iSpace] || "").trim() : "";
     for (var wi = 0; wi < wCols.length; wi++) {
       var hours = parseFloat(row[wCols[wi].idx]);
       if (!hours || hours <= 0) continue;
-      out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
+      if (isTimeOff) {                                              // reduces capacity, not project demand
+        timeOffByWeek[wCols[wi].iso] = (timeOffByWeek[wCols[wi].iso] || 0) + hours;
+      } else {
+        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
+      }
     }
   }
-  return out;
+  return { recs: out, timeOffByWeek: timeOffByWeek };
 }
 
 // ── AGGREGATION ──────────────────────────────────────────────
@@ -286,9 +333,11 @@ function emptyModel_(weeks) {
     isoList: isoList,
     cap: {}, head: {}, winners: {}, activeProj: {}, weekTotal: {},
     blendByWeek: {}, avgBlend: {}, stretched: {}, activePeople: {}, fragByWeek: {},
-    order: [], keyName: {}, maxCell: 0.001,
-    capByWeek: capByWeek, capacityMode: "planned", headcount: null,
-    capacity: CONFIG.WEEKLY_CAPACITY_HRS,
+    order: [], keyName: {}, maxCell: 0.001, baselineIso: null,
+    capByWeek: capByWeek, grossCapByWeek: {}, timeOffByWeek: {},
+    capacityMode: "planned", headcount: null, anzCount: 0, baseCapacity: 0,
+    capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
+    planTarget: CONFIG.PLAN_TARGET,
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, moversN: CONFIG.MOVERS_N,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
@@ -302,10 +351,14 @@ function emptyModel_(weeks) {
  * @param {Array} weeks
  * @returns {Object} model
  */
-function aggregate_(recs, weeks) {
+function aggregate_(recs, weeks, baselineIso) {
   var model = emptyModel_(weeks);
+  model.baselineIso = baselineIso || null;
   var isoList = model.isoList;
   var inWindow = {}; isoList.forEach(function (iso) { inWindow[iso] = true; });
+  // The baseline week is counted (for the first week's WoW delta) but NOT displayed,
+  // so it never appears in isoList, blend, winners, ordering, or the heatmap.
+  if (baselineIso) inWindow[baselineIso] = true;
 
   var cap = {};                 // key -> iso -> summed hours
   var headSets = {};            // key -> iso -> {person:true}
@@ -324,8 +377,12 @@ function aggregate_(recs, weeks) {
     headSets[rec.key][rec.iso] = headSets[rec.key][rec.iso] || {};
     headSets[rec.key][rec.iso][rec.person] = true;
 
-    personKeys[rec.iso][rec.person] = personKeys[rec.iso][rec.person] || {};
-    personKeys[rec.iso][rec.person][rec.key] = true;
+    // personKeys (blend) is only kept for displayed weeks; the baseline week feeds
+    // WoW deltas via cap[], not the blend distribution.
+    if (personKeys[rec.iso]) {
+      personKeys[rec.iso][rec.person] = personKeys[rec.iso][rec.person] || {};
+      personKeys[rec.iso][rec.person][rec.key] = true;
+    }
   });
 
   // Distinct people per project/week.
@@ -431,8 +488,14 @@ function _test_demandParse_() {
     { iso: "2026.W15", wk: 15, year: 2026, status: "now" },
   ];
 
-  var recs = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
-  assert_(recs.every(function (r) { return r.key !== "NETSUITE"; }), "NETSUITE must be excluded");
+  var parsed = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
+  var recs = parsed.recs;
+  assert_(recs.every(function (r) { return r.key !== "NETSUITE"; }), "NETSUITE must be excluded from project recs");
+
+  // NETSUITE time-off (Ben, 8h in W14) is captured separately to reduce capacity.
+  assert_(parsed.timeOffByWeek["2026.W14"] === 8,
+    "W14 time-off should be 8, got " + parsed.timeOffByWeek["2026.W14"]);
+  assert_(!parsed.timeOffByWeek["2026.W15"], "W15 should have no time-off");
 
   var m = aggregate_(recs, weeks);
 
@@ -457,36 +520,47 @@ function _test_demandParse_() {
   // No project key reads NETSUITE.
   assert_(!m.cap.NETSUITE, "NETSUITE must not appear as a project");
 
+  // Hidden baseline week: with W14 as the baseline and only W15 displayed, W14 is
+  // counted in cap (so the first displayed week has a WoW prior) but never appears
+  // in the displayed isoList/winners.
+  var mb = aggregate_(recs, [weeks[1]], "2026.W14");
+  assert_(mb.baselineIso === "2026.W14", "baselineIso should be set");
+  assert_(mb.isoList.length === 1 && mb.isoList[0] === "2026.W15", "only W15 should be displayed");
+  assert_(mb.cap.ACME["2026.W14"] === 30, "baseline W14 cap should remain available for WoW, got " + mb.cap.ACME["2026.W14"]);
+  assert_(!mb.winners["2026.W14"], "baseline week must not be computed as a displayed winner");
+
   Logger.log("✅ _test_demandParse_ passed");
 }
 
 /**
- * Verifies the active-headcount filter on a fake roster matrix:
- * excludes wrong class / wrong dept / terminated / inactive; includes ramp-up + crew.
- * Mirrors readActiveHeadcount_'s logic so it runs without a live sheet.
+ * Verifies the active-capacity filter on a fake roster matrix:
+ * excludes wrong class / wrong dept / terminated / inactive; includes ramp-up + crew;
+ * credits ANZ people 38 hrs and everyone else 40. Mirrors readActiveCapacity_'s logic
+ * so it runs without a live sheet.
  */
 function _test_headcount_() {
   function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_headcount_: " + msg); }
 
   var raw = [
-    ["Name", "Class", "Department", "Employee Status", "Termination/Release Date"],
-    ["Alice FTE",   "Professional Services", "Services", "Active",     ""],           // ✓
-    ["Bob RampUp",  "Professional Services", "Services", "Active",     ""],           // ✓ (ramp-up still counts)
-    ["Cara Crew",   "Professional Services", "Services", "Active",     ""],           // ✓ (crew still counts)
-    ["Dan Term",    "Professional Services", "Services", "Active",     "2026-05-01"], // ✗ termination date
-    ["Eve Resign",  "Professional Services", "Services", "Resigned",   ""],           // ✗ inactive status
-    ["Fay Sales",   "Sales",                 "Sales",    "Active",     ""],           // ✗ wrong class
-    ["Gus Ops",     "Professional Services", "Finance",  "Active",     ""],           // ✗ wrong dept
-    ["",            "Professional Services", "Services", "Active",     ""],           // ✗ blank name
+    ["Name", "Class", "Department", "Employee Status", "Termination/Release Date", "Key Location"],
+    ["Alice FTE",   "Professional Services", "Services", "Active",     "",           "United States"],            // ✓ 40
+    ["Bob RampUp",  "Professional Services", "Services", "Active",     "",           "Malaysia"],                 // ✓ 40
+    ["Cara Crew",   "Professional Services", "Services", "Active",     "",           "Australia & New Zealand"],  // ✓ 38 (ANZ)
+    ["Dan Term",    "Professional Services", "Services", "Active",     "2026-05-01", "United States"],            // ✗ termination date
+    ["Eve Resign",  "Professional Services", "Services", "Resigned",   "",           "United States"],            // ✗ inactive status
+    ["Fay Sales",   "Sales",                 "Sales",    "Active",     "",           "United States"],            // ✗ wrong class
+    ["Gus Ops",     "Professional Services", "Finance",  "Active",     "",           "United States"],            // ✗ wrong dept
+    ["",            "Professional Services", "Services", "Active",     "",           "United States"],            // ✗ blank name
   ];
 
-  // Re-implement the filter inline (same predicate as readActiveHeadcount_).
+  // Re-implement the filter inline (same predicate as readActiveCapacity_).
   var hdrs = raw[0].map(function (h) { return String(h).trim(); });
   var idx = function (n) { return hdrs.findIndex(function (h) { return h.toLowerCase() === n.toLowerCase(); }); };
   var iName = idx("Name"), iClass = idx("Class"), iDept = idx("Department"),
-      iStatus = idx("Employee Status"), iTerm = idx("Termination/Release Date");
+      iStatus = idx("Employee Status"), iTerm = idx("Termination/Release Date"), iLoc = idx("Key Location");
+  var anzLoc = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
   var INACTIVE_RE = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
-  var count = 0;
+  var count = 0, base = 0, anz = 0;
   for (var r = 1; r < raw.length; r++) {
     var row = raw[r];
     if (!String(row[iName] || "").trim()) continue;
@@ -494,9 +568,15 @@ function _test_headcount_() {
     var dept = String(row[iDept] || "").trim();
     if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
     if (INACTIVE_RE.test(String(row[iStatus] || "").trim()) || String(row[iTerm] || "").trim()) continue;
+    var isANZ = (String(row[iLoc] || "").trim().toLowerCase() === anzLoc);
+    base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
+    if (isANZ) anz++;
     count++;
   }
   assert_(count === 3, "active headcount should be 3 (Alice, Bob, Cara), got " + count);
+  assert_(anz === 1, "ANZ count should be 1 (Cara), got " + anz);
+  // Alice 40 + Bob 40 + Cara 38 (ANZ) = 118.
+  assert_(base === 118, "base capacity should be 118 (40+40+38), got " + base);
 
   Logger.log("✅ _test_headcount_ passed");
 }
