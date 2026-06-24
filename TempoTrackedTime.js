@@ -12,8 +12,8 @@ const CONFIGLogged = {
   SCRIPT_LABEL:     "Tempo Logged Time Reports",
   SHEET_NAME:       "Logged Time Tempo",
   JIRA_BASE:        "https://servicerocket-coe.atlassian.net",
-  FROM_DATE:        "2026-03-30",         // FY26 Q4 start — must stay a Monday
-  TO_DATE:          fmtDate_(new Date()), // dynamic: today at runtime
+  FROM_DATE:        "2026-03-30",              // FY26 Q4 start — must stay a Monday
+  get TO_DATE()   { return fmtDate_(new Date()); }, // always today, evaluated on every access
   DIAG_PER_WORKLOG: true,
   API_BATCH_SIZE:   50,
   TEMPO_PAGE_LIMIT: 500,
