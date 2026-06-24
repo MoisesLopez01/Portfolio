@@ -445,19 +445,19 @@ function writeLoggedRows_(sheet, rows, weeks) {
 
 // ── SECTION: TRIGGER SETUP ────────────────────────────────────
 
-function createLoggedWeeklyTrigger() {
+function createLoggedDailyTrigger() {
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === "fetchTempoLoggedTime")
     .forEach((t) => ScriptApp.deleteTrigger(t));
 
   ScriptApp.newTrigger("fetchTempoLoggedTime")
     .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.MONDAY)
-    .atHour(8)
+    .everyDays(1)
+    .atHour(6)
     .create();
 
   Logger.log(
-    "⚙️ Weekly trigger installed: every Monday at 8 AM → fetchTempoLoggedTime()",
+    "⚙️ Daily trigger installed: every day at 6 AM → fetchTempoLoggedTime()",
   );
 }
 
