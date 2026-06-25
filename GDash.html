@@ -526,7 +526,8 @@ function updateGraceBanner_() {
 function refreshData() {
   document.getElementById('loading').style.display = '';
   document.getElementById('app').style.display = 'none';
-  google.script.run.withSuccessHandler(function() { init(); }).withFailureHandler(function() { init(); }).bustCache();
+  var quarter = S.data && S.data.quarter;
+  google.script.run.withSuccessHandler(function() { init(); }).withFailureHandler(function() { init(); }).bustCache(quarter);
 }
 
 function onQuarterChange(q) {
@@ -719,11 +720,115 @@ function renderOverview(emps) {
   renderAtRiskBody(document.getElementById('atrisk-preview-body'), emps, true);
 }
 
+// ── CLIENT-SIDE ENGAGEMENT COMPUTATION ───────────────────────────
+function isSeniorLeader_(jobTitle) {
+  return /\b(vp|vice.?president|director|chief|c[a-z]o|ceo|cto|cfo|coo)\b/i.test(jobTitle || '');
+}
+
+function computeEngagementClient_(emps) {
+  var weeksElapsed  = (S.data && S.data.weeksElapsedSinceStart) || 1;
+  var paceThreshold = Math.floor(weeksElapsed / 2);
+
+  // Build title map from full roster for senior-leader detection
+  var allTitleMap = {};
+  if (S.data && S.data.employees) {
+    S.data.employees.forEach(function(e) { allTitleMap[e.normName || ''] = e.jobTitle || ''; });
+  }
+
+  var withGoals = emps.filter(function(e) { return e.totalGoals > 0; }).length || 1;
+  var totalSelf = 0, totalMgr = 0;
+  var deptMap = {}, mgrMap = {};
+
+  emps.forEach(function(e) {
+    if (e.totalGoals > 0) {
+      var self = e.totalSelfComments || 0;
+      var mgr  = e.totalManagerComments || 0;
+      totalSelf += self;
+      totalMgr  += mgr;
+
+      var dept = e.department || '(No Dept)';
+      if (!deptMap[dept]) deptMap[dept] = { total: 0, engaging: 0 };
+      deptMap[dept].total++;
+      if (self > 0) deptMap[dept].engaging++;
+
+      var sup = (e.supervisor || '').trim();
+      if (sup) {
+        var normSup = sup.toLowerCase().replace(/\s+/g, ' ');
+        if (!mgrMap[normSup]) {
+          var supTitle = allTitleMap[normSup] || '';
+          mgrMap[normSup] = {
+            name: sup, normName: normSup,
+            isSeniorLeader: isSeniorLeader_(supTitle),
+            totalMgrCmts: 0, teamSize: 0, covered: 0,
+          };
+        }
+        mgrMap[normSup].teamSize++;
+        mgrMap[normSup].totalMgrCmts += mgr;
+        if (mgr > 0) mgrMap[normSup].covered++;
+      }
+    }
+  });
+
+  var activeCount    = emps.filter(function(e) { return e.totalGoals > 0 && (e.totalSelfComments||0) >  0; }).length;
+  var silentCount    = emps.filter(function(e) { return e.totalGoals > 0 && (e.totalSelfComments||0) === 0; }).length;
+  var belowPaceCount = emps.filter(function(e) {
+    var s = e.totalSelfComments || 0;
+    return e.totalGoals > 0 && s > 0 && s < paceThreshold;
+  }).length;
+
+  var teamRates = Object.keys(deptMap).map(function(d) {
+    var r = deptMap[d];
+    return { dept: d, engaging: r.engaging, total: r.total, rate: +(r.engaging / r.total * 100).toFixed(1) };
+  }).sort(function(a, b) { return b.rate - a.rate; });
+
+  var managerScorecard = Object.keys(mgrMap).map(function(k) {
+    var m = mgrMap[k];
+    return {
+      name: m.name, normName: m.normName, isSeniorLeader: m.isSeniorLeader,
+      avgCmts:  m.teamSize > 0 ? +(m.totalMgrCmts / m.teamSize).toFixed(1) : 0,
+      covered:  m.covered, teamSize: m.teamSize,
+    };
+  }).sort(function(a, b) { return b.avgCmts - a.avgCmts; });
+
+  var tierOrder = { 'Silent': 0, 'Below Pace': 1, 'At Pace': 2 };
+  var engagerList = emps
+    .filter(function(e) { return e.totalGoals > 0; })
+    .map(function(e) {
+      var s      = e.totalSelfComments || 0;
+      var status = s === 0 ? 'Silent' : s < paceThreshold ? 'Below Pace' : 'At Pace';
+      return {
+        name: e.name, normName: e.normName,
+        department: e.department || '', supervisor: e.supervisor || '',
+        totalGoals: e.totalGoals, selfComments: s,
+        managerComments: e.totalManagerComments || 0,
+        paceStatus: status, complianceStatus: e.complianceStatus || '',
+      };
+    })
+    .sort(function(a, b) {
+      var d = (tierOrder[a.paceStatus] || 0) - (tierOrder[b.paceStatus] || 0);
+      return d !== 0 ? d : a.name.localeCompare(b.name);
+    });
+
+  return {
+    engagingPct:      +((activeCount / withGoals) * 100).toFixed(1),
+    activeCount:      activeCount,
+    silentCount:      silentCount,
+    belowPaceCount:   belowPaceCount,
+    avgSelfCmts:      +(totalSelf / withGoals).toFixed(1),
+    avgMgrCmts:       +(totalMgr  / withGoals).toFixed(1),
+    paceThreshold:    paceThreshold,
+    weeksElapsed:     weeksElapsed,
+    teamRates:        teamRates,
+    managerScorecard: managerScorecard,
+    engagerList:      engagerList,
+  };
+}
+
 // ── COMMENTS TREND ────────────────────────────────────────────────
 function renderEngagement(emps) {
   if (!S.data || !S.data.commentTrend) return;
   var trend = S.data.commentTrend;
-  var eng   = S.data.engagementData || {};
+  var eng   = computeEngagementClient_(emps);
 
   // 6 Engagement KPI cards
   document.getElementById('kpi-trend').innerHTML =
@@ -1576,7 +1681,11 @@ function exportAllPNG() {
 }
 
 function exportAtRiskCSV() {
-  var emps    = getFiltered().filter(function(e){ return e.complianceStatus !== 'On Target'; });
+  var isGrace = !!(S.data && S.data.isGoalCreationGrace);
+  var emps = getFiltered().filter(function(e) {
+    var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
+    return compFail || !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
+  });
   var noteMap = buildNoteMap_();
   var qtrWks  = (S.data && S.data.totalQtrWeeks) || 1;
   var rows = [['Rocketeer','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
@@ -1609,7 +1718,7 @@ function downloadCSV(rows, filename) {
 
 // ── UTILITIES ──────────────────────────────────────────────────────
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function getISOWeekLabel() {
