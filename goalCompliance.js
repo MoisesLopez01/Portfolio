@@ -24,7 +24,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v4_',  // bumped: engagement tab data
+  CACHE_VER:           'gd_v5_',  // bumped: full roster injection (zero-goal employees)
   DEBUG:               false,
 };
 
@@ -234,6 +234,34 @@ function buildComplianceData_(quarter) {
   // 3. Aggregate per rocketeer (interns and offboarded already excluded)
   var rockMap = aggregateByRocketeer_(rdRows, activeSet);
 
+  // 3b. Inject every active Roster employee not found in the RD sheet (0 goals this quarter)
+  var fullRosterMap  = getFullRosterMap_();
+  var preInjectCount = Object.keys(rockMap).length;
+  Object.keys(fullRosterMap).forEach(function(norm) {
+    if (rockMap[norm]) return; // already present from RD
+    var r = fullRosterMap[norm];
+    rockMap[norm] = {
+      name:       r.name,
+      normName:   norm,
+      department: r.department,
+      classVal:   r.classVal,
+      supervisor: r.supervisor,
+      jobTitle:   r.jobTitle,
+      quarter:    quarter,
+      // All goal and comment metrics zeroed
+      totalGoals: 0, goalsCompleted: 0, goalsInProgress: 0,
+      goalsPlanned: 0, goalsCanceled: 0, goalsNotCompleted: 0,
+      totalSelfComments: 0, totalManagerComments: 0,
+      avgSelfComments: 0, avgManagerComments: 0,
+      commentWeeks: 0, commentWeekList: [],
+      stfGoalsCompleted: 0, stfGoalsWithSufficientComments: 0,
+      goalsStuckInPlanned: 0, hasEngagementConcern: false,
+      goalsList: [],
+    };
+  });
+  Logger.log('Roster injection: +' + (Object.keys(rockMap).length - preInjectCount) +
+             ' zero-goal employees | total: ' + Object.keys(rockMap).length);
+
   // 4. Compute all ISO weeks present in this quarter's comment data
   var qWeekSet = {};
   rdRows.forEach(function(row) {
@@ -248,7 +276,7 @@ function buildComplianceData_(quarter) {
 
   // 5. Finalise employee records
   var employees = Object.values(rockMap).map(function(emp) {
-    emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || 'Unknown';
+    emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || emp.location || 'Unknown';
     emp.jobFamily        = deriveJobFamily_(emp.jobTitle);
     emp.complianceStatus = computeStatus_(emp.totalGoals);
 
@@ -495,6 +523,58 @@ function getSupervisorTitleMap_() {
 
 function isSeniorLeader_(jobTitle) {
   return /\b(vp|vice.?president|director|chief|c[a-z]o|ceo|cto|cfo|coo)\b/i.test(jobTitle || '');
+}
+
+// ── Full Roster records (active, non-intern employees) ─────────
+// Returns { normName → { name, normName, department, supervisor, jobTitle, classVal, location } }
+// Used to inject zero-goal employees who never appear in the RD sheet.
+
+function getFullRosterMap_() {
+  var map = {};
+  try {
+    var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
+    if (!rows.length) return map;
+
+    // Detect status / termination columns (same logic as getActiveRosterSet_)
+    var keys = Object.keys(rows[0] || {});
+    var statusKey = null, termKey = null;
+    keys.forEach(function(k) {
+      var lower = k.toLowerCase().replace(/[\s._-]/g, '');
+      if (!statusKey && /^(employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
+      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))        termKey   = k;
+    });
+
+    rows.forEach(function(row) {
+      var name = row['Rocketeer'] || row['Name'] || row['Employee Name'] || row['Full Name'] || '';
+      if (!name) return;
+      var norm = normName_(String(name));
+
+      var isActive = true;
+      if (statusKey) {
+        var s = String(row[statusKey] || '').toLowerCase().trim();
+        if (s && s !== 'active' && s !== 'yes' && s !== '1') isActive = false;
+      }
+      if (termKey && row[termKey]) isActive = false;
+      if (!isActive) return;
+
+      var classVal = String(row['Class'] || '').trim().toUpperCase();
+      var jobTitle = String(row['Job Title'] || row['Title'] || row['Position'] || '').trim();
+      if (isIntern_(classVal, jobTitle)) return;
+
+      map[norm] = {
+        name:       String(name).trim(),
+        normName:   norm,
+        department: String(row['Department'] || '').trim(),
+        supervisor: String(row['Supervisor'] || row['Manager'] || '').trim(),
+        jobTitle:   jobTitle,
+        classVal:   classVal,
+        location:   String(row['Key Location'] || row['Location'] || row['Country'] || row['Office'] || '').trim(),
+      };
+    });
+
+    Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' active non-intern employees');
+  } catch (e) { Logger.log('⚠️ getFullRosterMap_: ' + e.message); }
+  return map;
 }
 
 // ── Active employee filter (excludes offboarded) ───────────────
