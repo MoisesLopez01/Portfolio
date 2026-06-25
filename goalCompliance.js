@@ -24,7 +24,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v5_',  // bumped: full roster injection (zero-goal employees)
+  CACHE_VER:           'gd_v6_',  // bumped: normName diacritics, single roster read, week arithmetic, mgr scorecard guard
   DEBUG:               false,
 };
 
@@ -33,7 +33,8 @@ var CONFIG_GD = {
 function log_(msg) { if (CONFIG_GD.DEBUG) Logger.log(msg); }
 
 function normName_(n) {
-  return String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function fmtDate_(d) {
@@ -204,9 +205,11 @@ function getHRNotes(quarter) {
   }
 }
 
-function bustCache() {
+function bustCache(quarter) {
   var cache = CacheService.getScriptCache();
-  cache.remove(CONFIG_GD.CACHE_VER + CONFIG_GD.DEFAULT_QUARTER);
+  var toRemove = [CONFIG_GD.DEFAULT_QUARTER];
+  if (quarter && quarter !== CONFIG_GD.DEFAULT_QUARTER) toRemove.push(quarter);
+  toRemove.forEach(function(q) { cache.remove(CONFIG_GD.CACHE_VER + q); });
   return { ok: true };
 }
 
@@ -226,16 +229,23 @@ function buildComplianceData_(quarter) {
   });
   log_('RD rows for ' + quarter + ': ' + rdRows.length);
 
-  // 2. Build active-employee set from Roster (exclude offboarded)
-  var activeSet  = getActiveRosterSet_();
-  var locMap     = getLocationMap_();
+  // 2. Read Roster once — derive activeSet, locMap, and supTitleMap from the single read
+  var fullRosterMap  = getFullRosterMap_();
+  var activeSet      = {};
+  var locMap         = {};
+  var supTitleMap    = {};
+  Object.keys(fullRosterMap).forEach(function(norm) {
+    var r = fullRosterMap[norm];
+    activeSet[norm]   = true;
+    locMap[norm]      = r.location;
+    supTitleMap[norm] = r.jobTitle;
+  });
   log_('Roster active: ' + Object.keys(activeSet).length + ' | locations: ' + Object.keys(locMap).length);
 
   // 3. Aggregate per rocketeer (interns and offboarded already excluded)
   var rockMap = aggregateByRocketeer_(rdRows, activeSet);
 
   // 3b. Inject every active Roster employee not found in the RD sheet (0 goals this quarter)
-  var fullRosterMap  = getFullRosterMap_();
   var preInjectCount = Object.keys(rockMap).length;
   Object.keys(fullRosterMap).forEach(function(norm) {
     if (rockMap[norm]) return; // already present from RD
@@ -314,17 +324,15 @@ function buildComplianceData_(quarter) {
   // 9. Calendar weeks elapsed since quarter start (for engagement pace threshold)
   var weeksElapsedSinceStart = totalQtrWeeks;
   if (quarterDates) {
-    var startWk = dateToISOWeek_(new Date(quarterDates.start));
-    var todayWk = dateToISOWeek_(today);
-    var startN  = startWk ? parseInt(String(startWk).split('.W')[1], 10) : 1;
-    var todayN  = todayWk ? parseInt(String(todayWk).split('.W')[1], 10) : startN;
-    var diff    = todayN - startN;
-    weeksElapsedSinceStart = Math.max(1, Math.min(diff + 1, totalQtrWeeks));
+    var msPerWeek  = 7 * 24 * 60 * 60 * 1000;
+    var startMs    = new Date(quarterDates.start).getTime();
+    var todayMs    = new Date(today).getTime();
+    var diffWeeks  = Math.floor((todayMs - startMs) / msPerWeek);
+    weeksElapsedSinceStart = Math.max(1, Math.min(diffWeeks + 1, totalQtrWeeks));
   }
 
   // 10. Engagement data
-  var supervisorTitleMap = getSupervisorTitleMap_();
-  var engagementData     = computeEngagementData_(employees, weeksElapsedSinceStart, supervisorTitleMap);
+  var engagementData = computeEngagementData_(employees, weeksElapsedSinceStart, supTitleMap);
 
   log_('buildComplianceData_ done | employees: ' + employees.length + ' | weeks: ' + totalQtrWeeks +
        ' | goalGrace: ' + isGoalCreationGrace + ' | completionGrace: ' + isCompletionGrace +
@@ -757,23 +765,25 @@ function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
       if (self > 0) deptMap[dept].engaging++;
     }
 
-    var sup = (e.supervisor || '').trim();
-    if (sup) {
-      var normSup = normName_(sup);
-      if (!mgrMap[normSup]) {
-        var supTitle = empTitleMap[normSup] || (supervisorTitleMap && supervisorTitleMap[normSup]) || '';
-        mgrMap[normSup] = {
-          name:           sup,
-          normName:       normSup,
-          isSeniorLeader: isSeniorLeader_(supTitle),
-          totalMgrCmts:   0,
-          teamSize:       0,
-          covered:        0,
-        };
+    if (e.totalGoals > 0) {
+      var sup = (e.supervisor || '').trim();
+      if (sup) {
+        var normSup = normName_(sup);
+        if (!mgrMap[normSup]) {
+          var supTitle = empTitleMap[normSup] || (supervisorTitleMap && supervisorTitleMap[normSup]) || '';
+          mgrMap[normSup] = {
+            name:           sup,
+            normName:       normSup,
+            isSeniorLeader: isSeniorLeader_(supTitle),
+            totalMgrCmts:   0,
+            teamSize:       0,
+            covered:        0,
+          };
+        }
+        mgrMap[normSup].teamSize++;
+        mgrMap[normSup].totalMgrCmts += mgr;
+        if (mgr > 0) mgrMap[normSup].covered++;
       }
-      mgrMap[normSup].teamSize++;
-      mgrMap[normSup].totalMgrCmts += mgr;
-      if (mgr > 0) mgrMap[normSup].covered++;
     }
   });
 
