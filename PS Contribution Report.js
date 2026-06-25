@@ -23,12 +23,13 @@ var CONFIG_PS = {
   PTO_BALANCE_THRESHOLD:      100,   // hours — at or below = automatically Good
   PTO_PLANNING_HORIZON_MONTHS: 6,    // look-ahead window for a Usage planning signal
   PTO_TEAM_TARGET_PCT:        80,    // celebrate at this team-level score
-  SHEET_TEMPO_TRACKED:   "Tempo Transposed",
+  SHEET_TEMPO_TRACKED:   "Tempo Tracked Time",
   SHEET_PLANNED:         "Planned Time Tempo",
-  // Project keys in the Planned Time Tempo "Key" column that are NOT real projects
+  // Project keys in the Planned/Tracked Time "Key" column that are NOT real projects
   // and must be excluded from project-context counts. "NETSUITE" = time-off synced
   // from NetSuite (already represented elsewhere in the report). Matched case-insensitively.
   PLANNED_NONPROJECT_KEYS: ["NETSUITE"],
+  TRACKED_NONPROJECT_KEYS: ["NETSUITE"],
   SHEET_GOALS:       "RD",
   SHEET_PH:          "PH",
 
@@ -823,6 +824,41 @@ function weekToKey_PS_(label, defaultYear) {
   return null;
 }
 
+// Best-effort parse of a week-column header cell into a Date, or null.
+// Handles a real Date cell, a date range ("Mar 30 - Apr 05 2026"), and single
+// date strings ("2026-06-08", "04/12/2026"). For a range it uses the LAST date so
+// the trailing year applies correctly, even across a year boundary
+// (e.g. "Dec 29 - Jan 04 2026" → Jan 4 2026 → ISO week 1 of 2026).
+function cellToDate_PS_(cell) {
+  if (cell instanceof Date) return isNaN(cell) ? null : cell;
+  const s = String(cell || "").trim();
+  if (!s) return null;
+  const yearM = s.match(/\b(20\d{2})\b/);
+  const md    = [...s.matchAll(/([A-Za-z]{3,9})\s+(\d{1,2})\b/g)];
+  if (md.length && yearM) {
+    const last = md[md.length - 1];
+    const d = new Date(`${last[1]} ${last[2]}, ${yearM[1]}`);
+    if (!isNaN(d)) return d;
+  }
+  // Fallback: a single delimiter-bearing date string (ISO / numeric). The
+  // delimiter guard stops a bare "2026" from being read as Jan 1.
+  if (/[\/-]/.test(s)) {
+    const d2 = new Date(s);
+    if (!isNaN(d2)) return d2;
+  }
+  return null;
+}
+
+// Resolves a week-column header cell to an ISO week key "YYYY.Wn".
+// Tries the ISO label form first (weekToKey_PS_), then falls back to a parsed
+// date header so exports that omit the stacked ISO label row still match.
+function weekKeyFromCell_(cell, defYear) {
+  const iso = weekToKey_PS_(cell, defYear);
+  if (iso) return iso;
+  const d = cellToDate_PS_(cell);
+  return d ? `${isoWeekYear_PS_(d)}.W${isoWeekNum_PS_(d)}` : null;
+}
+
 // Exact-normalized column finder for the PTO accumulation sheet.
 // Strips all non-alphanumeric characters before comparing — handles "Department: Name",
 // "Department Name", "DepartmentName", etc. as the same target.
@@ -1554,90 +1590,44 @@ function readKudosByWeek_(psNames, weeks) {
 }
 
 function readTrackedTimeByWeek_(psNames, weeks) {
-  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const data = loadSheet_PS_(ss, CONFIG_PS.SHEET_TEMPO_TRACKED);
   const result = {};
-  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {} }; });
-  if (!data) { Logger.log(`⚠️ Tempo Transposed sheet not found.`); return result; }
-
-  const hdrsLC = data.headers.map(h => h.toLowerCase().trim());
-  const iUser  = hdrsLC.indexOf("user");
-  const iDate  = hdrsLC.indexOf("date");
-  const iHours = hdrsLC.indexOf("hours");
-  const iWeek  = hdrsLC.indexOf("week");   // optional "W20" pre-computed column
-
-  Logger.log(`Tempo Transposed cols — user:${iUser} date:${iDate} hours:${iHours} week:${iWeek} | headers: ${data.headers.join(" | ")}`);
-
-  if (iUser === -1 || iHours === -1 || (iDate === -1 && iWeek === -1)) {
-    Logger.log(`⚠️ Tempo Transposed: required columns missing (need User, Hours, and Date or Week).`);
-    return result;
-  }
-
-  // "W20" → "2026.W20" fast lookup; date ranges used as fallback when Week column is absent/empty
-  const weekNumToLabel = new Map();
-  const weekRanges = [];
-  weeks.forEach(w => {
-    const m = w.label.match(/\.?W(\d+)$/i);
-    if (m) weekNumToLabel.set("W" + parseInt(m[1]), w.label);
-    weekRanges.push({ label: w.label, mon: w.monday, sun: w.sunday });
-  });
-
-  let rowsMatched = 0, rowsInWindow = 0;
-
-  data.rows.forEach(row => {
-    const user = String(row[iUser] || "").trim();
-    if (!user) return;
-    const norm = normPS_(user);
-    if (!psNames.has(norm)) return;
-    rowsMatched++;
-
-    const hrs = parseFloat(row[iHours]);
-    if (!(hrs > 0)) return;
-
-    // Primary: use pre-computed Week column ("W20")
-    let label = null;
-    if (iWeek !== -1) {
-      const wk = String(row[iWeek] || "").trim();
-      if (wk) label = weekNumToLabel.get(wk) || null;
-    }
-    // Fallback: derive week from Date column
-    if (!label && iDate !== -1) {
-      const d = parseDate_PS_(row[iDate]);
-      if (d) {
-        const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-        const hit  = weekRanges.find(r => dStr >= r.mon && dStr <= r.sun);
-        if (hit) label = hit.label;
+  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {} }; });
+  if (!data) { Logger.log(`⚠️ Tempo Tracked Time sheet not found.`); return result; }
+  
+  // Read export timestamp from the sheet (written by TempoTrackedTime.js after TOTAL row)
+  let lastExport = null;
+  try {
+    const sh = ss.getSheetByName(CONFIG_PS.SHEET_TEMPO_TRACKED);
+    if (sh) {
+      const lastRow = sh.getLastRow();
+      // Look for "Last Export:" in the last few rows
+      for (let r = Math.max(1, lastRow - 5); r <= lastRow; r++) {
+        const label = sh.getRange(r, 1).getValue();
+        if (String(label).trim() === "Last Export:") {
+          const ts = sh.getRange(r, 2).getValue();
+          if (ts) lastExport = new Date(ts).toISOString();
+          break;
+        }
       }
     }
-    if (!label) return;
-    rowsInWindow++;
-
-    const b = result[label];
-    if (!b) return;
-    if (!b.byEmployee[norm]) { b.headcount++; b.byEmployee[norm] = 0; }
-    b.byEmployee[norm] += hrs;
-    b.totalHrs += hrs;
-  });
-
-  Logger.log(`Tempo Transposed: ${data.rows.length} rows, ${rowsMatched} matched to PS roster, ${rowsInWindow} in window. ` +
-    `${Object.entries(result).filter(([,v]) => v.headcount > 0).map(([k,v]) => `${k}:${v.headcount}ppl/${Math.round(v.totalHrs)}h`).join(", ") || "no data in window"}`);
-
-  Object.entries(result).forEach(([wk, b]) => {
-    if (b.headcount > 0) {
-      const empList = Object.entries(b.byEmployee).map(([n, h]) => `${n}(${Math.round(h)}h)`).slice(0, 15).join(", ");
-      log_(`  Tracked ${wk}: ${empList}${b.headcount > 15 ? " …" : ""}`);
-    }
-  });
-
-  return result;
+  } catch(e) { Logger.log(`⚠️ Could not read tracked time export timestamp: ${e.message}`); }
+  
+  const vals = [data.headers, ...data.rows];
+  const timeData = buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.TRACKED_NONPROJECT_KEYS, "Tracked");
+  timeData._lastExport = lastExport;
+  return timeData;
 }
 
 function readPlannedTimeByWeek_(psNames, weeks) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(CONFIG_PS.SHEET_PLANNED);
-  if (!sh) Logger.log(`⚠️ Planned Time sheet not found.`);
-  const vals = sh ? sh.getDataRange().getValues() : [];
-  return buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.PLANNED_NONPROJECT_KEYS);
+  const data = loadSheet_PS_(ss, CONFIG_PS.SHEET_PLANNED);
+  const result = {};
+  weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {} }; });
+  if (!data) { Logger.log(`⚠️ Planned Time sheet not found.`); return result; }
+  const vals = [data.headers, ...data.rows];
+  return buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.PLANNED_NONPROJECT_KEYS, "Planned");
 }
 
 // Pure parser for the Planned Time Tempo matrix. Separated from the sheet fetch so it
@@ -1646,10 +1636,11 @@ function readPlannedTimeByWeek_(psNames, weeks) {
 // The total/headcount/byEmployee math is identical to the previous inline version
 // (it still sums every week-column hour, time-off rows included). byEmployeeProjects
 // is a parallel accumulation that additionally drops blank and non-project keys.
-function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys) {
+function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
+  const SRC = srcLabel ? `[${srcLabel}] ` : "";
   const result = {};
   weeks.forEach(w => { result[w.label] = { totalHrs: 0, headcount: 0, byEmployee: {}, byEmployeeProjects: {} }; });
-  if (!vals || vals.length < 2) return result;
+  if (!vals || vals.length < 2) { Logger.log(`⚠️ ${SRC}buildPlannedResult_: empty/too-short sheet (${vals ? vals.length : 0} rows).`); return result; }
 
   // The Tempo export writes a TWO-ROW stacked header (ISO labels over week columns in
   // row 1; field names in row 2). Locate the field-header row by its employee column,
@@ -1660,23 +1651,42 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys) {
     const idx = vals[r].findIndex(c => isEmpHdr_(String(c).trim()));
     if (idx !== -1) { hr = r; iEmp = idx; break; }
   }
-  if (hr === -1) { Logger.log(`⚠️ Planned Time: employee column not found.`); return result; }
+  if (hr === -1) {
+    Logger.log(`⚠️ ${SRC}Planned Time: employee column not found. Row 0: ${JSON.stringify((vals[0] || []).slice(0, 10))}`);
+    return result;
+  }
+  log_(`${SRC}parse: ${vals.length} sheet rows · header row=${hr} · emp col=${iEmp} · header=${JSON.stringify(vals[hr].slice(0, 10))}`);
 
   // Project key column ("Key"). Absent in legacy single-row exports → no project context.
   const iKey = vals[hr].findIndex(c => String(c).trim().toLowerCase() === "key");
   const excludeKeys = new Set((nonProjectKeys || []).map(k => String(k).trim().toUpperCase()));
 
-  const isoRe   = /^\s*\d{4}\.?W\d+\s*$/i;
-  const labelRow = (hr > 0 && vals[hr - 1].some(c => isoRe.test(String(c)))) ? vals[hr - 1] : vals[hr];
-  const defYear = isoWeekYear_PS_(new Date());
+  // Match week columns per-index: prefer the stacked ISO-label row (row above the
+  // field-header row), then fall back to a date/date-range header on the field row.
+  // The fallback is what saves an export that omits the ISO label row — without it
+  // every value would read 0 because a date string can't be parsed as "YYYY.Wn".
+  const defYear  = isoWeekYear_PS_(new Date());
+  const isoRow   = hr > 0 ? vals[hr - 1] : null;
+  const fieldRow = vals[hr];
+  const ncols    = Math.max(isoRow ? isoRow.length : 0, fieldRow.length);
 
   const wCols = [];
-  labelRow.forEach((cell, idx) => {
-    const key = weekToKey_PS_(cell, defYear);
-    if (!key) return;
+  const labelsSeen = [];
+  for (let idx = 0; idx < ncols; idx++) {
+    let key = isoRow ? weekToKey_PS_(isoRow[idx], defYear) : null;
+    if (!key) key = weekKeyFromCell_(fieldRow[idx], defYear);
+    if (!key) continue;
+    labelsSeen.push(key);
     const match = weeks.find(w => w.label === key);
     if (match) wCols.push({ key: match.label, idx });
-  });
+  }
+  log_(`${SRC}weeks: matched ${wCols.length}/${weeks.length} columns · ` +
+    `window=[${weeks.map(w => w.label).join(", ")}] · ` +
+    `labelRow week-keys=[${labelsSeen.join(", ") || "NONE"}]`);
+  if (wCols.length === 0) {
+    Logger.log(`⚠️ ${SRC}No week columns matched the report window — every value will read as 0. ` +
+      `Check that the sheet's week-column headers use the "${weeks[0] ? weeks[0].label : "YYYY.Wn"}" ISO format and overlap the current window.`);
+  }
 
   const plannedAliases = new Map();
   for (const rosterNorm of psNames.keys()) {
@@ -1695,9 +1705,17 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys) {
 
   // Data rows start after the field-header row; the export's "TOTAL" footer row is
   // skipped naturally since "TOTAL" resolves to no roster member.
+  let rowsTotal = 0, rowsMatched = 0;
+  const unmatchedSample = [];
   vals.slice(hr + 1).forEach(row => {
+    const rawName = String(row[iEmp] || '').trim();
+    if (rawName) rowsTotal++;
     const norm = lookupPlanned_(row[iEmp]);
-    if (!norm) return;
+    if (!norm) {
+      if (rawName && rawName.toUpperCase() !== "TOTAL" && unmatchedSample.length < 5) unmatchedSample.push(rawName);
+      return;
+    }
+    rowsMatched++;
     const rawKey    = iKey !== -1 ? String(row[iKey] || '').trim() : '';
     const isProject = !!rawKey && !excludeKeys.has(rawKey.toUpperCase());
     wCols.forEach(({ key, idx }) => {
@@ -1713,6 +1731,14 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys) {
       }
     });
   });
+
+  const grandTotal = weeks.reduce((s, w) => s + (result[w.label] ? result[w.label].totalHrs : 0), 0);
+  const summary = `${SRC}rows: ${rowsMatched}/${rowsTotal} matched roster · grand total ${Math.round(grandTotal)}h`;
+  if (rowsMatched === 0) {
+    Logger.log(`⚠️ ${summary}` + (unmatchedSample.length ? ` · unmatched names e.g. ${JSON.stringify(unmatchedSample)}` : ""));
+  } else {
+    log_(summary);
+  }
 
   return result;
 }
@@ -2218,6 +2244,9 @@ function filterKudosBySubset_(kudosAll, subset) {
 function filterTimeBySubset_(timeAll, subset) {
   const result = {};
   for (const [wk, b] of Object.entries(timeAll)) {
+    // Skip meta keys (e.g. _lastExport) and any null/non-week entry so a stray
+    // attached property can't crash the per-week aggregation below.
+    if (wk.charAt(0) === '_' || !b || typeof b !== 'object' || !b.byEmployee) continue;
     let totalHrs = 0, headcount = 0;
     const byEmp = {};
     for (const [norm, hrs] of Object.entries(b.byEmployee || {})) {
@@ -2620,6 +2649,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     meta: {
       generatedAt:      new Date().toISOString(),
       lastSheetEdit,
+      trackedTimeLastExport: trackedAll._lastExport || null,
       currentWeekLabel: curWeek.label,
       rcrLastMonth:     rcrAll.lastMonth,
       rcrTeamRCR:       rcrAll.teamRCR,
@@ -2735,4 +2765,67 @@ function _test_projectContext_() {
   assert_(!("NETSUITE" in projs), "NETSUITE must be excluded from project map");
 
   Logger.log("✅ _test_projectContext_ passed");
+}
+
+// Regression: export with NO stacked ISO-label row — week columns are headed only
+// by date ranges. Before the per-column date fallback, this read every value as 0
+// (the "Time planned shows blank" bug). Week 14 Mon–Sun = Mar 30 – Apr 05 2026.
+function _test_plannedDateHeadersOnly_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_plannedDateHeadersOnly_: " + msg); }
+
+  const vals = [
+    ["User", "Space", "Key", "Planned (hrs)", "Mar 30 - Apr 05 2026", "Apr 06 - Apr 12 2026", "Total (hrs)"],
+    ["Ana Smith", "Acme Project", "ACME", 20, 10, 10, 20],
+    ["Ana Smith", "Beta Project", "BETA", 18, 9, 9, 18],
+    ["TOTAL", "", "", 38, 19, 19, 38],
+  ];
+  const psNames = new Map([[normPS_("Ana Smith"), { name: "Ana Smith" }]]);
+  const weeks = [{ label: "2026.W14" }, { label: "2026.W15" }];
+
+  const res = buildPlannedResult_(vals, psNames, weeks, ["NETSUITE"], "Planned");
+  const norm = normPS_("Ana Smith");
+
+  assert_(res["2026.W14"].byEmployee[norm] === 19, "W14 should be 19 (date-header fallback), got " + res["2026.W14"].byEmployee[norm]);
+  assert_(res["2026.W15"].byEmployee[norm] === 19, "W15 should be 19 (date-header fallback), got " + res["2026.W15"].byEmployee[norm]);
+  assert_(res["2026.W14"].headcount === 1, "W14 headcount should be 1, got " + res["2026.W14"].headcount);
+
+  Logger.log("✅ _test_plannedDateHeadersOnly_ passed");
+}
+
+function _test_trackedTimeMatrix_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_trackedTimeMatrix_: " + msg); }
+
+  // Fake Tempo Tracked Time matrix: identical structure to Planned Time Tempo
+  // Ana logged ACME(12/15), BETA(8/10), and NETSUITE time-off(5/5) across W14 + W15.
+  const vals = [
+    ["", "", "", "", "2026.W14", "2026.W15", ""],
+    ["User", "Space", "Key", "Logged (hrs)", "Mar 30 - Apr 05 2026", "Apr 06 - Apr 12 2026", "Total (hrs)"],
+    ["Ana Smith", "Acme Project", "ACME", 27, 12, 15, 27],
+    ["Ana Smith", "Beta Project", "BETA", 18, 8, 10, 18],
+    ["Ana Smith", "Time off", "NETSUITE", 10, 5, 5, 10],
+    ["TOTAL", "", "", 55, 25, 30, 55],
+  ];
+  const psNames = new Map([[normPS_("Ana Smith"), { name: "Ana Smith" }]]);
+  const weeks = [{ label: "2026.W14" }, { label: "2026.W15" }];
+
+  const res = buildPlannedResult_(vals, psNames, weeks, CONFIG_PS.TRACKED_NONPROJECT_KEYS);
+  const norm = normPS_("Ana Smith");
+
+  // Total tracked hours include NETSUITE time-off
+  assert_(res["2026.W14"].byEmployee[norm] === 25, "W14 total should be 25, got " + res["2026.W14"].byEmployee[norm]);
+  assert_(res["2026.W15"].byEmployee[norm] === 30, "W15 total should be 30, got " + res["2026.W15"].byEmployee[norm]);
+
+  // Project map EXCLUDES NETSUITE → exactly ACME + BETA
+  const projs14 = res["2026.W14"].byEmployeeProjects[norm] || {};
+  const projs15 = res["2026.W15"].byEmployeeProjects[norm] || {};
+  
+  assert_(Object.keys(projs14).length === 2, "W14 should have 2 projects, got " + Object.keys(projs14).length);
+  assert_(projs14.ACME === 12, "W14 ACME should be 12h, got " + projs14.ACME);
+  assert_(projs14.BETA === 8, "W14 BETA should be 8h, got " + projs14.BETA);
+  assert_(!("NETSUITE" in projs14), "W14 NETSUITE must be excluded from project map");
+  
+  assert_(projs15.ACME === 15, "W15 ACME should be 15h, got " + projs15.ACME);
+  assert_(projs15.BETA === 10, "W15 BETA should be 10h, got " + projs15.BETA);
+
+  Logger.log("✅ _test_trackedTimeMatrix_ passed");
 }

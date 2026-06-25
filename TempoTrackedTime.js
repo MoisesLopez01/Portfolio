@@ -10,7 +10,9 @@
 
 const CONFIGLogged = {
   SCRIPT_LABEL:     "Tempo Logged Time Reports",
-  SHEET_NAME:       "Logged Time Tempo",
+  // Must match CONFIG_PS.SHEET_TEMPO_TRACKED in "PS Contribution Report.js" — this is
+  // the sheet the dashboard reads tracked time (and the "Last Export:" stamp) from.
+  SHEET_NAME:       "Tempo Tracked Time",
   JIRA_BASE:        "https://servicerocket-coe.atlassian.net",
   FROM_DATE:        "2026-03-30",              // FY26 Q4 start — must stay a Monday
   get TO_DATE()   { return fmtDate_(new Date()); }, // always today, evaluated on every access
@@ -417,6 +419,14 @@ function writeLoggedRows_(sheet, rows, weeks) {
   totalRowRange.setValues([totalRow]);
   totalRowRange.setFontWeight("bold");
   totalRowRange.setBackground(CONFIGLogged.TOTAL_ROW_BG);
+  
+  // Write export timestamp in the row below TOTAL
+  const timestampRowNum = totalRowNum + 1;
+  const timestamp = new Date().toISOString();
+  sheet.getRange(timestampRowNum, 1).setValue("Last Export:");
+  sheet.getRange(timestampRowNum, 2).setValue(timestamp);
+  sheet.getRange(timestampRowNum, 1, 1, 2).setFontSize(9).setFontColor("#666666");
+  
   sheet.autoResizeColumns(1, totalCols);
 
   const uniqueUsers = new Set(rows.map((r) => r[0]));
@@ -482,7 +492,7 @@ function _diagPrepareLoggedSheet_() {
       start: new Date("2026-04-13T00:00:00"), calcEnd: new Date("2026-04-19T00:00:00") },
   ];
   prepareLoggedSheet_(fakeWeeks);
-  Logger.log('✅ prepareLoggedSheet_ ran — check the "Logged Time Tempo" sheet tab.');
+  Logger.log('✅ prepareLoggedSheet_ ran — check the "Tempo Tracked Time" sheet tab.');
 }
 
 function _diagFetchUserWorklogs_() {
@@ -586,5 +596,5 @@ function _diagBuildAndWriteRows_() {
 
   const sheet = prepareLoggedSheet_(fakeWeeks);
   writeLoggedRows_(sheet, rows, fakeWeeks);
-  Logger.log("✅ writeLoggedRows_ ran — check the Logged Time Tempo sheet.");
+  Logger.log("✅ writeLoggedRows_ ran — check the Tempo Tracked Time sheet.");
 }
