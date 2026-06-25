@@ -731,8 +731,8 @@ function renderEngagement(emps) {
     kpiCard('Active Commenters',   eng.activeCount    || 0,        '✅', '#00A86B', 'self-commented this qtr') +
     kpiCard('Silent',              eng.silentCount    || 0,        '🔇', '#EF4444', '0 self-comments · has goals') +
     kpiCard('Below Pace',          eng.belowPaceCount || 0,        '⏳', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
-    kpiCard('Avg Self-Cmts',       eng.avgSelfCmts    || 0,        '💬', '#9B59B6', 'per rocketeer') +
-    kpiCard('Avg Mgr-Cmts',        eng.avgMgrCmts     || 0,        '👔', '#2864E6', 'per team member');
+    kpiCard('Avg Self-Cmts',       eng.avgSelfCmts    || 0,        '💬', '#9B59B6', 'per rocketeer with goals') +
+    kpiCard('Avg Mgr-Cmts',        eng.avgMgrCmts     || 0,        '👔', '#2864E6', 'per rocketeer with goals');
 
   // Department chip selector + trend chart (unchanged)
   buildTrendDeptChips_(trend);

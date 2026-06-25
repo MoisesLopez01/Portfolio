@@ -829,8 +829,8 @@ function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
     activeCount:      activeCount,
     silentCount:      silentCount,
     belowPaceCount:   belowPaceCount,
-    avgSelfCmts:      +(totalSelf / totalEmp).toFixed(1),
-    avgMgrCmts:       +(totalMgr  / totalEmp).toFixed(1),
+    avgSelfCmts:      +(totalSelf / withGoals).toFixed(1),  // per rocketeer with goals
+    avgMgrCmts:       +(totalMgr  / withGoals).toFixed(1),  // per rocketeer with goals
     paceThreshold:    paceThreshold,
     weeksElapsed:     weeksElapsed,
     teamRates:        teamRates,
