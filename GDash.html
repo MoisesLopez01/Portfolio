@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goals Compliance Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+        integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"
+        integrity="sha384-y49Zu59jZHJL/PLKgZPv3k2WI9c0Yp3pWB76V8OBVCb0QBKS8l4Ff3YslzHVX76Y"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+        integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+        crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700;800&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0F1941;--orbe:#058CDC;--ivory:#DCCDBE;--cream:#FFFAF5;
+  --june:#FF9B87;--royal:#2864E6;--success:#00A86B;
+  --watch-color:#F59E0B;--atrisk-color:#EF4444;
+  --slate:#64748b;--surface:#F8FAFC;--border:#E2E8F0;
+  --text:#1E293B;--muted:#94A3B8;
+  --radius:12px;--shadow:0 1px 4px rgba(0,0,0,.08);
+  --header-h:60px;--filter-h:46px;--tab-h:44px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Roboto',-apple-system,sans-serif;background:var(--surface);color:var(--text);font-size:14px}
+h1,h2,.tab-btn,.kpi-value{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
+button{font-family:inherit;cursor:pointer}
+
+/* Loading */
+#loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;color:var(--slate)}
+.spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--orbe);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Header */
+.header{position:sticky;top:0;z-index:50;background:var(--void);color:#fff;
+  padding:0 24px;height:var(--header-h);display:flex;align-items:center;gap:10px}
+.header-logo{width:36px;height:36px;background:var(--orbe);border-radius:9px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.header-title{flex:1}
+.header-title h1{font-size:16px;font-weight:800;line-height:1.2}
+.header-title p{font-size:9px;text-transform:uppercase;letter-spacing:.08em;opacity:.55;font-weight:600;margin-top:1px}
+.week-badge{background:var(--orbe);color:#fff;border-radius:99px;padding:3px 12px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0}
+.header-btn{display:flex;align-items:center;gap:4px;padding:5px 11px;border-radius:99px;font-size:10px;
+  font-weight:700;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;
+  transition:background .15s;flex-shrink:0;white-space:nowrap}
+.header-btn:hover{background:rgba(255,255,255,.2)}
+.quarter-select{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;
+  border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;font-family:inherit;flex-shrink:0}
+
+/* Filter Bar */
+.filter-bar{position:sticky;top:var(--header-h);z-index:40;background:#fff;
+  border-bottom:1px solid var(--border);padding:6px 24px;display:flex;align-items:center;
+  gap:7px;flex-wrap:wrap;min-height:var(--filter-h)}
+.filter-label{font-size:9px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.chip-wrap{position:relative;flex-shrink:0}
+.chip{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;
+  font-size:10px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;
+  border:1px solid var(--border);background:var(--surface);color:var(--slate);transition:all .15s}
+.chip:hover{border-color:var(--orbe);color:var(--orbe)}
+.chip.active{background:#EEF4FF;border-color:#C7DEFF;color:var(--orbe);font-weight:700}
+.chip-arrow{font-size:8px;opacity:.6;margin-left:2px}
+.dropdown-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:200px;
+  background:#fff;border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;padding:6px;max-height:280px;overflow-y:auto}
+.dropdown-panel.open{display:block}
+.dd-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text)}
+.dd-item:hover{background:var(--surface)}
+.dd-item input[type=checkbox]{accent-color:var(--orbe);cursor:pointer;width:14px;height:14px;flex-shrink:0}
+.reset-btn{margin-left:auto;font-size:10px;color:var(--muted);background:none;border:none;
+  font-weight:600;cursor:pointer;padding:4px 8px;border-radius:6px}
+.reset-btn:hover{color:var(--orbe)}
+.filtered-note{font-size:10px;color:var(--slate);font-style:italic;white-space:nowrap}
+
+/* Tab Nav */
+.tab-nav{position:sticky;top:calc(var(--header-h) + var(--filter-h));z-index:30;background:#fff;
+  border-bottom:2px solid var(--border);padding:0 24px;display:flex;height:var(--tab-h);overflow-x:auto}
+.tab-btn{padding:0 16px;height:100%;font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--muted);background:transparent;border:none;cursor:pointer;
+  border-bottom:3px solid transparent;transition:color .15s,border-bottom-color .15s;white-space:nowrap;margin-bottom:-2px}
+.tab-btn:hover{color:var(--void)}
+.tab-btn.active{color:var(--orbe);border-bottom-color:var(--orbe)}
+
+/* Main */
+main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
+.tab-pane{display:none}
+.tab-pane.active{display:flex;flex-direction:column;gap:16px}
+
+/* KPI Grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px}
+.kpi-card{background:#fff;border-radius:var(--radius);border:1px solid var(--border);
+  padding:14px 16px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:flex-start}
+.kpi-card-body p:first-child{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:4px}
+.kpi-value{font-size:28px;font-weight:900;color:var(--void);line-height:1}
+.kpi-note{font-size:10px;color:var(--slate);font-weight:500;margin-top:3px;line-height:1.4}
+.kpi-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
+
+/* Section Card */
+.section-card{background:#fff;border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow);overflow:hidden}
+.section-head{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.section-head h2{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--void)}
+.section-sub{font-size:10px;color:var(--muted);font-weight:500;margin-top:2px}
+.section-actions{display:flex;gap:6px;flex-shrink:0}
+.section-body{padding:16px}
+.chart-wrap{padding:16px}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:7px;font-size:10px;
+  font-weight:700;border:1px solid var(--border);background:#fff;color:var(--slate);cursor:pointer;
+  transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--surface);border-color:var(--slate)}
+.btn-primary{background:var(--orbe);color:#fff;border-color:var(--orbe)}
+.btn-primary:hover{background:#047ab5}
+
+/* Layouts */
+.col-row{display:grid;grid-template-columns:1.65fr 1fr;gap:16px;align-items:start}
+.col-3-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:1100px){.col-3-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.col-row,.col-3-grid{grid-template-columns:1fr}}
+
+/* Data Table */
+.tbl-wrap{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{padding:9px 12px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted);border-bottom:2px solid var(--border);background:var(--surface);white-space:nowrap}
+.data-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.data-table tbody tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:#FAFBFF}
+.rate-chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.rate-high{background:#DCFCE7;color:#15803D}
+.rate-mid{background:#FEF9C3;color:#854D0E}
+.rate-low{background:#FEE2E2;color:#B91C1C}
+
+/* Compliance badges */
+.elig-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:9px;font-weight:800;cursor:default}
+.elig-ok{background:#DCFCE7;color:#15803D}
+.elig-no{background:#FEE2E2;color:#B91C1C}
+.tier-watch{background:#FEF9C3;color:#92400E;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
+.tier-atrisk{background:#FEE2E2;color:#991B1B;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
+.tier-nogoals{background:#450a0a;color:#fca5a5;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
+.tier-ontarget{background:#DCFCE7;color:#15803D;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
+
+/* At Risk sections */
+.urg-section{margin-bottom:20px}
+.urg-section:last-child{margin-bottom:0}
+.urg-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.urg-context{font-size:11px;color:var(--muted)}
+.review-done{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.review-check{color:var(--success);font-weight:700;font-size:11px}
+.review-meta{font-size:9px;color:var(--muted)}
+
+/* Trend tab */
+.trend-dept-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;
+  font-size:10px;font-weight:600;cursor:pointer;border:2px solid transparent;transition:all .15s}
+
+/* HR Tracker */
+.tracker-card{background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px 14px;
+  display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow)}
+.tracker-name{font-weight:700;font-size:13px;color:var(--void)}
+.tracker-meta{font-size:10px;color:var(--slate);display:flex;gap:10px;flex-wrap:wrap}
+.tracker-note{font-size:11px;color:var(--text);font-style:italic;border-left:3px solid var(--orbe);
+  padding-left:8px;margin-top:2px;line-height:1.5}
+.delta-up{color:var(--success);font-weight:700;font-size:10px}
+.delta-same{color:var(--muted);font-size:10px}
+.delta-down{color:#B91C1C;font-size:10px;font-weight:700}
+.status-pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:9px;font-weight:700}
+.pill-reviewed{background:#DCFCE7;color:#15803D}
+.pill-followup{background:#FEF9C3;color:#854D0E}
+.pill-escalated{background:#FEE2E2;color:#B91C1C}
+.pill-resolved{background:#EEF4FF;color:#1D4ED8}
+
+/* Modal */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:14px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:modalIn .2s ease}
+@keyframes modalIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-head{padding:18px 20px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:14px;font-weight:800;color:var(--void)}
+.modal-close{background:none;border:none;font-size:16px;color:var(--muted);padding:2px 6px;border-radius:4px}
+.modal-close:hover{color:var(--void);background:var(--surface)}
+.modal-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.modal-info{background:var(--surface);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--slate)}
+.modal-info strong{color:var(--void);font-weight:700}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.form-group select,.form-group textarea,.form-group input{border:1px solid var(--border);border-radius:7px;
+  padding:8px 12px;font-size:12px;font-family:inherit;color:var(--text);background:#fff;transition:border-color .15s}
+.form-group select:focus,.form-group textarea:focus,.form-group input:focus{outline:none;border-color:var(--orbe);box-shadow:0 0 0 3px rgba(5,140,220,.1)}
+.form-group textarea{resize:vertical;min-height:80px}
+.modal-foot{padding:14px 20px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border)}
+
+/* Grace period banner */
+.grace-bar{padding:4px 24px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.grace-goal{background:#FFF7ED;border-bottom:1px solid #FED7AA;color:#92400E}
+.grace-completion{background:#FFF0F0;border-bottom:1px solid #FECACA;color:#991B1B}
+
+/* Section divider label */
+.section-divider-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);padding:6px 0 4px;border-bottom:1px solid var(--border);margin-bottom:10px;
+  display:flex;align-items:center;gap:6px}
+
+/* Empty / Error */
+.empty-state{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty-state p{margin-top:8px;font-size:12px}
+.error-state{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:16px;color:#B91C1C;font-size:12px;margin:16px}
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="spinner"></div><p style="font-size:13px;color:var(--slate)">Loading compliance data…</p></div>
+
+<div id="app" style="display:none">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">🎯</div>
+    <div class="header-title">
+      <h1>Goals Compliance Dashboard</h1>
+      <p>Company-wide · RPI &amp; STF Eligibility · HR Follow-Up Tracker</p>
+    </div>
+    <select id="quarter-select" class="quarter-select" onchange="onQuarterChange(this.value)"></select>
+    <span class="week-badge" id="week-badge"></span>
+    <button class="header-btn" onclick="exportAllPNG()">⬇ PNG</button>
+    <button class="header-btn" onclick="refreshData()">↺ Refresh</button>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <span class="filter-label">Filter:</span>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-location" onclick="toggleDrop('location')">📍 <span id="chip-location-txt">All Locations</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-location"></div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-department" onclick="toggleDrop('department')">🏢 <span id="chip-department-txt">All Departments</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-department"></div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-jobFamily" onclick="toggleDrop('jobFamily')">👔 <span id="chip-jobFamily-txt">All Job Families</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-jobFamily"></div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-status" onclick="toggleDrop('status')">✅ <span id="chip-status-txt">All Statuses</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-status"></div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-supervisor" onclick="toggleDrop('supervisor')">👤 <span id="chip-supervisor-txt">All Supervisors</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-supervisor"></div>
+    </div>
+    <span id="filter-count-note" class="filtered-note" style="display:none"></span>
+    <button class="reset-btn" onclick="resetFilters()">Reset all</button>
+  </div>
+
+  <!-- Grace Period Banner -->
+  <div class="grace-bar" id="grace-bar" style="display:none"></div>
+
+  <!-- Tab Nav -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('overview')"  data-tab="overview">Overview</button>
+    <button class="tab-btn"        onclick="switchTab('trend')"     data-tab="trend">Engagement</button>
+    <button class="tab-btn"        onclick="switchTab('breakdown')" data-tab="breakdown">Breakdown</button>
+    <button class="tab-btn"        onclick="switchTab('atrisk')"    data-tab="atrisk" id="tab-btn-atrisk">⚠ At Risk</button>
+    <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
+  </div>
+
+  <main>
+
+    <!-- ── OVERVIEW ── -->
+    <div id="pane-overview" class="tab-pane active">
+      <div class="kpi-grid" id="kpi-overview"></div>
+      <div class="col-row">
+        <!-- Goal Status Distribution -->
+        <div class="section-card">
+          <div class="section-head">
+            <div><h2>Goal Status Distribution</h2><p class="section-sub">Total goals by status · people with each status type</p></div>
+            <button class="btn" onclick="exportPNG('goal-status-panel','goal-status.png')">⬇ PNG</button>
+          </div>
+          <div id="goal-status-panel" style="padding:16px">
+            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+              <div style="flex:0 0 200px;height:200px;position:relative"><canvas id="chart-goal-status"></canvas></div>
+              <div style="flex:1;min-width:220px" id="goal-status-table"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Right column: donut + HR summary -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="section-card">
+            <div class="section-head"><h2>Compliance Distribution</h2></div>
+            <div class="chart-wrap" style="height:190px;position:relative"><canvas id="chart-donut"></canvas></div>
+          </div>
+          <div class="section-card" style="border-left:4px solid var(--orbe)">
+            <div class="section-head"><h2>HR Tracker Summary</h2></div>
+            <div class="section-body" id="hr-summary-card"></div>
+          </div>
+        </div>
+      </div>
+      <!-- At-Risk preview (collapsible) -->
+      <div class="section-card">
+        <div class="section-head" style="cursor:pointer" onclick="toggleSection('atrisk-preview','atrisk-toggle')">
+          <div>
+            <h2>See Who Needs Support
+              <span id="atrisk-badge" style="background:#FEE2E2;color:#B91C1C;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:800;margin-left:6px"></span>
+            </h2>
+          </div>
+          <div class="section-actions">
+            <button class="btn" onclick="event.stopPropagation();exportAtRiskCSV()">⬇ CSV</button>
+            <span id="atrisk-toggle" style="color:var(--muted);font-size:12px">▾</span>
+          </div>
+        </div>
+        <div id="atrisk-preview" style="display:none">
+          <div class="section-body" id="atrisk-preview-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── COMMENTS TREND ── -->
+    <div id="pane-trend" class="tab-pane">
+      <div class="kpi-grid" id="kpi-trend"></div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Comments Volume Week Over Week</h2><p class="section-sub">Total org + department breakdown · ISO weeks</p></div>
+          <button class="btn" onclick="exportPNG('pane-trend','comments-trend.png')">⬇ PNG</button>
+        </div>
+        <div class="section-body">
+          <div style="margin-bottom:10px">
+            <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:8px">Departments:</span>
+            <div id="trend-dept-selector" style="display:inline-flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+          <div style="height:360px;position:relative"><canvas id="chart-trend"></canvas></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head"><h2>Weekly Comment Data</h2></div>
+        <div class="section-body tbl-wrap" id="trend-table"></div>
+      </div>
+      <!-- Team Engagement + Manager Scorecard -->
+      <div class="col-row">
+        <div class="section-card">
+          <div class="section-head">
+            <div><h2>Team Engagement Rate</h2><p class="section-sub">People with ≥1 self-comment · colour = engagement rate</p></div>
+          </div>
+          <div class="section-body" id="engagement-team"></div>
+        </div>
+        <div class="section-card">
+          <div class="section-head">
+            <div><h2>Manager Scorecard</h2><p class="section-sub">Avg comments left on team goals · % of team reached</p></div>
+          </div>
+          <div class="section-body" id="engagement-managers"></div>
+        </div>
+      </div>
+      <!-- Individual Engagement List -->
+      <div class="section-card" id="card-engagement-list">
+        <div class="section-head">
+          <div><h2>Individual Engagement List</h2><p class="section-sub" id="engagement-list-sub"></p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportEngagementCSV_()">&#8595; CSV</button>
+            <button class="btn" onclick="exportPNG('card-engagement-list','engagement-list.png')">&#8595; PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="engagement-list"></div>
+      </div>
+    </div>
+
+    <!-- ── BREAKDOWN ── -->
+    <div id="pane-breakdown" class="tab-pane">
+      <div class="section-card" id="breakdown-top">
+        <div class="section-head">
+          <div><h2>Location Compliance Rates</h2><p class="section-sub">Sorted highest to lowest · headcount shown</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportPNG('pane-breakdown','breakdown.png')">⬇ Export All PNG</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><div style="height:340px;position:relative"><canvas id="chart-location"></canvas></div></div>
+      </div>
+      <div class="col-3-grid" id="breakdown-tables"></div>
+    </div>
+
+    <!-- ── AT RISK ── -->
+    <div id="pane-atrisk" class="tab-pane">
+      <div class="kpi-grid" id="kpi-atrisk"></div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
+            <button class="btn" onclick="exportPNG('pane-atrisk','at-risk.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="atrisk-body"></div>
+      </div>
+    </div>
+
+    <!-- ── HR TRACKER ── -->
+    <div id="pane-hrtracker" class="tab-pane">
+      <div class="kpi-grid" id="kpi-tracker"></div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Follow-Up Log</h2><p class="section-sub">Notes saved by HR team · newest first</p></div>
+          <div class="section-actions">
+            <select id="tracker-filter" onchange="renderHRTracker()" class="btn" style="font-family:inherit">
+              <option value="all">All follow-ups</option>
+              <option value="pending">Needs Follow-up</option>
+              <option value="reviewed">Reviewed / Resolved</option>
+              <option value="escalated">Escalated</option>
+            </select>
+            <button class="btn" onclick="exportTrackerCSV()">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="section-body" id="tracker-body"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- HR Review Modal -->
+<div id="modal-overlay" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3>HR Follow-Up Review</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-info" id="modal-info"></div>
+      <div class="form-group">
+        <label>Follow-up Status</label>
+        <select id="modal-status">
+          <option value="Reviewed">✓ Reviewed — acknowledged, no action needed</option>
+          <option value="Needs Follow-up">⏳ Needs Follow-up — conversation pending</option>
+          <option value="Escalated">🔺 Escalated — raised to leadership</option>
+          <option value="Resolved">✅ Resolved — issue addressed</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Note</label>
+        <textarea id="modal-note" placeholder="Add context, actions taken, or next steps…"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Follow-up Date (optional)</label>
+        <input type="date" id="modal-followup">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveReview()" id="modal-save-btn">Save Review</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ────────────────────────────────────────────────────────
+var S = {
+  data:         null,
+  notes:        [],
+  userEmail:    '',
+  filters:      { location:[], department:[], jobFamily:[], status:[], supervisor:[] },
+  charts:       {},
+  activeTab:    'overview',
+  reviewTarget: null,
+  trendDepts:   [],  // department lines shown on trend chart
+};
+
+var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
+
+// ── INIT ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('week-badge').textContent = getISOWeekLabel();
+  init();
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.chip-wrap')) closeAllDropdowns();
+  });
+});
+
+function init() {
+  var runner = (typeof google !== 'undefined' && google.script) ? google.script.run : null;
+  if (!runner) { showError('Not running inside Google Apps Script.'); return; }
+
+  runner.withSuccessHandler(function(email) { S.userEmail = email || ''; }).getUserEmail();
+
+  runner
+    .withSuccessHandler(function(data) {
+      S.data = data;
+      runner
+        .withSuccessHandler(function(notes) { S.notes = notes || []; onReady(); })
+        .withFailureHandler(function() { S.notes = []; onReady(); })
+        .getHRNotes(data.quarter);
+    })
+    .withFailureHandler(function(err) { showError(err.message || 'Failed to load compliance data.'); })
+    .getGoalsComplianceData();
+}
+
+function onReady() {
+  populateQuarterSelect();
+  buildFilterDropdowns();
+  updateGraceBanner_();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  renderTab(S.activeTab);
+}
+
+function updateGraceBanner_() {
+  var bar = document.getElementById('grace-bar');
+  if (!bar || !S.data) { if (bar) bar.style.display = 'none'; return; }
+  var qd   = S.data.quarterDates || {};
+  var isGoal = S.data.isGoalCreationGrace;
+  var isComp = S.data.isCompletionGrace;
+  if (isGoal) {
+    bar.className = 'grace-bar grace-goal';
+    bar.style.display = '';
+    bar.innerHTML = '&#9201; <strong>Goal Creation Grace Period</strong> — ends ' + (qd.gracePeriodGoalsEnd || '') +
+      ' &nbsp;·&nbsp; Watch-tier rocketeers (8–9 goals) are visible but not yet mandatory follow-up.';
+  } else if (isComp) {
+    bar.className = 'grace-bar grace-completion';
+    bar.style.display = '';
+    bar.innerHTML = '&#9200; <strong>Completion Grace Period Active</strong> — ends ' + (qd.end || '') +
+      ' &nbsp;·&nbsp; Flag rocketeers who have not moved goals to Completed status.';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function refreshData() {
+  document.getElementById('loading').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  google.script.run.withSuccessHandler(function() { init(); }).withFailureHandler(function() { init(); }).bustCache();
+}
+
+function onQuarterChange(q) {
+  document.getElementById('loading').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      S.data = data;
+      S.filters = { location:[], department:[], jobFamily:[], status:[], supervisor:[] };
+      google.script.run
+        .withSuccessHandler(function(notes) {
+          S.notes = notes || [];
+          buildFilterDropdowns();
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('app').style.display = '';
+          renderTab(S.activeTab);
+        })
+        .withFailureHandler(function() { S.notes = []; renderTab(S.activeTab); })
+        .getHRNotes(data.quarter);
+    })
+    .withFailureHandler(function(err) { showError(err.message); })
+    .getGoalsComplianceData(q);
+}
+
+function populateQuarterSelect() {
+  var sel = document.getElementById('quarter-select');
+  var quarters = (S.data && S.data.quarters) || [S.data.quarter];
+  sel.innerHTML = '';
+  quarters.forEach(function(q) {
+    var opt = document.createElement('option');
+    opt.value = q; opt.textContent = q;
+    if (q === S.data.quarter) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ── FILTERS ──────────────────────────────────────────────────────
+var FILTER_KEYS = ['location','department','jobFamily','status','supervisor'];
+var FILTER_FIELD = { location:'location', department:'department', jobFamily:'jobFamily', status:'complianceStatus', supervisor:'supervisor' };
+var FILTER_LABELS = { location:'Locations', department:'Departments', jobFamily:'Job Families', status:'Statuses', supervisor:'Supervisors' };
+
+function buildFilterDropdowns() {
+  if (!S.data) return;
+  FILTER_KEYS.forEach(function(key) {
+    var field = FILTER_FIELD[key];
+    var vals  = {};
+    S.data.employees.forEach(function(e) { var v = e[field]; if (v) vals[v] = true; });
+    var panel = document.getElementById('drop-' + key);
+    panel.innerHTML = '';
+    Object.keys(vals).sort().forEach(function(v) {
+      var item = document.createElement('div');
+      item.className = 'dd-item';
+      var safeId = 'chk-' + key + '-' + esc(v).replace(/\s+/g,'-');
+      item.innerHTML = '<input type="checkbox" id="' + safeId + '" value="' + esc(v) + '">' +
+                       '<label for="' + safeId + '" style="cursor:pointer;flex:1">' + esc(v) + '</label>';
+      item.querySelector('input').addEventListener('change', function() { applyFilter(key); });
+      panel.appendChild(item);
+    });
+  });
+}
+
+function toggleDrop(key) {
+  var panel   = document.getElementById('drop-' + key);
+  var wasOpen = panel.classList.contains('open');
+  closeAllDropdowns();
+  if (!wasOpen) panel.classList.add('open');
+}
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.dropdown-panel').forEach(function(p) { p.classList.remove('open'); });
+}
+
+function applyFilter(key) {
+  var checked = [];
+  document.querySelectorAll('#drop-' + key + ' input:checked').forEach(function(c) { checked.push(c.value); });
+  S.filters[key] = checked;
+  var el = document.getElementById('chip-' + key + '-txt');
+  el.textContent = checked.length === 0 ? 'All ' + FILTER_LABELS[key] :
+                   checked.length === 1  ? checked[0] :
+                   checked.length + ' ' + FILTER_LABELS[key];
+  document.getElementById('chip-' + key).classList.toggle('active', checked.length > 0);
+  updateFilterNote();
+  renderTab(S.activeTab);
+}
+
+function resetFilters() {
+  FILTER_KEYS.forEach(function(key) {
+    S.filters[key] = [];
+    document.querySelectorAll('#drop-' + key + ' input').forEach(function(c) { c.checked = false; });
+    var el = document.getElementById('chip-' + key + '-txt');
+    el.textContent = 'All ' + FILTER_LABELS[key];
+    document.getElementById('chip-' + key).classList.remove('active');
+  });
+  updateFilterNote();
+  renderTab(S.activeTab);
+}
+
+function updateFilterNote() {
+  var active = FILTER_KEYS.filter(function(k) { return S.filters[k].length > 0; }).length;
+  var el = document.getElementById('filter-count-note');
+  if (active) {
+    el.style.display = '';
+    el.textContent = getFiltered().length + ' of ' + S.data.employees.length + ' rocketeers shown';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function getFiltered() {
+  if (!S.data) return [];
+  return S.data.employees.filter(function(e) {
+    if (S.filters.location.length   && S.filters.location.indexOf(e.location)         === -1) return false;
+    if (S.filters.department.length && S.filters.department.indexOf(e.department)     === -1) return false;
+    if (S.filters.jobFamily.length  && S.filters.jobFamily.indexOf(e.jobFamily)       === -1) return false;
+    if (S.filters.status.length     && S.filters.status.indexOf(e.complianceStatus)   === -1) return false;
+    if (S.filters.supervisor.length && S.filters.supervisor.indexOf(e.supervisor)     === -1) return false;
+    return true;
+  });
+}
+
+// ── TAB SWITCHING ─────────────────────────────────────────────────
+function switchTab(tabId) {
+  S.activeTab = tabId;
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
+  });
+  document.querySelectorAll('.tab-pane').forEach(function(p) {
+    p.classList.toggle('active', p.id === 'pane-' + tabId);
+  });
+  renderTab(tabId);
+}
+
+function renderTab(tabId) {
+  var emps = getFiltered();
+  if      (tabId === 'overview')  renderOverview(emps);
+  else if (tabId === 'trend')     renderEngagement(emps);
+  else if (tabId === 'breakdown') renderBreakdown(emps);
+  else if (tabId === 'atrisk')    renderAtRisk(emps);
+  else if (tabId === 'hrtracker') renderHRTracker();
+}
+
+// ── OVERVIEW ──────────────────────────────────────────────────────
+function renderOverview(emps) {
+  var total    = emps.length;
+  var onTarget = emps.filter(function(e){ return e.complianceStatus === 'On Target'; }).length;
+  var watch    = emps.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
+  var atRisk   = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
+  var rate     = total > 0 ? (onTarget / total * 100).toFixed(1) : '0.0';
+  var avgGoals = total > 0 ? (emps.reduce(function(s,e){ return s + e.totalGoals; },0)/total).toFixed(1) : '0';
+
+  document.getElementById('kpi-overview').innerHTML =
+    kpiCard('Total Rocketeers',   total,          '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
+    kpiCard('Compliance Rate',    rate + '%',     '🎯', '#058CDC', '10+ goals = On Target') +
+    kpiCard('On Target',          onTarget,       '✅', '#00A86B', '10+ goals set this quarter') +
+    kpiCard('Watch (8–9 goals)',  watch,          '⏳', '#F59E0B', 'One or two goals from full compliance') +
+    kpiCard('At Risk (&lt;8)',    atRisk,         '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk') +
+    kpiCard('Avg Goals / Person', avgGoals,       '📊', '#2864E6', 'Average across filtered selection');
+
+  var isGrace      = !!(S.data && S.data.isGoalCreationGrace);
+  var supportCount = isGrace ? (watch + atRisk) : atRisk;
+  document.getElementById('tab-btn-atrisk').textContent = '⚠ At Risk (' + (watch + atRisk) + ')';
+  document.getElementById('atrisk-badge').textContent   = supportCount;
+
+  // Goal Status Distribution
+  var gsd = computeGoalStatus_(emps);
+  buildGoalStatusChart('chart-goal-status', gsd);
+  document.getElementById('goal-status-table').innerHTML = buildGoalStatusTable_(gsd);
+
+  // Compliance donut
+  buildDonut('chart-donut', onTarget, watch, atRisk);
+
+  // HR summary card
+  var qtr     = S.data ? S.data.quarter : '';
+  var qNotes  = S.notes.filter(function(n){ return n.quarter === qtr; });
+  var reviewed = qNotes.filter(function(n){ return n.status === 'Reviewed' || n.status === 'Resolved'; }).length;
+  var pending  = Math.max(0, (watch + atRisk) - qNotes.length);
+  document.getElementById('hr-summary-card').innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:7px;font-size:12px">' +
+    row2('Follow-up notes logged', '<strong>' + qNotes.length + '</strong>') +
+    row2('Reviewed / Resolved',    '<span style="color:var(--success);font-weight:700">' + reviewed + '</span>') +
+    row2('Pending outreach',        '<span style="color:#EF4444;font-weight:700">' + pending + '</span>') +
+    '</div>' +
+    '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open HR Tracker →</button>';
+
+  // At-Risk preview
+  renderAtRiskBody(document.getElementById('atrisk-preview-body'), emps, true);
+}
+
+// ── COMMENTS TREND ────────────────────────────────────────────────
+function renderEngagement(emps) {
+  if (!S.data || !S.data.commentTrend) return;
+  var trend = S.data.commentTrend;
+  var eng   = S.data.engagementData || {};
+
+  // 6 Engagement KPI cards
+  document.getElementById('kpi-trend').innerHTML =
+    kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%',  '🎯', '#058CDC', '≥1 self-comment this quarter') +
+    kpiCard('Active Commenters',   eng.activeCount    || 0,        '✅', '#00A86B', 'self-commented this qtr') +
+    kpiCard('Silent',              eng.silentCount    || 0,        '🔇', '#EF4444', '0 self-comments · has goals') +
+    kpiCard('Below Pace',          eng.belowPaceCount || 0,        '⏳', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
+    kpiCard('Avg Self-Cmts',       eng.avgSelfCmts    || 0,        '💬', '#9B59B6', 'per rocketeer') +
+    kpiCard('Avg Mgr-Cmts',        eng.avgMgrCmts     || 0,        '👔', '#2864E6', 'per team member');
+
+  // Department chip selector + trend chart (unchanged)
+  buildTrendDeptChips_(trend);
+  buildCommentTrendChart('chart-trend', trend, S.trendDepts);
+  document.getElementById('trend-table').innerHTML = buildTrendTable_(trend);
+
+  // New engagement sections
+  renderTeamEngagement_(eng);
+  renderManagerScorecard_(eng);
+  renderEngagerList_(eng);
+}
+
+function renderTeamEngagement_(eng) {
+  var el = document.getElementById('engagement-team');
+  if (!el) return;
+  if (!eng || !eng.teamRates || !eng.teamRates.length) {
+    el.innerHTML = '<div class="empty-state">No department data available.</div>';
+    return;
+  }
+  var html = '<div style="display:flex;flex-direction:column;gap:12px">';
+  eng.teamRates.forEach(function(t) {
+    var color = t.rate >= 75 ? '#00A86B' : t.rate >= 50 ? '#F59E0B' : '#EF4444';
+    var pct   = Math.min(100, t.rate).toFixed(0);
+    html += '<div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">';
+    html += '<span style="font-size:12px;font-weight:700;color:var(--text)">' + esc(t.dept) + '</span>';
+    html += '<span style="font-size:11px;font-weight:700;color:' + color + '">' + t.engaging + '/' + t.total + ' &nbsp;&middot;&nbsp; ' + pct + '%</span>';
+    html += '</div>';
+    html += '<div style="height:8px;background:var(--border);border-radius:4px">';
+    html += '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:4px;transition:width .4s ease"></div>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  html += '<div style="font-size:9px;color:var(--muted);margin-top:12px">&#x1F7E2; &ge;75% engaged &nbsp;&middot;&nbsp; &#x1F7E1; 50&ndash;74% &nbsp;&middot;&nbsp; &#x1F534; &lt;50%</div>';
+  el.innerHTML = html;
+}
+
+function renderManagerScorecard_(eng) {
+  var el = document.getElementById('engagement-managers');
+  if (!el) return;
+  if (!eng || !eng.managerScorecard || !eng.managerScorecard.length) {
+    el.innerHTML = '<div class="empty-state">No manager data available.</div>';
+    return;
+  }
+  function cmtStyle(v) {
+    return v >= 2 ? 'background:#DCFCE7;color:#15803D' : v >= 1 ? 'background:#FEF9C3;color:#854D0E' : 'background:#FEE2E2;color:#B91C1C';
+  }
+  function covStyle(covered, total) {
+    var r = total > 0 ? covered / total : 0;
+    return r >= 0.75 ? 'background:#DCFCE7;color:#15803D' : r >= 0.5 ? 'background:#FEF9C3;color:#854D0E' : 'background:#FEE2E2;color:#B91C1C';
+  }
+  var html = '<div class="tbl-wrap"><table class="data-table" style="font-size:11px"><thead><tr>';
+  html += '<th>Manager</th>';
+  html += '<th style="text-align:center">Avg Cmts</th>';
+  html += '<th style="text-align:center">Coverage</th>';
+  html += '<th style="text-align:center">Team</th>';
+  html += '</tr></thead><tbody>';
+  eng.managerScorecard.forEach(function(m) {
+    html += '<tr>';
+    html += '<td style="font-weight:600;white-space:nowrap">' + esc(m.name);
+    if (m.isSeniorLeader) {
+      html += ' <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle">Senior Leader</span>';
+    }
+    html += '</td>';
+    html += '<td style="text-align:center"><span style="border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700;' + cmtStyle(m.avgCmts) + '">' + m.avgCmts + '</span></td>';
+    html += '<td style="text-align:center"><span style="border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700;' + covStyle(m.covered, m.teamSize) + '">' + m.covered + '/' + m.teamSize + '</span></td>';
+    html += '<td style="text-align:center;color:var(--slate)">' + m.teamSize + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div style="font-size:9px;color:var(--muted);margin-top:8px">&#x1F7E2; &ge;2 avg cmts &nbsp;&middot;&nbsp; &#x1F7E1; 1&ndash;2 &nbsp;&middot;&nbsp; &#x1F534; &lt;1 &nbsp;&middot;&nbsp; Coverage: % of team with &ge;1 manager comment</div>';
+  el.innerHTML = html;
+}
+
+function renderEngagerList_(eng) {
+  var el  = document.getElementById('engagement-list');
+  var sub = document.getElementById('engagement-list-sub');
+  if (!el) return;
+  if (!eng || !eng.engagerList || !eng.engagerList.length) {
+    el.innerHTML = '<div class="empty-state">No engagement data available.</div>';
+    return;
+  }
+  var threshold = eng.paceThreshold || 0;
+  var elapsed   = eng.weeksElapsed  || 0;
+  if (sub) sub.textContent = 'Week ' + elapsed + ' of quarter · pace min = ' + threshold + ' self-comments · Silent → Below Pace → At Pace';
+
+  var noteMap = buildNoteMap_();
+
+  var html = '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
+  html += '<th>Rocketeer</th><th>Supervisor</th><th>Dept</th>';
+  html += '<th style="text-align:center">Goals</th>';
+  html += '<th style="text-align:center;color:#9B59B6">Self-Cmts</th>';
+  html += '<th style="text-align:center;color:#2864E6">Mgr-Cmts</th>';
+  html += '<th style="text-align:center">Pace</th>';
+  html += '<th>HR Review</th>';
+  html += '</tr></thead><tbody>';
+
+  eng.engagerList.forEach(function(e) {
+    var rowBg    = e.paceStatus === 'Silent' ? 'background:#FFF5F5' : e.paceStatus === 'Below Pace' ? 'background:#FFFBEB' : '';
+    var badgeCss = e.paceStatus === 'Silent' ? 'tier-nogoals' : e.paceStatus === 'Below Pace' ? 'tier-watch' : 'tier-ontarget';
+    var selfColor = e.selfComments === 0 ? '#B91C1C' : e.selfComments < threshold ? '#854D0E' : '#15803D';
+    var note     = noteMap[e.normName];
+    var reviewCell;
+    if (e.paceStatus === 'At Pace') {
+      reviewCell = '<span style="color:var(--muted)">&mdash;</span>';
+    } else if (note) {
+      reviewCell = '<div class="review-done"><span class="review-check">&#10003;</span>' +
+        '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/, '')) + '</span>' +
+        '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button></div>';
+    } else {
+      reviewCell = '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>';
+    }
+    html += '<tr style="' + rowBg + '">';
+    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor || '—') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department || '—') + '</td>';
+    html += '<td style="text-align:center;font-weight:700">' + e.totalGoals + '</td>';
+    html += '<td style="text-align:center;font-weight:700;color:' + selfColor + '">' + e.selfComments + '</td>';
+    html += '<td style="text-align:center;color:var(--slate)">' + e.managerComments + '</td>';
+    html += '<td style="text-align:center"><span class="' + badgeCss + '">' + esc(e.paceStatus) + '</span></td>';
+    html += '<td>' + reviewCell + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function exportEngagementCSV_() {
+  var eng = S.data && S.data.engagementData;
+  if (!eng || !eng.engagerList) return;
+  var rows = [['Rocketeer','Supervisor','Department','Goals','Self-Comments','Mgr-Comments','Pace Status','Compliance Status']];
+  eng.engagerList.forEach(function(e) {
+    rows.push([e.name, e.supervisor, e.department, e.totalGoals, e.selfComments, e.managerComments, e.paceStatus, e.complianceStatus]);
+  });
+  var csv = rows.map(function(r) {
+    return r.map(function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
+  a.download = 'engagement-' + ((S.data && S.data.quarter) || 'export') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function buildTrendDeptChips_(trend) {
+  var depts  = Object.keys(trend.byDept || {}).sort();
+  var el     = document.getElementById('trend-dept-selector');
+  el.innerHTML = '';
+  depts.forEach(function(dept, i) {
+    var color   = DEPT_COLORS[i % DEPT_COLORS.length];
+    var isOn    = S.trendDepts.indexOf(dept) !== -1;
+    var chip    = document.createElement('span');
+    chip.className = 'trend-dept-chip';
+    chip.textContent = dept;
+    chip.style.background   = isOn ? color : 'transparent';
+    chip.style.color        = isOn ? '#fff'  : color;
+    chip.style.borderColor  = color;
+    chip.setAttribute('data-dept', dept);
+    chip.addEventListener('click', function() {
+      var idx = S.trendDepts.indexOf(dept);
+      if (idx === -1) S.trendDepts.push(dept); else S.trendDepts.splice(idx, 1);
+      renderEngagement(getFiltered());
+    });
+    el.appendChild(chip);
+  });
+}
+
+function buildTrendTable_(trend) {
+  if (!trend.weeks || !trend.weeks.length) return '<div class="empty-state">No weekly data available.</div>';
+  var depts   = Object.keys(trend.byDept || {}).sort().slice(0, 8);
+  var orgUniq = trend.orgUnique || [];
+
+  var html = '<table class="data-table"><thead><tr>';
+  html += '<th>ISO Week</th><th>Total Cmts</th><th title="Unique rocketeers who self-commented that week">Unique People</th>';
+  depts.forEach(function(d) { html += '<th>' + esc(d) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  trend.weeks.forEach(function(wk, i) {
+    var u = orgUniq[i] || 0;
+    html += '<tr><td style="font-weight:700">' + esc(wk) + '</td>';
+    html += '<td style="font-weight:700;color:var(--orbe)">' + (trend.orgTotal[i]||0) + '</td>';
+    html += '<td style="font-weight:700;color:var(--success)">' + u + '</td>';
+    depts.forEach(function(d) {
+      html += '<td style="color:var(--slate)">' + (trend.byDept[d] ? trend.byDept[d][i]||0 : 0) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+// ── BREAKDOWN ─────────────────────────────────────────────────────
+function renderBreakdown(emps) {
+  var deptGroups = aggregateGroups_(emps, 'department');
+  var locGroups  = aggregateGroups_(emps, 'location');
+  var jfGroups   = aggregateGroups_(emps, 'jobFamily');
+
+  buildBarChart('chart-location', locGroups, '');
+
+  var tables = document.getElementById('breakdown-tables');
+  tables.innerHTML =
+    '<div class="section-card"><div class="section-head"><h2>By Department</h2>' +
+    '<button class="btn" onclick="exportPNG(this.closest(\'.section-card\'),\'dept-table.png\')">⬇ PNG</button></div>' +
+    '<div class="section-body tbl-wrap">' + buildSummaryTable(deptGroups, 'Department') + '</div></div>' +
+
+    '<div class="section-card"><div class="section-head"><h2>By Location</h2>' +
+    '<button class="btn" onclick="exportPNG(this.closest(\'.section-card\'),\'loc-table.png\')">⬇ PNG</button></div>' +
+    '<div class="section-body tbl-wrap">' + buildSummaryTable(locGroups, 'Location') + '</div></div>' +
+
+    '<div class="section-card"><div class="section-head"><h2>By Job Family</h2>' +
+    '<button class="btn" onclick="exportPNG(this.closest(\'.section-card\'),\'jf-table.png\')">⬇ PNG</button></div>' +
+    '<div class="section-body tbl-wrap">' + buildSummaryTable(jfGroups, 'Job Family') + '</div></div>';
+}
+
+// ── AT RISK ───────────────────────────────────────────────────────
+function renderAtRisk(emps) {
+  var isGrace      = !!(S.data && S.data.isGoalCreationGrace);
+  var watch        = emps.filter(function(e){ return e.complianceStatus === 'Watch'; });
+  var atRisk       = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; });
+  var notEngaging  = emps.filter(function(e){ return e.hasEngagementConcern; });
+  var stuckPlanned = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; });
+
+  var watchNote = isGrace
+    ? 'Grace period active — visible for early coaching'
+    : 'Excluded from "See Who Needs Support" — close to target';
+
+  document.getElementById('kpi-atrisk').innerHTML =
+    kpiCard('Watch (8–9 goals)',   watch.length,        '⏳', '#F59E0B', watchNote) +
+    kpiCard('At Risk (&lt;8)',     atRisk.length,       '🔴', '#EF4444', 'Below compliance threshold — STF &amp; RPI at risk') +
+    kpiCard('Not Engaging',        notEngaging.length,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
+    kpiCard('Stuck in Planned',    stuckPlanned.length, '🔒', '#64748B', 'Goals in Planned status with no comments');
+
+  renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
+}
+
+function renderAtRiskBody(container, emps, compact) {
+  var isGrace  = !!(S.data && S.data.isGoalCreationGrace);
+  var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
+  var noteMap  = buildNoteMap_();
+
+  // ── Compliance tiers ──────────────────────────────────────────────
+  // After goal-creation grace, Watch (8–9) is excluded from "See Who Needs Support"
+  var compTiers = [
+    { label:'No Goals',       context:'Has not set any goals this quarter — highest priority outreach',
+      css:'tier-nogoals', test:function(e){ return e.totalGoals === 0; } },
+    { label:'1–4 Goals',      context:'Very few goals set — at risk of missing STF and RPI scoring',
+      css:'tier-atrisk',  test:function(e){ return e.totalGoals >= 1 && e.totalGoals < 5; } },
+    { label:'5–7 Goals',      context:'Below compliance threshold — needs immediate action',
+      css:'tier-atrisk',  test:function(e){ return e.totalGoals >= 5 && e.totalGoals < 8; } },
+  ];
+  if (isGrace) {
+    compTiers.push({
+      label:'8–9 Goals (Watch)',
+      context:'Grace period active — visible for early coaching; excluded after grace ends',
+      css:'tier-watch', test:function(e){ return e.complianceStatus === 'Watch'; }
+    });
+  }
+
+  var compPool     = emps.filter(function(e){ return e.complianceStatus !== 'On Target'; });
+  var hasCompliance = compTiers.some(function(t){ return compPool.filter(t.test).length > 0; });
+
+  // ── Engagement concerns ───────────────────────────────────────────
+  // Applies to ALL employees regardless of compliance tier
+  var engNotCmt  = emps.filter(function(e){ return e.hasEngagementConcern; });
+  var engStuck   = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; });
+  var hasEngagement = engNotCmt.length > 0 || engStuck.length > 0;
+
+  if (!hasCompliance && !hasEngagement) {
+    container.innerHTML = '<div class="empty-state">🎉 <p>All rocketeers in the current selection are on track — no compliance or engagement concerns.</p></div>';
+    return;
+  }
+
+  var html = '';
+
+  if (hasCompliance) {
+    html += '<div class="section-divider-label">See Who Needs Support' +
+            (isGrace ? '&nbsp;<span style="font-size:9px;background:#FFF7ED;color:#92400E;border-radius:3px;padding:1px 5px;font-weight:700">Goal Creation Grace Active</span>' : '') +
+            '</div>';
+    compTiers.forEach(function(tier) {
+      var rows = compPool.filter(tier.test);
+      if (!rows.length) return;
+      html += renderTierTable_(tier, rows, compact, noteMap, qtrWeeks);
+    });
+  }
+
+  if (hasEngagement) {
+    html += '<div class="section-divider-label" style="margin-top:' + (hasCompliance ? '24px' : '0') + '">Engagement Concerns' +
+            '&nbsp;<span style="font-size:9px;color:var(--slate);font-weight:500;text-transform:none;letter-spacing:0">(applies to all rocketeers, including On Target)</span>' +
+            '</div>';
+    if (engNotCmt.length) {
+      html += renderTierTable_(
+        { label:'Not Commenting', context:'Have goals but zero self-comments this quarter — no engagement signal',
+          css:'tier-atrisk' },
+        engNotCmt, compact, noteMap, qtrWeeks
+      );
+    }
+    if (engStuck.length) {
+      html += renderTierTable_(
+        { label:'Goals Stuck in Planned', context:'One or more goals still in Planned status with no comments at all',
+          css:'tier-watch' },
+        engStuck, compact, noteMap, qtrWeeks
+      );
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function renderTierTable_(tier, rows, compact, noteMap, qtrWeeks) {
+  var html = '<div class="urg-section"><div class="urg-header">';
+  html += '<span class="' + tier.css + '">' + esc(tier.label) + ' (' + rows.length + ')</span>';
+  html += '<span class="urg-context">' + esc(tier.context) + '</span></div>';
+  html += '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
+  html += '<th>Rocketeer</th><th>Supervisor</th><th>Dept</th><th>Location</th>';
+  html += '<th>Goals</th><th>Done</th>';
+  if (!compact) { html += '<th>Cmts/Wks</th><th>RPI</th><th>STF</th>'; }
+  html += '<th>HR Review</th></tr></thead><tbody>';
+
+  rows.sort(function(a,b){ return a.totalGoals - b.totalGoals; }).forEach(function(e) {
+    var note = noteMap[e.normName];
+    var rpiDetail = 'Needs: ' + (e.totalGoals >= 10 ? '' : (e.totalGoals + '/10 goals, ')) +
+                    (e.goalsCompleted >= 8 ? '' : (e.goalsCompleted + '/8 completed, ')) +
+                    (e.commentWeeks >= qtrWeeks ? '' : (e.commentWeeks + '/' + qtrWeeks + ' weekly cmts'));
+    var stfDetail = 'Needs: ' + (e.stfGoalsCompleted >= 8 ? '' : (e.stfGoalsCompleted + '/8 completed, ')) +
+                    (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
+
+    var reviewCell = note
+      ? '<div class="review-done"><span class="review-check">✓</span>' +
+        '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
+        (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
+        '</div>'
+      : (compact ? '—' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
+
+    html += '<tr>';
+    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'—') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'—') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'—') + '</td>';
+    html += '<td style="text-align:center;font-weight:700;color:' + (e.totalGoals===0?'#B91C1C':'var(--text)') + '">' + e.totalGoals + '</td>';
+    html += '<td style="text-align:center;color:var(--success);font-weight:700">' + e.goalsCompleted + '</td>';
+    if (!compact) {
+      html += '<td style="text-align:center;font-size:11px">' + e.commentWeeks + '/' + qtrWeeks + '</td>';
+      html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI ✓':'RPI ✗') + '</span></td>';
+      html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF ✓':'STF ✗') + '</span></td>';
+    }
+    html += '<td>' + reviewCell + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div></div>';
+  return html;
+}
+
+// ── HR TRACKER ────────────────────────────────────────────────────
+function renderHRTracker() {
+  if (!S.data) return;
+  var qtr    = S.data.quarter;
+  var qNotes = S.notes.filter(function(n){ return n.quarter === qtr; });
+  var empMap = {};
+  S.data.employees.forEach(function(e){ empMap[e.normName] = e; });
+
+  var reviewed  = qNotes.filter(function(n){ return n.status === 'Reviewed' || n.status === 'Resolved'; }).length;
+  var followUp  = qNotes.filter(function(n){ return n.status === 'Needs Follow-up'; }).length;
+  var escalated = qNotes.filter(function(n){ return n.status === 'Escalated'; }).length;
+  var improved  = qNotes.filter(function(n){
+    var emp = empMap[n.normName];
+    return emp && n.complianceAtNote && n.complianceAtNote !== emp.complianceStatus &&
+           statusRank_(emp.complianceStatus) > statusRank_(n.complianceAtNote);
+  }).length;
+
+  document.getElementById('kpi-tracker').innerHTML =
+    kpiCard('Notes Logged',           qNotes.length, '📝', '#058CDC', 'HR follow-ups this quarter') +
+    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'Acknowledged and closed') +
+    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'Pending conversations') +
+    kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Status improved since note was saved');
+
+  var filterVal = document.getElementById('tracker-filter').value;
+  var filtered  = qNotes.filter(function(n) {
+    if (filterVal === 'pending')  return n.status === 'Needs Follow-up';
+    if (filterVal === 'reviewed') return n.status === 'Reviewed' || n.status === 'Resolved';
+    if (filterVal === 'escalated') return n.status === 'Escalated';
+    return true;
+  });
+
+  if (!filtered.length) {
+    document.getElementById('tracker-body').innerHTML = '<div class="empty-state">📋 <p>No notes match this filter for ' + esc(qtr) + '.</p></div>';
+    return;
+  }
+
+  var html = '<div style="display:flex;flex-direction:column;gap:10px">';
+  filtered.forEach(function(n) {
+    var emp   = empMap[n.normName];
+    var pill  = pillFor_(n.status);
+    var delta = '';
+    if (emp && n.complianceAtNote && n.complianceAtNote !== emp.complianceStatus) {
+      var rank = statusRank_(emp.complianceStatus) - statusRank_(n.complianceAtNote);
+      delta = rank > 0
+        ? '<span class="delta-up">↑ Improved: ' + esc(n.complianceAtNote) + ' → ' + esc(emp.complianceStatus) + '</span>'
+        : '<span class="delta-down">↓ Declined: ' + esc(n.complianceAtNote) + ' → ' + esc(emp.complianceStatus) + '</span>';
+    } else if (emp && n.complianceAtNote) {
+      delta = '<span class="delta-same">— Same status: ' + esc(emp.complianceStatus) + '</span>';
+    }
+
+    html += '<div class="tracker-card">';
+    html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">';
+    html += '<div>';
+    html += '<div class="tracker-name">' + esc(n.rocketeer) + '</div>';
+    html += '<div class="tracker-meta">';
+    html += (n.supervisor ? '<span>👤 ' + esc(n.supervisor) + '</span>' : '');
+    html += (n.department ? '<span>🏢 ' + esc(n.department) + '</span>' : '');
+    html += (emp ? '<span>Goals now: <strong>' + emp.totalGoals + '</strong> (' + esc(emp.complianceStatus) + ')</span>' : '');
+    html += '</div>';
+    html += (delta ? '<div style="margin-top:4px">' + delta + '</div>' : '');
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' + pill;
+    html += '<button class="btn" style="padding:2px 9px;font-size:9px" onclick="openModal(\'' + esc(n.normName) + '\')">Add note</button>';
+    html += '</div></div>';
+    if (n.note) html += '<div class="tracker-note">' + esc(n.note) + '</div>';
+    html += '<div class="tracker-meta">';
+    html += '<span>By ' + esc(n.reviewedBy.replace(/@.*/,'')) + '</span>';
+    html += '<span>' + esc(n.timestamp.slice(0,10)) + '</span>';
+    html += (n.followUpDate ? '<span>Follow-up: ' + esc(n.followUpDate) + '</span>' : '');
+    html += '</div></div>';
+  });
+  html += '</div>';
+  document.getElementById('tracker-body').innerHTML = html;
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────
+function openModal(normName) {
+  var emp = S.data && S.data.employees.find(function(e){ return e.normName === normName; });
+  if (!emp) return;
+  var existing = buildNoteMap_()[normName];
+  S.reviewTarget = { emp: emp, existing: existing };
+
+  document.getElementById('modal-info').innerHTML =
+    '<strong>' + esc(emp.name) + '</strong><br>' +
+    (emp.supervisor ? '👤 ' + esc(emp.supervisor) + ' &nbsp;' : '') +
+    (emp.department ? '🏢 ' + esc(emp.department) + ' &nbsp;' : '') +
+    '<br><span style="color:' + tierColor_(emp.complianceStatus) + ';font-weight:700">' + esc(emp.complianceStatus) + '</span>' +
+    ' — ' + emp.totalGoals + ' goals · ' + emp.goalsCompleted + ' completed' +
+    '<br><span style="font-size:10px">RPI: ' + (emp.rpiEligible ? '✅ Eligible' : '❌ Not yet eligible') +
+    ' · STF: ' + (emp.stfEligible ? '✅ Eligible' : '❌ Not yet eligible') + '</span>';
+
+  document.getElementById('modal-status').value   = existing ? existing.status : 'Reviewed';
+  document.getElementById('modal-note').value     = existing ? existing.note   : '';
+  document.getElementById('modal-followup').value = existing ? existing.followUpDate : '';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  S.reviewTarget = null;
+}
+
+function saveReview() {
+  if (!S.reviewTarget) return;
+  var emp = S.reviewTarget.emp;
+  var btn = document.getElementById('modal-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  var data = {
+    rocketeer: emp.name, normName: emp.normName, quarter: S.data.quarter,
+    supervisor: emp.supervisor, department: emp.department,
+    note: document.getElementById('modal-note').value.trim(),
+    followUpDate: document.getElementById('modal-followup').value,
+    status: document.getElementById('modal-status').value,
+    complianceStatus: emp.complianceStatus, totalGoals: emp.totalGoals,
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.textContent = 'Save Review';
+      if (!res.ok) { alert('Error: ' + res.error); return; }
+      closeModal();
+      google.script.run
+        .withSuccessHandler(function(notes) {
+          S.notes = notes || [];
+          renderTab(S.activeTab);
+          if (S.activeTab !== 'overview') renderOverview(getFiltered());
+        })
+        .getHRNotes(S.data.quarter);
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.textContent = 'Save Review';
+      alert('Save failed: ' + (err.message || err));
+    })
+    .saveHRNote(data);
+}
+
+// ── CHART BUILDERS ────────────────────────────────────────────────
+function buildGoalStatusChart(canvasId, gsd) {
+  destroyChart(canvasId);
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var total = gsd.total || 1;
+  var items = [
+    { label:'Completed',     count: gsd.completed,    color:'#00A86B' },
+    { label:'In Progress',   count: gsd.inProgress,   color:'#058CDC' },
+    { label:'Planned',       count: gsd.planned,      color:'#94A3B8' },
+    { label:'Not Completed', count: gsd.notCompleted, color:'#EF4444' },
+    { label:'Canceled',      count: gsd.canceled,     color:'#CBD5E1' },
+  ].filter(function(it){ return it.count > 0; });
+
+  // Center-text plugin: shows total goals in the donut hole
+  var centerPlugin = {
+    id: 'gsCenter',
+    afterDraw: function(chart) {
+      var meta = chart.getDatasetMeta(0);
+      if (!meta.data || !meta.data.length) return;
+      var cx = meta.data[0].x, cy = meta.data[0].y;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 22px Roboto Condensed, sans-serif';
+      ctx.fillStyle = '#0F1941';
+      ctx.fillText(total, cx, cy - 9);
+      ctx.font = '9px Roboto, sans-serif';
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillText('total goals', cx, cy + 10);
+      ctx.restore();
+    }
+  };
+
+  S.charts[canvasId] = new Chart(canvas, {
+    type: 'doughnut',
+    plugins: [ChartDataLabels, centerPlugin],
+    data: {
+      labels: items.map(function(it){ return it.label; }),
+      datasets: [{
+        data:            items.map(function(it){ return it.count; }),
+        backgroundColor: items.map(function(it){ return it.color; }),
+        borderWidth: 2, borderColor: '#fff', hoverOffset: 6,
+        datalabels: {
+          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; },
+          formatter: function(v) { return (v/total*100).toFixed(0) + '%'; },
+          color: '#fff', font:{ weight:'bold', size:10 }
+        }
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      cutout: '62%',
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          callbacks:{
+            label: function(ctx){
+              var v = ctx.parsed;
+              return ' ' + ctx.label + ': ' + v + ' (' + (v/total*100).toFixed(1) + '%)';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function buildGoalStatusTable_(gsd) {
+  var total = gsd.total || 1;
+  var rows  = [
+    { label:'Completed',     count:gsd.completed,    ppl:gsd.pplCompleted,    color:'#00A86B' },
+    { label:'In Progress',   count:gsd.inProgress,   ppl:gsd.pplInProgress,   color:'#058CDC' },
+    { label:'Planned',       count:gsd.planned,      ppl:gsd.pplPlanned,      color:'#94A3B8' },
+    { label:'Not Completed', count:gsd.notCompleted, ppl:gsd.pplNotCompleted, color:'#EF4444' },
+    { label:'Canceled',      count:gsd.canceled,     ppl:gsd.pplCanceled,     color:'#CBD5E1' },
+  ].filter(function(r){ return r.count > 0; });
+
+  var html = '<table class="data-table" style="font-size:11px"><thead><tr>' +
+    '<th>Status</th><th style="text-align:center">Goals</th><th style="text-align:center">% of Total</th><th style="text-align:center">People</th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    html += '<tr>';
+    html += '<td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + r.color + ';margin-right:6px;vertical-align:middle"></span>' + esc(r.label) + '</td>';
+    html += '<td style="text-align:center;font-weight:700">' + r.count + '</td>';
+    html += '<td style="text-align:center">' + (r.count/total*100).toFixed(1) + '%</td>';
+    html += '<td style="text-align:center;color:var(--slate)">' + (r.ppl||0) + '</td>';
+    html += '</tr>';
+  });
+  html += '<tr style="border-top:2px solid var(--border)"><td style="font-weight:700">Total</td>';
+  html += '<td style="text-align:center;font-weight:700;color:var(--orbe)">' + total + '</td><td></td><td></td></tr>';
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildDonut(canvasId, onTarget, watch, atRisk) {
+  destroyChart(canvasId);
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  S.charts[canvasId] = new Chart(canvas, {
+    type: 'doughnut',
+    plugins: [ChartDataLabels],
+    data: {
+      labels: ['On Target', 'Watch (8–9)', 'At Risk (<8)'],
+      datasets: [{
+        data: [onTarget, watch, atRisk],
+        backgroundColor: ['#00A86B', '#F59E0B', '#EF4444'],
+        borderWidth: 2, borderColor: '#fff', hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins: {
+        legend:{ position:'bottom', labels:{ font:{size:10}, padding:10 } },
+        datalabels:{
+          display:function(ctx){ return ctx.dataset.data[ctx.dataIndex] > 0; },
+          formatter:function(v, ctx){
+            var tot = ctx.dataset.data.reduce(function(s,n){ return s+n; },0);
+            return tot > 0 ? (v/tot*100).toFixed(0)+'%' : '';
+          },
+          color:'#fff', font:{ weight:'bold', size:11 }
+        }
+      }
+    }
+  });
+}
+
+function buildBarChart(canvasId, groups, title) {
+  destroyChart(canvasId);
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !groups.length) return;
+  var sorted = groups.slice().sort(function(a,b){ return b.complianceRate - a.complianceRate; });
+  S.charts[canvasId] = new Chart(canvas, {
+    type: 'bar',
+    plugins: [ChartDataLabels],
+    data: {
+      labels: sorted.map(function(g){ return g.name; }),
+      datasets: [{
+        label:'On Target',
+        data:  sorted.map(function(g){ return g.complianceRate; }),
+        backgroundColor: sorted.map(function(g){
+          return g.complianceRate >= 80 ? '#00A86B' : g.complianceRate >= 60 ? '#F59E0B' : '#EF4444';
+        }),
+        borderRadius: 4,
+        datalabels:{
+          anchor:'end', align:'top',
+          formatter:function(v, ctx){
+            return v.toFixed(1)+'% ('+(sorted[ctx.dataIndex].onTarget)+'/'+sorted[ctx.dataIndex].total+')';
+          },
+          color:'#1E293B', font:{ weight:'bold', size:10 }
+        }
+      }]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      scales: {
+        y:{ max:115, ticks:{ callback:function(v){ return v<=100?v+'%':''; } }, grid:{ color:'#E2E8F0' } },
+        x:{ ticks:{ font:{size:11}, maxRotation:40 } }
+      },
+      plugins:{ legend:{ display:false } }
+    }
+  });
+}
+
+function buildCommentTrendChart(canvasId, trend, selectedDepts) {
+  destroyChart(canvasId);
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !trend || !trend.weeks.length) return;
+
+  var shortWeeks = trend.weeks.map(function(w){ return w.split('.')[1] || w; });
+
+  // Primary axis (y): total comments; secondary axis (y1): unique people
+  var datasets = [
+    {
+      label:'Total Comments (org)',
+      data: trend.orgTotal,
+      borderColor:'#058CDC',
+      backgroundColor:'rgba(5,140,220,.08)',
+      borderWidth:2.5, tension:.4, fill:true,
+      pointRadius:4, pointHoverRadius:6,
+      yAxisID:'y',
+      datalabels:{ display:false }
+    },
+    {
+      label:'Unique People Engaging',
+      data: trend.orgUnique || [],
+      borderColor:'#00A86B',
+      backgroundColor:'transparent',
+      borderWidth:2, tension:.4, fill:false,
+      borderDash:[5,3],
+      pointRadius:4, pointHoverRadius:6,
+      yAxisID:'y1',
+      datalabels:{ display:false }
+    }
+  ];
+
+  (selectedDepts || []).forEach(function(dept, i) {
+    if (!trend.byDept[dept]) return;
+    var color = DEPT_COLORS[i % DEPT_COLORS.length];
+    datasets.push({
+      label: dept + ' (cmts)',
+      data:  trend.byDept[dept],
+      borderColor: color,
+      backgroundColor:'transparent',
+      borderWidth:1.5, tension:.4, fill:false,
+      pointRadius:3,
+      yAxisID:'y',
+      datalabels:{ display:false }
+    });
+    if (trend.byDeptUnique && trend.byDeptUnique[dept]) {
+      datasets.push({
+        label: dept + ' (people)',
+        data:  trend.byDeptUnique[dept],
+        borderColor: color,
+        backgroundColor:'transparent',
+        borderWidth:1, tension:.4, fill:false,
+        borderDash:[3,3],
+        pointRadius:2,
+        yAxisID:'y1',
+        datalabels:{ display:false }
+      });
+    }
+  });
+
+  S.charts[canvasId] = new Chart(canvas, {
+    type:'line',
+    plugins:[ChartDataLabels],
+    data:{ labels:shortWeeks, datasets:datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        y:  { position:'left',  title:{ display:true, text:'Comments',      font:{size:11} }, grid:{ color:'#E2E8F0' }, ticks:{ font:{size:11} } },
+        y1: { position:'right', title:{ display:true, text:'Unique People', font:{size:11} }, grid:{ drawOnChartArea:false }, ticks:{ font:{size:11} } }
+      },
+      plugins:{
+        legend:{ position:'top', labels:{ font:{size:11}, padding:12 } },
+        tooltip:{
+          callbacks:{
+            title:function(ctx){ return 'Week ' + trend.weeks[ctx[0].dataIndex]; },
+            afterBody:function(ctx){
+              var i = ctx[0].dataIndex;
+              var u = (trend.orgUnique || [])[i] || 0;
+              return ['Unique engaging: ' + u + ' people'];
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function destroyChart(id) {
+  if (S.charts[id]) { try { S.charts[id].destroy(); } catch(e){} delete S.charts[id]; }
+}
+
+// ── SHARED HELPERS ─────────────────────────────────────────────────
+function computeGoalStatus_(emps) {
+  var gsd = { completed:0, inProgress:0, planned:0, canceled:0, notCompleted:0, total:0,
+              pplCompleted:0, pplInProgress:0, pplPlanned:0, pplCanceled:0, pplNotCompleted:0 };
+  emps.forEach(function(e) {
+    gsd.total        += e.totalGoals;
+    gsd.completed    += e.goalsCompleted;    if (e.goalsCompleted    > 0) gsd.pplCompleted++;
+    gsd.inProgress   += e.goalsInProgress;   if (e.goalsInProgress   > 0) gsd.pplInProgress++;
+    gsd.planned      += e.goalsPlanned;      if (e.goalsPlanned      > 0) gsd.pplPlanned++;
+    gsd.canceled     += e.goalsCanceled;     if (e.goalsCanceled     > 0) gsd.pplCanceled++;
+    gsd.notCompleted += e.goalsNotCompleted; if (e.goalsNotCompleted > 0) gsd.pplNotCompleted++;
+  });
+  return gsd;
+}
+
+function aggregateGroups_(emps, field) {
+  var m = {};
+  emps.forEach(function(e) {
+    var k = e[field] || 'Unknown';
+    if (!m[k]) m[k] = { name:k, total:0, onTarget:0, watch:0, atRisk:0, totalGoals:0, complianceRate:0 };
+    m[k].total++;
+    m[k].totalGoals += e.totalGoals;
+    if      (e.complianceStatus === 'On Target') m[k].onTarget++;
+    else if (e.complianceStatus === 'Watch')     m[k].watch++;
+    else                                          m[k].atRisk++;
+  });
+  return Object.values(m).map(function(g) {
+    g.complianceRate = g.total > 0 ? +(g.onTarget / g.total * 100).toFixed(1) : 0;
+    g.avgGoals       = g.total > 0 ? +(g.totalGoals / g.total).toFixed(1)     : 0;
+    return g;
+  }).sort(function(a,b){ return b.complianceRate - a.complianceRate; });
+}
+
+function buildSummaryTable(groups, colName) {
+  var html = '<table class="data-table"><thead><tr>';
+  html += '<th>' + esc(colName) + '</th><th style="text-align:center">Total</th>';
+  html += '<th style="text-align:center">On Target</th><th style="text-align:center">Watch</th>';
+  html += '<th style="text-align:center">At Risk</th><th>Rate</th><th style="text-align:center">Avg Goals</th>';
+  html += '</tr></thead><tbody>';
+  groups.forEach(function(g) {
+    var cls = g.complianceRate >= 80 ? 'rate-high' : g.complianceRate >= 60 ? 'rate-mid' : 'rate-low';
+    html += '<tr>';
+    html += '<td style="font-weight:600">' + esc(g.name) + '</td>';
+    html += '<td style="text-align:center">' + g.total + '</td>';
+    html += '<td style="text-align:center;color:#00A86B;font-weight:700">' + g.onTarget + '</td>';
+    html += '<td style="text-align:center;color:#F59E0B;font-weight:700">' + (g.watch||0) + '</td>';
+    html += '<td style="text-align:center;color:#EF4444;font-weight:700">' + (g.atRisk||0) + '</td>';
+    html += '<td><span class="rate-chip ' + cls + '">' + g.complianceRate.toFixed(1) + '%</span></td>';
+    html += '<td style="text-align:center">' + g.avgGoals + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildNoteMap_() {
+  var m = {};
+  S.notes.forEach(function(n) {
+    if (!m[n.normName] || n.timestamp > m[n.normName].timestamp) m[n.normName] = n;
+  });
+  return m;
+}
+
+function kpiCard(label, value, icon, color, note) {
+  return '<div class="kpi-card">' +
+    '<div class="kpi-card-body">' +
+    '<p>' + label + '</p>' +
+    '<div class="kpi-value" style="color:' + color + '">' + esc(String(value)) + '</div>' +
+    '<p class="kpi-note">' + note + '</p></div>' +
+    '<div class="kpi-icon" style="background:' + color + '22">' + icon + '</div></div>';
+}
+
+function row2(label, valueHtml) {
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">' +
+    '<span style="color:var(--slate)">' + esc(label) + '</span><span>' + valueHtml + '</span></div>';
+}
+
+function tierColor_(s) {
+  return s === 'On Target' ? '#00A86B' : s === 'Watch' ? '#F59E0B' : '#EF4444';
+}
+
+function statusRank_(s) {
+  return s === 'On Target' ? 2 : s === 'Watch' ? 1 : 0;
+}
+
+function pillFor_(status) {
+  var cls = { 'Reviewed':'pill-reviewed','Needs Follow-up':'pill-followup',
+              'Escalated':'pill-escalated','Resolved':'pill-resolved' }[status] || 'pill-reviewed';
+  return '<span class="status-pill ' + cls + '">' + esc(status) + '</span>';
+}
+
+function toggleSection(id, iconId) {
+  var el   = document.getElementById(id);
+  var icon = iconId ? document.getElementById(iconId) : null;
+  if (!el) return;
+  var open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  if (icon) icon.textContent = open ? '▾' : '▴';
+}
+
+// ── EXPORTS ────────────────────────────────────────────────────────
+function exportPNG(elOrId, filename) {
+  var el = (typeof elOrId === 'string') ? document.getElementById(elOrId) : elOrId;
+  if (!el || typeof html2canvas === 'undefined') return;
+  html2canvas(el, { backgroundColor:'#F8FAFC', scale:2, useCORS:true })
+    .then(function(canvas) {
+      var a = document.createElement('a');
+      a.download = filename || 'compliance.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    });
+}
+
+function exportAllPNG() {
+  exportPNG('pane-' + S.activeTab, S.activeTab + '-' + (S.data ? S.data.quarter : '') + '.png');
+}
+
+function exportAtRiskCSV() {
+  var emps    = getFiltered().filter(function(e){ return e.complianceStatus !== 'On Target'; });
+  var noteMap = buildNoteMap_();
+  var qtrWks  = (S.data && S.data.totalQtrWeeks) || 1;
+  var rows = [['Rocketeer','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
+               'Comment Weeks','Comment Weeks Required','RPI Eligible','STF Eligible','HR Reviewed','Note']];
+  emps.forEach(function(e) {
+    var n = noteMap[e.normName];
+    rows.push([e.name, e.supervisor, e.department, e.location, e.jobFamily, e.totalGoals, e.goalsCompleted,
+               e.complianceStatus, e.commentWeeks, qtrWks, e.rpiEligible?'Yes':'No', e.stfEligible?'Yes':'No',
+               n?'Yes':'No', n?n.note:'']);
+  });
+  downloadCSV(rows, 'at-risk-' + (S.data ? S.data.quarter : '') + '.csv');
+}
+
+function exportTrackerCSV() {
+  var rows = [['Timestamp','Rocketeer','Supervisor','Department','Quarter','ReviewedBy','Status','Note','FollowUpDate','ComplianceAtNote','GoalsAtNote']];
+  S.notes.forEach(function(n) {
+    rows.push([n.timestamp, n.rocketeer, n.supervisor, n.department, n.quarter,
+               n.reviewedBy, n.status, n.note, n.followUpDate, n.complianceAtNote, n.goalsAtNote]);
+  });
+  downloadCSV(rows, 'hr-tracker-' + (S.data ? S.data.quarter : '') + '.csv');
+}
+
+function downloadCSV(rows, filename) {
+  var csv  = rows.map(function(r){ return r.map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+}
+
+// ── UTILITIES ──────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function getISOWeekLabel() {
+  var d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 4 - (d.getDay()||7));
+  var y = d.getFullYear(), ys = new Date(y,0,1);
+  var w = Math.ceil((((d-ys)/86400000)+1)/7);
+  return y + '.W' + (w<10?'0':'') + w;
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  document.body.innerHTML += '<div class="error-state" style="max-width:600px;margin:60px auto">❌ <strong>Error:</strong><br>' + esc(msg) + '</div>';
+}
+</script>
+</body>
+</html>
