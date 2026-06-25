@@ -685,8 +685,12 @@ function renderOverview(emps) {
     kpiCard('At Risk (&lt;8)',    atRisk,         '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk') +
     kpiCard('Avg Goals / Person', avgGoals,       '📊', '#2864E6', 'Average across filtered selection');
 
-  var isGrace      = !!(S.data && S.data.isGoalCreationGrace);
-  var supportCount = isGrace ? (watch + atRisk) : atRisk;
+  var isGrace = !!(S.data && S.data.isGoalCreationGrace);
+  // Count unique people in the support pool (same logic as renderAtRiskBody)
+  var supportCount = emps.filter(function(e) {
+    var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
+    return compFail || !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
+  }).length;
   document.getElementById('tab-btn-atrisk').textContent = '⚠ At Risk (' + (watch + atRisk) + ')';
   document.getElementById('atrisk-badge').textContent   = supportCount;
 
@@ -970,85 +974,38 @@ function renderAtRiskBody(container, emps, compact) {
   var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
   var noteMap  = buildNoteMap_();
 
-  // ── Compliance tiers ──────────────────────────────────────────────
-  // After goal-creation grace, Watch (8–9) is excluded from "See Who Needs Support"
-  var compTiers = [
-    { label:'No Goals',       context:'Has not set any goals this quarter — highest priority outreach',
-      css:'tier-nogoals', test:function(e){ return e.totalGoals === 0; } },
-    { label:'1–4 Goals',      context:'Very few goals set — at risk of missing STF and RPI scoring',
-      css:'tier-atrisk',  test:function(e){ return e.totalGoals >= 1 && e.totalGoals < 5; } },
-    { label:'5–7 Goals',      context:'Below compliance threshold — needs immediate action',
-      css:'tier-atrisk',  test:function(e){ return e.totalGoals >= 5 && e.totalGoals < 8; } },
-  ];
-  if (isGrace) {
-    compTiers.push({
-      label:'8–9 Goals (Watch)',
-      context:'Grace period active — visible for early coaching; excluded after grace ends',
-      css:'tier-watch', test:function(e){ return e.complianceStatus === 'Watch'; }
-    });
-  }
+  // Build a deduplicated pool — one entry per person, anyone with ANY concern
+  var seen = {};
+  var pool = [];
+  emps.forEach(function(e) {
+    if (seen[e.normName]) return;
+    var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
+    var engFail  = !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
+    if (compFail || engFail) { seen[e.normName] = true; pool.push(e); }
+  });
 
-  var compPool     = emps.filter(function(e){ return e.complianceStatus !== 'On Target'; });
-  var hasCompliance = compTiers.some(function(t){ return compPool.filter(t.test).length > 0; });
-
-  // ── Engagement concerns ───────────────────────────────────────────
-  // Applies to ALL employees regardless of compliance tier
-  var engNotCmt  = emps.filter(function(e){ return e.hasEngagementConcern; });
-  var engStuck   = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; });
-  var hasEngagement = engNotCmt.length > 0 || engStuck.length > 0;
-
-  if (!hasCompliance && !hasEngagement) {
-    container.innerHTML = '<div class="empty-state">🎉 <p>All rocketeers in the current selection are on track — no compliance or engagement concerns.</p></div>';
+  if (!pool.length) {
+    container.innerHTML = '<div class="empty-state">&#127881; <p>All rocketeers in the current selection are on track — no compliance or engagement concerns.</p></div>';
     return;
   }
 
-  var html = '';
+  // Sort: No Goals → 1–4 → 5–7 → Watch → engagement-only, then name
+  pool.sort(function(a, b) {
+    var d = supportPriority_(a, isGrace) - supportPriority_(b, isGrace);
+    return d !== 0 ? d : a.name.localeCompare(b.name);
+  });
 
-  if (hasCompliance) {
-    html += '<div class="section-divider-label">See Who Needs Support' +
-            (isGrace ? '&nbsp;<span style="font-size:9px;background:#FFF7ED;color:#92400E;border-radius:3px;padding:1px 5px;font-weight:700">Goal Creation Grace Active</span>' : '') +
-            '</div>';
-    compTiers.forEach(function(tier) {
-      var rows = compPool.filter(tier.test);
-      if (!rows.length) return;
-      html += renderTierTable_(tier, rows, compact, noteMap, qtrWeeks);
-    });
-  }
+  var html = '<div class="section-divider-label">See Who Needs Support (' + pool.length + ')' +
+    (isGrace ? '&nbsp;<span style="font-size:9px;background:#FFF7ED;color:#92400E;border-radius:3px;padding:1px 5px;font-weight:700">Goal Creation Grace Active</span>' : '') +
+    '</div>';
 
-  if (hasEngagement) {
-    html += '<div class="section-divider-label" style="margin-top:' + (hasCompliance ? '24px' : '0') + '">Engagement Concerns' +
-            '&nbsp;<span style="font-size:9px;color:var(--slate);font-weight:500;text-transform:none;letter-spacing:0">(applies to all rocketeers, including On Target)</span>' +
-            '</div>';
-    if (engNotCmt.length) {
-      html += renderTierTable_(
-        { label:'Not Commenting', context:'Have goals but zero self-comments this quarter — no engagement signal',
-          css:'tier-atrisk' },
-        engNotCmt, compact, noteMap, qtrWeeks
-      );
-    }
-    if (engStuck.length) {
-      html += renderTierTable_(
-        { label:'Goals Stuck in Planned', context:'One or more goals still in Planned status with no comments at all',
-          css:'tier-watch' },
-        engStuck, compact, noteMap, qtrWeeks
-      );
-    }
-  }
-
-  container.innerHTML = html;
-}
-
-function renderTierTable_(tier, rows, compact, noteMap, qtrWeeks) {
-  var html = '<div class="urg-section"><div class="urg-header">';
-  html += '<span class="' + tier.css + '">' + esc(tier.label) + ' (' + rows.length + ')</span>';
-  html += '<span class="urg-context">' + esc(tier.context) + '</span></div>';
   html += '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
   html += '<th>Rocketeer</th><th>Supervisor</th><th>Dept</th><th>Location</th>';
-  html += '<th>Goals</th><th>Done</th>';
-  if (!compact) { html += '<th>Cmts/Wks</th><th>RPI</th><th>STF</th>'; }
-  html += '<th>HR Review</th></tr></thead><tbody>';
+  html += '<th style="text-align:center">Goals</th><th style="text-align:center">Done</th>';
+  if (!compact) { html += '<th style="text-align:center">Cmts/Wks</th><th>RPI</th><th>STF</th>'; }
+  html += '<th>Signals</th><th>HR Review</th></tr></thead><tbody>';
 
-  rows.sort(function(a,b){ return a.totalGoals - b.totalGoals; }).forEach(function(e) {
+  pool.forEach(function(e) {
     var note = noteMap[e.normName];
     var rpiDetail = 'Needs: ' + (e.totalGoals >= 10 ? '' : (e.totalGoals + '/10 goals, ')) +
                     (e.goalsCompleted >= 8 ? '' : (e.goalsCompleted + '/8 completed, ')) +
@@ -1057,30 +1014,57 @@ function renderTierTable_(tier, rows, compact, noteMap, qtrWeeks) {
                     (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
 
     var reviewCell = note
-      ? '<div class="review-done"><span class="review-check">✓</span>' +
+      ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
         '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
         (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
         '</div>'
-      : (compact ? '—' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
+      : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
+
+    // Signal badges — show every concern this person has
+    var signals = '';
+    if (e.totalGoals === 0) {
+      signals += '<span class="tier-nogoals">No Goals</span> ';
+    } else if (e.totalGoals < 5) {
+      signals += '<span class="tier-atrisk">1&ndash;4 Goals</span> ';
+    } else if (e.totalGoals < 8) {
+      signals += '<span class="tier-atrisk">5&ndash;7 Goals</span> ';
+    } else if (isGrace && e.complianceStatus === 'Watch') {
+      signals += '<span class="tier-watch">8&ndash;9 Watch</span> ';
+    }
+    if (e.hasEngagementConcern) {
+      signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F3E8FF;color:#7C3AED;border:1px solid #C4B5FD">Not Commenting</span> ';
+    }
+    if (e.goalsStuckInPlanned > 0) {
+      signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
+    }
 
     html += '<tr>';
     html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'—') + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'—') + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'—') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'&mdash;') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'&mdash;') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'&mdash;') + '</td>';
     html += '<td style="text-align:center;font-weight:700;color:' + (e.totalGoals===0?'#B91C1C':'var(--text)') + '">' + e.totalGoals + '</td>';
     html += '<td style="text-align:center;color:var(--success);font-weight:700">' + e.goalsCompleted + '</td>';
     if (!compact) {
       html += '<td style="text-align:center;font-size:11px">' + e.commentWeeks + '/' + qtrWeeks + '</td>';
-      html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI ✓':'RPI ✗') + '</span></td>';
-      html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF ✓':'STF ✗') + '</span></td>';
+      html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI &#10003;':'RPI &#10007;') + '</span></td>';
+      html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF &#10003;':'STF &#10007;') + '</span></td>';
     }
+    html += '<td style="white-space:nowrap">' + signals.trim() + '</td>';
     html += '<td>' + reviewCell + '</td>';
     html += '</tr>';
   });
 
-  html += '</tbody></table></div></div>';
-  return html;
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+function supportPriority_(e, isGrace) {
+  if (e.totalGoals === 0) return 0;
+  if (e.totalGoals < 5)  return 1;
+  if (e.totalGoals < 8)  return 2;
+  if (isGrace && e.complianceStatus === 'Watch') return 3;
+  return 4; // engagement-only concern
 }
 
 // ── HR TRACKER ────────────────────────────────────────────────────
