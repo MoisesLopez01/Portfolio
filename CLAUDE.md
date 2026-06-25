@@ -66,12 +66,15 @@ Can also be toggled from the 🔒 Access Control page (☰ menu).
 
 ### Role resolution flow (checkDashboardAccess)
 ```
-1. email in admins?          → role: "admin"
-2. openAccess OR in viewers? → role: "viewer"
-3. email in delegates?       → role: "manager" (scoped to delegateScopeName)
-4. else                      → role: "unknown", potential: true
-   (getPSReportData checks if this email has direct reports in the Roster)
+1. email in admins?              → role: "admin"
+2. email in viewers?             → role: "viewer"
+3. email in delegates?           → role: "manager" (scoped to delegateScopeName)
+4. active roster supervisor?     → role: "manager" (scoped to own org tree)
+5. openAccess?                   → role: "viewer"  (fallback — only unidentified users)
+6. else                         → role: "denied"
 ```
+Manager checks (3–4) run **before** the Open Access fallback (5) on purpose: turning
+on Open Access must never silently promote a scoped manager into a full-roster viewer.
 
 ---
 

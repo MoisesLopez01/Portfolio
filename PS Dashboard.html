@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1461,6 +1461,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <!-- Controls + Save PNG: id ends in "ActionBtns" so captureCardPNG hides
              the whole group during capture — the week filter never appears in the PNG. -->
         <div id="rkCardActionBtns" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;flex-shrink:0">
+          <button class="copy-btn" id="rkToggleAllBtn" onclick="toggleAllRocketeers()" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span id="rkToggleAllLabel">Expand All</span>
+          </button>
           <div style="display:flex;align-items:center;gap:8px">
             <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
             <select id="rkWeekSelect" onchange="renderTopRocketeers(getFilteredEmployees())"
@@ -1514,13 +1518,13 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <table class="dr-tbl">
             <thead><tr><th>Metric</th><th>Source</th><th>Cadence</th></tr></thead>
             <tbody>
-              <tr><td>Headcount / Roster</td><td>People &amp; Roster system</td><td>Weekly export</td></tr>
+              <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Weekly export</td></tr>
               <tr><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
               <tr><td>SI Score</td><td>Small Improvements platform</td><td>Quarterly</td></tr>
               <tr><td>Goals Commented</td><td>Goals platform (FY26Q4)</td><td>Weekly export</td></tr>
-              <tr><td>Time planned</td><td>Tempo Planning</td><td>Weekly export</td></tr>
-              <tr><td>Time tracked</td><td>Tempo Timesheets</td><td>Weekly export</td></tr>
-              <tr><td>Kudos given</td><td>Kudos system</td><td>Weekly export</td></tr>
+              <tr><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
+              <tr><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
+              <tr><td>Kudos given</td><td>Netsuite Export</td><td>Weekly export</td></tr>
               <tr><td>PTO</td><td>PTO accumulation tracking</td><td>Weekly export</td></tr>
             </tbody>
           </table>
@@ -2118,7 +2122,7 @@ function loadData(forceRefresh) {
   google.script.run
     .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p); })
     .withFailureHandler(function(e) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataError(e);  })
-    .getPSReportData();
+    .getPSReportData(forceRefresh);
 }
 
 function onDataLoaded(payload) {
@@ -2161,15 +2165,25 @@ function onDataLoaded(payload) {
   var _fn = document.getElementById("dataFreshnessNote");
   if (_fn) {
     var srcAt = DATA.meta && DATA.meta.lastSheetEdit ? DATA.meta.lastSheetEdit : null;
-    if (srcAt) {
-      var _d = new Date(srcAt);
-      var _fmt = _d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-                 " " + _d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-      _fn.textContent = "Source data: " + _fmt;
-      _fn.title = "This timestamp reflects when the source spreadsheet was last updated — it is fixed and does not change when you refresh the dashboard.";
+    var trackedAt = DATA.meta && DATA.meta.trackedTimeLastExport ? DATA.meta.trackedTimeLastExport : null;
+
+    // Two data cadences: Tracked & Planned import automatically every day; Goals,
+    // PTO and Kudos change only when the source spreadsheet is edited. Show both at
+    // a glance, with exact timestamps in the tooltip.
+    var _fmtTs = function(iso) {
+      var d = new Date(iso);
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+             " " + d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    };
+
+    if (trackedAt || srcAt) {
+      var dailyTs = _fmtTs(trackedAt || srcAt);
+      _fn.textContent = "↻ Tracked & Planned: " + dailyTs + " (daily)  ·  Goals · PTO · Kudos: manual";
+      _fn.title = "Tracked & Planned import automatically every day (last: " + dailyTs + ")." +
+                  (srcAt ? "\nGoals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "");
     } else {
-      _fn.textContent = "Source data: pending";
-      _fn.title = "Source spreadsheet timestamp unavailable.";
+      _fn.textContent = "↻ Data freshness: pending";
+      _fn.title = "Source timestamps unavailable.";
     }
     _fn.style.display = "";
   }
@@ -2306,7 +2320,6 @@ function buildFilteredMeta(filtered) {
     currentWeekLabel: cl,
     rcrLastMonth:     m.rcrLastMonth,
     rcrTeamRCR:       rcrAvg,
-    rcrTier:          rcrAvg !== null ? rcrTier(rcrAvg) : "No Data",
     rcrFiltered:      true,
     siTeamAvg:        siAvg,
     siTeamRounded:    siAvg !== null ? Math.round(siAvg) : null,
@@ -2416,7 +2429,7 @@ function buildFilteredSummary(filtered, weeks) {
       quarterly: true,
       cells: weeks.map(function(w) {
         if (rcrAvg === null) return { display: "—", value: null };
-        return { display: rcrAvg.toFixed(2), value: rcrAvg, tier: rcrTierVal };
+        return { display: rcrAvg.toFixed(2), value: rcrAvg };
       })
     },
     {
@@ -2784,27 +2797,15 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var cRcrEmps = DATA.employees.filter(function(e) { return e.isCrewMember && e.rcr && e.rcr.value !== null; });
     if (cRcrEmps.length > 0) {
       var cRcrVal  = Math.round(cRcrEmps.reduce(function(s, e) { return s + e.rcr.value; }, 0) / cRcrEmps.length * 100) / 100;
-      var cRcrTier = !isNaN(cRcrVal) ? rcrTier(cRcrVal) : null;
       var cRcrMon  = DATA.meta.rcrLastMonth || '';
-      facts.push('RCR (crew avg): ' + cRcrVal.toFixed(2) + '×' + (cRcrTier ? ' — ' + cRcrTier : '') + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' · individual average, not SUM(RC)/SUM(TCC)');
-      if (cRcrTier === 'Champion' || cRcrTier === 'Healthy') {
-        highlights.push('Crew avg RCR at ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' — above 2.5× services benchmark');
-      } else if (cRcrTier === 'Watch' || cRcrTier === 'Critical') {
-        notes.push('Crew avg RCR at ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' — below 2.5× services benchmark; individual averages, review each crew member');
-      }
+      facts.push('RCR (crew avg): ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' · individual average, not SUM(RC)/SUM(TCC) · review with manager');
+      notes.push('Crew avg RCR at ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' · represents project mix & billing rates; review trends & context with your manager');
     }
   } else if (DATA.meta.rcrTeamRCR != null) {
     var rcrVal = DATA.meta.rcrTeamRCR;
-    var tier   = DATA.meta.rcrTier;
     var month  = DATA.meta.rcrLastMonth || '';
-    facts.push('RCR: ' + rcrVal.toFixed(2) + '× — ' + (tier || 'N/A') + (month ? ' (' + month + ')' : '') + ' · monthly metric, does not change week-over-week');
-    if (tier === 'Champion' || tier === 'Healthy') {
-      notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' — above 2.5× services benchmark; delivery volumes supporting strong revenue recognition · refreshes monthly');
-    } else if (tier === 'Watch') {
-      notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' — below 2.5× services benchmark; delivery pipeline item for leadership · refreshes monthly');
-    } else if (tier === 'Critical') {
-      notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' — below services benchmark; leadership visibility item on delivery volumes · refreshes monthly');
-    }
+    facts.push('RCR: ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · monthly metric, does not change week-over-week · review with manager');
+    notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · represents project mix & billing rates · review trends & context with your manager · refreshes monthly');
   }
 
   // ── SI (FTE only) ────────────────────────────────────────────────────────
@@ -3183,7 +3184,8 @@ function captureOffscreenCard(paneId, cardId, renderFn) {
     setTimeout(function() {
       captureCardPNG(cardId).then(function(dataUrl) {
         if (!alreadyActive) {
-          pane.setAttribute('style', savedStyle);
+          if (savedStyle) pane.setAttribute('style', savedStyle);
+          else            pane.removeAttribute('style');
           pane.classList.remove('active');
         }
         resolve(dataUrl);
@@ -3194,122 +3196,106 @@ function captureOffscreenCard(paneId, cardId, renderFn) {
 
 function triggerConfluencePublish() {
   var store = window._teamBriefStore;
-  var strip = document.getElementById('tbPublishStrip');
-  var btn   = document.getElementById('tbPublishBtn');
-  if (!store || !strip || !btn) return;
+  if (!store) return;
 
-  // Use the current week as the post title (W24 now), while the brief
-  // content comes from the last closed week's analysis (W23).
+  // Always look up elements fresh — the brief is re-rendered on each tab visit, so a
+  // captured reference becomes stale if the user navigates away mid-publish.
+  function getBtn()   { return document.getElementById('tbPublishBtn'); }
+  function getStrip() { return document.getElementById('tbPublishStrip'); }
+
+  var btn = getBtn();
+  if (!btn) return;
+
+  // weekLabel = current ISO week (post title: “This Week: YYYY.Www”).
   var weekLabel = (DATA && DATA.meta && DATA.meta.currentWeekLabel) || store.weekLabel || '';
-  var pageTitle = 'Contribution — Executive Brief ' + weekLabel;
+  var pageTitle = 'This Week: ' + weekLabel;
 
   function setStrip(cls, html) {
-    strip.className = 'team-brief-publish-strip ' + cls;
-    strip.innerHTML = html;
-    strip.style.display = 'flex';
+    var el = getStrip();
+    if (!el) return;
+    el.className = 'team-brief-publish-strip ' + cls;
+    el.innerHTML = html;
+    el.style.display = 'flex';
   }
+
+  function enableBtn() {
+    var b = getBtn();
+    if (b) b.disabled = false;
+  }
+
   function reset() {
-    strip.className = 'team-brief-publish-strip';
-    strip.innerHTML = '';
-    strip.style.display = 'none';
-    btn.disabled = false;
+    var el = getStrip();
+    if (el) { el.className = 'team-brief-publish-strip'; el.innerHTML = ''; el.style.display = 'none'; }
+    enableBtn();
   }
 
-  // ── Show confirmation strip ──────────────────────────────
-  btn.disabled = true;
-  setStrip('confirm',
-    '<span>Publish “' + pageTitle + '” to Confluence?</span>' +
-    '<button class="ps-btn" id="tbPublishConfirm">Confirm</button>' +
-    '<button class="ps-btn" id="tbPublishCancel">Cancel</button>'
-  );
-
-  function doPublish(existingPageId) {
-    setStrip('busy', '⏳ Capturing images and publishing…');
+  function doPublish() {
+    setStrip('busy', '⏳ Publishing to Confluence…');
 
     if (typeof google === 'undefined' || !google.script || !google.script.run) {
       setStrip('error', '❌ Publish is only available in the published Google Apps Script web app.');
-      btn.disabled = false;
+      enableBtn();
       return;
     }
 
+    // Prevents a late GAS response from overwriting the timeout error strip.
+    var done = false;
+
     var timeout = setTimeout(function() {
-      setStrip('error', '❌ Request timed out (60s). Check Script Properties and try again.');
-      btn.disabled = false;
+      done = true;
+      setStrip('error', '❌ Request timed out (60 s). Check Script Properties and try again.');
+      enableBtn();
     }, 60000);
 
-    // Render and capture both cards regardless of the active tab. Each renders its
-    // tab's pane offscreen, so the user stays on the brief and the strip is preserved.
-    setStrip('busy', '⏳ Work in progress — rendering dashboard images…');
+    var payload = {
+      weekLabel:  weekLabel,
+      facts:      store.facts      || [],
+      highlights: store.highlights || [],
+      notes:      store.notes      || [],
+      concerns:   store.concerns   || [],
+    };
 
-    var filteredSummary = isFiltered()
-      ? buildFilteredSummary(getFilteredEmployees(), DATA.weeks)
-      : DATA.teamSummary;
-
-    captureOffscreenCard('tabOverview', 'summarySectionCard', function() {
-      renderTeamTable(filteredSummary);
-    }).then(function(pulse) {
-      return captureOffscreenCard('tabTrends', 'goalsStandingCard', function() {
-        renderTrendsTab();
-      }).then(function(goals) { return [pulse, goals]; });
-    }).then(function(images) {
-      setStrip('busy', '⏳ Publishing to Confluence…');
-      var payload = {
-        weekLabel:      weekLabel,
-        facts:          store.facts      || [],
-        highlights:     store.highlights || [],
-        notes:          store.notes      || [],
-        concerns:       store.concerns   || [],
-        narrative:      store.narrative  || null,
-        pulseB64:       images[0],
-        goalsB64:       images[1],
-        existingPageId: existingPageId || null,
-      };
-
-      google.script.run
-        .withSuccessHandler(function(result) {
-          clearTimeout(timeout);
-          if (!result || !result.ok) {
-            if (result && result.duplicate) {
-              var dupMsg = result.legacyTitle
-                ? '⚠ Found older page “' + weekLabel + ' Contribution Satellites”. Overwrite with new format?'
-                : '⚠ “' + pageTitle + '” already exists in Confluence.';
-              setStrip('warn',
-                '<span>' + dupMsg + '</span>' +
-                (result.url ? '<a class="ps-btn" href="' + result.url + '" target="_blank">View</a>' : '') +
-                '<button class="ps-btn" id="tbPublishOverwrite">Overwrite</button>' +
-                '<button class="ps-btn" id="tbPublishCancelWarn">Cancel</button>'
-              );
-              var owBtn = document.getElementById('tbPublishOverwrite');
-              var cwBtn = document.getElementById('tbPublishCancelWarn');
-              if (owBtn) owBtn.onclick = function() { doPublish(result.existingId); };
-              if (cwBtn) cwBtn.onclick = reset;
-              btn.disabled = false;
-            } else {
-              setStrip('error', '❌ ' + ((result && result.error) || 'Unknown error.'));
-              btn.disabled = false;
-            }
-            return;
-          }
-          setStrip('success',
-            '✅ Published — “' + result.title + '”' +
-            (result.url ? ' &nbsp;<a class="ps-btn" href="' + result.url + '" target="_blank">View page</a>' : '')
-          );
-          btn.disabled = false;
-        })
-        .withFailureHandler(function(err) {
-          clearTimeout(timeout);
-          setStrip('error', '❌ GAS call failed — ' + String(err).substring(0, 160));
-          btn.disabled = false;
-        })
-        .publishToConfluence(payload);
-    });
+    google.script.run
+      .withSuccessHandler(function(result) {
+        clearTimeout(timeout);
+        if (done) return;
+        done = true;
+        if (!result || !result.ok) {
+          setStrip('error', '❌ ' + ((result && result.error) || 'Unknown error.'));
+          enableBtn();
+          return;
+        }
+        setStrip('success',
+          '✅ Published — “' + result.title + '”' +
+          (result.url ? ' &nbsp;<a class=”ps-btn” href=”' + result.url + '” target=”_blank”>View page</a>' : '')
+        );
+        enableBtn();
+      })
+      .withFailureHandler(function(err) {
+        clearTimeout(timeout);
+        if (done) return;
+        done = true;
+        setStrip('error', '❌ GAS call failed — ' + String(err).substring(0, 160));
+        enableBtn();
+      })
+      .publishContributionSection(payload);
   }
 
-  // Wire Confirm and Cancel buttons after they are in the DOM
-  var confirmBtn = document.getElementById('tbPublishConfirm');
-  var cancelBtn  = document.getElementById('tbPublishCancel');
-  if (confirmBtn) confirmBtn.onclick = function() { doPublish(null); };
-  if (cancelBtn)  cancelBtn.onclick  = reset;
+  btn.disabled = false;
+  setStrip('confirm',
+    '<span>Update section C of <strong>”' + pageTitle + '”</strong> in Confluence?</span>' +
+    '<button class="ps-btn" id="tbPublishConfirmBtn">Confirm</button>' +
+    '<button class="ps-btn" id="tbPublishCancelBtn">Cancel</button>'
+  );
+  // Use .onclick (not addEventListener) — addEventListener on innerHTML-created elements
+  // silently drops in the GAS iframe sandbox.
+  var strip = getStrip();
+  if (strip) {
+    var confirmEl = strip.querySelector('#tbPublishConfirmBtn');
+    var cancelEl  = strip.querySelector('#tbPublishCancelBtn');
+    if (confirmEl) confirmEl.onclick = doPublish;
+    if (cancelEl)  cancelEl.onclick  = reset;
+  }
 }
 
 var METRIC_COLORS = {
@@ -3453,6 +3439,29 @@ function renderTopRocketeers(filtered) {
   });
   html += '</div>';
   el.innerHTML = html;
+  
+  // Reset expand-all state and show/hide toggle button after a full re-render.
+  _rkAllExpanded = false;
+  var toggleBtn   = document.getElementById("rkToggleAllBtn");
+  var toggleLabel = document.getElementById("rkToggleAllLabel");
+  if (toggleBtn)   toggleBtn.style.display = scored.length > 0 ? "" : "none";
+  if (toggleLabel) toggleLabel.textContent = "Expand All";
+}
+
+// Toggle all rocketeer detail cards open or closed
+var _rkAllExpanded = false;
+function toggleAllRocketeers() {
+  _rkAllExpanded = !_rkAllExpanded;
+  var cards = document.querySelectorAll(".perf-card .perf-metrics");
+  var btns = document.querySelectorAll(".perf-card .perf-toggle-btn");
+  cards.forEach(function(card) {
+    card.style.display = _rkAllExpanded ? "" : "none";
+  });
+  btns.forEach(function(btn) {
+    btn.textContent = _rkAllExpanded ? "Hide Details ↑" : "Details ↓";
+  });
+  var label = document.getElementById("rkToggleAllLabel");
+  if (label) label.textContent = _rkAllExpanded ? "Collapse All" : "Expand All";
 }
 
 // ── TEAM EXECUTIVE BRIEF TAB (admin only) ─────────────────
@@ -7039,7 +7048,7 @@ function renderGoalsStanding(filtered) {
     tone: _gsTone,
     headline: (compPct >= 70 ? "On track. " : "Needs a push. ") + compliant + " / " + total + " (" + compPct + "%) meeting all 3 rules · " + _gsGap + (_gsDir ? " · " + _gsDir : ""),
     action: _gsAction,
-    meta: "Owner: supervisors of flagged rocketeers · for support, not ranking — effort may be undocumented (see correlation card)"
+    
   });
 
   // Audit panel — always visible when there are flagged employees

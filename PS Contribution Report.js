@@ -158,6 +158,11 @@ function readWeightSettings_() {
 // PS Settings sheet, creating the sheet if it does not already exist.
 function saveWeightSettings(weightsObj) {
   try {
+    // Server-side authorization — hiding the UI button is not enough; this
+    // function is callable directly via google.script.run by anyone with the link.
+    const access = checkDashboardAccess();
+    if (!access.allowed || access.role !== "admin") return { ok: false, error: "Admin access required" };
+
     const valid = ["goals","tracked","planned","rcr","kudos","si","pto"];
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sh = ss.getSheetByName(SETTINGS_SHEET_NAME_);
@@ -1076,7 +1081,7 @@ function readRCR_PS_(roster, teamSubset) {
       if (empId) normToEmpId.set(norm, empId);
     }
     const val = parseFloat(row[rcrMonthCol]);
-    if (!isNaN(val)) byEmployee[norm] = { value: val, tier: rcrTier_PS_(val) };
+    if (!isNaN(val)) byEmployee[norm] = { value: val };
   });
 
   Logger.log(`3. RCR: "${lastMonthName}", ${Object.keys(byEmployee).length} PS employees matched, ${normToEmpId.size} Employee IDs harvested`);
@@ -1161,11 +1166,11 @@ function readRCR_PS_(roster, teamSubset) {
     const monthAvg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100;
     const isLast   = mi === lastMonthPos;
     const rcr      = isLast && teamRCR !== null ? teamRCR : monthAvg;
-    rcrHistory.push({ month: monthName, rcr, tier: rcrTier_PS_(rcr), exact: isLast && sumTCC > 0 && sumRC > 0 });
+    rcrHistory.push({ month: monthName, rcr, exact: isLast && sumTCC > 0 && sumRC > 0 });
   }
 
   Logger.log(`RCR final: teamRCR=${teamRCR}, employees with RCR=${Object.keys(byEmployee).length}, history months=${rcrHistory.length}, byEmployee keys=${Object.keys(rcrByEmployee).length}`);
-  return { teamRCR, lastMonth: lastMonthName, tier: rcrTier_PS_(teamRCR), byEmployee, rcrHistory, rcrByEmployee };
+  return { teamRCR, lastMonth: lastMonthName, byEmployee, rcrHistory, rcrByEmployee };
 }
 
 // Resolves a roster norm-name from a row in the SI sheet.
@@ -2415,7 +2420,7 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
   return out;
 }
 
-function getPSReportData() {
+function getPSReportData(bustCache) {
   try {
     const access = checkDashboardAccess();
 
@@ -2429,9 +2434,13 @@ function getPSReportData() {
     const _cacheKey = (access.role === "admin" || access.role === "viewer")
       ? "ps_v" + _cacheVer + "_admin"
       : "ps_v" + _cacheVer + "_" + access.email;
-    const _hit = _sCache.get(_cacheKey);
-    if (_hit) {
-      try { return JSON.parse(_hit); } catch(ce) { /* corrupt entry — fall through to live read */ }
+    
+    // Skip cache if bustCache=true (refresh button clicked)
+    if (!bustCache) {
+      const _hit = _sCache.get(_cacheKey);
+      if (_hit) {
+        try { return JSON.parse(_hit); } catch(ce) { /* corrupt entry — fall through to live read */ }
+      }
     }
 
     const weights = readWeightSettings_();
@@ -2682,6 +2691,25 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
 // ============================================================
 function callGeminiNarrative(prompt) {
   try {
+    // Server-side authorization — this endpoint is callable directly via
+    // google.script.run by anyone who can load the dashboard. Reject denied users
+    // so a broad/open link can't drive the Gemini quota with arbitrary prompts.
+    const access = checkDashboardAccess();
+    if (!access.allowed) return { ok: false, error: 'Unauthorized.' };
+
+    // Lightweight per-user rate limit: cap calls per rolling window to contain
+    // cost/abuse if the link is shared widely. Keyed by email (or "anon" when the
+    // session yields no email, e.g. Open Access cross-domain visitors).
+    const GEM_RL_MAX    = 15;   // calls
+    const GEM_RL_WINDOW = 60;   // seconds
+    const rlCache = CacheService.getScriptCache();
+    const rlKey   = 'gem_rl_' + (access.email || 'anon');
+    const rlCount = parseInt(rlCache.get(rlKey) || '0', 10);
+    if (rlCount >= GEM_RL_MAX) {
+      return { ok: false, error: 'Rate limit reached — please wait a minute and try again.' };
+    }
+    rlCache.put(rlKey, String(rlCount + 1), GEM_RL_WINDOW);
+
     const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!apiKey) return { ok: false, error: 'GEMINI_API_KEY not set in Script Properties.' };
 
