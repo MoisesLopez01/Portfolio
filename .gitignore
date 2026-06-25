@@ -1,0 +1,7 @@
+# Node tooling (not part of the Apps Script project)
+node_modules/
+package-lock.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
