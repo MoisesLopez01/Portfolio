@@ -24,7 +24,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v6_',  // bumped: normName diacritics, single roster read, week arithmetic, mgr scorecard guard
+  CACHE_VER:           'gd_v7_',  // bumped: fix Employee Status detection + blocklist exclusion
   DEBUG:               false,
 };
 
@@ -543,24 +543,26 @@ function getFullRosterMap_() {
     var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
     if (!rows.length) return map;
 
-    // Detect status / termination columns (same logic as getActiveRosterSet_)
+    // Detect status / termination columns
     var keys = Object.keys(rows[0] || {});
     var statusKey = null, termKey = null;
     keys.forEach(function(k) {
       var lower = k.toLowerCase().replace(/[\s._-]/g, '');
-      if (!statusKey && /^(employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
-      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))        termKey   = k;
+      if (!statusKey && /^(employeestatus|employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
+      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                       termKey   = k;
     });
 
+    var INACTIVE_STATUSES = ['terminated', 'terminated - mobility relocation', 'job offer accepted'];
+
     rows.forEach(function(row) {
-      var name = row['Rocketeer'] || row['Name'] || row['Employee Name'] || row['Full Name'] || '';
+      var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
       if (!name) return;
       var norm = normName_(String(name));
 
       var isActive = true;
       if (statusKey) {
         var s = String(row[statusKey] || '').toLowerCase().trim();
-        if (s && s !== 'active' && s !== 'yes' && s !== '1') isActive = false;
+        if (INACTIVE_STATUSES.indexOf(s) !== -1) isActive = false;
       }
       if (termKey && row[termKey]) isActive = false;
       if (!isActive) return;
@@ -599,12 +601,14 @@ function getActiveRosterSet_() {
     var termKey   = null;
     keys.forEach(function(k) {
       var lower = k.toLowerCase().replace(/[\s._-]/g, '');
-      if (!statusKey && /^(employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
-      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))        termKey   = k;
+      if (!statusKey && /^(employeestatus|employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
+      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                       termKey   = k;
     });
 
+    var INACTIVE_STATUSES = ['terminated', 'terminated - mobility relocation', 'job offer accepted'];
+
     rows.forEach(function(row) {
-      var name = row['Rocketeer'] || row['Name'] || row['Employee Name'] || row['Full Name'] || '';
+      var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
       if (!name) return;
       var norm = normName_(String(name));
 
@@ -612,8 +616,7 @@ function getActiveRosterSet_() {
 
       if (statusKey) {
         var s = String(row[statusKey] || '').toLowerCase().trim();
-        // Accept 'active', '', 'yes', '1' as active; anything else (terminated, inactive) = not active
-        if (s && s !== 'active' && s !== 'yes' && s !== '1') isActive = false;
+        if (INACTIVE_STATUSES.indexOf(s) !== -1) isActive = false;
       }
 
       if (termKey && row[termKey]) {
