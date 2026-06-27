@@ -147,6 +147,16 @@ svg .axis{stroke:var(--border)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
 .sigfilter{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
+.avail-filters{
+  position:sticky;top:0;z-index:10;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:10px 22px;
+  margin:0 -22px 14px;
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  box-shadow:0 2px 8px rgba(15,25,65,.06);
+}
+.avail-filter-summary{font-size:11px;color:var(--muted);padding:4px 0 0;width:100%}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
@@ -219,14 +229,18 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Team Availability</h2>
         <div class="panel-tools">
-          <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
-          <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
           <div class="chip-toggle" id="availTopN">
             <button data-n="15" class="on">Top 15</button>
             <button data-n="30">Top 30</button>
             <button data-n="999">All</button>
           </div>
         </div>
+      </div>
+      <div class="avail-filters">
+        <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
+        <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
+        <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+        <div class="avail-filter-summary" id="availFilterSummary" style="display:none"></div>
       </div>
       <div id="avail"></div>
     </div>
@@ -305,8 +319,7 @@ var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
-var AVAIL_LOC = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "";
-var AVAIL_BLEND = 0; // 0=All, 1, 2, 3, 4=4+
+var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -506,11 +519,13 @@ function populateAvailFilters(){
     sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
   }
   fill('availLoc',dims.locations,AVAIL_LOC,'All locations');
+  fill('availFam',dims.jobFamilies,AVAIL_FAM,'All job families');
   fill('availMgr',dims.managers,AVAIL_MGR,'All managers');
-  ['availLoc','availMgr'].forEach(function(id){
+  ['availLoc','availFam','availMgr'].forEach(function(id){
     var el=$(id);if(!el)return;
     el.onchange=function(){
       if(id==='availLoc')AVAIL_LOC=this.value;
+      if(id==='availFam')AVAIL_FAM=this.value;
       if(id==='availMgr')AVAIL_MGR=this.value;
       renderAvailability();
     };
@@ -522,6 +537,23 @@ function renderAvailability(){
   var panel=$('availPanel'), container=$('avail');
   if(!DATA||!DATA.personMeta||!Object.keys(DATA.personMeta).length){if(panel)panel.style.display='none';return;}
   if(panel)panel.style.display='';
+
+  var filterParts=[];
+  if(AVAIL_LOC)filterParts.push(esc(AVAIL_LOC));
+  if(AVAIL_FAM)filterParts.push(esc(AVAIL_FAM));
+  if(AVAIL_MGR)filterParts.push(esc(AVAIL_MGR));
+  if(AVAIL_CAT){var catLabels={'high':'≥90%','mid':'60–90%','low':'<60%','over':'over-tracked','future-plan':'future: planned','noplan':'future: no plan','pto':'on leave'};filterParts.push(catLabels[AVAIL_CAT]||AVAIL_CAT);}
+  if(AVAIL_BLEND>0)filterParts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));
+  var sumEl=$('availFilterSummary');
+  if(sumEl){
+    if(filterParts.length){
+      sumEl.style.display='';
+      sumEl.innerHTML='Filtered: '+filterParts.join(' · ')
+        +' <button onclick="clearAvailFilters()" style="margin-left:8px;font-size:11px;color:var(--orbe);background:none;border:none;cursor:pointer;padding:0">Clear all</button>';
+    } else {
+      sumEl.style.display='none';
+    }
+  }
 
   var tgt=DATA.planTarget||0.9;
   var perPersonCap=DATA.baseCapacity>0&&DATA.headcount>0?(DATA.baseCapacity/DATA.headcount):40;
@@ -560,11 +592,12 @@ function renderAvailability(){
     return n;
   }
 
-  // Filter: location, manager, category
+  // Filter: location, job family, manager, category
   var people=Object.keys(DATA.personMeta).filter(function(np){
     var m=DATA.personMeta[np];
     if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
+    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
     if(AVAIL_CAT){
       var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{},DATA.personWeekPTO[np]||{});
       if(!cats[AVAIL_CAT])return false;
@@ -779,6 +812,12 @@ function renderAvailability(){
 
 function toggleAvailDrill(np){
   AVAIL_OPEN = AVAIL_OPEN===np ? null : np;
+  renderAvailability();
+}
+
+function clearAvailFilters(){
+  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CAT='';AVAIL_BLEND=0;
+  populateAvailFilters();
   renderAvailability();
 }
 
