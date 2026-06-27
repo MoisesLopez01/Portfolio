@@ -35,6 +35,9 @@ var CONFIG = {
   FRAG_MIN:            4,       // people on ≥ FRAG_MIN distinct projects are "fragmented"
   TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
   MOVERS_N:            5,       // # of risers and # of fallers in the Risers & Fallers panel
+  TRACKED_SHEET_NAME:   "Tempo Tracked Time",
+  DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
+  SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
 };
 
 // ── ENTRY POINT ──────────────────────────────────────────────
@@ -145,7 +148,41 @@ function getDemandData() {
     var baselineIso = priorWeekIso_(weeks[0]);    // hidden lookback week → first week gets a WoW prior
     var model = aggregate_(parsed.recs, weeks, baselineIso);
     model.timeOffByWeek = parsed.timeOffByWeek;   // PTO + public holidays (NETSUITE rows), per week
-    attachCapacity_(model);          // net capacity (roster base − time-off, with planned fallback)
+
+    // ── Single roster read — shared by capacity + people signals ─────────────
+    var roster = readRosterFull_();
+    attachCapacity_(model, roster);   // net capacity (roster base − time-off, planned fallback)
+
+    // ── Tracked time + delivery signals ──────────────────────
+    var trackedResult = readTrackedAllocations_();
+    if (!trackedResult.error) {
+      var tm = aggregate_(trackedResult.recs, weeks, baselineIso);
+      model.weekTracked = tm.weekTotal;
+      model.tracked     = tm.cap;
+      model.fidelity    = {};
+      model.isoList.forEach(function(iso) {
+        var pl = model.weekTotal[iso] || 0;
+        model.fidelity[iso] = pl > 0 ? (tm.weekTotal[iso] || 0) / pl : null;
+      });
+      model.personSignals      = buildPersonSignals_(parsed.recs, trackedResult.recs, weeks, roster.profiles);
+      model.rosterDimensions   = roster.dimensions;
+      model.displayNames       = buildDisplayNames_(parsed.recs, trackedResult.recs);
+      model.trackedLastExport  = trackedResult.lastExport || null;
+    } else {
+      model.trackedError = trackedResult.error;
+    }
+
+    // ── Person availability (planned + tracked per person per week) ──
+    var availResult = buildPersonAvailability_(
+      parsed.recs,
+      (!trackedResult.error && trackedResult.recs) ? trackedResult.recs : [],
+      roster.profiles
+    );
+    model.personWeekPlan    = availResult.personWeekPlan;
+    model.personWeekTracked = availResult.personWeekTracked;
+    model.personProjectPlan = availResult.personProjectPlan;
+    model.personMeta        = availResult.personMeta;
+
     return model;
   } catch (e) {
     var err = emptyModel_(weeks);
@@ -164,52 +201,76 @@ function getDemandData() {
  * CONFIG.ANZ_CAPACITY_HRS (38); everyone else CONFIG.WEEKLY_CAPACITY_HRS (40).
  * @returns {{ ok:boolean, headcount:number, baseCapacity:number, anzCount:number, error?:string }}
  */
-function readActiveCapacity_() {
+/**
+ * Reads the Roster sheet once and returns both capacity data (for the capacity
+ * denominator) and people profiles (for signal filters).  Replaces the two
+ * separate readActiveCapacity_() + readRosterProfiles_() calls so the sheet is
+ * only fetched once per getDemandData() execution.
+ *
+ * Capacity counts: active Services FTE/crew with a valid Name, Class = Professional
+ * Services, Dept = Services, no inactive/termination markers.
+ * Profile data: every named row (no class/dept filter) so Roster can match tracked
+ * time from non-Services people as well.
+ */
+function readRosterFull_() {
+  var EMPTY_CAP = { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, capError: null };
+  var EMPTY_PROF = { profiles: {}, dimensions: { locations: [], jobFamilies: [], managers: [] } };
   try {
     var ss = SpreadsheetApp.openById(CONFIG.ROSTER_SS_ID);
     var sh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
-    if (!sh) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster sheet not found." };
-
+    if (!sh) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster sheet not found." });
     var last = sh.getLastRow();
-    if (last < 2) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster is empty." };
+    if (last < 2) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster is empty." });
 
     var raw  = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
     var hdrs = raw[0].map(function (h) { return String(h).trim(); });
-    var idx  = function (name) {
-      return hdrs.findIndex(function (h) { return h.toLowerCase() === name.toLowerCase(); });
-    };
-    var iName   = idx("Name");
-    var iClass  = idx("Class");
-    var iDept   = idx("Department");
-    var iStatus = idx("Employee Status");
-    var iTerm   = idx("Termination/Release Date");
-    var iLoc    = idx("Key Location");
-    if (iName === -1) return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: "Roster 'Name' column not found." };
+    var col  = function (name) { return hdrs.findIndex(function (h) { return h.toLowerCase() === name.toLowerCase(); }); };
 
-    var anzLoc = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
-    var INACTIVE_RE = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
+    var iName   = col("Name"),      iClass  = col("Class"),     iDept   = col("Department");
+    var iStatus = col("Employee Status"), iTerm = col("Termination/Release Date");
+    var iLoc    = col("Key Location"), iFam = col("Job Family");
+    var iMgr    = (col("Supervisor") !== -1) ? col("Supervisor") : col("Manager");
+    if (iName === -1) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster 'Name' column not found." });
+
+    var norm       = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+    var anzLoc     = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
+    var INACTIVE   = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
+    var profiles   = {}, locs = {}, families = {}, managers = {};
     var count = 0, base = 0, anz = 0;
+
     for (var r = 1; r < raw.length; r++) {
       var row  = raw[r];
       var name = String(row[iName] || "").trim();
       if (!name) continue;
+
+      var loc = iLoc !== -1 ? String(row[iLoc] || "").trim() : "";
+      var fam = iFam !== -1 ? String(row[iFam] || "").trim() : "";
+      var mgr = iMgr !== -1 ? String(row[iMgr] || "").trim() : "";
+      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr };
+      if (loc) locs[loc] = true;
+      if (fam) families[fam] = true;
+      if (mgr) managers[mgr] = true;
+
+      // Capacity: only active Services members
       if (iClass !== -1 && String(row[iClass] || "").trim() !== CONFIG.ROSTER_CLASS) continue;
-      if (iDept !== -1) {
-        var dept = String(row[iDept] || "").trim();
-        if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
-      }
+      if (iDept  !== -1) { var dept = String(row[iDept] || "").trim(); if (dept && dept !== CONFIG.ROSTER_DEPT) continue; }
       var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
       var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
-      if (INACTIVE_RE.test(status) || term) continue;     // exclude inactive / terminated
-      var loc = iLoc !== -1 ? String(row[iLoc] || "").trim().toLowerCase() : "";
-      var isANZ = (loc === anzLoc);
+      if (INACTIVE.test(status) || term) continue;
+
+      var isANZ = loc.toLowerCase() === anzLoc;
       base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
       if (isANZ) anz++;
-      count++;                                            // ramp-up + crew included
+      count++;
     }
-    return { ok: true, headcount: count, baseCapacity: base, anzCount: anz };
+
+    return {
+      ok: true, headcount: count, baseCapacity: base, anzCount: anz, capError: null,
+      profiles: profiles,
+      dimensions: { locations: Object.keys(locs).sort(), jobFamilies: Object.keys(families).sort(), managers: Object.keys(managers).sort() }
+    };
   } catch (e) {
-    return { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, error: e.message };
+    return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: e.message });
   }
 }
 
@@ -222,9 +283,9 @@ function readActiveCapacity_() {
  *                  activePeople[iso] × WEEKLY_CAPACITY_HRS; capByWeek[iso] = max(0, gross − timeOff[iso]).
  * @param {Object} model
  */
-function attachCapacity_(model) {
+function attachCapacity_(model, rosterFull) {
   var cap = CONFIG.WEEKLY_CAPACITY_HRS;
-  var hc  = readActiveCapacity_();
+  var hc  = rosterFull || { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0 };
   var timeOff = model.timeOffByWeek || {};
   model.capByWeek = {};
   model.grossCapByWeek = {};
@@ -241,13 +302,136 @@ function attachCapacity_(model) {
     model.capacityMode = "planned";
     model.headcount    = null;
     model.anzCount     = 0;
-    model.capacityNote = hc.error || "Roster unavailable.";
+    model.capacityNote = hc.capError || "Roster unavailable.";
     model.isoList.forEach(function (iso) {
       var gross = (model.activePeople[iso] || 0) * cap;
       model.grossCapByWeek[iso] = gross;
       model.capByWeek[iso] = Math.max(0, gross - (timeOff[iso] || 0));
     });
   }
+}
+
+// ── TRACKED TIME + DELIVERY SIGNALS ──────────────────────
+
+function readTrackedAllocations_() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
+    var sh = ss.getSheetByName(CONFIG.TRACKED_SHEET_NAME);
+    if (!sh) return { recs: [], error: "Sheet '" + CONFIG.TRACKED_SHEET_NAME + "' not found." };
+    var vals = sh.getDataRange().getValues();
+    var parsed = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
+    var lastExport = null;
+    for (var r = vals.length - 1; r >= 0; r--) {
+      if (String(vals[r][0]).trim() === "Last Export:") {
+        lastExport = String(vals[r][1] || "").trim() || null;
+        break;
+      }
+    }
+    return { recs: parsed.recs, lastExport: lastExport };
+  } catch (e) {
+    return { recs: [], error: e.message };
+  }
+}
+
+
+function buildDisplayNames_(recs1, recs2) {
+  var names = {};
+  var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  (recs1 || []).concat(recs2 || []).forEach(function(rec) {
+    var np = norm(rec.person);
+    if (!names[np]) names[np] = rec.person;
+  });
+  return names;
+}
+
+function buildPersonAvailability_(plannedRecs, trackedRecs, rosterProfiles) {
+  var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, displayNames = {};
+
+  // Build display names: first occurrence of a normalised name wins.
+  (plannedRecs || []).concat(trackedRecs || []).forEach(function(rec) {
+    var np = norm(rec.person);
+    if (!displayNames[np]) displayNames[np] = rec.person;
+  });
+
+  (plannedRecs || []).forEach(function(rec) {
+    var np = norm(rec.person);
+    if (!((rosterProfiles || {})[np])) return;
+    personWeekPlan[np] = personWeekPlan[np] || {};
+    personWeekPlan[np][rec.iso] = (personWeekPlan[np][rec.iso] || 0) + rec.hours;
+    personProjectPlan[np] = personProjectPlan[np] || {};
+    personProjectPlan[np][rec.key] = personProjectPlan[np][rec.key] || {};
+    personProjectPlan[np][rec.key][rec.iso] = (personProjectPlan[np][rec.key][rec.iso] || 0) + rec.hours;
+  });
+
+  (trackedRecs || []).forEach(function(rec) {
+    var np = norm(rec.person);
+    if (!((rosterProfiles || {})[np])) return;
+    personWeekTracked[np] = personWeekTracked[np] || {};
+    personWeekTracked[np][rec.iso] = (personWeekTracked[np][rec.iso] || 0) + rec.hours;
+  });
+
+  var personMeta = {};
+  var allNorms = {};
+  Object.keys(personWeekPlan).forEach(function(np) { allNorms[np] = true; });
+  Object.keys(personWeekTracked).forEach(function(np) { allNorms[np] = true; });
+  Object.keys(allNorms).forEach(function(np) {
+    var prof = (rosterProfiles || {})[np] || {};
+    personMeta[np] = {
+      displayName: displayNames[np] || np,
+      jobFamily:   prof.jobFamily  || '',
+      manager:     prof.manager    || '',
+      location:    prof.location   || ''
+    };
+  });
+
+  return { personWeekPlan: personWeekPlan, personWeekTracked: personWeekTracked,
+           personProjectPlan: personProjectPlan, personMeta: personMeta };
+}
+
+function buildPersonSignals_(plannedRecs, trackedRecs, weeks, rosterProfiles) {
+  var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var inWindow = {};
+  weeks.forEach(function(w) { inWindow[w.iso] = true; });
+
+  var planned = {}, tracked = {};
+  (plannedRecs || []).forEach(function(rec) {
+    if (!inWindow[rec.iso]) return;
+    planned[rec.iso] = planned[rec.iso] || {};
+    var np = norm(rec.person);
+    planned[rec.iso][np] = (planned[rec.iso][np] || 0) + rec.hours;
+  });
+  (trackedRecs || []).forEach(function(rec) {
+    if (!inWindow[rec.iso]) return;
+    tracked[rec.iso] = tracked[rec.iso] || {};
+    var np = norm(rec.person);
+    tracked[rec.iso][np] = (tracked[rec.iso][np] || 0) + rec.hours;
+  });
+
+  var signals = {};
+  weeks.forEach(function(w) {
+    var iso = w.iso;
+    var pl = planned[iso] || {}, tr = tracked[iso] || {};
+    var all = {};
+    Object.keys(pl).forEach(function(n) { all[n] = true; });
+    Object.keys(tr).forEach(function(n) { all[n] = true; });
+
+    var gap = [], unplanned = [];
+    Object.keys(all).forEach(function(np) {
+      var ph = pl[np] || 0, th = tr[np] || 0;
+      var prof = (rosterProfiles || {})[np] || {};
+      var entry = {
+        name: np, plannedHrs: ph, trackedHrs: th,
+        location: prof.location || '', jobFamily: prof.jobFamily || '', manager: prof.manager || ''
+      };
+      if (ph >= CONFIG.DELIVERY_GAP_MIN_HRS && th < ph * CONFIG.SWARM_THRESHOLD) gap.push(entry);
+      if (th > 0 && ph === 0) unplanned.push(entry);
+    });
+    gap.sort(function(a, b) { return b.plannedHrs - a.plannedHrs; });
+    unplanned.sort(function(a, b) { return b.trackedHrs - a.trackedHrs; });
+    signals[iso] = { plannedNotTracked: gap, untrackedWorkers: unplanned };
+  });
+  return signals;
 }
 
 // ── SHEET PARSING ────────────────────────────────────────────
@@ -338,6 +522,11 @@ function emptyModel_(weeks) {
     capacityMode: "planned", headcount: null, anzCount: 0, baseCapacity: 0,
     capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
     planTarget: CONFIG.PLAN_TARGET,
+    weekTracked: {}, tracked: {}, fidelity: {},
+    personSignals: {}, displayNames: {},
+    rosterDimensions: { locations: [], jobFamilies: [], managers: [] },
+    trackedError: null,
+    personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, moversN: CONFIG.MOVERS_N,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
@@ -579,4 +768,47 @@ function _test_headcount_() {
   assert_(base === 118, "base capacity should be 118 (40+40+38), got " + base);
 
   Logger.log("✅ _test_headcount_ passed");
+}
+
+function _test_buildPersonAvailability_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_buildPersonAvailability_: " + msg); }
+
+  var plannedRecs = [
+    { person: "Ana Smith", iso: "2026.W24", key: "ACME", name: "Acme", hours: 20 },
+    { person: "Ana Smith", iso: "2026.W24", key: "BETA", name: "Beta", hours: 10 },
+    { person: "Ben Lee",   iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
+    { person: "External",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 8 },  // not in roster → excluded
+  ];
+  var trackedRecs = [
+    { person: "Ana Smith", iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
+    { person: "Ana Smith", iso: "2026.W24", key: "BETA", name: "Beta", hours: 6 },
+  ];
+  var roster = {
+    "ana smith": { jobFamily: "Consulting", manager: "Mgr A", location: "US" },
+    "ben lee":   { jobFamily: "Delivery",   manager: "Mgr B", location: "ANZ" }
+    // "external" deliberately absent
+  };
+
+  var result = buildPersonAvailability_(plannedRecs, trackedRecs, roster);
+
+  // personWeekPlan
+  assert_(result.personWeekPlan["ana smith"]["2026.W24"] === 30, "Ana planned should be 30h");
+  assert_(result.personWeekPlan["ben lee"]["2026.W24"]   === 16, "Ben planned should be 16h");
+  assert_(!result.personWeekPlan["external"], "External (not in roster) must be excluded");
+
+  // personWeekTracked
+  assert_(result.personWeekTracked["ana smith"]["2026.W24"] === 22, "Ana tracked should be 22h");
+  assert_(!result.personWeekTracked["ben lee"], "Ben has no tracked — key must be absent");
+
+  // personProjectPlan
+  assert_(result.personProjectPlan["ana smith"]["ACME"]["2026.W24"] === 20, "Ana ACME plan should be 20h");
+  assert_(result.personProjectPlan["ana smith"]["BETA"]["2026.W24"] === 10, "Ana BETA plan should be 10h");
+
+  // personMeta
+  assert_(result.personMeta["ana smith"].displayName === "Ana Smith", "displayName should be title-case from rec");
+  assert_(result.personMeta["ana smith"].jobFamily   === "Consulting", "jobFamily from roster");
+  assert_(result.personMeta["ben lee"].location      === "ANZ", "location from roster");
+  assert_(!result.personMeta["external"], "External must not appear in personMeta");
+
+  Logger.log("✅ _test_buildPersonAvailability_ passed");
 }
