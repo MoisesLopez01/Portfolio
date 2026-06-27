@@ -173,15 +173,20 @@ function getDemandData() {
     }
 
     // ── Person availability (planned + tracked per person per week) ──
+    var plannedPtoRecs = parsed.ptoRecs || [];
+    var trackedPtoRecs = (!trackedResult.error && trackedResult.ptoRecs) ? trackedResult.ptoRecs : [];
+    var allPtoRecs = (plannedPtoRecs || []).concat(trackedPtoRecs || []);
     var availResult = buildPersonAvailability_(
       parsed.recs,
       (!trackedResult.error && trackedResult.recs) ? trackedResult.recs : [],
+      allPtoRecs,
       roster.profiles
     );
     model.personWeekPlan    = availResult.personWeekPlan;
     model.personWeekTracked = availResult.personWeekTracked;
     model.personProjectPlan = availResult.personProjectPlan;
     model.personMeta        = availResult.personMeta;
+    model.personWeekPTO     = availResult.personWeekPTO;
 
     return model;
   } catch (e) {
@@ -317,7 +322,7 @@ function readTrackedAllocations_() {
   try {
     var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
     var sh = ss.getSheetByName(CONFIG.TRACKED_SHEET_NAME);
-    if (!sh) return { recs: [], error: "Sheet '" + CONFIG.TRACKED_SHEET_NAME + "' not found." };
+    if (!sh) return { recs: [], ptoRecs: [], error: "Sheet '" + CONFIG.TRACKED_SHEET_NAME + "' not found." };
     var vals = sh.getDataRange().getValues();
     var parsed = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
     var lastExport = null;
@@ -327,9 +332,9 @@ function readTrackedAllocations_() {
         break;
       }
     }
-    return { recs: parsed.recs, lastExport: lastExport };
+    return { recs: parsed.recs, ptoRecs: parsed.ptoRecs, lastExport: lastExport };
   } catch (e) {
-    return { recs: [], error: e.message };
+    return { recs: [], ptoRecs: [], error: e.message };
   }
 }
 
@@ -344,12 +349,12 @@ function buildDisplayNames_(recs1, recs2) {
   return names;
 }
 
-function buildPersonAvailability_(plannedRecs, trackedRecs, rosterProfiles) {
+function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfiles) {
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
-  var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, displayNames = {};
+  var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
 
   // Build display names: first occurrence of a normalised name wins.
-  (plannedRecs || []).concat(trackedRecs || []).forEach(function(rec) {
+  (plannedRecs || []).concat(trackedRecs || []).concat(ptoRecs || []).forEach(function(rec) {
     var np = norm(rec.person);
     if (!displayNames[np]) displayNames[np] = rec.person;
   });
@@ -371,10 +376,18 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, rosterProfiles) {
     personWeekTracked[np][rec.iso] = (personWeekTracked[np][rec.iso] || 0) + rec.hours;
   });
 
+  (ptoRecs || []).forEach(function(rec) {
+    var np = norm(rec.person);
+    if (!((rosterProfiles || {})[np])) return;
+    personWeekPTO[np] = personWeekPTO[np] || {};
+    personWeekPTO[np][rec.iso] = (personWeekPTO[np][rec.iso] || 0) + rec.hours;
+  });
+
   var personMeta = {};
   var allNorms = {};
   Object.keys(personWeekPlan).forEach(function(np) { allNorms[np] = true; });
   Object.keys(personWeekTracked).forEach(function(np) { allNorms[np] = true; });
+  Object.keys(personWeekPTO).forEach(function(np) { allNorms[np] = true; });
   Object.keys(allNorms).forEach(function(np) {
     var prof = (rosterProfiles || {})[np] || {};
     personMeta[np] = {
@@ -386,7 +399,8 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, rosterProfiles) {
   });
 
   return { personWeekPlan: personWeekPlan, personWeekTracked: personWeekTracked,
-           personProjectPlan: personProjectPlan, personMeta: personMeta };
+           personProjectPlan: personProjectPlan, personMeta: personMeta,
+           personWeekPTO: personWeekPTO };
 }
 
 function buildPersonSignals_(plannedRecs, trackedRecs, weeks, rosterProfiles) {
@@ -443,12 +457,14 @@ function buildPersonSignals_(plannedRecs, trackedRecs, weeks, rosterProfiles) {
  * @param {Array<Array>} vals - sheet getValues()
  * @param {string[]} nonProjectKeys
  * @returns {{ recs:Array<{person:string, iso:string, key:string, name:string, hours:number}>,
+ *             ptoRecs:Array<{person:string, iso:string, key:string, name:string, hours:number}>,
  *             timeOffByWeek:Object<string,number> }}
  */
 function parseAllocations_(vals, nonProjectKeys) {
   var out = [];
+  var ptoOut = [];
   var timeOffByWeek = {};
-  if (!vals || vals.length < 2) return { recs: out, timeOffByWeek: timeOffByWeek };
+  if (!vals || vals.length < 2) return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 
   // Locate the field-header row by its employee column.
   var isEmpHdr = function (h) {
@@ -460,7 +476,7 @@ function parseAllocations_(vals, nonProjectKeys) {
       if (isEmpHdr(String(vals[r][c]).trim())) { hr = r; iEmp = c; break; }
     }
   }
-  if (hr === -1) return { recs: out, timeOffByWeek: timeOffByWeek };
+  if (hr === -1) return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 
   // "Key" (project) and "Space" (project name) columns.
   var iKey = -1, iSpace = -1;
@@ -498,12 +514,13 @@ function parseAllocations_(vals, nonProjectKeys) {
       if (!hours || hours <= 0) continue;
       if (isTimeOff) {                                              // reduces capacity, not project demand
         timeOffByWeek[wCols[wi].iso] = (timeOffByWeek[wCols[wi].iso] || 0) + hours;
+        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
       } else {
         out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
       }
     }
   }
-  return { recs: out, timeOffByWeek: timeOffByWeek };
+  return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 }
 
 // ── AGGREGATION ──────────────────────────────────────────────
@@ -526,7 +543,7 @@ function emptyModel_(weeks) {
     personSignals: {}, displayNames: {},
     rosterDimensions: { locations: [], jobFamilies: [], managers: [] },
     trackedError: null,
-    personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {},
+    personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, moversN: CONFIG.MOVERS_N,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
@@ -811,4 +828,33 @@ function _test_buildPersonAvailability_() {
   assert_(!result.personMeta["external"], "External must not appear in personMeta");
 
   Logger.log("✅ _test_buildPersonAvailability_ passed");
+}
+
+function _test_personWeekPTO_() {
+  function assert_(cond, msg) { if (!cond) throw new Error('❌ _test_personWeekPTO_: ' + msg); }
+
+  var NETSUITE_KEY = CONFIG.NONPROJECT_KEYS[0]; // e.g. 'NETSUITE'
+  var plannedRecs = [
+    { person: 'Ana Smith', iso: '2026.W27', key: 'ACME',        hours: 20 },
+  ];
+  var trackedRecs = [];
+  var ptoRecs = [
+    { person: 'Ana Smith', iso: '2026.W27', key: NETSUITE_KEY,  hours: 16 },
+    { person: 'Ben Lee',   iso: '2026.W27', key: NETSUITE_KEY,  hours: 40 },
+    { person: 'Ana Smith', iso: '2026.W26', key: NETSUITE_KEY,  hours: 8 },
+  ];
+  var roster = {
+    'ana smith': { jobFamily: 'Consulting', manager: 'M', location: 'US' },
+    'ben lee':   { jobFamily: 'Delivery',   manager: 'M', location: 'ANZ' }
+  };
+
+  var result = buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, roster);
+
+  assert_(result.personWeekPlan['ana smith']['2026.W27'] === 20,  'Ana project plan 20h');
+  assert_(result.personWeekPTO['ana smith']['2026.W27']  === 16,  'Ana PTO planned 16h');
+  assert_(result.personWeekPTO['ben lee']['2026.W27']    === 40,  'Ben full-PTO 40h');
+  assert_(result.personWeekPTO['ana smith']['2026.W26']  === 8,   'Ana PTO tracked 8h');
+  assert_(!result.personWeekPlan['ben lee'],                       'Ben has no project plan');
+
+  Logger.log("✅ _test_personWeekPTO_ passed");
 }
