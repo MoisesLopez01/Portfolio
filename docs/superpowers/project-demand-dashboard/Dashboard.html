@@ -816,7 +816,7 @@ function toggleAvailDrill(np){
 }
 
 function clearAvailFilters(){
-  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CAT='';AVAIL_BLEND=0;
+  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
   populateAvailFilters();
   renderAvailability();
 }
@@ -1096,7 +1096,7 @@ function aggregateClient(recs,weeks,baselineIso){
     order:totals.map(function(t){return t.key;}),keyName:keyName,maxCell:maxCell,baselineIso:baselineIso||null,
     capByWeek:capByWeek,grossCapByWeek:grossCapByWeek,timeOffByWeek:{},capacityMode:"planned",headcount:null,anzCount:0,
     capacity:40,anzCapacity:38,planTarget:0.9,
-    fragMin:FRAG,topnStrategic:10,moversN:5,utilTight:0.85,utilOver:1.0,error:null};
+    fragMin:FRAG,topnStrategic:10,utilTight:0.85,utilOver:1.0,error:null};
 }
 
 /* ---------------- Controls ---------------- */

@@ -805,7 +805,7 @@ function _test_buildPersonAvailability_() {
     // "external" deliberately absent
   };
 
-  var result = buildPersonAvailability_(plannedRecs, trackedRecs, roster);
+  var result = buildPersonAvailability_(plannedRecs, trackedRecs, [], roster);
 
   // personWeekPlan
   assert_(result.personWeekPlan["ana smith"]["2026.W24"] === 30, "Ana planned should be 30h");
