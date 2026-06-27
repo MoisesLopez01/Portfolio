@@ -186,6 +186,23 @@ svg .axis{stroke:var(--border)}
 .foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
+/* ── Planned vs Tracked / Signals ── */
+.sigcols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:800px){.sigcols{grid-template-columns:1fr}}
+.sigcol-h{font-family:'Roboto Condensed';font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.sigcount{background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:11px;padding:1px 8px;font-weight:700;color:var(--text);font-family:'Roboto Condensed'}
+.sigfilter{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
+.sigcard{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);margin-bottom:6px}
+.sigcard .scname{font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sigcard .schrs{font-family:'Roboto Condensed';font-weight:700;font-size:15px;white-space:nowrap;text-align:right}
+.sigcard .scmeta{font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
+.sigcard.gap{border-left:3px solid var(--warn)}
+.sigcard.swarm{border-left:3px solid #00A86B}
+.projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
+.projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
+.projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
+.projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
 </style>
 </head>
 <body>
@@ -202,12 +219,12 @@ input[type=file]{display:none}
     </div>
     <div class="head-actions">
       <span class="srcbadge" id="srcBadge">…</span>
-      <button id="reloadBtn">⟳ Reload live</button>
+      <button id="reloadBtn">⟳ Reload</button>
       <button id="themeBtn">◐ Theme</button>
     </div>
   </div>
 
-  <div class="stateMsg" id="stateMsg">Loading live data from “Planned Time Tempo”…</div>
+  <div class=”stateMsg” id=”stateMsg”>Loading data…</div>
 
   <div id="dash" style="display:none">
 
@@ -216,9 +233,9 @@ input[type=file]{display:none}
     <!-- 1. Demand vs Capacity — headline -->
     <div class="panel">
       <div class="panel-h">
-        <h2>Demand vs capacity</h2>
+        <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned project hours vs available hours (team × 38–40, minus PTO &amp; public holidays); dashed = 90% planning target</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · fidelity % shown per week · dashed = future planned</div>
           <button class="png-btn" data-png="demand-vs-capacity">⬇ Save PNG</button>
         </div>
       </div>
@@ -231,6 +248,30 @@ input[type=file]{display:none}
         <div id="capChart"></div>
       </div>
       <div class="sowhat" id="capSoWhat"></div>
+    </div>
+
+    <!-- 1b. People Signals -->
+    <div class="panel" id="sigPanel" style="display:none">
+      <div class="panel-h">
+        <h2>People signals — <span id="sigWeekLabel">—</span></h2>
+        <div class="panel-tools">
+          <select class="sigfilter" id="sigLoc"><option value="">All locations</option></select>
+          <select class="sigfilter" id="sigFam"><option value="">All job families</option></select>
+          <select class="sigfilter" id="sigMgr"><option value="">All managers</option></select>
+        </div>
+      </div>
+      <div class="sigcols">
+        <div class="sigcol">
+          <div class="sigcol-h">⚠ Planned but not tracked <span class="sigcount" id="gapCount"></span></div>
+          <div class="hint" style="margin-bottom:10px">Had ≥4 planned hrs but tracked &lt;20% — check in or reassign</div>
+          <div id="sigGap"></div>
+        </div>
+        <div class="sigcol">
+          <div class="sigcol-h">● Tracked without a plan <span class="sigcount" id="swarmCount"></span></div>
+          <div class="hint" style="margin-bottom:10px">Worked on projects but had no planned hours — swarmable, can be assigned</div>
+          <div id="sigSwarm"></div>
+        </div>
+      </div>
     </div>
 
     <!-- 2. Project key heatmap (drill-down) — planned hours by project -->
@@ -254,6 +295,18 @@ input[type=file]{display:none}
       </div>
       <div class="qfilters" id="qfilters" style="margin-bottom:12px"></div>
       <div class="gridScroll"><div id="heat"></div></div>
+      <div id="projDrill" style="display:none" class="projdrill">
+        <div class="projdrill-h">
+          <span id="projDrillChip"></span>
+          <span id="projDrillName" style="font-weight:600;font-size:13px"></span>
+          <button id="projDrillClose" style="margin-left:auto;font-size:12px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 8px">✕ Close</button>
+        </div>
+        <div id="projDrillChart"></div>
+        <div class="projdrill-legend">
+          <span><i style="background:var(--orbe)"></i>Planned</span>
+          <span><i style="background:#00A86B"></i>Tracked</span>
+        </div>
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
         <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
         <div class="hint" id="heatNote"></div>
@@ -327,12 +380,18 @@ input[type=file]{display:none}
 
 <script>
 "use strict";
+window.onerror = function(msg, src, line, col, err) {
+  var el = document.getElementById('stateMsg');
+  if (el) { el.style.display = ''; el.textContent = 'JS error (line ' + line + '): ' + msg; }
+  return false;
+};
 
 /* ---------------- State ---------------- */
 var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
 var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", TREND_MODE = "movers", QFILTER = "all", BLEND_OPEN = false;
+var SIG_LOC = "", SIG_FAM = "", SIG_MGR = "";
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -357,7 +416,7 @@ function strategicSet(){ return DATA.order.slice(0, DATA.topnStrategic||10); }
 
 /* ---------------- Boot / data load ---------------- */
 function boot(){
-  setState("Loading live data from “Planned Time Tempo”…");
+  setState(“Loading data…”);
   if (typeof google !== "undefined" && google.script && google.script.run){
     google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getDemandData();
   } else {
@@ -382,14 +441,24 @@ function applyModel(model){
   CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
   SEL_ISO = CURRENT_ISO;
   updateBadge();
+  if(DATA.rosterDimensions) populateSigFilters();
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
 function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; }
+function fmtExport(iso){
+  try{ var d=new Date(iso); if(isNaN(d)) return iso;
+    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return 'Updated '+mo[d.getUTCMonth()]+' '+d.getUTCDate(); }
+  catch(e){ return iso; }
+}
 function updateBadge(){
   var b=$('srcBadge'); if(!b) return;
-  if(SOURCE==="live"){ b.className="srcbadge live"; b.textContent="● Live data"; }
-  else { b.className="srcbadge offline"; b.textContent="○ Offline / CSV"; }
+  if(SOURCE==="live"){
+    var ts=DATA&&DATA.trackedLastExport;
+    b.className="srcbadge live";
+    b.textContent=ts ? fmtExport(ts) : 'Data loaded';
+  } else { b.className="srcbadge offline"; b.textContent="○ Offline / CSV"; }
 }
 
 /* ---------------- Color helpers ---------------- */
@@ -418,80 +487,191 @@ function renderWeekbar(){
   Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; BLEND_OPEN=false; renderAll(); }; });
 }
 
-/* ---------------- Render: Demand vs Capacity ---------------- */
-function utilStatus(u){
-  var over=DATA.utilOver||1.0, tight=DATA.utilTight||0.85;
-  if(u>=over) return {k:'over', label:'Over capacity'};
-  if(u>=tight) return {k:'tight', label:'Tight'};
-  return {k:'head', label:'Headroom'};
-}
+/* ---------------- Render: Planned vs Tracked ---------------- */
 function renderCapacity(){
   var iso=SEL_ISO;
-  var demand=DATA.weekTotal[iso]||0, capv=DATA.capByWeek[iso]||0;
-  var u = capv>0 ? demand/capv : 0;
-  var s = utilStatus(u);
-  $('capNum').innerHTML = fmt(demand)+' <small>hrs demand</small>';
-  $('capChip').className='statuschip '+(s.k==='over'?'over':s.k==='tight'?'tight':'head');
-  $('capChip').textContent=s.label;
-  $('capUtil').textContent = capv>0 ? (Math.round(u*100)+'% of '+fmt(capv)+' hrs available') : 'no capacity figure';
-  var gross = (DATA.grossCapByWeek&&DATA.grossCapByWeek[iso])||0;
-  var timeOff = (DATA.timeOffByWeek&&DATA.timeOffByWeek[iso])||0;
-  var who = DATA.capacityMode==='planned'
-    ? '<span class="est">capacity estimated from planned roster</span> — roster read unavailable'
-    : (DATA.headcount? (DATA.headcount+' active'+(DATA.anzCount? ' ('+DATA.anzCount+' ANZ @'+(DATA.anzCapacity||38)+'h)':'')) : '');
-  var breakdown = gross>0
-    ? (' · '+fmt(gross)+' hrs base'+(timeOff>0? ' − '+fmt(timeOff)+' hrs PTO/holidays = '+fmt(capv)+' available' : ' (no PTO/holidays this week)'))
-    : '';
-  $('capMeta').innerHTML = (who? who : '') + breakdown + ' · ' + esc(iso);
-
-  // so-what
-  var gap = capv - demand;
-  var sw, cls;
-  if(s.k==='over'){ cls='warn'; sw='<b>'+esc(iso)+' planned at '+Math.round(u*100)+'% of capacity</b> ('+fmt(-gap)+' hrs over) — over-committed; rebalance or defer before locking the plan.'; }
-  else if(s.k==='tight'){ cls=''; sw='<b>'+esc(iso)+' is tight at '+Math.round(u*100)+'%</b> — little slack ('+fmt(gap)+' hrs free); avoid adding scope without trade-offs.'; }
-  else { cls='ok'; sw='<b>'+esc(iso)+' has headroom — '+fmt(gap)+' hrs free ('+Math.round(u*100)+'% used)</b>; capacity to absorb a new ask or pull work forward.'; }
-  // count future weeks over capacity to add forward-looking signal
-  var overWeeks=WEEKS.filter(function(w){ var c=DATA.capByWeek[w.iso]||0; return w.status==='plan'&&c>0&&(DATA.weekTotal[w.iso]||0)/c>=(DATA.utilOver||1.0); }).length;
-  if(overWeeks>0 && s.k!=='over') sw+=' Heads-up: '+overWeeks+' planned week'+(overWeeks>1?'s':'')+' ahead exceed capacity.';
+  var planned=DATA.weekTotal[iso]||0;
+  var tracked=(DATA.weekTracked&&DATA.weekTracked[iso])||0;
+  var fid=(DATA.fidelity&&DATA.fidelity[iso]!=null)?DATA.fidelity[iso]:null;
+  $('capNum').innerHTML=fmt(planned)+' <small>hrs planned</small>';
+  var chipCls,chipTxt;
+  if(fid===null){chipCls='head';chipTxt='Planned week';}
+  else if(fid>=0.8){chipCls='head';chipTxt='On track';}
+  else if(fid>=0.5){chipCls='tight';chipTxt='Partial delivery';}
+  else{chipCls='over';chipTxt='Behind';}
+  $('capChip').className='statuschip '+chipCls;
+  $('capChip').textContent=chipTxt;
+  $('capUtil').textContent=fid!==null?(fmt(tracked)+' hrs tracked · '+Math.round(fid*100)+'% fidelity'):'No tracked data yet for this week';
+  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':'');
+  var sw,cls;
+  if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
+  else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
+  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check People Signals for who planned but didn\'t track.';}
+  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review People Signals below.';}
+  else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
   $('capSoWhat').className='sowhat '+cls;
   $('capSoWhat').innerHTML=sw;
-
   renderCapChart();
 }
 function renderCapChart(){
-  var w=620,h=150,pad={l:40,r:14,t:12,b:24}, iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
-  var maxv=1; WEEKS.forEach(function(wk){ maxv=Math.max(maxv,DATA.capByWeek[wk.iso]||0,DATA.weekTotal[wk.iso]||0); });
+  var w=620,h=160,pad={l:40,r:14,t:18,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  var maxv=1;
+  WEEKS.forEach(function(wk){
+    maxv=Math.max(maxv,DATA.weekTotal[wk.iso]||0);
+    if(DATA.weekTracked) maxv=Math.max(maxv,DATA.weekTracked[wk.iso]||0);
+  });
   var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
   var y=function(v){return pad.t+ih-v/maxv*ih;};
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="demand vs capacity">';
-  // planned region tint
-  var firstPlan=-1; WEEKS.forEach(function(wk,i){ if(firstPlan<0&&wk.status==='plan') firstPlan=i; });
-  if(firstPlan>=0){ var x0=x(Math.max(0,firstPlan-0.5)); g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>'; }
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked">';
+  // future region tint
+  var firstPlan=-1; WEEKS.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
+  if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>';}
   // gridlines
-  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2; g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>'; g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
-  // demand area
+  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
+  // planned area
   var dpts=WEEKS.map(function(wk,i){return x(i)+','+y(DATA.weekTotal[wk.iso]||0);});
-  var area='M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(NWEEKS-1)+','+y(0)+' Z';
-  g+='<path d="'+area+'" fill="'+hexVar('--orbe')+'" opacity="0.16"/>';
-  // demand line: solid over actual+now, dashed over plan
-  WEEKS.forEach(function(wk,i){ if(i===0) return; var prev=WEEKS[i-1]; var dash=(wk.status==='plan')?' stroke-dasharray="4 3"':'';
-    g+='<line x1="'+x(i-1)+'" y1="'+y(DATA.weekTotal[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(DATA.weekTotal[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>'; });
-  // capacity reference line (net available hours)
-  var cpts=WEEKS.map(function(wk,i){return x(i)+','+y(DATA.capByWeek[wk.iso]||0);}).join(' ');
-  g+='<polyline points="'+cpts+'" fill="none" stroke="'+hexVar('--warn')+'" stroke-width="1.6" stroke-dasharray="2 3" opacity=".85"/>';
-  // 90% planning-target reference line
-  var tgt=DATA.planTarget||0.9;
-  var tpts=WEEKS.map(function(wk,i){return x(i)+','+y((DATA.capByWeek[wk.iso]||0)*tgt);}).join(' ');
-  g+='<polyline points="'+tpts+'" fill="none" stroke="'+hexVar('--slate')+'" stroke-width="1.3" stroke-dasharray="1 4" opacity=".8"/>';
-  var lastTgtY=y((DATA.capByWeek[WEEKS[NWEEKS-1].iso]||0)*tgt);
-  g+='<text x="'+(w-pad.r-2)+'" y="'+(lastTgtY-4)+'" text-anchor="end" font-size="8.5" fill="'+css('--muted')+'">'+Math.round(tgt*100)+'% target</text>';
-  // markers + selected highlight
+  g+='<path d="M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(NWEEKS-1)+','+y(0)+' Z" fill="'+hexVar('--orbe')+'" opacity="0.13"/>';
+  // planned line: solid actual/now, dashed plan
+  WEEKS.forEach(function(wk,i){
+    if(i===0) return;
+    var prev=WEEKS[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
+    g+='<line x1="'+x(i-1)+'" y1="'+y(DATA.weekTotal[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(DATA.weekTotal[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
+  });
+  // tracked area + line (past + current weeks only)
+  if(DATA.weekTracked){
+    var tPts=[];
+    WEEKS.forEach(function(wk,i){
+      var th=DATA.weekTracked[wk.iso]||0;
+      if(wk.status!=='plan'||th>0) tPts.push({xi:i,x:x(i),y:y(th),h:th,wk:wk});
+    });
+    if(tPts.some(function(p){return p.h>0;})){
+      var tapts=tPts.map(function(p){return p.x+','+p.y;});
+      g+='<path d="M'+tPts[0].x+','+y(0)+' L'+tapts.join(' L')+' L'+tPts[tPts.length-1].x+','+y(0)+' Z" fill="#00A86B" opacity="0.10"/>';
+      for(var ti=1;ti<tPts.length;ti++){g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.2"/>';}
+      tPts.forEach(function(p){if(p.h>0)g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="2.6" fill="#00A86B"/>';});
+    }
+  }
+  // fidelity % annotation above planned line per past/current week
+  if(DATA.fidelity){
+    WEEKS.forEach(function(wk,i){
+      var fid=DATA.fidelity[wk.iso];
+      if(fid===null||fid===undefined) return;
+      var pv=DATA.weekTotal[wk.iso]||0;
+      var col=fid>=0.8?'#00A86B':fid>=0.5?'#B45309':'#B71C1C';
+      g+='<text x="'+x(i)+'" y="'+(y(pv)-7)+'" text-anchor="middle" font-size="8" fill="'+col+'" font-weight="700">'+Math.round(fid*100)+'%</text>';
+    });
+  }
+  // target execution rate line: planTarget × planned per week (amber dashed)
+  if(DATA.planTarget){
+    var tgt=DATA.planTarget;
+    var tLinePts=WEEKS.map(function(wk,i){return x(i)+','+y((DATA.weekTotal[wk.iso]||0)*tgt);});
+    g+='<polyline points="'+tLinePts.join(' ')+'" fill="none" stroke="'+css('--amber')+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75"/>';
+    var tgtLastY=y((DATA.weekTotal[WEEKS[NWEEKS-1].iso]||0)*tgt);
+    g+='<text x="'+(w-pad.r)+'" y="'+(tgtLastY-4)+'" text-anchor="end" font-size="7.5" fill="'+css('--amber')+'" font-weight="600">'+Math.round(tgt*100)+'% target</text>';
+  }
+  // legend (top-left inside chart)
+  g+='<rect x="'+pad.l+'" y="4" width="62" height="13" rx="3" fill="var(--surface)" opacity=".7"/>';
+  g+='<line x1="'+(pad.l+4)+'" y1="10" x2="'+(pad.l+16)+'" y2="10" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"/>';
+  g+='<text x="'+(pad.l+20)+'" y="13" font-size="8" fill="'+hexVar('--orbe')+'" font-weight="600">Planned</text>';
+  g+='<line x1="'+(pad.l+55)+'" y1="10" x2="'+(pad.l+67)+'" y2="10" stroke="#00A86B" stroke-width="2.2"/>';
+  g+='<text x="'+(pad.l+71)+'" y="13" font-size="8" fill="#00A86B" font-weight="600">Tracked</text>';
+  // week labels + selected marker
   WEEKS.forEach(function(wk,i){
     g+='<text x="'+x(i)+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(wk.iso===SEL_ISO?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(wk.iso===SEL_ISO?'700':'400')+'">W'+wk.wk+'</text>';
     if(wk.iso===SEL_ISO) g+='<circle cx="'+x(i)+'" cy="'+y(DATA.weekTotal[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'"/>';
   });
   g+='</svg>';
   $('capChart').innerHTML=g;
+}
+
+/* ---------------- Render: People Signals ---------------- */
+function renderSignals(){
+  var sigs=DATA.personSignals&&DATA.personSignals[SEL_ISO];
+  var panel=$('sigPanel');
+  if(!sigs){if(panel)panel.style.display='none';return;}
+  if(panel)panel.style.display='';
+  $('sigWeekLabel').textContent=SEL_ISO;
+  var disp=DATA.displayNames||{};
+  function nameFor(np){return disp[np]||np;}
+  function match(e){
+    if(SIG_LOC&&e.location!==SIG_LOC) return false;
+    if(SIG_FAM&&e.jobFamily!==SIG_FAM) return false;
+    if(SIG_MGR&&e.manager!==SIG_MGR) return false;
+    return true;
+  }
+  function gapCard(e){
+    var fid=e.plannedHrs>0?e.trackedHrs/e.plannedHrs:0;
+    return '<div class="sigcard gap"><div class="scname" title="'+esc(nameFor(e.name))+'">'+esc(nameFor(e.name))+'</div>'
+      +'<div style="text-align:right"><div class="schrs">'+fmt(e.plannedHrs)+'<small style="font-size:10px;font-weight:400;color:var(--muted)"> planned</small></div>'
+      +'<div class="scmeta">'+fmt(e.trackedHrs)+'h tracked ('+Math.round(fid*100)+'%)</div></div></div>';
+  }
+  function swarmCard(e){
+    return '<div class="sigcard swarm"><div class="scname" title="'+esc(nameFor(e.name))+'">'+esc(nameFor(e.name))+'</div>'
+      +'<div style="text-align:right"><div class="schrs">'+fmt(e.trackedHrs)+'<small style="font-size:10px;font-weight:400;color:var(--muted)"> tracked</small></div>'
+      +'<div class="scmeta">no plan · swarmable</div></div></div>';
+  }
+  var gaps=(sigs.plannedNotTracked||[]).filter(match);
+  var swarms=(sigs.untrackedWorkers||[]).filter(match);
+  $('gapCount').textContent=gaps.length||'';
+  $('swarmCount').textContent=swarms.length||'';
+  $('sigGap').innerHTML=gaps.length?gaps.map(gapCard).join(''):'<div class="hint">No gaps for the selected filters this week.</div>';
+  $('sigSwarm').innerHTML=swarms.length?swarms.map(swarmCard).join(''):'<div class="hint">No unplanned workers for the selected filters this week.</div>';
+}
+
+function populateSigFilters(){
+  var dims=DATA.rosterDimensions||{locations:[],jobFamilies:[],managers:[]};
+  function fill(id,items,cur,lbl){
+    var sel=$(id);if(!sel)return;
+    sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
+  }
+  fill('sigLoc',dims.locations,SIG_LOC,'All locations');
+  fill('sigFam',dims.jobFamilies,SIG_FAM,'All job families');
+  fill('sigMgr',dims.managers,SIG_MGR,'All managers');
+  ['sigLoc','sigFam','sigMgr'].forEach(function(id){
+    var el=$(id);if(!el)return;
+    el.onchange=function(){
+      if(id==='sigLoc')SIG_LOC=this.value;
+      if(id==='sigFam')SIG_FAM=this.value;
+      if(id==='sigMgr')SIG_MGR=this.value;
+      renderSignals();
+    };
+  });
+}
+
+/* ---------------- Render: Project Planned vs Tracked Drill ---------------- */
+function renderProjDrill(key){
+  var d=$('projDrill');if(!d)return;
+  if(!key||!DATA.tracked){d.style.display='none';return;}
+  d.style.display='';
+  $('projDrillChip').innerHTML=chip(key);
+  $('projDrillName').textContent=KEYNAME[key]||key;
+  var w=560,h=100,pad={l:36,r:10,t:14,b:22},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  var maxv=1;
+  WEEKS.forEach(function(wk){
+    maxv=Math.max(maxv,capAt(key,wk.iso),(DATA.tracked[key]&&DATA.tracked[key][wk.iso])||0);
+  });
+  var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
+  var y=function(v){return pad.t+ih-v/maxv*ih;};
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet">';
+  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".4"/>';g+='<text x="'+(pad.l-4)+'" y="'+(yy+3)+'" text-anchor="end" font-size="8" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
+  // planned line
+  WEEKS.forEach(function(wk,i){
+    if(i===0)return;var prev=WEEKS[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
+    g+='<line x1="'+x(i-1)+'" y1="'+y(capAt(key,prev.iso))+'" x2="'+x(i)+'" y2="'+y(capAt(key,wk.iso))+'" stroke="'+hexVar('--orbe')+'" stroke-width="1.8"'+dash+'/>';
+  });
+  WEEKS.forEach(function(wk,i){g+='<circle cx="'+x(i)+'" cy="'+y(capAt(key,wk.iso))+'" r="2.4" fill="'+hexVar('--orbe')+'" opacity=".8"/>';});
+  // tracked line
+  var td=DATA.tracked[key]||{};
+  var tPts=WEEKS.map(function(wk,i){return{x:x(i),y:y(td[wk.iso]||0),h:td[wk.iso]||0,wk:wk};});
+  for(var ti=1;ti<tPts.length;ti++){
+    if(tPts[ti].wk.status==='plan'&&!tPts[ti].h&&!tPts[ti-1].h) continue;
+    g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="1.8"/>';
+  }
+  tPts.forEach(function(p){if(p.h>0)g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="2.4" fill="#00A86B"/>';});
+  // week labels
+  WEEKS.forEach(function(wk,i){g+='<text x="'+x(i)+'" y="'+(h-5)+'" text-anchor="middle" font-size="8" fill="'+css('--muted')+'">W'+wk.wk+'</text>';});
+  g+='</svg>';
+  $('projDrillChart').innerHTML=g;
 }
 
 /* ---------------- Render: Risers & Fallers ---------------- */
@@ -611,7 +791,7 @@ function renderHeat(){
     c.onmouseleave=hideTip;
   });
   Array.prototype.forEach.call($('heat').querySelectorAll('.rowlabel'),function(rl){
-    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderTrend(); };
+    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderTrend(); renderProjDrill(ACTIVE_ROW); };
   });
 }
 
@@ -739,15 +919,17 @@ function renderTrend(){
 
 /* ---------------- Render: footer ---------------- */
 function renderFoot(){
-  var src = SOURCE==='live' ? 'Live read of “Planned Time Tempo”'+(DATA.capacityMode==='roster'?' + Roster capacity':'') : 'Offline CSV preview';
-  $('foot').innerHTML='Demand = planned project hours per week (time-off / NETSUITE excluded). '
-    +'Capacity = active Services team × '+(DATA.anzCapacity||38)+' hrs (ANZ) / '+(DATA.capacity||40)+' hrs, minus PTO &amp; public holidays per week'+(DATA.capacityMode==='planned'?' (estimated from planned roster — live roster unavailable)':'')+'; dashed '+Math.round((DATA.planTarget||0.9)*100)+'% line = planning target. '
+  var ts = DATA&&DATA.trackedLastExport ? ' · Tracked time '+fmtExport(DATA.trackedLastExport) : '';
+  var src = SOURCE==='live' ? 'Planned time: “Planned Time Tempo” sheet'+ts : 'Offline CSV preview';
+  $('foot').innerHTML='Planned = project hours from Tempo plan sheet (NETSUITE time-off excluded). '
+    +'Tracked = Tempo logged time'+ts+'. '
+    +'Fidelity = tracked ÷ planned per week (signals: &lt;20% tracked of ≥4 planned hrs = gap; tracked with no plan = swarmable). '
     +'Blend = distinct projects a person is planned on. “Strategic” = top '+(DATA.topnStrategic||10)+' projects by hours (proxy). '
     +'ISO weeks '+(NWEEKS?WEEKS[0].iso+'–'+WEEKS[NWEEKS-1].iso:'')+'. '+src+'.';
 }
 
 function renderAll(){
-  renderRange(); renderWeekbar(); renderCapacity(); renderMovers();
+  renderRange(); renderWeekbar(); renderCapacity(); renderSignals(); renderMovers();
   renderBars(); renderBlend(); renderTrend(); renderHeat(); renderFoot();
 }
 
@@ -862,6 +1044,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.png-btn'),function(b){
   b.onclick=function(){ savePanelPNG(b.closest('.panel'),b.dataset.png,b); };
 });
 $('reloadBtn').onclick=function(){ ACTIVE_ROW=null; boot(); };
+var pdc=$('projDrillClose');if(pdc)pdc.onclick=function(){ ACTIVE_ROW=null; $('projDrill').style.display='none'; };
 $('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA) renderHeat(); });
 Array.prototype.forEach.call($('topToggle').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('topToggle').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; if(DATA) renderHeat(); }; });
 Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('colorMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); COLOR_MODE=b.dataset.m; if(DATA) renderHeat(); }; });
@@ -877,7 +1060,11 @@ function renderQFilters(){
 renderQFilters();
 
 /* ---------------- Go ---------------- */
-boot();
+try {
+  boot();
+} catch(e) {
+  setState('Boot error: ' + e.message);
+}
 </script>
 </body>
 </html>
