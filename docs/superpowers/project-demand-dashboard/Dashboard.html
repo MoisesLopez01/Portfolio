@@ -283,6 +283,7 @@ input[type=file]{display:none}
             <button data-m="change">Change</button>
             <button data-m="risk">Risk</button>
             <button data-m="hours" class="on">Hours</button>
+            <button data-m="people">&#x1F465; People</button>
           </div>
           <div class="chip-toggle" id="topToggle">
             <button data-n="15" class="on">Top 15</button>
@@ -391,6 +392,7 @@ var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
 var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", TREND_MODE = "movers", QFILTER = "all", BLEND_OPEN = false;
+var HEAT_MAX_HEAD = 0;
 var SIG_LOC = "", SIG_FAM = "", SIG_MGR = "";
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -746,6 +748,12 @@ function cellColor(k,iso){
     var bg = t>=0 ? mix(hexVar('--neutral'),hexVar('--up'),t) : mix(hexVar('--neutral'),hexVar('--down'),-t);
     return {bg:bg,fg:Math.abs(t)>0.6?'#fff':css('--text'),txt: Math.abs(d)>=1?((d>0?'+':'')+fmt(d)):''};
   }
+  if(COLOR_MODE==='people'){
+    var hd=(DATA.head[k]&&DATA.head[k][iso])||0;
+    var t=HEAT_MAX_HEAD>0?hd/HEAT_MAX_HEAD:0;
+    var bg=t<0.5?mix(hexVar('--surface-2'),'#2864E6',t/0.5):mix('#2864E6',hexVar('--void'),(t-0.5)/0.5);
+    return {bg:bg,fg:t>0.4?'#fff':css('--text'),txt:hd>0?hd+'p':''};
+  }
   // risk
   var dr=wowDrop(k,iso); var toZero=(capAt(k,iso)<=0.001 && pr_pos(k,iso));
   var risk = toZero?1:(dr<0?Math.min(1,-dr):0);
@@ -755,6 +763,8 @@ function cellColor(k,iso){
 function pr_pos(k,iso){ var pr=priorIso(iso); return pr? capAt(k,pr)>0.001 : false; }
 
 function renderHeat(){
+  HEAT_MAX_HEAD=0;
+  DATA.order.forEach(function(k){WEEKS.forEach(function(w){var h=(DATA.head[k]&&DATA.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
   var order=visibleOrder();
   var html='<table class="hgrid"><thead><tr><th class="rowhdr">Project</th>'+WEEKS.map(function(w){
     return '<th>'+esc((w.iso.split('.')[1]||w.iso))+'<div style="font-weight:400;color:var(--muted);font-size:9.5px">'+STATUS_LABEL[w.status]+'</div></th>';
@@ -775,9 +785,19 @@ function renderHeat(){
   $('heat').innerHTML=html;
 
   // legend + exception caption
-  var bar=$('legBar'); bar.className='legbar '+COLOR_MODE;
-  $('legLo').textContent = COLOR_MODE==='hours'?'Lower':COLOR_MODE==='risk'?'Steady':'Falling';
-  $('legHi').textContent = COLOR_MODE==='hours'?'Higher planned hrs':COLOR_MODE==='risk'?'Dropping / to zero':'Rising';
+  var bar=$('legBar');
+  if(COLOR_MODE==='people'){
+    bar.className='legbar';
+    bar.style.background='linear-gradient(90deg,'+hexVar('--surface-2')+',#2864E6,'+hexVar('--void')+')';
+    bar.style.border='1px solid var(--border)';
+    $('legLo').textContent='0 people';
+    $('legHi').textContent=HEAT_MAX_HEAD+' people';
+  } else {
+    bar.className='legbar '+COLOR_MODE;
+    bar.style.background=''; bar.style.border='';
+    $('legLo').textContent = COLOR_MODE==='hours'?'Lower':COLOR_MODE==='risk'?'Steady':'Falling';
+    $('legHi').textContent = COLOR_MODE==='hours'?'Higher planned hrs':COLOR_MODE==='risk'?'Dropping / to zero':'Rising';
+  }
   var losingCount=DATA.order.filter(losingThisWeek).length;
   $('heatNote').innerHTML='Showing '+order.length+' of '+DATA.order.length+' projects'
     +' · <b>'+losingCount+'</b> losing &gt;20% of hours this week';
