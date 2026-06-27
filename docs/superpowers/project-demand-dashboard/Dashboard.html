@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en" data-theme="light">
 <head>
 <base target="_top">
@@ -238,7 +238,7 @@ input[type=file]{display:none}
     </div>
   </div>
 
-  <div class=”stateMsg” id=”stateMsg”>Loading data…</div>
+  <div class="stateMsg" id="stateMsg">Loading data…</div>
 
   <div id="dash" style="display:none">
 
@@ -446,7 +446,7 @@ function strategicSet(){ return DATA.order.slice(0, DATA.topnStrategic||10); }
 
 /* ---------------- Boot / data load ---------------- */
 function boot(){
-  setState(“Loading data…”);
+  setState("Loading data…");
   if (typeof google !== "undefined" && google.script && google.script.run){
     google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getDemandData();
   } else {
