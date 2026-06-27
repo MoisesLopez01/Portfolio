@@ -14,11 +14,40 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+// Dual-mode transport. On Google Apps Script we use google.script.run (the
+// original behaviour). On Netlify (static hosting) there is no google.script,
+// so we POST { fn, args, adminToken } to the /api/rpc serverless function, which
+// dispatches to the same function names. The frontend code is identical either way.
+var ON_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
+
 function runServer(fn, args, onSuccess, onError) {
-  var runner = google.script.run
-    .withSuccessHandler(function(result) { onSuccess && onSuccess(result); })
-    .withFailureHandler(function(err)    { onError   && onError(err);     });
-  runner[fn].apply(runner, args || []);
+  if (ON_GAS) {
+    var runner = google.script.run
+      .withSuccessHandler(function(result) { onSuccess && onSuccess(result); })
+      .withFailureHandler(function(err)    { onError   && onError(err);     });
+    runner[fn].apply(runner, args || []);
+    return;
+  }
+  // Netlify: fetch the RPC endpoint.
+  var token = '';
+  try { token = sessionStorage.getItem('pf_admin_token') || ''; } catch (e) {}
+  fetch('/api/rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fn: fn, args: args || [], adminToken: token })
+  })
+  .then(function(res) {
+    return res.json().then(function(body) { return { status: res.status, body: body }; });
+  })
+  .then(function(r) {
+    if (r.status >= 200 && r.status < 300 && r.body && r.body.ok) {
+      onSuccess && onSuccess(r.body.result);
+    } else {
+      var msg = (r.body && r.body.error) || ('Request failed (' + r.status + ')');
+      onError && onError(new Error(msg));
+    }
+  })
+  .catch(function(err) { onError && onError(err); });
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
@@ -542,12 +571,28 @@ var Chat = (function() {
     sending = true;
     document.getElementById('chat-send-btn').disabled = true;
 
-    runServer('proxyGroqChat', [text, history.slice(), window.SESSION_ID || 'anon'],
+    // Retrieve RAG context if user query matches a project
+    var ragContext = retrieveProject(text);
+    
+    runServer('proxyGroqChat', [text, history.slice(), window.SESSION_ID || 'anon', ragContext ? ragContext.data : null],
       function(responseText) {
         typingEl.remove();
-        addMessage('ai', responseText || 'No response received.');
+        
+        // Parse and handle [DEMO:id] tags
+        var demoMatch = responseText.match(/\[DEMO:([a-z-]+)\]/);
+        var cleanResponse = responseText.replace(/\[DEMO:[a-z-]+\]/g, '');
+        
+        addMessage('ai', cleanResponse || 'No response received.');
+        
+        // Auto-launch demo if tag was present
+        if (demoMatch && demoMatch[1]) {
+          setTimeout(function() {
+            loadProjectDemo(demoMatch[1]);
+          }, 500);
+        }
+        
         history.push({ role: 'user',      content: text });
-        history.push({ role: 'assistant', content: responseText || '' });
+        history.push({ role: 'assistant', content: cleanResponse || '' });
         if (history.length > 12) history = history.slice(-12);
         sending = false;
         document.getElementById('chat-send-btn').disabled = false;
@@ -618,7 +663,92 @@ var Chat = (function() {
     return el;
   }
 
-  return { init: init, send: send, sendSuggestion: sendSuggestion, newChat: newChat };
+  // ── RAG: Project retrieval ────────────────────────────────────────────────
+
+  var PROJECT_DATABASE = {
+    'ai-sales': { name: 'Pipeline Risk Analyzer', domain: 'AI/Sales', tech: ['Groq', 'LLM', 'GAS'], impact: 'Reduced deal slippage by 23%' },
+    'tcc-forecast': { name: 'TCC Forecasting Engine', domain: 'Finance', tech: ['SQL', 'Monte Carlo', 'GAS'], impact: '$2.1M variance analysis' },
+    'comp-reporting': { name: 'Global Comp Normalizer', domain: 'HR/Comp', tech: ['Python', 'PPP Index', 'BigQuery'], impact: '10-country benchmark' },
+    'ps-dashboard': { name: 'PS Contribution Scorer', domain: 'Operations', tech: ['GAS', 'Dashboards', 'Metrics'], impact: '200-person scoring system' },
+    'ai-salary-benchmarking': { name: 'AI Salary Benchmarking', domain: 'HR/Comp', tech: ['AI', 'Python', 'Data Analysis'], impact: 'Market rate analysis' },
+    'global-comp-reporting': { name: 'Global Compensation', domain: 'Finance/HR', tech: ['Python', 'Currency API', 'SQL'], impact: 'Multi-currency reporting' },
+    'goals-quality-audit': { name: 'Goals Quality Audit', domain: 'Operations', tech: ['Python', 'NLP', 'Analytics'], impact: 'OKR compliance tracking' },
+    'ps-contribution-dashboard': { name: 'PS Contribution Dashboard', domain: 'Operations', tech: ['GAS', 'Apps Script', 'Sheets'], impact: 'Team performance tracking' },
+    'tcc-financial-forecasting': { name: 'TCC Financial Forecasting', domain: 'Finance', tech: ['SQL', 'Proration', 'Forecasting'], impact: 'Attrition modeling' },
+    'ai-chat': { name: 'RAG-Powered Portfolio Assistant', domain: 'AI/LLM', tech: ['Llama 3.3', 'RAG', 'Groq'], impact: 'Intelligent Q&A system' },
+    'data-pipeline': { name: 'ETL Data Pipeline', domain: 'Engineering', tech: ['Python', 'GCP', 'BigQuery'], impact: 'Automated data ingestion' },
+    'workforce-analytics': { name: 'Workforce Analytics Suite', domain: 'HR/Analytics', tech: ['Python', 'Pandas', 'Visualization'], impact: 'Headcount forecasting' }
+  };
+
+  function retrieveProject(query) {
+    var q = query.toLowerCase();
+    for (var key in PROJECT_DATABASE) {
+      var proj = PROJECT_DATABASE[key];
+      if (q.indexOf(key.replace(/-/g, ' ')) !== -1 || 
+          q.indexOf(proj.name.toLowerCase()) !== -1 ||
+          q.indexOf(proj.domain.toLowerCase()) !== -1) {
+        return { id: key, data: proj };
+      }
+    }
+    return null;
+  }
+
+  // ── RAG: Demo triggers ────────────────────────────────────────────────────
+
+  function checkDemoTrigger(query) {
+    var q = query.toLowerCase();
+    var triggers = {
+      'ai-sales': ['pipeline', 'risk', 'deal', 'sales forecast', 'close probability'],
+      'tcc-forecast': ['tcc', 'total cost', 'compensation forecast', 'headcount', 'attrition'],
+      'comp-reporting': ['salary', 'compensation', 'benchmark', 'market rate', 'col adjust'],
+      'ps-dashboard': ['contribution', 'scorer', 'performance', 'team metrics', 'ps dashboard']
+    };
+    
+    for (var demo in triggers) {
+      for (var i = 0; i < triggers[demo].length; i++) {
+        if (q.indexOf(triggers[demo][i]) !== -1) {
+          return demo;
+        }
+      }
+    }
+    return null;
+  }
+
+  // ── Load demo from chat ───────────────────────────────────────────────────
+
+  function loadProjectDemo(demoId) {
+    var demoSection = document.getElementById('demos');
+    if (!demoSection) return;
+    
+    // Scroll to demos section
+    demoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+    // Wait for scroll, then activate the tab
+    setTimeout(function() {
+      var tab = document.querySelector('.demo-tab[data-demo="' + demoId + '"]');
+      if (tab) {
+        tab.click();
+        // Add visual feedback
+        var panel = document.getElementById('demo-panel');
+        if (panel) {
+          panel.style.animation = 'none';
+          setTimeout(function() {
+            panel.style.animation = 'fadeIn 0.5s ease-in-out';
+          }, 10);
+        }
+      }
+    }, 600);
+  }
+
+  return { 
+    init: init, 
+    send: send, 
+    sendSuggestion: sendSuggestion, 
+    newChat: newChat,
+    retrieveProject: retrieveProject,
+    checkDemoTrigger: checkDemoTrigger,
+    loadProjectDemo: loadProjectDemo
+  };
 }());
 
 // ── PIPELINE RISK SIMULATOR ───────────────────────────────────────────────────
@@ -648,6 +778,12 @@ var DealRiskDemo = (function() {
   }
 
   function probCls(p) { return p >= 0.60 ? 'g' : p >= 0.40 ? 'w' : 'b'; }
+  
+  function getRiskColor(prob) {
+    if (prob >= 0.60) return '#10b981';  // green
+    if (prob >= 0.40) return '#fbbf24';  // yellow
+    return '#f87171';  // red
+  }
 
   // ── per-instance factory (called once per inject) ────────────────────────────
 
@@ -664,6 +800,12 @@ var DealRiskDemo = (function() {
       aiBtn:      containerEl.querySelector('.pl-ai-btn'),
       aiNote:     containerEl.querySelector('.pl-ai-note'),
       aiResults:  containerEl.querySelector('.pl-ai-results')
+    };
+    
+    var charts = {
+      probBar: null,
+      valueDonut: null,
+      riskBubble: null
     };
 
     // ── render ────────────────────────────────────────────────────────────────
@@ -710,11 +852,175 @@ var DealRiskDemo = (function() {
       refs.barFill.style.width = Math.round(pct * 100) + '%';
     }
 
+    function renderCharts(fwd) {
+      if (typeof Chart === 'undefined') return;
+      
+      // 1. Bar Chart: Current vs Projected Probability
+      var canvasBar = containerEl.querySelector('.pl-chart-bar');
+      if (canvasBar && !charts.probBar) {
+        var ctxBar = canvasBar.getContext('2d');
+        var nowProbs = DEALS.map(function(d) { return closePct(d.ageDays, d.amountK) * 100; });
+        var projProbs = DEALS.map(function(d) { return closePct(d.ageDays + fwd, d.amountK) * 100; });
+        
+        charts.probBar = new Chart(ctxBar, {
+          type: 'bar',
+          data: {
+            labels: DEALS.map(function(d) { return d.name; }),
+            datasets: [
+              {
+                label: 'Current %',
+                data: nowProbs,
+                backgroundColor: 'rgba(56, 189, 248, 0.6)',
+                borderColor: 'rgba(56, 189, 248, 1)',
+                borderWidth: 1
+              },
+              {
+                label: 'Projected %',
+                data: projProbs,
+                backgroundColor: 'rgba(168, 85, 247, 0.6)',
+                borderColor: 'rgba(168, 85, 247, 1)',
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: true, labels: { color: '#f4f6f8' } },
+              title: { display: true, text: 'Current vs Projected Close Probability', color: '#f4f6f8' }
+            },
+            scales: {
+              y: { beginAtZero: true, max: 100, ticks: { color: '#8ba2b8' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+              x: { ticks: { color: '#8ba2b8' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+            }
+          }
+        });
+      } else if (charts.probBar) {
+        charts.probBar.data.datasets[1].data = DEALS.map(function(d) { 
+          return closePct(d.ageDays + fwd, d.amountK) * 100; 
+        });
+        charts.probBar.update();
+      }
+      
+      // 2. Doughnut Chart: Expected Value by Deal
+      var canvasDonut = containerEl.querySelector('.pl-chart-donut');
+      if (canvasDonut && !charts.valueDonut) {
+        var ctxDonut = canvasDonut.getContext('2d');
+        var expectedValues = DEALS.map(function(d) { 
+          return d.amountK * closePct(d.ageDays + fwd, d.amountK); 
+        });
+        
+        charts.valueDonut = new Chart(ctxDonut, {
+          type: 'doughnut',
+          data: {
+            labels: DEALS.map(function(d) { return d.name; }),
+            datasets: [{
+              data: expectedValues,
+              backgroundColor: [
+                'rgba(16, 185, 129, 0.8)',
+                'rgba(56, 189, 248, 0.8)',
+                'rgba(168, 85, 247, 0.8)',
+                'rgba(251, 191, 36, 0.8)',
+                'rgba(248, 113, 113, 0.8)'
+              ],
+              borderWidth: 2,
+              borderColor: '#091d36'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: true, position: 'bottom', labels: { color: '#f4f6f8', font: { size: 11 } } },
+              title: { display: true, text: 'Expected Value Distribution', color: '#f4f6f8' },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    return ctx.label + ': ' + fmt(ctx.parsed);
+                  }
+                }
+              }
+            }
+          }
+        });
+      } else if (charts.valueDonut) {
+        charts.valueDonut.data.datasets[0].data = DEALS.map(function(d) { 
+          return d.amountK * closePct(d.ageDays + fwd, d.amountK); 
+        });
+        charts.valueDonut.update();
+      }
+      
+      // 3. Bubble Chart: Risk Heatmap (Age vs Amount)
+      var canvasBubble = containerEl.querySelector('.pl-chart-bubble');
+      if (canvasBubble && !charts.riskBubble) {
+        var ctxBubble = canvasBubble.getContext('2d');
+        var bubbleData = DEALS.map(function(d) {
+          var prob = closePct(d.ageDays + fwd, d.amountK);
+          return {
+            x: d.ageDays,
+            y: d.amountK,
+            r: Math.max(8, prob * 30),
+            prob: prob,
+            name: d.name
+          };
+        });
+        
+        charts.riskBubble = new Chart(ctxBubble, {
+          type: 'bubble',
+          data: {
+            datasets: [{
+              label: 'Deals',
+              data: bubbleData,
+              backgroundColor: bubbleData.map(function(d) { 
+                return getRiskColor(d.prob).replace(')', ', 0.6)').replace('rgb', 'rgba'); 
+              }),
+              borderColor: bubbleData.map(function(d) { return getRiskColor(d.prob); }),
+              borderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: 'Risk Heatmap: Age vs Amount', color: '#f4f6f8' },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var d = ctx.raw;
+                    return d.name + ' | Age: ' + d.x + 'd | $' + d.y + 'K | P: ' + Math.round(d.prob * 100) + '%';
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { title: { display: true, text: 'Age (days)', color: '#8ba2b8' }, ticks: { color: '#8ba2b8' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+              y: { title: { display: true, text: 'Amount ($K)', color: '#8ba2b8' }, ticks: { color: '#8ba2b8' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+            }
+          }
+        });
+      } else if (charts.riskBubble) {
+        charts.riskBubble.data.datasets[0].data = DEALS.map(function(d) {
+          var prob = closePct(d.ageDays + fwd, d.amountK);
+          return { x: d.ageDays, y: d.amountK, r: Math.max(8, prob * 30), prob: prob, name: d.name };
+        });
+        charts.riskBubble.data.datasets[0].backgroundColor = charts.riskBubble.data.datasets[0].data.map(function(d) { 
+          return getRiskColor(d.prob).replace(')', ', 0.6)').replace('rgb', 'rgba'); 
+        });
+        charts.riskBubble.data.datasets[0].borderColor = charts.riskBubble.data.datasets[0].data.map(function(d) { 
+          return getRiskColor(d.prob); 
+        });
+        charts.riskBubble.update();
+      }
+    }
+
     function update() {
       var fwd = parseInt(refs.forward.value, 10) || 0;
       refs.forwardVal.textContent = fwd === 0 ? 'Today' : '+' + fwd + ' days';
       renderTable(fwd);
       renderSummary(fwd);
+      renderCharts(fwd);
     }
 
     // ── Groq batch scoring ────────────────────────────────────────────────────
@@ -1717,7 +2023,7 @@ var UI = (function() {
       'Python','SQL · SuiteQL','Gemini Pro API','Google Apps Script',
       'Tableau','Looker','HubSpot API v3/v4','NetSuite · Oracle',
       'Vertex AI','Claude API','pandas','ETL Pipelines',
-      'Prompt Engineering','PDF Automation','RBAC','Time Decay Forecasting',
+      'Prompt Engineering','RBAC','Time Decay Forecasting','Lever',
       'Bitbucket Pipelines','Google Clasp · GitOps','Claude Code','Rovo Agents','MCP Integration'
     ];
     var track = document.getElementById('stack-track');
@@ -1868,7 +2174,22 @@ var Resume = (function() {
     window.print();
   }
 
-  return { copy: copy, print: print };
+  function download() {
+    var text = plainText();
+    var blob = new Blob([text], { type: 'text/plain; charset=utf-8' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'Alex-Lopez-CV.txt';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    Toast.show('CV downloaded', 'success');
+  }
+
+  return { copy: copy, print: print, download: download };
 }());
 
 // ── MODAL EVENT WIRING ────────────────────────────────────────────────────────
@@ -1919,6 +2240,85 @@ function wireModalEvents() {
   mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
 }());
 
+// ── SCROLL NUDGE (Donna contextual hint) ─────────────────────────────────────
+var ScrollNudge = (function() {
+  var el, msgEl;
+  var dismissed = false;
+  var shown = {};
+  var hideTimer = null;
+
+  var HINTS = {
+    'demos':    'How does the Pipeline Risk Analyzer work?',
+    'projects': 'Which project shows your strongest AI work?',
+    'about':    'What kinds of roles fit Alex best?',
+    'contact':  'Is Alex open to new opportunities right now?'
+  };
+
+  function init() {
+    el    = document.getElementById('donna-nudge');
+    msgEl = el && el.querySelector('.donna-nudge-msg');
+    if (!el) return;
+
+    try { if (sessionStorage.getItem('donna_nudge_done')) { dismissed = true; return; } } catch(e) {}
+
+    el.querySelector('.donna-nudge-inner').addEventListener('click', onNudgeClick);
+    el.querySelector('.donna-nudge-close').addEventListener('click', function(e) {
+      e.stopPropagation();
+      dismiss();
+    });
+
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting && !dismissed && !shown[entry.target.id]) {
+          shown[entry.target.id] = true;
+          show(entry.target.id);
+        }
+      });
+    }, { threshold: 0.25 });
+
+    Object.keys(HINTS).forEach(function(id) {
+      var sec = document.getElementById(id);
+      if (sec) obs.observe(sec);
+    });
+  }
+
+  function show(sectionId) {
+    if (!el || !HINTS[sectionId] || dismissed) return;
+    clearTimeout(hideTimer);
+    msgEl.textContent = HINTS[sectionId];
+    el.classList.add('visible');
+    hideTimer = setTimeout(hide, 8000);
+  }
+
+  function hide() {
+    if (el) el.classList.remove('visible');
+  }
+
+  function dismiss() {
+    dismissed = true;
+    hide();
+    try { sessionStorage.setItem('donna_nudge_done', '1'); } catch(e) {}
+  }
+
+  function onNudgeClick() {
+    var msg = msgEl ? msgEl.textContent : '';
+    dismiss();
+    var chatSec = document.getElementById('chat-section');
+    if (chatSec) chatSec.scrollIntoView({ behavior: 'smooth' });
+    if (msg) {
+      setTimeout(function() {
+        var inp = document.getElementById('chat-input');
+        if (inp && typeof Chat !== 'undefined' && !inp.value) {
+          inp.value = msg;
+          Chat.send();
+        }
+      }, 700);
+    }
+  }
+
+  return { init: init, dismiss: dismiss };
+}());
+
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1934,11 +2334,40 @@ document.addEventListener('DOMContentLoaded', function() {
   UI.initSkillBars();
   UI.initMobileNav();
   UI.initNavHighlight();
+  ScrollNudge.init();
 
   // Admin-only module guard
   if (window.IS_ADMIN) {
     // Admin panel is already in DOM (injected by GAS template)
     // AdminPanel is fully wired via onclick attributes
+  }
+
+  // ── NETLIFY-ONLY BOOT ───────────────────────────────────────────────────────
+  // On static hosting there's no Google session, so (a) custom projects aren't
+  // baked into the page — fetch them and merge — and (b) admin is unlocked with
+  // the ADMIN_TOKEN (enforced server-side on every admin call).
+  if (!ON_GAS) {
+    runServer('getCustomProjects', [],
+      function(custom) {
+        if (custom && custom.length) {
+          var have = {};
+          (window.PROJECTS || []).forEach(function(p){ have[p.id] = 1; });
+          custom.forEach(function(p){ if (!have[p.id]) window.PROJECTS.push(p); });
+          if (window.DomainGrid && DomainGrid.render) DomainGrid.render();
+        }
+      },
+      function() { /* no custom projects / DB offline — built-ins still render */ }
+    );
+
+    // Unlock admin by visiting #admin (or calling unlockAdmin() from the console).
+    window.unlockAdmin = function() {
+      var token = window.prompt('Enter admin token:');
+      if (!token) return;
+      try { sessionStorage.setItem('pf_admin_token', token); } catch (e) {}
+      window.IS_ADMIN = true;
+      if (window.AdminPanel && AdminPanel.open) AdminPanel.open();
+    };
+    if (location.hash === '#admin') window.unlockAdmin();
   }
 });
 
@@ -1964,7 +2393,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function build() {
       nodes = [];
       if (!canvas.width || !canvas.height) return;
-      var count = Math.min(70, Math.round(canvas.width * canvas.height / 6000));
+      // Density scales with area; cap is high enough that the full-bleed ultra-wide
+      // canvas (≥1800px) stays a dense web. Normal half-width canvases land ~45–60
+      // nodes, well under the cap, so this only affects the wide full-bleed layout.
+      var count = Math.min(130, Math.round(canvas.width * canvas.height / 6000));
       for (var i = 0; i < count; i++) {
         nodes.push({
           x: Math.random() * canvas.width,
@@ -2021,6 +2453,79 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
+}());
+
+// ── HERO PROOF TERMINAL ─────────────────────────────────────────────────────────
+// Types out a sample weekly-pipeline run line-by-line in the hero's right column,
+// then leaves a blinking cursor. A small footer cycles through "proof" one-liners.
+// Both honour prefers-reduced-motion (final state rendered statically, no loop).
+(function() {
+  var CURSOR = '<span class="hpf-cursor"></span>';
+  var LINES = [
+    { cmd: 'alex run pipeline --weekly' },
+    { out: '<span class="c-arrow">→</span> reading 7 Google Sheets <span class="c-dim">…</span> <span class="c-ok">ok</span>' },
+    { out: '<span class="c-arrow">→</span> joining roster × RCR × goals <span class="c-dim">1,240 rows</span>' },
+    { out: '<span class="c-arrow">→</span> scoring 312 contributors <span class="c-ok">done</span>' },
+    { out: '<span class="c-arrow">→</span> Gemini narrative <span class="c-dim">1.8s</span>' },
+    { out: '<span class="c-ok">✓</span> dashboard published · 5-week rolling view' },
+    { out: '<span class="c-dim">  saved ≈14 manual hours / cycle</span>' }
+  ];
+  var ROTATE = [
+    '11 production apps shipped',
+    '9 LLM systems live (Gemini · Claude)',
+    'RBAC web apps · live exec dashboards',
+    'SuiteQL audits across NetSuite + Oracle'
+  ];
+
+  function lineHTML(item) {
+    return item.cmd !== undefined
+      ? '<span class="c-dim">$</span> <span class="c-cmd">' + item.cmd + '</span>'
+      : item.out;
+  }
+
+  function typeTerminal() {
+    var el = document.getElementById('hpf-term');
+    if (!el) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { el.innerHTML = LINES.map(lineHTML).join('\n') + CURSOR; return; }
+
+    var html = '', i = 0;
+    function next() {
+      if (i >= LINES.length) { el.innerHTML = html + CURSOR; return; }
+      var item = LINES[i];
+      if (item.cmd !== undefined) {
+        var full = item.cmd, c = 0;
+        var prefix = html + '<span class="c-dim">$</span> <span class="c-cmd">';
+        (function type() {
+          el.innerHTML = prefix + full.slice(0, c) + '</span>' + CURSOR;
+          if (c < full.length) { c++; setTimeout(type, 38); }
+          else { html = prefix + full + '</span>\n'; i++; setTimeout(next, 360); }
+        })();
+      } else {
+        html += lineHTML(item) + '\n';
+        el.innerHTML = html + CURSOR;
+        i++; setTimeout(next, 300);
+      }
+    }
+    next();
+  }
+
+  function rotateProof() {
+    var el = document.getElementById('hpf-rotate');
+    if (!el) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    var k = 0;
+    setInterval(function() {
+      k = (k + 1) % ROTATE.length;
+      el.style.opacity = '0';
+      setTimeout(function() { el.textContent = ROTATE[k]; el.style.opacity = '1'; }, 380);
+    }, 3200);
+  }
+
+  function init() { typeTerminal(); rotateProof(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 }());
 
 </script>

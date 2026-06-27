@@ -1,0 +1,132 @@
+<h2>How does the "swarmable team" signal work?</h2>
+<p class="subtitle">People who can be redirected to understaffed projects. Three different ways to surface this signal.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif;font-size:10px">
+        <div style="color:#94a3b8;font-size:11px;font-weight:600;margin-bottom:8px">People signals — W24</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <!-- Gap column -->
+          <div>
+            <div style="color:#ef4444;font-size:9px;font-weight:600;margin-bottom:4px">⚠ Planned, not tracking (8)</div>
+            <div style="background:#1e293b;border-radius:4px;padding:4px 6px;margin-bottom:3px;color:#94a3b8">Ana R. · SR-PLAT · 20h gap</div>
+            <div style="background:#1e293b;border-radius:4px;padding:4px 6px;margin-bottom:3px;color:#94a3b8">Carlos M. · SR-CUST · 16h gap</div>
+            <div style="background:#1e293b;border-radius:4px;padding:4px 6px;color:#64748b">+6 more…</div>
+          </div>
+          <!-- Swarmable column — enhanced -->
+          <div>
+            <div style="color:#10b981;font-size:9px;font-weight:600;margin-bottom:4px">✦ Ready to swarm (5)</div>
+            <div style="background:#064e3b30;border:1px solid #10b98130;border-radius:4px;padding:4px 6px;margin-bottom:3px">
+              <div style="color:#34d399;font-weight:600">Jamie L.</div>
+              <div style="color:#64748b;font-size:8px">~18h free · tracking SR-DATA</div>
+              <div style="color:#10b981;font-size:8px">→ Could join: SR-PLAT, SR-MIGR</div>
+            </div>
+            <div style="background:#064e3b30;border:1px solid #10b98130;border-radius:4px;padding:4px 6px;margin-bottom:3px">
+              <div style="color:#34d399;font-weight:600">Priya S.</div>
+              <div style="color:#64748b;font-size:8px">~12h free · tracking SR-OPS</div>
+              <div style="color:#10b981;font-size:8px">→ Could join: SR-CUST</div>
+            </div>
+            <div style="background:#1e293b;border-radius:4px;padding:4px 6px;color:#64748b">+3 more…</div>
+          </div>
+        </div>
+        <div style="color:#475569;font-size:8px;margin-top:8px;border-top:1px solid #1e293b;padding-top:6px">
+          "Could join" = projects with capacity gap this week matching person's skill family
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Enhance People Signals panel</h3>
+      <p>Upgrade the existing "swarmable workers" column to show free hours, current project, and suggested projects they could join (based on gap size). Stays in the existing panel — no new section. Managers see it immediately.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif;font-size:10px">
+        <div style="color:#94a3b8;font-size:11px;font-weight:600;margin-bottom:8px">Project key heatmap — click a cell to see who can help</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:8px">
+          <tr>
+            <th style="color:#475569;padding:2px 4px;text-align:left"></th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W24</th>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px">SR-PLAT</td>
+            <td style="background:#ef444430;color:#fca5a5;padding:4px 8px;text-align:center;border-radius:4px;cursor:pointer;border:1px solid #ef4444">
+              ⚠ 40h planned<br><span style="font-size:8px">only 18h tracked</span>
+            </td>
+          </tr>
+          <tr><td colspan="2" style="padding:4px 0"></td></tr>
+        </table>
+        <!-- Drill-down popover -->
+        <div style="background:#1e293b;border-radius:6px;padding:8px;border:1px solid #334155">
+          <div style="color:#f59e0b;font-size:9px;font-weight:600;margin-bottom:6px">SR-PLAT · W24 · 22h gap → Who can help?</div>
+          <div style="background:#064e3b30;border-radius:4px;padding:4px 6px;margin-bottom:3px">
+            <span style="color:#34d399">Jamie L.</span>
+            <span style="color:#64748b"> · ~18h free · currently SR-DATA</span>
+          </div>
+          <div style="background:#064e3b30;border-radius:4px;padding:4px 6px">
+            <span style="color:#34d399">Sam T.</span>
+            <span style="color:#64748b"> · ~8h free · currently unassigned</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Heatmap cell drill-down</h3>
+      <p>Click a red/risk heatmap cell → inline popover shows "Who can help?" — people with free hours this week. Connects the gap directly to the solution. Managers take action from the heatmap itself. No new panel needed.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif;font-size:10px">
+        <div style="color:#94a3b8;font-size:11px;font-weight:600;margin-bottom:8px">Team Availability — W24</div>
+        <!-- Availability bars -->
+        <div style="margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <span style="color:#94a3b8;width:60px;font-size:9px">Jamie L.</span>
+            <div style="flex:1;background:#1e293b;border-radius:2px;height:10px;position:relative">
+              <div style="width:45%;background:#3b82f6;height:10px;border-radius:2px 0 0 2px"></div>
+              <div style="position:absolute;right:0;top:0;width:55%;background:#10b98150;height:10px;border-radius:0 2px 2px 0;border:1px dashed #10b981"></div>
+            </div>
+            <span style="color:#10b981;font-size:9px">18h free</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <span style="color:#94a3b8;width:60px;font-size:9px">Priya S.</span>
+            <div style="flex:1;background:#1e293b;border-radius:2px;height:10px;position:relative">
+              <div style="width:70%;background:#3b82f6;height:10px;border-radius:2px 0 0 2px"></div>
+              <div style="position:absolute;right:0;top:0;width:30%;background:#10b98150;height:10px;border-radius:0 2px 2px 0;border:1px dashed #10b981"></div>
+            </div>
+            <span style="color:#10b981;font-size:9px">12h free</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <span style="color:#94a3b8;width:60px;font-size:9px">Carlos M.</span>
+            <div style="flex:1;background:#1e293b;border-radius:2px;height:10px">
+              <div style="width:95%;background:#ef4444;height:10px;border-radius:2px"></div>
+            </div>
+            <span style="color:#ef4444;font-size:9px">over!</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="color:#94a3b8;width:60px;font-size:9px">Ana R.</span>
+            <div style="flex:1;background:#1e293b;border-radius:2px;height:10px">
+              <div style="width:0%;background:#3b82f6;height:10px;border-radius:2px"></div>
+            </div>
+            <span style="color:#f59e0b;font-size:9px">no plan</span>
+          </div>
+        </div>
+        <div style="color:#475569;font-size:8px;border-top:1px solid #1e293b;padding-top:5px">
+          Blue = planned · Dashed green = spare capacity · Red = over-allocated
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — New "Team Availability" section</h3>
+      <p>A dedicated panel showing every team member as a capacity bar: planned hours vs total capacity. Green dashed = swarmable hours. Red = over-allocated. Sorted by free capacity. C-suite sees bench depth at a glance.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px">A+B are combinable — the People Signals panel shows who's free, and the heatmap cell connects the gap to those people. Let me know if you want that combination.</p>

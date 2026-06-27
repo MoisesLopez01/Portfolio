@@ -1,0 +1,51 @@
+<h2>How should we measure "context variety"?</h2>
+<p class="subtitle">The Tempo "Key" column tells us which projects each person is planned on each week. Before we display anything, we need to agree what number captures "context-switching load." Here's a concrete week for two rocketeers:</p>
+
+<div class="mockup">
+  <div class="mockup-header">Planned Time Tempo — one week (NETSUITE / time-off excluded)</div>
+  <div class="mockup-body">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:#4472C4;color:#fff">
+          <th style="text-align:left;padding:6px 10px">User</th>
+          <th style="text-align:left;padding:6px 10px">Key (project)</th>
+          <th style="text-align:right;padding:6px 10px">Planned hrs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td style="padding:5px 10px">Ana — <b>fragmented</b></td><td style="padding:5px 10px">ACME</td><td style="text-align:right;padding:5px 10px">10</td></tr>
+        <tr style="background:#f3f6fc"><td style="padding:5px 10px"></td><td style="padding:5px 10px">BETA</td><td style="text-align:right;padding:5px 10px">10</td></tr>
+        <tr><td style="padding:5px 10px"></td><td style="padding:5px 10px">GAMMA</td><td style="text-align:right;padding:5px 10px">10</td></tr>
+        <tr style="background:#f3f6fc"><td style="padding:5px 10px"></td><td style="padding:5px 10px">DELTA</td><td style="text-align:right;padding:5px 10px">10</td></tr>
+        <tr><td style="padding:7px 10px;border-top:2px solid #ccc">Ben — <b>focused</b></td><td style="padding:7px 10px;border-top:2px solid #ccc">ACME</td><td style="text-align:right;padding:7px 10px;border-top:2px solid #ccc">38</td></tr>
+        <tr style="background:#f3f6fc"><td style="padding:5px 10px"></td><td style="padding:5px 10px">BETA</td><td style="text-align:right;padding:5px 10px">2</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:#64748b;margin:8px 4px 0">Ana spreads 40h evenly across 4 projects. Ben puts 38h on one project and just 2h on a second — technically "2 projects," but barely switching. How we count this changes the whole story.</p>
+  </div>
+</div>
+
+<h3>Which definition should drive the metric?</h3>
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Distinct project count</h3>
+      <p>Simply how many projects with planned hours that week. Ana = 4, Ben = 2. Dead simple and transparent — matches the dashboard's plain-number style — but treats Ben's 2h sliver as a full context switch.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Thresholded count (recommended)</h3>
+      <p>Count only projects above a minimum share (e.g. ≥10% of the week, or ≥4h). Ana = 4, Ben = 1. Stays a clean whole number, but ignores slivers so it reflects <i>real</i> switching. Threshold is tunable.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Effective projects (concentration index)</h3>
+      <p>A fractional "effective number of projects" from how evenly hours split (inverse-Herfindahl / entropy). Ana ≈ 4.0, Ben ≈ 1.1. Most faithful to true fragmentation, but a decimal index is harder to explain at a glance.</p>
+    </div>
+  </div>
+</div>

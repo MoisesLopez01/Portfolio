@@ -1,0 +1,61 @@
+<h2>What should the project-context trend measure?</h2>
+<p class="subtitle">Planned <b>hours</b> week-over-week is already covered (Time Momentum + Chart B). So this card should trend project <b>variety / context</b>, not hours. With 80+ projects a week, individual keys can't be the unit — we need one team-level number per week that a CEO reads in two seconds. Three candidates, drawn over the 7-week window (W18→W24, W21 = current):</p>
+
+<style>
+  .mc { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .mc h3 { margin:0 0 2px; font-size:15px; }
+  .mc .takeaway { font-size:11px; color:#475569; margin:8px 0 0; }
+  .mc .ceo { font-size:11px; color:#0D3B8C; font-weight:700; margin-top:4px; }
+  .axis { font-size:8px; fill:#94a3b8; }
+  .wk { font-size:8px; fill:#94a3b8; }
+  .curdot { fill:#EA580C; }
+</style>
+
+<div class="mc">
+  <h3>A — Avg projects per person <span style="font-size:11px;color:#94a3b8;font-weight:600">(context-switching load)</span></h3>
+  <svg viewBox="0 0 380 90" style="width:100%;max-width:440px;height:90px">
+    <line x1="34" y1="10" x2="34" y2="70" stroke="#e2e8f0"/><line x1="34" y1="70" x2="372" y2="70" stroke="#e2e8f0"/>
+    <text class="axis" x="30" y="20" text-anchor="end">3.0</text><text class="axis" x="30" y="70" text-anchor="end">1.0</text>
+    <polyline points="60,52 112,49 164,40 216,33 268,30 320,38 360,44" fill="none" stroke="#7C3AED" stroke-width="2.5"/>
+    <circle cx="60" cy="52" r="3" fill="#7C3AED"/><circle cx="112" cy="49" r="3" fill="#7C3AED"/><circle cx="164" cy="40" r="3" fill="#7C3AED"/><circle cx="216" cy="33" r="3" class="curdot"/><circle cx="268" cy="30" r="3" fill="#a78bfa"/><circle cx="320" cy="38" r="3" fill="#a78bfa"/><circle cx="360" cy="44" r="3" fill="#a78bfa"/>
+    <text class="wk" x="60" y="84" text-anchor="middle">W18</text><text class="wk" x="164" y="84" text-anchor="middle">W20</text><text class="wk" x="216" y="84" text-anchor="middle" fill="#EA580C">W21</text><text class="wk" x="360" y="84" text-anchor="middle">W24</text>
+    <text x="216" y="28" text-anchor="middle" font-size="10" font-weight="800" fill="#EA580C">2.6</text>
+  </svg>
+  <p class="takeaway">Total distinct projects per person, averaged across the team. Rising = the team is spreading across more contexts each; falling = consolidating focus.</p>
+  <p class="ceo">CEO reads: "Are my people getting stretched thinner?"</p>
+</div>
+
+<div class="mc">
+  <h3>B — Distinct active projects <span style="font-size:11px;color:#94a3b8;font-weight:600">(portfolio breadth)</span></h3>
+  <svg viewBox="0 0 380 90" style="width:100%;max-width:440px;height:90px">
+    <line x1="34" y1="10" x2="34" y2="70" stroke="#e2e8f0"/><line x1="34" y1="70" x2="372" y2="70" stroke="#e2e8f0"/>
+    <text class="axis" x="30" y="20" text-anchor="end">90</text><text class="axis" x="30" y="70" text-anchor="end">50</text>
+    <polyline points="60,46 112,40 164,34 216,24 268,20 320,30 360,38" fill="none" stroke="#058CDC" stroke-width="2.5"/>
+    <circle cx="60" cy="46" r="3" fill="#058CDC"/><circle cx="112" cy="40" r="3" fill="#058CDC"/><circle cx="164" cy="34" r="3" fill="#058CDC"/><circle cx="216" cy="24" r="3" class="curdot"/><circle cx="268" cy="20" r="3" fill="#7cc4ef"/><circle cx="320" cy="30" r="3" fill="#7cc4ef"/><circle cx="360" cy="38" r="3" fill="#7cc4ef"/>
+    <text class="wk" x="60" y="84" text-anchor="middle">W18</text><text class="wk" x="164" y="84" text-anchor="middle">W20</text><text class="wk" x="216" y="84" text-anchor="middle" fill="#EA580C">W21</text><text class="wk" x="360" y="84" text-anchor="middle">W24</text>
+    <text x="216" y="20" text-anchor="middle" font-size="10" font-weight="800" fill="#EA580C">80</text>
+  </svg>
+  <p class="takeaway">Count of unique projects the whole team is planned on each week. Shows how many fronts the organization is engaged on — breadth of the delivery portfolio.</p>
+  <p class="ceo">CEO reads: "How many engagements are we running concurrently?"</p>
+</div>
+
+<div class="mc">
+  <h3>C — Both, on one chart <span style="font-size:11px;color:#94a3b8;font-weight:600">(breadth + load)</span></h3>
+  <svg viewBox="0 0 380 90" style="width:100%;max-width:440px;height:90px">
+    <line x1="34" y1="10" x2="34" y2="70" stroke="#e2e8f0"/><line x1="34" y1="70" x2="372" y2="70" stroke="#e2e8f0"/>
+    <polyline points="60,46 112,40 164,34 216,24 268,20 320,30 360,38" fill="none" stroke="#058CDC" stroke-width="2.5"/>
+    <polyline points="60,58 112,55 164,48 216,42 268,39 320,46 360,51" fill="none" stroke="#7C3AED" stroke-width="2.5" stroke-dasharray="4 3"/>
+    <text x="366" y="38" font-size="8" fill="#058CDC" font-weight="700">projects</text>
+    <text x="366" y="55" font-size="8" fill="#7C3AED" font-weight="700">per person</text>
+    <text class="wk" x="60" y="84" text-anchor="middle">W18</text><text class="wk" x="216" y="84" text-anchor="middle" fill="#EA580C">W21</text><text class="wk" x="360" y="84" text-anchor="middle">W24</text>
+  </svg>
+  <p class="takeaway">Both lines together (dual scale). Richer, but two metrics at once is more than a single C-suite glance usually wants.</p>
+  <p class="ceo">CEO reads: two things — needs a moment longer.</p>
+</div>
+
+<h3 style="margin-top:18px">Which metric should the trend show?</h3>
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)"><div class="letter">A</div><div class="content"><h3>Avg projects per person</h3><p>Context-switching load. The "are we stretched thin?" signal — most aligned with the original context-switching intent.</p></div></div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)"><div class="letter">B</div><div class="content"><h3>Distinct active projects</h3><p>Portfolio breadth. How many fronts the org runs each week.</p></div></div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)"><div class="letter">C</div><div class="content"><h3>Both on one chart</h3><p>Breadth + load together, dual scale.</p></div></div>
+</div>

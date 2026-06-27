@@ -1,0 +1,73 @@
+<h2>Project context in the Trends tab</h2>
+<p class="subtitle">Team-level view. You asked for "project in max demand each week + how many people assigned." Here are three ways to show it. W21 = current; W22–23 = planned/future.</p>
+
+<style>
+  .dm { width:100%; border-collapse:collapse; font-size:11px; }
+  .dm th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; padding:5px 6px; text-align:center; }
+  .dm th.k, .dm td.k { text-align:left; font-weight:700; color:#334155; white-space:nowrap; padding-left:4px; }
+  .dm td { text-align:center; padding:4px 6px; font-weight:700; color:#1e293b; border-radius:4px; }
+  .dm td .ppl { font-size:13px; }
+  .leadwrap { display:flex; flex-direction:column; gap:9px; }
+  .leadwk { border:1px solid #e2e8f0; border-radius:8px; padding:7px 10px; }
+  .leadwk .wk { font-size:9px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.06em; }
+  .bar { height:16px; border-radius:3px; background:#3B82F6; display:inline-block; vertical-align:middle; }
+  .barlbl { font-size:10px; color:#475569; margin-left:6px; }
+  .keytag { display:inline-block; background:#EEF4FF; color:#3730A3; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; min-width:46px; }
+  .mockup-header { font-weight:700; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Option A — Demand heatmap: projects × weeks, cell = # people (recommended)</div>
+  <div class="mockup-body">
+    <table class="dm">
+      <thead><tr><th class="k">Project</th><th>W18</th><th>W19</th><th>W20</th><th style="color:#EA580C">W21</th><th style="color:#cbd5e1">W22</th><th style="color:#cbd5e1">W23</th></tr></thead>
+      <tbody>
+        <tr><td class="k">ACME</td><td style="background:#1E40AF;color:#fff"><span class="ppl">9</span></td><td style="background:#2563EB;color:#fff">8</td><td style="background:#3B82F6;color:#fff">7</td><td style="background:#1E40AF;color:#fff"><span class="ppl">9</span></td><td style="background:#60A5FA">5</td><td style="background:#93C5FD">3</td></tr>
+        <tr><td class="k">BETA</td><td style="background:#93C5FD">3</td><td style="background:#3B82F6;color:#fff">7</td><td style="background:#1E40AF;color:#fff"><span class="ppl">9</span></td><td style="background:#60A5FA">5</td><td style="background:#3B82F6;color:#fff">6</td><td style="background:#60A5FA">4</td></tr>
+        <tr><td class="k">GAMMA</td><td style="background:#DBEAFE">1</td><td style="background:#BFDBFE">2</td><td style="background:#93C5FD">3</td><td style="background:#3B82F6;color:#fff">6</td><td style="background:#1E40AF;color:#fff"><span class="ppl">8</span></td><td style="background:#2563EB;color:#fff">7</td></tr>
+        <tr><td class="k">DELTA</td><td style="background:#f1f5f9;color:#cbd5e1">0</td><td style="background:#DBEAFE">1</td><td style="background:#BFDBFE">2</td><td style="background:#93C5FD">3</td><td style="background:#60A5FA">4</td><td style="background:#3B82F6;color:#fff">6</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">Darker = more people. The per-week hottest project pops (bold). You can watch demand migrate ACME→BETA→GAMMA across the window, including the planned future weeks. Top ~8 projects shown, rest folded into "Other."</p>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Option B — Per-week leaders: top 3 projects by people, each week</div>
+  <div class="mockup-body">
+    <div class="leadwrap">
+      <div class="leadwk"><span class="wk">W20</span><div style="margin-top:4px"><span class="keytag">BETA</span> <span class="bar" style="width:108px"></span><span class="barlbl">9 people</span></div><div><span class="keytag">ACME</span> <span class="bar" style="width:84px"></span><span class="barlbl">7</span></div><div><span class="keytag">GAMMA</span> <span class="bar" style="width:36px"></span><span class="barlbl">3</span></div></div>
+      <div class="leadwk" style="border-color:#FDBA74"><span class="wk" style="color:#EA580C">W21 — current</span><div style="margin-top:4px"><span class="keytag">ACME</span> <span class="bar" style="width:108px"></span><span class="barlbl">9 people</span></div><div><span class="keytag">GAMMA</span> <span class="bar" style="width:72px"></span><span class="barlbl">6</span></div><div><span class="keytag">BETA</span> <span class="bar" style="width:60px"></span><span class="barlbl">5</span></div></div>
+    </div>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">One block per week, ranked bars. Very readable for "what's hot now," but takes more vertical space and you scan week-by-week rather than seeing the whole picture at once.</p>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Option C — Heatmap (A) + a team context-load line underneath</div>
+  <div class="mockup-body">
+    <table class="dm">
+      <thead><tr><th class="k">Project</th><th>W18</th><th>W19</th><th>W20</th><th style="color:#EA580C">W21</th><th style="color:#cbd5e1">W22</th><th style="color:#cbd5e1">W23</th></tr></thead>
+      <tbody>
+        <tr><td class="k">ACME</td><td style="background:#1E40AF;color:#fff">9</td><td style="background:#2563EB;color:#fff">8</td><td style="background:#3B82F6;color:#fff">7</td><td style="background:#1E40AF;color:#fff">9</td><td style="background:#60A5FA">5</td><td style="background:#93C5FD">3</td></tr>
+        <tr><td class="k">BETA</td><td style="background:#93C5FD">3</td><td style="background:#3B82F6;color:#fff">7</td><td style="background:#1E40AF;color:#fff">9</td><td style="background:#60A5FA">5</td><td style="background:#3B82F6;color:#fff">6</td><td style="background:#60A5FA">4</td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px;border-top:1px dashed #e2e8f0;padding-top:10px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.06em;margin-bottom:6px">Avg projects per person (team context load)</div>
+      <svg viewBox="0 0 360 60" style="width:100%;max-width:380px;height:60px">
+        <polyline points="10,42 70,36 130,28 190,22 250,30 310,38" fill="none" stroke="#7C3AED" stroke-width="2.5"/>
+        <circle cx="10" cy="42" r="3" fill="#7C3AED"/><circle cx="70" cy="36" r="3" fill="#7C3AED"/><circle cx="130" cy="28" r="3" fill="#7C3AED"/><circle cx="190" cy="22" r="3" fill="#EA580C"/><circle cx="250" cy="30" r="3" fill="#7C3AED"/><circle cx="310" cy="38" r="3" fill="#7C3AED"/>
+        <text x="10" y="56" font-size="8" fill="#94a3b8">1.8</text><text x="124" y="56" font-size="8" fill="#94a3b8">2.4</text><text x="184" y="56" font-size="8" fill="#EA580C">2.7</text><text x="300" y="56" font-size="8" fill="#94a3b8">2.0</text>
+      </svg>
+    </div>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">The heatmap answers "which project, how many people," the line answers "is the team getting more fragmented overall?" — the context-switching story in one number per week.</p>
+  </div>
+</div>
+
+<h3 style="margin-top:20px">Which Trends treatment?</h3>
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)"><div class="letter">A</div><div class="content"><h3>Demand heatmap</h3><p>Projects × weeks, people per cell. Whole picture at once.</p></div></div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)"><div class="letter">B</div><div class="content"><h3>Per-week leaders</h3><p>Top-3 ranked bars per week. Readable, taller.</p></div></div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)"><div class="letter">C</div><div class="content"><h3>Heatmap + context-load line</h3><p>A, plus team avg-projects-per-person trend.</p></div></div>
+</div>

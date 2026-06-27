@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GAS Deployment Test</title>
+</head>
+<body style="font-family: monospace; padding: 20px; background: #0a1929; color: #fff;">
+  <h1>✅ GAS Deployment Working!</h1>
+  <p>If you see this, your doGet() function is executing.</p>
+  
+  <h2>Quick Test:</h2>
+  <p>Template variables test:</p>
+  <ul>
+    <li>isAdmin: <strong><? if (typeof isAdmin !== 'undefined') { ?><?= isAdmin ?><? } else { ?>NOT SET<? } ?></strong></li>
+    <li>projectsJson exists: <strong><? if (typeof projectsJson !== 'undefined') { ?>YES<? } else { ?>NO<? } ?></strong></li>
+  </ul>
+  
+  <h2>JavaScript Include Test:</h2>
+  <div id="js-test">JavaScript NOT loaded</div>
+  
+  <script>
+    document.getElementById('js-test').textContent = '✅ JavaScript IS loaded!';
+    document.getElementById('js-test').style.color = '#10b981';
+  </script>
+  
+  <h2>Next Steps:</h2>
+  <ol>
+    <li>If this page shows up, rename this file back to index.html</li>
+    <li>Make sure JavaScript.html file exists with exact name</li>
+    <li>Redeploy with NEW VERSION (not use existing deployment)</li>
+  </ol>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Netlify configuration for the Alex López portfolio.
+#
+# Build: generate the static index.html from the canonical GAS sources
+# (resolves <?= ?> templates, inlines JavaScript.html, bakes PROJECTS/DOMAINS).
+# Publish: the dist/ folder. Functions: netlify/functions/.
+
+[build]
+  command = "node build-static.js"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  # esbuild bundles each function with its required _lib/* modules + node_modules.
+  node_bundler = "esbuild"
+
+# Friendly API path → the single RPC function.
+[[redirects]]
+  from = "/api/rpc"
+  to = "/.netlify/functions/rpc"
+  status = 200
+
+# SPA fallback: everything else serves the portfolio page.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

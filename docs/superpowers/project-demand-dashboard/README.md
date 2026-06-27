@@ -15,9 +15,6 @@ Panels (top → bottom):
 - **Project key heatmap** (drill-down) — color by **Hours** (default — surfaces planned hours),
   **Change**, or **Risk**; question-filter chips (*Losing >20% WoW · Dropping to zero · New this
   window · Volatile*); Top 15/30/All + search.
-- **Risers & fallers** — biggest week-over-week movers (replaces the old "winner each week" strip,
-  which repeated the same project 8×). Ramping-up vs falling-off, with a risk flag for projects
-  dropping to zero.
 - **Ranked demand · `<week>`** — horizontal bars in hours for the selected week.
 - **People & blending** — distinct projects per person (1/2/3/4+), an 8-week sparkline of people on
   4+ projects (climbing/easing), and a click-to-drill list of *who* is fragmented across *which*
@@ -32,7 +29,7 @@ Headline unit is **planned hours**. Time-off (`NETSUITE`) and blank keys are exc
 demand — but `NETSUITE` hours are reused to reduce capacity (PTO + public holidays). Window =
 **4 past + current + 3 future** ISO weeks, anchored on today. One extra **hidden lookback week**
 (`baselineIso`) is aggregated but not displayed, so the first visible week still has a prior week
-for week-over-week comparisons (Risers & Fallers, heatmap Change/Risk) instead of showing "no comparison".
+for week-over-week comparisons (heatmap Change/Risk) instead of showing "no comparison".
 
 Spec: `../specs/2026-06-22-project-demand-dashboard-v2-design.md`
 (v1: `../specs/2026-06-22-project-demand-dashboard-design.md`)
@@ -59,7 +56,7 @@ Spec: `../specs/2026-06-22-project-demand-dashboard-v2-design.md`
 - All configurable in the `CONFIG` block at the top of `Code.js`: `SOURCE_SS_ID`, `SHEET_NAME`,
   `NONPROJECT_KEYS`, `WEEKS_PAST`/`WEEKS_FUTURE`, `WEEKLY_CAPACITY_HRS`, `ANZ_LOCATION`,
   `ANZ_CAPACITY_HRS`, `PLAN_TARGET` (90% line), `ROSTER_SS_ID`, `ROSTER_SHEET`, `ROSTER_CLASS`,
-  `ROSTER_DEPT`, `UTIL_TIGHT`, `UTIL_OVER`, `FRAG_MIN`, `TOPN_STRATEGIC`, `MOVERS_N`.
+  `ROSTER_DEPT`, `UTIL_TIGHT`, `UTIL_OVER`, `FRAG_MIN`, `TOPN_STRATEGIC`.
 
 If the roster can't be read (no access / missing), capacity **falls back** to
 `planned people × 40` (still minus per-week PTO/holidays) and the tile is labeled *"capacity

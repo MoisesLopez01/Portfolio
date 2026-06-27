@@ -34,7 +34,6 @@ var CONFIG = {
   // ── Drill-down / proxy tuning ──
   FRAG_MIN:            4,       // people on ≥ FRAG_MIN distinct projects are "fragmented"
   TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
-  MOVERS_N:            5,       // # of risers and # of fallers in the Risers & Fallers panel
   TRACKED_SHEET_NAME:   "Tempo Tracked Time",
   DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
   SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
@@ -98,7 +97,7 @@ function buildWindow_() {
 /**
  * ISO label of the week immediately before the given week — used as a hidden
  * baseline so the first DISPLAYED week still has a prior week for week-over-week
- * comparisons (Risers & Fallers, heatmap Change/Risk).
+ * comparisons (heatmap Change/Risk).
  * @param {{wk:number, year:number}} week
  * @returns {string} e.g. "2026.W21"
  */
@@ -544,7 +543,7 @@ function emptyModel_(weeks) {
     rosterDimensions: { locations: [], jobFamilies: [], managers: [] },
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
-    fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, moversN: CONFIG.MOVERS_N,
+    fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
   };

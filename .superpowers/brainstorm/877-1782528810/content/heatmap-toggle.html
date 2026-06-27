@@ -1,0 +1,150 @@
+<h2>Where does the People toggle live in the heatmap?</h2>
+<p class="subtitle">The heatmap already has Change | Risk | Hours chips. Adding "People" (headcount) — where does it fit?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:10px;font-weight:600">Project key heatmap</div>
+        <!-- Single toggle row with 4 chips -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="display:flex;gap:4px;align-items:center">
+            <span style="color:#64748b;font-size:10px">Color:</span>
+            <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Change</span>
+            <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Risk</span>
+            <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:3px 8px;font-size:10px">Hours</span>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;margin-left:8px">
+            <span style="color:#64748b;font-size:10px">Value:</span>
+            <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:3px 8px;font-size:10px">Hours</span>
+            <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">People</span>
+          </div>
+        </div>
+        <!-- Mini heatmap table -->
+        <table style="width:100%;border-collapse:collapse;font-size:9px">
+          <tr>
+            <th style="color:#475569;padding:2px 4px;text-align:left"></th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W21</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W22</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W23</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W24</th>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px;font-size:9px">SR-PLAT</td>
+            <td style="background:#1d4ed840;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">120h</td>
+            <td style="background:#1d4ed860;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">160h</td>
+            <td style="background:#1d4ed880;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">200h</td>
+            <td style="background:#1d4ed840;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">110h</td>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px;font-size:9px">SR-CUST</td>
+            <td style="background:#1d4ed830;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">80h</td>
+            <td style="background:#1d4ed850;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">140h</td>
+            <td style="background:#1d4ed820;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">60h</td>
+            <td style="background:#1d4ed840;color:#93c5fd;padding:3px 4px;text-align:center;border-radius:2px">100h</td>
+          </tr>
+        </table>
+        <div style="color:#475569;font-size:9px;margin-top:6px">→ Toggle "People" shows headcount per cell instead of hours</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Separate "Value" row</h3>
+      <p>Keep the existing Color chips (Change / Risk / Hours). Add a second row labeled "Value: Hours | People" that swaps what's shown inside the cells. Color and value are independent — you can color by Risk and read headcount.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:10px;font-weight:600">Project key heatmap</div>
+        <!-- Single toggle row with 4 chips -->
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+          <span style="color:#64748b;font-size:10px">View:</span>
+          <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Change</span>
+          <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Risk</span>
+          <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:3px 8px;font-size:10px">Hours</span>
+          <span style="background:#8b5cf6;color:#fff;border-radius:4px;padding:3px 8px;font-size:10px">👥 People</span>
+        </div>
+        <!-- Mini heatmap table in people mode -->
+        <table style="width:100%;border-collapse:collapse;font-size:9px">
+          <tr>
+            <th style="color:#475569;padding:2px 4px;text-align:left"></th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W21</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W22</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W23</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W24</th>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px;font-size:9px">SR-PLAT</td>
+            <td style="background:#7c3aed40;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">6p</td>
+            <td style="background:#7c3aed70;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">9p</td>
+            <td style="background:#7c3aed90;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">12p</td>
+            <td style="background:#7c3aed40;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">5p</td>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px;font-size:9px">SR-CUST</td>
+            <td style="background:#7c3aed30;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">4p</td>
+            <td style="background:#7c3aed50;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">7p</td>
+            <td style="background:#7c3aed20;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">3p</td>
+            <td style="background:#7c3aed40;color:#c4b5fd;padding:3px 4px;text-align:center;border-radius:2px">5p</td>
+          </tr>
+        </table>
+        <div style="color:#475569;font-size:9px;margin-top:6px">Color + value both switch to purple headcount scale</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — 4th chip "People" (replaces Hours mode)</h3>
+      <p>Add People as a 4th view-mode chip alongside Change / Risk / Hours. Selecting it switches both color scale and cell values to headcount (purple palette). Simpler — one toggle controls everything.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:14px;font-family:sans-serif">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:10px;font-weight:600">Project key heatmap</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+          <span style="color:#64748b;font-size:10px">View:</span>
+          <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Change</span>
+          <span style="background:#1e293b;color:#94a3b8;border-radius:4px;padding:3px 8px;font-size:10px">Risk</span>
+          <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:3px 8px;font-size:10px">Hours</span>
+        </div>
+        <!-- Mini heatmap with dual line -->
+        <table style="width:100%;border-collapse:collapse;font-size:9px">
+          <tr>
+            <th style="color:#475569;padding:2px 4px;text-align:left"></th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W21</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W22</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W23</th>
+            <th style="color:#475569;padding:2px 4px;text-align:center">W24</th>
+          </tr>
+          <tr>
+            <td style="color:#94a3b8;padding:2px 4px;font-size:9px">SR-PLAT</td>
+            <td style="background:#1d4ed840;padding:3px 4px;text-align:center;border-radius:2px">
+              <div style="color:#93c5fd;font-size:9px">120h</div>
+              <div style="color:#94a3b8;font-size:8px">6p</div>
+            </td>
+            <td style="background:#1d4ed860;padding:3px 4px;text-align:center;border-radius:2px">
+              <div style="color:#93c5fd;font-size:9px">160h</div>
+              <div style="color:#94a3b8;font-size:8px">9p</div>
+            </td>
+            <td style="background:#1d4ed880;padding:3px 4px;text-align:center;border-radius:2px">
+              <div style="color:#93c5fd;font-size:9px">200h</div>
+              <div style="color:#94a3b8;font-size:8px">12p</div>
+            </td>
+            <td style="background:#1d4ed840;padding:3px 4px;text-align:center;border-radius:2px">
+              <div style="color:#93c5fd;font-size:9px">110h</div>
+              <div style="color:#94a3b8;font-size:8px">5p</div>
+            </td>
+          </tr>
+        </table>
+        <div style="color:#475569;font-size:9px;margin-top:6px">Always shows hours + people count — no toggle needed</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Always show both (hours + people)</h3>
+      <p>No toggle at all. Each heatmap cell always shows hours on top and headcount below in smaller text. More information density — a manager sees both dimensions at once without switching modes.</p>
+    </div>
+  </div>
+
+</div>

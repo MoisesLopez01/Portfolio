@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Metrics Table</title>
+  <style>
+    /* ─── Google Font ─────────────────────────────────── */
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #f0ede8;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #e4e1db;
+      overflow: hidden;
+      width: 100%;
+      max-width: 860px;
+    }
+
+    /* ─── Table ───────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    /* ─── Header ──────────────────────────────────────── */
+    thead tr {
+      background: #f5f3ef;
+      border-bottom: 1px solid #e4e1db;
+    }
+
+    thead th {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #8c8880;
+      padding: 10px 16px;
+      text-align: right;
+    }
+
+    thead th:first-child { text-align: left; width: 26%; }
+    thead th.col-week    { width: 9%; }
+    thead th.col-current { width: 9%; color: #3a7bd5; }
+    thead th.col-delta   { width: 9%; }
+    thead th.col-pct     { width: 9%; }
+    thead th.col-trend   { width: 10%; }
+
+    /* ─── Body rows ───────────────────────────────────── */
+    tbody tr {
+      border-bottom: 1px solid #f0ede8;
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #faf9f7; }
+
+    tbody td {
+      padding: 16px 16px;
+      text-align: right;
+      vertical-align: middle;
+      font-size: 14px;
+      color: #5a5852;
+    }
+
+    tbody td:first-child {
+      text-align: left;
+      font-size: 14px;
+      font-weight: 500;
+      color: #1a1915;
+    }
+
+    td.week-current {
+      font-size: 15px;
+      font-weight: 500;
+      color: #3a7bd5;
+    }
+
+    /* ─── Delta ───────────────────────────────────────── */
+    .delta {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .delta.up   { color: #1a7a46; }
+    .delta.down { color: #b33a2e; }
+
+    .delta svg { flex-shrink: 0; }
+
+    /* ─── Percentage badge ────────────────────────────── */
+    .pct {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+    .pct.up   { background: #e6f4ea; color: #1a7a46; }
+    .pct.down { background: #fce8e6; color: #b33a2e; }
+
+    /* ─── Sparkline ───────────────────────────────────── */
+    svg.spark { display: block; margin: 0 auto; overflow: visible; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <table id="metrics-table">
+    <thead><tr id="header-row"></tr></thead>
+    <tbody id="table-body"></tbody>
+  </table>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   ▶  CONFIGURATION — edit this section to update the table
+   ═══════════════════════════════════════════════════════ */
+
+const CONFIG = {
+
+  /* ISO week labels. The LAST entry is the "current" week (highlighted in blue).
+     Add or remove entries to change the number of historical columns.
+     Format: "YYYY.WNN"  (uses ISO week numbers per org convention)           */
+  weeks: [
+    "2026.W15",
+    "2026.W16",
+    "2026.W17",
+    "2026.W18"         // ← current week
+  ],
+
+  /* One object per metric row.
+     • name   : display label
+     • values : one number per week (must match the weeks array length above)  */
+  metrics: [
+    {
+      name:   "Active Contributors",
+      values: [69, 72, 67, 67]
+    },
+    {
+      name:   "Milestones Delivered",
+      values: [203, 197, 222, 180]
+    }
+    /* ── add more rows here, e.g.:
+    ,{
+      name:   "Pull Requests Merged",
+      values: [45, 50, 48, 53]
+    }
+    ── */
+  ]
+};
+
+/* ═══════════════════════════════════════════════════════
+   ▶  RENDERING — no edits needed below this line
+   ═══════════════════════════════════════════════════════ */
+
+(function render() {
+  const { weeks, metrics } = CONFIG;
+  const currentIdx = weeks.length - 1;
+
+  /* ── Header ── */
+  const headerRow = document.getElementById("header-row");
+  headerRow.innerHTML =
+    `<th>METRIC</th>` +
+    weeks.map((w, i) =>
+      `<th class="${i === currentIdx ? 'col-current' : 'col-week'}">${w}</th>`
+    ).join("") +
+    `<th class="col-delta">WOW Δ</th>` +
+    `<th class="col-pct">WOW %</th>` +
+    `<th class="col-trend">TREND</th>`;
+
+  /* ── Body ── */
+  const tbody = document.getElementById("table-body");
+  tbody.innerHTML = metrics.map(m => {
+    const prev = m.values[currentIdx - 1];
+    const curr = m.values[currentIdx];
+    const delta = curr - prev;
+    const pct   = ((delta / prev) * 100).toFixed(1);
+    const dir   = delta >= 0 ? "up" : "down";
+    const sign  = delta >= 0 ? "+" : "";
+
+    const arrowUp = `<svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+      <path d="M5.5 9V2M5.5 2L2 5.5M5.5 2L9 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+    const arrowDown = `<svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+      <path d="M5.5 2v7M5.5 9L2 5.5M5.5 9l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+
+    const weekCells = m.values.map((v, i) =>
+      i === currentIdx
+        ? `<td class="week-current">${v}</td>`
+        : `<td>${v}</td>`
+    ).join("");
+
+    return `<tr>
+      <td>${m.name}</td>
+      ${weekCells}
+      <td><span class="delta ${dir}">${dir === "up" ? arrowUp : arrowDown}${sign}${delta}</span></td>
+      <td><span class="pct ${dir}">${sign}${pct}%</span></td>
+      <td>${sparkline(m.values, dir)}</td>
+    </tr>`;
+  }).join("");
+})();
+
+/* ── Sparkline builder ── */
+function sparkline(vals, dir) {
+  const W = 70, H = 28, pad = 4;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+  const xs = vals.map((_, i) => pad + (i / (vals.length - 1)) * (W - pad * 2));
+  const ys = vals.map(v => H - pad - ((v - min) / range) * (H - pad * 2));
+  const pts = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
+  const color = dir === "up" ? "#1a7a46" : "#b33a2e";
+  const lx = xs[xs.length - 1], ly = ys[ys.length - 1];
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3" fill="${color}"/>
+  </svg>`;
+}
+</script>
+</body>
+</html>

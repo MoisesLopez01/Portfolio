@@ -1,0 +1,31 @@
+C4Container
+  title Container Diagram - PS Weekly Contribution Report
+
+  Person(rocketeer, "PS Rocketeer", "Professional Services team member")
+  Person(manager, "PS Manager", "Supervises PS members")
+  Person(admin, "Dashboard Admin", "Manages settings")
+
+  System_Boundary(ps_report_system, "PS Weekly Contribution Report") {
+    Container(spa, "Dashboard UI", "HTML, CSS, JS (Chart.js)", "Single-page application serving the reporting interface.")
+    Container(backend, "GAS Backend", "Google Apps Script (JavaScript)", "Handles data processing, security, and external API orchestration.")
+  }
+
+  System_Boundary(google_workspace, "Google Workspace") {
+    ContainerDb(sheet_roster, "Roster Spreadsheet", "Google Sheets", "Stores employee profiles, hierarchy, and statuses.")
+    ContainerDb(sheet_goals, "Goals Spreadsheet", "Google Sheets", "Stores quarterly goals and self-comments.")
+    ContainerDb(sheet_pto, "PTO Spreadsheet", "Google Sheets", "Stores PTO accumulation and usage data.")
+    ContainerDb(sheet_local, "Local Dashboard Sheets", "Google Sheets", "Contains RCR, SI, Kudos, and Tempo time data.")
+  }
+
+  System_Ext(gemini, "Gemini API", "Google AI", "AI-driven narrative generation.")
+
+  Rel(rocketeer, spa, "Uses", "HTTPS")
+  Rel(manager, spa, "Uses", "HTTPS")
+  Rel(admin, spa, "Uses", "HTTPS")
+
+  Rel(spa, backend, "Makes calls to", "google.script.run")
+  Rel(backend, sheet_roster, "Reads roster data", "SpreadsheetApp")
+  Rel(backend, sheet_goals, "Reads goals data", "SpreadsheetApp")
+  Rel(backend, sheet_pto, "Reads PTO data", "SpreadsheetApp")
+  Rel(backend, sheet_local, "Reads/Writes metrics and settings", "SpreadsheetApp")
+  Rel(backend, gemini, "Sends data for analysis", "UrlFetchApp (HTTPS)")

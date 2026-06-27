@@ -1,0 +1,51 @@
+<h2>Trends — project context (no graphs, keys as context)</h2>
+<p class="subtitle">Per-week blocks. Collapsed shows the project keys active that week, with <b>new vs. prior week</b> highlighted amber. Expand reveals planned hours per project. Light by design.</p>
+
+<style>
+  .twk { border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; margin-bottom:9px; }
+  .twk.cur { border-color:#FDBA74; background:#FFFBF5; }
+  .twk .wk { font-size:9px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.06em; }
+  .twk.cur .wk { color:#EA580C; }
+  .twk .cnt { font-size:9px; color:#94a3b8; font-weight:600; margin-left:6px; }
+  .ktag { display:inline-block; background:#EEF4FF; color:#3730A3; border-radius:4px; padding:2px 7px; margin:2px 2px 0 0; font-size:10.5px; font-weight:700; }
+  .ktag.new { background:#FEF3C7; color:#92400E; }
+  .toggle { font-size:10px; font-weight:700; color:#2563EB; cursor:pointer; user-select:none; margin-top:6px; display:inline-block; }
+  .hrs { margin-top:7px; border-top:1px dashed #e2e8f0; padding-top:7px; font-size:10.5px; color:#475569; line-height:1.9; }
+  .hrs .k { display:inline-block; min-width:64px; font-weight:700; color:#3730A3; }
+  .hrs .h { font-weight:800; color:#334155; }
+  .hrs .pp { color:#94a3b8; font-size:9.5px; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Collapsed (default) — keys only, new ones amber</div>
+  <div class="mockup-body">
+    <div class="twk"><span class="wk">W20</span><span class="cnt">6 projects active</span><div style="margin-top:4px"><span class="ktag">ACME</span><span class="ktag">BETA</span><span class="ktag">GAMMA</span><span class="ktag">DELTA</span><span class="ktag">EPS</span><span class="ktag">ZETA</span></div><span class="toggle">+ planned hours</span></div>
+    <div class="twk cur"><span class="wk">W21 — current</span><span class="cnt">6 projects active · 2 new</span><div style="margin-top:4px"><span class="ktag">ACME</span><span class="ktag">BETA</span><span class="ktag">GAMMA</span><span class="ktag new">OMEGA</span><span class="ktag new">SIGMA</span><span class="ktag">EPS</span></div><span class="toggle">+ planned hours</span></div>
+    <div class="twk"><span class="wk">W22 — planned</span><span class="cnt">4 projects active</span><div style="margin-top:4px"><span class="ktag">ACME</span><span class="ktag">GAMMA</span><span class="ktag">OMEGA</span><span class="ktag">SIGMA</span></div><span class="toggle">+ planned hours</span></div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Expanded (current week) — planned hours per project, sorted desc</div>
+  <div class="mockup-body">
+    <div class="twk cur"><span class="wk">W21 — current</span><span class="cnt">6 projects active · 2 new</span>
+      <div style="margin-top:4px"><span class="ktag">ACME</span><span class="ktag">BETA</span><span class="ktag">GAMMA</span><span class="ktag new">OMEGA</span><span class="ktag new">SIGMA</span><span class="ktag">EPS</span></div>
+      <span class="toggle">− planned hours</span>
+      <div class="hrs">
+        <div><span class="k">ACME</span> <span class="h">182h</span> <span class="pp">· 9 people</span></div>
+        <div><span class="k">BETA</span> <span class="h">96h</span> <span class="pp">· 5 people</span></div>
+        <div><span class="k">GAMMA</span> <span class="h">88h</span> <span class="pp">· 6 people</span></div>
+        <div><span class="k new" style="background:#FEF3C7;color:#92400E;border-radius:4px;padding:0 4px">OMEGA</span> <span class="h">40h</span> <span class="pp">· 2 people</span></div>
+        <div><span class="k new" style="background:#FEF3C7;color:#92400E;border-radius:4px;padding:0 4px">SIGMA</span> <span class="h">24h</span> <span class="pp">· 1 person</span></div>
+        <div><span class="k">EPS</span> <span class="h">12h</span> <span class="pp">· 1 person</span></div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">One question: in the expand, keep the "· N people" alongside hours (it was your original "people assigned" ask), or hours only for minimalism?</p>
+  </div>
+</div>
+
+<h3 style="margin-top:18px">Expand content — your call</h3>
+<div class="options">
+  <div class="option" data-choice="both" onclick="toggleSelect(this)"><div class="letter">1</div><div class="content"><h3>Hours + people</h3><p>"ACME — 182h · 9 people". Covers your original people-assigned ask.</p></div></div>
+  <div class="option" data-choice="hours" onclick="toggleSelect(this)"><div class="letter">2</div><div class="content"><h3>Hours only</h3><p>"ACME — 182h". Leanest, true to "don't overdo it."</p></div></div>
+</div>

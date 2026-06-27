@@ -1,0 +1,57 @@
+<h2>Where should the Goals Audit live?</h2>
+<p class="subtitle">Three options for surfacing inactivity flags and compliance status</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>New section in Trends tab</h3>
+      <p>Below the existing Goals Standing card, add an "Activity Audit" panel — a table of flagged rocketeers with columns: Name · Goals · Status · Self-comments (Q4) · Last activity date · Flag reason. Stays in context with the trends data.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Trends Tab (scroll down)</div>
+        <div class="mockup-body" style="padding:8px;font-size:12px">
+          <div style="background:#1a2035;border-radius:6px;padding:8px;margin-bottom:6px;color:#a0aec0">📊 Goals Standing card (existing)</div>
+          <div style="background:#1a2035;border-radius:6px;padding:8px;margin-bottom:6px;color:#a0aec0">📈 Comment Pace chart (existing)</div>
+          <div style="background:#2d1a1a;border:1px solid #c53030;border-radius:6px;padding:8px;color:#fc8181">
+            ⚠️ Activity Audit — 3 rocketeers flagged<br>
+            <span style="font-size:11px;color:#fc8181">Name · Goals · Status · 0 comments since Apr 1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Inline flags in the employee roster table</h3>
+      <p>Each rocketeer row in the existing team table gets an audit badge: 🟡 0 activity or ✅ Compliant (all done). Managers see it directly on the roster without switching context. No new UI section needed.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Team Roster Table</div>
+        <div class="mockup-body" style="padding:8px;font-size:12px">
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:4px;color:#a0aec0">
+            <span>Alex M.</span><span style="color:#48bb78">✅ Compliant</span><span style="color:#68d391">8 done</span>
+            <span>Jordan K.</span><span style="color:#ed8936">⚠️ 0 activity</span><span style="color:#ed8936">8 goals, 0 cmts</span>
+            <span>Sam R.</span><span style="color:#ed8936">⚠️ Planned only</span><span style="color:#ed8936">supervisor cmts only</span>
+            <span>Chris L.</span><span style="color:#48bb78">✅ Compliant</span><span style="color:#68d391">6/8 done</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Both: Audit section in Trends + badges on roster</h3>
+      <p>Trends tab gets a dedicated audit section (team-wide view, exportable), and the roster table gets per-row badges. Managers can scan the roster daily; the Trends audit gives a focused action list for weekly reviews.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Combined approach</div>
+        <div class="mockup-body" style="padding:8px;font-size:12px;color:#a0aec0">
+          <div style="margin-bottom:6px">Roster row: <span style="color:#ed8936">Jordan K. ⚠️ 0 activity since Apr 1</span></div>
+          <div>Trends audit: <span style="color:#fc8181">⚠️ 3 flagged · click to expand per-person detail</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

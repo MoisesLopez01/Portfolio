@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════
    DESIGN TOKENS
@@ -179,7 +180,9 @@ nav {
 ═══════════════════════════════════════════════════════════════════════ */
 .hero {
   background: linear-gradient(155deg, var(--teal-900) 0%, #031e3b 55%, #010a17 100%);
-  padding: 96px 2rem 80px;
+  /* Top: fluid breathing room. Bottom: just a sliver so the marquee ribbon
+     sits ~half a line under the hero copy instead of behind dead navy space. */
+  padding: clamp(72px, 9vw, 104px) 2rem clamp(12px, 1.4vh, 20px);
   position: relative; overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
 }
@@ -210,7 +213,7 @@ nav {
 }
 .hero-badge-dot { width: 6px; height: 6px; background: var(--teal-vivid); border-radius: 50%; box-shadow: 0 0 6px var(--teal-vivid); }
 .hero h1 {
-  font-size: clamp(36px, 5.5vw, 60px);
+  font-size: clamp(38px, 4.8vw, 72px);
   font-weight: 800;
   color: #fff;
   line-height: 1.12;
@@ -301,10 +304,79 @@ nav {
 .stack-sep { color: rgba(56,189,248,0.25); margin: 0 4px; font-size: 16px; flex-shrink: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   CAPABILITIES SECTION
+═══════════════════════════════════════════════════════════════════════ */
+#capabilities { background: var(--ink); }
+.capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  margin-top: 8px;
+}
+.capability-card {
+  background: var(--light-surf);
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  padding: 32px 28px;
+  transition: all 0.3s var(--ease);
+}
+.capability-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--teal-vivid);
+}
+.capability-icon {
+  font-size: 48px;
+  margin-bottom: 20px;
+  line-height: 1;
+}
+.capability-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--light-text);
+  margin-bottom: 14px;
+  line-height: 1.3;
+}
+.capability-desc {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--light-muted);
+  margin-bottom: 20px;
+}
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cap-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--teal-dim);
+  color: var(--teal-vivid);
+  border: 1px solid var(--teal-dim2);
+  font-weight: 500;
+}
+@media (max-width: 1024px) {
+  .capabilities-grid { grid-template-columns: 1fr; gap: 20px; }
+}
+@media (min-width: 1025px) and (max-width: 1280px) {
+  .capabilities-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    SECTION LAYOUT
 ═══════════════════════════════════════════════════════════════════════ */
-section { padding: 88px 2rem; }
-.section-inner { max-width: 960px; margin: 0 auto; }
+section { padding: clamp(56px, 7vw, 100px) 2rem; }
+.section-inner { 
+  max-width: 1200px; 
+  margin: 0 auto; 
+  padding: 0 2rem;
+}
+@media (min-width: 1440px) {
+  .section-inner { max-width: 1320px; }
+}
 .section-eyebrow {
   font-family: var(--mono);
   font-size: 11px;
@@ -314,21 +386,30 @@ section { padding: 88px 2rem; }
   margin-bottom: 10px;
 }
 .section-title {
-  font-size: clamp(26px, 3.2vw, 38px);
+  font-size: clamp(32px, 4vw, 52px);
   font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  margin-bottom: 14px;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  margin-bottom: 18px;
 }
-.section-desc { font-size: 15.5px; color: var(--light-muted); max-width: 560px; margin-bottom: 48px; line-height: 1.75; }
+.section-desc { 
+  font-size: 17.5px; 
+  color: var(--light-muted); 
+  max-width: 640px; 
+  margin-bottom: 52px; 
+  line-height: 1.65; 
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    DOMAIN GRID
 ═══════════════════════════════════════════════════════════════════════ */
 #projects { background: var(--light-bg); }
 #projects .section-title { color: var(--light-text); }
+/* Container query: the card grid reflows on ITS OWN width, not the viewport's,
+   so it still behaves if this grid is ever nested in a narrower column. */
+#projects .section-inner { container-type: inline-size; container-name: projects; }
 .domain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-@media (max-width: 760px) { .domain-grid { grid-template-columns: 1fr; } }
+@container projects (max-width: 720px) { .domain-grid { grid-template-columns: 1fr; } }
 
 .domain-card {
   background: var(--light-surf);
@@ -616,7 +697,7 @@ section { padding: 88px 2rem; }
   max-width: 720px;
 }
 .chat-toolbar {
-  display: flex; justify-content: flex-end;
+  display: flex; justify-content: space-between; align-items: center;
   padding: 12px 14px 0;
 }
 .chat-newchat-btn {
@@ -629,6 +710,61 @@ section { padding: 88px 2rem; }
   display: inline-flex; align-items: center; gap: 6px;
 }
 .chat-newchat-btn:hover { background: var(--teal-dim); color: var(--teal-vivid); border-color: rgba(56,189,248,0.3); }
+.chat-rag-indicator {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px;
+  padding: 4px 10px; border-radius: 6px;
+  background: var(--teal-dim);
+  border: 1px solid var(--teal-dim2);
+  color: var(--teal-vivid);
+}
+.rag-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--teal-vivid);
+  animation: pulse-rag 2s ease-in-out infinite;
+}
+@keyframes pulse-rag {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.chat-project-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin-top: 16px;
+}
+.chat-project-card {
+  background: var(--light-surf);
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  padding: 16px 14px;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  text-align: center;
+}
+.chat-project-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--teal-vivid);
+  box-shadow: var(--shadow-md);
+}
+.cp-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+.cp-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--light-text);
+  margin-bottom: 6px;
+}
+.cp-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--teal-dim);
+  color: var(--teal-muted);
+  display: inline-block;
+}
 .chat-messages {
   padding: 20px;
   min-height: 280px;
@@ -926,6 +1062,39 @@ footer {
 .toast-icon { font-size: 16px; flex-shrink: 0; }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   DONNA SCROLL NUDGE
+═══════════════════════════════════════════════════════════════════════ */
+.donna-nudge {
+  position: fixed; bottom: 24px; right: 24px; z-index: 290;
+  display: flex; align-items: center;
+  background: var(--panel-2);
+  border: 1px solid rgba(56,189,248,0.28);
+  border-radius: 48px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(56,189,248,0.06);
+  max-width: 300px; cursor: pointer;
+  transform: translateY(20px) scale(0.96); opacity: 0; pointer-events: none;
+  transition: transform 0.38s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease;
+}
+.donna-nudge.visible { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+.donna-nudge-inner { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 10px; flex: 1; min-width: 0; }
+.donna-nudge-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--teal-vivid); color: #03162b;
+  font-size: 11px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.donna-nudge-msg { font-size: 12.5px; color: var(--teal-muted); line-height: 1.4; font-family: var(--sans); }
+.donna-nudge-close {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: transparent; border: none;
+  color: var(--dark-muted); font-size: 17px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0; margin-right: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+.donna-nudge-close:hover { color: var(--dark-text); background: rgba(255,255,255,0.08); }
+
+/* ═══════════════════════════════════════════════════════════════════════
    SCROLL REVEAL
 ═══════════════════════════════════════════════════════════════════════ */
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s var(--ease), transform .6s var(--ease); }
@@ -968,7 +1137,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 ═══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
   section           { padding: 64px 1.25rem; }
-  .hero             { padding: 72px 1.25rem 56px; }
+  .hero             { padding: 72px 1.25rem 10px; }
   nav               { padding: 0 1.25rem; }
   .hero-sub         { font-size: 16.5px; }
   .section-desc     { font-size: 15.5px; }
@@ -983,7 +1152,7 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 }
 @media (max-width: 400px) {
   section            { padding: 48px 1rem; }
-  .hero              { padding: 56px 1rem 48px; }
+  .hero              { padding: 56px 1rem 10px; }
   .hero-metric-num   { font-size: 24px; }
   .hero h1           { font-size: clamp(30px, 9vw, 48px); }
   .section-title     { font-size: clamp(22px, 7vw, 32px); }
@@ -1249,6 +1418,28 @@ body { margin-top: 0 !important; padding-top: 0 !important; }
 .pl-prob.w { color: #fbbf24; }
 .pl-prob.b { color: #f87171; }
 .pl-delta  { display: block; font-size: 10px; color: var(--dark-muted); font-family: var(--mono); line-height: 1.2; }
+.pl-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin: 24px 0;
+}
+.pl-chart-container {
+  background: var(--light-bg);
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  padding: 16px;
+  min-height: 280px;
+}
+.pl-chart-wide {
+  grid-column: 1 / -1;
+  min-height: 320px;
+}
+@media (max-width: 640px) {
+  .pl-charts-grid { grid-template-columns: 1fr; }
+  .pl-chart-container { min-height: 240px; }
+  .pl-chart-wide { min-height: 260px; }
+}
 .pl-ai-row {
   display: flex; align-items: center; gap: 12px;
   flex-wrap: wrap; margin-top: 4px;
@@ -1743,21 +1934,101 @@ sup.cr-footnote-mark { font-size: 0.55em; }
   .hss-level { white-space: normal; }
 }
 
-/* ── Ocean hero: text column + animated data-node canvas ── */
+/* ── Ocean hero: centered content band + full-bleed node canvas ──
+   The reading column is capped at ~1340px and centered in the viewport, so on a
+   wide monitor it reads as deliberately composed rather than hugging the left
+   edge. The animated node graphic ("obsidian graph") runs full-bleed behind
+   EVERYTHING (z-index:1) and is masked bright in both gutters but calmed in the
+   centre reading band, so it frames the content symmetrically on both sides.
+   The right column carries an animated terminal "proof" panel — a second focal
+   point that turns the old dead space into evidence of what gets built. */
 .hero-inner {
-  display: grid; grid-template-columns: 1.05fr 1fr;
-  align-items: center; gap: 48px; max-width: 1180px;
+  position: relative; z-index: 2;
+  max-width: min(1560px, 92vw); margin: 0 auto;
+  display: grid; grid-template-columns: 1.05fr 0.95fr;
+  grid-template-rows: auto;
+  align-items: center; gap: clamp(56px, 6vw, 104px);
 }
 .hero-content { position: relative; z-index: 2; }
 .hero-content .hero-sub,
 .hero-content .cell-range { margin-bottom: 36px; }
-.hero-visual { position: relative; width: 100%; height: 460px; z-index: 1; }
+
+/* Full-bleed background canvas (sibling of .hero-inner, anchored to .hero). */
+.hero-visual {
+  position: absolute; inset: 0; z-index: 1;
+  width: 100%; height: 100%; pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0,0,0,0.12) 27%, rgba(0,0,0,0.12) 73%, #000 100%);
+          mask-image: linear-gradient(90deg, #000 0%, rgba(0,0,0,0.12) 27%, rgba(0,0,0,0.12) 73%, #000 100%);
+}
 #data-nodes { display: block; width: 100%; height: 100%; }
-@media (min-width: 1280px) { .hero-inner { max-width: 1200px; grid-template-columns: 1.05fr 1fr; } }
-@media (min-width: 1600px) { .hero-inner { max-width: 1440px; } }
-@media (max-width: 900px) {
-  .hero-inner { grid-template-columns: 1fr; gap: 0; }
+
+/* ── Hero proof terminal (right column) ── */
+.hero-proof { position: relative; z-index: 2; }
+.hpf-win {
+  background: rgba(3,18,34,0.82);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--dark-border); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 30px 60px -30px rgba(0,0,0,0.65);
+}
+.hpf-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 14px; background: var(--panel-2);
+  border-bottom: 1px solid var(--dark-border);
+}
+.hpf-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.hpf-dot.r { background: #ff5f57; } .hpf-dot.y { background: #febc2e; } .hpf-dot.g { background: #28c840; }
+.hpf-name { margin-left: 8px; font-family: var(--mono); font-size: 11px; color: var(--dark-muted); }
+.hpf-code {
+  margin: 0; padding: 18px 18px 16px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.85;
+  color: var(--light-muted); white-space: pre-wrap; word-break: break-word;
+  min-height: 244px;
+}
+.hpf-code .c-cmd   { color: #fff; }
+.hpf-code .c-arrow { color: var(--teal-vivid); }
+.hpf-code .c-ok    { color: #28c840; }
+.hpf-code .c-dim   { color: var(--dark-muted); }
+.hpf-cursor {
+  display: inline-block; width: 8px; height: 15px; vertical-align: -2px;
+  margin-left: 1px; background: var(--teal-vivid);
+  animation: hpf-blink 1.05s steps(1) infinite;
+}
+@keyframes hpf-blink { 50% { opacity: 0; } }
+.hpf-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; border-top: 1px solid var(--dark-border);
+  background: rgba(56,189,248,0.05);
+}
+.hpf-foot-k {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em;
+  color: var(--teal-vivid); border: 1px solid rgba(56,189,248,0.30);
+  border-radius: 4px; padding: 2px 6px; flex-shrink: 0;
+}
+.hpf-foot-v { font-size: 12px; color: var(--light-muted); transition: opacity .4s var(--ease); }
+@media (prefers-reduced-motion: reduce) { .hpf-cursor { animation: none; } }
+
+/* Stack below ~1024px: single centred column, canvas + terminal off (perf). */
+@media (max-width: 1024px) {
+  .hero-inner { grid-template-columns: 1fr; gap: 40px; }
   .hero-visual { display: none; }
+  .hero-proof  { display: none; }
+}
+@media (max-width: 640px) {
+  .chat-project-cards { grid-template-columns: 1fr; gap: 10px; }
+  .cp-icon { font-size: 28px; margin-bottom: 6px; }
+  .cp-title { font-size: 12px; }
+}
+
+/* ── Enhanced tablet breakpoints ── */
+@media (max-width: 768px) {
+  .capabilities-grid { grid-template-columns: 1fr; gap: 20px; }
+  .capability-card { padding: 28px 24px; }
+  .section-inner { padding: 0 1.5rem; }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .chat-project-cards { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .section-title { font-size: clamp(28px, 3.5vw, 44px); }
 }
 
 /* ── Recruiter / ATS one-pager ── */
@@ -1775,6 +2046,10 @@ sup.cr-footnote-mark { font-size: 0.55em; }
 }
 .skills-action:hover { border-color: rgba(56,189,248,0.40); color: var(--teal-vivid); background: rgba(56,189,248,0.12); }
 
+/* The skills table reflows on the width of its own column (container query),
+   not the viewport — so it collapses to a stacked card layout whenever the
+   column it lives in gets narrow, wherever that column is. */
+.about-skills { container-type: inline-size; container-name: skills; }
 .skills-table { border: 1px solid var(--dark-border); border-radius: 14px; overflow: hidden; }
 .st-head, .st-row {
   display: grid; grid-template-columns: 22px 1.25fr 0.85fr 1.9fr; gap: 14px;
@@ -1795,7 +2070,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
   background: var(--panel-2); color: var(--teal-vivid); font-weight: 500;
 }
 .st-proof { font-size: 12px; color: var(--light-muted); line-height: 1.45; }
-@media (max-width: 760px) {
+@container skills (max-width: 520px) {
   .st-head { display: none; }
   .st-row { grid-template-columns: 1fr; gap: 5px; }
   .st-num { display: none; }
@@ -1807,7 +2082,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
   body { background: #fff !important; }
   .noise, nav, .stack-bar, #hero, #projects, #demos, #chat-section,
   #about, #contact, footer, .admin-fab, .admin-panel, .toast-container,
-  .pmodal-overlay { display: none !important; }
+  .donna-nudge, .pmodal-overlay { display: none !important; }
   .onepager {
     display: block !important; position: static;
     color: #111; background: #fff; font-family: 'Inter', Arial, sans-serif;
@@ -1880,10 +2155,6 @@ sup.cr-footnote-mark { font-size: 0.55em; }
   <div class="hero-glow hero-glow-2"></div>
   <div class="hero-inner">
     <div class="hero-content">
-    <div class="hero-badge">
-      <span class="hero-badge-dot"></span>
-      Senior Data Analyst · Available for opportunities
-    </div>
     <h1>Turning <em>messy data</em><br>into decisions<br>that scale.</h1>
     <p class="hero-sub">
       I build AI-powered analytics systems, automate financial reporting pipelines,
@@ -1917,31 +2188,6 @@ sup.cr-footnote-mark { font-size: 0.55em; }
       <span class="cr-footnote-mark" aria-hidden="true">†</span> 90% avg. process automation — measured across 6 recurring reporting pipelines, from manual hours per cycle to scheduled triggers.
     </p>
 
-    <!-- ── CONDENSED COMPETENCIES STRIP — KEEP IN SYNC with #about .skills-table rows 1-4 ── -->
-    <div class="hero-skills-strip" aria-label="Core competencies">
-      <div class="hss-row">
-        <span class="hss-skill">Python · Data Engineering</span>
-        <span class="hss-level"><span class="hss-lv">Expert</span>3 yrs</span>
-        <span class="hss-proof">Parallelized ETL pipelines + Gemini/Claude LLM integrations</span>
-      </div>
-      <div class="hss-row">
-        <span class="hss-skill">Google Apps Script / GAS</span>
-        <span class="hss-level"><span class="hss-lv">Expert</span>3 yrs</span>
-        <span class="hss-proof">Production web apps with RBAC, CI/CD &amp; live dashboards</span>
-      </div>
-      <div class="hss-row">
-        <span class="hss-skill">SQL · SuiteQL · Oracle</span>
-        <span class="hss-level"><span class="hss-lv">Advanced</span>5 yrs</span>
-        <span class="hss-proof">Attrition-proration &amp; audit queries against NetSuite</span>
-      </div>
-      <div class="hss-row">
-        <span class="hss-skill">AI/LLM Integration (Gemini, Claude, MCP)</span>
-        <span class="hss-level"><span class="hss-lv">Advanced</span>3 yrs</span>
-        <span class="hss-proof">9 production systems with prompt engineering &amp; validation</span>
-      </div>
-      <a href="#about" class="hss-more" aria-label="View full competencies in About section">Full competencies →</a>
-    </div>
-
     <div class="hero-actions">
       <a href="#projects" class="btn-primary">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm2 0v8h8V4H4z"/></svg>
@@ -1950,8 +2196,23 @@ sup.cr-footnote-mark { font-size: 0.55em; }
       <a href="#chat-section" class="btn-ghost">Ask Donna, the AI assistant →</a>
     </div>
     </div><!-- /hero-content -->
-    <div class="hero-visual" aria-hidden="true"><canvas id="data-nodes"></canvas></div>
-  </div>
+
+    <!-- ── PROOF TERMINAL — a live sample of what gets built (right column) ── -->
+    <aside class="hero-proof" aria-label="Sample data-pipeline run">
+      <div class="hpf-win">
+        <div class="hpf-bar">
+          <span class="hpf-dot r"></span><span class="hpf-dot y"></span><span class="hpf-dot g"></span>
+          <span class="hpf-name">weekly-contribution · pipeline</span>
+        </div>
+        <pre class="hpf-code" id="hpf-term" aria-hidden="true"></pre>
+        <div class="hpf-foot">
+          <span class="hpf-foot-k">PROOF</span>
+          <span class="hpf-foot-v" id="hpf-rotate">11 production apps shipped</span>
+        </div>
+      </div>
+    </aside>
+  </div><!-- /hero-inner -->
+  <div class="hero-visual" aria-hidden="true"><canvas id="data-nodes"></canvas></div>
 </section>
 
 <!-- ── STACK BAR ─────────────────────────────────────────────────────── -->
@@ -1960,6 +2221,60 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <!-- populated by JS -->
   </div>
 </div>
+
+<!-- ── CAPABILITIES ───────────────────────────────────────────────────── -->
+<section id="capabilities">
+  <div class="section-inner">
+    <p class="section-eyebrow reveal">Core Expertise</p>
+    <h2 class="section-title reveal reveal-delay-1">Three domains.<br>One integrated approach.</h2>
+    <p class="section-desc reveal reveal-delay-2">
+      I bridge AI/LLM engineering, financial forecasting, and workforce analytics—delivering 
+      intelligent systems that transform raw data into strategic advantage.
+    </p>
+    <div class="capabilities-grid reveal reveal-delay-3">
+      <div class="capability-card">
+        <div class="capability-icon">🤖</div>
+        <h3 class="capability-title">AI/LLM Integration</h3>
+        <p class="capability-desc">
+          RAG pipelines, intelligent agents, and context-aware chat interfaces that understand 
+          your business data and provide actionable insights.
+        </p>
+        <div class="capability-tags">
+          <span class="cap-tag">RAG</span>
+          <span class="cap-tag">GPT-4</span>
+          <span class="cap-tag">Embeddings</span>
+          <span class="cap-tag">Groq</span>
+        </div>
+      </div>
+      <div class="capability-card">
+        <div class="capability-icon">📊</div>
+        <h3 class="capability-title">Financial Forecasting</h3>
+        <p class="capability-desc">
+          Monte Carlo simulations, attrition modeling, and TCC projections that account for 
+          uncertainty and deliver confidence-bound predictions.
+        </p>
+        <div class="capability-tags">
+          <span class="cap-tag">Monte Carlo</span>
+          <span class="cap-tag">SQL</span>
+          <span class="cap-tag">Variance Analysis</span>
+        </div>
+      </div>
+      <div class="capability-card">
+        <div class="capability-icon">👥</div>
+        <h3 class="capability-title">Workforce Analytics</h3>
+        <p class="capability-desc">
+          Compensation benchmarking, skills tracking, and contribution scoring systems that 
+          drive fair, data-informed people decisions.
+        </p>
+        <div class="capability-tags">
+          <span class="cap-tag">Comp Analysis</span>
+          <span class="cap-tag">Python</span>
+          <span class="cap-tag">Dashboards</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ── PROJECTS ──────────────────────────────────────────────────────── -->
 <section id="projects">
@@ -1984,10 +2299,10 @@ sup.cr-footnote-mark { font-size: 0.55em; }
       Four working simulators built from real projects. Synthetic data — everything runs in your browser.
     </p>
     <div class="demo-tabs reveal reveal-delay-3" role="tablist" aria-label="Live demos">
-      <button class="demo-tab active" data-demo="ps-dashboard"   role="tab" aria-selected="true"  data-formula="=WEIGHTED(Alignment×0.30 + Performance×0.35 + Health×0.20 + Recognition×0.15)">Ops · Contribution Scorer</button>
-      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false" data-formula="=FORECAST(Actuals, Plan) → Σ(LOB variance) ÷ Budget">Finance · TCC Simulator</button>
-      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false" data-formula="=NORMALIZE(Salary ÷ PPP_index[region]) × Band_midpoint">HR · Comp Normalizer</button>
-      <button class="demo-tab"        data-demo="ai-sales"       role="tab" aria-selected="false" data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Sales · Pipeline Risk</button>
+      <button class="demo-tab active" data-demo="ai-sales"       role="tab" aria-selected="true"  data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Pipeline Risk</button>
+      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false" data-formula="=FORECAST(Actuals, Plan) → Σ(LOB variance) ÷ Budget">TCC Forecast</button>
+      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false" data-formula="=NORMALIZE(Salary ÷ PPP_index[region]) × Band_midpoint">Salary Benchmark</button>
+      <button class="demo-tab"        data-demo="ps-dashboard"   role="tab" aria-selected="false" data-formula="=WEIGHTED(Alignment×0.30 + Performance×0.35 + Health×0.20 + Recognition×0.15)">Sales Intelligence</button>
     </div>
     <div class="formula-bar reveal reveal-delay-3" id="fx-bar"><span class="fx">ƒx</span><span id="fx-formula"></span></div>
     <div class="demo-tab-panel reveal reveal-delay-3" id="demo-panel"></div>
@@ -2021,24 +2336,45 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <p class="section-eyebrow reveal">Meet Donna</p>
     <h2 class="section-title reveal reveal-delay-1">Ask Donna anything about Alex's work.</h2>
     <p class="section-desc reveal reveal-delay-2">Donna is Alex's AI assistant, powered by Llama 3.3 — ask about specific projects, tech stack, impact metrics, role fit, or availability.</p>
-    <p class="donna-scope-note reveal reveal-delay-2">Donna only knows what's in Alex's documented projects — ask her anything about those. For anything beyond, reach him at <a href="mailto:moisesalex.01@gmail.com">moisesalex.01@gmail.com</a>.</p>
+    <p class="donna-scope-note reveal reveal-delay-2">Donna answers questions about Alex's documented work — she doesn't discuss salary or negotiate offers. For roles, compensation, or to talk, connect with Alex on <a href="https://www.linkedin.com/in/analystd/" target="_blank" rel="noopener">LinkedIn</a> (he replies within 24h) or email <a href="mailto:moisesalex.01@gmail.com">moisesalex.01@gmail.com</a>.</p>
     <div class="chat-container reveal reveal-delay-3">
       <div class="chat-toolbar">
         <button class="chat-newchat-btn" id="chat-newchat-btn" onclick="Chat.newChat()" aria-label="Start a new chat">↺ New chat</button>
+        <div class="chat-rag-indicator" id="chat-rag-indicator" title="RAG mode: Retrieval-Augmented Generation active">
+          <span class="rag-dot"></span>
+          <span class="rag-label">RAG</span>
+        </div>
       </div>
       <div class="chat-messages" id="chat-messages">
         <div class="msg ai">
           <div class="msg-bubble">
-            Hi! I'm Donna, Alex's AI assistant. I can walk you through any of his projects, his tech stack and impact — or, if you're hiring, whether Alex is a fit for the role you have in mind. What would you like to know?
+            Hi! I'm Donna, Alex's AI assistant powered by <strong>Llama 3.3 with RAG</strong>. I can walk you through any of his projects, demonstrate live examples, or help assess role fit. Try asking about a specific project or click a demo below!
+          </div>
+          <div class="chat-project-cards">
+            <div class="chat-project-card" onclick="Chat.loadProjectDemo('ai-sales')">
+              <div class="cp-icon">📊</div>
+              <div class="cp-title">Pipeline Risk</div>
+              <div class="cp-tag">AI/Sales</div>
+            </div>
+            <div class="chat-project-card" onclick="Chat.loadProjectDemo('tcc-forecast')">
+              <div class="cp-icon">💰</div>
+              <div class="cp-title">TCC Forecast</div>
+              <div class="cp-tag">Finance</div>
+            </div>
+            <div class="chat-project-card" onclick="Chat.loadProjectDemo('comp-reporting')">
+              <div class="cp-icon">👥</div>
+              <div class="cp-title">Salary Benchmark</div>
+              <div class="cp-tag">HR/Comp</div>
+            </div>
           </div>
         </div>
       </div>
       <div class="chat-no-key" id="chat-no-key">⚠ Donna isn't configured yet — please check back soon.</div>
       <div class="chat-suggestions" id="chat-suggestions">
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Is Alex open to new roles right now?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What roles is Alex a fit for?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What are Alex's salary expectations?</button>
-        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Does Alex work remotely? What timezone?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Show me the Pipeline Risk demo</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">What's Alex's experience with AI/LLM?</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Walk me through the TCC forecasting approach</button>
+        <button class="chat-pill" onclick="Chat.sendSuggestion(this)">Is Alex open to new roles?</button>
       </div>
       <div class="chat-input-row">
         <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask Donna about a project, skill, role fit, or availability…  (Shift+Enter for a new line)" autocomplete="off"></textarea>
@@ -2097,7 +2433,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
           <div class="skills-label">Core Competencies</div>
           <div class="skills-actions">
             <button class="skills-action" type="button" onclick="Resume.copy()" aria-label="Copy résumé as plain text">⧉ Copy as text</button>
-            <button class="skills-action" type="button" onclick="Resume.print()" aria-label="Print recruiter one-pager">⎙ Print one-pager</button>
+            <button class="skills-action" type="button" onclick="Resume.download()" aria-label="Download CV as plain text">⬇ Download CV</button>
           </div>
         </div>
         <div class="skills-table">
@@ -2308,6 +2644,19 @@ sup.cr-footnote-mark { font-size: 0.55em; }
       <div class="pl-rows"></div>
     </div>
 
+    <!-- Chart.js Visualizations -->
+    <div class="pl-charts-grid">
+      <div class="pl-chart-container">
+        <canvas class="pl-chart-bar"></canvas>
+      </div>
+      <div class="pl-chart-container">
+        <canvas class="pl-chart-donut"></canvas>
+      </div>
+      <div class="pl-chart-container pl-chart-wide">
+        <canvas class="pl-chart-bubble"></canvas>
+      </div>
+    </div>
+
     <!-- AI score button -->
     <div class="pl-ai-row">
       <button class="demo-btn pl-ai-btn">Score with Groq AI →</button>
@@ -2511,6 +2860,15 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <div class="tcc-footnote">Synthetic data — runs entirely in your browser. No real employee data.</div>
   </div>
 </template>
+
+<!-- ── DONNA SCROLL NUDGE ─────────────────────────────────────────────── -->
+<div id="donna-nudge" class="donna-nudge" role="complementary" aria-live="polite">
+  <div class="donna-nudge-inner">
+    <span class="donna-nudge-avatar" aria-hidden="true">D</span>
+    <span class="donna-nudge-msg"></span>
+  </div>
+  <button class="donna-nudge-close" aria-label="Dismiss suggestion">✕</button>
+</div>
 
 <!-- ── TOAST CONTAINER ───────────────────────────────────────────────── -->
 <div class="toast-container" id="toast-container"></div>

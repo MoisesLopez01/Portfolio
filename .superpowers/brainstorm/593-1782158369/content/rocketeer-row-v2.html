@@ -1,0 +1,62 @@
+<h2>Project context — final layout (C + hours per project)</h2>
+<p class="subtitle">Same C layout: count row on top, amber = new vs. prior week. Now the expand adds hours per project on a secondary line. Two ways to show the hours — pick the one you like.</p>
+
+<style>
+  .ctx-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+  .ctx-tbl th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; padding:5px 8px; border-bottom:1px solid #e2e8f0; text-align:center; }
+  .ctx-tbl th.lbl, .ctx-tbl td.lbl { text-align:left; background:#f8fafc; color:#475569; font-weight:700; white-space:nowrap; }
+  .ctx-tbl td { padding:6px 8px; border-bottom:1px solid #eef2f7; text-align:center; vertical-align:top; }
+  .ctx-cur { color:#EA580C; font-weight:800; }
+  .ctx-fut { color:#94a3b8; }
+  .keypill { display:inline-block; background:#EEF4FF; color:#3730A3; border-radius:4px; padding:1px 5px; margin:1px; font-size:9.5px; font-weight:600; }
+  .keypill.new { background:#FEF3C7; color:#92400E; }
+  .cnt-big { font-size:16px; font-weight:800; color:#1e293b; }
+  .hrline { font-size:9px; color:#64748b; margin-top:3px; line-height:1.5; text-align:left; }
+  .hrline b { color:#475569; }
+  .keyrow { text-align:left; font-size:9.5px; line-height:1.7; }
+  .keyrow .h { color:#94a3b8; font-weight:700; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Variant 1 — pills on top, a compact hours line underneath</div>
+  <div class="mockup-body">
+    <table class="ctx-tbl">
+      <thead><tr><th class="lbl"></th><th>W19</th><th>W20</th><th class="ctx-cur">W21</th><th class="ctx-fut">W22</th></tr></thead>
+      <tbody>
+        <tr><td class="lbl">PROJECTS ›</td><td><span class="cnt-big">3</span></td><td><span class="cnt-big">4</span></td><td><span class="cnt-big ctx-cur">4</span></td><td class="ctx-fut">2</td></tr>
+        <tr style="background:#f8fafc"><td class="lbl" style="font-size:9px;color:#94a3b8">expanded ↳</td>
+          <td><span class="keypill">ACME</span><span class="keypill">BETA</span><span class="keypill new">GAMMA</span><div class="hrline"><b>20</b> · <b>12</b> · <b>8</b>h</div></td>
+          <td><span class="keypill">ACME</span><span class="keypill">BETA</span><span class="keypill">GAMMA</span><span class="keypill new">DELTA</span><div class="hrline"><b>10</b> · <b>10</b> · <b>10</b> · <b>10</b>h</div></td>
+          <td><span class="keypill">ACME</span><span class="keypill">BETA</span><span class="keypill">GAMMA</span><span class="keypill">DELTA</span><div class="hrline"><b>16</b> · <b>10</b> · <b>8</b> · <b>6</b>h</div></td>
+          <td><span class="keypill">ACME</span><span class="keypill">BETA</span><div class="hrline"><b>30</b> · <b>10</b>h</div></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">Pills read left-to-right, hours line matches that order. Compact but you have to map pill→number by position.</p>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Variant 2 — one line per project: KEY — hours (recommended)</div>
+  <div class="mockup-body">
+    <table class="ctx-tbl">
+      <thead><tr><th class="lbl"></th><th>W19</th><th>W20</th><th class="ctx-cur">W21</th><th class="ctx-fut">W22</th></tr></thead>
+      <tbody>
+        <tr><td class="lbl">PROJECTS ›</td><td><span class="cnt-big">3</span></td><td><span class="cnt-big">4</span></td><td><span class="cnt-big ctx-cur">4</span></td><td class="ctx-fut">2</td></tr>
+        <tr style="background:#f8fafc"><td class="lbl" style="font-size:9px;color:#94a3b8">expanded ↳</td>
+          <td><div class="keyrow"><span class="keypill">ACME</span> <span class="h">20h</span><br><span class="keypill">BETA</span> <span class="h">12h</span><br><span class="keypill new">GAMMA</span> <span class="h">8h</span></div></td>
+          <td><div class="keyrow"><span class="keypill">ACME</span> <span class="h">10h</span><br><span class="keypill">BETA</span> <span class="h">10h</span><br><span class="keypill">GAMMA</span> <span class="h">10h</span><br><span class="keypill new">DELTA</span> <span class="h">10h</span></div></td>
+          <td><div class="keyrow"><span class="keypill">ACME</span> <span class="h">16h</span><br><span class="keypill">BETA</span> <span class="h">10h</span><br><span class="keypill">GAMMA</span> <span class="h">8h</span><br><span class="keypill">DELTA</span> <span class="h">6h</span></div></td>
+          <td><div class="keyrow"><span class="keypill">ACME</span> <span class="h">30h</span><br><span class="keypill">BETA</span> <span class="h">10h</span></div></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:#64748b;margin:8px 4px 0">Each project on its own line with its hours right beside it — unambiguous, sorted by hours descending. Slightly taller, but no mapping needed.</p>
+  </div>
+</div>
+
+<h3 style="margin-top:20px">Which hours treatment?</h3>
+<div class="options">
+  <div class="option" data-choice="v1" onclick="toggleSelect(this)"><div class="letter">1</div><div class="content"><h3>Pills + compact hours line</h3><p>Most compact; map by position.</p></div></div>
+  <div class="option" data-choice="v2" onclick="toggleSelect(this)"><div class="letter">2</div><div class="content"><h3>One line per project: KEY — hours</h3><p>Unambiguous, sorted by hours. Recommended.</p></div></div>
+</div>

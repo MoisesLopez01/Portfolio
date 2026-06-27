@@ -1,0 +1,85 @@
+<h2>Audit badge design — how many flag types?</h2>
+<p class="subtitle">You described two inactivity signals. Should they be one flag or two distinct badges?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Two distinct flags — different severity</h3>
+      <p>Show separate badges so managers know exactly what to look at.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Roster row examples</div>
+        <div class="mockup-body" style="padding:10px;font-size:12px">
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:6px;align-items:center;color:#a0aec0">
+            <span>Jordan K.</span>
+            <span style="background:#742a2a;color:#fc8181;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block">🔴 No activity since Apr 1</span>
+            <span style="color:#718096;font-size:11px;padding-left:4px">↳</span>
+            <span style="color:#718096;font-size:11px">8 goals · 0 self-comments all Q4</span>
+
+            <span style="margin-top:6px">Sam R.</span>
+            <span style="background:#5f370e;color:#f6ad55;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">🟡 Supervisor-only comments</span>
+            <span style="color:#718096;font-size:11px;padding-left:4px">↳</span>
+            <span style="color:#718096;font-size:11px">Goals "Planned" · 0 self-comments · mgr commented</span>
+
+            <span style="margin-top:6px">Alex M.</span>
+            <span style="background:#1a3a2a;color:#68d391;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">✅ Compliant</span>
+            <span style="color:#718096;font-size:11px;padding-left:4px">↳</span>
+            <span style="color:#718096;font-size:11px">8 completed · 6 goals ≥ 8 comments</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>One flag — "Inactive" — with detail on hover/expand</h3>
+      <p>Single amber badge for any inactivity; clicking the row reveals whether it's zero-comment or supervisor-only.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Roster row examples</div>
+        <div class="mockup-body" style="padding:10px;font-size:12px">
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:6px;align-items:center;color:#a0aec0">
+            <span>Jordan K.</span>
+            <span style="background:#5f370e;color:#f6ad55;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block">⚠️ Inactive · 0 self-comments</span>
+
+            <span style="margin-top:6px">Sam R.</span>
+            <span style="background:#5f370e;color:#f6ad55;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">⚠️ Inactive · supervisor-only</span>
+
+            <span style="margin-top:6px">Alex M.</span>
+            <span style="background:#1a3a2a;color:#68d391;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">✅ Compliant</span>
+          </div>
+          <div style="margin-top:10px;padding:8px;background:#1a2035;border-radius:6px;color:#718096;font-size:11px">
+            Both cases use ⚠️ Inactive — detail visible when row is expanded
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Three states: Compliant · At Risk · No Activity</h3>
+      <p>Add an "At Risk" middle state for people with some activity but still below compliance threshold — giving managers a fuller picture.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Roster row examples</div>
+        <div class="mockup-body" style="padding:10px;font-size:12px">
+          <div style="display:grid;grid-template-columns:140px 1fr;gap:6px;align-items:center;color:#a0aec0">
+            <span>Jordan K.</span>
+            <span style="background:#742a2a;color:#fc8181;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block">🔴 No activity</span>
+
+            <span style="margin-top:6px">Sam R.</span>
+            <span style="background:#5f370e;color:#f6ad55;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">🟡 At risk · 2 comments only</span>
+
+            <span style="margin-top:6px">Chris L.</span>
+            <span style="background:#1a2a3a;color:#63b3ed;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">🔵 On track · not yet compliant</span>
+
+            <span style="margin-top:6px">Alex M.</span>
+            <span style="background:#1a3a2a;color:#68d391;padding:2px 8px;border-radius:10px;font-size:11px;display:inline-block;margin-top:6px">✅ Compliant</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

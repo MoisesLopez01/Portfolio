@@ -1,0 +1,101 @@
+<h2>How should the collapsed menu work?</h2>
+<p class="subtitle">Tab bar keeps: Overview · Team Radar · Leading Behaviours · Trends · (Exec Brief, admins only). The question is what the collapsed panel contains and where it sits. Wireframes show an <strong>admin's</strong> view with the menu open.</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Top-left hamburger — secondary pages only</h3>
+      <p>☰ button left of the logo. The panel lists only the pages that left the tab bar: Data Reference (everyone), Scoring Weights + Access Control (admins). Primary tabs stay where they are — no duplication.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-body" style="padding:0;font-size:11px">
+          <div style="background:#0F1941;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:12px">
+            <span style="font-size:16px;cursor:pointer">☰</span>
+            <strong>PS Weekly Contribution Report</strong>
+            <span style="margin-left:auto;background:#EEF4FF;color:#0D3B8C;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:800">ADMIN</span>
+          </div>
+          <div style="position:relative">
+            <div style="display:flex;gap:14px;padding:8px 14px;border-bottom:1px solid #ddd;color:#555">
+              <span style="color:#E8602C;border-bottom:2px solid #E8602C;padding-bottom:4px;font-weight:700">Overview</span>
+              <span>Team Radar</span><span>Leading Behaviours</span><span>Trends</span><span>Exec Brief 🔒</span>
+            </div>
+            <div style="position:absolute;top:38px;left:10px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:6px;width:200px;z-index:2">
+              <div style="padding:7px 10px;border-radius:6px">📊 Data Reference</div>
+              <div style="border-top:1px solid #eee;margin:4px 0"></div>
+              <div style="padding:7px 10px;border-radius:6px">⚖️ Scoring Weights</div>
+              <div style="padding:7px 10px;border-radius:6px">🔒 Access Control</div>
+            </div>
+            <div style="height:120px;background:#F6F8FB"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Top-left hamburger — full navigation drawer</h3>
+      <p>☰ opens a drawer listing <em>everything</em>: the 4 primary tabs plus the secondary pages, grouped with a divider. One place to navigate anywhere (handy on mobile), but duplicates the tab bar.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-body" style="padding:0;font-size:11px">
+          <div style="background:#0F1941;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:12px">
+            <span style="font-size:16px;cursor:pointer">☰</span>
+            <strong>PS Weekly Contribution Report</strong>
+            <span style="margin-left:auto;background:#EEF4FF;color:#0D3B8C;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:800">ADMIN</span>
+          </div>
+          <div style="position:relative">
+            <div style="display:flex;gap:14px;padding:8px 14px;border-bottom:1px solid #ddd;color:#555">
+              <span style="color:#E8602C;border-bottom:2px solid #E8602C;padding-bottom:4px;font-weight:700">Overview</span>
+              <span>Team Radar</span><span>Leading Behaviours</span><span>Trends</span><span>Exec Brief 🔒</span>
+            </div>
+            <div style="position:absolute;top:38px;left:10px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:6px;width:200px;z-index:2">
+              <div style="padding:6px 10px;font-weight:700;color:#E8602C">Overview</div>
+              <div style="padding:6px 10px">Team Radar</div>
+              <div style="padding:6px 10px">Leading Behaviours</div>
+              <div style="padding:6px 10px">Trends</div>
+              <div style="padding:6px 10px">Exec Brief 🔒</div>
+              <div style="border-top:1px solid #eee;margin:4px 0"></div>
+              <div style="padding:6px 10px">📊 Data Reference</div>
+              <div style="padding:6px 10px">⚖️ Scoring Weights</div>
+              <div style="padding:6px 10px">🔒 Access Control</div>
+            </div>
+            <div style="height:120px;background:#F6F8FB"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>"⋯ More" at the end of the tab bar</h3>
+      <p>No hamburger. The tab bar ends with a ⋯ More button that drops down the secondary pages. Keeps all navigation in one row, but is less of the "modern website" top-left pattern you described.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-body" style="padding:0;font-size:11px">
+          <div style="background:#0F1941;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:12px">
+            <strong>PS Weekly Contribution Report</strong>
+            <span style="margin-left:auto;background:#EEF4FF;color:#0D3B8C;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:800">ADMIN</span>
+          </div>
+          <div style="position:relative">
+            <div style="display:flex;gap:14px;padding:8px 14px;border-bottom:1px solid #ddd;color:#555">
+              <span style="color:#E8602C;border-bottom:2px solid #E8602C;padding-bottom:4px;font-weight:700">Overview</span>
+              <span>Team Radar</span><span>Leading Behaviours</span><span>Trends</span><span>Exec Brief 🔒</span>
+              <span style="font-weight:700">⋯ More ▾</span>
+            </div>
+            <div style="position:absolute;top:38px;right:10px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:6px;width:200px;z-index:2">
+              <div style="padding:7px 10px">📊 Data Reference</div>
+              <div style="border-top:1px solid #eee;margin:4px 0"></div>
+              <div style="padding:7px 10px">⚖️ Scoring Weights</div>
+              <div style="padding:7px 10px">🔒 Access Control</div>
+            </div>
+            <div style="height:120px;background:#F6F8FB"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

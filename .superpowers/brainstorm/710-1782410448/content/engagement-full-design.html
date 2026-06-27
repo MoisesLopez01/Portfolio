@@ -1,0 +1,270 @@
+<h2>Engagement Tab — Full Design</h2>
+<p class="subtitle">Review each section. Let me know if anything needs adjusting before I write the spec.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Engagement Tab — scrolling top to bottom</div>
+  <div class="mockup-body" style="font-family:sans-serif;font-size:11px;display:flex;flex-direction:column;gap:10px">
+
+    <!-- KPI Row -->
+    <div>
+      <div style="font-size:9px;font-weight:800;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">KPI Cards</div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#058CDC">68%</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Org Engagement Rate</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">≥1 self-comment</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#00A86B">152</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Active Commenters</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">self-commented this qtr</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#EF4444">71</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Silent</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">0 self-comments</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#F59E0B">38</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Below Pace</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">&lt; ½ weeks elapsed</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#9B59B6">3.2</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Avg Self-Cmts</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">per rocketeer</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:900;color:#2864E6">1.8</div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">Avg Mgr-Cmts</div>
+          <div style="font-size:7px;color:#64748B;margin-top:1px">per team member</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend Chart -->
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+      <div style="padding:10px 14px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#0F1941">COMMENTS VOLUME WEEK OVER WEEK</div>
+          <div style="font-size:9px;color:#94A3B8;margin-top:1px">Solid line = total comments (left axis) · Dashed green = unique people engaging (right axis) · Toggle departments below</div>
+        </div>
+        <span style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:5px;padding:3px 8px;font-size:8px;color:#64748B">⬇ PNG</span>
+      </div>
+      <div style="padding:10px 14px">
+        <!-- Dept chips -->
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="background:#058CDC;color:#fff;border-radius:20px;padding:2px 9px;font-size:8px;font-weight:600;border:2px solid #058CDC">Engineering</span>
+          <span style="color:#00A86B;border-radius:20px;padding:2px 9px;font-size:8px;font-weight:600;border:2px solid #00A86B">PS</span>
+          <span style="color:#F59E0B;border-radius:20px;padding:2px 9px;font-size:8px;font-weight:600;border:2px solid #F59E0B">Sales</span>
+          <span style="color:#EF4444;border-radius:20px;padding:2px 9px;font-size:8px;font-weight:600;border:2px solid #EF4444">Marketing</span>
+        </div>
+        <div style="background:#EEF4FF;border-radius:5px;height:80px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#058CDC;font-weight:700">
+          Chart.js dual-axis line chart · Left: comments count · Right: unique people · Dept overlays when toggled
+        </div>
+        <!-- Weekly table below chart -->
+        <div style="margin-top:8px;overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:8px">
+            <thead>
+              <tr style="border-bottom:1px solid #E2E8F0">
+                <th style="padding:4px 6px;text-align:left;color:#94A3B8;font-weight:700">ISO Week</th>
+                <th style="padding:4px 6px;text-align:center;color:#94A3B8;font-weight:700">Total Cmts</th>
+                <th style="padding:4px 6px;text-align:center;color:#00A86B;font-weight:700">Unique People</th>
+                <th style="padding:4px 6px;text-align:center;color:#94A3B8;font-weight:700">Engineering</th>
+                <th style="padding:4px 6px;text-align:center;color:#94A3B8;font-weight:700">PS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid #F1F5F9"><td style="padding:4px 6px;font-weight:700">2026.W10</td><td style="padding:4px 6px;text-align:center;color:#058CDC;font-weight:700">247</td><td style="padding:4px 6px;text-align:center;color:#00A86B;font-weight:700">134</td><td style="padding:4px 6px;text-align:center;color:#64748B">48</td><td style="padding:4px 6px;text-align:center;color:#64748B">62</td></tr>
+              <tr><td style="padding:4px 6px;font-weight:700">2026.W11</td><td style="padding:4px 6px;text-align:center;color:#058CDC;font-weight:700">189</td><td style="padding:4px 6px;text-align:center;color:#00A86B;font-weight:700">98</td><td style="padding:4px 6px;text-align:center;color:#64748B">35</td><td style="padding:4px 6px;text-align:center;color:#64748B">51</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-column: Team Engagement + Manager Scorecard -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+
+      <!-- Team Engagement -->
+      <div style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid #E2E8F0">
+          <div style="font-size:10px;font-weight:800;color:#0F1941">TEAM ENGAGEMENT RATE</div>
+          <div style="font-size:9px;color:#94A3B8;margin-top:1px">People with ≥1 self-comment · colour = rate</div>
+        </div>
+        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:9px;font-weight:700;color:#0F1941">Professional Services</span>
+              <span style="font-size:9px;font-weight:700;color:#00A86B">18/20 · 90%</span>
+            </div>
+            <div style="height:7px;background:#E2E8F0;border-radius:4px"><div style="width:90%;height:100%;background:#00A86B;border-radius:4px"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:9px;font-weight:700;color:#0F1941">Engineering</span>
+              <span style="font-size:9px;font-weight:700;color:#00A86B">17/20 · 85%</span>
+            </div>
+            <div style="height:7px;background:#E2E8F0;border-radius:4px"><div style="width:85%;height:100%;background:#00A86B;border-radius:4px"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:9px;font-weight:700;color:#0F1941">Sales</span>
+              <span style="font-size:9px;font-weight:700;color:#F59E0B">12/20 · 60%</span>
+            </div>
+            <div style="height:7px;background:#E2E8F0;border-radius:4px"><div style="width:60%;height:100%;background:#F59E0B;border-radius:4px"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:9px;font-weight:700;color:#0F1941">Marketing</span>
+              <span style="font-size:9px;font-weight:700;color:#EF4444">6/15 · 40%</span>
+            </div>
+            <div style="height:7px;background:#E2E8F0;border-radius:4px"><div style="width:40%;height:100%;background:#EF4444;border-radius:4px"></div></div>
+          </div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:2px">🟢 ≥75% · 🟡 50–74% · 🔴 &lt;50%</div>
+        </div>
+      </div>
+
+      <!-- Manager Scorecard -->
+      <div style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid #E2E8F0">
+          <div style="font-size:10px;font-weight:800;color:#0F1941">MANAGER SCORECARD</div>
+          <div style="font-size:9px;color:#94A3B8;margin-top:1px">Avg comments left on team goals · % of team reached</div>
+        </div>
+        <div style="padding:6px 14px;display:flex;flex-direction:column;gap:1px">
+          <!-- Header row -->
+          <div style="display:grid;grid-template-columns:1fr 70px 70px 50px;gap:4px;padding:4px 0;border-bottom:1px solid #F1F5F9">
+            <span style="font-size:8px;font-weight:700;color:#94A3B8;text-transform:uppercase">Manager</span>
+            <span style="font-size:8px;font-weight:700;color:#94A3B8;text-align:center">Avg Cmts</span>
+            <span style="font-size:8px;font-weight:700;color:#94A3B8;text-align:center">Coverage</span>
+            <span style="font-size:8px;font-weight:700;color:#94A3B8;text-align:center">Team</span>
+          </div>
+          <!-- Rows -->
+          <div style="display:grid;grid-template-columns:1fr 70px 70px 50px;gap:4px;padding:5px 0;border-bottom:1px solid #F8FAFC;align-items:center">
+            <div>
+              <span style="font-size:9px;font-weight:700;color:#0F1941">J. Torres</span>
+            </div>
+            <div style="text-align:center"><span style="background:#DCFCE7;color:#15803D;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">4.1</span></div>
+            <div style="text-align:center"><span style="background:#DCFCE7;color:#15803D;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">8/8</span></div>
+            <div style="text-align:center;font-size:8px;color:#64748B">8</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 70px 70px 50px;gap:4px;padding:5px 0;border-bottom:1px solid #F8FAFC;align-items:center">
+            <div>
+              <span style="font-size:9px;font-weight:700;color:#0F1941">M. Chen</span>
+              <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 4px;font-size:7px;font-weight:700;margin-left:4px">Senior Leader</span>
+            </div>
+            <div style="text-align:center"><span style="background:#FEF9C3;color:#854D0E;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">1.2</span></div>
+            <div style="text-align:center"><span style="background:#FEF9C3;color:#854D0E;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">5/8</span></div>
+            <div style="text-align:center;font-size:8px;color:#64748B">8</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 70px 70px 50px;gap:4px;padding:5px 0;border-bottom:1px solid #F8FAFC;align-items:center">
+            <div>
+              <span style="font-size:9px;font-weight:700;color:#0F1941">A. Patel</span>
+            </div>
+            <div style="text-align:center"><span style="background:#FEE2E2;color:#B91C1C;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">0.3</span></div>
+            <div style="text-align:center"><span style="background:#FEE2E2;color:#B91C1C;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">2/9</span></div>
+            <div style="text-align:center;font-size:8px;color:#64748B">9</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 70px 70px 50px;gap:4px;padding:5px 0;align-items:center">
+            <div>
+              <span style="font-size:9px;font-weight:700;color:#0F1941">S. Kim</span>
+              <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 4px;font-size:7px;font-weight:700;margin-left:4px">Senior Leader</span>
+            </div>
+            <div style="text-align:center"><span style="background:#FEE2E2;color:#B91C1C;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">0.0</span></div>
+            <div style="text-align:center"><span style="background:#FEE2E2;color:#B91C1C;border-radius:3px;padding:2px 6px;font-size:8px;font-weight:700">0/12</span></div>
+            <div style="text-align:center;font-size:8px;color:#64748B">12</div>
+          </div>
+          <div style="font-size:8px;color:#94A3B8;margin-top:4px;padding-top:4px;border-top:1px solid #F1F5F9">🟢 ≥2 cmts avg · 🟡 1–2 · 🔴 &lt;1 · Senior Leaders flagged but included</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Individual Low-Engager List -->
+    <div style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden">
+      <div style="padding:10px 14px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#0F1941">INDIVIDUAL ENGAGEMENT LIST</div>
+          <div style="font-size:9px;color:#94A3B8;margin-top:1px">Week 12 of 13 · Pace threshold = 6 self-comments minimum · sorted by engagement concern</div>
+        </div>
+        <div style="display:flex;gap:5px">
+          <span style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:5px;padding:3px 8px;font-size:8px;color:#64748B">⬇ CSV</span>
+          <span style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:5px;padding:3px 8px;font-size:8px;color:#64748B">⬇ PNG</span>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:9px">
+          <thead>
+            <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+              <th style="padding:6px 10px;text-align:left;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">Rocketeer</th>
+              <th style="padding:6px 10px;text-align:left;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">Supervisor</th>
+              <th style="padding:6px 10px;text-align:left;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">Dept</th>
+              <th style="padding:6px 10px;text-align:center;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">Goals</th>
+              <th style="padding:6px 10px;text-align:center;color:#9B59B6;font-size:8px;font-weight:700;text-transform:uppercase">Self-Cmts</th>
+              <th style="padding:6px 10px;text-align:center;color:#2864E6;font-size:8px;font-weight:700;text-transform:uppercase">Mgr-Cmts</th>
+              <th style="padding:6px 10px;text-align:center;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">Pace Status</th>
+              <th style="padding:6px 10px;text-align:left;color:#94A3B8;font-size:8px;font-weight:700;text-transform:uppercase">HR Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #F1F5F9;background:#FFF5F5">
+              <td style="padding:6px 10px;font-weight:700">R. Garcia</td>
+              <td style="padding:6px 10px;color:#64748B">A. Patel</td>
+              <td style="padding:6px 10px;color:#64748B">Sales</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:700">9</td>
+              <td style="padding:6px 10px;text-align:center;color:#B91C1C;font-weight:700">0</td>
+              <td style="padding:6px 10px;text-align:center;color:#64748B">0</td>
+              <td style="padding:6px 10px;text-align:center"><span style="background:#450a0a;color:#fca5a5;border-radius:3px;padding:2px 7px;font-size:8px;font-weight:800">Silent</span></td>
+              <td style="padding:6px 10px"><span style="background:#058CDC;color:#fff;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer">Review</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #F1F5F9;background:#FFF5F5">
+              <td style="padding:6px 10px;font-weight:700">T. Nguyen</td>
+              <td style="padding:6px 10px;color:#64748B">M. Chen</td>
+              <td style="padding:6px 10px;color:#64748B">Engineering</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:700">10</td>
+              <td style="padding:6px 10px;text-align:center;color:#B91C1C;font-weight:700">0</td>
+              <td style="padding:6px 10px;text-align:center;color:#64748B">2</td>
+              <td style="padding:6px 10px;text-align:center"><span style="background:#450a0a;color:#fca5a5;border-radius:3px;padding:2px 7px;font-size:8px;font-weight:800">Silent</span></td>
+              <td style="padding:6px 10px"><span style="background:#058CDC;color:#fff;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer">Review</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #F1F5F9;background:#FFFBEB">
+              <td style="padding:6px 10px;font-weight:700">L. Santos</td>
+              <td style="padding:6px 10px;color:#64748B">J. Torres</td>
+              <td style="padding:6px 10px;color:#64748B">PS</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:700">10</td>
+              <td style="padding:6px 10px;text-align:center;color:#854D0E;font-weight:700">3</td>
+              <td style="padding:6px 10px;text-align:center;color:#64748B">5</td>
+              <td style="padding:6px 10px;text-align:center"><span style="background:#FEF9C3;color:#92400E;border-radius:3px;padding:2px 7px;font-size:8px;font-weight:800">Below Pace</span></td>
+              <td style="padding:6px 10px"><span style="background:#058CDC;color:#fff;border-radius:5px;padding:2px 8px;font-size:8px;cursor:pointer">Review</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #F1F5F9">
+              <td style="padding:6px 10px;font-weight:700">K. Williams</td>
+              <td style="padding:6px 10px;color:#64748B">J. Torres</td>
+              <td style="padding:6px 10px;color:#64748B">PS</td>
+              <td style="padding:6px 10px;text-align:center;font-weight:700">10</td>
+              <td style="padding:6px 10px;text-align:center;color:#15803D;font-weight:700">8</td>
+              <td style="padding:6px 10px;text-align:center;color:#64748B">3</td>
+              <td style="padding:6px 10px;text-align:center"><span style="background:#DCFCE7;color:#15803D;border-radius:3px;padding:2px 7px;font-size:8px;font-weight:800">At Pace</span></td>
+              <td style="padding:6px 10px;color:#94A3B8;font-size:8px">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="section" style="margin-top:16px">
+  <h3>Design decisions baked in</h3>
+  <ul style="font-size:13px;color:#475569;line-height:1.8;padding-left:18px">
+    <li><strong>Pace threshold</strong>: floor(weeksElapsed / 2) — week 12 → need ≥6 self-comments. 8 goals / 6 comments = passes.</li>
+    <li><strong>Silent tier</strong>: 0 self-comments, highest priority, dark red background in list</li>
+    <li><strong>Below Pace tier</strong>: &gt;0 but below threshold, amber background</li>
+    <li><strong>At Pace</strong>: shown in table for completeness but no HR Review button</li>
+    <li><strong>Manager identification</strong>: job title regex for VP / Director / C-suite / CEO → <code>Senior Leader</code> badge, included in scorecard</li>
+    <li><strong>Manager scorecard colour</strong>: green ≥2 avg cmts, amber 1–2, red &lt;1</li>
+    <li><strong>Team engagement colour</strong>: green ≥75%, amber 50–74%, red &lt;50%</li>
+    <li><strong>Tab rename</strong>: "Comments Trend" → "Engagement" in the tab nav</li>
+    <li><strong>Backend</strong>: new <code>computeEngagementData_()</code> function added to the return payload; cache bumped to gd_v4_</li>
+  </ul>
+</div>

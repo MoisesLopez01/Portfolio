@@ -1,0 +1,125 @@
+<h2>How should the top chart signal to the C-suite?</h2>
+<p class="subtitle">The chart already shows planned + tracked lines. The question is: what story does it tell — and how aggressively?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:16px;font-family:monospace">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:8px">PLANNED vs TRACKED — Team Execution</div>
+        <svg viewBox="0 0 320 100" width="100%" style="display:block">
+          <!-- Grid -->
+          <line x1="0" y1="80" x2="320" y2="80" stroke="#1e293b" stroke-width="1"/>
+          <line x1="0" y1="50" x2="320" y2="50" stroke="#1e293b" stroke-width="1"/>
+          <line x1="0" y1="20" x2="320" y2="20" stroke="#1e293b" stroke-width="1"/>
+          <!-- Planned area fill -->
+          <path d="M0,30 L60,25 L120,22 L180,28 L240,20 L280,24 L320,40 L320,80 L0,80 Z" fill="#3b82f620"/>
+          <!-- Tracked area fill -->
+          <path d="M0,55 L60,48 L120,44 L180,50 L240,42 L280,46 L320,80 L320,80 L0,80 Z" fill="#10b98120"/>
+          <!-- Planned line -->
+          <polyline points="0,30 60,25 120,22 180,28 240,20 280,24 320,40" fill="none" stroke="#3b82f6" stroke-width="2"/>
+          <!-- Tracked line -->
+          <polyline points="0,55 60,48 120,44 180,50 240,42 280,46" fill="none" stroke="#10b981" stroke-width="2"/>
+          <!-- Future dashed -->
+          <polyline points="280,46 320,80" fill="none" stroke="#10b981" stroke-width="2" stroke-dasharray="4,3"/>
+          <!-- Labels -->
+          <text x="8" y="18" fill="#3b82f6" font-size="8" font-family="sans-serif">Planned</text>
+          <text x="8" y="62" fill="#10b981" font-size="8" font-family="sans-serif">Tracked</text>
+          <!-- Fidelity badge -->
+          <rect x="240" y="5" width="60" height="14" rx="3" fill="#1e293b"/>
+          <text x="270" y="15" fill="#f59e0b" font-size="8" font-family="sans-serif" text-anchor="middle">78% fidelity</text>
+        </svg>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <div style="color:#94a3b8;font-size:10px">▲ Same chart, relabeled</div>
+          <div style="color:#f59e0b;font-size:10px;margin-left:auto">78% execution</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Enhanced Labels</h3>
+      <p>Keep the current dual-line chart. Rename to "Planned vs Tracked". Add a prominent fidelity % badge and a target threshold line (e.g., 85%). Minimal disruption, clean executive read.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:16px;font-family:monospace">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:8px">EXECUTION GAP — Hours not delivered</div>
+        <svg viewBox="0 0 320 100" width="100%" style="display:block">
+          <!-- Grid -->
+          <line x1="0" y1="80" x2="320" y2="80" stroke="#1e293b" stroke-width="1"/>
+          <line x1="0" y1="50" x2="320" y2="50" stroke="#1e293b" stroke-width="1"/>
+          <!-- Gap area (red fill between lines) -->
+          <path d="M0,30 L60,25 L120,22 L180,28 L240,20 L280,24 L280,46 L240,42 L180,50 L120,44 L60,48 L0,55 Z" fill="#ef444430"/>
+          <!-- Planned line -->
+          <polyline points="0,30 60,25 120,22 180,28 240,20 280,24" fill="none" stroke="#3b82f6" stroke-width="2"/>
+          <!-- Tracked line -->
+          <polyline points="0,55 60,48 120,44 180,50 240,42 280,46" fill="none" stroke="#10b981" stroke-width="2"/>
+          <!-- Gap label -->
+          <text x="140" y="38" fill="#ef4444" font-size="9" font-family="sans-serif" text-anchor="middle">GAP</text>
+          <!-- Risk weeks highlight -->
+          <rect x="60" y="10" width="60" height="72" rx="2" fill="#ef444408"/>
+          <text x="90" y="8" fill="#ef4444" font-size="7" font-family="sans-serif" text-anchor="middle">risk week</text>
+          <!-- Week labels -->
+          <text x="0" y="92" fill="#475569" font-size="7" font-family="sans-serif">W20</text>
+          <text x="55" y="92" fill="#475569" font-size="7" font-family="sans-serif">W21</text>
+          <text x="115" y="92" fill="#475569" font-size="7" font-family="sans-serif">W22</text>
+          <text x="175" y="92" fill="#475569" font-size="7" font-family="sans-serif">W23</text>
+          <text x="235" y="92" fill="#475569" font-size="7" font-family="sans-serif">W24</text>
+        </svg>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          <div style="color:#ef4444;font-size:10px">● Gap = 340h undelivered this window</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Gap Story</h3>
+      <p>Fill the area <em>between</em> planned and tracked in red. Show the total gap in hours. Highlight risk weeks (gap widens). This makes the cost of inaction visceral for the CEO — "we planned 340h that never happened."</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0f1117;border-radius:8px;padding:16px;font-family:monospace">
+        <div style="color:#94a3b8;font-size:11px;margin-bottom:8px">EXECUTION RATE — Week over week</div>
+        <svg viewBox="0 0 320 100" width="100%" style="display:block">
+          <!-- Background bands -->
+          <rect x="0" y="0" width="320" height="30" rx="0" fill="#10b98108"/>
+          <rect x="0" y="30" width="320" height="25" rx="0" fill="#f59e0b08"/>
+          <rect x="0" y="55" width="320" height="45" rx="0" fill="#ef444408"/>
+          <!-- Zone labels -->
+          <text x="315" y="18" fill="#10b981" font-size="7" font-family="sans-serif" text-anchor="end">On track ≥85%</text>
+          <text x="315" y="45" fill="#f59e0b" font-size="7" font-family="sans-serif" text-anchor="end">At risk 60-85%</text>
+          <text x="315" y="68" fill="#ef4444" font-size="7" font-family="sans-serif" text-anchor="end">Critical &lt;60%</text>
+          <!-- Target line -->
+          <line x1="0" y1="30" x2="320" y2="30" stroke="#10b981" stroke-width="1" stroke-dasharray="4,3"/>
+          <!-- Fidelity bars -->
+          <rect x="10" y="18" width="35" height="62" rx="2" fill="#10b981"/>
+          <rect x="70" y="35" width="35" height="45" rx="2" fill="#f59e0b"/>
+          <rect x="130" y="22" width="35" height="58" rx="2" fill="#10b981"/>
+          <rect x="190" y="40" width="35" height="40" rx="2" fill="#f59e0b"/>
+          <rect x="250" y="12" width="35" height="68" rx="2" fill="#10b981"/>
+          <!-- % labels -->
+          <text x="27" y="14" fill="#fff" font-size="8" font-family="sans-serif" text-anchor="middle">87%</text>
+          <text x="87" y="31" fill="#fff" font-size="8" font-family="sans-serif" text-anchor="middle">72%</text>
+          <text x="147" y="18" fill="#fff" font-size="8" font-family="sans-serif" text-anchor="middle">91%</text>
+          <text x="207" y="36" fill="#fff" font-size="8" font-family="sans-serif" text-anchor="middle">68%</text>
+          <text x="267" y="8" fill="#fff" font-size="8" font-family="sans-serif" text-anchor="middle">94%</text>
+          <!-- Week labels -->
+          <text x="27" y="98" fill="#475569" font-size="7" font-family="sans-serif" text-anchor="middle">W20</text>
+          <text x="87" y="98" fill="#475569" font-size="7" font-family="sans-serif" text-anchor="middle">W21</text>
+          <text x="147" y="98" fill="#475569" font-size="7" font-family="sans-serif" text-anchor="middle">W22</text>
+          <text x="207" y="98" fill="#475569" font-size="7" font-family="sans-serif" text-anchor="middle">W23</text>
+          <text x="267" y="98" fill="#475569" font-size="7" font-family="sans-serif" text-anchor="middle">W24</text>
+        </svg>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Execution Rate Bars</h3>
+      <p>Replace the line chart with weekly execution rate bars (tracked ÷ planned %). Color-coded zones: green ≥85%, amber 60–85%, red &lt;60%. Target line at 85%. CEO sees health at a glance without needing to read two lines.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px">These aren't mutually exclusive — A+B is common (dual lines <em>plus</em> gap fill). Click your preference or tell me in the terminal.</p>

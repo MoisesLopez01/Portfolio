@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contribution WoW Executive Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap"/>
+<style>
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  /* Brand palette reused from Hours Analysis */
+  --void-blue:   #0F1941;
+  --orbe-blue:   #058CDC;
+  --ivory:       #DCCDBE;
+  --light-cream: #FFFAF5;
+  --royal:       #2864E6;
+  --june:        #FF9B87;
+
+  /* Layout tokens */
+  --bg:        #FFFAF5;
+  --surface:   #FFFFFF;
+  --surface2:  #F6EFE6;
+  --border:    #DCCDBE;
+  --accent:    #2864E6;
+  --accent2:   #058CDC;
+  --green:     #0D4721;
+  --yellow:    #7F4900;
+  --red:       #A50000;
+  --text:      #0F1941;
+  --muted:     #5E6C85;
+
+  /* Tier + signal backgrounds from Hours Analysis */
+  --tier-champion: #B7E1CD;
+  --tier-normal:   #FFF9C4;
+  --tier-low:      #FFE0B2;
+  --tier-critical: #F4CCCC;
+
+  --sig-drop:      #EA9999;
+  --sig-rise:      #B7E1CD;
+  --sig-no-log:    #CFE2F3;
+  --sig-match:     #D9EAD3;
+  --sig-mismatch:  #F4CCCC;
+  --sig-partial:   #FFF9C4;
+  --sig-missing:   #CFE2F3;
+
+  --beh-ghost:        #FBE4E4;
+  --beh-nb-shift:     #FDF0E0;
+  --beh-declining:    #FFF0D9;
+  --beh-improving:    #E3F4EA;
+  --beh-inconsistent: #FFFCE6;
+  --beh-compliant:    #EAF5E4;
+
+  --mono:      'DM Mono', monospace;
+  --serif:     'DM Serif Display', serif;
+  --sans:      'Outfit', sans-serif;
+  --radius:    12px;
+  --radius-sm: 6px;
+}
+
+/* ── Reset ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ── Grid noise texture ─────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(40,100,230,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 90%, rgba(5,140,220,.06) 0%, transparent 60%);
+}
+
+/* ── Loading screen ─────────────────────────────────────────── */
+#loader {
+  position: fixed; inset: 0; background: var(--light-cream);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 999; gap: 20px;
+  transition: opacity .4s;
+}
+#loader .logo { font-family: var(--serif); font-size: 2rem; color: var(--accent); }
+#loader .bar  { width: 240px; height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; }
+#loader .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+                border-radius: 99px; animation: load 1.8s ease-in-out forwards; }
+@keyframes load { from { width: 0 } to { width: 100% } }
+#loader .note { font-size: 12px; color: var(--muted); }
+
+/* ── Layout ─────────────────────────────────────────────────── */
+#app { position: relative; z-index: 1; max-width: 1360px; margin: 0 auto; padding: 0 24px 60px; }
+@media (max-width: 600px) { #app { padding: 0 12px 40px; } }
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  padding: 24px 0 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+}
+.header-left h1 { font-family: var(--serif); font-size: 1.6rem; line-height: 1.15; }
+.header-left h1 em { font-style: italic; color: var(--accent); }
+.header-left p  { color: var(--muted); margin-top: 4px; font-size: 11px; }
+@media (max-width: 600px) {
+  .header { flex-direction: column; align-items: flex-start; padding: 16px 0 14px; }
+  .header-left h1 { font-size: 1.3rem; }
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 99px; font-size: 11px; color: var(--muted);
+}
+.badge b { color: var(--text); }
+
+/* ── Week selector ──────────────────────────────────────────── */
+.week-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 28px; flex-wrap: wrap;
+}
+.week-btn {
+  padding: 5px 14px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted); cursor: pointer;
+  font-family: var(--sans); font-size: 11px; font-weight: 500;
+  transition: all .18s;
+}
+.week-btn:hover { border-color: var(--accent); color: var(--accent); }
+.week-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.week-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+
+/* ── Section titles ─────────────────────────────────────────── */
+.section { margin-bottom: 24px; }
+.section-title {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── KPI cards ──────────────────────────────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 600px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+@media (max-width: 380px) { .kpi-grid { grid-template-columns: 1fr; } }
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 14px;
+  transition: border-color .2s, transform .15s;
+  position: relative; overflow: hidden;
+}
+.kpi::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.kpi.positive::before { background: var(--green); }
+.kpi.negative::before { background: var(--red); }
+.kpi.neutral::before  { background: var(--accent); }
+.kpi.warning::before  { background: var(--yellow); }
+.kpi:hover { border-color: var(--accent); transform: translateY(-2px); }
+.kpi[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; left: 12px; right: 12px; top: calc(100% + 6px);
+  background: var(--void-blue); color: #fff;
+  font-size: 11px; line-height: 1.4; font-weight: 400;
+  font-family: var(--sans); text-transform: none; letter-spacing: 0;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+  z-index: 10; white-space: normal;
+}
+.kpi[data-tip]:hover::after { opacity: 1; }
+.kpi-label { font-size: 11px; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: 8px; }
+.kpi-value { font-family: var(--serif); font-size: 1.6rem; line-height: 1; }
+.kpi-delta {
+  margin-top: 4px; font-family: var(--mono); font-size: 11px; display: flex; gap: 6px; align-items: center;
+}
+.kpi-delta .up   { color: var(--green); }
+.kpi-delta .down { color: var(--red); }
+.kpi-delta .flat { color: var(--muted); }
+.kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* ── WoW comparison header ──────────────────────────────────── */
+.wow-header {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px; margin-bottom: 20px;
+}
+.wow-week { flex: 1; text-align: center; }
+.wow-week .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.wow-week .num { font-family: var(--serif); font-size: 2.2rem; margin: 4px 0; }
+@media (max-width: 700px) {
+  .wow-header { flex-direction: column; gap: 12px; text-align: center; }
+  .wow-header > div[style*="border-left"] { border-left: none !important; border-top: 1px solid var(--border); padding-left: 0 !important; padding-top: 14px; margin-left: 0 !important; }
+}
+.wow-divider { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); }
+.wow-arrow {
+  font-family: var(--mono); font-size: 2rem;
+  font-weight: 700; line-height: 1;
+}
+.wow-pct {
+  font-family: var(--mono); font-size: 1.1rem; font-weight: 500;
+}
+.wow-pattern {
+  font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .08em; margin-top: 4px;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────── */
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.tab {
+  padding: 8px 14px; cursor: pointer; font-size: 11px; font-weight: 500;
+  color: var(--muted); border-bottom: 2px solid transparent;
+  transition: color .18s, border-color .18s; margin-bottom: -1px;
+}
+@media (max-width: 600px) {
+  .tabs { flex-wrap: wrap; }
+  .tab { padding: 6px 10px; font-size: 10px; }
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── FNHC signal brief ─────────────────────────────────────── */
+.signal-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--surface2);
+  cursor: pointer;
+  padding: 0;
+}
+.mode-opt {
+  padding: 3px 12px;
+  font-size: 11px;
+  font-family: var(--sans);
+  color: var(--muted);
+  transition: all .2s;
+}
+.mode-opt.active {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 99px;
+}
+.signal-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.signal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.signal-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.visual-tag {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 2px 8px;
+}
+.fnhc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 900px) {
+  .fnhc-grid { grid-template-columns: 1fr; }
+}
+.fnhc-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  background: var(--surface2);
+}
+.fnhc-card h4 {
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.fnhc-card ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fnhc-card li {
+  font-size: 11px;
+  color: var(--text);
+}
+.fnhc-fact h4 { color: var(--accent2); }
+.fnhc-note h4 { color: var(--muted); }
+.fnhc-highlight h4 { color: var(--green); }
+.fnhc-concern h4 { color: var(--red); }
+
+.team-signal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.team-signal-head {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.team-signal-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.team-kpi-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+.team-kpi-table th,
+.team-kpi-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 11px;
+  text-align: left;
+}
+.team-kpi-table th {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: .05em;
+}
+.team-narrative {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.team-narrative li {
+  font-size: 11px;
+}
+
+/* ── Tables ─────────────────────────────────────────────────── */
+.tbl-wrap { 
+  overflow-x: auto; 
+  border-radius: var(--radius); 
+  border: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+}
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11px; }
+thead th {
+  background: var(--surface2); color: var(--muted); font-weight: 600;
+  padding: 11px 14px; text-align: left; letter-spacing: .04em; font-size: 11px; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 2;
+}
+
+/* Sticky First Column Logic for Mobile */
+@media (max-width: 800px) {
+  td:first-child, th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: inherit;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+  }
+  th:first-child { z-index: 4; background: var(--surface2); }
+  tbody tr:hover td:first-child { background: var(--surface2); }
+}
+
+tbody tr { border-bottom: 1px solid var(--border); transition: background .12s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+tbody td { padding: 8px 12px; }
+.mono { font-family: var(--mono); }
+.pill {
+  display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600;
+}
+.pill-green  { background: var(--tier-champion); color: #0D4721; border: 1px solid #9FD5BA; }
+.pill-red    { background: var(--tier-critical); color: #A50000; border: 1px solid #E3A9A9; }
+.pill-yellow { background: var(--tier-normal); color: #7F4900; border: 1px solid #EAD97F; }
+.pill-blue   { background: var(--sig-no-log); color: var(--void-blue); border: 1px solid #AFC7E1; }
+.pill-gray   { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ── Bar chart ──────────────────────────────────────────────── */
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.bar-key { width: 100px; font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.bar-fill  { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+.bar-val   { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 48px; }
+.bar-fill.w1 { background: var(--accent); }
+.bar-fill.w2 { background: var(--accent2); }
+.bar-legend { display: flex; gap: 16px; margin-bottom: 14px; }
+.bar-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot-w1 { background: var(--accent); }
+.dot-w2 { background: var(--accent2); }
+
+/* ── Insights & risks ───────────────────────────────────────── */
+.insight-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+}
+.insight-title {
+  font-weight: 600; font-size: 13px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.insight-row { display: grid; grid-template-columns: 90px 1fr; gap: 10px; margin-bottom: 8px; font-size: 11px; }
+.insight-row .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding-top: 2px; font-weight: 500; }
+.insight-row .v { color: var(--text); line-height: 1.5; }
+
+.risk-card {
+  border-radius: var(--radius); padding: 20px 24px; margin-bottom: 16px;
+  border-left: 3px solid var(--border);
+}
+
+/* Enhanced Tooltip utility */
+[title] { 
+  text-decoration: underline dotted var(--muted); 
+  cursor: help; 
+}
+.risk-card.critical { background: #FBECEC; border-left-color: var(--red); }
+.risk-card.warning  { background: #FFF7E8; border-left-color: var(--yellow); }
+.risk-card.positive { background: #EEF8F2; border-left-color: var(--green); }
+.risk-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
+.risk-card.critical .risk-type { color: var(--red); }
+.risk-card.warning  .risk-type { color: var(--yellow); }
+.risk-card.positive .risk-type { color: var(--green); }
+.risk-signal { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.risk-impact { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.risk-action {
+  font-size: 11px; font-weight: 500; color: var(--text);
+  padding: 6px 10px; background: rgba(255,255,255,.04);
+  border-radius: var(--radius-sm);
+}
+.risk-action::before { content: '▶ '; color: var(--muted); }
+
+/* ── Forecast bar ───────────────────────────────────────────── */
+.forecast-box {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+}
+.forecast-item { text-align: center; }
+.forecast-item .fl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+.forecast-item .fv { font-family: var(--serif); font-size: 1.4rem; }
+.forecast-sep { color: var(--border); font-size: 20px; }
+@media (max-width: 700px) {
+  .forecast-box { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .forecast-sep { display: none; }
+  .forecast-box > div[style*="border-left"] { border-left: none !important; border-top: 1px solid var(--border); padding-left: 0 !important; padding-top: 12px; margin-left: 0 !important; width: 100%; }
+}
+
+/* ── Two-col layout ─────────────────────────────────────────── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ── Refresh btn ───────────────────────────────────────────── */
+.refresh-btn {
+  padding: 6px 14px; border-radius: 99px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); font-family: var(--sans); font-size: 11px; cursor: pointer;
+  transition: all .18s; display: flex; align-items: center; gap: 6px;
+}
+.refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Error state ────────────────────────────────────────────── */
+.error-box {
+  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+  border-radius: var(--radius); padding: 20px; color: var(--red); text-align: center;
+}
+
+/* ── Export button ──────────────────────────────────────────── */
+.export-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); cursor: pointer; display: flex;
+  align-items: center; justify-content: center;
+  transition: all .18s; flex-shrink: 0;
+}
+.export-btn:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.08); }
+.export-btn:active { transform: scale(.95); }
+.export-btn.busy { pointer-events: none; opacity: .5; }
+
+/* ── Per-item snapshot button ──────────────────────────────── */
+.snap-btn {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center;
+  transition: all .18s; flex-shrink: 0;
+}
+.snap-btn:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.08); }
+.snap-btn:active { transform: scale(.95); }
+.snap-btn.busy { pointer-events: none; opacity: .5; }
+
+/* Hide snap buttons from captures */
+.capturing .snap-btn { display: none !important; }
+
+/* ── Chat Q&A panel ────────────────────────────────────────── */
+.chat-fab {
+  position: fixed; bottom: 24px; right: 24px; z-index: 900;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--void-blue); border: none; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(15,25,65,.25);
+  transition: transform .18s, box-shadow .18s;
+}
+.chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(15,25,65,.35); }
+.chat-fab.open { background: var(--red); }
+
+.chat-panel {
+  position: fixed; bottom: 84px; right: 24px; z-index: 900;
+  width: 380px; max-height: 520px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(15,25,65,.18);
+  display: none; flex-direction: column; overflow: hidden;
+}
+.chat-panel.open { display: flex; }
+
+.chat-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.chat-head span { font-weight: 600; font-size: 12px; }
+.chat-close {
+  width: 28px; height: 28px; border-radius: 50%; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.chat-close:hover { background: var(--border); }
+
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  max-height: 360px; min-height: 120px;
+}
+.chat-msg {
+  font-size: 11px; line-height: 1.5; padding: 8px 12px;
+  border-radius: 12px; max-width: 92%; word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.chat-msg.bot {
+  background: var(--surface2); color: var(--text);
+  align-self: flex-start; border-bottom-left-radius: 4px;
+}
+.chat-msg.user {
+  background: var(--void-blue); color: #fff;
+  align-self: flex-end; border-bottom-right-radius: 4px;
+}
+.chat-msg.loading {
+  background: var(--surface2); color: var(--muted);
+  align-self: flex-start; font-style: italic;
+}
+
+.chat-input-row {
+  display: flex; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--border); background: var(--surface);
+}
+.chat-input-row input {
+  flex: 1; border: 1px solid var(--border); border-radius: 99px;
+  padding: 8px 14px; font-family: var(--sans); font-size: 11px;
+  outline: none; background: var(--bg); color: var(--text);
+  transition: border-color .18s;
+}
+.chat-input-row input:focus { border-color: var(--accent); }
+.chat-send {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--void-blue); border: none; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s; flex-shrink: 0;
+}
+.chat-send:hover { background: var(--accent); }
+.chat-send:disabled { opacity: .4; pointer-events: none; }
+
+/* ── Collapsible Table ─────────────────────────────────────── */
+.toggle-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 4px;
+  background: var(--surface2); border: 1px solid var(--border);
+  cursor: pointer; font-family: var(--mono); font-size: 10px; line-height: 1;
+  transition: all .15s; margin-right: 6px;
+}
+.toggle-icon:hover { border-color: var(--accent); color: var(--accent); }
+.contributor-list { transition: max-height 0.3s ease-out; overflow: hidden; }
+.contributor-list.collapsed { max-height: 0; }
+
+/* Hide chat + export btn from PNG capture */
+.capturing .chat-fab,
+.capturing .chat-panel,
+.capturing .export-btn { display: none !important; }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loader">
+  <div class="logo">Contribution Analytics</div>
+  <div class="bar"><div class="fill"></div></div>
+  <div class="note">Loading contribution data…</div>
+</div>
+
+<div id="app" style="display:none">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <h1>Contribution <em>Week-over-Week</em> Dashboard</h1>
+      <p id="subtitle">Author: Alex</p>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="badge">Generated <b id="gen-time">—</b></span>
+      <button class="refresh-btn" onclick="refresh()">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <!-- Week selector -->
+  <div class="section">
+    <p class="section-title">Select Comparison Weeks</p>
+    <div class="week-bar">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+        <span class="week-label">Weeks:</span>
+        <div id="week-buttons"></div>
+      </div>
+      
+      <div style="margin-left:auto; display:flex; align-items:center; gap:12px; background:var(--surface2); padding:4px 12px; border-radius:99px; border:1px solid var(--border)">
+        <span style="font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted)">View Mode:</span>
+        <button id="global-view-toggle" class="mode-toggle" onclick="toggleViewMode()" style="border:none; padding:0; background:transparent;">
+          <span class="mode-opt active" data-mode="contributors">Contributors</span>
+          <span class="mode-opt" data-mode="company">Company Wide</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WoW velocity banner -->
+  <div id="wow-banner" class="section"></div>
+
+  <!-- KPI row -->
+  <div class="section" data-snap="kpi-dashboard">
+    <p class="section-title">KPI Dashboard
+      <button class="snap-btn" onclick="snapElement(this.closest('[data-snap]'),'kpi-dashboard')" title="Save as PNG">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3.5" width="14" height="10" rx="2"/><circle cx="8" cy="8.5" r="2.5"/><path d="M5.5 3.5L6.5 1.5h3l1 2"/></svg>
+      </button>
+    </p>
+    <div id="kpi-grid" class="kpi-grid"></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="section">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('insights')">Strategic Insights</div>
+      <div class="tab" onclick="switchTab('workforce')">Workforce Health</div>
+      <div class="tab" onclick="switchTab('employee-impact')">Employee Impact</div>
+      <div class="tab" onclick="switchTab('utilization')">Contribution Trend</div>
+    </div>
+
+    <!-- Strategic Insights tab -->
+    <div class="tab-panel active" id="tab-insights">
+      
+      <div class="signal-mode">
+        Signal mode:
+        <button id="signal-mode-toggle" class="mode-toggle" onclick="toggleSignalMode()">
+          <span class="mode-opt" data-mode="fallback">Narrative</span>
+          <span class="mode-opt" data-mode="ai">AI</span>
+        </button>
+        <span id="signal-mode-status" style="font-size:11px;color:var(--muted);margin-left:6px"></span>
+      </div>
+      <div id="signal-sections"></div>
+      
+      <div class="two-col" style="margin-top:24px">
+        <div id="insights-container"></div>
+        <div>
+          <p class="section-title">Priority & Type Distribution</p>
+          <div id="priority-bars" style="margin-bottom:24px"></div>
+          <div id="type-bars"></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Workforce Health tab -->
+    <div class="tab-panel" id="tab-workforce">
+      <div id="full-hc-container"></div>
+      <div id="workforce-breakdown" style="margin-top:24px"></div>
+    </div>
+
+    <!-- Employee Impact tab -->
+    <div class="tab-panel" id="tab-employee-impact">
+      <div id="employee-impact-container"></div>
+    </div>
+
+    <!-- Contribution Trend tab -->
+    <div class="tab-panel" id="tab-utilization">
+      <div id="util-trend-container"></div>
+    </div>
+
+  </div>
+
+  <!-- Forecast -->
+  <div class="section" data-snap="forecast">
+    <p class="section-title">Health Assessment
+      <button class="snap-btn" onclick="snapElement(this.closest('[data-snap]'),'forecast')" title="Save as PNG">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3.5" width="14" height="10" rx="2"/><circle cx="8" cy="8.5" r="2.5"/><path d="M5.5 3.5L6.5 1.5h3l1 2"/></svg>
+      </button>
+    </p>
+    <div id="forecast-box"></div>
+  </div>
+
+  <!-- Footer: Logic & Sources -->
+  <footer class="section" style="margin-top: 60px; padding-top: 30px; border-top: 1px solid var(--border); opacity: 0.7;">
+    <details style="cursor: pointer; padding: 10px; border-radius: var(--radius-md); background: rgba(0,0,0,0.02);">
+      <summary style="font-size: 13px; color: var(--muted); font-weight: 500; user-select: none;">Logic & Sources (Technical Reference)</summary>
+      <div style="margin-top: 20px;">
+        <div class="team-signal-box" style="box-shadow: none; border: 1px dashed var(--border);">
+      <div class="team-signal-head" style="font-size: 12px;">Data Sources Reference</div>
+      <div class="team-signal-sub" style="font-size: 10px;">Primary tabs used to generate this report.</div>
+      <div class="tbl-wrap">
+        <table style="font-size: 11px;">
+          <thead>
+            <tr><th>Source Item</th><th>Spreadsheet Tab</th><th>Primary Use</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><b>Roster</b></td><td><code>Roster</code></td><td>Metadata SOT (Name, Team, Level, Location). Maps all source names to canonical Roster names.</td></tr>
+            <tr><td><b>Financial Hours</b></td><td><code>Netsuite Hours Logged</code></td><td>Ground truth for Billed vs Unbilled client time (NetSuite source).</td></tr>
+            <tr><td><b>Project Effort</b></td><td><code> Netsuite Utilization</code></td><td>Detailed hourly breakdown by Project. Base for PTO and Admin classification.</td></tr>
+            <tr><td><b>Backlog Snapshot</b></td><td><code> Jira Backlog</code></td><td>Jira Epic data. Used for velocity, concentration, and CHI priority mapping.</td></tr>
+            <tr><td><b>Planned Absences</b></td><td><code> Netsuite Time Off</code></td><td>Daily list of approved PTO requests. Used to validate non-billable time.</td></tr>
+            <tr><td><b>Public Holidays</b></td><td><code> Netsuite PH</code></td><td>Global holiday calendar. Matched to Rocketeers via Roster location.</td></tr>
+            <tr><td><b>User Capacity</b></td><td><code> Tempo Capacity</code></td><td>Defined weekly hours (default 40h) and daily targets per contributor.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:20px">
+      <div class="team-signal-box" style="box-shadow: none; border: 1px dashed var(--border);">
+        <div class="team-signal-head" style="font-size: 12px;">Logic & Filters</div>
+        <div class="team-narrative" style="padding:0; font-size: 11px;">
+          <div style="margin-bottom:12px">
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--accent); margin-bottom:4px">Target Population</h4>
+            <p>Reports are filtered for <b>Services Team Contributors</b> and <b>Crew Members</b>. 
+            Specifically targets Job Families of <code>Managed Services & Support</code> and <code>Service Delivery</code>.</p>
+          </div>
+          <div style="margin-bottom:12px">
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--accent); margin-bottom:4px">PTO vs Admin Classification</h4>
+            <p>Non-billable time logged as <code>- No Customer/Project</code> is categorized as <b>PTO</b> only if:</p>
+            <ul style="margin-left:16px; margin-top:4px">
+              <li>A record exists in <code>Time Off</code> for that date.</li>
+              <li><b>OR</b> it matches a <code>PH</code> entry for the Rocketeer's location.</li>
+            </ul>
+            <p style="margin-top:4px">All other "No Customer" time is flagged as <b>Admin Burden</b>.</p>
+          </div>
+          <div>
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--accent); margin-bottom:4px">WoW Calculation</h4>
+            <p><b>W0 (Current)</b>: Last full ISO week.<br>
+                <b>W1 (Previous)</b>: Week prior to W0.<br>
+                <b>W2 (Baseline)</b>: Week prior to W1 (used for 3-week trend lines).</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="team-signal-box" style="box-shadow: none; border: 1px dashed var(--border);">
+        <div class="team-signal-head" style="font-size: 12px;">KPI Definitions</div>
+        <div class="team-narrative" style="padding:0; font-size: 11px;">
+          <div style="margin-bottom:12px">
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--accent2); margin-bottom:4px">Contribution Health Index (CHI)</h4>
+            <p>A composite 0-100% score based on 3 signals:</p>
+            <ul style="margin-left:16px; margin-top:4px">
+              <li><b>S1 (Captured Value)</b>: % of Done Jira items that have billable hours.</li>
+              <li><b>S2 (Tracked Efficiency)</b>: The gap between OpenAir/Tempo hours and NetSuite Billed hours.</li>
+              <li><b>S3 (Focus)</b>: % of logged effort aligned with documented backlog priorities.</li>
+            </ul>
+          </div>
+          <div style="margin-bottom:12px">
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--accent2); margin-bottom:4px">Attainment %</h4>
+            <p>Actual Billable Hours / Weekly Target (default 32h). Status is <b>On Track</b> if attainment ≥ 90%.<br>
+               Total Availability: Baseline capacity calculation for operations.</p>
+          </div>
+          <div>
+            <h4 style="font-size:10px; text-transform:uppercase; color:var(--red); margin-bottom:4px">Security & Authorization</h4>
+            <p>Access restricted via Google Email whitelist. Every data request and Q&A interaction is verified server-side. Unauthorized attempts are logged and blocked.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+      </div>
+    </details>
+  </footer>
+
+</div>
+
+<!-- Chat FAB -->
+<button id="chat-fab" class="chat-fab" onclick="toggleChat()" title="Ask about your data">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+</button>
+
+<!-- Chat Panel -->
+<div id="chat-panel" class="chat-panel">
+  <div class="chat-head">
+    <span>Ask your data</span>
+    <button class="chat-close" onclick="toggleChat()">&times;</button>
+  </div>
+  <div id="chat-messages" class="chat-messages">
+    <div class="chat-msg bot">Ask any question about your backlog, hours, or portfolio data.</div>
+  </div>
+  <div class="chat-input-row">
+    <input id="chat-input" type="text" placeholder="e.g. Which projects grew most?" onkeydown="if(event.key==='Enter')sendChat()"/>
+    <button id="chat-send-btn" class="chat-send" onclick="sendChat()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// ── HTML escape helper (prevent stored XSS from spreadsheet data) ──
+function esc(str) {
+  if (str == null) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+// ── State ──────────────────────────────────────────────────────
+let DATA = null;
+let selectedW1 = null;
+let selectedW2 = null;
+let globalViewMode = 'contributors';
+
+// ── Bootstrap ─────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  const raw = <?= data ?>;
+  DATA = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  init();
+});
+
+function refresh(viewMode) {
+  const mode = viewMode || globalViewMode;
+  document.getElementById('loader').style.display = 'flex';
+  document.getElementById('loader').style.opacity = '1';
+  document.getElementById('app').style.display = 'none';
+  google.script.run
+    .withSuccessHandler(payload => { DATA = payload; init(); })
+    .withFailureHandler(err => alert('Error: ' + err.message))
+    .getAnalyticsData(true, mode); // Force bypass cache with mode
+}
+
+function init() {
+  const weeks = DATA.allWeeks;
+  selectedW1 = weeks[weeks.length >= 2 ? weeks.length - 2 : 0];
+  selectedW2 = weeks[weeks.length - 1];
+  globalViewMode = DATA.viewMode || 'contributors';
+
+  updateToggleUI();
+  renderWeekButtons();
+  renderAll();
+
+  const ts = new Date(DATA.generatedAt);
+  document.getElementById('gen-time').textContent = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  setTimeout(() => {
+    document.getElementById('loader').style.opacity = '0';
+    setTimeout(() => {
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+    }, 400);
+  }, 1800);
+}
+
+// ── Week selector ──────────────────────────────────────────────
+function renderWeekButtons() {
+  const el = document.getElementById('week-buttons');
+  el.innerHTML = '';
+  const weeks = DATA.allWeeks;
+
+  // W1 group
+  const g1 = document.createElement('div');
+  g1.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+  g1.innerHTML = '<span style="font-size:11px;color:var(--muted)">W1:</span>';
+  weeks.forEach(w => {
+    const b = document.createElement('button');
+    b.className = 'week-btn' + (w === selectedW1 ? ' active' : '');
+    b.textContent = w;
+    b.onclick = () => { selectedW1 = w; renderWeekButtons(); renderAll(); };
+    g1.appendChild(b);
+  });
+
+  const g2 = document.createElement('div');
+  g2.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:16px';
+  g2.innerHTML = '<span style="font-size:11px;color:var(--muted)">W2:</span>';
+  weeks.forEach(w => {
+    const b = document.createElement('button');
+    b.className = 'week-btn' + (w === selectedW2 ? ' active' : '');
+    b.textContent = w;
+    b.onclick = () => { selectedW2 = w; renderWeekButtons(); renderAll(); };
+    g2.appendChild(b);
+  });
+
+  el.appendChild(g1);
+  el.appendChild(g2);
+}
+
+function toggleViewMode() {
+  const newMode = globalViewMode === 'contributors' ? 'company' : 'contributors';
+  globalViewMode = newMode;
+  updateToggleUI();
+  
+  // Persist preference and refresh
+  google.script.run.setUserViewMode(newMode);
+  refresh(newMode);
+}
+
+function updateToggleUI() {
+  const opts = document.querySelectorAll('#global-view-toggle .mode-opt');
+  opts.forEach(o => {
+    o.classList.toggle('active', o.dataset.mode === globalViewMode);
+  });
+}
+
+// ── Master render ──────────────────────────────────────────────
+function renderAll() {
+  renderSignals();
+  renderJobFamilyBreakdown();
+  renderFullHCAnalysis();
+  renderEmployeeImpact();
+  renderUtilizationTrend();
+
+  const m1 = DATA.weeklyMetrics[selectedW1];
+  const m2 = DATA.weeklyMetrics[selectedW2];
+  if (!m1 || !m2) return;
+
+  const wow = computeWoW(m1, m2);
+
+  renderBanner(wow, m1, m2);
+  renderKPIs(wow, m1, m2);
+
+  renderPriorityBars(m1, m2);
+  renderTypeBars(m1, m2);
+  renderInsights(wow);
+  renderForecast(wow, m1, m2);
+}
+
+function renderSignals() {
+  const box = document.getElementById('signal-sections');
+  const signals = DATA.strategicSignals || { mode: 'fallback', sections: [] };
+  const hoursSignals = DATA.hoursTeamSignals || { available: false };
+
+  // Update toggle state
+  const activeMode = signals.mode || 'fallback';
+  document.querySelectorAll('.mode-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.mode === activeMode);
+  });
+  const statusEl = document.getElementById('signal-mode-status');
+  if (signals.security && signals.security.aiUsed) {
+    statusEl.textContent = '(cached: ' + new Date(signals.generatedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ')';
+  } else {
+    statusEl.textContent = '';
+  }
+
+  const hoursHtml = renderHoursSignals(hoursSignals);
+
+  if (!signals.sections || !signals.sections.length) {
+    box.innerHTML = hoursHtml + '<div class="error-box">No FNHC sections available for current data.</div>';
+    return;
+  }
+
+  box.innerHTML = hoursHtml + signals.sections.map(section => {
+    const visualTags = (section.visuals || []).slice(0, 2)
+      .map(v => `<span class="visual-tag">${esc(v)}</span>`).join('');
+
+    return `
+      <div class="signal-section">
+        <div class="signal-head">
+          <div class="signal-title">${esc(section.title || 'Strategic Section')}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${visualTags}</div>
+        </div>
+        <div class="fnhc-grid">
+          ${fnhcCard('Fact', section.facts || [], 'fnhc-fact')}
+          ${fnhcCard('Note', section.notes || [], 'fnhc-note')}
+          ${fnhcCard('Highlight', section.highlights || [], 'fnhc-highlight')}
+          ${fnhcCard('Concern', section.concerns || [], 'fnhc-concern')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleSignalMode() {
+  const current = (DATA.strategicSignals || {}).mode || 'fallback';
+  const newMode = current === 'ai' ? 'fallback' : 'ai';
+
+  if (newMode === 'ai' && DATA.altSignals && DATA.altSignals.mode === 'ai') {
+    // Swap: show cached AI signals
+    const prev = DATA.strategicSignals;
+    DATA.strategicSignals = DATA.altSignals;
+    DATA.altSignals = prev;
+    renderSignals();
+  } else if (newMode === 'ai') {
+    // No cached AI signals — request from server
+    const statusEl = document.getElementById('signal-mode-status');
+    statusEl.textContent = 'Loading AI signals...';
+    google.script.run
+      .withSuccessHandler(function(aiResult) {
+        if (aiResult && aiResult.mode === 'ai') {
+          DATA.altSignals = DATA.strategicSignals; // store fallback
+          DATA.strategicSignals = aiResult;
+        }
+        renderSignals();
+      })
+      .withFailureHandler(function(err) {
+        statusEl.textContent = 'AI unavailable: ' + err.message;
+      })
+      .requestAISignals();
+  } else {
+    // Switch to fallback
+    if (DATA.altSignals) {
+      const prev = DATA.strategicSignals;
+      DATA.strategicSignals = DATA.altSignals;
+      DATA.altSignals = prev;
+    }
+    renderSignals();
+  }
+
+  // Persist preference
+  google.script.run.setUserSignalMode(newMode);
+}
+
+function renderHoursSignals(hoursSignals) {
+  if (!hoursSignals.available) {
+    return '<div class="team-signal-box"><div class="team-signal-head">Team-Level KPI Scorecard</div><div class="team-signal-sub">Hours data unavailable for this dashboard run.</div></div>';
+  }
+
+  const fiscalTxt = hoursSignals.fiscal
+    ? `${hoursSignals.fiscal.label} (Q-end: ${hoursSignals.fiscal.quarterEnd}${hoursSignals.fiscal.isQuarterEndWindow ? ', quarter-end window' : ''})`
+    : 'Fiscal context unavailable';
+
+  const renderKpiRows = (kpis, parentId = null, depth = 0) => {
+    return kpis.filter(k => k.id !== '6' && k.id !== '2d').map(k => {
+      const isVisible = parentId === null;
+      const displayStyle = isVisible ? 'display:table-row;' : 'display:none; background:var(--bg);';
+      const rowClass = parentId ? `child-row-${parentId}` : '';
+      const prefix = depth > 0 ? `<span style="padding-left:${depth * 14}px; color:var(--muted); margin-right:4px;">↳</span>` : '';
+      
+      const isParent = k.children && k.children.length > 0;
+      const expandBtn = isParent ? `<span class="toggle-btn" onclick="toggleDetails(this, '${k.id}')" style="cursor:pointer;margin-right:5px;font-size:11px;">▶</span>` : '';
+      const fw = depth === 0 ? '600' : '400';
+      const signalHtml = k.signal ? `<span class="pill ${k.signal === 'On Track' ? 'pill-green' : k.signal === 'Neutral' ? 'pill-gray' : 'pill-yellow'}">${esc(k.signal)}</span>` : '';
+
+      let html = `
+      <tr class="${rowClass}" style="${displayStyle}" data-id="${k.id}">
+        <td class="mono">${prefix}${esc(k.id)}</td>
+        <td style="font-weight:${fw};">${expandBtn}${esc(k.label)}</td>
+        <td class="mono">${esc(k.w1)}</td>
+        <td class="mono">${esc(k.w0)}</td>
+        <td class="mono">${esc(k.wow)}</td>
+        <td class="mono">${esc(k.target)}</td>
+        <td class="mono">${esc(k.attainment)}</td>
+        <td class="mono">${esc(k.gap)}</td>
+        <td>${signalHtml}</td>
+      </tr>`;
+
+      if (isParent) {
+        html += renderKpiRows(k.children, k.id, depth + 1);
+      }
+      return html;
+    }).join('');
+  };
+
+  const rows = renderKpiRows(hoursSignals.kpis || []);
+
+  const narrative = (hoursSignals.narrative || []).map(line => `<li>${esc(line)}</li>`).join('');
+  const actions = (hoursSignals.recommendedActions || []).length > 0
+    ? `<div class="team-signal-head" style="font-size:12px;margin-top:16px;margin-bottom:8px">Recommended Actions</div>
+       <ul class="team-narrative" style="color:var(--text)">${hoursSignals.recommendedActions.map(a => `<li>🚀 ${esc(a)}</li>`).join('')}</ul>`
+    : '';
+
+  return `
+    <div class="team-signal-box">
+      <div class="team-signal-head" style="display:flex;justify-content:space-between;align-items:center">
+        Team-Level KPI Scorecard 
+        <button class="snap-btn" onclick="snapElement(document.getElementById('kpi-table-capture'),'team-kpi-table')" title="Save Table as PNG">${SNAP_SVG}</button>
+      </div>
+      <div class="team-signal-sub">${esc(hoursSignals.weeks.w1)} → ${esc(hoursSignals.weeks.w0)} | ${esc(fiscalTxt)}</div>
+      
+      <div id="kpi-table-capture" style="background:var(--surface); padding:2px; border-radius:var(--radius-sm)">
+        <table class="team-kpi-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>KPI</th>
+              <th>${hoursSignals.weeks.w1.split(' (')[0]}</th>
+              <th>${hoursSignals.weeks.w0.split(' (')[0]}</th>
+              <th>WoW Δ (hrs)</th>
+              <th>Target</th>
+              <th>Attainment %</th>
+              <th>Gap</th>
+              <th>Signal</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="team-signal-head" style="font-size:12px;margin-top:16px;margin-bottom:8px">Exec Narrative</div>
+      <ul class="team-narrative">${narrative}</ul>
+      ${actions}
+    </div>`;
+}
+
+function renderJobFamilyBreakdown() {
+  const root = document.getElementById('workforce-breakdown');
+  const f = DATA.fullHCAnalysis;
+
+  if (!f || !f.jfData) {
+    root.innerHTML = '<div class="error-box">Job Family breakdown unavailable: Full HC data not loaded.</div>';
+    return;
+  }
+
+  const items = f.jfData || [];
+  const rows = items.map(r => {
+    const pill = r.signal === 'On Track' ? 'pill-green' : r.signal === 'At Risk' ? 'pill-red' : 'pill-yellow';
+    return `<tr>
+      <td>${esc(r.jobFamily)} ${r.isFocus ? '⭐' : ''}</td>
+      <td class="mono">${r.hc}</td>
+      <td class="mono">${r.avgBillable.toFixed(1)}h</td>
+      <td class="mono">${r.pctCompanyBillable.toFixed(1)}%</td>
+      <td class="mono">${r.avgUtil.toFixed(1)}%</td>
+      <td class="mono">${r.target}</td>
+      <td class="mono">${r.attainment}</td>
+      <td class="mono">${r.gap}</td>
+      <td><span class="pill ${pill}">${r.signal}</span></td>
+    </tr>`;
+  }).join('');
+
+  root.innerHTML = `
+    <div class="team-signal-box">
+      <div class="team-signal-head">Job Family Breakdown (excl. Crew Members)</div>
+      <div class="team-signal-sub">Evaluated Week (W0) Performance | ⭐ = Focus Job Family</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Job Family</th>
+              <th title="Total available Rocketeers (Headcount)">HC</th>
+              <th title="Average billable hours per Rocketeer">Avg Billable</th>
+              <th title="Percentage of company-wide billable volume contributed by this family">% Co. Billable</th>
+              <th title="Utilization %: share of capacity spent on billable + client-unbilled work">Avg Util %</th>
+              <th title="Weekly target billable hours per Rocketeer">Target</th>
+              <th title="Percentage of target achieved">Attainment %</th>
+              <th title="Gap between target and actual hours">Gap</th>
+              <th title="Health signal based on attainment">Signal</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function renderFullHCAnalysis() {
+  const root = document.getElementById('full-hc-container');
+  const f = DATA.fullHCAnalysis;
+
+  if (!f) {
+    root.innerHTML = '<div class="error-box">Full HC Analysis data unavailable.</div>';
+    return;
+  }
+
+  // 1. CHI Scorecard
+  const chiHtml = `
+    <div class="team-signal-box" style="background:${f.fnhc.chiSeverity.bg}; border-color:${f.fnhc.chiSeverity.bg}">
+      <div style="display:flex; justify-content:space-between; align-items:center">
+        <div>
+          <div class="team-signal-head" style="font-size:1.4rem; margin-bottom:4px">Contribution Health Index: ${f.fnhc.chi.toFixed(1)}%</div>
+          <div class="team-signal-sub" style="color:var(--text)">Status: ${f.fnhc.chiSeverity.icon} <b>${f.fnhc.chiSeverity.level}</b></div>
+        </div>
+        <div style="font-size:11px; text-align:right; max-width:300px">Composite score of revenue capture, administrative leakage, and priority alignment across all Rocketeers.</div>
+      </div>
+    </div>`;
+
+  // 2. Signals
+  const signalsHtml = [1, 2, 3].map(i => {
+    const s = f.fnhc['signal' + i];
+    const labels = [
+      { tag: 'FACT', color: 'var(--void-blue)', text: s.fnhc.fact },
+      { tag: 'NOTE', color: 'var(--muted)', text: s.fnhc.note },
+      { tag: 'HIGHLIGHT', color: 'var(--green)', text: s.fnhc.highlight },
+      { tag: 'CONCERN', color: 'var(--red)', text: s.fnhc.concern },
+      { tag: 'ACTION', color: '#E67E22', text: s.strategic.action }
+    ];
+
+    return `
+      <div class="signal-section">
+        <div class="signal-head">
+          <div class="signal-title">Signal ${i}: ${esc(s.strategic.question)}</div>
+          <span class="pill" style="background:${s.severity.bg}">${esc(s.severity.icon)} ${esc(s.severity.level)}</span>
+        </div>
+        <div style="font-size:12px; font-style:italic; color:var(--muted); margin-bottom:12px; padding:8px; background:var(--surface2); border-radius:4px">
+          Impact: ${esc(s.strategic.impact)}
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          ${labels.filter(l => l.text).map(l => `
+            <div style="display:flex; gap:12px; align-items:flex-start; font-size:12px">
+              <span style="font-weight:700; color:${l.color}; min-width:60px; font-size:10px; text-transform:uppercase">${esc(l.tag)}</span>
+              <span style="flex:1">${esc(l.text)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  root.innerHTML = chiHtml + signalsHtml;
+}
+
+function renderUtilizationTrend() {
+  const root = document.getElementById('util-trend-container');
+  const u = DATA.utilizationTrend;
+  if (!u || !u.available) {
+    root.innerHTML = '<div class="error-box">Contribution Trend data unavailable.</div>';
+    return;
+  }
+
+  const w0 = u.weeks.w0;
+  const w1 = u.weeks.w1;
+  const t0 = u.weekTotals[w0];
+  const t1 = u.weekTotals[w1];
+
+
+  // 2. Planned Time Off — sourced from "Time Off" + "PH" sheets (ground truth)
+  const to = DATA.timeOffTrend;
+  let trendHtml = '';
+  if (to && to.available) {
+    trendHtml = `
+    <div class="team-signal-box" data-snap="pto-trend">
+      <div class="team-signal-head" style="display:flex;justify-content:space-between;align-items:center">Planned Time Off & Public Holidays (Last 4 Weeks) ${snapBtn('pto-trend')}</div>
+      <div class="team-signal-sub">Source: Time Off + PH sheets (each day = 8h per Rocketeer). PH matched by Roster location. Cross-referenced with Utilization "No Customer/Project".</div>
+      <div class="tbl-wrap" style="border:none">
+        <table class="team-kpi-table" style="margin:0">
+          <thead>
+            <tr>
+              <th>Week</th>
+              <th>HC Out</th>
+              <th>PTO Hours</th>
+              <th>PH Hours</th>
+              <th>Total Non-Billable</th>
+              <th>Util Match</th>
+              <th>Match %</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${to.weeks.map(wk => {
+              const d = to.data[wk] || { hc: 0, ptoHC: 0, ptoHours: 0, phHC: 0, phHours: 0, totalHours: 0, utilHours: 0, utilHC: 0, matchPct: 0 };
+              const isCurrent = wk === to.w0;
+              const matchCls = d.matchPct >= 80 ? 'pill-green' : d.matchPct >= 50 ? 'pill-yellow' : 'pill-red';
+              return `<tr style="${isCurrent ? 'background:var(--surface2);font-weight:600' : ''}">
+                <td class="mono">${wk}${isCurrent ? ' (current)' : ''}</td>
+                <td class="mono" style="font-weight:700">${d.hc} <span style="color:var(--muted);font-size:9px;font-weight:400">(${d.ptoHC} PTO, ${d.phHC} PH)</span></td>
+                <td class="mono">${d.ptoHours.toFixed(0)}h</td>
+                <td class="mono">${d.phHours.toFixed(0)}h</td>
+                <td class="mono" style="font-weight:600">${d.totalHours.toFixed(0)}h</td>
+                <td class="mono">${d.utilHours.toFixed(1)}h <span style="color:var(--muted);font-size:9px">(${d.utilHC} in Util)</span></td>
+                <td><span class="pill ${matchCls}">${d.matchPct.toFixed(0)}%</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius-sm);font-size:10px;color:var(--muted);line-height:1.5">
+        <b>How to read:</b> PTO = personal time off from Time Off sheet (each day = 8h). PH = public holidays from PH sheet matched to Rocketeer location via Roster. "Util Match" = hours logged as "No Customer/Project" in Utilization. High match % confirms these hours are properly reflected. Low match % may indicate missing time entries.
+      </div>
+    </div>`;
+  } else {
+    // Fallback to Utilization-based PTO if Time Off sheet unavailable
+    trendHtml = `
+    <div class="team-signal-box" data-snap="pto-trend">
+      <div class="team-signal-head" style="display:flex;justify-content:space-between;align-items:center">Planned Time Off (Last 4 Weeks) ${snapBtn('pto-trend')}</div>
+      <div class="team-signal-sub">Source: Utilization sheet ("No Customer/Project" entries). Time Off sheet not available for cross-reference.</div>
+      <div class="tbl-wrap" style="border:none">
+        <table class="team-kpi-table" style="margin:0">
+          <thead>
+            <tr><th>Week</th><th>Rocketeers Out</th><th>PTO Hours</th><th>Avg hrs/person</th></tr>
+          </thead>
+          <tbody>
+            ${u.weeks.last4.map(wk => {
+              const val = u.weekTotals[wk].pto;
+              const hc = u.weekTotals[wk].ptoHC || 0;
+              const avg = hc > 0 ? (val / hc) : 0;
+              const isCurrent = wk === w0;
+              return `<tr style="${isCurrent ? 'background:var(--surface2);font-weight:600' : ''}">
+                <td class="mono">${wk}${isCurrent ? ' (current)' : ''}</td>
+                <td class="mono" style="font-size:12px;font-weight:700">${hc}</td>
+                <td class="mono">${val.toFixed(1)}h</td>
+                <td class="mono">${avg.toFixed(1)}h</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  // 2b. Non-Billable Breakdown — links back to Team-Level KPI Scorecard rows #3 & #4
+  const h = DATA.hoursTeamSignals;
+  let nbBreakdownHtml = '';
+  if (h && h.available) {
+    const kpis = h.kpis || [];
+    let unbilledKPI, adminKPI, ptoKPI;
+    
+    function findKPIs(kpiObj) {
+      if (kpiObj.id === '3' || kpiObj.id === '2b' || kpiObj.id === '2a') unbilledKPI = kpiObj;
+      if (kpiObj.id === '4' || kpiObj.id === '2c' || kpiObj.id === '2b') adminKPI = kpiObj;
+      if (kpiObj.id === '6' || kpiObj.id === '2d' || kpiObj.id === '2c') ptoKPI = kpiObj;
+      if (kpiObj.children) {
+        kpiObj.children.forEach(child => findKPIs(child));
+      }
+    }
+    
+    kpis.forEach(k => findKPIs(k));
+
+    nbBreakdownHtml = `
+    <div class="team-signal-box" data-snap="nb-breakdown" style="margin-top:14px">
+      <div class="team-signal-head" style="display:flex;justify-content:space-between;align-items:center">Non-Billable Breakdown ${snapBtn('nb-breakdown')}</div>
+      <div class="team-signal-sub">Where non-billable hours went — maps to Team-Level KPI Scorecard rows (Client Unbillable, Admin/Internal, and PTO).</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px">
+        ${unbilledKPI ? `
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent2);font-weight:600;margin-bottom:8px">Client Unbillable Time</div>
+          <div style="font-family:var(--serif);font-size:1.4rem;margin-bottom:4px">${unbilledKPI.w0}</div>
+          <div class="mono" style="font-size:11px;color:var(--muted)">WoW: ${unbilledKPI.wow} | Target: ${unbilledKPI.target}</div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <span class="pill ${unbilledKPI.signal === 'On Track' ? 'pill-green' : 'pill-yellow'}">${unbilledKPI.signal}</span>
+            <span class="mono" style="font-size:10px;color:var(--muted)">Gap: ${unbilledKPI.gap}</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Client work logged but not billed. Target &le;10% of total hours.</div>
+        </div>` : ''}
+        ${adminKPI ? `
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--yellow);font-weight:600;margin-bottom:8px">Admin / Internal Hours</div>
+          <div style="font-family:var(--serif);font-size:1.4rem;margin-bottom:4px">${adminKPI.w0}</div>
+          <div class="mono" style="font-size:11px;color:var(--muted)">WoW: ${adminKPI.wow} | Target: ${adminKPI.target}</div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <span class="pill ${adminKPI.signal === 'On Track' ? 'pill-green' : 'pill-yellow'}">${adminKPI.signal}</span>
+            <span class="mono" style="font-size:10px;color:var(--muted)">Gap: ${adminKPI.gap}</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Internal meetings, training, admin (excludes PTO). Target &le;15% of capacity.</div>
+        </div>` : ''}
+        ${ptoKPI ? `
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:8px">Planned Time Off (PTO)</div>
+          <div style="font-family:var(--serif);font-size:1.4rem;margin-bottom:4px">${ptoKPI.w0}</div>
+          <div class="mono" style="font-size:11px;color:var(--muted)">WoW: ${ptoKPI.wow}</div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <span class="pill pill-blue">Absence</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">Approved time off and holidays. Expected capacity reduction.</div>
+        </div>` : ''}
+      </div>
+      ${(unbilledKPI && adminKPI) ? `
+      <div style="margin-top:14px;padding:10px 14px;background:var(--surface2);border-radius:var(--radius-sm)">
+        <div style="font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px">Combined Non-Billable Split</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:12px;background:var(--border);border-radius:99px;overflow:hidden;display:flex">
+            <div style="width:${parseFloat(unbilledKPI.w0) / (parseFloat(unbilledKPI.w0) + parseFloat(adminKPI.w0)) * 100}%;height:100%;background:var(--accent2)" title="Unbilled Client"></div>
+            <div style="flex:1;height:100%;background:var(--yellow)" title="Admin/Internal"></div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);white-space:nowrap">
+            <span style="color:var(--accent2)">Client ${unbilledKPI.w0}</span> |
+            <span style="color:var(--yellow)">Admin ${adminKPI.w0}</span>
+          </div>
+        </div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  // 3. Project WoW Allocation Table
+  const projRows = Object.entries(u.projectData)
+    .map(([name, data]) => {
+      const d0 = data[w0] || { billable: 0, nonBillable: 0, total: 0, resources: {} };
+      const d1 = data[w1] || { billable: 0, nonBillable: 0, total: 0, resources: {} };
+      const delta = d0.total - d1.total;
+      const billW = d0.total > 0 ? (d0.billable / d0.total * 100) : 0;
+      const billH = d0.billable;
+      const nbH = d0.nonBillable;
+      const resources = Object.entries(d0.resources || {})
+        .map(([resName, r]) => ({ name: resName, b: r.billable, nb: r.nonBillable, total: r.total }))
+        .sort((a, b) => b.total - a.total);
+
+      return { name, h0: d0.total, h1: d1.total, delta, billW, billH, nbH, resources };
+    })
+    .sort((a, b) => b.h0 - a.h0);
+
+  const projTableHtml = `
+    <div class="team-signal-box">
+      <div class="team-signal-head" style="display:flex;justify-content:space-between;align-items:center">
+        Project Resource Allocation (${w0})
+        <button class="snap-btn" onclick="snapElement(document.getElementById('project-allocation-capture'),'project-allocation')" title="Save Table as PNG">${SNAP_SVG}</button>
+      </div>
+      <div class="team-signal-sub">Week-over-Week shift in actual hours | Mix: Blue=Billable, Orange=Non-Billable</div>
+      <div id="project-allocation-capture" style="background:var(--surface); padding:2px; border-radius:var(--radius-sm)">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <div style="display:flex; align-items:center; gap:8px">
+                    Project
+                    <div style="display:flex; gap:4px">
+                      <button class="week-btn" style="padding:2px 8px; font-size:9px" onclick="toggleAllProjects(true)">Expand All</button>
+                      <button class="week-btn" style="padding:2px 8px; font-size:9px" onclick="toggleAllProjects(false)">Collapse All</button>
+                    </div>
+                  </div>
+                </th>
+                <th>${w1} (h)</th>
+                <th>${w0} (h)</th>
+                <th>WoW Delta</th>
+                <th>Allocation Mix (Hrs)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${projRows.map(r => {
+                const resList = r.resources.map(res => 
+                  `<div style="display:flex; justify-content:space-between; font-size:9px; color:var(--muted); padding:2px 0; border-top:1px solid rgba(0,0,0,0.03)">
+                    <span>${esc(res.name)}</span>
+                    <span><b style="color:var(--accent)">${res.b.toFixed(1)}b</b> / <b style="color:var(--june)">${res.nb.toFixed(1)}nb</b></span>
+                  </div>`
+                ).join('');
+
+                return `
+                <tr>
+                  <td style="max-width:300px">
+                    <div style="display:flex; align-items:center; margin-bottom:4px">
+                      <div class="toggle-icon" onclick="toggleProjectContributors(this)">−</div>
+                      <div style="font-weight:700">${esc(r.name)}</div>
+                    </div>
+                    <div class="contributor-list" style="margin-left:18px; border-left:2px solid var(--border); padding-left:8px">
+                      ${resList || '<i style="color:var(--muted)">No active contributors</i>'}
+                    </div>
+                  </td>
+                  <td class="mono">${r.h1.toFixed(1)}h</td>
+                  <td class="mono">${r.h0.toFixed(1)}h</td>
+                  <td class="mono" style="color:${r.delta < 0 ? 'var(--red)' : 'var(--green)'}">${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(1)}h</td>
+                  <td>
+                    <div style="font-size:9px; color:var(--muted); margin-bottom:2px">
+                      <span style="color:var(--accent)">${r.billH.toFixed(1)}h</span> / 
+                      <span style="color:var(--june)">${r.nbH.toFixed(1)}h</span>
+                    </div>
+                    <div style="width:100px; height:10px; background:var(--border); border-radius:99px; overflow:hidden; display:flex">
+                      <div style="width:${r.billW}%; height:100%; background:var(--accent)"></div>
+                      <div style="width:${100-r.billW}%; height:100%; background:var(--june)"></div>
+                    </div>
+                  </td>
+                  <td>${r.billW < 80 && r.h0 > 0 ? '<span class="pill pill-yellow">High NB</span>' : '—'}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  root.innerHTML = trendHtml + nbBreakdownHtml + projTableHtml;
+}
+
+function renderEmployeeImpact() {
+  const root = document.getElementById('employee-impact-container');
+  const d = DATA.employeeImpact;
+  if (!d || !d.available) {
+    root.innerHTML = '<div class="error-box">Employee Impact data unavailable. Refresh dashboard to load.</div>';
+    return;
+  }
+
+  // Use all resources provided by the server for the current mode
+  const resources = d.resources;
+
+  let html = `
+  <div class="team-signal-box">
+    <div class="team-signal-head">Job Category Contribution Summary</div>
+    <div class="team-signal-sub">Aggregated signals per job family group for week ${esc(d.w0)}</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <div style="display:flex; align-items:center; gap:8px">
+                Job Category
+                <div style="display:flex; gap:4px">
+                  <button class="week-btn" style="padding:2px 8px; font-size:9px" onclick="toggleAllCategoryRows(true)">Expand All</button>
+                  <button class="week-btn" style="padding:2px 8px; font-size:9px" onclick="toggleAllCategoryRows(false)">Collapse All</button>
+                </div>
+              </div>
+            </th>
+            <th>Signal Distribution</th>
+            <th>HC (Active)</th>
+            <th>WoW Δ</th>
+            <th>Projects</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  d.summaries.forEach(s => {
+    const catResources = resources.filter(r => r.category === s.name);
+    if (catResources.length === 0) return;
+
+    html += `
+      <tr class="category-row">
+        <td style="max-width:300px">
+          <div style="display:flex; align-items:center; margin-bottom:4px">
+            <div class="toggle-icon" onclick="toggleProjectContributors(this)">−</div>
+            <div style="font-weight:700">${esc(s.name)}</div>
+          </div>
+          <div class="contributor-list" style="margin-left:18px; border-left:2px solid var(--border); padding-left:8px">
+            <table style="width:100%; margin-top:8px; border-collapse:collapse; font-size:10px;">
+              <thead>
+                <tr style="background:transparent; border-bottom:1px solid var(--border)">
+                  <th style="text-align:left; padding:4px;">Resource</th>
+                  <th style="text-align:left; padding:4px;">Tenure</th>
+                  <th style="text-align:left; padding:4px;">Level</th>
+                  <th style="text-align:left; padding:4px;">Hours Mix</th>
+                  <th style="text-align:left; padding:4px;">Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${catResources.map(res => {
+                  const billW = res.total > 0 ? (res.billed / res.total * 100) : 0;
+                  const unbillW = res.total > 0 ? (res.unbilled / res.total * 100) : 0;
+                  const sigCls = res.signal === 'Top' ? 'pill-green' : res.signal === 'Normal' ? 'pill-yellow' : 'pill-red';
+                  return `
+                  <tr style="border-bottom:1px solid rgba(0,0,0,0.02)">
+                    <td style="padding:6px 4px">
+                      <div style="font-weight:600">${esc(res.name)}</div>
+                      <div style="font-size:9px; color:var(--muted)">${esc(res.jobTitle)}</div>
+                    </td>
+                    <td class="mono" style="padding:6px 4px">${esc(res.tenure)}</td>
+                    <td class="mono" style="padding:6px 4px">${esc(res.level)}</td>
+                    <td style="padding:6px 4px">
+                      <div style="font-size:9px; color:var(--muted); margin-bottom:2px">
+                        <span style="color:var(--accent)">${res.billed.toFixed(1)}h</span> / 
+                        <span style="color:var(--june)">${res.unbilled.toFixed(1)}h</span>
+                        ${res.justified > 0 ? ` / <span style="color:var(--green)">${res.justified.toFixed(0)}h PTO</span>` : ''}
+                        ${res.unjustified > 2 ? ` / <b style="color:var(--red)">${res.unjustified.toFixed(0)}h GAP</b>` : ''}
+                      </div>
+                      <div style="width:100px; height:6px; background:var(--border); border-radius:99px; overflow:hidden; display:flex">
+                        <div style="width:${billW}%; height:100%; background:var(--accent)"></div>
+                        <div style="width:${unbillW}%; height:100%; background:var(--june)"></div>
+                      </div>
+                    </td>
+                    <td style="padding:6px 4px"><span class="pill ${sigCls}" style="font-size:9px; padding:2px 6px;">${res.signal}</span></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex; gap:4px">
+            <span class="pill pill-green" title="Top Contributors">${s.signals.Top}</span>
+            <span class="pill pill-yellow" title="Normal Activity">${s.signals.Normal}</span>
+            <span class="pill pill-red" title="Needs Support">${s.signals.Support}</span>
+          </div>
+        </td>
+        <td class="mono">${s.activeHC} <span style="color:var(--muted); font-size:10px;">/ ${s.totalHC}</span></td>
+        <td class="mono" style="color:${s.wowHC < 0 ? 'var(--red)' : s.wowHC > 0 ? 'var(--green)' : 'var(--muted)'}">
+          ${s.wowHC > 0 ? '+' : ''}${s.wowHC}
+        </td>
+        <td class="mono">${s.projectCount}</td>
+      </tr>`;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+
+  root.innerHTML = html;
+}
+
+function toggleAllCategoryRows(expand) {
+  const lists = document.querySelectorAll('#tab-employee-impact .contributor-list');
+  const btns = document.querySelectorAll('#tab-employee-impact .toggle-icon');
+  lists.forEach(el => el.classList.toggle('collapsed', !expand));
+  btns.forEach(btn => btn.textContent = expand ? '−' : '+');
+}
+
+function toggleEIMode() {
+  const opts = document.querySelectorAll('#ei-mode-toggle .mode-opt');
+  opts.forEach(o => o.classList.toggle('active'));
+  renderEmployeeImpact();
+}
+
+function fnhcCard(title, items, cls) {
+  const safeItems = (items || []).slice(0, 5);
+  return `<div class="fnhc-card ${cls}">
+    <h4>${esc(title)}</h4>
+    <ul>
+      ${safeItems.length ? safeItems.map(i => `<li>${esc(i)}</li>`).join('') : '<li style="color:var(--muted)">No signal</li>'}
+    </ul>
+  </div>`;
+}
+
+// ── WoW calculation (client-side) ──────────────────────────────
+function computeWoW(m1, m2) {
+  const delta = m2.total - m1.total;
+  const deltaPct = m1.total === 0 ? 0 : +((delta / m1.total) * 100).toFixed(1);
+  const velocityPattern = deltaPct > 30 ? 'Acceleration' : deltaPct < -30 ? 'Deceleration' : 'Stable';
+
+  const set1 = new Set(m1.uniqueProjects);
+  const set2 = new Set(m2.uniqueProjects);
+  const disappeared = m1.uniqueProjects.filter(p => !set2.has(p));
+  const emerged     = m2.uniqueProjects.filter(p => !set1.has(p));
+  const churnRate   = set1.size > 0 ? +(disappeared.length / set1.size * 100).toFixed(0) : 0;
+  const acqRate     = set2.size > 0 ? +(emerged.length / set2.size * 100).toFixed(0) : 0;
+
+  let portfolioPattern;
+  if (churnRate > 50 && acqRate > 30)       portfolioPattern = 'Portfolio Rotation';
+  else if (churnRate < 20)                  portfolioPattern = 'Stable Portfolio';
+  else                                       portfolioPattern = 'Mixed Activity';
+
+  const allPriorities = [...new Set([...Object.keys(m1.byPriority), ...Object.keys(m2.byPriority)])];
+  const priorityDelta = {};
+  allPriorities.forEach(p => {
+    const c1 = m1.byPriority[p] || 0, c2 = m2.byPriority[p] || 0;
+    priorityDelta[p] = { w1: c1, w2: c2, delta: c2 - c1,
+      deltaPct: c1 === 0 ? (c2 > 0 ? 100 : 0) : +((c2-c1)/c1*100).toFixed(1) };
+  });
+
+  const allTypes = [...new Set([...Object.keys(m1.byType), ...Object.keys(m2.byType)])];
+  const typeDelta = {};
+  allTypes.forEach(t => {
+    const c1 = m1.byType[t] || 0, c2 = m2.byType[t] || 0;
+    typeDelta[t] = { w1: c1, w2: c2, delta: c2 - c1,
+      deltaPct: c1 === 0 ? (c2 > 0 ? 100 : 0) : +((c2-c1)/c1*100).toFixed(1) };
+  });
+
+  const kickoffGrowth = typeDelta['Kick-off epic']?.deltaPct ?? 0;
+  const goliveGrowth  = typeDelta['Go-live epic']?.deltaPct ?? 0;
+  const lifecycleStage = kickoffGrowth > 50 ? 'Initiation Phase'
+                        : goliveGrowth > 50 ? 'Delivery Phase' : 'Mixed Phase';
+
+  return {
+    delta, deltaPct, velocityPattern, portfolioPattern, lifecycleStage,
+    disappeared, emerged, churnRate, acqRate,
+    priorityDelta, typeDelta, kickoffGrowth, goliveGrowth,
+    top3Pct: m2.top3Pct, concentrationRisk: m2.concentrationRisk,
+    avgAge: m2.avgAge, veryOld: m2.veryOld,
+  };
+}
+
+// ── Banner ─────────────────────────────────────────────────────
+function renderBanner(wow, m1, m2) {
+  const up = wow.delta >= 0;
+  const color = wow.velocityPattern === 'Acceleration' ? 'var(--green)'
+              : wow.velocityPattern === 'Deceleration' ? 'var(--red)' : 'var(--accent)';
+  document.getElementById('wow-banner').innerHTML = `
+    <div class="wow-header" data-snap="wow-banner" style="position:relative">
+      <div class="wow-week">
+        <div class="label">${selectedW1}</div>
+        <div class="num">${m1.total}</div>
+        <div style="font-size:12px;color:var(--muted)">epics</div>
+      </div>
+      <div class="wow-divider">
+        <div class="wow-arrow" style="color:${color}">${up ? '→' : '→'}</div>
+        <div class="wow-pct" style="color:${color}">${up ? '+' : ''}${wow.deltaPct}%</div>
+        <div class="wow-pattern">${wow.velocityPattern}</div>
+      </div>
+      <div class="wow-week">
+        <div class="label">${selectedW2}</div>
+        <div class="num">${m2.total}</div>
+        <div style="font-size:12px;color:var(--muted)">epics</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:24px;margin-left:8px;flex:1">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Portfolio Signals</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${sig('Portfolio', wow.portfolioPattern, 'var(--accent2)')}
+          ${sig('Lifecycle', wow.lifecycleStage, 'var(--accent)')}
+          <div title="Share of total epic volume held by the 3 largest projects. Below 40% is healthy; above 60% signals revenue risk.">
+            ${sig('Concentration', wow.concentrationRisk + ' (' + wow.top3Pct + '%)', concentrationColor(wow.concentrationRisk))}
+          </div>
+          ${sig('Avg Epic Age', wow.avgAge + ' days', 'var(--muted)')}
+        </div>
+      </div>
+      <div style="position:absolute;top:10px;right:10px">${snapBtn('wow-velocity')}</div>
+    </div>`;
+}
+function sig(label, val, color) {
+  return `<div style="font-size:12px;display:flex;gap:8px">
+    <span style="color:var(--muted);width:100px">${label}</span>
+    <span style="color:${color};font-weight:600">${val}</span></div>`;
+}
+function concentrationColor(r) {
+  return r === 'CRITICAL' ? 'var(--red)' : r === 'MODERATE' ? 'var(--yellow)' : 'var(--green)';
+}
+
+// ── Executive Summary (above the fold) ─────────────────────────
+
+// ── KPIs ───────────────────────────────────────────────────────
+function renderKPIs(wow, m1, m2) {
+  const kpis = [
+    { label: 'Unique Projects', val: m2.uniqueProjects.length,
+      delta: m2.uniqueProjects.length - m1.uniqueProjects.length,
+      deltaPct: pctChg(m1.uniqueProjects.length, m2.uniqueProjects.length),
+      tip: 'Number of distinct projects with active epics this week.' },
+    { label: 'Avg Epic Age', val: m2.avgAge + 'd',
+      raw: m2.avgAge, sub: m2.medianAge + 'd median', type: 'age',
+      tip: 'Average days between epic creation and last update. Higher values may indicate stale or blocked work.' },
+    (function() {
+      const u = DATA.utilizationTrend;
+      if (u && u.available) {
+        const t0 = u.weekTotals[u.weeks.w0];
+        const t1 = u.weekTotals[u.weeks.w1];
+        
+        let util0 = 0, util1 = 0, targetHC = u.targetHC || 0;
+        
+        if (targetHC > 0) {
+          util0 = (t0.activeHC / targetHC) * 100;
+          util1 = (t1.activeHC / targetHC) * 100;
+        } else {
+          // fallback if headcount target is unavailable
+          util0 = t0.avail > 0 ? (t0.actual / t0.avail * 100) : 0;
+          util1 = t1.avail > 0 ? (t1.actual / t1.avail * 100) : 0;
+        }
+
+        const dUtil = util0 - util1;
+        return { label: 'HC Utilization %', val: util0.toFixed(1) + '%',
+          sub: targetHC > 0 ? `${t0.activeHC} / ${targetHC} logging time` : 'Avg Hours Logged',
+          delta: parseFloat(dUtil.toFixed(1)), deltaPct: parseFloat(dUtil.toFixed(1)),
+          tip: targetHC > 0 ? 'Percentage of total available headcount actively logging time this week.' : 'Average utilization percentage based on actual vs available hours.' };
+      }
+      return { label: 'HC Utilization %', val: 'N/A', plain: true, tip: 'Utilization data unavailable.' };
+    })(),
+    (function() {
+      const h = DATA.hoursTeamSignals;
+      if (h && h.available) {
+        // Find Billable Client Hours KPI (2a)
+        let billKPI = null;
+        function findKPI(obj) {
+          if (obj.id === '2a') billKPI = obj;
+          if (obj.children) obj.children.forEach(findKPI);
+        }
+        (h.kpis || []).forEach(findKPI);
+        
+        if (billKPI) {
+          const billPct0 = parseFloat(billKPI.attainment) || 0;
+          const target = parseFloat(billKPI.target) || 75;
+          const gap = billPct0 - target;
+          return { label: 'Billable % of Total', val: billPct0.toFixed(1) + '%',
+            delta: parseFloat(gap.toFixed(1)), deltaPct: parseFloat(gap.toFixed(1)),
+            tip: 'Percentage of billable hours over total client work. Target is 75% or above.' };
+        }
+      }
+      return { label: 'Billable % of Total', val: 'N/A', plain: true, tip: 'Hours data unavailable.' };
+    })(),
+    { label: 'Stale Epics >180d', val: m2.veryOld,
+      raw: m2.veryOld, type: 'stale',
+      tip: 'Epics older than 180 days that may need re-scoping, closure, or escalation.' },
+    (function() {
+      const h = DATA.hoursTeamSignals;
+      if (h && h.available) {
+        // Find Client Unbillable Hours KPI (2b)
+        let unbillKPI = null;
+        function findKPI(obj) {
+          if (obj.id === '2b' || obj.id === '3') unbillKPI = obj;
+          if (obj.children) obj.children.forEach(findKPI);
+        }
+        (h.kpis || []).forEach(findKPI);
+        
+        if (unbillKPI) {
+          const nb0Str = String(unbillKPI.w0).replace('h', '').replace(/,/g, '');
+          const nb0 = parseFloat(nb0Str) || 0;
+          const dNBStr = String(unbillKPI.wow).replace('h', '').replace(/,/g, '');
+          const dNB = parseFloat(dNBStr) || 0;
+          const nbPct0Str = String(unbillKPI.attainment).replace('%', '');
+          const nbPct0 = parseFloat(nbPct0Str) || 0;
+          return { label: 'Client Unbillable', val: nb0Str + 'h',
+            raw: dNB, delta: parseFloat(dNB.toFixed(1)), deltaPct: parseFloat(dNB.toFixed(1)),
+            sub: nbPct0.toFixed(1) + '% of total', type: 'nb',
+            tip: 'Client work logged against a project but not billed.' };
+        }
+      }
+      return { label: 'Client Unbillable', val: 'N/A', plain: true, tip: 'Hours data unavailable.' };
+    })(),
+  ];
+
+  document.getElementById('kpi-grid').innerHTML = kpis.map(k => {
+    let cls = 'neutral';
+    if (!k.plain && !k.type) {
+      cls = k.deltaPct > 0 ? 'positive' : k.deltaPct < 0 ? 'negative' : 'neutral';
+    }
+    if (k.type === 'conc') cls = k.raw > 60 ? 'negative' : k.raw > 40 ? 'warning' : 'positive';
+    if (k.type === 'stale') cls = k.raw > 5 ? 'warning' : 'positive';
+    if (k.type === 'age') cls = k.raw > 90 ? 'warning' : 'positive';
+    if (k.type === 'nb') cls = k.raw > 0 ? 'warning' : k.raw < 0 ? 'positive' : 'neutral';
+
+    const deltaHtml = (k.type === 'nb' && k.deltaPct !== undefined) ? `
+      <div class="kpi-delta">
+        <span class="${k.deltaPct > 0 ? 'down' : k.deltaPct < 0 ? 'up' : 'flat'}">
+          ${k.deltaPct > 0 ? '▲' : k.deltaPct < 0 ? '▼' : '—'} ${Math.abs(k.deltaPct).toFixed(1)}h
+        </span>
+        <span style="color:var(--muted)">WoW</span>
+      </div>` : (!k.plain && !k.type && k.deltaPct !== undefined) ? `
+      <div class="kpi-delta">
+        <span class="${k.deltaPct > 0 ? 'up' : k.deltaPct < 0 ? 'down' : 'flat'}">
+          ${k.deltaPct > 0 ? '▲' : k.deltaPct < 0 ? '▼' : '—'} ${Math.abs(k.deltaPct)}%
+        </span>
+        <span style="color:var(--muted)">Gap</span>
+      </div>` : '';
+
+    return `<div class="kpi ${cls}" ${k.tip ? 'data-tip="' + k.tip + '"' : ''}>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.val}</div>
+      ${deltaHtml}
+      ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+
+// ── Priority bars ──────────────────────────────────────────────
+function renderPriorityBars(m1, m2) {
+  const PRIORITY_ORDER = ['Highest','High','Medium','Low','Lowest','Unset','Unknown'];
+  const allP = [...new Set([...Object.keys(m1.byPriority), ...Object.keys(m2.byPriority)])];
+  allP.sort((a, b) => {
+    const ai = PRIORITY_ORDER.indexOf(a), bi = PRIORITY_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  const max = Math.max(
+    ...allP.map(p => Math.max(m1.byPriority[p] || 0, m2.byPriority[p] || 0)), 1
+  );
+  renderComparisonBars('priority-bars', allP, p => ({
+    label: p,
+    w1: m1.byPriority[p] || 0,
+    w2: m2.byPriority[p] || 0,
+    max,
+  }));
+}
+
+// ── Type bars ──────────────────────────────────────────────────
+function renderTypeBars(m1, m2) {
+  const allT = [...new Set([...Object.keys(m1.byType), ...Object.keys(m2.byType)])];
+  const max = Math.max(
+    ...allT.map(t => Math.max(m1.byType[t] || 0, m2.byType[t] || 0)), 1
+  );
+  renderComparisonBars('type-bars', allT, t => ({
+    label: t,
+    w1: m1.byType[t] || 0,
+    w2: m2.byType[t] || 0,
+    max,
+  }));
+}
+
+function renderComparisonBars(containerId, keys, mapper) {
+  const el = document.getElementById(containerId);
+  const title = containerId === 'priority-bars' ? 'Priority Distribution' : 'Epic Type Distribution';
+  el.innerHTML = `
+    <div style="font-size:14px; font-weight:700; text-transform:uppercase; color:var(--accent); margin-bottom:16px; border-bottom:2px solid var(--border); padding-bottom:8px; display:flex; align-items:center; gap:8px">
+      <span style="width:4px; height:16px; background:var(--accent); border-radius:99px"></span>
+      ${title}
+    </div>
+    <div class="bar-legend">
+      <div class="bar-legend-item"><div class="dot dot-w1"></div>${selectedW1}</div>
+      <div class="bar-legend-item"><div class="dot dot-w2"></div>${selectedW2}</div>
+    </div>
+    ${keys.map(k => {
+      const { label, w1, w2, max } = mapper(k);
+      const pct1 = max === 0 ? 0 : +(w1 / max * 100).toFixed(1);
+      const pct2 = max === 0 ? 0 : +(w2 / max * 100).toFixed(1);
+      const chg  = w1 === 0 ? (w2 > 0 ? '+100%' : '—') : sign(pctChg(w1, w2));
+      const chgColor = w2 > w1 ? 'var(--green)' : w2 < w1 ? 'var(--red)' : 'var(--muted)';
+      return `
+        <div style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:12px;font-weight:500">${label}</span>
+            <span class="mono" style="font-size:11px;color:${chgColor}">${chg}</span>
+          </div>
+          <div class="bar-row">
+            <div class="bar-key">${selectedW1}</div>
+            <div class="bar-track"><div class="bar-fill w1" style="width:${pct1}%"></div></div>
+            <div class="bar-val">${w1}</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-key">${selectedW2}</div>
+            <div class="bar-track"><div class="bar-fill w2" style="width:${pct2}%"></div></div>
+            <div class="bar-val">${w2}</div>
+          </div>
+        </div>`;
+    }).join('')}`;
+}
+
+// ── Insights ───────────────────────────────────────────────────
+function renderInsights(wow) {
+  const ins = [];
+
+  const dir = wow.delta >= 0 ? 'increased' : 'decreased';
+  ins.push({
+    title: '📈 Delivery Velocity',
+    rows: [
+      ['Signal', `Epic volume ${dir} by ${Math.abs(wow.delta)} units (${sign(wow.deltaPct)}) from ${selectedW1} to ${selectedW2}`],
+      ['Pattern', wow.velocityPattern],
+      ['Root Cause', `${wow.portfolioPattern} — ${wow.churnRate}% project churn, ${wow.acqRate}% new entry rate`],
+      ['Lifecycle', wow.lifecycleStage],
+      ['Action', wow.deltaPct < -30
+        ? `Monitor ${selectedW2.replace(/\d+/, n => +n+1) || 'next week'} recovery. Escalate if < 70% prior volume.`
+        : 'Maintain pace. Confirm trend over next 2 weeks.'],
+    ]
+  });
+
+  if (wow.disappeared.length > 0 || wow.emerged.length > 0) {
+    ins.push({
+      title: '🔄 Portfolio Movement',
+      rows: [
+        ['Signal', `${wow.disappeared.length} projects exited, ${wow.emerged.length} entered`],
+        ['Pattern', wow.portfolioPattern],
+        ['Root Cause', 'Natural project lifecycle: milestone completion + new contract activation'],
+        ['Action', 'Validate exited projects: contract complete? At-risk? Fast-track onboarding for new entrants.'],
+      ]
+    });
+  }
+
+  ins.push({
+    title: '🎯 Program Lifecycle',
+    rows: [
+      ['Stage', wow.lifecycleStage],
+      ['Kick-off Epics', `${sign(wow.kickoffGrowth)} change week-over-week`],
+      ['Go-live Epics', `${sign(wow.goliveGrowth)} change week-over-week`],
+      ['Action', wow.kickoffGrowth > 50
+        ? 'Standardize kick-off playbooks to compress ramp time.'
+        : wow.goliveGrowth > 50
+        ? 'Manage go-live clustering; prevent post-delivery capacity gaps.'
+        : 'Balanced lifecycle — monitor for skew in either direction.'],
+    ]
+  });
+
+  const el = document.getElementById('insights-container');
+  el.innerHTML = ins.map(i => `
+    <div class="insight-card">
+      <div class="insight-title">${esc(i.title)}</div>
+      ${i.rows.map(([k, v]) => `
+        <div class="insight-row">
+          <div class="k">${esc(k)}</div>
+          <div class="v">${esc(v)}</div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+// ── Risks ──────────────────────────────────────────────────────
+function renderRisks(wow) {
+  const risks = [];
+
+  if (wow.deltaPct < -40)
+    risks.push({ type: 'risk', severity: 'critical',
+      signal: `Volume dropped ${Math.abs(wow.deltaPct)}% (${sign(wow.delta)})`,
+      impact: 'Severe velocity drop may affect revenue recognition and SLAs.',
+      action: `Verify next week recovery to ≥70% of ${selectedW1} volume. Escalate if not met.` });
+  else if (wow.deltaPct < -20)
+    risks.push({ type: 'risk', severity: 'warning',
+      signal: `Volume dropped ${Math.abs(wow.deltaPct)}%`,
+      impact: 'Moderate deceleration. Monitor for continuation.',
+      action: 'Root-cause analysis: lifecycle timing or resource constraint?' });
+  else if (wow.deltaPct > 30)
+    risks.push({ type: 'opportunity', severity: 'positive',
+      signal: `Volume grew ${wow.deltaPct}%`,
+      impact: 'Strong delivery acceleration — positive for revenue recognition.',
+      action: 'Ensure quality standards maintained at higher velocity.' });
+
+  if (wow.top3Pct > 60)
+    risks.push({ type: 'risk', severity: 'critical',
+      signal: `Top 3 customers = ${wow.top3Pct}% of volume`,
+      impact: 'Customer concentration creates feast-or-famine volatility.',
+      action: 'Diversification: target 5–10 mid-tier customers. Goal: top 3 < 50%.' });
+  else if (wow.top3Pct > 40)
+    risks.push({ type: 'risk', severity: 'warning',
+      signal: `Top 3 customers = ${wow.top3Pct}% of volume`,
+      impact: 'Moderate concentration. Monitor key account health.',
+      action: 'Begin diversification planning before concentration worsens.' });
+  else
+    risks.push({ type: 'opportunity', severity: 'positive',
+      signal: `Healthy concentration: top 3 = ${wow.top3Pct}%`,
+      impact: 'Balanced portfolio reduces week-to-week volatility.',
+      action: 'Maintain diversity through targeted pipeline development.' });
+
+  if (wow.kickoffGrowth > 50)
+    risks.push({ type: 'opportunity', severity: 'positive',
+      signal: `Kick-off epics: ${sign(wow.kickoffGrowth)}`,
+      impact: 'Strong pipeline converting to programs. Future revenue building.',
+      action: 'Accelerate onboarding playbook; target 3-week ramp to delivery velocity.' });
+
+  if (wow.veryOld > 5)
+    risks.push({ type: 'risk', severity: 'warning',
+      signal: `${wow.veryOld} epics aged >180 days`,
+      impact: 'Stale epics signal scope creep, resource blocks, or backlog debt.',
+      action: 'Schedule aging review: close, re-scope, or escalate each item.' });
+
+  const el = document.getElementById('risks-container');
+  el.innerHTML = risks.map(r => `
+    <div class="risk-card ${r.severity}">
+      <div class="risk-type">${r.type === 'opportunity' ? '✅ Opportunity' : r.severity === 'critical' ? '🔴 Critical Risk' : '⚠️ Watch Item'}</div>
+      <div class="risk-signal">${esc(r.signal)}</div>
+      <div class="risk-impact">${esc(r.impact)}</div>
+      <div class="risk-action">${esc(r.action)}</div>
+    </div>`).join('');
+}
+
+// ── Forecast ───────────────────────────────────────────────────
+function renderForecast(wow, m1, m2) {
+  const recTarget = Math.round(m1.total * 0.85);
+  const health = wow.deltaPct > -15 ? { label: '🟢 Healthy', color: 'var(--green)' }
+               : wow.deltaPct > -40 ? { label: '🟡 Watch', color: 'var(--yellow)' }
+               :                      { label: '🔴 At Risk', color: 'var(--red)' };
+
+  document.getElementById('forecast-box').innerHTML = `
+    <div class="forecast-box">
+      <div class="forecast-item">
+        <div class="fl">Portfolio Health</div>
+        <div class="fv" style="color:${health.color}">${health.label}</div>
+      </div>
+      <div class="forecast-sep">|</div>
+      <div class="forecast-item">
+        <div class="fl">Current Volume</div>
+        <div class="fv">${m2.total}</div>
+      </div>
+      <div class="forecast-sep">|</div>
+      <div class="forecast-item">
+        <div class="fl">Recovery Target</div>
+        <div class="fv">${recTarget}+</div>
+      </div>
+      <div class="forecast-sep">|</div>
+      <div class="forecast-item">
+        <div class="fl">WoW Change</div>
+        <div class="fv" style="color:${wow.delta >= 0 ? 'var(--green)' : 'var(--red)'}">${sign(wow.deltaPct)}</div>
+      </div>
+      <div style="flex:1;border-left:1px solid var(--border);padding-left:20px;margin-left:4px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Executive Actions</div>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:5px">
+          ${wow.deltaPct < -30 ? `<li style="font-size:12px">🔴 <b>Immediate:</b> Verify next-week recovery to ${recTarget}+ epics</li>` : ''}
+          ${wow.top3Pct > 60 ? `<li style="font-size:12px">🔴 <b>Immediate:</b> Customer concentration audit — top 3 = ${wow.top3Pct}%</li>` : ''}
+          ${wow.kickoffGrowth > 50 ? `<li style="font-size:12px">🟢 <b>Mid-term:</b> Fast-track new customer onboarding playbooks</li>` : ''}
+          <li style="font-size:12px">📊 <b>Ongoing:</b> Target ±20% WoW variance for predictable delivery</li>
+          <li style="font-size:12px">📊 <b>Long-term:</b> Build balanced portfolio — top 3 customers ≤ 40% volume</li>
+        </ul>
+      </div>
+    </div>`;
+}
+
+// ── Tab switching ──────────────────────────────────────────────
+function switchTab(id) {
+  const ids = ['insights', 'workforce', 'employee-impact', 'utilization', 'logic'];
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ids[i] === id);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('tab-' + id);
+  if (panel) panel.classList.add('active');
+}
+
+// ── Utils ──────────────────────────────────────────────────────
+function pctChg(from, to) {
+  if (from === 0) return to > 0 ? 100 : 0;
+  return +((to - from) / from * 100).toFixed(1);
+}
+function sign(v) {
+  if (!isFinite(v)) return 'N/A';
+  return (v > 0 ? '+' : '') + v + '%';
+}
+
+// ── Per-item PNG Snapshot ──────────────────────────────────────
+const SNAP_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3.5" width="14" height="10" rx="2"/><circle cx="8" cy="8.5" r="2.5"/><path d="M5.5 3.5L6.5 1.5h3l1 2"/></svg>';
+
+function snapBtn(filename) {
+  return `<button class="snap-btn" onclick="snapElement(this.closest('[data-snap]'),'${filename}')" title="Save as PNG">${SNAP_SVG}</button>`;
+}
+
+function snapElement(el, filename) {
+  if (!el) return;
+  const btn = el.querySelector('.snap-btn');
+  if (btn) btn.classList.add('busy');
+  document.body.classList.add('capturing');
+
+  html2canvas(el, {
+    backgroundColor: '#FFFAF5',
+    scale: 2,
+    useCORS: true,
+    logging: false,
+  }).then(canvas => {
+    const link = document.createElement('a');
+    const d = new Date();
+    const stamp = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    link.download = filename + '-' + stamp + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }).catch(err => {
+    console.error('Snapshot failed:', err);
+  }).finally(() => {
+    if (btn) btn.classList.remove('busy');
+    document.body.classList.remove('capturing');
+  });
+}
+
+// ── Toggle Expand/Collapse Table Rows ───────────────────────
+function toggleDetails(btn, id) {
+  const isOpening = btn.innerHTML === '▶';
+  btn.innerHTML = isOpening ? '▼' : '▶';
+  
+  function recurseToggle(parentId, show) {
+    const rows = document.querySelectorAll('.child-row-' + parentId);
+    rows.forEach(r => {
+      r.style.display = show ? 'table-row' : 'none';
+      // If hiding, hide all descendants too. If showing, only show if the row's own toggle is open
+      const rowId = r.getAttribute('data-id');
+      if (rowId) {
+        const toggleBtn = r.querySelector('.toggle-btn');
+        if (!show) {
+          recurseToggle(rowId, false);
+        } else if (toggleBtn && toggleBtn.innerHTML === '▼') {
+          recurseToggle(rowId, true);
+        }
+      }
+    });
+  }
+  
+  recurseToggle(id, isOpening);
+}
+
+// ── Chat Q&A ──────────────────────────────────────────────────
+let chatOpen = false;
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chat-panel').classList.toggle('open', chatOpen);
+  document.getElementById('chat-fab').classList.toggle('open', chatOpen);
+  if (chatOpen) document.getElementById('chat-input').focus();
+}
+
+function appendMsg(text, role) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  return div;
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const q = input.value.trim();
+  if (!q) return;
+
+  appendMsg(q, 'user');
+  input.value = '';
+
+  const sendBtn = document.getElementById('chat-send-btn');
+  sendBtn.disabled = true;
+  const loader = appendMsg('Thinking...', 'loading');
+
+  google.script.run
+    .withSuccessHandler(result => {
+      loader.remove();
+      sendBtn.disabled = false;
+      appendMsg(result.answer || 'No response received.', 'bot');
+    })
+    .withFailureHandler(err => {
+      loader.remove();
+      sendBtn.disabled = false;
+      appendMsg('Error: ' + (err.message || 'Request failed.'), 'bot');
+    })
+    .askDataQuestion(q);
+}
+
+// ── Project Table Toggles ─────────────────────────────────────
+function toggleProjectContributors(btn) {
+  const container = btn.closest('td').querySelector('.contributor-list');
+  const isCollapsed = container.classList.toggle('collapsed');
+  btn.textContent = isCollapsed ? '+' : '−';
+}
+
+function toggleAllProjects(expand) {
+  const lists = document.querySelectorAll('#project-allocation-capture .contributor-list');
+  const btns = document.querySelectorAll('#project-allocation-capture .toggle-icon');
+  lists.forEach(el => el.classList.toggle('collapsed', !expand));
+  btns.forEach(btn => btn.textContent = expand ? '−' : '+');
+}
+</script>
+</body>
+</html>
