@@ -13,6 +13,7 @@ var CONFIG = {
   SOURCE_SS_ID:        "1_V-i2BHvk6RFOdksYSpyW_hrPVJ-pIyAWSN5timy5fw",
   SHEET_NAME:          "Planned Time Tempo",
   NONPROJECT_KEYS:     ["NETSUITE"],   // excluded (time-off synced from NetSuite); case-insensitive
+  EXCLUDED_NAMES:      [],             // display names excluded from grid/charts (still populate filter dropdowns)
   WEEKS_PAST:          4,
   WEEKS_FUTURE:        3,               // window = 4 past + current + 3 future = 8 weeks
   WEEKLY_CAPACITY_HRS: 40,              // available hours per active person per week (default region)
@@ -170,6 +171,11 @@ function getDemandData() {
     } else {
       model.trackedError = trackedResult.error;
     }
+    if (!trackedResult.error && (!trackedResult.recs || trackedResult.recs.length === 0)) {
+      model.trackedWarning = "Tracked sheet found but 0 records parsed — verify the sheet has a 'Key' column and ISO week headers (e.g. 2026.W26).";
+    }
+    var normLocal = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+    model.excludedNames = (CONFIG.EXCLUDED_NAMES || []).map(normLocal);
 
     // ── Person availability (planned + tracked per person per week) ──
     var plannedPtoRecs = parsed.ptoRecs || [];
@@ -232,7 +238,7 @@ function readRosterFull_() {
 
     var iName   = col("Name"),      iClass  = col("Class"),     iDept   = col("Department");
     var iStatus = col("Employee Status"), iTerm = col("Termination/Release Date");
-    var iLoc    = col("Key Location"), iFam = col("Job Family");
+    var iLoc    = col("Key Location"), iFam = col("Job Family"), iTitle = col("Job Title");
     var iMgr    = (col("Supervisor") !== -1) ? col("Supervisor") : col("Manager");
     if (iName === -1) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster 'Name' column not found." });
 
@@ -247,10 +253,12 @@ function readRosterFull_() {
       var name = String(row[iName] || "").trim();
       if (!name) continue;
 
-      var loc = iLoc !== -1 ? String(row[iLoc] || "").trim() : "";
-      var fam = iFam !== -1 ? String(row[iFam] || "").trim() : "";
-      var mgr = iMgr !== -1 ? String(row[iMgr] || "").trim() : "";
-      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr };
+      var loc   = iLoc   !== -1 ? String(row[iLoc]   || "").trim() : "";
+      var fam   = iFam   !== -1 ? String(row[iFam]   || "").trim() : "";
+      var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
+      var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
+      var lvlM  = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
+      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M') };
       if (loc) locs[loc] = true;
       if (fam) families[fam] = true;
       if (mgr) managers[mgr] = true;
@@ -387,13 +395,17 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
   Object.keys(personWeekPlan).forEach(function(np) { allNorms[np] = true; });
   Object.keys(personWeekTracked).forEach(function(np) { allNorms[np] = true; });
   Object.keys(personWeekPTO).forEach(function(np) { allNorms[np] = true; });
+  var excludedSet = {};
+  (CONFIG.EXCLUDED_NAMES || []).forEach(function(n) { excludedSet[norm(n)] = true; });
   Object.keys(allNorms).forEach(function(np) {
     var prof = (rosterProfiles || {})[np] || {};
     personMeta[np] = {
       displayName: displayNames[np] || np,
       jobFamily:   prof.jobFamily  || '',
       manager:     prof.manager    || '',
-      location:    prof.location   || ''
+      location:    prof.location   || '',
+      isManager:   prof.isManager  || false,
+      excluded:    excludedSet[np] || false
     };
   });
 
@@ -541,6 +553,7 @@ function emptyModel_(weeks) {
     weekTracked: {}, tracked: {}, fidelity: {},
     personSignals: {}, displayNames: {},
     rosterDimensions: { locations: [], jobFamilies: [], managers: [] },
+    trackedWarning: null, excludedNames: [],
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC,

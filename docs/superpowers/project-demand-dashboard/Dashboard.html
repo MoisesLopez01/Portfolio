@@ -240,6 +240,11 @@ input[type=file]{display:none}
         <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
         <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
         <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+        <div class="chip-toggle" id="availRole">
+          <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();renderAvailability()">All</button>
+          <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
+          <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();renderAvailability()">ICs</button>
+        </div>
         <div class="avail-filter-summary" id="availFilterSummary" style="display:none"></div>
       </div>
       <div id="avail"></div>
@@ -319,7 +324,7 @@ var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
-var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
+var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -430,7 +435,7 @@ function renderCapacity(){
   $('capChip').className='statuschip '+chipCls;
   $('capChip').textContent=chipTxt;
   $('capUtil').textContent=fid!==null?(fmt(tracked)+' hrs tracked · '+Math.round(fid*100)+'% fidelity'):'No tracked data yet for this week';
-  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':'');
+  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''));
   var sw,cls;
   if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
   else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
@@ -533,15 +538,24 @@ function populateAvailFilters(){
 }
 
 /* ---------------- Render: Team Availability ---------------- */
+function syncRoleChip(){
+  Array.prototype.forEach.call(document.querySelectorAll('#availRole button'),function(btn){
+    btn.className=btn.getAttribute('data-role')===AVAIL_ROLE?'on':'';
+  });
+}
+
 function renderAvailability(){
   var panel=$('availPanel'), container=$('avail');
   if(!DATA||!DATA.personMeta||!Object.keys(DATA.personMeta).length){if(panel)panel.style.display='none';return;}
   if(panel)panel.style.display='';
+  syncRoleChip();
 
   var filterParts=[];
   if(AVAIL_LOC)filterParts.push(esc(AVAIL_LOC));
   if(AVAIL_FAM)filterParts.push(esc(AVAIL_FAM));
   if(AVAIL_MGR)filterParts.push(esc(AVAIL_MGR));
+  if(AVAIL_ROLE==='m')filterParts.push('Managers');
+  if(AVAIL_ROLE==='ic')filterParts.push('ICs');
   if(AVAIL_CAT){var catLabels={'high':'≥90%','mid':'60–90%','low':'<60%','over':'over-tracked','future-plan':'future: planned','noplan':'future: no plan','pto':'on leave'};filterParts.push(catLabels[AVAIL_CAT]||AVAIL_CAT);}
   if(AVAIL_BLEND>0)filterParts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));
   var sumEl=$('availFilterSummary');
@@ -592,12 +606,15 @@ function renderAvailability(){
     return n;
   }
 
-  // Filter: location, job family, manager, category
+  // Filter: location, job family, manager, role, category; excluded persons are always hidden
   var people=Object.keys(DATA.personMeta).filter(function(np){
     var m=DATA.personMeta[np];
+    if(m.excluded)return false;
     if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
     if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
+    if(AVAIL_ROLE==='m'&&!m.isManager)return false;
+    if(AVAIL_ROLE==='ic'&&m.isManager)return false;
     if(AVAIL_CAT){
       var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{},DATA.personWeekPTO[np]||{});
       if(!cats[AVAIL_CAT])return false;
@@ -635,9 +652,12 @@ function renderAvailability(){
   var blendTiers=[0,0,0,0]; // [1proj, 2proj, 3proj, 4+proj]
   Object.keys(DATA.personMeta).filter(function(np){
     var m=DATA.personMeta[np];
+    if(m.excluded) return false;
     if(AVAIL_LOC&&m.location!==AVAIL_LOC) return false;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR) return false;
     if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM) return false;
+    if(AVAIL_ROLE==='m'&&!m.isManager) return false;
+    if(AVAIL_ROLE==='ic'&&m.isManager) return false;
     return true;
   }).forEach(function(np){
     var bc=blendCount(np,SEL_ISO);
@@ -663,8 +683,43 @@ function renderAvailability(){
   });
   blendChart+='</div>';
 
+  // Legend / category filter chips — rendered ABOVE the grid
+  var CATS=[
+    {id:'high',        label:'≥90% execution',  sw:'background:var(--pos)'},
+    {id:'mid',         label:'60–90%',           sw:'background:var(--amber)'},
+    {id:'low',         label:'<60% needs help',  sw:'background:var(--warn)'},
+    {id:'over',        label:'over-tracked',     sw:'background:var(--june)'},
+    {id:'future-plan', label:'future: planned',  sw:'border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))'},
+    {id:'noplan',      label:'future: no plan',  sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'},
+    {id:'pto',         label:'on leave',         sw:'background:var(--neutral)'}
+  ];
+  var legendHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">';
+  if(AVAIL_CAT){legendHtml+='<button class="avail-cat qchip on" data-cat="" style="display:flex;align-items:center;gap:4px">&#x2715; All</button>';}
+  CATS.forEach(function(c){
+    var isOn=AVAIL_CAT===c.id;
+    legendHtml+='<button class="avail-cat qchip'+(isOn?' on':'')+'" data-cat="'+esc(c.id)+'" style="display:flex;align-items:center;gap:4px">'
+      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;'+c.sw+'"></span>'
+      +esc(c.label)+'</button>';
+  });
+  legendHtml+='</div>';
+  var blendChips=[
+    {n:1,label:'1 project',   col:'var(--pos)'},
+    {n:2,label:'2 projects',  col:'var(--orbe)'},
+    {n:3,label:'3 projects',  col:'var(--amber)'},
+    {n:4,label:'4+ projects', col:'var(--warn)'}
+  ];
+  var blendChipHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center">';
+  if(AVAIL_BLEND>0){blendChipHtml+='<button class="avail-blend qchip on" data-blend="0" style="display:flex;align-items:center;gap:4px">&#x2715; All</button>';}
+  blendChips.forEach(function(c){
+    var isOn=AVAIL_BLEND===c.n;
+    blendChipHtml+='<button class="avail-blend qchip'+(isOn?' on':'')+'" data-blend="'+c.n+'" style="display:flex;align-items:center;gap:4px">'
+      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;background:'+c.col+'"></span>'
+      +esc(c.label)+'</button>';
+  });
+  blendChipHtml+='</div>';
+
   var N=NWEEKS;
-  var html=blendChart+'<div class="avail-grid" style="grid-template-columns:140px repeat('+N+',1fr)">';
+  var html=blendChart+legendHtml+blendChipHtml+'<div class="avail-grid" style="grid-template-columns:140px repeat('+N+',1fr)">';
 
   // Header row
   html+='<div></div>';
@@ -757,46 +812,6 @@ function renderAvailability(){
     html+='<div style="font-size:11px;color:var(--muted);margin-top:6px">Showing '+people.length+' of '+totalFiltered+' people — use the Top toggle to show more</div>';
   }
 
-  // Legend / category filter chips
-  var CATS=[
-    {id:'high',        label:'≥90% execution',       sw:'background:var(--pos)'},
-    {id:'mid',         label:'60–90%',               sw:'background:var(--amber)'},
-    {id:'low',         label:'<60% needs help',           sw:'background:var(--warn)'},
-    {id:'over',        label:'over-tracked',              sw:'background:var(--june)'},
-    {id:'future-plan', label:'future: planned',           sw:'border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))'},
-    {id:'noplan',      label:'future: no plan',           sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'},
-    {id:'pto', label:'on leave', sw:'background:var(--neutral)'}
-  ];
-  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center">';
-  if(AVAIL_CAT){
-    html+='<button class="avail-cat qchip on" data-cat="" style="display:flex;align-items:center;gap:4px">✕ All</button>';
-  }
-  CATS.forEach(function(c){
-    var isOn=AVAIL_CAT===c.id;
-    html+='<button class="avail-cat qchip'+(isOn?' on':'')+'" data-cat="'+esc(c.id)+'" style="display:flex;align-items:center;gap:4px">'
-      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;'+c.sw+'"></span>'
-      +esc(c.label)+'</button>';
-  });
-  html+='</div>';
-
-  var blendChips=[
-    {n:1,label:'1 project',   col:'var(--pos)'},
-    {n:2,label:'2 projects',  col:'var(--orbe)'},
-    {n:3,label:'3 projects',  col:'var(--amber)'},
-    {n:4,label:'4+ projects', col:'var(--warn)'}
-  ];
-  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">';
-  if(AVAIL_BLEND>0){
-    html+='<button class="avail-blend qchip on" data-blend="0" style="display:flex;align-items:center;gap:4px">✕ All</button>';
-  }
-  blendChips.forEach(function(c){
-    var isOn=AVAIL_BLEND===c.n;
-    html+='<button class="avail-blend qchip'+(isOn?' on':'')+'" data-blend="'+c.n+'" style="display:flex;align-items:center;gap:4px">'
-      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;background:'+c.col+'"></span>'
-      +esc(c.label)+'</button>';
-  });
-  html+='</div>';
-
   container.innerHTML=html;
 
   Array.prototype.forEach.call(container.querySelectorAll('.avail-name'),function(el){
@@ -816,7 +831,7 @@ function toggleAvailDrill(np){
 }
 
 function clearAvailFilters(){
-  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
+  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_ROLE='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
   populateAvailFilters();
   renderAvailability();
 }
