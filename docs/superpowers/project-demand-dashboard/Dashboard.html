@@ -196,6 +196,7 @@ input[type=file]{display:none}
 .avail-cell .lbl{position:relative;font-size:9px;font-weight:700;font-family:'Roboto Condensed';color:inherit}
 .avail-cell.noplan{border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))}
 .avail-cell.future-plan{border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))}
+.avail-cell.pto{background:color-mix(in srgb,var(--neutral) 25%,var(--surface-2))}
 .avail-cell.current{background:color-mix(in srgb,var(--amber) 10%,var(--surface-2))}
 .avail-cell.blank{background:var(--surface-2);border-color:transparent}
 .avail-name{font-size:11.5px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:6px}
@@ -370,6 +371,7 @@ var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all", BLEND_OPEN = false;
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "";
+var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -667,13 +669,14 @@ function renderAvailability(){
           html+='<div class="avail-cell blank"><span class="lbl" style="color:var(--muted);font-size:8px">—</span></div>';
           return;
         }
+        var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
         var ratio=th/ph;
         var over=th>ph*1.05;
         var pctLbl=Math.round((over?th/ph:ratio)*100)+'%';
         var fillClr=over?'var(--june)':ratio>=tgt?'var(--pos)':ratio>=0.6?'var(--amber)':'var(--warn)';
         var fillW=Math.min(100,over?100:ratio*100);
         var darkTxt=fillW>55;
-        html+='<div class="avail-cell" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned, '+fmt(th)+'h tracked">'
+        html+='<div class="avail-cell" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned, '+fmt(th)+'h tracked'+(ptoH>0?' · '+fmt(ptoH)+'h PTO':'')+'">'
           +'<div class="fill" style="width:'+fillW+'%;background:'+fillClr+';opacity:0.8"></div>'
           +'<span class="lbl" style="color:'+(darkTxt?'#fff':'var(--text)')+'">'+pctLbl+'</span>'
           +'</div>';
@@ -684,14 +687,23 @@ function renderAvailability(){
           +'<span class="lbl" style="color:var(--amber);font-size:8px">now</span>'
           +'</div>';
       } else {
+        var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
+        var fullPTO=ptoH>=perPersonCap*PTO_FULL_THRESHOLD;
         if(ph===0){
-          html+='<div class="avail-cell noplan" title="'+esc(meta.displayName)+' · '+iso+' · no plan">'
-            +'<span class="lbl" style="color:var(--warn)">!</span></div>';
+          if(fullPTO){
+            html+='<div class="avail-cell pto" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ptoH)+'h PTO">'
+              +'<span class="lbl" style="color:var(--muted);font-size:9px">PTO</span></div>';
+          } else {
+            html+='<div class="avail-cell noplan" title="'+esc(meta.displayName)+' · '+iso+' · no plan">'
+              +'<span class="lbl" style="color:var(--warn)">!</span></div>';
+          }
         } else {
-          var planW=Math.min(100,ph/perPersonCap*100);
-          html+='<div class="avail-cell future-plan" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned">'
+          var effectiveCap=Math.max(1,perPersonCap-ptoH);
+          var planW=Math.min(100,ph/effectiveCap*100);
+          var ptoNote=ptoH>4?(' +'+fmt(ptoH)+'h PTO'):'';
+          html+='<div class="avail-cell future-plan" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned'+ptoNote+'">'
             +'<div class="fill" style="width:'+planW+'%;background:var(--orbe);opacity:0.4"></div>'
-            +'<span class="lbl" style="color:var(--orbe)">'+fmt(ph)+'h</span>'
+            +'<span class="lbl" style="color:var(--orbe)">'+fmt(ph)+'h'+(ptoH>4?'<span style="font-size:8px;opacity:.55"> +'+fmt(ptoH)+'⛔</span>':'')+'</span>'
             +'</div>';
         }
       }
