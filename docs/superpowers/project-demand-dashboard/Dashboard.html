@@ -171,11 +171,8 @@ button:hover,.btn:hover{border-color:var(--orbe)}
   border-left:3px solid var(--june);border-radius:8px;padding:10px 12px;margin-top:14px}
 .note b{color:var(--text)}
 
-/* trend svg */
+/* svg axes */
 svg .axis{stroke:var(--border)}
-.trend-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:12px}
-.trend-legend span{display:inline-flex;align-items:center;gap:6px}
-.trend-legend i{width:18px;height:3px;border-radius:2px;display:inline-block}
 
 /* tooltip */
 #tip{position:fixed;pointer-events:none;z-index:50;background:var(--void);color:#fff;border-radius:8px;
@@ -186,18 +183,7 @@ svg .axis{stroke:var(--border)}
 .foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
-/* ── Planned vs Tracked / Signals ── */
-.sigcols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:800px){.sigcols{grid-template-columns:1fr}}
-.sigcol-h{font-family:'Roboto Condensed';font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
-.sigcount{background:var(--surface-2);border:1px solid var(--border);border-radius:999px;font-size:11px;padding:1px 8px;font-weight:700;color:var(--text);font-family:'Roboto Condensed'}
 .sigfilter{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
-.sigcard{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);margin-bottom:6px}
-.sigcard .scname{font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sigcard .schrs{font-family:'Roboto Condensed';font-weight:700;font-size:15px;white-space:nowrap;text-align:right}
-.sigcard .scmeta{font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
-.sigcard.gap{border-left:3px solid var(--warn)}
-.sigcard.swarm{border-left:3px solid #00A86B}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
@@ -264,38 +250,18 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
-    <!-- 1b. People Signals -->
-    <div class="panel" id="sigPanel" style="display:none">
-      <div class="panel-h">
-        <h2>People signals — <span id="sigWeekLabel">—</span></h2>
-        <div class="panel-tools">
-          <select class="sigfilter" id="sigLoc"><option value="">All locations</option></select>
-          <select class="sigfilter" id="sigFam"><option value="">All job families</option></select>
-          <select class="sigfilter" id="sigMgr"><option value="">All managers</option></select>
-        </div>
-      </div>
-      <div class="sigcols">
-        <div class="sigcol">
-          <div class="sigcol-h">⚠ Planned but not tracked <span class="sigcount" id="gapCount"></span></div>
-          <div class="hint" style="margin-bottom:10px">Had ≥4 planned hrs but tracked &lt;20% — check in or reassign</div>
-          <div id="sigGap"></div>
-        </div>
-        <div class="sigcol">
-          <div class="sigcol-h">● Tracked without a plan <span class="sigcount" id="swarmCount"></span></div>
-          <div class="hint" style="margin-bottom:10px">Worked on projects but had no planned hours — swarmable, can be assigned</div>
-          <div id="sigSwarm"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 1c. Team Availability -->
+    <!-- 1b. Team Availability -->
     <div class="panel" id="availPanel" style="display:none">
       <div class="panel-h">
         <h2>Team Availability</h2>
         <div class="panel-tools">
           <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
-          <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
           <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+          <div class="chip-toggle" id="availTopN">
+            <button data-n="15" class="on">Top 15</button>
+            <button data-n="30">Top 30</button>
+            <button data-n="999">All</button>
+          </div>
         </div>
       </div>
       <div id="avail"></div>
@@ -384,23 +350,6 @@ input[type=file]{display:none}
       </div>
     </div>
 
-    <!-- 5. Trend -->
-    <div class="panel">
-      <div class="panel-h">
-        <h2>8-week trend — biggest movers</h2>
-        <div class="panel-tools">
-          <div class="hint">Planned hours across <span id="trendRange"></span></div>
-          <div class="chip-toggle" id="trendMode">
-            <button data-m="movers" class="on">Biggest movers</button>
-            <button data-m="volume">Top by volume</button>
-          </div>
-          <button class="png-btn" data-png="8-week-trend">⬇ Save PNG</button>
-        </div>
-      </div>
-      <div id="trend"></div>
-      <div class="trend-legend" id="trendLegend"></div>
-    </div>
-
     <div class="foot" id="foot"></div>
   </div>
 </div>
@@ -418,10 +367,9 @@ window.onerror = function(msg, src, line, col, err) {
 var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
 var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
-var COLOR_MODE = "hours", TREND_MODE = "movers", QFILTER = "all", BLEND_OPEN = false;
+var COLOR_MODE = "hours", QFILTER = "all", BLEND_OPEN = false;
 var HEAT_MAX_HEAD = 0;
-var SIG_LOC = "", SIG_FAM = "", SIG_MGR = "";
-var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_OPEN = null;
+var AVAIL_LOC = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "";
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -471,7 +419,7 @@ function applyModel(model){
   CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
   SEL_ISO = CURRENT_ISO;
   updateBadge();
-  if(DATA.rosterDimensions){ populateSigFilters(); populateAvailFilters(); }
+  if(DATA.rosterDimensions) populateAvailFilters();
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
@@ -503,7 +451,6 @@ function heatColorHours(t){var lo=css('--heat-lo'),mid=css('--heat-mid'),hi=css(
 function renderRange(){
   if(!NWEEKS) return;
   $('rangeSub').textContent = WEEKS[0].iso+" → "+WEEKS[NWEEKS-1].iso+"  ·  "+NWEEKS+"-week window  ·  current week "+CURRENT_ISO;
-  $('trendRange').textContent = WEEKS[0].iso+"–"+WEEKS[NWEEKS-1].iso;
 }
 
 function renderWeekbar(){
@@ -536,8 +483,8 @@ function renderCapacity(){
   var sw,cls;
   if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
   else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
-  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check People Signals for who planned but didn\'t track.';}
-  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review People Signals below.';}
+  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check Team Availability for who planned but didn\'t track.';}
+  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Availability below.';}
   else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
   $('capSoWhat').className='sowhat '+cls;
   $('capSoWhat').innerHTML=sw;
@@ -614,60 +561,6 @@ function renderCapChart(){
   $('capChart').innerHTML=g;
 }
 
-/* ---------------- Render: People Signals ---------------- */
-function renderSignals(){
-  var sigs=DATA.personSignals&&DATA.personSignals[SEL_ISO];
-  var panel=$('sigPanel');
-  if(!sigs){if(panel)panel.style.display='none';return;}
-  if(panel)panel.style.display='';
-  $('sigWeekLabel').textContent=SEL_ISO;
-  var disp=DATA.displayNames||{};
-  function nameFor(np){return disp[np]||np;}
-  function match(e){
-    if(SIG_LOC&&e.location!==SIG_LOC) return false;
-    if(SIG_FAM&&e.jobFamily!==SIG_FAM) return false;
-    if(SIG_MGR&&e.manager!==SIG_MGR) return false;
-    return true;
-  }
-  function gapCard(e){
-    var fid=e.plannedHrs>0?e.trackedHrs/e.plannedHrs:0;
-    return '<div class="sigcard gap"><div class="scname" title="'+esc(nameFor(e.name))+'">'+esc(nameFor(e.name))+'</div>'
-      +'<div style="text-align:right"><div class="schrs">'+fmt(e.plannedHrs)+'<small style="font-size:10px;font-weight:400;color:var(--muted)"> planned</small></div>'
-      +'<div class="scmeta">'+fmt(e.trackedHrs)+'h tracked ('+Math.round(fid*100)+'%)</div></div></div>';
-  }
-  function swarmCard(e){
-    return '<div class="sigcard swarm"><div class="scname" title="'+esc(nameFor(e.name))+'">'+esc(nameFor(e.name))+'</div>'
-      +'<div style="text-align:right"><div class="schrs">'+fmt(e.trackedHrs)+'<small style="font-size:10px;font-weight:400;color:var(--muted)"> tracked</small></div>'
-      +'<div class="scmeta">no plan · swarmable</div></div></div>';
-  }
-  var gaps=(sigs.plannedNotTracked||[]).filter(match);
-  var swarms=(sigs.untrackedWorkers||[]).filter(match);
-  $('gapCount').textContent=gaps.length||'';
-  $('swarmCount').textContent=swarms.length||'';
-  $('sigGap').innerHTML=gaps.length?gaps.map(gapCard).join(''):'<div class="hint">No gaps for the selected filters this week.</div>';
-  $('sigSwarm').innerHTML=swarms.length?swarms.map(swarmCard).join(''):'<div class="hint">No unplanned workers for the selected filters this week.</div>';
-}
-
-function populateSigFilters(){
-  var dims=DATA.rosterDimensions||{locations:[],jobFamilies:[],managers:[]};
-  function fill(id,items,cur,lbl){
-    var sel=$(id);if(!sel)return;
-    sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
-  }
-  fill('sigLoc',dims.locations,SIG_LOC,'All locations');
-  fill('sigFam',dims.jobFamilies,SIG_FAM,'All job families');
-  fill('sigMgr',dims.managers,SIG_MGR,'All managers');
-  ['sigLoc','sigFam','sigMgr'].forEach(function(id){
-    var el=$(id);if(!el)return;
-    el.onchange=function(){
-      if(id==='sigLoc')SIG_LOC=this.value;
-      if(id==='sigFam')SIG_FAM=this.value;
-      if(id==='sigMgr')SIG_MGR=this.value;
-      renderSignals();
-    };
-  });
-}
-
 function populateAvailFilters(){
   var dims=DATA.rosterDimensions||{locations:[],jobFamilies:[],managers:[]};
   function fill(id,items,cur,lbl){
@@ -675,13 +568,11 @@ function populateAvailFilters(){
     sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
   }
   fill('availLoc',dims.locations,AVAIL_LOC,'All locations');
-  fill('availFam',dims.jobFamilies,AVAIL_FAM,'All job families');
   fill('availMgr',dims.managers,AVAIL_MGR,'All managers');
-  ['availLoc','availFam','availMgr'].forEach(function(id){
+  ['availLoc','availMgr'].forEach(function(id){
     var el=$(id);if(!el)return;
     el.onchange=function(){
       if(id==='availLoc')AVAIL_LOC=this.value;
-      if(id==='availFam')AVAIL_FAM=this.value;
       if(id==='availMgr')AVAIL_MGR=this.value;
       renderAvailability();
     };
@@ -699,27 +590,47 @@ function renderAvailability(){
   var futurWeeks=WEEKS.filter(function(w){return w.status==='plan';});
   var pastWeeks=WEEKS.filter(function(w){return w.status==='done';});
 
-  // Filter
+  function personCats(pwp,pwt){
+    var c={};
+    var sumH=0,cntH=0;
+    pastWeeks.forEach(function(w){
+      var pl=(pwp[w.iso]||0),tr=(pwt[w.iso]||0);
+      if(pl>0){sumH+=tr;cntH+=pl;if(tr>pl*1.05)c.over=true;}
+    });
+    var exec=cntH>0?sumH/cntH:null;
+    if(exec!==null){if(exec>=tgt)c.high=true;else if(exec>=0.6)c.mid=true;else c.low=true;}
+    var noplanCnt=futurWeeks.filter(function(w){return !((pwp[w.iso]||0)>0);}).length;
+    if(noplanCnt>0)c.noplan=true;else if(futurWeeks.length>0)c['future-plan']=true;
+    return c;
+  }
+
+  // Filter: location, manager, category
   var people=Object.keys(DATA.personMeta).filter(function(np){
     var m=DATA.personMeta[np];
     if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
-    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
+    if(AVAIL_CAT){
+      var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{});
+      if(!cats[AVAIL_CAT])return false;
+    }
     return true;
   });
 
-  // Sort: most no-plan future weeks first, then lowest mean past execution
+  // Sort: best performers first (fewest no-plan future weeks, then highest mean execution)
   people.sort(function(a,b){
     var aNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[a]||{})[w.iso]);}).length;
     var bNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[b]||{})[w.iso]);}).length;
-    if(bNoP!==aNoP) return bNoP-aNoP;
+    if(aNoP!==bNoP)return aNoP-bNoP;
     function meanExec(np){
       var sum=0,cnt=0;
       pastWeeks.forEach(function(w){var pl=(DATA.personWeekPlan[np]||{})[w.iso]||0;if(pl>0){sum+=(DATA.personWeekTracked[np]||{})[w.iso]||0;cnt+=pl;}});
       return cnt>0?sum/cnt:1;
     }
-    return meanExec(a)-meanExec(b);
+    return meanExec(b)-meanExec(a);
   });
+
+  var totalFiltered=people.length;
+  if(AVAIL_TOPN<999)people=people.slice(0,AVAIL_TOPN);
 
   var N=NWEEKS;
   var html='<div class="avail-grid" style="grid-template-columns:140px repeat('+N+',1fr)">';
@@ -800,20 +711,39 @@ function renderAvailability(){
 
   html+='</div>';
 
-  // Legend
-  html+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--muted);align-items:center">'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--pos);display:inline-block"></span>≥'+Math.round(tgt*100)+'% execution</span>'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--amber);display:inline-block"></span>60–'+Math.round(tgt*100)+'%</span>'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--warn);display:inline-block"></span>&lt;60% needs help</span>'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--june);display:inline-block"></span>over-tracked</span>'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2));display:inline-block"></span>future: planned</span>'
-    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2));display:inline-block"></span>future: no plan</span>'
-    +'</div>';
+  // Count line when truncated
+  if(totalFiltered>people.length){
+    html+='<div style="font-size:11px;color:var(--muted);margin-top:6px">Showing '+people.length+' of '+totalFiltered+' people — use the Top toggle to show more</div>';
+  }
+
+  // Legend / category filter chips
+  var CATS=[
+    {id:'high',        label:'≥90% execution',       sw:'background:var(--pos)'},
+    {id:'mid',         label:'60–90%',               sw:'background:var(--amber)'},
+    {id:'low',         label:'<60% needs help',           sw:'background:var(--warn)'},
+    {id:'over',        label:'over-tracked',              sw:'background:var(--june)'},
+    {id:'future-plan', label:'future: planned',           sw:'border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))'},
+    {id:'noplan',      label:'future: no plan',           sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'}
+  ];
+  html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center">';
+  if(AVAIL_CAT){
+    html+='<button class="avail-cat qchip on" data-cat="" style="display:flex;align-items:center;gap:4px">✕ All</button>';
+  }
+  CATS.forEach(function(c){
+    var isOn=AVAIL_CAT===c.id;
+    html+='<button class="avail-cat qchip'+(isOn?' on':'')+'" data-cat="'+esc(c.id)+'" style="display:flex;align-items:center;gap:4px">'
+      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;'+c.sw+'"></span>'
+      +esc(c.label)+'</button>';
+  });
+  html+='</div>';
 
   container.innerHTML=html;
 
   Array.prototype.forEach.call(container.querySelectorAll('.avail-name'),function(el){
     el.onclick=function(){ toggleAvailDrill(el.dataset.np); };
+  });
+  Array.prototype.forEach.call(container.querySelectorAll('.avail-cat'),function(btn){
+    btn.onclick=function(){ AVAIL_CAT=btn.dataset.cat; AVAIL_OPEN=null; renderAvailability(); };
   });
 }
 
@@ -993,7 +923,7 @@ function renderHeat(){
     c.onmouseleave=hideTip;
   });
   Array.prototype.forEach.call($('heat').querySelectorAll('.rowlabel'),function(rl){
-    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderTrend(); renderProjDrill(ACTIVE_ROW); };
+    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderProjDrill(ACTIVE_ROW); };
   });
 }
 
@@ -1068,57 +998,6 @@ function renderDrill(){
   }).join('');
 }
 
-/* ---------------- Render: trend ---------------- */
-function trendLeaders(){
-  if(TREND_MODE==='volume'){
-    var byVol=ACTIVE_ROW?[ACTIVE_ROW].concat(DATA.order.filter(function(k){return k!==ACTIVE_ROW;})):DATA.order;
-    return byVol.slice(0,5);
-  }
-  // movers: steepest absolute WoW slope across the window
-  var scored=DATA.order.map(function(k){
-    var maxSlope=0;
-    for(var i=1;i<NWEEKS;i++){ var s=Math.abs(capAt(k,WEEKS[i].iso)-capAt(k,WEEKS[i-1].iso)); if(s>maxSlope) maxSlope=s; }
-    return {k:k,s:maxSlope};
-  }).sort(function(a,b){return b.s-a.s;}).map(function(x){return x.k;});
-  if(ACTIVE_ROW){ scored=[ACTIVE_ROW].concat(scored.filter(function(k){return k!==ACTIVE_ROW;})); }
-  return scored.slice(0,5);
-}
-function renderTrend(){
-  var w=860,h=250,pad={l:42,r:64,t:14,b:30};
-  var iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
-  var leaders=trendLeaders();
-  var max=Math.max.apply(null,leaders.map(function(k){return Math.max.apply(null,WEEKS.map(function(wk){return capAt(k,wk.iso);}));}).concat([1]));
-  var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
-  var y=function(v){return pad.t+ih-v/max*ih;};
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="trend">';
-  // planned region tint
-  var firstPlan=-1; WEEKS.forEach(function(wk,i){ if(firstPlan<0&&wk.status==='plan') firstPlan=i; });
-  if(firstPlan>=0){ var x0=x(Math.max(0,firstPlan-0.5)); g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(x(NWEEKS-1)+pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>'; g+='<text x="'+(x(NWEEKS-1))+'" y="'+(pad.t+11)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">planned →</text>'; }
-  for(var gl=0;gl<=4;gl++){var yy=pad.t+ih*gl/4; var val=max*(1-gl/4);
-    g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';
-    g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="10" fill="'+css('--muted')+'">'+val.toFixed(0)+'</text>';}
-  WEEKS.forEach(function(wk,i){
-    g+='<text x="'+x(i)+'" y="'+(h-9)+'" text-anchor="middle" font-size="10" fill="'+css('--muted')+'">W'+wk.wk+'</text>';
-    if(wk.status==='now') g+='<line x1="'+x(i)+'" y1="'+pad.t+'" x2="'+x(i)+'" y2="'+(pad.t+ih)+'" stroke="'+hexVar('--orbe')+'" stroke-width="1" stroke-dasharray="3 3" opacity=".6"/>';
-  });
-  leaders.forEach(function(k){
-    var col=keyColor(KEYINDEX[k]); var dim=ACTIVE_ROW&&ACTIVE_ROW!==k; var op=dim?0.18:1;
-    // segment-by-segment so the planned tail is dashed
-    WEEKS.forEach(function(wk,i){ if(i===0) return; var prevW=WEEKS[i-1]; var dash=(wk.status==='plan')?' stroke-dasharray="4 3"':'';
-      g+='<line x1="'+x(i-1)+'" y1="'+y(capAt(k,prevW.iso))+'" x2="'+x(i)+'" y2="'+y(capAt(k,wk.iso))+'" stroke="'+col+'" stroke-width="'+(ACTIVE_ROW===k?3.2:2)+'" opacity="'+op+'" stroke-linecap="round"'+dash+'/>'; });
-    WEEKS.forEach(function(wk,i){ g+='<circle cx="'+x(i)+'" cy="'+y(capAt(k,wk.iso))+'" r="'+(ACTIVE_ROW===k?3.4:2.6)+'" fill="'+col+'" opacity="'+op+'"/>'; });
-    // drop-to-zero annotation in the planned tail
-    for(var i2=1;i2<NWEEKS;i2++){ if(WEEKS[i2].status==='plan' && capAt(k,WEEKS[i2].iso)<=0.001 && capAt(k,WEEKS[i2-1].iso)>0.001 && !dim){
-      g+='<circle cx="'+x(i2)+'" cy="'+y(0)+'" r="4.5" fill="none" stroke="'+hexVar('--warn')+'" stroke-width="1.6"/>';
-      g+='<text x="'+x(i2)+'" y="'+(y(0)-7)+'" text-anchor="middle" font-size="8.5" fill="'+hexVar('--warn')+'" font-weight="700">→0</text>'; break; } }
-    // end-of-line label
-    if(!dim){ var ly=y(capAt(k,WEEKS[NWEEKS-1].iso)); g+='<text x="'+(x(NWEEKS-1)+6)+'" y="'+(ly+3)+'" font-size="9.5" font-weight="700" fill="'+col+'">'+esc(k)+'</text>'; }
-  });
-  g+='</svg>';
-  $('trend').innerHTML=g;
-  $('trendLegend').innerHTML=leaders.map(function(k){return '<span style="opacity:'+(ACTIVE_ROW&&ACTIVE_ROW!==k?.4:1)+'"><i style="background:'+keyColor(KEYINDEX[k])+'"></i>'+chip(k)+' '+esc(KEYNAME[k]||k)+'</span>';}).join('');
-}
-
 /* ---------------- Render: footer ---------------- */
 function renderFoot(){
   var ts = DATA&&DATA.trackedLastExport ? ' · Tracked time '+fmtExport(DATA.trackedLastExport) : '';
@@ -1131,8 +1010,8 @@ function renderFoot(){
 }
 
 function renderAll(){
-  renderRange(); renderWeekbar(); renderCapacity(); renderSignals(); renderAvailability(); renderMovers();
-  renderBars(); renderBlend(); renderTrend(); renderHeat(); renderFoot();
+  renderRange(); renderWeekbar(); renderCapacity(); renderAvailability(); renderMovers();
+  renderBars(); renderBlend(); renderHeat(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
@@ -1250,7 +1129,7 @@ var pdc=$('projDrillClose');if(pdc)pdc.onclick=function(){ ACTIVE_ROW=null; $('p
 $('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA) renderHeat(); });
 Array.prototype.forEach.call($('topToggle').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('topToggle').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; if(DATA) renderHeat(); }; });
 Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('colorMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); COLOR_MODE=b.dataset.m; if(DATA) renderHeat(); }; });
-Array.prototype.forEach.call($('trendMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('trendMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TREND_MODE=b.dataset.m; if(DATA) renderTrend(); }; });
+Array.prototype.forEach.call($('availTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('availTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); AVAIL_TOPN=+b.dataset.n; if(DATA) renderAvailability(); }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
 
 /* Question-filter chips */
