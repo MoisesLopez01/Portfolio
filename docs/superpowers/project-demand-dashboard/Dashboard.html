@@ -203,6 +203,20 @@ input[type=file]{display:none}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
 .projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
 .projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
+/* Team Availability */
+.avail-grid{display:grid;gap:2px;align-items:center}
+.avail-cell{height:26px;border-radius:4px;position:relative;overflow:hidden;border:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+.avail-cell .fill{position:absolute;left:0;top:0;height:100%;border-radius:3px}
+.avail-cell .lbl{position:relative;font-size:9px;font-weight:700;font-family:'Roboto Condensed';color:inherit}
+.avail-cell.noplan{border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))}
+.avail-cell.future-plan{border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))}
+.avail-cell.current{background:color-mix(in srgb,var(--amber) 10%,var(--surface-2))}
+.avail-cell.blank{background:var(--surface-2);border-color:transparent}
+.avail-name{font-size:11.5px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:6px}
+.avail-name:hover{background:var(--surface-2)}
+.avail-name .sub{display:block;font-size:10px;color:var(--muted);font-weight:400}
+.avail-drill{grid-column:1/-1;background:var(--surface-2);border-radius:8px;padding:8px 12px;display:none;font-size:11.5px;margin-top:2px}
+.avail-drill.open{display:block}
 </style>
 </head>
 <body>
@@ -272,6 +286,19 @@ input[type=file]{display:none}
           <div id="sigSwarm"></div>
         </div>
       </div>
+    </div>
+
+    <!-- 1c. Team Availability -->
+    <div class="panel" id="availPanel" style="display:none">
+      <div class="panel-h">
+        <h2>Team Availability</h2>
+        <div class="panel-tools">
+          <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
+          <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
+          <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+        </div>
+      </div>
+      <div id="avail"></div>
     </div>
 
     <!-- 2. Project key heatmap (drill-down) — planned hours by project -->
@@ -394,6 +421,7 @@ var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", TREND_MODE = "movers", QFILTER = "all", BLEND_OPEN = false;
 var HEAT_MAX_HEAD = 0;
 var SIG_LOC = "", SIG_FAM = "", SIG_MGR = "";
+var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_OPEN = null;
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -443,7 +471,7 @@ function applyModel(model){
   CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
   SEL_ISO = CURRENT_ISO;
   updateBadge();
-  if(DATA.rosterDimensions) populateSigFilters();
+  if(DATA.rosterDimensions){ populateSigFilters(); populateAvailFilters(); }
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
@@ -486,7 +514,7 @@ function renderWeekbar(){
       +'<div class="st">'+STATUS_LABEL[w.status]+'</div>'
       +'</button>';
   }).join('');
-  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; BLEND_OPEN=false; renderAll(); }; });
+  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; BLEND_OPEN=false; AVAIL_OPEN=null; renderAll(); }; });
 }
 
 /* ---------------- Render: Planned vs Tracked ---------------- */
@@ -638,6 +666,160 @@ function populateSigFilters(){
       renderSignals();
     };
   });
+}
+
+function populateAvailFilters(){
+  var dims=DATA.rosterDimensions||{locations:[],jobFamilies:[],managers:[]};
+  function fill(id,items,cur,lbl){
+    var sel=$(id);if(!sel)return;
+    sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
+  }
+  fill('availLoc',dims.locations,AVAIL_LOC,'All locations');
+  fill('availFam',dims.jobFamilies,AVAIL_FAM,'All job families');
+  fill('availMgr',dims.managers,AVAIL_MGR,'All managers');
+  ['availLoc','availFam','availMgr'].forEach(function(id){
+    var el=$(id);if(!el)return;
+    el.onchange=function(){
+      if(id==='availLoc')AVAIL_LOC=this.value;
+      if(id==='availFam')AVAIL_FAM=this.value;
+      if(id==='availMgr')AVAIL_MGR=this.value;
+      renderAvailability();
+    };
+  });
+}
+
+/* ---------------- Render: Team Availability ---------------- */
+function renderAvailability(){
+  var panel=$('availPanel'), container=$('avail');
+  if(!DATA||!DATA.personMeta||!Object.keys(DATA.personMeta).length){if(panel)panel.style.display='none';return;}
+  if(panel)panel.style.display='';
+
+  var tgt=DATA.planTarget||0.9;
+  var perPersonCap=DATA.baseCapacity>0&&DATA.headcount>0?(DATA.baseCapacity/DATA.headcount):40;
+  var futurWeeks=WEEKS.filter(function(w){return w.status==='plan';});
+  var pastWeeks=WEEKS.filter(function(w){return w.status==='done';});
+
+  // Filter
+  var people=Object.keys(DATA.personMeta).filter(function(np){
+    var m=DATA.personMeta[np];
+    if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
+    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
+    if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
+    return true;
+  });
+
+  // Sort: most no-plan future weeks first, then lowest mean past execution
+  people.sort(function(a,b){
+    var aNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[a]||{})[w.iso]);}).length;
+    var bNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[b]||{})[w.iso]);}).length;
+    if(bNoP!==aNoP) return bNoP-aNoP;
+    function meanExec(np){
+      var sum=0,cnt=0;
+      pastWeeks.forEach(function(w){var pl=(DATA.personWeekPlan[np]||{})[w.iso]||0;if(pl>0){sum+=(DATA.personWeekTracked[np]||{})[w.iso]||0;cnt+=pl;}});
+      return cnt>0?sum/cnt:1;
+    }
+    return meanExec(a)-meanExec(b);
+  });
+
+  var N=NWEEKS;
+  var html='<div class="avail-grid" style="grid-template-columns:140px repeat('+N+',1fr)">';
+
+  // Header row
+  html+='<div></div>';
+  WEEKS.forEach(function(w){
+    var isPast=w.status==='done',isCur=w.status==='now';
+    var col=isPast?'var(--orbe)':isCur?'var(--amber)':'var(--muted)';
+    var bg=isCur?'background:color-mix(in srgb,var(--amber) 8%,var(--surface-2));border-radius:4px;':'';
+    html+='<div style="text-align:center;padding:2px 1px;'+bg+'">'
+      +'<div style="font-family:\'Roboto Condensed\';font-weight:700;font-size:11px;color:'+col+'">W'+w.wk+'</div>'
+      +'<div style="font-size:8.5px;color:var(--muted)">'+(isPast?'past':isCur?'now':'future')+'</div>'
+      +'</div>';
+  });
+
+  people.forEach(function(np){
+    var meta=DATA.personMeta[np];
+    var pwp=DATA.personWeekPlan[np]||{};
+    var pwt=DATA.personWeekTracked[np]||{};
+    var ppp=DATA.personProjectPlan[np]||{};
+    var isOpen=AVAIL_OPEN===np;
+
+    html+='<div class="avail-name" data-np="'+esc(np)+'">'
+      +esc(meta.displayName||np)
+      +'<span class="sub">'+esc(meta.jobFamily||'')+'</span>'
+      +'</div>';
+
+    WEEKS.forEach(function(w){
+      var iso=w.iso;
+      var ph=pwp[iso]||0, th=pwt[iso]||0;
+      if(w.status==='done'){
+        if(ph===0){
+          html+='<div class="avail-cell blank"><span class="lbl" style="color:var(--muted);font-size:8px">—</span></div>';
+          return;
+        }
+        var ratio=th/ph;
+        var over=th>ph*1.05;
+        var pctLbl=Math.round((over?th/ph:ratio)*100)+'%';
+        var fillClr=over?'var(--june)':ratio>=tgt?'var(--pos)':ratio>=0.6?'var(--amber)':'var(--warn)';
+        var fillW=Math.min(100,over?100:ratio*100);
+        var darkTxt=fillW>55;
+        html+='<div class="avail-cell" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned, '+fmt(th)+'h tracked">'
+          +'<div class="fill" style="width:'+fillW+'%;background:'+fillClr+';opacity:0.8"></div>'
+          +'<span class="lbl" style="color:'+(darkTxt?'#fff':'var(--text)')+'">'+pctLbl+'</span>'
+          +'</div>';
+      } else if(w.status==='now'){
+        var partW=ph>0?Math.min(100,th/ph*100):0;
+        html+='<div class="avail-cell current" title="'+esc(meta.displayName)+' · '+iso+' · in progress">'
+          +(ph>0?'<div class="fill" style="width:'+partW+'%;background:var(--amber);opacity:0.6"></div>':'')
+          +'<span class="lbl" style="color:var(--amber);font-size:8px">now</span>'
+          +'</div>';
+      } else {
+        if(ph===0){
+          html+='<div class="avail-cell noplan" title="'+esc(meta.displayName)+' · '+iso+' · no plan">'
+            +'<span class="lbl" style="color:var(--warn)">!</span></div>';
+        } else {
+          var planW=Math.min(100,ph/perPersonCap*100);
+          html+='<div class="avail-cell future-plan" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned">'
+            +'<div class="fill" style="width:'+planW+'%;background:var(--orbe);opacity:0.4"></div>'
+            +'<span class="lbl" style="color:var(--orbe)">'+fmt(ph)+'h</span>'
+            +'</div>';
+        }
+      }
+    });
+
+    // Drill row — shown when AVAIL_OPEN === np
+    var drillKeys=Object.keys(ppp).filter(function(k){return (ppp[k][SEL_ISO]||0)>0.5;});
+    drillKeys.sort(function(a,b){return (ppp[b][SEL_ISO]||0)-(ppp[a][SEL_ISO]||0);});
+    var drillContent=drillKeys.length
+      ?'<b style="font-size:10px;color:var(--muted);font-family:\'Roboto Condensed\';text-transform:uppercase;letter-spacing:.04em">Projects · '+SEL_ISO+'</b>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
+        +drillKeys.map(function(k){return chip(k)+'<span style="font-size:11px;color:var(--muted)"> '+fmt(ppp[k][SEL_ISO])+'h</span>';}).join('')
+        +'</div>'
+      :'<span style="color:var(--muted);font-size:11px">No planned projects for '+esc(SEL_ISO)+'</span>';
+    html+='<div class="avail-drill'+(isOpen?' open':'')+'">'+drillContent+'</div>';
+  });
+
+  html+='</div>';
+
+  // Legend
+  html+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--muted);align-items:center">'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--pos);display:inline-block"></span>≥'+Math.round(tgt*100)+'% execution</span>'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--amber);display:inline-block"></span>60–'+Math.round(tgt*100)+'%</span>'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--warn);display:inline-block"></span>&lt;60% needs help</span>'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--june);display:inline-block"></span>over-tracked</span>'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2));display:inline-block"></span>future: planned</span>'
+    +'<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2));display:inline-block"></span>future: no plan</span>'
+    +'</div>';
+
+  container.innerHTML=html;
+
+  Array.prototype.forEach.call(container.querySelectorAll('.avail-name'),function(el){
+    el.onclick=function(){ toggleAvailDrill(el.dataset.np); };
+  });
+}
+
+function toggleAvailDrill(np){
+  AVAIL_OPEN = AVAIL_OPEN===np ? null : np;
+  renderAvailability();
 }
 
 /* ---------------- Render: Project Planned vs Tracked Drill ---------------- */
@@ -949,7 +1131,7 @@ function renderFoot(){
 }
 
 function renderAll(){
-  renderRange(); renderWeekbar(); renderCapacity(); renderSignals(); renderMovers();
+  renderRange(); renderWeekbar(); renderCapacity(); renderSignals(); renderAvailability(); renderMovers();
   renderBars(); renderBlend(); renderTrend(); renderHeat(); renderFoot();
 }
 
