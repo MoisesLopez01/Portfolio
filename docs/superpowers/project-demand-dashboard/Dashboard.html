@@ -94,20 +94,6 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .capmeta{font-size:12px;color:var(--muted);margin-top:8px}
 .capmeta .est{color:var(--amber);font-weight:600}
 
-/* Risers & Fallers */
-.movergrid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:760px){.movergrid{grid-template-columns:1fr}}
-.movercol h3{font-size:13px;font-family:'Roboto Condensed';letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.movercol h3 .ar{font-size:14px}
-.movercard{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--surface-2);margin-bottom:8px}
-.movercard.risk{border-color:color-mix(in srgb,var(--warn) 55%,var(--border));box-shadow:inset 3px 0 0 var(--warn)}
-.movercard .mid{flex:1;min-width:0}
-.movercard .mname{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.movercard .mtag{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
-.movercard .mtag.danger{color:var(--warn)}
-.movercard .mdelta{font-family:'Roboto Condensed';font-weight:700;font-size:17px;text-align:right;white-space:nowrap}
-.movercard .mdelta.up{color:var(--up)} .movercard .mdelta.down{color:var(--down)}
-.movercard .mdelta small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
 
 .keychip{display:inline-block;font-family:'Roboto Condensed';font-weight:700;font-size:12px;letter-spacing:.03em;
   color:#fff;padding:2px 8px;border-radius:6px;line-height:1.4}
@@ -305,21 +291,6 @@ input[type=file]{display:none}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
         <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
         <div class="hint" id="heatNote"></div>
-      </div>
-    </div>
-
-    <!-- 3. Risers & Fallers -->
-    <div class="panel">
-      <div class="panel-h">
-        <h2>Risers &amp; fallers</h2>
-        <div class="panel-tools">
-          <div class="hint" id="moverHint">Biggest week-over-week moves · selected week</div>
-          <button class="png-btn" data-png="risers-and-fallers">⬇ Save PNG</button>
-        </div>
-      </div>
-      <div class="movergrid">
-        <div class="movercol"><h3><span class="ar">▲</span> Ramping up</h3><div id="risers"></div></div>
-        <div class="movercol"><h3><span class="ar">▼</span> Falling off</h3><div id="fallers"></div></div>
       </div>
     </div>
 
@@ -818,39 +789,6 @@ function renderProjDrill(key){
   $('projDrillChart').innerHTML=g;
 }
 
-/* ---------------- Render: Risers & Fallers ---------------- */
-function renderMovers(){
-  var iso=SEL_ISO, prev=priorIso(iso);
-  $('moverHint').textContent = prev ? ('Δ vs '+prev+' → '+iso) : 'No prior week in window';
-  if(!prev){ $('risers').innerHTML='<div class="hint">'+esc(iso)+' is the first week in the window — no week-over-week comparison.</div>'; $('fallers').innerHTML=''; return; }
-  var moves=DATA.order.map(function(k){
-    var cur=capAt(k,iso), pr=capAt(k,prev), d=cur-pr;
-    var pc = pr>0 ? d/pr*100 : (cur>0?100:0);
-    var tag,danger=false;
-    if(pr<=0.001&&cur>0){tag='new';}
-    else if(cur<=0.001&&pr>0){tag='dropped to 0';danger=true;}
-    else if(d>0){tag='ramping';}
-    else {tag='winding down';}
-    return {k:k,cur:cur,pr:pr,d:d,pc:pc,tag:tag,danger:danger};
-  }).filter(function(m){return Math.abs(m.d)>0.001;});
-
-  var n=DATA.moversN||5;
-  var risers=moves.filter(function(m){return m.d>0;}).sort(function(a,b){return b.d-a.d;}).slice(0,n);
-  var fallers=moves.filter(function(m){return m.d<0;}).sort(function(a,b){return a.d-b.d;}).slice(0,n);
-
-  function card(m,dir){
-    var cls=m.danger?'movercard risk':'movercard';
-    var dcls=dir==='up'?'up':'down';
-    var pcl = (m.tag==='new')? 'new project' : pct(m.pc);
-    return '<div class="'+cls+'">'+chip(m.k)
-      +'<div class="mid"><div class="mname">'+esc(KEYNAME[m.k]||m.k)+'</div>'
-      +'<div class="mtag'+(m.danger?' danger':'')+'">'+m.tag+'</div></div>'
-      +'<div class="mdelta '+dcls+'">'+(m.d>0?'+':'')+fmt(m.d)+' h<small>'+pcl+'</small></div></div>';
-  }
-  $('risers').innerHTML = risers.length? risers.map(function(m){return card(m,'up');}).join('') : '<div class="hint">No projects ramping up vs '+esc(prev)+'.</div>';
-  $('fallers').innerHTML = fallers.length? fallers.map(function(m){return card(m,'down');}).join('') : '<div class="hint">No projects falling off vs '+esc(prev)+'.</div>';
-}
-
 /* ---------------- Render: heatmap (color modes + question filters) ---------------- */
 function wowDrop(k,iso){ var pr=priorIso(iso); if(!pr) return 0; var p=capAt(k,pr); if(p<=0.001) return 0; return (capAt(k,iso)-p)/p; }
 function projDropsToZero(k){ // a planned week hits 0 after being >0 earlier
@@ -1040,7 +978,7 @@ function renderFoot(){
 }
 
 function renderAll(){
-  renderRange(); renderWeekbar(); renderCapacity(); renderAvailability(); renderMovers();
+  renderRange(); renderWeekbar(); renderCapacity(); renderAvailability();
   renderBars(); renderBlend(); renderHeat(); renderFoot();
 }
 
