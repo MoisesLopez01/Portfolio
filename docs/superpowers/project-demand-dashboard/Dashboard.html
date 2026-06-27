@@ -592,7 +592,7 @@ function renderAvailability(){
   var futurWeeks=WEEKS.filter(function(w){return w.status==='plan';});
   var pastWeeks=WEEKS.filter(function(w){return w.status==='done';});
 
-  function personCats(pwp,pwt){
+  function personCats(pwp,pwt,pwpto){
     var c={};
     var sumH=0,cntH=0;
     pastWeeks.forEach(function(w){
@@ -601,8 +601,19 @@ function renderAvailability(){
     });
     var exec=cntH>0?sumH/cntH:null;
     if(exec!==null){if(exec>=tgt)c.high=true;else if(exec>=0.6)c.mid=true;else c.low=true;}
-    var noplanCnt=futurWeeks.filter(function(w){return !((pwp[w.iso]||0)>0);}).length;
-    if(noplanCnt>0)c.noplan=true;else if(futurWeeks.length>0)c['future-plan']=true;
+    var noplanReal=0, ptoFull=0;
+    futurWeeks.forEach(function(w){
+      var ph=(pwp[w.iso]||0), ptoH=(pwpto[w.iso]||0);
+      var fullPTO=ptoH>=perPersonCap*PTO_FULL_THRESHOLD;
+      if(!ph){
+        if(fullPTO) ptoFull++;
+        else noplanReal++;
+      }
+    });
+    if(ptoFull>0&&noplanReal===0&&futurWeeks.length>0) c.pto=true;
+    else if(ptoFull>0) c.pto=true;
+    if(noplanReal>0) c.noplan=true;
+    if(noplanReal===0&&ptoFull===0&&futurWeeks.length>0) c['future-plan']=true;
     return c;
   }
 
@@ -612,7 +623,7 @@ function renderAvailability(){
     if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
     if(AVAIL_CAT){
-      var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{});
+      var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{},DATA.personWeekPTO[np]||{});
       if(!cats[AVAIL_CAT])return false;
     }
     return true;
@@ -620,8 +631,14 @@ function renderAvailability(){
 
   // Sort: best performers first (fewest no-plan future weeks, then highest mean execution)
   people.sort(function(a,b){
-    var aNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[a]||{})[w.iso]);}).length;
-    var bNoP=futurWeeks.filter(function(w){return !((DATA.personWeekPlan[b]||{})[w.iso]);}).length;
+    var aNoP=futurWeeks.filter(function(w){
+      var ptoH=(DATA.personWeekPTO[a]||{})[w.iso]||0;
+      return !((DATA.personWeekPlan[a]||{})[w.iso])&&ptoH<perPersonCap*PTO_FULL_THRESHOLD;
+    }).length;
+    var bNoP=futurWeeks.filter(function(w){
+      var ptoH=(DATA.personWeekPTO[b]||{})[w.iso]||0;
+      return !((DATA.personWeekPlan[b]||{})[w.iso])&&ptoH<perPersonCap*PTO_FULL_THRESHOLD;
+    }).length;
     if(aNoP!==bNoP)return aNoP-bNoP;
     function meanExec(np){
       var sum=0,cnt=0;
@@ -735,7 +752,8 @@ function renderAvailability(){
     {id:'low',         label:'<60% needs help',           sw:'background:var(--warn)'},
     {id:'over',        label:'over-tracked',              sw:'background:var(--june)'},
     {id:'future-plan', label:'future: planned',           sw:'border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))'},
-    {id:'noplan',      label:'future: no plan',           sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'}
+    {id:'noplan',      label:'future: no plan',           sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'},
+    {id:'pto', label:'on leave', sw:'background:var(--neutral)'}
   ];
   html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center">';
   if(AVAIL_CAT){
