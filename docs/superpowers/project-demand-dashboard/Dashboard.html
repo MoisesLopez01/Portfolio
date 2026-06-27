@@ -133,29 +133,6 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .bar .fill.win{background:linear-gradient(90deg,var(--june),var(--royal))}
 .bar .v{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
 
-/* blending */
-.blend-row{display:grid;grid-template-columns:90px 1fr 70px;gap:10px;align-items:center;margin-bottom:9px}
-.blend-row .lab{font-size:12.5px}
-.blend-row.clickable{cursor:pointer;border-radius:7px;padding:3px 4px;margin-left:-4px}
-.blend-row.clickable:hover{background:var(--surface-2)}
-.blend-row .track{height:16px;background:var(--surface-2);border-radius:5px;overflow:hidden}
-.blend-row .fill{height:100%;border-radius:5px}
-.blend-row .lab .caret{font-size:10px;color:var(--muted);margin-left:4px}
-.spark{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.spark .lbl{font-size:11.5px;color:var(--muted)}
-.spark .dir{font-size:11.5px;font-weight:700}
-.spark .dir.up{color:var(--down)} .spark .dir.down{color:var(--pos)} .spark .dir.flat{color:var(--muted)}
-.drill{margin-top:6px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:10px 12px;display:none}
-.drill.open{display:block}
-.drill .dperson{display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px dashed var(--border);flex-wrap:wrap}
-.drill .dperson:last-child{border-bottom:none}
-.drill .dname{font-size:12px;font-weight:600;min-width:130px}
-.drill .dkeys{display:flex;gap:4px;flex-wrap:wrap}
-.drill .skey{outline:2px solid var(--june);outline-offset:1px}
-.drill .dhint{font-size:11.5px;color:var(--muted);margin-bottom:8px}
-.note{font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
-  border-left:3px solid var(--june);border-radius:8px;padding:10px 12px;margin-top:14px}
-.note b{color:var(--text)}
 
 /* svg axes */
 svg .axis{stroke:var(--border)}
@@ -307,19 +284,6 @@ input[type=file]{display:none}
         <div class="bars" id="bars"></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-h">
-          <h2>People &amp; blending</h2>
-          <div class="panel-tools">
-            <div class="hint">How thinly are people spread?</div>
-            <button class="png-btn" data-png="people-and-blending">⬇ Save PNG</button>
-          </div>
-        </div>
-        <div class="spark" id="blendSpark"></div>
-        <div id="blend"></div>
-        <div class="drill" id="blendDrill"></div>
-        <div class="note" id="blendNote"></div>
-      </div>
     </div>
 
     <div class="foot" id="foot"></div>
@@ -339,7 +303,7 @@ window.onerror = function(msg, src, line, col, err) {
 var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
 var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
-var COLOR_MODE = "hours", QFILTER = "all", BLEND_OPEN = false;
+var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_MGR = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "";
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
@@ -434,7 +398,7 @@ function renderWeekbar(){
       +'<div class="st">'+STATUS_LABEL[w.status]+'</div>'
       +'</button>';
   }).join('');
-  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; BLEND_OPEN=false; AVAIL_OPEN=null; renderAll(); }; });
+  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; AVAIL_OPEN=null; renderAll(); }; });
 }
 
 /* ---------------- Render: Planned vs Tracked ---------------- */
@@ -909,63 +873,6 @@ function renderBars(){
   }).join(''):'<div class="hint">No demand recorded for '+esc(iso)+'.</div>';
 }
 
-/* ---------------- Render: People & blending ---------------- */
-function renderBlendSpark(){
-  var w=150,h=34,pad=4, iw=w-pad*2, ih=h-pad*2;
-  var vals=WEEKS.map(function(wk){return DATA.stretched[wk.iso]||0;});
-  var max=Math.max.apply(null,vals.concat([1]));
-  var x=function(i){return pad+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
-  var y=function(v){return pad+ih-v/max*ih;};
-  var pts=vals.map(function(v,i){return x(i)+','+y(v);}).join(' ');
-  var first=vals[0], last=vals[NWEEKS-1], dir = last>first?'up':last<first?'down':'flat';
-  var dirTxt = dir==='up'?'climbing':dir==='down'?'easing':'steady';
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" aria-label="fragmentation trend">'
-    +'<polyline points="'+pts+'" fill="none" stroke="'+hexVar('--june')+'" stroke-width="2"/>'
-    +'<circle cx="'+x(NWEEKS-1)+'" cy="'+y(last)+'" r="2.8" fill="'+hexVar('--june')+'"/></svg>';
-  $('blendSpark').innerHTML='<span class="lbl">People on '+(DATA.fragMin||4)+'+ projects, '+WEEKS[0].iso+'→'+WEEKS[NWEEKS-1].iso+':</span>'
-    +g+'<span class="dir '+dir+'">'+dirTxt+' ('+first+'→'+last+')</span>';
-}
-function renderBlend(){
-  var iso=SEL_ISO;
-  var d=DATA.blendByWeek[iso]||{1:0,2:0,3:0,4:0};
-  var total=(d[1]+d[2]+d[3]+d[4])||1;
-  var rows=[
-    {lab:"1 project",n:d[1],c:"#15803D",click:false},
-    {lab:"2 projects",n:d[2],c:hexVar('--orbe'),click:false},
-    {lab:"3 projects",n:d[3],c:hexVar('--royal'),click:false},
-    {lab:(DATA.fragMin||4)+"+ projects",n:d[4],c:hexVar('--june'),click:true}
-  ];
-  $('blend').innerHTML=rows.map(function(r){
-    var caret=r.click?'<span class="caret">'+(BLEND_OPEN?'▾ hide':'▸ who')+'</span>':'';
-    return '<div class="blend-row'+(r.click?' clickable':'')+'"'+(r.click?' id="fragRow"':'')+'><div class="lab">'+r.lab+caret+'</div>'
-      +'<div class="track"><div class="fill" style="width:'+(r.n/total*100)+'%;background:'+r.c+'"></div></div>'
-      +'<div class="v mono" style="text-align:right;color:var(--muted)">'+r.n+' ppl</div></div>';
-  }).join('');
-  var fr=$('fragRow'); if(fr) fr.onclick=function(){ BLEND_OPEN=!BLEND_OPEN; renderBlend(); renderDrill(); };
-  renderDrill();
-  renderBlendSpark();
-
-  var st=DATA.stretched[iso]||0, avg=DATA.avgBlend[iso]||0;
-  $('blendNote').innerHTML = st>0
-    ? '<b>'+st+' '+(st===1?'person is':'people are')+' spread across '+(DATA.fragMin||4)+'+ projects</b> in '+esc(iso)+' (avg blend '+avg.toFixed(2)+'). Worth a sustainable-workload check before adding more — protecting focus keeps delivery quality high.'
-    : 'Healthy spread in '+esc(iso)+' — avg blend '+avg.toFixed(2)+' projects per person, nobody on '+(DATA.fragMin||4)+'+. Capacity to absorb a new ask.';
-}
-function renderDrill(){
-  var el=$('blendDrill'); if(!el) return;
-  if(!BLEND_OPEN){ el.className='drill'; el.innerHTML=''; return; }
-  var list=(DATA.fragByWeek&&DATA.fragByWeek[SEL_ISO])||[];
-  var strat=strategicSet(); var stratMap={}; strat.forEach(function(k){stratMap[k]=1;});
-  var onStrat=list.filter(function(f){return f.keys.some(function(k){return stratMap[k];});}).length;
-  el.className='drill open';
-  if(!list.length){ el.innerHTML='<div class="dhint">Nobody is on '+(DATA.fragMin||4)+'+ projects in '+esc(SEL_ISO)+'.</div>'; return; }
-  var head='<div class="dhint"><b>'+onStrat+' of '+list.length+'</b> fragmented people are split across top-demand work (outlined chips). Names + their projects in '+esc(SEL_ISO)+':</div>';
-  el.innerHTML=head+list.map(function(f){
-    var keys=f.keys.slice().sort(function(a,b){return (KEYINDEX[a]||0)-(KEYINDEX[b]||0);});
-    return '<div class="dperson"><div class="dname">'+esc(f.person)+' <span style="color:var(--muted);font-weight:400">('+f.n+')</span></div>'
-      +'<div class="dkeys">'+keys.map(function(k){return '<span class="keychip'+(stratMap[k]?' skey':'')+'" style="background:'+keyColor(KEYINDEX[k])+'">'+esc(k)+'</span>';}).join('')+'</div></div>';
-  }).join('');
-}
-
 /* ---------------- Render: footer ---------------- */
 function renderFoot(){
   var ts = DATA&&DATA.trackedLastExport ? ' · Tracked time '+fmtExport(DATA.trackedLastExport) : '';
@@ -979,7 +886,7 @@ function renderFoot(){
 
 function renderAll(){
   renderRange(); renderWeekbar(); renderCapacity(); renderAvailability();
-  renderBars(); renderBlend(); renderHeat(); renderFoot();
+  renderBars(); renderHeat(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
