@@ -257,8 +257,9 @@ function readRosterFull_() {
       var fam   = iFam   !== -1 ? String(row[iFam]   || "").trim() : "";
       var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
       var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
-      var lvlM  = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
-      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M') };
+      var isCrew = /crew member|contractor/i.test(title);
+      var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
+      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };
       if (loc) locs[loc] = true;
       if (fam) families[fam] = true;
       if (mgr) managers[mgr] = true;
@@ -405,6 +406,7 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
       manager:     prof.manager    || '',
       location:    prof.location   || '',
       isManager:   prof.isManager  || false,
+      isCrew:      prof.isCrew     || false,
       excluded:    excludedSet[np] || false
     };
   });
@@ -869,4 +871,23 @@ function _test_personWeekPTO_() {
   assert_(!result.personWeekPlan['ben lee'],                       'Ben has no project plan');
 
   Logger.log("✅ _test_personWeekPTO_ passed");
+}
+
+function _test_isCrew_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_isCrew_: " + msg); }
+
+  var cases = [
+    { title: "60.IC3. Software Engineer",  expect: false },
+    { title: "60.M4. Engineering Manager", expect: false },
+    { title: "Crew Member",                expect: true  },
+    { title: "Senior Crew Member",         expect: true  },
+    { title: "Contractor",                 expect: true  },
+    { title: "Senior Contractor",          expect: true  },
+    { title: "",                           expect: false },
+  ];
+  cases.forEach(function(c) {
+    var result = /crew member|contractor/i.test(c.title);
+    assert_(result === c.expect, "title '" + c.title + "' → expected " + c.expect + " got " + result);
+  });
+  Logger.log("✅ _test_isCrew_ passed");
 }
