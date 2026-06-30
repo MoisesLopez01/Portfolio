@@ -125,6 +125,20 @@ svg .axis{stroke:var(--border)}
 .foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
+/* Tracked vs Planned Signals panel */
+.sig-row{border-bottom:1px solid var(--border)}
+.sig-row:last-child{border-bottom:none}
+.sig-hdr{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer;flex-wrap:wrap;border-radius:8px}
+.sig-hdr:hover{background:var(--surface-2)}
+.sig-arrow{font-size:10px;color:var(--muted);width:14px;flex:none}
+.sig-iso{font-family:'Roboto Condensed';font-weight:700;font-size:14px;min-width:84px}
+.sig-status{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;min-width:60px}
+.sig-body{padding:8px 28px 14px}
+.sig-group-lbl{font-family:'Roboto Condensed';font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px}
+.sig-item{display:flex;align-items:center;gap:10px;padding:4px 0;flex-wrap:wrap}
+.sig-name{font-weight:600;font-size:12.5px;min-width:120px}
+.sig-detail{font-size:12px;color:var(--muted)}
+.sig-ctx{font-size:11px;color:var(--slate);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
 .sigfilter{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
 .avail-filters{
   position:sticky;top:0;z-index:10;
@@ -199,6 +213,15 @@ input[type=file]{display:none}
         <div id="capChart"></div>
       </div>
       <div class="sowhat" id="capSoWhat"></div>
+    </div>
+
+    <!-- 1c. Tracked vs Planned Signals -->
+    <div class="panel" id="signalsPanel" style="display:none">
+      <div class="panel-h">
+        <h2>Tracked vs Planned Signals</h2>
+        <div class="hint">Per-week execution gaps with context · click a week to expand</div>
+      </div>
+      <div id="signals"></div>
     </div>
 
     <!-- 1b. Team Availability -->
@@ -292,6 +315,7 @@ var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
+var SIGNALS_OPEN_ISO = null;
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -498,6 +522,13 @@ function populateAvailFilters(){
   }
 }
 
+function blendCount(np, iso){
+  var ppp=DATA&&DATA.personProjectPlan&&DATA.personProjectPlan[np]||{};
+  var n=0;
+  Object.keys(ppp).forEach(function(k){ if((ppp[k][iso]||0)>0) n++; });
+  return n;
+}
+
 /* ---------------- Render: Team Availability ---------------- */
 function syncRoleChip(){
   Array.prototype.forEach.call(document.querySelectorAll('#availRole button'),function(btn){
@@ -560,13 +591,6 @@ function renderAvailability(){
     if(noplanReal>0) c.noplan=true;
     if(noplanReal===0&&ptoFull===0&&futurWeeks.length>0) c['future-plan']=true;
     return c;
-  }
-
-  function blendCount(np, iso){
-    var ppp=DATA.personProjectPlan[np]||{};
-    var n=0;
-    Object.keys(ppp).forEach(function(k){ if((ppp[k][iso]||0)>0) n++; });
-    return n;
   }
 
   // Filter: location, job family, manager, role, category; excluded persons are always hidden
@@ -954,7 +978,98 @@ function renderFoot(){
     +'ISO weeks '+(NWEEKS?WEEKS[0].iso+'–'+WEEKS[NWEEKS-1].iso:'')+'. '+src+'.';
 }
 
-function renderSignals(){ /* stub — implemented in Task 4 */ }
+/* ---------------- Render: Tracked vs Planned Signals ---------------- */
+function renderSignals(){
+  var panel=$('signalsPanel'), container=$('signals');
+  if(!panel||!container) return;
+  if(!DATA||!DATA.personSignals||!NWEEKS){ panel.style.display='none'; return; }
+  panel.style.display='';
+
+  var tgt=DATA.planTarget||0.9;
+  var html='';
+
+  WEEKS.forEach(function(w){
+    var iso=w.iso;
+    var isFuture=w.status==='plan';
+    var sigs=DATA.personSignals[iso]||{};
+    var gaps=sigs.plannedNotTracked||[];
+    var swarm=sigs.untrackedWorkers||[];
+    var fid=(DATA.fidelity&&DATA.fidelity[iso]!=null)?DATA.fidelity[iso]:null;
+    var planned=DATA.weekTotal[iso]||0;
+    var isOpen=SIGNALS_OPEN_ISO===iso;
+
+    // Fidelity chip (past/current only)
+    var chipCls='',chipTxt='';
+    if(!isFuture&&fid!==null){
+      chipCls=fid>=tgt?'head':fid>=0.6?'tight':'over';
+      chipTxt=Math.round(fid*100)+'% fidelity';
+    }
+
+    // Badge counts
+    var badgeParts=[];
+    if(!isFuture&&gaps.length)  badgeParts.push('⚠ '+gaps.length+' gap'+(gaps.length>1?'s':''));
+    if(!isFuture&&swarm.length) badgeParts.push(swarm.length+' unplanned');
+
+    html+='<div class="sig-row" data-iso="'+esc(iso)+'">';
+    html+='<div class="sig-hdr">';
+    html+='<span class="sig-arrow">'+(isOpen?'▼':'▶')+'</span>';
+    html+='<span class="sig-iso">'+esc(iso)+'</span>';
+    html+='<span class="sig-status">'+esc(STATUS_LABEL[w.status])+'</span>';
+    if(chipTxt) html+='<span class="statuschip '+chipCls+'" style="font-size:10px;padding:2px 8px">'+esc(chipTxt)+'</span>';
+    if(isFuture) html+='<span style="font-size:12px;color:var(--muted)">'+fmt(planned)+'h planned</span>';
+    if(badgeParts.length) html+='<span style="font-size:12px;color:var(--muted)">'+esc(badgeParts.join(' · '))+'</span>';
+    html+='</div>'; // .sig-hdr
+
+    if(isOpen){
+      html+='<div class="sig-body">';
+      if(isFuture){
+        html+='<span style="color:var(--muted);font-size:12px">'+fmt(planned)+'h planned across '+(DATA.activeProj[iso]||0)+' projects — tracking not yet available.</span>';
+      } else if(gaps.length===0&&swarm.length===0){
+        html+='<span style="color:var(--pos);font-size:12px">Execution on track — no gaps above threshold.</span>';
+      } else {
+        if(gaps.length){
+          html+='<div class="sig-group-lbl">Planned but not tracking</div>';
+          gaps.forEach(function(g){
+            var np=String(g.name||'').toLowerCase().replace(/\s+/g,' ').trim();
+            var ctx=[];
+            var bc=blendCount(np,iso);
+            if(bc>1) ctx.push('on '+bc+' projects');
+            var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
+            if(ptoH>0) ctx.push('PTO that week');
+            var dn=(DATA.personMeta[np]&&DATA.personMeta[np].displayName)||g.name;
+            html+='<div class="sig-item">';
+            html+='<span class="sig-name">'+esc(dn)+'</span>';
+            html+='<span class="sig-detail">'+fmt(g.plannedHrs)+'h planned</span>';
+            if(ctx.length) html+='<span class="sig-ctx">'+esc(ctx.join(' · '))+'</span>';
+            html+='</div>';
+          });
+        }
+        if(swarm.length){
+          html+='<div class="sig-group-lbl" style="margin-top:10px">Tracking with no plan</div>';
+          swarm.forEach(function(g){
+            var np=String(g.name||'').toLowerCase().replace(/\s+/g,' ').trim();
+            var dn=(DATA.personMeta[np]&&DATA.personMeta[np].displayName)||g.name;
+            html+='<div class="sig-item">';
+            html+='<span class="sig-name">'+esc(dn)+'</span>';
+            html+='<span class="sig-detail">'+fmt(g.trackedHrs)+'h tracked · not in plan</span>';
+            html+='</div>';
+          });
+        }
+      }
+      html+='</div>'; // .sig-body
+    }
+    html+='</div>'; // .sig-row
+  });
+
+  container.innerHTML=html;
+  Array.prototype.forEach.call(container.querySelectorAll('.sig-hdr'),function(hdr){
+    hdr.onclick=function(){
+      var iso=hdr.parentElement.dataset.iso;
+      SIGNALS_OPEN_ISO=SIGNALS_OPEN_ISO===iso?null:iso;
+      renderSignals();
+    };
+  });
+}
 
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
