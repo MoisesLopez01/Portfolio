@@ -1414,18 +1414,21 @@ function readPTOAccumulationProfiles_() {
       const date = parseDate_PS_(row[COL.date]);
       if (!date) { droppedNoDate++; continue; }
 
-      if (!profiles[empNum]) profiles[empNum] = { balanceHistory: [], plannedUsageDates: [], transactions: [] };
+      if (!profiles[empNum]) profiles[empNum] = { balanceHistory: [], plannedUsageDates: [], transactions: [], events: [] };
       const p = profiles[empNum];
 
       const adjType   = String(row[COL.adjType] || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-      const isUsageTx = adjType.includes("usage") || adjType.includes("timeoff");
-      const isAccrual = adjType.includes("accru");
+      const isUsageTx    = adjType.includes("usage") || adjType.includes("timeoff");
+      const isAccrual    = adjType.includes("accru");
+      const isYearExpiry = adjType.includes("yearend");
+      const isCarryover  = adjType === "carryover";
       const explicitAmt = amtCol !== -1 ? Math.abs(parseSmartFloat_PTO_(row[amtCol])) : null;
 
       // Store adjType flags on each entry so post-sort delta derivation has full context
       p.balanceHistory.push({
         date, balance: parseSmartFloat_PTO_(row[COL.balance]),
         isUsage: isUsageTx, isAccrual, explicitAmt,
+        isYearExpiry, isCarryover,
       });
 
       if (isUsageTx && date.getTime() <= horizonMs) {
@@ -1437,6 +1440,29 @@ function readPTOAccumulationProfiles_() {
     Object.values(profiles).forEach(p => {
       p.balanceHistory.sort((a, b) => a.date - b.date);
       p.plannedUsageDates.sort((a, b) => a - b);
+
+      // Build display events for Year End Expiry / Carryover transactions
+      p.events = [];
+      p.balanceHistory.forEach((entry, i) => {
+        if (!entry.isYearExpiry && !entry.isCarryover) return;
+        let hours;
+        if (entry.explicitAmt !== null && entry.explicitAmt > 0) {
+          hours = entry.isCarryover ? entry.explicitAmt : -entry.explicitAmt;
+        } else if (i > 0) {
+          const delta = entry.balance - p.balanceHistory[i - 1].balance;
+          hours = Math.round(delta);
+        } else {
+          return;
+        }
+        const isoW = isoWeekNum_PS_(entry.date);
+        const isoY = isoWeekYear_PS_(entry.date);
+        p.events.push({
+          date:      entry.date,
+          weekLabel: isoY + ".W" + isoW,
+          type:      entry.isYearExpiry ? "year-expiry" : "carryover",
+          hours:     Math.round(hours),
+        });
+      });
 
       // Build transactions from consecutive sorted balance pairs.
       // Using index-based pairs (not findIndex) avoids same-date collision issues.
