@@ -1260,8 +1260,9 @@ function readRCR_PS_(roster, teamSubset, ctx) {
     rcrHistory.push({ month: monthName, rcr, exact: isLast && sumTCC > 0 && sumRC > 0 });
   }
 
-  Logger.log(`RCR final: teamRCR=${teamRCR}, employees with RCR=${Object.keys(byEmployee).length}, history months=${rcrHistory.length}, byEmployee keys=${Object.keys(rcrByEmployee).length}`);
-  return { teamRCR, lastMonth: lastMonthName, byEmployee, rcrHistory, rcrByEmployee };
+  const tier = rcrTier_PS_(teamRCR);
+  Logger.log(`RCR final: teamRCR=${teamRCR}, tier=${tier}, employees with RCR=${Object.keys(byEmployee).length}, history months=${rcrHistory.length}, byEmployee keys=${Object.keys(rcrByEmployee).length}`);
+  return { teamRCR, lastMonth: lastMonthName, tier, byEmployee, rcrHistory, rcrByEmployee };
 }
 
 // Resolves a roster norm-name from a row in the SI sheet.
@@ -1933,7 +1934,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
         }
         return;
       }
-      if (rowQ !== ctx.goalsQuarter) return;
+      if (!ctx || rowQ !== ctx.goalsQuarter) return;
     }
 
     // Authoritative PS filter: must be in the roster (Class = 'Professional Services')
@@ -1978,8 +1979,12 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
   // Evaluate compliance per non-future week
   weeks.filter(w => !w.isFuture).forEach(week => {
     const weekEnd  = new Date(week.sunday + "T23:59:59.999Z");
-    const isoW     = isoWeekNum_PS_(new Date(week.monday + "T12:00:00Z"));
-    const qWeek    = Math.max(1, isoW - ctx.qStartIsoWeek + 1);
+    // qWeek = 1-based week number within the current quarter.
+    // Use Monday-date arithmetic so the result is correct across calendar-year
+    // boundaries (e.g. Q1 Jul 2026 → Jan 2027 would break if using raw ISO week numbers).
+    const weekMon   = mondayOfIsoWeek_PS_(week.year, week.isoWeek);
+    const qStartMon = mondayOfIsoWeek_PS_(ctx.qStartIsoYear, ctx.qStartIsoWeek);
+    const qWeek    = Math.max(1, Math.floor((weekMon - qStartMon) / (7 * 86400000)) + 1);
     const reqCmt   = Math.max(1, qWeek - 4);
     // Writing ramp: no goal-count penalty for first 4 weeks of any quarter
     const goalsRequired = qWeek <= 4 ? 0 : CONFIG_PS.GOALS_MIN_COUNT;
@@ -2439,7 +2444,7 @@ function filterTimeBySubset_(timeAll, subset) {
       totalHrs   += hrs;
       headcount++;
     }
-    result[wk] = { totalHrs, headcount, byEmployee: byEmp };
+    result[wk] = { totalHrs, headcount, byEmployee: byEmp, byEmployeeProjects: b.byEmployeeProjects || {} };
   }
   return result;
 }

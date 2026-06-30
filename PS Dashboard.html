@@ -1732,7 +1732,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div class="section-head">
         <div>
           <h2>Goals standing — <span id="goalsStandingWeek"></span></h2>
-          <p class="section-sub" id="goalsStandingSub">FY26Q4 · weeks to close</p>
+          <p class="section-sub" id="goalsStandingSub">Current quarter · weeks to close</p>
         </div>
         <div id="goalsStandingActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
           <button class="copy-btn" onclick="saveCardPNG('goalsStandingCard','goals-standing')">
@@ -2142,6 +2142,7 @@ function onDataLoaded(payload) {
       YEAR:    fc.qStartIsoYear,
     };
   }
+  updateQuarterLabels_(payload.meta && payload.meta.goalsQuarter);
   goalsAuditMap = {};
   (DATA.goalsAudit || []).forEach(function(e) { goalsAuditMap[e.normName] = e; });
   STATE.userRole  = payload.userRole  || "viewer";
@@ -2300,6 +2301,18 @@ function siLabel(v) {
   return v !== null ? (map[Math.round(v)] || v.toFixed(1)) : "—";
 }
 
+// ── QUARTER LABEL UPDATER ─────────────────────────────────
+function updateQuarterLabels_(q) {
+  if (!q) return;
+  RADAR_AXIS_DEFS.forEach(function(d) {
+    if (d.id === 'goals') d.desc = '% compliant with ' + q + ' goals';
+  });
+  WEIGHT_DEFS.forEach(function(d) {
+    if (d.key === 'goals') d.desc = q + ' compliance: binary (compliant = 100%, not = 0%)';
+  });
+  DR_METRIC_DETAIL.goals = 'Compliant with ' + q + ' goals = full credit · Not compliant = 0';
+}
+
 // ── FILTERED META ─────────────────────────────────────────
 function buildFilteredMeta(filtered) {
   var m  = DATA.meta;
@@ -2343,6 +2356,7 @@ function buildFilteredMeta(filtered) {
     kudosCurWeek:     kudosTotal,
     rampUpCount:      filtered.filter(function(e){ return e.isRampUp; }).length,
     activeCount:      filtered.filter(function(e){ return !e.isRampUp; }).length,
+    fiscalContext:    m.fiscalContext,
   };
 }
 
@@ -2634,7 +2648,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var missing = (compTot != null && compN != null) ? compTot - compN : null;
     facts.push('Goals: ' + compStr + ' compliant (' + compPct + '%)' + wowGStr);
     if (compPct >= 70) {
-      highlights.push(compStr + ' meeting FY26Q4 commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
+      highlights.push(compStr + ' meeting ' + (DATA.meta && DATA.meta.goalsQuarter || '') + ' commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
     } else if (compPct >= 50) {
       notes.push('Goals compliance at ' + compPct + '%' + (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need goal updates' : ''));
     } else {
@@ -3609,7 +3623,7 @@ function renderKPIs(m, filtered, filtering) {
     // 1 — Goal compliance: top behavioral signal
     { label: "Goal compliance",
       value: s1 && s1.gt ? (s1.gc + "/" + s1.gt) : "—",
-      sub:   s1 && s1.gt ? (pct1 + "% of " + s1.gt + " team members · " + (w1 ? w1.label.replace(/\d{4}\./, "") : "FY26Q4")) : "— · FY26Q4",
+      sub:   s1 && s1.gt ? (pct1 + "% of " + s1.gt + " team members · " + (w1 ? w1.label.replace(/\d{4}\./, "") : (DATA.meta && DATA.meta.goalsQuarter || ""))) : ("— · " + (DATA.meta && DATA.meta.goalsQuarter || "")),
       wow:   "",
       note:  (function() {
                if (!s1 || !s1.gt) return "";
@@ -3619,7 +3633,7 @@ function renderKPIs(m, filtered, filtering) {
                if (auditCount > 0) parts.push(auditCount + " flagged for inactivity (STF risk)");
                return parts.length ? "<span style='color:var(--slate)'>" + parts.join(" · ") + " — see Goals Standing for details</span>" : "";
              })(),
-      tipText: "FY26Q4 goals compliance. Rules are in 📊 Data Reference (☰ menu).\nDenominator = active employees only (ramp-up excluded).",
+      tipText: (DATA.meta && DATA.meta.goalsQuarter || "Goals") + " compliance. Rules are in 📊 Data Reference (☰ menu).\nDenominator = active employees only (ramp-up excluded).",
       color: pct1 >= 80 ? "#00A86B" : pct1 >= 60 ? "#D97706" : "var(--slate)",
       alertBorder: false,
       icon: "check" },
@@ -3971,7 +3985,7 @@ function renderCorrelationCharts(filtered) {
   // Update subtitle: quarter context + optional filter note
   var corrSub  = document.getElementById("corrFilterSub");
   var qWeeksIn = Q4_END_W - Q4_START_W + 1;
-  var qCtx     = "FY26Q4 · W" + Q4_START_W + "–W" + Q4_END_W + " · week " + qWeek + " of " + qWeeksIn;
+  var qCtx     = (DATA.meta && DATA.meta.goalsQuarter || "") + " · W" + Q4_START_W + "–W" + Q4_END_W + " · week " + qWeek + " of " + qWeeksIn;
   if (corrSub) {
     corrSub.textContent = isActiveFilter
       ? qCtx + " · filtered: " + filtered.length + " rocketeer" + (filtered.length !== 1 ? "s" : "") + " · both activity and documentation lines reflect filter"
@@ -4920,7 +4934,10 @@ function buildDetailHTML(emp) {
   var _auditBadge = '';
   if (_auditEntry) {
     if (_auditEntry.flag === 'no-activity') {
-      _auditBadge = '<span class="goals-audit-badge goals-audit-red">🔴 No activity since Apr 1 — ' + _auditEntry.totalGoals + ' goals, 0 comments</span><br>';
+      var _qMonths = ['', 'Jul', 'Oct', 'Jan', 'Apr'];
+      var _qn = DATA.meta && DATA.meta.fiscalContext && DATA.meta.fiscalContext.qNum;
+      var _qStartLbl = (_qMonths[_qn] || 'quarter start') + (_qMonths[_qn] ? ' 1' : '');
+      _auditBadge = '<span class="goals-audit-badge goals-audit-red">🔴 No activity since ' + _qStartLbl + ' — ' + _auditEntry.totalGoals + ' goals, 0 comments</span><br>';
     } else if (_auditEntry.flag === 'supervisor-only') {
       _auditBadge = '<span class="goals-audit-badge goals-audit-amber">🟡 Supervisor-only — ' + _auditEntry.goalsWithNoSelfComments + '/' + _auditEntry.totalGoals + ' goals with 0 self-comments</span><br>';
     }
@@ -5752,7 +5769,7 @@ function renderKudosCallout(filtered, weeks, refWeekLabel) {
 }
 
 var RADAR_ACTION_COPY = {
-  goals:   function(s, n) { return 'Review FY26Q4 goal updates with each supervisor. ~' + Math.round(n * (1 - s / 100)) + ' rocketeers below compliance. Owner: Supervisors. Target: resolved this week.'; },
+  goals:   function(s, n) { return 'Review ' + (DATA.meta && DATA.meta.goalsQuarter || '') + ' goal updates with each supervisor. ~' + Math.round(n * (1 - s / 100)) + ' rocketeers below compliance. Owner: Supervisors. Target: resolved this week.'; },
   tracked: function(s, n) { return Math.round(n * (1 - s / 100)) + ' rocketeers have no Tempo entries. Direct managers to follow up before EOW. Owner: Team Lead.'; },
   planned: function(s, n) { return Math.round(n * (1 - s / 100)) + ' rocketeers without a Tempo plan for upcoming weeks. Owner: PMs. By: Monday.'; },
   kudos:   function()     { return 'Recognition is near zero — a leading retention risk. Prompt peer recognition on the next team call. Owner: VP PS. This week.'; },
@@ -6935,7 +6952,7 @@ function renderGoalsStanding(filtered) {
   var curW      = curWMatch ? parseInt(curWMatch[2]) : Q4_START_W;
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
-  // Show during FY26Q4 plus one grace week (GRACE_W) so managers can confirm closures
+  // Show during current quarter plus one grace week (GRACE_W) so managers can confirm closures
   var Q4_GRACE_W = Q4.GRACE_W || Q4_END_W;
   if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_GRACE_W) { card.style.display = "none"; return; }
   card.style.display = "";
@@ -7030,10 +7047,11 @@ function renderGoalsStanding(filtered) {
 
   // Update header — show last closed week so it matches the KPI card
   document.getElementById("goalsStandingWeek").textContent = refLabel;
+  var _gq = (DATA.meta && DATA.meta.goalsQuarter) || "";
   var _subMain = isGracePeriod
-    ? "FY26Q4 closed · grace period — set all goals to Completed to close out"
+    ? _gq + " closed · grace period — set all goals to Completed to close out"
     : "Quarter week " + qWeek + " of " + weeksInQ4 + " · " + weeksRemainingDisplay +
-      (weeksRemaining <= 1 ? " week" : " weeks") + " to close · FY26Q4";
+      (weeksRemaining <= 1 ? " week" : " weeks") + " to close · " + _gq;
   document.getElementById("goalsStandingSub").textContent =
     _subMain + (isGSFiltered ? " · filtered: " + filtered.length + " rocketeers · compliance and comments chart reflect filter" : "");
 
