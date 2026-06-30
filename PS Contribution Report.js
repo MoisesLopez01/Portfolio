@@ -1852,7 +1852,7 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
 
 // histWeeks: optional list of additional completed weeks for which to compute
 // "who made at least one self-comment this Mon–Sun?" counts (used by the history chart).
-function readGoalsEngagement_(psNames, weeks, histWeeks) {
+function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
   const goalsSS = SpreadsheetApp.openById(getExternalSSIds_().goals);
   const data    = loadSheet_PS_(goalsSS, CONFIG_PS.SHEET_GOALS);
   const result  = {};
@@ -1884,12 +1884,37 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
   // Build goalMap: normName → Map<goalId, { status, selfComments: Date[] }>
   // PS membership comes from the roster (psNames), NOT from the Goals sheet's own Class column.
   // This ensures all PS rocketeers' goals are captured regardless of how Class is populated there.
-  const goalMap = new Map();
+  const goalMap     = new Map();
+  const prevGoalMap = new Map(); // prior-quarter counts for grace period display
 
   data.rows.forEach(row => {
     const rocketeer = String(row[iRocketeer] || "").trim();
     if (!rocketeer) return;
-    if (iQuarter !== -1 && String(row[iQuarter] || "").trim() !== CONFIG_PS.GOALS_QUARTER) return;
+    if (iQuarter !== -1) {
+      const rowQ = String(row[iQuarter] || "").trim();
+      if (ctx && ctx.inGracePeriod && rowQ === ctx.prevGoalsQuarter) {
+        // Prior quarter — collect counts for display only, then skip main goalMap
+        const norm = normPS_(String(row[iRocketeer] || "").trim());
+        if (psNames.has(norm)) {
+          const rawGoalId   = iGoalId   !== -1 ? String(row[iGoalId]   || "").trim() : "";
+          const rawGoalName = iGoalName !== -1 ? String(row[iGoalName] || "").trim() : "";
+          let goalId = rawGoalId || rawGoalName;
+          for (const { pattern, id } of CONFIG_PS.GOAL_ID_MAP) {
+            if (pattern.test(rawGoalName || rawGoalId)) { goalId = id; break; }
+          }
+          if (!prevGoalMap.has(norm)) prevGoalMap.set(norm, { _ids: new Set(), goalCount: 0, completedCount: 0 });
+          const p = prevGoalMap.get(norm);
+          if (goalId && !p._ids.has(goalId)) {
+            p._ids.add(goalId);
+            p.goalCount++;
+            const status = String(iStatus !== -1 ? row[iStatus] : "").trim();
+            if (status === "Completed") p.completedCount++;
+          }
+        }
+        return;
+      }
+      if (rowQ !== (ctx ? ctx.goalsQuarter : CONFIG_PS.GOALS_QUARTER)) return;
+    }
 
     // Authoritative PS filter: must be in the roster (Class = 'Professional Services')
     const norm = normPS_(rocketeer);
@@ -1928,15 +1953,16 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
     }
   });
 
-  Logger.log(`Goals: data loaded for ${goalMap.size} rocketeers (${CONFIG_PS.GOALS_QUARTER}).`);
+  Logger.log(`Goals: data loaded for ${goalMap.size} rocketeers (${ctx ? ctx.goalsQuarter : CONFIG_PS.GOALS_QUARTER}).`);
 
   // Evaluate compliance per non-future week
   weeks.filter(w => !w.isFuture).forEach(week => {
     const weekEnd  = new Date(week.sunday + "T23:59:59.999Z");
     const isoW     = isoWeekNum_PS_(new Date(week.monday + "T12:00:00Z"));
-    const qWeek    = Math.max(1, isoW - CONFIG_PS.Q4_BASE_ISO_WEEK + 1);
-    // Cumulative self-comment count required per goal — ramps 1 → 6 across Q4
+    const qWeek    = Math.max(1, isoW - (ctx ? ctx.qStartIsoWeek : CONFIG_PS.Q4_BASE_ISO_WEEK) + 1);
     const reqCmt   = Math.max(1, qWeek - 4);
+    // Writing ramp: no goal-count penalty for first 4 weeks of any quarter
+    const goalsRequired = qWeek <= 4 ? 0 : CONFIG_PS.GOALS_MIN_COUNT;
 
     let compliant = 0, total = 0;
 
@@ -1944,6 +1970,11 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
       total++;
       const empGoals = goalMap.get(norm);
       if (!empGoals || empGoals.size === 0) {
+        if (goalsRequired === 0) {
+          result[week.label].byEmployee[norm] = { compliant: true, rule: null, totalGoals: 0, inWritingRamp: true };
+          compliant++;
+          return;
+        }
         result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals: 0 };
         return;
       }
@@ -1951,8 +1982,8 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
       const goalIds    = Array.from(empGoals.keys());
       const totalGoals = goalIds.length;
 
-      // Rule 1: must have at least GOALS_MIN_COUNT goals
-      if (totalGoals < CONFIG_PS.GOALS_MIN_COUNT) {
+      // Rule 1: must have at least goalsRequired goals (relaxed to 0 during writing ramp)
+      if (totalGoals < goalsRequired) {
         result[week.label].byEmployee[norm] = { compliant: false, rule: 1, totalGoals };
         return;
       }
@@ -2010,6 +2041,22 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
       });
     });
   });
+
+  // Grace period: attach prior-quarter summary to all employees for frontend display
+  if (ctx && ctx.inGracePeriod && prevGoalMap.size > 0) {
+    weeks.filter(w => !w.isFuture).forEach(week => {
+      psNames.forEach((_, norm) => {
+        const pq = prevGoalMap.get(norm);
+        if (!pq) return;
+        if (!result[week.label].byEmployee[norm]) return;
+        result[week.label].byEmployee[norm].prevQuarterGoals = {
+          quarter:        ctx.prevGoalsQuarter,
+          goalCount:      pq.goalCount,
+          completedCount: pq.completedCount,
+        };
+      });
+    });
+  }
 
   // ── Activity audit: flag rocketeers with no self-comment activity or supervisor-only engagement.
   const _overrideNorms = new Set();
