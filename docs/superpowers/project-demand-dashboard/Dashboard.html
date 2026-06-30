@@ -73,14 +73,6 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .sowhat b{color:var(--text)}
 .sowhat.warn{border-left-color:var(--warn)} .sowhat.ok{border-left-color:var(--pos)}
 
-/* Week selector */
-.weekbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
-.weekbtn{position:relative;min-width:96px;text-align:left;padding:10px 12px;border-radius:11px;border:1px solid var(--border);background:var(--surface)}
-.weekbtn .wk{font-family:'Roboto Condensed';font-weight:700;font-size:15px}
-.weekbtn .st{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted)}
-.weekbtn.sel{border-color:var(--orbe);box-shadow:0 0 0 2px color-mix(in srgb,var(--orbe) 30%,transparent)}
-.weekbtn.current{background:linear-gradient(180deg,color-mix(in srgb,var(--orbe) 10%,var(--surface)),var(--surface))}
-
 /* Capacity headline band */
 .capwrap{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:center}
 @media(max-width:760px){.capwrap{grid-template-columns:1fr}}
@@ -120,19 +112,6 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .qchip{font-size:11.5px;font-weight:600;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer}
 .qchip.on{background:var(--void);color:#fff;border-color:var(--void)}
 [data-theme="dark"] .qchip.on{background:var(--orbe);border-color:var(--orbe)}
-
-/* two-col */
-.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:20px}
-@media(max-width:900px){.cols{grid-template-columns:1fr}}
-
-/* bars */
-.bars{display:flex;flex-direction:column;gap:7px}
-.bar{display:grid;grid-template-columns:64px 1fr 56px;align-items:center;gap:10px}
-.bar .track{height:18px;background:var(--surface-2);border-radius:5px;overflow:hidden}
-.bar .fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--orbe),var(--royal))}
-.bar .fill.win{background:linear-gradient(90deg,var(--june),var(--royal))}
-.bar .v{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
-
 
 /* svg axes */
 svg .axis{stroke:var(--border)}
@@ -201,8 +180,6 @@ input[type=file]{display:none}
   <div class="stateMsg" id="stateMsg">Loading data…</div>
 
   <div id="dash" style="display:none">
-
-    <div class="weekbar" id="weekbar"></div>
 
     <!-- 1. Demand vs Capacity — headline -->
     <div class="panel">
@@ -288,21 +265,6 @@ input[type=file]{display:none}
         <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
         <div class="hint" id="heatNote"></div>
       </div>
-    </div>
-
-    <!-- 4. Ranked demand + People & blending -->
-    <div class="cols">
-      <div class="panel">
-        <div class="panel-h">
-          <h2 id="rankTitle">Ranked demand</h2>
-          <div class="panel-tools">
-            <div class="hint">Top 12 · selected week</div>
-            <button class="png-btn" data-png="ranked-demand">⬇ Save PNG</button>
-          </div>
-        </div>
-        <div class="bars" id="bars"></div>
-      </div>
-
     </div>
 
     <div class="foot" id="foot"></div>
@@ -403,21 +365,10 @@ function css(v){return getComputedStyle(document.documentElement).getPropertyVal
 function hexVar(v){ var c=css(v); return /^#/.test(c)?c:'#888888'; }
 function heatColorHours(t){var lo=css('--heat-lo'),mid=css('--heat-mid'),hi=css('--heat-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
 
-/* ---------------- Render: range / weekbar ---------------- */
+/* ---------------- Render: range ---------------- */
 function renderRange(){
   if(!NWEEKS) return;
   $('rangeSub').textContent = WEEKS[0].iso+" → "+WEEKS[NWEEKS-1].iso+"  ·  "+NWEEKS+"-week window  ·  current week "+CURRENT_ISO;
-}
-
-function renderWeekbar(){
-  $('weekbar').innerHTML = WEEKS.map(function(w){
-    var sel=w.iso===SEL_ISO?'sel':''; var cur=w.status==='now'?'current':'';
-    return '<button class="weekbtn '+sel+' '+cur+'" data-iso="'+w.iso+'">'
-      +'<div class="wk">'+esc(w.iso)+'</div>'
-      +'<div class="st">'+STATUS_LABEL[w.status]+'</div>'
-      +'</button>';
-  }).join('');
-  Array.prototype.forEach.call($('weekbar').children,function(b){ b.onclick=function(){ SEL_ISO=b.dataset.iso; AVAIL_OPEN=null; renderAll(); }; });
 }
 
 /* ---------------- Render: Planned vs Tracked ---------------- */
@@ -978,20 +929,6 @@ function renderHeat(){
   });
 }
 
-/* ---------------- Render: ranked bars ---------------- */
-function renderBars(){
-  var iso=SEL_ISO;
-  var win=(DATA.winners[iso]&&DATA.winners[iso].key)||null;
-  var arr=DATA.order.map(function(k){return {k:k,v:capAt(k,iso)};}).filter(function(x){return x.v>0.001;}).sort(function(a,b){return b.v-a.v;}).slice(0,12);
-  var max=arr.length?arr[0].v:1;
-  $('rankTitle').textContent='Ranked demand · '+iso;
-  $('bars').innerHTML=arr.length?arr.map(function(x){
-    return '<div class="bar"><div>'+chip(x.k)+'</div>'
-      +'<div class="track"><div class="fill '+(x.k===win?'win':'')+'" style="width:'+Math.max(3,x.v/max*100)+'%"></div></div>'
-      +'<div class="v">'+fmt(x.v)+' h</div></div>';
-  }).join(''):'<div class="hint">No demand recorded for '+esc(iso)+'.</div>';
-}
-
 /* ---------------- Render: footer ---------------- */
 function renderFoot(){
   var ts = DATA&&DATA.trackedLastExport ? ' · Tracked time '+fmtExport(DATA.trackedLastExport) : '';
@@ -1003,9 +940,11 @@ function renderFoot(){
     +'ISO weeks '+(NWEEKS?WEEKS[0].iso+'–'+WEEKS[NWEEKS-1].iso:'')+'. '+src+'.';
 }
 
+function renderSignals(){ /* stub — implemented in Task 4 */ }
+
 function renderAll(){
-  renderRange(); renderWeekbar(); renderCapacity(); renderAvailability();
-  renderBars(); renderHeat(); renderFoot();
+  renderRange(); renderCapacity(); renderAvailability();
+  renderSignals(); renderHeat(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
