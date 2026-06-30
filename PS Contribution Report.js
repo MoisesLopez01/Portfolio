@@ -755,22 +755,27 @@ function buildHistWeeks_(extraPast) {
 
 // Returns all Q4 weeks from Q4_BASE_ISO_WEEK/Q4_BASE_YEAR through the current week,
 // oldest-first, no future weeks. Used to expand per-employee data beyond the rolling window.
-function buildQ4Weeks_PS_() {
-  const today    = new Date();
-  const curW     = isoWeekNum_PS_(today);
-  const curY     = isoWeekYear_PS_(today);
-  const todayMon = mondayOfIsoWeek_PS_(curY, curW);
-  const weeks    = [];
-  let w = CONFIG_PS.Q4_BASE_ISO_WEEK, y = CONFIG_PS.Q4_BASE_YEAR;
+// Returns all weeks from the current quarter's start through today (oldest-first, no future).
+// Pass ctx from computeFiscalContext_() to drive the start week dynamically.
+function buildCurrentQWeeks_PS_(ctx) {
+  var today    = new Date();
+  var curW     = isoWeekNum_PS_(today);
+  var curY     = isoWeekYear_PS_(today);
+  var todayMon = mondayOfIsoWeek_PS_(curY, curW);
+  var weeks    = [];
+  var w = ctx.qStartIsoWeek, y = ctx.qStartIsoYear;
   while (y < curY || (y === curY && w <= curW)) {
-    const entryMon = mondayOfIsoWeek_PS_(y, w);
-    const off      = Math.round((entryMon - todayMon) / 86400000) / 7;
+    var entryMon = mondayOfIsoWeek_PS_(y, w);
+    var off      = Math.round((entryMon - todayMon) / 86400000) / 7;
     weeks.push(makeWeekEntry_PS_(y, w, off));
     w++;
     if (w > weeksInYear_PS_(y)) { w = 1; y++; }
   }
   return weeks;
 }
+
+// One-release alias — remove after all callers have been updated.
+function buildQ4Weeks_PS_() { return buildCurrentQWeeks_PS_(computeFiscalContext_()); }
 
 // Derives all fiscal-year and quarter constants from a reference date (defaults to today).
 // Replaces hardcoded CONFIG_PS constants: GOALS_QUARTER, Q4_BASE_ISO_WEEK, Q4_BASE_YEAR,
@@ -1982,20 +1987,26 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
     result[week.label].total     = total;
   });
 
-  // ── Compliance override: 8+ completed goals, ≥5 with ≥8 cumulative self-comments → all weeks compliant.
+  // ── Compliance override — two paths, both mark all Q4 weeks compliant:
+  // (A) 8+ completed goals AND ≥5 goals with ≥8 cumulative self-comments (fully documented)
+  // (B) ALL goals set to Completed AND total goals ≥ GOALS_MIN_COUNT (end-of-quarter closure)
   psNames.forEach((_, norm) => {
     const empGoals = goalMap.get(norm);
     if (!empGoals || empGoals.size === 0) return;
-    const goalIds = Array.from(empGoals.keys());
-    const completedGoals = goalIds.filter(id => empGoals.get(id).completed).length;
-    if (completedGoals < 8) return;
+    const goalIds            = Array.from(empGoals.keys());
+    const totalGoals         = goalIds.length;
+    const completedGoals     = goalIds.filter(id => empGoals.get(id).completed).length;
     const fullyDocumentedCount = goalIds.filter(id => empGoals.get(id).selfComments.length >= 8).length;
-    if (fullyDocumentedCount < 5) return;
+    const allGoalsCompleted  = completedGoals === totalGoals;
+    const fullyDocOverride   = completedGoals >= CONFIG_PS.GOALS_MIN_COUNT && fullyDocumentedCount >= 5;
+    const allCompletedOverride = allGoalsCompleted && totalGoals >= CONFIG_PS.GOALS_MIN_COUNT;
+    if (!fullyDocOverride && !allCompletedOverride) return;
     weeks.filter(w => !w.isFuture).forEach(week => {
       const prev = result[week.label].byEmployee[norm];
       if (prev && !prev.compliant) result[week.label].compliant++;
       result[week.label].byEmployee[norm] = Object.assign({}, prev || {}, {
         compliant: true, overrideCompliant: true, fullyDocumentedCount, completedGoals,
+        allGoalsCompleted,
       });
     });
   });
@@ -2005,9 +2016,13 @@ function readGoalsEngagement_(psNames, weeks, histWeeks) {
   psNames.forEach((_, norm) => {
     const empGoals = goalMap.get(norm);
     if (!empGoals || empGoals.size === 0) return;
-    const goalIds = Array.from(empGoals.keys());
-    if (goalIds.filter(id => empGoals.get(id).completed).length >= 8 &&
-        goalIds.filter(id => empGoals.get(id).selfComments.length >= 8).length >= 5) {
+    const goalIds        = Array.from(empGoals.keys());
+    const totalGoals     = goalIds.length;
+    const completedGoals = goalIds.filter(id => empGoals.get(id).completed).length;
+    const allCompleted   = completedGoals === totalGoals;
+    const fullyDocumented = completedGoals >= CONFIG_PS.GOALS_MIN_COUNT &&
+      goalIds.filter(id => empGoals.get(id).selfComments.length >= 8).length >= 5;
+    if (fullyDocumented || (allCompleted && totalGoals >= CONFIG_PS.GOALS_MIN_COUNT)) {
       _overrideNorms.add(norm);
     }
   });
@@ -2606,12 +2621,13 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // These compute weighted ratios or per-employee averages that cannot be derived
   // by simple subtraction, so both full-roster and FTE variants are read separately.
   // Single read each — byEmployee covers all active, team aggregates scope to FTE.
-  const rcrAll = readRCR_PS_(active, fteActive);
-  const siAll  = readSI_PS_(active, fteActive);
+  const ctx    = computeFiscalContext_();
+  const rcrAll = readRCR_PS_(active, fteActive, ctx);
+  const siAll  = readSI_PS_(active, fteActive, ctx);
 
   const ptoProfiles = readPTOAccumulationProfiles_();   // shared (loaded once)
-  const q4Weeks = buildQ4Weeks_PS_();
-  const ptoAllWeeks = q4Weeks.concat(weeks.filter(w => w.isFuture));
+  const currentQWeeks = buildCurrentQWeeks_PS_(ctx);
+  const ptoAllWeeks = currentQWeeks.concat(weeks.filter(w => w.isFuture));
   const ptoAll  = readPTOPlanningHealthByWeek_(roster,    ptoAllWeeks, ptoProfiles);
   const ptoFTE  = readPTOPlanningHealthByWeek_(fteRoster, weeks,   ptoProfiles);
 
@@ -2621,18 +2637,18 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const histWeeks    = buildHistWeeks_(CONFIG_PS.TRACKED_HIST_WEEKS);
   const extWeeks     = [...histWeeks, ...weeks];
   const extPastWeeks = extWeeks.filter(w => !w.isFuture);
-  const q4PastWeeks  = q4Weeks.filter(w => !w.isFuture);
-  const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, q4PastWeeks, ptoProfiles);
+  const currentQPastWeeks = currentQWeeks.filter(w => !w.isFuture);
+  const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, currentQPastWeeks, ptoProfiles);
 
   const kudosAll   = readKudosByWeek_(active,  extWeeks);
   const trackedAll = readTrackedTimeByWeek_(roster, extWeeks);
   const plannedAll = readPlannedTimeByWeek_(roster, extWeeks);
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
-  const goalsAll   = readGoalsEngagement_(active, q4Weeks, extPastWeeks);
+  const goalsAll   = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx);
 
   // Per-employee goal comment flags for Q4 historical weeks (for filter-aware frontend rendering)
   const goalsQ4Hist = {};
-  q4PastWeeks.forEach(w => {
+  currentQPastWeeks.forEach(w => {
     const wd = goalsAll[w.label];
     if (!wd || !wd.byEmployee) return;
     const byEmp = {};
@@ -2661,10 +2677,10 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const phData        = readPHData_();
   const phByWeek      = buildPHByWeek_(phData, weeks, roster);
   const teamSummary   = buildTeamSummary_(weeks, rcrAll, siAll, ptoFTE, kudosFTE, trackedFTE, plannedFTE, goalsFTE);
-  // q4Weeks covers Q4 history up to the current week only — append the rolling future weeks
+  // currentQWeeks covers current-quarter history up to now — append rolling future weeks
   // so that per-employee planned hours for W+1 and W+2 are included in the employee table.
   const futureWeeks   = weeks.filter(w => w.isFuture);
-  const employeeWeeks = futureWeeks.length ? q4Weeks.concat(futureWeeks) : q4Weeks;
+  const employeeWeeks = futureWeeks.length ? currentQWeeks.concat(futureWeeks) : currentQWeeks;
   const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll);
   const fteEmployees  = employees.filter(e => !e.isCrewMember);
 
@@ -2718,7 +2734,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     };
   });
 
-  const ptoQ4History = q4PastWeeks.map(w => {
+  const ptoQ4History = currentQPastWeeks.map(w => {
     const d = ptoQ4FTE[w.label] || { goodCount: 0, atRiskCount: 0, total: 0, score: 0, byEmployee: {} };
     const byEmp = {};
     Object.entries(d.byEmployee).forEach(([norm, emp]) => { byEmp[norm] = emp.status; });
@@ -2740,7 +2756,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     userEmail:        access.email,
     managerScopeName: managerScopeName || null,
     weeks,
-    q4Weeks,
+    q4Weeks:          currentQWeeks,
     weights,
     headcount: fteRoster.size,
     teamSummary,
