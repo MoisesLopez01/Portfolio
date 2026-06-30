@@ -78,6 +78,8 @@ var CONFIG_PS = {
   SI_MAX_SCORE:          5,      // SI rating scale maximum (1–5) — used to normalise to 0–1
   TOP_PERFORMERS_MAX:    10,     // number of entries in the LEADING BEHAVIOURS leaderboard
   DEBUG:                 false,  // set true to enable verbose Logger output in development
+  SI_COL_OVERRIDE:       null,   // Set to e.g. "Small Improvements Manager Rating FY27Q1" only
+                                 // if the auto-generated name doesn't match the sheet header.
 };
 
 // ============================================================
@@ -768,6 +770,101 @@ function buildQ4Weeks_PS_() {
     if (w > weeksInYear_PS_(y)) { w = 1; y++; }
   }
   return weeks;
+}
+
+// Derives all fiscal-year and quarter constants from a reference date (defaults to today).
+// Replaces hardcoded CONFIG_PS constants: GOALS_QUARTER, Q4_BASE_ISO_WEEK, Q4_BASE_YEAR,
+// SI_QUARTER_COL, MONTH_COLS. Call once per report run; pass the result as `ctx`.
+function computeFiscalContext_(referenceDate) {
+  var today = (referenceDate instanceof Date) ? referenceDate : new Date();
+  var m  = today.getMonth() + 1; // 1–12
+  var yr = today.getFullYear();
+
+  // FY starts July 1. FY26 = Jul 2025 – Jun 2026.
+  var fyStartCalYear = (m >= 7) ? yr : yr - 1;
+  var fyNum          = fyStartCalYear + 1;
+  var fyLabel        = "FY" + String(fyNum).slice(-2);  // "FY27"
+
+  // Quarter: fixed 3-month windows
+  var qNum, qStartM, qStartY, qEndM, qEndY;
+  if      (m >= 7  && m <= 9)  { qNum = 1; qStartM = 7;  qStartY = fyStartCalYear;     qEndM = 9;  qEndY = fyStartCalYear;     }
+  else if (m >= 10 && m <= 12) { qNum = 2; qStartM = 10; qStartY = fyStartCalYear;     qEndM = 12; qEndY = fyStartCalYear;     }
+  else if (m >= 1  && m <= 3)  { qNum = 3; qStartM = 1;  qStartY = fyStartCalYear + 1; qEndM = 3;  qEndY = fyStartCalYear + 1; }
+  else                         { qNum = 4; qStartM = 4;  qStartY = fyStartCalYear + 1; qEndM = 6;  qEndY = fyStartCalYear + 1; }
+
+  var qLabel       = "Q" + qNum;
+  var goalsQuarter = fyLabel + qLabel;                                     // "FY27Q1"
+  var qStartDate   = new Date(qStartY, qStartM - 1, 1);
+  var qEndDate     = new Date(qEndY, qEndM, 0);                            // last day of last month
+  var dayOfQtr     = Math.floor((today - qStartDate) / 86400000);
+  var inGracePeriod    = dayOfQtr < 14;                                    // days 0–13
+  var inGoalWritingRamp = dayOfQtr < 28;                                   // days 0–27
+
+  var qStartIsoWeek    = isoWeekNum_PS_(qStartDate);
+  var qStartIsoYear    = isoWeekYear_PS_(qStartDate);
+  var qEndIsoWeek      = isoWeekNum_PS_(qEndDate);
+  var qEndIsoYear      = isoWeekYear_PS_(qEndDate);
+  // Constructor form avoids millisecond DST ambiguity across timezone boundaries
+  var graceEndDate     = new Date(qEndDate.getFullYear(), qEndDate.getMonth(), qEndDate.getDate() + 14);
+  var graceEndIsoWeek  = isoWeekNum_PS_(graceEndDate);
+  var graceEndIsoYear  = isoWeekYear_PS_(graceEndDate);
+
+  // Previous quarter (for grace period dual-load in readGoalsEngagement_)
+  var pqNum, pqStartM, pqStartY, prevFyLabel;
+  if      (qNum === 1) { pqNum = 4; pqStartM = 4;  pqStartY = fyStartCalYear;     prevFyLabel = "FY" + String(fyNum - 1).slice(-2); }
+  else if (qNum === 2) { pqNum = 1; pqStartM = 7;  pqStartY = fyStartCalYear;     prevFyLabel = fyLabel; }
+  else if (qNum === 3) { pqNum = 2; pqStartM = 10; pqStartY = fyStartCalYear;     prevFyLabel = fyLabel; }
+  else                 { pqNum = 3; pqStartM = 1;  pqStartY = fyStartCalYear + 1; prevFyLabel = fyLabel; }
+
+  var prevGoalsQuarter  = prevFyLabel + "Q" + pqNum;                       // "FY26Q4"
+  var prevQStartDate    = new Date(pqStartY, pqStartM - 1, 1);
+  var prevQStartIsoWeek = isoWeekNum_PS_(prevQStartDate);
+  var prevQStartIsoYear = isoWeekYear_PS_(prevQStartDate);
+
+  // SI column: always points to last completed quarter (one behind current)
+  var siQuarterCol = CONFIG_PS.SI_COL_OVERRIDE ||
+    ("Small Improvements Manager Rating " + prevGoalsQuarter);
+
+  // MONTH_COLS: Jul–Jun labels for this FY (e.g. "Jul 26", "Jan 27")
+  var ABBREVS  = ["Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May","Jun"];
+  var monthCols = ABBREVS.map(function(a, i) {
+    var y = (i < 6) ? fyStartCalYear : fyStartCalYear + 1;
+    return a + " " + String(y).slice(-2);
+  });
+
+  return {
+    fyLabel: fyLabel, qLabel: qLabel,
+    goalsQuarter: goalsQuarter, siQuarterCol: siQuarterCol, monthCols: monthCols,
+    qStartIsoWeek: qStartIsoWeek, qStartIsoYear: qStartIsoYear,
+    qEndIsoWeek: qEndIsoWeek, qEndIsoYear: qEndIsoYear,
+    graceEndIsoWeek: graceEndIsoWeek, graceEndIsoYear: graceEndIsoYear,
+    inGracePeriod: inGracePeriod, inGoalWritingRamp: inGoalWritingRamp,
+    prevGoalsQuarter: prevGoalsQuarter,
+    prevQStartIsoWeek: prevQStartIsoWeek, prevQStartIsoYear: prevQStartIsoYear,
+  };
+}
+
+function _test_computeFiscalContext() {
+  var cases = [
+    { date: "2026-06-30", desc: "Last day FY26Q4 — no grace, no ramp" },
+    { date: "2026-07-01", desc: "FY27Q1 day 0 — grace + ramp active" },
+    { date: "2026-07-07", desc: "FY27Q1 day 6 — grace + ramp active" },
+    { date: "2026-07-14", desc: "FY27Q1 day 13 — last grace day" },
+    { date: "2026-07-15", desc: "FY27Q1 day 14 — grace over, ramp active" },
+    { date: "2026-07-28", desc: "FY27Q1 day 27 — last ramp day" },
+    { date: "2026-07-29", desc: "FY27Q1 day 28 — both flags false" },
+  ];
+  cases.forEach(function(c) {
+    var ctx = computeFiscalContext_(new Date(c.date));
+    Logger.log(c.desc + " (" + c.date + ")");
+    Logger.log("  fy=" + ctx.fyLabel + " q=" + ctx.qLabel +
+               " goalsQ=" + ctx.goalsQuarter + " prevQ=" + ctx.prevGoalsQuarter);
+    Logger.log("  siCol=" + ctx.siQuarterCol);
+    Logger.log("  monthCols=[" + ctx.monthCols.join(", ") + "]");
+    Logger.log("  qStart=W" + ctx.qStartIsoWeek + "/" + ctx.qStartIsoYear +
+               " qEnd=W" + ctx.qEndIsoWeek + " graceEnd=W" + ctx.graceEndIsoWeek);
+    Logger.log("  inGrace=" + ctx.inGracePeriod + " inRamp=" + ctx.inGoalWritingRamp);
+  });
 }
 
 // ============================================================
