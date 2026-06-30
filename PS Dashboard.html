@@ -1742,6 +1742,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
       </div>
       <div id="goalsVerdict" class="verdict-slot"></div>
+      <div id="goalsAuditPanel" style="padding:0 16px;display:none"></div>
       <div id="goalsStandingKpis" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 16px 16px"></div>
       <div style="position:relative;height:200px;padding:0 12px 0">
         <canvas id="goalsCommentPaceChart"></canvas>
@@ -2078,7 +2079,7 @@ function closeMenuTab(id) {
 
 // ── Q4 CONSTANTS — UPDATE EACH QUARTER to match CONFIG_PS in PS Contribution Report.js ──
 // (Q4_BASE_ISO_WEEK → START_W, Q4_END → END_W, Q4_BASE_YEAR → YEAR)
-var Q4 = { START_W: 14, END_W: 26, YEAR: 2026 };
+var Q4 = { START_W: 14, END_W: 26, GRACE_W: 28, YEAR: 2026 };
 
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
@@ -2131,6 +2132,16 @@ function onDataLoaded(payload) {
   if (!payload.ok) { onDataError(payload.error || "Unknown error"); return; }
 
   DATA = payload;
+  // Sync Q4 constants from server so renders stay correct at every quarter rollover
+  if (payload.meta && payload.meta.fiscalContext) {
+    var fc = payload.meta.fiscalContext;
+    Q4 = {
+      START_W: fc.qStartIsoWeek,
+      END_W:   fc.qEndIsoWeek,
+      GRACE_W: fc.graceEndIsoWeek,
+      YEAR:    fc.qStartIsoYear,
+    };
+  }
   goalsAuditMap = {};
   (DATA.goalsAudit || []).forEach(function(e) { goalsAuditMap[e.normName] = e; });
   STATE.userRole  = payload.userRole  || "viewer";
@@ -4817,6 +4828,11 @@ function buildDetailHTML(emp) {
       ? ' <span class="det-goal-ok" style="font-size:10px">✓</span>'
       : ' <span class="det-goal-fail" style="font-size:10px">✗</span>';
   }
+  // Once overrideCompliant fires (all goals done), future weeks show ✓ — state won't change.
+  var empHasOverride = pastAndCur.some(function(w) {
+    var gd = (emp.weeks[w.label] || {}).goalsDetail;
+    return gd && gd.overrideCompliant;
+  });
 
   // ── Expandable metric table ───────────────────────────────────────
   var indivAxes = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], isCrewEmp(emp));
@@ -4882,7 +4898,9 @@ function buildDetailHTML(emp) {
   weeks.forEach(function(w) {
     var gd = (emp.weeks[w.label] || {}).goalsDetail;
     html += '<td>';
-    if (w.isFuture || !gd) {
+    if (w.isFuture && empHasOverride) {
+      html += '<span class="det-goal-ok" style="font-size:15px;font-weight:700">✓</span>';
+    } else if (w.isFuture || !gd) {
       html += '<span style="color:var(--muted)">—</span>';
     } else if (w.isCurrentWeek) {
       html += gd.compliant
@@ -4912,7 +4930,9 @@ function buildDetailHTML(emp) {
   weeks.forEach(function(w) {
     var gd = (emp.weeks[w.label] || {}).goalsDetail;
     html += '<td><div class="det-expand-inner"><div class="det-expand-pad">';
-    if (w.isFuture || !gd) {
+    if (w.isFuture && empHasOverride) {
+      html += '<span style="color:#166534">✅ All done</span>';
+    } else if (w.isFuture || !gd) {
       html += '<span style="color:var(--muted)">—</span>';
     } else if (gd.compliant) {
       if (gd.overrideCompliant) {
@@ -4938,6 +4958,14 @@ function buildDetailHTML(emp) {
     } else {
       html += '<span style="color:#92400E">' + (gd.qualifying || 0) + '/6 goals commented</span><br>';
       html += '<span style="color:var(--muted)">≥' + (gd.reqCmt || 1) + ' comments required per goal</span>';
+    }
+    // Grace period: show prior-quarter closed summary
+    if (gd && gd.prevQuarterGoals) {
+      var pq = gd.prevQuarterGoals;
+      html += '<div style="margin-top:4px;padding:3px 5px;background:#F0F4FF;border-radius:3px;font-size:10px;color:#3B5BDB">'
+            + esc(pq.quarter) + ' — Closed · '
+            + pq.completedCount + '/' + pq.goalCount + ' completed'
+            + '</div>';
     }
     html += '</div></div></td>';
   });
@@ -5063,6 +5091,17 @@ function buildDetailHTML(emp) {
       html += ph.status === "Good"
         ? '<span style="color:#166534">Good standing</span>'
         : '<span style="color:#D97706">At risk</span>';
+      // Show Year End Expiry / Carryover events as informational badges
+      var ptoEvents = ph.ptoEvents || [];
+      ptoEvents.forEach(function(ev) {
+        var label = ev.type === 'carryover'
+          ? '+' + ev.hours + 'h carried over'
+          : ev.hours + 'h expired';
+        var bg = ev.type === 'carryover' ? '#ECFDF5' : '#FEF3C7';
+        var fg = ev.type === 'carryover' ? '#065F46' : '#92400E';
+        html += '<div style="margin-top:3px;padding:2px 5px;background:' + bg
+              + ';color:' + fg + ';border-radius:3px;font-size:10px">' + esc(label) + '</div>';
+      });
       prevBal = bal;
     } else {
       html += '<span style="color:var(--muted)">—</span>';
@@ -6896,9 +6935,11 @@ function renderGoalsStanding(filtered) {
   var curW      = curWMatch ? parseInt(curWMatch[2]) : Q4_START_W;
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
-  // Only show this card when we're inside FY26Q4
-  if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_END_W) { card.style.display = "none"; return; }
+  // Show during FY26Q4 plus one grace week (GRACE_W) so managers can confirm closures
+  var Q4_GRACE_W = Q4.GRACE_W || Q4_END_W;
+  if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_GRACE_W) { card.style.display = "none"; return; }
   card.style.display = "";
+  var isGracePeriod = curW > Q4_END_W;
 
   var qWeek          = Math.max(1, curW - Q4_START_W + 1);
   var weeksInQ4      = Q4_END_W - Q4_START_W + 1; // 13
@@ -6989,10 +7030,12 @@ function renderGoalsStanding(filtered) {
 
   // Update header — show last closed week so it matches the KPI card
   document.getElementById("goalsStandingWeek").textContent = refLabel;
+  var _subMain = isGracePeriod
+    ? "FY26Q4 closed · grace period — set all goals to Completed to close out"
+    : "Quarter week " + qWeek + " of " + weeksInQ4 + " · " + weeksRemainingDisplay +
+      (weeksRemaining <= 1 ? " week" : " weeks") + " to close · FY26Q4";
   document.getElementById("goalsStandingSub").textContent =
-    "Quarter week " + qWeek + " of " + weeksInQ4 + " · " + weeksRemainingDisplay +
-    (weeksRemaining <= 1 ? " week" : " weeks") + " to close · FY26Q4" +
-    (isGSFiltered ? " · filtered: " + filtered.length + " rocketeers · compliance and comments chart reflect filter" : "");
+    _subMain + (isGSFiltered ? " · filtered: " + filtered.length + " rocketeers · compliance and comments chart reflect filter" : "");
 
   // All-done count: employees with overrideCompliant in any week
   var allDoneCount = 0;
@@ -7020,7 +7063,7 @@ function renderGoalsStanding(filtered) {
     '</div>' +
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px">' +
       '<div style="font-size:32px;font-weight:800;color:' + doneColor + ';line-height:1.1">' + allDoneCount + '</div>' +
-      '<div style="font-size:12px;font-weight:700;color:var(--slate);margin-top:4px">all done · 8+ completed &amp; documented</div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--slate);margin-top:4px">all done · 8+ goals completed</div>' +
     '</div>' +
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px">' +
       '<div style="font-size:32px;font-weight:800;color:' + urgColor + ';line-height:1.1">' + weeksRemainingDisplay + ' wks left</div>' +
