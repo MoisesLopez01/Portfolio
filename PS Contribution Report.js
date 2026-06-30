@@ -1138,7 +1138,7 @@ function resolveManagerScope_(roster, managerNorm) {
 // Computes team RCR = SUM(Revenue Contribution) / SUM(TCC A+B) for the PS headcount.
 // Uses "3. RCR" as a bridge: name-matches to roster to get per-employee RCR values AND
 // harvests Employee IDs (same format as RC/TCC sheets) to do the team SUM(RC)/SUM(TCC).
-function readRCR_PS_(roster, teamSubset) {
+function readRCR_PS_(roster, teamSubset, ctx) {
   const aggRoster = teamSubset || roster;  // controls team-level aggregation; byEmployee still covers all roster
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const empty = { teamRCR: null, lastMonth: null, tier: "No Data", byEmployee: {} };
@@ -1154,7 +1154,7 @@ function readRCR_PS_(roster, teamSubset) {
   const iRcrId = rcrHdrs.findIndex(h => /^employee.?id/i.test(h.trim()));
 
   // Detect last populated month from 3. RCR
-  const rcrMonthIdxs = CONFIG_PS.MONTH_COLS.map(m => rcrHdrs.findIndex(h => h.trim() === m));
+  const rcrMonthIdxs = ctx.monthCols.map(m => rcrHdrs.findIndex(h => h.trim() === m));
   let lastMonthPos = -1;
   for (let mi = rcrMonthIdxs.length - 1; mi >= 0; mi--) {
     const col = rcrMonthIdxs[mi];
@@ -1165,7 +1165,7 @@ function readRCR_PS_(roster, teamSubset) {
   }
   if (lastMonthPos === -1) { Logger.log(`⚠️ RCR: no populated month in "${CONFIG_PS.SHEET_RCR}".`); return empty; }
 
-  const lastMonthName = CONFIG_PS.MONTH_COLS[lastMonthPos];
+  const lastMonthName = ctx.monthCols[lastMonthPos];
   const rcrMonthCol   = rcrMonthIdxs[lastMonthPos];
 
   // Build per-employee RCR from 3. RCR and collect name→employeeId bridge
@@ -1253,7 +1253,7 @@ function readRCR_PS_(roster, teamSubset) {
   for (let mi = histStart; mi <= lastMonthPos; mi++) {
     const col = rcrMonthIdxs[mi];
     if (col === -1) continue;
-    const monthName = CONFIG_PS.MONTH_COLS[mi];
+    const monthName = ctx.monthCols[mi];
     const vals = [];
     rcrSheet.rows.forEach(row => {
       const nm = normPS_(String(row[iRcrName] || "").trim());
@@ -1290,11 +1290,11 @@ function resolveSIRowNorm_(row, iEmpNum, empNumToNorm, siNameCol, roster) {
 }
 
 // Reads SI scores; matches by Employee Number (same join key as Contribution Report.js)
-function readSI_PS_(roster, teamSubset) {
+function readSI_PS_(roster, teamSubset, ctx) {
   const aggRoster = teamSubset || roster;  // controls teamAvg / siHistory; byEmployee covers all roster
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const data    = loadSheet_PS_(ss, CONFIG_PS.SHEET_SI);
-  const quarter = CONFIG_PS.SI_QUARTER_COL.match(/FY\w+/i)?.[0] || "";
+  const quarter = ctx.siQuarterCol.match(/FY\w+/i)?.[0] || "";
   const empty   = { teamAvg: null, quarter, byEmployee: {} };
   if (!data) { Logger.log(`⚠️ SI sheet not found.`); return empty; }
 
@@ -1306,9 +1306,9 @@ function readSI_PS_(roster, teamSubset) {
   const iEmpNum = hdrs.findIndex(h => /employee.?number|emp.?num/i.test(h.trim()));
   if (iEmpNum === -1) { Logger.log(`⚠️ SI: "Employee Number" column not found. Attempting name fallback.`); }
 
-  const iSI = hdrs.findIndex(h => h.trim() === CONFIG_PS.SI_QUARTER_COL);
+  const iSI = hdrs.findIndex(h => h.trim() === ctx.siQuarterCol);
   if (iSI === -1) {
-    Logger.log(`⚠️ SI column "${CONFIG_PS.SI_QUARTER_COL}" not found. Headers: ${hdrs.join(", ")}`);
+    Logger.log(`⚠️ SI column "${ctx.siQuarterCol}" not found. Headers: ${hdrs.join(", ")}`);
     return empty;
   }
 
