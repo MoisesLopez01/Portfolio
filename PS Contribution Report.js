@@ -35,12 +35,6 @@ var CONFIG_PS = {
 
   PS_CLASS:          "Professional Services",
   PS_DEPT:           "Services",
-  GOALS_QUARTER:     "FY26Q4",
-  SI_QUARTER_COL:    "Small Improvements Manager Rating FY26Q3",
-
-  // FY26Q4: April 1–June 30 2026; week containing Apr 1 = ISO week 14
-  Q4_BASE_ISO_WEEK:  14,
-  Q4_BASE_YEAR:      2026,
   GOALS_MIN_COUNT:          8,     // minimum goals to be evaluated (quarter target is 10, 8 completed)
   GOALS_MIN_IN_PROGRESS_PCT: 0.50, // majority of goals must be "In Progress" (not Planned/Completed)
   GOALS_ACTIVE_COMMENT_COUNT: 6,   // goals that must have a self-comment within the evaluated week
@@ -58,11 +52,6 @@ var CONFIG_PS = {
   RCR_CRITICAL:      1.0,
   RCR_WATCH:         1.5,
   RCR_HEALTHY:       2.5,
-
-  MONTH_COLS: [
-    "Jul 25","Aug 25","Sep 25","Oct 25","Nov 25","Dec 25",
-    "Jan 26","Feb 26","Mar 26","Apr 26","May 26","Jun 26"
-  ],
 
   DEFAULT_TARGET_WEEKLY_HRS: 36,
   GOAL_ID_MAP: [
@@ -1913,7 +1902,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
         }
         return;
       }
-      if (rowQ !== (ctx ? ctx.goalsQuarter : CONFIG_PS.GOALS_QUARTER)) return;
+      if (rowQ !== ctx.goalsQuarter) return;
     }
 
     // Authoritative PS filter: must be in the roster (Class = 'Professional Services')
@@ -1953,13 +1942,13 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
     }
   });
 
-  Logger.log(`Goals: data loaded for ${goalMap.size} rocketeers (${ctx ? ctx.goalsQuarter : CONFIG_PS.GOALS_QUARTER}).`);
+  Logger.log(`Goals: data loaded for ${goalMap.size} rocketeers (${ctx.goalsQuarter}).`);
 
   // Evaluate compliance per non-future week
   weeks.filter(w => !w.isFuture).forEach(week => {
     const weekEnd  = new Date(week.sunday + "T23:59:59.999Z");
     const isoW     = isoWeekNum_PS_(new Date(week.monday + "T12:00:00Z"));
-    const qWeek    = Math.max(1, isoW - (ctx ? ctx.qStartIsoWeek : CONFIG_PS.Q4_BASE_ISO_WEEK) + 1);
+    const qWeek    = Math.max(1, isoW - ctx.qStartIsoWeek + 1);
     const reqCmt   = Math.max(1, qWeek - 4);
     // Writing ramp: no goal-count penalty for first 4 weeks of any quarter
     const goalsRequired = qWeek <= 4 ? 0 : CONFIG_PS.GOALS_MIN_COUNT;
@@ -2826,7 +2815,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
       siTeamAvg:        siAll.teamAvg,
       siTeamRounded:    siAll.teamAvg !== null ? Math.round(siAll.teamAvg) : null,
       siQuarter:        siAll.quarter || "",
-      goalsQuarter:     CONFIG_PS.GOALS_QUARTER,
+      goalsQuarter:     ctx.goalsQuarter,
+      fiscalContext:    ctx,
       rampUpCount:      [...fteRoster.values()].filter(p => p.isRampUp).length,
       activeCount:      fteActive.size,
       goalsCompliant:   curGoals.compliant,
