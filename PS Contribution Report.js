@@ -1603,6 +1603,11 @@ function readPTOPlanningHealthByWeek_(roster, weeks, profiles) {
           pct12mo:        hasAmountData && annualAccrual > 0 ? Math.round(totalTakenPlanned / annualAccrual * 100) : null,
           pctPast6:       hasAmountData && annualAccrual > 0 ? Math.round(pastSixTaken      / annualAccrual * 100) : null,
         };
+        // Attach any Year End Expiry / Carryover events that fall in this week
+        const empEvents = accumP ? (accumP.events || []).filter(e => e.weekLabel === week.label) : [];
+        if (empEvents.length > 0) {
+          bucket.byEmployee[norm].ptoEvents = empEvents.map(e => ({ type: e.type, hours: e.hours }));
+        }
       });
 
       bucket.score = bucket.total > 0
