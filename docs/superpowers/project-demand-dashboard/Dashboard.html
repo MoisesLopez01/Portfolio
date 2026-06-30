@@ -217,6 +217,11 @@ input[type=file]{display:none}
         <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
         <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
         <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+        <select class="sigfilter" id="availCrew">
+          <option value="">All members</option>
+          <option value="fte">FTE Only</option>
+          <option value="crew">Crew Only</option>
+        </select>
         <div class="chip-toggle" id="availRole">
           <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();renderAvailability()">All</button>
           <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
@@ -286,7 +291,7 @@ var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
-var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
+var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -486,6 +491,11 @@ function populateAvailFilters(){
       renderAvailability();
     };
   });
+  var crewEl = $('availCrew');
+  if (crewEl) {
+    crewEl.value = AVAIL_CREW;
+    crewEl.onchange = function() { AVAIL_CREW = this.value; renderAvailability(); };
+  }
 }
 
 /* ---------------- Render: Team Availability ---------------- */
@@ -507,6 +517,8 @@ function renderAvailability(){
   if(AVAIL_MGR)filterParts.push(esc(AVAIL_MGR));
   if(AVAIL_ROLE==='m')filterParts.push('Managers');
   if(AVAIL_ROLE==='ic')filterParts.push('ICs');
+  if(AVAIL_CREW==='fte') filterParts.push('FTE only');
+  if(AVAIL_CREW==='crew')filterParts.push('Crew only');
   if(AVAIL_CAT){var catLabels={'high':'≥90%','mid':'60–90%','low':'<60%','over':'over-tracked','future-plan':'future: planned','noplan':'future: no plan','pto':'on leave'};filterParts.push(catLabels[AVAIL_CAT]||AVAIL_CAT);}
   if(AVAIL_BLEND>0)filterParts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));
   var sumEl=$('availFilterSummary');
@@ -566,6 +578,8 @@ function renderAvailability(){
     if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
     if(AVAIL_ROLE==='m'&&!m.isManager)return false;
     if(AVAIL_ROLE==='ic'&&m.isManager)return false;
+    if(AVAIL_CREW==='fte'  && m.isCrew) return false;
+    if(AVAIL_CREW==='crew' && !m.isCrew) return false;
     if(AVAIL_CAT){
       var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{},DATA.personWeekPTO[np]||{});
       if(!cats[AVAIL_CAT])return false;
@@ -782,7 +796,7 @@ function toggleAvailDrill(np){
 }
 
 function clearAvailFilters(){
-  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_ROLE='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
+  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
   populateAvailFilters();
   renderAvailability();
 }
