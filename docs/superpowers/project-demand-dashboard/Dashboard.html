@@ -201,6 +201,33 @@ input[type=file]{display:none}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
 .projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
 .projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
+/* Filter bar collapse */
+.dash-filters{flex-direction:column;align-items:flex-start}
+.dash-filters-hdr{display:flex;align-items:center;gap:8px;cursor:pointer;width:100%}
+.dash-filters-hdr:hover .dash-filters-lbl{color:var(--text)}
+.filter-summary{font-size:11px;color:var(--orbe);font-weight:600;flex:1}
+.filter-toggle{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.dash-filters-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:8px;width:100%;border-top:1px solid var(--border);margin-top:6px}
+/* Blend distribution chart */
+.blend-chart{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.blend-chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
+.blend-bars{display:flex;flex-direction:column;gap:5px}
+.blend-bar-row{display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:background .1s}
+.blend-bar-row:hover{background:var(--surface)}
+.blend-bar-row.active{background:color-mix(in srgb,var(--orbe) 12%,var(--surface-2));outline:1px solid var(--orbe)}
+.blend-bar-lbl{font-size:10px;color:var(--muted);width:66px;flex:none}
+.blend-bar-track{flex:1;background:var(--border);border-radius:3px;height:8px;overflow:hidden}
+.blend-bar-fill{height:100%;border-radius:3px;background:var(--orbe)}
+.blend-bar-count{font-size:10px;font-weight:700;color:var(--text);width:24px;text-align:right;flex:none}
+/* Week window nav */
+.ta-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.ta-win-nav{display:flex;align-items:center;gap:4px}
+.ta-win-nav button{padding:3px 7px;font-size:11px;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
+.ta-win-nav button:disabled{opacity:.35;cursor:default}
+.ta-win-nav button:not([disabled]):hover{background:var(--surface-2)}
+.ta-win-lbl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;min-width:90px;text-align:center}
+/* Pattern run compression */
+.pattern-run{min-width:52px}
 </style>
 </head>
 <body>
@@ -246,31 +273,37 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
-    <!-- Dashboard-level people filters -->
+    <!-- Dashboard-level people filters (collapsible) -->
     <div class="dash-filters" id="dashFilters" style="display:none">
-      <span class="dash-filters-lbl">People filters</span>
-      <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
-      <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
-      <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
-      <select class="sigfilter" id="availCrew">
-        <option value="">FTE + Crew</option>
-        <option value="fte">FTE Only</option>
-        <option value="crew">Crew Only</option>
-      </select>
-      <div class="chip-toggle" id="availRole">
-        <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();renderAvailability()">All</button>
-        <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
-        <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();renderAvailability()">ICs</button>
+      <div class="dash-filters-hdr" onclick="FILTER_EXPANDED=!FILTER_EXPANDED;updateFilterBar_()">
+        <span class="dash-filters-lbl">People filters</span>
+        <span class="filter-summary" id="filterSummary">All people</span>
+        <span class="filter-toggle" id="filterToggle">▾ expand</span>
       </div>
-      <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;renderAvailability()">
-        <option value="">All statuses</option>
-        <option value="aligned">Aligned</option>
-        <option value="unplanned">Unplanned work</option>
-        <option value="silent">Silent gap</option>
-        <option value="escalation">Escalation</option>
-        <option value="leave">On leave</option>
-      </select>
-      <button class="btn" onclick="clearAvailFilters()" style="font-size:11px;padding:5px 10px">✕ Clear</button>
+      <div class="dash-filters-body" id="dashFiltersBody" style="display:none">
+        <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
+        <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
+        <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+        <select class="sigfilter" id="availCrew">
+          <option value="">FTE + Crew</option>
+          <option value="fte">FTE Only</option>
+          <option value="crew">Crew Only</option>
+        </select>
+        <div class="chip-toggle" id="availRole">
+          <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();reRenderAll_()">All</button>
+          <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();reRenderAll_()">Mgrs</button>
+          <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();reRenderAll_()">ICs</button>
+        </div>
+        <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;reRenderAll_()">
+          <option value="">All statuses</option>
+          <option value="aligned">Aligned</option>
+          <option value="unplanned">Unplanned work</option>
+          <option value="silent">Silent gap</option>
+          <option value="escalation">Escalation</option>
+          <option value="leave">On leave</option>
+        </select>
+        <button class="btn" onclick="clearAvailFilters()" style="font-size:11px;padding:5px 10px">✕ Clear</button>
+      </div>
     </div>
 
     <!-- 1b. Team Availability -->
@@ -348,6 +381,11 @@ var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_STATUS = "";
+var AVAIL_WIN_SIZE = 8; // week window for TA pattern strip (0 = all QTD)
+var AVAIL_WIN_PAGE = 0; // 0 = latest window, 1 = one window earlier, etc.
+var AVAIL_BLEND = 0;    // project-count tier filter (0=all, 1/2/3/4=specific)
+var FILTER_EXPANDED = false; // people filter bar expand state
+var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -402,7 +440,7 @@ function applyModel(model){
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
-function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; var f=$('dashFilters'); if(f) f.style.display=""; }
+function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; var f=$('dashFilters'); if(f) f.style.display=""; updateFilterBar_(); }
 function fmtExport(iso){
   try{ var d=new Date(iso); if(isNaN(d)) return iso;
     var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -544,13 +582,13 @@ function populateAvailFilters(){
       if(id==='availLoc')AVAIL_LOC=this.value;
       if(id==='availFam')AVAIL_FAM=this.value;
       if(id==='availMgr')AVAIL_MGR=this.value;
-      renderAvailability();
+      reRenderAll_();
     };
   });
   var crewEl = $('availCrew');
   if (crewEl) {
     crewEl.value = AVAIL_CREW;
-    crewEl.onchange = function() { AVAIL_CREW = this.value; renderAvailability(); };
+    crewEl.onchange = function() { AVAIL_CREW = this.value; reRenderAll_(); };
   }
   var stEl = $('availStatus'); if (stEl) stEl.value = AVAIL_STATUS;
 }
@@ -560,6 +598,117 @@ function syncRoleChip(){
   Array.prototype.forEach.call(document.querySelectorAll('#availRole button'),function(btn){
     btn.className=btn.getAttribute('data-role')===AVAIL_ROLE?'on':'';
   });
+}
+
+/* -- Shared filter helpers -- */
+function filteredPersonSet_(){
+  if(!DATA||!DATA.personMeta)return null;
+  if(!AVAIL_LOC&&!AVAIL_FAM&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE)return null;
+  var set={};
+  Object.keys(DATA.personMeta).forEach(function(np){
+    var m=DATA.personMeta[np];
+    if(m.excluded)return;
+    if(AVAIL_LOC&&m.location!==AVAIL_LOC)return;
+    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return;
+    if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return;
+    if(AVAIL_CREW==='fte'&&m.isCrew)return;
+    if(AVAIL_CREW==='crew'&&!m.isCrew)return;
+    if(AVAIL_ROLE==='m'&&!m.isManager)return;
+    if(AVAIL_ROLE==='ic'&&m.isManager)return;
+    set[np]=true;
+  });
+  return set;
+}
+
+function updateFilterBar_(){
+  var body=$('dashFiltersBody'),toggle=$('filterToggle'),summary=$('filterSummary');
+  if(!body||!toggle)return;
+  if(FILTER_EXPANDED){body.style.display='';toggle.textContent='▴ collapse';}
+  else{body.style.display='none';toggle.textContent='▾ expand';}
+  var parts=[];
+  if(AVAIL_ROLE==='m')parts.push('Mgrs');
+  else if(AVAIL_ROLE==='ic')parts.push('ICs');
+  if(AVAIL_LOC)parts.push(AVAIL_LOC);
+  if(AVAIL_FAM)parts.push(AVAIL_FAM);
+  if(AVAIL_MGR)parts.push(AVAIL_MGR);
+  if(AVAIL_CREW==='fte')parts.push('FTE only');
+  else if(AVAIL_CREW==='crew')parts.push('Crew only');
+  if(AVAIL_STATUS){parts.push(AVAIL_STATUS.charAt(0).toUpperCase()+AVAIL_STATUS.slice(1).replace('-',' '));}
+  if(AVAIL_BLEND>0){parts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));}
+  if(summary){summary.textContent=parts.length?parts.join(' · '):'All people';}
+}
+
+function reRenderAll_(){
+  AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;
+  renderAvailability();
+  if(typeof renderHeat==='function')renderHeat();
+  updateFilterBar_();
+}
+
+function taWindowIsos_(qtdIsos,currentIso){
+  QTD_ISOS=qtdIsos;
+  if(AVAIL_WIN_SIZE===0)return qtdIsos;
+  var endIdx=qtdIsos.indexOf(currentIso);
+  if(endIdx<0)endIdx=qtdIsos.length-1;
+  var pageEnd=Math.max(0,endIdx-AVAIL_WIN_PAGE*AVAIL_WIN_SIZE);
+  var pageStart=Math.max(0,pageEnd-AVAIL_WIN_SIZE+1);
+  return qtdIsos.slice(pageStart,pageEnd+1);
+}
+
+function blendDistChart_(allPeople,personQtdProjectCounts,currentIso){
+  var counts={1:0,2:0,3:0,4:0};
+  allPeople.forEach(function(np){
+    var c=(personQtdProjectCounts[np]||{})[currentIso]||0;
+    var tier=c>=4?4:Math.max(1,c||1);
+    counts[tier]++;
+  });
+  var total=allPeople.length||1;
+  var labels={1:'1 project',2:'2 projects',3:'3 projects',4:'4+ projects'};
+  var html='<div class="blend-chart"><div class="blend-chart-title">Project load distribution — click to filter</div><div class="blend-bars">';
+  [1,2,3,4].forEach(function(tier){
+    var n=counts[tier];
+    var pct=Math.round(n/total*100);
+    var isActive=AVAIL_BLEND===tier;
+    html+='<div class="blend-bar-row'+(isActive?' active':'')+'" onclick="AVAIL_BLEND='+(isActive?0:tier)+';AVAIL_OPEN=null;renderAvailability()">';
+    html+='<div class="blend-bar-lbl">'+labels[tier]+'</div>';
+    html+='<div class="blend-bar-track"><div class="blend-bar-fill" style="width:'+pct+'%"></div></div>';
+    html+='<div class="blend-bar-count">'+n+'</div>';
+    html+='</div>';
+  });
+  html+='</div></div>';
+  return html;
+}
+
+function compressPatternRuns_(np,displayIsos,personWeekState,currentIso){
+  var runs=[];
+  displayIsos.forEach(function(iso){
+    var s=(personWeekState[np]||{})[iso];
+    var isFuture=iso>currentIso,isCur=iso===currentIso;
+    var key=isFuture?'_future':(isCur?'_current':(s||'_none'));
+    if(!runs.length||runs[runs.length-1].key!==key){runs.push({key:key,isos:[iso]});}
+    else{runs[runs.length-1].isos.push(iso);}
+  });
+  var html='<div class="pattern-strip">';
+  runs.forEach(function(run){
+    var k=run.key,isos=run.isos,n=isos.length;
+    var first=isos[0],last=isos[n-1];
+    var fl=first.replace(/^\d{4}\./,''),ll=last.replace(/^\d{4}\./,'');
+    var cls,abbr;
+    if(k==='_future'){cls='pc-future';abbr='PLN';}
+    else if(k==='_current'){cls='pc-none pc-current';abbr='NOW';}
+    else if(k==='_none'){cls='pc-none';abbr='—';}
+    else{cls='pc-'+k;abbr={aligned:'ALN',unplanned:'UNP',silent:'SIL',escalation:'ESC'}[k]||k;}
+    var extraCls=(n>1&&k!=='_current')?' pattern-run':'';
+    var title=n>1?esc(first+' – '+last):esc(first);
+    var topLbl=n>1?esc(fl+'–'+ll):esc(fl);
+    var botLbl=n>1?esc(abbr+'×'+n):esc(abbr);
+    html+='<div class="pattern-cell'+extraCls+' '+cls+'" title="'+title+'">';
+    html+='<div style="font-size:8px;opacity:0.7">'+topLbl+'</div>';
+    html+='<div>'+botLbl+'</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
 }
 
 function stateChipInfo_(state) {
@@ -640,7 +789,8 @@ function renderAvailability() {
 
   populateAvailFilters();
 
-  var people = Object.keys(DATA.personMeta).filter(function(np) {
+  // All people passing demographic + status filters (before blend-tier filter)
+  var allFilteredPeople = Object.keys(DATA.personMeta).filter(function(np) {
     var m = DATA.personMeta[np];
     if (m.excluded) return false;
     if (AVAIL_LOC  && m.location  !== AVAIL_LOC)  return false;
@@ -663,6 +813,12 @@ function renderAvailability() {
     return true;
   });
 
+  // Apply blend-tier filter on top
+  var people = AVAIL_BLEND > 0 ? allFilteredPeople.filter(function(np) {
+    var c = (personQtdProjectCounts[np] || {})[currentIso] || 0;
+    return AVAIL_BLEND === 4 ? c >= 4 : c === AVAIL_BLEND;
+  }) : allFilteredPeople.slice();
+
   people.sort(function(a, b) {
     var sa = personQtdScore[a] || 0, sb = personQtdScore[b] || 0;
     if (sb !== sa) return sb - sa;
@@ -673,7 +829,37 @@ function renderAvailability() {
   var totalFiltered = people.length;
   if (AVAIL_TOPN < 999) people = people.slice(0, AVAIL_TOPN);
 
-  var html = '<div class="avail-list">';
+  // Compute display window (historical) + append up to 3 future planned weeks
+  var displayIsos = taWindowIsos_(qtdIsos, currentIso);
+  var futureWks = WEEKS.filter(function(w){ return w.iso>currentIso && w.status==='plan'; }).slice(0,3);
+  displayIsos = displayIsos.concat(futureWks.map(function(w){ return w.iso; }));
+  var winFirst = displayIsos[0] || currentIso;
+  var winLast  = displayIsos[displayIsos.length - 1] || currentIso;
+  var winFirstLbl = winFirst.replace(/^\d{4}\./, '');
+  var winLastLbl  = winLast.replace(/^\d{4}\./, '');
+  var maxPageBack = AVAIL_WIN_SIZE > 0 ? Math.floor((qtdIsos.indexOf(currentIso) + 1) / AVAIL_WIN_SIZE) : 0;
+
+  // Window nav + zoom controls
+  var html = '<div class="ta-controls">';
+  html += '<div class="ta-win-nav">';
+  html += '<button onclick="if(AVAIL_WIN_SIZE>0&&AVAIL_WIN_PAGE<' + maxPageBack + ')AVAIL_WIN_PAGE++;renderAvailability()"'
+        + (AVAIL_WIN_SIZE === 0 || AVAIL_WIN_PAGE >= maxPageBack ? ' disabled' : '') + '>◀ Earlier</button>';
+  html += '<span class="ta-win-lbl">' + esc(AVAIL_WIN_SIZE === 0 ? 'All QTD' : winFirstLbl + ' – ' + winLastLbl) + '</span>';
+  html += '<button onclick="if(AVAIL_WIN_PAGE>0)AVAIL_WIN_PAGE--;renderAvailability()"'
+        + (AVAIL_WIN_PAGE === 0 ? ' disabled' : '') + '>Later ▶</button>';
+  html += '</div>';
+  html += '<div style="flex:1"></div>';
+  html += '<div class="chip-toggle">';
+  html += '<button onclick="AVAIL_WIN_SIZE=4;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===4?' class="on"':'') + '>4wk</button>';
+  html += '<button onclick="AVAIL_WIN_SIZE=8;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===8?' class="on"':'') + '>8wk</button>';
+  html += '<button onclick="AVAIL_WIN_SIZE=0;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===0?' class="on"':'') + '>QTD</button>';
+  html += '</div>';
+  html += '</div>';
+
+  // Blend distribution chart (based on allFilteredPeople, not blend-filtered)
+  html += blendDistChart_(allFilteredPeople, personQtdProjectCounts, currentIso);
+
+  html += '<div class="avail-list">';
 
   people.forEach(function(np) {
     var m = DATA.personMeta[np] || {};
@@ -705,24 +891,6 @@ function renderAvailability() {
     html += '</div>';
 
     if (isOpen) {
-      var strip = '<div class="pattern-strip">';
-      qtdIsos.forEach(function(iso) {
-        var s = (personWeekState[np] || {})[iso];
-        var isCur    = iso === currentIso;
-        var isFuture = iso > currentIso;
-        var cls, abbr;
-        if (isFuture)  { cls = 'pc-future';    abbr = 'PLN'; }
-        else if (isCur){ cls = 'pc-none';       abbr = 'NOW'; }
-        else if (!s)   { cls = 'pc-none';       abbr = '—'; }
-        else           { cls = 'pc-' + s;       abbr = { aligned:'ALN', unplanned:'UNP', silent:'SIL', escalation:'ESC' }[s]; }
-        var wLbl = iso.replace(/^\d{4}\./, '');
-        strip += '<div class="pattern-cell ' + cls + (isCur ? ' pc-current' : '') + '" title="' + esc(iso) + '">';
-        strip += '<div style="font-size:8px;opacity:0.7">' + esc(wLbl) + '</div>';
-        strip += '<div>' + esc(abbr) + '</div>';
-        strip += '</div>';
-      });
-      strip += '</div>';
-
       var projPlan = (DATA.personProjectPlan || {})[np] || {};
       var projRowsHtml = '';
       Object.keys(projPlan).forEach(function(key) {
@@ -739,7 +907,7 @@ function renderAvailability() {
       var mgNote = computeManagerNote_(state, streakLen, escLen, personIsSwarm[np]);
 
       html += '<div class="avail-expanded-section">';
-      html += strip;
+      html += compressPatternRuns_(np, displayIsos, personWeekState, currentIso);
       if (projRowsHtml) html += '<div class="avail-proj-list">' + projRowsHtml + '</div>';
       html += '<div class="mgr-note-ta"><div class="mgr-note-lbl-ta">Manager note</div>' + esc(mgNote) + '</div>';
       html += '</div>';
@@ -765,9 +933,10 @@ function toggleAvailDrill(np){
 
 function clearAvailFilters(){
   AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_STATUS='';AVAIL_OPEN=null;
+  AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
   var stEl = $('availStatus'); if (stEl) stEl.value = '';
   populateAvailFilters();
-  renderAvailability();
+  reRenderAll_();
 }
 
 /* ---------------- Render: Project Planned vs Tracked Drill ---------------- */
@@ -834,6 +1003,13 @@ function visibleOrder(){
   var order=DATA.order.slice();
   if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
   order=order.filter(qPredicate);
+  var pset=filteredPersonSet_();
+  if(pset){
+    var projPlan=DATA.personProjectPlan||{};
+    order=order.filter(function(k){
+      return Object.keys(pset).some(function(np){return ((projPlan[np]||{})[k]||{})[SEL_ISO]>0;});
+    });
+  }
   return order.slice(0,TOPN);
 }
 
