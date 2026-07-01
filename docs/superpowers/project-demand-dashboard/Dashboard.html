@@ -228,6 +228,18 @@ input[type=file]{display:none}
 .ta-win-lbl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;min-width:90px;text-align:center}
 /* Pattern run compression */
 .pattern-run{min-width:52px}
+/* Project-week allocation table (expanded TA row) */
+.proj-week-wrap{overflow-x:auto;margin-bottom:10px}
+.proj-week-tbl{border-collapse:separate;border-spacing:2px;font-size:11px;white-space:nowrap}
+.pwt-lbl{text-align:left;padding:3px 10px 3px 0;font-size:11px;max-width:180px;white-space:normal}
+.pwt-name{color:var(--muted);font-size:10px}
+.pwt-wk{text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px 3px;min-width:30px}
+.pwt-cur{color:#6366f1;font-weight:800}
+.pwt-fut-hdr{color:#3b82f6}
+.pwt-cell{text-align:center;font-size:10px;padding:3px 4px;border-radius:3px;min-width:30px;color:var(--muted)}
+.pwt-cell:not(:empty){background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:600}
+.pwt-wcur:not(:empty){background:color-mix(in srgb,#6366f1 12%,var(--surface));border-color:#c7d2fe;color:#4338ca}
+.pwt-wfut:not(:empty){background:color-mix(in srgb,#3b82f6 8%,var(--surface));border-color:#bfdbfe;color:#1d4ed8}
 </style>
 </head>
 <body>
@@ -892,23 +904,47 @@ function renderAvailability() {
 
     if (isOpen) {
       var projPlan = (DATA.personProjectPlan || {})[np] || {};
-      var projRowsHtml = '';
-      Object.keys(projPlan).forEach(function(key) {
-        var ph = (projPlan[key] || {})[currentIso] || 0;
-        if (ph <= 0) return;
-        projRowsHtml += '<div class="avail-proj-row">';
-        projRowsHtml += '<span class="proj-key-mono">' + esc(key) + '</span>';
-        projRowsHtml += '<span class="avail-proj-name">' + esc(KEYNAME[key] || key) + '</span>';
-        projRowsHtml += '<span class="chip ' + chipInfo.cls + '" style="font-size:9px">' + esc(chipInfo.label) + '</span>';
-        projRowsHtml += '<span class="avail-proj-hrs">' + ph.toFixed(1) + 'h planned</span>';
-        projRowsHtml += '</div>';
+      // All projects with planned hours in any displayed week
+      var activeProjs = Object.keys(projPlan).filter(function(key) {
+        return displayIsos.some(function(iso) { return (projPlan[key][iso] || 0) > 0; });
       });
+      // Sort: current-week hours first, then total hours across window
+      activeProjs.sort(function(a, b) {
+        var aCur = (projPlan[a][currentIso] || 0), bCur = (projPlan[b][currentIso] || 0);
+        if (bCur !== aCur) return bCur - aCur;
+        var aT = displayIsos.reduce(function(s,iso){ return s+(projPlan[a][iso]||0); },0);
+        var bT = displayIsos.reduce(function(s,iso){ return s+(projPlan[b][iso]||0); },0);
+        return bT - aT;
+      });
+
+      var projTableHtml = '';
+      if (activeProjs.length > 0) {
+        projTableHtml = '<div class="proj-week-wrap"><table class="proj-week-tbl"><thead><tr>';
+        projTableHtml += '<th class="pwt-lbl">Project</th>';
+        displayIsos.forEach(function(iso) {
+          var lbl = iso.replace(/^\d{4}\./, '');
+          var isCur = iso === currentIso, isFut = iso > currentIso;
+          projTableHtml += '<th class="pwt-wk' + (isCur ? ' pwt-cur' : '') + (isFut ? ' pwt-fut-hdr' : '') + '">' + esc(lbl) + '</th>';
+        });
+        projTableHtml += '</tr></thead><tbody>';
+        activeProjs.forEach(function(key) {
+          projTableHtml += '<tr><td class="pwt-lbl"><span class="proj-key-mono">' + esc(key) + '</span> <span class="pwt-name">' + esc(KEYNAME[key] || key) + '</span></td>';
+          displayIsos.forEach(function(iso) {
+            var ph = (projPlan[key] || {})[iso] || 0;
+            var isCur = iso === currentIso, isFut = iso > currentIso;
+            var extra = isCur ? ' pwt-wcur' : (isFut ? ' pwt-wfut' : '');
+            projTableHtml += '<td class="pwt-cell' + extra + '">' + (ph > 0 ? ph.toFixed(0) + 'h' : '') + '</td>';
+          });
+          projTableHtml += '</tr>';
+        });
+        projTableHtml += '</tbody></table></div>';
+      }
 
       var mgNote = computeManagerNote_(state, streakLen, escLen, personIsSwarm[np]);
 
       html += '<div class="avail-expanded-section">';
       html += compressPatternRuns_(np, displayIsos, personWeekState, currentIso);
-      if (projRowsHtml) html += '<div class="avail-proj-list">' + projRowsHtml + '</div>';
+      if (projTableHtml) html += projTableHtml;
       html += '<div class="mgr-note-ta"><div class="mgr-note-lbl-ta">Manager note</div>' + esc(mgNote) + '</div>';
       html += '</div>';
     }
