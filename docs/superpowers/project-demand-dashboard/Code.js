@@ -120,6 +120,30 @@ function weekToKey_(label, defYear) {
   return null;
 }
 
+/**
+ * Restricts allocation/PTO records to people whose Roster Department is exactly
+ * CONFIG.ROSTER_DEPT ("Services") — applied once, up front, so every downstream figure
+ * (heatmap cells, Planned vs Tracked totals, capacity time-off, person-level views) is
+ * Services-only with no exceptions, regardless of whether a client-side filter is active.
+ * @param {Array<{person:string}>} recs
+ * @param {Object} profiles rosterProfiles keyed by normalised name (readRosterFull_().profiles)
+ * @returns {Array} the subset of recs whose person is an active Services roster profile
+ */
+function scopeRecsToServices_(recs, profiles) {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  return (recs || []).filter(function (r) {
+    var prof = (profiles || {})[norm(r.person)];
+    return !!prof && prof.department === CONFIG.ROSTER_DEPT;
+  });
+}
+
+/** Sums allocation records' hours per ISO week — used to rebuild timeOffByWeek after scoping. */
+function sumHoursByIso_(recs) {
+  var out = {};
+  (recs || []).forEach(function (r) { out[r.iso] = (out[r.iso] || 0) + r.hours; });
+  return out;
+}
+
 // ── MAIN DATA ENDPOINT (called from the client via google.script.run) ──
 
 /**
@@ -148,17 +172,29 @@ function getDemandData() {
     var vals = sh.getDataRange().getValues();
     var parsed = parseAllocations_(vals, CONFIG.NONPROJECT_KEYS);
     var baselineIso = priorWeekIso_(weeks[0]);    // hidden lookback week → first week gets a WoW prior
-    var model = aggregate_(parsed.recs, weeks, baselineIso);
-    model.timeOffByWeek = parsed.timeOffByWeek;   // PTO + public holidays (NETSUITE rows), per week
 
-    // ── Single roster read — shared by capacity + people signals ─────────────
+    // ── Single roster read — shared by capacity + people signals + department scoping ──
     var roster = readRosterFull_();
+
+    // Department = ROSTER_DEPT ("Services") is applied HERE, once, before any aggregation —
+    // every downstream figure (heatmap cells, Planned vs Tracked totals, capacity time-off,
+    // person-level views, filter dropdowns) is Services-only with no exceptions, whether or
+    // not a client-side filter is active.
+    var scopedRecs    = scopeRecsToServices_(parsed.recs, roster.profiles);
+    var scopedPtoRecs = scopeRecsToServices_(parsed.ptoRecs, roster.profiles);
+
+    var model = aggregate_(scopedRecs, weeks, baselineIso);
+    model.timeOffByWeek = sumHoursByIso_(scopedPtoRecs);   // PTO + public holidays (NETSUITE rows), Services only
+
     attachCapacity_(model, roster);   // net capacity (roster base − time-off, planned fallback)
 
     // ── Tracked time + delivery signals ──────────────────────
     var trackedResult = readTrackedAllocations_();
+    var scopedTrackedRecs = [], scopedTrackedPtoRecs = [];
     if (!trackedResult.error) {
-      var tm = aggregate_(trackedResult.recs, weeks, baselineIso);
+      scopedTrackedRecs    = scopeRecsToServices_(trackedResult.recs, roster.profiles);
+      scopedTrackedPtoRecs = scopeRecsToServices_(trackedResult.ptoRecs, roster.profiles);
+      var tm = aggregate_(scopedTrackedRecs, weeks, baselineIso);
       model.weekTracked = tm.weekTotal;
       model.tracked     = tm.cap;
       model.fidelity    = {};
@@ -167,7 +203,7 @@ function getDemandData() {
         model.fidelity[iso] = pl > 0 ? (tm.weekTotal[iso] || 0) / pl : null;
       });
       model.rosterDimensions   = roster.dimensions;
-      model.displayNames       = buildDisplayNames_(parsed.recs, trackedResult.recs);
+      model.displayNames       = buildDisplayNames_(scopedRecs, scopedTrackedRecs);
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
       model.trackedError = trackedResult.error;
@@ -179,12 +215,16 @@ function getDemandData() {
     model.excludedNames = (CONFIG.EXCLUDED_NAMES || []).map(normLocal);
 
     // ── Person availability (planned + tracked per person per week) ──
-    var plannedPtoRecs = parsed.ptoRecs || [];
-    var trackedPtoRecs = (!trackedResult.error && trackedResult.ptoRecs) ? trackedResult.ptoRecs : [];
-    var allPtoRecs = (plannedPtoRecs || []).concat(trackedPtoRecs || []);
+    // PTO is tagged by source (planned sheet vs tracked sheet) so buildPersonAvailability_
+    // can take the max of the two instead of summing them — the same PTO week is usually
+    // present in both sheets (planned ahead of time, then logged as actual), and summing
+    // both silently doubled a 40h week into 80h.
+    var plannedPtoRecs = scopedPtoRecs.map(function(r) { return Object.assign({}, r, { source: 'planned' }); });
+    var trackedPtoRecs = scopedTrackedPtoRecs.map(function(r) { return Object.assign({}, r, { source: 'tracked' }); });
+    var allPtoRecs = plannedPtoRecs.concat(trackedPtoRecs);
     var availResult = buildPersonAvailability_(
-      parsed.recs,
-      (!trackedResult.error && trackedResult.recs) ? trackedResult.recs : [],
+      scopedRecs,
+      scopedTrackedRecs,
       allPtoRecs,
       roster.profiles
     );
@@ -228,8 +268,10 @@ function getDemandData() {
  *
  * Capacity counts: active Services FTE/crew with a valid Name, Class = Professional
  * Services, Dept = Services, no inactive/termination markers.
- * Profile data: every named row (no class/dept filter) so Roster can match tracked
- * time from non-Services people as well.
+ * Profile data (`profiles`): every named row (no class/dept filter) — each profile carries
+ * its own `department` so callers (buildPersonAvailability_, getDemandData) can scope to
+ * Department = ROSTER_DEPT themselves. Filter dropdown lists (`dimensions`) ARE scoped to
+ * Department = ROSTER_DEPT — no un-selectable, non-Services values in the People filters bar.
  */
 function readRosterFull_() {
   var EMPTY_CAP = { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0, capError: null };
@@ -266,16 +308,23 @@ function readRosterFull_() {
       var fam   = iFam   !== -1 ? String(row[iFam]   || "").trim() : "";
       var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
       var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
+      var dept  = iDept  !== -1 ? String(row[iDept]  || "").trim() : "";
       var isCrew = /crew member|contractor/i.test(title);
       var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
-      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };
-      if (loc) locs[loc] = true;
-      if (fam) families[fam] = true;
-      if (mgr) managers[mgr] = true;
+      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };
+      // Filter dropdown option lists (Location / Job Family / Manager) are scoped to
+      // Department = ROSTER_DEPT too, same as the person-level data — otherwise a
+      // Sales/Finance-only location or manager would show up as a pickable filter value
+      // even though selecting it can never match anyone in the dashboard.
+      if (dept === CONFIG.ROSTER_DEPT) {
+        if (loc) locs[loc] = true;
+        if (fam) families[fam] = true;
+        if (mgr) managers[mgr] = true;
+      }
 
       // Capacity: only active Services members
       if (iClass !== -1 && String(row[iClass] || "").trim() !== CONFIG.ROSTER_CLASS) continue;
-      if (iDept  !== -1) { var dept = String(row[iDept] || "").trim(); if (dept && dept !== CONFIG.ROSTER_DEPT) continue; }
+      if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
       var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
       var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
       if (INACTIVE.test(status) || term) continue;
@@ -421,6 +470,14 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
   var currentIso = currentWeek.iso;
   var qtdIsos = buildQtdWindow_(currentIso);
 
+  // The current week is always excluded from personWeekState (tracked time accumulates
+  // through the week, so it can never be judged aligned/unplanned/silent/escalation).
+  // lastCompletedIso is the most recent week that DOES have a computed state — every
+  // "as of now" signal (row chip, status filter, manager note, Swarm/Stabilizer/
+  // concentration risk) must anchor on this, never on currentIso, or it silently never fires.
+  var curIdxInQtd = qtdIsos.indexOf(currentIso);
+  var lastCompletedIso = curIdxInQtd > 0 ? qtdIsos[curIdxInQtd - 1] : null;
+
   var allNps = {};
   Object.keys(personWeekPlan || {}).forEach(function(np) { allNps[np] = true; });
   Object.keys(personWeekTracked || {}).forEach(function(np) { allNps[np] = true; });
@@ -450,6 +507,21 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
       });
       personQtdProjectCounts[np][iso] = count;
     });
+  });
+
+  // 2b. Total distinct projects per person across the whole QTD window — a person who
+  // worked 4 projects last week and 1 this week still reads as multi-project here, and
+  // someone on a single project all quarter reads as 1 regardless of the current week's slice.
+  var personQtdUniqueProjectCount = {};
+  Object.keys(allNps).forEach(function(np) {
+    var projPlan = (personProjectPlan || {})[np] || {};
+    var seen = {};
+    qtdIsos.forEach(function(iso) {
+      Object.keys(projPlan).forEach(function(key) {
+        if ((projPlan[key][iso] || 0) > 0) seen[key] = true;
+      });
+    });
+    personQtdUniqueProjectCount[np] = Object.keys(seen).length;
   });
 
   // 3. QTD reliability score and streak
@@ -486,37 +558,45 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
     personEscLen[np] = escLen;
   });
 
-  // 5. Swarm flag
-  var escalatingThisWeek = {};
-  Object.keys(allNps).forEach(function(np) {
-    if ((personWeekState[np] || {})[currentIso] === 'escalation') escalatingThisWeek[np] = true;
-  });
-  var hasAnyEscalation = Object.keys(escalatingThisWeek).length > 0;
-  var personIsSwarm = {};
-  Object.keys(allNps).forEach(function(np) {
-    personIsSwarm[np] = (personWeekState[np] || {})[currentIso] === 'unplanned' && hasAnyEscalation;
-  });
+  // 5. Project headcount for the reference week — powers the "N people on {project}"
+  // grouping chip on a person's row, so a manager can jump straight to everyone sharing
+  // that project ("swarmable" = can be grouped by shared project). Replaces the old
+  // "Swarm" heuristic, which flagged an individual (unplanned work + someone else
+  // escalating) but never actually grouped anyone by project.
+  var projectHeadcountAtRef = {};
+  if (lastCompletedIso) {
+    Object.keys(allNps).forEach(function(np) {
+      var projPlan = (personProjectPlan || {})[np] || {};
+      Object.keys(projPlan).forEach(function(key) {
+        if ((projPlan[key][lastCompletedIso] || 0) > 0) {
+          projectHeadcountAtRef[key] = (projectHeadcountAtRef[key] || 0) + 1;
+        }
+      });
+    });
+  }
 
   // 6. Stabilizer
   var personIsStabilizer = {};
   Object.keys(allNps).forEach(function(np) {
-    var state = (personWeekState[np] || {})[currentIso];
-    var projCount = (personQtdProjectCounts[np] || {})[currentIso] || 0;
+    var state = lastCompletedIso ? (personWeekState[np] || {})[lastCompletedIso] : null;
+    var projCount = lastCompletedIso ? ((personQtdProjectCounts[np] || {})[lastCompletedIso] || 0) : 0;
     personIsStabilizer[np] = state === 'aligned' && projCount >= CONFIG.FRAG_MIN;
   });
 
-  // 7. Concentration risk per project
+  // 7. Concentration risk per project (as of lastCompletedIso)
   var projectAlignedCount = {};
-  Object.keys(allNps).forEach(function(np) {
-    var state = (personWeekState[np] || {})[currentIso];
-    var projPlan = (personProjectPlan || {})[np] || {};
-    Object.keys(projPlan).forEach(function(key) {
-      if ((projPlan[key][currentIso] || 0) > 0) {
-        projectAlignedCount[key] = projectAlignedCount[key] || 0;
-        if (state === 'aligned') projectAlignedCount[key]++;
-      }
+  if (lastCompletedIso) {
+    Object.keys(allNps).forEach(function(np) {
+      var state = (personWeekState[np] || {})[lastCompletedIso];
+      var projPlan = (personProjectPlan || {})[np] || {};
+      Object.keys(projPlan).forEach(function(key) {
+        if ((projPlan[key][lastCompletedIso] || 0) > 0) {
+          projectAlignedCount[key] = projectAlignedCount[key] || 0;
+          if (state === 'aligned') projectAlignedCount[key]++;
+        }
+      });
     });
-  });
+  }
   var projectConcentrationRisk = {};
   Object.keys(projectAlignedCount).forEach(function(key) {
     projectConcentrationRisk[key] = projectAlignedCount[key] < 2;
@@ -524,13 +604,15 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
 
   return {
     currentIso:              currentIso,
+    lastCompletedIso:        lastCompletedIso,
     qtdIsos:                 qtdIsos,
     personWeekState:         personWeekState,
     personQtdScore:          personQtdScore,
     personStreakLen:          personStreakLen,
     personEscLen:            personEscLen,
     personQtdProjectCounts:  personQtdProjectCounts,
-    personIsSwarm:           personIsSwarm,
+    personQtdUniqueProjectCount: personQtdUniqueProjectCount,
+    projectHeadcountAtRef:   projectHeadcountAtRef,
     personIsStabilizer:      personIsStabilizer,
     projectConcentrationRisk: projectConcentrationRisk
   };
@@ -540,6 +622,14 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
   var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
 
+  // Only people whose Roster "Department" is exactly CONFIG.ROSTER_DEPT ("Services") are
+  // shown anywhere in the person-level views (Team Availability, drill-downs, heatmap
+  // person lists) — no exceptions for other departments, even if they logged Tempo hours.
+  var inScope = function(np) {
+    var prof = (rosterProfiles || {})[np];
+    return !!prof && prof.department === CONFIG.ROSTER_DEPT;
+  };
+
   // Build display names: first occurrence of a normalised name wins.
   (plannedRecs || []).concat(trackedRecs || []).concat(ptoRecs || []).forEach(function(rec) {
     var np = norm(rec.person);
@@ -548,7 +638,7 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
 
   (plannedRecs || []).forEach(function(rec) {
     var np = norm(rec.person);
-    if (!((rosterProfiles || {})[np])) return;
+    if (!inScope(np)) return;
     personWeekPlan[np] = personWeekPlan[np] || {};
     personWeekPlan[np][rec.iso] = (personWeekPlan[np][rec.iso] || 0) + rec.hours;
     personProjectPlan[np] = personProjectPlan[np] || {};
@@ -558,16 +648,35 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
 
   (trackedRecs || []).forEach(function(rec) {
     var np = norm(rec.person);
-    if (!((rosterProfiles || {})[np])) return;
+    if (!inScope(np)) return;
     personWeekTracked[np] = personWeekTracked[np] || {};
     personWeekTracked[np][rec.iso] = (personWeekTracked[np][rec.iso] || 0) + rec.hours;
   });
 
+  // PTO: a week off is usually recorded in BOTH the planned sheet (booked ahead) and the
+  // tracked sheet (logged once it happens) — summing them double-counts (40h -> 80h).
+  // Take the max per person/week instead of adding the two sources together.
+  var personWeekPTOBySource = { planned: {}, tracked: {} };
   (ptoRecs || []).forEach(function(rec) {
     var np = norm(rec.person);
-    if (!((rosterProfiles || {})[np])) return;
-    personWeekPTO[np] = personWeekPTO[np] || {};
-    personWeekPTO[np][rec.iso] = (personWeekPTO[np][rec.iso] || 0) + rec.hours;
+    if (!inScope(np)) return;
+    var bucket = personWeekPTOBySource[rec.source === 'tracked' ? 'tracked' : 'planned'];
+    bucket[np] = bucket[np] || {};
+    bucket[np][rec.iso] = (bucket[np][rec.iso] || 0) + rec.hours;
+  });
+  var ptoNps = {};
+  Object.keys(personWeekPTOBySource.planned).forEach(function(np) { ptoNps[np] = true; });
+  Object.keys(personWeekPTOBySource.tracked).forEach(function(np) { ptoNps[np] = true; });
+  Object.keys(ptoNps).forEach(function(np) {
+    var pl = personWeekPTOBySource.planned[np] || {};
+    var tr = personWeekPTOBySource.tracked[np] || {};
+    var isos = {};
+    Object.keys(pl).forEach(function(iso) { isos[iso] = true; });
+    Object.keys(tr).forEach(function(iso) { isos[iso] = true; });
+    personWeekPTO[np] = {};
+    Object.keys(isos).forEach(function(iso) {
+      personWeekPTO[np][iso] = Math.max(pl[iso] || 0, tr[iso] || 0);
+    });
   });
 
   var personMeta = {};
@@ -944,14 +1053,16 @@ function _test_buildPersonAvailability_() {
     { person: "Ana Smith", iso: "2026.W24", key: "BETA", name: "Beta", hours: 10 },
     { person: "Ben Lee",   iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
     { person: "External",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 8 },  // not in roster → excluded
+    { person: "Gus Sales",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 12 }, // in roster, Dept != Services → excluded
   ];
   var trackedRecs = [
     { person: "Ana Smith", iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
     { person: "Ana Smith", iso: "2026.W24", key: "BETA", name: "Beta", hours: 6 },
   ];
   var roster = {
-    "ana smith": { jobFamily: "Consulting", manager: "Mgr A", location: "US" },
-    "ben lee":   { jobFamily: "Delivery",   manager: "Mgr B", location: "ANZ" }
+    "ana smith": { jobFamily: "Consulting", manager: "Mgr A", location: "US",  department: "Services" },
+    "ben lee":   { jobFamily: "Delivery",   manager: "Mgr B", location: "ANZ", department: "Services" },
+    "gus sales": { jobFamily: "Sales",      manager: "Mgr C", location: "US",  department: "Sales" }
     // "external" deliberately absent
   };
 
@@ -961,6 +1072,8 @@ function _test_buildPersonAvailability_() {
   assert_(result.personWeekPlan["ana smith"]["2026.W24"] === 30, "Ana planned should be 30h");
   assert_(result.personWeekPlan["ben lee"]["2026.W24"]   === 16, "Ben planned should be 16h");
   assert_(!result.personWeekPlan["external"], "External (not in roster) must be excluded");
+  assert_(!result.personWeekPlan["gus sales"], "Gus (Dept=Sales, not Services) must be excluded");
+  assert_(!result.personMeta["gus sales"], "Gus (Dept=Sales) must not appear in personMeta");
 
   // personWeekTracked
   assert_(result.personWeekTracked["ana smith"]["2026.W24"] === 22, "Ana tracked should be 22h");
@@ -988,24 +1101,52 @@ function _test_personWeekPTO_() {
   ];
   var trackedRecs = [];
   var ptoRecs = [
-    { person: 'Ana Smith', iso: '2026.W27', key: NETSUITE_KEY,  hours: 16 },
-    { person: 'Ben Lee',   iso: '2026.W27', key: NETSUITE_KEY,  hours: 40 },
-    { person: 'Ana Smith', iso: '2026.W26', key: NETSUITE_KEY,  hours: 8 },
+    { person: 'Ana Smith', iso: '2026.W27', key: NETSUITE_KEY,  hours: 16, source: 'planned' },
+    { person: 'Ben Lee',   iso: '2026.W27', key: NETSUITE_KEY,  hours: 40, source: 'planned' },
+    { person: 'Ana Smith', iso: '2026.W26', key: NETSUITE_KEY,  hours: 8,  source: 'tracked' },
+    // Ben's W27 PTO is booked AND later logged as tracked — same absence, must not sum to 80h.
+    { person: 'Ben Lee',   iso: '2026.W27', key: NETSUITE_KEY,  hours: 40, source: 'tracked' },
   ];
   var roster = {
-    'ana smith': { jobFamily: 'Consulting', manager: 'M', location: 'US' },
-    'ben lee':   { jobFamily: 'Delivery',   manager: 'M', location: 'ANZ' }
+    'ana smith': { jobFamily: 'Consulting', manager: 'M', location: 'US',  department: 'Services' },
+    'ben lee':   { jobFamily: 'Delivery',   manager: 'M', location: 'ANZ', department: 'Services' }
   };
 
   var result = buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, roster);
 
   assert_(result.personWeekPlan['ana smith']['2026.W27'] === 20,  'Ana project plan 20h');
   assert_(result.personWeekPTO['ana smith']['2026.W27']  === 16,  'Ana PTO planned 16h');
-  assert_(result.personWeekPTO['ben lee']['2026.W27']    === 40,  'Ben full-PTO 40h');
+  assert_(result.personWeekPTO['ben lee']['2026.W27']    === 40,  'Ben full-PTO 40h (max of planned+tracked, not summed to 80h)');
   assert_(result.personWeekPTO['ana smith']['2026.W26']  === 8,   'Ana PTO tracked 8h');
   assert_(!result.personWeekPlan['ben lee'],                       'Ben has no project plan');
 
   Logger.log("✅ _test_personWeekPTO_ passed");
+}
+
+/**
+ * Verifies scopeRecsToServices_ — the single gate applied to every record BEFORE
+ * aggregate_()/timeOffByWeek/buildPersonAvailability_ in getDemandData(), so a
+ * non-Services person's hours never reach the heatmap, Planned vs Tracked totals,
+ * capacity time-off, or any person-level view, regardless of client-side filters.
+ */
+function _test_scopeRecsToServices_() {
+  function assert_(cond, msg) { if (!cond) throw new Error('❌ _test_scopeRecsToServices_: ' + msg); }
+
+  var recs = [
+    { person: 'Ana Smith',  iso: '2026.W27', key: 'ACME', hours: 20 },
+    { person: 'Gus Sales',  iso: '2026.W27', key: 'ACME', hours: 12 }, // Dept = Sales
+    { person: 'Nobody Here', iso: '2026.W27', key: 'ACME', hours: 8 }, // not in roster at all
+  ];
+  var profiles = {
+    'ana smith': { department: 'Services' },
+    'gus sales': { department: 'Sales' }
+  };
+
+  var scoped = scopeRecsToServices_(recs, profiles);
+  assert_(scoped.length === 1, 'only the Services person should survive scoping, got ' + scoped.length);
+  assert_(scoped[0].person === 'Ana Smith', 'the surviving record should be Ana Smith');
+
+  Logger.log("✅ _test_scopeRecsToServices_ passed");
 }
 
 function _test_isCrew_() {
@@ -1065,5 +1206,7 @@ function _test_behaviorSignals() {
   Logger.log('Jane streak len: ' + bs.personStreakLen['jane doe']);
   Logger.log('PPT concentration risk: ' + bs.projectConcentrationRisk['PPT']);
   Logger.log('Jane proj count W27: ' + bs.personQtdProjectCounts['jane doe']['2026.W27']);
+  Logger.log('Jane QTD unique projects: ' + bs.personQtdUniqueProjectCount['jane doe']); // PPT + ICARE = 2
+  Logger.log('Alex QTD unique projects: ' + bs.personQtdUniqueProjectCount['alex smith']); // PPT only = 1
   Logger.log('Done.');
 }

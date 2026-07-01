@@ -15,6 +15,7 @@
   --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
   --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
   --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
+  --scale:1;
 }
 [data-theme="dark"]{
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
@@ -24,32 +25,46 @@
   --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
 }
+/* Fluid type/space scale — every font-size and several key dimensions below multiply
+   this token, so laptop and (especially) ultrawide screens get visibly bigger text and
+   controls instead of the same fixed-size column floating in empty margin. */
+@media(max-width:420px){:root{--scale:.94}}
+@media(min-width:1024px){:root{--scale:1.08}}
+@media(min-width:1440px){:root{--scale:1.16}}
+@media(min-width:1920px){:root{--scale:1.28}}
+@media(min-width:2560px){:root{--scale:1.4}}
+@media(min-width:3440px){:root{--scale:1.5}}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{
   font-family:'Roboto','Franklin Gothic Book',system-ui,sans-serif;
-  background:var(--bg); color:var(--text); font-size:14px; line-height:1.45;
+  background:var(--bg); color:var(--text); font-size:calc(14px*var(--scale)); line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
 h1,h2,h3,.title{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;margin:0}
 .wrap{max-width:1280px;margin:0 auto;padding:28px 22px 64px}
+@media(min-width:1024px){.wrap{max-width:1360px;padding:30px 28px 70px}}
+@media(min-width:1440px){.wrap{max-width:1600px;padding:34px 40px 78px}}
+@media(min-width:1920px){.wrap{max-width:1900px;padding:38px 56px 88px}}
+@media(min-width:2560px){.wrap{max-width:2300px;padding:44px 72px 96px}}
+@media(min-width:3440px){.wrap{max-width:2700px;padding:48px 96px 108px}}
 .mono{font-variant-numeric:tabular-nums}
 
 /* Header */
 .top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:6px}
 .brand{display:flex;align-items:center;gap:12px}
-.logo{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--void),var(--orbe));
-  display:grid;place-items:center;color:#fff;font-family:'Roboto Condensed';font-weight:700;font-size:20px;flex:none}
-.eyebrow{font-family:'Roboto Condensed';letter-spacing:.14em;text-transform:uppercase;font-size:11px;color:var(--orbe);font-weight:700}
-h1{font-size:30px;line-height:1.05;font-weight:700;letter-spacing:.01em}
-.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.logo{width:calc(38px*var(--scale));height:calc(38px*var(--scale));border-radius:9px;background:linear-gradient(135deg,var(--void),var(--orbe));
+  display:grid;place-items:center;color:#fff;font-family:'Roboto Condensed';font-weight:700;font-size:calc(20px*var(--scale));flex:none}
+.eyebrow{font-family:'Roboto Condensed';letter-spacing:.14em;text-transform:uppercase;font-size:calc(11px*var(--scale));color:var(--orbe);font-weight:700}
+h1{font-size:calc(30px*var(--scale));line-height:1.05;font-weight:700;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:calc(13px*var(--scale));margin-top:2px}
 .head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-button,.btn{font-family:'Roboto';font-size:12.5px;font-weight:600;cursor:pointer;border-radius:8px;
-  border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 12px;transition:.15s}
+button,.btn{font-family:'Roboto';font-size:calc(12.5px*var(--scale));font-weight:600;cursor:pointer;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface);color:var(--text);padding:calc(8px*var(--scale)) calc(12px*var(--scale));transition:.15s}
 button:hover,.btn:hover{border-color:var(--orbe)}
 .btn-primary{background:var(--orbe);color:#fff;border-color:var(--orbe)}
 .btn-primary:hover{background:var(--royal);border-color:var(--royal)}
-.srcbadge{font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.srcbadge{font-size:calc(11px*var(--scale));font-weight:700;padding:5px 10px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
 .srcbadge.live{color:#fff;background:var(--pos);border-color:var(--pos)}
 .srcbadge.offline{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--border))}
 .chip-toggle{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
@@ -59,35 +74,44 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 
 /* state message */
 .stateMsg{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
-  padding:28px;text-align:center;color:var(--muted);font-size:14px;margin:22px 0}
+  padding:28px;text-align:center;color:var(--muted);font-size:calc(14px*var(--scale));margin:22px 0}
 
 /* Panels */
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px 18px 20px;margin-bottom:20px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:calc(18px*var(--scale)) calc(18px*var(--scale)) calc(20px*var(--scale));margin-bottom:calc(20px*var(--scale))}
 .panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
-.panel-h h2{font-size:18px;font-weight:700}
-.panel-h .hint{font-size:12px;color:var(--muted)}
+.panel-h h2{font-size:calc(18px*var(--scale));font-weight:700}
+.panel-h .hint{font-size:calc(12px*var(--scale));color:var(--muted)}
 .panel-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
-.png-btn{font-size:11.5px;padding:6px 10px;white-space:nowrap}
-.sowhat{font-size:12.5px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
+.png-btn{font-size:calc(11.5px*var(--scale));padding:6px 10px;white-space:nowrap}
+.sowhat{font-size:calc(12.5px*var(--scale));color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
   border-left:3px solid var(--orbe);border-radius:8px;padding:9px 12px;margin-top:13px}
 .sowhat b{color:var(--text)}
 .sowhat.warn{border-left-color:var(--warn)} .sowhat.ok{border-left-color:var(--pos)}
 
 /* Capacity headline band */
-.capwrap{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:center}
+.capwrap{display:grid;grid-template-columns:calc(280px*var(--scale)) 1fr;gap:20px;align-items:center}
 @media(max-width:760px){.capwrap{grid-template-columns:1fr}}
-.capnum{font-family:'Roboto Condensed';font-weight:700;font-size:34px;line-height:1}
-.capnum small{font-size:14px;color:var(--muted);font-weight:500}
+.capnum{font-family:'Roboto Condensed';font-weight:700;font-size:calc(34px*var(--scale));line-height:1}
+.capnum small{font-size:calc(14px*var(--scale));color:var(--muted);font-weight:500}
 .caprow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:4px}
-.statuschip{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid}
+.statuschip{font-size:calc(11px*var(--scale));font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid}
 .statuschip.over{color:#fff;background:var(--warn);border-color:var(--warn)}
 .statuschip.tight{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--border))}
 .statuschip.head{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 45%,var(--border))}
-.capmeta{font-size:12px;color:var(--muted);margin-top:8px}
+.capmeta{font-size:calc(12px*var(--scale));color:var(--muted);margin-top:8px}
 .capmeta .est{color:var(--amber);font-weight:600}
+.trend-chip{font-size:calc(11px*var(--scale));font-weight:700;padding:3px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border)}
+.trend-chip.trend-up{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 45%,var(--border))}
+.trend-chip.trend-down{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--border))}
+.trend-chip.trend-flat{color:var(--muted)}
+.cap-legend{display:flex;gap:16px;margin-top:6px;font-size:calc(11px*var(--scale));color:var(--muted);flex-wrap:wrap}
+.cap-legend span{display:inline-flex;align-items:center;gap:5px}
+.cap-legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.cap-legend i.dashed{background:none;border-top:2px dashed var(--muted);height:0}
+.cap-caveat{font-size:calc(12px*var(--scale));color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2));border:1px solid color-mix(in srgb,var(--warn) 30%,var(--border));border-radius:8px;padding:8px 12px;margin-top:12px}
 
 
-.keychip{display:inline-block;font-family:'Roboto Condensed';font-weight:700;font-size:12px;letter-spacing:.03em;
+.keychip{display:inline-block;font-family:'Roboto Condensed';font-weight:700;font-size:calc(12px*var(--scale));letter-spacing:.03em;
   color:#fff;padding:2px 8px;border-radius:6px;line-height:1.4}
 
 /* Heatmap */
@@ -95,21 +119,21 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .hgrid{border-collapse:separate;border-spacing:0;width:100%;min-width:640px}
 .hgrid th,.hgrid td{padding:0}
 .hgrid thead th{position:sticky;top:0;background:var(--surface);z-index:2;font-family:'Roboto Condensed';font-weight:700;
-  font-size:12px;color:var(--muted);text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)}
+  font-size:calc(12px*var(--scale));color:var(--muted);text-align:center;padding:6px 4px;border-bottom:1px solid var(--border)}
 .hgrid thead th.rowhdr{text-align:left;padding-left:4px}
-.rowlabel{display:flex;align-items:center;gap:9px;padding:5px 8px 5px 4px;white-space:nowrap;cursor:pointer}
+.rowlabel{display:flex;align-items:center;gap:9px;padding:calc(5px*var(--scale)) 8px calc(5px*var(--scale)) 4px;white-space:nowrap;cursor:pointer}
 .rowlabel:hover{background:var(--surface-2)}
-.rowlabel .nm{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.rowlabel .nm{font-size:calc(12px*var(--scale));color:var(--text);overflow:hidden;text-overflow:ellipsis;max-width:calc(150px*var(--scale))}
 .rowlabel.active .nm{font-weight:700}
-.hcell{height:30px;border:2px solid var(--surface);border-radius:6px;text-align:center;font-size:11px;font-weight:600;
+.hcell{height:calc(30px*var(--scale));border:2px solid var(--surface);border-radius:6px;text-align:center;font-size:calc(11px*var(--scale));font-weight:600;
   cursor:default;position:relative;display:flex;align-items:center;justify-content:center}
-.legend{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
-.legbar{width:140px;height:10px;border-radius:5px;border:1px solid var(--border)}
+.legend{display:flex;align-items:center;gap:8px;font-size:calc(11.5px*var(--scale));color:var(--muted)}
+.legbar{width:calc(140px*var(--scale));height:10px;border-radius:5px;border:1px solid var(--border)}
 .legbar.hours{background:linear-gradient(90deg,var(--heat-lo),var(--heat-mid),var(--heat-hi))}
 .legbar.change{background:linear-gradient(90deg,var(--down),var(--neutral),var(--up))}
 .legbar.risk{background:linear-gradient(90deg,var(--neutral),var(--warn))}
 .qfilters{display:flex;gap:6px;flex-wrap:wrap}
-.qchip{font-size:11.5px;font-weight:600;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer}
+.qchip{font-size:calc(11.5px*var(--scale));font-weight:600;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer}
 .qchip.on{background:var(--void);color:#fff;border-color:var(--void)}
 [data-theme="dark"] .qchip.on{background:var(--orbe);border-color:var(--orbe)}
 
@@ -118,26 +142,26 @@ svg .axis{stroke:var(--border)}
 
 /* tooltip */
 #tip{position:fixed;pointer-events:none;z-index:50;background:var(--void);color:#fff;border-radius:8px;
-  padding:8px 10px;font-size:11.5px;box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transition:opacity .1s;max-width:240px}
+  padding:8px 10px;font-size:calc(11.5px*var(--scale));box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transition:opacity .1s;max-width:240px}
 [data-theme="dark"] #tip{background:#000;border:1px solid var(--border)}
 #tip b{font-family:'Roboto Condensed'}
-.search{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;width:150px}
+.search{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:calc(12.5px*var(--scale));width:calc(150px*var(--scale))}
 /* Heatmap per-project expanded section */
 .hexp-section{background:#eff6ff;border-top:2px solid #6366f1;padding:14px 16px}
 [data-theme="dark"] .hexp-section{background:#0d1f3c;border-top-color:#818cf8}
-.hexp-title{font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hexp-title{font-size:calc(12px*var(--scale));font-weight:700;color:#1d4ed8;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 [data-theme="dark"] .hexp-title{color:#a5b4fc}
-.hexp-risk-flag{background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px}
+.hexp-risk-flag{background:#fee2e2;color:#b91c1c;font-size:calc(10px*var(--scale));font-weight:700;padding:2px 8px;border-radius:6px}
 [data-theme="dark"] .hexp-risk-flag{background:#450a0a;color:#fca5a5}
 .hexp-person-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
-.hexp-person-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid #dbeafe;border-radius:6px;padding:7px 10px;font-size:11px;flex-wrap:wrap}
+.hexp-person-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid #dbeafe;border-radius:6px;padding:7px 10px;font-size:calc(11px*var(--scale));flex-wrap:wrap}
 [data-theme="dark"] .hexp-person-row{border-color:#1e3a5f}
-.hexp-pname{font-weight:600;min-width:110px;color:var(--text)}
-.hexp-hrs{color:var(--muted);font-size:11px}
-.hexp-mgr-note{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#0c4a6e}
+.hexp-pname{font-weight:600;min-width:calc(110px*var(--scale));color:var(--text)}
+.hexp-hrs{color:var(--muted);font-size:calc(11px*var(--scale))}
+.hexp-mgr-note{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:calc(11px*var(--scale));color:#0c4a6e}
 [data-theme="dark"] .hexp-mgr-note{background:#0c2340;color:#7dd3fc}
-.hexp-note-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
-.foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
+.hexp-note-lbl{font-size:calc(9px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
+.foot{color:var(--muted);font-size:calc(11.5px*var(--scale));margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
 /* Dashboard-level people filter bar */
@@ -151,33 +175,34 @@ input[type=file]{display:none}
   display:flex;flex-wrap:wrap;gap:8px;align-items:center;
   box-shadow:0 2px 8px rgba(15,25,65,.06);
 }
-.dash-filters-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px;white-space:nowrap}
+.dash-filters-lbl{font-size:calc(10px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px;white-space:nowrap}
 /* Team Availability — collapsible list */
 .avail-list{display:flex;flex-direction:column;gap:2px}
 .chip-inprogress{background:var(--surface-2);color:var(--muted);border:1px dashed var(--border)}
 .avail-row{border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .avail-collapsed{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;background:var(--surface);flex-wrap:wrap}
 .avail-collapsed:hover{background:var(--surface-2)}
-.avail-row-name{font-size:12px;font-weight:600;min-width:110px;color:var(--text)}
-.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+.avail-row-name{font-size:calc(12px*var(--scale));font-weight:600;min-width:calc(110px*var(--scale));color:var(--text)}
+.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:calc(10px*var(--scale));font-weight:700;white-space:nowrap}
 .chip-aligned{background:#dcfce7;color:#15803d}
 .chip-unplanned{background:#fef9c3;color:#854d0e}
 .chip-silent{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
 .chip-escalation{background:#fee2e2;color:#b91c1c}
 .chip-none{background:var(--surface-2);color:var(--muted)}
-.trend-tag{font-size:10px;color:var(--muted)}
+.trend-tag{font-size:calc(10px*var(--scale));color:var(--muted)}
 .trend-up{color:var(--up)}
 .trend-down{color:var(--down)}
-.badge-ta{display:inline-block;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;margin-left:2px}
+.badge-ta{display:inline-block;font-size:calc(9px*var(--scale));padding:1px 6px;border-radius:8px;font-weight:700;margin-left:2px}
 .badge-streak{background:#fef9c3;color:#854d0e}
-.badge-swarm{background:#ede9fe;color:#6d28d9}
 .badge-stabilizer{background:#dbeafe;color:#1d4ed8}
-.avail-callout{font-size:11px;color:var(--muted);flex:1;min-width:120px}
-.avail-expand-btn{font-size:11px;color:var(--muted);margin-left:auto;flex:none}
-.avail-expanded-section{background:var(--surface-2);border-top:1px solid var(--border);padding:12px 14px;font-size:11.5px}
+.badge-group{background:#ede9fe;color:#6d28d9;cursor:pointer}
+.badge-group:hover{background:#ddd6fe}
+.avail-callout{font-size:calc(11px*var(--scale));color:var(--muted);flex:1;min-width:120px}
+.avail-expand-btn{font-size:calc(11px*var(--scale));color:var(--muted);margin-left:auto;flex:none}
+.avail-expanded-section{background:var(--surface-2);border-top:1px solid var(--border);padding:12px 14px;font-size:calc(11.5px*var(--scale))}
 /* QTD week pattern strip */
 .pattern-strip{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:12px}
-.pattern-cell{padding:3px 6px;border-radius:4px;font-size:9px;font-weight:700;text-align:center;min-width:46px}
+.pattern-cell{padding:3px 6px;border-radius:4px;font-size:calc(9px*var(--scale));font-weight:700;text-align:center;min-width:calc(46px*var(--scale))}
 .pc-aligned{background:#dcfce7;color:#15803d}
 .pc-unplanned{background:#fef9c3;color:#854d0e}
 .pc-silent{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
@@ -189,65 +214,92 @@ input[type=file]{display:none}
 .avail-proj-list{margin-bottom:10px}
 .avail-proj-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
 .avail-proj-row:last-child{border-bottom:none}
-.proj-key-mono{font-family:monospace;font-size:10px;background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px}
-.avail-proj-name{font-size:11px;color:var(--muted);flex:1}
-.avail-proj-hrs{font-size:11px;color:var(--muted)}
+.proj-key-mono{font-family:monospace;font-size:calc(10px*var(--scale));background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px}
+.avail-proj-name{font-size:calc(11px*var(--scale));color:var(--muted);flex:1}
+.avail-proj-hrs{font-size:calc(11px*var(--scale));color:var(--muted)}
 /* Manager note */
-.mgr-note-ta{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#0c4a6e}
+.mgr-note-ta{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:calc(11px*var(--scale));color:#0c4a6e}
 [data-theme="dark"] .mgr-note-ta{background:#0c2340;color:#7dd3fc}
-.mgr-note-lbl-ta{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
+.mgr-note-lbl-ta{font-size:calc(9px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
+.projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:calc(11.5px*var(--scale));color:var(--muted)}
 .projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
 .projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
 /* Filter bar collapse */
 .dash-filters{flex-direction:column;align-items:flex-start}
 .dash-filters-hdr{display:flex;align-items:center;gap:8px;cursor:pointer;width:100%}
 .dash-filters-hdr:hover .dash-filters-lbl{color:var(--text)}
-.filter-summary{font-size:11px;color:var(--orbe);font-weight:600;flex:1}
-.filter-toggle{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.filter-summary{font-size:calc(11px*var(--scale));color:var(--orbe);font-weight:600;flex:1}
+.filter-toggle{font-size:calc(11px*var(--scale));color:var(--muted);margin-left:auto;white-space:nowrap}
 .dash-filters-body{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:8px;width:100%;border-top:1px solid var(--border);margin-top:6px}
+.sigfilter{height:calc(32px*var(--scale));padding:0 26px 0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);
+  font-size:calc(12px*var(--scale));font-weight:600;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;min-width:calc(130px*var(--scale))}
+/* Job Family multi-select dropdown */
+.fb-multi{position:relative}
+.fb-multi-btn{height:calc(32px*var(--scale));min-width:calc(150px*var(--scale));padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
+  font-size:calc(12px*var(--scale));color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;
+  white-space:nowrap;text-align:left;font-family:inherit;font-weight:600;transition:border-color .15s}
+.fb-multi-btn:hover{border-color:var(--orbe)}
+.fb-multi-btn.active{border-color:var(--orbe);color:var(--orbe);background:color-mix(in srgb,var(--orbe) 10%,var(--surface))}
+.fb-multi-panel{position:absolute;top:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;z-index:200;min-width:calc(220px*var(--scale));max-height:260px;overflow-y:auto;box-shadow:var(--shadow);padding:4px 0}
+.fb-multi-opt{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:calc(12px*var(--scale));cursor:pointer;color:var(--text)}
+.fb-multi-opt:hover{background:var(--surface-2)}
+.fb-multi-opt input[type=checkbox]{flex-shrink:0;accent-color:var(--orbe)}
+/* Project Team View */
+.ptv-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ptv-controls select#ptvProject{min-width:calc(220px*var(--scale))}
+/* Sparkline legend */
+.spark-legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:calc(10.5px*var(--scale));color:var(--muted);
+  margin-bottom:10px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
+.spark-legend-title{font-weight:800;text-transform:uppercase;letter-spacing:.07em;font-size:calc(9px*var(--scale));color:var(--muted)}
+.spark-legend-item{display:inline-flex;align-items:center;gap:5px}
+.spark-legend-item i{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none}
+.spark-legend-item i.spark-legend-cur{background:transparent;border:1.5px solid #6366f1}
 /* Blend distribution chart */
 .blend-chart{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
-.blend-chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
+.blend-chart-title{font-size:calc(10px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px}
 .blend-bars{display:flex;flex-direction:column;gap:5px}
 .blend-bar-row{display:flex;align-items:center;gap:8px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:background .1s}
 .blend-bar-row:hover{background:var(--surface)}
 .blend-bar-row.active{background:color-mix(in srgb,var(--orbe) 12%,var(--surface-2));outline:1px solid var(--orbe)}
-.blend-bar-lbl{font-size:10px;color:var(--muted);width:66px;flex:none}
+.blend-bar-lbl{font-size:calc(10px*var(--scale));color:var(--muted);width:calc(72px*var(--scale));flex:none;display:flex;align-items:center;gap:5px}
+.blend-bar-lbl i{width:8px;height:8px;border-radius:2px;display:inline-block;flex:none}
 .blend-bar-track{flex:1;background:var(--border);border-radius:3px;height:8px;overflow:hidden}
-.blend-bar-fill{height:100%;border-radius:3px;background:var(--orbe)}
-.blend-bar-count{font-size:10px;font-weight:700;color:var(--text);width:24px;text-align:right;flex:none}
+.blend-bar-fill{height:100%;border-radius:3px}
+.blend-bar-count{font-size:calc(10px*var(--scale));font-weight:700;color:var(--text);width:24px;text-align:right;flex:none}
 /* Week window nav */
 .ta-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .ta-win-nav{display:flex;align-items:center;gap:4px}
-.ta-win-nav button{padding:3px 7px;font-size:11px;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
+.ta-win-nav button{padding:3px 7px;font-size:calc(11px*var(--scale));border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:6px;cursor:pointer}
 .ta-win-nav button:disabled{opacity:.35;cursor:default}
 .ta-win-nav button:not([disabled]):hover{background:var(--surface-2)}
-.ta-win-lbl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;min-width:90px;text-align:center}
+.ta-win-lbl{font-size:calc(11px*var(--scale));color:var(--muted);font-weight:600;white-space:nowrap;min-width:calc(90px*var(--scale));text-align:center}
 /* Pattern run compression */
-.pattern-run{min-width:52px}
+.pattern-run{min-width:calc(52px*var(--scale))}
 /* Project-week allocation table (expanded TA row) */
 .proj-week-wrap{overflow-x:auto;margin-bottom:10px}
-.proj-week-tbl{border-collapse:separate;border-spacing:2px;font-size:11px;white-space:nowrap}
-.pwt-lbl{text-align:left;padding:3px 10px 3px 0;font-size:11px;max-width:180px;white-space:normal}
-.pwt-name{color:var(--muted);font-size:10px}
-.pwt-wk{text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px 4px;min-width:52px}
+.proj-week-tbl{border-collapse:separate;border-spacing:2px;font-size:calc(11px*var(--scale));white-space:nowrap}
+.pwt-lbl{text-align:left;padding:3px 10px 3px 0;font-size:calc(11px*var(--scale));max-width:calc(180px*var(--scale));white-space:normal}
+.pwt-name{color:var(--muted);font-size:calc(10px*var(--scale))}
+.pwt-wk{text-align:center;font-size:calc(9px*var(--scale));font-weight:700;color:var(--muted);padding:2px 4px;min-width:calc(52px*var(--scale))}
 .pwt-cur{color:#6366f1;font-weight:800}
 .pwt-fut-hdr{color:#3b82f6}
-.pwt-cell{text-align:center;font-size:10px;padding:3px 4px;border-radius:3px;min-width:52px;color:var(--muted)}
+.pwt-cell{text-align:center;font-size:calc(10px*var(--scale));padding:3px 4px;border-radius:3px;min-width:calc(52px*var(--scale));color:var(--muted)}
 .pwt-cell:not(:empty){background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:600}
 .pwt-wcur:not(:empty){background:color-mix(in srgb,#6366f1 12%,var(--surface));border-color:#c7d2fe;color:#4338ca}
 .pwt-wfut:not(:empty){background:color-mix(in srgb,#3b82f6 8%,var(--surface));border-color:#bfdbfe;color:#1d4ed8}
 /* PTO row and week-column tinting */
-.pwt-pto-row td{color:#78350f;font-size:10px;font-weight:700}
+.pwt-pto-row td{color:#78350f;font-size:calc(10px*var(--scale));font-weight:700}
 .pwt-pto-lbl{color:#b45309}
 .pwt-pto-week{background:#fef9c3 !important;border-color:#fde68a !important;color:#78350f !important}
 .pwt-part-pto:not(:empty){background:#fef9c3;border:1px solid #fde68a;color:#78350f;font-weight:700}
 .pwt-full-pto{background:#fef08a !important;border:1.5px solid #f59e0b !important;color:#78350f !important;font-weight:800 !important}
-.pwt-exempt{font-size:8px;background:#fde68a;border:1px solid #f59e0b;color:#78350f;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle}
-.pwt-onleave{font-size:9px;color:#b45309;font-style:italic}
+.pwt-exempt{font-size:calc(8px*var(--scale));background:#fde68a;border:1px solid #f59e0b;color:#78350f;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle}
+.pwt-onleave{font-size:calc(9px*var(--scale));color:#b45309;font-style:italic}
 </style>
 </head>
 <body>
@@ -273,36 +325,30 @@ input[type=file]{display:none}
 
   <div id="dash" style="display:none">
 
-    <!-- 1. Demand vs Capacity — headline -->
-    <div class="panel">
-      <div class="panel-h">
-        <h2>Planned vs Tracked</h2>
-        <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · fidelity % shown per week · dashed = future planned</div>
-          <button class="png-btn" data-png="demand-vs-capacity">⬇ Save PNG</button>
-        </div>
-      </div>
-      <div class="capwrap">
-        <div>
-          <div class="capnum" id="capNum">—</div>
-          <div class="caprow"><span class="statuschip" id="capChip">—</span><span class="hint" id="capUtil"></span></div>
-          <div class="capmeta" id="capMeta"></div>
-        </div>
-        <div id="capChart"></div>
-      </div>
-      <div class="sowhat" id="capSoWhat"></div>
-    </div>
-
-    <!-- Dashboard-level people filters (collapsible) -->
+    <!-- Dashboard-level people filters (collapsible) — applies to every panel below,
+         including Planned vs Tracked and the Project key heatmap, no exceptions. -->
     <div class="dash-filters" id="dashFilters" style="display:none">
       <div class="dash-filters-hdr" onclick="FILTER_EXPANDED=!FILTER_EXPANDED;updateFilterBar_()">
         <span class="dash-filters-lbl">People filters</span>
+        <div class="chip-toggle" id="mainTopN" onclick="event.stopPropagation()">
+          <button data-n="15" class="on">Top 15</button>
+          <button data-n="30">Top 30</button>
+          <button data-n="999">All</button>
+        </div>
         <span class="filter-summary" id="filterSummary">All people</span>
         <span class="filter-toggle" id="filterToggle">▾ expand</span>
       </div>
       <div class="dash-filters-body" id="dashFiltersBody" style="display:none">
         <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
-        <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
+        <div class="fb-multi" id="famWrap">
+          <button class="fb-multi-btn" id="famBtn" type="button" onclick="toggleFamPanel(event)">
+            <span id="famLabel">All job families</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 3l4 4 4-4"/></svg>
+          </button>
+          <div class="fb-multi-panel" id="famPanel" style="display:none">
+            <div id="famOptions"></div>
+          </div>
+        </div>
         <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
         <select class="sigfilter" id="availCrew">
           <option value="">FTE + Crew</option>
@@ -314,16 +360,33 @@ input[type=file]{display:none}
           <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();reRenderAll_()">Mgrs</button>
           <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();reRenderAll_()">ICs</button>
         </div>
-        <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;reRenderAll_()">
-          <option value="">All statuses</option>
-          <option value="aligned">Aligned</option>
-          <option value="unplanned">Unplanned work</option>
-          <option value="silent">Silent gap</option>
-          <option value="escalation">Escalation</option>
-          <option value="leave">On leave</option>
-        </select>
         <button class="btn" onclick="clearAvailFilters()" style="font-size:11px;padding:5px 10px">✕ Clear</button>
       </div>
+    </div>
+
+    <!-- 1. Demand vs Capacity — headline -->
+    <div class="panel">
+      <div class="panel-h">
+        <h2>Planned vs Tracked</h2>
+        <div class="panel-tools">
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · fidelity % shown per week · dashed = future planned · * = week still in progress · reflects People filters above</div>
+          <button class="png-btn" data-png="demand-vs-capacity">⬇ Save PNG</button>
+        </div>
+      </div>
+      <div class="sowhat" id="capSoWhatTop"></div>
+      <div class="capwrap">
+        <div>
+          <div class="capnum" id="capNum">—</div>
+          <div class="caprow"><span class="statuschip" id="capChip">—</span><span class="hint" id="capUtil"></span><span class="trend-chip" id="capTrend"></span></div>
+          <div class="capmeta" id="capMeta"></div>
+        </div>
+        <div>
+          <div id="capChart"></div>
+          <div class="cap-legend" id="capLegend"></div>
+        </div>
+      </div>
+      <div class="cap-caveat" id="capCaveat" style="display:none"></div>
+      <div class="sowhat" id="capSoWhat"></div>
     </div>
 
     <!-- 1b. Team Availability -->
@@ -331,14 +394,25 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Team Availability</h2>
         <div class="panel-tools">
-          <div class="chip-toggle" id="availTopN">
-            <button data-n="15" class="on">Top 15</button>
-            <button data-n="30">Top 30</button>
-            <button data-n="999">All</button>
-          </div>
+          <div class="hint" id="taHint">Top N / All controlled by the People filters bar above</div>
         </div>
       </div>
       <div id="avail"></div>
+    </div>
+
+    <!-- 1c. Project Team View — group people by shared project ("swarm" grouping) -->
+    <div class="panel" id="projTeamPanel" style="display:none">
+      <div class="panel-h">
+        <h2>Project Team View</h2>
+        <div class="panel-tools">
+          <div class="hint">See everyone sharing a project — click a 👥 chip on a person's row above, or pick one here</div>
+        </div>
+      </div>
+      <div class="ptv-controls">
+        <select class="sigfilter" id="ptvProject"><option value="">Choose a project…</option></select>
+        <select class="sigfilter" id="ptvWeek"></select>
+      </div>
+      <div id="ptvBody"></div>
     </div>
 
     <!-- 2. Project key heatmap (drill-down) — planned hours by project -->
@@ -351,11 +425,6 @@ input[type=file]{display:none}
             <button data-m="risk">Risk</button>
             <button data-m="hours" class="on">Hours</button>
             <button data-m="people">&#x1F465; People</button>
-          </div>
-          <div class="chip-toggle" id="topToggle">
-            <button data-n="15" class="on">Top 15</button>
-            <button data-n="30">Top 30</button>
-            <button data-n="999">All</button>
           </div>
           <input class="search" id="search" placeholder="Filter key or name…" />
           <button class="png-btn" data-png="project-key-heatmap">⬇ Save PNG</button>
@@ -373,6 +442,7 @@ input[type=file]{display:none}
         <div class="projdrill-legend">
           <span><i style="background:var(--orbe)"></i>Planned</span>
           <span><i style="background:#00A86B"></i>Tracked</span>
+          <span id="projDrillFilterNote" style="display:none">(tracked line is always all-people — per-person tracked-by-project detail isn't available)</span>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
@@ -400,7 +470,7 @@ var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
-var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_STATUS = "";
+var AVAIL_LOC = "", AVAIL_FAM = new Set(), AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null;
 var AVAIL_WIN_SIZE = 8; // week window for TA pattern strip (0 = all QTD)
 var AVAIL_WIN_PAGE = 0; // 0 = latest window, 1 = one window earlier, etc.
 var AVAIL_BLEND = 0;    // project-count tier filter (0=all, 1/2/3/4=specific)
@@ -411,6 +481,10 @@ var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
 function keyColor(i){ return KEY_COLORS[(i||0) % KEY_COLORS.length]; }
+// Shared 1/2/3/4+ distinct-project tier colors — used by both the per-person sparkline
+// bars and the "Project load distribution" chart so the two visuals read as one system.
+var SPARK_COLORS = ['#bfdbfe', '#60a5fa', '#2864e6', '#0f1941'];
+var SPARK_PTO_COLOR = '#f59e0b', SPARK_FUTURE_COLOR = '#c7d2fe', SPARK_NONE_COLOR = '#e2e8f0';
 
 var $=function(id){ return document.getElementById(id); };
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -424,10 +498,53 @@ function isoWeekYearC(d){ var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d
 function isoOrd(iso){ var m=String(iso).match(/(\d{4})\.W(\d+)/); return m?parseInt(m[1],10)*100+parseInt(m[2],10):0; }
 
 /* ---------------- Model accessors ---------------- */
-function capAt(k,iso){ return (DATA.cap[k]&&DATA.cap[k][iso])||0; }
+function capAt(k,iso){ var src=FPROJ||DATA; return (src.cap[k]&&src.cap[k][iso])||0; }
 function weekIndex(iso){ for(var i=0;i<NWEEKS;i++) if(WEEKS[i].iso===iso) return i; return -1; }
 function priorIso(iso){ var i=weekIndex(iso); if(i>0) return WEEKS[i-1].iso; if(i===0&&DATA&&DATA.baselineIso) return DATA.baselineIso; return null; }
 function strategicSet(){ return DATA.order.slice(0, DATA.topnStrategic||10); }
+
+/* ---------------- Filtered aggregation — the People filters bar applies dashboard-wide,
+   so the Project key heatmap and Planned vs Tracked recompute from only the filtered
+   people (via personProjectPlan/personWeekPlan/personWeekTracked) instead of the
+   server's full-roster totals. Falls back to the full model when no filter is active. */
+var FPROJ = null; // { cap, head, order, maxCell } for the currently active person filter
+
+function computeFilteredProjectData_(){
+  var pset = filteredPersonSet_();
+  if (!pset) return { cap: DATA.cap||{}, head: DATA.head||{}, order: (DATA.order||[]).slice(), maxCell: DATA.maxCell||0.001 };
+  var cap = {}, headSets = {};
+  var projPlan = DATA.personProjectPlan || {};
+  Object.keys(pset).forEach(function(np){
+    var pp = projPlan[np]; if (!pp) return;
+    Object.keys(pp).forEach(function(key){
+      Object.keys(pp[key]).forEach(function(iso){
+        var h = pp[key][iso] || 0; if (h <= 0) return;
+        cap[key] = cap[key] || {}; cap[key][iso] = (cap[key][iso] || 0) + h;
+        headSets[key] = headSets[key] || {}; headSets[key][iso] = headSets[key][iso] || {}; headSets[key][iso][np] = true;
+      });
+    });
+  });
+  var head = {};
+  Object.keys(headSets).forEach(function(k){ head[k] = {}; Object.keys(headSets[k]).forEach(function(iso){ head[k][iso] = Object.keys(headSets[k][iso]).length; }); });
+  var totals = Object.keys(cap).map(function(k){ var t=0; WEEKS.forEach(function(w){ t += (cap[k][w.iso]||0); }); return {key:k, total:t}; });
+  totals.sort(function(a,b){ return b.total - a.total; });
+  var maxCell = 0.001;
+  Object.keys(cap).forEach(function(k){ WEEKS.forEach(function(w){ if ((cap[k][w.iso]||0) > maxCell) maxCell = cap[k][w.iso]; }); });
+  return { cap: cap, head: head, order: totals.map(function(t){ return t.key; }), maxCell: maxCell };
+}
+
+function filteredWeekTotals_(){
+  var pset = filteredPersonSet_();
+  if (!pset) return { planned: DATA.weekTotal||{}, tracked: DATA.weekTracked||{} };
+  var planned = {}, tracked = {};
+  WEEKS.forEach(function(w){ planned[w.iso] = 0; tracked[w.iso] = 0; });
+  var plan = DATA.personWeekPlan || {}, trk = DATA.personWeekTracked || {};
+  Object.keys(pset).forEach(function(np){
+    var pw = plan[np]; if (pw) Object.keys(pw).forEach(function(iso){ if (iso in planned) planned[iso] += pw[iso]||0; });
+    var tw = trk[np]; if (tw) Object.keys(tw).forEach(function(iso){ if (iso in tracked) tracked[iso] += tw[iso]||0; });
+  });
+  return { planned: planned, tracked: tracked };
+}
 
 /* ---------------- Boot / data load ---------------- */
 function boot(){
@@ -493,95 +610,165 @@ function renderRange(){
 /* ---------------- Render: Planned vs Tracked ---------------- */
 function renderCapacity(){
   var iso=SEL_ISO;
-  var planned=DATA.weekTotal[iso]||0;
-  var tracked=(DATA.weekTracked&&DATA.weekTracked[iso])||0;
-  var fid=(DATA.fidelity&&DATA.fidelity[iso]!=null)?DATA.fidelity[iso]:null;
-  $('capNum').innerHTML=fmt(planned)+' <small>hrs planned</small>';
+  var wt=filteredWeekTotals_();
+  var isFiltered=!!filteredPersonSet_();
+  var wk=WEEKS[weekIndex(iso)];
+  var isCurrent=!!(wk&&wk.status==='now');
+  var asOf=DATA.trackedLastExport?fmtExport(DATA.trackedLastExport):'last sync';
+  var planned=wt.planned[iso]||0;
+  var tracked=wt.tracked[iso]||0;
+  var fid=planned>0?(tracked/planned):null;
+  $('capNum').innerHTML=fmt(planned)+' <small>hrs planned'+(isFiltered?' · filtered':'')+'</small>';
   var chipCls,chipTxt;
   if(fid===null){chipCls='head';chipTxt='Planned week';}
+  else if(isCurrent){chipCls='tight';chipTxt='In progress';}
   else if(fid>=0.8){chipCls='head';chipTxt='On track';}
   else if(fid>=0.5){chipCls='tight';chipTxt='Partial delivery';}
   else{chipCls='over';chipTxt='Behind';}
   $('capChip').className='statuschip '+chipCls;
   $('capChip').textContent=chipTxt;
-  $('capUtil').textContent=fid!==null?(fmt(tracked)+' hrs tracked · '+Math.round(fid*100)+'% fidelity'):'No tracked data yet for this week';
-  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''));
+  $('capUtil').textContent=fid!==null?(fmt(tracked)+' hrs tracked · '+Math.round(fid*100)+'% fidelity'+(isCurrent?' (partial, week in progress)':'')):'No tracked data yet for this week';
+  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''))+(isFiltered?' · <span style="color:var(--orbe)">reflects the People filters above</span>':'');
+
+  // WoW fidelity trend chip — direction + delta, so a single-point % never stands alone.
+  var priorI=priorIso(iso), priorFid=null;
+  if(priorI!=null){ var ppv=wt.planned[priorI]||0, ptv=wt.tracked[priorI]; if(ppv>0) priorFid=(ptv||0)/ppv; }
+  var trendLine='';
+  if(fid!==null&&priorFid!==null){
+    var curPct=Math.round(fid*100), priorPct=Math.round(priorFid*100), deltaPts=curPct-priorPct;
+    var dir=deltaPts>0?'up':(deltaPts<0?'down':'flat');
+    var arrow=deltaPts>0?'▲':(deltaPts<0?'▼':'▬');
+    $('capTrend').className='trend-chip trend-'+dir;
+    $('capTrend').textContent=arrow+' '+(deltaPts>0?'+':'')+deltaPts+'pp vs '+priorI;
+    trendLine='<div>Fidelity '+dir+' from '+priorPct+'% ('+esc(priorI)+') to '+curPct+'%'+(isCurrent?' ('+esc(iso)+', partial)':' ('+esc(iso)+')')+'.</div>';
+  } else {
+    $('capTrend').className='trend-chip'; $('capTrend').textContent='';
+  }
+
   var sw,cls;
   if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
+  else if(isCurrent){cls='';sw='<b>'+esc(iso)+' is still in progress</b> — '+fmt(tracked)+' of '+fmt(planned)+' hrs tracked so far ('+Math.round(fid*100)+'%), data as of '+esc(asOf)+'. Treat this as incomplete tracking, not an execution drop — fidelity will keep rising as the week is logged.';}
   else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
   else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check Team Availability for who planned but didn\'t track.';}
   else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Availability below.';}
   else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
+  var swFull=trendLine+sw;
   $('capSoWhat').className='sowhat '+cls;
-  $('capSoWhat').innerHTML=sw;
-  renderCapChart();
+  $('capSoWhat').innerHTML=swFull;
+  $('capSoWhatTop').className='sowhat '+cls;
+  $('capSoWhatTop').innerHTML=swFull;
+
+  var cvEl=$('capCaveat');
+  if(isCurrent){
+    cvEl.style.display='';
+    cvEl.innerHTML='&#9888; <b>'+esc(iso)+' in progress</b> — data as of '+esc(asOf)+'. The drop at '+esc(iso)+' reflects hours not yet logged, not a sudden execution collapse.';
+  } else {
+    cvEl.style.display='none';
+  }
+  renderCapLegend();
+  renderCapChart(wt);
 }
-function renderCapChart(){
-  var w=620,h=160,pad={l:40,r:14,t:18,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
-  var maxv=1;
+
+function renderCapLegend(){
+  var el=$('capLegend'); if(!el) return;
+  var tgtTxt=DATA&&DATA.planTarget?(Math.round(DATA.planTarget*100)+'% target'):'Target';
+  el.innerHTML='<span><i style="background:'+hexVar('--orbe')+'"></i>Planned</span>'+
+    '<span><i style="background:#00A86B"></i>Tracked</span>'+
+    '<span><i class="dashed"></i>'+esc(tgtTxt)+'</span>';
+}
+
+// Rounds a value to the nearest half-decade step (e.g. 6014→6000, 3007→3000) so gridline
+// labels read as deliberate axis ticks instead of raw data artifacts. Data points that fall
+// just above the rounded max are clamped to the top edge by y() below — imperceptible in
+// practice and preferable to a cluttered axis.
+function niceRound(v){
+  if(v<=0) return 1;
+  var mag=Math.pow(10,Math.floor(Math.log(v)/Math.LN10));
+  var step=mag/2;
+  return Math.max(step,Math.round(v/step)*step);
+}
+
+function renderCapChart(wt){
+  wt=wt||filteredWeekTotals_();
+  var w=620,h=170,pad={l:44,r:14,t:22,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  var rawMax=1;
   WEEKS.forEach(function(wk){
-    maxv=Math.max(maxv,DATA.weekTotal[wk.iso]||0);
-    if(DATA.weekTracked) maxv=Math.max(maxv,DATA.weekTracked[wk.iso]||0);
+    rawMax=Math.max(rawMax,wt.planned[wk.iso]||0);
+    rawMax=Math.max(rawMax,wt.tracked[wk.iso]||0);
   });
+  var maxv=niceRound(rawMax);
   var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
-  var y=function(v){return pad.t+ih-v/maxv*ih;};
+  var y=function(v){return pad.t+ih-Math.min(v,maxv)/maxv*ih;};
+  var curIdx=-1; WEEKS.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
   var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked">';
   // future region tint
   var firstPlan=-1; WEEKS.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
   if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>';}
-  // gridlines
+  // gridlines — rounded to a nice max so ticks read as deliberate (e.g. 6000/3000/0)
   for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
-  // planned area
-  var dpts=WEEKS.map(function(wk,i){return x(i)+','+y(DATA.weekTotal[wk.iso]||0);});
-  g+='<path d="M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(NWEEKS-1)+','+y(0)+' Z" fill="'+hexVar('--orbe')+'" opacity="0.13"/>';
+  // Y-axis label
+  g+='<text x="12" y="'+(pad.t+ih/2)+'" text-anchor="middle" font-size="9" fill="'+css('--muted')+'" transform="rotate(-90 12 '+(pad.t+ih/2)+')">hrs</text>';
+  // current-week divider — Actuals | Forecast, removes any ambiguity beyond the dashed-line convention
+  if(curIdx>=0){
+    var cx=x(curIdx);
+    g+='<line x1="'+cx+'" y1="'+pad.t+'" x2="'+cx+'" y2="'+(pad.t+ih)+'" stroke="'+css('--muted')+'" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
+    g+='<text x="'+(cx-5)+'" y="'+(pad.t-8)+'" text-anchor="end" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">Actuals</text>';
+    g+='<text x="'+(cx+5)+'" y="'+(pad.t-8)+'" text-anchor="start" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">Forecast</text>';
+  }
+  // planned area (saturated fill — the plan/actual gap is the point of this chart)
+  var dpts=WEEKS.map(function(wk,i){return x(i)+','+y(wt.planned[wk.iso]||0);});
+  g+='<path d="M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(NWEEKS-1)+','+y(0)+' Z" fill="'+hexVar('--orbe')+'" opacity="0.22"/>';
   // planned line: solid actual/now, dashed plan
   WEEKS.forEach(function(wk,i){
     if(i===0) return;
     var prev=WEEKS[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
-    g+='<line x1="'+x(i-1)+'" y1="'+y(DATA.weekTotal[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(DATA.weekTotal[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
+    g+='<line x1="'+x(i-1)+'" y1="'+y(wt.planned[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(wt.planned[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
   });
-  // tracked area + line (past + current weeks only)
-  if(DATA.weekTracked){
+  // tracked line (no fill — an unfilled line reads distinctly against the shaded Planned area
+  // instead of two washed-out overlapping bands)
+  if(wt.tracked){
     var tPts=[];
     WEEKS.forEach(function(wk,i){
-      var th=DATA.weekTracked[wk.iso]||0;
+      var th=wt.tracked[wk.iso]||0;
       if(wk.status!=='plan'||th>0) tPts.push({xi:i,x:x(i),y:y(th),h:th,wk:wk});
     });
     if(tPts.some(function(p){return p.h>0;})){
-      var tapts=tPts.map(function(p){return p.x+','+p.y;});
-      g+='<path d="M'+tPts[0].x+','+y(0)+' L'+tapts.join(' L')+' L'+tPts[tPts.length-1].x+','+y(0)+' Z" fill="#00A86B" opacity="0.10"/>';
-      for(var ti=1;ti<tPts.length;ti++){g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.2"/>';}
-      tPts.forEach(function(p){if(p.h>0)g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="2.6" fill="#00A86B"/>';});
+      for(var ti=1;ti<tPts.length;ti++){g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.4"/>';}
+      tPts.forEach(function(p){
+        if(!p.h) return;
+        var partial=p.wk.status==='now';
+        g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?'var(--surface)':'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"/>';
+      });
     }
   }
-  // fidelity % annotation above planned line per past/current week
-  if(DATA.fidelity){
-    WEEKS.forEach(function(wk,i){
-      var fid=DATA.fidelity[wk.iso];
-      if(fid===null||fid===undefined) return;
-      var pv=DATA.weekTotal[wk.iso]||0;
-      var col=fid>=0.8?'#00A86B':fid>=0.5?'#B45309':'#B71C1C';
-      g+='<text x="'+x(i)+'" y="'+(y(pv)-7)+'" text-anchor="middle" font-size="8" fill="'+col+'" font-weight="700">'+Math.round(fid*100)+'%</text>';
-    });
+  // fidelity % annotation above planned line per past/current week; asterisk flags the
+  // in-progress current week so the number is never read as a completed result
+  WEEKS.forEach(function(wk,i){
+    var pv=wt.planned[wk.iso]||0, tv=wt.tracked[wk.iso];
+    if(wk.status==='plan'&&!tv) return;
+    var fid=pv>0?((tv||0)/pv):null;
+    if(fid===null) return;
+    var col=fid>=0.8?'#00A86B':fid>=0.5?'#B45309':'#B71C1C';
+    var lbl=Math.round(fid*100)+'%'+(wk.status==='now'?'*':'');
+    g+='<text x="'+x(i)+'" y="'+(y(pv)-7)+'" text-anchor="middle" font-size="8" fill="'+col+'" font-weight="700">'+lbl+'</text>';
+  });
+  // in-progress callout directly on the cliff point — the critical caveat lives on the chart,
+  // not just in a caption a viewer might not scroll to
+  if(curIdx>=0&&WEEKS[curIdx].status==='now'){
+    var cTv=wt.tracked[WEEKS[curIdx].iso]||0;
+    g+='<text x="'+x(curIdx)+'" y="'+(y(cTv)+16)+'" text-anchor="middle" font-size="7.5" fill="'+css('--warn')+'" font-weight="700">'+esc(WEEKS[curIdx].iso)+' in progress*</text>';
   }
-  // target execution rate line: planTarget × planned per week (amber dashed)
+  // target execution rate line: planTarget × planned per week — muted gray dashed so it
+  // recedes behind the two main series instead of visually pairing with the orange fidelity labels
   if(DATA.planTarget){
     var tgt=DATA.planTarget;
-    var tLinePts=WEEKS.map(function(wk,i){return x(i)+','+y((DATA.weekTotal[wk.iso]||0)*tgt);});
-    g+='<polyline points="'+tLinePts.join(' ')+'" fill="none" stroke="'+css('--amber')+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".75"/>';
-    var tgtLastY=y((DATA.weekTotal[WEEKS[NWEEKS-1].iso]||0)*tgt);
-    g+='<text x="'+(w-pad.r)+'" y="'+(tgtLastY-4)+'" text-anchor="end" font-size="7.5" fill="'+css('--amber')+'" font-weight="600">'+Math.round(tgt*100)+'% target</text>';
+    var tLinePts=WEEKS.map(function(wk,i){return x(i)+','+y((wt.planned[wk.iso]||0)*tgt);});
+    g+='<polyline points="'+tLinePts.join(' ')+'" fill="none" stroke="'+css('--muted')+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".65"/>';
   }
-  // legend (top-left inside chart)
-  g+='<rect x="'+pad.l+'" y="4" width="62" height="13" rx="3" fill="var(--surface)" opacity=".7"/>';
-  g+='<line x1="'+(pad.l+4)+'" y1="10" x2="'+(pad.l+16)+'" y2="10" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"/>';
-  g+='<text x="'+(pad.l+20)+'" y="13" font-size="8" fill="'+hexVar('--orbe')+'" font-weight="600">Planned</text>';
-  g+='<line x1="'+(pad.l+55)+'" y1="10" x2="'+(pad.l+67)+'" y2="10" stroke="#00A86B" stroke-width="2.2"/>';
-  g+='<text x="'+(pad.l+71)+'" y="13" font-size="8" fill="#00A86B" font-weight="600">Tracked</text>';
   // week labels + selected marker
   WEEKS.forEach(function(wk,i){
-    g+='<text x="'+x(i)+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(wk.iso===SEL_ISO?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(wk.iso===SEL_ISO?'700':'400')+'">W'+wk.wk+'</text>';
-    if(wk.iso===SEL_ISO) g+='<circle cx="'+x(i)+'" cy="'+y(DATA.weekTotal[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'"/>';
+    g+='<text x="'+x(i)+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(wk.iso===SEL_ISO?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(wk.iso===SEL_ISO?'700':'400')+'">'+wk.iso+'</text>';
+    if(wk.iso===SEL_ISO) g+='<circle cx="'+x(i)+'" cy="'+y(wt.planned[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'"/>';
   });
   g+='</svg>';
   $('capChart').innerHTML=g;
@@ -594,24 +781,63 @@ function populateAvailFilters(){
     sel.innerHTML='<option value="">'+lbl+'</option>'+items.map(function(v){return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>';}).join('');
   }
   fill('availLoc',dims.locations,AVAIL_LOC,'All locations');
-  fill('availFam',dims.jobFamilies,AVAIL_FAM,'All job families');
   fill('availMgr',dims.managers,AVAIL_MGR,'All managers');
-  ['availLoc','availFam','availMgr'].forEach(function(id){
+  ['availLoc','availMgr'].forEach(function(id){
     var el=$(id);if(!el)return;
     el.onchange=function(){
       if(id==='availLoc')AVAIL_LOC=this.value;
-      if(id==='availFam')AVAIL_FAM=this.value;
       if(id==='availMgr')AVAIL_MGR=this.value;
       reRenderAll_();
     };
   });
+  populateFamOptions(dims.jobFamilies||[]);
   var crewEl = $('availCrew');
   if (crewEl) {
     crewEl.value = AVAIL_CREW;
     crewEl.onchange = function() { AVAIL_CREW = this.value; reRenderAll_(); };
   }
-  var stEl = $('availStatus'); if (stEl) stEl.value = AVAIL_STATUS;
 }
+
+function populateFamOptions(families){
+  var container=$('famOptions'); if(!container) return;
+  // Drop selections for families no longer present in the current dataset.
+  var seen={}; families.forEach(function(f){seen[f]=true;});
+  Array.from(AVAIL_FAM).forEach(function(f){ if(!seen[f]) AVAIL_FAM.delete(f); });
+  container.innerHTML='';
+  families.slice().sort().forEach(function(f){
+    var lbl=document.createElement('label');
+    lbl.className='fb-multi-opt';
+    var cb=document.createElement('input');
+    cb.type='checkbox'; cb.value=f; cb.checked=AVAIL_FAM.has(f);
+    cb.addEventListener('change',function(){
+      if(this.checked) AVAIL_FAM.add(f); else AVAIL_FAM.delete(f);
+      updateFamBtn(); reRenderAll_();
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(f));
+    container.appendChild(lbl);
+  });
+  updateFamBtn();
+}
+
+function updateFamBtn(){
+  var count=AVAIL_FAM.size;
+  var lbl=$('famLabel'), btn=$('famBtn');
+  if(!lbl||!btn) return;
+  lbl.textContent = count===0 ? 'All job families' : (count+' famil'+(count>1?'ies':'y')+' selected');
+  btn.classList.toggle('active', count>0);
+}
+
+function toggleFamPanel(e){
+  e.stopPropagation();
+  var panel=$('famPanel');
+  if(panel) panel.style.display = panel.style.display==='none' ? '' : 'none';
+}
+
+document.addEventListener('click', function(e){
+  var wrap=$('famWrap'), panel=$('famPanel');
+  if(wrap && panel && !wrap.contains(e.target)) panel.style.display='none';
+});
 
 /* ---------------- Render: Team Availability ---------------- */
 function syncRoleChip(){
@@ -623,13 +849,13 @@ function syncRoleChip(){
 /* -- Shared filter helpers -- */
 function filteredPersonSet_(){
   if(!DATA||!DATA.personMeta)return null;
-  if(!AVAIL_LOC&&!AVAIL_FAM&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE)return null;
+  if(!AVAIL_LOC&&!AVAIL_FAM.size&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE)return null;
   var set={};
   Object.keys(DATA.personMeta).forEach(function(np){
     var m=DATA.personMeta[np];
     if(m.excluded)return;
     if(AVAIL_LOC&&m.location!==AVAIL_LOC)return;
-    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return;
+    if(AVAIL_FAM.size&&!AVAIL_FAM.has(m.jobFamily))return;
     if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return;
     if(AVAIL_CREW==='fte'&&m.isCrew)return;
     if(AVAIL_CREW==='crew'&&!m.isCrew)return;
@@ -646,14 +872,14 @@ function updateFilterBar_(){
   if(FILTER_EXPANDED){body.style.display='';toggle.textContent='▴ collapse';}
   else{body.style.display='none';toggle.textContent='▾ expand';}
   var parts=[];
+  parts.push(TOPN>=999?'All':'Top '+TOPN);
   if(AVAIL_ROLE==='m')parts.push('Mgrs');
   else if(AVAIL_ROLE==='ic')parts.push('ICs');
   if(AVAIL_LOC)parts.push(AVAIL_LOC);
-  if(AVAIL_FAM)parts.push(AVAIL_FAM);
+  if(AVAIL_FAM.size)parts.push(AVAIL_FAM.size===1?Array.from(AVAIL_FAM)[0]:(AVAIL_FAM.size+' families'));
   if(AVAIL_MGR)parts.push(AVAIL_MGR);
   if(AVAIL_CREW==='fte')parts.push('FTE only');
   else if(AVAIL_CREW==='crew')parts.push('Crew only');
-  if(AVAIL_STATUS){parts.push(AVAIL_STATUS.charAt(0).toUpperCase()+AVAIL_STATUS.slice(1).replace('-',' '));}
   if(AVAIL_BLEND>0){parts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));}
   if(summary){summary.textContent=parts.length?parts.join(' · '):'All people';}
 }
@@ -662,6 +888,7 @@ function reRenderAll_(){
   AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;
   renderAvailability();
   if(typeof renderHeat==='function')renderHeat();
+  if(typeof renderProjTeam_==='function')renderProjTeam_();
   updateFilterBar_();
 }
 
@@ -675,23 +902,37 @@ function taWindowIsos_(qtdIsos,currentIso){
   return qtdIsos.slice(pageStart,pageEnd+1);
 }
 
-function blendDistChart_(allPeople,personQtdProjectCounts,currentIso){
+function sparkLegendHtml_(){
+  var tierLbl={1:'1 project',2:'2 projects',3:'3 projects',4:'4+ projects'};
+  var html='<div class="spark-legend"><span class="spark-legend-title">Sparkline key</span>';
+  [1,2,3,4].forEach(function(tier){
+    html+='<span class="spark-legend-item"><i style="background:'+SPARK_COLORS[tier-1]+'"></i>'+tierLbl[tier]+' that week</span>';
+  });
+  html+='<span class="spark-legend-item"><i style="background:'+SPARK_PTO_COLOR+'"></i>PTO / leave</span>';
+  html+='<span class="spark-legend-item"><i style="background:'+SPARK_FUTURE_COLOR+'"></i>Future planned</span>';
+  html+='<span class="spark-legend-item"><i class="spark-legend-cur"></i>Current week (outlined)</span>';
+  html+='</div>';
+  return html;
+}
+
+function blendDistChart_(allPeople,personQtdUniqueProjectCount){
   var counts={1:0,2:0,3:0,4:0};
   allPeople.forEach(function(np){
-    var c=(personQtdProjectCounts[np]||{})[currentIso]||0;
+    var c=personQtdUniqueProjectCount[np]||0;
     var tier=c>=4?4:Math.max(1,c||1);
     counts[tier]++;
   });
   var total=allPeople.length||1;
   var labels={1:'1 project',2:'2 projects',3:'3 projects',4:'4+ projects'};
-  var html='<div class="blend-chart"><div class="blend-chart-title">Project load distribution — click to filter</div><div class="blend-bars">';
+  var html='<div class="blend-chart"><div class="blend-chart-title">Project load distribution (whole quarter) — click to filter · colors match the sparkline above</div><div class="blend-bars">';
   [1,2,3,4].forEach(function(tier){
     var n=counts[tier];
     var pct=Math.round(n/total*100);
     var isActive=AVAIL_BLEND===tier;
+    var barColor=SPARK_COLORS[tier-1];
     html+='<div class="blend-bar-row'+(isActive?' active':'')+'" onclick="AVAIL_BLEND='+(isActive?0:tier)+';AVAIL_OPEN=null;renderAvailability()">';
-    html+='<div class="blend-bar-lbl">'+labels[tier]+'</div>';
-    html+='<div class="blend-bar-track"><div class="blend-bar-fill" style="width:'+pct+'%"></div></div>';
+    html+='<div class="blend-bar-lbl"><i style="background:'+barColor+'"></i>'+labels[tier]+'</div>';
+    html+='<div class="blend-bar-track"><div class="blend-bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>';
     html+='<div class="blend-bar-count">'+n+'</div>';
     html+='</div>';
   });
@@ -754,29 +995,56 @@ function computeTrendTag_(sparkVals) {
   return { symbol: '→', label: 'stable', cls: 'trend-tag' };
 }
 
-function computeCallout_(state, streakLen, escLen) {
-  if (state === 'aligned')    return streakLen >= 3 ? (streakLen + '-week reliability streak — no action needed') : 'On track this week';
-  if (state === 'unplanned')  return 'Tracking unscheduled work — investigate scope';
+// state is anchored on BS.lastCompletedIso (see renderAvailability) — the current week
+// never has a computed state, so all copy here reads "last week", not "this week".
+function plannedProjectsAtIso_(np, iso) {
+  var pp = (DATA.personProjectPlan || {})[np] || {};
+  return Object.keys(pp).filter(function(key) { return (pp[key][iso] || 0) > 0; })
+    .sort(function(a, b) { return (pp[b][iso] || 0) - (pp[a][iso] || 0); });
+}
+
+function projectListTxt_(projects) {
+  if (!projects || !projects.length) return '';
+  return projects.map(function(k) { return KEYNAME[k] || k; }).join(', ');
+}
+
+// A planned-but-untracked week ("escalation") is NOT proof of a problem — the project may
+// simply have wrapped up. Surface the actual project(s) planned so a manager can judge
+// completion vs. a real gap, instead of an alarmist "follow up" verdict with no context.
+function computeCallout_(state, streakLen, escLen, projects) {
+  var projTxt = projectListTxt_(projects);
+  if (state === 'aligned')    return streakLen >= 3 ? (streakLen + '-week reliability streak — no action needed') : 'On track as of last week';
+  if (state === 'unplanned')  return 'Tracked unscheduled work last week — investigate scope';
   if (state === 'silent')     return 'Planned but not tracking — check in';
-  if (state === 'escalation') return escLen >= 2 ? (escLen + ' consecutive weeks without activity — escalate') : 'Zero activity this week — follow up';
+  if (state === 'escalation') {
+    var onTxt = projTxt ? (' on ' + projTxt) : '';
+    return escLen >= 2
+      ? (escLen + ' weeks with no tracked time' + onTxt + ' — confirm status')
+      : ('No tracked time last week' + onTxt + ' — confirm complete or check in');
+  }
   return '—';
 }
 
-function computeManagerNote_(state, streakLen, escLen, isSwarm) {
-  if (state === 'aligned' && isSwarm) return 'Reliable and jumping in where needed — potential kudos trigger.';
-  if (state === 'aligned') return streakLen >= 3 ? 'Strong performer — ' + streakLen + '-week reliability streak. No action needed.' : 'On track this week.';
-  if (state === 'unplanned') return 'Tracking unscheduled work. Worth asking: is this swarming in to help? Scope creep? Should it be planned next cycle?';
+function computeManagerNote_(state, streakLen, escLen, projects) {
+  var projTxt = projectListTxt_(projects);
+  if (state === 'aligned') return streakLen >= 3 ? 'Strong performer — ' + streakLen + '-week reliability streak. No action needed.' : 'On track as of last week.';
+  if (state === 'unplanned') return 'Tracked unscheduled work last week. Worth asking: is this swarming in to help? Scope creep? Should it be planned next cycle?';
   if (state === 'silent') return 'Planned hours not tracking — may be blocked or waiting on someone. Worth a quick check-in.';
-  if (state === 'escalation') return escLen >= 2 ? escLen + ' weeks without activity against plan. Needs a conversation — assume positive intent first (blocked? unclear scope?).' : 'Zero activity this week. Follow up — may be blocked or reassigned.';
+  if (state === 'escalation') {
+    var onTxt = projTxt ? (' on ' + projTxt) : '';
+    return escLen >= 2
+      ? (escLen + ' weeks with no tracked time' + onTxt + '. Could mean the work wrapped up — or they\'re blocked. Confirm before treating it as an escalation.')
+      : ('No tracked time last week' + onTxt + '. Likely explanations: the project completed, or they\'re blocked/reassigned — worth a quick check rather than assuming a problem.');
+  }
   return '—';
 }
 
 function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap) {
   var n = displayIsos.length;
   if (!n) return '';
-  var BAR_W = 6, GAP = 3, SLOT = BAR_W + GAP, H = 36, ARROW_W = 14;
+  var BAR_W = 11, GAP = 4, SLOT = BAR_W + GAP, LBL_H = 10, BAR_AREA_H = 36, H = BAR_AREA_H + LBL_H, ARROW_W = 16;
   var W = n * SLOT + ARROW_W;
-  var COLOR = ['#bfdbfe', '#60a5fa', '#2864e6', '#0f1941']; // 1/2/3/4+ projects
+  var COLOR = SPARK_COLORS;
   var cap = weekCap || 40;
   var maxCount = 1;
   displayIsos.forEach(function(iso) { var c = counts[iso] || 0; if (c > maxCount) maxCount = c; });
@@ -791,22 +1059,25 @@ function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap)
     var isFullPto = pto >= cap * PTO_FULL_THRESHOLD;
     var x = i * SLOT;
     if (isFullPto) {
-      svg += '<rect x="' + x + '" y="2" width="' + BAR_W + '" height="' + (H - 4) + '" fill="#f59e0b" rx="1"><title>' + esc(iso + ' · full PTO (' + pto.toFixed(0) + 'h) — compliance-exempt') + '</title></rect>';
+      svg += '<rect x="' + x + '" y="2" width="' + BAR_W + '" height="' + (BAR_AREA_H - 4) + '" fill="' + SPARK_PTO_COLOR + '" rx="1"><title>' + esc(iso + ' · full PTO (' + pto.toFixed(0) + 'h) — compliance-exempt') + '</title></rect>';
     } else {
-      var bh = c > 0 ? Math.max(4, Math.round((c / maxCount) * (H - 4))) : 2;
-      var y = H - bh - 2;
-      var fill = isFut ? '#c7d2fe' : (c === 0 ? '#e2e8f0' : COLOR[Math.min(3, c - 1)]);
+      var bh = c > 0 ? Math.max(4, Math.round((c / maxCount) * (BAR_AREA_H - 4))) : 2;
+      var y = BAR_AREA_H - bh - 2;
+      var fill = isFut ? SPARK_FUTURE_COLOR : (c === 0 ? SPARK_NONE_COLOR : COLOR[Math.min(3, c - 1)]);
       var strokeAttr = isCur ? ' stroke="#6366f1" stroke-width="1.5"' : '';
       var projLabel = c > 0 ? (c + ' project' + (c !== 1 ? 's' : '')) : 'no data';
       var ptoNote = pto > 0 ? ' · ' + pto.toFixed(0) + 'h PTO' : '';
       svg += '<rect x="' + x + '" y="' + y + '" width="' + BAR_W + '" height="' + bh + '" fill="' + fill + '" rx="1"' + strokeAttr + '><title>' + esc(iso + ' · ' + projLabel + ptoNote) + '</title></rect>';
       if (pto > 0) {
-        var ptoH = Math.max(3, Math.round(Math.min(1, pto / cap) * (H - 4)));
-        svg += '<rect x="' + x + '" y="' + (H - ptoH - 2) + '" width="' + BAR_W + '" height="' + ptoH + '" fill="#f59e0b" rx="1" opacity="0.8"><title>' + esc(iso + ' · ' + pto.toFixed(0) + 'h PTO') + '</title></rect>';
+        var ptoH = Math.max(3, Math.round(Math.min(1, pto / cap) * (BAR_AREA_H - 4)));
+        svg += '<rect x="' + x + '" y="' + (BAR_AREA_H - ptoH - 2) + '" width="' + BAR_W + '" height="' + ptoH + '" fill="' + SPARK_PTO_COLOR + '" rx="1" opacity="0.8"><title>' + esc(iso + ' · ' + pto.toFixed(0) + 'h PTO') + '</title></rect>';
       }
     }
+    var wkNum = (String(iso).match(/W(\d+)/) || [])[1] || '';
+    var lblFill = isCur ? '#6366f1' : '#94a3b8';
+    svg += '<text x="' + (x + BAR_W / 2) + '" y="' + (H - 1) + '" text-anchor="middle" font-size="7" font-weight="' + (isCur ? '700' : '400') + '" fill="' + lblFill + '"><title>' + esc(iso) + '</title>' + esc(wkNum) + '</text>';
   });
-  svg += '<text x="' + (W - ARROW_W + 1) + '" y="12" font-size="10" fill="' + tArrow + '" font-weight="700">' + trend.symbol + '</text>';
+  svg += '<text x="' + (W - ARROW_W + 2) + '" y="' + (BAR_AREA_H / 2 + 3) + '" font-size="11" fill="' + tArrow + '" font-weight="700">' + trend.symbol + '</text>';
   svg += '</svg>';
   return svg;
 }
@@ -819,44 +1090,45 @@ function renderAvailability() {
 
   var BS = DATA.behaviorSignals || {};
   var currentIso = BS.currentIso || SEL_ISO;
+  // The current week never has a computed state (tracked time is still accumulating) —
+  // "as of now" signals (row chip, status filter, manager note) anchor on the most
+  // recently completed week instead, or currentIso itself never matches and nothing shows.
+  var refIso = BS.lastCompletedIso || currentIso;
   var qtdIsos = BS.qtdIsos || [currentIso];
   var personWeekState = BS.personWeekState || {};
   var personQtdScore = BS.personQtdScore || {};
   var personStreakLen = BS.personStreakLen || {};
   var personEscLen = BS.personEscLen || {};
   var personQtdProjectCounts = BS.personQtdProjectCounts || {};
-  var personIsSwarm = BS.personIsSwarm || {};
+  var personQtdUniqueProjectCount = BS.personQtdUniqueProjectCount || {};
+  var projectHeadcountAtRef = BS.projectHeadcountAtRef || {};
   var personIsStabilizer = BS.personIsStabilizer || {};
 
   populateAvailFilters();
 
-  // All people passing demographic + status filters (before blend-tier filter)
+  var taHintEl = $('taHint');
+  if (taHintEl) {
+    taHintEl.textContent = (BS.lastCompletedIso ? ('Note reflects ' + BS.lastCompletedIso + ' (last completed week)') : 'No completed week yet this quarter')
+      + ' · Top N / All controlled by the People filters bar above';
+  }
+
+  // All people passing demographic filters (before blend-tier filter)
   var allFilteredPeople = Object.keys(DATA.personMeta).filter(function(np) {
     var m = DATA.personMeta[np];
     if (m.excluded) return false;
     if (AVAIL_LOC  && m.location  !== AVAIL_LOC)  return false;
-    if (AVAIL_FAM  && m.jobFamily !== AVAIL_FAM)  return false;
+    if (AVAIL_FAM.size && !AVAIL_FAM.has(m.jobFamily)) return false;
     if (AVAIL_MGR  && m.manager   !== AVAIL_MGR)  return false;
     if (AVAIL_CREW === 'fte'  && m.isCrew)   return false;
     if (AVAIL_CREW === 'crew' && !m.isCrew)  return false;
     if (AVAIL_ROLE === 'm'  && !m.isManager) return false;
     if (AVAIL_ROLE === 'ic' &&  m.isManager) return false;
-    if (AVAIL_STATUS) {
-      if (AVAIL_STATUS === 'leave') {
-        var pto = ((DATA.personWeekPTO || {})[np] || {})[currentIso] || 0;
-        var anzLoc = (DATA && DATA.anzLocation) || 'Australia & New Zealand';
-        var cap = (m.location === anzLoc) ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
-        if (pto < cap * PTO_FULL_THRESHOLD) return false;
-      } else {
-        if ((personWeekState[np] || {})[currentIso] !== AVAIL_STATUS) return false;
-      }
-    }
     return true;
   });
 
   // Apply blend-tier filter on top
   var people = AVAIL_BLEND > 0 ? allFilteredPeople.filter(function(np) {
-    var c = (personQtdProjectCounts[np] || {})[currentIso] || 0;
+    var c = personQtdUniqueProjectCount[np] || 0;
     return AVAIL_BLEND === 4 ? c >= 4 : c === AVAIL_BLEND;
   }) : allFilteredPeople.slice();
 
@@ -868,7 +1140,7 @@ function renderAvailability() {
   });
 
   var totalFiltered = people.length;
-  if (AVAIL_TOPN < 999) people = people.slice(0, AVAIL_TOPN);
+  if (TOPN < 999) people = people.slice(0, TOPN);
 
   // Full QTD history + up to 3 future planned weeks
   var displayIsos = qtdIsos.slice();
@@ -876,33 +1148,41 @@ function renderAvailability() {
   displayIsos = displayIsos.concat(futureWks.map(function(w){ return w.iso; }));
 
   var html = '';
+  html += sparkLegendHtml_();
   // Blend distribution chart (based on allFilteredPeople, not blend-filtered)
-  html += blendDistChart_(allFilteredPeople, personQtdProjectCounts, currentIso);
+  html += blendDistChart_(allFilteredPeople, personQtdUniqueProjectCount);
 
   html += '<div class="avail-list">';
 
   people.forEach(function(np) {
     var m = DATA.personMeta[np] || {};
-    var state    = (personWeekState[np] || {})[currentIso];
-    var chipInfo = state ? stateChipInfo_(state) : { cls: 'chip-inprogress', label: 'In progress' };
+    var state    = (personWeekState[np] || {})[refIso];
     var counts   = personQtdProjectCounts[np] || {};
     var ptoByIso  = (DATA.personWeekPTO || {})[np] || {};
     var weekCap   = m.location === ((DATA.anzLocation) || 'Australia & New Zealand') ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
     var spark     = renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap);
     var streakLen = personStreakLen[np] || 0;
     var escLen   = personEscLen[np] || 0;
-    var callout  = computeCallout_(state, streakLen, escLen);
+    var refProjects = plannedProjectsAtIso_(np, refIso);
+    var callout  = computeCallout_(state, streakLen, escLen, refProjects);
     var isOpen   = AVAIL_OPEN === np;
 
     var badgesHtml = '';
     if (streakLen >= 3)         badgesHtml += '<span class="badge-ta badge-streak">' + streakLen + '-wk streak</span>';
-    if (personIsSwarm[np])      badgesHtml += '<span class="badge-ta badge-swarm">Swarm</span>';
     if (personIsStabilizer[np]) badgesHtml += '<span class="badge-ta badge-stabilizer">Stabilizer</span>';
+    // Group-by-project chips: shows who else shares each project so a manager can jump
+    // straight to the full team roster for that project (see openProjTeam_ / Project Team View).
+    refProjects.slice(0, 2).forEach(function(key) {
+      var teamSize = projectHeadcountAtRef[key] || 0;
+      if (teamSize < 2) return;
+      badgesHtml += '<span class="badge-ta badge-group" title="See everyone on ' + esc(KEYNAME[key] || key) + '" '
+        + 'onclick="event.stopPropagation();openProjTeam_(\'' + key.replace(/'/g, "\\'") + '\',\'' + refIso + '\')">'
+        + '👥 ' + teamSize + ' on ' + esc(key) + '</span>';
+    });
 
     html += '<div class="avail-row">';
     html += '<div class="avail-collapsed" data-np="' + esc(np) + '" onclick="toggleAvailDrill(this.dataset.np)">';
     html += '<span class="avail-row-name">' + esc(m.displayName || np) + '</span>';
-    html += '<span class="chip ' + chipInfo.cls + '">' + esc(chipInfo.label) + '</span>';
     html += spark;
     if (badgesHtml) html += badgesHtml;
     html += '<span class="avail-callout">' + esc(callout) + '</span>';
@@ -966,7 +1246,7 @@ function renderAvailability() {
         projTableHtml += '</tbody></table></div>';
       }
 
-      var mgNote = computeManagerNote_(state, streakLen, escLen, personIsSwarm[np]);
+      var mgNote = computeManagerNote_(state, streakLen, escLen, refProjects);
 
       html += '<div class="avail-expanded-section">';
       if (projTableHtml) html += projTableHtml;
@@ -993,11 +1273,56 @@ function toggleAvailDrill(np){
 }
 
 function clearAvailFilters(){
-  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_STATUS='';AVAIL_OPEN=null;
+  AVAIL_LOC='';AVAIL_FAM.clear();AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_OPEN=null;
   AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
-  var stEl = $('availStatus'); if (stEl) stEl.value = '';
   populateAvailFilters();
   reRenderAll_();
+}
+
+/* ---------------- Render: Project Team View (group people by shared project) ---------------- */
+var PTV_KEY = '', PTV_ISO = '';
+
+function populateProjTeamFilters_(){
+  var projSel=$('ptvProject'), wkSel=$('ptvWeek');
+  if(!projSel||!wkSel||!DATA) return;
+  var order=(DATA.order||[]).slice().sort();
+  projSel.innerHTML='<option value="">Choose a project…</option>'+order.map(function(k){
+    return '<option value="'+esc(k)+'"'+(k===PTV_KEY?' selected':'')+'>'+esc(k)+' — '+esc(KEYNAME[k]||k)+'</option>';
+  }).join('');
+  wkSel.innerHTML=WEEKS.map(function(w){
+    return '<option value="'+w.iso+'"'+(w.iso===PTV_ISO?' selected':'')+'>'+esc(w.iso)+' ('+STATUS_LABEL[w.status]+')</option>';
+  }).join('');
+  projSel.onchange=function(){ PTV_KEY=this.value; renderProjTeam_(); };
+  wkSel.onchange=function(){ PTV_ISO=this.value; renderProjTeam_(); };
+}
+
+/** Opens the Project Team View scoped to `key`/`iso` — the target of a person row's 👥 chip. */
+function openProjTeam_(key, iso){
+  PTV_KEY=key; PTV_ISO=iso;
+  var panel=$('projTeamPanel');
+  if(panel) panel.style.display='';
+  populateProjTeamFilters_();
+  renderProjTeam_();
+  if(panel) panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function renderProjTeam_(){
+  var panel=$('projTeamPanel'), body=$('ptvBody');
+  if(!panel||!body||!DATA||!DATA.behaviorSignals){ if(panel) panel.style.display='none'; return; }
+  panel.style.display='';
+  if(!PTV_ISO) PTV_ISO = (DATA.behaviorSignals||{}).lastCompletedIso || CURRENT_ISO;
+  populateProjTeamFilters_();
+  if(!PTV_KEY){ body.innerHTML='<div class="hint">Pick a project above, or click a 👥 chip on a person\'s row in Team Availability.</div>'; return; }
+  var pset=filteredPersonSet_();
+  var rows=projectPeopleAt_(PTV_KEY, PTV_ISO, pset);
+  if(!rows.length){
+    body.innerHTML='<div class="hint">No one planned on '+esc(KEYNAME[PTV_KEY]||PTV_KEY)+' in '+esc(PTV_ISO)+(pset?' (within the current People filters)':'')+'.</div>';
+    return;
+  }
+  var html='<div class="hexp-person-list">'+projectPeopleRowsHtml_(rows)+'</div>';
+  html+='<div class="hint" style="margin-top:8px">'+rows.length+' '+(rows.length===1?'person':'people')+' on '
+    +esc(KEYNAME[PTV_KEY]||PTV_KEY)+' in '+esc(PTV_ISO)+(pset?' (within the current People filters)':'')+'.</div>';
+  body.innerHTML=html;
 }
 
 /* ---------------- Render: Project Planned vs Tracked Drill ---------------- */
@@ -1007,6 +1332,7 @@ function renderProjDrill(key){
   d.style.display='';
   $('projDrillChip').innerHTML=chip(key);
   $('projDrillName').textContent=KEYNAME[key]||key;
+  var fnEl=$('projDrillFilterNote'); if(fnEl) fnEl.style.display = filteredPersonSet_() ? '' : 'none';
   var w=560,h=100,pad={l:36,r:10,t:14,b:22},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   var maxv=1;
   WEEKS.forEach(function(wk){
@@ -1031,7 +1357,7 @@ function renderProjDrill(key){
   }
   tPts.forEach(function(p){if(p.h>0)g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="2.4" fill="#00A86B"/>';});
   // week labels
-  WEEKS.forEach(function(wk,i){g+='<text x="'+x(i)+'" y="'+(h-5)+'" text-anchor="middle" font-size="8" fill="'+css('--muted')+'">W'+wk.wk+'</text>';});
+  WEEKS.forEach(function(wk,i){g+='<text x="'+x(i)+'" y="'+(h-5)+'" text-anchor="middle" font-size="8" fill="'+css('--muted')+'">'+wk.iso+'</text>';});
   g+='</svg>';
   $('projDrillChart').innerHTML=g;
 }
@@ -1061,29 +1387,23 @@ function qPredicate(k){
   }
 }
 function visibleOrder(){
-  var order=DATA.order.slice();
+  var order=(FPROJ||DATA).order.slice();
   if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
   order=order.filter(qPredicate);
-  var pset=filteredPersonSet_();
-  if(pset){
-    var projPlan=DATA.personProjectPlan||{};
-    order=order.filter(function(k){
-      return Object.keys(pset).some(function(np){return ((projPlan[np]||{})[k]||{})[SEL_ISO]>0;});
-    });
-  }
   return order.slice(0,TOPN);
 }
 
 function cellColor(k,iso){
-  if(COLOR_MODE==='hours'){ var t=Math.min(1,capAt(k,iso)/(DATA.maxCell||1)); return {bg:heatColorHours(t),fg:t>0.55?'#fff':css('--text'),txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''}; }
+  var mc=(FPROJ||DATA).maxCell||1;
+  if(COLOR_MODE==='hours'){ var t=Math.min(1,capAt(k,iso)/mc); return {bg:heatColorHours(t),fg:t>0.55?'#fff':css('--text'),txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''}; }
   if(COLOR_MODE==='change'){
     var pr=priorIso(iso); var d = pr? (capAt(k,iso)-capAt(k,pr)) : 0;
-    var t=Math.max(-1,Math.min(1, d/((DATA.maxCell||1)*0.5)));
+    var t=Math.max(-1,Math.min(1, d/(mc*0.5)));
     var bg = t>=0 ? mix(hexVar('--neutral'),hexVar('--up'),t) : mix(hexVar('--neutral'),hexVar('--down'),-t);
     return {bg:bg,fg:Math.abs(t)>0.6?'#fff':css('--text'),txt: Math.abs(d)>=1?((d>0?'+':'')+fmt(d)):''};
   }
   if(COLOR_MODE==='people'){
-    var hd=(DATA.head[k]&&DATA.head[k][iso])||0;
+    var hd=((FPROJ||DATA).head[k]&&(FPROJ||DATA).head[k][iso])||0;
     var t=HEAT_MAX_HEAD>0?hd/HEAT_MAX_HEAD:0;
     var bg=t<0.5?mix(hexVar('--surface-2'),'#2864E6',t/0.5):mix('#2864E6',hexVar('--void'),(t-0.5)/0.5);
     return {bg:bg,fg:t>0.4?'#fff':css('--text'),txt:hd>0?hd+'p':''};
@@ -1096,28 +1416,28 @@ function cellColor(k,iso){
 }
 function pr_pos(k,iso){ var pr=priorIso(iso); return pr? capAt(k,pr)>0.001 : false; }
 
-function heatProjectExpandHtml_(key) {
-  if (!DATA || !DATA.behaviorSignals) return '';
-  var BS = DATA.behaviorSignals;
-  var currentIso = BS.currentIso || SEL_ISO;
+/**
+ * Everyone with planned hours on `key` at `iso`, sorted worst-signal-first — the shared
+ * "group people by project" building block behind both the heatmap row expand and the
+ * Project Team View panel (openProjTeam_ / renderProjTeam_).
+ * @param {string} key project key
+ * @param {string} iso ISO week
+ * @param {Object|null} pset optional person-set restriction (from filteredPersonSet_())
+ */
+function projectPeopleAt_(key, iso, pset) {
+  var BS = DATA.behaviorSignals || {};
   var personWeekState = BS.personWeekState || {};
-  var personIsSwarm = BS.personIsSwarm || {};
   var personStreakLen = BS.personStreakLen || {};
-  var riskMap = BS.projectConcentrationRisk || {};
-  var hasRisk = riskMap[key];
-
   var rows = [];
   Object.keys(DATA.personProjectPlan || {}).forEach(function(np) {
-    var ph = ((DATA.personProjectPlan[np] || {})[key] || {})[currentIso] || 0;
+    if (pset && !pset[np]) return;
+    var ph = ((DATA.personProjectPlan[np] || {})[key] || {})[iso] || 0;
     if (ph <= 0) return;
     var m = (DATA.personMeta || {})[np] || {};
-    var state = (personWeekState[np] || {})[currentIso];
-    var chipInfo = stateChipInfo_(state);
-    var streakLen = personStreakLen[np] || 0;
+    var state = (personWeekState[np] || {})[iso];
     rows.push({ np: np, name: m.displayName || np, ph: ph, state: state,
-                chipInfo: chipInfo, streakLen: streakLen, isSwarm: personIsSwarm[np] || false });
+                chipInfo: stateChipInfo_(state), streakLen: personStreakLen[np] || 0 });
   });
-
   rows.sort(function(a, b) {
     var rank = { aligned: 0, silent: 1, unplanned: 2, escalation: 3 };
     var sa = rank[a.state] !== undefined ? rank[a.state] : 4;
@@ -1125,15 +1445,12 @@ function heatProjectExpandHtml_(key) {
     if (sa !== sb) return sa - sb;
     return b.ph - a.ph;
   });
+  return rows;
+}
 
-  var alignedCount = rows.filter(function(r) { return r.state === 'aligned'; }).length;
-  var escRows = rows.filter(function(r) { return r.state === 'escalation'; });
-  var totalPlanH = rows.reduce(function(s, r) { return s + r.ph; }, 0);
-
-  var peopleHtml = rows.map(function(r) {
-    var badgesHtml = '';
-    if (r.streakLen >= 3) badgesHtml += '<span class="badge-ta badge-streak">' + r.streakLen + '-wk streak</span>';
-    if (r.isSwarm)        badgesHtml += '<span class="badge-ta badge-swarm">Swarm</span>';
+function projectPeopleRowsHtml_(rows) {
+  return rows.map(function(r) {
+    var badgesHtml = r.streakLen >= 3 ? ('<span class="badge-ta badge-streak">' + r.streakLen + '-wk streak</span>') : '';
     return '<div class="hexp-person-row">'
       + '<span class="hexp-pname">' + esc(r.name) + '</span>'
       + '<span class="chip ' + r.chipInfo.cls + '">' + esc(r.chipInfo.label) + '</span>'
@@ -1141,12 +1458,32 @@ function heatProjectExpandHtml_(key) {
       + badgesHtml
       + '</div>';
   }).join('');
+}
 
+function heatProjectExpandHtml_(key) {
+  if (!DATA || !DATA.behaviorSignals) return '';
+  var BS = DATA.behaviorSignals;
+  var currentIso = BS.currentIso || SEL_ISO;
+  // State is never computed for the in-progress current week (tracked time is still
+  // accumulating) — anchor on the most recently completed week instead, same as the
+  // Team Availability row chip / status filter / manager note.
+  var refIso = BS.lastCompletedIso || currentIso;
+  var riskMap = BS.projectConcentrationRisk || {};
+  var hasRisk = riskMap[key];
+  var pset = filteredPersonSet_();
+
+  var rows = projectPeopleAt_(key, refIso, pset);
+  var alignedCount = rows.filter(function(r) { return r.state === 'aligned'; }).length;
+  var escRows = rows.filter(function(r) { return r.state === 'escalation'; });
+  var totalPlanH = rows.reduce(function(s, r) { return s + r.ph; }, 0);
+  var peopleHtml = projectPeopleRowsHtml_(rows);
+
+  var wkPhrase = refIso === currentIso ? 'this week' : ('as of ' + refIso);
   var mgNote;
   if (rows.length === 0) {
-    mgNote = 'No one planned on this project this week.';
+    mgNote = 'No one planned on this project ' + wkPhrase + '.';
   } else if (alignedCount === rows.length) {
-    mgNote = 'Project fully covered this week.';
+    mgNote = 'Project fully covered ' + wkPhrase + '.';
   } else if (alignedCount === 0) {
     mgNote = 'No tracked activity despite ' + totalPlanH.toFixed(0) + 'h planned. Check if the project has started or is blocked.';
   } else if (hasRisk && escRows.length > 0) {
@@ -1158,10 +1495,10 @@ function heatProjectExpandHtml_(key) {
   }
 
   var projName = KEYNAME[key] || key;
-  var curWLbl = currentIso.replace(/^\d{4}\./, '');
+  var titleWkLbl = refIso === currentIso ? (currentIso + ' (current week)') : (refIso + ' (most recent completed week)');
   var html = '<td colspan="' + (NWEEKS + 1) + '" style="padding:0">';
   html += '<div class="hexp-section">';
-  html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(curWLbl) + ' (current week)';
+  html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(titleWkLbl);
   if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '</span>';
   html += '</div>';
   if (peopleHtml) html += '<div class="hexp-person-list">' + peopleHtml + '</div>';
@@ -1172,11 +1509,12 @@ function heatProjectExpandHtml_(key) {
 }
 
 function renderHeat(){
+  FPROJ = computeFilteredProjectData_();
   HEAT_MAX_HEAD=0;
-  DATA.order.forEach(function(k){WEEKS.forEach(function(w){var h=(DATA.head[k]&&DATA.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
+  FPROJ.order.forEach(function(k){WEEKS.forEach(function(w){var h=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
   var order=visibleOrder();
   var html='<table class="hgrid"><thead><tr><th class="rowhdr">Project</th>'+WEEKS.map(function(w){
-    return '<th>'+esc((w.iso.split('.')[1]||w.iso))+'<div style="font-weight:400;color:var(--muted);font-size:9.5px">'+STATUS_LABEL[w.status]+'</div></th>';
+    return '<th>'+esc(w.iso)+'<div style="font-weight:400;color:var(--muted);font-size:calc(9.5px*var(--scale))">'+STATUS_LABEL[w.status]+'</div></th>';
   }).join('')+'</tr></thead><tbody>';
   order.forEach(function(k){
     var act=ACTIVE_ROW===k?'active':'';
@@ -1184,7 +1522,7 @@ function renderHeat(){
     WEEKS.forEach(function(w){
       var v=capAt(k,w.iso);
       var col=cellColor(k,w.iso);
-      var hd=(DATA.head[k]&&DATA.head[k][w.iso])||0;
+      var hd=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;
       html+='<td style="padding:2px"><div class="hcell" data-key="'+esc(k)+'" data-iso="'+w.iso+'" data-v="'+fmt(v)+'" data-h="'+hd+'"'
         +' style="background:'+col.bg+';color:'+col.fg+'">'+col.txt+'</div></td>';
     });
@@ -1210,8 +1548,9 @@ function renderHeat(){
     $('legLo').textContent = COLOR_MODE==='hours'?'Lower':COLOR_MODE==='risk'?'Steady':'Falling';
     $('legHi').textContent = COLOR_MODE==='hours'?'Higher planned hrs':COLOR_MODE==='risk'?'Dropping / to zero':'Rising';
   }
-  var losingCount=DATA.order.filter(losingThisWeek).length;
-  $('heatNote').innerHTML='Showing '+order.length+' of '+DATA.order.length+' projects'
+  var losingCount=FPROJ.order.filter(losingThisWeek).length;
+  var filterNote = filteredPersonSet_() ? ' (filtered to selected people)' : '';
+  $('heatNote').innerHTML='Showing '+order.length+' of '+FPROJ.order.length+' projects'+filterNote
     +' · <b>'+losingCount+'</b> losing &gt;20% of hours this week';
 
   Array.prototype.forEach.call($('heat').querySelectorAll('.hcell'),function(c){
@@ -1240,6 +1579,7 @@ function renderFoot(){
 
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
+  renderProjTeam_();
   renderHeat(); renderFoot();
 }
 
@@ -1356,9 +1696,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.png-btn'),function(b){
 $('reloadBtn').onclick=function(){ ACTIVE_ROW=null; boot(); };
 var pdc=$('projDrillClose');if(pdc)pdc.onclick=function(){ ACTIVE_ROW=null; $('projDrill').style.display='none'; };
 $('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA) renderHeat(); });
-Array.prototype.forEach.call($('topToggle').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('topToggle').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; if(DATA) renderHeat(); }; });
 Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('colorMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); COLOR_MODE=b.dataset.m; if(DATA) renderHeat(); }; });
-Array.prototype.forEach.call($('availTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('availTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); AVAIL_TOPN=+b.dataset.n; if(DATA) renderAvailability(); }; });
+Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
 
 /* Question-filter chips */
