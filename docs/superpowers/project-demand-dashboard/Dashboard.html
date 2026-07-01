@@ -177,7 +177,7 @@ input[type=file]{display:none}
 .avail-expanded-section{background:var(--surface-2);border-top:1px solid var(--border);padding:12px 14px;font-size:11.5px}
 /* QTD week pattern strip */
 .pattern-strip{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:12px}
-.pattern-cell{padding:3px 6px;border-radius:4px;font-size:9px;font-weight:700;text-align:center;min-width:32px}
+.pattern-cell{padding:3px 6px;border-radius:4px;font-size:9px;font-weight:700;text-align:center;min-width:46px}
 .pc-aligned{background:#dcfce7;color:#15803d}
 .pc-unplanned{background:#fef9c3;color:#854d0e}
 .pc-silent{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
@@ -233,10 +233,10 @@ input[type=file]{display:none}
 .proj-week-tbl{border-collapse:separate;border-spacing:2px;font-size:11px;white-space:nowrap}
 .pwt-lbl{text-align:left;padding:3px 10px 3px 0;font-size:11px;max-width:180px;white-space:normal}
 .pwt-name{color:var(--muted);font-size:10px}
-.pwt-wk{text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px 3px;min-width:30px}
+.pwt-wk{text-align:center;font-size:9px;font-weight:700;color:var(--muted);padding:2px 4px;min-width:52px}
 .pwt-cur{color:#6366f1;font-weight:800}
 .pwt-fut-hdr{color:#3b82f6}
-.pwt-cell{text-align:center;font-size:10px;padding:3px 4px;border-radius:3px;min-width:30px;color:var(--muted)}
+.pwt-cell{text-align:center;font-size:10px;padding:3px 4px;border-radius:3px;min-width:52px;color:var(--muted)}
 .pwt-cell:not(:empty){background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:600}
 .pwt-wcur:not(:empty){background:color-mix(in srgb,#6366f1 12%,var(--surface));border-color:#c7d2fe;color:#4338ca}
 .pwt-wfut:not(:empty){background:color-mix(in srgb,#3b82f6 8%,var(--surface));border-color:#bfdbfe;color:#1d4ed8}
@@ -712,7 +712,7 @@ function compressPatternRuns_(np,displayIsos,personWeekState,currentIso){
     else{cls='pc-'+k;abbr={aligned:'ALN',unplanned:'UNP',silent:'SIL',escalation:'ESC'}[k]||k;}
     var extraCls=(n>1&&k!=='_current')?' pattern-run':'';
     var title=n>1?esc(first+' – '+last):esc(first);
-    var topLbl=n>1?esc(fl+'–'+ll):esc(fl);
+    var topLbl=n>1?esc(fl+'–'+ll):esc(first); // full ISO for single cells, short range for spans
     var botLbl=n>1?esc(abbr+'×'+n):esc(abbr);
     html+='<div class="pattern-cell'+extraCls+' '+cls+'" title="'+title+'">';
     html+='<div style="font-size:8px;opacity:0.7">'+topLbl+'</div>';
@@ -841,32 +841,10 @@ function renderAvailability() {
   var totalFiltered = people.length;
   if (AVAIL_TOPN < 999) people = people.slice(0, AVAIL_TOPN);
 
-  // Compute display window (historical) + append up to 3 future planned weeks
-  var displayIsos = taWindowIsos_(qtdIsos, currentIso);
+  // Full QTD history + up to 3 future planned weeks
+  var displayIsos = qtdIsos.slice();
   var futureWks = WEEKS.filter(function(w){ return w.iso>currentIso && w.status==='plan'; }).slice(0,3);
   displayIsos = displayIsos.concat(futureWks.map(function(w){ return w.iso; }));
-  var winFirst = displayIsos[0] || currentIso;
-  var winLast  = displayIsos[displayIsos.length - 1] || currentIso;
-  var winFirstLbl = winFirst.replace(/^\d{4}\./, '');
-  var winLastLbl  = winLast.replace(/^\d{4}\./, '');
-  var maxPageBack = AVAIL_WIN_SIZE > 0 ? Math.floor((qtdIsos.indexOf(currentIso) + 1) / AVAIL_WIN_SIZE) : 0;
-
-  // Window nav + zoom controls
-  var html = '<div class="ta-controls">';
-  html += '<div class="ta-win-nav">';
-  html += '<button onclick="if(AVAIL_WIN_SIZE>0&&AVAIL_WIN_PAGE<' + maxPageBack + ')AVAIL_WIN_PAGE++;renderAvailability()"'
-        + (AVAIL_WIN_SIZE === 0 || AVAIL_WIN_PAGE >= maxPageBack ? ' disabled' : '') + '>◀ Earlier</button>';
-  html += '<span class="ta-win-lbl">' + esc(AVAIL_WIN_SIZE === 0 ? 'All QTD' : winFirstLbl + ' – ' + winLastLbl) + '</span>';
-  html += '<button onclick="if(AVAIL_WIN_PAGE>0)AVAIL_WIN_PAGE--;renderAvailability()"'
-        + (AVAIL_WIN_PAGE === 0 ? ' disabled' : '') + '>Later ▶</button>';
-  html += '</div>';
-  html += '<div style="flex:1"></div>';
-  html += '<div class="chip-toggle">';
-  html += '<button onclick="AVAIL_WIN_SIZE=4;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===4?' class="on"':'') + '>4wk</button>';
-  html += '<button onclick="AVAIL_WIN_SIZE=8;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===8?' class="on"':'') + '>8wk</button>';
-  html += '<button onclick="AVAIL_WIN_SIZE=0;AVAIL_WIN_PAGE=0;renderAvailability()"' + (AVAIL_WIN_SIZE===0?' class="on"':'') + '>QTD</button>';
-  html += '</div>';
-  html += '</div>';
 
   // Blend distribution chart (based on allFilteredPeople, not blend-filtered)
   html += blendDistChart_(allFilteredPeople, personQtdProjectCounts, currentIso);
@@ -922,9 +900,8 @@ function renderAvailability() {
         projTableHtml = '<div class="proj-week-wrap"><table class="proj-week-tbl"><thead><tr>';
         projTableHtml += '<th class="pwt-lbl">Project</th>';
         displayIsos.forEach(function(iso) {
-          var lbl = iso.replace(/^\d{4}\./, '');
           var isCur = iso === currentIso, isFut = iso > currentIso;
-          projTableHtml += '<th class="pwt-wk' + (isCur ? ' pwt-cur' : '') + (isFut ? ' pwt-fut-hdr' : '') + '">' + esc(lbl) + '</th>';
+          projTableHtml += '<th class="pwt-wk' + (isCur ? ' pwt-cur' : '') + (isFut ? ' pwt-fut-hdr' : '') + '">' + esc(iso) + '</th>';
         });
         projTableHtml += '</tr></thead><tbody>';
         activeProjs.forEach(function(key) {
