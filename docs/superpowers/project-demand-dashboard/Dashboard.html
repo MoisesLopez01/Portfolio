@@ -140,18 +140,21 @@ svg .axis{stroke:var(--border)}
 .foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
-.avail-filters{
-  position:sticky;top:0;z-index:10;
+/* Dashboard-level people filter bar */
+.dash-filters{
+  position:sticky;top:0;z-index:20;
   background:var(--surface);
-  border-bottom:1px solid var(--border);
-  padding:10px 22px;
-  margin:0 -22px 14px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 16px 10px;
+  margin-bottom:14px;
   display:flex;flex-wrap:wrap;gap:8px;align-items:center;
   box-shadow:0 2px 8px rgba(15,25,65,.06);
 }
-.avail-filter-summary{font-size:11px;color:var(--muted);padding:4px 0 0;width:100%}
+.dash-filters-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px;white-space:nowrap}
 /* Team Availability — collapsible list */
 .avail-list{display:flex;flex-direction:column;gap:2px}
+.chip-inprogress{background:var(--surface-2);color:var(--muted);border:1px dashed var(--border)}
 .avail-row{border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .avail-collapsed{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;background:var(--surface);flex-wrap:wrap}
 .avail-collapsed:hover{background:var(--surface-2)}
@@ -243,6 +246,33 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
+    <!-- Dashboard-level people filters -->
+    <div class="dash-filters" id="dashFilters" style="display:none">
+      <span class="dash-filters-lbl">People filters</span>
+      <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
+      <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
+      <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
+      <select class="sigfilter" id="availCrew">
+        <option value="">FTE + Crew</option>
+        <option value="fte">FTE Only</option>
+        <option value="crew">Crew Only</option>
+      </select>
+      <div class="chip-toggle" id="availRole">
+        <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();renderAvailability()">All</button>
+        <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
+        <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();renderAvailability()">ICs</button>
+      </div>
+      <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;renderAvailability()">
+        <option value="">All statuses</option>
+        <option value="aligned">Aligned</option>
+        <option value="unplanned">Unplanned work</option>
+        <option value="silent">Silent gap</option>
+        <option value="escalation">Escalation</option>
+        <option value="leave">On leave</option>
+      </select>
+      <button class="btn" onclick="clearAvailFilters()" style="font-size:11px;padding:5px 10px">✕ Clear</button>
+    </div>
+
     <!-- 1b. Team Availability -->
     <div class="panel" id="availPanel" style="display:none">
       <div class="panel-h">
@@ -254,30 +284,6 @@ input[type=file]{display:none}
             <button data-n="999">All</button>
           </div>
         </div>
-      </div>
-      <div class="avail-filters">
-        <select class="sigfilter" id="availLoc"><option value="">All locations</option></select>
-        <select class="sigfilter" id="availFam"><option value="">All job families</option></select>
-        <select class="sigfilter" id="availMgr"><option value="">All managers</option></select>
-        <select class="sigfilter" id="availCrew">
-          <option value="">All members</option>
-          <option value="fte">FTE Only</option>
-          <option value="crew">Crew Only</option>
-        </select>
-        <div class="chip-toggle" id="availRole">
-          <button data-role="" class="on" onclick="AVAIL_ROLE='';syncRoleChip();renderAvailability()">All</button>
-          <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
-          <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();renderAvailability()">ICs</button>
-        </div>
-        <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;renderAvailability()">
-          <option value="">All statuses</option>
-          <option value="aligned">Aligned</option>
-          <option value="unplanned">Unplanned work</option>
-          <option value="silent">Silent gap</option>
-          <option value="escalation">Escalation</option>
-          <option value="leave">On leave</option>
-        </select>
-        <div class="avail-filter-summary" id="availFilterSummary" style="display:none"></div>
       </div>
       <div id="avail"></div>
     </div>
@@ -396,7 +402,7 @@ function applyModel(model){
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
-function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; }
+function showDash(){ var s=$('stateMsg'); if(s) s.style.display="none"; var d=$('dash'); if(d) d.style.display=""; var f=$('dashFilters'); if(f) f.style.display=""; }
 function fmtExport(iso){
   try{ var d=new Date(iso); if(isNaN(d)) return iso;
     var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -647,7 +653,8 @@ function renderAvailability() {
     if (AVAIL_STATUS) {
       if (AVAIL_STATUS === 'leave') {
         var pto = ((DATA.personWeekPTO || {})[np] || {})[currentIso] || 0;
-        var cap = (m.location === CONFIG.ANZ_LOCATION) ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
+        var anzLoc = (DATA && DATA.anzLocation) || 'Australia & New Zealand';
+        var cap = (m.location === anzLoc) ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
         if (pto < cap * PTO_FULL_THRESHOLD) return false;
       } else {
         if ((personWeekState[np] || {})[currentIso] !== AVAIL_STATUS) return false;
@@ -671,7 +678,7 @@ function renderAvailability() {
   people.forEach(function(np) {
     var m = DATA.personMeta[np] || {};
     var state    = (personWeekState[np] || {})[currentIso];
-    var chipInfo = stateChipInfo_(state);
+    var chipInfo = state ? stateChipInfo_(state) : { cls: 'chip-inprogress', label: 'In progress' };
     var counts   = personQtdProjectCounts[np] || {};
     var sparkVals = qtdIsos.map(function(iso) { return counts[iso] || 0; });
     var spark    = renderSparklineSvg_(counts, qtdIsos, currentIso);
@@ -687,7 +694,7 @@ function renderAvailability() {
     if (personIsStabilizer[np]) badgesHtml += '<span class="badge-ta badge-stabilizer">Stabilizer</span>';
 
     html += '<div class="avail-row">';
-    html += '<div class="avail-collapsed" onclick="toggleAvailDrill(' + JSON.stringify(np) + ')">';
+    html += '<div class="avail-collapsed" data-np="' + esc(np) + '" onclick="toggleAvailDrill(this.dataset.np)">';
     html += '<span class="avail-row-name">' + esc(m.displayName || np) + '</span>';
     html += '<span class="chip ' + chipInfo.cls + '">' + esc(chipInfo.label) + '</span>';
     html += spark;
@@ -705,6 +712,7 @@ function renderAvailability() {
         var isFuture = iso > currentIso;
         var cls, abbr;
         if (isFuture)  { cls = 'pc-future';    abbr = 'PLN'; }
+        else if (isCur){ cls = 'pc-none';       abbr = 'NOW'; }
         else if (!s)   { cls = 'pc-none';       abbr = '—'; }
         else           { cls = 'pc-' + s;       abbr = { aligned:'ALN', unplanned:'UNP', silent:'SIL', escalation:'ESC' }[s]; }
         var wLbl = iso.replace(/^\d{4}\./, '');

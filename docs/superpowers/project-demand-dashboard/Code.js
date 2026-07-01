@@ -200,6 +200,7 @@ function getDemandData() {
       model.personMeta,
       weeks
     );
+    model.anzLocation = CONFIG.ANZ_LOCATION || '';
 
     return model;
   } catch (e) {
@@ -424,11 +425,12 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
   Object.keys(personWeekPlan || {}).forEach(function(np) { allNps[np] = true; });
   Object.keys(personWeekTracked || {}).forEach(function(np) { allNps[np] = true; });
 
-  // 1. personWeekState
+  // 1. personWeekState (current week excluded — tracked time accumulates through the week)
   var personWeekState = {};
   Object.keys(allNps).forEach(function(np) {
     personWeekState[np] = {};
     qtdIsos.forEach(function(iso) {
+      if (iso === currentIso) return; // in-progress, never flag current week
       var pl = ((personWeekPlan || {})[np] || {})[iso] || 0;
       var tr = ((personWeekTracked || {})[np] || {})[iso] || 0;
       var state = computePersonState_(pl, tr);
