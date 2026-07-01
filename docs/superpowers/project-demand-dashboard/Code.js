@@ -38,6 +38,8 @@ var CONFIG = {
   TRACKED_SHEET_NAME:   "Tempo Tracked Time",
   DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
   SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
+  Q4_BASE_WEEK: 14,   // ISO week number of Q4 start (update each quarter)
+  Q4_BASE_YEAR: 2026, // Calendar year of Q4 start
 };
 
 // ── ENTRY POINT ──────────────────────────────────────────────
@@ -164,7 +166,6 @@ function getDemandData() {
         var pl = model.weekTotal[iso] || 0;
         model.fidelity[iso] = pl > 0 ? (tm.weekTotal[iso] || 0) / pl : null;
       });
-      model.personSignals      = buildPersonSignals_(parsed.recs, trackedResult.recs, weeks, roster.profiles);
       model.rosterDimensions   = roster.dimensions;
       model.displayNames       = buildDisplayNames_(parsed.recs, trackedResult.recs);
       model.trackedLastExport  = trackedResult.lastExport || null;
@@ -192,6 +193,13 @@ function getDemandData() {
     model.personProjectPlan = availResult.personProjectPlan;
     model.personMeta        = availResult.personMeta;
     model.personWeekPTO     = availResult.personWeekPTO;
+    model.behaviorSignals = buildPersonBehaviorSignals_(
+      model.personWeekPlan,
+      model.personWeekTracked,
+      model.personProjectPlan,
+      model.personMeta,
+      weeks
+    );
 
     return model;
   } catch (e) {
@@ -357,6 +365,175 @@ function buildDisplayNames_(recs1, recs2) {
   return names;
 }
 
+/**
+ * Derives the 4-state behavior label for a single person × week.
+ * Returns null when neither planned nor tracked meets the threshold.
+ */
+function computePersonState_(planned, tracked) {
+  var MIN = CONFIG.DELIVERY_GAP_MIN_HRS, THOLD = CONFIG.SWARM_THRESHOLD;
+  if (planned >= MIN && tracked === 0)                             return 'escalation';
+  if (planned >= MIN && tracked > 0 && tracked < THOLD * planned) return 'silent';
+  if (tracked > MIN && planned < MIN)                             return 'unplanned';
+  if (planned >= MIN && tracked >= THOLD * planned)               return 'aligned';
+  return null;
+}
+
+/**
+ * Returns an array of ISO week strings from the Q4 base week up to and
+ * including currentIso. Falls back to the last 13 weeks for Q1–Q3.
+ * @param {string} currentIso  e.g. "2026.W27"
+ * @returns {string[]} ordered array of ISO strings, earliest first
+ */
+function buildQtdWindow_(currentIso) {
+  var parts = currentIso.match(/^(\d{4})\.W(\d+)$/);
+  if (!parts) return [];
+  var curY = parseInt(parts[1], 10), curW = parseInt(parts[2], 10);
+  var startY, startW;
+  if (CONFIG.Q4_BASE_YEAR && CONFIG.Q4_BASE_WEEK) {
+    startY = CONFIG.Q4_BASE_YEAR;
+    startW = CONFIG.Q4_BASE_WEEK;
+  } else {
+    startW = curW - 12;
+    startY = curY;
+    if (startW <= 0) { startY--; startW = weeksInYear_(startY) + startW; }
+  }
+  var result = [], w = startW, y = startY, guard = 0;
+  while ((y < curY || (y === curY && w <= curW)) && guard < 52) {
+    result.push(y + '.W' + w);
+    w++;
+    guard++;
+    if (w > weeksInYear_(y)) { w = 1; y++; }
+  }
+  return result;
+}
+
+/**
+ * Computes all 4-state behavior signals for the current quarter-to-date window.
+ * Called once per getDemandData() after buildPersonAvailability_ has run.
+ */
+function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personProjectPlan, personMeta, weeks) {
+  var currentWeek = null;
+  for (var wi = 0; wi < weeks.length; wi++) {
+    if (weeks[wi].status === 'now') { currentWeek = weeks[wi]; break; }
+  }
+  if (!currentWeek) return {};
+  var currentIso = currentWeek.iso;
+  var qtdIsos = buildQtdWindow_(currentIso);
+
+  var allNps = {};
+  Object.keys(personWeekPlan || {}).forEach(function(np) { allNps[np] = true; });
+  Object.keys(personWeekTracked || {}).forEach(function(np) { allNps[np] = true; });
+
+  // 1. personWeekState
+  var personWeekState = {};
+  Object.keys(allNps).forEach(function(np) {
+    personWeekState[np] = {};
+    qtdIsos.forEach(function(iso) {
+      var pl = ((personWeekPlan || {})[np] || {})[iso] || 0;
+      var tr = ((personWeekTracked || {})[np] || {})[iso] || 0;
+      var state = computePersonState_(pl, tr);
+      if (state) personWeekState[np][iso] = state;
+    });
+  });
+
+  // 2. QTD project counts per person per week (for sparkline)
+  var personQtdProjectCounts = {};
+  Object.keys(allNps).forEach(function(np) {
+    personQtdProjectCounts[np] = {};
+    var projPlan = (personProjectPlan || {})[np] || {};
+    qtdIsos.forEach(function(iso) {
+      var count = 0;
+      Object.keys(projPlan).forEach(function(key) {
+        if ((projPlan[key][iso] || 0) > 0) count++;
+      });
+      personQtdProjectCounts[np][iso] = count;
+    });
+  });
+
+  // 3. QTD reliability score and streak
+  var personQtdScore = {}, personStreakLen = {};
+  Object.keys(allNps).forEach(function(np) {
+    var states = personWeekState[np] || {};
+    var total = 0, aligned = 0;
+    qtdIsos.forEach(function(iso) {
+      if (iso > currentIso) return;
+      if (states[iso]) { total++; if (states[iso] === 'aligned') aligned++; }
+    });
+    personQtdScore[np] = total > 0 ? aligned / total : 0;
+    var streak = 0;
+    for (var i = qtdIsos.length - 1; i >= 0; i--) {
+      var iso = qtdIsos[i];
+      if (iso > currentIso) continue;
+      if (states[iso] === 'aligned') streak++;
+      else break;
+    }
+    personStreakLen[np] = streak;
+  });
+
+  // 4. Escalation consecutive count
+  var personEscLen = {};
+  Object.keys(allNps).forEach(function(np) {
+    var states = personWeekState[np] || {};
+    var escLen = 0;
+    for (var i = qtdIsos.length - 1; i >= 0; i--) {
+      var iso = qtdIsos[i];
+      if (iso > currentIso) continue;
+      if (states[iso] === 'escalation') escLen++;
+      else break;
+    }
+    personEscLen[np] = escLen;
+  });
+
+  // 5. Swarm flag
+  var escalatingThisWeek = {};
+  Object.keys(allNps).forEach(function(np) {
+    if ((personWeekState[np] || {})[currentIso] === 'escalation') escalatingThisWeek[np] = true;
+  });
+  var hasAnyEscalation = Object.keys(escalatingThisWeek).length > 0;
+  var personIsSwarm = {};
+  Object.keys(allNps).forEach(function(np) {
+    personIsSwarm[np] = (personWeekState[np] || {})[currentIso] === 'unplanned' && hasAnyEscalation;
+  });
+
+  // 6. Stabilizer
+  var personIsStabilizer = {};
+  Object.keys(allNps).forEach(function(np) {
+    var state = (personWeekState[np] || {})[currentIso];
+    var projCount = (personQtdProjectCounts[np] || {})[currentIso] || 0;
+    personIsStabilizer[np] = state === 'aligned' && projCount >= CONFIG.FRAG_MIN;
+  });
+
+  // 7. Concentration risk per project
+  var projectAlignedCount = {};
+  Object.keys(allNps).forEach(function(np) {
+    var state = (personWeekState[np] || {})[currentIso];
+    var projPlan = (personProjectPlan || {})[np] || {};
+    Object.keys(projPlan).forEach(function(key) {
+      if ((projPlan[key][currentIso] || 0) > 0) {
+        projectAlignedCount[key] = projectAlignedCount[key] || 0;
+        if (state === 'aligned') projectAlignedCount[key]++;
+      }
+    });
+  });
+  var projectConcentrationRisk = {};
+  Object.keys(projectAlignedCount).forEach(function(key) {
+    projectConcentrationRisk[key] = projectAlignedCount[key] < 2;
+  });
+
+  return {
+    currentIso:              currentIso,
+    qtdIsos:                 qtdIsos,
+    personWeekState:         personWeekState,
+    personQtdScore:          personQtdScore,
+    personStreakLen:          personStreakLen,
+    personEscLen:            personEscLen,
+    personQtdProjectCounts:  personQtdProjectCounts,
+    personIsSwarm:           personIsSwarm,
+    personIsStabilizer:      personIsStabilizer,
+    projectConcentrationRisk: projectConcentrationRisk
+  };
+}
+
 function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfiles) {
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
   var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
@@ -414,51 +591,6 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
   return { personWeekPlan: personWeekPlan, personWeekTracked: personWeekTracked,
            personProjectPlan: personProjectPlan, personMeta: personMeta,
            personWeekPTO: personWeekPTO };
-}
-
-function buildPersonSignals_(plannedRecs, trackedRecs, weeks, rosterProfiles) {
-  var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
-  var inWindow = {};
-  weeks.forEach(function(w) { inWindow[w.iso] = true; });
-
-  var planned = {}, tracked = {};
-  (plannedRecs || []).forEach(function(rec) {
-    if (!inWindow[rec.iso]) return;
-    planned[rec.iso] = planned[rec.iso] || {};
-    var np = norm(rec.person);
-    planned[rec.iso][np] = (planned[rec.iso][np] || 0) + rec.hours;
-  });
-  (trackedRecs || []).forEach(function(rec) {
-    if (!inWindow[rec.iso]) return;
-    tracked[rec.iso] = tracked[rec.iso] || {};
-    var np = norm(rec.person);
-    tracked[rec.iso][np] = (tracked[rec.iso][np] || 0) + rec.hours;
-  });
-
-  var signals = {};
-  weeks.forEach(function(w) {
-    var iso = w.iso;
-    var pl = planned[iso] || {}, tr = tracked[iso] || {};
-    var all = {};
-    Object.keys(pl).forEach(function(n) { all[n] = true; });
-    Object.keys(tr).forEach(function(n) { all[n] = true; });
-
-    var gap = [], unplanned = [];
-    Object.keys(all).forEach(function(np) {
-      var ph = pl[np] || 0, th = tr[np] || 0;
-      var prof = (rosterProfiles || {})[np] || {};
-      var entry = {
-        name: np, plannedHrs: ph, trackedHrs: th,
-        location: prof.location || '', jobFamily: prof.jobFamily || '', manager: prof.manager || ''
-      };
-      if (ph >= CONFIG.DELIVERY_GAP_MIN_HRS && th < ph * CONFIG.SWARM_THRESHOLD) gap.push(entry);
-      if (th > 0 && ph === 0) unplanned.push(entry);
-    });
-    gap.sort(function(a, b) { return b.plannedHrs - a.plannedHrs; });
-    unplanned.sort(function(a, b) { return b.trackedHrs - a.trackedHrs; });
-    signals[iso] = { plannedNotTracked: gap, untrackedWorkers: unplanned };
-  });
-  return signals;
 }
 
 // ── SHEET PARSING ────────────────────────────────────────────
@@ -553,7 +685,8 @@ function emptyModel_(weeks) {
     capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
     planTarget: CONFIG.PLAN_TARGET,
     weekTracked: {}, tracked: {}, fidelity: {},
-    personSignals: {}, displayNames: {},
+    behaviorSignals: {},
+    displayNames: {},
     rosterDimensions: { locations: [], jobFamilies: [], managers: [] },
     trackedWarning: null, excludedNames: [],
     trackedError: null,
@@ -890,4 +1023,45 @@ function _test_isCrew_() {
     assert_(result === c.expect, "title '" + c.title + "' → expected " + c.expect + " got " + result);
   });
   Logger.log("✅ _test_isCrew_ passed");
+}
+
+function _test_behaviorSignals() {
+  var personWeekPlan = {
+    'alex smith': { '2026.W14': 8, '2026.W15': 0, '2026.W27': 8 },
+    'jane doe':   { '2026.W14': 8, '2026.W15': 8, '2026.W27': 8 }
+  };
+  var personWeekTracked = {
+    'alex smith': { '2026.W14': 8, '2026.W27': 0 },
+    'jane doe':   { '2026.W14': 8, '2026.W15': 8, '2026.W27': 8 }
+  };
+  var personProjectPlan = {
+    'alex smith': { 'PPT': { '2026.W14': 8, '2026.W27': 8 } },
+    'jane doe':   { 'PPT': { '2026.W14': 8, '2026.W27': 4 }, 'ICARE': { '2026.W15': 8, '2026.W27': 4 } }
+  };
+  var personMeta = {
+    'alex smith': { displayName: 'Alex Smith' },
+    'jane doe':   { displayName: 'Jane Doe' }
+  };
+  var weeks = [
+    { iso: '2026.W25', status: 'done' },
+    { iso: '2026.W26', status: 'done' },
+    { iso: '2026.W27', status: 'now' },
+    { iso: '2026.W28', status: 'plan' }
+  ];
+  Logger.log('computePersonState_(8, 0) = ' + computePersonState_(8, 0));
+  Logger.log('computePersonState_(8, 1) = ' + computePersonState_(8, 1));
+  Logger.log('computePersonState_(8, 2) = ' + computePersonState_(8, 2));
+  Logger.log('computePersonState_(0, 6) = ' + computePersonState_(0, 6));
+  Logger.log('computePersonState_(2, 0) = ' + computePersonState_(2, 0));
+  var qtd = buildQtdWindow_('2026.W27');
+  Logger.log('buildQtdWindow_ length: ' + qtd.length + ' first: ' + qtd[0] + ' last: ' + qtd[qtd.length-1]);
+  var bs = buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personProjectPlan, personMeta, weeks);
+  Logger.log('Alex state W27: ' + bs.personWeekState['alex smith']['2026.W27']);
+  Logger.log('Jane state W27: ' + bs.personWeekState['jane doe']['2026.W27']);
+  Logger.log('Jane qtd score: ' + bs.personQtdScore['jane doe']);
+  Logger.log('Alex qtd score: ' + bs.personQtdScore['alex smith']);
+  Logger.log('Jane streak len: ' + bs.personStreakLen['jane doe']);
+  Logger.log('PPT concentration risk: ' + bs.projectConcentrationRisk['PPT']);
+  Logger.log('Jane proj count W27: ' + bs.personQtdProjectCounts['jane doe']['2026.W27']);
+  Logger.log('Done.');
 }

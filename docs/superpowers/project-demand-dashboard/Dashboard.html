@@ -122,24 +122,24 @@ svg .axis{stroke:var(--border)}
 [data-theme="dark"] #tip{background:#000;border:1px solid var(--border)}
 #tip b{font-family:'Roboto Condensed'}
 .search{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;width:150px}
+/* Heatmap per-project expanded section */
+.hexp-section{background:#eff6ff;border-top:2px solid #6366f1;padding:14px 16px}
+[data-theme="dark"] .hexp-section{background:#0d1f3c;border-top-color:#818cf8}
+.hexp-title{font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+[data-theme="dark"] .hexp-title{color:#a5b4fc}
+.hexp-risk-flag{background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px}
+[data-theme="dark"] .hexp-risk-flag{background:#450a0a;color:#fca5a5}
+.hexp-person-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.hexp-person-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid #dbeafe;border-radius:6px;padding:7px 10px;font-size:11px;flex-wrap:wrap}
+[data-theme="dark"] .hexp-person-row{border-color:#1e3a5f}
+.hexp-pname{font-weight:600;min-width:110px;color:var(--text)}
+.hexp-hrs{color:var(--muted);font-size:11px}
+.hexp-mgr-note{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#0c4a6e}
+[data-theme="dark"] .hexp-mgr-note{background:#0c2340;color:#7dd3fc}
+.hexp-note-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
 .foot{color:var(--muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 input[type=file]{display:none}
-/* Tracked vs Planned Signals panel */
-.sig-row{border-bottom:1px solid var(--border)}
-.sig-row:last-child{border-bottom:none}
-.sig-hdr{display:flex;align-items:center;gap:10px;padding:10px 4px;cursor:pointer;flex-wrap:wrap;border-radius:8px}
-.sig-hdr:hover{background:var(--surface-2)}
-.sig-arrow{font-size:10px;color:var(--muted);width:14px;flex:none}
-.sig-iso{font-family:'Roboto Condensed';font-weight:700;font-size:14px;min-width:84px}
-.sig-status{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;min-width:60px}
-.sig-body{padding:8px 28px 14px}
-.sig-group-lbl{font-family:'Roboto Condensed';font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px}
-.sig-item{display:flex;align-items:center;gap:10px;padding:4px 0;flex-wrap:wrap}
-.sig-name{font-weight:600;font-size:12.5px;min-width:120px}
-.sig-detail{font-size:12px;color:var(--muted)}
-.sig-ctx{font-size:11px;color:var(--slate);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
-.sigfilter{font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
 .avail-filters{
   position:sticky;top:0;z-index:10;
   background:var(--surface);
@@ -150,26 +150,54 @@ input[type=file]{display:none}
   box-shadow:0 2px 8px rgba(15,25,65,.06);
 }
 .avail-filter-summary{font-size:11px;color:var(--muted);padding:4px 0 0;width:100%}
+/* Team Availability — collapsible list */
+.avail-list{display:flex;flex-direction:column;gap:2px}
+.avail-row{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.avail-collapsed{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;background:var(--surface);flex-wrap:wrap}
+.avail-collapsed:hover{background:var(--surface-2)}
+.avail-row-name{font-size:12px;font-weight:600;min-width:110px;color:var(--text)}
+.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap}
+.chip-aligned{background:#dcfce7;color:#15803d}
+.chip-unplanned{background:#fef9c3;color:#854d0e}
+.chip-silent{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+.chip-escalation{background:#fee2e2;color:#b91c1c}
+.chip-none{background:var(--surface-2);color:var(--muted)}
+.trend-tag{font-size:10px;color:var(--muted)}
+.trend-up{color:var(--up)}
+.trend-down{color:var(--down)}
+.badge-ta{display:inline-block;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;margin-left:2px}
+.badge-streak{background:#fef9c3;color:#854d0e}
+.badge-swarm{background:#ede9fe;color:#6d28d9}
+.badge-stabilizer{background:#dbeafe;color:#1d4ed8}
+.avail-callout{font-size:11px;color:var(--muted);flex:1;min-width:120px}
+.avail-expand-btn{font-size:11px;color:var(--muted);margin-left:auto;flex:none}
+.avail-expanded-section{background:var(--surface-2);border-top:1px solid var(--border);padding:12px 14px;font-size:11.5px}
+/* QTD week pattern strip */
+.pattern-strip{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:12px}
+.pattern-cell{padding:3px 6px;border-radius:4px;font-size:9px;font-weight:700;text-align:center;min-width:32px}
+.pc-aligned{background:#dcfce7;color:#15803d}
+.pc-unplanned{background:#fef9c3;color:#854d0e}
+.pc-silent{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.pc-escalation{background:#fee2e2;color:#b91c1c}
+.pc-current{outline:2px solid #6366f1;outline-offset:1px}
+.pc-future{background:#eff6ff;border:1px dashed #93c5fd;color:#3b82f6}
+.pc-none{background:var(--surface-2);color:var(--muted)}
+/* Project list in expanded row */
+.avail-proj-list{margin-bottom:10px}
+.avail-proj-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
+.avail-proj-row:last-child{border-bottom:none}
+.proj-key-mono{font-family:monospace;font-size:10px;background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px}
+.avail-proj-name{font-size:11px;color:var(--muted);flex:1}
+.avail-proj-hrs{font-size:11px;color:var(--muted)}
+/* Manager note */
+.mgr-note-ta{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#0c4a6e}
+[data-theme="dark"] .mgr-note-ta{background:#0c2340;color:#7dd3fc}
+.mgr-note-lbl-ta{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--muted)}
 .projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
 .projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
-/* Team Availability */
-.avail-grid{display:grid;gap:2px;align-items:center}
-.avail-cell{height:26px;border-radius:4px;position:relative;overflow:hidden;border:1px solid var(--border);display:flex;align-items:center;justify-content:center}
-.avail-cell .fill{position:absolute;left:0;top:0;height:100%;border-radius:3px}
-.avail-cell .lbl{position:relative;font-size:9px;font-weight:700;font-family:'Roboto Condensed';color:inherit}
-.avail-cell.noplan{border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))}
-.avail-cell.future-plan{border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))}
-.avail-cell.pto{background:color-mix(in srgb,var(--neutral) 25%,var(--surface-2))}
-.avail-cell.current{background:color-mix(in srgb,var(--amber) 10%,var(--surface-2))}
-.avail-cell.blank{background:var(--surface-2);border-color:transparent}
-.avail-name{font-size:11.5px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:6px}
-.avail-name:hover{background:var(--surface-2)}
-.avail-name .sub{display:block;font-size:10px;color:var(--muted);font-weight:400}
-.avail-drill{grid-column:1/-1;background:var(--surface-2);border-radius:8px;padding:8px 12px;display:none;font-size:11.5px;margin-top:2px}
-.avail-drill.open{display:block}
 </style>
 </head>
 <body>
@@ -215,15 +243,6 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
-    <!-- 1c. Tracked vs Planned Signals -->
-    <div class="panel" id="signalsPanel" style="display:none">
-      <div class="panel-h">
-        <h2>Tracked vs Planned Signals</h2>
-        <div class="hint">Per-week execution gaps with context · click a week to expand</div>
-      </div>
-      <div id="signals"></div>
-    </div>
-
     <!-- 1b. Team Availability -->
     <div class="panel" id="availPanel" style="display:none">
       <div class="panel-h">
@@ -250,6 +269,14 @@ input[type=file]{display:none}
           <button data-role="m" onclick="AVAIL_ROLE='m';syncRoleChip();renderAvailability()">Mgrs</button>
           <button data-role="ic" onclick="AVAIL_ROLE='ic';syncRoleChip();renderAvailability()">ICs</button>
         </div>
+        <select class="sigfilter" id="availStatus" onchange="AVAIL_STATUS=this.value;AVAIL_OPEN=null;renderAvailability()">
+          <option value="">All statuses</option>
+          <option value="aligned">Aligned</option>
+          <option value="unplanned">Unplanned work</option>
+          <option value="silent">Silent gap</option>
+          <option value="escalation">Escalation</option>
+          <option value="leave">On leave</option>
+        </select>
         <div class="avail-filter-summary" id="availFilterSummary" style="display:none"></div>
       </div>
       <div id="avail"></div>
@@ -314,8 +341,7 @@ var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
-var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_CAT = "", AVAIL_BLEND = 0;
-var SIGNALS_OPEN_ISO = null;
+var AVAIL_LOC = "", AVAIL_FAM = "", AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null, AVAIL_TOPN = 15, AVAIL_STATUS = "";
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -520,13 +546,7 @@ function populateAvailFilters(){
     crewEl.value = AVAIL_CREW;
     crewEl.onchange = function() { AVAIL_CREW = this.value; renderAvailability(); };
   }
-}
-
-function blendCount(np, iso){
-  var ppp=DATA&&DATA.personProjectPlan&&DATA.personProjectPlan[np]||{};
-  var n=0;
-  Object.keys(ppp).forEach(function(k){ if((ppp[k][iso]||0)>0) n++; });
-  return n;
+  var stEl = $('availStatus'); if (stEl) stEl.value = AVAIL_STATUS;
 }
 
 /* ---------------- Render: Team Availability ---------------- */
@@ -536,282 +556,198 @@ function syncRoleChip(){
   });
 }
 
-function renderAvailability(){
-  var panel=$('availPanel'), container=$('avail');
-  if(!DATA||!DATA.personMeta||!Object.keys(DATA.personMeta).length){if(panel)panel.style.display='none';return;}
-  if(panel)panel.style.display='';
-  syncRoleChip();
+function stateChipInfo_(state) {
+  var map = {
+    aligned:   { cls: 'chip-aligned',    label: 'Aligned' },
+    unplanned: { cls: 'chip-unplanned',  label: 'Unplanned work' },
+    silent:    { cls: 'chip-silent',     label: 'Silent gap' },
+    escalation:{ cls: 'chip-escalation', label: 'Escalation' }
+  };
+  return map[state] || { cls: 'chip-none', label: '—' };
+}
 
-  var filterParts=[];
-  if(AVAIL_LOC)filterParts.push(esc(AVAIL_LOC));
-  if(AVAIL_FAM)filterParts.push(esc(AVAIL_FAM));
-  if(AVAIL_MGR)filterParts.push(esc(AVAIL_MGR));
-  if(AVAIL_ROLE==='m')filterParts.push('Managers');
-  if(AVAIL_ROLE==='ic')filterParts.push('ICs');
-  if(AVAIL_CREW==='fte') filterParts.push('FTE only');
-  if(AVAIL_CREW==='crew')filterParts.push('Crew only');
-  if(AVAIL_CAT){var catLabels={'high':'≥90%','mid':'60–90%','low':'<60%','over':'over-tracked','future-plan':'future: planned','noplan':'future: no plan','pto':'on leave'};filterParts.push(catLabels[AVAIL_CAT]||AVAIL_CAT);}
-  if(AVAIL_BLEND>0)filterParts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));
-  var sumEl=$('availFilterSummary');
-  if(sumEl){
-    if(filterParts.length){
-      sumEl.style.display='';
-      sumEl.innerHTML='Filtered: '+filterParts.join(' · ')
-        +' <button onclick="clearAvailFilters()" style="margin-left:8px;font-size:11px;color:var(--orbe);background:none;border:none;cursor:pointer;padding:0">Clear all</button>';
-    } else {
-      sumEl.style.display='none';
-    }
-  }
+function computeTrendTag_(sparkVals) {
+  if (!sparkVals || sparkVals.length < 4) return { symbol: '→', label: 'stable', cls: 'trend-tag' };
+  var mid = Math.floor(sparkVals.length / 2);
+  var early = 0, late = 0;
+  for (var i = 0; i < mid; i++) early += sparkVals[i];
+  for (var j = sparkVals.length - mid; j < sparkVals.length; j++) late += sparkVals[j];
+  early /= mid; late /= mid;
+  var delta = late - early;
+  if (delta > 0.5) return { symbol: '↑', label: 'rising',    cls: 'trend-tag trend-up' };
+  if (delta < -0.5) return { symbol: '↓', label: 'declining', cls: 'trend-tag trend-down' };
+  return { symbol: '→', label: 'stable', cls: 'trend-tag' };
+}
 
-  var tgt=DATA.planTarget||0.9;
-  var perPersonCap=DATA.baseCapacity>0&&DATA.headcount>0?(DATA.baseCapacity/DATA.headcount):40;
-  var futurWeeks=WEEKS.filter(function(w){return w.status==='plan';});
-  var pastWeeks=WEEKS.filter(function(w){return w.status==='done';});
+function computeCallout_(state, streakLen, escLen) {
+  if (state === 'aligned')    return streakLen >= 3 ? (streakLen + '-week reliability streak — no action needed') : 'On track this week';
+  if (state === 'unplanned')  return 'Tracking unscheduled work — investigate scope';
+  if (state === 'silent')     return 'Planned but not tracking — check in';
+  if (state === 'escalation') return escLen >= 2 ? (escLen + ' consecutive weeks without activity — escalate') : 'Zero activity this week — follow up';
+  return '—';
+}
 
-  function personCats(pwp,pwt,pwpto){
-    var c={};
-    var sumH=0,cntH=0;
-    pastWeeks.forEach(function(w){
-      var pl=(pwp[w.iso]||0),tr=(pwt[w.iso]||0);
-      if(pl>0){sumH+=tr;cntH+=pl;if(tr>pl*1.05)c.over=true;}
-    });
-    var exec=cntH>0?sumH/cntH:null;
-    if(exec!==null){if(exec>=tgt)c.high=true;else if(exec>=0.6)c.mid=true;else c.low=true;}
-    var noplanReal=0, ptoFull=0;
-    futurWeeks.forEach(function(w){
-      var ph=(pwp[w.iso]||0), ptoH=(pwpto[w.iso]||0);
-      var fullPTO=ptoH>=perPersonCap*PTO_FULL_THRESHOLD;
-      if(!ph){
-        if(fullPTO) ptoFull++;
-        else noplanReal++;
-      }
-    });
-    if(ptoFull>0&&noplanReal===0&&futurWeeks.length>0) c.pto=true;
-    else if(ptoFull>0) c.pto=true;
-    if(noplanReal>0) c.noplan=true;
-    if(noplanReal===0&&ptoFull===0&&futurWeeks.length>0) c['future-plan']=true;
-    return c;
-  }
+function computeManagerNote_(state, streakLen, escLen, isSwarm) {
+  if (state === 'aligned' && isSwarm) return 'Reliable and jumping in where needed — potential kudos trigger.';
+  if (state === 'aligned') return streakLen >= 3 ? 'Strong performer — ' + streakLen + '-week reliability streak. No action needed.' : 'On track this week.';
+  if (state === 'unplanned') return 'Tracking unscheduled work. Worth asking: is this swarming in to help? Scope creep? Should it be planned next cycle?';
+  if (state === 'silent') return 'Planned hours not tracking — may be blocked or waiting on someone. Worth a quick check-in.';
+  if (state === 'escalation') return escLen >= 2 ? escLen + ' weeks without activity against plan. Needs a conversation — assume positive intent first (blocked? unclear scope?).' : 'Zero activity this week. Follow up — may be blocked or reassigned.';
+  return '—';
+}
 
-  // Filter: location, job family, manager, role, category; excluded persons are always hidden
-  var people=Object.keys(DATA.personMeta).filter(function(np){
-    var m=DATA.personMeta[np];
-    if(m.excluded)return false;
-    if(AVAIL_LOC&&m.location!==AVAIL_LOC)return false;
-    if(AVAIL_MGR&&m.manager!==AVAIL_MGR)return false;
-    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM)return false;
-    if(AVAIL_ROLE==='m'&&!m.isManager)return false;
-    if(AVAIL_ROLE==='ic'&&m.isManager)return false;
-    if(AVAIL_CREW==='fte'  && m.isCrew) return false;
-    if(AVAIL_CREW==='crew' && !m.isCrew) return false;
-    if(AVAIL_CAT){
-      var cats=personCats(DATA.personWeekPlan[np]||{},DATA.personWeekTracked[np]||{},DATA.personWeekPTO[np]||{});
-      if(!cats[AVAIL_CAT])return false;
-    }
-    if(AVAIL_BLEND>0){
-      var bc=blendCount(np,SEL_ISO);
-      var tier=bc>=4?4:bc;
-      if(tier!==AVAIL_BLEND) return false;
-    }
-    return true;
+function renderSparklineSvg_(counts, qtdIsos, currentIso) {
+  var W = 60, H = 20, n = qtdIsos.length;
+  if (!n) return '';
+  var barW = Math.max(2, Math.floor(W / n) - 1);
+  var maxCount = 1;
+  qtdIsos.forEach(function(iso) { var c = counts[iso] || 0; if (c > maxCount) maxCount = c; });
+  var svg = '<svg width="' + W + '" height="' + H + '" style="vertical-align:middle;flex:none" aria-hidden="true">';
+  qtdIsos.forEach(function(iso, i) {
+    var c = counts[iso] || 0;
+    var bh = c > 0 ? Math.max(2, Math.round((c / maxCount) * H)) : 1;
+    var x = i * (barW + 1);
+    var y = H - bh;
+    var fill = iso === currentIso ? '#6366f1' : (iso > currentIso ? '#bfdbfe' : 'var(--orbe)');
+    svg += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + bh + '" rx="1" fill="' + fill + '" opacity="0.75"/>';
   });
+  svg += '</svg>';
+  return svg;
+}
 
-  // Sort: best performers first (fewest no-plan future weeks, then highest mean execution)
-  people.sort(function(a,b){
-    var aNoP=futurWeeks.filter(function(w){
-      var ptoH=(DATA.personWeekPTO[a]||{})[w.iso]||0;
-      return !((DATA.personWeekPlan[a]||{})[w.iso])&&ptoH<perPersonCap*PTO_FULL_THRESHOLD;
-    }).length;
-    var bNoP=futurWeeks.filter(function(w){
-      var ptoH=(DATA.personWeekPTO[b]||{})[w.iso]||0;
-      return !((DATA.personWeekPlan[b]||{})[w.iso])&&ptoH<perPersonCap*PTO_FULL_THRESHOLD;
-    }).length;
-    if(aNoP!==bNoP)return aNoP-bNoP;
-    function meanExec(np){
-      var sum=0,cnt=0;
-      pastWeeks.forEach(function(w){var pl=(DATA.personWeekPlan[np]||{})[w.iso]||0;if(pl>0){sum+=(DATA.personWeekTracked[np]||{})[w.iso]||0;cnt+=pl;}});
-      return cnt>0?sum/cnt:1;
-    }
-    return meanExec(b)-meanExec(a);
-  });
+function renderAvailability() {
+  var panel = $('availPanel'), container = $('avail');
+  if (!panel || !container) return;
+  if (!DATA || !DATA.personMeta) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
 
-  var totalFiltered=people.length;
-  if(AVAIL_TOPN<999)people=people.slice(0,AVAIL_TOPN);
+  var BS = DATA.behaviorSignals || {};
+  var currentIso = BS.currentIso || SEL_ISO;
+  var qtdIsos = BS.qtdIsos || [currentIso];
+  var personWeekState = BS.personWeekState || {};
+  var personQtdScore = BS.personQtdScore || {};
+  var personStreakLen = BS.personStreakLen || {};
+  var personEscLen = BS.personEscLen || {};
+  var personQtdProjectCounts = BS.personQtdProjectCounts || {};
+  var personIsSwarm = BS.personIsSwarm || {};
+  var personIsStabilizer = BS.personIsStabilizer || {};
 
-  var blendTiers=[0,0,0,0]; // [1proj, 2proj, 3proj, 4+proj]
-  Object.keys(DATA.personMeta).filter(function(np){
-    var m=DATA.personMeta[np];
-    if(m.excluded) return false;
-    if(AVAIL_LOC&&m.location!==AVAIL_LOC) return false;
-    if(AVAIL_MGR&&m.manager!==AVAIL_MGR) return false;
-    if(AVAIL_FAM&&m.jobFamily!==AVAIL_FAM) return false;
-    if(AVAIL_ROLE==='m'&&!m.isManager) return false;
-    if(AVAIL_ROLE==='ic'&&m.isManager) return false;
-    return true;
-  }).forEach(function(np){
-    var bc=blendCount(np,SEL_ISO);
-    if(bc>=4) blendTiers[3]++;
-    else if(bc===3) blendTiers[2]++;
-    else if(bc===2) blendTiers[1]++;
-    else if(bc===1) blendTiers[0]++;
-  });
-  var blendTotal=blendTiers.reduce(function(s,v){return s+v;},0)||1;
-  var blendLabels=['1 project','2 projects','3 projects','4+ projects'];
-  var blendColors=['var(--pos)','var(--orbe)','var(--amber)','var(--warn)'];
-  var blendChart='<div style="margin-bottom:14px">'
-    +'<div style="font-family:\'Roboto Condensed\';font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px">Blend · '+esc(SEL_ISO)+'</div>';
-  blendTiers.forEach(function(cnt,i){
-    var w=Math.round(cnt/blendTotal*100);
-    blendChart+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-      +'<div style="width:90px;font-size:11px;color:var(--muted);flex:none">'+blendLabels[i]+'</div>'
-      +'<div style="flex:1;height:8px;border-radius:4px;background:var(--border)">'
-        +'<div style="width:'+w+'%;height:100%;border-radius:4px;background:'+blendColors[i]+'"></div>'
-      +'</div>'
-      +'<div style="width:28px;font-size:11px;font-weight:700;color:var(--text);text-align:right">'+cnt+'</div>'
-      +'</div>';
-  });
-  blendChart+='</div>';
+  populateAvailFilters();
 
-  // Legend / category filter chips — rendered ABOVE the grid
-  var CATS=[
-    {id:'high',        label:'≥90% execution',  sw:'background:var(--pos)'},
-    {id:'mid',         label:'60–90%',           sw:'background:var(--amber)'},
-    {id:'low',         label:'<60% needs help',  sw:'background:var(--warn)'},
-    {id:'over',        label:'over-tracked',     sw:'background:var(--june)'},
-    {id:'future-plan', label:'future: planned',  sw:'border:1px dashed var(--orbe);background:color-mix(in srgb,var(--orbe) 8%,var(--surface-2))'},
-    {id:'noplan',      label:'future: no plan',  sw:'border:1px dashed var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2))'},
-    {id:'pto',         label:'on leave',         sw:'background:var(--neutral)'}
-  ];
-  var legendHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">';
-  if(AVAIL_CAT){legendHtml+='<button class="avail-cat qchip on" data-cat="" style="display:flex;align-items:center;gap:4px">&#x2715; All</button>';}
-  CATS.forEach(function(c){
-    var isOn=AVAIL_CAT===c.id;
-    legendHtml+='<button class="avail-cat qchip'+(isOn?' on':'')+'" data-cat="'+esc(c.id)+'" style="display:flex;align-items:center;gap:4px">'
-      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;'+c.sw+'"></span>'
-      +esc(c.label)+'</button>';
-  });
-  legendHtml+='</div>';
-  var blendChips=[
-    {n:1,label:'1 project',   col:'var(--pos)'},
-    {n:2,label:'2 projects',  col:'var(--orbe)'},
-    {n:3,label:'3 projects',  col:'var(--amber)'},
-    {n:4,label:'4+ projects', col:'var(--warn)'}
-  ];
-  var blendChipHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center">';
-  if(AVAIL_BLEND>0){blendChipHtml+='<button class="avail-blend qchip on" data-blend="0" style="display:flex;align-items:center;gap:4px">&#x2715; All</button>';}
-  blendChips.forEach(function(c){
-    var isOn=AVAIL_BLEND===c.n;
-    blendChipHtml+='<button class="avail-blend qchip'+(isOn?' on':'')+'" data-blend="'+c.n+'" style="display:flex;align-items:center;gap:4px">'
-      +'<span style="width:9px;height:9px;border-radius:1px;flex:none;background:'+c.col+'"></span>'
-      +esc(c.label)+'</button>';
-  });
-  blendChipHtml+='</div>';
-
-  var N=NWEEKS;
-  var html=blendChart+legendHtml+blendChipHtml+'<div class="avail-grid" style="grid-template-columns:140px repeat('+N+',1fr)">';
-
-  // Header row
-  html+='<div></div>';
-  WEEKS.forEach(function(w){
-    var isPast=w.status==='done',isCur=w.status==='now';
-    var col=isPast?'var(--orbe)':isCur?'var(--amber)':'var(--muted)';
-    var bg=isCur?'background:color-mix(in srgb,var(--amber) 8%,var(--surface-2));border-radius:4px;':'';
-    html+='<div style="text-align:center;padding:2px 1px;'+bg+'">'
-      +'<div style="font-family:\'Roboto Condensed\';font-weight:700;font-size:11px;color:'+col+'">W'+w.wk+'</div>'
-      +'<div style="font-size:8.5px;color:var(--muted)">'+(isPast?'past':isCur?'now':'future')+'</div>'
-      +'</div>';
-  });
-
-  people.forEach(function(np){
-    var meta=DATA.personMeta[np];
-    var pwp=DATA.personWeekPlan[np]||{};
-    var pwt=DATA.personWeekTracked[np]||{};
-    var ppp=DATA.personProjectPlan[np]||{};
-    var isOpen=AVAIL_OPEN===np;
-
-    html+='<div class="avail-name" data-np="'+esc(np)+'">'
-      +esc(meta.displayName||np)
-      +'<span class="sub">'+esc(meta.jobFamily||'')+'</span>'
-      +'</div>';
-
-    WEEKS.forEach(function(w){
-      var iso=w.iso;
-      var ph=pwp[iso]||0, th=pwt[iso]||0;
-      if(w.status==='done'){
-        if(ph===0){
-          html+='<div class="avail-cell blank"><span class="lbl" style="color:var(--muted);font-size:8px">—</span></div>';
-          return;
-        }
-        var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
-        var ratio=th/ph;
-        var over=th>ph*1.05;
-        var pctLbl=Math.round((over?th/ph:ratio)*100)+'%';
-        var fillClr=over?'var(--june)':ratio>=tgt?'var(--pos)':ratio>=0.6?'var(--amber)':'var(--warn)';
-        var fillW=Math.min(100,over?100:ratio*100);
-        var darkTxt=fillW>55;
-        html+='<div class="avail-cell" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned, '+fmt(th)+'h tracked'+(ptoH>0?' · '+fmt(ptoH)+'h PTO':'')+'">'
-          +'<div class="fill" style="width:'+fillW+'%;background:'+fillClr+';opacity:0.8"></div>'
-          +'<span class="lbl" style="color:'+(darkTxt?'#fff':'var(--text)')+'">'+pctLbl+'</span>'
-          +'</div>';
-      } else if(w.status==='now'){
-        var partW=ph>0?Math.min(100,th/ph*100):0;
-        html+='<div class="avail-cell current" title="'+esc(meta.displayName)+' · '+iso+' · in progress">'
-          +(ph>0?'<div class="fill" style="width:'+partW+'%;background:var(--amber);opacity:0.6"></div>':'')
-          +'<span class="lbl" style="color:var(--amber);font-size:8px">now</span>'
-          +'</div>';
+  var people = Object.keys(DATA.personMeta).filter(function(np) {
+    var m = DATA.personMeta[np];
+    if (m.excluded) return false;
+    if (AVAIL_LOC  && m.location  !== AVAIL_LOC)  return false;
+    if (AVAIL_FAM  && m.jobFamily !== AVAIL_FAM)  return false;
+    if (AVAIL_MGR  && m.manager   !== AVAIL_MGR)  return false;
+    if (AVAIL_CREW === 'fte'  && m.isCrew)   return false;
+    if (AVAIL_CREW === 'crew' && !m.isCrew)  return false;
+    if (AVAIL_ROLE === 'm'  && !m.isManager) return false;
+    if (AVAIL_ROLE === 'ic' &&  m.isManager) return false;
+    if (AVAIL_STATUS) {
+      if (AVAIL_STATUS === 'leave') {
+        var pto = ((DATA.personWeekPTO || {})[np] || {})[currentIso] || 0;
+        var cap = (m.location === CONFIG.ANZ_LOCATION) ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
+        if (pto < cap * PTO_FULL_THRESHOLD) return false;
       } else {
-        var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
-        var fullPTO=ptoH>=perPersonCap*PTO_FULL_THRESHOLD;
-        if(ph===0){
-          if(fullPTO){
-            html+='<div class="avail-cell pto" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ptoH)+'h PTO">'
-              +'<span class="lbl" style="color:var(--muted);font-size:9px">PTO</span></div>';
-          } else {
-            html+='<div class="avail-cell noplan" title="'+esc(meta.displayName)+' · '+iso+' · no plan">'
-              +'<span class="lbl" style="color:var(--warn)">!</span></div>';
-          }
-        } else {
-          var effectiveCap=Math.max(1,perPersonCap-ptoH);
-          var planW=Math.min(100,ph/effectiveCap*100);
-          var ptoNote=ptoH>4?(' +'+fmt(ptoH)+'h PTO'):'';
-          html+='<div class="avail-cell future-plan" title="'+esc(meta.displayName)+' · '+iso+' · '+fmt(ph)+'h planned'+ptoNote+'">'
-            +'<div class="fill" style="width:'+planW+'%;background:var(--orbe);opacity:0.4"></div>'
-            +'<span class="lbl" style="color:var(--orbe)">'+fmt(ph)+'h'+(ptoH>4?'<span style="font-size:8px;opacity:.55"> +'+fmt(ptoH)+'⛔</span>':'')+'</span>'
-            +'</div>';
-        }
+        if ((personWeekState[np] || {})[currentIso] !== AVAIL_STATUS) return false;
       }
-    });
-
-    // Drill row — shown when AVAIL_OPEN === np
-    var drillKeys=Object.keys(ppp).filter(function(k){return (ppp[k][SEL_ISO]||0)>0.5;});
-    drillKeys.sort(function(a,b){return (ppp[b][SEL_ISO]||0)-(ppp[a][SEL_ISO]||0);});
-    var drillContent=drillKeys.length
-      ?'<b style="font-size:10px;color:var(--muted);font-family:\'Roboto Condensed\';text-transform:uppercase;letter-spacing:.04em">Projects · '+SEL_ISO+'</b>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
-        +drillKeys.map(function(k){return chip(k)+'<span style="font-size:11px;color:var(--muted)"> '+fmt(ppp[k][SEL_ISO])+'h</span>';}).join('')
-        +'</div>'
-      :'<span style="color:var(--muted);font-size:11px">No planned projects for '+esc(SEL_ISO)+'</span>';
-    html+='<div class="avail-drill'+(isOpen?' open':'')+'">'+drillContent+'</div>';
+    }
+    return true;
   });
 
-  html+='</div>';
+  people.sort(function(a, b) {
+    var sa = personQtdScore[a] || 0, sb = personQtdScore[b] || 0;
+    if (sb !== sa) return sb - sa;
+    return ((DATA.personMeta[a] || {}).displayName || a)
+      .localeCompare((DATA.personMeta[b] || {}).displayName || b);
+  });
 
-  // Count line when truncated
-  if(totalFiltered>people.length){
-    html+='<div style="font-size:11px;color:var(--muted);margin-top:6px">Showing '+people.length+' of '+totalFiltered+' people — use the Top toggle to show more</div>';
+  var totalFiltered = people.length;
+  if (AVAIL_TOPN < 999) people = people.slice(0, AVAIL_TOPN);
+
+  var html = '<div class="avail-list">';
+
+  people.forEach(function(np) {
+    var m = DATA.personMeta[np] || {};
+    var state    = (personWeekState[np] || {})[currentIso];
+    var chipInfo = stateChipInfo_(state);
+    var counts   = personQtdProjectCounts[np] || {};
+    var sparkVals = qtdIsos.map(function(iso) { return counts[iso] || 0; });
+    var spark    = renderSparklineSvg_(counts, qtdIsos, currentIso);
+    var trend    = computeTrendTag_(sparkVals);
+    var streakLen = personStreakLen[np] || 0;
+    var escLen   = personEscLen[np] || 0;
+    var callout  = computeCallout_(state, streakLen, escLen);
+    var isOpen   = AVAIL_OPEN === np;
+
+    var badgesHtml = '';
+    if (streakLen >= 3)         badgesHtml += '<span class="badge-ta badge-streak">' + streakLen + '-wk streak</span>';
+    if (personIsSwarm[np])      badgesHtml += '<span class="badge-ta badge-swarm">Swarm</span>';
+    if (personIsStabilizer[np]) badgesHtml += '<span class="badge-ta badge-stabilizer">Stabilizer</span>';
+
+    html += '<div class="avail-row">';
+    html += '<div class="avail-collapsed" onclick="toggleAvailDrill(' + JSON.stringify(np) + ')">';
+    html += '<span class="avail-row-name">' + esc(m.displayName || np) + '</span>';
+    html += '<span class="chip ' + chipInfo.cls + '">' + esc(chipInfo.label) + '</span>';
+    html += spark;
+    html += '<span class="' + trend.cls + '">' + esc(trend.symbol) + ' ' + esc(trend.label) + '</span>';
+    if (badgesHtml) html += badgesHtml;
+    html += '<span class="avail-callout">' + esc(callout) + '</span>';
+    html += '<span class="avail-expand-btn">' + (isOpen ? '▴' : '▾') + '</span>';
+    html += '</div>';
+
+    if (isOpen) {
+      var strip = '<div class="pattern-strip">';
+      qtdIsos.forEach(function(iso) {
+        var s = (personWeekState[np] || {})[iso];
+        var isCur    = iso === currentIso;
+        var isFuture = iso > currentIso;
+        var cls, abbr;
+        if (isFuture)  { cls = 'pc-future';    abbr = 'PLN'; }
+        else if (!s)   { cls = 'pc-none';       abbr = '—'; }
+        else           { cls = 'pc-' + s;       abbr = { aligned:'ALN', unplanned:'UNP', silent:'SIL', escalation:'ESC' }[s]; }
+        var wLbl = iso.replace(/^\d{4}\./, '');
+        strip += '<div class="pattern-cell ' + cls + (isCur ? ' pc-current' : '') + '" title="' + esc(iso) + '">';
+        strip += '<div style="font-size:8px;opacity:0.7">' + esc(wLbl) + '</div>';
+        strip += '<div>' + esc(abbr) + '</div>';
+        strip += '</div>';
+      });
+      strip += '</div>';
+
+      var projPlan = (DATA.personProjectPlan || {})[np] || {};
+      var projRowsHtml = '';
+      Object.keys(projPlan).forEach(function(key) {
+        var ph = (projPlan[key] || {})[currentIso] || 0;
+        if (ph <= 0) return;
+        projRowsHtml += '<div class="avail-proj-row">';
+        projRowsHtml += '<span class="proj-key-mono">' + esc(key) + '</span>';
+        projRowsHtml += '<span class="avail-proj-name">' + esc(KEYNAME[key] || key) + '</span>';
+        projRowsHtml += '<span class="chip ' + chipInfo.cls + '" style="font-size:9px">' + esc(chipInfo.label) + '</span>';
+        projRowsHtml += '<span class="avail-proj-hrs">' + ph.toFixed(1) + 'h planned</span>';
+        projRowsHtml += '</div>';
+      });
+
+      var mgNote = computeManagerNote_(state, streakLen, escLen, personIsSwarm[np]);
+
+      html += '<div class="avail-expanded-section">';
+      html += strip;
+      if (projRowsHtml) html += '<div class="avail-proj-list">' + projRowsHtml + '</div>';
+      html += '<div class="mgr-note-ta"><div class="mgr-note-lbl-ta">Manager note</div>' + esc(mgNote) + '</div>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+
+  html += '</div>';
+
+  if (totalFiltered > people.length) {
+    html += '<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--muted)">Showing '
+      + people.length + ' of ' + totalFiltered + ' · use Top 15 / 30 / All above to see more</div>';
   }
 
-  container.innerHTML=html;
-
-  Array.prototype.forEach.call(container.querySelectorAll('.avail-name'),function(el){
-    el.onclick=function(){ toggleAvailDrill(el.dataset.np); };
-  });
-  Array.prototype.forEach.call(container.querySelectorAll('.avail-cat'),function(btn){
-    btn.onclick=function(){ AVAIL_CAT=btn.dataset.cat; AVAIL_OPEN=null; renderAvailability(); };
-  });
-  Array.prototype.forEach.call(container.querySelectorAll('.avail-blend'),function(btn){
-    btn.onclick=function(){ AVAIL_BLEND=+btn.dataset.blend; AVAIL_OPEN=null; renderAvailability(); };
-  });
+  container.innerHTML = html;
 }
 
 function toggleAvailDrill(np){
@@ -820,7 +756,8 @@ function toggleAvailDrill(np){
 }
 
 function clearAvailFilters(){
-  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_CAT='';AVAIL_BLEND=0;AVAIL_OPEN=null;
+  AVAIL_LOC='';AVAIL_FAM='';AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_STATUS='';AVAIL_OPEN=null;
+  var stEl = $('availStatus'); if (stEl) stEl.value = '';
   populateAvailFilters();
   renderAvailability();
 }
@@ -914,6 +851,81 @@ function cellColor(k,iso){
 }
 function pr_pos(k,iso){ var pr=priorIso(iso); return pr? capAt(k,pr)>0.001 : false; }
 
+function heatProjectExpandHtml_(key) {
+  if (!DATA || !DATA.behaviorSignals) return '';
+  var BS = DATA.behaviorSignals;
+  var currentIso = BS.currentIso || SEL_ISO;
+  var personWeekState = BS.personWeekState || {};
+  var personIsSwarm = BS.personIsSwarm || {};
+  var personStreakLen = BS.personStreakLen || {};
+  var riskMap = BS.projectConcentrationRisk || {};
+  var hasRisk = riskMap[key];
+
+  var rows = [];
+  Object.keys(DATA.personProjectPlan || {}).forEach(function(np) {
+    var ph = ((DATA.personProjectPlan[np] || {})[key] || {})[currentIso] || 0;
+    if (ph <= 0) return;
+    var m = (DATA.personMeta || {})[np] || {};
+    var state = (personWeekState[np] || {})[currentIso];
+    var chipInfo = stateChipInfo_(state);
+    var streakLen = personStreakLen[np] || 0;
+    rows.push({ np: np, name: m.displayName || np, ph: ph, state: state,
+                chipInfo: chipInfo, streakLen: streakLen, isSwarm: personIsSwarm[np] || false });
+  });
+
+  rows.sort(function(a, b) {
+    var rank = { aligned: 0, silent: 1, unplanned: 2, escalation: 3 };
+    var sa = rank[a.state] !== undefined ? rank[a.state] : 4;
+    var sb = rank[b.state] !== undefined ? rank[b.state] : 4;
+    if (sa !== sb) return sa - sb;
+    return b.ph - a.ph;
+  });
+
+  var alignedCount = rows.filter(function(r) { return r.state === 'aligned'; }).length;
+  var escRows = rows.filter(function(r) { return r.state === 'escalation'; });
+  var totalPlanH = rows.reduce(function(s, r) { return s + r.ph; }, 0);
+
+  var peopleHtml = rows.map(function(r) {
+    var badgesHtml = '';
+    if (r.streakLen >= 3) badgesHtml += '<span class="badge-ta badge-streak">' + r.streakLen + '-wk streak</span>';
+    if (r.isSwarm)        badgesHtml += '<span class="badge-ta badge-swarm">Swarm</span>';
+    return '<div class="hexp-person-row">'
+      + '<span class="hexp-pname">' + esc(r.name) + '</span>'
+      + '<span class="chip ' + r.chipInfo.cls + '">' + esc(r.chipInfo.label) + '</span>'
+      + '<span class="hexp-hrs">' + r.ph.toFixed(1) + 'h planned</span>'
+      + badgesHtml
+      + '</div>';
+  }).join('');
+
+  var mgNote;
+  if (rows.length === 0) {
+    mgNote = 'No one planned on this project this week.';
+  } else if (alignedCount === rows.length) {
+    mgNote = 'Project fully covered this week.';
+  } else if (alignedCount === 0) {
+    mgNote = 'No tracked activity despite ' + totalPlanH.toFixed(0) + 'h planned. Check if the project has started or is blocked.';
+  } else if (hasRisk && escRows.length > 0) {
+    var escNames = escRows.map(function(r) { return r.name; }).join(', ');
+    mgNote = 'Concentration risk — only ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '. '
+      + escNames + (escRows.length > 1 ? ' have' : ' has') + ' been silent — follow up before next planning cycle.';
+  } else {
+    mgNote = alignedCount + ' of ' + rows.length + ' planned people actively tracking. Check in with those not tracking.';
+  }
+
+  var projName = KEYNAME[key] || key;
+  var curWLbl = currentIso.replace(/^\d{4}\./, '');
+  var html = '<td colspan="' + (NWEEKS + 1) + '" style="padding:0">';
+  html += '<div class="hexp-section">';
+  html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(curWLbl) + ' (current week)';
+  if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '</span>';
+  html += '</div>';
+  if (peopleHtml) html += '<div class="hexp-person-list">' + peopleHtml + '</div>';
+  html += '<div class="hexp-mgr-note"><div class="hexp-note-lbl">Manager note</div>' + esc(mgNote) + '</div>';
+  html += '</div>';
+  html += '</td>';
+  return html;
+}
+
 function renderHeat(){
   HEAT_MAX_HEAD=0;
   DATA.order.forEach(function(k){WEEKS.forEach(function(w){var h=(DATA.head[k]&&DATA.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
@@ -932,6 +944,9 @@ function renderHeat(){
         +' style="background:'+col.bg+';color:'+col.fg+'">'+col.txt+'</div></td>';
     });
     html+='</tr>';
+    if (ACTIVE_ROW === k) {
+      html += '<tr>' + heatProjectExpandHtml_(k) + '</tr>';
+    }
   });
   html+='</tbody></table>';
   $('heat').innerHTML=html;
@@ -978,102 +993,9 @@ function renderFoot(){
     +'ISO weeks '+(NWEEKS?WEEKS[0].iso+'–'+WEEKS[NWEEKS-1].iso:'')+'. '+src+'.';
 }
 
-/* ---------------- Render: Tracked vs Planned Signals ---------------- */
-function renderSignals(){
-  var panel=$('signalsPanel'), container=$('signals');
-  if(!panel||!container) return;
-  if(!DATA||!DATA.personSignals||!NWEEKS){ panel.style.display='none'; return; }
-  panel.style.display='';
-
-  var tgt=DATA.planTarget||0.9;
-  var html='';
-
-  WEEKS.forEach(function(w){
-    var iso=w.iso;
-    var isFuture=w.status==='plan';
-    var sigs=DATA.personSignals[iso]||{};
-    var gaps=sigs.plannedNotTracked||[];
-    var swarm=sigs.untrackedWorkers||[];
-    var fid=(DATA.fidelity&&DATA.fidelity[iso]!=null)?DATA.fidelity[iso]:null;
-    var planned=DATA.weekTotal[iso]||0;
-    var isOpen=SIGNALS_OPEN_ISO===iso;
-
-    // Fidelity chip (past/current only)
-    var chipCls='',chipTxt='';
-    if(!isFuture&&fid!==null){
-      chipCls=fid>=tgt?'head':fid>=0.6?'tight':'over';
-      chipTxt=Math.round(fid*100)+'% fidelity';
-    }
-
-    // Badge counts
-    var badgeParts=[];
-    if(!isFuture&&gaps.length)  badgeParts.push('⚠ '+gaps.length+' gap'+(gaps.length>1?'s':''));
-    if(!isFuture&&swarm.length) badgeParts.push(swarm.length+' unplanned');
-
-    html+='<div class="sig-row" data-iso="'+esc(iso)+'">';
-    html+='<div class="sig-hdr">';
-    html+='<span class="sig-arrow">'+(isOpen?'▼':'▶')+'</span>';
-    html+='<span class="sig-iso">'+esc(iso)+'</span>';
-    html+='<span class="sig-status">'+esc(STATUS_LABEL[w.status])+'</span>';
-    if(chipTxt) html+='<span class="statuschip '+chipCls+'" style="font-size:10px;padding:2px 8px">'+esc(chipTxt)+'</span>';
-    if(isFuture) html+='<span style="font-size:12px;color:var(--muted)">'+fmt(planned)+'h planned</span>';
-    if(badgeParts.length) html+='<span style="font-size:12px;color:var(--muted)">'+esc(badgeParts.join(' · '))+'</span>';
-    html+='</div>'; // .sig-hdr
-
-    if(isOpen){
-      html+='<div class="sig-body">';
-      if(isFuture){
-        html+='<span style="color:var(--muted);font-size:12px">'+fmt(planned)+'h planned across '+(DATA.activeProj[iso]||0)+' projects — tracking not yet available.</span>';
-      } else if(gaps.length===0&&swarm.length===0){
-        html+='<span style="color:var(--pos);font-size:12px">Execution on track — no gaps above threshold.</span>';
-      } else {
-        if(gaps.length){
-          html+='<div class="sig-group-lbl">Planned but not tracking</div>';
-          gaps.forEach(function(g){
-            var np=String(g.name||'').toLowerCase().replace(/\s+/g,' ').trim();
-            var ctx=[];
-            var bc=blendCount(np,iso);
-            if(bc>1) ctx.push('on '+bc+' projects');
-            var ptoH=(DATA.personWeekPTO[np]||{})[iso]||0;
-            if(ptoH>0) ctx.push('PTO that week');
-            var dn=(DATA.personMeta[np]&&DATA.personMeta[np].displayName)||g.name;
-            html+='<div class="sig-item">';
-            html+='<span class="sig-name">'+esc(dn)+'</span>';
-            html+='<span class="sig-detail">'+fmt(g.plannedHrs)+'h planned</span>';
-            if(ctx.length) html+='<span class="sig-ctx">'+esc(ctx.join(' · '))+'</span>';
-            html+='</div>';
-          });
-        }
-        if(swarm.length){
-          html+='<div class="sig-group-lbl" style="margin-top:10px">Tracking with no plan</div>';
-          swarm.forEach(function(g){
-            var np=String(g.name||'').toLowerCase().replace(/\s+/g,' ').trim();
-            var dn=(DATA.personMeta[np]&&DATA.personMeta[np].displayName)||g.name;
-            html+='<div class="sig-item">';
-            html+='<span class="sig-name">'+esc(dn)+'</span>';
-            html+='<span class="sig-detail">'+fmt(g.trackedHrs)+'h tracked · not in plan</span>';
-            html+='</div>';
-          });
-        }
-      }
-      html+='</div>'; // .sig-body
-    }
-    html+='</div>'; // .sig-row
-  });
-
-  container.innerHTML=html;
-  Array.prototype.forEach.call(container.querySelectorAll('.sig-hdr'),function(hdr){
-    hdr.onclick=function(){
-      var iso=hdr.parentElement.dataset.iso;
-      SIGNALS_OPEN_ISO=SIGNALS_OPEN_ISO===iso?null:iso;
-      renderSignals();
-    };
-  });
-}
-
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
-  renderSignals(); renderHeat(); renderFoot();
+  renderHeat(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
