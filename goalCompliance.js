@@ -119,6 +119,13 @@ function readSheet_(ssId, sheetName) {
 // ── Entry point ─────────────────────────────────────────────────
 
 function doGet() {
+  var access = checkDashboardAccess();
+  if (!access.allowed) {
+    return HtmlService.createHtmlOutput(buildAccessDeniedPage_GD_(access.email))
+      .setTitle('Goals Compliance Dashboard — Access Restricted')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  }
+
   return HtmlService.createTemplateFromFile('GDash')
     .evaluate()
     .setTitle('Goals Compliance Dashboard')
