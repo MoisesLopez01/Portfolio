@@ -207,6 +207,26 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .empty-state{padding:40px 20px;text-align:center;color:var(--muted)}
 .empty-state p{margin-top:8px;font-size:12px}
 .error-state{background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:16px;color:#B91C1C;font-size:12px;margin:16px}
+
+/* Nav Menu (☰) — admin-only Access Control entry point */
+.nav-menu-wrap{position:relative;flex-shrink:0;display:none}
+.nav-menu-btn{display:flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:99px;font-size:14px;cursor:pointer;border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.1);color:#fff;transition:background .15s}
+.nav-menu-btn:hover{background:rgba(255,255,255,.2)}
+.nav-menu-btn.open{background:rgba(255,255,255,.25)}
+.nav-menu-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:190px;
+  background:#fff;border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:90;padding:6px}
+.nav-menu-panel.open{display:block}
+.nav-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  padding:8px 11px;border:none;background:transparent;border-radius:7px;cursor:pointer;
+  font-size:11px;font-weight:700;color:var(--text);font-family:inherit}
+.nav-menu-item:hover{background:var(--surface)}
+
+/* Manager scope badge */
+.scope-badge{background:#5B21B6;color:#fff;border-radius:99px;padding:3px 12px;font-size:10px;
+  font-weight:700;white-space:nowrap;flex-shrink:0;display:none}
 </style>
 </head>
 <body>
@@ -222,10 +242,17 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       <h1>Goals Compliance Dashboard</h1>
       <p>Company-wide · RPI &amp; STF Eligibility · HR Follow-Up Tracker</p>
     </div>
+    <span class="scope-badge" id="scope-badge"></span>
     <select id="quarter-select" class="quarter-select" onchange="onQuarterChange(this.value)"></select>
     <span class="week-badge" id="week-badge"></span>
     <button class="header-btn" onclick="exportAllPNG()">⬇ PNG</button>
     <button class="header-btn" onclick="refreshData()">↺ Refresh</button>
+    <div class="nav-menu-wrap" id="nav-menu-wrap">
+      <button class="nav-menu-btn" id="nav-menu-btn" onclick="toggleNavMenu()" title="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
+      <div class="nav-menu-panel" id="nav-menu-panel" role="menu">
+        <button class="nav-menu-item" role="menuitem" onclick="openAccessTab_()">🔒 Access Control</button>
+      </div>
+    </div>
   </div>
 
   <!-- Filter Bar -->
