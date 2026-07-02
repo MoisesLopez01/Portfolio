@@ -327,6 +327,8 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <button class="tab-btn"        onclick="switchTab('breakdown')" data-tab="breakdown">Breakdown</button>
     <button class="tab-btn"        onclick="switchTab('atrisk')"    data-tab="atrisk" id="tab-btn-atrisk">⚠ At Risk</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
+    <button class="tab-btn"        onclick="switchTab('allrockets')" data-tab="allrockets">All Rocketeers</button>
+    <button class="tab-btn"        onclick="switchTab('individual')" data-tab="individual">Individual Engagement List</button>
   </div>
 
   <main>
@@ -395,10 +397,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           <div style="height:360px;position:relative"><canvas id="chart-trend"></canvas></div>
         </div>
       </div>
-      <div class="section-card">
-        <div class="section-head"><h2>Weekly Comment Data</h2></div>
-        <div class="section-body tbl-wrap" id="trend-table"></div>
-      </div>
       <!-- Team Engagement + Manager Scorecard -->
       <div class="col-row">
         <div class="section-card">
@@ -454,6 +452,16 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         </div>
         <div class="section-body" id="atrisk-body"></div>
       </div>
+      <div class="section-card" style="margin-top:14px;border-left:4px solid var(--muted)">
+        <div class="section-head" style="cursor:pointer" onclick="toggleSection('attrition-body','attrition-toggle')">
+          <div><h2>Attrition <span id="attrition-count-badge" style="color:var(--muted);font-weight:600"></span></h2>
+            <p class="section-sub">Departed rocketeers with activity this quarter · excluded from the compliance rate/RPI/STF/engagement metrics above, shown here for HR reference only</p></div>
+          <span id="attrition-toggle" style="color:var(--muted);font-size:12px">▾</span>
+        </div>
+        <div id="attrition-body" style="display:none">
+          <div class="section-body" id="attrition-table"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ── HR TRACKER ── -->
@@ -473,6 +481,37 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
         <div class="section-body" id="tracker-body"></div>
+      </div>
+    </div>
+
+    <!-- ── ALL ROCKETEERS ── -->
+    <div id="pane-allrockets" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>All Rocketeers</h2><p class="section-sub">Every Rocketeer who has ever logged a goal · grouped by manager · all quarters combined</p></div>
+        </div>
+        <div class="section-body">
+          <input type="text" id="allrock-filter" placeholder="Filter by manager or rocketeer name…"
+                 oninput="filterAllRocketeers(this.value)"
+                 style="width:100%;max-width:360px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;margin-bottom:14px">
+          <div id="allrock-groups"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── INDIVIDUAL ENGAGEMENT LIST (auditor drill-down) ── -->
+    <div id="pane-individual" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Individual Engagement List</h2><p class="section-sub">Pick one rocketeer to see every goal this quarter with its full comment thread, split IC vs Manager</p></div>
+        </div>
+        <div class="section-body">
+          <input type="text" id="individual-search" placeholder="Search for a rocketeer by name…"
+                 oninput="searchIndividual(this.value)" autocomplete="off"
+                 style="width:100%;max-width:360px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit">
+          <div id="individual-search-results" style="margin-top:6px;max-width:360px"></div>
+          <div id="individual-detail" style="margin-top:16px"></div>
+        </div>
       </div>
     </div>
 
@@ -536,6 +575,10 @@ var S = {
   lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
   reviewTarget:   null,
   trendDepts:     [],  // department lines shown on trend chart
+  allRocketeersData:   null,  // lazy-loaded on first visit to the All Rocketeers tab
+  allRocketeersFilter: '',    // current text filter on that tab
+  individualQuery:     '',    // current search text on the Individual Engagement List tab
+  individualDetail:    null,  // last-loaded getRocketeerGoalDetail() result
 };
 
 var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
@@ -606,6 +649,7 @@ function refreshData() {
   document.getElementById('loading').style.display = '';
   document.getElementById('app').style.display = 'none';
   var quarter = S.data && S.data.quarter;
+  S.allRocketeersData = null;  // force a re-fetch next time that tab is opened
   google.script.run.withSuccessHandler(function() { init(); }).withFailureHandler(function() { init(); }).bustCache(quarter);
 }
 
@@ -747,12 +791,14 @@ function switchTab(tabId) {
 
 function renderTab(tabId) {
   var emps = getFiltered();
-  if      (tabId === 'overview')  renderOverview(emps);
-  else if (tabId === 'trend')     renderEngagement(emps);
-  else if (tabId === 'breakdown') renderBreakdown(emps);
-  else if (tabId === 'atrisk')    renderAtRisk(emps);
-  else if (tabId === 'hrtracker') renderHRTracker();
-  else if (tabId === 'access')    renderAccessTab_();
+  if      (tabId === 'overview')   renderOverview(emps);
+  else if (tabId === 'trend')      renderEngagement(emps);
+  else if (tabId === 'breakdown')  renderBreakdown(emps);
+  else if (tabId === 'atrisk')     renderAtRisk(emps);
+  else if (tabId === 'hrtracker')  renderHRTracker();
+  else if (tabId === 'allrockets') renderAllRocketeers();
+  else if (tabId === 'individual') renderIndividualTab_();
+  else if (tabId === 'access')     renderAccessTab_();
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────────────
@@ -928,7 +974,6 @@ function renderEngagement(emps) {
   // Department chip selector + trend chart (unchanged)
   buildTrendDeptChips_(trend);
   buildCommentTrendChart('chart-trend', trend, S.trendDepts);
-  document.getElementById('trend-table').innerHTML = buildTrendTable_(trend);
 
   // New engagement sections
   renderTeamEngagement_(eng);
@@ -1037,7 +1082,7 @@ function renderEngagerList_(eng) {
       reviewCell = '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>';
     }
     html += '<tr style="' + rowBg + '">';
-    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + '</td>';
+    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
     html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor || '—') + '</td>';
     html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department || '—') + '</td>';
     html += '<td style="text-align:center;font-weight:700">' + e.totalGoals + '</td>';
@@ -1092,30 +1137,6 @@ function buildTrendDeptChips_(trend) {
   });
 }
 
-function buildTrendTable_(trend) {
-  if (!trend.weeks || !trend.weeks.length) return '<div class="empty-state">No weekly data available.</div>';
-  var depts   = Object.keys(trend.byDept || {}).sort().slice(0, 8);
-  var orgUniq = trend.orgUnique || [];
-
-  var html = '<table class="data-table"><thead><tr>';
-  html += '<th>ISO Week</th><th>Total Cmts</th><th title="Unique rocketeers who self-commented that week">Unique People</th>';
-  depts.forEach(function(d) { html += '<th>' + esc(d) + '</th>'; });
-  html += '</tr></thead><tbody>';
-
-  trend.weeks.forEach(function(wk, i) {
-    var u = orgUniq[i] || 0;
-    html += '<tr><td style="font-weight:700">' + esc(wk) + '</td>';
-    html += '<td style="font-weight:700;color:var(--orbe)">' + (trend.orgTotal[i]||0) + '</td>';
-    html += '<td style="font-weight:700;color:var(--success)">' + u + '</td>';
-    depts.forEach(function(d) {
-      html += '<td style="color:var(--slate)">' + (trend.byDept[d] ? trend.byDept[d][i]||0 : 0) + '</td>';
-    });
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-  return html;
-}
-
 // ── BREAKDOWN ─────────────────────────────────────────────────────
 function renderBreakdown(emps) {
   var deptGroups = aggregateGroups_(emps, 'department');
@@ -1158,6 +1179,11 @@ function renderAtRisk(emps) {
     kpiCard('Stuck in Planned',    stuckPlanned.length, '🔒', '#64748B', 'Goals in Planned status with no comments');
 
   renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
+
+  var attrition = (S.data && S.data.attrition) || [];
+  var attritionBadge = document.getElementById('attrition-count-badge');
+  if (attritionBadge) attritionBadge.textContent = attrition.length ? '(' + attrition.length + ')' : '';
+  renderAttritionSection_(document.getElementById('attrition-table'), attrition);
 }
 
 function renderAtRiskBody(container, emps, compact) {
@@ -1196,56 +1222,85 @@ function renderAtRiskBody(container, emps, compact) {
   if (!compact) { html += '<th style="text-align:center">Cmts/Wks</th><th>RPI</th><th>STF</th>'; }
   html += '<th>Signals</th><th>HR Review</th></tr></thead><tbody>';
 
-  pool.forEach(function(e) {
-    var note = noteMap[e.normName];
-    var rpiDetail = 'Needs: ' + (e.totalGoals >= 10 ? '' : (e.totalGoals + '/10 goals, ')) +
-                    (e.goalsCompleted >= 8 ? '' : (e.goalsCompleted + '/8 completed, ')) +
-                    (e.commentWeeks >= qtrWeeks ? '' : (e.commentWeeks + '/' + qtrWeeks + ' weekly cmts'));
-    var stfDetail = 'Needs: ' + (e.stfGoalsCompleted >= 8 ? '' : (e.stfGoalsCompleted + '/8 completed, ')) +
-                    (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
+  pool.forEach(function(e) { html += atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace); });
 
-    var reviewCell = note
-      ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
-        '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
-        (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
-        '</div>'
-      : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
 
-    // Signal badges — show every concern this person has
-    var signals = '';
-    if (e.totalGoals === 0) {
-      signals += '<span class="tier-nogoals">No Goals</span> ';
-    } else if (e.totalGoals < 5) {
-      signals += '<span class="tier-atrisk">1&ndash;4 Goals</span> ';
-    } else if (e.totalGoals < 8) {
-      signals += '<span class="tier-atrisk">5&ndash;7 Goals</span> ';
-    } else if (isGrace && e.complianceStatus === 'Watch') {
-      signals += '<span class="tier-watch">8&ndash;9 Watch</span> ';
-    }
-    if (e.hasEngagementConcern) {
-      signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F3E8FF;color:#7C3AED;border:1px solid #C4B5FD">Not Commenting</span> ';
-    }
-    if (e.goalsStuckInPlanned > 0) {
-      signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
-    }
+// Builds one <tr> for the At Risk table / Attrition section — shared so both
+// render identically without duplicating the signal-badge/review-cell logic.
+function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
+  var note = noteMap[e.normName];
+  var rpiDetail = 'Needs: ' + (e.totalGoals >= 10 ? '' : (e.totalGoals + '/10 goals, ')) +
+                  (e.goalsCompleted >= 8 ? '' : (e.goalsCompleted + '/8 completed, ')) +
+                  (e.commentWeeks >= qtrWeeks ? '' : (e.commentWeeks + '/' + qtrWeeks + ' weekly cmts'));
+  var stfDetail = 'Needs: ' + (e.stfGoalsCompleted >= 8 ? '' : (e.stfGoalsCompleted + '/8 completed, ')) +
+                  (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
 
-    html += '<tr>';
-    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'&mdash;') + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'&mdash;') + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'&mdash;') + '</td>';
-    html += '<td style="text-align:center;font-weight:700;color:' + (e.totalGoals===0?'#B91C1C':'var(--text)') + '">' + e.totalGoals + '</td>';
-    html += '<td style="text-align:center;color:var(--success);font-weight:700">' + e.goalsCompleted + '</td>';
-    if (!compact) {
-      html += '<td style="text-align:center;font-size:11px">' + e.commentWeeks + '/' + qtrWeeks + '</td>';
-      html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI &#10003;':'RPI &#10007;') + '</span></td>';
-      html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF &#10003;':'STF &#10007;') + '</span></td>';
-    }
-    html += '<td style="white-space:nowrap">' + signals.trim() + '</td>';
-    html += '<td>' + reviewCell + '</td>';
-    html += '</tr>';
-  });
+  var reviewCell = note
+    ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
+      '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
+      (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
+      '</div>'
+    : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
 
+  // Signal badges — show every concern this person has
+  var signals = '';
+  if (e.totalGoals === 0) {
+    signals += '<span class="tier-nogoals">No Goals</span> ';
+  } else if (e.totalGoals < 5) {
+    signals += '<span class="tier-atrisk">1&ndash;4 Goals</span> ';
+  } else if (e.totalGoals < 8) {
+    signals += '<span class="tier-atrisk">5&ndash;7 Goals</span> ';
+  } else if (isGrace && e.complianceStatus === 'Watch') {
+    signals += '<span class="tier-watch">8&ndash;9 Watch</span> ';
+  }
+  if (e.hasEngagementConcern) {
+    signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F3E8FF;color:#7C3AED;border:1px solid #C4B5FD">Not Commenting</span> ';
+  }
+  if (e.goalsStuckInPlanned > 0) {
+    signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
+  }
+
+  var html = '<tr>';
+  html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
+  html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'&mdash;') + '</td>';
+  html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'&mdash;') + '</td>';
+  html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'&mdash;') + '</td>';
+  html += '<td style="text-align:center;font-weight:700;color:' + (e.totalGoals===0?'#B91C1C':'var(--text)') + '">' + e.totalGoals + '</td>';
+  html += '<td style="text-align:center;color:var(--success);font-weight:700">' + e.goalsCompleted + '</td>';
+  if (!compact) {
+    html += '<td style="text-align:center;font-size:11px">' + e.commentWeeks + '/' + qtrWeeks + '</td>';
+    html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI &#10003;':'RPI &#10007;') + '</span></td>';
+    html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF &#10003;':'STF &#10007;') + '</span></td>';
+  }
+  html += '<td style="white-space:nowrap">' + signals.trim() + '</td>';
+  html += '<td>' + reviewCell + '</td>';
+  html += '</tr>';
+  return html;
+}
+
+// ── ATTRITION (isolated — never affects compliance rate/RPI/STF/engagement
+//    math above; shown here only so HR can still see departed rocketeers) ──
+function renderAttritionSection_(container, attritionList) {
+  if (!container) return;
+  if (!attritionList || !attritionList.length) {
+    container.innerHTML = '<div class="empty-state">No departed rocketeers with activity this quarter.</div>';
+    return;
+  }
+
+  var isGrace  = !!(S.data && S.data.isGoalCreationGrace);
+  var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
+  var noteMap  = buildNoteMap_();
+  var sorted   = attritionList.slice().sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+  var html = '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
+  html += '<th>Rocketeer</th><th>Supervisor</th><th>Dept</th><th>Location</th>';
+  html += '<th style="text-align:center">Goals</th><th style="text-align:center">Done</th>';
+  html += '<th style="text-align:center">Cmts/Wks</th><th>RPI</th><th>STF</th>';
+  html += '<th>Signals</th><th>HR Review</th></tr></thead><tbody>';
+  sorted.forEach(function(e) { html += atRiskRowHtml_(e, false, qtrWeeks, noteMap, isGrace); });
   html += '</tbody></table></div>';
   container.innerHTML = html;
 }
@@ -1341,7 +1396,7 @@ function openModal(normName) {
   S.reviewTarget = { emp: emp, existing: existing };
 
   document.getElementById('modal-info').innerHTML =
-    '<strong>' + esc(emp.name) + '</strong><br>' +
+    '<strong>' + esc(emp.name) + '</strong>' + terminatedTag_(emp) + '<br>' +
     (emp.supervisor ? '👤 ' + esc(emp.supervisor) + ' &nbsp;' : '') +
     (emp.department ? '🏢 ' + esc(emp.department) + ' &nbsp;' : '') +
     '<br><span style="color:' + tierColor_(emp.complianceStatus) + ';font-weight:700">' + esc(emp.complianceStatus) + '</span>' +
@@ -1740,6 +1795,207 @@ function pillFor_(status) {
   return '<span class="status-pill ' + cls + '">' + esc(status) + '</span>';
 }
 
+// ── ALL ROCKETEERS ───────────────────────────────────────────────
+function renderAllRocketeers() {
+  var container = document.getElementById('allrock-groups');
+  if (S.allRocketeersData) { renderAllRocketeersGroups_(); return; }
+
+  container.innerHTML = '<div class="empty-state">⏳ <p>Loading…</p></div>';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (data && data.denied) {
+        container.innerHTML = '<div class="empty-state">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
+        return;
+      }
+      S.allRocketeersData = data;
+      renderAllRocketeersGroups_();
+    })
+    .withFailureHandler(function(err) {
+      container.innerHTML = '<div class="empty-state">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
+    })
+    .getAllRocketeersData();
+}
+
+function filterAllRocketeers(value) {
+  S.allRocketeersFilter = String(value || '').trim().toLowerCase();
+  renderAllRocketeersGroups_();
+}
+
+function renderAllRocketeersGroups_() {
+  var container = document.getElementById('allrock-groups');
+  var data = S.allRocketeersData;
+  if (!data || !data.managers || !data.managers.length) {
+    container.innerHTML = '<div class="empty-state">📋 <p>No rocketeers found.</p></div>';
+    return;
+  }
+
+  var q = S.allRocketeersFilter;
+  var html = '';
+
+  data.managers.forEach(function(m, mi) {
+    var supMatches  = !!q && m.supervisor.toLowerCase().indexOf(q) !== -1;
+    var rocketeers  = m.rocketeers.filter(function(r) {
+      return !q || supMatches || r.name.toLowerCase().indexOf(q) !== -1;
+    });
+    if (q && !rocketeers.length) return;
+
+    var groupId       = 'allrock-group-' + mi;
+    var toggleId       = 'allrock-toggle-' + mi;
+    var openByDefault = !!q; // auto-expand groups that match the filter
+
+    html += '<div class="section-card" style="margin-bottom:10px">';
+    html += '<div class="section-head" style="cursor:pointer;padding:10px 16px" onclick="toggleSection(\'' + groupId + '\',\'' + toggleId + '\')">';
+    html += '<div><h2 style="font-size:13px">' + esc(m.supervisor) + ' <span style="color:var(--muted);font-weight:600">(' + m.teamSize + ')</span></h2></div>';
+    html += '<span id="' + toggleId + '" style="color:var(--muted);font-size:12px">' + (openByDefault ? '▴' : '▾') + '</span>';
+    html += '</div>';
+    html += '<div id="' + groupId + '" style="display:' + (openByDefault ? '' : 'none') + '">';
+    html += '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
+            '<th>Rocketeer</th><th>Department</th><th>Job Title</th><th>Total Goals</th><th>First Qtr</th><th>Last Qtr</th>' +
+            '</tr></thead><tbody>';
+    rocketeers.forEach(function(r) {
+      html += '<tr>' +
+        '<td style="font-weight:600;white-space:nowrap">' + esc(r.name) + '</td>' +
+        '<td style="color:var(--slate);font-size:11px">' + esc(r.department || '—') + '</td>' +
+        '<td style="color:var(--slate);font-size:11px">' + esc(r.jobTitle || '—') + '</td>' +
+        '<td>' + r.totalGoals + '</td>' +
+        '<td style="color:var(--slate);font-size:11px">' + esc(r.firstQuarter || '—') + '</td>' +
+        '<td style="color:var(--slate);font-size:11px">' + esc(r.lastQuarter || '—') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div></div></div>';
+  });
+
+  container.innerHTML = html || '<div class="empty-state">📋 <p>No matches for "' + esc(q) + '".</p></div>';
+}
+
+// ── INDIVIDUAL ENGAGEMENT LIST (auditor drill-down) ─────────────────
+function renderIndividualTab_() {
+  var input = document.getElementById('individual-search');
+  if (input) input.value = S.individualQuery || '';
+  renderIndividualResults_();
+  renderIndividualDetail_();
+}
+
+function searchIndividual(value) {
+  S.individualQuery = String(value || '');
+  renderIndividualResults_();
+}
+
+function individualSearchPool_() {
+  var employees = (S.data && S.data.employees) || [];
+  var attrition = (S.data && S.data.attrition) || [];
+  return employees.concat(attrition);
+}
+
+function renderIndividualResults_() {
+  var container = document.getElementById('individual-search-results');
+  if (!container) return;
+  var q = S.individualQuery.trim().toLowerCase();
+  if (!q) { container.innerHTML = ''; return; }
+
+  var matches = individualSearchPool_()
+    .filter(function(e) { return e.name.toLowerCase().indexOf(q) !== -1; })
+    .slice(0, 15);
+
+  if (!matches.length) {
+    container.innerHTML = '<div class="empty-state" style="padding:10px">No matches.</div>';
+    return;
+  }
+
+  var html = '<div class="section-card" style="max-height:260px;overflow-y:auto">';
+  matches.forEach(function(e) {
+    html += '<div style="padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" ' +
+      'onclick="selectIndividualRocketeer_(\'' + esc(e.normName) + '\')">' +
+      '<div style="font-weight:600;font-size:12px">' + esc(e.name) + terminatedTag_(e) + '</div>' +
+      '<div style="font-size:10px;color:var(--slate)">' + esc(e.supervisor || '—') + ' · ' + esc(e.department || '—') + '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function selectIndividualRocketeer_(normName) {
+  S.individualQuery = '';
+  var resultsEl = document.getElementById('individual-search-results');
+  if (resultsEl) resultsEl.innerHTML = '';
+  var searchInput = document.getElementById('individual-search');
+  if (searchInput) searchInput.value = '';
+
+  var detailEl = document.getElementById('individual-detail');
+  if (detailEl) detailEl.innerHTML = '<div class="empty-state">⏳ <p>Loading…</p></div>';
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (data && data.denied) {
+        if (detailEl) detailEl.innerHTML = '<div class="empty-state">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
+        return;
+      }
+      S.individualDetail = data;
+      renderIndividualDetail_();
+    })
+    .withFailureHandler(function(err) {
+      if (detailEl) detailEl.innerHTML = '<div class="empty-state">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
+    })
+    .getRocketeerGoalDetail(S.data.quarter, normName);
+}
+
+function renderIndividualDetail_() {
+  var container = document.getElementById('individual-detail');
+  if (!container) return;
+  var data = S.individualDetail;
+  if (!data) {
+    container.innerHTML = '<div class="empty-state">🔍 <p>Search for a rocketeer above to see their goals and comment history.</p></div>';
+    return;
+  }
+  if (!data.rocketeer) {
+    container.innerHTML = '<div class="empty-state">📋 <p>No activity found for that rocketeer this quarter.</p></div>';
+    return;
+  }
+
+  var r = data.rocketeer;
+  var html = '<div class="section-head" style="padding:0 0 12px">' +
+    '<div><h2 style="font-size:14px">' + esc(r.name) + '</h2>' +
+    '<p class="section-sub">' + esc(r.jobTitle || '—') + ' · ' + esc(r.department || '—') + ' · reports to ' + esc(r.supervisor || '—') + ' · ' + esc(data.quarter) + '</p></div>' +
+    '</div>';
+
+  if (!data.goals.length) {
+    html += '<div class="empty-state">No goals logged this quarter.</div>';
+    container.innerHTML = html;
+    return;
+  }
+
+  data.goals.forEach(function(g) {
+    html += '<div class="section-card" style="margin-bottom:12px">';
+    html += '<div class="section-head" style="padding:10px 16px">' +
+      '<div><h2 style="font-size:13px">' + esc(g.name || '(untitled goal)') + '</h2>' +
+      '<p class="section-sub">' + esc(g.status || '—') + (g.startDate ? ' · started ' + esc(g.startDate) : '') + (g.mood ? ' · ' + esc(g.mood) : '') + '</p></div>' +
+      '</div>';
+
+    if (!g.comments.length) {
+      html += '<div class="section-body"><div class="empty-state" style="padding:12px">No comments recorded on this goal.</div></div>';
+    } else {
+      html += '<div class="section-body">';
+      g.comments.forEach(function(c) {
+        var tagCss   = c.type === 'self' ? 'background:#EEF4FF;color:#2864E6;border:1px solid #C7DEFF'
+                     : c.type === 'manager' ? 'background:#FEF3E7;color:#B45309;border:1px solid #FDE0B0'
+                     : 'background:#F1F5F9;color:#475569;border:1px solid #CBD5E1';
+        var tagLabel = c.type === 'self' ? 'IC' : c.type === 'manager' ? 'Manager' : 'Other';
+        html += '<div style="padding:8px 0;border-bottom:1px solid var(--border)">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' +
+          '<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:3px;padding:1px 6px;' + tagCss + '">' + tagLabel + '</span>' +
+          '<span style="font-size:10px;color:var(--muted)">' + esc(c.commentator) + (c.date ? ' · ' + esc(c.date) : '') + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--text)">' + esc(c.text) + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+}
+
 function toggleSection(id, iconId) {
   var el   = document.getElementById(id);
   var icon = iconId ? document.getElementById(iconId) : null;
@@ -1774,11 +2030,11 @@ function exportAtRiskCSV() {
   });
   var noteMap = buildNoteMap_();
   var qtrWks  = (S.data && S.data.totalQtrWeeks) || 1;
-  var rows = [['Rocketeer','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
+  var rows = [['Rocketeer','Terminated','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
                'Comment Weeks','Comment Weeks Required','RPI Eligible','STF Eligible','HR Reviewed','Note']];
   emps.forEach(function(e) {
     var n = noteMap[e.normName];
-    rows.push([e.name, e.supervisor, e.department, e.location, e.jobFamily, e.totalGoals, e.goalsCompleted,
+    rows.push([e.name, e.terminated?'Yes':'No', e.supervisor, e.department, e.location, e.jobFamily, e.totalGoals, e.goalsCompleted,
                e.complianceStatus, e.commentWeeks, qtrWks, e.rpiEligible?'Yes':'No', e.stfEligible?'Yes':'No',
                n?'Yes':'No', n?n.note:'']);
   });
@@ -1947,6 +2203,14 @@ function saveSecuritySettings_() {
 // ── UTILITIES ──────────────────────────────────────────────────────
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Subtle red "Terminated" tag shown next to a rocketeer's name — never hides
+// them, just flags that the roster confirms they've left.
+function terminatedTag_(e) {
+  return e && e.terminated
+    ? ' <span style="display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;vertical-align:middle">Terminated</span>'
+    : '';
 }
 
 function getISOWeekLabel() {
