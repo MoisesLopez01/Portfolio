@@ -136,8 +136,16 @@ function doGet() {
 // ── Public server functions ─────────────────────────────────────
 
 function getGoalsComplianceData(quarter) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, denied: true, email: access.email };
+
   var qtr      = String(quarter || CONFIG_GD.DEFAULT_QUARTER).trim();
-  var cacheKey = CONFIG_GD.CACHE_VER + qtr;
+  // Cache key includes the caller's scope — admin and viewer share one entry
+  // (both see the full company), managers get their own keyed by email. Without
+  // this, one manager's org-tree-filtered payload could be served to a different
+  // manager (or an admin) requesting the same quarter.
+  var scopeKey = (access.role === 'admin' || access.role === 'viewer') ? 'admin' : access.email;
+  var cacheKey = CONFIG_GD.CACHE_VER + qtr + '_' + scopeKey;
   var cache    = CacheService.getScriptCache();
 
   var cached = cache.get(cacheKey);
@@ -145,7 +153,7 @@ function getGoalsComplianceData(quarter) {
     try { return JSON.parse(cached); } catch (e) { /* fall through */ }
   }
 
-  var result = buildComplianceData_(qtr);
+  var result = buildComplianceData_(qtr, access);
 
   try {
     var json = JSON.stringify(result);
