@@ -164,8 +164,11 @@ function getGoalsComplianceData(quarter) {
 }
 
 function saveHRNote(data) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, error: 'Access denied' };
+
   try {
-    var email = Session.getActiveUser().getEmail() || 'unknown';
+    var email = access.email || 'unknown';
     var ss    = SpreadsheetApp.openById(CONFIG_GD.GOALS_SS_ID);
     var sh    = getOrCreateTrackerSheet_(ss);
 
@@ -237,10 +240,20 @@ function getHRNotes(quarter) {
 }
 
 function bustCache(quarter) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, error: 'Access denied' };
+
   var cache = CacheService.getScriptCache();
   var toRemove = [CONFIG_GD.DEFAULT_QUARTER];
   if (quarter && quarter !== CONFIG_GD.DEFAULT_QUARTER) toRemove.push(quarter);
-  toRemove.forEach(function(q) { cache.remove(CONFIG_GD.CACHE_VER + q); });
+
+  // Cache keys are now scoped by role/email (see getGoalsComplianceData) — remove
+  // both the shared admin/viewer entry and the calling user's own scoped entry so
+  // Refresh works for whichever role clicked it.
+  var scopeKeys = ['admin', access.email];
+  toRemove.forEach(function(q) {
+    scopeKeys.forEach(function(sk) { cache.remove(CONFIG_GD.CACHE_VER + q + '_' + sk); });
+  });
   return { ok: true };
 }
 
