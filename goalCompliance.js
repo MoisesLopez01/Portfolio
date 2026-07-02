@@ -148,9 +148,20 @@ function getGoalsComplianceData(quarter) {
   var cacheKey = CONFIG_GD.CACHE_VER + qtr + '_' + scopeKey;
   var cache    = CacheService.getScriptCache();
 
+  // The admin/viewer scope key is shared, but userRole/userEmail/managerScopeName
+  // are caller-specific — never trust those fields from a cached payload (they
+  // reflect whoever warmed the entry, not the current caller). Always overlay
+  // the live access values before returning, whether from cache or freshly built.
+  var withLiveAccess_ = function (obj) {
+    obj.userRole         = access.role;
+    obj.userEmail        = access.email;
+    obj.managerScopeName = (access.role === 'manager') ? access.delegateScopeName : null;
+    return obj;
+  };
+
   var cached = cache.get(cacheKey);
   if (cached) {
-    try { return JSON.parse(cached); } catch (e) { /* fall through */ }
+    try { return withLiveAccess_(JSON.parse(cached)); } catch (e) { /* fall through */ }
   }
 
   var result = buildComplianceData_(qtr, access);
@@ -160,7 +171,7 @@ function getGoalsComplianceData(quarter) {
     if (json.length < 90000) cache.put(cacheKey, json, CONFIG_GD.CACHE_TTL);
   } catch (e) { log_('Cache put skipped: ' + e.message); }
 
-  return result;
+  return withLiveAccess_(result);
 }
 
 function saveHRNote(data) {
