@@ -15,7 +15,11 @@ var CONFIG_GD = {
   GOALS_SS_ID:         '1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ',
   ROSTER_SS_ID:        '1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0',
   SHEET_RD:            'RD',
-  SHEET_ROSTER:        'Roster',
+  // Company-wide raw HRIS export — NOT the PS-team-filtered "Roster" tab that
+  // PS Contribution Report.js reads. Goals Compliance covers every department,
+  // so it must read the unfiltered "Data" tab (Employee Number, Name, Employee
+  // Status, Supervisor, Class, Job Title, Department, Key Location, etc.).
+  SHEET_ROSTER:        'Data',
   SHEET_HR_TRACKER:    'HR Follow-Up Tracker',
   DEFAULT_QUARTER:     'FY26Q4',
   GOALS_ON_TARGET:     10,   // 10+ goals → On Target
@@ -24,7 +28,9 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v8_',  // bumped: manager org-tree scoping + cache key now includes role/email
+  CACHE_VER:           'gd_v13_',  // bumped: interns are excluded again (v12 accidentally dropped intern exclusion while fixing terminated-employee handling), and terminated ("attrition") rocketeers are now split into an isolated `attrition` list — excluded from compliance rate/RPI/STF/engagement math, still visible for HR reference
+  CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
+  LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
 };
 
@@ -74,15 +80,25 @@ function parseQuarterDates_(quarter) {
 }
 
 /**
- * Returns true when a rocketeer should be excluded from compliance as an intern.
- * Checks both the Class field (I1) and job title patterns like "07.I1.1 - Intern, ...".
+ * Inverse of parseQuarterDates_ — given a goal's Start Date, returns the fiscal
+ * quarter label it falls in (e.g. "FY26Q4"). This is the source of truth for
+ * grouping RD rows into a quarter: the per-row 'Fiscal Quarter' text column can
+ * be blank or inconsistent across a single goal's own comment rows, but Start
+ * Date groups the whole goal (and therefore the rocketeer) into one quarter.
+ * Same FY calendar as parseQuarterDates_: Jul 1 → Jun 30.
  */
-function isIntern_(classVal, jobTitle) {
-  if (String(classVal || '').trim().toUpperCase() === 'I1') return true;
-  var jt = String(jobTitle || '').trim();
-  if (/^\d+\.I\d+\.\d+/i.test(jt)) return true;  // code-based: 07.I1.1 …
-  if (/\bintern\b/i.test(jt))       return true;  // keyword fallback
-  return false;
+function dateToFiscalQuarter_(d) {
+  if (!d) return null;
+  var dt = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(dt)) return null;
+  var y = dt.getFullYear();
+  var m = dt.getMonth();  // 0-based
+  var fyYear, qNum;
+  if      (m >= 6 && m <= 8)  { qNum = 1; fyYear = y + 1; }  // Jul–Sep
+  else if (m >= 9 && m <= 11) { qNum = 2; fyYear = y + 1; }  // Oct–Dec
+  else if (m <= 2)            { qNum = 3; fyYear = y;     }  // Jan–Mar
+  else                        { qNum = 4; fyYear = y;     }  // Apr–Jun
+  return 'FY' + String(fyYear).slice(-2) + 'Q' + qNum;
 }
 
 /**
@@ -114,6 +130,54 @@ function readSheet_(ssId, sheetName) {
     hdrs.forEach(function(h, i) { if (h) obj[h] = row[i]; });
     return obj;
   });
+}
+
+// ── Chunked cache (CacheService caps a single value at 100KB) ──────
+// A full company-wide payload (200+ employees × up to 10 goals each) can exceed
+// that cap; rather than skip caching outright for large quarters, split it across
+// N keys (`key::0`, `key::1`, … `key::n`) with a small manifest at `key::n`. Small
+// payloads still take the fast path of a single direct write/read.
+
+function cachePutChunked_(cache, key, value, ttlSeconds) {
+  var size = CONFIG_GD.CACHE_CHUNK_SIZE;
+  if (value.length <= size) { cache.put(key, value, ttlSeconds); return; }
+
+  var n     = Math.ceil(value.length / size);
+  var batch = {};
+  for (var i = 0; i < n; i++) batch[key + '::' + i] = value.substr(i * size, size);
+  batch[key + '::n'] = String(n);
+  cache.putAll(batch, ttlSeconds);
+}
+
+function cacheGetChunked_(cache, key) {
+  var direct = cache.get(key);
+  if (direct) return direct;
+
+  var nRaw = cache.get(key + '::n');
+  var n    = nRaw ? parseInt(nRaw, 10) : 0;
+  if (!n) return null;
+
+  var chunkKeys = [];
+  for (var i = 0; i < n; i++) chunkKeys.push(key + '::' + i);
+  var found = cache.getAll(chunkKeys);
+
+  var parts = [];
+  for (var j = 0; j < n; j++) {
+    var part = found[key + '::' + j];
+    if (part == null) return null;  // a chunk expired independently — treat as a full miss
+    parts.push(part);
+  }
+  return parts.join('');
+}
+
+function cacheRemoveChunked_(cache, key) {
+  var nRaw = cache.get(key + '::n');
+  var keys = [key, key + '::n'];
+  if (nRaw) {
+    var n = parseInt(nRaw, 10) || 0;
+    for (var i = 0; i < n; i++) keys.push(key + '::' + i);
+  }
+  cache.removeAll(keys);
 }
 
 // ── Entry point ─────────────────────────────────────────────────
@@ -159,19 +223,195 @@ function getGoalsComplianceData(quarter) {
     return obj;
   };
 
-  var cached = cache.get(cacheKey);
-  if (cached) {
-    try { return withLiveAccess_(JSON.parse(cached)); } catch (e) { /* fall through */ }
-  }
+  var tryReadCache_ = function () {
+    var cached = cacheGetChunked_(cache, cacheKey);
+    if (!cached) return null;
+    try { return withLiveAccess_(JSON.parse(cached)); } catch (e) { return null; }
+  };
 
-  var result = buildComplianceData_(qtr, access);
+  var hit = tryReadCache_();
+  if (hit) return hit;
+
+  // Cache miss. With 200+ people using the dashboard, a cold/expired entry can
+  // otherwise trigger the same expensive RD+roster read and aggregation dozens of
+  // times concurrently. A script lock serializes the rebuild: the first caller
+  // computes and caches; everyone else waiting on the lock re-checks the now-warm
+  // cache instead of redoing the same work.
+  var lock    = LockService.getScriptLock();
+  var gotLock = false;
+  try { gotLock = lock.tryLock(CONFIG_GD.LOCK_WAIT_MS); }
+  catch (e) { log_('Lock acquisition failed, proceeding unlocked: ' + e.message); }
 
   try {
-    var json = JSON.stringify(result);
-    if (json.length < 90000) cache.put(cacheKey, json, CONFIG_GD.CACHE_TTL);
-  } catch (e) { log_('Cache put skipped: ' + e.message); }
+    if (gotLock) {
+      hit = tryReadCache_();
+      if (hit) return hit;
+    }
 
-  return withLiveAccess_(result);
+    var result = buildComplianceData_(qtr, access);
+
+    try { cachePutChunked_(cache, cacheKey, JSON.stringify(result), CONFIG_GD.CACHE_TTL); }
+    catch (e) { log_('Cache put skipped: ' + e.message); }
+
+    return withLiveAccess_(result);
+  } finally {
+    if (gotLock) lock.releaseLock();
+  }
+}
+
+function getAllRocketeersData() {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, denied: true, email: access.email };
+
+  // Quarter-independent — one cache entry per scope (admin/viewer share one,
+  // managers get their own), same scoping rationale as getGoalsComplianceData.
+  var scopeKey = (access.role === 'admin' || access.role === 'viewer') ? 'admin' : access.email;
+  var cacheKey = CONFIG_GD.CACHE_VER + 'allrock_' + scopeKey;
+  var cache    = CacheService.getScriptCache();
+
+  var withLiveAccess_ = function (obj) {
+    obj.userRole         = access.role;
+    obj.userEmail        = access.email;
+    obj.managerScopeName = (access.role === 'manager') ? access.delegateScopeName : null;
+    return obj;
+  };
+
+  var tryReadCache_ = function () {
+    var cached = cacheGetChunked_(cache, cacheKey);
+    if (!cached) return null;
+    try { return withLiveAccess_(JSON.parse(cached)); } catch (e) { return null; }
+  };
+
+  var hit = tryReadCache_();
+  if (hit) return hit;
+
+  var lock    = LockService.getScriptLock();
+  var gotLock = false;
+  try { gotLock = lock.tryLock(CONFIG_GD.LOCK_WAIT_MS); }
+  catch (e) { log_('Lock acquisition failed, proceeding unlocked: ' + e.message); }
+
+  try {
+    if (gotLock) {
+      hit = tryReadCache_();
+      if (hit) return hit;
+    }
+
+    var result = buildAllRocketeersData_(access);
+
+    try { cachePutChunked_(cache, cacheKey, JSON.stringify(result), CONFIG_GD.CACHE_TTL); }
+    catch (e) { log_('Cache put skipped: ' + e.message); }
+
+    return withLiveAccess_(result);
+  } finally {
+    if (gotLock) lock.releaseLock();
+  }
+}
+
+// Auditor drill-down for the Individual Engagement List tab: every goal for
+// ONE rocketeer this quarter, with the full comment thread per goal tagged
+// IC (self) vs Manager vs Other. Not cached — a small, on-demand, per-person
+// read, unlike the bulk company-wide endpoints above.
+function getRocketeerGoalDetail(quarter, normName) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, denied: true, email: access.email };
+
+  var targetNorm = normName_(normName);
+  if (!targetNorm) return { ok: false, error: 'No rocketeer specified' };
+
+  var fullRosterMap = getFullRosterMap_();
+
+  // Manager access-control boundary — reject outright rather than silently
+  // returning empty, so a scoped manager can't probe for people outside
+  // their org tree by trying names.
+  if (access.role === 'manager') {
+    var scopeSet = resolveGDManagerScope_(fullRosterMap, normName_(access.delegateScopeName));
+    if (!scopeSet[targetNorm]) return { ok: false, denied: true, email: access.email };
+  }
+
+  var qtr    = String(quarter || CONFIG_GD.DEFAULT_QUARTER).trim();
+  var allRd  = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
+
+  // Filter to this one rocketeer's own rows first — a small subset — before
+  // doing any quarter derivation, rather than scanning/deriving quarters for
+  // the whole company-wide sheet to answer a single-person question.
+  var ownRows = allRd.filter(function(r) { return normName_(r['Rocketeer']) === targetNorm; });
+  if (!ownRows.length) return { ok: true, rocketeer: null, quarter: qtr, goals: [] };
+
+  var rocketeerName = String(ownRows[0]['Rocketeer'] || '').trim();
+  var supervisor = '', department = '', jobTitle = '';
+  ownRows.forEach(function(r) {
+    if (!supervisor && String(r['Supervisor'] || '').trim()) supervisor = String(r['Supervisor'] || '').trim();
+    if (!department && String(r['Department'] || '').trim()) department = String(r['Department'] || '').trim();
+    if (!jobTitle   && String(r['Job Title']  || '').trim()) jobTitle   = String(r['Job Title']  || '').trim();
+  });
+
+  // Interns are excluded everywhere in this dashboard — same OR-logic rule
+  // as stripInterns_ (Roster title independently checked from RD's own).
+  var rosterJobTitle = fullRosterMap[targetNorm] ? fullRosterMap[targetNorm].jobTitle : '';
+  if (isIntern_(rosterJobTitle) || isIntern_(jobTitle)) {
+    return { ok: true, rocketeer: null, quarter: qtr, goals: [] };
+  }
+
+  // Derive each of this rocketeer's own goals' quarter locally — same
+  // Start-Date rule buildComplianceData_ uses for the whole sheet, scoped to
+  // just their own (already small) row set.
+  var goalQuarterMap = {};
+  ownRows.forEach(function(r) {
+    var goalId = String(r['Goal ID'] || '').trim();
+    if (!goalId || goalQuarterMap[goalId]) return;
+    var q = dateToFiscalQuarter_(r['Start Date']);
+    if (q) goalQuarterMap[goalId] = q;
+  });
+
+  var normSup  = normName_(supervisor);
+  var goalsMap = {};
+  ownRows.forEach(function(row) {
+    var goalId = String(row['Goal ID'] || '').trim();
+    if (!goalId) return;
+    var rowQuarter = goalQuarterMap[goalId] || String(row['Fiscal Quarter'] || '').trim();
+    if (rowQuarter !== qtr) return;
+
+    if (!goalsMap[goalId]) {
+      goalsMap[goalId] = {
+        id:        goalId,
+        name:      String(row['Goal Name']   || ''),
+        status:    String(row['Goal Status'] || '').trim(),
+        startDate: row['Start Date'] ? fmtDate_(row['Start Date']) : '',
+        mood:      String(row['Mood'] || '').trim(),
+        comments:  [],
+      };
+    }
+
+    var cText = String(row['Comment Text'] || '').trim();
+    var cBy   = String(row['Commentator']  || '').trim();
+    var cDate = row['Comment Date'];
+    if (cText && cBy) {
+      var cNorm = normName_(cBy);
+      var type  = cNorm === targetNorm ? 'self' : (normSup && cNorm === normSup ? 'manager' : 'other');
+      goalsMap[goalId].comments.push({
+        date:        cDate ? fmtDate_(cDate) : '',
+        commentator: cBy,
+        text:        cText,
+        type:        type,
+      });
+    }
+  });
+
+  var goals = Object.keys(goalsMap).map(function(id) {
+    var g = goalsMap[id];
+    g.comments.sort(function(a, b) { return a.date.localeCompare(b.date); });
+    return g;
+  }).sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
+
+  return {
+    ok: true,
+    rocketeer: {
+      name: rocketeerName, normName: targetNorm,
+      department: department, jobTitle: jobTitle, supervisor: supervisor,
+    },
+    quarter: qtr,
+    goals: goals,
+  };
 }
 
 function saveHRNote(data) {
@@ -258,13 +498,20 @@ function bustCache(quarter) {
   var toRemove = [CONFIG_GD.DEFAULT_QUARTER];
   if (quarter && quarter !== CONFIG_GD.DEFAULT_QUARTER) toRemove.push(quarter);
 
-  // Cache keys are now scoped by role/email (see getGoalsComplianceData) — remove
-  // both the shared admin/viewer entry and the calling user's own scoped entry so
-  // Refresh works for whichever role clicked it.
+  // Cache keys are scoped by role/email (see getGoalsComplianceData) and may be
+  // chunked (see cachePutChunked_) — remove both the shared admin/viewer entry and
+  // the calling user's own scoped entry, chunks included, so Refresh works for
+  // whichever role clicked it.
   var scopeKeys = ['admin', access.email];
   toRemove.forEach(function(q) {
-    scopeKeys.forEach(function(sk) { cache.remove(CONFIG_GD.CACHE_VER + q + '_' + sk); });
+    scopeKeys.forEach(function(sk) { cacheRemoveChunked_(cache, CONFIG_GD.CACHE_VER + q + '_' + sk); });
   });
+
+  // All Rocketeers tab is quarter-independent — one cache entry per scope,
+  // not per quarter (see getAllRocketeersData) — clear it here too so Refresh
+  // covers both views in one call.
+  scopeKeys.forEach(function(sk) { cacheRemoveChunked_(cache, CONFIG_GD.CACHE_VER + 'allrock_' + sk); });
+
   return { ok: true };
 }
 
@@ -277,52 +524,107 @@ function getUserEmail() {
 function buildComplianceData_(quarter, access) {
   log_('buildComplianceData_ | quarter: ' + quarter);
 
-  // 1. Read full RD and filter by quarter
-  var allRd  = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
-  var rdRows = allRd.filter(function(r) {
-    return String(r['Fiscal Quarter'] || '').trim() === quarter;
+  // 1. Read full RD and filter by quarter. Grouping is keyed off each goal's own
+  // Start Date (dateToFiscalQuarter_), NOT the per-row 'Fiscal Quarter' text —
+  // that column can be blank or inconsistent across a single goal's own comment
+  // rows, which was silently dropping goals (and sometimes an entire rocketeer)
+  // whenever the text didn't match. Start Date groups the whole goal consistently.
+  var allRd = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
+
+  var goalQuarterMap = {};  // Goal ID → derived quarter, resolved once from the first row with a parseable Start Date
+  allRd.forEach(function(r) {
+    var goalId = String(r['Goal ID'] || '').trim();
+    if (!goalId || goalQuarterMap[goalId]) return;
+    var q = dateToFiscalQuarter_(r['Start Date']);
+    if (q) goalQuarterMap[goalId] = q;
   });
+  var deriveRowQuarter_ = function(r) {
+    var goalId = String(r['Goal ID'] || '').trim();
+    var q = goalId ? goalQuarterMap[goalId] : null;
+    // Fallback to the raw text only when Start Date is missing/unparseable on every
+    // row for this goal — keeps a row from being lost outright in that edge case.
+    return q || String(r['Fiscal Quarter'] || '').trim();
+  };
+
+  var rdRows = allRd.filter(function(r) { return deriveRowQuarter_(r) === quarter; });
   log_('RD rows for ' + quarter + ': ' + rdRows.length);
 
-  // 2. Read Roster once — company-wide, used both to resolve a manager's org-tree
-  // scope and to derive activeSet/locMap/supTitleMap below.
+  // 2. Read Roster once (both active and terminated) — company-wide. Used to
+  // resolve a manager's org-tree scope and to derive rosterMap/terminatedSet/
+  // locMap/supTitleMap below. Never used to require an RD rocketeer to have a
+  // matching roster row — see aggregateByRocketeer_.
   var fullRosterMap = getFullRosterMap_();
 
-  // 2b. Manager role: narrow the roster to just the caller's org tree so every
-  // downstream aggregate (employees, comment trend, engagement, summary, and the
-  // zero-goal-employee injection below) only reflects the manager's own team.
-  // Admins and viewers keep the full company-wide roster.
+  // 2b. Manager role: build a scope set of normNames in the caller's org tree —
+  // a hard access-control boundary enforced in aggregateByRocketeer_. Admins and
+  // viewers get scopeSet = null, i.e. no restriction at all.
   var managerScopeName = null;
-  var rosterMap = fullRosterMap;
+  var scopeSet = null;
   if (access && access.role === 'manager') {
     managerScopeName = access.delegateScopeName;
-    var scope = resolveGDManagerScope_(fullRosterMap, normName_(managerScopeName));
-    rosterMap = {};
-    Object.keys(fullRosterMap).forEach(function(norm) {
-      if (scope[norm]) rosterMap[norm] = fullRosterMap[norm];
-    });
-    log_('Manager scope "' + managerScopeName + '": ' + Object.keys(rosterMap).length + ' employees in scope');
+    scopeSet = resolveGDManagerScope_(fullRosterMap, normName_(managerScopeName));
+    log_('Manager scope "' + managerScopeName + '": ' + Object.keys(scopeSet).length + ' people in scope');
   }
 
-  var activeSet      = {};
+  // rosterMap: every in-scope roster person, active AND terminated (narrowed to
+  // the manager's scope when applicable). Used purely for enrichment (location,
+  // job title, department, terminated tag) — never a gate on whether RD-sourced
+  // goal data is kept. Zero-goal injection below still only injects the active
+  // subset.
+  var rosterMap = {};
+  Object.keys(fullRosterMap).forEach(function(norm) {
+    if (scopeSet && !scopeSet[norm]) return;
+    rosterMap[norm] = fullRosterMap[norm];
+  });
+
+  // terminatedSet: roster-confirmed terminated people (in scope) — surfaced to
+  // the UI as a "Terminated" tag, never as an exclusion. A name absent from the
+  // roster entirely is NOT terminated as far as this dashboard is concerned.
+  var terminatedSet = {};
+  Object.keys(rosterMap).forEach(function(norm) {
+    if (!rosterMap[norm].active) terminatedSet[norm] = true;
+  });
+
   var locMap         = {};
   var supTitleMap    = {};
   Object.keys(rosterMap).forEach(function(norm) {
     var r = rosterMap[norm];
-    activeSet[norm]   = true;
     locMap[norm]      = r.location;
     supTitleMap[norm] = r.jobTitle;
   });
-  log_('Roster active: ' + Object.keys(activeSet).length + ' | locations: ' + Object.keys(locMap).length);
+  log_('Roster: ' + Object.keys(rosterMap).length + ' in scope (' +
+       Object.keys(terminatedSet).length + ' terminated) | locations: ' + Object.keys(locMap).length);
 
-  // 3. Aggregate per rocketeer (interns and offboarded already excluded)
-  var rockMap = aggregateByRocketeer_(rdRows, activeSet);
+  // 3. Aggregate per rocketeer — aggregateByRocketeer_ itself keeps every
+  // Rocketeer found in the RD sheet (the only gate inside it is the manager's
+  // org-tree scope boundary). Interns are stripped out immediately below,
+  // and terminated ("attrition") rocketeers are split into a separate list —
+  // both are excluded from compliance rate/RPI/STF/engagement math, but
+  // attrition stays visible (isolated) for HR reference; see step 3c.
+  var rockMap = aggregateByRocketeer_(rdRows, scopeSet, quarter);
+  stripInterns_(rockMap, rosterMap);
 
-  // 3b. Inject every active, in-scope Roster employee not found in the RD sheet (0 goals this quarter)
+  // 3c. Split terminated ("attrition") rocketeers out of rockMap into their
+  // own list — a departure mid-quarter shouldn't drag down the org's
+  // compliance rate/RPI/STF/engagement math, but HR still needs to see them.
+  // Both lists get the same per-employee finalize treatment in step 5, so
+  // attrition entries still carry a compliance tier/job family for context —
+  // they're just never summed into computeSummary_'s org-wide totals.
+  var attritionList = [];
+  Object.keys(rockMap).forEach(function(norm) {
+    if (terminatedSet[norm]) { attritionList.push(rockMap[norm]); delete rockMap[norm]; }
+  });
+
+  // 3b. Inject every ACTIVE, in-scope, non-intern Roster employee not found in
+  // the RD sheet (0 goals this quarter). Terminated roster people are never
+  // injected this way — they only appear here if they actually have RD
+  // activity, split into the isolated attrition list in step 3c below.
   var preInjectCount = Object.keys(rockMap).length;
   Object.keys(rosterMap).forEach(function(norm) {
     if (rockMap[norm]) return; // already present from RD
     var r = rosterMap[norm];
+    if (!r.active) return;
+    if (isIntern_(r.jobTitle)) return;
     rockMap[norm] = {
       name:       r.name,
       normName:   norm,
@@ -357,11 +659,16 @@ function buildComplianceData_(quarter, access) {
   });
   var totalQtrWeeks = Math.max(1, Object.keys(qWeekSet).length);
 
-  // 5. Finalise employee records
-  var employees = Object.values(rockMap).map(function(emp) {
+  // 5. Finalise employee records — the same enrichment applies to both the
+  // main array and the isolated attrition list, so attrition entries still
+  // carry a compliance tier/job family/RPI/STF flags for context even though
+  // they're excluded from every org-wide total (computeSummary_ only ever
+  // iterates `employees`, never `attrition`).
+  var finalizeEmployeeRecord_ = function(emp) {
     emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || emp.location || 'Unknown';
     emp.jobFamily        = deriveJobFamily_(emp.jobTitle);
     emp.complianceStatus = computeStatus_(emp.totalGoals);
+    emp.terminated       = !!terminatedSet[emp.normName];
 
     // RPI eligibility: 10+ total goals, 8+ completed, comments in every quarter week
     emp.rpiEligible = emp.totalGoals >= CONFIG_GD.GOALS_ON_TARGET &&
@@ -373,14 +680,18 @@ function buildComplianceData_(quarter, access) {
                       emp.stfGoalsWithSufficientComments >= CONFIG_GD.STF_MIN_CMT_GOALS;
 
     return emp;
-  });
+  };
 
+  var employees = Object.values(rockMap).map(finalizeEmployeeRecord_);
   employees.sort(function(a, b) { return a.name.localeCompare(b.name); });
 
-  // 6. Available quarters from full dataset
+  var attrition = attritionList.map(finalizeEmployeeRecord_);
+  attrition.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+  // 6. Available quarters from full dataset (same Start-Date-derived quarter as step 1)
   var quartersSet = {};
   allRd.forEach(function(r) {
-    var q = String(r['Fiscal Quarter'] || '').trim();
+    var q = deriveRowQuarter_(r);
     if (q) quartersSet[q] = true;
   });
   var quarters = Object.keys(quartersSet).sort().reverse();
@@ -413,6 +724,7 @@ function buildComplianceData_(quarter, access) {
 
   return {
     employees:              employees,
+    attrition:              attrition,
     summary:                computeSummary_(employees),
     commentTrend:           commentTrend,
     quarter:                quarter,
@@ -430,10 +742,37 @@ function buildComplianceData_(quarter, access) {
   };
 }
 
+function buildAllRocketeersData_(access) {
+  log_('buildAllRocketeersData_ | building all-time rocketeer roster');
+
+  var allRd         = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
+  var fullRosterMap = getFullRosterMap_();
+
+  var managerScopeName = null;
+  var scopeSet = null;
+  if (access && access.role === 'manager') {
+    managerScopeName = access.delegateScopeName;
+    scopeSet = resolveGDManagerScope_(fullRosterMap, normName_(managerScopeName));
+  }
+
+  var agg = aggregateAllRocketeers_(allRd, fullRosterMap, scopeSet);
+
+  log_('buildAllRocketeersData_ done | rocketeers: ' + agg.totalRocketeers +
+       ' | managers: ' + agg.managers.length);
+
+  return {
+    managers:         agg.managers,
+    totalRocketeers:  agg.totalRocketeers,
+    generatedAt:      new Date().toISOString(),
+    userRole:         access ? access.role  : null,
+    userEmail:        access ? access.email : null,
+    managerScopeName: managerScopeName,
+  };
+}
+
 // ── Aggregation ─────────────────────────────────────────────────
 
-function aggregateByRocketeer_(rows, activeSet) {
-  var hasActiveFilter = Object.keys(activeSet).length > 0;
+function aggregateByRocketeer_(rows, scopeSet, quarter) {
   var map = {};
 
   rows.forEach(function(row) {
@@ -441,13 +780,12 @@ function aggregateByRocketeer_(rows, activeSet) {
     if (!name) return;
     var norm = normName_(name);
 
-    // Exclude interns: Class = I1 or job title pattern (e.g. "07.I1.1 - Intern, …")
-    var classVal = String(row['Class']     || '').trim().toUpperCase();
-    var jtVal    = String(row['Job Title'] || '').trim();
-    if (isIntern_(classVal, jtVal)) return;
-
-    // Exclude offboarded employees (if active set is available)
-    if (hasActiveFilter && !activeSet[norm]) return;
+    // Manager access-control boundary — only applies when a scope set is supplied
+    // (manager role, restricted to their own org tree). Admin/viewer pass null and
+    // see every rocketeer with RD activity — interns and terminated employees
+    // included; termination is surfaced as a tag (see buildComplianceData_),
+    // never an exclusion.
+    if (scopeSet && !scopeSet[norm]) return;
 
     if (!map[norm]) {
       map[norm] = {
@@ -457,7 +795,10 @@ function aggregateByRocketeer_(rows, activeSet) {
         classVal:   String(row['Class']         || '').trim(),
         supervisor: String(row['Supervisor']    || '').trim(),
         jobTitle:   String(row['Job Title']     || '').trim(),
-        quarter:    String(row['Fiscal Quarter']|| '').trim(),
+        // The row is already known to belong to `quarter` (rows are pre-filtered by
+        // deriveRowQuarter_ before reaching this function) — use it directly rather
+        // than the row's own 'Fiscal Quarter' text, which can be blank/inconsistent.
+        quarter:    quarter || String(row['Fiscal Quarter'] || '').trim(),
         _goals:     {},
         _selfCmtWeeks: {},  // ISO weeks in which rocketeer self-commented
       };
@@ -578,37 +919,146 @@ function isSeniorLeader_(jobTitle) {
   return /\b(vp|vice.?president|director|chief|c[a-z]o|ceo|cto|cfo|coo)\b/i.test(jobTitle || '');
 }
 
-// ── Full Roster records (active, non-intern employees) ─────────
-// Returns { normName → { name, normName, department, supervisor, jobTitle, classVal, location } }
-// Used to inject zero-goal employees who never appear in the RD sheet.
+// ── Intern detection ─────────────────────────────────────────
+// Interns aren't required to log goals, aren't evaluated on this cadence, and
+// don't qualify for STF — excluded from every view in this dashboard. Pattern
+// match (not a hardcoded title list) mirrors the existing convention in
+// PS Contribution Report.js (title.includes("intern")) and self-updates when
+// a new "Intern, <Dept>" title is added to the company catalog.
+function isIntern_(jobTitle) {
+  return /intern/i.test(jobTitle || '');
+}
+
+// Removes intern entries from a normName-keyed employee map, in place.
+// `jobTitleMap` resolves the Roster Job Title per normName (Roster's Job
+// Title comes from the same NetSuite export as RD). A rocketeer is excluded
+// if EITHER the Roster title OR their own (RD-aggregated) title matches —
+// checked independently, not "prefer one, fall back to the other" — since a
+// title can show as Intern in one source before the other has synced.
+function stripInterns_(map, jobTitleMap) {
+  Object.keys(map).forEach(function(norm) {
+    var rosterJobTitle = jobTitleMap[norm] ? jobTitleMap[norm].jobTitle : '';
+    var ownJobTitle     = map[norm].jobTitle;
+    if (isIntern_(rosterJobTitle) || isIntern_(ownJobTitle)) delete map[norm];
+  });
+}
+
+// ── All Rocketeers aggregation (quarter-independent, for the All Rocketeers
+//    tab) ───────────────────────────────────────────────────────────────
+// Pure function: groups every RD row by its own Supervisor field (not a
+// Roster org-tree — one level, same rule a reference "process 100k+ rows"
+// test script used), across ALL quarters combined. `scopeSet` narrows to a
+// manager's org tree when supplied (null = no restriction, admin/viewer).
+// `fullRosterMap` is used only to resolve the Roster Job Title for intern
+// detection — never to enrich the returned rows (Department/Job Title/
+// Supervisor come from RD alone).
+function aggregateAllRocketeers_(rows, fullRosterMap, scopeSet) {
+  var rockMap = {};
+
+  rows.forEach(function(row) {
+    var name = String(row['Rocketeer'] || '').trim();
+    if (!name) return;
+    var norm = normName_(name);
+    if (scopeSet && !scopeSet[norm]) return;
+
+    var supervisor = String(row['Supervisor'] || '').trim() || 'Unassigned';
+    var department = String(row['Department'] || '').trim();
+    var jobTitle   = String(row['Job Title']  || '').trim();
+    var startDate  = row['Start Date'];
+    var goalId     = String(row['Goal ID']    || '').trim();
+
+    if (!rockMap[norm]) {
+      rockMap[norm] = {
+        name: name, normName: norm,
+        department: department, jobTitle: jobTitle, supervisor: supervisor,
+        _latestStart: null, _goalIds: {}, _quarters: {},
+      };
+    }
+    var emp = rockMap[norm];
+
+    // Department/Job Title/Supervisor reflect whichever row has the latest
+    // Start Date seen so far — a rocketeer's most recent assignment.
+    var sd = startDate ? new Date(startDate) : null;
+    var sdValid = sd instanceof Date && !isNaN(sd);
+    if (sdValid && (!emp._latestStart || sd > emp._latestStart)) {
+      emp._latestStart = sd;
+      if (department) emp.department = department;
+      if (jobTitle)   emp.jobTitle   = jobTitle;
+      if (supervisor) emp.supervisor = supervisor;
+    }
+
+    if (goalId) {
+      emp._goalIds[goalId] = true;
+      if (sdValid) {
+        var q = dateToFiscalQuarter_(startDate);
+        if (q) emp._quarters[q] = true;
+      }
+    }
+  });
+
+  stripInterns_(rockMap, fullRosterMap);
+
+  var managerMap = {};
+  Object.keys(rockMap).forEach(function(norm) {
+    var emp = rockMap[norm];
+    var quarters = Object.keys(emp._quarters).sort();
+    var rec = {
+      name:         emp.name,
+      normName:     emp.normName,
+      department:   emp.department,
+      jobTitle:     emp.jobTitle,
+      totalGoals:   Object.keys(emp._goalIds).length,
+      firstQuarter: quarters.length ? quarters[0] : '',
+      lastQuarter:  quarters.length ? quarters[quarters.length - 1] : '',
+    };
+
+    var normSup = normName_(emp.supervisor);
+    if (!managerMap[normSup]) {
+      managerMap[normSup] = { supervisor: emp.supervisor, normSupervisor: normSup, rocketeers: [] };
+    }
+    managerMap[normSup].rocketeers.push(rec);
+  });
+
+  var managers = Object.keys(managerMap).map(function(k) { return managerMap[k]; });
+  managers.forEach(function(m) {
+    m.rocketeers.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    m.teamSize = m.rocketeers.length;
+  });
+  managers.sort(function(a, b) { return a.supervisor.localeCompare(b.supervisor); });
+
+  return { managers: managers, totalRocketeers: Object.keys(rockMap).length };
+}
+
+// ── Full Roster records (every employee, active AND terminated) ────
+// Returns { normName → { name, normName, department, supervisor, jobTitle,
+//           classVal, location, active } }
+// Nobody is excluded here — interns and terminated employees are both included
+// (flagged active:false when terminated) so callers can tag them — the roster is
+// otherwise pure enrichment (supervisor / location / job family), never a gate
+// on RD-sourced data.
 
 function getFullRosterMap_() {
   var map = {};
   try {
     var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
-    if (!rows.length) return map;
-
-    // Detect termination column
-    var keys = Object.keys(rows[0] || {});
-    var termKey = null;
-    keys.forEach(function(k) {
-      var lower = k.toLowerCase().replace(/[\s._-]/g, '');
-      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                       termKey   = k;
-    });
+    if (!rows.length) {
+      Logger.log('⚠️ getFullRosterMap_: 0 rows read from "' + CONFIG_GD.SHEET_ROSTER + '" — check sheet name/ID.');
+      return map;
+    }
 
     rows.forEach(function(row) {
       var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
       if (!name) return;
       var norm = normName_(String(name));
 
-      if (termKey && row[termKey]) {
-        var termDate = (row[termKey] instanceof Date) ? row[termKey] : new Date(row[termKey]);
-        if (!isNaN(termDate) && termDate <= new Date()) return; // termination date has arrived or passed — inactive
-      }
-
       var classVal = String(row['Class'] || '').trim().toUpperCase();
       var jobTitle = String(row['Job Title'] || row['Title'] || row['Position'] || '').trim();
-      if (isIntern_(classVal, jobTitle)) return;
+
+      // Active/inactive is determined solely by whether Termination/Release Date
+      // is blank — every roster row carries a populated Key Location, so no
+      // fallback field is needed there either.
+      var termRaw = row['Termination/Release Date'];
+      var isInactiveByDate = termRaw !== undefined && termRaw !== null && String(termRaw).trim() !== '';
 
       map[norm] = {
         name:       String(name).trim(),
@@ -617,11 +1067,15 @@ function getFullRosterMap_() {
         supervisor: String(row['Supervisor'] || row['Manager'] || '').trim(),
         jobTitle:   jobTitle,
         classVal:   classVal,
-        location:   String(row['Key Location'] || row['Location'] || row['Country'] || row['Office'] || '').trim(),
+        location:   String(row['Key Location'] || '').trim(),
+        active:     !isInactiveByDate,
       };
     });
 
-    Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' active non-intern employees');
+    var activeCount = Object.keys(map).filter(function(n) { return map[n].active; }).length;
+    Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' roster rows (' +
+               activeCount + ' active, ' + (Object.keys(map).length - activeCount) +
+               ' inactive) from ' + rows.length + ' "' + CONFIG_GD.SHEET_ROSTER + '" rows');
   } catch (e) { Logger.log('⚠️ getFullRosterMap_: ' + e.message); }
   return map;
 }
@@ -841,6 +1295,7 @@ function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
         managerComments: e.totalManagerComments || 0,
         paceStatus:      status,
         complianceStatus: e.complianceStatus || '',
+        terminated:      !!e.terminated,
       };
     })
     .sort(function(a, b) {
@@ -990,4 +1445,81 @@ function _test_resolveGDManagerScope_() {
   assert_(Object.keys(leafScope).length === 1 && leafScope['dan park'], "leaf manager should only see themselves");
 
   Logger.log("✅ _test_resolveGDManagerScope_ passed");
+}
+
+function _test_isIntern_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_isIntern_: " + msg); }
+
+  assert_(isIntern_('Intern, Professional Services') === true, "exact catalog title must match");
+  assert_(isIntern_('Intern Engineer, Service Delivery') === true, "non-comma intern title must match");
+  assert_(isIntern_('intern, marketing') === true, "match must be case-insensitive");
+  assert_(isIntern_('Consultant, Professional Services') === false, "non-intern title must not match");
+  assert_(isIntern_('') === false, "blank title must not match");
+  assert_(isIntern_(null) === false, "null title must not match");
+
+  Logger.log("✅ _test_isIntern_ passed");
+}
+
+function _test_stripInterns_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_stripInterns_: " + msg); }
+
+  // Bob's own title is clean, but the Roster says Intern — OR-logic means he
+  // must still be excluded (a title can show as Intern in one source before
+  // the other has synced).
+  var map = {
+    'alice smith': { jobTitle: 'Consultant, Professional Services' },
+    'bob jones':   { jobTitle: 'Consultant, Professional Services' },
+    'cara lee':    { jobTitle: 'Intern, Marketing' },
+  };
+  var rosterMap = {
+    'alice smith': { jobTitle: 'Consultant, Professional Services' },
+    'bob jones':   { jobTitle: 'Intern, Managed Services' },
+    // cara lee has no roster entry — falls back to her own map jobTitle
+  };
+
+  stripInterns_(map, rosterMap);
+
+  var keys = Object.keys(map).sort();
+  assert_(keys.length === 1 && keys[0] === 'alice smith',
+    "expected only alice to survive, got " + keys.length + " (" + keys.join(",") + ")");
+
+  Logger.log("✅ _test_stripInterns_ passed");
+}
+
+function _test_aggregateAllRocketeers_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_aggregateAllRocketeers_: " + msg); }
+
+  var rows = [
+    // Alice: 2 goals across two quarters, reports to Jane
+    { 'Rocketeer':'Alice Smith', 'Supervisor':'Jane Doe', 'Department':'Services', 'Job Title':'Consultant, Professional Services', 'Goal ID':'G1', 'Start Date': new Date('2025-08-01') },
+    { 'Rocketeer':'Alice Smith', 'Supervisor':'Jane Doe', 'Department':'Services', 'Job Title':'Consultant, Professional Services', 'Goal ID':'G2', 'Start Date': new Date('2026-05-01') },
+    // Bob: intern, must be excluded entirely even though he has RD goals
+    { 'Rocketeer':'Bob Jones', 'Supervisor':'Jane Doe', 'Department':'Services', 'Job Title':'Intern, Professional Services', 'Goal ID':'G3', 'Start Date': new Date('2025-08-01') },
+    // Cara: blank Supervisor -> Unassigned bucket
+    { 'Rocketeer':'Cara Lee', 'Supervisor':'', 'Department':'Ops', 'Job Title':'Analyst, Operations', 'Goal ID':'G4', 'Start Date': new Date('2025-09-01') },
+  ];
+  var fullRosterMap = {}; // no roster matches for anyone — falls back to each row's own Job Title
+
+  var result = aggregateAllRocketeers_(rows, fullRosterMap, null);
+
+  assert_(result.totalRocketeers === 2, "expected 2 rocketeers after intern exclusion, got " + result.totalRocketeers);
+
+  var jane = result.managers.filter(function(m) { return m.supervisor === 'Jane Doe'; })[0];
+  assert_(!!jane, "Jane Doe group missing");
+  assert_(jane.teamSize === 1, "Bob (intern) must not count toward Jane's team size, got " + jane.teamSize);
+  var alice = jane.rocketeers[0];
+  assert_(alice.name === 'Alice Smith', "expected Alice in Jane's group, got " + (alice && alice.name));
+  assert_(alice.totalGoals === 2, "expected 2 unique goals for Alice, got " + alice.totalGoals);
+  assert_(alice.firstQuarter === 'FY26Q1', "expected firstQuarter FY26Q1, got " + alice.firstQuarter);
+  assert_(alice.lastQuarter === 'FY26Q4', "expected lastQuarter FY26Q4, got " + alice.lastQuarter);
+
+  var unassigned = result.managers.filter(function(m) { return m.supervisor === 'Unassigned'; })[0];
+  assert_(!!unassigned && unassigned.rocketeers[0].name === 'Cara Lee', "blank Supervisor must group under Unassigned");
+
+  // Manager scope: restricting to Cara's own scope must exclude Jane's whole team
+  var scoped = aggregateAllRocketeers_(rows, fullRosterMap, { 'cara lee': true });
+  assert_(scoped.totalRocketeers === 1 && scoped.managers.length === 1 && scoped.managers[0].supervisor === 'Unassigned',
+    "manager scope must exclude out-of-scope rocketeers, got " + JSON.stringify(scoped));
+
+  Logger.log("✅ _test_aggregateAllRocketeers_ passed");
 }
