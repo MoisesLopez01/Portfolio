@@ -557,6 +557,10 @@ function init() {
 
   runner
     .withSuccessHandler(function(data) {
+      if (data && data.denied) {
+        showError('Access denied for ' + (data.email || 'this account') + '. Contact your admin to request access.');
+        return;
+      }
       S.data = data;
       runner
         .withSuccessHandler(function(notes) { S.notes = notes || []; onReady(); })
@@ -571,6 +575,7 @@ function onReady() {
   populateQuarterSelect();
   buildFilterDropdowns();
   updateGraceBanner_();
+  applyRoleToNav_();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = '';
   renderTab(S.activeTab);
@@ -609,12 +614,17 @@ function onQuarterChange(q) {
   document.getElementById('app').style.display = 'none';
   google.script.run
     .withSuccessHandler(function(data) {
+      if (data && data.denied) {
+        showError('Access denied for ' + (data.email || 'this account') + '. Contact your admin to request access.');
+        return;
+      }
       S.data = data;
       S.filters = { location:[], department:[], jobFamily:[], status:[], supervisor:[] };
       google.script.run
         .withSuccessHandler(function(notes) {
           S.notes = notes || [];
           buildFilterDropdowns();
+          applyRoleToNav_();
           document.getElementById('loading').style.display = 'none';
           document.getElementById('app').style.display = '';
           renderTab(S.activeTab);
@@ -1806,6 +1816,23 @@ function toggleNavMenu(forceClose) {
 function openAccessTab_() {
   toggleNavMenu(true);
   switchTab('access');
+}
+
+function applyRoleToNav_() {
+  var wrap  = document.getElementById('nav-menu-wrap');
+  var badge = document.getElementById('scope-badge');
+  var role  = S.data && S.data.userRole;
+
+  if (wrap) wrap.style.display = (role === 'admin') ? '' : 'none';
+
+  if (badge) {
+    if (role === 'manager' && S.data.managerScopeName) {
+      badge.textContent = 'Scoped: ' + S.data.managerScopeName + '’s team';
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
 }
 
 function renderAccessTab_() {
