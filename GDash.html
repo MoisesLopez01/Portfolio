@@ -227,6 +227,41 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 /* Manager scope badge */
 .scope-badge{background:#5B21B6;color:#fff;border-radius:99px;padding:3px 12px;font-size:10px;
   font-weight:700;white-space:nowrap;flex-shrink:0;display:none}
+
+/* Access Control settings (☰ menu → 🔒 Access Control) */
+.settings-body{padding:20px;display:flex;flex-direction:column;gap:20px}
+.settings-actions{display:flex;gap:10px;flex-wrap:wrap}
+.settings-btn{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;
+  border:1px solid var(--border);background:#fff;color:var(--slate);transition:background .15s}
+.settings-btn:disabled{opacity:.45;cursor:not-allowed}
+.settings-btn-primary{background:var(--void);color:#fff;border-color:var(--void)}
+.settings-btn-primary:hover:not(:disabled){background:#1a2d6b}
+.settings-save-flash{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--success);margin-left:6px}
+.sec-user-chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--slate)}
+.sec-user-chip strong{color:var(--void)}
+.sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.sec-field-label{font-size:11px;font-weight:800;color:var(--void);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.sec-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:99px;font-size:9px;font-weight:800;letter-spacing:.03em}
+.sec-badge-admin{background:#EEF4FF;color:#0D3B8C}
+.sec-badge-viewer{background:#F1F8F4;color:#1B5E20}
+.sec-badge-manager{background:#F5F3FF;color:#5B21B6}
+.sec-textarea{width:100%;min-height:90px;border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;font-size:12px;font-family:monospace;color:var(--text);background:#fff;
+  resize:vertical;outline:none}
+.sec-hint{font-size:11px;color:var(--muted);margin-top:5px}
+.sec-toggle-row{display:flex;align-items:center;gap:14px;padding:12px 14px;background:var(--surface);
+  border-radius:8px;border:1px solid var(--border)}
+.sec-toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.sec-toggle input{opacity:0;width:0;height:0;position:absolute}
+.sec-toggle-track{position:absolute;inset:0;background:var(--border);border-radius:99px;transition:background .2s;cursor:pointer}
+.sec-toggle input:checked + .sec-toggle-track{background:var(--success)}
+.sec-toggle-thumb{position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px;
+  transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sec-toggle input:checked ~ .sec-toggle-thumb{transform:translateX(18px)}
+.sec-toggle-info .sec-toggle-title{font-size:12px;font-weight:700;color:var(--void)}
+.sec-toggle-info .sec-toggle-desc{font-size:11px;color:var(--slate);margin-top:2px}
 </style>
 </head>
 <body>
@@ -438,6 +473,17 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
         <div class="section-body" id="tracker-body"></div>
+      </div>
+    </div>
+
+    <!-- ── ACCESS CONTROL (admin only, opened from the ☰ menu) ── -->
+    <div id="pane-access" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Access Control</h2><p class="section-sub">Manage who can view this dashboard · Admins, viewers, and manager-scoped delegates</p></div>
+          <button class="btn" onclick="switchTab(S.lastRegularTab || 'overview')">← Back to Dashboard</button>
+        </div>
+        <div id="access-body" class="section-body"></div>
       </div>
     </div>
 
