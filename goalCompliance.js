@@ -550,6 +550,27 @@ function getFullRosterMap_() {
   return map;
 }
 
+// ── Manager org-tree scoping (used by GD Security.js's manager role) ──
+// BFS over the roster's Supervisor field to build the full org tree under a
+// manager. The manager's own norm name is included so their own row appears.
+// fullRosterMap must be the COMPANY-WIDE map (never a pre-scoped subset) —
+// scoping is applied by the caller using the returned set.
+function resolveGDManagerScope_(fullRosterMap, managerNorm) {
+  var scope = {};
+  scope[managerNorm] = true;
+  var queue = [managerNorm];
+  while (queue.length > 0) {
+    var supNorm = queue.shift();
+    Object.keys(fullRosterMap).forEach(function(norm) {
+      if (!scope[norm] && normName_(fullRosterMap[norm].supervisor) === supNorm) {
+        scope[norm] = true;
+        queue.push(norm);
+      }
+    });
+  }
+  return scope;
+}
+
 // ── Job Family derivation ───────────────────────────────────────
 
 var JOB_FAMILIES_GD_ = [
@@ -861,4 +882,36 @@ function getOrCreateTrackerSheet_(ss) {
     sh.setColumnWidth(6, 280);
   }
   return sh;
+}
+
+// ── Tests ─────────────────────────────────────────────────────
+// Run manually in the Apps Script editor: select _test_resolveGDManagerScope_
+// from the function dropdown, click Run, check the execution log.
+
+function _test_resolveGDManagerScope_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_resolveGDManagerScope_: " + msg); }
+
+  // Org tree: Alice manages Bob and Cara; Bob manages Dan. Eve reports elsewhere.
+  var roster = {
+    'alice smith': { supervisor: '' },
+    'bob jones':   { supervisor: 'Alice Smith' },
+    'cara lee':    { supervisor: 'Alice Smith' },
+    'dan park':    { supervisor: 'Bob Jones' },
+    'eve chen':    { supervisor: 'Someone Else' },
+  };
+
+  var scope = resolveGDManagerScope_(roster, 'alice smith');
+  var keys = Object.keys(scope).sort();
+
+  assert_(keys.length === 4, "expected 4 people in scope, got " + keys.length + " (" + keys.join(",") + ")");
+  assert_(scope['alice smith'] === true, "manager must see their own row");
+  assert_(scope['bob jones']   === true, "direct report missing");
+  assert_(scope['cara lee']    === true, "direct report missing");
+  assert_(scope['dan park']    === true, "second-level report (Bob's report) missing — BFS should recurse");
+  assert_(!scope['eve chen'],  "Eve does not report into Alice's tree and must be excluded");
+
+  var leafScope = resolveGDManagerScope_(roster, 'dan park');
+  assert_(Object.keys(leafScope).length === 1 && leafScope['dan park'], "leaf manager should only see themselves");
+
+  Logger.log("✅ _test_resolveGDManagerScope_ passed");
 }
