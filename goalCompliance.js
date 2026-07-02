@@ -496,38 +496,7 @@ function aggregateByRocketeer_(rows, activeSet) {
   return map;
 }
 
-// ── Location lookup ─────────────────────────────────────────────
-
-function getLocationMap_() {
-  var map = {};
-  try {
-    var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
-    rows.forEach(function(row) {
-      var name = row['Rocketeer'] || row['Name'] || row['Employee Name'] || row['Full Name'] || '';
-      // 'Key Location' is the canonical field; fall back to generic variants
-      var loc  = row['Key Location'] || row['Location'] || row['Country'] || row['Office'] || '';
-      if (name && loc) {
-        map[normName_(String(name))] = String(loc).trim();
-      }
-    });
-  } catch (e) { Logger.log('⚠️ getLocationMap_: ' + e.message); }
-  return map;
-}
-
 // ── Supervisor job-title lookup (for Senior Leader detection) ──
-
-function getSupervisorTitleMap_() {
-  var map = {};
-  try {
-    var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
-    rows.forEach(function(row) {
-      var name  = row['Rocketeer'] || row['Name'] || row['Employee Name'] || row['Full Name'] || '';
-      var title = row['Job Title'] || row['Title'] || row['Position'] || '';
-      if (name && title) map[normName_(String(name))] = String(title).trim();
-    });
-  } catch (e) { Logger.log('⚠️ getSupervisorTitleMap_: ' + e.message); }
-  return map;
-}
 
 function isSeniorLeader_(jobTitle) {
   return /\b(vp|vice.?president|director|chief|c[a-z]o|ceo|cto|cfo|coo)\b/i.test(jobTitle || '');
@@ -585,55 +554,6 @@ function getFullRosterMap_() {
     Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' active non-intern employees');
   } catch (e) { Logger.log('⚠️ getFullRosterMap_: ' + e.message); }
   return map;
-}
-
-// ── Active employee filter (excludes offboarded) ───────────────
-
-function getActiveRosterSet_() {
-  var set = {};
-  try {
-    var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
-    if (!rows.length) return set;
-
-    // Detect status or termination date columns (case-insensitive)
-    var keys = Object.keys(rows[0] || {});
-    var statusKey = null;
-    var termKey   = null;
-    keys.forEach(function(k) {
-      var lower = k.toLowerCase().replace(/[\s._-]/g, '');
-      if (!statusKey && /^(employeestatus|employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
-      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                       termKey   = k;
-    });
-
-    var INACTIVE_STATUSES = ['terminated', 'terminated - mobility relocation', 'job offer accepted'];
-
-    rows.forEach(function(row) {
-      var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
-      if (!name) return;
-      var norm = normName_(String(name));
-
-      var isActive = true;
-
-      if (statusKey) {
-        var s = String(row[statusKey] || '').toLowerCase().trim();
-        if (INACTIVE_STATUSES.indexOf(s) !== -1) isActive = false;
-      }
-
-      if (termKey && row[termKey]) {
-        // A populated termination date means offboarded
-        isActive = false;
-      }
-
-      if (isActive) set[norm] = true;
-    });
-
-    log_('Active roster set: ' + Object.keys(set).length);
-  } catch (e) {
-    Logger.log('⚠️ getActiveRosterSet_: ' + e.message);
-  }
-  // If set is empty (roster read failed or no status column), return empty object
-  // and the caller will skip the active filter (fail-open)
-  return set;
 }
 
 // ── Job Family derivation ───────────────────────────────────────
