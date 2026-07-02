@@ -66,7 +66,7 @@ var SEC_GD_ = {
  * since this dashboard covers every department.
  *
  * Self-contained: does not call into goalCompliance.js. Re-implements
- * the same status/termination-column auto-detection as getFullRosterMap_()
+ * the same termination-column auto-detection as getFullRosterMap_()
  * so this file has no cross-file dependency.
  *
  * @param {string} email - Lowercase, trimmed email.

@@ -24,7 +24,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v7_',  // bumped: fix Employee Status detection + blocklist exclusion
+  CACHE_VER:           'gd_v7_',  // bumped: switch active/inactive detection to termination-date only
   DEBUG:               false,
 };
 
