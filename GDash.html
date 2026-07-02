@@ -527,14 +527,15 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 <script>
 // ── STATE ────────────────────────────────────────────────────────
 var S = {
-  data:         null,
-  notes:        [],
-  userEmail:    '',
-  filters:      { location:[], department:[], jobFamily:[], status:[], supervisor:[] },
-  charts:       {},
-  activeTab:    'overview',
-  reviewTarget: null,
-  trendDepts:   [],  // department lines shown on trend chart
+  data:           null,
+  notes:          [],
+  userEmail:      '',
+  filters:        { location:[], department:[], jobFamily:[], status:[], supervisor:[] },
+  charts:         {},
+  activeTab:      'overview',
+  lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
+  reviewTarget:   null,
+  trendDepts:     [],  // department lines shown on trend chart
 };
 
 var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
@@ -723,6 +724,7 @@ function getFiltered() {
 
 // ── TAB SWITCHING ─────────────────────────────────────────────────
 function switchTab(tabId) {
+  if (tabId !== 'access') S.lastRegularTab = tabId;
   S.activeTab = tabId;
   document.querySelectorAll('.tab-btn').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
@@ -740,6 +742,7 @@ function renderTab(tabId) {
   else if (tabId === 'breakdown') renderBreakdown(emps);
   else if (tabId === 'atrisk')    renderAtRisk(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
+  else if (tabId === 'access')    renderAccessTab_();
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────────────
@@ -1787,6 +1790,131 @@ function downloadCSV(rows, filename) {
   var url  = URL.createObjectURL(blob);
   var a    = document.createElement('a'); a.href=url; a.download=filename; a.click();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+}
+
+// ── NAV MENU (☰) + ACCESS CONTROL ───────────────────────────────
+function toggleNavMenu(forceClose) {
+  var btn   = document.getElementById('nav-menu-btn');
+  var panel = document.getElementById('nav-menu-panel');
+  if (!btn || !panel) return;
+  var open = forceClose === true ? false : !panel.classList.contains('open');
+  panel.classList.toggle('open', open);
+  btn.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function openAccessTab_() {
+  toggleNavMenu(true);
+  switchTab('access');
+}
+
+function renderAccessTab_() {
+  var container = document.getElementById('access-body');
+  if (!container) return;
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:16px 0">' +
+    '<div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+    '<span style="font-size:12px;color:var(--muted)">Loading access settings…</span></div>';
+
+  google.script.run
+    .withSuccessHandler(function(s) { populateSecuritySection_(s); })
+    .withFailureHandler(function(e) {
+      container.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load access settings: ' + esc(String(e.message || e)) + '</p>';
+    })
+    .getAccessSettings();
+}
+
+function populateSecuritySection_(s) {
+  var el = document.getElementById('access-body');
+  if (!el) return;
+
+  var adminsVal    = (s.admins    || []).join('\n');
+  var viewersVal   = (s.viewers   || []).join('\n');
+  var delegatesVal = (s.delegates || []).map(function(d) { return d.email + ':' + d.scopeName; }).join('\n');
+  var openChecked  = s.openAccess ? 'checked' : '';
+
+  el.innerHTML =
+    '<div class="sec-user-chip">Signed in as <strong>' + esc(s.callerEmail || S.userEmail) + '</strong>' +
+    '&ensp;<span class="sec-badge sec-badge-admin">Admin</span></div>' +
+
+    '<div class="sec-toggle-row">' +
+      '<label class="sec-toggle">' +
+        '<input type="checkbox" id="sec-open-access" ' + openChecked + '>' +
+        '<div class="sec-toggle-track"></div><div class="sec-toggle-thumb"></div>' +
+      '</label>' +
+      '<div class="sec-toggle-info">' +
+        '<div class="sec-toggle-title">Open Access</div>' +
+        '<div class="sec-toggle-desc">When ON, anyone at ServiceRocket with the link can view the dashboard. Settings remain admin-only.</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="sec-grid">' +
+      '<div>' +
+        '<div class="sec-field-label"><span class="sec-badge sec-badge-admin">Admin</span> Admins — can view + edit settings</div>' +
+        '<textarea class="sec-textarea" id="sec-admins" placeholder="One email per line…">' + esc(adminsVal) + '</textarea>' +
+        '<div class="sec-hint">One email per line · Bootstrap admin (' + esc(s.bootstrapAdmin || '') + ') is always included</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="sec-field-label"><span class="sec-badge sec-badge-viewer">Viewer</span> Viewers — can view only</div>' +
+        '<textarea class="sec-textarea" id="sec-viewers" placeholder="One email per line…">' + esc(viewersVal) + '</textarea>' +
+        '<div class="sec-hint">One email per line · Leave empty when Open Access is ON</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div>' +
+      '<div class="sec-field-label"><span class="sec-badge sec-badge-manager">Manager</span> Delegates — scoped manager access</div>' +
+      '<textarea class="sec-textarea" id="sec-delegates" placeholder="peer@servicerocket.com:Supervisor Full Name" style="min-height:70px">' + esc(delegatesVal) + '</textarea>' +
+      '<div class="sec-hint">One entry per line · Format: <code>email:Supervisor Full Name</code> · Roster supervisors are auto-detected — no entry needed for them</div>' +
+    '</div>' +
+
+    '<div class="settings-actions">' +
+      '<button class="settings-btn settings-btn-primary" id="sec-save-btn" onclick="saveSecuritySettings_()">Save Access Settings</button>' +
+      '<span id="sec-flash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
+    '</div>' +
+    '<div id="sec-error" style="display:none;margin-top:8px;padding:8px 12px;background:#FEE2E2;border-radius:6px;font-size:12px;color:#B71C1C;font-weight:600"></div>' +
+    '<div id="sec-timestamp" style="margin-top:6px;font-size:11px;color:var(--muted)"></div>';
+}
+
+function saveSecuritySettings_() {
+  var btn   = document.getElementById('sec-save-btn');
+  var flash = document.getElementById('sec-flash');
+  var errEl = document.getElementById('sec-error');
+  var tsEl  = document.getElementById('sec-timestamp');
+
+  var admins     = (document.getElementById('sec-admins')     || {}).value || '';
+  var viewers    = (document.getElementById('sec-viewers')    || {}).value || '';
+  var delegates  = (document.getElementById('sec-delegates')  || {}).value || '';
+  var openAccess = !!(document.getElementById('sec-open-access') || {}).checked;
+
+  var adminList  = admins.split(/[\n,]+/).map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  var viewerList = viewers.split(/[\n,]+/).map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  var delegateList = delegates.split(/\n+/).map(function(line) {
+    var sep = line.indexOf(':');
+    if (sep === -1) return null;
+    var email     = line.slice(0, sep).trim().toLowerCase();
+    var scopeName = line.slice(sep + 1).trim();
+    return (email && scopeName) ? { email: email, scopeName: scopeName } : null;
+  }).filter(Boolean);
+
+  if (btn)   { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (flash) flash.style.display = 'none';
+  if (errEl) errEl.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Access Settings'; }
+      if (result && result.ok) {
+        if (flash) { flash.style.display = 'inline-flex'; setTimeout(function() { flash.style.display = 'none'; }, 4000); }
+        if (tsEl && result.savedAt) tsEl.textContent = 'Last saved: ' + new Date(result.savedAt).toLocaleString();
+      } else {
+        var msg = (result && result.error) ? result.error : 'Save failed.';
+        if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Access Settings'; }
+      if (errEl) { errEl.textContent = 'Save failed: ' + String(err.message || err).substring(0, 120); errEl.style.display = 'block'; }
+    })
+    .saveAccessSettings({ admins: adminList, viewers: viewerList, delegates: delegateList, openAccess: openAccess });
 }
 
 // ── UTILITIES ──────────────────────────────────────────────────────
