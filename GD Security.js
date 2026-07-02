@@ -198,3 +198,61 @@ function checkDashboardAccess() {
 
   return { allowed: false, role: "denied", email: email };
 }
+
+/**
+ * Returns the current access lists for the settings UI.
+ * Admin-only — throws if the caller is not an admin.
+ */
+function getAccessSettings() {
+  var access = checkDashboardAccess();
+  if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+
+  var lists = _readAccessLists_GD_();
+  var editableAdmins = lists.admins.filter(function(e) { return e !== SEC_GD_.BOOTSTRAP_ADMIN.toLowerCase(); });
+
+  return {
+    admins:         editableAdmins,
+    viewers:        lists.viewers,
+    openAccess:     lists.openAccess,
+    delegates:      lists.delegates,
+    bootstrapAdmin: SEC_GD_.BOOTSTRAP_ADMIN,
+    callerEmail:    access.email,
+  };
+}
+
+/**
+ * Saves updated access lists to Script Properties.
+ * Admin-only — throws if the caller is not an admin.
+ * @param {{ admins?: string[], viewers?: string[], openAccess?: boolean, delegates?: {email:string, scopeName:string}[] }} settings
+ */
+function saveAccessSettings(settings) {
+  var access = checkDashboardAccess();
+  if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+
+  var p = PropertiesService.getScriptProperties();
+
+  if (Array.isArray(settings.admins)) {
+    var adminList = settings.admins
+      .map(function(e) { return e.trim().toLowerCase(); })
+      .filter(function(e) { return e.length > 0 && e !== SEC_GD_.BOOTSTRAP_ADMIN.toLowerCase(); });
+    p.setProperty(SEC_GD_.PROP_ADMINS, adminList.join(","));
+  }
+  if (Array.isArray(settings.viewers)) {
+    var viewerList = settings.viewers
+      .map(function(e) { return e.trim().toLowerCase(); })
+      .filter(function(e) { return e.length > 0; });
+    p.setProperty(SEC_GD_.PROP_VIEWERS, viewerList.join(","));
+  }
+  if (Array.isArray(settings.delegates)) {
+    var lines = settings.delegates
+      .filter(function(d) { return d.email && d.scopeName; })
+      .map(function(d) { return d.email.trim().toLowerCase() + ":" + d.scopeName.trim(); });
+    p.setProperty(SEC_GD_.PROP_DELEGATES, lines.join("\n"));
+  }
+  if (typeof settings.openAccess === "boolean") {
+    p.setProperty(SEC_GD_.PROP_OPEN_ACCESS, String(settings.openAccess));
+  }
+
+  Logger.log("GD Security: access settings updated by " + access.email);
+  return { ok: true, savedAt: new Date().toISOString() };
+}
