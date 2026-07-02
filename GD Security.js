@@ -256,3 +256,38 @@ function saveAccessSettings(settings) {
   Logger.log("GD Security: access settings updated by " + access.email);
   return { ok: true, savedAt: new Date().toISOString() };
 }
+
+/**
+ * Returns a minimal HTML page shown to denied users.
+ * Called from doGet() in goalCompliance.js.
+ */
+function buildAccessDeniedPage_GD_(email) {
+  var safeEmail = email
+    ? email.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    : "";
+  return "<!DOCTYPE html>" +
+"<html lang=\"en\"><head><meta charset=\"UTF-8\">" +
+"<title>Goals Compliance Dashboard — Access Restricted</title>" +
+"<style>" +
+"  *{box-sizing:border-box;margin:0;padding:0}" +
+"  body{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;" +
+"       background:#F8FAFC;display:flex;align-items:center;" +
+"       justify-content:center;min-height:100vh}" +
+"  .card{background:#fff;border-radius:14px;padding:40px 48px;" +
+"        text-align:center;max-width:420px;width:90%;" +
+"        box-shadow:0 1px 4px rgba(0,0,0,.08);border:1px solid #E2E8F0}" +
+"  .lock{font-size:40px;margin-bottom:16px}" +
+"  h1{font-size:18px;font-weight:800;color:#0F1941;margin-bottom:8px}" +
+"  p{color:#64748B;font-size:13px;line-height:1.65}" +
+"  .email{display:inline-block;margin-top:14px;background:#F1F5F9;" +
+"         border-radius:6px;padding:5px 12px;font-family:monospace;" +
+"         font-size:12px;color:#475569}" +
+"</style></head>" +
+"<body><div class=\"card\">" +
+"  <div class=\"lock\">🔒</div>" +
+"  <h1>Access Restricted</h1>" +
+"  <p>The Goals Compliance Dashboard is available to ServiceRocket employees only.<br>" +
+"  Contact your manager or the dashboard owner to request access.</p>" +
+"  " + (safeEmail ? "<div class=\"email\">" + safeEmail + "</div>" : "") +
+"</div></body></html>";
+}
