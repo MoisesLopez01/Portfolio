@@ -24,7 +24,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v7_',  // bumped: switch active/inactive detection to termination-date only
+  CACHE_VER:           'gd_v8_',  // bumped: manager org-tree scoping + cache key now includes role/email
   DEBUG:               false,
 };
 
@@ -234,7 +234,7 @@ function getUserEmail() {
 
 // ── Private data builder ────────────────────────────────────────
 
-function buildComplianceData_(quarter) {
+function buildComplianceData_(quarter, access) {
   log_('buildComplianceData_ | quarter: ' + quarter);
 
   // 1. Read full RD and filter by quarter
@@ -244,13 +244,31 @@ function buildComplianceData_(quarter) {
   });
   log_('RD rows for ' + quarter + ': ' + rdRows.length);
 
-  // 2. Read Roster once — derive activeSet, locMap, and supTitleMap from the single read
-  var fullRosterMap  = getFullRosterMap_();
+  // 2. Read Roster once — company-wide, used both to resolve a manager's org-tree
+  // scope and to derive activeSet/locMap/supTitleMap below.
+  var fullRosterMap = getFullRosterMap_();
+
+  // 2b. Manager role: narrow the roster to just the caller's org tree so every
+  // downstream aggregate (employees, comment trend, engagement, summary, and the
+  // zero-goal-employee injection below) only reflects the manager's own team.
+  // Admins and viewers keep the full company-wide roster.
+  var managerScopeName = null;
+  var rosterMap = fullRosterMap;
+  if (access && access.role === 'manager') {
+    managerScopeName = access.delegateScopeName;
+    var scope = resolveGDManagerScope_(fullRosterMap, normName_(managerScopeName));
+    rosterMap = {};
+    Object.keys(fullRosterMap).forEach(function(norm) {
+      if (scope[norm]) rosterMap[norm] = fullRosterMap[norm];
+    });
+    log_('Manager scope "' + managerScopeName + '": ' + Object.keys(rosterMap).length + ' employees in scope');
+  }
+
   var activeSet      = {};
   var locMap         = {};
   var supTitleMap    = {};
-  Object.keys(fullRosterMap).forEach(function(norm) {
-    var r = fullRosterMap[norm];
+  Object.keys(rosterMap).forEach(function(norm) {
+    var r = rosterMap[norm];
     activeSet[norm]   = true;
     locMap[norm]      = r.location;
     supTitleMap[norm] = r.jobTitle;
@@ -260,11 +278,11 @@ function buildComplianceData_(quarter) {
   // 3. Aggregate per rocketeer (interns and offboarded already excluded)
   var rockMap = aggregateByRocketeer_(rdRows, activeSet);
 
-  // 3b. Inject every active Roster employee not found in the RD sheet (0 goals this quarter)
+  // 3b. Inject every active, in-scope Roster employee not found in the RD sheet (0 goals this quarter)
   var preInjectCount = Object.keys(rockMap).length;
-  Object.keys(fullRosterMap).forEach(function(norm) {
+  Object.keys(rosterMap).forEach(function(norm) {
     if (rockMap[norm]) return; // already present from RD
-    var r = fullRosterMap[norm];
+    var r = rosterMap[norm];
     rockMap[norm] = {
       name:       r.name,
       normName:   norm,
@@ -366,6 +384,9 @@ function buildComplianceData_(quarter) {
     weeksElapsedSinceStart: weeksElapsedSinceStart,
     engagementData:         engagementData,
     generatedAt:            new Date().toISOString(),
+    userRole:               access ? access.role  : null,
+    userEmail:              access ? access.email : null,
+    managerScopeName:       managerScopeName,
   };
 }
 
