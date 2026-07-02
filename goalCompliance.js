@@ -192,11 +192,27 @@ function saveHRNote(data) {
 }
 
 function getHRNotes(quarter) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return [];
+
   try {
     var rows = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_HR_TRACKER);
     var qtr  = quarter || null;
+
+    // Manager role: only show HR notes about people in the caller's own org tree —
+    // a manager should not see follow-up notes written about people outside their team.
+    var scope = null;
+    if (access.role === 'manager') {
+      scope = resolveGDManagerScope_(getFullRosterMap_(), normName_(access.delegateScopeName));
+    }
+
     return rows
       .filter(function(r) { return !qtr || String(r['Quarter'] || '') === qtr; })
+      .filter(function(r) {
+        if (!scope) return true;
+        var norm = String(r['NormName'] || normName_(r['Rocketeer'] || ''));
+        return !!scope[norm];
+      })
       .map(function(r) {
         return {
           timestamp:        r['Timestamp']      ? new Date(r['Timestamp']).toISOString() : '',
