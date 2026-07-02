@@ -512,29 +512,23 @@ function getFullRosterMap_() {
     var rows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_ROSTER);
     if (!rows.length) return map;
 
-    // Detect status / termination columns
+    // Detect termination column
     var keys = Object.keys(rows[0] || {});
-    var statusKey = null, termKey = null;
+    var termKey = null;
     keys.forEach(function(k) {
       var lower = k.toLowerCase().replace(/[\s._-]/g, '');
-      if (!statusKey && /^(employeestatus|employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
       if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                       termKey   = k;
     });
-
-    var INACTIVE_STATUSES = ['terminated', 'terminated - mobility relocation', 'job offer accepted'];
 
     rows.forEach(function(row) {
       var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
       if (!name) return;
       var norm = normName_(String(name));
 
-      var isActive = true;
-      if (statusKey) {
-        var s = String(row[statusKey] || '').toLowerCase().trim();
-        if (INACTIVE_STATUSES.indexOf(s) !== -1) isActive = false;
+      if (termKey && row[termKey]) {
+        var termDate = (row[termKey] instanceof Date) ? row[termKey] : new Date(row[termKey]);
+        if (!isNaN(termDate) && termDate <= new Date()) return; // termination date has arrived or passed — inactive
       }
-      if (termKey && row[termKey]) isActive = false;
-      if (!isActive) return;
 
       var classVal = String(row['Class'] || '').trim().toUpperCase();
       var jobTitle = String(row['Job Title'] || row['Title'] || row['Position'] || '').trim();

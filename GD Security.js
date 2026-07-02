@@ -92,23 +92,20 @@ function _resolveRosterSupervisor_GD_(email) {
     var iSup   = idx("Supervisor");
     if (iName === -1 || iEmail === -1) return null;
 
-    var statusKey = null, termKey = null;
+    var termKey = null;
     headers.forEach(function(k) {
       var lower = k.toLowerCase().replace(/[\s._-]/g, "");
-      if (!statusKey && /^(employeestatus|employmentstatus|empstatus|status|active)$/.test(lower)) statusKey = k;
       if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                        termKey   = k;
     });
-    var iStatus = statusKey ? idx(statusKey) : -1;
     var iTerm   = termKey   ? idx(termKey)   : -1;
 
-    var INACTIVE_STATUSES = ["terminated", "terminated - mobility relocation", "job offer accepted"];
     var isActiveRow = function(row) {
-      if (iStatus !== -1) {
-        var s = String(row[iStatus] || "").toLowerCase().trim();
-        if (INACTIVE_STATUSES.indexOf(s) !== -1) return false;
-      }
-      if (iTerm !== -1 && row[iTerm]) return false;
-      return true;
+      if (iTerm === -1) return true; // no termination column found — fail open (treat as active)
+      var raw = row[iTerm];
+      if (!raw) return true; // no termination date recorded — active
+      var termDate = (raw instanceof Date) ? raw : new Date(raw);
+      if (isNaN(termDate)) return true; // unparsable value — fail open
+      return termDate > new Date(); // inactive once the termination date has arrived or passed
     };
 
     var dataRows = vals.slice(1);
