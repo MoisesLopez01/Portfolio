@@ -197,7 +197,6 @@ input[type=file]{display:none}
 .badge-stabilizer{background:#dbeafe;color:#1d4ed8}
 .badge-group{background:#ede9fe;color:#6d28d9;cursor:pointer}
 .badge-group:hover{background:#ddd6fe}
-.avail-callout{font-size:calc(11px*var(--scale));color:var(--muted);flex:1;min-width:120px}
 .avail-expand-btn{font-size:calc(11px*var(--scale));color:var(--muted);margin-left:auto;flex:none}
 .avail-expanded-section{background:var(--surface-2);border-top:1px solid var(--border);padding:12px 14px;font-size:calc(11.5px*var(--scale))}
 /* QTD week pattern strip */
@@ -217,10 +216,6 @@ input[type=file]{display:none}
 .proj-key-mono{font-family:monospace;font-size:calc(10px*var(--scale));background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px}
 .avail-proj-name{font-size:calc(11px*var(--scale));color:var(--muted);flex:1}
 .avail-proj-hrs{font-size:calc(11px*var(--scale));color:var(--muted)}
-/* Manager note */
-.mgr-note-ta{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:calc(11px*var(--scale));color:#0c4a6e}
-[data-theme="dark"] .mgr-note-ta{background:#0c2340;color:#7dd3fc}
-.mgr-note-lbl-ta{font-size:calc(9px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:calc(11.5px*var(--scale));color:var(--muted)}
@@ -228,7 +223,7 @@ input[type=file]{display:none}
 .projdrill-legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
 /* Filter bar collapse */
 .dash-filters{flex-direction:column;align-items:flex-start}
-.dash-filters-hdr{display:flex;align-items:center;gap:8px;cursor:pointer;width:100%}
+.dash-filters-hdr{display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;flex-wrap:wrap}
 .dash-filters-hdr:hover .dash-filters-lbl{color:var(--text)}
 .filter-summary{font-size:calc(11px*var(--scale));color:var(--orbe);font-weight:600;flex:1}
 .filter-toggle{font-size:calc(11px*var(--scale));color:var(--muted);margin-left:auto;white-space:nowrap}
@@ -249,9 +244,10 @@ input[type=file]{display:none}
 .fb-multi-opt{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:calc(12px*var(--scale));cursor:pointer;color:var(--text)}
 .fb-multi-opt:hover{background:var(--surface-2)}
 .fb-multi-opt input[type=checkbox]{flex-shrink:0;accent-color:var(--orbe)}
-/* Project Team View */
-.ptv-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.ptv-controls select#ptvProject{min-width:calc(220px*var(--scale))}
+/* Main filters (Project + Week) — the two primary, always-visible filter bar controls */
+.main-filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.main-filters select#mainProj{min-width:calc(170px*var(--scale))}
+.main-filters select#mainWeek{min-width:calc(140px*var(--scale))}
 /* Sparkline legend */
 .spark-legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:calc(10.5px*var(--scale));color:var(--muted);
   margin-bottom:10px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px}
@@ -335,6 +331,10 @@ input[type=file]{display:none}
           <button data-n="30">Top 30</button>
           <button data-n="999">All</button>
         </div>
+        <div class="main-filters" onclick="event.stopPropagation()">
+          <select class="sigfilter" id="mainProj"><option value="">All projects</option></select>
+          <select class="sigfilter" id="mainWeek"></select>
+        </div>
         <span class="filter-summary" id="filterSummary">All people</span>
         <span class="filter-toggle" id="filterToggle">▾ expand</span>
       </div>
@@ -369,11 +369,10 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · fidelity % shown per week · dashed = future planned · * = week still in progress · reflects People filters above</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · * = week still in progress · hover or click a week label to inspect/navigate · reflects People filters above</div>
           <button class="png-btn" data-png="demand-vs-capacity">⬇ Save PNG</button>
         </div>
       </div>
-      <div class="sowhat" id="capSoWhatTop"></div>
       <div class="capwrap">
         <div>
           <div class="capnum" id="capNum">—</div>
@@ -392,27 +391,12 @@ input[type=file]{display:none}
     <!-- 1b. Team Availability -->
     <div class="panel" id="availPanel" style="display:none">
       <div class="panel-h">
-        <h2>Team Availability</h2>
+        <h2>Team Focus &amp; Execution Signals</h2>
         <div class="panel-tools">
           <div class="hint" id="taHint">Top N / All controlled by the People filters bar above</div>
         </div>
       </div>
       <div id="avail"></div>
-    </div>
-
-    <!-- 1c. Project Team View — group people by shared project ("swarm" grouping) -->
-    <div class="panel" id="projTeamPanel" style="display:none">
-      <div class="panel-h">
-        <h2>Project Team View</h2>
-        <div class="panel-tools">
-          <div class="hint">See everyone sharing a project — click a 👥 chip on a person's row above, or pick one here</div>
-        </div>
-      </div>
-      <div class="ptv-controls">
-        <select class="sigfilter" id="ptvProject"><option value="">Choose a project…</option></select>
-        <select class="sigfilter" id="ptvWeek"></select>
-      </div>
-      <div id="ptvBody"></div>
     </div>
 
     <!-- 2. Project key heatmap (drill-down) — planned hours by project -->
@@ -471,6 +455,7 @@ var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_FAM = new Set(), AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null;
+var AVAIL_PROJ = ""; // main-filter: project key — narrows to people planned on it at SEL_ISO
 var AVAIL_WIN_SIZE = 8; // week window for TA pattern strip (0 = all QTD)
 var AVAIL_WIN_PAGE = 0; // 0 = latest window, 1 = one window earlier, etc.
 var AVAIL_BLEND = 0;    // project-count tier filter (0=all, 1/2/3/4=specific)
@@ -503,6 +488,16 @@ function weekIndex(iso){ for(var i=0;i<NWEEKS;i++) if(WEEKS[i].iso===iso) return
 function priorIso(iso){ var i=weekIndex(iso); if(i>0) return WEEKS[i-1].iso; if(i===0&&DATA&&DATA.baselineIso) return DATA.baselineIso; return null; }
 function strategicSet(){ return DATA.order.slice(0, DATA.topnStrategic||10); }
 
+// A person's standard weekly capacity (38h ANZ / 40h US, region-aware). This is the
+// "40 hrs planned as standard" baseline used to normalize planned time before it's
+// matched against tracked time — Tempo can report duplicated/mis-distributed planned
+// hours (e.g. 123h in one week) that would otherwise crater the fidelity % against an
+// accurate tracked figure, even though the real capacity story is much simpler.
+function personWeekCap_(np){
+  var m = (DATA.personMeta || {})[np] || {};
+  return m.location === ((DATA.anzLocation) || 'Australia & New Zealand') ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
+}
+
 /* ---------------- Filtered aggregation — the People filters bar applies dashboard-wide,
    so the Project key heatmap and Planned vs Tracked recompute from only the filtered
    people (via personProjectPlan/personWeekPlan/personWeekTracked) instead of the
@@ -533,17 +528,54 @@ function computeFilteredProjectData_(){
   return { cap: cap, head: head, order: totals.map(function(t){ return t.key; }), maxCell: maxCell };
 }
 
-function filteredWeekTotals_(){
+// isos defaults to the 8-week server window (WEEKS) but accepts any custom list — the
+// Planned vs Tracked chart passes the full QTD+forecast range via capChartWeeks_() below.
+// personWeekPlan/personWeekTracked are unwindowed (span the whole sheet), so summing over
+// them works for any iso, not just the ones inside the 8-week window.
+function filteredWeekTotals_(isos){
+  isos = isos || WEEKS.map(function(w){ return w.iso; });
   var pset = filteredPersonSet_();
-  if (!pset) return { planned: DATA.weekTotal||{}, tracked: DATA.weekTracked||{} };
   var planned = {}, tracked = {};
-  WEEKS.forEach(function(w){ planned[w.iso] = 0; tracked[w.iso] = 0; });
+  isos.forEach(function(iso){ planned[iso] = 0; tracked[iso] = 0; });
   var plan = DATA.personWeekPlan || {}, trk = DATA.personWeekTracked || {};
-  Object.keys(pset).forEach(function(np){
-    var pw = plan[np]; if (pw) Object.keys(pw).forEach(function(iso){ if (iso in planned) planned[iso] += pw[iso]||0; });
+  var nps = pset ? Object.keys(pset) : Object.keys(Object.assign({}, plan, trk));
+  nps.forEach(function(np){
+    var cap = personWeekCap_(np);
+    var pw = plan[np]; if (pw) Object.keys(pw).forEach(function(iso){ if (iso in planned) planned[iso] += Math.min(pw[iso]||0, cap); });
     var tw = trk[np]; if (tw) Object.keys(tw).forEach(function(iso){ if (iso in tracked) tracked[iso] += tw[iso]||0; });
   });
   return { planned: planned, tracked: tracked };
+}
+
+// Quarter-to-date window for the Planned vs Tracked chart: every completed/in-progress
+// week of the current quarter (server-computed in behaviorSignals.qtdIsos), merged with
+// WEEKS so the future planned weeks the "Week" dropdown can select are always present too.
+function capChartWeeks_(){
+  var currentIso = (DATA.behaviorSignals && DATA.behaviorSignals.currentIso) || CURRENT_ISO;
+  var qtdIsos = (DATA.behaviorSignals && DATA.behaviorSignals.qtdIsos) || WEEKS.map(function(w){ return w.iso; });
+  var seen = {}, arr = [];
+  qtdIsos.forEach(function(iso){ if (!seen[iso]) { seen[iso]=true; arr.push({ iso: iso, status: iso===currentIso?'now':'done' }); } });
+  WEEKS.forEach(function(w){ if (!seen[w.iso]) { seen[w.iso]=true; arr.push(w); } });
+  arr.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
+  return arr;
+}
+
+// Hover/click handlers for the chart's week labels — hover previews the week's numbers
+// via the shared tooltip, click navigates SEL_ISO dashboard-wide (same as the Week dropdown).
+var CAP_CHART_WT = null;
+function capChartHover_(e, iso){
+  var wt = CAP_CHART_WT || { planned:{}, tracked:{} };
+  var pv = wt.planned[iso]||0, tv = wt.tracked[iso]||0;
+  var fidTxt = pv>0 ? (Math.round((tv/pv)*100)+'% fidelity') : 'no plan';
+  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(pv)+' hrs planned<br>'+fmt(tv)+' hrs tracked<br>'+esc(fidTxt));
+}
+function capChartNav_(iso){ SEL_ISO = iso; reRenderAll_(); }
+function cwIndexOf_(cw, iso){ for(var i=0;i<cw.length;i++) if(cw[i].iso===iso) return i; return -1; }
+function cwPriorIso_(cw, iso){
+  var i=cwIndexOf_(cw, iso);
+  if (i>0) return cw[i-1].iso;
+  if (i===0 && DATA && DATA.baselineIso) return DATA.baselineIso;
+  return null;
 }
 
 /* ---------------- Boot / data load ---------------- */
@@ -610,9 +642,11 @@ function renderRange(){
 /* ---------------- Render: Planned vs Tracked ---------------- */
 function renderCapacity(){
   var iso=SEL_ISO;
-  var wt=filteredWeekTotals_();
+  var cw=capChartWeeks_();
+  var wt=filteredWeekTotals_(cw.map(function(w){return w.iso;}));
+  CAP_CHART_WT=wt;
   var isFiltered=!!filteredPersonSet_();
-  var wk=WEEKS[weekIndex(iso)];
+  var wk=cw[cwIndexOf_(cw, iso)];
   var isCurrent=!!(wk&&wk.status==='now');
   var asOf=DATA.trackedLastExport?fmtExport(DATA.trackedLastExport):'last sync';
   var planned=wt.planned[iso]||0;
@@ -631,7 +665,7 @@ function renderCapacity(){
   $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''))+(isFiltered?' · <span style="color:var(--orbe)">reflects the People filters above</span>':'');
 
   // WoW fidelity trend chip — direction + delta, so a single-point % never stands alone.
-  var priorI=priorIso(iso), priorFid=null;
+  var priorI=cwPriorIso_(cw, iso), priorFid=null;
   if(priorI!=null){ var ppv=wt.planned[priorI]||0, ptv=wt.tracked[priorI]; if(ppv>0) priorFid=(ptv||0)/ppv; }
   var trendLine='';
   if(fid!==null&&priorFid!==null){
@@ -649,14 +683,12 @@ function renderCapacity(){
   if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
   else if(isCurrent){cls='';sw='<b>'+esc(iso)+' is still in progress</b> — '+fmt(tracked)+' of '+fmt(planned)+' hrs tracked so far ('+Math.round(fid*100)+'%), data as of '+esc(asOf)+'. Treat this as incomplete tracking, not an execution drop — fidelity will keep rising as the week is logged.';}
   else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
-  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check Team Availability for who planned but didn\'t track.';}
-  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Availability below.';}
+  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check Team Focus &amp; Execution Signals for who planned but didn\'t track.';}
+  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Focus &amp; Execution Signals below.';}
   else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
   var swFull=trendLine+sw;
   $('capSoWhat').className='sowhat '+cls;
   $('capSoWhat').innerHTML=swFull;
-  $('capSoWhatTop').className='sowhat '+cls;
-  $('capSoWhatTop').innerHTML=swFull;
 
   var cvEl=$('capCaveat');
   if(isCurrent){
@@ -666,7 +698,7 @@ function renderCapacity(){
     cvEl.style.display='none';
   }
   renderCapLegend();
-  renderCapChart(wt);
+  renderCapChart(wt, cw);
 }
 
 function renderCapLegend(){
@@ -688,21 +720,24 @@ function niceRound(v){
   return Math.max(step,Math.round(v/step)*step);
 }
 
-function renderCapChart(wt){
-  wt=wt||filteredWeekTotals_();
+function renderCapChart(wt,cw){
+  cw=cw||capChartWeeks_();
+  wt=wt||filteredWeekTotals_(cw.map(function(w){return w.iso;}));
+  CAP_CHART_WT=wt;
+  var n=cw.length;
   var w=620,h=170,pad={l:44,r:14,t:22,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   var rawMax=1;
-  WEEKS.forEach(function(wk){
+  cw.forEach(function(wk){
     rawMax=Math.max(rawMax,wt.planned[wk.iso]||0);
     rawMax=Math.max(rawMax,wt.tracked[wk.iso]||0);
   });
   var maxv=niceRound(rawMax);
-  var x=function(i){return pad.l+(NWEEKS===1?0:i/(NWEEKS-1)*iw);};
+  var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
   var y=function(v){return pad.t+ih-Math.min(v,maxv)/maxv*ih;};
-  var curIdx=-1; WEEKS.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked">';
+  var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked, quarter to date">';
   // future region tint
-  var firstPlan=-1; WEEKS.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
+  var firstPlan=-1; cw.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
   if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>';}
   // gridlines — rounded to a nice max so ticks read as deliberate (e.g. 6000/3000/0)
   for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
@@ -716,19 +751,19 @@ function renderCapChart(wt){
     g+='<text x="'+(cx+5)+'" y="'+(pad.t-8)+'" text-anchor="start" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">Forecast</text>';
   }
   // planned area (saturated fill — the plan/actual gap is the point of this chart)
-  var dpts=WEEKS.map(function(wk,i){return x(i)+','+y(wt.planned[wk.iso]||0);});
-  g+='<path d="M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(NWEEKS-1)+','+y(0)+' Z" fill="'+hexVar('--orbe')+'" opacity="0.22"/>';
+  var dpts=cw.map(function(wk,i){return x(i)+','+y(wt.planned[wk.iso]||0);});
+  g+='<path d="M'+x(0)+','+y(0)+' L'+dpts.join(' L')+' L'+x(n-1)+','+y(0)+' Z" fill="'+hexVar('--orbe')+'" opacity="0.22"/>';
   // planned line: solid actual/now, dashed plan
-  WEEKS.forEach(function(wk,i){
+  cw.forEach(function(wk,i){
     if(i===0) return;
-    var prev=WEEKS[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
+    var prev=cw[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
     g+='<line x1="'+x(i-1)+'" y1="'+y(wt.planned[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(wt.planned[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
   });
   // tracked line (no fill — an unfilled line reads distinctly against the shaded Planned area
   // instead of two washed-out overlapping bands)
   if(wt.tracked){
     var tPts=[];
-    WEEKS.forEach(function(wk,i){
+    cw.forEach(function(wk,i){
       var th=wt.tracked[wk.iso]||0;
       if(wk.status!=='plan'||th>0) tPts.push({xi:i,x:x(i),y:y(th),h:th,wk:wk});
     });
@@ -743,7 +778,7 @@ function renderCapChart(wt){
   }
   // fidelity % annotation above planned line per past/current week; asterisk flags the
   // in-progress current week so the number is never read as a completed result
-  WEEKS.forEach(function(wk,i){
+  cw.forEach(function(wk,i){
     var pv=wt.planned[wk.iso]||0, tv=wt.tracked[wk.iso];
     if(wk.status==='plan'&&!tv) return;
     var fid=pv>0?((tv||0)/pv):null;
@@ -754,21 +789,41 @@ function renderCapChart(wt){
   });
   // in-progress callout directly on the cliff point — the critical caveat lives on the chart,
   // not just in a caption a viewer might not scroll to
-  if(curIdx>=0&&WEEKS[curIdx].status==='now'){
-    var cTv=wt.tracked[WEEKS[curIdx].iso]||0;
-    g+='<text x="'+x(curIdx)+'" y="'+(y(cTv)+16)+'" text-anchor="middle" font-size="7.5" fill="'+css('--warn')+'" font-weight="700">'+esc(WEEKS[curIdx].iso)+' in progress*</text>';
+  if(curIdx>=0&&cw[curIdx].status==='now'){
+    var cTv=wt.tracked[cw[curIdx].iso]||0;
+    g+='<text x="'+x(curIdx)+'" y="'+(y(cTv)+16)+'" text-anchor="middle" font-size="7.5" fill="'+css('--warn')+'" font-weight="700">'+esc(cw[curIdx].iso)+' in progress*</text>';
   }
   // target execution rate line: planTarget × planned per week — muted gray dashed so it
   // recedes behind the two main series instead of visually pairing with the orange fidelity labels
   if(DATA.planTarget){
     var tgt=DATA.planTarget;
-    var tLinePts=WEEKS.map(function(wk,i){return x(i)+','+y((wt.planned[wk.iso]||0)*tgt);});
+    var tLinePts=cw.map(function(wk,i){return x(i)+','+y((wt.planned[wk.iso]||0)*tgt);});
     g+='<polyline points="'+tLinePts.join(' ')+'" fill="none" stroke="'+css('--muted')+'" stroke-width="1.2" stroke-dasharray="4 3" opacity=".65"/>';
   }
-  // week labels + selected marker
-  WEEKS.forEach(function(wk,i){
-    g+='<text x="'+x(i)+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(wk.iso===SEL_ISO?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(wk.iso===SEL_ISO?'700':'400')+'">'+wk.iso+'</text>';
-    if(wk.iso===SEL_ISO) g+='<circle cx="'+x(i)+'" cy="'+y(wt.planned[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'"/>';
+  // week labels + selected marker — an invisible hit-column spanning the full plot height
+  // (not just the label row) makes hover/click work right where the planned/tracked lines
+  // and data points actually are, not only down at the axis text. Drawn last so it sits on
+  // top of the lines/paths and always wins the pointer event; the label itself is
+  // pointer-events:none so it never blocks the column underneath it.
+  // Hover previews that week's numbers via the shared tooltip; click navigates SEL_ISO
+  // dashboard-wide (same effect as picking the week from the Week dropdown).
+  // The QTD range can run past a dozen weeks, so ticks are THINNED (not every week printed)
+  // and shown as short "Wnn" — every week still gets a full-width hover/click hit-column,
+  // it's only the printed text that skips, exactly like gridlines being rounded elsewhere
+  // on this chart: fewer, deliberate labels beat crowded illegible ones.
+  var spacing=n>1?iw/(n-1):iw;
+  var labelStep=Math.max(1,Math.ceil(26/spacing));
+  var rectW=Math.max(10,Math.min(36,spacing));
+  cw.forEach(function(wk,i){
+    var lx=x(i);
+    var isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
+      +'onmouseenter="capChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
+    if(isSel||isCur||isEdge||i%labelStep===0){
+      var shortLbl=wk.iso.replace(/^\d{4}\./,'');
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isSel?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+    }
+    if(isSel) g+='<circle cx="'+lx+'" cy="'+y(wt.planned[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'" style="pointer-events:none"/>';
   });
   g+='</svg>';
   $('capChart').innerHTML=g;
@@ -796,6 +851,24 @@ function populateAvailFilters(){
     crewEl.value = AVAIL_CREW;
     crewEl.onchange = function() { AVAIL_CREW = this.value; reRenderAll_(); };
   }
+  populateMainFilters_();
+}
+
+// Project + Week — the two "main" filters in the always-visible filter bar header.
+// Project narrows the person set (see personOnProjectAtSel_); Week drives SEL_ISO
+// dashboard-wide (Planned vs Tracked headline, heatmap "losing" question-filter, etc.).
+function populateMainFilters_(){
+  var projSel=$('mainProj'), wkSel=$('mainWeek');
+  if(!projSel||!wkSel||!DATA) return;
+  var order=(DATA.order||[]).slice().sort();
+  projSel.innerHTML='<option value="">All projects</option>'+order.map(function(k){
+    return '<option value="'+esc(k)+'"'+(k===AVAIL_PROJ?' selected':'')+'>'+esc(k)+' — '+esc(KEYNAME[k]||k)+'</option>';
+  }).join('');
+  wkSel.innerHTML=WEEKS.map(function(w){
+    return '<option value="'+w.iso+'"'+(w.iso===SEL_ISO?' selected':'')+'>'+esc(w.iso)+' ('+STATUS_LABEL[w.status]+')</option>';
+  }).join('');
+  projSel.onchange=function(){ AVAIL_PROJ=this.value; reRenderAll_(); };
+  wkSel.onchange=function(){ SEL_ISO=this.value; reRenderAll_(); };
 }
 
 function populateFamOptions(families){
@@ -847,9 +920,17 @@ function syncRoleChip(){
 }
 
 /* -- Shared filter helpers -- */
+// A person counts as "on" AVAIL_PROJ only if they have planned hours there at the
+// selected week — Project and Week are meant to be read together as one combined scope.
+function personOnProjectAtSel_(np){
+  if(!AVAIL_PROJ) return true;
+  var pp=(DATA.personProjectPlan||{})[np];
+  return !!(pp && pp[AVAIL_PROJ] && (pp[AVAIL_PROJ][SEL_ISO]||0) > 0);
+}
+
 function filteredPersonSet_(){
   if(!DATA||!DATA.personMeta)return null;
-  if(!AVAIL_LOC&&!AVAIL_FAM.size&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE)return null;
+  if(!AVAIL_LOC&&!AVAIL_FAM.size&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE&&!AVAIL_PROJ)return null;
   var set={};
   Object.keys(DATA.personMeta).forEach(function(np){
     var m=DATA.personMeta[np];
@@ -861,6 +942,7 @@ function filteredPersonSet_(){
     if(AVAIL_CREW==='crew'&&!m.isCrew)return;
     if(AVAIL_ROLE==='m'&&!m.isManager)return;
     if(AVAIL_ROLE==='ic'&&m.isManager)return;
+    if(!personOnProjectAtSel_(np))return;
     set[np]=true;
   });
   return set;
@@ -873,6 +955,8 @@ function updateFilterBar_(){
   else{body.style.display='none';toggle.textContent='▾ expand';}
   var parts=[];
   parts.push(TOPN>=999?'All':'Top '+TOPN);
+  if(AVAIL_PROJ)parts.push('Project '+AVAIL_PROJ);
+  if(SEL_ISO&&SEL_ISO!==CURRENT_ISO)parts.push('Week '+SEL_ISO);
   if(AVAIL_ROLE==='m')parts.push('Mgrs');
   else if(AVAIL_ROLE==='ic')parts.push('ICs');
   if(AVAIL_LOC)parts.push(AVAIL_LOC);
@@ -886,9 +970,9 @@ function updateFilterBar_(){
 
 function reRenderAll_(){
   AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;
+  if(typeof renderCapacity==='function')renderCapacity();
   renderAvailability();
   if(typeof renderHeat==='function')renderHeat();
-  if(typeof renderProjTeam_==='function')renderProjTeam_();
   updateFilterBar_();
 }
 
@@ -995,48 +1079,10 @@ function computeTrendTag_(sparkVals) {
   return { symbol: '→', label: 'stable', cls: 'trend-tag' };
 }
 
-// state is anchored on BS.lastCompletedIso (see renderAvailability) — the current week
-// never has a computed state, so all copy here reads "last week", not "this week".
 function plannedProjectsAtIso_(np, iso) {
   var pp = (DATA.personProjectPlan || {})[np] || {};
   return Object.keys(pp).filter(function(key) { return (pp[key][iso] || 0) > 0; })
     .sort(function(a, b) { return (pp[b][iso] || 0) - (pp[a][iso] || 0); });
-}
-
-function projectListTxt_(projects) {
-  if (!projects || !projects.length) return '';
-  return projects.map(function(k) { return KEYNAME[k] || k; }).join(', ');
-}
-
-// A planned-but-untracked week ("escalation") is NOT proof of a problem — the project may
-// simply have wrapped up. Surface the actual project(s) planned so a manager can judge
-// completion vs. a real gap, instead of an alarmist "follow up" verdict with no context.
-function computeCallout_(state, streakLen, escLen, projects) {
-  var projTxt = projectListTxt_(projects);
-  if (state === 'aligned')    return streakLen >= 3 ? (streakLen + '-week reliability streak — no action needed') : 'On track as of last week';
-  if (state === 'unplanned')  return 'Tracked unscheduled work last week — investigate scope';
-  if (state === 'silent')     return 'Planned but not tracking — check in';
-  if (state === 'escalation') {
-    var onTxt = projTxt ? (' on ' + projTxt) : '';
-    return escLen >= 2
-      ? (escLen + ' weeks with no tracked time' + onTxt + ' — confirm status')
-      : ('No tracked time last week' + onTxt + ' — confirm complete or check in');
-  }
-  return '—';
-}
-
-function computeManagerNote_(state, streakLen, escLen, projects) {
-  var projTxt = projectListTxt_(projects);
-  if (state === 'aligned') return streakLen >= 3 ? 'Strong performer — ' + streakLen + '-week reliability streak. No action needed.' : 'On track as of last week.';
-  if (state === 'unplanned') return 'Tracked unscheduled work last week. Worth asking: is this swarming in to help? Scope creep? Should it be planned next cycle?';
-  if (state === 'silent') return 'Planned hours not tracking — may be blocked or waiting on someone. Worth a quick check-in.';
-  if (state === 'escalation') {
-    var onTxt = projTxt ? (' on ' + projTxt) : '';
-    return escLen >= 2
-      ? (escLen + ' weeks with no tracked time' + onTxt + '. Could mean the work wrapped up — or they\'re blocked. Confirm before treating it as an escalation.')
-      : ('No tracked time last week' + onTxt + '. Likely explanations: the project completed, or they\'re blocked/reassigned — worth a quick check rather than assuming a problem.');
-  }
-  return '—';
 }
 
 function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap) {
@@ -1091,14 +1137,11 @@ function renderAvailability() {
   var BS = DATA.behaviorSignals || {};
   var currentIso = BS.currentIso || SEL_ISO;
   // The current week never has a computed state (tracked time is still accumulating) —
-  // "as of now" signals (row chip, status filter, manager note) anchor on the most
-  // recently completed week instead, or currentIso itself never matches and nothing shows.
+  // "as of now" signals anchor on the most recently completed week instead.
   var refIso = BS.lastCompletedIso || currentIso;
   var qtdIsos = BS.qtdIsos || [currentIso];
-  var personWeekState = BS.personWeekState || {};
   var personQtdScore = BS.personQtdScore || {};
   var personStreakLen = BS.personStreakLen || {};
-  var personEscLen = BS.personEscLen || {};
   var personQtdProjectCounts = BS.personQtdProjectCounts || {};
   var personQtdUniqueProjectCount = BS.personQtdUniqueProjectCount || {};
   var projectHeadcountAtRef = BS.projectHeadcountAtRef || {};
@@ -1123,6 +1166,7 @@ function renderAvailability() {
     if (AVAIL_CREW === 'crew' && !m.isCrew)  return false;
     if (AVAIL_ROLE === 'm'  && !m.isManager) return false;
     if (AVAIL_ROLE === 'ic' &&  m.isManager) return false;
+    if (!personOnProjectAtSel_(np)) return false;
     return true;
   });
 
@@ -1142,6 +1186,12 @@ function renderAvailability() {
   var totalFiltered = people.length;
   if (TOPN < 999) people = people.slice(0, TOPN);
 
+  if (AVAIL_PROJ && totalFiltered === 0) {
+    container.innerHTML = '<div class="hint">No one is planned on ' + esc(KEYNAME[AVAIL_PROJ] || AVAIL_PROJ)
+      + ' in ' + esc(SEL_ISO) + '.</div>';
+    return;
+  }
+
   // Full QTD history + up to 3 future planned weeks
   var displayIsos = qtdIsos.slice();
   var futureWks = WEEKS.filter(function(w){ return w.iso>currentIso && w.status==='plan'; }).slice(0,3);
@@ -1156,27 +1206,24 @@ function renderAvailability() {
 
   people.forEach(function(np) {
     var m = DATA.personMeta[np] || {};
-    var state    = (personWeekState[np] || {})[refIso];
     var counts   = personQtdProjectCounts[np] || {};
     var ptoByIso  = (DATA.personWeekPTO || {})[np] || {};
-    var weekCap   = m.location === ((DATA.anzLocation) || 'Australia & New Zealand') ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
+    var weekCap   = personWeekCap_(np);
     var spark     = renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap);
     var streakLen = personStreakLen[np] || 0;
-    var escLen   = personEscLen[np] || 0;
     var refProjects = plannedProjectsAtIso_(np, refIso);
-    var callout  = computeCallout_(state, streakLen, escLen, refProjects);
     var isOpen   = AVAIL_OPEN === np;
 
     var badgesHtml = '';
     if (streakLen >= 3)         badgesHtml += '<span class="badge-ta badge-streak">' + streakLen + '-wk streak</span>';
     if (personIsStabilizer[np]) badgesHtml += '<span class="badge-ta badge-stabilizer">Stabilizer</span>';
     // Group-by-project chips: shows who else shares each project so a manager can jump
-    // straight to the full team roster for that project (see openProjTeam_ / Project Team View).
+    // straight to the full team roster for that project (see focusProject_ below).
     refProjects.slice(0, 2).forEach(function(key) {
       var teamSize = projectHeadcountAtRef[key] || 0;
       if (teamSize < 2) return;
       badgesHtml += '<span class="badge-ta badge-group" title="See everyone on ' + esc(KEYNAME[key] || key) + '" '
-        + 'onclick="event.stopPropagation();openProjTeam_(\'' + key.replace(/'/g, "\\'") + '\',\'' + refIso + '\')">'
+        + 'onclick="event.stopPropagation();focusProject_(\'' + key.replace(/'/g, "\\'") + '\',\'' + refIso + '\')">'
         + '👥 ' + teamSize + ' on ' + esc(key) + '</span>';
     });
 
@@ -1185,7 +1232,6 @@ function renderAvailability() {
     html += '<span class="avail-row-name">' + esc(m.displayName || np) + '</span>';
     html += spark;
     if (badgesHtml) html += badgesHtml;
-    html += '<span class="avail-callout">' + esc(callout) + '</span>';
     html += '<span class="avail-expand-btn">' + (isOpen ? '▴' : '▾') + '</span>';
     html += '</div>';
 
@@ -1246,12 +1292,9 @@ function renderAvailability() {
         projTableHtml += '</tbody></table></div>';
       }
 
-      var mgNote = computeManagerNote_(state, streakLen, escLen, refProjects);
-
-      html += '<div class="avail-expanded-section">';
-      if (projTableHtml) html += projTableHtml;
-      html += '<div class="mgr-note-ta"><div class="mgr-note-lbl-ta">Manager note</div>' + esc(mgNote) + '</div>';
-      html += '</div>';
+      if (projTableHtml) {
+        html += '<div class="avail-expanded-section">' + projTableHtml + '</div>';
+      }
     }
 
     html += '</div>';
@@ -1274,55 +1317,19 @@ function toggleAvailDrill(np){
 
 function clearAvailFilters(){
   AVAIL_LOC='';AVAIL_FAM.clear();AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_OPEN=null;
+  AVAIL_PROJ='';SEL_ISO=CURRENT_ISO;
   AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
   populateAvailFilters();
   reRenderAll_();
 }
 
-/* ---------------- Render: Project Team View (group people by shared project) ---------------- */
-var PTV_KEY = '', PTV_ISO = '';
-
-function populateProjTeamFilters_(){
-  var projSel=$('ptvProject'), wkSel=$('ptvWeek');
-  if(!projSel||!wkSel||!DATA) return;
-  var order=(DATA.order||[]).slice().sort();
-  projSel.innerHTML='<option value="">Choose a project…</option>'+order.map(function(k){
-    return '<option value="'+esc(k)+'"'+(k===PTV_KEY?' selected':'')+'>'+esc(k)+' — '+esc(KEYNAME[k]||k)+'</option>';
-  }).join('');
-  wkSel.innerHTML=WEEKS.map(function(w){
-    return '<option value="'+w.iso+'"'+(w.iso===PTV_ISO?' selected':'')+'>'+esc(w.iso)+' ('+STATUS_LABEL[w.status]+')</option>';
-  }).join('');
-  projSel.onchange=function(){ PTV_KEY=this.value; renderProjTeam_(); };
-  wkSel.onchange=function(){ PTV_ISO=this.value; renderProjTeam_(); };
-}
-
-/** Opens the Project Team View scoped to `key`/`iso` — the target of a person row's 👥 chip. */
-function openProjTeam_(key, iso){
-  PTV_KEY=key; PTV_ISO=iso;
-  var panel=$('projTeamPanel');
-  if(panel) panel.style.display='';
-  populateProjTeamFilters_();
-  renderProjTeam_();
+/** Sets the main Project + Week filters to `key`/`iso` and scrolls to the now-narrowed
+ *  Team Availability panel — the target of a person row's 👥 chip. */
+function focusProject_(key, iso){
+  AVAIL_PROJ=key; SEL_ISO=iso;
+  reRenderAll_();
+  var panel=$('availPanel');
   if(panel) panel.scrollIntoView({behavior:'smooth', block:'start'});
-}
-
-function renderProjTeam_(){
-  var panel=$('projTeamPanel'), body=$('ptvBody');
-  if(!panel||!body||!DATA||!DATA.behaviorSignals){ if(panel) panel.style.display='none'; return; }
-  panel.style.display='';
-  if(!PTV_ISO) PTV_ISO = (DATA.behaviorSignals||{}).lastCompletedIso || CURRENT_ISO;
-  populateProjTeamFilters_();
-  if(!PTV_KEY){ body.innerHTML='<div class="hint">Pick a project above, or click a 👥 chip on a person\'s row in Team Availability.</div>'; return; }
-  var pset=filteredPersonSet_();
-  var rows=projectPeopleAt_(PTV_KEY, PTV_ISO, pset);
-  if(!rows.length){
-    body.innerHTML='<div class="hint">No one planned on '+esc(KEYNAME[PTV_KEY]||PTV_KEY)+' in '+esc(PTV_ISO)+(pset?' (within the current People filters)':'')+'.</div>';
-    return;
-  }
-  var html='<div class="hexp-person-list">'+projectPeopleRowsHtml_(rows)+'</div>';
-  html+='<div class="hint" style="margin-top:8px">'+rows.length+' '+(rows.length===1?'person':'people')+' on '
-    +esc(KEYNAME[PTV_KEY]||PTV_KEY)+' in '+esc(PTV_ISO)+(pset?' (within the current People filters)':'')+'.</div>';
-  body.innerHTML=html;
 }
 
 /* ---------------- Render: Project Planned vs Tracked Drill ---------------- */
@@ -1418,8 +1425,8 @@ function pr_pos(k,iso){ var pr=priorIso(iso); return pr? capAt(k,pr)>0.001 : fal
 
 /**
  * Everyone with planned hours on `key` at `iso`, sorted worst-signal-first — the shared
- * "group people by project" building block behind both the heatmap row expand and the
- * Project Team View panel (openProjTeam_ / renderProjTeam_).
+ * "group people by project" building block behind the heatmap row expand
+ * (see heatProjectExpandHtml_).
  * @param {string} key project key
  * @param {string} iso ISO week
  * @param {Object|null} pset optional person-set restriction (from filteredPersonSet_())
@@ -1579,7 +1586,6 @@ function renderFoot(){
 
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
-  renderProjTeam_();
   renderHeat(); renderFoot();
 }
 

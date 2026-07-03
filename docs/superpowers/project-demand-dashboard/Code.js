@@ -250,6 +250,141 @@ function getDemandData() {
   }
 }
 
+// ── JOB TITLE → FAMILY (derived) ─────────────────────────────
+// The Roster sheet has no reliable "Job Family" column — job family only exists as a
+// function of "Job Title" (same underlying catalog PS Contribution Report.js uses for
+// scoring weights: ACTIVE_FAMILIES_/COMPANY_ROLES_). Copied here rather than shared
+// because this is a standalone GAS project (separate deployment, no cross-project
+// imports) — only the family NAME is needed for the Job Family filter, not level/track/
+// weights, so levels are parsed and discarded immediately.
+var ACTIVE_FAMILY_NAMES_ = {
+  JF001: "Marketing", JF003: "Analytics", JF004: "Sales and Success",
+  JF005: "Partner Success", JF007: "Managed Services & Support",
+  JF008: "Training & Customer Education", JF009: "Service Delivery",
+  JF013: "Finance", JF014: "Legal & Compliance", JF015: "Operations",
+  JF016: "People", JF017: "Information Technology", JF018: "Solution Architecture",
+};
+
+// "code|Job Title" — same seed list as COMPANY_ROLES_ in PS Contribution Report.js.
+var COMPANY_ROLES_ = [
+  "01.I1.2|Intern, Marketing","01.I2.2|Associate, Marketing","01.I3.1|Analyst, Marketing",
+  "01.I4.1|Senior Analyst I, Marketing","01.I4.4|Senior Representative I, Field Marketing",
+  "01.I5.1|Senior Analyst II, Marketing","01.I6.1|Senior Analyst III, Marketing",
+  "01.I7.1|Principal, Marketing","01.I8.1|Senior Principal, Marketing",
+  "01.M4.2|Manager, Marketing","01.M5.3|Senior Manager, Marketing","01.M6.1|Director, Marketing",
+  "01.M7.2|Senior Director, Marketing","01.M8.2|Executive Director, Marketing","01.M9.1|Executive I, Marketing",
+  "03.I2.1|Associate, Data Analysis","03.I3.1|Analyst, Data Analysis","03.I4.1|Senior Analyst I, Data Analysis",
+  "03.I5.1|Senior Analyst II, Data Analysis","03.I6.1|Senior Analyst III, Data Analysis",
+  "03.I7.1|Principal, Data Analysis","03.I8.1|Senior Principal, Data Analysis",
+  "04.I2.5|Associate, Account Management","04.I3.4|Representative, Account Management",
+  "04.I4.4|Senior Representative I, Account Management","04.I5.3|Senior Representative II, Account Management",
+  "04.I6.2|Senior Representative III, Account Management","04.M8.2|Executive Director, Partner Practice Owner",
+  "05.I3.1|Representative, Partner Success Management","05.I4.1|Senior Representative, I Partner Success Management",
+  "05.I5.1|Senior Representative, II Partner Success Management","05.M7.1|Senior Director, Partner Success",
+  "05.M8.1|Executive Director, Partner Success",
+  "07.I1.1|Intern, Managed Services","07.I2.1|Associate Engineer, Customer Support","07.I2.2|Associate, Delivery",
+  "07.I3.1|Engineer, Customer Support","07.I3.2|Consultant, Delivery",
+  "07.I4.1|Senior Engineer I, Customer Support","07.I4.2|Senior Consultant I, Delivery",
+  "07.I5.1|Senior Engineer II, Customer Support","07.I5.2|Senior Consultant II, Delivery",
+  "07.I6.1|Senior Engineer III, Customer Support","07.I6.2|Senior Consultant III",
+  "07.M4.1|Manager, Customer Support","07.M4.2|Manager, Delivery",
+  "07.M5.1|Senior Manager, Customer Support","07.M5.2|Senior Manager, Delivery",
+  "07.M6.1|Director, Support","07.M7.1|Senior Director, Support","07.M7.2|Senior Director, Delivery",
+  "07.M8.1|Executive Director, Managed Services",
+  "08.I2.1|Associate, Technical Instruction","08.I2.3|Associate, Customer Education",
+  "08.I3.1|Consultant, Technical Instruction","08.I3.2|Consultant, Learning Solutions",
+  "08.I4.1|Senior Consultant I, Technical Instruction","08.I5.1|Senior Consultant II, Technical Instruction",
+  "08.I6.1|Senior Consultant III, Technical Instruction","08.I7.1|Principal, Technical Instruction",
+  "08.I8.1|Senior Principal, Technical Instruction","08.M4.1|Manager, Technical Instruction",
+  "08.M5.1|Senior Manager, Technical Instruction","08.M6.1|Director, Technical Instruction",
+  "08.M6.4|Director, Customer Education","08.M7.1|Senior Director, Technical Instruction",
+  "08.M8.1|Executive Director, Technical Instruction",
+  "09.I1.1|Intern, Professional Services","09.I1.3|Intern Engineer, Service Delivery",
+  "09.I1.4|Intern Designer, Service Delivery","09.I2.1|Associate, Technical Consulting",
+  "09.I2.3|Associate Engineer, Service Delivery","09.I2.4|Associate Designer, Service Delivery",
+  "09.I3.1|Consultant, Technical Consulting","09.I3.2|Consultant, Technical Consulting (Trainer)",
+  "09.I3.3|Engineer, Service Delivery","09.I3.4|Designer, Service Delivery",
+  "09.I4.1|Senior Consultant I, Technical Consulting","09.I4.2|Senior Consultant I, Technical Consulting (Trainer)",
+  "09.I4.3|Senior Engineer I, Service Delivery","09.I4.4|Senior Designer I, Service Delivery",
+  "09.I4.5|Senior Technical Lead, Service Delivery","09.I5.1|Senior Consultant II, Service Delivery",
+  "09.I5.3|Senior Engineer II, Service Delivery","09.I5.4|Senior Designer II, Service Delivery",
+  "09.I6.1|Senior Consultant III, Service Delivery","09.I6.3|Senior Engineer III, Service Delivery",
+  "09.I6.4|Senior Designer III, Service Delivery","09.I7.1|Principal, Solution Consulting",
+  "09.I7.3|Principal Engineer, Service Delivery","09.I7.4|Principal Designer, Service Delivery",
+  "09.I8.1|Senior Principal, Solution Consulting","09.I8.4|Senior Principal Designer, Service Delivery",
+  "09.M4.1|Manager, Service Delivery","09.M5.1|Senior Manager, Service Delivery",
+  "09.M6.1|Director, Service Delivery","09.M7.1|Senior Director, Service Delivery",
+  "09.M8.1|Executive Director, Service Delivery",
+  "13.I1.1|Intern, Finance","13.I2.1|Associate, Financial Administration",
+  "13.I3.1|Accountant, Financial Accounting","13.I3.2|Analyst, Financial Administration",
+  "13.I4.1|Senior Analyst I, Finance","13.I4.2|Senior Accountant, Financial Accounting",
+  "13.I5.2|Senior Analyst II, Project Management Office","13.M10.10|Chief Financial Officer",
+  "13.M4.1|Manager, Group Controller","13.M4.2|Manager, Financial Accounting","13.M4.3|Manager, FinOps",
+  "13.M5.1|Senior Manager, Group Controller","13.M6.1|Director, Finance","13.M7.1|Senior Director, Finance",
+  "14.I2.1|Associate, Legal Counsel","14.M9.1|General Counsel",
+  "15.I1.1|Intern, Operations","15.I2.1|Associate, Project Management","15.I3.1|Consultant, Project Management",
+  "15.I3.3|Analyst, Revenue Operations","15.I4.1|Senior Consultant I, Project Management",
+  "15.I5.1|Senior Consultant II, Project Management","15.I5.2|Executive Assistant",
+  "15.I5.3|Manager, Customer Operations","15.I5.5|Program Manager, Operations",
+  "15.I6.1|Principal I, Project Management","15.I6.2|Chief of Staff, Strategic Operations",
+  "15.I7.1|Principal II, Program Management","15.M10.1|Chief Executive Officer",
+  "15.M10.2|Chief Customer Officer","15.M10.3|Chief Operations Officer","15.M10.4|Chief Strategy Officer",
+  "15.M4.1|Manager, Operations Management","15.M4.2|Manager, Project Management",
+  "15.M5.1|Senior Manager, Operations","15.M5.2|Senior Manager, Resource Planning",
+  "15.M5.3|Senior Manager, Revenue Operations","15.M6.1|Director, Operations",
+  "15.M6.2|Director, Revenue Operations","15.M7.1|Senior Director, Operations",
+  "15.M7.2|Senior Director, Resource Planning","15.M8.1|Executive Director, Line of Business Owner",
+  "15.M8.2|Executive Director, Key Department Owner","15.M9.1|GM, Partner Practice",
+  "15.M9.2|VP, Line of Business Owner","15.M9.3|VP, Partner Practice Owner",
+  "16.I1.1|Intern, People","16.I2.1|Associate, People","16.I2.2|Associate, Talent Acquisition",
+  "16.I2.3|Associate, Office Administration","16.I3.1|Analyst, Business Partner",
+  "16.I3.3|Analyst, Talent Acquisition","16.I3.4|Specialist, Administration",
+  "16.I3.5|Mental Performance Coach","16.I3.6|Talent Program Specialist",
+  "16.I4.1|Senior Generalist I, People","16.I4.2|Senior Specialist, Administration",
+  "16.I4.3|Senior Analyst, Talent Acquisition","16.I4.4|Senior Analyst I, Business Partner",
+  "16.I5.1|Senior Generalist II, People","16.I5.2|Senior Analyst II, Talent Acquisition",
+  "16.I6.1|Rocketeer Leadership Behaviors Coach","16.I6.2|Senior Generalist III, People",
+  "16.M4.1|Manager, Talent Acquisition","16.M4.2|Manager, People",
+  "16.M5.1|Senior Manager, Talent Acquisition","16.M5.2|Senior Manager, Workforce Planning (556)",
+  "16.M5.3|Senior Manager, People","16.M5.4|Senior Manager, Total Rewards and HR Operations",
+  "16.M6.1|Director, Talent Acquisition","16.M6.2|Director, People","16.M6.3|Director, Workforce Planning",
+  "16.M7.1|Senior Director, Talent Acquisition","16.M7.2|Senior Director, People",
+  "16.M7.3|Senior Director, Workforce Planning","16.M9.2|Chief People Officer",
+  "17.I1.1|Intern, Information Technology","17.I2.1|Associate, IT Operations","17.I3.1|Engineer, IT Operations",
+  "17.I4.1|Senior Engineer I, IT Operations","17.I4.2|Senior Analyst, Business Process Management",
+  "17.I5.1|Senior Engineer II, IT Operations","17.M4.1|Manager, Program Management Office",
+  "17.M4.2|Manager, IT Operations","17.M5.2|Senior Manager, IT Operations",
+  "17.M7.1|Senior Director, Program Management Office","17.M7.2|Senior Director, IT Operations",
+  "17.M8.1|Executive Director, Program Management Office","17.M8.2|Executive Director, IT Operations",
+  "17.M9.1|VP, Program Management Office","17.M9.2|Chief Information Officer",
+  "17.M9.3|Chief Technology Officer","17.M9.4|VP, IT Operations",
+  "18.I2.1|Associate, Solution Architecture","18.I3.1|Consultant, Solution Architecture",
+  "18.I4.1|Senior Consultant I, Solution Architecture","18.I5.1|Senior Consultant II, Solution Architecture",
+  "18.I6.1|Senior Consultant III, Solution Architecture","18.I7.1|Principal, Solution Architecture",
+  "18.I8.1|Senior Principal, Solution Architecture","18.M4.1|Manager, Solution Architecture",
+  "18.M5.1|Senior Manager, Solution Architecture","18.M6.1|Director, Solution Architecture",
+  "18.M7.1|Senior Director, Solution Architecture","18.M8.1|Executive Director, Solution Architecture",
+];
+
+var TITLE_FAMILY_MAP_ = null; // lazy-built cache: normalized Job Title -> family name
+function titleFamilyMap_() {
+  if (TITLE_FAMILY_MAP_) return TITLE_FAMILY_MAP_;
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var map = {};
+  COMPANY_ROLES_.forEach(function (s) {
+    var sep = s.indexOf('|');
+    var code = s.slice(0, sep), title = s.slice(sep + 1);
+    var m = /^(\d+)\.[IM]\d+\.\d+$/.exec(code);
+    if (!m) return;
+    var famCode = 'JF' + ('00' + m[1]).slice(-3);
+    var name = ACTIVE_FAMILY_NAMES_[famCode];
+    if (!name) return; // archived/unlisted family — leave title unmapped
+    map[norm(title)] = name;
+  });
+  TITLE_FAMILY_MAP_ = map;
+  return map;
+}
+
 // ── CAPACITY (roster base hours 38 ANZ / 40 else, minus PTO/holidays; planned fallback) ──
 
 /**
@@ -305,10 +440,14 @@ function readRosterFull_() {
       if (!name) continue;
 
       var loc   = iLoc   !== -1 ? String(row[iLoc]   || "").trim() : "";
-      var fam   = iFam   !== -1 ? String(row[iFam]   || "").trim() : "";
       var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
       var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
       var dept  = iDept  !== -1 ? String(row[iDept]  || "").trim() : "";
+      // Roster has no reliable "Job Family" column — prefer it if present (defensive),
+      // else derive the family from Job Title via titleFamilyMap_() (see above). Titles
+      // outside the catalog (crew/contractor, unlisted roles) simply stay unmapped ("").
+      var famCol = iFam !== -1 ? String(row[iFam] || "").trim() : "";
+      var fam    = famCol || titleFamilyMap_()[norm(title)] || "";
       var isCrew = /crew member|contractor/i.test(title);
       var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
       profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };

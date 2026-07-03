@@ -44,17 +44,26 @@ const SEC_PD = {
 
   // ── 2a. DEFAULT ADMINS — full view + manage access list ──
   DEFAULT_ADMINS: [
-    // "alex.lopez@servicerocket.com",     // sample — PS Director
+    "alex.lopez@servicerocket.com",     // PS Director
   ],
 
   // ── 2b. DEFAULT VIEWERS — read-only (C-suite stakeholders) ──
+  // Not used while OPEN_ACCESS_DEFAULT is true (see below) — everyone who isn't an
+  // admin already gets viewer access. Add explicit emails here if OPEN_ACCESS_DEFAULT
+  // is ever flipped back to false and viewers need to be re-enumerated individually.
   DEFAULT_VIEWERS: [
     // "ceo@servicerocket.com",            // sample — Executive stakeholder
     // "coo@servicerocket.com",            // sample — Executive stakeholder
   ],
 
-  // ── Open Access default (false = locked allowlist) ──
-  OPEN_ACCESS_DEFAULT: false,
+  // ── Open Access default ──
+  // true = everyone who isn't in DEFAULT_ADMINS/runtime-admins gets viewer access —
+  // no per-email allowlist needed for viewers. NOTE: this is enforced by the app's own
+  // email check, but the *deployment's* own Web App access setting (Apps Script
+  // Deploy > Manage deployments > "Who has access") is a separate, outer gate — set it
+  // to "Anyone within [domain]" (not public "Anyone") so this doesn't also expose the
+  // dashboard outside the org regardless of this flag.
+  OPEN_ACCESS_DEFAULT: true,
 };
 
 // ── PRIVATE ──────────────────────────────────────────────────
