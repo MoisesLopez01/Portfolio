@@ -38,6 +38,11 @@ var CONFIG_PS = {
   GOALS_MIN_COUNT:          8,     // minimum goals to be evaluated (quarter target is 10, 8 completed)
   GOALS_MIN_IN_PROGRESS_PCT: 0.50, // majority of goals must be "In Progress" (not Planned/Completed)
   GOALS_ACTIVE_COMMENT_COUNT: 6,   // goals that must have a self-comment within the evaluated week
+  GOALS_GRACE_DAYS:  21,   // 3 weeks — Goals-only transition window after a new fiscal quarter starts.
+                           // No other metric (RCR, SI, PTO, Tracked, Planned, Kudos) is fiscal-scoped,
+                           // so none of them use this constant.
+  RCR_HISTORY_MONTHS: 12,  // trailing months shown in the RCR Monthly Trends chart — rolls across
+                           // fiscal-year boundaries instead of resetting to blank each new FY.
 
   WEEKS_PAST:        5,
   WEEKS_FUTURE:      2,
@@ -766,6 +771,27 @@ function buildCurrentQWeeks_PS_(ctx) {
 // One-release alias — remove after all callers have been updated.
 function buildQ4Weeks_PS_() { return buildCurrentQWeeks_PS_(computeFiscalContext_()); }
 
+// Returns every week in the PREVIOUS quarter (oldest-first), bounded by its own
+// start/end so it never overlaps buildCurrentQWeeks_PS_'s output. Used only during
+// the Goals-only grace period (ctx.inGracePeriod) to merge the outgoing quarter's
+// own remaining weeks — evaluated against its own goal set — into the current view.
+function buildPrevQWeeks_PS_(ctx) {
+  var today    = new Date();
+  var curW     = isoWeekNum_PS_(today);
+  var curY     = isoWeekYear_PS_(today);
+  var todayMon = mondayOfIsoWeek_PS_(curY, curW);
+  var weeks    = [];
+  var w = ctx.prevQStartIsoWeek, y = ctx.prevQStartIsoYear;
+  while (y < ctx.prevQEndIsoYear || (y === ctx.prevQEndIsoYear && w <= ctx.prevQEndIsoWeek)) {
+    var entryMon = mondayOfIsoWeek_PS_(y, w);
+    var off      = Math.round((entryMon - todayMon) / 86400000) / 7;
+    weeks.push(makeWeekEntry_PS_(y, w, off));
+    w++;
+    if (w > weeksInYear_PS_(y)) { w = 1; y++; }
+  }
+  return weeks;
+}
+
 // Derives all fiscal-year and quarter constants from a reference date (defaults to today).
 // Replaces hardcoded CONFIG_PS constants: GOALS_QUARTER, Q4_BASE_ISO_WEEK, Q4_BASE_YEAR,
 // SI_QUARTER_COL, MONTH_COLS. Call once per report run; pass the result as `ctx`.
@@ -791,19 +817,23 @@ function computeFiscalContext_(referenceDate) {
   var qStartDate   = new Date(qStartY, qStartM - 1, 1);
   var qEndDate     = new Date(qEndY, qEndM, 0);                            // last day of last month
   var dayOfQtr     = Math.floor((today - qStartDate) / 86400000);
-  var inGracePeriod    = dayOfQtr < 14;                                    // days 0–13
+  // Goals-only transition window — see CONFIG_PS.GOALS_GRACE_DAYS. No other metric
+  // (RCR, SI, PTO, Tracked, Planned, Kudos) resets at a fiscal boundary, so none of
+  // them read inGracePeriod; it exists solely for readGoalsEngagement_'s prior-quarter merge.
+  var inGracePeriod    = dayOfQtr < CONFIG_PS.GOALS_GRACE_DAYS;            // days 0–20 (3 weeks)
   var inGoalWritingRamp = dayOfQtr < 28;                                   // days 0–27
 
   var qStartIsoWeek    = isoWeekNum_PS_(qStartDate);
   var qStartIsoYear    = isoWeekYear_PS_(qStartDate);
   var qEndIsoWeek      = isoWeekNum_PS_(qEndDate);
   var qEndIsoYear      = isoWeekYear_PS_(qEndDate);
-  // Constructor form avoids millisecond DST ambiguity across timezone boundaries
-  var graceEndDate     = new Date(qEndDate.getFullYear(), qEndDate.getMonth(), qEndDate.getDate() + 14);
+  // Constructor form avoids millisecond DST ambiguity across timezone boundaries.
+  // Anchored to qStartDate (not qEndDate) so it shares inGracePeriod's own reference point.
+  var graceEndDate     = new Date(qStartDate.getFullYear(), qStartDate.getMonth(), qStartDate.getDate() + CONFIG_PS.GOALS_GRACE_DAYS - 1);
   var graceEndIsoWeek  = isoWeekNum_PS_(graceEndDate);
   var graceEndIsoYear  = isoWeekYear_PS_(graceEndDate);
 
-  // Previous quarter (for grace period dual-load in readGoalsEngagement_)
+  // Previous quarter (for the Goals-only grace-period merge in getPSReportData/readGoalsEngagement_)
   var pqNum, pqStartM, pqStartY, prevFyLabel;
   if      (qNum === 1) { pqNum = 4; pqStartM = 4;  pqStartY = fyStartCalYear;     prevFyLabel = "FY" + String(fyNum - 1).slice(-2); }
   else if (qNum === 2) { pqNum = 1; pqStartM = 7;  pqStartY = fyStartCalYear;     prevFyLabel = fyLabel; }
@@ -814,6 +844,10 @@ function computeFiscalContext_(referenceDate) {
   var prevQStartDate    = new Date(pqStartY, pqStartM - 1, 1);
   var prevQStartIsoWeek = isoWeekNum_PS_(prevQStartDate);
   var prevQStartIsoYear = isoWeekYear_PS_(prevQStartDate);
+  // Last day of the previous quarter = the day before this quarter starts.
+  var prevQEndDate      = new Date(qStartDate.getFullYear(), qStartDate.getMonth(), qStartDate.getDate() - 1);
+  var prevQEndIsoWeek   = isoWeekNum_PS_(prevQEndDate);
+  var prevQEndIsoYear   = isoWeekYear_PS_(prevQEndDate);
 
   // SI column: always points to last completed quarter (one behind current)
   var siQuarterCol = CONFIG_PS.SI_COL_OVERRIDE ||
@@ -835,18 +869,19 @@ function computeFiscalContext_(referenceDate) {
     inGracePeriod: inGracePeriod, inGoalWritingRamp: inGoalWritingRamp,
     prevGoalsQuarter: prevGoalsQuarter,
     prevQStartIsoWeek: prevQStartIsoWeek, prevQStartIsoYear: prevQStartIsoYear,
+    prevQEndIsoWeek: prevQEndIsoWeek, prevQEndIsoYear: prevQEndIsoYear,
   };
 }
 
 function _test_computeFiscalContext() {
   var cases = [
-    { date: "2026-06-30", desc: "Last day FY26Q4 — no grace, no ramp" },
-    { date: "2026-07-01", desc: "FY27Q1 day 0 — grace + ramp active" },
-    { date: "2026-07-07", desc: "FY27Q1 day 6 — grace + ramp active" },
-    { date: "2026-07-14", desc: "FY27Q1 day 13 — last grace day" },
-    { date: "2026-07-15", desc: "FY27Q1 day 14 — grace over, ramp active" },
-    { date: "2026-07-28", desc: "FY27Q1 day 27 — last ramp day" },
-    { date: "2026-07-29", desc: "FY27Q1 day 28 — both flags false" },
+    { date: "2026-06-30", desc: "Last day FY26Q4 — no grace, no ramp",       grace: false, ramp: false },
+    { date: "2026-07-01", desc: "FY27Q1 day 0 — grace + ramp active",        grace: true,  ramp: true  },
+    { date: "2026-07-07", desc: "FY27Q1 day 6 — grace + ramp active",        grace: true,  ramp: true  },
+    { date: "2026-07-21", desc: "FY27Q1 day 20 — last grace day (3 weeks)",  grace: true,  ramp: true  },
+    { date: "2026-07-22", desc: "FY27Q1 day 21 — grace over, ramp active",   grace: false, ramp: true  },
+    { date: "2026-07-28", desc: "FY27Q1 day 27 — last ramp day",             grace: false, ramp: true  },
+    { date: "2026-07-29", desc: "FY27Q1 day 28 — both flags false",          grace: false, ramp: false },
   ];
   cases.forEach(function(c) {
     var ctx = computeFiscalContext_(new Date(c.date));
@@ -857,8 +892,26 @@ function _test_computeFiscalContext() {
     Logger.log("  monthCols=[" + ctx.monthCols.join(", ") + "]");
     Logger.log("  qStart=W" + ctx.qStartIsoWeek + "/" + ctx.qStartIsoYear +
                " qEnd=W" + ctx.qEndIsoWeek + " graceEnd=W" + ctx.graceEndIsoWeek);
+    Logger.log("  prevQStart=W" + ctx.prevQStartIsoWeek + "/" + ctx.prevQStartIsoYear +
+               " prevQEnd=W" + ctx.prevQEndIsoWeek + "/" + ctx.prevQEndIsoYear);
     Logger.log("  inGrace=" + ctx.inGracePeriod + " inRamp=" + ctx.inGoalWritingRamp);
+    var ok = ctx.inGracePeriod === c.grace && ctx.inGoalWritingRamp === c.ramp;
+    Logger.log("  " + (ok ? "✅ PASS" : "❌ FAIL — expected grace=" + c.grace + " ramp=" + c.ramp));
   });
+
+  // Continuity check at an actual rollover: buildPrevQWeeks_PS_ and buildCurrentQWeeks_PS_
+  // must tile the calendar with no gap — and, when the boundary falls mid-week (as it does
+  // for 2026-07-01, a Wednesday), getPSReportData's dedupe must leave no duplicate week label.
+  var rollCtx  = computeFiscalContext_(new Date("2026-07-01"));
+  var prevWks  = buildPrevQWeeks_PS_(rollCtx);
+  var currWks  = buildCurrentQWeeks_PS_(rollCtx);
+  var lastPrev = prevWks[prevWks.length - 1];
+  var firstCur = currWks[0];
+  var sharedLabel = lastPrev.label === firstCur.label;
+  var gapDays = Math.round((new Date(firstCur.monday) - new Date(lastPrev.sunday)) / 86400000) - 1;
+  Logger.log("Rollover continuity: lastPrevWeek=" + lastPrev.label + " firstCurWeek=" + firstCur.label +
+             " sharedLabel=" + sharedLabel + " gapDays=" + gapDays);
+  Logger.log("  " + ((sharedLabel || gapDays === 0) ? "✅ PASS (adjacent, no gap)" : "❌ FAIL — unexpected gap between quarters"));
 }
 
 // ============================================================
@@ -1127,7 +1180,7 @@ function resolveManagerScope_(roster, managerNorm) {
 // Computes team RCR = SUM(Revenue Contribution) / SUM(TCC A+B) for the PS headcount.
 // Uses "3. RCR" as a bridge: name-matches to roster to get per-employee RCR values AND
 // harvests Employee IDs (same format as RC/TCC sheets) to do the team SUM(RC)/SUM(TCC).
-function readRCR_PS_(roster, teamSubset, ctx) {
+function readRCR_PS_(roster, teamSubset) {
   const aggRoster = teamSubset || roster;  // controls team-level aggregation; byEmployee still covers all roster
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const empty = { teamRCR: null, lastMonth: null, tier: "No Data", byEmployee: {} };
@@ -1142,20 +1195,32 @@ function readRCR_PS_(roster, teamSubset, ctx) {
   if (iRcrName === -1) iRcrName = 0;
   const iRcrId = rcrHdrs.findIndex(h => /^employee.?id/i.test(h.trim()));
 
-  // Detect last populated month from 3. RCR
-  const rcrMonthIdxs = ctx.monthCols.map(m => rcrHdrs.findIndex(h => h.trim() === m));
-  let lastMonthPos = -1;
-  for (let mi = rcrMonthIdxs.length - 1; mi >= 0; mi--) {
-    const col = rcrMonthIdxs[mi];
-    if (col === -1) continue;
-    if (rcrSheet.rows.some(r => !isNA_PS_(r[col]) && !isNaN(parseFloat(r[col])))) {
-      lastMonthPos = mi; break;
+  // Detect the true last-populated month across ALL fiscal years present in the sheet
+  // (not just the current FY's 12 columns) — month columns accumulate over time, the
+  // same pattern the SI sheet uses for its per-quarter columns. This is what keeps RCR
+  // showing the true last-closed month across a fiscal-year rollover instead of going
+  // blank until the new FY's first month closes.
+  const MONTH_HDR_RE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i;
+  const MONTH_ORDER  = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+  const rcrMonthCols = rcrHdrs
+    .map((h, i) => ({ h: h.trim(), i }))
+    .filter(({ h }) => MONTH_HDR_RE.test(h))
+    .map(({ h, i }) => {
+      const m = h.match(MONTH_HDR_RE);
+      return { name: h, col: i, sortKey: (2000 + parseInt(m[2], 10)) * 12 + MONTH_ORDER[m[1].toLowerCase()] };
+    })
+    .sort((a, b) => a.sortKey - b.sortKey);
+
+  let lastMonthIdx = -1;
+  for (let k = rcrMonthCols.length - 1; k >= 0; k--) {
+    if (rcrSheet.rows.some(r => !isNA_PS_(r[rcrMonthCols[k].col]) && !isNaN(parseFloat(r[rcrMonthCols[k].col])))) {
+      lastMonthIdx = k; break;
     }
   }
-  if (lastMonthPos === -1) { Logger.log(`⚠️ RCR: no populated month in "${CONFIG_PS.SHEET_RCR}".`); return empty; }
+  if (lastMonthIdx === -1) { Logger.log(`⚠️ RCR: no populated month in "${CONFIG_PS.SHEET_RCR}".`); return empty; }
 
-  const lastMonthName = ctx.monthCols[lastMonthPos];
-  const rcrMonthCol   = rcrMonthIdxs[lastMonthPos];
+  const lastMonthName = rcrMonthCols[lastMonthIdx].name;
+  const rcrMonthCol   = rcrMonthCols[lastMonthIdx].col;
 
   // Build per-employee RCR from 3. RCR and collect name→employeeId bridge
   const byEmployee   = {};
@@ -1232,17 +1297,16 @@ function readRCR_PS_(roster, teamSubset, ctx) {
     }
   }
 
-  // Build full fiscal-year-to-date RCR history (oldest → newest) using 3.RCR
-  // individual averages per month. Starts at the first month (Jul) through the
-  // last completed month; months with no data are skipped below (empty `vals`).
-  // The full range also feeds the per-employee "who needs support" table client-side.
+  // Build a trailing RCR history (oldest → newest) of the last CONFIG_PS.RCR_HISTORY_MONTHS
+  // populated months, using 3.RCR individual averages per month. This is a rolling window
+  // like the rest of the report — it rolls across fiscal-year boundaries instead of
+  // resetting to blank each new FY. The full range also feeds the per-employee
+  // "who needs support" table client-side.
   const rcrHistory = [];
   const rcrByEmployee = {};  // norm → { monthName: rcrValue } — all roster members, for client-side filter slicing
-  const histStart = 0;
-  for (let mi = histStart; mi <= lastMonthPos; mi++) {
-    const col = rcrMonthIdxs[mi];
-    if (col === -1) continue;
-    const monthName = ctx.monthCols[mi];
+  const histStart = Math.max(0, lastMonthIdx - CONFIG_PS.RCR_HISTORY_MONTHS + 1);
+  for (let mi = histStart; mi <= lastMonthIdx; mi++) {
+    const { name: monthName, col } = rcrMonthCols[mi];
     const vals = [];
     rcrSheet.rows.forEach(row => {
       const nm = normPS_(String(row[iRcrName] || "").trim());
@@ -1255,7 +1319,7 @@ function readRCR_PS_(roster, teamSubset, ctx) {
     });
     if (!vals.length) continue;
     const monthAvg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100;
-    const isLast   = mi === lastMonthPos;
+    const isLast   = mi === lastMonthIdx;
     const rcr      = isLast && teamRCR !== null ? teamRCR : monthAvg;
     rcrHistory.push({ month: monthName, rcr, exact: isLast && sumTCC > 0 && sumRC > 0 });
   }
@@ -1284,8 +1348,8 @@ function readSI_PS_(roster, teamSubset, ctx) {
   const aggRoster = teamSubset || roster;  // controls teamAvg / siHistory; byEmployee covers all roster
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const data    = loadSheet_PS_(ss, CONFIG_PS.SHEET_SI);
-  const quarter = ctx.siQuarterCol.match(/FY\w+/i)?.[0] || "";
-  const empty   = { teamAvg: null, quarter, byEmployee: {} };
+  const nominalQuarter = ctx.siQuarterCol.match(/FY\w+/i)?.[0] || "";
+  const empty   = { teamAvg: null, quarter: nominalQuarter, byEmployee: {} };
   if (!data) { Logger.log(`⚠️ SI sheet not found.`); return empty; }
 
   const hdrs = data.headers;
@@ -1296,14 +1360,49 @@ function readSI_PS_(roster, teamSubset, ctx) {
   const iEmpNum = hdrs.findIndex(h => /employee.?number|emp.?num/i.test(h.trim()));
   if (iEmpNum === -1) { Logger.log(`⚠️ SI: "Employee Number" column not found. Attempting name fallback.`); }
 
-  const iSI = hdrs.findIndex(h => h.trim() === ctx.siQuarterCol);
-  if (iSI === -1) {
-    Logger.log(`⚠️ SI column "${ctx.siQuarterCol}" not found. Headers: ${hdrs.join(", ")}`);
-    return empty;
-  }
-
   let siNameCol = hdrs.findIndex(h => /^name|rocketeer/i.test(h));
   if (siNameCol === -1) siNameCol = 0;
+
+  // Detect all available SI quarter columns (oldest → newest) for both the
+  // historical trend AND the current-quarter fallback below.
+  const quarterRank_ = q => {
+    const m = /FY(\d+)Q(\d)/i.exec(q || "");
+    return m ? (parseInt(m[1], 10) * 4 + parseInt(m[2], 10)) : -1;
+  };
+  const siHistCols = hdrs.reduce((acc, h, i) => {
+    const m = h.trim().match(/small\s+improvements\s+manager\s+rating\s+(FY\w+)/i);
+    if (m) acc.push({ quarter: m[1].trim(), col: i });
+    return acc;
+  }, []).sort((a, b) => quarterRank_(a.quarter) - quarterRank_(b.quarter));
+
+  const hasAnyRating_ = col => data.rows.some(row => {
+    if (isNA_PS_(row[col])) return false;
+    const n = parseFloat(row[col]);
+    return !isNaN(n) && n > 0;
+  });
+
+  // Managers typically enter SI ratings some time after a quarter closes, so right
+  // after a fiscal-quarter rollover the nominal "last closed quarter" column
+  // (ctx.siQuarterCol) can be missing or present-but-empty. Without a fallback the
+  // whole SI row goes blank — including for weeks that are still calendar-wise in
+  // the previous quarter — even though the previous rated quarter's data is right
+  // there in the sheet. Fall back to the newest column that actually has ratings.
+  let iSI = hdrs.findIndex(h => h.trim() === ctx.siQuarterCol);
+  let quarter = nominalQuarter;
+  if (iSI === -1) {
+    Logger.log(`⚠️ SI column "${ctx.siQuarterCol}" not found. Headers: ${hdrs.join(", ")}`);
+  }
+  if (iSI === -1 || !hasAnyRating_(iSI)) {
+    const fallback = siHistCols
+      .filter(c => c.col !== iSI && hasAnyRating_(c.col))
+      .sort((a, b) => quarterRank_(b.quarter) - quarterRank_(a.quarter))[0];
+    if (fallback) {
+      Logger.log(`⚠️ SI: "${ctx.siQuarterCol}" has no ratings yet — falling back to most recently rated quarter "${fallback.quarter}".`);
+      iSI = fallback.col;
+      quarter = fallback.quarter;
+    }
+  }
+  if (iSI === -1) return empty;
 
   const byEmployee = {};
   let total = 0, count = 0;
@@ -1320,12 +1419,6 @@ function readSI_PS_(roster, teamSubset, ctx) {
 
   const teamAvg = count > 0 ? Math.round((total / count) * 100) / 100 : null;
 
-  // Detect all available SI quarter columns for historical trend
-  const siHistCols = hdrs.reduce((acc, h, i) => {
-    const m = h.trim().match(/small\s+improvements\s+manager\s+rating\s+(FY\w+)/i);
-    if (m) acc.push({ quarter: m[1].trim(), col: i });
-    return acc;
-  }, []);
   const siHistory = siHistCols.map(({ quarter, col }) => {
     let t = 0, c = 0;
     data.rows.forEach(row => {
@@ -1907,10 +2000,35 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
   // This ensures all PS rocketeers' goals are captured regardless of how Class is populated there.
   const goalMap     = new Map();
   const prevGoalMap = new Map(); // prior-quarter counts for grace period display
+  // Quarter-agnostic self-comment log — every self-comment, on every goal, across ALL fiscal
+  // quarters found in the sheet. goalMap/prevGoalMap are deliberately scoped to a single
+  // quarter (compliance rules are quarter-specific), but the weekly comment-activity trend
+  // below spans many months of histWeeks and must not drop weeks whose goals belonged to an
+  // older quarter than ctx.goalsQuarter — normName → Map<goalId, Date[]>.
+  const allCommentsMap = new Map();
 
   data.rows.forEach(row => {
     const rocketeer = String(row[iRocketeer] || "").trim();
     if (!rocketeer) return;
+
+    const _norm = normPS_(rocketeer);
+    if (psNames.has(_norm) && iCommentDate !== -1) {
+      const _rawGoalId   = iGoalId   !== -1 ? String(row[iGoalId]   || "").trim() : "";
+      const _rawGoalName = iGoalName !== -1 ? String(row[iGoalName] || "").trim() : "";
+      let _goalId = _rawGoalId || _rawGoalName;
+      for (const { pattern, id } of CONFIG_PS.GOAL_ID_MAP) {
+        if (pattern.test(_rawGoalName || _rawGoalId)) { _goalId = id; break; }
+      }
+      const _commentator = String(iCommentator !== -1 ? row[iCommentator] : "").trim();
+      const _commentDate = parseDate_PS_(row[iCommentDate]);
+      if (_goalId && _commentDate && normPS_(_commentator) === _norm) {
+        if (!allCommentsMap.has(_norm)) allCommentsMap.set(_norm, new Map());
+        const _empComments = allCommentsMap.get(_norm);
+        if (!_empComments.has(_goalId)) _empComments.set(_goalId, []);
+        _empComments.get(_goalId).push(_commentDate);
+      }
+    }
+
     if (iQuarter !== -1) {
       const rowQ = String(row[iQuarter] || "").trim();
       if (ctx && ctx.inGracePeriod && rowQ === ctx.prevGoalsQuarter) {
@@ -2142,19 +2260,21 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
     const wEnd   = new Date(w.sunday  + "T23:59:59.999Z");
     let count = 0, countG03 = 0, countG01 = 0, totalComments = 0;
     psNames.forEach((_, norm) => {
-      const empGoals = goalMap.get(norm);
+      // Quarter-agnostic — a rocketeer's comment activity on an older quarter's goals
+      // still counts toward this historical week, unlike the compliance-rule goalMap above.
+      const empGoals = allCommentsMap.get(norm);
       if (!empGoals) return;
       // Count every self-comment on any goal in this Mon–Sun window
       let empWeekComments = 0;
-      empGoals.forEach(g => {
-        empWeekComments += g.selfComments.filter(d => d >= wStart && d <= wEnd).length;
+      empGoals.forEach(dates => {
+        empWeekComments += dates.filter(d => d >= wStart && d <= wEnd).length;
       });
       totalComments += empWeekComments;
       // Per-goal boolean flags — computed once, reused for counters + per-employee storage
       const g03 = empGoals.get(g03Id);
       const g01 = empGoals.get(g01Id);
-      const g03ok = !!(g03 && g03.selfComments.some(d => d >= wStart && d <= wEnd));
-      const g01ok = !!(g01 && g01.selfComments.some(d => d >= wStart && d <= wEnd));
+      const g03ok = !!(g03 && g03.some(d => d >= wStart && d <= wEnd));
+      const g01ok = !!(g01 && g01.some(d => d >= wStart && d <= wEnd));
       if (g03ok) countG03++;
       if (g01ok) countG01++;
       if (g03ok || g01ok) count++;
@@ -2175,6 +2295,74 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
   return result;
 }
 
+// totalGoals is a per-employee, week-invariant count (every week readGoalsEngagement_
+// evaluates for a given quarter shares the same goalMap, so an employee's totalGoals is
+// identical across all of that quarter's weeks) — so "has this rocketeer started logging
+// real goals in the new quarter yet" is a single per-employee fact for the whole grace
+// window, not something that needs recomputing per week. Scans all weeks defensively
+// (cheap: psNames × currentQWeeks) rather than assuming any one week is representative.
+function employeesWithNewGoals_(currentResult) {
+  const norms = new Set();
+  Object.entries(currentResult).forEach(([wk, wd]) => {
+    if (wk.startsWith('_') || !wd || !wd.byEmployee) return;
+    Object.entries(wd.byEmployee).forEach(([norm, gd]) => {
+      if ((gd && gd.totalGoals) || 0) norms.add(norm);
+    });
+  });
+  return norms;
+}
+
+// Merges the outgoing quarter's real per-week Goals compliance (prevResult) with the
+// current quarter's (currentResult) ON A PER-EMPLOYEE BASIS. A fiscal-quarter rollover can
+// land mid-ISO-week, so the outgoing quarter's last week and the incoming quarter's first
+// week can share the same ISO week label. On that shared label BOTH sides report "real"
+// data (prevResult evaluated against the outgoing quarter's actual goals; currentResult
+// evaluated against the still-empty new quarter, where the writing-ramp exemption makes
+// every rocketeer trivially "compliant"). Resolving per employee — instead of letting one
+// side win for the whole team — ensures a rocketeer who already logged real new-quarter
+// goals shows THEIR new data, while a rocketeer who hasn't yet keeps showing THEIR real
+// outgoing-quarter compliance instead of being defaulted to the trivial ramp placeholder.
+function mergeGoalsResults_(prevResult, currentResult) {
+  const hasNewGoals = employeesWithNewGoals_(currentResult);
+  const merged = Object.assign({}, prevResult);
+  for (const [wk, cur] of Object.entries(currentResult)) {
+    if (wk === '_weeklyCommenters') { merged[wk] = cur; continue; }
+    if (wk === '_audit') { merged[wk] = mergeGoalsAudit_(prevResult._audit, cur, hasNewGoals); continue; }
+    const prev = merged[wk];
+    const curHasReal  = cur  && cur.total  !== undefined;
+    const prevHasReal = prev && prev.total !== undefined;
+    if (!prevHasReal) { merged[wk] = cur; continue; }
+    if (!curHasReal) continue; // keep prev (already in `merged`)
+    // Both sides claim real data for this label — only possible on the shared boundary
+    // week. Resolve employee-by-employee instead of picking one side for the whole team.
+    const byEmployee = {};
+    const norms = new Set([...Object.keys(prev.byEmployee || {}), ...Object.keys(cur.byEmployee || {})]);
+    let compliant = 0, total = 0;
+    norms.forEach(norm => {
+      const resolved = hasNewGoals.has(norm) ? cur.byEmployee[norm] : (prev.byEmployee[norm] || cur.byEmployee[norm]);
+      byEmployee[norm] = resolved;
+      if (resolved) { total++; if (resolved.compliant) compliant++; }
+    });
+    merged[wk] = Object.assign({}, cur, { byEmployee, compliant, total });
+  }
+  return merged;
+}
+
+// Combines two _audit snapshots (flat arrays of { normName, flag, ... }), per employee:
+// a rocketeer who has started logging real new-quarter goals shows their current-quarter
+// audit flag (or no flag, if they cleared it); everyone else keeps their outgoing-quarter
+// flag so "no activity" / "supervisor-only" badges don't silently vanish for the whole
+// team just because the new quarter's goal set is still empty (see mergeGoalsResults_).
+function mergeGoalsAudit_(prevAudit, curAudit, hasNewGoals) {
+  const curByNorm = new Map((curAudit || []).map(a => [a.normName, a]));
+  const merged = new Map((prevAudit || []).map(a => [a.normName, a]));
+  hasNewGoals.forEach(norm => {
+    if (curByNorm.has(norm)) merged.set(norm, curByNorm.get(norm));
+    else merged.delete(norm); // has new-quarter goals but no current flag → flag cleared
+  });
+  return Array.from(merged.values());
+}
+
 // ============================================================
 // ASSEMBLY
 // ============================================================
@@ -2187,8 +2375,10 @@ function buildTeamSummary_(weeks, rcr, si, pto, kudos, tracked, planned, goals) 
     {
       id: "goals", label: "Goals connected",
       tooltip: `FY26Q4 goals compliance: ≥8 goals, majority (>50%) In Progress, ≥6 goals with a self-comment made this week. Quarter target: 10 goals, 8 completed by June 30.`,
+      // No unconditional isFuture blank here (unlike tracked/kudos below) — during the
+      // Goals grace period, computePSReport_ fills in future weeks with the outgoing
+      // quarter's frozen snapshot, and that data should render like any other week.
       cells: weeks.map(w => {
-        if (w.isFuture) return { display: "—", value: null };
         const b = goals[w.label] || { compliant: null, total: 0 };
         if (!b.total) return { display: "—", value: null };
         const pct = Math.round((b.compliant / b.total) * 100);
@@ -2257,7 +2447,9 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
         ptoPlannedHrs:  planned[l] && planned[l].ptoByEmployee  && planned[l].ptoByEmployee[norm]  != null ? planned[l].ptoByEmployee[norm]  : null,
         ptoHealth:   pto[l]     && pto[l].byEmployee[norm]     ? pto[l].byEmployee[norm]     : null,
         kudos:       w.isFuture  ? null : (kudos[l]   && kudos[l].byEmployee[norm]    != null ? kudos[l].byEmployee[norm]    : null),
-        goalsDetail: w.isFuture  ? null : (goals[l]  && goals[l].byEmployee[norm]    != null ? goals[l].byEmployee[norm]    : null),
+        // No unconditional isFuture null here — during the Goals grace period, future
+        // weeks can carry the outgoing quarter's frozen snapshot (see computePSReport_).
+        goalsDetail: (goals[l] && goals[l].byEmployee[norm] != null) ? goals[l].byEmployee[norm] : null,
         projects: (function() {
           var m = planned[l] && planned[l].byEmployeeProjects && planned[l].byEmployeeProjects[norm];
           if (!m) return [];
@@ -2361,7 +2553,10 @@ function buildTopPerformers_(employees, weeks, scoringCfg) {
       const trackedTarget = (wd.plannedHrs !== null && wd.plannedHrs > 0) ? wd.plannedHrs * CONFIG_PS.SCORE_TRACKED_RATIO : CONFIG_PS.DEFAULT_TARGET_WEEKLY_HRS;
       const trackedNorm = wd.trackedHrs !== null ? Math.min(1, wd.trackedHrs / trackedTarget) : 0;
       const plannedNorm = wd.plannedHrs !== null ? Math.min(1, wd.plannedHrs / CONFIG_PS.SCORE_PLANNED_CAP_HRS) : 0;
-      const goalsNorm   = (wd.goalsDetail && wd.goalsDetail.compliant) ? 1 : 0;
+      // Weeks outside the real compliance window only carry comment-trend fields (no
+      // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".
+      const hasGoalsData = !!(wd.goalsDetail && wd.goalsDetail.compliant !== undefined);
+      const goalsNorm   = (hasGoalsData && wd.goalsDetail.compliant) ? 1 : 0;
       const rcrNorm     = (e.rcr && e.rcr.value !== null) ? Math.min(1, e.rcr.value / CONFIG_PS.RCR_HEALTHY) : null;
       // Kudos: 50% for receiving any, 50% for giving any → full credit when both
       const kudosRecv = wd.kudos && wd.kudos.count > 0;
@@ -2372,8 +2567,8 @@ function buildTopPerformers_(employees, weeks, scoringCfg) {
       // PTO: binary Good = 1, At Risk = 0; excluded when no health snapshot
       const ptoNorm     = wd.ptoHealth ? (wd.ptoHealth.status === "Good" ? 1 : 0) : null;
 
-      let availW = W.goals + W.tracked + W.planned + W.kudos;
-      let earned = goalsNorm * W.goals + trackedNorm * W.tracked + plannedNorm * W.planned + kudosNorm * W.kudos;
+      let availW = (hasGoalsData ? W.goals : 0) + W.tracked + W.planned + W.kudos;
+      let earned = (hasGoalsData ? goalsNorm * W.goals : 0) + trackedNorm * W.tracked + plannedNorm * W.planned + kudosNorm * W.kudos;
 
       if (rcrNorm !== null) { availW += (W.rcr || 0); earned += rcrNorm * (W.rcr || 0); }
       if ((W.si  || 0) > 0) { availW += W.si;  earned += (siNorm  !== null ? siNorm  : 0) * W.si;  }
@@ -2464,6 +2659,12 @@ function filterGoalsBySubset_(goalsAll, subset) {
     for (const [norm, v] of Object.entries(b.byEmployee || {})) {
       if (!subset.has(norm)) continue;
       byEmp[norm] = v;
+      // Weeks outside the real compliance-evaluation window (older than the current +
+      // grace-period-previous quarter) only ever get comment-trend fields written onto
+      // byEmployee (selfCommentCount/g03Commented/g01Commented) — v.compliant is never
+      // set for those. Counting them toward total would show a fake "0 / N" instead of
+      // the "no compliance data for this week" it actually is.
+      if (v.compliant === undefined) continue;
       total++;
       if (v.compliant) compliant++;
     }
@@ -2694,12 +2895,48 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // by simple subtraction, so both full-roster and FTE variants are read separately.
   // Single read each — byEmployee covers all active, team aggregates scope to FTE.
   const ctx    = computeFiscalContext_();
-  const rcrAll = readRCR_PS_(active, fteActive, ctx);
+  const rcrAll = readRCR_PS_(active, fteActive);
   const siAll  = readSI_PS_(active, fteActive, ctx);
 
   const ptoProfiles = readPTOAccumulationProfiles_();   // shared (loaded once)
   const currentQWeeks = buildCurrentQWeeks_PS_(ctx);
-  const ptoAllWeeks = currentQWeeks.concat(weeks.filter(w => w.isFuture));
+
+  // Goals-only grace period: for CONFIG_PS.GOALS_GRACE_DAYS after a new quarter starts,
+  // merge the outgoing quarter's own remaining weeks — evaluated against its own goal set
+  // and comment thresholds — alongside the incoming quarter's early weeks. Without this,
+  // Team Summary / Employee table / Trends would show blank Goals data for weeks that
+  // already have real, previously-computed compliance, right at every quarter rollover.
+  // No other metric uses this — RCR/SI/PTO/Tracked/Planned/Kudos are already continuous.
+  let continuityQWeeks   = currentQWeeks;
+  let goalsPrevResult    = null;
+  let goalsFrozenSnapshot = null;
+  let graceEndMonday      = null;
+  if (ctx.inGracePeriod) {
+    const prevQWeeks = buildPrevQWeeks_PS_(ctx);
+    const prevCtx = {
+      goalsQuarter:  ctx.prevGoalsQuarter,
+      qStartIsoYear: ctx.prevQStartIsoYear,
+      qStartIsoWeek: ctx.prevQStartIsoWeek,
+      inGracePeriod: false,
+    };
+    goalsPrevResult  = readGoalsEngagement_(active, prevQWeeks, [], prevCtx);
+    // A quarter boundary can fall mid-week (e.g. Wed), so the last previous-quarter week
+    // and the first current-quarter week can share the same ISO week label — dedupe,
+    // keeping the current-quarter copy so it wins the same way goalsAll's merge does below.
+    const currentLabels = new Set(currentQWeeks.map(w => w.label));
+    continuityQWeeks = prevQWeeks.filter(w => !currentLabels.has(w.label)).concat(currentQWeeks);
+
+    // Freeze the outgoing quarter's own final week as "last fiscal year's record" to carry
+    // forward — mirrors how RCR/SI show one static last-known value. Filled in below for
+    // every displayed week still inside the grace window (today + up to GOALS_GRACE_DAYS)
+    // that has no real goal data of its own yet in the new quarter.
+    const lastPrevWeek = prevQWeeks[prevQWeeks.length - 1];
+    goalsFrozenSnapshot = lastPrevWeek ? goalsPrevResult[lastPrevWeek.label] : null;
+    graceEndMonday = mondayOfIsoWeek_PS_(ctx.graceEndIsoYear, ctx.graceEndIsoWeek);
+  }
+  const continuityQPastWeeks = continuityQWeeks.filter(w => !w.isFuture);
+
+  const ptoAllWeeks = continuityQWeeks.concat(weeks.filter(w => w.isFuture));
   const ptoAll  = readPTOPlanningHealthByWeek_(roster,    ptoAllWeeks, ptoProfiles);
   const ptoFTE  = readPTOPlanningHealthByWeek_(fteRoster, weeks,   ptoProfiles);
 
@@ -2709,18 +2946,52 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const histWeeks    = buildHistWeeks_(CONFIG_PS.TRACKED_HIST_WEEKS);
   const extWeeks     = [...histWeeks, ...weeks];
   const extPastWeeks = extWeeks.filter(w => !w.isFuture);
-  const currentQPastWeeks = currentQWeeks.filter(w => !w.isFuture);
-  const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, currentQPastWeeks, ptoProfiles);
+  // PTO Trend (Trends tab) is quarter-bounded like Goals — only current-quarter-to-date
+  // (plus the outgoing quarter's tail during the Goals grace period) — NOT the long
+  // TRACKED_HIST_WEEKS rolling history Tracked/Planned/Kudos use. We only care to see PTO
+  // planning health for the quarter as of today, going back.
+  const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, continuityQPastWeeks, ptoProfiles);
 
   const kudosAll   = readKudosByWeek_(active,  extWeeks);
   const trackedAll = readTrackedTimeByWeek_(roster, extWeeks);
   const plannedAll = readPlannedTimeByWeek_(roster, extWeeks);
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
-  const goalsAll   = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx);
+  const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx);
+  const goalsAll = goalsPrevResult ? mergeGoalsResults_(goalsPrevResult, goalsCurrentResult) : goalsCurrentResult;
 
-  // Per-employee goal comment flags for Q4 historical weeks (for filter-aware frontend rendering)
+  // During the grace period, any displayed week inside the grace window shows, PER
+  // EMPLOYEE, the outgoing quarter's frozen final-week snapshot for rocketeers who haven't
+  // started logging real new-quarter goals yet — so "today" and the next couple of weeks
+  // keep reporting last fiscal year's goals performance for THOSE INDIVIDUALS until the new
+  // quarter's own goals catch up, while any rocketeer who already has real new-quarter data
+  // keeps showing it. Doing this per employee (not swapping the whole week's data) means
+  // one rocketeer logging a new-quarter goal can no longer blank out every OTHER
+  // rocketeer's carried-forward Goals data when a manager filters down to just one of them.
+  // Weeks already covered by goalsPrevResult (the outgoing quarter's own calendar weeks)
+  // keep their real per-week data untouched.
+  if (ctx.inGracePeriod && goalsFrozenSnapshot) {
+    const hasNewGoals = employeesWithNewGoals_(goalsCurrentResult);
+    weeks.forEach(w => {
+      if (goalsPrevResult[w.label]) return;
+      const wMon = mondayOfIsoWeek_PS_(w.year, w.isoWeek);
+      if (wMon > graceEndMonday) return;
+      const existing = goalsAll[w.label] || { byEmployee: {} };
+      const frozenByEmployee = goalsFrozenSnapshot.byEmployee || {};
+      const byEmployee = Object.assign({}, existing.byEmployee);
+      const norms = new Set([...Object.keys(byEmployee), ...Object.keys(frozenByEmployee)]);
+      let compliant = 0, total = 0;
+      norms.forEach(norm => {
+        const resolved = hasNewGoals.has(norm) ? byEmployee[norm] : (frozenByEmployee[norm] || byEmployee[norm]);
+        byEmployee[norm] = resolved;
+        if (resolved) { total++; if (resolved.compliant) compliant++; }
+      });
+      goalsAll[w.label] = Object.assign({}, existing, { byEmployee, compliant, total });
+    });
+  }
+
+  // Per-employee goal comment flags for historical weeks (for filter-aware frontend rendering)
   const goalsQ4Hist = {};
-  currentQPastWeeks.forEach(w => {
+  continuityQPastWeeks.forEach(w => {
     const wd = goalsAll[w.label];
     if (!wd || !wd.byEmployee) return;
     const byEmp = {};
@@ -2749,10 +3020,11 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const phData        = readPHData_();
   const phByWeek      = buildPHByWeek_(phData, weeks, roster);
   const teamSummary   = buildTeamSummary_(weeks, rcrAll, siAll, ptoFTE, kudosFTE, trackedFTE, plannedFTE, goalsFTE);
-  // currentQWeeks covers current-quarter history up to now — append rolling future weeks
-  // so that per-employee planned hours for W+1 and W+2 are included in the employee table.
+  // continuityQWeeks covers current-quarter history (plus the outgoing quarter's tail
+  // during the Goals grace period) up to now — append rolling future weeks so that
+  // per-employee planned hours for W+1 and W+2 are included in the employee table.
   const futureWeeks   = weeks.filter(w => w.isFuture);
-  const employeeWeeks = futureWeeks.length ? currentQWeeks.concat(futureWeeks) : currentQWeeks;
+  const employeeWeeks = futureWeeks.length ? continuityQWeeks.concat(futureWeeks) : continuityQWeeks;
   const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll);
   const fteEmployees  = employees.filter(e => !e.isCrewMember);
 
@@ -2806,7 +3078,9 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     };
   });
 
-  const ptoQ4History = currentQPastWeeks.map(w => {
+  // Bounded to the current quarter-to-date (plus the outgoing quarter's grace-period tail)
+  // — not the long TRACKED_HIST_WEEKS window Tracked/Planned/Kudos use.
+  const ptoQ4History = continuityQPastWeeks.map(w => {
     const d = ptoQ4FTE[w.label] || { goodCount: 0, atRiskCount: 0, total: 0, score: 0, byEmployee: {} };
     const byEmp = {};
     Object.entries(d.byEmployee).forEach(([norm, emp]) => { byEmp[norm] = emp.status; });
@@ -2828,7 +3102,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     userEmail:        access.email,
     managerScopeName: managerScopeName || null,
     weeks,
-    q4Weeks:          currentQWeeks,
+    q4Weeks:          continuityQWeeks,
     weights,
     headcount: fteRoster.size,
     teamSummary,

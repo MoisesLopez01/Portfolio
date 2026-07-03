@@ -2079,7 +2079,22 @@ function closeMenuTab(id) {
 
 // ── Q4 CONSTANTS — UPDATE EACH QUARTER to match CONFIG_PS in PS Contribution Report.js ──
 // (Q4_BASE_ISO_WEEK → START_W, Q4_END → END_W, Q4_BASE_YEAR → YEAR)
-var Q4 = { START_W: 14, END_W: 26, GRACE_W: 28, YEAR: 2026 };
+// GRACE_YEAR is separate from YEAR because the one fiscal rollover that crosses a
+// calendar-year boundary (Q2 Oct-Dec → Q3 Jan-Mar) lands its grace-window weeks in the
+// NEW ISO year while START_W/END_W/YEAR still describe the outgoing quarter.
+var Q4 = { START_W: 14, END_W: 26, GRACE_W: 28, YEAR: 2026, GRACE_YEAR: 2026 };
+
+// Single source of truth for "is (year, isoWeek) inside the currently-visible Q4 window
+// (including the grace-period extension)?" — used by every Trends card gate/history filter
+// so they can't disagree about which weeks count as in-range. Handles the grace window
+// spilling into the next ISO year (Q4.GRACE_YEAR > Q4.YEAR) as a plain 2D range check.
+function weekInQ4Range_(year, week) {
+  var y0 = Q4.YEAR, w0 = Q4.START_W;
+  var y1 = Q4.GRACE_YEAR || Q4.YEAR, w1 = Q4.GRACE_W || Q4.END_W;
+  if (year < y0 || (year === y0 && week < w0)) return false;
+  if (year > y1 || (year === y1 && week > w1)) return false;
+  return true;
+}
 
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
@@ -2132,15 +2147,28 @@ function onDataLoaded(payload) {
   if (!payload.ok) { onDataError(payload.error || "Unknown error"); return; }
 
   DATA = payload;
-  // Sync Q4 constants from server so renders stay correct at every quarter rollover
+  // Sync Q4 constants from server so renders stay correct at every quarter rollover.
+  // During the Goals grace period, the OUTGOING quarter is still the relevant "current"
+  // window for the Trends cards that gate on Q4 (Goals Standing, Correlation, Time
+  // Momentum) — anchor on its start/end (extended through the grace-period end) instead
+  // of jumping straight to the brand-new quarter, which has no weeks yet. Without this,
+  // day one of a new quarter blanks those cards out even though the outgoing quarter's
+  // real, freshly-closed data is still exactly what people want to see.
+  // GRACE_W/GRACE_YEAR are only meaningful *during* the grace period (they extend the
+  // window a few weeks past the outgoing quarter's own end, possibly into the next ISO
+  // year — see weekInQ4Range_). Outside the grace period fc.graceEndIsoWeek is anchored to
+  // the NEW quarter's start (days 0–20 of it), which is BEFORE this quarter's own end for
+  // the rest of the quarter — so GRACE_W must equal END_W/YEAR then, not graceEndIsoWeek,
+  // or every week after day 20 would look "past grace" and blank the Trends cards.
   if (payload.meta && payload.meta.fiscalContext) {
     var fc = payload.meta.fiscalContext;
-    Q4 = {
-      START_W: fc.qStartIsoWeek,
-      END_W:   fc.qEndIsoWeek,
-      GRACE_W: fc.graceEndIsoWeek,
-      YEAR:    fc.qStartIsoYear,
-    };
+    Q4 = fc.inGracePeriod
+      ? { START_W: fc.prevQStartIsoWeek, END_W: fc.prevQEndIsoWeek,
+          GRACE_W: fc.graceEndIsoWeek,   YEAR:    fc.prevQStartIsoYear,
+          GRACE_YEAR: fc.graceEndIsoYear }
+      : { START_W: fc.qStartIsoWeek,     END_W:   fc.qEndIsoWeek,
+          GRACE_W: fc.qEndIsoWeek,       YEAR:    fc.qStartIsoYear,
+          GRACE_YEAR: fc.qEndIsoYear };
   }
   updateQuarterLabels_(payload.meta && payload.meta.goalsQuarter);
   goalsAuditMap = {};
@@ -2335,7 +2363,7 @@ function buildFilteredMeta(filtered) {
     var wd = e.weeks && e.weeks[cl];
     if (!wd) return;
     if (wd.trackedHrs !== null) { trackedTotal += wd.trackedHrs; trackedN++; }
-    if (wd.goalsDetail) { gt++; if (wd.goalsDetail.compliant) gc++; }
+    if (wd.goalsDetail && wd.goalsDetail.compliant !== undefined) { gt++; if (wd.goalsDetail.compliant) gc++; }
     if (wd.kudos) kudosTotal += (wd.kudos.count || 0);
   });
 
@@ -2381,12 +2409,15 @@ function buildFilteredSummary(filtered, weeks) {
   return [
     {
       id: "goals", label: "Goals connected",
+      // No unconditional isFuture blank — during the Goals grace period the server fills
+      // future weeks with the outgoing quarter's frozen snapshot on emp.weeks[w.label].goalsDetail.
       cells: weeks.map(function(w) {
-        if (w.isFuture) return { display: "—", value: null };
         var comp = 0, total = 0;
         filtered.forEach(function(e) {
           var wd = e.weeks && e.weeks[w.label];
-          if (wd && wd.goalsDetail) { total++; if (wd.goalsDetail.compliant) comp++; }
+          // Weeks outside the real compliance window only carry comment-trend fields
+          // (no .compliant) — skip them so they read as "no data" instead of "0 compliant".
+          if (wd && wd.goalsDetail && wd.goalsDetail.compliant !== undefined) { total++; if (wd.goalsDetail.compliant) comp++; }
         });
         if (!total) return { display: "—", value: null };
         var pct = Math.round(comp / total * 100);
@@ -2529,7 +2560,10 @@ function computeRkScore(emp, weekLabel) {
   var trackedTarget = (plannedHrs !== null && plannedHrs > 0) ? plannedHrs * 0.90 : 36;
   var tracked = trackedHrs !== null ? Math.min(1, trackedHrs / trackedTarget) : 0;
   var planned = plannedHrs !== null ? Math.min(1, plannedHrs / 40) : 0;
-  var goals   = (wd.goalsDetail && wd.goalsDetail.compliant) ? 1 : 0;
+  // Weeks outside the real compliance window only carry comment-trend fields (no
+  // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".
+  var hasGoalsData = !!(wd.goalsDetail && wd.goalsDetail.compliant !== undefined);
+  var goals   = (hasGoalsData && wd.goalsDetail.compliant) ? 1 : 0;
   var rcr     = rcrVal !== null ? Math.min(1, rcrVal / 2.5) : null;
   // Kudos: 50% for receiving any, 50% for giving any → full credit when both
   var kudosRecv = wd.kudos && wd.kudos.count > 0;
@@ -2545,8 +2579,9 @@ function computeRkScore(emp, weekLabel) {
   // they're scored only on Tracked, Planned, RCR, and Kudos (not penalized for data
   // they can't have). FTE keep the full weighting.
   var crew = isCrewEmp(emp);
-  var availW = W.tracked + W.planned + W.kudos + (crew ? 0 : W.goals);
-  var earned = tracked * W.tracked + planned * W.planned + kudos * W.kudos + (crew ? 0 : goals * W.goals);
+  var includeGoals = !crew && hasGoalsData;
+  var availW = W.tracked + W.planned + W.kudos + (includeGoals ? W.goals : 0);
+  var earned = tracked * W.tracked + planned * W.planned + kudos * W.kudos + (includeGoals ? goals * W.goals : 0);
 
   if (rcr !== null) { availW += (W.rcr || 0); earned += rcr * (W.rcr || 0); }
   // SI and PTO weights count for FTE when configured — null value = 0 pts, not excluded.
@@ -2590,12 +2625,38 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   function getRow(id) {
     return (DATA.teamSummary || []).find(function(r) { return r.id === id; });
   }
+  // Weeks outside the narrow rolling window DATA.weeks/DATA.teamSummary cover (e.g. an
+  // older week picked from the wider quarter-to-date ebWeekSelect range) have no pre-built
+  // cell, but the per-employee data (e.weeks[lbl]) still has it. ensureSynthWeeks batches
+  // every distinct missing label (at most weekLabel + prevWeekLabel) into ONE
+  // buildFilteredSummary call covering all rows, instead of a separate full-team,
+  // all-7-metric-rows pass per (row, week) getCell call — up to 4x redundant otherwise.
+  var synthCache = {};
+  function ensureSynthWeeks(labels) {
+    var missing = labels.filter(function(lbl) {
+      if (!lbl || synthCache[lbl]) return false;
+      return DATA.weeks.findIndex(function(w) { return w.label === lbl; }) === -1;
+    });
+    if (!missing.length) return;
+    var wObjs = missing.map(function(lbl) {
+      return (DATA.q4Weeks || []).find(function(w) { return w.label === lbl; }) ||
+        { label: lbl, isFuture: false, isPast: true };
+    });
+    var synthRows = buildFilteredSummary(allEmps, wObjs);
+    missing.forEach(function(lbl, i) {
+      var cellsById = {};
+      synthRows.forEach(function(r) { cellsById[r.id] = r.cells && r.cells[i]; });
+      synthCache[lbl] = cellsById;
+    });
+  }
   function getCell(row, lbl) {
     if (!row || !lbl) return null;
     var idx = DATA.weeks.findIndex(function(w) { return w.label === lbl; });
-    return (idx !== -1 && row.cells && row.cells[idx]) ? row.cells[idx] : null;
+    if (idx !== -1 && row.cells && row.cells[idx]) return row.cells[idx];
+    return (synthCache[lbl] && synthCache[lbl][row.id]) || null;
   }
 
+  ensureSynthWeeks([weekLabel, prevWeekLabel]);
   var goalsRow = getRow('goals'), kudosRow = getRow('kudos'), ptoRow = getRow('pto');
   var goalsCell = getCell(goalsRow, weekLabel), goalsPrev = getCell(goalsRow, prevWeekLabel);
   var kudosCell = getCell(kudosRow, weekLabel), ptoCell   = getCell(ptoRow, weekLabel);
@@ -3526,7 +3587,7 @@ function getWeekStats(employees, weekLabel) {
     if (!wd) return;
     if (wd.trackedHrs != null && !isNaN(wd.trackedHrs)) { tracked += +wd.trackedHrs; trackedHC++; }
     if (wd.plannedHrs != null && wd.plannedHrs > 0)     { plannedHC++; }
-    if (wd.goalsDetail) { gt++; if (wd.goalsDetail.compliant) gc++; }
+    if (wd.goalsDetail && wd.goalsDetail.compliant !== undefined) { gt++; if (wd.goalsDetail.compliant) gc++; }
     if (wd.kudos) kudos += (wd.kudos.count || 0);
     if (wd.ptoHealth) {
       if (wd.ptoHealth.status === 'Good') ptoGood++; else ptoAtRisk++;
@@ -3798,11 +3859,14 @@ function renderCorrelationCharts(filtered) {
   var curW      = curWMatch ? parseInt(curWMatch[2]) : Q4_START_W;
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
-  if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_END_W) { card.style.display = "none"; return; }
+  // Allow through the grace-period tail — Q4 itself already anchors on the outgoing
+  // quarter during grace (see onDataLoaded), and weekInQ4Range_ handles that window
+  // spilling into the next ISO year at the one rollover that crosses Dec 31.
+  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
 
   var hist = fullHist ? fullHist.filter(function(h) {
     var m = h.label.match(/(\d{4})\.W(\d+)/);
-    return m && parseInt(m[1]) === Q4_YEAR && parseInt(m[2]) >= Q4_START_W;
+    return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
   }) : [];
 
   var hasG03 = hist.some(function(h) { return h.g03CommentedPct !== undefined && h.g03CommentedPct !== null; });
@@ -6953,10 +7017,9 @@ function renderGoalsStanding(filtered) {
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
   // Show during current quarter plus one grace week (GRACE_W) so managers can confirm closures
-  var Q4_GRACE_W = Q4.GRACE_W || Q4_END_W;
-  if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_GRACE_W) { card.style.display = "none"; return; }
+  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
   card.style.display = "";
-  var isGracePeriod = curW > Q4_END_W;
+  var isGracePeriod = curYear !== Q4_YEAR || curW > Q4_END_W;
 
   var qWeek          = Math.max(1, curW - Q4_START_W + 1);
   var weeksInQ4      = Q4_END_W - Q4_START_W + 1; // 13
@@ -6978,7 +7041,7 @@ function renderGoalsStanding(filtered) {
   var compliant = 0, total = 0;
   filtered.forEach(function(e) {
     var wd = e.weeks && e.weeks[refLabel];
-    if (!wd || !wd.goalsDetail) return;
+    if (!wd || !wd.goalsDetail || wd.goalsDetail.compliant === undefined) return;
     total++;
     if (wd.goalsDetail.compliant) compliant++;
   });
@@ -6989,7 +7052,7 @@ function renderGoalsStanding(filtered) {
   var isGSFiltered = filtered.length < allFTECount;
   var q4Hist = fullHist.filter(function(h) {
     var m = h.label.match(/(\d{4})\.W(\d+)/);
-    return m && parseInt(m[1]) === Q4_YEAR && parseInt(m[2]) >= Q4_START_W;
+    return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
   });
 
   // ── Filter-aware comment averages ─────────────────────────────────────
@@ -7727,11 +7790,12 @@ function renderTimeMomentum(filtered) {
   var curW      = curWMatch ? parseInt(curWMatch[2]) : Q4_START_W;
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
-  if (curYear !== Q4_YEAR || curW < Q4_START_W || curW > Q4_END_W) { card.style.display = "none"; return; }
+  // Allow through the grace-period tail — see renderCorrelationCharts for why.
+  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
 
   var fullHist = (DATA.trackedHistory || []).filter(function(h) {
     var m = h.label.match(/(\d{4})\.W(\d+)/);
-    return m && parseInt(m[1]) === Q4_YEAR && parseInt(m[2]) >= Q4_START_W;
+    return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
   });
   if (!fullHist.length) { card.style.display = "none"; return; }
   card.style.display = "";
