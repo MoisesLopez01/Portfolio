@@ -55,13 +55,17 @@ emp.weeks[label].ptoAdjustedTargetHrs = Math.max(
 Normal week (0h PTO) → 40h target, unchanged. A week with 8h PTO → 32h target. A full-PTO week
 (40h+) → floors at `PTO_MIN_TARGET_HRS` (0).
 
-### Consumers (three call sites, all switch off the flat constant)
+### Consumers — corrected after reading the actual implementation
 
-**1. Team Radar** (`PS Dashboard.html` — `computeGroupMetrics()` client-side, and the server
-mirror used by `buildTopPerformers_`):
-- Planned axis target: average `ptoAdjustedTargetHrs` across the group/week, replacing the flat
-  40h target.
-- Tracked axis floor: 90% of that same averaged target, replacing the flat 36h floor.
+Reading the real code turned up two corrections to the mechanism originally assumed above:
+
+**1. Team Radar** (`PS Dashboard.html` — `computeGroupMetrics()`): the Planned/Tracked axes do
+**not** compare hours against a 40h/36h target — they score a **binary compliance percentage**:
+"% of the group who logged/planned ANY hours > 0 that week." A numeric PTO-adjusted target
+ratio doesn't apply to a binary metric. Fix instead: **exclude** anyone with
+`ptoPlannedHrs >= CONFIG_PS.PTO_IMPACT_THRESHOLD_HRS` that week from that axis's denominator (`n`
+in `trackedCompliancePct`/`plannedCompliancePct`), so their 0 hours during a PTO week isn't
+counted as "failed to plan/track" — the same exclusion pattern already used for Goals.
 
 **2. Top Rocketeers scoring** (`buildTopPerformers_` server-side, `computeRkScore` client-side —
 kept in sync in the same commit, per the project's existing SI/PTO-denominator precedent):
@@ -69,13 +73,18 @@ kept in sync in the same commit, per the project's existing SI/PTO-denominator p
 // before: plannedNorm = min(plannedHrs / CONFIG_PS.SCORE_PLANNED_CAP_HRS, 1)
 plannedNorm = Math.min(plannedHrs / (ptoAdjustedTargetHrs || CONFIG_PS.SCORE_PLANNED_CAP_HRS), 1);
 ```
+Additional related fix (same root cause, found while implementing): `trackedNorm`'s target
+falls back to a flat `DEFAULT_TARGET_WEEKLY_HRS` (36h) whenever `plannedHrs` is 0 — which is
+exactly what happens in a full-PTO week (Planned is already net of PTO). Without a fix, tracked
+score would still be zeroed out on a full-PTO week even after the `plannedNorm` fix above. The
+fallback switches to `ptoAdjustedTargetHrs * SCORE_TRACKED_RATIO` instead of the flat constant,
+with both `plannedNorm` and `trackedNorm` guarding the target-is-zero case (full credit, not
+divide-by-zero) when nothing was expected that week.
 
-**3. Trends — Team Delivery Rate chart** (`renderTimeMomentum`):
-- Delivery rate (`tracked/planned %`) is already largely self-correcting since planned is net of
-  PTO. The one real risk is a near-zero denominator during a full-PTO week producing a
-  meaningless spike or `NaN`. Fix: when the week's averaged `ptoAdjustedTargetHrs` is at or near
-  the floor (`PTO_MIN_TARGET_HRS`), render that week's point as **"PTO week"** (no numeric
-  delivery rate, distinct marker) instead of computing a ratio.
+**3. Trends — Team Delivery Rate chart** (`renderTimeMomentum`): **no change needed.** It already
+sums already-PTO-net planned/tracked totals team-wide, and already returns `null` (renders as a
+gap in the line, not a misleading 0%/spike) whenever team planned hours for a week is 0. Listed
+here only to record that it was checked, not skipped.
 
 ---
 
@@ -149,7 +158,7 @@ PTO_MIN_TARGET_HRS: 0,          // floor for ptoAdjustedTargetHrs
 | File | Change |
 |---|---|
 | `PS Contribution Report.js` | Add 3 CONFIG_PS constants; add `ptoAdjustedTargetHrs` to `buildEmployeeRows_`; update `buildTopPerformers_` plannedNorm calc; add rule-3 PTO guard + `ptoExempt` flag in `readGoalsEngagement_` |
-| `PS Dashboard.html` | Update `computeGroupMetrics()` (Radar Planned/Tracked axis targets) and `computeRkScore` (plannedNorm calc) to use `ptoAdjustedTargetHrs`; update `renderTimeMomentum` to render "PTO week" markers instead of a ratio near the floor; add PTO-impact note logic to `generateTeamBrief()` |
+| `PS Dashboard.html` | Update `computeGroupMetrics()` to exclude PTO-impacted employees (≥8h that week) from the Planned/Tracked axis denominators; update `computeRkScore` (plannedNorm + trackedNorm fallback) to use `ptoAdjustedTargetHrs`; add PTO-impact note logic to `generateTeamBrief()`. No change to `renderTimeMomentum` (already PTO-safe). |
 
 ---
 
