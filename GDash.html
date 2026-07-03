@@ -178,6 +178,12 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 #modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:14px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:modalIn .2s ease}
 @keyframes modalIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+/* Individual drill-down — an expandable table row inserted after the clicked row,
+   not a modal. A viewport-height-capped popup had no reliable way to scroll to the
+   rest of a 10+-goal list; an inline row just grows the table within the page's own
+   scroll, which always works. */
+.data-table tr.drill-row td{background:#F8FAFC;cursor:default}
+.data-table tr.drill-row:hover td{background:#F8FAFC}
 .modal-head{padding:18px 20px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
 .modal-head h3{font-size:14px;font-weight:800;color:var(--void)}
 .modal-close{background:none;border:none;font-size:16px;color:var(--muted);padding:2px 6px;border-radius:4px}
@@ -284,9 +290,8 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <button class="header-btn" onclick="refreshData()">↺ Refresh</button>
     <div class="nav-menu-wrap" id="nav-menu-wrap">
       <button class="nav-menu-btn" id="nav-menu-btn" onclick="toggleNavMenu()" title="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
-      <div class="nav-menu-panel" id="nav-menu-panel" role="menu">
-        <button class="nav-menu-item" role="menuitem" onclick="openAccessTab_()">🔒 Access Control</button>
-      </div>
+      <!-- Populated at runtime by renderNavMenu_() from VIEWS (location: "menu") -->
+      <div class="nav-menu-panel" id="nav-menu-panel" role="menu"></div>
     </div>
   </div>
 
@@ -323,12 +328,8 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
   <!-- Tab Nav -->
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('overview')"  data-tab="overview">Overview</button>
-    <button class="tab-btn"        onclick="switchTab('trend')"     data-tab="trend">Engagement</button>
-    <button class="tab-btn"        onclick="switchTab('breakdown')" data-tab="breakdown">Breakdown</button>
-    <button class="tab-btn"        onclick="switchTab('atrisk')"    data-tab="atrisk" id="tab-btn-atrisk">⚠ At Risk</button>
+    <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
-    <button class="tab-btn"        onclick="switchTab('allrockets')" data-tab="allrockets">All Rocketeers</button>
-    <button class="tab-btn"        onclick="switchTab('individual')" data-tab="individual">Individual Engagement List</button>
   </div>
 
   <main>
@@ -362,42 +363,23 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
       </div>
-      <!-- At-Risk preview (collapsible) -->
-      <div class="section-card">
-        <div class="section-head" style="cursor:pointer" onclick="toggleSection('atrisk-preview','atrisk-toggle')">
-          <div>
-            <h2>See Who Needs Support
-              <span id="atrisk-badge" style="background:#FEE2E2;color:#B91C1C;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:800;margin-left:6px"></span>
-            </h2>
-          </div>
-          <div class="section-actions">
-            <button class="btn" onclick="event.stopPropagation();exportAtRiskCSV()">⬇ CSV</button>
-            <span id="atrisk-toggle" style="color:var(--muted);font-size:12px">▾</span>
-          </div>
-        </div>
-        <div id="atrisk-preview" style="display:none">
-          <div class="section-body" id="atrisk-preview-body"></div>
-        </div>
-      </div>
-    </div>
 
-    <!-- ── COMMENTS TREND ── -->
-    <div id="pane-trend" class="tab-pane">
-      <div class="kpi-grid" id="kpi-trend"></div>
+      <!-- Comments Volume Trend (moved from the old standalone Engagement tab) -->
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Comments Volume Week Over Week</h2><p class="section-sub">Total org + department breakdown · ISO weeks</p></div>
-          <button class="btn" onclick="exportPNG('pane-trend','comments-trend.png')">⬇ PNG</button>
+          <div><h2>Comments Volume Week Over Week</h2><p class="section-sub">Total org + department breakdown · ISO weeks · glance-level engagement pulse</p></div>
+          <button class="btn" onclick="exportPNG('overview-trend-panel','comments-trend.png')">⬇ PNG</button>
         </div>
-        <div class="section-body">
+        <div class="section-body" id="overview-trend-panel">
           <div style="margin-bottom:10px">
             <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:8px">Departments:</span>
             <div id="trend-dept-selector" style="display:inline-flex;flex-wrap:wrap;gap:6px"></div>
           </div>
-          <div style="height:360px;position:relative"><canvas id="chart-trend"></canvas></div>
+          <div style="height:320px;position:relative"><canvas id="chart-trend"></canvas></div>
         </div>
       </div>
-      <!-- Team Engagement + Manager Scorecard -->
+
+      <!-- Team Engagement + Manager Scorecard (moved from the old standalone Engagement tab) -->
       <div class="col-row">
         <div class="section-card">
           <div class="section-head">
@@ -407,52 +389,27 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         </div>
         <div class="section-card">
           <div class="section-head">
-            <div><h2>Manager Scorecard</h2><p class="section-sub">Avg comments left on team goals · % of team reached</p></div>
+            <div><h2>Manager Scorecard</h2><p class="section-sub">Avg comments left on team goals · % of team reached · click a manager to view their detail</p></div>
           </div>
           <div class="section-body" id="engagement-managers"></div>
         </div>
       </div>
-      <!-- Individual Engagement List -->
-      <div class="section-card" id="card-engagement-list">
-        <div class="section-head">
-          <div><h2>Individual Engagement List</h2><p class="section-sub" id="engagement-list-sub"></p></div>
-          <div class="section-actions">
-            <button class="btn" onclick="exportEngagementCSV_()">&#8595; CSV</button>
-            <button class="btn" onclick="exportPNG('card-engagement-list','engagement-list.png')">&#8595; PNG</button>
-          </div>
-        </div>
-        <div class="section-body" id="engagement-list"></div>
-      </div>
-    </div>
 
-    <!-- ── BREAKDOWN ── -->
-    <div id="pane-breakdown" class="tab-pane">
-      <div class="section-card" id="breakdown-top">
-        <div class="section-head">
-          <div><h2>Location Compliance Rates</h2><p class="section-sub">Sorted highest to lowest · headcount shown</p></div>
-          <div class="section-actions">
-            <button class="btn" onclick="exportPNG('pane-breakdown','breakdown.png')">⬇ Export All PNG</button>
-          </div>
-        </div>
-        <div class="chart-wrap"><div style="height:340px;position:relative"><canvas id="chart-location"></canvas></div></div>
-      </div>
-      <div class="col-3-grid" id="breakdown-tables"></div>
-    </div>
-
-    <!-- ── AT RISK ── -->
-    <div id="pane-atrisk" class="tab-pane">
-      <div class="kpi-grid" id="kpi-atrisk"></div>
+      <!-- Needs Support: full table (previously duplicated between this preview and the standalone At Risk tab — now renders in exactly one place) -->
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person</p></div>
+          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person · click a row to view full detail</p></div>
           <div class="section-actions">
             <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
-            <button class="btn" onclick="exportPNG('pane-atrisk','at-risk.png')">⬇ PNG</button>
+            <button class="btn" onclick="exportPNG('needs-support-panel','needs-support.png')">⬇ PNG</button>
           </div>
         </div>
-        <div class="section-body" id="atrisk-body"></div>
+        <div class="section-body" id="needs-support-panel">
+          <div class="kpi-grid" id="kpi-needs-support" style="margin-bottom:14px"></div>
+          <div id="atrisk-body"></div>
+        </div>
       </div>
-      <div class="section-card" style="margin-top:14px;border-left:4px solid var(--muted)">
+      <div class="section-card" style="border-left:4px solid var(--muted)">
         <div class="section-head" style="cursor:pointer" onclick="toggleSection('attrition-body','attrition-toggle')">
           <div><h2>Attrition <span id="attrition-count-badge" style="color:var(--muted);font-weight:600"></span></h2>
             <p class="section-sub">Departed rocketeers with activity this quarter · excluded from the compliance rate/RPI/STF/engagement metrics above, shown here for HR reference only</p></div>
@@ -460,6 +417,58 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         </div>
         <div id="attrition-body" style="display:none">
           <div class="section-body" id="attrition-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TEAM &amp; INDIVIDUALS ──
+         Replaces the old Breakdown + All Rocketeers + Individual Engagement List tabs.
+         "Org Breakdown" reuses renderBreakdown()'s tables/chart unchanged, just collapsed by default.
+         The roster below toggles between a filter-aware "This Quarter" view (getFiltered(), fixing the
+         old bug where Breakdown/All Rocketeers/Individual ignored the global filter chips) and the
+         existing "All Time" All-Rocketeers payload — both share one manager-grouped table renderer. -->
+    <div id="pane-team" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head" style="cursor:pointer" onclick="toggleTeamBreakdown_()">
+          <div><h2>Org Breakdown</h2><p class="section-sub">Compliance by Department / Location / Job Family (collapsed by default)</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="event.stopPropagation();exportPNG('team-breakdown-content','breakdown.png')">⬇ Export All PNG</button>
+            <span id="team-breakdown-toggle" style="color:var(--muted);font-size:12px">▾</span>
+          </div>
+        </div>
+        <div id="team-breakdown-body" style="display:none">
+          <div id="team-breakdown-content">
+            <div id="breakdown-top" style="border-top:1px solid var(--border)">
+              <div class="section-head">
+                <div><h2>Location Compliance Rates</h2><p class="section-sub">Sorted highest to lowest · headcount shown</p></div>
+              </div>
+              <div class="chart-wrap"><div style="height:340px;position:relative"><canvas id="chart-location"></canvas></div></div>
+            </div>
+            <div class="col-3-grid" id="breakdown-tables" style="padding:16px"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Rocketeer Roster</h2><p class="section-sub" id="team-roster-sub"></p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportEngagementCSV_()">⬇ CSV</button>
+            <button class="btn" onclick="exportPNG('team-roster-groups','team-roster.png')">⬇ PNG</button>
+            <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+              <button class="btn btn-primary" id="btn-roster-thisq" data-mode="thisQuarter" aria-pressed="true"
+                      style="border:none;border-radius:0" onclick="setTeamRosterMode_('thisQuarter')">This Quarter</button>
+              <button class="btn" id="btn-roster-allt" data-mode="allTime" aria-pressed="false"
+                      style="border:none;border-radius:0;border-left:1px solid var(--border)" onclick="setTeamRosterMode_('allTime')">All Time</button>
+            </div>
+          </div>
+        </div>
+        <div class="section-body">
+          <label for="team-search" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Filter roster by manager or rocketeer name</label>
+          <input type="text" id="team-search" placeholder="Filter by manager or rocketeer name…" oninput="filterTeamRoster_(this.value)"
+                 aria-label="Filter roster by manager or rocketeer name" autocomplete="off"
+                 style="width:100%;max-width:360px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;margin-bottom:14px">
+          <div id="team-roster-groups"></div>
         </div>
       </div>
     </div>
@@ -481,37 +490,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
         <div class="section-body" id="tracker-body"></div>
-      </div>
-    </div>
-
-    <!-- ── ALL ROCKETEERS ── -->
-    <div id="pane-allrockets" class="tab-pane">
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>All Rocketeers</h2><p class="section-sub">Every Rocketeer who has ever logged a goal · grouped by manager · all quarters combined</p></div>
-        </div>
-        <div class="section-body">
-          <input type="text" id="allrock-filter" placeholder="Filter by manager or rocketeer name…"
-                 oninput="filterAllRocketeers(this.value)"
-                 style="width:100%;max-width:360px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;margin-bottom:14px">
-          <div id="allrock-groups"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── INDIVIDUAL ENGAGEMENT LIST (auditor drill-down) ── -->
-    <div id="pane-individual" class="tab-pane">
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>Individual Engagement List</h2><p class="section-sub">Pick one rocketeer to see every goal this quarter with its full comment thread, split IC vs Manager</p></div>
-        </div>
-        <div class="section-body">
-          <input type="text" id="individual-search" placeholder="Search for a rocketeer by name…"
-                 oninput="searchIndividual(this.value)" autocomplete="off"
-                 style="width:100%;max-width:360px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit">
-          <div id="individual-search-results" style="margin-top:6px;max-width:360px"></div>
-          <div id="individual-detail" style="margin-top:16px"></div>
-        </div>
       </div>
     </div>
 
@@ -575,13 +553,38 @@ var S = {
   lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
   reviewTarget:   null,
   trendDepts:     [],  // department lines shown on trend chart
-  allRocketeersData:   null,  // lazy-loaded on first visit to the All Rocketeers tab
-  allRocketeersFilter: '',    // current text filter on that tab
-  individualQuery:     '',    // current search text on the Individual Engagement List tab
-  individualDetail:    null,  // last-loaded getRocketeerGoalDetail() result
+  allRocketeersData:  null,          // lazy-loaded on first visit to the "All Time" roster view
+  teamRosterMode:     'thisQuarter', // 'thisQuarter' | 'allTime' — Team & Individuals roster toggle
+  teamSearchQuery:    '',            // shared filter box for whichever roster view is active
 };
 
 var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
+
+// ── VIEWS — single source of truth for navigation ─────────────────
+// location: "tabbar" = always-visible tab; "menu" = behind the ☰ menu.
+// roles: null = every role; otherwise an allow-list checked by canSeeView_().
+// GDash pane ids already follow the "pane-<id>" convention and tab buttons already carry
+// data-tab="<id>" in markup, so VIEWS only needs to store id/label/location/roles (no
+// separate btnId/paneId bookkeeping is needed the way PS Dashboard.html does it).
+var VIEWS = [
+  { id: 'overview',  label: 'Overview',              location: 'tabbar', roles: null },
+  { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
+  { id: 'hrtracker', label: 'HR Tracker',            location: 'tabbar', roles: null },
+  { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
+];
+
+function viewById_(id) {
+  for (var i = 0; i < VIEWS.length; i++) if (VIEWS[i].id === id) return VIEWS[i];
+  return null;
+}
+
+function canSeeView_(view) {
+  if (!view) return false;
+  if (!view.roles) return true;
+  var role = S.data && S.data.userRole;
+  if (!role) return true; // role not resolved yet — guard applies once payload arrives
+  return view.roles.indexOf(role) !== -1;
+}
 
 // ── INIT ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
@@ -589,6 +592,17 @@ document.addEventListener('DOMContentLoaded', function() {
   init();
   document.addEventListener('click', function(e) {
     if (!e.target.closest('.chip-wrap')) closeAllDropdowns();
+  });
+  // Delegated row-click handler for the drill-down mechanisms, rather than an inline
+  // onclick built by string concatenation — the name/normName is read from a
+  // data-* attribute (HTML-decoded by the browser, never re-parsed as JS), which is
+  // what makes this safe for names containing an apostrophe. Attached once here since
+  // these rows are rebuilt via innerHTML on every render.
+  document.addEventListener('click', function(e) {
+    var mgrRow = e.target.closest('tr[data-manager]');
+    if (mgrRow) { openManagerTeam_(mgrRow.dataset.manager); return; }
+    var row = e.target.closest('tr[data-normname]');
+    if (row) toggleIndividualDrill_(row, row.dataset.normname, row.dataset.quarter || null);
   });
 });
 
@@ -778,7 +792,10 @@ function getFiltered() {
 
 // ── TAB SWITCHING ─────────────────────────────────────────────────
 function switchTab(tabId) {
-  if (tabId !== 'access') S.lastRegularTab = tabId;
+  var view = viewById_(tabId);
+  if (!view || !canSeeView_(view)) { tabId = 'overview'; view = viewById_(tabId); }
+
+  if (view.location !== 'menu') S.lastRegularTab = tabId; // fallback target when leaving a ☰-menu pane
   S.activeTab = tabId;
   document.querySelectorAll('.tab-btn').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-tab') === tabId);
@@ -791,18 +808,18 @@ function switchTab(tabId) {
 
 function renderTab(tabId) {
   var emps = getFiltered();
-  if      (tabId === 'overview')   renderOverview(emps);
-  else if (tabId === 'trend')      renderEngagement(emps);
-  else if (tabId === 'breakdown')  renderBreakdown(emps);
-  else if (tabId === 'atrisk')     renderAtRisk(emps);
-  else if (tabId === 'hrtracker')  renderHRTracker();
-  else if (tabId === 'allrockets') renderAllRocketeers();
-  else if (tabId === 'individual') renderIndividualTab_();
-  else if (tabId === 'access')     renderAccessTab_();
+  if      (tabId === 'overview')  renderOverview(emps);
+  else if (tabId === 'team')      renderTeam(emps);
+  else if (tabId === 'hrtracker') renderHRTracker();
+  else if (tabId === 'access')    renderAccessTab_();
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────────────
+// Folds in the old standalone Engagement tab (KPI cards trimmed, trend chart, Team
+// Engagement Rate, Manager Scorecard) and the old standalone At Risk tab (full Needs
+// Support table + Attrition) — see spec docs/superpowers/specs for the consolidation.
 function renderOverview(emps) {
+  var eng      = computeEngagementClient_(emps);
   var total    = emps.length;
   var onTarget = emps.filter(function(e){ return e.complianceStatus === 'On Target'; }).length;
   var watch    = emps.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
@@ -810,22 +827,19 @@ function renderOverview(emps) {
   var rate     = total > 0 ? (onTarget / total * 100).toFixed(1) : '0.0';
   var avgGoals = total > 0 ? (emps.reduce(function(s,e){ return s + e.totalGoals; },0)/total).toFixed(1) : '0';
 
+  // 8 of the ~12 candidate cards (6 original Overview + 6 original Engagement) — trimmed
+  // to the most decision-relevant mix of compliance and engagement signals; "On Target",
+  // "Active Commenters", "Avg Self-Cmts" and "Avg Mgr-Cmts" are dropped as derivable from
+  // (or redundant with) the cards kept below.
   document.getElementById('kpi-overview').innerHTML =
-    kpiCard('Total Rocketeers',   total,          '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
-    kpiCard('Compliance Rate',    rate + '%',     '🎯', '#058CDC', '10+ goals = On Target') +
-    kpiCard('On Target',          onTarget,       '✅', '#00A86B', '10+ goals set this quarter') +
-    kpiCard('Watch (8–9 goals)',  watch,          '⏳', '#F59E0B', 'One or two goals from full compliance') +
-    kpiCard('At Risk (&lt;8)',    atRisk,         '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk') +
-    kpiCard('Avg Goals / Person', avgGoals,       '📊', '#2864E6', 'Average across filtered selection');
-
-  var isGrace = !!(S.data && S.data.isGoalCreationGrace);
-  // Count unique people in the support pool (same logic as renderAtRiskBody)
-  var supportCount = emps.filter(function(e) {
-    var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
-    return compFail || !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
-  }).length;
-  document.getElementById('tab-btn-atrisk').textContent = '⚠ At Risk (' + (watch + atRisk) + ')';
-  document.getElementById('atrisk-badge').textContent   = supportCount;
+    kpiCard('Total Rocketeers',    total,                        '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
+    kpiCard('Compliance Rate',     rate + '%',                   '🎯', '#058CDC', '10+ goals = On Target') +
+    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', '#F59E0B', 'One or two goals from full compliance') +
+    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk') +
+    kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%', '💬', '#2864E6', '≥1 self-comment this quarter') +
+    kpiCard('Silent',              eng.silentCount    || 0,      '🔇', '#9B59B6', '0 self-comments · has goals') +
+    kpiCard('Below Pace',          eng.belowPaceCount || 0,      '🐢', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
+    kpiCard('Avg Goals / Person',  avgGoals,                     '📊', '#64748B', 'Average across filtered selection');
 
   // Goal Status Distribution
   var gsd = computeGoalStatus_(emps);
@@ -834,6 +848,16 @@ function renderOverview(emps) {
 
   // Compliance donut
   buildDonut('chart-donut', onTarget, watch, atRisk);
+
+  // Comments Volume Trend (moved from the old Engagement tab)
+  if (S.data && S.data.commentTrend) {
+    buildTrendDeptChips_(S.data.commentTrend);
+    buildCommentTrendChart('chart-trend', S.data.commentTrend, S.trendDepts);
+  }
+
+  // Team Engagement Rate + Manager Scorecard (moved from the old Engagement tab)
+  renderTeamEngagement_(eng);
+  renderManagerScorecard_(eng);
 
   // HR summary card
   var qtr     = S.data ? S.data.quarter : '';
@@ -848,8 +872,19 @@ function renderOverview(emps) {
     '</div>' +
     '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open HR Tracker →</button>';
 
-  // At-Risk preview
-  renderAtRiskBody(document.getElementById('atrisk-preview-body'), emps, true);
+  // Needs Support: full table (replaces both the old collapsed preview and the old
+  // standalone At Risk tab — the table now renders in exactly one place) + Attrition.
+  var notEngaging  = emps.filter(function(e){ return e.hasEngagementConcern; }).length;
+  var stuckPlanned = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; }).length;
+  document.getElementById('kpi-needs-support').innerHTML =
+    kpiCard('Not Engaging',     notEngaging,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
+    kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments');
+  renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
+
+  var attrition = (S.data && S.data.attrition) || [];
+  var attritionBadge = document.getElementById('attrition-count-badge');
+  if (attritionBadge) attritionBadge.textContent = attrition.length ? '(' + attrition.length + ')' : '';
+  renderAttritionSection_(document.getElementById('attrition-table'), attrition);
 }
 
 // ── CLIENT-SIDE ENGAGEMENT COMPUTATION ───────────────────────────
@@ -956,31 +991,7 @@ function computeEngagementClient_(emps) {
   };
 }
 
-// ── COMMENTS TREND ────────────────────────────────────────────────
-function renderEngagement(emps) {
-  if (!S.data || !S.data.commentTrend) return;
-  var trend = S.data.commentTrend;
-  var eng   = computeEngagementClient_(emps);
-
-  // 6 Engagement KPI cards
-  document.getElementById('kpi-trend').innerHTML =
-    kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%',  '🎯', '#058CDC', '≥1 self-comment this quarter') +
-    kpiCard('Active Commenters',   eng.activeCount    || 0,        '✅', '#00A86B', 'self-commented this qtr') +
-    kpiCard('Silent',              eng.silentCount    || 0,        '🔇', '#EF4444', '0 self-comments · has goals') +
-    kpiCard('Below Pace',          eng.belowPaceCount || 0,        '⏳', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
-    kpiCard('Avg Self-Cmts',       eng.avgSelfCmts    || 0,        '💬', '#9B59B6', 'per rocketeer with goals') +
-    kpiCard('Avg Mgr-Cmts',        eng.avgMgrCmts     || 0,        '👔', '#2864E6', 'per rocketeer with goals');
-
-  // Department chip selector + trend chart (unchanged)
-  buildTrendDeptChips_(trend);
-  buildCommentTrendChart('chart-trend', trend, S.trendDepts);
-
-  // New engagement sections
-  renderTeamEngagement_(eng);
-  renderManagerScorecard_(eng);
-  renderEngagerList_(eng);
-}
-
+// ── ENGAGEMENT COMPUTATION HELPERS (rendered from Overview) ────────
 function renderTeamEngagement_(eng) {
   var el = document.getElementById('engagement-team');
   if (!el) return;
@@ -1027,7 +1038,10 @@ function renderManagerScorecard_(eng) {
   html += '<th style="text-align:center">Team</th>';
   html += '</tr></thead><tbody>';
   eng.managerScorecard.forEach(function(m) {
-    html += '<tr>';
+    // Drills into this manager's TEAM (Team & Individuals, filtered), not their own
+    // goal detail — most managers never log personal PS goals, so opening the
+    // individual-detail modal here almost always came back empty. See openManagerTeam_.
+    html += '<tr style="cursor:pointer" title="View ' + esc(m.name) + '&#8217;s team →" data-manager="' + esc(m.name) + '">';
     html += '<td style="font-weight:600;white-space:nowrap">' + esc(m.name);
     if (m.isSeniorLeader) {
       html += ' <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle">Senior Leader</span>';
@@ -1040,59 +1054,6 @@ function renderManagerScorecard_(eng) {
   });
   html += '</tbody></table></div>';
   html += '<div style="font-size:9px;color:var(--muted);margin-top:8px">&#x1F7E2; &ge;2 avg cmts &nbsp;&middot;&nbsp; &#x1F7E1; 1&ndash;2 &nbsp;&middot;&nbsp; &#x1F534; &lt;1 &nbsp;&middot;&nbsp; Coverage: % of team with &ge;1 manager comment</div>';
-  el.innerHTML = html;
-}
-
-function renderEngagerList_(eng) {
-  var el  = document.getElementById('engagement-list');
-  var sub = document.getElementById('engagement-list-sub');
-  if (!el) return;
-  if (!eng || !eng.engagerList || !eng.engagerList.length) {
-    el.innerHTML = '<div class="empty-state">No engagement data available.</div>';
-    return;
-  }
-  var threshold = eng.paceThreshold || 0;
-  var elapsed   = eng.weeksElapsed  || 0;
-  if (sub) sub.textContent = 'Week ' + elapsed + ' of quarter · pace min = ' + threshold + ' self-comments · Silent → Below Pace → At Pace';
-
-  var noteMap = buildNoteMap_();
-
-  var html = '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
-  html += '<th>Rocketeer</th><th>Supervisor</th><th>Dept</th>';
-  html += '<th style="text-align:center">Goals</th>';
-  html += '<th style="text-align:center;color:#9B59B6">Self-Cmts</th>';
-  html += '<th style="text-align:center;color:#2864E6">Mgr-Cmts</th>';
-  html += '<th style="text-align:center">Pace</th>';
-  html += '<th>HR Review</th>';
-  html += '</tr></thead><tbody>';
-
-  eng.engagerList.forEach(function(e) {
-    var rowBg    = e.paceStatus === 'Silent' ? 'background:#FFF5F5' : e.paceStatus === 'Below Pace' ? 'background:#FFFBEB' : '';
-    var badgeCss = e.paceStatus === 'Silent' ? 'tier-nogoals' : e.paceStatus === 'Below Pace' ? 'tier-watch' : 'tier-ontarget';
-    var selfColor = e.selfComments === 0 ? '#B91C1C' : e.selfComments < threshold ? '#854D0E' : '#15803D';
-    var note     = noteMap[e.normName];
-    var reviewCell;
-    if (e.paceStatus === 'At Pace') {
-      reviewCell = '<span style="color:var(--muted)">&mdash;</span>';
-    } else if (note) {
-      reviewCell = '<div class="review-done"><span class="review-check">&#10003;</span>' +
-        '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/, '')) + '</span>' +
-        '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button></div>';
-    } else {
-      reviewCell = '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>';
-    }
-    html += '<tr style="' + rowBg + '">';
-    html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor || '—') + '</td>';
-    html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department || '—') + '</td>';
-    html += '<td style="text-align:center;font-weight:700">' + e.totalGoals + '</td>';
-    html += '<td style="text-align:center;font-weight:700;color:' + selfColor + '">' + e.selfComments + '</td>';
-    html += '<td style="text-align:center;color:var(--slate)">' + e.managerComments + '</td>';
-    html += '<td style="text-align:center"><span class="' + badgeCss + '">' + esc(e.paceStatus) + '</span></td>';
-    html += '<td>' + reviewCell + '</td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table></div>';
   el.innerHTML = html;
 }
 
@@ -1131,7 +1092,8 @@ function buildTrendDeptChips_(trend) {
     chip.addEventListener('click', function() {
       var idx = S.trendDepts.indexOf(dept);
       if (idx === -1) S.trendDepts.push(dept); else S.trendDepts.splice(idx, 1);
-      renderEngagement(getFiltered());
+      buildTrendDeptChips_(trend);
+      buildCommentTrendChart('chart-trend', trend, S.trendDepts);
     });
     el.appendChild(chip);
   });
@@ -1160,32 +1122,7 @@ function renderBreakdown(emps) {
     '<div class="section-body tbl-wrap">' + buildSummaryTable(jfGroups, 'Job Family') + '</div></div>';
 }
 
-// ── AT RISK ───────────────────────────────────────────────────────
-function renderAtRisk(emps) {
-  var isGrace      = !!(S.data && S.data.isGoalCreationGrace);
-  var watch        = emps.filter(function(e){ return e.complianceStatus === 'Watch'; });
-  var atRisk       = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; });
-  var notEngaging  = emps.filter(function(e){ return e.hasEngagementConcern; });
-  var stuckPlanned = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; });
-
-  var watchNote = isGrace
-    ? 'Grace period active — visible for early coaching'
-    : 'Excluded from "See Who Needs Support" — close to target';
-
-  document.getElementById('kpi-atrisk').innerHTML =
-    kpiCard('Watch (8–9 goals)',   watch.length,        '⏳', '#F59E0B', watchNote) +
-    kpiCard('At Risk (&lt;8)',     atRisk.length,       '🔴', '#EF4444', 'Below compliance threshold — STF &amp; RPI at risk') +
-    kpiCard('Not Engaging',        notEngaging.length,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
-    kpiCard('Stuck in Planned',    stuckPlanned.length, '🔒', '#64748B', 'Goals in Planned status with no comments');
-
-  renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
-
-  var attrition = (S.data && S.data.attrition) || [];
-  var attritionBadge = document.getElementById('attrition-count-badge');
-  if (attritionBadge) attritionBadge.textContent = attrition.length ? '(' + attrition.length + ')' : '';
-  renderAttritionSection_(document.getElementById('attrition-table'), attrition);
-}
-
+// ── NEEDS SUPPORT (rendered from Overview) + ATTRITION ─────────────
 function renderAtRiskBody(container, emps, compact) {
   var isGrace  = !!(S.data && S.data.isGoalCreationGrace);
   var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
@@ -1241,9 +1178,9 @@ function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
   var reviewCell = note
     ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
       '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
-      (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
+      (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
       '</div>'
-    : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="openModal(\'' + esc(e.normName) + '\')">Review</button>');
+    : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Review</button>');
 
   // Signal badges — show every concern this person has
   var signals = '';
@@ -1263,7 +1200,7 @@ function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
     signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
   }
 
-  var html = '<tr>';
+  var html = '<tr style="cursor:pointer" data-normname="' + esc(e.normName) + '">';
   html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
   html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'&mdash;') + '</td>';
   html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'&mdash;') + '</td>';
@@ -1795,184 +1732,346 @@ function pillFor_(status) {
   return '<span class="status-pill ' + cls + '">' + esc(status) + '</span>';
 }
 
-// ── ALL ROCKETEERS ───────────────────────────────────────────────
-function renderAllRocketeers() {
-  var container = document.getElementById('allrock-groups');
-  if (S.allRocketeersData) { renderAllRocketeersGroups_(); return; }
-
-  container.innerHTML = '<div class="empty-state">⏳ <p>Loading…</p></div>';
-  google.script.run
-    .withSuccessHandler(function(data) {
-      if (data && data.denied) {
-        container.innerHTML = '<div class="empty-state">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
-        return;
-      }
-      S.allRocketeersData = data;
-      renderAllRocketeersGroups_();
-    })
-    .withFailureHandler(function(err) {
-      container.innerHTML = '<div class="empty-state">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
-    })
-    .getAllRocketeersData();
+// ── TEAM &amp; INDIVIDUALS ───────────────────────────────────────
+// Replaces the old standalone Breakdown / All Rocketeers / Individual Engagement List
+// tabs. renderBreakdown() above is reused unchanged for the collapsible Org Breakdown
+// sub-section. The roster below shares one manager-grouped renderer (renderRosterGroups_)
+// between the "This Quarter" view (built from getFiltered(), fixing the old bug where this
+// data ignored the global filter chips) and the existing "All Time" All-Rocketeers payload.
+function renderTeam(emps) {
+  renderBreakdown(emps);
+  var input = document.getElementById('team-search');
+  if (input) input.value = S.teamSearchQuery || '';
+  renderTeamRoster_();
 }
 
-function filterAllRocketeers(value) {
-  S.allRocketeersFilter = String(value || '').trim().toLowerCase();
-  renderAllRocketeersGroups_();
+// Toggle wrapper for the Org Breakdown section: Chart.js can't size a canvas inside a
+// display:none container, so the location chart needs an explicit resize() once the
+// section becomes visible (renderBreakdown() already built it while hidden, at 0x0).
+function toggleTeamBreakdown_() {
+  toggleSection('team-breakdown-body', 'team-breakdown-toggle');
+  var body = document.getElementById('team-breakdown-body');
+  var opened = body && body.style.display !== 'none';
+  if (opened && S.charts['chart-location']) {
+    setTimeout(function() { S.charts['chart-location'].resize(); }, 0);
+  }
 }
 
-function renderAllRocketeersGroups_() {
-  var container = document.getElementById('allrock-groups');
-  var data = S.allRocketeersData;
-  if (!data || !data.managers || !data.managers.length) {
+// Column specs for the two roster modes — shared row-render/grouping logic lives in
+// renderRosterGroups_(); only the column list and each row's `render()` differ.
+var TEAM_COLUMNS_THIS_QUARTER = [
+  { label: 'Rocketeer',  render: function(r) { return esc(r.name) + terminatedTag_(r); } },
+  { label: 'Department', render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
+  { label: 'Goals',      render: function(r) { return r.totalGoals; }, align: 'center' },
+  { label: 'Self-Cmts',  render: function(r) { return r.selfComments; }, align: 'center', css: 'color:#9B59B6;font-weight:700' },
+  { label: 'Mgr-Cmts',   render: function(r) { return r.managerComments; }, align: 'center', css: 'color:var(--slate)' },
+  { label: 'Pace &amp; Status', render: function(r) { return paceBadge_(r.paceStatus); }, align: 'center' },
+];
+var TEAM_COLUMNS_ALL_TIME = [
+  { label: 'Rocketeer',    render: function(r) { return esc(r.name); } },
+  { label: 'Department',   render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
+  { label: 'Job Title',    render: function(r) { return esc(r.jobTitle || '—'); }, css: 'color:var(--slate);font-size:11px' },
+  { label: 'Total Goals',  render: function(r) { return r.totalGoals; } },
+  { label: 'First Qtr',    render: function(r) { return esc(r.firstQuarter || '—'); }, css: 'color:var(--slate);font-size:11px' },
+  { label: 'Last Qtr',     render: function(r) { return esc(r.lastQuarter || '—'); }, css: 'color:var(--slate);font-size:11px' },
+];
+
+function paceBadge_(status) {
+  var cls = status === 'Silent' ? 'tier-nogoals' : status === 'Below Pace' ? 'tier-watch'
+          : status === 'No Goals' ? 'tier-nogoals' : 'tier-ontarget';
+  return '<span class="' + cls + '">' + esc(status) + '</span>';
+}
+
+// Builds this quarter's roster grouped by supervisor — adapts the pace/status concept
+// from the old renderEngagerList_ (Silent / Below Pace / At Pace), but over every
+// filtered employee (not just those with goals>0), so people with zero goals still show
+// up in their manager's group instead of silently vanishing from the roster.
+function buildThisQuarterGroups_(emps) {
+  var eng       = computeEngagementClient_(emps);
+  var threshold = eng.paceThreshold || 0;
+  var byMgr = {};
+  emps.forEach(function(e) {
+    var sup = e.supervisor || '(No Supervisor)';
+    if (!byMgr[sup]) byMgr[sup] = { supervisor: sup, rocketeers: [] };
+    var s = e.totalSelfComments || 0;
+    var paceStatus = e.totalGoals === 0 ? 'No Goals' : (s === 0 ? 'Silent' : s < threshold ? 'Below Pace' : 'At Pace');
+    byMgr[sup].rocketeers.push({
+      name: e.name, normName: e.normName, department: e.department || '', jobTitle: e.jobTitle || '',
+      totalGoals: e.totalGoals, selfComments: s, managerComments: e.totalManagerComments || 0,
+      paceStatus: paceStatus, complianceStatus: e.complianceStatus || '', terminated: e.terminated,
+    });
+  });
+  return Object.keys(byMgr).sort().map(function(k) {
+    byMgr[k].rocketeers.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    byMgr[k].teamSize = byMgr[k].rocketeers.length;
+    return byMgr[k];
+  });
+}
+
+function setTeamRosterMode_(mode) {
+  S.teamRosterMode = mode;
+  var thisQBtn = document.getElementById('btn-roster-thisq');
+  var allTBtn  = document.getElementById('btn-roster-allt');
+  if (thisQBtn) { thisQBtn.classList.toggle('btn-primary', mode === 'thisQuarter'); thisQBtn.setAttribute('aria-pressed', mode === 'thisQuarter'); }
+  if (allTBtn)  { allTBtn.classList.toggle('btn-primary', mode === 'allTime');      allTBtn.setAttribute('aria-pressed', mode === 'allTime'); }
+  renderTeamRoster_();
+}
+
+function filterTeamRoster_(value) {
+  S.teamSearchQuery = String(value || '');
+  renderTeamRoster_();
+}
+
+function renderTeamRoster_() {
+  var container = document.getElementById('team-roster-groups');
+  var sub       = document.getElementById('team-roster-sub');
+  if (!container) return;
+
+  if (S.teamRosterMode === 'allTime') {
+    if (sub) sub.textContent = 'Every Rocketeer who has ever logged a goal · grouped by manager · all quarters combined';
+    if (!S.allRocketeersData) {
+      container.innerHTML = '<div class="empty-state">⏳ <p>Loading…</p></div>';
+      google.script.run
+        .withSuccessHandler(function(data) {
+          if (data && data.denied) {
+            container.innerHTML = '<div class="empty-state">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
+            return;
+          }
+          S.allRocketeersData = data;
+          if (S.teamRosterMode === 'allTime') renderTeamRoster_();
+        })
+        .withFailureHandler(function(err) {
+          container.innerHTML = '<div class="empty-state">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
+        })
+        .getAllRocketeersData();
+      return;
+    }
+    var atGroups = (S.allRocketeersData.managers || []).map(function(m) {
+      return { supervisor: m.supervisor, teamSize: m.teamSize, rocketeers: m.rocketeers };
+    });
+    // 'ALL' tells toggleIndividualDrill_ to fetch goals across every quarter — the
+    // All-Time roster is quarter-independent, so drilling in with the currently
+    // selected quarter would come back empty for anyone whose only activity predates it.
+    renderRosterGroups_(container, atGroups, TEAM_COLUMNS_ALL_TIME, S.teamSearchQuery, 'ALL');
+  } else {
+    if (sub) sub.textContent = 'Pace &amp; status this quarter · grouped by manager · respects the filter bar above';
+    var tqGroups = buildThisQuarterGroups_(getFiltered());
+    renderRosterGroups_(container, tqGroups, TEAM_COLUMNS_THIS_QUARTER, S.teamSearchQuery, null);
+  }
+}
+
+/**
+ * Shared manager-grouped roster table renderer used by both the "This Quarter" and
+ * "All Time" roster views. Each row opens the shared individual drill-down on click
+ * (via the delegated tr[data-normname] listener, not an inline onclick — see there
+ * for why).
+ * @param {Element} container - Target element to render into.
+ * @param {Object[]} groups - [{ supervisor, teamSize, rocketeers:[...] }].
+ * @param {Object[]} columns - [{ label, render(row), align, css }].
+ * @param {string} query - Current filter text (matches supervisor or rocketeer name).
+ * @param {string} [drillQuarter] - 'ALL' for the All-Time view, otherwise omitted
+ *   (toggleIndividualDrill_ then defaults to the currently-selected quarter).
+ */
+function renderRosterGroups_(container, groups, columns, query, drillQuarter) {
+  if (!container) return;
+  if (!groups || !groups.length) {
     container.innerHTML = '<div class="empty-state">📋 <p>No rocketeers found.</p></div>';
     return;
   }
-
-  var q = S.allRocketeersFilter;
+  var q = String(query || '').trim().toLowerCase();
   var html = '';
+  var anyMatch = false;
 
-  data.managers.forEach(function(m, mi) {
-    var supMatches  = !!q && m.supervisor.toLowerCase().indexOf(q) !== -1;
-    var rocketeers  = m.rocketeers.filter(function(r) {
-      return !q || supMatches || r.name.toLowerCase().indexOf(q) !== -1;
-    });
-    if (q && !rocketeers.length) return;
+  groups.forEach(function(g, gi) {
+    var supMatches = !!q && g.supervisor.toLowerCase().indexOf(q) !== -1;
+    var rows = g.rocketeers.filter(function(r) { return !q || supMatches || r.name.toLowerCase().indexOf(q) !== -1; });
+    if (q && !rows.length) return;
+    anyMatch = true;
 
-    var groupId       = 'allrock-group-' + mi;
-    var toggleId       = 'allrock-toggle-' + mi;
+    var groupId       = 'team-roster-group-' + gi;
+    var toggleId       = 'team-roster-toggle-' + gi;
     var openByDefault = !!q; // auto-expand groups that match the filter
 
     html += '<div class="section-card" style="margin-bottom:10px">';
     html += '<div class="section-head" style="cursor:pointer;padding:10px 16px" onclick="toggleSection(\'' + groupId + '\',\'' + toggleId + '\')">';
-    html += '<div><h2 style="font-size:13px">' + esc(m.supervisor) + ' <span style="color:var(--muted);font-weight:600">(' + m.teamSize + ')</span></h2></div>';
+    html += '<div><h2 style="font-size:13px">' + esc(g.supervisor) + ' <span style="color:var(--muted);font-weight:600">(' + g.teamSize + ')</span></h2></div>';
     html += '<span id="' + toggleId + '" style="color:var(--muted);font-size:12px">' + (openByDefault ? '▴' : '▾') + '</span>';
     html += '</div>';
     html += '<div id="' + groupId + '" style="display:' + (openByDefault ? '' : 'none') + '">';
-    html += '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
-            '<th>Rocketeer</th><th>Department</th><th>Job Title</th><th>Total Goals</th><th>First Qtr</th><th>Last Qtr</th>' +
-            '</tr></thead><tbody>';
-    rocketeers.forEach(function(r) {
-      html += '<tr>' +
-        '<td style="font-weight:600;white-space:nowrap">' + esc(r.name) + '</td>' +
-        '<td style="color:var(--slate);font-size:11px">' + esc(r.department || '—') + '</td>' +
-        '<td style="color:var(--slate);font-size:11px">' + esc(r.jobTitle || '—') + '</td>' +
-        '<td>' + r.totalGoals + '</td>' +
-        '<td style="color:var(--slate);font-size:11px">' + esc(r.firstQuarter || '—') + '</td>' +
-        '<td style="color:var(--slate);font-size:11px">' + esc(r.lastQuarter || '—') + '</td>' +
-        '</tr>';
+    html += '<div class="tbl-wrap"><table class="data-table"><thead><tr>';
+    columns.forEach(function(c) { html += '<th' + (c.align ? ' style="text-align:' + c.align + '"' : '') + '>' + c.label + '</th>'; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(r) {
+      html += '<tr style="cursor:pointer" data-normname="' + esc(r.normName) + '"' +
+        (drillQuarter ? ' data-quarter="' + esc(drillQuarter) + '"' : '') + '>';
+      columns.forEach(function(c, ci) {
+        var styleParts = [];
+        if (ci === 0) styleParts.push('font-weight:600;white-space:nowrap');
+        if (c.align)  styleParts.push('text-align:' + c.align);
+        if (c.css)    styleParts.push(c.css);
+        html += '<td' + (styleParts.length ? ' style="' + styleParts.join(';') + '"' : '') + '>' + c.render(r) + '</td>';
+      });
+      html += '</tr>';
     });
     html += '</tbody></table></div></div></div>';
   });
 
-  container.innerHTML = html || '<div class="empty-state">📋 <p>No matches for "' + esc(q) + '".</p></div>';
+  container.innerHTML = anyMatch ? html : '<div class="empty-state">📋 <p>No matches' + (q ? ' for "' + esc(q) + '"' : '') + '.</p></div>';
 }
 
-// ── INDIVIDUAL ENGAGEMENT LIST (auditor drill-down) ─────────────────
-function renderIndividualTab_() {
-  var input = document.getElementById('individual-search');
-  if (input) input.value = S.individualQuery || '';
-  renderIndividualResults_();
-  renderIndividualDetail_();
-}
+// ── SHARED INDIVIDUAL DRILL-DOWN ────────────────────────────────────
+// Opened by clicking any rocketeer row: the Needs Support table, the Attrition table,
+// and the Team & Individuals roster (both modes) all call this via the delegated
+// tr[data-normname] click handler (see the DOMContentLoaded listener below) rather
+// than an inline onclick, since HTML-entity-escaping a name for an inline onclick
+// string breaks for any name containing an apostrophe (the entity decodes back to a
+// literal quote before the browser parses the handler as JS).
+//
+// Renders as an expandable <tr> inserted directly below the clicked row, not a modal
+// popup — a viewport-height-capped overlay (max-height:70vh) had no reliable way to
+// reveal the rest of a 10+-goal list once it filled up (Apps Script serves this page
+// inside a sandboxed iframe, where a fixed-position overlay's overflow can end up
+// unreachable by any scroll). An inline row just grows the table within the page's
+// own normal scroll, which always works, and doubles as an at-a-glance/drill-down
+// pattern instead of a separate popup.
+function toggleIndividualDrill_(row, normName, quarterOverride) {
+  if (!row || !normName || !S.data) return;
 
-function searchIndividual(value) {
-  S.individualQuery = String(value || '');
-  renderIndividualResults_();
-}
-
-function individualSearchPool_() {
-  var employees = (S.data && S.data.employees) || [];
-  var attrition = (S.data && S.data.attrition) || [];
-  return employees.concat(attrition);
-}
-
-function renderIndividualResults_() {
-  var container = document.getElementById('individual-search-results');
-  if (!container) return;
-  var q = S.individualQuery.trim().toLowerCase();
-  if (!q) { container.innerHTML = ''; return; }
-
-  var matches = individualSearchPool_()
-    .filter(function(e) { return e.name.toLowerCase().indexOf(q) !== -1; })
-    .slice(0, 15);
-
-  if (!matches.length) {
-    container.innerHTML = '<div class="empty-state" style="padding:10px">No matches.</div>';
+  var existing = row.nextElementSibling;
+  if (existing && existing.classList.contains('drill-row') && existing.dataset.forRow === normName) {
+    existing.remove(); // clicking the same row again collapses it
     return;
   }
+  closeAllDrillRows_(); // one open at a time, keeps the table scannable
 
-  var html = '<div class="section-card" style="max-height:260px;overflow-y:auto">';
-  matches.forEach(function(e) {
-    html += '<div style="padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer" ' +
-      'onclick="selectIndividualRocketeer_(\'' + esc(e.normName) + '\')">' +
-      '<div style="font-weight:600;font-size:12px">' + esc(e.name) + terminatedTag_(e) + '</div>' +
-      '<div style="font-size:10px;color:var(--slate)">' + esc(e.supervisor || '—') + ' · ' + esc(e.department || '—') + '</div>' +
-      '</div>';
-  });
-  html += '</div>';
-  container.innerHTML = html;
-}
+  var td = document.createElement('td');
+  td.colSpan = row.cells.length;
+  td.innerHTML = '<div class="empty-state" style="padding:16px">⏳ <p>Loading…</p></div>';
 
-function selectIndividualRocketeer_(normName) {
-  S.individualQuery = '';
-  var resultsEl = document.getElementById('individual-search-results');
-  if (resultsEl) resultsEl.innerHTML = '';
-  var searchInput = document.getElementById('individual-search');
-  if (searchInput) searchInput.value = '';
+  var drillTr = document.createElement('tr');
+  drillTr.className = 'drill-row';
+  drillTr.dataset.forRow = normName;
+  drillTr.appendChild(td);
+  row.insertAdjacentElement('afterend', drillTr);
 
-  var detailEl = document.getElementById('individual-detail');
-  if (detailEl) detailEl.innerHTML = '<div class="empty-state">⏳ <p>Loading…</p></div>';
-
+  // quarterOverride is 'ALL' when opened from the All-Time roster (quarter-independent
+  // data) — without this, drilling into anyone whose only activity predates the
+  // currently-selected quarter always came back empty.
   google.script.run
-    .withSuccessHandler(function(data) {
-      if (data && data.denied) {
-        if (detailEl) detailEl.innerHTML = '<div class="empty-state">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
-        return;
-      }
-      S.individualDetail = data;
-      renderIndividualDetail_();
-    })
+    .withSuccessHandler(function(data) { renderIndividualDrillContent_(td, data); })
     .withFailureHandler(function(err) {
-      if (detailEl) detailEl.innerHTML = '<div class="empty-state">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
+      td.innerHTML = '<div class="empty-state" style="padding:16px">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
     })
-    .getRocketeerGoalDetail(S.data.quarter, normName);
+    .getRocketeerGoalDetail(quarterOverride || S.data.quarter, normName);
 }
 
-function renderIndividualDetail_() {
-  var container = document.getElementById('individual-detail');
-  if (!container) return;
-  var data = S.individualDetail;
-  if (!data) {
-    container.innerHTML = '<div class="empty-state">🔍 <p>Search for a rocketeer above to see their goals and comment history.</p></div>';
+function closeAllDrillRows_() {
+  document.querySelectorAll('tr.drill-row').forEach(function(tr) { tr.remove(); });
+}
+
+// Jump to the Team & Individuals roster filtered to one manager's team — what the
+// Manager Scorecard drills into, since most managers don't log personal PS goals
+// themselves (they're scored on commenting coverage, not on being a Rocketeer), so
+// opening the individual-goal detail for a manager name was almost always empty.
+function openManagerTeam_(managerName) {
+  S.teamSearchQuery = managerName || '';
+  switchTab('team');
+}
+
+// Same Completed/In Progress/Planned/Canceled/Not Completed classification
+// aggregateByRocketeer_ uses server-side (goalCompliance.js) — kept in sync so a
+// goal's color/label here always matches its bucket in the org-wide Goal Status
+// Distribution chart on Overview.
+function goalStatusBucket_(status) {
+  var s = String(status || '');
+  if (/not.?complet/i.test(s)) return { label: 'Not Completed', color: '#EF4444' };
+  if (/complet/i.test(s))      return { label: 'Completed',     color: '#00A86B' };
+  if (/in.?progress/i.test(s)) return { label: 'In Progress',   color: '#058CDC' };
+  if (/planned/i.test(s))      return { label: 'Planned',       color: '#94A3B8' };
+  if (/cancel/i.test(s))       return { label: 'Canceled',      color: '#CBD5E1' };
+  return { label: s || 'Unknown', color: '#94A3B8' };
+}
+
+/**
+ * Renders a getRocketeerGoalDetail() payload into the expandable drill-row's <td>: a
+ * status-count summary (so someone with 10+ goals can scan before opening any one of
+ * them), then every goal as its own collapsed-by-default card showing name/status/
+ * Self-Cmts/Mgr-Cmts, expanding on click to the full comment thread (IC/Manager/Other).
+ * @param {Element} container - the drill row's <td>.
+ * @param {Object} data - { ok, denied, quarter, rocketeer, goals:[{ name, status, quarter, comments:[...] }] }.
+ */
+function renderIndividualDrillContent_(container, data) {
+  var closeBtn = '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">' +
+    '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();this.closest(\'tr.drill-row\').remove()">&#9650; Collapse</button></div>';
+
+  if (data && data.denied) {
+    container.innerHTML = closeBtn + '<div class="empty-state" style="padding:16px">🔒 <p>Access denied for ' + esc(data.email || 'this account') + '.</p></div>';
     return;
   }
-  if (!data.rocketeer) {
-    container.innerHTML = '<div class="empty-state">📋 <p>No activity found for that rocketeer this quarter.</p></div>';
+  if (!data || !data.rocketeer) {
+    container.innerHTML = closeBtn + '<div class="empty-state" style="padding:16px">📋 <p>No activity found for that rocketeer' + (data && data.quarter === 'ALL' ? '' : ' this quarter') + '.</p></div>';
     return;
   }
 
   var r = data.rocketeer;
-  var html = '<div class="section-head" style="padding:0 0 12px">' +
-    '<div><h2 style="font-size:14px">' + esc(r.name) + '</h2>' +
-    '<p class="section-sub">' + esc(r.jobTitle || '—') + ' · ' + esc(r.department || '—') + ' · reports to ' + esc(r.supervisor || '—') + ' · ' + esc(data.quarter) + '</p></div>' +
-    '</div>';
+  var isAllTime = data.quarter === 'ALL';
+  var html = closeBtn + '<div style="padding:2px 4px 10px">';
+  html += '<p class="section-sub" style="margin-bottom:10px">' + esc(r.name) + ' · ' + esc(r.jobTitle || '—') + ' · ' + esc(r.department || '—') +
+    ' · reports to ' + esc(r.supervisor || '—') + ' · ' + (isAllTime ? 'All quarters' : esc(data.quarter)) + '</p>';
 
   if (!data.goals.length) {
-    html += '<div class="empty-state">No goals logged this quarter.</div>';
+    html += '<div class="empty-state">No goals logged' + (isAllTime ? '.' : ' this quarter.') + '</div></div>';
     container.innerHTML = html;
     return;
   }
 
+  // Status summary strip — the point being able to scan "10 goals: 6 Completed, 3 In
+  // Progress, 1 Planned" before scrolling through any individual comment thread.
+  var statusCounts = {};
   data.goals.forEach(function(g) {
-    html += '<div class="section-card" style="margin-bottom:12px">';
-    html += '<div class="section-head" style="padding:10px 16px">' +
-      '<div><h2 style="font-size:13px">' + esc(g.name || '(untitled goal)') + '</h2>' +
-      '<p class="section-sub">' + esc(g.status || '—') + (g.startDate ? ' · started ' + esc(g.startDate) : '') + (g.mood ? ' · ' + esc(g.mood) : '') + '</p></div>' +
-      '</div>';
+    var b = goalStatusBucket_(g.status);
+    if (!statusCounts[b.label]) statusCounts[b.label] = { count: 0, color: b.color };
+    statusCounts[b.label].count++;
+  });
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px">' +
+    '<span style="font-size:11px;font-weight:700;color:var(--slate)">' + data.goals.length + ' goal' + (data.goals.length === 1 ? '' : 's') + '</span>';
+  Object.keys(statusCounts).forEach(function(label) {
+    var sc = statusCounts[label];
+    html += '<span style="display:inline-flex;align-items:center;gap:4px;border-radius:12px;padding:2px 9px;font-size:10px;font-weight:700;background:' + sc.color + '22;color:' + sc.color + '">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:' + sc.color + '"></span>' + esc(label) + ' ' + sc.count + '</span>';
+  });
+  html += '</div>';
 
+  var idSafe = r.normName.replace(/[^a-z0-9]/gi, '');
+  data.goals.forEach(function(g, gi) {
+    var b         = goalStatusBucket_(g.status);
+    var selfCount = g.comments.filter(function(c) { return c.type === 'self'; }).length;
+    var mgrCount  = g.comments.filter(function(c) { return c.type === 'manager'; }).length;
+    var bodyId    = 'goal-drill-body-'   + idSafe + '-' + gi;
+    var toggleId  = 'goal-drill-toggle-' + idSafe + '-' + gi;
+
+    html += '<div class="section-card" style="margin-bottom:8px">';
+    html += '<div style="padding:9px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start;gap:10px" onclick="toggleSection(\'' + bodyId + '\',\'' + toggleId + '\')">';
+    html += '<div style="min-width:0;flex:1">';
+    // Plain weight/case (not .section-head h2's uppercase+letter-spacing, meant for
+    // short section labels) — goal names can run to ~100 characters and need to wrap
+    // legibly, not get compressed into all-caps tracked-out text.
+    html += '<div style="font-size:12px;font-weight:700;color:var(--void);word-break:break-word">' + esc(g.name || '(untitled goal)') + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:5px">' +
+      '<span style="display:inline-flex;align-items:center;gap:4px;border-radius:10px;padding:1px 8px;font-size:9px;font-weight:800;background:' + b.color + '22;color:' + b.color + '">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:' + b.color + '"></span>' + esc(b.label) + '</span>' +
+      '<span style="font-size:10px;color:#2864E6;font-weight:700">Self ' + selfCount + '</span>' +
+      '<span style="font-size:10px;color:#B45309;font-weight:700">Mgr ' + mgrCount + '</span>' +
+      (isAllTime && g.quarter ? '<span style="font-size:10px;color:var(--muted)">' + esc(g.quarter) + '</span>' : '') +
+      (g.startDate ? '<span style="font-size:10px;color:var(--muted)">started ' + esc(g.startDate) + '</span>' : '') +
+      (g.mood ? '<span style="font-size:10px;color:var(--muted)">' + esc(g.mood) + '</span>' : '') +
+      '</div></div>';
+    html += '<span id="' + toggleId + '" style="color:var(--muted);font-size:12px;flex-shrink:0">&#9662;</span>';
+    html += '</div>';
+
+    html += '<div id="' + bodyId + '" style="display:none">';
     if (!g.comments.length) {
-      html += '<div class="section-body"><div class="empty-state" style="padding:12px">No comments recorded on this goal.</div></div>';
+      html += '<div class="section-body"><div class="empty-state" style="padding:10px">No comments recorded on this goal.</div></div>';
     } else {
       html += '<div class="section-body">';
       g.comments.forEach(function(c) {
@@ -1982,7 +2081,13 @@ function renderIndividualDetail_() {
         var tagLabel = c.type === 'self' ? 'IC' : c.type === 'manager' ? 'Manager' : 'Other';
         html += '<div style="padding:8px 0;border-bottom:1px solid var(--border)">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' +
+          '<span style="display:flex;gap:4px;flex-wrap:wrap">' +
           '<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:3px;padding:1px 6px;' + tagCss + '">' + tagLabel + '</span>' +
+          // Goal-status tag on the comment itself (not just the goal header above) —
+          // same bucket/color as the card header badge, since every comment here
+          // belongs to this one goal and shares its status.
+          '<span style="font-size:9px;font-weight:800;border-radius:3px;padding:1px 6px;background:' + b.color + '22;color:' + b.color + '">' + esc(b.label) + '</span>' +
+          '</span>' +
           '<span style="font-size:10px;color:var(--muted)">' + esc(c.commentator) + (c.date ? ' · ' + esc(c.date) : '') + '</span>' +
           '</div>' +
           '<div style="font-size:12px;color:var(--text)">' + esc(c.text) + '</div>' +
@@ -1990,9 +2095,11 @@ function renderIndividualDetail_() {
       });
       html += '</div>';
     }
-    html += '</div>';
+    html += '</div>'; // bodyId
+    html += '</div>'; // section-card
   });
 
+  html += '</div>'; // outer padding wrapper
   container.innerHTML = html;
 }
 
@@ -2064,23 +2171,49 @@ function toggleNavMenu(forceClose) {
   var panel = document.getElementById('nav-menu-panel');
   if (!btn || !panel) return;
   var open = forceClose === true ? false : !panel.classList.contains('open');
+  if (open) renderNavMenu_();
   panel.classList.toggle('open', open);
   btn.classList.toggle('open', open);
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function openAccessTab_() {
-  toggleNavMenu(true);
-  switchTab('access');
+// Rebuilds the ☰ menu panel from VIEWS (location: "menu") the current role can see.
+// Data-driven so a future second menu item is just another VIEWS entry, no markup change.
+function renderNavMenu_() {
+  var panel = document.getElementById('nav-menu-panel');
+  if (!panel) return;
+  var items = VIEWS.filter(function(v) { return v.location === 'menu' && canSeeView_(v); });
+  var html  = '';
+  items.forEach(function(v) {
+    html += '<button class="nav-menu-item" role="menuitem" onclick="openMenuView(\'' + v.id + '\')">' + v.label + '</button>';
+  });
+  panel.innerHTML = html;
 }
 
+function openMenuView(id) {
+  toggleNavMenu(true);
+  switchTab(id);
+}
+
+// Show/hide tabbar buttons and rebuild the ☰ menu to match the current role — generalized
+// from VIEWS instead of the single "role === 'admin'" special case this used to be.
 function applyRoleToNav_() {
-  var wrap  = document.getElementById('nav-menu-wrap');
+  VIEWS.forEach(function(v) {
+    if (v.location !== 'tabbar') return;
+    var btn = document.querySelector('.tab-btn[data-tab="' + v.id + '"]');
+    if (btn) btn.style.display = canSeeView_(v) ? '' : 'none';
+  });
+
+  var wrap = document.getElementById('nav-menu-wrap');
+  if (wrap) {
+    var hasVisibleMenuItem = VIEWS.some(function(v) { return v.location === 'menu' && canSeeView_(v); });
+    wrap.style.display = hasVisibleMenuItem ? '' : 'none';
+  }
+  renderNavMenu_();
+
+  // Manager scope badge — orthogonal to per-tab visibility, kept alongside it.
   var badge = document.getElementById('scope-badge');
   var role  = S.data && S.data.userRole;
-
-  if (wrap) wrap.style.display = (role === 'admin') ? '' : 'none';
-
   if (badge) {
     if (role === 'manager' && S.data.managerScopeName) {
       badge.textContent = 'Scoped: ' + S.data.managerScopeName + '’s team';

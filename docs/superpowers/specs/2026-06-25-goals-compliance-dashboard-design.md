@@ -8,7 +8,7 @@ GAS Web App. Two files in one Apps Script project. `goalCompliance.js` serves `G
 | Source | Spreadsheet | Sheet | Purpose |
 |--------|------------|-------|---------|
 | Goals | `1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ` | `RD` | Goal records (one row per goal+comment) |
-| Roster | `1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0` | `Roster` | Location lookup only |
+| Roster | `1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0` | `Data` (company-wide raw export — NOT the PS-filtered `Roster` tab) | Active/inactive status, zero-goal employee injection, location/department/supervisor lookup, manager org-tree scoping |
 | HR Tracker | Goals SS | `HR Follow-Up Tracker` | Notes written by HR (auto-created on first save) |
 
 **RD fields used:** Rocketeer, Department, Class, Supervisor, Goal ID, Start Date, Mood, Goal Name, Goal Status, Comment Date, Comment Text, Commentator, Fiscal Quarter, Job Title

@@ -328,7 +328,12 @@ function getRocketeerGoalDetail(quarter, normName) {
     if (!scopeSet[targetNorm]) return { ok: false, denied: true, email: access.email };
   }
 
-  var qtr    = String(quarter || CONFIG_GD.DEFAULT_QUARTER).trim();
+  // quarter === 'ALL' is the All-Time roster's drill-down mode: return every goal
+  // across every quarter for this rocketeer instead of filtering to one quarter —
+  // the This-Quarter roster/Manager Scorecard/Needs Support callers always pass an
+  // explicit quarter string, never this sentinel.
+  var allQuarters = quarter === 'ALL';
+  var qtr    = allQuarters ? 'ALL' : String(quarter || CONFIG_GD.DEFAULT_QUARTER).trim();
   var allRd  = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
 
   // Filter to this one rocketeer's own rows first — a small subset — before
@@ -369,7 +374,7 @@ function getRocketeerGoalDetail(quarter, normName) {
     var goalId = String(row['Goal ID'] || '').trim();
     if (!goalId) return;
     var rowQuarter = goalQuarterMap[goalId] || String(row['Fiscal Quarter'] || '').trim();
-    if (rowQuarter !== qtr) return;
+    if (!allQuarters && rowQuarter !== qtr) return;
 
     if (!goalsMap[goalId]) {
       goalsMap[goalId] = {
@@ -378,6 +383,7 @@ function getRocketeerGoalDetail(quarter, normName) {
         status:    String(row['Goal Status'] || '').trim(),
         startDate: row['Start Date'] ? fmtDate_(row['Start Date']) : '',
         mood:      String(row['Mood'] || '').trim(),
+        quarter:   rowQuarter,
         comments:  [],
       };
     }

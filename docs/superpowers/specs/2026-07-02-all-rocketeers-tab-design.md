@@ -152,13 +152,120 @@ sorted by `name` (A→Z).
 - No export/CSV for this tab in this iteration (not requested; can be added
   later following the same `html2canvas`/Blob pattern used elsewhere).
 
+## Intern Exclusion Refinement: Check Both Sources Independently
+
+`stripInterns_` originally preferred the Roster Job Title and only fell back
+to the map's own (RD-aggregated) Job Title when Roster had no match/blank
+title. That's wrong: a title can show as Intern in one source before the
+other has synced. Both sources must be checked independently:
+
+```js
+function stripInterns_(map, jobTitleMap) {
+  Object.keys(map).forEach(function(norm) {
+    var rosterJobTitle = jobTitleMap[norm] ? jobTitleMap[norm].jobTitle : '';
+    var ownJobTitle     = map[norm].jobTitle;
+    if (isIntern_(rosterJobTitle) || isIntern_(ownJobTitle)) delete map[norm];
+  });
+}
+```
+This lands directly in `stripInterns_` as originally planned (not implemented
+yet) — no separate task, just the correct version from the start. Both
+`buildComplianceData_` and `aggregateAllRocketeers_` call this same function,
+so the fix applies everywhere automatically.
+
+## Attrition Isolation: Excluded from Compliance Rate / Risk Math, Visible Separately
+
+Terminated ("attrition") rocketeers currently flow all the way through
+`buildComplianceData_` into the same `employees` array as everyone else —
+they're tagged `terminated: true` but fully counted in every aggregate
+(compliance rate, RPI/STF eligibility, engagement risk stats). A departure
+mid-quarter shouldn't drag down the org's numbers, so they need the same
+kind of removal interns get, with one difference: they still need to be
+*visible* somewhere for HR reference.
+
+**In `buildComplianceData_`**, immediately after `stripInterns_(rockMap, rosterMap)`:
+```js
+var attritionList = [];
+Object.keys(rockMap).forEach(function(norm) {
+  if (terminatedSet[norm]) { attritionList.push(rockMap[norm]); delete rockMap[norm]; }
+});
+```
+- `rockMap` (and therefore the final `employees` array) becomes attrition-free
+  in addition to intern-free — `computeSummary_` (compliance rate, RPI/STF
+  counts, byDept/byLocation/byJobFamily/bySupervisor breakdowns) and
+  `computeEngagementData_` (silent/below-pace counts, engagingPct, team rates,
+  manager scorecard, engager list) all compute with zero attrition influence.
+- **Tradeoff, stated explicitly rather than silently decided:** because
+  `rockMap` feeds `computeCommentTrend_` too, attrition rocketeers' historical
+  comments also drop out of the weekly comment-trend chart, not just the rate
+  math. This keeps one exclusion boundary (matching how interns already work)
+  instead of maintaining two different in/out rules for the same person. If
+  the trend chart should keep their historical volume, that's a follow-up
+  change to make `computeCommentTrend_` take an additional "trend-only"
+  employee list — not built now, since it wasn't asked for.
+- `attritionList` runs through the same per-employee finalize step as
+  `employees` (job family, compliance tier via `computeStatus_`, RPI/STF
+  flags) — computed and shown for informational context, never summed into
+  `computeSummary_`'s org-wide totals. Only terminated rocketeers who *have*
+  RD activity this quarter appear here — the existing decision not to
+  zero-goal-inject terminated Roster rows is unchanged.
+- `buildComplianceData_`'s return object gains an `attrition` field
+  (finalized array, same shape as an `employees` entry).
+
+**In `GDash.html`**, the At Risk pane (`pane-atrisk`) gets a new collapsed
+section below the existing table: "Attrition (excluded from metrics above)",
+rendering `S.data.attrition` in the same row shape as the main At Risk table,
+visually distinguished (muted header) so it can't be mistaken for part of the
+live count.
+
+## Individual Engagement List Tab (new)
+
+**Purpose:** an auditor tool — pick one rocketeer and see every goal they
+logged this quarter with its full comment thread, split by IC (self) vs
+Manager, instead of the summary counts every other tab shows.
+
+**Backend — new `getRocketeerGoalDetail(quarter, normName)` in `goalCompliance.js`:**
+- `checkDashboardAccess()` gated like every other endpoint; if the caller is
+  a Manager, reject (return `{ok:false, denied:true}`-shaped response) when
+  `normName` isn't in their `resolveGDManagerScope_` set.
+- Reads the full RD sheet, filters to rows where `normName_(Rocketeer) === normName`
+  (a small subset — no need to scan/derive quarters for the other ~thousands
+  of rows), then derives that quarter locally using the same Start-Date rule
+  as `buildComplianceData_` (goal-quarter-map built from just this person's
+  rows, then filtered to the requested `quarter`).
+- Groups the filtered rows by Goal ID. Each goal returns `{id, name, status,
+  startDate, mood, comments: [...]}` where each comment is
+  `{date, commentator, text, type}` sorted chronologically by date;
+  `type` is `'self'` when `normName_(Commentator) === normName`, `'manager'`
+  when it matches the rocketeer's Supervisor (normalized), else `'other'`.
+- Not cached — this is a small, on-demand, per-person read (unlike the bulk
+  company-wide endpoints), so a script lock/chunked cache isn't warranted.
+
+**Frontend — new tab in `GDash.html`:**
+- Tab button "Individual Engagement List", pane with a text input that
+  filters a combined, already-loaded list — `S.data.employees.concat(S.data.attrition || [])`
+  (interns never appear in either array, so they're excluded here too,
+  automatically) — as the user types, matching names appear as a
+  clickable list.
+- Selecting a name calls `getRocketeerGoalDetail(S.data.quarter, normName)`
+  and renders one card per goal (name/status/dates) with its comment thread
+  underneath, each comment tagged IC or Manager (color/label distinguishes
+  them), chronological.
+- Scope: current quarter only (matches every tab except All Rocketeers);
+  manager-role users can only search/select within their own org tree
+  (enforced server-side in `getRocketeerGoalDetail`, not just hidden client-side).
+
 ## Out of scope
-- No changes to `buildComplianceData_`'s quarter-derivation, roster-inactive
-  zero-goal exclusion, or name-matching logic — investigation confirmed
-  there's nothing to fix there. (The only change to `buildComplianceData_` is
-  the intern-exclusion bug fix above.)
-- No Roster-based enrichment (Location, active/terminated tag) on the All
-  Rocketeers tab's rows — RD-only by design, per the "mirror the test script"
-  goal.
-- No drill-down into individual goal/comment detail per rocketeer on this tab
-  (that already exists in the quarter-scoped views).
+- No changes to `buildComplianceData_`'s quarter-derivation or name-matching
+  logic — investigation confirmed there's nothing to fix there.
+- No Roster-based enrichment (Location) on the All Rocketeers tab's rows —
+  RD-only by design, per the "mirror the test script" goal. (Its intern
+  exclusion still uses `fullRosterMap` for the Job Title check only, same as
+  everywhere else.)
+- No change to the zero-goal Roster-injection rule for terminated employees
+  (still not injected) — only where already-present terminated records end up
+  (isolated `attrition` list vs. the main array) changes.
+- No caching for `getRocketeerGoalDetail` — small on-demand per-person reads
+  don't need it.
+- No export/CSV for the All Rocketeers or Individual Engagement List tabs in
+  this iteration.

@@ -65,8 +65,8 @@ var SEC_GD_ = {
  * Class/Department restriction (unlike PS Security's PS-only version),
  * since this dashboard covers every department.
  *
- * Self-contained: does not call into goalCompliance.js. Re-implements
- * the same termination-column auto-detection as getFullRosterMap_()
+ * Self-contained: does not call into goalCompliance.js. Re-implements the
+ * same Employee Status / termination-date active-detection as getFullRosterMap_()
  * so this file has no cross-file dependency.
  *
  * @param {string} email - Lowercase, trimmed email.
@@ -78,7 +78,10 @@ function _resolveRosterSupervisor_GD_(email) {
             || (typeof CONFIG_GD !== "undefined" ? CONFIG_GD.ROSTER_SS_ID : null);
     if (!ssId) return null;
 
-    var sheet = SpreadsheetApp.openById(ssId).getSheetByName("Roster");
+    // Same "Data" tab as goalCompliance.js's CONFIG_GD.SHEET_ROSTER — this dashboard's
+    // company-wide roster is the raw HRIS export, not the PS-filtered "Roster" tab.
+    var sheetName = (typeof CONFIG_GD !== "undefined" ? CONFIG_GD.SHEET_ROSTER : "Data");
+    var sheet = SpreadsheetApp.openById(ssId).getSheetByName(sheetName);
     if (!sheet) return null;
 
     var vals = sheet.getDataRange().getValues();
@@ -87,20 +90,19 @@ function _resolveRosterSupervisor_GD_(email) {
     var headers = vals[0].map(function(h) { return String(h).trim(); });
     var idx     = function(col) { return headers.indexOf(col); };
 
-    var iName  = idx("Name");
-    var iEmail = idx("Email");
-    var iSup   = idx("Supervisor");
+    var iName   = idx("Name");
+    var iEmail  = idx("Email");
+    var iSup    = idx("Supervisor");
+    var iStatus = idx("Employee Status");
+    var iTerm   = idx("Termination/Release Date");
     if (iName === -1 || iEmail === -1) return null;
 
-    var termKey = null;
-    headers.forEach(function(k) {
-      var lower = k.toLowerCase().replace(/[\s._-]/g, "");
-      if (!termKey   && /termination|termdate|enddate|exitdate/.test(lower))                        termKey   = k;
-    });
-    var iTerm   = termKey   ? idx(termKey)   : -1;
-
     var isActiveRow = function(row) {
-      if (iTerm === -1) return true; // no termination column found — fail open (treat as active)
+      if (iStatus !== -1) {
+        var status = String(row[iStatus] || "").trim().toLowerCase();
+        if (status && /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i.test(status)) return false;
+      }
+      if (iTerm === -1) return true; // no termination-date column found — fail open (treat as active)
       var raw = row[iTerm];
       if (!raw) return true; // no termination date recorded — active
       var termDate = (raw instanceof Date) ? raw : new Date(raw);
