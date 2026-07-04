@@ -2505,6 +2505,7 @@ function buildFilteredSummary(filtered, weeks) {
 
 // ── LEADING BEHAVIOURS ────────────────────────────────────────
 var SCORE_W = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
+var PTO_IMPACT_THRESHOLD_HRS = 8; // mirrors CONFIG_PS.PTO_IMPACT_THRESHOLD_HRS (server)
 
 function viewRocketeerDetails(normName) {
   switchTab('overview');
@@ -5455,15 +5456,20 @@ function computeGroupMetrics(group, weeks, refWeekLabel) {
   });
   var avgTracked = trackedCnt > 0 ? trackedTotal / trackedCnt : 0;
 
-  // Tracked compliance: count of people who logged any hours in the reference week
-  var trackedCompliant = 0;
+  // Tracked compliance: count of people who logged any hours in the reference week.
+  // Anyone with >= PTO_IMPACT_THRESHOLD_HRS PTO that week is excluded from both the
+  // numerator and denominator — 0 tracked hours during a PTO day isn't a failure to
+  // track, so it shouldn't drag the group's compliance % down (same idea as Goals).
+  var trackedCompliant = 0, trackedEligible = 0;
   if (refWeek) {
     group.forEach(function(e) {
       var wd = e.weeks && e.weeks[refWeek.label];
-      if (wd && wd.trackedHrs != null && wd.trackedHrs > 0) trackedCompliant++;
+      if (!wd || (wd.ptoPlannedHrs || 0) >= PTO_IMPACT_THRESHOLD_HRS) return;
+      trackedEligible++;
+      if (wd.trackedHrs != null && wd.trackedHrs > 0) trackedCompliant++;
     });
   }
-  var trackedCompliancePct = n > 0 ? trackedCompliant / n * 100 : 0;
+  var trackedCompliancePct = trackedEligible > 0 ? trackedCompliant / trackedEligible * 100 : 0;
 
   // Planned Time — uses current + future weeks (W0–W+2) since that's where planning data lives
   var futureWeeks = weeks.filter(function(w) { return !w.isPast; });
@@ -5476,15 +5482,18 @@ function computeGroupMetrics(group, weeks, refWeekLabel) {
   });
   var avgPlanned = plannedCnt > 0 ? plannedTotal / plannedCnt : 0;
 
-  // Planned compliance: count of people who planned any hours in the reference week
-  var plannedCompliant = 0;
+  // Planned compliance: count of people who planned any hours in the reference week.
+  // Same PTO exclusion as Tracked above.
+  var plannedCompliant = 0, plannedEligible = 0;
   if (refWeek) {
     group.forEach(function(e) {
       var wd = e.weeks && e.weeks[refWeek.label];
-      if (wd && wd.plannedHrs != null && wd.plannedHrs > 0) plannedCompliant++;
+      if (!wd || (wd.ptoPlannedHrs || 0) >= PTO_IMPACT_THRESHOLD_HRS) return;
+      plannedEligible++;
+      if (wd.plannedHrs != null && wd.plannedHrs > 0) plannedCompliant++;
     });
   }
-  var plannedCompliancePct = n > 0 ? plannedCompliant / n * 100 : 0;
+  var plannedCompliancePct = plannedEligible > 0 ? plannedCompliant / plannedEligible * 100 : 0;
 
   var kudosTotal = 0;
   if (refWeek) {
@@ -5516,9 +5525,11 @@ function computeGroupMetrics(group, weeks, refWeekLabel) {
     goalsTotal:          gt,
     avgTracked:          avgTracked,
     trackedCompliant:    trackedCompliant,
+    trackedEligible:     trackedEligible,
     trackedCompliancePct: trackedCompliancePct,
     avgPlanned:          avgPlanned,
     plannedCompliant:    plannedCompliant,
+    plannedEligible:     plannedEligible,
     plannedCompliancePct: plannedCompliancePct,
     kudosCount:          kudosTotal,
     kudosPerPerson:      kudosPerPerson,
