@@ -140,6 +140,36 @@ function dateToISOWeek_(d) {
   } catch (e) { return null; }
 }
 
+/**
+ * Full ISO-week label list for a quarter, start → end, optionally clamped to
+ * today (for the in-progress quarter, so charts stop at the current week).
+ * Unlike deriving the axis from comment data, this includes fully silent
+ * weeks — a zero on the chart is the signal HR needs, not a gap to hide.
+ */
+function quarterWeekList_(quarter, clampToToday) {
+  var qd = parseQuarterDates_(quarter);
+  if (!qd) return [];
+  var parse_ = function(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+
+  var endStr = qd.end;
+  if (clampToToday) {
+    var todayStr = new Date().toISOString().slice(0, 10);
+    if (todayStr < endStr) endStr = todayStr;
+  }
+
+  var weeks = [], seen = {};
+  var cursor = parse_(qd.start);
+  var endD   = parse_(endStr);
+  while (cursor <= endD) {  // 7-day steps visit consecutive ISO weeks, never skipping one
+    var wk = dateToISOWeek_(cursor);
+    if (wk && !seen[wk]) { seen[wk] = true; weeks.push(wk); }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7);
+  }
+  var lastWk = dateToISOWeek_(endD);  // a final partial week can sit past the last 7-day step
+  if (lastWk && !seen[lastWk]) weeks.push(lastWk);
+  return weeks;
+}
+
 function readSheet_(ssId, sheetName) {
   var ss = SpreadsheetApp.openById(ssId);
   var sh = ss.getSheetByName(sheetName);
@@ -1562,4 +1592,28 @@ function _test_prevQuarterLabel_() {
   assert_(prevQuarterLabel_('') === null,            "blank → null");
 
   Logger.log("✅ _test_prevQuarterLabel_ passed");
+}
+
+function _test_quarterWeekList_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_quarterWeekList_: " + msg); }
+
+  // FY26Q3 = Jan–Mar 2026, fully in the past — no today-clamping variance.
+  var w = quarterWeekList_('FY26Q3', false);
+  assert_(w.length >= 12 && w.length <= 14, "a quarter spans ~13 ISO weeks, got " + w.length);
+  assert_(w[0] === '2026.W01', "Q3 2026 starts in 2026.W01, got " + w[0]);
+  assert_(w.indexOf('2026.W09') !== -1, "mid-quarter week must be present even with no comment data");
+
+  var seen = {};
+  w.forEach(function(x) { assert_(!seen[x], "duplicate week " + x); seen[x] = true; });
+  for (var i = 1; i < w.length; i++) {
+    assert_(w[i] > w[i - 1], "weeks must ascend: " + w[i - 1] + " → " + w[i]);
+  }
+
+  assert_(quarterWeekList_('garbage', false).length === 0, "unparseable quarter → empty list");
+
+  // Clamped mode never returns MORE weeks than unclamped.
+  var clamped = quarterWeekList_('FY26Q3', true);
+  assert_(clamped.length <= w.length, "clamping must not add weeks");
+
+  Logger.log("✅ _test_quarterWeekList_ passed");
 }
