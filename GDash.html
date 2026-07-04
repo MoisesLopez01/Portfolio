@@ -1645,10 +1645,180 @@ function buildWeeklyComboChart_(emps) {
   });
 }
 
-// Placeholder until Task 6 — keeps the Trends tab renderable after this task alone.
+// Rocketeer engagement % per week: engaged = weeklySelf[w] > 0; denominator =
+// employees with goals in the (already filtered) set.
+function rocketeerPctSeries_(emps, weeks) {
+  var eligible = emps.filter(function(e) { return e.totalGoals > 0; });
+  return weeks.map(function(w) {
+    if (!eligible.length) return 0;
+    var n = eligible.filter(function(e) { return e.weeklySelf && e.weeklySelf[w] > 0; }).length;
+    return +(n / eligible.length * 100).toFixed(1);
+  });
+}
+
+// Manager engagement % per week. Managers = distinct supervisors of employees
+// with goals, minus the exception list. Engaged in week w if ANY report
+// received a manager comment that week (weeklyMgr already counts only true
+// supervisor comments — see aggregateByRocketeer_ server-side).
+function managerPctSeries_(emps, weeks, exceptionNorms) {
+  var exceptSet = {};
+  (exceptionNorms || []).forEach(function(n) { exceptSet[n] = true; });
+  var byMgr = {};
+  emps.forEach(function(e) {
+    if (!(e.totalGoals > 0)) return;
+    var normSup = (e.supervisor || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!normSup || exceptSet[normSup]) return;
+    (byMgr[normSup] = byMgr[normSup] || []).push(e);
+  });
+  var mgrs = Object.keys(byMgr);
+  return weeks.map(function(w) {
+    if (!mgrs.length) return 0;
+    var engaged = mgrs.filter(function(m) {
+      return byMgr[m].some(function(e) { return e.weeklyMgr && e.weeklyMgr[w] > 0; });
+    }).length;
+    return +(engaged / mgrs.length * 100).toFixed(1);
+  });
+}
+
+function median_(arr) {
+  if (!arr || !arr.length) return 0;
+  var s = arr.slice().sort(function(a, b) { return a - b; });
+  var mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : +((s[mid - 1] + s[mid]) / 2).toFixed(1);
+}
+
+// Re-applies the active filter chips to previous-quarter lite records. The
+// status chip is deliberately skipped — compliance status is quarter-specific.
+function filterPrevEmployees_(prevEmps) {
+  return (prevEmps || []).filter(function(e) {
+    if (S.filters.location.length   && S.filters.location.indexOf(e.location)     === -1) return false;
+    if (S.filters.department.length && S.filters.department.indexOf(e.department) === -1) return false;
+    if (S.filters.jobFamily.length  && S.filters.jobFamily.indexOf(e.jobFamily)   === -1) return false;
+    if (S.filters.supervisor.length && S.filters.supervisor.indexOf(e.supervisor) === -1) return false;
+    return true;
+  });
+}
+
 function renderQoQPanels_(emps) {
-  var note = document.getElementById('qoq-rock-note');
-  if (note) note.textContent = 'QoQ panels land in the next change.';
+  var weeks      = (S.data && S.data.trendWeeks) || [];
+  var prev       = (S.data && S.data.prevQuarter) || null;
+  var exceptions = (S.data && S.data.managerExceptions) || [];
+  var prevEmps   = prev ? filterPrevEmployees_(prev.employees) : [];
+
+  buildQoQPanel_('chart-qoq-rock', 'chart-qoq-rock-delta', 'qoq-rock-note',
+    rocketeerPctSeries_(emps, weeks),
+    prev ? rocketeerPctSeries_(prevEmps, prev.weeks) : null,
+    weeks, prev, '#2864E6');
+
+  buildQoQPanel_('chart-qoq-mgr', 'chart-qoq-mgr-delta', 'qoq-mgr-note',
+    managerPctSeries_(emps, weeks, exceptions),
+    prev ? managerPctSeries_(prevEmps, prev.weeks, exceptions) : null,
+    weeks, prev, '#F59E0B');
+}
+
+/**
+ * One QoQ panel: current-quarter bold line over the previous quarter's gray
+ * shadow area, aligned by week-of-quarter index, with a red band up to the
+ * shadow's median (the behavioral threshold) and a green/red delta bar strip
+ * underneath. shadowSeries === null → current line only + explanatory note.
+ */
+function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curWeeks, prev, color) {
+  destroyChart(canvasId);
+  destroyChart(deltaId);
+  var canvas = document.getElementById(canvasId);
+  var note   = document.getElementById(noteId);
+  if (!canvas) return;
+  if (!curWeeks.length) { if (note) note.textContent = 'No week data for this quarter yet.'; return; }
+
+  var n = Math.max(curWeeks.length, shadowSeries ? shadowSeries.length : 0);
+  var labels = [];
+  for (var i = 0; i < n; i++) labels.push('Wk ' + (i + 1));
+  var pad_ = function(arr) { var a = (arr || []).slice(); while (a.length < n) a.push(null); return a; };
+
+  var threshold = shadowSeries ? median_(shadowSeries) : null;
+
+  // Chart.js has no built-in horizontal band; a tiny inline plugin shades
+  // 0 → threshold before datasets draw.
+  var bandPlugin = {
+    id: 'qoqBand_' + canvasId,
+    beforeDatasetsDraw: function(chart) {
+      if (threshold == null) return;
+      var yS = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
+      var yPix = yS.getPixelForValue(threshold);
+      ctx.save();
+      ctx.fillStyle = 'rgba(239,68,68,.08)';
+      ctx.fillRect(area.left, yPix, area.right - area.left, area.bottom - yPix);
+      ctx.strokeStyle = 'rgba(239,68,68,.45)';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(area.left, yPix); ctx.lineTo(area.right, yPix); ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  var datasets = [];
+  if (shadowSeries) {
+    datasets.push({ label: prev.quarter + ' (shadow)', data: pad_(shadowSeries),
+      borderColor: '#CBD5E1', backgroundColor: 'rgba(203,213,225,.35)',
+      borderWidth: 1.5, tension: .3, fill: true, pointRadius: 0,
+      datalabels: { display: false } });
+  }
+  datasets.push({ label: S.data.quarter + ' (current)', data: pad_(curSeries),
+    borderColor: color, backgroundColor: 'transparent',
+    borderWidth: 2.5, tension: .3, pointRadius: 3,
+    datalabels: { display: true, align: 'top', anchor: 'end', color: color,
+      font: { size: 9, weight: '800' },
+      formatter: function(v) { return v == null ? '' : v + '%'; } } });
+
+  S.charts[canvasId] = new Chart(canvas, {
+    type: 'line',
+    plugins: [ChartDataLabels, bandPlugin],
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { font: { size: 10 }, callback: function(v) { return v + '%'; } } },
+        x: { ticks: { font: { size: 10 } } }
+      },
+      plugins: {
+        legend:  { position: 'top', labels: { font: { size: 10 }, padding: 8 } },
+        tooltip: { callbacks: { title: function(ctx) {
+          var i = ctx[0].dataIndex;
+          var curW  = curWeeks[i] ? S.data.quarter + ' ' + curWeeks[i] : null;
+          var prevW = (prev && prev.weeks && prev.weeks[i]) ? prev.quarter + ' ' + prev.weeks[i] : null;
+          return 'Wk ' + (i + 1) + (curW ? ' — ' + curW : '') + (prevW ? ' vs ' + prevW : '');
+        } } }
+      }
+    }
+  });
+
+  var deltaCanvas = document.getElementById(deltaId);
+  if (deltaCanvas && shadowSeries) {
+    var span = Math.min(curSeries.length, shadowSeries.length);
+    var deltas = [], dColors = [];
+    for (var j = 0; j < n; j++) {
+      if (j < span) {
+        var d = +(curSeries[j] - shadowSeries[j]).toFixed(1);
+        deltas.push(d); dColors.push(d >= 0 ? '#00A86B' : '#EF4444');
+      } else { deltas.push(null); dColors.push('#CBD5E1'); }
+    }
+    S.charts[deltaId] = new Chart(deltaCanvas, {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ data: deltas, backgroundColor: dColors }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { display: false },
+                  y: { ticks: { font: { size: 8 }, callback: function(v) { return v + '%'; } } } },
+        plugins: { legend: { display: false },
+                   tooltip: { callbacks: { title: function(ctx) { return 'Wk ' + (ctx[0].dataIndex + 1) + ' — Δ vs ' + prev.quarter; } } } }
+      }
+    });
+  }
+
+  if (note) {
+    note.textContent = shadowSeries
+      ? 'Red band = ' + prev.quarter + ' median (' + threshold + '%) under current filters · delta bars = current vs same week last quarter'
+      : 'No previous quarter data — shadow and threshold unavailable.';
+  }
 }
 
 function destroyChart(id) {
