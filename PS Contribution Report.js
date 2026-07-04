@@ -1972,10 +1972,13 @@ function buildPlannedResult_(vals, psNames, weeks, nonProjectKeys, srcLabel) {
 
 // histWeeks: optional list of additional completed weeks for which to compute
 // "who made at least one self-comment this Mon–Sun?" counts (used by the history chart).
-function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
+function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNumToNorm) {
   const goalsSS = SpreadsheetApp.openById(getExternalSSIds_().goals);
   const data    = loadSheet_PS_(goalsSS, CONFIG_PS.SHEET_GOALS);
   const result  = {};
+  // Per-week PTO usage hours, keyed by normName — used to exempt a full-week-PTO
+  // rocketeer from the self-comment pacing rule (Rule 3) for that specific week only.
+  const ptoUsageByWeek = (ptoProfiles && empNumToNorm) ? buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, weeks) : {};
   weeks.filter(w => !w.isFuture).forEach(w => {
     result[w.label] = { compliant: 0, total: 0, byEmployee: {} };
   });
@@ -2112,6 +2115,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
     const reqCmt   = Math.max(1, qWeek - 4);
     // Writing ramp: no goal-count penalty for first 4 weeks of any quarter
     const goalsRequired = qWeek <= 4 ? 0 : CONFIG_PS.GOALS_MIN_COUNT;
+    const weekPTO  = (ptoUsageByWeek[week.label] && ptoUsageByWeek[week.label].byEmployee) || {};
 
     let compliant = 0, total = 0;
 
@@ -2147,6 +2151,7 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
 
       // Rule 3: at least GOALS_ACTIVE_COMMENT_COUNT goals must have >= reqCmt cumulative self-comments by week end
       const threshold  = CONFIG_PS.GOALS_ACTIVE_COMMENT_COUNT;
+      const fullWeekPTO = (weekPTO[norm] || 0) >= CONFIG_PS.PTO_FULL_WEEK_HRS;
       const qualifying = goalIds.filter(id => {
         const goal = empGoals.get(id);
         const cnt  = goal.selfComments.filter(d => d <= weekEnd).length;
@@ -2155,11 +2160,15 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx) {
         return cnt >= reqCmt;
       }).length;
 
-      const ok = qualifying >= threshold;
+      // A full-week-PTO rocketeer physically couldn't comment that week — exempt Rule 3
+      // only (per-week snapshot; does not shift reqCmt/qWeek for other weeks). Rules 1
+      // and 2 above are unaffected.
+      const ok = fullWeekPTO || (qualifying >= threshold);
       if (ok) compliant++;
       result[week.label].byEmployee[norm] = {
         compliant: ok, rule: ok ? null : 3,
         totalGoals, inProgressCount, inProgressNeeded, qualifying, threshold, reqCmt, qWeek,
+        ptoExempt: fullWeekPTO,
       };
     });
 
@@ -2919,6 +2928,10 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const siAll  = readSI_PS_(active, fteActive, ctx);
 
   const ptoProfiles = readPTOAccumulationProfiles_();   // shared (loaded once)
+  // Hoisted here (rather than down near subtractPTOFromPlanned_) so both
+  // readGoalsEngagement_ calls below can exempt full-week-PTO rocketeers from the
+  // self-comment pacing rule using the same empNum→normName bridge.
+  const empNumToNorm  = rosterIdMap_(roster, 'employeeNumber');
   const currentQWeeks = buildCurrentQWeeks_PS_(ctx);
 
   // Goals-only grace period: for CONFIG_PS.GOALS_GRACE_DAYS after a new quarter starts,
@@ -2939,7 +2952,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
       qStartIsoWeek: ctx.prevQStartIsoWeek,
       inGracePeriod: false,
     };
-    goalsPrevResult  = readGoalsEngagement_(active, prevQWeeks, [], prevCtx);
+    goalsPrevResult  = readGoalsEngagement_(active, prevQWeeks, [], prevCtx, ptoProfiles, empNumToNorm);
     // A quarter boundary can fall mid-week (e.g. Wed), so the last previous-quarter week
     // and the first current-quarter week can share the same ISO week label — dedupe,
     // keeping the current-quarter copy so it wins the same way goalsAll's merge does below.
@@ -2976,7 +2989,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const trackedAll = readTrackedTimeByWeek_(roster, extWeeks);
   const plannedAll = readPlannedTimeByWeek_(roster, extWeeks);
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
-  const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx);
+  const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx, ptoProfiles, empNumToNorm);
   const goalsAll = goalsPrevResult ? mergeGoalsResults_(goalsPrevResult, goalsCurrentResult) : goalsCurrentResult;
 
   // During the grace period, any displayed week inside the grace window shows, PER
@@ -3026,8 +3039,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   });
 
   // Subtract PTO usage hours from Tempo planned time to get net project-planned hours.
-  // ptoProfiles has transactions keyed by empNum; rosterIdMap_ bridges to normName.
-  const empNumToNorm  = rosterIdMap_(roster, 'employeeNumber');
+  // empNumToNorm was hoisted above (shared with the Goals PTO exemption).
   const ptoUsageByWk  = buildPTOUsageByWeek_(ptoProfiles, empNumToNorm, extWeeks);
   const plannedAdjAll = subtractPTOFromPlanned_(plannedAll, ptoUsageByWk);
 
@@ -3406,4 +3418,63 @@ function _test_ptoAdjustedScoring_() {
   assert_(byName["Cara Diaz"].trackedNorm === 1,   "full-PTO week: expected trackedNorm 1 (target floor), got " + byName["Cara Diaz"].trackedNorm);
 
   Logger.log("✅ _test_ptoAdjustedScoring_ passed");
+}
+
+// Unit test for the full-week-PTO exemption on Goals compliance Rule 3 (self-comment
+// pacing). Stubs the Goals sheet read so no real spreadsheet access is needed.
+function _test_goalsPtoExemption_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_goalsPtoExemption_: " + msg); }
+
+  const week = { label: "2026.W20", monday: "2026-05-11", sunday: "2026-05-17", year: 2026, isoWeek: 20, isFuture: false };
+  const ctx  = { goalsQuarter: "TESTQ", qStartIsoYear: 2026, qStartIsoWeek: 14, inGracePeriod: false };
+
+  function goalRows(name, quarter) {
+    const rows = [];
+    for (let i = 1; i <= 8; i++) {
+      rows.push([name, "Goal " + i, "In Progress", "", "", quarter]);
+    }
+    return rows;
+  }
+  const header = ["Rocketeer", "Goal Name", "Goal Status", "Comment Date", "Commentator", "Fiscal Quarter"];
+  const data = [header]
+    .concat(goalRows("Ana Smith", "TESTQ"))   // 40h PTO this week -> exempt
+    .concat(goalRows("Ben Lee",   "TESTQ"))   // 0h PTO -> not exempt, fails rule 3
+    .concat(goalRows("Cara Diaz", "TESTQ"));  // 39h PTO (just under 40) -> not exempt
+
+  global.SpreadsheetApp = {
+    openById: function() {
+      return { getSheetByName: function() {
+        return { getDataRange: function() { return { getValues: function() { return data; } }; } };
+      }};
+    }
+  };
+  global.PropertiesService = { getScriptProperties: function() { return { getProperty: function() { return null; } }; } };
+
+  const normAna = normPS_("Ana Smith"), normBen = normPS_("Ben Lee"), normCara = normPS_("Cara Diaz");
+  const psNames = new Map([
+    [normAna,  { name: "Ana Smith" }],
+    [normBen,  { name: "Ben Lee" }],
+    [normCara, { name: "Cara Diaz" }],
+  ]);
+
+  const ptoProfiles = {
+    "1001": { transactions: [{ date: new Date("2026-05-12"), isUsage: true, amount: 40 }] },
+    "1002": { transactions: [] },
+    "1003": { transactions: [{ date: new Date("2026-05-13"), isUsage: true, amount: 39 }] },
+  };
+  const empNumToNorm = new Map([["1001", normAna], ["1002", normBen], ["1003", normCara]]);
+
+  const result = readGoalsEngagement_(psNames, [week], [], ctx, ptoProfiles, empNumToNorm);
+
+  const ana  = result["2026.W20"].byEmployee[normAna];
+  const ben  = result["2026.W20"].byEmployee[normBen];
+  const cara = result["2026.W20"].byEmployee[normCara];
+
+  assert_(ana.compliant === true,  "Ana (40h PTO) should be exempted (compliant), got " + JSON.stringify(ana));
+  assert_(ana.ptoExempt === true,  "Ana should be flagged ptoExempt, got " + JSON.stringify(ana));
+  assert_(ben.compliant === false, "Ben (0h PTO) should still fail rule 3, got " + JSON.stringify(ben));
+  assert_(ben.ptoExempt === false, "Ben should not be flagged ptoExempt, got " + JSON.stringify(ben));
+  assert_(cara.compliant === false, "Cara (39h PTO, just under 40) should still fail rule 3, got " + JSON.stringify(cara));
+
+  Logger.log("✅ _test_goalsPtoExemption_ passed");
 }
