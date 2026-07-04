@@ -925,6 +925,9 @@ function computeEngagementClient_(emps) {
   var weeksElapsed  = (S.data && S.data.weeksElapsedSinceStart) || 1;
   var paceThreshold = Math.floor(weeksElapsed / 2);
 
+  var exceptSet = {};
+  ((S.data && S.data.managerExceptions) || []).forEach(function(n) { exceptSet[n] = true; });
+
   // Build title map from full roster for senior-leader detection
   var allTitleMap = {};
   if (S.data && S.data.employees) {
@@ -955,6 +958,7 @@ function computeEngagementClient_(emps) {
           mgrMap[normSup] = {
             name: sup, normName: normSup,
             isSeniorLeader: isSeniorLeader_(supTitle),
+            isExcepted:     !!exceptSet[normSup],
             totalMgrCmts: 0, teamSize: 0, covered: 0,
           };
         }
@@ -981,10 +985,14 @@ function computeEngagementClient_(emps) {
     var m = mgrMap[k];
     return {
       name: m.name, normName: m.normName, isSeniorLeader: m.isSeniorLeader,
+      isExcepted: m.isExcepted,
       avgCmts:  m.teamSize > 0 ? +(m.totalMgrCmts / m.teamSize).toFixed(1) : 0,
       covered:  m.covered, teamSize: m.teamSize,
     };
-  }).sort(function(a, b) { return b.avgCmts - a.avgCmts; });
+  }).sort(function(a, b) {
+    if (a.isExcepted !== b.isExcepted) return a.isExcepted ? 1 : -1;
+    return b.avgCmts - a.avgCmts;
+  });
 
   var tierOrder = { 'Silent': 0, 'Below Pace': 1, 'At Pace': 2 };
   var engagerList = emps
@@ -1075,6 +1083,9 @@ function renderManagerScorecard_(eng) {
     if (m.isSeniorLeader) {
       html += ' <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle">Senior Leader</span>';
     }
+    if (m.isExcepted) {
+      html += ' <span style="background:#F1F5F9;color:#64748B;border:1px solid #CBD5E1;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle" title="Excluded from engagement metrics by configuration">Excepted</span>';
+    }
     html += '</td>';
     html += '<td style="text-align:center"><span style="border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700;' + cmtStyle(m.avgCmts) + '">' + m.avgCmts + '</span></td>';
     html += '<td style="text-align:center"><span style="border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700;' + covStyle(m.covered, m.teamSize) + '">' + m.covered + '/' + m.teamSize + '</span></td>';
@@ -1082,7 +1093,7 @@ function renderManagerScorecard_(eng) {
     html += '</tr>';
   });
   html += '</tbody></table></div>';
-  html += '<div style="font-size:9px;color:var(--muted);margin-top:8px">&#x1F7E2; &ge;2 avg cmts &nbsp;&middot;&nbsp; &#x1F7E1; 1&ndash;2 &nbsp;&middot;&nbsp; &#x1F534; &lt;1 &nbsp;&middot;&nbsp; Coverage: % of team with &ge;1 manager comment</div>';
+  html += '<div style="font-size:9px;color:var(--muted);margin-top:8px">&#x1F7E2; &ge;2 avg cmts &nbsp;&middot;&nbsp; &#x1F7E1; 1&ndash;2 &nbsp;&middot;&nbsp; &#x1F534; &lt;1 &nbsp;&middot;&nbsp; Coverage: % of team with &ge;1 manager comment &nbsp;&middot;&nbsp; Excepted: excluded from engagement metrics by configuration</div>';
   el.innerHTML = html;
 }
 
