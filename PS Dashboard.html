@@ -2880,6 +2880,22 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     }
   }
 
+  // ── PTO impact on this week's planning/tracking (aggregate, no names) ──────
+  if (!isCrewMode) {
+    var ptoImpacted = allEmps.filter(function(e) {
+      var wd = e.weeks && e.weeks[weekLabel];
+      return wd && (wd.ptoPlannedHrs || 0) >= PTO_IMPACT_THRESHOLD_HRS;
+    });
+    if (ptoImpacted.length > 0) {
+      var ptoImpactHrs = ptoImpacted.reduce(function(sum, e) {
+        return sum + e.weeks[weekLabel].ptoPlannedHrs;
+      }, 0);
+      notes.push(ptoImpacted.length + ' rocketeer' + (ptoImpacted.length > 1 ? 's' : '') +
+        ' had a full PTO day this week — ~' + Math.round(ptoImpactHrs) +
+        'h of planning/tracking capacity excluded from this week\'s numbers.');
+    }
+  }
+
   // ── RCR ───────────────────────────────────────────────────────────────────
   if (isCrewMode) {
     var cRcrEmps = DATA.employees.filter(function(e) { return e.isCrewMember && e.rcr && e.rcr.value !== null; });
