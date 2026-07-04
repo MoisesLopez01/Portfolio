@@ -2558,9 +2558,10 @@ function computeRkScore(emp, weekLabel) {
   var plannedHrs = (wd.plannedHrs  != null && !isNaN(+wd.plannedHrs))          ? +wd.plannedHrs      : null;
   var rcrVal     = (emp.rcr && emp.rcr.value != null && !isNaN(+emp.rcr.value)) ? +emp.rcr.value      : null;
   var siVal      = (emp.si  && emp.si.value  != null && !isNaN(+emp.si.value))  ? +emp.si.value       : null;
-  var trackedTarget = (plannedHrs !== null && plannedHrs > 0) ? plannedHrs * 0.90 : 36;
-  var tracked = trackedHrs !== null ? Math.min(1, trackedHrs / trackedTarget) : 0;
-  var planned = plannedHrs !== null ? Math.min(1, plannedHrs / 40) : 0;
+  var plannedTarget = (wd.ptoAdjustedTargetHrs != null && !isNaN(+wd.ptoAdjustedTargetHrs)) ? +wd.ptoAdjustedTargetHrs : 40;
+  var trackedTarget = (plannedHrs !== null && plannedHrs > 0) ? plannedHrs * 0.90 : plannedTarget * 0.90;
+  var tracked = trackedHrs === null ? 0 : (trackedTarget <= 0 ? 1 : Math.min(1, trackedHrs / trackedTarget));
+  var planned = plannedHrs === null ? 0 : (plannedTarget <= 0 ? 1 : Math.min(1, plannedHrs / plannedTarget));
   // Weeks outside the real compliance window only carry comment-trend fields (no
   // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".
   var hasGoalsData = !!(wd.goalsDetail && wd.goalsDetail.compliant !== undefined);
