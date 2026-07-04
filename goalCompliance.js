@@ -5,7 +5,8 @@
 //              tracker for the company-wide Goals Compliance
 //              Dashboard. Pair with GDash.html.
 //              v2.1.0: weekly series payload, Trends tab data, QoQ prevQuarter block, manager exceptions.
-// VERSION:     2.1.0
+//              v2.2.0: multi-quarter `history` lite blocks — prior calendar weeks stay active on the Trends tab.
+// VERSION:     2.2.0
 // ENVIRONMENT: Google Apps Script (Standalone Web App)
 // DEPLOY:      Apps Script → Deploy → New deployment → Web App
 //              Execute as: User accessing the web app
@@ -35,7 +36,7 @@ var CONFIG_GD = {
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v14_',  // bumped: payload adds per-employee weeklySelf/weeklyMgr series, trendWeeks, prevQuarter block, managerExceptions
+  CACHE_VER:           'gd_v15_',  // bumped: payload adds multi-quarter `history` lite blocks (v14 added weeklySelf/weeklyMgr series, trendWeeks, prevQuarter, managerExceptions)
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -768,37 +769,50 @@ function buildComplianceData_(quarter, access) {
   // so the Scorecard tag and the QoQ manager panel apply the same set.
   var managerExceptions = (CONFIG_GD.MANAGER_ENGAGEMENT_EXCEPTIONS || []).map(normName_);
 
-  // 7d. Previous-quarter lite block for the QoQ shadow — derived from the SAME
-  // allRd array already in memory (no extra sheet read). Terminated employees
-  // are kept (they were active then; dropping them would understate the
-  // shadow); interns are stripped exactly like the main list. Null when the
-  // preceding quarter has no RD rows at all.
+  // 7d. Historical quarter lite blocks — one per PRIOR quarter with RD data,
+  // ascending, derived from the SAME allRd array already in memory (no extra
+  // sheet read). This is what keeps older calendar weeks alive on the Trends
+  // tab when a new quarter starts: the client renders a continuous
+  // multi-quarter axis from these blocks instead of resetting to the current
+  // quarter. Terminated employees are kept (they were active then; dropping
+  // them would understate history); interns are stripped exactly like the
+  // main list.
+  var liteEmp_ = function(emp) {
+    return {
+      normName:   emp.normName,
+      name:       emp.name,
+      department: emp.department,
+      supervisor: emp.supervisor,
+      location:   locMap[emp.normName] || 'Unknown',
+      jobFamily:  deriveJobFamily_(emp.jobTitle),
+      totalGoals: emp.totalGoals,
+      weeklySelf: emp.weeklySelf,
+      weeklyMgr:  emp.weeklyMgr,
+    };
+  };
+  var history = [];
+  quarters
+    .filter(function(q) { return /^FY\d{2,4}Q[1-4]$/i.test(q) && q < quarter; })
+    .sort()
+    .forEach(function(lbl) {
+      var histRows = allRd.filter(function(r) { return deriveRowQuarter_(r) === lbl; });
+      if (!histRows.length) return;
+      var histMap = aggregateByRocketeer_(histRows, scopeSet, lbl);
+      stripInterns_(histMap, rosterMap);
+      history.push({
+        quarter:   lbl,
+        weeks:     quarterWeekList_(lbl, false),
+        employees: Object.values(histMap).map(liteEmp_),
+      });
+    });
+
+  // QoQ shadow = the immediately-preceding quarter's block, matched by
+  // decremented label — NOT history[last]: a data-gap quarter must not
+  // silently make the shadow jump two quarters back. Null when the preceding
+  // quarter has no RD rows at all.
   var prevQuarter = null;
   var prevLabel   = prevQuarterLabel_(quarter);
-  if (prevLabel) {
-    var prevRows = allRd.filter(function(r) { return deriveRowQuarter_(r) === prevLabel; });
-    if (prevRows.length) {
-      var prevMap = aggregateByRocketeer_(prevRows, scopeSet, prevLabel);
-      stripInterns_(prevMap, rosterMap);
-      prevQuarter = {
-        quarter: prevLabel,
-        weeks:   quarterWeekList_(prevLabel, false),
-        employees: Object.values(prevMap).map(function(emp) {
-          return {
-            normName:   emp.normName,
-            name:       emp.name,
-            department: emp.department,
-            supervisor: emp.supervisor,
-            location:   locMap[emp.normName] || 'Unknown',
-            jobFamily:  deriveJobFamily_(emp.jobTitle),
-            totalGoals: emp.totalGoals,
-            weeklySelf: emp.weeklySelf,
-            weeklyMgr:  emp.weeklyMgr,
-          };
-        }),
-      };
-    }
-  }
+  history.forEach(function(h) { if (h.quarter === prevLabel) prevQuarter = h; });
 
   // 8. Quarter date windows and grace period flags
   var quarterDates          = parseQuarterDates_(quarter);
@@ -829,6 +843,7 @@ function buildComplianceData_(quarter, access) {
     summary:                computeSummary_(employees),
     commentTrend:           commentTrend,
     trendWeeks:             trendWeeks,
+    history:                history,
     prevQuarter:            prevQuarter,
     managerExceptions:      managerExceptions,
     quarter:                quarter,
