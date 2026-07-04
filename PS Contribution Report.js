@@ -2447,10 +2447,17 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
     const empWeeks = {};
     weeks.forEach(w => {
       const l = w.label;
+      const ptoHrsForWeek = (planned[l] && planned[l].ptoByEmployee && planned[l].ptoByEmployee[norm] != null)
+        ? planned[l].ptoByEmployee[norm] : 0;
       empWeeks[l] = {
         trackedHrs:  w.isFuture  ? null : (tracked[l]  && tracked[l].byEmployee[norm]  != null ? tracked[l].byEmployee[norm]  : null),
         plannedHrs:     planned[l] && planned[l].byEmployee[norm] != null ? planned[l].byEmployee[norm] : null,
         ptoPlannedHrs:  planned[l] && planned[l].ptoByEmployee  && planned[l].ptoByEmployee[norm]  != null ? planned[l].ptoByEmployee[norm]  : null,
+        // PTO-adjusted weekly capacity for scoring — shrinks the 40h planning target by
+        // however many PTO hours this employee logged that week, floored at PTO_MIN_TARGET_HRS.
+        // Consumed by buildTopPerformers_ (server) and computeRkScore (client mirror) instead
+        // of the flat SCORE_PLANNED_CAP_HRS, so a PTO week isn't scored as under-planned.
+        ptoAdjustedTargetHrs: Math.max(CONFIG_PS.PTO_MIN_TARGET_HRS, CONFIG_PS.SCORE_PLANNED_CAP_HRS - ptoHrsForWeek),
         ptoHealth:   pto[l]     && pto[l].byEmployee[norm]     ? pto[l].byEmployee[norm]     : null,
         kudos:       w.isFuture  ? null : (kudos[l]   && kudos[l].byEmployee[norm]    != null ? kudos[l].byEmployee[norm]    : null),
         // No unconditional isFuture null here — during the Goals grace period, future
@@ -3322,4 +3329,35 @@ function _test_trackedTimeMatrix_() {
   assert_(projs15.BETA === 10, "W15 BETA should be 10h, got " + projs15.BETA);
 
   Logger.log("✅ _test_trackedTimeMatrix_ passed");
+}
+
+// Unit test for the PTO-adjusted weekly target. Run in the GAS editor, or in Node
+// (stub Logger — see .superpowers/sdd/task-4-report.md for the sandbox pattern).
+function _test_ptoAdjustedTargetHrs_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_ptoAdjustedTargetHrs_: " + msg); }
+
+  const roster = new Map([
+    [normPS_("Ana Smith"), { name: "Ana Smith", keyLocation: "Remote", supervisor: "Mgr", jobTitle: "Consultant", dept: "Services", isRampUp: false, isCrewMember: false }],
+    [normPS_("Ben Lee"),   { name: "Ben Lee",   keyLocation: "Remote", supervisor: "Mgr", jobTitle: "Consultant", dept: "Services", isRampUp: false, isCrewMember: false }],
+  ]);
+  const weeks  = [{ label: "2026.W20", isFuture: false }];
+  const normAna = normPS_("Ana Smith"), normBen = normPS_("Ben Lee");
+
+  const planned = { "2026.W20": {
+    byEmployee:    { [normAna]: 32, [normBen]: 0 },
+    ptoByEmployee: { [normAna]: 8,  [normBen]: 40 },
+    byEmployeeProjects: {},
+  }};
+  const emptyByWeek = { "2026.W20": { byEmployee: {} } };
+
+  const employees = buildEmployeeRows_(roster, weeks, { byEmployee: {} }, { byEmployee: {} },
+    emptyByWeek, emptyByWeek, emptyByWeek, planned, emptyByWeek);
+
+  const ana = employees.find(e => e.normName === normAna);
+  const ben = employees.find(e => e.normName === normBen);
+
+  assert_(ana.weeks["2026.W20"].ptoAdjustedTargetHrs === 32, "Ana (8h PTO): expected target 32, got " + ana.weeks["2026.W20"].ptoAdjustedTargetHrs);
+  assert_(ben.weeks["2026.W20"].ptoAdjustedTargetHrs === 0,  "Ben (40h PTO): expected target floored at 0, got " + ben.weeks["2026.W20"].ptoAdjustedTargetHrs);
+
+  Logger.log("✅ _test_ptoAdjustedTargetHrs_ passed");
 }
