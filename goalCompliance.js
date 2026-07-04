@@ -758,6 +758,47 @@ function buildComplianceData_(quarter, access) {
   // 7. Comment trend (weekly counts by org and department)
   var commentTrend = computeCommentTrend_(rdRows, employees);
 
+  // 7b. Full quarter week axis (start → today) — silent weeks render as zeros
+  // on the Trends charts instead of disappearing. commentTrend/totalQtrWeeks
+  // keep their data-derived semantics (RPI depends on totalQtrWeeks).
+  var trendWeeks = quarterWeekList_(quarter, true);
+
+  // 7c. Manager engagement exceptions — normalized once, shipped to the client
+  // so the Scorecard tag and the QoQ manager panel apply the same set.
+  var managerExceptions = (CONFIG_GD.MANAGER_ENGAGEMENT_EXCEPTIONS || []).map(normName_);
+
+  // 7d. Previous-quarter lite block for the QoQ shadow — derived from the SAME
+  // allRd array already in memory (no extra sheet read). Terminated employees
+  // are kept (they were active then; dropping them would understate the
+  // shadow); interns are stripped exactly like the main list. Null when the
+  // preceding quarter has no RD rows at all.
+  var prevQuarter = null;
+  var prevLabel   = prevQuarterLabel_(quarter);
+  if (prevLabel) {
+    var prevRows = allRd.filter(function(r) { return deriveRowQuarter_(r) === prevLabel; });
+    if (prevRows.length) {
+      var prevMap = aggregateByRocketeer_(prevRows, scopeSet, prevLabel);
+      stripInterns_(prevMap, rosterMap);
+      prevQuarter = {
+        quarter: prevLabel,
+        weeks:   quarterWeekList_(prevLabel, false),
+        employees: Object.values(prevMap).map(function(emp) {
+          return {
+            normName:   emp.normName,
+            name:       emp.name,
+            department: emp.department,
+            supervisor: emp.supervisor,
+            location:   locMap[emp.normName] || 'Unknown',
+            jobFamily:  deriveJobFamily_(emp.jobTitle),
+            totalGoals: emp.totalGoals,
+            weeklySelf: emp.weeklySelf,
+            weeklyMgr:  emp.weeklyMgr,
+          };
+        }),
+      };
+    }
+  }
+
   // 8. Quarter date windows and grace period flags
   var quarterDates          = parseQuarterDates_(quarter);
   var today                 = new Date().toISOString().slice(0, 10);
@@ -775,7 +816,7 @@ function buildComplianceData_(quarter, access) {
   }
 
   // 10. Engagement data
-  var engagementData = computeEngagementData_(employees, weeksElapsedSinceStart, supTitleMap);
+  var engagementData = computeEngagementData_(employees, weeksElapsedSinceStart, supTitleMap, managerExceptions);
 
   log_('buildComplianceData_ done | employees: ' + employees.length + ' | weeks: ' + totalQtrWeeks +
        ' | goalGrace: ' + isGoalCreationGrace + ' | completionGrace: ' + isCompletionGrace +
@@ -786,6 +827,9 @@ function buildComplianceData_(quarter, access) {
     attrition:              attrition,
     summary:                computeSummary_(employees),
     commentTrend:           commentTrend,
+    trendWeeks:             trendWeeks,
+    prevQuarter:            prevQuarter,
+    managerExceptions:      managerExceptions,
     quarter:                quarter,
     quarters:               quarters,
     totalQtrWeeks:          totalQtrWeeks,
@@ -1275,8 +1319,11 @@ function computeCommentTrend_(rdRows, employees) {
 
 // ── Engagement data (pace, team rates, manager scorecard) ───────
 
-function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
+function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap, exceptionNorms) {
   var paceThreshold = Math.floor(weeksElapsed / 2);
+
+  var exceptSet = {};
+  (exceptionNorms || []).forEach(function(n) { exceptSet[n] = true; });
 
   var empTitleMap = {};
   employees.forEach(function(e) { empTitleMap[e.normName] = e.jobTitle || ''; });
@@ -1312,6 +1359,7 @@ function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
             name:           sup,
             normName:       normSup,
             isSeniorLeader: isSeniorLeader_(supTitle),
+            isExcepted:     !!exceptSet[normSup],
             totalMgrCmts:   0,
             teamSize:       0,
             covered:        0,
@@ -1342,11 +1390,15 @@ function computeEngagementData_(employees, weeksElapsed, supervisorTitleMap) {
       name:           m.name,
       normName:       m.normName,
       isSeniorLeader: m.isSeniorLeader,
+      isExcepted:     m.isExcepted,
       avgCmts:        m.teamSize > 0 ? +(m.totalMgrCmts / m.teamSize).toFixed(1) : 0,
       covered:        m.covered,
       teamSize:       m.teamSize,
     };
-  }).sort(function(a, b) { return b.avgCmts - a.avgCmts; });
+  }).sort(function(a, b) {
+    if (a.isExcepted !== b.isExcepted) return a.isExcepted ? 1 : -1;
+    return b.avgCmts - a.avgCmts;
+  });
 
   var tierOrder = { 'Silent': 0, 'Below Pace': 1, 'At Pace': 2 };
   var engagerList = employees
@@ -1661,4 +1713,31 @@ function _test_weeklySeries_() {
   assert_(a._weeklySelf === undefined && a._weeklySelfWeeks === undefined, "no leftover private accumulators");
 
   Logger.log("✅ _test_weeklySeries_ passed");
+}
+
+function _test_managerExceptions_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_managerExceptions_: " + msg); }
+
+  var employees = [
+    { normName:'a1', name:'A One', department:'Ops', supervisor:'Jane Doe', jobTitle:'Analyst',
+      totalGoals:5, totalSelfComments:3, totalManagerComments:2, complianceStatus:'At Risk' },
+    { normName:'b1', name:'B One', department:'Ops', supervisor:'Sam Lead', jobTitle:'Analyst',
+      totalGoals:4, totalSelfComments:1, totalManagerComments:0, complianceStatus:'At Risk' },
+  ];
+
+  var eng  = computeEngagementData_(employees, 4, {}, ['jane doe']);
+  var jane = eng.managerScorecard.filter(function(m) { return m.normName === 'jane doe'; })[0];
+  var sam  = eng.managerScorecard.filter(function(m) { return m.normName === 'sam lead'; })[0];
+
+  assert_(jane && jane.isExcepted === true,  "Jane must carry isExcepted:true");
+  assert_(sam  && sam.isExcepted  === false, "Sam must carry isExcepted:false");
+  assert_(eng.managerScorecard[eng.managerScorecard.length - 1].normName === 'jane doe',
+    "excepted managers must sort to the bottom");
+
+  // Omitting the param must behave like no exceptions (back-compat).
+  var eng2 = computeEngagementData_(employees, 4, {});
+  assert_(eng2.managerScorecard.every(function(m) { return m.isExcepted === false; }),
+    "no exceptions passed → nobody excepted");
+
+  Logger.log("✅ _test_managerExceptions_ passed");
 }
