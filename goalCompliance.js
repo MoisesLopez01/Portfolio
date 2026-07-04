@@ -22,13 +22,19 @@ var CONFIG_GD = {
   SHEET_ROSTER:        'Data',
   SHEET_HR_TRACKER:    'HR Follow-Up Tracker',
   DEFAULT_QUARTER:     'FY26Q4',
+  // Managers fully excluded from manager-engagement metrics (QoQ manager panel,
+  // engagement aggregates). Shown in the Manager Scorecard with an "Excepted"
+  // tag, never hidden. Full names as they appear in RD's Supervisor column —
+  // matched via normName_. Deliberately a code constant (git-versioned), not a
+  // Script Property: see 2026-07-04 design spec.
+  MANAGER_ENGAGEMENT_EXCEPTIONS: [],
   GOALS_ON_TARGET:     10,   // 10+ goals → On Target
   GOALS_WATCH:         8,    // 8–9 goals → Watch; <8 → At Risk
   STF_MIN_COMPLETED:   8,    // completed goals required for STF
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v13_',  // bumped: interns are excluded again (v12 accidentally dropped intern exclusion while fixing terminated-employee handling), and terminated ("attrition") rocketeers are now split into an isolated `attrition` list — excluded from compliance rate/RPI/STF/engagement math, still visible for HR reference
+  CACHE_VER:           'gd_v14_',  // bumped: payload adds per-employee weeklySelf/weeklyMgr series, trendWeeks, prevQuarter block, managerExceptions
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -99,6 +105,22 @@ function dateToFiscalQuarter_(d) {
   else if (m <= 2)            { qNum = 3; fyYear = y;     }  // Jan–Mar
   else                        { qNum = 4; fyYear = y;     }  // Apr–Jun
   return 'FY' + String(fyYear).slice(-2) + 'Q' + qNum;
+}
+
+/**
+ * Quarter label immediately before the given one — "FY26Q3" → "FY26Q2",
+ * "FY26Q1" → "FY25Q4". Computed by decrementing the parsed label, NOT by
+ * scanning the quarters-with-data list: a data-gap quarter must not silently
+ * make the QoQ shadow jump two quarters back.
+ */
+function prevQuarterLabel_(quarter) {
+  var m = String(quarter || '').match(/FY(\d{2,4})Q([1-4])/i);
+  if (!m) return null;
+  var fy = parseInt(m[1], 10);
+  if (fy < 100) fy += 2000;
+  var q = parseInt(m[2], 10);
+  if (q === 1) { fy -= 1; q = 4; } else { q -= 1; }
+  return 'FY' + String(fy).slice(-2) + 'Q' + q;
 }
 
 /**
@@ -1528,4 +1550,16 @@ function _test_aggregateAllRocketeers_() {
     "manager scope must exclude out-of-scope rocketeers, got " + JSON.stringify(scoped));
 
   Logger.log("✅ _test_aggregateAllRocketeers_ passed");
+}
+
+function _test_prevQuarterLabel_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_prevQuarterLabel_: " + msg); }
+
+  assert_(prevQuarterLabel_('FY26Q4') === 'FY26Q3', "FY26Q4 → FY26Q3, got " + prevQuarterLabel_('FY26Q4'));
+  assert_(prevQuarterLabel_('FY26Q2') === 'FY26Q1', "FY26Q2 → FY26Q1");
+  assert_(prevQuarterLabel_('FY26Q1') === 'FY25Q4', "FY boundary: FY26Q1 → FY25Q4, got " + prevQuarterLabel_('FY26Q1'));
+  assert_(prevQuarterLabel_('garbage') === null,     "unparseable → null");
+  assert_(prevQuarterLabel_('') === null,            "blank → null");
+
+  Logger.log("✅ _test_prevQuarterLabel_ passed");
 }
