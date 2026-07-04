@@ -2560,7 +2560,9 @@ function computeRkScore(emp, weekLabel) {
   var siVal      = (emp.si  && emp.si.value  != null && !isNaN(+emp.si.value))  ? +emp.si.value       : null;
   var plannedTarget = (wd.ptoAdjustedTargetHrs != null && !isNaN(+wd.ptoAdjustedTargetHrs)) ? +wd.ptoAdjustedTargetHrs : 40;
   var trackedTarget = (plannedHrs !== null && plannedHrs > 0) ? plannedHrs * 0.90 : plannedTarget * 0.90;
-  var tracked = trackedHrs === null ? 0 : (trackedTarget <= 0 ? 1 : Math.min(1, trackedHrs / trackedTarget));
+  // Target-floor check first — mirrors buildTopPerformers_ (see server comment): full-PTO
+  // week earns full tracked credit even when trackedHrs is null (nothing logged).
+  var tracked = trackedTarget <= 0 ? 1 : (trackedHrs === null ? 0 : Math.min(1, trackedHrs / trackedTarget));
   var planned = plannedHrs === null ? 0 : (plannedTarget <= 0 ? 1 : Math.min(1, plannedHrs / plannedTarget));
   // Weeks outside the real compliance window only carry comment-trend fields (no
   // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".

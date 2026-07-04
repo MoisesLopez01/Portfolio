@@ -2580,7 +2580,9 @@ function buildTopPerformers_(employees, weeks, scoringCfg) {
       const trackedTarget = (wd.plannedHrs !== null && wd.plannedHrs > 0)
         ? wd.plannedHrs * CONFIG_PS.SCORE_TRACKED_RATIO
         : plannedTargetHrs * CONFIG_PS.SCORE_TRACKED_RATIO;
-      const trackedNorm = wd.trackedHrs === null ? 0 : (trackedTarget    <= 0 ? 1 : Math.min(1, wd.trackedHrs / trackedTarget));
+      // Target-floor check first: a full-PTO week (target 0) earns full tracked credit even
+      // when nothing was logged — production emits null (not 0) trackedHrs for empty weeks.
+      const trackedNorm = trackedTarget <= 0 ? 1 : (wd.trackedHrs === null ? 0 : Math.min(1, wd.trackedHrs / trackedTarget));
       const plannedNorm = wd.plannedHrs === null ? 0 : (plannedTargetHrs <= 0 ? 1 : Math.min(1, wd.plannedHrs / plannedTargetHrs));
       // Weeks outside the real compliance window only carry comment-trend fields (no
       // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".
@@ -3406,9 +3408,12 @@ function _test_ptoAdjustedScoring_() {
   // Full PTO week: target floors at 0h. 0 planned/0 tracked must read as fully
   // credited (1), not zeroed out or NaN.
   const fullPto     = emp("Cara Diaz", 0,  0,  0);
+  // Realistic full-PTO week: production emits NULL (not 0) trackedHrs when nothing was
+  // logged — must still earn full tracked credit via the target-floor branch.
+  const fullPtoNull = emp("Dan Evans", 0,  0,  null);
 
   const cfg    = { matrix: {}, catalog: new Map(), base: DEFAULT_WEIGHTS_, audit: [] };
-  const result = buildTopPerformers_([noPto, partialPto, fullPto], weeks, cfg);
+  const result = buildTopPerformers_([noPto, partialPto, fullPto, fullPtoNull], weeks, cfg);
   const byName = {};
   result.performers.forEach(p => { byName[p.name] = p.metrics; });
 
@@ -3416,6 +3421,8 @@ function _test_ptoAdjustedScoring_() {
   assert_(byName["Ben Lee"].plannedNorm === 1,     "partial-PTO week: expected plannedNorm 1 (32/32), got " + byName["Ben Lee"].plannedNorm);
   assert_(byName["Cara Diaz"].plannedNorm === 1,   "full-PTO week: expected plannedNorm 1 (target floor), got " + byName["Cara Diaz"].plannedNorm);
   assert_(byName["Cara Diaz"].trackedNorm === 1,   "full-PTO week: expected trackedNorm 1 (target floor), got " + byName["Cara Diaz"].trackedNorm);
+  assert_(byName["Dan Evans"].trackedNorm === 1,   "full-PTO week with null tracked: expected trackedNorm 1, got " + byName["Dan Evans"].trackedNorm);
+  assert_(byName["Dan Evans"].plannedNorm === 1,   "full-PTO week with null tracked: expected plannedNorm 1, got " + byName["Dan Evans"].plannedNorm);
 
   Logger.log("✅ _test_ptoAdjustedScoring_ passed");
 }
@@ -3441,14 +3448,14 @@ function _test_goalsPtoExemption_() {
     .concat(goalRows("Ben Lee",   "TESTQ"))   // 0h PTO -> not exempt, fails rule 3
     .concat(goalRows("Cara Diaz", "TESTQ"));  // 39h PTO (just under 40) -> not exempt
 
-  global.SpreadsheetApp = {
+  globalThis.SpreadsheetApp = {
     openById: function() {
       return { getSheetByName: function() {
         return { getDataRange: function() { return { getValues: function() { return data; } }; } };
       }};
     }
   };
-  global.PropertiesService = { getScriptProperties: function() { return { getProperty: function() { return null; } }; } };
+  globalThis.PropertiesService = { getScriptProperties: function() { return { getProperty: function() { return null; } }; } };
 
   const normAna = normPS_("Ana Smith"), normBen = normPS_("Ben Lee"), normCara = normPS_("Cara Diaz");
   const psNames = new Map([
