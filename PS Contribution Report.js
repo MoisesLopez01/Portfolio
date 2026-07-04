@@ -23,6 +23,12 @@ var CONFIG_PS = {
   PTO_BALANCE_THRESHOLD:      100,   // hours — at or below = automatically Good
   PTO_PLANNING_HORIZON_MONTHS: 6,    // look-ahead window for a Usage planning signal
   PTO_TEAM_TARGET_PCT:        80,    // celebrate at this team-level score
+  PTO_IMPACT_THRESHOLD_HRS:   8,     // >= this much weekly PTO triggers the Exec Brief note
+                                      // and excludes the employee from Radar's tracked/planned
+                                      // compliance denominators for that week
+  PTO_FULL_WEEK_HRS:          40,    // >= this much weekly PTO exempts Goals rule 3 (self-comment
+                                      // pacing) for that week only
+  PTO_MIN_TARGET_HRS:         0,     // floor for ptoAdjustedTargetHrs — never negative
   SHEET_TEMPO_TRACKED:   "Tempo Tracked Time",
   SHEET_PLANNED:         "Planned Time Tempo",
   // Project keys in the Planned/Tracked Time "Key" column that are NOT real projects
