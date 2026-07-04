@@ -289,7 +289,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <div class="header-logo">🎯</div>
     <div class="header-title">
       <h1>Goals Compliance Dashboard</h1>
-      <p>Company-wide · RPI &amp; STF Eligibility · HR Follow-Up Tracker</p>
+      <p>Company-wide · RPI &amp; STF Eligibility · REX Follow-Up Tracker</p>
     </div>
     <span class="scope-badge" id="scope-badge"></span>
     <select id="quarter-select" class="quarter-select" onchange="onQuarterChange(this.value)"></select>
@@ -336,10 +336,10 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
   <!-- Tab Nav -->
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('overview')"  data-tab="overview">Overview</button>
-    <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
-    <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
     <button class="tab-btn"        onclick="switchTab('support')"   data-tab="support">Needing Support</button>
-    <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
+    <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
+    <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
+    <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">REX Tracker</button>
   </div>
 
   <main>
@@ -364,11 +364,13 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <!-- Right column: donut + HR summary -->
         <div style="display:flex;flex-direction:column;gap:14px">
           <div class="section-card">
-            <div class="section-head"><h2>Compliance Distribution</h2></div>
+            <div class="section-head"><h2>Compliance Distribution</h2>
+              <button class="btn" onclick="exportPNG(this.closest('.section-card'),'compliance-distribution.png')">⬇ PNG</button></div>
             <div class="chart-wrap" style="height:190px;position:relative"><canvas id="chart-donut"></canvas></div>
           </div>
           <div class="section-card" style="border-left:4px solid var(--orbe)">
-            <div class="section-head"><h2>HR Tracker Summary</h2></div>
+            <div class="section-head"><h2>REX Tracker Summary</h2>
+              <button class="btn" onclick="exportPNG(this.closest('.section-card'),'rex-summary.png')">⬇ PNG</button></div>
             <div class="section-body" id="hr-summary-card"></div>
           </div>
         </div>
@@ -379,12 +381,14 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-card">
           <div class="section-head">
             <div><h2>Team Engagement Rate</h2><p class="section-sub">People with ≥1 self-comment · colour = engagement rate</p></div>
+            <button class="btn" onclick="exportPNG(this.closest('.section-card'),'team-engagement.png')">⬇ PNG</button>
           </div>
           <div class="section-body" id="engagement-team"></div>
         </div>
         <div class="section-card">
           <div class="section-head">
             <div><h2>Manager Scorecard</h2><p class="section-sub">Avg comments left on team goals · % of team reached · click a manager to view their detail</p></div>
+            <button class="btn" onclick="exportPNG(this.closest('.section-card'),'manager-scorecard.png')">⬇ PNG</button>
           </div>
           <div class="section-body" id="engagement-managers"></div>
         </div>
@@ -454,7 +458,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-head" style="cursor:pointer" onclick="toggleTeamBreakdown_()">
           <div><h2>Org Breakdown</h2><p class="section-sub">Compliance by Department / Location / Job Family (collapsed by default)</p></div>
           <div class="section-actions">
-            <button class="btn" onclick="event.stopPropagation();exportPNG('team-breakdown-content','breakdown.png')">⬇ Export All PNG</button>
+            <button class="btn" onclick="event.stopPropagation();exportBreakdownPNG_()">⬇ Export All PNG</button>
             <span id="team-breakdown-toggle" style="color:var(--muted);font-size:12px">▾</span>
           </div>
         </div>
@@ -463,6 +467,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
             <div id="breakdown-top" style="border-top:1px solid var(--border)">
               <div class="section-head">
                 <div><h2>Location Compliance Rates</h2><p class="section-sub">Sorted highest to lowest · headcount shown</p></div>
+                <button class="btn" onclick="exportPNG('breakdown-top','location-compliance.png')">⬇ PNG</button>
               </div>
               <div class="chart-wrap"><div style="height:340px;position:relative"><canvas id="chart-location"></canvas></div></div>
             </div>
@@ -518,7 +523,10 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-head" style="cursor:pointer" onclick="toggleSection('attrition-body','attrition-toggle')">
           <div><h2>Attrition <span id="attrition-count-badge" style="color:var(--muted);font-weight:600"></span></h2>
             <p class="section-sub">Departed rocketeers with activity this quarter · excluded from the compliance rate/RPI/STF/engagement metrics · shown here for HR reference only</p></div>
-          <span id="attrition-toggle" style="color:var(--muted);font-size:12px">▾</span>
+          <div class="section-actions">
+            <button class="btn" onclick="event.stopPropagation();exportAttritionPNG_()">⬇ PNG</button>
+            <span id="attrition-toggle" style="color:var(--muted);font-size:12px">▾</span>
+          </div>
         </div>
         <div id="attrition-body" style="display:none">
           <div class="section-body" id="attrition-table"></div>
@@ -526,7 +534,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
-    <!-- ── HR TRACKER ── -->
+    <!-- ── REX TRACKER (follow-up log; pane id stays 'hrtracker') ── -->
     <div id="pane-hrtracker" class="tab-pane">
       <div class="kpi-grid" id="kpi-tracker"></div>
       <div class="section-card">
@@ -540,6 +548,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
               <option value="escalated">Escalated</option>
             </select>
             <button class="btn" onclick="exportTrackerCSV()">⬇ CSV</button>
+            <button class="btn" onclick="exportPNG(this.closest('.section-card'),'rex-tracker.png')">⬇ PNG</button>
           </div>
         </div>
         <div class="section-body" id="tracker-body"></div>
@@ -621,10 +630,10 @@ var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','
 // separate btnId/paneId bookkeeping is needed the way PS Dashboard.html does it).
 var VIEWS = [
   { id: 'overview',  label: 'Overview',              location: 'tabbar', roles: null },
-  { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
-  { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
   { id: 'support',   label: 'Needing Support',       location: 'tabbar', roles: null },
-  { id: 'hrtracker', label: 'HR Tracker',            location: 'tabbar', roles: null },
+  { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
+  { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
+  { id: 'hrtracker', label: 'REX Tracker',           location: 'tabbar', roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
 ];
 
@@ -922,7 +931,7 @@ function renderOverview(emps) {
     row2('Reviewed / Resolved',    '<span style="color:var(--success);font-weight:700">' + reviewed + '</span>') +
     row2('Pending outreach',        '<span style="color:#EF4444;font-weight:700">' + pending + '</span>') +
     '</div>' +
-    '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open HR Tracker →</button>';
+    '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open REX Tracker →</button>';
 
 }
 
@@ -2636,14 +2645,46 @@ function toggleSection(id, iconId) {
 // ── EXPORTS ────────────────────────────────────────────────────────
 function exportPNG(elOrId, filename) {
   var el = (typeof elOrId === 'string') ? document.getElementById(elOrId) : elOrId;
-  if (!el || typeof html2canvas === 'undefined') return;
-  html2canvas(el, { backgroundColor:'#F8FAFC', scale:2, useCORS:true })
+  if (!el || typeof html2canvas === 'undefined') return null;
+  // Returns the capture promise so callers can sequence work after the
+  // download starts (e.g. exportAttritionPNG_ re-collapsing its section).
+  return html2canvas(el, { backgroundColor:'#F8FAFC', scale:2, useCORS:true })
     .then(function(canvas) {
       var a = document.createElement('a');
       a.download = filename || 'compliance.png';
       a.href = canvas.toDataURL('image/png');
       a.click();
     });
+}
+
+// The Attrition section is collapsed by default and html2canvas captures a
+// display:none body as blank — expand it for the shot, then restore the
+// collapsed state once the capture resolves.
+function exportAttritionPNG_() {
+  var body = document.getElementById('attrition-body');
+  if (!body) return;
+  var wasHidden = body.style.display === 'none';
+  if (wasHidden) toggleSection('attrition-body', 'attrition-toggle');
+  var restore = function() { if (wasHidden) toggleSection('attrition-body', 'attrition-toggle'); };
+  var p = exportPNG(body.closest('.section-card'), 'attrition.png');
+  if (p && p.then) p.then(restore, restore); else restore();
+}
+
+// Same expand-for-capture treatment for the collapsible Org Breakdown, with one
+// extra wrinkle: its location chart was built at 0×0 while hidden, so expanding
+// goes through toggleTeamBreakdown_ (which resizes it) and the capture waits a
+// beat for that resize to paint.
+function exportBreakdownPNG_() {
+  var body = document.getElementById('team-breakdown-body');
+  if (!body) return;
+  var wasHidden = body.style.display === 'none';
+  if (wasHidden) toggleTeamBreakdown_();
+  var run = function() {
+    var restore = function() { if (wasHidden) toggleTeamBreakdown_(); };
+    var p = exportPNG('team-breakdown-content', 'breakdown.png');
+    if (p && p.then) p.then(restore, restore); else restore();
+  };
+  if (wasHidden) setTimeout(run, 150); else run();
 }
 
 function exportAllPNG() {
