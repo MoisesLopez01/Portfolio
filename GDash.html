@@ -153,10 +153,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .review-check{color:var(--success);font-weight:700;font-size:11px}
 .review-meta{font-size:9px;color:var(--muted)}
 
-/* Trend tab */
-.trend-dept-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;
-  font-size:10px;font-weight:600;cursor:pointer;border:2px solid transparent;transition:all .15s}
-
 /* HR Tracker */
 .tracker-card{background:#fff;border:1px solid var(--border);border-radius:9px;padding:12px 14px;
   display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow)}
@@ -328,6 +324,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
   <!-- Tab Nav -->
   <div class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('overview')"  data-tab="overview">Overview</button>
+    <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
     <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
   </div>
@@ -361,21 +358,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
             <div class="section-head"><h2>HR Tracker Summary</h2></div>
             <div class="section-body" id="hr-summary-card"></div>
           </div>
-        </div>
-      </div>
-
-      <!-- Comments Volume Trend (moved from the old standalone Engagement tab) -->
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>Comments Volume Week Over Week</h2><p class="section-sub">Total org + department breakdown · ISO weeks · glance-level engagement pulse</p></div>
-          <button class="btn" onclick="exportPNG('overview-trend-panel','comments-trend.png')">⬇ PNG</button>
-        </div>
-        <div class="section-body" id="overview-trend-panel">
-          <div style="margin-bottom:10px">
-            <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:8px">Departments:</span>
-            <div id="trend-dept-selector" style="display:inline-flex;flex-wrap:wrap;gap:6px"></div>
-          </div>
-          <div style="height:320px;position:relative"><canvas id="chart-trend"></canvas></div>
         </div>
       </div>
 
@@ -417,6 +399,57 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         </div>
         <div id="attrition-body" style="display:none">
           <div class="section-body" id="attrition-table"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TRENDS ──
+         Weekly combo trend (moved from Overview, now recomputed from the globally
+         filtered employee set) + QoQ engagement twin panels. All series are
+         client-computed from per-employee weeklySelf/weeklyMgr maps — see the
+         2026-07-04 design spec. -->
+    <div id="pane-trends" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Comments &amp; Participation Week Over Week</h2>
+            <p class="section-sub" id="trend-denominator-sub">Self vs manager comment volume + rocketeers engaging · respects the filter bar</p></div>
+          <div class="section-actions">
+            <div style="display:inline-flex;gap:6px">
+              <button class="btn btn-primary" id="btn-trendline-count" aria-pressed="true" onclick="setTrendLineMode_('count')">Count</button>
+              <button class="btn" id="btn-trendline-pct" aria-pressed="false" onclick="setTrendLineMode_('pct')">%</button>
+            </div>
+            <button class="btn" onclick="exportPNG('trends-combo-panel','comments-trend.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="trends-combo-panel">
+          <div style="height:320px;position:relative"><canvas id="chart-trend"></canvas></div>
+        </div>
+      </div>
+
+      <div class="col-row">
+        <div class="section-card">
+          <div class="section-head">
+            <div><h2>🧑 Rocketeer Engagement — QoQ</h2>
+              <p class="section-sub">% of filtered rocketeers (with goals) self-commenting each week · previous quarter as shadow</p></div>
+            <button class="btn" onclick="exportPNG('qoq-rock-panel','qoq-rocketeers.png')">⬇ PNG</button>
+          </div>
+          <div class="section-body" id="qoq-rock-panel">
+            <div style="height:220px;position:relative"><canvas id="chart-qoq-rock"></canvas></div>
+            <div style="height:70px;position:relative;margin-top:4px"><canvas id="chart-qoq-rock-delta"></canvas></div>
+            <p class="section-sub" id="qoq-rock-note" style="margin-top:6px"></p>
+          </div>
+        </div>
+        <div class="section-card">
+          <div class="section-head">
+            <div><h2>👤 Manager Engagement — QoQ</h2>
+              <p class="section-sub">% of managers commenting on ≥1 team goal each week · excepted managers excluded</p></div>
+            <button class="btn" onclick="exportPNG('qoq-mgr-panel','qoq-managers.png')">⬇ PNG</button>
+          </div>
+          <div class="section-body" id="qoq-mgr-panel">
+            <div style="height:220px;position:relative"><canvas id="chart-qoq-mgr"></canvas></div>
+            <div style="height:70px;position:relative;margin-top:4px"><canvas id="chart-qoq-mgr-delta"></canvas></div>
+            <p class="section-sub" id="qoq-mgr-note" style="margin-top:6px"></p>
+          </div>
         </div>
       </div>
     </div>
@@ -552,7 +585,7 @@ var S = {
   activeTab:      'overview',
   lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
   reviewTarget:   null,
-  trendDepts:     [],  // department lines shown on trend chart
+  trendLineMode:  'count',  // 'count' | 'pct' — Trends combo chart line mode
   allRocketeersData:  null,          // lazy-loaded on first visit to the "All Time" roster view
   teamRosterMode:     'thisQuarter', // 'thisQuarter' | 'allTime' — Team & Individuals roster toggle
   teamSearchQuery:    '',            // shared filter box for whichever roster view is active
@@ -568,6 +601,7 @@ var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','
 // separate btnId/paneId bookkeeping is needed the way PS Dashboard.html does it).
 var VIEWS = [
   { id: 'overview',  label: 'Overview',              location: 'tabbar', roles: null },
+  { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
   { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
   { id: 'hrtracker', label: 'HR Tracker',            location: 'tabbar', roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
@@ -809,6 +843,7 @@ function switchTab(tabId) {
 function renderTab(tabId) {
   var emps = getFiltered();
   if      (tabId === 'overview')  renderOverview(emps);
+  else if (tabId === 'trends')    renderTrends(emps);
   else if (tabId === 'team')      renderTeam(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
   else if (tabId === 'access')    renderAccessTab_();
@@ -848,12 +883,6 @@ function renderOverview(emps) {
 
   // Compliance donut
   buildDonut('chart-donut', onTarget, watch, atRisk);
-
-  // Comments Volume Trend (moved from the old Engagement tab)
-  if (S.data && S.data.commentTrend) {
-    buildTrendDeptChips_(S.data.commentTrend);
-    buildCommentTrendChart('chart-trend', S.data.commentTrend, S.trendDepts);
-  }
 
   // Team Engagement Rate + Manager Scorecard (moved from the old Engagement tab)
   renderTeamEngagement_(eng);
@@ -1073,30 +1102,6 @@ function exportEngagementCSV_() {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-}
-
-function buildTrendDeptChips_(trend) {
-  var depts  = Object.keys(trend.byDept || {}).sort();
-  var el     = document.getElementById('trend-dept-selector');
-  el.innerHTML = '';
-  depts.forEach(function(dept, i) {
-    var color   = DEPT_COLORS[i % DEPT_COLORS.length];
-    var isOn    = S.trendDepts.indexOf(dept) !== -1;
-    var chip    = document.createElement('span');
-    chip.className = 'trend-dept-chip';
-    chip.textContent = dept;
-    chip.style.background   = isOn ? color : 'transparent';
-    chip.style.color        = isOn ? '#fff'  : color;
-    chip.style.borderColor  = color;
-    chip.setAttribute('data-dept', dept);
-    chip.addEventListener('click', function() {
-      var idx = S.trendDepts.indexOf(dept);
-      if (idx === -1) S.trendDepts.push(dept); else S.trendDepts.splice(idx, 1);
-      buildTrendDeptChips_(trend);
-      buildCommentTrendChart('chart-trend', trend, S.trendDepts);
-    });
-    el.appendChild(chip);
-  });
 }
 
 // ── BREAKDOWN ─────────────────────────────────────────────────────
@@ -1550,91 +1555,100 @@ function buildBarChart(canvasId, groups, title) {
   });
 }
 
-function buildCommentTrendChart(canvasId, trend, selectedDepts) {
-  destroyChart(canvasId);
-  var canvas = document.getElementById(canvasId);
-  if (!canvas || !trend || !trend.weeks.length) return;
+// ── TRENDS TAB ─────────────────────────────────────────────────────
+function renderTrends(emps) {
+  buildWeeklyComboChart_(emps);
+  renderQoQPanels_(emps);
+}
 
-  var shortWeeks = trend.weeks.map(function(w){ return w.split('.')[1] || w; });
-
-  // Primary axis (y): total comments; secondary axis (y1): unique people
-  var datasets = [
-    {
-      label:'Total Comments (org)',
-      data: trend.orgTotal,
-      borderColor:'#058CDC',
-      backgroundColor:'rgba(5,140,220,.08)',
-      borderWidth:2.5, tension:.4, fill:true,
-      pointRadius:4, pointHoverRadius:6,
-      yAxisID:'y',
-      datalabels:{ display:false }
-    },
-    {
-      label:'Unique People Engaging',
-      data: trend.orgUnique || [],
-      borderColor:'#00A86B',
-      backgroundColor:'transparent',
-      borderWidth:2, tension:.4, fill:false,
-      borderDash:[5,3],
-      pointRadius:4, pointHoverRadius:6,
-      yAxisID:'y1',
-      datalabels:{ display:false }
-    }
-  ];
-
-  (selectedDepts || []).forEach(function(dept, i) {
-    if (!trend.byDept[dept]) return;
-    var color = DEPT_COLORS[i % DEPT_COLORS.length];
-    datasets.push({
-      label: dept + ' (cmts)',
-      data:  trend.byDept[dept],
-      borderColor: color,
-      backgroundColor:'transparent',
-      borderWidth:1.5, tension:.4, fill:false,
-      pointRadius:3,
-      yAxisID:'y',
-      datalabels:{ display:false }
-    });
-    if (trend.byDeptUnique && trend.byDeptUnique[dept]) {
-      datasets.push({
-        label: dept + ' (people)',
-        data:  trend.byDeptUnique[dept],
-        borderColor: color,
-        backgroundColor:'transparent',
-        borderWidth:1, tension:.4, fill:false,
-        borderDash:[3,3],
-        pointRadius:2,
-        yAxisID:'y1',
-        datalabels:{ display:false }
-      });
-    }
+// Sums a sparse weekly map field across employees into an array aligned to `weeks`.
+function sumWeekly_(emps, field, weeks) {
+  return weeks.map(function(w) {
+    return emps.reduce(function(s, e) { return s + ((e[field] && e[field][w]) || 0); }, 0);
   });
+}
 
-  S.charts[canvasId] = new Chart(canvas, {
-    type:'line',
-    plugins:[ChartDataLabels],
-    data:{ labels:shortWeeks, datasets:datasets },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      scales:{
-        y:  { position:'left',  title:{ display:true, text:'Comments',      font:{size:11} }, grid:{ color:'#E2E8F0' }, ticks:{ font:{size:11} } },
-        y1: { position:'right', title:{ display:true, text:'Unique People', font:{size:11} }, grid:{ drawOnChartArea:false }, ticks:{ font:{size:11} } }
+// Employees with any self-comment in each week.
+function countEngaging_(emps, weeks) {
+  return weeks.map(function(w) {
+    return emps.filter(function(e) { return e.weeklySelf && e.weeklySelf[w] > 0; }).length;
+  });
+}
+
+function setTrendLineMode_(mode) {
+  S.trendLineMode = mode;
+  var cBtn = document.getElementById('btn-trendline-count');
+  var pBtn = document.getElementById('btn-trendline-pct');
+  if (cBtn) { cBtn.classList.toggle('btn-primary', mode === 'count'); cBtn.setAttribute('aria-pressed', String(mode === 'count')); }
+  if (pBtn) { pBtn.classList.toggle('btn-primary', mode === 'pct');   pBtn.setAttribute('aria-pressed', String(mode === 'pct')); }
+  buildWeeklyComboChart_(getFiltered());
+}
+
+// Filter-aware combo: stacked self/mgr comment bars + rocketeers-engaging line
+// (count or % of filtered rocketeers with goals) with a datalabel on every point.
+function buildWeeklyComboChart_(emps) {
+  destroyChart('chart-trend');
+  var canvas = document.getElementById('chart-trend');
+  var weeks  = (S.data && S.data.trendWeeks) || [];
+  if (!canvas || !weeks.length) return;
+
+  var eligibleN = emps.filter(function(e) { return e.totalGoals > 0; }).length;
+  var sub = document.getElementById('trend-denominator-sub');
+  if (sub) sub.textContent = 'Self vs manager comment volume + rocketeers engaging · of ' +
+    eligibleN + ' filtered rocketeer' + (eligibleN === 1 ? '' : 's') + ' with goals';
+
+  var selfSeries = sumWeekly_(emps, 'weeklySelf', weeks);
+  var mgrSeries  = sumWeekly_(emps, 'weeklyMgr',  weeks);
+  var engaging   = countEngaging_(emps, weeks);
+  var pctMode    = S.trendLineMode === 'pct';
+  var lineData   = pctMode
+    ? engaging.map(function(n) { return eligibleN ? +(n / eligibleN * 100).toFixed(1) : 0; })
+    : engaging;
+
+  var shortWeeks = weeks.map(function(w) { return w.split('.')[1] || w; });
+
+  S.charts['chart-trend'] = new Chart(canvas, {
+    type: 'bar',
+    plugins: [ChartDataLabels],
+    data: {
+      labels: shortWeeks,
+      datasets: [
+        { type: 'line', label: pctMode ? '% Engaging' : 'Rocketeers Engaging',
+          data: lineData, borderColor: '#00A86B', backgroundColor: 'transparent',
+          borderWidth: 2, borderDash: [5, 3], tension: .3, pointRadius: 3, yAxisID: 'y1', order: 0,
+          datalabels: { display: true, align: 'top', anchor: 'end', color: '#00A86B',
+            font: { size: 10, weight: '800' },
+            formatter: function(v) { return pctMode ? v + '%' : v; } } },
+        { label: 'Self Comments', data: selfSeries, backgroundColor: '#2864E6',
+          stack: 'cmts', yAxisID: 'y', order: 1, datalabels: { display: false } },
+        { label: 'Manager Comments', data: mgrSeries, backgroundColor: '#F59E0B',
+          stack: 'cmts', yAxisID: 'y', order: 1, datalabels: { display: false } },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x:  { stacked: true, ticks: { font: { size: 11 } } },
+        y:  { stacked: true, position: 'left',
+              title: { display: true, text: 'Comments', font: { size: 11 } },
+              grid: { color: '#E2E8F0' }, ticks: { font: { size: 11 } } },
+        y1: { position: 'right',
+              title: { display: true, text: pctMode ? '% Engaging' : 'Rocketeers', font: { size: 11 } },
+              grid: { drawOnChartArea: false }, ticks: { font: { size: 11 } },
+              min: 0, max: pctMode ? 100 : undefined }
       },
-      plugins:{
-        legend:{ position:'top', labels:{ font:{size:11}, padding:12 } },
-        tooltip:{
-          callbacks:{
-            title:function(ctx){ return 'Week ' + trend.weeks[ctx[0].dataIndex]; },
-            afterBody:function(ctx){
-              var i = ctx[0].dataIndex;
-              var u = (trend.orgUnique || [])[i] || 0;
-              return ['Unique engaging: ' + u + ' people'];
-            }
-          }
-        }
+      plugins: {
+        legend:  { position: 'top', labels: { font: { size: 11 }, padding: 12 } },
+        tooltip: { callbacks: { title: function(ctx) { return 'Week ' + weeks[ctx[0].dataIndex]; } } }
       }
     }
   });
+}
+
+// Placeholder until Task 6 — keeps the Trends tab renderable after this task alone.
+function renderQoQPanels_(emps) {
+  var note = document.getElementById('qoq-rock-note');
+  if (note) note.textContent = 'QoQ panels land in the next change.';
 }
 
 function destroyChart(id) {
