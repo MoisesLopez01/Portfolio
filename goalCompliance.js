@@ -4,7 +4,8 @@
 // PURPOSE:     Data aggregation, caching, and HR follow-up
 //              tracker for the company-wide Goals Compliance
 //              Dashboard. Pair with GDash.html.
-// VERSION:     2.0.0
+//              v2.1.0: weekly series payload, Trends tab data, QoQ prevQuarter block, manager exceptions.
+// VERSION:     2.1.0
 // ENVIRONMENT: Google Apps Script (Standalone Web App)
 // DEPLOY:      Apps Script → Deploy → New deployment → Web App
 //              Execute as: User accessing the web app
