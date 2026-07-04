@@ -180,6 +180,18 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
    scroll, which always works. */
 .data-table tr.drill-row td{background:#F8FAFC;cursor:default}
 .data-table tr.drill-row:hover td{background:#F8FAFC}
+/* Conversation timeline inside the goal drill-down (2026-07-04 spec) */
+.cv-thread{display:flex;flex-direction:column;gap:4px;padding:4px 0}
+.cv-bubble{max-width:78%;border-radius:10px;padding:7px 10px;font-size:12px;color:var(--text)}
+.cv-self{background:#EEF4FF;border:1px solid #C7DEFF;align-self:flex-start}
+.cv-mgr{background:#FEF3E7;border:1px solid #FDE0B0;align-self:flex-end}
+.cv-other{background:#F1F5F9;border:1px solid #CBD5E1;align-self:center}
+.cv-meta{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--slate);margin-bottom:3px}
+.cv-week{display:flex;align-items:center;gap:8px;margin:8px 0 2px;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cv-week::before,.cv-week::after{content:"";flex:1;border-top:1px dashed var(--border)}
+.cv-gap{align-self:center;text-align:center;font-size:10px;font-weight:700;color:#B45309;background:#FFF7ED;border:1px dashed #FDBA74;border-radius:6px;padding:4px 10px;margin:6px 0}
+.cv-cadence{display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:2px 0 10px}
+.cv-dot{width:16px;height:16px;border-radius:3px;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;color:#fff}
 .modal-head{padding:18px 20px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
 .modal-head h3{font-size:14px;font-weight:800;color:var(--void)}
 .modal-close{background:none;border:none;font-size:16px;color:var(--muted);padding:2px 6px;border-radius:4px}
@@ -2187,6 +2199,91 @@ function goalStatusBucket_(status) {
   return { label: s || 'Unknown', color: '#94A3B8' };
 }
 
+// Client twin of the server's dateToISOWeek_ — same "YYYY.WNN" labels.
+function isoWeekOf_(dateStr) {
+  if (!dateStr) return null;
+  var p = String(dateStr).split('-');
+  var dt = new Date(+p[0], +p[1] - 1, +p[2]);
+  if (isNaN(dt)) return null;
+  dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7));
+  var ys = new Date(dt.getFullYear(), 0, 1);
+  var w  = Math.ceil(((dt - ys) / 86400000 + 1) / 7);
+  return dt.getFullYear() + '.W' + (w < 10 ? '0' : '') + w;
+}
+
+// Client twin of the server's dateToFiscalQuarter_ (Jul 1 → Jun 30 FY).
+function fiscalQuarterOf_(dateStr) {
+  if (!dateStr) return null;
+  var p = String(dateStr).split('-');
+  var y = +p[0], m = +p[1];  // month 1-based
+  if (m >= 7 && m <= 9)  return 'FY' + String(y + 1).slice(-2) + 'Q1';
+  if (m >= 10)           return 'FY' + String(y + 1).slice(-2) + 'Q2';
+  if (m <= 3)            return 'FY' + String(y).slice(-2) + 'Q3';
+  return 'FY' + String(y).slice(-2) + 'Q4';
+}
+
+// Weekly cadence strip for one goal: one square per elapsed quarter week —
+// blue = self-commented (count shown), amber = manager only, red = silent.
+// Single-quarter drills only: All-Time mixes quarters, so week alignment is
+// meaningless there.
+function buildCadenceStrip_(g, isAllTime) {
+  var weeks = (S.data && S.data.trendWeeks) || [];
+  if (isAllTime || !weeks.length) return '';
+  var selfByWk = {}, mgrByWk = {};
+  g.comments.forEach(function(c) {
+    var wk = isoWeekOf_(c.date);
+    if (!wk) return;
+    if (c.type === 'self')         selfByWk[wk] = (selfByWk[wk] || 0) + 1;
+    else if (c.type === 'manager') mgrByWk[wk]  = (mgrByWk[wk]  || 0) + 1;
+  });
+  var html = '<div class="cv-cadence"><span style="font-size:9px;font-weight:800;color:var(--slate)">Cadence:</span>';
+  weeks.forEach(function(w) {
+    if (selfByWk[w]) {
+      html += '<span class="cv-dot" style="background:#2864E6" title="' + esc(w) + ': ' + selfByWk[w] + ' self comment' + (selfByWk[w] === 1 ? '' : 's') + '">' + selfByWk[w] + '</span>';
+    } else if (mgrByWk[w]) {
+      html += '<span class="cv-dot" style="background:#F59E0B" title="' + esc(w) + ': manager only">M</span>';
+    } else {
+      html += '<span class="cv-dot" style="background:#FEE2E2;color:#B91C1C" title="' + esc(w) + ': silent">·</span>';
+    }
+  });
+  html += '<span style="font-size:9px;color:var(--muted)">&#x1F7E6; self &nbsp;&middot;&nbsp; &#x1F7E7; mgr only &nbsp;&middot;&nbsp; &#x1F7E5; silent</span></div>';
+  return html;
+}
+
+// Conversation timeline for one goal's comments (already date-ascending from
+// the server): IC left / Manager right / Other center, week separators, and an
+// amber callout when ≥2 full silent weeks pass between consecutive comments.
+// In All-Time mode, gaps spanning a fiscal-quarter boundary are suppressed —
+// a new quarter legitimately restarts the conversation.
+function renderGoalThread_(g, isAllTime) {
+  if (!g.comments.length) {
+    return '<div class="section-body"><div class="empty-state" style="padding:10px">No comments recorded on this goal.</div></div>';
+  }
+  var html = '<div class="section-body">';
+  html += buildCadenceStrip_(g, isAllTime);
+  html += '<div class="cv-thread">';
+  var prevWeek = null, prevDate = null;
+  g.comments.forEach(function(c) {
+    if (prevDate && c.date) {
+      var silentWeeks = Math.floor((new Date(c.date) - new Date(prevDate)) / (7 * 86400000));
+      var crossesQuarter = isAllTime && fiscalQuarterOf_(prevDate) !== fiscalQuarterOf_(c.date);
+      if (silentWeeks >= 2 && !crossesQuarter) {
+        html += '<div class="cv-gap">&#9888; ' + silentWeeks + '-week silence — no comments from anyone</div>';
+      }
+    }
+    var wk = isoWeekOf_(c.date);
+    if (wk && wk !== prevWeek) { html += '<div class="cv-week">' + esc(wk) + '</div>'; prevWeek = wk; }
+    var cls = c.type === 'self' ? 'cv-self' : c.type === 'manager' ? 'cv-mgr' : 'cv-other';
+    var who = c.type === 'self' ? 'IC'      : c.type === 'manager' ? 'Manager' : 'Other';
+    html += '<div class="cv-bubble ' + cls + '">' +
+      '<div class="cv-meta">' + who + ' · ' + esc(c.commentator) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
+      '<div>' + esc(c.text) + '</div></div>';
+    if (c.date) prevDate = c.date;
+  });
+  html += '</div></div>';
+  return html;
+}
+
 /**
  * Renders a getRocketeerGoalDetail() payload into the expandable drill-row's <td>: a
  * status-count summary (so someone with 10+ goals can scan before opening any one of
@@ -2255,8 +2352,8 @@ function renderIndividualDrillContent_(container, data) {
     html += '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:5px">' +
       '<span style="display:inline-flex;align-items:center;gap:4px;border-radius:10px;padding:1px 8px;font-size:9px;font-weight:800;background:' + b.color + '22;color:' + b.color + '">' +
       '<span style="width:6px;height:6px;border-radius:50%;background:' + b.color + '"></span>' + esc(b.label) + '</span>' +
-      '<span style="font-size:10px;color:#2864E6;font-weight:700">Self ' + selfCount + '</span>' +
-      '<span style="font-size:10px;color:#B45309;font-weight:700">Mgr ' + mgrCount + '</span>' +
+      '<span style="font-size:10px;font-weight:800;color:#2864E6">&#x1F9D1; Self ' + selfCount + '</span>' +
+      '<span style="font-size:10px;font-weight:800;color:#B45309">&#x1F464; Mgr ' + mgrCount + '</span>' +
       (isAllTime && g.quarter ? '<span style="font-size:10px;color:var(--muted)">' + esc(g.quarter) + '</span>' : '') +
       (g.startDate ? '<span style="font-size:10px;color:var(--muted)">started ' + esc(g.startDate) + '</span>' : '') +
       (g.mood ? '<span style="font-size:10px;color:var(--muted)">' + esc(g.mood) + '</span>' : '') +
@@ -2265,31 +2362,7 @@ function renderIndividualDrillContent_(container, data) {
     html += '</div>';
 
     html += '<div id="' + bodyId + '" style="display:none">';
-    if (!g.comments.length) {
-      html += '<div class="section-body"><div class="empty-state" style="padding:10px">No comments recorded on this goal.</div></div>';
-    } else {
-      html += '<div class="section-body">';
-      g.comments.forEach(function(c) {
-        var tagCss   = c.type === 'self' ? 'background:#EEF4FF;color:#2864E6;border:1px solid #C7DEFF'
-                     : c.type === 'manager' ? 'background:#FEF3E7;color:#B45309;border:1px solid #FDE0B0'
-                     : 'background:#F1F5F9;color:#475569;border:1px solid #CBD5E1';
-        var tagLabel = c.type === 'self' ? 'IC' : c.type === 'manager' ? 'Manager' : 'Other';
-        html += '<div style="padding:8px 0;border-bottom:1px solid var(--border)">' +
-          '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:3px">' +
-          '<span style="display:flex;gap:4px;flex-wrap:wrap">' +
-          '<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:3px;padding:1px 6px;' + tagCss + '">' + tagLabel + '</span>' +
-          // Goal-status tag on the comment itself (not just the goal header above) —
-          // same bucket/color as the card header badge, since every comment here
-          // belongs to this one goal and shares its status.
-          '<span style="font-size:9px;font-weight:800;border-radius:3px;padding:1px 6px;background:' + b.color + '22;color:' + b.color + '">' + esc(b.label) + '</span>' +
-          '</span>' +
-          '<span style="font-size:10px;color:var(--muted)">' + esc(c.commentator) + (c.date ? ' · ' + esc(c.date) : '') + '</span>' +
-          '</div>' +
-          '<div style="font-size:12px;color:var(--text)">' + esc(c.text) + '</div>' +
-          '</div>';
-      });
-      html += '</div>';
-    }
+    html += renderGoalThread_(g, isAllTime);
     html += '</div>'; // bodyId
     html += '</div>'; // section-card
   });
