@@ -697,6 +697,7 @@ function buildComplianceData_(quarter, access) {
       totalSelfComments: 0, totalManagerComments: 0,
       avgSelfComments: 0, avgManagerComments: 0,
       commentWeeks: 0, commentWeekList: [],
+      weeklySelf: {}, weeklyMgr: {},
       stfGoalsCompleted: 0, stfGoalsWithSufficientComments: 0,
       goalsStuckInPlanned: 0, hasEngagementConcern: false,
       goalsList: [],
@@ -859,6 +860,8 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
         quarter:    quarter || String(row['Fiscal Quarter'] || '').trim(),
         _goals:     {},
         _selfCmtWeeks: {},  // ISO weeks in which rocketeer self-commented
+        _weeklySelf: {},    // ISO week → self-comment count (sparse; QoQ/trend raw material)
+        _weeklyMgr:  {},    // ISO week → manager-comment count (sparse)
       };
     }
 
@@ -893,18 +896,19 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
       var g      = map[norm]._goals[goalId];
       var sup    = normName_(map[norm].supervisor);
       var cNorm  = normName_(cBy);
+      var wk     = cDate ? dateToISOWeek_(cDate) : null;
 
       g.totalComments++;
 
       if (cNorm === norm) {
         g.selfComments++;
-        // Track self-comment weeks for RPI
-        if (cDate) {
-          var wk = dateToISOWeek_(cDate);
-          if (wk) map[norm]._selfCmtWeeks[wk] = true;
+        if (wk) {
+          map[norm]._selfCmtWeeks[wk] = true;  // RPI: weeks with any self-comment
+          map[norm]._weeklySelf[wk]   = (map[norm]._weeklySelf[wk] || 0) + 1;
         }
       } else if (sup && cNorm === sup) {
         g.managerComments++;
+        if (wk) map[norm]._weeklyMgr[wk] = (map[norm]._weeklyMgr[wk] || 0) + 1;
       }
 
       if (cDate) {
@@ -964,8 +968,15 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
       };
     });
 
+    // Sparse weekly series — the raw material every filter-aware chart
+    // (Trends combo, QoQ panels) recomputes from client-side.
+    emp.weeklySelf = emp._weeklySelf;
+    emp.weeklyMgr  = emp._weeklyMgr;
+
     delete emp._goals;
     delete emp._selfCmtWeeks;
+    delete emp._weeklySelf;
+    delete emp._weeklyMgr;
   });
 
   return map;
@@ -1616,4 +1627,38 @@ function _test_quarterWeekList_() {
   assert_(clamped.length <= w.length, "clamping must not add weeks");
 
   Logger.log("✅ _test_quarterWeekList_ passed");
+}
+
+function _test_weeklySeries_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_weeklySeries_: " + msg); }
+
+  // 2026-04-06 is the Monday of 2026.W15; 2026-04-20 is the Monday of 2026.W17.
+  var base = { 'Rocketeer':'Alice Smith', 'Supervisor':'Jane Doe', 'Department':'Ops',
+               'Job Title':'Analyst', 'Goal ID':'G1', 'Goal Name':'Playbook',
+               'Goal Status':'In Progress', 'Start Date': new Date(2026, 3, 6) };
+  function row(commentator, date, text) {
+    var r = {}; Object.keys(base).forEach(function(k) { r[k] = base[k]; });
+    r['Commentator'] = commentator; r['Comment Date'] = date; r['Comment Text'] = text;
+    return r;
+  }
+  var rows = [
+    row('Alice Smith', new Date(2026, 3, 6),  'kickoff'),    // W15 self
+    row('Alice Smith', new Date(2026, 3, 8),  'progress'),   // W15 self
+    row('Jane Doe',    new Date(2026, 3, 9),  'nice'),       // W15 manager
+    row('Alice Smith', new Date(2026, 3, 20), 'later'),      // W17 self
+    row('Sam Peer',    new Date(2026, 3, 7),  'peer note'),  // W15 other — must NOT hit weekly maps
+  ];
+
+  var map = aggregateByRocketeer_(rows, null, 'FY26Q4');
+  var a = map['alice smith'];
+  assert_(!!a, "alice must aggregate");
+  assert_(a.weeklySelf['2026.W15'] === 2, "two self comments in W15, got " + JSON.stringify(a.weeklySelf));
+  assert_(a.weeklySelf['2026.W17'] === 1, "one self comment in W17");
+  assert_(Object.keys(a.weeklySelf).length === 2, "weeklySelf must be sparse (2 weeks)");
+  assert_(a.weeklyMgr['2026.W15'] === 1, "one manager comment in W15, got " + JSON.stringify(a.weeklyMgr));
+  assert_(Object.keys(a.weeklyMgr).length === 1, "peer comments must not appear in weeklyMgr");
+  assert_(a.totalSelfComments === 3 && a.totalManagerComments === 1, "existing totals must be unchanged");
+  assert_(a._weeklySelf === undefined && a._weeklySelfWeeks === undefined, "no leftover private accumulators");
+
+  Logger.log("✅ _test_weeklySeries_ passed");
 }
