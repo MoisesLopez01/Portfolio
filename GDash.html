@@ -338,6 +338,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <button class="tab-btn active" onclick="switchTab('overview')"  data-tab="overview">Overview</button>
     <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
     <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
+    <button class="tab-btn"        onclick="switchTab('support')"   data-tab="support">Needing Support</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">HR Tracker</button>
   </div>
 
@@ -389,30 +390,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         </div>
       </div>
 
-      <!-- Needs Support: full table (previously duplicated between this preview and the standalone At Risk tab — now renders in exactly one place) -->
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person · click a row to view full detail</p></div>
-          <div class="section-actions">
-            <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
-            <button class="btn" onclick="exportPNG('needs-support-panel','needs-support.png')">⬇ PNG</button>
-          </div>
-        </div>
-        <div class="section-body" id="needs-support-panel">
-          <div class="kpi-grid" id="kpi-needs-support" style="margin-bottom:14px"></div>
-          <div id="atrisk-body"></div>
-        </div>
-      </div>
-      <div class="section-card" style="border-left:4px solid var(--muted)">
-        <div class="section-head" style="cursor:pointer" onclick="toggleSection('attrition-body','attrition-toggle')">
-          <div><h2>Attrition <span id="attrition-count-badge" style="color:var(--muted);font-weight:600"></span></h2>
-            <p class="section-sub">Departed rocketeers with activity this quarter · excluded from the compliance rate/RPI/STF/engagement metrics above, shown here for HR reference only</p></div>
-          <span id="attrition-toggle" style="color:var(--muted);font-size:12px">▾</span>
-        </div>
-        <div id="attrition-body" style="display:none">
-          <div class="section-body" id="attrition-table"></div>
-        </div>
-      </div>
     </div>
 
     <!-- ── TRENDS ──
@@ -518,6 +495,37 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
+    <!-- ── ROCKETEERS NEEDING SUPPORT ──
+         Own tab (was an Overview section) — the action list managers and the HR
+         team work from: everyone with a compliance or engagement concern, HR
+         review per row, plus the isolated Attrition reference list. Manager
+         accounts see it auto-scoped to their org tree (server-side). -->
+    <div id="pane-support" class="tab-pane">
+      <div class="kpi-grid" id="kpi-needs-support"></div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person · click a row to view full detail · respects the filter bar</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
+            <button class="btn" onclick="exportPNG('needs-support-panel','needs-support.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="needs-support-panel">
+          <div id="atrisk-body"></div>
+        </div>
+      </div>
+      <div class="section-card" style="border-left:4px solid var(--muted)">
+        <div class="section-head" style="cursor:pointer" onclick="toggleSection('attrition-body','attrition-toggle')">
+          <div><h2>Attrition <span id="attrition-count-badge" style="color:var(--muted);font-weight:600"></span></h2>
+            <p class="section-sub">Departed rocketeers with activity this quarter · excluded from the compliance rate/RPI/STF/engagement metrics · shown here for HR reference only</p></div>
+          <span id="attrition-toggle" style="color:var(--muted);font-size:12px">▾</span>
+        </div>
+        <div id="attrition-body" style="display:none">
+          <div class="section-body" id="attrition-table"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── HR TRACKER ── -->
     <div id="pane-hrtracker" class="tab-pane">
       <div class="kpi-grid" id="kpi-tracker"></div>
@@ -615,6 +623,7 @@ var VIEWS = [
   { id: 'overview',  label: 'Overview',              location: 'tabbar', roles: null },
   { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
   { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
+  { id: 'support',   label: 'Needing Support',       location: 'tabbar', roles: null },
   { id: 'hrtracker', label: 'HR Tracker',            location: 'tabbar', roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
 ];
@@ -857,14 +866,16 @@ function renderTab(tabId) {
   if      (tabId === 'overview')  renderOverview(emps);
   else if (tabId === 'trends')    renderTrends(emps);
   else if (tabId === 'team')      renderTeam(emps);
+  else if (tabId === 'support')   renderSupport(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
   else if (tabId === 'access')    renderAccessTab_();
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────────────
-// Folds in the old standalone Engagement tab (KPI cards trimmed, trend chart, Team
-// Engagement Rate, Manager Scorecard) and the old standalone At Risk tab (full Needs
-// Support table + Attrition) — see spec docs/superpowers/specs for the consolidation.
+// Folds in the old standalone Engagement tab (KPI cards trimmed, Team Engagement
+// Rate, Manager Scorecard) — see spec docs/superpowers/specs for the consolidation.
+// The Needs Support table + Attrition list moved on to their own "Needing
+// Support" tab (renderSupport); the trend chart moved to the Trends tab.
 function renderOverview(emps) {
   var eng      = computeEngagementClient_(emps);
   var total    = emps.length;
@@ -913,13 +924,29 @@ function renderOverview(emps) {
     '</div>' +
     '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open HR Tracker →</button>';
 
-  // Needs Support: full table (replaces both the old collapsed preview and the old
-  // standalone At Risk tab — the table now renders in exactly one place) + Attrition.
+}
+
+// ── ROCKETEERS NEEDING SUPPORT (own tab — was an Overview section) ──
+// The action list managers and HR work from: KPI row over the deduplicated
+// concern pool, the urgency-sorted table with per-row HR review, and the
+// isolated Attrition reference list.
+function renderSupport(emps) {
+  var pool         = needsSupportPool_(emps);
+  var atRisk       = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
+  var watch        = emps.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
   var notEngaging  = emps.filter(function(e){ return e.hasEngagementConcern; }).length;
   var stuckPlanned = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; }).length;
+  var noteMap      = buildNoteMap_();
+  var reviewed     = pool.filter(function(e){ return !!noteMap[e.normName]; }).length;
+
   document.getElementById('kpi-needs-support').innerHTML =
+    kpiCard('Needing Support',  pool.length,  '🚨', '#EF4444', 'Anyone with a compliance or engagement concern (deduplicated)') +
+    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  '#EF4444', 'Below goal threshold — STF and RPI at risk') +
+    kpiCard('Watch (8–9)',      watch,        '⏳', '#F59E0B', 'One or two goals from full compliance') +
     kpiCard('Not Engaging',     notEngaging,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
-    kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments');
+    kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments') +
+    kpiCard('HR Reviewed',      reviewed + '/' + pool.length, '📝', '#00A86B', 'Support-pool members with an HR follow-up note');
+
   renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
 
   var attrition = (S.data && S.data.attrition) || [];
@@ -1150,21 +1177,27 @@ function renderBreakdown(emps) {
     '<div class="section-body tbl-wrap">' + buildSummaryTable(jfGroups, 'Job Family') + '</div></div>';
 }
 
-// ── NEEDS SUPPORT (rendered from Overview) + ATTRITION ─────────────
-function renderAtRiskBody(container, emps, compact) {
-  var isGrace  = !!(S.data && S.data.isGoalCreationGrace);
-  var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
-  var noteMap  = buildNoteMap_();
-
-  // Build a deduplicated pool — one entry per person, anyone with ANY concern
-  var seen = {};
-  var pool = [];
+// ── NEEDS SUPPORT (rendered from the Needing Support tab) + ATTRITION ──
+// Deduplicated concern pool — one entry per person, anyone with ANY compliance
+// or engagement concern. Single source for the table, the tab's KPI row, and
+// the CSV export, so their counts always agree.
+function needsSupportPool_(emps) {
+  var isGrace = !!(S.data && S.data.isGoalCreationGrace);
+  var seen = {}, pool = [];
   emps.forEach(function(e) {
     if (seen[e.normName]) return;
     var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
     var engFail  = !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
     if (compFail || engFail) { seen[e.normName] = true; pool.push(e); }
   });
+  return pool;
+}
+
+function renderAtRiskBody(container, emps, compact) {
+  var isGrace  = !!(S.data && S.data.isGoalCreationGrace);
+  var qtrWeeks = (S.data && S.data.totalQtrWeeks) || 1;
+  var noteMap  = buildNoteMap_();
+  var pool     = needsSupportPool_(emps);
 
   if (!pool.length) {
     container.innerHTML = '<div class="empty-state">&#127881; <p>All rocketeers in the current selection are on track — no compliance or engagement concerns.</p></div>';
@@ -1403,8 +1436,10 @@ function saveReview() {
       google.script.run
         .withSuccessHandler(function(notes) {
           S.notes = notes || [];
+          // Re-render only the visible tab — switchTab re-renders every tab on
+          // entry, so hidden panes can never go stale (and rendering Overview
+          // while hidden would rebuild its charts at 0×0 inside display:none).
           renderTab(S.activeTab);
-          if (S.activeTab !== 'overview') renderOverview(getFiltered());
         })
         .getHRNotes(S.data.quarter);
     })
@@ -2616,11 +2651,7 @@ function exportAllPNG() {
 }
 
 function exportAtRiskCSV() {
-  var isGrace = !!(S.data && S.data.isGoalCreationGrace);
-  var emps = getFiltered().filter(function(e) {
-    var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
-    return compFail || !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
-  });
+  var emps = needsSupportPool_(getFiltered());
   var noteMap = buildNoteMap_();
   var qtrWks  = (S.data && S.data.totalQtrWeeks) || 1;
   var rows = [['Rocketeer','Terminated','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
