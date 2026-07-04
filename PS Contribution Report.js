@@ -2563,9 +2563,16 @@ function buildTopPerformers_(employees, weeks, scoringCfg) {
 
       const W = weightsForEmployee_(e, matrix, catalog, baseW, audit);
 
-      const trackedTarget = (wd.plannedHrs !== null && wd.plannedHrs > 0) ? wd.plannedHrs * CONFIG_PS.SCORE_TRACKED_RATIO : CONFIG_PS.DEFAULT_TARGET_WEEKLY_HRS;
-      const trackedNorm = wd.trackedHrs !== null ? Math.min(1, wd.trackedHrs / trackedTarget) : 0;
-      const plannedNorm = wd.plannedHrs !== null ? Math.min(1, wd.plannedHrs / CONFIG_PS.SCORE_PLANNED_CAP_HRS) : 0;
+      const plannedTargetHrs = wd.ptoAdjustedTargetHrs != null ? wd.ptoAdjustedTargetHrs : CONFIG_PS.SCORE_PLANNED_CAP_HRS;
+      // Fallback (no planned hours that week) used to be a flat DEFAULT_TARGET_WEEKLY_HRS
+      // (36h) — that zeroed out tracked score on a full-PTO week, since plannedHrs is
+      // already net-of-PTO by this point. Scaling the fallback off plannedTargetHrs keeps
+      // it consistent with the same PTO adjustment.
+      const trackedTarget = (wd.plannedHrs !== null && wd.plannedHrs > 0)
+        ? wd.plannedHrs * CONFIG_PS.SCORE_TRACKED_RATIO
+        : plannedTargetHrs * CONFIG_PS.SCORE_TRACKED_RATIO;
+      const trackedNorm = wd.trackedHrs === null ? 0 : (trackedTarget    <= 0 ? 1 : Math.min(1, wd.trackedHrs / trackedTarget));
+      const plannedNorm = wd.plannedHrs === null ? 0 : (plannedTargetHrs <= 0 ? 1 : Math.min(1, wd.plannedHrs / plannedTargetHrs));
       // Weeks outside the real compliance window only carry comment-trend fields (no
       // .compliant) — treat those as "no data" (excluded below) instead of "0 compliant".
       const hasGoalsData = !!(wd.goalsDetail && wd.goalsDetail.compliant !== undefined);
@@ -3360,4 +3367,43 @@ function _test_ptoAdjustedTargetHrs_() {
   assert_(ben.weeks["2026.W20"].ptoAdjustedTargetHrs === 0,  "Ben (40h PTO): expected target floored at 0, got " + ben.weeks["2026.W20"].ptoAdjustedTargetHrs);
 
   Logger.log("✅ _test_ptoAdjustedTargetHrs_ passed");
+}
+
+// Unit test for PTO-adjusted plannedNorm/trackedNorm in buildTopPerformers_.
+function _test_ptoAdjustedScoring_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_ptoAdjustedScoring_: " + msg); }
+
+  const weeks = [{ label: "2026.W20", isPast: true, dateRange: "May 11-17 2026" }];
+
+  function emp(name, plannedHrs, ptoAdjustedTargetHrs, trackedHrs) {
+    return {
+      name: name, normName: normPS_(name), keyLocation: "Remote", supervisor: "Mgr",
+      jobTitle: "Consultant", isRampUp: false, isCrewMember: false, rcr: null, si: null,
+      weeks: { "2026.W20": {
+        plannedHrs: plannedHrs, ptoAdjustedTargetHrs: ptoAdjustedTargetHrs, trackedHrs: trackedHrs,
+        ptoPlannedHrs: null, ptoHealth: null, kudos: null, goalsDetail: null,
+      }},
+    };
+  }
+
+  // Normal week, no PTO: target stays 40h — unchanged from before this feature.
+  const noPto      = emp("Ana Smith", 20, 40, 20);
+  // Partial PTO week: 8h PTO -> target 32h. 32h planned now reads as fully planned
+  // (was 32/40 = 80% before this fix).
+  const partialPto = emp("Ben Lee",  32, 32, 32);
+  // Full PTO week: target floors at 0h. 0 planned/0 tracked must read as fully
+  // credited (1), not zeroed out or NaN.
+  const fullPto     = emp("Cara Diaz", 0,  0,  0);
+
+  const cfg    = { matrix: {}, catalog: new Map(), base: DEFAULT_WEIGHTS_, audit: [] };
+  const result = buildTopPerformers_([noPto, partialPto, fullPto], weeks, cfg);
+  const byName = {};
+  result.performers.forEach(p => { byName[p.name] = p.metrics; });
+
+  assert_(byName["Ana Smith"].plannedNorm === 0.5, "no-PTO week: expected plannedNorm 0.5, got " + byName["Ana Smith"].plannedNorm);
+  assert_(byName["Ben Lee"].plannedNorm === 1,     "partial-PTO week: expected plannedNorm 1 (32/32), got " + byName["Ben Lee"].plannedNorm);
+  assert_(byName["Cara Diaz"].plannedNorm === 1,   "full-PTO week: expected plannedNorm 1 (target floor), got " + byName["Cara Diaz"].plannedNorm);
+  assert_(byName["Cara Diaz"].trackedNorm === 1,   "full-PTO week: expected trackedNorm 1 (target floor), got " + byName["Cara Diaz"].trackedNorm);
+
+  Logger.log("✅ _test_ptoAdjustedScoring_ passed");
 }
