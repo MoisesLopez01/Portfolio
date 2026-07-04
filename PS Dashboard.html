@@ -5557,8 +5557,8 @@ function rawAxisLabel(axisId, m) {
   if (!m) return '—';
   switch(axisId) {
     case 'goals':   return Math.round(m.goalsPct) + '% (' + m.goalsCompliant + '/' + m.goalsTotal + ')';
-    case 'tracked': return m.trackedCompliant + '/' + m.headcount + ' logging (' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)';
-    case 'planned': return m.plannedCompliant + '/' + m.headcount + ' planned (' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)';
+    case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' logging (' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)';
+    case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' planned (' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)';
     case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' total · ' + m.kudosPerPerson.toFixed(2) + '/person';
     case 'pto':     return m.ptoHealthScore + '% healthy (' + m.ptoHealthGood + '/' + m.ptoHealthTotal + ')';
     case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) : '—';
@@ -5572,8 +5572,8 @@ function buildAxisSublabel(axisId, m) {
   if (!m) return '';
   switch (axisId) {
     case 'goals':   return m.goalsTotal > 0 ? m.goalsCompliant + '/' + m.goalsTotal + ' comply' : '';
-    case 'tracked': return m.trackedCompliant + '/' + m.headcount + ' people';
-    case 'planned': return m.plannedCompliant + '/' + m.headcount + ' people';
+    case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' people';
+    case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' people';
     case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' · ' + m.kudosPerPerson.toFixed(1) + '/p';
     case 'pto':     return m.ptoHealthTotal > 0 ? m.ptoHealthGood + '/' + m.ptoHealthTotal + ' ok' : '';
     case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) + ' avg' : '';
@@ -5754,8 +5754,8 @@ function buildRadarTable(groups, activeAxes, groupBy) {
   function cellVal(axisId, m) {
     switch(axisId) {
       case 'goals':   return Math.round(m.goalsPct) + '%' + (m.goalsTotal ? ' (' + m.goalsCompliant + '/' + m.goalsTotal + ')' : '');
-      case 'tracked': return m.trackedCompliant + '/' + m.headcount + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)</span>';
-      case 'planned': return m.plannedCompliant + '/' + m.headcount + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)</span>';
+      case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)</span>';
+      case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)</span>';
       case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' <span style="color:var(--muted);font-size:10px">(' + m.kudosPerPerson.toFixed(2) + '/p)</span>';
       case 'pto':     return m.ptoHealthScore + '% <span style="color:var(--muted);font-size:10px">(' + m.ptoHealthGood + '/' + m.ptoHealthTotal + ')</span>';
       case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) : '—';
