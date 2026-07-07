@@ -52,7 +52,9 @@ var CONFIG_PS = {
 
   WEEKS_PAST:        5,
   WEEKS_FUTURE:      2,
-  TRACKED_HIST_WEEKS: 24,  // extra completed weeks before W-2 included in trackedHistory (~6 months)
+  TRACKED_HIST_WEEKS: 27,  // extra completed weeks before W-2 in trackedHistory — sized so the
+                           // window always spans two full fiscal quarters (26 weeks + boundary
+                           // slack) for the Month/Quarter period views.
 
   // Ramp-up exclusion: employees hired within this many months are excluded from
   // RCR, SI, Goals, and Kudos team metrics (but still included in Tracked/Planned/PTO).
@@ -2942,29 +2944,30 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // Team Summary / Employee table / Trends would show blank Goals data for weeks that
   // already have real, previously-computed compliance, right at every quarter rollover.
   // No other metric uses this — RCR/SI/PTO/Tracked/Planned/Kudos are already continuous.
-  let continuityQWeeks   = currentQWeeks;
-  let goalsPrevResult    = null;
+  // Two-quarter continuity window: the prior quarter's weeks are ALWAYS merged (not
+  // only during the grace period) so Goals/PTO history and per-employee weeks span two
+  // fiscal quarters for the Month/Quarter period views (spec 2026-07-07). The prior
+  // quarter's compliance is evaluated against its OWN goal set via prevCtx.
+  // A quarter boundary can fall mid-week, so the last previous-quarter week and the
+  // first current-quarter week can share the same ISO week label — dedupe, keeping the
+  // current-quarter copy so it wins the same way goalsAll's merge does below.
+  const prevQWeeks = buildPrevQWeeks_PS_(ctx);
+  const prevCtx = {
+    goalsQuarter:  ctx.prevGoalsQuarter,
+    qStartIsoYear: ctx.prevQStartIsoYear,
+    qStartIsoWeek: ctx.prevQStartIsoWeek,
+    inGracePeriod: false,
+  };
+  const goalsPrevResult = readGoalsEngagement_(active, prevQWeeks, [], prevCtx, ptoProfiles, empNumToNorm);
+  const currentQLabels  = new Set(currentQWeeks.map(w => w.label));
+  const continuityQWeeks = prevQWeeks.filter(w => !currentQLabels.has(w.label)).concat(currentQWeeks);
+
+  // Goals-only grace period (CONFIG_PS.GOALS_GRACE_DAYS): freeze the outgoing quarter's
+  // final week as the carried-forward snapshot. Only the snapshot behavior is gated on
+  // the grace period now — the window widening above is unconditional.
   let goalsFrozenSnapshot = null;
   let graceEndMonday      = null;
   if (ctx.inGracePeriod) {
-    const prevQWeeks = buildPrevQWeeks_PS_(ctx);
-    const prevCtx = {
-      goalsQuarter:  ctx.prevGoalsQuarter,
-      qStartIsoYear: ctx.prevQStartIsoYear,
-      qStartIsoWeek: ctx.prevQStartIsoWeek,
-      inGracePeriod: false,
-    };
-    goalsPrevResult  = readGoalsEngagement_(active, prevQWeeks, [], prevCtx, ptoProfiles, empNumToNorm);
-    // A quarter boundary can fall mid-week (e.g. Wed), so the last previous-quarter week
-    // and the first current-quarter week can share the same ISO week label — dedupe,
-    // keeping the current-quarter copy so it wins the same way goalsAll's merge does below.
-    const currentLabels = new Set(currentQWeeks.map(w => w.label));
-    continuityQWeeks = prevQWeeks.filter(w => !currentLabels.has(w.label)).concat(currentQWeeks);
-
-    // Freeze the outgoing quarter's own final week as "last fiscal year's record" to carry
-    // forward — mirrors how RCR/SI show one static last-known value. Filled in below for
-    // every displayed week still inside the grace window (today + up to GOALS_GRACE_DAYS)
-    // that has no real goal data of its own yet in the new quarter.
     const lastPrevWeek = prevQWeeks[prevQWeeks.length - 1];
     goalsFrozenSnapshot = lastPrevWeek ? goalsPrevResult[lastPrevWeek.label] : null;
     graceEndMonday = mondayOfIsoWeek_PS_(ctx.graceEndIsoYear, ctx.graceEndIsoWeek);
@@ -2981,10 +2984,9 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const histWeeks    = buildHistWeeks_(CONFIG_PS.TRACKED_HIST_WEEKS);
   const extWeeks     = [...histWeeks, ...weeks];
   const extPastWeeks = extWeeks.filter(w => !w.isFuture);
-  // PTO Trend (Trends tab) is quarter-bounded like Goals — only current-quarter-to-date
-  // (plus the outgoing quarter's tail during the Goals grace period) — NOT the long
-  // TRACKED_HIST_WEEKS rolling history Tracked/Planned/Kudos use. We only care to see PTO
-  // planning health for the quarter as of today, going back.
+  // PTO Trend (Trends tab) covers the two-quarter continuity window (current + prior fiscal
+  // quarter), not the long TRACKED_HIST_WEEKS rolling history Tracked/Planned/Kudos use.
+  // We only care to see PTO planning health for the current and prior quarters.
   const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, continuityQPastWeeks, ptoProfiles);
 
   const kudosAll   = readKudosByWeek_(active,  extWeeks);
@@ -2992,7 +2994,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const plannedAll = readPlannedTimeByWeek_(roster, extWeeks);
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
   const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx, ptoProfiles, empNumToNorm);
-  const goalsAll = goalsPrevResult ? mergeGoalsResults_(goalsPrevResult, goalsCurrentResult) : goalsCurrentResult;
+  const goalsAll = mergeGoalsResults_(goalsPrevResult, goalsCurrentResult);
 
   // During the grace period, any displayed week inside the grace window shows, PER
   // EMPLOYEE, the outgoing quarter's frozen final-week snapshot for rocketeers who haven't
@@ -3112,8 +3114,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     };
   });
 
-  // Bounded to the current quarter-to-date (plus the outgoing quarter's grace-period tail)
-  // — not the long TRACKED_HIST_WEEKS window Tracked/Planned/Kudos use.
+  // Bounded to the two-quarter continuity window (current + prior fiscal quarter).
   const ptoQ4History = continuityQPastWeeks.map(w => {
     const d = ptoQ4FTE[w.label] || { goodCount: 0, atRiskCount: 0, total: 0, score: 0, byEmployee: {} };
     const byEmp = {};
