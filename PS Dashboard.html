@@ -3334,10 +3334,119 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   return { facts: facts, highlights: highlights, notes: notes, concerns: concerns, trends: trends };
 }
 
-function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief) {
+// Period-mode Exec Brief (spec 2026-07-07 §4): same Facts/Highlights/Notes/Concerns/
+// Trends sections as the weekly brief, computed over the selected bucket and compared
+// with the prior bucket. Filter-aware via getFilteredEmployees(). Weekly path untouched.
+function generatePeriodBrief(bucket, prevBucket, allBuckets) {
+  var facts = [], highlights = [], notes = [], concerns = [], trends = [];
+  if (!DATA || !bucket) return { facts: ['Data loading…'], highlights: [], notes: [], concerns: [], trends: [] };
+  var emps  = getFilteredEmployees();
+  var g     = STATE.periodGranularity;
+  var cur   = computePeriodStats_(emps, bucket);
+  var prev  = prevBucket ? computePeriodStats_(emps, prevBucket) : null;
+  var unit  = g === 'month' ? 'month' : 'quarter';
+  if (!cur) return { facts: ['No data for ' + periodDisplayLabel_(bucket)], highlights: [], notes: [], concerns: [], trends: [] };
+
+  function f1(x) { return x === null || x === undefined ? '—' : (Math.round(x * 10) / 10).toFixed(1); }
+  function pct(x) { return x === null || x === undefined ? '—' : Math.round(x) + '%'; }
+  function vs(curV, prevV, unitSuffix, goodHigh) {
+    if (prevV === null || prevV === undefined || curV === null || curV === undefined || !prevBucket) return '';
+    var d = curV - prevV;
+    if (Math.abs(d) < 0.05) return ', level with ' + prevBucket.label;
+    var dir = d > 0 ? 'up' : 'down';
+    return ', ' + dir + ' from ' + (unitSuffix === '%' ? Math.round(prevV) + '%' : f1(prevV) + unitSuffix) + ' in ' + prevBucket.label;
+  }
+
+  // Coverage — explicit when the period is in progress or truncated (spec §5)
+  if (bucket.isPartial) {
+    facts.push('Coverage: ' + cur.closedWeekCount + ' closed week' + (cur.closedWeekCount !== 1 ? 's' : '') +
+      ' (' + bucket.weekRangeLabel + ')' + (bucket.containsCurrent ? ' — ' + unit + ' in progress' : ' — start of window truncated by available history'));
+  }
+
+  // Tracked time — avg h/person/week, same 36/28 thresholds as the weekly brief
+  var t = cur.avgTrackedPerPerson;
+  facts.push('Tracked time: ' + f1(t) + 'h avg/person/week · ' + Math.round(cur.totalTrackedHrs) + 'h total across ' + cur.closedWeekCount + ' week' + (cur.closedWeekCount !== 1 ? 's' : ''));
+  if (t !== null) {
+    var tCmp = vs(t, prev && prev.avgTrackedPerPerson, 'h', true);
+    if (t >= 36)      highlights.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — strong delivery engagement');
+    else if (t >= 28) notes.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — above the 28h floor, below the 36h target');
+    else              concerns.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — below the 28h floor; review workload and logging habits');
+  }
+
+  // Planned coverage — avg weekly compliance %
+  var p = cur.plannedCompliancePct;
+  facts.push('Tempo planning coverage: ' + pct(p) + ' avg weekly · ' + Math.round(cur.totalPlannedHrs) + 'h planned in the period');
+  if (p !== null) {
+    var pCmp = vs(p, prev && prev.plannedCompliancePct, '%', true);
+    if (p >= 80)      highlights.push('Planning coverage held at ' + pct(p) + ' through ' + bucket.label + pCmp + ' (Build Process to Drive Outcomes)');
+    else if (p >= 50) notes.push('Planning coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — push toward the 80% habit');
+    else              concerns.push('Planning coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — planning discipline needs manager attention');
+  }
+
+  // Goals — period-end standing (point-in-time, not additive)
+  if (cur.goalsPct !== null) {
+    var gCmp = prev && prev.goalsPct !== null ? vs(cur.goalsPct, prev.goalsPct, '%', true).replace(' in ' + (prevBucket && prevBucket.label), ' at end of ' + (prevBucket && prevBucket.label)) : '';
+    facts.push('Goals compliance (' + (DATA.meta.goalsQuarter || '') + '): ' + cur.goalsPct + '% (' + cur.goalsCompliant + '/' + cur.goalsTotal + ') as of ' + cur.endWeekLabel + ' — period-end standing');
+    if (cur.goalsPct >= 80)      highlights.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp);
+    else if (cur.goalsPct >= 60) notes.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — keep the documentation cadence');
+    else                         concerns.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — structured follow-up needed');
+  }
+
+  // Kudos — summed over the period
+  var kCmp = prev ? vs(cur.kudosTotal, prev.kudosTotal, '', true) : '';
+  facts.push('Kudos: ' + cur.kudosTotal + ' given across ' + bucket.label);
+  if (cur.kudosTotal > 0) highlights.push(cur.kudosTotal + ' kudos given in ' + bucket.label + kCmp + ' — Think Team in practice');
+  else                    concerns.push('No kudos given in ' + bucket.label + ' — prompt the team to recognize each other\'s contributions (Think Team)');
+
+  // PTO — period-end standing
+  if (cur.ptoScore !== null) {
+    facts.push('PTO planning health: ' + cur.ptoScore + '% (' + cur.ptoAtRisk + ' at risk) as of ' + cur.endWeekLabel);
+    if (cur.ptoScore >= 80)      highlights.push(cur.ptoScore + '% of the team closed ' + bucket.label + ' with PTO under control — sustainable pace maintained');
+    else if (cur.ptoScore >= 60) notes.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '% — ' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan');
+    else                         concerns.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '% (Build Process to Drive Outcomes — sustainable pace at risk)');
+  }
+
+  // RCR — native monthly / approx quarterly mean
+  var rcr = periodRcr_(bucket, g);
+  if (rcr) {
+    facts.push('RCR: ' + rcr.value.toFixed(2) + '×' + (rcr.approx ? ' (approx — mean of ' + rcr.months.join(', ') + '; true RCR is SUM(RC)/SUM(TCC))' : ' (' + rcr.months[0] + ')') + ' · review with manager');
+    notes.push('RCR context: ' + rcr.value.toFixed(2) + '× for ' + bucket.label + ' · represents project mix & billing rates · not a per-rocketeer blame signal');
+  }
+
+  // SI — quarterly native; month shows owning quarter as context
+  if (DATA.meta.siTeamRounded != null) {
+    facts.push('Small Improvements (SI): ' + DATA.meta.siTeamRounded + '/5 (' + (DATA.meta.siQuarter || '') + ') · quarterly metric' + (g === 'month' ? ' shown as context for the month' : ''));
+  }
+
+  // Trends section: week-by-week inside a month, sub-period-by-sub-period inside a quarter
+  var innerG   = g === 'quarter' ? 'month' : null;
+  if (innerG) {
+    var inner = periodTrackedHistory_(innerG).filter(function(h) {
+      return h.weekLabels.some(function(l) { return bucket.weekLabels.indexOf(l) !== -1; });
+    });
+    if (inner.length >= 2) trends.push('Tracked avg/person/week by month: ' + inner.map(function(h) { return h.label + ' ' + f1(h.avgHrs) + 'h'; }).join(' → '));
+    if (inner.length >= 2) trends.push('Kudos by month: ' + inner.map(function(h) { return h.label + ' ' + h.kudosCount; }).join(' → '));
+  } else {
+    trends.push('Tracked avg/person by week: ' + cur.weeks.map(function(w) { return w.label + ' ' + f1(w.avgTracked) + 'h'; }).join(' → '));
+    trends.push('Planning coverage by week: ' + cur.weeks.map(function(w) { return w.label + ' ' + pct(w.plannedPct); }).join(' → '));
+    trends.push('Kudos by week: ' + cur.weeks.map(function(w) { return w.label + ' ' + w.kudos; }).join(' → '));
+  }
+  if (prevBucket && (!prev || prev.closedWeekCount === 0)) {
+    notes.push('No prior-period data available for ' + prevBucket.label + ' — comparisons omitted rather than shown as zero');
+  }
+
+  if (!facts.length)      facts.push('Metric data unavailable for ' + periodDisplayLabel_(bucket));
+  if (!highlights.length) highlights.push('Team operational metrics stable across ' + bucket.label + ' — no exceptional positive signals');
+  if (!notes.length)      notes.push('No watch items this ' + unit + ' — all metrics within expected range');
+  if (!concerns.length)   concerns.push('No critical concerns — maintain current trajectory across all dimensions');
+
+  return { facts: facts, highlights: highlights, notes: notes, concerns: concerns, trends: trends };
+}
+
+function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
   if (!DATA) return '';
   var selWeek   = DATA.weeks.find(function(w) { return w.label === weekLabel; });
-  var dateRange = selWeek ? selWeek.dateRange : '';
+  var dateRange = (opts && opts.dateRange) || (selWeek ? selWeek.dateRange : '');
   var headcount = DATA.meta.activeCount || DATA.headcount || '—';
 
   window._teamBriefStore = {
@@ -3900,8 +4009,32 @@ function toggleAllRocketeers() {
 function renderExecBriefTab_() {
   var el = document.getElementById("execBriefBody");
   if (!el || !DATA) return;
+  var g = STATE.periodGranularity;
 
-  // Selected week from picker; default = last completed (W-1) — mirrors LEADING BEHAVIOURS
+  if (g !== 'week') {
+    var buckets = periodBucketsFor_(g);
+    if (!buckets.length) { el.innerHTML = '<p style="color:var(--muted);font-size:12px;padding:12px">No period data available yet.</p>'; return; }
+    var sel    = document.getElementById("ebWeekSelect");
+    var selKey = sel && sel.value ? sel.value : null;
+    var bIdx   = Math.max(0, buckets.findIndex(function(b) { return b.key === selKey; }));
+    if (selKey === null) {  // default: most recent closed bucket
+      for (var i = buckets.length - 1; i >= 0; i--) { if (!buckets[i].containsCurrent) { bIdx = i; break; } }
+    }
+    var bucket = buckets[bIdx];
+    var prevB  = bIdx > 0 ? buckets[bIdx - 1] : null;
+    var dispLabel = periodDisplayLabel_(bucket);
+
+    var sub = document.getElementById("execBriefSub");
+    if (sub) {
+      sub.textContent = (g === 'month' ? 'Monthly' : 'Quarterly') + ' leadership summary · ' +
+        dispLabel + ' · ' + bucket.weekRangeLabel + (prevB ? '  ·  vs ' + prevB.label : '');
+    }
+    var brief = generatePeriodBrief(bucket, prevB, buckets);
+    el.innerHTML = buildTeamBriefHTML(dispLabel, prevB ? prevB.label : null, brief, { dateRange: bucket.weekRangeLabel });
+    return;
+  }
+
+  // ── weekly path — unchanged from before this feature ──
   var sel      = document.getElementById("ebWeekSelect");
   var selLabel = sel && sel.value ? sel.value : null;
   var q4w      = DATA.q4Weeks || DATA.weeks;
