@@ -2284,6 +2284,8 @@ function periodTrackedHistory_(granularity) {
       commentedHC:           r0(avg(function(h) { return h.commentedHC; })),
       g03CommentedPct:       r0(avg(function(h) { return h.g03CommentedPct; })),
       g01CommentedPct:       r0(avg(function(h) { return h.g01CommentedPct; })),
+      g03CommentedHC:        r0(avg(function(h) { return h.g03CommentedHC; })),
+      g01CommentedHC:        r0(avg(function(h) { return h.g01CommentedHC; })),
     };
   });
 }
@@ -7664,16 +7666,20 @@ function renderGoalsStanding(filtered) {
     if (!isGSFiltered) {
       return h ? (h.avgCommentsPerPerson || 0) : 0;
     }
-    var sum = 0, cnt = 0;
-    filtered.forEach(function(e) {
-      var _s = 0, _has = false;
-      pdWeekLabels_(h).forEach(function(lbl) {
+    // Per-week rate for each closed week in the bucket, then mean across those
+    // weeks — matches the unfiltered branch's avgCommentsPerPerson semantics
+    // (mean over closed weeks of the per-week rate), not a period-total/headcount.
+    var _lbls = (h.closedWeekLabels && h.closedWeekLabels.length) ? h.closedWeekLabels : pdWeekLabels_(h);
+    var _rates = [];
+    _lbls.forEach(function(lbl) {
+      var sum = 0, cnt = 0;
+      filtered.forEach(function(e) {
         var gd = _resolveGoalsDetail_(e, lbl);
-        if (gd) { _s += (gd.selfCommentCount || 0); _has = true; }
+        if (gd) { sum += (gd.selfCommentCount || 0); cnt++; }
       });
-      if (_has) { sum += _s; cnt++; }
+      if (cnt > 0) _rates.push(sum / cnt);
     });
-    return cnt > 0 ? Math.round(sum / cnt * 10) / 10 : 0;
+    return _rates.length ? Math.round(_rates.reduce(function(a, c) { return a + c; }, 0) / _rates.length * 10) / 10 : 0;
   }
   function computeWeekTotal_(h) {
     if (!isGSFiltered) {
