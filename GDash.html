@@ -239,6 +239,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .grace-bar{padding:4px 24px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .grace-goal{background:#FFF7ED;border-bottom:1px solid #FED7AA;color:#92400E}
 .grace-completion{background:#FFF0F0;border-bottom:1px solid #FECACA;color:#991B1B}
+.grace-neutral{background:#F1F5F9;border-bottom:1px solid #E2E8F0;color:#64748B}
 
 /* Section divider label */
 .section-divider-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
@@ -818,10 +819,23 @@ function onReady() {
 function updateGraceBanner_() {
   var bar = document.getElementById('grace-bar');
   if (!bar || !S.data) { if (bar) bar.style.display = 'none'; return; }
-  var qd   = S.data.quarterDates || {};
+  var qd     = S.data.quarterDates || {};
+  var state  = S.data.quarterState;
   var isGoal = S.data.isGoalCreationGrace;
   var isComp = S.data.isCompletionGrace;
-  if (isGoal) {
+  // Server bounds the grace flags to the quarter window (computeQuarterFlags_),
+  // so isGoal/isComp can only be true while quarterState === 'active'. Closed
+  // and upcoming quarters get a neutral historical note, never an urgency bar.
+  if (state === 'closed') {
+    bar.className = 'grace-bar grace-neutral';
+    bar.style.display = '';
+    bar.innerHTML = '&#128197; <strong>' + esc(S.data.quarter || '') + '</strong> — quarter closed ' +
+      (qd.end || '') + ' &nbsp;·&nbsp; Historical view; grace periods no longer apply.';
+  } else if (state === 'upcoming') {
+    bar.className = 'grace-bar grace-neutral';
+    bar.style.display = '';
+    bar.innerHTML = '&#128197; <strong>' + esc(S.data.quarter || '') + '</strong> — starts ' + (qd.start || '');
+  } else if (isGoal) {
     bar.className = 'grace-bar grace-goal';
     bar.style.display = '';
     bar.innerHTML = '&#9201; <strong>Goal Creation Grace Period</strong> — ends ' + (qd.gracePeriodGoalsEnd || '') +
