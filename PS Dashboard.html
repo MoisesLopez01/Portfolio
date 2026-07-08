@@ -6025,6 +6025,40 @@ function computeGroupMetrics(group, weeks, refWeekLabel) {
   };
 }
 
+// Period-mode twin of computeGroupMetrics (spec 2026-07-07 §4): standings (goals,
+// pto) evaluate at the bucket's last closed week; flow axes (tracked/planned
+// compliance, kudos) average/sum across the bucket's closed weeks. kudosPerPerson
+// stays PER WEEK so the "2/person = 100" normalization keeps its meaning.
+// Returns the same property shape as computeGroupMetrics.
+function computeGroupMetricsPeriod(group, bucket) {
+  if (!group || group.length === 0 || !bucket) return null;
+  var s = computePeriodStats_(group, bucket);
+  if (!s) return null;
+  var n = group.length;
+  var rcrVals = group.filter(function(e) { return e.rcr && e.rcr.value !== null; }).map(function(e) { return e.rcr.value; });
+  var rcrAvg  = rcrVals.length ? rcrVals.reduce(function(a, b) { return a + b; }, 0) / rcrVals.length : null;
+  var siVals  = group.filter(function(e) { return e.si && e.si.value !== null && e.si.value > 0; }).map(function(e) { return e.si.value; });
+  var siAvg   = siVals.length ? siVals.reduce(function(a, b) { return a + b; }, 0) / siVals.length : null;
+  var kudosPerWeek = s.closedWeekCount > 0 ? s.kudosTotal / s.closedWeekCount : 0;
+  return {
+    headcount: n,
+    rcrAvg: rcrAvg !== null ? Math.round(rcrAvg * 100) / 100 : null,
+    siAvg:  siAvg  !== null ? Math.round(siAvg  * 10)  / 10  : null,
+    goalsPct: s.goalsPct !== null ? s.goalsPct : 0,
+    goalsCompliant: s.goalsCompliant, goalsTotal: s.goalsTotal,
+    avgTracked: s.avgTrackedPerPerson !== null ? Math.round(s.avgTrackedPerPerson * 10) / 10 : 0,
+    trackedCompliant: null, trackedEligible: null,   // per-week counts don't aggregate; sublabels handle null
+    trackedCompliancePct: s.trackedCompliancePct !== null ? Math.round(s.trackedCompliancePct) : 0,
+    avgPlanned: s.closedWeekCount > 0 ? Math.round(s.totalPlannedHrs / n / s.closedWeekCount * 10) / 10 : 0,
+    plannedCompliant: null, plannedEligible: null,
+    plannedCompliancePct: s.plannedCompliancePct !== null ? Math.round(s.plannedCompliancePct) : 0,
+    kudosCount: s.kudosTotal,
+    kudosPerPerson: n > 0 ? Math.round(kudosPerWeek / n * 100) / 100 : 0,
+    ptoHealthScore: s.ptoScore !== null ? s.ptoScore : 0,
+    ptoHealthGood: s.ptoGood, ptoHealthTotal: s.ptoTotal,
+  };
+}
+
 function normalizeAxisValue(axisId, m) {
   if (!m) return 0;
   switch(axisId) {
@@ -6043,8 +6077,8 @@ function rawAxisLabel(axisId, m) {
   if (!m) return '—';
   switch(axisId) {
     case 'goals':   return Math.round(m.goalsPct) + '% (' + m.goalsCompliant + '/' + m.goalsTotal + ')';
-    case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' logging (' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)';
-    case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' planned (' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)';
+    case 'tracked': return m.trackedCompliant != null ? m.trackedCompliant + '/' + m.trackedEligible + ' logging (' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)' : Math.round(m.trackedCompliancePct) + '%';
+    case 'planned': return m.plannedCompliant != null ? m.plannedCompliant + '/' + m.plannedEligible + ' planned (' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)' : Math.round(m.plannedCompliancePct) + '%';
     case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' total · ' + m.kudosPerPerson.toFixed(2) + '/person';
     case 'pto':     return m.ptoHealthScore + '% healthy (' + m.ptoHealthGood + '/' + m.ptoHealthTotal + ')';
     case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) : '—';
@@ -6058,8 +6092,8 @@ function buildAxisSublabel(axisId, m) {
   if (!m) return '';
   switch (axisId) {
     case 'goals':   return m.goalsTotal > 0 ? m.goalsCompliant + '/' + m.goalsTotal + ' comply' : '';
-    case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' people';
-    case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' people';
+    case 'tracked': return m.trackedCompliant != null ? m.trackedCompliant + '/' + m.trackedEligible + ' people' : Math.round(m.trackedCompliancePct) + '%';
+    case 'planned': return m.plannedCompliant != null ? m.plannedCompliant + '/' + m.plannedEligible + ' people' : Math.round(m.plannedCompliancePct) + '%';
     case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' · ' + m.kudosPerPerson.toFixed(1) + '/p';
     case 'pto':     return m.ptoHealthTotal > 0 ? m.ptoHealthGood + '/' + m.ptoHealthTotal + ' ok' : '';
     case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) + ' avg' : '';
@@ -6375,15 +6409,35 @@ function renderRadarTab(filtered) {
     return;
   }
 
-  var weeks        = DATA.q4Weeks || DATA.weeks;
-  var refWeekLabel = (document.getElementById("radarWeekSelect") || {}).value || null;
-  var groupBy      = (document.getElementById("radarGroupBy")    || {}).value || "all";
-  var isCrewMode   = ((document.getElementById("fbMemberType")   || {}).value || "fte") === "crew";
+  var g          = STATE.periodGranularity;
+  // q4Weeks now spans two quarters — bound WEEK mode to the current quarter window
+  // (pre-widening behavior); period modes use the full two-quarter span via buckets.
+  var weeks      = (DATA.q4Weeks || DATA.weeks).filter(function(w) { return weekInQ4Range_(w.year, w.isoWeek); });
+  var selValue   = (document.getElementById("radarWeekSelect") || {}).value || null;
+  var groupBy    = (document.getElementById("radarGroupBy")    || {}).value || "all";
+  var isCrewMode = ((document.getElementById("fbMemberType")   || {}).value || "fte") === "crew";
+
+  var bucket = null, prevBucket = null, buckets = null, refWeekLabel = selValue;
+  if (g !== 'week') {
+    buckets = periodBucketsFor_(g);
+    var bIdx = buckets.findIndex(function(b) { return b.key === selValue; });
+    if (bIdx === -1) { for (var i = buckets.length - 1; i >= 0; i--) { if (!buckets[i].containsCurrent) { bIdx = i; break; } } }
+    if (bIdx === -1) bIdx = buckets.length - 1;
+    bucket     = buckets[bIdx] || null;
+    prevBucket = bIdx > 0 ? buckets[bIdx - 1] : null;
+    refWeekLabel = bucket && bucket.weekLabels.length
+      ? (bucket.weekLabels.filter(function(l) { return l !== DATA.meta.currentWeekLabel; }).pop() || bucket.weekLabels[bucket.weekLabels.length - 1])
+      : null;   // period-end closed week — drives the kudos-callout highlight only
+  }
+  var metricsFor = function(empGroup) {
+    return g === 'week' ? computeGroupMetrics(empGroup, weeks, refWeekLabel)
+                        : computeGroupMetricsPeriod(empGroup, bucket);
+  };
 
   // Build groups
   var groups;
   if (groupBy === "all") {
-    var m = computeGroupMetrics(filtered, weeks, refWeekLabel);
+    var m = metricsFor(filtered);
     groups = m ? [{ name: "Whole Team", metrics: m }] : [];
   } else {
     var keyMap = {};
@@ -6395,8 +6449,8 @@ function renderRadarTab(filtered) {
       keyMap[key].push(e);
     });
     groups = Object.keys(keyMap).sort().map(function(k) {
-      return { name: k, metrics: computeGroupMetrics(keyMap[k], weeks, refWeekLabel) };
-    }).filter(function(g) { return g.metrics && g.metrics.headcount > 0; });
+      return { name: k, metrics: metricsFor(keyMap[k]) };
+    }).filter(function(g2) { return g2.metrics && g2.metrics.headcount > 0; });
   }
 
   // Determine active axes for this grouping level + variance threshold.
@@ -6404,16 +6458,24 @@ function renderRadarTab(filtered) {
   var axisResult = getActiveAxes(groupBy, groups, isCrewMode);
   var activeAxes = axisResult.axes;
 
-  // Prior-week polygon — Whole Team view only (multi-group overlay would be unreadable)
+  // Prior-period reference polygon — Whole Team view only
   var refDataset = null;
   if (groupBy === "all" && groups.length === 1) {
-    var pastLabels = weeks.filter(function(w) { return !w.isFuture; }).map(function(w) { return w.label; });
-    var ri = pastLabels.indexOf(refWeekLabel);
-    if (ri > 0) {
-      var priorM = computeGroupMetrics(filtered, weeks, pastLabels[ri - 1]);
-      if (priorM) refDataset = {
-        label: "Prior Week (" + pastLabels[ri - 1].replace(/\d{4}\./, "") + ")",
-        data:  activeAxes.map(function(a) { return normalizeAxisValue(a.id, priorM); })
+    if (g === 'week') {
+      var pastLabels = weeks.filter(function(w) { return !w.isFuture; }).map(function(w) { return w.label; });
+      var ri = pastLabels.indexOf(refWeekLabel);
+      if (ri > 0) {
+        var priorM = computeGroupMetrics(filtered, weeks, pastLabels[ri - 1]);
+        if (priorM) refDataset = {
+          label: "Prior Week (" + pastLabels[ri - 1].replace(/\d{4}\./, "") + ")",
+          data:  activeAxes.map(function(a) { return normalizeAxisValue(a.id, priorM); })
+        };
+      }
+    } else if (prevBucket) {
+      var priorPM = computeGroupMetricsPeriod(filtered, prevBucket);
+      if (priorPM) refDataset = {
+        label: "Prior " + (g === 'month' ? 'Month' : 'Quarter') + " (" + prevBucket.label + ")",
+        data:  activeAxes.map(function(a) { return normalizeAxisValue(a.id, priorPM); })
       };
     }
   }
@@ -6423,7 +6485,7 @@ function renderRadarTab(filtered) {
 
   // Insight-driven title
   var titleEl = document.getElementById("radarInsightTitle");
-  if (titleEl) titleEl.textContent = buildRadarInsightTitle(groups, activeAxes, refWeekLabel);
+  if (titleEl) titleEl.textContent = buildRadarInsightTitle(groups, activeAxes, g === 'week' ? refWeekLabel : (bucket && bucket.label));
 
   // Kudos recognition callout
   renderKudosCallout(filtered, weeks, refWeekLabel);
@@ -6451,7 +6513,7 @@ function renderRadarTab(filtered) {
   var overflowNote = groups.length > 10 ? " · top 10 in chart, all in table" : "";
   document.getElementById("radarMainSubtitle").textContent =
     filtered.length + " rocketeer" + (filtered.length !== 1 ? "s" : "") +
-    " · " + (refWeekLabel || "—") + " · by " + groupLabel + overflowNote;
+    " · " + (g === 'week' ? (refWeekLabel || "—") : (bucket ? periodDisplayLabel_(bucket) + ' · ' + bucket.weekRangeLabel : "—")) + " · by " + groupLabel + overflowNote;
 
   // Axis-aware table
   document.getElementById("radarMainTable").innerHTML = buildRadarTable(groups, activeAxes, groupBy);
