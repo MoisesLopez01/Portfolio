@@ -6,7 +6,20 @@
 //              Dashboard. Pair with GDash.html.
 //              v2.1.0: weekly series payload, Trends tab data, QoQ prevQuarter block, manager exceptions.
 //              v2.2.0: multi-quarter `history` lite blocks — prior calendar weeks stay active on the Trends tab.
-// VERSION:     2.2.0
+//              v2.3.0: drill-down speed — per-person drill index + roster map cached in CacheService
+//                      (script-scoped; access checks still run per request), client-side drill memo.
+//              v2.4.0: new-hire flag — hired on/after quarter start ⇒ isNewHire; excluded from the
+//                      Needing Support pool client-side and flagged "New Hire" instead.
+//              v2.5.0: RPI is a 0–6 score (3 criteria × 2 pts: 10 approved in-quarter goals /
+//                      comment cadence on 6+ goals / 8+ completed); signal shows at a perfect 6.
+//              v2.5.1: cadence flexed — requirement ramps 2 weeks slower (LAG 6: PTO/sick/delay
+//                      allowance) and caps at 8 comments per goal per quarter (was 10), aligning
+//                      the RPI comment bar with STF's existing 8.
+//              v2.5.2: RPI C1 is status-blind — a goal approved then Canceled / Not Completed
+//                      still counts toward the 10; only in-quarter dates are checked.
+//              v2.6.0: Behaviors tab payload — per-goal feedback-loop dates →
+//                      goalsWithMgrFeedback/goalsFeedbackClosed + goalsClosedNoNote rollups.
+// VERSION:     2.6.0
 // ENVIRONMENT: Google Apps Script (Standalone Web App)
 // DEPLOY:      Apps Script → Deploy → New deployment → Web App
 //              Execute as: User accessing the web app
@@ -35,8 +48,21 @@ var CONFIG_GD = {
   STF_MIN_COMPLETED:   8,    // completed goals required for STF
   STF_MIN_CMT_GOALS:   6,    // completed goals needing 8+ comments for STF
   STF_MIN_COMMENTS:    8,    // minimum comments per goal for STF
+  // RPI score (v2.5.x) — 3 criteria × RPI_PTS points each; the RPI signal
+  // (rpiEligible) shows only at a perfect score. Criterion 2's per-goal
+  // self-comment requirement scales with the quarter week:
+  //   required = clamp(week − RPI_CADENCE_LAG, 1, RPI_CADENCE_MAX_CMTS)
+  // LAG 6 = the 4-week goal-setting window + 2 flex weeks (PTO, sick time,
+  // manager follow-up delays, late commenting starts) — a rolling allowance
+  // that applies at ANY point in the quarter, not just at the end. The cap of
+  // 8 tops the quarter requirement at 8 comments per goal, deliberately
+  // matching STF_MIN_COMMENTS so both programs share one bar.
+  RPI_PTS:               2,  // points per criterion met (3 × 2 = 6)
+  RPI_CMT_GOALS:         6,  // goals that must meet the cadence requirement (6/10 or 6/8)
+  RPI_CADENCE_LAG:       6,  // required self-comments per goal = week-of-quarter − this (min 1)
+  RPI_CADENCE_MAX_CMTS:  8,  // requirement ceiling per goal per quarter (aligned with STF)
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v15_',  // bumped: payload adds multi-quarter `history` lite blocks (v14 added weeklySelf/weeklyMgr series, trendWeeks, prevQuarter, managerExceptions)
+  CACHE_VER:           'gd_v17_',  // bumped: employee records add feedback-loop + closed-no-note rollups (Behaviors tab; v16 added hireDate/isNewHire)
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -115,6 +141,23 @@ function dateToFiscalQuarter_(d) {
  * scanning the quarters-with-data list: a data-gap quarter must not silently
  * make the QoQ shadow jump two quarters back.
  */
+/**
+ * A "new hire" for a given quarter = hired ON or AFTER that quarter's first
+ * day — they never had the full quarter the goal thresholds assume (goals
+ * need ~3 months), so the Needing Support view flags them instead of calling
+ * them out. Some ramp up mid-quarter and set goals anyway; they stay flagged
+ * (and excluded from the support pool) until their first full quarter.
+ * Fails safe: missing/unparseable hire date or unknown quarter window → false
+ * (never silently excuses someone we can't date).
+ */
+function isNewHire_(hireDateIso, quarterStartIso) {
+  if (!hireDateIso || !quarterStartIso) return false;  // before fmtDate_: new Date(null) is epoch, not invalid
+  var iso = /^\d{4}-\d{2}-\d{2}$/;
+  var h = fmtDate_(hireDateIso), q = fmtDate_(quarterStartIso);
+  if (!iso.test(h) || !iso.test(q)) return false;
+  return h >= q;
+}
+
 function prevQuarterLabel_(quarter) {
   var m = String(quarter || '').match(/FY(\d{2,4})Q([1-4])/i);
   if (!m) return null;
@@ -363,8 +406,10 @@ function getAllRocketeersData() {
 
 // Auditor drill-down for the Individual Engagement List tab: every goal for
 // ONE rocketeer this quarter, with the full comment thread per goal tagged
-// IC (self) vs Manager vs Other. Not cached — a small, on-demand, per-person
-// read, unlike the bulk company-wide endpoints above.
+// IC (self) vs Manager vs Other. v2.3.0: the per-person rows come from the
+// cached drill index (see buildAndCacheDrillIndex_) instead of a full RD
+// sheet scan per click — the access check and manager-scope rejection below
+// still run on every request, so the cache changes latency, not authority.
 function getRocketeerGoalDetail(quarter, normName) {
   var access = checkDashboardAccess();
   if (!access.allowed) return { ok: false, denied: true, email: access.email };
@@ -372,7 +417,7 @@ function getRocketeerGoalDetail(quarter, normName) {
   var targetNorm = normName_(normName);
   if (!targetNorm) return { ok: false, error: 'No rocketeer specified' };
 
-  var fullRosterMap = getFullRosterMap_();
+  var fullRosterMap = getFullRosterMapCached_();
 
   // Manager access-control boundary — reject outright rather than silently
   // returning empty, so a scoped manager can't probe for people outside
@@ -388,12 +433,17 @@ function getRocketeerGoalDetail(quarter, normName) {
   // explicit quarter string, never this sentinel.
   var allQuarters = quarter === 'ALL';
   var qtr    = allQuarters ? 'ALL' : String(quarter || CONFIG_GD.DEFAULT_QUARTER).trim();
-  var allRd  = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
 
-  // Filter to this one rocketeer's own rows first — a small subset — before
-  // doing any quarter derivation, rather than scanning/deriving quarters for
-  // the whole company-wide sheet to answer a single-person question.
-  var ownRows = allRd.filter(function(r) { return normName_(r['Rocketeer']) === targetNorm; });
+  // This rocketeer's own rows, from the per-person drill index cache. A miss
+  // rebuilds the index (one full RD read — the same cost every click used to
+  // pay) and warms every person's entry for CACHE_TTL, so subsequent drills
+  // by anyone skip the sheet entirely.
+  var cache    = CacheService.getScriptCache();
+  var drillKey = drillCacheKey_(targetNorm);
+  var ownRows  = null;
+  var blob     = drillKey ? cacheGetChunked_(cache, drillKey) : null;
+  if (blob) { try { ownRows = JSON.parse(blob); } catch (e) { ownRows = null; } }
+  if (!ownRows) ownRows = buildAndCacheDrillIndex_(cache, fullRosterMap)[targetNorm] || [];
   if (!ownRows.length) return { ok: true, rocketeer: null, quarter: qtr, goals: [] };
 
   var rocketeerName = String(ownRows[0]['Rocketeer'] || '').trim();
@@ -505,6 +555,53 @@ function saveHRNote(data) {
   }
 }
 
+function deleteHRNote(data) {
+  var access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, error: 'Access denied' };
+
+  try {
+    var ts   = String((data && data.timestamp) || '');
+    var norm = String((data && data.normName)  || '');
+    if (!ts || !norm) return { ok: false, error: 'Missing note identifier' };
+
+    var ss = SpreadsheetApp.openById(CONFIG_GD.GOALS_SS_ID);
+    var sh = ss.getSheetByName(CONFIG_GD.SHEET_HR_TRACKER);
+    if (!sh) return { ok: false, error: 'Tracker sheet not found' };
+
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return { ok: false, error: 'Note not found' };
+    var hdrs  = vals[0].map(function(h) { return String(h).trim(); });
+    var cTs   = hdrs.indexOf('Timestamp');
+    var cNorm = hdrs.indexOf('NormName');
+    var cRock = hdrs.indexOf('Rocketeer');
+    var cBy   = hdrs.indexOf('ReviewedBy');
+    if (cTs === -1 || cBy === -1) return { ok: false, error: 'Tracker sheet is missing expected columns' };
+
+    for (var i = 1; i < vals.length; i++) {
+      // Timestamps round-trip through the sheet as Date objects or strings —
+      // normalise to ISO the same way getHRNotes does so the client value matches.
+      var rowIso;
+      try { rowIso = new Date(vals[i][cTs]).toISOString(); } catch (badDate) { continue; }
+      var rowNorm = (cNorm !== -1 && vals[i][cNorm])
+        ? String(vals[i][cNorm])
+        : normName_(String(cRock !== -1 ? vals[i][cRock] : ''));
+      if (rowIso !== ts || rowNorm !== norm) continue;
+
+      // Admins may delete any note; everyone else only their own.
+      var author = String(vals[i][cBy] || '').toLowerCase();
+      if (access.role !== 'admin' && author !== String(access.email || '').toLowerCase()) {
+        return { ok: false, error: 'Only the note author or an admin can delete this note' };
+      }
+      sh.deleteRow(i + 1);
+      return { ok: true };
+    }
+    return { ok: false, error: 'Note not found — it may have already been deleted' };
+  } catch (e) {
+    Logger.log('❌ deleteHRNote: ' + e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 function getHRNotes(quarter) {
   var access = checkDashboardAccess();
   if (!access.allowed) return [];
@@ -517,7 +614,7 @@ function getHRNotes(quarter) {
     // a manager should not see follow-up notes written about people outside their team.
     var scope = null;
     if (access.role === 'manager') {
-      scope = resolveGDManagerScope_(getFullRosterMap_(), normName_(access.delegateScopeName));
+      scope = resolveGDManagerScope_(getFullRosterMapCached_(), normName_(access.delegateScopeName));
     }
 
     return rows
@@ -572,6 +669,31 @@ function bustCache(quarter) {
   // covers both views in one call.
   scopeKeys.forEach(function(sk) { cacheRemoveChunked_(cache, CONFIG_GD.CACHE_VER + 'allrock_' + sk); });
 
+  // v2.3.0 shared (unfiltered, script-scoped) caches: the roster map and the
+  // per-person drill index must go too — Refresh's contract is "re-read the
+  // sheets now", and drill entries are exactly the comment data a user hits
+  // Refresh to see. Per-person keys are enumerated via the manifest written by
+  // buildAndCacheDrillIndex_ (CacheService can't list keys). Removing a base
+  // key + its '::n' manifest makes any leftover numbered chunks unreadable —
+  // they expire by TTL.
+  cacheRemoveChunked_(cache, CONFIG_GD.CACHE_VER + 'rostermap');
+  var namesBlob = cacheGetChunked_(cache, CONFIG_GD.CACHE_VER + 'drillnames');
+  if (namesBlob) {
+    try {
+      var drillKeys = [];
+      JSON.parse(namesBlob).forEach(function(norm) {
+        var k = drillCacheKey_(norm);
+        if (k) drillKeys.push(k, k + '::n');
+      });
+      for (var i = 0; i < drillKeys.length; i += 100) cache.removeAll(drillKeys.slice(i, i + 100));
+    } catch (e) { log_('drill cache bust skipped: ' + e.message); }
+  }
+  cacheRemoveChunked_(cache, CONFIG_GD.CACHE_VER + 'drillnames');
+
+  // Roster-derived manager resolution memo (GD Security.js) — clear the
+  // caller's own entry so a just-promoted supervisor's Refresh works.
+  try { cache.remove('gdsec_sup_' + access.email); } catch (e) {}
+
   return { ok: true };
 }
 
@@ -613,7 +735,7 @@ function buildComplianceData_(quarter, access) {
   // resolve a manager's org-tree scope and to derive rosterMap/terminatedSet/
   // locMap/supTitleMap below. Never used to require an RD rocketeer to have a
   // matching roster row — see aggregateByRocketeer_.
-  var fullRosterMap = getFullRosterMap_();
+  var fullRosterMap = getFullRosterMapCached_();
 
   // 2b. Manager role: build a scope set of normNames in the caller's org tree —
   // a hard access-control boundary enforced in aggregateByRocketeer_. Admins and
@@ -702,6 +824,7 @@ function buildComplianceData_(quarter, access) {
       weeklySelf: {}, weeklyMgr: {},
       stfGoalsCompleted: 0, stfGoalsWithSufficientComments: 0,
       goalsStuckInPlanned: 0, hasEngagementConcern: false,
+      goalsWithMgrFeedback: 0, goalsFeedbackClosed: 0, goalsClosedNoNote: 0,
       goalsList: [],
     };
   });
@@ -725,16 +848,41 @@ function buildComplianceData_(quarter, access) {
   // carry a compliance tier/job family/RPI/STF flags for context even though
   // they're excluded from every org-wide total (computeSummary_ only ever
   // iterates `employees`, never `attrition`).
+  // Quarter calendar window — needed by the new-hire flag and RPI cadence
+  // below, and the grace-period flags in step 8.
+  var quarterDates = parseQuarterDates_(quarter);
+
+  // Calendar weeks elapsed since quarter start — drives the engagement pace
+  // threshold (step 10) AND RPI criterion 2's growing comment requirement.
+  var weeksElapsedSinceStart = totalQtrWeeks;
+  if (quarterDates) {
+    var msPerWeek  = 7 * 24 * 60 * 60 * 1000;
+    var startMs    = new Date(quarterDates.start).getTime();
+    var todayMs    = new Date(new Date().toISOString().slice(0, 10)).getTime();
+    var diffWeeks  = Math.floor((todayMs - startMs) / msPerWeek);
+    weeksElapsedSinceStart = Math.max(1, Math.min(diffWeeks + 1, totalQtrWeeks));
+  }
+
   var finalizeEmployeeRecord_ = function(emp) {
+    var rosterRec        = rosterMap[emp.normName] || rosterMap[normName_(emp.name)] || null;
     emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || emp.location || 'Unknown';
     emp.jobFamily        = deriveJobFamily_(emp.jobTitle);
     emp.complianceStatus = computeStatus_(emp.totalGoals);
     emp.terminated       = !!terminatedSet[emp.normName];
 
-    // RPI eligibility: 10+ total goals, 8+ completed, comments in every quarter week
-    emp.rpiEligible = emp.totalGoals >= CONFIG_GD.GOALS_ON_TARGET &&
-                      emp.goalsCompleted >= CONFIG_GD.GOALS_WATCH &&
-                      emp.commentWeeks >= totalQtrWeeks;
+    // New hire = no full quarter of tenure for THIS quarter (hired on/after
+    // its first day). The client excludes them from the Needing Support pool
+    // and shows a "New Hire" flag instead of concern badges.
+    emp.hireDate  = (rosterRec && rosterRec.hireDate) || '';
+    emp.isNewHire = isNewHire_(emp.hireDate, quarterDates && quarterDates.start);
+
+    // RPI score (v2.5.0): 3 criteria × 2 pts — see computeRpiScore_. The
+    // boolean signal (rpiEligible) shows only at a perfect 6/6.
+    var rpi = computeRpiScore_(emp, quarterDates, weeksElapsedSinceStart);
+    emp.rpiScore     = rpi.score;
+    emp.rpiMax       = rpi.max;
+    emp.rpiBreakdown = rpi.breakdown;
+    emp.rpiEligible  = rpi.score === rpi.max;
 
     // STF eligibility: 8+ completed goals, 6+ of those with 8+ total comments
     emp.stfEligible = emp.stfGoalsCompleted >= CONFIG_GD.STF_MIN_COMPLETED &&
@@ -814,21 +962,11 @@ function buildComplianceData_(quarter, access) {
   var prevLabel   = prevQuarterLabel_(quarter);
   history.forEach(function(h) { if (h.quarter === prevLabel) prevQuarter = h; });
 
-  // 8. Quarter date windows and grace period flags
-  var quarterDates          = parseQuarterDates_(quarter);
+  // 8. Grace period flags (quarterDates and weeksElapsedSinceStart are
+  // computed above, before step 5 — RPI and the new-hire flag need them)
   var today                 = new Date().toISOString().slice(0, 10);
   var isGoalCreationGrace   = !!(quarterDates && today <= quarterDates.gracePeriodGoalsEnd);
   var isCompletionGrace     = !!(quarterDates && today >= quarterDates.gracePeriodCompletionStart);
-
-  // 9. Calendar weeks elapsed since quarter start (for engagement pace threshold)
-  var weeksElapsedSinceStart = totalQtrWeeks;
-  if (quarterDates) {
-    var msPerWeek  = 7 * 24 * 60 * 60 * 1000;
-    var startMs    = new Date(quarterDates.start).getTime();
-    var todayMs    = new Date(today).getTime();
-    var diffWeeks  = Math.floor((todayMs - startMs) / msPerWeek);
-    weeksElapsedSinceStart = Math.max(1, Math.min(diffWeeks + 1, totalQtrWeeks));
-  }
 
   // 10. Engagement data
   var engagementData = computeEngagementData_(employees, weeksElapsedSinceStart, supTitleMap, managerExceptions);
@@ -865,7 +1003,7 @@ function buildAllRocketeersData_(access) {
   log_('buildAllRocketeersData_ | building all-time rocketeer roster');
 
   var allRd         = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
-  var fullRosterMap = getFullRosterMap_();
+  var fullRosterMap = getFullRosterMapCached_();
 
   var managerScopeName = null;
   var scopeSet = null;
@@ -945,6 +1083,8 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
         managerComments: 0,
         totalComments:   0,
         lastCommentDate: '',
+        firstMgrCmtDate: '',   // earliest DATED manager comment (feedback-loop anchor)
+        lastSelfCmtDate: '',   // latest DATED self comment (loop closes when >= firstMgrCmtDate)
       };
     }
 
@@ -966,9 +1106,17 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
           map[norm]._selfCmtWeeks[wk] = true;  // RPI: weeks with any self-comment
           map[norm]._weeklySelf[wk]   = (map[norm]._weeklySelf[wk] || 0) + 1;
         }
+        if (cDate) {
+          var sds = fmtDate_(cDate);
+          if (sds && (!g.lastSelfCmtDate || sds > g.lastSelfCmtDate)) g.lastSelfCmtDate = sds;
+        }
       } else if (sup && cNorm === sup) {
         g.managerComments++;
         if (wk) map[norm]._weeklyMgr[wk] = (map[norm]._weeklyMgr[wk] || 0) + 1;
+        if (cDate) {
+          var mds = fmtDate_(cDate);
+          if (mds && (!g.firstMgrCmtDate || mds < g.firstMgrCmtDate)) g.firstMgrCmtDate = mds;
+        }
       }
 
       if (cDate) {
@@ -1019,10 +1167,24 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
     // hasEngagementConcern: has goals but has never self-commented on any of them
     emp.hasEngagementConcern = emp.totalGoals > 0 && emp.totalSelfComments === 0;
 
-    // Lean goal list for drill-down
+    // Think Team feedback loop — goals with a dated manager comment, and whether a
+    // self-comment landed on/after the FIRST one. max(self) >= min(mgr) is the
+    // order-independent form: sheet rows carry no date ordering guarantee.
+    var mgrFbGoals = goalArr.filter(function(g) { return !!g.firstMgrCmtDate; });
+    emp.goalsWithMgrFeedback = mgrFbGoals.length;
+    emp.goalsFeedbackClosed  = mgrFbGoals.filter(function(g) {
+      return g.lastSelfCmtDate && g.lastSelfCmtDate >= g.firstMgrCmtDate;
+    }).length;
+    // Build Process — Not Completed / Canceled goals that carry no note at all
+    emp.goalsClosedNoNote = goalArr.filter(function(g) {
+      return (/not.?complet/i.test(g.status) || /cancel/i.test(g.status)) && g.totalComments === 0;
+    }).length;
+
+    // Lean goal list for drill-down + RPI scoring (start feeds the
+    // "correct dates" check in computeRpiScore_)
     emp.goalsList = goalArr.map(function(g) {
       return {
-        id: g.id, name: g.name, status: g.status,
+        id: g.id, name: g.name, status: g.status, start: g.startDate,
         self: g.selfComments, mgr: g.managerComments,
         total: g.totalComments, lastCmt: g.lastCommentDate,
       };
@@ -1040,6 +1202,56 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
   });
 
   return map;
+}
+
+// ── RPI score (v2.5.0) ─────────────────────────────────────────
+// RPI = 0–6, three criteria worth RPI_PTS (2) each; the RPI signal shows only
+// at a perfect score:
+//   C1 — has ≥10 goals for the quarter with correct dates. Status-blind
+//        (2026-07-06 clarification): a goal that was approved and later
+//        Canceled or Not Completed still counts — approval already happened;
+//        the outcome is criterion 3's business. "Correct dates" = the goal's
+//        own Start Date falls inside the quarter window. (RD carries no
+//        approval column, so with status out of the picture the date check
+//        is the whole criterion.)
+//   C2 — comment cadence: on ≥6 goals (of their 10, or 6 of 8), the rocketeer
+//        has at least clamp(weekOfQuarter − RPI_CADENCE_LAG, 1, RPI_CADENCE_MAX_CMTS)
+//        self-comments — the requirement starts at 1, grows weekly once the
+//        goal-setting window (+2 flex weeks for PTO/sick/delays) is past, and
+//        tops out at 8 per quarter, matching the STF comment bar. Canceled
+//        goals never count toward cadence.
+//   C3 — completed ≥8 goals (8/10 or 8/8).
+// Pure function of already-aggregated per-employee data → unit-testable.
+function computeRpiScore_(emp, quarterDates, weekOfQuarter) {
+  var goals = emp.goalsList || [];
+  var inQuarter_ = function(startIso) {
+    if (!quarterDates) return true;  // non-FY quarter label — no window to check against
+    return !!startIso && startIso >= quarterDates.start && startIso <= quarterDates.end;
+  };
+
+  var goalsInQtr = goals.filter(function(g) { return inQuarter_(g.start); }).length;
+  var c1 = goalsInQtr >= CONFIG_GD.GOALS_ON_TARGET;
+
+  var required   = Math.min(Math.max(1, (weekOfQuarter || 1) - CONFIG_GD.RPI_CADENCE_LAG),
+                            CONFIG_GD.RPI_CADENCE_MAX_CMTS);
+  var qualifying = goals.filter(function(g) {
+    return !/cancel/i.test(g.status) && (g.self || 0) >= required;
+  }).length;
+  var c2 = qualifying >= CONFIG_GD.RPI_CMT_GOALS;
+
+  var c3 = (emp.goalsCompleted || 0) >= CONFIG_GD.GOALS_WATCH;
+
+  var pts   = CONFIG_GD.RPI_PTS;
+  var score = (c1 ? pts : 0) + (c2 ? pts : 0) + (c3 ? pts : 0);
+  return {
+    score: score,
+    max:   pts * 3,
+    breakdown: {
+      goals:     { met: c1, have: goalsInQtr, need: CONFIG_GD.GOALS_ON_TARGET },
+      cadence:   { met: c2, have: qualifying,    need: CONFIG_GD.RPI_CMT_GOALS, requiredCmts: required },
+      completed: { met: c3, have: emp.goalsCompleted || 0, need: CONFIG_GD.GOALS_WATCH },
+    },
+  };
 }
 
 // ── Supervisor job-title lookup (for Senior Leader detection) ──
@@ -1189,6 +1401,12 @@ function getFullRosterMap_() {
       var termRaw = row['Termination/Release Date'];
       var isInactiveByDate = termRaw !== undefined && termRaw !== null && String(termRaw).trim() !== '';
 
+      // HRIS exports vary in the hire-date header — same defensive fallback
+      // chain as name/title above. Absent/unparseable stays '' and the
+      // new-hire flag fails safe to false (isNewHire_).
+      var hireRaw = row['Hire Date'] || row['Hire/Rehire Date'] || row['Original Hire Date'] ||
+                    row['Most Recent Hire Date'] || row['Start Date'] || '';
+
       map[norm] = {
         name:       String(name).trim(),
         normName:   norm,
@@ -1198,15 +1416,128 @@ function getFullRosterMap_() {
         classVal:   classVal,
         location:   String(row['Key Location'] || '').trim(),
         active:     !isInactiveByDate,
+        hireDate:   hireRaw ? fmtDate_(hireRaw) : '',
       };
     });
 
     var activeCount = Object.keys(map).filter(function(n) { return map[n].active; }).length;
+    var hireCount   = Object.keys(map).filter(function(n) { return map[n].hireDate; }).length;
     Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' roster rows (' +
                activeCount + ' active, ' + (Object.keys(map).length - activeCount) +
-               ' inactive) from ' + rows.length + ' "' + CONFIG_GD.SHEET_ROSTER + '" rows');
+               ' inactive, ' + hireCount + ' with hire date) from ' + rows.length +
+               ' "' + CONFIG_GD.SHEET_ROSTER + '" rows');
+    if (Object.keys(map).length && !hireCount) {
+      Logger.log('⚠️ getFullRosterMap_: no hire dates matched — check the hire-date column header on "' +
+                 CONFIG_GD.SHEET_ROSTER + '" (new-hire flag stays false for everyone until fixed)');
+    }
   } catch (e) { Logger.log('⚠️ getFullRosterMap_: ' + e.message); }
   return map;
+}
+
+// Chunked-cache wrapper around getFullRosterMap_ — the company-wide roster
+// "Data" tab is re-read at most once per CACHE_TTL instead of on every
+// drill/HR-notes/bulk-build call. Security model: the cached map is the raw
+// UNFILTERED roster held in the script-scoped CacheService (never sent to a
+// client as-is); every endpoint still applies its own access check and
+// manager scoping on top of it per request, exactly as with a fresh read.
+// An empty read (sheet missing/misconfigured) is never cached, so a transient
+// failure can't pin "no roster" for 5 minutes.
+function getFullRosterMapCached_() {
+  var cache = CacheService.getScriptCache();
+  var key   = CONFIG_GD.CACHE_VER + 'rostermap';
+  var blob  = cacheGetChunked_(cache, key);
+  if (blob) { try { return JSON.parse(blob); } catch (e) { /* fall through to fresh read */ } }
+
+  var map = getFullRosterMap_();
+  if (Object.keys(map).length) {
+    try { cachePutChunked_(cache, key, JSON.stringify(map), CONFIG_GD.CACHE_TTL); }
+    catch (e) { log_('roster map cache put skipped: ' + e.message); }
+  }
+  return map;
+}
+
+// ── Drill-down index cache (v2.3.0) ────────────────────────────
+// getRocketeerGoalDetail used to re-read the entire RD sheet (one row per
+// comment, company-wide, all quarters) on every row click. Instead, one RD
+// read builds a per-person index of lean rows — only the 13 columns the drill
+// consumes, with Date cells normalised to ISO strings — cached under one
+// CacheService key per person for CACHE_TTL. Entries are UNFILTERED raw data
+// in the script-scoped cache: access control stays in getRocketeerGoalDetail,
+// which checks the caller's role/scope before any entry is read or returned.
+// Roster people with no RD rows get an explicit [] entry so drilling into a
+// zero-goal person is also a cache hit, not a full rebuild.
+
+// Cache key for one person's drill rows. Returns null for a key that would
+// exceed CacheService's 250-char limit (a >200-char name never happens in
+// practice — the caller then just skips caching for that person).
+function drillCacheKey_(norm) {
+  var key = CONFIG_GD.CACHE_VER + 'drill_' + norm;
+  return key.length <= 240 ? key : null;
+}
+
+function buildAndCacheDrillIndex_(cache, fullRosterMap) {
+  var allRd = readSheet_(CONFIG_GD.GOALS_SS_ID, CONFIG_GD.SHEET_RD);
+  var isoOrBlank_ = function(d) {
+    if (!d) return '';
+    if (d instanceof Date) return isNaN(d) ? '' : d.toISOString();
+    return String(d);
+  };
+
+  var index = {};
+  allRd.forEach(function(r) {
+    var norm = normName_(r['Rocketeer']);
+    if (!norm) return;
+    if (!index[norm]) index[norm] = [];
+    // Same column names as the raw sheet rows, so getRocketeerGoalDetail's
+    // row-processing logic is identical on the fresh-build and cached paths.
+    index[norm].push({
+      'Rocketeer':      String(r['Rocketeer']      || ''),
+      'Supervisor':     String(r['Supervisor']     || ''),
+      'Department':     String(r['Department']     || ''),
+      'Job Title':      String(r['Job Title']      || ''),
+      'Goal ID':        String(r['Goal ID']        || ''),
+      'Goal Name':      String(r['Goal Name']      || ''),
+      'Goal Status':    String(r['Goal Status']    || ''),
+      'Start Date':     isoOrBlank_(r['Start Date']),
+      'Mood':           String(r['Mood']           || ''),
+      'Fiscal Quarter': String(r['Fiscal Quarter'] || ''),
+      'Comment Text':   String(r['Comment Text']   || ''),
+      'Commentator':    String(r['Commentator']    || ''),
+      'Comment Date':   isoOrBlank_(r['Comment Date']),
+    });
+  });
+  Object.keys(fullRosterMap || {}).forEach(function(norm) {
+    if (!index[norm]) index[norm] = [];
+  });
+
+  try {
+    // Small entries batch into putAll calls (flushed by count/size so no call
+    // gets unreasonably large); a rare oversized person chunks individually.
+    var batch = {}, batchKeys = 0, batchBytes = 0;
+    var flush = function() {
+      if (batchKeys) cache.putAll(batch, CONFIG_GD.CACHE_TTL);
+      batch = {}; batchKeys = 0; batchBytes = 0;
+    };
+    Object.keys(index).forEach(function(norm) {
+      var key = drillCacheKey_(norm);
+      if (!key) return;
+      var blob = JSON.stringify(index[norm]);
+      if (blob.length > CONFIG_GD.CACHE_CHUNK_SIZE) {
+        cachePutChunked_(cache, key, blob, CONFIG_GD.CACHE_TTL);
+        return;
+      }
+      batch[key] = blob; batchKeys++; batchBytes += blob.length;
+      if (batchKeys >= 100 || batchBytes >= 800000) flush();
+    });
+    flush();
+    // Manifest of every norm written, so bustCache can enumerate and remove
+    // the per-person keys (CacheService itself can't list keys).
+    cachePutChunked_(cache, CONFIG_GD.CACHE_VER + 'drillnames',
+                     JSON.stringify(Object.keys(index)), CONFIG_GD.CACHE_TTL);
+    log_('buildAndCacheDrillIndex_: cached drill rows for ' + Object.keys(index).length + ' people');
+  } catch (e) { log_('drill index cache put skipped: ' + e.message); }
+
+  return index;
 }
 
 // ── Manager org-tree scoping (used by GD Security.js's manager role) ──
@@ -1659,6 +1990,115 @@ function _test_aggregateAllRocketeers_() {
     "manager scope must exclude out-of-scope rocketeers, got " + JSON.stringify(scoped));
 
   Logger.log("✅ _test_aggregateAllRocketeers_ passed");
+}
+
+function _test_computeRpiScore_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('rpiScore: ' + msg); };
+  var qd = { start: '2026-04-01', end: '2026-06-30' };
+  var goal = function(status, self, start) {
+    return { id: 'g', name: 'g', status: status, start: start || '2026-05-01', self: self, mgr: 0, total: self };
+  };
+  var mk = function(goals, completed) { return { goalsList: goals, goalsCompleted: completed }; };
+
+  // Perfect 6: 10 approved in-quarter goals, 6 with enough self-comments, 8 completed
+  var goals10 = [];
+  for (var i = 0; i < 10; i++) goals10.push(goal(i < 8 ? 'Completed' : 'In Progress', i < 6 ? 5 : 0));
+  var r = computeRpiScore_(mk(goals10, 8), qd, 9);  // week 9 → required = max(1, 9−6) = 3
+  t(r.score === 6 && r.max === 6, 'perfect case should score 6/6, got ' + r.score);
+
+  // C1 is status-blind: goals approved then Canceled / Not Completed / still
+  // Planned all count toward the 10 — only the dates gate the criterion
+  var mixed = goals10.slice(0, 7).concat([goal('Canceled', 5), goal('Not Completed', 5), goal('Planned', 5)]);
+  r = computeRpiScore_(mk(mixed, 8), qd, 9);
+  t(r.breakdown.goals.met, 'canceled/not-completed/planned goals must still count toward the 10');
+
+  // C1 fails on wrong dates: goal dated outside the quarter
+  var badDate = goals10.slice(0, 9).concat([goal('Completed', 0, '2026-07-15')]);
+  r = computeRpiScore_(mk(badDate, 8), qd, 9);
+  t(!r.breakdown.goals.met, 'out-of-quarter start date must not count');
+
+  // C2 requirement floors at 1 early in the quarter (weeks ≤ 5)
+  var oneCmt = [];
+  for (var j = 0; j < 10; j++) oneCmt.push(goal('In Progress', j < 6 ? 1 : 0));
+  r = computeRpiScore_(mk(oneCmt, 0), qd, 3);   // week 3 → required = max(1, -3) = 1
+  t(r.breakdown.cadence.met && r.breakdown.cadence.requiredCmts === 1, 'early-quarter cadence floor should be 1');
+  r = computeRpiScore_(mk(oneCmt, 0), qd, 9);   // week 9 → required = 3; only 1 comment each
+  t(!r.breakdown.cadence.met && r.breakdown.cadence.requiredCmts === 3, 'week-9 cadence should require 3 comments');
+
+  // C2 requirement caps at 8 per quarter (flex for PTO/sick/delays; aligns with STF)
+  var eightCmts = [];
+  for (var m = 0; m < 10; m++) eightCmts.push(goal('In Progress', m < 6 ? 8 : 0));
+  r = computeRpiScore_(mk(eightCmts, 0), qd, 14);  // week 14 → min(14−6, 8) = 8
+  t(r.breakdown.cadence.met && r.breakdown.cadence.requiredCmts === 8, 'week-14 requirement should cap at 8');
+  r = computeRpiScore_(mk(eightCmts, 0), qd, 20);  // pathological long quarter — cap must hold
+  t(r.breakdown.cadence.requiredCmts === 8, 'requirement must never exceed 8');
+
+  // C2: canceled goals never satisfy cadence
+  var canceled6 = [];
+  for (var k = 0; k < 6; k++) canceled6.push(goal('Canceled', 9));
+  r = computeRpiScore_(mk(canceled6, 0), qd, 9);
+  t(!r.breakdown.cadence.met, 'canceled goals must not satisfy cadence');
+
+  // C3 boundary: 8 completed met, 7 not
+  r = computeRpiScore_(mk(goals10, 7), qd, 9);
+  t(!r.breakdown.completed.met, '7 completed must fail C3');
+
+  // Zero-goal employee: score 0, nothing throws
+  r = computeRpiScore_(mk([], 0), qd, 9);
+  t(r.score === 0, 'zero goals should score 0');
+
+  Logger.log('✅ _test_computeRpiScore_ passed');
+}
+
+function _test_isNewHire_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('isNewHire: ' + msg); };
+  t(isNewHire_('2026-05-15', '2026-04-01') === true,  'mid-quarter hire should be new');
+  t(isNewHire_('2026-04-01', '2026-04-01') === true,  'quarter-day-one hire should be new');
+  t(isNewHire_('2026-03-31', '2026-04-01') === false, 'pre-quarter hire should not be new');
+  t(isNewHire_('',           '2026-04-01') === false, 'missing hire date must fail safe');
+  t(isNewHire_('N/A',        '2026-04-01') === false, 'garbage hire date must fail safe');
+  t(isNewHire_('2026-05-15', null)         === false, 'missing quarter window must fail safe');
+  t(isNewHire_(new Date(2026, 4, 15), '2026-04-01') === true, 'Date-object hire cell should parse');
+  Logger.log('✅ _test_isNewHire_ passed');
+}
+
+function _test_feedbackLoop_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('❌ _test_feedbackLoop_: ' + msg); };
+  // Rows deliberately OUT of date order — the sheet gives no ordering guarantee.
+  var row_ = function(goalId, status, commentator, date) {
+    return {
+      'Rocketeer': 'Ana Reyes', 'Supervisor': 'Max Boss', 'Department': 'Services',
+      'Class': 'FTE', 'Job Title': 'Consultant', 'Fiscal Quarter': 'FY27Q1',
+      'Goal ID': goalId, 'Goal Name': 'G' + goalId, 'Goal Status': status,
+      'Start Date': '2026-07-02', 'Mood': '',
+      'Comment Text': commentator ? 'note' : '', 'Commentator': commentator || '',
+      'Comment Date': date || '',
+    };
+  };
+  var rows = [
+    // g1: reply row appears BEFORE the manager row → still closed
+    row_('g1', 'In Progress', 'Ana Reyes', '2026-07-10'),
+    row_('g1', 'In Progress', 'Max Boss',  '2026-07-08'),
+    // g2: same-day reply counts as closed
+    row_('g2', 'In Progress', 'Max Boss',  '2026-07-09'),
+    row_('g2', 'In Progress', 'Ana Reyes', '2026-07-09'),
+    // g3: self-comment only BEFORE the manager comment → open loop
+    row_('g3', 'In Progress', 'Ana Reyes', '2026-07-05'),
+    row_('g3', 'In Progress', 'Max Boss',  '2026-07-07'),
+    // g4: UNDATED manager comment → excluded from the feedback denominator
+    row_('g4', 'In Progress', 'Max Boss',  ''),
+    // g5: no manager comments at all → not in denominator
+    row_('g5', 'In Progress', 'Ana Reyes', '2026-07-06'),
+    // g6: Canceled with zero comments → closed-no-note
+    row_('g6', 'Canceled', ''),
+    // g7: Not Completed WITH a note → NOT closed-no-note
+    row_('g7', 'Not Completed', 'Ana Reyes', '2026-07-11'),
+  ];
+  var emp = aggregateByRocketeer_(rows, null, 'FY27Q1')[normName_('Ana Reyes')];
+  t(emp.goalsWithMgrFeedback === 3, 'g1,g2,g3 have dated mgr feedback, got ' + emp.goalsWithMgrFeedback);
+  t(emp.goalsFeedbackClosed === 2,  'g1 (out-of-order) + g2 (same-day) closed, got ' + emp.goalsFeedbackClosed);
+  t(emp.goalsClosedNoNote === 1,    'only g6 is closed-no-note, got ' + emp.goalsClosedNoNote);
+  Logger.log('✅ _test_feedbackLoop_ passed');
 }
 
 function _test_prevQuarterLabel_() {
