@@ -104,6 +104,13 @@ function normEmpNum_(raw) {
   return String(typeof raw === 'number' ? Math.round(raw) : raw).replace(/,/g, '').trim();
 }
 
+// parseFloat with comma-grouping tolerance; NaN (never null/0) on junk so
+// isFinite() checks stay honest.
+function numOrNaN_(v) {
+  var n = parseFloat(String(v === null || v === undefined ? '' : v).replace(/,/g, ''));
+  return isFinite(n) ? n : NaN;
+}
+
 function fmtDate_(d) {
   try {
     var dt = (d instanceof Date) ? d : new Date(d);
@@ -1520,6 +1527,68 @@ function deriveUsageTx_(entries) {
     if (amount !== null && amount > 0) txs.push({ date: e.date, hours: amount });
   });
   return txs;
+}
+
+// Company-wide PTO usage by ISO week: { empNum: { 'YYYY.WNN': hours } }.
+// NO department filter — deliberately different from the PS project's reader
+// (this dashboard evaluates goals globally; departments are a UI filter).
+// Any failure returns {} so pace metrics degrade to PTO-unadjusted weeks
+// rather than breaking the payload build.
+function readPTOWeeklyHours_() {
+  try {
+    var rows = readSheet_(CONFIG_GD.PTO_SS_ID, CONFIG_GD.SHEET_PTO);
+    if (!rows.length) { Logger.log('⚠️ readPTOWeeklyHours_: 0 rows from "' + CONFIG_GD.SHEET_PTO + '"'); return {}; }
+
+    var byEmp = {}, depts = {}, usageRows = 0;
+    rows.forEach(function(row) {
+      var empNum = normEmpNum_(row['Employee Number']);
+      var date   = row['Date'] ? fmtDate_(row['Date']) : '';
+      if (!empNum || date.length !== 10) return;
+      var dept = String(row['Department: Name'] || '').trim();
+      if (dept) depts[dept] = true;   // diagnostics only — never a filter
+      var adjType = String(row['Adjustment Type'] || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      var isUsage = adjType.indexOf('usage') !== -1 || adjType.indexOf('timeoff') !== -1 ||
+                    adjType.indexOf('sick') !== -1;
+      if (isUsage) usageRows++;
+      var amtRaw = null;
+      ['Amount', 'Hours', 'AdjustmentAmount', 'AdjustmentHours'].some(function(col) {
+        if (row[col] !== undefined && row[col] !== '') { amtRaw = row[col]; return true; }
+        return false;
+      });
+      var amt = amtRaw === null ? NaN : numOrNaN_(amtRaw);
+      if (!byEmp[empNum]) byEmp[empNum] = [];
+      byEmp[empNum].push({
+        date: date,
+        balance: numOrNaN_(row['Balance']),
+        isUsage: isUsage,
+        explicitAmt: isFinite(amt) ? Math.abs(amt) : null,
+      });
+    });
+
+    var usageByEmp = {}, txCount = 0, txHours = [];
+    Object.keys(byEmp).forEach(function(emp) {
+      var entries = byEmp[emp].sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+      var txs = deriveUsageTx_(entries);
+      if (txs.length) {
+        usageByEmp[emp] = txs;
+        txCount += txs.length;
+        txs.forEach(function(tx) { txHours.push(tx.hours); });
+      }
+    });
+
+    // Grain diagnostic — the sheet is AI-blocked, so the first deploy's log is
+    // how we learn what the export looks like: median tx ≈8h means one-row-per-
+    // day grain, ≈40h means one-row-per-request. Spreading handles both.
+    txHours.sort(function(a, b) { return a - b; });
+    var medianTx = txHours.length ? txHours[Math.floor(txHours.length / 2)] : 0;
+    Logger.log('✅ readPTOWeeklyHours_: ' + Object.keys(usageByEmp).length + ' employees with usage · ' +
+               txCount + ' usage tx (median ' + medianTx + 'h) from ' + usageRows + ' usage rows · ' +
+               Object.keys(depts).length + ' departments seen (no filter applied)');
+    return buildPtoWeeklyByEmp_(usageByEmp);
+  } catch (e) {
+    Logger.log('⚠️ readPTOWeeklyHours_: ' + e.message + ' — pace metrics fall back to unadjusted weeks');
+    return {};
+  }
 }
 
 // ── Full Roster records (every employee, active AND terminated) ────
