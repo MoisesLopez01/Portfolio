@@ -1346,6 +1346,56 @@ function computeRpiScore_(emp, quarterDates, weekOfQuarter) {
   };
 }
 
+// ── CPR pace & consistency (v2.7.0) ────────────────────────────
+// Comments-per-eligible-week, PTO-adjusted, so leave never reads as
+// disengagement. EligibleWeeks = weeks since the 4-week goal-setting window
+// closed, minus fractional PTO absence (hours/40, capped at 1/week).
+// DISTINCT FROM RPI C2: RPI keeps its flat 2-week flex (LAG 6) and stays the
+// policy scorecard; this is the analytical layer with the true 4-week lag.
+// Never stack the two adjustments.
+//   cpr           — per non-canceled goal: self / max(1, eligibleWeeks);
+//                   person = median of the top-6 goals by CPR (mirrors the
+//                   "6 tracked goals" policy frame).
+//   activityRatio — distinct eligible-window weeks with ≥1 self-comment ÷
+//                   max(1, eligibleWeeks), capped at 1 (early-quarter
+//                   commenting is never penalized).
+// cls/consistency are placeholders ('na') until classifyPaceMetrics_ runs —
+// classification needs the full population's percentiles.
+// Pure function of aggregated per-employee data → Node-testable.
+function computePaceMetrics_(emp, weekOfQuarter, ptoWeekHours, calWeeks) {
+  var lag         = CONFIG_GD.PACE_LAG_WEEKS;
+  var rawWeeks    = Math.max(0, (weekOfQuarter || 0) - lag);
+  var windowWeeks = (calWeeks || []).slice(lag, weekOfQuarter || 0);
+
+  var absence = 0;
+  windowWeeks.forEach(function(wk) {
+    var h = (ptoWeekHours && ptoWeekHours[wk]) || 0;
+    absence += Math.min(h, CONFIG_GD.PACE_HOURS_PER_WEEK) / CONFIG_GD.PACE_HOURS_PER_WEEK;
+  });
+  absence = +absence.toFixed(2);
+  var eligible = +Math.max(0, rawWeeks - absence).toFixed(2);
+
+  var out = { rawWeeks: rawWeeks, absenceWeeks: absence, eligibleWeeks: eligible,
+              cpr: null, activityRatio: null, cls: 'na', consistency: 'na' };
+  if (eligible <= 0) return out;
+
+  var active = (emp.goalsList || []).filter(function(g) { return !/cancel/i.test(g.status); });
+  if (!active.length) return out;
+
+  var divisor = Math.max(1, eligible);
+  var perGoal = active
+    .map(function(g) { return (g.self || 0) / divisor; })
+    .sort(function(a, b) { return b - a; })
+    .slice(0, CONFIG_GD.RPI_CMT_GOALS);
+  out.cpr = +median_(perGoal).toFixed(2);
+
+  var windowSet = {};
+  windowWeeks.forEach(function(wk) { windowSet[wk] = true; });
+  var activeWks = (emp.commentWeekList || []).filter(function(wk) { return windowSet[wk]; }).length;
+  out.activityRatio = +Math.min(1, activeWks / divisor).toFixed(2);
+  return out;
+}
+
 // ── Supervisor job-title lookup (for Senior Leader detection) ──
 
 function isSeniorLeader_(jobTitle) {
@@ -2607,6 +2657,56 @@ function _test_ptoSpread_() {
   ]);
   t(tx.length === 2 && tx[0].hours === 8 && tx[1].hours === 16, 'usage derivation, got ' + JSON.stringify(tx));
   Logger.log('✅ _test_ptoSpread_: all assertions passed');
+}
+
+function _test_computePaceMetrics_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('paceMetrics: ' + msg); };
+  var calWeeks = ['2026.W15','2026.W16','2026.W17','2026.W18','2026.W19','2026.W20','2026.W21',
+                  '2026.W22','2026.W23','2026.W24','2026.W25','2026.W26','2026.W27','2026.W28'];
+  var mk = function(selfCounts, cmtWeeks) {
+    return {
+      goalsList: selfCounts.map(function(s, i) { return { id: 'g' + i, status: 'In Progress', self: s }; }),
+      commentWeekList: cmtWeeks,
+    };
+  };
+  // A — steady on-pace: eligible 5, CPR 0.9, AR 1.0
+  var a = computePaceMetrics_(mk([5,4,5,3,5,4], ['2026.W19','2026.W20','2026.W21','2026.W22','2026.W23']), 9, null, calWeeks);
+  t(a.eligibleWeeks === 5, 'A eligible 5, got ' + a.eligibleWeeks);
+  t(a.cpr === 0.9, 'A CPR 0.9, got ' + a.cpr);
+  t(a.activityRatio === 1, 'A AR 1.0, got ' + a.activityRatio);
+  // B — one comment per goal, all posted the same week: CPR 0.2, AR 0.2
+  var b = computePaceMetrics_(mk([1,1,1,1,1,1], ['2026.W20']), 9, null, calWeeks);
+  t(b.cpr === 0.2, 'B CPR 0.2, got ' + b.cpr);
+  t(b.activityRatio === 0.2, 'B AR 0.2, got ' + b.activityRatio);
+  // C — two full PTO weeks inside the window: eligible 3, CPR 1.0, AR 1.0
+  var pto = {}; pto['2026.W19'] = 40; pto['2026.W20'] = 40;
+  var c = computePaceMetrics_(mk([3,3,3,2,3,3], ['2026.W21','2026.W22','2026.W23']), 9, pto, calWeeks);
+  t(c.absenceWeeks === 2, 'C absence 2, got ' + c.absenceWeeks);
+  t(c.eligibleWeeks === 3, 'C eligible 3, got ' + c.eligibleWeeks);
+  t(c.cpr === 1, 'C CPR 1.0, got ' + c.cpr);
+  t(c.activityRatio === 1, 'C AR 1.0, got ' + c.activityRatio);
+  // top-6 selection: zero-comment stragglers beyond the best 6 must not drag the median
+  var d = computePaceMetrics_(mk([5,5,5,5,5,5,0,0,0,0], ['2026.W19','2026.W20','2026.W21','2026.W22','2026.W23']), 9, null, calWeeks);
+  t(d.cpr === 1, 'top-6 by CPR ignores stragglers, got ' + d.cpr);
+  // PTO hours cap at 40/week (bad data can't make absence exceed the week)
+  var over = {}; over['2026.W19'] = 90;
+  var o = computePaceMetrics_(mk([1,1,1,1,1,1], []), 9, over, calWeeks);
+  t(o.absenceWeeks === 1, 'weekly absence caps at 1.0, got ' + o.absenceWeeks);
+  // early quarter (week ≤ lag) → null metrics, cls stays na
+  var e = computePaceMetrics_(mk([1,1,1,1,1,1], []), 3, null, calWeeks);
+  t(e.eligibleWeeks === 0 && e.cpr === null && e.activityRatio === null && e.cls === 'na', 'week 3 → no eligible weeks');
+  // canceled-only goal set → null CPR
+  var f = computePaceMetrics_({ goalsList: [{ id: 'g0', status: 'Canceled', self: 9 }], commentWeekList: [] }, 9, null, calWeeks);
+  t(f.cpr === null, 'canceled-only → null CPR');
+  // fully absent the whole window → null
+  var allPto = {}; calWeeks.forEach(function(w) { allPto[w] = 40; });
+  var g = computePaceMetrics_(mk([2,2,2,2,2,2], []), 9, allPto, calWeeks);
+  t(g.cpr === null, 'fully absent → null CPR');
+  // fractional eligible < 1 uses divisor 1 (matches CPR spec: max(1, EligibleWeeks))
+  var frac = {}; frac['2026.W19'] = 40; frac['2026.W20'] = 40; frac['2026.W21'] = 40; frac['2026.W22'] = 20;
+  var h = computePaceMetrics_(mk([2,2,2,2,2,2], ['2026.W23']), 9, frac, calWeeks);
+  t(h.eligibleWeeks === 1.5 && h.cpr === 1.33, 'fractional eligible: 2/1.5 → 1.33, got ' + JSON.stringify(h));
+  Logger.log('✅ _test_computePaceMetrics_: all assertions passed');
 }
 
 // TEMPORARY (remove after the week-cap verification) — snapshot per-person RPI
