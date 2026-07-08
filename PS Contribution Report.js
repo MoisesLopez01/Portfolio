@@ -780,9 +780,9 @@ function buildCurrentQWeeks_PS_(ctx) {
 function buildQ4Weeks_PS_() { return buildCurrentQWeeks_PS_(computeFiscalContext_()); }
 
 // Returns every week in the PREVIOUS quarter (oldest-first), bounded by its own
-// start/end so it never overlaps buildCurrentQWeeks_PS_'s output. Used only during
-// the Goals-only grace period (ctx.inGracePeriod) to merge the outgoing quarter's
-// own remaining weeks — evaluated against its own goal set — into the current view.
+// start/end so it never overlaps buildCurrentQWeeks_PS_'s output. Called on every
+// report run to build the two-quarter continuity window — goals evaluated against
+// the prior quarter's own goal set.
 function buildPrevQWeeks_PS_(ctx) {
   var today    = new Date();
   var curW     = isoWeekNum_PS_(today);
@@ -2938,12 +2938,6 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const empNumToNorm  = rosterIdMap_(roster, 'employeeNumber');
   const currentQWeeks = buildCurrentQWeeks_PS_(ctx);
 
-  // Goals-only grace period: for CONFIG_PS.GOALS_GRACE_DAYS after a new quarter starts,
-  // merge the outgoing quarter's own remaining weeks — evaluated against its own goal set
-  // and comment thresholds — alongside the incoming quarter's early weeks. Without this,
-  // Team Summary / Employee table / Trends would show blank Goals data for weeks that
-  // already have real, previously-computed compliance, right at every quarter rollover.
-  // No other metric uses this — RCR/SI/PTO/Tracked/Planned/Kudos are already continuous.
   // Two-quarter continuity window: the prior quarter's weeks are ALWAYS merged (not
   // only during the grace period) so Goals/PTO history and per-employee weeks span two
   // fiscal quarters for the Month/Quarter period views (spec 2026-07-07). The prior
@@ -3056,9 +3050,9 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const phData        = readPHData_();
   const phByWeek      = buildPHByWeek_(phData, weeks, roster);
   const teamSummary   = buildTeamSummary_(weeks, rcrAll, siAll, ptoFTE, kudosFTE, trackedFTE, plannedFTE, goalsFTE);
-  // continuityQWeeks covers current-quarter history (plus the outgoing quarter's tail
-  // during the Goals grace period) up to now — append rolling future weeks so that
-  // per-employee planned hours for W+1 and W+2 are included in the employee table.
+  // continuityQWeeks spans the prior + current fiscal quarter (two-quarter continuity window)
+  // up to now — append rolling future weeks so that per-employee planned hours for W+1 and W+2
+  // are included in the employee table.
   const futureWeeks   = weeks.filter(w => w.isFuture);
   const employeeWeeks = futureWeeks.length ? continuityQWeeks.concat(futureWeeks) : continuityQWeeks;
   const employees     = buildEmployeeRows_(roster, employeeWeeks, rcrAll, siAll, ptoAll, kudosAll, trackedAll, plannedAdjAll, goalsAll);
