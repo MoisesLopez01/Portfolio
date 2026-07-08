@@ -1183,6 +1183,118 @@ function computeEngagementClient_(emps) {
   };
 }
 
+// ── BEHAVIORS TAB ─────────────────────────────────────────────────
+// Leadership Behaviors read of existing signals (spec 2026-07-08). Framing
+// rules: verdict lines are counts-only; names appear only inside <details>;
+// labels stay growth-oriented ("building this habit", never "failing").
+function bhMeter_(pct, verdict, secondary) {
+  var w = Math.max(0, Math.min(100, pct || 0));
+  return '<div class="bh-meter"><div class="bh-fill" style="width:' + w.toFixed(1) + '%"></div></div>' +
+         '<div class="bh-verdict">' + verdict + '</div>' +
+         (secondary ? '<div class="bh-secondary">' + secondary + '</div>' : '');
+}
+
+function bhDetail_(summary, rows) {
+  if (!rows.length) return '';
+  var html = '<details class="bh-detail"><summary>' + summary + '</summary>' +
+             '<table class="data-table" style="margin-top:8px"><tbody>';
+  rows.forEach(function(r) {
+    html += '<tr data-normname="' + esc(r.normName || '') + '"><td>' + esc(r.name) + '</td>' +
+            '<td style="color:var(--slate)">' + r.note + '</td></tr>';
+  });
+  return html + '</tbody></table></details>';
+}
+
+function renderBehaviors(emps) {
+  var eng      = computeEngagementClient_(emps);
+  var eligible = emps.filter(function(e) { return e.totalGoals > 0 && !e.isNewHire; });
+  var n        = eligible.length || 1;
+
+  // 1 — Share the Knowledge: self-comment cadence (comment-weeks vs pace)
+  var required = Math.max(1, Math.floor((eng.weeksElapsed || 1) / 2));
+  var atPace   = eligible.filter(function(e) { return (e.commentWeeks || 0) >= required; });
+  var building = eligible.filter(function(e) { return (e.commentWeeks || 0) <  required; })
+    .sort(function(a, b) { return (a.commentWeeks || 0) - (b.commentWeeks || 0); });
+  document.getElementById('behavior-share').innerHTML =
+    bhMeter_(atPace.length / n * 100,
+      atPace.length + ' of ' + eligible.length + ' rocketeers commenting on their goals at pace (' + required + '+ weeks with a self-comment)',
+      'Pace = self-comments in at least half the ' + (eng.weeksElapsed || 1) + ' weeks elapsed this quarter') +
+    bhDetail_(building.length + ' rocketeer' + (building.length === 1 ? '' : 's') + ' building this habit',
+      building.map(function(e) {
+        return { name: e.name, normName: e.normName,
+                 note: (e.commentWeeks || 0) + ' of ' + required + ' comment-weeks so far' };
+      }));
+
+  // 2 — Develops Rocketeers · Proactive & Responsive: manager feedback coverage
+  var mgrs       = eng.managerScorecard.filter(function(m) { return !m.isExcepted; });
+  var activeMgrs = mgrs.filter(function(m) { return m.covered > 0; });
+  var reached    = eligible.filter(function(e) { return (e.totalManagerComments || 0) > 0; }).length;
+  document.getElementById('behavior-develops').innerHTML =
+    bhMeter_(mgrs.length ? activeMgrs.length / mgrs.length * 100 : 0,
+      activeMgrs.length + ' of ' + mgrs.length + ' managers commented on at least one direct&rsquo;s goal this quarter',
+      reached + ' of ' + eligible.length + ' rocketeers (' + (reached / n * 100).toFixed(0) + '%) received manager feedback') +
+    bhDetail_(mgrs.length + ' manager' + (mgrs.length === 1 ? '' : 's') + ' — feedback coverage',
+      mgrs.map(function(m) {
+        return { name: m.name, normName: m.normName,
+                 note: m.covered + ' of ' + m.teamSize + ' directs reached · avg ' + m.avgCmts + ' comments' };
+      }));
+
+  // 3 — Build Process: goals moving through status
+  var tGoals = 0, tStuck = 0, tNoNote = 0;
+  eligible.forEach(function(e) {
+    tGoals  += e.totalGoals || 0;
+    tStuck  += e.goalsStuckInPlanned || 0;
+    tNoNote += e.goalsClosedNoNote || 0;
+  });
+  var moving  = Math.max(0, tGoals - tStuck - tNoNote);
+  var revisit = eligible.filter(function(e) {
+    return (e.goalsStuckInPlanned || 0) > 0 || (e.goalsClosedNoNote || 0) > 0;
+  }).sort(function(a, b) {
+    return ((b.goalsStuckInPlanned||0) + (b.goalsClosedNoNote||0)) - ((a.goalsStuckInPlanned||0) + (a.goalsClosedNoNote||0));
+  });
+  document.getElementById('behavior-process').innerHTML =
+    bhMeter_(tGoals ? moving / tGoals * 100 : 0,
+      moving + ' of ' + tGoals + ' goals moving — started (or discussed) and closed with a note',
+      tStuck + ' parked in Planned with no comments · ' + tNoNote + ' Not Completed/Canceled without a note') +
+    bhDetail_(revisit.length + ' rocketeer' + (revisit.length === 1 ? '' : 's') + ' with goals to revisit',
+      revisit.map(function(e) {
+        var bits = [];
+        if (e.goalsStuckInPlanned) bits.push(e.goalsStuckInPlanned + ' parked in Planned');
+        if (e.goalsClosedNoNote)   bits.push(e.goalsClosedNoNote + ' closed without a note');
+        return { name: e.name, normName: e.normName, note: bits.join(' · ') };
+      }));
+
+  // 4 — Think Team: feedback loops closed + thresholds
+  var tFb = 0, tClosed = 0;
+  eligible.forEach(function(e) {
+    tFb     += e.goalsWithMgrFeedback || 0;
+    tClosed += e.goalsFeedbackClosed  || 0;
+  });
+  var onTarget = eligible.filter(function(e) { return e.complianceStatus === 'On Target'; }).length;
+  var awaiting = eligible.filter(function(e) {
+    return (e.goalsWithMgrFeedback || 0) > (e.goalsFeedbackClosed || 0);
+  }).sort(function(a, b) {
+    return ((b.goalsWithMgrFeedback||0) - (b.goalsFeedbackClosed||0)) - ((a.goalsWithMgrFeedback||0) - (a.goalsFeedbackClosed||0));
+  });
+  document.getElementById('behavior-thinkteam').innerHTML =
+    (tFb === 0
+      ? '<div class="bh-verdict">No manager feedback yet this quarter — loops start once managers comment.</div>'
+      : bhMeter_(tClosed / tFb * 100,
+          tClosed + ' of ' + tFb + ' manager-feedback loops closed — the rocketeer replied on that goal',
+          onTarget + ' of ' + eligible.length + ' rocketeers (' + (onTarget / n * 100).toFixed(0) + '%) On Target for goal thresholds')) +
+    bhDetail_(awaiting.length + ' rocketeer' + (awaiting.length === 1 ? '' : 's') + ' with feedback waiting for a reply',
+      awaiting.map(function(e) {
+        var open = (e.goalsWithMgrFeedback || 0) - (e.goalsFeedbackClosed || 0);
+        return { name: e.name, normName: e.normName,
+                 note: open + ' goal' + (open === 1 ? '' : 's') + ' with unanswered manager feedback' };
+      }));
+
+  // 5 — Talk Straight: defined, measured in v2 (only Goal Name text exists today)
+  document.getElementById('behavior-talkstraight').innerHTML =
+    '<div class="bh-v2note">Measurement arrives with goal-quality data (v2). Clarity is never a put-down — ' +
+    'when this meter lands it will read goal quality, not judge people.</div>';
+}
+
 // ── ENGAGEMENT COMPUTATION HELPERS (rendered from Overview) ────────
 function renderTeamEngagement_(eng) {
   var el = document.getElementById('engagement-team');
