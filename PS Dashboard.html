@@ -2400,6 +2400,10 @@ function periodRcr_(bucket, granularity) {
   return { value: Math.round(mean * 100) / 100, approx: true, months: months.map(function(r) { return r.month; }) };
 }
 
+// A weekly entry's own label, or a period entry's member weeks — lets per-employee
+// loops (e.weeks[lbl]) work for both weekly and bucketed history entries.
+function pdWeekLabels_(h) { return h && h.weekLabels ? h.weekLabels : [h && h.label]; }
+
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
 var _loadSeq = 0;
@@ -4338,6 +4342,8 @@ function renderCorrelationCharts(filtered) {
   var card = document.getElementById("correlationCard");
   if (!card) return;
 
+  var g = STATE.periodGranularity;
+
   // ── Scope to current fiscal quarter — mirrors Goals Standing ──
   var Q4_START_W = Q4.START_W, Q4_END_W = Q4.END_W, Q4_YEAR = Q4.YEAR;
   var meta      = DATA.meta || {};
@@ -4349,12 +4355,14 @@ function renderCorrelationCharts(filtered) {
   // Allow through the grace-period tail — Q4 itself already anchors on the outgoing
   // quarter during grace (see onDataLoaded), and weekInQ4Range_ handles that window
   // spilling into the next ISO year at the one rollover that crosses Dec 31.
-  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
+  if (g === 'week' && !weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
 
-  var hist = fullHist ? fullHist.filter(function(h) {
-    var m = h.label.match(/(\d{4})\.W(\d+)/);
-    return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
-  }) : [];
+  var hist = g === 'week'
+    ? (fullHist ? fullHist.filter(function(h) {
+        var m = h.label.match(/(\d{4})\.W(\d+)/);
+        return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
+      }) : [])
+    : periodTrackedHistory_(g);
 
   var hasG03 = hist.some(function(h) { return h.g03CommentedPct !== undefined && h.g03CommentedPct !== null; });
   var hasG01 = hist.some(function(h) { return h.g01CommentedPct !== undefined && h.g01CommentedPct !== null; });
@@ -4526,7 +4534,9 @@ function renderCorrelationCharts(filtered) {
   var displayHist = hist;
   if (isActiveFilter && filtered.length > 0) {
     var _empWeekKeys = new Set(Object.keys(filtered[0].weeks || {}));
-    var _narrowed = hist.filter(function(h) { return _empWeekKeys.has(h.label); });
+    var _narrowed = hist.filter(function(h) {
+      return pdWeekLabels_(h).some(function(lbl) { return _empWeekKeys.has(lbl); });
+    });
     if (_narrowed.length) {
       displayHist = _narrowed;
       labels = displayHist.map(function(h) { return h.label; });
@@ -4579,17 +4589,28 @@ function renderCorrelationCharts(filtered) {
     return commented;
   }
 
+  // Average a per-week function's result across a history entry's member weeks —
+  // a no-op for weekly entries (pdWeekLabels_ returns a single label).
+  function _avgOver(h, fn) {
+    var vals = pdWeekLabels_(h).map(fn).filter(function(v) { return v !== null && !isNaN(v); });
+    return vals.length ? Math.round(vals.reduce(function(a, c) { return a + c; }, 0) / vals.length) : null;
+  }
+
   if (hasG03) {
     var g03Tracked   = displayHist.map(function(h) {
       return isActiveFilter
-        ? computeActivityPct_(h.label, "tracked")
+        ? _avgOver(h, function(lbl) { return computeActivityPct_(lbl, "tracked"); })
         : (h.trackedPct !== undefined ? h.trackedPct : null);
     });
     var g03Commented = displayHist.map(function(h) {
-      return isActiveFilter ? computeDocPct_(h.label, "g03Commented") : (h.g03CommentedPct !== undefined ? h.g03CommentedPct : null);
+      return isActiveFilter
+        ? _avgOver(h, function(lbl) { return computeDocPct_(lbl, "g03Commented"); })
+        : (h.g03CommentedPct !== undefined ? h.g03CommentedPct : null);
     });
     var g03CommHCs = displayHist.map(function(h) {
-      return isActiveFilter ? computeDocHC_(h.label, "g03Commented") : (h.g03CommentedHC !== undefined ? h.g03CommentedHC : null);
+      return isActiveFilter
+        ? _avgOver(h, function(lbl) { return computeDocHC_(lbl, "g03Commented"); })
+        : (h.g03CommentedHC !== undefined ? h.g03CommentedHC : null);
     });
     _corrG03Chart = buildCorrChart("corrG03Chart", _corrG03Chart, g03Tracked, g03Commented, "% tracking time (Tempo)", "#058CDC", displayHist, g03CommHCs);
   }
@@ -4597,14 +4618,18 @@ function renderCorrelationCharts(filtered) {
   if (hasG01) {
     var g01Planned   = displayHist.map(function(h) {
       return isActiveFilter
-        ? computeActivityPct_(h.label, "planned")
+        ? _avgOver(h, function(lbl) { return computeActivityPct_(lbl, "planned"); })
         : (h.plannedPct !== undefined ? h.plannedPct : null);
     });
     var g01Commented = displayHist.map(function(h) {
-      return isActiveFilter ? computeDocPct_(h.label, "g01Commented") : (h.g01CommentedPct !== undefined ? h.g01CommentedPct : null);
+      return isActiveFilter
+        ? _avgOver(h, function(lbl) { return computeDocPct_(lbl, "g01Commented"); })
+        : (h.g01CommentedPct !== undefined ? h.g01CommentedPct : null);
     });
     var g01CommHCs = displayHist.map(function(h) {
-      return isActiveFilter ? computeDocHC_(h.label, "g01Commented") : (h.g01CommentedHC !== undefined ? h.g01CommentedHC : null);
+      return isActiveFilter
+        ? _avgOver(h, function(lbl) { return computeDocHC_(lbl, "g01Commented"); })
+        : (h.g01CommentedHC !== undefined ? h.g01CommentedHC : null);
     });
     _corrG01Chart = buildCorrChart("corrG01Chart", _corrG01Chart, g01Planned, g01Commented, "% planning time (Tempo)", "#00A86B", displayHist, g01CommHCs);
   }
@@ -7565,6 +7590,7 @@ function renderGoalsStanding(filtered) {
 
   var fullHist = DATA.trackedHistory || [];
   var meta     = DATA.meta || {};
+  var g        = STATE.periodGranularity;
 
   // Q4 constants — mirror CONFIG_PS on the backend
   var Q4_START_W = Q4.START_W, Q4_END_W = Q4.END_W, Q4_YEAR = Q4.YEAR;
@@ -7576,7 +7602,7 @@ function renderGoalsStanding(filtered) {
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
   // Show during current quarter plus one grace week (GRACE_W) so managers can confirm closures
-  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
+  if (g === 'week' && !weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
   card.style.display = "";
   var isGracePeriod = curYear !== Q4_YEAR || curW > Q4_END_W;
 
@@ -7613,6 +7639,11 @@ function renderGoalsStanding(filtered) {
     var m = h.label.match(/(\d{4})\.W(\d+)/);
     return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
   });
+  // q4Hist above stays weekly always — it drives the standing-list pace math
+  // (cumComments/shortfall/weeklyNeeded) which is quarter-progress-to-date and
+  // must not re-bucket. chartHist is the period-aware series for the comment-pace
+  // chart and its verdict direction only.
+  var chartHist = g === 'week' ? q4Hist : periodTrackedHistory_(g);
 
   // ── Filter-aware comment averages ─────────────────────────────────────
   // When a supervisor/location filter is active, recompute avgCommentsPerPerson
@@ -7623,44 +7654,53 @@ function renderGoalsStanding(filtered) {
     if (!gd && DATA.goalsQ4Hist && DATA.goalsQ4Hist[weekLabel]) gd = DATA.goalsQ4Hist[weekLabel][e.normName];
     return gd || null;
   }
-  function computeWeekAvg_(weekLabel) {
+  // These now take the history entry itself (not just its label) so they work for
+  // both weekly entries (avgCommentsPerPerson etc. precomputed on the entry by the
+  // backend) and bucketed period entries (same fields, precomputed by Task 4's
+  // periodTrackedHistory_) — and so the filtered path can sum a person's
+  // selfCommentCount across every week in the entry's bucket (pdWeekLabels_).
+  function computeWeekAvg_(h) {
+    var weekLabel = h && h.label;
     if (!isGSFiltered) {
-      var th = fullHist.find(function(h) { return h.label === weekLabel; });
-      return th ? (th.avgCommentsPerPerson || 0) : 0;
+      return h ? (h.avgCommentsPerPerson || 0) : 0;
     }
     var sum = 0, cnt = 0;
     filtered.forEach(function(e) {
-      var gd = _resolveGoalsDetail_(e, weekLabel);
-      if (!gd) return;
-      sum += (gd.selfCommentCount || 0);
-      cnt++;
+      var _s = 0, _has = false;
+      pdWeekLabels_(h).forEach(function(lbl) {
+        var gd = _resolveGoalsDetail_(e, lbl);
+        if (gd) { _s += (gd.selfCommentCount || 0); _has = true; }
+      });
+      if (_has) { sum += _s; cnt++; }
     });
     return cnt > 0 ? Math.round(sum / cnt * 10) / 10 : 0;
   }
-  function computeWeekTotal_(weekLabel) {
+  function computeWeekTotal_(h) {
     if (!isGSFiltered) {
-      var th = fullHist.find(function(h) { return h.label === weekLabel; });
-      return th ? (th.totalComments || 0) : 0;
+      return h ? (h.totalComments || 0) : 0;
     }
     var sum = 0;
     filtered.forEach(function(e) {
-      var gd = _resolveGoalsDetail_(e, weekLabel);
-      if (gd) sum += (gd.selfCommentCount || 0);
+      pdWeekLabels_(h).forEach(function(lbl) {
+        var gd = _resolveGoalsDetail_(e, lbl);
+        if (gd) sum += (gd.selfCommentCount || 0);
+      });
     });
     return sum;
   }
-  function computeWeekHeadcount_(weekLabel) {
+  function computeWeekHeadcount_(h) {
     if (!isGSFiltered) return allFTECount;
     var cnt = 0;
     filtered.forEach(function(e) {
-      if (_resolveGoalsDetail_(e, weekLabel)) cnt++;
+      var has = pdWeekLabels_(h).some(function(lbl) { return !!_resolveGoalsDetail_(e, lbl); });
+      if (has) cnt++;
     });
     return cnt;
   }
 
   // Comments still needed: each remaining week's reqCmt increments by 1 over reqCmtNow
   var morePerGoal  = Math.max(0, reqCmtFinal - reqCmtNow); // extra per goal to reach end-of-Q4
-  var cumComments  = q4Hist.reduce(function(acc, h) { return acc + computeWeekAvg_(h.label); }, 0);
+  var cumComments  = q4Hist.reduce(function(acc, h) { return acc + computeWeekAvg_(h); }, 0);
   var totalNeeded  = TARGET_PACE * reqCmtFinal;
   var shortfall    = Math.max(0, totalNeeded - cumComments);
   var weeklyNeeded = weeksRemaining > 0
@@ -7712,8 +7752,8 @@ function renderGoalsStanding(filtered) {
 
   // ── Verdict line ──────────────────────────────────────────────────────────
   // Direction = comment-pace move across the two most recent CLOSED Q4 weeks.
-  var _gsClosed = q4Hist.filter(function(h) { return !h.isCurrentWeek && !h.isFuture; });
-  var _gsPace   = _gsClosed.map(function(h) { return computeWeekAvg_(h.label); });
+  var _gsClosed = chartHist.filter(function(h) { return !h.isCurrentWeek && !h.isFuture; });
+  var _gsPace   = _gsClosed.map(function(h) { return computeWeekAvg_(h); });
   var _gsDir    = "";
   if (_gsPace.length >= 2) {
     var _gsD = _gsPace[_gsPace.length - 1] - _gsPace[_gsPace.length - 2];
@@ -7765,13 +7805,15 @@ function renderGoalsStanding(filtered) {
   }
 
 
-  // Chart — bar chart of avgCommentsPerPerson for Q4 weeks only
-  if (!q4Hist.length) q4Hist = fullHist.slice(-9);
+  // Chart — bar chart of avgCommentsPerPerson for Q4 weeks (or periods) only.
+  // The slice(-9) fallback is week-mode-only — period buckets legitimately span
+  // two quarters, so an empty chartHist there means "no data," not "wrong range."
+  if (g === 'week' && !chartHist.length) chartHist = fullHist.slice(-9);
 
-  var chartLabels = q4Hist.map(function(h) { return h.label; });
-  var chartValues = q4Hist.map(function(h) { return computeWeekAvg_(h.label); });
-  var chartTotals = q4Hist.map(function(h) { return computeWeekTotal_(h.label); });
-  var barColors   = q4Hist.map(function(h, i) {
+  var chartLabels = chartHist.map(function(h) { return h.label; });
+  var chartValues = chartHist.map(function(h) { return computeWeekAvg_(h); });
+  var chartTotals = chartHist.map(function(h) { return computeWeekTotal_(h); });
+  var barColors   = chartHist.map(function(h, i) {
     var v = chartValues[i];
     if (h.isCurrentWeek)        return "rgba(255,155,135,0.85)";
     if (v >= TARGET_PACE)       return "rgba(0,168,107,0.85)";
@@ -7793,7 +7835,7 @@ function renderGoalsStanding(filtered) {
       c2.font = "700 9px -apple-system,BlinkMacSystemFont,sans-serif";
       c2.fillStyle = annotColor; c2.textAlign = "right";
       c2.fillText("target pace", xA.right - 4, yT - 4);
-      q4Hist.forEach(function(h, i) {
+      chartHist.forEach(function(h, i) {
         if (!h.isCurrentWeek) return;
         c2.fillStyle = "#FF9B87";
         c2.font = "700 8px -apple-system,BlinkMacSystemFont,sans-serif";
@@ -7840,7 +7882,7 @@ function renderGoalsStanding(filtered) {
           backgroundColor: "#0F1941", titleColor: "#fff", bodyColor: "#94a3b8", padding: 10,
           callbacks: {
             label: function(ctx) {
-              var h = q4Hist[ctx.dataIndex];
+              var h = chartHist[ctx.dataIndex];
               var note = h && h.isCurrentWeek ? " (in progress)" : "";
               return " Avg: " + (ctx.raw || 0).toFixed(1) + " comments / person" + note +
                 "  ·  Total: " + (chartTotals[ctx.dataIndex] || 0);
@@ -7851,8 +7893,8 @@ function renderGoalsStanding(filtered) {
           anchor: "end", align: "top",
           display: function(ctx) { return ctx.raw > 0; },
           formatter: function(v, ctx) {
-            var wl = q4Hist[ctx.dataIndex] ? q4Hist[ctx.dataIndex].label : "";
-            var hc = computeWeekHeadcount_(wl);
+            var h  = chartHist[ctx.dataIndex];
+            var hc = computeWeekHeadcount_(h);
             return v.toFixed(1) + (hc > 0 ? " (" + hc + ")" : "");
           },
           font: { size: 12, weight: "700" },
@@ -8344,18 +8386,21 @@ function renderTimeMomentum(filtered) {
 
   var Q4_START_W = Q4.START_W, Q4_END_W = Q4.END_W, Q4_YEAR = Q4.YEAR;
   var meta      = DATA.meta || {};
+  var g         = STATE.periodGranularity;
   var curLabel  = meta.currentWeekLabel || "";
   var curWMatch = curLabel.match(/(\d{4})\.W(\d+)/);
   var curW      = curWMatch ? parseInt(curWMatch[2]) : Q4_START_W;
   var curYear   = curWMatch ? parseInt(curWMatch[1]) : Q4_YEAR;
 
   // Allow through the grace-period tail — see renderCorrelationCharts for why.
-  if (!weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
+  if (g === 'week' && !weekInQ4Range_(curYear, curW)) { card.style.display = "none"; return; }
 
-  var fullHist = (DATA.trackedHistory || []).filter(function(h) {
-    var m = h.label.match(/(\d{4})\.W(\d+)/);
-    return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
-  });
+  var fullHist = g === 'week'
+    ? (DATA.trackedHistory || []).filter(function(h) {
+        var m = h.label.match(/(\d{4})\.W(\d+)/);
+        return m && weekInQ4Range_(parseInt(m[1]), parseInt(m[2]));
+      })
+    : periodTrackedHistory_(g);
   if (!fullHist.length) { card.style.display = "none"; return; }
   card.style.display = "";
 
@@ -8367,7 +8412,14 @@ function renderTimeMomentum(filtered) {
   var plannedData = fullHist.map(function(h) {
     if (isFiltering_) {
       var t = 0;
-      filtered.forEach(function(e) { var wd = e.weeks && e.weeks[h.label]; if (wd && wd.plannedHrs) t += wd.plannedHrs; });
+      filtered.forEach(function(e) {
+        var _hrs = 0, _has = false;
+        pdWeekLabels_(h).forEach(function(lbl) {
+          var wd = e.weeks && e.weeks[lbl];
+          if (wd && wd.plannedHrs != null) { _hrs += +wd.plannedHrs; _has = true; }
+        });
+        if (_has) t += _hrs;
+      });
       return t > 0 ? Math.round(t) : (h.isFuture ? null : Math.round((h.plannedHrs || 0) * scale));
     }
     return h.plannedHrs !== undefined && h.plannedHrs !== null ? Math.round(h.plannedHrs) : null;
@@ -8375,7 +8427,14 @@ function renderTimeMomentum(filtered) {
   var trackedData = fullHist.map(function(h) {
     if (isFiltering_) {
       var t = 0;
-      filtered.forEach(function(e) { var wd = e.weeks && e.weeks[h.label]; if (wd && wd.trackedHrs) t += wd.trackedHrs; });
+      filtered.forEach(function(e) {
+        var _hrs = 0, _has = false;
+        pdWeekLabels_(h).forEach(function(lbl) {
+          var wd = e.weeks && e.weeks[lbl];
+          if (wd && wd.trackedHrs != null) { _hrs += +wd.trackedHrs; _has = true; }
+        });
+        if (_has) t += _hrs;
+      });
       return t > 0 ? Math.round(t) : (h.isFuture ? null : Math.round((h.totalHrs || 0) * scale));
     }
     return h.totalHrs !== undefined && h.totalHrs !== null ? Math.round(h.totalHrs) : null;
