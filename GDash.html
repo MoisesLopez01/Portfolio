@@ -648,6 +648,17 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
+    <!-- ── DATA REFERENCE (everyone, opened from the ☰ menu) ── -->
+    <div id="pane-dataref" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>📖 Data Reference</h2><p class="section-sub">Metric definitions, denominators, calendar rules &amp; data sources</p></div>
+          <button class="btn" onclick="switchTab(S.lastRegularTab || 'overview')">← Back to Dashboard</button>
+        </div>
+        <div id="dataref-body" class="section-body"></div>
+      </div>
+    </div>
+
     <!-- ── ACCESS CONTROL (admin only, opened from the ☰ menu) ── -->
     <div id="pane-access" class="tab-pane">
       <div class="section-card">
@@ -751,6 +762,7 @@ var VIEWS = [
   { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
   { id: 'behaviors', label: 'Behaviors',             location: 'tabbar', roles: ['admin','manager'] },
   { id: 'hrtracker', label: 'REX Tracker',           location: 'tabbar', roles: null },
+  { id: 'dataref',   label: '📖 Data Reference',      location: 'menu',   roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
 ];
 
@@ -1022,6 +1034,7 @@ function renderTab(tabId) {
   else if (tabId === 'support')   renderSupport(emps);
   else if (tabId === 'behaviors') renderBehaviors(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
+  else if (tabId === 'dataref')   renderDataRef_();
   else if (tabId === 'access')    renderAccessTab_();
 }
 
@@ -3402,6 +3415,53 @@ function applyRoleToNav_() {
       badge.style.display = 'none';
     }
   }
+}
+
+// Static glossary/methodology page — every quarter-dependent value fills from
+// the live payload at render (PS Dashboard updateQuarterLabels_ principle), so
+// nothing here needs a manual edit at quarter rollover.
+function renderDataRef_() {
+  var body = document.getElementById('dataref-body');
+  if (!body || !S.data) return;
+  var qd  = S.data.quarterDates || {};
+  var wks = S.data.totalQtrWeeks || '—';
+  var q   = esc(S.data.quarter || '');
+  function sec(title, inner) {
+    return '<div style="margin-bottom:22px"><h2 style="font-size:14px;margin-bottom:8px">' + title + '</h2>' + inner + '</div>';
+  }
+  function dl(rows) {
+    return '<table class="data-table" style="font-size:12px"><tbody>' + rows.map(function(r) {
+      return '<tr><td style="font-weight:700;white-space:nowrap;width:180px;vertical-align:top">' + r[0] + '</td><td>' + r[1] + '</td></tr>';
+    }).join('') + '</tbody></table>';
+  }
+  body.innerHTML =
+    sec('Metric definitions', dl([
+      ['Compliance tiers', 'On Target = 10+ goals &nbsp;·&nbsp; Watch = 8–9 &nbsp;·&nbsp; At Risk = &lt;8 (quarter goal count from the RD sheet)'],
+      ['RPI (0–6)', 'Rocketeer Performance Index — 3 criteria × 2 pts: ① every goal dated inside the quarter ② 6 goals meeting the growing self-comment cadence (required = week-of-quarter − 6, min 1, capped at 8) ③ 8+ goals completed. The RPI signal shows only at a perfect 6/6.'],
+      ['STF', 'Set-the-Future eligibility — 8+ completed goals AND 6 of them carrying 8+ total comments.'],
+      ['REX', 'Rocketeer Experience follow-up — one HR tracker case per person; the latest note carries the case status (Needs Follow-up → Reviewed / Resolved; Escalated when raised).'],
+      ['Engagement', '≥1 self-comment this quarter, among rocketeers with goals. Below Pace = fewer self-comments than half the weeks elapsed. Silent = zero self-comments.'],
+      ['Cmts/Wks', 'Distinct ISO weeks with ≥1 self-comment ÷ calendar weeks in the quarter (' + wks + ' for ' + q + '). Comments dated outside the quarter window don\'t count.'],
+    ])) +
+    sec('Denominators &amp; scopes', dl([
+      ['Total Rocketeers', 'Active employees in scope — interns and offboarded excluded; crew included.'],
+      ['With goals', 'Engagement metrics divide by rocketeers with ≥1 goal, not total headcount — the engagement and headcount cards legitimately differ.'],
+      ['Excl. new hires', 'Needing Support counts exclude rocketeers hired after quarter start; Overview counts include everyone. Each card\'s sub-label states its base.'],
+      ['Goal Status "People"', 'A rocketeer appears once per status they hold, so the People column exceeds headcount by design.'],
+    ])) +
+    sec('Calendar rules', dl([
+      ['Fiscal quarters', 'FY runs Jul 1 → Jun 30. ' + q + ': ' + (qd.start || '—') + ' → ' + (qd.end || '—') + ' (' + wks + ' ISO weeks).'],
+      ['Goal-creation grace', 'First 4 weeks of the quarter (ends ' + (qd.gracePeriodGoalsEnd || '—') + ') — Watch-tier rocketeers are visible but not yet mandatory follow-up.'],
+      ['Completion grace', 'Final 2 weeks (from ' + (qd.gracePeriodCompletionStart || '—') + ') — flag goals not yet moved to Completed.'],
+      ['Closed quarters', 'Grace periods never apply to a closed quarter — the banner shows a neutral historical note instead.'],
+    ])) +
+    sec('Data sources', dl([
+      ['Goals &amp; comments', 'RD sheet — goal + comment rows, quarter-bucketed by each goal\'s Start Date.'],
+      ['Employees (FTE)', 'Roster spreadsheet · "Data" tab (HRIS export: supervisor, department, class, Key Location, hire &amp; termination dates).'],
+      ['Crew / contractors', 'Roster spreadsheet · "Contractors Data" tab (class, supervisor, Key Location, release date) — rows get the Crew badge and the Employment filter.'],
+      ['HR follow-ups', '"HR Follow-Up Tracker" sheet — the REX Tracker tab reads and writes here.'],
+      ['Join key', 'Normalized full name (lowercase, accents stripped, whitespace collapsed) links RD ↔ Roster ↔ notes.'],
+    ]));
 }
 
 function renderAccessTab_() {
