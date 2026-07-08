@@ -3181,6 +3181,45 @@ function renderGoalThread_(g, isAllTime) {
   return html;
 }
 
+// CPR Pace & Consistency strip (v2.7.0) — shown inside the individual drill
+// only for the currently loaded quarter (paceMetrics/paceBand are computed
+// against that quarter's peer population; ALL-time drills have no band).
+// Returns '' whenever there is nothing classifiable — small reference
+// population, early quarter, zero-goal employee — so the drill never shows
+// a half-empty strip.
+function paceStripHtml_(normName, drillQuarter) {
+  if (!S.data || drillQuarter !== S.data.quarter) return '';
+  var band = S.data.paceBand;
+  var e = null;
+  [S.data.employees || [], S.data.attrition || []].forEach(function(arr) {
+    if (e) return;
+    for (var i = 0; i < arr.length; i++) if (arr[i].normName === normName) { e = arr[i]; break; }
+  });
+  var p = e && e.paceMetrics;
+  if (!p || p.cpr === null || p.cls === 'na' || !band) return '';
+
+  var QUAD = {
+    'behind|bursty': ['#B71C1C', '\u{1F534} Behind & Bursty — behind the peer band AND concentrated into few sittings'],
+    'behind|steady': ['#B45309', '\u{1F7E0} Behind but steady — consistent effort, low volume: support conversation'],
+    'on|bursty':     ['#B45309', '\u{1F7E1} On pace but bursty — meets the letter, not the habit'],
+    'on|steady':     ['#166534', '\u{1F7E2} On pace & steady'],
+    'high|bursty':   ['#B45309', '\u{1F7E1} High volume but bursty'],
+    'high|steady':   ['#166534', '\u{1F7E2} Above the peer band & steady'],
+  };
+  var q = QUAD[p.cls + '|' + p.consistency] || ['#64748B', p.cls + ' / ' + p.consistency];
+  var tip = 'CPR = median self-comments per eligible week across the top-6 goals. ' +
+    'Eligible weeks = ' + p.rawWeeks + ' weeks since the goal-setting window closed, minus ' +
+    p.absenceWeeks + ' PTO week(s). Peer band P10–P90: ' + band.p10 + '–' + band.p90 +
+    ' (n=' + band.refN + '). Activity = share of eligible weeks with at least one self-comment.';
+  return '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px" title="' + esc(tip) + '">' +
+    '<span style="font-size:10px;font-weight:800;color:' + q[0] + '">' + q[1] + '</span>' +
+    '<span style="font-size:10px;color:var(--muted)">CPR ' + p.cpr +
+    ' · Activity ' + Math.round((p.activityRatio || 0) * 100) + '%' +
+    ' · ' + p.eligibleWeeks + ' eligible wks' +
+    (p.absenceWeeks > 0 ? ' (PTO-adjusted −' + p.absenceWeeks + ')' : '') + '</span>' +
+    '</div>';
+}
+
 /**
  * Renders a getRocketeerGoalDetail() payload into the expandable drill-row's <td>: a
  * status-count summary (so someone with 10+ goals can scan before opening any one of
@@ -3207,6 +3246,7 @@ function renderIndividualDrillContent_(container, data) {
   var html = closeBtn + '<div style="padding:2px 4px 10px">';
   html += '<p class="section-sub" style="margin-bottom:10px">' + esc(r.name) + ' · ' + esc(r.jobTitle || '—') + ' · ' + esc(r.department || '—') +
     ' · reports to ' + esc(r.supervisor || '—') + ' · ' + (isAllTime ? 'All quarters' : esc(data.quarter)) + '</p>';
+  html += paceStripHtml_(r.normName, data.quarter);
 
   if (!data.goals.length) {
     html += '<div class="empty-state">No goals logged' + (isAllTime ? '.' : ' this quarter.') + '</div></div>';
