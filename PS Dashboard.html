@@ -1629,7 +1629,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
         <div class="dr-section">
           <div class="dr-section-title">Team Radar — Axis Definitions</div>
-          <p class="dr-p">The Team Radar (snowflake chart) plots seven axes on a 0–100 scale for any selected group and reference week. Each axis normalises its raw value differently. The "Evaluate Week" selector controls which week is used for single-week axes (Goals, Tracked compliance, Planned compliance, Kudos, PTO Health); period averages (Tracked avg, Planned avg) use the full 5-week window.</p>
+          <p class="dr-p">The Team Radar (snowflake chart) plots seven axes on a 0–100 scale for any selected group and reference week. Each axis normalises its raw value differently. The "Evaluate Week" selector controls which week is used for single-week axes (Goals, Tracked compliance, Planned compliance, Kudos, PTO Health); period averages (Tracked avg, Planned avg) use the full 5-week window. In Month or Quarter mode (the Week | Month | Quarter toggle), single-week axes evaluate at the period's last closed week for standings (Goals, PTO Health) while flow axes (Tracked, Planned, Kudos) average across the period's closed weeks; the reference polygon compares against the prior month or quarter.</p>
           <table class="dr-tbl" style="margin-top:8px">
             <thead><tr><th>Axis</th><th>What it measures</th><th>How 0–100 is calculated</th><th>Source</th></tr></thead>
             <tbody>
@@ -1684,7 +1684,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
         <div class="dr-section">
           <div class="dr-section-title">Week Range</div>
-          <p class="dr-p">All weekly data uses <strong>ISO 8601 week numbering</strong> — weeks run Monday to Sunday. Week labels follow the format <code>YYYY.WN</code>, for example <code>2026.W20</code> covers Mon 11 May – Sun 17 May 2026. The 5-week window is always centered on the current ISO week: two past weeks, the current week, and two future weeks.</p>
+          <p class="dr-p">All weekly data uses <strong>ISO 8601 week numbering</strong> — weeks run Monday to Sunday. Week labels follow the format <code>YYYY.WN</code>, for example <code>2026.W20</code> covers Mon 11 May – Sun 17 May 2026. The 5-week window is always centered on the current ISO week: two past weeks, the current week, and two future weeks. Months and fiscal quarters group weeks by the ISO 8601 majority rule — a week belongs to the month (or quarter) containing its Thursday, so no week is ever split. Fiscal quarters follow the FY calendar (FY starts July 1). Quarterly RCR is the mean of monthly values and is marked approximate.</p>
         </div>
 
       </div>
