@@ -108,6 +108,15 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .section-body{padding:16px}
 .chart-wrap{padding:16px}
 
+/* Trends headline stats — the "so what" number above each chart. Royal/June are
+   reserved for the annotation layer (flags, targets), never for data series. */
+.trend-headline{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:0 0 10px}
+.trend-headline:empty{display:none}
+.trend-headline .th-num{font-size:24px;font-weight:900;line-height:1;color:var(--void)}
+.trend-headline .th-label{font-size:11px;color:var(--slate);font-weight:600}
+.trend-headline .th-flag{font-size:10px;font-weight:700;color:#B4543C;background:rgba(255,155,135,.16);
+  border:1px solid rgba(255,155,135,.6);border-radius:4px;padding:2px 7px;align-self:center}
+
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:7px;font-size:10px;
   font-weight:700;border:1px solid var(--border);background:#fff;color:var(--slate);cursor:pointer;
@@ -138,6 +147,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 /* Compliance badges */
 .elig-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:9px;font-weight:800;cursor:default}
 .elig-ok{background:#DCFCE7;color:#15803D}
+.elig-mid{background:#FEF9C3;color:#854D0E}
 .elig-no{background:#FEE2E2;color:#B91C1C}
 .tier-watch{background:#FEF9C3;color:#92400E;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
 .tier-atrisk{background:#FEE2E2;color:#991B1B;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
@@ -163,6 +173,13 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .delta-up{color:var(--success);font-weight:700;font-size:10px}
 .delta-same{color:var(--muted);font-size:10px}
 .delta-down{color:#B91C1C;font-size:10px;font-weight:700}
+.btn-del-note{padding:2px 7px;font-size:10px;color:#B91C1C;border-color:#FECACA}
+.btn-del-note:hover{background:#FEF2F2;border-color:#B91C1C}
+.tracker-history{margin-top:2px}
+.tracker-history summary{cursor:pointer;font-size:10px;color:var(--slate);font-weight:700;user-select:none}
+.tracker-history-entry{display:flex;flex-direction:column;gap:3px;border-left:3px solid var(--border);
+  padding:6px 0 6px 8px;margin-top:6px}
+.tracker-history-note{font-size:10px;color:var(--text);font-style:italic;line-height:1.5}
 .status-pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:9px;font-weight:700}
 .pill-reviewed{background:#DCFCE7;color:#15803D}
 .pill-followup{background:#FEF9C3;color:#854D0E}
@@ -174,6 +191,17 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 #modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:14px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:modalIn .2s ease}
 @keyframes modalIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+/* ── Behaviors tab — meter cards. Growth framing: Orbe fill (progress), never
+   the at-risk red; verdict lines are counts-only, names live in <details>. */
+.bh-quote{font-style:italic;color:var(--slate);font-size:12px;margin:2px 0 10px}
+.bh-meter{height:14px;border-radius:7px;background:var(--surface);border:1px solid var(--border);overflow:hidden;margin:4px 0 6px}
+.bh-fill{height:100%;border-radius:7px;background:var(--orbe);transition:width .4s}
+.bh-verdict{font-size:12px;font-weight:600;color:var(--void)}
+.bh-secondary{font-size:11px;color:var(--slate);margin-top:2px}
+.bh-detail{margin-top:10px}
+.bh-detail summary{cursor:pointer;font-size:11px;font-weight:700;color:var(--orbe)}
+.bh-v2note{font-size:11px;color:var(--slate);background:var(--surface);border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin-top:8px}
+
 /* Individual drill-down — an expandable table row inserted after the clicked row,
    not a modal. A viewport-height-capped popup had no reliable way to scroll to the
    rest of a 10+-goal list; an inline row just grows the table within the page's own
@@ -339,6 +367,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <button class="tab-btn"        onclick="switchTab('support')"   data-tab="support">Needing Support</button>
     <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
     <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
+    <button class="tab-btn"        onclick="switchTab('behaviors')" data-tab="behaviors">Behaviors</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">REX Tracker</button>
   </div>
 
@@ -361,18 +390,11 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
             </div>
           </div>
         </div>
-        <!-- Right column: donut + HR summary -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="section-card">
-            <div class="section-head"><h2>Compliance Distribution</h2>
-              <button class="btn" onclick="exportPNG(this.closest('.section-card'),'compliance-distribution.png')">⬇ PNG</button></div>
-            <div class="chart-wrap" style="height:190px;position:relative"><canvas id="chart-donut"></canvas></div>
-          </div>
-          <div class="section-card" style="border-left:4px solid var(--orbe)">
-            <div class="section-head"><h2>REX Tracker Summary</h2>
-              <button class="btn" onclick="exportPNG(this.closest('.section-card'),'rex-summary.png')">⬇ PNG</button></div>
-            <div class="section-body" id="hr-summary-card"></div>
-          </div>
+        <!-- Right column: compliance donut -->
+        <div class="section-card">
+          <div class="section-head"><h2>Compliance Distribution</h2>
+            <button class="btn" onclick="exportPNG(this.closest('.section-card'),'compliance-distribution.png')">⬇ PNG</button></div>
+          <div class="chart-wrap" style="height:260px;position:relative"><canvas id="chart-donut"></canvas></div>
         </div>
       </div>
 
@@ -408,14 +430,16 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
             <p class="section-sub" id="trend-denominator-sub">Self vs manager comment volume + rocketeers engaging · full history incl. prior quarters · respects the filter bar</p></div>
           <div class="section-actions">
             <div style="display:inline-flex;gap:6px">
-              <button class="btn btn-primary" id="btn-trendline-count" aria-pressed="true" onclick="setTrendLineMode_('count')">Count</button>
-              <button class="btn" id="btn-trendline-pct" aria-pressed="false" onclick="setTrendLineMode_('pct')">%</button>
+              <button class="btn" id="btn-trendline-count" aria-pressed="false" onclick="setTrendLineMode_('count')">Count</button>
+              <button class="btn btn-primary" id="btn-trendline-pct" aria-pressed="true" onclick="setTrendLineMode_('pct')">%</button>
             </div>
             <button class="btn" onclick="exportPNG('trends-combo-panel','comments-trend.png')">⬇ PNG</button>
           </div>
         </div>
         <div class="section-body" id="trends-combo-panel">
+          <div class="trend-headline" id="trend-headline"></div>
           <div style="height:320px;position:relative"><canvas id="chart-trend"></canvas></div>
+          <p class="section-sub" id="trend-footnote" style="margin-top:8px"></p>
         </div>
       </div>
 
@@ -423,10 +447,11 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-card">
           <div class="section-head">
             <div><h2>🧑 Rocketeer Engagement — QoQ</h2>
-              <p class="section-sub">Filtered rocketeers (with goals) self-commenting each week · unique count or % via the Count/% toggle above · previous quarter as shadow</p></div>
+              <p class="section-sub">Filtered rocketeers (with goals) self-commenting each week · unique count or % via the Count/% toggle above · target line + previous quarter as shadow when available</p></div>
             <button class="btn" onclick="exportPNG('qoq-rock-panel','qoq-rocketeers.png')">⬇ PNG</button>
           </div>
           <div class="section-body" id="qoq-rock-panel">
+            <div class="trend-headline" id="qoq-rock-headline"></div>
             <div style="height:220px;position:relative"><canvas id="chart-qoq-rock"></canvas></div>
             <div style="height:70px;position:relative;margin-top:4px"><canvas id="chart-qoq-rock-delta"></canvas></div>
             <p class="section-sub" id="qoq-rock-note" style="margin-top:6px"></p>
@@ -435,10 +460,11 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-card">
           <div class="section-head">
             <div><h2>👤 Manager Engagement — QoQ</h2>
-              <p class="section-sub">Managers commenting on ≥1 team goal each week · unique count or % via the Count/% toggle above · excepted managers excluded</p></div>
+              <p class="section-sub">Managers commenting on ≥1 team goal each week (activity) + rocketeers reached by a manager comment (coverage) · excepted managers excluded, count shown below</p></div>
             <button class="btn" onclick="exportPNG('qoq-mgr-panel','qoq-managers.png')">⬇ PNG</button>
           </div>
           <div class="section-body" id="qoq-mgr-panel">
+            <div class="trend-headline" id="qoq-mgr-headline"></div>
             <div style="height:220px;position:relative"><canvas id="chart-qoq-mgr"></canvas></div>
             <div style="height:70px;position:relative;margin-top:4px"><canvas id="chart-qoq-mgr-delta"></canvas></div>
             <p class="section-sub" id="qoq-mgr-note" style="margin-top:6px"></p>
@@ -509,7 +535,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       <div class="kpi-grid" id="kpi-needs-support"></div>
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI &amp; STF eligibility shown per person · click a row to view full detail · respects the filter bar</p></div>
+          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI score (0–6, hover for criteria) &amp; STF eligibility per person · new hires excluded (flagged 🌱 in the rosters instead) · click a row to view full detail · respects the filter bar</p></div>
           <div class="section-actions">
             <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
             <button class="btn" onclick="exportPNG('needs-support-panel','needs-support.png')">⬇ PNG</button>
@@ -534,12 +560,73 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
+    <!-- ── BEHAVIORS (Leadership Behaviors signals; admin+manager only via VIEWS roles) ──
+         Spec: docs/superpowers/specs/2026-07-08-behavioral-signals-leadership-behaviors-design.md
+         Framing rules: verdict lines show counts only; names only inside <details> rows;
+         growth-oriented labels — never "failing"/"non-compliant" on this tab. -->
+    <div id="pane-behaviors" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>🧠 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-1-team" target="_blank" rel="noopener" style="color:inherit">Share the Knowledge</a></h2>
+            <p class="section-sub">Self-comment cadence on own goals · new hires excluded · respects the filter bar</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-share-knowledge.png')">⬇ PNG</button>
+        </div>
+        <div class="section-body">
+          <p class="bh-quote">&ldquo;I ask questions first and actively share experiences and lessons learned&rdquo;</p>
+          <div id="behavior-share"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>🌱 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-2-develops" target="_blank" rel="noopener" style="color:inherit">Develops Rocketeers</a> · <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-9-proactive" target="_blank" rel="noopener" style="color:inherit">Proactive &amp; Responsive</a></h2>
+            <p class="section-sub">Manager comments on team goals · excepted managers excluded · respects the filter bar</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-develops-rocketeers.png')">⬇ PNG</button>
+        </div>
+        <div class="section-body">
+          <p class="bh-quote">&ldquo;Provides appropriate feedback focused on professional growth&rdquo; · &ldquo;Master of cadence and repeatability&rdquo;</p>
+          <div id="behavior-develops"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>⚙️ <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behaviors-welcome" target="_blank" rel="noopener" style="color:inherit">Build Process to Drive Outcomes</a></h2>
+            <p class="section-sub">Goals moving through status — not parked in Planned, closed goals carry a note · respects the filter bar</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-build-process.png')">⬇ PNG</button>
+        </div>
+        <div class="section-body">
+          <p class="bh-quote">&ldquo;I reflect, iterate and continually improve processes through documentation that is shareable and easily accessible&rdquo;</p>
+          <div id="behavior-process"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>🤝 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-1-team" target="_blank" rel="noopener" style="color:inherit">Think Team</a></h2>
+            <p class="section-sub">Feedback loops closed after manager comments + thresholds met · respects the filter bar</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-think-team.png')">⬇ PNG</button>
+        </div>
+        <div class="section-body">
+          <p class="bh-quote">&ldquo;I hold myself accountable and am open to delivering and receiving feedback&rdquo;</p>
+          <div id="behavior-thinkteam"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>🗣️ <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behaviors-welcome" target="_blank" rel="noopener" style="color:inherit">Talk Straight</a></h2>
+            <p class="section-sub">Clarity and quality of the goals set</p></div>
+        </div>
+        <div class="section-body">
+          <p class="bh-quote">&ldquo;I set clear expectations with transparency and always walk the talk&rdquo;</p>
+          <div id="behavior-talkstraight"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── REX TRACKER (follow-up log; pane id stays 'hrtracker') ── -->
     <div id="pane-hrtracker" class="tab-pane">
       <div class="kpi-grid" id="kpi-tracker"></div>
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Follow-Up Log</h2><p class="section-sub">Notes saved by HR team · newest first</p></div>
+          <div><h2>Follow-Up Log</h2><p class="section-sub">One card per rocketeer · latest note sets the status · earlier notes kept as history</p></div>
           <div class="section-actions">
             <select id="tracker-filter" onchange="renderHRTracker()" class="btn" style="font-family:inherit">
               <option value="all">All follow-ups</option>
@@ -614,13 +701,36 @@ var S = {
   activeTab:      'overview',
   lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
   reviewTarget:   null,
-  trendLineMode:  'count',  // 'count' | 'pct' — Trends combo chart line mode
+  trendLineMode:  'pct',    // 'count' | 'pct' — Trends people-line unit; % is the default so
+                            // rocketeer and manager lines share one 0–100 scale (a 215-person
+                            // count axis visually flattens the 30-manager series to zero)
   allRocketeersData:  null,          // lazy-loaded on first visit to the "All Time" roster view
   teamRosterMode:     'thisQuarter', // 'thisQuarter' | 'allTime' — Team & Individuals roster toggle
   teamSearchQuery:    '',            // shared filter box for whichever roster view is active
+  drillCache:         {},            // memoized getRocketeerGoalDetail payloads, keyed normName|quarter — cleared by refreshData()
 };
 
 var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
+
+// Company brand palette, applied per the 60/30/10 rule: Void/Orbe/Ivory carry
+// the data series; Royal and June are HELD BACK for the annotation layer only
+// (targets, partial-week flags, callouts) so an accent still means "look here".
+var BRAND = {
+  VOID:  '#0F1941',  // primary — text, primary line series
+  ORBE:  '#058CDC',  // highlight blue — secondary line series
+  IVORY: '#DCCDBE',  // neutral — muted bar series
+  CREAM: '#FFFAF5',
+  ROYAL: '#2864E6',  // annotation accent: target/threshold lines
+  JUNE:  '#FF9B87',  // annotation accent: partial-week / alert flags
+  ORBE_SOFT:  'rgba(5,140,220,.35)',   // muted bar fill
+  IVORY_SOFT: 'rgba(220,205,190,.28)', // goal-setting-window band
+  JUNE_SOFT:  'rgba(255,155,135,.20)', // partial-week band
+  JUNE_TEXT:  '#B4543C',               // June-derived tone dark enough for text
+};
+
+// Behavioral engagement targets (annotation layer): % of eligible rocketeers
+// self-commenting / % of managers commenting on ≥1 team goal in a week.
+var TREND_TARGETS = { rock: 70, mgr: 40 };
 
 // ── VIEWS — single source of truth for navigation ─────────────────
 // location: "tabbar" = always-visible tab; "menu" = behind the ☰ menu.
@@ -633,6 +743,7 @@ var VIEWS = [
   { id: 'support',   label: 'Needing Support',       location: 'tabbar', roles: null },
   { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
   { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
+  { id: 'behaviors', label: 'Behaviors',             location: 'tabbar', roles: ['admin','manager'] },
   { id: 'hrtracker', label: 'REX Tracker',           location: 'tabbar', roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
 ];
@@ -663,6 +774,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // what makes this safe for names containing an apostrophe. Attached once here since
   // these rows are rebuilt via innerHTML on every render.
   document.addEventListener('click', function(e) {
+    var del = e.target.closest('button[data-del-ts]');
+    if (del) { deleteNote_(del.dataset.delTs, del.dataset.delNorm); return; }
     var mgrRow = e.target.closest('tr[data-manager]');
     if (mgrRow) { openManagerTeam_(mgrRow.dataset.manager); return; }
     var row = e.target.closest('tr[data-normname]');
@@ -728,6 +841,7 @@ function refreshData() {
   document.getElementById('app').style.display = 'none';
   var quarter = S.data && S.data.quarter;
   S.allRocketeersData = null;  // force a re-fetch next time that tab is opened
+  S.drillCache = {};           // drill payloads must reflect the re-read sheets too
   google.script.run.withSuccessHandler(function() { init(); }).withFailureHandler(function() { init(); }).bustCache(quarter);
 }
 
@@ -876,6 +990,7 @@ function renderTab(tabId) {
   else if (tabId === 'trends')    renderTrends(emps);
   else if (tabId === 'team')      renderTeam(emps);
   else if (tabId === 'support')   renderSupport(emps);
+  else if (tabId === 'behaviors') renderBehaviors(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
   else if (tabId === 'access')    renderAccessTab_();
 }
@@ -919,20 +1034,6 @@ function renderOverview(emps) {
   // Team Engagement Rate + Manager Scorecard (moved from the old Engagement tab)
   renderTeamEngagement_(eng);
   renderManagerScorecard_(eng);
-
-  // HR summary card
-  var qtr     = S.data ? S.data.quarter : '';
-  var qNotes  = S.notes.filter(function(n){ return n.quarter === qtr; });
-  var reviewed = qNotes.filter(function(n){ return n.status === 'Reviewed' || n.status === 'Resolved'; }).length;
-  var pending  = Math.max(0, (watch + atRisk) - qNotes.length);
-  document.getElementById('hr-summary-card').innerHTML =
-    '<div style="display:flex;flex-direction:column;gap:7px;font-size:12px">' +
-    row2('Follow-up notes logged', '<strong>' + qNotes.length + '</strong>') +
-    row2('Reviewed / Resolved',    '<span style="color:var(--success);font-weight:700">' + reviewed + '</span>') +
-    row2('Pending outreach',        '<span style="color:#EF4444;font-weight:700">' + pending + '</span>') +
-    '</div>' +
-    '<button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" onclick="switchTab(\'hrtracker\')">Open REX Tracker →</button>';
-
 }
 
 // ── ROCKETEERS NEEDING SUPPORT (own tab — was an Overview section) ──
@@ -940,20 +1041,26 @@ function renderOverview(emps) {
 // concern pool, the urgency-sorted table with per-row HR review, and the
 // isolated Attrition reference list.
 function renderSupport(emps) {
+  // New hires are flagged, never called out — exclude them from every concern
+  // count so the KPI row and the table (whose pool already skips them) agree,
+  // and surface the excluded count as its own card so the accounting is visible.
+  var vets         = emps.filter(function(e){ return !e.isNewHire; });
+  var newHires     = emps.length - vets.length;
   var pool         = needsSupportPool_(emps);
-  var atRisk       = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
-  var watch        = emps.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
-  var notEngaging  = emps.filter(function(e){ return e.hasEngagementConcern; }).length;
-  var stuckPlanned = emps.filter(function(e){ return e.goalsStuckInPlanned > 0; }).length;
+  var atRisk       = vets.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
+  var watch        = vets.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
+  var notEngaging  = vets.filter(function(e){ return e.hasEngagementConcern; }).length;
+  var stuckPlanned = vets.filter(function(e){ return e.goalsStuckInPlanned > 0; }).length;
   var noteMap      = buildNoteMap_();
   var reviewed     = pool.filter(function(e){ return !!noteMap[e.normName]; }).length;
 
   document.getElementById('kpi-needs-support').innerHTML =
-    kpiCard('Needing Support',  pool.length,  '🚨', '#EF4444', 'Anyone with a compliance or engagement concern (deduplicated)') +
+    kpiCard('Needing Support',  pool.length,  '🚨', '#EF4444', 'Anyone with a compliance or engagement concern (deduplicated, new hires excluded)') +
     kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  '#EF4444', 'Below goal threshold — STF and RPI at risk') +
     kpiCard('Watch (8–9)',      watch,        '⏳', '#F59E0B', 'One or two goals from full compliance') +
     kpiCard('Not Engaging',     notEngaging,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
     kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments') +
+    kpiCard('New Hires',        newHires,     '🌱', '#058CDC', 'Hired after quarter start — goals need a full quarter, so they are flagged in the rosters, not listed here') +
     kpiCard('HR Reviewed',      reviewed + '/' + pool.length, '📝', '#00A86B', 'Support-pool members with an HR follow-up note');
 
   renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
@@ -1195,6 +1302,11 @@ function needsSupportPool_(emps) {
   var seen = {}, pool = [];
   emps.forEach(function(e) {
     if (seen[e.normName]) return;
+    // New hires (hired on/after quarter start) never had the full quarter the
+    // goal thresholds assume — they're flagged "New Hire" in the rosters, not
+    // called out as needing support. They join the pool from their first full
+    // quarter onward.
+    if (e.isNewHire) return;
     var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
     var engFail  = !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
     if (compFail || engFail) { seen[e.normName] = true; pool.push(e); }
@@ -1235,24 +1347,45 @@ function renderAtRiskBody(container, emps, compact) {
   container.innerHTML = html;
 }
 
-// Builds one <tr> for the At Risk table / Attrition section — shared so both
-// render identically without duplicating the signal-badge/review-cell logic.
-function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
-  var note = noteMap[e.normName];
-  var rpiDetail = 'Needs: ' + (e.totalGoals >= 10 ? '' : (e.totalGoals + '/10 goals, ')) +
-                  (e.goalsCompleted >= 8 ? '' : (e.goalsCompleted + '/8 completed, ')) +
-                  (e.commentWeeks >= qtrWeeks ? '' : (e.commentWeeks + '/' + qtrWeeks + ' weekly cmts'));
-  var stfDetail = 'Needs: ' + (e.stfGoalsCompleted >= 8 ? '' : (e.stfGoalsCompleted + '/8 completed, ')) +
-                  (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
+// Shared eligibility/signal badge builders — used by the Needing Support and
+// Attrition rows AND the Team & Individuals "This Quarter" roster, so every
+// table reads RPI / STF / Signals identically.
+// RPI badge — v2.5.0 score model: 0–6, three criteria × 2 pts, signal (green)
+// only at a perfect score. Amber = partial credit, red = 0. The tooltip
+// spells out each criterion so the number is self-explanatory in place.
+function rpiBadge_(e) {
+  var b = e.rpiBreakdown;
+  if (!b) {  // pre-v2.5 payload — boolean only
+    return '<span class="elig-badge ' + (e.rpiEligible ? 'elig-ok' : 'elig-no') + '">' +
+      (e.rpiEligible ? 'RPI &#10003;' : 'RPI &#10007;') + '</span>';
+  }
+  var max = e.rpiMax || 6;
+  var tip = 'RPI ' + e.rpiScore + '/' + max +
+    ' — Goals (2pts): ' + b.goals.have + '/' + b.goals.need + ' in-quarter goals (any status) ' + (b.goals.met ? '✓' : '✗') +
+    ' · Cadence (2pts): ' + b.cadence.have + '/' + b.cadence.need + ' goals with ≥' + b.cadence.requiredCmts +
+    ' self-comment' + (b.cadence.requiredCmts === 1 ? '' : 's') + ' ' + (b.cadence.met ? '✓' : '✗') +
+    ' · Completed (2pts): ' + b.completed.have + '/' + b.completed.need + ' ' + (b.completed.met ? '✓' : '✗');
+  var cls = e.rpiScore === max ? 'elig-ok' : e.rpiScore > 0 ? 'elig-mid' : 'elig-no';
+  return '<span class="elig-badge ' + cls + '" title="' + esc(tip) + '">RPI ' + e.rpiScore + '/' + max + '</span>';
+}
 
-  var reviewCell = note
-    ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
-      '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
-      (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
-      '</div>'
-    : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Review</button>');
+function stfBadge_(e) {
+  var detail = 'Needs: ' + (e.stfGoalsCompleted >= 8 ? '' : (e.stfGoalsCompleted + '/8 completed, ')) +
+               (e.stfGoalsWithSufficientComments >= 6 ? '' : (e.stfGoalsWithSufficientComments + '/6 goals w/8+ cmts'));
+  return '<span class="elig-badge ' + (e.stfEligible ? 'elig-ok' : 'elig-no') + '" title="' +
+    esc(e.stfEligible ? 'STF eligible' : detail.replace(/,\s*$/, '')) + '">' +
+    (e.stfEligible ? 'STF &#10003;' : 'STF &#10007;') + '</span>';
+}
 
-  // Signal badges — show every concern this person has
+// Signal badges — every concern this person currently has; '' when clean.
+function signalsBadges_(e, isGrace) {
+  // New hires get one neutral flag and NO concern callouts — they never had
+  // the full quarter the thresholds assume (some ramp up mid-quarter anyway;
+  // they still just read "New Hire" until their first full quarter).
+  if (e.isNewHire) {
+    return '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#E6F4FD;color:#0369A1;border:1px solid #7DD3FC" title="Hired ' +
+      esc(e.hireDate || 'this quarter') + ' — after quarter start, so goal thresholds don\'t apply yet">🌱 New Hire</span>';
+  }
   var signals = '';
   if (e.totalGoals === 0) {
     signals += '<span class="tier-nogoals">No Goals</span> ';
@@ -1269,6 +1402,22 @@ function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
   if (e.goalsStuckInPlanned > 0) {
     signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
   }
+  return signals.trim();
+}
+
+// Builds one <tr> for the At Risk table / Attrition section — shared so both
+// render identically without duplicating the signal-badge/review-cell logic.
+function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
+  var note = noteMap[e.normName];
+
+  var reviewCell = note
+    ? '<div class="review-done"><span class="review-check">&#10003;</span>' +
+      '<span class="review-meta">' + esc(note.reviewedBy.replace(/@.*/,'')) + '</span>' +
+      (compact ? '' : '<button class="btn" style="padding:2px 6px;font-size:9px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Edit</button>') +
+      '</div>'
+    : (compact ? '&mdash;' : '<button class="btn" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation();openModal(\'' + esc(e.normName) + '\')">Review</button>');
+
+  var signals = signalsBadges_(e, isGrace);
 
   var html = '<tr style="cursor:pointer" data-normname="' + esc(e.normName) + '">';
   html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
@@ -1279,10 +1428,10 @@ function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
   html += '<td style="text-align:center;color:var(--success);font-weight:700">' + e.goalsCompleted + '</td>';
   if (!compact) {
     html += '<td style="text-align:center;font-size:11px">' + e.commentWeeks + '/' + qtrWeeks + '</td>';
-    html += '<td><span class="elig-badge ' + (e.rpiEligible?'elig-ok':'elig-no') + '" title="' + esc(e.rpiEligible?'RPI eligible':rpiDetail.replace(/,\s*$/,'')) + '">' + (e.rpiEligible?'RPI &#10003;':'RPI &#10007;') + '</span></td>';
-    html += '<td><span class="elig-badge ' + (e.stfEligible?'elig-ok':'elig-no') + '" title="' + esc(e.stfEligible?'STF eligible':stfDetail.replace(/,\s*$/,'')) + '">' + (e.stfEligible?'STF &#10003;':'STF &#10007;') + '</span></td>';
+    html += '<td>' + rpiBadge_(e) + '</td>';
+    html += '<td>' + stfBadge_(e) + '</td>';
   }
-  html += '<td style="white-space:nowrap">' + signals.trim() + '</td>';
+  html += '<td style="white-space:nowrap">' + signals + '</td>';
   html += '<td>' + reviewCell + '</td>';
   html += '</tr>';
   return html;
@@ -1328,26 +1477,39 @@ function renderHRTracker() {
   var empMap = {};
   S.data.employees.forEach(function(e){ empMap[e.normName] = e; });
 
-  var reviewed  = qNotes.filter(function(n){ return n.status === 'Reviewed' || n.status === 'Resolved'; }).length;
-  var followUp  = qNotes.filter(function(n){ return n.status === 'Needs Follow-up'; }).length;
-  var escalated = qNotes.filter(function(n){ return n.status === 'Escalated'; }).length;
-  var improved  = qNotes.filter(function(n){
-    var emp = empMap[n.normName];
+  // One case per rocketeer: notes are grouped per person (newest first) so the
+  // latest note carries the person's current status — a rocketeer whose case
+  // moved from Needs Follow-up to Resolved counts once, in the resolved bucket.
+  // Earlier notes stay visible as history inside the same card.
+  var byPerson = {};
+  qNotes.forEach(function(n) {
+    (byPerson[n.normName] = byPerson[n.normName] || []).push(n);
+  });
+  var cases = Object.keys(byPerson).map(function(k) {
+    var list = byPerson[k].slice().sort(function(a, b){ return b.timestamp.localeCompare(a.timestamp); });
+    return { latest: list[0], history: list.slice(1) };
+  }).sort(function(a, b){ return b.latest.timestamp.localeCompare(a.latest.timestamp); });
+
+  var reviewed = cases.filter(function(c){ return c.latest.status === 'Reviewed' || c.latest.status === 'Resolved'; }).length;
+  var followUp = cases.filter(function(c){ return c.latest.status === 'Needs Follow-up'; }).length;
+  var improved = cases.filter(function(c){
+    var n = c.latest, emp = empMap[n.normName];
     return emp && n.complianceAtNote && n.complianceAtNote !== emp.complianceStatus &&
            statusRank_(emp.complianceStatus) > statusRank_(n.complianceAtNote);
   }).length;
 
   document.getElementById('kpi-tracker').innerHTML =
     kpiCard('Notes Logged',           qNotes.length, '📝', '#058CDC', 'HR follow-ups this quarter') +
-    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'Acknowledged and closed') +
-    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'Pending conversations') +
-    kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Status improved since note was saved');
+    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'Rocketeers whose latest note is closed') +
+    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'Rocketeers with a pending conversation') +
+    kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Status improved since latest note');
 
   var filterVal = document.getElementById('tracker-filter').value;
-  var filtered  = qNotes.filter(function(n) {
-    if (filterVal === 'pending')  return n.status === 'Needs Follow-up';
-    if (filterVal === 'reviewed') return n.status === 'Reviewed' || n.status === 'Resolved';
-    if (filterVal === 'escalated') return n.status === 'Escalated';
+  var filtered  = cases.filter(function(c) {
+    var s = c.latest.status;
+    if (filterVal === 'pending')  return s === 'Needs Follow-up';
+    if (filterVal === 'reviewed') return s === 'Reviewed' || s === 'Resolved';
+    if (filterVal === 'escalated') return s === 'Escalated';
     return true;
   });
 
@@ -1357,7 +1519,8 @@ function renderHRTracker() {
   }
 
   var html = '<div style="display:flex;flex-direction:column;gap:10px">';
-  filtered.forEach(function(n) {
+  filtered.forEach(function(c) {
+    var n     = c.latest;
     var emp   = empMap[n.normName];
     var pill  = pillFor_(n.status);
     var delta = '';
@@ -1383,16 +1546,60 @@ function renderHRTracker() {
     html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' + pill;
     html += '<button class="btn" style="padding:2px 9px;font-size:9px" onclick="openModal(\'' + esc(n.normName) + '\')">Add note</button>';
+    html += deleteNoteBtn_(n);
     html += '</div></div>';
     if (n.note) html += '<div class="tracker-note">' + esc(n.note) + '</div>';
     html += '<div class="tracker-meta">';
     html += '<span>By ' + esc(n.reviewedBy.replace(/@.*/,'')) + '</span>';
     html += '<span>' + esc(n.timestamp.slice(0,10)) + '</span>';
     html += (n.followUpDate ? '<span>Follow-up: ' + esc(n.followUpDate) + '</span>' : '');
-    html += '</div></div>';
+    html += '</div>';
+    if (c.history.length) {
+      html += '<details class="tracker-history"><summary>' + c.history.length +
+              ' earlier note' + (c.history.length > 1 ? 's' : '') + '</summary>';
+      c.history.forEach(function(h) {
+        html += '<div class="tracker-history-entry">';
+        html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' + pillFor_(h.status);
+        html += '<span class="tracker-meta" style="display:inline-flex">';
+        html += '<span>By ' + esc(h.reviewedBy.replace(/@.*/,'')) + '</span>';
+        html += '<span>' + esc(h.timestamp.slice(0,10)) + '</span>';
+        html += (h.followUpDate ? '<span>Follow-up: ' + esc(h.followUpDate) + '</span>' : '');
+        html += '</span>' + deleteNoteBtn_(h) + '</div>';
+        if (h.note) html += '<div class="tracker-history-note">' + esc(h.note) + '</div>';
+        html += '</div>';
+      });
+      html += '</details>';
+    }
+    html += '</div>';
   });
   html += '</div>';
   document.getElementById('tracker-body').innerHTML = html;
+}
+
+// Delete is offered only where the server would allow it: admins on any note,
+// everyone else on notes they authored (deleteHRNote re-checks server-side).
+function deleteNoteBtn_(n) {
+  var isAdmin  = S.data && S.data.userRole === 'admin';
+  var isAuthor = (n.reviewedBy || '').toLowerCase() === (S.userEmail || '').toLowerCase();
+  if (!isAdmin && !isAuthor) return '';
+  return '<button class="btn btn-del-note" title="Delete this note"' +
+         ' data-del-ts="' + esc(n.timestamp) + '" data-del-norm="' + esc(n.normName) + '">🗑</button>';
+}
+
+function deleteNote_(timestamp, normName) {
+  if (!confirm('Delete this tracking note? This cannot be undone.')) return;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.ok) { alert('Delete failed: ' + ((res && res.error) || 'unknown error')); return; }
+      google.script.run
+        .withSuccessHandler(function(notes) {
+          S.notes = notes || [];
+          renderTab(S.activeTab);
+        })
+        .getHRNotes(S.data.quarter);
+    })
+    .withFailureHandler(function(err) { alert('Delete failed: ' + (err.message || err)); })
+    .deleteHRNote({ timestamp: timestamp, normName: normName });
 }
 
 // ── MODAL ─────────────────────────────────────────────────────────
@@ -1408,7 +1615,10 @@ function openModal(normName) {
     (emp.department ? '🏢 ' + esc(emp.department) + ' &nbsp;' : '') +
     '<br><span style="color:' + tierColor_(emp.complianceStatus) + ';font-weight:700">' + esc(emp.complianceStatus) + '</span>' +
     ' — ' + emp.totalGoals + ' goals · ' + emp.goalsCompleted + ' completed' +
-    '<br><span style="font-size:10px">RPI: ' + (emp.rpiEligible ? '✅ Eligible' : '❌ Not yet eligible') +
+    '<br><span style="font-size:10px">RPI: ' +
+    (emp.rpiBreakdown
+      ? (emp.rpiEligible ? '✅ ' : '') + (emp.rpiScore || 0) + '/' + (emp.rpiMax || 6)
+      : (emp.rpiEligible ? '✅ Eligible' : '❌ Not yet eligible')) +
     ' · STF: ' + (emp.stfEligible ? '✅ Eligible' : '❌ Not yet eligible') + '</span>';
 
   document.getElementById('modal-status').value   = existing ? existing.status : 'Reviewed';
@@ -1741,6 +1951,61 @@ function trendWeekMgrDenoms_(emps) {
   return denom;
 }
 
+// Client-side port of the server's parseQuarterDates_ — history blocks carry
+// only their FY##Q# label, so annotation math (partial weeks, goal-setting
+// window) derives each quarter's calendar window from the label directly.
+function quarterDatesClient_(quarter) {
+  var m = String(quarter || '').match(/FY(\d{2,4})Q([1-4])/i);
+  if (!m) return null;
+  var fy = parseInt(m[1], 10); if (fy < 100) fy += 2000;
+  var q  = parseInt(m[2], 10);
+  var S_Y = [0, fy-1, fy-1, fy, fy], S_M = [0, 6, 9, 0, 3];
+  var E_Y = [0, fy-1, fy-1, fy, fy], E_M = [0, 8, 11, 2, 5];
+  return { start: new Date(S_Y[q], S_M[q], 1), end: new Date(E_Y[q], E_M[q] + 1, 0) };
+}
+
+// week label → { quarter, wkOfQtr, qtrWeeks, partial, grace } for every week on
+// the multi-quarter trend axis. partial = the week doesn't hold a full business
+// week of its quarter (quarter starts/ends mid-week, or the week is still in
+// progress today) — flagged on the chart so a boundary-week dip reads as a
+// short week, not an engagement collapse. grace = the goal-setting window at
+// quarter start, where low volume is expected.
+function trendWeekMeta_() {
+  var graceWks = (S.data && S.data.quarterDates && S.data.quarterDates.graceGoalWeeks) || 4;
+  var todayWk  = getISOWeekLabel();
+  var meta = {};
+  ((S.data && S.data.history) || [])
+    .concat([{ quarter: (S.data && S.data.quarter) || '', weeks: (S.data && S.data.trendWeeks) || [] }])
+    .forEach(function(b) {
+      var qd  = quarterDatesClient_(b.quarter);
+      var wks = b.weeks || [];
+      wks.forEach(function(w, i) {
+        var m = { quarter: b.quarter, wkOfQtr: i + 1, qtrWeeks: wks.length, partial: false, grace: i < graceWks };
+        if (qd) {  // getDay(): 0=Sun … 6=Sat; business week = Mon–Fri
+          if (i === 0 && qd.start.getDay() >= 2 && qd.start.getDay() <= 5) m.partial = true;  // starts Tue–Fri
+          if (i === wks.length - 1) {
+            var endDow = qd.end.getDay();
+            if (endDow >= 1 && endDow <= 4) m.partial = true;  // quarter ends Mon–Thu
+            if (w === todayWk)              m.partial = true;  // week still in progress
+          }
+        }
+        meta[w] = m;  // current quarter wins a shared boundary week (processed last)
+      });
+    });
+  return meta;
+}
+
+// Trailing 3-week rolling mean — light smoothing for the single-digit manager
+// series, where one manager's week off looks like a cliff; raw weekly values
+// stay visible as points underneath so the noise isn't hidden, just quieted.
+function rollAvg3_(arr) {
+  return arr.map(function(v, i) {
+    var win = arr.slice(Math.max(0, i - 2), i + 1).filter(function(x) { return x != null; });
+    if (!win.length) return null;
+    return +(win.reduce(function(s, x) { return s + x; }, 0) / win.length).toFixed(1);
+  });
+}
+
 // Tab-wide people-trend unit toggle: Count = unique people engaging per week,
 // % = share of that week's quarter's eligible population. Drives the combo
 // chart's people lines AND both QoQ panels, so every Trends chart reads in the
@@ -1771,6 +2036,7 @@ function buildWeeklyComboChart_(emps) {
   var pool      = trendEmployeePool_(emps);
   var denoms    = trendWeekDenoms_(emps);
   var mgrDenoms = trendWeekMgrDenoms_(emps);
+  var wkMeta    = trendWeekMeta_();
   var histQtrs  = ((S.data && S.data.history) || []).length;
   var eligibleN = emps.filter(function(e) { return e.totalGoals > 0; }).length;
   var curWk0    = ((S.data && S.data.trendWeeks) || [])[0];
@@ -1792,6 +2058,30 @@ function buildWeeklyComboChart_(emps) {
   var mgrLineData  = pctMode
     ? mgrsEngaging.map(function(n, i) { var d = mgrDenoms[weeks[i]]; return d ? +(n / d * 100).toFixed(1) : 0; })
     : mgrsEngaging;
+  var mgrSmooth    = rollAvg3_(mgrLineData);
+
+  // Headline stat — the "so what" math done before the eye reaches an axis:
+  // latest week's rocketeer % vs manager %, plus managers' share of comment
+  // volume (the coaching-input ratio otherwise buried inside the stacked bar).
+  var hl = document.getElementById('trend-headline');
+  if (hl) {
+    var li       = weeks.length - 1;
+    var rockPct  = denoms[weeks[li]]    ? Math.round(engaging[li]     / denoms[weeks[li]]    * 100) : null;
+    var mgrPct   = mgrDenoms[weeks[li]] ? Math.round(mgrsEngaging[li] / mgrDenoms[weeks[li]] * 100) : null;
+    var cmtTotal = (selfSeries[li] || 0) + (mgrSeries[li] || 0);
+    var mgrShare = cmtTotal ? Math.round(mgrSeries[li] / cmtTotal * 100) : null;
+    var mLast    = wkMeta[weeks[li]];
+    var stat_ = function(num, colr, label) {
+      return '<span style="display:inline-flex;align-items:baseline;gap:6px">' +
+        '<span class="th-num" style="color:' + colr + '">' + num + '</span>' +
+        '<span class="th-label">' + label + '</span></span>';
+    };
+    hl.innerHTML =
+      (rockPct  == null ? '' : stat_(rockPct + '%', BRAND.ORBE, 'of ' + denoms[weeks[li]] + ' rocketeers engaged in ' + esc(weeks[li]))) +
+      (mgrPct   == null ? '' : stat_(mgrPct  + '%', BRAND.VOID, 'of ' + mgrDenoms[weeks[li]] + ' managers')) +
+      (mgrShare == null ? '' : stat_(mgrShare + '%', 'var(--slate)', 'of comments left by managers')) +
+      (mLast && mLast.partial ? '<span class="th-flag">⚠ ' + esc(weeks[li]) + ' is a partial week — a dip here is a short week, not a drop</span>' : '');
+  }
 
   var shortWeeks = weeks.map(function(w) { return w.split('.')[1] || w; });
   // On a long multi-quarter axis, a label on every point collides — thin to
@@ -1833,30 +2123,62 @@ function buildWeeklyComboChart_(emps) {
     }
   };
 
+  // Annotation bands behind the data: cream = the goal-setting window opening
+  // each quarter (low volume expected), June-peach = partial weeks (quarter
+  // starts/ends mid-week, or the week is still in progress). June appears
+  // nowhere else on this chart, so the flag actually reads as a flag.
+  var bandsPlugin = {
+    id: 'trendBands',
+    beforeDatasetsDraw: function(chart) {
+      var xS = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+      if (!xS || !area) return;
+      var half = weeks.length > 1
+        ? (xS.getPixelForValue(1) - xS.getPixelForValue(0)) / 2
+        : (area.right - area.left) / 2;
+      ctx.save();
+      weeks.forEach(function(w, i) {
+        var m = wkMeta[w];
+        if (!m || (!m.grace && !m.partial)) return;
+        var x = xS.getPixelForValue(i);
+        if (m.grace)   { ctx.fillStyle = BRAND.IVORY_SOFT; ctx.fillRect(x - half, area.top, half * 2, area.bottom - area.top); }
+        if (m.partial) { ctx.fillStyle = BRAND.JUNE_SOFT;  ctx.fillRect(x - half, area.top, half * 2, area.bottom - area.top); }
+      });
+      ctx.restore();
+    }
+  };
+
   S.charts['chart-trend'] = new Chart(canvas, {
     type: 'bar',
-    plugins: [ChartDataLabels, qtrBoundsPlugin],
+    plugins: [ChartDataLabels, bandsPlugin, qtrBoundsPlugin],
     data: {
       labels: shortWeeks,
       datasets: [
         { type: 'line', label: pctMode ? '% Rocketeers Engaging' : 'Rocketeers Engaging',
-          data: lineData, borderColor: '#00A86B', backgroundColor: 'transparent',
-          borderWidth: 2, borderDash: [5, 3], tension: .3, pointRadius: 3, yAxisID: 'y1', order: 0,
+          data: lineData, borderColor: BRAND.ORBE, backgroundColor: 'transparent',
+          borderWidth: 2.5, borderDash: [5, 3], tension: .3, pointRadius: 3, yAxisID: 'y1', order: 0,
           datalabels: { display: function(ctx) { return ctx.dataIndex % labelEvery === 0; },
-            align: 'top', anchor: 'end', color: '#00A86B',
+            align: 'top', anchor: 'end', color: BRAND.ORBE,
             font: { size: 10, weight: '800' },
             formatter: function(v) { return pctMode ? v + '%' : v; } } },
-        { type: 'line', label: pctMode ? '% Managers Engaging' : 'Managers Engaging',
-          data: mgrLineData, borderColor: '#9B59B6', backgroundColor: 'transparent',
-          borderWidth: 2, borderDash: [2, 3], tension: .3, pointRadius: 3,
-          pointStyle: 'rectRot', yAxisID: 'y1', order: 0,
+        // Manager series is single-digit and jumpy — the drawn line is a 3-week
+        // rolling average; the raw weekly values stay visible as diamonds (and
+        // carry the labels) so smoothing quiets the noise without hiding it.
+        { type: 'line', label: (pctMode ? '% Managers Engaging' : 'Managers Engaging') + ' (3-wk avg)',
+          data: mgrSmooth, borderColor: BRAND.VOID, backgroundColor: 'transparent',
+          borderWidth: 2, borderDash: [2, 3], tension: .3, pointRadius: 0,
+          yAxisID: 'y1', order: 0, datalabels: { display: false } },
+        { type: 'line', label: 'Managers weekly (raw)', showLine: false,
+          data: mgrLineData, borderColor: BRAND.VOID, backgroundColor: 'rgba(15,25,65,.45)',
+          pointRadius: 3, pointStyle: 'rectRot', yAxisID: 'y1', order: 0,
           datalabels: { display: function(ctx) { return ctx.dataIndex % labelEvery === 0; },
-            align: 'bottom', anchor: 'start', color: '#9B59B6',
+            align: 'bottom', anchor: 'start', color: BRAND.VOID,
             font: { size: 10, weight: '800' },
             formatter: function(v) { return pctMode ? v + '%' : v; } } },
-        { label: 'Self Comments', data: selfSeries, backgroundColor: '#2864E6',
+        // Bars sit in the muted support tier (Orbe wash + Ivory) per the brand
+        // 60/30/10 rule — comment volume is context, not the week's headline.
+        { label: 'Self Comments', data: selfSeries, backgroundColor: BRAND.ORBE_SOFT,
           stack: 'cmts', yAxisID: 'y', order: 1, datalabels: { display: false } },
-        { label: 'Manager Comments', data: mgrSeries, backgroundColor: '#F59E0B',
+        { label: 'Manager Comments', data: mgrSeries, backgroundColor: BRAND.IVORY,
           stack: 'cmts', yAxisID: 'y', order: 1, datalabels: { display: false } },
       ]
     },
@@ -1873,20 +2195,39 @@ function buildWeeklyComboChart_(emps) {
               min: 0, max: pctMode ? 100 : undefined }
       },
       plugins: {
-        legend:  { position: 'top', labels: { font: { size: 11 }, padding: 12 } },
+        legend:  { position: 'top', labels: { font: { size: 11 }, padding: 12,
+          filter: function(item) { return item.text !== 'Managers weekly (raw)'; } } },
         tooltip: { callbacks: {
-          title: function(ctx) { return 'Week ' + weeks[ctx[0].dataIndex]; },
+          // Composite time key: ISO week + week-of-quarter + fiscal quarter, so
+          // the point stays interpretable when this resurfaces at a QBR later.
+          title: function(ctx) {
+            var w = weeks[ctx[0].dataIndex], m = wkMeta[w];
+            return m ? w + ' · Wk ' + m.wkOfQtr + ' of ' + m.quarter : 'Week ' + w;
+          },
           afterTitle: function(ctx) {
-            if (!pctMode) return '';
-            var w = weeks[ctx[0].dataIndex], out = [];
-            if (denoms[w])    out.push('of ' + denoms[w] + ' rocketeers with goals that quarter');
-            if (mgrDenoms[w]) out.push('of ' + mgrDenoms[w] + ' managers that quarter');
+            var w = weeks[ctx[0].dataIndex], m = wkMeta[w], out = [];
+            if (m && m.partial) out.push('⚠ partial week — short calendar week or still in progress');
+            if (m && m.grace)   out.push('goal-setting window');
+            if (pctMode) {
+              if (denoms[w])    out.push('of ' + denoms[w] + ' rocketeers with goals that quarter');
+              if (mgrDenoms[w]) out.push('of ' + mgrDenoms[w] + ' managers that quarter');
+            }
             return out;
+          },
+          afterBody: function(ctx) {
+            var i = ctx[0].dataIndex, tot = (selfSeries[i] || 0) + (mgrSeries[i] || 0);
+            return tot ? 'Manager share of comments: ' + Math.round((mgrSeries[i] || 0) / tot * 100) + '%' : '';
           }
         } }
       }
     }
   });
+
+  var foot = document.getElementById('trend-footnote');
+  if (foot) foot.textContent = 'Engaging = ≥1 comment that week · cream band = goal-setting window (first ' +
+    ((S.data && S.data.quarterDates && S.data.quarterDates.graceGoalWeeks) || 4) + ' weeks of each quarter) · ' +
+    'peach band = partial week (quarter starts/ends mid-week, or week still in progress) · ' +
+    'manager line = 3-week rolling average, diamonds = raw weekly values · hover any point for exact figures & denominators';
 }
 
 // Rocketeer engagement % per week: engaged = weeklySelf[w] > 0; denominator =
@@ -1954,6 +2295,31 @@ function managerCntSeries_(emps, weeks, exceptionNorms) {
   });
 }
 
+// Coverage rate — the share of eligible rocketeers who RECEIVED ≥1 manager
+// comment that week. The activity metric above ("manager commented on ≥1 team
+// goal") counts a manager who reaches one of ten reports the same as one who
+// reaches all ten; coverage is the "is everyone getting feedback?" number, and
+// the two can diverge a lot. Denominator = filtered rocketeers with goals.
+function coveragePctSeries_(emps, weeks) {
+  var eligible = emps.filter(function(e) { return e.totalGoals > 0; });
+  return weeks.map(function(w) {
+    if (!eligible.length) return 0;
+    var n = eligible.filter(function(e) { return e.weeklyMgr && e.weeklyMgr[w] > 0; }).length;
+    return +(n / eligible.length * 100).toFixed(1);
+  });
+}
+
+function coverageCntSeries_(emps, weeks) {
+  var eligible = emps.filter(function(e) { return e.totalGoals > 0; });
+  return weeks.map(function(w) {
+    var seen = {}, n = 0;
+    eligible.forEach(function(e) {
+      if (e.weeklyMgr && e.weeklyMgr[w] > 0 && !seen[e.normName]) { seen[e.normName] = true; n++; }
+    });
+    return n;
+  });
+}
+
 function median_(arr) {
   if (!arr || !arr.length) return 0;
   var s = arr.slice().sort(function(a, b) { return a - b; });
@@ -1985,28 +2351,63 @@ function renderQoQPanels_(emps) {
   // engaging that week, % = share of that quarter's eligible population.
   var rockFn = pctMode ? rocketeerPctSeries_ : rocketeerCntSeries_;
   var mgrFn  = pctMode ? managerPctSeries_   : managerCntSeries_;
+  var covFn  = pctMode ? coveragePctSeries_  : coverageCntSeries_;
+
+  var eligibleN = emps.filter(function(e) { return e.totalGoals > 0; }).length;
+  var mgrsN     = Object.keys(mgrTeams_(emps, exceptions)).length;
+
+  // Excepted managers actually present in the current filtered selection — the
+  // full accounting, so 30% visibly means "9 of 30, 2 more excepted", and the
+  // exception list can never quietly shrink an inconvenient denominator.
+  var exceptSet = {};
+  exceptions.forEach(function(n) { exceptSet[n] = true; });
+  var exSeen = {}, exceptedN = 0;
+  emps.forEach(function(e) {
+    if (!(e.totalGoals > 0)) return;
+    var sup = normSupOf_(e);
+    if (sup && exceptSet[sup] && !exSeen[sup]) { exSeen[sup] = true; exceptedN++; }
+  });
 
   buildQoQPanel_('chart-qoq-rock', 'chart-qoq-rock-delta', 'qoq-rock-note',
     rockFn(emps, weeks),
     prev ? rockFn(prevEmps, prev.weeks) : null,
-    weeks, prev, '#2864E6', pctMode);
+    weeks, prev, BRAND.ORBE, pctMode, {
+      headlineId: 'qoq-rock-headline',
+      targetPct:  TREND_TARGETS.rock,
+      denom:      eligibleN,
+      noun:       'rocketeers',
+      accounting: eligibleN + ' rocketeers with goals under current filters',
+    });
 
   buildQoQPanel_('chart-qoq-mgr', 'chart-qoq-mgr-delta', 'qoq-mgr-note',
     mgrFn(emps, weeks, exceptions),
     prev ? mgrFn(prevEmps, prev.weeks, exceptions) : null,
-    weeks, prev, '#F59E0B', pctMode);
+    weeks, prev, BRAND.VOID, pctMode, {
+      headlineId: 'qoq-mgr-headline',
+      targetPct:  TREND_TARGETS.mgr,
+      denom:      mgrsN,
+      noun:       'managers',
+      accounting: mgrsN + ' of ' + (mgrsN + exceptedN) + ' managers eligible' +
+                  (exceptedN ? ' · ' + exceptedN + ' excepted (excluded from numerator and denominator)' : ''),
+      extra: { label: 'Coverage — % rocketeers reached', data: covFn(emps, weeks), color: BRAND.ORBE },
+    });
 }
 
 /**
  * One QoQ panel: current-quarter bold line over the previous quarter's gray
  * shadow area, aligned by week-of-quarter index, with a red band up to the
- * shadow's median (the behavioral threshold) and a green/red delta bar strip
- * underneath. shadowSeries === null → current line only + explanatory note.
- * pctMode picks the unit: true = 0–100% axis, false = unique-people counts
+ * shadow's median and a green/red delta bar strip underneath. A Royal dashed
+ * target line (opts.targetPct) draws even when no shadow exists, so the
+ * current quarter is measured against something from day one; shadowSeries
+ * === null → current line + target + explanatory note.
+ * pctMode picks the unit: true = 0–100% axis, false = unique-people counts.
+ * opts: { headlineId, targetPct, denom, noun, accounting, extra? } — extra is
+ * an optional second series (the manager panel's coverage line, % mode only).
  * (axis auto-scales); series are passed in already computed in that unit.
  */
-function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curWeeks, prev, color, pctMode) {
+function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curWeeks, prev, color, pctMode, opts) {
   var u = pctMode ? '%' : '';
+  opts = opts || {};
   destroyChart(canvasId);
   destroyChart(deltaId);
   var canvas = document.getElementById(canvasId);
@@ -2020,6 +2421,50 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
   var pad_ = function(arr) { var a = (arr || []).slice(); while (a.length < n) a.push(null); return a; };
 
   var threshold = shadowSeries ? median_(shadowSeries) : null;
+
+  // Behavioral target as a flat reference line — in count mode the % target is
+  // converted through the current eligible denominator so the line stays honest.
+  var targetVal = opts.targetPct != null
+    ? (pctMode ? opts.targetPct : Math.round(opts.targetPct / 100 * (opts.denom || 0)))
+    : null;
+  var targetPlugin = {
+    id: 'qoqTarget_' + canvasId,
+    afterDatasetsDraw: function(chart) {
+      if (targetVal == null) return;
+      var yS = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
+      var y = yS.getPixelForValue(targetVal);
+      if (y < area.top || y > area.bottom) return;
+      ctx.save();
+      ctx.strokeStyle = BRAND.ROYAL; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(area.left, y); ctx.lineTo(area.right, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = BRAND.ROYAL; ctx.font = '800 9px Roboto, sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('target ' + targetVal + u, area.right - 4, y - 4);
+      ctx.restore();
+    }
+  };
+
+  // Headline stat — lead with the number, not the chart: latest week's value
+  // over the full accounted denominator, measured against the target.
+  var hlEl = document.getElementById(opts.headlineId || '');
+  if (hlEl) {
+    var li = curSeries.length - 1;
+    var latest = li >= 0 ? curSeries[li] : null;
+    if (latest == null) { hlEl.innerHTML = ''; }
+    else {
+      var latestPct = pctMode ? latest : (opts.denom ? +(latest / opts.denom * 100).toFixed(0) : null);
+      var onTarget  = latestPct != null && opts.targetPct != null && latestPct >= opts.targetPct;
+      hlEl.innerHTML =
+        '<span style="display:inline-flex;align-items:baseline;gap:6px">' +
+        '<span class="th-num" style="color:' + color + '">' + latest + u + '</span>' +
+        '<span class="th-label">of ' + (opts.denom || 0) + ' ' + esc(opts.noun || '') +
+        (curWeeks[li] ? ' · ' + esc(curWeeks[li]) : '') + '</span></span>' +
+        (latestPct != null && opts.targetPct != null
+          ? '<span class="th-label" style="font-weight:800;color:' + (onTarget ? 'var(--success)' : BRAND.JUNE_TEXT) + '">' +
+            (onTarget ? '▲ at/above' : '▼ below') + ' the ' + opts.targetPct + '% target</span>'
+          : '');
+    }
+  }
 
   // Chart.js has no built-in horizontal band; a tiny inline plugin shades
   // 0 → threshold before datasets draw.
@@ -2052,10 +2497,19 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
     datalabels: { display: true, align: 'top', anchor: 'end', color: color,
       font: { size: 9, weight: '800' },
       formatter: function(v) { return v == null ? '' : v + u; } } });
+  // Coverage rides only in % mode — its denominator is rocketeers, so plotting
+  // its raw count on the managers count axis would re-create the mixed-scale
+  // problem the % default fixes.
+  if (opts.extra && pctMode) {
+    datasets.push({ label: opts.extra.label, data: pad_(opts.extra.data),
+      borderColor: opts.extra.color, backgroundColor: 'transparent',
+      borderWidth: 1.5, borderDash: [5, 3], tension: .3, pointRadius: 0,
+      datalabels: { display: false } });
+  }
 
   S.charts[canvasId] = new Chart(canvas, {
     type: 'line',
-    plugins: [ChartDataLabels, bandPlugin],
+    plugins: [ChartDataLabels, bandPlugin, targetPlugin],
     data: { labels: labels, datasets: datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -2100,9 +2554,17 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
   }
 
   if (note) {
-    note.textContent = shadowSeries
-      ? 'Red band = ' + prev.quarter + ' median (' + threshold + u + ') under current filters · delta bars = current vs same week last quarter'
-      : 'No previous quarter data — shadow and threshold unavailable.';
+    var bits = [];
+    if (opts.accounting) bits.push(opts.accounting);
+    if (targetVal != null) bits.push('royal dashed line = ' + opts.targetPct + '% target' +
+      (pctMode ? '' : ' (' + targetVal + ' people)'));
+    bits.push(shadowSeries
+      ? 'red band = ' + prev.quarter + ' median (' + threshold + u + ') under current filters · delta bars = current vs same week last quarter'
+      : 'no previous-quarter data yet — the shadow comparison appears automatically once a prior quarter exists');
+    if (opts.extra) bits.push(pctMode
+      ? 'thin dashed line = coverage: % of rocketeers who received ≥1 manager comment that week'
+      : 'coverage line shown in % mode');
+    note.textContent = bits.join(' · ');
   }
 }
 
@@ -2182,11 +2644,6 @@ function kpiCard(label, value, icon, color, note) {
     '<div class="kpi-icon" style="background:' + color + '22">' + icon + '</div></div>';
 }
 
-function row2(label, valueHtml) {
-  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">' +
-    '<span style="color:var(--slate)">' + esc(label) + '</span><span>' + valueHtml + '</span></div>';
-}
-
 function tierColor_(s) {
   return s === 'On Target' ? '#00A86B' : s === 'Watch' ? '#F59E0B' : '#EF4444';
 }
@@ -2229,12 +2686,21 @@ function toggleTeamBreakdown_() {
 // Column specs for the two roster modes — shared row-render/grouping logic lives in
 // renderRosterGroups_(); only the column list and each row's `render()` differ.
 var TEAM_COLUMNS_THIS_QUARTER = [
-  { label: 'Rocketeer',  render: function(r) { return esc(r.name) + terminatedTag_(r); } },
-  { label: 'Department', render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
-  { label: 'Goals',      render: function(r) { return r.totalGoals; }, align: 'center' },
-  { label: 'Self-Cmts',  render: function(r) { return r.selfComments; }, align: 'center', css: 'color:#9B59B6;font-weight:700' },
-  { label: 'Mgr-Cmts',   render: function(r) { return r.managerComments; }, align: 'center', css: 'color:var(--slate)' },
-  { label: 'Pace &amp; Status', render: function(r) { return paceBadge_(r.paceStatus); }, align: 'center' },
+  { label: 'Rocketeer',   render: function(r) { return esc(r.name) + terminatedTag_(r); } },
+  { label: 'Department',  render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
+  { label: 'Total Goals', render: function(r) { return r.totalGoals; }, align: 'center' },
+  { label: 'Completed',   render: function(r) { return r.goalsCompleted; }, align: 'center', css: 'color:var(--success);font-weight:700' },
+  { label: 'Self-Cmts',   render: function(r) { return r.selfComments; }, align: 'center', css: 'color:#9B59B6;font-weight:700' },
+  { label: 'Mgr-Cmts',    render: function(r) { return r.managerComments; }, align: 'center', css: 'color:var(--slate)' },
+  // Statistical view — same RPI/STF/Signals read as the Needing Support table,
+  // via the shared badge builders, so both tables can never disagree.
+  { label: 'RPI', align: 'center',
+    render: function(r) { return rpiBadge_(r); } },
+  { label: 'STF', align: 'center',
+    render: function(r) { return stfBadge_(r); } },
+  { label: 'Signals',
+    render: function(r) { return signalsBadges_(r, !!(S.data && S.data.isGoalCreationGrace)) || '&mdash;'; },
+    css: 'white-space:nowrap' },
 ];
 var TEAM_COLUMNS_ALL_TIME = [
   { label: 'Rocketeer',    render: function(r) { return esc(r.name); } },
@@ -2245,29 +2711,30 @@ var TEAM_COLUMNS_ALL_TIME = [
   { label: 'Last Qtr',     render: function(r) { return esc(r.lastQuarter || '—'); }, css: 'color:var(--slate);font-size:11px' },
 ];
 
-function paceBadge_(status) {
-  var cls = status === 'Silent' ? 'tier-nogoals' : status === 'Below Pace' ? 'tier-watch'
-          : status === 'No Goals' ? 'tier-nogoals' : 'tier-ontarget';
-  return '<span class="' + cls + '">' + esc(status) + '</span>';
-}
-
-// Builds this quarter's roster grouped by supervisor — adapts the pace/status concept
-// from the old renderEngagerList_ (Silent / Below Pace / At Pace), but over every
-// filtered employee (not just those with goals>0), so people with zero goals still show
+// Builds this quarter's roster grouped by supervisor — over every filtered
+// employee (not just those with goals>0), so people with zero goals still show
 // up in their manager's group instead of silently vanishing from the roster.
+// Pace tiers were dropped from this table (2026-07-06) — the statistical
+// columns (goals/completed/comments/RPI/STF/Signals) carry the read now.
 function buildThisQuarterGroups_(emps) {
-  var eng       = computeEngagementClient_(emps);
-  var threshold = eng.paceThreshold || 0;
   var byMgr = {};
   emps.forEach(function(e) {
     var sup = e.supervisor || '(No Supervisor)';
     if (!byMgr[sup]) byMgr[sup] = { supervisor: sup, rocketeers: [] };
     var s = e.totalSelfComments || 0;
-    var paceStatus = e.totalGoals === 0 ? 'No Goals' : (s === 0 ? 'Silent' : s < threshold ? 'Below Pace' : 'At Pace');
     byMgr[sup].rocketeers.push({
       name: e.name, normName: e.normName, department: e.department || '', jobTitle: e.jobTitle || '',
       totalGoals: e.totalGoals, selfComments: s, managerComments: e.totalManagerComments || 0,
-      paceStatus: paceStatus, complianceStatus: e.complianceStatus || '', terminated: e.terminated,
+      complianceStatus: e.complianceStatus || '', terminated: e.terminated,
+      // carried through for the RPI / STF / Signals statistical columns
+      isNewHire: !!e.isNewHire, hireDate: e.hireDate || '',
+      goalsCompleted: e.goalsCompleted || 0, commentWeeks: e.commentWeeks || 0,
+      rpiEligible: !!e.rpiEligible, stfEligible: !!e.stfEligible,
+      rpiScore: e.rpiScore || 0, rpiMax: e.rpiMax || 6, rpiBreakdown: e.rpiBreakdown || null,
+      stfGoalsCompleted: e.stfGoalsCompleted || 0,
+      stfGoalsWithSufficientComments: e.stfGoalsWithSufficientComments || 0,
+      hasEngagementConcern: !!e.hasEngagementConcern,
+      goalsStuckInPlanned: e.goalsStuckInPlanned || 0,
     });
   });
   return Object.keys(byMgr).sort().map(function(k) {
@@ -2323,7 +2790,7 @@ function renderTeamRoster_() {
     // selected quarter would come back empty for anyone whose only activity predates it.
     renderRosterGroups_(container, atGroups, TEAM_COLUMNS_ALL_TIME, S.teamSearchQuery, 'ALL');
   } else {
-    if (sub) sub.textContent = 'Pace &amp; status this quarter · grouped by manager · respects the filter bar above';
+    if (sub) sub.textContent = 'Goals, completions & comments this quarter + RPI score (0–6, hover for criteria) / STF eligibility & signals per person · grouped by manager · respects the filter bar above';
     var tqGroups = buildThisQuarterGroups_(getFiltered());
     renderRosterGroups_(container, tqGroups, TEAM_COLUMNS_THIS_QUARTER, S.teamSearchQuery, null);
   }
@@ -2426,12 +2893,23 @@ function toggleIndividualDrill_(row, normName, quarterOverride) {
   // quarterOverride is 'ALL' when opened from the All-Time roster (quarter-independent
   // data) — without this, drilling into anyone whose only activity predates the
   // currently-selected quarter always came back empty.
+  var drillQuarter = quarterOverride || S.data.quarter;
+
+  // Re-opening a person already fetched this session renders from the memo —
+  // no round trip. Only ok payloads are memoized (denials/errors stay live),
+  // and refreshData() clears the memo so Refresh still re-reads the sheets.
+  var memoKey = normName + '|' + drillQuarter;
+  if (S.drillCache[memoKey]) { renderIndividualDrillContent_(td, S.drillCache[memoKey]); return; }
+
   google.script.run
-    .withSuccessHandler(function(data) { renderIndividualDrillContent_(td, data); })
+    .withSuccessHandler(function(data) {
+      if (data && data.ok) S.drillCache[memoKey] = data;
+      renderIndividualDrillContent_(td, data);
+    })
     .withFailureHandler(function(err) {
       td.innerHTML = '<div class="empty-state" style="padding:16px">⚠ <p>' + esc(err.message || 'Failed to load.') + '</p></div>';
     })
-    .getRocketeerGoalDetail(quarterOverride || S.data.quarter, normName);
+    .getRocketeerGoalDetail(drillQuarter, normName);
 }
 
 function closeAllDrillRows_() {
@@ -2696,11 +3174,11 @@ function exportAtRiskCSV() {
   var noteMap = buildNoteMap_();
   var qtrWks  = (S.data && S.data.totalQtrWeeks) || 1;
   var rows = [['Rocketeer','Terminated','Supervisor','Department','Location','Job Family','Goals','Completed','Status',
-               'Comment Weeks','Comment Weeks Required','RPI Eligible','STF Eligible','HR Reviewed','Note']];
+               'Comment Weeks','Comment Weeks Required','RPI Score','RPI Signal','STF Eligible','HR Reviewed','Note']];
   emps.forEach(function(e) {
     var n = noteMap[e.normName];
     rows.push([e.name, e.terminated?'Yes':'No', e.supervisor, e.department, e.location, e.jobFamily, e.totalGoals, e.goalsCompleted,
-               e.complianceStatus, e.commentWeeks, qtrWks, e.rpiEligible?'Yes':'No', e.stfEligible?'Yes':'No',
+               e.complianceStatus, e.commentWeeks, qtrWks, (e.rpiScore||0)+'/'+(e.rpiMax||6), e.rpiEligible?'Yes':'No', e.stfEligible?'Yes':'No',
                n?'Yes':'No', n?n.note:'']);
   });
   downloadCSV(rows, 'at-risk-' + (S.data ? S.data.quarter : '') + '.csv');
