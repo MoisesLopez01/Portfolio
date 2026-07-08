@@ -130,6 +130,20 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .col-3-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:1100px){.col-3-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.col-row,.col-3-grid{grid-template-columns:1fr}}
+/* Ultra-wide: grow instead of stranding the dashboard in a 1400px strip.
+   body{zoom} scales the px-based type ramp (9–12px base) and Chart.js canvases
+   together; media queries evaluate against the real viewport, so the tiers
+   don't feed back into each other. Re-verify per-section PNG exports at zoom —
+   html2canvas measures the zoomed layout. */
+@media(min-width:1800px){
+  main{max-width:1720px}
+  body{zoom:1.12}
+}
+@media(min-width:2400px){
+  main{max-width:2100px}
+  body{zoom:1.25}
+  .col-3-grid{grid-template-columns:repeat(4,1fr)}
+}
 
 /* Data Table */
 .tbl-wrap{overflow-x:auto}
@@ -745,6 +759,20 @@ var BRAND = {
   JUNE_TEXT:  '#B4543C',               // June-derived tone dark enough for text
 };
 
+// Semantic status palette — the single JS source for chart datasets, kpiCard
+// and other built-HTML color args. kpiCard needs raw hex (it derives a 13%
+// tint by appending '22'), so these stay hex; each mirrors a :root CSS var,
+// and inline-style strings reference the var() form directly instead.
+var STATUS_C = {
+  good:     '#00A86B',  // = var(--success)
+  watch:    '#F59E0B',  // = var(--watch-color)
+  risk:     '#EF4444',  // = var(--atrisk-color)
+  info:     '#058CDC',  // = var(--orbe) — In Progress
+  planned:  '#94A3B8',
+  canceled: '#CBD5E1',
+  accent:   '#2864E6',  // = var(--royal) — replaces the off-palette #9B59B6
+};
+
 // Behavioral engagement targets (annotation layer): % of eligible rocketeers
 // self-commenting / % of managers commenting on ≥1 team goal in a week.
 var TREND_TARGETS = { rock: 70, mgr: 40 };
@@ -1060,11 +1088,11 @@ function renderOverview(emps) {
   document.getElementById('kpi-overview').innerHTML =
     kpiCard('Total Rocketeers',    total,                        '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
     kpiCard('Compliance Rate',     rate + '%',                   '🎯', '#058CDC', '10+ goals = On Target') +
-    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', '#F59E0B', 'One or two goals from full compliance · all rocketeers, incl. new hires') +
-    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk · all rocketeers, incl. new hires') +
+    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', STATUS_C.watch, 'One or two goals from full compliance · all rocketeers, incl. new hires') +
+    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  STATUS_C.risk, 'Below threshold — STF and RPI at risk · all rocketeers, incl. new hires') +
     kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%', '💬', '#2864E6', '≥1 self-comment · base: ' + (eng.activeCount || 0) + ' of ' + withGoals + ' with goals (' + (total - withGoals) + ' with none excluded)') +
-    kpiCard('Silent',              eng.silentCount    || 0,      '🔇', '#9B59B6', '0 self-comments · has goals') +
-    kpiCard('Below Pace',          eng.belowPaceCount || 0,      '🐢', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
+    kpiCard('Silent',              eng.silentCount    || 0,      '🔇', STATUS_C.accent, '0 self-comments · has goals') +
+    kpiCard('Below Pace',          eng.belowPaceCount || 0,      '🐢', STATUS_C.watch, '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
     kpiCard('Avg Goals / Person',  avgGoals,                     '📊', '#64748B', 'Average across filtered selection');
 
   // Goal Status Distribution
@@ -1099,13 +1127,13 @@ function renderSupport(emps) {
   var reviewed     = pool.filter(function(e){ return !!noteMap[e.normName]; }).length;
 
   document.getElementById('kpi-needs-support').innerHTML =
-    kpiCard('Needing Support',  pool.length,  '🚨', '#EF4444', 'Anyone with a compliance or engagement concern (deduplicated, new hires excluded)') +
-    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  '#EF4444', 'Below goal threshold — STF and RPI at risk · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's') + ' (Overview counts them)') +
-    kpiCard('Watch (8–9)',      watch,        '⏳', '#F59E0B', 'One or two goals from full compliance · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's')) +
-    kpiCard('Not Engaging',     notEngaging,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
+    kpiCard('Needing Support',  pool.length,  '🚨', STATUS_C.risk, 'Anyone with a compliance or engagement concern (deduplicated, new hires excluded)') +
+    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  STATUS_C.risk, 'Below goal threshold — STF and RPI at risk · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's') + ' (Overview counts them)') +
+    kpiCard('Watch (8–9)',      watch,        '⏳', STATUS_C.watch, 'One or two goals from full compliance · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's')) +
+    kpiCard('Not Engaging',     notEngaging,  '💬', STATUS_C.accent, 'Have goals but zero self-comments this quarter') +
     kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments') +
     kpiCard('New Hires',        newHires,     '🌱', '#058CDC', 'Hired after quarter start — goals need a full quarter, so they are flagged in the rosters, not listed here') +
-    kpiCard('HR Reviewed',      reviewed + '/' + pool.length, '📝', '#00A86B', 'Support-pool members with an HR follow-up note');
+    kpiCard('HR Reviewed',      reviewed + '/' + pool.length, '📝', STATUS_C.good, 'Support-pool members with an HR follow-up note');
 
   renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
 
@@ -1349,7 +1377,7 @@ function renderTeamEngagement_(eng) {
   }
   var html = '<div style="display:flex;flex-direction:column;gap:12px">';
   eng.teamRates.forEach(function(t) {
-    var color = t.rate >= 75 ? '#00A86B' : t.rate >= 50 ? '#F59E0B' : '#EF4444';
+    var color = t.rate >= 75 ? STATUS_C.good : t.rate >= 50 ? STATUS_C.watch : STATUS_C.risk;
     var pct   = Math.min(100, t.rate).toFixed(0);
     html += '<div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">';
@@ -1656,8 +1684,8 @@ function renderHRTracker() {
 
   document.getElementById('kpi-tracker').innerHTML =
     kpiCard('Notes Logged',           qNotes.length, '📝', '#058CDC', 'HR follow-ups logged this quarter') +
-    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'This quarter\'s cases whose latest note is closed') +
-    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'This quarter\'s cases with a pending conversation') +
+    kpiCard('Reviewed / Resolved',    reviewed,      '✅', STATUS_C.good, 'This quarter\'s cases whose latest note is closed') +
+    kpiCard('Needs Follow-up',        followUp,      '⏳', STATUS_C.watch, 'This quarter\'s cases with a pending conversation') +
     kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Compliance status improved since the latest note');
 
   var filterVal = document.getElementById('tracker-filter').value;
@@ -1832,11 +1860,11 @@ function buildGoalStatusChart(canvasId, gsd) {
   if (!canvas) return;
   var total = gsd.total || 1;
   var items = [
-    { label:'Completed',     count: gsd.completed,    color:'#00A86B' },
-    { label:'In Progress',   count: gsd.inProgress,   color:'#058CDC' },
-    { label:'Planned',       count: gsd.planned,      color:'#94A3B8' },
-    { label:'Not Completed', count: gsd.notCompleted, color:'#EF4444' },
-    { label:'Canceled',      count: gsd.canceled,     color:'#CBD5E1' },
+    { label:'Completed',     count: gsd.completed,    color:STATUS_C.good },
+    { label:'In Progress',   count: gsd.inProgress,   color:STATUS_C.info },
+    { label:'Planned',       count: gsd.planned,      color:STATUS_C.planned },
+    { label:'Not Completed', count: gsd.notCompleted, color:STATUS_C.risk },
+    { label:'Canceled',      count: gsd.canceled,     color:STATUS_C.canceled },
   ].filter(function(it){ return it.count > 0; });
 
   // Center-text plugin: shows total goals in the donut hole
@@ -1896,11 +1924,11 @@ function buildGoalStatusChart(canvasId, gsd) {
 function buildGoalStatusTable_(gsd) {
   var total = gsd.total || 1;
   var rows  = [
-    { label:'Completed',     count:gsd.completed,    ppl:gsd.pplCompleted,    color:'#00A86B' },
-    { label:'In Progress',   count:gsd.inProgress,   ppl:gsd.pplInProgress,   color:'#058CDC' },
-    { label:'Planned',       count:gsd.planned,      ppl:gsd.pplPlanned,      color:'#94A3B8' },
-    { label:'Not Completed', count:gsd.notCompleted, ppl:gsd.pplNotCompleted, color:'#EF4444' },
-    { label:'Canceled',      count:gsd.canceled,     ppl:gsd.pplCanceled,     color:'#CBD5E1' },
+    { label:'Completed',     count:gsd.completed,    ppl:gsd.pplCompleted,    color:STATUS_C.good },
+    { label:'In Progress',   count:gsd.inProgress,   ppl:gsd.pplInProgress,   color:STATUS_C.info },
+    { label:'Planned',       count:gsd.planned,      ppl:gsd.pplPlanned,      color:STATUS_C.planned },
+    { label:'Not Completed', count:gsd.notCompleted, ppl:gsd.pplNotCompleted, color:STATUS_C.risk },
+    { label:'Canceled',      count:gsd.canceled,     ppl:gsd.pplCanceled,     color:STATUS_C.canceled },
   ].filter(function(r){ return r.count > 0; });
 
   var html = '<table class="data-table" style="font-size:11px"><thead><tr>' +
@@ -1930,7 +1958,7 @@ function buildDonut(canvasId, onTarget, watch, atRisk) {
       labels: ['On Target', 'Watch (8–9)', 'At Risk (<8)'],
       datasets: [{
         data: [onTarget, watch, atRisk],
-        backgroundColor: ['#00A86B', '#F59E0B', '#EF4444'],
+        backgroundColor: [STATUS_C.good, STATUS_C.watch, STATUS_C.risk],
         borderWidth: 2, borderColor: '#fff', hoverOffset: 6
       }]
     },
@@ -1965,7 +1993,7 @@ function buildBarChart(canvasId, groups, title) {
         label:'On Target',
         data:  sorted.map(function(g){ return g.complianceRate; }),
         backgroundColor: sorted.map(function(g){
-          return g.complianceRate >= 80 ? '#00A86B' : g.complianceRate >= 60 ? '#F59E0B' : '#EF4444';
+          return g.complianceRate >= 80 ? STATUS_C.good : g.complianceRate >= 60 ? STATUS_C.watch : STATUS_C.risk;
         }),
         borderRadius: 4,
         datalabels:{
@@ -2693,7 +2721,7 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
     for (var j = 0; j < n; j++) {
       if (j < span) {
         var d = +(curSeries[j] - shadowSeries[j]).toFixed(1);
-        deltas.push(d); dColors.push(d >= 0 ? '#00A86B' : '#EF4444');
+        deltas.push(d); dColors.push(d >= 0 ? STATUS_C.good : STATUS_C.risk);
       } else { deltas.push(null); dColors.push('#CBD5E1'); }
     }
     S.charts[deltaId] = new Chart(deltaCanvas, {
@@ -2772,9 +2800,9 @@ function buildSummaryTable(groups, colName) {
     html += '<tr>';
     html += '<td style="font-weight:600">' + esc(g.name) + '</td>';
     html += '<td style="text-align:center">' + g.total + '</td>';
-    html += '<td style="text-align:center;color:#00A86B;font-weight:700">' + g.onTarget + '</td>';
-    html += '<td style="text-align:center;color:#F59E0B;font-weight:700">' + (g.watch||0) + '</td>';
-    html += '<td style="text-align:center;color:#EF4444;font-weight:700">' + (g.atRisk||0) + '</td>';
+    html += '<td style="text-align:center;color:var(--success);font-weight:700">' + g.onTarget + '</td>';
+    html += '<td style="text-align:center;color:var(--watch-color);font-weight:700">' + (g.watch||0) + '</td>';
+    html += '<td style="text-align:center;color:var(--atrisk-color);font-weight:700">' + (g.atRisk||0) + '</td>';
     html += '<td><span class="rate-chip ' + cls + '">' + g.complianceRate.toFixed(1) + '%</span></td>';
     html += '<td style="text-align:center">' + g.avgGoals + '</td>';
     html += '</tr>';
@@ -2801,7 +2829,7 @@ function kpiCard(label, value, icon, color, note) {
 }
 
 function tierColor_(s) {
-  return s === 'On Target' ? '#00A86B' : s === 'Watch' ? '#F59E0B' : '#EF4444';
+  return s === 'On Target' ? STATUS_C.good : s === 'Watch' ? STATUS_C.watch : STATUS_C.risk;
 }
 
 function statusRank_(s) {
@@ -2846,7 +2874,7 @@ var TEAM_COLUMNS_THIS_QUARTER = [
   { label: 'Department',  render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
   { label: 'Total Goals', render: function(r) { return r.totalGoals; }, align: 'center' },
   { label: 'Completed',   render: function(r) { return r.goalsCompleted; }, align: 'center', css: 'color:var(--success);font-weight:700' },
-  { label: 'Self-Cmts',   render: function(r) { return r.selfComments; }, align: 'center', css: 'color:#9B59B6;font-weight:700' },
+  { label: 'Self-Cmts',   render: function(r) { return r.selfComments; }, align: 'center', css: 'color:var(--royal);font-weight:700' },
   { label: 'Mgr-Cmts',    render: function(r) { return r.managerComments; }, align: 'center', css: 'color:var(--slate)' },
   // Statistical view — same RPI/STF/Signals read as the Needing Support table,
   // via the shared badge builders, so both tables can never disagree.
@@ -3088,12 +3116,12 @@ function openManagerTeam_(managerName) {
 // Distribution chart on Overview.
 function goalStatusBucket_(status) {
   var s = String(status || '');
-  if (/not.?complet/i.test(s)) return { label: 'Not Completed', color: '#EF4444' };
-  if (/complet/i.test(s))      return { label: 'Completed',     color: '#00A86B' };
-  if (/in.?progress/i.test(s)) return { label: 'In Progress',   color: '#058CDC' };
-  if (/planned/i.test(s))      return { label: 'Planned',       color: '#94A3B8' };
-  if (/cancel/i.test(s))       return { label: 'Canceled',      color: '#CBD5E1' };
-  return { label: s || 'Unknown', color: '#94A3B8' };
+  if (/not.?complet/i.test(s)) return { label: 'Not Completed', color: STATUS_C.risk };
+  if (/complet/i.test(s))      return { label: 'Completed',     color: STATUS_C.good };
+  if (/in.?progress/i.test(s)) return { label: 'In Progress',   color: STATUS_C.info };
+  if (/planned/i.test(s))      return { label: 'Planned',       color: STATUS_C.planned };
+  if (/cancel/i.test(s))       return { label: 'Canceled',      color: STATUS_C.canceled };
+  return { label: s || 'Unknown', color: STATUS_C.planned };
 }
 
 // Client twin of the server's dateToISOWeek_ — same "YYYY.WNN" labels.
@@ -3138,7 +3166,7 @@ function buildCadenceStrip_(g, isAllTime) {
     if (selfByWk[w]) {
       html += '<span class="cv-dot" style="background:#2864E6" title="' + esc(w) + ': ' + selfByWk[w] + ' self comment' + (selfByWk[w] === 1 ? '' : 's') + '">' + selfByWk[w] + '</span>';
     } else if (mgrByWk[w]) {
-      html += '<span class="cv-dot" style="background:#F59E0B" title="' + esc(w) + ': manager only">M</span>';
+      html += '<span class="cv-dot" style="background:var(--watch-color)" title="' + esc(w) + ': manager only">M</span>';
     } else {
       html += '<span class="cv-dot" style="background:#FEE2E2;color:#B91C1C" title="' + esc(w) + ': silent">·</span>';
     }
