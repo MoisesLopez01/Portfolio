@@ -2234,6 +2234,16 @@ function periodWeekUniverse_() {
 function periodBucketsFor_(granularity) {
   return buildPeriodBuckets(periodWeekUniverse_(), granularity, DATA && DATA.meta && DATA.meta.currentWeekLabel);
 }
+// Buckets restricted to periods the per-employee data (employees[].weeks, bounded
+// by DATA.q4Weeks) can actually answer for — the Brief, the Radar, and their
+// pickers use this; Trends charts keep the full trackedHistory universe.
+function periodBucketsForEmp_(granularity) {
+  var q4Set = {};
+  (DATA && DATA.q4Weeks || []).forEach(function(w) { q4Set[w.label] = 1; });
+  return periodBucketsFor_(granularity).filter(function(b) {
+    return b.weekLabels.some(function(l) { return q4Set[l]; });
+  });
+}
 // Display label incl. in-progress marker — single source for subtitles/options.
 function periodDisplayLabel_(b) {
   return b.label + (b.containsCurrent ? ' (in progress)' : '');
@@ -2323,6 +2333,10 @@ function computePeriodStats_(emps, bucket) {
     ? bucket.closedWeekLabels
     : bucket.weekLabels.filter(function(l) { return l !== (DATA.meta && DATA.meta.currentWeekLabel); });
   if (!closed.length) closed = bucket.weekLabels.slice();
+  var _any = closed.some(function(lbl) {
+    return emps.some(function(e) { return e.weeks && e.weeks[lbl]; });
+  });
+  if (!_any) return null;
   var endLabel = closed[closed.length - 1];
   var n = emps.length;
   var weekly = closed.map(function(lbl) {
@@ -2864,7 +2878,7 @@ function populateWeekSelect_(selId, forceWeek) {
     });
     return;
   }
-  var buckets = periodBucketsFor_(g);
+  var buckets = periodBucketsForEmp_(g);
   var closed  = buckets.filter(function(b) { return !b.containsCurrent; });
   var defaultKey = STATE.selectedPeriod && buckets.some(function(b) { return b.key === STATE.selectedPeriod; })
     ? STATE.selectedPeriod
@@ -3392,7 +3406,8 @@ function generatePeriodBrief(bucket, prevBucket, allBuckets) {
   // Goals — period-end standing (point-in-time, not additive)
   if (cur.goalsPct !== null) {
     var gCmp = prev && prev.goalsPct !== null ? vs(cur.goalsPct, prev.goalsPct, '%', true).replace(' in ' + (prevBucket && prevBucket.label), ' at end of ' + (prevBucket && prevBucket.label)) : '';
-    facts.push('Goals compliance (' + (DATA.meta.goalsQuarter || '') + '): ' + cur.goalsPct + '% (' + cur.goalsCompliant + '/' + cur.goalsTotal + ') as of ' + cur.endWeekLabel + ' — period-end standing');
+    var goalsQTag = g === 'quarter' ? bucket.key : (pFiscalQuarterKey(cur.endWeekLabel) || DATA.meta.goalsQuarter || '');
+    facts.push('Goals compliance (' + goalsQTag + '): ' + cur.goalsPct + '% (' + cur.goalsCompliant + '/' + cur.goalsTotal + ') as of ' + cur.endWeekLabel + ' — period-end standing');
     if (cur.goalsPct >= 80)      highlights.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp);
     else if (cur.goalsPct >= 60) notes.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — keep the documentation cadence');
     else                         concerns.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — structured follow-up needed');
@@ -4026,14 +4041,18 @@ function renderExecBriefTab_() {
   var g = STATE.periodGranularity;
 
   if (g !== 'week') {
-    var buckets = periodBucketsFor_(g);
+    var buckets = periodBucketsForEmp_(g);
     if (!buckets.length) { el.innerHTML = '<p style="color:var(--muted);font-size:12px;padding:12px">No period data available yet.</p>'; return; }
-    var sel    = document.getElementById("ebWeekSelect");
-    var selKey = sel && sel.value ? sel.value : null;
-    var bIdx   = Math.max(0, buckets.findIndex(function(b) { return b.key === selKey; }));
-    if (selKey === null) {  // default: most recent closed bucket
-      for (var i = buckets.length - 1; i >= 0; i--) { if (!buckets[i].containsCurrent) { bIdx = i; break; } }
+    var sel = document.getElementById("ebWeekSelect");
+    if (sel && STATE.selectedPeriod && sel.value !== STATE.selectedPeriod) {
+      for (var oi = 0; oi < sel.options.length; oi++) {
+        if (sel.options[oi].value === STATE.selectedPeriod) { sel.value = STATE.selectedPeriod; break; }
+      }
     }
+    var selKey = sel && sel.value ? sel.value : null;
+    var bIdx   = buckets.findIndex(function(b) { return b.key === selKey; });
+    if (bIdx === -1) { for (var i = buckets.length - 1; i >= 0; i--) { if (!buckets[i].containsCurrent) { bIdx = i; break; } } }
+    if (bIdx === -1) bIdx = buckets.length - 1;
     var bucket = buckets[bIdx];
     var prevB  = bIdx > 0 ? buckets[bIdx - 1] : null;
     var dispLabel = periodDisplayLabel_(bucket);
@@ -6440,13 +6459,20 @@ function renderRadarTab(filtered) {
   // q4Weeks now spans two quarters — bound WEEK mode to the current quarter window
   // (pre-widening behavior); period modes use the full two-quarter span via buckets.
   var weeks      = (DATA.q4Weeks || DATA.weeks).filter(function(w) { return weekInQ4Range_(w.year, w.isoWeek); });
-  var selValue   = (document.getElementById("radarWeekSelect") || {}).value || null;
+  var radarSel   = document.getElementById("radarWeekSelect");
+  var selValue   = (radarSel || {}).value || null;
   var groupBy    = (document.getElementById("radarGroupBy")    || {}).value || "all";
   var isCrewMode = ((document.getElementById("fbMemberType")   || {}).value || "fte") === "crew";
 
   var bucket = null, prevBucket = null, buckets = null, refWeekLabel = selValue;
   if (g !== 'week') {
-    buckets = periodBucketsFor_(g);
+    if (radarSel && STATE.selectedPeriod && radarSel.value !== STATE.selectedPeriod) {
+      for (var oi = 0; oi < radarSel.options.length; oi++) {
+        if (radarSel.options[oi].value === STATE.selectedPeriod) { radarSel.value = STATE.selectedPeriod; break; }
+      }
+    }
+    selValue = (radarSel || {}).value || null;
+    buckets = periodBucketsForEmp_(g);
     var bIdx = buckets.findIndex(function(b) { return b.key === selValue; });
     if (bIdx === -1) { for (var i = buckets.length - 1; i >= 0; i--) { if (!buckets[i].containsCurrent) { bIdx = i; break; } } }
     if (bIdx === -1) bIdx = buckets.length - 1;
@@ -9093,7 +9119,7 @@ function pkhRenderGrid(){
       var v = (m.cap[k] && m.cap[k][w.label]) || 0;
       var t = Math.min(1, v / max);
       var hd = (m.head[k] && m.head[k][w.label]) || 0;
-      html += '<td class="' + (w.isCurrentWeek ? 'pkh-col-now' : '') + '" style="padding:2px"><div class="pkh-cell" data-key="' + esc(k) + '" data-lbl="' + esc(w.label) + '" data-v="' + Math.round(v) + '" data-h="' + hd + '"'
+      html += '<td class="' + (w.isCurrentWeek ? 'pkh-col-now' : '') + '" style="padding:2px"><div class="pkh-cell" data-key="' + esc(k) + '" data-lbl="' + esc(w.displayLabel || w.label) + '" data-v="' + Math.round(v) + '" data-h="' + hd + '"'
         + ' style="background:' + pkhHeatColor(t) + ';color:' + pkhHeatText(t) + '">' + (v >= 0.5 ? Math.round(v) : '') + '</div></td>';
     });
     html += '</tr>';
