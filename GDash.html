@@ -488,13 +488,13 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <div id="pane-team" class="tab-pane">
       <div class="section-card">
         <div class="section-head" style="cursor:pointer" onclick="toggleTeamBreakdown_()">
-          <div><h2>Org Breakdown</h2><p class="section-sub">Compliance by Department / Location / Job Family (collapsed by default)</p></div>
+          <div><h2>Org Breakdown</h2><p class="section-sub">Compliance by Department / Location / Job Family (click to collapse)</p></div>
           <div class="section-actions">
             <button class="btn" onclick="event.stopPropagation();exportBreakdownPNG_()">⬇ Export All PNG</button>
-            <span id="team-breakdown-toggle" style="color:var(--muted);font-size:12px">▾</span>
+            <span id="team-breakdown-toggle" style="color:var(--muted);font-size:12px">▴</span>
           </div>
         </div>
-        <div id="team-breakdown-body" style="display:none">
+        <div id="team-breakdown-body">
           <div id="team-breakdown-content">
             <div id="breakdown-top" style="border-top:1px solid var(--border)">
               <div class="section-head">
@@ -1655,10 +1655,10 @@ function renderHRTracker() {
   }).length;
 
   document.getElementById('kpi-tracker').innerHTML =
-    kpiCard('Notes Logged',           qNotes.length, '📝', '#058CDC', 'HR follow-ups this quarter') +
-    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'Rocketeers whose latest note is closed') +
-    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'Rocketeers with a pending conversation') +
-    kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Status improved since latest note');
+    kpiCard('Notes Logged',           qNotes.length, '📝', '#058CDC', 'HR follow-ups logged this quarter') +
+    kpiCard('Reviewed / Resolved',    reviewed,      '✅', '#00A86B', 'This quarter\'s cases whose latest note is closed') +
+    kpiCard('Needs Follow-up',        followUp,      '⏳', '#F59E0B', 'This quarter\'s cases with a pending conversation') +
+    kpiCard('Improved After Feedback',improved,      '📈', '#2864E6', 'Compliance status improved since the latest note');
 
   var filterVal = document.getElementById('tracker-filter').value;
   var filtered  = cases.filter(function(c) {
