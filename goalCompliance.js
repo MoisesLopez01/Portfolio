@@ -35,6 +35,11 @@ var CONFIG_GD = {
   // so it must read the unfiltered "Data" tab (Employee Number, Name, Employee
   // Status, Supervisor, Class, Job Title, Department, Key Location, etc.).
   SHEET_ROSTER:        'Data',
+  // Second Roster-spreadsheet tab holding crewmembers/contractors (Name,
+  // Department, Termination/Release Date, Class, Supervisor, Key Location).
+  // Merged into getFullRosterMap_ so crew resolve location/supervisor/
+  // termination like FTEs; the Data tab wins on a name collision.
+  SHEET_CONTRACTORS:   'Contractors Data',
   SHEET_HR_TRACKER:    'HR Follow-Up Tracker',
   DEFAULT_QUARTER:     'FY26Q4',
   // Managers fully excluded from manager-engagement metrics (QoQ manager panel,
@@ -62,7 +67,7 @@ var CONFIG_GD = {
   RPI_CADENCE_LAG:       6,  // required self-comments per goal = week-of-quarter − this (min 1)
   RPI_CADENCE_MAX_CMTS:  8,  // requirement ceiling per goal per quarter (aligned with STF)
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v17_',  // bumped: employee records add feedback-loop + closed-no-note rollups (Behaviors tab; v16 added hireDate/isNewHire)
+  CACHE_VER:           'gd_v18_',  // bumped: Contractors Data merged into roster map (isCrew/crewClass), quarterState, calendar totalQtrWeeks
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -824,6 +829,10 @@ function buildComplianceData_(quarter, access) {
   Object.keys(rosterMap).forEach(function(norm) {
     if (rockMap[norm]) return; // already present from RD
     var r = rosterMap[norm];
+    // Crew join the dashboard through their RD goals only — goal-count policy
+    // isn't asserted for contractors, so a goal-less contractor is never
+    // injected as a 0-goal At Risk row (headline counts unchanged by the merge).
+    if (r.isCrew) return;
     if (!r.active) return;
     if (isIntern_(r.jobTitle)) return;
     rockMap[norm] = {
@@ -893,7 +902,11 @@ function buildComplianceData_(quarter, access) {
   var finalizeEmployeeRecord_ = function(emp) {
     var rosterRec        = rosterMap[emp.normName] || rosterMap[normName_(emp.name)] || null;
     emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || emp.location || 'Unknown';
-    emp.jobFamily        = deriveJobFamily_(emp.jobTitle);
+    // Crew have no roster Job Title — bucket them as their own job family so
+    // the Job Family filter stays meaningful instead of dumping them in "Other".
+    emp.isCrew           = !!(rosterRec && rosterRec.isCrew);
+    emp.crewClass        = emp.isCrew ? (rosterRec.classVal || '') : '';
+    emp.jobFamily        = emp.isCrew ? 'Crew' : deriveJobFamily_(emp.jobTitle);
     emp.complianceStatus = computeStatus_(emp.totalGoals);
     emp.terminated       = !!terminatedSet[emp.normName];
 
@@ -1415,6 +1428,32 @@ function aggregateAllRocketeers_(rows, fullRosterMap, scopeSet) {
 // otherwise pure enrichment (supervisor / location / job family), never a gate
 // on RD-sourced data.
 
+// Normalizes one "Contractors Data" row to the record shape getFullRosterMap_
+// returns. Crew rows carry no Job Title or hire date — consumers branch on
+// isCrew (job family "Crew", never intern-stripped by roster title, never
+// new-hire flagged). Unlike the Data tab (any non-blank Termination = inactive),
+// crew release dates can be future-dated planned releases — only a date
+// on/before todayIso deactivates. Returns null for rows without a name.
+function contractorRecord_(row, todayIso) {
+  var name = row['Name'] || row['Rocketeer'] || row['Employee Name'] || row['Full Name'] || '';
+  if (!name) return null;
+  var termRaw = row['Termination/Release Date'];
+  var termIso = (termRaw !== undefined && termRaw !== null && String(termRaw).trim() !== '')
+              ? fmtDate_(termRaw) : '';
+  return {
+    name:       String(name).trim(),
+    normName:   normName_(String(name)),
+    department: String(row['Department'] || '').trim(),
+    supervisor: String(row['Supervisor'] || row['Manager'] || '').trim(),
+    jobTitle:   '',
+    classVal:   String(row['Class'] || '').trim().toUpperCase(),
+    location:   String(row['Key Location'] || '').trim(),
+    active:     !(termIso && termIso <= todayIso),
+    hireDate:   '',
+    isCrew:     true,
+  };
+}
+
 function getFullRosterMap_() {
   var map = {};
   try {
@@ -1454,8 +1493,27 @@ function getFullRosterMap_() {
         location:   String(row['Key Location'] || '').trim(),
         active:     !isInactiveByDate,
         hireDate:   hireRaw ? fmtDate_(hireRaw) : '',
+        isCrew:     false,
       };
     });
+
+    // Crew/contractors live on a second tab — merge them in so location,
+    // supervisor, termination, and org-tree scoping work for crew exactly as
+    // for FTEs. The Data tab wins on a normalized-name collision.
+    var todayIso = new Date().toISOString().slice(0, 10);
+    var crewAdded = 0, crewSkipped = 0;
+    try {
+      var crewRows = readSheet_(CONFIG_GD.ROSTER_SS_ID, CONFIG_GD.SHEET_CONTRACTORS);
+      crewRows.forEach(function(row) {
+        var rec = contractorRecord_(row, todayIso);
+        if (!rec) return;
+        if (map[rec.normName]) { crewSkipped++; return; }
+        map[rec.normName] = rec;
+        crewAdded++;
+      });
+    } catch (e) { Logger.log('⚠️ getFullRosterMap_ contractors: ' + e.message); }
+    Logger.log('getFullRosterMap_: +' + crewAdded + ' crew from "' + CONFIG_GD.SHEET_CONTRACTORS +
+               '" (' + crewSkipped + ' name collisions kept the Data-tab record)');
 
     var activeCount = Object.keys(map).filter(function(n) { return map[n].active; }).length;
     var hireCount   = Object.keys(map).filter(function(n) { return map[n].hireDate; }).length;
@@ -2281,4 +2339,29 @@ function _test_quarterCalendarWeeks_() {
   assert_(quarterWeekList_('garbage', false).length === 0, "unparseable quarter → empty list");
 
   Logger.log("✅ _test_quarterCalendarWeeks_ passed");
+}
+
+function _test_contractorRecord_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_contractorRecord_: " + msg); }
+  var today = '2026-07-08';
+
+  var r = contractorRecord_({ 'Name': 'Sofia Mardones Bustamante', 'Department': 'Services',
+    'Class': 'tc', 'Supervisor': 'Jane Doe', 'Key Location': 'Chile',
+    'Termination/Release Date': '' }, today);
+  assert_(r.isCrew === true, "crew flag set");
+  assert_(r.normName === 'sofia mardones bustamante', "normName derived");
+  assert_(r.location === 'Chile', "Key Location mapped, got " + r.location);
+  assert_(r.classVal === 'TC', "class uppercased");
+  assert_(r.active === true, "blank release date → active");
+  assert_(r.jobTitle === '' && r.hireDate === '', "crew rows carry no title/hire date");
+
+  r = contractorRecord_({ 'Name': 'Past Release', 'Termination/Release Date': '2026-06-30' }, today);
+  assert_(r.active === false, "past release date → inactive");
+
+  r = contractorRecord_({ 'Name': 'Future Release', 'Termination/Release Date': '2026-12-31' }, today);
+  assert_(r.active === true, "future-dated planned release stays active until the date");
+
+  assert_(contractorRecord_({ 'Department': 'X' }, today) === null, "nameless row → null");
+
+  Logger.log("✅ _test_contractorRecord_ passed");
 }
