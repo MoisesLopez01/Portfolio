@@ -1022,6 +1022,7 @@ function renderOverview(emps) {
   var atRisk   = emps.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
   var rate     = total > 0 ? (onTarget / total * 100).toFixed(1) : '0.0';
   var avgGoals = total > 0 ? (emps.reduce(function(s,e){ return s + e.totalGoals; },0)/total).toFixed(1) : '0';
+  var withGoals = emps.filter(function(e){ return e.totalGoals > 0; }).length;
 
   // 8 of the ~12 candidate cards (6 original Overview + 6 original Engagement) — trimmed
   // to the most decision-relevant mix of compliance and engagement signals; "On Target",
@@ -1030,9 +1031,9 @@ function renderOverview(emps) {
   document.getElementById('kpi-overview').innerHTML =
     kpiCard('Total Rocketeers',    total,                        '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
     kpiCard('Compliance Rate',     rate + '%',                   '🎯', '#058CDC', '10+ goals = On Target') +
-    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', '#F59E0B', 'One or two goals from full compliance') +
-    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk') +
-    kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%', '💬', '#2864E6', '≥1 self-comment this quarter') +
+    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', '#F59E0B', 'One or two goals from full compliance · all rocketeers, incl. new hires') +
+    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  '#EF4444', 'Below threshold — STF and RPI at risk · all rocketeers, incl. new hires') +
+    kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%', '💬', '#2864E6', '≥1 self-comment · base: ' + (eng.activeCount || 0) + ' of ' + withGoals + ' with goals (' + (total - withGoals) + ' with none excluded)') +
     kpiCard('Silent',              eng.silentCount    || 0,      '🔇', '#9B59B6', '0 self-comments · has goals') +
     kpiCard('Below Pace',          eng.belowPaceCount || 0,      '🐢', '#F59E0B', '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
     kpiCard('Avg Goals / Person',  avgGoals,                     '📊', '#64748B', 'Average across filtered selection');
@@ -1070,8 +1071,8 @@ function renderSupport(emps) {
 
   document.getElementById('kpi-needs-support').innerHTML =
     kpiCard('Needing Support',  pool.length,  '🚨', '#EF4444', 'Anyone with a compliance or engagement concern (deduplicated, new hires excluded)') +
-    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  '#EF4444', 'Below goal threshold — STF and RPI at risk') +
-    kpiCard('Watch (8–9)',      watch,        '⏳', '#F59E0B', 'One or two goals from full compliance') +
+    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  '#EF4444', 'Below goal threshold — STF and RPI at risk · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's') + ' (Overview counts them)') +
+    kpiCard('Watch (8–9)',      watch,        '⏳', '#F59E0B', 'One or two goals from full compliance · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's')) +
     kpiCard('Not Engaging',     notEngaging,  '💬', '#9B59B6', 'Have goals but zero self-comments this quarter') +
     kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments') +
     kpiCard('New Hires',        newHires,     '🌱', '#058CDC', 'Hired after quarter start — goals need a full quarter, so they are flagged in the rosters, not listed here') +
@@ -1886,7 +1887,7 @@ function buildGoalStatusTable_(gsd) {
   html += '<tr style="border-top:2px solid var(--border)"><td style="font-weight:700">Total</td>';
   html += '<td style="text-align:center;font-weight:700;color:var(--orbe)">' + total + '</td><td></td><td></td></tr>';
   html += '</tbody></table>';
-  return html;
+  return html + '<div style="font-size:9px;color:var(--muted);margin-top:8px">A rocketeer appears once per status they hold — the People column exceeds total headcount by design.</div>';
 }
 
 function buildDonut(canvasId, onTarget, watch, atRisk) {
