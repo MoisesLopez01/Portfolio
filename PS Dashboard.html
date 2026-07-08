@@ -407,6 +407,12 @@ body.dark-mode .pkh-grid th.pkh-th-plan { background:rgba(5,140,220,.14); }
 .verdict-risk { border-left-color:#EF4444; }
 .verdict-info { border-left-color:var(--orbe); }
 
+/* ── Week/Month/Quarter segmented control (period toggle, spec 2026-07-07) ── */
+.seg-ctl { display:inline-flex; border:1px solid var(--line, #CBD5E1); border-radius:8px; overflow:hidden; flex-shrink:0 }
+.seg-ctl button { border:0; background:transparent; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; color:var(--muted); letter-spacing:.02em }
+.seg-ctl button + button { border-left:1px solid var(--line, #CBD5E1) }
+.seg-ctl button.active { background:var(--orbe, #058CDC); color:#fff }
+
 /* ── Goals "pending" indicator for future week columns ── */
 .wc-goal-pending { font-size: 10px; font-weight: 600; color: var(--muted); }
 
@@ -1413,8 +1419,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:8px">
-            <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
-            <select id="radarWeekSelect" onchange="renderRadarTab(getFilteredEmployees())"
+            <div class="seg-ctl" data-gran-ctl></div>
+            <label id="radarPickerLabel" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
+            <select id="radarWeekSelect" onchange="STATE.selectedPeriod=this.value; renderRadarTab(getFilteredEmployees())"
               class="inline-select"></select>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -1688,6 +1695,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <!-- TRENDS TAB -->
   <div id="tabTrends" class="tab-pane">
 
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <div class="seg-ctl" data-gran-ctl></div>
+    </div>
+
     <!-- 1. Win — RCR Monthly Trend -->
     <div class="section-card" id="trendsRcrCard" style="display:none">
       <div class="section-head">
@@ -1878,8 +1889,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <p class="section-sub" id="execBriefSub"></p>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
-          <select id="ebWeekSelect" onchange="renderExecBriefTab_()" class="inline-select"></select>
+          <div class="seg-ctl" data-gran-ctl></div>
+          <label id="ebPickerLabel" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
+          <select id="ebWeekSelect" onchange="STATE.selectedPeriod=this.value; renderExecBriefTab_()" class="inline-select"></select>
         </div>
       </div>
       <div id="execBriefBody" style="min-height:60px;padding-bottom:16px"></div>
@@ -1980,6 +1992,8 @@ var STATE = {
   lvFilter:         new Set(),
   openMenuTabs:     [],          // ids of ☰-menu views currently open as temp tabs
   lastRegularTab:   "overview",  // fallback target when the active temp tab closes
+  periodGranularity: "week",   // 'week' | 'month' | 'quarter' — shared across Brief/Radar/Trends
+  selectedPeriod:    null,     // selected bucket key ('2026-06' / 'FY26Q4') or week label; null = default (last closed)
 };
 
 // ── VIEWS — single source of truth for navigation ─────────
@@ -2186,6 +2200,45 @@ function buildPeriodBuckets(weekLabels, granularity, currentWeekLabel) {
 }
 // ── PERIOD-PURE-END ──
 
+// ── Period toggle wiring (shared STATE.periodGranularity across Brief/Radar/Trends) ──
+var PERIOD_GRANS = [ { id: 'week', label: 'Week' }, { id: 'month', label: 'Month' }, { id: 'quarter', label: 'Quarter' } ];
+function renderGranCtls_() {
+  document.querySelectorAll('[data-gran-ctl]').forEach(function(el) {
+    el.innerHTML = PERIOD_GRANS.map(function(g) {
+      return '<button type="button" class="' + (STATE.periodGranularity === g.id ? 'active' : '') +
+        '" onclick="setPeriodGranularity(\'' + g.id + '\')">' + g.label + '</button>';
+    }).join('');
+  });
+}
+function updatePeriodPickerLabels_() {
+  var word = STATE.periodGranularity === 'month' ? 'Month' : STATE.periodGranularity === 'quarter' ? 'Quarter' : 'Week';
+  ['ebPickerLabel', 'radarPickerLabel'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = 'Evaluate ' + word;
+  });
+}
+function setPeriodGranularity(g) {
+  if (STATE.periodGranularity === g) return;
+  STATE.periodGranularity = g;
+  STATE.selectedPeriod = null;                // reset to "most recent closed" default
+  renderGranCtls_();
+  updatePeriodPickerLabels_();
+  populateRadarWeekSelect();
+  populateEbWeekSelect();
+  renderAll();
+}
+// Week universe for bucketing = every past/current week the payload ships.
+function periodWeekUniverse_() {
+  return (DATA && DATA.trackedHistory || []).map(function(h) { return h.label; });
+}
+function periodBucketsFor_(granularity) {
+  return buildPeriodBuckets(periodWeekUniverse_(), granularity, DATA && DATA.meta && DATA.meta.currentWeekLabel);
+}
+// Display label incl. in-progress marker — single source for subtitles/options.
+function periodDisplayLabel_(b) {
+  return b.label + (b.containsCurrent ? ' (in progress)' : '');
+}
+
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
 var _loadSeq = 0;
@@ -2325,6 +2378,8 @@ function onDataLoaded(payload) {
   populateRkWeekSelect();
   populateRadarWeekSelect();
   populateEbWeekSelect();
+  renderGranCtls_();
+  updatePeriodPickerLabels_();
   switchTab(STATE.activeTab);
 }
 
@@ -2619,24 +2674,44 @@ function viewRocketeerDetails(normName) {
   }, 50);
 }
 
-function populateWeekSelect_(selId) {
+function populateWeekSelect_(selId, forceWeek) {
   var sel = document.getElementById(selId);
   if (!sel || !DATA) return;
   sel.innerHTML = "";
-  var allQ4      = DATA.q4Weeks || DATA.weeks;
-  var candidates = allQ4.filter(function(w) { return !w.isFuture; });
-  var pastW      = candidates.filter(function(w) { return w.isPast; });
-  var defaultLabel = pastW.length > 0 ? pastW[pastW.length - 1].label : DATA.meta.currentWeekLabel;
-  candidates.forEach(function(w) {
+  var g = forceWeek ? 'week' : STATE.periodGranularity;
+  if (g === 'week') {
+    // q4Weeks now spans TWO quarters (period views need it) — keep the week picker
+    // bounded to the current quarter window exactly as before the widening.
+    var allQ4      = (DATA.q4Weeks || DATA.weeks).filter(function(w) { return weekInQ4Range_(w.year, w.isoWeek); });
+    var candidates = allQ4.filter(function(w) { return !w.isFuture; });
+    var pastW      = candidates.filter(function(w) { return w.isPast; });
+    var defaultLabel = STATE.selectedPeriod && candidates.some(function(w) { return w.label === STATE.selectedPeriod; })
+      ? STATE.selectedPeriod
+      : (pastW.length > 0 ? pastW[pastW.length - 1].label : DATA.meta.currentWeekLabel);
+    candidates.forEach(function(w) {
+      var opt = document.createElement("option");
+      opt.value = w.label;
+      opt.textContent = w.label + " (" + w.dateRange + ")" + (w.isPast ? " — completed" : " — in progress");
+      if (w.label === defaultLabel) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    return;
+  }
+  var buckets = periodBucketsFor_(g);
+  var closed  = buckets.filter(function(b) { return !b.containsCurrent; });
+  var defaultKey = STATE.selectedPeriod && buckets.some(function(b) { return b.key === STATE.selectedPeriod; })
+    ? STATE.selectedPeriod
+    : (closed.length ? closed[closed.length - 1].key : (buckets.length ? buckets[buckets.length - 1].key : null));
+  buckets.forEach(function(b) {
     var opt = document.createElement("option");
-    opt.value = w.label;
-    opt.textContent = w.label + " (" + w.dateRange + ")" + (w.isPast ? " — completed" : " — in progress");
-    if (w.label === defaultLabel) opt.selected = true;
+    opt.value = b.key;
+    opt.textContent = b.label + " · " + b.weekRangeLabel + (b.containsCurrent ? " — in progress" : " — completed");
+    if (b.key === defaultKey) opt.selected = true;
     sel.appendChild(opt);
   });
 }
 
-function populateRkWeekSelect()    { populateWeekSelect_("rkWeekSelect"); }
+function populateRkWeekSelect()    { populateWeekSelect_("rkWeekSelect", true); }
 function populateRadarWeekSelect() { populateWeekSelect_("radarWeekSelect"); }
 function populateEbWeekSelect()    { populateWeekSelect_("ebWeekSelect"); }
 
