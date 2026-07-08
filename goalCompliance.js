@@ -107,8 +107,11 @@ function normEmpNum_(raw) {
 // parseFloat with comma-grouping tolerance; NaN (never null/0) on junk so
 // isFinite() checks stay honest.
 function numOrNaN_(v) {
-  var n = parseFloat(String(v === null || v === undefined ? '' : v).replace(/,/g, ''));
-  return isFinite(n) ? n : NaN;
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  var neg = /^\(.*\)$/.test(s);                    // accounting negative: (1,234.56)
+  var n = parseFloat(s.replace(/[(),]/g, ''));
+  if (!isFinite(n)) return NaN;
+  return neg ? -n : n;
 }
 
 function fmtDate_(d) {
@@ -942,9 +945,15 @@ function buildComplianceData_(quarter, access) {
   }
 
   // CPR pace (v2.7.0): company-wide PTO usage by ISO week, joined via the
-  // roster's Employee Number. Loaded once per payload build; {} on any
-  // failure (pace metrics then use unadjusted weeks).
+  // roster's Employee Number. Loaded once per payload build.
   var ptoWeekly = readPTOWeeklyHours_();
+  // null = the ledger read failed (most likely: the accessing user lacks read
+  // access to the PTO sheet — this web app executes as the viewer). The payload
+  // lands in a SHARED cache entry, so a silently PTO-unadjusted build would make
+  // classifications flip-flop depending on who warmed the cache. Deterministic
+  // rule: no PTO data → no pace classification at all (band below stays empty).
+  var ptoOk = ptoWeekly !== null;
+  if (!ptoOk) ptoWeekly = {};
 
   var finalizeEmployeeRecord_ = function(emp) {
     var rosterRec        = rosterMap[emp.normName] || rosterMap[normName_(emp.name)] || null;
@@ -1000,8 +1009,15 @@ function buildComplianceData_(quarter, access) {
   attrition.sort(function(a, b) { return a.name.localeCompare(b.name); });
 
   // Peer band over employees only; attrition is classified against the same
-  // band but never contributes to it.
-  var paceBand = computePaceBand_(employees);
+  // band but never contributes. Manager-scoped payloads (scopeSet non-null)
+  // deliberately get NO band: a per-org-tree P10/P90 would classify the same
+  // person differently for a manager than for an admin, and most scopes are
+  // below PACE_MIN_REF_N anyway. Same rule when the PTO read failed (ptoOk
+  // false) — unadjusted numbers must never be classified. refN 0 makes
+  // classifyPaceMetrics_ mark everyone 'na', so the drill strip stays hidden.
+  var paceBand = (ptoOk && !scopeSet)
+    ? computePaceBand_(employees)
+    : { p10: null, p50: null, p90: null, arP10: null, refN: 0 };
   employees.forEach(function(e) { classifyPaceMetrics_(e, paceBand); });
   attrition.forEach(function(e) { classifyPaceMetrics_(e, paceBand); });
 
@@ -1638,34 +1654,59 @@ function deriveUsageTx_(entries) {
 // Company-wide PTO usage by ISO week: { empNum: { 'YYYY.WNN': hours } }.
 // NO department filter — deliberately different from the PS project's reader
 // (this dashboard evaluates goals globally; departments are a UI filter).
-// Any failure returns {} so pace metrics degrade to PTO-unadjusted weeks
-// rather than breaking the payload build.
+// Return value is a read-outcome signal, not just data: null = the read
+// failed (sheet unreadable, missing columns, thrown error) — caller must
+// degrade deterministically. {} = the read succeeded but found no usage.
 function readPTOWeeklyHours_() {
   try {
     var rows = readSheet_(CONFIG_GD.PTO_SS_ID, CONFIG_GD.SHEET_PTO);
     if (!rows.length) { Logger.log('⚠️ readPTOWeeklyHours_: 0 rows from "' + CONFIG_GD.SHEET_PTO + '"'); return {}; }
 
+    // The ledger is AI-blocked, so its exact header spelling was never
+    // verified. Resolve each needed column against the sheet's real headers
+    // fuzzily (case/punctuation/whitespace-insensitive), the way the PS
+    // project's reader for this same ledger does.
+    var headerFor = {};
+    Object.keys(rows[0]).forEach(function(h) {
+      headerFor[h.replace(/[^a-z0-9]/gi, '').toLowerCase()] = h;
+    });
+    var col = function(name) { return headerFor[name.replace(/[^a-z0-9]/gi, '').toLowerCase()]; };
+    var COL = {
+      empNum:  col('Employee Number'),
+      date:    col('Date'),
+      dept:    col('Department: Name'),
+      adjType: col('Adjustment Type'),
+      balance: col('Balance'),
+    };
+    if (!COL.empNum || !COL.date || !COL.adjType) {
+      Logger.log('⚠️ readPTOWeeklyHours_: required columns missing — resolved ' + JSON.stringify(COL) +
+                 ' from headers: ' + Object.keys(rows[0]).join(' | '));
+      return null;
+    }
+
     var byEmp = {}, depts = {}, usageRows = 0;
     rows.forEach(function(row) {
-      var empNum = normEmpNum_(row['Employee Number']);
-      var date   = row['Date'] ? fmtDate_(row['Date']) : '';
+      var empNum = normEmpNum_(row[COL.empNum]);
+      var date   = row[COL.date] ? fmtDate_(row[COL.date]) : '';
       if (!empNum || date.length !== 10) return;
-      var dept = String(row['Department: Name'] || '').trim();
+      var dept = String(COL.dept ? row[COL.dept] : '').trim();
       if (dept) depts[dept] = true;   // diagnostics only — never a filter
-      var adjType = String(row['Adjustment Type'] || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-      var isUsage = adjType.indexOf('usage') !== -1 || adjType.indexOf('timeoff') !== -1 ||
-                    adjType.indexOf('sick') !== -1;
+      var adjType = String(row[COL.adjType] || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      var isUsage = adjType.indexOf('accru') === -1 &&
+                    (adjType.indexOf('usage') !== -1 || adjType.indexOf('timeoff') !== -1 ||
+                     adjType.indexOf('sick') !== -1);
       if (isUsage) usageRows++;
       var amtRaw = null;
-      ['Amount', 'Hours', 'AdjustmentAmount', 'AdjustmentHours'].some(function(col) {
-        if (row[col] !== undefined && row[col] !== '') { amtRaw = row[col]; return true; }
+      ['Amount', 'Hours', 'AdjustmentAmount', 'AdjustmentHours'].some(function(name) {
+        var h = col(name);
+        if (h !== undefined && row[h] !== undefined && row[h] !== '') { amtRaw = row[h]; return true; }
         return false;
       });
       var amt = amtRaw === null ? NaN : numOrNaN_(amtRaw);
       if (!byEmp[empNum]) byEmp[empNum] = [];
       byEmp[empNum].push({
         date: date,
-        balance: numOrNaN_(row['Balance']),
+        balance: numOrNaN_(COL.balance !== undefined ? row[COL.balance] : ''),
         isUsage: isUsage,
         explicitAmt: isFinite(amt) ? Math.abs(amt) : null,
       });
@@ -1693,7 +1734,7 @@ function readPTOWeeklyHours_() {
     return buildPtoWeeklyByEmp_(usageByEmp);
   } catch (e) {
     Logger.log('⚠️ readPTOWeeklyHours_: ' + e.message + ' — pace metrics fall back to unadjusted weeks');
-    return {};
+    return null;
   }
 }
 
@@ -2798,6 +2839,15 @@ function _test_paceBand_() {
   var x = mkP(1, 1); classifyPaceMetrics_(x, tiny);
   t(x.paceMetrics.cls === 'na', 'refN < PACE_MIN_REF_N → na');
   Logger.log('✅ _test_paceBand_: all assertions passed');
+}
+
+function _test_numOrNaN_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('numOrNaN: ' + msg); };
+  t(numOrNaN_('1,234.5') === 1234.5, 'comma grouping');
+  t(numOrNaN_('(1,234.56)') === -1234.56, 'accounting negative');
+  t(numOrNaN_(8) === 8, 'plain number');
+  t(isNaN(numOrNaN_('—')) && isNaN(numOrNaN_('')) && isNaN(numOrNaN_(null)), 'junk → NaN');
+  Logger.log('✅ _test_numOrNaN_: all assertions passed');
 }
 
 // TEMPORARY (remove after the week-cap verification) — snapshot per-person RPI
