@@ -96,6 +96,14 @@ function normName_(n) {
     .trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Employee Numbers arrive from Sheets as numbers (sometimes float-typed) or
+// comma-grouped strings — normalize both sides of the PTO↔roster join the
+// same way so '1,042' and 1042 always match.
+function normEmpNum_(raw) {
+  if (raw === null || raw === undefined || raw === '') return '';
+  return String(typeof raw === 'number' ? Math.round(raw) : raw).replace(/,/g, '').trim();
+}
+
 function fmtDate_(d) {
   try {
     var dt = (d instanceof Date) ? d : new Date(d);
@@ -1512,6 +1520,11 @@ function getFullRosterMap_() {
 
       map[norm] = {
         name:       String(name).trim(),
+        // PTO↔roster bridge (v2.7.0): the Accumulation Cost ledger is keyed by
+        // Employee Number, not name. Defensive header chain, same pattern as
+        // the hire-date read above.
+        employeeNumber: normEmpNum_(row['Employee Number'] !== undefined ? row['Employee Number']
+                          : (row['Employee ID'] !== undefined ? row['Employee ID'] : row['Employee #'])),
         normName:   norm,
         department: String(row['Department'] || '').trim(),
         supervisor: String(row['Supervisor'] || row['Manager'] || '').trim(),
@@ -1544,13 +1557,18 @@ function getFullRosterMap_() {
 
     var activeCount = Object.keys(map).filter(function(n) { return map[n].active; }).length;
     var hireCount   = Object.keys(map).filter(function(n) { return map[n].hireDate; }).length;
+    var empNumCount = Object.keys(map).filter(function(n) { return map[n].employeeNumber; }).length;
     Logger.log('getFullRosterMap_: ' + Object.keys(map).length + ' roster rows (' +
                activeCount + ' active, ' + (Object.keys(map).length - activeCount) +
-               ' inactive, ' + hireCount + ' with hire date) from ' + rows.length +
+               ' inactive, ' + hireCount + ' with hire date, ' + empNumCount + ' with employee number) from ' + rows.length +
                ' "' + CONFIG_GD.SHEET_ROSTER + '" rows');
     if (Object.keys(map).length && !hireCount) {
       Logger.log('⚠️ getFullRosterMap_: no hire dates matched — check the hire-date column header on "' +
                  CONFIG_GD.SHEET_ROSTER + '" (new-hire flag stays false for everyone until fixed)');
+    }
+    if (Object.keys(map).length && !empNumCount) {
+      Logger.log('⚠️ getFullRosterMap_: no employee numbers matched — check the Employee Number column header on "' +
+                 CONFIG_GD.SHEET_ROSTER + '" (pace metrics stay PTO-unadjusted until fixed)');
     }
   } catch (e) { Logger.log('⚠️ getFullRosterMap_: ' + e.message); }
   return map;
@@ -2404,4 +2422,13 @@ function _test_percentile_() {
   t(percentile_([5, 1, 3], 100) === 5, 'unsorted input handled, P100 = max');
   t(percentile_([5, 1, 3], 0) === 1, 'P0 = min');
   Logger.log('✅ _test_percentile_: all assertions passed');
+}
+
+function _test_normEmpNum_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('normEmpNum: ' + msg); };
+  t(normEmpNum_(1042) === '1042', 'number → string');
+  t(normEmpNum_(1042.0) === '1042', 'float-typed sheet number');
+  t(normEmpNum_(' 1,042 ') === '1042', 'comma + whitespace stripped');
+  t(normEmpNum_('') === '' && normEmpNum_(null) === '' && normEmpNum_(undefined) === '', 'empty-ish → ""');
+  Logger.log('✅ _test_normEmpNum_: all assertions passed');
 }
