@@ -2608,3 +2608,14 @@ function _test_ptoSpread_() {
   t(tx.length === 2 && tx[0].hours === 8 && tx[1].hours === 16, 'usage derivation, got ' + JSON.stringify(tx));
   Logger.log('✅ _test_ptoSpread_: all assertions passed');
 }
+
+// TEMPORARY (remove after the week-cap verification) — snapshot per-person RPI
+// so the calendar-week correction's score shifts can be eyeballed against the
+// pre-change snapshot. Run once BEFORE deploying Task 2, once after.
+function _audit_rpiSnapshot_() {
+  var d = getGoalsComplianceData(CONFIG_GD.DEFAULT_QUARTER);
+  var lines = (d.employees || []).map(function(e) {
+    return e.name + ' | RPI ' + e.rpiScore + '/' + e.rpiMax + ' | cmtsWks ' + e.commentWeeks + '/' + d.totalQtrWeeks;
+  }).sort();
+  Logger.log('RPI snapshot (' + d.quarter + ', weeks=' + d.totalQtrWeeks + '):\n' + lines.join('\n'));
+}
