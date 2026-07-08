@@ -19,7 +19,10 @@
 //                      still counts toward the 10; only in-quarter dates are checked.
 //              v2.6.0: Behaviors tab payload — per-goal feedback-loop dates →
 //                      goalsWithMgrFeedback/goalsFeedbackClosed + goalsClosedNoNote rollups.
-// VERSION:     2.6.0
+//              v2.7.0: CPR pace & consistency — PTO-adjusted EligibleWeeks
+//                      (company-wide Accumulation Cost, no dept filter),
+//                      paceMetrics per employee + paceBand percentiles.
+// VERSION:     2.7.0
 // ENVIRONMENT: Google Apps Script (Standalone Web App)
 // DEPLOY:      Apps Script → Deploy → New deployment → Web App
 //              Execute as: User accessing the web app
@@ -66,8 +69,19 @@ var CONFIG_GD = {
   RPI_CMT_GOALS:         6,  // goals that must meet the cadence requirement (6/10 or 6/8)
   RPI_CADENCE_LAG:       6,  // required self-comments per goal = week-of-quarter − this (min 1)
   RPI_CADENCE_MAX_CMTS:  8,  // requirement ceiling per goal per quarter (aligned with STF)
+  // CPR pace & consistency (v2.7.0) — PTO-adjusted comments-per-eligible-week.
+  // Company-wide PTO ledger (same "Accumulation Cost" sheet the PS project
+  // reads, deliberately WITHOUT its Services filter — this dashboard covers
+  // every department; departments are a UI filter concern).
+  PTO_SS_ID:           '1J_5EhrQqMMjUFH1Zm_Wpcbd47OFDlcKsdoGm-haS8Yo',
+  SHEET_PTO:           'Accumulation Cost',
+  PACE_LAG_WEEKS:        4,  // goal-setting window — weeks 1-4 are never chargeable
+  PACE_HOURS_PER_WEEK:  40,  // full working week, for fractional absence (hours/40)
+  PACE_BAND_LO_PCT:     10,  // CPR below this peer percentile → Behind Pace
+  PACE_BAND_HI_PCT:     90,  // CPR above this peer percentile → informational "high"
+  PACE_MIN_REF_N:       20,  // below this reference-population size, classify 'na'
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v18_',  // bumped: Contractors Data merged into roster map (isCrew/crewClass), quarterState, calendar totalQtrWeeks
+  CACHE_VER:           'gd_v19_',  // bumped: paceMetrics/paceBand + roster employeeNumber (v18 added Contractors merge/quarterState)
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -88,6 +102,19 @@ function fmtDate_(d) {
     return isNaN(dt) ? String(d || '') : dt.toISOString().slice(0, 10);
   } catch (e) { return String(d || ''); }
 }
+
+// Linear-interpolation percentile over an unsorted numeric array.
+// p in [0,100]. Returns null for an empty array. 4-dp rounding keeps
+// payload values stable across float noise.
+function percentile_(values, p) {
+  var v = (values || []).slice().sort(function(a, b) { return a - b; });
+  if (!v.length) return null;
+  var idx = (p / 100) * (v.length - 1);
+  var lo  = Math.floor(idx), hi = Math.ceil(idx);
+  return +(v[lo] + (v[hi] - v[lo]) * (idx - lo)).toFixed(4);
+}
+
+function median_(values) { return percentile_(values, 50); }
 
 /**
  * Parses a quarter string like "FY26Q4" and returns ISO date strings for:
@@ -2364,4 +2391,17 @@ function _test_contractorRecord_() {
   assert_(contractorRecord_({ 'Department': 'X' }, today) === null, "nameless row → null");
 
   Logger.log("✅ _test_contractorRecord_ passed");
+}
+
+// ── CPR pace tests (v2.7.0) ────────────────────────────────────
+function _test_percentile_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('percentile: ' + msg); };
+  t(percentile_([], 50) === null, 'empty → null');
+  t(percentile_([7], 10) === 7, 'single value');
+  t(percentile_([1, 2, 3, 4, 5], 50) === 3, 'odd-count median');
+  t(median_([1, 2, 3, 4]) === 2.5, 'even-count median interpolates');
+  t(percentile_([10, 20], 25) === 12.5, 'linear interpolation');
+  t(percentile_([5, 1, 3], 100) === 5, 'unsorted input handled, P100 = max');
+  t(percentile_([5, 1, 3], 0) === 1, 'P0 = min');
+  Logger.log('✅ _test_percentile_: all assertions passed');
 }
