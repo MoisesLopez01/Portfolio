@@ -794,6 +794,7 @@ Expected: all tests pass.
 
 - [ ] **Step 3: Manual GAS verification (needs deploy — record results, don't skip)**
 
+0. **Sharing check (final-review finding I1):** the web app executes as the accessing user — verify the Accumulation Cost spreadsheet is shared (read) with the full dashboard audience, not just the owner. If a viewer can't read it, that build classifies nothing ('na', strip hidden) by design — deterministic, but PTO adjustment only works for users with access.
 1. Copy `goalCompliance.js` + `GDash.html` into the Apps Script project; run `buildComplianceData_` once (or load the dashboard with Refresh) and read the execution log:
    - `getFullRosterMap_: … N with employee number …` — N should be ≈ the roster size. If 0, fix the Employee Number header chain (Task 2 warning will say so).
    - `✅ readPTOWeeklyHours_: … median Xh …` — record the grain (≈8h = per-day rows, ≈40h = per-request rows; both are handled, this is informational) and the departments-seen count (should be > 1, proving company-wide coverage). If sick leave doesn't appear, the Adjustment Type regex (`usage|timeoff|sick`) needs the sheet's real type strings.
