@@ -153,6 +153,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .tier-atrisk{background:#FEE2E2;color:#991B1B;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
 .tier-nogoals{background:#450a0a;color:#fca5a5;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
 .tier-ontarget{background:#DCFCE7;color:#15803D;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
+.crew-badge{background:#EEF2FF;color:#3730A3;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;margin-left:6px;vertical-align:middle}
 
 /* At Risk sections */
 .urg-section{margin-bottom:20px}
@@ -354,6 +355,10 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <div class="chip-wrap">
       <div class="chip" id="chip-supervisor" onclick="toggleDrop('supervisor')">👤 <span id="chip-supervisor-txt">All Supervisors</span><span class="chip-arrow">▾</span></div>
       <div class="dropdown-panel" id="drop-supervisor"></div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip" id="chip-employment" onclick="toggleDrop('employment')">🧑‍🚀 <span id="chip-employment-txt">All Employment</span><span class="chip-arrow">▾</span></div>
+      <div class="dropdown-panel" id="drop-employment"></div>
     </div>
     <span id="filter-count-note" class="filtered-note" style="display:none"></span>
     <button class="reset-btn" onclick="resetFilters()">Reset all</button>
@@ -697,7 +702,7 @@ var S = {
   data:           null,
   notes:          [],
   userEmail:      '',
-  filters:        { location:[], department:[], jobFamily:[], status:[], supervisor:[] },
+  filters:        { location:[], department:[], jobFamily:[], status:[], supervisor:[], employment:[] },
   charts:         {},
   activeTab:      'overview',
   lastRegularTab: 'overview',  // fallback target when leaving the Access Control pane
@@ -797,6 +802,7 @@ function init() {
         return;
       }
       S.data = data;
+      decorateEmployees_();
       runner
         .withSuccessHandler(function(notes) { S.notes = notes || []; onReady(); })
         .withFailureHandler(function() { S.notes = []; onReady(); })
@@ -804,6 +810,14 @@ function init() {
     })
     .withFailureHandler(function(err) { showError(err.message || 'Failed to load compliance data.'); })
     .getGoalsComplianceData();
+}
+
+// The Employment filter's field is client-derived — the payload ships isCrew
+// per employee; "FTE"/"Crew" labels are a display concern.
+function decorateEmployees_() {
+  if (!S.data || !S.data.employees) return;
+  S.data.employees.forEach(function(e) { e.employment = e.isCrew ? 'Crew' : 'FTE'; });
+  (S.data.attrition || []).forEach(function(e) { e.employment = e.isCrew ? 'Crew' : 'FTE'; });
 }
 
 function onReady() {
@@ -869,7 +883,8 @@ function onQuarterChange(q) {
         return;
       }
       S.data = data;
-      S.filters = { location:[], department:[], jobFamily:[], status:[], supervisor:[] };
+      decorateEmployees_();
+      S.filters = { location:[], department:[], jobFamily:[], status:[], supervisor:[], employment:[] };
       google.script.run
         .withSuccessHandler(function(notes) {
           S.notes = notes || [];
@@ -899,9 +914,9 @@ function populateQuarterSelect() {
 }
 
 // ── FILTERS ──────────────────────────────────────────────────────
-var FILTER_KEYS = ['location','department','jobFamily','status','supervisor'];
-var FILTER_FIELD = { location:'location', department:'department', jobFamily:'jobFamily', status:'complianceStatus', supervisor:'supervisor' };
-var FILTER_LABELS = { location:'Locations', department:'Departments', jobFamily:'Job Families', status:'Statuses', supervisor:'Supervisors' };
+var FILTER_KEYS = ['location','department','jobFamily','status','supervisor','employment'];
+var FILTER_FIELD = { location:'location', department:'department', jobFamily:'jobFamily', status:'complianceStatus', supervisor:'supervisor', employment:'employment' };
+var FILTER_LABELS = { location:'Locations', department:'Departments', jobFamily:'Job Families', status:'Statuses', supervisor:'Supervisors', employment:'Employment' };
 
 function buildFilterDropdowns() {
   if (!S.data) return;
@@ -978,6 +993,7 @@ function getFiltered() {
     if (S.filters.jobFamily.length  && S.filters.jobFamily.indexOf(e.jobFamily)       === -1) return false;
     if (S.filters.status.length     && S.filters.status.indexOf(e.complianceStatus)   === -1) return false;
     if (S.filters.supervisor.length && S.filters.supervisor.indexOf(e.supervisor)     === -1) return false;
+    if (S.filters.employment.length && S.filters.employment.indexOf(e.employment)     === -1) return false;
     return true;
   });
 }
@@ -1547,7 +1563,7 @@ function atRiskRowHtml_(e, compact, qtrWeeks, noteMap, isGrace) {
   var signals = signalsBadges_(e, isGrace);
 
   var html = '<tr style="cursor:pointer" data-normname="' + esc(e.normName) + '">';
-  html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + terminatedTag_(e) + '</td>';
+  html += '<td style="font-weight:600;white-space:nowrap">' + esc(e.name) + crewTag_(e) + terminatedTag_(e) + '</td>';
   html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(e.supervisor||'&mdash;') + '</td>';
   html += '<td style="color:var(--slate);font-size:11px">' + esc(e.department||'&mdash;') + '</td>';
   html += '<td style="color:var(--slate);font-size:11px">' + esc(e.location||'&mdash;') + '</td>';
@@ -2813,7 +2829,7 @@ function toggleTeamBreakdown_() {
 // Column specs for the two roster modes — shared row-render/grouping logic lives in
 // renderRosterGroups_(); only the column list and each row's `render()` differ.
 var TEAM_COLUMNS_THIS_QUARTER = [
-  { label: 'Rocketeer',   render: function(r) { return esc(r.name) + terminatedTag_(r); } },
+  { label: 'Rocketeer',   render: function(r) { return esc(r.name) + crewTag_(r) + terminatedTag_(r); } },
   { label: 'Department',  render: function(r) { return esc(r.department || '—'); }, css: 'color:var(--slate);font-size:11px' },
   { label: 'Total Goals', render: function(r) { return r.totalGoals; }, align: 'center' },
   { label: 'Completed',   render: function(r) { return r.goalsCompleted; }, align: 'center', css: 'color:var(--success);font-weight:700' },
@@ -2853,6 +2869,7 @@ function buildThisQuarterGroups_(emps) {
       name: e.name, normName: e.normName, department: e.department || '', jobTitle: e.jobTitle || '',
       totalGoals: e.totalGoals, selfComments: s, managerComments: e.totalManagerComments || 0,
       complianceStatus: e.complianceStatus || '', terminated: e.terminated,
+      isCrew: e.isCrew, crewClass: e.crewClass,
       // carried through for the RPI / STF / Signals statistical columns
       isNewHire: !!e.isNewHire, hireDate: e.hireDate || '',
       goalsCompleted: e.goalsCompleted || 0, commentWeeks: e.commentWeeks || 0,
@@ -3507,6 +3524,12 @@ function terminatedTag_(e) {
   return e && e.terminated
     ? ' <span style="display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;vertical-align:middle">Terminated</span>'
     : '';
+}
+
+// "Crew" badge for contractors merged from the Contractors Data tab — Class
+// value surfaces in the tooltip only (keeps table cells compact).
+function crewTag_(e) {
+  return e.isCrew ? ' <span class="crew-badge" title="Class: ' + esc(e.crewClass || '—') + '">Crew</span>' : '';
 }
 
 function getISOWeekLabel() {
