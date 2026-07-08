@@ -19,8 +19,16 @@
 <style>
 :root{
   --void:#0F1941;--orbe:#058CDC;--ivory:#DCCDBE;--cream:#FFFAF5;
-  --june:#FF9B87;--royal:#2864E6;--success:#00A86B;
-  --watch-color:#F59E0B;--atrisk-color:#EF4444;
+  --june:#FF9B87;--royal:#2864E6;
+  /* Brand tints derived from Orbe/Royal — light-blue backgrounds, borders, and
+     accent pills that used to be off-palette blues (#EEF4FF/#1D4ED8/#C7DEFF). */
+  --orbe-tint:#E7F1FB;--royal-tint:#C4D6F7;--june-tint:#FDEEE9;
+  /* Status layer is SEMANTIC, deliberately NOT brand: the palette has no
+     red/amber/green and traffic-light colors carry meaning at a glance
+     (per 2026-07-08 decision — brand everything except status). */
+  --success:#00A86B;--watch-color:#F59E0B;--atrisk-color:#EF4444;
+  /* Structural neutrals — the brand has no gray; borders/muted text/surfaces
+     stay neutral so body copy and table rules keep their legibility. */
   --slate:#64748b;--surface:#F8FAFC;--border:#E2E8F0;
   --text:#1E293B;--muted:#94A3B8;
   --radius:12px;--shadow:0 1px 4px rgba(0,0,0,.08);
@@ -62,7 +70,7 @@ button{font-family:inherit;cursor:pointer}
   font-size:10px;font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;
   border:1px solid var(--border);background:var(--surface);color:var(--slate);transition:all .15s}
 .chip:hover{border-color:var(--orbe);color:var(--orbe)}
-.chip.active{background:#EEF4FF;border-color:#C7DEFF;color:var(--orbe);font-weight:700}
+.chip.active{background:var(--orbe-tint);border-color:var(--royal-tint);color:var(--orbe);font-weight:700}
 .chip-arrow{font-size:8px;opacity:.6;margin-left:2px}
 .dropdown-panel{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:200px;
   background:#fff;border:1px solid var(--border);border-radius:10px;
@@ -167,7 +175,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .tier-atrisk{background:#FEE2E2;color:#991B1B;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
 .tier-nogoals{background:#450a0a;color:#fca5a5;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
 .tier-ontarget{background:#DCFCE7;color:#15803D;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800}
-.crew-badge{background:#EEF2FF;color:#3730A3;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;margin-left:6px;vertical-align:middle}
+.crew-badge{background:var(--orbe-tint);color:var(--royal);border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;margin-left:6px;vertical-align:middle}
 
 /* At Risk sections */
 .urg-section{margin-bottom:20px}
@@ -199,7 +207,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .pill-reviewed{background:#DCFCE7;color:#15803D}
 .pill-followup{background:#FEF9C3;color:#854D0E}
 .pill-escalated{background:#FEE2E2;color:#B91C1C}
-.pill-resolved{background:#EEF4FF;color:#1D4ED8}
+.pill-resolved{background:var(--orbe-tint);color:var(--void)}
 
 /* Modal */
 #modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center}
@@ -226,7 +234,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 /* Conversation timeline inside the goal drill-down (2026-07-04 spec) */
 .cv-thread{display:flex;flex-direction:column;gap:4px;padding:4px 0}
 .cv-bubble{max-width:78%;border-radius:10px;padding:7px 10px;font-size:12px;color:var(--text)}
-.cv-self{background:#EEF4FF;border:1px solid #C7DEFF;align-self:flex-start}
+.cv-self{background:var(--orbe-tint);border:1px solid var(--royal-tint);align-self:flex-start}
 .cv-mgr{background:#FEF3E7;border:1px solid #FDE0B0;align-self:flex-end}
 .cv-other{background:#F1F5F9;border:1px solid #CBD5E1;align-self:center}
 .cv-meta{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--slate);margin-bottom:3px}
@@ -283,7 +291,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .nav-menu-item:hover{background:var(--surface)}
 
 /* Manager scope badge */
-.scope-badge{background:#5B21B6;color:#fff;border-radius:99px;padding:3px 12px;font-size:10px;
+.scope-badge{background:var(--royal);color:#fff;border-radius:99px;padding:3px 12px;font-size:10px;
   font-weight:700;white-space:nowrap;flex-shrink:0;display:none}
 
 /* Access Control settings (☰ menu → 🔒 Access Control) */
@@ -302,9 +310,9 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .sec-field-label{font-size:11px;font-weight:800;color:var(--void);text-transform:uppercase;
   letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;gap:6px}
 .sec-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:99px;font-size:9px;font-weight:800;letter-spacing:.03em}
-.sec-badge-admin{background:#EEF4FF;color:#0D3B8C}
-.sec-badge-viewer{background:#F1F8F4;color:#1B5E20}
-.sec-badge-manager{background:#F5F3FF;color:#5B21B6}
+.sec-badge-admin{background:var(--orbe-tint);color:var(--void)}
+.sec-badge-viewer{background:var(--june-tint);color:#B4543C}
+.sec-badge-manager{background:var(--orbe-tint);color:var(--royal)}
 .sec-textarea{width:100%;min-height:90px;border:1px solid var(--border);border-radius:8px;
   padding:8px 10px;font-size:12px;font-family:monospace;color:var(--text);background:#fff;
   resize:vertical;outline:none}
@@ -741,7 +749,10 @@ var S = {
   drillCache:         {},            // memoized getRocketeerGoalDetail payloads, keyed normName|quarter — cleared by refreshData()
 };
 
-var DEPT_COLORS = ['#FF9B87','#2864E6','#00A86B','#F59E0B','#9B59B6','#E74C3C','#1ABC9C','#E67E22','#3498DB','#8E44AD'];
+// Categorical palette for department/location charts — derived entirely from the
+// brand family (Orbe/June/Void/Royal/Ivory + tints/shades) so multi-series charts
+// stay on-brand while keeping ~10 distinguishable swatches. Not status colors.
+var DEPT_COLORS = ['#058CDC','#FF9B87','#0F1941','#2864E6','#DCCDBE','#046BA6','#E8785F','#6B93EE','#3A4A73','#B9A48C'];
 
 // Company brand palette, applied per the 60/30/10 rule: Void/Orbe/Ivory carry
 // the data series; Royal and June are HELD BACK for the annotation layer only
@@ -1420,7 +1431,7 @@ function renderManagerScorecard_(eng) {
     html += '<tr style="cursor:pointer" title="View ' + esc(m.name) + '&#8217;s team →" data-manager="' + esc(m.name) + '">';
     html += '<td style="font-weight:600;white-space:nowrap">' + esc(m.name);
     if (m.isSeniorLeader) {
-      html += ' <span style="background:#EEF4FF;color:#1D4ED8;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle">Senior Leader</span>';
+      html += ' <span style="background:var(--orbe-tint);color:var(--royal);border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle">Senior Leader</span>';
     }
     if (m.isExcepted) {
       html += ' <span style="background:#F1F5F9;color:#64748B;border:1px solid #CBD5E1;border-radius:3px;padding:1px 5px;font-size:8px;font-weight:700;vertical-align:middle" title="Excluded from engagement metrics by configuration">Excepted</span>';
@@ -1567,7 +1578,7 @@ function signalsBadges_(e, isGrace) {
   // the full quarter the thresholds assume (some ramp up mid-quarter anyway;
   // they still just read "New Hire" until their first full quarter).
   if (e.isNewHire) {
-    return '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#E6F4FD;color:#0369A1;border:1px solid #7DD3FC" title="Hired ' +
+    return '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:var(--orbe-tint);color:var(--void);border:1px solid var(--royal-tint)" title="Hired ' +
       esc(e.hireDate || 'this quarter') + ' — after quarter start, so goal thresholds don\'t apply yet">🌱 New Hire</span>';
   }
   var signals = '';
@@ -1581,7 +1592,7 @@ function signalsBadges_(e, isGrace) {
     signals += '<span class="tier-watch">8&ndash;9 Watch</span> ';
   }
   if (e.hasEngagementConcern) {
-    signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F3E8FF;color:#7C3AED;border:1px solid #C4B5FD">Not Commenting</span> ';
+    signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:var(--june-tint);color:#B4543C;border:1px solid var(--june)">Not Commenting</span> ';
   }
   if (e.goalsStuckInPlanned > 0) {
     signals += '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:#F1F5F9;color:#475569;border:1px solid #CBD5E1">Stuck&nbsp;(' + e.goalsStuckInPlanned + ')</span> ';
