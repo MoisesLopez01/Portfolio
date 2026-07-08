@@ -116,19 +116,25 @@ PropertiesService.getScriptProperties().setProperties({
 
 ---
 
-## Key CONFIG_PS constants (things that change each quarter)
+## Fiscal calendar — fully derived, no quarterly maintenance
 
-| Constant | Meaning | Update when |
-|---|---|---|
-| `GOALS_QUARTER` | e.g. `"FY26Q4"` | New quarter starts |
-| `SI_QUARTER_COL` | SI sheet column header | Prior quarter closes |
-| `Q4_BASE_ISO_WEEK` / `Q4_BASE_YEAR` | ISO week of Q4 start | New Q4 starts |
-| `MONTH_COLS` | FY month columns in RCR sheet | New fiscal year |
-| `GOALS_MIN_COUNT` | Min goals for compliance (8) | If target changes |
-| `GOALS_ACTIVE_COMMENT_COUNT` | Goals needing self-comments (6) | If target changes |
+All quarter/FY constants (goals quarter label, quarter start/end ISO weeks, SI column
+header, RCR month columns, grace-period flags) are derived from today's date by
+`computeFiscalContext_()` in `PS Contribution Report.js` (FY starts July 1) and shipped
+to the frontend as `meta.fiscalContext` / `meta.goalsQuarter` / `meta.siQuarter`.
+The frontend's header subtitle and every Data Reference quarter mention are filled at
+load by `updateQuarterLabels_()` via `.drGoalsQ` / `.drSiQ` / `.drQEnd` / `.drQ1Week`
+spans — nothing in the HTML needs a manual update at quarter rollover.
+Override hook: `CONFIG_PS.SI_COL_OVERRIDE` forces the SI column header if the
+auto-generated name doesn't match the sheet.
 
-The HTML Data Reference tab also contains **hard-coded Q4 week labels** (e.g. `2026.W14–W18`).
-They are marked with `<!-- UPDATE EACH QUARTER: … -->` — update them when CONFIG_PS changes.
+Policy constants that still change only if the target changes:
+
+| Constant | Meaning |
+|---|---|
+| `GOALS_MIN_COUNT` | Min goals for compliance (8) |
+| `GOALS_ACTIVE_COMMENT_COUNT` | Goals needing self-comments (6) |
+| `GOALS_GRACE_DAYS` | Goals-only transition window after quarter start (21) |
 
 ---
 
@@ -173,12 +179,26 @@ Spec: `docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-d
   `readWeightSettings_()`). There is **no editable/stored `DEFAULT` matrix block** — the matrix
   holds only per-family *overrides*. The Scoring Weights page shows the company default as a
   read-only mirror of the flat weights.
+- **Contributor model (2026-07-07)** — the matrix has exactly four kinds of blocks:
+  - **PS-team families** `PS_TEAM_FAMILIES_` = JF007/JF008/JF009/JF018 — per-level cells,
+    blank inherits the flat base.
+  - **COE team** `COE_FAMILY_CODE_` = JF004 — one shared `ALL` cell for every level,
+    blank inherits the flat base.
+  - **Non-contributors** `NONCONTRIB_CODE_` — every *other* catalogued family (operational
+    roles embedded in Services). They score only on **Goals/PTO/SI/Kudos**
+    (`NONCONTRIB_DEFAULT_W_` = goals 40 / kudos 20 / si 20 / pto 20; tracked/planned/rcr 0).
+    Blank cells in the `NONCONTRIB/ALL` block inherit those **policy defaults, not the base** —
+    a reset must never re-enable tracked/planned/RCR for these roles.
+  - **SERVICES catch-all** — unchanged: uncatalogued Services-dept titles.
 - **Resolution order per employee** (`weightsForEmployee_`):
-  Job Title → catalog → `(family, levelKey)` → matrix cell (blank metric inherits the flat base
-  weight) → `readWeightSettings_()` → `DEFAULT_WEIGHTS_`.
-  Any miss falls back to base — an unseeded deployment scores exactly as before. The matrix is
-  seeded with blank cells (structure only), so every family reads as "inheriting default" until
-  an admin enters an explicit override.
+  Job Title → catalog → (uncatalogued → SERVICES/ALL) → (JF004 → COE ALL cell) →
+  (non-PS family → NONCONTRIB ALL cell, blanks fill from `NONCONTRIB_DEFAULT_W_`) →
+  PS family `(family, levelKey)` cell (blank metric inherits the flat base) →
+  `readWeightSettings_()` → `DEFAULT_WEIGHTS_`.
+- **Per-employee weights on the client**: the payload attaches `emp.scoreWeights` only when the
+  resolved weights differ from the flat base (reference check in `computePSReport_`).
+  `computeRkScore` uses `emp.scoreWeights || SCORE_W`, so base-weight employees still follow
+  live weight previews while COE/non-contributor/override employees score with their own rates.
 - **Services Team catch-all**: the roster is filtered to Department = "Services"
   (`CONFIG_PS.PS_DEPT`), so titles missing from the Job Catalog are still Services-team
   members — they score with the `SERVICES`/`ALL` matrix block (one weight set, all levels;

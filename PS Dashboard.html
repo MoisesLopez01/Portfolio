@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -112,6 +112,19 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
 .spinner { width: 36px; height: 36px; border: 3px solid var(--border);
            border-top-color: var(--orbe); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Rotating metric tips shown while the report loads */
+.loading-tip { max-width: 520px; width: 100%; background: var(--surface); border: 1px solid var(--border);
+               border-radius: 10px; padding: 16px 20px; text-align: left; margin-top: 4px; }
+.loading-tip-kicker { display: flex; justify-content: space-between; gap: 10px; font-size: 10px;
+                      font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+                      color: var(--muted); margin-bottom: 8px; }
+.loading-tip-content { transition: opacity .35s ease; }
+.loading-tip-title { font-size: 13px; font-weight: 800; color: var(--void); margin-bottom: 4px; }
+.loading-tip-body { font-size: 12.5px; color: var(--slate); line-height: 1.6; }
+.loading-tip-dots { display: flex; gap: 5px; justify-content: center; margin-top: 12px; }
+.loading-tip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.loading-tip-dot.on { background: var(--orbe); }
 
 /* ── TAB NAV ── */
 .tab-nav {
@@ -737,12 +750,6 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .dr-rule-title { font-size: 13px; font-weight: 800; color: var(--void); margin-bottom: 4px; }
 .dr-rule-desc { font-size: 12px; color: var(--slate); line-height: 1.6; }
 .dr-rule-note { margin-top: 7px; font-size: 11px; color: var(--muted); background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; line-height: 1.5; }
-.dr-score-bars { display: flex; flex-direction: column; gap: 8px; }
-.dr-score-row { display: flex; align-items: center; gap: 10px; }
-.dr-score-label { font-size: 11px; font-weight: 700; color: var(--void); width: 90px; flex-shrink: 0; }
-.dr-score-bar { flex: 1; height: 7px; background: var(--border); border-radius: 99px; overflow: hidden; }
-.dr-score-fill { height: 100%; border-radius: 99px; }
-.dr-score-pct { font-size: 11px; font-weight: 800; color: var(--muted); width: 32px; text-align: right; flex-shrink: 0; }
 .dr-note { background: #EEF4FF; border-left: 3px solid var(--orbe); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 12px; color: var(--void); line-height: 1.6; }
 
 /* ── SETTINGS TAB ── */
@@ -993,7 +1000,7 @@ body { font-size: 15px; }
 /* 13px tier — was 11px */
 .week-badge, .section-sub, .copy-btn, .fb-reset,
 .cf-panel-list li::before, .team-brief-week,
-.dr-rule-note, .dr-score-label, .dr-score-pct,
+.dr-rule-note,
 .settings-note, .sec-hint,
 .sec-toggle-info .sec-toggle-desc, .sec-bootstrap-note,
 .radar-tbl, .team-brief-copy-btn, .team-brief-gemini-btn,
@@ -1268,7 +1275,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
   <div class="header-title">
     <h1>Professional Services — Weekly Contribution Report</h1>
-    <p>Operational Excellence · FY26Q4</p>
+    <p id="headerQuarterLabel">Operational Excellence</p>
   </div>
   <span class="week-badge" id="weekBadge">Loading…</span>
   <span id="dataFreshnessNote" style="font-size:10px;color:var(--slate);font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 10px;white-space:nowrap;display:none"></span>
@@ -1355,6 +1362,17 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <div class="loading" id="loadingState">
     <div class="spinner"></div>
     <p>Loading contribution data…</p>
+    <div class="loading-tip" id="loadingTip" style="display:none">
+      <div class="loading-tip-kicker">
+        <span>💡 While you wait — know your metrics</span>
+        <span id="loadingTipCount"></span>
+      </div>
+      <div class="loading-tip-content" id="loadingTipContent">
+        <div class="loading-tip-title" id="loadingTipTitle"></div>
+        <div class="loading-tip-body" id="loadingTipBody"></div>
+      </div>
+      <div class="loading-tip-dots" id="loadingTipDots"></div>
+    </div>
   </div>
 
   <!-- TAB NAV -->
@@ -1528,7 +1546,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
               <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Weekly export</td></tr>
               <tr><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
               <tr><td>SI Score</td><td>Small Improvements platform</td><td>Quarterly</td></tr>
-              <tr><td>Goals Commented</td><td>Goals platform (FY26Q4)</td><td>Weekly export</td></tr>
+              <tr><td>Goals Commented</td><td>Goals platform (<span class="drGoalsQ">current quarter</span>)</td><td>Weekly export</td></tr>
               <tr><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
               <tr><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
               <tr><td>Kudos given</td><td>Netsuite Export</td><td>Weekly export</td></tr>
@@ -1542,89 +1560,73 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <div class="dr-metrics">
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>RCR — Revenue Contribution Rate</div>
-              <div class="dr-metric-desc">Revenue generated by the team divided by total cash compensation for the most recently completed month. This is a team-level indicator — it tells us how much revenue we produce relative to our cost as a group, not a measure of any individual. We aim to stay above 1×; the higher, the better. The model may evolve in upcoming quarters as we refine how revenue is attributed, so treat this as a directional check rather than a hard target.</div>
+              <div class="dr-metric-desc">Team revenue divided by total cash compensation for the last closed month. A team-level indicator, not a measure of any individual. We aim to stay above 1× — read it as a directional check, not a hard target.</div>
               <div class="dr-metric-src">Updated monthly · reflects the last closed month shown at the top of the card.</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#0F1941"></span>SI — Small Improvements Rating</div>
-              <div class="dr-metric-desc">Quarterly manager rating on a 1–5 scale from the Small Improvements platform. The dashboard shows the FY26Q3 result as a rounded integer. This is a static value — it does not change week to week until a new quarter closes.</div>
+              <div class="dr-metric-desc">Quarterly manager rating on a 1–5 scale from the Small Improvements platform. The dashboard shows the last closed quarter (<span class="drSiQ">—</span>) as a rounded integer — static until the next quarter closes.</div>
               <div class="dr-metric-src">Scale: 0 Not rated (excluded) · 1 Needs Help · 2 Below Expectation · 3 Meeting · 4 Great · 5 Outstanding</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#00A86B"></span>Goals connected</div>
-              <div class="dr-metric-desc">Weekly compliance check against FY26Q4 goals in the RD sheet. A rocketeer is compliant if they pass all three rules (see the Goals Evaluation section below). A connected rocketeer has tied their work to something that matters — goals drive planning, planning drives execution. The dashboard evaluates each past and current week independently.</div>
+              <div class="dr-metric-desc">Weekly compliance check against <span class="drGoalsQ">current-quarter</span> goals. A rocketeer is compliant when all three rules pass (see Goals Evaluation below). Each week is evaluated independently — goals drive planning, planning drives execution.</div>
               <div class="dr-metric-src">Available for weeks W-2 → W0 (current). Future weeks show —.</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>Time planned</div>
-              <div class="dr-metric-desc">Hours that PS team members have planned in Tempo for each week. A team that plans its work sets itself up to deliver — planning is a decision, not a default. The dashboard shows planned hours across all 5 weeks, including historical weeks and upcoming ones.</div>
+              <div class="dr-metric-desc">Hours planned in Tempo for each week, shown across all 5 weeks including upcoming ones. Planning is a decision, not a default.</div>
               <div class="dr-metric-src">Available across all 5 weeks (past, current, and W+1, W+2).</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#7C3AED"></span>Time tracked</div>
-              <div class="dr-metric-desc">Hours logged by PS team members in Tempo each week. Hours are summed per complete ISO calendar week (Mon–Sun) and matched to each rocketeer on the roster. Includes all PS team members — ramp-up and active alike.</div>
+              <div class="dr-metric-desc">Hours logged in Tempo, summed per ISO week (Mon–Sun) and matched to the roster. Includes all PS team members — ramp-up and active alike.</div>
               <div class="dr-metric-src">Available for weeks W-2 → W0 (current).</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#FF9B87"></span>Kudos given</div>
-              <div class="dr-metric-desc">Count of Kudos received by PS team members each week. Recognizing someone's contribution is a team behavior we want to grow — this metric surfaces how much the team sees and appreciates each other.</div>
+              <div class="dr-metric-desc">Count of Kudos received each week — a signal of how much the team sees and appreciates each other.</div>
               <div class="dr-metric-src">Available for weeks W-2 → W0 (current).</div>
             </div>
             <div class="dr-metric">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#3B82F6"></span>PTO — Planned Time Off</div>
-              <div class="dr-metric-desc">Each employee is evaluated as <em>Planned</em> (PTO balance under control, or upcoming leave already booked) or <em>Needs a plan</em> (high accumulated balance with no upcoming leave). Planning rest is a professional skill — a team that plans its recovery sustains its performance. Team score = % of employees in Planned status. Available across all 5 weeks, including forward weeks, giving a proactive view of team wellbeing.</div>
+              <div class="dr-metric-desc">Each employee is either <em>Planned</em> (balance under control, or upcoming leave booked) or <em>Needs a plan</em> (high balance, no upcoming leave). Team score = % in Planned status, shown across all 5 weeks — a team that plans its recovery sustains its performance.</div>
               <div class="dr-metric-src">Available all 5 weeks including W+1 and W+2.</div>
             </div>
           </div>
         </div>
 
         <div class="dr-section">
-          <div class="dr-section-title">Goals Evaluation — FY26Q4</div>
-          <p class="dr-p">Each week, every rocketeer is evaluated against their FY26Q4 goals. To be marked <strong>Compliant</strong>, all three rules below must pass. The dashboard evaluates each week independently using that week's Mon–Sun window. Quarter target: <strong>10 goals, 8 completed by June 30 2026</strong>.</p>
+          <div class="dr-section-title">Goals Evaluation — <span class="drGoalsQ">current quarter</span></div>
+          <p class="dr-p">Each week, every rocketeer is evaluated against their <span class="drGoalsQ">current-quarter</span> goals using that week's Mon–Sun window. To be marked <strong>Compliant</strong>, all three rules below must pass. Quarter target: <strong>10 goals, 8 completed by <span class="drQEnd">quarter end</span></strong>.</p>
           <div class="dr-rules">
             <div class="dr-rule">
               <div class="dr-rule-num">1</div>
               <div class="dr-rule-body">
                 <div class="dr-rule-title">Goal Count — at least 8 goals</div>
-                <div class="dr-rule-desc">The rocketeer must have at least <strong>8 distinct goals</strong> in their FY26Q4 goal set. The quarter-end target is 10 goals with 8 completed — 8 is the minimum to be evaluated week over week.</div>
+                <div class="dr-rule-desc">At least <strong>8 distinct goals</strong> in the quarter's goal set. During the <strong>first 4 weeks</strong> of a new quarter this rule is relaxed while goals are being written — the 8-goal minimum applies from quarter week 5.</div>
               </div>
             </div>
             <div class="dr-rule">
               <div class="dr-rule-num">2</div>
               <div class="dr-rule-body">
                 <div class="dr-rule-title">In Progress — majority of goals actively in progress</div>
-                <div class="dr-rule-desc">More than <strong>50% of goals</strong> must have a status of <em>In Progress</em>. Planned or Completed goals do not count toward this rule. This ensures active execution, not just goal setup.</div>
+                <div class="dr-rule-desc">More than <strong>50% of goals</strong> must be <em>In Progress</em>. Planned or Completed goals do not count toward this rule — it checks active execution, not just goal setup.</div>
               </div>
             </div>
             <div class="dr-rule">
               <div class="dr-rule-num">3</div>
               <div class="dr-rule-body">
                 <div class="dr-rule-title">Comment Engagement — at least 6 goals with cumulative self-comments</div>
-                <div class="dr-rule-desc">At least <strong>6 goals</strong> must have the required number of cumulative self-comments written by the rocketeer by that week's end. Comments from managers do not count. The required comment count per goal ramps up as Q4 progresses.</div>
+                <div class="dr-rule-desc">At least <strong>6 goals</strong> must have the required number of cumulative self-comments by that week's end. Manager comments do not count. Completed goals qualify with a single self-comment, and a full-week PTO week exempts this rule.</div>
                 <div class="dr-rule-note">
-                  <strong>How the required comment count grows through Q4:</strong><br>
-                  <!-- UPDATE EACH QUARTER: Q4_BASE_ISO_WEEK, Q4_BASE_YEAR, and the week labels below must match CONFIG_PS in PS Contribution Report.js -->
-                  Formula: <code>max(1, quarterWeek − 4)</code> where Q4 week 1 = 2026.W14.<br><br>
-                  <strong>2026.W14 – W18</strong> (Q4 weeks 1–5): <strong>1 comment</strong> per goal<br>
-                  <strong>2026.W19</strong> (week 6): <strong>2 comments</strong> per goal<br>
-                  <strong>2026.W20</strong> (week 7): <strong>3 comments</strong> per goal<br>
-                  <strong>2026.W21</strong> (week 8): <strong>4 comments</strong> per goal<br>
-                  <strong>2026.W22</strong> (week 9): <strong>5 comments</strong> per goal<br>
-                  <strong>2026.W23+</strong> (week 10+): <strong>6 comments</strong> per goal<br><br>
-                  This gradual ramp encourages consistent engagement throughout the quarter rather than a last-minute push.
+                  <strong>Required comments per goal</strong> = <code>max(1, quarterWeek − 4)</code>, where quarter week 1 = <strong><span class="drQ1Week">—</span></strong>: 1 comment through week 5, then one more each week (week 6 = 2, week 7 = 3, …). The ramp rewards steady engagement over a last-minute push.
                 </div>
               </div>
             </div>
           </div>
-          <div class="dr-note">When the detail row is expanded for an employee, you can see exactly which rule failed — for example, "Rule 2: 3/8 goals In Progress (need 5)" or "Rule 3: 4/6 goals with required comments (need 6, each needing 2 comments this quarter)".</div>
-        </div>
-
-        <div class="dr-section">
-          <div class="dr-section-title">LEADING BEHAVIOURS — Composite Score</div>
-          <div id="drScoreBarsContainer">
-            <!-- Rendered dynamically by renderDrScoreBars() so this always reflects
-                 the live weight configuration from Settings. -->
-          </div>
+          <div class="dr-note"><strong>Quarter override:</strong> a rocketeer whose goals are all Completed (8+ total), or who has 8+ Completed goals with 5 of them fully documented (8+ self-comments each), is marked compliant for every week of the quarter.</div>
+          <div class="dr-note">During the <strong>first 3 weeks</strong> of a new quarter, the previous quarter's final standing is carried alongside while new-quarter goals spin up. Expand any employee row to see exactly which rule failed and by how much.</div>
         </div>
 
         <div class="dr-section">
@@ -1635,13 +1637,13 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             <tbody>
               <tr>
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#058CDC;display:inline-block"></span>Goals</span></td>
-                <td>Compliance rate for FY26Q4 goals</td>
+                <td>Compliance rate for <span class="drGoalsQ">current-quarter</span> goals</td>
                 <td>Compliant headcount ÷ evaluated headcount × 100</td>
                 <td>RD sheet · reference week</td>
               </tr>
               <tr>
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#7C3AED;display:inline-block"></span>SI Score</span></td>
-                <td>Manager rating (FY26Q3)</td>
+                <td>Manager rating (<span class="drSiQ">last closed quarter</span>)</td>
                 <td>avg rating ÷ 5 × 100 · maps 1→20, 3→60, 5→100 · 0 = not rated (excluded)</td>
                 <td>Small Improvements · static per quarter</td>
               </tr>
@@ -1753,7 +1755,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
       </div>
       <div id="goalsVerdict" class="verdict-slot"></div>
-      <div id="goalsAuditPanel" style="padding:0 16px;display:none"></div>
       <div id="goalsStandingKpis" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 16px 16px"></div>
       <div style="position:relative;height:200px;padding:0 12px 0">
         <canvas id="goalsCommentPaceChart"></canvas>
@@ -1778,7 +1779,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div style="display:flex;align-items:center;gap:16px">
           <div style="text-align:right;white-space:nowrap;flex-shrink:0">
             <div id="timeMomentumPct" style="font-size:30px;font-weight:800;color:var(--void);line-height:1.1">—</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">Q4 delivery rate</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px"><span class="drGoalsQ">Quarter</span> delivery rate</div>
           </div>
           <div id="timeMomentumActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
             <button class="copy-btn" onclick="saveCardPNG('timeMomentumCard','team-delivery-rate')">
@@ -1950,7 +1951,7 @@ var RADAR_AXIS_TARGETS = {
   kudos: 50, pto: 80, rcr: 80, si: 60
 };
 var RADAR_AXIS_DEFS = [
-  { id: 'goals',   label: 'Goals',         tier: 'strategic',   color: '#058CDC', desc: '% compliant with FY26Q4 goals' },
+  { id: 'goals',   label: 'Goals',         tier: 'strategic',   color: '#058CDC', desc: '% compliant with current-quarter goals' },
   { id: 'tracked', label: 'Tracked Time',  tier: 'operational', color: '#D97706', desc: '% of team who tracked hours in the selected week' },
   { id: 'planned', label: 'Planned Time',  tier: 'strategic',   color: '#EA580C', desc: '% of team who planned hours in the selected week' },
   { id: 'kudos',   label: 'Kudos',         tier: 'operational', color: '#FF9B87', desc: 'Kudos per person — 2/person = 100' },
@@ -2091,8 +2092,8 @@ function closeMenuTab(id) {
   if (STATE.activeTab === id) switchTab(STATE.lastRegularTab || "overview");
 }
 
-// ── Q4 CONSTANTS — UPDATE EACH QUARTER to match CONFIG_PS in PS Contribution Report.js ──
-// (Q4_BASE_ISO_WEEK → START_W, Q4_END → END_W, Q4_BASE_YEAR → YEAR)
+// ── QUARTER WINDOW — pre-load fallback only; overwritten from payload.meta.fiscalContext
+// on every data load (see the fc block in the payload handler), so it needs no manual update.
 // GRACE_YEAR is separate from YEAR because the one fiscal rollover that crosses a
 // calendar-year boundary (Q2 Oct-Dec → Q3 Jan-Mar) lands its grace-window weeks in the
 // NEW ISO year while START_W/END_W/YEAR still describe the outgoing quarter.
@@ -2494,7 +2495,7 @@ function onDataLoaded(payload) {
           GRACE_W: fc.qEndIsoWeek,       YEAR:    fc.qStartIsoYear,
           GRACE_YEAR: fc.qEndIsoYear };
   }
-  updateQuarterLabels_(payload.meta && payload.meta.goalsQuarter);
+  updateQuarterLabels_(payload.meta);
   goalsAuditMap = {};
   (DATA.goalsAudit || []).forEach(function(e) { goalsAuditMap[e.normName] = e; });
   STATE.userRole  = payload.userRole  || "viewer";
@@ -2628,7 +2629,6 @@ function renderAll() {
     execbrief:  function() { renderExecBriefTab_(); },
     weights:    function() { renderWeightsTab_(); },
     access:     function() { renderAccessTab_(); },
-    dataref:    function() { renderDrScoreBars(); },
   };
   if (RENDERERS[STATE.activeTab]) RENDERERS[STATE.activeTab]();
 }
@@ -2656,15 +2656,36 @@ function siLabel(v) {
 }
 
 // ── QUARTER LABEL UPDATER ─────────────────────────────────
-function updateQuarterLabels_(q) {
+// Fills every quarter-dependent label (header + Data Reference spans) from the
+// payload's fiscal context, so nothing needs a manual update at quarter rollover.
+function quarterEndDateLabel_(q) {
+  var m = /^FY(\d{2})Q([1-4])$/.exec(q || '');
+  if (!m) return 'quarter end';
+  var startCalYear = 2000 + (+m[1]) - 1;              // FY starts July 1 of fyNum-1
+  var ends = { 1: ['September 30', 0], 2: ['December 31', 0], 3: ['March 31', 1], 4: ['June 30', 1] };
+  var e = ends[+m[2]];
+  return e[0] + ' ' + (startCalYear + e[1]);
+}
+function setAll_(cls, text) {
+  document.querySelectorAll('.' + cls).forEach(function(el) { el.textContent = text; });
+}
+function updateQuarterLabels_(meta) {
+  var q = meta && meta.goalsQuarter;
   if (!q) return;
+  var fc  = meta.fiscalContext || {};
+  var siQ = meta.siQuarter || fc.prevGoalsQuarter || '';
+  var hq  = document.getElementById('headerQuarterLabel');
+  if (hq) hq.textContent = 'Operational Excellence · ' + q;
+  setAll_('drGoalsQ', q);
+  if (siQ) setAll_('drSiQ', siQ);
+  setAll_('drQEnd', quarterEndDateLabel_(q));
+  if (fc.qStartIsoYear && fc.qStartIsoWeek) setAll_('drQ1Week', fc.qStartIsoYear + '.W' + fc.qStartIsoWeek);
   RADAR_AXIS_DEFS.forEach(function(d) {
     if (d.id === 'goals') d.desc = '% compliant with ' + q + ' goals';
   });
   WEIGHT_DEFS.forEach(function(d) {
     if (d.key === 'goals') d.desc = q + ' compliance: binary (compliant = 100%, not = 0%)';
   });
-  DR_METRIC_DETAIL.goals = 'Compliant with ' + q + ' goals = full credit · Not compliant = 0';
 }
 
 // ── FILTERED META ─────────────────────────────────────────
@@ -2924,7 +2945,10 @@ function computeRkScore(emp, weekLabel) {
   // PTO: Good = 1, At Risk = 0; excluded when no snapshot
   var pto     = wd.ptoHealth ? (wd.ptoHealth.status === "Good" ? 1 : 0) : null;
 
-  var W = SCORE_W;
+  // Per-employee weights resolved server-side (COE / non-contributor / family
+  // overrides); employees on the plain company base carry no scoreWeights and
+  // follow the live SCORE_W (so the flat-weight preview still applies to them).
+  var W = emp.scoreWeights || SCORE_W;
   // Crew/contractors have no Goals, PTO, or SI — exclude those weights entirely so
   // they're scored only on Tracked, Planned, RCR, and Kudos (not penalized for data
   // they can't have). FTE keep the full weighting.
@@ -3314,7 +3338,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var cUp  = cArr[cArr.length - 1] > cArr[0];
     var cStr = recent.map(function(h, i) { return shortLbl(h.label) + ' ' + cArr[i]; }).join(' → ');
     if (cUp && cArr[cArr.length - 1] >= 2) {
-      highlights.push('Goal self-comment pace accelerating ' + cStr + '/person — engagement with Q4 commitments growing');
+      highlights.push('Goal self-comment pace accelerating ' + cStr + '/person — engagement with quarterly commitments growing');
       trends.push('Avg self-comments/person: ' + cStr + ' (accelerating)');
     } else {
       trends.push('Avg self-comments/person: ' + cStr);
@@ -3896,7 +3920,8 @@ function renderTopRocketeers(filtered) {
       .filter(function(d) { return (SCORE_W[d.key] || 0) > 0; })
       .map(function(d) { return d.label + " " + (SCORE_W[d.key] || 0) + "%"; })
       .join(" · ");
-    sub.textContent = wParts + " · Active only · "
+    var hasCustomW = filtered.some(function(e) { return e.scoreWeights; });
+    sub.textContent = wParts + (hasCustomW ? " · custom family/level rates apply to some" : "") + " · Active only · "
       + selLabel + " (" + selWeek.dateRange + ")" + inProgress
       + (prevWeek ? "  ·  vs " + prevWeek.label : "");
   }
@@ -6574,7 +6599,7 @@ function renderRadarTab(filtered) {
 
 // ── SETTINGS TAB ─────────────────────────────────────────
 var WEIGHT_DEFS = [
-  { key: "goals",   label: "Goals",        desc: "FY26Q4 compliance: binary (compliant = 100%, not = 0%)",              color: "#00A86B" },
+  { key: "goals",   label: "Goals",        desc: "Current-quarter compliance: binary (compliant = 100%, not = 0%)",     color: "#00A86B" },
   { key: "tracked", label: "Tracked",      desc: "Hours logged vs. 90% of planned time (floor 36h)",                    color: "#058CDC" },
   { key: "planned", label: "Planned",      desc: "Hours planned vs. 40h target (32–40h incl. PTO)",                     color: "#7C3AED" },
   { key: "rcr",     label: "RCR",          desc: "Individual RCR vs. 2.5× optimal — excluded if no data",               color: "#D97706" },
@@ -6582,70 +6607,6 @@ var WEIGHT_DEFS = [
   { key: "si",      label: "SI Rating",    desc: "Manager rating 0–5: score ÷ 5 (0 = not rated, excluded from scoring)", color: "#9333EA" },
   { key: "pto",     label: "PTO Health",   desc: "PTO planning status: Good = 100%, At Risk = 0%",                      color: "#0D9488" },
 ];
-
-// Long-form calculation descriptions used in the Data Reference tab.
-var DR_METRIC_DETAIL = {
-  goals:   "Compliant with FY26Q4 goals = full credit · Not compliant = 0",
-  tracked: "Hours logged ÷ 90% of planned time, capped at 100% · falls back to 36h target when no planned data",
-  planned: "Hours planned ÷ 40h target, capped at 100%",
-  rcr:     "Individual RCR ÷ 2.5× optimal, capped at 100% · excluded for individuals with no RCR data",
-  kudos:   "Received any kudos this week = +50% · Gave any kudos this week = +50% · Both = full credit · neither = 0",
-  si:      "Manager rating ÷ 5 — score 5 = 100%, score 1 = 20% · score 0 (not yet rated) excluded from scoring",
-  pto:     "PTO planning status: Good = 100% · At Risk = 0%",
-};
-
-// Rebuilds the Composite Score documentation from the live SCORE_W state.
-// Called whenever the Data Reference tab becomes active and after weights change.
-function renderDrScoreBars() {
-  var el = document.getElementById("drScoreBarsContainer");
-  if (!el) return;
-
-  var active   = WEIGHT_DEFS.filter(function(d) { return (SCORE_W[d.key] || 0) > 0; });
-  var inactive = WEIGHT_DEFS.filter(function(d) { return (SCORE_W[d.key] || 0) === 0; });
-  var conditional = active
-    .filter(function(d) { return d.key === "rcr" || d.key === "si"; })
-    .map(function(d) { return d.label; });
-
-  if (!active.length) {
-    el.innerHTML = '<p style="color:var(--muted);font-style:italic;font-size:12px">No metrics configured — go to Settings to assign weights.</p>';
-    return;
-  }
-
-  var metricWord = active.length === 1 ? "metric" : "metrics";
-  var intro = "Each rocketeer receives a composite score (0–100) for a selected week. " +
-    "The score currently blends <strong>" + active.length + " " + metricWord + "</strong> weighted as shown below.";
-
-  if (conditional.length) {
-    var condNames = conditional.join(" and ");
-    var condVerb  = conditional.length > 1 ? "are" : "is";
-    intro += " " + condNames + " " + condVerb + " excluded for individuals with no data — " +
-      "their weight is redistributed proportionally so scores remain comparable across the team.";
-  }
-
-  if (inactive.length) {
-    var inactiveLabels = inactive.map(function(d) { return d.label; }).join(", ");
-    intro += " <span style='color:var(--muted)'>Metrics not included in the current configuration: " + esc(inactiveLabels) + ".</span>";
-  }
-
-  var barsHtml = active.map(function(d) {
-    var w = SCORE_W[d.key] || 0;
-    return '<div class="dr-score-row">' +
-      '<span class="dr-score-label">' + esc(d.label) + '</span>' +
-      '<div class="dr-score-bar"><div class="dr-score-fill" style="width:' + w + '%;background:' + d.color + '"></div></div>' +
-      '<span class="dr-score-pct">' + w + '%</span>' +
-      '<span style="font-size:11px;color:var(--slate);margin-left:8px">' + (DR_METRIC_DETAIL[d.key] || esc(d.desc)) + '</span>' +
-    '</div>';
-  }).join('');
-
-  el.innerHTML =
-    '<p class="dr-p" style="margin-bottom:14px">' + intro + '</p>' +
-    '<div class="dr-score-bars">' + barsHtml + '</div>' +
-    '<div class="dr-note" style="margin-top:12px">Weights are configured by admins in <strong>⚖️ Scoring Weights</strong> (☰ menu). ' +
-    'Changes take effect immediately and are shared with all users on the next page refresh.</div>' +
-    '<div class="dr-note" style="margin-top:6px"><strong>Family × Level overrides:</strong> the weights shown above are the company base. ' +
-    'Admins can tune them per job family and level (☰ menu → ⚖️ Scoring Weights) — a rocketeer\'s composite score ' +
-    'uses their family\'s weights for their level, resolved via the Job Catalog; unmapped titles fall back to the base weights shown here.</div>';
-}
 
 // ── ACCESS CONTROL TAB (admin only, opened from the ☰ menu) ──
 function renderAccessTab_() {
@@ -6771,24 +6732,32 @@ function renderMatrixSection_() {
   }
 
   var html = '<div class="sec-header">⚖️ Scoring Weights by Family &amp; Level</div>' +
-    '<p class="sec-sub">The <strong>Company Default</strong> below is the single source for everyone — it mirrors the ' +
-    'Scoring Weights set above. A job family only needs entries here when it should score <em>differently</em> from that ' +
-    'default; blank cells inherit it. Each level column should total 100% (other totals are renormalized at scoring time).</p>';
+    '<p class="sec-sub">The <strong>Company Default</strong> below is the single source for the PS team — it mirrors the ' +
+    'Scoring Weights set above; blank cells inherit it. <strong>PS families</strong> (JF007/JF008/JF009/JF018) are tunable ' +
+    'per level, the <strong>COE team</strong> (JF004) has one shared block, and all other families are ' +
+    '<strong>non-contributors</strong> scoring on Goals/PTO/SI/Kudos only. Each level column should total 100% ' +
+    '(other totals are renormalized at scoring time).</p>';
 
   // Company Default — read-only mirror of the flat base weights (single source of truth).
   html += renderDefaultRef_(cfg);
 
-  // Services Team catch-all — the roster is Services-department only, so titles not in
-  // the Job Catalog are still Services-team members and score with this block's weights.
-  html += renderServicesBlock_(cfg);
-
-  // Family override blocks (no editable DEFAULT block — base is the company default).
+  // PS-team family blocks (per level).
   cfg.families.forEach(function(f) {
     var fam = cfg.rolesByFamily[f.code];
     var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
     if (!levels.length) return;
     html += renderFamilyBlock_(f.code, f.name, levels, fam);
   });
+
+  // COE team — JF004, one shared weight set for all levels.
+  html += renderCoeBlock_(cfg);
+
+  // Non-contributors — every other catalogued family; Goals/PTO/SI/Kudos only.
+  html += renderNonContribBlock_(cfg);
+
+  // Services Team catch-all — the roster is Services-department only, so titles not in
+  // the Job Catalog are still Services-team members and score with this block's weights.
+  html += renderServicesBlock_(cfg);
 
   html += '<div class="settings-actions" style="margin-top:14px">' +
     '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Family Overrides</button>' +
@@ -6897,11 +6866,96 @@ function renderServicesBlock_(cfg) {
   return html;
 }
 
-// Effective weight of a family cell after inheritance: family cell → flat base weight.
+// Effective weight of a family cell after inheritance: family cell → flat base
+// weight. The NONCONTRIB block inherits the non-contributor policy defaults
+// instead of the base (a reset must never re-enable tracked/planned/RCR).
 function matrixEffectiveW_(fam, lk, met) {
   var m = MATRIX_CFG.matrix || {};
   if (m[fam] && m[fam][lk] && m[fam][lk][met] !== undefined) return m[fam][lk][met];
+  var nc = MATRIX_CFG.nonContrib;
+  if (nc && fam === nc.code) return (nc.defaults && nc.defaults[met]) || 0;
   return (MATRIX_CFG.baseWeights && MATRIX_CFG.baseWeights[met]) || 0;
+}
+
+// Shared single-ALL-column weights grid + reset button (COE and Non-contributors).
+function singleColWeightsGrid_(code, resetLabel) {
+  var lk = 'ALL';
+  var m = (MATRIX_CFG.matrix[code] || {})[lk] || {};
+  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
+  var html = '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
+    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
+    '<th style="' + thStyle + '">All levels</th>' +
+    '</tr></thead><tbody>';
+  WEIGHT_DEFS.forEach(function(d) {
+    var v = (m[d.key] !== undefined) ? m[d.key] : '';
+    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
+      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
+      esc(d.label) + '</th>' +
+      '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
+        '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
+        'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
+        'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
+        'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td></tr>';
+  });
+  var t = matrixColSum_(code, lk);
+  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
+    '<td id="msum-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
+      (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td></tr>';
+  html += '</tbody></table>' +
+    '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
+    'onclick="resetFamilyMatrix_(\'' + code + '\')">' + resetLabel + '</button>';
+  return html;
+}
+
+// COE team block — JF004 (Sales and Success): one shared weight set, all levels.
+function renderCoeBlock_(cfg) {
+  var coe = cfg.coeFamily || { code: 'JF004', name: 'Sales and Success', count: 0 };
+  var code = coe.code;
+  var isCustom = familyHasOverride_(code);
+  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
+    (isCustom ? 'Custom' : 'Inheriting default') + '</span>';
+  return '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">COE Team — ' + esc(coe.name) + '</span>' + badge +
+      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · one block, all levels · ' +
+        coe.count + ' rocketeer' + (coe.count !== 1 ? 's' : '') + '</span>' +
+    '</summary>' +
+    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
+    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">COE members (' + esc(code) +
+      ' job titles) score with this single shared weight set regardless of level. Blank cells inherit the company default.</p>' +
+    singleColWeightsGrid_(code, 'Reset — inherit company default') +
+    '</div></details>';
+}
+
+// Non-contributors block — families outside PS + COE: Goals/PTO/SI/Kudos only.
+function renderNonContribBlock_(cfg) {
+  var nc = cfg.nonContrib || { code: 'NONCONTRIB', defaults: {}, families: [] };
+  var code = nc.code;
+  var isCustom = familyHasOverride_(code);
+  var fams = nc.families || [];
+  var nPeople = fams.reduce(function(s, f) { return s + (f.count || 0); }, 0);
+  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
+    (isCustom ? 'Custom' : 'Policy defaults') + '</span>';
+  var famList = fams.length
+    ? fams.map(function(f) {
+        return '<div style="font-size:12px;color:var(--slate)">' + esc(f.code + ' — ' + f.name) +
+          ' <span style="color:var(--muted)">· ' + f.count + ' rocketeer' + (f.count !== 1 ? 's' : '') + '</span></div>';
+      }).join('')
+    : '<div style="font-size:12px;color:var(--muted)">No non-contributor families in the current roster.</div>';
+  return '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">Non-contributors</span>' + badge +
+      '<span style="font-weight:600;color:var(--muted);font-size:11px">operational roles · ' + fams.length +
+        ' famil' + (fams.length !== 1 ? 'ies' : 'y') + ' · ' + nPeople + ' rocketeer' + (nPeople !== 1 ? 's' : '') + '</span>' +
+    '</summary>' +
+    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
+    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">Operational roles embedded in the ' +
+      'Services roster that are not part of the PS team or COE. They score only on <strong>Goals, PTO, SI, and Kudos</strong> — ' +
+      'they do not track or plan time and have no direct RCR impact, so those three metrics default to 0. ' +
+      'Blank cells inherit these policy defaults, not the company default.</p>' +
+    '<div style="margin:0 0 10px">' + famList + '</div>' +
+    singleColWeightsGrid_(code, 'Reset — restore non-contributor defaults') +
+    '</div></details>';
 }
 
 // A family is "custom" once it carries any explicit (non-blank) weight.
@@ -7255,7 +7309,6 @@ function previewWeights() {
     return;
   }
   SCORE_W = w;
-  renderDrScoreBars();
   switchTab("rocketeers");
 }
 
@@ -7272,7 +7325,6 @@ function saveWeightsToSheet() {
   // Apply immediately so score changes are visible right away
   var prevW = Object.assign({}, SCORE_W);
   SCORE_W = w;
-  renderDrScoreBars();
 
   if (btn)   { btn.disabled = true; btn.textContent = "Saving…"; }
   if (flash) flash.style.display = "none";
@@ -7635,14 +7687,14 @@ function renderGoalsStanding(filtered) {
   var isGracePeriod = curYear !== Q4_YEAR || curW > Q4_END_W;
 
   var qWeek          = Math.max(1, curW - Q4_START_W + 1);
-  var weeksInQ4      = Q4_END_W - Q4_START_W + 1; // 13
+  var weeksInQ4      = Q4_END_W - Q4_START_W + 1;
   var _dow           = new Date().getDay(); // 0=Sun,1=Mon,...,6=Sat
   var _daysLeft      = (_dow >= 1 && _dow <= 5) ? (6 - _dow) : 0; // Mon→5,Tue→4,Wed→3,Thu→2,Fri→1,weekend→0
   var _weeksRaw      = Math.max(0, (Q4_END_W - curW) + _daysLeft / 5); // fractional, includes current week
   var weeksRemaining = Math.round(_weeksRaw * 2) / 2; // round to nearest 0.5 for clean display
   var weeksRemainingDisplay = Number.isInteger(weeksRemaining) ? weeksRemaining.toString() : weeksRemaining.toFixed(1);
   var reqCmtNow      = Math.max(1, qWeek - 4);
-  var reqCmtFinal    = Math.max(1, weeksInQ4 - 4); // = 9
+  var reqCmtFinal    = Math.max(1, weeksInQ4 - 4);
 
   // Pace from last closed week and current in-progress week
   var closedHist    = fullHist.filter(function(h) { return !h.isCurrentWeek && !h.isFuture; });
@@ -7794,48 +7846,15 @@ function renderGoalsStanding(filtered) {
   var _gsTone = compPct >= 70 ? "ok" : compPct >= 40 ? "warn" : "risk";
   var _gsGap  = compPct >= 70 ? "on the 70% bar" : (70 - compPct) + " pts below the 70% bar";
   var _gsFlag = _noActivityList.concat(_supOnlyList);
-  var _gsNames = _gsFlag.slice(0, 3).map(function(a) { return esc((a.name || "").split(" ")[0]); }).filter(Boolean).join(", ");
   var _gsAction = (weeklyNeeded !== "—" ? "Do: hold ~" + targetPace + " comments/rocketeer/week for the " + weeksRemainingDisplay + " week" + (weeksRemaining <= 1 ? "" : "s") + " left to close. " : "") +
     (_gsFlag.length > 0
-      ? "Follow up with " + _gsFlag.length + " flagged" + (_gsNames ? " (" + _gsNames + (_gsFlag.length > 3 ? ", …" : "") + ")" : "") + "."
+      ? "Follow up with " + _gsFlag.length + " flagged."
       : "No one currently flagged.");
   setVerdict_("goalsVerdict", {
     tone: _gsTone,
     headline: (compPct >= 70 ? "On track. " : "Needs a push. ") + compliant + " / " + total + " (" + compPct + "%) meeting all 3 rules · " + _gsGap + (_gsDir ? " · " + _gsDir : ""),
-    action: _gsAction,
-    
+    action: _gsAction
   });
-
-  // Audit panel — always visible when there are flagged employees
-  var auditPanel = document.getElementById("goalsAuditPanel");
-  if (auditPanel) {
-    if (_noActivityList.length === 0 && _supOnlyList.length === 0) {
-      auditPanel.style.display = "none";
-    } else {
-      auditPanel.style.display = "";
-      var apHtml = '<div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:6px">';
-      apHtml += '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">STF Risk — Activity Audit</div>';
-      if (_noActivityList.length > 0) {
-        apHtml += '<div style="margin-bottom:8px">';
-        apHtml += '<span class="goals-audit-badge goals-audit-red" style="margin-bottom:4px">🔴 No activity since Apr 1 (' + _noActivityList.length + ')</span>';
-        apHtml += '<div style="font-size:12px;color:var(--text);line-height:1.7;margin-top:4px">' +
-          _noActivityList.map(function(a) {
-            return '<span title="' + a.totalGoals + ' goals · 0 self-comments">' + esc(a.name) + '</span>';
-          }).join('  ·  ') + '</div></div>';
-      }
-      if (_supOnlyList.length > 0) {
-        apHtml += '<div style="margin-bottom:8px">';
-        apHtml += '<span class="goals-audit-badge goals-audit-amber" style="margin-bottom:4px">🟡 Supervisor-only comments (' + _supOnlyList.length + ')</span>';
-        apHtml += '<div style="font-size:12px;color:var(--text);line-height:1.7;margin-top:4px">' +
-          _supOnlyList.map(function(a) {
-            return '<span title="' + a.totalGoals + ' goals · ' + a.goalsWithNoSelfComments + ' with 0 self-comments">' + esc(a.name) + '</span>';
-          }).join('  ·  ') + '</div></div>';
-      }
-      apHtml += '</div>';
-      auditPanel.innerHTML = apHtml;
-    }
-  }
-
 
   // Chart — bar chart of avgCommentsPerPerson for Q4 weeks (or periods) only.
   // The slice(-9) fallback is week-mode-only — period buckets legitimately span
@@ -7957,10 +7976,12 @@ function renderSupportList(curLabel, filtered, noActivityList, supOnlyList) {
   // Build rows per category — track seenNorms so audit-flagged employees
   // don't also appear in rule-failure rows (prevents double-count).
   var seenNorms = {};
+  var _qsm = /Q([1-4])$/.exec((DATA.meta && DATA.meta.goalsQuarter) || '');
+  var _qStartLabel = _qsm ? ({ 1:'Jul 1', 2:'Oct 1', 3:'Jan 1', 4:'Apr 1' })[+_qsm[1]] : 'quarter start';
   var cats = [
-    { id:'no-activity',   title:'No activity since Apr 1',        context:'STF risk · Complete silence — 0 self-comments on any goal since Q4 start · Requires immediate manager follow-up', urgency:'red',   rows:[] },
+    { id:'no-activity',   title:'No activity since ' + _qStartLabel, context:'STF risk · Complete silence — 0 self-comments on any goal since quarter start · Requires immediate manager follow-up', urgency:'red',   rows:[] },
     { id:'sup-only',      title:'Supervisor-only comments',        context:'STF risk · Supervisor is engaged but rocketeer has not self-commented on the majority of their goals',            urgency:'amber', rows:[] },
-    { id:'r3',            title:'Comments behind pace',            context:'Actionable this week · Add self-comments on more goals to reach the 6-goal threshold before Q4 closes',          urgency:'blue',  rows:[] },
+    { id:'r3',            title:'Comments behind pace',            context:'Actionable this week · Add self-comments on more goals to reach the 6-goal threshold before the quarter closes',  urgency:'blue',  rows:[] },
     { id:'r2',            title:'Goals not moved to In Progress',  context:'Process fix · Goals exist but status has not been updated — rocketeer or manager needs to move them forward',     urgency:'gray',  rows:[] },
     { id:'r1',            title:'Fewer than 8 goals set',          context:'Structural · Missing goals in the system — additional goals need to be created before compliance can be met',     urgency:'gray',  rows:[] },
   ];
@@ -8502,7 +8523,7 @@ function renderTimeMomentum(filtered) {
     pctEl.textContent = overallPct + "%";
     pctEl.style.color = overallPct >= 90 ? "var(--success)" : overallPct >= 75 ? "#D97706" : "#EF4444";
   }
-  if (subEl) subEl.textContent = signalStr + trendStr + " · " + totalPlanned.toLocaleString() + " hrs planned · " + totalTracked.toLocaleString() + " hrs tracked · Q4 W" + Q4_START_W + "–W" + Q4_END_W;
+  if (subEl) subEl.textContent = signalStr + trendStr + " · " + totalPlanned.toLocaleString() + " hrs planned · " + totalTracked.toLocaleString() + " hrs tracked · " + ((DATA.meta && DATA.meta.goalsQuarter) || "Quarter") + " W" + Q4_START_W + "–W" + Q4_END_W;
   if (weekEl) weekEl.textContent = isFiltering_ ? "· " + filtered.length + " rocketeers" : "";
 
   // ── Verdict line ──────────────────────────────────────────────────────────

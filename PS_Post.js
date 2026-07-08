@@ -237,7 +237,7 @@ function buildBlogSections_(weekLabel) {
     const missing = (compTot != null && compN != null) ? compTot - compN : null;
     facts.push('Goals: ' + compStr + ' compliant (' + compPct + '%)' + wowGStr);
     if (compPct >= 70) {
-      highlights.push(compStr + ' meeting FY26Q4 commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
+      highlights.push(compStr + ' meeting quarterly goal commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
     } else if (compPct >= 50) {
       notes.push('Goals compliance at ' + compPct + '%' + (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need goal updates' : ''));
     } else {

@@ -215,6 +215,18 @@ const LEVEL_COLS_ = ["I1","I2","I3","I4","I5","I6","I7","I8","M4","M5","M6","M7"
 const SERVICES_TEAM_CODE_ = "SERVICES";
 const SERVICES_TEAM_KEY_  = "ALL";
 
+// Contributor model (2026-07-07 decision):
+// - PS-team families get individually tunable per-level weight blocks.
+// - JF004 (Sales and Success) is the COE team — one shared block, all levels.
+// - Every other catalogued family is a non-contributor: operational roles embedded
+//   in the Services roster that don't track/plan time and carry no direct RCR
+//   impact. They score only on Goals / PTO / SI / Kudos (defaults below; tunable
+//   via the NONCONTRIB/ALL matrix block).
+const PS_TEAM_FAMILIES_    = ["JF007", "JF008", "JF009", "JF018"];
+const COE_FAMILY_CODE_     = "JF004";
+const NONCONTRIB_CODE_     = "NONCONTRIB";
+const NONCONTRIB_DEFAULT_W_ = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
+
 // Active job families (JF006/JF010/JF011/JF012 are archived and never seeded).
 // `role` is the single display role-group name; null = family has split groups
 // resolved by roleGroupFor_().
@@ -455,6 +467,18 @@ function weightsForEmployee_(emp, matrix, catalog, base, audit) {
     const svc = (matrix[SERVICES_TEAM_CODE_] || {})[SERVICES_TEAM_KEY_];
     return svc ? fillWeights_(svc, W) : W;
   }
+  // COE team (JF004): one shared block for every level; blank → inherit base.
+  if (hit.family === COE_FAMILY_CODE_) {
+    const coe = (matrix[COE_FAMILY_CODE_] || {})[SERVICES_TEAM_KEY_];
+    return coe ? fillWeights_(coe, W) : W;
+  }
+  // Non-contributor families: score on Goals/PTO/SI/Kudos only. Blank metrics in
+  // the NONCONTRIB/ALL block inherit the policy defaults (NOT the flat base — a
+  // reset must never re-enable tracked/planned/RCR for these roles).
+  if (PS_TEAM_FAMILIES_.indexOf(hit.family) === -1) {
+    const nc = (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_];
+    return nc ? fillWeights_(nc, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
+  }
   // Company default = flat base weights. A family may override per level; blank
   // metrics within a family cell inherit the base weight for that metric.
   const cell = (matrix[hit.family] || {})[hit.levelKey] || null;
@@ -502,21 +526,32 @@ function seedScoringMatrix_() {
   const cols   = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
   const header = ["Family", "Metric"].concat(cols);
   const rows = [header];
-  ACTIVE_FAMILIES_.forEach(f => {
+  // PS-team families only — per-level blocks, blank → inherit base.
+  ACTIVE_FAMILIES_.filter(f => PS_TEAM_FAMILIES_.indexOf(f.code) !== -1).forEach(f => {
     WEIGHT_METRICS_.forEach(met => {
-      rows.push([f.code, met].concat(cols.map(() => ""))); // blank → inherit base
+      rows.push([f.code, met].concat(cols.map(() => "")));
     });
+  });
+  // COE block (JF004) — single ALL column, blank = inherit base.
+  WEIGHT_METRICS_.forEach(met => {
+    rows.push([COE_FAMILY_CODE_, met].concat(cols.map(() => "")));
   });
   // Services Team catch-all block — single ALL column, blank = inherit base.
   WEIGHT_METRICS_.forEach(met => {
     rows.push([SERVICES_TEAM_CODE_, met].concat(cols.map(() => "")));
   });
+  // Non-contributors block — blank cells inherit NONCONTRIB_DEFAULT_W_ (the
+  // Goals/PTO/SI/Kudos-only policy), NOT the flat base. Enter values only to
+  // deviate from that policy.
+  WEIGHT_METRICS_.forEach(met => {
+    rows.push([NONCONTRIB_CODE_, met].concat(cols.map(() => "")));
+  });
   sh.getRange(1, 1, rows.length, header.length).setValues(rows);
   const savedAt = new Date().toISOString();
   sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
   SpreadsheetApp.flush();
-  Logger.log(`Scoring matrix seeded: ${ACTIVE_FAMILIES_.length} families + Services Team (blank → inherit base).`);
-  return { families: ACTIVE_FAMILIES_.length, savedAt };
+  Logger.log(`Scoring matrix seeded: ${PS_TEAM_FAMILIES_.length} PS families + COE + Services Team + Non-contributors.`);
+  return { families: PS_TEAM_FAMILIES_.length, savedAt };
 }
 
 // Exported — full config for the Settings-tab matrix editor (Admin only).
@@ -544,18 +579,36 @@ function getScoringConfig() {
       fam.levels[e.levelKey].push({ title: e.title, group: e.group, code: e.code });
     });
 
-    // Roster titles with no catalog entry → these people use default weights.
+    // Roster classification: unmapped titles (SERVICES catch-all), COE headcount,
+    // and non-contributor families actually present in the roster.
     const unmapped = {};
+    const nonContribByFam = {};
+    let coeCount = 0;
     readPSRoster_().forEach(p => {
       if (p.isCrewMember) return;
-      if (!catalog.has(normPS_(p.jobTitle))) {
+      const hit = catalog.get(normPS_(p.jobTitle));
+      if (!hit) {
         unmapped[p.jobTitle] = (unmapped[p.jobTitle] || 0) + 1;
+      } else if (hit.family === COE_FAMILY_CODE_) {
+        coeCount++;
+      } else if (PS_TEAM_FAMILIES_.indexOf(hit.family) === -1) {
+        nonContribByFam[hit.family] = (nonContribByFam[hit.family] || 0) + 1;
       }
     });
+    const famName = {};
+    ACTIVE_FAMILIES_.forEach(f => { famName[f.code] = f.name; });
 
     return {
       ok: true, seeded, matrix, rolesByFamily,
-      families:    ACTIVE_FAMILIES_.map(f => ({ code: f.code, name: f.name })),
+      families:    ACTIVE_FAMILIES_.filter(f => PS_TEAM_FAMILIES_.indexOf(f.code) !== -1)
+                                   .map(f => ({ code: f.code, name: f.name })),
+      coeFamily:   { code: COE_FAMILY_CODE_, name: famName[COE_FAMILY_CODE_] || COE_FAMILY_CODE_, count: coeCount },
+      nonContrib:  {
+        code: NONCONTRIB_CODE_,
+        defaults: NONCONTRIB_DEFAULT_W_,
+        families: Object.keys(nonContribByFam).sort()
+          .map(c => ({ code: c, name: famName[c] || c, count: nonContribByFam[c] })),
+      },
       levelCols:   LEVEL_COLS_,
       metrics:     WEIGHT_METRICS_,
       baseWeights: readWeightSettings_(),
@@ -580,8 +633,9 @@ function saveScoringMatrix(payload) {
     if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
     sh.clearContents();
 
-    // No DEFAULT block — base is the company default. SERVICES is the catch-all pseudo-family.
-    const validFams = ACTIVE_FAMILIES_.map(f => f.code).concat([SERVICES_TEAM_CODE_]);
+    // No DEFAULT block — base is the company default. Blocks: PS families (per level),
+    // COE (JF004, ALL), SERVICES catch-all (ALL), NONCONTRIB policy block (ALL).
+    const validFams = PS_TEAM_FAMILIES_.concat([COE_FAMILY_CODE_, SERVICES_TEAM_CODE_, NONCONTRIB_CODE_]);
     const cols      = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
     const header = ["Family", "Metric"].concat(cols);
     const rows = [header];
@@ -618,6 +672,8 @@ function _test_weightsResolver() {
   const catalog = new Map([
     [normPS_("Senior Consultant I, Technical Consulting"), { family: "JF009", track: "I", level: 4, levelKey: "I4" }],
     [normPS_("Associate, Solution Architecture"),          { family: "JF018", track: "I", level: 2, levelKey: "I2" }],
+    [normPS_("Representative, Account Management"),        { family: "JF004", track: "I", level: 3, levelKey: "I3" }],
+    [normPS_("Intern, Finance"),                           { family: "JF013", track: "I", level: 1, levelKey: "I1" }],
   ]);
   const matrix = {
     JF009:   { I4: { goals: 40, tracked: 20 } }, // partial cell — planned/rcr/… inherit base
@@ -648,6 +704,21 @@ function _test_weightsResolver() {
   const audit = [];
   check("empty-catalog", weightsForEmployee_({ name: "D", jobTitle: "Anything" }, {}, new Map(), base, audit), base);
   check("empty-catalog-no-audit", audit.length, 0);
+  // 6. COE (JF004): no block → base; ALL block → filled from base
+  check("coe-inherit-base", weightsForEmployee_({ name: "E", jobTitle: "Representative, Account Management" }, matrix, catalog, base), base);
+  const matrixCoe = { JF004: { ALL: { goals: 50, kudos: 10 } } };
+  check("coe-all-block",
+    weightsForEmployee_({ name: "E2", jobTitle: "Representative, Account Management" }, matrixCoe, catalog, base),
+    { goals: 50, tracked: 30, planned: 20, rcr: 15, kudos: 10, si: 0, pto: 0 });
+  // 7. Non-contributor family (JF013): no block → policy defaults; NONCONTRIB block
+  //    overrides fill against the policy defaults, never the flat base
+  check("noncontrib-defaults",
+    weightsForEmployee_({ name: "F", jobTitle: "Intern, Finance" }, matrix, catalog, base),
+    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  const matrixNc = { NONCONTRIB: { ALL: { goals: 60 } } };
+  check("noncontrib-block-fills-from-policy",
+    weightsForEmployee_({ name: "F2", jobTitle: "Intern, Finance" }, matrixNc, catalog, base),
+    { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
   // 5. roleGroupFor_ edges
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");
@@ -2391,7 +2462,7 @@ function buildTeamSummary_(weeks, rcr, si, pto, kudos, tracked, planned, goals) 
   return [
     {
       id: "goals", label: "Goals connected",
-      tooltip: `FY26Q4 goals compliance: ≥8 goals, majority (>50%) In Progress, ≥6 goals with a self-comment made this week. Quarter target: 10 goals, 8 completed by June 30.`,
+      tooltip: `Current-quarter goals compliance: ≥8 goals, majority (>50%) In Progress, ≥6 goals with the required self-comments. Quarter target: 10 goals, 8 completed by quarter end.`,
       // No unconditional isFuture blank here (unlike tracked/kudos below) — during the
       // Goals grace period, computePSReport_ fills in future weeks with the outgoing
       // quarter's frozen snapshot, and that data should render like any other week.
@@ -3063,6 +3134,15 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // deployment scores exactly as before.
   const jobCatalog    = readJobCatalog_();
   const scoringMatrix = readScoringMatrix_();
+  // Ship each employee's resolved weights ONLY when they differ from the flat base
+  // (COE/non-contributor/override blocks). weightsForEmployee_ returns the base
+  // object itself on every inherit path, so a reference check is exact — and
+  // employees without scoreWeights keep following the live SCORE_W on the client
+  // (weight preview still works for them).
+  employees.forEach(e => {
+    const w = weightsForEmployee_(e, scoringMatrix, jobCatalog, weights, null);
+    if (w !== weights) e.scoreWeights = w;
+  });
   const weightAudit   = [];
   const topPerformers = buildTopPerformers_(fteEmployees, weeks,
     { matrix: scoringMatrix, catalog: jobCatalog, base: weights, audit: weightAudit });
