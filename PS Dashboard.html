@@ -3354,7 +3354,7 @@ function generatePeriodBrief(bucket, prevBucket, allBuckets) {
     var d = curV - prevV;
     if (Math.abs(d) < 0.05) return ', level with ' + prevBucket.label;
     var dir = d > 0 ? 'up' : 'down';
-    return ', ' + dir + ' from ' + (unitSuffix === '%' ? Math.round(prevV) + '%' : f1(prevV) + unitSuffix) + ' in ' + prevBucket.label;
+    return ', ' + dir + ' from ' + (unitSuffix === '%' ? Math.round(prevV) + '%' : unitSuffix === '' ? String(Math.round(prevV)) : f1(prevV) + unitSuffix) + ' in ' + prevBucket.label;
   }
 
   // Coverage — explicit when the period is in progress or truncated (spec §5)
@@ -3400,10 +3400,13 @@ function generatePeriodBrief(bucket, prevBucket, allBuckets) {
 
   // PTO — period-end standing
   if (cur.ptoScore !== null) {
+    var ptoCmp = prev && prev.ptoScore !== null && prev.ptoScore !== undefined
+      ? vs(cur.ptoScore, prev.ptoScore, '%', true).replace(' in ' + (prevBucket && prevBucket.label), ' at end of ' + (prevBucket && prevBucket.label))
+      : '';
     facts.push('PTO planning health: ' + cur.ptoScore + '% (' + cur.ptoAtRisk + ' at risk) as of ' + cur.endWeekLabel);
-    if (cur.ptoScore >= 80)      highlights.push(cur.ptoScore + '% of the team closed ' + bucket.label + ' with PTO under control — sustainable pace maintained');
-    else if (cur.ptoScore >= 60) notes.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '% — ' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan');
-    else                         concerns.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '% (Build Process to Drive Outcomes — sustainable pace at risk)');
+    if (cur.ptoScore >= 80)      highlights.push(cur.ptoScore + '% of the team closed ' + bucket.label + ' with PTO under control' + ptoCmp + ' — sustainable pace maintained');
+    else if (cur.ptoScore >= 60) notes.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' — ' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan');
+    else                         concerns.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' (Build Process to Drive Outcomes — sustainable pace at risk)');
   }
 
   // RCR — native monthly / approx quarterly mean
@@ -3747,9 +3750,14 @@ function triggerConfluencePublish() {
   var btn = getBtn();
   if (!btn) return;
 
-  // weekLabel = current ISO week (post title: “This Week: YYYY.Www”).
-  var weekLabel = (DATA && DATA.meta && DATA.meta.currentWeekLabel) || store.weekLabel || '';
-  var pageTitle = 'This Week: ' + weekLabel;
+  // weekLabel = display label for the active period. store.weekLabel reflects the mode the
+  // brief was actually rendered in (week/month/quarter label); DATA.meta.currentWeekLabel is
+  // only a fallback for the weekly case (post title varies by granularity, see titlePrefix).
+  var weekLabel = store.weekLabel || (DATA && DATA.meta && DATA.meta.currentWeekLabel) || '';
+  var titlePrefix = STATE.periodGranularity === 'month'   ? 'Monthly Brief: '
+                   : STATE.periodGranularity === 'quarter' ? 'Quarterly Brief: '
+                   : 'This Week: ';
+  var pageTitle = titlePrefix + weekLabel;
 
   function setStrip(cls, html) {
     var el = getStrip();
