@@ -3468,7 +3468,9 @@ function applyRoleToNav_() {
   var wrap = document.getElementById('nav-menu-wrap');
   if (wrap) {
     var hasVisibleMenuItem = VIEWS.some(function(v) { return v.location === 'menu' && canSeeView_(v); });
-    wrap.style.display = hasVisibleMenuItem ? '' : 'none';
+    // Must be an explicit 'block': the stylesheet default is display:none, and an
+    // empty inline style falls back to it — '' here means the ☰ never appears.
+    wrap.style.display = hasVisibleMenuItem ? 'block' : 'none';
   }
   renderNavMenu_();
 
