@@ -1071,7 +1071,9 @@ git add "PS Dashboard.html"
 git commit -m "feat(psdash): Trends period re-bucketing — Time Momentum, Correlation, Goals pace chart"
 ```
 
----### Task 8: Trends — PTO trend, RCR quarter grouping, project heatmap
+---
+
+### Task 8: Trends — PTO trend, RCR quarter grouping, project heatmap
 
 **Files:**
 - Modify: `D:\Contribution\PS Dashboard.html` — `renderPTOTrend` (7579–7809), `renderTrendsTab` RCR card block (8023–8175), `pkhBuildModel` (8372–8412) + `pkhRenderGrid` header bit (~8448)
