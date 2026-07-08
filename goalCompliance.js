@@ -860,7 +860,15 @@ function buildComplianceData_(quarter, access) {
       if (wk) qWeekSet[wk] = true;
     }
   });
-  var totalQtrWeeks = Math.max(1, Object.keys(qWeekSet).length);
+  // Calendar-derived quarter length (13–14 ISO weeks). The old distinct-
+  // comment-week count inflated past quarter close — comments keep accruing on
+  // quarter-bucketed goals, producing "0/24" Cmts/Wks denominators and an
+  // over-tight RPI cadence for closed quarters. Unparseable quarter labels
+  // (no calendar window) keep the data-driven count as a fallback.
+  var calWeeks   = quarterWeekList_(quarter, false);
+  var calWeekSet = {};
+  calWeeks.forEach(function(wk) { calWeekSet[wk] = true; });
+  var totalQtrWeeks = calWeeks.length || Math.max(1, Object.keys(qWeekSet).length);
 
   // 5. Finalise employee records — the same enrichment applies to both the
   // main array and the isolated attrition list, so attrition entries still
@@ -888,6 +896,14 @@ function buildComplianceData_(quarter, access) {
     emp.jobFamily        = deriveJobFamily_(emp.jobTitle);
     emp.complianceStatus = computeStatus_(emp.totalGoals);
     emp.terminated       = !!terminatedSet[emp.normName];
+
+    // Cmts/Wks numerator must count the same weeks as the calendar denominator —
+    // self-comments dated outside the quarter window (late updates on quarter-
+    // bucketed goals) don't count toward in-quarter cadence.
+    if (calWeeks.length) {
+      emp.commentWeekList = (emp.commentWeekList || []).filter(function(wk) { return calWeekSet[wk]; });
+      emp.commentWeeks    = emp.commentWeekList.length;
+    }
 
     // New hire = no full quarter of tenure for THIS quarter (hired on/after
     // its first day). The client excludes them from the Needing Support pool
@@ -2248,4 +2264,21 @@ function _test_computeQuarterFlags_() {
           "unparseable quarter → null state, no flags");
 
   Logger.log("✅ _test_computeQuarterFlags_ passed");
+}
+
+function _test_quarterCalendarWeeks_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_quarterCalendarWeeks_: " + msg); }
+
+  // Every fiscal quarter must span 13–14 ISO weeks — never the 20+ the old
+  // distinct-comment-week count produced for closed quarters.
+  ['FY26Q1', 'FY26Q2', 'FY26Q3', 'FY26Q4'].forEach(function(q) {
+    var n = quarterWeekList_(q, false).length;
+    assert_(n >= 13 && n <= 14, q + " spans 13–14 calendar weeks, got " + n);
+  });
+
+  // Unparseable labels have no calendar window — callers fall back to the
+  // data-driven count (asserted here as the empty-list contract).
+  assert_(quarterWeekList_('garbage', false).length === 0, "unparseable quarter → empty list");
+
+  Logger.log("✅ _test_quarterCalendarWeeks_ passed");
 }
