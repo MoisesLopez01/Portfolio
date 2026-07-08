@@ -941,6 +941,11 @@ function buildComplianceData_(quarter, access) {
     weeksElapsedSinceStart = Math.max(1, Math.min(diffWeeks + 1, totalQtrWeeks));
   }
 
+  // CPR pace (v2.7.0): company-wide PTO usage by ISO week, joined via the
+  // roster's Employee Number. Loaded once per payload build; {} on any
+  // failure (pace metrics then use unadjusted weeks).
+  var ptoWeekly = readPTOWeeklyHours_();
+
   var finalizeEmployeeRecord_ = function(emp) {
     var rosterRec        = rosterMap[emp.normName] || rosterMap[normName_(emp.name)] || null;
     emp.location         = locMap[emp.normName] || locMap[normName_(emp.name)] || emp.location || 'Unknown';
@@ -978,6 +983,13 @@ function buildComplianceData_(quarter, access) {
     emp.stfEligible = emp.stfGoalsCompleted >= CONFIG_GD.STF_MIN_COMPLETED &&
                       emp.stfGoalsWithSufficientComments >= CONFIG_GD.STF_MIN_CMT_GOALS;
 
+    // CPR pace metrics (v2.7.0) — PTO-adjusted comments-per-eligible-week +
+    // activity spread. Classification (cls/consistency) happens after the
+    // full population exists; see the paceBand pass below.
+    var empNum = rosterRec && rosterRec.employeeNumber;
+    emp.paceMetrics = computePaceMetrics_(emp, weeksElapsedSinceStart,
+                                          (empNum && ptoWeekly[empNum]) || null, calWeeks);
+
     return emp;
   };
 
@@ -986,6 +998,12 @@ function buildComplianceData_(quarter, access) {
 
   var attrition = attritionList.map(finalizeEmployeeRecord_);
   attrition.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+  // Peer band over employees only; attrition is classified against the same
+  // band but never contributes to it.
+  var paceBand = computePaceBand_(employees);
+  employees.forEach(function(e) { classifyPaceMetrics_(e, paceBand); });
+  attrition.forEach(function(e) { classifyPaceMetrics_(e, paceBand); });
 
   // 6. Available quarters from full dataset (same Start-Date-derived quarter as step 1)
   var quartersSet = {};
@@ -1069,6 +1087,7 @@ function buildComplianceData_(quarter, access) {
   return {
     employees:              employees,
     attrition:              attrition,
+    paceBand:               paceBand,
     summary:                computeSummary_(employees),
     commentTrend:           commentTrend,
     trendWeeks:             trendWeeks,
@@ -1394,6 +1413,43 @@ function computePaceMetrics_(emp, weekOfQuarter, ptoWeekHours, calWeeks) {
   var activeWks = (emp.commentWeekList || []).filter(function(wk) { return windowSet[wk]; }).length;
   out.activityRatio = +Math.min(1, activeWks / divisor).toFixed(2);
   return out;
+}
+
+// Peer band over the decontaminated reference population: computable CPR,
+// not a new hire, not already At Risk on goal count (per the methodology:
+// the baseline must not be contaminated by already-known problem cases).
+// Interns and attrition never reach the employees array, so no check needed.
+function computePaceBand_(employees) {
+  var cprs = [], ars = [];
+  (employees || []).forEach(function(e) {
+    var p = e.paceMetrics;
+    if (!p || p.cpr === null) return;
+    if (e.isNewHire) return;
+    if (e.complianceStatus === 'At Risk') return;
+    cprs.push(p.cpr);
+    ars.push(p.activityRatio);
+  });
+  return {
+    p10:   percentile_(cprs, CONFIG_GD.PACE_BAND_LO_PCT),
+    p50:   percentile_(cprs, 50),
+    p90:   percentile_(cprs, CONFIG_GD.PACE_BAND_HI_PCT),
+    arP10: percentile_(ars,  CONFIG_GD.PACE_BAND_LO_PCT),
+    refN:  cprs.length,
+  };
+}
+
+// Fills paceMetrics.cls ('behind'|'on'|'high') and .consistency
+// ('bursty'|'steady') in place. Anything unclassifiable stays 'na':
+// null CPR, or a reference population too small to trust.
+function classifyPaceMetrics_(emp, band) {
+  var p = emp.paceMetrics;
+  if (!p) return;
+  if (p.cpr === null || !band || band.refN < CONFIG_GD.PACE_MIN_REF_N) {
+    p.cls = 'na'; p.consistency = 'na';
+    return;
+  }
+  p.cls         = p.cpr < band.p10 ? 'behind' : p.cpr > band.p90 ? 'high' : 'on';
+  p.consistency = p.activityRatio < band.arP10 ? 'bursty' : 'steady';
 }
 
 // ── Supervisor job-title lookup (for Senior Leader detection) ──
@@ -2707,6 +2763,41 @@ function _test_computePaceMetrics_() {
   var h = computePaceMetrics_(mk([2,2,2,2,2,2], ['2026.W23']), 9, frac, calWeeks);
   t(h.eligibleWeeks === 1.5 && h.cpr === 1.33, 'fractional eligible: 2/1.5 → 1.33, got ' + JSON.stringify(h));
   Logger.log('✅ _test_computePaceMetrics_: all assertions passed');
+}
+
+function _test_paceBand_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('paceBand: ' + msg); };
+  // 21 clean reference people (CPRs 0.5..2.5), one new hire and one At Risk that must be excluded
+  var employees = [];
+  for (var i = 0; i < 21; i++) {
+    employees.push({ isNewHire: false, complianceStatus: 'On Target',
+                     paceMetrics: { cpr: +(0.5 + i * 0.1).toFixed(2), activityRatio: +(0.5 + i * 0.025).toFixed(2),
+                                    cls: 'na', consistency: 'na' } });
+  }
+  employees.push({ isNewHire: true,  complianceStatus: 'On Target',
+                   paceMetrics: { cpr: 99, activityRatio: 1, cls: 'na', consistency: 'na' } });
+  employees.push({ isNewHire: false, complianceStatus: 'At Risk',
+                   paceMetrics: { cpr: 0.01, activityRatio: 0.01, cls: 'na', consistency: 'na' } });
+  var band = computePaceBand_(employees);
+  t(band.refN === 21, 'new hire + At Risk excluded from reference, got ' + band.refN);
+  t(band.p10 !== null && band.p90 !== null && band.p10 < band.p90, 'band ordered');
+  t(band.p90 < 99, 'contaminant CPR 99 not in band');
+
+  // classification against the band
+  var mkP = function(cpr, ar) { return { paceMetrics: { cpr: cpr, activityRatio: ar, cls: 'na', consistency: 'na' } }; };
+  var low = mkP(band.p10 - 0.1, 1);   classifyPaceMetrics_(low, band);
+  t(low.paceMetrics.cls === 'behind', 'below P10 → behind');
+  var mid = mkP(band.p50, 1);         classifyPaceMetrics_(mid, band);
+  t(mid.paceMetrics.cls === 'on' && mid.paceMetrics.consistency === 'steady', 'mid → on/steady');
+  var hi  = mkP(band.p90 + 1, band.arP10 - 0.05); classifyPaceMetrics_(hi, band);
+  t(hi.paceMetrics.cls === 'high' && hi.paceMetrics.consistency === 'bursty', 'above P90 + low AR → high/bursty');
+  var nul = mkP(null, null);          classifyPaceMetrics_(nul, band);
+  t(nul.paceMetrics.cls === 'na', 'null CPR stays na');
+  // tiny population → everything na
+  var tiny = computePaceBand_(employees.slice(0, 5));
+  var x = mkP(1, 1); classifyPaceMetrics_(x, tiny);
+  t(x.paceMetrics.cls === 'na', 'refN < PACE_MIN_REF_N → na');
+  Logger.log('✅ _test_paceBand_: all assertions passed');
 }
 
 // TEMPORARY (remove after the week-cap verification) — snapshot per-person RPI
