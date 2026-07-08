@@ -113,6 +113,25 @@ function parseQuarterDates_(quarter) {
   };
 }
 
+// Pure quarter-state / grace-flag resolver — bounded on BOTH sides so a closed
+// quarter can never report an "active" grace window (the historical bug: the
+// completion flag had no upper bound, so it stayed true forever once a quarter
+// entered its final two weeks). quarterDates may be null (unparseable label)
+// → both flags false, state null.
+function computeQuarterFlags_(quarterDates, todayIso) {
+  if (!quarterDates) {
+    return { isGoalCreationGrace: false, isCompletionGrace: false, quarterState: null };
+  }
+  var state = todayIso < quarterDates.start ? 'upcoming'
+            : todayIso > quarterDates.end   ? 'closed'
+            : 'active';
+  return {
+    isGoalCreationGrace: state === 'active' && todayIso <= quarterDates.gracePeriodGoalsEnd,
+    isCompletionGrace:   state === 'active' && todayIso >= quarterDates.gracePeriodCompletionStart,
+    quarterState:        state,
+  };
+}
+
 /**
  * Inverse of parseQuarterDates_ — given a goal's Start Date, returns the fiscal
  * quarter label it falls in (e.g. "FY26Q4"). This is the source of truth for
@@ -965,8 +984,9 @@ function buildComplianceData_(quarter, access) {
   // 8. Grace period flags (quarterDates and weeksElapsedSinceStart are
   // computed above, before step 5 — RPI and the new-hire flag need them)
   var today                 = new Date().toISOString().slice(0, 10);
-  var isGoalCreationGrace   = !!(quarterDates && today <= quarterDates.gracePeriodGoalsEnd);
-  var isCompletionGrace     = !!(quarterDates && today >= quarterDates.gracePeriodCompletionStart);
+  var qFlags                = computeQuarterFlags_(quarterDates, today);
+  var isGoalCreationGrace   = qFlags.isGoalCreationGrace;
+  var isCompletionGrace     = qFlags.isCompletionGrace;
 
   // 10. Engagement data
   var engagementData = computeEngagementData_(employees, weeksElapsedSinceStart, supTitleMap, managerExceptions);
@@ -990,6 +1010,7 @@ function buildComplianceData_(quarter, access) {
     quarterDates:           quarterDates,
     isGoalCreationGrace:    isGoalCreationGrace,
     isCompletionGrace:      isCompletionGrace,
+    quarterState:           qFlags.quarterState,
     weeksElapsedSinceStart: weeksElapsedSinceStart,
     engagementData:         engagementData,
     generatedAt:            new Date().toISOString(),
@@ -2196,4 +2217,35 @@ function _test_managerExceptions_() {
     "no exceptions passed → nobody excepted");
 
   Logger.log("✅ _test_managerExceptions_ passed");
+}
+
+function _test_computeQuarterFlags_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_computeQuarterFlags_: " + msg); }
+  var qd = parseQuarterDates_('FY26Q4');  // ~2026-04-01 → 2026-06-30
+
+  var f = computeQuarterFlags_(qd, '2026-07-08');
+  assert_(f.quarterState === 'closed', "after end → closed, got " + f.quarterState);
+  assert_(!f.isCompletionGrace, "closed quarter must not report completion grace (the historical bug)");
+  assert_(!f.isGoalCreationGrace, "closed quarter must not report goal grace");
+
+  f = computeQuarterFlags_(qd, '2026-06-25');
+  assert_(f.quarterState === 'active' && f.isCompletionGrace, "final 2 weeks → active + completion grace");
+
+  f = computeQuarterFlags_(qd, '2026-04-10');
+  assert_(f.quarterState === 'active' && f.isGoalCreationGrace, "first 4 weeks → active + goal grace");
+  assert_(!f.isCompletionGrace, "early quarter is not completion grace");
+
+  f = computeQuarterFlags_(qd, '2026-05-20');
+  assert_(f.quarterState === 'active' && !f.isGoalCreationGrace && !f.isCompletionGrace,
+          "mid-quarter → active, no grace");
+
+  f = computeQuarterFlags_(qd, '2026-03-15');
+  assert_(f.quarterState === 'upcoming' && !f.isGoalCreationGrace && !f.isCompletionGrace,
+          "before start → upcoming, no flags");
+
+  f = computeQuarterFlags_(null, '2026-07-08');
+  assert_(f.quarterState === null && !f.isGoalCreationGrace && !f.isCompletionGrace,
+          "unparseable quarter → null state, no flags");
+
+  Logger.log("✅ _test_computeQuarterFlags_ passed");
 }
