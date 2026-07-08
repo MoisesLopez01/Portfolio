@@ -2096,6 +2096,96 @@ function weekInQ4Range_(year, week) {
   return true;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PERIOD BUCKETS — pure week→month / week→fiscal-quarter mapping for the
+// Week/Month/Quarter toggle (spec 2026-07-07). A week belongs to the calendar
+// month (and fiscal quarter) containing its THURSDAY — ISO 8601 majority rule,
+// so no week is ever split across two periods. FY starts July 1.
+// Everything between the BEGIN/END markers is extracted and unit-tested by
+// tests/period-buckets.test.js — keep it pure: no DATA/STATE/DOM access.
+// ── PERIOD-PURE-BEGIN ──
+function pIsoWeekMonday(year, week) {
+  var jan4 = new Date(Date.UTC(year, 0, 4));
+  var dow  = jan4.getUTCDay() || 7;
+  var w1mon = new Date(jan4);
+  w1mon.setUTCDate(jan4.getUTCDate() - dow + 1);
+  var mon = new Date(w1mon);
+  mon.setUTCDate(w1mon.getUTCDate() + (week - 1) * 7);
+  return mon;
+}
+function pWeekParts(label) {
+  var m = /^(\d{4})\.W(\d{1,2})$/.exec(String(label || ''));
+  return m ? { year: +m[1], week: +m[2] } : null;
+}
+function pThursday(label) {
+  var p = pWeekParts(label);
+  if (!p) return null;
+  var thu = pIsoWeekMonday(p.year, p.week);
+  thu.setUTCDate(thu.getUTCDate() + 3);
+  return thu;
+}
+function pMonthKey(label) {
+  var t = pThursday(label);
+  if (!t) return null;
+  var mm = t.getUTCMonth() + 1;
+  return t.getUTCFullYear() + '-' + (mm < 10 ? '0' : '') + mm;
+}
+var P_MONTH_ABBREV = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function pMonthLabel(key) {
+  var m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  return m ? P_MONTH_ABBREV[+m[2] - 1] + ' ' + m[1] : String(key || '');
+}
+function pFiscalQuarterKey(label) {
+  var t = pThursday(label);
+  if (!t) return null;
+  var m = t.getUTCMonth() + 1, y = t.getUTCFullYear();
+  var fyStartYear = (m >= 7) ? y : y - 1;
+  var q = (m >= 7 && m <= 9) ? 1 : (m >= 10) ? 2 : (m <= 3) ? 3 : 4;
+  return 'FY' + String(fyStartYear + 1).slice(-2) + 'Q' + q;
+}
+function pShortRange(weekLabels) {
+  if (!weekLabels || !weekLabels.length) return '';
+  var a = weekLabels[0], b = weekLabels[weekLabels.length - 1];
+  if (a === b) return a;
+  var pa = pWeekParts(a), pb = pWeekParts(b);
+  if (pa && pb && pa.year === pb.year) return a + '–W' + pb.week;
+  return a + '–' + b;
+}
+// True when `label` is the natural FIRST week of its own period — i.e. its
+// Thursday falls within the first 7 days of the month (or of the fiscal
+// quarter's first month). Used to detect history-window truncation.
+function pIsFirstWeekOfPeriod(label, granularity) {
+  var t = pThursday(label);
+  if (!t) return false;
+  var day = t.getUTCDate(), m = t.getUTCMonth() + 1;
+  if (granularity === 'month') return day <= 7;
+  var qFirstMonth = (m >= 7 && m <= 9) ? 7 : (m >= 10) ? 10 : (m <= 3) ? 1 : 4;
+  return m === qFirstMonth && day <= 7;
+}
+// weekLabels: oldest→newest labels of the available past+current weeks.
+// Returns ordered buckets: [{key, label, weekRangeLabel, weekLabels,
+//   containsCurrent, isPartial}]. isPartial = in-progress (contains the
+//   current week) OR truncated (oldest bucket missing its natural start).
+function buildPeriodBuckets(weekLabels, granularity, currentWeekLabel) {
+  var keyFn = granularity === 'month' ? pMonthKey : pFiscalQuarterKey;
+  var labFn = granularity === 'month' ? pMonthLabel : function(k) { return k; };
+  var buckets = [], byKey = {};
+  (weekLabels || []).forEach(function(lbl) {
+    var k = keyFn(lbl);
+    if (!k) return;
+    if (!byKey[k]) { byKey[k] = { key: k, label: labFn(k), weekLabels: [] }; buckets.push(byKey[k]); }
+    byKey[k].weekLabels.push(lbl);
+  });
+  buckets.forEach(function(b, i) {
+    b.weekRangeLabel  = pShortRange(b.weekLabels);
+    b.containsCurrent = !!(currentWeekLabel && b.weekLabels.indexOf(currentWeekLabel) !== -1);
+    var truncated     = i === 0 && !pIsFirstWeekOfPeriod(b.weekLabels[0], granularity);
+    b.isPartial       = b.containsCurrent || truncated;
+  });
+  return buckets;
+}
+// ── PERIOD-PURE-END ──
+
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
 var _loadSeq = 0;
