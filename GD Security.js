@@ -69,10 +69,36 @@ var SEC_GD_ = {
  * same Employee Status / termination-date active-detection as getFullRosterMap_()
  * so this file has no cross-file dependency.
  *
+ * The resolved result is memoized per email in the script-scoped CacheService
+ * for 5 minutes — without this, every server call from an auto-roster manager
+ * (each drill click included) re-reads the entire roster sheet. Deliberately a
+ * SHORT window: explicit admin/viewer/delegate lists are still checked live
+ * from Script Properties before this runs, so revoking those is instant; only
+ * roster-derived manager status can lag by up to 5 minutes, matching how long
+ * roster data already persists in the dashboard's payload cache. bustCache()
+ * clears the caller's own entry on Refresh.
+ *
  * @param {string} email - Lowercase, trimmed email.
  * @returns {string|null} The supervisor's canonical Name, or null.
  */
+var SEC_GD_SUP_CACHE_TTL_ = 300;  // seconds — keep aligned with CONFIG_GD.CACHE_TTL
+
 function _resolveRosterSupervisor_GD_(email) {
+  var cache = null, cacheKey = "gdsec_sup_" + email;
+  try {
+    cache = CacheService.getScriptCache();
+    var memo = cache.get(cacheKey);
+    if (memo !== null) return memo === "" ? null : memo;  // "" = memoized negative
+  } catch (e) { cache = null; }
+
+  // Memoize only outcomes computed from a successful roster read — config or
+  // read failures below return null WITHOUT memoizing, so a transient error
+  // never pins a false negative for the TTL window.
+  var memoize = function (name) {
+    if (cache) { try { cache.put(cacheKey, name || "", SEC_GD_SUP_CACHE_TTL_); } catch (e) {} }
+    return name || null;
+  };
+
   try {
     var ssId = PropertiesService.getScriptProperties().getProperty("ROSTER_SS_ID")
             || (typeof CONFIG_GD !== "undefined" ? CONFIG_GD.ROSTER_SS_ID : null);
@@ -115,16 +141,16 @@ function _resolveRosterSupervisor_GD_(email) {
     for (var i = 0; i < dataRows.length; i++) {
       if (String(dataRows[i][iEmail] || "").toLowerCase().trim() === email) { supRow = dataRows[i]; break; }
     }
-    if (!supRow) return null;
+    if (!supRow) return memoize(null);
 
     var supervisorName = String(supRow[iName] || "").trim();
-    if (!supervisorName) return null;
+    if (!supervisorName) return memoize(null);
 
     var hasReports = dataRows.some(function(row) {
       return String(row[iSup] || "").trim() === supervisorName && isActiveRow(row);
     });
 
-    return hasReports ? supervisorName : null;
+    return memoize(hasReports ? supervisorName : null);
   } catch (e) {
     Logger.log("⚠️ [_resolveRosterSupervisor_GD_] " + e.message);
     return null;
