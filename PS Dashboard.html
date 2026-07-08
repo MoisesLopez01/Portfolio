@@ -6037,7 +6037,7 @@ function computeGroupMetricsPeriod(group, bucket) {
   var n = group.length;
   var rcrVals = group.filter(function(e) { return e.rcr && e.rcr.value !== null; }).map(function(e) { return e.rcr.value; });
   var rcrAvg  = rcrVals.length ? rcrVals.reduce(function(a, b) { return a + b; }, 0) / rcrVals.length : null;
-  var siVals  = group.filter(function(e) { return e.si && e.si.value !== null && e.si.value > 0; }).map(function(e) { return e.si.value; });
+  var siVals  = group.filter(function(e) { return e.si && e.si.value !== null; }).map(function(e) { return e.si.value; });
   var siAvg   = siVals.length ? siVals.reduce(function(a, b) { return a + b; }, 0) / siVals.length : null;
   var kudosPerWeek = s.closedWeekCount > 0 ? s.kudosTotal / s.closedWeekCount : 0;
   return {
@@ -6274,8 +6274,8 @@ function buildRadarTable(groups, activeAxes, groupBy) {
   function cellVal(axisId, m) {
     switch(axisId) {
       case 'goals':   return Math.round(m.goalsPct) + '%' + (m.goalsTotal ? ' (' + m.goalsCompliant + '/' + m.goalsTotal + ')' : '');
-      case 'tracked': return m.trackedCompliant + '/' + m.trackedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)</span>';
-      case 'planned': return m.plannedCompliant + '/' + m.plannedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)</span>';
+      case 'tracked': return m.trackedCompliant != null ? m.trackedCompliant + '/' + m.trackedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)</span>' : '<span style="color:var(--muted);font-size:10px">' + Math.round(m.trackedCompliancePct) + '%</span>';
+      case 'planned': return m.plannedCompliant != null ? m.plannedCompliant + '/' + m.plannedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)</span>' : '<span style="color:var(--muted);font-size:10px">' + Math.round(m.plannedCompliancePct) + '%</span>';
       case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' <span style="color:var(--muted);font-size:10px">(' + m.kudosPerPerson.toFixed(2) + '/p)</span>';
       case 'pto':     return m.ptoHealthScore + '% <span style="color:var(--muted);font-size:10px">(' + m.ptoHealthGood + '/' + m.ptoHealthTotal + ')</span>';
       case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) : '—';
