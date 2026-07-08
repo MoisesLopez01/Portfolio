@@ -1692,7 +1692,7 @@ function renderHRTracker() {
     html += '<div class="tracker-card">';
     html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">';
     html += '<div>';
-    html += '<div class="tracker-name">' + esc(n.rocketeer) + '</div>';
+    html += '<div class="tracker-name">' + esc(n.rocketeer) + crewTag_(empMap[n.normName]) + '</div>';
     html += '<div class="tracker-meta">';
     html += (n.supervisor ? '<span>👤 ' + esc(n.supervisor) + '</span>' : '');
     html += (n.department ? '<span>🏢 ' + esc(n.department) + '</span>' : '');
@@ -3589,7 +3589,7 @@ function terminatedTag_(e) {
 // "Crew" badge for contractors merged from the Contractors Data tab — Class
 // value surfaces in the tooltip only (keeps table cells compact).
 function crewTag_(e) {
-  return e.isCrew ? ' <span class="crew-badge" title="Class: ' + esc(e.crewClass || '—') + '">Crew</span>' : '';
+  return e && e.isCrew ? ' <span class="crew-badge" title="Class: ' + esc(e.crewClass || '—') + '">Crew</span>' : '';
 }
 
 function getISOWeekLabel() {
