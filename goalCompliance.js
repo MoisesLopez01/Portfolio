@@ -1455,6 +1455,73 @@ function aggregateAllRocketeers_(rows, fullRosterMap, scopeSet) {
   return { managers: managers, totalRocketeers: Object.keys(rockMap).length };
 }
 
+// ── PTO ingestion (v2.7.0) ──────────────────────────────────────
+// The Accumulation Cost export's grain is unknown (sheet is AI-blocked): it
+// may post one row per day taken (8h) or one row per request (e.g. 40h dated
+// the first day). Spreading every usage transaction 8h-per-weekday from its
+// date makes both grains produce identical weekly buckets.
+
+// → [{ week: 'YYYY.WNN', hours: n }] chunks. Weekends are skipped (a Saturday-
+// dated tx rolls forward to Monday). Guard caps runaway amounts at ~600h.
+function spreadUsageHours_(dateIso, hours) {
+  var out = [];
+  var remaining = Number(hours) || 0;
+  if (remaining <= 0) return out;
+  // Parse as LOCAL date — new Date('YYYY-MM-DD') is UTC midnight and shifts a
+  // day in negative-offset timezones, which would misplace week boundaries.
+  var m = String(dateIso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  var d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateIso);
+  if (isNaN(d)) return out;
+  var guard = 0;
+  while (remaining > 0 && guard < 120) {
+    guard++;
+    var day = d.getDay();
+    if (day !== 0 && day !== 6) {
+      var chunk = Math.min(CONFIG_GD.PACE_HOURS_PER_WEEK / 5, remaining);
+      var wk = dateToISOWeek_(new Date(d.getTime()));
+      if (wk) out.push({ week: wk, hours: chunk });
+      remaining -= chunk;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+// { empNum: [{date, hours}] } → { empNum: { 'YYYY.WNN': totalHours } }
+function buildPtoWeeklyByEmp_(usageTxByEmp) {
+  var out = {};
+  Object.keys(usageTxByEmp || {}).forEach(function(emp) {
+    var weekly = {};
+    usageTxByEmp[emp].forEach(function(tx) {
+      spreadUsageHours_(tx.date, tx.hours).forEach(function(c) {
+        weekly[c.week] = (weekly[c.week] || 0) + c.hours;
+      });
+    });
+    out[emp] = weekly;
+  });
+  return out;
+}
+
+// One employee's date-sorted ledger entries → usage transactions with hour
+// amounts. Explicit amount column wins; otherwise the negative balance delta
+// from the previous entry (same derivation the PS project uses). Positive
+// deltas on a usage row (corrections/refunds) are skipped.
+function deriveUsageTx_(entries) {
+  var txs = [];
+  (entries || []).forEach(function(e, i) {
+    if (!e.isUsage) return;
+    var amount = null;
+    if (e.explicitAmt !== null && isFinite(e.explicitAmt) && e.explicitAmt > 0) {
+      amount = e.explicitAmt;
+    } else if (i > 0 && isFinite(e.balance) && isFinite(entries[i - 1].balance)) {
+      var delta = e.balance - entries[i - 1].balance;
+      if (delta < 0) amount = -delta;
+    }
+    if (amount !== null && amount > 0) txs.push({ date: e.date, hours: amount });
+  });
+  return txs;
+}
+
 // ── Full Roster records (every employee, active AND terminated) ────
 // Returns { normName → { name, normName, department, supervisor, jobTitle,
 //           classVal, location, active } }
@@ -2431,4 +2498,44 @@ function _test_normEmpNum_() {
   t(normEmpNum_(' 1,042 ') === '1042', 'comma + whitespace stripped');
   t(normEmpNum_('') === '' && normEmpNum_(null) === '' && normEmpNum_(undefined) === '', 'empty-ish → ""');
   Logger.log('✅ _test_normEmpNum_: all assertions passed');
+}
+
+function _test_ptoSpread_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('ptoSpread: ' + msg); };
+  var monday = '2026-04-06';  // a Monday
+  // 40h lump dated Monday spreads 8h × Mon–Fri, all in ONE ISO week —
+  // this is what makes the reader grain-agnostic (per-request exports).
+  var s = spreadUsageHours_(monday, 40);
+  t(s.length === 5, '40h Monday → 5 chunks, got ' + s.length);
+  t(s.every(function(c) { return c.hours === 8; }), 'all chunks 8h');
+  var wkMon = dateToISOWeek_(new Date(2026, 3, 6));  // local-safe Date (string parse is UTC and can shift a day)
+  t(s.every(function(c) { return c.week === wkMon; }), 'all chunks in ' + wkMon);
+  // 16h dated Friday crosses the ISO week boundary: 8h Fri + 8h next Monday
+  var s2 = spreadUsageHours_('2026-04-10', 16);
+  t(s2.length === 2, '16h Friday → 2 chunks, got ' + s2.length);
+  t(s2[0].week === dateToISOWeek_(new Date(2026, 3, 10)), 'first chunk stays on Friday week');
+  t(s2[1].week === dateToISOWeek_(new Date(2026, 3, 13)), 'second chunk lands the following Monday week');
+  // 8h single day = per-day-grain export → no-op spreading
+  var s3 = spreadUsageHours_('2026-04-07', 8);
+  t(s3.length === 1 && s3[0].hours === 8, '8h single-day chunk');
+  // weekend-dated tx rolls forward to Monday
+  var s4 = spreadUsageHours_('2026-04-11', 8);  // Saturday
+  t(s4.length === 1 && s4[0].week === dateToISOWeek_(new Date(2026, 3, 13)), 'weekend date rolls to Monday');
+  t(spreadUsageHours_(monday, 0).length === 0 && spreadUsageHours_(monday, -4).length === 0, 'non-positive hours → []');
+  var s5 = spreadUsageHours_(monday, 12);
+  t(s5.length === 2 && s5[1].hours === 4, '12h → 8h + 4h');
+
+  // bucketing merges chunks per employee per ISO week
+  var weekly = buildPtoWeeklyByEmp_({ '1042': [{ date: monday, hours: 12 }, { date: '2026-04-07', hours: 8 }] });
+  t(weekly['1042'][wkMon] === 20, 'merged weekly hours = 20, got ' + JSON.stringify(weekly));
+
+  // usage derivation: explicit amount wins; else negative balance delta; accruals/positive deltas skipped
+  var tx = deriveUsageTx_([
+    { date: '2026-04-01', balance: 100, isUsage: false, explicitAmt: null },
+    { date: '2026-04-06', balance: 92,  isUsage: true,  explicitAmt: 8 },
+    { date: '2026-04-07', balance: 76,  isUsage: true,  explicitAmt: null },
+    { date: '2026-04-08', balance: 80,  isUsage: true,  explicitAmt: null },
+  ]);
+  t(tx.length === 2 && tx[0].hours === 8 && tx[1].hours === 16, 'usage derivation, got ' + JSON.stringify(tx));
+  Logger.log('✅ _test_ptoSpread_: all assertions passed');
 }
