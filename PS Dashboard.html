@@ -8157,7 +8157,13 @@ function renderPTOTrend(filtered) {
   var card = document.getElementById("ptoTrendCard");
   if (!DATA || !card) return;
 
-  var q4Hist      = DATA.ptoQ4History || [];
+  var g = STATE.periodGranularity;
+  var q4Hist = g === 'week'
+    ? (DATA.ptoQ4History || []).filter(function(h) {
+        var p = pWeekParts(h.label);
+        return p && weekInQ4Range_(p.year, p.week);
+      })
+    : periodPtoHistory_(g);
   var rollingWeeks = DATA.weeks || [];
   if (!q4Hist.length || !filtered || !filtered.length) { card.style.display = "none"; return; }
 
@@ -8636,6 +8642,24 @@ function renderTrendsTab() {
     }
   }
 
+  // Quarter mode: group monthly RCR into fiscal quarters (mean of monthly team
+  // values — approx; true RCR is SUM(RC)/SUM(TCC)). Month mode = native monthly.
+  if (STATE.periodGranularity === 'quarter' && rcrHist.length) {
+    var qMap = {}, qOrder = [];
+    rcrHist.forEach(function(r) {
+      var m = /^(\w{3}) (\d{2})$/.exec(r.month || '');
+      if (!m) return;
+      var mi = P_MONTH_ABBREV.indexOf(m[1]) + 1, yy = 2000 + +m[2];
+      var k = pFiscalQuarterOfMonth_(yy, mi);
+      if (!qMap[k]) { qMap[k] = []; qOrder.push(k); }
+      qMap[k].push(r.rcr);
+    });
+    rcrHist = qOrder.map(function(k) {
+      var v = qMap[k];
+      return { month: k, rcr: Math.round(v.reduce(function(a, c) { return a + c; }, 0) / v.length * 100) / 100, exact: false };
+    });
+  }
+
   if (rcrNote) {
     if (_rcrIsFiltered && _hasPerEmpData) {
       rcrNote.textContent = "Filtered view — per-employee RCR averages. Most recent month may differ slightly from exact team RCR.";
@@ -8964,18 +8988,31 @@ function pkhHeatText(t){ return t > 0.55 ? '#fff' : pkhCssVar('--text'); }
 
 // Builds {weeks, cap[key][label]=hours, head[key][label]=people, order[], maxCell}.
 function pkhBuildModel(filtered){
-  var weeks = (DATA && DATA.weeks) || [];
+  var g = STATE.periodGranularity;
+  var weeks;
+  if (g === 'week') {
+    weeks = (DATA && DATA.weeks) || [];
+  } else {
+    // Period columns: buckets over the two-quarter span; per-project hours summed
+    // across each bucket's member weeks. Future rolling weeks are out of scope here.
+    weeks = periodBucketsFor_(g).map(function(b) {
+      return { label: b.key, displayLabel: periodDisplayLabel_(b), weekLabels: b.weekLabels,
+               isCurrentWeek: b.containsCurrent, isFuture: false };
+    });
+  }
   var cap = {}, headSets = {};
   (filtered || []).forEach(function(e){
     weeks.forEach(function(w){
-      var ps = (e.weeks && e.weeks[w.label] && e.weeks[w.label].projects) || [];
-      ps.forEach(function(p){
-        if (!p || !p.key) return;
-        cap[p.key] = cap[p.key] || {};
-        cap[p.key][w.label] = (cap[p.key][w.label] || 0) + (p.hrs || 0);
-        headSets[p.key] = headSets[p.key] || {};
-        headSets[p.key][w.label] = headSets[p.key][w.label] || {};
-        headSets[p.key][w.label][e.normName || e.name] = 1;
+      (w.weekLabels || [w.label]).forEach(function(lbl){
+        var ps = (e.weeks && e.weeks[lbl] && e.weeks[lbl].projects) || [];
+        ps.forEach(function(p){
+          if (!p || !p.key) return;
+          cap[p.key] = cap[p.key] || {};
+          cap[p.key][w.label] = (cap[p.key][w.label] || 0) + (p.hrs || 0);
+          headSets[p.key] = headSets[p.key] || {};
+          headSets[p.key][w.label] = headSets[p.key][w.label] || {};
+          headSets[p.key][w.label][e.normName || e.name] = 1;
+        });
       });
     });
   });
@@ -9039,7 +9076,7 @@ function pkhRenderGrid(){
   var max = m.maxCell || 1;
 
   var html = '<table class="pkh-grid"><thead><tr><th class="rowhdr">Project</th>' + weeks.map(function(w){
-    var lbl = (String(w.label).split('.')[1] || w.label);
+    var lbl = w.displayLabel || (String(w.label).split('.')[1] || w.label);
     var planned = w.isCurrentWeek || w.isFuture;
     var st = w.isCurrentWeek ? 'Current' : (w.isFuture ? 'Planned' : 'Actual');
     var thCls = (planned ? 'pkh-th-plan' : '') + (w.isCurrentWeek ? ' pkh-th-now' : '');
