@@ -2239,6 +2239,167 @@ function periodDisplayLabel_(b) {
   return b.label + (b.containsCurrent ? ' (in progress)' : '');
 }
 
+// ── Period aggregation adapters (spec 2026-07-07 §3) ─────────────────────────
+// Bucketed trackedHistory: same field names as DATA.trackedHistory entries so the
+// Trends renderers can consume either. Flow metrics = avg per CLOSED week; counts
+// (kudos, totalHrs, totalComments, plannedHrs) = sums; isCurrentWeek marks the
+// in-progress bucket so existing "closed week" filters (!h.isCurrentWeek) work.
+function periodTrackedHistory_(granularity) {
+  var hist = (DATA && DATA.trackedHistory) || [];
+  var byLabel = {};
+  hist.forEach(function(h) { byLabel[h.label] = h; });
+  return periodBucketsFor_(granularity).map(function(b) {
+    var entries = b.weekLabels.map(function(l) { return byLabel[l]; }).filter(Boolean);
+    var closed  = entries.filter(function(h) { return !h.isCurrentWeek; });
+    var use     = closed.length ? closed : entries;   // in-progress bucket with no closed week yet
+    function avg(f) {
+      var v = use.map(f).filter(function(x) { return x !== null && x !== undefined && !isNaN(x); });
+      return v.length ? v.reduce(function(a, c) { return a + c; }, 0) / v.length : null;
+    }
+    function sum(f) { return entries.reduce(function(a, h) { return a + (+f(h) || 0); }, 0); }
+    function r1(x)  { return x === null ? null : Math.round(x * 10) / 10; }
+    function r0(x)  { return x === null ? null : Math.round(x); }
+    return {
+      label:          periodDisplayLabel_(b),
+      periodKey:      b.key,
+      weekLabels:     b.weekLabels,
+      closedWeekLabels: closed.map(function(h) { return h.label; }),
+      weekRangeLabel: b.weekRangeLabel,
+      dateRange:      b.weekRangeLabel,
+      isCurrentWeek:  b.containsCurrent,
+      isFuture:       false,
+      isPartial:      b.isPartial,
+      totalHrs:       sum(function(h) { return h.totalHrs; }),
+      headcount:      Math.max.apply(null, [0].concat(use.map(function(h) { return h.headcount || 0; }))),
+      avgHrs:                r1(avg(function(h) { return h.avgHrs; })),
+      trackedPct:            r0(avg(function(h) { return h.trackedPct; })),
+      plannedHrs:     sum(function(h) { return h.plannedHrs; }),
+      plannedHC:      Math.max.apply(null, [0].concat(use.map(function(h) { return h.plannedHC || 0; }))),
+      avgPlannedHrs:         r1(avg(function(h) { return h.avgPlannedHrs; })),
+      plannedPct:            r0(avg(function(h) { return h.plannedPct; })),
+      kudosCount:     sum(function(h) { return h.kudosCount; }),
+      totalComments:  sum(function(h) { return h.totalComments; }),
+      avgCommentsPerPerson:  r1(avg(function(h) { return h.avgCommentsPerPerson; })),
+      commentedPct:          r0(avg(function(h) { return h.commentedPct; })),
+      commentedHC:           r0(avg(function(h) { return h.commentedHC; })),
+      g03CommentedPct:       r0(avg(function(h) { return h.g03CommentedPct; })),
+      g01CommentedPct:       r0(avg(function(h) { return h.g01CommentedPct; })),
+    };
+  });
+}
+// Bucketed PTO history: PTO health is a point-in-time STANDING, so each bucket
+// reports its LAST CLOSED week's entry (fallback: last entry when the bucket has
+// no closed week yet). Same field names as DATA.ptoQ4History entries.
+function periodPtoHistory_(granularity) {
+  var hist = (DATA && DATA.ptoQ4History) || [];
+  var byLabel = {};
+  hist.forEach(function(h) { byLabel[h.label] = h; });
+  return periodBucketsFor_(granularity).map(function(b) {
+    var entries = b.weekLabels.map(function(l) { return byLabel[l]; }).filter(Boolean);
+    if (!entries.length) return null;
+    var closed = entries.filter(function(h) { return !h.isCurrent; });
+    var end    = closed.length ? closed[closed.length - 1] : entries[entries.length - 1];
+    return {
+      label:     periodDisplayLabel_(b),
+      periodKey: b.key,
+      good:      end.good, atRisk: end.atRisk, total: end.total, pct: end.pct,
+      byEmp:     end.byEmp || {},
+      isCurrent: b.containsCurrent,
+      isPartial: b.isPartial,
+      endWeekLabel: end.label,
+      weekRangeLabel: b.weekRangeLabel,
+    };
+  }).filter(Boolean);
+}
+// Filter-aware per-bucket stats from per-employee week data — powers the period
+// Exec Brief and the period Radar. Standings (goals/pto) read the bucket's last
+// closed week; flow metrics average over closed weeks; kudos sums.
+// PTO_IMPACT_THRESHOLD_HRS exclusion matches computeGroupMetrics (radar parity).
+function computePeriodStats_(emps, bucket) {
+  if (!emps || !emps.length || !bucket) return null;
+  var closed = bucket.closedWeekLabels && bucket.closedWeekLabels.length
+    ? bucket.closedWeekLabels
+    : bucket.weekLabels.filter(function(l) { return l !== (DATA.meta && DATA.meta.currentWeekLabel); });
+  if (!closed.length) closed = bucket.weekLabels.slice();
+  var endLabel = closed[closed.length - 1];
+  var n = emps.length;
+  var weekly = closed.map(function(lbl) {
+    var tracked = 0, trackedHC = 0, trackedCompliant = 0, trackedEligible = 0;
+    var plannedHrs = 0, plannedCompliant = 0, plannedEligible = 0, kudos = 0;
+    emps.forEach(function(e) {
+      var wd = e.weeks && e.weeks[lbl];
+      if (!wd) return;
+      var ptoExcluded = (wd.ptoPlannedHrs || 0) >= PTO_IMPACT_THRESHOLD_HRS;
+      if (wd.trackedHrs != null && !isNaN(+wd.trackedHrs)) { tracked += +wd.trackedHrs; trackedHC++; }
+      if (!ptoExcluded) { trackedEligible++; if (+wd.trackedHrs > 0) trackedCompliant++; }
+      if (wd.plannedHrs != null && +wd.plannedHrs > 0) plannedHrs += +wd.plannedHrs;
+      if (!ptoExcluded) { plannedEligible++; if (+wd.plannedHrs > 0) plannedCompliant++; }
+      if (wd.kudos) kudos += (wd.kudos.count || 0);
+    });
+    return {
+      label: lbl,
+      avgTracked: trackedHC > 0 ? tracked / trackedHC : null,
+      totalTracked: tracked, trackedHC: trackedHC,
+      trackedPct: trackedEligible > 0 ? trackedCompliant / trackedEligible * 100 : null,
+      plannedPct: plannedEligible > 0 ? plannedCompliant / plannedEligible * 100 : null,
+      plannedHrs: plannedHrs, kudos: kudos,
+    };
+  });
+  function avg(f) {
+    var v = weekly.map(f).filter(function(x) { return x !== null && !isNaN(x); });
+    return v.length ? v.reduce(function(a, c) { return a + c; }, 0) / v.length : null;
+  }
+  var endStats = getWeekStats(emps, endLabel);  // goals gc/gt/goalsPct + pto standings at period end
+  return {
+    headcount: n,
+    weeks: weekly,
+    closedWeekCount: closed.length,
+    endWeekLabel: endLabel,
+    avgTrackedPerPerson: avg(function(w) { return w.avgTracked; }),
+    totalTrackedHrs:     weekly.reduce(function(a, w) { return a + w.totalTracked; }, 0),
+    trackedCompliancePct: avg(function(w) { return w.trackedPct; }),
+    plannedCompliancePct: avg(function(w) { return w.plannedPct; }),
+    totalPlannedHrs:     weekly.reduce(function(a, w) { return a + w.plannedHrs; }, 0),
+    kudosTotal:          weekly.reduce(function(a, w) { return a + w.kudos; }, 0),
+    goalsPct: endStats.gt > 0 ? Math.round(endStats.goalsPct) : null,
+    goalsCompliant: endStats.gc, goalsTotal: endStats.gt,
+    ptoScore: endStats.ptoScore, ptoGood: endStats.ptoGood, ptoAtRisk: endStats.ptoAtRisk, ptoTotal: endStats.ptoTotal,
+  };
+}
+// Fiscal quarter of a calendar month — shared by periodRcr_ (quarter grouping)
+// and the RCR Trends card. FY starts July 1.
+function pFiscalQuarterOfMonth_(year, month1to12) {
+  var fyStartYear = (month1to12 >= 7) ? year : year - 1;
+  var q = (month1to12 >= 7 && month1to12 <= 9) ? 1 : (month1to12 >= 10) ? 2 : (month1to12 <= 3) ? 3 : 4;
+  return 'FY' + String(fyStartYear + 1).slice(-2) + 'Q' + q;
+}
+// RCR for a bucket: month → native monthly value; quarter → mean of the quarter's
+// monthly team values, flagged approx (true RCR is SUM(RC)/SUM(TCC), never an
+// average of averages — see feedback_ps_report memory / Data Reference).
+function periodRcr_(bucket, granularity) {
+  var hist = (DATA.meta && DATA.meta.rcrHistory) || [];   // [{month:"Jun 26", rcr, exact}]
+  function monthEntryKey(mo) {  // "Jun 26" → "2026-06"
+    var m = /^(\w{3}) (\d{2})$/.exec(mo || '');
+    if (!m) return null;
+    var idx = P_MONTH_ABBREV.indexOf(m[1]);
+    return idx === -1 ? null : ('20' + m[2] + '-' + (idx < 9 ? '0' : '') + (idx + 1));
+  }
+  if (granularity === 'month') {
+    var hit = hist.find(function(r) { return monthEntryKey(r.month) === bucket.periodKey || monthEntryKey(r.month) === bucket.key; });
+    return hit ? { value: hit.rcr, approx: !hit.exact, months: [hit.month] } : null;
+  }
+  var months = hist.filter(function(r) {
+    var k = monthEntryKey(r.month);
+    if (!k) return false;
+    // reuse the fiscal mapping: fake a week label whose Thursday lands mid-month
+    var fq = pFiscalQuarterOfMonth_(+k.slice(0, 4), +k.slice(5, 7));
+    return fq === (bucket.periodKey || bucket.key);
+  });
+  if (!months.length) return null;
+  var mean = months.reduce(function(a, r) { return a + r.rcr; }, 0) / months.length;
+  return { value: Math.round(mean * 100) / 100, approx: true, months: months.map(function(r) { return r.month; }) };
+}
+
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
 var _loadSeq = 0;
