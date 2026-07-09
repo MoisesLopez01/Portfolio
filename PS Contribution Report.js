@@ -3095,6 +3095,16 @@ function getPSReportData(bustCache, teamKey) {
     const jobCatalog = readJobCatalog_();
     fullRoster.forEach(p => { p.team = teamForProfile_(p, jobCatalog); });
 
+    // Sales & Success only materializes when To-be-Allocated titles match the Job
+    // Catalog with family JF004 — list the ones that didn't so an admin can see
+    // exactly which titles to add (Job Catalog sheet: Family = JF004 + Track/Level).
+    const tbaMissed = [...new Set([...fullRoster.values()]
+      .filter(p => p.team === "rnd" && String(p.cls || "").trim().toLowerCase() === "to be allocated")
+      .map(p => p.jobTitle))];
+    if (tbaMissed.length > 0) {
+      Logger.log(`ℹ️ To-be-Allocated titles not matched to JF004 (in R&D until added to the Job Catalog with Family=JF004): ${tbaMissed.join(" | ")}`);
+    }
+
     // ── Manager scope resolution ──────────────────────────────────────────────
     // Determines whether this user should see a subset of the roster.
     // Admin and Viewer see everything; Manager sees their org tree only.
