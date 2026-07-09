@@ -18,7 +18,7 @@ Sales) attach cleanly later.
 
 | Decision | Choice |
 |---|---|
-| Team membership rule | Hybrid: Department "Services" → `services`; else JF004 → `sales`; else → `rnd` |
+| Team membership rule | **Revised 2026-07-09 (live data):** Class-driven — roster Class "Professional Services" → `services`; Class "Corporate" / "To be Allocated" → JF004 catalog hit → `sales`, else → `rnd`; unknown Class values dropped at the roster read with a ⚠️ log. (Original Department-based hybrid abandoned: the live roster's Department column is "Services"-only for PS and blank/irrelevant elsewhere — Class is the company-wide axis.) |
 | Roster coverage | Roster sheet is company-wide with a single shared Class value — only the Department filter widens |
 | Metric source coverage | SI, Goals, Kudos, and PTO Accumulation sheets all contain rows for every department already |
 | Sales & Success phasing | Ships now with the four shared metrics; HubSpot metrics (meetings, deal size, conversion, turn rate) are a later phase |
@@ -45,14 +45,18 @@ const TEAMS_ = [
 
 Functions:
 
-- `teamForProfile_(profile, catalog)` — the hybrid membership rule. **Order matters:**
-  Department = `CONFIG_PS.PS_DEPT` **or blank/missing** wins first, so a JF004 employee
-  embedded in the Services department stays in the Services team and today's population
-  is byte-identical (the pre-toggle filter always kept blank-dept rows in Services).
-  Then JF004 (via the Job Catalog title match, `normPS_`) → `sales`. Everyone else → `rnd`.
-  Scoring mirrors the same rule: `weightsForEmployee_` routes uncatalogued employees with
-  a non-empty non-Services department to the NONCONTRIB policy defaults (never the flat
-  base), while Services/blank-dept uncatalogued titles keep the SERVICES/ALL catch-all.
+- `teamForProfile_(profile, catalog)` — the membership rule (**revised 2026-07-09**,
+  Class-driven). Class = `CONFIG_PS.PS_CLASS` ("Professional Services", case-insensitive)
+  → `services`, so a JF004 title inside the PS class stays in the Services team and
+  today's population is byte-identical. Any other known Class (`TEAM_KNOWN_CLASSES_`:
+  Corporate, To be Allocated) → Job Catalog family JF004 → `sales`, else `rnd`.
+  Rows with an unknown/blank Class are dropped at the roster read with a ⚠️ log naming
+  the value. **JF004 detection requires the Sales & Success job titles to exist in the
+  Job Catalog sheet with code JF004** — uncatalogued sales titles land in `rnd`.
+  Scoring mirrors membership: `weightsForEmployee_` routes uncatalogued employees by the
+  resolved `emp.team` (non-services → NONCONTRIB policy defaults, never the flat base;
+  dept comparison retained only as a legacy fallback), while Services-team uncatalogued
+  titles keep the SERVICES/ALL catch-all.
 - `teamByKey_(key)` — registry lookup; unknown key returns the `services` entry.
 - `teamRoster_(fullRoster, teamKey)` — filters the roster Map to one team.
 - `teamHasMetric_(team, key)` — backend twin of the frontend `hasMetric_` gate.
@@ -166,9 +170,10 @@ Enforcement notes:
 
 - **Unit:** `_test_teamForProfile_()` — Node-runnable with stubbed `Logger`, same
   pattern as `_test_weightsResolver()`. Cases: Services-dept member (any family),
-  JF004 inside Services dept (→ `services`), JF004 outside Services (→ `sales`),
-  non-Services uncatalogued title (→ `rnd`), empty/missing dept (→ `services`,
-  preserving the pre-toggle filter's semantics), unknown team key fallback.
+  JF004 title inside the PS class (→ `services`), JF004 in To be Allocated/Corporate
+  (→ `sales`), non-JF004 in To be Allocated/Corporate (→ `rnd`), class compare
+  case-insensitive, `classIsKnown_` accepts the three known classes and rejects
+  unknown/blank, unknown team key fallback.
 - **Manual QA checklist:**
   1. Admin toggles all three teams; headcounts sane; Services view byte-identical to pre-change.
   2. R&D supervisor logs in → manager role, sees only their tree, no toggle (single team).
