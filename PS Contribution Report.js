@@ -82,6 +82,13 @@ var CONFIG_PS = {
   DEBUG:                 false,  // set true to enable verbose Logger output in development
   SI_COL_OVERRIDE:       null,   // Set to e.g. "Small Improvements Manager Rating FY27Q1" only
                                  // if the auto-generated name doesn't match the sheet header.
+
+  // Report cache sizing (see cachePutLarge_ / warmReportCache). TTL must exceed the
+  // warm interval so the shared entry never lapses between warmer runs; the Refresh
+  // button always bypasses it. WARM interval must be a value ScriptApp accepts for
+  // everyMinutes(): 1, 5, 10, 15, or 30.
+  CACHE_TTL_SEC:        3900,    // 65 min
+  CACHE_WARM_EVERY_MIN:   30,
 };
 
 // ============================================================
@@ -136,6 +143,85 @@ function bustReportCache_() {
     Logger.log(`⚠️ bustReportCache_: ${e.message}`);
     return null;
   }
+}
+
+// ── Large-payload cache (gzip + chunking) ──────────────────────────────────
+// CacheService rejects any value over 100 KB, and the report payload passed that
+// long ago — a plain cache.put() fails silently, which is why every load used to
+// be a cold multi-minute compute. These helpers gzip the JSON (~10× smaller) and
+// split whatever remains across numbered chunk keys, lifting the effective
+// ceiling from 100 KB to several MB — headroom for adding Sales / Success /
+// Non-Contributor rosters later. A `<key>_meta` entry stores the chunk count;
+// a missing chunk on read (partial eviction) is treated as a clean cache miss.
+const CACHE_CHUNK_BYTES_ = 90 * 1024; // per-chunk size — margin under the 100 KB cap
+
+function cachePutLarge_(cache, key, str, ttlSec) {
+  try {
+    const b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(str, "application/json")).getBytes());
+    const entries = {};
+    let n = 0;
+    for (let i = 0; i < b64.length; i += CACHE_CHUNK_BYTES_, n++) {
+      entries[key + "_" + n] = b64.slice(i, i + CACHE_CHUNK_BYTES_);
+    }
+    entries[key + "_meta"] = String(n);
+    cache.putAll(entries, ttlSec);
+    log_(`cachePutLarge_: ${key} — ${str.length} chars → ${b64.length} b64 in ${n} chunk(s)`);
+    return true;
+  } catch(e) {
+    Logger.log(`⚠️ cachePutLarge_ (${key}): ${e.message}`);
+    return false;
+  }
+}
+
+function cacheGetLarge_(cache, key) {
+  try {
+    const meta = parseInt(cache.get(key + "_meta"), 10);
+    if (!(meta > 0)) return null;
+    const names = [];
+    for (let i = 0; i < meta; i++) names.push(key + "_" + i);
+    const got = cache.getAll(names);
+    let b64 = "";
+    for (let i = 0; i < meta; i++) {
+      const part = got[key + "_" + i];
+      if (!part) return null; // a chunk expired/evicted — treat the whole entry as a miss
+      b64 += part;
+    }
+    return Utilities.ungzip(
+      Utilities.newBlob(Utilities.base64Decode(b64), "application/x-gzip")).getDataAsString();
+  } catch(e) {
+    Logger.log(`⚠️ cacheGetLarge_ (${key}): ${e.message}`);
+    return null;
+  }
+}
+
+// ── Cache warmer ────────────────────────────────────────────────────────────
+// Runs on the time-driven trigger installed by setupCacheWarmer(). Triggers
+// execute as the installing owner (an admin), so getPSReportData(true) computes
+// the full admin-scope payload and rewrites the shared ps_v<VER>_admin entry —
+// admins and viewers then load from warm cache in seconds instead of waiting
+// out the cold compute. Manager-scoped entries still warm on their first load
+// and stay warm for CACHE_TTL_SEC. The Refresh button always bypasses cache.
+function warmReportCache() {
+  const t0 = Date.now();
+  const res = getPSReportData(true);
+  const secs = Math.round((Date.now() - t0) / 1000);
+  if (res && res.ok) Logger.log(`✅ warmReportCache: rebuilt in ${secs}s`);
+  else Logger.log(`❌ warmReportCache after ${secs}s: ${(res && res.error) || "denied/unknown"}`);
+}
+
+// One-time setup — run manually from the GAS editor as the dashboard owner.
+// Replaces any existing warmer trigger, so it is safe to re-run after changing
+// CONFIG_PS.CACHE_WARM_EVERY_MIN.
+function setupCacheWarmer() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === "warmReportCache")
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("warmReportCache")
+    .timeBased()
+    .everyMinutes(CONFIG_PS.CACHE_WARM_EVERY_MIN)
+    .create();
+  Logger.log(`✅ Cache warmer installed — every ${CONFIG_PS.CACHE_WARM_EVERY_MIN} min, TTL ${CONFIG_PS.CACHE_TTL_SEC}s`);
 }
 
 function readWeightSettings_() {
@@ -224,6 +310,12 @@ const SERVICES_TEAM_KEY_  = "ALL";
 //   via the NONCONTRIB/ALL matrix block).
 const PS_TEAM_FAMILIES_    = ["JF007", "JF008", "JF009", "JF018"];
 const COE_FAMILY_CODE_     = "JF004";
+// Scoring category of a family code: "services" | "coe" | "noncontrib".
+function familyCategory_(code) {
+  if (PS_TEAM_FAMILIES_.indexOf(code) !== -1) return "services";
+  if (code === COE_FAMILY_CODE_) return "coe";
+  return "noncontrib";
+}
 const NONCONTRIB_CODE_     = "NONCONTRIB";
 const NONCONTRIB_DEFAULT_W_ = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
 
@@ -472,12 +564,14 @@ function weightsForEmployee_(emp, matrix, catalog, base, audit) {
     const coe = (matrix[COE_FAMILY_CODE_] || {})[SERVICES_TEAM_KEY_];
     return coe ? fillWeights_(coe, W) : W;
   }
-  // Non-contributor families: score on Goals/PTO/SI/Kudos only. Blank metrics in
-  // the NONCONTRIB/ALL block inherit the policy defaults (NOT the flat base — a
-  // reset must never re-enable tracked/planned/RCR for these roles).
+  // Non-contributor families: score on Goals/PTO/SI/Kudos only. Resolution:
+  // family×level cell (targeted override) → NONCONTRIB/ALL block (category-wide
+  // tuning) → policy defaults. Blank metrics always inherit the policy defaults
+  // (NOT the flat base — a reset must never re-enable tracked/planned/RCR).
   if (PS_TEAM_FAMILIES_.indexOf(hit.family) === -1) {
-    const nc = (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_];
-    return nc ? fillWeights_(nc, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
+    const cell = (matrix[hit.family] || {})[hit.levelKey]
+              || (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_] || null;
+    return cell ? fillWeights_(cell, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
   }
   // Company default = flat base weights. A family may override per level; blank
   // metrics within a family cell inherit the base weight for that metric.
@@ -526,32 +620,24 @@ function seedScoringMatrix_() {
   const cols   = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
   const header = ["Family", "Metric"].concat(cols);
   const rows = [header];
-  // PS-team families only — per-level blocks, blank → inherit base.
-  ACTIVE_FAMILIES_.filter(f => PS_TEAM_FAMILIES_.indexOf(f.code) !== -1).forEach(f => {
-    WEIGHT_METRICS_.forEach(met => {
-      rows.push([f.code, met].concat(cols.map(() => "")));
-    });
+  const pushFamily = code => WEIGHT_METRICS_.forEach(met => {
+    rows.push([code, met].concat(cols.map(() => "")));
   });
-  // COE block (JF004) — single ALL column, blank = inherit base.
-  WEIGHT_METRICS_.forEach(met => {
-    rows.push([COE_FAMILY_CODE_, met].concat(cols.map(() => "")));
-  });
-  // Services Team catch-all block — single ALL column, blank = inherit base.
-  WEIGHT_METRICS_.forEach(met => {
-    rows.push([SERVICES_TEAM_CODE_, met].concat(cols.map(() => "")));
-  });
-  // Non-contributors block — blank cells inherit NONCONTRIB_DEFAULT_W_ (the
-  // Goals/PTO/SI/Kudos-only policy), NOT the flat base. Enter values only to
-  // deviate from that policy.
-  WEIGHT_METRICS_.forEach(met => {
-    rows.push([NONCONTRIB_CODE_, met].concat(cols.map(() => "")));
-  });
+  // Category order for sheet readability: Services Team families (per level,
+  // blank → inherit base) → COE (JF004) → non-contributor families (per level,
+  // blank → inherit the NONCONTRIB policy defaults) → the two pseudo-blocks.
+  const byCat = cat => ACTIVE_FAMILIES_.filter(f => familyCategory_(f.code) === cat);
+  byCat("services").forEach(f => pushFamily(f.code));
+  pushFamily(COE_FAMILY_CODE_);
+  byCat("noncontrib").forEach(f => pushFamily(f.code));
+  pushFamily(SERVICES_TEAM_CODE_);   // uncatalogued-titles catch-all (ALL col)
+  pushFamily(NONCONTRIB_CODE_);      // category-wide non-contributor block (ALL col)
   sh.getRange(1, 1, rows.length, header.length).setValues(rows);
   const savedAt = new Date().toISOString();
   sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
   SpreadsheetApp.flush();
-  Logger.log(`Scoring matrix seeded: ${PS_TEAM_FAMILIES_.length} PS families + COE + Services Team + Non-contributors.`);
-  return { families: PS_TEAM_FAMILIES_.length, savedAt };
+  Logger.log(`Scoring matrix seeded: ${ACTIVE_FAMILIES_.length} families (services/COE/non-contrib) + SERVICES + NONCONTRIB blocks.`);
+  return { families: ACTIVE_FAMILIES_.length, savedAt };
 }
 
 // Exported — full config for the Settings-tab matrix editor (Admin only).
@@ -600,8 +686,7 @@ function getScoringConfig() {
 
     return {
       ok: true, seeded, matrix, rolesByFamily,
-      families:    ACTIVE_FAMILIES_.filter(f => PS_TEAM_FAMILIES_.indexOf(f.code) !== -1)
-                                   .map(f => ({ code: f.code, name: f.name })),
+      families:    ACTIVE_FAMILIES_.map(f => ({ code: f.code, name: f.name, category: familyCategory_(f.code) })),
       coeFamily:   { code: COE_FAMILY_CODE_, name: famName[COE_FAMILY_CODE_] || COE_FAMILY_CODE_, count: coeCount },
       nonContrib:  {
         code: NONCONTRIB_CODE_,
@@ -633,9 +718,10 @@ function saveScoringMatrix(payload) {
     if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
     sh.clearContents();
 
-    // No DEFAULT block — base is the company default. Blocks: PS families (per level),
-    // COE (JF004, ALL), SERVICES catch-all (ALL), NONCONTRIB policy block (ALL).
-    const validFams = PS_TEAM_FAMILIES_.concat([COE_FAMILY_CODE_, SERVICES_TEAM_CODE_, NONCONTRIB_CODE_]);
+    // No DEFAULT block — base is the company default. Blocks: every active family
+    // (per level; services + COE + non-contrib), SERVICES catch-all (ALL), and the
+    // category-wide NONCONTRIB block (ALL).
+    const validFams = ACTIVE_FAMILIES_.map(f => f.code).concat([SERVICES_TEAM_CODE_, NONCONTRIB_CODE_]);
     const cols      = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
     const header = ["Family", "Metric"].concat(cols);
     const rows = [header];
@@ -719,6 +805,11 @@ function _test_weightsResolver() {
   check("noncontrib-block-fills-from-policy",
     weightsForEmployee_({ name: "F2", jobTitle: "Intern, Finance" }, matrixNc, catalog, base),
     { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  // 8. Non-contributor family×level cell beats the category-wide NONCONTRIB block
+  const matrixNcLvl = { JF013: { I1: { goals: 70, kudos: 30, si: 0, pto: 0 } }, NONCONTRIB: { ALL: { goals: 60 } } };
+  check("noncontrib-level-override-beats-block",
+    weightsForEmployee_({ name: "F3", jobTitle: "Intern, Finance" }, matrixNcLvl, catalog, base),
+    { goals: 70, tracked: 0, planned: 0, rcr: 0, kudos: 30, si: 0, pto: 0 });
   // 5. roleGroupFor_ edges
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");
@@ -2917,16 +3008,18 @@ function getPSReportData(bustCache) {
       return { ok: false, denied: true, email: access.email };
     }
 
-    // ── CacheService — 5-min cache per user scope to reduce concurrent sheet reads ──
+    // ── CacheService — gzip-chunked cache per user scope (see cachePutLarge_).
+    // TTL = CONFIG_PS.CACHE_TTL_SEC; the warmReportCache trigger rewrites the
+    // admin entry every CACHE_WARM_EVERY_MIN minutes so it never goes cold.
     const _sCache   = CacheService.getScriptCache();
     const _cacheVer = reportCacheVer_();
     const _cacheKey = (access.role === "admin" || access.role === "viewer")
       ? "ps_v" + _cacheVer + "_admin"
       : "ps_v" + _cacheVer + "_" + access.email;
-    
-    // Skip cache if bustCache=true (refresh button clicked)
+
+    // Skip cache if bustCache=true (refresh button clicked, or the warmer trigger)
     if (!bustCache) {
-      const _hit = _sCache.get(_cacheKey);
+      const _hit = cacheGetLarge_(_sCache, _cacheKey);
       if (_hit) {
         try { return JSON.parse(_hit); } catch(ce) { /* corrupt entry — fall through to live read */ }
       }
@@ -2971,7 +3064,7 @@ function getPSReportData(bustCache) {
     }
 
     const result = computePSReport_(access, roster, managerScopeName, weeks, weights);
-    try { _sCache.put(_cacheKey, JSON.stringify(result), 300); } catch(ce) { /* payload >100 KB — skip cache */ }
+    cachePutLarge_(_sCache, _cacheKey, JSON.stringify(result), CONFIG_PS.CACHE_TTL_SEC);
     return result;
   } catch(e) {
     Logger.log(`❌ getPSReportData: ${e.message}\n${e.stack}`);
@@ -3285,7 +3378,15 @@ function callGeminiNarrative(prompt) {
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 3000, temperature: 0.45 },
+      generationConfig: {
+        // Gemini 2.5 Flash is a thinking model: its internal reasoning tokens
+        // count against maxOutputTokens. thinkingBudget: 0 disables thinking so
+        // the whole budget goes to the visible JSON (a rewrite task needs none),
+        // otherwise long briefs finish as MAX_TOKENS with truncated output.
+        maxOutputTokens: 8192,
+        temperature: 0.45,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     };
     const response = UrlFetchApp.fetch(url, {
       method: 'post',
@@ -3314,7 +3415,12 @@ function callGeminiNarrative(prompt) {
 
     const candidate    = json.candidates?.[0];
     const finishReason = candidate?.finishReason;
-    const text         = candidate?.content?.parts?.[0]?.text;
+    // Join every non-thought text part — the answer isn't guaranteed to be parts[0]
+    // (thinking models may emit a thought part first, or split text across parts).
+    const text = (candidate?.content?.parts || [])
+      .filter(p => p && p.text && !p.thought)
+      .map(p => p.text)
+      .join('');
 
     if (!text) {
       return { ok: false, error: `Gemini returned no text (finishReason: ${finishReason || 'unknown'}, HTTP ${httpStatus})` };

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -112,19 +112,6 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
 .spinner { width: 36px; height: 36px; border: 3px solid var(--border);
            border-top-color: var(--orbe); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* Rotating metric tips shown while the report loads */
-.loading-tip { max-width: 520px; width: 100%; background: var(--surface); border: 1px solid var(--border);
-               border-radius: 10px; padding: 16px 20px; text-align: left; margin-top: 4px; }
-.loading-tip-kicker { display: flex; justify-content: space-between; gap: 10px; font-size: 10px;
-                      font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-                      color: var(--muted); margin-bottom: 8px; }
-.loading-tip-content { transition: opacity .35s ease; }
-.loading-tip-title { font-size: 13px; font-weight: 800; color: var(--void); margin-bottom: 4px; }
-.loading-tip-body { font-size: 12.5px; color: var(--slate); line-height: 1.6; }
-.loading-tip-dots { display: flex; gap: 5px; justify-content: center; margin-top: 12px; }
-.loading-tip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
-.loading-tip-dot.on { background: var(--orbe); }
 
 /* ── TAB NAV ── */
 .tab-nav {
@@ -1362,17 +1349,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <div class="loading" id="loadingState">
     <div class="spinner"></div>
     <p>Loading contribution data…</p>
-    <div class="loading-tip" id="loadingTip" style="display:none">
-      <div class="loading-tip-kicker">
-        <span>💡 While you wait — know your metrics</span>
-        <span id="loadingTipCount"></span>
-      </div>
-      <div class="loading-tip-content" id="loadingTipContent">
-        <div class="loading-tip-title" id="loadingTipTitle"></div>
-        <div class="loading-tip-body" id="loadingTipBody"></div>
-      </div>
-      <div class="loading-tip-dots" id="loadingTipDots"></div>
-    </div>
   </div>
 
   <!-- TAB NAV -->
@@ -7846,9 +7822,10 @@ function renderGoalsStanding(filtered) {
   var _gsTone = compPct >= 70 ? "ok" : compPct >= 40 ? "warn" : "risk";
   var _gsGap  = compPct >= 70 ? "on the 70% bar" : (70 - compPct) + " pts below the 70% bar";
   var _gsFlag = _noActivityList.concat(_supOnlyList);
+  var _gsNames = _gsFlag.slice(0, 3).map(function(a) { return esc((a.name || "").split(" ")[0]); }).filter(Boolean).join(", ");
   var _gsAction = (weeklyNeeded !== "—" ? "Do: hold ~" + targetPace + " comments/rocketeer/week for the " + weeksRemainingDisplay + " week" + (weeksRemaining <= 1 ? "" : "s") + " left to close. " : "") +
     (_gsFlag.length > 0
-      ? "Follow up with " + _gsFlag.length + " flagged."
+      ? "Follow up with " + _gsFlag.length + " flagged" + (_gsNames ? " (" + _gsNames + (_gsFlag.length > 3 ? ", …" : "") + ")" : "") + "."
       : "No one currently flagged.");
   setVerdict_("goalsVerdict", {
     tone: _gsTone,
