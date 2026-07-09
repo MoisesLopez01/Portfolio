@@ -1497,6 +1497,16 @@ function bareMinShare_(goalSelf) {
   return ones / commented.length;
 }
 
+// % of a quarter's total self-comments landing in each week-of-quarter.
+// weeklySelf = {ISO week -> count}; weeks = that quarter's ordered week labels.
+// Returns an array of length weeks.length (0s when the quarter has no comments).
+function weekOfQuarterPct_(weeklySelf, weeks) {
+  var counts = (weeks || []).map(function(w) { return (weeklySelf && weeklySelf[w]) || 0; });
+  var total  = counts.reduce(function(a, b) { return a + b; }, 0);
+  if (total === 0) return counts.map(function() { return 0; });
+  return counts.map(function(c) { return +(c / total * 100).toFixed(1); });
+}
+
 // ── POLICY LAB — render ────────────────────────────────────────────
 var PL_GRID_ = null, PL_DIM_ = 'rocketeer';   // refs for the delegated cell-click handler
 
