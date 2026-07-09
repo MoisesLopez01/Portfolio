@@ -702,36 +702,32 @@ function seedJobCatalog_() {
   return rows.length - 1;
 }
 
-// Seeds the scoring matrix with the per-family row structure but BLANK cells.
-// Blank = inherit the company base weight, so a freshly-seeded deployment scores
-// exactly as the flat-weights model (day-one parity) and every family correctly
-// reads as "inheriting default" until an admin enters an explicit override.
-function seedScoringMatrix_() {
+// Seeds the scoring matrix with the per-(team, family) row structure but BLANK
+// cells. Blanks inherit blockFillBase_ (flat base for Services natives / JF004 /
+// catch-alls; policy defaults for embedded ops and the R&D / Sales teams), so a
+// freshly-seeded deployment scores exactly as the resolver defaults and every
+// block reads as "Inheriting" until an admin enters an explicit override.
+// `famsByTeam` = { teamKey: [familyCode, …] } from the tagged roster (getScoringConfig).
+function seedScoringMatrix_(famsByTeam) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SCORING_MATRIX_SHEET_);
   if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
   sh.clearContents();
-  const cols   = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
-  const header = ["Family", "Metric"].concat(cols);
-  const rows = [header];
-  const pushFamily = code => WEIGHT_METRICS_.forEach(met => {
-    rows.push([code, met].concat(cols.map(() => "")));
+  const cols   = LEVEL_COLS_.concat([ALL_KEY_]);
+  const header = ["Team", "Family", "Metric"].concat(cols);
+  const rows   = [header];
+  TEAMS_.forEach(t => {
+    const mets = WEIGHT_METRICS_.filter(m => t.metrics.indexOf(m) !== -1);
+    ((famsByTeam || {})[t.key] || []).concat([ALL_KEY_]).forEach(fam => {
+      mets.forEach(met => rows.push([t.key, fam, met].concat(cols.map(() => ""))));
+    });
   });
-  // Category order for sheet readability: Services Team families (per level,
-  // blank → inherit base) → COE (JF004) → non-contributor families (per level,
-  // blank → inherit the NONCONTRIB policy defaults) → the two pseudo-blocks.
-  const byCat = cat => ACTIVE_FAMILIES_.filter(f => familyCategory_(f.code) === cat);
-  byCat("services").forEach(f => pushFamily(f.code));
-  pushFamily(COE_FAMILY_CODE_);
-  byCat("noncontrib").forEach(f => pushFamily(f.code));
-  pushFamily(SERVICES_TEAM_CODE_);   // uncatalogued-titles catch-all (ALL col)
-  pushFamily(NONCONTRIB_CODE_);      // category-wide non-contributor block (ALL col)
   sh.getRange(1, 1, rows.length, header.length).setValues(rows);
   const savedAt = new Date().toISOString();
   sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
   SpreadsheetApp.flush();
-  Logger.log(`Scoring matrix seeded: ${ACTIVE_FAMILIES_.length} families (services/COE/non-contrib) + SERVICES + NONCONTRIB blocks.`);
-  return { families: ACTIVE_FAMILIES_.length, savedAt };
+  Logger.log(`Scoring matrix seeded: ${rows.length - 1} rows across ${TEAMS_.length} team sections.`);
+  return { rows: rows.length - 1, savedAt };
 }
 
 // Exported — full config for the Settings-tab matrix editor (Admin only).
@@ -799,46 +795,85 @@ function getScoringConfig() {
   }
 }
 
-// Exported — writes the full matrix back from the editor and busts the report cache.
+// Exported — merges the editor payload over the stored matrix and rewrites the
+// sheet in the Team-column schema, then busts the report cache.
+// Merge semantics (spec §4): a (team, family) block present in the payload fully
+// replaces the stored block (cell deletions stick); blocks the editor didn't
+// render — family currently has no active members in that team — survive.
 function saveScoringMatrix(payload) {
   try {
     const access = checkDashboardAccess();
     if (!access.allowed || access.role !== "admin") return { ok: false, error: "Admin access required" };
-    const matrix = payload && payload.matrix;
-    if (!matrix || typeof matrix !== "object") return { ok: false, error: "Invalid payload" };
+    const incoming = payload && payload.matrix;
+    if (!incoming || typeof incoming !== "object") return { ok: false, error: "Invalid payload" };
 
+    const validFam = {};
+    ACTIVE_FAMILIES_.forEach(f => { validFam[f.code] = true; });
+    validFam[ALL_KEY_] = true;
+    const validCol = {};
+    LEVEL_COLS_.concat([ALL_KEY_]).forEach(lk => { validCol[lk] = true; });
+
+    const merged = readScoringMatrix_();
+    let dropped = 0;
+    TEAMS_.forEach(t => {
+      const inTeam = incoming[t.key];
+      if (!inTeam || typeof inTeam !== "object") return;
+      if (!merged[t.key]) merged[t.key] = {};
+      Object.keys(inTeam).forEach(fam => {
+        if (!validFam[fam]) return;
+        const block = {};
+        Object.keys(inTeam[fam] || {}).forEach(lk => {
+          if (!validCol[lk]) return;
+          Object.keys(inTeam[fam][lk] || {}).forEach(met => {
+            if (WEIGHT_METRICS_.indexOf(met) === -1) return;
+            if (t.metrics.indexOf(met) === -1) { dropped++; return; } // outside the team's set
+            const v = parseFloat(inTeam[fam][lk][met]);
+            if (isNaN(v)) return;
+            if (!block[lk]) block[lk] = {};
+            block[lk][met] = Math.max(0, Math.min(100, v));
+          });
+        });
+        merged[t.key][fam] = block; // full replace — an emptied block clears the stored one
+      });
+    });
+    if (dropped > 0) Logger.log(`⚠️ saveScoringMatrix: dropped ${dropped} weight(s) on metrics outside their team's metric set`);
+
+    // Rewrite the sheet: TEAMS_ order; families in ACTIVE_FAMILIES_ order with the
+    // catch-all last; only the team's metric rows.
+    const famIdx = {};
+    ACTIVE_FAMILIES_.forEach((f, i) => { famIdx[f.code] = i; });
+    const cols   = LEVEL_COLS_.concat([ALL_KEY_]);
+    const header = ["Team", "Family", "Metric"].concat(cols);
+    const rows   = [header];
+    TEAMS_.forEach(t => {
+      const teamMx = merged[t.key] || {};
+      const mets   = WEIGHT_METRICS_.filter(m => t.metrics.indexOf(m) !== -1);
+      const fams   = Object.keys(teamMx).sort((a, b) => {
+        if (a === ALL_KEY_) return 1;
+        if (b === ALL_KEY_) return -1;
+        return (famIdx[a] || 0) - (famIdx[b] || 0);
+      });
+      fams.forEach(fam => {
+        mets.forEach(met => {
+          const row = [t.key, fam, met];
+          cols.forEach(lk => {
+            const cell = teamMx[fam][lk];
+            const raw  = cell ? cell[met] : undefined;
+            row.push(raw === undefined || raw === null ? "" : raw);
+          });
+          rows.push(row);
+        });
+      });
+    });
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sh = ss.getSheetByName(SCORING_MATRIX_SHEET_);
     if (!sh) sh = ss.insertSheet(SCORING_MATRIX_SHEET_);
     sh.clearContents();
-
-    // No DEFAULT block — base is the company default. Blocks: every active family
-    // (per level; services + COE + non-contrib), SERVICES catch-all (ALL), and the
-    // category-wide NONCONTRIB block (ALL).
-    const validFams = ACTIVE_FAMILIES_.map(f => f.code).concat([SERVICES_TEAM_CODE_, NONCONTRIB_CODE_]);
-    const cols      = LEVEL_COLS_.concat([SERVICES_TEAM_KEY_]);
-    const header = ["Family", "Metric"].concat(cols);
-    const rows = [header];
-    validFams.forEach(fam => {
-      const block = matrix[fam];
-      if (!block) return;
-      WEIGHT_METRICS_.forEach(met => {
-        const row = [fam, met];
-        cols.forEach(lk => {
-          const cell = block[lk];
-          const raw  = cell ? cell[met] : undefined;
-          const v    = (raw === undefined || raw === null || raw === "") ? NaN : parseFloat(raw);
-          row.push(isNaN(v) ? "" : Math.max(0, Math.min(100, v)));
-        });
-        rows.push(row);
-      });
-    });
     sh.getRange(1, 1, rows.length, header.length).setValues(rows);
     const savedAt = new Date().toISOString();
     sh.getRange(rows.length + 2, 1, 1, 2).setValues([["lastSaved", savedAt]]);
     SpreadsheetApp.flush();
     bustReportCache_(); // invalidate every cached scope (admin + manager) so scores refresh now
-    Logger.log(`Scoring matrix saved by ${access.email}: ${rows.length - 1} data rows`);
     return { ok: true, savedAt };
   } catch(e) {
     Logger.log(`❌ saveScoringMatrix: ${e.message}`);
