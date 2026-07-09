@@ -2647,6 +2647,9 @@ function switchTeam(key) {
   STATE.activeTeam = key;
   // New population — population-specific filters no longer apply
   STATE.jobTitleFilter.clear(); STATE.jfFilter.clear(); STATE.lvFilter.clear();
+  // Week universes differ per team — a week: sort key may point at a column
+  // the new team doesn't render. Fall back to the default sort.
+  if (STATE.sort.key.indexOf("week:") === 0) STATE.sort = { key: "score", dir: "desc" };
   var cached = STATE.teamData[key];
   if (cached) {
     // Disqualify any in-flight response for another team — rendering from
@@ -6036,9 +6039,11 @@ function initDetailRadars() {
 
     // Crew/contractor charts drop Goals, PTO, and SI (no data for those axes).
     var crew = isCrewEmp(emp);
-    var axisObjs = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], crew).map(function(id) {
-      return RADAR_AXIS_DEFS.find(function(d) { return d.id === id; });
-    }).filter(Boolean);
+    var axisObjs = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], crew)
+      .filter(function(id) { return hasMetric_(id); })  // match buildDetailHTML's axis set
+      .map(function(id) {
+        return RADAR_AXIS_DEFS.find(function(d) { return d.id === id; });
+      }).filter(Boolean);
 
     var refMetrics   = (crew && crewMetrics) ? crewMetrics : teamMetrics;
     var indivMetrics = computeGroupMetrics([emp], weeks, refLabel);
