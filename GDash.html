@@ -224,6 +224,18 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .bh-detail{margin-top:10px}
 .bh-detail summary{cursor:pointer;font-size:11px;font-weight:700;color:var(--orbe)}
 .bh-v2note{font-size:11px;color:var(--slate);background:var(--surface);border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin-top:8px}
+/* ── Policy Lab ── */
+.pl-controls{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+.pl-controls label{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--void)}
+.pl-controls input[type=range]{accent-color:var(--orbe)}
+.pl-hm{border-collapse:collapse;font-size:11px}
+.pl-hm th{padding:6px 9px;font-weight:800;color:var(--slate);text-transform:uppercase;font-size:9px}
+.pl-hm td{padding:0;text-align:center}
+.pl-cell{display:block;padding:9px 12px;border:1px solid var(--border);cursor:pointer;color:var(--void);font-weight:700}
+.pl-cell small{display:block;font-weight:600;color:var(--slate);font-size:9px}
+.pl-fy-row{display:flex;gap:10px;flex-wrap:wrap}
+.pl-fy-chip{border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:120px}
+.pl-fy-chip b{font-size:20px;color:var(--orbe)} .pl-fy-chip.inprog b{color:var(--slate)}
 
 /* Individual drill-down — an expandable table row inserted after the clicked row,
    not a modal. A viewport-height-capped popup had no reliable way to scroll to the
@@ -702,6 +714,45 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
+    <!-- ── POLICY LAB (super-admin only, ☰ menu) — spec 2026-07-08-policy-calibration-lab ── -->
+    <div id="pane-policylab" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>🧪 Policy Calibration Lab</h2><p class="section-sub">Tune the comment-cadence policy against full-fiscal-year history · admin only</p></div>
+          <button class="btn" onclick="switchTab(S.lastRegularTab || 'overview')">← Back to Dashboard</button>
+        </div>
+        <div class="section-body">
+          <div class="pl-controls" id="pl-controls">
+            <label>Cadence LAG (week−N) <input type="range" id="pl-lag" min="0" max="10" value="4" oninput="onPolicyChange_()"><span id="pl-lag-v">4</span></label>
+            <label>Goals needing cadence <input type="range" id="pl-need" min="1" max="10" value="6" oninput="onPolicyChange_()"><span id="pl-need-v">6</span> of 10</label>
+            <label>Min comments/goal <input type="range" id="pl-min" min="1" max="4" value="1" oninput="onPolicyChange_()"><span id="pl-min-v">1</span></label>
+            <label>Back-load threshold <input type="range" id="pl-bl" min="30" max="80" step="5" value="50" oninput="onPolicyChange_()"><span id="pl-bl-v">50</span>% in final 3 wks</label>
+          </div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head"><div><h2>Compliance across the fiscal year</h2><p class="section-sub">% meeting the tuned policy · completed quarters + current (in progress)</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-fy-compliance.png')">⬇ PNG</button></div>
+        <div class="section-body" id="pl-headline"></div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Cohort heatmap</h2><p class="section-sub">Goals × comments · cell color = % compliant · click a cell for the people</p></div>
+          <div class="section-actions">
+            <select id="pl-scope" onchange="onPolicyChange_()"></select>
+            <select id="pl-dim" onchange="onPolicyChange_()"><option value="rocketeer">By Rocketeer</option><option value="manager">By Manager</option></select>
+            <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-cohorts.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body"><div id="pl-heatmap"></div><div id="pl-drill"></div></div>
+      </div>
+      <div class="section-card">
+        <div class="section-head"><div><h2>Behaviors &amp; spread</h2><p class="section-sub">Of those compliant on count: back-loaded and bare-minimum · σ of comments per goal</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-behaviors.png')">⬇ PNG</button></div>
+        <div class="section-body" id="pl-behaviors"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -813,6 +864,7 @@ var VIEWS = [
   { id: 'hrtracker', label: 'REX Tracker',           location: 'tabbar', roles: null },
   { id: 'dataref',   label: '📖 Data Reference',      location: 'menu',   roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
+  { id: 'policylab', label: '🧪 Policy Lab',           location: 'menu',   roles: ['admin'] },
 ];
 
 function viewById_(id) {
@@ -1085,6 +1137,7 @@ function renderTab(tabId) {
   else if (tabId === 'hrtracker') renderHRTracker();
   else if (tabId === 'dataref')   renderDataRef_();
   else if (tabId === 'access')    renderAccessTab_();
+  else if (tabId === 'policylab') renderPolicyLab();
 }
 
 // ── OVERVIEW ──────────────────────────────────────────────────────
