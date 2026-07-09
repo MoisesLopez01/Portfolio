@@ -893,6 +893,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // what makes this safe for names containing an apostrophe. Attached once here since
   // these rows are rebuilt via innerHTML on every render.
   document.addEventListener('click', function(e) {
+    var plCell = e.target.closest('[data-pl-cell]');
+    if (plCell) { renderPolicyDrill_(plCell.dataset.plCell); return; }
     var del = e.target.closest('button[data-del-ts]');
     if (del) { deleteNote_(del.dataset.delTs, del.dataset.delNorm); return; }
     var mgrRow = e.target.closest('tr[data-manager]');
@@ -1493,6 +1495,164 @@ function bareMinShare_(goalSelf) {
   if (!commented.length) return 0;
   var ones = commented.filter(function(s) { return s === 1; }).length;
   return ones / commented.length;
+}
+
+// ── POLICY LAB — render ────────────────────────────────────────────
+var PL_GRID_ = null, PL_DIM_ = 'rocketeer';   // refs for the delegated cell-click handler
+
+// Build the unified per-quarter record set from history (prior) + current quarter.
+function policyQuarters_() {
+  var out = [];
+  (S.data.history || []).forEach(function(h) {
+    out.push({
+      quarter: h.quarter, weeks: h.weeks || [], inProgress: false,
+      weekOfQuarter: (h.weeks || []).length,   // completed → full length
+      people: (h.employees || []).map(function(e) {
+        return { normName:e.normName, name:e.name, supervisor:e.supervisor||'',
+                 goalSelf:e.goalSelf||[], weeklySelf:e.weeklySelf||{}, totalGoals:e.totalGoals||0 };
+      }),
+    });
+  });
+  var curWeeks = (S.data.trendWeeks || []);
+  out.push({
+    quarter: S.data.quarter, weeks: curWeeks, inProgress: true,
+    weekOfQuarter: S.data.weeksElapsedSinceStart || curWeeks.length,
+    people: (S.data.employees || []).map(function(e) {
+      return { normName:e.normName, name:e.name, supervisor:e.supervisor||'',
+               goalSelf:(e.goalsList||[]).filter(function(g){return !/cancel/i.test(g.status)}).map(function(g){return g.self||0}),
+               weeklySelf:e.weeklySelf||{}, totalGoals:e.totalGoals||0 };
+    }),
+  });
+  return out;
+}
+
+function policySettings_() {
+  return {
+    lag:   +document.getElementById('pl-lag').value,
+    need:  +document.getElementById('pl-need').value,
+    min:   +document.getElementById('pl-min').value,
+    blPct: (+document.getElementById('pl-bl').value) / 100,
+    cap:   8,           // mirrors CONFIG_GD.RPI_CADENCE_MAX_CMTS
+    tailWeeks: 3,
+  };
+}
+
+// Per-person evaluation at the current settings for one quarter record.
+function evalPerson_(p, q, s) {
+  var complies = compliesAtPolicy_(p.goalSelf, q.weekOfQuarter, s.lag, s.min, s.cap, s.need);
+  return {
+    normName:p.normName, name:p.name, supervisor:p.supervisor,
+    goals:p.totalGoals, cmts:p.goalSelf.reduce(function(a,b){return a+b;},0),
+    complies:complies,
+    backloaded: complies && isBackloaded_(p.weeklySelf, q.weeks, s.tailWeeks, s.blPct),
+    bareShare:  bareMinShare_(p.goalSelf),
+    avgPerGoal: p.goalSelf.length ? p.goalSelf.reduce(function(a,b){return a+b;},0)/p.goalSelf.length : 0,
+  };
+}
+
+function onPolicyChange_() {
+  ['lag','need','min','bl'].forEach(function(k){ var v=document.getElementById('pl-'+k); if(v) document.getElementById('pl-'+k+'-v').textContent=v.value; });
+  renderPolicyLab();
+}
+
+function renderPolicyLab() {
+  if (!S.data) return;
+  var qs = policyQuarters_(), s = policySettings_();
+
+  var scopeSel = document.getElementById('pl-scope');
+  if (scopeSel && !scopeSel.dataset.built) {
+    var opts = qs.filter(function(q){return !q.inProgress;}).map(function(q){return '<option value="'+q.quarter+'">'+q.quarter+'</option>';});
+    opts.unshift('<option value="__pooled">Full FY (pooled)</option>');
+    scopeSel.innerHTML = opts.join('');
+    var completed = qs.filter(function(q){return !q.inProgress;});
+    scopeSel.value = completed.length ? completed[completed.length-1].quarter : '__pooled';
+    scopeSel.dataset.built = '1';
+  }
+
+  // 1 — FY headline (every quarter, always shown)
+  var headline = qs.map(function(q) {
+    var elig = q.people.map(function(p){ return evalPerson_(p, q, s); }).filter(function(e){ return e.goals > 0; });
+    var comp = elig.filter(function(e){ return e.complies; }).length;
+    return { quarter:q.quarter, inProgress:q.inProgress, n:elig.length, comp:comp,
+             pct: elig.length ? Math.round(comp/elig.length*100) : 0 };
+  });
+  document.getElementById('pl-headline').innerHTML = '<div class="pl-fy-row">' + headline.map(function(r){
+    return '<div class="pl-fy-chip'+(r.inProgress?' inprog':'')+'"><div style="font-size:10px;font-weight:800;color:var(--slate)">'+esc(r.quarter)+(r.inProgress?' · in progress':'')+'</div><b>'+r.pct+'%</b><div style="font-size:10px;color:var(--slate)">'+r.comp+' / '+r.n+' compliant</div></div>';
+  }).join('') + '</div>';
+
+  // Selected scope → evaluated population for heatmap + behaviors
+  var scope = scopeSel ? scopeSel.value : '__pooled';
+  var pool = [];
+  qs.filter(function(q){return !q.inProgress;}).forEach(function(q){
+    if (scope === '__pooled' || scope === q.quarter) q.people.forEach(function(p){ pool.push(evalPerson_(p,q,s)); });
+  });
+  var dim = document.getElementById('pl-dim').value;
+
+  renderPolicyHeatmap_(pool, dim);
+  renderPolicyBehaviors_(pool);
+}
+
+// goals×comments grid. Manager mode aggregates to one row per supervisor
+// (team-size on the goals axis, team-total comments on the comments axis;
+// cell "compliant" = ≥50% of the team's members comply).
+function renderPolicyHeatmap_(pool, dim) {
+  var units;
+  if (dim === 'manager') {
+    var byMgr = {};
+    pool.forEach(function(e){ var k=e.supervisor||'(none)'; (byMgr[k]=byMgr[k]||[]).push(e); });
+    units = Object.keys(byMgr).map(function(k){
+      var team=byMgr[k]; var comp=team.filter(function(e){return e.complies;}).length;
+      return { name:k, goals:team.length, cmts:team.reduce(function(a,e){return a+e.cmts;},0),
+               complies:(comp/team.length)>=0.5 };
+    });
+  } else {
+    units = pool.filter(function(e){ return e.goals > 0; });
+  }
+  var grid = {};
+  units.forEach(function(u){
+    var key = bucketOf_(u.goals,BC_GOALS)+'|'+bucketOf_(u.cmts,BC_CMTS);
+    (grid[key]=grid[key]||{n:0,comp:0,units:[]}); grid[key].n++; if(u.complies)grid[key].comp++; grid[key].units.push(u);
+  });
+  var html='<div class="tbl-wrap"><table class="pl-hm"><thead><tr><th>'+(dim==='manager'?'team size':'goals')+'</th>'+BC_CMTS.map(function(c){return '<th>'+c.lab+'</th>';}).join('')+'</tr></thead><tbody>';
+  BC_GOALS.slice().reverse().forEach(function(gb){
+    html+='<tr><th>'+gb.lab+'</th>';
+    BC_CMTS.forEach(function(cb){
+      var cell=grid[gb.lab+'|'+cb.lab];
+      if(!cell){ html+='<td><span class="pl-cell" style="background:var(--surface);color:var(--muted)">—</span></td>'; return; }
+      var pct=Math.round(cell.comp/cell.n*100);
+      var bg='rgba(5,140,220,'+(0.12+0.6*pct/100).toFixed(2)+')';   // Orbe intensity ramp
+      html+='<td><span class="pl-cell" style="background:'+bg+'" data-pl-cell="'+esc(gb.lab+'|'+cb.lab)+'">'+cell.n+'<small>'+pct+'% ok</small></span></td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  document.getElementById('pl-heatmap').innerHTML=html;
+  document.getElementById('pl-drill').innerHTML='';
+  PL_GRID_=grid; PL_DIM_=dim;
+}
+
+function renderPolicyDrill_(key) {
+  var cell=PL_GRID_&&PL_GRID_[key]; if(!cell)return;
+  var rows=cell.units.slice().sort(function(a,b){return b.cmts-a.cmts;}).map(function(u){
+    return '<tr><td>'+esc(u.name)+'</td><td style="text-align:center">'+u.goals+'</td><td style="text-align:center">'+u.cmts+'</td><td style="text-align:center">'+(u.complies?'✓':'—')+'</td></tr>';
+  }).join('');
+  document.getElementById('pl-drill').innerHTML='<table class="data-table" style="margin-top:10px"><thead><tr><th>'+(PL_DIM_==='manager'?'Manager (team)':'Rocketeer')+'</th><th>'+(PL_DIM_==='manager'?'Team size':'Goals')+'</th><th>Comments</th><th>OK</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+function renderPolicyBehaviors_(pool) {
+  var elig = pool.filter(function(e){ return e.goals > 0; });
+  var compliant = elig.filter(function(e){ return e.complies; });
+  var bl = compliant.filter(function(e){ return e.backloaded; }).length;
+  var bm = compliant.filter(function(e){ return e.bareShare >= 0.5; }).length;
+  var sd = stdDev_(elig.map(function(e){ return e.avgPerGoal; }));
+  var mean = elig.length ? (elig.reduce(function(a,e){return a+e.avgPerGoal;},0)/elig.length) : 0;
+  document.getElementById('pl-behaviors').innerHTML =
+    '<div class="pl-fy-row">' +
+    '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">COMPLIANT ON COUNT</div><b>'+compliant.length+'</b><div style="font-size:10px;color:var(--slate)">of '+elig.length+'</div></div>' +
+    '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">BACK-LOADED</div><b>'+bl+'</b><div style="font-size:10px;color:var(--slate)">'+(compliant.length?Math.round(bl/compliant.length*100):0)+'% of compliant · final 3 wks</div></div>' +
+    '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">BARE-MINIMUM</div><b>'+bm+'</b><div style="font-size:10px;color:var(--slate)">'+(compliant.length?Math.round(bm/compliant.length*100):0)+'% · mostly 1/goal</div></div>' +
+    '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">CMTS / GOAL</div><b>'+mean.toFixed(1)+'</b><div style="font-size:10px;color:var(--slate)">σ '+sd.toFixed(1)+'</div></div>' +
+    '</div>';
 }
 
 // ── ENGAGEMENT COMPUTATION HELPERS (rendered from Overview) ────────
