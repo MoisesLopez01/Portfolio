@@ -2621,7 +2621,14 @@ function switchTeam(key) {
   // New population — population-specific filters no longer apply
   STATE.jobTitleFilter.clear(); STATE.jfFilter.clear(); STATE.lvFilter.clear();
   var cached = STATE.teamData[key];
-  if (cached) onDataLoaded(cached);   // instant re-render from client cache
+  if (cached) {
+    // Disqualify any in-flight response for another team — rendering from
+    // cache makes this click the source of truth (seq mismatch discards it).
+    _loadSeq++;
+    _loadingInFlight = false;
+    _loadingTeam = null;
+    onDataLoaded(cached);             // instant re-render from client cache
+  }
   else loadData(false);               // cold team — fetch (shows loading screen)
 }
 
