@@ -5289,8 +5289,14 @@ function sortEmployees(list) {
       var _wl = k.slice(5);
       var _wa = (a.weeks || {})[_wl] || {};
       var _wb = (b.weeks || {})[_wl] || {};
-      va = _wa.trackedHrs != null ? _wa.trackedHrs : (_wa.plannedHrs || 0);
-      vb = _wb.trackedHrs != null ? _wb.trackedHrs : (_wb.plannedHrs || 0);
+      if (isHoursTeam_()) {
+        va = _wa.trackedHrs != null ? _wa.trackedHrs : (_wa.plannedHrs || 0);
+        vb = _wb.trackedHrs != null ? _wb.trackedHrs : (_wb.plannedHrs || 0);
+      } else {
+        // Reduced-metric teams: goals compliance dominates, kudos breaks ties
+        va = (((_wa.goalsDetail || {}).compliant) ? 1000 : 0) + ((_wa.kudos || {}).count || 0);
+        vb = (((_wb.goalsDetail || {}).compliant) ? 1000 : 0) + ((_wb.kudos || {}).count || 0);
+      }
     } else {
       va = a[k] !== undefined ? a[k] : "";
       vb = b[k] !== undefined ? b[k] : "";
