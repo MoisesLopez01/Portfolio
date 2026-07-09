@@ -6953,9 +6953,10 @@ function renderWeightsTab_() {
   loadScoringMatrix_();
 }
 
-// ── SCORING MATRIX EDITOR — Family × Level weights (admin only) ──────────────
-// Backed by getScoringConfig() / saveScoringMatrix() in PS Contribution Report.js.
-// Blank cells inherit the DEFAULT block, then the flat base weights.
+// ── SCORING MATRIX EDITOR — Team → Family × Level weights (admin only) ─────────
+// Backed by getScoringConfig() / saveScoringMatrix(). Families are grouped under
+// the org-team separators (same teams as the dashboard toggle); blank cells
+// inherit the per-(team, family) fill defaults shipped in cfg.sections.
 var MATRIX_CFG = null;
 
 function loadScoringMatrix_() {
@@ -6968,6 +6969,30 @@ function loadScoringMatrix_() {
     .getScoringConfig();
 }
 
+// Section lookup helpers — cfg.sections is ordered like the dashboard team toggle.
+function matrixSection_(team) {
+  var secs = (MATRIX_CFG && MATRIX_CFG.sections) || [];
+  for (var i = 0; i < secs.length; i++) if (secs[i].team.key === team) return secs[i];
+  return null;
+}
+
+// Fill defaults a (team, family) block inherits — shipped per family by the server
+// (blockFillBase_), so the client never re-derives the policy rule.
+function matrixFill_(team, fam) {
+  var sec = matrixSection_(team);
+  if (!sec) return {};
+  if (fam !== 'ALL') {
+    for (var i = 0; i < sec.families.length; i++) {
+      if (sec.families[i].code === fam) return sec.families[i].fill || {};
+    }
+  }
+  return (sec.catchAll && sec.catchAll.fill) || {};
+}
+
+function teamWeightDefs_(sec) {
+  return WEIGHT_DEFS.filter(function(d) { return sec.team.metrics.indexOf(d.key) !== -1; });
+}
+
 function renderMatrixSection_() {
   var el = document.getElementById("matrixSection");
   if (!el) return;
@@ -6978,46 +7003,52 @@ function renderMatrixSection_() {
     return;
   }
 
-  var html = '<div class="sec-header">⚖️ Scoring Weights by Family &amp; Level</div>' +
-    '<p class="sec-sub">The <strong>Company Default</strong> below is the single source for the PS team — it mirrors the ' +
-    'Scoring Weights set above; blank cells inherit it. <strong>PS families</strong> (JF007/JF008/JF009/JF018) are tunable ' +
-    'per level, the <strong>COE team</strong> (JF004) has one shared block, and all other families are ' +
-    '<strong>non-contributors</strong> scoring on Goals/PTO/SI/Kudos only. Each level column should total 100% ' +
-    '(other totals are renormalized at scoring time).</p>';
+  var html = '<div class="sec-header">⚖️ Scoring Weights by Team, Family &amp; Level</div>' +
+    '<p class="sec-sub">Families are grouped under the <strong>org teams</strong> from the dashboard toggle, ' +
+    'placed by where their active members sit — a family with members in two teams appears under both and is ' +
+    'tuned independently. Each team scores only on its own metric set; blank cells inherit the placeholder ' +
+    'weights shown. Each level column should total 100% (other totals are renormalized at scoring time).</p>';
 
-  // Company Default — read-only mirror of the flat base weights (single source of truth).
-  html += renderDefaultRef_(cfg);
-
-  // PS-team family blocks (per level).
-  cfg.families.forEach(function(f) {
-    var fam = cfg.rolesByFamily[f.code];
-    var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
-    if (!levels.length) return;
-    html += renderFamilyBlock_(f.code, f.name, levels, fam);
+  cfg.sections.forEach(function(sec) {
+    html += renderTeamSeparator_(sec);
+    if (sec.team.key === 'services') html += renderDefaultRef_(cfg);
+    sec.families.forEach(function(f) {
+      var fam = cfg.rolesByFamily[f.code];
+      var levels = fam ? cfg.levelCols.filter(function(lk) { return fam.levels[lk]; }) : [];
+      html += renderFamilyBlock_(sec, f, levels, fam);
+    });
+    html += renderTeamCatchAll_(sec);
   });
 
-  // COE team — JF004, one shared weight set for all levels.
-  html += renderCoeBlock_(cfg);
-
-  // Non-contributors — every other catalogued family; Goals/PTO/SI/Kudos only.
-  html += renderNonContribBlock_(cfg);
-
-  // Services Team catch-all — the roster is Services-department only, so titles not in
-  // the Job Catalog are still Services-team members and score with this block's weights.
-  html += renderServicesBlock_(cfg);
-
   html += '<div class="settings-actions" style="margin-top:14px">' +
-    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Family Overrides</button>' +
+    '<button class="settings-btn settings-btn-primary" id="saveMatrixBtn" onclick="saveMatrixToSheet_()">Save Scoring Matrix</button>' +
     '<span id="matrixSaveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
   '</div>' +
   '<div id="matrixSaveError" class="mx-err" style="display:none;margin-top:8px"></div>' +
-  '<p class="settings-note">Overrides are stored in the <strong>PS Scoring Matrix</strong> sheet; role mappings in <strong>Job Catalog</strong>. ' +
+  '<p class="settings-note">Weights are stored in the <strong>PS Scoring Matrix</strong> sheet (Team + Family rows); role mappings in <strong>Job Catalog</strong>. ' +
   'Both can also be edited directly in the spreadsheet. Changes apply on the next data refresh.</p>';
 
   el.innerHTML = html;
 }
 
-// Read-only Company Default panel — mirrors the flat base weights (the single source).
+// Team separator — a visual group header; carries no weights of its own.
+function renderTeamSeparator_(sec) {
+  var n = (sec.catchAll && sec.catchAll.count) || 0;
+  sec.families.forEach(function(f) { n += f.count || 0; });
+  var chips = teamWeightDefs_(sec).map(function(d) {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">' +
+      '<span style="width:7px;height:7px;border-radius:50%;background:' + d.color + '"></span>' + esc(d.label) + '</span>';
+  }).join('<span style="color:var(--border)">·</span>');
+  return '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 6px;padding:8px 2px;border-bottom:2px solid var(--border)">' +
+    '<span style="font-size:14px;font-weight:900;color:var(--void)">' + esc(sec.team.label) + '</span>' +
+    '<span style="font-size:11px;font-weight:600;color:var(--muted)">' + sec.families.length + ' famil' +
+      (sec.families.length !== 1 ? 'ies' : 'y') + ' · ' + n + ' rocketeer' + (n !== 1 ? 's' : '') + '</span>' +
+    '<span style="display:inline-flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">' + chips + '</span>' +
+  '</div>';
+}
+
+// Read-only Services base panel — mirrors the flat base weights (the single source
+// the Services-team natives inherit).
 function renderDefaultRef_(cfg) {
   var bw = cfg.baseWeights || {};
   var chips = WEIGHT_DEFS.map(function(d) {
@@ -7029,12 +7060,12 @@ function renderDefaultRef_(cfg) {
   }).join('');
   return '<div class="mx-default-ref">' +
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">Company Default</span>' +
-      '<span class="mx-badge mx-badge-default">applies to everyone</span>' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">Services Base</span>' +
+      '<span class="mx-badge mx-badge-default">Services families inherit this</span>' +
     '</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:6px">' + chips + '</div>' +
     '<div style="font-size:11px;color:var(--muted);margin-top:8px">Edit these in <strong>Scoring Weights</strong> above. ' +
-    'Each family inherits this unless it sets an override below.</div>' +
+    'Operational families embedded in Services inherit their policy placeholders instead (tracked/planned/RCR stay 0).</div>' +
   '</div>';
 }
 
@@ -7043,171 +7074,17 @@ function shortRole_(t) {
   return i > 0 ? t.slice(0, i) : t;
 }
 
-// Services Team catch-all block — pseudo-family SERVICES with a single ALL column.
-// Roster titles not in the Job Catalog are listed here and score with these weights.
-function renderServicesBlock_(cfg) {
-  var code = 'SERVICES', lk = 'ALL';
-  var m = (cfg.matrix[code] || {})[lk] || {};
-  var isCustom = familyHasOverride_(code);
-  var titles = cfg.unmappedTitles || [];
-  var nPeople = titles.reduce(function(s, u) { return s + (u.count || 1); }, 0);
-
-  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
-    (isCustom ? 'Custom' : 'Inheriting default') + '</span>';
-
-  var html = '<details ' +
-    'style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">Services Team</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">catch-all · ' + titles.length + ' title' +
-        (titles.length !== 1 ? 's' : '') + ' · ' + nPeople + ' rocketeer' + (nPeople !== 1 ? 's' : '') + '</span>' +
-    '</summary>' +
-    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
-    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">Every rocketeer in this dashboard is in the ' +
-      '<strong>Services</strong> department. Titles below are not in the Job Catalog, so they score with this block\'s ' +
-      'weights (one set, all levels). Blank cells inherit the company default. Add a title to the <strong>Job Catalog</strong> ' +
-      'sheet to give it real family &amp; level weights instead.</p>';
-
-  // Titles covered by this block
-  if (titles.length) {
-    html += '<details class="mx-unmapped" style="margin:0 0 10px"><summary>' + titles.length + ' title' +
-        (titles.length !== 1 ? 's' : '') + ' · ' + nPeople + ' rocketeer' + (nPeople !== 1 ? 's' : '') + ' — view list</summary>' +
-      '<div style="padding:8px 12px">' +
-        titles.map(function(u) {
-          return '<div style="font-size:12px;color:var(--slate)">' + esc(u.jobTitle) +
-            ' <span style="color:var(--muted)">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
-        }).join('') +
-      '</div></details>';
-  } else {
-    html += '<p style="font-size:11px;color:var(--muted);margin:0 0 10px">All roster titles are currently mapped in the Job Catalog — nobody scores via this block right now.</p>';
-  }
-
-  // Single-column weights grid (ALL levels)
-  html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
-    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
-    '<th style="' + thStyle + '">All levels</th>' +
-    '</tr></thead><tbody>';
-
-  WEIGHT_DEFS.forEach(function(d) {
-    var v = (m[d.key] !== undefined) ? m[d.key] : '';
-    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
-      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
-      esc(d.label) + '</th>' +
-      '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
-        '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
-        'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
-        'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
-        'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td></tr>';
-  });
-
-  var t = matrixColSum_(code, lk);
-  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
-    '<td id="msum-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
-      (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td></tr>';
-  html += '</tbody></table>';
-
-  html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-    'onclick="resetFamilyMatrix_(\'' + code + '\')">Reset — inherit company default</button>';
-  html += '</div></details>';
-  return html;
+// Effective weight after inheritance: level cell → family ALL cell → fill defaults.
+function matrixEffectiveW_(team, fam, lk, met) {
+  var block = ((MATRIX_CFG.matrix || {})[team] || {})[fam] || {};
+  if (block[lk] && block[lk][met] !== undefined) return block[lk][met];
+  if (lk !== 'ALL' && block.ALL && block.ALL[met] !== undefined) return block.ALL[met];
+  return matrixFill_(team, fam)[met] || 0;
 }
 
-// Effective weight of a family cell after inheritance: family cell → flat base
-// weight. The NONCONTRIB block inherits the non-contributor policy defaults
-// instead of the base (a reset must never re-enable tracked/planned/RCR).
-function matrixEffectiveW_(fam, lk, met) {
-  var m = MATRIX_CFG.matrix || {};
-  if (m[fam] && m[fam][lk] && m[fam][lk][met] !== undefined) return m[fam][lk][met];
-  var nc = MATRIX_CFG.nonContrib;
-  if (nc && fam === nc.code) return (nc.defaults && nc.defaults[met]) || 0;
-  return (MATRIX_CFG.baseWeights && MATRIX_CFG.baseWeights[met]) || 0;
-}
-
-// Shared single-ALL-column weights grid + reset button (COE and Non-contributors).
-function singleColWeightsGrid_(code, resetLabel) {
-  var lk = 'ALL';
-  var m = (MATRIX_CFG.matrix[code] || {})[lk] || {};
-  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
-  var html = '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
-    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
-    '<th style="' + thStyle + '">All levels</th>' +
-    '</tr></thead><tbody>';
-  WEIGHT_DEFS.forEach(function(d) {
-    var v = (m[d.key] !== undefined) ? m[d.key] : '';
-    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
-      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
-      esc(d.label) + '</th>' +
-      '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
-        '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
-        'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
-        'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
-        'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td></tr>';
-  });
-  var t = matrixColSum_(code, lk);
-  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
-    '<td id="msum-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
-      (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td></tr>';
-  html += '</tbody></table>' +
-    '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-    'onclick="resetFamilyMatrix_(\'' + code + '\')">' + resetLabel + '</button>';
-  return html;
-}
-
-// COE team block — JF004 (Sales and Success): one shared weight set, all levels.
-function renderCoeBlock_(cfg) {
-  var coe = cfg.coeFamily || { code: 'JF004', name: 'Sales and Success', count: 0 };
-  var code = coe.code;
-  var isCustom = familyHasOverride_(code);
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
-    (isCustom ? 'Custom' : 'Inheriting default') + '</span>';
-  return '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">COE Team — ' + esc(coe.name) + '</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · one block, all levels · ' +
-        coe.count + ' rocketeer' + (coe.count !== 1 ? 's' : '') + '</span>' +
-    '</summary>' +
-    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
-    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">COE members (' + esc(code) +
-      ' job titles) score with this single shared weight set regardless of level. Blank cells inherit the company default.</p>' +
-    singleColWeightsGrid_(code, 'Reset — inherit company default') +
-    '</div></details>';
-}
-
-// Non-contributors block — families outside PS + COE: Goals/PTO/SI/Kudos only.
-function renderNonContribBlock_(cfg) {
-  var nc = cfg.nonContrib || { code: 'NONCONTRIB', defaults: {}, families: [] };
-  var code = nc.code;
-  var isCustom = familyHasOverride_(code);
-  var fams = nc.families || [];
-  var nPeople = fams.reduce(function(s, f) { return s + (f.count || 0); }, 0);
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
-    (isCustom ? 'Custom' : 'Policy defaults') + '</span>';
-  var famList = fams.length
-    ? fams.map(function(f) {
-        return '<div style="font-size:12px;color:var(--slate)">' + esc(f.code + ' — ' + f.name) +
-          ' <span style="color:var(--muted)">· ' + f.count + ' rocketeer' + (f.count !== 1 ? 's' : '') + '</span></div>';
-      }).join('')
-    : '<div style="font-size:12px;color:var(--muted)">No non-contributor families in the current roster.</div>';
-  return '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
-    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<span style="font-size:13px;font-weight:800;color:var(--void)">Non-contributors</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">operational roles · ' + fams.length +
-        ' famil' + (fams.length !== 1 ? 'ies' : 'y') + ' · ' + nPeople + ' rocketeer' + (nPeople !== 1 ? 's' : '') + '</span>' +
-    '</summary>' +
-    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
-    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">Operational roles embedded in the ' +
-      'Services roster that are not part of the PS team or COE. They score only on <strong>Goals, PTO, SI, and Kudos</strong> — ' +
-      'they do not track or plan time and have no direct RCR impact, so those three metrics default to 0. ' +
-      'Blank cells inherit these policy defaults, not the company default.</p>' +
-    '<div style="margin:0 0 10px">' + famList + '</div>' +
-    singleColWeightsGrid_(code, 'Reset — restore non-contributor defaults') +
-    '</div></details>';
-}
-
-// A family is "custom" once it carries any explicit (non-blank) weight.
-function familyHasOverride_(code) {
-  var m = (MATRIX_CFG.matrix || {})[code];
+// A block is "custom" once it carries any explicit (non-blank) weight.
+function familyHasOverride_(team, code) {
+  var m = ((MATRIX_CFG.matrix || {})[team] || {})[code];
   if (!m) return false;
   for (var lk in m) {
     if (!m.hasOwnProperty(lk)) continue;
@@ -7218,36 +7095,37 @@ function familyHasOverride_(code) {
   return false;
 }
 
-function matrixColSum_(fam, lk) {
+function matrixColSum_(team, fam, lk) {
+  var sec = matrixSection_(team);
+  var mets = sec ? sec.team.metrics : MATRIX_CFG.metrics;
   var s = 0;
-  MATRIX_CFG.metrics.forEach(function(met) { s += +matrixEffectiveW_(fam, lk, met) || 0; });
+  mets.forEach(function(met) { s += +matrixEffectiveW_(team, fam, lk, met) || 0; });
   return Math.round(s * 10) / 10;
 }
 
-function renderFamilyBlock_(code, name, levels, famData) {
-  var cfg = MATRIX_CFG;
-  var m = cfg.matrix[code] || {};
-  var isCustom = familyHasOverride_(code);
+// One (team, family) block: read-only roles reference + editable weights grid over
+// the family's catalog levels plus the block-wide ALL column.
+function renderFamilyBlock_(sec, f, levels, famData) {
+  var team = sec.team.key, code = f.code, name = f.name;
+  var isCustom = familyHasOverride_(team, code);
+  var cols = levels.concat(['ALL']);
+  var defs = teamWeightDefs_(sec);
   var roleCount = 0, groupSet = {};
   levels.forEach(function(lk) {
-    (famData.levels[lk] || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
+    ((famData && famData.levels[lk]) || []).forEach(function(r) { roleCount++; groupSet[r.group || name] = true; });
   });
   var groups = Object.keys(groupSet);
 
   var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
   function lvlCls(lk) { return lk.charAt(0) === 'I' ? 'mx-lvl-ic' : 'mx-lvl-mg'; }
+  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + team + '-' + code + '">' +
+    (isCustom ? 'Custom' : 'Inheriting') + '</span>';
 
-  // Scope is the headline; the Custom/Inheriting badge tells the story at a glance.
-  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + code + '">' +
-    (isCustom ? 'Custom' : 'Inheriting default') + '</span>';
-
-  // All families render collapsed — the Custom/Inheriting badge signals which ones to open.
-  var html = '<details ' +
-    'style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
+  var html = '<details style="margin:8px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden">' +
     '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<span style="font-size:13px;font-weight:800;color:var(--void)">' + esc(name) + '</span>' + badge +
-      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · ' + roleCount + ' role' +
-        (roleCount !== 1 ? 's' : '') + ' · ' + groups.length + ' role group' + (groups.length !== 1 ? 's' : '') + '</span>' +
+      '<span style="font-weight:600;color:var(--muted);font-size:11px">' + esc(code) + ' · ' + f.count + ' rocketeer' +
+        (f.count !== 1 ? 's' : '') + ' · ' + roleCount + ' role' + (roleCount !== 1 ? 's' : '') + '</span>' +
     '</summary>' +
     '<div style="padding:6px 14px 12px;overflow-x:auto">';
 
@@ -7261,7 +7139,7 @@ function renderFamilyBlock_(code, name, levels, famData) {
     groups.forEach(function(g) {
       html += '<tr><th style="padding:5px 6px;font-size:11px;font-weight:700;color:var(--slate);text-align:left;border-bottom:1px solid var(--border)">' + esc(g) + '</th>' +
         levels.map(function(lk) {
-          var roles = (famData.levels[lk] || []).filter(function(r) { return (r.group || name) === g; });
+          var roles = ((famData && famData.levels[lk]) || []).filter(function(r) { return (r.group || name) === g; });
           return '<td style="padding:4px 6px;font-size:10px;color:var(--slate);border-bottom:1px solid var(--border);vertical-align:top;max-width:150px">' +
             roles.map(function(r) { return '<div title="' + esc(r.code + ' — ' + r.title) + '">' + esc(shortRole_(r.title)) + '</div>'; }).join('') +
           '</td>';
@@ -7270,75 +7148,150 @@ function renderFamilyBlock_(code, name, levels, famData) {
     html += '</tbody></table>';
   }
 
-  // Editable weights grid: metric rows × level columns
+  // Editable weights grid: team metric rows × (level columns + ALL)
   html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
     '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
-    levels.map(function(lk) {
-      return '<th class="' + lvlCls(lk) + '" style="' + thStyle + '">' + lk + '</th>';
+    cols.map(function(lk) {
+      return '<th class="' + (lk === 'ALL' ? '' : lvlCls(lk)) + '" style="' + thStyle + '">' + lk + '</th>';
     }).join('') + '</tr></thead><tbody>';
 
-  WEIGHT_DEFS.forEach(function(d) {
+  defs.forEach(function(d) {
     html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
       '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
       esc(d.label) + '</th>' +
-      levels.map(function(lk) {
-        var v = (m[lk] && m[lk][d.key] !== undefined) ? m[lk][d.key] : '';
-        return '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
-          '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
-          'placeholder="' + matrixEffectiveW_(code, lk, d.key) + '" ' +
-          'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
-          'oninput="matrixCellInput_(\'' + code + '\',\'' + lk + '\',\'' + d.key + '\',this.value)"></td>';
-      }).join('') + '</tr>';
+      cols.map(function(lk) { return matrixInputCell_(team, code, lk, d.key); }).join('') + '</tr>';
   });
 
   // Live per-column totals (soft warn ≠ 100%)
   html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
-    levels.map(function(lk) {
-      var t = matrixColSum_(code, lk);
-      return '<td id="msum-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
+    cols.map(function(lk) {
+      var t = matrixColSum_(team, code, lk);
+      return '<td id="msum-' + team + '-' + code + '-' + lk + '" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
         (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td>';
     }).join('') + '</tr>';
   html += '</tbody></table>';
 
   html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
-    'onclick="resetFamilyMatrix_(\'' + code + '\')">Reset — inherit company default</button>';
+    'onclick="resetFamilyMatrix_(\'' + team + '\',\'' + code + '\')">Reset — inherit defaults</button>';
   html += '</div></details>';
   return html;
 }
 
-function matrixCellInput_(fam, lk, met, val) {
-  var m = MATRIX_CFG.matrix;
-  if (!m[fam]) m[fam] = {};
-  if (!m[fam][lk]) m[fam][lk] = {};
-  if (val === '' || val === null) {
-    delete m[fam][lk][met]; // blank → inherit base
-  } else {
-    m[fam][lk][met] = Math.max(0, Math.min(100, parseFloat(val) || 0));
-  }
-  updateMatrixSum_(fam, lk);
-  updateFamilyBadge_(fam);
+// One editable weight input cell (shared by family blocks and catch-alls).
+function matrixInputCell_(team, fam, lk, met) {
+  var block = ((MATRIX_CFG.matrix || {})[team] || {})[fam] || {};
+  var v = (block[lk] && block[lk][met] !== undefined) ? block[lk][met] : '';
+  return '<td style="padding:3px 4px;border-bottom:1px solid var(--border);text-align:center">' +
+    '<input type="number" min="0" max="100" step="1" value="' + v + '" ' +
+    'placeholder="' + matrixEffectiveW_(team, fam, lk, met) + '" ' +
+    'style="width:50px;font-size:12px;text-align:right;padding:3px 5px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text)" ' +
+    'oninput="matrixCellInput_(\'' + team + '\',\'' + fam + '\',\'' + lk + '\',\'' + met + '\',this.value)"></td>';
 }
 
-function updateMatrixSum_(fam, lk) {
-  var cell = document.getElementById('msum-' + fam + '-' + lk);
+// Per-team catch-all block — uncatalogued titles score with this block's weights
+// (single ALL column). The Services section also lists the unmapped titles.
+function renderTeamCatchAll_(sec) {
+  var team = sec.team.key, code = 'ALL';
+  var isCustom = familyHasOverride_(team, code);
+  var n = (sec.catchAll && sec.catchAll.count) || 0;
+  var defs = teamWeightDefs_(sec);
+  var thStyle = 'padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);text-align:center;min-width:54px';
+  var badge = '<span class="mx-badge ' + (isCustom ? 'mx-badge-custom' : 'mx-badge-default') + '" id="mxbadge-' + team + '-' + code + '">' +
+    (isCustom ? 'Custom' : 'Inheriting') + '</span>';
+
+  var html = '<details style="margin:8px 0;border:1px dashed var(--border);border-radius:10px;overflow:hidden">' +
+    '<summary style="cursor:pointer;padding:10px 14px;background:var(--th-bg);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:13px;font-weight:800;color:var(--void)">Uncatalogued titles</span>' + badge +
+      '<span style="font-weight:600;color:var(--muted);font-size:11px">catch-all · ' + n + ' rocketeer' + (n !== 1 ? 's' : '') + '</span>' +
+    '</summary>' +
+    '<div style="padding:6px 14px 12px;overflow-x:auto">' +
+    '<p style="font-size:11px;color:var(--muted);margin:6px 0 10px;max-width:640px">' + esc(sec.team.label) +
+      ' members whose job title is not in the <strong>Job Catalog</strong> score with this block\'s weights ' +
+      '(one set, all levels). Blank cells inherit the placeholders. Add the title to the Job Catalog sheet ' +
+      'to give it real family &amp; level weights instead.</p>';
+
+  if (team === 'services') {
+    var titles = MATRIX_CFG.unmappedTitles || [];
+    if (titles.length) {
+      html += '<details class="mx-unmapped" style="margin:0 0 10px"><summary>' + titles.length + ' title' +
+          (titles.length !== 1 ? 's' : '') + ' — view list</summary>' +
+        '<div style="padding:8px 12px">' +
+          titles.map(function(u) {
+            return '<div style="font-size:12px;color:var(--slate)">' + esc(u.jobTitle) +
+              ' <span style="color:var(--muted)">· ' + u.count + ' rocketeer' + (u.count !== 1 ? 's' : '') + '</span></div>';
+          }).join('') +
+        '</div></details>';
+    } else {
+      html += '<p style="font-size:11px;color:var(--muted);margin:0 0 10px">All Services roster titles are currently mapped in the Job Catalog — nobody scores via this block right now.</p>';
+    }
+  }
+
+  html += '<table style="border-collapse:collapse;width:max-content"><thead><tr>' +
+    '<th style="' + thStyle + ';text-align:left;min-width:150px">Metric</th>' +
+    '<th style="' + thStyle + '">All levels</th>' +
+    '</tr></thead><tbody>';
+  defs.forEach(function(d) {
+    html += '<tr><th style="padding:4px 6px;font-size:11px;font-weight:700;color:var(--void);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">' +
+      '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + d.color + ';margin-right:6px;vertical-align:1px"></span>' +
+      esc(d.label) + '</th>' + matrixInputCell_(team, code, 'ALL', d.key) + '</tr>';
+  });
+  var t = matrixColSum_(team, code, 'ALL');
+  html += '<tr><th style="padding:5px 6px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;text-align:right">Σ / level</th>' +
+    '<td id="msum-' + team + '-' + code + '-ALL" style="padding:4px 6px;font-size:11px;font-weight:800;text-align:center;color:' +
+      (t === 100 ? '#00A86B' : '#D97706') + '">' + t + '%</td></tr>';
+  html += '</tbody></table>';
+
+  html += '<button class="settings-btn settings-btn-secondary" style="margin-top:8px;font-size:11px;padding:4px 10px" ' +
+    'onclick="resetFamilyMatrix_(\'' + team + '\',\'' + code + '\')">Reset — inherit defaults</button>';
+  html += '</div></details>';
+  return html;
+}
+
+function matrixCellInput_(team, fam, lk, met, val) {
+  var m = MATRIX_CFG.matrix;
+  if (!m[team]) m[team] = {};
+  if (!m[team][fam]) m[team][fam] = {};
+  if (!m[team][fam][lk]) m[team][fam][lk] = {};
+  if (val === '' || val === null) {
+    delete m[team][fam][lk][met]; // blank → inherit
+  } else {
+    m[team][fam][lk][met] = Math.max(0, Math.min(100, parseFloat(val) || 0));
+  }
+  updateMatrixSum_(team, fam, lk);
+  if (lk === 'ALL') {
+    // A block-wide ALL edit changes every level's effective value — refresh all sums.
+    var sec = matrixSection_(team), fRec = null;
+    if (sec) sec.families.forEach(function(x) { if (x.code === fam) fRec = x; });
+    var famData = MATRIX_CFG.rolesByFamily[fam];
+    var levels = famData ? MATRIX_CFG.levelCols.filter(function(k) { return famData.levels[k]; }) : [];
+    levels.forEach(function(k) { updateMatrixSum_(team, fam, k); });
+  }
+  updateFamilyBadge_(team, fam);
+}
+
+function updateMatrixSum_(team, fam, lk) {
+  var cell = document.getElementById('msum-' + team + '-' + fam + '-' + lk);
   if (!cell) return;
-  var t = matrixColSum_(fam, lk);
+  var t = matrixColSum_(team, fam, lk);
   cell.textContent = t + '%';
   cell.style.color = t === 100 ? '#00A86B' : '#D97706';
 }
 
-// Live Custom/Inheriting badge update as the admin edits a family's cells.
-function updateFamilyBadge_(fam) {
-  var b = document.getElementById('mxbadge-' + fam);
+// Live Custom/Inheriting badge update as the admin edits a block's cells.
+function updateFamilyBadge_(team, fam) {
+  var b = document.getElementById('mxbadge-' + team + '-' + fam);
   if (!b) return;
-  var custom = familyHasOverride_(fam);
+  var custom = familyHasOverride_(team, fam);
   b.className = 'mx-badge ' + (custom ? 'mx-badge-custom' : 'mx-badge-default');
-  b.textContent = custom ? 'Custom' : 'Inheriting default';
+  b.textContent = custom ? 'Custom' : 'Inheriting';
 }
 
-function resetFamilyMatrix_(fam) {
+// Reset = empty the rendered block (NOT delete the key): saveScoringMatrix's merge
+// treats a present-but-empty block as "clear my stored weights".
+function resetFamilyMatrix_(team, fam) {
   if (MATRIX_CFG && MATRIX_CFG.matrix) {
-    delete MATRIX_CFG.matrix[fam];
+    if (!MATRIX_CFG.matrix[team]) MATRIX_CFG.matrix[team] = {};
+    MATRIX_CFG.matrix[team][fam] = {};
     renderMatrixSection_(); // re-render from state; other unsaved edits are kept
   }
 }
