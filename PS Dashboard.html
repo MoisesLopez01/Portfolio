@@ -5948,7 +5948,7 @@ function buildActionPrompt_(emp, weeks, curWeek, pastWeeks) {
   }
 
   // 0 · RCR significantly below team — Critical tier (≤1.0) and well below team average
-  if (emp.rcr && emp.rcr.value !== null && emp.rcr.value <= 1.0 &&
+  if (hasMetric_('rcr') && emp.rcr && emp.rcr.value !== null && emp.rcr.value <= 1.0 &&
       teamRcr !== null && teamRcr > emp.rcr.value + 0.5) {
     return '<div class="det-action det-action-warn">' + esc(firstName) + '\'s RCR (' +
       emp.rcr.value.toFixed(2) + ') is significantly below the ' + (emp.isCrewMember ? 'crew' : 'team') + ' average (' +
@@ -5973,14 +5973,16 @@ function buildActionPrompt_(emp, weeks, curWeek, pastWeeks) {
     }
   }
 
-  // 2 · Low hours on most recent closed week (most recent first)
-  for (var i = (pastWeeks || []).length - 1; i >= 0; i--) {
-    var pw = pastWeeks[i];
-    var wd = emp.weeks[pw.label] || {};
-    if (wd.trackedHrs !== null && wd.trackedHrs < 20) {
-      var plannedStr = wd.plannedHrs !== null ? Math.round(wd.plannedHrs) + 'h planned' : '40h target';
-      return '<div class="det-action det-action-warn">Follow up on ' + esc(pw.label) +
-        ' hour logging — ' + Math.round(wd.trackedHrs) + 'h tracked vs ' + plannedStr + '.</div>';
+  // 2 · Low hours on most recent closed week (most recent first) — hours teams only
+  if (hasMetric_('tracked')) {
+    for (var i = (pastWeeks || []).length - 1; i >= 0; i--) {
+      var pw = pastWeeks[i];
+      var wd = emp.weeks[pw.label] || {};
+      if (wd.trackedHrs !== null && wd.trackedHrs < 20) {
+        var plannedStr = wd.plannedHrs !== null ? Math.round(wd.plannedHrs) + 'h planned' : '40h target';
+        return '<div class="det-action det-action-warn">Follow up on ' + esc(pw.label) +
+          ' hour logging — ' + Math.round(wd.trackedHrs) + 'h tracked vs ' + plannedStr + '.</div>';
+      }
     }
   }
 
