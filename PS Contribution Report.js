@@ -828,7 +828,8 @@ function _test_sheetMemo() {
   return true;
 }
 
-// Manual test harness for the resolver (run from the GAS editor; logs PASS/FAIL).
+// Manual test harness for the resolver (GAS editor or Node; logs PASS/FAIL).
+// Run: node -e "global.Logger={log:function(m){console.log(m)}}; const fs=require('fs'); eval(fs.readFileSync('PS Contribution Report.js','utf8')+'\n'+fs.readFileSync('PS Teams.js','utf8')); const r=_test_weightsResolver(); process.exit(r.some(function(x){return x.indexOf('FAIL')===0})?1:0)"
 function _test_weightsResolver() {
   const base = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
   const catalog = new Map([
@@ -837,82 +838,102 @@ function _test_weightsResolver() {
     [normPS_("Representative, Account Management"),        { family: "JF004", track: "I", level: 3, levelKey: "I3" }],
     [normPS_("Intern, Finance"),                           { family: "JF013", track: "I", level: 1, levelKey: "I1" }],
   ]);
-  const matrix = {
-    JF009:   { I4: { goals: 40, tracked: 20 } }, // partial cell — planned/rcr/… inherit base
-  };
+  const RND_W   = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
   const results = [];
   const check = (label, got, want) => {
     const pass = JSON.stringify(got) === JSON.stringify(want);
     results.push(`${pass ? "PASS" : "FAIL"} ${label}${pass ? "" : ` — got ${JSON.stringify(got)} want ${JSON.stringify(want)}`}`);
   };
+  const svc = (title, extra) => Object.assign({ name: "x", jobTitle: title, team: "services" }, extra || {});
 
-  // 1. Full hit with partial cell: explicit values win, blank metrics inherit the flat base
-  check("hit+inherit", weightsForEmployee_({ name: "A", jobTitle: "Senior Consultant I,  TECHNICAL consulting" }, matrix, catalog, base),
+  // 1. Services native, partial cell: explicit values win, blanks inherit the flat base
+  const mx1 = { services: { JF009: { I4: { goals: 40, tracked: 20 } } } };
+  check("svc-native-cell+inherit",
+    weightsForEmployee_(svc("Senior Consultant I,  TECHNICAL consulting"), mx1, catalog, base),
     { goals: 40, tracked: 20, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 });
-  // 2. Family missing from matrix → base (no separate DEFAULT block)
-  check("family-missing", weightsForEmployee_({ name: "B", jobTitle: "Associate, Solution Architecture" }, matrix, catalog, base), base);
-  // 3. Unmapped title, no SERVICES block → base
-  check("unmapped", weightsForEmployee_({ name: "C", jobTitle: "Wizard, Hogwarts" }, matrix, catalog, base), base);
-  // 3b. Unmapped title + SERVICES catch-all → services weights, blanks inherit base
-  const matrixSvc = { JF009: matrix.JF009, SERVICES: { ALL: { goals: 50, kudos: 10 } } };
-  check("unmapped-services-fallback",
-    weightsForEmployee_({ name: "C2", jobTitle: "Wizard, Hogwarts" }, matrixSvc, catalog, base),
+
+  // 2. Services native, no cell → the base object BY REFERENCE (attach optimization)
+  check("svc-native-inherit-is-base-ref",
+    weightsForEmployee_(svc("Associate, Solution Architecture"), mx1, catalog, base) === base, true);
+
+  // 3. Family ALL cell applies to every level; a specific level cell beats it
+  check("family-all-cell",
+    weightsForEmployee_(svc("Senior Consultant I, Technical Consulting"),
+      { services: { JF009: { ALL: { goals: 50, kudos: 10 } } } }, catalog, base),
     { goals: 50, tracked: 30, planned: 20, rcr: 15, kudos: 10, si: 0, pto: 0 });
-  // 3c. Mapped title is NOT affected by the SERVICES block
-  check("mapped-ignores-services",
-    weightsForEmployee_({ name: "A2", jobTitle: "Senior Consultant I, Technical Consulting" }, matrixSvc, catalog, base),
-    { goals: 40, tracked: 20, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 });
-  // 4. Empty catalog → base, no audit noise
-  const audit = [];
-  check("empty-catalog", weightsForEmployee_({ name: "D", jobTitle: "Anything" }, {}, new Map(), base, audit), base);
-  check("empty-catalog-no-audit", audit.length, 0);
-  // 6. COE (JF004): no block → base; ALL block → filled from base
-  check("coe-inherit-base", weightsForEmployee_({ name: "E", jobTitle: "Representative, Account Management" }, matrix, catalog, base), base);
-  const matrixCoe = { JF004: { ALL: { goals: 50, kudos: 10 } } };
-  check("coe-all-block",
-    weightsForEmployee_({ name: "E2", jobTitle: "Representative, Account Management" }, matrixCoe, catalog, base),
-    { goals: 50, tracked: 30, planned: 20, rcr: 15, kudos: 10, si: 0, pto: 0 });
-  // 7. Non-contributor family (JF013): no block → policy defaults; NONCONTRIB block
-  //    overrides fill against the policy defaults, never the flat base
-  check("noncontrib-defaults",
-    weightsForEmployee_({ name: "F", jobTitle: "Intern, Finance" }, matrix, catalog, base),
-    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  const matrixNc = { NONCONTRIB: { ALL: { goals: 60 } } };
-  check("noncontrib-block-fills-from-policy",
-    weightsForEmployee_({ name: "F2", jobTitle: "Intern, Finance" }, matrixNc, catalog, base),
-    { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  // 8. Non-contributor family×level cell beats the category-wide NONCONTRIB block
-  const matrixNcLvl = { JF013: { I1: { goals: 70, kudos: 30, si: 0, pto: 0 } }, NONCONTRIB: { ALL: { goals: 60 } } };
-  check("noncontrib-level-override-beats-block",
-    weightsForEmployee_({ name: "F3", jobTitle: "Intern, Finance" }, matrixNcLvl, catalog, base),
+  check("level-beats-family-all",
+    weightsForEmployee_(svc("Senior Consultant I, Technical Consulting"),
+      { services: { JF009: { ALL: { goals: 50, kudos: 10 }, I4: { goals: 44 } } } }, catalog, base),
+    { goals: 44, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 });
+
+  // 4. Embedded ops family under Services → policy fill; a partial cell can never
+  //    re-enable tracked/planned/RCR (fills from the policy, not the base)
+  check("svc-embedded-ops-policy",
+    weightsForEmployee_(svc("Intern, Finance"), {}, catalog, base), RND_W);
+  check("svc-embedded-ops-cell-fills-from-policy",
+    weightsForEmployee_(svc("Intern, Finance"),
+      { services: { JF013: { I1: { goals: 70, kudos: 30, si: 0, pto: 0 } } } }, catalog, base),
     { goals: 70, tracked: 0, planned: 0, rcr: 0, kudos: 30, si: 0, pto: 0 });
-  // 9. Uncatalogued title in a non-Services dept → non-contributor policy
-  //    defaults (never the flat base — no dead tracked/planned/RCR points).
-  check("uncatalogued-nonservices-dept-defaults",
-    weightsForEmployee_({ name: "G", jobTitle: "Totally Unknown Title", dept: "Engineering" }, {}, catalog, base),
-    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  // 10. Uncatalogued title + non-Services dept + NONCONTRIB/ALL override →
-  //     override fills against the policy defaults.
-  const matrixNcDept = { NONCONTRIB: { ALL: { goals: 60 } } };
-  check("uncatalogued-nonservices-dept-block-fills-from-policy",
-    weightsForEmployee_({ name: "G2", jobTitle: "Totally Unknown Title", dept: "Engineering" }, matrixNcDept, catalog, base),
+
+  // 5. JF004: a Services-team member blank-inherits the flat base (today's behavior);
+  //    a Sales-team member fills from SALES_DEFAULT_W_
+  check("jf004-in-services-inherits-base",
+    weightsForEmployee_(svc("Representative, Account Management"), {}, catalog, base) === base, true);
+  check("jf004-in-sales-defaults",
+    weightsForEmployee_({ name: "s", jobTitle: "Representative, Account Management", team: "sales" }, {}, catalog, base),
+    RND_W); // SALES_DEFAULT_W_ is seeded with the same values
+
+  // 6. Split family: independent (services, JF013) and (rnd, JF013) cells
+  const mx6 = { services: { JF013: { I1: { goals: 70, kudos: 30, si: 0, pto: 0 } } },
+                rnd:      { JF013: { I1: { goals: 55, kudos: 15, si: 15, pto: 15 } } } };
+  check("split-family-services-cell", weightsForEmployee_(svc("Intern, Finance"), mx6, catalog, base),
+    { goals: 70, tracked: 0, planned: 0, rcr: 0, kudos: 30, si: 0, pto: 0 });
+  check("split-family-rnd-cell",
+    weightsForEmployee_({ name: "r", jobTitle: "Intern, Finance", team: "rnd" }, mx6, catalog, base),
+    { goals: 55, tracked: 0, planned: 0, rcr: 0, kudos: 15, si: 15, pto: 15 });
+
+  // 7. Hard mask: tracked weight hand-set on an (rnd, family) row → zeroed
+  check("mask-zeroes-out-of-set-metric",
+    weightsForEmployee_({ name: "r2", jobTitle: "Intern, Finance", team: "rnd" },
+      { rnd: { JF013: { I1: { goals: 60, tracked: 40 } } } }, catalog, base),
     { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  // 11. Resolved team (Class-driven tagging) routes the non-contributor path
-  //     directly — no dept needed.
-  check("uncatalogued-rnd-team-defaults",
-    weightsForEmployee_({ name: "G3", jobTitle: "Totally Unknown Title", team: "rnd" }, {}, catalog, base),
-    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  // 12. Team beats the dept fallback: a services-team member with an odd dept
-  //     value stays on the Services scoring path (flat base here).
-  check("uncatalogued-services-team-beats-dept",
-    weightsForEmployee_({ name: "G4", jobTitle: "Totally Unknown Title", team: "services", dept: "Engineering" }, {}, catalog, base),
-    base);
-  // 13. Code-prefixed title with no catalog row: the embedded job code supplies
-  //     family/level (13 → JF013, non-PS family → non-contributor policy defaults).
-  check("code-prefix-title-selfdescribes",
-    weightsForEmployee_({ name: "G5", jobTitle: "13.M10.10 - Mystery Title" }, {}, catalog, base),
-    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
-  // 5. roleGroupFor_ edges
+
+  // 8. Uncatalogued per team → team catch-all (ALL/ALL) → team defaults;
+  //    audit fires only for Services-team titles
+  const audit = [];
+  check("uncat-services-no-block",
+    weightsForEmployee_(svc("Wizard, Hogwarts"), { services: {} }, catalog, base, audit) === base, true);
+  check("uncat-services-audited", audit.length === 1 && audit[0].reason === "unmapped-title", true);
+  check("uncat-services-catchall",
+    weightsForEmployee_(svc("Wizard, Hogwarts"), { services: { ALL: { ALL: { goals: 50, kudos: 10 } } } }, catalog, base),
+    { goals: 50, tracked: 30, planned: 20, rcr: 15, kudos: 10, si: 0, pto: 0 });
+  const audit2 = [];
+  check("uncat-rnd-defaults",
+    weightsForEmployee_({ name: "u", jobTitle: "Totally Unknown", team: "rnd" }, {}, catalog, base, audit2), RND_W);
+  check("uncat-rnd-catchall-fills-policy",
+    weightsForEmployee_({ name: "u2", jobTitle: "Totally Unknown", team: "rnd" },
+      { rnd: { ALL: { ALL: { goals: 60 } } } }, catalog, base, audit2),
+    { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  check("uncat-nonservices-not-audited", audit2.length, 0);
+  check("uncat-sales-defaults",
+    weightsForEmployee_({ name: "u3", jobTitle: "Mystery Seller", team: "sales" }, {}, catalog, base), RND_W);
+
+  // 9. Legacy fallbacks: no team + non-Services dept → rnd path; neither → services
+  check("legacy-dept-fallback-rnd",
+    weightsForEmployee_({ name: "l", jobTitle: "Totally Unknown", dept: "Engineering" }, {}, catalog, base), RND_W);
+  check("legacy-no-team-no-dept-services",
+    weightsForEmployee_({ name: "l2", jobTitle: "Wizard, Hogwarts" }, {}, catalog, base) === base, true);
+
+  // 10. Code-prefixed title self-describes (13 → JF013 → embedded-ops policy under services)
+  check("code-prefix-selfdescribes",
+    weightsForEmployee_(svc("13.M10.10 - Mystery Title"), {}, catalog, base), RND_W);
+
+  // 11. Empty catalog → base, no audit noise
+  const audit3 = [];
+  weightsForEmployee_({ name: "e", jobTitle: "Anything", team: "services" }, {}, new Map(), base, audit3);
+  check("empty-catalog-no-audit", audit3.length, 0);
+
+  // 12. roleGroupFor_ / parseJobCode_ edges (unchanged)
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");
   check("jf009-tc",             roleGroupFor_("JF009", "Principal, Solution Consulting"), "Technical Consulting");
