@@ -176,11 +176,12 @@ family tunes**. Spec: `docs/superpowers/specs/2026-07-09-team-aligned-scoring-de
   is the per-team uncatalogued catch-all. A legacy (pre-Team-column) sheet is mapped
   on read by `migrateLegacyMatrix_`; the first save rewrites the new schema, and saves
   **merge** over stored blocks so unrendered (team, family) pairs survive.
-- **Resolution** (`weightsForEmployee_`): `emp.team` → catalog hit →
-  `matrix[team][family][level]` → family `ALL` cell → team catch-all (`ALL`/`ALL`) →
-  `blockFillBase_(team, family, base)` → **hard mask** to `team.metrics`
-  (`maskToTeamMetrics_`) — R&D / Sales members can never carry tracked/planned/RCR
-  weight, even from hand-edited sheet rows.
+- **Resolution** (`weightsForEmployee_`), branching on the catalog lookup:
+  catalogued title → `matrix[team][family][level]` → family `ALL` cell →
+  `blockFillBase_(team, family, base)`; uncatalogued title → team catch-all
+  (`ALL`/`ALL`) → `blockFillBase_`; both paths end in a **hard mask** to
+  `team.metrics` (`maskToTeamMetrics_`) — R&D / Sales members can never carry
+  tracked/planned/RCR weight, even from hand-edited sheet rows.
 - **Fill defaults** (`blockFillBase_`): Services natives (JF007/8/9/018), JF004-in-
   Services, and catch-alls inherit the flat base; embedded ops families under Services
   inherit `RND_DEFAULT_W_` (Goals 40/Kudos 20/SI 20/PTO 20 — never re-enables
