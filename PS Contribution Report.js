@@ -795,6 +795,43 @@ function saveScoringMatrix(payload) {
   }
 }
 
+// Node test for the execution-scoped sheet memo (no GAS APIs).
+// Run: node -e "const fs=require('fs');const src=fs.readFileSync('PS Teams.js','utf8')+'\n'+fs.readFileSync('PS Contribution Report.js','utf8');global.Logger={log:()=>{}};eval(src+'\n_test_sheetMemo();');"
+function _test_sheetMemo() {
+  let fetches = 0;
+  const fakeSS = (id) => ({
+    getId: () => id,
+    getSheetByName: (name) => name === "missing" ? null : ({
+      getDataRange: () => ({ getValues: () => { fetches++; return [["H1", "H2"], ["a", 1], ["b", 2]]; } }),
+    }),
+  });
+  const results = [];
+  const check = (label, cond) => { results.push(`${cond ? "✅" : "❌"} ${label}`); if (!cond) throw new Error(`_test_sheetMemo FAILED: ${label}\n${results.join("\n")}`); };
+
+  const ss = fakeSS("memoTestA");
+  const first = loadSheet_PS_(ss, "Tab1");
+  check("first read fetches", fetches === 1 && first.rows.length === 2);
+  const second = loadSheet_PS_(ss, "Tab1");
+  check("second read memoized (no new fetch)", fetches === 1);
+  first.rows[0][0] = "MUTATED";
+  first.headers[0] = "MUTATED";
+  const third = loadSheet_PS_(ss, "Tab1");
+  check("mutation does not leak across accesses", third.rows[0][0] === "a" && third.headers[0] === "H1");
+  loadSheet_PS_(ss, "Tab2");
+  check("different sheet fetches separately", fetches === 2);
+  check("missing sheet memoizes null", loadSheet_PS_(ss, "missing") === null && loadSheet_PS_(ss, "missing") === null);
+
+  let produced = 0;
+  const raw1 = memoSheetData_("memoTestB", () => { produced++; return [["X"], ["y"]]; });
+  raw1[1][0] = "MUTATED";
+  const raw2 = memoSheetData_("memoTestB", () => { produced++; return [["X"], ["y"]]; });
+  check("memoSheetData_ produces once + row copies", produced === 1 && raw2[1][0] === "y");
+
+  Logger.log(results.join("\n"));
+  Logger.log("✅ _test_sheetMemo: all checks passed");
+  return true;
+}
+
 // Manual test harness for the resolver (run from the GAS editor; logs PASS/FAIL).
 function _test_weightsResolver() {
   const base = { goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 };
@@ -1195,12 +1232,37 @@ function findCol_PS_(headersLC, kw, exact) {
   return headersLC.findIndex(h => h.includes(kwLC));
 }
 
+// Execution-scoped sheet cache: GAS resets globals per execution, so entries
+// live exactly one web-app call / trigger run. Computing several teams in one
+// execution (getPSReportData's team-warm loop) then costs ONE fetch per sheet
+// instead of one per team. Masters are never handed out — every access gets
+// row-copied views, so a caller mutating rows in place can never leak into
+// another team's build.
+const SHEET_MEMO_ = {};
+
+// Generic memo access for raw sheet reads that bypass loadSheet_PS_
+// (PTO accumulation, PH). 2D-array results are returned as row copies.
+function memoSheetData_(key, producer) {
+  if (!(key in SHEET_MEMO_)) SHEET_MEMO_[key] = producer();
+  const hit = SHEET_MEMO_[key];
+  return Array.isArray(hit) ? hit.map(r => Array.isArray(r) ? r.slice() : r) : hit;
+}
+
 function loadSheet_PS_(ss, sheetName) {
-  const sh = ss.getSheetByName(sheetName);
-  if (!sh) return null;
-  const data = sh.getDataRange().getValues();
-  if (data.length < 2) return { headers: (data[0] || []).map(h => String(h).trim()), rows: [] };
-  return { headers: data[0].map(h => String(h).trim()), rows: data.slice(1) };
+  const key = ss.getId() + "::" + sheetName;
+  if (!(key in SHEET_MEMO_)) {
+    const sh = ss.getSheetByName(sheetName);
+    if (!sh) { SHEET_MEMO_[key] = null; }
+    else {
+      const data = sh.getDataRange().getValues();
+      SHEET_MEMO_[key] = (data.length < 2)
+        ? { headers: (data[0] || []).map(h => String(h).trim()), rows: [] }
+        : { headers: data[0].map(h => String(h).trim()), rows: data.slice(1) };
+    }
+  }
+  const hit = SHEET_MEMO_[key];
+  if (!hit) return null;
+  return { headers: hit.headers.slice(), rows: hit.rows.map(r => r.slice()) };
 }
 
 function weekToKey_PS_(label, defaultYear) {
@@ -1705,19 +1767,22 @@ function readSI_PS_(roster, teamSubset, ctx) {
 // a missing/empty set keeps every department.
 function readPTOAccumulationProfiles_(deptSet) {
   try {
-    Logger.log(`🕐 readPTOAccumulationProfiles_: opening ${CONFIG_PS.PTO_ACCUM_SS_ID}`);
-    const ss = SpreadsheetApp.openById(getExternalSSIds_().ptoAccum);
-    const sh = ss.getSheetByName(CONFIG_PS.PTO_ACCUM_SHEET);
-    if (!sh) {
-      Logger.log(`❌ readPTOAccumulationProfiles_: sheet "${CONFIG_PS.PTO_ACCUM_SHEET}" not found.`);
-      return {};
-    }
-
-    const lastRow = sh.getLastRow();
-    const lastCol = sh.getLastColumn();
-    if (lastRow < 2) { Logger.log(`⚠️ readPTOAccumulationProfiles_: no data rows.`); return {}; }
-
-    const rawData  = sh.getRange(1, 1, lastRow, lastCol).getValues();
+    // Raw values memoized per execution — this reader runs once per TEAM (the
+    // deptSet differs), but the sheet itself is identical; filtering stays per-call.
+    const rawData = memoSheetData_("ptoAccum::" + CONFIG_PS.PTO_ACCUM_SHEET, () => {
+      Logger.log(`🕐 readPTOAccumulationProfiles_: opening ${CONFIG_PS.PTO_ACCUM_SS_ID}`);
+      const ss = SpreadsheetApp.openById(getExternalSSIds_().ptoAccum);
+      const sh = ss.getSheetByName(CONFIG_PS.PTO_ACCUM_SHEET);
+      if (!sh) {
+        Logger.log(`❌ readPTOAccumulationProfiles_: sheet "${CONFIG_PS.PTO_ACCUM_SHEET}" not found.`);
+        return null;
+      }
+      const lastRow = sh.getLastRow();
+      const lastCol = sh.getLastColumn();
+      if (lastRow < 2) { Logger.log(`⚠️ readPTOAccumulationProfiles_: no data rows.`); return null; }
+      return sh.getRange(1, 1, lastRow, lastCol).getValues();
+    });
+    if (!rawData) return {};
     const headers  = rawData[0].map(h => String(h).trim());
 
     const COL = {
@@ -2953,10 +3018,12 @@ function filterGoalsBySubset_(goalsAll, subset) {
 
 function readPHData_() {
   try {
-    const ss  = SpreadsheetApp.getActiveSpreadsheet();
-    const sh  = ss.getSheetByName(CONFIG_PS.SHEET_PH);
-    if (!sh) return [];
-    const rows = sh.getDataRange().getValues();
+    const rows = memoSheetData_("bound::" + CONFIG_PS.SHEET_PH, () => {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sh = ss.getSheetByName(CONFIG_PS.SHEET_PH);
+      return sh ? sh.getDataRange().getValues() : null;
+    });
+    if (!rows) return [];
     const out  = [];
     for (let i = 1; i < rows.length; i++) {
       const [rawDate, location, holiday] = rows[i];
