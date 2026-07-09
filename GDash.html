@@ -413,7 +413,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
           <div id="goal-status-panel" style="padding:16px">
             <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-              <div style="flex:0 0 200px;height:200px;position:relative"><canvas id="chart-goal-status"></canvas></div>
+              <div style="flex:0 0 220px;height:250px;position:relative"><canvas id="chart-goal-status"></canvas></div>
               <div style="flex:1;min-width:220px" id="goal-status-table"></div>
             </div>
           </div>
@@ -424,6 +424,16 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
             <button class="btn" onclick="exportPNG(this.closest('.section-card'),'compliance-distribution.png')">⬇ PNG</button></div>
           <div class="chart-wrap" style="height:260px;position:relative"><canvas id="chart-donut"></canvas></div>
         </div>
+      </div>
+
+      <!-- Department Performance: 100% stacked goal-achievement distribution -->
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Department Performance: Goal Achievement Distribution</h2>
+            <p class="section-sub">% of each department's employees by goal tier · dashed line = 80% compliance target</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'department-performance.png')">⬇ PNG</button>
+        </div>
+        <div class="chart-wrap" style="position:relative"><canvas id="chart-dept-dist"></canvas></div>
       </div>
 
       <!-- Team Engagement + Manager Scorecard (moved from the old standalone Engagement tab) -->
@@ -1114,6 +1124,9 @@ function renderOverview(emps) {
   // Compliance donut
   buildDonut('chart-donut', onTarget, watch, atRisk);
 
+  // Department Performance: 100% stacked goal-achievement distribution
+  buildDeptDistChart_('chart-dept-dist', aggregateGroups_(emps, 'department'));
+
   // Team Engagement Rate + Manager Scorecard (moved from the old Engagement tab)
   renderTeamEngagement_(eng);
   renderManagerScorecard_(eng);
@@ -1376,6 +1389,57 @@ function renderBehaviors(emps) {
   document.getElementById('behavior-talkstraight').innerHTML =
     '<div class="bh-v2note">Measurement arrives with goal-quality data (v2). Clarity is never a put-down — ' +
     'when this meter lands it will read goal quality, not judge people.</div>';
+}
+
+// ── POLICY LAB — pure helpers (unit-tested in Node) ────────────────
+// Bucket edges — client constants, easily retuned (spec §2D heatmap).
+var BC_GOALS = [ {lab:'0',max:0}, {lab:'1–4',max:4}, {lab:'5–7',max:7}, {lab:'8–9',max:9}, {lab:'10+',max:Infinity} ];
+var BC_CMTS  = [ {lab:'0',max:0}, {lab:'1–9',max:9}, {lab:'10–29',max:29}, {lab:'30+',max:Infinity} ];
+
+function bucketOf_(value, edges) {
+  for (var i = 0; i < edges.length; i++) if (value <= edges[i].max) return edges[i].lab;
+  return edges[edges.length - 1].lab;
+}
+
+// Population standard deviation of a numeric array (0 for <2 values).
+function stdDev_(vals) {
+  if (!vals || vals.length < 2) return 0;
+  var m = vals.reduce(function(s, v) { return s + v; }, 0) / vals.length;
+  var v = vals.reduce(function(s, x) { return s + (x - m) * (x - m); }, 0) / vals.length;
+  return Math.sqrt(v);
+}
+
+// Does this person meet the candidate cadence policy?
+// goalSelf = per-goal self-comment counts (canceled already excluded).
+// required = clamp(weekOfQuarter − lag, minCmts, cap); need `needGoals` goals at/above it.
+function compliesAtPolicy_(goalSelf, weekOfQuarter, lag, minCmts, cap, needGoals) {
+  if (!goalSelf || !goalSelf.length) return false;
+  var required = Math.min(Math.max(minCmts, (weekOfQuarter || 1) - lag), cap);
+  var qualifying = goalSelf.filter(function(s) { return s >= required; }).length;
+  return qualifying >= needGoals;
+}
+
+// Back-loaded: >= pct of total self-comments fall in the final `tailWeeks` of the
+// quarter. weeklySelf = {ISO week -> count}; weeks = ordered quarter week labels.
+function isBackloaded_(weeklySelf, weeks, tailWeeks, pct) {
+  if (!weeks || !weeks.length) return false;
+  var total = 0, tail = 0;
+  var tailSet = {};
+  weeks.slice(Math.max(0, weeks.length - tailWeeks)).forEach(function(w) { tailSet[w] = true; });
+  weeks.forEach(function(w) {
+    var c = (weeklySelf && weeklySelf[w]) || 0;
+    total += c; if (tailSet[w]) tail += c;
+  });
+  if (total === 0) return false;              // no comments → not "crammed", just absent
+  return (tail / total) >= pct;
+}
+
+// Bare-minimum: of goals that got ANY self-comment, share with exactly 1.
+function bareMinShare_(goalSelf) {
+  var commented = (goalSelf || []).filter(function(s) { return s > 0; });
+  if (!commented.length) return 0;
+  var ones = commented.filter(function(s) { return s === 1; }).length;
+  return ones / commented.length;
 }
 
 // ── ENGAGEMENT COMPUTATION HELPERS (rendered from Overview) ────────
@@ -1782,18 +1846,40 @@ function deleteNoteBtn_(n) {
 }
 
 function deleteNote_(timestamp, normName) {
+  // In-flight guard: the stale card (with its still-enabled 🗑) stays in the DOM
+  // until the delete + notes refetch round-trips finish — a second click in that
+  // window hits an already-deleted row and alerts "Note not found".
+  if (S.deleteInFlight) return;
   if (!confirm('Delete this tracking note? This cannot be undone.')) return;
+  S.deleteInFlight = true;
+  document.querySelectorAll('.btn-del-note').forEach(function(b) { b.disabled = true; });
+
+  // Refetch runs on failure too — "Note not found" means the client list is stale
+  // (double-click, or another admin deleted it first); re-syncing removes the ghost
+  // card instead of leaving a delete button that can only ever re-alert.
+  var refreshNotes = function() {
+    google.script.run
+      .withSuccessHandler(function(notes) {
+        S.notes = notes || [];
+        S.deleteInFlight = false;
+        renderTab(S.activeTab);
+      })
+      .withFailureHandler(function() {
+        S.deleteInFlight = false;
+        renderTab(S.activeTab);
+      })
+      .getHRNotes(S.data.quarter);
+  };
+
   google.script.run
     .withSuccessHandler(function(res) {
-      if (!res || !res.ok) { alert('Delete failed: ' + ((res && res.error) || 'unknown error')); return; }
-      google.script.run
-        .withSuccessHandler(function(notes) {
-          S.notes = notes || [];
-          renderTab(S.activeTab);
-        })
-        .getHRNotes(S.data.quarter);
+      if (!res || !res.ok) alert('Delete failed: ' + ((res && res.error) || 'unknown error'));
+      refreshNotes();
     })
-    .withFailureHandler(function(err) { alert('Delete failed: ' + (err.message || err)); })
+    .withFailureHandler(function(err) {
+      alert('Delete failed: ' + (err.message || err));
+      refreshNotes();
+    })
     .deleteHRNote({ timestamp: timestamp, normName: normName });
 }
 
@@ -1918,7 +2004,10 @@ function buildGoalStatusChart(canvasId, gsd) {
       responsive:true, maintainAspectRatio:false,
       cutout: '62%',
       plugins:{
-        legend:{ display:false },
+        // Legend stays on: the status table is separate DOM, so a PNG export (or
+        // any standalone view of the canvas) needs the chart to identify its own
+        // slices — matching the preferred donut format (labels + legend below).
+        legend:{ position:'bottom', labels:{ font:{size:9}, padding:8, boxWidth:10 } },
         tooltip:{
           callbacks:{
             label: function(ctx){
@@ -2023,6 +2112,92 @@ function buildBarChart(canvasId, groups, title) {
         x:{ ticks:{ font:{size:11}, maxRotation:40 } }
       },
       plugins:{ legend:{ display:false } }
+    }
+  });
+}
+
+// Department Performance — 100% stacked horizontal bars: Perfect (10+ / On Target),
+// Minimum (8–9 / Watch), Below Requirement (<8 with goals) and No Goals per
+// department, with in-bar "92% (143)" labels, a dashed 80% compliance-target
+// line and a headcount column on the right.
+function buildDeptDistChart_(canvasId, groups) {
+  destroyChart(canvasId);
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !groups.length) return;
+
+  var rows = groups.slice()
+    .sort(function(a,b){ return b.complianceRate - a.complianceRate; })
+    .map(function(g){
+      return { name:g.name, total:g.total, onTarget:g.onTarget, watch:g.watch||0,
+               below: Math.max(0, (g.atRisk||0) - (g.noGoals||0)), noGoals:g.noGoals||0 };
+    });
+  var segs = [
+    { key:'onTarget', label:'Perfect (10+ Goals)',         color:STATUS_C.good },
+    { key:'watch',    label:'Minimum (8–9 Goals)',         color:STATUS_C.watch },
+    { key:'below',    label:'Below Requirement (<8)',      color:STATUS_C.risk },
+    { key:'noGoals',  label:'No Goals',                    color:STATUS_C.canceled },
+  ];
+
+  canvas.parentElement.style.height = (rows.length * 38 + 110) + 'px';
+
+  // 80% compliance-target line + Total Headcount column, drawn on the canvas so
+  // they survive the ⬇ PNG export.
+  var targetHeadcountPlugin = {
+    id: 'deptTargetHeadcount',
+    afterDatasetsDraw: function(chart) {
+      var x = chart.scales.x, y = chart.scales.y, ctx = chart.ctx;
+      var px = x.getPixelForValue(80), right = x.getPixelForValue(100) + 14;
+      ctx.save();
+      ctx.strokeStyle = '#15803D'; ctx.setLineDash([6,4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px, y.top); ctx.lineTo(px, y.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 9px Roboto, sans-serif'; ctx.fillStyle = '#64748B';
+      ctx.fillText('Headcount', right, y.top - 9);
+      ctx.font = 'bold 11px Roboto, sans-serif'; ctx.fillStyle = '#334155';
+      rows.forEach(function(r, i) { ctx.fillText(String(r.total), right, y.getPixelForValue(i)); });
+      ctx.restore();
+    }
+  };
+
+  S.charts[canvasId] = new Chart(canvas, {
+    type: 'bar',
+    plugins: [ChartDataLabels, targetHeadcountPlugin],
+    data: {
+      labels: rows.map(function(r){ return r.name; }),
+      datasets: segs.map(function(s){
+        return {
+          label: s.label,
+          data: rows.map(function(r){ return r.total ? r[s.key] / r.total * 100 : 0; }),
+          backgroundColor: s.color,
+          stack: 'dist',
+          datalabels: {
+            // Slivers can't fit "92% (143)" — the tooltip still carries them.
+            display: function(ctx){ return ctx.dataset.data[ctx.dataIndex] >= 7; },
+            formatter: function(v, ctx){ return Math.round(v) + '% (' + rows[ctx.dataIndex][s.key] + ')'; },
+            color: '#fff', font:{ weight:'bold', size:10 }
+          }
+        };
+      })
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 86 } },
+      scales: {
+        x: { stacked: true, max: 100, grid: { color:'#E2E8F0' },
+             ticks: { callback: function(v){ return v + '%'; }, font:{ size:10 } },
+             title: { display: true, text: 'Percentage of Employees (%)', font:{ size:10 } } },
+        y: { stacked: true, grid: { display:false }, ticks: { font:{ size:11 } } }
+      },
+      plugins: {
+        legend: { position:'top', labels:{ font:{size:10}, boxWidth:12, padding:10 } },
+        tooltip: { callbacks: { label: function(ctx){
+          var r = rows[ctx.dataIndex];
+          return ' ' + ctx.dataset.label + ': ' + r[segs[ctx.datasetIndex].key] +
+                 ' of ' + r.total + ' (' + ctx.parsed.x.toFixed(1) + '%)';
+        } } }
+      }
     }
   });
 }
@@ -2786,12 +2961,15 @@ function aggregateGroups_(emps, field) {
   var m = {};
   emps.forEach(function(e) {
     var k = e[field] || 'Unknown';
-    if (!m[k]) m[k] = { name:k, total:0, onTarget:0, watch:0, atRisk:0, totalGoals:0, complianceRate:0 };
+    if (!m[k]) m[k] = { name:k, total:0, onTarget:0, watch:0, atRisk:0, noGoals:0, totalGoals:0, complianceRate:0 };
     m[k].total++;
     m[k].totalGoals += e.totalGoals;
     if      (e.complianceStatus === 'On Target') m[k].onTarget++;
     else if (e.complianceStatus === 'Watch')     m[k].watch++;
     else                                          m[k].atRisk++;
+    // Tracked separately so the distribution chart can split "no goals at all"
+    // out of At Risk; atRisk keeps including them for the existing consumers.
+    if (!e.totalGoals) m[k].noGoals++;
   });
   return Object.values(m).map(function(g) {
     g.complianceRate = g.total > 0 ? +(g.onTarget / g.total * 100).toFixed(1) : 0;
