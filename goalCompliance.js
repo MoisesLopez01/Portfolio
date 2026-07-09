@@ -22,7 +22,9 @@
 //              v2.7.0: CPR pace & consistency — PTO-adjusted EligibleWeeks
 //                      (company-wide Accumulation Cost, no dept filter),
 //                      paceMetrics per employee + paceBand percentiles.
-// VERSION:     2.7.0
+//              v2.8.0: admin-only per-goal self-comment array (goalSelf[]) on
+//                      history blocks — powers the super-admin Policy Lab.
+// VERSION:     2.8.0
 // ENVIRONMENT: Google Apps Script (Standalone Web App)
 // DEPLOY:      Apps Script → Deploy → New deployment → Web App
 //              Execute as: User accessing the web app
@@ -81,7 +83,7 @@ var CONFIG_GD = {
   PACE_BAND_HI_PCT:     90,  // CPR above this peer percentile → informational "high"
   PACE_MIN_REF_N:       20,  // below this reference-population size, classify 'na'
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v19_',  // bumped: paceMetrics/paceBand + roster employeeNumber (v18 added Contractors merge/quarterState)
+  CACHE_VER:           'gd_v20_',  // bumped: admin history blocks add per-goal goalSelf[] (Policy Lab); v19 added paceMetrics/paceBand
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -596,16 +598,33 @@ function getRocketeerGoalDetail(quarter, normName) {
 function saveHRNote(data) {
   var access = checkDashboardAccess();
   if (!access.allowed) return { ok: false, error: 'Access denied' };
+  // Mutation endpoint — role-gated like saveAccessSettings. Read-only roles
+  // (viewer / open-access fallback) must never append tracker rows, otherwise
+  // anyone with the link could forge HR review notes about any colleague.
+  if (access.role !== 'admin' && access.role !== 'manager') {
+    return { ok: false, error: 'Read-only access — only admins and managers can save review notes' };
+  }
 
   try {
-    var email = access.email || 'unknown';
+    var email      = access.email || 'unknown';
+    var targetNorm = String(data.normName || normName_(data.rocketeer || ''));
+
+    // Managers can only write about people in their own org tree — same scope
+    // rule getHRNotes applies on read.
+    if (access.role === 'manager') {
+      var scope = resolveGDManagerScope_(getFullRosterMapCached_(), normName_(access.delegateScopeName));
+      if (!scope || !scope[targetNorm]) {
+        return { ok: false, error: 'You can only save notes for people in your own team' };
+      }
+    }
+
     var ss    = SpreadsheetApp.openById(CONFIG_GD.GOALS_SS_ID);
     var sh    = getOrCreateTrackerSheet_(ss);
 
     sh.appendRow([
       new Date().toISOString(),
       String(data.rocketeer    || ''),
-      String(data.normName     || normName_(data.rocketeer || '')),
+      targetNorm,
       String(data.quarter      || CONFIG_GD.DEFAULT_QUARTER),
       email,
       String(data.note         || ''),
@@ -694,8 +713,15 @@ function getHRNotes(quarter) {
         return !!scope[norm];
       })
       .map(function(r) {
+        // Per-row guard: one hand-edited, unparsable Timestamp cell must not
+        // throw into the function-level catch and wipe every note from the
+        // tracker — degrade that row to a blank timestamp instead.
+        var iso = '';
+        if (r['Timestamp']) {
+          try { iso = new Date(r['Timestamp']).toISOString(); } catch (badDate) { iso = ''; }
+        }
         return {
-          timestamp:        r['Timestamp']      ? new Date(r['Timestamp']).toISOString() : '',
+          timestamp:        iso,
           rocketeer:        String(r['Rocketeer']  || ''),
           normName:         String(r['NormName']   || normName_(r['Rocketeer'] || '')),
           quarter:          String(r['Quarter']    || ''),
@@ -1049,8 +1075,9 @@ function buildComplianceData_(quarter, access) {
   // quarter. Terminated employees are kept (they were active then; dropping
   // them would understate history); interns are stripped exactly like the
   // main list.
+  var isAdmin_ = !!(access && access.role === 'admin');
   var liteEmp_ = function(emp) {
-    return {
+    var lite = {
       normName:   emp.normName,
       name:       emp.name,
       department: emp.department,
@@ -1061,6 +1088,10 @@ function buildComplianceData_(quarter, access) {
       weeklySelf: emp.weeklySelf,
       weeklyMgr:  emp.weeklyMgr,
     };
+    // Admin-only: the Policy Lab needs per-goal self counts to recompute cadence
+    // compliance historically. Kept off non-admin payloads to stay lean.
+    if (isAdmin_) lite.goalSelf = goalSelfArray_(emp);
+    return lite;
   };
   var history = [];
   quarters
@@ -1348,6 +1379,15 @@ function aggregateByRocketeer_(rows, scopeSet, quarter) {
 //        tops out at 8 per quarter, matching the STF comment bar. Canceled
 //        goals never count toward cadence.
 //   C3 — completed ≥8 goals (8/10 or 8/8).
+// Compact per-goal self-comment counts on non-canceled goals — the minimum the
+// Policy Lab client needs to recompute cadence compliance at any candidate
+// threshold. Canceled goals are excluded, matching computeRpiScore_'s cadence rule.
+function goalSelfArray_(emp) {
+  return (emp.goalsList || [])
+    .filter(function(g) { return !/cancel/i.test(g.status); })
+    .map(function(g) { return g.self || 0; });
+}
+
 // Pure function of already-aggregated per-employee data → unit-testable.
 function computeRpiScore_(emp, quarterDates, weekOfQuarter) {
   var goals = emp.goalsList || [];
@@ -2522,6 +2562,21 @@ function _test_feedbackLoop_() {
   t(emp.goalsFeedbackClosed === 2,  'g1 (out-of-order) + g2 (same-day) closed, got ' + emp.goalsFeedbackClosed);
   t(emp.goalsClosedNoNote === 1,    'only g6 is closed-no-note, got ' + emp.goalsClosedNoNote);
   Logger.log('✅ _test_feedbackLoop_ passed');
+}
+
+function _test_goalSelfArray_() {
+  var t = function(cond, msg) { if (!cond) throw new Error('❌ _test_goalSelfArray_: ' + msg); };
+  var emp = { goalsList: [
+    { id:'g1', status:'In Progress',  self: 3 },
+    { id:'g2', status:'Completed',    self: 0 },
+    { id:'g3', status:'Canceled',     self: 5 },   // excluded (canceled)
+    { id:'g4', status:'Not Completed',self: 1 },
+  ]};
+  var arr = goalSelfArray_(emp);
+  t(arr.length === 3, 'canceled goal excluded → 3 entries, got ' + arr.length);
+  t(arr.join(',') === '3,0,1', 'self counts in order, canceled dropped, got ' + arr.join(','));
+  t(goalSelfArray_({}).length === 0, 'no goalsList → empty array');
+  Logger.log('✅ _test_goalSelfArray_ passed');
 }
 
 function _test_prevQuarterLabel_() {
