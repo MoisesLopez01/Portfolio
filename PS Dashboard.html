@@ -1627,19 +1627,19 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
                 <td>avg rating ÷ 5 × 100 · maps 1→20, 3→60, 5→100 · 0 = not rated (excluded)</td>
                 <td>Small Improvements · static per quarter</td>
               </tr>
-              <tr>
+              <tr data-metric="rcr">
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#00A86B;display:inline-block"></span>RCR</span></td>
                 <td>Revenue Contribution Rate</td>
                 <td>avg RCR ÷ 2.5 × 100 · capped at 100 · 2.5× = optimal</td>
                 <td>3. RCR sheet · last closed month</td>
               </tr>
-              <tr>
+              <tr data-metric="tracked">
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#D97706;display:inline-block"></span>Tracked</span></td>
                 <td><strong>Compliance</strong> — % of people who logged any hours</td>
                 <td>Count(trackedHrs &gt; 0 in ref week) ÷ headcount × 100. Tooltip also shows avg hours as context.</td>
                 <td>Tempo Transposed · reference week</td>
               </tr>
-              <tr>
+              <tr data-metric="planned">
                 <td><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#EA580C;display:inline-block"></span>Planned</span></td>
                 <td><strong>Compliance</strong> — % of people who planned any hours</td>
                 <td>Count(plannedHrs &gt; 0 in ref week) ÷ headcount × 100. Tooltip also shows avg hours as context.</td>
