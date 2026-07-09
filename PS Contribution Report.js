@@ -457,6 +457,23 @@ function parseJobCode_(code) {
   return { family, track: m[2], level: +m[3], levelKey: m[2] + m[3] };
 }
 
+// Roster/NetSuite job titles may embed the job code ("04.I2.5 - Associate, …"),
+// and so may hand-entered Job Catalog rows. Strip a leading code prefix before
+// normalizing so catalog and roster match on the clean title whichever side
+// carries the prefix. No prefix → identical to normPS_.
+function normTitleKey_(title) {
+  return normPS_(String(title || "").replace(/^\s*\d+\.[IMim]\d+\.\d+\s*[-–—]\s*/, ""));
+}
+
+// A code-prefixed title carries the catalog facts itself (family/track/level).
+// Used as a fallback when the Job Catalog sheet lookup misses, so e.g.
+// "04.I5.3 - Senior Representative II, Account Management" resolves to JF004
+// even with no matching catalog row.
+function titleCodeInfo_(title) {
+  const m = /^\s*(\d+\.[IMim]\d+\.\d+)\s*[-–—]/.exec(String(title || ""));
+  return m ? parseJobCode_(m[1].toUpperCase()) : null;
+}
+
 // Display role group for a title within a family (spec §5.1). Groups are
 // display-only — they never affect weight selection.
 function roleGroupFor_(family, title) {
@@ -499,7 +516,7 @@ function readJobCatalog_() {
       const track  = String(r[iTrack] || "").trim().toUpperCase();
       const level  = parseInt(r[iLvl], 10);
       if (!title || !family || (track !== "I" && track !== "M") || isNaN(level)) return;
-      out.set(normPS_(title), {
+      out.set(normTitleKey_(title), {
         title, family, track, level, levelKey: track + level,
         group: iGroup !== -1 ? String(r[iGroup] || "").trim() : "",
         code:  iCode  !== -1 ? String(r[iCode]  || "").trim() : "",
@@ -556,7 +573,9 @@ function fillWeights_(cell, base) {
 // `audit` (optional array) collects { name, jobTitle, reason } for misses.
 function weightsForEmployee_(emp, matrix, catalog, base, audit) {
   const W = base || DEFAULT_WEIGHTS_;
-  const hit = catalog.get(normPS_(emp.jobTitle || ""));
+  // Sheet lookup (code-prefix-insensitive), then the title's own embedded job
+  // code as fallback — a prefixed title is self-describing even uncatalogued.
+  const hit = catalog.get(normTitleKey_(emp.jobTitle || "")) || titleCodeInfo_(emp.jobTitle);
   if (!hit) {
     // Uncatalogued NON-Services members (R&D / true-Sales titles missing from
     // the seed) are expected: they score with the non-contributor model
@@ -696,7 +715,7 @@ function getScoringConfig() {
     let coeCount = 0;
     readPSRoster_().forEach(p => {
       if (p.isCrewMember) return;
-      const hit = catalog.get(normPS_(p.jobTitle));
+      const hit = catalog.get(normTitleKey_(p.jobTitle)) || titleCodeInfo_(p.jobTitle);
       if (!hit) {
         unmapped[p.jobTitle] = (unmapped[p.jobTitle] || 0) + 1;
       } else if (hit.family === COE_FAMILY_CODE_) {
@@ -855,6 +874,11 @@ function _test_weightsResolver() {
   check("uncatalogued-services-team-beats-dept",
     weightsForEmployee_({ name: "G4", jobTitle: "Totally Unknown Title", team: "services", dept: "Engineering" }, {}, catalog, base),
     base);
+  // 13. Code-prefixed title with no catalog row: the embedded job code supplies
+  //     family/level (13 → JF013, non-PS family → non-contributor policy defaults).
+  check("code-prefix-title-selfdescribes",
+    weightsForEmployee_({ name: "G5", jobTitle: "13.M10.10 - Mystery Title" }, {}, catalog, base),
+    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
   // 5. roleGroupFor_ edges
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");

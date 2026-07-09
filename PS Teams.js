@@ -47,7 +47,11 @@ function classIsKnown_(cls) {
 function teamForProfile_(profile, catalog) {
   const cls = String(profile.cls || "").trim().toLowerCase();
   if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) return "services";
-  const hit = catalog ? catalog.get(normPS_(profile.jobTitle || "")) : null;
+  // Catalog lookup is code-prefix-insensitive (normTitleKey_), and a title whose
+  // embedded job code parses (e.g. "04.I2.5 - …" → JF004) self-describes its
+  // family even without a catalog row (titleCodeInfo_ fallback).
+  const hit = (catalog ? catalog.get(normTitleKey_(profile.jobTitle || "")) : null)
+           || titleCodeInfo_(profile.jobTitle);
   if (hit && hit.family === COE_FAMILY_CODE_) return "sales";
   return "rnd";
 }
@@ -90,6 +94,12 @@ function _test_teamForProfile() {
     ["Corporate",             "Software Engineer",      "rnd"],
     ["Corporate",             "Account Executive",      "sales"],    // JF004 signal wins in any non-PS class
     ["PROFESSIONAL SERVICES", "Mystery Role",           "services"], // class compare is case-insensitive
+    // Code-prefixed titles: embedded job code self-describes the family even
+    // with no catalog row; a prefixed title also matches a clean catalog row.
+    ["To be Allocated", "04.I5.3 - Senior Representative II, Account Management", "sales"], // titleCodeInfo_ fallback
+    ["To be Allocated", "04.i3.4 - Representative, Account Management",           "sales"], // lowercase track letter
+    ["To be Allocated", "99.I3.1 - Account Executive",                            "sales"], // prefix stripped → clean catalog row wins
+    ["To be Allocated", "13.M10.10 - Mystery Title",                              "rnd"],   // code parses but family ≠ JF004
   ];
   let fail = 0;
   cases.forEach((c, i) => {
