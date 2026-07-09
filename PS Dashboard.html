@@ -67,6 +67,9 @@ a { color: var(--orbe); text-decoration: none; }
 .header-title p  { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .week-badge { background: var(--orbe); color: #fff; border-radius: 99px;
               padding: 4px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.team-toggle { display:flex; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:99px; padding:2px; }
+.team-toggle button { border:none; background:transparent; color:var(--slate); font-size:11px; font-weight:700; padding:4px 12px; border-radius:99px; cursor:pointer; white-space:nowrap; }
+.team-toggle button.active { background:var(--void); color:#fff; }
 .header-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px;
               border-radius: 99px; font-size: 12px; font-weight: 700; cursor: pointer;
               border: 1px solid var(--border); background: #fff; color: var(--slate);
@@ -1264,6 +1267,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <h1>Professional Services — Weekly Contribution Report</h1>
     <p id="headerQuarterLabel">Operational Excellence</p>
   </div>
+  <div class="team-toggle" id="teamToggle" style="display:none" role="tablist" aria-label="Org team"></div>
   <span class="week-badge" id="weekBadge">Loading…</span>
   <span id="dataFreshnessNote" style="font-size:10px;color:var(--slate);font-weight:600;background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 10px;white-space:nowrap;display:none"></span>
   <span class="role-badge role-badge-admin" id="userRoleBadge" style="display:none"></span>
@@ -1971,6 +1975,8 @@ var STATE = {
   lastRegularTab:   "overview",  // fallback target when the active temp tab closes
   periodGranularity: "week",   // 'week' | 'month' | 'quarter' — shared across Brief/Radar/Trends
   selectedPeriod:    null,     // selected bucket key ('2026-06' / 'FY26Q4') or week label; null = default (last closed)
+  activeTeam:        "services", // org team currently displayed (TEAMS registry key)
+  teamData:          {},         // teamKey → payload — client-side cache per team
 };
 
 // ── VIEWS — single source of truth for navigation ─────────
@@ -2423,11 +2429,14 @@ var _loadSeq = 0;
   });
 })();
 
+var _loadingTeam = null;
 function loadData(forceRefresh) {
-  // Prevent concurrent requests: a second click while the first is in-flight is a no-op.
-  // This avoids the race where the slower (older) response overwrites fresh data.
-  if (_loadingInFlight && !forceRefresh) return;
+  // Prevent concurrent requests: a second click while the first is in-flight is a
+  // no-op — UNLESS the requested team changed (team toggle during a load must win;
+  // the seq guard discards the stale response).
+  if (_loadingInFlight && !forceRefresh && _loadingTeam === STATE.activeTeam) return;
   _loadingInFlight = true;
+  _loadingTeam = STATE.activeTeam;
   var seq = ++_loadSeq;
 
   document.getElementById("loadingState").style.display  = "flex";
@@ -2439,7 +2448,7 @@ function loadData(forceRefresh) {
   google.script.run
     .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p); })
     .withFailureHandler(function(e) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataError(e);  })
-    .getPSReportData(forceRefresh);
+    .getPSReportData(forceRefresh, STATE.activeTeam);
 }
 
 function onDataLoaded(payload) {
@@ -2448,6 +2457,19 @@ function onDataLoaded(payload) {
   if (!payload.ok) { onDataError(payload.error || "Unknown error"); return; }
 
   DATA = payload;
+  // Payload is truth: the server may have served a fallback team (out-of-scope
+  // request). Snap state + toggle to what actually arrived, cache it per team.
+  var servedTeam = (payload.meta && payload.meta.team && payload.meta.team.key) || "services";
+  STATE.activeTeam = servedTeam;
+  STATE.teamData[servedTeam] = payload;
+  renderTeamToggle_();
+  var h1El = document.querySelector(".header-title h1");
+  if (h1El) {
+    var teamLabel = servedTeam === "services"
+      ? "Professional Services"
+      : ((payload.meta && payload.meta.team && payload.meta.team.label) || "Team");
+    h1El.textContent = teamLabel + " — Weekly Contribution Report";
+  }
   // Sync Q4 constants from server so renders stay correct at every quarter rollover.
   // During the Goals grace period, the OUTGOING quarter is still the relevant "current"
   // window for the Trends cards that gate on Q4 (Goals Standing, Correlation, Time
@@ -2496,6 +2518,7 @@ function onDataLoaded(payload) {
 
   // Hide nav entries the current role cannot access (enforced again in switchTab)
   applyRoleToNav_();
+  applyMetricVisibility_();
 
   document.getElementById("loadingState").style.display = "none";
   document.getElementById("tabNav").classList.add("visible");
@@ -2556,6 +2579,50 @@ function showAccessDenied_(email) {
 function onDataError(err) {
   document.getElementById("loadingState").innerHTML =
     "<p style='color:#B71C1C;font-weight:700'>Error loading data: " + esc(String(err || "Unknown")) + "</p>";
+}
+
+// ── ORG TEAM TOGGLE ───────────────────────────────────────
+// True when the active team's metric set includes `k`. Legacy payloads without
+// meta.team show everything (pre-toggle behavior).
+function hasMetric_(k) {
+  var m = DATA && DATA.meta && DATA.meta.team && DATA.meta.team.metrics;
+  return !m || m.indexOf(k) !== -1;
+}
+
+// Show/hide every element carrying data-metric="a" or data-metric="a,b"
+// (visible when ANY listed metric is active). Static markup gating — Trends
+// cards, Data Reference rows.
+function applyMetricVisibility_() {
+  var els = document.querySelectorAll("[data-metric]");
+  for (var i = 0; i < els.length; i++) {
+    var keys = els[i].getAttribute("data-metric").split(",");
+    var show = false;
+    for (var j = 0; j < keys.length; j++) if (hasMetric_(keys[j].trim())) { show = true; break; }
+    els[i].style.display = show ? "" : "none";
+  }
+}
+
+function renderTeamToggle_() {
+  var el = document.getElementById("teamToggle");
+  if (!el) return;
+  var teams = (DATA && DATA.meta && DATA.meta.availableTeams) || [];
+  if (teams.length < 2) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.innerHTML = teams.map(function(t) {
+    var active = t.key === STATE.activeTeam;
+    return '<button role="tab" aria-selected="' + active + '" class="' + (active ? "active" : "") + '"' +
+           ' onclick="switchTeam(\'' + esc(t.key) + '\')">' + esc(t.label) + '</button>';
+  }).join("");
+  el.style.display = "flex";
+}
+
+function switchTeam(key) {
+  if (key === STATE.activeTeam) return;
+  STATE.activeTeam = key;
+  // New population — population-specific filters no longer apply
+  STATE.jobTitleFilter.clear(); STATE.jfFilter.clear(); STATE.lvFilter.clear();
+  var cached = STATE.teamData[key];
+  if (cached) onDataLoaded(cached);   // instant re-render from client cache
+  else loadData(false);               // cold team — fetch (shows loading screen)
 }
 
 // ── TAB SWITCHING ─────────────────────────────────────────
