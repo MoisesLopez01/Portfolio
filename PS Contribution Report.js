@@ -3001,7 +3001,7 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
   return out;
 }
 
-function getPSReportData(bustCache) {
+function getPSReportData(bustCache, teamKey) {
   try {
     const access = checkDashboardAccess();
 
@@ -3009,14 +3009,18 @@ function getPSReportData(bustCache) {
       return { ok: false, denied: true, email: access.email };
     }
 
-    // ── CacheService — gzip-chunked cache per user scope (see cachePutLarge_).
-    // TTL = CONFIG_PS.CACHE_TTL_SEC; the warmReportCache trigger rewrites the
-    // admin entry every CACHE_WARM_EVERY_MIN minutes so it never goes cold.
+    const team = teamByKey_(teamKey);   // unknown/missing → services (legacy callers unchanged)
+
+    // ── CacheService — gzip-chunked cache per (team × user scope), see cachePutLarge_.
+    // TTL = CONFIG_PS.CACHE_TTL_SEC; warmReportCache rewrites the admin entries
+    // every CACHE_WARM_EVERY_MIN minutes so they never go cold.
+    // Note: an out-of-scope team request caches its fallback payload under the
+    // REQUESTED team's key — harmless, the payload self-identifies via meta.team.
     const _sCache   = CacheService.getScriptCache();
     const _cacheVer = reportCacheVer_();
     const _cacheKey = (access.role === "admin" || access.role === "viewer")
-      ? "ps_v" + _cacheVer + "_admin"
-      : "ps_v" + _cacheVer + "_" + access.email;
+      ? "ps_v" + _cacheVer + "_" + team.key + "_admin"
+      : "ps_v" + _cacheVer + "_" + team.key + "_" + access.email;
 
     // Skip cache if bustCache=true (refresh button clicked, or the warmer trigger)
     if (!bustCache) {
@@ -3030,9 +3034,16 @@ function getPSReportData(bustCache) {
     const weeks   = buildWeekWindow_PS_();
     const fullRoster = readPSRoster_();
 
+    // Team tagging needs the Job Catalog (JF004 detection). Read once here and
+    // pass through to computePSReport_ (which previously read it itself).
+    const jobCatalog = readJobCatalog_();
+    fullRoster.forEach(p => { p.team = teamForProfile_(p, jobCatalog); });
+
     // ── Manager scope resolution ──────────────────────────────────────────────
     // Determines whether this user should see a subset of the roster.
     // Admin and Viewer see everything; Manager sees their org tree only.
+    // Scope resolves on the FULL roster first; the team filter applies after,
+    // so a manager can never widen visibility by requesting another team.
     let managerNorm      = null;
     let managerScopeName = null;
     let roster           = fullRoster;
@@ -3064,7 +3075,22 @@ function getPSReportData(bustCache) {
       }
     }
 
-    const result = computePSReport_(access, roster, managerScopeName, weeks, weights);
+    // ── Team filter (after scope) ─────────────────────────────────────────────
+    // Serve the requested team, or fall back to the caller's first non-empty team
+    // (registry order) when the request is empty in their scope — server-side
+    // gating, the frontend snaps its toggle to meta.team.
+    const teamsInScope = availableTeams_(roster);
+    let servedTeam = team;
+    let teamScoped = teamRoster_(roster, team.key);
+    if (teamScoped.size === 0) {
+      const fallback = teamsInScope.length ? teamByKey_(teamsInScope[0].key) : teamByKey_("services");
+      Logger.log(`Team "${team.key}" empty in scope for ${access.email} — serving "${fallback.key}"`);
+      servedTeam = fallback;
+      teamScoped = teamRoster_(roster, servedTeam.key);
+    }
+    Logger.log(`Team "${servedTeam.key}": ${teamScoped.size} of ${roster.size} in-scope employees`);
+
+    const result = computePSReport_(access, teamScoped, managerScopeName, weeks, weights, servedTeam, jobCatalog, teamsInScope);
     cachePutLarge_(_sCache, _cacheKey, JSON.stringify(result), CONFIG_PS.CACHE_TTL_SEC);
     return result;
   } catch(e) {
