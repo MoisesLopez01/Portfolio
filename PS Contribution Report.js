@@ -203,19 +203,15 @@ function cacheGetLarge_(cache, key) {
 // out the cold compute. Manager-scoped entries still warm on their first load
 // and stay warm for CACHE_TTL_SEC. The Refresh button always bypasses cache.
 function warmReportCache() {
-  const t0 = Date.now();
-  // Services first (heaviest + most-visited). GAS trigger runs are capped at
-  // ~6 minutes — stop starting new teams past the safety threshold; the next
-  // 30-min run picks the skipped ones up.
-  const TIME_BUDGET_MS = 4.5 * 60 * 1000;
-  TEAMS_.forEach(t => {
-    if (Date.now() - t0 > TIME_BUDGET_MS) { Logger.log(`⚠️ warmReportCache: time budget spent — skipped "${t.key}"`); return; }
-    const s0 = Date.now();
-    const res = getPSReportData(true, t.key);
-    const secs = Math.round((Date.now() - s0) / 1000);
-    if (res && res.ok) Logger.log(`✅ warmReportCache[${t.key}]: rebuilt in ${secs}s`);
-    else Logger.log(`❌ warmReportCache[${t.key}] after ${secs}s: ${(res && res.error) || "denied/unknown"}`);
-  });
+  // One call rebuilds EVERY admin-scope team entry: getPSReportData's
+  // team-warm loop (with the execution-scoped sheet memo) builds the other
+  // teams in the same execution at in-memory cost. Per-team timing arrives
+  // via the ✅ team-warm[...] log lines.
+  const s0 = Date.now();
+  const res = getPSReportData(true, "services");
+  const secs = Math.round((Date.now() - s0) / 1000);
+  if (res && res.ok) Logger.log(`✅ warmReportCache: all admin team entries rebuilt in ${secs}s`);
+  else Logger.log(`❌ warmReportCache after ${secs}s: ${(res && res.error) || "denied/unknown"}`);
 }
 
 // One-time setup — run manually from the GAS editor as the dashboard owner.
@@ -3148,8 +3144,17 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
   return out;
 }
 
+// Cache key for one (team × user scope) report entry — admins/viewers share
+// one entry per team; managers get per-email entries (scoped payloads differ).
+function reportCacheKey_(ver, teamKey, access) {
+  return (access.role === "admin" || access.role === "viewer")
+    ? "ps_v" + ver + "_" + teamKey + "_admin"
+    : "ps_v" + ver + "_" + teamKey + "_" + access.email;
+}
+
 function getPSReportData(bustCache, teamKey) {
   try {
+    const execT0 = Date.now();   // team-warm loop budgets against the ~6-min execution cap
     const access = checkDashboardAccess();
 
     if (!access.allowed) {
@@ -3165,9 +3170,7 @@ function getPSReportData(bustCache, teamKey) {
     // REQUESTED team's key — harmless, the payload self-identifies via meta.team.
     const _sCache   = CacheService.getScriptCache();
     const _cacheVer = reportCacheVer_();
-    const _cacheKey = (access.role === "admin" || access.role === "viewer")
-      ? "ps_v" + _cacheVer + "_" + team.key + "_admin"
-      : "ps_v" + _cacheVer + "_" + team.key + "_" + access.email;
+    const _cacheKey = reportCacheKey_(_cacheVer, team.key, access);
 
     // Skip cache if bustCache=true (refresh button clicked, or the warmer trigger)
     if (!bustCache) {
@@ -3249,6 +3252,34 @@ function getPSReportData(bustCache, teamKey) {
 
     const result = computePSReport_(access, teamScoped, managerScopeName, weeks, weights, servedTeam, jobCatalog, teamsInScope);
     cachePutLarge_(_sCache, _cacheKey, JSON.stringify(result), CONFIG_PS.CACHE_TTL_SEC);
+
+    // ── Team-warm: build the caller's OTHER teams in this same execution ────
+    // The sheet memo (loadSheet_PS_ / memoSheetData_) makes each extra team
+    // pure in-memory assembly — no repeat sheet I/O — so one cold compute
+    // leaves every in-scope team cached for this user's scope and the team
+    // toggle serves from cache instead of a fresh multi-minute execution.
+    // Budget-gated against the ~6-min execution cap; failures log and never
+    // risk the primary response. Scope security is inherited: `roster` is
+    // already scope-filtered, so a manager's warm entries stay org-tree-only.
+    const TEAM_WARM_BUDGET_MS = 4.5 * 60 * 1000;
+    teamsInScope.forEach(t => {
+      if (t.key === servedTeam.key) return;
+      if (Date.now() - execT0 > TEAM_WARM_BUDGET_MS) { Logger.log(`⚠️ team-warm: budget spent — skipped "${t.key}"`); return; }
+      try {
+        const tTeam   = teamByKey_(t.key);
+        const tScoped = teamRoster_(roster, tTeam.key);
+        if (tScoped.size === 0) return;
+        const tCacheKey = reportCacheKey_(_cacheVer, tTeam.key, access);
+        if (!bustCache && cacheGetLarge_(_sCache, tCacheKey)) return;   // already warm
+        const s0 = Date.now();
+        const tRes = computePSReport_(access, tScoped, managerScopeName, weeks, weights, tTeam, jobCatalog, teamsInScope);
+        cachePutLarge_(_sCache, tCacheKey, JSON.stringify(tRes), CONFIG_PS.CACHE_TTL_SEC);
+        Logger.log(`✅ team-warm[${tTeam.key}]: built in ${Math.round((Date.now() - s0) / 1000)}s`);
+      } catch (te) {
+        Logger.log(`❌ team-warm[${t.key}]: ${te.message}`);
+      }
+    });
+
     return result;
   } catch(e) {
     Logger.log(`❌ getPSReportData: ${e.message}\n${e.stack}`);
