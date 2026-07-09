@@ -2608,6 +2608,14 @@ function hasMetric_(k) {
   return !m || m.indexOf(k) !== -1;
 }
 
+// True when the active team carries any hours metric (tracked or planned).
+// False for R&D / Sales & Success — they get the pill-stack Team Members
+// format with past + current week columns only. Legacy payloads without
+// meta.team read as hours teams (hasMetric_ returns true for every key).
+function isHoursTeam_() {
+  return hasMetric_('tracked') || hasMetric_('planned');
+}
+
 // Show/hide every element carrying data-metric="a" or data-metric="a,b"
 // (visible when ANY listed metric is active). Static markup gating — Trends
 // cards, Data Reference rows.
