@@ -2473,6 +2473,7 @@ function loadData(forceRefresh) {
 // loadData's concurrency guards (_loadingInFlight/_loadSeq) — separate channel.
 var _prefetchInFlight = {};   // teamKey → true while its background fetch runs
 var _prefetchFailed   = {};   // teamKey → true after a failed prefetch — no background retry until Refresh
+var _prefetchGen      = 0;    // bumped on Refresh — older in-flight responses are discarded as stale
 var _prefetchWanted   = null; // team the user toggled to while its prefetch was in flight
 var _prefetchTimer    = null;
 
@@ -2491,10 +2492,12 @@ function prefetchNext_() {
   }
   if (!next) return;                       // everything cached — chain ends
   var reqKey = next;
+  var reqGen = _prefetchGen;
   _prefetchInFlight[reqKey] = true;
   google.script.run
     .withSuccessHandler(function(p) {
       delete _prefetchInFlight[reqKey];
+      if (reqGen !== _prefetchGen) { prefetchNext_(); return; }   // pre-Refresh response — stale, discard
       if (p && p.denied) {
         if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
           _prefetchWanted = null;
@@ -2505,6 +2508,7 @@ function prefetchNext_() {
       if (p && p.ok && p.meta && p.meta.team) {
         var servedKey = p.meta.team.key;
         if (!STATE.teamData[servedKey]) STATE.teamData[servedKey] = p;
+        if (servedKey !== reqKey) _prefetchFailed[reqKey] = true;   // team empty in scope — server fell back; stop re-requesting it
         if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
           // User is waiting on this request. onDataLoaded is payload-is-truth:
           // even a fallback team (servedKey !== reqKey) renders and snaps the
@@ -2523,6 +2527,7 @@ function prefetchNext_() {
     })
     .withFailureHandler(function(e) {
       delete _prefetchInFlight[reqKey];
+      if (reqGen !== _prefetchGen) { prefetchNext_(); return; }   // pre-Refresh response — stale, discard
       if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
         _prefetchWanted = null;
         loadData(false);                   // user is waiting — fetch in the foreground
@@ -2553,6 +2558,7 @@ function onDataLoaded(payload, wasRefresh) {
       if (k !== servedTeam) delete STATE.teamData[k];
     });
     _prefetchFailed = {};   // a fresh rebuild deserves fresh retry attempts
+    _prefetchGen++;         // discard any still-in-flight pre-rebuild prefetch responses
   }
   renderTeamToggle_();
   var h1El = document.querySelector(".header-title h1");
