@@ -5337,10 +5337,38 @@ function toggleEmpTableExpand() {
   renderEmployeeTable();
 }
 
+// Week cell for reduced-metric teams (no tracked/planned hours): a centered
+// row of equal-weight pills — goals state, kudos, PTO, public holiday.
+// Weeks reaching here are past + current only (future columns are filtered
+// out for these teams). crewE suppresses goals pills (crew have no Goals).
+function buildPillStackCell_(w, wd, phHit, crewE) {
+  var pills = "";
+  var gd = wd.goalsDetail;
+  if (!crewE && gd) {
+    if (w.isCurrentWeek) {
+      pills += gd.compliant
+        ? '<span class="gpill gpill-ok">Goals ✓</span>'
+        : '<span class="gpill gpill-prog">in progress</span>';
+    } else {
+      pills += gd.compliant
+        ? '<span class="gpill gpill-ok">Goals ✓</span>'
+        : '<span class="gpill gpill-err">Goals ✗</span>';
+    }
+  }
+  var kd = wd.kudos;
+  if (kd && kd.count > 0) pills += '<span class="kudos-pill">♥ ' + kd.count + '</span>';
+  if (wd.ptoPlannedHrs != null && wd.ptoPlannedHrs > 0)
+    pills += '<span class="gpill gpill-pto">' + fmtHrs(wd.ptoPlannedHrs) + ' PTO</span>';
+  if (phHit) pills += '<span class="ph-pill" title="' + esc(phHit.holiday) + '">PH</span>';
+  return pills ? '<div class="wc-pills">' + pills + '</div>' : '<span class="wc-null">—</span>';
+}
+
 function renderEmployeeTable() {
   if (!DATA) return;
   var list  = sortEmployees(getFilteredEmployees());
-  var weeks = DATA.weeks;
+  var hoursTeam = isHoursTeam_();
+  // Reduced-metric teams have no forward-looking data — drop future columns.
+  var weeks = hoursTeam ? DATA.weeks : DATA.weeks.filter(function(w) { return !w.isFuture; });
 
   document.getElementById("empCount").textContent =
     list.length + " rocketeers shown";
@@ -5405,12 +5433,18 @@ function renderEmployeeTable() {
 
     weeks.forEach(function(w) {
       var cls = w.isCurrentWeek ? "col-current" : w.isFuture ? "col-future" : "";
+      html += '<td class="week-cell ' + cls + (hoursTeam ? '' : ' wc-vmid') + '">';
       var wd  = (emp.weeks || {})[w.label] || {};
-      html += '<td class="week-cell ' + cls + '">';
 
       // Public holiday lookup for this employee + week
       var phWeekData = ((DATA.phByWeek || {})[w.label] || {}).entries || [];
       var phHit = phWeekData.find(function(e) { return e.affectedNames.indexOf(emp.name) !== -1; });
+
+      // Reduced-metric teams: uniform pill stack — no hours slot (Option C)
+      if (!hoursTeam) {
+        html += buildPillStackCell_(w, wd, phHit, crewE) + '</td>';
+        return;
+      }
 
       if (w.isFuture) {
         if (wd.plannedHrs != null && wd.plannedHrs > 0) {
