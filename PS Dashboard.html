@@ -312,6 +312,20 @@ body.dark-mode .ph-pill { background: #0c2a3d; color: #7DD3FC; }
 .delta-down    { color: var(--june); }
 .delta-neutral { color: var(--muted); }
 
+/* Reduced-metric team week cells — uniform pill stack (Option C).
+   Spec: docs/superpowers/specs/2026-07-09-reduced-metric-team-members-format-design.md */
+.emp-table td.wc-vmid { vertical-align: middle; }
+.wc-pills { display: flex; gap: 3px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.gpill { display: inline-flex; align-items: center; gap: 2px; border-radius: 99px; padding: 1px 7px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.gpill-ok   { background: #DCFCE7; color: #15803D; }
+.gpill-err  { background: #FEE2E2; color: #B91C1C; }
+.gpill-prog { background: #FEF3C7; color: #92400E; }
+.gpill-pto  { background: #EFF6FF; color: #1D4ED8; }
+body.dark-mode .gpill-ok   { background: #052e16; color: #86EFAC; }
+body.dark-mode .gpill-err  { background: #450a0a; color: #FCA5A5; }
+body.dark-mode .gpill-prog { background: #431407; color: #FDBA74; }
+body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
+
 /* ── EXPANDED ROW ── */
 .detail-row td { padding: 0 !important; }
 .detail-inner { padding: 12px 20px 16px; background: var(--surface); display: flex; flex-direction: column; }
@@ -969,7 +983,7 @@ body { font-size: 15px; }
 .ts-card-hdr, .ts-field-lbl, .det-ts-row-lbl,
 .perf-weights, .perf-score-sub, .perf-mpts,
 .cf-panel-hdr, .fb-group label, .fb-search label,
-.wc-plan-lbl, .wc-delta, .kudos-pill, .pto-pill,
+.wc-plan-lbl, .wc-delta, .kudos-pill, .pto-pill, .gpill,
 .metrics-table tr.quarterly-divider span,
 .ws-label { font-size: 11px; }
 
