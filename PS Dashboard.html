@@ -5535,7 +5535,8 @@ function renderEmployeeTable() {
 }
 
 function buildDetailHTML(emp) {
-  var weeks     = DATA.weeks;
+  var weeks     = isHoursTeam_() ? DATA.weeks
+                : DATA.weeks.filter(function(w) { return !w.isFuture; });
   var pastWeeks = weeks.filter(function(w) { return w.isPast; });
   var curWeek   = weeks.find(function(w)   { return w.isCurrentWeek; });
   var refWeek   = pastWeeks.length > 0 ? pastWeeks[pastWeeks.length - 1] : curWeek;
@@ -5563,7 +5564,7 @@ function buildDetailHTML(emp) {
   var _rcrFmt    = function(v) { return v.toFixed(2); };
   var _siFmt     = function(v) { return v.toFixed(1); };
   var _execCards = [], _fullCharts = [];
-  if (rcrPts.length) {
+  if (hasMetric_('rcr') && rcrPts.length) {
     _execCards.push(execTrendCard_('RCR', rcrPts, '#058CDC', _rcrFmt, {
       tierFn: _rcrTier_, showPct: false,
       note: 'Context metric — RCR reflects project mix & billing rates, largely outside an individual’s control. Read as team context, not a personal performance score.'
@@ -5633,7 +5634,7 @@ function buildDetailHTML(emp) {
     var ps = (emp.weeks[w.label] || {}).projects;
     return ps && ps.length;
   });
-  if (anyProj) {
+  if (hasMetric_('planned') && anyProj) {
     // Summary row (count) with chevron
     html += '<tr class="det-expand-hdr" onclick="toggleDetSubRow(this,\'' + uid + '_proj\')">';
     html += '<td class="det-expand-lbl-cell"><span class="det-ts-row-lbl">PROJECTS</span><span class="det-chevron">›</span></td>';
