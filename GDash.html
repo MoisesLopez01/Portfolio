@@ -751,6 +751,11 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-behaviors.png')">⬇ PNG</button></div>
         <div class="section-body" id="pl-behaviors"></div>
       </div>
+      <div class="section-card">
+        <div class="section-head"><div><h2>Where the comments land</h2><p class="section-sub" id="pl-cadence-verdict">Self-comments by week-of-quarter · last 4 quarters overlaid · grace period shaded</p></div>
+          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-cadence.png')">⬇ PNG</button></div>
+        <div class="section-body"><canvas id="chart-pl-cadence" height="90"></canvas></div>
+      </div>
     </div>
 
   </main>
@@ -1620,6 +1625,7 @@ function renderPolicyLab() {
 
   renderPolicyHeatmap_(pool, dim);
   renderPolicyBehaviors_(pool);
+  renderCadenceChart_(qs);
 }
 
 // goals×comments grid. Manager mode aggregates to one row per supervisor
@@ -1683,6 +1689,78 @@ function renderPolicyBehaviors_(pool) {
     '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">BARE-MINIMUM</div><b>'+bm+'</b><div style="font-size:10px;color:var(--slate)">'+(compliant.length?Math.round(bm/compliant.length*100):0)+'% · mostly 1/goal</div></div>' +
     '<div class="pl-fy-chip"><div style="font-size:10px;font-weight:800;color:var(--slate)">CMTS / GOAL</div><b>'+mean.toFixed(1)+'</b><div style="font-size:10px;color:var(--slate)">σ '+sd.toFixed(1)+'</div></div>' +
     '</div>';
+}
+
+// Combo chart: last 4 quarters overlaid on a week-of-quarter axis. Lines = each
+// quarter's % of comments per week; bars = the 4-quarter average (the "weight").
+// Grace = last 2 week-of-quarter columns, shaded.
+function renderCadenceChart_(qs) {
+  destroyChart('chart-pl-cadence');
+  var canvas = document.getElementById('chart-pl-cadence');
+  if (!canvas) return;
+
+  var quarters = qs.slice(-4);                          // most recent 4 (newest last)
+  var maxLen   = quarters.reduce(function(m, q){ return Math.max(m, (q.weeks||[]).length); }, 0);
+  if (!maxLen) { document.getElementById('pl-cadence-verdict').textContent = 'No week-of-quarter data available yet.'; return; }
+  var labels   = []; for (var i = 1; i <= maxLen; i++) labels.push('Wk ' + i);
+
+  // Per-quarter % series (aggregate weeklySelf across the quarter's people first).
+  var series = quarters.map(function(q, qi) {
+    var agg = {};
+    (q.people || []).forEach(function(p) {
+      var ws = p.weeklySelf || {};
+      Object.keys(ws).forEach(function(w){ agg[w] = (agg[w] || 0) + ws[w]; });
+    });
+    var pct = weekOfQuarterPct_(agg, q.weeks || []);
+    while (pct.length < maxLen) pct.push(null);         // shorter/older quarters: no phantom zeros past their end
+    var color = DEPT_COLORS[qi % DEPT_COLORS.length];
+    return {
+      type: 'line', label: q.quarter + (q.inProgress ? ' (in progress)' : ''),
+      data: pct, borderColor: color, backgroundColor: color, tension: 0.3,
+      borderDash: q.inProgress ? [5,4] : [], pointRadius: 2, order: 1, spanGaps: false,
+    };
+  });
+
+  // Bar = unweighted average across quarters per week-of-quarter (ignore nulls).
+  var avg = labels.map(function(_, wi) {
+    var vals = series.map(function(s){ return s.data[wi]; }).filter(function(v){ return v != null; });
+    return vals.length ? +(vals.reduce(function(a,b){return a+b;},0) / vals.length).toFixed(1) : 0;
+  });
+  var bar = { type:'bar', label:'4-quarter average', data:avg,
+    backgroundColor: BRAND.IVORY_SOFT, borderColor: BRAND.IVORY, borderWidth:1, order: 2 };
+
+  // Grace band = last 2 week columns (shared-axis approximation of each quarter's final 2).
+  var graceStart = maxLen - 2;   // 0-based index where grace begins
+  var gracePlugin = {
+    id: 'plGrace',
+    beforeDraw: function(chart) {
+      var xa = chart.scales.x, ya = chart.scales.y, ctx = chart.ctx;
+      if (!xa || !ya || graceStart < 0) return;
+      var x0 = xa.getPixelForValue(graceStart);
+      var xR = xa.right;
+      ctx.save(); ctx.fillStyle = BRAND.JUNE_SOFT;
+      ctx.fillRect(x0, ya.top, xR - x0, ya.bottom - ya.top);
+      ctx.fillStyle = BRAND.JUNE_TEXT; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('grace · goals close', xR - 6, ya.top + 12);
+      ctx.restore();
+    },
+  };
+
+  S.charts['chart-pl-cadence'] = new Chart(canvas, {
+    data: { labels: labels, datasets: [bar].concat(series) },
+    plugins: [gracePlugin],
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      scales: { y: { beginAtZero: true, title:{display:true,text:'% of quarter’s comments'} },
+                x: { title:{display:true,text:'Week of quarter'} } },
+      plugins: { legend: { position:'bottom', labels:{ boxWidth:12, font:{size:10} } } },
+    },
+  });
+
+  // Verdict: average share of comments in the final 2 weeks across quarters.
+  var finalPct = Math.round((avg[maxLen-1] || 0) + (avg[maxLen-2] || 0));
+  document.getElementById('pl-cadence-verdict').textContent =
+    'On average, ' + finalPct + '% of a quarter’s comments land in the final 2 weeks (grace period) · last ' + quarters.length + (quarters.length === 1 ? ' quarter' : ' quarters overlaid');
 }
 
 // ── ENGAGEMENT COMPUTATION HELPERS (rendered from Overview) ────────
