@@ -59,9 +59,11 @@ function availableTeams_(roster) {
 }
 
 // ── TESTS ────────────────────────────────────────────────────
-// Run in the GAS editor, or in Node:
-//   node -e "global.Logger={log:console.log}; const fs=require('fs'); eval(fs.readFileSync('PS Contribution Report.js','utf8')); eval(fs.readFileSync('PS Teams.js','utf8')); process.exit(_test_teamForProfile_() ? 0 : 1)"
-function _test_teamForProfile_() {
+// No trailing underscore: the GAS editor's Run dropdown hides trailing-underscore
+// (private) functions, and this must be runnable there (like _test_weightsResolver).
+// Run in the GAS editor, or in Node (one eval — const bindings don't cross evals):
+//   node -e "global.Logger={log:console.log}; const fs=require('fs'); eval(fs.readFileSync('PS Contribution Report.js','utf8') + '\n' + fs.readFileSync('PS Teams.js','utf8')); process.exit(_test_teamForProfile() ? 0 : 1)"
+function _test_teamForProfile() {
   const cat = new Map([
     [normPS_("Account Executive"),      { family: "JF004", track: "I", level: 3, levelKey: "I3" }],
     [normPS_("Implementation Manager"), { family: "JF008", track: "M", level: 5, levelKey: "M5" }],
@@ -90,6 +92,6 @@ function _test_teamForProfile_() {
   if (av.length !== 2 || av[0].key !== "services" || av[1].key !== "rnd") {
     fail++; Logger.log(`❌ availableTeams_ should return [services, rnd] in registry order, got ${JSON.stringify(av)}`);
   }
-  Logger.log(fail === 0 ? `✅ _test_teamForProfile_: all checks passed` : `❌ _test_teamForProfile_: ${fail} failure(s)`);
+  Logger.log(fail === 0 ? `✅ _test_teamForProfile: all checks passed` : `❌ _test_teamForProfile: ${fail} failure(s)`);
   return fail === 0;
 }
