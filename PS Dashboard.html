@@ -1538,7 +1538,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <div class="dr-section">
           <div class="dr-section-title">Metrics Explained</div>
           <div class="dr-metrics">
-            <div class="dr-metric">
+            <div class="dr-metric" data-metric="rcr">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>RCR — Revenue Contribution Rate</div>
               <div class="dr-metric-desc">Team revenue divided by total cash compensation for the last closed month. A team-level indicator, not a measure of any individual. We aim to stay above 1× — read it as a directional check, not a hard target.</div>
               <div class="dr-metric-src">Updated monthly · reflects the last closed month shown at the top of the card.</div>
@@ -1553,12 +1553,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
               <div class="dr-metric-desc">Weekly compliance check against <span class="drGoalsQ">current-quarter</span> goals. A rocketeer is compliant when all three rules pass (see Goals Evaluation below). Each week is evaluated independently — goals drive planning, planning drives execution.</div>
               <div class="dr-metric-src">Available for weeks W-2 → W0 (current). Future weeks show —.</div>
             </div>
-            <div class="dr-metric">
+            <div class="dr-metric" data-metric="planned">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#058CDC"></span>Time planned</div>
               <div class="dr-metric-desc">Hours planned in Tempo for each week, shown across all 5 weeks including upcoming ones. Planning is a decision, not a default.</div>
               <div class="dr-metric-src">Available across all 5 weeks (past, current, and W+1, W+2).</div>
             </div>
-            <div class="dr-metric">
+            <div class="dr-metric" data-metric="tracked">
               <div class="dr-metric-name"><span class="dr-metric-dot" style="background:#7C3AED"></span>Time tracked</div>
               <div class="dr-metric-desc">Hours logged in Tempo, summed per ISO week (Mon–Sun) and matched to the roster. Includes all PS team members — ramp-up and active alike.</div>
               <div class="dr-metric-src">Available for weeks W-2 → W0 (current).</div>
@@ -1682,7 +1682,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
 
     <!-- 1. Win — RCR Monthly Trend -->
-    <div class="section-card" id="trendsRcrCard" style="display:none">
+    <div class="section-card" id="trendsRcrCard" style="display:none" data-metric="rcr">
       <div class="section-head">
         <div>
           <h2>Revenue Contribution Rate — Monthly</h2>
@@ -1750,7 +1750,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
 
     <!-- 3. Team Delivery Rate — Q4 execution against planned capacity -->
-    <div class="section-card" id="timeMomentumCard" style="display:none">
+    <div class="section-card" id="timeMomentumCard" style="display:none" data-metric="tracked,planned">
       <div class="section-head">
         <div>
           <h2>Team Delivery Rate <span id="timeMomentumWeek" style="font-weight:400;font-size:13px;color:var(--slate)"></span></h2>
@@ -1776,7 +1776,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
 
     <!-- 4. Effort is consistent. Documentation is catching up. -->
-    <div class="section-card" id="correlationCard" style="display:none">
+    <div class="section-card" id="correlationCard" style="display:none" data-metric="tracked">
       <div class="section-head">
         <div>
           <h2>Effort is consistent. Documentation is catching up.</h2>
@@ -1830,7 +1830,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
 
     <!-- Project key heatmap (ported from the C-Suite Project Demand dashboard) -->
-    <div class="section-card" id="pkhCard" style="display:none">
+    <div class="section-card" id="pkhCard" style="display:none" data-metric="planned">
       <div class="section-head">
         <div>
           <h2>Project key heatmap</h2>
@@ -2672,7 +2672,11 @@ function renderAll() {
   var summary = filtering ? buildFilteredSummary(filtered, DATA.weeks) : DATA.teamSummary;
 
   var RENDERERS = {
-    overview:   function() { renderKPIs(meta, filtered, filtering); renderTeamTable(summary); renderEmployeeTable(); },
+    overview:   function() {
+      renderKPIs(meta, filtered, filtering);
+      renderTeamTable(summary.filter(function(r) { return !r.id || hasMetric_(r.id); }));
+      renderEmployeeTable();
+    },
     radar:      function() { renderRadarTab(filtered); },
     rocketeers: function() { renderTopRocketeers(filtered); },
     trends:     function() { renderTrendsTab(); },
@@ -4015,13 +4019,16 @@ function renderTopRocketeers(filtered) {
     if (!crewE) rows.push(
       { label:"Goals",   norm: sL.goalsNorm,   val: sL.goalsOk ? "Compliant ✓" : "Not met",
         pts: Math.round((sL.goalsNorm   || 0) * SCORE_W.goals),   color: METRIC_COLORS.goals   });
-    rows.push(
+    if (hasMetric_('tracked')) rows.push(
       { label:"Tracked", norm: sL.trackedNorm, val: sL.trackedHrs !== null ? Math.round(sL.trackedHrs) + "h" : "—",
-        pts: Math.round((sL.trackedNorm || 0) * SCORE_W.tracked), color: METRIC_COLORS.tracked },
+        pts: Math.round((sL.trackedNorm || 0) * SCORE_W.tracked), color: METRIC_COLORS.tracked });
+    if (hasMetric_('planned')) rows.push(
       { label:"Planned", norm: sL.plannedNorm, val: sL.plannedHrs !== null ? Math.round(sL.plannedHrs) + "h" : "—",
-        pts: Math.round((sL.plannedNorm || 0) * SCORE_W.planned), color: METRIC_COLORS.planned },
+        pts: Math.round((sL.plannedNorm || 0) * SCORE_W.planned), color: METRIC_COLORS.planned });
+    if (hasMetric_('rcr')) rows.push(
       { label:"RCR",     norm: sL.rcrNorm,     val: sL.rcrVal    !== null ? sL.rcrVal.toFixed(2) : "—",
-        pts: Math.round((sL.rcrNorm     || 0) * SCORE_W.rcr),     color: METRIC_COLORS.rcr     },
+        pts: Math.round((sL.rcrNorm     || 0) * SCORE_W.rcr),     color: METRIC_COLORS.rcr     });
+    rows.push(
       { label:"Kudos",   norm: sL.kudosNorm,
         val: (function() {
           var parts = [];
@@ -4270,6 +4277,7 @@ function renderKPIs(m, filtered, filtering) {
   var cards = [
     // 1 — Goal compliance: top behavioral signal
     { label: "Goal compliance",
+      metric: "goals",
       value: s1 && s1.gt ? (s1.gc + "/" + s1.gt) : "—",
       sub:   s1 && s1.gt ? (pct1 + "% of " + s1.gt + " team members · " + (w1 ? w1.label.replace(/\d{4}\./, "") : (DATA.meta && DATA.meta.goalsQuarter || ""))) : ("— · " + (DATA.meta && DATA.meta.goalsQuarter || "")),
       wow:   "",
@@ -4288,6 +4296,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 2 — Time planned: who is planning their week in Tempo
     { label: "Time planned",
+      metric: "planned",
       value: s1tempo ? (hcPlanned + " / " + hcDenomTempo) : "—",
       sub:   s1 ? (plannedPct1 + "% planning in Tempo · " + (w1 ? w1.label : "")) : "—",
       wow:   "",
@@ -4301,6 +4310,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 3 — Time tracked: headcount logging in Tempo
     { label: "Time tracked",
+      metric: "tracked",
       value: s1tempo ? (hcLogged + " / " + hcDenomTempo) : "—",
       sub:   s1 ? (trackedPct1 + "% logging time · " + (w1 ? w1.label : "")) : "—",
       wow:   "",
@@ -4314,6 +4324,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 4 — PTO: headcount with a healthy plan + WoW trend
     { label: "PTO",
+      metric: "pto",
       value: s1 && s1.ptoTotal > 0 ? (s1.ptoGood + " / " + s1.ptoTotal) : "—",
       sub:   ptoScore !== null ? (ptoScore + "% of " + (s1 ? s1.ptoTotal : 0) + " team members · " + (w1 ? w1.label.replace(/\d{4}\./, "") : "")) : "—",
       wow:   s2 ? wowBadge(s1 ? s1.ptoGood : null, s2.ptoGood, true) : "",
@@ -4327,6 +4338,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 4 — Kudos given: recognition signal
     { label: "Kudos given",
+      metric: "kudos",
       value: s1 ? String(s1.kudos) : "—",
       sub:   s1 ? (s1.kudos + " given · " + hcDenom + " team members · " + (w1 ? w1.label.replace(/\d{4}\./, "") : "")) : "—",
       wow:   "",
@@ -4336,6 +4348,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 5 — Small Improvements: quarterly context
     { label: "Small Improvements",
+      metric: "si",
       value: m.siTeamRounded !== null ? (m.siTeamRounded + " / 5") : "—",
       sub:   (DATA.meta.siQuarter || "") + " · " + siLabel(m.siTeamAvg),
       wow:   "",
@@ -4345,6 +4358,7 @@ function renderKPIs(m, filtered, filtering) {
 
     // 6 — Revenue contribution: services team context (not a per-rocketeer blame signal)
     { label: "Revenue contribution",
+      metric: "rcr",
       value: m.rcrTeamRCR !== null ? m.rcrTeamRCR.toFixed(2) : "—",
       sub:   "Services team benchmark · " + (m.rcrLastMonth || "—"),
       wow:   "",
@@ -4357,6 +4371,8 @@ function renderKPIs(m, filtered, filtering) {
       color: "#058CDC", icon: "trending" },
 
   ];
+
+  cards = cards.filter(function(c) { return !c.metric || hasMetric_(c.metric); });
 
   // Crew members are evaluated on Time Planned, Time Tracked, and RCR only.
   // Goals, PTO, and SI are not applicable — hide those cards in crew mode.
@@ -5521,7 +5537,8 @@ function buildDetailHTML(emp) {
   });
 
   // ── Expandable metric table ───────────────────────────────────────
-  var indivAxes = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], isCrewEmp(emp));
+  var indivAxes = axisIdsForCrew(RADAR_AXIS_BY_GROUP.individual || [], isCrewEmp(emp))
+    .filter(function(id) { return hasMetric_(id); });
   var hasRadar  = indivAxes.length >= 3;
   var safeId    = hasRadar ? 'idr-' + uid : null;
 
@@ -6228,7 +6245,8 @@ function buildAxisSublabel(axisId, m) {
 function getActiveAxes(groupBy, groups, isCrewMode) {
   var axisMap = {};
   RADAR_AXIS_DEFS.forEach(function(d) { axisMap[d.id] = d; });
-  var baseIds = axisIdsForCrew((RADAR_AXIS_BY_GROUP[groupBy] || RADAR_AXIS_BY_GROUP.all).slice(), isCrewMode);
+  var baseIds = axisIdsForCrew((RADAR_AXIS_BY_GROUP[groupBy] || RADAR_AXIS_BY_GROUP.all).slice(), isCrewMode)
+    .filter(function(id) { return hasMetric_(id); });
 
   if (groups.length < 2) {
     return { axes: baseIds.map(function(id) { return axisMap[id]; }), hidden: [] };
@@ -8711,15 +8729,16 @@ function renderTrendsTab() {
   if (!DATA) return;
   var _tf = getFilteredEmployees();
   renderGoalsStanding(_tf);
-  renderTimeMomentum(_tf);
-  renderCorrelationCharts(_tf);
+  if (hasMetric_('tracked') || hasMetric_('planned')) renderTimeMomentum(_tf);
+  if (hasMetric_('tracked')) renderCorrelationCharts(_tf);
   renderPTOTrend(_tf);
-  renderProjectDemandLink();
-  renderProjectHeatmap(_tf);
-  renderRcrSupport(_tf);
+  if (hasMetric_('planned')) { renderProjectDemandLink(); renderProjectHeatmap(_tf); }
+  if (hasMetric_('rcr')) renderRcrSupport(_tf);
 
   // ── RCR monthly bar chart ──
   var rcrCard = document.getElementById("trendsRcrCard");
+  if (!hasMetric_('rcr')) { if (rcrCard) rcrCard.style.display = "none"; }
+  else {
   var rcrNote = document.getElementById("rcrFilterNote");
   var _allFTE = (DATA.employees || []).filter(function(e) { return !e.isCrewMember && !/contractor/i.test(e.jobTitle || ""); });
   var _rcrIsFiltered = _tf.length < _allFTE.length;
@@ -8889,6 +8908,7 @@ function renderTrendsTab() {
       });
     }
   } else if (rcrCard) { rcrCard.style.display = "none"; }
+  }
 }
 
 // ── RCR "who needs support" — bottom-up, FY-to-date avg below target ──────────
