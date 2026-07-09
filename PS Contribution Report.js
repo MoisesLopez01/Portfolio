@@ -298,30 +298,26 @@ const JOB_CATALOG_SHEET_    = "Job Catalog";
 const WEIGHT_METRICS_       = ["goals", "tracked", "planned", "rcr", "kudos", "si", "pto"];
 const LEVEL_COLS_ = ["I1","I2","I3","I4","I5","I6","I7","I8","M4","M5","M6","M7","M8","M9","M10"];
 
-// Services Team catch-all: the roster is already filtered to Department = "Services",
-// so any roster title missing from the Job Catalog is still a Services-team member.
-// Those people score with the SERVICES/ALL matrix block (one weight set, all levels)
-// instead of silently falling back to the company default.
-const SERVICES_TEAM_CODE_ = "SERVICES";
-const SERVICES_TEAM_KEY_  = "ALL";
-
-// Contributor model (2026-07-07 decision):
-// - PS-team families get individually tunable per-level weight blocks.
-// - JF004 (Sales and Success) is the COE team — one shared block, all levels.
-// - Every other catalogued family is a non-contributor: operational roles embedded
-//   in the Services roster that don't track/plan time and carry no direct RCR
-//   impact. They score only on Goals / PTO / SI / Kudos (defaults below; tunable
-//   via the NONCONTRIB/ALL matrix block).
-const PS_TEAM_FAMILIES_    = ["JF007", "JF008", "JF009", "JF018"];
-const COE_FAMILY_CODE_     = "JF004";
-// Scoring category of a family code: "services" | "coe" | "noncontrib".
-function familyCategory_(code) {
-  if (PS_TEAM_FAMILIES_.indexOf(code) !== -1) return "services";
-  if (code === COE_FAMILY_CODE_) return "coe";
-  return "noncontrib";
-}
-const NONCONTRIB_CODE_     = "NONCONTRIB";
-const NONCONTRIB_DEFAULT_W_ = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
+// Contributor model (2026-07-09 team alignment):
+// scoring groups follow the org team toggle (TEAMS_ in PS Teams.js). The employee's
+// resolved team decides which metrics can carry weight (hard mask) and which
+// fill-defaults blank cells inherit; the family × level matrix cell tunes within that.
+// Spec: docs/superpowers/specs/2026-07-09-team-aligned-scoring-design.md
+const PS_TEAM_FAMILIES_ = ["JF007", "JF008", "JF009", "JF018"];
+const COE_FAMILY_CODE_  = "JF004"; // Sales & Success family (also drives teamForProfile_)
+// "ALL" doubles as the per-team uncatalogued catch-all family code AND the
+// block-wide level column now valid on any family block (a level cell beats it).
+const ALL_KEY_ = "ALL";
+// R&D team defaults — also the policy fill for operational families embedded in
+// the Services team (Finance, People, Ops, IT, …): a reset must never re-enable
+// tracked/planned/RCR for roles with no time data.
+const RND_DEFAULT_W_   = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
+// Sales & Success defaults — own constant so the HubSpot phase can re-weight it
+// without touching R&D. Seeded with the same values on purpose.
+const SALES_DEFAULT_W_ = { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 };
+// Pre-Team-column sheet-schema codes; only migrateLegacyMatrix_ still knows them.
+const LEGACY_SERVICES_CODE_   = "SERVICES";
+const LEGACY_NONCONTRIB_CODE_ = "NONCONTRIB";
 
 // Active job families (JF006/JF010/JF011/JF012 are archived and never seeded).
 // `role` is the single display role-group name; null = family has split groups
@@ -564,65 +560,74 @@ function fillWeights_(cell, base) {
   return o;
 }
 
-// Resolves one employee's scoring weights (spec §6.1). Pure given its inputs.
+// Fill base for blank cells of a (team, family) block — the single place the
+// per-team defaults rule lives (spec §2). `family` may be ALL_KEY_ (catch-all)
+// or null (uncatalogued title, before the catch-all is consulted).
+function blockFillBase_(teamKey, family, base) {
+  if (teamKey === "rnd")   return RND_DEFAULT_W_;
+  if (teamKey === "sales") return SALES_DEFAULT_W_;
+  // Services: native PS families, JF004, and the catch-all inherit the flat base;
+  // embedded operational families keep the non-contributor policy.
+  if (family === null || family === ALL_KEY_ ||
+      PS_TEAM_FAMILIES_.indexOf(family) !== -1 || family === COE_FAMILY_CODE_) return base;
+  return RND_DEFAULT_W_;
+}
+
+// Hard gate (spec §3): zero any weight on a metric outside the team's set. Returns
+// the input object untouched when nothing needs zeroing, so the base-reference
+// attach optimization in computePSReport_ survives.
+function maskToTeamMetrics_(w, metrics) {
+  let dirty = false;
+  for (let i = 0; i < WEIGHT_METRICS_.length; i++) {
+    const k = WEIGHT_METRICS_[i];
+    if (metrics.indexOf(k) === -1 && (w[k] || 0) !== 0) { dirty = true; break; }
+  }
+  if (!dirty) return w;
+  const o = {};
+  WEIGHT_METRICS_.forEach(k => { o[k] = metrics.indexOf(k) === -1 ? 0 : (w[k] || 0); });
+  return o;
+}
+
+// Resolves one employee's scoring weights (team gates, family tunes — spec §3).
+// Pure given its inputs. matrix shape:
+//   { [teamKey]: { [family|ALL]: { [levelKey|ALL]: { metric: weight } } } }
 // `base` = flat company base weights (readWeightSettings_ result).
-// `audit` (optional array) collects { name, jobTitle, reason } for misses.
+// `audit` (optional array) collects { name, jobTitle, reason } for Services misses.
 function weightsForEmployee_(emp, matrix, catalog, base, audit) {
   const W = base || DEFAULT_WEIGHTS_;
+  // Resolved team drives everything; the dept comparison remains as a legacy
+  // fallback for callers that predate team tagging. Missing both → Services.
+  const dept = (emp.dept || "").trim();
+  const teamKey = emp.team || ((dept && dept !== CONFIG_PS.PS_DEPT) ? "rnd" : "services");
+  const metrics = teamByKey_(teamKey).metrics;
+  const teamMx  = matrix[teamKey] || {};
   // Sheet lookup (code-prefix-insensitive), then the title's own embedded job
   // code as fallback — a prefixed title is self-describing even uncatalogued.
   const hit = catalog.get(normTitleKey_(emp.jobTitle || "")) || titleCodeInfo_(emp.jobTitle);
   if (!hit) {
-    // Uncatalogued NON-Services members (R&D / true-Sales titles missing from
-    // the seed) are expected: they score with the non-contributor model
-    // (NONCONTRIB/ALL block override → policy defaults), never the flat base —
-    // base tracked/planned/RCR weights would sit as dead points for teams that
-    // have no data for those metrics. Routed by the resolved team (Class-driven
-    // tagging); the dept comparison remains as a fallback for callers that
-    // predate team tagging. Missing both → Services path.
-    const dept  = (emp.dept || "").trim();
-    const nonPS = emp.team ? emp.team !== "services"
-                           : !!(dept && dept !== CONFIG_PS.PS_DEPT);
-    if (nonPS) {
-      const nc = (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_] || null;
-      return nc ? fillWeights_(nc, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
-    }
-    // Only audit when a catalog exists — pre-seed deployments shouldn't flood the
-    // log. Services-team rows only: non-Services uncatalogued titles are
-    // expected and would flood the Services Team "uncatalogued titles" list.
-    if (audit && catalog.size > 0) {
+    // Uncatalogued: Services titles are audit-worthy (the catch-all is a stopgap);
+    // R&D / Sales uncatalogued titles are expected and route silently.
+    if (teamKey === "services" && audit && catalog.size > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", reason: "unmapped-title" });
     }
-    // Services Team catch-all: uncatalogued Services-dept titles score with the
-    // SERVICES/ALL block when it carries any explicit weight.
-    const svc = (matrix[SERVICES_TEAM_CODE_] || {})[SERVICES_TEAM_KEY_];
-    return svc ? fillWeights_(svc, W) : W;
+    const ca   = (teamMx[ALL_KEY_] || {})[ALL_KEY_];
+    const fill = blockFillBase_(teamKey, null, W);
+    return maskToTeamMetrics_(ca ? fillWeights_(ca, fill) : fill, metrics);
   }
-  // COE team (JF004): one shared block for every level; blank → inherit base.
-  if (hit.family === COE_FAMILY_CODE_) {
-    const coe = (matrix[COE_FAMILY_CODE_] || {})[SERVICES_TEAM_KEY_];
-    return coe ? fillWeights_(coe, W) : W;
-  }
-  // Non-contributor families: score on Goals/PTO/SI/Kudos only. Resolution:
-  // family×level cell (targeted override) → NONCONTRIB/ALL block (category-wide
-  // tuning) → policy defaults. Blank metrics always inherit the policy defaults
-  // (NOT the flat base — a reset must never re-enable tracked/planned/RCR).
-  if (PS_TEAM_FAMILIES_.indexOf(hit.family) === -1) {
-    const cell = (matrix[hit.family] || {})[hit.levelKey]
-              || (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_] || null;
-    return cell ? fillWeights_(cell, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
-  }
-  // Company default = flat base weights. A family may override per level; blank
-  // metrics within a family cell inherit the base weight for that metric.
-  const cell = (matrix[hit.family] || {})[hit.levelKey] || null;
+  const block = teamMx[hit.family] || {};
+  const cell  = block[hit.levelKey] || block[ALL_KEY_] || null;
+  const fill  = blockFillBase_(teamKey, hit.family, W);
   if (!cell) {
-    if (audit && Object.keys(matrix).length > 0) {
+    // Audit only Services natives (as before): embedded ops and JF004 inherit
+    // their fill silently, matching the pre-team behavior.
+    if (teamKey === "services" && PS_TEAM_FAMILIES_.indexOf(hit.family) !== -1 &&
+        audit && Object.keys(matrix).length > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", family: hit.family,
-        levelKey: hit.levelKey, reason: matrix[hit.family] ? "level-missing" : "family-missing" });
+        levelKey: hit.levelKey, reason: teamMx[hit.family] ? "level-missing" : "family-missing" });
     }
-    return W;
+    return maskToTeamMetrics_(fill, metrics);
   }
-  return fillWeights_(cell, W);
+  return maskToTeamMetrics_(fillWeights_(cell, fill), metrics);
 }
 
 // Seeds the Job Catalog sheet from COMPANY_ROLES_ (idempotent: clear + rewrite).
