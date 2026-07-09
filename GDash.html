@@ -1576,7 +1576,20 @@ function renderPolicyLab() {
     return { quarter:q.quarter, inProgress:q.inProgress, n:elig.length, comp:comp,
              pct: elig.length ? Math.round(comp/elig.length*100) : 0 };
   });
-  document.getElementById('pl-headline').innerHTML = '<div class="pl-fy-row">' + headline.map(function(r){
+
+  // Diagnose the two live failure modes rather than blank silently:
+  // (a) no history block at all → nothing prior to chart; (b) history present
+  // but no per-goal goalSelf[] → backend is pre-gd_v20_ (needs redeploy), so
+  // every prior-quarter chip would read a false 0%.
+  var hist        = S.data.history || [];
+  var histGoalSel = hist.some(function(h){ return (h.employees||[]).some(function(e){ return e.goalSelf && e.goalSelf.length; }); });
+  var note = '';
+  if (!hist.length) {
+    note = '<div class="bh-v2note">No prior-quarter history in this payload yet — only the current quarter is shown. Historical quarters appear once the RD sheet holds completed FY quarters.</div>';
+  } else if (!histGoalSel) {
+    note = '<div class="bh-v2note">⚠ Prior-quarter per-goal data is missing, so historical compliance cannot be computed (only the current quarter is accurate). Most likely the shared cache was warmed by a non-admin before the fix — click <strong>Refresh</strong> to rebuild it. If it persists, the deployed <code>goalCompliance.js</code> predates <code>gd_v20_</code>: re-copy it into GAS and publish a <strong>new deployment version</strong>.</div>';
+  }
+  document.getElementById('pl-headline').innerHTML = note + '<div class="pl-fy-row">' + headline.map(function(r){
     return '<div class="pl-fy-chip'+(r.inProgress?' inprog':'')+'"><div style="font-size:10px;font-weight:800;color:var(--slate)">'+esc(r.quarter)+(r.inProgress?' · in progress':'')+'</div><b>'+r.pct+'%</b><div style="font-size:10px;color:var(--slate)">'+r.comp+' / '+r.n+' compliant</div></div>';
   }).join('') + '</div>';
 

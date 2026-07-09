@@ -1075,7 +1075,12 @@ function buildComplianceData_(quarter, access) {
   // quarter. Terminated employees are kept (they were active then; dropping
   // them would understate history); interns are stripped exactly like the
   // main list.
-  var isAdmin_ = !!(access && access.role === 'admin');
+  // Attach goalSelf on the SHARED full-company cache entry (admin + viewer use
+  // one key — see getGoalsComplianceData). Gating on role === 'admin' alone was a
+  // bug: a viewer loading first would warm the shared entry WITHOUT goalSelf, and
+  // the admin's Policy Lab would then read that cached payload and show no
+  // historical compliance. Managers have their own scoped key and stay lean.
+  var fullCompanyScope_ = !!(access && (access.role === 'admin' || access.role === 'viewer'));
   var liteEmp_ = function(emp) {
     var lite = {
       normName:   emp.normName,
@@ -1088,9 +1093,10 @@ function buildComplianceData_(quarter, access) {
       weeklySelf: emp.weeklySelf,
       weeklyMgr:  emp.weeklyMgr,
     };
-    // Admin-only: the Policy Lab needs per-goal self counts to recompute cadence
-    // compliance historically. Kept off non-admin payloads to stay lean.
-    if (isAdmin_) lite.goalSelf = goalSelfArray_(emp);
+    // Per-goal self counts — the Policy Lab (admin-only UI) needs these to
+    // recompute cadence compliance historically. Included on the shared
+    // admin/viewer entry so it is present regardless of who warmed the cache.
+    if (fullCompanyScope_) lite.goalSelf = goalSelfArray_(emp);
     return lite;
   };
   var history = [];
