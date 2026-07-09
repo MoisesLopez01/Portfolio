@@ -558,19 +558,22 @@ function weightsForEmployee_(emp, matrix, catalog, base, audit) {
   const W = base || DEFAULT_WEIGHTS_;
   const hit = catalog.get(normPS_(emp.jobTitle || ""));
   if (!hit) {
-    // Uncatalogued NON-Services departments (R&D / true-Sales titles missing from
+    // Uncatalogued NON-Services members (R&D / true-Sales titles missing from
     // the seed) are expected: they score with the non-contributor model
     // (NONCONTRIB/ALL block override → policy defaults), never the flat base —
     // base tracked/planned/RCR weights would sit as dead points for teams that
-    // have no data for those metrics. Blank dept keeps the Services path (the
-    // pre-toggle roster filter always kept blank-dept rows in Services).
-    const dept = (emp.dept || "").trim();
-    if (dept && dept !== CONFIG_PS.PS_DEPT) {
+    // have no data for those metrics. Routed by the resolved team (Class-driven
+    // tagging); the dept comparison remains as a fallback for callers that
+    // predate team tagging. Missing both → Services path.
+    const dept  = (emp.dept || "").trim();
+    const nonPS = emp.team ? emp.team !== "services"
+                           : !!(dept && dept !== CONFIG_PS.PS_DEPT);
+    if (nonPS) {
       const nc = (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_] || null;
       return nc ? fillWeights_(nc, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
     }
     // Only audit when a catalog exists — pre-seed deployments shouldn't flood the
-    // log. Services/blank-dept rows only: non-Services uncatalogued titles are
+    // log. Services-team rows only: non-Services uncatalogued titles are
     // expected and would flood the Services Team "uncatalogued titles" list.
     if (audit && catalog.size > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", reason: "unmapped-title" });
@@ -842,6 +845,16 @@ function _test_weightsResolver() {
   check("uncatalogued-nonservices-dept-block-fills-from-policy",
     weightsForEmployee_({ name: "G2", jobTitle: "Totally Unknown Title", dept: "Engineering" }, matrixNcDept, catalog, base),
     { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  // 11. Resolved team (Class-driven tagging) routes the non-contributor path
+  //     directly — no dept needed.
+  check("uncatalogued-rnd-team-defaults",
+    weightsForEmployee_({ name: "G3", jobTitle: "Totally Unknown Title", team: "rnd" }, {}, catalog, base),
+    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  // 12. Team beats the dept fallback: a services-team member with an odd dept
+  //     value stays on the Services scoring path (flat base here).
+  check("uncatalogued-services-team-beats-dept",
+    weightsForEmployee_({ name: "G4", jobTitle: "Totally Unknown Title", team: "services", dept: "Engineering" }, {}, catalog, base),
+    base);
   // 5. roleGroupFor_ edges
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");
@@ -1304,13 +1317,19 @@ function readPSRoster_() {
   log_(`Roster distinct Employee Status values: ${[...statusValues].join(" | ")}`);
 
   const roster = new Map();
+  const unknownClasses = new Map();   // class value → dropped-row count (diagnostics)
   rows.forEach(row => {
     const name   = String(row[iName]  || "").trim();
     const cls    = String(iClass  !== -1 ? row[iClass]  : "").trim();
     const status = String(iStatus !== -1 ? row[iStatus] : "").trim().toLowerCase();
-    if (!name || cls !== CONFIG_PS.PS_CLASS) return;
-    // Company-wide roster: no Department filter here. Team membership (Services /
-    // R&D / Sales & Success) is tagged in getPSReportData via teamForProfile_.
+    if (!name) return;
+    // Company-wide roster: rows from every KNOWN Class participate (Professional
+    // Services / Corporate / To be Allocated — see TEAM_KNOWN_CLASSES_ in PS Teams).
+    // Team membership is tagged in getPSReportData via teamForProfile_.
+    if (!classIsKnown_(cls)) {
+      unknownClasses.set(cls || "(blank)", (unknownClasses.get(cls || "(blank)") || 0) + 1);
+      return;
+    }
     const termDate   = iTermDate !== -1 ? String(row[iTermDate] || "").trim() : "";
     const isInactive = (status && /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i.test(status)) || !!termDate;
     if (isInactive) return;
@@ -1336,6 +1355,7 @@ function readPSRoster_() {
       keyLocation:    String(iLoc        !== -1 ? row[iLoc]        : "").trim() || "Unknown",
       supervisor:     String(iSup        !== -1 ? row[iSup]        : "").trim() || "Unknown",
       jobTitle:       jobTitle,
+      cls,
       dept:           String(iDept       !== -1 ? row[iDept]       : "").trim() || "",
       email:          String(iEmail      !== -1 ? row[iEmail]      : "").trim().toLowerCase(),
       hireDate,
@@ -1346,6 +1366,9 @@ function readPSRoster_() {
 
   log_(`Roster: ${roster.size} employees loaded (company-wide).`);
   log_(`Roster distinct Department values: ${[...new Set([...roster.values()].map(p => p.dept).filter(Boolean))].join(" | ")}`);
+  if (unknownClasses.size > 0) {
+    Logger.log(`⚠️ Roster: dropped rows with unknown Class — ${[...unknownClasses].map(([v, n]) => `"${v}"×${n}`).join(", ")} (add to TEAM_KNOWN_CLASSES_ in PS Teams if legitimate).`);
+  }
   if (roster.size > 0) {
     log_(`  Sample names: ${[...roster.values()].slice(0,5).map(e => e.name).join(", ")}`);
   }
@@ -2689,6 +2712,7 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
       supervisor:  profile.supervisor,
       jobTitle:    profile.jobTitle,
       dept:        profile.dept,
+      team:        profile.team || null,
       isRampUp:    profile.isRampUp || false,
       isCrewMember: profile.isCrewMember || false,
       rcr:  rcrEntry,

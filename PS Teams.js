@@ -24,17 +24,29 @@ function teamByKey_(key) {
   return TEAMS_[0];
 }
 
-// Hybrid membership rule (order matters):
-//   1. Department = Services      → services (today's population, byte-identical)
-//   2. Job Catalog family = JF004 → sales
-//   3. everyone else              → rnd
+// Roster Class values that participate in the dashboard (lower-cased for
+// comparison). Anything else is dropped at the roster read — with a ⚠️ log —
+// so a new or mistyped class surfaces instead of silently joining a team.
+const TEAM_KNOWN_CLASSES_ = ["professional services", "corporate", "to be allocated"];
+
+function classIsKnown_(cls) {
+  return TEAM_KNOWN_CLASSES_.indexOf(String(cls || "").trim().toLowerCase()) !== -1;
+}
+
+// Class-driven membership rule (2026-07-09: the live roster showed the Class
+// column, not Department, is the company-wide org axis — Department is
+// "Services"-only for PS, while Class splits the company into
+// Professional Services / Corporate / To be Allocated):
+//   1. Class = "Professional Services" (CONFIG_PS.PS_CLASS) → services
+//   2. any other known Class + Job Catalog family JF004     → sales
+//   3. any other known Class otherwise                      → rnd
+// Rows with an unknown/blank Class never reach tagging — readPSRoster_ drops
+// them. JF004 detection REQUIRES the Sales & Success job titles to exist in
+// the Job Catalog sheet with code JF004; uncatalogued sales titles land in rnd.
 // `catalog` is the readJobCatalog_() Map (normPS_(title) → { family, … }).
 function teamForProfile_(profile, catalog) {
-  // Blank/missing Department preserves the pre-toggle filter's semantics — those
-  // rows were always kept in the Services view, so only a non-empty, non-Services
-  // department can leave the services team.
-  const dept = (profile.dept || "").trim();
-  if (!dept || dept === CONFIG_PS.PS_DEPT) return "services";
+  const cls = String(profile.cls || "").trim().toLowerCase();
+  if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) return "services";
   const hit = catalog ? catalog.get(normPS_(profile.jobTitle || "")) : null;
   if (hit && hit.family === COE_FAMILY_CODE_) return "sales";
   return "rnd";
@@ -70,19 +82,25 @@ function _test_teamForProfile() {
     [normPS_("Software Engineer"),      { family: "JF002", track: "I", level: 4, levelKey: "I4" }],
   ]);
   const cases = [
-    // [dept, jobTitle, expected]
-    ["Services",    "Implementation Manager", "services"],
-    ["Services",    "Account Executive",      "services"], // JF004 inside Services stays Services
-    ["Sales",       "Account Executive",      "sales"],
-    ["Engineering", "Software Engineer",      "rnd"],
-    ["Engineering", "Totally Unknown Title",  "rnd"],      // uncatalogued, non-Services
-    ["",            "Account Executive",      "services"], // blank dept preserves pre-toggle Services membership
-    ["",            "Mystery Role",           "services"],
+    // [cls, jobTitle, expected]
+    ["Professional Services", "Implementation Manager", "services"],
+    ["Professional Services", "Account Executive",      "services"], // JF004 title inside the PS class stays Services
+    ["To be Allocated",       "Account Executive",      "sales"],
+    ["To be Allocated",       "Totally Unknown Title",  "rnd"],      // non-JF004 To-be-Allocated → R&D
+    ["Corporate",             "Software Engineer",      "rnd"],
+    ["Corporate",             "Account Executive",      "sales"],    // JF004 signal wins in any non-PS class
+    ["PROFESSIONAL SERVICES", "Mystery Role",           "services"], // class compare is case-insensitive
   ];
   let fail = 0;
   cases.forEach((c, i) => {
-    const got = teamForProfile_({ dept: c[0], jobTitle: c[1] }, cat);
+    const got = teamForProfile_({ cls: c[0], jobTitle: c[1] }, cat);
     if (got !== c[2]) { fail++; Logger.log(`❌ case ${i}: (${c[0]} | ${c[1]}) → ${got}, want ${c[2]}`); }
+  });
+  ["Professional Services", "corporate", " To be Allocated "].forEach(v => {
+    if (!classIsKnown_(v)) { fail++; Logger.log(`❌ classIsKnown_("${v}") should be true`); }
+  });
+  ["Contractors", "", null].forEach(v => {
+    if (classIsKnown_(v)) { fail++; Logger.log(`❌ classIsKnown_(${JSON.stringify(v)}) should be false`); }
   });
   if (teamByKey_("bogus").key !== "services") { fail++; Logger.log(`❌ teamByKey_("bogus") should fall back to services`); }
   if (teamByKey_(null).key   !== "services") { fail++; Logger.log(`❌ teamByKey_(null) should fall back to services`); }
