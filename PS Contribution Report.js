@@ -558,12 +558,25 @@ function weightsForEmployee_(emp, matrix, catalog, base, audit) {
   const W = base || DEFAULT_WEIGHTS_;
   const hit = catalog.get(normPS_(emp.jobTitle || ""));
   if (!hit) {
-    // Only audit when a catalog exists — pre-seed deployments shouldn't flood the log.
+    // Uncatalogued NON-Services departments (R&D / true-Sales titles missing from
+    // the seed) are expected: they score with the non-contributor model
+    // (NONCONTRIB/ALL block override → policy defaults), never the flat base —
+    // base tracked/planned/RCR weights would sit as dead points for teams that
+    // have no data for those metrics. Blank dept keeps the Services path (the
+    // pre-toggle roster filter always kept blank-dept rows in Services).
+    const dept = (emp.dept || "").trim();
+    if (dept && dept !== CONFIG_PS.PS_DEPT) {
+      const nc = (matrix[NONCONTRIB_CODE_] || {})[SERVICES_TEAM_KEY_] || null;
+      return nc ? fillWeights_(nc, NONCONTRIB_DEFAULT_W_) : Object.assign({}, NONCONTRIB_DEFAULT_W_);
+    }
+    // Only audit when a catalog exists — pre-seed deployments shouldn't flood the
+    // log. Services/blank-dept rows only: non-Services uncatalogued titles are
+    // expected and would flood the Services Team "uncatalogued titles" list.
     if (audit && catalog.size > 0) {
       audit.push({ name: emp.name, jobTitle: emp.jobTitle || "", reason: "unmapped-title" });
     }
-    // Services Team catch-all: roster is Services-dept only, so uncatalogued titles
-    // score with the SERVICES/ALL block when it carries any explicit weight.
+    // Services Team catch-all: uncatalogued Services-dept titles score with the
+    // SERVICES/ALL block when it carries any explicit weight.
     const svc = (matrix[SERVICES_TEAM_CODE_] || {})[SERVICES_TEAM_KEY_];
     return svc ? fillWeights_(svc, W) : W;
   }
@@ -818,6 +831,17 @@ function _test_weightsResolver() {
   check("noncontrib-level-override-beats-block",
     weightsForEmployee_({ name: "F3", jobTitle: "Intern, Finance" }, matrixNcLvl, catalog, base),
     { goals: 70, tracked: 0, planned: 0, rcr: 0, kudos: 30, si: 0, pto: 0 });
+  // 9. Uncatalogued title in a non-Services dept → non-contributor policy
+  //    defaults (never the flat base — no dead tracked/planned/RCR points).
+  check("uncatalogued-nonservices-dept-defaults",
+    weightsForEmployee_({ name: "G", jobTitle: "Totally Unknown Title", dept: "Engineering" }, {}, catalog, base),
+    { goals: 40, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
+  // 10. Uncatalogued title + non-Services dept + NONCONTRIB/ALL override →
+  //     override fills against the policy defaults.
+  const matrixNcDept = { NONCONTRIB: { ALL: { goals: 60 } } };
+  check("uncatalogued-nonservices-dept-block-fills-from-policy",
+    weightsForEmployee_({ name: "G2", jobTitle: "Totally Unknown Title", dept: "Engineering" }, matrixNcDept, catalog, base),
+    { goals: 60, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 20 });
   // 5. roleGroupFor_ edges
   check("jf007-default-bucket", roleGroupFor_("JF007", "Intern, Managed Services"), "Customer Support");
   check("jf007-delivery",       roleGroupFor_("JF007", "Senior Consultant I, Delivery"), "Delivery");

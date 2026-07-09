@@ -1524,11 +1524,11 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
             <thead><tr><th>Metric</th><th>Source</th><th>Cadence</th></tr></thead>
             <tbody>
               <tr><td>Headcount / Roster</td><td>Netsuite Export</td><td>Weekly export</td></tr>
-              <tr><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
+              <tr data-metric="rcr"><td>RCR</td><td>Finance — revenue vs. compensation</td><td>Monthly (last closed month)</td></tr>
               <tr><td>SI Score</td><td>Small Improvements platform</td><td>Quarterly</td></tr>
               <tr><td>Goals Commented</td><td>Goals platform (<span class="drGoalsQ">current quarter</span>)</td><td>Weekly export</td></tr>
-              <tr><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
-              <tr><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
+              <tr data-metric="planned"><td>Time planned</td><td>Tempo API</td><td>Daily export</td></tr>
+              <tr data-metric="tracked"><td>Time tracked</td><td>Tempo API</td><td>Daily export</td></tr>
               <tr><td>Kudos given</td><td>Netsuite Export</td><td>Weekly export</td></tr>
               <tr><td>PTO</td><td>PTO accumulation tracking</td><td>Weekly export</td></tr>
             </tbody>
@@ -2542,9 +2542,14 @@ function onDataLoaded(payload) {
 
     if (trackedAt || srcAt) {
       var dailyTs = _fmtTs(trackedAt || srcAt);
-      _fn.textContent = "↻ Tracked & Planned: " + dailyTs + " (daily)  ·  Goals · PTO · Kudos: manual";
-      _fn.title = "Tracked & Planned import automatically every day (last: " + dailyTs + ")." +
-                  (srcAt ? "\nGoals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "");
+      if (hasMetric_('tracked')) {
+        _fn.textContent = "↻ Tracked & Planned: " + dailyTs + " (daily)  ·  Goals · PTO · Kudos: manual";
+        _fn.title = "Tracked & Planned import automatically every day (last: " + dailyTs + ")." +
+                    (srcAt ? "\nGoals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "");
+      } else {
+        _fn.textContent = "↻ Goals · PTO · Kudos: manual";
+        _fn.title = srcAt ? "Goals, PTO and Kudos refresh when the spreadsheet is edited (last change: " + _fmtTs(srcAt) + ")." : "";
+      }
     } else {
       _fn.textContent = "↻ Data freshness: pending";
       _fn.title = "Source timestamps unavailable.";
@@ -3151,6 +3156,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   var _phPrev = (prevWeekLabel && phMap[prevWeekLabel] && phMap[prevWeekLabel].totalAffected) || 0;
 
   // ── Tracked time ──────────────────────────────────────────────────────────
+  if (hasMetric_('tracked')) {
   if (isCrewMode) {
     var cEmps   = allEmps;
     var cHC     = cEmps.length;
@@ -3198,8 +3204,10 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     facts.push('Tracked time: no data for ' + weekLabel);
     concerns.push('No tracked time data for ' + weekLabel + ' — ensure the team is logging time in Tempo');
   }
+  }
 
   // ── Planned time ──────────────────────────────────────────────────────────
+  if (hasMetric_('planned')) {
   if (isCrewMode) {
     var cEmpsP    = allEmps;
     var cHCP      = cEmpsP.length;
@@ -3230,6 +3238,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     } else {
       concerns.push('Only ' + planPct + '% of team has Tempo plans — ' + unplanned + ' rocketeer' + (unplanned > 1 ? 's' : '') + ' missing forward capacity visibility (Build Process to Drive Outcomes)');
     }
+  }
   }
 
   // ── Kudos ─────────────────────────────────────────────────────────────────
@@ -5340,7 +5349,7 @@ function renderEmployeeTable() {
     var sortKey = "week:" + w.label;
     var sortCls = STATE.sort.key === sortKey ? " sort-" + STATE.sort.dir : "";
     var statusCls = w.isCurrentWeek ? "ws-current" : w.isFuture ? "ws-planned" : "ws-tracked";
-    var statusLbl = w.isCurrentWeek ? "in progress" : w.isFuture ? "planned" : "tracked";
+    var statusLbl = w.isCurrentWeek ? "in progress" : w.isFuture ? (hasMetric_('planned') ? "planned" : "") : (hasMetric_('tracked') ? "tracked" : "");
     var wShortHdr = w.label || '';
     html += '<th class="' + cls + sortCls + '" style="text-align:center;cursor:pointer" onclick="setSort(\'' + sortKey + '\')">' +
       esc(wShortHdr) +
@@ -5395,7 +5404,9 @@ function renderEmployeeTable() {
         html += '<div class="wc-meta">' + metaFut + '</div>';
       } else if (w.isCurrentWeek) {
         // Current week: status label + optional tracked + planned
-        if (wd.trackedHrs !== null) {
+        if (!hasMetric_('tracked')) {
+          html += '<div class="wc-null">—</div>';
+        } else if (wd.trackedHrs !== null) {
           html += '<div class="wc-hrs">' + fmtHrs(wd.trackedHrs) + '</div>';
           html += '<div class="wc-plan-lbl">tracked so far</div>';
         } else {

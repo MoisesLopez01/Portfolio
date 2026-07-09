@@ -30,7 +30,11 @@ function teamByKey_(key) {
 //   3. everyone else              → rnd
 // `catalog` is the readJobCatalog_() Map (normPS_(title) → { family, … }).
 function teamForProfile_(profile, catalog) {
-  if ((profile.dept || "").trim() === CONFIG_PS.PS_DEPT) return "services";
+  // Blank/missing Department preserves the pre-toggle filter's semantics — those
+  // rows were always kept in the Services view, so only a non-empty, non-Services
+  // department can leave the services team.
+  const dept = (profile.dept || "").trim();
+  if (!dept || dept === CONFIG_PS.PS_DEPT) return "services";
   const hit = catalog ? catalog.get(normPS_(profile.jobTitle || "")) : null;
   if (hit && hit.family === COE_FAMILY_CODE_) return "sales";
   return "rnd";
@@ -70,8 +74,8 @@ function _test_teamForProfile_() {
     ["Sales",       "Account Executive",      "sales"],
     ["Engineering", "Software Engineer",      "rnd"],
     ["Engineering", "Totally Unknown Title",  "rnd"],      // uncatalogued, non-Services
-    ["",            "Account Executive",      "sales"],    // empty dept → catalog decides
-    ["",            "Mystery Role",           "rnd"],
+    ["",            "Account Executive",      "services"], // blank dept preserves pre-toggle Services membership
+    ["",            "Mystery Role",           "services"],
   ];
   let fail = 0;
   cases.forEach((c, i) => {
