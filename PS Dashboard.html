@@ -2451,6 +2451,7 @@ function loadData(forceRefresh) {
   if (_loadingInFlight && !forceRefresh && _loadingTeam === STATE.activeTeam) return;
   _loadingInFlight = true;
   _loadingTeam = STATE.activeTeam;
+  _prefetchWanted = null;                  // a user-driven load supersedes any wait-on-prefetch
   var seq = ++_loadSeq;
 
   document.getElementById("loadingState").style.display  = "flex";
@@ -2460,12 +2461,71 @@ function loadData(forceRefresh) {
     if (pane) pane.classList.remove("active");
   });
   google.script.run
-    .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p); })
+    .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p, forceRefresh); })
     .withFailureHandler(function(e) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataError(e);  })
     .getPSReportData(forceRefresh, STATE.activeTeam);
 }
 
-function onDataLoaded(payload) {
+// ── BACKGROUND TEAM PREFETCH ──────────────────────────────
+// After the active team renders, quietly pull the user's other teams into
+// STATE.teamData so the toggle is instant. Sequential (one request at a
+// time), starts after a short delay so first paint wins, and never touches
+// loadData's concurrency guards (_loadingInFlight/_loadSeq) — separate channel.
+var _prefetchInFlight = {};   // teamKey → true while its background fetch runs
+var _prefetchWanted   = null; // team the user toggled to while its prefetch was in flight
+var _prefetchTimer    = null;
+
+function schedulePrefetch_() {
+  clearTimeout(_prefetchTimer);
+  _prefetchTimer = setTimeout(prefetchNext_, 4000);
+}
+
+function prefetchNext_() {
+  if (!DATA || !DATA.meta) return;
+  var teams = DATA.meta.availableTeams || [];
+  var next = null;
+  for (var i = 0; i < teams.length; i++) {
+    var k = teams[i].key;
+    if (!STATE.teamData[k] && !_prefetchInFlight[k]) { next = k; break; }
+  }
+  if (!next) return;                       // everything cached — chain ends
+  var reqKey = next;
+  _prefetchInFlight[reqKey] = true;
+  google.script.run
+    .withSuccessHandler(function(p) {
+      delete _prefetchInFlight[reqKey];
+      if (p && p.denied) return;           // access revoked — stop the chain
+      if (p && p.ok && p.meta && p.meta.team) {
+        var servedKey = p.meta.team.key;
+        if (!STATE.teamData[servedKey]) STATE.teamData[servedKey] = p;
+        if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
+          // User is waiting on this request. onDataLoaded is payload-is-truth:
+          // even a fallback team (servedKey !== reqKey) renders and snaps the
+          // toggle, so the loading screen can never strand.
+          _prefetchWanted = null;
+          onDataLoaded(p);
+        }
+      } else if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
+        _prefetchWanted = null;
+        loadData(false);                   // bad payload while the user waits — fetch in the foreground
+        return;
+      }
+      prefetchNext_();
+    })
+    .withFailureHandler(function(e) {
+      delete _prefetchInFlight[reqKey];
+      if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
+        _prefetchWanted = null;
+        loadData(false);                   // user is waiting — fetch in the foreground
+      } else {
+        console.warn("Team prefetch failed for " + reqKey + ": " + e);
+        prefetchNext_();
+      }
+    })
+    .getPSReportData(false, reqKey);
+}
+
+function onDataLoaded(payload, wasRefresh) {
   if (!payload) { onDataError("No response from server."); return; }
   if (payload.denied) { showAccessDenied_(payload.email); return; }
   if (!payload.ok) { onDataError(payload.error || "Unknown error"); return; }
@@ -2476,6 +2536,13 @@ function onDataLoaded(payload) {
   var servedTeam = (payload.meta && payload.meta.team && payload.meta.team.key) || "services";
   STATE.activeTeam = servedTeam;
   STATE.teamData[servedTeam] = payload;
+  if (wasRefresh) {
+    // The server just force-rebuilt every in-scope team — other teams' client
+    // copies are stale. Drop them; the prefetch chain re-pulls fresh entries.
+    Object.keys(STATE.teamData).forEach(function(k) {
+      if (k !== servedTeam) delete STATE.teamData[k];
+    });
+  }
   renderTeamToggle_();
   var h1El = document.querySelector(".header-title h1");
   if (h1El) {
@@ -2581,6 +2648,8 @@ function onDataLoaded(payload) {
   renderGranCtls_();
   updatePeriodPickerLabels_();
   switchTab(STATE.activeTab);
+
+  schedulePrefetch_();   // background-fill the other teams (no-op when all cached)
 }
 
 function showAccessDenied_(email) {
@@ -2657,7 +2726,19 @@ function switchTeam(key) {
     _loadSeq++;
     _loadingInFlight = false;
     _loadingTeam = null;
+    _prefetchWanted = null;           // no longer waiting on any prefetch
     onDataLoaded(cached);             // instant re-render from client cache
+  }
+  else if (_prefetchInFlight[key]) {
+    // This team's background prefetch is already in flight — show the loading
+    // screen and let its response render via onDataLoaded (no duplicate fetch).
+    _prefetchWanted = key;
+    document.getElementById("loadingState").style.display = "flex";
+    document.getElementById("tabNav").classList.remove("visible");
+    VIEWS.forEach(function(v) {
+      var pane = document.getElementById(v.paneId);
+      if (pane) pane.classList.remove("active");
+    });
   }
   else loadData(false);               // cold team — fetch (shows loading screen)
 }
