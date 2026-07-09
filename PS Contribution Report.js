@@ -519,35 +519,85 @@ function readJobCatalog_() {
   return out;
 }
 
-// Reads the scoring matrix sheet → { [family|"DEFAULT"]: { [levelKey]: { metric: weight } } }.
-// Blank cells are omitted (→ inherit). Missing sheet → {}.
+// Reads the scoring matrix sheet →
+//   { [teamKey]: { [family|ALL]: { [levelKey|ALL]: { metric: weight } } } }.
+// Blank cells are omitted (→ inherit blockFillBase_). Missing sheet → {}.
 function readScoringMatrix_() {
-  const out = {};
   try {
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SCORING_MATRIX_SHEET_);
-    if (!sh || sh.getLastRow() < 2) return out;
-    const data = sh.getDataRange().getValues();
-    const hdrs = data[0].map(h => String(h).trim());
-    const iFam = hdrs.findIndex(h => h.toLowerCase() === "family");
-    const iMet = hdrs.findIndex(h => h.toLowerCase() === "metric");
-    if (iFam === -1 || iMet === -1) return out;
-    const levelCols = [];
-    hdrs.forEach((h, i) => { if (/^([IM]\d+|ALL)$/i.test(h)) levelCols.push({ idx: i, key: h.toUpperCase() }); });
-    data.slice(1).forEach(r => {
-      const fam = String(r[iFam] || "").trim().toUpperCase();
-      const met = String(r[iMet] || "").trim().toLowerCase();
-      if (!fam || WEIGHT_METRICS_.indexOf(met) === -1) return;
-      levelCols.forEach(c => {
-        const raw = r[c.idx];
-        if (raw === "" || raw === null || raw === undefined) return; // blank → inherit
-        const v = parseFloat(raw);
-        if (isNaN(v) || v < 0) return;
-        if (!out[fam])        out[fam] = {};
-        if (!out[fam][c.key]) out[fam][c.key] = {};
-        out[fam][c.key][met] = v;
-      });
+    if (!sh || sh.getLastRow() < 2) return {};
+    return parseScoringMatrix_(sh.getDataRange().getValues());
+  } catch(e) { Logger.log(`⚠️ readScoringMatrix_: ${e.message}`); return {}; }
+}
+
+// Pure (Node-testable). Detects the schema by the Team header: new sheets nest by
+// team; a legacy sheet (pre-Team-column) is parsed flat then mapped on read via
+// migrateLegacyMatrix_, so scoring is correct before any admin opens the editor.
+function parseScoringMatrix_(data) {
+  const hdrs  = data[0].map(h => String(h).trim());
+  const iTeam = hdrs.findIndex(h => h.toLowerCase() === "team");
+  const iFam  = hdrs.findIndex(h => h.toLowerCase() === "family");
+  const iMet  = hdrs.findIndex(h => h.toLowerCase() === "metric");
+  if (iFam === -1 || iMet === -1) return {};
+  const levelCols = [];
+  hdrs.forEach((h, i) => { if (/^([IM]\d+|ALL)$/i.test(h)) levelCols.push({ idx: i, key: h.toUpperCase() }); });
+  const known = {};
+  TEAMS_.forEach(t => { known[t.key] = true; });
+  const out = {}, flat = {};
+  data.slice(1).forEach(r => {
+    const fam = String(r[iFam] || "").trim().toUpperCase();
+    const met = String(r[iMet] || "").trim().toLowerCase();
+    if (!fam || WEIGHT_METRICS_.indexOf(met) === -1) return;
+    let block;
+    if (iTeam !== -1) {
+      const team = String(r[iTeam] || "").trim().toLowerCase();
+      if (!known[team]) {
+        if (team) Logger.log(`⚠️ PS Scoring Matrix: unknown team "${team}" — row ignored`);
+        return;
+      }
+      if (!out[team])      out[team] = {};
+      if (!out[team][fam]) out[team][fam] = {};
+      block = out[team][fam];
+    } else {
+      if (!flat[fam]) flat[fam] = {};
+      block = flat[fam];
+    }
+    levelCols.forEach(c => {
+      const raw = r[c.idx];
+      if (raw === "" || raw === null || raw === undefined) return; // blank → inherit
+      const v = parseFloat(raw);
+      if (isNaN(v) || v < 0) return;
+      if (!block[c.key]) block[c.key] = {};
+      block[c.key][met] = v;
     });
-  } catch(e) { Logger.log(`⚠️ readScoringMatrix_: ${e.message}`); }
+  });
+  return iTeam !== -1 ? out : migrateLegacyMatrix_(flat);
+}
+
+// Maps a legacy (pre-Team-column) flat matrix into the team-nested shape (spec §4).
+// Legacy family×level cells applied company-wide, so non-PS families are copied to
+// BOTH teams their members can sit in. Blocks are deep-copied so copies never alias.
+function migrateLegacyMatrix_(flat) {
+  const out = {};
+  const put = (team, fam, block) => {
+    if (!out[team]) out[team] = {};
+    out[team][fam] = JSON.parse(JSON.stringify(block));
+  };
+  Object.keys(flat).forEach(fam => {
+    if (fam === "DEFAULT") return; // retired block — company default is the flat base
+    if (fam === LEGACY_SERVICES_CODE_) { put("services", ALL_KEY_, flat[fam]); return; }
+    if (fam === LEGACY_NONCONTRIB_CODE_) {
+      put("rnd", ALL_KEY_, flat[fam]);
+      // Known simplification: catalogued embedded-ops members under Services now
+      // fill from the policy defaults instead of this block — retune per family
+      // under Services if this block carried overrides.
+      Logger.log("ℹ️ Legacy NONCONTRIB/ALL mapped to the R&D catch-all only.");
+      return;
+    }
+    if (PS_TEAM_FAMILIES_.indexOf(fam) !== -1) { put("services", fam, flat[fam]); return; }
+    if (fam === COE_FAMILY_CODE_) { put("sales", fam, flat[fam]); put("services", fam, flat[fam]); return; }
+    put("services", fam, flat[fam]); put("rnd", fam, flat[fam]);
+  });
   return out;
 }
 
@@ -944,6 +994,58 @@ function _test_weightsResolver() {
   check("jf009-tc",             roleGroupFor_("JF009", "Principal, Solution Consulting"), "Technical Consulting");
   check("jf016-people",         roleGroupFor_("JF016", "Senior Manager, Total Rewards and HR Operations"), "People");
   check("parse-code",           parseJobCode_("13.M10.10"), { family: "JF013", track: "M", level: 10, levelKey: "M10" });
+
+  Logger.log(results.join("\n"));
+  return results;
+}
+
+// Node test for the dual-schema matrix parser + legacy mapping (no GAS APIs).
+// Run: node -e "global.Logger={log:function(m){console.log(m)}}; const fs=require('fs'); eval(fs.readFileSync('PS Contribution Report.js','utf8')+'\n'+fs.readFileSync('PS Teams.js','utf8')); const r=_test_matrixMigration(); process.exit(r.some(function(x){return x.indexOf('FAIL')===0})?1:0)"
+function _test_matrixMigration() {
+  const results = [];
+  const check = (label, got, want) => {
+    const pass = JSON.stringify(got) === JSON.stringify(want);
+    results.push(`${pass ? "PASS" : "FAIL"} ${label}${pass ? "" : ` — got ${JSON.stringify(got)} want ${JSON.stringify(want)}`}`);
+  };
+
+  // Legacy schema (no Team column) → mapped on read per spec §4
+  const legacy = [
+    ["Family", "Metric", "I1", "I4", "ALL"],
+    ["JF009", "goals", "", 40, ""],       // native PS family → services only
+    ["JF004", "goals", "", "", 50],       // COE ALL cell → sales AND services
+    ["JF013", "goals", 70, "", ""],       // embedded ops → services AND rnd
+    ["SERVICES", "goals", "", "", 55],    // legacy services catch-all → (services, ALL)
+    ["NONCONTRIB", "goals", "", "", 60],  // legacy noncontrib → (rnd, ALL)
+    ["DEFAULT", "goals", "", "", 99],     // retired block → dropped
+    ["JF009", "bogus", "", 1, ""],        // unknown metric row → ignored
+  ];
+  const m = parseScoringMatrix_(legacy);
+  check("legacy-ps-family", m.services.JF009, { I4: { goals: 40 } });
+  check("legacy-ps-family-not-rnd", (m.rnd || {}).JF009 === undefined, true);
+  check("legacy-coe-both-teams", [m.sales.JF004, m.services.JF004],
+    [{ ALL: { goals: 50 } }, { ALL: { goals: 50 } }]);
+  check("legacy-embedded-both-teams", [m.services.JF013, m.rnd.JF013],
+    [{ I1: { goals: 70 } }, { I1: { goals: 70 } }]);
+  check("legacy-services-catchall", m.services.ALL, { ALL: { goals: 55 } });
+  check("legacy-noncontrib-catchall", m.rnd.ALL, { ALL: { goals: 60 } });
+  check("legacy-default-dropped", JSON.stringify(m).indexOf("99") === -1, true);
+  m.sales.JF004.ALL.goals = 51; // mutate one copy…
+  check("legacy-copies-dont-alias", m.services.JF004.ALL.goals, 50);
+
+  // New schema (Team column) → nested directly; unknown team rows ignored
+  const fresh = [
+    ["Team", "Family", "Metric", "I1", "ALL"],
+    ["services", "JF009", "goals", 45, ""],
+    ["rnd", "JF013", "si", 25, ""],
+    ["sales", "ALL", "goals", "", 65],
+    ["marketing", "JF001", "goals", 10, ""], // unknown team → ignored (⚠️ log)
+    ["services", "JF009", "goals", "", ""],  // all-blank row → adds no cells
+  ];
+  const n = parseScoringMatrix_(fresh);
+  check("new-services-cell", n.services.JF009, { I1: { goals: 45 } });
+  check("new-rnd-cell", n.rnd.JF013, { I1: { si: 25 } });
+  check("new-sales-catchall", n.sales.ALL, { ALL: { goals: 65 } });
+  check("new-unknown-team-ignored", n.marketing === undefined, true);
 
   Logger.log(results.join("\n"));
   return results;
