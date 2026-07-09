@@ -1561,11 +1561,16 @@ function renderPolicyLab() {
 
   var scopeSel = document.getElementById('pl-scope');
   if (scopeSel && !scopeSel.dataset.built) {
-    var opts = qs.filter(function(q){return !q.inProgress;}).map(function(q){return '<option value="'+q.quarter+'">'+q.quarter+'</option>';});
+    // Every quarter is selectable, current one included (labelled "in progress").
+    // The grid is exploratory — excluding the in-progress quarter only makes sense
+    // for the trend headline, and hiding it leaves the grid empty when the only
+    // data loaded is the current quarter.
+    var opts = qs.map(function(q){return '<option value="'+q.quarter+'">'+q.quarter+(q.inProgress?' (in progress)':'')+'</option>';});
     opts.unshift('<option value="__pooled">Full FY (pooled)</option>');
     scopeSel.innerHTML = opts.join('');
     var completed = qs.filter(function(q){return !q.inProgress;});
-    scopeSel.value = completed.length ? completed[completed.length-1].quarter : '__pooled';
+    scopeSel.value = completed.length ? completed[completed.length-1].quarter
+                   : (qs.length ? qs[qs.length-1].quarter : '__pooled');
     scopeSel.dataset.built = '1';
   }
 
@@ -1593,10 +1598,12 @@ function renderPolicyLab() {
     return '<div class="pl-fy-chip'+(r.inProgress?' inprog':'')+'"><div style="font-size:10px;font-weight:800;color:var(--slate)">'+esc(r.quarter)+(r.inProgress?' · in progress':'')+'</div><b>'+r.pct+'%</b><div style="font-size:10px;color:var(--slate)">'+r.comp+' / '+r.n+' compliant</div></div>';
   }).join('') + '</div>';
 
-  // Selected scope → evaluated population for heatmap + behaviors
+  // Selected scope → evaluated population for heatmap + behaviors. Includes the
+  // in-progress quarter (pooled unions every quarter, current included) so the
+  // grid is usable even before any quarter has completed.
   var scope = scopeSel ? scopeSel.value : '__pooled';
   var pool = [];
-  qs.filter(function(q){return !q.inProgress;}).forEach(function(q){
+  qs.forEach(function(q){
     if (scope === '__pooled' || scope === q.quarter) q.people.forEach(function(p){ pool.push(evalPerson_(p,q,s)); });
   });
   var dim = document.getElementById('pl-dim').value;
