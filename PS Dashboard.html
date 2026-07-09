@@ -2472,6 +2472,7 @@ function loadData(forceRefresh) {
 // time), starts after a short delay so first paint wins, and never touches
 // loadData's concurrency guards (_loadingInFlight/_loadSeq) — separate channel.
 var _prefetchInFlight = {};   // teamKey → true while its background fetch runs
+var _prefetchFailed   = {};   // teamKey → true after a failed prefetch — no background retry until Refresh
 var _prefetchWanted   = null; // team the user toggled to while its prefetch was in flight
 var _prefetchTimer    = null;
 
@@ -2486,7 +2487,7 @@ function prefetchNext_() {
   var next = null;
   for (var i = 0; i < teams.length; i++) {
     var k = teams[i].key;
-    if (!STATE.teamData[k] && !_prefetchInFlight[k]) { next = k; break; }
+    if (!STATE.teamData[k] && !_prefetchInFlight[k] && !_prefetchFailed[k]) { next = k; break; }
   }
   if (!next) return;                       // everything cached — chain ends
   var reqKey = next;
@@ -2494,7 +2495,13 @@ function prefetchNext_() {
   google.script.run
     .withSuccessHandler(function(p) {
       delete _prefetchInFlight[reqKey];
-      if (p && p.denied) return;           // access revoked — stop the chain
+      if (p && p.denied) {
+        if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
+          _prefetchWanted = null;
+          showAccessDenied_(p.email);      // user is staring at the loading screen — resolve it
+        }
+        return;                            // access revoked — stop the chain
+      }
       if (p && p.ok && p.meta && p.meta.team) {
         var servedKey = p.meta.team.key;
         if (!STATE.teamData[servedKey]) STATE.teamData[servedKey] = p;
@@ -2509,6 +2516,8 @@ function prefetchNext_() {
         _prefetchWanted = null;
         loadData(false);                   // bad payload while the user waits — fetch in the foreground
         return;
+      } else if (!STATE.teamData[reqKey]) {
+        _prefetchFailed[reqKey] = true;    // bad payload, nobody waiting — don't retry this page load
       }
       prefetchNext_();
     })
@@ -2518,6 +2527,7 @@ function prefetchNext_() {
         _prefetchWanted = null;
         loadData(false);                   // user is waiting — fetch in the foreground
       } else {
+        _prefetchFailed[reqKey] = true;    // no background retry until the next Refresh
         console.warn("Team prefetch failed for " + reqKey + ": " + e);
         prefetchNext_();
       }
@@ -2542,6 +2552,7 @@ function onDataLoaded(payload, wasRefresh) {
     Object.keys(STATE.teamData).forEach(function(k) {
       if (k !== servedTeam) delete STATE.teamData[k];
     });
+    _prefetchFailed = {};   // a fresh rebuild deserves fresh retry attempts
   }
   renderTeamToggle_();
   var h1El = document.querySelector(".header-title h1");
