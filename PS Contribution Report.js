@@ -1277,11 +1277,8 @@ function readPSRoster_() {
     const cls    = String(iClass  !== -1 ? row[iClass]  : "").trim();
     const status = String(iStatus !== -1 ? row[iStatus] : "").trim().toLowerCase();
     if (!name || cls !== CONFIG_PS.PS_CLASS) return;
-    // Department must be 'Services' when the column is present and non-empty
-    if (iDept !== -1) {
-      const dept = String(row[iDept] || "").trim();
-      if (dept && dept !== CONFIG_PS.PS_DEPT) return;
-    }
+    // Company-wide roster: no Department filter here. Team membership (Services /
+    // R&D / Sales & Success) is tagged in getPSReportData via teamForProfile_.
     const termDate   = iTermDate !== -1 ? String(row[iTermDate] || "").trim() : "";
     const isInactive = (status && /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i.test(status)) || !!termDate;
     if (isInactive) return;
@@ -1298,7 +1295,9 @@ function readPSRoster_() {
     const hiredRecently = hireDate && (Date.now() - hireDate.getTime()) < thresholdMs;
     const isRampUp   = flagNo ? false : (flagYes || !!hiredRecently);
 
-    roster.set(normPS_(name), {
+    const norm = normPS_(name);
+    if (roster.has(norm)) Logger.log(`⚠️ Roster: duplicate normalized name "${name}" — later row overwrites the earlier one (name-joined metrics may mix people).`);
+    roster.set(norm, {
       name,
       internalId:     String(iInternalId !== -1 ? row[iInternalId] : "").trim(),
       employeeNumber: String(iEmpNum     !== -1 ? row[iEmpNum]     : "").replace(/,/g, "").trim(),
@@ -1313,7 +1312,8 @@ function readPSRoster_() {
     });
   });
 
-  log_(`Roster: ${roster.size} PS employees loaded.`);
+  log_(`Roster: ${roster.size} employees loaded (company-wide).`);
+  log_(`Roster distinct Department values: ${[...new Set([...roster.values()].map(p => p.dept).filter(Boolean))].join(" | ")}`);
   if (roster.size > 0) {
     log_(`  Sample names: ${[...roster.values()].slice(0,5).map(e => e.name).join(", ")}`);
   }
