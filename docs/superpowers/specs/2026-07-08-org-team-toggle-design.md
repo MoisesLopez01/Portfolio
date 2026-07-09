@@ -23,7 +23,7 @@ Sales) attach cleanly later.
 | Metric source coverage | SI, Goals, Kudos, and PTO Accumulation sheets all contain rows for every department already |
 | Sales & Success phasing | Ships now with the four shared metrics; HubSpot metrics (meetings, deal size, conversion, turn rate) are a later phase |
 | Toggle access | All roles, scope-aware: admins/viewers toggle freely; managers see only teams present in their org tree |
-| R&D / Sales scoring | Reuse `NONCONTRIB_DEFAULT_W_` (Goals 40 / Kudos 20 / SI 20 / PTO 20); rankings computed within each team; family × level matrix overrides still apply |
+| R&D / Sales scoring | Reuse `NONCONTRIB_DEFAULT_W_` (Goals 40 / Kudos 20 / SI 20 / PTO 20); rankings computed within each team; family × level matrix overrides still apply **Superseded 2026-07-09** by the team-aligned scoring spec (per-team blocks + hard metric mask). |
 | Architecture | Per-team payloads fetched on toggle (Approach A) — not one combined payload, not separate deployments |
 
 ## Architecture
@@ -190,7 +190,7 @@ Enforcement notes:
   turn rate) — will extend the `sales` entry's `metrics` list and add a reader.
 - Additional R&D-specific metrics ("later we can add more metrics data for them").
 - Per-team editable base weights (rejected in favor of existing NONCONTRIB policy
-  defaults + matrix overrides).
+  defaults + matrix overrides). **Superseded 2026-07-09** by the team-aligned scoring spec (per-team blocks + hard metric mask).
 
 ## Open items to verify during implementation
 

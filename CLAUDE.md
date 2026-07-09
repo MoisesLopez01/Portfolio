@@ -164,55 +164,37 @@ Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 
 Configurable per deployment via ⚖️ Scoring Weights (☰ menu, admin only) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
-### Family × Level weight matrix (company-wide)
+### Team-aligned scoring matrix (2026-07-09)
 
-Weights can be tuned **per job family and level** on top of the flat base above.
-Spec: `docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-design.md`.
+Scoring groups follow the org team toggle (`TEAMS_` in `PS Teams.js`): **team gates,
+family tunes**. Spec: `docs/superpowers/specs/2026-07-09-team-aligned-scoring-design.md`.
 
-- **Sheets of record** (auto-seeded the first time an admin opens ⚖️ Scoring Weights):
-  - `Job Catalog` — Job Title → Code / Family / Track / Level / Role Group.
-    Seeded from `COMPANY_ROLES_`; titles matched via `normPS_()`. Role groups are display-only.
-  - `PS Scoring Matrix` — rows = `Family × Metric`, columns = levels `I1–I8, M4–M10`.
-    Stores per-family overrides only; blank cell = inherit the flat base weight. (No `DEFAULT`
-    block — the company default lives solely in the flat Scoring Weights / `PS Settings` sheet.)
-- **Single source for the company default**: the flat base weights (Scoring Weights section →
-  `readWeightSettings_()`). There is **no editable/stored `DEFAULT` matrix block** — the matrix
-  holds only per-family *overrides*. The Scoring Weights page shows the company default as a
-  read-only mirror of the flat weights.
-- **Contributor model (2026-07-07)** — the matrix has exactly four kinds of blocks:
-  - **PS-team families** `PS_TEAM_FAMILIES_` = JF007/JF008/JF009/JF018 — per-level cells,
-    blank inherits the flat base.
-  - **COE team** `COE_FAMILY_CODE_` = JF004 — one shared `ALL` cell for every level,
-    blank inherits the flat base.
-  - **Non-contributors** `NONCONTRIB_CODE_` — every *other* catalogued family (operational
-    roles embedded in Services). They score only on **Goals/PTO/SI/Kudos**
-    (`NONCONTRIB_DEFAULT_W_` = goals 40 / kudos 20 / si 20 / pto 20; tracked/planned/rcr 0).
-    Blank cells in the `NONCONTRIB/ALL` block inherit those **policy defaults, not the base** —
-    a reset must never re-enable tracked/planned/RCR for these roles.
-  - **SERVICES catch-all** — unchanged: uncatalogued Services-dept titles.
-- **Resolution order per employee** (`weightsForEmployee_`):
-  Job Title → catalog → (uncatalogued → SERVICES/ALL) → (JF004 → COE ALL cell) →
-  (non-PS family → NONCONTRIB ALL cell, blanks fill from `NONCONTRIB_DEFAULT_W_`) →
-  PS family `(family, levelKey)` cell (blank metric inherits the flat base) →
-  `readWeightSettings_()` → `DEFAULT_WEIGHTS_`.
-- **Per-employee weights on the client**: the payload attaches `emp.scoreWeights` only when the
-  resolved weights differ from the flat base (reference check in `computePSReport_`).
-  `computeRkScore` uses `emp.scoreWeights || SCORE_W`, so base-weight employees still follow
-  live weight previews while COE/non-contributor/override employees score with their own rates.
-- **Services Team catch-all**: the roster is filtered to Department = "Services"
-  (`CONFIG_PS.PS_DEPT`), so titles missing from the Job Catalog are still Services-team
-  members — they score with the `SERVICES`/`ALL` matrix block (one weight set, all levels;
-  blank = inherit base) instead of silently using the company default. Rendered as the
-  "Services Team" block (with the uncatalogued-titles list) at the top of the matrix editor.
-- Misses are surfaced in the payload as `weightAudit` and in the Scoring Weights page's
-  Services Team block ("view list").
-- All family blocks render **collapsed**; the Custom/Inheriting badge signals which have
-  overrides.
-- Archived families `JF006/JF010/JF011/JF012` are never seeded.
-- Editor: ☰ menu → ⚖️ Scoring Weights → "Scoring Weights by Family & Level" (admin only) →
-  `getScoringConfig()` / `saveScoringMatrix()` (busts the report cache on save).
-- Tests: run `_test_weightsResolver()` in the GAS editor (also runnable in Node with a
-  stubbed `Logger`).
+- **Sheet of record**: `PS Scoring Matrix`, schema `Team | Family | Metric | I1–I8,
+  M4–M10 | ALL`. Blocks exist per **(team, family)** pair where the family has active
+  members in that team — a family spanning two teams has independent blocks. The `ALL`
+  column is a block-wide value on any family (a level cell beats it); `Family = ALL`
+  is the per-team uncatalogued catch-all. A legacy (pre-Team-column) sheet is mapped
+  on read by `migrateLegacyMatrix_`; the first save rewrites the new schema, and saves
+  **merge** over stored blocks so unrendered (team, family) pairs survive.
+- **Resolution** (`weightsForEmployee_`): `emp.team` → catalog hit →
+  `matrix[team][family][level]` → family `ALL` cell → team catch-all (`ALL`/`ALL`) →
+  `blockFillBase_(team, family, base)` → **hard mask** to `team.metrics`
+  (`maskToTeamMetrics_`) — R&D / Sales members can never carry tracked/planned/RCR
+  weight, even from hand-edited sheet rows.
+- **Fill defaults** (`blockFillBase_`): Services natives (JF007/8/9/018), JF004-in-
+  Services, and catch-alls inherit the flat base; embedded ops families under Services
+  inherit `RND_DEFAULT_W_` (Goals 40/Kudos 20/SI 20/PTO 20 — never re-enables
+  tracked/planned/RCR); R&D → `RND_DEFAULT_W_`; Sales → `SALES_DEFAULT_W_` (own
+  constant, same seed values, extended in the HubSpot phase).
+- **Per-employee weights on the client**: unchanged — `emp.scoreWeights` attaches only
+  when the resolved weights differ from the flat base (reference check); base-inherit
+  Services natives follow live weight previews via `SCORE_W`.
+- **Editor**: ☰ → ⚖️ Scoring Weights → matrix section renders three team separators
+  (Services / R&D / Sales & Success) with family blocks placed by active membership
+  (`getScoringConfig().sections`) plus a per-team "Uncatalogued titles" catch-all.
+  `saveScoringMatrix()` validates metrics against the team's set and busts the cache.
+- Tests: `_test_weightsResolver()` and `_test_matrixMigration()` — GAS editor or Node
+  (eval both PS files with a stubbed `Logger`).
 
 Scoring caps:
 - `SCORE_TRACKED_RATIO = 0.9` — tracked/planned threshold for full credit
@@ -239,9 +221,21 @@ All `⚠️` and `❌` prefixed calls use `Logger.log` directly and are always o
 
 ## Cache
 
-`getPSReportData()` caches its JSON response in `CacheService.getScriptCache()` for 5 minutes.
+`getPSReportData()` caches its JSON response in `CacheService.getScriptCache()` via
+`cachePutLarge_()` / `cacheGetLarge_()`: the JSON is **gzipped (~10× smaller) and split into
+90 KB chunks** (`<key>_0..n` + `<key>_meta`), because CacheService rejects any single value
+over 100 KB — a plain `cache.put()` of the report payload fails silently, which historically
+made every load a cold multi-minute compute. A missing chunk on read is treated as a clean miss.
+TTL is `CONFIG_PS.CACHE_TTL_SEC` (65 min).
+
+**Warmer:** `warmReportCache()` runs on a time trigger (install once by running
+`setupCacheWarmer()` in the GAS editor as the owner; interval = `CONFIG_PS.CACHE_WARM_EVERY_MIN`,
+30 min) and force-rebuilds the admin-scope entry, so admin/viewer loads are warm ~always.
+Data can therefore lag sheet edits by up to the warm interval — the Refresh button
+(`loadData(true)`) always bypasses cache for a live read.
+
 Cache key: `ps_v<VER>_admin` (for admin/viewer) or `ps_v<VER>_<email>` (for manager-scoped views),
 where `<VER>` is `PS_CACHE_VER` in Script Properties. `saveWeightSettings()` and `saveScoringMatrix()`
 call `bustReportCache_()` which bumps `PS_CACHE_VER`, stranding **all** prior-version entries at once
 (admin + every manager scope) — CacheService can't enumerate keys, so versioning is how a save takes
-effect immediately for everyone, not just the saver. Force-bypass: the Refresh button (`loadData(true)`).
+effect immediately for everyone, not just the saver.
