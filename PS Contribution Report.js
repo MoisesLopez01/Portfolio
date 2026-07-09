@@ -204,10 +204,18 @@ function cacheGetLarge_(cache, key) {
 // and stay warm for CACHE_TTL_SEC. The Refresh button always bypasses cache.
 function warmReportCache() {
   const t0 = Date.now();
-  const res = getPSReportData(true);
-  const secs = Math.round((Date.now() - t0) / 1000);
-  if (res && res.ok) Logger.log(`✅ warmReportCache: rebuilt in ${secs}s`);
-  else Logger.log(`❌ warmReportCache after ${secs}s: ${(res && res.error) || "denied/unknown"}`);
+  // Services first (heaviest + most-visited). GAS trigger runs are capped at
+  // ~6 minutes — stop starting new teams past the safety threshold; the next
+  // 30-min run picks the skipped ones up.
+  const TIME_BUDGET_MS = 4.5 * 60 * 1000;
+  TEAMS_.forEach(t => {
+    if (Date.now() - t0 > TIME_BUDGET_MS) { Logger.log(`⚠️ warmReportCache: time budget spent — skipped "${t.key}"`); return; }
+    const s0 = Date.now();
+    const res = getPSReportData(true, t.key);
+    const secs = Math.round((Date.now() - s0) / 1000);
+    if (res && res.ok) Logger.log(`✅ warmReportCache[${t.key}]: rebuilt in ${secs}s`);
+    else Logger.log(`❌ warmReportCache[${t.key}] after ${secs}s: ${(res && res.error) || "denied/unknown"}`);
+  });
 }
 
 // One-time setup — run manually from the GAS editor as the dashboard owner.
