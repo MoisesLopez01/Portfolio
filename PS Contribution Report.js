@@ -278,19 +278,19 @@ function saveWeightSettings(weightsObj) {
 }
 
 // ============================================================
-// SCORING MATRIX — Family × Level weights + Job Catalog
-// Spec: docs/superpowers/specs/2026-06-10-score-weight-settings-by-family-level-design.md
+// SCORING MATRIX — Team → Family × Level weights + Job Catalog
+// Spec: docs/superpowers/specs/2026-07-09-team-aligned-scoring-design.md
 //
-// Single source of truth for the company default = the flat base weights
-// (the "Scoring Weights" Settings section → readWeightSettings_()). The matrix
-// only stores per-family OVERRIDES; there is no separate editable DEFAULT block.
+// Team gates, family tunes: the employee's resolved team (TEAMS_ in PS Teams.js)
+// hard-masks which metrics can carry weight and picks the blank-cell fill
+// defaults; the family × level matrix cell tunes within that.
 //
-// Resolution order per employee:
-//   Job Title → Job Catalog → (family, levelKey) → matrix cell
-//   (blank metric in a family cell inherits the flat base weight)
-//   → base weights (readWeightSettings_) → DEFAULT_WEIGHTS_.
-// Any miss falls back to base, so behaviour never regresses below the
-// single-global-weights model.
+// Resolution order per employee (weightsForEmployee_):
+//   emp.team → Job Catalog hit → matrix[team][family][levelKey]
+//   → family ALL cell → team catch-all (ALL/ALL)
+//   → blockFillBase_(team, family, base) → mask to team.metrics.
+// Blank cells inherit blockFillBase_; the company default for Services natives
+// remains the flat base weights (readWeightSettings_) → DEFAULT_WEIGHTS_.
 // ============================================================
 
 const SCORING_MATRIX_SHEET_ = "PS Scoring Matrix";
@@ -731,7 +731,9 @@ function seedScoringMatrix_(famsByTeam) {
 }
 
 // Exported — full config for the Settings-tab matrix editor (Admin only).
-// Seeds both sheets on first open so the feature bootstraps itself.
+// Groups families under the org-team sections (spec §5): placement is driven by
+// where active roster members sit, so a family spanning two teams appears under
+// both. Seeds both sheets on first open so the feature bootstraps itself.
 function getScoringConfig() {
   try {
     const access = checkDashboardAccess();
@@ -739,12 +741,57 @@ function getScoringConfig() {
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let seeded = false;
-    if (!ss.getSheetByName(JOB_CATALOG_SHEET_))    { seedJobCatalog_();    seeded = true; }
-    if (!ss.getSheetByName(SCORING_MATRIX_SHEET_)) { seedScoringMatrix_(); seeded = true; }
+    if (!ss.getSheetByName(JOB_CATALOG_SHEET_)) { seedJobCatalog_(); seeded = true; }
 
     const catalog = readJobCatalog_();
-    const matrix  = readScoringMatrix_();
-    delete matrix.DEFAULT; // company default now lives only in the flat base weights
+
+    // Tag the company-wide roster with teams (same rule as getPSReportData) and
+    // count active non-crew members per (team, family) + uncatalogued per team.
+    const roster = readPSRoster_();
+    roster.forEach(p => { p.team = teamForProfile_(p, catalog); });
+    const famCounts = {};   // { teamKey: { famCode: n } }
+    const uncat     = {};   // { teamKey: n }
+    const unmapped  = {};   // Services-team uncatalogued titles (audit list)
+    roster.forEach(p => {
+      if (p.isCrewMember) return;
+      const hit = catalog.get(normTitleKey_(p.jobTitle)) || titleCodeInfo_(p.jobTitle);
+      if (!hit) {
+        uncat[p.team] = (uncat[p.team] || 0) + 1;
+        if (p.team === "services") unmapped[p.jobTitle] = (unmapped[p.jobTitle] || 0) + 1;
+        return;
+      }
+      if (!famCounts[p.team]) famCounts[p.team] = {};
+      famCounts[p.team][hit.family] = (famCounts[p.team][hit.family] || 0) + 1;
+    });
+
+    if (!ss.getSheetByName(SCORING_MATRIX_SHEET_)) {
+      const famsByTeam = {};
+      TEAMS_.forEach(t => { famsByTeam[t.key] = Object.keys(famCounts[t.key] || {}); });
+      seedScoringMatrix_(famsByTeam);
+      seeded = true;
+    }
+
+    const matrix = readScoringMatrix_();
+    const base   = readWeightSettings_();
+    const famName = {}, famIdx = {};
+    ACTIVE_FAMILIES_.forEach((f, i) => { famName[f.code] = f.name; famIdx[f.code] = i; });
+
+    const sections = TEAMS_.map(t => ({
+      team: { key: t.key, label: t.label, metrics: t.metrics },
+      families: Object.keys(famCounts[t.key] || {})
+        .sort((a, b) => (famIdx[a] || 0) - (famIdx[b] || 0))
+        .map(c => ({ code: c, name: famName[c] || c, count: famCounts[t.key][c],
+                     fill: blockFillBase_(t.key, c, base) })),
+      catchAll: { count: uncat[t.key] || 0, fill: blockFillBase_(t.key, ALL_KEY_, base) },
+    }));
+
+    // Pre-create every rendered (team, family) block so the editor's save payload
+    // replaces exactly the rendered blocks (merge semantics in saveScoringMatrix).
+    sections.forEach(s => {
+      if (!matrix[s.team.key]) matrix[s.team.key] = {};
+      s.families.forEach(f => { if (!matrix[s.team.key][f.code]) matrix[s.team.key][f.code] = {}; });
+      if (!matrix[s.team.key][ALL_KEY_]) matrix[s.team.key][ALL_KEY_] = {};
+    });
 
     // Roles grouped per family/level for the editor's read-only reference rows.
     const rolesByFamily = {};
@@ -755,38 +802,11 @@ function getScoringConfig() {
       fam.levels[e.levelKey].push({ title: e.title, group: e.group, code: e.code });
     });
 
-    // Roster classification: unmapped titles (SERVICES catch-all), COE headcount,
-    // and non-contributor families actually present in the roster.
-    const unmapped = {};
-    const nonContribByFam = {};
-    let coeCount = 0;
-    readPSRoster_().forEach(p => {
-      if (p.isCrewMember) return;
-      const hit = catalog.get(normTitleKey_(p.jobTitle)) || titleCodeInfo_(p.jobTitle);
-      if (!hit) {
-        unmapped[p.jobTitle] = (unmapped[p.jobTitle] || 0) + 1;
-      } else if (hit.family === COE_FAMILY_CODE_) {
-        coeCount++;
-      } else if (PS_TEAM_FAMILIES_.indexOf(hit.family) === -1) {
-        nonContribByFam[hit.family] = (nonContribByFam[hit.family] || 0) + 1;
-      }
-    });
-    const famName = {};
-    ACTIVE_FAMILIES_.forEach(f => { famName[f.code] = f.name; });
-
     return {
-      ok: true, seeded, matrix, rolesByFamily,
-      families:    ACTIVE_FAMILIES_.map(f => ({ code: f.code, name: f.name, category: familyCategory_(f.code) })),
-      coeFamily:   { code: COE_FAMILY_CODE_, name: famName[COE_FAMILY_CODE_] || COE_FAMILY_CODE_, count: coeCount },
-      nonContrib:  {
-        code: NONCONTRIB_CODE_,
-        defaults: NONCONTRIB_DEFAULT_W_,
-        families: Object.keys(nonContribByFam).sort()
-          .map(c => ({ code: c, name: famName[c] || c, count: nonContribByFam[c] })),
-      },
+      ok: true, seeded, matrix, sections, rolesByFamily,
       levelCols:   LEVEL_COLS_,
       metrics:     WEIGHT_METRICS_,
-      baseWeights: readWeightSettings_(),
+      baseWeights: base,
       unmappedTitles: Object.keys(unmapped).map(t => ({ jobTitle: t, count: unmapped[t] })),
     };
   } catch(e) {
