@@ -46,9 +46,13 @@ const TEAMS_ = [
 Functions:
 
 - `teamForProfile_(profile, catalog)` — the hybrid membership rule. **Order matters:**
-  Department = `CONFIG_PS.PS_DEPT` wins first, so a JF004 employee embedded in the
-  Services department stays in the Services team and today's population is unchanged.
+  Department = `CONFIG_PS.PS_DEPT` **or blank/missing** wins first, so a JF004 employee
+  embedded in the Services department stays in the Services team and today's population
+  is byte-identical (the pre-toggle filter always kept blank-dept rows in Services).
   Then JF004 (via the Job Catalog title match, `normPS_`) → `sales`. Everyone else → `rnd`.
+  Scoring mirrors the same rule: `weightsForEmployee_` routes uncatalogued employees with
+  a non-empty non-Services department to the NONCONTRIB policy defaults (never the flat
+  base), while Services/blank-dept uncatalogued titles keep the SERVICES/ALL catch-all.
 - `teamByKey_(key)` — registry lookup; unknown key returns the `services` entry.
 - `teamRoster_(fullRoster, teamKey)` — filters the roster Map to one team.
 - `teamHasMetric_(team, key)` — backend twin of the frontend `hasMetric_` gate.
@@ -163,8 +167,8 @@ Enforcement notes:
 - **Unit:** `_test_teamForProfile_()` — Node-runnable with stubbed `Logger`, same
   pattern as `_test_weightsResolver()`. Cases: Services-dept member (any family),
   JF004 inside Services dept (→ `services`), JF004 outside Services (→ `sales`),
-  non-Services uncatalogued title (→ `rnd`), empty/missing dept (→ `rnd` unless
-  JF004), unknown team key fallback.
+  non-Services uncatalogued title (→ `rnd`), empty/missing dept (→ `services`,
+  preserving the pre-toggle filter's semantics), unknown team key fallback.
 - **Manual QA checklist:**
   1. Admin toggles all three teams; headcounts sane; Services view byte-identical to pre-change.
   2. R&D supervisor logs in → manager role, sees only their tree, no toggle (single team).
