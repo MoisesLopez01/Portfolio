@@ -1622,8 +1622,9 @@ function readSI_PS_(roster, teamSubset, ctx) {
 
 // Reads the Accumulation Cost sheet and builds a per-employee profile keyed by Employee Number:
 //   { balanceHistory: [{ date, balance }],  plannedUsageDates: [Date, …] }
-// Filters to Department: Name = CONFIG_PS.PS_DEPT ("Services").
-function readPTOAccumulationProfiles_() {
+// `deptSet` (Set<string>) filters rows to the requested team's departments;
+// a missing/empty set keeps every department.
+function readPTOAccumulationProfiles_(deptSet) {
   try {
     Logger.log(`🕐 readPTOAccumulationProfiles_: opening ${CONFIG_PS.PTO_ACCUM_SS_ID}`);
     const ss = SpreadsheetApp.openById(getExternalSSIds_().ptoAccum);
@@ -1668,7 +1669,7 @@ function readPTOAccumulationProfiles_() {
     for (let i = 1; i < rawData.length; i++) {
       const row  = rawData[i];
       const dept = String(row[COL.dept] || "").trim();
-      if (dept !== CONFIG_PS.PS_DEPT) { droppedDept++; continue; }
+      if (deptSet && deptSet.size > 0 && !deptSet.has(dept)) { droppedDept++; continue; }
 
       const empRaw = row[COL.empNum];
       const empNum = String(typeof empRaw === "number" ? Math.round(empRaw) : (empRaw || ""))
