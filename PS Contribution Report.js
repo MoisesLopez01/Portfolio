@@ -3073,9 +3073,21 @@ function getPSReportData(bustCache) {
   }
 }
 
+// Empty stand-ins for readers a team's metric set skips (R&D / Sales have no
+// RCR, Tracked or Planned data). Shapes mirror the fields consumers touch.
+function emptyRcrResult_() {
+  return { lastMonth: null, teamRCR: null, tier: "No Data",
+           byEmployee: {}, rcrHistory: [], rcrByEmployee: {} };
+}
+function emptyTrackedResult_() { return { _lastExport: null }; }
+
 // All data reads, FTE filtering, and result assembly for getPSReportData.
-// Called after access control and scope resolution; the caller handles caching.
-function computePSReport_(access, roster, managerScopeName, weeks, weights) {
+// Called after access control, scope resolution and team filtering; the caller
+// handles caching. `team` = TEAMS_ entry served; `jobCatalog` = readJobCatalog_()
+// (read once by the caller for team tagging); `availableTeams` = teams present
+// in the caller's scope (drives the frontend toggle).
+function computePSReport_(access, roster, managerScopeName, weeks, weights, team, jobCatalog, availableTeams) {
+  const hasM = k => teamHasMetric_(team, k);
   // ── Active / FTE subset maps ──────────────────────────────────────────────
   const active      = activeRoster_(roster);
   const rampUpCount = roster.size - active.size;
@@ -3093,10 +3105,12 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // by simple subtraction, so both full-roster and FTE variants are read separately.
   // Single read each — byEmployee covers all active, team aggregates scope to FTE.
   const ctx    = computeFiscalContext_();
-  const rcrAll = readRCR_PS_(active, fteActive);
+  const rcrAll = hasM("rcr") ? readRCR_PS_(active, fteActive) : emptyRcrResult_();
   const siAll  = readSI_PS_(active, fteActive, ctx);
+  Logger.log(`SI coverage [${team.key}]: ${Object.keys(siAll.byEmployee || {}).length} of ${active.size} active employees have an SI value`);
 
-  const ptoProfiles = readPTOAccumulationProfiles_();   // shared (loaded once)
+  const teamDepts   = new Set([...roster.values()].map(p => p.dept).filter(Boolean));
+  const ptoProfiles = readPTOAccumulationProfiles_(teamDepts);   // shared (loaded once)
   // Hoisted here (rather than down near subtractPTOFromPlanned_) so both
   // readGoalsEngagement_ calls below can exempt full-week-PTO rocketeers from the
   // self-comment pacing rule using the same empNum→normName bridge.
@@ -3149,8 +3163,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   const ptoQ4FTE = readPTOPlanningHealthByWeek_(fteRoster, continuityQPastWeeks, ptoProfiles);
 
   const kudosAll   = readKudosByWeek_(active,  extWeeks);
-  const trackedAll = readTrackedTimeByWeek_(roster, extWeeks);
-  const plannedAll = readPlannedTimeByWeek_(roster, extWeeks);
+  const trackedAll = hasM("tracked") ? readTrackedTimeByWeek_(roster, extWeeks) : emptyTrackedResult_();
+  const plannedAll = hasM("planned") ? readPlannedTimeByWeek_(roster, extWeeks) : {};
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
   const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx, ptoProfiles, empNumToNorm);
   const goalsAll = mergeGoalsResults_(goalsPrevResult, goalsCurrentResult);
@@ -3226,7 +3240,6 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
   // Family×Level scoring config: matrix + catalog resolve per-person weights;
   // `weights` (flat base) remains the universal fallback, so an unseeded
   // deployment scores exactly as before.
-  const jobCatalog    = readJobCatalog_();
   const scoringMatrix = readScoringMatrix_();
   // Ship each employee's resolved weights ONLY when they differ from the flat base
   // (COE/non-contributor/override blocks). weightsForEmployee_ returns the base
@@ -3319,6 +3332,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights) {
     phByWeek,
     meta: {
       generatedAt:      new Date().toISOString(),
+      team:           { key: team.key, label: team.label, metrics: team.metrics },
+      availableTeams: availableTeams || [],
       lastSheetEdit,
       trackedTimeLastExport: trackedAll._lastExport || null,
       currentWeekLabel: curWeek.label,
