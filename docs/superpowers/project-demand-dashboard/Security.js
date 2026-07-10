@@ -44,26 +44,28 @@ const SEC_PD = {
 
   // ── 2a. DEFAULT ADMINS — full view + manage access list ──
   DEFAULT_ADMINS: [
-    "alex.lopez@servicerocket.com",     // PS Director
+    "gonzalo.riquelme@servicerocket.com",     // PS Director
+    "william.mock@servicerocket.com",
+    "robert.castaneda@servicerocket.com"
   ],
 
   // ── 2b. DEFAULT VIEWERS — read-only (C-suite stakeholders) ──
-  // Not used while OPEN_ACCESS_DEFAULT is true (see below) — everyone who isn't an
-  // admin already gets viewer access. Add explicit emails here if OPEN_ACCESS_DEFAULT
-  // is ever flipped back to false and viewers need to be re-enumerated individually.
+  // Always active — no UI step needed. Add permanent read-only stakeholders here;
+  // for temporary or ad-hoc access, use the 🔒 Access button in the dashboard
+  // (admin-only) instead — those entries live in Script Properties.
   DEFAULT_VIEWERS: [
     // "ceo@servicerocket.com",            // sample — Executive stakeholder
     // "coo@servicerocket.com",            // sample — Executive stakeholder
   ],
 
-  // ── Open Access default ──
-  // true = everyone who isn't in DEFAULT_ADMINS/runtime-admins gets viewer access —
-  // no per-email allowlist needed for viewers. NOTE: this is enforced by the app's own
-  // email check, but the *deployment's* own Web App access setting (Apps Script
-  // Deploy > Manage deployments > "Who has access") is a separate, outer gate — set it
-  // to "Anyone within [domain]" (not public "Anyone") so this doesn't also expose the
-  // dashboard outside the org regardless of this flag.
-  OPEN_ACCESS_DEFAULT: true,
+  // ── Open Access default (false = locked, true = anyone with link) ──
+  // false = every user is checked against the admin/viewer allowlists; unlisted
+  // users get the Access Restricted page. Flip to true only for an all-hands/demo
+  // (or toggle it at runtime from the 🔒 Access panel — the Script Property wins
+  // over this code default once set). NOTE: the *deployment's* Web App access
+  // setting (Deploy > Manage deployments > "Who has access") is a separate, outer
+  // gate — keep it "Anyone within [domain]", never public "Anyone".
+  OPEN_ACCESS_DEFAULT: false,
 };
 
 // ── PRIVATE ──────────────────────────────────────────────────
@@ -141,6 +143,9 @@ function getDemandAccessSettings() {
 function saveDemandAccessSettings(settings) {
   const access = checkDemandAccess();
   if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+
+  // Editor "Run" invokes with no args — treat as a no-op save instead of throwing.
+  settings = settings || {};
 
   const p = PropertiesService.getScriptProperties();
 

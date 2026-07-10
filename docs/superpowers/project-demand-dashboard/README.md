@@ -70,9 +70,12 @@ Inherited from `PS Security.js`, scoped to an exec view (no manager org-tree sco
 - **Default admins / viewers** (`SEC_PD.DEFAULT_ADMINS` / `DEFAULT_VIEWERS`) — code-level, always
   active. Add permanent C-suite / PS-leadership stakeholders here.
 - **Runtime admins / viewers** — Script Properties `PD_DASH_ADMINS` / `PD_DASH_VIEWERS`
-  (comma-separated), additive on top of defaults, managed by `saveDemandAccessSettings()`.
+  (comma-separated), additive on top of defaults. Managed from the dashboard's **🔒 Access**
+  button (header, admins only) → add/remove emails, toggle Open Access, Save. Backed by
+  `getDemandAccessSettings()` / `saveDemandAccessSettings()`.
 - **Open access** — `SEC_PD.OPEN_ACCESS_DEFAULT` (default `false`) or `PD_DASH_OPEN_ACCESS`. Set
-  `true` only for an all-hands/demo, then flip back.
+  `true` only for an all-hands/demo, then flip back. Note: a stored `PD_DASH_OPEN_ACCESS`
+  property overrides the code default — check the 🔒 Access panel if access seems too open.
 
 Enforced **server-side** in both `doGet()` (denied users get a minimal "access restricted" page)
 and `getDemandData()` (returns an error model) — defense in depth, never client-only.

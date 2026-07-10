@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en" data-theme="light">
 <head>
 <base target="_top">
@@ -75,6 +75,39 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 /* state message */
 .stateMsg{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
   padding:28px;text-align:center;color:var(--muted);font-size:calc(14px*var(--scale));margin:22px 0}
+
+/* Access Control modal (admin-only) */
+.modal-back{position:fixed;inset:0;background:rgba(15,25,65,.45);display:flex;align-items:flex-start;
+  justify-content:center;padding:6vh 16px 16px;z-index:60;overflow-y:auto}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);
+  width:100%;max-width:560px;padding:calc(20px*var(--scale)) calc(22px*var(--scale))}
+.modal-h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.modal-h h2{font-size:calc(18px*var(--scale));font-weight:700}
+.modal-x{border:none;background:transparent;font-size:calc(16px*var(--scale));padding:4px 8px;color:var(--muted)}
+.modal-x:hover{color:var(--text);border:none}
+.acc-note{font-size:calc(12px*var(--scale));color:var(--muted);margin-bottom:14px}
+.acc-sec{margin-top:14px}
+.acc-sec h3{font-size:calc(13px*var(--scale));font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.acc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.acc-chip{display:inline-flex;align-items:center;gap:6px;font-family:monospace;font-size:calc(12px*var(--scale));
+  background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:4px 6px 4px 12px}
+.acc-chip.locked{padding-right:12px;border-style:dashed;color:var(--muted)}
+.acc-chip button{border:none;background:transparent;padding:0 4px;font-size:calc(12px*var(--scale));
+  color:var(--muted);line-height:1}
+.acc-chip button:hover{color:var(--warn);border:none}
+.acc-empty{font-size:calc(12px*var(--scale));color:var(--muted);font-style:italic;margin-bottom:8px}
+.acc-add{display:flex;gap:8px}
+.acc-add input{flex:1;font-family:monospace;font-size:calc(12.5px*var(--scale));padding:calc(7px*var(--scale)) 10px;
+  border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+.acc-add input:focus{outline:none;border-color:var(--orbe)}
+.acc-open{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px;border:1px solid var(--border);
+  border-radius:10px;background:var(--surface-2);font-size:calc(12.5px*var(--scale))}
+.acc-open input{width:16px;height:16px;flex:none;accent-color:var(--orbe)}
+.acc-open .warn-txt{color:var(--warn);font-weight:600}
+.acc-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px}
+.acc-status{font-size:calc(12px*var(--scale));color:var(--muted);margin-right:auto}
+.acc-status.ok{color:var(--pos)} .acc-status.err{color:var(--warn)}
 
 /* Panels */
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:calc(18px*var(--scale)) calc(18px*var(--scale)) calc(20px*var(--scale));margin-bottom:calc(20px*var(--scale))}
@@ -267,6 +300,14 @@ input[type=file]{display:none}
 .blend-bar-track{flex:1;background:var(--border);border-radius:3px;height:8px;overflow:hidden}
 .blend-bar-fill{height:100%;border-radius:3px}
 .blend-bar-count{font-size:calc(10px*var(--scale));font-weight:700;color:var(--text);width:24px;text-align:right;flex:none}
+.blend-body{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.blend-body .blend-bars{flex:1 1 240px;min-width:0}
+.blend-pie{flex:none;display:flex;align-items:center}
+.blend-pie svg{display:block;width:calc(110px*var(--scale));height:auto}
+.blend-pie .pie-slice{cursor:pointer;transition:opacity .1s}
+.blend-pie .pie-slice:hover{opacity:.85}
+.blend-pie .pie-slice.dim{opacity:.45}
+.blend-pie text{font-weight:700;pointer-events:none}
 /* Week window nav */
 .ta-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .ta-win-nav{display:flex;align-items:center;gap:4px}
@@ -312,8 +353,51 @@ input[type=file]{display:none}
     </div>
     <div class="head-actions">
       <span class="srcbadge" id="srcBadge">…</span>
+      <button id="accessBtn" style="display:none" title="Manage who can open this dashboard">🔒 Access</button>
       <button id="reloadBtn">⟳ Reload</button>
       <button id="themeBtn">◐ Theme</button>
+    </div>
+  </div>
+
+  <!-- Access Control modal (admin-only) — backed by getDemandAccessSettings()/
+       saveDemandAccessSettings() in Security.js; server re-checks the caller's role. -->
+  <div class="modal-back" id="accessModal" style="display:none">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="accessTitle">
+      <div class="modal-h">
+        <h2 id="accessTitle">🔒 Access Control</h2>
+        <button class="modal-x" id="accessClose" title="Close">✕</button>
+      </div>
+      <div class="acc-note">Who can open this dashboard. Changes here are additive on top of the
+        defaults hardcoded in <b>Security.js</b> and take effect immediately.</div>
+      <div id="accessBody" class="acc-note">Loading current access lists…</div>
+      <div id="accessForm" style="display:none">
+        <div class="acc-sec">
+          <h3>Admins — view + manage this list</h3>
+          <div class="acc-chips" id="accAdminChips"></div>
+          <div class="acc-add">
+            <input id="accAdminInput" type="email" placeholder="name@servicerocket.com" autocomplete="off">
+            <button id="accAdminAdd">+ Add admin</button>
+          </div>
+        </div>
+        <div class="acc-sec">
+          <h3>Viewers — read-only</h3>
+          <div class="acc-chips" id="accViewerChips"></div>
+          <div class="acc-add">
+            <input id="accViewerInput" type="email" placeholder="name@servicerocket.com" autocomplete="off">
+            <button id="accViewerAdd">+ Add viewer</button>
+          </div>
+        </div>
+        <label class="acc-open">
+          <input type="checkbox" id="accOpenAccess">
+          <span><b>Open Access</b> — anyone with the link can view (no email check).
+            <span class="warn-txt">Demo / all-hands only; switch back off afterwards.</span></span>
+        </label>
+        <div class="acc-foot">
+          <span class="acc-status" id="accStatus"></span>
+          <button id="accCancel">Cancel</button>
+          <button class="btn-primary" id="accSave">Save changes</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -606,6 +690,8 @@ function applyModel(model){
   SEL_ISO = CURRENT_ISO;
   updateBadge();
   if(DATA.rosterDimensions) populateAvailFilters();
+  // 🔒 Access button is admin-only (display gate — the server re-checks every call)
+  var ab=$('accessBtn'); if(ab) ab.style.display = model.viewerRole==='admin' ? '' : 'none';
 }
 
 function setState(msg){ var s=$('stateMsg'); if(s){ s.style.display=""; s.textContent=msg; } var d=$('dash'); if(d) d.style.display="none"; }
@@ -740,7 +826,7 @@ function renderCapChart(wt,cw){
   var firstPlan=-1; cw.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
   if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>';}
   // gridlines — rounded to a nice max so ticks read as deliberate (e.g. 6000/3000/0)
-  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
+  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line class="axis" x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
   // Y-axis label
   g+='<text x="12" y="'+(pad.t+ih/2)+'" text-anchor="middle" font-size="9" fill="'+css('--muted')+'" transform="rotate(-90 12 '+(pad.t+ih/2)+')">hrs</text>';
   // current-week divider — Actuals | Forecast, removes any ambiguity beyond the dashed-line convention
@@ -772,7 +858,7 @@ function renderCapChart(wt,cw){
       tPts.forEach(function(p){
         if(!p.h) return;
         var partial=p.wk.status==='now';
-        g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?'var(--surface)':'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"/>';
+        g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?hexVar('--surface'):'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"/>';
       });
     }
   }
@@ -999,6 +1085,43 @@ function sparkLegendHtml_(){
   return html;
 }
 
+// SVG pie companion to the blend distribution bars — same counts, same SPARK_COLORS,
+// same click-to-filter behavior. Slices under 7% skip the printed % (tooltip carries it).
+function blendPieSvg_(counts,total){
+  var labels={1:'1 project',2:'2 projects',3:'3 projects',4:'4+ projects'};
+  var C=60,R=54,LR=R*0.62,TAU=Math.PI*2;
+  var tiers=[1,2,3,4].filter(function(t){return counts[t]>0;});
+  if(!tiers.length)return '';
+  var svg='<svg viewBox="0 0 120 120" role="img" aria-label="Project load share of people" style="overflow:visible">';
+  var a0=-Math.PI/2;
+  tiers.forEach(function(tier){
+    var n=counts[tier],pct=n/total,pctLbl=Math.round(pct*100);
+    var isActive=AVAIL_BLEND===tier;
+    var a1=a0+pct*TAU,mid=(a0+a1)/2;
+    var ox=isActive?4*Math.cos(mid):0,oy=isActive?4*Math.sin(mid):0; // active slice pulls out along its mid-angle
+    var stroke=isActive?'var(--orbe)':'var(--surface-2)';
+    var dimCls=(AVAIL_BLEND&&!isActive)?' dim':'';
+    var title=esc(labels[tier]+' — '+n+(n===1?' person':' people')+' · '+pctLbl+'%');
+    var attrs=' class="pie-slice'+dimCls+'" fill="'+SPARK_COLORS[tier-1]+'" style="stroke:'+stroke+';stroke-width:2;stroke-linejoin:round" onclick="AVAIL_BLEND='+(isActive?0:tier)+';AVAIL_OPEN=null;renderAvailability()"';
+    if(pct>=0.999){ // arc endpoints coincide at 360° — a lone tier renders as a full circle
+      svg+='<circle cx="'+(C+ox)+'" cy="'+(C+oy)+'" r="'+R+'"'+attrs+'><title>'+title+'</title></circle>';
+    }else{
+      var x0=(C+ox+R*Math.cos(a0)).toFixed(1),y0=(C+oy+R*Math.sin(a0)).toFixed(1);
+      var x1=(C+ox+R*Math.cos(a1)).toFixed(1),y1=(C+oy+R*Math.sin(a1)).toFixed(1);
+      var large=(a1-a0)>Math.PI?1:0;
+      svg+='<path d="M'+(C+ox)+' '+(C+oy)+' L'+x0+' '+y0+' A'+R+' '+R+' 0 '+large+' 1 '+x1+' '+y1+' Z"'+attrs+'><title>'+title+'</title></path>';
+    }
+    if(pct>=0.07){
+      var lx=pct>=0.999?(C+ox):(C+ox+LR*Math.cos(mid)),ly=pct>=0.999?(C+oy):(C+oy+LR*Math.sin(mid));
+      var txtFill=tier<=2?'#0f1941':'#ffffff'; // light fills carry dark text, dark fills white
+      svg+='<text x="'+(+lx).toFixed(1)+'" y="'+(+ly).toFixed(1)+'" text-anchor="middle" dominant-baseline="central" font-size="11" fill="'+txtFill+'">'+pctLbl+'%</text>';
+    }
+    a0=a1;
+  });
+  svg+='</svg>';
+  return '<div class="blend-pie">'+svg+'</div>';
+}
+
 function blendDistChart_(allPeople,personQtdUniqueProjectCount){
   var counts={1:0,2:0,3:0,4:0};
   allPeople.forEach(function(np){
@@ -1008,7 +1131,7 @@ function blendDistChart_(allPeople,personQtdUniqueProjectCount){
   });
   var total=allPeople.length||1;
   var labels={1:'1 project',2:'2 projects',3:'3 projects',4:'4+ projects'};
-  var html='<div class="blend-chart"><div class="blend-chart-title">Project load distribution (whole quarter) — click to filter · colors match the sparkline above</div><div class="blend-bars">';
+  var html='<div class="blend-chart"><div class="blend-chart-title">Project load distribution (whole quarter) — click to filter · colors match the sparkline above</div><div class="blend-body"><div class="blend-bars">';
   [1,2,3,4].forEach(function(tier){
     var n=counts[tier];
     var pct=Math.round(n/total*100);
@@ -1020,7 +1143,7 @@ function blendDistChart_(allPeople,personQtdUniqueProjectCount){
     html+='<div class="blend-bar-count">'+n+'</div>';
     html+='</div>';
   });
-  html+='</div></div>';
+  html+='</div>'+blendPieSvg_(counts,total)+'</div></div>';
   return html;
 }
 
@@ -1595,14 +1718,22 @@ function showTip(e,html){ if(!tip)tip=$('tip'); tip.innerHTML=html; tip.style.op
 function hideTip(){ if(tip) tip.style.opacity=0; }
 
 /* ---------------- Save PNG (lazy-load html2canvas, graceful fallback) ---------------- */
-var H2C_URL="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+/* html2canvas-pro: drop-in fork of html2canvas that parses modern CSS color
+   functions — color-mix()/color(srgb …) as used by the status/trend chips on the
+   Planned vs Tracked panel. Vanilla html2canvas 1.4.1 throws "unsupported color
+   function" on those and the whole export rejects mid-render. */
+var H2C_URL="https://cdn.jsdelivr.net/npm/html2canvas-pro@1.5.8/dist/html2canvas-pro.min.js";
 var h2cLoading=false;
 function loadH2C(cb){
   if(typeof html2canvas!=='undefined') return cb(true);
-  if(h2cLoading) return;
+  if(h2cLoading){ setTimeout(function(){ loadH2C(cb); },200); return; }  // still downloading — retry, don't drop the click
   h2cLoading=true;
   var s=document.createElement('script'); s.src=H2C_URL;
-  s.onload=function(){ h2cLoading=false; cb(typeof html2canvas!=='undefined'); };
+  s.onload=function(){
+    h2cLoading=false;
+    if(typeof html2canvas==='undefined'&&typeof html2canvasPro!=='undefined') window.html2canvas=html2canvasPro;
+    cb(typeof html2canvas!=='undefined');
+  };
   s.onerror=function(){ h2cLoading=false; cb(false); };
   document.head.appendChild(s);
 }
@@ -1705,6 +1836,79 @@ $('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA
 Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('colorMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); COLOR_MODE=b.dataset.m; if(DATA) renderHeat(); }; });
 Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
+
+/* ---------------- Access Control (admin-only) ----------------
+   Working copy of the lists lives in ACC while the modal is open; Save pushes it
+   to Script Properties via saveDemandAccessSettings() (server re-checks the caller
+   is an admin). Cancel/close discards edits — nothing persists until Save. */
+var ACC=null;   // { admins:[], viewers:[], openAccess:bool, bootstrapAdmin:'' }
+var ACC_EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function accStatus(msg,cls){ var s=$('accStatus'); s.textContent=msg||''; s.className='acc-status'+(cls?' '+cls:''); }
+
+function accOpen(){
+  $('accessModal').style.display='';
+  $('accessBody').style.display=''; $('accessBody').textContent='Loading current access lists…';
+  $('accessForm').style.display='none'; accStatus('');
+  google.script.run
+    .withSuccessHandler(function(s){
+      ACC={ admins:s.admins||[], viewers:s.viewers||[], openAccess:!!s.openAccess, bootstrapAdmin:(s.bootstrapAdmin||'').toLowerCase() };
+      $('accessBody').style.display='none'; $('accessForm').style.display='';
+      $('accOpenAccess').checked=ACC.openAccess;
+      accRender();
+    })
+    .withFailureHandler(function(e){ $('accessBody').textContent='Could not load access settings: '+(e&&e.message?e.message:e); })
+    .getDemandAccessSettings();
+}
+function accClose(){ $('accessModal').style.display='none'; ACC=null; }
+
+function accRender(){
+  accRenderChips_('accAdminChips','admins',ACC.bootstrapAdmin);
+  accRenderChips_('accViewerChips','viewers',null);
+}
+function accRenderChips_(id,key,locked){
+  var html=locked
+    ? '<span class="acc-chip locked" title="Bootstrap admin — hardcoded in Security.js, cannot be removed">'+esc(locked)+' 🔒</span>'
+    : '';
+  html+=ACC[key].map(function(e,i){
+    return '<span class="acc-chip">'+esc(e)+'<button data-key="'+key+'" data-i="'+i+'" title="Remove">✕</button></span>';
+  }).join('');
+  if(!html) html='<span class="acc-empty">None yet — add an email below.</span>';
+  $(id).innerHTML=html;
+}
+function accChipClick_(ev){
+  var b=ev.target.closest('button[data-key]'); if(!b||!ACC) return;
+  ACC[b.dataset.key].splice(+b.dataset.i,1); accRender(); accStatus('');
+}
+$('accAdminChips').addEventListener('click',accChipClick_);
+$('accViewerChips').addEventListener('click',accChipClick_);
+
+function accAdd_(key,inputId){
+  if(!ACC) return;
+  var inp=$(inputId), email=(inp.value||'').trim().toLowerCase();
+  if(!email) return;
+  if(!ACC_EMAIL_RE.test(email)){ accStatus('"'+email+'" is not a valid email address.','err'); return; }
+  if(email===ACC.bootstrapAdmin){ accStatus(email+' is the bootstrap admin — already has full access.','err'); return; }
+  if(ACC.admins.indexOf(email)>-1||ACC.viewers.indexOf(email)>-1){ accStatus(email+' is already on a list.','err'); return; }
+  ACC[key].push(email); inp.value=''; accRender(); accStatus('');
+}
+$('accAdminAdd').onclick=function(){ accAdd_('admins','accAdminInput'); };
+$('accViewerAdd').onclick=function(){ accAdd_('viewers','accViewerInput'); };
+$('accAdminInput').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); accAdd_('admins','accAdminInput'); } });
+$('accViewerInput').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); accAdd_('viewers','accViewerInput'); } });
+
+$('accSave').onclick=function(){
+  if(!ACC) return;
+  accStatus('Saving…'); $('accSave').disabled=true;
+  google.script.run
+    .withSuccessHandler(function(){ $('accSave').disabled=false; ACC.openAccess=$('accOpenAccess').checked; accStatus('Saved ✓ — applies to everyone on their next page load.','ok'); })
+    .withFailureHandler(function(e){ $('accSave').disabled=false; accStatus('Save failed: '+(e&&e.message?e.message:e),'err'); })
+    .saveDemandAccessSettings({ admins:ACC.admins, viewers:ACC.viewers, openAccess:$('accOpenAccess').checked });
+};
+$('accessBtn').onclick=accOpen;
+$('accessClose').onclick=accClose;
+$('accCancel').onclick=accClose;
+$('accessModal').addEventListener('click',function(e){ if(e.target===e.currentTarget) accClose(); });
 
 /* Question-filter chips */
 var QF=[{id:'all',lab:'All projects'},{id:'losing',lab:'Losing >20% WoW'},{id:'zero',lab:'Dropping to zero'},{id:'new',lab:'New this window'},{id:'volatile',lab:'Volatile'}];

@@ -242,6 +242,11 @@ function getDemandData() {
     );
     model.anzLocation = CONFIG.ANZ_LOCATION || '';
 
+    // Caller's resolved role — the client uses this to show the admin-only
+    // 🔒 Access button. Display-only: every privileged call re-checks server-side.
+    model.viewerRole  = access.role;
+    model.viewerEmail = access.email;
+
     return model;
   } catch (e) {
     var err = emptyModel_(weeks);
