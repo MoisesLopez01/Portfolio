@@ -3771,6 +3771,7 @@ function callGeminiNarrative(prompt) {
     // so a broad/open link can't drive the Gemini quota with arbitrary prompts.
     const access = checkDashboardAccess();
     if (!access.allowed) return { ok: false, error: 'Unauthorized.' };
+    if (access.role !== 'admin') return { ok: false, error: 'Admin access required' };
 
     // Lightweight per-user rate limit: cap calls per rolling window to contain
     // cost/abuse if the link is shared widely. Keyed by email (or "anon" when the

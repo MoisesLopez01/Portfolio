@@ -2524,8 +2524,9 @@ function prefetchNext_() {
         var servedKey = p.meta.team.key;
         if (!STATE.teamData[servedKey]) {
           STATE.teamData[servedKey] = p;
-          // Fill the rollup's 'loading…' row if the user is looking at the brief.
-          if (STATE.activeTab === 'execbrief') renderExecBriefTab_();
+          // Fill the rollup's 'loading…' row without rebuilding the brief below
+          // (a full re-render would wipe any Gemini enhancement / publish state).
+          if (STATE.activeTab === 'execbrief') refreshExecRollup_();
         }
         if (servedKey !== reqKey) _prefetchFailed[reqKey] = true;   // team empty in scope — server fell back; stop re-requesting it
         if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
@@ -2937,9 +2938,12 @@ function buildFilteredMeta(filtered) {
 }
 
 // ── FILTERED TEAM SUMMARY ─────────────────────────────────
-function buildFilteredSummary(filtered, weeks) {
+// crewMode (optional): pass false to force the FTE row set regardless of the UI
+// toggle (cross-team rollup rows); omitted → read the toggle as before.
+function buildFilteredSummary(filtered, weeks, crewMode) {
   var fmt        = function(n, suffix) { return n > 0 ? _numFmt.format(Math.round(n)) + suffix : "—"; };
-  var isCrewMode = ((document.getElementById("fbMemberType") || {}).value || "fte") === "crew";
+  var isCrewMode = crewMode !== undefined ? !!crewMode
+                 : ((document.getElementById("fbMemberType") || {}).value || "fte") === "crew";
 
   var rcrVals = filtered.filter(function(e) { return e.rcr && e.rcr.value !== null; })
                         .map(function(e) { return e.rcr.value; });
@@ -3229,7 +3233,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel, data) {
       return (D.q4Weeks || []).find(function(w) { return w.label === lbl; }) ||
         { label: lbl, isFuture: false, isPast: true };
     });
-    var synthRows = buildFilteredSummary(allEmps, wObjs);
+    var synthRows = buildFilteredSummary(allEmps, wObjs, data ? false : undefined);
     missing.forEach(function(lbl, i) {
       var cellsById = {};
       synthRows.forEach(function(r) { cellsById[r.id] = r.cells && r.cells[i]; });
@@ -4328,7 +4332,8 @@ function renderExecRollup_(selLabel, prevLabel) {
     return '<div class="eb-rollup-note">Cross-team rollup is weekly — switch to Week view to compare teams.</div>';
   }
   var rows = teams.map(function(t) {
-    var payload = t.key === STATE.activeTeam ? DATA : STATE.teamData[t.key];
+    var payload = (DATA && DATA.meta && DATA.meta.team && DATA.meta.team.key === t.key)
+      ? DATA : STATE.teamData[t.key];
     if (!payload) {
       return '<tr><th>' + esc(t.label) + '</th><td colspan="3" class="eb-rollup-pending">' +
         (_prefetchFailed[t.key] ? 'not loaded — switch to this team once to load it' : 'loading…') +
@@ -4359,10 +4364,30 @@ function renderExecRollup_(selLabel, prevLabel) {
     '</tr>';
   }).join('');
   return '<div class="eb-rollup">' +
-    '<div class="eb-rollup-title">Cross-team rollup · ' + esc(selLabel) + '</div>' +
+    '<div class="eb-rollup-title">Cross-team rollup · ' + esc(selLabel) + ' · unfiltered FTE</div>' +
     '<table class="eb-rollup-table"><thead><tr>' +
       '<th>Team</th><th></th><th>Top concern</th><th>Top highlight</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// Refresh ONLY the rollup strip (prefetch completions land minutes after the tab
+// rendered; a full renderExecBriefTab_ would wipe _teamBriefStore + any Gemini
+// enhancement, so this touches nothing below the strip).
+function refreshExecRollup_() {
+  var wrap = document.getElementById('ebRollupWrap');
+  if (!wrap || !DATA) return;
+  if (STATE.periodGranularity !== 'week') { wrap.innerHTML = renderExecRollup_(null, null); return; }
+  var sel      = document.getElementById("ebWeekSelect");
+  var selLabel = sel && sel.value ? sel.value : null;
+  var q4w      = DATA.q4Weeks || DATA.weeks;
+  if (!selLabel) {
+    var pastW = q4w.filter(function(w) { return w.isPast; });
+    selLabel  = pastW.length > 0 ? pastW[pastW.length - 1].label : DATA.meta.currentWeekLabel;
+  }
+  var selWeek  = q4w.find(function(w) { return w.label === selLabel; });
+  var selIdx   = q4w.indexOf(selWeek);
+  var prevWeek = (selIdx > 0 && !q4w[selIdx - 1].isFuture) ? q4w[selIdx - 1] : null;
+  wrap.innerHTML = renderExecRollup_(selLabel, prevWeek ? prevWeek.label : null);
 }
 
 // ── TEAM EXECUTIVE BRIEF TAB (admin/viewer/manager; rollup admin+viewer) ──
@@ -4394,7 +4419,7 @@ function renderExecBriefTab_() {
         dispLabel + ' · ' + bucket.weekRangeLabel + (prevB ? '  ·  vs ' + prevB.label : '');
     }
     var brief = generatePeriodBrief(bucket, prevB, buckets);
-    el.innerHTML = renderExecRollup_(null, null) +
+    el.innerHTML = '<div id="ebRollupWrap">' + renderExecRollup_(null, null) + '</div>' +
       buildTeamBriefHTML(dispLabel, prevB ? prevB.label : null, brief, { dateRange: bucket.weekRangeLabel });
     return;
   }
@@ -4419,7 +4444,7 @@ function renderExecBriefTab_() {
   }
 
   var brief = generateTeamBrief(selLabel, prevWeek ? prevWeek.label : null);
-  el.innerHTML = renderExecRollup_(selLabel, prevWeek ? prevWeek.label : null) +
+  el.innerHTML = '<div id="ebRollupWrap">' + renderExecRollup_(selLabel, prevWeek ? prevWeek.label : null) + '</div>' +
     buildTeamBriefHTML(selLabel, prevWeek ? prevWeek.label : null, brief);
 }
 
