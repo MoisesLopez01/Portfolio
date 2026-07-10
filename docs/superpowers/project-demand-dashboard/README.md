@@ -38,9 +38,10 @@ Spec: `../specs/2026-06-22-project-demand-dashboard-v2-design.md`
 
 | File | Role |
 |---|---|
-| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDemandData()` reads the Tempo sheet + Roster by ID, parses the two-row stacked header (capturing `NETSUITE` time-off per week), aggregates, returns JSON. `readActiveCapacity_()` sums region-weighted base hours (38 ANZ / 40 else); `attachCapacity_()` subtracts per-week PTO/holidays. `_test_demandParse_()` + `_test_headcount_()` unit tests. |
+| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDemandData()` reads the Tempo sheet + Roster by ID, parses the two-row stacked header (capturing `NETSUITE` time-off per week), aggregates, returns JSON. `readActiveCapacity_()` sums region-weighted base hours (38 ANZ / 40 else); `attachCapacity_()` subtracts per-week PTO/holidays. `buildDemandModel_()` is the full compute, shared by the cache-first `getDemandData(forceRefresh)` endpoint and the `warmDemandCache()` 30-min trigger (`setupDemandCacheWarmer()` installs it). `_test_demandParse_()` + `_test_headcount_()` + `_test_cacheRoundtrip_()` unit tests. |
 | `Security.js` | Email allowlist (admin / viewer / open-access), inherited from the PS report's `PS Security.js`. `checkDemandAccess()`, `getDemandAccessSettings()`, `saveDemandAccessSettings()`, `buildAccessDeniedPage_()`. |
-| `Dashboard.html` | Client — loads live via `google.script.run.getDemandData()`; renders all panels. Per-panel Save PNG export. |
+| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDemandData(false)`; the header ↻ Refresh forces a live read and re-warms the cache; renders all panels. Per-panel Save PNG export. |
+| `node-tests.js` | Local Node runner for the pure `_test_` functions (stubs Logger/Utilities/cache) — `node node-tests.js`. Not pasted into the GAS project. |
 
 ## Data sources
 
@@ -87,7 +88,7 @@ and `getDemandData()` (returns an error model) — defense in depth, never clien
 2. Add three files: `Code` (paste `Code.js`), `Security` (paste `Security.js`), and an **HTML**
    file named `Dashboard` (paste `Dashboard.html` — the name must be `Dashboard` so `doGet()`
    finds it).
-3. In the editor, run `_test_demandParse_` and `_test_headcount_` once; confirm both log
+3. In the editor, run `_test_demandParse_`, `_test_headcount_` and `_test_cacheRoundtrip_` once; confirm each logs
    `✅ … passed`.
 4. Run `getDemandData` once to trigger the authorization prompt — grant the `SpreadsheetApp` scope.
    The account you authorize with must be able to open **both** the Tempo and Roster spreadsheets.
@@ -96,7 +97,9 @@ and `getDemandData()` (returns an error model) — defense in depth, never clien
 6. Deploy → **New deployment** → **Web app**. Execute as **Me**; who has access:
    **Anyone within ServiceRocket with the link** (the email allowlist in `Security.js` is the real
    gate). Copy the `/exec` URL.
-7. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card on
+7. Run `setupDemandCacheWarmer()` once in the editor as the owner — installs the 30-min
+   `warmDemandCache` trigger that keeps the shared cache entry warm.
+8. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card on
    the Trends tab) so the PS dashboard links here.
 
 ## Save PNG
@@ -109,8 +112,13 @@ make export fully offline, vendor `html2canvas` into the project and load it loc
 
 ## Notes
 
-- No caching layer — each load is two `getValues()` reads (Tempo + Roster). Add `CacheService`
-  later only if load latency warrants it.
+- **Caching:** `getDemandData()` serves a shared gzip-chunked `CacheService` entry
+  (`pd_v<PD_CACHE_VER>`, TTL `CACHE_TTL_SEC` = 65 min), kept warm by the 30-min
+  `warmDemandCache` trigger — warm loads are ~1–3 s vs the ~30 s full compute. Data can lag
+  sheet edits by up to the warm interval; the ↻ Refresh button forces a live read and
+  re-warms the entry for everyone. Error / `trackedError` models are never cached. Bump the
+  version manually with `bustDemandCache_()` in the editor to force-invalidate. The badge
+  shows "Data as of HH:MM" (`generatedAt`).
 - Capacity is **net of PTO & public holidays**: gross region-weighted base (38 ANZ / 40 else) minus
   the per-week `NETSUITE` time-off hours. `grossCapByWeek` / `timeOffByWeek` are exposed in the
   payload for the headline breakdown, and a dashed `PLAN_TARGET` (90%) line marks healthy planning.
