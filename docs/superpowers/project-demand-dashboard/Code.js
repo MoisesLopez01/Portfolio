@@ -629,7 +629,7 @@ function familyFromTitle_(famCol, title) {
  * Capacity counts: active Services FTE/crew with a valid Name, Class = Professional
  * Services, Dept = Services, no inactive/termination markers.
  * Profile data (`profiles`): every named row (no class/dept filter) — each profile carries
- * its own `department` so callers (buildPersonAvailability_, getDemandData) can scope to
+ * its own `department` and a `countsForCapacity` flag so callers (buildPersonAvailability_, getDemandData) can scope to
  * Department = ROSTER_DEPT themselves. Filter dropdown lists (`dimensions`) ARE scoped to
  * Department = ROSTER_DEPT — no un-selectable, non-Services values in the People filters bar.
  */
@@ -749,6 +749,142 @@ function attachCapacity_(model, rosterFull) {
       model.capByWeek[iso] = Math.max(0, gross - (timeOff[iso] || 0));
     });
   }
+}
+
+// ── PUBLIC HOLIDAYS (PH tab → week badges + capacity shortfall) ──
+
+/**
+ * Sums NETSUITE time-off hours per normalized person per ISO week — the
+ * "already booked" side of the holiday shortfall de-dup.
+ * @param {Array<{person:string, iso:string, hours:number}>} ptoRecs scopedPtoRecs (planned sheet)
+ * @returns {Object} { normName: { iso: hours } }
+ */
+function netsuiteByPersonWeek_(ptoRecs) {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var out = {};
+  (ptoRecs || []).forEach(function (r) {
+    var p = norm(r.person);
+    if (!out[p]) out[p] = {};
+    out[p][r.iso] = (out[p][r.iso] || 0) + r.hours;
+  });
+  return out;
+}
+
+/**
+ * Reads the PH tab (Date | Location | Holiday) from the source spreadsheet.
+ * Any failure (missing tab, empty, bad rows) degrades to [] — the dashboard
+ * then renders exactly as before this feature. Same contract as the PS
+ * report's readPHData_.
+ * @returns {Array<{date:string, location:string, holiday:string}>} date = "yyyy-MM-dd"
+ */
+function readPHData_() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
+    var sh = ss.getSheetByName(CONFIG.PH_SHEET);
+    if (!sh) { Logger.log("⚠️ readPHData_: sheet '" + CONFIG.PH_SHEET + "' not found — holiday signals off."); return []; }
+    var rows = sh.getDataRange().getValues();
+    var out = [];
+    for (var i = 1; i < rows.length; i++) {
+      var rawDate = rows[i][0], location = rows[i][1], holiday = rows[i][2];
+      if (!rawDate || !location || !holiday) continue;
+      var d = rawDate instanceof Date ? rawDate : new Date(rawDate);
+      if (isNaN(d)) continue;
+      out.push({
+        date:     Utilities.formatDate(d, "UTC", "yyyy-MM-dd"),
+        location: String(location).trim(),
+        holiday:  String(holiday).trim(),
+      });
+    }
+    return out;
+  } catch (e) {
+    Logger.log("⚠️ readPHData_: " + e.message);
+    return [];
+  }
+}
+
+/**
+ * Rolls PH rows up to the displayed ISO weeks and computes the capacity
+ * shortfall — holiday hours NOT already covered by booked NETSUITE time-off,
+ * per person, so nobody is double-counted (equivalent to
+ * max(booked, holidayHours) per person-week).
+ *
+ * Population = roster profiles with countsForCapacity (same people as the
+ * capacity denominator). ANZ people cost ANZ_HOLIDAY_HRS_PER_DAY (7.6),
+ * everyone else HOLIDAY_HRS_PER_DAY (8).
+ *
+ * Roster fallback (rosterFull.ok false): entries keep rendering but with
+ * affectedCount/totalAffected = null and zero shortfall — badges without
+ * counts, capacity untouched (spec §Errors & degradation).
+ *
+ * @param {Array} phData        readPHData_() rows
+ * @param {Array} weeks         buildWindow_() weeks ({iso, wk, year, status})
+ * @param {Object} rosterFull   readRosterFull_() result ({ok, profiles})
+ * @param {Object} netsuiteByPW netsuiteByPersonWeek_(scopedPtoRecs)
+ * @returns {{byWeek:Object, shortfallByWeek:Object}}
+ *          byWeek[iso] = { entries:[{date, location, holiday, days, affectedCount}],
+ *                          totalAffected, shortfallHours }
+ */
+function buildHolidaysByWeek_(phData, weeks, rosterFull, netsuiteByPW) {
+  var result = { byWeek: {}, shortfallByWeek: {} };
+  if (!phData || !phData.length) return result;
+  var rosterOk = !!(rosterFull && rosterFull.ok);
+  var profiles = (rosterFull && rosterFull.profiles) || {};
+  var anzLoc   = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
+
+  weeks.forEach(function (w) {
+    var b = isoWeekBounds_(w.year, w.wk);
+    var hits = phData.filter(function (ph) { return ph.date >= b.monday && ph.date <= b.sunday; });
+    if (!hits.length) return;
+
+    // Group by location+holiday — a multi-day holiday (Fiestas Patrias) becomes
+    // ONE entry with a days count, matching how an exec reads the week.
+    var grouped = {};
+    hits.forEach(function (ph) {
+      var key = ph.location + "||" + ph.holiday;
+      if (!grouped[key]) grouped[key] = { date: ph.date, location: ph.location, holiday: ph.holiday, days: 0, affected: 0 };
+      grouped[key].days++;
+    });
+
+    var shortfall = 0;
+    var affectedAll = {};
+    if (rosterOk) {
+      Object.keys(profiles).forEach(function (np) {
+        var prof = profiles[np];
+        if (!prof.countsForCapacity) return;
+        var days = 0;
+        Object.keys(grouped).forEach(function (k) {
+          var g = grouped[k];
+          if (phLocMatchesEmp_(g.location, prof.location)) {
+            g.affected++;
+            days += g.days;
+            affectedAll[np] = true;
+          }
+        });
+        if (!days) return;
+        var perDay  = String(prof.location || "").trim().toLowerCase() === anzLoc
+          ? CONFIG.ANZ_HOLIDAY_HRS_PER_DAY : CONFIG.HOLIDAY_HRS_PER_DAY;
+        var phHours = days * perDay;
+        var booked  = (netsuiteByPW && netsuiteByPW[np] && netsuiteByPW[np][w.iso]) || 0;
+        shortfall  += Math.max(0, phHours - booked);
+      });
+    }
+
+    var entries = Object.keys(grouped).map(function (k) {
+      var g = grouped[k];
+      return { date: g.date, location: g.location, holiday: g.holiday, days: g.days,
+               affectedCount: rosterOk ? g.affected : null };
+    }).filter(function (e) { return !rosterOk || e.affectedCount > 0; });
+    if (!entries.length) return;
+
+    shortfall = Math.round(shortfall * 10) / 10;
+    result.byWeek[w.iso] = {
+      entries: entries,
+      totalAffected: rosterOk ? Object.keys(affectedAll).length : null,
+      shortfallHours: shortfall,
+    };
+    if (shortfall > 0) result.shortfallByWeek[w.iso] = shortfall;
+  });
+  return result;
 }
 
 // ── TRACKED TIME + DELIVERY SIGNALS ──────────────────────
@@ -1664,6 +1800,67 @@ function _test_holidayCapacity_() {
   assert_(!phLocMatchesEmp_("Chile", "Peru"), "different location must not match");
   assert_(!phLocMatchesEmp_("Chile", ""), "blank employee location must not match");
   assert_(!phLocMatchesEmp_("Chile", "Unknown"), "'Unknown' employee location must not match");
+
+  // ── buildHolidaysByWeek_: rollup, shortfall de-dup, ANZ day, population scoping ──
+  var weeks = [
+    { iso: "2026.W38", wk: 38, year: 2026, status: "plan" },
+    { iso: "2026.W39", wk: 39, year: 2026, status: "plan" },
+  ];
+  var phData = [
+    { date: "2026-09-17", location: "Chile", holiday: "Fiestas Patrias" },   // Thu, W38
+    { date: "2026-09-18", location: "Chile", holiday: "Fiestas Patrias" },   // Fri, W38 (2-day holiday)
+    { date: "2026-09-14", location: "Australia & New Zealand", holiday: "King's Birthday" }, // Mon, W38
+    { date: "2026-01-01", location: "Chile", holiday: "New Year" },          // outside window → ignored
+  ];
+  var rosterFull = {
+    ok: true,
+    profiles: {
+      "ana chile":  { location: "Chile", department: "Services", countsForCapacity: true },  // books nothing → 16h shortfall
+      "ben chile":  { location: "Chile", department: "Services", countsForCapacity: true },  // booked 16h → 0 shortfall
+      "cara chile": { location: "Chile", department: "Services", countsForCapacity: true },  // booked 8h → 8h shortfall
+      "dana anz":   { location: "Australia & New Zealand", department: "Services", countsForCapacity: true }, // 1 ANZ day → 7.6h
+      "eve chile":  { location: "Chile", department: "Sales",    countsForCapacity: false }, // not capacity → excluded
+      "fay us":     { location: "United States", department: "Services", countsForCapacity: true }, // no matching holiday
+    },
+  };
+  var netsuite = {
+    "ben chile":  { "2026.W38": 16 },
+    "cara chile": { "2026.W38": 8 },
+  };
+  var hol = buildHolidaysByWeek_(phData, weeks, rosterFull, netsuite);
+
+  var w38 = hol.byWeek["2026.W38"];
+  assert_(!!w38, "W38 should carry holiday data");
+  assert_(w38.entries.length === 2, "W38 should have 2 grouped entries (Chile 2-day + ANZ 1-day), got " + w38.entries.length);
+  var chile = w38.entries.filter(function (e) { return e.location === "Chile"; })[0];
+  assert_(chile.days === 2, "Fiestas Patrias should group to 2 days, got " + chile.days);
+  assert_(chile.affectedCount === 3, "3 capacity-counted Chile people (eve excluded), got " + chile.affectedCount);
+  var anzE = w38.entries.filter(function (e) { return e.location !== "Chile"; })[0];
+  assert_(anzE.affectedCount === 1, "1 ANZ person affected, got " + anzE.affectedCount);
+  assert_(w38.totalAffected === 4, "4 distinct people affected in W38, got " + w38.totalAffected);
+  // shortfall: ana 16 + ben max(0,16−16)=0 + cara max(0,16−8)=8 + dana 7.6 = 31.6
+  assert_(Math.abs(hol.shortfallByWeek["2026.W38"] - 31.6) < 0.001,
+          "W38 shortfall should be 31.6h, got " + hol.shortfallByWeek["2026.W38"]);
+  assert_(!hol.byWeek["2026.W39"], "W39 has no holidays — key must be absent");
+
+  // ── Roster fallback mode: badges without counts, zero shortfall ──
+  var holNoRoster = buildHolidaysByWeek_(phData, weeks, { ok: false, profiles: {} }, {});
+  var nr38 = holNoRoster.byWeek["2026.W38"];
+  assert_(!!nr38 && nr38.entries.length === 2, "fallback mode keeps entries");
+  assert_(nr38.entries[0].affectedCount === null && nr38.totalAffected === null,
+          "fallback mode has null counts");
+  assert_(Object.keys(holNoRoster.shortfallByWeek).length === 0, "fallback mode has no shortfall");
+
+  // ── Empty PH data → empty result ──
+  var holEmpty = buildHolidaysByWeek_([], weeks, rosterFull, netsuite);
+  assert_(Object.keys(holEmpty.byWeek).length === 0, "no PH data → empty byWeek");
+
+  // ── netsuiteByPersonWeek_ ──
+  var ns = netsuiteByPersonWeek_([
+    { person: "Ben Chile", iso: "2026.W38", key: "NETSUITE", hours: 8 },
+    { person: "Ben  Chile", iso: "2026.W38", key: "NETSUITE", hours: 8 },  // double space → same person
+  ]);
+  assert_(ns["ben chile"]["2026.W38"] === 16, "netsuite hours should sum per normalized person, got " + JSON.stringify(ns));
 
   Logger.log("✅ _test_holidayCapacity_ passed");
 }
