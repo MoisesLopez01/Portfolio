@@ -44,4 +44,5 @@ _test_isCrew_();
 _test_behaviorSignals();
 _test_cacheRoundtrip_(new FakeCache());
 _test_familyFromTitle_();
+_test_holidayCapacity_();
 console.log("✅ node-tests: all suites passed");

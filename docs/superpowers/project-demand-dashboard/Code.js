@@ -19,6 +19,12 @@ var CONFIG = {
   WEEKLY_CAPACITY_HRS: 40,              // available hours per active person per week (default region)
   ANZ_LOCATION:        "Australia & New Zealand", // Roster "Key Location" value → 38 hr week
   ANZ_CAPACITY_HRS:    38,              // weekly base capacity for ANZ people
+
+  // ── Public holidays (PH tab in SOURCE_SS_ID; feeds week badges + capacity shortfall) ──
+  PH_SHEET:                "PH",   // Date | Location | Holiday — same tab the PS report reads
+  HOLIDAY_HRS_PER_DAY:     8,      // one holiday day removes 8h of capacity (default region)
+  ANZ_HOLIDAY_HRS_PER_DAY: 7.6,    // 38-hr week ÷ 5 — consistent with ANZ_CAPACITY_HRS
+
   PLAN_TARGET:         0.90,            // 90% planning-target reference line on the chart
   TITLE:               "Project Demand — Week over Week",
 
@@ -112,6 +118,38 @@ function priorWeekIso_(week) {
   var w = week.wk - 1, y = week.year;
   if (w <= 0) { y--; w = weeksInYear_(y) + w; }
   return y + ".W" + w;
+}
+
+/**
+ * Monday/Sunday date strings (yyyy-MM-dd, UTC) for an ISO year+week — buildWindow_
+ * weeks carry no dates, and PH rows are matched to weeks by date range.
+ * @param {number} year ISO week-year   @param {number} wk ISO week number
+ * @returns {{monday:string, sunday:string}}
+ */
+function isoWeekBounds_(year, wk) {
+  var jan4 = new Date(Date.UTC(year, 0, 4));               // Jan 4 is always in ISO W1
+  var mon = new Date(jan4);
+  mon.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (wk - 1) * 7);
+  var sun = new Date(mon);
+  sun.setUTCDate(mon.getUTCDate() + 6);
+  var f = function (d) { return d.toISOString().slice(0, 10); };
+  return { monday: f(mon), sunday: f(sun) };
+}
+
+/**
+ * Fuzzy PH-location → roster Key Location matcher (ported verbatim from the PS
+ * report's phLocMatchesEmp_): compound PH locations split on "&" / "and" / "/",
+ * case-insensitive substring match either direction. Blank/Unknown never matches.
+ * @param {string} phLoc  PH tab Location cell   @param {string} empLoc roster Key Location
+ * @returns {boolean}
+ */
+function phLocMatchesEmp_(phLoc, empLoc) {
+  var emp = (empLoc || "").toLowerCase().trim();
+  if (!emp || emp === "unknown") return false;
+  var parts = String(phLoc).split(/\s*[&\/]\s*|\s+and\s+/i)
+                           .map(function (s) { return s.toLowerCase().trim(); })
+                           .filter(Boolean);
+  return parts.some(function (p) { return p === emp || p.indexOf(emp) !== -1 || emp.indexOf(p) !== -1; });
 }
 
 /** Canonicalizes a week label cell ("2026.W14" or legacy "W14") → "2026.W14". */
@@ -1597,4 +1635,31 @@ function _test_familyFromTitle_() {
   });
 
   Logger.log("✅ _test_familyFromTitle_ passed");
+}
+
+/**
+ * Public-holiday capacity signals — matcher, week bounds, weekly rollup,
+ * NETSUITE shortfall de-dup, ANZ 7.6h day, capacity-population scoping,
+ * and the attachCapacity_ deduction. Pure — runs in GAS editor and Node.
+ */
+function _test_holidayCapacity_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_holidayCapacity_: " + msg); }
+
+  // ── isoWeekBounds_: 2026.W38 = Mon 2026-09-14 → Sun 2026-09-20 ──
+  var b = isoWeekBounds_(2026, 38);
+  assert_(b.monday === "2026-09-14", "W38 monday should be 2026-09-14, got " + b.monday);
+  assert_(b.sunday === "2026-09-20", "W38 sunday should be 2026-09-20, got " + b.sunday);
+  // Year boundary: 2026.W1 starts Mon 2025-12-29
+  var b1 = isoWeekBounds_(2026, 1);
+  assert_(b1.monday === "2025-12-29", "W1 monday should be 2025-12-29, got " + b1.monday);
+
+  // ── phLocMatchesEmp_: exact, compound, and negative ──
+  assert_(phLocMatchesEmp_("Chile", "Chile"), "exact location should match");
+  assert_(phLocMatchesEmp_("Australia & New Zealand", "New Zealand"), "compound & should match a part");
+  assert_(phLocMatchesEmp_("Malaysia and Singapore", "Singapore"), "'and' compound should match");
+  assert_(!phLocMatchesEmp_("Chile", "Peru"), "different location must not match");
+  assert_(!phLocMatchesEmp_("Chile", ""), "blank employee location must not match");
+  assert_(!phLocMatchesEmp_("Chile", "Unknown"), "'Unknown' employee location must not match");
+
+  Logger.log("✅ _test_holidayCapacity_ passed");
 }
