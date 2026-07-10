@@ -676,7 +676,17 @@ function readRosterFull_() {
       var fam    = familyFromTitle_(famCol, title);
       var isCrew = /crew member|contractor/i.test(title);
       var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
-      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };
+      // Capacity predicate: only active Services members (same filter as before,
+      // computed as a flag so holiday signals can scope to the SAME population
+      // as the capacity denominator — see buildHolidaysByWeek_).
+      var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
+      var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
+      var countsForCapacity =
+        (iClass === -1 || String(row[iClass] || "").trim() === CONFIG.ROSTER_CLASS) &&
+        (!dept || dept === CONFIG.ROSTER_DEPT) &&
+        !INACTIVE.test(status) && !term;
+
+      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew, countsForCapacity: countsForCapacity };
       // Filter dropdown option lists (Location / Job Family / Manager) are scoped to
       // Department = ROSTER_DEPT too, same as the person-level data — otherwise a
       // Sales/Finance-only location or manager would show up as a pickable filter value
@@ -687,13 +697,7 @@ function readRosterFull_() {
         if (mgr) managers[mgr] = true;
       }
 
-      // Capacity: only active Services members
-      if (iClass !== -1 && String(row[iClass] || "").trim() !== CONFIG.ROSTER_CLASS) continue;
-      if (dept && dept !== CONFIG.ROSTER_DEPT) continue;
-      var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
-      var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
-      if (INACTIVE.test(status) || term) continue;
-
+      if (!countsForCapacity) continue;
       var isANZ = loc.toLowerCase() === anzLoc;
       base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
       if (isANZ) anz++;
