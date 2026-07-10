@@ -232,12 +232,18 @@ function cacheGetLarge_(cache, key) {
 // ── MAIN DATA ENDPOINT (called from the client via google.script.run) ──
 
 /**
- * Reads the Planned Time Tempo sheet and the Roster, returning the aggregated
- * demand model for the current 8-week window. All demand figures are PLANNED HOURS.
+ * Cache-first data endpoint. Returns the shared gzip-chunked cache entry when
+ * present (~1–3 s) and only runs the full compute on a miss or when
+ * forceRefresh is true — a force refresh overwrites the shared entry, so one
+ * person's Refresh warms the cache for everyone. The computed model is cached
+ * only when healthy (no error / trackedError) so a transient sheet-read
+ * failure never gets pinned until the next warm. viewerRole/viewerEmail are
+ * per-caller — attached after the cache read, never stored in the cache.
  * Access is re-checked server-side (defense in depth — the page is already gated).
+ * @param {boolean} [forceRefresh] true → bypass the cache and rewrite it (↻ Refresh).
  * @returns {Object} model (see aggregate_); model.error is set on failure.
  */
-function getDemandData() {
+function getDemandData(forceRefresh) {
   var access = checkDemandAccess();
   if (!access.allowed) {
     var denied = emptyModel_(buildWindow_());
@@ -245,6 +251,40 @@ function getDemandData() {
     return denied;
   }
 
+  var cache = CacheService.getScriptCache();
+  var key = demandCacheKey_();
+  if (!forceRefresh) {
+    var hit = cacheGetLarge_(cache, key);
+    if (hit) {
+      try {
+        var cached = JSON.parse(hit);
+        cached.viewerRole = access.role;
+        cached.viewerEmail = access.email;
+        return cached;
+      } catch (e) {
+        Logger.log("⚠️ getDemandData: bad cache entry (" + e.message + ") — recomputing");
+      }
+    }
+  }
+
+  var model = buildDemandModel_();
+  if (!model.error && !model.trackedError) {
+    cachePutLarge_(cache, key, JSON.stringify(model), CONFIG.CACHE_TTL_SEC);
+  }
+  model.viewerRole = access.role;
+  model.viewerEmail = access.email;
+  return model;
+}
+
+/**
+ * Full demand-model compute — three sheet reads (Planned Time Tempo, Roster,
+ * Tempo Tracked Time) plus all aggregation. All demand figures are PLANNED
+ * HOURS. Shared by getDemandData (cache miss / force) and warmDemandCache
+ * (timed trigger). No access check and no viewer fields here: triggers have no
+ * meaningful Session user, and the result is cached for everyone.
+ * @returns {Object} model (see aggregate_); model.error is set on failure — callers never cache those.
+ */
+function buildDemandModel_() {
   var weeks = buildWindow_();
   try {
     var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
@@ -326,11 +366,7 @@ function getDemandData() {
       weeks
     );
     model.anzLocation = CONFIG.ANZ_LOCATION || '';
-
-    // Caller's resolved role — the client uses this to show the admin-only
-    // 🔒 Access button. Display-only: every privileged call re-checks server-side.
-    model.viewerRole  = access.role;
-    model.viewerEmail = access.email;
+    model.generatedAt = new Date().toISOString();   // freshness badge ("Data as of HH:MM")
 
     return model;
   } catch (e) {
