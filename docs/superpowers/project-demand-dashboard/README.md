@@ -12,6 +12,11 @@ Panels (top → bottom):
   per-week PTO & public holidays** (the `NETSUITE` time-off rows). A dashed **90% planning-target
   line** marks healthy planning (nobody plans to 100%). Utilization chip (Headroom / Tight / Over),
   8-week area chart with actual/planned separated, and a suggested-action line.
+  Weeks containing public holidays carry a 🏖 marker (chart + heatmap headers); the hover
+  tooltip and so-what name the holiday, location, and affected-people count, and net
+  capacity additionally subtracts **unbooked** holiday hours — per person,
+  `max(0, holiday hrs − booked NETSUITE hrs)`, so booked holidays are never double-counted
+  (ANZ holiday day = 7.6 h, others 8 h).
 - **Project key heatmap** (drill-down) — color by **Hours** (default — surfaces planned hours),
   **Change**, or **Risk**; question-filter chips (*Losing >20% WoW · Dropping to zero · New this
   window · Volatile*); Top 15/30/All + search.
@@ -54,6 +59,10 @@ Spec: `../specs/2026-06-22-project-demand-dashboard-v2-design.md`
   (`Australia & New Zealand`) and `WEEKLY_CAPACITY_HRS` (40) otherwise. The result is the **gross**
   weekly base; **net capacity per week = gross − PTO & public holidays** (the `NETSUITE` time-off
   hours summed from the Tempo sheet that week — people on leave can't plan project work).
+- **Public holidays:** same spreadsheet as Demand (`SOURCE_SS_ID`), tab `PH`
+  (`Date | Location | Holiday` — the tab the PS report already maintains). Missing tab or
+  bad rows → holiday signals silently off, everything else unaffected. Config:
+  `PH_SHEET`, `HOLIDAY_HRS_PER_DAY` (8), `ANZ_HOLIDAY_HRS_PER_DAY` (7.6).
 - All configurable in the `CONFIG` block at the top of `Code.js`: `SOURCE_SS_ID`, `SHEET_NAME`,
   `NONPROJECT_KEYS`, `WEEKS_PAST`/`WEEKS_FUTURE`, `WEEKLY_CAPACITY_HRS`, `ANZ_LOCATION`,
   `ANZ_CAPACITY_HRS`, `PLAN_TARGET` (90% line), `ROSTER_SS_ID`, `ROSTER_SHEET`, `ROSTER_CLASS`,
@@ -88,7 +97,7 @@ and `getDemandData()` (returns an error model) — defense in depth, never clien
 2. Add three files: `Code` (paste `Code.js`), `Security` (paste `Security.js`), and an **HTML**
    file named `Dashboard` (paste `Dashboard.html` — the name must be `Dashboard` so `doGet()`
    finds it).
-3. In the editor, run `_test_demandParse_`, `_test_headcount_` and `_test_cacheRoundtrip_` once; confirm each logs
+3. In the editor, run `_test_demandParse_`, `_test_headcount_`, `_test_cacheRoundtrip_`, and `_test_holidayCapacity_` once; confirm each logs
    `✅ … passed`.
 4. Run `getDemandData` once to trigger the authorization prompt — grant the `SpreadsheetApp` scope.
    The account you authorize with must be able to open **both** the Tempo and Roster spreadsheets.
@@ -101,6 +110,8 @@ and `getDemandData()` (returns an error model) — defense in depth, never clien
    `warmDemandCache` trigger that keeps the shared cache entry warm.
 8. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card on
    the Trends tab) so the PS dashboard links here.
+
+**Note:** Model shape changed → run `bustDemandCache_()` once in the editor (or press ↻ Refresh in the dashboard) after pasting the new files to invalidate the cache.
 
 ## Save PNG
 
