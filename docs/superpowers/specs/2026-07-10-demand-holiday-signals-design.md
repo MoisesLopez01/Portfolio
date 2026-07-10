@@ -55,7 +55,8 @@ ANZ_HOLIDAY_HRS_PER_DAY: 7.6,    // 38-hr week ÷ 5 — consistent with ANZ_CAPA
   splits compound PH locations on `&` / `and` / `/`, case-insensitive
   substring match against roster `Key Location`.
 - **`buildHolidaysByWeek_(phData, weeks, rosterFull, netsuiteByPersonWeek)`** —
-  per ISO week in the window (including the hidden `baselineIso` lookback week):
+  per displayed ISO week in the window (the hidden `baselineIso` lookback week is
+  skipped — it has no capacity computation and never renders):
   - Groups PH rows falling in that week by `location||holiday`.
   - Counts affected people **only among capacity-counted roster rows** (see flag
     below) whose `Key Location` matches — the affected count and the capacity
