@@ -3173,15 +3173,27 @@ function togglePerfCard(btn) {
 
 window._teamBriefStore = null;
 
-function generateTeamBrief(weekLabel, prevWeekLabel) {
+// `data` (optional) = a full team payload for cross-team rollup rows; omitted →
+// the active DATA with the live filters (weekly brief path, unchanged). Rollup
+// mode always uses the payload's unfiltered FTE population and its own
+// meta.team.metrics gate, so a row matches what toggling to that team shows.
+function generateTeamBrief(weekLabel, prevWeekLabel, data) {
   var facts = [], highlights = [], notes = [], concerns = [];
-  if (!DATA) return { facts: ['Data loading…'], highlights: [], notes: [], concerns: [] };
-  var allEmps = getFilteredEmployees();
+  var D = data || DATA;
+  if (!D) return { facts: ['Data loading…'], highlights: [], notes: [], concerns: [] };
+  var allEmps = data
+    ? (D.employees || []).filter(function(e) { return !e.isCrewMember; })
+    : getFilteredEmployees();
+  // Team-metric gate against THIS payload (hasMetric_ reads the live DATA only).
+  function hasM(k) {
+    var m = D.meta && D.meta.team && D.meta.team.metrics;
+    return !m || m.indexOf(k) !== -1;
+  }
 
   function getRow(id) {
-    return (DATA.teamSummary || []).find(function(r) { return r.id === id; });
+    return (D.teamSummary || []).find(function(r) { return r.id === id; });
   }
-  // Weeks outside the narrow rolling window DATA.weeks/DATA.teamSummary cover (e.g. an
+  // Weeks outside the narrow rolling window D.weeks/D.teamSummary cover (e.g. an
   // older week picked from the wider quarter-to-date ebWeekSelect range) have no pre-built
   // cell, but the per-employee data (e.weeks[lbl]) still has it. ensureSynthWeeks batches
   // every distinct missing label (at most weekLabel + prevWeekLabel) into ONE
@@ -3191,11 +3203,11 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   function ensureSynthWeeks(labels) {
     var missing = labels.filter(function(lbl) {
       if (!lbl || synthCache[lbl]) return false;
-      return DATA.weeks.findIndex(function(w) { return w.label === lbl; }) === -1;
+      return D.weeks.findIndex(function(w) { return w.label === lbl; }) === -1;
     });
     if (!missing.length) return;
     var wObjs = missing.map(function(lbl) {
-      return (DATA.q4Weeks || []).find(function(w) { return w.label === lbl; }) ||
+      return (D.q4Weeks || []).find(function(w) { return w.label === lbl; }) ||
         { label: lbl, isFuture: false, isPast: true };
     });
     var synthRows = buildFilteredSummary(allEmps, wObjs);
@@ -3207,7 +3219,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   }
   function getCell(row, lbl) {
     if (!row || !lbl) return null;
-    var idx = DATA.weeks.findIndex(function(w) { return w.label === lbl; });
+    var idx = D.weeks.findIndex(function(w) { return w.label === lbl; });
     if (idx !== -1 && row.cells && row.cells[idx]) return row.cells[idx];
     return (synthCache[lbl] && synthCache[lbl][row.id]) || null;
   }
@@ -3217,17 +3229,17 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   var goalsCell = getCell(goalsRow, weekLabel), goalsPrev = getCell(goalsRow, prevWeekLabel);
   var kudosCell = getCell(kudosRow, weekLabel), ptoCell   = getCell(ptoRow, weekLabel);
 
-  var hist    = DATA.trackedHistory || [];
+  var hist    = D.trackedHistory || [];
   var histCur = hist.find(function(h) { return h.label === weekLabel; });
   var histPrv = prevWeekLabel ? hist.find(function(h) { return h.label === prevWeekLabel; }) : null;
-  var selWeek = DATA.weeks.find(function(w) { return w.label === weekLabel; });
+  var selWeek = D.weeks.find(function(w) { return w.label === weekLabel; });
 
-  var headcount  = DATA.meta.activeCount || DATA.headcount || 1;
-  var isCrewMode = ((document.getElementById("fbMemberType") || {}).value || "fte") === "crew";
+  var headcount  = D.meta.activeCount || D.headcount || 1;
+  var isCrewMode = data ? false : ((document.getElementById("fbMemberType") || {}).value || "fte") === "crew";
 
   // ── Public Holiday context ────────────────────────────────────────────────
-  var phMap    = DATA.phByWeek || {};
-  var allWeeks = DATA.weeks    || [];
+  var phMap    = D.phByWeek || {};
+  var allWeeks = D.weeks    || [];
 
   allWeeks.filter(function(w) { return !w.isFuture; }).forEach(function(w) {
     var ph = phMap[w.label];
@@ -3265,7 +3277,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
     var missing = (compTot != null && compN != null) ? compTot - compN : null;
     facts.push('Goals: ' + compStr + ' compliant (' + compPct + '%)' + wowGStr);
     if (compPct >= 70) {
-      highlights.push(compStr + ' meeting ' + (DATA.meta && DATA.meta.goalsQuarter || '') + ' commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
+      highlights.push(compStr + ' meeting ' + (D.meta && D.meta.goalsQuarter || '') + ' commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
     } else if (compPct >= 50) {
       notes.push('Goals compliance at ' + compPct + '%' + (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need goal updates' : ''));
     } else {
@@ -3279,7 +3291,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   var _phPrev = (prevWeekLabel && phMap[prevWeekLabel] && phMap[prevWeekLabel].totalAffected) || 0;
 
   // ── Tracked time ──────────────────────────────────────────────────────────
-  if (hasMetric_('tracked')) {
+  if (hasM('tracked')) {
   if (isCrewMode) {
     var cEmps   = allEmps;
     var cHC     = cEmps.length;
@@ -3330,7 +3342,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
   }
 
   // ── Planned time ──────────────────────────────────────────────────────────
-  if (hasMetric_('planned')) {
+  if (hasM('planned')) {
   if (isCrewMode) {
     var cEmpsP    = allEmps;
     var cHCP      = cEmpsP.length;
@@ -3456,24 +3468,24 @@ function generateTeamBrief(weekLabel, prevWeekLabel) {
 
   // ── RCR ───────────────────────────────────────────────────────────────────
   if (isCrewMode) {
-    var cRcrEmps = DATA.employees.filter(function(e) { return e.isCrewMember && e.rcr && e.rcr.value !== null; });
+    var cRcrEmps = (D.employees || []).filter(function(e) { return e.isCrewMember && e.rcr && e.rcr.value !== null; });
     if (cRcrEmps.length > 0) {
       var cRcrVal  = Math.round(cRcrEmps.reduce(function(s, e) { return s + e.rcr.value; }, 0) / cRcrEmps.length * 100) / 100;
-      var cRcrMon  = DATA.meta.rcrLastMonth || '';
+      var cRcrMon  = D.meta.rcrLastMonth || '';
       facts.push('RCR (crew avg): ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' · individual average, not SUM(RC)/SUM(TCC) · review with manager');
       notes.push('Crew avg RCR at ' + cRcrVal.toFixed(2) + '×' + (cRcrMon ? ' (' + cRcrMon + ')' : '') + ' · represents project mix & billing rates; review trends & context with your manager');
     }
-  } else if (DATA.meta.rcrTeamRCR != null) {
-    var rcrVal = DATA.meta.rcrTeamRCR;
-    var month  = DATA.meta.rcrLastMonth || '';
+  } else if (D.meta.rcrTeamRCR != null) {
+    var rcrVal = D.meta.rcrTeamRCR;
+    var month  = D.meta.rcrLastMonth || '';
     facts.push('RCR: ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · monthly metric, does not change week-over-week · review with manager');
     notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · represents project mix & billing rates · review trends & context with your manager · refreshes monthly');
   }
 
   // ── SI (FTE only) ────────────────────────────────────────────────────────
-  if (!isCrewMode && DATA.meta.siTeamRounded != null) {
-    var _siQ  = DATA.meta.siQuarter || "";
-    var _siV  = DATA.meta.siTeamRounded;
+  if (!isCrewMode && D.meta.siTeamRounded != null) {
+    var _siQ  = D.meta.siQuarter || "";
+    var _siV  = D.meta.siTeamRounded;
     facts.push('Small Improvements (SI): ' + _siV + '/5 (' + _siQ + ') · quarterly metric, does not change week-over-week');
     if (_siV >= 4) {
       notes.push('SI context: ' + _siV + '/5 (' + _siQ + ') — strong manager rating; team recognized for continuous improvement mindset · quarterly snapshot');
