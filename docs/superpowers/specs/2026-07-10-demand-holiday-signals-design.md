@@ -62,8 +62,9 @@ ANZ_HOLIDAY_HRS_PER_DAY: 7.6,    // 38-hr week ÷ 5 — consistent with ANZ_CAPA
     below) whose `Key Location` matches — the affected count and the capacity
     denominator use the same population.
   - Computes per-person holiday hours and the NETSUITE shortfall (see math).
-  - Returns `{ [iso]: { entries: [{date, location, holiday, affectedCount}],
-    totalAffected, holidayHours, shortfallHours } }`.
+  - Returns `{ [iso]: { entries: [{date, location, holiday, days, affectedCount}],
+    totalAffected, shortfallHours } }` — multi-day holidays group into one entry
+    with a `days` count.
 
 ### `readRosterFull_()` change
 
