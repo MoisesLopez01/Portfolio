@@ -550,6 +550,28 @@ function titleFamilyMap_() {
   return map;
 }
 
+/**
+ * Job family for a roster row. Precedence: explicit "Job Family" cell →
+ * numeric code prefix on the Job Title ("09." / "009." → JF009 → family name;
+ * same derivation as the PS dashboard's parseJobCode — roster titles are
+ * code-prefixed, so this is the path that actually fires) → bare catalog-title
+ * lookup for uncoded titles. Unknown/archived families resolve to "".
+ * @param {string} famCol raw "Job Family" cell value ("" if column absent)
+ * @param {string} title raw "Job Title" cell value
+ * @returns {string} family display name or ""
+ */
+function familyFromTitle_(famCol, title) {
+  if (famCol) return famCol;
+  var t = String(title || "");
+  var m = t.match(/^(\d{2,3})\./);
+  if (m) {
+    var name = ACTIVE_FAMILY_NAMES_["JF" + ("00" + m[1]).slice(-3)];
+    if (name) return name;
+  }
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, " ").trim(); };
+  return titleFamilyMap_()[norm(t)] || "";
+}
+
 // ── CAPACITY (roster base hours 38 ANZ / 40 else, minus PTO/holidays; planned fallback) ──
 
 /**
@@ -609,10 +631,11 @@ function readRosterFull_() {
       var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
       var dept  = iDept  !== -1 ? String(row[iDept]  || "").trim() : "";
       // Roster has no reliable "Job Family" column — prefer it if present (defensive),
-      // else derive the family from Job Title via titleFamilyMap_() (see above). Titles
-      // outside the catalog (crew/contractor, unlisted roles) simply stay unmapped ("").
+      // else derive the family from the Job Title's numeric code prefix (roster titles
+      // are code-prefixed: "09.M4.1 Manager, Service Delivery"), with a bare-catalog-
+      // title fallback. Crew/contractor and unlisted roles simply stay unmapped ("").
       var famCol = iFam !== -1 ? String(row[iFam] || "").trim() : "";
-      var fam    = famCol || titleFamilyMap_()[norm(title)] || "";
+      var fam    = familyFromTitle_(famCol, title);
       var isCrew = /crew member|contractor/i.test(title);
       var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
       profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew };
@@ -1542,4 +1565,36 @@ function _test_cacheRoundtrip_(cacheOpt) {
   assert_(cacheGetLarge_(cache, key) === null, "missing chunk must read as a clean miss, not throw/partial");
 
   Logger.log("✅ _test_cacheRoundtrip_ passed");
+}
+
+/**
+ * Job-family derivation — roster Job Titles are code-prefixed ("09.M4.1 Manager,
+ * Service Delivery"), so the family must come from the numeric prefix (same
+ * derivation as the PS dashboard's parseJobCode), not a bare-catalog-title lookup.
+ * Regression test for the empty Job Family filter dropdown.
+ */
+function _test_familyFromTitle_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_familyFromTitle_: " + msg); }
+
+  var cases = [
+    // Code-prefixed roster titles → family name from the prefix (title text irrelevant)
+    { famCol: "", title: "09.I5.1 Senior Consultant II, Service Delivery", expect: "Service Delivery" },
+    { famCol: "", title: "009.M4.1 Manager, Service Delivery",             expect: "Service Delivery" },
+    { famCol: "", title: "07.M4.2 Manager, Delivery",                      expect: "Managed Services & Support" },
+    { famCol: "", title: "18.I3.1 Consultant, Solution Architecture",      expect: "Solution Architecture" },
+    // Explicit Job Family cell always wins
+    { famCol: "Ops Custom", title: "09.I3.1 Consultant, Technical Consulting", expect: "Ops Custom" },
+    // No prefix → bare catalog-title fallback still works
+    { famCol: "", title: "Consultant, Technical Consulting", expect: "Service Delivery" },
+    // Unknown / archived / uncoded titles resolve to "" (stay unmapped)
+    { famCol: "", title: "Crew Member",             expect: "" },
+    { famCol: "", title: "60.IC3. Software Engineer", expect: "" },
+    { famCol: "", title: "",                        expect: "" },
+  ];
+  cases.forEach(function (c) {
+    var got = familyFromTitle_(c.famCol, c.title);
+    assert_(got === c.expect, "famCol='" + c.famCol + "' title='" + c.title + "' → expected '" + c.expect + "' got '" + got + "'");
+  });
+
+  Logger.log("✅ _test_familyFromTitle_ passed");
 }

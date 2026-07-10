@@ -43,4 +43,5 @@ _test_scopeRecsToServices_();
 _test_isCrew_();
 _test_behaviorSignals();
 _test_cacheRoundtrip_(new FakeCache());
+_test_familyFromTitle_();
 console.log("✅ node-tests: all suites passed");
