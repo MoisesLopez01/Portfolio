@@ -40,6 +40,10 @@ var CONFIG = {
   SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
   Q4_BASE_WEEK: 14,   // ISO week number of Q4 start (update each quarter)
   Q4_BASE_YEAR: 2026, // Calendar year of Q4 start
+
+  // ── Cache (gzip + chunked CacheService — see README) ──
+  CACHE_TTL_SEC:        3900, // 65 min — outlives one missed 30-min warm cycle
+  CACHE_WARM_EVERY_MIN: 30,   // warmDemandCache() trigger interval (setupDemandCacheWarmer)
 };
 
 // ── ENTRY POINT ──────────────────────────────────────────────
@@ -142,6 +146,87 @@ function sumHoursByIso_(recs) {
   var out = {};
   (recs || []).forEach(function (r) { out[r.iso] = (out[r.iso] || 0) + r.hours; });
   return out;
+}
+
+// ── CACHE (gzip + chunking) ─────────────────────────────────
+// Ported from PS Contribution Report.js. CacheService rejects any single value
+// over 100 KB and the demand payload (person-level maps + behavior signals)
+// exceeds that, so the JSON is gzipped (~10× smaller) and split across numbered
+// chunk keys (`<key>_0..n` + `<key>_meta`). A missing chunk on read (partial
+// eviction) is treated as a clean cache miss. One shared entry serves every
+// viewer — this dashboard has no per-user scoping (viewerRole/viewerEmail are
+// attached after the cache read, never stored).
+var CACHE_CHUNK_BYTES_ = 90 * 1024;  // margin under the 100 KB per-value cap
+
+/** Current cache version — Script Property PD_CACHE_VER (default 1). */
+function demandCacheVer_() {
+  try {
+    var v = parseInt(PropertiesService.getScriptProperties().getProperty("PD_CACHE_VER"), 10);
+    return v > 0 ? v : 1;
+  } catch (e) { return 1; }
+}
+
+/**
+ * Bumps PD_CACHE_VER, stranding all prior-version entries (they expire on TTL —
+ * CacheService can't enumerate keys, so versioning is how invalidation works).
+ * Run manually from the GAS editor to force-invalidate the cache.
+ */
+function bustDemandCache_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var next = (parseInt(props.getProperty("PD_CACHE_VER"), 10) || 1) + 1;
+    props.setProperty("PD_CACHE_VER", String(next));
+    Logger.log("✅ bustDemandCache_: cache version bumped to " + next);
+    return next;
+  } catch (e) {
+    Logger.log("⚠️ bustDemandCache_: " + e.message);
+    return null;
+  }
+}
+
+/** The single shared cache key for the demand model. */
+function demandCacheKey_() { return "pd_v" + demandCacheVer_(); }
+
+/** Gzips + chunks `str` into `<key>_0..n` + `<key>_meta`. Returns true on success. */
+function cachePutLarge_(cache, key, str, ttlSec) {
+  try {
+    var b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(str, "application/json")).getBytes());
+    var entries = {};
+    var n = 0;
+    for (var i = 0; i < b64.length; i += CACHE_CHUNK_BYTES_, n++) {
+      entries[key + "_" + n] = b64.slice(i, i + CACHE_CHUNK_BYTES_);
+    }
+    entries[key + "_meta"] = String(n);
+    cache.putAll(entries, ttlSec);
+    Logger.log("cachePutLarge_: " + key + " — " + str.length + " chars → " + b64.length + " b64 in " + n + " chunk(s)");
+    return true;
+  } catch (e) {
+    Logger.log("⚠️ cachePutLarge_ (" + key + "): " + e.message);
+    return false;
+  }
+}
+
+/** Reads a chunked entry; returns the JSON string or null on any miss. */
+function cacheGetLarge_(cache, key) {
+  try {
+    var meta = parseInt(cache.get(key + "_meta"), 10);
+    if (!(meta > 0)) return null;
+    var names = [];
+    for (var i = 0; i < meta; i++) names.push(key + "_" + i);
+    var got = cache.getAll(names);
+    var b64 = "";
+    for (var j = 0; j < meta; j++) {
+      var part = got[key + "_" + j];
+      if (!part) return null;  // chunk expired/evicted — whole entry is a miss
+      b64 += part;
+    }
+    return Utilities.ungzip(
+      Utilities.newBlob(Utilities.base64Decode(b64), "application/x-gzip")).getDataAsString();
+  } catch (e) {
+    Logger.log("⚠️ cacheGetLarge_ (" + key + "): " + e.message);
+    return null;
+  }
 }
 
 // ── MAIN DATA ENDPOINT (called from the client via google.script.run) ──
@@ -1353,4 +1438,33 @@ function _test_behaviorSignals() {
   Logger.log('Jane QTD unique projects: ' + bs.personQtdUniqueProjectCount['jane doe']); // PPT + ICARE = 2
   Logger.log('Alex QTD unique projects: ' + bs.personQtdUniqueProjectCount['alex smith']); // PPT only = 1
   Logger.log('Done.');
+}
+
+/**
+ * Cache chunking roundtrip — verifies cachePutLarge_/cacheGetLarge_ survive a
+ * >100 KB payload (multi-chunk) and treat a missing chunk as a clean miss.
+ * Run in the GAS editor with no args (uses the real script cache), or via
+ * node-tests.js which passes an in-memory stub cache.
+ */
+function _test_cacheRoundtrip_(cacheOpt) {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_cacheRoundtrip_: " + msg); }
+  var cache = cacheOpt || CacheService.getScriptCache();
+  var key = "pd_test_roundtrip";
+
+  // Low-compressibility payload: pseudo-random digits so gzip+base64 still
+  // exceeds one 90 KB chunk (forces the multi-chunk path).
+  var arr = [];
+  for (var i = 0; i < 60000; i++) arr.push((i * 104729) % 1000000007);
+  var str = JSON.stringify({ rows: arr });
+
+  assert_(cachePutLarge_(cache, key, str, 60) === true, "put failed");
+  var meta = parseInt(cache.get(key + "_meta"), 10);
+  assert_(meta >= 2, "expected >= 2 chunks, got " + meta + " — payload too small to exercise chunking");
+  var back = cacheGetLarge_(cache, key);
+  assert_(back === str, "roundtrip mismatch (" + (back ? back.length : "null") + " vs " + str.length + " chars)");
+
+  cache.remove(key + "_0");   // simulate partial eviction
+  assert_(cacheGetLarge_(cache, key) === null, "missing chunk must read as a clean miss, not throw/partial");
+
+  Logger.log("✅ _test_cacheRoundtrip_ passed");
 }
