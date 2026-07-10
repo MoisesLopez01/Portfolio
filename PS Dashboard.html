@@ -619,6 +619,21 @@ body.dark-mode .pkh-grid th.pkh-th-plan { background:rgba(5,140,220,.14); }
                    cursor:pointer; transition:background .12s, border-color .12s, color .12s; }
 .perf-toggle-btn:hover { border-color:var(--orbe); color:var(--orbe); background:#EEF4FF; }
 
+/* ── CROSS-TEAM EXECUTIVE ROLLUP (admins + viewers) ── */
+.eb-rollup { margin: 0 0 16px; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--th-bg); }
+.eb-rollup-title { font-size: 12px; font-weight: 800; color: var(--void); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; }
+.eb-rollup-table { border-collapse: collapse; width: 100%; }
+.eb-rollup-table thead th { font-size: 10px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.eb-rollup-table tbody th { font-size: 12px; font-weight: 800; color: var(--void); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: top; }
+.eb-rollup-table tbody td { font-size: 12px; color: var(--slate); padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.eb-rollup-table tr:last-child th, .eb-rollup-table tr:last-child td { border-bottom: none; }
+.eb-rollup-hc { font-weight: 600; color: var(--muted); font-size: 11px; }
+.eb-rollup-traj { font-size: 14px; width: 28px; text-align: center; }
+.eb-rollup-concern { color: #B45309; }
+.eb-rollup-ok { color: var(--muted); }
+.eb-rollup-pending { color: var(--muted); font-style: italic; }
+.eb-rollup-note { margin: 0 0 16px; padding: 8px 12px; font-size: 11px; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; }
+
 /* ── TEAM EXECUTIVE BRIEF ── */
 .team-brief {
   margin: 20px 20px 0;
@@ -2507,7 +2522,11 @@ function prefetchNext_() {
       }
       if (p && p.ok && p.meta && p.meta.team) {
         var servedKey = p.meta.team.key;
-        if (!STATE.teamData[servedKey]) STATE.teamData[servedKey] = p;
+        if (!STATE.teamData[servedKey]) {
+          STATE.teamData[servedKey] = p;
+          // Fill the rollup's 'loading…' row if the user is looking at the brief.
+          if (STATE.activeTab === 'execbrief') renderExecBriefTab_();
+        }
         if (servedKey !== reqKey) _prefetchFailed[reqKey] = true;   // team empty in scope — server fell back; stop re-requesting it
         if (_prefetchWanted === reqKey && STATE.activeTeam === reqKey) {
           // User is waiting on this request. onDataLoaded is payload-is-truth:
@@ -4264,7 +4283,89 @@ function toggleAllRocketeers() {
   if (label) label.textContent = _rkAllExpanded ? "Collapse All" : "Expand All";
 }
 
-// ── TEAM EXECUTIVE BRIEF TAB (admin only) ─────────────────
+// ── CROSS-TEAM EXECUTIVE ROLLUP ──────────────────────────────────────────────
+// One names-free row per available team: trajectory / top concern / top highlight.
+// Spec: docs/superpowers/specs/2026-07-09-exec-brief-manager-unlock-and-rollup-design.md
+// Non-active teams read the background-prefetched payloads in STATE.teamData, so
+// a row always matches what toggling to that team would show. Admin+viewer only;
+// managers structurally can't render it (single-scope payloads) — the role gate
+// is defense in depth.
+
+// Trajectory from WoW deltas of the metrics the team has. Goals compliance is the
+// one weekly metric every team carries (flat band ±2 pts); tracked avg-hours joins
+// where the team has it (flat band ±0.5 h). All up → ▲, all down → ▼, else ▶.
+function rollupTrajectory_(emps, curLbl, prevLbl, metrics) {
+  if (!prevLbl) return { sym: '▶', title: 'no prior week to compare' };
+  var c = getWeekStats(emps, curLbl), p = getWeekStats(emps, prevLbl);
+  var dirs = [];
+  if (c.gt > 0 && p.gt > 0) {
+    var dg = c.goalsPct - p.goalsPct;
+    dirs.push(Math.abs(dg) <= 2 ? 0 : (dg > 0 ? 1 : -1));
+  }
+  if ((metrics || []).indexOf('tracked') !== -1) {
+    var ca = c.trackedHC > 0 ? c.tracked / c.trackedHC : null;
+    var pa = p.trackedHC > 0 ? p.tracked / p.trackedHC : null;
+    if (ca !== null && pa !== null) {
+      var dt = ca - pa;
+      dirs.push(Math.abs(dt) <= 0.5 ? 0 : (dt > 0 ? 1 : -1));
+    }
+  }
+  if (!dirs.length) return { sym: '▶', title: 'no comparable data' };
+  var allUp   = dirs.every(function(d) { return d === 1; });
+  var allDown = dirs.every(function(d) { return d === -1; });
+  return allUp   ? { sym: '▲', title: 'improving week-over-week' }
+       : allDown ? { sym: '▼', title: 'declining week-over-week' }
+       :           { sym: '▶', title: 'flat / mixed week-over-week' };
+}
+
+// Returns the strip's HTML, or '' when hidden (manager role / single team).
+// In Month/Quarter mode returns the one-line weekly note instead of rows.
+function renderExecRollup_(selLabel, prevLabel) {
+  var role  = STATE.userRole;
+  var teams = (DATA && DATA.meta && DATA.meta.availableTeams) || [];
+  if ((role !== 'admin' && role !== 'viewer') || teams.length < 2) return '';
+  if (STATE.periodGranularity !== 'week') {
+    return '<div class="eb-rollup-note">Cross-team rollup is weekly — switch to Week view to compare teams.</div>';
+  }
+  var rows = teams.map(function(t) {
+    var payload = t.key === STATE.activeTeam ? DATA : STATE.teamData[t.key];
+    if (!payload) {
+      return '<tr><th>' + esc(t.label) + '</th><td colspan="3" class="eb-rollup-pending">' +
+        (_prefetchFailed[t.key] ? 'not loaded — switch to this team once to load it' : 'loading…') +
+        '</td></tr>';
+    }
+    var weekSet = payload.q4Weeks || payload.weeks || [];
+    if (!weekSet.some(function(w) { return w.label === selLabel; })) {
+      return '<tr><th>' + esc(t.label) + '</th><td colspan="3" class="eb-rollup-pending">no data for ' +
+        esc(selLabel) + '</td></tr>';
+    }
+    // Rollup rows are always the payload's unfiltered FTE population (the FTE/crew
+    // and job-family filters describe the active team's detail view, never the
+    // comparison) — generateTeamBrief's rollup mode enforces the same population.
+    var brief = generateTeamBrief(selLabel, prevLabel, payload);
+    var emps  = (payload.employees || []).filter(function(e) { return !e.isCrewMember; });
+    var mets  = (payload.meta && payload.meta.team && payload.meta.team.metrics) || [];
+    var traj  = rollupTrajectory_(emps, selLabel, prevLabel, mets);
+    var concern   = brief.concerns[0] || '';
+    // Kudos per-post lines carry individual names and are marked with ★ — skip
+    // them so the rollup stays names-free (counts-only summary surface).
+    var highlight = brief.highlights.filter(function(h) { return h.indexOf('★') === -1; })[0] || '';
+    var noConcern = concern.indexOf('No critical concerns') === 0;
+    return '<tr>' +
+      '<th>' + esc(t.label) + ' <span class="eb-rollup-hc">· ' + emps.length + '</span></th>' +
+      '<td class="eb-rollup-traj" title="' + esc(traj.title) + '">' + traj.sym + '</td>' +
+      '<td class="' + (noConcern ? 'eb-rollup-ok' : 'eb-rollup-concern') + '">' + esc(concern) + '</td>' +
+      '<td>' + esc(highlight) + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="eb-rollup">' +
+    '<div class="eb-rollup-title">Cross-team rollup · ' + esc(selLabel) + '</div>' +
+    '<table class="eb-rollup-table"><thead><tr>' +
+      '<th>Team</th><th></th><th>Top concern</th><th>Top highlight</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// ── TEAM EXECUTIVE BRIEF TAB (admin/viewer/manager; rollup admin+viewer) ──
 function renderExecBriefTab_() {
   var el = document.getElementById("execBriefBody");
   if (!el || !DATA) return;
@@ -4293,7 +4394,8 @@ function renderExecBriefTab_() {
         dispLabel + ' · ' + bucket.weekRangeLabel + (prevB ? '  ·  vs ' + prevB.label : '');
     }
     var brief = generatePeriodBrief(bucket, prevB, buckets);
-    el.innerHTML = buildTeamBriefHTML(dispLabel, prevB ? prevB.label : null, brief, { dateRange: bucket.weekRangeLabel });
+    el.innerHTML = renderExecRollup_(null, null) +
+      buildTeamBriefHTML(dispLabel, prevB ? prevB.label : null, brief, { dateRange: bucket.weekRangeLabel });
     return;
   }
 
@@ -4317,7 +4419,8 @@ function renderExecBriefTab_() {
   }
 
   var brief = generateTeamBrief(selLabel, prevWeek ? prevWeek.label : null);
-  el.innerHTML = buildTeamBriefHTML(selLabel, prevWeek ? prevWeek.label : null, brief);
+  el.innerHTML = renderExecRollup_(selLabel, prevWeek ? prevWeek.label : null) +
+    buildTeamBriefHTML(selLabel, prevWeek ? prevWeek.label : null, brief);
 }
 
 // ── KPI HELPERS ───────────────────────────────────────────
