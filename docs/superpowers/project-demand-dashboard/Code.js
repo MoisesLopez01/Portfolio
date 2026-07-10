@@ -376,6 +376,45 @@ function buildDemandModel_() {
   }
 }
 
+// ── CACHE WARMER ────────────────────────────────────────────
+
+/**
+ * Rebuilds the shared cache entry. Runs on the time trigger installed by
+ * setupDemandCacheWarmer(), so real visitors virtually always hit warm cache.
+ * Skips the write when the model is unhealthy — a transient sheet-read failure
+ * must not overwrite a good entry.
+ */
+function warmDemandCache() {
+  var s0 = Date.now();
+  var model = buildDemandModel_();
+  var secs = Math.round((Date.now() - s0) / 1000);
+  if (model.error || model.trackedError) {
+    Logger.log("❌ warmDemandCache after " + secs + "s: " + (model.error || model.trackedError));
+    return;
+  }
+  var ok = cachePutLarge_(CacheService.getScriptCache(), demandCacheKey_(),
+                          JSON.stringify(model), CONFIG.CACHE_TTL_SEC);
+  Logger.log(ok ? "✅ warmDemandCache: rebuilt in " + secs + "s"
+                : "❌ warmDemandCache: compute ok (" + secs + "s) but cache write failed");
+}
+
+/**
+ * One-time setup — run manually from the GAS editor as the dashboard owner.
+ * Replaces any existing warmer trigger, so it is safe to re-run after changing
+ * CONFIG.CACHE_WARM_EVERY_MIN. (everyMinutes accepts 1/5/10/15/30 only.)
+ */
+function setupDemandCacheWarmer() {
+  ScriptApp.getProjectTriggers()
+    .filter(function (t) { return t.getHandlerFunction() === "warmDemandCache"; })
+    .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger("warmDemandCache")
+    .timeBased()
+    .everyMinutes(CONFIG.CACHE_WARM_EVERY_MIN)
+    .create();
+  Logger.log("✅ Demand cache warmer installed — every " + CONFIG.CACHE_WARM_EVERY_MIN +
+             " min, TTL " + CONFIG.CACHE_TTL_SEC + "s");
+}
+
 // ── JOB TITLE → FAMILY (derived) ─────────────────────────────
 // The Roster sheet has no reliable "Job Family" column — job family only exists as a
 // function of "Job Title" (same underlying catalog PS Contribution Report.js uses for
