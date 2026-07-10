@@ -546,6 +546,7 @@ var AVAIL_BLEND = 0;    // project-count tier filter (0=all, 1/2/3/4=specific)
 var FILTER_EXPANDED = false; // people filter bar expand state
 var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
+var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -647,11 +648,31 @@ function capChartWeeks_(){
 // Hover/click handlers for the chart's week labels — hover previews the week's numbers
 // via the shared tooltip, click navigates SEL_ISO dashboard-wide (same as the Week dropdown).
 var CAP_CHART_WT = null;
+/* Holiday lines for the shared tooltip (HTML). Counts only — never person names. */
+function holidayTipHtml_(iso){
+  var h=HOLIDAYS[iso]; if(!h) return '';
+  var lines=h.entries.map(function(en){
+    return '🏖 '+esc(en.holiday)+' · '+esc(en.location)+' · '+esc(en.date)
+      +(en.days>1?' ('+en.days+' days)':'')
+      +(en.affectedCount!=null?' · '+en.affectedCount+' people':'');
+  });
+  if(h.shortfallHours) lines.push('capacity −'+fmt(h.shortfallHours)+' h');
+  return lines.join('<br>');
+}
+/* Plain-text variant for title="" attributes (heatmap header chips). */
+function holidayTitle_(iso){
+  var h=HOLIDAYS[iso]; if(!h) return '';
+  return h.entries.map(function(en){
+    return en.holiday+' · '+en.location+(en.days>1?' ('+en.days+' days)':'')
+      +(en.affectedCount!=null?' · '+en.affectedCount+' people':'');
+  }).join('\n');
+}
 function capChartHover_(e, iso){
   var wt = CAP_CHART_WT || { planned:{}, tracked:{} };
   var pv = wt.planned[iso]||0, tv = wt.tracked[iso]||0;
   var fidTxt = pv>0 ? (Math.round((tv/pv)*100)+'% fidelity') : 'no plan';
-  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(pv)+' hrs planned<br>'+fmt(tv)+' hrs tracked<br>'+esc(fidTxt));
+  var ht = holidayTipHtml_(iso);
+  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(pv)+' hrs planned<br>'+fmt(tv)+' hrs tracked<br>'+esc(fidTxt)+(ht?'<br>'+ht:''));
 }
 function capChartNav_(iso){ SEL_ISO = iso; reRenderAll_(); }
 function cwIndexOf_(cw, iso){ for(var i=0;i<cw.length;i++) if(cw[i].iso===iso) return i; return -1; }
@@ -685,6 +706,7 @@ function applyModel(model){
   KEYNAME = model.keyName || {};
   KEYINDEX = {};
   (model.order||[]).forEach(function(k,i){ KEYINDEX[k]=i; });
+  HOLIDAYS = model.holidaysByWeek || {};
   var now = WEEKS.filter(function(w){return w.status==="now";})[0] || WEEKS[Math.floor(NWEEKS/2)] || WEEKS[0];
   CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
   SEL_ISO = CURRENT_ISO;
@@ -783,6 +805,16 @@ function renderCapacity(){
   else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Focus &amp; Execution Signals below.';}
   else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
   var swFull=trendLine+sw;
+  var hol=HOLIDAYS[iso];
+  if(hol){
+    var locs={}; hol.entries.forEach(function(en){locs[en.location]=true;});
+    var nDays=hol.entries.reduce(function(s,en){return s+(en.days||1);},0);
+    swFull+='<div>🏖 <b>'+nDays+' public holiday day'+(nDays>1?'s':'')+'</b> this week ('
+      +esc(Object.keys(locs).join(', '))
+      +(hol.totalAffected!=null?' · '+hol.totalAffected+' people':'')
+      +(hol.shortfallHours?' · capacity −'+fmt(hol.shortfallHours)+' h':'')
+      +') — expect lower planned/tracked hours; a dip here is not a demand drop.</div>';
+  }
   $('capSoWhat').className='sowhat '+cls;
   $('capSoWhat').innerHTML=swFull;
 
@@ -918,6 +950,9 @@ function renderCapChart(wt,cw){
     if(isSel||isCur||isEdge||i%labelStep===0){
       var shortLbl=wk.iso.replace(/^\d{4}\./,'');
       g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isSel?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+    }
+    if(HOLIDAYS[wk.iso]){
+      g+='<text x="'+lx+'" y="'+(pad.t+10)+'" text-anchor="middle" font-size="9" style="pointer-events:none">🏖</text>';
     }
     if(isSel) g+='<circle cx="'+lx+'" cy="'+y(wt.planned[wk.iso]||0)+'" r="3.6" fill="'+hexVar('--orbe')+'" style="pointer-events:none"/>';
   });
