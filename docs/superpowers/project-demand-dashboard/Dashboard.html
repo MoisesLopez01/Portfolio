@@ -1689,7 +1689,8 @@ function renderHeat(){
   FPROJ.order.forEach(function(k){WEEKS.forEach(function(w){var h=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
   var order=visibleOrder();
   var html='<table class="hgrid"><thead><tr><th class="rowhdr">Project</th>'+WEEKS.map(function(w){
-    return '<th>'+esc(w.iso)+'<div style="font-weight:400;color:var(--muted);font-size:calc(9.5px*var(--scale))">'+STATUS_LABEL[w.status]+'</div></th>';
+    var holChip=HOLIDAYS[w.iso]?' <span title="'+esc(holidayTitle_(w.iso))+'" style="cursor:help">🏖</span>':'';
+    return '<th>'+esc(w.iso)+holChip+'<div style="font-weight:400;color:var(--muted);font-size:calc(9.5px*var(--scale))">'+STATUS_LABEL[w.status]+'</div></th>';
   }).join('')+'</tr></thead><tbody>';
   order.forEach(function(k){
     var act=ACTIVE_ROW===k?'active':'';
