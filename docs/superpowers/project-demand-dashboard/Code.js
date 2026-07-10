@@ -349,6 +349,12 @@ function buildDemandModel_() {
     var model = aggregate_(scopedRecs, weeks, baselineIso);
     model.timeOffByWeek = sumHoursByIso_(scopedPtoRecs);   // PTO + public holidays (NETSUITE rows), Services only
 
+    // ── Public holidays: badges + capacity shortfall (PH tab; [] on any failure) ──
+    var phData = readPHData_();
+    var hol = buildHolidaysByWeek_(phData, weeks, roster, netsuiteByPersonWeek_(scopedPtoRecs));
+    model.holidaysByWeek = hol.byWeek;
+    model.holidayShortfallByWeek = hol.shortfallByWeek;
+
     attachCapacity_(model, roster);   // net capacity (roster base − time-off, planned fallback)
 
     // ── Tracked time + delivery signals ──────────────────────
@@ -726,7 +732,8 @@ function readRosterFull_() {
 function attachCapacity_(model, rosterFull) {
   var cap = CONFIG.WEEKLY_CAPACITY_HRS;
   var hc  = rosterFull || { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0 };
-  var timeOff = model.timeOffByWeek || {};
+  var timeOff  = model.timeOffByWeek || {};
+  var holShort = model.holidayShortfallByWeek || {};   // unbooked public-holiday hours (see buildHolidaysByWeek_)
   model.capByWeek = {};
   model.grossCapByWeek = {};
   if (hc.ok && hc.headcount > 0) {
@@ -736,7 +743,7 @@ function attachCapacity_(model, rosterFull) {
     model.baseCapacity = hc.baseCapacity;
     model.isoList.forEach(function (iso) {
       model.grossCapByWeek[iso] = hc.baseCapacity;
-      model.capByWeek[iso] = Math.max(0, hc.baseCapacity - (timeOff[iso] || 0));
+      model.capByWeek[iso] = Math.max(0, hc.baseCapacity - (timeOff[iso] || 0) - (holShort[iso] || 0));
     });
   } else {
     model.capacityMode = "planned";
@@ -746,7 +753,7 @@ function attachCapacity_(model, rosterFull) {
     model.isoList.forEach(function (iso) {
       var gross = (model.activePeople[iso] || 0) * cap;
       model.grossCapByWeek[iso] = gross;
-      model.capByWeek[iso] = Math.max(0, gross - (timeOff[iso] || 0));
+      model.capByWeek[iso] = Math.max(0, gross - (timeOff[iso] || 0) - (holShort[iso] || 0));
     });
   }
 }
@@ -1296,7 +1303,7 @@ function emptyModel_(weeks) {
     cap: {}, head: {}, winners: {}, activeProj: {}, weekTotal: {},
     blendByWeek: {}, avgBlend: {}, stretched: {}, activePeople: {}, fragByWeek: {},
     order: [], keyName: {}, maxCell: 0.001, baselineIso: null,
-    capByWeek: capByWeek, grossCapByWeek: {}, timeOffByWeek: {},
+    capByWeek: capByWeek, grossCapByWeek: {}, timeOffByWeek: {}, holidaysByWeek: {}, holidayShortfallByWeek: {},
     capacityMode: "planned", headcount: null, anzCount: 0, baseCapacity: 0,
     capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
     planTarget: CONFIG.PLAN_TARGET,
@@ -1861,6 +1868,29 @@ function _test_holidayCapacity_() {
     { person: "Ben  Chile", iso: "2026.W38", key: "NETSUITE", hours: 8 },  // double space → same person
   ]);
   assert_(ns["ben chile"]["2026.W38"] === 16, "netsuite hours should sum per normalized person, got " + JSON.stringify(ns));
+
+  // ── attachCapacity_ subtracts the holiday shortfall (roster mode) ──
+  var model = {
+    isoList: ["2026.W38", "2026.W39"],
+    timeOffByWeek: { "2026.W38": 40 },            // booked NETSUITE (ben 16 + cara 8 + other PTO 16)
+    holidayShortfallByWeek: { "2026.W38": 31.6 }, // from the rollup above
+    activePeople: {},
+  };
+  attachCapacity_(model, { ok: true, headcount: 6, baseCapacity: 238, anzCount: 1 });
+  assert_(model.grossCapByWeek["2026.W38"] === 238, "gross stays base capacity");
+  assert_(Math.abs(model.capByWeek["2026.W38"] - (238 - 40 - 31.6)) < 0.001,
+          "W38 net = gross − timeOff − holiday shortfall, got " + model.capByWeek["2026.W38"]);
+  assert_(model.capByWeek["2026.W39"] === 238, "W39 (no time off, no holidays) stays gross");
+
+  // ── planned fallback mode also honors the shortfall map (empty in real fallback) ──
+  var model2 = {
+    isoList: ["2026.W38"],
+    timeOffByWeek: {},
+    holidayShortfallByWeek: {},
+    activePeople: { "2026.W38": 5 },
+  };
+  attachCapacity_(model2, { ok: false, headcount: 0, baseCapacity: 0, anzCount: 0 });
+  assert_(model2.capByWeek["2026.W38"] === 200, "fallback 5×40 with no deductions, got " + model2.capByWeek["2026.W38"]);
 
   Logger.log("✅ _test_holidayCapacity_ passed");
 }
