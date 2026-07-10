@@ -706,17 +706,18 @@ function updateBadge(){
   var b=$('srcBadge'); if(!b) return;
   if(SOURCE==="live"){
     b.className="srcbadge live";
-    // Snapshot freshness (generatedAt = when the server computed this model —
-    // it may be a cached snapshot; ↻ Refresh forces a live read). Falls back
-    // to the tracked-export stamp for models without generatedAt (mid-rollout).
-    var ga=DATA&&DATA.generatedAt ? new Date(DATA.generatedAt) : null;
-    if(ga && !isNaN(ga)){
-      b.textContent='Data as of '+ga.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-      b.title='When this snapshot was computed — ↻ Refresh forces a live read';
-    } else {
-      var ts=DATA&&DATA.trackedLastExport;
-      b.textContent=ts ? fmtExport(ts) : 'Data loaded';
-    }
+    // "Data as of" = when the Tempo DATA was last exported (tracked & planned
+    // import together daily — same freshness convention as the PS report), NOT
+    // when the server computed this snapshot; generatedAt is the fallback when
+    // the export stamp is missing. ↻ Refresh forces a live re-read either way.
+    var isExport=!!(DATA&&DATA.trackedLastExport);
+    var ts=DATA&&(DATA.trackedLastExport||DATA.generatedAt), d=ts?new Date(ts):null;
+    if(d && !isNaN(d)){
+      b.textContent='Data as of '+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+        +' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+      b.title=(isExport?'Last Tempo export (tracked & planned import daily)'
+                       :'When this snapshot was computed')+' — ↻ Refresh forces a live read';
+    } else { b.textContent='Data loaded'; }
   } else { b.className="srcbadge offline"; b.textContent="○ Offline / CSV"; }
 }
 
