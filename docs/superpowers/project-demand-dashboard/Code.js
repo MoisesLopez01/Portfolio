@@ -721,12 +721,15 @@ function readRosterFull_() {
 }
 
 /**
- * Attaches capacity fields to the model in place. Capacity is NET of PTO and
- * public holidays (the NETSUITE time-off rows, summed per week in model.timeOffByWeek).
+ * Attaches capacity fields to the model in place. Capacity is NET of PTO
+ * (the NETSUITE time-off rows, summed per week in model.timeOffByWeek) AND
+ * unbooked public holidays (model.holidayShortfallByWeek — the per-week hours
+ * of PH time not already booked as NETSUITE rows; see buildHolidaysByWeek_).
  *  - roster mode:  gross = baseCapacity (38 ANZ / 40 else, constant across the window);
- *                  capByWeek[iso] = max(0, gross − timeOff[iso]).
+ *                  capByWeek[iso] = max(0, gross − timeOff[iso] − holidayShortfall[iso]).
  *  - planned mode: fallback when the roster can't be read — gross =
- *                  activePeople[iso] × WEEKLY_CAPACITY_HRS; capByWeek[iso] = max(0, gross − timeOff[iso]).
+ *                  activePeople[iso] × WEEKLY_CAPACITY_HRS;
+ *                  capByWeek[iso] = max(0, gross − timeOff[iso] − holidayShortfall[iso]).
  * @param {Object} model
  */
 function attachCapacity_(model, rosterFull) {
