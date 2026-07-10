@@ -2001,7 +2001,7 @@ var VIEWS = [
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
-  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["admin"] },
+  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["admin", "viewer", "manager"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
   { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["admin"] },
   { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["admin"] },
@@ -3710,9 +3710,13 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
       '<div class="team-brief-head">' +
         '<h3>Team Executive Brief — ' + esc(weekLabel) + '</h3>' +
         '<div class="team-brief-head-actions">' +
-          '<button class="team-brief-gemini-btn" id="tbGeminiBtn" onclick="triggerTeamGemini()">✨ Enhance with Gemini</button>' +
+          (STATE.userRole === 'admin'
+            ? '<button class="team-brief-gemini-btn" id="tbGeminiBtn" onclick="triggerTeamGemini()">✨ Enhance with Gemini</button>'
+            : '') +
           '<button class="team-brief-copy-btn" onclick="copyTeamBrief()">📋 Copy for Confluence</button>' +
-          '<button class="team-brief-publish-btn" id="tbPublishBtn" onclick="triggerConfluencePublish()">🚀 Publish to Confluence</button>' +
+          (STATE.userRole === 'admin'
+            ? '<button class="team-brief-publish-btn" id="tbPublishBtn" onclick="triggerConfluencePublish()">🚀 Publish to Confluence</button>'
+            : '') +
         '</div>' +
       '</div>' +
       '<div class="team-brief-publish-strip" id="tbPublishStrip"></div>' +
