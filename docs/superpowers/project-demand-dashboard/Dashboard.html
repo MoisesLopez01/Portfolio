@@ -1054,25 +1054,38 @@ function renderCapChart(wt,cw){
   // them. When a specific chip is active, Jira Raw is missing, or a People filter is on,
   // this block is skipped and the single tracked line further down is the only series
   // drawn — unchanged from before this feature.
+  // NOTE on windowing: DATA.billingByWeek is built server-side ONLY over the ~8-week
+  // display window (model.isoList), but cw here is capChartWeeks_() = QTD ∪ WEEKS, which
+  // is WIDER for most of a quarter. So bands are drawn ONLY across the weeks that actually
+  // have a billingByWeek entry — a contiguous recent tail of cw — while every earlier QTD
+  // week keeps showing just the tracked line (exactly as before this feature). Drawing a
+  // band for a week with no entry would render a zero-height slab with the tracked line
+  // floating above it, breaking the "bands total wt.tracked[iso]" invariant. Each band
+  // polygon is built over that sub-range using the original cw index (bwk.i) for x(), so
+  // it lines up with the tracked line, and the sub-range's contiguity keeps the polygon
+  // gap-free.
   var showBillingSplit = BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_();
   if(showBillingSplit && wt.tracked){
-    var billOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?b.billable:0; };
-    var intOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?b.internal:0; };
-    var uncOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?(b.unclassified||0):0; };
-    var hasUnc = cw.some(function(wk){ return uncOf(wk)>0; });
-    // Builds a filled band between two per-week value getters (top boundary walked
-    // forward, bottom boundary walked backward) using the same x(i)/y(v) scaffolding as
-    // the planned area above.
-    var bandPath_ = function(topOf, botOf){
-      var top=cw.map(function(wk,i){ return x(i)+','+y(topOf(wk)); });
-      var rev=cw.slice().reverse();
-      var bot=rev.map(function(wk,i){ return x(n-1-i)+','+y(botOf(wk)); });
-      return 'M'+top.join(' L')+' L'+bot.join(' L')+' Z';
-    };
-    var zeroOf=function(){ return 0; };
-    g+='<path d="'+bandPath_(billOf, zeroOf)+'" fill="#00A86B" opacity="0.85"/>'; // billable — solid green
-    g+='<path d="'+bandPath_(function(wk){return billOf(wk)+intOf(wk);}, billOf)+'" fill="#6FCDA0" opacity="0.6"/>'; // internal — muted green
-    if(hasUnc) g+='<path d="'+bandPath_(function(wk){return billOf(wk)+intOf(wk)+uncOf(wk);}, function(wk){return billOf(wk)+intOf(wk);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
+    var bWeeks=[]; // {wk, i} for cw weeks that have a billingByWeek entry (contiguous recent tail)
+    cw.forEach(function(wk,i){ if((DATA.billingByWeek||{})[wk.iso]) bWeeks.push({wk:wk,i:i}); });
+    if(bWeeks.length){
+      var billOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].billable; };
+      var intOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].internal; };
+      var uncOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].unclassified||0; };
+      var hasUnc = bWeeks.some(function(bw){ return uncOf(bw)>0; });
+      // Builds a filled band between two per-week value getters over bWeeks only (top
+      // boundary walked forward, bottom boundary walked backward), using x(bw.i)/y(v) —
+      // the same scaffolding as the planned area above, keyed on original cw index.
+      var bandPath_ = function(topOf, botOf){
+        var top=bWeeks.map(function(bw){ return x(bw.i)+','+y(topOf(bw)); });
+        var bot=bWeeks.slice().reverse().map(function(bw){ return x(bw.i)+','+y(botOf(bw)); });
+        return 'M'+top.join(' L')+' L'+bot.join(' L')+' Z';
+      };
+      var zeroOf=function(){ return 0; };
+      g+='<path d="'+bandPath_(billOf, zeroOf)+'" fill="#00A86B" opacity="0.85"/>'; // billable — solid green
+      g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw);}, billOf)+'" fill="#6FCDA0" opacity="0.6"/>'; // internal — muted green
+      if(hasUnc) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+uncOf(bw);}, function(bw){return billOf(bw)+intOf(bw);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
+    }
   }
   // tracked line (no separate fill of its own when the split above isn't shown — an
   // unfilled line reads distinctly against the shaded Planned area instead of two
