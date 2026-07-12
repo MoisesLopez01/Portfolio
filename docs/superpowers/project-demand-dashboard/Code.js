@@ -374,6 +374,15 @@ function buildDemandModel_() {
       });
       model.rosterDimensions   = roster.dimensions;
       model.displayNames       = buildDisplayNames_(scopedRecs, scopedTrackedRecs);
+      // ── Billing + epic enrichment (Jira Raw join) ──
+      var jiraMeta = readJiraMeta_();
+      enrichTracked_(scopedTrackedRecs, jiraMeta.map);
+      var billing = buildBillingAggregates_(scopedTrackedRecs, model.isoList);
+      model.billingByWeek        = billing.billingByWeek;
+      model.billableRatioByWeek  = billing.billableRatioByWeek;
+      model.projectBillingWindow = billing.projectBillingWindow;
+      model.coverage             = billing.coverage;
+      model.jiraMetaAvailable    = jiraMeta.available;
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
       model.trackedError = trackedResult.error;
@@ -1019,6 +1028,54 @@ function enrichTracked_(recs, map) {
   return recs;
 }
 
+/**
+ * Aggregates enriched tracked records into billing figures for the window.
+ * Records whose iso is not in isoList are ignored. Ratio is over CLASSIFIED
+ * hours only (billable + internal); coverage tracks unclassified separately.
+ * @param {Array} recs     enriched tracked records (carry .billingType, .iso, .key, .hours).
+ * @param {Array<string>} isoList  the displayed window's ISO weeks.
+ * @returns {{billingByWeek, billableRatioByWeek, projectBillingWindow, coverage}}
+ */
+function buildBillingAggregates_(recs, isoList) {
+  var inWindow = {}; (isoList || []).forEach(function (iso) { inWindow[iso] = true; });
+  var billingByWeek = {};
+  (isoList || []).forEach(function (iso) { billingByWeek[iso] = { billable: 0, internal: 0, unclassified: 0 }; });
+  var projectBillingWindow = {};
+  var matchedHrs = 0, unclassifiedHrs = 0;
+
+  var bucketOf = function (bt) {
+    return bt === "Billable" ? "billable" : bt === "Internal" ? "internal" : "unclassified";
+  };
+
+  (recs || []).forEach(function (r) {
+    if (!inWindow[r.iso]) return;
+    var b = bucketOf(r.billingType);
+    billingByWeek[r.iso][b] += r.hours;
+    var pb = projectBillingWindow[r.key] || (projectBillingWindow[r.key] = { billable: 0, internal: 0, unclassified: 0 });
+    pb[b] += r.hours;
+    if (r.billingType === "Unclassified") unclassifiedHrs += r.hours; else matchedHrs += r.hours;
+  });
+
+  var billableRatioByWeek = {};
+  (isoList || []).forEach(function (iso) {
+    var w = billingByWeek[iso];
+    var classified = w.billable + w.internal;
+    billableRatioByWeek[iso] = classified > 0 ? w.billable / classified : null;
+  });
+
+  var total = matchedHrs + unclassifiedHrs;
+  return {
+    billingByWeek: billingByWeek,
+    billableRatioByWeek: billableRatioByWeek,
+    projectBillingWindow: projectBillingWindow,
+    coverage: {
+      matchedHrs: matchedHrs,
+      unclassifiedHrs: unclassifiedHrs,
+      matchRate: total > 0 ? matchedHrs / total : null,
+    },
+  };
+}
+
 function _test_enrichTracked_() {
   function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_enrichTracked_: " + msg); }
 
@@ -1046,6 +1103,47 @@ function _test_enrichTracked_() {
   assert_(recs[3].epicKey === "" && recs[3].status === "", "unclassified rec has empty epic/status");
 
   Logger.log("✅ _test_enrichTracked_ passed");
+}
+
+function _test_billingAggregation_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_billingAggregation_: " + msg); }
+  function close_(a, b) { return Math.abs(a - b) < 1e-9; }
+
+  var isoList = ["2026.W25", "2026.W26"];
+  var recs = [
+    { iso: "2026.W26", key: "COE455", hours: 20, billingType: "Billable" },
+    { iso: "2026.W26", key: "COE455", hours: 10, billingType: "Internal" },
+    { iso: "2026.W26", key: "HBHP",   hours: 5,  billingType: "Unclassified" },
+    { iso: "2026.W25", key: "COE455", hours: 8,  billingType: "Billable" },
+    { iso: "2099.W01", key: "COE455", hours: 99, billingType: "Billable" }, // out of window → ignored
+  ];
+
+  var agg = buildBillingAggregates_(recs, isoList);
+
+  // Per-week split.
+  assert_(agg.billingByWeek["2026.W26"].billable === 20, "W26 billable 20");
+  assert_(agg.billingByWeek["2026.W26"].internal === 10, "W26 internal 10");
+  assert_(agg.billingByWeek["2026.W26"].unclassified === 5, "W26 unclassified 5");
+  assert_(agg.billingByWeek["2026.W25"].billable === 8, "W25 billable 8");
+
+  // Out-of-window week excluded entirely.
+  assert_(!agg.billingByWeek["2099.W01"], "out-of-window week must not appear");
+
+  // Ratio over CLASSIFIED hours only: W26 = 20 / (20+10) = 0.6667.
+  assert_(close_(agg.billableRatioByWeek["2026.W26"], 20 / 30), "W26 ratio should be 20/30");
+  // W25 = 8 / (8+0) = 1.0.
+  assert_(close_(agg.billableRatioByWeek["2026.W25"], 1), "W25 ratio should be 1.0");
+
+  // Project window totals.
+  assert_(agg.projectBillingWindow.COE455.billable === 28, "COE455 window billable 20+8=28");
+  assert_(agg.projectBillingWindow.HBHP.unclassified === 5, "HBHP window unclassified 5");
+
+  // Coverage: matched = 20+10+8 = 38, unclassified = 5, total = 43.
+  assert_(agg.coverage.matchedHrs === 38, "coverage matchedHrs 38");
+  assert_(agg.coverage.unclassifiedHrs === 5, "coverage unclassifiedHrs 5");
+  assert_(close_(agg.coverage.matchRate, 38 / 43), "coverage matchRate 38/43");
+
+  Logger.log("✅ _test_billingAggregation_ passed");
 }
 
 function buildDisplayNames_(recs1, recs2) {
@@ -1447,6 +1545,7 @@ function emptyModel_(weeks) {
     trackedWarning: null, excludedNames: [],
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
+    billingByWeek: {}, billableRatioByWeek: {}, projectBillingWindow: {}, coverage: null, jiraMetaAvailable: false,
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
