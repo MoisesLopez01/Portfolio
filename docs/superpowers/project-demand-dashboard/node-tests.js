@@ -36,6 +36,7 @@ FakeCache.prototype.remove = function (k) { delete this.m[k]; };
 eval(fs.readFileSync(path.join(__dirname, "Code.js"), "utf8"));
 
 _test_demandParse_();
+_test_jiraMetaParse_();
 _test_headcount_();
 _test_buildPersonAvailability_();
 _test_personWeekPTO_();

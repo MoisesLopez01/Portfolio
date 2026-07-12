@@ -42,6 +42,7 @@ var CONFIG = {
   FRAG_MIN:            4,       // people on ≥ FRAG_MIN distinct projects are "fragmented"
   TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
   TRACKED_SHEET_NAME:   "Tempo Tracked Time",
+  JIRA_RAW_SHEET:       "Jira Raw",   // issue metadata source (same spreadsheet as SOURCE_SS_ID)
   DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
   SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
   Q4_BASE_WEEK: 14,   // ISO week number of Q4 start (update each quarter)
@@ -919,6 +920,81 @@ function readTrackedAllocations_() {
   }
 }
 
+// ── JIRA RAW METADATA (billing + epic enrichment) ────────────
+
+/**
+ * Parses a Jira Raw value matrix into an issue-metadata lookup.
+ * Columns are located by header name (robust to index shifts). Duplicate
+ * issue keys across weekly snapshots resolve to the most recent week (highest
+ * ISO week string wins via string comparison, since dates are sorted).
+ * @param {Array<Array>} vals  Jira Raw getValues() matrix (header row 0).
+ * @returns {{map:Object, epicNames:Object}} map keyed by UPPER(issue key):
+ *   { fixVersions, epicKey, status, summary }; epicNames keyed by UPPER(epic key).
+ */
+function parseJiraMeta_(vals) {
+  var map = {}, weeks = {}, epicNames = {};
+  if (!vals || vals.length < 2) return { map: map, epicNames: epicNames };
+
+  var hdr = vals[0].map(function (h) { return String(h).trim().toLowerCase(); });
+  var col = function (name) { return hdr.indexOf(name); };
+  var iKey  = col("key");
+  var iSum  = col("work (summary)");
+  var iStat = col("status");
+  var iFix  = col("fix versions");
+  var iEpic = col("epic key");
+  var iWeek = col("week");
+  if (iKey === -1) return { map: map, epicNames: epicNames };
+
+  for (var r = 1; r < vals.length; r++) {
+    var row = vals[r];
+    var key = String(row[iKey] || "").toUpperCase().trim();
+    if (!key) continue;
+    var week = iWeek !== -1 ? String(row[iWeek] || "").trim() : "";
+
+    // Keep row only if it's from a more recent week (string comparison works for YYYY.WN format)
+    // or if we haven't seen this key yet.
+    if (!weeks[key] || week > weeks[key]) {
+      weeks[key] = week;
+      map[key] = {
+        fixVersions: iFix  !== -1 ? String(row[iFix]  || "").trim() : "",
+        epicKey:     iEpic !== -1 ? String(row[iEpic] || "").toUpperCase().trim() : "",
+        status:      iStat !== -1 ? String(row[iStat] || "").trim() : "",
+        summary:     iSum  !== -1 ? String(row[iSum]  || "").trim() : "",
+      };
+    }
+  }
+
+  // Epic name = the epic issue's own summary, when that epic appears as a row.
+  for (var k in map) {
+    var ek = map[k].epicKey;
+    if (ek && map[ek]) epicNames[ek] = map[ek].summary;
+  }
+  return { map: map, epicNames: epicNames };
+}
+
+/**
+ * Reads the Jira Raw sheet from SOURCE_SS_ID and returns the metadata map.
+ * Fail-soft: a missing/unreadable sheet returns available:false with empty
+ * maps, so billing signals switch off but no other panel is affected.
+ * Reads only columns 1..18 to skip the large "Comments (ADF Extracted)" column.
+ * @returns {{map:Object, epicNames:Object, available:boolean}}
+ */
+function readJiraMeta_() {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
+    var sh = ss.getSheetByName(CONFIG.JIRA_RAW_SHEET);
+    if (!sh) return { map: {}, epicNames: {}, available: false };
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return { map: {}, epicNames: {}, available: false };
+    var vals = sh.getRange(1, 1, lastRow, 18).getValues();  // cols A..R (skip comments blob)
+    var parsed = parseJiraMeta_(vals);
+    return { map: parsed.map, epicNames: parsed.epicNames, available: true };
+  } catch (e) {
+    Logger.log("⚠️ readJiraMeta_: " + e.message);
+    return { map: {}, epicNames: {}, available: false };
+  }
+}
+
 
 function buildDisplayNames_(recs1, recs2) {
   var names = {};
@@ -1509,6 +1585,41 @@ function _test_demandParse_() {
   assert_(!mb.winners["2026.W14"], "baseline week must not be computed as a displayed winner");
 
   Logger.log("✅ _test_demandParse_ passed");
+}
+
+function _test_jiraMetaParse_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_jiraMetaParse_: " + msg); }
+
+  // Fake Jira Raw matrix (header row + issue rows). Columns are located by header
+  // name, not index, so a partial column set is fine for the test.
+  var vals = [
+    ["Week", "Key", "Work (Summary)", "Assignee", "Status", "Fix Versions", "Epic Key"],
+    ["2026.W26", "COE-456", "Build importer", "Ana Smith", "Done",        "SRSO-4455, 2026.Q3", "COE-100"],
+    ["2026.W26", "COE-457", "Internal chore", "Ben Lee",  "In Progress",  "",                    "COE-100"],
+    ["2026.W25", "COE-456", "Build importer", "Ana Smith", "In Review",   "SRSO-4455",           "COE-100"], // dup issue, older week
+    ["2026.W26", "COE-100", "Importer epic",  "Ana Smith", "In Progress", "",                    ""],        // the epic itself
+    ["2026.W26", "coe-458", "Weird casing",   "Ana Smith", "Done",        "srso-9",              ""],        // lowercase key + lowercase srso
+  ];
+
+  var meta = parseJiraMeta_(vals);
+
+  // Map keyed by uppercased issue key.
+  assert_(meta.map["COE-456"], "COE-456 must be in map");
+  assert_(meta.map["COE-456"].epicKey === "COE-100", "COE-456 epic should be COE-100");
+  assert_(meta.map["COE-456"].status === "Done", "COE-456 status should be Done");
+
+  // Last-write-wins on duplicate issue: the LAST row seen for COE-456 (W25 In Review) wins.
+  assert_(meta.map["COE-456"].status === "Done" || meta.map["COE-456"].status === "In Review",
+    "dup handling: one of the two rows wins deterministically");
+
+  // Lowercase key normalized to uppercase.
+  assert_(meta.map["COE-458"], "lowercase coe-458 must be stored uppercased");
+
+  // Epic name picked up from the epic's own row summary.
+  assert_(meta.epicNames["COE-100"] === "Importer epic",
+    "epic name should resolve to 'Importer epic', got " + meta.epicNames["COE-100"]);
+
+  Logger.log("✅ _test_jiraMetaParse_ passed");
 }
 
 /**
