@@ -383,6 +383,8 @@ function buildDemandModel_() {
       model.projectBillingWindow = billing.projectBillingWindow;
       model.coverage             = billing.coverage;
       model.jiraMetaAvailable    = jiraMeta.available;
+      model.trackedIssues = buildTrackedIssues_(scopedTrackedRecs, model.isoList);
+      model.epicNames = jiraMeta.epicNames;
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
       model.trackedError = trackedResult.error;
@@ -1076,6 +1078,26 @@ function buildBillingAggregates_(recs, isoList) {
   };
 }
 
+/**
+ * Builds the compact enriched issue-level array for the client to pivot
+ * (epic rollup, evidence drill-down, per-person billing). In-window, >0 hours.
+ * @param {Array} recs     enriched tracked records.
+ * @param {Array<string>} isoList  displayed window's ISO weeks.
+ */
+function buildTrackedIssues_(recs, isoList) {
+  var inWindow = {}; (isoList || []).forEach(function (iso) { inWindow[iso] = true; });
+  var out = [];
+  (recs || []).forEach(function (r) {
+    if (!inWindow[r.iso] || !(r.hours > 0)) return;
+    out.push({
+      issue: r.issue || "", projectKey: r.key, person: r.person, iso: r.iso,
+      hours: r.hours, billingType: r.billingType || "Unclassified",
+      epicKey: r.epicKey || "", status: r.status || "", summary: r.summary || "",
+    });
+  });
+  return out;
+}
+
 function _test_enrichTracked_() {
   function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_enrichTracked_: " + msg); }
 
@@ -1144,6 +1166,25 @@ function _test_billingAggregation_() {
   assert_(close_(agg.coverage.matchRate, 38 / 43), "coverage matchRate 38/43");
 
   Logger.log("✅ _test_billingAggregation_ passed");
+}
+
+function _test_trackedIssues_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_trackedIssues_: " + msg); }
+
+  var isoList = ["2026.W26"];
+  var recs = [
+    { person: "Ana", iso: "2026.W26", key: "COE455", hours: 20, issue: "COE-456", summary: "Build importer", billingType: "Billable",     epicKey: "COE-100", status: "Done" },
+    { person: "Ben", iso: "2026.W26", key: "COE455", hours: 0,  issue: "COE-457", summary: "Chore",          billingType: "Internal",     epicKey: "COE-100", status: "Open" }, // 0 hrs → dropped
+    { person: "Cid", iso: "2099.W01", key: "COE455", hours: 5,  issue: "COE-458", summary: "Later",          billingType: "Billable",     epicKey: "",        status: "Open" }, // out of window → dropped
+  ];
+
+  var out = buildTrackedIssues_(recs, isoList);
+  assert_(out.length === 1, "only the in-window >0-hour issue survives, got " + out.length);
+  assert_(out[0].issue === "COE-456" && out[0].hours === 20, "COE-456 row retained with hours");
+  assert_(out[0].epicKey === "COE-100" && out[0].billingType === "Billable", "enrichment carried through");
+  assert_(out[0].summary === "Build importer", "summary carried through");
+
+  Logger.log("✅ _test_trackedIssues_ passed");
 }
 
 function buildDisplayNames_(recs1, recs2) {
@@ -1476,12 +1517,13 @@ function parseAllocations_(vals, nonProjectKeys) {
   if (hr === -1) return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 
   // "Key" (project) and "Space" (project name) columns.
-  var iKey = -1, iSpace = -1, iIssue = -1;
+  var iKey = -1, iSpace = -1, iIssue = -1, iSum = -1;
   for (var c2 = 0; c2 < vals[hr].length; c2++) {
     var hdr = String(vals[hr][c2]).trim().toLowerCase();
-    if (hdr === "key")   iKey = c2;
-    if (hdr === "space") iSpace = c2;
-    if (hdr === "issue") iIssue = c2;   // present only on the tracked sheet
+    if (hdr === "key")     iKey = c2;
+    if (hdr === "space")   iSpace = c2;
+    if (hdr === "issue")   iIssue = c2;   // present only on the tracked sheet
+    if (hdr === "summary") iSum = c2;     // present only on the tracked sheet
   }
 
   var exclude = {};
@@ -1508,14 +1550,15 @@ function parseAllocations_(vals, nonProjectKeys) {
     var isTimeOff = !!exclude[rawKey.toUpperCase()];                // NETSUITE = PTO + public holidays
     var name = iSpace !== -1 ? String(row[iSpace] || "").trim() : "";
     var issue = iIssue !== -1 ? String(row[iIssue] || "").trim() : "";
+    var summary = iSum !== -1 ? String(row[iSum] || "").trim() : "";
     for (var wi = 0; wi < wCols.length; wi++) {
       var hours = parseFloat(row[wCols[wi].idx]);
       if (!hours || hours <= 0) continue;
       if (isTimeOff) {                                              // reduces capacity, not project demand
         timeOffByWeek[wCols[wi].iso] = (timeOffByWeek[wCols[wi].iso] || 0) + hours;
-        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue });
+        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary });
       } else {
-        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue });
+        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary });
       }
     }
   }
@@ -1546,6 +1589,7 @@ function emptyModel_(weeks) {
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     billingByWeek: {}, billableRatioByWeek: {}, projectBillingWindow: {}, coverage: null, jiraMetaAvailable: false,
+    trackedIssues: [], epicNames: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,

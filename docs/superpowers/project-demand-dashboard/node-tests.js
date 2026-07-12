@@ -39,6 +39,7 @@ _test_demandParse_();
 _test_jiraMetaParse_();
 _test_enrichTracked_();
 _test_billingAggregation_();
+_test_trackedIssues_();
 _test_headcount_();
 _test_buildPersonAvailability_();
 _test_personWeekPTO_();
