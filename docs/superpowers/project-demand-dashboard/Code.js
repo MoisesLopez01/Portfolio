@@ -384,6 +384,7 @@ function buildDemandModel_() {
       model.coverage             = billing.coverage;
       model.jiraMetaAvailable    = jiraMeta.available;
       model.trackedIssues = buildTrackedIssues_(scopedTrackedRecs, model.isoList);
+      Logger.log("ℹ️ trackedIssues rows: " + (model.trackedIssues ? model.trackedIssues.length : 0));
       model.epicNames = jiraMeta.epicNames;
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
