@@ -71,6 +71,7 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .chip-toggle button{border:none;border-radius:0;background:transparent;padding:8px 12px}
 .chip-toggle button.on{background:var(--void);color:#fff}
 [data-theme="dark"] .chip-toggle button.on{background:var(--orbe)}
+.chip-toggle button:disabled{opacity:.35;cursor:default;pointer-events:none}
 
 /* state message */
 .stateMsg{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
@@ -639,21 +640,56 @@ function filteredWeekTotals_(isos){
   return { planned: planned, tracked: tracked };
 }
 
+// True when ANY People filter that filteredWeekTotals_/filteredPersonSet_ honors is
+// currently narrowing the roster (location / job family / manager / FTE-crew / role /
+// project-at-week). Mirrors filteredPersonSet_'s own "no filter → null" guard exactly, so
+// the two never disagree about whether the panel is showing the full Services set.
+function peopleFilterActive_(){
+  return !!(AVAIL_LOC || AVAIL_FAM.size || AVAIL_MGR || AVAIL_CREW || AVAIL_ROLE || AVAIL_PROJ);
+}
+
 // Applies the "Tracked billing" chip (BILLING_FILTER) to a single week's tracked hours.
 // Billing classification (billable/internal/unclassified) comes from DATA.billingByWeek,
-// which is sourced from the Jira Raw tab and is NOT scoped to the People filters above —
-// it's a separate, whole-roster breakdown. `fallbackTracked` (the already People-filtered
-// tracked total for this week, from filteredWeekTotals_) is used whenever there's no
-// billing breakdown for the week — e.g. Jira Raw is absent, or the week falls outside the
-// project billing window — so the panel still works exactly as before this feature.
-// Planned/capacity figures never pass through this helper: billing is tracked-only by design.
+// a whole-roster breakdown sourced from the Jira Raw tab that is NOT scoped to the People
+// filters above (Phase 1 has no per-team billing split — that arrives in Phase 2). The rule:
+//   • 'all'                         → ALWAYS return fallbackTracked (the already People-filtered
+//                                     tracked total from filteredWeekTotals_). With no People
+//                                     filter that already equals the org total, so 'all' is exact
+//                                     either way and must never read the org-wide billingByWeek —
+//                                     doing so would break the panel's "reflects People filters" contract.
+//   • specific bucket + People filter → also return fallbackTracked (org billing split can't be
+//                                     re-scoped to a team; the specific chips are disabled in this
+//                                     state by syncBillingChips_, so this is just a safety net).
+//   • specific bucket + no filter    → return the org billingByWeek value (exact, since filtered
+//                                     == org when nothing is narrowing the set).
+// `fallbackTracked` is also used whenever there's no billing breakdown for the week (Jira Raw
+// absent, or the week is outside the project billing window) so the panel works as before this
+// feature. Planned/capacity figures never pass through here: billing is tracked-only by design.
 function trackedForWeek_(iso, fallbackTracked){
+  if (BILLING_FILTER === 'all' || peopleFilterActive_()) return fallbackTracked || 0;
   var b = (DATA.billingByWeek || {})[iso];
   if (!b) return fallbackTracked || 0;
-  if (BILLING_FILTER === 'all') return b.billable + b.internal + b.unclassified;
   if (BILLING_FILTER === 'Billable') return b.billable;
   if (BILLING_FILTER === 'Internal') return b.internal;
   return b.unclassified;
+}
+
+// Keeps the chip UI honest about what Phase 1 data can actually answer: with a People filter
+// active, only "All" is exact (org billing split can't be re-scoped to a team), so the three
+// specific chips are disabled and the active selection snaps back to "All". Re-enabled when the
+// People filter clears. Called at the top of renderCapacity() so it always reflects live state
+// (every People-filter control routes through reRenderAll_ → renderCapacity).
+function syncBillingChips_(){
+  var grp = $('billingFilter'); if (!grp) return;
+  var locked = peopleFilterActive_();
+  if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option under a People filter
+  Array.prototype.forEach.call(grp.children, function(b){
+    var bucket = b.dataset.billing, isSpecific = bucket !== 'all', disable = locked && isSpecific;
+    b.disabled = disable;
+    b.classList.toggle('disabled', disable);
+    b.title = disable ? 'Per-team billing split arrives in Phase 2 — showing all tracked hours' : '';
+    b.classList.toggle('on', bucket === BILLING_FILTER);
+  });
 }
 
 // Rewrites a filteredWeekTotals_() tracked map in place through trackedForWeek_, so every
@@ -670,6 +706,7 @@ function bindBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
   Array.prototype.forEach.call(grp.children, function(b){
     b.onclick = function(){
+      if (b.disabled) return; // specific chips are disabled under a People filter (Phase 1 has no per-team split)
       Array.prototype.forEach.call(grp.children, function(x){ x.classList.remove('on'); });
       b.classList.add('on');
       BILLING_FILTER = b.dataset.billing;
@@ -806,6 +843,7 @@ function renderRange(){
 /* ---------------- Render: Planned vs Tracked ---------------- */
 function renderCapacity(){
   var iso=SEL_ISO;
+  syncBillingChips_(); // reconcile the billing chips with the live People-filter state before reading tracked
   var cw=capChartWeeks_();
   var wt=filteredWeekTotals_(cw.map(function(w){return w.iso;}));
   wt.tracked=applyBillingFilter_(wt.tracked, cw.map(function(w){return w.iso;})); // "Tracked billing" chip — tracked only, wt.planned untouched
