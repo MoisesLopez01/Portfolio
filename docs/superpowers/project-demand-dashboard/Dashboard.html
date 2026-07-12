@@ -676,20 +676,29 @@ function trackedForWeek_(iso, fallbackTracked){
   return b.unclassified;
 }
 
-// Keeps the chip UI honest about what Phase 1 data can actually answer: with a People filter
-// active, only "All" is exact (org billing split can't be re-scoped to a team), so the three
-// specific chips are disabled and the active selection snaps back to "All". Re-enabled when the
-// People filter clears. Called at the top of renderCapacity() so it always reflects live state
-// (every People-filter control routes through reRenderAll_ → renderCapacity).
+// Keeps the chip UI honest about what the current data can actually answer. Two states force
+// the three specific chips off and snap the active selection back to "All":
+//   1. A People filter is active — org billing split can't be re-scoped to a team (Phase 1),
+//      so only "All" (the People-filtered total) is exact.
+//   2. Jira Raw is absent (DATA.jiraMetaAvailable === false) — billingByWeek still exists but
+//      every hour lands in the `unclassified` bucket, so Billable/Internal would read 0 for
+//      every week and flatten the tracked line. "All" routes to fallbackTracked and stays right.
+// Re-enabled only when neither condition holds. Called at the top of renderCapacity() so it
+// always reflects live state (every People-filter control routes through reRenderAll_ →
+// renderCapacity, and the initial load renders through renderAll → renderCapacity).
 function syncBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
-  var locked = peopleFilterActive_();
-  if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option under a People filter
+  var noBilling = !DATA.jiraMetaAvailable;                 // Jira Raw absent → all-unclassified, specific buckets meaningless
+  var locked = peopleFilterActive_() || noBilling;         // either reason disables the specific chips
+  if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option in both states
+  // Jira-absent is a data-level degradation, so its message wins when both reasons apply.
+  var title = noBilling ? 'Billing signals off — Jira Raw not found'
+                        : 'Per-team billing split arrives in Phase 2 — showing all tracked hours';
   Array.prototype.forEach.call(grp.children, function(b){
     var bucket = b.dataset.billing, isSpecific = bucket !== 'all', disable = locked && isSpecific;
     b.disabled = disable;
     b.classList.toggle('disabled', disable);
-    b.title = disable ? 'Per-team billing split arrives in Phase 2 — showing all tracked hours' : '';
+    b.title = disable ? title : '';
     b.classList.toggle('on', bucket === BILLING_FILTER);
   });
 }
