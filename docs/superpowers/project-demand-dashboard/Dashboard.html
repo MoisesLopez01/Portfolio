@@ -533,6 +533,7 @@ input[type=file]{display:none}
           <span><i style="background:#00A86B"></i>Tracked</span>
           <span id="projDrillFilterNote" style="display:none">(tracked line is always all-people — per-person tracked-by-project detail isn't available)</span>
         </div>
+        <div id="projDrillEvidence" style="margin-top:10px"></div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
         <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
@@ -1707,6 +1708,12 @@ function renderAvailability() {
       if (projTableHtml) {
         html += '<div class="avail-expanded-section">' + projTableHtml + '</div>';
       }
+
+      // Issue evidence (Task 11) — the tracked-issue detail behind this person's hours,
+      // scoped to np (already the normDD_-normalized key used across personMeta/personProjectPlan).
+      var personEvidRows = evidenceRows_(function(t){ return normDD_(t.person) === np; });
+      html += '<div class="avail-expanded-section"><div style="font-weight:600;font-size:12px;margin-bottom:6px">Issue evidence</div>'
+        + renderEvidenceTable_(personEvidRows) + '</div>';
     }
 
     html += '</div>';
@@ -1749,6 +1756,9 @@ function renderProjDrill(key){
   var d=$('projDrill');if(!d)return;
   if(!key||!DATA.tracked){d.style.display='none';return;}
   d.style.display='';
+  var evEl=$('projDrillEvidence');
+  if(evEl) evEl.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:6px">Issue evidence</div>'
+    +renderEvidenceTable_(evidenceRows_(function(t){return t.projectKey===key;}));
   $('projDrillChip').innerHTML=chip(key);
   $('projDrillName').textContent=KEYNAME[key]||key;
   var fnEl=$('projDrillFilterNote'); if(fnEl) fnEl.style.display = filteredPersonSet_() ? '' : 'none';
@@ -1862,8 +1872,13 @@ function renderEpicRollup(){
         +contribCount+' '+(contribCount===1?'person':'people')+' '+(isOpen?'▴':'▾')+'</span></td>'
       +'</tr>';
     if(isOpen){
+      // Enhanced for Task 11: keep the contributor names (cheap "who" glance) and add the
+      // full issue-level evidence table underneath (the "what work" behind those hours).
+      var epicEvidRows=evidenceRows_(function(t){return (t.epicKey||'(no epic)')===r.epicKey;});
       html+='<tr><td colspan="5" style="padding:0"><div class="avail-expanded-section">'
-        +(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div></td></tr>';
+        +'<div style="margin-bottom:8px"><b>Contributors:</b> '+(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div>'
+        +renderEvidenceTable_(epicEvidRows)
+        +'</div></td></tr>';
     }
   });
 
@@ -1879,6 +1894,58 @@ function renderEpicRollup(){
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(isFiltered?' Reflects the People filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
+}
+
+/* ---------------- Evidence drill-down (Task 11) ----------------
+ * Generic issue-level "evidence of work" behind any project / epic / person number.
+ * Reuses the SAME person-set predicate as the epic rollup above (normDD_ + filteredPersonSet_())
+ * so the People filters above are always honored consistently across every Phase 2 panel.
+ * Deliberately does NOT read BILLING_FILTER, for the same reason renderEpicRollup doesn't:
+ * that chip is Phase-1-only (org-wide figures) and gets disabled under a People filter — see
+ * trackedForWeek_ above. Billing type is shown per-row here as a dimension, not a filter.
+ */
+function evidenceRows_(predicate){
+  var issues=(DATA && DATA.trackedIssues) || [];
+  var pset=filteredPersonSet_();
+  var byIssue={}, order=[];
+  issues.forEach(function(t){
+    if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person
+    if(!predicate(t)) return;
+    var key=t.issue || '(no issue)';
+    var r=byIssue[key];
+    if(!r){
+      r={issue:t.issue,summary:t.summary,status:t.status,billingType:t.billingType,projectKey:t.projectKey,epicKey:t.epicKey,hours:0};
+      byIssue[key]=r; order.push(key);
+    }
+    r.hours+=t.hours||0; // aggregate one row PER ISSUE across every matching week
+  });
+  var rows=order.map(function(k){return byIssue[k];});
+  rows.sort(function(a,b){return b.hours-a.hours;});
+  return rows;
+}
+
+// Renders evidence rows as Issue · Summary · Status · Billing · hours. Individual issues ARE
+// the intended detail at this drill level (unlike chart-area summaries, which show counts only).
+function renderEvidenceTable_(rows){
+  if(!rows || !rows.length){
+    return '<div class="hint" style="padding:4px 0 2px">No tracked-issue detail for this selection'
+      +(DATA && DATA.jiraMetaAvailable===false ? ' (Jira Raw not found)' : '')+'.</div>';
+  }
+  var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
+    +'<th>Issue</th><th>Summary</th><th>Status</th><th>Billing</th><th class="et-hrs">Hours</th>'
+    +'</tr></thead><tbody>';
+  rows.forEach(function(r){
+    var billLbl=r.billingType || 'Unclassified';
+    html+='<tr>'
+      +'<td><span class="proj-key-mono">'+esc(r.issue||'—')+'</span></td>'
+      +'<td>'+esc(r.summary||'—')+'</td>'
+      +'<td>'+esc(r.status||'—')+'</td>'
+      +'<td><span class="et-bill-'+billLbl+'">'+esc(billLbl)+'</span></td>'
+      +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  return html;
 }
 
 /* ---------------- Render: heatmap (color modes + question filters) ---------------- */
