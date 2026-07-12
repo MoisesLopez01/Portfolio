@@ -1319,11 +1319,12 @@ function parseAllocations_(vals, nonProjectKeys) {
   if (hr === -1) return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 
   // "Key" (project) and "Space" (project name) columns.
-  var iKey = -1, iSpace = -1;
+  var iKey = -1, iSpace = -1, iIssue = -1;
   for (var c2 = 0; c2 < vals[hr].length; c2++) {
     var hdr = String(vals[hr][c2]).trim().toLowerCase();
     if (hdr === "key")   iKey = c2;
     if (hdr === "space") iSpace = c2;
+    if (hdr === "issue") iIssue = c2;   // present only on the tracked sheet
   }
 
   var exclude = {};
@@ -1349,14 +1350,15 @@ function parseAllocations_(vals, nonProjectKeys) {
     if (!rawKey) continue;                                          // skip blank keys
     var isTimeOff = !!exclude[rawKey.toUpperCase()];                // NETSUITE = PTO + public holidays
     var name = iSpace !== -1 ? String(row[iSpace] || "").trim() : "";
+    var issue = iIssue !== -1 ? String(row[iIssue] || "").trim() : "";
     for (var wi = 0; wi < wCols.length; wi++) {
       var hours = parseFloat(row[wCols[wi].idx]);
       if (!hours || hours <= 0) continue;
       if (isTimeOff) {                                              // reduces capacity, not project demand
         timeOffByWeek[wCols[wi].iso] = (timeOffByWeek[wCols[wi].iso] || 0) + hours;
-        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
+        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue });
       } else {
-        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours });
+        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue });
       }
     }
   }
@@ -1576,6 +1578,23 @@ function _test_demandParse_() {
   assert_(mb.isoList.length === 1 && mb.isoList[0] === "2026.W15", "only W15 should be displayed");
   assert_(mb.cap.ACME["2026.W14"] === 30, "baseline W14 cap should remain available for WoW, got " + mb.cap.ACME["2026.W14"]);
   assert_(!mb.winners["2026.W14"], "baseline week must not be computed as a displayed winner");
+
+  // ── Issue column capture (tracked sheet) ──
+  // Planned sheet (above) has no "Issue" column → recs must have issue === "".
+  assert_(recs.every(function (r) { return r.issue === ""; }),
+    "planned recs (no Issue column) should have empty issue");
+
+  // A tracked-shaped matrix WITH an Issue column captures the issue key.
+  var tvals = [
+    ["", "", "", "", "", "2026.W14", ""],
+    ["User", "Space", "Key", "Issue", "Logged (hrs)", "Mar 30 - Apr 05 2026", "Total (hrs)"],
+    ["Ana Smith", "COE Project", "COE455", "COE-456", 20, 20, 20],
+    ["Ben Lee",   "Time off",    "NETSUITE", "",      8,  8,  8],   // excluded from recs
+  ];
+  var tparsed = parseAllocations_(tvals, CONFIG.NONPROJECT_KEYS);
+  assert_(tparsed.recs.length === 1, "tracked parse should yield 1 project rec, got " + tparsed.recs.length);
+  assert_(tparsed.recs[0].issue === "COE-456", "tracked rec issue should be COE-456, got " + tparsed.recs[0].issue);
+  assert_(tparsed.recs[0].key === "COE455", "tracked rec project key should be COE455, got " + tparsed.recs[0].key);
 
   Logger.log("✅ _test_demandParse_ passed");
 }
