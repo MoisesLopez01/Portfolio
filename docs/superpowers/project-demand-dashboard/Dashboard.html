@@ -115,6 +115,7 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 .panel-h h2{font-size:calc(18px*var(--scale));font-weight:700}
 .panel-h .hint{font-size:calc(12px*var(--scale));color:var(--muted)}
+.panel-h .hint.warn{color:var(--warn)}
 .panel-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
 .png-btn{font-size:calc(11.5px*var(--scale));padding:6px 10px;white-space:nowrap}
 .sowhat{font-size:calc(12.5px*var(--scale));color:var(--muted);background:var(--surface-2);border:1px solid var(--border);
@@ -455,6 +456,7 @@ input[type=file]{display:none}
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
           <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · * = week still in progress · hover or click a week label to inspect/navigate · reflects People filters above</div>
+          <span class="hint" id="billableRatioChip"></span>
           <div class="chip-toggle" id="billingFilter" title="Tracked billing — filters tracked-hour figures only; planned demand is unaffected">
             <button data-billing="all" class="on">All</button>
             <button data-billing="Billable">Billable</button>
@@ -702,6 +704,28 @@ function applyBillingFilter_(trackedMap, isos){
   return out;
 }
 
+// Sums DATA.billingByWeek across the full displayed window (DATA.isoList) into a single
+// billable-ratio + coverage stat for the Planned vs Tracked header chip. Ratio's denominator
+// is CLASSIFIED hours only (billable + internal), matching buildBillingAggregates_ on the
+// server; coverage is classified / total (classified + unclassified). Like billingByWeek
+// itself, this is an ORG-WIDE figure — there is no per-team split in Phase 1 (see
+// trackedForWeek_ above) — so callers must apply the same "org-wide" caveat under a People
+// filter that the billing chips already carry via syncBillingChips_.
+function billingWindowStats_(){
+  var bill=0, intl=0, unc=0;
+  (DATA.isoList||[]).forEach(function(iso){
+    var b=(DATA.billingByWeek||{})[iso];
+    if(!b) return;
+    bill+=b.billable; intl+=b.internal; unc+=b.unclassified;
+  });
+  var classified=bill+intl, total=classified+unc;
+  return {
+    ratio: classified>0 ? bill/classified : null,
+    coverage: total>0 ? classified/total : null,
+    hasData: total>0,
+  };
+}
+
 function bindBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
   Array.prototype.forEach.call(grp.children, function(b){
@@ -912,6 +936,29 @@ function renderCapacity(){
   }
   renderCapLegend();
   renderCapChart(wt, cw);
+
+  // Billable-ratio + coverage stat — org-wide (Phase 1 has no per-team billing split), so it
+  // carries the same "org-wide" caveat as the disabled billing chips whenever a People filter
+  // narrows the roster (see syncBillingChips_ above).
+  var brChip=$('billableRatioChip');
+  if(brChip){
+    if(!DATA.jiraMetaAvailable){
+      brChip.textContent='Jira Raw not found — billing signals off';
+      brChip.className='hint warn';
+    } else {
+      var bw=billingWindowStats_();
+      if(!bw.hasData){
+        brChip.textContent='';
+        brChip.className='hint';
+      } else {
+        var parts=[];
+        if(bw.ratio!==null) parts.push('Billable '+Math.round(bw.ratio*100)+'% of classified tracked hrs');
+        if(bw.coverage!==null) parts.push('coverage '+Math.round(bw.coverage*100)+'%');
+        brChip.textContent=parts.join(' · ')+(peopleFilterActive_()?' · org-wide':'');
+        brChip.className='hint';
+      }
+    }
+  }
 }
 
 function renderCapLegend(){
