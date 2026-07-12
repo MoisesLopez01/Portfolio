@@ -925,14 +925,15 @@ function readTrackedAllocations_() {
 /**
  * Parses a Jira Raw value matrix into an issue-metadata lookup.
  * Columns are located by header name (robust to index shifts). Duplicate
- * issue keys across weekly snapshots resolve to the most recent week (highest
- * ISO week string wins via string comparison, since dates are sorted).
+ * issue keys across weekly snapshots resolve last-write-wins (the last row in
+ * sheet order overwrites earlier ones — metadata is issue-level and identical
+ * across weeks).
  * @param {Array<Array>} vals  Jira Raw getValues() matrix (header row 0).
  * @returns {{map:Object, epicNames:Object}} map keyed by UPPER(issue key):
  *   { fixVersions, epicKey, status, summary }; epicNames keyed by UPPER(epic key).
  */
 function parseJiraMeta_(vals) {
-  var map = {}, weeks = {}, epicNames = {};
+  var map = {}, epicNames = {};
   if (!vals || vals.length < 2) return { map: map, epicNames: epicNames };
 
   var hdr = vals[0].map(function (h) { return String(h).trim().toLowerCase(); });
@@ -942,26 +943,18 @@ function parseJiraMeta_(vals) {
   var iStat = col("status");
   var iFix  = col("fix versions");
   var iEpic = col("epic key");
-  var iWeek = col("week");
   if (iKey === -1) return { map: map, epicNames: epicNames };
 
   for (var r = 1; r < vals.length; r++) {
     var row = vals[r];
     var key = String(row[iKey] || "").toUpperCase().trim();
     if (!key) continue;
-    var week = iWeek !== -1 ? String(row[iWeek] || "").trim() : "";
-
-    // Keep row only if it's from a more recent week (string comparison works for YYYY.WN format)
-    // or if we haven't seen this key yet.
-    if (!weeks[key] || week > weeks[key]) {
-      weeks[key] = week;
-      map[key] = {
-        fixVersions: iFix  !== -1 ? String(row[iFix]  || "").trim() : "",
-        epicKey:     iEpic !== -1 ? String(row[iEpic] || "").toUpperCase().trim() : "",
-        status:      iStat !== -1 ? String(row[iStat] || "").trim() : "",
-        summary:     iSum  !== -1 ? String(row[iSum]  || "").trim() : "",
-      };
-    }
+    map[key] = {
+      fixVersions: iFix  !== -1 ? String(row[iFix]  || "").trim() : "",
+      epicKey:     iEpic !== -1 ? String(row[iEpic] || "").toUpperCase().trim() : "",
+      status:      iStat !== -1 ? String(row[iStat] || "").trim() : "",
+      summary:     iSum  !== -1 ? String(row[iSum]  || "").trim() : "",
+    };
   }
 
   // Epic name = the epic issue's own summary, when that epic appears as a row.
@@ -1606,11 +1599,11 @@ function _test_jiraMetaParse_() {
   // Map keyed by uppercased issue key.
   assert_(meta.map["COE-456"], "COE-456 must be in map");
   assert_(meta.map["COE-456"].epicKey === "COE-100", "COE-456 epic should be COE-100");
-  assert_(meta.map["COE-456"].status === "Done", "COE-456 status should be Done");
 
-  // Last-write-wins on duplicate issue: the LAST row seen for COE-456 (W25 In Review) wins.
-  assert_(meta.map["COE-456"].status === "Done" || meta.map["COE-456"].status === "In Review",
-    "dup handling: one of the two rows wins deterministically");
+  // Last-write-wins in sheet-row order: the LAST COE-456 row (row 3: W25 "In Review")
+  // overwrites the earlier one (row 1: W26 "Done").
+  assert_(meta.map["COE-456"].status === "In Review",
+    "dup handling: last row in sheet order wins → In Review, got " + meta.map["COE-456"].status);
 
   // Lowercase key normalized to uppercase.
   assert_(meta.map["COE-458"], "lowercase coe-458 must be stored uppercased");
