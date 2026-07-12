@@ -779,7 +779,18 @@ function capChartHover_(e, iso){
   var pv = wt.planned[iso]||0, tv = wt.tracked[iso]||0;
   var fidTxt = pv>0 ? (Math.round((tv/pv)*100)+'% fidelity') : 'no plan';
   var ht = holidayTipHtml_(iso);
-  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(pv)+' hrs planned<br>'+fmt(tv)+' hrs tracked<br>'+esc(fidTxt)+(ht?'<br>'+ht:''));
+  // Billable/internal/unclassified breakdown — only when the chart is actually showing
+  // the stacked split for this week (same three-part gate as renderCapChart's band draw);
+  // otherwise the tooltip stays exactly as before this feature.
+  var billTxt='';
+  if(BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_()){
+    var b=(DATA.billingByWeek||{})[iso];
+    if(b){
+      billTxt='<br>Billable: '+fmt(b.billable)+' hrs<br>Internal: '+fmt(b.internal)+' hrs'
+        +(b.unclassified>0?'<br>Unclassified: '+fmt(b.unclassified)+' hrs':'');
+    }
+  }
+  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(pv)+' hrs planned<br>'+fmt(tv)+' hrs tracked<br>'+esc(fidTxt)+billTxt+(ht?'<br>'+ht:''));
 }
 function capChartNav_(iso){ SEL_ISO = iso; reRenderAll_(); }
 function cwIndexOf_(cw, iso){ for(var i=0;i<cw.length;i++) if(cw[i].iso===iso) return i; return -1; }
@@ -967,6 +978,18 @@ function renderCapLegend(){
   el.innerHTML='<span><i style="background:'+hexVar('--orbe')+'"></i>Planned</span>'+
     '<span><i style="background:#00A86B"></i>Tracked</span>'+
     '<span><i class="dashed"></i>'+esc(tgtTxt)+'</span>';
+  // Billable/internal/unclassified swatches — shown only under the exact same gate as the
+  // stacked bands in renderCapChart (billing chip at 'all', Jira Raw available, no People
+  // filter); a standalone capChartWeeks_() call here matches renderCapChart's own fallback
+  // (cw=cw||capChartWeeks_()) since this function isn't passed the week list.
+  var showSplit = BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_();
+  if(showSplit){
+    var cwL = capChartWeeks_();
+    var hasUnc = cwL.some(function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b && b.unclassified>0; });
+    el.innerHTML+='<span><i style="background:#00A86B"></i>Tracked · billable</span>'+
+      '<span><i style="background:#6FCDA0"></i>Tracked · internal</span>'+
+      (hasUnc?'<span><i style="background:#A8D9BE"></i>Tracked · unclassified</span>':'');
+  }
 }
 
 // Rounds a value to the nearest half-decade step (e.g. 6014→6000, 3007→3000) so gridline
@@ -1019,8 +1042,42 @@ function renderCapChart(wt,cw){
     var prev=cw[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
     g+='<line x1="'+x(i-1)+'" y1="'+y(wt.planned[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(wt.planned[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
   });
-  // tracked line (no fill — an unfilled line reads distinctly against the shaded Planned area
-  // instead of two washed-out overlapping bands)
+  // Billable/internal/unclassified stacked bands under the tracked line — org-wide split
+  // (DATA.billingByWeek has no per-team scope yet, see trackedForWeek_ above), drawn only
+  // when the billing chip is at 'all' (no specific bucket picked), Jira Raw is available,
+  // and no People filter narrows the roster — the same three-part gate the billable-ratio
+  // chip already uses (billingWindowStats_ / syncBillingChips_). In this state
+  // billable+internal+unclassified for a week equals wt.tracked[iso] exactly (the 'all'
+  // path in trackedForWeek_ always returns the People-filtered-but-otherwise-org total,
+  // and with no People filter that IS the org total DATA.billingByWeek is built from), so
+  // the bands stack up to the same height as the tracked line drawn just below/on top of
+  // them. When a specific chip is active, Jira Raw is missing, or a People filter is on,
+  // this block is skipped and the single tracked line further down is the only series
+  // drawn — unchanged from before this feature.
+  var showBillingSplit = BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_();
+  if(showBillingSplit && wt.tracked){
+    var billOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?b.billable:0; };
+    var intOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?b.internal:0; };
+    var uncOf=function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b?(b.unclassified||0):0; };
+    var hasUnc = cw.some(function(wk){ return uncOf(wk)>0; });
+    // Builds a filled band between two per-week value getters (top boundary walked
+    // forward, bottom boundary walked backward) using the same x(i)/y(v) scaffolding as
+    // the planned area above.
+    var bandPath_ = function(topOf, botOf){
+      var top=cw.map(function(wk,i){ return x(i)+','+y(topOf(wk)); });
+      var rev=cw.slice().reverse();
+      var bot=rev.map(function(wk,i){ return x(n-1-i)+','+y(botOf(wk)); });
+      return 'M'+top.join(' L')+' L'+bot.join(' L')+' Z';
+    };
+    var zeroOf=function(){ return 0; };
+    g+='<path d="'+bandPath_(billOf, zeroOf)+'" fill="#00A86B" opacity="0.85"/>'; // billable — solid green
+    g+='<path d="'+bandPath_(function(wk){return billOf(wk)+intOf(wk);}, billOf)+'" fill="#6FCDA0" opacity="0.6"/>'; // internal — muted green
+    if(hasUnc) g+='<path d="'+bandPath_(function(wk){return billOf(wk)+intOf(wk)+uncOf(wk);}, function(wk){return billOf(wk)+intOf(wk);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
+  }
+  // tracked line (no separate fill of its own when the split above isn't shown — an
+  // unfilled line reads distinctly against the shaded Planned area instead of two
+  // washed-out overlapping bands; when the split above IS shown, this line traces the
+  // top of the stacked bands so the exact tracked total is still marked precisely)
   if(wt.tracked){
     var tPts=[];
     cw.forEach(function(wk,i){
