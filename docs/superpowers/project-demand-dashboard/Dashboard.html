@@ -339,6 +339,18 @@ input[type=file]{display:none}
 .pwt-full-pto{background:#fef08a !important;border:1.5px solid #f59e0b !important;color:#78350f !important;font-weight:800 !important}
 .pwt-exempt{font-size:calc(8px*var(--scale));background:#fde68a;border:1px solid #f59e0b;color:#78350f;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle}
 .pwt-onleave{font-size:calc(9px*var(--scale));color:#b45309;font-style:italic}
+/* Delivery by Epic rollup (Phase 2) */
+.epic-tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:calc(12px*var(--scale))}
+.epic-tbl th{text-align:left;font-family:'Roboto Condensed';font-weight:700;font-size:calc(11px*var(--scale));color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.epic-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.epic-tbl tr:last-child td{border-bottom:none}
+.epic-tbl .et-hrs{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.epic-tbl .et-contrib{text-align:right;white-space:nowrap}
+.et-contrib-btn{cursor:pointer;color:var(--text);font-weight:600}
+.et-contrib-btn:hover{color:var(--orbe)}
+.et-bill-Billable{color:var(--pos);font-weight:700}
+.et-bill-Internal{color:var(--muted);font-weight:700}
+.et-bill-Unclassified{color:var(--amber);font-weight:700}
 </style>
 </head>
 <body>
@@ -528,6 +540,19 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- 3. Delivery by Epic (Phase 2 rollup) — tracked hours grouped by epic -->
+    <div class="panel" id="epicRollupPanel">
+      <div class="panel-h">
+        <h2>Delivery by Epic</h2>
+        <div class="panel-tools">
+          <div class="hint">Tracked hours rolled up by epic · whole display window · billing shown as a per-epic split (independent of the Tracked billing chip above) · reflects People filters above</div>
+          <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
+        </div>
+      </div>
+      <div id="epicRollup"></div>
+      <div class="sowhat" id="epicSoWhat"></div>
+    </div>
+
     <div class="foot" id="foot"></div>
   </div>
 </div>
@@ -557,6 +582,7 @@ var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
+var EPIC_OPEN = null; // expanded epic key on the Delivery by Epic panel (contributor-name drill row)
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -571,6 +597,12 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function fmt(n){ return Math.round(n||0); }
 function chip(key){ return '<span class="keychip" style="background:'+keyColor(KEYINDEX[key])+'">'+esc(key)+'</span>'; }
 function pct(n){ return (n>=0?'+':'')+Math.round(n)+'%'; }
+// Same normalization the server applies to roster/plan/tracked names before keying
+// personMeta/personProjectPlan (see norm() in Code.js) — DATA.trackedIssues[*].person is the
+// RAW tracked-time name (buildTrackedIssues_ doesn't normalize it), so membership checks against
+// filteredPersonSet_() (keyed by the normalized name) must normalize here first, or every row
+// would silently fail the People filter.
+function normDD_(n){ return String(n==null?'':n).toLowerCase().replace(/\s+/g,' ').trim(); }
 
 /* ---------------- Client ISO helpers (CSV offline windowing) ---------------- */
 function isoWeekNumC(d){ var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); x.setUTCDate(x.getUTCDate()+4-(x.getUTCDay()||7)); var y=new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil(((x-y)/86400000+1)/7); }
@@ -1315,6 +1347,7 @@ function reRenderAll_(){
   if(typeof renderCapacity==='function')renderCapacity();
   renderAvailability();
   if(typeof renderHeat==='function')renderHeat();
+  if(typeof renderEpicRollup==='function')renderEpicRollup();
   updateFilterBar_();
 }
 
@@ -1748,6 +1781,106 @@ function renderProjDrill(key){
   $('projDrillChart').innerHTML=g;
 }
 
+/* ---------------- Render: Delivery by Epic (Phase 2 rollup) ----------------
+ * DATA.trackedIssues is PERSON-LEVEL (unlike the org-wide Phase 1 billing split), so this
+ * panel filters to the current People-filter selection using the SAME predicate the rest of
+ * the dashboard uses (filteredPersonSet_()) — it must never disagree with Planned vs Tracked
+ * or the heatmap about who's "in scope". It deliberately does NOT read BILLING_FILTER: that
+ * chip is Phase-1-only (org-wide, disabled under a People filter — see trackedForWeek_ above).
+ * Billing here is shown as a per-epic DIMENSION (Billable/Internal/Unclassified hour split),
+ * independent of that chip, so the panel stays honest under any People-filter combination.
+ */
+function toggleEpicDrill(key){
+  EPIC_OPEN = EPIC_OPEN===key ? null : key;
+  renderEpicRollup();
+}
+
+function renderEpicRollup(){
+  var container=$('epicRollup'), swEl=$('epicSoWhat');
+  if(!container) return;
+  var issues=(DATA && DATA.trackedIssues) || [];
+  if(!issues.length){
+    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No tracked-issue data for this window (Jira Raw not found, or no tracked hours in range).</div>';
+    if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
+    return;
+  }
+  var pset=filteredPersonSet_(), isFiltered=!!pset;
+
+  // Group by epicKey (blank → "(no epic)"); sum hours, collect distinct project keys and
+  // contributors, and split hours by billingType for the per-epic billing dimension.
+  var groups={}, order=[];
+  issues.forEach(function(t){
+    if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person (Phase 2 only)
+    var ek=t.epicKey || '(no epic)';
+    var g=groups[ek];
+    if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,unclassified:0,projectKeys:{},contributors:{}}; groups[ek]=g; order.push(ek); }
+    var h=t.hours||0;
+    g.hours+=h;
+    if(t.billingType==='Billable') g.billable+=h;
+    else if(t.billingType==='Internal') g.internal+=h;
+    else g.unclassified+=h;
+    if(t.projectKey) g.projectKeys[t.projectKey]=true;
+    if(t.person) g.contributors[normDD_(t.person)]=t.person; // keyed by norm (distinct-person dedupe), value = display name for hover/expand
+  });
+
+  var rows=order.map(function(ek){return groups[ek];});
+  rows.sort(function(a,b){return b.hours-a.hours;});
+  var totalHrs=rows.reduce(function(s,r){return s+r.hours;},0);
+
+  if(!rows.length){
+    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No epic-tagged tracked hours'+(isFiltered?' for the selected people':'')+' in this window.</div>';
+    if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
+    return;
+  }
+
+  var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
+    +'<th>Epic</th><th>Project(s)</th><th>Billing</th><th class="et-hrs">Tracked hrs</th><th class="et-contrib">Contributors</th>'
+    +'</tr></thead><tbody>';
+
+  rows.forEach(function(r){
+    var epicName=(r.epicKey!=='(no epic)' && DATA.epicNames && DATA.epicNames[r.epicKey]) || '';
+    var projKeys=Object.keys(r.projectKeys);
+    var projHtml=projKeys.length
+      ? projKeys.slice(0,3).map(function(k){return chip(k);}).join(' ')+(projKeys.length>3?' <span class="hint">+'+(projKeys.length-3)+'</span>':'')
+      : '<span class="hint">—</span>';
+    // Billing dimension: "Billable if any child is Billable", else Internal if any child is
+    // Internal, else Unclassified — full h/h/h split rides along in the hover title.
+    var billLbl = r.billable>0 ? 'Billable' : (r.internal>0 ? 'Internal' : 'Unclassified');
+    var billParts=[];
+    if(r.billable>0) billParts.push(fmt(r.billable)+'h billable');
+    if(r.internal>0) billParts.push(fmt(r.internal)+'h internal');
+    if(r.unclassified>0) billParts.push(fmt(r.unclassified)+'h unclassified');
+    var contribNames=Object.keys(r.contributors).map(function(k){return r.contributors[k];}).sort(function(a,b){return a.localeCompare(b);});
+    var contribCount=contribNames.length;
+    var isOpen=EPIC_OPEN===r.epicKey;
+    html+='<tr>'
+      +'<td><span class="proj-key-mono">'+esc(r.epicKey)+'</span>'+(epicName?' <span class="pwt-name">'+esc(epicName)+'</span>':'')+'</td>'
+      +'<td>'+projHtml+'</td>'
+      +'<td><span class="et-bill-'+billLbl+'" title="'+esc(billParts.join(' · '))+'">'+billLbl+'</span></td>'
+      +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
+      +'<td class="et-contrib"><span class="et-contrib-btn" title="'+esc(contribNames.join(', '))+'" onclick="toggleEpicDrill(\''+r.epicKey.replace(/'/g,"\\'")+'\')">'
+        +contribCount+' '+(contribCount===1?'person':'people')+' '+(isOpen?'▴':'▾')+'</span></td>'
+      +'</tr>';
+    if(isOpen){
+      html+='<tr><td colspan="5" style="padding:0"><div class="avail-expanded-section">'
+        +(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div></td></tr>';
+    }
+  });
+
+  html+='</tbody></table></div>';
+  container.innerHTML=html;
+
+  // so-what: counts/percentages only — no individual names in the panel-level summary
+  // (detail lives in the per-row hover title / expand, per the counts-in-charts convention).
+  var top=rows[0];
+  var topPct=totalHrs>0 ? Math.round((top.hours/totalHrs)*100) : 0;
+  var topContribCount=Object.keys(top.contributors).length;
+  var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours this window ('+fmt(totalHrs)+' hrs total)'
+    +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
+    +(isFiltered?' Reflects the People filters above.':'');
+  if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
+}
+
 /* ---------------- Render: heatmap (color modes + question filters) ---------------- */
 function wowDrop(k,iso){ var pr=priorIso(iso); if(!pr) return 0; var p=capAt(k,pr); if(p<=0.001) return 0; return (capAt(k,iso)-p)/p; }
 function projDropsToZero(k){ // a planned week hits 0 after being >0 earlier
@@ -1966,7 +2099,7 @@ function renderFoot(){
 
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
-  renderHeat(); renderFoot();
+  renderHeat(); renderEpicRollup(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
