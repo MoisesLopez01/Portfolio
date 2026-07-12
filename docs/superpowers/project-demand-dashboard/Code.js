@@ -988,6 +988,65 @@ function readJiraMeta_() {
   }
 }
 
+/**
+ * True if a Fix Versions string contains any SRSO-* token (billable / FixedPrice).
+ * @param {string} fixVersions  comma-separated Fix Version names.
+ */
+function billingTypeFor_(fixVersions) {
+  if (!fixVersions) return "Internal";
+  var tokens = String(fixVersions).split(",");
+  for (var i = 0; i < tokens.length; i++) {
+    if (/^\s*SRSO-/i.test(tokens[i])) return "Billable";
+  }
+  return "Internal";
+}
+
+/**
+ * Mutates tracked records in place, attaching billingType / epicKey / status
+ * from the Jira metadata map. No match (or blank issue) → "Unclassified".
+ * @param {Array} recs  tracked allocation records (must carry .issue).
+ * @param {Object} map  UPPER(issue key) → { fixVersions, epicKey, status }.
+ * @returns {Array} the same recs array (for chaining/tests).
+ */
+function enrichTracked_(recs, map) {
+  (recs || []).forEach(function (r) {
+    var meta = r.issue ? (map || {})[String(r.issue).toUpperCase().trim()] : null;
+    if (!meta) { r.billingType = "Unclassified"; r.epicKey = ""; r.status = ""; return; }
+    r.billingType = billingTypeFor_(meta.fixVersions);
+    r.epicKey = meta.epicKey || "";
+    r.status = meta.status || "";
+  });
+  return recs;
+}
+
+function _test_enrichTracked_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_enrichTracked_: " + msg); }
+
+  var map = {
+    "COE-456": { fixVersions: "SRSO-4455, 2026.Q3", epicKey: "COE-100", status: "Done" },
+    "COE-457": { fixVersions: "",                    epicKey: "COE-100", status: "In Progress" },
+    "COE-458": { fixVersions: "srso-9",              epicKey: "",        status: "Done" }, // lowercase srso
+  };
+  var recs = [
+    { person: "Ana", iso: "2026.W26", key: "COE455", hours: 20, issue: "COE-456" }, // Billable
+    { person: "Ben", iso: "2026.W26", key: "COE455", hours: 10, issue: "COE-457" }, // Internal (no SRSO)
+    { person: "Cid", iso: "2026.W26", key: "COE455", hours: 5,  issue: "coe-458" }, // Billable (case-insensitive)
+    { person: "Dot", iso: "2026.W26", key: "COE455", hours: 3,  issue: "COE-999" }, // Unclassified (not in map)
+    { person: "Eve", iso: "2026.W26", key: "COE455", hours: 2,  issue: "" },        // Unclassified (blank issue)
+  ];
+
+  enrichTracked_(recs, map);
+
+  assert_(recs[0].billingType === "Billable",     "COE-456 → Billable");
+  assert_(recs[0].epicKey === "COE-100",          "COE-456 epic attached");
+  assert_(recs[1].billingType === "Internal",     "COE-457 (no SRSO) → Internal");
+  assert_(recs[2].billingType === "Billable",     "coe-458 (lowercase srso, lowercase key) → Billable");
+  assert_(recs[3].billingType === "Unclassified", "COE-999 (not in map) → Unclassified");
+  assert_(recs[4].billingType === "Unclassified", "blank issue → Unclassified");
+  assert_(recs[3].epicKey === "" && recs[3].status === "", "unclassified rec has empty epic/status");
+
+  Logger.log("✅ _test_enrichTracked_ passed");
+}
 
 function buildDisplayNames_(recs1, recs2) {
   var names = {};
