@@ -27,6 +27,11 @@ Panels (top → bottom):
 - **8-week trend — biggest movers** — multi-line hours trend; "movers" = steepest week-over-week
   slope (toggle to "Top by volume"); end-of-line labels; actual solid / planned dashed; drop-to-zero
   annotated. Click a heatmap row to highlight.
+- **Billing signals (evidence of work)** — the Planned-vs-Tracked panel classifies tracked hours as
+  Billable (SRSO-* Fix Version) / Internal / Unclassified by joining `Jira Raw` (same
+  `SOURCE_SS_ID`) on the tracked sheet's `Issue` column. "Tracked billing" chips scope the tracked
+  series; the header shows billable % of classified hours + coverage %. Missing `Jira Raw` →
+  signals silently off, all other panels unaffected. No new auth scope.
 
 Each chart section has its own **⬇ Save PNG** button in its header (exports just that panel).
 
@@ -111,7 +116,7 @@ and `getDemandData()` (returns an error model) — defense in depth, never clien
 8. Paste that `/exec` URL into the PS report's `PROJECT_DEMAND_URL` constant (the hyperlink card on
    the Trends tab) so the PS dashboard links here.
 
-**Note:** Model shape changed → run `bustDemandCache_()` once in the editor (or press ↻ Refresh in the dashboard) after pasting the new files to invalidate the cache.
+**Note:** Model shape changed → run `bustDemandCache_()` once (or bump `PD_CACHE_VER`) after pasting `Code.js`, then ↻ Refresh.
 
 ## Save PNG
 
