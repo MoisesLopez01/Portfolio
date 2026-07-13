@@ -20,15 +20,16 @@
 :root{
   --void:#0F1941;--orbe:#058CDC;--ivory:#DCCDBE;--cream:#FFFAF5;
   --june:#FF9B87;--royal:#2864E6;
-  /* Brand tints derived from Orbe/Royal — light-blue backgrounds, borders, and
-     accent pills that used to be off-palette blues (#EEF4FF/#1D4ED8/#C7DEFF). */
+  /* Brand tints derived from Orbe/Royal/June — light backgrounds, borders,
+     and accent pills. */
   --orbe-tint:#E7F1FB;--royal-tint:#C4D6F7;--june-tint:#FDEEE9;
-  /* Status layer is SEMANTIC, deliberately NOT brand: the palette has no
-     red/amber/green and traffic-light colors carry meaning at a glance
-     (per 2026-07-08 decision — brand everything except status). */
+  /* Status layer is SEMANTIC traffic-light, deliberately NOT brand: the palette
+     has no red/amber/green and these carry meaning at a glance on the RPI/STF
+     and compliance indicators (2026-07-13 / 2026.W29 — restored after a brief
+     brand-only experiment; CHARTS keep the brand palette, indicators do not). */
   --success:#00A86B;--watch-color:#F59E0B;--atrisk-color:#EF4444;
-  /* Structural neutrals — the brand has no gray; borders/muted text/surfaces
-     stay neutral so body copy and table rules keep their legibility. */
+  /* Structural neutrals — the brand has no gray; text/borders/muted/surfaces
+     stay conventional so body copy, tabs, and boxes keep their legibility. */
   --slate:#64748b;--surface:#F8FAFC;--border:#E2E8F0;
   --text:#1E293B;--muted:#94A3B8;
   --radius:12px;--shadow:0 1px 4px rgba(0,0,0,.08);
@@ -214,15 +215,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 #modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:14px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:modalIn .2s ease}
 @keyframes modalIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
-/* ── Behaviors tab — meter cards. Growth framing: Orbe fill (progress), never
-   the at-risk red; verdict lines are counts-only, names live in <details>. */
-.bh-quote{font-style:italic;color:var(--slate);font-size:12px;margin:2px 0 10px}
-.bh-meter{height:14px;border-radius:7px;background:var(--surface);border:1px solid var(--border);overflow:hidden;margin:4px 0 6px}
-.bh-fill{height:100%;border-radius:7px;background:var(--orbe);transition:width .4s}
-.bh-verdict{font-size:12px;font-weight:600;color:var(--void)}
-.bh-secondary{font-size:11px;color:var(--slate);margin-top:2px}
-.bh-detail{margin-top:10px}
-.bh-detail summary{cursor:pointer;font-size:11px;font-weight:700;color:var(--orbe)}
+/* .bh-v2note is retained — used by the Policy Lab history notes (Behaviors tab removed 2026-07-13). */
 .bh-v2note{font-size:11px;color:var(--slate);background:var(--surface);border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin-top:8px}
 /* ── Policy Lab ── */
 .pl-controls{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
@@ -236,13 +229,23 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 .pl-fy-row{display:flex;gap:10px;flex-wrap:wrap}
 .pl-fy-chip{border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:120px}
 .pl-fy-chip b{font-size:20px;color:var(--orbe)} .pl-fy-chip.inprog b{color:var(--slate)}
+/* 15-week comment-cadence heatmap (moved behaviour section, 2026-07-13) */
+.bhm-wrap{overflow:auto;max-height:460px;border:1px solid var(--border);border-radius:8px}
+.bhm{border-collapse:separate;border-spacing:0;font-size:10px}
+.bhm thead th{position:sticky;top:0;background:#fff;z-index:2;padding:4px 2px;font-size:9px;font-weight:800;color:var(--slate);white-space:nowrap}
+.bhm th.bhm-name,.bhm td.bhm-name{position:sticky;left:0;background:#fff;z-index:1;text-align:left;padding:3px 10px;white-space:nowrap;font-size:11px;border-right:1px solid var(--border);max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.bhm thead th.bhm-name{z-index:3}
+.bhm-cell{width:24px;height:20px;border:1px solid #fff}
+.bhm-peak{padding:3px 8px;white-space:nowrap;font-weight:700;font-size:10px}
+.bhm-legend{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);margin:8px 2px 0;flex-wrap:wrap}
+.bhm-legend i{width:16px;height:12px;display:inline-block;border:1px solid var(--border);vertical-align:middle}
 
 /* Individual drill-down — an expandable table row inserted after the clicked row,
    not a modal. A viewport-height-capped popup had no reliable way to scroll to the
    rest of a 10+-goal list; an inline row just grows the table within the page's own
    scroll, which always works. */
-.data-table tr.drill-row td{background:#F8FAFC;cursor:default}
-.data-table tr.drill-row:hover td{background:#F8FAFC}
+.data-table tr.drill-row td{background:#FFFAF5;cursor:default}
+.data-table tr.drill-row:hover td{background:#FFFAF5}
 /* Conversation timeline inside the goal drill-down (2026-07-04 spec) */
 .cv-thread{display:flex;flex-direction:column;gap:4px;padding:4px 0}
 .cv-bubble{max-width:78%;border-radius:10px;padding:7px 10px;font-size:12px;color:var(--text)}
@@ -407,8 +410,8 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
     <button class="tab-btn"        onclick="switchTab('support')"   data-tab="support">Needing Support</button>
     <button class="tab-btn"        onclick="switchTab('team')"      data-tab="team">Team &amp; Individuals</button>
     <button class="tab-btn"        onclick="switchTab('trends')"    data-tab="trends">Trends</button>
-    <button class="tab-btn"        onclick="switchTab('behaviors')" data-tab="behaviors">Behaviors</button>
     <button class="tab-btn"        onclick="switchTab('hrtracker')" data-tab="hrtracker">REX Tracker</button>
+    <button class="tab-btn"        onclick="switchTab('finance')"   data-tab="finance">💰 STF Gaps</button>
   </div>
 
   <main>
@@ -425,7 +428,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
           <div id="goal-status-panel" style="padding:16px">
             <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-              <div style="flex:0 0 220px;height:250px;position:relative"><canvas id="chart-goal-status"></canvas></div>
+              <div style="flex:0 0 360px;height:270px;position:relative;min-width:300px"><canvas id="chart-goal-status"></canvas></div>
               <div style="flex:1;min-width:220px" id="goal-status-table"></div>
             </div>
           </div>
@@ -521,6 +524,38 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
       </div>
+
+      <!-- ── Comment cadence behaviour (2026-07-13) ──
+           Per-employee peak-comment-month classification (Early/Mid/Late) rolled up
+           by department. Surfaces end-of-quarter comment backloading the
+           week-over-week combo above can't show per person. All client-computed from
+           per-employee monthlySelf ('YYYY-MM' → count); respects the filter bar.
+           Chart-area verdicts show counts only — names live in the table below. -->
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Comment Cadence Behaviour by Department</h2>
+            <p class="section-sub" id="behaviour-sub">Share of each department's people peaking Early / Mid / Late in the quarter · respects the filter bar</p></div>
+          <div class="section-actions">
+            <div style="display:inline-flex;gap:6px">
+              <button class="btn" id="btn-behaviour-volume" aria-pressed="false" onclick="setBehaviourMode_('volume')">Volume by month</button>
+              <button class="btn btn-primary" id="btn-behaviour-class" aria-pressed="true" onclick="setBehaviourMode_('class')">Class mix</button>
+            </div>
+            <button class="btn" onclick="exportPNG('behaviour-dept-panel','comment-behaviour-by-dept.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="behaviour-dept-panel">
+          <div class="trend-headline" id="behaviour-headline"></div>
+          <div style="display:flex;gap:16px;align-items:stretch;flex-wrap:wrap">
+            <div id="behaviour-chart-wrap" style="position:relative;height:200px;flex:1;min-width:280px"><canvas id="chart-behaviour"></canvas></div>
+            <div style="flex:0 0 250px;display:flex;flex-direction:column;min-width:240px">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;margin-bottom:4px">Whole team · classified</div>
+              <div style="position:relative;flex:1;min-height:200px"><canvas id="chart-behaviour-pie"></canvas></div>
+            </div>
+          </div>
+          <p class="section-sub" id="behaviour-footnote" style="margin-top:8px"></p>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── TEAM &amp; INDIVIDUALS ──
@@ -585,7 +620,7 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       <div class="kpi-grid" id="kpi-needs-support"></div>
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI score (0–6, hover for criteria) &amp; STF eligibility per person · new hires excluded (flagged 🌱 in the rosters instead) · click a row to view full detail · respects the filter bar</p></div>
+          <div><h2>Rocketeers Needing Support</h2><p class="section-sub">Sorted by urgency · RPI score (0–6, hover for criteria) &amp; STF eligibility per person · new hires &amp; on-leave excluded (flagged 🌱 / 🏖 in the rosters instead) · click a row to view full detail · respects the filter bar</p></div>
           <div class="section-actions">
             <button class="btn" onclick="exportAtRiskCSV()">⬇ CSV</button>
             <button class="btn" onclick="exportPNG('needs-support-panel','needs-support.png')">⬇ PNG</button>
@@ -610,67 +645,6 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       </div>
     </div>
 
-    <!-- ── BEHAVIORS (Leadership Behaviors signals; admin+manager only via VIEWS roles) ──
-         Spec: docs/superpowers/specs/2026-07-08-behavioral-signals-leadership-behaviors-design.md
-         Framing rules: verdict lines show counts only; names only inside <details> rows;
-         growth-oriented labels — never "failing"/"non-compliant" on this tab. -->
-    <div id="pane-behaviors" class="tab-pane">
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>🧠 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-1-team" target="_blank" rel="noopener" style="color:inherit">Share the Knowledge</a></h2>
-            <p class="section-sub">Self-comment cadence on own goals · new hires excluded · respects the filter bar</p></div>
-          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-share-knowledge.png')">⬇ PNG</button>
-        </div>
-        <div class="section-body">
-          <p class="bh-quote">&ldquo;I ask questions first and actively share experiences and lessons learned&rdquo;</p>
-          <div id="behavior-share"></div>
-        </div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>🌱 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-2-develops" target="_blank" rel="noopener" style="color:inherit">Develops Rocketeers</a> · <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-9-proactive" target="_blank" rel="noopener" style="color:inherit">Proactive &amp; Responsive</a></h2>
-            <p class="section-sub">Manager comments on team goals · excepted managers excluded · respects the filter bar</p></div>
-          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-develops-rocketeers.png')">⬇ PNG</button>
-        </div>
-        <div class="section-body">
-          <p class="bh-quote">&ldquo;Provides appropriate feedback focused on professional growth&rdquo; · &ldquo;Master of cadence and repeatability&rdquo;</p>
-          <div id="behavior-develops"></div>
-        </div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>⚙️ <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behaviors-welcome" target="_blank" rel="noopener" style="color:inherit">Build Process to Drive Outcomes</a></h2>
-            <p class="section-sub">Goals moving through status — not parked in Planned, closed goals carry a note · respects the filter bar</p></div>
-          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-build-process.png')">⬇ PNG</button>
-        </div>
-        <div class="section-body">
-          <p class="bh-quote">&ldquo;I reflect, iterate and continually improve processes through documentation that is shareable and easily accessible&rdquo;</p>
-          <div id="behavior-process"></div>
-        </div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>🤝 <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behavior-1-team" target="_blank" rel="noopener" style="color:inherit">Think Team</a></h2>
-            <p class="section-sub">Feedback loops closed after manager comments + thresholds met · respects the filter bar</p></div>
-          <button class="btn" onclick="exportPNG(this.closest('.section-card'),'behavior-think-team.png')">⬇ PNG</button>
-        </div>
-        <div class="section-body">
-          <p class="bh-quote">&ldquo;I hold myself accountable and am open to delivering and receiving feedback&rdquo;</p>
-          <div id="behavior-thinkteam"></div>
-        </div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>🗣️ <a href="https://leadershipbehaviors.org/p/rocketeer-leadership-behaviors-welcome" target="_blank" rel="noopener" style="color:inherit">Talk Straight</a></h2>
-            <p class="section-sub">Clarity and quality of the goals set</p></div>
-        </div>
-        <div class="section-body">
-          <p class="bh-quote">&ldquo;I set clear expectations with transparency and always walk the talk&rdquo;</p>
-          <div id="behavior-talkstraight"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- ── REX TRACKER (follow-up log; pane id stays 'hrtracker') ── -->
     <div id="pane-hrtracker" class="tab-pane">
       <div class="kpi-grid" id="kpi-tracker"></div>
@@ -689,6 +663,43 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
           </div>
         </div>
         <div class="section-body" id="tracker-body"></div>
+      </div>
+    </div>
+
+    <!-- ── STF GAPS (Finance; admin-only via VIEWS roles) ──
+         Spec: docs/superpowers/specs/2026-07-13-finance-stf-gaps-design.md -->
+    <div id="pane-finance" class="tab-pane">
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>💰 STF Gaps (Finance)</h2>
+            <p class="section-sub">STF-ineligible Rocketeers · new hires &amp; on-leave excluded · respects the filter bar · click a row for goal detail</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportFinanceCsv_()">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="section-body">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <label for="finance-threshold" style="font-size:12px;font-weight:700;color:var(--text)">Max completed goals to show:</label>
+            <input type="range" min="0" max="7" step="1" value="7" id="finance-threshold" oninput="setFinanceThreshold_(this.value)" style="vertical-align:middle">
+            <span id="finance-threshold-val" style="font-size:12px;font-weight:800;color:var(--orbe);min-width:14px">7</span>
+          </div>
+          <div id="finance-summary" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:16px"></div>
+          <div id="finance-chart"></div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Under the completion bar</h2>
+            <p class="section-sub">Completed ≤ threshold · grouped by manager (worst first)</p></div>
+        </div>
+        <div class="section-body" id="finance-under"></div>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Comments shortfall</h2>
+            <p class="section-sub">8+ completed but fewer than 6 carry 8+ comments · independent of the threshold</p></div>
+        </div>
+        <div class="section-body" id="finance-comments"></div>
       </div>
     </div>
 
@@ -755,6 +766,24 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
         <div class="section-head"><div><h2>Where the comments land</h2><p class="section-sub" id="pl-cadence-verdict">Self-comments by week-of-quarter · last 4 quarters overlaid · grace period shaded</p></div>
           <button class="btn" onclick="exportPNG(this.closest('.section-card'),'policy-cadence.png')">⬇ PNG</button></div>
         <div class="section-body"><canvas id="chart-pl-cadence" height="90"></canvas></div>
+      </div>
+
+      <!-- Moved from Trends (2026-07-13): per-rocketeer peak-comment-month
+           classification + 15-week cumulative-cadence heatmap. -->
+      <div class="section-card">
+        <div class="section-head">
+          <div><h2>Peak-Comment-Month Classification</h2>
+            <p class="section-sub">Each rocketeer labelled by the month holding most of their self-comments · 🔴 Late = concentrated at quarter-end · new hires, on-leave &amp; departed excluded · under 3 self-comments shown as n/a · click a column to sort</p></div>
+          <div class="section-actions">
+            <button class="btn" onclick="exportBehaviourCSV_()">⬇ CSV</button>
+            <button class="btn" onclick="exportPNG('behaviour-table-panel','comment-behaviour-people.png')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="section-body" id="behaviour-table-panel">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Cumulative comment cadence · 15 weeks (13 + 2 grace) · shade = running share of each rocketeer's quarter self-comments</div>
+          <div id="behaviour-heatmap"></div>
+          <div id="behaviour-table" style="margin-top:16px"></div>
+        </div>
       </div>
     </div>
 
@@ -841,9 +870,9 @@ var BRAND = {
 // tint by appending '22'), so these stay hex; each mirrors a :root CSS var,
 // and inline-style strings reference the var() form directly instead.
 var STATUS_C = {
-  good:     '#00A86B',  // = var(--success)
-  watch:    '#F59E0B',  // = var(--watch-color)
-  risk:     '#EF4444',  // = var(--atrisk-color)
+  good:     '#00A86B',  // = var(--success) — traffic-light green (indicators)
+  watch:    '#F59E0B',  // = var(--watch-color) — amber (indicators)
+  risk:     '#EF4444',  // = var(--atrisk-color) — red (indicators)
   info:     '#058CDC',  // = var(--orbe) — In Progress
   planned:  '#94A3B8',
   canceled: '#CBD5E1',
@@ -853,6 +882,123 @@ var STATUS_C = {
 // Behavioral engagement targets (annotation layer): % of eligible rocketeers
 // self-commenting / % of managers commenting on ≥1 team goal in a week.
 var TREND_TARGETS = { rock: 70, mgr: 40 };
+
+// ── FINANCE-PURE-BEGIN ──
+// Pure, DOM-free STF-gap classification + grouping. Unit-tested by
+// tests/finance-stf-gaps.test.js (eval'd out of this marked region in Node).
+// STF bars mirror goalCompliance.js CONFIG_GD (STF_MIN_COMPLETED / STF_MIN_CMT_GOALS);
+// duplicated here as local consts so the block evals standalone. If the server
+// thresholds change, update these two to match.
+var STF_COMPLETED_BAR_ = 8;
+var STF_CMT_GOALS_BAR_  = 6;
+
+// Classify WHY a Rocketeer is STF-ineligible. Reads only numeric goal fields.
+// Returns null when the person IS eligible (caller filters those out).
+// Primary reason precedence (first match wins; exhaustive over completed<8):
+//   comments → completed >= bar, so only the comment bar fails
+//   pending  → completed < bar and open goals (in-progress+planned) can still reach the bar
+//   canceled → completed < bar, pending can't close the gap, and goals were canceled/not-completed
+//   toofew   → catch-all: completed < bar, pending can't close the gap, nothing was lost
+function classifyStfReason_(e) {
+  var completed     = +e.stfGoalsCompleted || 0;
+  var wellCommented = +e.stfGoalsWithSufficientComments || 0;
+  var pending       = (+e.goalsInProgress || 0) + (+e.goalsPlanned || 0);
+  var lost          = (+e.goalsCanceled || 0) + (+e.goalsNotCompleted || 0);
+  var totalGoals    = +e.totalGoals || 0;
+  var gap           = STF_COMPLETED_BAR_ - completed;
+
+  var eligible = completed >= STF_COMPLETED_BAR_ && wellCommented >= STF_CMT_GOALS_BAR_;
+  if (eligible) return null;
+
+  var primary;
+  if (completed >= STF_COMPLETED_BAR_) primary = 'comments';
+  else if (pending >= gap)             primary = 'pending';
+  else if (lost > 0)                   primary = 'canceled';
+  else                                 primary = 'toofew';
+
+  var badges = [];
+  if (pending > 0) badges.push({ kind: 'pending',  text: '⏳ ' + pending + ' pending' });
+  if (lost > 0)    badges.push({ kind: 'canceled', text: '✖ ' + lost + ' canceled/not-completed' });
+  if (completed >= STF_COMPLETED_BAR_ && wellCommented < STF_CMT_GOALS_BAR_) {
+    badges.push({ kind: 'comments', text: '🗨 needs comments (' + wellCommented + '/' + STF_CMT_GOALS_BAR_ + ')' });
+  }
+  if (primary === 'toofew') {
+    badges.push({ kind: 'toofew', text: '▽ only ' + totalGoals + ' goals logged' });
+  }
+
+  return {
+    primary: primary, badges: badges,
+    completed: completed, wellCommented: wellCommented,
+    pending: pending, lost: lost, gap: gap, totalGoals: totalGoals,
+  };
+}
+
+// Sort a {supervisor: [rows]} map into [{supervisor, rocketeers, count}], managers
+// worst-first (most ineligible), rocketeers within a group furthest-from-bar first.
+function groupByMgrSorted_(byMgr) {
+  return Object.keys(byMgr).map(function(sup) {
+    var rocks = byMgr[sup].slice().sort(function(a, b) {
+      return (a.completed - b.completed) || a.name.localeCompare(b.name);
+    });
+    return { supervisor: sup, rocketeers: rocks, count: rocks.length };
+  }).sort(function(a, b) {
+    return (b.count - a.count) || a.supervisor.localeCompare(b.supervisor);
+  });
+}
+
+// Build the Finance view model from already-filtered employees.
+// threshold = max completed goals to include in the "under-bar" list (0..7);
+// null defaults to bar-1 (7). New hires / on-leave are excluded (already outside
+// STF math upstream). The comments-shortfall section ignores the threshold.
+function buildFinanceGaps_(emps, threshold) {
+  var t = (threshold == null) ? (STF_COMPLETED_BAR_ - 1) : +threshold;
+  var totals = { pending: 0, canceled: 0, comments: 0, toofew: 0, ineligible: 0, evaluated: 0, hidden: 0 };
+  var underByMgr = {}, commentByMgr = {}, mgrTally = {};
+
+  (emps || []).forEach(function(e) {
+    if (e.isNewHire || e.onLeave) return;
+    totals.evaluated++;
+    var c = classifyStfReason_(e);
+    if (!c) return; // eligible
+    var sup = e.supervisor || '(No Supervisor)';
+    var row = {
+      name: e.name, normName: e.normName, supervisor: sup, department: e.department || '',
+      completed: c.completed, wellCommented: c.wellCommented, pending: c.pending,
+      lost: c.lost, totalGoals: c.totalGoals, primary: c.primary, badges: c.badges,
+    };
+
+    var displayed = false;
+    if (c.primary === 'comments') {
+      (commentByMgr[sup] = commentByMgr[sup] || []).push(row);
+      displayed = true;
+    } else if (c.completed <= t) {
+      (underByMgr[sup] = underByMgr[sup] || []).push(row);
+      displayed = true;
+    } else {
+      totals.hidden++; // below the bar but above the threshold → hidden from the list
+    }
+
+    if (displayed) {
+      totals[c.primary]++;
+      totals.ineligible++;
+      var mt = mgrTally[sup] || (mgrTally[sup] = { supervisor: sup, pending: 0, canceled: 0, comments: 0, toofew: 0, total: 0 });
+      mt[c.primary]++;
+      mt.total++;
+    }
+  });
+
+  var chartRows = Object.keys(mgrTally).map(function(s) { return mgrTally[s]; })
+    .sort(function(a, b) { return (b.total - a.total) || a.supervisor.localeCompare(b.supervisor); });
+
+  return {
+    underBar: groupByMgrSorted_(underByMgr),
+    commentsShortfall: groupByMgrSorted_(commentByMgr),
+    chartRows: chartRows,
+    totals: totals,
+    threshold: t,
+  };
+}
+// ── FINANCE-PURE-END ──
 
 // ── VIEWS — single source of truth for navigation ─────────────────
 // location: "tabbar" = always-visible tab; "menu" = behind the ☰ menu.
@@ -865,8 +1011,8 @@ var VIEWS = [
   { id: 'support',   label: 'Needing Support',       location: 'tabbar', roles: null },
   { id: 'team',      label: 'Team &amp; Individuals', location: 'tabbar', roles: null },
   { id: 'trends',    label: 'Trends',                location: 'tabbar', roles: null },
-  { id: 'behaviors', label: 'Behaviors',             location: 'tabbar', roles: ['admin','manager'] },
   { id: 'hrtracker', label: 'REX Tracker',           location: 'tabbar', roles: null },
+  { id: 'finance',   label: '💰 STF Gaps (Finance)',  location: 'tabbar', roles: ['admin'] },
   { id: 'dataref',   label: '📖 Data Reference',      location: 'menu',   roles: null },
   { id: 'access',    label: '🔒 Access Control',      location: 'menu',   roles: ['admin'] },
   { id: 'policylab', label: '🧪 Policy Lab',           location: 'menu',   roles: ['admin'] },
@@ -906,6 +1052,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mgrRow) { openManagerTeam_(mgrRow.dataset.manager); return; }
     var row = e.target.closest('tr[data-normname]');
     if (row) toggleIndividualDrill_(row, row.dataset.normname, row.dataset.quarter || null);
+  });
+  // Finance chart: click a manager's bar → scroll to that manager's group below.
+  document.addEventListener('click', function(e) {
+    var bar = e.target.closest('[data-fin-mgr]');
+    if (!bar) return;
+    var name = bar.getAttribute('data-fin-mgr') || '';
+    var sel = '.fin-mgr-group[data-fin-group="' + ((window.CSS && CSS.escape) ? CSS.escape(name) : name) + '"]';
+    var grp = document.querySelector(sel);
+    if (grp) grp.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
 
@@ -1140,8 +1295,8 @@ function renderTab(tabId) {
   else if (tabId === 'trends')    renderTrends(emps);
   else if (tabId === 'team')      renderTeam(emps);
   else if (tabId === 'support')   renderSupport(emps);
-  else if (tabId === 'behaviors') renderBehaviors(emps);
   else if (tabId === 'hrtracker') renderHRTracker();
+  else if (tabId === 'finance')   renderFinance();
   else if (tabId === 'dataref')   renderDataRef_();
   else if (tabId === 'access')    renderAccessTab_();
   else if (tabId === 'policylab') renderPolicyLab();
@@ -1169,12 +1324,12 @@ function renderOverview(emps) {
   document.getElementById('kpi-overview').innerHTML =
     kpiCard('Total Rocketeers',    total,                        '🏢', '#0F1941', 'Active employees in scope (interns &amp; offboarded excluded)') +
     kpiCard('Compliance Rate',     rate + '%',                   '🎯', '#058CDC', '10+ goals = On Target') +
-    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', STATUS_C.watch, 'One or two goals from full compliance · all rocketeers, incl. new hires') +
-    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  STATUS_C.risk, 'Below threshold — STF and RPI at risk · all rocketeers, incl. new hires') +
+    kpiCard('Watch (8–9 goals)',   watch,                        '⏳', STATUS_C.watch, 'One or two goals from full compliance · all rocketeers, incl. new hires & on leave') +
+    kpiCard('At Risk (&lt;8)',     atRisk,                       '⚠',  STATUS_C.risk, 'Below threshold — STF and RPI at risk · all rocketeers, incl. new hires & on leave') +
     kpiCard('Org Engagement Rate', (eng.engagingPct || 0) + '%', '💬', '#2864E6', '≥1 self-comment · base: ' + (eng.activeCount || 0) + ' of ' + withGoals + ' with goals (' + (total - withGoals) + ' with none excluded)') +
     kpiCard('Silent',              eng.silentCount    || 0,      '🔇', STATUS_C.accent, '0 self-comments · has goals') +
     kpiCard('Below Pace',          eng.belowPaceCount || 0,      '🐢', STATUS_C.watch, '&lt; ½ weeks elapsed · pace min: ' + (eng.paceThreshold || '—')) +
-    kpiCard('Avg Goals / Person',  avgGoals,                     '📊', '#64748B', 'Average across filtered selection');
+    kpiCard('Avg Goals / Person',  avgGoals,                     '📊', '#B9A48C', 'Average across filtered selection');
 
   // Goal Status Distribution
   var gsd = computeGoalStatus_(emps);
@@ -1197,11 +1352,15 @@ function renderOverview(emps) {
 // concern pool, the urgency-sorted table with per-row HR review, and the
 // isolated Attrition reference list.
 function renderSupport(emps) {
-  // New hires are flagged, never called out — exclude them from every concern
-  // count so the KPI row and the table (whose pool already skips them) agree,
-  // and surface the excluded count as its own card so the accounting is visible.
-  var vets         = emps.filter(function(e){ return !e.isNewHire; });
-  var newHires     = emps.length - vets.length;
+  // New hires and on-leave rocketeers are flagged, never called out — exclude
+  // them from every concern count so the KPI row and the table (whose pool
+  // already skips them) agree, and surface each excluded count as its own card
+  // so the accounting is visible. On-leave wins when someone is both.
+  var onLeave      = emps.filter(function(e){ return e.onLeave; }).length;
+  var newHires     = emps.filter(function(e){ return e.isNewHire && !e.onLeave; }).length;
+  var vets         = emps.filter(function(e){ return !e.isNewHire && !e.onLeave; });
+  var exclNote     = 'excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's') +
+                     ' &amp; ' + onLeave + ' on leave (Overview counts them)';
   var pool         = needsSupportPool_(emps);
   var atRisk       = vets.filter(function(e){ return e.complianceStatus === 'At Risk'; }).length;
   var watch        = vets.filter(function(e){ return e.complianceStatus === 'Watch'; }).length;
@@ -1211,12 +1370,13 @@ function renderSupport(emps) {
   var reviewed     = pool.filter(function(e){ return !!noteMap[e.normName]; }).length;
 
   document.getElementById('kpi-needs-support').innerHTML =
-    kpiCard('Needing Support',  pool.length,  '🚨', STATUS_C.risk, 'Anyone with a compliance or engagement concern (deduplicated, new hires excluded)') +
-    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  STATUS_C.risk, 'Below goal threshold — STF and RPI at risk · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's') + ' (Overview counts them)') +
-    kpiCard('Watch (8–9)',      watch,        '⏳', STATUS_C.watch, 'One or two goals from full compliance · excl. ' + newHires + ' new hire' + (newHires === 1 ? '' : 's')) +
+    kpiCard('Needing Support',  pool.length,  '🚨', STATUS_C.risk, 'Anyone with a compliance or engagement concern (deduplicated, new hires & on-leave excluded)') +
+    kpiCard('At Risk (&lt;8)',  atRisk,       '⚠',  STATUS_C.risk, 'Below goal threshold — STF and RPI at risk · ' + exclNote) +
+    kpiCard('Watch (8–9)',      watch,        '⏳', STATUS_C.watch, 'One or two goals from full compliance · ' + exclNote) +
     kpiCard('Not Engaging',     notEngaging,  '💬', STATUS_C.accent, 'Have goals but zero self-comments this quarter') +
-    kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#64748B', 'Goals in Planned status with no comments') +
+    kpiCard('Stuck in Planned', stuckPlanned, '🔒', '#B9A48C', 'Goals in Planned status with no comments') +
     kpiCard('New Hires',        newHires,     '🌱', '#058CDC', 'Hired after quarter start — goals need a full quarter, so they are flagged in the rosters, not listed here') +
+    kpiCard('On Leave',         onLeave,      '🏖', '#058CDC', 'Maternity/Parental leave (roster Employee Status) — a 0-goal quarter is expected, so they are flagged, not listed here') +
     kpiCard('HR Reviewed',      reviewed + '/' + pool.length, '📝', STATUS_C.good, 'Support-pool members with an HR follow-up note');
 
   renderAtRiskBody(document.getElementById('atrisk-body'), emps, false);
@@ -1337,118 +1497,6 @@ function computeEngagementClient_(emps) {
     managerScorecard: managerScorecard,
     engagerList:      engagerList,
   };
-}
-
-// ── BEHAVIORS TAB ─────────────────────────────────────────────────
-// Leadership Behaviors read of existing signals (spec 2026-07-08). Framing
-// rules: verdict lines are counts-only; names appear only inside <details>;
-// labels stay growth-oriented ("building this habit", never "failing").
-function bhMeter_(pct, verdict, secondary) {
-  var w = Math.max(0, Math.min(100, pct || 0));
-  return '<div class="bh-meter"><div class="bh-fill" style="width:' + w.toFixed(1) + '%"></div></div>' +
-         '<div class="bh-verdict">' + verdict + '</div>' +
-         (secondary ? '<div class="bh-secondary">' + secondary + '</div>' : '');
-}
-
-function bhDetail_(summary, rows) {
-  if (!rows.length) return '';
-  var html = '<details class="bh-detail"><summary>' + summary + '</summary>' +
-             '<table class="data-table" style="margin-top:8px"><tbody>';
-  rows.forEach(function(r) {
-    html += '<tr data-normname="' + esc(r.normName || '') + '"><td>' + esc(r.name) + '</td>' +
-            '<td style="color:var(--slate)">' + r.note + '</td></tr>';
-  });
-  return html + '</tbody></table></details>';
-}
-
-function renderBehaviors(emps) {
-  var eng      = computeEngagementClient_(emps);
-  var eligible = emps.filter(function(e) { return e.totalGoals > 0 && !e.isNewHire; });
-  var n        = eligible.length || 1;
-
-  // 1 — Share the Knowledge: self-comment cadence (comment-weeks vs pace)
-  var required = Math.max(1, Math.floor((eng.weeksElapsed || 1) / 2));
-  var atPace   = eligible.filter(function(e) { return (e.commentWeeks || 0) >= required; });
-  var building = eligible.filter(function(e) { return (e.commentWeeks || 0) <  required; })
-    .sort(function(a, b) { return (a.commentWeeks || 0) - (b.commentWeeks || 0); });
-  document.getElementById('behavior-share').innerHTML =
-    bhMeter_(atPace.length / n * 100,
-      atPace.length + ' of ' + eligible.length + ' rocketeers commenting on their goals at pace (' + required + '+ weeks with a self-comment)',
-      'Pace = self-comments in at least half the ' + (eng.weeksElapsed || 1) + ' weeks elapsed this quarter') +
-    bhDetail_(building.length + ' rocketeer' + (building.length === 1 ? '' : 's') + ' building this habit',
-      building.map(function(e) {
-        return { name: e.name, normName: e.normName,
-                 note: (e.commentWeeks || 0) + ' of ' + required + ' comment-weeks so far' };
-      }));
-
-  // 2 — Develops Rocketeers · Proactive & Responsive: manager feedback coverage
-  var mgrs       = eng.managerScorecard.filter(function(m) { return !m.isExcepted; });
-  var activeMgrs = mgrs.filter(function(m) { return m.covered > 0; });
-  var reached    = eligible.filter(function(e) { return (e.totalManagerComments || 0) > 0; }).length;
-  document.getElementById('behavior-develops').innerHTML =
-    bhMeter_(mgrs.length ? activeMgrs.length / mgrs.length * 100 : 0,
-      activeMgrs.length + ' of ' + mgrs.length + ' managers commented on at least one direct&rsquo;s goal this quarter',
-      reached + ' of ' + eligible.length + ' rocketeers (' + (reached / n * 100).toFixed(0) + '%) received manager feedback') +
-    bhDetail_(mgrs.length + ' manager' + (mgrs.length === 1 ? '' : 's') + ' — feedback coverage',
-      mgrs.map(function(m) {
-        return { name: m.name, normName: m.normName,
-                 note: m.covered + ' of ' + m.teamSize + ' directs reached · avg ' + m.avgCmts + ' comments' };
-      }));
-
-  // 3 — Build Process: goals moving through status
-  var tGoals = 0, tStuck = 0, tNoNote = 0;
-  eligible.forEach(function(e) {
-    tGoals  += e.totalGoals || 0;
-    tStuck  += e.goalsStuckInPlanned || 0;
-    tNoNote += e.goalsClosedNoNote || 0;
-  });
-  var moving  = Math.max(0, tGoals - tStuck - tNoNote);
-  var revisit = eligible.filter(function(e) {
-    return (e.goalsStuckInPlanned || 0) > 0 || (e.goalsClosedNoNote || 0) > 0;
-  }).sort(function(a, b) {
-    return ((b.goalsStuckInPlanned||0) + (b.goalsClosedNoNote||0)) - ((a.goalsStuckInPlanned||0) + (a.goalsClosedNoNote||0));
-  });
-  document.getElementById('behavior-process').innerHTML =
-    bhMeter_(tGoals ? moving / tGoals * 100 : 0,
-      moving + ' of ' + tGoals + ' goals moving — started (or discussed) and closed with a note',
-      tStuck + ' parked in Planned with no comments · ' + tNoNote + ' Not Completed/Canceled without a note') +
-    bhDetail_(revisit.length + ' rocketeer' + (revisit.length === 1 ? '' : 's') + ' with goals to revisit',
-      revisit.map(function(e) {
-        var bits = [];
-        if (e.goalsStuckInPlanned) bits.push(e.goalsStuckInPlanned + ' parked in Planned');
-        if (e.goalsClosedNoNote)   bits.push(e.goalsClosedNoNote + ' closed without a note');
-        return { name: e.name, normName: e.normName, note: bits.join(' · ') };
-      }));
-
-  // 4 — Think Team: feedback loops closed + thresholds
-  var tFb = 0, tClosed = 0;
-  eligible.forEach(function(e) {
-    tFb     += e.goalsWithMgrFeedback || 0;
-    tClosed += e.goalsFeedbackClosed  || 0;
-  });
-  var onTarget = eligible.filter(function(e) { return e.complianceStatus === 'On Target'; }).length;
-  var awaiting = eligible.filter(function(e) {
-    return (e.goalsWithMgrFeedback || 0) > (e.goalsFeedbackClosed || 0);
-  }).sort(function(a, b) {
-    return ((b.goalsWithMgrFeedback||0) - (b.goalsFeedbackClosed||0)) - ((a.goalsWithMgrFeedback||0) - (a.goalsFeedbackClosed||0));
-  });
-  document.getElementById('behavior-thinkteam').innerHTML =
-    (tFb === 0
-      ? '<div class="bh-verdict">No manager feedback yet this quarter — loops start once managers comment.</div>'
-      : bhMeter_(tClosed / tFb * 100,
-          tClosed + ' of ' + tFb + ' manager-feedback loops closed — the rocketeer replied on that goal',
-          onTarget + ' of ' + eligible.length + ' rocketeers (' + (onTarget / n * 100).toFixed(0) + '%) On Target for goal thresholds')) +
-    bhDetail_(awaiting.length + ' rocketeer' + (awaiting.length === 1 ? '' : 's') + ' with feedback waiting for a reply',
-      awaiting.map(function(e) {
-        var open = (e.goalsWithMgrFeedback || 0) - (e.goalsFeedbackClosed || 0);
-        return { name: e.name, normName: e.normName,
-                 note: open + ' goal' + (open === 1 ? '' : 's') + ' with unanswered manager feedback' };
-      }));
-
-  // 5 — Talk Straight: defined, measured in v2 (only Goal Name text exists today)
-  document.getElementById('behavior-talkstraight').innerHTML =
-    '<div class="bh-v2note">Measurement arrives with goal-quality data (v2). Clarity is never a put-down — ' +
-    'when this meter lands it will read goal quality, not judge people.</div>';
 }
 
 // ── POLICY LAB — pure helpers (unit-tested in Node) ────────────────
@@ -1572,6 +1620,14 @@ function onPolicyChange_() {
 
 function renderPolicyLab() {
   if (!S.data) return;
+
+  // Comment-cadence peak-month classification + 15-week heatmap (moved from Trends
+  // 2026-07-13). Uses the global filter (same population as the rest of the app),
+  // independent of the calibration scope selector below.
+  computeBehaviour_(getFiltered());
+  renderBehaviourTable_();
+  renderBehaviourHeatmap_();
+
   var qs = policyQuarters_(), s = policySettings_();
 
   var scopeSel = document.getElementById('pl-scope');
@@ -1850,6 +1906,172 @@ function exportEngagementCSV_() {
   document.body.removeChild(a);
 }
 
+// ── STF GAPS (Finance; admin-only) ────────────────────────────────
+// Reason → colour/label map, single source for the chart, summary strip, and
+// row badges so all three always agree. Colours are STATUS_C hexes.
+var FIN_REASONS_ = [
+  { key: 'pending',  label: 'Pending closure',          color: STATUS_C.watch },   // amber
+  { key: 'canceled', label: 'Canceled / Not-completed', color: STATUS_C.risk },    // red
+  { key: 'comments', label: 'Comments shortfall',       color: STATUS_C.info },    // blue
+  { key: 'toofew',   label: 'Too few goals',            color: STATUS_C.planned }, // slate
+];
+
+function renderFinance() {
+  var emps  = getFiltered();
+  var thr   = (S.financeThreshold == null) ? (STF_COMPLETED_BAR_ - 1) : S.financeThreshold;
+  var model = buildFinanceGaps_(emps, thr);
+  S._financeModel = model; // consumed by exportFinanceCsv_
+
+  var t    = model.totals;
+  var strip = document.getElementById('finance-summary');
+  if (strip) {
+    strip.innerHTML =
+      finStat_('⏳ Pending', t.pending, STATUS_C.watch) +
+      finStat_('✖ Canceled/NC', t.canceled, STATUS_C.risk) +
+      finStat_('🗨 Comments', t.comments, STATUS_C.info) +
+      finStat_('▽ Too few', t.toofew, STATUS_C.planned) +
+      '<span style="margin-left:auto;font-size:12px;color:var(--muted);align-self:center">' +
+        t.ineligible + ' ineligible shown of ' + t.evaluated + ' evaluated' +
+        (t.hidden > 0 ? ' · ' + t.hidden + ' more below the bar hidden by threshold' : '') +
+      '</span>';
+  }
+
+  renderFinanceChart_(model.chartRows);
+  renderFinanceSection_(document.getElementById('finance-under'), model.underBar, 'under');
+  renderFinanceSection_(document.getElementById('finance-comments'), model.commentsShortfall, 'comments');
+}
+
+function finStat_(label, n, color) {
+  return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-right:16px">' +
+    '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';display:inline-block"></span>' +
+    esc(label) + ' <span style="color:' + color + '">' + n + '</span></span>';
+}
+
+// One horizontal stacked bar per manager, absolute-scaled to the worst manager so
+// the longest bar = most ineligible. Click a bar → scrolls to that manager's group.
+function renderFinanceChart_(chartRows) {
+  var el = document.getElementById('finance-chart');
+  if (!el) return;
+  if (!chartRows || !chartRows.length) {
+    el.innerHTML = '<div class="empty-state">🎉 <p>No STF-ineligible Rocketeers in the current selection.</p></div>';
+    return;
+  }
+  var maxTotal = chartRows.reduce(function(mx, r) { return Math.max(mx, r.total); }, 0) || 1;
+  var html = '<div style="display:flex;flex-direction:column;gap:8px">';
+  chartRows.forEach(function(r) {
+    html += '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" data-fin-mgr="' + esc(r.supervisor) + '" title="Jump to ' + esc(r.supervisor) + '&#8217;s group">';
+    html += '<span style="flex:0 0 150px;font-size:11px;font-weight:700;color:var(--text);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.supervisor) + '</span>';
+    html += '<span style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--border)">';
+    FIN_REASONS_.forEach(function(seg) {
+      var n = r[seg.key] || 0;
+      if (n <= 0) return;
+      var w = (n / maxTotal * 100).toFixed(2);
+      html += '<span style="width:' + w + '%;background:' + seg.color + '" title="' + esc(seg.label) + ': ' + n + '"></span>';
+    });
+    html += '</span>';
+    html += '<span style="flex:0 0 24px;font-size:11px;font-weight:800;color:var(--text)">' + r.total + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:10px;color:var(--muted)">';
+  FIN_REASONS_.forEach(function(seg) {
+    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + seg.color + ';display:inline-block"></span>' + esc(seg.label) + '</span>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// Render a manager-grouped section. mode 'under' shows Completed/Pending/Canceled;
+// mode 'comments' shows Completed/Well-commented. Rows carry data-normname so the
+// shared delegated tr[data-normname] listener opens the individual drill-down.
+function renderFinanceSection_(container, groups, mode) {
+  if (!container) return;
+  if (!groups || !groups.length) {
+    container.innerHTML = '<div class="empty-state">✓ <p>None in the current selection.</p></div>';
+    return;
+  }
+  var html = '';
+  groups.forEach(function(g) {
+    html += '<div class="fin-mgr-group" data-fin-group="' + esc(g.supervisor) + '" style="margin-bottom:16px">';
+    html += '<div style="font-size:12px;font-weight:800;color:var(--text);margin:6px 0">' + esc(g.supervisor) +
+            ' <span style="color:var(--muted);font-weight:600">(' + g.count + ')</span></div>';
+    html += '<div class="tbl-wrap"><table class="data-table" style="font-size:12px"><thead><tr>';
+    if (mode === 'under') {
+      html += '<th>Rocketeer</th><th style="text-align:center">Completed</th><th style="text-align:center">Pending</th><th style="text-align:center">Canceled/NC</th><th>Reason signal(s)</th>';
+    } else {
+      html += '<th>Rocketeer</th><th style="text-align:center">Completed</th><th style="text-align:center">Well-commented</th><th>Reason signal</th>';
+    }
+    html += '</tr></thead><tbody>';
+    g.rocketeers.forEach(function(r) {
+      html += '<tr style="cursor:pointer" data-normname="' + esc(r.normName || '') + '" title="View ' + esc(r.name) + '&#8217;s goals →">';
+      html += '<td style="font-weight:600;white-space:nowrap">' + esc(r.name) + '</td>';
+      if (mode === 'under') {
+        html += '<td style="text-align:center">' + r.completed + ' / ' + STF_COMPLETED_BAR_ + '</td>';
+        html += '<td style="text-align:center">' + r.pending + '</td>';
+        html += '<td style="text-align:center">' + r.lost + '</td>';
+      } else {
+        html += '<td style="text-align:center">' + r.completed + ' / ' + STF_COMPLETED_BAR_ + '</td>';
+        html += '<td style="text-align:center">' + r.wellCommented + ' / ' + STF_CMT_GOALS_BAR_ + '</td>';
+      }
+      html += '<td>' + finBadges_(r.badges) + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  });
+  container.innerHTML = html;
+}
+
+function finBadges_(badges) {
+  if (!badges || !badges.length) return '&mdash;';
+  return badges.map(function(b) {
+    var seg = FIN_REASONS_.filter(function(x) { return x.key === b.kind; })[0];
+    var c = (seg && seg.color) || 'var(--slate)';
+    return '<span style="display:inline-block;background:#fff;color:' + c + ';border:1px solid ' + c +
+      ';border-radius:3px;padding:1px 6px;font-size:10px;font-weight:700;margin-right:4px;white-space:nowrap">' + esc(b.text) + '</span>';
+  }).join('');
+}
+
+function setFinanceThreshold_(v) {
+  S.financeThreshold = +v;
+  var lbl = document.getElementById('finance-threshold-val');
+  if (lbl) lbl.textContent = S.financeThreshold;
+  renderFinance();
+}
+
+// Export the currently-displayed STF gaps (respects filter + threshold) to CSV.
+// Mirrors the exportEngagementCSV_ pattern (BOM + quoted fields).
+function exportFinanceCsv_() {
+  var model = S._financeModel;
+  if (!model) return;
+  var REASON_LABEL = {
+    pending: 'Pending closure', canceled: 'Canceled/Not-completed',
+    comments: 'Comments shortfall', toofew: 'Too few goals',
+  };
+  var rows = [['Manager', 'Rocketeer', 'Department', 'Completed', 'Pending',
+               'Canceled/NotCompleted', 'Well-commented', 'Primary reason', 'All reasons']];
+  function emit(groups) {
+    (groups || []).forEach(function(gr) {
+      gr.rocketeers.forEach(function(r) {
+        rows.push([gr.supervisor, r.name, r.department, r.completed, r.pending, r.lost,
+          r.wellCommented, REASON_LABEL[r.primary] || r.primary,
+          r.badges.map(function(b) { return b.text; }).join('; ')]);
+      });
+    });
+  }
+  emit(model.underBar);
+  emit(model.commentsShortfall);
+
+  var csv = rows.map(function(r) {
+    return r.map(function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
+  a.download = 'stf-gaps-' + ((S.data && S.data.quarter) || 'export') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // ── BREAKDOWN ─────────────────────────────────────────────────────
 function renderBreakdown(emps) {
   var deptGroups = aggregateGroups_(emps, 'department');
@@ -1885,8 +2107,10 @@ function needsSupportPool_(emps) {
     // New hires (hired on/after quarter start) never had the full quarter the
     // goal thresholds assume — they're flagged "New Hire" in the rosters, not
     // called out as needing support. They join the pool from their first full
-    // quarter onward.
-    if (e.isNewHire) return;
+    // quarter onward. On-leave rocketeers (Maternity/Parental) get the same
+    // pass: a 0-goal quarter is expected, so they're flagged "On Leave", not
+    // called out here.
+    if (e.isNewHire || e.onLeave) return;
     var compFail = e.complianceStatus === 'At Risk' || (isGrace && e.complianceStatus === 'Watch');
     var engFail  = !!(e.hasEngagementConcern || e.goalsStuckInPlanned > 0);
     if (compFail || engFail) { seen[e.normName] = true; pool.push(e); }
@@ -1959,6 +2183,13 @@ function stfBadge_(e) {
 
 // Signal badges — every concern this person currently has; '' when clean.
 function signalsBadges_(e, isGrace) {
+  // On leave (Maternity/Parental) gets one neutral flag and NO concern
+  // callouts — a 0-goal quarter is expected while away. Checked before the
+  // new-hire flag: leave is the current-state explanation when both apply.
+  if (e.onLeave) {
+    return '<span style="display:inline-block;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;background:var(--orbe-tint);color:var(--void);border:1px solid var(--royal-tint)" title="Roster status: ' +
+      esc(e.leaveReason || 'On Leave') + ' — on leave this quarter, so goal thresholds don\'t apply">🏖 On Leave</span>';
+  }
   // New hires get one neutral flag and NO concern callouts — they never had
   // the full quarter the thresholds assume (some ramp up mid-quarter anyway;
   // they still just read "New Hire" until their first full quarter).
@@ -2212,7 +2443,7 @@ function openModal(normName) {
   S.reviewTarget = { emp: emp, existing: existing };
 
   document.getElementById('modal-info').innerHTML =
-    '<strong>' + esc(emp.name) + '</strong>' + terminatedTag_(emp) + '<br>' +
+    '<strong>' + esc(emp.name) + '</strong>' + terminatedTag_(emp) + leaveTag_(emp) + '<br>' +
     (emp.supervisor ? '👤 ' + esc(emp.supervisor) + ' &nbsp;' : '') +
     (emp.department ? '🏢 ' + esc(emp.department) + ' &nbsp;' : '') +
     '<br><span style="color:' + tierColor_(emp.complianceStatus) + ';font-weight:700">' + esc(emp.complianceStatus) + '</span>' +
@@ -2272,17 +2503,90 @@ function saveReview() {
 }
 
 // ── CHART BUILDERS ────────────────────────────────────────────────
+// Reusable donut/pie label plugin matching the preferred format (2026-07-13):
+// slices ≥ INSIDE_MIN% get a white "<name> <pct>%" label inside the ring; smaller
+// slices get an outside label with a leader line, vertically spread per side so
+// clustered thin slices don't collide. Pair with layout.padding (≈66 left/right)
+// so outside labels have room and never clip. Drop ChartDataLabels from a chart's
+// plugins array when using this (it replaces the inside-% labels).
+var DONUT_LABELS_ = {
+  id: 'donutLabels',
+  afterDraw: function(chart) {
+    var meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data || !meta.data.length) return;
+    var ds = chart.data.datasets[0];
+    var total = ds.data.reduce(function(s, v) { return s + (+v || 0); }, 0);
+    if (!total) return;
+    var ctx = chart.ctx, cx = meta.data[0].x, cy = meta.data[0].y;
+    var INSIDE_MIN = 15;                 // % — at/above → label inside the ring
+    var dec_ = function(p) { return p >= 10 ? 1 : 2; };
+    var outer = [];
+
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    meta.data.forEach(function(arc, i) {
+      var v = +ds.data[i] || 0; if (v <= 0) return;
+      var pct = v / total * 100;
+      var p   = arc.getProps(['startAngle', 'endAngle', 'outerRadius', 'innerRadius'], true);
+      var mid = (p.startAngle + p.endAngle) / 2, cos = Math.cos(mid), sin = Math.sin(mid);
+      var name = String(chart.data.labels[i]);
+      if (pct >= INSIDE_MIN) {
+        var r = (p.innerRadius + p.outerRadius) / 2;
+        var lx = cx + cos * r, ly = cy + sin * r;
+        ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+        ctx.font = '700 12px Roboto, sans-serif'; ctx.fillText(name, lx, ly - 7);
+        ctx.font = '700 11px Roboto, sans-serif'; ctx.fillText(pct.toFixed(dec_(pct)) + '%', lx, ly + 7);
+      } else {
+        outer.push({ pct: pct, name: name, cos: cos, sin: sin, or: p.outerRadius, right: cos >= 0,
+          ax: cx + cos * p.outerRadius, ay: cy + sin * p.outerRadius, ey: cy + sin * (p.outerRadius + 14) });
+      }
+    });
+
+    // Spread outside labels vertically per side so thin slices don't overlap.
+    var LINEH = 26, top = 10, bot = chart.height - 10;
+    ['r', 'l'].forEach(function(side) {
+      var arr = outer.filter(function(o) { return side === 'r' ? o.right : !o.right; })
+                     .sort(function(a, b) { return a.ey - b.ey; });
+      for (var k = 0; k < arr.length; k++) {
+        if (k && arr[k].ey < arr[k - 1].ey + LINEH) arr[k].ey = arr[k - 1].ey + LINEH;
+        arr[k].ey = Math.min(bot, Math.max(top, arr[k].ey));
+      }
+      if (arr.length) {
+        var over = arr[arr.length - 1].ey - bot;
+        if (over > 0) arr.forEach(function(o) { o.ey = Math.max(top, o.ey - over); });
+      }
+    });
+
+    outer.forEach(function(o) {
+      var elbowX = o.right ? chart.width - 60 : 60;
+      elbowX = o.right ? Math.max(elbowX, o.ax + 8) : Math.min(elbowX, o.ax - 8);
+      ctx.beginPath();
+      ctx.moveTo(o.ax, o.ay);
+      ctx.lineTo(cx + o.cos * (o.or + 12), o.ey);
+      ctx.lineTo(elbowX, o.ey);
+      ctx.strokeStyle = 'rgba(100,116,139,.55)'; ctx.lineWidth = 1; ctx.stroke();
+      var tx = o.right ? elbowX + 4 : elbowX - 4;
+      ctx.textAlign = o.right ? 'left' : 'right';
+      ctx.fillStyle = '#1E293B'; ctx.font = '700 10px Roboto, sans-serif'; ctx.fillText(o.name, tx, o.ey - 6);
+      ctx.fillStyle = '#64748b'; ctx.font = '600 10px Roboto, sans-serif'; ctx.fillText(o.pct.toFixed(dec_(o.pct)) + '%', tx, o.ey + 7);
+    });
+    ctx.restore();
+  }
+};
+
 function buildGoalStatusChart(canvasId, gsd) {
   destroyChart(canvasId);
   var canvas = document.getElementById(canvasId);
   if (!canvas) return;
   var total = gsd.total || 1;
+  // Ordered + coloured by level of impact (goal status): done → not done → planned
+  // → canceled → in progress. Not Completed is the only non-brand hue (impact red).
   var items = [
-    { label:'Completed',     count: gsd.completed,    color:STATUS_C.good },
-    { label:'In Progress',   count: gsd.inProgress,   color:STATUS_C.info },
-    { label:'Planned',       count: gsd.planned,      color:STATUS_C.planned },
-    { label:'Not Completed', count: gsd.notCompleted, color:STATUS_C.risk },
-    { label:'Canceled',      count: gsd.canceled,     color:STATUS_C.canceled },
+    { label:'Completed',     count: gsd.completed,    color:'#058CDC' },  // Orbe — done
+    { label:'Not Completed', count: gsd.notCompleted, color:'#EF5A4D' },  // impact red — missed
+    { label:'Planned',       count: gsd.planned,      color:'#2864E6' },  // Royal — planned
+    { label:'Canceled',      count: gsd.canceled,     color:'#DCCDBE' },  // Ivory — canceled
+    { label:'In Progress',   count: gsd.inProgress,   color:'#FF9B87' },  // June — active
   ].filter(function(it){ return it.count > 0; });
 
   // Center-text plugin: shows total goals in the donut hole
@@ -2299,7 +2603,7 @@ function buildGoalStatusChart(canvasId, gsd) {
       ctx.fillStyle = '#0F1941';
       ctx.fillText(total, cx, cy - 9);
       ctx.font = '9px Roboto, sans-serif';
-      ctx.fillStyle = '#94A3B8';
+      ctx.fillStyle = '#B9A48C';
       ctx.fillText('total goals', cx, cy + 10);
       ctx.restore();
     }
@@ -2307,23 +2611,19 @@ function buildGoalStatusChart(canvasId, gsd) {
 
   S.charts[canvasId] = new Chart(canvas, {
     type: 'doughnut',
-    plugins: [ChartDataLabels, centerPlugin],
+    plugins: [centerPlugin, DONUT_LABELS_],
     data: {
       labels: items.map(function(it){ return it.label; }),
       datasets: [{
         data:            items.map(function(it){ return it.count; }),
         backgroundColor: items.map(function(it){ return it.color; }),
-        borderWidth: 2, borderColor: '#fff', hoverOffset: 6,
-        datalabels: {
-          display: function(ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; },
-          formatter: function(v) { return (v/total*100).toFixed(0) + '%'; },
-          color: '#fff', font:{ weight:'bold', size:10 }
-        }
+        borderWidth: 2, borderColor: '#fff', hoverOffset: 6
       }]
     },
     options: {
       responsive:true, maintainAspectRatio:false,
       cutout: '62%',
+      layout: { padding: { left: 66, right: 66, top: 16, bottom: 16 } },
       plugins:{
         // Legend stays on: the status table is separate DOM, so a PNG export (or
         // any standalone view of the canvas) needs the chart to identify its own
@@ -2345,11 +2645,11 @@ function buildGoalStatusChart(canvasId, gsd) {
 function buildGoalStatusTable_(gsd) {
   var total = gsd.total || 1;
   var rows  = [
-    { label:'Completed',     count:gsd.completed,    ppl:gsd.pplCompleted,    color:STATUS_C.good },
-    { label:'In Progress',   count:gsd.inProgress,   ppl:gsd.pplInProgress,   color:STATUS_C.info },
-    { label:'Planned',       count:gsd.planned,      ppl:gsd.pplPlanned,      color:STATUS_C.planned },
-    { label:'Not Completed', count:gsd.notCompleted, ppl:gsd.pplNotCompleted, color:STATUS_C.risk },
-    { label:'Canceled',      count:gsd.canceled,     ppl:gsd.pplCanceled,     color:STATUS_C.canceled },
+    { label:'Completed',     count:gsd.completed,    ppl:gsd.pplCompleted,    color:'#058CDC' },  // Completed = Orbe (In Progress now Royal)
+    { label:'In Progress',   count:gsd.inProgress,   ppl:gsd.pplInProgress,   color:'#2864E6' },
+    { label:'Planned',       count:gsd.planned,      ppl:gsd.pplPlanned,      color:'#B9A48C' },
+    { label:'Not Completed', count:gsd.notCompleted, ppl:gsd.pplNotCompleted, color:'#0F1941' },
+    { label:'Canceled',      count:gsd.canceled,     ppl:gsd.pplCanceled,     color:'#DCCDBE' },
   ].filter(function(r){ return r.count > 0; });
 
   var html = '<table class="data-table" style="font-size:11px"><thead><tr>' +
@@ -2374,27 +2674,20 @@ function buildDonut(canvasId, onTarget, watch, atRisk) {
   if (!canvas) return;
   S.charts[canvasId] = new Chart(canvas, {
     type: 'doughnut',
-    plugins: [ChartDataLabels],
+    plugins: [DONUT_LABELS_],
     data: {
       labels: ['On Target', 'Watch (8–9)', 'At Risk (<8)'],
       datasets: [{
         data: [onTarget, watch, atRisk],
-        backgroundColor: [STATUS_C.good, STATUS_C.watch, STATUS_C.risk],
+        backgroundColor: ['#058CDC', '#FF9B87', '#0F1941'],  // On Target → Orbe Blue (brand palette)
         borderWidth: 2, borderColor: '#fff', hoverOffset: 6
       }]
     },
     options: {
       responsive:true, maintainAspectRatio:false, cutout:'62%',
+      layout: { padding: { left: 66, right: 66, top: 16, bottom: 16 } },
       plugins: {
-        legend:{ position:'bottom', labels:{ font:{size:10}, padding:10 } },
-        datalabels:{
-          display:function(ctx){ return ctx.dataset.data[ctx.dataIndex] > 0; },
-          formatter:function(v, ctx){
-            var tot = ctx.dataset.data.reduce(function(s,n){ return s+n; },0);
-            return tot > 0 ? (v/tot*100).toFixed(0)+'%' : '';
-          },
-          color:'#fff', font:{ weight:'bold', size:11 }
-        }
+        legend:{ position:'bottom', labels:{ font:{size:10}, padding:10 } }
       }
     }
   });
@@ -2414,7 +2707,7 @@ function buildBarChart(canvasId, groups, title) {
         label:'On Target',
         data:  sorted.map(function(g){ return g.complianceRate; }),
         backgroundColor: sorted.map(function(g){
-          return g.complianceRate >= 80 ? STATUS_C.good : g.complianceRate >= 60 ? STATUS_C.watch : STATUS_C.risk;
+          return g.complianceRate >= 80 ? '#058CDC' : g.complianceRate >= 60 ? '#FF9B87' : '#0F1941';  // ≥80% → Orbe Blue (brand palette)
         }),
         borderRadius: 4,
         datalabels:{
@@ -2422,14 +2715,14 @@ function buildBarChart(canvasId, groups, title) {
           formatter:function(v, ctx){
             return v.toFixed(1)+'% ('+(sorted[ctx.dataIndex].onTarget)+'/'+sorted[ctx.dataIndex].total+')';
           },
-          color:'#1E293B', font:{ weight:'bold', size:10 }
+          color:'#0F1941', font:{ weight:'bold', size:10 }
         }
       }]
     },
     options: {
       responsive:true, maintainAspectRatio:false,
       scales: {
-        y:{ max:115, ticks:{ callback:function(v){ return v<=100?v+'%':''; } }, grid:{ color:'#E2E8F0' } },
+        y:{ max:115, ticks:{ callback:function(v){ return v<=100?v+'%':''; } }, grid:{ color:'#DCCDBE' } },
         x:{ ticks:{ font:{size:11}, maxRotation:40 } }
       },
       plugins:{ legend:{ display:false } }
@@ -2453,10 +2746,10 @@ function buildDeptDistChart_(canvasId, groups) {
                below: Math.max(0, (g.atRisk||0) - (g.noGoals||0)), noGoals:g.noGoals||0 };
     });
   var segs = [
-    { key:'onTarget', label:'Perfect (10+ Goals)',         color:STATUS_C.good },
-    { key:'watch',    label:'Minimum (8–9 Goals)',         color:STATUS_C.watch },
-    { key:'below',    label:'Below Requirement (<8)',      color:STATUS_C.risk },
-    { key:'noGoals',  label:'No Goals',                    color:STATUS_C.canceled },
+    { key:'onTarget', label:'Perfect (10+ Goals)',         color:'#058CDC' },  // Orbe Blue (brand palette)
+    { key:'watch',    label:'Minimum (8–9 Goals)',         color:'#FF9B87' },
+    { key:'below',    label:'Below Requirement (<8)',      color:'#0F1941' },
+    { key:'noGoals',  label:'No Goals',                    color:'#DCCDBE' },
   ];
 
   canvas.parentElement.style.height = (rows.length * 38 + 110) + 'px';
@@ -2469,13 +2762,13 @@ function buildDeptDistChart_(canvasId, groups) {
       var x = chart.scales.x, y = chart.scales.y, ctx = chart.ctx;
       var px = x.getPixelForValue(80), right = x.getPixelForValue(100) + 14;
       ctx.save();
-      ctx.strokeStyle = '#15803D'; ctx.setLineDash([6,4]); ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#2864E6'; ctx.setLineDash([6,4]); ctx.lineWidth = 1.5;  // Royal — brand threshold-line color
       ctx.beginPath(); ctx.moveTo(px, y.top); ctx.lineTo(px, y.bottom); ctx.stroke();
       ctx.setLineDash([]);
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.font = 'bold 9px Roboto, sans-serif'; ctx.fillStyle = '#64748B';
+      ctx.font = 'bold 9px Roboto, sans-serif'; ctx.fillStyle = '#B9A48C';
       ctx.fillText('Headcount', right, y.top - 9);
-      ctx.font = 'bold 11px Roboto, sans-serif'; ctx.fillStyle = '#334155';
+      ctx.font = 'bold 11px Roboto, sans-serif'; ctx.fillStyle = '#0F1941';
       rows.forEach(function(r, i) { ctx.fillText(String(r.total), right, y.getPixelForValue(i)); });
       ctx.restore();
     }
@@ -2506,7 +2799,7 @@ function buildDeptDistChart_(canvasId, groups) {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { right: 86 } },
       scales: {
-        x: { stacked: true, max: 100, grid: { color:'#E2E8F0' },
+        x: { stacked: true, max: 100, grid: { color:'#DCCDBE' },
              ticks: { callback: function(v){ return v + '%'; }, font:{ size:10 } },
              title: { display: true, text: 'Percentage of Employees (%)', font:{ size:10 } } },
         y: { stacked: true, grid: { display:false }, ticks: { font:{ size:11 } } }
@@ -2527,6 +2820,391 @@ function buildDeptDistChart_(canvasId, groups) {
 function renderTrends(emps) {
   buildWeeklyComboChart_(emps);
   renderQoQPanels_(emps);
+  renderCommentBehaviour_(emps);
+}
+
+// ── Comment cadence behaviour (peak-comment-month) ───────────────
+// Per-employee: which of the quarter's 3 calendar months holds most of their
+// self-comments. Late = concentrated at quarter-end — the backloading behaviour
+// the week-over-week charts can't show per person. The server ships monthlySelf
+// ('YYYY-MM' → count) per employee; the client picks the active quarter's three
+// months and classifies. Chart shows counts only; names appear in the table.
+
+var BEHAVIOUR_MIN_CMTS = 3;  // below this, peak-month is noise → "n/a" (not classified)
+
+var BEHAVIOUR_CLASS = {
+  early:        { label: 'Early', emoji: '🔵', color: 'var(--orbe)',          hex: '#058CDC' },  // Orbe Blue (brand palette)
+  mid:          { label: 'Mid',   emoji: '🟠', color: 'var(--june)',         hex: '#FF9B87' },
+  late:         { label: 'Late',  emoji: '⚫', color: 'var(--void)',         hex: '#0F1941' },
+  insufficient: { label: 'n/a',   emoji: '▫',  color: 'var(--muted)',        hex: '#94A3B8' },
+};
+
+// The active quarter's 3 calendar months as { key:'YYYY-MM', label:'Apr' } —
+// derived from the quarter label so month keys match the server's monthlySelf.
+function behaviourMonths_() {
+  var qd = quarterDatesClient_((S.data && S.data.quarter) || '');
+  if (!qd) return null;
+  var out = [];
+  for (var i = 0; i < 3; i++) {
+    var d = new Date(qd.start.getFullYear(), qd.start.getMonth() + i, 1);
+    out.push({
+      key:   d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2),
+      label: d.toLocaleString('en-US', { month: 'short' }),
+    });
+  }
+  return out;
+}
+
+// Classify [m1,m2,m3] self-comment counts. Ties break to the EARLIER month
+// (strict >), so nobody is labelled a backloader on a tie.
+function classifyPeakMonth_(counts) {
+  var total = counts[0] + counts[1] + counts[2];
+  if (total < BEHAVIOUR_MIN_CMTS) return 'insufficient';
+  var pk = 0;
+  if (counts[1] > counts[pk]) pk = 1;
+  if (counts[2] > counts[pk]) pk = 2;
+  return ['early', 'mid', 'late'][pk];
+}
+
+// Shared compute: classify each eligible rocketeer's peak comment month and keep
+// their weekly self-comment map + the quarter's ordered week labels (for the
+// Policy Lab cadence heatmap). Filter-aware; new hires & departed excluded (a
+// partial quarter skews the peak month).
+function computeBehaviour_(emps) {
+  var months = behaviourMonths_();
+  if (!months) { S.behaviour = null; return null; }
+  var weeks = (S.data && S.data.trendWeeks) || [];
+  var rows = emps
+    .filter(function(e) { return e.totalGoals > 0 && !e.isNewHire && !e.terminated && !e.onLeave; })
+    .map(function(e) {
+      var counts = months.map(function(m) { return (e.monthlySelf && e.monthlySelf[m.key]) || 0; });
+      return {
+        name:       e.name,
+        department: e.department || '(No Dept)',
+        supervisor: e.supervisor || '',
+        counts:     counts,
+        total:      counts[0] + counts[1] + counts[2],
+        peak:       classifyPeakMonth_(counts),
+        weeklySelf: e.weeklySelf || {},
+      };
+    });
+  S.behaviour = {
+    rows:    rows,
+    months:  months,
+    weeks:   weeks,
+    mode:    (S.behaviour && S.behaviour.mode)    || 'class',
+    sortKey: (S.behaviour && S.behaviour.sortKey) || 'peak',
+    sortDir: (S.behaviour && S.behaviour.sortDir) || 1,
+  };
+  return S.behaviour;
+}
+
+// Trends tab: headline + by-department bars + whole-team class pie. The
+// per-rocketeer classification table + 15-week heatmap moved to the Policy Lab
+// tab (2026-07-13) and render from renderPolicyLab().
+function renderCommentBehaviour_(emps) {
+  var foot = document.getElementById('behaviour-footnote');
+  var hl   = document.getElementById('behaviour-headline');
+  var b    = computeBehaviour_(emps);
+  if (!b) {
+    destroyChart('chart-behaviour'); destroyChart('chart-behaviour-pie');
+    if (hl)   hl.innerHTML = '';
+    if (foot) foot.textContent = '';
+    return;
+  }
+  var months = b.months, rows = b.rows;
+
+  // Headline — counts only, no names (chart-area verdict convention).
+  var tally = { early: 0, mid: 0, late: 0, insufficient: 0 };
+  rows.forEach(function(r) { tally[r.peak]++; });
+  if (hl) {
+    var stat_ = function(num, colr, label) {
+      return '<span style="display:inline-flex;align-items:baseline;gap:6px">' +
+        '<span class="th-num" style="color:' + colr + '">' + num + '</span>' +
+        '<span class="th-label">' + label + '</span></span>';
+    };
+    hl.innerHTML =
+      stat_(tally.late,  BEHAVIOUR_CLASS.late.hex,  'backload to ' + esc(months[2].label) + ' (late)') +
+      stat_(tally.mid,   BEHAVIOUR_CLASS.mid.hex,   'peak mid-quarter') +
+      stat_(tally.early, BEHAVIOUR_CLASS.early.hex, 'peak early') +
+      (tally.insufficient ? stat_(tally.insufficient, 'var(--slate)', 'too few comments to classify') : '');
+  }
+  if (foot) foot.textContent = 'Quarter months: ' + months.map(function(m){ return m.label; }).join(' · ') +
+    ' · ' + rows.length + ' rocketeer' + (rows.length === 1 ? '' : 's') + ' (new hires, on-leave & departed excluded)';
+
+  setBehaviourMode_(b.mode);  // syncs the toggle UI + builds the dept chart
+  buildBehaviourPie_();
+}
+
+// Whole-team pie of the three cadence classes (Early/Mid/Late) — n/a excluded, so
+// it reads as a share of classified people. Sits beside the by-department bars.
+function buildBehaviourPie_() {
+  destroyChart('chart-behaviour-pie');
+  var canvas = document.getElementById('chart-behaviour-pie');
+  var b = S.behaviour;
+  if (!canvas || !b || !b.rows.length) return;
+  var t = { early: 0, mid: 0, late: 0 };
+  b.rows.forEach(function(r) { if (r.peak in t) t[r.peak]++; });
+  var data = [t.early, t.mid, t.late];
+  if (!(data[0] + data[1] + data[2])) return;
+  S.charts['chart-behaviour-pie'] = new Chart(canvas, {
+    type: 'doughnut',
+    plugins: [DONUT_LABELS_],
+    data: {
+      labels: ['Early', 'Mid', 'Late'],
+      datasets: [{
+        data: data,
+        backgroundColor: [BEHAVIOUR_CLASS.early.hex, BEHAVIOUR_CLASS.mid.hex, BEHAVIOUR_CLASS.late.hex],
+        borderWidth: 2, borderColor: '#fff', hoverOffset: 4,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      layout: { padding: { left: 58, right: 58, top: 14, bottom: 14 } },
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 10, padding: 8 } },
+        tooltip: { callbacks: { label: function(ctx) {
+          var tot = ctx.dataset.data.reduce(function(s, n) { return s + n; }, 0);
+          return ' ' + ctx.label + ': ' + ctx.parsed + ' of ' + tot +
+                 ' (' + (tot ? Math.round(ctx.parsed / tot * 100) : 0) + '%)';
+        } } },
+      },
+    },
+  });
+}
+
+function classShare_(d) {
+  var base = d.early + d.mid + d.late;
+  return base ? d.late / base : 0;
+}
+
+function mkBehaviourDs_(label, data, hex, txt) {
+  return { label: label, data: data, backgroundColor: hex, _txt: txt, stack: 'b',
+           borderWidth: 0, categoryPercentage: 0.7, barThickness: 'flex', maxBarThickness: 26 };
+}
+
+function buildBehaviourDeptChart_() {
+  destroyChart('chart-behaviour');
+  var canvas = document.getElementById('chart-behaviour');
+  var wrap   = document.getElementById('behaviour-chart-wrap');
+  var b      = S.behaviour;
+  if (!canvas || !b || !b.rows.length) {
+    if (wrap) wrap.style.height = '120px';
+    return;
+  }
+  var months  = b.months;
+  var isClass = b.mode === 'class';
+
+  // Aggregate by department.
+  var deptMap = {};
+  b.rows.forEach(function(r) {
+    var d = deptMap[r.department] || (deptMap[r.department] = {
+      dept: r.department, m: [0, 0, 0], early: 0, mid: 0, late: 0, insuf: 0, vol: 0,
+    });
+    d.m[0] += r.counts[0]; d.m[1] += r.counts[1]; d.m[2] += r.counts[2];
+    d.vol  += r.total;
+    d[r.peak === 'insufficient' ? 'insuf' : r.peak]++;
+  });
+  var depts = Object.keys(deptMap).map(function(k) { return deptMap[k]; });
+
+  // Sort: class mode → highest late-share on top; volume mode → most comments.
+  depts.sort(isClass
+    ? function(a, c) { return classShare_(c) - classShare_(a); }
+    : function(a, c) { return c.vol - a.vol; });
+
+  var labels = depts.map(function(d) { return d.dept; });
+
+  // Dynamic height so many departments stay readable (horizontal bars).
+  if (wrap) wrap.style.height = Math.max(160, 48 + labels.length * 34) + 'px';
+
+  var datasets;
+  if (isClass) {
+    // 100%-stacked share of CLASSIFIED people (early+mid+late) per department.
+    var pct_ = function(d, key) {
+      var base = d.early + d.mid + d.late;
+      return base ? +(d[key] / base * 100).toFixed(1) : 0;
+    };
+    datasets = [
+      mkBehaviourDs_('Early', depts.map(function(d) { return pct_(d, 'early'); }), BEHAVIOUR_CLASS.early.hex, '#fff'),
+      mkBehaviourDs_('Mid',   depts.map(function(d) { return pct_(d, 'mid'); }),   BEHAVIOUR_CLASS.mid.hex,   '#B4543C'),
+      mkBehaviourDs_('Late',  depts.map(function(d) { return pct_(d, 'late'); }),  BEHAVIOUR_CLASS.late.hex,  '#fff'),
+    ];
+  } else {
+    // Comment volume split across the quarter's 3 months (light → dark = later).
+    var SEQ = ['#E7F1FB', '#058CDC', BRAND.VOID];
+    datasets = months.map(function(m, i) {
+      return mkBehaviourDs_(m.label, depts.map(function(d) { return d.m[i]; }), SEQ[i], i === 2 ? '#fff' : BRAND.VOID);
+    });
+  }
+
+  S.charts['chart-behaviour'] = new Chart(canvas, {
+    type: 'bar',
+    plugins: [ChartDataLabels],
+    data: { labels: labels, datasets: datasets },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, beginAtZero: true, max: isClass ? 100 : undefined,
+             ticks: { callback: function(v) { return isClass ? v + '%' : v; }, font: { size: 10 } },
+             grid: { color: 'rgba(185,164,140,.12)' } },
+        y: { stacked: true, ticks: { font: { size: 11, weight: '600' } }, grid: { display: false } },
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function(ctx) {
+          var v = ctx.parsed.x;
+          return ctx.dataset.label + ': ' + (isClass ? v + '% of classified' : v + ' comment' + (v === 1 ? '' : 's'));
+        } } },
+        datalabels: {
+          color: function(ctx) { return ctx.dataset._txt || '#fff'; },
+          font: { size: 10, weight: '700' },
+          formatter: function(v) { return isClass ? (v >= 8 ? Math.round(v) + '%' : '') : (v > 0 ? v : ''); },
+          display: function(ctx) { var v = ctx.dataset.data[ctx.dataIndex]; return isClass ? v >= 8 : v > 0; },
+        },
+      },
+    },
+  });
+}
+
+function setBehaviourMode_(mode) {
+  if (!S.behaviour) return;
+  S.behaviour.mode = mode;
+  var vBtn = document.getElementById('btn-behaviour-volume');
+  var cBtn = document.getElementById('btn-behaviour-class');
+  if (vBtn) { vBtn.classList.toggle('btn-primary', mode === 'volume'); vBtn.setAttribute('aria-pressed', String(mode === 'volume')); }
+  if (cBtn) { cBtn.classList.toggle('btn-primary', mode === 'class');  cBtn.setAttribute('aria-pressed', String(mode === 'class')); }
+  var sub = document.getElementById('behaviour-sub');
+  if (sub) sub.textContent = mode === 'class'
+    ? "Share of each department's people peaking Early / Mid / Late in the quarter · respects the filter bar"
+    : "Where each department's self-comments land across the quarter's three months · respects the filter bar";
+  buildBehaviourDeptChart_();
+}
+
+var BEHAVIOUR_PEAK_ORDER = { late: 0, mid: 1, early: 2, insufficient: 3 };
+
+function renderBehaviourTable_() {
+  var el = document.getElementById('behaviour-table');
+  var b  = S.behaviour;
+  if (!el) return;
+  if (!b || !b.rows.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:10px">No rocketeers match the current filter.</div>';
+    return;
+  }
+
+  var dir = b.sortDir, key = b.sortKey, mo = b.months;
+  var rows = b.rows.slice().sort(function(a, c) {
+    if (key === 'name' || key === 'dept') {
+      var an = (key === 'name' ? a.name : a.department).toLowerCase();
+      var cn = (key === 'name' ? c.name : c.department).toLowerCase();
+      return an < cn ? -dir : an > cn ? dir : 0;
+    }
+    if (key === 'peak') {
+      var ap = BEHAVIOUR_PEAK_ORDER[a.peak], cp = BEHAVIOUR_PEAK_ORDER[c.peak];
+      return ap !== cp ? (ap - cp) * dir : c.total - a.total;
+    }
+    var av = key === 'm0' ? a.counts[0] : key === 'm1' ? a.counts[1] : key === 'm2' ? a.counts[2] : a.total;
+    var cv = key === 'm0' ? c.counts[0] : key === 'm1' ? c.counts[1] : key === 'm2' ? c.counts[2] : c.total;
+    return (av - cv) * dir || c.total - a.total;
+  });
+
+  var arrow = function(k) { return k === key ? (dir < 0 ? ' ▾' : ' ▴') : ''; };
+  var th = function(k, lab, right) {
+    return '<th style="cursor:pointer' + (right ? ';text-align:right' : '') + '" onclick="sortBehaviourTable_(\'' + k + '\')">' + lab + arrow(k) + '</th>';
+  };
+  var html = '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
+    th('name', 'Rocketeer', false) + th('dept', 'Department', false) +
+    th('m0', esc(mo[0].label), true) + th('m1', esc(mo[1].label), true) + th('m2', esc(mo[2].label), true) +
+    th('total', 'Total', true) + th('peak', 'Peak month', false) +
+    '</tr></thead><tbody>';
+
+  rows.forEach(function(r) {
+    var cls  = BEHAVIOUR_CLASS[r.peak];
+    var cell = function(i) {
+      var isPk = r.peak !== 'insufficient' && ['early', 'mid', 'late'][i] === r.peak;
+      return '<td style="text-align:right' + (isPk ? ';font-weight:800;color:' + cls.color : '') + '">' + r.counts[i] + '</td>';
+    };
+    html += '<tr>' +
+      '<td>' + esc(r.name) + '</td>' +
+      '<td>' + esc(r.department) + '</td>' +
+      cell(0) + cell(1) + cell(2) +
+      '<td style="text-align:right;font-weight:700">' + r.total + '</td>' +
+      '<td><span style="font-weight:700;color:' + cls.color + '">' + cls.emoji + ' ' + cls.label + '</span></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+function sortBehaviourTable_(key) {
+  if (!S.behaviour) return;
+  if (S.behaviour.sortKey === key) S.behaviour.sortDir = -S.behaviour.sortDir;
+  else { S.behaviour.sortKey = key; S.behaviour.sortDir = (key === 'name' || key === 'dept') ? 1 : -1; }
+  renderBehaviourTable_();
+}
+
+// 15-week cumulative-cadence heatmap (Policy Lab). Rows = rocketeers, columns =
+// the quarter's ordered weeks (13 + 2 grace, from trendWeeks). Cell shade = the
+// running share of that person's total self-comments reached by that week, so a
+// row that stays pale then darkens only at the right edge is a back-loader, while
+// an early, quick ramp is Early behaviour. Sorted Late→Early (biggest back-loaders
+// first) then by volume.
+function renderBehaviourHeatmap_() {
+  var el = document.getElementById('behaviour-heatmap');
+  var b  = S.behaviour;
+  if (!el) return;
+  if (!b || !b.rows.length || !b.weeks.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:10px">No weekly comment data available for a cadence heatmap.</div>';
+    return;
+  }
+  var weeks   = b.weeks;
+  var wkShort = function(w) { var m = String(w).match(/W(\d+)\s*$/); return m ? 'W' + m[1] : String(w); };
+
+  var rows = b.rows.slice().sort(function(a, c) {
+    var ap = BEHAVIOUR_PEAK_ORDER[a.peak], cp = BEHAVIOUR_PEAK_ORDER[c.peak];
+    return ap !== cp ? ap - cp : c.total - a.total;
+  });
+
+  var head = '<th class="bhm-name">Rocketeer</th>' +
+    weeks.map(function(w) { return '<th title="' + esc(String(w)) + '">' + esc(wkShort(w)) + '</th>'; }).join('') +
+    '<th class="bhm-peak">Peak</th>';
+
+  var body = rows.map(function(r) {
+    var wtot = weeks.reduce(function(s, w) { return s + ((r.weeklySelf && r.weeklySelf[w]) || 0); }, 0);
+    var run = 0;
+    var cells = weeks.map(function(w) {
+      var c = (r.weeklySelf && r.weeklySelf[w]) || 0;
+      run += c;
+      if (!wtot) return '<td class="bhm-cell" title="' + esc(String(w)) + ': no self-comments"></td>';
+      var cum = run / wtot;                        // 0..1 cumulative share
+      var a   = (0.06 + 0.80 * cum).toFixed(2);    // Orbe intensity ramp
+      return '<td class="bhm-cell" style="background:rgba(5,140,220,' + a + ')" title="' +
+        esc(String(w)) + ': ' + c + ' self-comment' + (c === 1 ? '' : 's') +
+        ' · cumulative ' + Math.round(cum * 100) + '%"></td>';
+    }).join('');
+    var cls = BEHAVIOUR_CLASS[r.peak];
+    return '<tr><td class="bhm-name" title="' + esc(r.name) + '">' + esc(r.name) + '</td>' + cells +
+      '<td class="bhm-peak" style="color:' + cls.color + '" title="' + esc(cls.label) + '">' + cls.emoji + '</td></tr>';
+  }).join('');
+
+  el.innerHTML = '<div class="bhm-wrap"><table class="bhm"><thead><tr>' + head + '</tr></thead><tbody>' +
+    body + '</tbody></table></div>' +
+    '<div class="bhm-legend"><span>Cumulative share of quarter comments:</span>' +
+    '<i style="background:rgba(5,140,220,0.10)"></i> 0%' +
+    '<i style="background:rgba(5,140,220,0.46)"></i> 50%' +
+    '<i style="background:rgba(5,140,220,0.86)"></i> 100%' +
+    '<span style="margin-left:10px">A row that stays pale then jumps dark at the right = back-loaded cadence.</span></div>';
+}
+
+function exportBehaviourCSV_() {
+  var b = S.behaviour;
+  if (!b || !b.rows.length) return;
+  var mo = b.months;
+  var header = ['Rocketeer', 'Department', 'Supervisor', mo[0].label, mo[1].label, mo[2].label, 'Total', 'Peak month'];
+  var rows = [header].concat(b.rows.map(function(r) {
+    return [r.name, r.department, r.supervisor, r.counts[0], r.counts[1], r.counts[2], r.total, BEHAVIOUR_CLASS[r.peak].label];
+  }));
+  downloadCSV(rows, 'comment-behaviour-' + ((S.data && S.data.quarter) || 'export') + '.csv');
 }
 
 // Sums a sparse weekly map field across employees into an array aligned to `weeks`.
@@ -2800,12 +3478,12 @@ function buildWeeklyComboChart_(emps) {
         var x = xS.getPixelForValue(qs.i);
         if (qs.i > 0) {
           x = (x + xS.getPixelForValue(qs.i - 1)) / 2;  // boundary between the two quarters' bars
-          ctx.strokeStyle = 'rgba(100,116,139,.45)';
+          ctx.strokeStyle = 'rgba(185,164,140,.45)';
           ctx.setLineDash([4, 4]);
           ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
         }
         ctx.setLineDash([]);
-        ctx.fillStyle = '#64748B';
+        ctx.fillStyle = '#B9A48C';
         ctx.font = '800 9px Roboto, sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(qs.label, x + 4, area.top + 10);
@@ -2879,7 +3557,7 @@ function buildWeeklyComboChart_(emps) {
         x:  { stacked: true, ticks: { font: { size: 11 }, autoSkip: true, maxRotation: 0 } },
         y:  { stacked: true, position: 'left',
               title: { display: true, text: 'Comments', font: { size: 11 } },
-              grid: { color: '#E2E8F0' }, ticks: { font: { size: 11 } } },
+              grid: { color: '#DCCDBE' }, ticks: { font: { size: 11 } } },
         y1: { position: 'right',
               title: { display: true, text: pctMode ? '% Engaging' : 'Unique People', font: { size: 11 } },
               grid: { drawOnChartArea: false }, ticks: { font: { size: 11 } },
@@ -3166,9 +3844,9 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
       var yS = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
       var yPix = yS.getPixelForValue(threshold);
       ctx.save();
-      ctx.fillStyle = 'rgba(239,68,68,.08)';
+      ctx.fillStyle = 'rgba(15,25,65,.08)';
       ctx.fillRect(area.left, yPix, area.right - area.left, area.bottom - yPix);
-      ctx.strokeStyle = 'rgba(239,68,68,.45)';
+      ctx.strokeStyle = 'rgba(15,25,65,.45)';
       ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.moveTo(area.left, yPix); ctx.lineTo(area.right, yPix); ctx.stroke();
       ctx.restore();
@@ -3178,7 +3856,7 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
   var datasets = [];
   if (shadowSeries) {
     datasets.push({ label: prev.quarter + ' (shadow)', data: pad_(shadowSeries),
-      borderColor: '#CBD5E1', backgroundColor: 'rgba(203,213,225,.35)',
+      borderColor: '#DCCDBE', backgroundColor: 'rgba(220,205,190,.35)',
       borderWidth: 1.5, tension: .3, fill: true, pointRadius: 0,
       datalabels: { display: false } });
   }
@@ -3228,8 +3906,8 @@ function buildQoQPanel_(canvasId, deltaId, noteId, curSeries, shadowSeries, curW
     for (var j = 0; j < n; j++) {
       if (j < span) {
         var d = +(curSeries[j] - shadowSeries[j]).toFixed(1);
-        deltas.push(d); dColors.push(d >= 0 ? STATUS_C.good : STATUS_C.risk);
-      } else { deltas.push(null); dColors.push('#CBD5E1'); }
+        deltas.push(d); dColors.push(d >= 0 ? '#058CDC' : '#0F1941');  // improvement → Orbe Blue (brand palette)
+      } else { deltas.push(null); dColors.push('#DCCDBE'); }
     }
     S.charts[deltaId] = new Chart(deltaCanvas, {
       type: 'bar',
@@ -3423,6 +4101,7 @@ function buildThisQuarterGroups_(emps) {
       isCrew: e.isCrew, crewClass: e.crewClass,
       // carried through for the RPI / STF / Signals statistical columns
       isNewHire: !!e.isNewHire, hireDate: e.hireDate || '',
+      onLeave: !!e.onLeave, leaveReason: e.leaveReason || '',
       goalsCompleted: e.goalsCompleted || 0, commentWeeks: e.commentWeeks || 0,
       rpiEligible: !!e.rpiEligible, stfEligible: !!e.stfEligible,
       rpiScore: e.rpiScore || 0, rpiMax: e.rpiMax || 6, rpiBreakdown: e.rpiBreakdown || null,
@@ -3744,7 +4423,7 @@ function paceStripHtml_(normName, drillQuarter) {
     'high|bursty':   ['#B45309', '\u{1F7E1} High volume but bursty'],
     'high|steady':   ['#166534', '\u{1F7E2} Above the peer band & steady'],
   };
-  var q = QUAD[p.cls + '|' + p.consistency] || ['#64748B', p.cls + ' / ' + p.consistency];
+  var q = QUAD[p.cls + '|' + p.consistency] || ['#B9A48C', p.cls + ' / ' + p.consistency];
   var tip = 'CPR = median self-comments per eligible week across the top-6 goals. ' +
     'Eligible weeks = ' + p.rawWeeks + ' weeks since the goal-setting window closed, minus ' +
     p.absenceWeeks + ' PTO week(s). Peer band P10–P90: ' + band.p10 + '–' + band.p90 +
@@ -3861,7 +4540,7 @@ function exportPNG(elOrId, filename) {
   if (!el || typeof html2canvas === 'undefined') return null;
   // Returns the capture promise so callers can sequence work after the
   // download starts (e.g. exportAttritionPNG_ re-collapsing its section).
-  return html2canvas(el, { backgroundColor:'#F8FAFC', scale:2, useCORS:true })
+  return html2canvas(el, { backgroundColor:'#FFFAF5', scale:2, useCORS:true })
     .then(function(canvas) {
       var a = document.createElement('a');
       a.download = filename || 'compliance.png';
@@ -4027,6 +4706,7 @@ function renderDataRef_() {
       ['Total Rocketeers', 'Active employees in scope — interns and offboarded excluded; crew included.'],
       ['With goals', 'Engagement metrics divide by rocketeers with ≥1 goal, not total headcount — the engagement and headcount cards legitimately differ.'],
       ['Excl. new hires', 'Needing Support counts exclude rocketeers hired after quarter start; Overview counts include everyone. Each card\'s sub-label states its base.'],
+      ['Excl. on leave', 'Rocketeers whose roster Employee Status is a leave type (Maternity/Parental Leave) are flagged 🏖 On Leave and excluded from Needing Support &amp; engagement — a 0-goal quarter is expected while away. Overview still counts them.'],
       ['Goal Status "People"', 'A rocketeer appears once per status they hold, so the People column exceeds headcount by design.'],
     ])) +
     sec('Calendar rules', dl([
@@ -4054,7 +4734,7 @@ function renderAccessTab_() {
   google.script.run
     .withSuccessHandler(function(s) { populateSecuritySection_(s); })
     .withFailureHandler(function(e) {
-      container.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load access settings: ' + esc(String(e.message || e)) + '</p>';
+      container.innerHTML = '<p style="color:#0F1941;font-size:12px;padding:8px 0">Failed to load access settings: ' + esc(String(e.message || e)) + '</p>';
     })
     .getAccessSettings();
 }
@@ -4162,7 +4842,7 @@ function esc(s) {
 // them, just flags that the roster confirms they've left.
 function terminatedTag_(e) {
   return e && e.terminated
-    ? ' <span style="display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;vertical-align:middle">Terminated</span>'
+    ? ' <span style="display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;background:#FEE2E2;color:#B91C1C;border:1px solid #FECACA;vertical-align:middle">Terminated</span>'
     : '';
 }
 
@@ -4170,6 +4850,15 @@ function terminatedTag_(e) {
 // value surfaces in the tooltip only (keeps table cells compact).
 function crewTag_(e) {
   return e && e.isCrew ? ' <span class="crew-badge" title="Class: ' + esc(e.crewClass || '—') + '">Crew</span>' : '';
+}
+
+// "On Leave" tag — roster Employee Status matches a configured leave signal
+// (Maternity/Parental, extensible). Explains a 0-goal quarter; the real status
+// label is in the tooltip. Used in the review modal next to the name.
+function leaveTag_(e) {
+  return e && e.onLeave
+    ? ' <span title="Roster status: ' + esc(e.leaveReason || 'On Leave') + '" style="display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;background:var(--orbe-tint);color:var(--void);border:1px solid var(--royal-tint);vertical-align:middle">🏖 On Leave</span>'
+    : '';
 }
 
 function getISOWeekLabel() {
