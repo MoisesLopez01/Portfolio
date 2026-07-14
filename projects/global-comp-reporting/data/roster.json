@@ -1,0 +1,2102 @@
+[
+  {
+    "employee_id": "E-0000",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1612548.4
+  },
+  {
+    "employee_id": "E-0001",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 69508.7
+  },
+  {
+    "employee_id": "E-0002",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4545147.69
+  },
+  {
+    "employee_id": "E-0003",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2435280.53
+  },
+  {
+    "employee_id": "E-0004",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 89369.52
+  },
+  {
+    "employee_id": "E-0005",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 94131.22
+  },
+  {
+    "employee_id": "E-0006",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2761650.99
+  },
+  {
+    "employee_id": "E-0007",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3387839.19
+  },
+  {
+    "employee_id": "E-0008",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 861647.92
+  },
+  {
+    "employee_id": "E-0009",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 149813.94
+  },
+  {
+    "employee_id": "E-0010",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 65106.17
+  },
+  {
+    "employee_id": "E-0011",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 61028.48
+  },
+  {
+    "employee_id": "E-0012",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 164749.44
+  },
+  {
+    "employee_id": "E-0013",
+    "role": "Software Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2998533.51
+  },
+  {
+    "employee_id": "E-0014",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3913026.41
+  },
+  {
+    "employee_id": "E-0015",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1217652.82
+  },
+  {
+    "employee_id": "E-0016",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5484532.87
+  },
+  {
+    "employee_id": "E-0017",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 67498.76
+  },
+  {
+    "employee_id": "E-0018",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 146126.33
+  },
+  {
+    "employee_id": "E-0019",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 110595.65
+  },
+  {
+    "employee_id": "E-0020",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 107797.36
+  },
+  {
+    "employee_id": "E-0021",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2231943.44
+  },
+  {
+    "employee_id": "E-0022",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 98561.39
+  },
+  {
+    "employee_id": "E-0023",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4416159.23
+  },
+  {
+    "employee_id": "E-0024",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1344960.49
+  },
+  {
+    "employee_id": "E-0025",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2235311.22
+  },
+  {
+    "employee_id": "E-0026",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1786380.36
+  },
+  {
+    "employee_id": "E-0027",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4006273.85
+  },
+  {
+    "employee_id": "E-0028",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5292833.64
+  },
+  {
+    "employee_id": "E-0029",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 162180.26
+  },
+  {
+    "employee_id": "E-0030",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 72403.16
+  },
+  {
+    "employee_id": "E-0031",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 111963.9
+  },
+  {
+    "employee_id": "E-0032",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 97603.51
+  },
+  {
+    "employee_id": "E-0033",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1096507.41
+  },
+  {
+    "employee_id": "E-0034",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 71030.79
+  },
+  {
+    "employee_id": "E-0035",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1583128.18
+  },
+  {
+    "employee_id": "E-0036",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3234339.5
+  },
+  {
+    "employee_id": "E-0037",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 785116.99
+  },
+  {
+    "employee_id": "E-0038",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 87078.53
+  },
+  {
+    "employee_id": "E-0039",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 95284.13
+  },
+  {
+    "employee_id": "E-0040",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 82440.4
+  },
+  {
+    "employee_id": "E-0041",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 118161.93
+  },
+  {
+    "employee_id": "E-0042",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 826838.36
+  },
+  {
+    "employee_id": "E-0043",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2668736.87
+  },
+  {
+    "employee_id": "E-0044",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 168478.85
+  },
+  {
+    "employee_id": "E-0045",
+    "role": "Support Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 77111.41
+  },
+  {
+    "employee_id": "E-0046",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 65280.25
+  },
+  {
+    "employee_id": "E-0047",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 167585.29
+  },
+  {
+    "employee_id": "E-0048",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 104527.54
+  },
+  {
+    "employee_id": "E-0049",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3163348.28
+  },
+  {
+    "employee_id": "E-0050",
+    "role": "Support Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 87998.09
+  },
+  {
+    "employee_id": "E-0051",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 79304.4
+  },
+  {
+    "employee_id": "E-0052",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 116977.48
+  },
+  {
+    "employee_id": "E-0053",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2457255.92
+  },
+  {
+    "employee_id": "E-0054",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 645428.04
+  },
+  {
+    "employee_id": "E-0055",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 70564.4
+  },
+  {
+    "employee_id": "E-0056",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 116551.71
+  },
+  {
+    "employee_id": "E-0057",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 128599.05
+  },
+  {
+    "employee_id": "E-0058",
+    "role": "Product Manager",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 156583.44
+  },
+  {
+    "employee_id": "E-0059",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 85893.35
+  },
+  {
+    "employee_id": "E-0060",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1589147.24
+  },
+  {
+    "employee_id": "E-0061",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3407343.56
+  },
+  {
+    "employee_id": "E-0062",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2693655.84
+  },
+  {
+    "employee_id": "E-0063",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3295465.35
+  },
+  {
+    "employee_id": "E-0064",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3180392.26
+  },
+  {
+    "employee_id": "E-0065",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1214610.91
+  },
+  {
+    "employee_id": "E-0066",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 76975.56
+  },
+  {
+    "employee_id": "E-0067",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1498298.3
+  },
+  {
+    "employee_id": "E-0068",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 59614.55
+  },
+  {
+    "employee_id": "E-0069",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2530238.03
+  },
+  {
+    "employee_id": "E-0070",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 87085.73
+  },
+  {
+    "employee_id": "E-0071",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 98483.56
+  },
+  {
+    "employee_id": "E-0072",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 63600.27
+  },
+  {
+    "employee_id": "E-0073",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2128944.67
+  },
+  {
+    "employee_id": "E-0074",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 747532.89
+  },
+  {
+    "employee_id": "E-0075",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 123105.12
+  },
+  {
+    "employee_id": "E-0076",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1107132.07
+  },
+  {
+    "employee_id": "E-0077",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4530140.46
+  },
+  {
+    "employee_id": "E-0078",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1772757.03
+  },
+  {
+    "employee_id": "E-0079",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5102666.3
+  },
+  {
+    "employee_id": "E-0080",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 99159.01
+  },
+  {
+    "employee_id": "E-0081",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1264473.97
+  },
+  {
+    "employee_id": "E-0082",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 85070.82
+  },
+  {
+    "employee_id": "E-0083",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 160802.22
+  },
+  {
+    "employee_id": "E-0084",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1031529.66
+  },
+  {
+    "employee_id": "E-0085",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3419390.27
+  },
+  {
+    "employee_id": "E-0086",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 81416.91
+  },
+  {
+    "employee_id": "E-0087",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1624045.51
+  },
+  {
+    "employee_id": "E-0088",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 117897.31
+  },
+  {
+    "employee_id": "E-0089",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1704473.5
+  },
+  {
+    "employee_id": "E-0090",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1049909.73
+  },
+  {
+    "employee_id": "E-0091",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4478420.9
+  },
+  {
+    "employee_id": "E-0092",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 746867.23
+  },
+  {
+    "employee_id": "E-0093",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 92646.72
+  },
+  {
+    "employee_id": "E-0094",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2844736.46
+  },
+  {
+    "employee_id": "E-0095",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 138417.76
+  },
+  {
+    "employee_id": "E-0096",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1309325.09
+  },
+  {
+    "employee_id": "E-0097",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3113490.62
+  },
+  {
+    "employee_id": "E-0098",
+    "role": "Product Manager",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 86796.09
+  },
+  {
+    "employee_id": "E-0099",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 62792.63
+  },
+  {
+    "employee_id": "E-0100",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2405189.55
+  },
+  {
+    "employee_id": "E-0101",
+    "role": "Product Manager",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 88198.34
+  },
+  {
+    "employee_id": "E-0102",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4043521.16
+  },
+  {
+    "employee_id": "E-0103",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 68276.85
+  },
+  {
+    "employee_id": "E-0104",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2574086.79
+  },
+  {
+    "employee_id": "E-0105",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1373197.29
+  },
+  {
+    "employee_id": "E-0106",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 75551.52
+  },
+  {
+    "employee_id": "E-0107",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 125828.55
+  },
+  {
+    "employee_id": "E-0108",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1090477.87
+  },
+  {
+    "employee_id": "E-0109",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 72238.03
+  },
+  {
+    "employee_id": "E-0110",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 112152.57
+  },
+  {
+    "employee_id": "E-0111",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 65253.54
+  },
+  {
+    "employee_id": "E-0112",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1686544.57
+  },
+  {
+    "employee_id": "E-0113",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1535203.98
+  },
+  {
+    "employee_id": "E-0114",
+    "role": "Software Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3322565.7
+  },
+  {
+    "employee_id": "E-0115",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 106446.59
+  },
+  {
+    "employee_id": "E-0116",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 135322.36
+  },
+  {
+    "employee_id": "E-0117",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 94313.94
+  },
+  {
+    "employee_id": "E-0118",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2416187.91
+  },
+  {
+    "employee_id": "E-0119",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3774340.76
+  },
+  {
+    "employee_id": "E-0120",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 60999.4
+  },
+  {
+    "employee_id": "E-0121",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 557312.79
+  },
+  {
+    "employee_id": "E-0122",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 96412.37
+  },
+  {
+    "employee_id": "E-0123",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 103180.01
+  },
+  {
+    "employee_id": "E-0124",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2011985.99
+  },
+  {
+    "employee_id": "E-0125",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 87524.39
+  },
+  {
+    "employee_id": "E-0126",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3955156.3
+  },
+  {
+    "employee_id": "E-0127",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 90914.13
+  },
+  {
+    "employee_id": "E-0128",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 554377.52
+  },
+  {
+    "employee_id": "E-0129",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 113430.1
+  },
+  {
+    "employee_id": "E-0130",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 71219.43
+  },
+  {
+    "employee_id": "E-0131",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 158011.62
+  },
+  {
+    "employee_id": "E-0132",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1474320.89
+  },
+  {
+    "employee_id": "E-0133",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 118453.39
+  },
+  {
+    "employee_id": "E-0134",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 56611.11
+  },
+  {
+    "employee_id": "E-0135",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5020739.23
+  },
+  {
+    "employee_id": "E-0136",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1623283.24
+  },
+  {
+    "employee_id": "E-0137",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 65347.86
+  },
+  {
+    "employee_id": "E-0138",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3221437.75
+  },
+  {
+    "employee_id": "E-0139",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 102243.37
+  },
+  {
+    "employee_id": "E-0140",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 896748.13
+  },
+  {
+    "employee_id": "E-0141",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 56538.19
+  },
+  {
+    "employee_id": "E-0142",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 76337.03
+  },
+  {
+    "employee_id": "E-0143",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 115114.61
+  },
+  {
+    "employee_id": "E-0144",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2666747.11
+  },
+  {
+    "employee_id": "E-0145",
+    "role": "Software Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3342016.56
+  },
+  {
+    "employee_id": "E-0146",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 97856.78
+  },
+  {
+    "employee_id": "E-0147",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 62046.17
+  },
+  {
+    "employee_id": "E-0148",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1447108.58
+  },
+  {
+    "employee_id": "E-0149",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 94403.58
+  },
+  {
+    "employee_id": "E-0150",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1901508.13
+  },
+  {
+    "employee_id": "E-0151",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1562278.52
+  },
+  {
+    "employee_id": "E-0152",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1507610.75
+  },
+  {
+    "employee_id": "E-0153",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2770518.0
+  },
+  {
+    "employee_id": "E-0154",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4517828.27
+  },
+  {
+    "employee_id": "E-0155",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 59548.3
+  },
+  {
+    "employee_id": "E-0156",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4304199.34
+  },
+  {
+    "employee_id": "E-0157",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4738894.18
+  },
+  {
+    "employee_id": "E-0158",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 75103.5
+  },
+  {
+    "employee_id": "E-0159",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1023120.5
+  },
+  {
+    "employee_id": "E-0160",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 63273.71
+  },
+  {
+    "employee_id": "E-0161",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1722472.77
+  },
+  {
+    "employee_id": "E-0162",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5562624.96
+  },
+  {
+    "employee_id": "E-0163",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1682469.67
+  },
+  {
+    "employee_id": "E-0164",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1690074.87
+  },
+  {
+    "employee_id": "E-0165",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 106074.32
+  },
+  {
+    "employee_id": "E-0166",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1737848.0
+  },
+  {
+    "employee_id": "E-0167",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1378315.4
+  },
+  {
+    "employee_id": "E-0168",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2963712.04
+  },
+  {
+    "employee_id": "E-0169",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4464828.35
+  },
+  {
+    "employee_id": "E-0170",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 98150.5
+  },
+  {
+    "employee_id": "E-0171",
+    "role": "Software Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1142806.72
+  },
+  {
+    "employee_id": "E-0172",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 75177.27
+  },
+  {
+    "employee_id": "E-0173",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 56587.65
+  },
+  {
+    "employee_id": "E-0174",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 94732.81
+  },
+  {
+    "employee_id": "E-0175",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 121444.1
+  },
+  {
+    "employee_id": "E-0176",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2374958.57
+  },
+  {
+    "employee_id": "E-0177",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3724697.26
+  },
+  {
+    "employee_id": "E-0178",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 97643.77
+  },
+  {
+    "employee_id": "E-0179",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 157842.04
+  },
+  {
+    "employee_id": "E-0180",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 107267.14
+  },
+  {
+    "employee_id": "E-0181",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3590474.48
+  },
+  {
+    "employee_id": "E-0182",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3285422.04
+  },
+  {
+    "employee_id": "E-0183",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 93333.91
+  },
+  {
+    "employee_id": "E-0184",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1190471.45
+  },
+  {
+    "employee_id": "E-0185",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1724974.69
+  },
+  {
+    "employee_id": "E-0186",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1559508.46
+  },
+  {
+    "employee_id": "E-0187",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3059479.84
+  },
+  {
+    "employee_id": "E-0188",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3232741.07
+  },
+  {
+    "employee_id": "E-0189",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3525313.91
+  },
+  {
+    "employee_id": "E-0190",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 73025.24
+  },
+  {
+    "employee_id": "E-0191",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2529545.94
+  },
+  {
+    "employee_id": "E-0192",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 60036.42
+  },
+  {
+    "employee_id": "E-0193",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 72661.48
+  },
+  {
+    "employee_id": "E-0194",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 60237.55
+  },
+  {
+    "employee_id": "E-0195",
+    "role": "Analytics Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 79897.29
+  },
+  {
+    "employee_id": "E-0196",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 68906.94
+  },
+  {
+    "employee_id": "E-0197",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 930145.81
+  },
+  {
+    "employee_id": "E-0198",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 580945.42
+  },
+  {
+    "employee_id": "E-0199",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1676290.02
+  },
+  {
+    "employee_id": "E-0200",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 950783.09
+  },
+  {
+    "employee_id": "E-0201",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2140147.3
+  },
+  {
+    "employee_id": "E-0202",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 103975.88
+  },
+  {
+    "employee_id": "E-0203",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1471770.37
+  },
+  {
+    "employee_id": "E-0204",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3234309.5
+  },
+  {
+    "employee_id": "E-0205",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 854815.91
+  },
+  {
+    "employee_id": "E-0206",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1005514.36
+  },
+  {
+    "employee_id": "E-0207",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5091640.46
+  },
+  {
+    "employee_id": "E-0208",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5282275.48
+  },
+  {
+    "employee_id": "E-0209",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 89718.04
+  },
+  {
+    "employee_id": "E-0210",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1233709.58
+  },
+  {
+    "employee_id": "E-0211",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 144274.96
+  },
+  {
+    "employee_id": "E-0212",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 66812.39
+  },
+  {
+    "employee_id": "E-0213",
+    "role": "Product Designer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 76277.92
+  },
+  {
+    "employee_id": "E-0214",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 938750.71
+  },
+  {
+    "employee_id": "E-0215",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1477612.77
+  },
+  {
+    "employee_id": "E-0216",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1585384.19
+  },
+  {
+    "employee_id": "E-0217",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1473731.54
+  },
+  {
+    "employee_id": "E-0218",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 102422.22
+  },
+  {
+    "employee_id": "E-0219",
+    "role": "Support Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 84025.81
+  },
+  {
+    "employee_id": "E-0220",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 99936.07
+  },
+  {
+    "employee_id": "E-0221",
+    "role": "Product Manager",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 95238.23
+  },
+  {
+    "employee_id": "E-0222",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 98514.82
+  },
+  {
+    "employee_id": "E-0223",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2109088.36
+  },
+  {
+    "employee_id": "E-0224",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 65906.29
+  },
+  {
+    "employee_id": "E-0225",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2767728.79
+  },
+  {
+    "employee_id": "E-0226",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 62026.42
+  },
+  {
+    "employee_id": "E-0227",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 137579.67
+  },
+  {
+    "employee_id": "E-0228",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1723911.78
+  },
+  {
+    "employee_id": "E-0229",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 93486.36
+  },
+  {
+    "employee_id": "E-0230",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1958555.87
+  },
+  {
+    "employee_id": "E-0231",
+    "role": "Support Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 94026.75
+  },
+  {
+    "employee_id": "E-0232",
+    "role": "Product Manager",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 158263.53
+  },
+  {
+    "employee_id": "E-0233",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 82844.57
+  },
+  {
+    "employee_id": "E-0234",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 87887.45
+  },
+  {
+    "employee_id": "E-0235",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 110222.42
+  },
+  {
+    "employee_id": "E-0236",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1063580.42
+  },
+  {
+    "employee_id": "E-0237",
+    "role": "Support Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 112952.38
+  },
+  {
+    "employee_id": "E-0238",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 698888.49
+  },
+  {
+    "employee_id": "E-0239",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 88913.54
+  },
+  {
+    "employee_id": "E-0240",
+    "role": "Software Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4271605.59
+  },
+  {
+    "employee_id": "E-0241",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2108671.81
+  },
+  {
+    "employee_id": "E-0242",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2707779.92
+  },
+  {
+    "employee_id": "E-0243",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 73130.34
+  },
+  {
+    "employee_id": "E-0244",
+    "role": "Analytics Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1475619.17
+  },
+  {
+    "employee_id": "E-0245",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2637290.02
+  },
+  {
+    "employee_id": "E-0246",
+    "role": "Data Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 87129.92
+  },
+  {
+    "employee_id": "E-0247",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 86690.75
+  },
+  {
+    "employee_id": "E-0248",
+    "role": "Software Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 77122.02
+  },
+  {
+    "employee_id": "E-0249",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 3188279.1
+  },
+  {
+    "employee_id": "E-0250",
+    "role": "Data Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2243230.85
+  },
+  {
+    "employee_id": "E-0251",
+    "role": "Data Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 70688.14
+  },
+  {
+    "employee_id": "E-0252",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1221729.08
+  },
+  {
+    "employee_id": "E-0253",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 85946.05
+  },
+  {
+    "employee_id": "E-0254",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3516785.47
+  },
+  {
+    "employee_id": "E-0255",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 109423.56
+  },
+  {
+    "employee_id": "E-0256",
+    "role": "Support Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 816296.71
+  },
+  {
+    "employee_id": "E-0257",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 3160592.03
+  },
+  {
+    "employee_id": "E-0258",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1793769.22
+  },
+  {
+    "employee_id": "E-0259",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2988560.84
+  },
+  {
+    "employee_id": "E-0260",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2719123.92
+  },
+  {
+    "employee_id": "E-0261",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 62842.63
+  },
+  {
+    "employee_id": "E-0262",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 62771.06
+  },
+  {
+    "employee_id": "E-0263",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1381389.59
+  },
+  {
+    "employee_id": "E-0264",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 86472.91
+  },
+  {
+    "employee_id": "E-0265",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 5894731.6
+  },
+  {
+    "employee_id": "E-0266",
+    "role": "Product Manager",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1635796.63
+  },
+  {
+    "employee_id": "E-0267",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 109624.65
+  },
+  {
+    "employee_id": "E-0268",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 74647.39
+  },
+  {
+    "employee_id": "E-0269",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2069623.32
+  },
+  {
+    "employee_id": "E-0270",
+    "role": "Data Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 135335.9
+  },
+  {
+    "employee_id": "E-0271",
+    "role": "Analytics Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4370413.45
+  },
+  {
+    "employee_id": "E-0272",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1634535.66
+  },
+  {
+    "employee_id": "E-0273",
+    "role": "Software Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2120432.06
+  },
+  {
+    "employee_id": "E-0274",
+    "role": "Software Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 739672.77
+  },
+  {
+    "employee_id": "E-0275",
+    "role": "Software Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 174106.36
+  },
+  {
+    "employee_id": "E-0276",
+    "role": "Data Engineer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1568750.34
+  },
+  {
+    "employee_id": "E-0277",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 596306.82
+  },
+  {
+    "employee_id": "E-0278",
+    "role": "Support Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1741240.83
+  },
+  {
+    "employee_id": "E-0279",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 116693.17
+  },
+  {
+    "employee_id": "E-0280",
+    "role": "Analytics Engineer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 91845.16
+  },
+  {
+    "employee_id": "E-0281",
+    "role": "Product Manager",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1274964.9
+  },
+  {
+    "employee_id": "E-0282",
+    "role": "Analytics Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 2916803.2
+  },
+  {
+    "employee_id": "E-0283",
+    "role": "Product Designer",
+    "region": "LATAM",
+    "currency": "MXN",
+    "salary_local": 1681055.69
+  },
+  {
+    "employee_id": "E-0284",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 119352.03
+  },
+  {
+    "employee_id": "E-0285",
+    "role": "Product Manager",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 95366.78
+  },
+  {
+    "employee_id": "E-0286",
+    "role": "Support Engineer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1158007.29
+  },
+  {
+    "employee_id": "E-0287",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 68716.64
+  },
+  {
+    "employee_id": "E-0288",
+    "role": "Data Engineer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 2206756.92
+  },
+  {
+    "employee_id": "E-0289",
+    "role": "Product Manager",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 59879.22
+  },
+  {
+    "employee_id": "E-0290",
+    "role": "Product Designer",
+    "region": "US",
+    "currency": "USD",
+    "salary_local": 125050.37
+  },
+  {
+    "employee_id": "E-0291",
+    "role": "Product Designer",
+    "region": "APAC",
+    "currency": "PHP",
+    "salary_local": 1657274.15
+  },
+  {
+    "employee_id": "E-0292",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 100952.13
+  },
+  {
+    "employee_id": "E-0293",
+    "role": "Product Designer",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 1820308.92
+  },
+  {
+    "employee_id": "E-0294",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 106208.82
+  },
+  {
+    "employee_id": "E-0295",
+    "role": "Product Manager",
+    "region": "India",
+    "currency": "INR",
+    "salary_local": 4475323.69
+  },
+  {
+    "employee_id": "E-0296",
+    "role": "Product Designer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 62460.46
+  },
+  {
+    "employee_id": "E-0297",
+    "role": "Support Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 64684.31
+  },
+  {
+    "employee_id": "E-0298",
+    "role": "Analytics Engineer",
+    "region": "EU",
+    "currency": "EUR",
+    "salary_local": 59641.64
+  },
+  {
+    "employee_id": "E-0299",
+    "role": "Software Engineer",
+    "region": "UK",
+    "currency": "GBP",
+    "salary_local": 93677.86
+  }
+]

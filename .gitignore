@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.local
+
+# Build output / local artifacts
+dist/
+.netlify/
+*.db
+warehouse.db
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Node
+node_modules/
+
+# Editor / local
+.claude/
+.DS_Store
+
+# Generated run outputs
+recommendations.csv
+comp_report.csv
+exceptions.csv

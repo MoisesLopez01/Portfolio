@@ -1,0 +1,2 @@
+# The SQL models run on stdlib sqlite3 — no third-party runtime deps.
+pytest>=7.0
