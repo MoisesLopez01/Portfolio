@@ -40,13 +40,22 @@ function classIsKnown_(cls) {
 //   1. Class = "Professional Services" (CONFIG_PS.PS_CLASS) → services
 //   2. any other known Class + Job Catalog family JF004     → sales
 //   3. any other known Class otherwise                      → rnd
-// Rows with an unknown/blank Class never reach tagging — readPSRoster_ drops
-// them. JF004 detection REQUIRES the Sales & Success job titles to exist in
+// FTE rows with an unknown/blank Class never reach tagging — readPSRoster_
+// drops them. Crew (Contractors Data tab) are the exception: their Class is
+// "Contractors" for everyone, so Department is their org axis instead —
+// Department = "Services" (CONFIG_PS.PS_DEPT) → services, then the same
+// JF004 rule decides sales vs rnd.
+// JF004 detection REQUIRES the Sales & Success job titles to exist in
 // the Job Catalog sheet with code JF004; uncatalogued sales titles land in rnd.
 // `catalog` is the readJobCatalog_() Map (normPS_(title) → { family, … }).
 function teamForProfile_(profile, catalog) {
-  const cls = String(profile.cls || "").trim().toLowerCase();
-  if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) return "services";
+  if (profile.isCrewMember) {
+    const dept = String(profile.dept || "").trim().toLowerCase();
+    if (dept === CONFIG_PS.PS_DEPT.toLowerCase()) return "services";
+  } else {
+    const cls = String(profile.cls || "").trim().toLowerCase();
+    if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) return "services";
+  }
   // Catalog lookup is code-prefix-insensitive (normTitleKey_), and a title whose
   // embedded job code parses (e.g. "04.I2.5 - …" → JF004) self-describes its
   // family even without a catalog row (titleCodeInfo_ fallback).
@@ -105,6 +114,19 @@ function _test_teamForProfile() {
   cases.forEach((c, i) => {
     const got = teamForProfile_({ cls: c[0], jobTitle: c[1] }, cat);
     if (got !== c[2]) { fail++; Logger.log(`❌ case ${i}: (${c[0]} | ${c[1]}) → ${got}, want ${c[2]}`); }
+  });
+  // Crew (Contractors Data tab): Department is the org axis, not Class.
+  const crewCases = [
+    // [dept, jobTitle, expected]
+    ["Services",    "Crew Member",          "services"],
+    ["SERVICES",    "Mystery Role",         "services"], // dept compare is case-insensitive
+    ["Engineering", "Software Engineer",    "rnd"],
+    ["Sales",       "Account Executive",    "sales"],    // JF004 signal wins outside the Services dept
+    ["",            "Totally Unknown Title","rnd"],      // blank dept → rnd (no signal)
+  ];
+  crewCases.forEach((c, i) => {
+    const got = teamForProfile_({ cls: "Contractors", dept: c[0], jobTitle: c[1], isCrewMember: true }, cat);
+    if (got !== c[2]) { fail++; Logger.log(`❌ crew case ${i}: (dept ${c[0]} | ${c[1]}) → ${got}, want ${c[2]}`); }
   });
   ["Professional Services", "corporate", " To be Allocated "].forEach(v => {
     if (!classIsKnown_(v)) { fail++; Logger.log(`❌ classIsKnown_("${v}") should be true`); }

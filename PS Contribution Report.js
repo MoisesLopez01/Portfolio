@@ -13,6 +13,7 @@ var CONFIG_PS = {
   GOALS_SS_ID:       "1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ",
 
   SHEET_ROSTER:      "Data",   // roster tab name — matches goalCompliance.js / Contribution Report.js (tab was renamed from "Roster")
+  SHEET_CONTRACTORS: "Contractors Data",   // crew/contractor tab in the same Roster SS — same headers as Data
   SHEET_RCR:         "3. RCR",
   SHEET_SI:          "SI",
   SHEET_KUDOS:       "Kudos_Normalized",
@@ -1554,20 +1555,38 @@ function findIdCol_(hdrs) {
 // ============================================================
 
 function readPSRoster_() {
-  const ss    = SpreadsheetApp.openById(getExternalSSIds_().roster);
-  const sheet = ss.getSheetByName(CONFIG_PS.SHEET_ROSTER);
-  if (!sheet) { Logger.log(`❌ Roster sheet not found.`); return new Map(); }
+  const ss     = SpreadsheetApp.openById(getExternalSSIds_().roster);
+  const roster = new Map();
+  readRosterTab_(ss, CONFIG_PS.SHEET_ROSTER,      roster, false);
+  readRosterTab_(ss, CONFIG_PS.SHEET_CONTRACTORS, roster, true);
+  return roster;
+}
+
+// Ingests one Roster-spreadsheet tab into `roster` (Map<normName → profile>).
+// Both tabs share the same headers; `isCrewTab` covers the differences:
+// Contractors Data rows are all crew (isCrewMember forced true), skip the
+// known-Class gate (their Class is "Contractors", which classIsKnown_ rejects —
+// Department carries their org split instead, see teamForProfile_), and lose to
+// the Data tab on a name collision (Data is the sheet of record for FTEs).
+function readRosterTab_(ss, sheetName, roster, isCrewTab) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log(isCrewTab
+      ? `⚠️ "${sheetName}" sheet not found in Roster SS — crew members will be empty.`
+      : `❌ Roster sheet "${sheetName}" not found.`);
+    return;
+  }
 
   const lastRow  = sheet.getLastRow();
   const lastCol  = sheet.getLastColumn();
-  if (lastRow < 2) return new Map();
+  if (lastRow < 2) return;
 
   // Read the full used range from row 1 / col 1 so we never miss a column
   const raw  = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   const hdrs = raw[0].map(h => String(h).trim());
   const rows = raw.slice(1);
 
-  log_(`Roster headers (${hdrs.length}): ${hdrs.join(" | ")}`);
+  log_(`${sheetName} headers (${hdrs.length}): ${hdrs.join(" | ")}`);
 
   const idx = (name) => hdrs.findIndex(h => h.toLowerCase() === name.toLowerCase());
   const iName       = idx("Name");
@@ -1584,20 +1603,21 @@ function readPSRoster_() {
   const iTermDate   = idx("Termination/Release Date");
   const iEmail      = idx("Email");
 
-  log_(`Roster col indices — Name:${iName} Class:${iClass} InternalID:${iInternalId} EmpNum:${iEmpNum} Status:${iStatus} HireDate:${iHireDate} RampFlag:${iRampFlag}`);
-  if (iStatus === -1) Logger.log(`⚠️ Roster "Employee Status" column not found — status-based exclusions will not apply.`);
+  log_(`${sheetName} col indices — Name:${iName} Class:${iClass} InternalID:${iInternalId} EmpNum:${iEmpNum} Status:${iStatus} HireDate:${iHireDate} RampFlag:${iRampFlag}`);
+  if (iStatus === -1) Logger.log(`⚠️ ${sheetName} "Employee Status" column not found — status-based exclusions will not apply.`);
 
-  if (iName === -1) { Logger.log(`❌ Roster "Name" column not found.`); return new Map(); }
+  if (iName === -1) { Logger.log(`❌ ${sheetName} "Name" column not found.`); return; }
 
   // Log distinct Class and Status values to confirm what's in the sheet
   const classValues  = new Set(rows.map(r => String(iClass  !== -1 ? r[iClass]  : "").trim()).filter(Boolean));
   const statusValues = new Set(rows.map(r => String(iStatus !== -1 ? r[iStatus] : "").trim()).filter(Boolean));
-  log_(`Roster distinct Class values: ${[...classValues].join(" | ")}`);
-  log_(`Roster distinct Employee Status values: ${[...statusValues].join(" | ")}`);
+  log_(`${sheetName} distinct Class values: ${[...classValues].join(" | ")}`);
+  log_(`${sheetName} distinct Employee Status values: ${[...statusValues].join(" | ")}`);
 
-  const roster = new Map();
+  const sizeBefore = roster.size;
   const unknownClasses = new Map();   // class value → dropped-row count (diagnostics)
   const droppedInterns = [];          // names of interns excluded from the roster (diagnostics)
+  let crewCollisions = 0;             // crew-tab rows skipped because the Data tab already has the name
   rows.forEach(row => {
     const name   = String(row[iName]  || "").trim();
     const cls    = String(iClass  !== -1 ? row[iClass]  : "").trim();
@@ -1606,7 +1626,9 @@ function readPSRoster_() {
     // Company-wide roster: rows from every KNOWN Class participate (Professional
     // Services / Corporate / To be Allocated — see TEAM_KNOWN_CLASSES_ in PS Teams).
     // Team membership is tagged in getPSReportData via teamForProfile_.
-    if (!classIsKnown_(cls)) {
+    // Contractors Data rows skip this gate: their Class is "Contractors" for
+    // everyone, so it carries no signal — being in the tab is the crew marker.
+    if (!isCrewTab && !classIsKnown_(cls)) {
       unknownClasses.set(cls || "(blank)", (unknownClasses.get(cls || "(blank)") || 0) + 1);
       return;
     }
@@ -1618,7 +1640,7 @@ function readPSRoster_() {
     const hireDate   = iHireDate !== -1 ? parseDate_PS_(row[iHireDate]) : null;
     const rampFlag   = String(iRampFlag !== -1 ? row[iRampFlag] : "").trim().toLowerCase();
     const jobTitle   = String(iTitle      !== -1 ? row[iTitle]      : "").trim() || "Unknown";
-    const isCrew     = /crew member|contractor/i.test(jobTitle);
+    const isCrew     = isCrewTab || /crew member|contractor/i.test(jobTitle);
 
     // Interns are not evaluated as employees — drop them from the roster entirely,
     // exactly like inactive rows above, so no headcount/metric/aggregate ever sees them.
@@ -1634,7 +1656,14 @@ function readPSRoster_() {
     const isRampUp   = flagNo ? false : (flagYes || !!hiredRecently);
 
     const norm = normPS_(name);
-    if (roster.has(norm)) Logger.log(`⚠️ Roster: duplicate normalized name "${name}" — later row overwrites the earlier one (name-joined metrics may mix people).`);
+    if (roster.has(norm)) {
+      if (isCrewTab) {
+        // Data tab (and earlier crew rows) win — never let a crew row overwrite an FTE.
+        crewCollisions++;
+        return;
+      }
+      Logger.log(`⚠️ Roster: duplicate normalized name "${name}" — later row overwrites the earlier one (name-joined metrics may mix people).`);
+    }
     roster.set(norm, {
       name,
       internalId:     String(iInternalId !== -1 ? row[iInternalId] : "").trim(),
@@ -1651,18 +1680,22 @@ function readPSRoster_() {
     });
   });
 
-  log_(`Roster: ${roster.size} employees loaded (company-wide).`);
-  if (droppedInterns.length > 0) {
-    Logger.log(`Roster: excluded ${droppedInterns.length} intern(s) — ${droppedInterns.slice(0, 10).join(", ")}${droppedInterns.length > 10 ? " …" : ""}`);
+  log_(`${sheetName}: ${roster.size - sizeBefore} ${isCrewTab ? "crew members seeded" : "employees loaded (company-wide)"}.`);
+  if (crewCollisions > 0) {
+    Logger.log(`${sheetName}: skipped ${crewCollisions} row(s) whose name already exists in the Data tab (Data wins).`);
   }
-  log_(`Roster distinct Department values: ${[...new Set([...roster.values()].map(p => p.dept).filter(Boolean))].join(" | ")}`);
+  if (droppedInterns.length > 0) {
+    Logger.log(`${sheetName}: excluded ${droppedInterns.length} intern(s) — ${droppedInterns.slice(0, 10).join(", ")}${droppedInterns.length > 10 ? " …" : ""}`);
+  }
+  // Crew team membership is Department-driven (teamForProfile_), so surface the
+  // distinct crew Department values — a rename in the sheet shows up here first.
+  log_(`${sheetName} distinct Department values: ${[...new Set([...roster.values()].filter(p => !isCrewTab || p.isCrewMember).map(p => p.dept).filter(Boolean))].join(" | ")}`);
   if (unknownClasses.size > 0) {
-    Logger.log(`⚠️ Roster: dropped rows with unknown Class — ${[...unknownClasses].map(([v, n]) => `"${v}"×${n}`).join(", ")} (add to TEAM_KNOWN_CLASSES_ in PS Teams if legitimate).`);
+    Logger.log(`⚠️ ${sheetName}: dropped rows with unknown Class — ${[...unknownClasses].map(([v, n]) => `"${v}"×${n}`).join(", ")} (add to TEAM_KNOWN_CLASSES_ in PS Teams if legitimate).`);
   }
   if (roster.size > 0) {
     log_(`  Sample names: ${[...roster.values()].slice(0,5).map(e => e.name).join(", ")}`);
   }
-  return roster;
 }
 
 // Builds a Map<internalId → normName> from the roster for ID-based lookups
