@@ -3728,6 +3728,18 @@ function generatePeriodBrief(bucket, prevBucket, allBuckets) {
   var unit  = g === 'month' ? 'month' : 'quarter';
   if (!cur) return { facts: ['No data for ' + periodDisplayLabel_(bucket)], highlights: [], notes: [], concerns: [], trends: [] };
 
+  // Same tagged ordering as the weekly brief: every section lists metrics in the
+  // same order. Coverage ranks first — it qualifies every number that follows.
+  var BRIEF_RANK = { coverage: -1, goals: 0, tracked: 1, planned: 2, kudos: 3, pto: 4, rcr: 5, si: 6, ph: 7, other: 8 };
+  function addI(arr, metric, text) {
+    arr.push({ _r: BRIEF_RANK[metric] !== undefined ? BRIEF_RANK[metric] : BRIEF_RANK.other, _i: arr.length, t: text });
+  }
+  function orderI(arr) {
+    return arr.slice()
+      .sort(function(a, b) { return a._r - b._r || a._i - b._i; })
+      .map(function(x) { return x.t; });
+  }
+
   function f1(x) { return x === null || x === undefined ? '—' : (Math.round(x * 10) / 10).toFixed(1); }
   function pct(x) { return x === null || x === undefined ? '—' : Math.round(x) + '%'; }
   function vs(curV, prevV, unitSuffix, goodHigh) {
@@ -3740,67 +3752,112 @@ function generatePeriodBrief(bucket, prevBucket, allBuckets) {
 
   // Coverage — explicit when the period is in progress or truncated (spec §5)
   if (bucket.isPartial) {
-    facts.push('Coverage: ' + cur.closedWeekCount + ' closed week' + (cur.closedWeekCount !== 1 ? 's' : '') +
+    addI(facts, 'coverage', '**Coverage:** ' + cur.closedWeekCount + ' closed week' + (cur.closedWeekCount !== 1 ? 's' : '') +
       ' (' + bucket.weekRangeLabel + ')' + (bucket.containsCurrent ? ' — ' + unit + ' in progress' : ' — start of window truncated by available history'));
-  }
-
-  // Tracked time — avg h/person/week, same 36/28 thresholds as the weekly brief
-  var t = cur.avgTrackedPerPerson;
-  facts.push('Tracked time: ' + f1(t) + 'h avg/person/week · ' + Math.round(cur.totalTrackedHrs) + 'h total across ' + cur.closedWeekCount + ' week' + (cur.closedWeekCount !== 1 ? 's' : ''));
-  if (t !== null) {
-    var tCmp = vs(t, prev && prev.avgTrackedPerPerson, 'h', true);
-    if (t >= 36)      highlights.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — strong delivery engagement');
-    else if (t >= 28) notes.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — above the 28h floor, below the 36h target');
-    else              concerns.push('Tracked time averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — below the 28h floor; review workload and logging habits');
-  }
-
-  // Planned coverage — avg weekly compliance %
-  var p = cur.plannedCompliancePct;
-  facts.push('Tempo planning coverage: ' + pct(p) + ' avg weekly · ' + Math.round(cur.totalPlannedHrs) + 'h planned in the period');
-  if (p !== null) {
-    var pCmp = vs(p, prev && prev.plannedCompliancePct, '%', true);
-    if (p >= 80)      highlights.push('Planning coverage held at ' + pct(p) + ' through ' + bucket.label + pCmp + ' (Build Process to Drive Outcomes)');
-    else if (p >= 50) notes.push('Planning coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — push toward the 80% habit');
-    else              concerns.push('Planning coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — planning discipline needs manager attention');
   }
 
   // Goals — period-end standing (point-in-time, not additive)
   if (cur.goalsPct !== null) {
     var gCmp = prev && prev.goalsPct !== null ? vs(cur.goalsPct, prev.goalsPct, '%', true).replace(' in ' + (prevBucket && prevBucket.label), ' at end of ' + (prevBucket && prevBucket.label)) : '';
     var goalsQTag = g === 'quarter' ? bucket.key : (pFiscalQuarterKey(cur.endWeekLabel) || DATA.meta.goalsQuarter || '');
-    facts.push('Goals compliance (' + goalsQTag + '): ' + cur.goalsPct + '% (' + cur.goalsCompliant + '/' + cur.goalsTotal + ') as of ' + cur.endWeekLabel + ' — period-end standing');
-    if (cur.goalsPct >= 80)      highlights.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp);
-    else if (cur.goalsPct >= 60) notes.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — keep the documentation cadence');
-    else                         concerns.push('Goals compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — structured follow-up needed');
+    addI(facts, 'goals', '**Goals (' + goalsQTag + '):** ' + cur.goalsPct + '% compliant (' + cur.goalsCompliant + '/' + cur.goalsTotal + ') as of ' + cur.endWeekLabel + ' — period-end standing');
+    if (cur.goalsPct >= 80)      addI(highlights, 'goals', '**Goals:** compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp);
+    else if (cur.goalsPct >= 60) addI(notes, 'goals', '**Goals:** compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — keep the documentation cadence');
+    else                         addI(concerns, 'goals', '**Goals:** compliance closed ' + bucket.label + ' at ' + cur.goalsPct + '%' + gCmp + ' — structured follow-up needed');
+  }
+
+  // Tracked time — avg h/person/week, same 36/28 thresholds as the weekly brief
+  var t = cur.avgTrackedPerPerson;
+  addI(facts, 'tracked', '**Tracked time:** ' + f1(t) + 'h avg/person/week · ' + Math.round(cur.totalTrackedHrs) + 'h total across ' + cur.closedWeekCount + ' week' + (cur.closedWeekCount !== 1 ? 's' : ''));
+  if (t !== null) {
+    var tCmp = vs(t, prev && prev.avgTrackedPerPerson, 'h', true);
+    if (t >= 36)      addI(highlights, 'tracked', '**Tracked time:** averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — strong delivery engagement');
+    else if (t >= 28) addI(notes, 'tracked', '**Tracked time:** averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — above the 28h floor, below the 36h target');
+    else              addI(concerns, 'tracked', '**Tracked time:** averaged ' + f1(t) + 'h/person/week in ' + bucket.label + tCmp + ' — below the 28h floor; review workload and logging habits');
+  }
+
+  // Planned coverage — avg weekly compliance %
+  var p = cur.plannedCompliancePct;
+  addI(facts, 'planned', '**Tempo plans:** ' + pct(p) + ' avg weekly coverage · ' + Math.round(cur.totalPlannedHrs) + 'h planned in the period');
+  if (p !== null) {
+    var pCmp = vs(p, prev && prev.plannedCompliancePct, '%', true);
+    if (p >= 80)      addI(highlights, 'planned', '**Tempo plans:** coverage held at ' + pct(p) + ' through ' + bucket.label + pCmp + ' (Build Process to Drive Outcomes)');
+    else if (p >= 50) addI(notes, 'planned', '**Tempo plans:** coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — push toward the 80% habit');
+    else              addI(concerns, 'planned', '**Tempo plans:** coverage at ' + pct(p) + ' in ' + bucket.label + pCmp + ' — planning discipline needs manager attention');
+  }
+
+  // Tracking/planning regressions — active in the prior period, silent across every
+  // closed week of this one (people on PTO for most of the period excluded — that's
+  // absence, not a habit slipping). Counts only, never names. Needs 2+ closed weeks
+  // so a period that just started doesn't flag everyone who simply hasn't logged yet.
+  if (prev && prev.weeks && prev.weeks.length > 0 && cur.weeks && cur.weeks.length >= 2) {
+    var curLbls  = cur.weeks.map(function(w) { return w.label; });
+    var prevLbls = prev.weeks.map(function(w) { return w.label; });
+    var _periodSilent = function(hrsKey) {
+      return emps.filter(function(e) {
+        if (!e.weeks) return false;
+        var wasActive = prevLbls.some(function(l) { return ((e.weeks[l] || {})[hrsKey] || 0) > 0; });
+        if (!wasActive) return false;
+        var anyNow = curLbls.some(function(l) { return ((e.weeks[l] || {})[hrsKey] || 0) > 0; });
+        if (anyNow) return false;
+        var ptoHrs = curLbls.reduce(function(s, l) { return s + ((e.weeks[l] || {}).ptoPlannedHrs || 0); }, 0);
+        return ptoHrs < curLbls.length * 40 * 0.5; // on PTO half the period or more = excused
+      }).length;
+    };
+    var stoppedT = _periodSilent('trackedHrs');
+    if (stoppedT >= 3) {
+      addI(concerns, 'tracked', '**Tracked time:** ' + stoppedT + ' rocketeers who logged hours in ' + prevBucket.label +
+        ' have logged none in ' + bucket.label + ' — check for blockers or missed Tempo entries');
+    } else if (stoppedT > 0) {
+      addI(notes, 'tracked', '**Tracked time:** ' + stoppedT + ' rocketeer' + (stoppedT > 1 ? 's' : '') +
+        ' who logged hours in ' + prevBucket.label + ' have logged none in ' + bucket.label);
+    }
+    var stoppedP = _periodSilent('plannedHrs');
+    if (stoppedP >= 3) {
+      addI(concerns, 'planned', '**Tempo plans:** ' + stoppedP + ' rocketeers who planned in ' + prevBucket.label +
+        ' have no plans in ' + bucket.label + ' — the planning habit is slipping; supervisors to follow up');
+    } else if (stoppedP > 0) {
+      addI(notes, 'planned', '**Tempo plans:** ' + stoppedP + ' rocketeer' + (stoppedP > 1 ? 's' : '') +
+        ' who planned in ' + prevBucket.label + ' have no plans in ' + bucket.label);
+    }
   }
 
   // Kudos — summed over the period
   var kCmp = prev ? vs(cur.kudosTotal, prev.kudosTotal, '', true) : '';
-  facts.push('Kudos: ' + cur.kudosTotal + ' given across ' + bucket.label);
-  if (cur.kudosTotal > 0) highlights.push(cur.kudosTotal + ' kudos given in ' + bucket.label + kCmp + ' — Think Team in practice');
-  else                    concerns.push('No kudos given in ' + bucket.label + ' — prompt the team to recognize each other\'s contributions (Think Team)');
+  addI(facts, 'kudos', '**Kudos:** ' + cur.kudosTotal + ' given across ' + bucket.label);
+  if (cur.kudosTotal > 0) addI(highlights, 'kudos', '**Kudos:** ' + cur.kudosTotal + ' given in ' + bucket.label + kCmp + ' — Think Team in practice');
+  else                    addI(concerns, 'kudos', '**Kudos:** none given in ' + bucket.label + ' — prompt the team to recognize each other\'s contributions (Think Team)');
 
-  // PTO — period-end standing
+  // PTO — period-end standing; at-risk count renders red so it's actionable at a glance
   if (cur.ptoScore !== null) {
     var ptoCmp = prev && prev.ptoScore !== null && prev.ptoScore !== undefined
       ? vs(cur.ptoScore, prev.ptoScore, '%', true).replace(' in ' + (prevBucket && prevBucket.label), ' at end of ' + (prevBucket && prevBucket.label))
       : '';
-    facts.push('PTO planning health: ' + cur.ptoScore + '% (' + cur.ptoAtRisk + ' at risk) as of ' + cur.endWeekLabel);
-    if (cur.ptoScore >= 80)      highlights.push(cur.ptoScore + '% of the team closed ' + bucket.label + ' with PTO under control' + ptoCmp + ' — sustainable pace maintained');
-    else if (cur.ptoScore >= 60) notes.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' — ' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan');
-    else                         concerns.push('PTO planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' (Build Process to Drive Outcomes — sustainable pace at risk)');
+    var pArStr = cur.ptoAtRisk > 0 ? ' ({red}' + cur.ptoAtRisk + ' at risk{/red})' : ' (0 at risk)';
+    addI(facts, 'pto', '**PTO planning health:** ' + cur.ptoScore + '%' + pArStr + ' as of ' + cur.endWeekLabel);
+    if (cur.ptoScore >= 80) {
+      addI(highlights, 'pto', '**PTO:** ' + cur.ptoScore + '% of the team closed ' + bucket.label + ' with PTO under control' + ptoCmp + ' — sustainable pace maintained');
+      if (cur.ptoAtRisk > 0) {
+        addI(notes, 'pto', '**PTO:** {red}' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan{/red} — managers to schedule PTO with each of them');
+      }
+    } else if (cur.ptoScore >= 60) {
+      addI(notes, 'pto', '**PTO:** planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' — {red}' + cur.ptoAtRisk + ' rocketeer' + (cur.ptoAtRisk !== 1 ? 's' : '') + ' need a recovery plan{/red}');
+    } else {
+      addI(concerns, 'pto', '**PTO:** planning health ended ' + bucket.label + ' at ' + cur.ptoScore + '%' + ptoCmp + ' (Build Process to Drive Outcomes — sustainable pace at risk)');
+    }
   }
 
-  // RCR — native monthly / approx quarterly mean
+  // RCR — native monthly / approx quarterly mean. Each period is a fresh benchmark,
+  // so the context note stays (no weekly-repetition problem here).
   var rcr = periodRcr_(bucket, g);
   if (rcr) {
-    facts.push('RCR: ' + rcr.value.toFixed(2) + '×' + (rcr.approx ? ' (approx — mean of ' + rcr.months.join(', ') + '; true RCR is SUM(RC)/SUM(TCC))' : ' (' + rcr.months[0] + ')') + ' · review with manager');
-    notes.push('RCR context: ' + rcr.value.toFixed(2) + '× for ' + bucket.label + ' · represents project mix & billing rates · not a per-rocketeer blame signal');
+    addI(facts, 'rcr', '**RCR:** ' + rcr.value.toFixed(2) + '×' + (rcr.approx ? ' (approx — mean of ' + rcr.months.join(', ') + '; true RCR is SUM(RC)/SUM(TCC))' : ' (' + rcr.months[0] + ')') + ' · review with manager');
+    addI(notes, 'rcr', '**RCR:** ' + rcr.value.toFixed(2) + '× for ' + bucket.label + ' · reflects project mix & billing rates · not a per-rocketeer blame signal');
   }
 
   // SI — quarterly native; month shows owning quarter as context
   if (DATA.meta.siTeamRounded != null) {
-    facts.push('Small Improvements (SI): ' + DATA.meta.siTeamRounded + '/5 (' + (DATA.meta.siQuarter || '') + ') · quarterly metric' + (g === 'month' ? ' shown as context for the month' : ''));
+    addI(facts, 'si', '**Small Improvements (SI):** ' + DATA.meta.siTeamRounded + '/5 (' + (DATA.meta.siQuarter || '') + ') · quarterly benchmark' + (g === 'month' ? ' shown as context for the month' : ''));
   }
 
   // Trends section: week-by-week inside a month, sub-period-by-sub-period inside a quarter
