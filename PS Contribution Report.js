@@ -12,7 +12,7 @@ var CONFIG_PS = {
   ROSTER_SS_ID:      "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0",
   GOALS_SS_ID:       "1v5s0Ogka8nrxfT8u71BwG9KidwhD32TjzV_miKad5HQ",
 
-  SHEET_ROSTER:      "Roster",
+  SHEET_ROSTER:      "Data",   // roster tab name — matches goalCompliance.js / Contribution Report.js (tab was renamed from "Roster")
   SHEET_RCR:         "3. RCR",
   SHEET_SI:          "SI",
   SHEET_KUDOS:       "Kudos_Normalized",
@@ -44,6 +44,12 @@ var CONFIG_PS = {
   GOALS_MIN_COUNT:          8,     // minimum goals to be evaluated (quarter target is 10, 8 completed)
   GOALS_MIN_IN_PROGRESS_PCT: 0.50, // majority of goals must be "In Progress" (not Planned/Completed)
   GOALS_ACTIVE_COMMENT_COUNT: 6,   // goals that must have a self-comment within the evaluated week
+  // STF (Sustained Top Form) reward thresholds — mirrors goalCompliance.js CONFIG_GD so the
+  // "all goals closed" note in Team Members can state whether the rocketeer qualified. Used only
+  // for that informational note; does not affect weekly goal compliance (Rules 1–3).
+  STF_MIN_COMPLETED: 8,            // completed goals required for STF
+  STF_MIN_CMT_GOALS: 6,            // completed goals needing STF_MIN_COMMENTS+ total comments
+  STF_MIN_COMMENTS:  8,            // minimum total comments (self + manager) per goal for STF
   GOALS_GRACE_DAYS:  21,   // 3 weeks — Goals-only transition window after a new fiscal quarter starts.
                            // No other metric (RCR, SI, PTO, Tracked, Planned, Kudos) is fiscal-scoped,
                            // so none of them use this constant.
@@ -61,6 +67,14 @@ var CONFIG_PS = {
   // A "Ramp-Up" column in the Roster can override: "No" graduates early, "Yes" forces exclusion.
   RAMP_UP_MONTHS:    3,
   RAMP_UP_FLAG_COL:  "Ramp-Up",
+
+  // Interns are not evaluated as employees — dropped from the roster entirely (like
+  // inactive rows), so they never reach any team metric, headcount, or aggregate.
+  // Every intern job title is the "I1" track level and carries the word "Intern"
+  // (e.g. "09.I1.1 - Intern, Professional Services", "09.I1.3 - Intern Engineer,
+  // Service Delivery"). The word-boundary match avoids false hits like "Internal".
+  EXCLUDE_INTERNS:      true,
+  INTERN_TITLE_PATTERN: /\bintern\b/i,
 
   RCR_CRITICAL:      1.0,
   RCR_WATCH:         1.5,
@@ -1583,6 +1597,7 @@ function readPSRoster_() {
 
   const roster = new Map();
   const unknownClasses = new Map();   // class value → dropped-row count (diagnostics)
+  const droppedInterns = [];          // names of interns excluded from the roster (diagnostics)
   rows.forEach(row => {
     const name   = String(row[iName]  || "").trim();
     const cls    = String(iClass  !== -1 ? row[iClass]  : "").trim();
@@ -1604,7 +1619,14 @@ function readPSRoster_() {
     const rampFlag   = String(iRampFlag !== -1 ? row[iRampFlag] : "").trim().toLowerCase();
     const jobTitle   = String(iTitle      !== -1 ? row[iTitle]      : "").trim() || "Unknown";
     const isCrew     = /crew member|contractor/i.test(jobTitle);
-    
+
+    // Interns are not evaluated as employees — drop them from the roster entirely,
+    // exactly like inactive rows above, so no headcount/metric/aggregate ever sees them.
+    if (CONFIG_PS.EXCLUDE_INTERNS && CONFIG_PS.INTERN_TITLE_PATTERN.test(jobTitle)) {
+      droppedInterns.push(name);
+      return;
+    }
+
     const flagYes    = rampFlag === "yes" || rampFlag === "true" || rampFlag === "1";
     const flagNo     = rampFlag === "no"  || rampFlag === "false" || rampFlag === "0";
     const thresholdMs = CONFIG_PS.RAMP_UP_MONTHS * CONFIG_PS.DAYS_PER_MONTH_AVG * 86400 * 1000;
@@ -1630,6 +1652,9 @@ function readPSRoster_() {
   });
 
   log_(`Roster: ${roster.size} employees loaded (company-wide).`);
+  if (droppedInterns.length > 0) {
+    Logger.log(`Roster: excluded ${droppedInterns.length} intern(s) — ${droppedInterns.slice(0, 10).join(", ")}${droppedInterns.length > 10 ? " …" : ""}`);
+  }
   log_(`Roster distinct Department values: ${[...new Set([...roster.values()].map(p => p.dept).filter(Boolean))].join(" | ")}`);
   if (unknownClasses.size > 0) {
     Logger.log(`⚠️ Roster: dropped rows with unknown Class — ${[...unknownClasses].map(([v, n]) => `"${v}"×${n}`).join(", ")} (add to TEAM_KNOWN_CLASSES_ in PS Teams if legitimate).`);
@@ -2573,13 +2598,18 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     const empGoals = goalMap.get(norm);
 
     if (!empGoals.has(goalId)) {
-      empGoals.set(goalId, { status: "", selfComments: [], completed: false, nonSelfCommentCount: 0 });
+      empGoals.set(goalId, { status: "", selfComments: [], completed: false, nonSelfCommentCount: 0,
+                             notCompleted: false, canceled: false });
     }
     // Track highest-priority status seen for this goal
     const PRIO = { "In Progress": 3, "Planned": 2, "Completed": 1 };
     const g = empGoals.get(goalId);
     if ((PRIO[status] || 0) > (PRIO[g.status] || 0)) g.status = status;
     if (status === 'Completed') g.completed = true;
+    // "Not Completed" / "Canceled" carry no PRIO rank, so they never win g.status — capture them
+    // on sticky flags instead so the "all goals closed" summary can distinguish closed outcomes.
+    else if (/not.?complet/i.test(status)) g.notCompleted = true;
+    else if (/cancel/i.test(status))       g.canceled     = true;
 
     // Rocketeer's own comment; other commentators tracked for supervisor-only audit detection
     if (commentDate && normPS_(commentator) === norm) {
@@ -2664,9 +2694,13 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     result[week.label].total     = total;
   });
 
-  // ── Compliance override — two paths, both mark all Q4 weeks compliant:
+  // ── Compliance override — three paths, all mark every non-future week compliant:
   // (A) 8+ completed goals AND ≥5 goals with ≥8 cumulative self-comments (fully documented)
   // (B) ALL goals set to Completed AND total goals ≥ GOALS_MIN_COUNT (end-of-quarter closure)
+  // (C) closed-quarter runs only (ctx.quarterClosed): every goal closed AND completed ≥
+  //     STF_MIN_COMPLETED — the quarter is over and the completion bar is met; Canceled /
+  //     Not Completed leftovers do not fail the signal. Mid-quarter the weekly rules still
+  //     demand full compliance, so (C) never fires for the in-progress quarter.
   psNames.forEach((_, norm) => {
     const empGoals = goalMap.get(norm);
     if (!empGoals || empGoals.size === 0) return;
@@ -2674,10 +2708,16 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     const totalGoals         = goalIds.length;
     const completedGoals     = goalIds.filter(id => empGoals.get(id).completed).length;
     const fullyDocumentedCount = goalIds.filter(id => empGoals.get(id).selfComments.length >= 8).length;
+    const closedGoals        = goalIds.filter(id => {
+      const g = empGoals.get(id);
+      return g.completed || g.notCompleted || g.canceled;
+    }).length;
     const allGoalsCompleted  = completedGoals === totalGoals;
     const fullyDocOverride   = completedGoals >= CONFIG_PS.GOALS_MIN_COUNT && fullyDocumentedCount >= 5;
     const allCompletedOverride = allGoalsCompleted && totalGoals >= CONFIG_PS.GOALS_MIN_COUNT;
-    if (!fullyDocOverride && !allCompletedOverride) return;
+    const closedCompleteOverride = !!(ctx && ctx.quarterClosed) && totalGoals > 0 &&
+      closedGoals === totalGoals && completedGoals >= CONFIG_PS.STF_MIN_COMPLETED;
+    if (!fullyDocOverride && !allCompletedOverride && !closedCompleteOverride) return;
     weeks.filter(w => !w.isFuture).forEach(week => {
       const prev = result[week.label].byEmployee[norm];
       if (prev && !prev.compliant) result[week.label].compliant++;
@@ -2685,6 +2725,49 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
         compliant: true, overrideCompliant: true, fullyDocumentedCount, completedGoals,
         allGoalsCompleted,
       });
+    });
+  });
+
+  // ── "All goals closed" note — informational only, does NOT change compliance.
+  // At quarter close (incl. the grace window) many rocketeers have every goal in a closed status
+  // (Completed / Not Completed / Canceled) with none still In Progress — so the weekly rule-2
+  // "needs N In Progress" prompt is misleading (nothing left to move). Reasons:
+  //   'incomplete'   — completed < STF_MIN_COMPLETED → out of compliance (hard miss)
+  //   'under-review' / 'stf-ok' — completed ≥ STF_MIN_COMPLETED; on closed-quarter runs these
+  //                    are override-compliant (path C above) and the frontend renders a plain
+  //                    green "Completed" signal for both. stfWellDoc / stfEligible remain as
+  //                    data only — the dashboard shows the completion signal, never an STF
+  //                    payout decision (that call is not ours to make).
+  // Only for rocketeers who did NOT complete every goal (all-completed → the "✅ All done"
+  // override handles it). Attached regardless of weekly compliance. quarterClosed lets the
+  // frontend distinguish a closed-quarter "Completed" from a mid-quarter early close-out.
+  psNames.forEach((_, norm) => {
+    const empGoals = goalMap.get(norm);
+    if (!empGoals || empGoals.size === 0) return;
+    const goalIds     = Array.from(empGoals.keys());
+    const totalGoals  = goalIds.length;
+    const completed   = goalIds.filter(id => empGoals.get(id).completed).length;
+    const notCompleted = goalIds.filter(id => { const g = empGoals.get(id); return !g.completed && g.notCompleted; }).length;
+    const canceled    = goalIds.filter(id => { const g = empGoals.get(id); return !g.completed && !g.notCompleted && g.canceled; }).length;
+    const closedCount = completed + notCompleted + canceled;
+    // Every goal closed, but not all completed (all-completed is the override above → "✅ All done")
+    if (totalGoals === 0 || closedCount !== totalGoals || completed === totalGoals) return;
+    // STF payout: ≥ STF_MIN_COMPLETED completed AND ≥ STF_MIN_CMT_GOALS of those with ≥8 total comments
+    const stfWellDoc = goalIds.filter(id => {
+      const g = empGoals.get(id);
+      return g.completed && (g.selfComments.length + (g.nonSelfCommentCount || 0)) >= CONFIG_PS.STF_MIN_COMMENTS;
+    }).length;
+    const metCompletion = completed >= CONFIG_PS.STF_MIN_COMPLETED;
+    const stfEligible   = metCompletion && stfWellDoc >= CONFIG_PS.STF_MIN_CMT_GOALS;
+    const reason = !metCompletion ? 'incomplete' : (stfEligible ? 'stf-ok' : 'under-review');
+    const summary = {
+      totalGoals, completed, notCompleted, canceled, stfWellDoc, stfEligible, reason,
+      stfMinCompleted: CONFIG_PS.STF_MIN_COMPLETED, stfMinCmtGoals: CONFIG_PS.STF_MIN_CMT_GOALS,
+      quarterClosed: !!(ctx && ctx.quarterClosed),
+    };
+    weeks.filter(w => !w.isFuture).forEach(week => {
+      const e = result[week.label].byEmployee[norm];
+      if (e) e.allClosed = summary;
     });
   });
 
@@ -2715,7 +2798,15 @@ function readGoalsEngagement_(psNames, weeks, histWeeks, ctx, ptoProfiles, empNu
     const allCompleted   = completedGoals === totalGoals;
     const fullyDocumented = completedGoals >= CONFIG_PS.GOALS_MIN_COUNT &&
       goalIds.filter(id => empGoals.get(id).selfComments.length >= 8).length >= 5;
-    if (fullyDocumented || (allCompleted && totalGoals >= CONFIG_PS.GOALS_MIN_COUNT)) {
+    // Mirrors override path (C): a closed-quarter run with the completion bar met is not
+    // an engagement-risk case either.
+    const closedComplete = !!(ctx && ctx.quarterClosed) && totalGoals > 0 &&
+      completedGoals >= CONFIG_PS.STF_MIN_COMPLETED &&
+      goalIds.every(id => {
+        const g = empGoals.get(id);
+        return g.completed || g.notCompleted || g.canceled;
+      });
+    if (fullyDocumented || (allCompleted && totalGoals >= CONFIG_PS.GOALS_MIN_COUNT) || closedComplete) {
       _overrideNorms.add(norm);
     }
   });
@@ -3527,6 +3618,10 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
     qStartIsoYear: ctx.prevQStartIsoYear,
     qStartIsoWeek: ctx.prevQStartIsoWeek,
     inGracePeriod: false,
+    // This run evaluates a quarter that has already ended — unlocks the closed-quarter
+    // compliance override (path C): all goals closed + 8 completed → compliant, regardless
+    // of Canceled / Not Completed leftovers. Never set on the in-progress quarter's run.
+    quarterClosed: true,
   };
   const goalsPrevResult = readGoalsEngagement_(active, prevQWeeks, [], prevCtx, ptoProfiles, empNumToNorm);
   const currentQLabels  = new Set(currentQWeeks.map(w => w.label));

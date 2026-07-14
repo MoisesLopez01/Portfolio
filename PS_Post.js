@@ -179,6 +179,20 @@ function buildBlogSections_(weekLabel) {
   const employees = report.employees      || [];
   const headcount = meta.activeCount      || 1;
 
+  // Mirrors generateTeamBrief() in PS Dashboard.html: every talking point carries a
+  // metric tag so all four sections list metrics in the SAME order (goals → tracked →
+  // planned → kudos → pto → rcr → si → context). Bullets may embed **bold** and
+  // {red}…{/red} markers — buildBulletList_ maps them to ADF strong/textColor marks.
+  const BRIEF_RANK = { goals: 0, tracked: 1, planned: 2, kudos: 3, pto: 4, rcr: 5, si: 6, ph: 7, other: 8 };
+  function addI(arr, metric, text) {
+    arr.push({ _r: BRIEF_RANK[metric] !== undefined ? BRIEF_RANK[metric] : BRIEF_RANK.other, _i: arr.length, t: text });
+  }
+  function orderI(arr) {
+    return arr.slice()
+      .sort(function(a, b) { return a._r - b._r || a._i - b._i; })
+      .map(function(x) { return x.t; });
+  }
+
   function getRow(id) { return teamSum.find(function(r) { return r.id === id; }) || null; }
   function getCell(row, lbl) {
     if (!row || !lbl) return null;
@@ -210,10 +224,10 @@ function buildBlogSections_(weekLabel) {
     const ph = phByWeek[w.label];
     if (!ph || !ph.entries || !ph.entries.length) return;
     const locations = ph.entries.map(function(e) { return e.location + ': ' + e.holiday; }).join('; ');
-    facts.push(ph.totalAffected + ' rocketeer' + (ph.totalAffected !== 1 ? 's' : '') +
-      ' in public holiday regions · ' + w.label + ' · ' + locations);
+    addI(facts, 'ph', '**Public holidays:** ' + ph.totalAffected + ' rocketeer' + (ph.totalAffected !== 1 ? 's' : '') +
+      ' in holiday regions · ' + w.label + ' · ' + locations);
     if (w.label === weekLabel && ph.totalAffected > 0) {
-      notes.push(ph.totalAffected + ' team member' + (ph.totalAffected !== 1 ? 's' : '') +
+      addI(notes, 'tracked', ph.totalAffected + ' team member' + (ph.totalAffected !== 1 ? 's' : '') +
         ' were in a public holiday week (' + locations + ') — lower time tracking or planning may reflect this.');
     }
   });
@@ -221,12 +235,22 @@ function buildBlogSections_(weekLabel) {
     const ph = phByWeek[w.label];
     if (!ph || !ph.entries || !ph.entries.length) return;
     const locations = ph.entries.map(function(e) { return e.location + ': ' + e.holiday; }).join('; ');
-    notes.push('Heads up · ' + w.label + ' — ' +
+    addI(notes, 'ph', '**Heads up · ' + w.label + ':** ' +
       ph.totalAffected + ' rocketeer' + (ph.totalAffected !== 1 ? 's' : '') +
       ' in public holiday regions (' + locations + ').');
   });
 
   // ── Goals ──────────────────────────────────────────────────────────────────
+  // Quarter-transition aware (mirrors the dashboard): during the goal grace window
+  // compliance is still the PREVIOUS quarter's closing view; after it, the new
+  // quarter's in-progress view (expected to build from low as goals are written).
+  const fc      = meta.fiscalContext || {};
+  const goalsQ  = meta.goalsQuarter || fc.goalsQuarter || '';
+  const prevQ   = fc.prevGoalsQuarter || '';
+  const inGrace = !!fc.inGracePeriod;
+  const inRamp  = !!fc.inGoalWritingRamp;
+  const graceEndLbl = fc.graceEndIsoWeek
+    ? fc.graceEndIsoYear + '.W' + ('0' + fc.graceEndIsoWeek).slice(-2) : '';
   if (goalsCell && goalsCell.value !== null) {
     const compPct = goalsCell.value;
     const compN   = goalsCell.compliant != null ? goalsCell.compliant : null;
@@ -235,14 +259,34 @@ function buildBlogSections_(weekLabel) {
     const wowGStr = wowG !== null ? (wowG > 0 ? ' +' + wowG + '% WoW' : wowG < 0 ? ' ' + wowG + '% WoW' : ' flat WoW') : '';
     const compStr = (compN != null && compTot != null) ? compN + ' of ' + compTot + ' rocketeers' : compPct + '%';
     const missing = (compTot != null && compN != null) ? compTot - compN : null;
-    facts.push('Goals: ' + compStr + ' compliant (' + compPct + '%)' + wowGStr);
-    if (compPct >= 70) {
-      highlights.push(compStr + ' meeting quarterly goal commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
-    } else if (compPct >= 50) {
-      notes.push('Goals compliance at ' + compPct + '%' + (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need goal updates' : ''));
+    if (inGrace && prevQ) {
+      addI(facts, 'goals', '**Goals (' + prevQ + ' closure):** ' + compStr + ' compliant (' + compPct + '%)' + wowGStr +
+        ' — closing view of ' + prevQ + (graceEndLbl ? '; ' + goalsQ + ' tracking takes over after ' + graceEndLbl : ''));
+    } else if (inRamp && goalsQ) {
+      addI(facts, 'goals', '**Goals (' + goalsQ + ' in progress):** ' + compStr + ' compliant (' + compPct + '%)' + wowGStr +
+        ' — early-quarter view; compliance builds as ' + goalsQ + ' goals are written and updated' +
+        (prevQ ? ' (' + prevQ + ' closed in the ' + (graceEndLbl || 'prior') + ' post)' : ''));
     } else {
-      concerns.push('Goals compliance at ' + compPct + '%' + (wowG !== null && wowG < 0 ? ' and declining' : '') +
+      addI(facts, 'goals', '**Goals:** ' + compStr + ' compliant (' + compPct + '%)' + wowGStr);
+    }
+    if (compPct >= 70) {
+      addI(highlights, 'goals', inGrace && prevQ
+        ? '**Goals:** ' + compStr + ' (' + compPct + '%) closing ' + prevQ + ' compliant — a strong finish to the quarter'
+        : '**Goals:** ' + compStr + ' meeting ' + (goalsQ || 'quarterly') + ' commitments (' + compPct + '%)' + (wowG > 0 ? ', improving WoW' : ''));
+    } else if (compPct >= 50 || (inRamp && !inGrace)) {
+      addI(notes, 'goals', '**Goals:** compliance at ' + compPct + '%' +
+        ((inRamp && !inGrace) ? ' — expected to be low this early in ' + goalsQ + '; watch that it climbs week over week'
+          : (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need goal updates' : '')));
+    } else {
+      addI(concerns, 'goals', '**Goals:** compliance at ' + compPct + '%' + (wowG !== null && wowG < 0 ? ' and declining' : '') +
         (missing ? ' — ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') + ' need coaching on goal documentation and In-Progress ratio' : ''));
+    }
+    // Closure call-to-action: anyone still out of compliance while the previous
+    // quarter's books are closing needs their goal statuses finalized now.
+    if (inGrace && prevQ && missing > 0) {
+      addI(concerns, 'goals', '**Goals:** ' + missing + ' rocketeer' + (missing > 1 ? 's' : '') +
+        ' still show ' + prevQ + ' goals as In Progress or Planned — managers to confirm final statuses before the window closes' +
+        (graceEndLbl ? ' (' + graceEndLbl + ')' : ''));
     }
   }
 
@@ -259,22 +303,22 @@ function buildBlogSections_(weekLabel) {
       if (_phCur > 0)       _phNote = ' · ' + _phCur + ' rocketeer' + (_phCur > 1 ? 's' : '') + ' on PH this week';
       else if (_phPrev > 0) _phNote = ' · prev week had ' + _phPrev + ' rocketeer' + (_phPrev > 1 ? 's' : '') + ' on PH (elevated baseline)';
     }
-    facts.push('Tracked time: ' + totalH + 'h by ' + logHC + '/' + headcount + ' rocketeers (avg ' + avgH + 'h/person)' + wowHStr + _phNote);
+    addI(facts, 'tracked', '**Tracked time:** ' + totalH + 'h by ' + logHC + '/' + headcount + ' rocketeers (avg ' + avgH + 'h/person)' + wowHStr + _phNote);
     if (avgH >= 36) {
-      highlights.push(totalH + 'h tracked by ' + logHC + ' of ' + headcount + ' rocketeers' + (wowH > 0 ? ', up ' + wowH + 'h WoW' : '') + ' (avg ' + avgH + 'h) — strong execution signal');
+      addI(highlights, 'tracked', '**Tracked time:** ' + totalH + 'h by ' + logHC + ' of ' + headcount + ' rocketeers' + (wowH > 0 ? ', up ' + wowH + 'h WoW' : '') + ' (avg ' + avgH + 'h) — strong execution signal');
     } else if (avgH >= 28) {
-      notes.push('Avg tracked time at ' + avgH + 'h/person' + wowHStr + _phNote +
+      addI(notes, 'tracked', '**Tracked time:** avg ' + avgH + 'h/person' + wowHStr + _phNote +
         (notLogged > 0 ? ' · ' + notLogged + ' rocketeer' + (notLogged > 1 ? 's' : '') + ' with no logged hours' : '') +
-        ' — approaching 36h floor');
+        ' — above the 28h floor, below the 36h target');
     } else {
       const _tempoCtx = (_phCur > 0 || _phPrev > 0) ? '' : ' · Tempo data pipeline under IT review — known sync issues may affect totals';
-      concerns.push('Avg tracked time at ' + avgH + 'h/person' + wowHStr + _phNote +
+      addI(concerns, 'tracked', '**Tracked time:** avg ' + avgH + 'h/person' + wowHStr + _phNote +
         (notLogged > 0 ? ' — ' + notLogged + ' rocketeer' + (notLogged > 1 ? 's' : '') + ' with no logged hours' : '') +
         _tempoCtx);
     }
   } else if (selWeek && !selWeek.isFuture) {
-    facts.push('Tracked time: no data for ' + weekLabel);
-    concerns.push('No tracked time data for ' + weekLabel + ' — ensure the team is logging time in Tempo');
+    addI(facts, 'tracked', '**Tracked time:** no data for ' + weekLabel);
+    addI(concerns, 'tracked', '**Tracked time:** no data for ' + weekLabel + ' — ensure the team is logging time in Tempo');
   }
 
   // ── Planned time ──────────────────────────────────────────────────────────
@@ -283,13 +327,47 @@ function buildBlogSections_(weekLabel) {
     const planHC    = histCur.plannedHC  || 0;
     const planH     = Math.round(histCur.plannedHrs || 0);
     const unplanned = headcount - planHC;
-    facts.push('Tempo plans: ' + planHC + ' rocketeers (' + planPct + '%) planned (' + planH + 'h)');
+    addI(facts, 'planned', '**Tempo plans:** ' + planHC + ' rocketeers (' + planPct + '%) planned, ' + planH + 'h total');
     if (planPct >= 80) {
-      highlights.push(planHC + ' rocketeers (' + planPct + '%) with Tempo plans (' + planH + 'h) — proactive capacity management in place');
+      addI(highlights, 'planned', '**Tempo plans:** ' + planHC + ' rocketeers (' + planPct + '%) planned ahead (' + planH + 'h) — proactive capacity management');
     } else if (planPct >= 50) {
-      notes.push('Tempo coverage at ' + planPct + '% — ' + unplanned + ' rocketeer' + (unplanned > 1 ? 's' : '') + ' missing forward capacity visibility; encourage weekly planning');
+      addI(notes, 'planned', '**Tempo plans:** coverage at ' + planPct + '% — ' + unplanned + ' rocketeer' + (unplanned > 1 ? 's' : '') + ' missing forward capacity visibility; encourage weekly planning');
     } else {
-      concerns.push('Only ' + planPct + '% of team has Tempo plans — ' + unplanned + ' rocketeer' + (unplanned > 1 ? 's' : '') + ' missing forward capacity visibility (Build Process to Drive Outcomes)');
+      addI(concerns, 'planned', '**Tempo plans:** only ' + planPct + '% of the team planned — ' + unplanned + ' rocketeer' + (unplanned > 1 ? 's' : '') + ' missing forward capacity visibility (Build Process to Drive Outcomes)');
+    }
+  }
+
+  // ── Tracking/planning regressions: active before, silent this week ────────
+  // Flags rocketeers who logged or planned time in the previous week but show
+  // nothing this week (full-PTO-day people excluded — that's absence, not a
+  // habit slipping). Counts only, never names. Mirrors the dashboard brief.
+  if (prevWeekLabel) {
+    const ptoThresh = (typeof CONFIG_PS !== 'undefined' && CONFIG_PS.PTO_IMPACT_THRESHOLD_HRS) || 8;
+    const silentCount_ = function(hrsKey) {
+      return employees.filter(function(e) {
+        if (e.isCrewMember) return false;
+        const prv = e.weeks && e.weeks[prevWeekLabel];
+        if (!prv || (prv[hrsKey] || 0) <= 0) return false;
+        const cur = e.weeks && e.weeks[weekLabel];
+        if (cur && (cur.ptoPlannedHrs || 0) >= ptoThresh) return false;
+        return !cur || (cur[hrsKey] || 0) <= 0;
+      }).length;
+    };
+    const stoppedT = silentCount_('trackedHrs');
+    if (stoppedT >= 3) {
+      addI(concerns, 'tracked', '**Tracked time:** ' + stoppedT + ' rocketeers who logged hours in ' + prevWeekLabel +
+        ' logged none this week — check for blockers or missed Tempo entries');
+    } else if (stoppedT > 0) {
+      addI(notes, 'tracked', '**Tracked time:** ' + stoppedT + ' rocketeer' + (stoppedT > 1 ? 's' : '') +
+        ' who logged hours in ' + prevWeekLabel + ' logged none this week');
+    }
+    const stoppedP = silentCount_('plannedHrs');
+    if (stoppedP >= 3) {
+      addI(concerns, 'planned', '**Tempo plans:** ' + stoppedP + ' rocketeers who planned in ' + prevWeekLabel +
+        ' have no plan this week — the planning habit is slipping; supervisors to follow up');
+    } else if (stoppedP > 0) {
+      addI(notes, 'planned', '**Tempo plans:** ' + stoppedP + ' rocketeer' + (stoppedP > 1 ? 's' : '') +
+        ' who planned in ' + prevWeekLabel + ' have no plan this week');
     }
   }
 
@@ -299,14 +377,14 @@ function buildBlogSections_(weekLabel) {
     const kudosPrev     = kudosPrevCell && kudosPrevCell.value !== null ? kudosPrevCell.value : null;
     const kWow          = kudosPrev !== null ? kudosCell.value - kudosPrev : null;
     const kWowStr       = kWow !== null ? (kWow > 0 ? ' +' + kWow + ' WoW' : kWow < 0 ? ' ' + kWow + ' WoW' : ' flat WoW') : '';
-    facts.push('Kudos: ' + kudosCell.value + ' given this week' + kWowStr);
+    addI(facts, 'kudos', '**Kudos:** ' + kudosCell.value + ' given this week' + kWowStr);
     if (kudosCell.value > 0) {
       if (kWow !== null && kWow >= 0) {
-        highlights.push(kudosCell.value + ' kudos given' + (kWow > 0 ? ', up ' + kWow + ' from last week' : ', matching last week') + ' — recognition momentum sustained (Think Team)');
+        addI(highlights, 'kudos', '**Kudos:** ' + kudosCell.value + ' given' + (kWow > 0 ? ', up ' + kWow + ' from last week' : ', matching last week') + ' — recognition momentum sustained (Think Team)');
       } else if (kWow !== null && kWow < 0) {
-        notes.push(kudosCell.value + ' kudos given this week, down ' + Math.abs(kWow) + ' from ' + kudosPrev + ' last week — keep the momentum of recognizing peer contributions');
+        addI(notes, 'kudos', '**Kudos:** ' + kudosCell.value + ' given this week, down from ' + kudosPrev + ' last week — keep peer recognition moving');
       } else {
-        highlights.push(kudosCell.value + ' kudos given this week — Think Team value in practice');
+        addI(highlights, 'kudos', '**Kudos:** ' + kudosCell.value + ' given this week — Think Team value in practice');
       }
       // Per-post recognition detail grouped by giver + description
       const postMap = {};
@@ -327,17 +405,17 @@ function buildBlogSections_(weekLabel) {
       posts.forEach(function(post) {
         let stars = '';
         for (let si = 0; si < post.recipients.length; si++) stars += '★';
-        let line = post.recipients.join(', ') + ' ' + stars + ' — Given by ' + (post.giver || '—');
+        let line = '**Kudos for ' + post.recipients.join(', ') + '** ' + stars + ' — given by ' + (post.giver || '—');
         if (post.orgValues) line += ' · ' + post.orgValues;
-        highlights.push(line);
+        addI(highlights, 'kudos', line);
       });
     } else {
       if (kudosPrev !== null && kudosPrev === 0) {
-        concerns.push('No kudos given for the second consecutive week — managers should actively prompt recognition (Think Team)');
+        addI(concerns, 'kudos', '**Kudos:** none given for the second consecutive week — managers should actively prompt recognition (Think Team)');
       } else if (kudosPrev !== null && kudosPrev > 0) {
-        concerns.push('No kudos given this week — down from ' + kudosPrev + ' last week; prompt the team to recognize each other\'s contributions (Think Team)');
+        addI(concerns, 'kudos', '**Kudos:** none given this week, down from ' + kudosPrev + ' last week — prompt the team to recognize each other\'s contributions (Think Team)');
       } else {
-        concerns.push('No kudos given this week — prompt the team to recognize each other\'s contributions (Think Team)');
+        addI(concerns, 'kudos', '**Kudos:** none given this week — prompt the team to recognize each other\'s contributions (Think Team)');
       }
     }
   }
@@ -348,37 +426,61 @@ function buildBlogSections_(weekLabel) {
     const sub    = ptoCell.sub || '';
     const arM    = sub.match(/(\d+)\s+need/);
     const arN    = arM ? parseInt(arM[1]) : null;
-    facts.push('PTO compliance: ' + ptoPct + '%' + (arN !== null ? ' (' + arN + ' at risk)' : ''));
+    // At-risk count renders red so managers can spot and act on it at a glance.
+    const arStr = arN === null ? '' : (arN > 0 ? ' ({red}' + arN + ' at risk{/red})' : ' (0 at risk)');
+    addI(facts, 'pto', '**PTO compliance:** ' + ptoPct + '%' + arStr);
     if (ptoPct >= 80) {
-      highlights.push(ptoPct + '% of team PTO under control' + (arN === 0 ? ' — full team recovery planned' : '') + '; sustainable pace maintained');
+      addI(highlights, 'pto', '**PTO:** ' + ptoPct + '% of the team has PTO under control' + (arN === 0 ? ' — full team recovery planned' : '') + '; sustainable pace maintained');
+      if (arN > 0) {
+        addI(notes, 'pto', '**PTO:** {red}' + arN + ' rocketeer' + (arN > 1 ? 's' : '') + ' need a recovery plan{/red} — managers to schedule PTO with each of them');
+      }
     } else if (ptoPct >= 60) {
-      notes.push('PTO compliance at ' + ptoPct + '%' + (arN !== null ? ' — ' + arN + ' rocketeer' + (arN > 1 ? 's' : '') + ' need a recovery plan' : '') + '; monitor before year-end');
+      addI(notes, 'pto', '**PTO:** compliance at ' + ptoPct + '%' + (arN !== null ? ' — {red}' + arN + ' rocketeer' + (arN > 1 ? 's' : '') + ' need a recovery plan{/red}' : '') + '; monitor before year-end');
     } else {
-      concerns.push('PTO compliance at ' + ptoPct + '%' +
-        (arN !== null ? ' — ' + arN + ' rocketeer' + (arN > 1 ? 's' : '') + ' need a recovery plan' : '') +
+      addI(concerns, 'pto', '**PTO:** compliance at ' + ptoPct + '%' +
+        (arN !== null ? ' — {red}' + arN + ' rocketeer' + (arN > 1 ? 's' : '') + ' need a recovery plan{/red}' : '') +
         ' (Build Process to Drive Outcomes — sustainable pace at risk)');
     }
   }
 
   // ── RCR ───────────────────────────────────────────────────────────────────
+  // Monthly benchmark: compact fact every week; the interpretive note appears only
+  // in the weeks right after a new month's value lands, so the post doesn't repeat
+  // unchanged context week after week.
+  function rcrIsFresh_(monthLbl) {
+    const m = /^([A-Za-z]{3})\s+(\d{2})$/.exec(monthLbl || '');
+    if (!m) return false;
+    const MONTHS = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    const mi = MONTHS[m[1]];
+    if (mi === undefined) return false;
+    const now = new Date();
+    return ((now.getFullYear() - (2000 + +m[2])) * 12 + (now.getMonth() - mi)) <= 1;
+  }
   if (meta.rcrTeamRCR != null) {
     const rcrVal = meta.rcrTeamRCR;
     const month  = meta.rcrLastMonth || '';
-    facts.push('RCR: ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · monthly metric, does not change week-over-week · review with manager');
-    notes.push('RCR context: team at ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · represents project mix & billing rates; review trends & context with your manager · refreshes monthly');
+    addI(facts, 'rcr', '**RCR:** ' + rcrVal.toFixed(2) + '×' + (month ? ' (' + month + ')' : '') + ' · monthly benchmark — updates at month close, not week over week');
+    if (rcrIsFresh_(month)) {
+      addI(notes, 'rcr', '**RCR:** new ' + month + ' benchmark — team at ' + rcrVal.toFixed(2) + '× · reflects project mix & billing rates; review trends & context with your manager');
+    }
   }
 
   // ── SI ─────────────────────────────────────────────────────────────────────
+  // Quarterly benchmark: compact fact every week; the rating interpretation only
+  // appears in the first weeks after new quarter ratings land.
   if (meta.siTeamRounded != null) {
     const _siQ = meta.siQuarter || '';
     const _siV = meta.siTeamRounded;
-    facts.push('Small Improvements (SI): ' + _siV + '/5 (' + _siQ + ') · quarterly metric, does not change week-over-week');
-    if (_siV >= 4) {
-      notes.push('SI context: ' + _siV + '/5 (' + _siQ + ') — strong manager rating; team recognized for continuous improvement mindset · quarterly snapshot');
-    } else if (_siV === 3) {
-      notes.push('SI context: ' + _siV + '/5 (' + _siQ + ') — meets expectations; room to grow on improvement behaviors · quarterly snapshot');
-    } else {
-      notes.push('SI context: ' + _siV + '/5 (' + _siQ + ') — below expectations; manager coaching on continuous improvement recommended · quarterly snapshot');
+    addI(facts, 'si', '**Small Improvements (SI):** ' + _siV + '/5 (' + _siQ + ') · quarterly benchmark — updates once per quarter');
+    const _siFresh = _siQ && prevQ && _siQ === prevQ && inRamp;
+    if (_siFresh) {
+      if (_siV >= 4) {
+        addI(notes, 'si', '**SI:** new ' + _siQ + ' ratings — ' + _siV + '/5, a strong manager rating; team recognized for a continuous improvement mindset');
+      } else if (_siV === 3) {
+        addI(notes, 'si', '**SI:** new ' + _siQ + ' ratings — ' + _siV + '/5, meets expectations; room to grow on improvement behaviors');
+      } else {
+        addI(notes, 'si', '**SI:** new ' + _siQ + ' ratings — ' + _siV + '/5, below expectations; manager coaching on continuous improvement recommended');
+      }
     }
   }
 
@@ -392,7 +494,7 @@ function buildBlogSections_(weekLabel) {
     const tFloor = tAvg.every(function(v) { return v >= 28; });
     if (tFloor && tUp) {
       const tStr = recent.map(function(h, i) { return h.label + ' ' + tAvg[i] + 'h'; }).join(' → ');
-      highlights.push('Tracked time improving ' + tStr + '/person — delivery momentum building');
+      addI(highlights, 'tracked', '**Tracked time:** improving ' + tStr + '/person — delivery momentum building');
     }
 
     if (goalsRow) {
@@ -401,14 +503,14 @@ function buildBlogSections_(weekLabel) {
       if (gcValid.length >= 3) {
         const gcUp  = gcValid[gcValid.length - 1] > gcValid[0];
         const gcStr = recent.map(function(h, i) { return gcArr[i] !== null ? h.label + ' ' + gcArr[i] + '%' : null; }).filter(Boolean).join(' → ');
-        if (gcUp) highlights.push('Goals compliance rising ' + gcStr + ' — team building documentation habits across Q4');
+        if (gcUp) addI(highlights, 'goals', '**Goals:** compliance rising ' + gcStr + ' — documentation habits building quarter over quarter');
       }
     }
 
     const cArr = recent.map(function(h) { return +(h.avgCommentsPerPerson || 0).toFixed(1); });
     if (cArr[cArr.length - 1] > cArr[0] && cArr[cArr.length - 1] >= 2) {
       const cStr = recent.map(function(h, i) { return h.label + ' ' + cArr[i]; }).join(' → ');
-      highlights.push('Goal self-comment pace accelerating ' + cStr + '/person — engagement with Q4 commitments growing');
+      addI(highlights, 'goals', '**Goals:** self-comment pace accelerating ' + cStr + '/person — engagement with quarterly commitments growing');
     }
 
     if (kudosRow) {
@@ -417,16 +519,16 @@ function buildBlogSections_(weekLabel) {
         const kc = getCell(kudosRow, closedH[ki].label);
         if (kc && kc.value > 0) streak++; else break;
       }
-      if (streak >= 2) highlights.push(streak + ' consecutive weeks of peer recognition — Think Team value sustained in practice');
+      if (streak >= 2) addI(highlights, 'kudos', '**Kudos:** ' + streak + ' consecutive weeks of peer recognition — Think Team value sustained in practice');
     }
   }
 
-  if (!facts.length)      facts.push('Metric data unavailable for ' + weekLabel);
-  if (!highlights.length) highlights.push('Team operational metrics stable — no exceptional positive signals this week');
-  if (!notes.length)      notes.push('No watch items this week — all metrics within expected range');
-  if (!concerns.length)   concerns.push('No critical concerns — maintain current trajectory across all dimensions');
+  if (!facts.length)      addI(facts, 'other', 'Metric data unavailable for ' + weekLabel);
+  if (!highlights.length) addI(highlights, 'other', 'Team operational metrics stable — no exceptional positive signals this week');
+  if (!notes.length)      addI(notes, 'other', 'No watch items this week — all metrics within expected range');
+  if (!concerns.length)   addI(concerns, 'other', 'No critical concerns — maintain current trajectory across all dimensions');
 
-  return { weekLabel: weekLabel, facts: facts, highlights: highlights, notes: notes, concerns: concerns };
+  return { weekLabel: weekLabel, facts: orderI(facts), highlights: orderI(highlights), notes: orderI(notes), concerns: orderI(concerns) };
 }
 
 
@@ -449,17 +551,25 @@ function buildBlogSections_(weekLabel) {
  *   2. No sections in payload (e.g. called from the editor) → buildBlogSections_() assembles
  *      them server-side from the live PS report data.
  *
+ * Two distinct weeks are in play (weekly briefs publish THIS week's page with LAST
+ * week's data, so they differ by design):
+ *   • weekLabel     — the DATA week the content reflects (last completed week).
+ *   • postWeekLabel — the week the PAGE is titled/targeted by (the current calendar
+ *                     week). Falls back to weekLabel when omitted.
+ *
  * @param {{
- *   weekLabel:  (string|undefined),  e.g. "2026.W26"; omitted = current ISO week
- *   facts:      (string[]|undefined),
- *   highlights: (string[]|undefined),
- *   notes:      (string[]|undefined),
- *   concerns:   (string[]|undefined),
- *   blogPostId: (string|undefined)   force a specific post (testing); usually omitted
+ *   weekLabel:     (string|undefined),  DATA week, e.g. "2026.W28"; omitted = current ISO week
+ *   postWeekLabel: (string|undefined),  PAGE week, e.g. "2026.W29"; omitted = weekLabel
+ *   facts:         (string[]|undefined),
+ *   highlights:    (string[]|undefined),
+ *   notes:         (string[]|undefined),
+ *   concerns:      (string[]|undefined),
+ *   blogPostId:    (string|undefined)   force a specific post (testing); usually omitted
  * }} payload
  * @returns {{ ok: boolean, created?: boolean, url?: string, title?: string,
- *             weekLabel?: string, blogPostId?: string,
+ *             weekLabel?: string, dataWeekLabel?: string, blogPostId?: string,
  *             areasUpdated?: string[], areasMissing?: string[], error?: string }}
+ *             (weekLabel = the PAGE week acted on; dataWeekLabel = the CONTENT week)
  */
 function publishContributionSection(payload) {
   try {
@@ -481,17 +591,23 @@ function publishContributionSection(payload) {
     // Step 2: Load and validate Confluence credentials
     const cfg = getConfluenceConfig_(access.email);
 
-    // Step 3: Decide which calendar week we are targeting and find its post
-    const weekLabel = payload.weekLabel || isoWeekLabel_(new Date());
-    Logger.log(`ℹ️ [publishContributionSection] Target week: ${weekLabel}`);
+    // Step 3: Decide the two weeks in play (they differ by design — see JSDoc):
+    //   dataWeekLabel — the week the CONTENT reflects (last completed week). Drives
+    //                   server-side section building.
+    //   postWeekLabel — the PAGE we publish TO (the current calendar week). Drives the
+    //                   post title, lookup, and creation.
+    const dataWeekLabel = payload.weekLabel || isoWeekLabel_(new Date());
+    const postWeekLabel = payload.postWeekLabel || dataWeekLabel;
+    Logger.log(`ℹ️ [publishContributionSection] Post week: ${postWeekLabel} · data week: ${dataWeekLabel}`);
 
     // Step 3b: If the payload has no pre-built sections, build them server-side from the PS report.
     // Pre-built sections (e.g. Gemini-enhanced from the dashboard) are used as-is when present.
+    // Sections always reflect the DATA week, never the (later) post week.
     const hasSections = Array.isArray(payload.facts) && payload.facts.length > 0;
-    const sections = hasSections ? payload : buildBlogSections_(weekLabel);
-    if (!hasSections) Logger.log(`ℹ️ [publishContributionSection] Sections built server-side for ${weekLabel}`);
+    const sections = hasSections ? payload : buildBlogSections_(dataWeekLabel);
+    if (!hasSections) Logger.log(`ℹ️ [publishContributionSection] Sections built server-side for ${dataWeekLabel}`);
 
-    const existingId = payload.blogPostId || cfg.blogPostId || findBlogPostIdByWeek_(cfg, weekLabel);
+    const existingId = payload.blogPostId || cfg.blogPostId || findBlogPostIdByWeek_(cfg, postWeekLabel);
 
     // Step 4a: POST EXISTS -> read, update section C, save back
     if (existingId) {
@@ -505,28 +621,30 @@ function publishContributionSection(payload) {
       if (result.areasMissing.length) {
         Logger.log(`⚠️ [publishContributionSection] Panels not found, skipped: ${result.areasMissing.join(', ')}`);
       }
-      const saved = putBlogPostAdf_(cfg, existingId, post, post.doc, weekLabel);
+      const saved = putBlogPostAdf_(cfg, existingId, post, post.doc, postWeekLabel);
       Logger.log(`✅ [publishContributionSection] Updated [${result.areasUpdated.join(', ')}] in "${post.title}" — ${saved.url}`);
       return {
-        ok: true, created: false, url: saved.url, title: post.title, weekLabel: weekLabel,
+        ok: true, created: false, url: saved.url, title: post.title,
+        weekLabel: postWeekLabel, dataWeekLabel: dataWeekLabel,
         blogPostId: existingId, areasUpdated: result.areasUpdated, areasMissing: result.areasMissing,
       };
     }
 
     // Step 4b: POST MISSING -> create from template (with C pre-filled), then post it
     if (!CONFIG_POST.CREATE_IF_MISSING) {
-      Logger.log(`⚠️ [publishContributionSection] No post for ${weekLabel} and CREATE_IF_MISSING is off — nothing done.`);
-      return { ok: false, error: `No post found for "${CONFIG_POST.BLOG_TITLE_PREFIX} ${weekLabel}" and CREATE_IF_MISSING is off.` };
+      Logger.log(`⚠️ [publishContributionSection] No post for ${postWeekLabel} and CREATE_IF_MISSING is off — nothing done.`);
+      return { ok: false, error: `No post found for "${CONFIG_POST.BLOG_TITLE_PREFIX} ${postWeekLabel}" and CREATE_IF_MISSING is off.` };
     }
-    Logger.log(`ℹ️ [publishContributionSection] No post for ${weekLabel} — creating from template.`);
+    Logger.log(`ℹ️ [publishContributionSection] No post for ${postWeekLabel} — creating from template.`);
 
-    const doc    = buildWeeklyTemplateDoc_(weekLabel);  // B / A / C, all four panels each
+    const doc    = buildWeeklyTemplateDoc_(postWeekLabel);  // B / A / C, all four panels each
     const result = updateContributionSection_(doc, sections); // fill section C in memory
-    const created = createWeeklyBlogPost_(cfg, weekLabel, doc);
+    const created = createWeeklyBlogPost_(cfg, postWeekLabel, doc);
 
     Logger.log(`✅ [publishContributionSection] Created "${created.title}" (id ${created.id}) and set [${result.areasUpdated.join(', ')}] — ${created.url}`);
     return {
-      ok: true, created: true, url: created.url, title: created.title, weekLabel: weekLabel,
+      ok: true, created: true, url: created.url, title: created.title,
+      weekLabel: postWeekLabel, dataWeekLabel: dataWeekLabel,
       blogPostId: created.id, areasUpdated: result.areasUpdated, areasMissing: result.areasMissing,
     };
 
@@ -977,10 +1095,37 @@ function findSectionBounds_(content) {
 }
 
 /**
- * Builds an ADF bulletList node from an array of plain-text strings.
+ * Converts one bullet string into ADF inline text nodes, honouring the brief's
+ * lightweight markup: **bold** → strong mark, {red}…{/red} → red textColor (+strong,
+ * so the at-risk number pops the same way it does in the dashboard preview).
+ * Text outside the markers becomes plain text nodes. No nesting support.
+ * @param {string} text A bullet string, possibly containing markers.
+ * @returns {Object[]} ADF inline text nodes.
+ */
+function briefInlineNodes_(text) {
+  const nodes = [];
+  const re = /\*\*([^*]+)\*\*|\{red\}([\s\S]+?)\{\/red\}/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push({ type: 'text', text: text.substring(last, m.index) });
+    if (m[1] !== undefined) {
+      nodes.push({ type: 'text', text: m[1], marks: [{ type: 'strong' }] });
+    } else {
+      nodes.push({ type: 'text', text: m[2], marks: [{ type: 'strong' }, { type: 'textColor', attrs: { color: '#DE350B' } }] });
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) nodes.push({ type: 'text', text: text.substring(last) });
+  if (!nodes.length) nodes.push({ type: 'text', text: text });
+  return nodes;
+}
+
+/**
+ * Builds an ADF bulletList node from an array of bullet strings (plain text plus
+ * the optional **bold** / {red}…{/red} markers — see briefInlineNodes_).
  * Empty/blank entries are dropped; an empty list becomes a single "—" item so
  * the panel is never left blank (and so there is always a list to replace next week).
- * @param {string[]} items Plain-text bullet strings.
+ * @param {string[]} items Bullet strings.
  * @returns {Object} An ADF bulletList node.
  */
 function buildBulletList_(items) {
@@ -995,7 +1140,7 @@ function buildBulletList_(items) {
     content: finalItems.map(function (text) {
       return {
         type: 'listItem',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: text }] }],
+        content: [{ type: 'paragraph', content: briefInlineNodes_(text) }],
       };
     }),
   };
