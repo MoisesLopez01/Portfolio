@@ -1086,21 +1086,28 @@ function parseJiraMeta_(vals) {
   var iCre  = col("created");
   var iUpd  = col("updated");
   var iRes  = col("resolution date");
+  var iEst  = col("original estimate (sec)");
   if (iKey === -1) return { map: map, epicNames: epicNames };
 
   for (var r = 1; r < vals.length; r++) {
     var row = vals[r];
     var key = String(row[iKey] || "").toUpperCase().trim();
     if (!key) continue;
+    // Jira Raw writes a visible placeholder ("Unassigned" / "⚠️ UNASSIGNED")
+    // instead of an empty assignee cell — normalize it back to "" so the
+    // epic-backlog unassigned counter (!m.assignee) actually fires.
+    var asg = iAsg !== -1 ? String(row[iAsg] || "").trim() : "";
+    if (/unassigned/i.test(asg)) asg = "";
     map[key] = {
       fixVersions: iFix  !== -1 ? String(row[iFix]  || "").trim() : "",
       epicKey:     iEpic !== -1 ? String(row[iEpic] || "").toUpperCase().trim() : "",
       status:      iStat !== -1 ? String(row[iStat] || "").trim() : "",
       summary:     iSum  !== -1 ? String(row[iSum]  || "").trim() : "",
-      assignee:    iAsg  !== -1 ? String(row[iAsg]  || "").trim() : "",
+      assignee:    asg,
       created:     iCre  !== -1 ? jrDate_(row[iCre]) : null,
       updated:     iUpd  !== -1 ? jrDate_(row[iUpd]) : null,
       resolved:    iRes  !== -1 ? jrDate_(row[iRes]) : null,
+      estimateSec: iEst  !== -1 ? (Number(row[iEst]) || 0) : 0,
     };
   }
 
@@ -1116,7 +1123,8 @@ function parseJiraMeta_(vals) {
  * Reads the Jira Raw sheet from SOURCE_SS_ID and returns the metadata map.
  * Fail-soft: a missing/unreadable sheet returns available:false with empty
  * maps, so billing signals switch off but no other panel is affected.
- * Reads only columns 1..18 to skip the large "Comments (ADF Extracted)" column.
+ * Reads only columns 1..24 (A..X, through "Original Estimate (sec)") — wide
+ * enough for the epic-backlog stats while skipping the heavier tail columns.
  * @returns {{map:Object, epicNames:Object, available:boolean}}
  */
 function readJiraMeta_() {
@@ -1126,7 +1134,8 @@ function readJiraMeta_() {
     if (!sh) return { map: {}, epicNames: {}, available: false };
     var lastRow = sh.getLastRow();
     if (lastRow < 2) return { map: {}, epicNames: {}, available: false };
-    var vals = sh.getRange(1, 1, lastRow, 18).getValues();  // cols A..R (skip comments blob)
+    var lastCol = Math.min(sh.getLastColumn(), 24);
+    var vals = sh.getRange(1, 1, lastRow, lastCol).getValues();  // cols A..X (through Original Estimate)
     var parsed = parseJiraMeta_(vals);
     return { map: parsed.map, epicNames: parsed.epicNames, available: true };
   } catch (e) {
@@ -1151,6 +1160,8 @@ var JR_TODO_RE_ = /backlog|to ?do|open|new|triage|icebox|ready/i;
  *    ≥ CONFIG.AGING_WIP_DAYS days; oldestWipDays/oldestWipKey = the single
  *    worst one (the "top blocker" — the first ticket a PM should chase)
  *  - createdByWeek / closedByWeek: ISO-week counts (scope-vs-delivery trend)
+ *  - estimateH: Jira "Original Estimate" summed over all children, in hours —
+ *    the epic-level planned baseline (Tempo plans only exist per project)
  * The epic's own row (epicKey === "") is never counted as its own child.
  * @param {Object} map  parseJiraMeta_ map (UPPER issue key → meta)
  * @param {Date=} now   injectable clock for tests
@@ -1166,8 +1177,9 @@ function buildEpicBacklogStats_(map, now) {
     if (!ek) return;
     var s = stats[ek];
     if (!s) s = stats[ek] = { total: 0, done: 0, unassigned: 0, agingWip: 0, oldestWipDays: 0,
-                              oldestWipKey: "", createdByWeek: {}, closedByWeek: {} };
+                              oldestWipKey: "", estimateH: 0, createdByWeek: {}, closedByWeek: {} };
     s.total++;
+    s.estimateH += (m.estimateSec || 0) / 3600;
     var isDone = !!m.resolved || JR_DONE_RE_.test(m.status || "");
     if (isDone) {
       s.done++;
@@ -2065,17 +2077,17 @@ function _test_epicBacklogStats_() {
 
   var now = new Date("2026-07-15T12:00:00Z");
   var vals = [
-    ["Week", "Key", "Work (Summary)", "Assignee", "Status", "Fix Versions", "Epic Key", "Created", "Updated", "Resolution Date"],
+    ["Week", "Key", "Work (Summary)", "Assignee", "Status", "Fix Versions", "Epic Key", "Created", "Updated", "Resolution Date", "Original Estimate (sec)"],
     // EP-1 children: 1 done (resolved W28), 1 aging WIP (updated 20d ago), 1 unassigned todo
-    ["2026.W29", "A-1", "Shipped",   "Ana", "Done",        "", "EP-1", "2026-06-01", "2026-07-08", "2026-07-08"],
-    ["2026.W29", "A-2", "Stuck",     "Ben", "In Progress", "", "EP-1", "2026-06-10", "2026-06-25", ""],
-    ["2026.W29", "A-3", "Ownerless", "",    "Backlog",     "", "EP-1", "2026-07-13", "2026-07-13", ""],
+    ["2026.W29", "A-1", "Shipped",   "Ana", "Done",        "", "EP-1", "2026-06-01", "2026-07-08", "2026-07-08", 7200],
+    ["2026.W29", "A-2", "Stuck",     "Ben", "In Progress", "", "EP-1", "2026-06-10", "2026-06-25", "", 10800],
+    ["2026.W29", "A-3", "Ownerless", "",    "Backlog",     "", "EP-1", "2026-07-13", "2026-07-13", "", ""],
     // fresh WIP (updated 2d ago) — NOT aging
-    ["2026.W29", "A-4", "Active",    "Ana", "In Review",   "", "EP-1", "2026-07-01", "2026-07-13", ""],
+    ["2026.W29", "A-4", "Active",    "Ana", "In Review",   "", "EP-1", "2026-07-01", "2026-07-13", "", 0],
     // the epic's own row — must not count as its own child
-    ["2026.W29", "EP-1", "Epic row", "Ana", "In Progress", "", "",     "2026-05-01", "2026-07-01", ""],
+    ["2026.W29", "EP-1", "Epic row", "Ana", "In Progress", "", "",     "2026-05-01", "2026-07-01", "", 999999],
     // no-epic ticket — ignored entirely
-    ["2026.W29", "B-9", "Orphan",    "Ben", "Done",        "", "",     "2026-07-01", "2026-07-02", "2026-07-02"],
+    ["2026.W29", "B-9", "Orphan",    "Ben", "Done",        "", "",     "2026-07-01", "2026-07-02", "2026-07-02", 3600],
   ];
   var stats = buildEpicBacklogStats_(parseJiraMeta_(vals).map, now);
 
@@ -2087,6 +2099,7 @@ function _test_epicBacklogStats_() {
   assert_(s.agingWip === 1, "aging WIP should be 1 (A-2 untouched 20d; A-4 fresh; A-3 is Backlog=todo)");
   assert_(s.oldestWipDays >= 19 && s.oldestWipDays <= 21, "oldest WIP age ≈20d, got " + s.oldestWipDays);
   assert_(s.oldestWipKey === "A-2", "top blocker should be A-2, got " + s.oldestWipKey);
+  assert_(Math.abs(s.estimateH - 5) < 0.001, "estimateH should be 5h (7200+10800 sec; epic's own row excluded), got " + s.estimateH);
   assert_(s.createdByWeek["2026.W29"] === 1, "A-3 created in W29 (Jul 13 = Mon of W29)");
   assert_(s.closedByWeek["2026.W28"] === 1, "A-1 resolved Jul 8 = W28");
   assert_(!stats["B-9"] && Object.keys(stats).length === 1, "orphans/no-epic rows create no stats entries");
