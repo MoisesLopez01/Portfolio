@@ -798,6 +798,79 @@ function filteredWeekTotals_(isos){
   return { planned: planned, tracked: tracked };
 }
 
+/* ==UTIL-PURE-START== */
+/* Pure utilization math + CSV builders — NO DOM/global access. node-tests.js
+   extracts exactly this block (between the markers) and unit-tests it, so keep
+   it dependency-free: everything these functions need arrives as arguments. */
+
+// Weekly team totals for the Utilization panel. COVERAGE RULE: for each week,
+// only people with a numeric capacity cell contribute — their capacity AND
+// their tracked hours. Tracked-but-capacity-blank people are excluded from
+// both sums (they'd inflate the rate) and counted in trackedOnly so the
+// tooltip can state coverage. util is null when the week has no capacity.
+// Blank ≠ 0: `iso in capMap[np]` detects real cells; explicit 0 counts.
+function utilWeekTotals_(isos, capMap, trkMap, npList){
+  var out = { cap:{}, tracked:{}, covered:{}, trackedOnly:{}, util:{} };
+  isos.forEach(function(iso){
+    var capSum=0, trkSum=0, covered=0, trackedOnly=0;
+    npList.forEach(function(np){
+      var cw=capMap[np], tw=trkMap[np];
+      var t=(tw&&tw[iso])||0;
+      if (cw && (iso in cw)) { capSum+=cw[iso]; trkSum+=t; covered++; }
+      else if (t>0) trackedOnly++;
+    });
+    out.cap[iso]=capSum; out.tracked[iso]=trkSum;
+    out.covered[iso]=covered; out.trackedOnly[iso]=trackedOnly;
+    out.util[iso]=capSum>0?(trkSum/capSum*100):null;
+  });
+  return out;
+}
+
+function round1_(n){ return Math.round(n*10)/10; }
+
+// CSV rows (header first), person-major, people sorted by display name.
+// futureIsoSet marks weeks after the current one: those rows carry capacity
+// only (blank tracked/util — nothing to divide yet). Blank capacity stays
+// blank, never 0. A person-week with neither a capacity cell nor tracked
+// hours emits no row.
+function buildUtilCsvRows_(isoList, capMap, trkMap, nameMap, npList, futureIsoSet){
+  var rows=[["User","Week","Capacity hrs","Tracked hrs","Utilization %"]];
+  var sorted=npList.slice().sort(function(a,b){
+    var an=nameMap[a]||a, bn=nameMap[b]||b;
+    return an<bn?-1:(an>bn?1:0);
+  });
+  sorted.forEach(function(np){
+    var cw=capMap[np]||{}, tw=trkMap[np]||{};
+    isoList.forEach(function(iso){
+      var hasCap=(iso in cw);
+      var isFut=!!futureIsoSet[iso];
+      var trkVal=tw[iso]||0;
+      if(!hasCap && !(trkVal>0)) return;
+      var capCell = hasCap ? round1_(cw[iso]) : "";
+      var trkCell = isFut ? "" : round1_(trkVal);
+      var utilCell = (!isFut && hasCap && cw[iso]>0) ? round1_(trkVal/cw[iso]*100) : "";
+      rows.push([nameMap[np]||np, iso, capCell, trkCell, utilCell]);
+    });
+  });
+  return rows;
+}
+
+// Formula-injection-safe CSV field: numbers pass through verbatim (a negative
+// number is not a formula); strings get an apostrophe guard on leading
+// = + - @ and standard quote-wrapping when they contain , " or newlines.
+function csvEscape_(v){
+  if (typeof v === 'number') return String(v);
+  var s = String(v==null?'':v);
+  if (/^[=+\-@]/.test(s)) s = "'"+s;
+  if (/[",\r\n]/.test(s)) s = '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+
+function utilCsvString_(rows){
+  return rows.map(function(r){ return r.map(csvEscape_).join(","); }).join("\r\n");
+}
+/* ==UTIL-PURE-END== */
+
 // True when ANY People filter that filteredWeekTotals_/filteredPersonSet_ honors is
 // currently narrowing the roster (location / job family / manager / FTE-crew / role /
 // project-at-week). Mirrors filteredPersonSet_'s own "no filter → null" guard exactly, so
