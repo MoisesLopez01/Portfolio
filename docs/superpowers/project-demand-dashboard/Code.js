@@ -1748,6 +1748,58 @@ function buildPersonBehaviorSignals_(personWeekPlan, personWeekTracked, personPr
   };
 }
 
+// ── TEMPO SCHEDULE CAPACITY (Capacity Tempo tab → Utilization panel) ──
+
+/**
+ * Parses the Capacity Tempo sheet (built by TempoCapacityTime.js in the Tempo
+ * export project) into a person-week capacity grid.
+ *
+ * Sheet layout: row 1 = ISO labels ("2026.W14") over week columns; row 2 =
+ * "Account ID" | "User" | date-range labels | "Total (hrs)"; data rows 3+;
+ * footer row has a blank Account ID and User = "TOTAL".
+ *
+ * Rules: numeric cells only (blank = unknown, NEVER coerced to 0; explicit 0 =
+ * scheduled zero hours and IS kept); people keyed by the same normalization as
+ * planned/tracked names; the Total column and non-ISO columns are ignored.
+ * Pure — runs in GAS editor and Node.
+ *
+ * @param {Array[]} values - sheet.getDataRange().getValues()
+ * @returns {{ byName: Object, names: Object, isoList: string[] }}
+ *          byName: normName → { iso → hrs }; names: normName → raw display name
+ */
+function parseCapacityGrid_(values) {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var empty = { byName: {}, names: {}, isoList: [] };
+  if (!values || values.length < 3) return empty;
+
+  var isoRow = values[0], hdrRow = values[1];
+  if (String(hdrRow[0]).trim() !== 'Account ID' || String(hdrRow[1]).trim() !== 'User') return empty;
+
+  var isoList = [], colByIso = {};
+  for (var c = 2; c < hdrRow.length - 1; c++) {   // last column is "Total (hrs)"
+    var iso = String(isoRow[c] || '').trim();
+    if (/^\d{4}\.W\d{2}$/.test(iso)) { isoList.push(iso); colByIso[iso] = c; }
+  }
+  isoList.sort();   // zero-padded YYYY.WNN sorts chronologically
+
+  var byName = {}, names = {};
+  for (var r = 2; r < values.length; r++) {
+    var acct = String(values[r][0] || '').trim();
+    if (!acct) continue;                           // TOTAL footer / stray rows
+    var disp = String(values[r][1] || '').trim();
+    if (!disp) continue;
+    var np = norm(disp);
+    var weeks = byName[np] || {};
+    for (var i = 0; i < isoList.length; i++) {
+      var v = values[r][colByIso[isoList[i]]];
+      if (typeof v === 'number') weeks[isoList[i]] = v;
+    }
+    byName[np] = weeks;
+    if (!names[np]) names[np] = disp;
+  }
+  return { byName: byName, names: names, isoList: isoList };
+}
+
 function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfiles) {
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
   var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
@@ -2697,4 +2749,41 @@ function _test_holidayCapacity_() {
   assert_(model2.capByWeek["2026.W38"] === 200, "fallback 5×40 with no deductions, got " + model2.capByWeek["2026.W38"]);
 
   Logger.log("✅ _test_holidayCapacity_ passed");
+}
+
+/**
+ * parseCapacityGrid_: Capacity Tempo 2-D values → { byName, names, isoList }.
+ * Pure — runs in GAS editor and Node.
+ */
+function _test_capacityParse_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_capacityParse_: " + msg); }
+
+  var vals = [
+    ["", "",           "2026.W15", "2026.W14", "junk", ""],
+    ["Account ID", "User", "Apr 06 - Apr 12 2026", "Mar 30 - Apr 05 2026", "x", "Total (hrs)"],
+    ["712020:aaa", "Alice Doe", 40, 38.5, "n/a", 78.5],
+    ["712020:bbb", "Bob  Ray",  0,  "",   5,    0],
+    ["",           "TOTAL",     40, 38.5, "",   78.5]
+  ];
+  var g = parseCapacityGrid_(vals);
+
+  assert_(JSON.stringify(g.isoList) === JSON.stringify(["2026.W14", "2026.W15"]),
+          "isoList = valid ISO labels only, sorted (got " + JSON.stringify(g.isoList) + ")");
+  assert_(g.byName["alice doe"] && g.byName["alice doe"]["2026.W15"] === 40, "Alice W15 = 40");
+  assert_(g.byName["alice doe"]["2026.W14"] === 38.5, "Alice W14 = 38.5");
+  assert_(g.byName["bob ray"]["2026.W15"] === 0, "explicit 0 kept (scheduled zero)");
+  assert_(!("2026.W14" in g.byName["bob ray"]), "blank cell stays absent (unknown != 0)");
+  assert_(g.names["bob ray"] === "Bob  Ray", "display name preserved raw, key normalized");
+  assert_(!g.byName["total"], "TOTAL footer skipped (blank Account ID)");
+
+  // junk column (non-ISO header) never becomes a week
+  assert_(!("junk" in (g.byName["bob ray"] || {})), "non-ISO column ignored");
+
+  // Unrecognized header → empty model
+  var bad = parseCapacityGrid_([["", "", "2026.W14"], ["Wrong", "User", "x"], ["id", "A", 1]]);
+  assert_(bad.isoList.length === 0, "wrong header row -> empty");
+  // Too small → empty model
+  assert_(parseCapacityGrid_([["", ""], ["Account ID", "User"]]).isoList.length === 0, "no data rows -> empty");
+
+  Logger.log("✅ _test_capacityParse_ passed");
 }
