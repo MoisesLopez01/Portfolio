@@ -44,6 +44,7 @@ var CONFIG = {
   TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
   AGING_WIP_DAYS:      14,      // in-progress ticket untouched this many days → "aging WIP" (hidden blocker signal)
   TRACKED_SHEET_NAME:   "Tempo Tracked Time",
+  CAPACITY_SHEET_NAME:  "Capacity Tempo",   // Tempo work-schedule capacity (Utilization panel)
   JIRA_RAW_SHEET:       "Jira Raw",   // issue metadata source (same spreadsheet as SOURCE_SS_ID)
   DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
   SWARM_THRESHOLD:      0.20, // tracked/planned < 20% → "planned but not tracked"
@@ -448,6 +449,21 @@ function buildDemandModel_() {
       model.personMeta,
       weeks
     );
+    // ── Tempo schedule capacity (Capacity Tempo tab) — feeds the Utilization
+    // panel only; the Demand-vs-Capacity headline heuristic above is untouched. ──
+    var capResult = readTempoCapacity_(ss);
+    if (capResult.grid) {
+      var scopedCap = scopeCapacityToServices_(capResult.grid, roster.profiles);
+      model.personWeekCapacity = scopedCap.byName;
+      model.capacityNames      = scopedCap.names;
+      model.capacityIsoList    = capResult.grid.isoList;
+      model.capacityError      = null;
+    } else {
+      model.personWeekCapacity = {};
+      model.capacityNames      = {};
+      model.capacityIsoList    = [];
+      model.capacityError      = capResult.error;
+    }
     model.anzLocation = CONFIG.ANZ_LOCATION || '';
     model.generatedAt = new Date().toISOString();   // freshness badge ("Data as of HH:MM")
 
@@ -1800,6 +1816,49 @@ function parseCapacityGrid_(values) {
   return { byName: byName, names: names, isoList: isoList };
 }
 
+/**
+ * Keeps only people whose roster profile department is CONFIG.ROSTER_DEPT —
+ * the same predicate scopeRecsToServices_ applies to planned/tracked records,
+ * so the Utilization panel's population matches every other dashboard figure.
+ * Pure — runs in GAS editor and Node.
+ * @param {{byName:Object, names:Object}} grid - from parseCapacityGrid_
+ * @param {Object} profiles - roster profiles keyed by normalized name
+ * @returns {{ byName: Object, names: Object }}
+ */
+function scopeCapacityToServices_(grid, profiles) {
+  var out = { byName: {}, names: {} };
+  Object.keys((grid && grid.byName) || {}).forEach(function (np) {
+    var prof = (profiles || {})[np];
+    if (prof && prof.department === CONFIG.ROSTER_DEPT) {
+      out.byName[np] = grid.byName[np];
+      out.names[np] = (grid.names || {})[np] || np;
+    }
+  });
+  return out;
+}
+
+/**
+ * Reads the Capacity Tempo tab from the source spreadsheet. Any failure —
+ * missing tab, unrecognized layout, read error — returns { grid: null, error }
+ * so the dashboard renders normally with the Utilization panel in its
+ * degraded "no capacity data" state. Never throws.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - SOURCE_SS handle
+ * @returns {{ grid: ?Object, error: ?string }}
+ */
+function readTempoCapacity_(ss) {
+  try {
+    var sh = ss.getSheetByName(CONFIG.CAPACITY_SHEET_NAME);
+    if (!sh) return { grid: null, error: "Sheet '" + CONFIG.CAPACITY_SHEET_NAME + "' not found." };
+    var grid = parseCapacityGrid_(sh.getDataRange().getValues());
+    if (!grid.isoList.length) {
+      return { grid: null, error: "Sheet '" + CONFIG.CAPACITY_SHEET_NAME + "' has an unrecognized layout." };
+    }
+    return { grid: grid, error: null };
+  } catch (e) {
+    return { grid: null, error: "Capacity read failed: " + e.message };
+  }
+}
+
 function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfiles) {
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
   var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
@@ -2786,4 +2845,25 @@ function _test_capacityParse_() {
   assert_(parseCapacityGrid_([["", ""], ["Account ID", "User"]]).isoList.length === 0, "no data rows -> empty");
 
   Logger.log("✅ _test_capacityParse_ passed");
+}
+
+/** scopeCapacityToServices_: Services-department filter, same predicate as scopeRecsToServices_. */
+function _test_capacityScope_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_capacityScope_: " + msg); }
+  var grid = {
+    byName: { "alice doe": { "2026.W14": 40 }, "sam sales": { "2026.W14": 40 }, "gus ghost": { "2026.W14": 40 } },
+    names:  { "alice doe": "Alice Doe", "sam sales": "Sam Sales", "gus ghost": "Gus Ghost" },
+    isoList: ["2026.W14"]
+  };
+  var profiles = {
+    "alice doe": { department: "Services" },
+    "sam sales": { department: "Sales" }
+    // gus ghost: not in roster at all
+  };
+  var out = scopeCapacityToServices_(grid, profiles);
+  assert_(out.byName["alice doe"] && out.byName["alice doe"]["2026.W14"] === 40, "Services person kept");
+  assert_(!out.byName["sam sales"], "non-Services dropped");
+  assert_(!out.byName["gus ghost"], "no roster profile dropped");
+  assert_(out.names["alice doe"] === "Alice Doe" && !out.names["sam sales"], "names map scoped too");
+  Logger.log("✅ _test_capacityScope_ passed");
 }

@@ -53,4 +53,5 @@ _test_cacheRoundtrip_(new FakeCache());
 _test_familyFromTitle_();
 _test_holidayCapacity_();
 _test_capacityParse_();
+_test_capacityScope_();
 console.log("✅ node-tests: all suites passed");
