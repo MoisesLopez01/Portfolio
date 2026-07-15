@@ -371,8 +371,20 @@ input[type=file]{display:none}
 #dash .panel[data-view]{display:none}
 #dash[data-view="overview"] .panel[data-view="overview"],
 #dash[data-view="heat"] .panel[data-view="heat"],
-#dash[data-view="epic"] .panel[data-view="epic"],
-#dash[data-view="pm"] .panel[data-view="pm"]{display:block}
+#dash[data-view="epic"] .panel[data-view="epic"]{display:block}
+/* Epic health chips + sortable headers (Delivery & PM load tab) */
+.et-status{font-size:calc(10px*var(--scale));font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;cursor:help}
+.et-status-ok{background:#dcfce7;color:#15803d}
+.et-status-risk{background:#fef9c3;color:#854d0e}
+.et-status-stalled{background:#fee2e2;color:#b91c1c}
+[data-theme="dark"] .et-status-ok{background:#052e16;color:#4ade80}
+[data-theme="dark"] .et-status-risk{background:#422006;color:#fcd34d}
+[data-theme="dark"] .et-status-stalled{background:#450a0a;color:#fca5a5}
+.et-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.et-sort:hover{color:var(--text)}
+.et-sort .arr{font-size:calc(9px*var(--scale));opacity:.9}
+.et-conc-flag{background:#fee2e2;color:#b91c1c;font-size:calc(9px*var(--scale));font-weight:700;padding:1px 6px;border-radius:6px;white-space:nowrap;margin-left:6px;cursor:help}
+[data-theme="dark"] .et-conc-flag{background:#450a0a;color:#fca5a5}
 
 /* Issue-evidence expander — collapsed by default; the drill leads with headline
    numbers and managers open the issue-level proof only when they need it. */
@@ -501,8 +513,7 @@ input[type=file]{display:none}
     <div class="view-tabs" id="viewTabs">
       <button data-view="overview" class="on">Overview</button>
       <button data-view="heat">Project heatmap</button>
-      <button data-view="epic">Delivery by Epic</button>
-      <button data-view="pm">Demand by PM</button>
+      <button data-view="epic">Delivery &amp; PM load</button>
     </div>
 
     <!-- 1. Demand vs Capacity — headline -->
@@ -591,12 +602,13 @@ input[type=file]{display:none}
       </div>
     </div>
 
-    <!-- 3. Delivery by Epic (Phase 2 rollup) — tracked hours grouped by epic -->
+    <!-- 3. Delivery & PM load — merged decision surface: epic delivery health on top,
+         PM load balance below. Both sections share the universal filter scope. -->
     <div class="panel" id="epicRollupPanel" data-view="epic">
       <div class="panel-h">
-        <h2>Delivery by Epic</h2>
+        <h2>Epic delivery</h2>
         <div class="panel-tools">
-          <div class="hint">Tracked hours rolled up by epic · scoped by ALL filters above (People / Project / PM) · covers every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · billing shown as a per-epic split</div>
+          <div class="hint">Tracked hours + ticket completion + health per epic · scoped by ALL filters above (People / Project / PM) · covers every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
           <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
         </div>
       </div>
@@ -604,12 +616,12 @@ input[type=file]{display:none}
       <div class="sowhat" id="epicSoWhat"></div>
     </div>
 
-    <!-- 4. Demand by PM — planned/tracked hours rolled up by project manager (Jira project lead) -->
-    <div class="panel" id="pmRollupPanel" data-view="pm">
+    <!-- 3b. PM load — same tab: planned/tracked hours + epic count rolled up by project manager -->
+    <div class="panel" id="pmRollupPanel" data-view="epic">
       <div class="panel-h">
-        <h2>Demand by PM</h2>
+        <h2>PM load</h2>
         <div class="panel-tools">
-          <div class="hint">Scoped by ALL filters above (People / Project / PM) · planned hours reflect People filters, tracked hours are all-people per project · whole display window — pick a past week in the filter bar to focus that week · click a row to focus the dashboard on that PM</div>
+          <div class="hint">Scoped by ALL filters above (People / Project / PM) · planned hours are capacity-sanitized and reflect People filters, tracked hours are all-people per project · whole display window — pick a past week in the filter bar to focus that week · click a row to focus the dashboard on that PM</div>
           <button class="png-btn" data-png="demand-by-pm">⬇ Save PNG</button>
         </div>
       </div>
@@ -647,8 +659,10 @@ var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Untagged' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
-var VIEW_TAB = 'overview';  // 'overview' | 'heat' | 'epic' | 'pm' — which view tab is active; panels show/hide via CSS on #dash[data-view]
-var EPIC_OPEN = null; // expanded epic key on the Delivery by Epic panel (contributor-name drill row)
+var VIEW_TAB = 'overview';  // 'overview' | 'heat' | 'epic' (Delivery & PM load) — which view tab is active; panels show/hide via CSS on #dash[data-view]
+var EPIC_OPEN = null; // expanded epic key on the Epic delivery panel (contributor-name drill row)
+var EPIC_SORT = { col: 'hours', dir: -1 }; // epic-table sort — col ∈ epic|pm|hours|tickets|health
+var PM_CONC_EPICS = 5; // a PM carrying ≥ this many active epics gets a concentration flag
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
 var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
@@ -1412,7 +1426,7 @@ function keyScopeFn_(){
 }
 
 // Week scope for the rollup tabs: moving the main-bar Week select OFF the default
-// current week focuses Delivery by Epic + Demand by PM on that single ISO week —
+// current week focuses the Delivery & PM load tab on that single ISO week —
 // the same "Week ≠ current" convention the filter summary uses. At the default,
 // both rollups keep their whole-window totals.
 function rollupWeekScope_(){
@@ -1958,6 +1972,42 @@ function toggleEpicDrill(key){
   renderEpicRollup();
 }
 
+function setEpicSort_(col){
+  if(EPIC_SORT.col===col) EPIC_SORT.dir=-EPIC_SORT.dir;
+  else EPIC_SORT={col:col, dir: (col==='epic'||col==='pm') ? 1 : -1}; // text asc, numbers/severity desc
+  renderEpicRollup();
+}
+
+// Jira statuses that count as delivered for the Tickets column. Status is the
+// CURRENT snapshot from Jira Raw — "done/total" reads "of the tickets worked on
+// (in the current scope), how many are done NOW", not a burn-down over time.
+var EPIC_DONE_RE = /done|closed|resolved|complete|cancel/i;
+
+/**
+ * Epic health from full-history tracked hours (never the single-week focus —
+ * a week filter shouldn't make every other epic look stalled):
+ *  - stalled: worked in an earlier completed week but 0h in the last completed week
+ *  - risk: untagged+unclassified ≥25% of hours (billing hygiene / revenue leakage),
+ *          or hours collapsed >50% between the last two completed weeks
+ *  - ok: otherwise. Returns {cls, label, why, rank} — why rides in the hover title.
+ */
+function epicHealth_(histByIso, totals){
+  var doneIsos = WEEKS.filter(function(w){ return w.status==='done'; }).map(function(w){ return w.iso; });
+  var lastDone = doneIsos[doneIsos.length-1] || null;
+  var priorDone = doneIsos[doneIsos.length-2] || null;
+  var lastH = lastDone ? (histByIso[lastDone]||0) : 0;
+  var priorH = priorDone ? (histByIso[priorDone]||0) : 0;
+  var earlier = Object.keys(histByIso).some(function(iso){ return (!lastDone || isoOrd(iso)<isoOrd(lastDone)) && histByIso[iso]>0.001; });
+  if(lastDone && earlier && lastH<=0.001)
+    return {cls:'stalled', label:'Stalled', rank:2, why:'0h tracked in '+lastDone+' after earlier activity — check if blocked or quietly dropped.'};
+  var hygiene = totals.hours>0 ? (totals.untagged+totals.unclassified)/totals.hours : 0;
+  if(hygiene>=0.25)
+    return {cls:'risk', label:'At Risk', rank:1, why:Math.round(hygiene*100)+'% of hours untagged/unclassified — billing attribution gap (possible revenue leakage).'};
+  if(priorH>4 && lastH<priorH*0.5)
+    return {cls:'risk', label:'At Risk', rank:1, why:'Tracked hours dropped '+Math.round((1-lastH/priorH)*100)+'% between '+priorDone+' and '+lastDone+'.'};
+  return {cls:'ok', label:'On Track', rank:0, why:'Recent activity, billing tagged, no week-over-week collapse.'};
+}
+
 function renderEpicRollup(){
   var container=$('epicRollup'), swEl=$('epicSoWhat');
   if(!container) return;
@@ -1973,27 +2023,55 @@ function renderEpicRollup(){
 
   // Group by epicKey (blank → "(no epic)"); sum hours, collect distinct project keys and
   // contributors, and split hours by billingType for the per-epic billing dimension.
-  // Honors the universal key scope (Project / PM / Revenue) and the Week focus.
+  // Honors the universal key scope (Project / PM / Revenue) and the Week focus. histByIso
+  // is deliberately OUTSIDE the wkScope gate: epic health must read the whole history even
+  // when the table is focused on one week. issueStatus dedupes person×week rows to one
+  // status per ticket (Jira Raw snapshot). projHours picks the hours-weighted dominant
+  // project, whose PM becomes the epic's PM of record.
   var groups={}, order=[];
   issues.forEach(function(t){
     if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person (Phase 2 only)
     if(!inScope(t.projectKey)) return;
-    if(wkScope && t.iso!==wkScope) return;
     var ek=t.epicKey || '(no epic)';
     var g=groups[ek];
-    if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,untagged:0,unclassified:0,projectKeys:{},contributors:{}}; groups[ek]=g; order.push(ek); }
+    if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,untagged:0,unclassified:0,projectKeys:{},contributors:{},
+              histByIso:{},issueStatus:{},projHours:{}}; groups[ek]=g; order.push(ek); }
     var h=t.hours||0;
+    g.histByIso[t.iso]=(g.histByIso[t.iso]||0)+h;
+    if(wkScope && t.iso!==wkScope) return;
     g.hours+=h;
     if(t.billingType==='Billable') g.billable+=h;
     else if(t.billingType==='Internal') g.internal+=h;
     else if(t.billingType==='Untagged') g.untagged+=h;
     else g.unclassified+=h;
-    if(t.projectKey) g.projectKeys[t.projectKey]=true;
+    if(t.projectKey){ g.projectKeys[t.projectKey]=true; g.projHours[t.projectKey]=(g.projHours[t.projectKey]||0)+h; }
     if(t.person) g.contributors[normDD_(t.person)]=t.person; // keyed by norm (distinct-person dedupe), value = display name for hover/expand
+    if(t.issue) g.issueStatus[t.issue]=t.status||'';
   });
 
-  var rows=order.map(function(ek){return groups[ek];});
-  rows.sort(function(a,b){return b.hours-a.hours;});
+  // Under a week focus, groups can exist with 0 in-scope hours (histByIso is unwindowed) — drop them.
+  var rows=order.map(function(ek){return groups[ek];}).filter(function(g){return g.hours>0.001;});
+
+  // Derived per-epic decision columns: PM of record, ticket completion, health status.
+  rows.forEach(function(r){
+    var domProj='', domH=-1;
+    Object.keys(r.projHours).forEach(function(k){ if(r.projHours[k]>domH){ domH=r.projHours[k]; domProj=k; } });
+    r.pm=(domProj && KEYPM[domProj])||'';
+    var issueKeys=Object.keys(r.issueStatus);
+    r.ticketTotal=issueKeys.length;
+    r.ticketDone=issueKeys.filter(function(ik){ return EPIC_DONE_RE.test(r.issueStatus[ik]); }).length;
+    r.health=epicHealth_(r.histByIso, r);
+  });
+
+  var dirn=EPIC_SORT.dir;
+  var sorters={
+    epic:    function(a,b){ return a.epicKey.localeCompare(b.epicKey)*dirn; },
+    pm:      function(a,b){ return ((a.pm||'~').localeCompare(b.pm||'~'))*dirn || b.hours-a.hours; }, // '~' sinks blank PMs
+    hours:   function(a,b){ return (a.hours-b.hours)*dirn; },
+    tickets: function(a,b){ var ra=a.ticketTotal?a.ticketDone/a.ticketTotal:-1, rb=b.ticketTotal?b.ticketDone/b.ticketTotal:-1; return (ra-rb)*dirn || b.hours-a.hours; },
+    health:  function(a,b){ return (a.health.rank-b.health.rank)*dirn || b.hours-a.hours; }
+  };
+  rows.sort(sorters[EPIC_SORT.col]||sorters.hours);
   var totalHrs=rows.reduce(function(s,r){return s+r.hours;},0);
 
   if(!rows.length){
@@ -2002,8 +2080,14 @@ function renderEpicRollup(){
     return;
   }
 
+  function sortTh(col,label,cls){
+    var arr=EPIC_SORT.col===col?(' <span class="arr">'+(EPIC_SORT.dir>0?'▲':'▼')+'</span>'):'';
+    return '<th class="et-sort'+(cls?' '+cls:'')+'" data-sort="'+col+'" title="Click to sort">'+label+arr+'</th>';
+  }
   var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
-    +'<th>Epic</th><th>Project(s)</th><th>Billing</th><th class="et-hrs">Tracked hrs</th><th class="et-contrib">Contributors</th>'
+    +sortTh('epic','Epic')+sortTh('pm','PM')+'<th>Project(s)</th><th>Billing</th>'
+    +sortTh('hours','Tracked hrs','et-hrs')+sortTh('tickets','Tickets done','et-hrs')
+    +sortTh('health','Health')+'<th class="et-contrib">Contributors</th>'
     +'</tr></thead><tbody>';
 
   rows.forEach(function(r){
@@ -2023,11 +2107,20 @@ function renderEpicRollup(){
     var contribNames=Object.keys(r.contributors).map(function(k){return r.contributors[k];}).sort(function(a,b){return a.localeCompare(b);});
     var contribCount=contribNames.length;
     var isOpen=EPIC_OPEN===r.epicKey;
+    // Tickets done/total = CURRENT status of the tickets worked on in this scope (Jira
+    // Raw snapshot), not a burn-down — a full created-vs-closed view needs the Phase 2
+    // server enrichment (created/updated dates in Jira Raw).
+    var tickTitle=r.ticketTotal
+      ? r.ticketDone+' of '+r.ticketTotal+' worked-on ticket'+(r.ticketTotal!==1?'s':'')+' currently Done/Closed (Jira status snapshot)'
+      : 'No issue-level data';
     html+='<tr>'
       +'<td><span class="proj-key-mono">'+esc(r.epicKey)+'</span>'+(epicName?' <span class="pwt-name">'+esc(epicName)+'</span>':'')+'</td>'
+      +'<td>'+(r.pm?'<span class="pm-chip">'+esc(r.pm)+'</span>':'<span class="hint" title="Dominant project carries no PM of record">⚠ —</span>')+'</td>'
       +'<td>'+projHtml+'</td>'
       +'<td><span class="et-bill-'+billLbl+'" title="'+esc(billParts.join(' · '))+'">'+billLbl+'</span></td>'
       +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
+      +'<td class="et-hrs" title="'+esc(tickTitle)+'">'+(r.ticketTotal?(r.ticketDone+'/'+r.ticketTotal):'—')+'</td>'
+      +'<td><span class="et-status et-status-'+r.health.cls+'" title="'+esc(r.health.why)+'">'+r.health.label+'</span></td>'
       +'<td class="et-contrib"><span class="et-contrib-btn" title="'+esc(contribNames.join(', '))+'" onclick="toggleEpicDrill(\''+r.epicKey.replace(/'/g,"\\'")+'\')">'
         +contribCount+' '+(contribCount===1?'person':'people')+' '+(isOpen?'▴':'▾')+'</span></td>'
       +'</tr>';
@@ -2035,7 +2128,7 @@ function renderEpicRollup(){
       // Enhanced for Task 11: keep the contributor names (cheap "who" glance) and add the
       // full issue-level evidence table underneath (the "what work" behind those hours).
       var epicKeyForEvid=r.epicKey;
-      html+='<tr><td colspan="5" style="padding:0"><div class="avail-expanded-section">'
+      html+='<tr><td colspan="8" style="padding:0"><div class="avail-expanded-section">'
         +'<div style="margin-bottom:8px"><b>Contributors:</b> '+(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div>'
         +evidenceDetails_(function(t){return (t.epicKey||'(no epic)')===epicKeyForEvid;})
         +'</div></td></tr>';
@@ -2044,19 +2137,26 @@ function renderEpicRollup(){
 
   html+='</tbody></table></div>';
   container.innerHTML=html;
+  Array.prototype.forEach.call(container.querySelectorAll('th[data-sort]'),function(th){
+    th.onclick=function(){ setEpicSort_(th.dataset.sort); };
+  });
 
   // so-what: counts/percentages only — no individual names in the panel-level summary
   // (detail lives in the per-row hover title / expand, per the counts-in-charts convention).
-  var top=rows[0];
+  var byHours=rows.slice().sort(function(a,b){return b.hours-a.hours;});
+  var top=byHours[0];
   var topPct=totalHrs>0 ? Math.round((top.hours/totalHrs)*100) : 0;
   var topContribCount=Object.keys(top.contributors).length;
+  var stalledN=rows.filter(function(r){return r.health.cls==='stalled';}).length;
+  var riskN=rows.filter(function(r){return r.health.cls==='risk';}).length;
   var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours '+(wkScope?'in '+esc(wkScope):'across all tracked weeks')+' ('+fmt(totalHrs)+' hrs total)'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
+    +(stalledN||riskN ? ' Health: <b>'+stalledN+'</b> stalled · <b>'+riskN+'</b> at risk.' : ' All epics on track.')
     +(scopeActive?' Reflects the filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
 
-/* ---------------- Render: Demand by PM ----------------
+/* ---------------- Render: PM load (Delivery & PM load tab, lower section) ----------------
  * Rolls the window's planned + tracked hours up by project manager (KEYPM, the Jira
  * project lead from the Tempo exports). Planned comes from computeFilteredProjectData_()
  * so the People filters above are honored exactly like the heatmap; tracked comes from
@@ -2074,17 +2174,13 @@ function renderPmRollup(){
   var container=$('pmRollup'), swEl=$('pmSoWhat'), panel=$('pmRollupPanel');
   if(!container) return;
   var hasPm=Object.keys(KEYPM).some(function(k){return !!KEYPM[k];});
-  var pmTabBtn=document.querySelector('#viewTabs [data-view="pm"]');
   if(!hasPm){
-    // No PM data yet (exports haven't run with the PM column) — hide the whole
-    // panel AND its view tab; bounce back to Overview if it was the active tab.
+    // No PM data yet (exports haven't run with the PM column) — hide the PM load
+    // section; the Epic delivery table above it still carries the merged tab.
     if(panel) panel.style.display='none';
-    if(pmTabBtn) pmTabBtn.style.display='none';
-    if(VIEW_TAB==='pm') setViewTab_('overview');
     return;
   }
   if(panel) panel.style.display='';
-  if(pmTabBtn) pmTabBtn.style.display='';
 
   var f=computeFilteredProjectData_();
   var trk=(DATA&&DATA.tracked)||{};
@@ -2106,8 +2202,19 @@ function renderPmRollup(){
     if(planned<=0.001&&tracked<=0.001) return;
     var pm=KEYPM[k]||'(no PM)';
     var g=groups[pm];
-    if(!g){ g={pm:pm,planned:0,tracked:0,keys:{}}; groups[pm]=g; order.push(pm); }
+    if(!g){ g={pm:pm,planned:0,tracked:0,keys:{},epics:{}}; groups[pm]=g; order.push(pm); }
     g.planned+=planned; g.tracked+=tracked; g.keys[k]=true;
+  });
+
+  // Active-epic count per PM (concentration signal) — same person/key/week scope as the
+  // hour columns: an epic counts for the PM of the project the hours were logged under.
+  var pset2=filteredPersonSet_();
+  var inIso={}; isos.forEach(function(iso){ inIso[iso]=true; });
+  ((DATA&&DATA.trackedIssues)||[]).forEach(function(t){
+    if(pset2 && !pset2[normDD_(t.person)]) return;
+    if(!inScope(t.projectKey) || !inIso[t.iso] || !t.epicKey) return;
+    var g=groups[KEYPM[t.projectKey]||'(no PM)'];
+    if(g) g.epics[t.epicKey]=true;
   });
 
   var rows=order.map(function(p){return groups[p];});
@@ -2120,13 +2227,17 @@ function renderPmRollup(){
 
   var totalPlanned=rows.reduce(function(s,r){return s+r.planned;},0);
   var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
-    +'<th>PM</th><th>Projects</th><th class="et-hrs">Planned hrs</th><th class="et-hrs">Tracked hrs</th><th class="et-hrs">Fidelity</th>'
+    +'<th>PM</th><th>Projects</th><th class="et-hrs">Epics</th><th class="et-hrs">Planned hrs</th><th class="et-hrs">Tracked hrs</th><th class="et-hrs">Fidelity</th>'
     +'</tr></thead><tbody>';
   rows.forEach(function(r,i){
     var projKeys=Object.keys(r.keys).sort();
     var projHtml=projKeys.slice(0,4).map(function(k){return chip(k);}).join(' ')
       +(projKeys.length>4?' <span class="hint">+'+(projKeys.length-4)+'</span>':'');
     var fid=r.planned>0.001?Math.round((r.tracked/r.planned)*100)+'%':'—';
+    var epicN=Object.keys(r.epics).length;
+    var concFlag=epicN>=PM_CONC_EPICS
+      ? ' <span class="et-conc-flag" title="'+epicN+' active epics on one PM — concentration risk: check whether this portfolio is sustainable or needs rebalancing">⚠ load</span>'
+      : '';
     var noPm=r.pm==='(no PM)';
     var isActive=AVAIL_PM===(noPm?'__NOPM__':r.pm);
     var pmTitle=noPm
@@ -2136,6 +2247,7 @@ function renderPmRollup(){
       +'<td><span class="et-contrib-btn'+(noPm?' hint':'')+'" data-pm-row="'+i+'" title="'+pmTitle+'">'
         +(noPm?'⚠ ':'')+esc(r.pm)+(isActive?' ✓':'')+'</span></td>'
       +'<td>'+projHtml+'</td>'
+      +'<td class="et-hrs">'+(epicN||'—')+concFlag+'</td>'
       +'<td class="et-hrs">'+fmt(r.planned)+'</td>'
       +'<td class="et-hrs">'+fmt(r.tracked)+'</td>'
       +'<td class="et-hrs">'+fid+'</td>'
@@ -2757,7 +2869,7 @@ Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=func
 // "Tracked billing" chip toggle — scopes the Planned vs Tracked panel's tracked series only
 // (see trackedForWeek_ / BILLING_FILTER); planned/capacity figures never read this state.
 bindBillingChips_();
-// View tabs — Overview | Project heatmap | Delivery by Epic | Demand by PM.
+// View tabs — Overview | Project heatmap | Delivery & PM load.
 Array.prototype.forEach.call($('viewTabs').children,function(b){ b.onclick=function(){ setViewTab_(b.dataset.view); }; });
 Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
