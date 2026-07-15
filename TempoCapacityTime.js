@@ -54,7 +54,7 @@ function fetchTempoCapacity() {
     if (workerIds.length === 0) throw new Error("❌ No workers found in any Tempo Team.");
     const userMap = fetchUserNames_(workerIds, jiraEmail, jiraToken);
 
-    const endpoint = resolveCapacityEndpoint_(tempoToken, workerIds[0], fromStr, toStr);
+    const endpoint = resolveCapacityEndpoint_(tempoToken, workerIds.slice(0, 3), fromStr, toStr);
     const fetched = fetchSchedulesForWindow_(tempoToken, endpoint, workerIds, userMap, fromStr, toStr);
 
     const windowIsoWeeks = buildWeekRanges_(win.from, win.to).map((w) => w.isoLabel);
@@ -284,28 +284,34 @@ const CAPACITY_ENDPOINTS_ = [
 ];
 
 /**
- * Probes the candidates with one real worker and returns the first that
- * answers 200. Throws (sheet untouched) if none work.
+ * Probes the candidates in order and returns the first that answers 200.
+ * Up to three workers are tried per endpoint so a single schedule-less
+ * account cannot falsely disqualify a healthy endpoint and abort the run.
+ * Throws (sheet untouched) if no candidate answers 200 for any probed worker.
  * @param {string} tempoToken
- * @param {string} probeUserId
+ * @param {string[]} probeUserIds - first few worker account IDs
  * @param {string} fromStr - "YYYY-MM-DD"
  * @param {string} toStr   - "YYYY-MM-DD"
  * @returns {{ key: string, url: Function }}
  */
-function resolveCapacityEndpoint_(tempoToken, probeUserId, fromStr, toStr) {
+function resolveCapacityEndpoint_(tempoToken, probeUserIds, fromStr, toStr) {
   for (let i = 0; i < CAPACITY_ENDPOINTS_.length; i++) {
     const ep = CAPACITY_ENDPOINTS_[i];
-    const res = UrlFetchApp.fetch(ep.url(probeUserId, fromStr, toStr), {
-      method: "get",
-      headers: { Authorization: `Bearer ${tempoToken}` },
-      muteHttpExceptions: true,
-    });
-    const code = res.getResponseCode();
-    if (code === 200) {
-      Logger.log(`✅ [resolveCapacityEndpoint_] Using "${ep.key}" endpoint.`);
-      return ep;
+    for (let u = 0; u < probeUserIds.length; u++) {
+      const res = UrlFetchApp.fetch(ep.url(probeUserIds[u], fromStr, toStr), {
+        method: "get",
+        headers: { Authorization: `Bearer ${tempoToken}` },
+        muteHttpExceptions: true,
+      });
+      const code = res.getResponseCode();
+      if (code === 200) {
+        Logger.log(`✅ [resolveCapacityEndpoint_] Using "${ep.key}" endpoint.`);
+        return ep;
+      }
+      Logger.log(
+        `⚠️ [resolveCapacityEndpoint_] "${ep.key}" → HTTP ${code} for ${probeUserIds[u]}; trying next probe.`,
+      );
     }
-    Logger.log(`⚠️ [resolveCapacityEndpoint_] "${ep.key}" → HTTP ${code}; trying next candidate.`);
   }
   throw new Error(
     "❌ No Tempo capacity endpoint available (user-schedule and capacity both failed). Sheet left untouched.",
@@ -483,23 +489,29 @@ function writeCapacitySheet_(grid) {
 
   const dataRows = grid.rows.map((row) => {
     let total = 0;
+    let hasAny = false;
     const cells = isoWeeks.map((iso) => {
       const v = row.weeks[iso];
       if (typeof v !== "number") return ""; // blank = unknown, never coerced to 0
       total += v;
+      hasAny = true;
       return round2_(v);
     });
-    return [row.accountId, row.name].concat(cells, [round2_(total)]);
+    return [row.accountId, row.name].concat(cells, [hasAny ? round2_(total) : ""]);
   });
 
   const footer = new Array(totalCols).fill("");
   footer[1] = "TOTAL";
   for (let c = 2; c < totalCols; c++) {
     let sum = 0;
+    let seen = false;
     dataRows.forEach((r) => {
-      if (typeof r[c] === "number") sum += r[c];
+      if (typeof r[c] === "number") {
+        sum += r[c];
+        seen = true;
+      }
     });
-    footer[c] = round2_(sum);
+    footer[c] = seen ? round2_(sum) : ""; // all-blank column = unknown, not 0
   }
 
   const hdr = sheet.getRange(1, 1, 2, totalCols);
