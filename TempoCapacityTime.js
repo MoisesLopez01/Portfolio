@@ -105,6 +105,61 @@ function scheduleToWeeklyHours_(days) {
   return weeks;
 }
 
+// ── SECTION: GRID MERGE (pure — Node-tested) ─────────────────
+
+/**
+ * Merges the stored sheet model with freshly fetched window data.
+ *
+ * FREEZE RULE (single source of truth for immutability):
+ *   week ∈ windowIsoWeeks → fetched value wins (absent user/week → blank);
+ *   week ∉ windowIsoWeeks → stored value wins; fetched values there are IGNORED.
+ *
+ * Users are unioned: new hires append (blank past), leavers keep frozen
+ * history with blank window cells. `undefined` (no key) = blank = "unknown";
+ * an explicit 0 = "scheduled zero hours" and IS written.
+ *
+ * @param {Object} existingRows   - accountId → { name, weeks: {iso → hrs} }
+ * @param {Object} fetched        - accountId → { name, weeks: {iso → hrs} }
+ * @param {string[]} windowIsoWeeks - ISO labels covered by this fetch
+ * @returns {{ isoWeeks: string[], rows: Array<{accountId, name, weeks}> }}
+ */
+function mergeCapacityGrid_(existingRows, fetched, windowIsoWeeks) {
+  const windowSet = new Set(windowIsoWeeks);
+
+  const isoSet = new Set(windowIsoWeeks);
+  Object.keys(existingRows).forEach((id) => {
+    Object.keys(existingRows[id].weeks).forEach((iso) => isoSet.add(iso));
+  });
+  const isoWeeks = Array.from(isoSet).sort(); // "YYYY.WNN" sorts chronologically
+
+  const ids = new Set(Object.keys(existingRows).concat(Object.keys(fetched)));
+  const rows = [];
+  ids.forEach((id) => {
+    const oldRow = existingRows[id];
+    const newRow = fetched[id];
+
+    // Fetched display name wins unless the Jira lookup fell back to the raw id.
+    const name =
+      newRow && newRow.name && newRow.name !== id
+        ? newRow.name
+        : (oldRow && oldRow.name) || (newRow && newRow.name) || id;
+
+    const weeks = {};
+    isoWeeks.forEach((iso) => {
+      if (windowSet.has(iso)) {
+        if (newRow && iso in newRow.weeks) weeks[iso] = newRow.weeks[iso];
+      } else if (oldRow && iso in oldRow.weeks) {
+        weeks[iso] = oldRow.weeks[iso];
+      }
+    });
+
+    rows.push({ accountId: id, name: name, weeks: weeks });
+  });
+
+  rows.sort((a, b) => a.name.localeCompare(b.name));
+  return { isoWeeks: isoWeeks, rows: rows };
+}
+
 // ── SECTION: TESTS ────────────────────────────────────────────
 
 /**
@@ -179,9 +234,59 @@ function _test_scheduleBucketing_() {
   assertEq_(scheduleToWeeklyHours_([{ notADate: true }]), {}, "malformed entries skipped");
 }
 
+/** Freeze boundary, new hire, leaver, name refresh, blank-vs-zero. */
+function _test_capacityMerge_() {
+  Logger.log("🧪 _test_capacityMerge_");
+
+  const existing = {
+    "id-alice": { name: "Alice", weeks: { "2026.W28": 40, "2026.W29": 40 } },
+    "id-bob":   { name: "Bob",   weeks: { "2026.W28": 40, "2026.W29": 32 } },
+    "id-carol": { name: "Carol", weeks: { "2026.W28": 40, "2026.W29": 40 } }, // left the team
+  };
+  const fetched = {
+    "id-alice": { name: "Alicia Renamed", weeks: { "2026.W30": 40, "2026.W31": 40 } },
+    "id-bob":   { name: "id-bob",         weeks: { "2026.W30": 24, "2026.W31": 0 } }, // Jira name lookup failed
+    "id-dave":  { name: "Dave",           weeks: { "2026.W30": 40, "2026.W31": 40 } }, // new hire
+  };
+
+  const g = mergeCapacityGrid_(existing, fetched, ["2026.W30", "2026.W31"]);
+
+  assertEq_(g.isoWeeks, ["2026.W28", "2026.W29", "2026.W30", "2026.W31"], "column union, ISO-sorted");
+
+  const byId = {};
+  g.rows.forEach((r) => { byId[r.accountId] = r; });
+
+  assertEq_(byId["id-alice"].name, "Alicia Renamed", "fetched display name wins");
+  assertEq_(
+    byId["id-alice"].weeks,
+    { "2026.W28": 40, "2026.W29": 40, "2026.W30": 40, "2026.W31": 40 },
+    "frozen weeks kept + window weeks overwritten",
+  );
+  assertEq_(byId["id-bob"].name, "Bob", "stored name kept when lookup fell back to accountId");
+  assertEq_(byId["id-bob"].weeks["2026.W31"], 0, "explicit scheduled-zero preserved in window");
+  assertEq_(byId["id-bob"].weeks["2026.W29"], 32, "frozen week value untouched");
+  assertEq_(byId["id-carol"].weeks, { "2026.W28": 40, "2026.W29": 40 }, "leaver: history kept, window cells blank");
+  assertEq_(byId["id-dave"].weeks, { "2026.W30": 40, "2026.W31": 40 }, "new hire appended with blank past");
+  assertEq_(g.rows.map((r) => r.name), ["Alicia Renamed", "Bob", "Carol", "Dave"], "rows sorted by display name");
+
+  // FREEZE RULE hard check: a fetched value for a NON-window week is ignored.
+  const g2 = mergeCapacityGrid_(
+    { "id-x": { name: "X", weeks: { "2026.W29": 40 } } },
+    { "id-x": { name: "X", weeks: { "2026.W29": 8, "2026.W30": 40 } } },
+    ["2026.W30"],
+  );
+  assertEq_(g2.rows[0].weeks, { "2026.W29": 40, "2026.W30": 40 }, "fetched value outside window ignored (freeze)");
+
+  // Empty sheet (first run / backfill): fetched becomes the whole grid.
+  const g3 = mergeCapacityGrid_({}, { "id-a": { name: "A", weeks: { "2026.W14": 40 } } }, ["2026.W14"]);
+  assertEq_(g3.isoWeeks, ["2026.W14"], "empty-sheet grid takes fetched columns");
+  assertEq_(g3.rows.length, 1, "empty-sheet grid takes fetched rows");
+}
+
 /** GAS-editor & Node entry point — grows as tasks add suites. */
 function runCapacityTests() {
   _test_capacityWindow_();
   _test_scheduleBucketing_();
+  _test_capacityMerge_();
   Logger.log("✅ All capacity tests passed");
 }
