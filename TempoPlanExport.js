@@ -326,9 +326,13 @@ function logActiveFilters_(fromDate, weeks) {
  *
  * Row 1 (initial header): ISO calendar week name above each week column,
  *                         e.g. "2026.W14". Fixed columns are left blank.
- * Row 2 (date header):    "User", "Space", "Key", "Planned (hrs)", the week
- *                         date ranges (e.g. "Mar 30 - Apr 05 2026"), and
- *                         "Total (hrs)".
+ * Row 2 (date header):    "User", "Space", "Key", "PM", "Planned (hrs)",
+ *                         the week date ranges (e.g. "Mar 30 - Apr 05 2026"),
+ *                         and "Total (hrs)".
+ *
+ * "PM" is the Jira project lead of the plan's project (see attachProjectLeads_).
+ * Downstream readers (PS dashboard, demand dashboard) locate columns by header
+ * name, so the insert is safe for them.
  *
  * @param {Array<{label: string, isoLabel: string}>} weeks
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
@@ -340,12 +344,12 @@ function prepareSheet_(weeks) {
   sheet.clear();
 
   // Row 1 — ISO week names; blank over the fixed columns and the total column.
-  const isoRow = ["", "", "", ""];
+  const isoRow = ["", "", "", "", ""];
   weeks.forEach((w) => isoRow.push(w.isoLabel));
   isoRow.push("");
 
   // Row 2 — existing date-range headers.
-  const dateRow = ["User", "Space", "Key", "Planned (hrs)"];
+  const dateRow = ["User", "Space", "Key", "PM", "Planned (hrs)"];
   weeks.forEach((w) => dateRow.push(w.label));
   dateRow.push("Total (hrs)");
 
@@ -356,7 +360,7 @@ function prepareSheet_(weeks) {
   headerRange.setBackground(CONFIGPlan.HEADER_BG);
   headerRange.setFontColor(CONFIGPlan.HEADER_FONT);
   sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(4);
+  sheet.setFrozenColumns(5);
 
   return sheet;
 }
@@ -608,13 +612,14 @@ function fetchUserPlans_(token, userId) {
 // ── SECTION: JIRA DATA RESOLUTION ────────────────────────────
 
 /**
- * Resolves plan item IDs → { name, key } using Jira.
- * Dispatches PROJECT IDs and ISSUE IDs to separate resolvers.
+ * Resolves plan item IDs → { name, key, pm } using Jira.
+ * Dispatches PROJECT IDs and ISSUE IDs to separate resolvers, then fills the
+ * project-manager (Jira project lead) for entries the resolvers couldn't.
  * @param {string[]} itemIds
  * @param {Object} typeMap - itemId → "PROJECT" | "ISSUE"
  * @param {string} email
  * @param {string} token
- * @returns {Object} itemId → { name: string, key: string }
+ * @returns {Object} itemId → { name: string, key: string, pm: string }
  */
 function resolvePlanItems_(itemIds, typeMap, email, token) {
   const itemMap = {};
@@ -628,6 +633,7 @@ function resolvePlanItems_(itemIds, typeMap, email, token) {
 
   if (projectIds.length > 0) resolveProjects_(projectIds, itemMap, auth);
   if (issueIds.length > 0) resolveIssues_(issueIds, itemMap, auth);
+  attachProjectLeads_(itemMap, auth);
 
   const resolved = Object.values(itemMap).filter(
     (v) => !v.name.startsWith("Unknown") && !v.name.startsWith("Project-"),
@@ -662,11 +668,15 @@ function resolveProjects_(projectIds, itemMap, auth) {
           res.getResponseCode() === 200
             ? (() => {
                 const p = JSON.parse(res.getContentText());
-                return { name: p.name || `Project-${id}`, key: p.key || "" };
+                return {
+                  name: p.name || `Project-${id}`,
+                  key: p.key || "",
+                  pm: p.lead?.displayName || "",
+                };
               })()
-            : { name: `Project-${id}`, key: "" };
+            : { name: `Project-${id}`, key: "", pm: "" };
       } catch (e) {
-        itemMap[id] = { name: `Project-${id}`, key: "" };
+        itemMap[id] = { name: `Project-${id}`, key: "", pm: "" };
       }
     });
   }
@@ -702,9 +712,12 @@ function resolveIssues_(issueIds, itemMap, auth) {
 
       if (res.getResponseCode() === 200) {
         (JSON.parse(res.getContentText()).issues || []).forEach((issue) => {
+          // NOTE: the project object embedded in issue responses is slimmed —
+          // it never carries `lead`. PM is filled later by attachProjectLeads_.
           itemMap[String(issue.id)] = {
             name: issue.fields?.project?.name || "Unknown",
             key: issue.fields?.project?.key || "",
+            pm: "",
           };
         });
       }
@@ -733,11 +746,12 @@ function resolveIssues_(issueIds, itemMap, auth) {
                     return {
                       name: iss.fields?.project?.name || "Unknown",
                       key: iss.fields?.project?.key || "",
+                      pm: "",
                     };
                   })()
-                : { name: "Unknown", key: "" };
+                : { name: "Unknown", key: "", pm: "" };
           } catch (e2) {
-            itemMap[id] = { name: "Unknown", key: "" };
+            itemMap[id] = { name: "Unknown", key: "", pm: "" };
           }
         });
       } catch (e3) {
@@ -745,6 +759,94 @@ function resolveIssues_(issueIds, itemMap, auth) {
       }
     }
   }
+}
+
+/**
+ * Fills the `pm` field (project manager = Jira project lead) on every itemMap
+ * entry that has a project key but no PM yet. Shared by TempoPlanExport.js and
+ * TempoTrackedTime.js.
+ *
+ * WHY A SEPARATE STEP: the project object embedded in Jira ISSUE responses is
+ * a slimmed version that never includes `lead`, so issue resolution cannot
+ * capture the PM directly. Leads are instead fetched once per DISTINCT project
+ * key (a handful of requests), then stamped onto every entry sharing that key.
+ * PMs already learned by resolveProjects_ (full project GET) are reused, never
+ * re-fetched. Mutates itemMap in place.
+ *
+ * @param {Object} itemMap - itemId → { name, key, pm, ... }
+ * @param {string} auth    - Base64 "email:token" for Jira Basic auth
+ */
+function attachProjectLeads_(itemMap, auth) {
+  const entries = Object.values(itemMap);
+
+  // Leads already known from full-project resolution, keyed by project key.
+  const knownPm = {};
+  entries.forEach((v) => {
+    if (v.key && v.pm) knownPm[v.key] = v.pm;
+  });
+
+  const missingKeys = Array.from(
+    new Set(
+      entries
+        .filter((v) => v.key && !v.pm && !knownPm[v.key])
+        .map((v) => v.key),
+    ),
+  );
+
+  const fetchedPm = missingKeys.length
+    ? fetchProjectLeads_(missingKeys, auth)
+    : {};
+
+  let filled = 0;
+  entries.forEach((v) => {
+    if (!v.pm && v.key) {
+      v.pm = knownPm[v.key] || fetchedPm[v.key] || "";
+      if (v.pm) filled++;
+    }
+  });
+  Logger.log(
+    `ℹ️ [attachProjectLeads_] PM filled on ${filled} item(s) ` +
+      `(${missingKeys.length} project lead(s) fetched from Jira).`,
+  );
+}
+
+/**
+ * Fetches the project lead's display name for each project key (batched).
+ * @param {string[]} projectKeys - Distinct Jira project keys.
+ * @param {string}   auth        - Base64 "email:token" for Jira Basic auth
+ * @returns {Object} projectKey → lead display name ("" when unavailable)
+ */
+function fetchProjectLeads_(projectKeys, auth) {
+  const pmMap = {};
+
+  const requests = projectKeys.map((key) => ({
+    url: `${CONFIGPlan.JIRA_BASE}/rest/api/3/project/${encodeURIComponent(key)}?expand=lead`,
+    method: "get",
+    headers: { Authorization: `Basic ${auth}` },
+    muteHttpExceptions: true,
+  }));
+
+  for (let b = 0; b < requests.length; b += CONFIGPlan.API_BATCH_SIZE) {
+    const responses = UrlFetchApp.fetchAll(
+      requests.slice(b, b + CONFIGPlan.API_BATCH_SIZE),
+    );
+    responses.forEach((res, i) => {
+      const key = projectKeys[b + i];
+      try {
+        pmMap[key] =
+          res.getResponseCode() === 200
+            ? JSON.parse(res.getContentText()).lead?.displayName || ""
+            : "";
+      } catch (e) {
+        pmMap[key] = "";
+      }
+      if (!pmMap[key]) {
+        Logger.log(`   ⚠️ [fetchProjectLeads_] No lead found for project ${key}`);
+      }
+    });
+  }
+
+  return pmMap;
 }
 
 /**
@@ -823,9 +925,9 @@ function fmtDate_(d) {
  * @param {Array}  weeks      - from buildWeekRanges_ (start, calcEnd, label…)
  * @param {string[]} workerIds - raw account IDs (MERGE_MAP applied per row)
  * @param {Object} userMap    - effectiveId → display name
- * @param {Object} itemMap    - planItemId → { name, key }
+ * @param {Object} itemMap    - planItemId → { name, key, pm }
  * @param {Date}   toDate     - report end; clamps the final partial week
- * @returns {Object} groupKey → { worker, project, projectKey, weeklyHours[], total }
+ * @returns {Object} groupKey → { worker, project, projectKey, pm, weeklyHours[], total }
  */
 function groupPlansByWeekScoped_(
   tempoToken,
@@ -914,6 +1016,7 @@ function groupPlansByWeekScoped_(
         const itemInfo = itemMap[itemId];
         const project = itemInfo ? itemInfo.name : `${planType}-${itemId}`;
         const projectKey = itemInfo ? itemInfo.key : "";
+        const pm = itemInfo && itemInfo.pm ? itemInfo.pm : "";
         const groupKey = `${worker}|||${project}`;
 
         if (!grouped[groupKey]) {
@@ -921,6 +1024,7 @@ function groupPlansByWeekScoped_(
             worker,
             project,
             projectKey,
+            pm,
             weeklyHours: new Array(weeks.length).fill(0),
             total: 0,
           };
@@ -989,7 +1093,7 @@ function groupPlansByWeekScoped_(
  * @param {Object} itemMap
  * @param {Date}   fromDate
  * @param {Date}   toDate
- * @returns {Object} groupKey → { worker, project, projectKey, weeklyHours[], total }
+ * @returns {Object} groupKey → { worker, project, projectKey, pm, weeklyHours[], total }
  */
 function groupPlansByUserProject_(
   allPlans,
@@ -1010,6 +1114,7 @@ function groupPlansByUserProject_(
     const itemInfo = itemMap[itemId];
     const project = itemInfo ? itemInfo.name : `${itemType}-${itemId}`;
     const projectKey = itemInfo ? itemInfo.key : "";
+    const pm = itemInfo && itemInfo.pm ? itemInfo.pm : "";
     const groupKey = `${worker}|||${project}`;
 
     if (!grouped[groupKey]) {
@@ -1017,6 +1122,7 @@ function groupPlansByUserProject_(
         worker,
         project,
         projectKey,
+        pm,
         weeklyHours: new Array(weeks.length).fill(0), // full precision floats
         total: 0,
       };
@@ -1207,7 +1313,13 @@ function buildSortedRows_(grouped, weeks) {
     const roundedWeeks = entry.weeklyHours.map((h) => round2_(h));
     const roundedTotal = round2_(entry.total);
 
-    const row = [entry.worker, entry.project, entry.projectKey, roundedTotal];
+    const row = [
+      entry.worker,
+      entry.project,
+      entry.projectKey,
+      entry.pm || "",
+      roundedTotal,
+    ];
     roundedWeeks.forEach((h) => row.push(h));
     row.push(roundedTotal); // repeated in the last column for quick scanning
     return row;
@@ -1230,7 +1342,9 @@ function writeRows_(sheet, rows, weeks) {
     return;
   }
 
-  const totalCols = 4 + weeks.length + 1;
+  // 4 fixed columns (User, Space, Key, PM) + Planned + weeks + Total
+  const FIRST_HOURS_COL = 4; // 0-based index of "Planned (hrs)"
+  const totalCols = 5 + weeks.length + 1;
 
   // Write data rows starting at row 3 (rows 1–2 are the stacked headers)
   sheet.getRange(3, 1, rows.length, totalCols).setValues(rows);
@@ -1240,17 +1354,16 @@ function writeRows_(sheet, rows, weeks) {
   //  and matches what a user would expect when they manually sum the sheet)
   const totalRow = new Array(totalCols).fill(0);
   totalRow[0] = "TOTAL";
-  totalRow[1] = "";
-  totalRow[2] = "";
+  for (let c = 1; c < FIRST_HOURS_COL; c++) totalRow[c] = "";
 
   rows.forEach((row) => {
-    for (let c = 3; c < totalCols; c++) {
+    for (let c = FIRST_HOURS_COL; c < totalCols; c++) {
       totalRow[c] += row[c] || 0;
     }
   });
 
   // Round the grand-total footer values
-  for (let c = 3; c < totalCols; c++) {
+  for (let c = FIRST_HOURS_COL; c < totalCols; c++) {
     totalRow[c] = round2_(totalRow[c]);
   }
 
@@ -1267,7 +1380,7 @@ function writeRows_(sheet, rows, weeks) {
   // Diagnostic summary
   const uniqueUsers = new Set(rows.map((r) => r[0]));
   const grandTotal = totalRow[totalCols - 1];
-  const plannedTotal = totalRow[3];
+  const plannedTotal = totalRow[FIRST_HOURS_COL];
 
   Logger.log(`ℹ️ Unique users : ${uniqueUsers.size}`);
   Logger.log(`ℹ️ Total rows   : ${rows.length}`);
@@ -1277,7 +1390,7 @@ function writeRows_(sheet, rows, weeks) {
   const userTotals = {};
   rows.forEach((row) => {
     const user = row[0];
-    userTotals[user] = (userTotals[user] || 0) + (row[3] || 0);
+    userTotals[user] = (userTotals[user] || 0) + (row[FIRST_HOURS_COL] || 0);
   });
   Object.keys(userTotals)
     .sort()

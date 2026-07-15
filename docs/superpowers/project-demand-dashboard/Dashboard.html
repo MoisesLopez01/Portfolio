@@ -188,6 +188,8 @@ svg .axis{stroke:var(--border)}
 [data-theme="dark"] .hexp-title{color:#a5b4fc}
 .hexp-risk-flag{background:#fee2e2;color:#b91c1c;font-size:calc(10px*var(--scale));font-weight:700;padding:2px 8px;border-radius:6px}
 [data-theme="dark"] .hexp-risk-flag{background:#450a0a;color:#fca5a5}
+.pm-chip{background:#e0e7ff;color:#3730a3;font-size:calc(10px*var(--scale));font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap}
+[data-theme="dark"] .pm-chip{background:#1e2a5a;color:#c7d2fe}
 .hexp-person-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
 .hexp-person-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid #dbeafe;border-radius:6px;padding:7px 10px;font-size:calc(11px*var(--scale));flex-wrap:wrap}
 [data-theme="dark"] .hexp-person-row{border-color:#1e3a5f}
@@ -282,6 +284,7 @@ input[type=file]{display:none}
 /* Main filters (Project + Week) — the two primary, always-visible filter bar controls */
 .main-filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .main-filters select#mainProj{min-width:calc(170px*var(--scale))}
+.main-filters select#mainPm{min-width:calc(130px*var(--scale))}
 .main-filters select#mainWeek{min-width:calc(140px*var(--scale))}
 /* Sparkline legend */
 .spark-legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:calc(10.5px*var(--scale));color:var(--muted);
@@ -350,6 +353,7 @@ input[type=file]{display:none}
 .et-contrib-btn:hover{color:var(--orbe)}
 .et-bill-Billable{color:var(--pos);font-weight:700}
 .et-bill-Internal{color:var(--muted);font-weight:700}
+.et-bill-Untagged{color:var(--warn);font-weight:700}
 .et-bill-Unclassified{color:var(--amber);font-weight:700}
 </style>
 </head>
@@ -431,7 +435,13 @@ input[type=file]{display:none}
         </div>
         <div class="main-filters" onclick="event.stopPropagation()">
           <select class="sigfilter" id="mainProj"><option value="">All projects</option></select>
+          <select class="sigfilter" id="mainPm"><option value="">All PMs</option></select>
           <select class="sigfilter" id="mainWeek"></select>
+          <div class="chip-toggle" id="revFilter" title="Revenue focus — 💰 shows only projects with SRSO-tagged (fixed price / sales order) tracked hours this window; Non-rev shows the rest">
+            <button data-rev="all" class="on">All work</button>
+            <button data-rev="rev">💰 Revenue</button>
+            <button data-rev="nonrev">Non-rev</button>
+          </div>
         </div>
         <span class="filter-summary" id="filterSummary">All people</span>
         <span class="filter-toggle" id="filterToggle">▾ expand</span>
@@ -469,10 +479,11 @@ input[type=file]{display:none}
         <div class="panel-tools">
           <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · * = week still in progress · hover or click a week label to inspect/navigate · reflects People filters above</div>
           <span class="hint" id="billableRatioChip"></span>
-          <div class="chip-toggle" id="billingFilter" title="Tracked billing — filters tracked-hour figures only; planned demand is unaffected">
+          <div class="chip-toggle" id="billingFilter" title="Tracked billing — filters tracked-hour figures only; planned demand is unaffected. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version (possible missing revenue attribution) · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
             <button data-billing="Billable">Billable</button>
             <button data-billing="Internal">Internal</button>
+            <button data-billing="Untagged">Untagged</button>
             <button data-billing="Unclassified">Unclassified</button>
           </div>
           <button class="png-btn" data-png="demand-vs-capacity">⬇ Save PNG</button>
@@ -525,6 +536,7 @@ input[type=file]{display:none}
         <div class="projdrill-h">
           <span id="projDrillChip"></span>
           <span id="projDrillName" style="font-weight:600;font-size:13px"></span>
+          <span id="projDrillPm"></span>
           <button id="projDrillClose" style="margin-left:auto;font-size:12px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 8px">✕ Close</button>
         </div>
         <div id="projDrillChart"></div>
@@ -554,6 +566,19 @@ input[type=file]{display:none}
       <div class="sowhat" id="epicSoWhat"></div>
     </div>
 
+    <!-- 4. Demand by PM — planned/tracked hours rolled up by project manager (Jira project lead) -->
+    <div class="panel" id="pmRollupPanel">
+      <div class="panel-h">
+        <h2>Demand by PM</h2>
+        <div class="panel-tools">
+          <div class="hint">Planned hours reflect the People filters above · tracked hours are all-people per project · whole display window · click a row to focus the dashboard on that PM</div>
+          <button class="png-btn" data-png="demand-by-pm">⬇ Save PNG</button>
+        </div>
+      </div>
+      <div id="pmRollup"></div>
+      <div class="sowhat" id="pmSoWhat"></div>
+    </div>
+
     <div class="foot" id="foot"></div>
   </div>
 </div>
@@ -568,13 +593,14 @@ window.onerror = function(msg, src, line, col, err) {
 };
 
 /* ---------------- State ---------------- */
-var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYINDEX = {};
+var DATA = null, WEEKS = [], NWEEKS = 0, KEYNAME = {}, KEYPM = {}, KEYINDEX = {};
 var SEL_ISO = "", CURRENT_ISO = "";
 var TOPN = 15, SEARCH = "", ACTIVE_ROW = null, SOURCE = "live";
 var COLOR_MODE = "hours", QFILTER = "all";
 var HEAT_MAX_HEAD = 0;
 var AVAIL_LOC = "", AVAIL_FAM = new Set(), AVAIL_MGR = "", AVAIL_CREW = "", AVAIL_ROLE = "", AVAIL_OPEN = null;
 var AVAIL_PROJ = ""; // main-filter: project key — narrows to people planned on it at SEL_ISO
+var AVAIL_PM = "";   // main-filter: project manager — narrows to their projects + people planned on them at SEL_ISO
 var AVAIL_WIN_SIZE = 8; // week window for TA pattern strip (0 = all QTD)
 var AVAIL_WIN_PAGE = 0; // 0 = latest window, 1 = one window earlier, etc.
 var AVAIL_BLEND = 0;    // project-count tier filter (0=all, 1/2/3/4=specific)
@@ -582,7 +608,8 @@ var FILTER_EXPANDED = false; // people filter bar expand state
 var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
-var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
+var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Untagged' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
+var REV_FILTER = 'all';     // 'all' | 'rev' | 'nonrev' — project-level revenue focus (SRSO fix versions via DATA.projectBillingWindow); scopes the heatmap rows + Demand-by-PM rollup
 var EPIC_OPEN = null; // expanded epic key on the Delivery by Epic panel (contributor-name drill row)
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -680,7 +707,7 @@ function filteredWeekTotals_(isos){
 // project-at-week). Mirrors filteredPersonSet_'s own "no filter → null" guard exactly, so
 // the two never disagree about whether the panel is showing the full Services set.
 function peopleFilterActive_(){
-  return !!(AVAIL_LOC || AVAIL_FAM.size || AVAIL_MGR || AVAIL_CREW || AVAIL_ROLE || AVAIL_PROJ);
+  return !!(AVAIL_LOC || AVAIL_FAM.size || AVAIL_MGR || AVAIL_CREW || AVAIL_ROLE || AVAIL_PROJ || AVAIL_PM);
 }
 
 // Applies the "Tracked billing" chip (BILLING_FILTER) to a single week's tracked hours.
@@ -706,6 +733,7 @@ function trackedForWeek_(iso, fallbackTracked){
   if (!b) return fallbackTracked || 0;
   if (BILLING_FILTER === 'Billable') return b.billable;
   if (BILLING_FILTER === 'Internal') return b.internal;
+  if (BILLING_FILTER === 'Untagged') return b.untagged || 0;
   return b.unclassified;
 }
 
@@ -754,18 +782,38 @@ function applyBillingFilter_(trackedMap, isos){
 // trackedForWeek_ above) — so callers must apply the same "org-wide" caveat under a People
 // filter that the billing chips already carry via syncBillingChips_.
 function billingWindowStats_(){
-  var bill=0, intl=0, unc=0;
+  var bill=0, intl=0, unt=0, unc=0;
   (DATA.isoList||[]).forEach(function(iso){
     var b=(DATA.billingByWeek||{})[iso];
     if(!b) return;
-    bill+=b.billable; intl+=b.internal; unc+=b.unclassified;
+    bill+=b.billable; intl+=b.internal; unt+=(b.untagged||0); unc+=b.unclassified;
   });
-  var classified=bill+intl, total=classified+unc;
+  var classified=bill+intl+unt, total=classified+unc;
   return {
     ratio: classified>0 ? bill/classified : null,
     coverage: total>0 ? classified/total : null,
     hasData: total>0,
   };
+}
+
+// Revenue-focus chips (main filter bar) — project-level scope over the heatmap +
+// Demand-by-PM rollup via revKeyOk_(). Independent of BILLING_FILTER (which scopes
+// the Planned vs Tracked panel's tracked series by hour-level classification).
+function syncRevChips_(){
+  var grp=$('revFilter'); if(!grp) return;
+  Array.prototype.forEach.call(grp.children,function(b){
+    b.classList.toggle('on', b.dataset.rev===REV_FILTER);
+  });
+}
+function bindRevChips_(){
+  var grp=$('revFilter'); if(!grp) return;
+  Array.prototype.forEach.call(grp.children,function(b){
+    b.onclick=function(){
+      REV_FILTER=b.dataset.rev;
+      syncRevChips_();
+      reRenderAll_();
+    };
+  });
 }
 
 function bindBillingChips_(){
@@ -829,6 +877,7 @@ function capChartHover_(e, iso){
     var b=(DATA.billingByWeek||{})[iso];
     if(b){
       billTxt='<br>Billable: '+fmt(b.billable)+' hrs<br>Internal: '+fmt(b.internal)+' hrs'
+        +((b.untagged||0)>0?'<br>Untagged: '+fmt(b.untagged)+' hrs':'')
         +(b.unclassified>0?'<br>Unclassified: '+fmt(b.unclassified)+' hrs':'');
     }
   }
@@ -864,6 +913,7 @@ function applyModel(model){
   WEEKS = model.weeks || [];
   NWEEKS = WEEKS.length;
   KEYNAME = model.keyName || {};
+  KEYPM = model.keyPm || {};
   KEYINDEX = {};
   (model.order||[]).forEach(function(k,i){ KEYINDEX[k]=i; });
   HOLIDAYS = model.holidaysByWeek || {};
@@ -1028,8 +1078,10 @@ function renderCapLegend(){
   if(showSplit){
     var cwL = capChartWeeks_();
     var hasUnc = cwL.some(function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b && b.unclassified>0; });
+    var hasUnt = cwL.some(function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b && (b.untagged||0)>0; });
     el.innerHTML+='<span><i style="background:#00A86B"></i>Tracked · billable</span>'+
       '<span><i style="background:#6FCDA0"></i>Tracked · internal</span>'+
+      (hasUnt?'<span><i style="background:#E8B45A"></i>Tracked · untagged</span>':'')+
       (hasUnc?'<span><i style="background:#A8D9BE"></i>Tracked · unclassified</span>':'');
   }
 }
@@ -1089,7 +1141,7 @@ function renderCapChart(wt,cw){
   // when the billing chip is at 'all' (no specific bucket picked), Jira Raw is available,
   // and no People filter narrows the roster — the same three-part gate the billable-ratio
   // chip already uses (billingWindowStats_ / syncBillingChips_). In this state
-  // billable+internal+unclassified for a week equals wt.tracked[iso] exactly (the 'all'
+  // billable+internal+untagged+unclassified for a week equals wt.tracked[iso] exactly (the 'all'
   // path in trackedForWeek_ always returns the People-filtered-but-otherwise-org total,
   // and with no People filter that IS the org total DATA.billingByWeek is built from), so
   // the bands stack up to the same height as the tracked line drawn just below/on top of
@@ -1113,8 +1165,10 @@ function renderCapChart(wt,cw){
     if(bWeeks.length){
       var billOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].billable; };
       var intOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].internal; };
+      var untOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].untagged||0; };
       var uncOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].unclassified||0; };
       var hasUnc = bWeeks.some(function(bw){ return uncOf(bw)>0; });
+      var hasUnt = bWeeks.some(function(bw){ return untOf(bw)>0; });
       // Builds a filled band between two per-week value getters over bWeeks only (top
       // boundary walked forward, bottom boundary walked backward), using x(bw.i)/y(v) —
       // the same scaffolding as the planned area above, keyed on original cw index.
@@ -1126,7 +1180,8 @@ function renderCapChart(wt,cw){
       var zeroOf=function(){ return 0; };
       g+='<path d="'+bandPath_(billOf, zeroOf)+'" fill="#00A86B" opacity="0.85"/>'; // billable — solid green
       g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw);}, billOf)+'" fill="#6FCDA0" opacity="0.6"/>'; // internal — muted green
-      if(hasUnc) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+uncOf(bw);}, function(bw){return billOf(bw)+intOf(bw);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
+      if(hasUnt) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+untOf(bw);}, function(bw){return billOf(bw)+intOf(bw);})+'" fill="#E8B45A" opacity="0.5"/>'; // untagged — amber (hygiene)
+      if(hasUnc) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+untOf(bw)+uncOf(bw);}, function(bw){return billOf(bw)+intOf(bw)+untOf(bw);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
     }
   }
   // tracked line (no separate fill of its own when the split above isn't shown — an
@@ -1233,12 +1288,28 @@ function populateAvailFilters(){
 // Project narrows the person set (see personOnProjectAtSel_); Week drives SEL_ISO
 // dashboard-wide (Planned vs Tracked headline, heatmap "losing" question-filter, etc.).
 function populateMainFilters_(){
-  var projSel=$('mainProj'), wkSel=$('mainWeek');
+  var projSel=$('mainProj'), pmSel=$('mainPm'), wkSel=$('mainWeek');
   if(!projSel||!wkSel||!DATA) return;
   var order=(DATA.order||[]).slice().sort();
   projSel.innerHTML='<option value="">All projects</option>'+order.map(function(k){
     return '<option value="'+esc(k)+'"'+(k===AVAIL_PROJ?' selected':'')+'>'+esc(k)+' — '+esc(KEYNAME[k]||k)+'</option>';
   }).join('');
+  if(pmSel){
+    var pmSeen={}; Object.keys(KEYPM).forEach(function(k){ if(KEYPM[k]) pmSeen[KEYPM[k]]=true; });
+    var pms=Object.keys(pmSeen).sort(function(a,b){return a.localeCompare(b);});
+    // "Missing PM" (sentinel __NOPM__) = projects with hours but no PM attribution —
+    // the director's hygiene view: work happening without a PM of record.
+    pmSel.innerHTML='<option value="">All PMs</option>'
+      +'<option value="__NOPM__"'+(AVAIL_PM==='__NOPM__'?' selected':'')+'>⚠ Missing PM</option>'
+      +pms.map(function(p){
+      return '<option value="'+esc(p)+'"'+(p===AVAIL_PM?' selected':'')+'>'+esc(p)+'</option>';
+    }).join('');
+    pmSel.style.display=pms.length?'':'none';  // hidden until the exports carry PM data
+    pmSel.onchange=function(){ AVAIL_PM=this.value; reRenderAll_(); };
+  }
+  // Revenue-focus chips are only meaningful when Jira Raw billing data is present.
+  var rf=$('revFilter');
+  if(rf) rf.style.display = (DATA.jiraMetaAvailable===false) ? 'none' : '';
   wkSel.innerHTML=WEEKS.map(function(w){
     return '<option value="'+w.iso+'"'+(w.iso===SEL_ISO?' selected':'')+'>'+esc(w.iso)+' ('+STATUS_LABEL[w.status]+')</option>';
   }).join('');
@@ -1303,9 +1374,43 @@ function personOnProjectAtSel_(np){
   return !!(pp && pp[AVAIL_PROJ] && (pp[AVAIL_PROJ][SEL_ISO]||0) > 0);
 }
 
+// The selected PM's project set (null when the PM filter is off).
+// '__NOPM__' inverts: every known project key (planned or tracked) with NO PM attached.
+function pmKeySet_(){
+  if(!AVAIL_PM) return null;
+  var s={};
+  if(AVAIL_PM==='__NOPM__'){
+    var uni={};
+    ((DATA&&DATA.order)||[]).forEach(function(k){ uni[k]=true; });
+    Object.keys((DATA&&DATA.tracked)||{}).forEach(function(k){ uni[k]=true; });
+    Object.keys(uni).forEach(function(k){ if(!KEYPM[k]) s[k]=true; });
+    return s;
+  }
+  Object.keys(KEYPM).forEach(function(k){ if(KEYPM[k]===AVAIL_PM) s[k]=true; });
+  return s;
+}
+
+// Revenue-focus predicate over project keys. A key counts as "revenue" when it has any
+// SRSO-classified (Billable) tracked hours in the window per DATA.projectBillingWindow;
+// keys with no tracked billing entry (planned-only) land in Non-rev.
+function revKeyOk_(k){
+  if(REV_FILTER==='all') return true;
+  var pb=(DATA&&DATA.projectBillingWindow||{})[k];
+  var isRev=!!(pb && pb.billable>0.001);
+  return REV_FILTER==='rev' ? isRev : !isRev;
+}
+
+// Same week-bound semantics as personOnProjectAtSel_, over the PM's whole portfolio:
+// a person counts as "on" the PM only if planned on one of their projects at SEL_ISO.
+function personOnPmAtSel_(np){
+  var ks=pmKeySet_(); if(!ks) return true;
+  var pp=(DATA.personProjectPlan||{})[np]; if(!pp) return false;
+  return Object.keys(ks).some(function(k){ return pp[k] && (pp[k][SEL_ISO]||0) > 0; });
+}
+
 function filteredPersonSet_(){
   if(!DATA||!DATA.personMeta)return null;
-  if(!AVAIL_LOC&&!AVAIL_FAM.size&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE&&!AVAIL_PROJ)return null;
+  if(!AVAIL_LOC&&!AVAIL_FAM.size&&!AVAIL_MGR&&!AVAIL_CREW&&!AVAIL_ROLE&&!AVAIL_PROJ&&!AVAIL_PM)return null;
   var set={};
   Object.keys(DATA.personMeta).forEach(function(np){
     var m=DATA.personMeta[np];
@@ -1318,6 +1423,7 @@ function filteredPersonSet_(){
     if(AVAIL_ROLE==='m'&&!m.isManager)return;
     if(AVAIL_ROLE==='ic'&&m.isManager)return;
     if(!personOnProjectAtSel_(np))return;
+    if(!personOnPmAtSel_(np))return;
     set[np]=true;
   });
   return set;
@@ -1331,6 +1437,9 @@ function updateFilterBar_(){
   var parts=[];
   parts.push(TOPN>=999?'All':'Top '+TOPN);
   if(AVAIL_PROJ)parts.push('Project '+AVAIL_PROJ);
+  if(AVAIL_PM)parts.push(AVAIL_PM==='__NOPM__'?'⚠ Missing PM':'PM '+AVAIL_PM);
+  if(REV_FILTER==='rev')parts.push('💰 Revenue only');
+  else if(REV_FILTER==='nonrev')parts.push('Non-revenue only');
   if(SEL_ISO&&SEL_ISO!==CURRENT_ISO)parts.push('Week '+SEL_ISO);
   if(AVAIL_ROLE==='m')parts.push('Mgrs');
   else if(AVAIL_ROLE==='ic')parts.push('ICs');
@@ -1349,6 +1458,7 @@ function reRenderAll_(){
   renderAvailability();
   if(typeof renderHeat==='function')renderHeat();
   if(typeof renderEpicRollup==='function')renderEpicRollup();
+  if(typeof renderPmRollup==='function')renderPmRollup();
   updateFilterBar_();
 }
 
@@ -1736,8 +1846,9 @@ function toggleAvailDrill(np){
 
 function clearAvailFilters(){
   AVAIL_LOC='';AVAIL_FAM.clear();AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_OPEN=null;
-  AVAIL_PROJ='';SEL_ISO=CURRENT_ISO;
+  AVAIL_PROJ='';AVAIL_PM='';SEL_ISO=CURRENT_ISO;
   AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
+  REV_FILTER='all';syncRevChips_();
   populateAvailFilters();
   reRenderAll_();
 }
@@ -1761,6 +1872,7 @@ function renderProjDrill(key){
     +renderEvidenceTable_(evidenceRows_(function(t){return t.projectKey===key;}));
   $('projDrillChip').innerHTML=chip(key);
   $('projDrillName').textContent=KEYNAME[key]||key;
+  var pmEl=$('projDrillPm'); if(pmEl) pmEl.innerHTML = KEYPM[key] ? '<span class="pm-chip">PM: '+esc(KEYPM[key])+'</span>' : '';
   var fnEl=$('projDrillFilterNote'); if(fnEl) fnEl.style.display = filteredPersonSet_() ? '' : 'none';
   var w=560,h=100,pad={l:36,r:10,t:14,b:22},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   var maxv=1;
@@ -1823,11 +1935,12 @@ function renderEpicRollup(){
     if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person (Phase 2 only)
     var ek=t.epicKey || '(no epic)';
     var g=groups[ek];
-    if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,unclassified:0,projectKeys:{},contributors:{}}; groups[ek]=g; order.push(ek); }
+    if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,untagged:0,unclassified:0,projectKeys:{},contributors:{}}; groups[ek]=g; order.push(ek); }
     var h=t.hours||0;
     g.hours+=h;
     if(t.billingType==='Billable') g.billable+=h;
     else if(t.billingType==='Internal') g.internal+=h;
+    else if(t.billingType==='Untagged') g.untagged+=h;
     else g.unclassified+=h;
     if(t.projectKey) g.projectKeys[t.projectKey]=true;
     if(t.person) g.contributors[normDD_(t.person)]=t.person; // keyed by norm (distinct-person dedupe), value = display name for hover/expand
@@ -1853,12 +1966,13 @@ function renderEpicRollup(){
     var projHtml=projKeys.length
       ? projKeys.slice(0,3).map(function(k){return chip(k);}).join(' ')+(projKeys.length>3?' <span class="hint">+'+(projKeys.length-3)+'</span>':'')
       : '<span class="hint">—</span>';
-    // Billing dimension: "Billable if any child is Billable", else Internal if any child is
-    // Internal, else Unclassified — full h/h/h split rides along in the hover title.
-    var billLbl = r.billable>0 ? 'Billable' : (r.internal>0 ? 'Internal' : 'Unclassified');
+    // Billing dimension: "Billable if any child is Billable", else Internal, else Untagged,
+    // else Unclassified — full h/h/h/h split rides along in the hover title.
+    var billLbl = r.billable>0 ? 'Billable' : (r.internal>0 ? 'Internal' : (r.untagged>0 ? 'Untagged' : 'Unclassified'));
     var billParts=[];
     if(r.billable>0) billParts.push(fmt(r.billable)+'h billable');
     if(r.internal>0) billParts.push(fmt(r.internal)+'h internal');
+    if(r.untagged>0) billParts.push(fmt(r.untagged)+'h untagged');
     if(r.unclassified>0) billParts.push(fmt(r.unclassified)+'h unclassified');
     var contribNames=Object.keys(r.contributors).map(function(k){return r.contributors[k];}).sort(function(a,b){return a.localeCompare(b);});
     var contribCount=contribNames.length;
@@ -1893,6 +2007,104 @@ function renderEpicRollup(){
   var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours this window ('+fmt(totalHrs)+' hrs total)'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(isFiltered?' Reflects the People filters above.':'');
+  if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
+}
+
+/* ---------------- Render: Demand by PM ----------------
+ * Rolls the window's planned + tracked hours up by project manager (KEYPM, the Jira
+ * project lead from the Tempo exports). Planned comes from computeFilteredProjectData_()
+ * so the People filters above are honored exactly like the heatmap; tracked comes from
+ * DATA.tracked, which is per-project all-people (same caveat the project drill carries).
+ * Clicking a row toggles the PM main filter — the same state the "All PMs" dropdown sets.
+ */
+function togglePmFilter_(pm){
+  var v = pm==='(no PM)' ? '__NOPM__' : pm;  // the no-PM row maps to the Missing-PM sentinel
+  AVAIL_PM = AVAIL_PM===v ? '' : v;
+  populateMainFilters_();
+  reRenderAll_();
+}
+
+function renderPmRollup(){
+  var container=$('pmRollup'), swEl=$('pmSoWhat'), panel=$('pmRollupPanel');
+  if(!container) return;
+  var hasPm=Object.keys(KEYPM).some(function(k){return !!KEYPM[k];});
+  if(!hasPm){
+    // No PM data yet (exports haven't run with the PM column) — hide the whole panel.
+    if(panel) panel.style.display='none';
+    return;
+  }
+  if(panel) panel.style.display='';
+
+  var f=computeFilteredProjectData_();
+  var trk=(DATA&&DATA.tracked)||{};
+  var allKeys={};
+  Object.keys(f.cap).forEach(function(k){allKeys[k]=true;});
+  Object.keys(trk).forEach(function(k){allKeys[k]=true;});
+  // Revenue-focus chips scope this rollup the same way they scope the heatmap rows.
+  if(REV_FILTER!=='all'){ Object.keys(allKeys).forEach(function(k){ if(!revKeyOk_(k)) delete allKeys[k]; }); }
+
+  var groups={}, order=[];
+  Object.keys(allKeys).forEach(function(k){
+    var planned=0,tracked=0;
+    WEEKS.forEach(function(w){
+      planned+=(f.cap[k]&&f.cap[k][w.iso])||0;
+      tracked+=(trk[k]&&trk[k][w.iso])||0;
+    });
+    if(planned<=0.001&&tracked<=0.001) return;
+    var pm=KEYPM[k]||'(no PM)';
+    var g=groups[pm];
+    if(!g){ g={pm:pm,planned:0,tracked:0,keys:{}}; groups[pm]=g; order.push(pm); }
+    g.planned+=planned; g.tracked+=tracked; g.keys[k]=true;
+  });
+
+  var rows=order.map(function(p){return groups[p];});
+  rows.sort(function(a,b){return b.planned-a.planned;});
+  if(!rows.length){
+    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No planned or tracked hours in this window'+(filteredPersonSet_()?' for the selected people':'')+'.</div>';
+    if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
+    return;
+  }
+
+  var totalPlanned=rows.reduce(function(s,r){return s+r.planned;},0);
+  var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
+    +'<th>PM</th><th>Projects</th><th class="et-hrs">Planned hrs</th><th class="et-hrs">Tracked hrs</th><th class="et-hrs">Fidelity</th>'
+    +'</tr></thead><tbody>';
+  rows.forEach(function(r,i){
+    var projKeys=Object.keys(r.keys).sort();
+    var projHtml=projKeys.slice(0,4).map(function(k){return chip(k);}).join(' ')
+      +(projKeys.length>4?' <span class="hint">+'+(projKeys.length-4)+'</span>':'');
+    var fid=r.planned>0.001?Math.round((r.tracked/r.planned)*100)+'%':'—';
+    var noPm=r.pm==='(no PM)';
+    var isActive=AVAIL_PM===(noPm?'__NOPM__':r.pm);
+    var pmTitle=noPm
+      ? 'Click to '+(isActive?'clear the':'set the')+' Missing-PM filter — work with no PM of record'
+      : 'Click to '+(isActive?'clear the':'set the')+' PM filter';
+    html+='<tr>'
+      +'<td><span class="et-contrib-btn'+(noPm?' hint':'')+'" data-pm-row="'+i+'" title="'+pmTitle+'">'
+        +(noPm?'⚠ ':'')+esc(r.pm)+(isActive?' ✓':'')+'</span></td>'
+      +'<td>'+projHtml+'</td>'
+      +'<td class="et-hrs">'+fmt(r.planned)+'</td>'
+      +'<td class="et-hrs">'+fmt(r.tracked)+'</td>'
+      +'<td class="et-hrs">'+fid+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  container.innerHTML=html;
+
+  // Row click → toggle the PM filter. Bound via data attribute (PM names can carry quotes).
+  Array.prototype.forEach.call(container.querySelectorAll('[data-pm-row]'),function(el){
+    el.onclick=function(){ togglePmFilter_(rows[+el.dataset.pmRow].pm); };
+  });
+
+  // so-what: counts/percentages only — no individual names in the panel-level summary.
+  var top=rows[0];
+  var topPct=totalPlanned>0?Math.round((top.planned/totalPlanned)*100):0;
+  var pmCount=rows.filter(function(r){return r.pm!=='(no PM)';}).length;
+  var noPmRow=groups['(no PM)'];
+  var sw='<b>'+pmCount+' PM'+(pmCount!==1?'s':'')+'</b> across '+Object.keys(allKeys).length+' projects with hours this window'
+    +' — the top PM portfolio carries '+topPct+'% of planned hours ('+fmt(top.planned)+' hrs, '+Object.keys(top.keys).length+' project'+(Object.keys(top.keys).length!==1?'s':'')+').'
+    +(noPmRow?' '+Object.keys(noPmRow.keys).length+' project'+(Object.keys(noPmRow.keys).length!==1?'s have':' has')+' no PM set in Jira.':'')
+    +(filteredPersonSet_()?' Planned figures reflect the People filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
 
@@ -1974,6 +2186,8 @@ function qPredicate(k){
 }
 function visibleOrder(){
   var order=(FPROJ||DATA).order.slice();
+  if(AVAIL_PM){var pks=pmKeySet_()||{};order=order.filter(function(k){return !!pks[k];});}
+  if(REV_FILTER!=='all'){order=order.filter(revKeyOk_);}
   if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
   order=order.filter(qPredicate);
   return order.slice(0,TOPN);
@@ -2085,6 +2299,7 @@ function heatProjectExpandHtml_(key) {
   var html = '<td colspan="' + (NWEEKS + 1) + '" style="padding:0">';
   html += '<div class="hexp-section">';
   html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(titleWkLbl);
+  if (KEYPM[key]) html += ' <span class="pm-chip">PM: ' + esc(KEYPM[key]) + '</span>';
   if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '</span>';
   html += '</div>';
   if (peopleHtml) html += '<div class="hexp-person-list">' + peopleHtml + '</div>';
@@ -2166,7 +2381,7 @@ function renderFoot(){
 
 function renderAll(){
   renderRange(); renderCapacity(); renderAvailability();
-  renderHeat(); renderEpicRollup(); renderFoot();
+  renderHeat(); renderEpicRollup(); renderPmRollup(); renderFoot();
 }
 
 /* ---------------- Tooltip ---------------- */
@@ -2220,12 +2435,13 @@ function parseCSV(text){
   var lines=text.split(/\r?\n/).filter(function(l){return l.trim().length;});
   if(!lines.length) return [];
   var head=lines[0].split(',').map(function(s){return s.trim().toLowerCase();});
-  var ci={person:head.indexOf('person'),iso:head.indexOf('week'),key:head.indexOf('project_key'),name:head.indexOf('project_name'),hours:head.indexOf('allocation')};
+  var ci={person:head.indexOf('person'),iso:head.indexOf('week'),key:head.indexOf('project_key'),name:head.indexOf('project_name'),hours:head.indexOf('allocation'),pm:head.indexOf('pm')};
   var out=[];
   for(var i=1;i<lines.length;i++){
     var c=lines[i].split(',');
     var r={person:(c[ci.person]||'').trim(),iso:(c[ci.iso]||'').trim(),key:(c[ci.key]||'').trim().toUpperCase(),
-           name:ci.name>=0?(c[ci.name]||'').replace(/^"|"$/g,'').trim():'',hours:parseFloat(c[ci.hours])};
+           name:ci.name>=0?(c[ci.name]||'').replace(/^"|"$/g,'').trim():'',hours:parseFloat(c[ci.hours]),
+           pm:ci.pm>=0?(c[ci.pm]||'').replace(/^"|"$/g,'').trim():''};
     if(r.person&&r.iso&&r.key&&!isNaN(r.hours)&&r.key!=='NETSUITE') out.push(r);
   }
   return out;
@@ -2245,11 +2461,12 @@ function aggregateClient(recs,weeks,baselineIso){
   var isoList=weeks.map(function(w){return w.iso;});
   var inW={}; isoList.forEach(function(iso){inW[iso]=1;});
   if(baselineIso) inW[baselineIso]=1;   // counted for WoW baseline only (not displayed)
-  var cap={},headSets={},personKeys={},keyName={};
+  var cap={},headSets={},personKeys={},keyName={},keyPm={};
   isoList.forEach(function(iso){personKeys[iso]={};});
   recs.forEach(function(r){
     if(!inW[r.iso])return;
     if(!keyName[r.key]&&r.name)keyName[r.key]=r.name;
+    if(!keyPm[r.key]&&r.pm)keyPm[r.key]=r.pm;
     cap[r.key]=cap[r.key]||{}; cap[r.key][r.iso]=(cap[r.key][r.iso]||0)+r.hours;
     headSets[r.key]=headSets[r.key]||{}; headSets[r.key][r.iso]=headSets[r.key][r.iso]||{}; headSets[r.key][r.iso][r.person]=1;
     if(personKeys[r.iso]){ personKeys[r.iso][r.person]=personKeys[r.iso][r.person]||{}; personKeys[r.iso][r.person][r.key]=1; }
@@ -2277,7 +2494,7 @@ function aggregateClient(recs,weeks,baselineIso){
   var capByWeek={},grossCapByWeek={}; isoList.forEach(function(iso){var g=(activePeople[iso]||0)*40;grossCapByWeek[iso]=g;capByWeek[iso]=g;});
   return {weeks:weeks,isoList:isoList,cap:cap,head:head,winners:winners,activeProj:activeProj,weekTotal:weekTotal,
     blendByWeek:blendByWeek,avgBlend:avgBlend,stretched:stretched,activePeople:activePeople,fragByWeek:fragByWeek,
-    order:totals.map(function(t){return t.key;}),keyName:keyName,maxCell:maxCell,baselineIso:baselineIso||null,
+    order:totals.map(function(t){return t.key;}),keyName:keyName,keyPm:keyPm,maxCell:maxCell,baselineIso:baselineIso||null,
     capByWeek:capByWeek,grossCapByWeek:grossCapByWeek,timeOffByWeek:{},capacityMode:"planned",headcount:null,anzCount:0,
     capacity:40,anzCapacity:38,planTarget:0.9,
     fragMin:FRAG,topnStrategic:10,utilTight:0.85,utilOver:1.0,error:null};
@@ -2294,6 +2511,8 @@ Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=func
 // "Tracked billing" chip toggle — scopes the Planned vs Tracked panel's tracked series only
 // (see trackedForWeek_ / BILLING_FILTER); planned/capacity figures never read this state.
 bindBillingChips_();
+// Revenue-focus chips (main filter bar) — heatmap + PM rollup project scope.
+bindRevChips_();
 Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
 

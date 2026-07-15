@@ -30,7 +30,8 @@ var CONFIG = {
 
   // ── Capacity denominator: active Services base hours (38 ANZ / 40 else), minus PTO/holidays ──
   ROSTER_SS_ID:        "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0",
-  ROSTER_SHEET:        "Roster",
+  ROSTER_SHEET:        "Data",               // roster tab — renamed from "Roster" (matches PS Contribution Report.js)
+  CONTRACTORS_SHEET:   "Contractors Data",   // crew/contractor tab in the same SS — same headers as Data
   ROSTER_CLASS:        "Professional Services",
   ROSTER_DEPT:         "Services",
 
@@ -367,6 +368,10 @@ function buildDemandModel_() {
       var tm = aggregate_(scopedTrackedRecs, weeks, baselineIso);
       model.weekTracked = tm.weekTotal;
       model.tracked     = tm.cap;
+      // PM merge: projects that only appear in tracked time still get their PM.
+      Object.keys(tm.keyPm || {}).forEach(function (k) {
+        if (!model.keyPm[k]) model.keyPm[k] = tm.keyPm[k];
+      });
       model.fidelity    = {};
       model.isoList.forEach(function(iso) {
         var pl = model.weekTotal[iso] || 0;
@@ -431,6 +436,57 @@ function buildDemandModel_() {
     err.error = "Failed to read source data: " + e.message;
     return err;
   }
+}
+
+/**
+ * Editor-run diagnostic — logs record counts at every stage of the demand
+ * pipeline so an empty dashboard can be localised in one run (roster tabs →
+ * profiles → planned parse → Services scoping → tracked → cache version).
+ * Run from the GAS editor and read the execution log; changes nothing.
+ */
+function debugDemandPipeline() {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
+
+  // 1 — Roster tabs + profiles
+  var rosterSs = SpreadsheetApp.openById(CONFIG.ROSTER_SS_ID);
+  Logger.log("Roster SS tabs: " + rosterSs.getSheets().map(function (s) { return s.getName(); }).join(" | "));
+  var roster = readRosterFull_();
+  var profNames = Object.keys(roster.profiles || {});
+  var svcCount = profNames.filter(function (n) { return roster.profiles[n].department === CONFIG.ROSTER_DEPT; }).length;
+  Logger.log("Roster ok=" + roster.ok + (roster.capError ? " capError=" + roster.capError : "") +
+             " — profiles: " + profNames.length + " total, " + svcCount + " with Department='" +
+             CONFIG.ROSTER_DEPT + "', capacity headcount=" + roster.headcount);
+
+  // 2 — Planned parse + Services scoping
+  var ss = SpreadsheetApp.openById(CONFIG.SOURCE_SS_ID);
+  var sh = ss.getSheetByName(CONFIG.SHEET_NAME);
+  if (!sh) {
+    Logger.log("❌ Planned tab '" + CONFIG.SHEET_NAME + "' NOT FOUND — source tabs: " +
+               ss.getSheets().map(function (s) { return s.getName(); }).join(" | "));
+    return;
+  }
+  var parsed = parseAllocations_(sh.getDataRange().getValues(), CONFIG.NONPROJECT_KEYS);
+  var scoped = scopeRecsToServices_(parsed.recs, roster.profiles);
+  Logger.log("Planned recs: " + parsed.recs.length + " parsed (+" + parsed.ptoRecs.length +
+             " PTO) → " + scoped.length + " after Services scoping");
+  var dropped = {};
+  parsed.recs.forEach(function (r) {
+    var p = (roster.profiles || {})[norm(r.person)];
+    if (!p) dropped[r.person] = "no roster profile";
+    else if (p.department !== CONFIG.ROSTER_DEPT) dropped[r.person] = "Department='" + p.department + "'";
+  });
+  var dNames = Object.keys(dropped);
+  Logger.log("Persons dropped by scoping: " + dNames.length +
+             (dNames.length ? " — e.g. " + dNames.slice(0, 10).map(function (n) { return n + " (" + dropped[n] + ")"; }).join("; ") : ""));
+
+  // 3 — Tracked
+  var tr = readTrackedAllocations_();
+  Logger.log("Tracked: " + (tr.error ? "ERROR " + tr.error
+             : tr.recs.length + " recs → " + scopeRecsToServices_(tr.recs, roster.profiles).length + " after scoping"));
+
+  // 4 — Cache
+  Logger.log("PD_CACHE_VER=" + demandCacheVer_() +
+             " — if the fixed pipeline looks healthy above but the dashboard is still empty, run bustDemandCache_() (the warmer re-caches the old empty model otherwise).");
 }
 
 // ── CACHE WARMER ────────────────────────────────────────────
@@ -640,13 +696,19 @@ function familyFromTitle_(famCol, title) {
  * @returns {{ ok:boolean, headcount:number, baseCapacity:number, anzCount:number, error?:string }}
  */
 /**
- * Reads the Roster sheet once and returns both capacity data (for the capacity
+ * Reads the roster tabs once and returns both capacity data (for the capacity
  * denominator) and people profiles (for signal filters).  Replaces the two
- * separate readActiveCapacity_() + readRosterProfiles_() calls so the sheet is
+ * separate readActiveCapacity_() + readRosterProfiles_() calls so the sheets are
  * only fetched once per getDemandData() execution.
  *
+ * Two tabs are read, mirroring PS Contribution Report's readRosterTab_():
+ * ROSTER_SHEET ("Data", FTE) is required; CONTRACTORS_SHEET ("Contractors Data",
+ * crew) is optional — same headers, but its Class is "Contractors" for everyone
+ * (no signal), so crew rows skip the Class gate and being in the tab is the crew
+ * marker. On a name collision the Data tab wins.
+ *
  * Capacity counts: active Services FTE/crew with a valid Name, Class = Professional
- * Services, Dept = Services, no inactive/termination markers.
+ * Services (FTE only), Dept = Services, no inactive/termination markers.
  * Profile data (`profiles`): every named row (no class/dept filter) — each profile carries
  * its own `department` and a `countsForCapacity` flag so callers (buildPersonAvailability_, getDemandData) can scope to
  * Department = ROSTER_DEPT themselves. Filter dropdown lists (`dimensions`) ARE scoped to
@@ -657,20 +719,6 @@ function readRosterFull_() {
   var EMPTY_PROF = { profiles: {}, dimensions: { locations: [], jobFamilies: [], managers: [] } };
   try {
     var ss = SpreadsheetApp.openById(CONFIG.ROSTER_SS_ID);
-    var sh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
-    if (!sh) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster sheet not found." });
-    var last = sh.getLastRow();
-    if (last < 2) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster is empty." });
-
-    var raw  = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
-    var hdrs = raw[0].map(function (h) { return String(h).trim(); });
-    var col  = function (name) { return hdrs.findIndex(function (h) { return h.toLowerCase() === name.toLowerCase(); }); };
-
-    var iName   = col("Name"),      iClass  = col("Class"),     iDept   = col("Department");
-    var iStatus = col("Employee Status"), iTerm = col("Termination/Release Date");
-    var iLoc    = col("Key Location"), iFam = col("Job Family"), iTitle = col("Job Title");
-    var iMgr    = (col("Supervisor") !== -1) ? col("Supervisor") : col("Manager");
-    if (iName === -1) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: "Roster 'Name' column not found." });
 
     var norm       = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
     var anzLoc     = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
@@ -678,50 +726,75 @@ function readRosterFull_() {
     var profiles   = {}, locs = {}, families = {}, managers = {};
     var count = 0, base = 0, anz = 0;
 
-    for (var r = 1; r < raw.length; r++) {
-      var row  = raw[r];
-      var name = String(row[iName] || "").trim();
-      if (!name) continue;
+    // Reads one tab into the shared accumulators; returns an error string or null.
+    var readTab = function (sheetName, isCrewTab) {
+      var sh = sheetName ? ss.getSheetByName(sheetName) : null;
+      if (!sh) return "Sheet '" + sheetName + "' not found.";
+      var last = sh.getLastRow();
+      if (last < 2) return "Sheet '" + sheetName + "' is empty.";
 
-      var loc   = iLoc   !== -1 ? String(row[iLoc]   || "").trim() : "";
-      var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
-      var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
-      var dept  = iDept  !== -1 ? String(row[iDept]  || "").trim() : "";
-      // Roster has no reliable "Job Family" column — prefer it if present (defensive),
-      // else derive the family from the Job Title's numeric code prefix (roster titles
-      // are code-prefixed: "09.M4.1 Manager, Service Delivery"), with a bare-catalog-
-      // title fallback. Crew/contractor and unlisted roles simply stay unmapped ("").
-      var famCol = iFam !== -1 ? String(row[iFam] || "").trim() : "";
-      var fam    = familyFromTitle_(famCol, title);
-      var isCrew = /crew member|contractor/i.test(title);
-      var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
-      // Capacity predicate: only active Services members (same filter as before,
-      // computed as a flag so holiday signals can scope to the SAME population
-      // as the capacity denominator — see buildHolidaysByWeek_).
-      var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
-      var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
-      var countsForCapacity =
-        (iClass === -1 || String(row[iClass] || "").trim() === CONFIG.ROSTER_CLASS) &&
-        (!dept || dept === CONFIG.ROSTER_DEPT) &&
-        !INACTIVE.test(status) && !term;
+      var raw  = sh.getRange(1, 1, last, sh.getLastColumn()).getValues();
+      var hdrs = raw[0].map(function (h) { return String(h).trim(); });
+      var col  = function (name) { return hdrs.findIndex(function (h) { return h.toLowerCase() === name.toLowerCase(); }); };
 
-      profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew, countsForCapacity: countsForCapacity };
-      // Filter dropdown option lists (Location / Job Family / Manager) are scoped to
-      // Department = ROSTER_DEPT too, same as the person-level data — otherwise a
-      // Sales/Finance-only location or manager would show up as a pickable filter value
-      // even though selecting it can never match anyone in the dashboard.
-      if (dept === CONFIG.ROSTER_DEPT) {
-        if (loc) locs[loc] = true;
-        if (fam) families[fam] = true;
-        if (mgr) managers[mgr] = true;
+      var iName   = col("Name"),      iClass  = col("Class"),     iDept   = col("Department");
+      var iStatus = col("Employee Status"), iTerm = col("Termination/Release Date");
+      var iLoc    = col("Key Location"), iFam = col("Job Family"), iTitle = col("Job Title");
+      var iMgr    = (col("Supervisor") !== -1) ? col("Supervisor") : col("Manager");
+      if (iName === -1) return "Sheet '" + sheetName + "' has no 'Name' column.";
+
+      for (var r = 1; r < raw.length; r++) {
+        var row  = raw[r];
+        var name = String(row[iName] || "").trim();
+        if (!name) continue;
+        if (isCrewTab && profiles[norm(name)]) continue;   // Data tab wins on name collisions
+
+        var loc   = iLoc   !== -1 ? String(row[iLoc]   || "").trim() : "";
+        var mgr   = iMgr   !== -1 ? String(row[iMgr]   || "").trim() : "";
+        var title = iTitle !== -1 ? String(row[iTitle] || "").trim() : "";
+        var dept  = iDept  !== -1 ? String(row[iDept]  || "").trim() : "";
+        // Roster has no reliable "Job Family" column — prefer it if present (defensive),
+        // else derive the family from the Job Title's numeric code prefix (roster titles
+        // are code-prefixed: "09.M4.1 Manager, Service Delivery"), with a bare-catalog-
+        // title fallback. Crew/contractor and unlisted roles simply stay unmapped ("").
+        var famCol = iFam !== -1 ? String(row[iFam] || "").trim() : "";
+        var fam    = familyFromTitle_(famCol, title);
+        var isCrew = isCrewTab || /crew member|contractor/i.test(title);
+        var lvlM   = title.match(/^\d{2,3}\.([A-Z]\d+)\./);
+        // Capacity predicate: only active Services members (same filter as before,
+        // computed as a flag so holiday signals can scope to the SAME population
+        // as the capacity denominator — see buildHolidaysByWeek_).
+        var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
+        var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
+        var countsForCapacity =
+          (isCrewTab || iClass === -1 || String(row[iClass] || "").trim() === CONFIG.ROSTER_CLASS) &&
+          (!dept || dept === CONFIG.ROSTER_DEPT) &&
+          !INACTIVE.test(status) && !term;
+
+        profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew, countsForCapacity: countsForCapacity };
+        // Filter dropdown option lists (Location / Job Family / Manager) are scoped to
+        // Department = ROSTER_DEPT too, same as the person-level data — otherwise a
+        // Sales/Finance-only location or manager would show up as a pickable filter value
+        // even though selecting it can never match anyone in the dashboard.
+        if (dept === CONFIG.ROSTER_DEPT) {
+          if (loc) locs[loc] = true;
+          if (fam) families[fam] = true;
+          if (mgr) managers[mgr] = true;
+        }
+
+        if (!countsForCapacity) continue;
+        var isANZ = loc.toLowerCase() === anzLoc;
+        base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
+        if (isANZ) anz++;
+        count++;
       }
+      return null;
+    };
 
-      if (!countsForCapacity) continue;
-      var isANZ = loc.toLowerCase() === anzLoc;
-      base += isANZ ? CONFIG.ANZ_CAPACITY_HRS : CONFIG.WEEKLY_CAPACITY_HRS;
-      if (isANZ) anz++;
-      count++;
-    }
+    var mainErr = readTab(CONFIG.ROSTER_SHEET, false);
+    if (mainErr) return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: mainErr });
+    var crewErr = readTab(CONFIG.CONTRACTORS_SHEET, true);
+    if (crewErr) Logger.log("⚠️ readRosterFull_: " + crewErr + " — crew rows skipped.");
 
     return {
       ok: true, headcount: count, baseCapacity: base, anzCount: anz, capError: null,
@@ -1001,14 +1074,20 @@ function readJiraMeta_() {
 }
 
 /**
- * True if a Fix Versions string contains any SRSO-* token (billable / FixedPrice).
+ * Classifies a Fix Versions string into a revenue bucket:
+ *   "Billable"  — any token carries an SRSO code (sales order / FixedPrice); matched
+ *                 anywhere in the name, so client-prefixed versions like
+ *                 "CLVT02 SRSO-016559" count, not just names starting with SRSO.
+ *   "Internal"  — tagged with fix versions, none of them SRSO (release/phase markers).
+ *   "Untagged"  — no fix version at all: internal work OR client work nobody tagged —
+ *                 the data-hygiene bucket that may hide missing revenue attribution.
  * @param {string} fixVersions  comma-separated Fix Version names.
  */
 function billingTypeFor_(fixVersions) {
-  if (!fixVersions) return "Internal";
+  if (!fixVersions || !String(fixVersions).trim()) return "Untagged";
   var tokens = String(fixVersions).split(",");
   for (var i = 0; i < tokens.length; i++) {
-    if (/^\s*SRSO-/i.test(tokens[i])) return "Billable";
+    if (/\bSRSO\b|SRSO-/i.test(tokens[i])) return "Billable";
   }
   return "Internal";
 }
@@ -1034,7 +1113,8 @@ function enrichTracked_(recs, map) {
 /**
  * Aggregates enriched tracked records into billing figures for the window.
  * Records whose iso is not in isoList are ignored. Ratio is over CLASSIFIED
- * hours only (billable + internal); coverage tracks unclassified separately.
+ * hours only (billable + internal + untagged — all matched to Jira Raw);
+ * coverage tracks unclassified (no Jira Raw match) separately.
  * @param {Array} recs     enriched tracked records (carry .billingType, .iso, .key, .hours).
  * @param {Array<string>} isoList  the displayed window's ISO weeks.
  * @returns {{billingByWeek, billableRatioByWeek, projectBillingWindow, coverage}}
@@ -1042,19 +1122,22 @@ function enrichTracked_(recs, map) {
 function buildBillingAggregates_(recs, isoList) {
   var inWindow = {}; (isoList || []).forEach(function (iso) { inWindow[iso] = true; });
   var billingByWeek = {};
-  (isoList || []).forEach(function (iso) { billingByWeek[iso] = { billable: 0, internal: 0, unclassified: 0 }; });
+  (isoList || []).forEach(function (iso) { billingByWeek[iso] = { billable: 0, internal: 0, untagged: 0, unclassified: 0 }; });
   var projectBillingWindow = {};
   var matchedHrs = 0, unclassifiedHrs = 0;
 
   var bucketOf = function (bt) {
-    return bt === "Billable" ? "billable" : bt === "Internal" ? "internal" : "unclassified";
+    return bt === "Billable" ? "billable"
+         : bt === "Internal" ? "internal"
+         : bt === "Untagged" ? "untagged"
+         : "unclassified";
   };
 
   (recs || []).forEach(function (r) {
     if (!inWindow[r.iso]) return;
     var b = bucketOf(r.billingType);
     billingByWeek[r.iso][b] += r.hours;
-    var pb = projectBillingWindow[r.key] || (projectBillingWindow[r.key] = { billable: 0, internal: 0, unclassified: 0 });
+    var pb = projectBillingWindow[r.key] || (projectBillingWindow[r.key] = { billable: 0, internal: 0, untagged: 0, unclassified: 0 });
     pb[b] += r.hours;
     if (r.billingType === "Unclassified") unclassifiedHrs += r.hours; else matchedHrs += r.hours;
   });
@@ -1062,7 +1145,7 @@ function buildBillingAggregates_(recs, isoList) {
   var billableRatioByWeek = {};
   (isoList || []).forEach(function (iso) {
     var w = billingByWeek[iso];
-    var classified = w.billable + w.internal;
+    var classified = w.billable + w.internal + w.untagged;
     billableRatioByWeek[iso] = classified > 0 ? w.billable / classified : null;
   });
 
@@ -1106,23 +1189,29 @@ function _test_enrichTracked_() {
     "COE-456": { fixVersions: "SRSO-4455, 2026.Q3", epicKey: "COE-100", status: "Done" },
     "COE-457": { fixVersions: "",                    epicKey: "COE-100", status: "In Progress" },
     "COE-458": { fixVersions: "srso-9",              epicKey: "",        status: "Done" }, // lowercase srso
+    "COE-459": { fixVersions: "CLVT02 SRSO-016559",  epicKey: "",        status: "Done" }, // client-prefixed SRSO
+    "COE-460": { fixVersions: "v2.1.0, Phase 2",     epicKey: "",        status: "Done" }, // tagged, no SRSO
   };
   var recs = [
     { person: "Ana", iso: "2026.W26", key: "COE455", hours: 20, issue: "COE-456" }, // Billable
-    { person: "Ben", iso: "2026.W26", key: "COE455", hours: 10, issue: "COE-457" }, // Internal (no SRSO)
+    { person: "Ben", iso: "2026.W26", key: "COE455", hours: 10, issue: "COE-457" }, // Untagged (no fix version)
     { person: "Cid", iso: "2026.W26", key: "COE455", hours: 5,  issue: "coe-458" }, // Billable (case-insensitive)
     { person: "Dot", iso: "2026.W26", key: "COE455", hours: 3,  issue: "COE-999" }, // Unclassified (not in map)
     { person: "Eve", iso: "2026.W26", key: "COE455", hours: 2,  issue: "" },        // Unclassified (blank issue)
+    { person: "Fin", iso: "2026.W26", key: "COE455", hours: 4,  issue: "COE-459" }, // Billable (prefixed SRSO)
+    { person: "Gia", iso: "2026.W26", key: "COE455", hours: 6,  issue: "COE-460" }, // Internal (tagged, no SRSO)
   ];
 
   enrichTracked_(recs, map);
 
   assert_(recs[0].billingType === "Billable",     "COE-456 → Billable");
   assert_(recs[0].epicKey === "COE-100",          "COE-456 epic attached");
-  assert_(recs[1].billingType === "Internal",     "COE-457 (no SRSO) → Internal");
+  assert_(recs[1].billingType === "Untagged",     "COE-457 (no fix version) → Untagged");
   assert_(recs[2].billingType === "Billable",     "coe-458 (lowercase srso, lowercase key) → Billable");
   assert_(recs[3].billingType === "Unclassified", "COE-999 (not in map) → Unclassified");
   assert_(recs[4].billingType === "Unclassified", "blank issue → Unclassified");
+  assert_(recs[5].billingType === "Billable",     "COE-459 (client-prefixed SRSO name) → Billable");
+  assert_(recs[6].billingType === "Internal",     "COE-460 (tagged, no SRSO) → Internal");
   assert_(recs[3].epicKey === "" && recs[3].status === "", "unclassified rec has empty epic/status");
 
   Logger.log("✅ _test_enrichTracked_ passed");
@@ -1136,6 +1225,7 @@ function _test_billingAggregation_() {
   var recs = [
     { iso: "2026.W26", key: "COE455", hours: 20, billingType: "Billable" },
     { iso: "2026.W26", key: "COE455", hours: 10, billingType: "Internal" },
+    { iso: "2026.W26", key: "COE455", hours: 4,  billingType: "Untagged" },
     { iso: "2026.W26", key: "HBHP",   hours: 5,  billingType: "Unclassified" },
     { iso: "2026.W25", key: "COE455", hours: 8,  billingType: "Billable" },
     { iso: "2099.W01", key: "COE455", hours: 99, billingType: "Billable" }, // out of window → ignored
@@ -1146,25 +1236,27 @@ function _test_billingAggregation_() {
   // Per-week split.
   assert_(agg.billingByWeek["2026.W26"].billable === 20, "W26 billable 20");
   assert_(agg.billingByWeek["2026.W26"].internal === 10, "W26 internal 10");
+  assert_(agg.billingByWeek["2026.W26"].untagged === 4, "W26 untagged 4");
   assert_(agg.billingByWeek["2026.W26"].unclassified === 5, "W26 unclassified 5");
   assert_(agg.billingByWeek["2026.W25"].billable === 8, "W25 billable 8");
 
   // Out-of-window week excluded entirely.
   assert_(!agg.billingByWeek["2099.W01"], "out-of-window week must not appear");
 
-  // Ratio over CLASSIFIED hours only: W26 = 20 / (20+10) = 0.6667.
-  assert_(close_(agg.billableRatioByWeek["2026.W26"], 20 / 30), "W26 ratio should be 20/30");
+  // Ratio over CLASSIFIED hours only: W26 = 20 / (20+10+4) = 0.5882.
+  assert_(close_(agg.billableRatioByWeek["2026.W26"], 20 / 34), "W26 ratio should be 20/34");
   // W25 = 8 / (8+0) = 1.0.
   assert_(close_(agg.billableRatioByWeek["2026.W25"], 1), "W25 ratio should be 1.0");
 
   // Project window totals.
   assert_(agg.projectBillingWindow.COE455.billable === 28, "COE455 window billable 20+8=28");
+  assert_(agg.projectBillingWindow.COE455.untagged === 4, "COE455 window untagged 4");
   assert_(agg.projectBillingWindow.HBHP.unclassified === 5, "HBHP window unclassified 5");
 
-  // Coverage: matched = 20+10+8 = 38, unclassified = 5, total = 43.
-  assert_(agg.coverage.matchedHrs === 38, "coverage matchedHrs 38");
+  // Coverage: matched = 20+10+4+8 = 42, unclassified = 5, total = 47.
+  assert_(agg.coverage.matchedHrs === 42, "coverage matchedHrs 42");
   assert_(agg.coverage.unclassifiedHrs === 5, "coverage unclassifiedHrs 5");
-  assert_(close_(agg.coverage.matchRate, 38 / 43), "coverage matchRate 38/43");
+  assert_(close_(agg.coverage.matchRate, 42 / 47), "coverage matchRate 42/47");
 
   Logger.log("✅ _test_billingAggregation_ passed");
 }
@@ -1518,13 +1610,14 @@ function parseAllocations_(vals, nonProjectKeys) {
   if (hr === -1) return { recs: out, ptoRecs: ptoOut, timeOffByWeek: timeOffByWeek };
 
   // "Key" (project) and "Space" (project name) columns.
-  var iKey = -1, iSpace = -1, iIssue = -1, iSum = -1;
+  var iKey = -1, iSpace = -1, iIssue = -1, iSum = -1, iPm = -1;
   for (var c2 = 0; c2 < vals[hr].length; c2++) {
     var hdr = String(vals[hr][c2]).trim().toLowerCase();
     if (hdr === "key")     iKey = c2;
     if (hdr === "space")   iSpace = c2;
     if (hdr === "issue")   iIssue = c2;   // present only on the tracked sheet
     if (hdr === "summary") iSum = c2;     // present only on the tracked sheet
+    if (hdr === "pm")      iPm = c2;      // project manager (Jira project lead)
   }
 
   var exclude = {};
@@ -1546,20 +1639,25 @@ function parseAllocations_(vals, nonProjectKeys) {
     var row = vals[i];
     var person = String(row[iEmp] || "").trim();
     if (!person || person.toUpperCase() === "TOTAL") continue;     // skip footer / blanks
-    var rawKey = iKey !== -1 ? String(row[iKey] || "").trim() : "";
-    if (!rawKey) continue;                                          // skip blank keys
+    if (iKey === -1) continue;                                      // no Key column at all → unusable sheet
+    var rawKey = String(row[iKey] || "").trim();
+    // Blank Key = worklogs Jira couldn't resolve to a project (Space says "Unknown").
+    // Bucket them under a sentinel instead of dropping — those hours are a
+    // data-hygiene signal (work with no project/PM attribution) managers should see.
+    if (!rawKey) rawKey = "UNKNOWN";
     var isTimeOff = !!exclude[rawKey.toUpperCase()];                // NETSUITE = PTO + public holidays
     var name = iSpace !== -1 ? String(row[iSpace] || "").trim() : "";
     var issue = iIssue !== -1 ? String(row[iIssue] || "").trim() : "";
     var summary = iSum !== -1 ? String(row[iSum] || "").trim() : "";
+    var pm = iPm !== -1 ? String(row[iPm] || "").trim() : "";
     for (var wi = 0; wi < wCols.length; wi++) {
       var hours = parseFloat(row[wCols[wi].idx]);
       if (!hours || hours <= 0) continue;
       if (isTimeOff) {                                              // reduces capacity, not project demand
         timeOffByWeek[wCols[wi].iso] = (timeOffByWeek[wCols[wi].iso] || 0) + hours;
-        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary });
+        ptoOut.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary, pm: pm });
       } else {
-        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary });
+        out.push({ person: person, iso: wCols[wi].iso, key: rawKey, name: name, hours: hours, issue: issue, summary: summary, pm: pm });
       }
     }
   }
@@ -1577,7 +1675,7 @@ function emptyModel_(weeks) {
     isoList: isoList,
     cap: {}, head: {}, winners: {}, activeProj: {}, weekTotal: {},
     blendByWeek: {}, avgBlend: {}, stretched: {}, activePeople: {}, fragByWeek: {},
-    order: [], keyName: {}, maxCell: 0.001, baselineIso: null,
+    order: [], keyName: {}, keyPm: {}, maxCell: 0.001, baselineIso: null,
     capByWeek: capByWeek, grossCapByWeek: {}, timeOffByWeek: {}, holidaysByWeek: {}, holidayShortfallByWeek: {},
     capacityMode: "planned", headcount: null, anzCount: 0, baseCapacity: 0,
     capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
@@ -1617,11 +1715,13 @@ function aggregate_(recs, weeks, baselineIso) {
   var headSets = {};            // key -> iso -> {person:true}
   var personKeys = {};          // iso -> person -> {key:true}  (distinct projects per person/week)
   var keyName = {};
+  var keyPm = {};               // key -> project manager (no fallback — blank means no PM)
   isoList.forEach(function (iso) { personKeys[iso] = {}; });
 
   recs.forEach(function (rec) {
     if (!inWindow[rec.iso]) return;
     if (!keyName[rec.key] && rec.name) keyName[rec.key] = rec.name;
+    if (!keyPm[rec.key] && rec.pm) keyPm[rec.key] = rec.pm;
 
     cap[rec.key] = cap[rec.key] || {};
     cap[rec.key][rec.iso] = (cap[rec.key][rec.iso] || 0) + rec.hours;
@@ -1713,6 +1813,7 @@ function aggregate_(recs, weeks, baselineIso) {
   model.weekTotal = weekTotal;
   model.order = totals.map(function (t) { return t.key; });
   model.keyName = keyName;
+  model.keyPm = keyPm;
   model.maxCell = maxCell;
   return model;
 }
