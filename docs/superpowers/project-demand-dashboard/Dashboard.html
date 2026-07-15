@@ -143,7 +143,6 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .cap-legend span{display:inline-flex;align-items:center;gap:5px}
 .cap-legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
 .cap-legend i.dashed{background:none;border-top:2px dashed var(--muted);height:0}
-.cap-caveat{font-size:calc(12px*var(--scale));color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--surface-2));border:1px solid color-mix(in srgb,var(--warn) 30%,var(--border));border-radius:8px;padding:8px 12px;margin-top:12px}
 
 
 .keychip{display:inline-block;font-family:'Roboto Condensed';font-weight:700;font-size:calc(12px*var(--scale));letter-spacing:.03em;
@@ -190,11 +189,7 @@ svg .axis{stroke:var(--border)}
 [data-theme="dark"] .hexp-risk-flag{background:#450a0a;color:#fca5a5}
 .pm-chip{background:#e0e7ff;color:#3730a3;font-size:calc(10px*var(--scale));font-weight:600;padding:2px 8px;border-radius:6px;white-space:nowrap}
 [data-theme="dark"] .pm-chip{background:#1e2a5a;color:#c7d2fe}
-.hexp-person-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
-.hexp-person-row{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid #dbeafe;border-radius:6px;padding:7px 10px;font-size:calc(11px*var(--scale));flex-wrap:wrap}
-[data-theme="dark"] .hexp-person-row{border-color:#1e3a5f}
-.hexp-pname{font-weight:600;min-width:calc(110px*var(--scale));color:var(--text)}
-.hexp-hrs{color:var(--muted);font-size:calc(11px*var(--scale))}
+.hexp-pname{font-weight:600;color:var(--text)}
 .hexp-mgr-note{background:#f0f9ff;border-left:3px solid #0ea5e9;padding:7px 10px;border-radius:0 6px 6px 0;font-size:calc(11px*var(--scale));color:#0c4a6e}
 [data-theme="dark"] .hexp-mgr-note{background:#0c2340;color:#7dd3fc}
 .hexp-note-lbl{font-size:calc(9px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#7dd3fc;margin-bottom:3px}
@@ -215,17 +210,10 @@ input[type=file]{display:none}
 .dash-filters-lbl{font-size:calc(10px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px;white-space:nowrap}
 /* Team Availability — collapsible list */
 .avail-list{display:flex;flex-direction:column;gap:2px}
-.chip-inprogress{background:var(--surface-2);color:var(--muted);border:1px dashed var(--border)}
 .avail-row{border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .avail-collapsed{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;background:var(--surface);flex-wrap:wrap}
 .avail-collapsed:hover{background:var(--surface-2)}
 .avail-row-name{font-size:calc(12px*var(--scale));font-weight:600;min-width:calc(110px*var(--scale));color:var(--text)}
-.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:calc(10px*var(--scale));font-weight:700;white-space:nowrap}
-.chip-aligned{background:#dcfce7;color:#15803d}
-.chip-unplanned{background:#fef9c3;color:#854d0e}
-.chip-silent{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
-.chip-escalation{background:#fee2e2;color:#b91c1c}
-.chip-none{background:var(--surface-2);color:var(--muted)}
 .trend-tag{font-size:calc(10px*var(--scale));color:var(--muted)}
 .trend-up{color:var(--up)}
 .trend-down{color:var(--down)}
@@ -254,6 +242,10 @@ input[type=file]{display:none}
 .avail-proj-name{font-size:calc(11px*var(--scale));color:var(--muted);flex:1}
 .avail-proj-hrs{font-size:calc(11px*var(--scale));color:var(--muted)}
 .projdrill{margin-top:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
+/* When the drill sits inside the expanded heatmap row, surface (not surface-2) keeps it
+   readable against the tinted hexp-section background */
+.hexp-drill-slot{margin-top:10px}
+.hexp-drill-slot .projdrill{margin-top:0;background:var(--surface)}
 .projdrill-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .projdrill-legend{display:flex;gap:16px;margin-top:8px;font-size:calc(11.5px*var(--scale));color:var(--muted)}
 .projdrill-legend span{display:inline-flex;align-items:center;gap:5px}
@@ -342,6 +334,23 @@ input[type=file]{display:none}
 .pwt-full-pto{background:#fef08a !important;border:1.5px solid #f59e0b !important;color:#78350f !important;font-weight:800 !important}
 .pwt-exempt{font-size:calc(8px*var(--scale));background:#fde68a;border:1px solid #f59e0b;color:#78350f;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle}
 .pwt-onleave{font-size:calc(9px*var(--scale));color:#b45309;font-style:italic}
+/* Drillable project×week cells — tracked issues behind them, one click to expand */
+.pwt-cell.pwt-evid{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.pwt-cell.pwt-evid:hover{border-color:var(--orbe);color:var(--orbe)}
+.pwt-cell.pwt-evid-on{border-color:var(--orbe);box-shadow:inset 0 0 0 1px var(--orbe)}
+.pwt-trk-only{color:var(--muted);font-weight:700}
+.pwt-evid-row>td{padding:2px 0 6px}
+.pwt-evid-box{background:var(--surface-2);border:1px dashed var(--border);border-radius:8px;padding:8px 10px}
+.pwt-evid-hd{font-weight:600;font-size:calc(11.5px*var(--scale));color:var(--muted);margin-bottom:6px}
+.pwt-caption{font-size:calc(10.5px*var(--scale));color:var(--muted);margin-bottom:4px}
+/* Person-week load flags (heatmap expand grid) — placed AFTER the wcur/wfut rules so the
+   over/under styling wins on the selected/future columns too */
+.pwt-cell.pwt-over:not(:empty){background:#fef2f2;border-color:#fca5a5}
+[data-theme="dark"] .pwt-cell.pwt-over:not(:empty){background:#450a0a;border-color:#7f1d1d}
+.pwt-cell.pwt-under:not(:empty){background:#fffbeb;border-color:#fcd34d}
+[data-theme="dark"] .pwt-cell.pwt-under:not(:empty){background:#451a03;border-color:#92400e}
+.hexp-mark-over{color:#dc2626;font-size:calc(8px*var(--scale));vertical-align:super;margin-left:2px;font-weight:800}
+.hexp-mark-under{color:#b45309;font-size:calc(8px*var(--scale));vertical-align:super;margin-left:2px;font-weight:800}
 /* Delivery by Epic rollup (Phase 2) */
 .epic-tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:calc(12px*var(--scale))}
 .epic-tbl th{text-align:left;font-family:'Roboto Condensed';font-weight:700;font-size:calc(11px*var(--scale));color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -351,6 +360,27 @@ input[type=file]{display:none}
 .epic-tbl .et-contrib{text-align:right;white-space:nowrap}
 .et-contrib-btn{cursor:pointer;color:var(--text);font-weight:600}
 .et-contrib-btn:hover{color:var(--orbe)}
+/* View tabs — Overview (Planned vs Tracked + Team Focus) is the landing view;
+   the heavier tables (heatmap / epic / PM rollups) live in their own tabs.
+   Visibility is CSS-driven off #dash[data-view] so panels' own inline display
+   logic (availPanel data-gate, pmRollupPanel no-PM hide) still composes. */
+.view-tabs{display:flex;gap:2px;margin:0 0 12px;border-bottom:2px solid var(--border);flex-wrap:wrap}
+.view-tabs button{appearance:none;border:none;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:calc(13px*var(--scale));padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
+.view-tabs button:hover{color:var(--text)}
+.view-tabs button.on{color:var(--text);border-bottom-color:var(--orbe)}
+#dash .panel[data-view]{display:none}
+#dash[data-view="overview"] .panel[data-view="overview"],
+#dash[data-view="heat"] .panel[data-view="heat"],
+#dash[data-view="epic"] .panel[data-view="epic"],
+#dash[data-view="pm"] .panel[data-view="pm"]{display:block}
+
+/* Issue-evidence expander — collapsed by default; the drill leads with headline
+   numbers and managers open the issue-level proof only when they need it. */
+.evid-details{margin-top:6px}
+.evid-details>summary{cursor:pointer;font-weight:600;font-size:calc(12px*var(--scale));color:var(--muted);user-select:none}
+.evid-details>summary:hover{color:var(--text)}
+.evid-details[open]>summary{color:var(--text);margin-bottom:6px}
+.evid-week-row{display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:calc(12px*var(--scale));color:var(--muted)}
 .et-bill-Billable{color:var(--pos);font-weight:700}
 .et-bill-Internal{color:var(--muted);font-weight:700}
 .et-bill-Untagged{color:var(--warn);font-weight:700}
@@ -421,7 +451,7 @@ input[type=file]{display:none}
 
   <div class="stateMsg" id="stateMsg">Loading data…</div>
 
-  <div id="dash" style="display:none">
+  <div id="dash" style="display:none" data-view="overview">
 
     <!-- Dashboard-level people filters (collapsible) — applies to every panel below,
          including Planned vs Tracked and the Project key heatmap, no exceptions. -->
@@ -437,11 +467,6 @@ input[type=file]{display:none}
           <select class="sigfilter" id="mainProj"><option value="">All projects</option></select>
           <select class="sigfilter" id="mainPm"><option value="">All PMs</option></select>
           <select class="sigfilter" id="mainWeek"></select>
-          <div class="chip-toggle" id="revFilter" title="Revenue focus — 💰 shows only projects with SRSO-tagged (fixed price / sales order) tracked hours this window; Non-rev shows the rest">
-            <button data-rev="all" class="on">All work</button>
-            <button data-rev="rev">💰 Revenue</button>
-            <button data-rev="nonrev">Non-rev</button>
-          </div>
         </div>
         <span class="filter-summary" id="filterSummary">All people</span>
         <span class="filter-toggle" id="filterToggle">▾ expand</span>
@@ -472,12 +497,20 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- View tabs — People filters above apply across every tab -->
+    <div class="view-tabs" id="viewTabs">
+      <button data-view="overview" class="on">Overview</button>
+      <button data-view="heat">Project heatmap</button>
+      <button data-view="epic">Delivery by Epic</button>
+      <button data-view="pm">Demand by PM</button>
+    </div>
+
     <!-- 1. Demand vs Capacity — headline -->
-    <div class="panel">
+    <div class="panel" data-view="overview">
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · * = week still in progress · hover or click a week label to inspect/navigate · reflects People filters above</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects People filters above</div>
           <span class="hint" id="billableRatioChip"></span>
           <div class="chip-toggle" id="billingFilter" title="Tracked billing — filters tracked-hour figures only; planned demand is unaffected. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version (possible missing revenue attribution) · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
@@ -500,12 +533,11 @@ input[type=file]{display:none}
           <div class="cap-legend" id="capLegend"></div>
         </div>
       </div>
-      <div class="cap-caveat" id="capCaveat" style="display:none"></div>
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
     <!-- 1b. Team Availability -->
-    <div class="panel" id="availPanel" style="display:none">
+    <div class="panel" id="availPanel" data-view="overview" style="display:none">
       <div class="panel-h">
         <h2>Team Focus &amp; Execution Signals</h2>
         <div class="panel-tools">
@@ -516,7 +548,7 @@ input[type=file]{display:none}
     </div>
 
     <!-- 2. Project key heatmap (drill-down) — planned hours by project -->
-    <div class="panel">
+    <div class="panel" data-view="heat">
       <div class="panel-h">
         <h2>Project key heatmap</h2>
         <div class="panel-tools">
@@ -532,6 +564,11 @@ input[type=file]{display:none}
       </div>
       <div class="qfilters" id="qfilters" style="margin-bottom:12px"></div>
       <div class="gridScroll"><div id="heat"></div></div>
+      <!-- The project drill renders INSIDE the expanded heatmap row: renderHeat() parks
+           this node here (hidden) before rebuilding the table, then moves it into the
+           #projDrillSlot of the active row's expand section. It lives outside #heat so
+           innerHTML rebuilds never destroy it. -->
+      <div id="projDrillPark" style="display:none">
       <div id="projDrill" style="display:none" class="projdrill">
         <div class="projdrill-h">
           <span id="projDrillChip"></span>
@@ -547,6 +584,7 @@ input[type=file]{display:none}
         </div>
         <div id="projDrillEvidence" style="margin-top:10px"></div>
       </div>
+      </div><!-- /projDrillPark -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
         <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
         <div class="hint" id="heatNote"></div>
@@ -554,11 +592,11 @@ input[type=file]{display:none}
     </div>
 
     <!-- 3. Delivery by Epic (Phase 2 rollup) — tracked hours grouped by epic -->
-    <div class="panel" id="epicRollupPanel">
+    <div class="panel" id="epicRollupPanel" data-view="epic">
       <div class="panel-h">
         <h2>Delivery by Epic</h2>
         <div class="panel-tools">
-          <div class="hint">Tracked hours rolled up by epic · whole display window · billing shown as a per-epic split (independent of the Tracked billing chip above) · reflects People filters above</div>
+          <div class="hint">Tracked hours rolled up by epic · scoped by ALL filters above (People / Project / PM) · covers every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · billing shown as a per-epic split</div>
           <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
         </div>
       </div>
@@ -567,11 +605,11 @@ input[type=file]{display:none}
     </div>
 
     <!-- 4. Demand by PM — planned/tracked hours rolled up by project manager (Jira project lead) -->
-    <div class="panel" id="pmRollupPanel">
+    <div class="panel" id="pmRollupPanel" data-view="pm">
       <div class="panel-h">
         <h2>Demand by PM</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours reflect the People filters above · tracked hours are all-people per project · whole display window · click a row to focus the dashboard on that PM</div>
+          <div class="hint">Scoped by ALL filters above (People / Project / PM) · planned hours reflect People filters, tracked hours are all-people per project · whole display window — pick a past week in the filter bar to focus that week · click a row to focus the dashboard on that PM</div>
           <button class="png-btn" data-png="demand-by-pm">⬇ Save PNG</button>
         </div>
       </div>
@@ -609,7 +647,7 @@ var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Untagged' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
-var REV_FILTER = 'all';     // 'all' | 'rev' | 'nonrev' — project-level revenue focus (SRSO fix versions via DATA.projectBillingWindow); scopes the heatmap rows + Demand-by-PM rollup
+var VIEW_TAB = 'overview';  // 'overview' | 'heat' | 'epic' | 'pm' — which view tab is active; panels show/hide via CSS on #dash[data-view]
 var EPIC_OPEN = null; // expanded epic key on the Delivery by Epic panel (contributor-name drill row)
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -623,6 +661,7 @@ var SPARK_PTO_COLOR = '#f59e0b', SPARK_FUTURE_COLOR = '#c7d2fe', SPARK_NONE_COLO
 var $=function(id){ return document.getElementById(id); };
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function fmt(n){ return Math.round(n||0); }
+function fmt1(n){ return Math.round((n||0)*10)/10; } // 1-decimal hours (1.5, 4 — no forced .0)
 function chip(key){ return '<span class="keychip" style="background:'+keyColor(KEYINDEX[key])+'">'+esc(key)+'</span>'; }
 function pct(n){ return (n>=0?'+':'')+Math.round(n)+'%'; }
 // Same normalization the server applies to roster/plan/tracked names before keying
@@ -653,6 +692,41 @@ function personWeekCap_(np){
   return m.location === ((DATA.anzLocation) || 'Australia & New Zealand') ? (DATA.anzCapacity || 38) : (DATA.capacity || 40);
 }
 
+/* ---------------- Planned-time sanitization ----------------
+   Tempo can double-book planned hours (duplicated allocations put a person at 60–120h in
+   one week when real capacity is 38/40h, ~44 with overtime). Same principle the Planned vs
+   Tracked chart already applies via Math.min(planned, cap) in filteredWeekTotals_: each
+   person-week is capped at the person's weekly capacity, and the trim is distributed
+   PROPORTIONALLY across that person's projects so project splits keep their relative
+   shape. Every project-keyed surface (heatmap cells/totals/WoW signals, project drill,
+   expand grid) reads the sanitized figures; raw totals are kept for the ▲ over-capacity
+   flag so the duplication stays visible without polluting the numbers. */
+var OVER_PLAN_FACTOR = 1.1; // >110% of capacity (≈44h on a 40h week) = beyond legit overtime → systemic duplication flag
+var UNDER_PLAN_HRS = 32;    // planned week total (incl. PTO) below this = under-planned flag
+var SAN = null;             // { plan: np→key→iso→sanitized h, rawTotal: np→iso→raw week total }
+function buildSanitizedPlan_(){
+  SAN = { plan: {}, rawTotal: {} };
+  var pp = (DATA && DATA.personProjectPlan) || {};
+  Object.keys(pp).forEach(function(np){
+    var cap = personWeekCap_(np);
+    var rawTot = {};
+    Object.keys(pp[np]).forEach(function(key){
+      Object.keys(pp[np][key]).forEach(function(iso){ rawTot[iso] = (rawTot[iso]||0) + (pp[np][key][iso]||0); });
+    });
+    SAN.rawTotal[np] = rawTot;
+    SAN.plan[np] = {};
+    Object.keys(pp[np]).forEach(function(key){
+      SAN.plan[np][key] = {};
+      Object.keys(pp[np][key]).forEach(function(iso){
+        var scale = rawTot[iso] > cap ? cap/rawTot[iso] : 1;
+        SAN.plan[np][key][iso] = (pp[np][key][iso]||0) * scale;
+      });
+    });
+  });
+}
+function sanPlanAt_(np,key,iso){ return (((SAN&&SAN.plan[np])||{})[key]||{})[iso]||0; }
+function rawWeekTotal_(np,iso){ return ((SAN&&SAN.rawTotal[np])||{})[iso]||0; }
+
 /* ---------------- Filtered aggregation — the People filters bar applies dashboard-wide,
    so the Project key heatmap and Planned vs Tracked recompute from only the filtered
    people (via personProjectPlan/personWeekPlan/personWeekTracked) instead of the
@@ -661,10 +735,15 @@ var FPROJ = null; // { cap, head, order, maxCell } for the currently active pers
 
 function computeFilteredProjectData_(){
   var pset = filteredPersonSet_();
-  if (!pset) return { cap: DATA.cap||{}, head: DATA.head||{}, order: (DATA.order||[]).slice(), maxCell: DATA.maxCell||0.001 };
+  // Rebuild project totals from the SANITIZED per-person plan (built from the exact same
+  // Services-scoped recs the server aggregates into DATA.cap) — so heatmap cells, WoW
+  // signals and the drill never carry a person's duplicated 60–120h week. Falls back to
+  // the server's raw totals only when per-person plan data is unavailable (offline CSV).
+  var sanAvail = SAN && Object.keys(SAN.plan).length > 0;
+  if (!pset && !sanAvail) return { cap: DATA.cap||{}, head: DATA.head||{}, order: (DATA.order||[]).slice(), maxCell: DATA.maxCell||0.001 };
   var cap = {}, headSets = {};
-  var projPlan = DATA.personProjectPlan || {};
-  Object.keys(pset).forEach(function(np){
+  var projPlan = sanAvail ? SAN.plan : (DATA.personProjectPlan || {});
+  Object.keys(pset || projPlan).forEach(function(np){
     var pp = projPlan[np]; if (!pp) return;
     Object.keys(pp).forEach(function(key){
       Object.keys(pp[key]).forEach(function(iso){
@@ -725,8 +804,9 @@ function peopleFilterActive_(){
 //   • specific bucket + no filter    → return the org billingByWeek value (exact, since filtered
 //                                     == org when nothing is narrowing the set).
 // `fallbackTracked` is also used whenever there's no billing breakdown for the week (Jira Raw
-// absent, or the week is outside the project billing window) so the panel works as before this
-// feature. Planned/capacity figures never pass through here: billing is tracked-only by design.
+// absent — billingByWeek itself now spans every tracked week, QTD included) so the panel
+// works as before this feature. Planned/capacity figures never pass through here: billing is
+// tracked-only by design.
 function trackedForWeek_(iso, fallbackTracked){
   if (BILLING_FILTER === 'all' || peopleFilterActive_()) return fallbackTracked || 0;
   var b = (DATA.billingByWeek || {})[iso];
@@ -796,26 +876,6 @@ function billingWindowStats_(){
   };
 }
 
-// Revenue-focus chips (main filter bar) — project-level scope over the heatmap +
-// Demand-by-PM rollup via revKeyOk_(). Independent of BILLING_FILTER (which scopes
-// the Planned vs Tracked panel's tracked series by hour-level classification).
-function syncRevChips_(){
-  var grp=$('revFilter'); if(!grp) return;
-  Array.prototype.forEach.call(grp.children,function(b){
-    b.classList.toggle('on', b.dataset.rev===REV_FILTER);
-  });
-}
-function bindRevChips_(){
-  var grp=$('revFilter'); if(!grp) return;
-  Array.prototype.forEach.call(grp.children,function(b){
-    b.onclick=function(){
-      REV_FILTER=b.dataset.rev;
-      syncRevChips_();
-      reRenderAll_();
-    };
-  });
-}
-
 function bindBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
   Array.prototype.forEach.call(grp.children, function(b){
@@ -869,9 +929,9 @@ function capChartHover_(e, iso){
   var pv = wt.planned[iso]||0, tv = wt.tracked[iso]||0;
   var fidTxt = pv>0 ? (Math.round((tv/pv)*100)+'% fidelity') : 'no plan';
   var ht = holidayTipHtml_(iso);
-  // Billable/internal/unclassified breakdown — only when the chart is actually showing
-  // the stacked split for this week (same three-part gate as renderCapChart's band draw);
-  // otherwise the tooltip stays exactly as before this feature.
+  // Billing breakdown lives HERE, on demand — the chart itself no longer stacks it.
+  // Shown at the 'All' chip when Jira Raw data is present and no People filter narrows
+  // the roster (a People-filtered tracked total can't be split by the org-wide billing map).
   var billTxt='';
   if(BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_()){
     var b=(DATA.billingByWeek||{})[iso];
@@ -917,6 +977,7 @@ function applyModel(model){
   KEYINDEX = {};
   (model.order||[]).forEach(function(k,i){ KEYINDEX[k]=i; });
   HOLIDAYS = model.holidaysByWeek || {};
+  buildSanitizedPlan_(); // capacity-cap every person-week before anything renders (empty in CSV mode)
   var now = WEEKS.filter(function(w){return w.status==="now";})[0] || WEEKS[Math.floor(NWEEKS/2)] || WEEKS[0];
   CURRENT_ISO = now ? now.iso : (WEEKS[0]?WEEKS[0].iso:"");
   SEL_ISO = CURRENT_ISO;
@@ -1030,13 +1091,6 @@ function renderCapacity(){
   $('capSoWhat').className='sowhat '+cls;
   $('capSoWhat').innerHTML=swFull;
 
-  var cvEl=$('capCaveat');
-  if(isCurrent){
-    cvEl.style.display='';
-    cvEl.innerHTML='&#9888; <b>'+esc(iso)+' in progress</b> — data as of '+esc(asOf)+'. The drop at '+esc(iso)+' reflects hours not yet logged, not a sudden execution collapse.';
-  } else {
-    cvEl.style.display='none';
-  }
   renderCapLegend();
   renderCapChart(wt, cw);
 
@@ -1067,23 +1121,14 @@ function renderCapacity(){
 function renderCapLegend(){
   var el=$('capLegend'); if(!el) return;
   var tgtTxt=DATA&&DATA.planTarget?(Math.round(DATA.planTarget*100)+'% target'):'Target';
+  // One tracked series only. When a specific billing chip is active the tracked line IS
+  // that slice, so the legend names it (e.g. "Tracked · billable") instead of stacking
+  // extra same-green swatches — composition is opt-in via the chips, per-week detail
+  // stays in the hover tooltip.
+  var trackedLbl='Tracked'+(BILLING_FILTER!=='all'?' · '+BILLING_FILTER.toLowerCase():'');
   el.innerHTML='<span><i style="background:'+hexVar('--orbe')+'"></i>Planned</span>'+
-    '<span><i style="background:#00A86B"></i>Tracked</span>'+
+    '<span><i style="background:#00A86B"></i>'+esc(trackedLbl)+'</span>'+
     '<span><i class="dashed"></i>'+esc(tgtTxt)+'</span>';
-  // Billable/internal/unclassified swatches — shown only under the exact same gate as the
-  // stacked bands in renderCapChart (billing chip at 'all', Jira Raw available, no People
-  // filter); a standalone capChartWeeks_() call here matches renderCapChart's own fallback
-  // (cw=cw||capChartWeeks_()) since this function isn't passed the week list.
-  var showSplit = BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_();
-  if(showSplit){
-    var cwL = capChartWeeks_();
-    var hasUnc = cwL.some(function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b && b.unclassified>0; });
-    var hasUnt = cwL.some(function(wk){ var b=(DATA.billingByWeek||{})[wk.iso]; return b && (b.untagged||0)>0; });
-    el.innerHTML+='<span><i style="background:#00A86B"></i>Tracked · billable</span>'+
-      '<span><i style="background:#6FCDA0"></i>Tracked · internal</span>'+
-      (hasUnt?'<span><i style="background:#E8B45A"></i>Tracked · untagged</span>':'')+
-      (hasUnc?'<span><i style="background:#A8D9BE"></i>Tracked · unclassified</span>':'');
-  }
 }
 
 // Rounds a value to the nearest half-decade step (e.g. 6014→6000, 3007→3000) so gridline
@@ -1136,58 +1181,20 @@ function renderCapChart(wt,cw){
     var prev=cw[i-1];var dash=wk.status==='plan'?' stroke-dasharray="4 3"':'';
     g+='<line x1="'+x(i-1)+'" y1="'+y(wt.planned[prev.iso]||0)+'" x2="'+x(i)+'" y2="'+y(wt.planned[wk.iso]||0)+'" stroke="'+hexVar('--orbe')+'" stroke-width="2.4"'+dash+'/>';
   });
-  // Billable/internal/unclassified stacked bands under the tracked line — org-wide split
-  // (DATA.billingByWeek has no per-team scope yet, see trackedForWeek_ above), drawn only
-  // when the billing chip is at 'all' (no specific bucket picked), Jira Raw is available,
-  // and no People filter narrows the roster — the same three-part gate the billable-ratio
-  // chip already uses (billingWindowStats_ / syncBillingChips_). In this state
-  // billable+internal+untagged+unclassified for a week equals wt.tracked[iso] exactly (the 'all'
-  // path in trackedForWeek_ always returns the People-filtered-but-otherwise-org total,
-  // and with no People filter that IS the org total DATA.billingByWeek is built from), so
-  // the bands stack up to the same height as the tracked line drawn just below/on top of
-  // them. When a specific chip is active, Jira Raw is missing, or a People filter is on,
-  // this block is skipped and the single tracked line further down is the only series
-  // drawn — unchanged from before this feature.
-  // NOTE on windowing: DATA.billingByWeek is built server-side ONLY over the ~8-week
-  // display window (model.isoList), but cw here is capChartWeeks_() = QTD ∪ WEEKS, which
-  // is WIDER for most of a quarter. So bands are drawn ONLY across the weeks that actually
-  // have a billingByWeek entry — a contiguous recent tail of cw — while every earlier QTD
-  // week keeps showing just the tracked line (exactly as before this feature). Drawing a
-  // band for a week with no entry would render a zero-height slab with the tracked line
-  // floating above it, breaking the "bands total wt.tracked[iso]" invariant. Each band
-  // polygon is built over that sub-range using the original cw index (bwk.i) for x(), so
-  // it lines up with the tracked line, and the sub-range's contiguity keeps the polygon
-  // gap-free.
-  var showBillingSplit = BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_();
-  if(showBillingSplit && wt.tracked){
-    var bWeeks=[]; // {wk, i} for cw weeks that have a billingByWeek entry (contiguous recent tail)
-    cw.forEach(function(wk,i){ if((DATA.billingByWeek||{})[wk.iso]) bWeeks.push({wk:wk,i:i}); });
-    if(bWeeks.length){
-      var billOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].billable; };
-      var intOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].internal; };
-      var untOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].untagged||0; };
-      var uncOf=function(bw){ return DATA.billingByWeek[bw.wk.iso].unclassified||0; };
-      var hasUnc = bWeeks.some(function(bw){ return uncOf(bw)>0; });
-      var hasUnt = bWeeks.some(function(bw){ return untOf(bw)>0; });
-      // Builds a filled band between two per-week value getters over bWeeks only (top
-      // boundary walked forward, bottom boundary walked backward), using x(bw.i)/y(v) —
-      // the same scaffolding as the planned area above, keyed on original cw index.
-      var bandPath_ = function(topOf, botOf){
-        var top=bWeeks.map(function(bw){ return x(bw.i)+','+y(topOf(bw)); });
-        var bot=bWeeks.slice().reverse().map(function(bw){ return x(bw.i)+','+y(botOf(bw)); });
-        return 'M'+top.join(' L')+' L'+bot.join(' L')+' Z';
-      };
-      var zeroOf=function(){ return 0; };
-      g+='<path d="'+bandPath_(billOf, zeroOf)+'" fill="#00A86B" opacity="0.85"/>'; // billable — solid green
-      g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw);}, billOf)+'" fill="#6FCDA0" opacity="0.6"/>'; // internal — muted green
-      if(hasUnt) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+untOf(bw);}, function(bw){return billOf(bw)+intOf(bw);})+'" fill="#E8B45A" opacity="0.5"/>'; // untagged — amber (hygiene)
-      if(hasUnc) g+='<path d="'+bandPath_(function(bw){return billOf(bw)+intOf(bw)+untOf(bw)+uncOf(bw);}, function(bw){return billOf(bw)+intOf(bw)+untOf(bw);})+'" fill="#A8D9BE" opacity="0.4"/>'; // unclassified — further muted
-    }
+  // Billing composition is OPT-IN via the chip row (All / Billable / Internal / Untagged /
+  // Unclassified) instead of always-on stacked bands: the chart answers ONE question at a
+  // time. At 'All' it stays clean — planned line, tracked line, target — and the per-week
+  // billing split lives in the hover tooltip. Picking a specific chip re-shapes the tracked
+  // line to that slice (applyBillingFilter_ upstream) and this block shades under it, so the
+  // isolated slice reads as an area against the planned fill rather than a bare second line.
+  if(BILLING_FILTER!=='all' && wt.tracked){
+    var sPts=cw.map(function(wk,i){ return x(i)+','+y(wt.tracked[wk.iso]||0); });
+    g+='<path d="M'+x(0)+','+y(0)+' L'+sPts.join(' L')+' L'+x(n-1)+','+y(0)+' Z" fill="#00A86B" opacity="0.14"/>';
   }
-  // tracked line (no separate fill of its own when the split above isn't shown — an
-  // unfilled line reads distinctly against the shaded Planned area instead of two
-  // washed-out overlapping bands; when the split above IS shown, this line traces the
-  // top of the stacked bands so the exact tracked total is still marked precisely)
+  // tracked line — no fill of its own at 'All' (an unfilled line reads distinctly against
+  // the shaded Planned area). The segment INTO the in-progress current week is ghosted
+  // (dashed, faded) with a hollow marker: the week's total is still accumulating, and a
+  // solid line would read as a completed-week crash that isn't real.
   if(wt.tracked){
     var tPts=[];
     cw.forEach(function(wk,i){
@@ -1195,11 +1202,14 @@ function renderCapChart(wt,cw){
       if(wk.status!=='plan'||th>0) tPts.push({xi:i,x:x(i),y:y(th),h:th,wk:wk});
     });
     if(tPts.some(function(p){return p.h>0;})){
-      for(var ti=1;ti<tPts.length;ti++){g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.4"/>';}
+      for(var ti=1;ti<tPts.length;ti++){
+        var ghost=tPts[ti].wk.status==='now'||tPts[ti-1].wk.status==='now';
+        g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.4"'+(ghost?' stroke-dasharray="3 4" opacity="0.45"':'')+'/>';
+      }
       tPts.forEach(function(p){
         if(!p.h) return;
         var partial=p.wk.status==='now';
-        g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?hexVar('--surface'):'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"/>';
+        g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?hexVar('--surface'):'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"'+(partial?' opacity="0.75"':'')+'/>';
       });
     }
   }
@@ -1214,11 +1224,12 @@ function renderCapChart(wt,cw){
     var lbl=Math.round(fid*100)+'%'+(wk.status==='now'?'*':'');
     g+='<text x="'+x(i)+'" y="'+(y(pv)-7)+'" text-anchor="middle" font-size="8" fill="'+col+'" font-weight="700">'+lbl+'</text>';
   });
-  // in-progress callout directly on the cliff point — the critical caveat lives on the chart,
-  // not just in a caption a viewer might not scroll to
+  // in-progress label on the (ghosted) current-week point — states what the number is
+  // ("so far") in muted tone; the ghost segment already prevents the false-crash read,
+  // so no warning color or disclaimer box is needed
   if(curIdx>=0&&cw[curIdx].status==='now'){
     var cTv=wt.tracked[cw[curIdx].iso]||0;
-    g+='<text x="'+x(curIdx)+'" y="'+(y(cTv)+16)+'" text-anchor="middle" font-size="7.5" fill="'+css('--warn')+'" font-weight="700">'+esc(cw[curIdx].iso)+' in progress*</text>';
+    g+='<text x="'+x(curIdx)+'" y="'+(y(cTv)+16)+'" text-anchor="middle" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">'+fmt(cTv)+' hrs so far</text>';
   }
   // target execution rate line: planTarget × planned per week — muted gray dashed so it
   // recedes behind the two main series instead of visually pairing with the orange fidelity labels
@@ -1307,9 +1318,6 @@ function populateMainFilters_(){
     pmSel.style.display=pms.length?'':'none';  // hidden until the exports carry PM data
     pmSel.onchange=function(){ AVAIL_PM=this.value; reRenderAll_(); };
   }
-  // Revenue-focus chips are only meaningful when Jira Raw billing data is present.
-  var rf=$('revFilter');
-  if(rf) rf.style.display = (DATA.jiraMetaAvailable===false) ? 'none' : '';
   wkSel.innerHTML=WEEKS.map(function(w){
     return '<option value="'+w.iso+'"'+(w.iso===SEL_ISO?' selected':'')+'>'+esc(w.iso)+' ('+STATUS_LABEL[w.status]+')</option>';
   }).join('');
@@ -1390,14 +1398,25 @@ function pmKeySet_(){
   return s;
 }
 
-// Revenue-focus predicate over project keys. A key counts as "revenue" when it has any
-// SRSO-classified (Billable) tracked hours in the window per DATA.projectBillingWindow;
-// keys with no tracked billing entry (planned-only) land in Non-rev.
-function revKeyOk_(k){
-  if(REV_FILTER==='all') return true;
-  var pb=(DATA&&DATA.projectBillingWindow||{})[k];
-  var isRev=!!(pb && pb.billable>0.001);
-  return REV_FILTER==='rev' ? isRev : !isRev;
+// UNIVERSAL project-key scope — Project and PM main-bar filters combined into one
+// predicate. Every project-keyed surface honors it: heatmap rows, Delivery by Epic,
+// Demand by PM, and the issue-evidence tables. Returns a closure so callers
+// iterating many records build the PM key set once, not per item.
+function keyScopeFn_(){
+  var pks=pmKeySet_(); // null when the PM filter is off
+  return function(k){
+    if(AVAIL_PROJ && k!==AVAIL_PROJ) return false;
+    if(pks && !pks[k]) return false;
+    return true;
+  };
+}
+
+// Week scope for the rollup tabs: moving the main-bar Week select OFF the default
+// current week focuses Delivery by Epic + Demand by PM on that single ISO week —
+// the same "Week ≠ current" convention the filter summary uses. At the default,
+// both rollups keep their whole-window totals.
+function rollupWeekScope_(){
+  return (SEL_ISO && SEL_ISO!==CURRENT_ISO) ? SEL_ISO : null;
 }
 
 // Same week-bound semantics as personOnProjectAtSel_, over the PM's whole portfolio:
@@ -1438,8 +1457,6 @@ function updateFilterBar_(){
   parts.push(TOPN>=999?'All':'Top '+TOPN);
   if(AVAIL_PROJ)parts.push('Project '+AVAIL_PROJ);
   if(AVAIL_PM)parts.push(AVAIL_PM==='__NOPM__'?'⚠ Missing PM':'PM '+AVAIL_PM);
-  if(REV_FILTER==='rev')parts.push('💰 Revenue only');
-  else if(REV_FILTER==='nonrev')parts.push('Non-revenue only');
   if(SEL_ISO&&SEL_ISO!==CURRENT_ISO)parts.push('Week '+SEL_ISO);
   if(AVAIL_ROLE==='m')parts.push('Mgrs');
   else if(AVAIL_ROLE==='ic')parts.push('ICs');
@@ -1450,6 +1467,16 @@ function updateFilterBar_(){
   else if(AVAIL_CREW==='crew')parts.push('Crew only');
   if(AVAIL_BLEND>0){parts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));}
   if(summary){summary.textContent=parts.length?parts.join(' · '):'All people';}
+}
+
+/* ---------------- View tabs ---------------- */
+// Switches the active view tab. All panels stay rendered (renders are cheap and
+// keep cross-tab state like filters/drills consistent); only visibility changes.
+function setViewTab_(v){
+  VIEW_TAB = v;
+  var dash=$('dash'); if(dash) dash.dataset.view=v;
+  var grp=$('viewTabs');
+  if(grp) Array.prototype.forEach.call(grp.children,function(b){ b.classList.toggle('on', b.dataset.view===v); });
 }
 
 function reRenderAll_(){
@@ -1577,16 +1604,6 @@ function compressPatternRuns_(np,displayIsos,personWeekState,currentIso){
   });
   html+='</div>';
   return html;
-}
-
-function stateChipInfo_(state) {
-  var map = {
-    aligned:   { cls: 'chip-aligned',    label: 'Aligned' },
-    unplanned: { cls: 'chip-unplanned',  label: 'Unplanned work' },
-    silent:    { cls: 'chip-silent',     label: 'Silent gap' },
-    escalation:{ cls: 'chip-escalation', label: 'Escalation' }
-  };
-  return map[state] || { cls: 'chip-none', label: '—' };
 }
 
 function computeTrendTag_(sparkVals) {
@@ -1760,28 +1777,47 @@ function renderAvailability() {
 
     if (isOpen) {
       var projPlan = (DATA.personProjectPlan || {})[np] || {};
-      // All projects with planned hours in any displayed week
-      var activeProjs = Object.keys(projPlan).filter(function(key) {
-        return displayIsos.some(function(iso) { return (projPlan[key][iso] || 0) > 0; });
+      var evByProj = projWeekEvidIdx_()[np] || {};
+      // All projects with planned hours OR tracked evidence in any displayed week —
+      // tracked-only projects get a row of ⋯ drill cells so unplanned work stays visible
+      // (the grid is the only evidence surface in this panel).
+      var projSeen = {};
+      Object.keys(projPlan).forEach(function(k){ projSeen[k] = true; });
+      Object.keys(evByProj).forEach(function(k){ if(k) projSeen[k] = true; });
+      var activeProjs = Object.keys(projSeen).filter(function(key) {
+        return displayIsos.some(function(iso) {
+          return ((projPlan[key] || {})[iso] || 0) > 0 || ((evByProj[key] || {})[iso] || 0) > 0;
+        });
       });
       // Sort: current-week hours first, then total hours across window
       activeProjs.sort(function(a, b) {
-        var aCur = (projPlan[a][currentIso] || 0), bCur = (projPlan[b][currentIso] || 0);
+        var aCur = ((projPlan[a] || {})[currentIso] || 0), bCur = ((projPlan[b] || {})[currentIso] || 0);
         if (bCur !== aCur) return bCur - aCur;
-        var aT = displayIsos.reduce(function(s,iso){ return s+(projPlan[a][iso]||0); },0);
-        var bT = displayIsos.reduce(function(s,iso){ return s+(projPlan[b][iso]||0); },0);
+        var aT = displayIsos.reduce(function(s,iso){ return s+((projPlan[a] || {})[iso]||0); },0);
+        var bT = displayIsos.reduce(function(s,iso){ return s+((projPlan[b] || {})[iso]||0); },0);
         return bT - aT;
       });
 
       var projTableHtml = '';
       if (activeProjs.length > 0) {
-        projTableHtml = '<div class="proj-week-wrap"><table class="proj-week-tbl"><thead><tr>';
+        // This grid shows the RAW Tempo plan on purpose — it's the per-person evidence
+        // surface for duplicated planning. Weeks whose raw total exceeds capacity get a
+        // ▲ header flag; dashboard-level totals are already capacity-sanitized.
+        var hasOverWk = displayIsos.some(function(iso) { return rawWeekTotal_(np, iso) > weekCap * OVER_PLAN_FACTOR; });
+        projTableHtml = '<div class="pwt-caption">Cells = <b>planned</b> hours per project × week (raw Tempo plan) · dotted cells have tracked-issue evidence — click one to compare what was actually logged'
+          + (hasOverWk ? ' · <span class="hexp-mark-over">▲</span> week planned above capacity — duplicated Tempo planning (systemic; capped in dashboard totals)' : '') + '</div>'
+          + '<div class="proj-week-wrap"><table class="proj-week-tbl"><thead><tr>';
         projTableHtml += '<th class="pwt-lbl">Project</th>';
         displayIsos.forEach(function(iso) {
           var isCur = iso === currentIso, isFut = iso > currentIso;
-          projTableHtml += '<th class="pwt-wk' + (isCur ? ' pwt-cur' : '') + (isFut ? ' pwt-fut-hdr' : '') + '">' + esc(iso) + '</th>';
+          var rawTot = rawWeekTotal_(np, iso);
+          var overFlag = rawTot > weekCap * OVER_PLAN_FACTOR
+            ? '<span class="hexp-mark-over" title="' + esc(fmt1(rawTot) + 'h planned vs ' + weekCap + 'h capacity — duplicated planning, capped in dashboard totals') + '">▲</span>'
+            : '';
+          projTableHtml += '<th class="pwt-wk' + (isCur ? ' pwt-cur' : '') + (isFut ? ' pwt-fut-hdr' : '') + '">' + esc(iso) + overFlag + '</th>';
         });
         projTableHtml += '</tr></thead><tbody>';
+        var evIdx = projWeekEvidIdx_();
         activeProjs.forEach(function(key) {
           projTableHtml += '<tr><td class="pwt-lbl"><span class="proj-key-mono">' + esc(key) + '</span> <span class="pwt-name">' + esc(KEYNAME[key] || key) + '</span></td>';
           displayIsos.forEach(function(iso) {
@@ -1789,9 +1825,20 @@ function renderAvailability() {
             var isCur = iso === currentIso, isFut = iso > currentIso;
             var extra = isCur ? ' pwt-wcur' : (isFut ? ' pwt-wfut' : '');
             var isFullPtoWk = (ptoByIso[iso] || 0) >= weekCap * PTO_FULL_THRESHOLD;
-            var cellTxt = isFullPtoWk ? '<span class="pwt-onleave">on leave</span>' : (ph > 0 ? ph.toFixed(0) + 'h' : '');
+            // Cells with tracked issues behind them are drillable: one click expands the
+            // issue list for this person × project × week under the row (togglePwEvid_).
+            var trkH = ((evIdx[np] || {})[key] || {})[iso] || 0;
+            var canDrill = !isFullPtoWk && trkH > 0;
+            var cellTxt = isFullPtoWk ? '<span class="pwt-onleave">on leave</span>'
+              : (ph > 0 ? ph.toFixed(0) + 'h'
+              : (canDrill ? '<span class="pwt-trk-only" title="tracked work with no planned hours">⋯</span>' : ''));
             var ptoCls = isFullPtoWk ? ' pwt-pto-week' : '';
-            projTableHtml += '<td class="pwt-cell' + extra + ptoCls + '">' + cellTxt + '</td>';
+            var drillAttrs = canDrill
+              ? ' data-np="' + esc(np) + '" data-key="' + esc(key) + '" data-iso="' + iso + '"'
+                + ' title="' + esc(key) + ' ' + iso + ': ' + ph.toFixed(1) + 'h planned · ' + trkH.toFixed(1) + 'h tracked — click for the issue list"'
+                + ' onclick="togglePwEvid_(this)"'
+              : '';
+            projTableHtml += '<td class="pwt-cell' + extra + ptoCls + (canDrill ? ' pwt-evid' : '') + '"' + drillAttrs + '>' + cellTxt + '</td>';
           });
           projTableHtml += '</tr>';
         });
@@ -1818,12 +1865,8 @@ function renderAvailability() {
       if (projTableHtml) {
         html += '<div class="avail-expanded-section">' + projTableHtml + '</div>';
       }
-
-      // Issue evidence (Task 11) — the tracked-issue detail behind this person's hours,
-      // scoped to np (already the normDD_-normalized key used across personMeta/personProjectPlan).
-      var personEvidRows = evidenceRows_(function(t){ return normDD_(t.person) === np; });
-      html += '<div class="avail-expanded-section"><div style="font-weight:600;font-size:12px;margin-bottom:6px">Issue evidence</div>'
-        + renderEvidenceTable_(personEvidRows) + '</div>';
+      // (No separate person-level "Issue evidence" section here — the project×week grid
+      // cells above ARE the evidence drill: dotted cells expand the issue list in place.)
     }
 
     html += '</div>';
@@ -1848,7 +1891,6 @@ function clearAvailFilters(){
   AVAIL_LOC='';AVAIL_FAM.clear();AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_OPEN=null;
   AVAIL_PROJ='';AVAIL_PM='';SEL_ISO=CURRENT_ISO;
   AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
-  REV_FILTER='all';syncRevChips_();
   populateAvailFilters();
   reRenderAll_();
 }
@@ -1868,8 +1910,7 @@ function renderProjDrill(key){
   if(!key||!DATA.tracked){d.style.display='none';return;}
   d.style.display='';
   var evEl=$('projDrillEvidence');
-  if(evEl) evEl.innerHTML='<div style="font-weight:600;font-size:12px;margin-bottom:6px">Issue evidence</div>'
-    +renderEvidenceTable_(evidenceRows_(function(t){return t.projectKey===key;}));
+  if(evEl) evEl.innerHTML=evidenceDetails_(function(t){return t.projectKey===key;});
   $('projDrillChip').innerHTML=chip(key);
   $('projDrillName').textContent=KEYNAME[key]||key;
   var pmEl=$('projDrillPm'); if(pmEl) pmEl.innerHTML = KEYPM[key] ? '<span class="pm-chip">PM: '+esc(KEYPM[key])+'</span>' : '';
@@ -1927,12 +1968,17 @@ function renderEpicRollup(){
     return;
   }
   var pset=filteredPersonSet_(), isFiltered=!!pset;
+  var inScope=keyScopeFn_(), wkScope=rollupWeekScope_();
+  var scopeActive=isFiltered||!!AVAIL_PROJ||!!AVAIL_PM||!!wkScope;
 
   // Group by epicKey (blank → "(no epic)"); sum hours, collect distinct project keys and
   // contributors, and split hours by billingType for the per-epic billing dimension.
+  // Honors the universal key scope (Project / PM / Revenue) and the Week focus.
   var groups={}, order=[];
   issues.forEach(function(t){
     if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person (Phase 2 only)
+    if(!inScope(t.projectKey)) return;
+    if(wkScope && t.iso!==wkScope) return;
     var ek=t.epicKey || '(no epic)';
     var g=groups[ek];
     if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,untagged:0,unclassified:0,projectKeys:{},contributors:{}}; groups[ek]=g; order.push(ek); }
@@ -1951,7 +1997,7 @@ function renderEpicRollup(){
   var totalHrs=rows.reduce(function(s,r){return s+r.hours;},0);
 
   if(!rows.length){
-    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No epic-tagged tracked hours'+(isFiltered?' for the selected people':'')+' in this window.</div>';
+    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No epic-tagged tracked hours'+(scopeActive?' for the current filters':'')+(wkScope?' in '+esc(wkScope):'')+'.</div>';
     if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
     return;
   }
@@ -1988,10 +2034,10 @@ function renderEpicRollup(){
     if(isOpen){
       // Enhanced for Task 11: keep the contributor names (cheap "who" glance) and add the
       // full issue-level evidence table underneath (the "what work" behind those hours).
-      var epicEvidRows=evidenceRows_(function(t){return (t.epicKey||'(no epic)')===r.epicKey;});
+      var epicKeyForEvid=r.epicKey;
       html+='<tr><td colspan="5" style="padding:0"><div class="avail-expanded-section">'
         +'<div style="margin-bottom:8px"><b>Contributors:</b> '+(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div>'
-        +renderEvidenceTable_(epicEvidRows)
+        +evidenceDetails_(function(t){return (t.epicKey||'(no epic)')===epicKeyForEvid;})
         +'</div></td></tr>';
     }
   });
@@ -2004,9 +2050,9 @@ function renderEpicRollup(){
   var top=rows[0];
   var topPct=totalHrs>0 ? Math.round((top.hours/totalHrs)*100) : 0;
   var topContribCount=Object.keys(top.contributors).length;
-  var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours this window ('+fmt(totalHrs)+' hrs total)'
+  var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours '+(wkScope?'in '+esc(wkScope):'across all tracked weeks')+' ('+fmt(totalHrs)+' hrs total)'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
-    +(isFiltered?' Reflects the People filters above.':'');
+    +(scopeActive?' Reflects the filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
 
@@ -2028,27 +2074,34 @@ function renderPmRollup(){
   var container=$('pmRollup'), swEl=$('pmSoWhat'), panel=$('pmRollupPanel');
   if(!container) return;
   var hasPm=Object.keys(KEYPM).some(function(k){return !!KEYPM[k];});
+  var pmTabBtn=document.querySelector('#viewTabs [data-view="pm"]');
   if(!hasPm){
-    // No PM data yet (exports haven't run with the PM column) — hide the whole panel.
+    // No PM data yet (exports haven't run with the PM column) — hide the whole
+    // panel AND its view tab; bounce back to Overview if it was the active tab.
     if(panel) panel.style.display='none';
+    if(pmTabBtn) pmTabBtn.style.display='none';
+    if(VIEW_TAB==='pm') setViewTab_('overview');
     return;
   }
   if(panel) panel.style.display='';
+  if(pmTabBtn) pmTabBtn.style.display='';
 
   var f=computeFilteredProjectData_();
   var trk=(DATA&&DATA.tracked)||{};
+  // Universal key scope (Project / PM / Revenue) + optional single-week focus —
+  // this rollup reacts to the main filter bar exactly like the heatmap rows.
+  var inScope=keyScopeFn_(), wkScope=rollupWeekScope_();
   var allKeys={};
-  Object.keys(f.cap).forEach(function(k){allKeys[k]=true;});
-  Object.keys(trk).forEach(function(k){allKeys[k]=true;});
-  // Revenue-focus chips scope this rollup the same way they scope the heatmap rows.
-  if(REV_FILTER!=='all'){ Object.keys(allKeys).forEach(function(k){ if(!revKeyOk_(k)) delete allKeys[k]; }); }
+  Object.keys(f.cap).forEach(function(k){if(inScope(k))allKeys[k]=true;});
+  Object.keys(trk).forEach(function(k){if(inScope(k))allKeys[k]=true;});
 
+  var isos = wkScope ? [wkScope] : WEEKS.map(function(w){return w.iso;});
   var groups={}, order=[];
   Object.keys(allKeys).forEach(function(k){
     var planned=0,tracked=0;
-    WEEKS.forEach(function(w){
-      planned+=(f.cap[k]&&f.cap[k][w.iso])||0;
-      tracked+=(trk[k]&&trk[k][w.iso])||0;
+    isos.forEach(function(iso){
+      planned+=(f.cap[k]&&f.cap[k][iso])||0;
+      tracked+=(trk[k]&&trk[k][iso])||0;
     });
     if(planned<=0.001&&tracked<=0.001) return;
     var pm=KEYPM[k]||'(no PM)';
@@ -2060,7 +2113,7 @@ function renderPmRollup(){
   var rows=order.map(function(p){return groups[p];});
   rows.sort(function(a,b){return b.planned-a.planned;});
   if(!rows.length){
-    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No planned or tracked hours in this window'+(filteredPersonSet_()?' for the selected people':'')+'.</div>';
+    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No planned or tracked hours '+(wkScope?'in '+esc(wkScope):'in this window')+' for the current filters.</div>';
     if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
     return;
   }
@@ -2101,7 +2154,7 @@ function renderPmRollup(){
   var topPct=totalPlanned>0?Math.round((top.planned/totalPlanned)*100):0;
   var pmCount=rows.filter(function(r){return r.pm!=='(no PM)';}).length;
   var noPmRow=groups['(no PM)'];
-  var sw='<b>'+pmCount+' PM'+(pmCount!==1?'s':'')+'</b> across '+Object.keys(allKeys).length+' projects with hours this window'
+  var sw='<b>'+pmCount+' PM'+(pmCount!==1?'s':'')+'</b> across '+Object.keys(allKeys).length+' projects with hours '+(wkScope?'in '+esc(wkScope):'this window')
     +' — the top PM portfolio carries '+topPct+'% of planned hours ('+fmt(top.planned)+' hrs, '+Object.keys(top.keys).length+' project'+(Object.keys(top.keys).length!==1?'s':'')+').'
     +(noPmRow?' '+Object.keys(noPmRow.keys).length+' project'+(Object.keys(noPmRow.keys).length!==1?'s have':' has')+' no PM set in Jira.':'')
     +(filteredPersonSet_()?' Planned figures reflect the People filters above.':'');
@@ -2116,44 +2169,148 @@ function renderPmRollup(){
  * that chip is Phase-1-only (org-wide figures) and gets disabled under a People filter — see
  * trackedForWeek_ above. Billing type is shown per-row here as a dimension, not a filter.
  */
-function evidenceRows_(predicate){
+function evidenceRows_(predicate, iso){
   var issues=(DATA && DATA.trackedIssues) || [];
   var pset=filteredPersonSet_();
+  var inScope=keyScopeFn_(); // universal Project / PM / Revenue scope
   var byIssue={}, order=[];
   issues.forEach(function(t){
     if(pset && !pset[normDD_(t.person)]) return; // People-filter honored per-person
+    if(!inScope(t.projectKey)) return;
+    if(iso && t.iso!==iso) return;               // optional week scope (evidence week selector)
     if(!predicate(t)) return;
     var key=t.issue || '(no issue)';
     var r=byIssue[key];
     if(!r){
-      r={issue:t.issue,summary:t.summary,status:t.status,billingType:t.billingType,projectKey:t.projectKey,epicKey:t.epicKey,hours:0};
+      r={issue:t.issue,summary:t.summary,status:t.status,billingType:t.billingType,projectKey:t.projectKey,epicKey:t.epicKey,hours:0,weekSet:{}};
       byIssue[key]=r; order.push(key);
     }
     r.hours+=t.hours||0; // aggregate one row PER ISSUE across every matching week
+    if(t.iso) r.weekSet[t.iso]=true;
   });
-  var rows=order.map(function(k){return byIssue[k];});
+  var rows=order.map(function(k){ var r=byIssue[k]; r.weeks=Object.keys(r.weekSet).sort(); return r; });
   rows.sort(function(a,b){return b.hours-a.hours;});
   return rows;
 }
 
+// Memoized person → projectKey → iso → tracked-hours index over DATA.trackedIssues.
+// Tells the Team Focus project×week grid which cells have issue evidence behind them
+// (clickable) without rescanning the issue list per cell. Rebuilt when DATA reloads.
+var PW_EVID_IDX=null, PW_EVID_SRC=null;
+function projWeekEvidIdx_(){
+  var src=(DATA&&DATA.trackedIssues)||[];
+  if(PW_EVID_IDX && PW_EVID_SRC===src) return PW_EVID_IDX;
+  var idx={};
+  src.forEach(function(t){
+    if(!(t.hours>0)) return;
+    var p=normDD_(t.person), k=t.projectKey||'', w=t.iso||'';
+    if(!idx[p]) idx[p]={};
+    if(!idx[p][k]) idx[p][k]={};
+    idx[p][k][w]=(idx[p][k][w]||0)+t.hours;
+  });
+  PW_EVID_IDX=idx; PW_EVID_SRC=src;
+  return idx;
+}
+
+// Cell-level evidence drill for the Team Focus project×week grid: clicking a cell
+// expands the tracked-issue list for that exact person + project + week right under
+// the project row — no week selector needed. One open drill per grid; second click
+// on the same cell closes it.
+function togglePwEvid_(td){
+  var np=td.dataset.np, key=td.dataset.key, iso=td.dataset.iso;
+  var tr=td.parentNode, tbody=tr.parentNode;
+  var id=np+'|'+key+'|'+iso;
+  var open=tbody.querySelector('tr.pwt-evid-row');
+  var wasThis=open && open.dataset.evid===id;
+  if(open) open.parentNode.removeChild(open);
+  Array.prototype.forEach.call(tbody.querySelectorAll('.pwt-evid-on'),function(c){ c.classList.remove('pwt-evid-on'); });
+  if(wasThis) return;
+  var rows=evidenceRows_(function(t){ return normDD_(t.person)===np && (t.projectKey||'')===key; }, iso);
+  // Header states BOTH numbers: the cell's figure is the PLANNED allocation, the evidence
+  // lists TRACKED (logged) time — they legitimately differ, and that delta is the fidelity
+  // signal, not a data error. Naming both here stops the "4h cell vs 5h of issues" confusion.
+  var planned=(((DATA.personProjectPlan||{})[np]||{})[key]||{})[iso]||0;
+  var trkTot=rows.reduce(function(s,r){ return s+(r.hours||0); },0);
+  var det=document.createElement('tr');
+  det.className='pwt-evid-row'; det.dataset.evid=id;
+  det.innerHTML='<td colspan="'+tr.children.length+'"><div class="pwt-evid-box">'
+    +'<div class="pwt-evid-hd">'+esc(key)+' · '+esc(iso)+' — '+fmt1(planned)+'h planned · '+fmt1(trkTot)+'h tracked</div>'
+    +'<div class="hint" style="margin-bottom:6px">The grid cell shows the planned allocation; the issues below are the time actually logged that week. A gap between the two is the plan-vs-actual signal, not a data mismatch.</div>'
+    +renderEvidenceTable_(rows)+'</div></td>';
+  tr.parentNode.insertBefore(det, tr.nextSibling);
+  td.classList.add('pwt-evid-on');
+}
+
+// Distinct ISO weeks with tracked hours behind an evidence predicate — feeds the
+// per-section week selector so an auditor can connect evidence to the week worked.
+function evidenceWeeks_(predicate){
+  var issues=(DATA && DATA.trackedIssues) || [];
+  var pset=filteredPersonSet_();
+  var inScope=keyScopeFn_();
+  var seen={};
+  issues.forEach(function(t){
+    if(pset && !pset[normDD_(t.person)]) return;
+    if(!inScope(t.projectKey)) return;
+    if(!predicate(t)) return;
+    if(t.iso) seen[t.iso]=true;
+  });
+  return Object.keys(seen).sort();
+}
+
 // Renders evidence rows as Issue · Summary · Status · Billing · hours. Individual issues ARE
 // the intended detail at this drill level (unlike chart-area summaries, which show counts only).
+// Wraps an evidence table in a collapsed <details> — every drill leads with its
+// headline numbers; the issue-level table opens only on demand. Takes the row
+// PREDICATE (not pre-built rows) so the embedded week selector can re-filter the
+// table to a single ISO week without a full panel re-render.
+var EVID_REG={}, EVID_SEQ=0; // evidence-section id → predicate (for the week selector)
+function shortWk_(iso){ return String(iso).replace(/^\d{4}\./,''); }
+function evidenceDetails_(pred){
+  var id='evd'+(++EVID_SEQ);
+  EVID_REG[id]=pred;
+  var rows=evidenceRows_(pred);
+  var weeks=evidenceWeeks_(pred);
+  var sel=weeks.length>1
+    ? '<div class="evid-week-row">Week worked: <select class="sigfilter" onchange="evidWeekChange_(\''+id+'\',this.value)">'
+      +'<option value="">All weeks ('+weeks.length+')</option>'
+      +weeks.map(function(w){ return '<option value="'+esc(w)+'">'+esc(w)+'</option>'; }).join('')
+      +'</select></div>'
+    : '';
+  return '<details class="evid-details"><summary>Issue evidence · '+rows.length+' issue'+(rows.length!==1?'s':'')+'</summary>'
+    + sel
+    + '<div id="'+id+'">'+renderEvidenceTable_(rows)+'</div></details>';
+}
+
+// Week selector inside an evidence section: re-runs the stored predicate scoped to
+// one ISO week and swaps just the table — hours shown become that week's hours.
+function evidWeekChange_(id, iso){
+  var pred=EVID_REG[id], el=document.getElementById(id);
+  if(!pred||!el) return;
+  el.innerHTML=renderEvidenceTable_(evidenceRows_(pred, iso||null));
+}
+
 function renderEvidenceTable_(rows){
   if(!rows || !rows.length){
     return '<div class="hint" style="padding:4px 0 2px">No tracked-issue detail for this selection'
       +(DATA && DATA.jiraMetaAvailable===false ? ' (Jira Raw not found)' : '')+'.</div>';
   }
   var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
-    +'<th>Issue</th><th>Summary</th><th>Status</th><th>Billing</th><th class="et-hrs">Hours</th>'
+    +'<th>Issue</th><th>Summary</th><th>Status</th><th>Billing</th><th>Week(s)</th><th class="et-hrs">Hours</th>'
     +'</tr></thead><tbody>';
   rows.forEach(function(r){
     var billLbl=r.billingType || 'Unclassified';
+    var wks=(r.weeks||[]).map(shortWk_);
+    var wkHtml=wks.length
+      ? (wks.length<=3 ? wks.join(', ')
+         : '<span title="'+esc(wks.join(', '))+'">'+wks.slice(0,3).join(', ')+' <span class="hint">+'+(wks.length-3)+'</span></span>')
+      : '—';
     html+='<tr>'
       +'<td><span class="proj-key-mono">'+esc(r.issue||'—')+'</span></td>'
       +'<td>'+esc(r.summary||'—')+'</td>'
       +'<td>'+esc(r.status||'—')+'</td>'
       +'<td><span class="et-bill-'+billLbl+'">'+esc(billLbl)+'</span></td>'
-      +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
+      +'<td>'+wkHtml+'</td>'
+      +'<td class="et-hrs">'+fmt1(r.hours)+'</td>' // evidence hours keep 1 decimal (1.5h ≠ 2h to an auditor)
       +'</tr>';
   });
   html+='</tbody></table></div>';
@@ -2185,9 +2342,7 @@ function qPredicate(k){
   }
 }
 function visibleOrder(){
-  var order=(FPROJ||DATA).order.slice();
-  if(AVAIL_PM){var pks=pmKeySet_()||{};order=order.filter(function(k){return !!pks[k];});}
-  if(REV_FILTER!=='all'){order=order.filter(revKeyOk_);}
+  var order=(FPROJ||DATA).order.slice().filter(keyScopeFn_()); // Project + PM + Revenue, universal
   if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
   order=order.filter(qPredicate);
   return order.slice(0,TOPN);
@@ -2229,87 +2384,155 @@ function projectPeopleAt_(key, iso, pset) {
   var personWeekState = BS.personWeekState || {};
   var personStreakLen = BS.personStreakLen || {};
   var rows = [];
-  Object.keys(DATA.personProjectPlan || {}).forEach(function(np) {
+  var projPlan = (SAN && Object.keys(SAN.plan).length) ? SAN.plan : (DATA.personProjectPlan || {});
+  Object.keys(projPlan).forEach(function(np) {
     if (pset && !pset[np]) return;
-    var ph = ((DATA.personProjectPlan[np] || {})[key] || {})[iso] || 0;
+    var ph = ((projPlan[np] || {})[key] || {})[iso] || 0;
     if (ph <= 0) return;
     var m = (DATA.personMeta || {})[np] || {};
-    var state = (personWeekState[np] || {})[iso];
+    var state = (personWeekState[np] || {})[iso]; // still feeds the manager note; no chip shown
     rows.push({ np: np, name: m.displayName || np, ph: ph, state: state,
-                chipInfo: stateChipInfo_(state), streakLen: personStreakLen[np] || 0 });
+                streakLen: personStreakLen[np] || 0 });
   });
-  rows.sort(function(a, b) {
-    var rank = { aligned: 0, silent: 1, unplanned: 2, escalation: 3 };
-    var sa = rank[a.state] !== undefined ? rank[a.state] : 4;
-    var sb = rank[b.state] !== undefined ? rank[b.state] : 4;
-    if (sa !== sb) return sa - sb;
-    return b.ph - a.ph;
-  });
+  rows.sort(function(a, b) { return b.ph - a.ph; }); // most planned hours first
   return rows;
 }
 
-function projectPeopleRowsHtml_(rows) {
-  return rows.map(function(r) {
-    var badgesHtml = r.streakLen >= 3 ? ('<span class="badge-ta badge-streak">' + r.streakLen + '-wk streak</span>') : '';
-    return '<div class="hexp-person-row">'
-      + '<span class="hexp-pname">' + esc(r.name) + '</span>'
-      + '<span class="chip ' + r.chipInfo.cls + '">' + esc(r.chipInfo.label) + '</span>'
-      + '<span class="hexp-hrs">' + r.ph.toFixed(1) + 'h planned</span>'
-      + badgesHtml
-      + '</div>';
-  }).join('');
+// Everyone with sanitized planned hours on `key` in ANY displayed week — feeds the
+// person × week grid in the heatmap expand. Sorted by hours at the selected week
+// first (the Week filter's anchor), then window total.
+function projectPeopleWindow_(key, pset) {
+  var BS = (DATA && DATA.behaviorSignals) || {};
+  var personStreakLen = BS.personStreakLen || {};
+  var rows = [];
+  Object.keys((SAN && SAN.plan) || {}).forEach(function(np) {
+    if (pset && !pset[np]) return;
+    var kp = SAN.plan[np][key]; if (!kp) return;
+    var byIso = {}, tot = 0, sel = 0;
+    WEEKS.forEach(function(w) {
+      var h = kp[w.iso] || 0;
+      if (h > 0) { byIso[w.iso] = h; tot += h; }
+      if (w.iso === SEL_ISO) sel = h;
+    });
+    if (tot <= 0) return;
+    var m = (DATA.personMeta || {})[np] || {};
+    rows.push({ np: np, name: m.displayName || np, isCrew: !!m.isCrew, byIso: byIso, tot: tot, sel: sel,
+                streakLen: personStreakLen[np] || 0 });
+  });
+  rows.sort(function(a, b) { return b.sel - a.sel || b.tot - a.tot; });
+  return rows;
+}
+
+// Person × week planned-hours grid for one project. Cells show the person's SANITIZED
+// hours on this project; the flags read the person's whole-week load across ALL projects:
+// ▲ raw total beyond capacity+overtime margin = duplicated Tempo planning (systemic — the
+// totals are already capped, the flag just keeps it visible), ▼ under-planned week
+// (< UNDER_PLAN_HRS incl. PTO; crew are exempt — part-time planning is normal for them).
+function projectPeopleGridHtml_(rows) {
+  if (!rows.length) return '';
+  var h = '<div class="pwt-caption">Cells = <b>planned hrs on this project</b> per person × week (capacity-sanitized) · '
+    + '<span class="hexp-mark-over">▲</span> week total above capacity — duplicated planning, already capped in totals · '
+    + '<span class="hexp-mark-under">▼</span> week total under ' + UNDER_PLAN_HRS + 'h (incl. PTO)</div>';
+  h += '<div class="proj-week-wrap"><table class="proj-week-tbl"><thead><tr><th class="pwt-lbl">Person</th>';
+  WEEKS.forEach(function(w) {
+    var isSel = w.iso === SEL_ISO, isFut = w.status === 'plan';
+    h += '<th class="pwt-wk' + (isSel ? ' pwt-cur' : '') + (isFut && !isSel ? ' pwt-fut-hdr' : '') + '">'
+      + esc(w.iso) + (isSel ? ' ◂' : '') + '</th>';
+  });
+  h += '<th class="pwt-wk">Σ</th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    var ptoByIso = (DATA.personWeekPTO || {})[r.np] || {};
+    var cap = personWeekCap_(r.np);
+    h += '<tr><td class="pwt-lbl"><span class="hexp-pname">' + esc(r.name) + '</span>'
+      + (r.streakLen >= 3 ? ' <span class="badge-ta badge-streak">' + r.streakLen + '-wk streak</span>' : '') + '</td>';
+    WEEKS.forEach(function(w) {
+      var iso = w.iso, ph = r.byIso[iso] || 0;
+      var rawTot = rawWeekTotal_(r.np, iso);
+      var pto = ptoByIso[iso] || 0;
+      var extra = iso === SEL_ISO ? ' pwt-wcur' : (w.status === 'plan' ? ' pwt-wfut' : '');
+      var isFullPto = pto >= cap * PTO_FULL_THRESHOLD;
+      var mark = '', cls = '', tipTxt = '';
+      if (isFullPto) {
+        cls = ' pwt-pto-week'; tipTxt = iso + ' — full PTO (' + fmt1(pto) + 'h)';
+      } else if (ph > 0 && rawTot > cap * OVER_PLAN_FACTOR) {
+        cls = ' pwt-over'; mark = '<span class="hexp-mark-over">▲</span>';
+        tipTxt = iso + ' — ' + fmt1(rawTot) + 'h planned across all projects vs ' + cap + 'h capacity. '
+          + 'Likely duplicated Tempo planning (systemic, not the person) — week totals are capped at ' + cap + 'h.';
+      } else if (ph > 0 && !r.isCrew && rawTot + pto < UNDER_PLAN_HRS) {
+        cls = ' pwt-under'; mark = '<span class="hexp-mark-under">▼</span>';
+        tipTxt = iso + ' — only ' + fmt1(rawTot + pto) + 'h planned across all projects (target ≥ ' + UNDER_PLAN_HRS + 'h).';
+      }
+      var txt = ph > 0 ? fmt1(ph) + 'h' + mark : (isFullPto ? '<span class="pwt-onleave">on leave</span>' : '');
+      h += '<td class="pwt-cell' + extra + cls + '"' + (tipTxt ? ' title="' + esc(tipTxt) + '"' : '') + '>' + txt + '</td>';
+    });
+    h += '<td class="pwt-cell" style="font-weight:700">' + fmt1(r.tot) + 'h</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  return h;
 }
 
 function heatProjectExpandHtml_(key) {
   if (!DATA || !DATA.behaviorSignals) return '';
   var BS = DATA.behaviorSignals;
-  var currentIso = BS.currentIso || SEL_ISO;
-  // State is never computed for the in-progress current week (tracked time is still
-  // accumulating) — anchor on the most recently completed week instead, same as the
-  // Team Availability row chip / status filter / manager note.
-  var refIso = BS.lastCompletedIso || currentIso;
+  var currentIso = BS.currentIso || CURRENT_ISO;
+  // Activity state (aligned/escalation) is never computed for in-progress or future
+  // weeks (tracked time is still accumulating) — the manager note anchors on SEL_ISO
+  // when it's a completed week, else on the most recently completed week. The grid and
+  // headline follow the Week filter (SEL_ISO) regardless.
+  var lastDone = BS.lastCompletedIso || currentIso;
+  var stateIso = isoOrd(SEL_ISO) <= isoOrd(lastDone) ? SEL_ISO : lastDone;
   var riskMap = BS.projectConcentrationRisk || {};
   var hasRisk = riskMap[key];
   var pset = filteredPersonSet_();
 
-  var rows = projectPeopleAt_(key, refIso, pset);
+  var gridRows = projectPeopleWindow_(key, pset);
+  var rows = projectPeopleAt_(key, stateIso, pset);
   var alignedCount = rows.filter(function(r) { return r.state === 'aligned'; }).length;
   var escRows = rows.filter(function(r) { return r.state === 'escalation'; });
   var totalPlanH = rows.reduce(function(s, r) { return s + r.ph; }, 0);
-  var peopleHtml = projectPeopleRowsHtml_(rows);
 
-  var wkPhrase = refIso === currentIso ? 'this week' : ('as of ' + refIso);
+  var wkPhrase = stateIso === SEL_ISO ? ('in ' + stateIso) : ('as of ' + stateIso + ' (last completed week)');
   var mgNote;
   if (rows.length === 0) {
     mgNote = 'No one planned on this project ' + wkPhrase + '.';
   } else if (alignedCount === rows.length) {
     mgNote = 'Project fully covered ' + wkPhrase + '.';
   } else if (alignedCount === 0) {
-    mgNote = 'No tracked activity despite ' + totalPlanH.toFixed(0) + 'h planned. Check if the project has started or is blocked.';
+    mgNote = 'No tracked activity despite ' + totalPlanH.toFixed(0) + 'h planned ' + wkPhrase + '. Check if the project has started or is blocked.';
   } else if (hasRisk && escRows.length > 0) {
     var escNames = escRows.map(function(r) { return r.name; }).join(', ');
     mgNote = 'Concentration risk — only ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '. '
       + escNames + (escRows.length > 1 ? ' have' : ' has') + ' been silent — follow up before next planning cycle.';
   } else {
-    mgNote = alignedCount + ' of ' + rows.length + ' planned people actively tracking. Check in with those not tracking.';
+    mgNote = alignedCount + ' of ' + rows.length + ' planned people actively tracking ' + wkPhrase + '. Check in with those not tracking.';
   }
 
   var projName = KEYNAME[key] || key;
-  var titleWkLbl = refIso === currentIso ? (currentIso + ' (current week)') : (refIso + ' (most recent completed week)');
+  var selWeek = WEEKS.filter(function(w) { return w.iso === SEL_ISO; })[0];
+  var titleWkLbl = SEL_ISO + ' (' + (selWeek ? STATUS_LABEL[selWeek.status] : '') + ' — from the Week filter)';
   var html = '<td colspan="' + (NWEEKS + 1) + '" style="padding:0">';
   html += '<div class="hexp-section">';
   html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(titleWkLbl);
   if (KEYPM[key]) html += ' <span class="pm-chip">PM: ' + esc(KEYPM[key]) + '</span>';
   if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '</span>';
   html += '</div>';
-  if (peopleHtml) html += '<div class="hexp-person-list">' + peopleHtml + '</div>';
+  html += projectPeopleGridHtml_(gridRows);
   html += '<div class="hexp-mgr-note"><div class="hexp-note-lbl">Manager note</div>' + esc(mgNote) + '</div>';
+  // Landing spot for the planned-vs-tracked drill (#projDrill) — renderHeat moves the
+  // drill node in here after the table is built, so the chart + issue evidence appear
+  // WITH the expanded project, not at the bottom of the panel.
+  html += '<div id="projDrillSlot" class="hexp-drill-slot"></div>';
   html += '</div>';
   html += '</td>';
   return html;
 }
 
 function renderHeat(){
+  // Park the project drill node OUTSIDE #heat before the innerHTML rebuild below wipes
+  // the table (it would destroy the node and its ids); re-attached into the active
+  // row's #projDrillSlot after the rebuild.
+  var pdNode=$('projDrill'), pdPark=$('projDrillPark');
+  if(pdNode&&pdPark&&pdNode.parentNode!==pdPark) pdPark.appendChild(pdNode);
   FPROJ = computeFilteredProjectData_();
   HEAT_MAX_HEAD=0;
   FPROJ.order.forEach(function(k){WEEKS.forEach(function(w){var h=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
@@ -2352,8 +2575,20 @@ function renderHeat(){
   }
   var losingCount=FPROJ.order.filter(losingThisWeek).length;
   var filterNote = filteredPersonSet_() ? ' (filtered to selected people)' : '';
+  // Sanitization receipt: how much duplicated planning was capped out of SEL_ISO's totals.
+  var sanNote='';
+  if(SAN){
+    var pset=filteredPersonSet_();
+    var trim=0, overN=0;
+    Object.keys(pset||SAN.rawTotal).forEach(function(np){
+      var rt=rawWeekTotal_(np,SEL_ISO), c=personWeekCap_(np);
+      if(rt>c){ trim+=rt-c; overN++; }
+    });
+    if(trim>=1) sanNote=' · <b>'+fmt(trim)+'h</b> duplicated planning capped at '+esc(SEL_ISO)
+      +' <span title="'+overN+' people had more planned hours than their weekly capacity (38/40h) — a systemic Tempo duplication, not individual overwork. Each person-week is capped at capacity, trimmed proportionally across their projects." style="cursor:help">('+overN+' people over capacity ⓘ)</span>';
+  }
   $('heatNote').innerHTML='Showing '+order.length+' of '+FPROJ.order.length+' projects'+filterNote
-    +' · <b>'+losingCount+'</b> losing &gt;20% of hours this week';
+    +' · <b>'+losingCount+'</b> losing &gt;20% of hours this week'+sanNote;
 
   Array.prototype.forEach.call($('heat').querySelectorAll('.hcell'),function(c){
     c.onmousemove=function(e){
@@ -2364,15 +2599,26 @@ function renderHeat(){
     c.onmouseleave=hideTip;
   });
   Array.prototype.forEach.call($('heat').querySelectorAll('.rowlabel'),function(rl){
-    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); renderProjDrill(ACTIVE_ROW); };
+    rl.onclick=function(){ ACTIVE_ROW = ACTIVE_ROW===rl.dataset.key?null:rl.dataset.key; renderHeat(); };
   });
+  // Attach the drill inside the active row's expand slot and (re)render it with the
+  // current filters. If the active row got filtered out of view, the drill stays parked
+  // (hidden) rather than floating detached at the bottom.
+  var slot=$('projDrillSlot');
+  if(slot&&pdNode&&ACTIVE_ROW){
+    slot.appendChild(pdNode);
+    renderProjDrill(ACTIVE_ROW);
+  } else if(pdNode){
+    pdNode.style.display='none';
+  }
 }
 
 /* ---------------- Render: footer ---------------- */
 function renderFoot(){
   var ts = DATA&&DATA.trackedLastExport ? ' · Tracked time '+fmtExport(DATA.trackedLastExport) : '';
   var src = SOURCE==='live' ? 'Planned time: “Planned Time Tempo” sheet'+ts : 'Offline CSV preview';
-  $('foot').innerHTML='Planned = project hours from Tempo plan sheet (NETSUITE time-off excluded). '
+  $('foot').innerHTML='Planned = project hours from Tempo plan sheet (NETSUITE time-off excluded), '
+    +'capacity-sanitized: each person-week is capped at 38/40h and the trim spread proportionally across their projects — Tempo duplication can double-book planned time, and nobody really works an 80h week. '
     +'Tracked = Tempo logged time'+ts+'. '
     +'Fidelity = tracked ÷ planned per week (signals: &lt;20% tracked of ≥4 planned hrs = gap; tracked with no plan = swarmable). '
     +'Blend = distinct projects a person is planned on. “Strategic” = top '+(DATA.topnStrategic||10)+' projects by hours (proxy). '
@@ -2505,14 +2751,14 @@ Array.prototype.forEach.call(document.querySelectorAll('.png-btn'),function(b){
   b.onclick=function(){ savePanelPNG(b.closest('.panel'),b.dataset.png,b); };
 });
 $('reloadBtn').onclick=function(){ ACTIVE_ROW=null; boot(true); };
-var pdc=$('projDrillClose');if(pdc)pdc.onclick=function(){ ACTIVE_ROW=null; $('projDrill').style.display='none'; };
+var pdc=$('projDrillClose');if(pdc)pdc.onclick=function(){ ACTIVE_ROW=null; $('projDrill').style.display='none'; if(DATA) renderHeat(); };
 $('search').addEventListener('input',function(e){ SEARCH=e.target.value; if(DATA) renderHeat(); });
 Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('colorMode').children,function(x){x.classList.remove('on');}); b.classList.add('on'); COLOR_MODE=b.dataset.m; if(DATA) renderHeat(); }; });
 // "Tracked billing" chip toggle — scopes the Planned vs Tracked panel's tracked series only
 // (see trackedForWeek_ / BILLING_FILTER); planned/capacity figures never read this state.
 bindBillingChips_();
-// Revenue-focus chips (main filter bar) — heatmap + PM rollup project scope.
-bindRevChips_();
+// View tabs — Overview | Project heatmap | Delivery by Epic | Demand by PM.
+Array.prototype.forEach.call($('viewTabs').children,function(b){ b.onclick=function(){ setViewTab_(b.dataset.view); }; });
 Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
 
