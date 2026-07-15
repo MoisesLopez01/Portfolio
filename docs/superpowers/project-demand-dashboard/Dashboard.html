@@ -550,6 +550,21 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
+    <!-- 1c. Utilization — tracked hours ÷ Tempo work-schedule capacity -->
+    <div class="panel" id="utilPanel" data-view="overview">
+      <div class="panel-h">
+        <h2>Utilization</h2>
+        <div class="panel-tools">
+          <div class="hint">Tracked hours (green) ÷ Tempo work-schedule capacity (gray) · utilization % per week · capacity comes from the weekly "Capacity Tempo" export (part-time schedules, holidays &amp; Sun–Thu weeks respected) · dashed = future capacity · ghosted + hollow point = current week still logging · % counts only people with capacity data that week · billing chips do not apply (utilization is whole-tracked) · reflects People filters above</div>
+          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full range (past, current &amp; future weeks), respects the People filters">⇣ CSV</button>
+          <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
+        </div>
+      </div>
+      <div id="utilChart"></div>
+      <div class="cap-legend" id="utilLegend"></div>
+      <div class="sowhat" id="utilSoWhat"></div>
+    </div>
+
     <!-- 1b. Team Availability -->
     <div class="panel" id="availPanel" data-view="overview" style="display:none">
       <div class="panel-h">
@@ -1360,6 +1375,213 @@ function renderCapChart(wt,cw){
   $('capChart').innerHTML=g;
 }
 
+/* ---------------- Utilization panel (Tracked ÷ Tempo schedule capacity) ---------------- */
+// Server fields: DATA.personWeekCapacity (np → iso → hrs, Services-scoped),
+// DATA.capacityIsoList (every sheet week incl. future), DATA.capacityNames,
+// DATA.capacityError. Math/CSV builders live in the UTIL-PURE block above.
+var UTIL_WT=null, UTIL_CW=null;
+
+// People in scope for utilization: the filtered set when a People filter is
+// active, else everyone with capacity or tracked data (all Services-scoped).
+function utilNpList_(){
+  var pset=filteredPersonSet_();
+  if(pset) return Object.keys(pset);
+  var u={};
+  Object.keys(DATA.personWeekCapacity||{}).forEach(function(np){u[np]=1;});
+  Object.keys(DATA.personWeekTracked||{}).forEach(function(np){u[np]=1;});
+  return Object.keys(u);
+}
+
+function renderUtilization(){
+  var panel=$('utilPanel'); if(!panel) return;
+  if(SOURCE!=='live'){ panel.style.display='none'; return; }   // capacity isn't in the offline CSV
+  panel.style.display='';
+  var capIsos=(DATA&&DATA.capacityIsoList)||[];
+  var csvBtn=$('utilCsvBtn');
+  if(!capIsos.length){
+    $('utilChart').innerHTML='';
+    $('utilLegend').innerHTML='';
+    $('utilSoWhat').className='sowhat';
+    $('utilSoWhat').innerHTML='<b>Capacity data unavailable</b>'
+      +(DATA&&DATA.capacityError?' — '+esc(DATA.capacityError):'')
+      +' Run fetchTempoCapacity() in the Tempo export project, then ↻ Refresh.';
+    if(csvBtn) csvBtn.style.display='none';
+    return;
+  }
+  if(csvBtn) csvBtn.style.display='';
+
+  // Week range: PvT's QTD window ∪ every capacity week (incl. future).
+  var cw=capChartWeeks_().slice();
+  var seen={}; cw.forEach(function(w){seen[w.iso]=true;});
+  var curOrd=isoOrd(CURRENT_ISO);
+  capIsos.forEach(function(iso){
+    if(!seen[iso]){
+      seen[iso]=true;
+      cw.push({ iso:iso, status: isoOrd(iso)>curOrd?'plan':(isoOrd(iso)===curOrd?'now':'done') });
+    }
+  });
+  cw.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
+
+  var npList=utilNpList_();
+  var isos=cw.map(function(w){return w.iso;});
+  var ut=utilWeekTotals_(isos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, npList);
+  UTIL_WT=ut; UTIL_CW=cw;
+
+  renderUtilLegend_();
+  renderUtilChart_(ut, cw);
+
+  // Summary line — counts/percentages only, never names. Anchor on the selected
+  // week when it has data, else the latest completed week with capacity.
+  var isFiltered=!!filteredPersonSet_();
+  var anchor=null;
+  if(ut.util[SEL_ISO]!=null && cw.some(function(w){return w.iso===SEL_ISO && w.status!=='plan';})) anchor=SEL_ISO;
+  else{
+    for(var i=cw.length-1;i>=0;i--){
+      if(cw[i].status==='done' && ut.util[cw[i].iso]!=null){ anchor=cw[i].iso; break; }
+    }
+  }
+  var sw, cls='';
+  if(anchor==null){
+    sw='<b>No completed week has both capacity and tracked data yet.</b> Future capacity is charted (dashed) as it loads from the Friday export.';
+  } else {
+    var u=ut.util[anchor], isNow=anchor===CURRENT_ISO;
+    var uPct=Math.round(u);
+    cls = (u>110||u<60)?'warn':(u>=85?'ok':'');
+    sw='<b>'+esc(anchor)+(isNow?' (in progress)':'')+' utilization '+uPct+'%</b> — '
+      +fmt(ut.tracked[anchor])+' hrs tracked against '+fmt(ut.cap[anchor])+' hrs of scheduled capacity across '
+      +ut.covered[anchor]+' people'+(isFiltered?' (filtered)':'')+'.';
+    if(ut.trackedOnly[anchor]>0){
+      sw+=' <span class="hint">'+ut.trackedOnly[anchor]+' additional tracked '
+        +(ut.trackedOnly[anchor]===1?'person has':'people have')+' no capacity data this week — excluded from the %.</span>';
+    }
+    if(isNow) sw+=' <span class="hint">Week still logging — the % will keep rising.</span>';
+  }
+  $('utilSoWhat').className='sowhat '+cls;
+  $('utilSoWhat').innerHTML=sw;
+}
+
+function renderUtilLegend_(){
+  var el=$('utilLegend'); if(!el) return;
+  el.innerHTML='<span><i style="background:'+hexVar('--slate')+'"></i>Capacity</span>'
+    +'<span><i style="background:#00A86B"></i>Tracked</span>'
+    +'<span><i class="dashed"></i>Future capacity</span>';
+}
+
+function utilColor_(u){
+  if(u==null) return css('--muted');
+  if(u>110||u<60) return '#B71C1C';
+  if(u>=85) return '#00A86B';
+  return '#B45309';
+}
+
+function utilChartHover_(e, iso){
+  var ut=UTIL_WT||{cap:{},tracked:{},covered:{},trackedOnly:{},util:{}};
+  var cv=ut.cap[iso]||0, tv=ut.tracked[iso]||0, u=ut.util[iso];
+  var utxt=u!=null?(Math.round(u)+'% utilization'+(iso===CURRENT_ISO?' (partial)':'')):'no capacity data';
+  var covTxt='';
+  if((ut.trackedOnly[iso]||0)>0){
+    var covered=ut.covered[iso]||0;
+    covTxt='<br>capacity data for '+covered+' of '+(covered+ut.trackedOnly[iso])+' people';
+  }
+  var ht=holidayTipHtml_(iso);
+  showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(cv)+' hrs capacity<br>'+fmt(tv)+' hrs tracked<br>'+esc(utxt)+covTxt+(ht?'<br>'+ht:''));
+}
+
+function renderUtilChart_(ut, cw){
+  var n=cw.length;
+  var w=620,h=170,pad={l:44,r:14,t:22,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  var rawMax=1;
+  cw.forEach(function(wk){
+    rawMax=Math.max(rawMax, ut.cap[wk.iso]||0, ut.tracked[wk.iso]||0);
+  });
+  var maxv=niceRound(rawMax);
+  var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
+  var y=function(v){return pad.t+ih-Math.min(v,maxv)/maxv*ih;};
+  var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="utilization: tracked vs schedule capacity per week">';
+  // future tint + gridlines + axis label (same conventions as the PvT chart)
+  var firstPlan=-1; cw.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
+  if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--slate')+'" opacity="0.05"/>';}
+  for(var gl=0;gl<=2;gl++){var yy=pad.t+ih*gl/2;g+='<line x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxv*(1-gl/2))+'</text>';}
+  g+='<text x="12" y="'+(pad.t+ih/2)+'" text-anchor="middle" font-size="9" fill="'+css('--muted')+'" transform="rotate(-90 12 '+(pad.t+ih/2)+')">hrs</text>';
+  if(curIdx>=0){
+    var cx=x(curIdx);
+    g+='<line x1="'+cx+'" y1="'+pad.t+'" x2="'+cx+'" y2="'+(pad.t+ih)+'" stroke="'+css('--muted')+'" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
+  }
+  // capacity area + line: solid through current, dashed into future weeks.
+  // Weeks with NO capacity data (cap 0 AND util null) draw no capacity point.
+  var capPts=[];
+  cw.forEach(function(wk,i){
+    var hasCapData=ut.util[wk.iso]!=null||((ut.cap[wk.iso]||0)>0)||((ut.covered[wk.iso]||0)>0);
+    if(hasCapData) capPts.push({i:i,x:x(i),y:y(ut.cap[wk.iso]||0),wk:wk});
+  });
+  if(capPts.length>1){
+    var aPts=capPts.map(function(p){return p.x+','+p.y;});
+    g+='<path d="M'+capPts[0].x+','+y(0)+' L'+aPts.join(' L')+' L'+capPts[capPts.length-1].x+','+y(0)+' Z" fill="'+hexVar('--slate')+'" opacity="0.12"/>';
+    for(var ci=1;ci<capPts.length;ci++){
+      var dash=capPts[ci].wk.status==='plan'?' stroke-dasharray="4 3"':'';
+      g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2.4"'+dash+'/>';
+    }
+  }
+  // tracked line — past/current weeks only; segment into the current week ghosted.
+  var tPts=[];
+  cw.forEach(function(wk,i){
+    if(wk.status==='plan') return;
+    tPts.push({x:x(i),y:y(ut.tracked[wk.iso]||0),h:ut.tracked[wk.iso]||0,wk:wk});
+  });
+  if(tPts.some(function(p){return p.h>0;})){
+    for(var ti=1;ti<tPts.length;ti++){
+      var ghost=tPts[ti].wk.status==='now'||tPts[ti-1].wk.status==='now';
+      g+='<line x1="'+tPts[ti-1].x+'" y1="'+tPts[ti-1].y+'" x2="'+tPts[ti].x+'" y2="'+tPts[ti].y+'" stroke="#00A86B" stroke-width="2.4"'+(ghost?' stroke-dasharray="3 4" opacity="0.45"':'')+'/>';
+    }
+    tPts.forEach(function(p){
+      if(!p.h) return;
+      var partial=p.wk.status==='now';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(partial?3.4:2.8)+'" fill="'+(partial?hexVar('--surface'):'#00A86B')+'" stroke="#00A86B" stroke-width="'+(partial?2:0)+'"'+(partial?' opacity="0.75"':'')+'/>';
+    });
+  }
+  // utilization % labels above the capacity line — past + current (asterisked) weeks
+  cw.forEach(function(wk,i){
+    if(wk.status==='plan') return;
+    var u=ut.util[wk.iso];
+    if(u==null) return;
+    var lbl=Math.round(u)+'%'+(wk.status==='now'?'*':'');
+    g+='<text x="'+x(i)+'" y="'+(y(ut.cap[wk.iso]||0)-7)+'" text-anchor="middle" font-size="8" fill="'+utilColor_(u)+'" font-weight="700">'+lbl+'</text>';
+  });
+  // hit-columns + thinned week labels (same interaction as the PvT chart)
+  var spacing=n>1?iw/(n-1):iw;
+  var labelStep=Math.max(1,Math.ceil(26/spacing));
+  var rectW=Math.max(10,Math.min(36,spacing));
+  cw.forEach(function(wk,i){
+    var lx=x(i);
+    var isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
+      +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
+    if(isSel||isCur||isEdge||i%labelStep===0){
+      var shortLbl=wk.iso.replace(/^\d{4}\./,'');
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isSel?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+    }
+  });
+  g+='</svg>';
+  $('utilChart').innerHTML=g;
+}
+
+function downloadUtilCsv_(){
+  var capIsos=(DATA&&DATA.capacityIsoList)||[]; if(!capIsos.length) return;
+  var npList=utilNpList_();
+  // capacityNames wins (raw Tempo/Jira display names); displayNames fills tracked-only people.
+  var nameMap=Object.assign({}, DATA.displayNames||{}, DATA.capacityNames||{});
+  var curOrd=isoOrd(CURRENT_ISO);
+  var fut={}; capIsos.forEach(function(iso){ if(isoOrd(iso)>curOrd) fut[iso]=true; });
+  var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, nameMap, npList, fut);
+  var blob=new Blob([utilCsvString_(rows)], {type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='utilization-'+(CURRENT_ISO||'export')+'.csv';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+}
+
 function populateAvailFilters(){
   var dims=DATA.rosterDimensions||{locations:[],jobFamilies:[],managers:[]};
   function fill(id,items,cur,lbl){
@@ -1572,6 +1794,7 @@ function setViewTab_(v){
 function reRenderAll_(){
   AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;
   if(typeof renderCapacity==='function')renderCapacity();
+  if(typeof renderUtilization==='function')renderUtilization();
   renderAvailability();
   if(typeof renderHeat==='function')renderHeat();
   if(typeof renderEpicRollup==='function')renderEpicRollup();
@@ -2909,7 +3132,7 @@ function renderFoot(){
 }
 
 function renderAll(){
-  renderRange(); renderCapacity(); renderAvailability();
+  renderRange(); renderCapacity(); renderUtilization(); renderAvailability();
   renderHeat(); renderEpicRollup(); renderPmRollup(); renderFoot();
 }
 
@@ -3040,6 +3263,7 @@ Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=func
 // "Tracked billing" chip toggle — scopes the Planned vs Tracked panel's tracked series only
 // (see trackedForWeek_ / BILLING_FILTER); planned/capacity figures never read this state.
 bindBillingChips_();
+var ucb=$('utilCsvBtn'); if(ucb) ucb.onclick=downloadUtilCsv_;
 // View tabs — Overview | Project heatmap | Delivery & PM load.
 Array.prototype.forEach.call($('viewTabs').children,function(b){ b.onclick=function(){ setViewTab_(b.dataset.view); }; });
 Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
