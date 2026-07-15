@@ -2047,6 +2047,7 @@ function emptyModel_(weeks) {
     capByWeek: capByWeek, grossCapByWeek: {}, timeOffByWeek: {}, holidaysByWeek: {}, holidayShortfallByWeek: {},
     capacityMode: "planned", headcount: null, anzCount: 0, baseCapacity: 0,
     capacity: CONFIG.WEEKLY_CAPACITY_HRS, anzCapacity: CONFIG.ANZ_CAPACITY_HRS,
+    personWeekCapacity: {}, capacityNames: {}, capacityIsoList: [], capacityError: null,
     planTarget: CONFIG.PLAN_TARGET,
     weekTracked: {}, tracked: {}, fidelity: {},
     behaviorSignals: {},
