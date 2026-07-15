@@ -20,6 +20,8 @@ const CONFIGCap = {
   FUTURE_WEEKS: 4,                // full future ISO weeks refreshed each run
   BACKFILL_FROM: "2026-03-30",    // first-run backfill start — must stay a Monday
   TRIGGER_HOUR: 8,                // Friday trigger hour (24h clock)
+  RETRY_ROUNDS: 2,                // extra passes over failed schedule requests
+  RETRY_PAUSE_MS: 2000,           // pause before each retry pass (Tempo 500 bursts)
   HEADER_BG: "#4472C4",
   HEADER_FONT: "#FFFFFF",
   TOTAL_ROW_BG: "#D6E4F0",
@@ -386,8 +388,11 @@ function readCapacitySheet_() {
  * double the person's capacity. The list is collapsed to unique effective
  * (primary) IDs and each schedule is fetched exactly once.
  *
- * Per-user non-200 → that user is absent from the result (window cells
- * stay blank, never zeroed). All users failing → throw, sheet untouched.
+ * Per-user non-200 → retried in RETRY_ROUNDS full batches (Tempo answers
+ * intermittent 500s under fetchAll bursts; first live backfill lost 26/192
+ * without retries). Still failing after retries → that user is absent from
+ * the result (window cells stay blank, never zeroed) and logged with their
+ * display name. All users failing → throw, sheet untouched.
  *
  * @param {string}   tempoToken
  * @param {{url: Function, key: string}} endpoint - from resolveCapacityEndpoint_
@@ -408,49 +413,67 @@ function fetchSchedulesForWindow_(tempoToken, endpoint, workerIds, userMap, from
     }
   });
 
-  const requests = effectiveIds.map((id) => ({
+  const buildRequest_ = (id) => ({
     url: endpoint.url(id, fromStr, toStr),
     method: "get",
     headers: { Authorization: `Bearer ${tempoToken}` },
     muteHttpExceptions: true,
-  }));
+  });
 
   Logger.log(
-    `ℹ️ [fetchSchedulesForWindow_] ${requests.length} schedule requests (${fromStr} → ${toStr}) via "${endpoint.key}"`,
+    `ℹ️ [fetchSchedulesForWindow_] ${effectiveIds.length} schedule requests (${fromStr} → ${toStr}) via "${endpoint.key}"`,
   );
 
   const fetched = {};
-  let okCount = 0;
-  let errCount = 0;
+  const lastCode = {}; // id → last non-200 HTTP code, for the final report
+  let pending = effectiveIds;
 
-  for (let b = 0; b < requests.length; b += CONFIGPlan.API_BATCH_SIZE) {
-    const responses = UrlFetchApp.fetchAll(
-      requests.slice(b, b + CONFIGPlan.API_BATCH_SIZE),
-    );
-    responses.forEach((res, i) => {
-      const id = effectiveIds[b + i];
-      if (res.getResponseCode() !== 200) {
-        errCount++;
-        Logger.log(
-          `   ⚠️ Schedule HTTP ${res.getResponseCode()} for ${id}: ${res.getContentText().substring(0, 120)}`,
-        );
-        return; // absent from `fetched` → window cells stay blank
-      }
-      const body = JSON.parse(res.getContentText());
-      if (body.metadata && body.metadata.next) {
-        Logger.log(
-          `   ⚠️ Schedule for ${id} paginated beyond limit — window may undercount; shorten BACKFILL window or raise limit.`,
-        );
-      }
-      fetched[id] = {
-        name: userMap[id] || id,
-        weeks: scheduleToWeeklyHours_(body.results || []),
-      };
-      okCount++;
-    });
+  for (
+    let attempt = 0;
+    attempt <= CONFIGCap.RETRY_ROUNDS && pending.length > 0;
+    attempt++
+  ) {
+    if (attempt > 0) {
+      Logger.log(
+        `ℹ️ [fetchSchedulesForWindow_] Retry ${attempt}/${CONFIGCap.RETRY_ROUNDS} for ${pending.length} failed request(s) after ${CONFIGCap.RETRY_PAUSE_MS} ms…`,
+      );
+      Utilities.sleep(CONFIGCap.RETRY_PAUSE_MS);
+    }
+
+    const failed = [];
+    for (let b = 0; b < pending.length; b += CONFIGPlan.API_BATCH_SIZE) {
+      const slice = pending.slice(b, b + CONFIGPlan.API_BATCH_SIZE);
+      const responses = UrlFetchApp.fetchAll(slice.map(buildRequest_));
+      responses.forEach((res, i) => {
+        const id = slice[i];
+        if (res.getResponseCode() !== 200) {
+          lastCode[id] = res.getResponseCode();
+          failed.push(id);
+          return;
+        }
+        const body = JSON.parse(res.getContentText());
+        if (body.metadata && body.metadata.next) {
+          Logger.log(
+            `   ⚠️ Schedule for ${id} paginated beyond limit — window may undercount; shorten BACKFILL window or raise limit.`,
+          );
+        }
+        fetched[id] = {
+          name: userMap[id] || id,
+          weeks: scheduleToWeeklyHours_(body.results || []),
+        };
+      });
+    }
+    pending = failed;
   }
 
-  Logger.log(`ℹ️ [fetchSchedulesForWindow_] ok=${okCount} failed=${errCount} of ${effectiveIds.length}`);
+  pending.forEach((id) => {
+    Logger.log(
+      `   ⚠️ Schedule HTTP ${lastCode[id]} for ${userMap[id] || id} (${id}) after ${CONFIGCap.RETRY_ROUNDS + 1} attempts — window cells left blank.`,
+    );
+  });
+
+  const okCount = effectiveIds.length - pending.length;
+  Logger.log(`ℹ️ [fetchSchedulesForWindow_] ok=${okCount} failed=${pending.length} of ${effectiveIds.length}`);
   if (okCount === 0) {
     throw new Error("❌ Every schedule request failed — aborting without touching the sheet.");
   }
