@@ -33,7 +33,7 @@ Response: `results: [{ date: "YYYY-MM-DD", requiredSeconds: 28800, type: "WORKIN
 
 Notes:
 - The originally proposed `/4/capacity/users/{accountId}` is **not** a documented Tempo v4 endpoint. Implementation order: try `user-schedule`; on 403/404 for a probe user, fall back to the `/4/capacity/users/` path; if both fail, **abort loudly without touching the sheet**. No silent 40 h placeholder.
-- `_probeCapacityEndpoint_()` diagnostic: fetches one worker's schedule for one week and logs status + first result, for one-time verification from the GAS editor.
+- `probeCapacityEndpoint()` diagnostic (public — trailing-underscore functions are hidden from the GAS editor's run dropdown): fetches one worker's schedule for one week and logs status + first result, for one-time verification from the GAS editor.
 - `user-schedule` generally returns **past dates** (the future-only restriction applies to *plans*, not schedules) — this is what makes first-run backfill and gap self-heal possible. If a workspace refuses past dates, those cells simply stay blank.
 
 **Request strategy:** one request per worker covering the **whole fetch window** (not per worker × week). Daily `requiredSeconds` are bucketed into ISO weeks locally via `isoWeekLabel_()`. Requests are batched through `UrlFetchApp.fetchAll` in `CONFIGPlan.API_BATCH_SIZE` chunks. ~1 request/worker/run (~60 total) instead of ~300.
@@ -113,7 +113,7 @@ Footer: ""              TOTAL     (column sums)             (grand total)
 | `mergeCapacityGrid_()` | Pure merge (§5.5) |
 | `writeCapacitySheet_()` | Grid + footer + formatting + hide col A |
 | `createCapacityWeeklyTrigger()` | One-time setup: delete prior `fetchTempoCapacity` triggers, install **Friday @ `TRIGGER_HOUR`** |
-| `_probeCapacityEndpoint_()` | One-off endpoint verification diagnostic |
+| `probeCapacityEndpoint()` | One-off endpoint verification diagnostic (public for the editor dropdown) |
 | `_test_capacityMerge_()`, `_test_capacityWindow_()` | Node-runnable unit tests (stubbed `Logger`), covering: freeze boundary, new-hire append, leaver row retention, gap self-heal, empty-sheet backfill, name refresh, blank-vs-zero semantics |
 
 ---

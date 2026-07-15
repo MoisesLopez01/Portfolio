@@ -100,8 +100,9 @@ function createCapacityWeeklyTrigger() {
  * ONE-OFF: logs both endpoint candidates' raw responses for the first
  * worker over the next 7 days. Run from the GAS editor to verify which
  * capacity source this workspace exposes before the first real run.
+ * Public (no trailing underscore) so it appears in the editor's run dropdown.
  */
-function _probeCapacityEndpoint_() {
+function probeCapacityEndpoint() {
   const { tempoToken } = getCredentials_();
   const workerIds = fetchAllTeamMembers_(tempoToken);
   if (workerIds.length === 0) {
