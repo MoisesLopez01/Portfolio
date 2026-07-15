@@ -85,6 +85,26 @@ function computeCapacityWindow_(existingIsoWeeks, today) {
   return { from, to, backfill };
 }
 
+// ── SECTION: SCHEDULE BUCKETING (pure — Node-tested) ─────────
+
+/**
+ * Buckets Tempo user-schedule day entries into ISO-week hour totals.
+ * Zero-second days still create/keep their week key: an explicit 0 means
+ * "scheduled zero hours" (e.g. full-week holiday), which downstream
+ * utilization must distinguish from a blank ("unknown") cell.
+ * @param {Array<{date: string, requiredSeconds: number}>} days
+ * @returns {Object} isoWeekLabel → hours
+ */
+function scheduleToWeeklyHours_(days) {
+  const weeks = {};
+  (days || []).forEach((d) => {
+    if (!d || !d.date) return;
+    const iso = isoWeekLabel_(parseDateLocal_(d.date));
+    weeks[iso] = (weeks[iso] || 0) + (d.requiredSeconds || 0) / 3600;
+  });
+  return weeks;
+}
+
 // ── SECTION: TESTS ────────────────────────────────────────────
 
 /**
@@ -135,8 +155,33 @@ function _test_capacityWindow_() {
   assertEq_(fmtDate_(w4.from), "2026-07-13", "Monday run heals current unstored week");
 }
 
+/** Daily user-schedule entries → ISO-week hour buckets. */
+function _test_scheduleBucketing_() {
+  Logger.log("🧪 _test_scheduleBucketing_");
+
+  const days = [
+    { date: "2026-07-20", requiredSeconds: 28800 }, // Mon W30 — 8h
+    { date: "2026-07-21", requiredSeconds: 28800 }, // Tue W30 — 8h
+    { date: "2026-07-25", requiredSeconds: 0 },     // Sat W30 — 0h day
+    { date: "2026-07-27", requiredSeconds: 14400 }, // Mon W31 — half day
+  ];
+  assertEq_(scheduleToWeeklyHours_(days), { "2026.W30": 16, "2026.W31": 4 }, "seconds bucketed to ISO weeks as hours");
+
+  // A fully zero-hour week must be PRESENT as 0 (scheduled zero), never dropped —
+  // blank means "unknown" downstream, 0 means "not expected to work".
+  assertEq_(
+    scheduleToWeeklyHours_([{ date: "2026-07-20", requiredSeconds: 0 }]),
+    { "2026.W30": 0 },
+    "all-zero week present as explicit 0",
+  );
+
+  assertEq_(scheduleToWeeklyHours_([]), {}, "empty schedule → empty buckets");
+  assertEq_(scheduleToWeeklyHours_([{ notADate: true }]), {}, "malformed entries skipped");
+}
+
 /** GAS-editor & Node entry point — grows as tasks add suites. */
 function runCapacityTests() {
   _test_capacityWindow_();
+  _test_scheduleBucketing_();
   Logger.log("✅ All capacity tests passed");
 }
