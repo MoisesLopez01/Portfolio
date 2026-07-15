@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en" data-theme="light">
 <head>
 <base target="_top">
@@ -391,6 +391,12 @@ input[type=file]{display:none}
 [data-theme="dark"] .et-scope-hot{color:#fcd34d}
 .et-unassigned{color:#b45309;font-size:calc(8.5px*var(--scale));font-weight:800;vertical-align:super;margin-left:3px;cursor:help}
 [data-theme="dark"] .et-unassigned{color:#fcd34d}
+.et-untag-hot{color:#b45309;font-weight:700}
+[data-theme="dark"] .et-untag-hot{color:#fcd34d}
+/* "(no epic)" alert banner — unattributed work called out above the epic table */
+.noepic-banner{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:calc(11.5px*var(--scale));color:#78350f}
+[data-theme="dark"] .noepic-banner{background:#422006;border-color:#92400e;color:#fcd34d}
+.noepic-banner .evid-details summary{color:inherit}
 
 /* Issue-evidence expander — collapsed by default; the drill leads with headline
    numbers and managers open the issue-level proof only when they need it. */
@@ -1548,7 +1554,7 @@ function blendPieSvg_(counts,total){
     var ox=isActive?4*Math.cos(mid):0,oy=isActive?4*Math.sin(mid):0; // active slice pulls out along its mid-angle
     var stroke=isActive?'var(--orbe)':'var(--surface-2)';
     var dimCls=(AVAIL_BLEND&&!isActive)?' dim':'';
-    var title=esc(labels[tier]+' — '+n+(n===1?' person':' people')+' · '+pctLbl+'%');
+    var title=esc(labels[tier]+' — '+n+(n===1?' rocketeer':' rocketeers')+' · '+pctLbl+'%');
     var attrs=' class="pie-slice'+dimCls+'" fill="'+SPARK_COLORS[tier-1]+'" style="stroke:'+stroke+';stroke-width:2;stroke-linejoin:round" onclick="AVAIL_BLEND='+(isActive?0:tier)+';AVAIL_OPEN=null;renderAvailability()"';
     if(pct>=0.999){ // arc endpoints coincide at 360° — a lone tier renders as a full circle
       svg+='<circle cx="'+(C+ox)+'" cy="'+(C+oy)+'" r="'+R+'"'+attrs+'><title>'+title+'</title></circle>';
@@ -2041,7 +2047,7 @@ function renderEpicRollup(){
     var ek=t.epicKey || '(no epic)';
     var g=groups[ek];
     if(!g){ g={epicKey:ek,hours:0,billable:0,internal:0,untagged:0,unclassified:0,projectKeys:{},contributors:{},
-              histByIso:{},issueStatus:{},projHours:{}}; groups[ek]=g; order.push(ek); }
+              contribHours:{},histByIso:{},issueStatus:{},projHours:{}}; groups[ek]=g; order.push(ek); }
     var h=t.hours||0;
     g.histByIso[t.iso]=(g.histByIso[t.iso]||0)+h;
     if(wkScope && t.iso!==wkScope) return;
@@ -2051,12 +2057,22 @@ function renderEpicRollup(){
     else if(t.billingType==='Untagged') g.untagged+=h;
     else g.unclassified+=h;
     if(t.projectKey){ g.projectKeys[t.projectKey]=true; g.projHours[t.projectKey]=(g.projHours[t.projectKey]||0)+h; }
-    if(t.person) g.contributors[normDD_(t.person)]=t.person; // keyed by norm (distinct-person dedupe), value = display name for hover/expand
+    if(t.person){
+      var pn=normDD_(t.person);
+      g.contributors[pn]=t.person; // keyed by norm (distinct-person dedupe), value = display name for hover/expand
+      g.contribHours[pn]=(g.contribHours[pn]||0)+h; // lead contributor = most hours
+    }
     if(t.issue) g.issueStatus[t.issue]=t.status||'';
   });
 
   // Under a week focus, groups can exist with 0 in-scope hours (histByIso is unwindowed) — drop them.
   var rows=order.map(function(ek){return groups[ek];}).filter(function(g){return g.hours>0.001;});
+
+  // "(no epic)" is not an epic — as a row it drowns the real portfolio in the sort
+  // (tens of thousands of unattributed hours) and can't be health-checked. It becomes
+  // an alert banner above the table instead, with its own collapsed evidence drill.
+  var noEpic=null;
+  rows=rows.filter(function(g){ if(g.epicKey==='(no epic)'){ noEpic=g; return false; } return true; });
 
   // Derived per-epic decision columns: PM of record, ticket completion, health status.
   // Whole-backlog stats (DATA.epicBacklog, Phase 2 server enrichment) upgrade the ticket
@@ -2076,6 +2092,7 @@ function renderEpicRollup(){
     r.unassigned=bk?bk.unassigned:0;
     r.agingWip=bk?bk.agingWip:null;           // null = no backlog data → render '—'
     r.oldestWipDays=bk?bk.oldestWipDays:0;
+    r.oldestWipKey=bk?(bk.oldestWipKey||''):'';
     r.scopeC=0; r.scopeD=0;                    // created vs closed inside the display window
     if(bk){
       Object.keys(bk.createdByWeek||{}).forEach(function(iso){ if(winIsos[iso]) r.scopeC+=bk.createdByWeek[iso]; });
@@ -2083,6 +2100,10 @@ function renderEpicRollup(){
     }
     r.scopeHot=r.bkAvail && r.scopeC>=3 && r.scopeC>r.scopeD; // scope growing faster than delivery
     r.health=epicHealth_(r.histByIso, r);
+    // Lead contributor (most hours) — the scan-level "who to ask"; full list stays in the hover/expand.
+    var lead='', leadH=-1;
+    Object.keys(r.contribHours).forEach(function(pn){ if(r.contribHours[pn]>leadH){ leadH=r.contribHours[pn]; lead=r.contributors[pn]; } });
+    r.lead=lead;
   });
 
   var dirn=EPIC_SORT.dir;
@@ -2091,28 +2112,64 @@ function renderEpicRollup(){
     pm:      function(a,b){ return ((a.pm||'~').localeCompare(b.pm||'~'))*dirn || b.hours-a.hours; }, // '~' sinks blank PMs
     hours:   function(a,b){ return (a.hours-b.hours)*dirn; },
     tickets: function(a,b){ var ra=a.ticketTotal?a.ticketDone/a.ticketTotal:-1, rb=b.ticketTotal?b.ticketDone/b.ticketTotal:-1; return (ra-rb)*dirn || b.hours-a.hours; },
-    aging:   function(a,b){ return ((a.agingWip||0)-(b.agingWip||0))*dirn || b.hours-a.hours; },
+    untag:   function(a,b){ return (a.untagged-b.untagged)*dirn || b.hours-a.hours; },
+    aging:   function(a,b){ return ((a.agingWip||0)-(b.agingWip||0))*dirn || (b.oldestWipDays||0)-(a.oldestWipDays||0); },
+    blocker: function(a,b){ return ((a.oldestWipDays||0)-(b.oldestWipDays||0))*dirn || b.hours-a.hours; },
     scope:   function(a,b){ return ((a.scopeC-a.scopeD)-(b.scopeC-b.scopeD))*dirn || b.hours-a.hours; },
     health:  function(a,b){ return (a.health.rank-b.health.rank)*dirn || b.hours-a.hours; }
   };
   rows.sort(sorters[EPIC_SORT.col]||sorters.hours);
   var totalHrs=rows.reduce(function(s,r){return s+r.hours;},0);
 
+  // "(no epic)" alert banner — unattributed work stays visible without competing in the sort.
+  var bannerHtml='';
+  if(noEpic){
+    var neTickets=Object.keys(noEpic.issueStatus).length;
+    var nePeople=Object.keys(noEpic.contributors).length;
+    bannerHtml='<div class="noepic-banner">⚠ <b>'+fmt(noEpic.hours)+' hrs</b> of tracked work not linked to any epic'
+      +' · '+neTickets+' ticket'+(neTickets!==1?'s':'')+' · '+nePeople+' '+(nePeople===1?'person':'people')
+      +(noEpic.untagged>0.5?' · <b>'+fmt(noEpic.untagged)+'h also untagged for billing</b>':'')
+      +' — this work can’t be health-checked here. Ask ticket owners to link their tickets to an epic.'
+      +evidenceDetails_(function(t){return !t.epicKey;}, wkScope||'latest')
+      +'</div>';
+  }
+
   if(!rows.length){
-    container.innerHTML='<div class="hint" style="padding:4px 0 2px">No epic-tagged tracked hours'+(scopeActive?' for the current filters':'')+(wkScope?' in '+esc(wkScope):'')+'.</div>';
+    container.innerHTML=bannerHtml+'<div class="hint" style="padding:4px 0 2px">No epic-tagged tracked hours'+(scopeActive?' for the current filters':'')+(wkScope?' in '+esc(wkScope):'')+'.</div>';
     if(swEl){ swEl.className='sowhat'; swEl.innerHTML=''; }
     return;
   }
 
+  // Plain-language column explanations — managers shouldn't need the technical model
+  // to read this table; every header explains itself on hover.
+  var HDR_HELP={
+    epic:'A Jira epic = one body of work. Each row is that epic’s delivery scorecard.',
+    pm:'PM of record — the lead of the project where most of this epic’s hours were logged.',
+    proj:'The Jira project(s) this epic’s hours were logged under.',
+    bill:'Commercial tag on the logged time: Billable = tied to a sales order (SRSO) · Internal = deliberately non-revenue · Untagged = nobody tagged it (revenue may be hiding here) · Unclassified = ticket not found in Jira. Hover a chip for the full hour split.',
+    hours:'Actual time logged in Tempo against this epic — effort, all tracked weeks (or the focused week).',
+    tickets:'Delivered tickets out of ALL tickets in this epic — output, not effort. An amber ⚠N = N open tickets have no owner.',
+    untag:'How many of the tracked hours carry NO billing tag. This is the revenue-leakage column: these hours should be classified.',
+    aging:'In-progress tickets untouched for '+(DATA.agingWipDays||14)+'+ days — usually a blocker nobody escalated.',
+    blocker:'The single oldest untouched in-progress ticket and how long it’s been sitting — the first thing to chase.',
+    scope:'Tickets added vs closed in this window. More added than closed = the epic is growing faster than it’s being delivered.',
+    health:'One-word verdict: Stalled = work went silent · At Risk = billing gap or a big weekly drop · On Track = neither. Hover the chip for the reason.',
+    contrib:'Who logged the time — the named person did the most hours. Click to open the ticket-level evidence.'
+  };
   function sortTh(col,label,cls){
     var arr=EPIC_SORT.col===col?(' <span class="arr">'+(EPIC_SORT.dir>0?'▲':'▼')+'</span>'):'';
-    return '<th class="et-sort'+(cls?' '+cls:'')+'" data-sort="'+col+'" title="Click to sort">'+label+arr+'</th>';
+    return '<th class="et-sort'+(cls?' '+cls:'')+'" data-sort="'+col+'" title="'+esc((HDR_HELP[col]||'')+' (Click to sort.)')+'">'+label+arr+'</th>';
   }
-  var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
-    +sortTh('epic','Epic')+sortTh('pm','PM')+'<th>Project(s)</th><th>Billing</th>'
+  var html=bannerHtml
+    +'<div class="pwt-caption">One row per epic — hover any column header for what it means · click a header to sort · a row should answer: on track? billed right? growing? stuck? who owns it?</div>'
+    +'<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
+    +sortTh('epic','Epic')+sortTh('pm','PM')
+    +'<th title="'+esc(HDR_HELP.proj)+'">Project(s)</th><th title="'+esc(HDR_HELP.bill)+'">Billing</th>'
     +sortTh('hours','Tracked hrs','et-hrs')+sortTh('tickets','Tickets done','et-hrs')
-    +sortTh('aging','Aging WIP','et-hrs')+sortTh('scope','Scope +/−','et-hrs')
-    +sortTh('health','Health')+'<th class="et-contrib">Contributors</th>'
+    +sortTh('untag','Untagged hrs','et-hrs')
+    +sortTh('aging','Aging WIP','et-hrs')+sortTh('blocker','Top blocker')
+    +sortTh('scope','Scope +/−','et-hrs')
+    +sortTh('health','Health')+'<th class="et-contrib" title="'+esc(HDR_HELP.contrib)+'">Contributors</th>'
     +'</tr></thead><tbody>';
 
   rows.forEach(function(r){
@@ -2145,9 +2202,17 @@ function renderEpicRollup(){
           ? r.agingWip+' in-progress ticket'+(r.agingWip!==1?'s':'')+' with no update in ≥'+(DATA.agingWipDays||14)+' days (oldest '+r.oldestWipDays+'d) — hidden blockers, check before they surface as misses'
           : 'No in-progress ticket has sat untouched for '+(DATA.agingWipDays||14)+'+ days');
     var scopeTitle=r.bkAvail
-      ? '+'+r.scopeC+' created / −'+r.scopeD+' closed in the '+NWEEKS+'-week window'
+      ? '+'+r.scopeC+' ticket'+(r.scopeC!==1?'s':'')+' added / −'+r.scopeD+' closed in the '+NWEEKS+'-week window'
         +(r.scopeHot?' — scope is growing faster than delivery':'')
       : 'No backlog data';
+    var untagTitle=r.untagged>0.5
+      ? fmt(r.untagged)+'h of tracked time has no billing tag — classify these hours or revenue leaks silently'
+      : 'All tracked hours carry a billing tag';
+    var blockerHtml='—', blockerTitle='No aging in-progress ticket';
+    if(r.bkAvail && r.agingWip>0 && r.oldestWipKey){
+      blockerHtml='<span class="proj-key-mono">'+esc(r.oldestWipKey)+'</span> <span class="et-aging-hot">'+r.oldestWipDays+'d</span>';
+      blockerTitle=r.oldestWipKey+' has sat in progress untouched for '+r.oldestWipDays+' days — the first ticket to chase on this epic';
+    }
     html+='<tr>'
       +'<td><span class="proj-key-mono">'+esc(r.epicKey)+'</span>'+(epicName?' <span class="pwt-name">'+esc(epicName)+'</span>':'')+'</td>'
       +'<td>'+(r.pm?'<span class="pm-chip">'+esc(r.pm)+'</span>':'<span class="hint" title="Dominant project carries no PM of record">⚠ —</span>')+'</td>'
@@ -2156,19 +2221,25 @@ function renderEpicRollup(){
       +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
       +'<td class="et-hrs" title="'+esc(tickTitle)+'">'+(r.ticketTotal?(r.ticketDone+'/'+r.ticketTotal):'—')
         +(r.unassigned>0?'<span class="et-unassigned" title="'+r.unassigned+' open ticket'+(r.unassigned!==1?'s':'')+' with no assignee">⚠'+r.unassigned+'</span>':'')+'</td>'
+      +'<td class="et-hrs'+(r.untagged>0.5?' et-untag-hot':'')+'" title="'+esc(untagTitle)+'">'+(r.untagged>0.5?fmt(r.untagged):'—')+'</td>'
       +'<td class="et-hrs'+(r.agingWip>0?' et-aging-hot':'')+'" title="'+esc(agingTitle)+'">'+(r.agingWip===null?'—':r.agingWip)+'</td>'
+      +'<td title="'+esc(blockerTitle)+'">'+blockerHtml+'</td>'
       +'<td class="et-hrs'+(r.scopeHot?' et-scope-hot':'')+'" title="'+esc(scopeTitle)+'">'+(r.bkAvail?('+'+r.scopeC+'/−'+r.scopeD):'—')+'</td>'
       +'<td><span class="et-status et-status-'+r.health.cls+'" title="'+esc(r.health.why)+'">'+r.health.label+'</span></td>'
-      +'<td class="et-contrib"><span class="et-contrib-btn" title="'+esc(contribNames.join(', '))+'" onclick="toggleEpicDrill(\''+r.epicKey.replace(/'/g,"\\'")+'\')">'
-        +contribCount+' '+(contribCount===1?'person':'people')+' '+(isOpen?'▴':'▾')+'</span></td>'
+      +'<td class="et-contrib"><span class="et-contrib-btn" title="'+esc(contribNames.join(', '))+' — click for ticket-level evidence" onclick="toggleEpicDrill(\''+r.epicKey.replace(/'/g,"\\'")+'\')">'
+        +(r.lead?esc(r.lead)+(contribCount>1?' <span class="hint">+'+(contribCount-1)+'</span>':'')
+               :contribCount+' '+(contribCount===1?'rocketeer':'rocketeers'))
+        +' '+(isOpen?'▴':'▾')+'</span></td>'
       +'</tr>';
     if(isOpen){
       // Enhanced for Task 11: keep the contributor names (cheap "who" glance) and add the
       // full issue-level evidence table underneath (the "what work" behind those hours).
       var epicKeyForEvid=r.epicKey;
-      html+='<tr><td colspan="10" style="padding:0"><div class="avail-expanded-section">'
+      // Optional evidence, not required context: opens on the focused / most recent
+      // worked week (the selector's "All weeks" restores the full history).
+      html+='<tr><td colspan="12" style="padding:0"><div class="avail-expanded-section">'
         +'<div style="margin-bottom:8px"><b>Contributors:</b> '+(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div>'
-        +evidenceDetails_(function(t){return (t.epicKey||'(no epic)')===epicKeyForEvid;})
+        +evidenceDetails_(function(t){return (t.epicKey||'(no epic)')===epicKeyForEvid;}, wkScope||'latest')
         +'</div></td></tr>';
     }
   });
@@ -2189,11 +2260,13 @@ function renderEpicRollup(){
   var riskN=rows.filter(function(r){return r.health.cls==='risk';}).length;
   var agingTot=rows.reduce(function(s,r){return s+(r.agingWip||0);},0);
   var unassignedTot=rows.reduce(function(s,r){return s+(r.unassigned||0);},0);
+  var untaggedTot=rows.reduce(function(s,r){return s+(r.untagged||0);},0);
   var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours '+(wkScope?'in '+esc(wkScope):'across all tracked weeks')+' ('+fmt(totalHrs)+' hrs total)'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(stalledN||riskN ? ' Health: <b>'+stalledN+'</b> stalled · <b>'+riskN+'</b> at risk.' : ' All epics on track.')
     +(agingTot>0?' <b>'+agingTot+'</b> aging WIP ticket'+(agingTot!==1?'s':'')+'.':'')
     +(unassignedTot>0?' <b>'+unassignedTot+'</b> open ticket'+(unassignedTot!==1?'s':'')+' unassigned.':'')
+    +(untaggedTot>0.5?' <b>'+fmt(untaggedTot)+' hrs</b> untagged for billing.':'')
     +(scopeActive?' Reflects the filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
@@ -2268,8 +2341,15 @@ function renderPmRollup(){
   }
 
   var totalPlanned=rows.reduce(function(s,r){return s+r.planned;},0);
-  var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
-    +'<th>PM</th><th>Projects</th><th class="et-hrs">Epics</th><th class="et-hrs">Planned hrs</th><th class="et-hrs">Tracked hrs</th><th class="et-hrs">Fidelity</th>'
+  // Plain-language header explanations, same convention as the Epic delivery table.
+  var html='<div class="pwt-caption">One row per PM — hover any column header for what it means · click a PM to focus the whole dashboard on their portfolio</div>'
+    +'<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
+    +'<th title="Project manager of record — the Jira project lead. “⚠ (no PM)” groups work whose projects have no PM attached.">PM</th>'
+    +'<th title="The projects in this PM’s portfolio with planned or tracked hours in this window.">Projects</th>'
+    +'<th class="et-hrs" title="Active epics being worked under this PM’s projects. ⚠ load appears at '+PM_CONC_EPICS+'+ — one PM carrying that many bodies of work is a concentration risk.">Epics</th>'
+    +'<th class="et-hrs" title="Time the team PLANNED to spend on this PM’s projects (Tempo plan, capped at each person’s weekly capacity so duplicated planning doesn’t inflate it).">Planned hrs</th>'
+    +'<th class="et-hrs" title="Time actually logged on this PM’s projects.">Tracked hrs</th>'
+    +'<th class="et-hrs" title="Tracked ÷ planned. Low % = the plan isn’t being executed or time isn’t being logged · well over 100% = the portfolio absorbed unplanned work. Both are conversations, not verdicts.">Fidelity</th>'
     +'</tr></thead><tbody>';
   rows.forEach(function(r,i){
     var projKeys=Object.keys(r.keys).sort();
@@ -2408,7 +2488,8 @@ function evidenceWeeks_(predicate){
     if(!predicate(t)) return;
     if(t.iso) seen[t.iso]=true;
   });
-  return Object.keys(seen).sort();
+  // isoOrd sort, not lexical — "2026.W7" must come before "2026.W14" (weeks are unpadded)
+  return Object.keys(seen).sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
 }
 
 // Renders evidence rows as Issue · Summary · Status · Billing · hours. Individual issues ARE
@@ -2419,18 +2500,24 @@ function evidenceWeeks_(predicate){
 // table to a single ISO week without a full panel re-render.
 var EVID_REG={}, EVID_SEQ=0; // evidence-section id → predicate (for the week selector)
 function shortWk_(iso){ return String(iso).replace(/^\d{4}\./,''); }
-function evidenceDetails_(pred){
+function evidenceDetails_(pred, defaultIso){
   var id='evd'+(++EVID_SEQ);
   EVID_REG[id]=pred;
-  var rows=evidenceRows_(pred);
   var weeks=evidenceWeeks_(pred);
+  // "Scan flat, drill focused": callers can open on one week (pass defaultIso, or 'latest'
+  // for the most recent worked week) instead of dumping every week's issues at once —
+  // the "All weeks" option in the selector is always one click away.
+  var startIso = defaultIso==='latest' ? (weeks.length>1 ? weeks[weeks.length-1] : null)
+               : (defaultIso && weeks.indexOf(defaultIso)>=0 ? defaultIso : null);
+  var allRows=evidenceRows_(pred);
+  var rows=startIso ? evidenceRows_(pred, startIso) : allRows;
   var sel=weeks.length>1
     ? '<div class="evid-week-row">Week worked: <select class="sigfilter" onchange="evidWeekChange_(\''+id+'\',this.value)">'
       +'<option value="">All weeks ('+weeks.length+')</option>'
-      +weeks.map(function(w){ return '<option value="'+esc(w)+'">'+esc(w)+'</option>'; }).join('')
+      +weeks.map(function(w){ return '<option value="'+esc(w)+'"'+(w===startIso?' selected':'')+'>'+esc(w)+'</option>'; }).join('')
       +'</select></div>'
     : '';
-  return '<details class="evid-details"><summary>Issue evidence · '+rows.length+' issue'+(rows.length!==1?'s':'')+'</summary>'
+  return '<details class="evid-details"><summary>Issue evidence · '+allRows.length+' issue'+(allRows.length!==1?'s':'')+'</summary>'
     + sel
     + '<div id="'+id+'">'+renderEvidenceTable_(rows)+'</div></details>';
 }
@@ -2655,7 +2742,7 @@ function heatProjectExpandHtml_(key) {
     mgNote = 'No tracked activity despite ' + totalPlanH.toFixed(0) + 'h planned ' + wkPhrase + '. Check if the project has started or is blocked.';
   } else if (hasRisk && escRows.length > 0) {
     var escNames = escRows.map(function(r) { return r.name; }).join(', ');
-    mgNote = 'Concentration risk — only ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '. '
+    mgNote = 'Concentration risk — only ' + alignedCount + ' active rocketeer' + (alignedCount !== 1 ? 's' : '') + '. '
       + escNames + (escRows.length > 1 ? ' have' : ' has') + ' been silent — follow up before next planning cycle.';
   } else {
     mgNote = alignedCount + ' of ' + rows.length + ' planned people actively tracking ' + wkPhrase + '. Check in with those not tracking.';
@@ -2668,7 +2755,7 @@ function heatProjectExpandHtml_(key) {
   html += '<div class="hexp-section">';
   html += '<div class="hexp-title">' + esc(projName) + ' — ' + esc(titleWkLbl);
   if (KEYPM[key]) html += ' <span class="pm-chip">PM: ' + esc(KEYPM[key]) + '</span>';
-  if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active person' + (alignedCount !== 1 ? 's' : '') + '</span>';
+  if (hasRisk) html += ' <span class="hexp-risk-flag">⚠ Concentration risk — ' + alignedCount + ' active rocketeer' + (alignedCount !== 1 ? 's' : '') + '</span>';
   html += '</div>';
   html += projectPeopleGridHtml_(gridRows);
   html += '<div class="hexp-mgr-note"><div class="hexp-note-lbl">Manager note</div>' + esc(mgNote) + '</div>';
@@ -2835,7 +2922,7 @@ function parseCSV(text){
   var lines=text.split(/\r?\n/).filter(function(l){return l.trim().length;});
   if(!lines.length) return [];
   var head=lines[0].split(',').map(function(s){return s.trim().toLowerCase();});
-  var ci={person:head.indexOf('person'),iso:head.indexOf('week'),key:head.indexOf('project_key'),name:head.indexOf('project_name'),hours:head.indexOf('allocation'),pm:head.indexOf('pm')};
+  var ci={person:head.indexOf('rocketeer'),iso:head.indexOf('week'),key:head.indexOf('project_key'),name:head.indexOf('project_name'),hours:head.indexOf('allocation'),pm:head.indexOf('pm')};
   var out=[];
   for(var i=1;i<lines.length;i++){
     var c=lines[i].split(',');

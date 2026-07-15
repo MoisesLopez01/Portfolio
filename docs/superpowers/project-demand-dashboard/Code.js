@@ -1148,7 +1148,8 @@ var JR_TODO_RE_ = /backlog|to ?do|open|new|triage|icebox|ready/i;
  *  - done: resolved date set, or status matches JR_DONE_RE_
  *  - unassigned: open tickets with no assignee (ownership gaps)
  *  - agingWip: in-progress tickets (not done, not todo) untouched for
- *    ≥ CONFIG.AGING_WIP_DAYS days; oldestWipDays = worst age
+ *    ≥ CONFIG.AGING_WIP_DAYS days; oldestWipDays/oldestWipKey = the single
+ *    worst one (the "top blocker" — the first ticket a PM should chase)
  *  - createdByWeek / closedByWeek: ISO-week counts (scope-vs-delivery trend)
  * The epic's own row (epicKey === "") is never counted as its own child.
  * @param {Object} map  parseJiraMeta_ map (UPPER issue key → meta)
@@ -1165,7 +1166,7 @@ function buildEpicBacklogStats_(map, now) {
     if (!ek) return;
     var s = stats[ek];
     if (!s) s = stats[ek] = { total: 0, done: 0, unassigned: 0, agingWip: 0, oldestWipDays: 0,
-                              createdByWeek: {}, closedByWeek: {} };
+                              oldestWipKey: "", createdByWeek: {}, closedByWeek: {} };
     s.total++;
     var isDone = !!m.resolved || JR_DONE_RE_.test(m.status || "");
     if (isDone) {
@@ -1178,7 +1179,7 @@ function buildEpicBacklogStats_(map, now) {
         var age = Math.floor((now - m.updated) / 86400000);
         if (age >= CONFIG.AGING_WIP_DAYS) {
           s.agingWip++;
-          if (age > s.oldestWipDays) s.oldestWipDays = age;
+          if (age > s.oldestWipDays) { s.oldestWipDays = age; s.oldestWipKey = ik; }
         }
       }
     }
@@ -2085,6 +2086,7 @@ function _test_epicBacklogStats_() {
   assert_(s.unassigned === 1, "unassigned should be 1 (A-3)");
   assert_(s.agingWip === 1, "aging WIP should be 1 (A-2 untouched 20d; A-4 fresh; A-3 is Backlog=todo)");
   assert_(s.oldestWipDays >= 19 && s.oldestWipDays <= 21, "oldest WIP age ≈20d, got " + s.oldestWipDays);
+  assert_(s.oldestWipKey === "A-2", "top blocker should be A-2, got " + s.oldestWipKey);
   assert_(s.createdByWeek["2026.W29"] === 1, "A-3 created in W29 (Jul 13 = Mon of W29)");
   assert_(s.closedByWeek["2026.W28"] === 1, "A-1 resolved Jul 8 = W28");
   assert_(!stats["B-9"] && Object.keys(stats).length === 1, "orphans/no-epic rows create no stats entries");
