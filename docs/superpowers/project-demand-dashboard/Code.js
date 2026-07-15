@@ -406,6 +406,9 @@ function buildDemandModel_() {
       // Whole-backlog epic stats (Phase 2 of the Delivery & PM load tab): true
       // Done/Total, aging WIP, unassigned counts, created/closed-by-week trend.
       model.epicBacklog = buildEpicBacklogStats_(jiraMeta.map);
+      // Assignment gaps: assigned-but-idle / working-but-unassigned per epic,
+      // from the tracked-time × Jira Raw cross-reference (recent weeks only).
+      model.epicGaps = buildEpicAssignmentGaps_(scopedTrackedRecs, jiraMeta.map);
       // Tempo planned hours per epic (issue-level plans joined via Jira Raw) —
       // feeds the epic table's Planned hrs column; estimates are the fallback.
       model.personEpicPlan = buildPersonEpicPlan_(scopedRecs, jiraMeta.map);
@@ -1230,6 +1233,102 @@ function buildPersonEpicPlan_(recs, metaMap) {
 }
 
 /**
+ * Cross-references who is ASSIGNED to an epic's open tickets (Jira Raw) with
+ * who is actually LOGGING hours on it (tracked time), per epic:
+ *  - workingNotAssigned: people with recent tracked hours on the epic but no
+ *    open ticket assigned — candidates to make ownership formal
+ *  - assignedNotWorking: people assigned to open tickets with ZERO tracked
+ *    hours in the recent window — assigned-but-idle
+ *  - unassignedActive: open unassigned tickets someone recently logged hours
+ *    on — issue key + top logger, the "assign them" shortlist
+ * Recent window = the last RECENT_GAP_WEEKS ISO weeks that actually carry
+ * tracked data (data weeks, not calendar weeks — a lagging export narrows the
+ * window instead of blanking every signal). Names compare roster-normalized
+ * on both sides: Jira Raw assignees and the tracked User column both come
+ * from the same roster name mapping.
+ * @param {Array}  recs    enriched tracked recs (carry .epicKey/.person/.iso/.hours/.issue)
+ * @param {Object} metaMap parseJiraMeta_ map (UPPER issue key → meta)
+ * @returns {Object} UPPER(epic key) → { workingNotAssigned:[{name,hrs}],
+ *                   assignedNotWorking:[names], unassignedActive:[{key,worker,hrs}] }
+ */
+var RECENT_GAP_WEEKS_ = 2;
+function buildEpicAssignmentGaps_(recs, metaMap) {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, " ").trim(); };
+
+  // Recent window: the last N ISO weeks present in the tracked data.
+  var isoSet = {};
+  (recs || []).forEach(function (r) { if (r.iso) isoSet[r.iso] = true; });
+  var recent = {};
+  Object.keys(isoSet).sort(function (a, b) {
+    var pa = a.split(".W"), pb = b.split(".W");
+    return (+pa[0] - +pb[0]) || (+pa[1] - +pb[1]);
+  }).slice(-RECENT_GAP_WEEKS_).forEach(function (iso) { recent[iso] = true; });
+
+  // Assigned side: assignees of each epic's OPEN tickets (Jira Raw).
+  var assigned = {}; // ek → np → display name
+  Object.keys(metaMap || {}).forEach(function (ik) {
+    var m = metaMap[ik];
+    if (!m.epicKey || !m.assignee) return;
+    if (m.resolved || JR_DONE_RE_.test(m.status || "")) return;
+    (assigned[m.epicKey] = assigned[m.epicKey] || {})[norm(m.assignee)] = m.assignee;
+  });
+
+  // Actual side: recent tracked hours per epic per person, plus per issue
+  // (per-issue detail backs the unassignedActive shortlist).
+  var working = {};  // ek → np → { name, hrs }
+  var issueHrs = {}; // UPPER issue key → np → { name, hrs }
+  (recs || []).forEach(function (r) {
+    if (!recent[r.iso] || !(r.hours > 0)) return;
+    var np = norm(r.person);
+    if (r.epicKey) {
+      var w = (working[r.epicKey] = working[r.epicKey] || {});
+      if (!w[np]) w[np] = { name: r.person, hrs: 0 };
+      w[np].hrs += r.hours;
+    }
+    if (r.issue) {
+      var ik2 = String(r.issue).toUpperCase().trim();
+      var ih = (issueHrs[ik2] = issueHrs[ik2] || {});
+      if (!ih[np]) ih[np] = { name: r.person, hrs: 0 };
+      ih[np].hrs += r.hours;
+    }
+  });
+
+  var out = {};
+  var ensure = function (ek) {
+    return out[ek] || (out[ek] = { workingNotAssigned: [], assignedNotWorking: [], unassignedActive: [] });
+  };
+  var eks = {};
+  Object.keys(assigned).forEach(function (ek) { eks[ek] = true; });
+  Object.keys(working).forEach(function (ek) { eks[ek] = true; });
+  Object.keys(eks).forEach(function (ek) {
+    var a = assigned[ek] || {}, w = working[ek] || {};
+    var wna = Object.keys(w).filter(function (np) { return !a[np]; })
+      .map(function (np) { return { name: w[np].name, hrs: Math.round(w[np].hrs * 10) / 10 }; })
+      .sort(function (x, y) { return y.hrs - x.hrs; });
+    var anw = Object.keys(a).filter(function (np) { return !w[np]; })
+      .map(function (np) { return a[np]; }).sort();
+    if (wna.length || anw.length) { var o = ensure(ek); o.workingNotAssigned = wna; o.assignedNotWorking = anw; }
+  });
+
+  // Open unassigned tickets with recent hours — someone's already doing the
+  // work; suggest them as the assignee.
+  Object.keys(metaMap || {}).forEach(function (ik) {
+    var m = metaMap[ik];
+    if (!m.epicKey || m.assignee) return;
+    if (m.resolved || JR_DONE_RE_.test(m.status || "")) return;
+    var loggers = issueHrs[ik];
+    if (!loggers) return;
+    var top = null;
+    Object.keys(loggers).forEach(function (np) {
+      if (!top || loggers[np].hrs > top.hrs) top = loggers[np];
+    });
+    ensure(m.epicKey).unassignedActive.push({ key: ik, worker: top.name, hrs: Math.round(top.hrs * 10) / 10 });
+  });
+
+  return out;
+}
+
+/**
  * Classifies a Fix Versions string into a revenue bucket:
  *   "Billable"  — any token carries an SRSO code (sales order / FixedPrice); matched
  *                 anywhere in the name, so client-prefixed versions like
@@ -1846,7 +1945,7 @@ function emptyModel_(weeks) {
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     billingByWeek: {}, billableRatioByWeek: {}, projectBillingWindow: {}, coverage: null, jiraMetaAvailable: false,
-    trackedIssues: [], epicNames: {}, epicBacklog: {}, personEpicPlan: {},
+    trackedIssues: [], epicNames: {}, epicBacklog: {}, epicGaps: {}, personEpicPlan: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, agingWipDays: CONFIG.AGING_WIP_DAYS,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
@@ -2165,6 +2264,48 @@ function _test_personEpicPlan_() {
   assert_(!out["ben lee"], "project-level / epic-less / unknown-issue plans contribute nothing");
 
   Logger.log("✅ _test_personEpicPlan_ passed");
+}
+
+/**
+ * Verifies buildEpicAssignmentGaps_: the recent window is the LAST 2 data
+ * weeks; assigned-but-idle and working-but-unassigned are cross-referenced
+ * name-normalized; done/assigned tickets never enter unassignedActive; the
+ * top logger of an unassigned open ticket is suggested as its assignee.
+ */
+function _test_epicAssignmentGaps_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_epicAssignmentGaps_: " + msg); }
+
+  var metaMap = {
+    "A-1": { epicKey: "EP-1", assignee: "Ana Smith", status: "In Progress", resolved: null },
+    "A-2": { epicKey: "EP-1", assignee: "Ben Lee",   status: "In Progress", resolved: null }, // assigned, idle
+    "A-3": { epicKey: "EP-1", assignee: "",          status: "In Progress", resolved: null }, // unassigned, active
+    "A-4": { epicKey: "EP-1", assignee: "Ana Smith", status: "Done", resolved: new Date("2026-07-01") }, // done — ignored
+    "B-1": { epicKey: "EP-2", assignee: "",          status: "Backlog", resolved: null },     // unassigned, NO hours
+  };
+  var recs = [
+    // W29+W28 = recent window; the W20 rec must be ignored (old data week).
+    { person: "Ana  Smith", iso: "2026.W29", hours: 6, issue: "A-1", epicKey: "EP-1" }, // assigned + working (double space normalizes)
+    { person: "Cara Diaz",  iso: "2026.W29", hours: 4, issue: "A-3", epicKey: "EP-1" }, // working, not assigned anywhere
+    { person: "Cara Diaz",  iso: "2026.W28", hours: 2, issue: "A-3", epicKey: "EP-1" },
+    { person: "Dan Poe",    iso: "2026.W28", hours: 1, issue: "A-3", epicKey: "EP-1" }, // second logger — Cara outranks
+    { person: "Ben Lee",    iso: "2026.W20", hours: 9, issue: "A-2", epicKey: "EP-1" }, // outside recent window → Ben idle
+  ];
+  var gaps = buildEpicAssignmentGaps_(recs, metaMap);
+
+  var g = gaps["EP-1"];
+  assert_(g, "EP-1 gaps must exist");
+  assert_(g.assignedNotWorking.length === 1 && g.assignedNotWorking[0] === "Ben Lee",
+    "Ben assigned to open A-2 with no recent hours → assigned-but-idle, got " + JSON.stringify(g.assignedNotWorking));
+  assert_(g.workingNotAssigned.length === 2, "Cara + Dan working without an open assignment");
+  assert_(g.workingNotAssigned[0].name === "Cara Diaz" && g.workingNotAssigned[0].hrs === 6,
+    "Cara first (6h across W28+W29), got " + JSON.stringify(g.workingNotAssigned[0]));
+  assert_(g.unassignedActive.length === 1 && g.unassignedActive[0].key === "A-3",
+    "A-3 is the only unassigned-with-activity ticket");
+  assert_(g.unassignedActive[0].worker === "Cara Diaz" && g.unassignedActive[0].hrs === 6,
+    "Cara is A-3's top logger (6h beats Dan's 1h), got " + JSON.stringify(g.unassignedActive[0]));
+  assert_(!gaps["EP-2"], "unassigned ticket with zero hours creates no gap entry");
+
+  Logger.log("✅ _test_epicAssignmentGaps_ passed");
 }
 
 /**

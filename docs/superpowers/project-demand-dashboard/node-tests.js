@@ -39,6 +39,7 @@ _test_demandParse_();
 _test_jiraMetaParse_();
 _test_epicBacklogStats_();
 _test_personEpicPlan_();
+_test_epicAssignmentGaps_();
 _test_enrichTracked_();
 _test_billingAggregation_();
 _test_trackedIssues_();
