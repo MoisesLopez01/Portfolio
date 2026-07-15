@@ -611,7 +611,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Epic delivery</h2>
         <div class="panel-tools">
-          <div class="hint">Planned (Jira estimates) vs tracked hours + whole-backlog ticket completion + top blocker per epic · scoped by ALL filters above (People / Project / PM) · hours cover every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
+          <div class="hint">Planned (Tempo plans, issue-level) vs tracked hours + whole-backlog ticket completion + top blocker per epic · scoped by ALL filters above (People / Project / PM) · hours cover every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
           <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
         </div>
       </div>
@@ -2037,6 +2037,26 @@ function renderEpicRollup(){
   var noEpic=null;
   rows=rows.filter(function(g){ if(g.epicKey==='(no epic)'){ noEpic=g; return false; } return true; });
 
+  // Tempo planned hours per epic (DATA.personEpicPlan — issue-level plans only;
+  // project-level plans can't be tied to an epic). Honors the People filter + week
+  // focus, and applies the SAME capacity sanitization as every other planned figure:
+  // each person-week's contribution is scaled down when their raw planned total
+  // exceeded their 38/40h capacity.
+  var epicPlanAvail=Object.keys(DATA.personEpicPlan||{}).length>0;
+  var epicPlanned={};
+  Object.keys(DATA.personEpicPlan||{}).forEach(function(np){
+    if(pset && !pset[np]) return;
+    var cap=personWeekCap_(np);
+    Object.keys(DATA.personEpicPlan[np]).forEach(function(ek){
+      Object.keys(DATA.personEpicPlan[np][ek]).forEach(function(iso){
+        if(wkScope && iso!==wkScope) return;
+        var rt=rawWeekTotal_(np,iso);
+        var f=rt>cap?cap/rt:1;
+        epicPlanned[ek]=(epicPlanned[ek]||0)+DATA.personEpicPlan[np][ek][iso]*f;
+      });
+    });
+  });
+
   // Derived per-epic decision columns: PM of record, planned baseline, ticket completion.
   // Whole-backlog stats (DATA.epicBacklog, Phase 2 server enrichment) upgrade the ticket
   // figures from "tickets someone logged time on" to the epic's full Jira backlog; when
@@ -2055,9 +2075,12 @@ function renderEpicRollup(){
     r.agingWip=bk?bk.agingWip:null;           // null = no backlog data → render '—'
     r.oldestWipDays=bk?bk.oldestWipDays:0;
     r.oldestWipKey=bk?(bk.oldestWipKey||''):'';
-    // Planned baseline = Jira Original Estimates summed over the whole epic backlog
-    // (Tempo plans only exist per project, never per epic). null = no backlog data.
-    r.plannedH=bk?(bk.estimateH||0):null;
+    // Planned baseline — Tempo planned hours on this epic's tickets (issue-level plans,
+    // from the plan export's Issue column) when the payload carries them; Jira Original
+    // Estimates are the fallback. null = no plan data of either kind.
+    r.estimateH=bk?(bk.estimateH||0):null;
+    r.planSrc = epicPlanAvail ? 'tempo' : (bk ? 'est' : null);
+    r.plannedH = epicPlanAvail ? (epicPlanned[r.epicKey]||0) : r.estimateH;
     // Lead contributor (most hours) — the scan-level "who to ask"; full list stays in the hover/expand.
     var lead='', leadH=-1;
     Object.keys(r.contribHours).forEach(function(pn){ if(r.contribHours[pn]>leadH){ leadH=r.contribHours[pn]; lead=r.contributors[pn]; } });
@@ -2102,7 +2125,7 @@ function renderEpicRollup(){
     pm:'PM of record — the lead of the project where most of this epic’s hours were logged.',
     proj:'The Jira project(s) this epic’s hours were logged under.',
     bill:'Commercial tag on the logged time: Billable = tied to a sales order (SRSO) · Internal = deliberately non-revenue · Untagged = nobody tagged it (revenue may be hiding here) · Unclassified = ticket not found in Jira. Hover a chip for the full hour split.',
-    planned:'Planned effort — Jira “Original Estimate” summed over every ticket in this epic. Compare with Tracked hrs to see over/under-burn. “—” = the tickets carry no estimates.',
+    planned:'Planned effort — Tempo planned hours on this epic’s tickets (from the plan export; issue-level plans only, since project-level plans can’t be tied to an epic). Falls back to Jira Original Estimates when no Tempo plan data is available. Compare with Tracked hrs to see over/under-burn. “—” = no plan of either kind.',
     hours:'Actual time logged in Tempo against this epic — effort, all tracked weeks (or the focused week).',
     tickets:'Delivered tickets out of ALL tickets in this epic — output, not effort. An amber ⚠N = N open tickets have no owner.',
     blocker:'The single oldest untouched in-progress ticket and how long it’s been sitting — the first thing to chase.',
@@ -2147,14 +2170,21 @@ function renderEpicRollup(){
             +(r.unassigned>0?' · '+r.unassigned+' open ticket'+(r.unassigned!==1?'s':'')+' UNASSIGNED (ownership gap)':'')
           : r.ticketDone+' of '+r.ticketTotal+' worked-on ticket'+(r.ticketTotal!==1?'s':'')+' currently Done/Closed (Jira status snapshot — time-logged tickets only)')
       : 'No issue-level data';
-    // Planned vs tracked burn: amber once tracked exceeds the estimate baseline.
+    // Planned vs tracked burn: amber once tracked exceeds the planned baseline.
     var hasPlan=r.plannedH!==null && r.plannedH>0.5;
     var overBurn=hasPlan && r.hours>r.plannedH;
-    var plannedTitle=r.plannedH===null ? 'No backlog data (needs the epicBacklog payload)'
-      : (hasPlan
-          ? fmt(r.plannedH)+'h estimated (Jira Original Estimates over the whole epic) vs '+fmt(r.hours)+'h tracked'
-            +(overBurn?' — tracked has passed the estimate ('+Math.round((r.hours/r.plannedH)*100)+'% burned)':' ('+Math.round((r.hours/r.plannedH)*100)+'% burned)')
-          : 'No estimates on this epic’s tickets — ask the team to size the work so burn can be judged');
+    var estNote=(r.planSrc==='tempo' && r.estimateH>0.5)?' · Jira estimates: '+fmt(r.estimateH)+'h':'';
+    var plannedTitle;
+    if(r.plannedH===null){
+      plannedTitle='No plan data (needs the personEpicPlan/epicBacklog payload)';
+    } else if(hasPlan){
+      plannedTitle=fmt(r.plannedH)+'h planned ('+(r.planSrc==='tempo'?'Tempo plans on this epic’s tickets, capacity-sanitized':'Jira Original Estimates over the whole epic')+') vs '+fmt(r.hours)+'h tracked'
+        +(overBurn?' — tracked has passed the plan ('+Math.round((r.hours/r.plannedH)*100)+'% burned)':' ('+Math.round((r.hours/r.plannedH)*100)+'% burned)')+estNote;
+    } else {
+      plannedTitle=(r.planSrc==='tempo'
+        ? 'No issue-level Tempo plans tie to this epic — project-level plans can’t be attributed to an epic'
+        : 'No estimates on this epic’s tickets')+' — ask the team to plan at ticket level so burn can be judged'+estNote;
+    }
     var blockerHtml='—', blockerTitle='No aging in-progress ticket';
     if(r.bkAvail && r.agingWip>0 && r.oldestWipKey){
       blockerHtml='<span class="proj-key-mono">'+esc(r.oldestWipKey)+'</span> <span class="et-aging-hot">'+r.oldestWipDays+'d</span>';
@@ -2203,7 +2233,7 @@ function renderEpicRollup(){
   var unassignedTot=rows.reduce(function(s,r){return s+(r.unassigned||0);},0);
   var plannedTot=rows.reduce(function(s,r){return s+(r.plannedH||0);},0);
   var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours '+(wkScope?'in '+esc(wkScope):'across all tracked weeks')+' ('+fmt(totalHrs)+' hrs total'
-    +(plannedTot>0.5?' vs '+fmt(plannedTot)+' hrs estimated':'')+')'
+    +(plannedTot>0.5?' vs '+fmt(plannedTot)+' hrs planned':'')+')'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(unassignedTot>0?' <b>'+unassignedTot+'</b> open ticket'+(unassignedTot!==1?'s':'')+' unassigned.':'')
     +(scopeActive?' Reflects the filters above.':'');

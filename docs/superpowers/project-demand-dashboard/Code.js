@@ -406,6 +406,9 @@ function buildDemandModel_() {
       // Whole-backlog epic stats (Phase 2 of the Delivery & PM load tab): true
       // Done/Total, aging WIP, unassigned counts, created/closed-by-week trend.
       model.epicBacklog = buildEpicBacklogStats_(jiraMeta.map);
+      // Tempo planned hours per epic (issue-level plans joined via Jira Raw) —
+      // feeds the epic table's Planned hrs column; estimates are the fallback.
+      model.personEpicPlan = buildPersonEpicPlan_(scopedRecs, jiraMeta.map);
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
       model.trackedError = trackedResult.error;
@@ -1201,6 +1204,32 @@ function buildEpicBacklogStats_(map, now) {
 }
 
 /**
+ * Rolls issue-level Tempo PLANNED hours up to epics: plan recs whose Issue key
+ * maps to an epic in Jira Raw contribute person → epic → iso hours. Project-level
+ * plans (blank Issue) can't be tied to an epic and are skipped — the epic table
+ * says so instead of guessing. Person keys are normalized like personProjectPlan
+ * so the client can apply the same People filter + capacity sanitization.
+ * @param {Array} recs     planned allocation recs (person/iso/hours/issue)
+ * @param {Object} metaMap parseJiraMeta_ map (UPPER issue key → meta)
+ * @returns {Object} np → UPPER(epic key) → iso → planned hours
+ */
+function buildPersonEpicPlan_(recs, metaMap) {
+  var norm = function (n) { return String(n).toLowerCase().replace(/\s+/g, " ").trim(); };
+  var out = {};
+  (recs || []).forEach(function (rec) {
+    if (!rec.issue) return;
+    var meta = (metaMap || {})[String(rec.issue).toUpperCase().trim()];
+    var ek = meta && meta.epicKey;
+    if (!ek) return;
+    var np = norm(rec.person);
+    out[np] = out[np] || {};
+    out[np][ek] = out[np][ek] || {};
+    out[np][ek][rec.iso] = (out[np][ek][rec.iso] || 0) + (rec.hours || 0);
+  });
+  return out;
+}
+
+/**
  * Classifies a Fix Versions string into a revenue bucket:
  *   "Billable"  — any token carries an SRSO code (sales order / FixedPrice); matched
  *                 anywhere in the name, so client-prefixed versions like
@@ -1817,7 +1846,7 @@ function emptyModel_(weeks) {
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     billingByWeek: {}, billableRatioByWeek: {}, projectBillingWindow: {}, coverage: null, jiraMetaAvailable: false,
-    trackedIssues: [], epicNames: {}, epicBacklog: {},
+    trackedIssues: [], epicNames: {}, epicBacklog: {}, personEpicPlan: {},
     fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, agingWipDays: CONFIG.AGING_WIP_DAYS,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
@@ -2105,6 +2134,37 @@ function _test_epicBacklogStats_() {
   assert_(!stats["B-9"] && Object.keys(stats).length === 1, "orphans/no-epic rows create no stats entries");
 
   Logger.log("✅ _test_epicBacklogStats_ passed");
+}
+
+/**
+ * Verifies buildPersonEpicPlan_: issue-level plan recs roll up to their epic per
+ * person/week (normalized names, case-insensitive issue join); project-level
+ * plans (blank issue) and issues without an epic contribute nothing.
+ */
+function _test_personEpicPlan_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_personEpicPlan_: " + msg); }
+
+  var metaMap = {
+    "A-1": { epicKey: "EP-1" },
+    "A-2": { epicKey: "EP-1" },
+    "B-1": { epicKey: "" },     // issue with no epic
+  };
+  var recs = [
+    { person: "Ana  Smith", iso: "2026.W24", hours: 10, issue: "a-1" },  // lowercase issue + double space
+    { person: "Ana Smith",  iso: "2026.W24", hours: 5,  issue: "A-2" },  // same person+week, second issue
+    { person: "Ana Smith",  iso: "2026.W25", hours: 8,  issue: "A-1" },
+    { person: "Ben Lee",    iso: "2026.W24", hours: 6,  issue: "" },     // PROJECT-level plan — skipped
+    { person: "Ben Lee",    iso: "2026.W24", hours: 4,  issue: "B-1" },  // epic-less issue — skipped
+    { person: "Ben Lee",    iso: "2026.W24", hours: 3,  issue: "ZZ-9" }, // not in Jira Raw — skipped
+  ];
+  var out = buildPersonEpicPlan_(recs, metaMap);
+
+  assert_(out["ana smith"], "ana normalized key present");
+  assert_(out["ana smith"]["EP-1"]["2026.W24"] === 15, "ana EP-1 W24 = 10+5 across issues");
+  assert_(out["ana smith"]["EP-1"]["2026.W25"] === 8, "ana EP-1 W25 = 8");
+  assert_(!out["ben lee"], "project-level / epic-less / unknown-issue plans contribute nothing");
+
+  Logger.log("✅ _test_personEpicPlan_ passed");
 }
 
 /**
