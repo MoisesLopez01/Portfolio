@@ -1820,6 +1820,8 @@ function parseCapacityGrid_(values) {
  * Keeps only people whose roster profile department is CONFIG.ROSTER_DEPT —
  * the same predicate scopeRecsToServices_ applies to planned/tracked records,
  * so the Utilization panel's population matches every other dashboard figure.
+ * Terminated profiles (active === false) are dropped too — personWeekTracked
+ * excludes them, so keeping their frozen capacity rows would deflate every %.
  * Pure — runs in GAS editor and Node.
  * @param {{byName:Object, names:Object}} grid - from parseCapacityGrid_
  * @param {Object} profiles - roster profiles keyed by normalized name
@@ -1829,7 +1831,7 @@ function scopeCapacityToServices_(grid, profiles) {
   var out = { byName: {}, names: {} };
   Object.keys((grid && grid.byName) || {}).forEach(function (np) {
     var prof = (profiles || {})[np];
-    if (prof && prof.department === CONFIG.ROSTER_DEPT) {
+    if (prof && prof.department === CONFIG.ROSTER_DEPT && prof.active !== false) {
       out.byName[np] = grid.byName[np];
       out.names[np] = (grid.names || {})[np] || np;
     }
@@ -2852,19 +2854,22 @@ function _test_capacityParse_() {
 function _test_capacityScope_() {
   function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_capacityScope_: " + msg); }
   var grid = {
-    byName: { "alice doe": { "2026.W14": 40 }, "sam sales": { "2026.W14": 40 }, "gus ghost": { "2026.W14": 40 } },
-    names:  { "alice doe": "Alice Doe", "sam sales": "Sam Sales", "gus ghost": "Gus Ghost" },
+    byName: { "alice doe": { "2026.W14": 40 }, "sam sales": { "2026.W14": 40 }, "gus ghost": { "2026.W14": 40 }, "tia term": { "2026.W14": 40 } },
+    names:  { "alice doe": "Alice Doe", "sam sales": "Sam Sales", "gus ghost": "Gus Ghost", "tia term": "Tia Term" },
     isoList: ["2026.W14"]
   };
   var profiles = {
-    "alice doe": { department: "Services" },
-    "sam sales": { department: "Sales" }
+    "alice doe": { department: "Services", active: true },
+    "sam sales": { department: "Sales" },
+    "tia term": { department: "Services", active: false }
     // gus ghost: not in roster at all
   };
   var out = scopeCapacityToServices_(grid, profiles);
   assert_(out.byName["alice doe"] && out.byName["alice doe"]["2026.W14"] === 40, "Services person kept");
   assert_(!out.byName["sam sales"], "non-Services dropped");
   assert_(!out.byName["gus ghost"], "no roster profile dropped");
+  assert_(!out.byName["tia term"], "terminated Services person dropped");
   assert_(out.names["alice doe"] === "Alice Doe" && !out.names["sam sales"], "names map scoped too");
+  assert_(!out.names["tia term"], "terminated name dropped from names map");
   Logger.log("✅ _test_capacityScope_ passed");
 }

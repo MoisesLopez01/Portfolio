@@ -1574,7 +1574,7 @@ function downloadUtilCsv_(){
   var curOrd=isoOrd(CURRENT_ISO);
   var fut={}; capIsos.forEach(function(iso){ if(isoOrd(iso)>curOrd) fut[iso]=true; });
   var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, nameMap, npList, fut);
-  var blob=new Blob([utilCsvString_(rows)], {type:'text/csv;charset=utf-8'});
+  var blob=new Blob(['﻿'+utilCsvString_(rows)], {type:'text/csv;charset=utf-8'});  // BOM: Excel opens accented names correctly
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='utilization-'+(CURRENT_ISO||'export')+'.csv';
