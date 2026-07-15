@@ -42,6 +42,7 @@ var CONFIG = {
   // ── Drill-down / proxy tuning ──
   FRAG_MIN:            4,       // people on ≥ FRAG_MIN distinct projects are "fragmented"
   TOPN_STRATEGIC:      10,      // top-N projects by in-window hours treated as "strategic" (proxy)
+  AGING_WIP_DAYS:      14,      // in-progress ticket untouched this many days → "aging WIP" (hidden blocker signal)
   TRACKED_SHEET_NAME:   "Tempo Tracked Time",
   JIRA_RAW_SHEET:       "Jira Raw",   // issue metadata source (same spreadsheet as SOURCE_SS_ID)
   DELIVERY_GAP_MIN_HRS: 4,    // min planned hrs before person is flagged for gap
@@ -383,14 +384,28 @@ function buildDemandModel_() {
       var jiraMeta = readJiraMeta_();
       enrichTracked_(scopedTrackedRecs, jiraMeta.map);
       var billing = buildBillingAggregates_(scopedTrackedRecs, model.isoList);
-      model.billingByWeek        = billing.billingByWeek;
+      // billingByWeek spans EVERY tracked week, not just the display window: the
+      // Planned vs Tracked chart covers QTD (wider than model.isoList), and the
+      // billing chips/stacked bands need real per-week splits across that whole
+      // history. The window-scoped aggregates (ratio chip, revenue classification,
+      // coverage) intentionally stay on model.isoList via `billing` above.
+      var allIsos = {};
+      scopedTrackedRecs.forEach(function (r) { if (r.iso) allIsos[r.iso] = true; });
+      model.billingByWeek        = buildBillingAggregates_(scopedTrackedRecs, Object.keys(allIsos)).billingByWeek;
       model.billableRatioByWeek  = billing.billableRatioByWeek;
       model.projectBillingWindow = billing.projectBillingWindow;
       model.coverage             = billing.coverage;
       model.jiraMetaAvailable    = jiraMeta.available;
-      model.trackedIssues = buildTrackedIssues_(scopedTrackedRecs, model.isoList);
+      // trackedIssues also spans EVERY tracked week (same allIsos as billingByWeek):
+      // the issue-evidence drills (Team Focus grid cells, project drill, epic drill)
+      // must reach every ACTUAL week worked, not just the display window — the Team
+      // Focus grid shows the whole QTD, so its older cells need evidence behind them.
+      model.trackedIssues = buildTrackedIssues_(scopedTrackedRecs, Object.keys(allIsos));
       Logger.log("ℹ️ trackedIssues rows: " + (model.trackedIssues ? model.trackedIssues.length : 0));
       model.epicNames = jiraMeta.epicNames;
+      // Whole-backlog epic stats (Phase 2 of the Delivery & PM load tab): true
+      // Done/Total, aging WIP, unassigned counts, created/closed-by-week trend.
+      model.epicBacklog = buildEpicBacklogStats_(jiraMeta.map);
       model.trackedLastExport  = trackedResult.lastExport || null;
     } else {
       model.trackedError = trackedResult.error;
@@ -723,6 +738,11 @@ function readRosterFull_() {
     var norm       = function (n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
     var anzLoc     = String(CONFIG.ANZ_LOCATION).trim().toLowerCase();
     var INACTIVE   = /terminat|job offer|resign|left|inactive|former|offboard|maternity|paternity/i;
+    // Gone-for-good test for the filter DROPDOWNS: a terminated/released row must not
+    // contribute locations/families/managers. Narrower than INACTIVE on purpose —
+    // maternity/paternity leave reduces capacity but the person (and their team) is
+    // still active, so an on-leave manager stays pickable.
+    var TERMINATED = /terminat|job offer|resign|left|inactive|former|offboard/i;
     var profiles   = {}, locs = {}, families = {}, managers = {};
     var count = 0, base = 0, anz = 0;
 
@@ -766,17 +786,26 @@ function readRosterFull_() {
         // as the capacity denominator — see buildHolidaysByWeek_).
         var status = iStatus !== -1 ? String(row[iStatus] || "").trim() : "";
         var term   = iTerm   !== -1 ? String(row[iTerm]   || "").trim() : "";
+        // A Termination/Release Date (or a gone-for-good status) means this person has
+        // left — their row must not feed the filter dropdowns, and if they are someone's
+        // supervisor they must not be pickable as a manager (post-pass below).
+        var isGone = TERMINATED.test(status) || !!term;
+        // Crew allocation is Department-driven (Services vs R&D): a crew row counts
+        // for Services capacity ONLY with Department = ROSTER_DEPT — no blank-dept
+        // leniency (an unallocated crew member is R&D by default, 2026-07-15).
+        // FTE rows keep the blank-dept leniency: Class is their gate.
         var countsForCapacity =
           (isCrewTab || iClass === -1 || String(row[iClass] || "").trim() === CONFIG.ROSTER_CLASS) &&
-          (!dept || dept === CONFIG.ROSTER_DEPT) &&
+          (isCrewTab ? dept === CONFIG.ROSTER_DEPT : (!dept || dept === CONFIG.ROSTER_DEPT)) &&
           !INACTIVE.test(status) && !term;
 
-        profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew, countsForCapacity: countsForCapacity };
+        profiles[norm(name)] = { location: loc, jobFamily: fam, manager: mgr, department: dept, isManager: !!(lvlM && lvlM[1].charAt(0) === 'M'), isCrew: isCrew, countsForCapacity: countsForCapacity, active: !isGone };
         // Filter dropdown option lists (Location / Job Family / Manager) are scoped to
         // Department = ROSTER_DEPT too, same as the person-level data — otherwise a
         // Sales/Finance-only location or manager would show up as a pickable filter value
-        // even though selecting it can never match anyone in the dashboard.
-        if (dept === CONFIG.ROSTER_DEPT) {
+        // even though selecting it can never match anyone in the dashboard. Terminated
+        // rows contribute nothing.
+        if (dept === CONFIG.ROSTER_DEPT && !isGone) {
           if (loc) locs[loc] = true;
           if (fam) families[fam] = true;
           if (mgr) managers[mgr] = true;
@@ -796,10 +825,19 @@ function readRosterFull_() {
     var crewErr = readTab(CONFIG.CONTRACTORS_SHEET, true);
     if (crewErr) Logger.log("⚠️ readRosterFull_: " + crewErr + " — crew rows skipped.");
 
+    // A manager can be named on ACTIVE employees' rows while being terminated themselves
+    // (stale Supervisor values) — drop any manager whose own roster row says they've left.
+    // Managers with no roster row of their own are kept: the supervisor may legitimately
+    // sit outside this roster export.
+    var activeManagers = Object.keys(managers).filter(function (m) {
+      var p = profiles[norm(m)];
+      return !p || p.active !== false;
+    });
+
     return {
       ok: true, headcount: count, baseCapacity: base, anzCount: anz, capError: null,
       profiles: profiles,
-      dimensions: { locations: Object.keys(locs).sort(), jobFamilies: Object.keys(families).sort(), managers: Object.keys(managers).sort() }
+      dimensions: { locations: Object.keys(locs).sort(), jobFamilies: Object.keys(families).sort(), managers: activeManagers.sort() }
     };
   } catch (e) {
     return Object.assign({}, EMPTY_CAP, EMPTY_PROF, { capError: e.message });
@@ -1015,8 +1053,24 @@ function readTrackedAllocations_() {
  * across weeks).
  * @param {Array<Array>} vals  Jira Raw getValues() matrix (header row 0).
  * @returns {{map:Object, epicNames:Object}} map keyed by UPPER(issue key):
- *   { fixVersions, epicKey, status, summary }; epicNames keyed by UPPER(epic key).
+ *   { fixVersions, epicKey, status, summary, assignee, created, updated, resolved }
+ *   (the last three are Date|null); epicNames keyed by UPPER(epic key).
  */
+// Loose Date coercion for Jira Raw cells — getValues() yields Date objects on
+// date-formatted cells but plain strings on text columns; both must work. Bare
+// yyyy-mm-dd strings are parsed as LOCAL midnight: Date("2026-07-13") is UTC
+// midnight, and the local getters in isoWeekNum_ would slide it back a day in
+// any negative-offset timezone (off-by-one ISO week).
+function jrDate_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  var s = String(v).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  var d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
 function parseJiraMeta_(vals) {
   var map = {}, epicNames = {};
   if (!vals || vals.length < 2) return { map: map, epicNames: epicNames };
@@ -1028,6 +1082,10 @@ function parseJiraMeta_(vals) {
   var iStat = col("status");
   var iFix  = col("fix versions");
   var iEpic = col("epic key");
+  var iAsg  = col("assignee");
+  var iCre  = col("created");
+  var iUpd  = col("updated");
+  var iRes  = col("resolution date");
   if (iKey === -1) return { map: map, epicNames: epicNames };
 
   for (var r = 1; r < vals.length; r++) {
@@ -1039,6 +1097,10 @@ function parseJiraMeta_(vals) {
       epicKey:     iEpic !== -1 ? String(row[iEpic] || "").toUpperCase().trim() : "",
       status:      iStat !== -1 ? String(row[iStat] || "").trim() : "",
       summary:     iSum  !== -1 ? String(row[iSum]  || "").trim() : "",
+      assignee:    iAsg  !== -1 ? String(row[iAsg]  || "").trim() : "",
+      created:     iCre  !== -1 ? jrDate_(row[iCre]) : null,
+      updated:     iUpd  !== -1 ? jrDate_(row[iUpd]) : null,
+      resolved:    iRes  !== -1 ? jrDate_(row[iRes]) : null,
     };
   }
 
@@ -1071,6 +1133,58 @@ function readJiraMeta_() {
     Logger.log("⚠️ readJiraMeta_: " + e.message);
     return { map: {}, epicNames: {}, available: false };
   }
+}
+
+// Status classification for epic backlog stats. DONE mirrors the client's
+// EPIC_DONE_RE; TODO separates "not started" from real WIP so a ticket parked
+// in Backlog for months doesn't count as aging work-in-progress.
+var JR_DONE_RE_ = /done|closed|resolved|complete|cancel/i;
+var JR_TODO_RE_ = /backlog|to ?do|open|new|triage|icebox|ready/i;
+
+/**
+ * Aggregates the WHOLE Jira Raw backlog into per-epic delivery stats — unlike
+ * trackedIssues (which only sees tickets someone logged time on), this covers
+ * every child ticket of every epic, so Done/Total is a true completion rate.
+ *  - done: resolved date set, or status matches JR_DONE_RE_
+ *  - unassigned: open tickets with no assignee (ownership gaps)
+ *  - agingWip: in-progress tickets (not done, not todo) untouched for
+ *    ≥ CONFIG.AGING_WIP_DAYS days; oldestWipDays = worst age
+ *  - createdByWeek / closedByWeek: ISO-week counts (scope-vs-delivery trend)
+ * The epic's own row (epicKey === "") is never counted as its own child.
+ * @param {Object} map  parseJiraMeta_ map (UPPER issue key → meta)
+ * @param {Date=} now   injectable clock for tests
+ * @returns {Object} UPPER(epic key) → stats
+ */
+function buildEpicBacklogStats_(map, now) {
+  now = now || new Date();
+  var isoOf = function (d) { return isoWeekYear_(d) + ".W" + isoWeekNum_(d); };
+  var stats = {};
+  Object.keys(map || {}).forEach(function (ik) {
+    var m = map[ik];
+    var ek = m.epicKey;
+    if (!ek) return;
+    var s = stats[ek];
+    if (!s) s = stats[ek] = { total: 0, done: 0, unassigned: 0, agingWip: 0, oldestWipDays: 0,
+                              createdByWeek: {}, closedByWeek: {} };
+    s.total++;
+    var isDone = !!m.resolved || JR_DONE_RE_.test(m.status || "");
+    if (isDone) {
+      s.done++;
+      var dd = m.resolved || m.updated;
+      if (dd) { var di = isoOf(dd); s.closedByWeek[di] = (s.closedByWeek[di] || 0) + 1; }
+    } else {
+      if (!m.assignee) s.unassigned++;
+      if (m.status && !JR_TODO_RE_.test(m.status) && m.updated) {
+        var age = Math.floor((now - m.updated) / 86400000);
+        if (age >= CONFIG.AGING_WIP_DAYS) {
+          s.agingWip++;
+          if (age > s.oldestWipDays) s.oldestWipDays = age;
+        }
+      }
+    }
+    if (m.created) { var ci = isoOf(m.created); s.createdByWeek[ci] = (s.createdByWeek[ci] || 0) + 1; }
+  });
+  return stats;
 }
 
 /**
@@ -1497,12 +1611,14 @@ function buildPersonAvailability_(plannedRecs, trackedRecs, ptoRecs, rosterProfi
   var norm = function(n) { return String(n).toLowerCase().replace(/\s+/g, ' ').trim(); };
   var personWeekPlan = {}, personWeekTracked = {}, personProjectPlan = {}, personWeekPTO = {}, displayNames = {};
 
-  // Only people whose Roster "Department" is exactly CONFIG.ROSTER_DEPT ("Services") are
-  // shown anywhere in the person-level views (Team Availability, drill-downs, heatmap
-  // person lists) — no exceptions for other departments, even if they logged Tempo hours.
+  // Only ACTIVE people whose Roster "Department" is exactly CONFIG.ROSTER_DEPT ("Services")
+  // are shown anywhere in the person-level views (Team Availability, drill-downs, heatmap
+  // person lists) — no exceptions for other departments, even if they logged Tempo hours,
+  // and no released/terminated rows (any Termination/Release Date → active:false), so a
+  // departed crew member with historical Tempo records never appears in the people lists.
   var inScope = function(np) {
     var prof = (rosterProfiles || {})[np];
-    return !!prof && prof.department === CONFIG.ROSTER_DEPT;
+    return !!prof && prof.department === CONFIG.ROSTER_DEPT && prof.active !== false;
   };
 
   // Build display names: first occurrence of a normalised name wins.
@@ -1688,8 +1804,8 @@ function emptyModel_(weeks) {
     trackedError: null,
     personWeekPlan: {}, personWeekTracked: {}, personProjectPlan: {}, personMeta: {}, personWeekPTO: {},
     billingByWeek: {}, billableRatioByWeek: {}, projectBillingWindow: {}, coverage: null, jiraMetaAvailable: false,
-    trackedIssues: [], epicNames: {},
-    fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC,
+    trackedIssues: [], epicNames: {}, epicBacklog: {},
+    fragMin: CONFIG.FRAG_MIN, topnStrategic: CONFIG.TOPN_STRATEGIC, agingWipDays: CONFIG.AGING_WIP_DAYS,
     utilTight: CONFIG.UTIL_TIGHT, utilOver: CONFIG.UTIL_OVER,
     error: null,
   };
@@ -1939,6 +2055,44 @@ function _test_jiraMetaParse_() {
 }
 
 /**
+ * Verifies buildEpicBacklogStats_: whole-backlog Done/Total, unassigned count,
+ * aging-WIP detection (todo statuses exempt), created/closed week buckets, and
+ * the epic's own row never counting as its own child. Injectable clock.
+ */
+function _test_epicBacklogStats_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_epicBacklogStats_: " + msg); }
+
+  var now = new Date("2026-07-15T12:00:00Z");
+  var vals = [
+    ["Week", "Key", "Work (Summary)", "Assignee", "Status", "Fix Versions", "Epic Key", "Created", "Updated", "Resolution Date"],
+    // EP-1 children: 1 done (resolved W28), 1 aging WIP (updated 20d ago), 1 unassigned todo
+    ["2026.W29", "A-1", "Shipped",   "Ana", "Done",        "", "EP-1", "2026-06-01", "2026-07-08", "2026-07-08"],
+    ["2026.W29", "A-2", "Stuck",     "Ben", "In Progress", "", "EP-1", "2026-06-10", "2026-06-25", ""],
+    ["2026.W29", "A-3", "Ownerless", "",    "Backlog",     "", "EP-1", "2026-07-13", "2026-07-13", ""],
+    // fresh WIP (updated 2d ago) — NOT aging
+    ["2026.W29", "A-4", "Active",    "Ana", "In Review",   "", "EP-1", "2026-07-01", "2026-07-13", ""],
+    // the epic's own row — must not count as its own child
+    ["2026.W29", "EP-1", "Epic row", "Ana", "In Progress", "", "",     "2026-05-01", "2026-07-01", ""],
+    // no-epic ticket — ignored entirely
+    ["2026.W29", "B-9", "Orphan",    "Ben", "Done",        "", "",     "2026-07-01", "2026-07-02", "2026-07-02"],
+  ];
+  var stats = buildEpicBacklogStats_(parseJiraMeta_(vals).map, now);
+
+  var s = stats["EP-1"];
+  assert_(s, "EP-1 stats must exist");
+  assert_(s.total === 4, "EP-1 total should be 4 children, got " + (s && s.total));
+  assert_(s.done === 1, "EP-1 done should be 1");
+  assert_(s.unassigned === 1, "unassigned should be 1 (A-3)");
+  assert_(s.agingWip === 1, "aging WIP should be 1 (A-2 untouched 20d; A-4 fresh; A-3 is Backlog=todo)");
+  assert_(s.oldestWipDays >= 19 && s.oldestWipDays <= 21, "oldest WIP age ≈20d, got " + s.oldestWipDays);
+  assert_(s.createdByWeek["2026.W29"] === 1, "A-3 created in W29 (Jul 13 = Mon of W29)");
+  assert_(s.closedByWeek["2026.W28"] === 1, "A-1 resolved Jul 8 = W28");
+  assert_(!stats["B-9"] && Object.keys(stats).length === 1, "orphans/no-epic rows create no stats entries");
+
+  Logger.log("✅ _test_epicBacklogStats_ passed");
+}
+
+/**
  * Verifies the active-capacity filter on a fake roster matrix:
  * excludes wrong class / wrong dept / terminated / inactive; includes ramp-up + crew;
  * credits ANZ people 38 hrs and everyone else 40. Mirrors readActiveCapacity_'s logic
@@ -1996,6 +2150,7 @@ function _test_buildPersonAvailability_() {
     { person: "Ben Lee",   iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
     { person: "External",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 8 },  // not in roster → excluded
     { person: "Gus Sales",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 12 }, // in roster, Dept != Services → excluded
+    { person: "Zoe Gone",  iso: "2026.W24", key: "ACME", name: "Acme", hours: 24 }, // Services but released (active:false) → excluded
   ];
   var trackedRecs = [
     { person: "Ana Smith", iso: "2026.W24", key: "ACME", name: "Acme", hours: 16 },
@@ -2004,7 +2159,8 @@ function _test_buildPersonAvailability_() {
   var roster = {
     "ana smith": { jobFamily: "Consulting", manager: "Mgr A", location: "US",  department: "Services" },
     "ben lee":   { jobFamily: "Delivery",   manager: "Mgr B", location: "ANZ", department: "Services" },
-    "gus sales": { jobFamily: "Sales",      manager: "Mgr C", location: "US",  department: "Sales" }
+    "gus sales": { jobFamily: "Sales",      manager: "Mgr C", location: "US",  department: "Sales" },
+    "zoe gone":  { jobFamily: "Delivery",   manager: "Mgr B", location: "US",  department: "Services", active: false }
     // "external" deliberately absent
   };
 
@@ -2016,6 +2172,8 @@ function _test_buildPersonAvailability_() {
   assert_(!result.personWeekPlan["external"], "External (not in roster) must be excluded");
   assert_(!result.personWeekPlan["gus sales"], "Gus (Dept=Sales, not Services) must be excluded");
   assert_(!result.personMeta["gus sales"], "Gus (Dept=Sales) must not appear in personMeta");
+  assert_(!result.personWeekPlan["zoe gone"], "Zoe (released, active:false) must be excluded");
+  assert_(!result.personMeta["zoe gone"], "Zoe (released) must not appear in personMeta");
 
   // personWeekTracked
   assert_(result.personWeekTracked["ana smith"]["2026.W24"] === 22, "Ana tracked should be 22h");

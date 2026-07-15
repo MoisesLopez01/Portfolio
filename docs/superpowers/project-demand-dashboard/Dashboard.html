@@ -385,6 +385,12 @@ input[type=file]{display:none}
 .et-sort .arr{font-size:calc(9px*var(--scale));opacity:.9}
 .et-conc-flag{background:#fee2e2;color:#b91c1c;font-size:calc(9px*var(--scale));font-weight:700;padding:1px 6px;border-radius:6px;white-space:nowrap;margin-left:6px;cursor:help}
 [data-theme="dark"] .et-conc-flag{background:#450a0a;color:#fca5a5}
+.et-aging-hot{color:#dc2626;font-weight:700}
+[data-theme="dark"] .et-aging-hot{color:#fca5a5}
+.et-scope-hot{color:#b45309;font-weight:700}
+[data-theme="dark"] .et-scope-hot{color:#fcd34d}
+.et-unassigned{color:#b45309;font-size:calc(8.5px*var(--scale));font-weight:800;vertical-align:super;margin-left:3px;cursor:help}
+[data-theme="dark"] .et-unassigned{color:#fcd34d}
 
 /* Issue-evidence expander — collapsed by default; the drill leads with headline
    numbers and managers open the issue-level proof only when they need it. */
@@ -608,7 +614,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Epic delivery</h2>
         <div class="panel-tools">
-          <div class="hint">Tracked hours + ticket completion + health per epic · scoped by ALL filters above (People / Project / PM) · covers every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
+          <div class="hint">Tracked hours + whole-backlog ticket completion + aging WIP + scope trend + health per epic · scoped by ALL filters above (People / Project / PM) · hours cover every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
           <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
         </div>
       </div>
@@ -2053,13 +2059,29 @@ function renderEpicRollup(){
   var rows=order.map(function(ek){return groups[ek];}).filter(function(g){return g.hours>0.001;});
 
   // Derived per-epic decision columns: PM of record, ticket completion, health status.
+  // Whole-backlog stats (DATA.epicBacklog, Phase 2 server enrichment) upgrade the ticket
+  // figures from "tickets someone logged time on" to the epic's full Jira backlog; when
+  // an epic isn't in the backlog map (older cache, offline), the worked-on snapshot is
+  // the fallback and bkAvail marks which flavor the tooltip should describe.
+  var winIsos={}; WEEKS.forEach(function(w){ winIsos[w.iso]=true; });
   rows.forEach(function(r){
     var domProj='', domH=-1;
     Object.keys(r.projHours).forEach(function(k){ if(r.projHours[k]>domH){ domH=r.projHours[k]; domProj=k; } });
     r.pm=(domProj && KEYPM[domProj])||'';
+    var bk=(DATA.epicBacklog||{})[r.epicKey]||null;
     var issueKeys=Object.keys(r.issueStatus);
-    r.ticketTotal=issueKeys.length;
-    r.ticketDone=issueKeys.filter(function(ik){ return EPIC_DONE_RE.test(r.issueStatus[ik]); }).length;
+    r.bkAvail=!!bk;
+    r.ticketTotal=bk?bk.total:issueKeys.length;
+    r.ticketDone=bk?bk.done:issueKeys.filter(function(ik){ return EPIC_DONE_RE.test(r.issueStatus[ik]); }).length;
+    r.unassigned=bk?bk.unassigned:0;
+    r.agingWip=bk?bk.agingWip:null;           // null = no backlog data → render '—'
+    r.oldestWipDays=bk?bk.oldestWipDays:0;
+    r.scopeC=0; r.scopeD=0;                    // created vs closed inside the display window
+    if(bk){
+      Object.keys(bk.createdByWeek||{}).forEach(function(iso){ if(winIsos[iso]) r.scopeC+=bk.createdByWeek[iso]; });
+      Object.keys(bk.closedByWeek ||{}).forEach(function(iso){ if(winIsos[iso]) r.scopeD+=bk.closedByWeek[iso]; });
+    }
+    r.scopeHot=r.bkAvail && r.scopeC>=3 && r.scopeC>r.scopeD; // scope growing faster than delivery
     r.health=epicHealth_(r.histByIso, r);
   });
 
@@ -2069,6 +2091,8 @@ function renderEpicRollup(){
     pm:      function(a,b){ return ((a.pm||'~').localeCompare(b.pm||'~'))*dirn || b.hours-a.hours; }, // '~' sinks blank PMs
     hours:   function(a,b){ return (a.hours-b.hours)*dirn; },
     tickets: function(a,b){ var ra=a.ticketTotal?a.ticketDone/a.ticketTotal:-1, rb=b.ticketTotal?b.ticketDone/b.ticketTotal:-1; return (ra-rb)*dirn || b.hours-a.hours; },
+    aging:   function(a,b){ return ((a.agingWip||0)-(b.agingWip||0))*dirn || b.hours-a.hours; },
+    scope:   function(a,b){ return ((a.scopeC-a.scopeD)-(b.scopeC-b.scopeD))*dirn || b.hours-a.hours; },
     health:  function(a,b){ return (a.health.rank-b.health.rank)*dirn || b.hours-a.hours; }
   };
   rows.sort(sorters[EPIC_SORT.col]||sorters.hours);
@@ -2087,6 +2111,7 @@ function renderEpicRollup(){
   var html='<div style="overflow-x:auto"><table class="epic-tbl"><thead><tr>'
     +sortTh('epic','Epic')+sortTh('pm','PM')+'<th>Project(s)</th><th>Billing</th>'
     +sortTh('hours','Tracked hrs','et-hrs')+sortTh('tickets','Tickets done','et-hrs')
+    +sortTh('aging','Aging WIP','et-hrs')+sortTh('scope','Scope +/−','et-hrs')
     +sortTh('health','Health')+'<th class="et-contrib">Contributors</th>'
     +'</tr></thead><tbody>';
 
@@ -2107,19 +2132,32 @@ function renderEpicRollup(){
     var contribNames=Object.keys(r.contributors).map(function(k){return r.contributors[k];}).sort(function(a,b){return a.localeCompare(b);});
     var contribCount=contribNames.length;
     var isOpen=EPIC_OPEN===r.epicKey;
-    // Tickets done/total = CURRENT status of the tickets worked on in this scope (Jira
-    // Raw snapshot), not a burn-down — a full created-vs-closed view needs the Phase 2
-    // server enrichment (created/updated dates in Jira Raw).
+    // Tickets done/total: whole epic backlog when the server ships epicBacklog (Phase 2),
+    // else the worked-on-tickets snapshot — the tooltip says which one it is.
     var tickTitle=r.ticketTotal
-      ? r.ticketDone+' of '+r.ticketTotal+' worked-on ticket'+(r.ticketTotal!==1?'s':'')+' currently Done/Closed (Jira status snapshot)'
+      ? (r.bkAvail
+          ? r.ticketDone+' of '+r.ticketTotal+' ticket'+(r.ticketTotal!==1?'s':'')+' in the whole epic backlog are Done/Closed'
+            +(r.unassigned>0?' · '+r.unassigned+' open ticket'+(r.unassigned!==1?'s':'')+' UNASSIGNED (ownership gap)':'')
+          : r.ticketDone+' of '+r.ticketTotal+' worked-on ticket'+(r.ticketTotal!==1?'s':'')+' currently Done/Closed (Jira status snapshot — time-logged tickets only)')
       : 'No issue-level data';
+    var agingTitle=r.agingWip===null ? 'No backlog data (needs the epicBacklog payload)'
+      : (r.agingWip>0
+          ? r.agingWip+' in-progress ticket'+(r.agingWip!==1?'s':'')+' with no update in ≥'+(DATA.agingWipDays||14)+' days (oldest '+r.oldestWipDays+'d) — hidden blockers, check before they surface as misses'
+          : 'No in-progress ticket has sat untouched for '+(DATA.agingWipDays||14)+'+ days');
+    var scopeTitle=r.bkAvail
+      ? '+'+r.scopeC+' created / −'+r.scopeD+' closed in the '+NWEEKS+'-week window'
+        +(r.scopeHot?' — scope is growing faster than delivery':'')
+      : 'No backlog data';
     html+='<tr>'
       +'<td><span class="proj-key-mono">'+esc(r.epicKey)+'</span>'+(epicName?' <span class="pwt-name">'+esc(epicName)+'</span>':'')+'</td>'
       +'<td>'+(r.pm?'<span class="pm-chip">'+esc(r.pm)+'</span>':'<span class="hint" title="Dominant project carries no PM of record">⚠ —</span>')+'</td>'
       +'<td>'+projHtml+'</td>'
       +'<td><span class="et-bill-'+billLbl+'" title="'+esc(billParts.join(' · '))+'">'+billLbl+'</span></td>'
       +'<td class="et-hrs">'+fmt(r.hours)+'</td>'
-      +'<td class="et-hrs" title="'+esc(tickTitle)+'">'+(r.ticketTotal?(r.ticketDone+'/'+r.ticketTotal):'—')+'</td>'
+      +'<td class="et-hrs" title="'+esc(tickTitle)+'">'+(r.ticketTotal?(r.ticketDone+'/'+r.ticketTotal):'—')
+        +(r.unassigned>0?'<span class="et-unassigned" title="'+r.unassigned+' open ticket'+(r.unassigned!==1?'s':'')+' with no assignee">⚠'+r.unassigned+'</span>':'')+'</td>'
+      +'<td class="et-hrs'+(r.agingWip>0?' et-aging-hot':'')+'" title="'+esc(agingTitle)+'">'+(r.agingWip===null?'—':r.agingWip)+'</td>'
+      +'<td class="et-hrs'+(r.scopeHot?' et-scope-hot':'')+'" title="'+esc(scopeTitle)+'">'+(r.bkAvail?('+'+r.scopeC+'/−'+r.scopeD):'—')+'</td>'
       +'<td><span class="et-status et-status-'+r.health.cls+'" title="'+esc(r.health.why)+'">'+r.health.label+'</span></td>'
       +'<td class="et-contrib"><span class="et-contrib-btn" title="'+esc(contribNames.join(', '))+'" onclick="toggleEpicDrill(\''+r.epicKey.replace(/'/g,"\\'")+'\')">'
         +contribCount+' '+(contribCount===1?'person':'people')+' '+(isOpen?'▴':'▾')+'</span></td>'
@@ -2128,7 +2166,7 @@ function renderEpicRollup(){
       // Enhanced for Task 11: keep the contributor names (cheap "who" glance) and add the
       // full issue-level evidence table underneath (the "what work" behind those hours).
       var epicKeyForEvid=r.epicKey;
-      html+='<tr><td colspan="8" style="padding:0"><div class="avail-expanded-section">'
+      html+='<tr><td colspan="10" style="padding:0"><div class="avail-expanded-section">'
         +'<div style="margin-bottom:8px"><b>Contributors:</b> '+(contribNames.length?contribNames.map(esc).join(', '):'—')+'</div>'
         +evidenceDetails_(function(t){return (t.epicKey||'(no epic)')===epicKeyForEvid;})
         +'</div></td></tr>';
@@ -2149,9 +2187,13 @@ function renderEpicRollup(){
   var topContribCount=Object.keys(top.contributors).length;
   var stalledN=rows.filter(function(r){return r.health.cls==='stalled';}).length;
   var riskN=rows.filter(function(r){return r.health.cls==='risk';}).length;
+  var agingTot=rows.reduce(function(s,r){return s+(r.agingWip||0);},0);
+  var unassignedTot=rows.reduce(function(s,r){return s+(r.unassigned||0);},0);
   var sw='<b>'+rows.length+' epic'+(rows.length!==1?'s':'')+'</b> with tracked hours '+(wkScope?'in '+esc(wkScope):'across all tracked weeks')+' ('+fmt(totalHrs)+' hrs total)'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(stalledN||riskN ? ' Health: <b>'+stalledN+'</b> stalled · <b>'+riskN+'</b> at risk.' : ' All epics on track.')
+    +(agingTot>0?' <b>'+agingTot+'</b> aging WIP ticket'+(agingTot!==1?'s':'')+'.':'')
+    +(unassignedTot>0?' <b>'+unassignedTot+'</b> open ticket'+(unassignedTot!==1?'s':'')+' unassigned.':'')
     +(scopeActive?' Reflects the filters above.':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
