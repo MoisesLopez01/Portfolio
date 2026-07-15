@@ -81,7 +81,7 @@ Footer: ""              TOTAL     (column sums)             (grand total)
 
 1. **Read back** the existing sheet (if present) into `{ accountId → { name, weeks: {iso → hrs} } }` plus the ordered stored ISO-column list. Malformed/legacy sheet (missing Account ID header) → treat as empty (backfill mode) and log ⚠️.
 2. **Compute window** per §3.
-3. **Workers:** `fetchAllTeamMembers_(tempoToken)` (same `EXCLUDE_IDS` + injected `MERGE_MAP` secondaries), `fetchUserNames_()` for display names. MERGE_MAP secondaries accumulate into the primary's row.
+3. **Workers:** `fetchAllTeamMembers_(tempoToken)` (same `EXCLUDE_IDS` + injected `MERGE_MAP` secondaries), `fetchUserNames_()` for display names. **MERGE_MAP correction (vs plans):** capacity is per *person*, not per account — a secondary account carries its own default 8 h/day schedule, so summing schedules would double the person's capacity. The worker list is collapsed to unique MERGE_MAP-effective (primary) IDs and each schedule is fetched exactly once; secondaries still map to the primary's row key, they just don't add hours.
 4. **Fetch** each worker's schedule for the window (batched); bucket daily seconds → `iso → hours`.
 5. **Merge in memory** — `mergeCapacityGrid_(existingRows, fetchedByUser, windowWeeks)`, a **pure function** (no Sheets/UrlFetch):
    - Column set = stored weeks ∪ window weeks, ISO-sorted.
@@ -126,7 +126,7 @@ Footer: ""              TOTAL     (column sums)             (grand total)
 | 1–3 missed Fridays | Gap self-heal backfills missing weeks on next run |
 | Endpoint not available in workspace | Fallback path tried, then loud abort; sheet untouched |
 | Jira display-name change | Same row (accountId key), label updates |
-| Duplicate accounts | `MERGE_MAP` merges secondary into primary row |
+| Duplicate accounts | `MERGE_MAP` collapses to one row keyed by the primary; only the primary's schedule is fetched (no double-count) |
 | Person leaves all Tempo teams | Row + history kept; future cells blank |
 | Partial API failures | Affected users' window cells blank; run completes with ⚠️ count |
 
