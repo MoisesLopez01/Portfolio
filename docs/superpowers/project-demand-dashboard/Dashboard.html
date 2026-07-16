@@ -982,6 +982,16 @@ function utilIdentity_(iso, npList, capMap, trkMap, planMap, capHrsByNp){
   };
 }
 
+// One-word band verdict for the glance layer. Band edges count as normal —
+// the band IS the definition of normal variation. null when either input is
+// missing (no settled utilization, or fewer settled weeks than the band needs).
+function utilVerdict_(u, stats){
+  if (u == null || !stats) return null;
+  if (u < stats.lo) return "below";
+  if (u > stats.hi) return "above";
+  return "normal";
+}
+
 function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.

@@ -232,6 +232,18 @@ function _test_utilIdentity_() {
   Logger.log("✅ _test_utilIdentity_ passed");
 }
 
+function _test_utilVerdict_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilVerdict_: " + msg); }
+  var stats = { mean: 65, sigma: 2, lo: 61, hi: 69 };
+  assert_(utilVerdict_(57, stats) === "below", "under lo → below");
+  assert_(utilVerdict_(72, stats) === "above", "over hi → above");
+  assert_(utilVerdict_(65, stats) === "normal", "inside band → normal");
+  assert_(utilVerdict_(61, stats) === "normal" && utilVerdict_(69, stats) === "normal", "band edges inclusive");
+  assert_(utilVerdict_(null, stats) === null, "no utilization → null");
+  assert_(utilVerdict_(57, null) === null, "no band → null");
+  Logger.log("✅ _test_utilVerdict_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
@@ -239,5 +251,6 @@ _test_utilControlStats_();
 _test_utilProjection_();
 _test_utilDecompose_();
 _test_utilIdentity_();
+_test_utilVerdict_();
 
 console.log("✅ node-tests: all suites passed");
