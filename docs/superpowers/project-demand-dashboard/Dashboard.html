@@ -598,6 +598,10 @@ input[type=file]{display:none}
       <div class="util-head" id="utilHead"></div>
       <div id="utilExplore" style="display:none">
         <div class="util-tools">
+          <div class="chip-toggle" id="utilChartMode">
+            <button id="utilModeHours" onclick="utilSetMode_('hours')">Hours</button>
+            <button id="utilModeRate" onclick="utilSetMode_('rate')">Rate</button>
+          </div>
           <!-- population scope chips moved to the People filters bar (universal — see #scopeChips) -->
           <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full population (Delivery + Manager + Non-tracking, Group column), regardless of the toggles; respects the People filters">⇣ CSV</button>
         </div>
@@ -1593,6 +1597,8 @@ var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local
 var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
 var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
+var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
+function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
 
 function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; renderUtilization(); }
@@ -1705,8 +1711,12 @@ function renderUtilization(){
   }
   if(UTIL_EXPLORE_OPEN){
     renderUtilChips_(anchor, split, capMap, trkMap);
-    renderUtilLegend_(stats!=null, proj!=null);
-    renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor);
+    var utilModeHoursBtn=$('utilModeHours'), utilModeRateBtn=$('utilModeRate');
+    if(utilModeHoursBtn) utilModeHoursBtn.className = UTIL_CHART_MODE==='hours'?'on':'';
+    if(utilModeRateBtn)  utilModeRateBtn.className  = UTIL_CHART_MODE==='rate'?'on':'';
+    renderUtilLegend_(stats!=null, proj!=null, UTIL_CHART_MODE);
+    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cw, provisionalIso, anchor);
+    else renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
   }
@@ -1787,13 +1797,21 @@ function renderUtilChips_(anchor, split, capMap, trkMap){
   }
 }
 
-function renderUtilLegend_(hasBand, hasProj){
+function renderUtilLegend_(hasBand, hasProj, mode){
   var el=$('utilLegend'); if(!el) return;
-  var h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
-  if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
-  h+='<span><i style="background:'+hexVar('--pos')+'"></i>Target '+UTIL_TARGET+'%</span>'
-    +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>';
-  if(hasProj) h+='<span><i class="dashed"></i>Projected (current week)</span>';
+  var h;
+  if(mode==='hours'){
+    h='<span><i style="background:'+hexVar('--slate')+';opacity:.4"></i>Capacity (PTO-adjusted)</span>'
+      +'<span><i style="background:'+hexVar('--pos')+'"></i>Tracked</span>'
+      +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>'
+      +'<span><i class="dashed"></i>Live week (logged so far)</span>';
+  } else {
+    h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
+    if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
+    h+='<span><i style="background:'+hexVar('--pos')+'"></i>Target '+UTIL_TARGET+'%</span>'
+      +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>';
+    if(hasProj) h+='<span><i class="dashed"></i>Projected (current week)</span>';
+  }
   el.innerHTML=h;
 }
 
@@ -2016,6 +2034,107 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   });
 
   // hit-columns + thinned week labels (same interaction as before)
+  var spacing=n>1?iw/(n-1):iw;
+  var labelStep=Math.max(1,Math.ceil(26/spacing));
+  var rectW=Math.max(10,Math.min(36,spacing));
+  cw.forEach(function(wk,i){
+    var lx=x(i);
+    var isAnchor=wk.iso===anchor, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
+      +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
+    if(isAnchor||isCur||isEdge||i%labelStep===0){
+      var shortLbl=wk.iso.replace(/^\d{4}\./,'');
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isAnchor?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isAnchor?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+    }
+  });
+  g+='</svg>';
+  $('utilChart').innerHTML=g;
+}
+
+// Hours-space chart: capacity (PTO-adjusted) area vs tracked area, in raw hours —
+// the "what actually happened" complement to the %-space Rate chart. No band/target/
+// projection (those live in %-space); the per-week rate is annotated as a label
+// instead, so both readings are on screen without duplicating the Rate chart.
+function renderUtilHoursChart_(ut, cw, provisionalIso, anchor){
+  var n=cw.length;
+  var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  var maxRaw=1;
+  cw.forEach(function(wk){
+    maxRaw=Math.max(maxRaw, ut.cap[wk.iso]||0, ut.tracked[wk.iso]||0);
+  });
+  var maxH=niceRound(maxRaw);
+  var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
+  var yh=function(v){return pad.t+ih-Math.min(v,maxH)/maxH*ih;};
+  var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
+  // Same "does this week have real capacity data" test the v1 chart used — a
+  // week with no capacity row (blank, not zero) and no tracked-only fallback is
+  // skipped from the capacity area entirely rather than plotted as a false zero.
+  var hasCapData=function(iso){ return ut.util[iso]!=null || (ut.cap[iso]||0)>0 || (ut.covered[iso]||0)>0; };
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="capacity vs tracked hours per week with utilization rate labels">';
+
+  // hours gridlines — 0/½/max, same convention as the Planned vs Tracked chart
+  for(var gl=0;gl<=2;gl++){
+    var yy=pad.t+ih*gl/2;
+    g+='<line x1="'+pad.l+'" y1="'+yy+'" x2="'+(w-pad.r)+'" y2="'+yy+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';
+    g+='<text x="'+(pad.l-6)+'" y="'+(yy+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+fmt(maxH*(1-gl/2))+'</text>';
+  }
+  g+='<text x="12" y="'+(pad.t+ih/2)+'" text-anchor="middle" font-size="9" fill="'+css('--muted')+'" transform="rotate(-90 12 '+(pad.t+ih/2)+')">hrs</text>';
+
+  // adjusted-capacity area — only weeks with real capacity data; the live week's
+  // capacity is real schedule data (not a forecast), so its line stays solid.
+  var capPts=[];
+  cw.forEach(function(wk,i){ if(hasCapData(wk.iso)) capPts.push({x:x(i),y:yh(ut.cap[wk.iso]||0)}); });
+  if(capPts.length){
+    var capPath='M'+capPts[0].x+','+yh(0);
+    capPts.forEach(function(p){ capPath+=' L'+p.x+','+p.y; });
+    capPath+=' L'+capPts[capPts.length-1].x+','+yh(0)+' Z';
+    g+='<path d="'+capPath+'" fill="'+hexVar('--slate')+'" opacity="0.12"/>';
+    for(var ci=1;ci<capPts.length;ci++){
+      g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+    }
+  }
+
+  // tracked area on top — every week in cw (plan weeks are already filtered out
+  // upstream by renderUtilization). Settled points solid, provisional hollow amber,
+  // the segment INTO the live week ghosted (dashed + faded) with a hollow gray point
+  // — the live week's tracked total is still accumulating, same convention as the
+  // Planned vs Tracked chart's in-progress segment.
+  var trkPts=cw.map(function(wk,i){
+    var state = wk.status==='now'?'now':(wk.iso===provisionalIso?'prov':'settled');
+    return {i:i, x:x(i), y:yh(ut.tracked[wk.iso]||0), iso:wk.iso, state:state};
+  });
+  var tPath='M'+trkPts[0].x+','+yh(0);
+  trkPts.forEach(function(p){ tPath+=' L'+p.x+','+p.y; });
+  tPath+=' L'+trkPts[trkPts.length-1].x+','+yh(0)+' Z';
+  g+='<path d="'+tPath+'" fill="'+hexVar('--pos')+'" opacity="0.15"/>';
+  for(var ti=1;ti<trkPts.length;ti++){
+    var intoNow=trkPts[ti].state==='now';
+    g+='<line x1="'+trkPts[ti-1].x+'" y1="'+trkPts[ti-1].y+'" x2="'+trkPts[ti].x+'" y2="'+trkPts[ti].y+'" stroke="'+hexVar('--pos')+'" stroke-width="2.4"'
+      +(intoNow?' stroke-dasharray="3 4" opacity="0.5"':'')+'/>';
+  }
+  trkPts.forEach(function(p){
+    if(p.state==='settled'){
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--pos')+'"/>';
+    } else if(p.state==='prov'){
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--amber')+'" stroke-width="2"/>';
+    } else {
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+    }
+  });
+
+  // per-week utilization % labels — every settled + provisional + live point,
+  // sitting 7px above the higher of the two series so they never collide with
+  // either area/line. Provisional gets a ˜ (still settling); the live week gets
+  // a * (logged-so-far, not a full-week rate).
+  cw.forEach(function(wk,i){
+    var u=ut.util[wk.iso]; if(u==null) return;
+    var state = wk.status==='now'?'now':(wk.iso===provisionalIso?'prov':'settled');
+    var lbl=Math.round(u)+'%'+(state==='prov'?'˜':state==='now'?'*':'');
+    var ly=Math.min(yh(ut.cap[wk.iso]||0), yh(ut.tracked[wk.iso]||0))-7;
+    g+='<text x="'+x(i)+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+hexVar('--text')+'" font-weight="700">'+lbl+'</text>';
+  });
+
+  // hit-columns + thinned week labels — same interaction as the Rate chart
   var spacing=n>1?iw/(n-1):iw;
   var labelStep=Math.max(1,Math.ceil(26/spacing));
   var rectW=Math.max(10,Math.min(36,spacing));
