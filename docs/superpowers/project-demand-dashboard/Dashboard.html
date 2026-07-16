@@ -150,6 +150,17 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .util-drill .ud-bar{height:9px;border-radius:4px}
 .util-drill .ud-hrs{flex:0 0 170px;text-align:right;color:var(--muted);font-size:calc(11px*var(--scale));white-space:nowrap}
 .util-drill .ud-pp{flex:0 0 70px;text-align:right;font-weight:700}
+.util-people{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;font-size:calc(12px*var(--scale))}
+.util-people .up-toggle{cursor:pointer;font-weight:700}
+.util-people .up-note{font-size:calc(11px*var(--scale));color:var(--muted);margin:4px 0 6px}
+.util-people table{border-collapse:collapse;width:100%;font-size:calc(11px*var(--scale))}
+.util-people th{text-align:right;color:var(--muted);font-weight:400;padding:3px 8px;border-bottom:1px solid var(--border)}
+.util-people th:first-child,.util-people td:first-child{text-align:left}
+.util-people td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--border)}
+.util-people tr.up-row{cursor:pointer}
+.util-people tr.up-hist td{background:var(--surface-2);font-size:calc(10.5px*var(--scale))}
+.util-people .up-flag{font-weight:700;color:var(--warn)}
+.util-people .up-pto{color:var(--amber)}
 
 /* Capacity headline band */
 .capwrap{display:grid;grid-template-columns:calc(280px*var(--scale)) 1fr;gap:20px;align-items:center}
@@ -609,6 +620,7 @@ input[type=file]{display:none}
         <div class="cap-legend" id="utilLegend"></div>
         <div class="sowhat" id="utilSoWhat"></div>
         <div class="util-drill" id="utilDrill"></div>
+        <div class="util-people" id="utilPeople"></div>
       </div>
     </div>
 
@@ -1595,6 +1607,7 @@ var UTIL_WT=null, UTIL_CW=null;                 // last-render totals + week lis
 var UTIL_CAPS=null;                             // last-render {raw, adj} capacity maps (people table / CSV need raw)
 var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local, not persisted)
 var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
+var UTIL_PEOPLE_OPEN=false, UTIL_PERSON_OPEN=null;   // people-detail table state (person np whose history row is expanded)
 var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
 var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
@@ -1629,6 +1642,7 @@ function renderUtilization(){
     $('utilChart').innerHTML='';
     $('utilLegend').innerHTML='';
     $('utilDrill').innerHTML='';
+    $('utilPeople').innerHTML='';
     $('utilSoWhat').className='sowhat';
     $('utilSoWhat').innerHTML='<b>Capacity data unavailable</b>'
       +(DATA&&DATA.capacityError?' — '+esc(DATA.capacityError):'')
@@ -1719,6 +1733,7 @@ function renderUtilization(){
     else renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
+    if (typeof renderUtilPeople_==='function') renderUtilPeople_(anchor, split, npList, trkMap);
   }
 }
 
@@ -1921,6 +1936,97 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
     +'<div style="margin-top:6px">'+sentence+'</div>'
     +'<div class="ud-rows">'+rows.join('')+'</div>'
     +'<div class="hint" style="margin-top:4px">All groups shown — bars sum to the full '+fmtPp(total)+' pp move · hrs = tracked time '+esc(prev)+' → '+esc(anchor)+' · groups only — person detail is in the CSV.</div>';
+}
+
+// People detail — expandable table (names ARE allowed here; this is the sanctioned
+// detail surface, unlike the chart/drill/so-what area which stays names-free).
+// Uses the ACTIVE population (npList, chips respected) for the anchor week, plus
+// UTIL_CAPS.raw (unadjusted capacity — the table shows the PTO subtraction
+// explicitly, same as the CSV). Row click expands that person's full history
+// (every capacity week up to and including the live week) via UTIL_PERSON_OPEN.
+function renderUtilPeople_(anchor, split, npList, trkMap){
+  var el=$('utilPeople'); if(!el) return;
+  if(anchor==null){
+    el.innerHTML='<span class="up-toggle">▸ People detail — no settled week yet</span>';
+    return;
+  }
+  var groupByNp={};
+  split.delivery.forEach(function(np){ groupByNp[np]='Delivery'; });
+  split.managers.forEach(function(np){ groupByNp[np]='Manager'; });
+  split.nonTracking.forEach(function(np){ groupByNp[np]='Non-tracking'; });
+  var rawCap=(UTIL_CAPS&&UTIL_CAPS.raw)||{};
+  var ptoMap=DATA.personWeekPTO||{};
+  var nameOf=function(np){ return (DATA.displayNames||{})[np] || (DATA.capacityNames||{})[np] || np; };
+
+  function statFor(np, iso){
+    var capByIso=rawCap[np]||{};
+    var hasCap = iso in capByIso;
+    var cap=capByIso[iso]||0;
+    var pto=((ptoMap[np]||{})[iso])||0;
+    var trk=(trkMap[np]||{})[iso]||0;
+    return { hasCap:hasCap, cap:cap, pto:pto, trk:trk,
+      st: utilPersonWeek_(cap, pto, trk, hasCap, PTO_FULL_THRESHOLD, UTIL_LOW_RATIO) };
+  }
+
+  function flagsHtml(row){
+    if(!row.hasCap) return '<span class="hint">no capacity data</span>';
+    var parts=[];
+    if(row.st.low) parts.push('<span class="up-flag">⚠ low</span>');
+    if(row.st.fullPto) parts.push('<span class="up-pto">🏖 PTO</span>');
+    return parts.join(' ');
+  }
+
+  function rowCells(nameCell, groupCell, row){
+    return '<td>'+nameCell+'</td>'
+      +'<td>'+groupCell+'</td>'
+      +'<td>'+(row.hasCap?fmt(row.cap):'—')+'</td>'
+      +'<td>'+(row.pto?fmt(row.pto):'')+'</td>'
+      +'<td>'+(row.hasCap?fmt(row.st.adj):'—')+'</td>'
+      +'<td>'+fmt(row.trk)+'</td>'
+      +'<td>'+(row.st.util!=null?Math.round(row.st.util)+'%':'—')+'</td>'
+      +'<td>'+flagsHtml(row)+'</td>';
+  }
+
+  var people=npList.map(function(np){
+    var row=statFor(np, anchor);
+    row.np=np; row.name=nameOf(np); row.group=groupByNp[np]||'Delivery';
+    return row;
+  });
+  var flagged=0; people.forEach(function(p){ if(p.st.low) flagged++; });
+
+  var head='<span class="up-toggle" onclick="UTIL_PEOPLE_OPEN=!UTIL_PEOPLE_OPEN;renderUtilization()">'
+    +(UTIL_PEOPLE_OPEN?'▾':'▸')+' People detail — '+esc(anchor)+' ('+people.length+' people, '+flagged+' flagged)</span>';
+  if(!UTIL_PEOPLE_OPEN){ el.innerHTML=head; return; }
+
+  people.sort(function(a,b){
+    if(a.st.low!==b.st.low) return a.st.low?-1:1;
+    var au=a.st.util==null?Infinity:a.st.util, bu=b.st.util==null?Infinity:b.st.util;
+    if(au!==bu) return au-bu;
+    return a.name<b.name?-1:(a.name>b.name?1:0);
+  });
+
+  var curOrd=isoOrd(CURRENT_ISO);
+  var histIsos=(DATA.capacityIsoList||[]).filter(function(iso){ return isoOrd(iso)<=curOrd; })
+    .sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
+
+  var rows=people.map(function(p){
+    var npEsc=p.np.replace(/'/g,"\\'");
+    var tr='<tr class="up-row" data-np="'+esc(p.np)+'" onclick="UTIL_PERSON_OPEN=(UTIL_PERSON_OPEN===\''+npEsc+'\'?null:\''+npEsc+'\');renderUtilization()">'
+      +rowCells(esc(p.name), esc(p.group), p)+'</tr>';
+    if(UTIL_PERSON_OPEN===p.np){
+      histIsos.forEach(function(iso){
+        var wk=statFor(p.np, iso);
+        var isLive=iso===CURRENT_ISO;
+        tr+='<tr class="up-hist">'+rowCells(esc(iso), isLive?'(in progress)':'', wk)+'</tr>';
+      });
+    }
+    return tr;
+  });
+
+  var note='<div class="up-note">Capacity is holiday- and PTO-adjusted — a 40 h week with 8 h of PTO counts as 32 h. People mostly on PTO in a week are never flagged.</div>';
+  var table='<table><thead><tr><th>Name</th><th>Group</th><th>Capacity</th><th>PTO</th><th>Adjusted</th><th>Tracked</th><th>Util %</th><th>Flags</th></tr></thead>'
+    +'<tbody>'+rows.join('')+'</tbody></table>';
+  el.innerHTML=head+note+table;
 }
 
 function utilChartHover_(e, iso){
