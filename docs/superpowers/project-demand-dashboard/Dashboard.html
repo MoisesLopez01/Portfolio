@@ -123,11 +123,14 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .sowhat b{color:var(--text)}
 .sowhat.warn{border-left-color:var(--warn)} .sowhat.ok{border-left-color:var(--pos)}
 
-/* Utilization panel: population chips, identity header, contribution drill */
-.uchip{border:1px solid var(--border);border-radius:12px;background:transparent;color:var(--muted);
-  font-size:calc(11px*var(--scale));padding:4px 10px;cursor:pointer;white-space:nowrap}
-.uchip.on{background:var(--void);border-color:var(--void);color:#fff}
-[data-theme="dark"] .uchip.on{background:var(--orbe);border-color:var(--orbe)}
+/* Utilization panel: glance/explore containers, chip-toggle scope, verdict identity header */
+.util-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 8px}
+#utilExploreBtn.explore-why{border-color:var(--warn);color:var(--warn);font-weight:700}
+.util-head .uh-verdict{display:inline-block;font-size:calc(11px*var(--scale));font-weight:700;
+  border:1px solid var(--border);border-radius:10px;padding:1px 8px;margin-left:8px;vertical-align:middle}
+.util-head .uh-verdict.v-below{color:var(--warn);border-color:var(--warn)}
+.util-head .uh-verdict.v-above{color:var(--pos);border-color:var(--pos)}
+.util-head .uh-verdict.v-normal{color:var(--muted)}
 .util-head{margin:4px 0 8px}
 .util-head .uh-big{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
   font-size:calc(26px*var(--scale));font-weight:700}
@@ -574,23 +577,30 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
-    <!-- 1c. Utilization — decision-grade: tracking-required population, coverage × fidelity, control band -->
+    <!-- 1c. Utilization — glance (hero+verdict) always visible; explore (chart/chips/drill) one click away -->
     <div class="panel" id="utilPanel" data-view="overview">
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity for tracking-required roles (delivery job families) · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · shaded band = normal week-to-week variation · hollow points = still settling / projected · % counts only people with capacity data that week · billing chips do not apply · reflects People filters above</div>
-          <button class="uchip" id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem">＋ non-tracking roles</button>
-          <button class="uchip" id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator">＋ managers</button>
-          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full range and FULL population (Delivery + Manager + Non-tracking, with a Group column), regardless of the chips; respects the People filters">⇣ CSV</button>
+          <div class="hint">Tracked ÷ Tempo schedule capacity for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects People filters above</div>
+          <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
       </div>
       <div class="util-head" id="utilHead"></div>
-      <div id="utilChart"></div>
-      <div class="cap-legend" id="utilLegend"></div>
-      <div class="sowhat" id="utilSoWhat"></div>
-      <div class="util-drill" id="utilDrill"></div>
+      <div id="utilExplore" style="display:none">
+        <div class="util-tools">
+          <div class="chip-toggle" id="utilScope">
+            <button id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem">＋ non-tracking roles</button>
+            <button id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator">＋ managers</button>
+          </div>
+          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full population (Delivery + Manager + Non-tracking, Group column), regardless of the toggles; respects the People filters">⇣ CSV</button>
+        </div>
+        <div id="utilChart"></div>
+        <div class="cap-legend" id="utilLegend"></div>
+        <div class="sowhat" id="utilSoWhat"></div>
+        <div class="util-drill" id="utilDrill"></div>
+      </div>
     </div>
 
     <!-- 1b. Team Availability -->
@@ -1534,6 +1544,8 @@ function renderCapChart(wt,cw){
 var UTIL_WT=null, UTIL_CW=null;                 // last-render totals + week list (tooltips)
 var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local, not persisted)
 var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
+var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
+function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
 
 function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; renderUtilization(); }
