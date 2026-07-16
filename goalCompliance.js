@@ -83,7 +83,7 @@ var CONFIG_GD = {
   PACE_BAND_HI_PCT:     90,  // CPR above this peer percentile → informational "high"
   PACE_MIN_REF_N:       20,  // below this reference-population size, classify 'na'
   CACHE_TTL:           300,  // seconds (5 min)
-  CACHE_VER:           'gd_v20_',  // bumped: admin history blocks add per-goal goalSelf[] (Policy Lab); v19 added paceMetrics/paceBand
+  CACHE_VER:           'gd_v25_',  // bumped: employeeNumber on employee payload (Finance flat list); v24 crew active-only rule — ANY Termination/Release Date deactivates; v23 gzip payloads via cachePutLarge_; v22 added onLeave/leaveReason/empStatus; v21 monthlySelf; v20 goalSelf[]
   CACHE_CHUNK_SIZE:    90000,  // CacheService caps a single value at 100KB — split larger payloads across N chunk keys instead of skipping the cache entirely
   LOCK_WAIT_MS:        30000,  // max time a concurrent request waits for another user's in-flight recompute before falling back to computing its own copy
   DEBUG:               false,
@@ -1022,6 +1022,8 @@ function buildComplianceData_(quarter, access) {
     // activity spread. Classification (cls/consistency) happens after the
     // full population exists; see the paceBand pass below.
     var empNum = rosterRec && rosterRec.employeeNumber;
+    // Shipped to the client for the Finance STF-gaps flat list (Emp # column).
+    emp.employeeNumber = empNum || '';
     emp.paceMetrics = computePaceMetrics_(emp, weeksElapsedSinceStart,
                                           (empNum && ptoWeekly[empNum]) || null, calWeeks);
 

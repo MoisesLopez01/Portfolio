@@ -589,8 +589,9 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
 
       <div class="section-card">
         <div class="section-head">
-          <div><h2>Rocketeer Roster</h2><p class="section-sub" id="team-roster-sub"></p></div>
+          <div><h2>Rocketeers</h2><p class="section-sub" id="team-roster-sub"></p></div>
           <div class="section-actions">
+            <button class="btn" id="btn-roster-expand" aria-pressed="false" onclick="toggleRosterExpandAll_()">⊞ Expand all</button>
             <button class="btn" onclick="exportEngagementCSV_()">⬇ CSV</button>
             <button class="btn" onclick="exportPNG('team-roster-groups','team-roster.png')">⬇ PNG</button>
             <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
@@ -672,34 +673,17 @@ main{max-width:1400px;margin:0 auto;padding:20px 24px;display:flex;flex-directio
       <div class="section-card">
         <div class="section-head">
           <div><h2>💰 STF Gaps (Finance)</h2>
-            <p class="section-sub">STF-ineligible Rocketeers · new hires &amp; on-leave excluded · respects the filter bar · click a row for goal detail</p></div>
+            <p class="section-sub" id="finance-sub">Rocketeers not yet STF-eligible, worst compliance record first · new hires &amp; on-leave excluded · respects the filter bar · click a row for goal detail</p></div>
           <div class="section-actions">
+            <button class="btn btn-primary" id="btn-fin-gaps" aria-pressed="true" onclick="setFinanceMode_(false)">❌ Needs follow-up</button>
+            <button class="btn" id="btn-fin-all" aria-pressed="false" onclick="setFinanceMode_(true)">All rocketeers</button>
             <button class="btn" onclick="exportFinanceCsv_()">⬇ CSV</button>
           </div>
         </div>
         <div class="section-body">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-            <label for="finance-threshold" style="font-size:12px;font-weight:700;color:var(--text)">Max completed goals to show:</label>
-            <input type="range" min="0" max="7" step="1" value="7" id="finance-threshold" oninput="setFinanceThreshold_(this.value)" style="vertical-align:middle">
-            <span id="finance-threshold-val" style="font-size:12px;font-weight:800;color:var(--orbe);min-width:14px">7</span>
-          </div>
           <div id="finance-summary" style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:16px"></div>
-          <div id="finance-chart"></div>
+          <div id="finance-table"></div>
         </div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>Under the completion bar</h2>
-            <p class="section-sub">Completed ≤ threshold · grouped by manager (worst first)</p></div>
-        </div>
-        <div class="section-body" id="finance-under"></div>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <div><h2>Comments shortfall</h2>
-            <p class="section-sub">8+ completed but fewer than 6 carry 8+ comments · independent of the threshold</p></div>
-        </div>
-        <div class="section-body" id="finance-comments"></div>
       </div>
     </div>
 
@@ -884,7 +868,7 @@ var STATUS_C = {
 var TREND_TARGETS = { rock: 70, mgr: 40 };
 
 // ── FINANCE-PURE-BEGIN ──
-// Pure, DOM-free STF-gap classification + grouping. Unit-tested by
+// Pure, DOM-free STF-gap classification + flat-list building. Unit-tested by
 // tests/finance-stf-gaps.test.js (eval'd out of this marked region in Node).
 // STF bars mirror goalCompliance.js CONFIG_GD (STF_MIN_COMPLETED / STF_MIN_CMT_GOALS);
 // duplicated here as local consts so the block evals standalone. If the server
@@ -933,70 +917,51 @@ function classifyStfReason_(e) {
   };
 }
 
-// Sort a {supervisor: [rows]} map into [{supervisor, rocketeers, count}], managers
-// worst-first (most ineligible), rocketeers within a group furthest-from-bar first.
-function groupByMgrSorted_(byMgr) {
-  return Object.keys(byMgr).map(function(sup) {
-    var rocks = byMgr[sup].slice().sort(function(a, b) {
-      return (a.completed - b.completed) || a.name.localeCompare(b.name);
-    });
-    return { supervisor: sup, rocketeers: rocks, count: rocks.length };
-  }).sort(function(a, b) {
-    return (b.count - a.count) || a.supervisor.localeCompare(b.supervisor);
-  });
-}
-
-// Build the Finance view model from already-filtered employees.
-// threshold = max completed goals to include in the "under-bar" list (0..7);
-// null defaults to bar-1 (7). New hires / on-leave are excluded (already outside
-// STF math upstream). The comments-shortfall section ignores the threshold.
-function buildFinanceGaps_(emps, threshold) {
-  var t = (threshold == null) ? (STF_COMPLETED_BAR_ - 1) : +threshold;
-  var totals = { pending: 0, canceled: 0, comments: 0, toofew: 0, ineligible: 0, evaluated: 0, hidden: 0 };
-  var underByMgr = {}, commentByMgr = {}, mgrTally = {};
+// Build the flat Finance list from already-filtered employees — one row per
+// Rocketeer, worst compliance record first (completed asc, then well-commented
+// asc, then name), so follow-up candidates always sit at the top.
+// showAll=false → STF-ineligible only (the follow-up list);
+// showAll=true  → every evaluated Rocketeer; eligible rows carry eligible:true
+// (rendered with the green STF ✓ tag) and sort after all ineligible rows.
+// New hires / on-leave are excluded (already outside STF math upstream).
+function buildFinanceRows_(emps, showAll) {
+  // withPending / commentsGap are the two end-of-quarter Finance stats:
+  //   withPending — anyone (eligible or not) still carrying Planned/In-Progress
+  //     goals → the "please close your open goals" communication list;
+  //   commentsGap — completed the goal bar but short on comments (the senior-
+  //     manager pattern) → same count as the 'comments' primary reason.
+  var totals = { pending: 0, canceled: 0, comments: 0, toofew: 0,
+                 ineligible: 0, eligible: 0, evaluated: 0, withPending: 0 };
+  var rows = [];
 
   (emps || []).forEach(function(e) {
     if (e.isNewHire || e.onLeave) return;
     totals.evaluated++;
+    if (((+e.goalsInProgress || 0) + (+e.goalsPlanned || 0)) > 0) totals.withPending++;
     var c = classifyStfReason_(e);
-    if (!c) return; // eligible
-    var sup = e.supervisor || '(No Supervisor)';
-    var row = {
-      name: e.name, normName: e.normName, supervisor: sup, department: e.department || '',
-      completed: c.completed, wellCommented: c.wellCommented, pending: c.pending,
-      lost: c.lost, totalGoals: c.totalGoals, primary: c.primary, badges: c.badges,
-    };
-
-    var displayed = false;
-    if (c.primary === 'comments') {
-      (commentByMgr[sup] = commentByMgr[sup] || []).push(row);
-      displayed = true;
-    } else if (c.completed <= t) {
-      (underByMgr[sup] = underByMgr[sup] || []).push(row);
-      displayed = true;
-    } else {
-      totals.hidden++; // below the bar but above the threshold → hidden from the list
-    }
-
-    if (displayed) {
-      totals[c.primary]++;
-      totals.ineligible++;
-      var mt = mgrTally[sup] || (mgrTally[sup] = { supervisor: sup, pending: 0, canceled: 0, comments: 0, toofew: 0, total: 0 });
-      mt[c.primary]++;
-      mt.total++;
-    }
+    if (c) { totals[c.primary]++; totals.ineligible++; }
+    else   { totals.eligible++; if (!showAll) return; }
+    rows.push({
+      empNo: e.employeeNumber || '', name: e.name, normName: e.normName,
+      jobTitle: e.jobTitle || '', supervisor: e.supervisor || '(No Supervisor)',
+      department: e.department || '',
+      completed:     +e.stfGoalsCompleted || 0,
+      wellCommented: +e.stfGoalsWithSufficientComments || 0,
+      pending:       (+e.goalsInProgress || 0) + (+e.goalsPlanned || 0),
+      lost:          (+e.goalsCanceled || 0) + (+e.goalsNotCompleted || 0),
+      totalGoals:    +e.totalGoals || 0,
+      eligible: !c, primary: c ? c.primary : null, badges: c ? c.badges : [],
+    });
   });
 
-  var chartRows = Object.keys(mgrTally).map(function(s) { return mgrTally[s]; })
-    .sort(function(a, b) { return (b.total - a.total) || a.supervisor.localeCompare(b.supervisor); });
+  rows.sort(function(a, b) {
+    if (a.eligible !== b.eligible) return a.eligible ? 1 : -1; // follow-ups first
+    return (a.completed - b.completed) ||
+           (a.wellCommented - b.wellCommented) ||
+           a.name.localeCompare(b.name);
+  });
 
-  return {
-    underBar: groupByMgrSorted_(underByMgr),
-    commentsShortfall: groupByMgrSorted_(commentByMgr),
-    chartRows: chartRows,
-    totals: totals,
-    threshold: t,
-  };
+  return { rows: rows, totals: totals, showAll: !!showAll };
 }
 // ── FINANCE-PURE-END ──
 
@@ -1052,15 +1017,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mgrRow) { openManagerTeam_(mgrRow.dataset.manager); return; }
     var row = e.target.closest('tr[data-normname]');
     if (row) toggleIndividualDrill_(row, row.dataset.normname, row.dataset.quarter || null);
-  });
-  // Finance chart: click a manager's bar → scroll to that manager's group below.
-  document.addEventListener('click', function(e) {
-    var bar = e.target.closest('[data-fin-mgr]');
-    if (!bar) return;
-    var name = bar.getAttribute('data-fin-mgr') || '';
-    var sel = '.fin-mgr-group[data-fin-group="' + ((window.CSS && CSS.escape) ? CSS.escape(name) : name) + '"]';
-    var grp = document.querySelector(sel);
-    if (grp) grp.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
 
@@ -1907,8 +1863,8 @@ function exportEngagementCSV_() {
 }
 
 // ── STF GAPS (Finance; admin-only) ────────────────────────────────
-// Reason → colour/label map, single source for the chart, summary strip, and
-// row badges so all three always agree. Colours are STATUS_C hexes.
+// Reason → colour/label map, single source for the summary strip and the row
+// badges so both always agree. Colours are STATUS_C hexes.
 var FIN_REASONS_ = [
   { key: 'pending',  label: 'Pending closure',          color: STATUS_C.watch },   // amber
   { key: 'canceled', label: 'Canceled / Not-completed', color: STATUS_C.risk },    // red
@@ -1917,107 +1873,86 @@ var FIN_REASONS_ = [
 ];
 
 function renderFinance() {
-  var emps  = getFiltered();
-  var thr   = (S.financeThreshold == null) ? (STF_COMPLETED_BAR_ - 1) : S.financeThreshold;
-  var model = buildFinanceGaps_(emps, thr);
+  var model = buildFinanceRows_(getFiltered(), !!S.financeShowAll);
   S._financeModel = model; // consumed by exportFinanceCsv_
 
+  // End-of-quarter statistical read for Finance, in priority order:
+  // (1) open goals still to close → drives the "close your Planned / In
+  //     Progress goals" communication; (2) completed the bar but missing
+  //     comments (senior-manager pattern); then the remaining reasons.
   var t    = model.totals;
   var strip = document.getElementById('finance-summary');
   if (strip) {
     strip.innerHTML =
-      finStat_('⏳ Pending', t.pending, STATUS_C.watch) +
-      finStat_('✖ Canceled/NC', t.canceled, STATUS_C.risk) +
-      finStat_('🗨 Comments', t.comments, STATUS_C.info) +
-      finStat_('▽ Too few', t.toofew, STATUS_C.planned) +
+      finStat_('⏳ Open goals to close', t.withPending, STATUS_C.watch,
+        'Rocketeers still carrying Planned / In-Progress goals (eligible or not) — communicate that these need closing before quarter end') +
+      finStat_('🗨 Completed, missing comments', t.comments, STATUS_C.info,
+        'Hit the ' + STF_COMPLETED_BAR_ + '-completed bar but fewer than ' + STF_CMT_GOALS_BAR_ + ' goals carry 8+ comments — typically senior managers, not ICs') +
+      finStat_('✖ Canceled/NC', t.canceled, STATUS_C.risk,
+        'Cannot reach the bar — goals were canceled or marked not completed') +
+      finStat_('▽ Too few', t.toofew, STATUS_C.planned,
+        'Not enough goals logged to ever reach the ' + STF_COMPLETED_BAR_ + '-completed bar') +
+      finStat_('✓ STF eligible', t.eligible, STATUS_C.good,
+        'Already qualified — ' + STF_COMPLETED_BAR_ + '+ completed with ' + STF_CMT_GOALS_BAR_ + '+ well-commented') +
       '<span style="margin-left:auto;font-size:12px;color:var(--muted);align-self:center">' +
-        t.ineligible + ' ineligible shown of ' + t.evaluated + ' evaluated' +
-        (t.hidden > 0 ? ' · ' + t.hidden + ' more below the bar hidden by threshold' : '') +
+        t.ineligible + ' to follow up · ' + t.eligible + ' eligible · ' + t.evaluated + ' evaluated' +
       '</span>';
   }
 
-  renderFinanceChart_(model.chartRows);
-  renderFinanceSection_(document.getElementById('finance-under'), model.underBar, 'under');
-  renderFinanceSection_(document.getElementById('finance-comments'), model.commentsShortfall, 'comments');
+  var sub = document.getElementById('finance-sub');
+  if (sub) {
+    sub.textContent = (model.showAll
+      ? 'Every evaluated Rocketeer, worst compliance record first — STF-eligible rows tagged ✓ at the bottom'
+      : 'Rocketeers not yet STF-eligible, worst compliance record first') +
+      ' · new hires & on-leave excluded · respects the filter bar · click a row for goal detail';
+  }
+
+  renderFinanceTable_(document.getElementById('finance-table'), model.rows);
 }
 
-function finStat_(label, n, color) {
-  return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-right:16px">' +
+function finStat_(label, n, color, title) {
+  return '<span' + (title ? ' title="' + esc(title) + '"' : '') +
+    ' style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-right:16px' + (title ? ';cursor:help' : '') + '">' +
     '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';display:inline-block"></span>' +
     esc(label) + ' <span style="color:' + color + '">' + n + '</span></span>';
 }
 
-// One horizontal stacked bar per manager, absolute-scaled to the worst manager so
-// the longest bar = most ineligible. Click a bar → scrolls to that manager's group.
-function renderFinanceChart_(chartRows) {
-  var el = document.getElementById('finance-chart');
-  if (!el) return;
-  if (!chartRows || !chartRows.length) {
-    el.innerHTML = '<div class="empty-state">🎉 <p>No STF-ineligible Rocketeers in the current selection.</p></div>';
-    return;
-  }
-  var maxTotal = chartRows.reduce(function(mx, r) { return Math.max(mx, r.total); }, 0) || 1;
-  var html = '<div style="display:flex;flex-direction:column;gap:8px">';
-  chartRows.forEach(function(r) {
-    html += '<div style="display:flex;align-items:center;gap:8px;cursor:pointer" data-fin-mgr="' + esc(r.supervisor) + '" title="Jump to ' + esc(r.supervisor) + '&#8217;s group">';
-    html += '<span style="flex:0 0 150px;font-size:11px;font-weight:700;color:var(--text);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(r.supervisor) + '</span>';
-    html += '<span style="flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--border)">';
-    FIN_REASONS_.forEach(function(seg) {
-      var n = r[seg.key] || 0;
-      if (n <= 0) return;
-      var w = (n / maxTotal * 100).toFixed(2);
-      html += '<span style="width:' + w + '%;background:' + seg.color + '" title="' + esc(seg.label) + ': ' + n + '"></span>';
-    });
-    html += '</span>';
-    html += '<span style="flex:0 0 24px;font-size:11px;font-weight:800;color:var(--text)">' + r.total + '</span>';
-    html += '</div>';
-  });
-  html += '</div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:10px;color:var(--muted)">';
-  FIN_REASONS_.forEach(function(seg) {
-    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + seg.color + ';display:inline-block"></span>' + esc(seg.label) + '</span>';
-  });
-  html += '</div>';
-  el.innerHTML = html;
-}
-
-// Render a manager-grouped section. mode 'under' shows Completed/Pending/Canceled;
-// mode 'comments' shows Completed/Well-commented. Rows carry data-normname so the
-// shared delegated tr[data-normname] listener opens the individual drill-down.
-function renderFinanceSection_(container, groups, mode) {
+// Flat follow-up table — one row per Rocketeer (same data-table read as the
+// Team & Individuals roster), never grouped by manager. Rows carry data-normname
+// so the shared delegated tr[data-normname] listener opens the individual
+// drill-down. The STF column reuses stfBadge_ so the tag can never disagree
+// with the Needing Support / roster tables.
+function renderFinanceTable_(container, rows) {
   if (!container) return;
-  if (!groups || !groups.length) {
-    container.innerHTML = '<div class="empty-state">✓ <p>None in the current selection.</p></div>';
+  if (!rows || !rows.length) {
+    container.innerHTML = '<div class="empty-state">🎉 <p>No STF-ineligible Rocketeers in the current selection.</p></div>';
     return;
   }
-  var html = '';
-  groups.forEach(function(g) {
-    html += '<div class="fin-mgr-group" data-fin-group="' + esc(g.supervisor) + '" style="margin-bottom:16px">';
-    html += '<div style="font-size:12px;font-weight:800;color:var(--text);margin:6px 0">' + esc(g.supervisor) +
-            ' <span style="color:var(--muted);font-weight:600">(' + g.count + ')</span></div>';
-    html += '<div class="tbl-wrap"><table class="data-table" style="font-size:12px"><thead><tr>';
-    if (mode === 'under') {
-      html += '<th>Rocketeer</th><th style="text-align:center">Completed</th><th style="text-align:center">Pending</th><th style="text-align:center">Canceled/NC</th><th>Reason signal(s)</th>';
-    } else {
-      html += '<th>Rocketeer</th><th style="text-align:center">Completed</th><th style="text-align:center">Well-commented</th><th>Reason signal</th>';
-    }
-    html += '</tr></thead><tbody>';
-    g.rocketeers.forEach(function(r) {
-      html += '<tr style="cursor:pointer" data-normname="' + esc(r.normName || '') + '" title="View ' + esc(r.name) + '&#8217;s goals →">';
-      html += '<td style="font-weight:600;white-space:nowrap">' + esc(r.name) + '</td>';
-      if (mode === 'under') {
-        html += '<td style="text-align:center">' + r.completed + ' / ' + STF_COMPLETED_BAR_ + '</td>';
-        html += '<td style="text-align:center">' + r.pending + '</td>';
-        html += '<td style="text-align:center">' + r.lost + '</td>';
-      } else {
-        html += '<td style="text-align:center">' + r.completed + ' / ' + STF_COMPLETED_BAR_ + '</td>';
-        html += '<td style="text-align:center">' + r.wellCommented + ' / ' + STF_CMT_GOALS_BAR_ + '</td>';
-      }
-      html += '<td>' + finBadges_(r.badges) + '</td>';
-      html += '</tr>';
-    });
-    html += '</tbody></table></div></div>';
+  var html = '<div class="tbl-wrap"><table class="data-table" style="font-size:12px"><thead><tr>' +
+    '<th>Emp #</th><th>Rocketeer</th><th>Job Title</th><th>Manager</th>' +
+    '<th style="text-align:center">Completed</th><th style="text-align:center">Well-commented</th>' +
+    '<th style="text-align:center">Pending</th><th style="text-align:center">Canceled/NC</th>' +
+    '<th>Reason signal(s)</th><th style="text-align:center">STF</th>' +
+    '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    html += '<tr style="cursor:pointer" data-normname="' + esc(r.normName || '') + '" title="View ' + esc(r.name) + '&#8217;s goals →">';
+    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(r.empNo || '—') + '</td>';
+    html += '<td style="font-weight:600;white-space:nowrap">' + esc(r.name) + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px">' + esc(r.jobTitle || '—') + '</td>';
+    html += '<td style="color:var(--slate);font-size:11px;white-space:nowrap">' + esc(r.supervisor) + '</td>';
+    html += '<td style="text-align:center">' + r.completed + ' / ' + STF_COMPLETED_BAR_ + '</td>';
+    html += '<td style="text-align:center">' + r.wellCommented + ' / ' + STF_CMT_GOALS_BAR_ + '</td>';
+    html += '<td style="text-align:center">' + r.pending + '</td>';
+    html += '<td style="text-align:center">' + r.lost + '</td>';
+    html += '<td>' + finBadges_(r.badges) + '</td>';
+    html += '<td style="text-align:center">' + stfBadge_({
+      stfEligible: r.eligible,
+      stfGoalsCompleted: r.completed,
+      stfGoalsWithSufficientComments: r.wellCommented,
+    }) + '</td>';
+    html += '</tr>';
   });
+  html += '</tbody></table></div>';
   container.innerHTML = html;
 }
 
@@ -2031,14 +1966,18 @@ function finBadges_(badges) {
   }).join('');
 }
 
-function setFinanceThreshold_(v) {
-  S.financeThreshold = +v;
-  var lbl = document.getElementById('finance-threshold-val');
-  if (lbl) lbl.textContent = S.financeThreshold;
+// Toggle between the follow-up list (STF-ineligible only, default) and the
+// full evaluated roster with the green STF ✓ tag on eligible rows.
+function setFinanceMode_(showAll) {
+  S.financeShowAll = !!showAll;
+  var gapsBtn = document.getElementById('btn-fin-gaps');
+  var allBtn  = document.getElementById('btn-fin-all');
+  if (gapsBtn) { gapsBtn.classList.toggle('btn-primary', !S.financeShowAll); gapsBtn.setAttribute('aria-pressed', !S.financeShowAll); }
+  if (allBtn)  { allBtn.classList.toggle('btn-primary', S.financeShowAll);   allBtn.setAttribute('aria-pressed', S.financeShowAll); }
   renderFinance();
 }
 
-// Export the currently-displayed STF gaps (respects filter + threshold) to CSV.
+// Export the currently-displayed STF list (respects filter + toggle) to CSV.
 // Mirrors the exportEngagementCSV_ pattern (BOM + quoted fields).
 function exportFinanceCsv_() {
   var model = S._financeModel;
@@ -2047,19 +1986,16 @@ function exportFinanceCsv_() {
     pending: 'Pending closure', canceled: 'Canceled/Not-completed',
     comments: 'Comments shortfall', toofew: 'Too few goals',
   };
-  var rows = [['Manager', 'Rocketeer', 'Department', 'Completed', 'Pending',
-               'Canceled/NotCompleted', 'Well-commented', 'Primary reason', 'All reasons']];
-  function emit(groups) {
-    (groups || []).forEach(function(gr) {
-      gr.rocketeers.forEach(function(r) {
-        rows.push([gr.supervisor, r.name, r.department, r.completed, r.pending, r.lost,
-          r.wellCommented, REASON_LABEL[r.primary] || r.primary,
-          r.badges.map(function(b) { return b.text; }).join('; ')]);
-      });
-    });
-  }
-  emit(model.underBar);
-  emit(model.commentsShortfall);
+  var rows = [['Employee #', 'Rocketeer', 'Job Title', 'Manager', 'Department',
+               'Completed', 'Well-commented', 'Pending', 'Canceled/NotCompleted',
+               'STF Eligible', 'Primary reason', 'All reasons']];
+  (model.rows || []).forEach(function(r) {
+    rows.push([r.empNo, r.name, r.jobTitle, r.supervisor, r.department,
+      r.completed, r.wellCommented, r.pending, r.lost,
+      r.eligible ? 'Yes' : 'No',
+      r.eligible ? '' : (REASON_LABEL[r.primary] || r.primary),
+      r.badges.map(function(b) { return b.text; }).join('; ')]);
+  });
 
   var csv = rows.map(function(r) {
     return r.map(function(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(',');
@@ -4132,6 +4068,18 @@ function filterTeamRoster_(value) {
   renderTeamRoster_();
 }
 
+// ⊞ Expand all ↔ ⊟ Collapse all for the manager groups — one click to see every
+// rocketeer by manager instead of opening each group individually.
+function toggleRosterExpandAll_() {
+  S.rosterExpandAll = !S.rosterExpandAll;
+  var b = document.getElementById('btn-roster-expand');
+  if (b) {
+    b.textContent = S.rosterExpandAll ? '⊟ Collapse all' : '⊞ Expand all';
+    b.setAttribute('aria-pressed', S.rosterExpandAll);
+  }
+  renderTeamRoster_();
+}
+
 function renderTeamRoster_() {
   var container = document.getElementById('team-roster-groups');
   var sub       = document.getElementById('team-roster-sub');
@@ -4200,7 +4148,9 @@ function renderRosterGroups_(container, groups, columns, query, drillQuarter) {
 
     var groupId       = 'team-roster-group-' + gi;
     var toggleId       = 'team-roster-toggle-' + gi;
-    var openByDefault = !!q; // auto-expand groups that match the filter
+    // Auto-expand groups that match the filter; the ⊞ Expand all button opens
+    // every group at once (state survives re-renders on filter/mode changes).
+    var openByDefault = !!q || !!S.rosterExpandAll;
 
     html += '<div class="section-card" style="margin-bottom:10px">';
     html += '<div class="section-head" style="cursor:pointer;padding:10px 16px" onclick="toggleSection(\'' + groupId + '\',\'' + toggleId + '\')">';

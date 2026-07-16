@@ -3,7 +3,14 @@
 **Date:** 2026-07-13 (2026.W29)
 **Files:** `GDash.html` (new tab only)
 **Visibility:** admin only (`VIEWS` roles `['admin']`)
-**Status:** Approved design, pending implementation plan
+**Status:** Shipped, then superseded 2026-07-16 (2026.W29): the manager chart,
+threshold slider, and the two manager-grouped sections were replaced by a single
+flat table (Emp # / Rocketeer / Job Title / Manager / compliance stats / STF tag),
+sorted worst compliance record first, with a "Needs follow-up ↔ All rocketeers"
+toggle. `buildFinanceGaps_` → `buildFinanceRows_` (still in the FINANCE-PURE
+block, still node-tested); `employeeNumber` now ships on the employee payload
+(`goalCompliance.js`, cache `gd_v25_`). The reason classification
+(`classifyStfReason_`) and CSV export survive unchanged in spirit.
 
 ## Purpose
 

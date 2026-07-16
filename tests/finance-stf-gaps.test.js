@@ -57,42 +57,58 @@ check('comment-shortfall badge kind present',
     .badges.map(b => b.kind),
   ['comments']);
 
-// ── buildFinanceGaps_: threshold boundary ──
-const boundaryEmps = [emp({ name: 'A', normName: 'a', stfGoalsCompleted: 7, goalsInProgress: 1 })];
-check('completed 7 shown at threshold 7',
-  buildFinanceGaps_(boundaryEmps, 7).underBar.length, 1);
-check('completed 7 hidden at threshold 6 (counted as hidden)',
-  buildFinanceGaps_(boundaryEmps, 6).totals.hidden, 1);
-check('completed 7 not in list at threshold 6',
-  buildFinanceGaps_(boundaryEmps, 6).underBar.length, 0);
-
-// ── buildFinanceGaps_: comments section is threshold-independent ──
-const cmtEmps = [emp({ name: 'C', normName: 'c', stfGoalsCompleted: 9, stfGoalsWithSufficientComments: 4 })];
-check('comment-shortfall shows even at threshold 0',
-  buildFinanceGaps_(cmtEmps, 0).commentsShortfall.length, 1);
-
-// ── buildFinanceGaps_: exclusions + totals ──
+// ── buildFinanceRows_: exclusions + totals ──
 const mixed = [
   emp({ name: 'NewHire', normName: 'nh', stfGoalsCompleted: 2, isNewHire: true }),
   emp({ name: 'OnLeave', normName: 'ol', stfGoalsCompleted: 2, onLeave: true }),
   emp({ name: 'Elig',    normName: 'el', stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 6 }),
   emp({ name: 'Under',   normName: 'un', stfGoalsCompleted: 3, goalsInProgress: 6 }),
 ];
-const mm = buildFinanceGaps_(mixed, 7);
+const mm = buildFinanceRows_(mixed, false);
 check('new-hire & on-leave excluded from evaluated', mm.totals.evaluated, 2); // Elig + Under only
-check('one ineligible shown', mm.totals.ineligible, 1);
+check('one ineligible counted', mm.totals.ineligible, 1);
+check('one eligible counted', mm.totals.eligible, 1);
 check('pending total = 1', mm.totals.pending, 1);
+check('follow-up mode hides eligible rows', mm.rows.map(r => r.name), ['Under']);
 
-// ── buildFinanceGaps_: manager grouping sorted worst-first ──
-const twoMgrs = [
-  emp({ name: 'a1', normName: 'a1', supervisor: 'Alice', stfGoalsCompleted: 1, goalsInProgress: 9 }),
-  emp({ name: 'a2', normName: 'a2', supervisor: 'Alice', stfGoalsCompleted: 2, goalsInProgress: 9 }),
-  emp({ name: 'b1', normName: 'b1', supervisor: 'Bob',   stfGoalsCompleted: 1, goalsInProgress: 9 }),
+// ── buildFinanceRows_: withPending counts open goals across ALL evaluated ──
+const pendingMix = [
+  emp({ name: 'EligOpen',  normName: 'eo', stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 6, goalsInProgress: 2 }), // eligible but still has open goals
+  emp({ name: 'InelOpen',  normName: 'io', stfGoalsCompleted: 3, goalsPlanned: 5 }),
+  emp({ name: 'AllClosed', normName: 'ac', stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 6 }),
+  emp({ name: 'NewHire2',  normName: 'n2', goalsInProgress: 4, isNewHire: true }), // excluded entirely
 ];
-const g = buildFinanceGaps_(twoMgrs, 7).underBar;
-check('worst manager first (Alice has 2)', g[0].supervisor, 'Alice');
-check('within-group sorted by completed asc', g[0].rocketeers.map(r => r.completed), [1, 2]);
-check('chartRows worst-first by total', buildFinanceGaps_(twoMgrs, 7).chartRows.map(r => r.supervisor), ['Alice', 'Bob']);
+check('withPending includes eligible people with open goals, excludes new hires',
+  buildFinanceRows_(pendingMix, false).totals.withPending, 2);
+check('withPending identical in showAll mode (evaluated-wide stat)',
+  buildFinanceRows_(pendingMix, true).totals.withPending, 2);
+
+// ── buildFinanceRows_: showAll includes eligible rows, tagged + sorted last ──
+const all = buildFinanceRows_(mixed, true);
+check('showAll includes everyone evaluated', all.rows.length, 2);
+check('eligible row sorted last', all.rows[all.rows.length - 1].name, 'Elig');
+check('eligible row tagged eligible:true', all.rows[all.rows.length - 1].eligible, true);
+check('eligible row carries no badges', all.rows[all.rows.length - 1].badges, []);
+
+// ── buildFinanceRows_: worst compliance record first, flat (no manager grouping) ──
+const sorted = buildFinanceRows_([
+  emp({ name: 'MidTie2', normName: 'm2', supervisor: 'Bob',   stfGoalsCompleted: 3, stfGoalsWithSufficientComments: 2, goalsInProgress: 9 }),
+  emp({ name: 'Closest', normName: 'cl', supervisor: 'Alice', stfGoalsCompleted: 9, stfGoalsWithSufficientComments: 4 }),
+  emp({ name: 'Worst',   normName: 'wo', supervisor: 'Bob',   stfGoalsCompleted: 0, totalGoals: 0 }),
+  emp({ name: 'MidTie1', normName: 'm1', supervisor: 'Alice', stfGoalsCompleted: 3, stfGoalsWithSufficientComments: 1, goalsInProgress: 9 }),
+], false);
+check('flat list sorted completed asc, wellCommented asc, name — managers interleaved',
+  sorted.rows.map(r => r.name), ['Worst', 'MidTie1', 'MidTie2', 'Closest']);
+
+// ── buildFinanceRows_: row fields for the table (Emp #, title, manager) ──
+const fields = buildFinanceRows_([
+  emp({ name: 'F', normName: 'f', employeeNumber: '1042', jobTitle: 'Consultant', supervisor: 'Alice', stfGoalsCompleted: 2, totalGoals: 2 }),
+], false).rows[0];
+check('empNo carried through', fields.empNo, '1042');
+check('jobTitle carried through', fields.jobTitle, 'Consultant');
+check('supervisor carried through', fields.supervisor, 'Alice');
+check('missing employeeNumber defaults to empty string',
+  buildFinanceRows_([emp({ name: 'G', normName: 'g', stfGoalsCompleted: 2, totalGoals: 2 })], false).rows[0].empNo, '');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
