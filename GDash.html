@@ -1023,6 +1023,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (del) { deleteNote_(del.dataset.delTs, del.dataset.delNorm); return; }
     var mgrRow = e.target.closest('tr[data-manager]');
     if (mgrRow) { openManagerTeam_(mgrRow.dataset.manager); return; }
+    var finChip = e.target.closest('[data-fin-chip]');
+    if (finChip) { toggleFinanceChip_(finChip.getAttribute('data-fin-chip')); return; }
     var row = e.target.closest('tr[data-normname]');
     if (row) toggleIndividualDrill_(row, row.dataset.normname, row.dataset.quarter || null);
   });
@@ -1881,9 +1883,30 @@ var FIN_REASONS_ = [
   { key: 'nearmiss', label: 'Exception candidate',      color: STATUS_C.good },    // green — 5/6 comments, bar met
 ];
 
+// Chip key → row predicate for the click-to-filter summary chips. Each chip
+// counts across the WHOLE evaluated group (eligible included), so while a chip
+// is active the model is built showAll — the filtered row count then always
+// equals the chip's number.
+var FIN_CHIP_FILTERS_ = {
+  withPending: function(r) { return r.pending > 0; },
+  comments:    function(r) { return r.primary === 'comments'; },
+  nearmiss:    function(r) { return r.nearMiss; },
+  canceled:    function(r) { return r.primary === 'canceled'; },
+  toofew:      function(r) { return r.primary === 'toofew'; },
+  eligible:    function(r) { return r.eligible; },
+};
+var FIN_CHIP_LABELS_ = {
+  withPending: 'Open goals to close', comments: 'Completed, missing comments',
+  nearmiss: 'Exception candidates', canceled: 'Canceled/NC',
+  toofew: 'Too few goals', eligible: 'STF eligible',
+};
+
 function renderFinance() {
-  var model = buildFinanceRows_(getFiltered(), !!S.financeShowAll);
-  S._financeModel = model; // consumed by exportFinanceCsv_
+  var chip  = S.financeChip || null;
+  var model = buildFinanceRows_(getFiltered(), !!S.financeShowAll || !!chip);
+  var rows  = chip ? model.rows.filter(FIN_CHIP_FILTERS_[chip] || function() { return true; }) : model.rows;
+  // CSV exports exactly what's displayed (filter + toggle + active chip)
+  S._financeModel = { rows: rows, totals: model.totals, showAll: model.showAll };
 
   // End-of-quarter statistical read for Finance, in priority order:
   // (1) open goals still to close → drives the "close your Planned / In
@@ -1894,17 +1917,17 @@ function renderFinance() {
   if (strip) {
     strip.innerHTML =
       finStat_('⏳ Open goals to close', t.withPending, STATUS_C.watch,
-        'Rocketeers still carrying Planned / In-Progress goals (eligible or not) — communicate that these need closing before quarter end') +
+        'Rocketeers still carrying Planned / In-Progress goals (eligible or not) — communicate that these need closing before quarter end', 'withPending', chip) +
       finStat_('🗨 Completed, missing comments', t.comments, STATUS_C.info,
-        'Hit the ' + STF_COMPLETED_BAR_ + '-completed bar but fewer than ' + STF_CMT_GOALS_BAR_ + ' goals carry 8+ comments — typically senior managers, not ICs') +
+        'Hit the ' + STF_COMPLETED_BAR_ + '-completed bar but fewer than ' + STF_CMT_GOALS_BAR_ + ' goals carry 8+ comments — typically senior managers, not ICs', 'comments', chip) +
       finStat_('☆ Exception candidates', t.nearMiss, STATUS_C.good,
-        'One goal short of the comment bar (' + (STF_CMT_GOALS_BAR_ - 1) + '/' + STF_CMT_GOALS_BAR_ + ') with the completion bar met — candidates to get their STF paid as an exception') +
+        'One goal short of the comment bar (' + (STF_CMT_GOALS_BAR_ - 1) + '/' + STF_CMT_GOALS_BAR_ + ') with the completion bar met — candidates to get their STF paid as an exception', 'nearmiss', chip) +
       finStat_('✖ Canceled/NC', t.canceled, STATUS_C.risk,
-        'Cannot reach the bar — goals were canceled or marked not completed') +
+        'Cannot reach the bar — goals were canceled or marked not completed', 'canceled', chip) +
       finStat_('▽ Too few', t.toofew, STATUS_C.planned,
-        'Not enough goals logged to ever reach the ' + STF_COMPLETED_BAR_ + '-completed bar') +
+        'Not enough goals logged to ever reach the ' + STF_COMPLETED_BAR_ + '-completed bar', 'toofew', chip) +
       finStat_('✓ STF eligible', t.eligible, STATUS_C.good,
-        'Already qualified — ' + STF_COMPLETED_BAR_ + '+ completed with ' + STF_CMT_GOALS_BAR_ + '+ well-commented') +
+        'Already qualified — ' + STF_COMPLETED_BAR_ + '+ completed with ' + STF_CMT_GOALS_BAR_ + '+ well-commented', 'eligible', chip) +
       '<span style="margin-left:auto;font-size:12px;color:var(--muted);align-self:center">' +
         t.ineligible + ' to follow up · ' + t.eligible + ' eligible · ' + t.evaluated + ' evaluated' +
       '</span>';
@@ -1912,18 +1935,30 @@ function renderFinance() {
 
   var sub = document.getElementById('finance-sub');
   if (sub) {
-    sub.textContent = (model.showAll
-      ? 'Every evaluated Rocketeer, worst compliance record first — STF-eligible rows tagged ✓ at the bottom'
-      : 'Rocketeers not yet STF-eligible, worst compliance record first') +
+    sub.textContent = (chip
+      ? 'Filtered: ' + (FIN_CHIP_LABELS_[chip] || chip) + ' (' + rows.length + ') — click the highlighted chip again to clear'
+      : (model.showAll
+        ? 'Every evaluated Rocketeer, worst compliance record first — STF-eligible rows tagged ✓ at the bottom'
+        : 'Rocketeers not yet STF-eligible, worst compliance record first')) +
       ' · new hires & on-leave excluded · respects the filter bar · click a row for goal detail';
   }
 
-  renderFinanceTable_(document.getElementById('finance-table'), model.rows);
+  renderFinanceTable_(document.getElementById('finance-table'), rows);
 }
 
-function finStat_(label, n, color, title) {
-  return '<span' + (title ? ' title="' + esc(title) + '"' : '') +
-    ' style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-right:16px' + (title ? ';cursor:help' : '') + '">' +
+// Summary chip. With a chipKey it doubles as a filter toggle (delegated
+// [data-fin-chip] click → toggleFinanceChip_); the active chip is outlined and
+// tinted in its own colour. STATUS_C values are 6-digit hexes, so + '1a' is a
+// ~10% alpha background.
+function finStat_(label, n, color, title, chipKey, activeChip) {
+  var active = !!chipKey && chipKey === activeChip;
+  return '<span' +
+    (chipKey ? ' data-fin-chip="' + chipKey + '" role="button" tabindex="0" aria-pressed="' + active + '"' : '') +
+    (title ? ' title="' + esc(title + (chipKey ? ' · click to filter the list' : '')) + '"' : '') +
+    ' style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text);margin-right:10px;padding:3px 8px;border-radius:6px' +
+    (chipKey ? ';cursor:pointer' : '') +
+    ';border:1px solid ' + (active ? color : 'transparent') +
+    (active ? ';background:' + color + '1a' : '') + '">' +
     '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';display:inline-block"></span>' +
     esc(label) + ' <span style="color:' + color + '">' + n + '</span></span>';
 }
@@ -1936,7 +1971,7 @@ function finStat_(label, n, color, title) {
 function renderFinanceTable_(container, rows) {
   if (!container) return;
   if (!rows || !rows.length) {
-    container.innerHTML = '<div class="empty-state">🎉 <p>No STF-ineligible Rocketeers in the current selection.</p></div>';
+    container.innerHTML = '<div class="empty-state">🎉 <p>No Rocketeers match the current selection.</p></div>';
     return;
   }
   var html = '<div class="tbl-wrap"><table class="data-table" style="font-size:12px"><thead><tr>' +
@@ -1981,6 +2016,7 @@ function finBadges_(badges) {
 // full evaluated roster with the green STF ✓ tag on eligible rows.
 function setFinanceMode_(showAll) {
   S.financeShowAll = !!showAll;
+  S.financeChip = null; // explicit mode switch clears any active chip filter
   var gapsBtn = document.getElementById('btn-fin-gaps');
   var allBtn  = document.getElementById('btn-fin-all');
   if (gapsBtn) { gapsBtn.classList.toggle('btn-primary', !S.financeShowAll); gapsBtn.setAttribute('aria-pressed', !S.financeShowAll); }
@@ -1988,7 +2024,13 @@ function setFinanceMode_(showAll) {
   renderFinance();
 }
 
-// Export the currently-displayed STF list (respects filter + toggle) to CSV.
+// Click-to-filter on a summary chip; clicking the active chip clears it.
+function toggleFinanceChip_(key) {
+  S.financeChip = (S.financeChip === key) ? null : key;
+  renderFinance();
+}
+
+// Export the currently-displayed STF list (respects filter + toggle + chip) to CSV.
 // Mirrors the exportEngagementCSV_ pattern (BOM + quoted fields).
 function exportFinanceCsv_() {
   var model = S._financeModel;
