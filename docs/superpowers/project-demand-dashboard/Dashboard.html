@@ -813,6 +813,21 @@ function filteredWeekTotals_(isos){
   return { planned: planned, tracked: tracked };
 }
 
+/* ---------------- Utilization population & target policy ----------------
+   The utilization headline measures only the roles it is FAIR to hold to a
+   tracking standard — the delivery families below. Managers and non-tracking
+   families are carved out by default and reachable via panel-local chips that
+   disclose their effect (+N people, ±pp) instead of baking the bias in.
+   "Professional Services" matches nothing in today's catalog — it is defensive,
+   auto-including that family if the roster's Job Family column ever carries it. */
+var UTIL_TRACKING_FAMILIES = [
+  "Managed Services & Support",   // JF007
+  "Service Delivery",             // JF009
+  "Professional Services",        // defensive — see note above
+];
+var UTIL_TARGET     = 70;  // % — proven level for the delivery families, not aspirational
+var UTIL_BAND_WEEKS = 8;   // trailing settled weeks for the control band (needs ≥4 to draw)
+
 /* ==UTIL-PURE-START== */
 /* Pure utilization math + CSV builders — NO DOM/global access. node-tests.js
    extracts exactly this block (between the markers) and unit-tests it, so keep
@@ -837,6 +852,25 @@ function utilWeekTotals_(isos, capMap, trkMap, npList){
     out.cap[iso]=capSum; out.tracked[iso]=trkSum;
     out.covered[iso]=covered; out.trackedOnly[iso]=trackedOnly;
     out.util[iso]=capSum>0?(trkSum/capSum*100):null;
+  });
+  return out;
+}
+
+// Population split for the utilization denominator — first match wins:
+// manager carve-out → allowlist family → blank/unknown family (a person in the
+// Services capacity/tracked scope with no resolvable roster family is treated
+// as tracking-required; a Tempo schedule implies a tracking expectation) →
+// known non-allowlist family. Family match is case-insensitive.
+function utilSplitPopulation_(npList, metaMap, families){
+  var famSet = {};
+  (families || []).forEach(function(f){ famSet[String(f).toLowerCase()] = true; });
+  var out = { delivery: [], managers: [], nonTracking: [] };
+  npList.forEach(function(np){
+    var m = metaMap[np];
+    if (m && m.isManager) { out.managers.push(np); return; }
+    var fam = (m && m.jobFamily) ? String(m.jobFamily).toLowerCase() : '';
+    if (!fam || famSet[fam]) { out.delivery.push(np); return; }
+    out.nonTracking.push(np);
   });
   return out;
 }

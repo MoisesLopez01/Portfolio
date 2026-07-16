@@ -123,7 +123,29 @@ function _test_utilizationCsv_() {
   Logger.log("✅ _test_utilizationCsv_ passed");
 }
 
+function _test_utilSplitPopulation_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilSplitPopulation_: " + msg); }
+  var meta = {
+    "ana":  { jobFamily: "Service Delivery", isManager: false },
+    "ben":  { jobFamily: "Managed Services & Support", isManager: false },
+    "carl": { jobFamily: "Service Delivery", isManager: true },   // manager carve-out wins over family
+    "dana": { jobFamily: "Finance", isManager: false },           // known non-tracking family
+    "eli":  { jobFamily: "", isManager: false }                   // roster row, blank family → Delivery
+    // "fay" has no meta entry at all (capacity/tracked-only person) → Delivery
+  };
+  var fams = ["Managed Services & Support", "Service Delivery", "Professional Services"];
+  var s = utilSplitPopulation_(["ana", "ben", "carl", "dana", "eli", "fay"], meta, fams);
+  assert_(s.delivery.join("|") === "ana|ben|eli|fay", "delivery = allowlist + blank/unknown family");
+  assert_(s.managers.join("|") === "carl", "managers carved out before family check");
+  assert_(s.nonTracking.join("|") === "dana", "known non-allowlist family → nonTracking");
+  // Case-insensitive family match
+  var s2 = utilSplitPopulation_(["ana"], { "ana": { jobFamily: "service delivery", isManager: false } }, fams);
+  assert_(s2.delivery.length === 1, "family match is case-insensitive");
+  Logger.log("✅ _test_utilSplitPopulation_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
+_test_utilSplitPopulation_();
 
 console.log("✅ node-tests: all suites passed");
