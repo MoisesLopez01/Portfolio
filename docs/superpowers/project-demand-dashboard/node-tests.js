@@ -203,6 +203,8 @@ function _test_utilDecompose_() {
   // SD group: 60/100 − 65/120 = 60 − 54.1667 = +5.833 pp; MS group: 18/100 − 20/120 = +1.333 pp
   var sd = d.filter(function(g){ return g.key === "Service Delivery"; })[0];
   assert_(Math.abs(sd.pp - (60 - 65 / 120 * 100)) < 1e-9, "per-group pp uses each week's own denominator");
+  // Hours context for the drill rows: covered tracked sums for both weeks
+  assert_(sd.trkW === 60 && sd.trkPrev === 65, "entry carries covered tracked hrs for both weeks");
   assert_(d[0].key === "Service Delivery", "sorted by |pp| descending");
   // Coverage rule respected: a tracked-only member contributes no pp
   var d2 = utilDecompose_("W2", "W1", { g1: ["a"], g2: ["nocap"] }, cap, { "a": { W1: 30, W2: 24 }, "nocap": { W1: 99, W2: 99 } });

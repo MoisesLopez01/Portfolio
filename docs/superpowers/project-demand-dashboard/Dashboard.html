@@ -148,6 +148,7 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .util-drill .ud-name{flex:0 0 220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .util-drill .ud-barwrap{flex:1;display:flex;align-items:center}
 .util-drill .ud-bar{height:9px;border-radius:4px}
+.util-drill .ud-hrs{flex:0 0 170px;text-align:right;color:var(--muted);font-size:calc(11px*var(--scale));white-space:nowrap}
 .util-drill .ud-pp{flex:0 0 70px;text-align:right;font-weight:700}
 
 /* Capacity headline band */
@@ -952,7 +953,9 @@ function utilProjection_(trackedSoFar, capacity, elapsedWorkdays, sigma){
 // where capTotal is the WHOLE population's covered capacity and trk_g sums only
 // capacity-covered members (same coverage rule as utilWeekTotals_). Because the
 // denominators are shared, Σ pp_g equals the headline's util(isoW) − util(isoPrev)
-// exactly — the bars always account for the full move. Sorted by |pp| desc.
+// exactly — the bars always account for the full move. Each entry also carries the
+// group's covered tracked hours for both weeks (trkW / trkPrev) so the UI can express
+// the move in hours managers recognise, not just pp. Sorted by |pp| desc.
 // Returns null when either week has no covered capacity.
 function utilDecompose_(isoW, isoPrev, groups, capMap, trkMap){
   var all = [];
@@ -961,7 +964,8 @@ function utilDecompose_(isoW, isoPrev, groups, capMap, trkMap){
   if (!(tot.cap[isoW] > 0) || !(tot.cap[isoPrev] > 0)) return null;
   var out = Object.keys(groups).map(function(k){
     var g = utilWeekTotals_([isoW, isoPrev], capMap, trkMap, groups[k]);
-    return { key: k, pp: (g.tracked[isoW] / tot.cap[isoW] - g.tracked[isoPrev] / tot.cap[isoPrev]) * 100 };
+    return { key: k, pp: (g.tracked[isoW] / tot.cap[isoW] - g.tracked[isoPrev] / tot.cap[isoPrev]) * 100,
+             trkW: g.tracked[isoW], trkPrev: g.tracked[isoPrev] };
   });
   out.sort(function(a, b){ return Math.abs(b.pp) - Math.abs(a.pp); });
   return out;
@@ -1813,8 +1817,10 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
 
   var total=0; d.forEach(function(g){ total+=g.pp; });
   var fmtPp=function(v){ return (v>=0?'+':'')+Math.round(v*10)/10; };
+  var fmtDh=function(g){ var dh=(g.trkW||0)-(g.trkPrev||0); return (dh>=0?'+':'−')+fmt(Math.abs(dh))+' hrs'; };
 
-  // Finding sentence — leads the drill, before any bars.
+  // Finding sentence — leads the drill, before any bars. pp is paired with the
+  // group's tracked-hours delta so the size of the move reads in real work.
   if(Math.abs(total)<0.05){
     el.innerHTML=head+'<div style="margin-top:6px">No meaningful move vs '+esc(prev)+'.</div>';
     return;
@@ -1823,34 +1829,31 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
   var top=d[0];
   var sentence;
   if(d.length===1 || Math.abs(top.pp)>=0.6*Math.abs(total)){
-    sentence='The '+dir+' came almost entirely from <b>'+esc(top.key)+'</b> ('+fmtPp(top.pp)+' pp).';
+    sentence='The '+dir+' came almost entirely from <b>'+esc(top.key)+'</b> ('+fmtPp(top.pp)+' pp · '+fmtDh(top)+').';
   } else {
-    sentence='The '+dir+' was driven by <b>'+esc(d[0].key)+'</b> ('+fmtPp(d[0].pp)+' pp) and <b>'+esc(d[1].key)+'</b> ('+fmtPp(d[1].pp)+' pp).';
+    sentence='The '+dir+' was driven by <b>'+esc(d[0].key)+'</b> ('+fmtPp(d[0].pp)+' pp · '+fmtDh(d[0])+') and <b>'+esc(d[1].key)+'</b> ('+fmtPp(d[1].pp)+' pp · '+fmtDh(d[1])+').';
   }
 
-  // Bars: top-3 qualifying groups (|pp|>=0.05, from the sorted d) + one collapsed tail row.
+  // Bars: EVERY group, largest mover first. Each row pairs the pp contribution with
+  // the group's tracked hours prev → anchor week — the number managers recognise.
+  // Only groups with no activity at all (no pp, no hours either week) are skipped.
   var maxAbs=0.001;
   d.forEach(function(g){ maxAbs=Math.max(maxAbs, Math.abs(g.pp)); });
-  var qualifying=d.filter(function(g){ return Math.abs(g.pp)>=0.05; });
-  var top3=qualifying.slice(0,3);
-  var rows=top3.map(function(g){
+  var shown=d.filter(function(g){ return Math.abs(g.pp)>=0.05 || (g.trkW||0)>0 || (g.trkPrev||0)>0; });
+  var rows=shown.map(function(g){
     var wpx=Math.max(2, Math.abs(g.pp)/maxAbs*160);
     var col=g.pp>=0?hexVar('--pos'):hexVar('--warn');
     return '<div class="ud-row"><span class="ud-name" title="'+esc(g.key)+' — '+groups[g.key].length+' people">'
       +esc(g.key)+' <span class="hint">('+groups[g.key].length+')</span></span>'
       +'<span class="ud-barwrap"><span class="ud-bar" style="width:'+wpx+'px;background:'+col+'"></span></span>'
+      +'<span class="ud-hrs">'+fmt(g.trkPrev)+' → '+fmt(g.trkW)+' hrs ('+fmtDh(g)+')</span>'
       +'<span class="ud-pp" style="color:'+col+'">'+fmtPp(g.pp)+' pp</span></div>';
   });
-  var rest=d.slice(top3.length);
-  if(rest.length>0){
-    var restSum=0; rest.forEach(function(g){ restSum+=g.pp; });
-    rows.push('<div class="ud-row"><span class="hint">'+rest.length+' others (net '+fmtPp(restSum)+' pp)</span></div>');
-  }
 
   el.innerHTML=head
     +'<div style="margin-top:6px">'+sentence+'</div>'
     +'<div class="ud-rows">'+rows.join('')+'</div>'
-    +'<div class="hint" style="margin-top:4px">Top movers shown — all groups sum to the full '+fmtPp(total)+' pp move · groups only — person detail is in the CSV.</div>';
+    +'<div class="hint" style="margin-top:4px">All groups shown — bars sum to the full '+fmtPp(total)+' pp move · hrs = tracked time '+esc(prev)+' → '+esc(anchor)+' · groups only — person detail is in the CSV.</div>';
 }
 
 function utilChartHover_(e, iso){
@@ -1877,11 +1880,19 @@ function utilChartHover_(e, iso){
 function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   var n=cw.length;
   var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
-  // % scale (left axis). Cap the domain so one outlier week can't flatten the chart.
-  var maxPct=Math.max(100, UTIL_TARGET+10, stats?stats.hi+5:0, proj&&proj.hi!=null?Math.min(proj.hi,160)+5:0);
-  cw.forEach(function(wk){ var u=ut.util[wk.iso]; if(u!=null) maxPct=Math.max(maxPct,Math.min(u,160)+5); });
+  // % scale (left axis). The domain hugs the plotted values (line, band, target,
+  // projection) instead of a fixed 0–100 — the story lives in a ~15pp corridor and
+  // deserves the vertical space. Values are still capped at 160 so one outlier week
+  // can't flatten the chart, and the span never shrinks below 20pp (no over-zoom).
+  var vals=[UTIL_TARGET];
+  if(stats){ vals.push(stats.lo, stats.hi); }
+  if(proj){ vals.push(Math.min(proj.pct,160)); if(proj.lo!=null){ vals.push(proj.lo, Math.min(proj.hi,160)); } }
+  cw.forEach(function(wk){ var u=ut.util[wk.iso]; if(u!=null) vals.push(Math.min(u,160)); });
+  var hiPct=Math.max.apply(null,vals)+6;
+  var loPct=Math.max(0, Math.min.apply(null,vals)-6);
+  if(hiPct-loPct<20) loPct=Math.max(0, hiPct-20);
   var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
-  var yp=function(v){return pad.t+ih-Math.min(Math.max(v,0),maxPct)/maxPct*ih;};
+  var yp=function(v){return pad.t+ih-(Math.min(Math.max(v,loPct),hiPct)-loPct)/(hiPct-loPct)*ih;};
   var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
   var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="utilization % per week with control band, target and current-week projection">';
 
@@ -1894,12 +1905,12 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   g+='<line x1="'+pad.l+'" y1="'+yp(UTIL_TARGET)+'" x2="'+(w-pad.r)+'" y2="'+yp(UTIL_TARGET)+'" stroke="'+hexVar('--pos')+'" stroke-width="1.5" stroke-dasharray="6 4"/>';
   g+='<text x="'+(w-pad.r)+'" y="'+(yp(UTIL_TARGET)-4)+'" text-anchor="end" font-size="9" fill="'+hexVar('--pos')+'" font-weight="700">Target '+UTIL_TARGET+'%</text>';
 
-  // % gridlines + axis
-  [0,50,100].forEach(function(v){
-    if(v>maxPct) return;
-    g+='<line x1="'+pad.l+'" y1="'+yp(v)+'" x2="'+(w-pad.r)+'" y2="'+yp(v)+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';
-    g+='<text x="'+(pad.l-6)+'" y="'+(yp(v)+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+v+'%</text>';
-  });
+  // % gridlines + axis — ticks at 10s (20s when the domain is wide)
+  var tickStep=(hiPct-loPct)>60?20:10;
+  for(var gv=Math.ceil(loPct/tickStep)*tickStep; gv<=hiPct; gv+=tickStep){
+    g+='<line x1="'+pad.l+'" y1="'+yp(gv)+'" x2="'+(w-pad.r)+'" y2="'+yp(gv)+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';
+    g+='<text x="'+(pad.l-6)+'" y="'+(yp(gv)+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+gv+'%</text>';
+  }
 
   // utilization line: settled solid → provisional dashed inbound → projection dashed gray.
   var uPts=[];
@@ -1925,12 +1936,14 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
       +'<line x1="'+(px-5)+'" y1="'+yp(proj.hi)+'" x2="'+(px+5)+'" y2="'+yp(proj.hi)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>'
       +'<line x1="'+(px-5)+'" y1="'+yp(proj.lo)+'" x2="'+(px+5)+'" y2="'+yp(proj.lo)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>';
   }
-  // projected callout (replaces the stacked % label at the live week)
+  // projected callout (replaces the stacked % label at the live week). The live
+  // week is the domain's right edge, so the callout sits LEFT of the point —
+  // right-anchored text at x+9 would clip off the SVG edge.
   if(proj && curIdx>=0){
-    var cx=x(curIdx)+9;
-    g+='<text x="'+cx+'" y="'+(yp(proj.pct)-2)+'" text-anchor="start" font-size="9" fill="'+css('--muted')+'">projected '+Math.round(proj.pct)+'%</text>';
+    var cx=x(curIdx)-9;
+    g+='<text x="'+cx+'" y="'+(yp(proj.pct)-2)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">projected '+Math.round(proj.pct)+'%</text>';
     if(proj.lo!=null){
-      g+='<text x="'+cx+'" y="'+(yp(proj.pct)+9)+'" text-anchor="start" font-size="8" fill="'+css('--muted')+'">('+Math.round(proj.lo)+'–'+Math.round(proj.hi)+')</text>';
+      g+='<text x="'+cx+'" y="'+(yp(proj.pct)+9)+'" text-anchor="end" font-size="8" fill="'+css('--muted')+'">('+Math.round(proj.lo)+'–'+Math.round(proj.hi)+')</text>';
     }
   }
   uPts.forEach(function(p){
