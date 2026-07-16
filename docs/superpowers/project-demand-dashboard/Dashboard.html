@@ -511,6 +511,13 @@ input[type=file]{display:none}
           <select class="sigfilter" id="mainPm"><option value="">All PMs</option></select>
           <select class="sigfilter" id="mainWeek"></select>
         </div>
+        <!-- Universal population scope — ONE denominator for Planned vs Tracked AND
+             Utilization, so their week-over-week fidelity always tell the same story.
+             Off by default: delivery (tracking-required) roles only. -->
+        <div class="chip-toggle" id="scopeChips" onclick="event.stopPropagation()">
+          <button id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem. Applies to both Planned vs Tracked and Utilization.">＋ non-tracking roles</button>
+          <button id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.">＋ managers</button>
+        </div>
         <span class="filter-summary" id="filterSummary">All people</span>
         <span class="filter-toggle" id="filterToggle">▾ expand</span>
       </div>
@@ -583,7 +590,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects People filters above</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects People filters above</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
@@ -591,10 +598,7 @@ input[type=file]{display:none}
       <div class="util-head" id="utilHead"></div>
       <div id="utilExplore" style="display:none">
         <div class="util-tools">
-          <div class="chip-toggle" id="utilScope">
-            <button id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem">＋ non-tracking roles</button>
-            <button id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator">＋ managers</button>
-          </div>
+          <!-- population scope chips moved to the People filters bar (universal — see #scopeChips) -->
           <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full population (Delivery + Manager + Non-tracking, Group column), regardless of the toggles; respects the People filters">⇣ CSV</button>
         </div>
         <div id="utilChart"></div>
@@ -1041,27 +1045,34 @@ function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.
 // futureIsoSet marks weeks after the current one: those rows carry capacity
-// only (blank tracked/util — nothing to divide yet). Blank capacity stays
-// blank, never 0. A person-week with neither a capacity cell nor tracked
-// hours emits no row.
+// (and adjusted, since PTO is already known even for future weeks) only —
+// blank tracked/util, nothing to divide yet. Blank capacity stays blank,
+// never 0. A person-week with neither a capacity cell nor tracked hours
+// emits no row. The CSV shows the PTO subtraction explicitly (raw capacity,
+// PTO, and the adjusted result as separate columns) — utilization % divides
+// against Adjusted hrs, not raw capacity.
 // groupByNp: np → "Delivery"|"Manager"|"Non-tracking" — appended as the last column; missing entries default to Delivery.
-function buildUtilCsvRows_(isoList, capMap, trkMap, nameMap, npList, futureIsoSet, groupByNp){
-  var rows=[["User","Week","Capacity hrs","Tracked hrs","Utilization %","Group"]];
+function buildUtilCsvRows_(isoList, capMap, ptoMap, trkMap, nameMap, npList, futureIsoSet, groupByNp){
+  var rows=[["User","Week","Capacity hrs","PTO hrs","Adjusted hrs","Tracked hrs","Utilization %","Group"]];
   var sorted=npList.slice().sort(function(a,b){
     var an=nameMap[a]||a, bn=nameMap[b]||b;
     return an<bn?-1:(an>bn?1:0);
   });
   sorted.forEach(function(np){
-    var cw=capMap[np]||{}, tw=trkMap[np]||{};
+    var cw=capMap[np]||{}, pw=ptoMap[np]||{}, tw=trkMap[np]||{};
     isoList.forEach(function(iso){
       var hasCap=(iso in cw);
       var isFut=!!futureIsoSet[iso];
       var trkVal=tw[iso]||0;
       if(!hasCap && !(trkVal>0)) return;
+      var pto=pw[iso]||0;
+      var adj=Math.max(0, (cw[iso]||0)-pto);
       var capCell = hasCap ? round1_(cw[iso]) : "";
+      var ptoCell = hasCap && pto>0 ? round1_(pto) : "";
+      var adjCell = hasCap ? round1_(adj) : "";
       var trkCell = isFut ? "" : round1_(trkVal);
-      var utilCell = (!isFut && hasCap && cw[iso]>0) ? round1_(trkVal/cw[iso]*100) : "";
-      rows.push([nameMap[np]||np, iso, capCell, trkCell, utilCell, (groupByNp&&groupByNp[np])||"Delivery"]);
+      var utilCell = (!isFut && hasCap && adj>0) ? round1_(trkVal/adj*100) : "";
+      rows.push([nameMap[np]||np, iso, capCell, ptoCell, adjCell, trkCell, utilCell, (groupByNp&&groupByNp[np])||"Delivery"]);
     });
   });
   return rows;
@@ -1577,6 +1588,7 @@ function renderCapChart(wt,cw){
 // DATA.capacityIsoList (every sheet week incl. future), DATA.capacityNames,
 // DATA.capacityError. Math/CSV builders live in the UTIL-PURE block above.
 var UTIL_WT=null, UTIL_CW=null;                 // last-render totals + week list (tooltips)
+var UTIL_CAPS=null;                             // last-render {raw, adj} capacity maps (people table / CSV need raw)
 var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local, not persisted)
 var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
 var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
@@ -1647,9 +1659,15 @@ function renderUtilization(){
   if(UTIL_INC_MGR) npList=npList.concat(split.managers);
 
   var capMap=DATA.personWeekCapacity||{}, trkMap=DATA.personWeekTracked||{};
+  // PTO-adjusted capacity feeds ALL utilization math (headline, band, projection,
+  // identity, drill, chart) — a 40h week with 8h PTO is a 32h week. Raw capacity
+  // is kept for the people table / CSV, which show the subtraction explicitly.
+  var rawCapMap=capMap;
+  capMap=utilAdjustCap_(capMap, DATA.personWeekPTO||{});
   var isos=cw.map(function(w){return w.iso;});
   var ut=utilWeekTotals_(isos, capMap, trkMap, npList);
   UTIL_WT=ut; UTIL_CW=cw;
+  UTIL_CAPS={raw:rawCapMap, adj:capMap};
 
   // Week states: latest 'done' week is PROVISIONAL (late logging still arriving);
   // older 'done' weeks are SETTLED; the 'now' week is PROJECTED.
@@ -2029,7 +2047,7 @@ function downloadUtilCsv_(){
   split.nonTracking.forEach(function(np){ groupByNp[np]='Non-tracking'; });
   // CSV is the audit artifact: ALWAYS the full population (all three groups),
   // regardless of the panel's chip state. People filters still apply via npList.
-  var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, nameMap, npList, fut, groupByNp);
+  var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekPTO||{}, DATA.personWeekTracked||{}, nameMap, npList, fut, groupByNp);
   var blob=new Blob(['\ufeff'+utilCsvString_(rows)], {type:'text/csv;charset=utf-8'});  // BOM: Excel opens accented names correctly
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
