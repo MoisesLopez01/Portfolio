@@ -399,16 +399,18 @@ input[type=file]{display:none}
 .epic-tbl .et-contrib{text-align:right;white-space:nowrap}
 .et-contrib-btn{cursor:pointer;color:var(--text);font-weight:600}
 .et-contrib-btn:hover{color:var(--orbe)}
-/* View tabs — Overview (Planned vs Tracked + Team Focus) is the landing view;
-   the heavier tables (heatmap / epic / PM rollups) live in their own tabs.
-   Visibility is CSS-driven off #dash[data-view] so panels' own inline display
-   logic (availPanel data-gate, pmRollupPanel no-PM hide) still composes. */
+/* View tabs — Overview (Planned vs Tracked + Utilization) is the landing view;
+   Team Focus & Execution Signals and the heavier tables (heatmap / epic / PM
+   rollups) live in their own tabs. Visibility is CSS-driven off #dash[data-view]
+   so panels' own inline display logic (availPanel data-gate, pmRollupPanel
+   no-PM hide) still composes. */
 .view-tabs{display:flex;gap:2px;margin:0 0 12px;border-bottom:2px solid var(--border);flex-wrap:wrap}
 .view-tabs button{appearance:none;border:none;background:none;color:var(--muted);font:inherit;font-weight:600;font-size:calc(13px*var(--scale));padding:8px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
 .view-tabs button:hover{color:var(--text)}
 .view-tabs button.on{color:var(--text);border-bottom-color:var(--orbe)}
 #dash .panel[data-view]{display:none}
 #dash[data-view="overview"] .panel[data-view="overview"],
+#dash[data-view="focus"] .panel[data-view="focus"],
 #dash[data-view="heat"] .panel[data-view="heat"],
 #dash[data-view="epic"] .panel[data-view="epic"]{display:block}
 /* Sortable headers + hot-cell accents (Delivery & PM load tab) */
@@ -561,6 +563,7 @@ input[type=file]{display:none}
     <!-- View tabs — People filters above apply across every tab -->
     <div class="view-tabs" id="viewTabs">
       <button data-view="overview" class="on">Overview</button>
+      <button data-view="focus">Team Focus</button>
       <button data-view="heat">Project heatmap</button>
       <button data-view="epic">Delivery &amp; PM load</button>
     </div>
@@ -570,7 +573,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects People filters above</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
           <span class="hint" id="billableRatioChip"></span>
           <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — HIDDEN for now (billing classification not reliable yet); BILLING_FILTER stays 'all' so tracked figures are never scoped. Remove this display:none to restore. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
@@ -601,7 +604,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects People filters above</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
@@ -629,8 +632,8 @@ input[type=file]{display:none}
       </div>
     </div>
 
-    <!-- 1b. Team Availability -->
-    <div class="panel" id="availPanel" data-view="overview" style="display:none">
+    <!-- Team Focus & Execution Signals — own tab -->
+    <div class="panel" id="availPanel" data-view="focus" style="display:none">
       <div class="panel-h">
         <h2>Team Focus &amp; Execution Signals</h2>
         <div class="panel-tools">
@@ -645,6 +648,11 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Project key heatmap</h2>
         <div class="panel-tools">
+          <div class="chip-toggle" id="heatTopN" title="Row cap — projects ranked by planned hours in the window; the footer count and 'losing hours' signal always cover the full list">
+            <button data-n="15" class="on" onclick="setHeatTopN_(15)">Top 15</button>
+            <button data-n="30" onclick="setHeatTopN_(30)">Top 30</button>
+            <button data-n="999" onclick="setHeatTopN_(999)">All</button>
+          </div>
           <div class="chip-toggle" id="colorMode">
             <button data-m="change">Change</button>
             <button data-m="risk">Risk</button>
@@ -690,6 +698,11 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Epic delivery</h2>
         <div class="panel-tools">
+          <div class="chip-toggle" id="epicTopN" title="Row cap by the current sort — the summary below always covers ALL epics, only the table is trimmed">
+            <button data-n="15" class="on" onclick="setEpicTopN_(15)">Top 15</button>
+            <button data-n="30" onclick="setEpicTopN_(30)">Top 30</button>
+            <button data-n="999" onclick="setEpicTopN_(999)">All</button>
+          </div>
           <div class="hint">Planned (Tempo plans, issue-level) vs tracked hours + whole-backlog ticket completion + top blocker per epic · scoped by ALL filters above (People / Project / PM) · hours cover every tracked week (quarter to date) — pick a past week in the filter bar to focus one week · click a column header to sort · click contributors to expand the issue evidence</div>
           <button class="png-btn" data-png="delivery-by-epic">⬇ Save PNG</button>
         </div>
@@ -741,9 +754,11 @@ var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Untagged' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
-var VIEW_TAB = 'overview';  // 'overview' | 'heat' | 'epic' (Delivery & PM load) — which view tab is active; panels show/hide via CSS on #dash[data-view]
+var VIEW_TAB = 'overview';  // 'overview' | 'focus' (Team Focus & Execution Signals) | 'heat' | 'epic' (Delivery & PM load) — which view tab is active; panels show/hide via CSS on #dash[data-view]
 var EPIC_OPEN = null; // expanded epic key on the Epic delivery panel (contributor-name drill row)
 var EPIC_SORT = { col: 'hours', dir: -1 }; // epic-table sort — col ∈ epic|pm|hours|tickets|health
+var EPIC_TOPN = 15; // epic-table row cap (Top 15/30/All chips — same pattern as the People filters' Top N); cap applies AFTER sort, so "Top" follows the active column
+var HEAT_TOPN = 15, HEAT_PRECAP = 0; // heatmap row cap + its pre-cap row count (for the extend link); panel-local — the People filters' Top N no longer touches the project list
 var PM_CONC_EPICS = 5; // a PM carrying ≥ this many active epics gets a concentration flag
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
@@ -869,6 +884,7 @@ function filteredWeekTotals_(isos){
   isos.forEach(function(iso){ planned[iso] = 0; tracked[iso] = 0; });
   var plan = DATA.personWeekPlan || {}, trk = DATA.personWeekTracked || {};
   var nps = pset ? Object.keys(pset) : Object.keys(Object.assign({}, plan, trk));
+  nps = scopedNpList_(nps); // universal scope carve — same denominator as the Utilization panel
   nps.forEach(function(np){
     var cap = personWeekCap_(np);
     var pw = plan[np]; if (pw) Object.keys(pw).forEach(function(iso){ if (iso in planned) planned[iso] += Math.min(pw[iso]||0, cap); });
@@ -877,11 +893,12 @@ function filteredWeekTotals_(isos){
   return { planned: planned, tracked: tracked };
 }
 
-/* ---------------- Utilization population & target policy ----------------
-   The utilization headline measures only the roles it is FAIR to hold to a
-   tracking standard — the delivery families below. Managers and non-tracking
-   families are carved out by default and reachable via panel-local chips that
-   disclose their effect (+N people, ±pp) instead of baking the bias in.
+/* ---------------- Population scope & target policy ----------------
+   The fidelity/utilization headlines measure only the roles it is FAIR to hold
+   to a tracking standard — the delivery families below. Managers and non-tracking
+   families are carved out by default and reachable via the scope chips in the
+   People filters bar. The carve is UNIVERSAL: Planned vs Tracked and Utilization
+   share one denominator, so their week-over-week fidelity always agree.
    "Professional Services" matches nothing in today's catalog — it is defensive,
    auto-including that family if the roster's Job Family column ever carries it. */
 var UTIL_TRACKING_FAMILIES = [
@@ -892,6 +909,29 @@ var UTIL_TRACKING_FAMILIES = [
 var UTIL_TARGET     = 70;  // % — proven level for the delivery families, not aspirational
 var UTIL_BAND_WEEKS = 8;   // trailing settled weeks for the control band (needs ≥4 to draw)
 var UTIL_LOW_RATIO  = 0.6; // person-week flagged ⚠ low when tracked < this share of PTO-adjusted capacity
+
+/* Universal population scope (#scopeChips in the People filters bar).
+   Effective include = chip state OR an explicit filter that already forces the
+   group in — a deliberate selection must never produce an empty chart:
+   Role = Mgrs keeps managers; an explicit job-family pick keeps its families. */
+function scopeIncNt_(){ return UTIL_INC_NT || AVAIL_FAM.size > 0; }
+function scopeIncMgr_(){ return UTIL_INC_MGR || AVAIL_ROLE === 'm'; }
+function scopedNpList_(npList){
+  var split = utilSplitPopulation_(npList, (DATA && DATA.personMeta) || {}, UTIL_TRACKING_FAMILIES);
+  var out = split.delivery.slice();
+  if (scopeIncNt_())  out = out.concat(split.nonTracking);
+  if (scopeIncMgr_()) out = out.concat(split.managers);
+  return out;
+}
+// True when the carve is actually removing someone. The tracked total then no
+// longer equals the org-wide billingByWeek total, so the billing buckets lock —
+// the same exactness rule a People filter already triggers.
+function scopeNarrows_(){
+  if (scopeIncNt_() && scopeIncMgr_()) return false;
+  if (!DATA || !DATA.personMeta) return false;
+  var split = utilSplitPopulation_(Object.keys(DATA.personMeta), DATA.personMeta, UTIL_TRACKING_FAMILIES);
+  return (!scopeIncMgr_() && split.managers.length > 0) || (!scopeIncNt_() && split.nonTracking.length > 0);
+}
 
 /* ==UTIL-PURE-START== */
 /* Pure utilization math + CSV builders — NO DOM/global access. node-tests.js
@@ -1142,7 +1182,9 @@ function peopleFilterActive_(){
 // works as before this feature. Planned/capacity figures never pass through here: billing is
 // tracked-only by design.
 function trackedForWeek_(iso, fallbackTracked){
-  if (BILLING_FILTER === 'all' || peopleFilterActive_()) return fallbackTracked || 0;
+  // scopeNarrows_ joins peopleFilterActive_ here: the universal scope carve shrinks the
+  // tracked total below the org-wide billingByWeek figures exactly like a People filter does.
+  if (BILLING_FILTER === 'all' || peopleFilterActive_() || scopeNarrows_()) return fallbackTracked || 0;
   var b = (DATA.billingByWeek || {})[iso];
   if (!b) return fallbackTracked || 0;
   if (BILLING_FILTER === 'Billable') return b.billable;
@@ -1164,11 +1206,12 @@ function trackedForWeek_(iso, fallbackTracked){
 function syncBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
   var noBilling = !DATA.jiraMetaAvailable;                 // Jira Raw absent → all-unclassified, specific buckets meaningless
-  var locked = peopleFilterActive_() || noBilling;         // either reason disables the specific chips
-  if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option in both states
-  // Jira-absent is a data-level degradation, so its message wins when both reasons apply.
+  var locked = peopleFilterActive_() || scopeNarrows_() || noBilling; // any reason disables the specific chips
+  if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option in every locked state
+  // Jira-absent is a data-level degradation, so its message wins when reasons stack.
   var title = noBilling ? 'Billing signals off — Jira Raw not found'
-                        : 'Per-team billing split arrives in Phase 2 — showing all tracked hours';
+            : peopleFilterActive_() ? 'Per-team billing split arrives in Phase 2 — showing all tracked hours'
+            : 'Org-wide billing can’t be split for the delivery scope — add ＋ managers and ＋ non-tracking roles (scope chips) to use billing buckets';
   Array.prototype.forEach.call(grp.children, function(b){
     var bucket = b.dataset.billing, isSpecific = bucket !== 'all', disable = locked && isSpecific;
     b.disabled = disable;
@@ -1267,7 +1310,7 @@ function capChartHover_(e, iso){
   // Shown at the 'All' chip when Jira Raw data is present and no People filter narrows
   // the roster (a People-filtered tracked total can't be split by the org-wide billing map).
   var billTxt='';
-  if(BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_()){
+  if(BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_() && !scopeNarrows_()){
     var b=(DATA.billingByWeek||{})[iso];
     if(b){
       billTxt='<br>Billable: '+fmt(b.billable)+' hrs<br>Internal: '+fmt(b.internal)+' hrs'
@@ -1387,7 +1430,7 @@ function renderCapacity(){
   $('capChip').className='statuschip '+chipCls;
   $('capChip').textContent=chipTxt;
   $('capUtil').textContent=fid!==null?(fmt(tracked)+' hrs tracked · '+Math.round(fid*100)+'% fidelity'+(isCurrent?' (partial, week in progress)':'')):'No tracked data yet for this week';
-  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''))+(isFiltered?' · <span style="color:var(--orbe)">reflects the People filters above</span>':'');
+  $('capMeta').innerHTML=esc(iso)+(DATA.trackedError?' · <span style="color:var(--warn)">tracked data unavailable: '+esc(DATA.trackedError)+'</span>':(DATA.trackedWarning?' · <span style="color:var(--amber)">&#9888; '+esc(DATA.trackedWarning)+'</span>':''))+(isFiltered?' · <span style="color:var(--orbe)">reflects the People filters above</span>':'')+(scopeNarrows_()?' · <span style="color:var(--muted)">delivery scope — managers &amp; non-tracking roles excluded (scope chips in the filter bar)</span>':'');
 
   // WoW fidelity trend chip — direction + delta, so a single-point % never stands alone.
   var priorI=cwPriorIso_(cw, iso), priorFid=null;
@@ -1408,8 +1451,8 @@ function renderCapacity(){
   if(fid===null){cls='';sw='<b>'+esc(iso)+' is a planned week</b> — no tracked data yet. Tracking will appear as work begins.';}
   else if(isCurrent){cls='';sw='<b>'+esc(iso)+' is still in progress</b> — '+fmt(tracked)+' of '+fmt(planned)+' hrs tracked so far ('+Math.round(fid*100)+'%), data as of '+esc(asOf)+'. Treat this as incomplete tracking, not an execution drop — fidelity will keep rising as the week is logged.';}
   else if(fid>=0.8){cls='ok';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — strong execution fidelity.';}
-  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check Team Focus &amp; Execution Signals for who planned but didn\'t track.';}
-  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review Team Focus &amp; Execution Signals below.';}
+  else if(fid>=0.5){cls='';sw='<b>'+esc(iso)+' tracked '+Math.round(fid*100)+'% of planned work</b> ('+fmt(tracked)+' of '+fmt(planned)+' hrs) — partial delivery; check the Team Focus tab for who planned but didn\'t track.';}
+  else if(planned>0){cls='warn';sw='<b>'+esc(iso)+' execution gap: '+Math.round(fid*100)+'% fidelity</b> ('+fmt(tracked)+' tracked vs '+fmt(planned)+' planned) — review the Team Focus tab.';}
   else{cls='';sw='<b>No planned work for '+esc(iso)+'</b>.';}
   var swFull=trendLine+sw;
   var hol=HOLIDAYS[iso];
@@ -1610,7 +1653,7 @@ function renderCapChart(wt,cw){
 // DATA.capacityError. Math/CSV builders live in the UTIL-PURE block above.
 var UTIL_WT=null, UTIL_CW=null;                 // last-render totals + week list (tooltips)
 var UTIL_CAPS=null;                             // last-render {raw, adj} capacity maps (people table / CSV need raw)
-var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local, not persisted)
+var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // universal scope chips (People filters bar) — gate PvT AND Utilization; not persisted
 var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
 var UTIL_PEOPLE_OPEN=false, UTIL_PERSON_OPEN=null;   // people-detail table state (person np whose history row is expanded)
 var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
@@ -1621,8 +1664,15 @@ var UTIL_WIN_WEEKS=16, UTIL_WIN_PAGE=0;          // chart week-window pager: 0 =
 function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
 
-function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; renderUtilization(); }
-function utilToggleMgr_(){ UTIL_INC_MGR=!UTIL_INC_MGR; renderUtilization(); }
+// Scope chips re-render exactly what they scope (both charts + the filter bar) —
+// not reRenderAll_, which would reset open Team Focus drills the carve doesn't touch.
+function scopeRerender_(){
+  if(typeof renderCapacity==='function')renderCapacity();
+  if(typeof renderUtilization==='function')renderUtilization();
+  updateFilterBar_();
+}
+function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; scopeRerender_(); }
+function utilToggleMgr_(){ UTIL_INC_MGR=!UTIL_INC_MGR; scopeRerender_(); }
 // Mon..today inclusive as elapsed workdays; Sat/Sun count the week as fully elapsed.
 function utilElapsedWorkdays_(){ var d=new Date().getDay(); return (d===0||d===6)?5:d; }
 
@@ -1675,13 +1725,14 @@ function renderUtilization(){
   cw.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
   cw=cw.filter(function(w){return w.status!=='plan';});
 
-  // Population: People filters first (utilNpList_), then the tracking-required
-  // split; chips add the carved-out groups back and disclose their effect.
+  // Population: People filters first (utilNpList_), then the universal scope
+  // carve — the SAME effective-include rules Planned vs Tracked applies via
+  // scopedNpList_, kept as an explicit split here for the header/drill.
   var baseList=utilNpList_();
   var split=utilSplitPopulation_(baseList, DATA.personMeta||{}, UTIL_TRACKING_FAMILIES);
   var npList=split.delivery.slice();
-  if(UTIL_INC_NT)  npList=npList.concat(split.nonTracking);
-  if(UTIL_INC_MGR) npList=npList.concat(split.managers);
+  if(scopeIncNt_())  npList=npList.concat(split.nonTracking);
+  if(scopeIncMgr_()) npList=npList.concat(split.managers);
 
   var capMap=DATA.personWeekCapacity||{}, trkMap=DATA.personWeekTracked||{};
   // PTO-adjusted capacity feeds ALL utilization math (headline, band, projection,
@@ -1729,7 +1780,6 @@ function renderUtilization(){
     exploreBtn.className='btn'+(verdict==='below'?' explore-why':'');
   }
   if(UTIL_EXPLORE_OPEN){
-    renderUtilChips_(anchor, split, capMap, trkMap);
     var utilModeHoursBtn=$('utilModeHours'), utilModeRateBtn=$('utilModeRate');
     if(utilModeHoursBtn) utilModeHoursBtn.className = UTIL_CHART_MODE==='hours'?'on':'';
     if(utilModeRateBtn)  utilModeRateBtn.className  = UTIL_CHART_MODE==='rate'?'on':'';
@@ -1785,8 +1835,8 @@ function renderUtilHeader_(anchor, verdict, npList, capMap, trkMap, split, ut){
   var covered=(ut&&ut.covered[anchor])||0, scope=npList.length;
   var popParts=['measures '+covered+' of '+scope+' tracking-required people'];
   if(scope-covered>0) popParts.push((scope-covered)+' without capacity data this week');
-  if(split.nonTracking.length) popParts.push(split.nonTracking.length+' non-tracking '+(UTIL_INC_NT?'included':'excluded'));
-  if(split.managers.length)   popParts.push(split.managers.length+' managers '+(UTIL_INC_MGR?'included':'excluded'));
+  if(split.nonTracking.length) popParts.push(split.nonTracking.length+' non-tracking '+(scopeIncNt_()?'included':'excluded'));
+  if(split.managers.length)   popParts.push(split.managers.length+' managers '+(scopeIncMgr_()?'included':'excluded'));
   var popLine=popParts.join(' · ')+(filteredPersonSet_()?' · (filtered)':'');
   h+='<div class="uh-pop">'+popLine+'</div>';
   el.innerHTML=h;
@@ -1799,33 +1849,31 @@ function utilCapHrsMap_(npList){
   return m;
 }
 
-// Chip labels disclose each group's live effect on the anchor week: +N people, ±pp.
-function renderUtilChips_(anchor, split, capMap, trkMap){
-  function delta(group, on){
-    if(anchor==null || !group.length) return '';
-    // Effect of the group = util(current population) − util(current population minus/plus group)
-    var withList, withoutList;
-    var base=split.delivery.slice();
-    if(UTIL_INC_NT && group!==split.nonTracking)   base=base.concat(split.nonTracking);
-    if(UTIL_INC_MGR && group!==split.managers)     base=base.concat(split.managers);
-    withoutList=base; withList=base.concat(group);
-    var uw=utilWeekTotals_([anchor], capMap, trkMap, withList).util[anchor];
-    var uo=utilWeekTotals_([anchor], capMap, trkMap, withoutList).util[anchor];
-    if(uw==null || uo==null) return ' (+'+group.length+' people)';
-    var pp=uw-uo;
-    return ' (+'+group.length+' people, '+(pp>=0?'+':'')+Math.round(pp*10)/10+' pp)';
-  }
+// Scope chips (People filters bar): state + live group counts for the current
+// filter population. A chip hides when its group is empty; it locks 'on' when an
+// explicit filter already forces the group in (Role = Mgrs, a job-family pick) —
+// toggling would be a no-op there, so the lock + title say why instead.
+// Called from updateFilterBar_, which every filter interaction routes through.
+function syncScopeChips_(){
   var nt=$('utilChipNt'), mg=$('utilChipMgr');
-  if(nt){
-    nt.className=UTIL_INC_NT?'on':'';
-    nt.textContent=(UTIL_INC_NT?'− ':'＋ ')+'non-tracking roles'+(UTIL_INC_NT?delta(split.nonTracking,true):'');
-    nt.style.display=split.nonTracking.length?'':'none';
-  }
-  if(mg){
-    mg.className=UTIL_INC_MGR?'on':'';
-    mg.textContent=(UTIL_INC_MGR?'− ':'＋ ')+'managers'+(UTIL_INC_MGR?delta(split.managers,true):'');
-    mg.style.display=split.managers.length?'':'none';
-  }
+  if(!nt||!mg) return;
+  if(!DATA||!DATA.personMeta){ nt.style.display='none'; mg.style.display='none'; return; }
+  var pset=filteredPersonSet_();
+  var base=pset?Object.keys(pset):Object.keys(DATA.personMeta);
+  var split=utilSplitPopulation_(base, DATA.personMeta, UTIL_TRACKING_FAMILIES);
+  var incNt=scopeIncNt_(), incMgr=scopeIncMgr_();
+  var forcedNt=!UTIL_INC_NT&&incNt, forcedMgr=!UTIL_INC_MGR&&incMgr;
+  nt.style.display=split.nonTracking.length?'':'none';
+  mg.style.display=split.managers.length?'':'none';
+  nt.classList.toggle('on', incNt);
+  mg.classList.toggle('on', incMgr);
+  nt.disabled=forcedNt; mg.disabled=forcedMgr;
+  nt.textContent=(incNt?'− ':'＋ ')+'non-tracking roles ('+split.nonTracking.length+')';
+  mg.textContent=(incMgr?'− ':'＋ ')+'managers ('+split.managers.length+')';
+  nt.title=forcedNt?'Included automatically — an explicit job-family selection defines its own scope'
+    :'Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn’t read as a performance problem. Applies to both Planned vs Tracked and Utilization.';
+  mg.title=forcedMgr?'Included automatically — the Role filter is set to Mgrs'
+    :'Add managers — they legitimately log little delivery time, so they’re excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.';
 }
 
 function renderUtilLegend_(hasBand, hasProj, mode){
@@ -1898,8 +1946,8 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
 
   // Group the ACTIVE population by the chosen dimension.
   var npList=split.delivery.slice();
-  if(UTIL_INC_NT)  npList=npList.concat(split.nonTracking);
-  if(UTIL_INC_MGR) npList=npList.concat(split.managers);
+  if(scopeIncNt_())  npList=npList.concat(split.nonTracking);
+  if(scopeIncMgr_()) npList=npList.concat(split.managers);
   var meta=DATA.personMeta||{};
   var groups={};
   npList.forEach(function(np){
@@ -2490,8 +2538,12 @@ function updateFilterBar_(){
   if(AVAIL_MGR)parts.push(AVAIL_MGR);
   if(AVAIL_CREW==='fte')parts.push('FTE only');
   else if(AVAIL_CREW==='crew')parts.push('Crew only');
+  if(scopeNarrows_())parts.push('Delivery scope');
+  if(UTIL_INC_NT)parts.push('+ non-tracking');
+  if(UTIL_INC_MGR)parts.push('+ managers');
   if(AVAIL_BLEND>0){parts.push(AVAIL_BLEND===4?'4+ projects':AVAIL_BLEND+' project'+(AVAIL_BLEND>1?'s':''));}
   if(summary){summary.textContent=parts.length?parts.join(' · '):'All people';}
+  syncScopeChips_();
 }
 
 /* ---------------- View tabs ---------------- */
@@ -2917,15 +2969,17 @@ function clearAvailFilters(){
   AVAIL_LOC='';AVAIL_FAM.clear();AVAIL_MGR='';AVAIL_CREW='';AVAIL_ROLE='';AVAIL_OPEN=null;
   AVAIL_PROJ='';AVAIL_PM='';SEL_ISO=CURRENT_ISO;
   AVAIL_BLEND=0;AVAIL_WIN_PAGE=0;
+  UTIL_INC_NT=false;UTIL_INC_MGR=false; // scope chips back to the default delivery scope
   populateAvailFilters();
   reRenderAll_();
 }
 
-/** Sets the main Project + Week filters to `key`/`iso` and scrolls to the now-narrowed
- *  Team Availability panel — the target of a person row's 👥 chip. */
+/** Sets the main Project + Week filters to `key`/`iso`, switches to the Team Focus
+ *  tab, and scrolls to the now-narrowed panel — the target of a person row's 👥 chip. */
 function focusProject_(key, iso){
   AVAIL_PROJ=key; SEL_ISO=iso;
   reRenderAll_();
+  setViewTab_('focus');
   var panel=$('availPanel');
   if(panel) panel.scrollIntoView({behavior:'smooth', block:'start'});
 }
@@ -2989,6 +3043,7 @@ function setEpicSort_(col){
   else EPIC_SORT={col:col, dir: (col==='epic'||col==='pm') ? 1 : -1}; // text asc, numbers/severity desc
   renderEpicRollup();
 }
+function setEpicTopN_(n){ EPIC_TOPN=+n; renderEpicRollup(); }
 
 // Jira statuses that count as delivered for the Tickets column. Status is the
 // CURRENT snapshot from Jira Raw — "done/total" reads "of the tickets worked on
@@ -3108,6 +3163,15 @@ function renderEpicRollup(){
   rows.sort(sorters[EPIC_SORT.col]||sorters.hours);
   var totalHrs=rows.reduce(function(s,r){return s+r.hours;},0);
 
+  // Row cap (Top 15/30/All chips) — applied AFTER sort so "Top" follows the active
+  // column, and only to the table: every so-what stat below still covers ALL rows,
+  // so the decision numbers never change with the display cap (no silent caps —
+  // the footer + summary disclose the trim and offer the extend).
+  var totalRows=rows.length;
+  var visRows=totalRows>EPIC_TOPN?rows.slice(0,EPIC_TOPN):rows;
+  var tg=$('epicTopN');
+  if(tg) Array.prototype.forEach.call(tg.children,function(b){ b.classList.toggle('on', +b.dataset.n===EPIC_TOPN); });
+
   // "(no epic)" alert banner — unattributed work stays visible without competing in the sort.
   var bannerHtml='';
   if(noEpic){
@@ -3154,7 +3218,7 @@ function renderEpicRollup(){
     +'<th class="et-contrib" title="'+esc(HDR_HELP.contrib)+'">Contributors</th>'
     +'</tr></thead><tbody>';
 
-  rows.forEach(function(r){
+  visRows.forEach(function(r){
     var epicName=(r.epicKey!=='(no epic)' && DATA.epicNames && DATA.epicNames[r.epicKey]) || '';
     var projKeys=Object.keys(r.projectKeys);
     var projHtml=projKeys.length
@@ -3228,6 +3292,11 @@ function renderEpicRollup(){
   });
 
   html+='</tbody></table></div>';
+  if(totalRows>visRows.length){
+    html+='<div class="hint" style="margin-top:8px">Showing the first '+visRows.length+' of '+totalRows+' epics by the current sort — '
+      +'<span style="color:var(--orbe);cursor:pointer;font-weight:600" onclick="setEpicTopN_('+(totalRows>30&&EPIC_TOPN<30?30:999)+')">'
+      +(totalRows>30&&EPIC_TOPN<30?'show 30':'show all '+totalRows)+'</span></div>';
+  }
   container.innerHTML=html;
   Array.prototype.forEach.call(container.querySelectorAll('th[data-sort]'),function(th){
     th.onclick=function(){ setEpicSort_(th.dataset.sort); };
@@ -3245,7 +3314,8 @@ function renderEpicRollup(){
     +(plannedTot>0.5?' vs '+fmt(plannedTot)+' hrs planned':'')+')'
     +' — top epic accounts for '+topPct+'% ('+fmt(top.hours)+' hrs, '+topContribCount+' contributor'+(topContribCount!==1?'s':'')+').'
     +(unassignedTot>0?' <b>'+unassignedTot+'</b> open ticket'+(unassignedTot!==1?'s':'')+' unassigned.':'')
-    +(scopeActive?' Reflects the filters above.':'');
+    +(scopeActive?' Reflects the filters above.':'')
+    +(totalRows>visRows.length?' <span class="hint">Table shows the top '+visRows.length+' by the current sort; these totals cover all '+totalRows+'.</span>':'');
   if(swEl){ swEl.className='sowhat'; swEl.innerHTML=sw; }
 }
 
@@ -3560,11 +3630,13 @@ function qPredicate(k){
     default:         return true;
   }
 }
+function setHeatTopN_(n){ HEAT_TOPN=+n; renderHeat(); }
 function visibleOrder(){
   var order=(FPROJ||DATA).order.slice().filter(keyScopeFn_()); // Project + PM + Revenue, universal
   if(SEARCH){var q=SEARCH.toLowerCase();order=order.filter(function(k){return k.toLowerCase().indexOf(q)>=0||(KEYNAME[k]||'').toLowerCase().indexOf(q)>=0;});}
   order=order.filter(qPredicate);
-  return order.slice(0,TOPN);
+  HEAT_PRECAP=order.length; // rows that survived search/quick-filters — the extend link's target
+  return order.slice(0,HEAT_TOPN);
 }
 
 function cellColor(k,iso){
@@ -3756,6 +3828,8 @@ function renderHeat(){
   HEAT_MAX_HEAD=0;
   FPROJ.order.forEach(function(k){WEEKS.forEach(function(w){var h=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;if(h>HEAT_MAX_HEAD)HEAT_MAX_HEAD=h;});});
   var order=visibleOrder();
+  var tg=$('heatTopN');
+  if(tg) Array.prototype.forEach.call(tg.children,function(b){ b.classList.toggle('on', +b.dataset.n===HEAT_TOPN); });
   var html='<table class="hgrid"><thead><tr><th class="rowhdr">Project</th>'+WEEKS.map(function(w){
     var holChip=HOLIDAYS[w.iso]?' <span title="'+esc(holidayTitle_(w.iso))+'" style="cursor:help">🏖</span>':'';
     return '<th>'+esc(w.iso)+holChip+'<div style="font-weight:400;color:var(--muted);font-size:calc(9.5px*var(--scale))">'+STATUS_LABEL[w.status]+'</div></th>';
@@ -3806,7 +3880,15 @@ function renderHeat(){
     if(trim>=1) sanNote=' · <b>'+fmt(trim)+'h</b> duplicated planning capped at '+esc(SEL_ISO)
       +' <span title="'+overN+' people had more planned hours than their weekly capacity (38/40h) — a systemic Tempo duplication, not individual overwork. Each person-week is capped at capacity, trimmed proportionally across their projects." style="cursor:help">('+overN+' people over capacity ⓘ)</span>';
   }
-  $('heatNote').innerHTML='Showing '+order.length+' of '+FPROJ.order.length+' projects'+filterNote
+  // Extend link — only when the row CAP is what's trimming the list (search/quick
+  // filters trimming is the user's own doing and already reflected in the count).
+  var extendNote='';
+  if(HEAT_PRECAP>order.length){
+    var nextN=(HEAT_PRECAP>30&&HEAT_TOPN<30)?30:999;
+    extendNote=' — <span style="color:var(--orbe);cursor:pointer;font-weight:600" onclick="setHeatTopN_('+nextN+')">'
+      +(nextN===30?'show 30':'show all '+HEAT_PRECAP)+'</span>';
+  }
+  $('heatNote').innerHTML='Showing '+order.length+' of '+FPROJ.order.length+' projects'+extendNote+filterNote
     +' · <b>'+losingCount+'</b> losing &gt;20% of hours this week'+sanNote;
 
   Array.prototype.forEach.call($('heat').querySelectorAll('.hcell'),function(c){
@@ -3979,7 +4061,8 @@ bindBillingChips_();
 var ucb=$('utilCsvBtn'); if(ucb) ucb.onclick=downloadUtilCsv_;
 // View tabs — Overview | Project heatmap | Delivery & PM load.
 Array.prototype.forEach.call($('viewTabs').children,function(b){ b.onclick=function(){ setViewTab_(b.dataset.view); }; });
-Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); renderHeat(); } }; });
+// TOPN caps PEOPLE lists (Team Focus) only — the heatmap and epic table carry their own panel-local Top N chips.
+Array.prototype.forEach.call($('mainTopN').children,function(b){ b.onclick=function(){ Array.prototype.forEach.call($('mainTopN').children,function(x){x.classList.remove('on');}); b.classList.add('on'); TOPN=+b.dataset.n; updateFilterBar_(); if(DATA){ renderAvailability(); } }; });
 $('themeBtn').onclick=function(){ var r=document.documentElement; r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'; if(DATA) renderAll(); };
 
 /* ---------------- Access Control (admin-only) ----------------
