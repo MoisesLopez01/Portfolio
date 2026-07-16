@@ -1650,8 +1650,6 @@ function renderUtilization(){
     if(csvBtn) csvBtn.style.display='none';
     if(exploreBtn) exploreBtn.style.display='none';
     $('utilExplore').style.display='none';
-    var cNt=$('utilChipNt'); if(cNt) cNt.style.display='none';
-    var cMg=$('utilChipMgr'); if(cMg) cMg.style.display='none';
     return;
   }
   if(csvBtn) csvBtn.style.display='';
@@ -2010,7 +2008,7 @@ function renderUtilPeople_(anchor, split, npList, trkMap){
     .sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
 
   var rows=people.map(function(p){
-    var npEsc=p.np.replace(/'/g,"\\'");
+    var npEsc=esc(p.np.replace(/\\/g,'\\\\').replace(/'/g,"\\'"));  // JS-escape then HTML-escape — np sits inside a double-quoted onclick attribute
     var tr='<tr class="up-row" data-np="'+esc(p.np)+'" onclick="UTIL_PERSON_OPEN=(UTIL_PERSON_OPEN===\''+npEsc+'\'?null:\''+npEsc+'\');renderUtilization()">'
       +rowCells(esc(p.name), esc(p.group), p)+'</tr>';
     if(UTIL_PERSON_OPEN===p.np){
