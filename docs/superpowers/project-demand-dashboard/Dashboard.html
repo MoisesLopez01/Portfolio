@@ -1570,6 +1570,7 @@ function renderUtilization(){
   panel.style.display='';
   var capIsos=(DATA&&DATA.capacityIsoList)||[];
   var csvBtn=$('utilCsvBtn');
+  var exploreBtn=$('utilExploreBtn');
   if(!capIsos.length){
     $('utilHead').innerHTML='';
     $('utilChart').innerHTML='';
@@ -1580,11 +1581,14 @@ function renderUtilization(){
       +(DATA&&DATA.capacityError?' — '+esc(DATA.capacityError):'')
       +' Run fetchTempoCapacity() in the Tempo export project, then ↻ Refresh.';
     if(csvBtn) csvBtn.style.display='none';
+    if(exploreBtn) exploreBtn.style.display='none';
+    $('utilExplore').style.display='none';
     var cNt=$('utilChipNt'); if(cNt) cNt.style.display='none';
     var cMg=$('utilChipMgr'); if(cMg) cMg.style.display='none';
     return;
   }
   if(csvBtn) csvBtn.style.display='';
+  if(exploreBtn) exploreBtn.style.display='';
 
   // Week range: PvT's QTD window ∪ every capacity week (incl. future) — unchanged.
   var cw=capChartWeeks_().slice();
@@ -1626,44 +1630,54 @@ function renderUtilization(){
   });
   UTIL_EXTRA={stats:stats, proj:proj, provisionalIso:provisionalIso, projIso:projIso};
 
-  // Anchor: the selected week when it has data (labelled if not settled),
-  // else the latest settled week — the headline never quotes a live week as final.
-  var anchor=null, anchorState='settled';
-  if(SEL_ISO!==CURRENT_ISO && ut.util[SEL_ISO]!=null && cw.some(function(w){return w.iso===SEL_ISO && w.status!=='plan';})){
+  // Anchor: settled weeks ONLY — selecting the provisional or live week falls
+  // back to the latest settled week; those weeks live on the chart, never the
+  // header. Else the latest settled week with data. Else null.
+  var anchor=null;
+  if(SEL_ISO!==CURRENT_ISO && SEL_ISO!==provisionalIso && ut.util[SEL_ISO]!=null && settledIsos.indexOf(SEL_ISO)!==-1){
     anchor=SEL_ISO;
-    anchorState = SEL_ISO===provisionalIso?'provisional':'settled';
   } else {
     for(var j=settledIsos.length-1;j>=0;j--){
       if(ut.util[settledIsos[j]]!=null){ anchor=settledIsos[j]; break; }
     }
-    if(anchor==null && provisionalIso && ut.util[provisionalIso]!=null){ anchor=provisionalIso; anchorState='provisional'; }
   }
+  var verdict = utilVerdict_(anchor!=null?ut.util[anchor]:null, stats);
 
-  renderUtilHeader_(anchor, anchorState, npList, capMap, trkMap, split);
-  renderUtilChips_(anchor, split, capMap, trkMap);
-  renderUtilLegend_(stats!=null, proj!=null);
-  renderUtilChart_(ut, cw, stats, proj, provisionalIso);
-  renderUtilSoWhat_(anchor, anchorState, ut, stats);
-  if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
+  renderUtilHeader_(anchor, verdict, npList, capMap, trkMap, split, ut);
+  $('utilExplore').style.display = UTIL_EXPLORE_OPEN?'':'none';
+  if(exploreBtn){
+    exploreBtn.textContent='Explore '+(UTIL_EXPLORE_OPEN?'▾':'▸');
+    exploreBtn.className='btn'+(verdict==='below'?' explore-why':'');
+  }
+  if(UTIL_EXPLORE_OPEN){
+    renderUtilChips_(anchor, split, capMap, trkMap);
+    renderUtilLegend_(stats!=null, proj!=null);
+    renderUtilChart_(ut, cw, stats, proj, provisionalIso);
+    renderUtilSoWhat_(anchor, ut, stats);
+    if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
+  }
 }
 
-// Option B header: big number + the Coverage × Fidelity = Utilization identity
-// inline, with the target gap in HOURS (billing is project-level — no $ rate
-// exists, so the gap is never dollarised).
-function renderUtilHeader_(anchor, anchorState, npList, capMap, trkMap, split){
+// Glance hero: big number + verdict chip + the Coverage × Fidelity = Utilization
+// identity inline, with the target gap in HOURS (billing is project-level — no
+// $ rate exists, so the gap is never dollarised). Anchor is always a settled
+// week now (v2) — no "(still settling)" state to render.
+function renderUtilHeader_(anchor, verdict, npList, capMap, trkMap, split, ut){
   var el=$('utilHead'); if(!el) return;
   if(anchor==null){ el.innerHTML=''; return; }
   var id=utilIdentity_(anchor, npList, capMap, trkMap, DATA.personWeekPlan||{}, utilCapHrsMap_(npList));
-  var stateLbl = anchorState==='provisional' ? ' (still settling)' : '';
+  var verdictLbl = verdict==='below'?'Below normal':verdict==='above'?'Above normal':'Normal';
   var h='<div class="uh-big">'+(id.util!=null?Math.round(id.util)+'%':'—')
-    +' <span class="uh-when">utilization · '+esc(anchor)+esc(stateLbl)+'</span></div>';
+    +' <span class="uh-when">utilization · '+esc(anchor)+'</span>'
+    +(verdict!=null?' <span class="uh-verdict v-'+verdict+'">'+verdictLbl+'</span>':'')
+    +'</div>';
   var parts=[];
   if(id.coverage!=null && id.fidelity!=null){
     parts.push('Coverage <b>'+Math.round(id.coverage)+'%</b> × Fidelity <b>'+Math.round(id.fidelity)+'%</b> = '+Math.round(id.util)+'%');
   } else if(id.util!=null){
     parts.push('<span class="hint">no plan data this week — coverage × fidelity unavailable</span>');
   }
-  if(id.util!=null && anchorState==='settled'){
+  if(id.util!=null){
     if(id.util < UTIL_TARGET){
       var gapHrs=(UTIL_TARGET-id.util)/100*id.cap;
       parts.push('<span style="color:'+hexVar('--warn')+'">'+Math.round(UTIL_TARGET-id.util)
@@ -1673,12 +1687,13 @@ function renderUtilHeader_(anchor, anchorState, npList, capMap, trkMap, split){
     }
   }
   h+='<div class="uh-identity">'+parts.join(' · ')+'</div>';
-  var extra=[];
-  if(!UTIL_INC_NT && split.nonTracking.length) extra.push(split.nonTracking.length+' non-tracking excluded');
-  if(!UTIL_INC_MGR && split.managers.length)   extra.push(split.managers.length+' managers excluded');
-  h+='<div class="uh-pop">'+npList.length+' tracking-required people'
-    +(filteredPersonSet_()?' (filtered)':'')
-    +(extra.length?' · '+extra.join(' · '):'')+'</div>';
+  var covered=(ut&&ut.covered[anchor])||0, scope=npList.length;
+  var popParts=['measures '+covered+' of '+scope+' tracking-required people'];
+  if(scope-covered>0) popParts.push((scope-covered)+' without capacity data this week');
+  if(split.nonTracking.length) popParts.push(split.nonTracking.length+' non-tracking '+(UTIL_INC_NT?'included':'excluded'));
+  if(split.managers.length)   popParts.push(split.managers.length+' managers '+(UTIL_INC_MGR?'included':'excluded'));
+  var popLine=popParts.join(' · ')+(filteredPersonSet_()?' · (filtered)':'');
+  h+='<div class="uh-pop">'+popLine+'</div>';
   el.innerHTML=h;
 }
 
@@ -1707,12 +1722,12 @@ function renderUtilChips_(anchor, split, capMap, trkMap){
   }
   var nt=$('utilChipNt'), mg=$('utilChipMgr');
   if(nt){
-    nt.className='uchip'+(UTIL_INC_NT?' on':'');
+    nt.className=UTIL_INC_NT?'on':'';
     nt.textContent=(UTIL_INC_NT?'− ':'＋ ')+'non-tracking roles'+(UTIL_INC_NT?delta(split.nonTracking,true):'');
     nt.style.display=split.nonTracking.length?'':'none';
   }
   if(mg){
-    mg.className='uchip'+(UTIL_INC_MGR?' on':'');
+    mg.className=UTIL_INC_MGR?'on':'';
     mg.textContent=(UTIL_INC_MGR?'− ':'＋ ')+'managers'+(UTIL_INC_MGR?delta(split.managers,true):'');
     mg.style.display=split.managers.length?'':'none';
   }
@@ -1729,8 +1744,10 @@ function renderUtilLegend_(hasBand, hasProj){
   el.innerHTML=h;
 }
 
-// Signal-vs-noise verdict line. Counts only, never names.
-function renderUtilSoWhat_(anchor, anchorState, ut, stats){
+// Signal-vs-noise verdict line. Counts only, never names. The no-capacity-data
+// population fact is owned by the glance header's population line now — not
+// repeated here.
+function renderUtilSoWhat_(anchor, ut, stats){
   var el=$('utilSoWhat'); if(!el) return;
   var sw, cls='';
   if(anchor==null){
@@ -1746,11 +1763,6 @@ function renderUtilSoWhat_(anchor, anchorState, ut, stats){
         ? ' <span class="hint">Inside the normal band ('+Math.round(stats.lo)+'–'+Math.round(stats.hi)+'%) — normal variation, not a signal.</span>'
         : ' <b>Outside the normal band ('+Math.round(stats.lo)+'–'+Math.round(stats.hi)+'%)</b> — expand "Why did this week move?" below.';
     }
-    if(ut.trackedOnly[anchor]>0){
-      sw+=' <span class="hint">'+ut.trackedOnly[anchor]+' tracked '
-        +(ut.trackedOnly[anchor]===1?'person has':'people have')+' no capacity data this week — excluded from the %.</span>';
-    }
-    if(anchorState!=='settled') sw+=' <span class="hint">Late logging may still move this week.</span>';
   }
   el.className='sowhat '+cls;
   el.innerHTML=sw;
