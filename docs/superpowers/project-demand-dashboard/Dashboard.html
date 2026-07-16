@@ -1841,8 +1841,8 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
       +'<span class="ud-barwrap"><span class="ud-bar" style="width:'+wpx+'px;background:'+col+'"></span></span>'
       +'<span class="ud-pp" style="color:'+col+'">'+fmtPp(g.pp)+' pp</span></div>';
   });
-  if(qualifying.length>3){
-    var rest=d.slice(top3.length);
+  var rest=d.slice(top3.length);
+  if(rest.length>0){
     var restSum=0; rest.forEach(function(g){ restSum+=g.pp; });
     rows.push('<div class="ud-row"><span class="hint">'+rest.length+' others (net '+fmtPp(restSum)+' pp)</span></div>');
   }
