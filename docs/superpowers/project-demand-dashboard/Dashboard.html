@@ -909,6 +909,26 @@ function utilProjection_(trackedSoFar, capacity, elapsedWorkdays, sigma){
   };
 }
 
+// Exact WoW decomposition for the "why did this week move?" drill. Per group g:
+//   pp_g = trk_g(isoW)/capTotal(isoW) − trk_g(isoPrev)/capTotal(isoPrev)   (×100)
+// where capTotal is the WHOLE population's covered capacity and trk_g sums only
+// capacity-covered members (same coverage rule as utilWeekTotals_). Because the
+// denominators are shared, Σ pp_g equals the headline's util(isoW) − util(isoPrev)
+// exactly — the bars always account for the full move. Sorted by |pp| desc.
+// Returns null when either week has no covered capacity.
+function utilDecompose_(isoW, isoPrev, groups, capMap, trkMap){
+  var all = [];
+  Object.keys(groups).forEach(function(k){ all = all.concat(groups[k]); });
+  var tot = utilWeekTotals_([isoW, isoPrev], capMap, trkMap, all);
+  if (!(tot.cap[isoW] > 0) || !(tot.cap[isoPrev] > 0)) return null;
+  var out = Object.keys(groups).map(function(k){
+    var g = utilWeekTotals_([isoW, isoPrev], capMap, trkMap, groups[k]);
+    return { key: k, pp: (g.tracked[isoW] / tot.cap[isoW] - g.tracked[isoPrev] / tot.cap[isoPrev]) * 100 };
+  });
+  out.sort(function(a, b){ return Math.abs(b.pp) - Math.abs(a.pp); });
+  return out;
+}
+
 function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.

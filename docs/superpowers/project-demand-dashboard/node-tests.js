@@ -183,10 +183,33 @@ function _test_utilProjection_() {
   Logger.log("✅ _test_utilProjection_ passed");
 }
 
+function _test_utilDecompose_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilDecompose_: " + msg); }
+  var cap = { "a": { W1: 40, W2: 40 }, "b": { W1: 40, W2: 40 }, "c": { W1: 40, W2: 20 } };
+  var trk = { "a": { W1: 30, W2: 24 }, "b": { W1: 35, W2: 36 }, "c": { W1: 20, W2: 18 } };
+  var groups = { "Service Delivery": ["a", "b"], "Managed Services & Support": ["c"] };
+  var d = utilDecompose_("W2", "W1", groups, cap, trk);
+  // util W1 = 85/120 = 70.833%, util W2 = 78/100 = 78% → Δ = +7.1667 pp
+  var total = 0;
+  d.forEach(function(g){ total += g.pp; });
+  assert_(Math.abs(total - (78 - 85 / 120 * 100)) < 1e-9, "contributions sum exactly to Δutil (denominator changed too)");
+  // SD group: 60/100 − 65/120 = 60 − 54.1667 = +5.833 pp; MS group: 18/100 − 20/120 = +1.333 pp
+  var sd = d.filter(function(g){ return g.key === "Service Delivery"; })[0];
+  assert_(Math.abs(sd.pp - (60 - 65 / 120 * 100)) < 1e-9, "per-group pp uses each week's own denominator");
+  assert_(d[0].key === "Service Delivery", "sorted by |pp| descending");
+  // Coverage rule respected: a tracked-only member contributes no pp
+  var d2 = utilDecompose_("W2", "W1", { g1: ["a"], g2: ["nocap"] }, cap, { "a": { W1: 30, W2: 24 }, "nocap": { W1: 99, W2: 99 } });
+  assert_(d2.filter(function(g){ return g.key === "g2"; })[0].pp === 0, "uncovered member contributes 0");
+  // Missing capacity on either week → null (nothing to decompose)
+  assert_(utilDecompose_("W9", "W1", groups, cap, trk) === null, "week without capacity → null");
+  Logger.log("✅ _test_utilDecompose_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
 _test_utilControlStats_();
 _test_utilProjection_();
+_test_utilDecompose_();
 
 console.log("✅ node-tests: all suites passed");
