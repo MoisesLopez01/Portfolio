@@ -83,10 +83,12 @@ Coverage 82% × Fidelity 78% = 64% · 6 pp below the 70% target ≈ 210 hrs
   "no plan data this week" note.
 - **Gap** = `(UTIL_TARGET − util) × weekCapacity / 100`, shown in hours, only when below
   target; at/above target the sentence celebrates instead ("meets the 70% target").
-- **Anchor week:** the selected week if settled; otherwise the latest settled week. The
-  headline never quotes a provisional or in-progress week as final — if the user selects
-  one, the header carries an explicit "(in progress — projected)" / "(still settling)"
-  label.
+- **Anchor week:** the selected week if settled or provisional; the in-progress week
+  never anchors the header (selecting it falls back to the latest settled week — its
+  projection stays visible on the chart point, whisker, and tooltip). A provisional
+  anchor carries an explicit "(still settling)" label. *(Amended post-review: stricter
+  than the original "(in progress — projected)" labelled-headline wording, per the
+  final review's honest-states finding N1.)*
 
 ## Week states
 
