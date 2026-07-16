@@ -189,3 +189,67 @@ provisional/projected styling; dark theme; PNG export includes band/target.
 - Learned weekday logging curve (needs day-grain export columns; revisit only if the
   linear projection proves misleading in practice).
 - Server/model changes, cache changes, other panels.
+
+---
+
+# V2 — Glance / Explore layering (2026-07-16 stakeholder feedback)
+
+The v1 build implemented the right elements but rendered them all at "glance height."
+V2 splits the panel into two states. Nothing is deleted except the capacity backdrop;
+the fair-scope framing is explicitly protected.
+
+## Glance layer (always visible — header height)
+
+- **Hero**, anchored to the **latest settled week only** (settled weeks are the only
+  possible anchor in v2 — selecting the provisional or live week falls back to the
+  latest settled week; those weeks live on the chart, never in the header):
+  big %, "utilization · <iso>", plus a **one-word verdict chip** computed from the
+  control band by a new pure `utilVerdict_(u, stats)`:
+  `below` (u < lo) / `above` (u > hi) / `normal` — chip text "Below normal" (warn
+  color) / "Above normal" (pos) / "Normal" (muted). No band (<4 settled weeks) → no chip.
+- Identity sentence + target gap unchanged (gap stays **hours only** — the feedback's
+  "and dollars" is overruled by the standing project-level-billing decision).
+- **Population stated once, and it ties out** (replaces both v1 lines):
+  "measures <covered> of <scope> tracking-required people · <scope−covered> without
+  capacity data this week · <NT> non-tracking + <M> managers excluded" — covered =
+  `ut.covered[anchor]`, scope = active npList length, so covered + without = scope.
+  The old trackedOnly footnote sentence in the so-what is dropped (superseded).
+- **Explore ▸ / Explore ▾ button** toggling the explore layer (`UTIL_EXPLORE_OPEN`,
+  default false, not persisted). When the verdict is `below`, the button is visually
+  emphasized (warn-colored border/text) — the "want to know why?" invitation.
+
+## Explore layer (one click away — contains everything else)
+
+Wrapped in a container hidden until `UTIL_EXPLORE_OPEN`. Contains, in order: scope
+chips + CSV button, the chart, the legend, the so-what line, the contribution drill.
+
+- **Chart declutter:**
+  - The capacity-hours backdrop series is REMOVED (it plotted hours on a % axis).
+    Its legend entry goes too. With it gone, capacity-only future weeks carry no ink —
+    the week domain now ENDS at the current ISO week (capacity-only weeks after
+    `CURRENT_ISO` are excluded from `cw`).
+  - **% labels only on the anchor week and the two domain endpoints** (first week,
+    and the last settled/provisional point). The live week's stacked point label is
+    replaced by a single small two-line callout near the projected point:
+    "projected N%" + "(lo–hi)" — drawn once, offset right/below to avoid the whisker.
+  - The **anchor week** (not SEL_ISO, not the live week) gets the blue emphasized
+    x-axis label; the live week renders as the faint dashed tail it already is.
+  - Clicking a settled week re-anchors hero + verdict + so-what + drill together
+    (existing capChartNav_ path; anchor rule above).
+- **Scope chips restyled** to the file's `.chip-toggle` pattern (same design as the
+  Planned vs Tracked billing chips): one `chip-toggle` group holding the two toggle
+  buttons ("＋ non-tracking roles", "＋ managers") and retaining the live delta text
+  when on. The bespoke `.uchip` CSS is removed. CSV button sits beside the group.
+- **Drill, sentence-first:** same settled anchor as the hero. Leads with a finding
+  sentence derived from the top contributor:
+  "The <drop/rise> came almost entirely from <Group> (−5.6 pp)." — "almost entirely"
+  when the top |pp| ≥ 60% of the total |move|, else "was driven by <G1> (−x pp) and
+  <G2> (−y pp)". Then **top-3 bars** + one collapsed row "N others (±x pp net)".
+  The "Bars sum to the total move: −9.9 pp" line becomes a muted hint. Dimension
+  switcher unchanged.
+
+## Unchanged / protected
+
+- All UTIL-PURE math, CSV Group column + chip-independence, projection math, chip
+  semantics and deltas, People-filter scoping, PNG export, capacityError recovery
+  (which now also hides the explore toggle), no-names rule, no server/cache changes.
