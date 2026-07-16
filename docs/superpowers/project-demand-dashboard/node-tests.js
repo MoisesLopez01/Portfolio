@@ -96,9 +96,10 @@ function _test_utilizationCsv_() {
   var trk = { "alice": { "2026.W14": 38.55 }, "eve": { "2026.W14": 12 } };
   var names = { "alice": "Alice Doe", "eve": "=Evil()" };
   var rows = buildUtilCsvRows_(["2026.W14", "2026.W15", "2026.W16"], cap, trk, names,
-                               ["eve", "alice"], { "2026.W16": true });
+                               ["eve", "alice"], { "2026.W16": true },
+                               { "alice": "Delivery", "eve": "Non-tracking" });
 
-  assert_(JSON.stringify(rows[0]) === JSON.stringify(["User", "Week", "Capacity hrs", "Tracked hrs", "Utilization %"]), "header row");
+  assert_(JSON.stringify(rows[0]) === JSON.stringify(["User", "Week", "Capacity hrs", "Tracked hrs", "Utilization %", "Group"]), "header row gains Group");
   // Sorted by display name: Alice first, then =Evil()… actually "=Evil()" < "Alice Doe" lexically — verify deterministic sort:
   var users = rows.slice(1).map(function (r) { return r[0]; });
   assert_(users.join("|").indexOf("Alice Doe") !== -1 && users.join("|").indexOf("=Evil()") !== -1, "both people present");
@@ -113,6 +114,12 @@ function _test_utilizationCsv_() {
   // Eve W14: tracked without capacity → blank capacity/util, tracked shown
   var eveW14 = rows.filter(function (r) { return r[1] === "2026.W14" && r[0] === "=Evil()"; })[0];
   assert_(eveW14 && eveW14[2] === "" && eveW14[3] === 12 && eveW14[4] === "", "tracked-no-capacity row blanks");
+
+  var aliceW14 = rows.filter(function (r) { return r[0] === "Alice Doe" && r[1] === "2026.W14"; })[0];
+  assert_(aliceW14[5] === "Delivery" && eveW14[5] === "Non-tracking", "Group column carries the population split");
+  // Missing map entry defaults to Delivery (unknowns are tracking-required by policy)
+  var rowsD = buildUtilCsvRows_(["2026.W14"], cap, trk, names, ["alice"], {}, {});
+  assert_(rowsD[1][5] === "Delivery", "missing group entry defaults to Delivery");
 
   // CSV string: formula injection guarded, numbers untouched, CRLF lines
   var csv = utilCsvString_(rows);

@@ -961,8 +961,9 @@ function round1_(n){ return Math.round(n*10)/10; }
 // only (blank tracked/util — nothing to divide yet). Blank capacity stays
 // blank, never 0. A person-week with neither a capacity cell nor tracked
 // hours emits no row.
-function buildUtilCsvRows_(isoList, capMap, trkMap, nameMap, npList, futureIsoSet){
-  var rows=[["User","Week","Capacity hrs","Tracked hrs","Utilization %"]];
+// groupByNp: np → "Delivery"|"Manager"|"Non-tracking" — appended as the last column; missing entries default to Delivery.
+function buildUtilCsvRows_(isoList, capMap, trkMap, nameMap, npList, futureIsoSet, groupByNp){
+  var rows=[["User","Week","Capacity hrs","Tracked hrs","Utilization %","Group"]];
   var sorted=npList.slice().sort(function(a,b){
     var an=nameMap[a]||a, bn=nameMap[b]||b;
     return an<bn?-1:(an>bn?1:0);
@@ -977,7 +978,7 @@ function buildUtilCsvRows_(isoList, capMap, trkMap, nameMap, npList, futureIsoSe
       var capCell = hasCap ? round1_(cw[iso]) : "";
       var trkCell = isFut ? "" : round1_(trkVal);
       var utilCell = (!isFut && hasCap && cw[iso]>0) ? round1_(trkVal/cw[iso]*100) : "";
-      rows.push([nameMap[np]||np, iso, capCell, trkCell, utilCell]);
+      rows.push([nameMap[np]||np, iso, capCell, trkCell, utilCell, (groupByNp&&groupByNp[np])||"Delivery"]);
     });
   });
   return rows;
@@ -1686,7 +1687,14 @@ function downloadUtilCsv_(){
   var nameMap=Object.assign({}, DATA.displayNames||{}, DATA.capacityNames||{});
   var curOrd=isoOrd(CURRENT_ISO);
   var fut={}; capIsos.forEach(function(iso){ if(isoOrd(iso)>curOrd) fut[iso]=true; });
-  var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, nameMap, npList, fut);
+  var split=utilSplitPopulation_(npList, DATA.personMeta||{}, UTIL_TRACKING_FAMILIES);
+  var groupByNp={};
+  split.delivery.forEach(function(np){ groupByNp[np]='Delivery'; });
+  split.managers.forEach(function(np){ groupByNp[np]='Manager'; });
+  split.nonTracking.forEach(function(np){ groupByNp[np]='Non-tracking'; });
+  // CSV is the audit artifact: ALWAYS the full population (all three groups),
+  // regardless of the panel's chip state. People filters still apply via npList.
+  var rows=buildUtilCsvRows_(capIsos, DATA.personWeekCapacity||{}, DATA.personWeekTracked||{}, nameMap, npList, fut, groupByNp);
   var blob=new Blob(['\ufeff'+utilCsvString_(rows)], {type:'text/csv;charset=utf-8'});  // BOM: Excel opens accented names correctly
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
