@@ -866,6 +866,7 @@ var UTIL_TRACKING_FAMILIES = [
 ];
 var UTIL_TARGET     = 70;  // % — proven level for the delivery families, not aspirational
 var UTIL_BAND_WEEKS = 8;   // trailing settled weeks for the control band (needs ≥4 to draw)
+var UTIL_LOW_RATIO  = 0.6; // person-week flagged ⚠ low when tracked < this share of PTO-adjusted capacity
 
 /* ==UTIL-PURE-START== */
 /* Pure utilization math + CSV builders — NO DOM/global access. node-tests.js
@@ -1004,6 +1005,36 @@ function utilVerdict_(u, stats){
   if (u < stats.lo) return "below";
   if (u > stats.hi) return "above";
   return "normal";
+}
+
+// PTO-adjusted capacity: every EXISTING capacity cell becomes max(0, cap − pto).
+// Blank stays blank — PTO alone never creates a cell (the coverage rule keeps
+// deciding who counts). Public holidays are already excluded upstream by the
+// Tempo user-schedule, so this only subtracts personal time off. Pure; does not
+// mutate its inputs.
+function utilAdjustCap_(capMap, ptoMap){
+  var out = {};
+  Object.keys(capMap).forEach(function(np){
+    out[np] = {};
+    var cw = capMap[np], pw = ptoMap[np] || {};
+    Object.keys(cw).forEach(function(iso){
+      out[np][iso] = Math.max(0, (cw[iso] || 0) - (pw[iso] || 0));
+    });
+  });
+  return out;
+}
+
+// One person-week under the PTO safeguard. cap/pto/tracked are hours; hasCap says
+// whether a real capacity cell exists (blank ≠ 0). fullPto (pto ≥ fullPtoRatio×cap)
+// exempts the week from the low flag entirely — nobody is penalised for approved
+// time off. low = tracked < lowRatio × adjusted, only when adjusted > 0.
+function utilPersonWeek_(cap, pto, tracked, hasCap, fullPtoRatio, lowRatio){
+  if (!hasCap) return { adj: null, util: null, fullPto: false, low: false };
+  var adj = Math.max(0, (cap || 0) - (pto || 0));
+  var fullPto = (cap || 0) > 0 && (pto || 0) >= fullPtoRatio * cap;
+  var util = adj > 0 ? tracked / adj * 100 : null;
+  var low = !fullPto && adj > 0 && tracked < lowRatio * adj;
+  return { adj: adj, util: util, fullPto: fullPto, low: low };
 }
 
 function round1_(n){ return Math.round(n*10)/10; }

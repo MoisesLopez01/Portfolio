@@ -246,6 +246,42 @@ function _test_utilVerdict_() {
   Logger.log("✅ _test_utilVerdict_ passed");
 }
 
+function _test_utilAdjustCap_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilAdjustCap_: " + msg); }
+  var cap = { "a": { W1: 40, W2: 0 }, "b": { W1: 38 }, "c": {} };
+  var pto = { "a": { W1: 8, W2: 4 }, "b": { W1: 45 } };   // b: PTO exceeds capacity
+  var adj = utilAdjustCap_(cap, pto);
+  assert_(adj.a.W1 === 32, "40 cap − 8 PTO = 32");
+  assert_(adj.a.W2 === 0, "explicit 0 cap stays 0 (PTO can't go negative)");
+  assert_(adj.b.W1 === 0, "PTO > cap clamps at 0");
+  assert_(!("W3" in adj.a) && Object.keys(adj.c).length === 0, "no invented cells — blank stays blank");
+  assert_(cap.a.W1 === 40, "input map not mutated");
+  // PTO for a week with no capacity cell must NOT create one
+  var adj2 = utilAdjustCap_({ "d": {} }, { "d": { W1: 8 } });
+  assert_(Object.keys(adj2.d).length === 0, "PTO alone never creates a capacity cell");
+  Logger.log("✅ _test_utilAdjustCap_ passed");
+}
+
+function _test_utilPersonWeek_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilPersonWeek_: " + msg); }
+  // fullPto: pto >= 0.75*cap → exempt from low flag regardless of tracked
+  var w = utilPersonWeek_(40, 32, 0, true, 0.75, 0.6);
+  assert_(w.adj === 8 && w.fullPto === true && w.low === false, "full-PTO week never flagged low");
+  // low: tracked < 0.6*adjusted
+  var w2 = utilPersonWeek_(40, 8, 15, true, 0.75, 0.6);
+  assert_(w2.adj === 32 && w2.fullPto === false && w2.low === true, "15 < 0.6×32 → low");
+  assert_(Math.abs(w2.util - 15 / 32 * 100) < 1e-9, "util vs ADJUSTED capacity");
+  var w3 = utilPersonWeek_(40, 0, 30, true, 0.75, 0.6);
+  assert_(w3.low === false && Math.abs(w3.util - 75) < 1e-9, "30/40 ok, not low");
+  // adjusted 0 → util null, never low
+  var w4 = utilPersonWeek_(40, 40, 0, true, 0.75, 0.6);
+  assert_(w4.adj === 0 && w4.util === null && w4.low === false, "zeroed capacity → util null, no flag");
+  // no capacity cell → everything null/false
+  var w5 = utilPersonWeek_(0, 0, 12, false, 0.75, 0.6);
+  assert_(w5.adj === null && w5.util === null && w5.low === false && w5.fullPto === false, "no capacity data → null row");
+  Logger.log("✅ _test_utilPersonWeek_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
@@ -254,5 +290,7 @@ _test_utilProjection_();
 _test_utilDecompose_();
 _test_utilIdentity_();
 _test_utilVerdict_();
+_test_utilAdjustCap_();
+_test_utilPersonWeek_();
 
 console.log("✅ node-tests: all suites passed");
