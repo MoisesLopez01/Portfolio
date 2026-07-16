@@ -1810,20 +1810,47 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
 
   var d=utilDecompose_(anchor, prev, groups, capMap, trkMap);
   if(!d){ el.innerHTML=head+'<div class="hint" style="margin-top:6px">Not enough capacity data on both weeks to decompose.</div>'; return; }
+
+  var total=0; d.forEach(function(g){ total+=g.pp; });
+  var fmtPp=function(v){ return (v>=0?'+':'')+Math.round(v*10)/10; };
+
+  // Finding sentence — leads the drill, before any bars.
+  if(Math.abs(total)<0.05){
+    el.innerHTML=head+'<div style="margin-top:6px">No meaningful move vs '+esc(prev)+'.</div>';
+    return;
+  }
+  var dir=total<0?'drop':'rise';
+  var top=d[0];
+  var sentence;
+  if(d.length===1 || Math.abs(top.pp)>=0.6*Math.abs(total)){
+    sentence='The '+dir+' came almost entirely from <b>'+esc(top.key)+'</b> ('+fmtPp(top.pp)+' pp).';
+  } else {
+    sentence='The '+dir+' was driven by <b>'+esc(d[0].key)+'</b> ('+fmtPp(d[0].pp)+' pp) and <b>'+esc(d[1].key)+'</b> ('+fmtPp(d[1].pp)+' pp).';
+  }
+
+  // Bars: top-3 qualifying groups (|pp|>=0.05, from the sorted d) + one collapsed tail row.
   var maxAbs=0.001;
   d.forEach(function(g){ maxAbs=Math.max(maxAbs, Math.abs(g.pp)); });
-  var rows=d.filter(function(g){ return Math.abs(g.pp)>=0.05; }).map(function(g){
+  var qualifying=d.filter(function(g){ return Math.abs(g.pp)>=0.05; });
+  var top3=qualifying.slice(0,3);
+  var rows=top3.map(function(g){
     var wpx=Math.max(2, Math.abs(g.pp)/maxAbs*160);
     var col=g.pp>=0?hexVar('--pos'):hexVar('--warn');
     return '<div class="ud-row"><span class="ud-name" title="'+esc(g.key)+' — '+groups[g.key].length+' people">'
       +esc(g.key)+' <span class="hint">('+groups[g.key].length+')</span></span>'
       +'<span class="ud-barwrap"><span class="ud-bar" style="width:'+wpx+'px;background:'+col+'"></span></span>'
-      +'<span class="ud-pp" style="color:'+col+'">'+(g.pp>=0?'+':'')+Math.round(g.pp*10)/10+' pp</span></div>';
+      +'<span class="ud-pp" style="color:'+col+'">'+fmtPp(g.pp)+' pp</span></div>';
   });
-  var total=0; d.forEach(function(g){ total+=g.pp; });
+  if(qualifying.length>3){
+    var rest=d.slice(top3.length);
+    var restSum=0; rest.forEach(function(g){ restSum+=g.pp; });
+    rows.push('<div class="ud-row"><span class="hint">'+rest.length+' others (net '+fmtPp(restSum)+' pp)</span></div>');
+  }
+
   el.innerHTML=head
-    +'<div class="ud-rows">'+(rows.length?rows.join(''):'<div class="hint">No group moved by 0.05 pp or more.</div>')+'</div>'
-    +'<div class="hint" style="margin-top:4px">Bars sum to the total move: '+(total>=0?'+':'')+Math.round(total*10)/10+' pp. Groups only — person detail is in the CSV.</div>';
+    +'<div style="margin-top:6px">'+sentence+'</div>'
+    +'<div class="ud-rows">'+rows.join('')+'</div>'
+    +'<div class="hint" style="margin-top:4px">Top movers shown — all groups sum to the full '+fmtPp(total)+' pp move · groups only — person detail is in the CSV.</div>';
 }
 
 function utilChartHover_(e, iso){
