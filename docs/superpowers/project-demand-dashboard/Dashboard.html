@@ -1759,7 +1759,7 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
   var n=cw.length;
   var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   // % scale (left axis). Cap the domain so one outlier week can't flatten the chart.
-  var maxPct=Math.max(100, UTIL_TARGET+10, stats?stats.hi+5:0, proj&&proj.hi!=null?proj.hi+5:0);
+  var maxPct=Math.max(100, UTIL_TARGET+10, stats?stats.hi+5:0, proj&&proj.hi!=null?Math.min(proj.hi,160)+5:0);
   cw.forEach(function(wk){ var u=ut.util[wk.iso]; if(u!=null) maxPct=Math.max(maxPct,Math.min(u,160)+5); });
   var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
   var yp=function(v){return pad.t+ih-Math.min(Math.max(v,0),maxPct)/maxPct*ih;};
