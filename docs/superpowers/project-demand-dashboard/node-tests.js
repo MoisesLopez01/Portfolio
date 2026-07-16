@@ -165,9 +165,28 @@ function _test_utilControlStats_() {
   Logger.log("✅ _test_utilControlStats_ passed");
 }
 
+function _test_utilProjection_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilProjection_: " + msg); }
+  // Thu (4 elapsed workdays), 20h logged, 40h capacity → 20/(4/5)=25h pace → 62.5%
+  var p = utilProjection_(20, 40, 4, 3);
+  assert_(Math.abs(p.pct - 62.5) < 1e-9, "linear scale-up: 20h by Thu on 40h → 62.5%");
+  assert_(Math.abs(p.lo - 56.5) < 1e-9 && Math.abs(p.hi - 68.5) < 1e-9, "band = pct ± 2σ");
+  // Monday clamps to 1 elapsed day, weekend passes 5 straight through
+  assert_(Math.abs(utilProjection_(8, 40, 0, 0).pct - 100) < 1e-9, "elapsed clamped to ≥1 (8h ÷ 1/5 of 40h)");
+  assert_(Math.abs(utilProjection_(30, 40, 7, 0).pct - 75) < 1e-9, "elapsed clamped to ≤5");
+  // No sigma yet (young band) → point only, no range
+  var p2 = utilProjection_(20, 40, 4, null);
+  assert_(p2.lo === null && p2.hi === null, "no sigma → no band");
+  // lo clamps at 0; no capacity → null
+  assert_(utilProjection_(0.4, 40, 5, 5).lo === 0, "lo clamped at 0");
+  assert_(utilProjection_(10, 0, 3, 2) === null, "zero capacity → null");
+  Logger.log("✅ _test_utilProjection_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
 _test_utilControlStats_();
+_test_utilProjection_();
 
 console.log("✅ node-tests: all suites passed");

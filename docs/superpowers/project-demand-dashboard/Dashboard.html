@@ -893,6 +893,22 @@ function utilControlStats_(utilByIso, settledIsos, bandWeeks){
   return { mean: mean, sigma: sigma, lo: Math.max(0, mean - 2 * sigma), hi: mean + 2 * sigma, n: vals.length };
 }
 
+// Linear elapsed-workday projection for the in-progress week: assume the pace
+// so far (trackedSoFar over elapsed/5 of the week) holds through Friday.
+// elapsedWorkdays counts Mon..today INCLUSIVE (today's hours are already in the
+// numerator), clamped to [1,5] — callers pass 5 on weekends. The band reuses
+// the control band's σ; null σ (band too young) → point estimate only.
+function utilProjection_(trackedSoFar, capacity, elapsedWorkdays, sigma){
+  if (!(capacity > 0)) return null;
+  var d = Math.min(5, Math.max(1, elapsedWorkdays));
+  var pct = (trackedSoFar / (d / 5)) / capacity * 100;
+  return {
+    pct: pct,
+    lo: sigma != null ? Math.max(0, pct - 2 * sigma) : null,
+    hi: sigma != null ? pct + 2 * sigma : null
+  };
+}
+
 function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.
