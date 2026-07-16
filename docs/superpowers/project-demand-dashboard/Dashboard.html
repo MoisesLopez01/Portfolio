@@ -572,7 +572,7 @@ input[type=file]{display:none}
         <div class="panel-tools">
           <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects People filters above</div>
           <span class="hint" id="billableRatioChip"></span>
-          <div class="chip-toggle" id="billingFilter" title="Tracked billing — filters tracked-hour figures only; planned demand is unaffected. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version (possible missing revenue attribution) · Unclassified = no Jira Raw match">
+          <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — HIDDEN for now (billing classification not reliable yet); BILLING_FILTER stays 'all' so tracked figures are never scoped. Remove this display:none to restore. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
             <button data-billing="Billable">Billable</button>
             <button data-billing="Internal">Internal</button>
