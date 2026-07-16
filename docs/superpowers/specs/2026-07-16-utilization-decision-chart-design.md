@@ -253,3 +253,70 @@ chips + CSV button, the chart, the legend, the so-what line, the contribution dr
 - All UTIL-PURE math, CSV Group column + chip-independence, projection math, chip
   semantics and deltas, People-filter scoping, PNG export, capacityError recovery
   (which now also hides the explore toggle), no-names rule, no server/cache changes.
+
+---
+
+# V3 — PTO-adjusted capacity, Hours view, People detail (2026-07-16 stakeholder feedback round 3)
+
+## 1. PTO-adjusted capacity (foundation — changes the numbers)
+
+**Rule (user directive):** PTO reduces capacity. A 40 h schedule week with 8 h PTO is a
+32 h week. Public holidays are already excluded upstream (the Tempo user-schedule that
+feeds the Capacity Tempo sheet respects holiday schemes) — PTO comes from
+`DATA.personWeekPTO` (np → iso → hrs, already shipped to the client).
+
+- New pure `utilAdjustCap_(capMap, ptoMap)` → a same-shaped capacity map where every
+  EXISTING capacity cell becomes `max(0, cap − pto)`. Blank cells stay blank (never
+  invent a cell from PTO alone); explicit 0 stays 0.
+- The adjusted map feeds EVERYTHING that consumed `personWeekCapacity`: headline
+  utilization, coverage (identity), gap hours, control band, projection, chip deltas,
+  decomposition, chart, tooltips. The headline value therefore changes at deploy —
+  fairly (upward in PTO-heavy weeks).
+- **CSV** gains two columns; new schema:
+  `User, Week, Capacity hrs, PTO hrs, Adjusted hrs, Tracked hrs, Utilization %, Group`
+  — Utilization % computed against Adjusted hrs; PTO cell blank when 0; Adjusted blank
+  when Capacity blank.
+- **Safeguard flags:** a person-week with `pto ≥ PTO_FULL_THRESHOLD × cap` (reuses the
+  dashboard's 0.75 constant) is a **full-PTO week** — 🏖, never flagged low. Low
+  tracking = `tracked < UTIL_LOW_RATIO × adjusted` with `adjusted > 0` and not
+  full-PTO. New CONFIG `UTIL_LOW_RATIO = 0.6`.
+- Pure `utilPersonWeek_(cap, pto, tracked, hasCap)` → `{adj, util, fullPto, low}`
+  encapsulates the rule (node-tested); the table and CSV both use it.
+- **Manager note**, shown at the people table and echoed in the panel hint:
+  "Capacity is holiday- and PTO-adjusted — a 40 h week with 8 h of PTO counts as 32 h.
+  People mostly on PTO in a week are never flagged."
+
+## 2. Chart: Hours | Rate toggle (default Hours)
+
+- A second `.chip-toggle` (`#utilChartMode`: "Hours" | "Rate") in `.util-tools`;
+  state `UTIL_CHART_MODE = 'hours'` (default, not persisted).
+- **Hours view (new, default):** y-axis in hours. Adjusted-capacity AREA (slate,
+  soft fill + line), tracked AREA on top (pos green, softer fill + line). Utilization
+  rate labelled at EVERY settled point (`Math.round%`), provisional point hollow amber
+  with `˜` label, live week: capacity line continues solid, tracked segment dashed
+  ghost (logged-so-far, labelled `*`). No band/target/projection here (they are
+  %-space; the verdict chip still carries the band). Same hover/click hit-columns.
+- **Rate view:** the existing %-space chart, unchanged (band, target, projection,
+  callout).
+- Legend adapts per mode. PNG captures whichever mode is on screen.
+
+## 3. People detail — expandable table (names allowed here)
+
+Placed in the explore layer under the drill; header row toggles it
+(`UTIL_PEOPLE_OPEN`, default false): "▸ People detail — <anchor>" + the manager note.
+
+- One row per person in the ACTIVE population (chips respected) **plus** tracked-only
+  people (no capacity row → capacity cells show —): Name (displayNames fallback np),
+  Group, Capacity, PTO, Adjusted, Tracked, Util %, flag chips: ⚠ low · 🏖 PTO ·
+  "no capacity data". Anchor week's numbers.
+- Sort: flagged-low first, then util ascending, then name. Row click expands that
+  person's week-by-week history (every capacity week ≤ current): same columns per week
+  with the same flags (all PTO-adjusted).
+- This is the sanctioned names surface (expandable detail rows) — chart-area
+  verdicts/sentences stay names-free.
+
+## Unchanged / protected
+
+Glance layer semantics (verdict, identity, reconciled population line), drill
+behavior (now reading adjusted capacity), CSV chip-independence, fair-scope chips,
+no dollars, client-only (no Code.js change, no cache bump).
