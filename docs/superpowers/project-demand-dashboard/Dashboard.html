@@ -123,6 +123,30 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .sowhat b{color:var(--text)}
 .sowhat.warn{border-left-color:var(--warn)} .sowhat.ok{border-left-color:var(--pos)}
 
+/* Utilization panel: population chips, identity header, contribution drill */
+.uchip{border:1px solid var(--border);border-radius:12px;background:transparent;color:var(--muted);
+  font-size:calc(11px*var(--scale));padding:4px 10px;cursor:pointer;white-space:nowrap}
+.uchip.on{background:var(--void);border-color:var(--void);color:#fff}
+[data-theme="dark"] .uchip.on{background:var(--orbe);border-color:var(--orbe)}
+.util-head{margin:4px 0 8px}
+.util-head .uh-big{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+  font-size:calc(26px*var(--scale));font-weight:700}
+.util-head .uh-big .uh-when{font-size:calc(12px*var(--scale));font-weight:400;color:var(--muted)}
+.util-head .uh-identity{font-size:calc(13px*var(--scale));margin-top:2px}
+.util-head .uh-pop{font-size:calc(11px*var(--scale));color:var(--muted);margin-top:2px}
+.util-drill{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px;font-size:calc(12px*var(--scale))}
+.util-drill .ud-toggle{cursor:pointer;font-weight:700}
+.util-drill .ud-dim{margin-left:10px}
+.util-drill .ud-dim button{border:none;background:transparent;color:var(--muted);cursor:pointer;
+  font-size:calc(11px*var(--scale));padding:2px 6px;border-radius:6px}
+.util-drill .ud-dim button.on{background:var(--surface-2);color:var(--text);font-weight:700}
+.util-drill .ud-rows{margin-top:6px}
+.util-drill .ud-row{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:calc(11px*var(--scale))}
+.util-drill .ud-name{flex:0 0 220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.util-drill .ud-barwrap{flex:1;display:flex;align-items:center}
+.util-drill .ud-bar{height:9px;border-radius:4px}
+.util-drill .ud-pp{flex:0 0 70px;text-align:right;font-weight:700}
+
 /* Capacity headline band */
 .capwrap{display:grid;grid-template-columns:calc(280px*var(--scale)) 1fr;gap:20px;align-items:center}
 @media(max-width:760px){.capwrap{grid-template-columns:1fr}}
@@ -550,19 +574,23 @@ input[type=file]{display:none}
       <div class="sowhat" id="capSoWhat"></div>
     </div>
 
-    <!-- 1c. Utilization — tracked hours ÷ Tempo work-schedule capacity -->
+    <!-- 1c. Utilization — decision-grade: tracking-required population, coverage × fidelity, control band -->
     <div class="panel" id="utilPanel" data-view="overview">
-      <div class="panel-h">
-        <h2>Utilization</h2>
-        <div class="panel-tools">
-          <div class="hint">Tracked hours (green) ÷ Tempo work-schedule capacity (gray) · utilization % per week · capacity comes from the weekly "Capacity Tempo" export (part-time schedules, holidays &amp; Sun–Thu weeks respected) · dashed = future capacity · ghosted + hollow point = current week still logging · % counts only people with capacity data that week · billing chips do not apply (utilization is whole-tracked) · reflects People filters above</div>
-          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full range (past, current &amp; future weeks), respects the People filters">⇣ CSV</button>
+      <div class="panel-head">
+        <h2>Utilization — Delivery</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="hint">Tracked ÷ Tempo schedule capacity for tracking-required roles (delivery job families) · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · shaded band = normal week-to-week variation · hollow points = still settling / projected · % counts only people with capacity data that week · billing chips do not apply · reflects People filters above</div>
+          <button class="uchip" id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem">＋ non-tracking roles</button>
+          <button class="uchip" id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator">＋ managers</button>
+          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full range and FULL population (Delivery + Manager + Non-tracking, with a Group column), regardless of the chips; respects the People filters">⇣ CSV</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
       </div>
+      <div class="util-head" id="utilHead"></div>
       <div id="utilChart"></div>
       <div class="cap-legend" id="utilLegend"></div>
       <div class="sowhat" id="utilSoWhat"></div>
+      <div class="util-drill" id="utilDrill"></div>
     </div>
 
     <!-- 1b. Team Availability -->
@@ -1493,7 +1521,15 @@ function renderCapChart(wt,cw){
 // Server fields: DATA.personWeekCapacity (np → iso → hrs, Services-scoped),
 // DATA.capacityIsoList (every sheet week incl. future), DATA.capacityNames,
 // DATA.capacityError. Math/CSV builders live in the UTIL-PURE block above.
-var UTIL_WT=null, UTIL_CW=null;
+var UTIL_WT=null, UTIL_CW=null;                 // last-render totals + week list (tooltips)
+var UTIL_INC_NT=false, UTIL_INC_MGR=false;      // population chips (panel-local, not persisted)
+var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
+var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
+
+function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; renderUtilization(); }
+function utilToggleMgr_(){ UTIL_INC_MGR=!UTIL_INC_MGR; renderUtilization(); }
+// Mon..today inclusive as elapsed workdays; Sat/Sun count the week as fully elapsed.
+function utilElapsedWorkdays_(){ var d=new Date().getDay(); return (d===0||d===6)?5:d; }
 
 // People in scope for utilization: the filtered set when a People filter is
 // active, else everyone with capacity or tracked data (all Services-scoped).
