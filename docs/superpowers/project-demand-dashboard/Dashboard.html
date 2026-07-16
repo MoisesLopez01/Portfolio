@@ -1751,7 +1751,7 @@ function renderUtilSoWhat_(anchor, ut, stats){
   var el=$('utilSoWhat'); if(!el) return;
   var sw, cls='';
   if(anchor==null){
-    sw='<b>No completed week has both capacity and tracked data yet.</b> Future capacity is charted (dashed) as it loads from the Friday export.';
+    sw='<b>No completed week has both capacity and tracked data yet.</b> Utilization will appear once the first completed week has both.';
   } else {
     var u=ut.util[anchor], uPct=Math.round(u);
     var inBand = stats && u>=stats.lo && u<=stats.hi;
