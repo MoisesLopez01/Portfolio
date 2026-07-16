@@ -891,12 +891,12 @@ function utilWeekTotals_(isos, capMap, trkMap, npList){
 // known non-allowlist family. Family match is case-insensitive.
 function utilSplitPopulation_(npList, metaMap, families){
   var famSet = {};
-  (families || []).forEach(function(f){ famSet[String(f).toLowerCase()] = true; });
+  (families || []).forEach(function(f){ famSet[String(f).trim().toLowerCase()] = true; });
   var out = { delivery: [], managers: [], nonTracking: [] };
   npList.forEach(function(np){
     var m = metaMap[np];
     if (m && m.isManager) { out.managers.push(np); return; }
-    var fam = (m && m.jobFamily) ? String(m.jobFamily).toLowerCase() : '';
+    var fam = (m && m.jobFamily) ? String(m.jobFamily).trim().toLowerCase() : '';
     if (!fam || famSet[fam]) { out.delivery.push(np); return; }
     out.nonTracking.push(np);
   });
@@ -1558,6 +1558,8 @@ function renderUtilization(){
       +(DATA&&DATA.capacityError?' — '+esc(DATA.capacityError):'')
       +' Run fetchTempoCapacity() in the Tempo export project, then ↻ Refresh.';
     if(csvBtn) csvBtn.style.display='none';
+    var cNt=$('utilChipNt'); if(cNt) cNt.style.display='none';
+    var cMg=$('utilChipMgr'); if(cMg) cMg.style.display='none';
     return;
   }
   if(csvBtn) csvBtn.style.display='';
@@ -1605,9 +1607,9 @@ function renderUtilization(){
   // Anchor: the selected week when it has data (labelled if not settled),
   // else the latest settled week — the headline never quotes a live week as final.
   var anchor=null, anchorState='settled';
-  if(ut.util[SEL_ISO]!=null && cw.some(function(w){return w.iso===SEL_ISO && w.status!=='plan';})){
+  if(SEL_ISO!==CURRENT_ISO && ut.util[SEL_ISO]!=null && cw.some(function(w){return w.iso===SEL_ISO && w.status!=='plan';})){
     anchor=SEL_ISO;
-    anchorState = SEL_ISO===projIso?'projected':(SEL_ISO===provisionalIso?'provisional':'settled');
+    anchorState = SEL_ISO===provisionalIso?'provisional':'settled';
   } else {
     for(var j=settledIsos.length-1;j>=0;j--){
       if(ut.util[settledIsos[j]]!=null){ anchor=settledIsos[j]; break; }
@@ -1630,8 +1632,7 @@ function renderUtilHeader_(anchor, anchorState, npList, capMap, trkMap, split){
   var el=$('utilHead'); if(!el) return;
   if(anchor==null){ el.innerHTML=''; return; }
   var id=utilIdentity_(anchor, npList, capMap, trkMap, DATA.personWeekPlan||{}, utilCapHrsMap_(npList));
-  var stateLbl = anchorState==='projected' ? ' (in progress — projected)'
-               : anchorState==='provisional' ? ' (still settling)' : '';
+  var stateLbl = anchorState==='provisional' ? ' (still settling)' : '';
   var h='<div class="uh-big">'+(id.util!=null?Math.round(id.util)+'%':'—')
     +' <span class="uh-when">utilization · '+esc(anchor)+esc(stateLbl)+'</span></div>';
   var parts=[];
@@ -1697,7 +1698,7 @@ function renderUtilChips_(anchor, split, capMap, trkMap){
 
 function renderUtilLegend_(hasBand, hasProj){
   var el=$('utilLegend'); if(!el) return;
-  var h='<span><i style="background:'+hexVar('--void')+'"></i>Utilization %</span>';
+  var h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
   if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
   h+='<span><i style="background:'+hexVar('--pos')+'"></i>Target '+UTIL_TARGET+'%</span>'
     +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>';
@@ -1727,8 +1728,7 @@ function renderUtilSoWhat_(anchor, anchorState, ut, stats){
       sw+=' <span class="hint">'+ut.trackedOnly[anchor]+' tracked '
         +(ut.trackedOnly[anchor]===1?'person has':'people have')+' no capacity data this week — excluded from the %.</span>';
     }
-    if(anchorState!=='settled') sw+=' <span class="hint">'
-      +(anchorState==='projected'?'Week in progress — value is a projection.':'Late logging may still move this week.')+'</span>';
+    if(anchorState!=='settled') sw+=' <span class="hint">Late logging may still move this week.</span>';
   }
   el.className='sowhat '+cls;
   el.innerHTML=sw;
@@ -1788,7 +1788,7 @@ function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
   });
   var total=0; d.forEach(function(g){ total+=g.pp; });
   el.innerHTML=head
-    +'<div class="ud-rows">'+(rows.length?rows.join(''):'<div class="hint">No group moved more than 0.1 pp.</div>')+'</div>'
+    +'<div class="ud-rows">'+(rows.length?rows.join(''):'<div class="hint">No group moved by 0.05 pp or more.</div>')+'</div>'
     +'<div class="hint" style="margin-top:4px">Bars sum to the total move: '+(total>=0?'+':'')+Math.round(total*10)/10+' pp. Groups only — person detail is in the CSV.</div>';
 }
 
@@ -1874,8 +1874,8 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
   for(var ui=1;ui<uPts.length;ui++){
     var a=uPts[ui-1],b=uPts[ui];
     var seg = b.state==='proj' ? ' stroke="'+hexVar('--slate')+'" stroke-dasharray="3 4"'
-            : b.state==='prov' ? ' stroke="'+hexVar('--void')+'" stroke-dasharray="4 3"'
-            : ' stroke="'+hexVar('--void')+'"';
+            : b.state==='prov' ? ' stroke="'+hexVar('--text')+'" stroke-dasharray="4 3"'
+            : ' stroke="'+hexVar('--text')+'"';
     g+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"'+seg+' stroke-width="2.4"/>';
   }
   // projection range whisker (before the points so points sit on top)
@@ -1887,7 +1887,7 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
   }
   uPts.forEach(function(p){
     if(p.state==='settled'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--void')+'"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--text')+'"/>';
     } else if(p.state==='prov'){
       g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--amber')+'" stroke-width="2"/>';
     } else {
@@ -1899,7 +1899,7 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
     var lbl=Math.round(p.v)+'%';
     if(p.state==='prov') lbl+='˜';
     if(p.state==='proj') lbl+='*';
-    g+='<text x="'+p.x+'" y="'+(p.y-8)+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--void'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
+    g+='<text x="'+p.x+'" y="'+(p.y-8)+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
   });
 
   // hit-columns + thinned week labels (same interaction as before)
