@@ -613,6 +613,11 @@ input[type=file]{display:none}
             <button id="utilModeHours" onclick="utilSetMode_('hours')">Hours</button>
             <button id="utilModeRate" onclick="utilSetMode_('rate')">Rate</button>
           </div>
+          <div class="chip-toggle" id="utilWinNav">
+            <button id="utilWinPrev" onclick="utilWinShift_(1)" title="Earlier weeks">◀</button>
+            <button id="utilWinNext" onclick="utilWinShift_(-1)" title="Later weeks">▶</button>
+          </div>
+          <span class="hint" id="utilWinLbl"></span>
           <!-- population scope chips moved to the People filters bar (universal — see #scopeChips) -->
           <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full population (Delivery + Manager + Non-tracking, Group column), regardless of the toggles; respects the People filters">⇣ CSV</button>
         </div>
@@ -1612,6 +1617,8 @@ var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) �
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
 var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
 function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
+var UTIL_WIN_WEEKS=16, UTIL_WIN_PAGE=0;          // chart week-window pager: 0 = latest window, 1 = one earlier…
+function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
 
 function utilToggleNt_(){ UTIL_INC_NT=!UTIL_INC_NT; renderUtilization(); }
@@ -1727,8 +1734,19 @@ function renderUtilization(){
     if(utilModeHoursBtn) utilModeHoursBtn.className = UTIL_CHART_MODE==='hours'?'on':'';
     if(utilModeRateBtn)  utilModeRateBtn.className  = UTIL_CHART_MODE==='rate'?'on':'';
     renderUtilLegend_(stats!=null, proj!=null, UTIL_CHART_MODE);
-    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cw, provisionalIso, anchor);
-    else renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor);
+    // Week-window pager: charts draw UTIL_WIN_WEEKS at a time, ◀ pages back through
+    // the full history. Headline, band, anchor and projection always use the FULL
+    // range — paging never changes the numbers, only which weeks are drawn.
+    var maxPage=Math.max(0, Math.ceil(cw.length/UTIL_WIN_WEEKS)-1);
+    if(UTIL_WIN_PAGE>maxPage) UTIL_WIN_PAGE=maxPage;
+    var winEnd=cw.length-UTIL_WIN_PAGE*UTIL_WIN_WEEKS;
+    var cwWin=cw.slice(Math.max(0, winEnd-UTIL_WIN_WEEKS), winEnd);
+    var wPrev=$('utilWinPrev'), wNext=$('utilWinNext'), wLbl=$('utilWinLbl');
+    if(wPrev) wPrev.disabled=(UTIL_WIN_PAGE>=maxPage);
+    if(wNext) wNext.disabled=(UTIL_WIN_PAGE===0);
+    if(wLbl)  wLbl.textContent=cwWin.length?(cwWin[0].iso+' → '+cwWin[cwWin.length-1].iso):'';
+    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor);
+    else renderUtilChart_(ut, cwWin, stats, proj, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
     if (typeof renderUtilPeople_==='function') renderUtilPeople_(anchor, split, npList, trkMap);
@@ -2126,12 +2144,10 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
       g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
     }
   });
-  // % labels: only the anchor week and the first point get a stacked label —
-  // the projected point gets the callout above instead, and the provisional
-  // point's value lives in its tooltip.
+  // % labels on EVERY settled + provisional point (user directive — managers read
+  // the rate per week here too); the projected point keeps the callout instead.
   uPts.forEach(function(p){
     if(p.state==='proj') return;
-    if(!(p.iso===anchor || p.i===0)) return;
     var lbl=Math.round(p.v)+'%';
     if(p.state==='prov') lbl+='˜';
     g+='<text x="'+p.x+'" y="'+(p.y-8)+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
