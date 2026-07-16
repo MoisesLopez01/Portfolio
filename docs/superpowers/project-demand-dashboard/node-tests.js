@@ -205,11 +205,32 @@ function _test_utilDecompose_() {
   Logger.log("✅ _test_utilDecompose_ passed");
 }
 
+function _test_utilIdentity_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilIdentity_: " + msg); }
+  var cap  = { "a": { W1: 40 }, "b": { W1: 40 }, "c": {} };
+  var trk  = { "a": { W1: 30 }, "b": { W1: 34 }, "c": { W1: 10 } };
+  var plan = { "a": { W1: 36 }, "b": { W1: 55 }, "c": { W1: 40 } };   // b over-planned → capped at 40
+  var hrs  = { "a": 40, "b": 40, "c": 40 };
+  var id = utilIdentity_("W1", ["a", "b", "c"], cap, trk, plan, hrs);
+  // Covered: a+b. cap 80, tracked 64, planned 36+min(55,40)=76.
+  assert_(id.cap === 80 && id.tracked === 64 && id.planned === 76, "sums respect coverage rule + plan cap");
+  assert_(Math.abs(id.util - 80) < 1e-9, "util = 64/80");
+  assert_(Math.abs(id.coverage - 95) < 1e-9, "coverage = 76/80");
+  assert_(Math.abs(id.fidelity - (64 / 76 * 100)) < 1e-9, "fidelity = 64/76");
+  // The identity reconciles: coverage × fidelity = utilization
+  assert_(Math.abs(id.coverage * id.fidelity / 100 - id.util) < 1e-9, "coverage × fidelity = util");
+  // No plan data that week → coverage/fidelity null, util still real
+  var id2 = utilIdentity_("W1", ["a"], cap, trk, {}, hrs);
+  assert_(id2.coverage === null && id2.fidelity === null && id2.util !== null, "plan-less week degrades to util-only");
+  Logger.log("✅ _test_utilIdentity_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
 _test_utilControlStats_();
 _test_utilProjection_();
 _test_utilDecompose_();
+_test_utilIdentity_();
 
 console.log("✅ node-tests: all suites passed");

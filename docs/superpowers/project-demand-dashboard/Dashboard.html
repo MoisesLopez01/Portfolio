@@ -929,6 +929,31 @@ function utilDecompose_(isoW, isoPrev, groups, capMap, trkMap){
   return out;
 }
 
+// Coverage × Fidelity identity for one week over the covered population:
+//   utilization = tracked/cap,  coverage = planned/cap,  fidelity = tracked/planned
+// so coverage × fidelity = utilization by construction (planned cancels) — the
+// header can show all three and they always reconcile. Planned hours are capped
+// per person at their standard week (capHrsByNp), the SAME Math.min the Planned
+// vs Tracked panel applies, so the two panels quote identical planned figures.
+// Weeks with no plan data return null coverage/fidelity (header degrades).
+function utilIdentity_(iso, npList, capMap, trkMap, planMap, capHrsByNp){
+  var capSum = 0, trkSum = 0, planSum = 0, hasPlan = false;
+  npList.forEach(function(np){
+    var cw = capMap[np];
+    if (!(cw && (iso in cw))) return;                       // coverage rule
+    capSum += cw[iso];
+    trkSum += (trkMap[np] && trkMap[np][iso]) || 0;
+    var pw = planMap[np];
+    if (pw && (iso in pw)) { hasPlan = true; planSum += Math.min(pw[iso] || 0, capHrsByNp[np] || 40); }
+  });
+  return {
+    cap: capSum, tracked: trkSum, planned: planSum,
+    util:     capSum > 0 ? trkSum / capSum * 100 : null,
+    coverage: (capSum > 0 && hasPlan) ? planSum / capSum * 100 : null,
+    fidelity: (hasPlan && planSum > 0) ? trkSum / planSum * 100 : null
+  };
+}
+
 function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.
