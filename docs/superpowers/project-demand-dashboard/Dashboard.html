@@ -574,7 +574,7 @@ input[type=file]{display:none}
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
           <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
-          <span class="hint" id="billableRatioChip"></span>
+          <span class="hint" id="billableRatioChip" style="display:none"></span><!-- hidden with the billing toggle — same unreliable classification; remove both display:none to restore -->
           <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — HIDDEN for now (billing classification not reliable yet); BILLING_FILTER stays 'all' so tracked figures are never scoped. Remove this display:none to restore. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
             <button data-billing="Billable">Billable</button>
