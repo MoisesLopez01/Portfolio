@@ -144,8 +144,30 @@ function _test_utilSplitPopulation_() {
   Logger.log("✅ _test_utilSplitPopulation_ passed");
 }
 
+function _test_utilControlStats_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilControlStats_: " + msg); }
+  var u = { "W1": 60, "W2": 64, "W3": null, "W4": 62, "W5": 66 };  // W3: no capacity that week
+  // Only 4 numeric settled values → stats over [60,64,62,66]: mean 63, σ = sqrt(20/4)=2.236
+  var s = utilControlStats_(u, ["W1", "W2", "W3", "W4", "W5"], 8);
+  assert_(s && Math.round(s.mean) === 63, "mean over numeric settled weeks");
+  assert_(Math.abs(s.sigma - 2.2360679) < 1e-4, "population sigma");
+  assert_(Math.abs(s.lo - (63 - 2 * s.sigma)) < 1e-9 && Math.abs(s.hi - (63 + 2 * s.sigma)) < 1e-9, "lo/hi = mean ± 2σ");
+  assert_(s.n === 4, "n reports the values used");
+  // bandWeeks window: only the trailing 4 of 6 values are used
+  var u2 = { "A": 10, "B": 90, "C": 60, "D": 60, "E": 60, "F": 60 };
+  var s2 = utilControlStats_(u2, ["A", "B", "C", "D", "E", "F"], 4);
+  assert_(s2.mean === 60 && s2.sigma === 0, "trailing bandWeeks window only");
+  // Under 4 numeric values → null (band hidden)
+  assert_(utilControlStats_({ "W1": 60, "W2": 61, "W3": 62 }, ["W1", "W2", "W3"], 8) === null, "needs ≥4 settled values");
+  // lo clamps at 0
+  var s3 = utilControlStats_({ a: 1, b: 30, c: 1, d: 30 }, ["a", "b", "c", "d"], 8);
+  assert_(s3.lo === 0, "lo clamped at 0");
+  Logger.log("✅ _test_utilControlStats_ passed");
+}
+
 _test_utilizationMath_();
 _test_utilizationCsv_();
 _test_utilSplitPopulation_();
+_test_utilControlStats_();
 
 console.log("✅ node-tests: all suites passed");

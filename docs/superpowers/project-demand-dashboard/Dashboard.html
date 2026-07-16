@@ -875,6 +875,24 @@ function utilSplitPopulation_(npList, metaMap, families){
   return out;
 }
 
+// Control-band statistics: mean ± 2σ (population σ) over the trailing bandWeeks
+// SETTLED weeks that have a numeric utilization. Provisional and in-progress
+// weeks must not be in settledIsos — late logging would drag the band down.
+// Returns null when fewer than 4 numeric values exist (band hidden).
+function utilControlStats_(utilByIso, settledIsos, bandWeeks){
+  var vals = [];
+  settledIsos.forEach(function(iso){ if (utilByIso[iso] != null) vals.push(utilByIso[iso]); });
+  vals = vals.slice(-bandWeeks);
+  if (vals.length < 4) return null;
+  var mean = 0;
+  vals.forEach(function(v){ mean += v; });
+  mean /= vals.length;
+  var varSum = 0;
+  vals.forEach(function(v){ varSum += (v - mean) * (v - mean); });
+  var sigma = Math.sqrt(varSum / vals.length);
+  return { mean: mean, sigma: sigma, lo: Math.max(0, mean - 2 * sigma), hi: mean + 2 * sigma, n: vals.length };
+}
+
 function round1_(n){ return Math.round(n*10)/10; }
 
 // CSV rows (header first), person-major, people sorted by display name.
