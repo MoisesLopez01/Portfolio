@@ -1601,6 +1601,7 @@ function renderUtilization(){
     }
   });
   cw.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
+  cw=cw.filter(function(w){return w.status!=='plan';});
 
   // Population: People filters first (utilNpList_), then the tracking-required
   // split; chips add the carved-out groups back and disclose their effect.
@@ -1652,7 +1653,7 @@ function renderUtilization(){
   if(UTIL_EXPLORE_OPEN){
     renderUtilChips_(anchor, split, capMap, trkMap);
     renderUtilLegend_(stats!=null, proj!=null);
-    renderUtilChart_(ut, cw, stats, proj, provisionalIso);
+    renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
   }
@@ -1740,7 +1741,6 @@ function renderUtilLegend_(hasBand, hasProj){
   h+='<span><i style="background:'+hexVar('--pos')+'"></i>Target '+UTIL_TARGET+'%</span>'
     +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>';
   if(hasProj) h+='<span><i class="dashed"></i>Projected (current week)</span>';
-  h+='<span><i style="background:'+hexVar('--slate')+';opacity:.35"></i>Capacity backdrop (hrs)</span>';
   el.innerHTML=h;
 }
 
@@ -1847,7 +1847,7 @@ function utilChartHover_(e, iso){
   showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(cv)+' hrs capacity<br>'+fmt(tv)+' hrs tracked<br>'+esc(utxt)+covTxt+(ht?'<br>'+ht:''));
 }
 
-function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
+function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   var n=cw.length;
   var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   // % scale (left axis). Cap the domain so one outlier week can't flatten the chart.
@@ -1857,27 +1857,6 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
   var yp=function(v){return pad.t+ih-Math.min(Math.max(v,0),maxPct)/maxPct*ih;};
   var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
   var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="utilization % per week with control band, target and current-week projection">';
-
-  // future tint
-  var firstPlan=-1; cw.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
-  if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--slate')+'" opacity="0.05"/>';}
-
-  // capacity backdrop (hrs, own hidden scale): context + future-capacity visibility.
-  var capMax=1; cw.forEach(function(wk){ capMax=Math.max(capMax, ut.cap[wk.iso]||0); });
-  var yc=function(v){return pad.t+ih-Math.min(v,capMax)/capMax*ih*0.9;};
-  var capPts=[];
-  cw.forEach(function(wk,i){
-    var hasCapData=ut.util[wk.iso]!=null||((ut.cap[wk.iso]||0)>0)||((ut.covered[wk.iso]||0)>0);
-    if(hasCapData) capPts.push({x:x(i),y:yc(ut.cap[wk.iso]||0),wk:wk});
-  });
-  if(capPts.length>1){
-    var aPts=capPts.map(function(p){return p.x+','+p.y;});
-    g+='<path d="M'+capPts[0].x+','+(pad.t+ih)+' L'+aPts.join(' L')+' L'+capPts[capPts.length-1].x+','+(pad.t+ih)+' Z" fill="'+hexVar('--slate')+'" opacity="0.08"/>';
-    for(var ci=1;ci<capPts.length;ci++){
-      var dash=capPts[ci].wk.status==='plan'?' stroke-dasharray="4 3"':'';
-      g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+hexVar('--slate')+'" stroke-width="1.6" opacity="0.4"'+dash+'/>';
-    }
-  }
 
   // control band + mean (under the line)
   if(stats){
@@ -1919,6 +1898,14 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
       +'<line x1="'+(px-5)+'" y1="'+yp(proj.hi)+'" x2="'+(px+5)+'" y2="'+yp(proj.hi)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>'
       +'<line x1="'+(px-5)+'" y1="'+yp(proj.lo)+'" x2="'+(px+5)+'" y2="'+yp(proj.lo)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>';
   }
+  // projected callout (replaces the stacked % label at the live week)
+  if(proj && curIdx>=0){
+    var cx=x(curIdx)+9;
+    g+='<text x="'+cx+'" y="'+(yp(proj.pct)-2)+'" text-anchor="start" font-size="9" fill="'+css('--muted')+'">projected '+Math.round(proj.pct)+'%</text>';
+    if(proj.lo!=null){
+      g+='<text x="'+cx+'" y="'+(yp(proj.pct)+9)+'" text-anchor="start" font-size="8" fill="'+css('--muted')+'">('+Math.round(proj.lo)+'–'+Math.round(proj.hi)+')</text>';
+    }
+  }
   uPts.forEach(function(p){
     if(p.state==='settled'){
       g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--text')+'"/>';
@@ -1928,11 +1915,14 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
       g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
     }
   });
-  // % labels: settled weeks plain; provisional and projected annotated
+  // % labels: only the anchor week and the first point get a stacked label —
+  // the projected point gets the callout above instead, and the provisional
+  // point's value lives in its tooltip.
   uPts.forEach(function(p){
+    if(p.state==='proj') return;
+    if(!(p.iso===anchor || p.i===0)) return;
     var lbl=Math.round(p.v)+'%';
     if(p.state==='prov') lbl+='˜';
-    if(p.state==='proj') lbl+='*';
     g+='<text x="'+p.x+'" y="'+(p.y-8)+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
   });
 
@@ -1942,12 +1932,12 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso){
   var rectW=Math.max(10,Math.min(36,spacing));
   cw.forEach(function(wk,i){
     var lx=x(i);
-    var isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    var isAnchor=wk.iso===anchor, isCur=i===curIdx, isEdge=(i===0||i===n-1);
     g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
       +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
-    if(isSel||isCur||isEdge||i%labelStep===0){
+    if(isAnchor||isCur||isEdge||i%labelStep===0){
       var shortLbl=wk.iso.replace(/^\d{4}\./,'');
-      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isSel?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isAnchor?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isAnchor?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
     }
   });
   g+='</svg>';
