@@ -57,6 +57,16 @@ check('comment-shortfall badge kind present',
     .badges.map(b => b.kind),
   ['comments']);
 
+// ── classifyStfReason_: near-miss exception candidate (5/6, bar met) ──
+const nm = classifyStfReason_(emp({ stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 5 }));
+check('5/6 with bar met → nearMiss flag', nm.nearMiss, true);
+check('5/6 with bar met → nearmiss badge replaces needs-comments', nm.badges.map(b => b.kind), ['nearmiss']);
+check('5/6 with bar met still primary comments (not eligible)', nm.primary, 'comments');
+check('4/6 is NOT a near miss',
+  classifyStfReason_(emp({ stfGoalsCompleted: 9, stfGoalsWithSufficientComments: 4 })).nearMiss, false);
+check('5/6 WITHOUT the completion bar is NOT a near miss',
+  classifyStfReason_(emp({ stfGoalsCompleted: 7, stfGoalsWithSufficientComments: 5, goalsInProgress: 2 })).nearMiss, false);
+
 // ── buildFinanceRows_: exclusions + totals ──
 const mixed = [
   emp({ name: 'NewHire', normName: 'nh', stfGoalsCompleted: 2, isNewHire: true }),
@@ -82,6 +92,15 @@ check('withPending includes eligible people with open goals, excludes new hires'
   buildFinanceRows_(pendingMix, false).totals.withPending, 2);
 check('withPending identical in showAll mode (evaluated-wide stat)',
   buildFinanceRows_(pendingMix, true).totals.withPending, 2);
+
+// ── buildFinanceRows_: near-miss counted + carried on rows ──
+const nmModel = buildFinanceRows_([
+  emp({ name: 'Near', normName: 'nr', stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 5 }),
+  emp({ name: 'Far',  normName: 'fr', stfGoalsCompleted: 8, stfGoalsWithSufficientComments: 2 }),
+], false);
+check('totals.nearMiss counts only the 5/6 case', nmModel.totals.nearMiss, 1);
+check('row.nearMiss flag carried (worst-first: 2/6 sorts before 5/6)',
+  nmModel.rows.map(r => r.nearMiss), [false, true]);
 
 // ── buildFinanceRows_: showAll includes eligible rows, tagged + sorted last ──
 const all = buildFinanceRows_(mixed, true);

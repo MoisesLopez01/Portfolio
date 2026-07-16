@@ -900,10 +900,17 @@ function classifyStfReason_(e) {
   else if (lost > 0)                   primary = 'canceled';
   else                                 primary = 'toofew';
 
+  // Near miss = completion bar met and exactly ONE goal short of the comment
+  // bar (5/6) — flagged as a paid-STF exception candidate (a note only; the
+  // eligibility math itself never bends).
+  var nearMiss = completed >= STF_COMPLETED_BAR_ && wellCommented === STF_CMT_GOALS_BAR_ - 1;
+
   var badges = [];
   if (pending > 0) badges.push({ kind: 'pending',  text: '⏳ ' + pending + ' pending' });
   if (lost > 0)    badges.push({ kind: 'canceled', text: '✖ ' + lost + ' canceled/not-completed' });
-  if (completed >= STF_COMPLETED_BAR_ && wellCommented < STF_CMT_GOALS_BAR_) {
+  if (nearMiss) {
+    badges.push({ kind: 'nearmiss', text: '☆ exception candidate (' + wellCommented + '/' + STF_CMT_GOALS_BAR_ + ')' });
+  } else if (completed >= STF_COMPLETED_BAR_ && wellCommented < STF_CMT_GOALS_BAR_) {
     badges.push({ kind: 'comments', text: '🗨 needs comments (' + wellCommented + '/' + STF_CMT_GOALS_BAR_ + ')' });
   }
   if (primary === 'toofew') {
@@ -911,7 +918,7 @@ function classifyStfReason_(e) {
   }
 
   return {
-    primary: primary, badges: badges,
+    primary: primary, badges: badges, nearMiss: nearMiss,
     completed: completed, wellCommented: wellCommented,
     pending: pending, lost: lost, gap: gap, totalGoals: totalGoals,
   };
@@ -931,7 +938,7 @@ function buildFinanceRows_(emps, showAll) {
   //   commentsGap — completed the goal bar but short on comments (the senior-
   //     manager pattern) → same count as the 'comments' primary reason.
   var totals = { pending: 0, canceled: 0, comments: 0, toofew: 0,
-                 ineligible: 0, eligible: 0, evaluated: 0, withPending: 0 };
+                 ineligible: 0, eligible: 0, evaluated: 0, withPending: 0, nearMiss: 0 };
   var rows = [];
 
   (emps || []).forEach(function(e) {
@@ -939,7 +946,7 @@ function buildFinanceRows_(emps, showAll) {
     totals.evaluated++;
     if (((+e.goalsInProgress || 0) + (+e.goalsPlanned || 0)) > 0) totals.withPending++;
     var c = classifyStfReason_(e);
-    if (c) { totals[c.primary]++; totals.ineligible++; }
+    if (c) { totals[c.primary]++; totals.ineligible++; if (c.nearMiss) totals.nearMiss++; }
     else   { totals.eligible++; if (!showAll) return; }
     rows.push({
       empNo: e.employeeNumber || '', name: e.name, normName: e.normName,
@@ -951,6 +958,7 @@ function buildFinanceRows_(emps, showAll) {
       lost:          (+e.goalsCanceled || 0) + (+e.goalsNotCompleted || 0),
       totalGoals:    +e.totalGoals || 0,
       eligible: !c, primary: c ? c.primary : null, badges: c ? c.badges : [],
+      nearMiss: !!(c && c.nearMiss),
     });
   });
 
@@ -1870,6 +1878,7 @@ var FIN_REASONS_ = [
   { key: 'canceled', label: 'Canceled / Not-completed', color: STATUS_C.risk },    // red
   { key: 'comments', label: 'Comments shortfall',       color: STATUS_C.info },    // blue
   { key: 'toofew',   label: 'Too few goals',            color: STATUS_C.planned }, // slate
+  { key: 'nearmiss', label: 'Exception candidate',      color: STATUS_C.good },    // green — 5/6 comments, bar met
 ];
 
 function renderFinance() {
@@ -1888,6 +1897,8 @@ function renderFinance() {
         'Rocketeers still carrying Planned / In-Progress goals (eligible or not) — communicate that these need closing before quarter end') +
       finStat_('🗨 Completed, missing comments', t.comments, STATUS_C.info,
         'Hit the ' + STF_COMPLETED_BAR_ + '-completed bar but fewer than ' + STF_CMT_GOALS_BAR_ + ' goals carry 8+ comments — typically senior managers, not ICs') +
+      finStat_('☆ Exception candidates', t.nearMiss, STATUS_C.good,
+        'One goal short of the comment bar (' + (STF_CMT_GOALS_BAR_ - 1) + '/' + STF_CMT_GOALS_BAR_ + ') with the completion bar met — candidates to get their STF paid as an exception') +
       finStat_('✖ Canceled/NC', t.canceled, STATUS_C.risk,
         'Cannot reach the bar — goals were canceled or marked not completed') +
       finStat_('▽ Too few', t.toofew, STATUS_C.planned,
@@ -1988,11 +1999,12 @@ function exportFinanceCsv_() {
   };
   var rows = [['Employee #', 'Rocketeer', 'Job Title', 'Manager', 'Department',
                'Completed', 'Well-commented', 'Pending', 'Canceled/NotCompleted',
-               'STF Eligible', 'Primary reason', 'All reasons']];
+               'STF Eligible', 'Exception candidate', 'Primary reason', 'All reasons']];
   (model.rows || []).forEach(function(r) {
     rows.push([r.empNo, r.name, r.jobTitle, r.supervisor, r.department,
       r.completed, r.wellCommented, r.pending, r.lost,
       r.eligible ? 'Yes' : 'No',
+      r.nearMiss ? 'Yes' : '',
       r.eligible ? '' : (REASON_LABEL[r.primary] || r.primary),
       r.badges.map(function(b) { return b.text; }).join('; ')]);
   });
