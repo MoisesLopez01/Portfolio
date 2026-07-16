@@ -1734,6 +1734,64 @@ function renderUtilSoWhat_(anchor, anchorState, ut, stats){
   el.innerHTML=sw;
 }
 
+// Contribution drill: decomposes the anchor week's move vs the prior settled week
+// into signed per-group bars. GROUPS AND COUNTS ONLY — never individual names
+// (standing rule); person detail lives in the CSV. Dimension: family (default),
+// manager, or location. Uses the ACTIVE population (chips included) so the bars
+// always explain the number the header is showing.
+function renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap){
+  var el=$('utilDrill'); if(!el) return;
+  // Need a settled anchor and a prior settled week to compare against.
+  var prev=null;
+  if(anchor!=null){
+    for(var i=settledIsos.length-1;i>=0;i--){
+      if(isoOrd(settledIsos[i])<isoOrd(anchor)){ prev=settledIsos[i]; break; }
+    }
+  }
+  if(anchor==null || prev==null){ el.innerHTML=''; return; }
+
+  var head='<span class="ud-toggle" onclick="UTIL_DRILL_OPEN=!UTIL_DRILL_OPEN;renderUtilization()">'
+    +(UTIL_DRILL_OPEN?'▾':'▸')+' Why did '+esc(anchor)+' move vs '+esc(prev)+'?</span>';
+  if(!UTIL_DRILL_OPEN){ el.innerHTML=head; return; }
+
+  head+='<span class="ud-dim">'
+    +['family','manager','location'].map(function(d){
+      return '<button class="'+(UTIL_DRILL_DIM===d?'on':'')+'" onclick="UTIL_DRILL_DIM=\''+d+'\';renderUtilization()">'
+        +(d==='family'?'Job family':d==='manager'?'Manager':'Location')+'</button>';
+    }).join('')+'</span>';
+
+  // Group the ACTIVE population by the chosen dimension.
+  var npList=split.delivery.slice();
+  if(UTIL_INC_NT)  npList=npList.concat(split.nonTracking);
+  if(UTIL_INC_MGR) npList=npList.concat(split.managers);
+  var meta=DATA.personMeta||{};
+  var groups={};
+  npList.forEach(function(np){
+    var m=meta[np]||{};
+    var k = UTIL_DRILL_DIM==='family'  ? (m.jobFamily||'(no roster match)')
+          : UTIL_DRILL_DIM==='manager' ? (m.manager||'(no manager)')
+          :                              (m.location||'(no location)');
+    (groups[k]=groups[k]||[]).push(np);
+  });
+
+  var d=utilDecompose_(anchor, prev, groups, capMap, trkMap);
+  if(!d){ el.innerHTML=head+'<div class="hint" style="margin-top:6px">Not enough capacity data on both weeks to decompose.</div>'; return; }
+  var maxAbs=0.001;
+  d.forEach(function(g){ maxAbs=Math.max(maxAbs, Math.abs(g.pp)); });
+  var rows=d.filter(function(g){ return Math.abs(g.pp)>=0.05; }).map(function(g){
+    var wpx=Math.max(2, Math.abs(g.pp)/maxAbs*160);
+    var col=g.pp>=0?hexVar('--pos'):hexVar('--warn');
+    return '<div class="ud-row"><span class="ud-name" title="'+esc(g.key)+' — '+groups[g.key].length+' people">'
+      +esc(g.key)+' <span class="hint">('+groups[g.key].length+')</span></span>'
+      +'<span class="ud-barwrap"><span class="ud-bar" style="width:'+wpx+'px;background:'+col+'"></span></span>'
+      +'<span class="ud-pp" style="color:'+col+'">'+(g.pp>=0?'+':'')+Math.round(g.pp*10)/10+' pp</span></div>';
+  });
+  var total=0; d.forEach(function(g){ total+=g.pp; });
+  el.innerHTML=head
+    +'<div class="ud-rows">'+(rows.length?rows.join(''):'<div class="hint">No group moved more than 0.1 pp.</div>')+'</div>'
+    +'<div class="hint" style="margin-top:4px">Bars sum to the total move: '+(total>=0?'+':'')+Math.round(total*10)/10+' pp. Groups only — person detail is in the CSV.</div>';
+}
+
 function utilChartHover_(e, iso){
   var ut=UTIL_WT||{cap:{},tracked:{},covered:{},trackedOnly:{},util:{}};
   var cv=ut.cap[iso]||0, tv=ut.tracked[iso]||0, u=ut.util[iso];
