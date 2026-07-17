@@ -573,9 +573,9 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · hover a week for the billing breakdown · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
-          <span class="hint" id="billableRatioChip" style="display:none"></span><!-- hidden with the billing toggle — same unreliable classification; remove both display:none to restore -->
-          <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — HIDDEN for now (billing classification not reliable yet); BILLING_FILTER stays 'all' so tracked figures are never scoped. Remove this display:none to restore. Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
+          <span class="hint" id="billableRatioChip" style="display:none"></span><!-- visibility driven by BILLING_UI (JS flag) — un-hides on its own for the Jira-Raw outage warning -->
+          <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — hidden while classification is unreliable (visibility driven by the BILLING_UI flag in JS; flip it to restore all billing surfaces). Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
             <button data-billing="Billable">Billable</button>
             <button data-billing="Internal">Internal</button>
@@ -754,6 +754,9 @@ var QTD_ISOS = [];      // cached qtdIsos for nav button guards
 var PTO_FULL_THRESHOLD = 0.75; // ≥75% of weekly capacity = treat as full-PTO week
 var HOLIDAYS = {};   // model.holidaysByWeek — iso → {entries, totalAffected, shortfallHours}
 var BILLING_FILTER = 'all'; // 'all' | 'Billable' | 'Internal' | 'Untagged' | 'Unclassified' — scopes the Planned vs Tracked panel's TRACKED figures only; planned/capacity are never filtered by billing
+var BILLING_UI = false;     // billing classification not reliable yet — hides the billing chips, the
+                            // billable-ratio stat and the hover breakdown in ONE place (the Jira-Raw-
+                            // missing warning still surfaces). Flip to true to restore every billing surface.
 var VIEW_TAB = 'overview';  // 'overview' | 'focus' (Team Focus & Execution Signals) | 'heat' | 'epic' (Delivery & PM load) — which view tab is active; panels show/hide via CSS on #dash[data-view]
 var EPIC_OPEN = null; // expanded epic key on the Epic delivery panel (contributor-name drill row)
 var EPIC_SORT = { col: 'hours', dir: -1 }; // epic-table sort — col ∈ epic|pm|hours|tickets|health
@@ -1157,6 +1160,17 @@ function csvEscape_(v){
 function utilCsvString_(rows){
   return rows.map(function(r){ return r.map(csvEscape_).join(","); }).join("\r\n");
 }
+
+// Sliding week-window for the chart pager. Pages step back winWeeks at a time but
+// the window always keeps winWeeks weeks when history allows — the earliest page
+// SLIDES instead of stranding a 1-week remainder. Returns the clamped page plus
+// [start, end) slice bounds over the full week list.
+function utilWindow_(totalLen, page, winWeeks){
+  var maxPage = Math.max(0, Math.ceil((totalLen - winWeeks) / winWeeks));
+  var p = Math.min(Math.max(0, page), maxPage);
+  var end = Math.max(Math.min(winWeeks, totalLen), totalLen - p * winWeeks);
+  return { page: p, maxPage: maxPage, start: Math.max(0, end - winWeeks), end: end };
+}
 /* ==UTIL-PURE-END== */
 
 // True when ANY People filter that filteredWeekTotals_/filteredPersonSet_ honors is
@@ -1209,6 +1223,7 @@ function trackedForWeek_(iso, fallbackTracked){
 // renderCapacity, and the initial load renders through renderAll → renderCapacity).
 function syncBillingChips_(){
   var grp = $('billingFilter'); if (!grp) return;
+  grp.style.display = BILLING_UI ? '' : 'none';   // whole chip group hidden while billing classification is unreliable
   var noBilling = !DATA.jiraMetaAvailable;                 // Jira Raw absent → all-unclassified, specific buckets meaningless
   var locked = peopleFilterActive_() || scopeNarrows_() || noBilling; // any reason disables the specific chips
   if (locked && BILLING_FILTER !== 'all') BILLING_FILTER = 'all'; // 'All' is the only exact option in every locked state
@@ -1314,7 +1329,7 @@ function capChartHover_(e, iso){
   // Shown at the 'All' chip when Jira Raw data is present and no People filter narrows
   // the roster (a People-filtered tracked total can't be split by the org-wide billing map).
   var billTxt='';
-  if(BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_() && !scopeNarrows_()){
+  if(BILLING_UI && BILLING_FILTER==='all' && DATA.jiraMetaAvailable && !peopleFilterActive_() && !scopeNarrows_()){
     var b=(DATA.billingByWeek||{})[iso];
     if(b){
       billTxt='<br>Billable: '+fmt(b.billable)+' hrs<br>Internal: '+fmt(b.internal)+' hrs'
@@ -1481,9 +1496,18 @@ function renderCapacity(){
   var brChip=$('billableRatioChip');
   if(brChip){
     if(!DATA.jiraMetaAvailable){
+      // Pipeline breakage stays visible even while the billing UI is hidden — this
+      // chip is the panel's only Jira-Raw outage surface, so the warning un-hides it.
+      brChip.style.display='';
       brChip.textContent='Jira Raw not found — billing signals off';
       brChip.className='hint warn';
+    } else if(!BILLING_UI){
+      // Billing UI hidden: skip the window-stats pass entirely (dead work otherwise).
+      brChip.style.display='none';
+      brChip.textContent='';
+      brChip.className='hint';
     } else {
+      brChip.style.display='';
       var bw=billingWindowStats_();
       if(!bw.hasData){
         brChip.textContent='';
@@ -1665,6 +1689,7 @@ function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtili
 var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
 function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
 var UTIL_WIN_WEEKS=16, UTIL_WIN_PAGE=0;          // chart week-window pager: 0 = latest window, 1 = one earlier…
+var UTIL_LAST_ANCHOR=null;                       // last rendered anchor — a CHANGED anchor auto-pages into view
 function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
 
@@ -1787,20 +1812,36 @@ function renderUtilization(){
     var utilModeHoursBtn=$('utilModeHours'), utilModeRateBtn=$('utilModeRate');
     if(utilModeHoursBtn) utilModeHoursBtn.className = UTIL_CHART_MODE==='hours'?'on':'';
     if(utilModeRateBtn)  utilModeRateBtn.className  = UTIL_CHART_MODE==='rate'?'on':'';
-    renderUtilLegend_(stats!=null, proj!=null, UTIL_CHART_MODE);
-    // Week-window pager: charts draw UTIL_WIN_WEEKS at a time, ◀ pages back through
-    // the full history. Headline, band, anchor and projection always use the FULL
-    // range — paging never changes the numbers, only which weeks are drawn.
-    var maxPage=Math.max(0, Math.ceil(cw.length/UTIL_WIN_WEEKS)-1);
-    if(UTIL_WIN_PAGE>maxPage) UTIL_WIN_PAGE=maxPage;
-    var winEnd=cw.length-UTIL_WIN_PAGE*UTIL_WIN_WEEKS;
-    var cwWin=cw.slice(Math.max(0, winEnd-UTIL_WIN_WEEKS), winEnd);
-    var wPrev=$('utilWinPrev'), wNext=$('utilWinNext'), wLbl=$('utilWinLbl');
-    if(wPrev) wPrev.disabled=(UTIL_WIN_PAGE>=maxPage);
-    if(wNext) wNext.disabled=(UTIL_WIN_PAGE===0);
-    if(wLbl)  wLbl.textContent=cwWin.length?(cwWin[0].iso+' → '+cwWin[cwWin.length-1].iso):'';
+    // Week-window pager (sliding — utilWindow_ keeps the earliest page full instead
+    // of stranding a remainder). Headline, band, anchor and projection always use
+    // the FULL range — paging only changes which weeks are drawn. A newly selected
+    // anchor auto-pages into view; paging away from it manually is respected until
+    // the anchor changes again, and the range label flags an off-screen anchor.
+    if(anchor!==UTIL_LAST_ANCHOR){
+      UTIL_LAST_ANCHOR=anchor;
+      var ai=-1; for(var awi=0;awi<cw.length;awi++){ if(cw[awi].iso===anchor){ ai=awi; break; } }
+      if(ai>=0) UTIL_WIN_PAGE=Math.floor((cw.length-1-ai)/UTIL_WIN_WEEKS);
+    }
+    var win=utilWindow_(cw.length, UTIL_WIN_PAGE, UTIL_WIN_WEEKS);
+    UTIL_WIN_PAGE=win.page;
+    var cwWin=cw.slice(win.start, win.end);
+    var anchorShown=anchor==null||cwWin.some(function(wk2){return wk2.iso===anchor;});
+    var winHasNow=cwWin.some(function(wk2){return wk2.status==='now';});
+    var wPrev=$('utilWinPrev'), wNext=$('utilWinNext'), wLbl=$('utilWinLbl'), wNav=$('utilWinNav');
+    if(wNav) wNav.style.display=win.maxPage>0?'':'none';           // no pager noise when history fits one window
+    if(wPrev) wPrev.disabled=(win.page>=win.maxPage);
+    if(wNext) wNext.disabled=(win.page===0);
+    if(wLbl){
+      wLbl.style.display=win.maxPage>0?'':'none';
+      wLbl.textContent=cwWin.length?(cwWin[0].iso+' → '+cwWin[cwWin.length-1].iso
+        +(anchorShown?'':' · anchor '+anchor+' off-screen ▶')):'';
+    }
+    renderUtilLegend_(stats!=null, proj!=null&&winHasNow, UTIL_CHART_MODE);
+    // proj is passed only when the live week is actually in the window — otherwise
+    // its (possibly huge) early-week band would stretch the y-domain of a page
+    // that never draws the projected point.
     if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor);
-    else renderUtilChart_(ut, cwWin, stats, proj, provisionalIso, anchor);
+    else renderUtilChart_(ut, cwWin, stats, winHasNow?proj:null, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
     if (typeof renderUtilPeople_==='function') renderUtilPeople_(anchor, split, npList, trkMap);
@@ -2198,11 +2239,15 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   });
   // % labels on EVERY settled + provisional point (user directive — managers read
   // the rate per week here too); the projected point keeps the callout instead.
+  // The provisional label drops BELOW its point when the callout is drawn — the
+  // right-anchored callout text spans back over the provisional point's x position
+  // and the two would collide whenever the values are close.
   uPts.forEach(function(p){
     if(p.state==='proj') return;
     var lbl=Math.round(p.v)+'%';
     if(p.state==='prov') lbl+='˜';
-    g+='<text x="'+p.x+'" y="'+(p.y-8)+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
+    var ly=(p.state==='prov'&&proj)?(p.y+16):(p.y-8);
+    g+='<text x="'+p.x+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
   });
 
   // hit-columns + thinned week labels (same interaction as before)
@@ -2561,7 +2606,7 @@ function setViewTab_(v){
 }
 
 function reRenderAll_(){
-  AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;
+  AVAIL_OPEN=null;AVAIL_WIN_PAGE=0;UTIL_WIN_PAGE=0;UTIL_LAST_ANCHOR=null;
   if(typeof renderCapacity==='function')renderCapacity();
   if(typeof renderUtilization==='function')renderUtilization();
   renderAvailability();

@@ -291,6 +291,25 @@ _test_utilProjection_();
 _test_utilDecompose_();
 _test_utilIdentity_();
 _test_utilVerdict_();
+
+function _test_utilWindow_() {
+  function assert_(cond, msg) { if (!cond) throw new Error("❌ _test_utilWindow_: " + msg); }
+  // history fits in one window → single page covering everything, no paging
+  var w = utilWindow_(10, 3, 16);
+  assert_(w.page === 0 && w.maxPage === 0 && w.start === 0 && w.end === 10, "short history clamps to one full page");
+  // 17 weeks: the earliest page SLIDES to a full 16-week window (no 1-week remainder)
+  var w2 = utilWindow_(17, 1, 16);
+  assert_(w2.maxPage === 1 && w2.start === 0 && w2.end === 16, "remainder page slides to a full window");
+  var w0 = utilWindow_(17, 0, 16);
+  assert_(w0.start === 1 && w0.end === 17, "latest page ends at the last week");
+  // exact multiple: pages tile cleanly
+  var w3 = utilWindow_(32, 1, 16);
+  assert_(w3.maxPage === 1 && w3.start === 0 && w3.end === 16, "exact-multiple history tiles cleanly");
+  // page clamps to maxPage
+  assert_(utilWindow_(33, 9, 16).page === 2, "page clamps to maxPage");
+  Logger.log("✅ _test_utilWindow_ passed");
+}
+_test_utilWindow_();
 _test_utilAdjustCap_();
 _test_utilPersonWeek_();
 
