@@ -528,7 +528,7 @@ input[type=file]{display:none}
              Utilization, so their week-over-week fidelity always tell the same story.
              Off by default: delivery (tracking-required) roles only. -->
         <div class="chip-toggle" id="scopeChips" onclick="event.stopPropagation()">
-          <button id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn't read as a performance problem. Applies to both Planned vs Tracked and Utilization.">＋ non-tracking roles</button>
+          <button id="utilChipNt" onclick="utilToggleNt_()" title="Add people whose job family has no tracking mandate — some still track voluntarily, so this brings their real tracked hours in along with their plans and capacity. Off by default so a scope decision doesn't read as a performance problem. Applies to both Planned vs Tracked and Utilization.">＋ non-tracking roles</button>
           <button id="utilChipMgr" onclick="utilToggleMgr_()" title="Add managers — they legitimately log little delivery time, so they're excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.">＋ managers</button>
         </div>
         <span class="filter-summary" id="filterSummary">All people</span>
@@ -902,10 +902,14 @@ function filteredWeekTotals_(isos){
    "Professional Services" matches nothing in today's catalog — it is defensive,
    auto-including that family if the roster's Job Family column ever carries it. */
 var UTIL_TRACKING_FAMILIES = [
-  "Managed Services & Support",   // JF007
-  "Service Delivery",             // JF009
+  "Managed Services & Support",   // JF007 — tracking MANDATED
+  "Service Delivery",             // JF009 — tracking MANDATED
   "Professional Services",        // defensive — see note above
 ];
+// Deliberately NOT listed: JF018 (Services-native) — no tracking mandate, though some
+// of its people track voluntarily (user-confirmed 2026-07-16). Their tracked hours are
+// real and come back via the ＋ non-tracking chip; adding the family here would hold
+// the whole family to a standard only part of it follows.
 var UTIL_TARGET     = 70;  // % — proven level for the delivery families, not aspirational
 var UTIL_BAND_WEEKS = 8;   // trailing settled weeks for the control band (needs ≥4 to draw)
 var UTIL_LOW_RATIO  = 0.6; // person-week flagged ⚠ low when tracked < this share of PTO-adjusted capacity
@@ -1871,7 +1875,7 @@ function syncScopeChips_(){
   nt.textContent=(incNt?'− ':'＋ ')+'non-tracking roles ('+split.nonTracking.length+')';
   mg.textContent=(incMgr?'− ':'＋ ')+'managers ('+split.managers.length+')';
   nt.title=forcedNt?'Included automatically — an explicit job-family selection defines its own scope'
-    :'Add people whose job family has planned capacity but no tracking mandate — off by default so a scope decision doesn’t read as a performance problem. Applies to both Planned vs Tracked and Utilization.';
+    :'Add people whose job family has no tracking mandate — some still track voluntarily (e.g. parts of JF018), so this brings their real tracked hours in along with their plans and capacity. Off by default so a scope decision doesn’t read as a performance problem. Applies to both Planned vs Tracked and Utilization.';
   mg.title=forcedMgr?'Included automatically — the Role filter is set to Mgrs'
     :'Add managers — they legitimately log little delivery time, so they’re excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.';
 }
