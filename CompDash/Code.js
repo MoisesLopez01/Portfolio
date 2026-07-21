@@ -116,3 +116,104 @@ function fiscalMonthIdx_(date, fyStartCalYear) {
   const idx = (date.getFullYear() - fyStartCalYear) * 12 + date.getMonth() - 6;
   return (idx >= 0 && idx < 12) ? idx : -1;
 }
+
+// ── Attrition engine ────────────────────────────────────────────────────────
+// FY-framed per the spec: previous FY renders as a shadow area, current FY as
+// a trend line. Rate = terminations ÷ mean(headcount at period start, headcount
+// at period end) — end = asOf for the in-progress FY. Crew is excluded upstream.
+
+function classifyTerm_(cat) {
+  const c = String(cat || "").toLowerCase();
+  if (/invol/.test(c)) return "invol";
+  if (/vol/.test(c)) return "vol";
+  return "other";
+}
+
+function headcountOn_(records, date) {
+  return records.filter(r =>
+    r.hireDate && r.hireDate <= date && (!r.termDate || r.termDate > date)).length;
+}
+
+function fyAttritionBlock_(records, fyStart, fyEnd, asOf, label) {
+  const end = (asOf && asOf < fyEnd) ? asOf : fyEnd;
+  const fyStartCalYear = fyStart.getFullYear();
+  const monthly = Array.from({ length: 12 }, () => ({ terms: 0, vol: 0, invol: 0 }));
+  const terms = records.filter(r => r.termDate && r.termDate >= fyStart && r.termDate <= fyEnd);
+  terms.forEach(r => {
+    const i = fiscalMonthIdx_(r.termDate, fyStartCalYear);
+    if (i === -1) return;
+    const cls = classifyTerm_(r.termCategory);
+    monthly[i].terms++;
+    if (cls === "vol") monthly[i].vol++;
+    else if (cls === "invol") monthly[i].invol++;
+  });
+  const quarterly = [0, 1, 2, 3].map(q => {
+    const s = monthly.slice(q * 3, q * 3 + 3);
+    return {
+      terms: s.reduce((t, x) => t + x.terms, 0),
+      vol:   s.reduce((t, x) => t + x.vol, 0),
+      invol: s.reduce((t, x) => t + x.invol, 0),
+    };
+  });
+  const vol   = terms.filter(r => classifyTerm_(r.termCategory) === "vol").length;
+  const invol = terms.filter(r => classifyTerm_(r.termCategory) === "invol").length;
+  const regretted = terms.filter(r => /yes|true/i.test(String(r.termRegretted || ""))).length;
+  const avgHeadcount = (headcountOn_(records, fyStart) + headcountOn_(records, end)) / 2;
+  return {
+    label, monthly, quarterly,
+    total: terms.length, vol, invol, regretted,
+    avgHeadcount,
+    rate: avgHeadcount > 0 ? terms.length / avgHeadcount : null,
+  };
+}
+
+function sliceAttrition_(records, fyStart, fyEnd, end, keyFn) {
+  const groups = new Map();
+  const get = k => {
+    if (!groups.has(k)) groups.set(k, { key: k, terms: 0, vol: 0, invol: 0, hcStart: 0, hcEnd: 0 });
+    return groups.get(k);
+  };
+  records.forEach(r => {
+    const g = get(keyFn(r) || "—");
+    if (r.hireDate && r.hireDate <= fyStart && (!r.termDate || r.termDate > fyStart)) g.hcStart++;
+    if (r.hireDate && r.hireDate <= end && (!r.termDate || r.termDate > end)) g.hcEnd++;
+    if (r.termDate && r.termDate >= fyStart && r.termDate <= fyEnd) {
+      const cls = classifyTerm_(r.termCategory);
+      g.terms++;
+      if (cls === "vol") g.vol++;
+      else if (cls === "invol") g.invol++;
+    }
+  });
+  return [...groups.values()]
+    .map(g => {
+      const avg = (g.hcStart + g.hcEnd) / 2;
+      return { key: g.key, terms: g.terms, vol: g.vol, invol: g.invol,
+               headcount: g.hcEnd, rate: avg > 0 ? g.terms / avg : null };
+    })
+    .filter(g => g.terms > 0 || g.headcount > 0)
+    .sort((x, y) => y.terms - x.terms || y.headcount - x.headcount);
+}
+
+function buildAttrition_(records, ctx) {
+  const end = (ctx.asOf < ctx.fyEnd) ? ctx.asOf : ctx.fyEnd;
+  const detail = records
+    .filter(r => r.termDate && r.termDate >= ctx.fyStart && r.termDate <= ctx.fyEnd)
+    .map(r => ({
+      empNo: r.empNo, name: r.name, dept: r.dept, level: r.level,
+      keyLocation: r.keyLocation, termDate: isoDate_(r.termDate),
+      cls: classifyTerm_(r.termCategory), category: r.termCategory,
+      reason: r.termReason, regretted: /yes|true/i.test(String(r.termRegretted || "")),
+    }))
+    .sort((a, b) => b.termDate.localeCompare(a.termDate));
+  return {
+    currentFY:  fyAttritionBlock_(records, ctx.fyStart, ctx.fyEnd, ctx.asOf, ctx.fyLabel),
+    previousFY: fyAttritionBlock_(records, ctx.prevFyStart, ctx.prevFyEnd, null, ctx.prevFyLabel),
+    slices: {
+      department:  sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.dept),
+      level:       sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.level)
+                     .sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+      keyLocation: sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.keyLocation),
+    },
+    detail,
+  };
+}
