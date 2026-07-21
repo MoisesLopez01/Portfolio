@@ -195,3 +195,23 @@ function mkEmp(over) {
   const noG = buildEquity_([mkEmp({ gender: null })], cfg, asOf);
   check("equity: gender-pending path", noG.genderAvailable === false && noG.gender.length === 0);
 })();
+
+// ── Task 7: buildQtaInterim_ ────────────────────────────────
+(function () {
+  const asOf = new Date(2026, 6, 21);
+  const emps = [
+    mkEmp({ empNo: "Q1", name: "Alpha" }),
+    mkEmp({ empNo: "Q2", name: "Beta" }),
+    mkEmp({ empNo: "Q3", name: "Gamma" }),
+  ];
+  const hist = {
+    Q1: [{ date: new Date(2026, 0, 1), reason: "Salary adjustment", tcc: 1, nextReview: new Date(2026, 5, 1) }],
+    Q2: [{ date: new Date(2025, 0, 1), reason: "New Hire", tcc: 1, nextReview: new Date(2026, 3, 1) },
+         { date: new Date(2026, 2, 1), reason: "Promotion", tcc: 1, nextReview: new Date(2026, 11, 1) }],
+  };
+  const rows = buildQtaInterim_(emps, hist, asOf);
+  check("qta: overdue first", rows[0].empNo === "Q1" && rows[0].daysOverdue > 0);
+  check("qta: latest event's nextReview wins", rows[1].empNo === "Q2" && rows[1].nextReview === "2026-12-01");
+  check("qta: no history sorts last with null review", rows[2].empNo === "Q3" && rows[2].nextReview === null);
+  check("qta: last event surfaced", rows[0].lastEventReason === "Salary adjustment");
+})();

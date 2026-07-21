@@ -389,3 +389,34 @@ function buildEquity_(activeRecords, cfg, asOf) {
     outliers: outliers.sort((a, b) => b.pctBelow - a.pctBelow),
   };
 }
+
+// ── QTA interim engine ──────────────────────────────────────────────────────
+// The official QTA-cycle source doesn't exist yet (placeholder tab). Interim
+// signal: each active Rocketeer's Next Review date from their MOST RECENT RD
+// event that carries one — sorted overdue-first so "waiting longest" tops the
+// list. daysOverdue is positive when past due, negative when upcoming.
+
+function buildQtaInterim_(activeRecords, histByEmp, asOf) {
+  const DAY = 86400000;
+  const rows = activeRecords.map(r => {
+    const evs = (histByEmp[r.empNo] || [])
+      .filter(e => e && e.date instanceof Date && !isNaN(e.date))
+      .sort((a, b) => b.date - a.date); // newest first
+    const last = evs[0] || null;
+    const withReview = evs.find(e => e.nextReview instanceof Date && !isNaN(e.nextReview));
+    const nextReview = withReview ? withReview.nextReview : null;
+    return {
+      empNo: r.empNo, name: r.name, dept: r.dept, keyLocation: r.keyLocation, level: r.level,
+      nextReview: nextReview ? isoDate_(nextReview) : null,
+      daysOverdue: nextReview ? Math.round((asOf - nextReview) / DAY) : null,
+      lastEventDate: last ? isoDate_(last.date) : null,
+      lastEventReason: last ? (last.reason || "") : "",
+    };
+  });
+  return rows.sort((a, b) => {
+    if (a.nextReview && b.nextReview) return b.daysOverdue - a.daysOverdue;
+    if (a.nextReview) return -1;
+    if (b.nextReview) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
