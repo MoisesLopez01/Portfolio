@@ -420,3 +420,315 @@ function buildQtaInterim_(activeRecords, histByEmp, asOf) {
     return a.name.localeCompare(b.name);
   });
 }
+
+// ============================================================
+// GAS LAYER — everything below touches GAS services.
+// Nothing below this line is exercised by the Node test harness.
+// ============================================================
+
+function log_(msg) { if (CONFIG_CD.DEBUG) Logger.log(msg); }
+
+function props_() { return PropertiesService.getScriptProperties(); }
+
+function ssIds_() {
+  const p = props_();
+  return {
+    roster:    p.getProperty("CD_ROSTER_SS_ID")    || CONFIG_CD.ROSTER_SS_ID,
+    hist:      p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
+    rosterTab: p.getProperty("CD_ROSTER_TAB")      || CONFIG_CD.ROSTER_TAB,
+  };
+}
+
+// ── Large-payload cache (gzip + chunking) ───────────────────────────────────
+// Same pattern as PS Contribution Report: CacheService rejects any single
+// value over 100 KB and a plain put() fails silently, so the JSON is gzipped
+// (~10× smaller) and split across numbered chunk keys. A missing chunk on
+// read is a clean miss.
+const CACHE_CHUNK_BYTES_ = 90 * 1024;
+
+function cachePutLarge_(cache, key, str, ttlSec) {
+  try {
+    const b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(str, "application/json")).getBytes());
+    const entries = {};
+    let n = 0;
+    for (let i = 0; i < b64.length; i += CACHE_CHUNK_BYTES_, n++) {
+      entries[key + "_" + n] = b64.slice(i, i + CACHE_CHUNK_BYTES_);
+    }
+    entries[key + "_meta"] = String(n);
+    cache.putAll(entries, ttlSec);
+    log_("cachePutLarge_: " + key + " — " + str.length + " chars → " + n + " chunk(s)");
+    return true;
+  } catch (e) {
+    Logger.log("⚠️ cachePutLarge_ (" + key + "): " + e.message);
+    return false;
+  }
+}
+
+function cacheGetLarge_(cache, key) {
+  try {
+    const meta = parseInt(cache.get(key + "_meta"), 10);
+    if (!(meta > 0)) return null;
+    const names = [];
+    for (let i = 0; i < meta; i++) names.push(key + "_" + i);
+    const got = cache.getAll(names);
+    let b64 = "";
+    for (let i = 0; i < meta; i++) {
+      const part = got[key + "_" + i];
+      if (!part) return null; // chunk evicted — treat as a miss
+      b64 += part;
+    }
+    return Utilities.ungzip(
+      Utilities.newBlob(Utilities.base64Decode(b64), "application/x-gzip")).getDataAsString();
+  } catch (e) {
+    Logger.log("⚠️ cacheGetLarge_ (" + key + "): " + e.message);
+    return null;
+  }
+}
+
+/** Bump CD_CACHE_VER — strands every prior cache entry at once. */
+function bustCompCache_() {
+  const p = props_();
+  const cur = parseInt(p.getProperty("CD_CACHE_VER") || "1", 10);
+  p.setProperty("CD_CACHE_VER", String(cur + 1));
+  Logger.log("✅ bustCompCache_: CD_CACHE_VER → " + (cur + 1));
+}
+
+// ── Sheet readers (header-name access only) ─────────────────────────────────
+
+function fetchTab_(ssId, tabName) {
+  const sh = SpreadsheetApp.openById(ssId).getSheetByName(tabName);
+  if (!sh) throw new Error('Tab "' + tabName + '" not found');
+  const values = sh.getDataRange().getValues();
+  const headers = (values.shift() || []).map(h => String(h).trim());
+  return { headers, rows: values };
+}
+
+function colIdx_(headers, name, re) {
+  let i = headers.indexOf(name);
+  if (i === -1 && re) i = headers.findIndex(h => re.test(h));
+  return i;
+}
+
+/** @returns {{records: Object[], genderAvailable: boolean}} normalized roster records (crew excluded). */
+function readRosterCD_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.roster, ids.rosterTab);
+  const col = (name, re) => colIdx_(headers, name, re);
+  const c = {
+    empNo: col("Employee Number"), name: col("Name"), status: col("Employee Status"),
+    title: col("Job Title"), hire: col("Hire Date"),
+    term: col("Termination/Release Date"), currency: col("Currency"),
+    location: col("Location"), tcc: col("Total Cash Compensation (TCC)", /total cash comp/i),
+    lob: col("LOB"), dept: col("Department"), email: col("Email"),
+    termReason: col("Termination Reason"), termRegret: col("Termination Regretted"),
+    termCat: col("Termination Category"), keyLoc: col("Key Location"),
+    gender: col("Gender"), // optional — being added to the roster
+  };
+  const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
+  Object.keys(required).forEach(k => {
+    if (required[k] === -1) throw new Error("Roster column missing: " + k);
+  });
+  const genderAvailable = c.gender !== -1;
+  const records = [];
+  rows.forEach(row => {
+    const name = String(row[c.name] || "").trim();
+    if (!name) return;
+    const title = String(row[c.title] || "").trim();
+    if (CONFIG_CD.CREW_RE.test(title)) return; // crew/contractors out of scope in V1
+    const status = c.status !== -1 ? String(row[c.status] || "").trim() : "";
+    const termDate = c.term !== -1 ? asDate_(row[c.term]) : null;
+    const lvl = parseLevel_(title);
+    records.push({
+      empNo: String(row[c.empNo] || "").trim(),
+      name,
+      email: c.email !== -1 ? String(row[c.email] || "").trim().toLowerCase() : "",
+      active: !termDate && !CONFIG_CD.INACTIVE_RE.test(status),
+      jobTitle: title, level: lvl.level, track: lvl.track,
+      dept: c.dept !== -1 ? String(row[c.dept] || "").trim() : "",
+      lob: c.lob !== -1 ? String(row[c.lob] || "").trim() : "",
+      keyLocation: String(row[c.keyLoc] || "").trim(),
+      location: c.location !== -1 ? String(row[c.location] || "").trim() : "",
+      currency: c.currency !== -1 ? String(row[c.currency] || "").trim() : "",
+      hireDate: c.hire !== -1 ? asDate_(row[c.hire]) : null,
+      termDate,
+      termReason: c.termReason !== -1 ? String(row[c.termReason] || "").trim() : "",
+      termCategory: c.termCat !== -1 ? String(row[c.termCat] || "").trim() : "",
+      termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
+      gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
+      tcc: c.tcc !== -1 ? asNum_(row[c.tcc]) : null,
+      tccUsd: null, // joined from the TCC USD tab in getCompReportData
+    });
+  });
+  log_("readRosterCD_: " + records.length + " records, gender " + (genderAvailable ? "available" : "pending"));
+  return { records, genderAvailable };
+}
+
+/** @returns {Object<string, number>} Employee Number → USD TCC. */
+function readTccUsd_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.roster, CONFIG_CD.TCC_USD_TAB);
+  const iEmp = colIdx_(headers, "Employee Number", /employee.*number/i);
+  const iTcc = colIdx_(headers, "Total Cash Compensation (TCC)", /tcc|total cash/i);
+  if (iEmp === -1 || iTcc === -1) {
+    throw new Error("TCC USD tab: columns not recognized — headers: " + headers.join(" | "));
+  }
+  const map = {};
+  rows.forEach(row => {
+    const emp = String(row[iEmp] || "").trim();
+    const usd = asNum_(row[iTcc]);
+    if (emp && usd != null) map[emp] = usd;
+  });
+  log_("readTccUsd_: " + Object.keys(map).length + " employees");
+  return map;
+}
+
+/** @returns {Object<string, Array>} Employee Number → comp events sorted asc by Effective Date. */
+function readCompHistory_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.hist, CONFIG_CD.HIST_TAB);
+  const iEmp    = colIdx_(headers, "Employee Number");
+  const iDate   = colIdx_(headers, "Effective Date");
+  const iTtc    = colIdx_(headers, "Total Target Compensation");
+  const iReason = colIdx_(headers, "TCC Change Reason");
+  const iNext   = colIdx_(headers, "Next Review");
+  if (iEmp === -1 || iDate === -1 || iTtc === -1) {
+    throw new Error("RD tab: required columns missing — headers: " + headers.join(" | "));
+  }
+  const byEmp = {};
+  rows.forEach(row => {
+    const emp = String(row[iEmp] || "").trim();
+    const date = asDate_(row[iDate]);
+    if (!emp || !date) return;
+    if (!byEmp[emp]) byEmp[emp] = [];
+    byEmp[emp].push({
+      date,
+      reason: iReason !== -1 ? String(row[iReason] || "").trim() : "",
+      tcc: asNum_(row[iTtc]), // LOCAL Total Target Compensation recorded at the event
+      nextReview: iNext !== -1 ? asDate_(row[iNext]) : null,
+    });
+  });
+  Object.keys(byEmp).forEach(k => byEmp[k].sort((a, b) => a.date - b.date));
+  log_("readCompHistory_: " + Object.keys(byEmp).length + " employees with events");
+  return byEmp;
+}
+
+// ── Assembly + web app ──────────────────────────────────────────────────────
+
+/**
+ * Full report payload. Access-checked server-side (defense in depth — the
+ * client can call this via google.script.run without going through doGet).
+ * @param {boolean} force - true bypasses cache (Refresh button).
+ */
+function getCompReportData(force) {
+  const access = checkDashboardAccess();
+  if (!access.allowed) return { ok: false, error: "denied" };
+
+  const cache = CacheService.getScriptCache();
+  const ver = props_().getProperty("CD_CACHE_VER") || "1";
+  const key = CONFIG_CD.CACHE_KEY_PREFIX + "v" + ver + "_all";
+  if (!force) {
+    const hit = cacheGetLarge_(cache, key);
+    if (hit) {
+      const obj = JSON.parse(hit);
+      obj.meta.fromCache = true;
+      obj.meta.role = access.role;   // never serve the cached builder's identity
+      obj.meta.email = access.email;
+      return obj;
+    }
+  }
+
+  const t0 = Date.now();
+  const ctx = fiscalContextCD_();
+  const sources = { roster: "ok", tccUsd: "ok", history: "ok" };
+
+  let records = [], genderAvailable = false;
+  try {
+    const r = readRosterCD_();
+    records = r.records;
+    genderAvailable = r.genderAvailable;
+  } catch (e) {
+    sources.roster = "error: " + e.message;
+    Logger.log("❌ readRosterCD_: " + e.message);
+  }
+  let usdMap = {};
+  try { usdMap = readTccUsd_(); }
+  catch (e) { sources.tccUsd = "error: " + e.message; Logger.log("⚠️ readTccUsd_: " + e.message); }
+  let histByEmp = {};
+  try { histByEmp = readCompHistory_(); }
+  catch (e) { sources.history = "error: " + e.message; Logger.log("⚠️ readCompHistory_: " + e.message); }
+
+  records.forEach(r => { r.tccUsd = (usdMap[r.empNo] != null) ? usdMap[r.empNo] : null; });
+  const active = records.filter(r => r.active);
+
+  const history = {};
+  active.forEach(r => { if (histByEmp[r.empNo]) history[r.empNo] = buildGrowthForEmp_(histByEmp[r.empNo]); });
+
+  const payload = {
+    ok: true,
+    meta: {
+      generatedAt: new Date().toISOString(),
+      role: access.role, email: access.email, fromCache: false,
+      fyLabel: ctx.fyLabel, prevFyLabel: ctx.prevFyLabel, qLabel: ctx.qLabel,
+      monthLabels: ctx.monthLabels,
+      fiscalMonthIdx: fiscalMonthIdx_(ctx.asOf, ctx.fyStartCalYear),
+      sources, genderAvailable,
+      activeCount: active.length,
+      contribUrl: props_().getProperty("CD_CONTRIB_URL") || "",
+    },
+    employees: active.map(r => ({
+      empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
+      dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
+      tcc: r.tcc, tccUsd: r.tccUsd, hireDate: isoDate_(r.hireDate), gender: r.gender,
+    })),
+    attrition: buildAttrition_(records, ctx),
+    compaGroups: buildCompaGroups_(active, CONFIG_CD.SMALL_GROUP_MIN),
+    equity: buildEquity_(active, CONFIG_CD, ctx.asOf),
+    qtaInterim: buildQtaInterim_(active, histByEmp, ctx.asOf),
+    history,
+  };
+
+  const json = JSON.stringify(payload);
+  cachePutLarge_(cache, key, json, CONFIG_CD.CACHE_TTL_SEC);
+  Logger.log("✅ getCompReportData: built in " + Math.round((Date.now() - t0) / 1000) + "s — " +
+             json.length + " chars, " + active.length + " active");
+  return payload;
+}
+
+function doGet() {
+  const access = checkDashboardAccess();
+  if (!access.allowed) {
+    Logger.log("⚠️ doGet denied: " + access.email);
+    return HtmlService.createHtmlOutput(deniedPageHtml_(access.email))
+      .setTitle("Access restricted");
+  }
+  const t = HtmlService.createTemplateFromFile("ViewDash");
+  t.userRole = access.role;
+  t.userEmail = access.email;
+  return t.evaluate()
+    .setTitle("Rocketeer Global Comp Health Report")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+// ── Diagnostics — run from the GAS editor ───────────────────────────────────
+function debugCompPipeline() {
+  const r = readRosterCD_();
+  const active = r.records.filter(x => x.active);
+  Logger.log("Roster: " + r.records.length + " rows after crew exclusion, " + active.length +
+             " active, gender " + (r.genderAvailable ? "AVAILABLE" : "PENDING"));
+  const parsed = active.filter(x => x.level !== "—").length;
+  Logger.log("Level parse: " + parsed + "/" + active.length + " (" +
+             Math.round(parsed / Math.max(1, active.length) * 100) + "%) — sample misses: " +
+             active.filter(x => x.level === "—").slice(0, 5).map(x => x.jobTitle).join(" | "));
+  const usd = readTccUsd_();
+  const usdHits = active.filter(x => usd[x.empNo] != null).length;
+  Logger.log("TCC USD join: " + usdHits + "/" + active.length + " active matched");
+  const hist = readCompHistory_();
+  const histHits = active.filter(x => hist[x.empNo]).length;
+  Logger.log("RD history join: " + histHits + "/" + active.length + " active matched, " +
+             Object.keys(hist).length + " employees total in RD");
+  const groups = buildCompaGroups_(active, CONFIG_CD.SMALL_GROUP_MIN);
+  const small = groups.filter(g => g.smallGroup).length;
+  Logger.log("Compa groups: " + groups.length + " (" + small + " small, " +
+             groups.filter(g => g.count === 1).length + " singletons)");
+}
