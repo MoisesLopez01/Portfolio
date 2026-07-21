@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      /* Ink-green house palette. To match PS Dashboard exactly, copy its :root values over these. */
+      --bg: #0f1e18; --panel: #172b22; --panel-2: #1d3529; --border: #2a4a3c;
+      --text: #e8f2ec; --muted: #9fb8ab; --chip: #234034;
+      --accent: #35c26e;  /* green — good / primary */
+      --warn:   #e8b93c;  /* yellow — attention */
+      --bad:    #e05252;  /* red — priority read */
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
+    header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
+    header h1 { font-size: 17px; margin: 0; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .hdr-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+    button { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+    button:hover { border-color: var(--accent); }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: 0; border-radius: 0; background: transparent; }
+    .seg button.on { background: var(--accent); color: #08130d; font-weight: 600; }
+    nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
+    nav button.on { background: var(--panel-2); border-color: var(--accent); font-weight: 600; }
+    main { padding: 16px 18px 60px; max-width: 1280px; margin: 0 auto; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .banner { background: #3a3320; border: 1px solid var(--warn); color: #f2e2ad; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .banner.err { background: #3a2020; border-color: var(--bad); color: #f2b8b8; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    tr.click { cursor: pointer; }
+    tr.click:hover td { background: var(--panel-2); }
+    .chip { display: inline-block; background: var(--chip); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; margin: 0 6px 6px 0; }
+    .chip.green { border-color: var(--accent); color: var(--accent); }
+    .chip.yellow { border-color: var(--warn); color: var(--warn); }
+    .chip.red { border-color: var(--bad); color: var(--bad); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; }
+    .kpi:hover { border-color: var(--accent); }
+    .kpi-q { color: var(--muted); font-size: 12px; min-height: 30px; }
+    .kpi-v { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
+    .kpi-s { color: var(--muted); font-size: 11px; }
+    .bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; }
+    .bar > i { display: block; height: 100%; }
+    .menu { position: absolute; top: 52px; left: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; z-index: 30; display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+    .menu button { text-align: left; border: none; background: transparent; }
+    .menu button:hover { background: var(--chip); }
+    .drill { position: fixed; top: 0; right: 0; width: min(560px, 96vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); z-index: 40; padding: 18px; overflow-y: auto; box-shadow: -12px 0 30px rgba(0,0,0,.4); }
+    .hidden { display: none; }
+    #loading { position: fixed; inset: 0; background: rgba(10,20,15,.85); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
+    select, textarea { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
+    details { margin-top: 8px; }
+    summary { cursor: pointer; color: var(--muted); }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    h3 { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    a { color: var(--accent); }
+    svg text { fill: var(--muted); font-size: 10px; }
+  </style>
+</head>
+<body>
+<header>
+  <button id="menuBtn" title="Menu">☰</button>
+  <div>
+    <h1>Rocketeer Global Comp Health Report</h1>
+    <div class="sub" id="subTitle">loading…</div>
+  </div>
+  <div class="hdr-right">
+    <div class="seg" id="curToggle">
+      <button data-cur="LOCAL" class="on">Local</button>
+      <button data-cur="USD">USD</button>
+    </div>
+    <button id="refreshBtn" title="Bypass cache for a live read">⟳ Refresh</button>
+  </div>
+</header>
+<div id="menuPanel" class="menu hidden"></div>
+<nav id="tabbar"></nav>
+<main><div id="pane"></div></main>
+<div id="drill" class="drill hidden"></div>
+<div id="loading">Loading compensation data…</div>
+
+<script>
+"use strict";
+const USER_ROLE  = "<?= userRole ?>";
+const USER_EMAIL = "<?= userEmail ?>";
+
+// Single source of truth for navigation — same pattern as PS Dashboard.
+const VIEWS = [
+  { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
+  { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
+  { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
+  { id: "market",    label: "🌍 Market Gap",          roles: ["admin", "viewer"] },
+  { id: "equity",    label: "🧭 Pay Equity",          roles: ["admin", "viewer"] },
+  { id: "qta",       label: "📋 QTA Status",          roles: ["admin", "viewer"] },
+  { id: "contrib",   label: "🚀 Contribution",        roles: ["admin", "viewer"] },
+  { id: "reference", label: "📊 Data Reference",      roles: ["admin", "viewer"], menu: true },
+  { id: "access",    label: "🔒 Access Control",      roles: ["admin"],           menu: true },
+];
+
+const STATE = {
+  data: null, tab: "overview", currency: "LOCAL",
+  attrGran: "month", attrDim: "department",
+  compaFilters: { loc: "", level: "", dept: "" },
+};
+
+// ── helpers ─────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtMoney(tcc, tccUsd, currency) {
+  if (STATE.currency === "USD") return tccUsd != null ? "$" + Math.round(tccUsd).toLocaleString() : "—";
+  return tcc != null ? Math.round(tcc).toLocaleString() + (currency ? " " + currency : "") : "—";
+}
+function pctFmt(x, dp) { return x == null ? "—" : (x * 100).toFixed(dp == null ? 1 : dp) + "%"; }
+function ratioClass(r) { return r == null ? "" : r >= 0.9 ? "green" : r >= 0.75 ? "yellow" : "red"; }
+function median(nums) {
+  const a = nums.slice().sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+function sourceBanner(key, label) {
+  const s = STATE.data.meta.sources[key];
+  return s === "ok" ? "" :
+    '<div class="banner err">⚠️ ' + esc(label) + ' unavailable — ' + esc(s) + '</div>';
+}
+
+// ── navigation ──────────────────────────────────────────────
+function buildNav() {
+  const bar = document.getElementById("tabbar");
+  bar.innerHTML = "";
+  VIEWS.filter(v => !v.menu && v.roles.includes(USER_ROLE)).forEach(v => {
+    const b = document.createElement("button");
+    b.textContent = v.label;
+    b.id = "tab_" + v.id;
+    b.onclick = () => switchTab(v.id);
+    bar.appendChild(b);
+  });
+  const menu = document.getElementById("menuPanel");
+  menu.innerHTML = "";
+  VIEWS.filter(v => v.menu && v.roles.includes(USER_ROLE)).forEach(v => {
+    const b = document.createElement("button");
+    b.textContent = v.label;
+    b.onclick = () => { menu.classList.add("hidden"); switchTab(v.id); };
+    menu.appendChild(b);
+  });
+}
+function switchTab(id) {
+  const v = VIEWS.find(x => x.id === id);
+  // Role gate enforced HERE, not just by hiding buttons.
+  if (!v || !v.roles.includes(USER_ROLE)) id = "overview";
+  STATE.tab = id;
+  VIEWS.filter(x => !x.menu).forEach(x => {
+    const b = document.getElementById("tab_" + x.id);
+    if (b) b.classList.toggle("on", x.id === id);
+  });
+  closeDrill();
+  render();
+}
+function render() {
+  if (!STATE.data) return;
+  (RENDERERS[STATE.tab] || renderOverview)(document.getElementById("pane"));
+}
+
+// ── data load ───────────────────────────────────────────────
+function loadData(force) {
+  document.getElementById("loading").classList.remove("hidden");
+  google.script.run
+    .withSuccessHandler(onData)
+    .withFailureHandler(onLoadError)
+    .getCompReportData(!!force);
+}
+function onData(d) {
+  if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
+  STATE.data = d;
+  document.getElementById("subTitle").textContent =
+    d.meta.fyLabel + " " + d.meta.qLabel + " · " + d.meta.activeCount + " active Rocketeers · " +
+    (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
+  document.getElementById("loading").classList.add("hidden");
+  render();
+}
+function onLoadError(err) {
+  document.getElementById("loading").classList.add("hidden");
+  document.getElementById("pane").innerHTML =
+    '<div class="banner err">❌ Could not load the report: ' + esc((err && err.message) || err) + '</div>';
+}
+
+// ── stub renderers — each is REPLACED (in this source file) by a later task ──
+function renderOverview(el)  { el.innerHTML = '<div class="card">Overview — Task 11</div>'; }
+function renderAttrition(el) { el.innerHTML = '<div class="card">Attrition — Task 12</div>'; }
+function renderCompa(el)     { el.innerHTML = '<div class="card">Internal Position — Task 13</div>'; }
+function renderMarket(el)    { el.innerHTML = '<div class="card">Market Gap — Task 15</div>'; }
+function renderEquity(el)    { el.innerHTML = '<div class="card">Pay Equity — Task 15</div>'; }
+function renderQta(el)       { el.innerHTML = '<div class="card">QTA Status — Task 16</div>'; }
+function renderContrib(el)   { el.innerHTML = '<div class="card">Contribution — Task 16</div>'; }
+function renderReference(el) { el.innerHTML = '<div class="card">Data Reference — Task 16</div>'; }
+function renderAccess(el)    { el.innerHTML = '<div class="card">Access Control — Task 16</div>'; }
+
+const RENDERERS = {
+  overview: renderOverview, attrition: renderAttrition, compa: renderCompa,
+  market: renderMarket, equity: renderEquity, qta: renderQta,
+  contrib: renderContrib, reference: renderReference, access: renderAccess,
+};
+
+// ── employee drill panel (implemented in Task 14) ───────────
+function openDrill(empNo) {}
+function closeDrill() { document.getElementById("drill").classList.add("hidden"); }
+
+// ── wiring ──────────────────────────────────────────────────
+document.getElementById("menuBtn").onclick = () =>
+  document.getElementById("menuPanel").classList.toggle("hidden");
+document.getElementById("refreshBtn").onclick = () => loadData(true);
+document.querySelectorAll("#curToggle button").forEach(b => {
+  b.onclick = () => {
+    STATE.currency = b.dataset.cur;
+    document.querySelectorAll("#curToggle button").forEach(x => x.classList.toggle("on", x === b));
+    render();
+  };
+});
+document.addEventListener("click", e => {
+  const menu = document.getElementById("menuPanel");
+  if (!menu.classList.contains("hidden") &&
+      !menu.contains(e.target) && e.target.id !== "menuBtn") menu.classList.add("hidden");
+});
+
+buildNav();
+switchTab("overview");
+loadData(false);
+</script>
+</body>
+</html>
