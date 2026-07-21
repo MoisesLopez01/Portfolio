@@ -219,3 +219,54 @@ function buildAttrition_(records, ctx) {
     detail,
   };
 }
+
+// ── Internal Position engine ────────────────────────────────────────────────
+// ratio = TCC ÷ max(TCC) within the same Key Location + Job Title peer group,
+// ACTIVE employees, LOCAL currency. Deliberately labeled "Internal Position
+// (vs peer max)" in the UI — it is NOT a band-midpoint compa ratio (no band
+// data exists yet), so nobody can sit above 1.0 and the classic above/below-
+// midpoint reading must never be attached to it.
+
+function buildCompaGroups_(activeRecords, smallGroupMin) {
+  const min = smallGroupMin || CONFIG_CD.SMALL_GROUP_MIN;
+  const map = new Map();
+  activeRecords.forEach(r => {
+    const key = (r.keyLocation || "—") + "||" + (r.jobTitle || "—");
+    if (!map.has(key)) {
+      map.set(key, { keyLocation: r.keyLocation || "—", jobTitle: r.jobTitle || "—",
+                     currency: r.currency || "", members: [], missingTcc: 0 });
+    }
+    const g = map.get(key);
+    if (r.tcc == null || r.tcc <= 0) { g.missingTcc++; return; }
+    g.members.push(r);
+  });
+  return [...map.values()].map(g => {
+    const maxTcc = g.members.reduce((m, r) => Math.max(m, r.tcc), 0);
+    const count = g.members.length;
+    return {
+      keyLocation: g.keyLocation, jobTitle: g.jobTitle, currency: g.currency,
+      maxTcc, count, missingTcc: g.missingTcc,
+      smallGroup: count > 0 && count < min,
+      members: g.members
+        .map(r => ({
+          empNo: r.empNo, name: r.name, level: r.level, currency: r.currency,
+          tcc: r.tcc, tccUsd: r.tccUsd,
+          ratio: maxTcc > 0 ? Math.round(r.tcc / maxTcc * 1000) / 1000 : null,
+          noPeers: count === 1,
+        }))
+        .sort((a, b) => b.tcc - a.tcc),
+    };
+  }).sort((a, b) =>
+    a.keyLocation.localeCompare(b.keyLocation) || a.jobTitle.localeCompare(b.jobTitle));
+}
+
+// ── Market Gap suggestion (used once Payscale P25/P50/P75 data lands) ──────
+// Returns the priority-of-read status the UI colors red/yellow/green.
+function marketSuggestion_(tcc, p25, p50) {
+  if (!(tcc > 0) || !(p25 > 0) || !(p50 > 0)) {
+    return { status: "pending", pctToP25: null, pctToP50: null };
+  }
+  if (tcc < p25) return { status: "below-p25", pctToP25: (p25 - tcc) / tcc, pctToP50: (p50 - tcc) / tcc };
+  if (tcc < p50) return { status: "below-p50", pctToP25: 0, pctToP50: (p50 - tcc) / tcc };
+  return { status: "at-market", pctToP25: 0, pctToP50: 0 };
+}

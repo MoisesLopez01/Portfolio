@@ -121,3 +121,30 @@ function mkEmp(over) {
   check("attrition: null hireDate counts in headcount (denominator symmetric)", approx(a.currentFY.avgHeadcount, 1.5));
   check("attrition: null hireDate termination still counted", a.currentFY.total === 1);
 })();
+
+// ── Task 4: buildCompaGroups_ / marketSuggestion_ ───────────
+(function () {
+  const g1 = [
+    mkEmp({ keyLocation: "Mexico", jobTitle: "04.I3.1", tcc: 100000 }),
+    mkEmp({ keyLocation: "Mexico", jobTitle: "04.I3.1", tcc: 80000 }),
+    mkEmp({ keyLocation: "Mexico", jobTitle: "04.I3.1", tcc: 50000 }),
+    mkEmp({ keyLocation: "Malaysia", jobTitle: "04.I3.1", tcc: 90000, currency: "MYR" }),
+    mkEmp({ keyLocation: "Mexico", jobTitle: "05.M4.1", tcc: null }),
+  ];
+  const groups = buildCompaGroups_(g1, 3);
+  check("compa: 3 groups", groups.length === 3);
+  const mx = groups.find(g => g.keyLocation === "Mexico" && g.jobTitle === "04.I3.1");
+  check("compa: max anchor + not small", mx.maxTcc === 100000 && mx.count === 3 && !mx.smallGroup);
+  check("compa: ratios 1/0.8/0.5", approx(mx.members[0].ratio, 1) && approx(mx.members[1].ratio, 0.8) && approx(mx.members[2].ratio, 0.5));
+  check("compa: members sorted desc by tcc", mx.members[0].tcc === 100000);
+  const my = groups.find(g => g.keyLocation === "Malaysia");
+  check("compa: singleton noPeers + smallGroup + ratio 1", my.members[0].noPeers === true && my.smallGroup === true && approx(my.members[0].ratio, 1));
+  const missing = groups.find(g => g.jobTitle === "05.M4.1");
+  check("compa: missing tcc tracked, no members", missing.missingTcc === 1 && missing.count === 0);
+
+  const s1 = marketSuggestion_(80, 100, 120);
+  check("market: below p25 with both raises", s1.status === "below-p25" && approx(s1.pctToP25, 0.25) && approx(s1.pctToP50, 0.5));
+  check("market: below p50", marketSuggestion_(110, 100, 120).status === "below-p50");
+  check("market: at market", marketSuggestion_(130, 100, 120).status === "at-market");
+  check("market: pending when no benchmark", marketSuggestion_(80, null, null).status === "pending");
+})();
