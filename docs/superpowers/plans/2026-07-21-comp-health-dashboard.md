@@ -631,7 +631,7 @@ function marketSuggestion_(tcc, p25, p50) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node CompDash/tests/run_tests.js`
-Expected: `56 passed, 0 failed`
+Expected: `58 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -731,7 +731,7 @@ function buildGrowthForEmp_(events) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node CompDash/tests/run_tests.js`
-Expected: `65 passed, 0 failed`
+Expected: `67 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -871,7 +871,7 @@ function buildEquity_(activeRecords, cfg, asOf) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node CompDash/tests/run_tests.js`
-Expected: `71 passed, 0 failed`
+Expected: `73 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -959,7 +959,7 @@ function buildQtaInterim_(activeRecords, histByEmp, asOf) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node CompDash/tests/run_tests.js`
-Expected: `75 passed, 0 failed`
+Expected: `77 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -1443,7 +1443,7 @@ function debugCompPipeline() {
 - [ ] **Step 2: Verify the Node suite still passes (GAS layer must not break the eval)**
 
 Run: `node CompDash/tests/run_tests.js`
-Expected: `75 passed, 0 failed` — the GAS-layer functions are defined but never called by the harness.
+Expected: `77 passed, 0 failed` — the GAS-layer functions are defined but never called by the harness.
 
 - [ ] **Step 3: Commit**
 
@@ -2273,7 +2273,7 @@ function saveAccess() {
 - [ ] **Step 5: Parse check + commit**
 
 Run: `node CompDash/tests/parse_html.js` → Expected: `✅ ViewDash.html script parses`
-Run: `node CompDash/tests/run_tests.js` → Expected: `75 passed, 0 failed` (regression guard)
+Run: `node CompDash/tests/run_tests.js` → Expected: `77 passed, 0 failed` (regression guard)
 
 ```bash
 git add CompDash/ViewDash.html
