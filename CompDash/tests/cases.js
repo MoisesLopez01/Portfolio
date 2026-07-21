@@ -28,3 +28,26 @@ check("asNum_ blank → null", asNum_("") === null && asNum_(null) === null);
 check("asDate_ parses ISO strings", asDate_("2026-07-01") instanceof Date);
 check("asDate_ blank → null", asDate_("") === null);
 check("isoDate_ formats", isoDate_(new Date(Date.UTC(2026, 6, 21))) === "2026-07-21");
+
+// ── Task 2: fiscalContextCD_ / fiscalMonthIdx_ ──────────────
+(function () {
+  const ctx = fiscalContextCD_(new Date(2026, 6, 21)); // 2026-07-21 → FY27 Q1
+  check("fiscal: FY27 on 2026-07-21", ctx.fyLabel === "FY27");
+  check("fiscal: prev FY26", ctx.prevFyLabel === "FY26");
+  check("fiscal: Q1", ctx.qLabel === "Q1");
+  check("fiscal: FY starts 2026-07-01", isoDate_(ctx.fyStart) === "2026-07-01" || (ctx.fyStart.getFullYear() === 2026 && ctx.fyStart.getMonth() === 6 && ctx.fyStart.getDate() === 1));
+  check("fiscal: FY ends 2027-06-30", ctx.fyEnd.getFullYear() === 2027 && ctx.fyEnd.getMonth() === 5 && ctx.fyEnd.getDate() === 30);
+  check("fiscal: prev FY range", ctx.prevFyStart.getFullYear() === 2025 && ctx.prevFyEnd.getFullYear() === 2026);
+  check("fiscal: 12 month labels starting Jul 26", ctx.monthLabels.length === 12 && ctx.monthLabels[0] === "Jul 26" && ctx.monthLabels[6] === "Jan 27");
+  check("fiscal: fyStartCalYear", ctx.fyStartCalYear === 2026);
+
+  const feb = fiscalContextCD_(new Date(2027, 1, 10)); // Feb 2027 → still FY27, Q3
+  check("fiscal: Feb 2027 is FY27 Q3", feb.fyLabel === "FY27" && feb.qLabel === "Q3");
+
+  check("fiscalMonthIdx_: Jul = 0", fiscalMonthIdx_(new Date(2026, 6, 15), 2026) === 0);
+  check("fiscalMonthIdx_: Dec = 5", fiscalMonthIdx_(new Date(2026, 11, 1), 2026) === 5);
+  check("fiscalMonthIdx_: Jan = 6", fiscalMonthIdx_(new Date(2027, 0, 2), 2026) === 6);
+  check("fiscalMonthIdx_: Jun = 11", fiscalMonthIdx_(new Date(2027, 5, 30), 2026) === 11);
+  check("fiscalMonthIdx_: outside FY → -1", fiscalMonthIdx_(new Date(2026, 5, 30), 2026) === -1);
+  check("fiscalMonthIdx_: null-safe", fiscalMonthIdx_(null, 2026) === -1);
+})();

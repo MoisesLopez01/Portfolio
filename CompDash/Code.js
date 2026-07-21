@@ -81,3 +81,38 @@ function isoDate_(d) {
   const p = n => String(n).padStart(2, "0");
   return d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate());
 }
+
+// ── Fiscal calendar (FY starts July 1; FY27 = Jul 2026 – Jun 2027) ─────────
+// Same derivation rules as computeFiscalContext_ in PS Contribution Report.js,
+// trimmed to what this dashboard needs (no ISO weeks, no grace periods).
+
+function fiscalContextCD_(refDate) {
+  const today = (refDate instanceof Date && !isNaN(refDate)) ? refDate : new Date();
+  const m = today.getMonth() + 1;
+  const yr = today.getFullYear();
+  const fyStartCalYear = (m >= 7) ? yr : yr - 1;
+  const fyNum = fyStartCalYear + 1;
+  const qNum = (m >= 7 && m <= 9) ? 1 : (m >= 10) ? 2 : (m <= 3) ? 3 : 4;
+  const ABBR = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+  return {
+    asOf: today,
+    fyNum,
+    fyLabel: "FY" + String(fyNum).slice(-2),
+    prevFyLabel: "FY" + String(fyNum - 1).slice(-2),
+    qLabel: "Q" + qNum,
+    fyStartCalYear,
+    fyStart: new Date(fyStartCalYear, 6, 1),
+    fyEnd: new Date(fyStartCalYear + 1, 5, 30),
+    prevFyStart: new Date(fyStartCalYear - 1, 6, 1),
+    prevFyEnd: new Date(fyStartCalYear, 5, 30),
+    monthLabels: ABBR.map((a, i) =>
+      a + " " + String(i < 6 ? fyStartCalYear : fyStartCalYear + 1).slice(-2)),
+  };
+}
+
+/** 0-based fiscal month index (Jul=0 … Jun=11) of `date` within the FY starting `fyStartCalYear`; -1 if outside. */
+function fiscalMonthIdx_(date, fyStartCalYear) {
+  if (!(date instanceof Date) || isNaN(date)) return -1;
+  const idx = (date.getFullYear() - fyStartCalYear) * 12 + date.getMonth() - 6;
+  return (idx >= 0 && idx < 12) ? idx : -1;
+}
