@@ -311,3 +311,81 @@ function buildGrowthForEmp_(events) {
     : null;
   return { events: out, overallAnnualized: overall };
 }
+
+// ── Pay Equity engine ───────────────────────────────────────────────────────
+// Three lenses computed within Key Location + level groups (same location ⇒
+// same local currency, so TCC comparisons are honest):
+//   gender   — median-gap % between genders with ≥2 members each in a group
+//   tenure   — long-tenured Rocketeers sitting well below their group median
+//   outliers — anyone far below their group median regardless of dimension
+// Thresholds live in CONFIG_CD (passed in as cfg for Node-testability).
+// Names appear ONLY in flag rows (expandable detail) — group stats carry counts.
+
+function median_(nums) {
+  const a = nums.filter(n => typeof n === "number" && isFinite(n)).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+function tenureYears_(hireDate, asOf) {
+  if (!(hireDate instanceof Date) || isNaN(hireDate)) return null;
+  return (asOf - hireDate) / YEAR_MS_;
+}
+
+function buildEquity_(activeRecords, cfg, asOf) {
+  const groups = new Map();
+  activeRecords.forEach(r => {
+    if (r.tcc == null || r.tcc <= 0) return;
+    const key = (r.keyLocation || "—") + "||" + (r.level || "—");
+    if (!groups.has(key)) groups.set(key, { keyLocation: r.keyLocation || "—", level: r.level || "—", members: [] });
+    groups.get(key).members.push(r);
+  });
+  const genderAvailable = activeRecords.some(r => r.gender);
+  const gender = [], outliers = [], tenure = [];
+  groups.forEach(g => {
+    const med = median_(g.members.map(r => r.tcc));
+
+    if (genderAvailable) {
+      const byG = new Map();
+      g.members.forEach(r => {
+        const gd = String(r.gender || "").trim();
+        if (!gd) return;
+        if (!byG.has(gd)) byG.set(gd, []);
+        byG.get(gd).push(r.tcc);
+      });
+      const eligible = [...byG.entries()].filter(([, v]) => v.length >= 2);
+      if (eligible.length >= 2) {
+        const medians = {};
+        eligible.forEach(([k, v]) => { medians[k] = median_(v); });
+        const vals = Object.values(medians);
+        const gapPct = (Math.max.apply(null, vals) - Math.min.apply(null, vals)) / Math.max.apply(null, vals) * 100;
+        const counts = {};
+        eligible.forEach(([k, v]) => { counts[k] = v.length; });
+        gender.push({ keyLocation: g.keyLocation, level: g.level, counts, medians,
+                      gapPct: Math.round(gapPct * 10) / 10, flagged: gapPct >= cfg.EQUITY_GAP_PCT });
+      }
+    }
+
+    g.members.forEach(r => {
+      if (med == null || med <= 0) return;
+      const pctBelow = (med - r.tcc) / med * 100;
+      if (pctBelow >= cfg.EQUITY_OUTLIER_PCT) {
+        outliers.push({ empNo: r.empNo, name: r.name, keyLocation: g.keyLocation, level: g.level,
+                        tcc: r.tcc, groupMedian: med, pctBelow: Math.round(pctBelow * 10) / 10 });
+      }
+      const ten = tenureYears_(r.hireDate, asOf);
+      if (ten != null && ten >= cfg.TENURE_YEARS_MIN && pctBelow >= cfg.TENURE_BELOW_PCT) {
+        tenure.push({ empNo: r.empNo, name: r.name, keyLocation: g.keyLocation, level: g.level,
+                      tenureYears: Math.round(ten * 10) / 10, tcc: r.tcc, groupMedian: med,
+                      pctBelow: Math.round(pctBelow * 10) / 10 });
+      }
+    });
+  });
+  return {
+    genderAvailable,
+    gender:   gender.sort((a, b) => b.gapPct - a.gapPct),
+    tenure:   tenure.sort((a, b) => b.pctBelow - a.pctBelow),
+    outliers: outliers.sort((a, b) => b.pctBelow - a.pctBelow),
+  };
+}

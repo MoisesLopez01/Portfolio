@@ -170,3 +170,28 @@ function mkEmp(over) {
   ]).events[0].reason === "New Hire");
   check("growth: empty input safe", buildGrowthForEmp_([]).overallAnnualized === null);
 })();
+
+// ── Task 6: buildEquity_ ────────────────────────────────────
+(function () {
+  const cfg = { EQUITY_GAP_PCT: 10, EQUITY_OUTLIER_PCT: 25, TENURE_YEARS_MIN: 3, TENURE_BELOW_PCT: 15 };
+  const asOf = new Date(2026, 6, 21);
+  const emps = [
+    mkEmp({ keyLocation: "Mexico", level: "I3", gender: "F", tcc: 80000 }),
+    mkEmp({ keyLocation: "Mexico", level: "I3", gender: "F", tcc: 82000 }),
+    mkEmp({ keyLocation: "Mexico", level: "I3", gender: "M", tcc: 100000 }),
+    mkEmp({ keyLocation: "Mexico", level: "I3", gender: "M", tcc: 98000 }),
+    mkEmp({ keyLocation: "Mexico", level: "I3", gender: "M", tcc: 60000, hireDate: new Date(2018, 0, 1) }),
+  ];
+  const eq = buildEquity_(emps, cfg, asOf);
+  check("equity: gender available", eq.genderAvailable === true);
+  check("equity: one gender group (needs ≥2 per gender)", eq.gender.length === 1);
+  // Medians: F = 81000, M = 98000 → gap = 17000/98000 ≈ 17.3% ≥ 10% → flagged
+  check("equity: gap flagged at ≈17.3%", eq.gender[0].flagged === true && approx(eq.gender[0].gapPct, 17.3, 0.2));
+  // Group median (all 5) = 82000 → 60000 is ≈26.8% below ≥ 25% → outlier
+  check("equity: outlier flagged", eq.outliers.length === 1 && eq.outliers[0].tcc === 60000);
+  // Same emp: 8.5y tenure ≥ 3 and ≥15% below median → tenure flag
+  check("equity: tenure flagged", eq.tenure.length === 1 && eq.tenure[0].tenureYears > 8);
+
+  const noG = buildEquity_([mkEmp({ gender: null })], cfg, asOf);
+  check("equity: gender-pending path", noG.genderAvailable === false && noG.gender.length === 0);
+})();
