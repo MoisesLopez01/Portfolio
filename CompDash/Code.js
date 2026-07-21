@@ -130,8 +130,10 @@ function classifyTerm_(cat) {
 }
 
 function headcountOn_(records, date) {
+  // Null hireDate = employment start unknown → treat as already hired, keeping
+  // the denominator symmetric with the termination numerator.
   return records.filter(r =>
-    r.hireDate && r.hireDate <= date && (!r.termDate || r.termDate > date)).length;
+    (!r.hireDate || r.hireDate <= date) && (!r.termDate || r.termDate > date)).length;
 }
 
 function fyAttritionBlock_(records, fyStart, fyEnd, asOf, label) {
@@ -175,8 +177,8 @@ function sliceAttrition_(records, fyStart, fyEnd, end, keyFn) {
   };
   records.forEach(r => {
     const g = get(keyFn(r) || "—");
-    if (r.hireDate && r.hireDate <= fyStart && (!r.termDate || r.termDate > fyStart)) g.hcStart++;
-    if (r.hireDate && r.hireDate <= end && (!r.termDate || r.termDate > end)) g.hcEnd++;
+    if ((!r.hireDate || r.hireDate <= fyStart) && (!r.termDate || r.termDate > fyStart)) g.hcStart++;
+    if ((!r.hireDate || r.hireDate <= end) && (!r.termDate || r.termDate > end)) g.hcEnd++;
     if (r.termDate && r.termDate >= fyStart && r.termDate <= fyEnd) {
       const cls = classifyTerm_(r.termCategory);
       g.terms++;

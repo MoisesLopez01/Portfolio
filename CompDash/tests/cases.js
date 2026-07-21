@@ -109,3 +109,15 @@ function mkEmp(over) {
   check("classifyTerm_: fuzzy match", classifyTerm_("Vol - resignation") === "vol" &&
     classifyTerm_("INVOLUNTARY") === "invol" && classifyTerm_("") === "other");
 })();
+
+// ── Task 3 fix: null hireDate stays symmetric numerator/denominator ──
+(function () {
+  const ctx = fiscalContextCD_(new Date(2026, 6, 21));
+  const recs = [
+    mkEmp({}),
+    mkEmp({ hireDate: null, active: false, termDate: new Date(2026, 6, 10), termCategory: "Voluntary" }),
+  ];
+  const a = buildAttrition_(recs, ctx);
+  check("attrition: null hireDate counts in headcount (denominator symmetric)", approx(a.currentFY.avgHeadcount, 1.5));
+  check("attrition: null hireDate termination still counted", a.currentFY.total === 1);
+})();
