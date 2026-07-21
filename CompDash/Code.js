@@ -270,3 +270,44 @@ function marketSuggestion_(tcc, p25, p50) {
   if (tcc < p50) return { status: "below-p50", pctToP25: 0, pctToP50: (p50 - tcc) / tcc };
   return { status: "at-market", pctToP25: 0, pctToP50: 0 };
 }
+
+// ── Growth engine (per-employee comp event history) ─────────────────────────
+// Events come from the Compensation Report RD tab: each row is one comp event
+// (New Hire, Salary adjustment, Promotion, …) with the local Total Target
+// Compensation recorded at that event. The first event is the baseline — it
+// gets no delta and no annualized rate (the "New Hire has nothing to compare
+// against" rule falls out naturally).
+
+const YEAR_MS_ = 365.25 * 86400000;
+
+/** Annualized growth rate — the sheet RRI(1, prev, curr) generalized to fractional years. */
+function rri_(years, prev, curr) {
+  if (!(years > 0) || !(prev > 0) || !(curr > 0)) return null;
+  return Math.pow(curr / prev, 1 / years) - 1;
+}
+
+function buildGrowthForEmp_(events) {
+  const evs = (events || [])
+    .filter(e => e && e.date instanceof Date && !isNaN(e.date))
+    .sort((a, b) => a.date - b.date);
+  const out = [];
+  let prev = null;
+  evs.forEach(e => {
+    const row = { date: isoDate_(e.date), reason: e.reason || "", tcc: e.tcc,
+                  deltaAbs: null, deltaPct: null, annualized: null };
+    if (prev && e.tcc != null && e.tcc > 0) {
+      const years = (e.date - prev.date) / YEAR_MS_;
+      row.deltaAbs = e.tcc - prev.tcc;
+      row.deltaPct = (e.tcc - prev.tcc) / prev.tcc;
+      row.annualized = rri_(years, prev.tcc, e.tcc);
+    }
+    out.push(row);
+    if (e.tcc != null && e.tcc > 0) prev = { date: e.date, tcc: e.tcc };
+  });
+  const valued = evs.filter(e => e.tcc != null && e.tcc > 0);
+  const first = valued[0], last = valued[valued.length - 1];
+  const overall = (first && last && last.date > first.date)
+    ? rri_((last.date - first.date) / YEAR_MS_, first.tcc, last.tcc)
+    : null;
+  return { events: out, overallAnnualized: overall };
+}

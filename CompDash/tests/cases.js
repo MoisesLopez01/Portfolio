@@ -148,3 +148,25 @@ function mkEmp(over) {
   check("market: at market", marketSuggestion_(130, 100, 120).status === "at-market");
   check("market: pending when no benchmark", marketSuggestion_(80, null, null).status === "pending");
 })();
+
+// ── Task 5: rri_ / buildGrowthForEmp_ ───────────────────────
+(function () {
+  check("rri: 21% over 2y ≈ 10%/yr", approx(rri_(2, 100, 121), 0.1, 1e-9));
+  check("rri: guards return null", rri_(0, 100, 121) === null && rri_(1, 0, 5) === null && rri_(1, 100, null) === null);
+
+  const g = buildGrowthForEmp_([
+    { date: new Date(2024, 0, 1), reason: "New Hire", tcc: 100000 },
+    { date: new Date(2025, 0, 1), reason: "Salary adjustment", tcc: 110000 },
+    { date: new Date(2026, 0, 1), reason: "Promotion", tcc: 132000 },
+  ]);
+  check("growth: 3 events out", g.events.length === 3);
+  check("growth: baseline event has no deltas", g.events[0].deltaAbs === null && g.events[0].annualized === null);
+  check("growth: adjustment delta 10k / 10%", g.events[1].deltaAbs === 10000 && approx(g.events[1].deltaPct, 0.1, 1e-3));
+  check("growth: promotion annualized ≈ 20%", approx(g.events[2].annualized, 0.2, 0.01));
+  check("growth: overall annualized ≈ √1.32−1", approx(g.overallAnnualized, Math.pow(1.32, 0.5) - 1, 0.01));
+  check("growth: unsorted input is sorted", buildGrowthForEmp_([
+    { date: new Date(2026, 0, 1), reason: "Adj", tcc: 121000 },
+    { date: new Date(2024, 0, 1), reason: "New Hire", tcc: 100000 },
+  ]).events[0].reason === "New Hire");
+  check("growth: empty input safe", buildGrowthForEmp_([]).overallAnnualized === null);
+})();
