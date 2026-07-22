@@ -180,8 +180,12 @@ function fmtMoney(tcc, tccUsd, currency) {
 function pctFmt(x, dp) { return x == null ? "—" : (x * 100).toFixed(dp == null ? 1 : dp) + "%"; }
 function ratioClass(r) {
   // Bands come from CONFIG_CD via meta.compaBands — never hardcode them here.
-  const b = (STATE.data && STATE.data.meta.compaBands) || { green: 0.9, yellow: 0.75 };
-  return r == null ? "" : r >= b.green ? "green" : r >= b.yellow ? "yellow" : "red";
+  const b = (STATE.data && STATE.data.meta.compaBands) || { low: 0.8, target: 0.95, high: 1.1 };
+  return r == null ? "" : r < b.low ? "red" : r < b.target ? "yellow" : r <= b.high ? "green" : "violet";
+}
+function ratioBarColor(cls) {
+  return cls === "green" ? "var(--accent)" : cls === "yellow" ? "var(--warn)" :
+         cls === "violet" ? "var(--above)" : "var(--bad)";
 }
 function median(nums) {
   const a = nums.slice().sort((x, y) => x - y);
@@ -372,55 +376,90 @@ function renderAttrition(el) {
 }
 function setAttrGran(g) { STATE.attrGran = g; render(); }
 function setAttrDim(k) { STATE.attrDim = k; render(); }
+const TIER_LABEL = {
+  title: "median · title peers", market: "market mean",
+  level: "median · level cohort", none: "insufficient peers",
+};
+function rankVal(e, key) {
+  if (key === "score") return e.priority && e.priority.score != null ? e.priority.score : -1;
+  if (key === "ratio") return e.ratio != null ? e.ratio : 99;
+  if (key === "marketRatio") return e.marketRatio != null ? e.marketRatio : 99;
+  if (key === "perfAvg") return e.perfAvg != null ? e.perfAvg : -1;
+  if (key === "tenure") return e.tenureCompanyYears != null ? e.tenureCompanyYears : -1;
+  if (key === "ttm") return e.ttmGrowthPct != null ? e.ttmGrowthPct : -99;
+  return normName(e.name);
+}
+function sortRank(key) {
+  const s = STATE.rankSort;
+  s.dir = (s.key === key) ? -s.dir : (key === "name" ? 1 : -1);
+  s.key = key;
+  render();
+}
 function renderCompa(el) {
-  const d = STATE.data, f = STATE.compaFilters;
-  const locs = [...new Set(d.compaGroups.map(g => g.keyLocation))].sort();
-  const levels = [...new Set(d.employees.map(e => e.level))].sort();
-  const depts = [...new Set(d.employees.map(e => e.dept))].filter(Boolean).sort();
+  const d = STATE.data, s = STATE.rankSort;
+  const emps = d.employees.filter(visibleEmp);
+
+  const th = (key, label) => '<th style="cursor:pointer" onclick="sortRank(\'' + key + '\')">' +
+    label + (s.key === key ? (s.dir < 0 ? " ▼" : " ▲") : "") + '</th>';
+  const ranked = emps.slice().sort((a, b) => {
+    const va = rankVal(a, s.key), vb = rankVal(b, s.key);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
+  });
+  const marketLow = d.meta.marketLow || 0.9;
+
+  let html =
+    '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>' +
+    '<div class="card"><h2>🎯 Priority ranking <span class="sub">(config-weighted: performance / tenure / compa gap — click a column to sort)</span></h2>' +
+    '<table><tr>' + th("name", "Name") + th("ratio", "Position") + th("marketRatio", "vs Market") +
+      th("perfAvg", "Avg rating") + th("tenure", "Tenure C/P") + th("ttm", "TTM growth") + th("score", "Score") + '</tr>' +
+    ranked.map(e => {
+      const p = e.priority || {};
+      const mrCls = e.marketRatio == null ? "" : e.marketRatio < marketLow ? "red" : "green";
+      return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+        '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + '</div></td>' +
+        '<td><span class="chip ' + ratioClass(e.ratio) + '">' + (e.ratio != null ? e.ratio.toFixed(2) : "—") + '</span></td>' +
+        '<td>' + (e.marketRatio != null ? '<span class="chip ' + mrCls + '">' + e.marketRatio.toFixed(2) + '</span>' : '<span class="sub">—</span>') + '</td>' +
+        '<td>' + (e.perfAvg != null ? e.perfAvg.toFixed(2) + '<span class="sub"> ×' + e.perfCount + '</span>' : "—") + '</td>' +
+        '<td>' + (e.tenureCompanyYears != null ? e.tenureCompanyYears + 'y / ' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : "—") : "—") + '</td>' +
+        '<td>' + pctFmt(e.ttmGrowthPct) + '</td>' +
+        '<td>' + (p.score != null
+          ? '<b>' + p.score + '</b>' + (p.partial ? ' <span class="sub" title="missing: ' + esc((p.missing || []).join(", ")) + '">°</span>' : '')
+          : "—") + '</td></tr>';
+    }).join("") + '</table></div>';
+
+  const f = STATE.filters;
   const empIndex = {};
   d.employees.forEach(e => { empIndex[e.empNo] = e; });
-
   const groups = d.compaGroups
     .filter(g => !f.loc || g.keyLocation === f.loc)
-    .map(g => Object.assign({}, g, {
-      members: g.members.filter(m => {
-        const e = empIndex[m.empNo] || {};
-        return (!f.level || m.level === f.level) && (!f.dept || e.dept === f.dept);
-      }),
-    }))
+    .map(g => Object.assign({}, g, { members: g.members.filter(m => {
+      const e = empIndex[m.empNo] ||
+        { name: m.name, level: m.level, keyLocation: g.keyLocation, dept: "" };
+      return visibleEmp(e);
+    }) }))
     .filter(g => g.members.length);
 
-  const sel = (id, label, opts, val) =>
-    '<label class="sub">' + label + ' </label>' +
-    '<select onchange="setCompaFilter(\'' + id + '\', this.value)">' +
-    '<option value="">All</option>' +
-    opts.map(o => '<option value="' + esc(o) + '"' + (o === val ? " selected" : "") + '>' + esc(o) + '</option>').join("") +
-    '</select> ';
-
-  el.innerHTML =
-    '<div class="banner">⚖️ <b>Internal Position (vs peer max)</b> — each Rocketeer&#39;s TCC ÷ the highest TCC among ACTIVE peers with the same Key Location + Job Title, in local currency. This is <b>not</b> a band-midpoint compa ratio: 1.00 means &quot;the local peer max&quot;, and nobody can sit above it.</div>' +
-    '<div class="card">' + sel("loc", "Location", locs, f.loc) + sel("level", "Level", levels, f.level) + sel("dept", "Department", depts, f.dept) + '</div>' +
-    groups.map(g =>
-      '<div class="card"><h2>' + esc(g.keyLocation) + ' · ' + esc(g.jobTitle) +
-      ' <span class="sub">(' + g.count + ' member' + (g.count === 1 ? "" : "s") + ')</span>' +
-      (g.smallGroup ? ' <span class="chip yellow">small group</span>' : '') +
-      (g.missingTcc ? ' <span class="chip">' + g.missingTcc + ' missing TCC</span>' : '') + '</h2>' +
-      '<div class="sub" style="margin-bottom:8px">Anchor (peer max): ' +
-        fmtMoney(g.maxTcc, null, g.currency) + '</div>' +
-      '<table><tr><th>Name</th><th>Level</th><th>TCC</th><th style="min-width:170px">Position</th><th>Ratio</th></tr>' +
-      g.members.map(m => {
-        const cls = ratioClass(m.ratio);
-        const barColor = cls === "green" ? "var(--accent)" : cls === "yellow" ? "var(--warn)" : "var(--bad)";
-        return '<tr class="click" onclick="openDrill(\'' + esc(m.empNo) + '\')">' +
-          '<td>' + esc(m.name) + '</td><td>' + esc(m.level) + '</td>' +
-          '<td>' + fmtMoney(m.tcc, m.tccUsd, m.currency) + '</td>' +
-          '<td><div class="bar"><i style="width:' + Math.round((m.ratio || 0) * 100) + '%;background:' + barColor + '"></i></div></td>' +
-          '<td><span class="chip ' + cls + '">' + (m.ratio != null ? m.ratio.toFixed(2) : "—") + '</span>' +
-          (m.noPeers ? '<span class="chip">no peers</span>' : '') + '</td></tr>';
-      }).join("") + '</table></div>').join("");
-  if (!groups.length) el.innerHTML += '<div class="card sub">No groups match the current filters.</div>';
+  html += groups.map(g =>
+    '<div class="card"><h2>' + esc(g.keyLocation) + ' · ' + esc(g.jobTitle) +
+    ' <span class="sub">(' + g.count + ' member' + (g.count === 1 ? "" : "s") + ')</span>' +
+    ' <span class="chip ' + (g.anchorTier === "market" ? "violet" : "") + '">' + TIER_LABEL[g.anchorTier] + '</span>' +
+    (g.smallGroup ? ' <span class="chip yellow">small group</span>' : '') +
+    (g.missingTcc ? ' <span class="chip">' + g.missingTcc + ' missing TCC</span>' : '') + '</h2>' +
+    (g.anchor != null
+      ? '<div class="sub" style="margin-bottom:8px">Anchor: ' + fmtMoney(g.anchor, null, g.currency) + '</div>' : '') +
+    '<table><tr><th>Name</th><th>Level</th><th>TCC</th><th style="min-width:170px">Position</th><th>Ratio</th></tr>' +
+    g.members.map(m => {
+      const cls = ratioClass(m.ratio);
+      return '<tr class="click" onclick="openDrill(\'' + esc(m.empNo) + '\')">' +
+        '<td>' + esc(m.name) + '</td><td>' + esc(m.level) + '</td>' +
+        '<td>' + fmtMoney(m.tcc, m.tccUsd, m.currency) + '</td>' +
+        '<td><div class="bar"><i style="width:' + Math.min(100, Math.round((m.ratio || 0) * 100)) + '%;background:' + ratioBarColor(cls) + '"></i></div></td>' +
+        '<td>' + (m.ratio != null ? '<span class="chip ' + cls + '">' + m.ratio.toFixed(2) + '</span>' : '<span class="chip">insufficient peers</span>') +
+        (m.noPeers ? '<span class="chip">no peers</span>' : '') + '</td></tr>';
+    }).join("") + '</table></div>').join("");
+  if (!groups.length) html += '<div class="card sub">No groups match the current filters.</div>';
+  el.innerHTML = html;
 }
-function setCompaFilter(k, v) { STATE.compaFilters[k] = v; render(); }
 function renderMarket(el) {
   const d = STATE.data;
   const byLoc = new Map();
