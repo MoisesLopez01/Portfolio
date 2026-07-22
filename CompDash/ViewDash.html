@@ -692,21 +692,29 @@ function renderContrib(el) {
 // so tuning CONFIG_CD updates this prose automatically.
 function renderReference(el) {
   const m = STATE.data.meta;
-  const b = m.compaBands || { green: 0.9, yellow: 0.75 };
+  const b = m.compaBands || { low: 0.8, target: 0.95, high: 1.1 };
   const q = m.equityCfg || { gapPct: 10, outlierPct: 25, tenureYearsMin: 3, tenureBelowPct: 15, smallGroupMin: 3 };
+  const p = m.priorityCfg || { weights: { perf: 57, tenure: 29, compaGap: 14 },
+                               caps: { companyYears: 10, profileYears: 5, gapPct: 0.25 }, ratingMax: 5 };
+  const cov = m.benchCoverage || { rows: 0, matchedEmployees: 0, currencyMismatch: 0 };
   el.innerHTML =
     '<div class="card"><h2>📊 Data Reference</h2>' +
     '<h3>Sources</h3><table><tr><th>Module</th><th>Source</th><th>Status</th></tr>' +
     '<tr><td>Roster, attrition, TCC</td><td>Roster file — active + terminated rows; crew/contractors excluded everywhere in V1</td><td>' + esc(m.sources.roster) + '</td></tr>' +
     '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; column in the roster tab (position may shift; resolved by header name, not a separate tab)</td><td>' + (m.tccUsdAvailable ? "ok" : "column not found — USD toggle shows local-only") + '</td></tr>' +
-    '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr></table>' +
+    '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr>' +
+    '<tr><td>Performance ratings</td><td>&quot;Small Improvements RD&quot; tab (contribution data file), joined by Employee Number — ' + (m.ratingsCount || 0) + ' rating rows</td><td>' + esc(m.sources.ratings || "—") + '</td></tr>' +
+    '<tr><td>Market benchmarks</td><td>Benchmarking file — &quot;Compilation&quot; tab, joined by normalized Location + Job Title, LOCAL currency; compilation grows over time</td><td>' + esc(m.sources.benchmarks || "—") + '</td></tr></table>' +
     '<h3>Formulas</h3><table>' +
-    '<tr><td><b>Internal Position</b></td><td>TCC ÷ max TCC among ACTIVE peers in the same Key Location + Job Title, local currency. NOT band-midpoint compa — 1.00 = the local peer max. Bands: green ≥ ' + b.green.toFixed(2) + ', yellow ' + b.yellow.toFixed(2) + '–' + b.green.toFixed(2) + ', red &lt; ' + b.yellow.toFixed(2) + '. Groups under ' + q.smallGroupMin + ' members flagged &quot;small group&quot;; singletons &quot;no peers&quot;.</td></tr>' +
+    '<tr><td><b>Internal Position</b></td><td>TCC ÷ anchor, ACTIVE peers, local currency. Anchor tiers: (1) median of Key Location + Job Title peers when the group has ≥ ' + q.smallGroupMin + ' members; (2) the external <b>market mean</b> for that Location + Job Title (N-of-1 rule — external parity replaces internal equity for unique roles); (3) median of the Key Location + Level cohort (≥ ' + q.smallGroupMin + '); else &quot;insufficient peers&quot;. Anchors always derive from the FULL active population — the universal filters never recompute them. Bands: red &lt; ' + b.low.toFixed(2) + ', yellow &lt; ' + b.target.toFixed(2) + ', green ≤ ' + b.high.toFixed(2) + ', violet above (ceiling watch).</td></tr>' +
+    '<tr><td><b>Priority Score</b></td><td>Weighted 0–100: performance (avg rating ÷ ' + p.ratingMax + ') × ' + p.weights.perf + '% + tenure (50/50 company capped ' + p.caps.companyYears + 'y / in-role capped ' + p.caps.profileYears + 'y) × ' + p.weights.tenure + '% + compa gap (below-anchor %, full credit at ' + Math.round(p.caps.gapPct * 100) + '%) × ' + p.weights.compaGap + '%. Missing components redistribute their weight (° = partial). Mastery banding is a planned future component.</td></tr>' +
+    '<tr><td><b>vs Market</b></td><td>TCC ÷ benchmark <b>Mean</b> (a mean, not P50) for the same Location + Job Title, local currency only — currency-mismatched rows are skipped and counted. Below ' + (m.marketLow || 0.9).toFixed(2) + ' renders red (priority read). Coverage: ' + cov.matchedEmployees + ' matched / ' + cov.rows + ' rows' + (cov.currencyMismatch ? ' / ' + cov.currencyMismatch + ' currency mismatches' : '') + '.</td></tr>' +
+    '<tr><td><b>Tenure</b></td><td>Company = years since Hire Date. In-role = years since the latest promotion/title-change comp event (falls back to Hire Date). TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger).</td></tr>' +
     '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
     '<tr><td><b>Growth (RRI)</b></td><td>(current ÷ previous)^(1 ÷ years) − 1 between consecutive comp events from the RD tab. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
     '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.</td></tr>' +
     '<tr><td><b>QTA interim</b></td><td>Latest &quot;Next Review&quot; per Rocketeer from RD events, sorted overdue-first.</td></tr></table>' +
-    '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available.</p>' +
+    '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available. Universal filters recompute every view for the filtered population, EXCEPT anchors and equity group medians (always full-population facts).</p>' +
     '<h3>Freshness</h3><p class="sub">Payload generated ' + esc(m.generatedAt) +
     (m.fromCache ? " — served from cache (⟳ Refresh forces a live read)." : " — live read.") +
     ' Cache TTL 65 minutes.</p></div>';
@@ -759,13 +767,30 @@ function openDrill(empNo) {
     box.classList.remove("hidden");
     return;
   }
+  const marketLow = d.meta.marketLow || 0.9;
   let body =
     '<button onclick="closeDrill()" style="float:right">✕ Close</button>' +
     '<h2>' + esc(emp.name) + '</h2>' +
     '<div class="sub">' + esc(emp.jobTitle) + ' · ' + esc(emp.keyLocation) + ' · ' + esc(emp.dept) + '</div>' +
-    '<div style="margin:10px 0"><span class="chip">TCC ' + fmtMoney(emp.tcc, emp.tccUsd, emp.currency) + '</span>';
+    '<div style="margin:10px 0">' +
+    '<span class="chip">TCC ' + fmtMoney(emp.tcc, emp.tccUsd, emp.currency) + '</span>' +
+    (emp.ratio != null
+      ? '<span class="chip ' + ratioClass(emp.ratio) + '" title="anchor: ' + esc(TIER_LABEL[emp.anchorTier] || "") + '">position ' + emp.ratio.toFixed(2) + '</span>' : '') +
+    (emp.marketRatio != null
+      ? '<span class="chip ' + (emp.marketRatio < marketLow ? "red" : "green") + '" title="' + esc(emp.benchSource || "benchmark") + '">vs market ' + emp.marketRatio.toFixed(2) + '</span>' : '') +
+    (emp.tenureCompanyYears != null
+      ? '<span class="chip">tenure ' + emp.tenureCompanyYears + 'y company / ' + (emp.tenureProfileYears != null ? emp.tenureProfileYears + 'y in role' : "—") + '</span>' : '') +
+    (emp.ttmGrowthPct != null ? '<span class="chip">TTM growth ' + pctFmt(emp.ttmGrowthPct) + '</span>' : '');
   if (g && g.overallAnnualized != null) {
     body += '<span class="chip green">overall growth ' + pctFmt(g.overallAnnualized) + '/yr (RRI)</span>';
+  }
+  if (emp.priority && emp.priority.score != null) {
+    const c = emp.priority.components;
+    body += '<span class="chip yellow" title="perf ' + (c.perf != null ? (c.perf * 100).toFixed(0) + '%' : '—') +
+      ' · tenure ' + (c.tenure != null ? (c.tenure * 100).toFixed(0) + '%' : '—') +
+      ' · gap ' + (c.compaGap != null ? (c.compaGap * 100).toFixed(0) + '%' : '—') +
+      (emp.priority.partial ? ' · partial (missing: ' + emp.priority.missing.join(", ") + ')' : '') +
+      '">priority ' + emp.priority.score + (emp.priority.partial ? '°' : '') + '</span>';
   }
   body += '</div>';
   if (!g || !g.events.length) {
@@ -783,6 +808,16 @@ function openDrill(empNo) {
         '<td>' + pctFmt(e.deltaPct) + '</td><td>' + pctFmt(e.annualized) + '</td></tr>').join("") +
       '</table>' +
       '<div class="sub" style="margin-top:6px">First event is the baseline (usually New Hire) — no growth math applies to it.</div>';
+  }
+  const ratings = (g && g.ratings) ? g.ratings : [];
+  if (ratings.length) {
+    body += '<h3>Performance ratings (Small Improvements)</h3><div>' +
+      ratings.map(r =>
+        '<span class="chip ' + (r.rate >= 4 ? "green" : r.rate >= 3 ? "" : "red") + '"' +
+        (r.explanation ? ' title="' + esc(r.explanation) + '"' : '') + '>' +
+        esc(r.fq) + ' · ' + esc(r.rate) + '</span>').join("") + '</div>' +
+      '<div class="sub" style="margin-top:4px">avg ' + (emp.perfAvg != null ? emp.perfAvg.toFixed(2) : "—") +
+      ' over ' + emp.perfCount + ' quarter(s)</div>';
   }
   box.innerHTML = body;
   box.classList.remove("hidden");
