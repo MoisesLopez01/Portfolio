@@ -403,6 +403,35 @@ function buildPerfForEmp_(rows) {
   };
 }
 
+// ── Priority Score ──────────────────────────────────────────────────────────
+// Config-weighted composite answering "who to prioritize for adjustment":
+// high performers currently underpaid relative to their resolved anchor.
+// A missing component drops out and its weight redistributes proportionally —
+// no component ever fakes a zero. Weights/caps echo via meta.priorityCfg.
+
+function priorityScore_(v, cfg) {
+  const w = cfg.PRIORITY_W, caps = cfg.PRIORITY_CAPS;
+  const comps = {
+    perf: (v.perfAvg != null && v.perfCount > 0)
+      ? Math.min(v.perfAvg / cfg.RATING_MAX, 1) : null,
+    tenure: (v.companyYears != null)
+      ? 0.5 * Math.min(v.companyYears / caps.companyYears, 1)
+      + 0.5 * Math.min((v.profileYears != null ? v.profileYears : v.companyYears) / caps.profileYears, 1)
+      : null,
+    compaGap: (v.ratio != null)
+      ? Math.min(Math.max(0, 1 - v.ratio) / caps.gapPct, 1) : null,
+  };
+  let totalW = 0, sum = 0;
+  const missing = [];
+  [["perf", w.perf], ["tenure", w.tenure], ["compaGap", w.compaGap]].forEach(function (p) {
+    if (comps[p[0]] == null) { missing.push(p[0]); return; }
+    totalW += p[1]; sum += comps[p[0]] * p[1];
+  });
+  if (!totalW) return { score: null, components: comps, partial: true, missing };
+  return { score: Math.round(sum / totalW * 100), components: comps,
+           partial: missing.length > 0, missing };
+}
+
 // ── Pay Equity engine ───────────────────────────────────────────────────────
 // Three lenses computed within Key Location + level groups (same location ⇒
 // same local currency, so TCC comparisons are honest):

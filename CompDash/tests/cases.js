@@ -334,3 +334,46 @@ function mkEmp(over) {
     lookupBench_(map, "El Salvador", "Data Analyst", "").row !== null);
   check("lookup: null map safe", lookupBench_(null, "X", "Y", "USD").row === null);
 })();
+
+// ── V2 Task 6: priorityScore_ ───────────────────────────────
+(function () {
+  // Full data: perf 4/5=0.8, tenure 0.5*min(6/10,1)+0.5*min(2/5,1)=0.5, gap (1-0.85)/0.25=0.6
+  const full = priorityScore_(
+    { perfAvg: 4, perfCount: 3, companyYears: 6, profileYears: 2, ratio: 0.85 }, CONFIG_CD);
+  // score = (0.8*57 + 0.5*29 + 0.6*14) / 100 * 100 = 45.6+14.5+8.4 = 68.5 → 69 (Math.round)
+  check("priority: weighted score", full.score === 69);
+  check("priority: not partial with all components", full.partial === false && full.missing.length === 0);
+  check("priority: components exposed",
+    approx(full.components.perf, 0.8) && approx(full.components.tenure, 0.5) && approx(full.components.compaGap, 0.6));
+
+  // Gap saturates at 25% below anchor; ratio above 1 → gap 0
+  check("priority: gap capped at 1",
+    approx(priorityScore_({ perfAvg: null, perfCount: 0, companyYears: null, profileYears: null, ratio: 0.5 },
+      CONFIG_CD).components.compaGap, 1));
+  check("priority: above-median ratio → zero gap",
+    priorityScore_({ perfAvg: 5, perfCount: 1, companyYears: 1, profileYears: 1, ratio: 1.2 },
+      CONFIG_CD).components.compaGap === 0);
+
+  // Missing perf → weight redistributes over tenure+compaGap (29+14=43)
+  const noPerf = priorityScore_(
+    { perfAvg: null, perfCount: 0, companyYears: 10, profileYears: 5, ratio: 1.0 }, CONFIG_CD);
+  // tenure=1, gap=0 → (1*29 + 0*14)/43*100 = 67.44 → 67
+  check("priority: redistribution without perf", noPerf.score === 67 && noPerf.partial === true);
+  check("priority: missing names the component", noPerf.missing.indexOf("perf") !== -1);
+
+  // Everything missing → null score, partial
+  const none = priorityScore_(
+    { perfAvg: null, perfCount: 0, companyYears: null, profileYears: null, ratio: null }, CONFIG_CD);
+  check("priority: all missing → null", none.score === null && none.partial === true);
+
+  // Profile tenure null falls back to company inside the blend
+  const noProf = priorityScore_(
+    { perfAvg: null, perfCount: 0, companyYears: 5, profileYears: null, ratio: null }, CONFIG_CD);
+  check("priority: profile falls back to company in blend",
+    approx(noProf.components.tenure, 0.5 * 0.5 + 0.5 * 1));
+
+  // Defensive: rating above scale clamps to 1
+  check("priority: perf clamps at 1",
+    priorityScore_({ perfAvg: 7, perfCount: 1, companyYears: null, profileYears: null, ratio: null },
+      CONFIG_CD).components.perf === 1);
+})();
