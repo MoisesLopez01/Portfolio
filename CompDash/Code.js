@@ -661,10 +661,14 @@ function props_() { return PropertiesService.getScriptProperties(); }
 function ssIds_() {
   const p = props_();
   return {
-    roster:    p.getProperty("CD_ROSTER_SS_ID")    || CONFIG_CD.ROSTER_SS_ID,
-    hist:      p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
-    rosterTab: p.getProperty("CD_ROSTER_TAB")      || CONFIG_CD.ROSTER_TAB,
-    histTab:   p.getProperty("CD_HIST_TAB")        || CONFIG_CD.HIST_TAB,
+    roster:     p.getProperty("CD_ROSTER_SS_ID")    || CONFIG_CD.ROSTER_SS_ID,
+    hist:       p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
+    ratings:    p.getProperty("CD_RATINGS_SS_ID")   || CONFIG_CD.RATINGS_SS_ID,
+    bench:      p.getProperty("CD_BENCH_SS_ID")     || CONFIG_CD.BENCH_SS_ID,
+    rosterTab:  p.getProperty("CD_ROSTER_TAB")      || CONFIG_CD.ROSTER_TAB,
+    histTab:    p.getProperty("CD_HIST_TAB")        || CONFIG_CD.HIST_TAB,
+    ratingsTab: p.getProperty("CD_RATINGS_TAB")     || CONFIG_CD.RATINGS_TAB,
+    benchTab:   p.getProperty("CD_BENCH_TAB")       || CONFIG_CD.BENCH_TAB,
   };
 }
 
@@ -842,6 +846,76 @@ function readCompHistory_() {
   });
   log_("readCompHistory_: " + Object.keys(byEmp).length + " employees with events");
   return byEmp;
+}
+
+/** @returns {{byEmp: Object<string, Array>, count: number}} Small Improvements ratings by Employee Number. */
+function readRatings_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.ratings, ids.ratingsTab);
+  const iId   = colIdx_(headers, "ID");
+  const iFq   = colIdx_(headers, "Fiscal Quarter");
+  const iRate = colIdx_(headers, "Rate");
+  const iExp  = colIdx_(headers, "Rating Explanation");
+  if (iId === -1 || iFq === -1 || iRate === -1) {
+    Logger.log("❌ readRatings_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Ratings tab: required columns missing (see execution log).");
+  }
+  const byEmp = {};
+  let count = 0;
+  rows.forEach(row => {
+    const emp = String(row[iId] || "").trim();
+    const rate = asNum_(row[iRate]);
+    if (!emp || rate == null) return;
+    if (!byEmp[emp]) byEmp[emp] = [];
+    byEmp[emp].push({
+      fq: String(row[iFq] || "").trim(),
+      rate,
+      explanation: iExp !== -1 ? String(row[iExp] || "").trim() : "",
+    });
+    count++;
+  });
+  log_("readRatings_: " + count + " ratings across " + Object.keys(byEmp).length + " employees");
+  return { byEmp, count };
+}
+
+/**
+ * @returns {{map: Object, count: number}} benchmark rows keyed by
+ * benchKey_(Location, Job Title). LOCAL currency values; partial rows (no Mean
+ * but P25/P75 present) are kept — the compilation grows over time.
+ */
+function readBenchmarks_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.bench, ids.benchTab);
+  const iLoc   = colIdx_(headers, "Location");
+  const iTitle = colIdx_(headers, "Job Title");
+  const iCur   = colIdx_(headers, "Local Currency");
+  const iP25   = colIdx_(headers, "25th Percentile TCC", /25th/i);
+  const iMean  = colIdx_(headers, "Mean TCC", /mean/i);
+  const iP75   = colIdx_(headers, "75th Percentile TCC", /75th/i);
+  const iSrc   = colIdx_(headers, "Source or Website", /source/i);
+  if (iLoc === -1 || iTitle === -1 || iMean === -1) {
+    Logger.log("❌ readBenchmarks_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Benchmark tab: required columns missing (see execution log).");
+  }
+  const map = {};
+  let count = 0;
+  rows.forEach(row => {
+    const loc = String(row[iLoc] || "").trim();
+    const title = String(row[iTitle] || "").trim();
+    if (!loc || !title) return;
+    const p25  = iP25 !== -1 ? asNum_(row[iP25]) : null;
+    const mean = asNum_(row[iMean]);
+    const p75  = iP75 !== -1 ? asNum_(row[iP75]) : null;
+    if (mean == null && p25 == null && p75 == null) return; // nothing usable yet
+    map[benchKey_(loc, title)] = {
+      p25, mean, p75,
+      currency: iCur !== -1 ? String(row[iCur] || "").trim() : "",
+      source:   iSrc !== -1 ? String(row[iSrc] || "").trim() : "",
+    };
+    count++;
+  });
+  log_("readBenchmarks_: " + count + " benchmark rows");
+  return { map, count };
 }
 
 // ── Assembly + web app ──────────────────────────────────────────────────────
