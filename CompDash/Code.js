@@ -247,41 +247,67 @@ function buildAttrition_(records, ctx) {
   };
 }
 
-// ── Internal Position engine ────────────────────────────────────────────────
-// ratio = TCC ÷ max(TCC) within the same Key Location + Job Title peer group,
-// ACTIVE employees, LOCAL currency. Deliberately labeled "Internal Position
-// (vs peer max)" in the UI — it is NOT a band-midpoint compa ratio (no band
-// data exists yet), so nobody can sit above 1.0 and the classic above/below-
-// midpoint reading must never be attached to it.
+// ── Internal Position engine V2 ─────────────────────────────────────────────
+// ratio = TCC ÷ anchor, ACTIVE employees, LOCAL currency, where the anchor is
+// resolved per Key Location + Job Title group in tiers:
+//   1 "title"  — group ≥ SMALL_GROUP_MIN → median of the title peers
+//   2 "market" — small group with a same-currency benchmark Mean (N-of-1 rule:
+//                External Market Parity replaces internal equity for unique roles)
+//   3 "level"  — median of the Key Location + Level cohort (≥ SMALL_GROUP_MIN);
+//                level "—" never borrows a cohort
+//   4 "none"   — insufficientPeers, ratio null
+// Anchors always derive from the FULL active population — UI filters never
+// recompute them. Ratios may exceed 1.0 (median anchor).
 
-function buildCompaGroups_(activeRecords, smallGroupMin) {
-  const min = smallGroupMin || CONFIG_CD.SMALL_GROUP_MIN;
+function buildCompaGroups_(activeRecords, benchMap, cfg) {
+  const min = (cfg && cfg.SMALL_GROUP_MIN) || CONFIG_CD.SMALL_GROUP_MIN;
+  const cohorts = new Map(); // "keyLocation||level" → tcc[]
+  activeRecords.forEach(r => {
+    if (!(r.tcc > 0) || !r.level || r.level === "—") return;
+    const k = (r.keyLocation || "—") + "||" + r.level;
+    if (!cohorts.has(k)) cohorts.set(k, []);
+    cohorts.get(k).push(r.tcc);
+  });
   const map = new Map();
   activeRecords.forEach(r => {
     const key = (r.keyLocation || "—") + "||" + (r.jobTitle || "—");
     if (!map.has(key)) {
       map.set(key, { keyLocation: r.keyLocation || "—", jobTitle: r.jobTitle || "—",
-                     currency: r.currency || "", members: [], missingTcc: 0 });
+                     level: r.level, currency: r.currency || "", members: [], missingTcc: 0 });
     }
     const g = map.get(key);
     if (r.tcc == null || r.tcc <= 0) { g.missingTcc++; return; }
     g.members.push(r);
   });
   return [...map.values()].map(g => {
-    const maxTcc = g.members.reduce((m, r) => Math.max(m, r.tcc), 0);
     const count = g.members.length;
+    let anchor = null, anchorTier = "none";
+    if (count >= min) {
+      anchor = median_(g.members.map(r => r.tcc));
+      anchorTier = "title";
+    } else if (count > 0) {
+      const b = lookupBench_(benchMap, g.keyLocation, g.jobTitle, g.currency);
+      if (b.row && b.row.mean > 0) {
+        anchor = b.row.mean;
+        anchorTier = "market";
+      } else if (g.level && g.level !== "—") {
+        const cohort = cohorts.get(g.keyLocation + "||" + g.level) || [];
+        if (cohort.length >= min) { anchor = median_(cohort); anchorTier = "level"; }
+      }
+    }
     return {
       keyLocation: g.keyLocation, jobTitle: g.jobTitle, currency: g.currency,
-      maxTcc, count, missingTcc: g.missingTcc,
+      anchor, anchorTier, count, missingTcc: g.missingTcc,
       smallGroup: count > 0 && count < min,
+      insufficientPeers: count > 0 && anchorTier === "none",
       members: g.members
         .map(r => ({
           empNo: r.empNo, name: r.name, level: r.level, currency: r.currency,
           tcc: r.tcc, tccUsd: r.tccUsd,
-          ratio: maxTcc > 0 ? Math.round(r.tcc / maxTcc * 1000) / 1000 : null,
+          ratio: anchor > 0 ? Math.round(r.tcc / anchor * 1000) / 1000 : null,
           noPeers: count === 1,
         }))
-        .sort((a, b) => b.tcc - a.tcc),
+        .sort((a, b) => (a.ratio == null) - (b.ratio == null) || a.ratio - b.ratio),
     };
   }).sort((a, b) =>
     a.keyLocation.localeCompare(b.keyLocation) || a.jobTitle.localeCompare(b.jobTitle));
