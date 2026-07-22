@@ -247,6 +247,83 @@ function buildAttrition_(records, ctx) {
   };
 }
 
+// ── People projection + string-date attrition (client-mirrored) ────────────
+// The client recomputes attrition for FILTERED populations from a compact
+// people[] payload. These functions compare ISO date STRINGS only
+// (YYYY-MM-DD is lexicographically ordered) so ViewDash.html carries
+// byte-identical copies — see "MIRROR" comments there; keep in sync.
+
+function personLite_(r) {
+  return {
+    empNo: r.empNo, name: r.name, dept: r.dept, level: r.level,
+    keyLocation: r.keyLocation,
+    hireDate: isoDate_(r.hireDate), termDate: isoDate_(r.termDate),
+    termCls: r.termDate ? classifyTerm_(r.termCategory) : "",
+    regretted: /yes|true/i.test(String(r.termRegretted || "")),
+  };
+}
+
+// MIRROR of this function lives in ViewDash.html — change both together.
+function fyAttritionFromPeople_(people, fyStartCalYear, asOfIso, label) {
+  const fyStartIso = fyStartCalYear + "-07-01";
+  const fyEndIso = (fyStartCalYear + 1) + "-06-30";
+  const endIso = (asOfIso && asOfIso < fyEndIso) ? asOfIso : fyEndIso;
+  const idxOf = iso => (+iso.slice(0, 4) - fyStartCalYear) * 12 + (+iso.slice(5, 7) - 1) - 6;
+  const hcOn = iso => people.filter(p =>
+    (!p.hireDate || p.hireDate <= iso) && (!p.termDate || p.termDate > iso)).length;
+  const monthly = Array.from({ length: 12 }, () => ({ terms: 0, vol: 0, invol: 0 }));
+  const terms = people.filter(p => p.termDate && p.termDate >= fyStartIso && p.termDate <= fyEndIso);
+  terms.forEach(p => {
+    const i = idxOf(p.termDate);
+    if (i < 0 || i > 11) return;
+    monthly[i].terms++;
+    if (p.termCls === "vol") monthly[i].vol++;
+    else if (p.termCls === "invol") monthly[i].invol++;
+  });
+  const quarterly = [0, 1, 2, 3].map(q => {
+    const s = monthly.slice(q * 3, q * 3 + 3);
+    return { terms: s.reduce((t, x) => t + x.terms, 0),
+             vol:   s.reduce((t, x) => t + x.vol, 0),
+             invol: s.reduce((t, x) => t + x.invol, 0) };
+  });
+  const vol = terms.filter(p => p.termCls === "vol").length;
+  const invol = terms.filter(p => p.termCls === "invol").length;
+  const regretted = terms.filter(p => p.regretted).length;
+  const avgHeadcount = (hcOn(fyStartIso) + hcOn(endIso)) / 2;
+  return { label, monthly, quarterly, total: terms.length, vol, invol, regretted,
+           avgHeadcount, rate: avgHeadcount > 0 ? terms.length / avgHeadcount : null };
+}
+
+// MIRROR of this function lives in ViewDash.html — change both together.
+function sliceAttritionFromPeople_(people, fyStartCalYear, asOfIso, keyFn) {
+  const fyStartIso = fyStartCalYear + "-07-01";
+  const fyEndIso = (fyStartCalYear + 1) + "-06-30";
+  const endIso = (asOfIso && asOfIso < fyEndIso) ? asOfIso : fyEndIso;
+  const groups = new Map();
+  const get = k => {
+    if (!groups.has(k)) groups.set(k, { key: k, terms: 0, vol: 0, invol: 0, hcStart: 0, hcEnd: 0 });
+    return groups.get(k);
+  };
+  people.forEach(p => {
+    const g = get(keyFn(p) || "—");
+    if ((!p.hireDate || p.hireDate <= fyStartIso) && (!p.termDate || p.termDate > fyStartIso)) g.hcStart++;
+    if ((!p.hireDate || p.hireDate <= endIso) && (!p.termDate || p.termDate > endIso)) g.hcEnd++;
+    if (p.termDate && p.termDate >= fyStartIso && p.termDate <= fyEndIso) {
+      g.terms++;
+      if (p.termCls === "vol") g.vol++;
+      else if (p.termCls === "invol") g.invol++;
+    }
+  });
+  return [...groups.values()]
+    .map(g => {
+      const avg = (g.hcStart + g.hcEnd) / 2;
+      return { key: g.key, terms: g.terms, vol: g.vol, invol: g.invol,
+               headcount: g.hcEnd, rate: avg > 0 ? g.terms / avg : null };
+    })
+    .filter(g => g.terms > 0 || g.headcount > 0)
+    .sort((x, y) => y.terms - x.terms || y.headcount - x.headcount);
+}
+
 // ── Internal Position engine V2 ─────────────────────────────────────────────
 // ratio = TCC ÷ anchor, ACTIVE employees, LOCAL currency, where the anchor is
 // resolved per Key Location + Job Title group in tiers:

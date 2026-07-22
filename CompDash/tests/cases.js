@@ -377,3 +377,44 @@ function mkEmp(over) {
     priorityScore_({ perfAvg: 7, perfCount: 1, companyYears: null, profileYears: null, ratio: null },
       CONFIG_CD).components.perf === 1);
 })();
+
+// ── V2 Task 7: personLite_ / people-shape attrition parity ──
+(function () {
+  const ctx = fiscalContextCD_(new Date(2026, 6, 21)); // FY27, asOf 2026-07-21
+  const records = [
+    mkEmp({}),
+    mkEmp({ dept: "R&D" }),
+    mkEmp({ active: false, termDate: new Date(2026, 6, 10),
+            termCategory: "Voluntary", termRegretted: "Yes" }),
+    mkEmp({ active: false, termDate: new Date(2027, 1, 5),
+            termCategory: "Involuntary", dept: "R&D" }),
+    mkEmp({ active: false, termDate: new Date(2026, 2, 15), termCategory: "Voluntary" }), // prev FY
+    mkEmp({ hireDate: null, active: false, termDate: new Date(2026, 7, 12), termCategory: "Voluntary" }),
+  ];
+  const people = records.map(personLite_);
+  check("personLite: iso dates + termCls",
+    people[2].termDate === "2026-07-10" && people[2].termCls === "vol" && people[2].regretted === true);
+  check("personLite: active row has blank termCls", people[0].termDate === "" && people[0].termCls === "");
+
+  const server = fyAttritionBlock_(records, ctx.fyStart, ctx.fyEnd, ctx.asOf, ctx.fyLabel);
+  const client = fyAttritionFromPeople_(people, ctx.fyStartCalYear, isoDate_(ctx.asOf), ctx.fyLabel);
+  check("parity: totals match", client.total === server.total && client.vol === server.vol &&
+    client.invol === server.invol && client.regretted === server.regretted);
+  check("parity: rate matches", approx(client.rate, server.rate));
+  check("parity: monthly buckets match",
+    JSON.stringify(client.monthly) === JSON.stringify(server.monthly));
+  check("parity: quarterly buckets match",
+    JSON.stringify(client.quarterly) === JSON.stringify(server.quarterly));
+
+  const prevServer = fyAttritionBlock_(records, ctx.prevFyStart, ctx.prevFyEnd, null, ctx.prevFyLabel);
+  const prevClient = fyAttritionFromPeople_(people, ctx.fyStartCalYear - 1, null, ctx.prevFyLabel);
+  check("parity: previous FY (no asOf cut)", prevClient.total === prevServer.total &&
+    approx(prevClient.rate, prevServer.rate));
+
+  const end = ctx.asOf < ctx.fyEnd ? ctx.asOf : ctx.fyEnd;
+  const sSlice = sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.dept);
+  const cSlice = sliceAttritionFromPeople_(people, ctx.fyStartCalYear, isoDate_(ctx.asOf), p => p.dept);
+  check("parity: dept slice keys+terms match",
+    JSON.stringify(cSlice.map(s => [s.key, s.terms, s.headcount])) ===
+    JSON.stringify(sSlice.map(s => [s.key, s.terms, s.headcount])));
+})();
