@@ -235,3 +235,21 @@ function mkEmp(over) {
   check("cfg: rating max 5", CONFIG_CD.RATING_MAX === 5);
   check("cfg: market low 0.90", approx(CONFIG_CD.MARKET_LOW, 0.90));
 })();
+
+// ── V2 Task 2: buildPerfForEmp_ ─────────────────────────────
+(function () {
+  const p = buildPerfForEmp_([
+    { fq: "FY25Q1", rate: 4, explanation: "Exceeds" },
+    { fq: "FY24Q2", rate: 3, explanation: "Meets" },
+    { fq: "FY24Q4", rate: 3, explanation: "Meets" },
+  ]);
+  check("perf: avg rounded 2dp", approx(p.avg, 3.33, 0.005));
+  check("perf: latest = newest fiscal quarter", p.latest === 4);
+  check("perf: count", p.count === 3);
+  check("perf: history sorted by fq asc", p.history[0].fq === "FY24Q2" && p.history[2].fq === "FY25Q1");
+  check("perf: history keeps explanation", p.history[0].explanation === "Meets");
+
+  const bad = buildPerfForEmp_([{ fq: "FY24Q1", rate: null }, { fq: "FY24Q2", rate: NaN }]);
+  check("perf: non-numeric rates dropped", bad.count === 0 && bad.avg === null && bad.latest === null);
+  check("perf: empty/null input safe", buildPerfForEmp_(null).count === 0);
+})();

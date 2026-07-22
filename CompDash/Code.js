@@ -342,6 +342,24 @@ function buildGrowthForEmp_(events) {
   return { events: out, overallAnnualized: overall };
 }
 
+// ── Ratings engine (Small Improvements) ─────────────────────────────────────
+// Rows come from the "Small Improvements RD" tab keyed by Employee Number.
+// Fixed-width fiscal-quarter labels ("FY24Q2") sort correctly as strings.
+
+function buildPerfForEmp_(rows) {
+  const hist = (rows || [])
+    .filter(r => r && typeof r.rate === "number" && isFinite(r.rate))
+    .sort((a, b) => String(a.fq).localeCompare(String(b.fq)));
+  if (!hist.length) return { avg: null, latest: null, count: 0, history: [] };
+  const avg = hist.reduce((t, r) => t + r.rate, 0) / hist.length;
+  return {
+    avg: Math.round(avg * 100) / 100,
+    latest: hist[hist.length - 1].rate,
+    count: hist.length,
+    history: hist.map(r => ({ fq: r.fq, rate: r.rate, explanation: r.explanation || "" })),
+  };
+}
+
 // ── Pay Equity engine ───────────────────────────────────────────────────────
 // Three lenses computed within Key Location + level groups (same location ⇒
 // same local currency, so TCC comparisons are honest):
