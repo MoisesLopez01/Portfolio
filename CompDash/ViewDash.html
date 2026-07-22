@@ -301,28 +301,39 @@ function onLoadError(err) {
 
 // ── tab renderers ───────────────────────────────────────────
 function renderOverview(el) {
-  const d = STATE.data, cur = d.attrition.currentFY, prev = d.attrition.previousFY, eq = d.equity;
-  const ratios = [];
-  d.compaGroups.forEach(g => g.members.forEach(m => {
-    if (m.ratio != null && !m.noPeers) ratios.push(m.ratio);
-  }));
-  const medRatio = median(ratios);
-  const flags = eq.outliers.length + eq.tenure.length +
-    (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0);
-  const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length;
+  const d = STATE.data, act = filtersActive();
+  const emps = d.employees.filter(visibleEmp);
+  const people = act ? d.people.filter(visibleEmp) : d.people;
+  const cur = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, d.meta.fyLabel)
+    : d.attrition.currentFY;
+  const prev = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
+    : d.attrition.previousFY;
+  const eq = d.equity;
+  const empIndex = {};
+  d.employees.forEach(e => { empIndex[e.empNo] = e; });
+  const flagVisible = r => { const e = empIndex[r.empNo]; return e ? visibleEmp(e) : false; };
 
-  // The six manager mental-model questions, in reading order (spec §1).
+  const medRatio = median(emps.filter(e => e.ratio != null).map(e => e.ratio));
+  const mkt = emps.filter(e => e.marketRatio != null).map(e => e.marketRatio);
+  const medMkt = median(mkt);
+  const flags = eq.outliers.filter(flagVisible).length + eq.tenure.filter(flagVisible).length +
+    (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0);
+  const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0 && flagVisible(r)).length;
+  const suffix = act ? " · filtered" : "";
+
   const cards = [
     { q: "Is my team healthy? Are people staying?", v: pctFmt(cur.rate),
-      s: d.meta.fyLabel + " attrition · " + prev.label + " " + pctFmt(prev.rate), tab: "attrition" },
+      s: d.meta.fyLabel + " attrition · " + prev.label + " " + pctFmt(prev.rate) + suffix, tab: "attrition" },
     { q: "Are Rocketeers paid fairly vs peers?", v: medRatio != null ? medRatio.toFixed(2) : "—",
-      s: "median Internal Position (vs peer max)", tab: "compa" },
-    { q: "Is our band still competitive in the market?", v: "Pending",
-      s: "Payscale benchmarks not loaded yet", tab: "market" },
+      s: "median Internal Position (vs peer median)" + suffix, tab: "compa" },
+    { q: "Is our band still competitive in the market?", v: medMkt != null ? medMkt.toFixed(2) : "Pending",
+      s: mkt.length ? "median vs market · " + mkt.length + " benchmarked" + suffix : "benchmark compilation in progress", tab: "market" },
     { q: "Is anyone being paid inequitably?", v: String(flags),
-      s: eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)", tab: "equity" },
+      s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix, tab: "equity" },
     { q: "Who is coming up for review this quarter?", v: String(overdue),
-      s: "Next Review dates overdue", tab: "qta" },
+      s: "Next Review dates overdue" + suffix, tab: "qta" },
     { q: "Whose contribution warrants recognition?", v: "→",
       s: "open the Contribution Report", tab: "contrib" },
   ];
@@ -331,7 +342,7 @@ function renderOverview(el) {
       '<div class="kpi" onclick="switchTab(\'' + c.tab + '\')">' +
       '<div class="kpi-q">' + esc(c.q) + '</div><div class="kpi-v">' + esc(c.v) + '</div>' +
       '<div class="kpi-s">' + esc(c.s) + '</div></div>').join("") + '</div>' +
-    '<div class="card"><h2>' + esc(d.meta.fyLabel) + ' terminations by fiscal month</h2>' +
+    '<div class="card"><h2>' + esc(cur.label) + ' terminations by fiscal month' + esc(suffix) + '</h2>' +
     svgSpark(cur.monthly.map(m => m.terms), 640, 60, "var(--warn)") +
     '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
 }
@@ -461,49 +472,54 @@ function renderCompa(el) {
   el.innerHTML = html;
 }
 function renderMarket(el) {
-  const d = STATE.data;
+  const d = STATE.data, cov = d.meta.benchCoverage || { rows: 0, matchedEmployees: 0, currencyMismatch: 0 };
+  const emps = d.employees.filter(visibleEmp);
   const byLoc = new Map();
-  d.employees.forEach(e => {
+  emps.forEach(e => {
     const k = e.keyLocation || "—";
     if (!byLoc.has(k)) byLoc.set(k, []);
     byLoc.get(k).push(e);
   });
   let html =
-    '<div class="banner">🌍 <b>Benchmark data pending</b> — the Payscale P25/P50/P75 columns light up automatically when the market source lands (fields <code>p25/p50/p75</code> on each employee). Meanwhile this view surfaces within-location TCC ordering to spot title discrepancies.</div>';
+    '<div class="banner">🌍 <b>Market data: ' + cov.matchedEmployees + ' of ' + d.meta.activeCount +
+    ' active Rocketeers matched</b> (' + cov.rows + ' benchmark rows — compilation in progress)' +
+    (cov.currencyMismatch ? ' · ⚠️ ' + cov.currencyMismatch + ' row(s) skipped for currency mismatch' : '') +
+    '. Values are LOCAL currency; the midpoint column is a <b>mean</b>, not P50.</div>' +
+    sourceBanner("benchmarks", "Benchmark data");
   [...byLoc.keys()].sort().forEach(loc => {
-    const emps = byLoc.get(loc).slice().sort((a, b) => (b.tcc || 0) - (a.tcc || 0));
-    html += '<div class="card"><h2>' + esc(loc) + ' <span class="sub">(' + emps.length + ' active)</span></h2>' +
-      '<table><tr><th>Emp #</th><th>Name</th><th>Job Title</th><th>TCC</th><th>P25</th><th>P50</th><th>P75</th><th>vs market</th><th>Suggestion</th></tr>' +
-      emps.map(e => {
-        const s = marketRow(e);
+    const rows = byLoc.get(loc).slice().sort((a, b) => (b.tcc || 0) - (a.tcc || 0));
+    html += '<div class="card"><h2>' + esc(loc) + ' <span class="sub">(' + rows.length + ' active)</span></h2>' +
+      '<table><tr><th>Emp #</th><th>Name</th><th>Job Title</th><th>TCC</th><th>P25</th><th>Mean (midpoint)</th><th>P75</th><th>vs market</th><th>Suggestion</th></tr>' +
+      rows.map(e => {
+        const s = suggestionChip(e);
+        const tip = e.benchSource ? ' title="' + esc(e.benchSource) + '"' : '';
         return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
           '<td>' + esc(e.empNo) + '</td><td>' + esc(e.name) + '</td><td>' + esc(e.jobTitle) + '</td>' +
           '<td>' + fmtMoney(e.tcc, e.tccUsd, e.currency) + '</td>' +
-          '<td>' + (e.p25 != null ? Math.round(e.p25).toLocaleString() : "—") + '</td>' +
-          '<td>' + (e.p50 != null ? Math.round(e.p50).toLocaleString() : "—") + '</td>' +
-          '<td>' + (e.p75 != null ? Math.round(e.p75).toLocaleString() : "—") + '</td>' +
+          '<td' + tip + '>' + (e.p25 != null ? Math.round(e.p25).toLocaleString() : "—") + '</td>' +
+          '<td' + tip + '>' + (e.p50 != null ? Math.round(e.p50).toLocaleString() : "—") + '</td>' +
+          '<td' + tip + '>' + (e.p75 != null ? Math.round(e.p75).toLocaleString() : "—") + '</td>' +
           '<td>' + s.badge + '</td><td>' + s.text + '</td></tr>';
       }).join("") + '</table></div>';
   });
   el.innerHTML = html;
 }
 
-// Client-side mirror of marketSuggestion_ (Code.js) — red = raise to P25 is the
-// priority read, yellow = move to P50 for competitiveness, green = at market.
-function marketRow(e) {
-  if (e.p25 == null || e.p50 == null || e.tcc == null) {
-    return { badge: '<span class="chip">pending</span>', text: "—" };
-  }
-  if (e.tcc < e.p25) {
+// Renders the SERVER-computed suggestion (marketSuggestion_ in Code.js) — no client math.
+function suggestionChip(e) {
+  const s = e.suggestion || { status: "pending" };
+  if (s.status === "below-p25") {
     return { badge: '<span class="chip red">below P25</span>',
-             text: "+" + pctFmt((e.p25 - e.tcc) / e.tcc, 0) + " to reach P25 · +" +
-                   pctFmt((e.p50 - e.tcc) / e.tcc, 0) + " to P50" };
+             text: "+" + pctFmt(s.pctToP25, 0) + " to reach P25 · +" + pctFmt(s.pctToP50, 0) + " to mean" };
   }
-  if (e.tcc < e.p50) {
-    return { badge: '<span class="chip yellow">below P50</span>',
-             text: "+" + pctFmt((e.p50 - e.tcc) / e.tcc, 0) + " to reach P50" };
+  if (s.status === "below-p50") {
+    return { badge: '<span class="chip yellow">below mean</span>',
+             text: "+" + pctFmt(s.pctToP50, 0) + " to reach the mean" };
   }
-  return { badge: '<span class="chip green">at/above P50</span>', text: "market competitive" };
+  if (s.status === "at-market") {
+    return { badge: '<span class="chip green">at/above mean</span>', text: "market competitive" };
+  }
+  return { badge: '<span class="chip">pending</span>', text: "—" };
 }
 
 function renderEquity(el) {
