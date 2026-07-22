@@ -346,8 +346,94 @@ function renderCompa(el) {
   if (!groups.length) el.innerHTML += '<div class="card sub">No groups match the current filters.</div>';
 }
 function setCompaFilter(k, v) { STATE.compaFilters[k] = v; render(); }
-function renderMarket(el)    { el.innerHTML = '<div class="card">Market Gap — Task 15</div>'; }
-function renderEquity(el)    { el.innerHTML = '<div class="card">Pay Equity — Task 15</div>'; }
+function renderMarket(el) {
+  const d = STATE.data;
+  const byLoc = new Map();
+  d.employees.forEach(e => {
+    const k = e.keyLocation || "—";
+    if (!byLoc.has(k)) byLoc.set(k, []);
+    byLoc.get(k).push(e);
+  });
+  let html =
+    '<div class="banner">🌍 <b>Benchmark data pending</b> — the Payscale P25/P50/P75 columns light up automatically when the market source lands (fields <code>p25/p50/p75</code> on each employee). Meanwhile this view surfaces within-location TCC ordering to spot title discrepancies.</div>';
+  [...byLoc.keys()].sort().forEach(loc => {
+    const emps = byLoc.get(loc).slice().sort((a, b) => (b.tcc || 0) - (a.tcc || 0));
+    html += '<div class="card"><h2>' + esc(loc) + ' <span class="sub">(' + emps.length + ' active)</span></h2>' +
+      '<table><tr><th>Emp #</th><th>Name</th><th>Job Title</th><th>TCC</th><th>P25</th><th>P50</th><th>P75</th><th>vs market</th><th>Suggestion</th></tr>' +
+      emps.map(e => {
+        const s = marketRow(e);
+        return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+          '<td>' + esc(e.empNo) + '</td><td>' + esc(e.name) + '</td><td>' + esc(e.jobTitle) + '</td>' +
+          '<td>' + fmtMoney(e.tcc, e.tccUsd, e.currency) + '</td>' +
+          '<td>' + (e.p25 != null ? Math.round(e.p25).toLocaleString() : "—") + '</td>' +
+          '<td>' + (e.p50 != null ? Math.round(e.p50).toLocaleString() : "—") + '</td>' +
+          '<td>' + (e.p75 != null ? Math.round(e.p75).toLocaleString() : "—") + '</td>' +
+          '<td>' + s.badge + '</td><td>' + s.text + '</td></tr>';
+      }).join("") + '</table></div>';
+  });
+  el.innerHTML = html;
+}
+
+// Client-side mirror of marketSuggestion_ (Code.js) — red = raise to P25 is the
+// priority read, yellow = move to P50 for competitiveness, green = at market.
+function marketRow(e) {
+  if (e.p25 == null || e.p50 == null || e.tcc == null) {
+    return { badge: '<span class="chip">pending</span>', text: "—" };
+  }
+  if (e.tcc < e.p25) {
+    return { badge: '<span class="chip red">below P25</span>',
+             text: "+" + pctFmt((e.p25 - e.tcc) / e.tcc, 0) + " to reach P25 · +" +
+                   pctFmt((e.p50 - e.tcc) / e.tcc, 0) + " to P50" };
+  }
+  if (e.tcc < e.p50) {
+    return { badge: '<span class="chip yellow">below P50</span>',
+             text: "+" + pctFmt((e.p50 - e.tcc) / e.tcc, 0) + " to reach P50" };
+  }
+  return { badge: '<span class="chip green">at/above P50</span>', text: "market competitive" };
+}
+
+function renderEquity(el) {
+  const eq = STATE.data.equity;
+  let html = "";
+  if (!eq.genderAvailable) {
+    html += '<div class="banner">🧭 <b>Gender data pending</b> — the Gender column hasn&#39;t landed in the roster yet; the gender lens activates automatically when it does.</div>';
+  }
+  html += '<div class="card"><h2>Gender pay gap by location + level</h2>';
+  if (eq.gender.length) {
+    html += '<table><tr><th>Location</th><th>Level</th><th>Group</th><th>Medians (local)</th><th>Gap</th><th></th></tr>' +
+      eq.gender.map(g =>
+        '<tr><td>' + esc(g.keyLocation) + '</td><td>' + esc(g.level) + '</td>' +
+        '<td>' + Object.keys(g.counts).map(k => esc(k) + ": " + g.counts[k]).join(" · ") + '</td>' +
+        '<td>' + Object.keys(g.medians).map(k => esc(k) + " " + Math.round(g.medians[k]).toLocaleString()).join(" · ") + '</td>' +
+        '<td>' + g.gapPct + '%</td>' +
+        '<td>' + (g.flagged ? '<span class="chip red">flagged</span>' : '<span class="chip green">ok</span>') + '</td></tr>'
+      ).join("") + '</table>';
+  } else {
+    html += '<p class="sub">No location+level groups with ≥2 members per gender yet.</p>';
+  }
+  html += '</div>' +
+    '<div class="card"><h2>Outliers far below group median <span class="chip red">' + eq.outliers.length + '</span></h2>' +
+    flagTable(eq.outliers, false) + '</div>' +
+    '<div class="card"><h2>Long tenure, low position <span class="chip yellow">' + eq.tenure.length + '</span></h2>' +
+    flagTable(eq.tenure, true) + '</div>';
+  el.innerHTML = html;
+}
+
+// Group stats above carry counts only; names live inside this expandable table.
+function flagTable(rows, withTenure) {
+  if (!rows.length) return '<p class="sub">No flags at current thresholds.</p>';
+  return '<details><summary>' + rows.length + ' flag' + (rows.length === 1 ? "" : "s") + ' — names inside</summary>' +
+    '<table><tr><th>Name</th><th>Location</th><th>Level</th>' + (withTenure ? '<th>Tenure</th>' : '') +
+    '<th>TCC (local)</th><th>Group median</th><th>% below</th></tr>' +
+    rows.map(r =>
+      '<tr class="click" onclick="openDrill(\'' + esc(r.empNo) + '\')">' +
+      '<td>' + esc(r.name) + '</td><td>' + esc(r.keyLocation) + '</td><td>' + esc(r.level) + '</td>' +
+      (withTenure ? '<td>' + r.tenureYears + 'y</td>' : '') +
+      '<td>' + Math.round(r.tcc).toLocaleString() + '</td>' +
+      '<td>' + Math.round(r.groupMedian).toLocaleString() + '</td>' +
+      '<td><span class="chip red">' + r.pctBelow + '%</span></td></tr>').join("") +
+    '</table></details>';
+}
 function renderQta(el)       { el.innerHTML = '<div class="card">QTA Status — Task 16</div>'; }
 function renderContrib(el)   { el.innerHTML = '<div class="card">Contribution — Task 16</div>'; }
 function renderReference(el) { el.innerHTML = '<div class="card">Data Reference — Task 16</div>'; }
