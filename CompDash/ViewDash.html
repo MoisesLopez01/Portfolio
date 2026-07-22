@@ -359,8 +359,71 @@ const RENDERERS = {
   contrib: renderContrib, reference: renderReference, access: renderAccess,
 };
 
-// ── employee drill panel (implemented in Task 14) ───────────
-function openDrill(empNo) {}
+// ── employee drill panel — shared by Internal Position, Market Gap, Pay Equity, QTA ──
+function openDrill(empNo) {
+  const d = STATE.data;
+  const emp = d.employees.find(e => e.empNo === empNo);
+  const g = d.history[empNo];
+  const box = document.getElementById("drill");
+  if (!emp) {
+    box.innerHTML = '<button onclick="closeDrill()" style="float:right">✕ Close</button><p class="sub">Employee not found in the active payload.</p>';
+    box.classList.remove("hidden");
+    return;
+  }
+  let body =
+    '<button onclick="closeDrill()" style="float:right">✕ Close</button>' +
+    '<h2>' + esc(emp.name) + '</h2>' +
+    '<div class="sub">' + esc(emp.jobTitle) + ' · ' + esc(emp.keyLocation) + ' · ' + esc(emp.dept) + '</div>' +
+    '<div style="margin:10px 0"><span class="chip">TCC ' + fmtMoney(emp.tcc, emp.tccUsd, emp.currency) + '</span>';
+  if (g && g.overallAnnualized != null) {
+    body += '<span class="chip green">overall growth ' + pctFmt(g.overallAnnualized) + '/yr (RRI)</span>';
+  }
+  body += '</div>';
+  if (!g || !g.events.length) {
+    body += '<div class="banner">No comp history found in the Compensation Report (RD) for this Rocketeer.</div>';
+  } else {
+    body +=
+      '<h3>TCC growth waterfall (local Total Target Compensation)</h3>' +
+      waterfallSvg(g.events, 500, 200) +
+      '<h3>Comp events</h3>' +
+      '<table><tr><th>Date</th><th>Event</th><th>TCC</th><th>Δ</th><th>Δ%</th><th>Annualized</th></tr>' +
+      g.events.map(e =>
+        '<tr><td>' + esc(e.date) + '</td><td>' + esc(e.reason) + '</td>' +
+        '<td>' + (e.tcc != null ? Math.round(e.tcc).toLocaleString() : "—") + '</td>' +
+        '<td>' + (e.deltaAbs != null ? (e.deltaAbs >= 0 ? "+" : "") + Math.round(e.deltaAbs).toLocaleString() : "—") + '</td>' +
+        '<td>' + pctFmt(e.deltaPct) + '</td><td>' + pctFmt(e.annualized) + '</td></tr>').join("") +
+      '</table>' +
+      '<div class="sub" style="margin-top:6px">First event is the baseline (usually New Hire) — no growth math applies to it.</div>';
+  }
+  box.innerHTML = body;
+  box.classList.remove("hidden");
+}
+
+// Waterfall: first bar is the grey baseline; each later bar spans prev TCC → new TCC
+// (green up, red down). Y-axis starts at 90% of the minimum so deltas stay readable.
+function waterfallSvg(events, w, h) {
+  const evs = events.filter(e => e.tcc != null);
+  if (!evs.length) return "";
+  const minV = Math.min.apply(null, evs.map(e => e.tcc));
+  const maxV = Math.max.apply(null, evs.map(e => e.tcc));
+  const lo = minV * 0.9, span = Math.max(1, maxV - lo);
+  const bw = Math.max(18, Math.min(64, (w - 30) / evs.length - 8));
+  const y = v => 12 + (h - 40) * (1 - (v - lo) / span);
+  let sx = 10;
+  const parts = [];
+  evs.forEach((e, i) => {
+    const top = y(e.tcc);
+    const base = y(i === 0 ? lo : evs[i - 1].tcc);
+    const fill = i === 0 ? "var(--chip)" : (e.tcc >= evs[i - 1].tcc ? "var(--accent)" : "var(--bad)");
+    parts.push('<rect x="' + sx + '" y="' + Math.min(top, base).toFixed(1) + '" width="' + bw +
+      '" height="' + Math.max(2, Math.abs(base - top)).toFixed(1) + '" rx="3" fill="' + fill + '"/>');
+    parts.push('<text x="' + (sx + bw / 2).toFixed(1) + '" y="' + (h - 6) +
+      '" text-anchor="middle">' + esc(e.date.slice(0, 7)) + '</text>');
+    sx += bw + 8;
+  });
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + Math.max(w, sx) + " " + h +
+    '" preserveAspectRatio="xMinYMid meet">' + parts.join("") + '</svg>';
+}
 function closeDrill() { document.getElementById("drill").classList.add("hidden"); }
 
 // ── wiring ──────────────────────────────────────────────────
