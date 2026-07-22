@@ -31,7 +31,7 @@
     button:hover { border-color: var(--cta); }
     .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .seg button { border: 0; border-radius: 0; background: transparent; }
-    .seg button.on { background: var(--cta); color: var(--light-cream); font-weight: 600; }
+    .seg button.on { background: var(--cta); color: var(--void-blue); font-weight: 600; }
     nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
     nav button.on { background: var(--panel-2); border-color: var(--cta); font-weight: 600; }
     #stickyBar { position: sticky; top: 0; z-index: 20; background: var(--bg); }
@@ -388,6 +388,7 @@ function renderOverview(el) {
     ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
     : d.attrition.previousFY;
   const eq = d.equity;
+  const f = STATE.filters;
   const empIndex = {};
   d.employees.forEach(e => { empIndex[e.empNo] = e; });
   const flagVisible = r => { const e = empIndex[r.empNo]; return e ? visibleEmp(e) : false; };
@@ -396,7 +397,7 @@ function renderOverview(el) {
   const mkt = emps.filter(e => e.marketRatio != null).map(e => e.marketRatio);
   const medMkt = median(mkt);
   const flags = eq.outliers.filter(flagVisible).length + eq.tenure.filter(flagVisible).length +
-    (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0);
+    (eq.genderAvailable ? eq.gender.filter(g => g.flagged && (!f.loc || g.keyLocation === f.loc) && (!f.level || g.level === f.level)).length : 0);
   const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0 && flagVisible(r)).length;
   const suffix = act ? " · filtered" : "";
 
@@ -481,12 +482,14 @@ const TIER_LABEL = {
   level: "median · level cohort", none: "insufficient peers",
 };
 function rankVal(e, key) {
-  if (key === "score") return e.priority && e.priority.score != null ? e.priority.score : -1;
-  if (key === "ratio") return e.ratio != null ? e.ratio : 99;
-  if (key === "marketRatio") return e.marketRatio != null ? e.marketRatio : 99;
-  if (key === "perfAvg") return e.perfAvg != null ? e.perfAvg : -1;
-  if (key === "tenure") return e.tenureCompanyYears != null ? e.tenureCompanyYears : -1;
-  if (key === "ttm") return e.ttmGrowthPct != null ? e.ttmGrowthPct : -99;
+  const dir = STATE.rankSort.dir;
+  const nullSink = dir < 0 ? -Infinity : Infinity;
+  if (key === "score") return e.priority && e.priority.score != null ? e.priority.score : nullSink;
+  if (key === "ratio") return e.ratio != null ? e.ratio : nullSink;
+  if (key === "marketRatio") return e.marketRatio != null ? e.marketRatio : nullSink;
+  if (key === "perfAvg") return e.perfAvg != null ? e.perfAvg : nullSink;
+  if (key === "tenure") return e.tenureCompanyYears != null ? e.tenureCompanyYears : nullSink;
+  if (key === "ttm") return e.ttmGrowthPct != null ? e.ttmGrowthPct : nullSink;
   return normName(e.name);
 }
 function sortRank(key) {
@@ -508,6 +511,7 @@ function renderCompa(el) {
   const marketLow = d.meta.marketLow || 0.9;
 
   let html =
+    sourceBanner("ratings", "Performance ratings") +
     '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>' +
     '<div class="card"><h2>🎯 Priority ranking <span class="sub">(config-weighted: performance / tenure / compa gap — click a column to sort)</span></h2>' +
     '<table><tr>' + th("name", "Name") + th("ratio", "Position") + th("marketRatio", "vs Market") +
