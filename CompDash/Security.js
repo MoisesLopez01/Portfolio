@@ -66,7 +66,11 @@ function checkDashboardAccess() {
   return { allowed: false, role: "denied", email };
 }
 
-/** Admin-only: current lists for the Access Control view. */
+/**
+ * Admin-only: current lists for the Access Control view.
+ * @returns {{admins: string[], viewers: string[], bootstrapAdmin: string, callerEmail: string}}
+ * @throws {Error} If the caller is not an admin.
+ */
 function getAccessSettings() {
   const access = checkDashboardAccess();
   if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
@@ -82,26 +86,40 @@ function getAccessSettings() {
 /**
  * Admin-only: persist runtime lists. Busts the report cache so a revoked
  * viewer can't keep reading a warm cached payload under the old version key.
+ * Rejects the whole save if any entry isn't a plausible email (a silent typo
+ * here would silently grant nobody — fail loudly instead), and logs the
+ * added/removed diff as an audit trail for this comp-data gate.
  * @param {{admins?: string[], viewers?: string[]}} settings
+ * @throws {Error} If the caller is not an admin, or any entry is malformed.
  */
 function saveAccessSettings(settings) {
   const access = checkDashboardAccess();
   if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const clean = list => (Array.isArray(list) ? list : [])
+    .map(e => String(e).trim().toLowerCase()).filter(Boolean);
+  const bad = clean(settings.admins).concat(clean(settings.viewers))
+    .filter(e => !EMAIL_RE.test(e));
+  if (bad.length) throw new Error("Not saved — invalid email(s): " + bad.join(", "));
+
+  const before = _readAccessListsCD_();
   const p = PropertiesService.getScriptProperties();
   if (Array.isArray(settings.admins)) {
-    p.setProperty(SEC_CD.PROP_ADMINS, settings.admins
-      .map(e => String(e).trim().toLowerCase())
-      .filter(e => e && e !== SEC_CD.BOOTSTRAP_ADMIN.toLowerCase())
+    p.setProperty(SEC_CD.PROP_ADMINS, clean(settings.admins)
+      .filter(e => e !== SEC_CD.BOOTSTRAP_ADMIN.toLowerCase())
       .join(","));
   }
   if (Array.isArray(settings.viewers)) {
-    p.setProperty(SEC_CD.PROP_VIEWERS, settings.viewers
-      .map(e => String(e).trim().toLowerCase())
-      .filter(Boolean)
-      .join(","));
+    p.setProperty(SEC_CD.PROP_VIEWERS, clean(settings.viewers).join(","));
   }
+  const after = _readAccessListsCD_();
+  const diff = (b, a) =>
+    "+[" + a.filter(e => !b.includes(e)).join(", ") + "] " +
+    "-[" + b.filter(e => !a.includes(e)).join(", ") + "]";
   bustCompCache_(); // defined in Code.js
-  Logger.log("✅ Access lists saved by " + access.email);
+  Logger.log("✅ Access lists saved by " + access.email +
+    " — admins " + diff(before.admins, after.admins) +
+    " · viewers " + diff(before.viewers, after.viewers));
   return getAccessSettings();
 }
 

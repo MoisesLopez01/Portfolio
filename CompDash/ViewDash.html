@@ -115,7 +115,11 @@ function fmtMoney(tcc, tccUsd, currency) {
   return tcc != null ? Math.round(tcc).toLocaleString() + (currency ? " " + currency : "") : "—";
 }
 function pctFmt(x, dp) { return x == null ? "—" : (x * 100).toFixed(dp == null ? 1 : dp) + "%"; }
-function ratioClass(r) { return r == null ? "" : r >= 0.9 ? "green" : r >= 0.75 ? "yellow" : "red"; }
+function ratioClass(r) {
+  // Bands come from CONFIG_CD via meta.compaBands — never hardcode them here.
+  const b = (STATE.data && STATE.data.meta.compaBands) || { green: 0.9, yellow: 0.75 };
+  return r == null ? "" : r >= b.green ? "green" : r >= b.yellow ? "yellow" : "red";
+}
 function median(nums) {
   const a = nums.slice().sort((x, y) => x - y);
   if (!a.length) return null;
@@ -467,9 +471,12 @@ function renderContrib(el) {
     '</div>';
 }
 
-// Threshold numbers in this text must match CONFIG_CD (10 / 25 / 3y / 15) — update both together if tuned.
+// Threshold numbers interpolate from meta (compaBands / equityCfg = CONFIG_CD echoes),
+// so tuning CONFIG_CD updates this prose automatically.
 function renderReference(el) {
   const m = STATE.data.meta;
+  const b = m.compaBands || { green: 0.9, yellow: 0.75 };
+  const q = m.equityCfg || { gapPct: 10, outlierPct: 25, tenureYearsMin: 3, tenureBelowPct: 15, smallGroupMin: 3 };
   el.innerHTML =
     '<div class="card"><h2>📊 Data Reference</h2>' +
     '<h3>Sources</h3><table><tr><th>Module</th><th>Source</th><th>Status</th></tr>' +
@@ -477,10 +484,10 @@ function renderReference(el) {
     '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.tccUsd) + '</td></tr>' +
     '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr></table>' +
     '<h3>Formulas</h3><table>' +
-    '<tr><td><b>Internal Position</b></td><td>TCC ÷ max TCC among ACTIVE peers in the same Key Location + Job Title, local currency. NOT band-midpoint compa — 1.00 = the local peer max. Bands: green ≥ 0.90, yellow 0.75–0.90, red &lt; 0.75. Groups under 3 members flagged &quot;small group&quot;; singletons &quot;no peers&quot;.</td></tr>' +
+    '<tr><td><b>Internal Position</b></td><td>TCC ÷ max TCC among ACTIVE peers in the same Key Location + Job Title, local currency. NOT band-midpoint compa — 1.00 = the local peer max. Bands: green ≥ ' + b.green.toFixed(2) + ', yellow ' + b.yellow.toFixed(2) + '–' + b.green.toFixed(2) + ', red &lt; ' + b.yellow.toFixed(2) + '. Groups under ' + q.smallGroupMin + ' members flagged &quot;small group&quot;; singletons &quot;no peers&quot;.</td></tr>' +
     '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
     '<tr><td><b>Growth (RRI)</b></td><td>(current ÷ previous)^(1 ÷ years) − 1 between consecutive comp events from the RD tab. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
-    '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ 10% flags the group (needs ≥2 members per gender); individuals ≥ 25% below group median flag as outliers; ≥ 3y tenure AND ≥ 15% below median flags the tenure lens.</td></tr>' +
+    '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.</td></tr>' +
     '<tr><td><b>QTA interim</b></td><td>Latest &quot;Next Review&quot; per Rocketeer from RD events, sorted overdue-first.</td></tr></table>' +
     '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available.</p>' +
     '<h3>Freshness</h3><p class="sub">Payload generated ' + esc(m.generatedAt) +

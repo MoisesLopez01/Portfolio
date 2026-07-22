@@ -2,6 +2,8 @@
 // SCRIPT NAME: Comp Health Report — Code
 // PURPOSE:     Rocketeer Global Comp Health Report (V1).
 //              Data readers, metric engines, doGet, getCompReportData.
+// VERSION:     1.0.0
+// ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-21-comp-health-dashboard-design.md
 //
 // Layout: PURE LOGIC first (no GAS APIs — Node-testable via tests/),
@@ -25,6 +27,11 @@ const CONFIG_CD = {
   TENURE_YEARS_MIN:    3, // tenure lens: minimum years of service
   TENURE_BELOW_PCT:   15, // tenure lens: % below group median that flags
   SMALL_GROUP_MIN:     3, // compa groups smaller than this get a smallGroup flag
+
+  // Internal Position color bands — shipped to the client via meta.compaBands
+  // so ratioClass() and the Data Reference prose can never drift from these.
+  COMPA_GREEN_MIN:  0.90, // ratio ≥ this renders green
+  COMPA_YELLOW_MIN: 0.75, // ratio ≥ this renders yellow; below is red
 
   CREW_RE: /crew member|contractor/i, // same crew rule as the PS Contribution Report
   // Narrower than PS Security's regex ON PURPOSE: Rocketeers on maternity/parental
@@ -262,6 +269,9 @@ function buildCompaGroups_(activeRecords, smallGroupMin) {
 
 // ── Market Gap suggestion (used once Payscale P25/P50/P75 data lands) ──────
 // Returns the priority-of-read status the UI colors red/yellow/green.
+// TODO: wire into getCompReportData() (attach p25/p50/p75 + suggestion per
+// employee) once the Payscale source lands — until then only the client-side
+// mirror marketRow() in ViewDash.html executes, and the two can drift.
 function marketSuggestion_(tcc, p25, p50) {
   if (!(tcc > 0) || !(p25 > 0) || !(p50 > 0)) {
     return { status: "pending", pctToP25: null, pctToP50: null };
@@ -571,7 +581,10 @@ function readTccUsd_() {
   const iEmp = colIdx_(headers, "Employee Number", /employee.*number/i);
   const iTcc = colIdx_(headers, "Total Cash Compensation (TCC)", /tcc|total cash/i);
   if (iEmp === -1 || iTcc === -1) {
-    throw new Error("TCC USD tab: columns not recognized — headers: " + headers.join(" | "));
+    // Header dump stays in the execution log only — the thrown message reaches
+    // every dashboard user via meta.sources, so it must not disclose sheet structure.
+    Logger.log("❌ readTccUsd_: columns not recognized — headers: " + headers.join(" | "));
+    throw new Error("TCC USD tab: columns not recognized (see execution log).");
   }
   const map = {};
   rows.forEach(row => {
@@ -583,7 +596,10 @@ function readTccUsd_() {
   return map;
 }
 
-/** @returns {Object<string, Array>} Employee Number → comp events sorted asc by Effective Date. */
+/**
+ * @returns {Object<string, Array>} Employee Number → comp events. Order is NOT
+ * guaranteed — every consumer (buildGrowthForEmp_, buildQtaInterim_) sorts for itself.
+ */
 function readCompHistory_() {
   const ids = ssIds_();
   const { headers, rows } = fetchTab_(ids.hist, CONFIG_CD.HIST_TAB);
@@ -593,7 +609,9 @@ function readCompHistory_() {
   const iReason = colIdx_(headers, "TCC Change Reason");
   const iNext   = colIdx_(headers, "Next Review");
   if (iEmp === -1 || iDate === -1 || iTtc === -1) {
-    throw new Error("RD tab: required columns missing — headers: " + headers.join(" | "));
+    // Same rule as readTccUsd_: header dump is log-only, client message generic.
+    Logger.log("❌ readCompHistory_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("RD tab: required columns missing (see execution log).");
   }
   const byEmp = {};
   rows.forEach(row => {
@@ -608,7 +626,6 @@ function readCompHistory_() {
       nextReview: iNext !== -1 ? asDate_(row[iNext]) : null,
     });
   });
-  Object.keys(byEmp).forEach(k => byEmp[k].sort((a, b) => a.date - b.date));
   log_("readCompHistory_: " + Object.keys(byEmp).length + " employees with events");
   return byEmp;
 }
@@ -619,6 +636,9 @@ function readCompHistory_() {
  * Full report payload. Access-checked server-side (defense in depth — the
  * client can call this via google.script.run without going through doGet).
  * @param {boolean} force - true bypasses cache (Refresh button).
+ * @returns {{ok: boolean, meta: Object, employees: Object[], attrition: Object,
+ *   compaGroups: Object[], equity: Object, qtaInterim: Object[], history: Object}}
+ *   On denial: {ok: false, error: "denied"}. ViewDash.html depends on this exact shape.
  */
 function getCompReportData(force) {
   const access = checkDashboardAccess();
@@ -675,6 +695,14 @@ function getCompReportData(force) {
       sources, genderAvailable,
       activeCount: active.length,
       contribUrl: props_().getProperty("CD_CONTRIB_URL") || "",
+      // Threshold echoes — the client colors and documents from these, never
+      // from its own literals, so UI text can't drift from CONFIG_CD.
+      compaBands: { green: CONFIG_CD.COMPA_GREEN_MIN, yellow: CONFIG_CD.COMPA_YELLOW_MIN },
+      equityCfg: {
+        gapPct: CONFIG_CD.EQUITY_GAP_PCT, outlierPct: CONFIG_CD.EQUITY_OUTLIER_PCT,
+        tenureYearsMin: CONFIG_CD.TENURE_YEARS_MIN, tenureBelowPct: CONFIG_CD.TENURE_BELOW_PCT,
+        smallGroupMin: CONFIG_CD.SMALL_GROUP_MIN,
+      },
     },
     employees: active.map(r => ({
       empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
