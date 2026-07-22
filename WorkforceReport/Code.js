@@ -33,11 +33,15 @@ const CONFIG_WR = {
 
   FY_COUNT: 3, // FYs rendered: current FY and the two before it (FY25/26/27 at build time)
 
-  // Lever classification (RD "TCC Change Reason") — spec §6.6.
-  PROMO_RE:  /promotion|microband promotion/i,
-  ADJUST_RE: /annual adjustment|microband adjustment|market calibration/i,
-  // Everything else (New Hire, Internal Transfer, Historical Data Update, Other)
-  // is excluded from the lever analysis — counted and noted, never deltas.
+  // Lever classification (RD "TCC Change Reason") — spec §6.6, revised
+  // 2026-07-22: promotions are the well-defined match; adjustments are the
+  // CATCH-ALL for every other recorded reason (Annual Adjustment, Microband
+  // Adjustment, Market Calibration, and whatever new flavors RD grows) so no
+  // adjustment type is ever silently dropped by a whitelist. Only the
+  // non-raise events in EXCLUDE_RE (plus blank reasons) are excluded —
+  // counted and noted, never deltas.
+  PROMO_RE:   /promotion|microband promotion/i,
+  EXCLUDE_RE: /new hire|internal transfer|historical data update/i,
 
   // Attrition RISK thresholds — spec §6.5 (config-tunable).
   RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
@@ -317,10 +321,10 @@ function fyAttritionStats_(records, fy, asOf) {
 
 function classifyLever_(reason, cfg) {
   const c = cfg || CONFIG_WR;
-  const s = String(reason || "");
+  const s = String(reason || "").trim();
+  if (!s || c.EXCLUDE_RE.test(s)) return "other"; // blank = unclassifiable, never a lever
   if (c.PROMO_RE.test(s)) return "promo";
-  if (c.ADJUST_RE.test(s)) return "adjust";
-  return "other";
+  return "adjust"; // catch-all — any other recorded reason is an adjustment
 }
 
 /**
@@ -831,8 +835,9 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
       (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") + "."));
   });
   lines.push(assume_("Promotions = TCC Change Reasons matching promotion/microband promotion; " +
-    "adjustments = Annual Adjustment, Microband Adjustment, Market Calibration. New Hire, " +
-    "Internal Transfer, Historical Data Update and Other are excluded from the lever analysis."));
+    "every other recorded reason counts as an adjustment (Annual Adjustment, Microband " +
+    "Adjustment, Market Calibration, etc.). Only New Hire, Internal Transfer, Historical " +
+    "Data Update and blank reasons are excluded from the lever analysis."));
   const noPrior = leverBlocks.reduce((t, b) => t + b.promo.noPrior + b.adjust.noPrior, 0);
   if (noPrior) {
     lines.push(note_(fmtInt_(noPrior) + " lever events lack a prior comp record — " +

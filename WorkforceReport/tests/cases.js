@@ -94,14 +94,23 @@ function term(over) {
 (function () {
   check("lever: promotion reasons", classifyLever_("Promotion", CONFIG_WR) === "promo" &&
     classifyLever_("Microband Promotion", CONFIG_WR) === "promo");
-  check("lever: adjustment reasons",
+  check("lever: known adjustment reasons",
     classifyLever_("Annual Adjustment", CONFIG_WR) === "adjust" &&
     classifyLever_("Microband Adjustment", CONFIG_WR) === "adjust" &&
     classifyLever_("Market Calibration", CONFIG_WR) === "adjust");
-  check("lever: excluded reasons → other",
+  check("lever: adjustments are the catch-all — unseen reasons never drop",
+    classifyLever_("Compensation Review", CONFIG_WR) === "adjust" &&
+    classifyLever_("Cost of Living Adjustment", CONFIG_WR) === "adjust" &&
+    classifyLever_("Other", CONFIG_WR) === "adjust" &&
+    classifyLever_("Retention Bonus Restructure", CONFIG_WR) === "adjust");
+  check("lever: excluded non-raise reasons → other",
     classifyLever_("New Hire", CONFIG_WR) === "other" &&
     classifyLever_("Internal Transfer", CONFIG_WR) === "other" &&
     classifyLever_("Historical Data Update", CONFIG_WR) === "other");
+  check("lever: blank reason is unclassifiable, never a lever",
+    classifyLever_("", CONFIG_WR) === "other" &&
+    classifyLever_("   ", CONFIG_WR) === "other" &&
+    classifyLever_(null, CONFIG_WR) === "other");
 
   const fys = fyListWR_(REF, 3);
   const hist = {

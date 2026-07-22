@@ -122,9 +122,11 @@ numbers interpolated — no AI in this view.**
    RD comp history; no cycle-event source exists, so no reconciliation NOTE is needed).
    Per FY: promotions vs adjustments — event counts, total raise (scope currency),
    aggregate % TCC growth vs prior comp record. ASSUMPTION: promotions =
-   `/promotion|microband promotion/i` change reasons; adjustments = Annual Adjustment,
-   Microband Adjustment, Market Calibration; New Hire / Internal Transfer / Historical
-   Data Update / Other excluded. Changes lacking a prior comp record are excluded from
+   `/promotion|microband promotion/i` change reasons; adjustments = **every other
+   recorded reason** (Annual Adjustment, Microband Adjustment, Market Calibration, and
+   any new flavor — catch-all, revised 2026-07-22 so no adjustment type is silently
+   dropped by a whitelist); only New Hire / Internal Transfer / Historical Data Update /
+   blank reasons excluded. Changes lacking a prior comp record are excluded from
    deltas (counted, noted). RISK auto-fires on the lever-shift pattern (promotion count
    and size down while adjustment count up, FY-over-FY).
 7. **Market & equity flags** — **counts only, never names**: compa-ratio distribution vs
