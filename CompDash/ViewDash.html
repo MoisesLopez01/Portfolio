@@ -127,6 +127,30 @@ function sourceBanner(key, label) {
   return s === "ok" ? "" :
     '<div class="banner err">⚠️ ' + esc(label) + ' unavailable — ' + esc(s) + '</div>';
 }
+// Previous FY as a shadow area, current FY as a trend line cut at the current
+// fiscal month (uptoIdx) so future months don't render as zero.
+function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h) {
+  const P = 26, n = labels.length;
+  const prevV = prevSeries.map(m => m.terms);
+  const curV = curSeries.map(m => m.terms);
+  const maxY = Math.max.apply(null, prevV.concat(curV, [1]));
+  const x = i => P + i * ((w - P - 6) / Math.max(1, n - 1));
+  const y = v => h - 18 - v / maxY * (h - 30);
+  const area = prevV.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ") +
+    " " + x(n - 1).toFixed(1) + "," + y(0).toFixed(1) + " " + x(0).toFixed(1) + "," + y(0).toFixed(1);
+  const cut = Math.max(0, Math.min(uptoIdx, n - 1));
+  const line = curV.slice(0, cut + 1).map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+  const ticks = labels.map((L, i) =>
+    (n <= 4 || i % 3 === 0 || i === n - 1)
+      ? '<text x="' + x(i).toFixed(1) + '" y="' + (h - 4) + '" text-anchor="middle">' + esc(L) + '</text>'
+      : "").join("");
+  const yTicks = [0, Math.ceil(maxY / 2), maxY].map(v =>
+    '<text x="2" y="' + (y(v) + 3).toFixed(1) + '">' + v + '</text>').join("");
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+    '<polygon points="' + area + '" fill="var(--chip)" opacity="0.75"/>' +
+    '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
+    ticks + yTicks + '</svg>';
+}
 function svgSpark(series, w, h, color) {
   const max = Math.max.apply(null, series.concat([1]));
   const step = w / Math.max(1, series.length - 1);
@@ -232,7 +256,47 @@ function renderOverview(el) {
     svgSpark(cur.monthly.map(m => m.terms), 640, 60, "var(--warn)") +
     '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
 }
-function renderAttrition(el) { el.innerHTML = '<div class="card">Attrition — Task 12</div>'; }
+function renderAttrition(el) {
+  const d = STATE.data, a = d.attrition, cur = a.currentFY, prev = a.previousFY;
+  const isM = STATE.attrGran === "month";
+  const labels = isM ? d.meta.monthLabels : ["Q1", "Q2", "Q3", "Q4"];
+  const upto = isM ? d.meta.fiscalMonthIdx : Math.floor(d.meta.fiscalMonthIdx / 3);
+  const dim = STATE.attrDim;
+  const dimLabel = { department: "Department", level: "Level", keyLocation: "Key Location" };
+  const slices = a.slices[dim] || [];
+  el.innerHTML =
+    sourceBanner("roster", "Roster data") +
+    '<div class="card"><h2>' + esc(cur.label) + ' vs ' + esc(prev.label) + ' terminations</h2>' +
+    '<div class="seg" style="margin-bottom:10px">' +
+      '<button onclick="setAttrGran(\'month\')" class="' + (isM ? "on" : "") + '">Month</button>' +
+      '<button onclick="setAttrGran(\'quarter\')" class="' + (!isM ? "on" : "") + '">Quarter</button></div>' +
+    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly, labels, upto, 720, 190) +
+    '<div class="sub">Shadow area = ' + esc(prev.label) + ' · line = ' + esc(cur.label) + ' to date</div>' +
+    '<div style="margin-top:10px">' +
+      '<span class="chip">' + cur.total + ' terminations ' + esc(cur.label) + '</span>' +
+      '<span class="chip green">' + cur.vol + ' voluntary</span>' +
+      '<span class="chip yellow">' + cur.invol + ' involuntary</span>' +
+      '<span class="chip red">' + (cur.total ? Math.round(cur.regretted / cur.total * 100) : 0) + '% regretted</span>' +
+      '<span class="chip">rate ' + pctFmt(cur.rate) + ' (prev ' + pctFmt(prev.rate) + ')</span>' +
+    '</div></div>' +
+    '<div class="card"><h2>Breakdown</h2>' +
+    '<select onchange="setAttrDim(this.value)">' +
+      Object.keys(dimLabel).map(k =>
+        '<option value="' + k + '"' + (k === dim ? " selected" : "") + '>By ' + dimLabel[k] + '</option>').join("") +
+    '</select>' +
+    '<table><tr><th>' + esc(dimLabel[dim]) + '</th><th>Headcount</th><th>Terms</th><th>Voluntary</th><th>Involuntary</th><th>Rate</th></tr>' +
+    slices.map(s =>
+      '<tr><td>' + esc(s.key) + '</td><td>' + s.headcount + '</td><td>' + s.terms + '</td><td>' + s.vol +
+      '</td><td>' + s.invol + '</td><td>' + pctFmt(s.rate) + '</td></tr>').join("") + '</table>' +
+    '<details><summary>Termination detail — ' + a.detail.length + ' rows (names inside)</summary>' +
+    '<table><tr><th>Date</th><th>Name</th><th>Dept</th><th>Level</th><th>Location</th><th>Type</th><th>Regretted</th><th>Reason</th></tr>' +
+    a.detail.map(t =>
+      '<tr><td>' + esc(t.termDate) + '</td><td>' + esc(t.name) + '</td><td>' + esc(t.dept) + '</td><td>' + esc(t.level) +
+      '</td><td>' + esc(t.keyLocation) + '</td><td>' + esc(t.cls) + '</td><td>' + (t.regretted ? "⚠️ yes" : "no") +
+      '</td><td>' + esc(t.reason) + '</td></tr>').join("") + '</table></details></div>';
+}
+function setAttrGran(g) { STATE.attrGran = g; render(); }
+function setAttrDim(k) { STATE.attrDim = k; render(); }
 function renderCompa(el)     { el.innerHTML = '<div class="card">Internal Position — Task 13</div>'; }
 function renderMarket(el)    { el.innerHTML = '<div class="card">Market Gap — Task 15</div>'; }
 function renderEquity(el)    { el.innerHTML = '<div class="card">Pay Equity — Task 15</div>'; }
