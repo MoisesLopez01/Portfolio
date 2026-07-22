@@ -395,6 +395,61 @@ function term(over) {
     validateNarrative_({ execSummary: [], decisions: [] }, brief) === null);
 })();
 
+// ── Quarterly filter: fyQuarterWindow_ + windowed payload ───────────────────
+(function () {
+  const fys = fyListWR_(REF, 3); // asOf 2026-07-21 → FY27 Q1 in progress
+  const q1_25 = fyQuarterWindow_(fys[0], 1, REF);
+  check("qwin: FY25 Q1 = Jul 1 – Sep 30 2024",
+    q1_25.label === "FY25 Q1" &&
+    q1_25.start.getFullYear() === 2024 && q1_25.start.getMonth() === 6 && q1_25.start.getDate() === 1 &&
+    q1_25.end.getFullYear() === 2024 && q1_25.end.getMonth() === 8 && q1_25.end.getDate() === 30);
+  const q3_25 = fyQuarterWindow_(fys[0], 3, REF);
+  check("qwin: Q3 spans the calendar-year change (Jan–Mar)",
+    q3_25.start.getFullYear() === 2025 && q3_25.start.getMonth() === 0 &&
+    q3_25.end.getMonth() === 2 && q3_25.end.getDate() === 31);
+  const q4_25 = fyQuarterWindow_(fys[0], 4, REF);
+  check("qwin: Q4 = Apr 1 – Jun 30", q4_25.start.getMonth() === 3 &&
+    q4_25.end.getMonth() === 5 && q4_25.end.getDate() === 30);
+  const q1_27 = fyQuarterWindow_(fys[2], 1, REF);
+  const q2_27 = fyQuarterWindow_(fys[2], 2, REF);
+  check("qwin: FY27 Q1 started + in progress on Jul 21",
+    q1_27.started === true && q1_27.inProgress === true);
+  check("qwin: FY27 Q2 not started yet ('if any' rule)",
+    q2_27.started === false && q2_27.inProgress === false);
+  check("qwin: closed-FY quarters never flag in progress",
+    q1_25.started === true && q1_25.inProgress === false);
+
+  const ctx = { asOf: REF };
+  const records = [
+    mkEmp({}), mkEmp({}), mkEmp({}),
+    term({ termDate: new Date(2024, 7, 15) }),   // FY25 Q1 exit (Aug 2024)
+    term({ termDate: new Date(2025, 1, 10) }),   // FY25 Q3 exit (Feb 2025)
+    term({ termDate: new Date(2026, 6, 5) }),    // FY27 Q1 exit (Jul 2026)
+  ];
+  const p1 = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 1);
+  const mv1 = p1.report.sections.find(s => s.id === "movement");
+  check("qpayload: Q1 movement rows labeled per FY-quarter",
+    mv1.tables[0].rows.length === 3 && String(mv1.tables[0].rows[0][0]).indexOf("FY25 Q1") === 0);
+  check("qpayload: Q1 exits land in the right windows",
+    mv1.tables[0].rows[0][2] === 1 && mv1.tables[0].rows[1][2] === 0 && mv1.tables[0].rows[2][2] === 1);
+  check("qpayload: meta echoes the quarter, nothing skipped for Q1",
+    p1.meta.quarter === 1 && p1.meta.quarterSkipped.length === 0);
+  check("qpayload: quarterly company view drops the brief", p1.brief === undefined);
+  check("qpayload: in-progress NOTE names the quarter window",
+    mv1.lines.some(l => l.badge === "NOTE" && l.text.indexOf("FY27 Q1 in progress") !== -1));
+
+  const p3 = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 3);
+  const mv3 = p3.report.sections.find(s => s.id === "movement");
+  check("qpayload: Q3 drops the not-started FY27 window",
+    mv3.tables[0].rows.length === 2 && p3.meta.quarterSkipped.join() === "FY27 Q3");
+  check("qpayload: FY25 Q3 exit counted", mv3.tables[0].rows[0][2] === 1);
+
+  const pAll = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0);
+  check("qpayload: quarter 0 keeps full FYs + brief",
+    pAll.meta.quarter === 0 && pAll.brief != null &&
+    pAll.report.sections.find(s => s.id === "movement").tables[0].rows.length === 3);
+})();
+
 // ── End-to-end payload shape — spec §3 ──────────────────────────────────────
 (function () {
   const ctx = { asOf: REF };

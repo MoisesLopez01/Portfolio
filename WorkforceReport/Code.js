@@ -200,6 +200,25 @@ function fyListWR_(refDate, count) {
   return out;
 }
 
+/**
+ * One fiscal quarter's window inside an FY (Q1 = Jul–Sep … Q4 = Apr–Jun).
+ * `started` gates the "if any" rule: a quarter of the in-progress FY that
+ * hasn't begun yet is dropped from quarterly views rather than rendering zeros.
+ * @returns {{label, startCalYear, start: Date, end: Date, inProgress, started}}
+ */
+function fyQuarterWindow_(fy, q, asOf) {
+  const sm = 6 + (q - 1) * 3; // month offset from January; Jul = 6
+  const start = new Date(fy.startCalYear, sm, 1);
+  const end = new Date(fy.startCalYear, sm + 3, 0); // day 0 = last day of prior month
+  return {
+    label: fy.label + " Q" + q,
+    startCalYear: fy.startCalYear,
+    start, end,
+    inProgress: !!(fy.inProgress && asOf && asOf >= start && asOf <= end),
+    started: !asOf || start <= asOf,
+  };
+}
+
 function classifyTerm_(cat) {
   const c = String(cat || "").toLowerCase();
   if (/invol/.test(c)) return "invol";
@@ -900,9 +919,13 @@ function secFlags_(bandCounts, market, equity, cfg) {
 
 /**
  * View A — the full Location report for one scope.
+ * `windows` are the periods the time-based sections (movement, attrition,
+ * levers) run over — the FY list by default, or per-FY quarter windows when
+ * the quarterly filter is active. Snapshot sections (1–3, 7) are as-of and
+ * ignore the windows on purpose.
  * @returns {{scope, currency, sections: Array}}
  */
-function buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg, coverage) {
+function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx, cfg, coverage) {
   const inScope = scope === "company"
     ? records : records.filter(r => r.keyLocation === scope);
   const active = inScope.filter(r => r.active);
@@ -910,9 +933,9 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg
   const asOfIso = isoDate_(ctx.asOf);
   const empNos = [...new Set(inScope.map(r => r.empNo).filter(Boolean))];
 
-  const moves = fys.map(fy => fyMovement_(inScope, fy, ctx.asOf));
-  const attr = fys.map(fy => fyAttritionStats_(inScope, fy, ctx.asOf));
-  const levers = fys.map(fy => buildLeversForFy_(empNos, histByEmp, fy, mode.mode, cfg));
+  const moves = windows.map(w => fyMovement_(inScope, w, ctx.asOf));
+  const attr = windows.map(w => fyAttritionStats_(inScope, w, ctx.asOf));
+  const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
   const compaGroups = buildCompaGroups_(active, benchMap, cfg);
 
   return {
@@ -921,9 +944,9 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg
       secScope_(inScope, active, scope, mode),
       secComposition_(buildComposition_(active, ctx.asOf)),
       secCompStructure_(buildCompStructure_(active, mode.mode, cfg), mode, cfg),
-      secMovement_(moves, coverage, fys, asOfIso),
-      secAttritionDetail_(attr, cfg, coverage, fys, asOfIso),
-      secLevers_(levers, mode, coverage, cfg, fys, asOfIso),
+      secMovement_(moves, coverage, windows, asOfIso),
+      secAttritionDetail_(attr, cfg, coverage, windows, asOfIso),
+      secLevers_(levers, mode, coverage, cfg, windows, asOfIso),
       secFlags_(compaBandCounts_(compaGroups, cfg),
                 marketGapCounts_(active, benchMap, cfg),
                 buildEquityCounts_(active, cfg, ctx.asOf), cfg),
@@ -1199,18 +1222,29 @@ function validateNarrative_(obj, brief) {
 
 /**
  * Full payload for one scope — spec §3 data flow.
- * @returns {Object} {ok, meta, report, brief?} — brief only at company scope.
+ * @param {number} [quarter] - 1–4 applies the quarterly filter to the
+ *   time-based sections (Q<n> of every FY, not-yet-started quarters dropped);
+ *   anything else = full fiscal years.
+ * @returns {Object} {ok, meta, report, brief?} — brief only at company scope
+ *   with no quarterly filter (the board story is told in full FYs).
  */
-function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg) {
+function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter) {
   const fys = fyListWR_(ctx.asOf, cfg.FY_COUNT);
+  const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
+  const qWindows = q ? fys.map(fy => fyQuarterWindow_(fy, q, ctx.asOf)) : null;
+  const windows = q ? qWindows.filter(w => w.started) : fys;
+  // Coverage guards always judge the FULL first FY — a quarter view narrows
+  // the reporting window, not the depth question.
   const coverage = coverageStats_(records, histByEmp, fys);
-  const report = buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg, coverage);
+  const report = buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx, cfg, coverage);
   const scopes = [...new Set(records.filter(r => r.active).map(r => r.keyLocation).filter(Boolean))].sort();
   const payload = {
     ok: true,
     meta: {
       scope,
       scopes,
+      quarter: q,
+      quarterSkipped: q ? qWindows.filter(w => !w.started).map(w => w.label) : [],
       asOf: isoDate_(ctx.asOf),
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
@@ -1230,7 +1264,7 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg) {
     },
     report: { scope: report.scope, currency: report.currency, sections: report.sections },
   };
-  if (scope === "company") {
+  if (scope === "company" && !q) {
     payload.brief = buildBrief_(records, histByEmp, fys, ctx, cfg, report);
   }
   return payload;
@@ -1451,11 +1485,12 @@ function readBenchmarksWR_() {
 
 // ── Assembly + web app ──────────────────────────────────────────────────────
 
-function cacheKeyForScope_(scope) {
+function cacheKeyForScope_(scope, quarter) {
   const ver = props_().getProperty("WR_CACHE_VER") || "1";
   const slug = scope === "company"
     ? "company" : normWR_(scope).replace(/[^a-z0-9]+/g, "_");
-  return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug;
+  return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug +
+    (quarter ? "_q" + quarter : "");
 }
 
 /**
@@ -1463,16 +1498,18 @@ function cacheKeyForScope_(scope) {
  * depth — callable directly via google.script.run).
  * @param {string} scope - "company" or a roster Key Location.
  * @param {boolean} force - true bypasses cache (Refresh button).
+ * @param {number} [quarter] - 1–4 for the quarterly view; 0/absent = full FYs.
  * @returns {string} JSON string — ViewReport.html parses it client-side
  *   (marshalling a large nested object through the iframe bridge is slow).
  */
-function getWorkforceReportData(scope, force) {
+function getWorkforceReportData(scope, force, quarter) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
-  scope = String(scope || "company").trim() || "company";
+  let scopeName = String(scope || "company").trim() || "company";
+  const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
   const cache = CacheService.getScriptCache();
-  const key = cacheKeyForScope_(scope);
+  const key = cacheKeyForScope_(scopeName, q);
   if (!force) {
     const hit = cacheGetLarge_(cache, key);
     if (hit) {
@@ -1499,13 +1536,13 @@ function getWorkforceReportData(scope, force) {
   catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarksWR_: " + e.message); }
 
   // An unknown scope (stale link, renamed location) degrades to company.
-  if (scope !== "company" &&
-      !records.some(r => r.keyLocation === scope)) {
-    Logger.log('⚠️ getWorkforceReportData: unknown scope "' + scope + '" → company');
-    scope = "company";
+  if (scopeName !== "company" &&
+      !records.some(r => r.keyLocation === scopeName)) {
+    Logger.log('⚠️ getWorkforceReportData: unknown scope "' + scopeName + '" → company');
+    scopeName = "company";
   }
 
-  const payload = buildReportPayload_(records, histByEmp, bench.map, scope, ctx, CONFIG_WR);
+  const payload = buildReportPayload_(records, histByEmp, bench.map, scopeName, ctx, CONFIG_WR, q);
   payload.meta.generatedAt = new Date().toISOString();
   payload.meta.role = access.role;
   payload.meta.email = access.email;
@@ -1514,8 +1551,8 @@ function getWorkforceReportData(scope, force) {
   payload.meta.benchRows = bench.count;
 
   const json = JSON.stringify(payload);
-  cachePutLarge_(cache, cacheKeyForScope_(scope), json, CONFIG_WR.CACHE_TTL_SEC);
-  Logger.log("✅ getWorkforceReportData(" + scope + "): built in " +
+  cachePutLarge_(cache, cacheKeyForScope_(scopeName, q), json, CONFIG_WR.CACHE_TTL_SEC);
+  Logger.log("✅ getWorkforceReportData(" + scopeName + (q ? " Q" + q : "") + "): built in " +
              Math.round((Date.now() - t0) / 1000) + "s — " + json.length + " chars");
   return json;
 }
@@ -1633,6 +1670,45 @@ function doGet() {
   return t.evaluate()
     .setTitle("Workforce & Compensation Report")
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+// ── One-time setup: Gemini API key (spec §11 step 2) ────────────────────────
+// The key lives ONLY in Script Properties, sent as an x-goog-api-key header —
+// never in the URL, never in logs, never committed. Pattern:
+//   1. Paste the key into KEY below.
+//   2. Run setupGeminiKey() ONCE from the GAS editor.
+//   3. RESTORE the placeholder and save, so the key never persists in code.
+//   4. Run checkGeminiKey() to verify the round trip.
+
+function setupGeminiKey() {
+  const KEY = "PASTE-GEMINI-KEY-HERE-THEN-RUN-ONCE";
+  if (!KEY || KEY.indexOf("PASTE-GEMINI-KEY") !== -1) {
+    throw new Error("Edit setupGeminiKey(): replace the KEY placeholder with your " +
+      "Gemini API key (aistudio.google.com/apikey), run once, then restore the placeholder.");
+  }
+  props_().setProperty("GEMINI_API_KEY", KEY.trim());
+  // Length only — the key value must never reach the execution log.
+  Logger.log("✅ GEMINI_API_KEY stored in Script Properties (" + KEY.trim().length +
+    " chars). Now RESTORE the placeholder in setupGeminiKey() and save.");
+}
+
+/** Verifies the stored key with a minimal round trip — safe to run anytime. */
+function checkGeminiKey() {
+  if (!props_().getProperty("GEMINI_API_KEY")) {
+    Logger.log("❌ GEMINI_API_KEY is not set — run setupGeminiKey() first " +
+      "(or add it under Project Settings → Script Properties).");
+    return;
+  }
+  const r = callGeminiWR_('Reply with the single word "OK".');
+  Logger.log(r.ok
+    ? "✅ Gemini reachable — model replied: " + String(r.text).trim().slice(0, 40)
+    : "❌ Gemini check failed: " + r.error);
+}
+
+/** Removes the stored key — Gemini blocks degrade to 'narrative unavailable'. */
+function clearGeminiKey() {
+  props_().deleteProperty("GEMINI_API_KEY");
+  Logger.log("✅ GEMINI_API_KEY removed from Script Properties.");
 }
 
 // ── Diagnostics — run from the GAS editor at deploy (spec §11 step 3) ───────
