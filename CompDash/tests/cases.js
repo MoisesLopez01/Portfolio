@@ -202,6 +202,24 @@ function mkEmp(over) {
   check("growth: empty input safe", buildGrowthForEmp_([]).overallAnnualized === null);
 })();
 
+// ── TCC AGR: tagRate_ / TAG pass-through ────────────────────
+(function () {
+  check("tag: percent-formatted cell arrives as fraction, kept", approx(tagRate_(0.0127), 0.0127, 1e-9));
+  check("tag: '1.27%' string → 0.0127", approx(tagRate_("1.27%"), 0.0127, 1e-9));
+  check("tag: '45.00%' string → 0.45", approx(tagRate_("45.00%"), 0.45, 1e-9));
+  check("tag: bare numeric string treated as fraction", approx(tagRate_("0.45"), 0.45, 1e-9));
+  check("tag: blank/null/garbage → null",
+    tagRate_("") === null && tagRate_(null) === null && tagRate_("n/a") === null);
+
+  const g = buildGrowthForEmp_([
+    { date: new Date(2024, 0, 15), reason: "New Hire", tcc: 100000, tag: null },
+    { date: new Date(2025, 0, 15), reason: "Salary adjustment", tcc: 110000, tag: 0.0127 },
+    { date: new Date(2026, 0, 15), reason: "Promotion", tcc: 132000 }, // TAG column absent
+  ]);
+  check("tag: passes through to event rows", approx(g.events[1].tag, 0.0127, 1e-9));
+  check("tag: missing/absent tag stays null", g.events[0].tag === null && g.events[2].tag === null);
+})();
+
 // ── Task 6: buildEquity_ ────────────────────────────────────
 (function () {
   const cfg = { EQUITY_GAP_PCT: 10, EQUITY_OUTLIER_PCT: 25, TENURE_YEARS_MIN: 3, TENURE_BELOW_PCT: 15 };

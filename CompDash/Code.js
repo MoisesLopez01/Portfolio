@@ -436,6 +436,21 @@ function rri_(years, prev, curr) {
   return Math.pow(curr / prev, 1 / years) - 1;
 }
 
+/**
+ * Normalize an RD "TAG" cell (system-generated TCC AGR) to a FRACTION.
+ * Percent-formatted numeric cells arrive from Sheets already fractional
+ * (1.27% → 0.0127) and are kept as-is; string cells carrying "%" are
+ * percent points ("45.00%" → 0.45); bare strings are treated as fractions.
+ */
+function tagRate_(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  const s = String(v).trim();
+  const n = asNum_(s);
+  if (n == null) return null;
+  return s.indexOf("%") !== -1 ? n / 100 : n;
+}
+
 function buildGrowthForEmp_(events) {
   const evs = (events || [])
     .filter(e => e && e.date instanceof Date && !isNaN(e.date))
@@ -444,6 +459,7 @@ function buildGrowthForEmp_(events) {
   let prev = null;
   evs.forEach(e => {
     const row = { date: isoDate_(e.date), reason: e.reason || "", tcc: e.tcc,
+                  tag: (typeof e.tag === "number" && isFinite(e.tag)) ? e.tag : null,
                   deltaAbs: null, deltaPct: null, annualized: null };
     if (prev && e.tcc != null && e.tcc > 0) {
       const years = (e.date - prev.date) / YEAR_MS_;
@@ -826,6 +842,7 @@ function readCompHistory_() {
   const iTtc    = colIdx_(headers, "Total Target Compensation");
   const iReason = colIdx_(headers, "TCC Change Reason");
   const iNext   = colIdx_(headers, "Next Review");
+  const iTag    = colIdx_(headers, "TAG"); // system-generated TCC AGR — optional column
   if (iEmp === -1 || iDate === -1 || iTtc === -1) {
     // Header dump is log-only, client message generic (same rule as readRosterCD_).
     Logger.log("❌ readCompHistory_: required columns missing — headers: " + headers.join(" | "));
@@ -841,6 +858,7 @@ function readCompHistory_() {
       date,
       reason: iReason !== -1 ? String(row[iReason] || "").trim() : "",
       tcc: asNum_(row[iTtc]), // LOCAL Total Target Compensation recorded at the event
+      tag: iTag !== -1 ? tagRate_(row[iTag]) : null,
       nextReview: iNext !== -1 ? asDate_(row[iNext]) : null,
     });
   });

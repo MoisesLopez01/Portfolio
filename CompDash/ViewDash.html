@@ -724,7 +724,7 @@ function renderReference(el) {
     '<tr><td><b>vs Market</b></td><td>TCC ÷ benchmark <b>Mean</b> (a mean, not P50) for the same Location + Job Title, local currency only — currency-mismatched rows are skipped and counted. Below ' + (m.marketLow || 0.9).toFixed(2) + ' renders red (priority read). Coverage: ' + cov.matchedEmployees + ' matched / ' + cov.rows + ' rows' + (cov.currencyMismatch ? ' / ' + cov.currencyMismatch + ' currency mismatches' : '') + '.</td></tr>' +
     '<tr><td><b>Tenure</b></td><td>Company = years since Hire Date. In-role = years since the latest promotion/title-change comp event (falls back to Hire Date). TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger).</td></tr>' +
     '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
-    '<tr><td><b>Growth (RRI)</b></td><td>(current ÷ previous)^(1 ÷ years) − 1 between consecutive comp events from the RD tab. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
+    '<tr><td><b>TCC AGR / Growth</b></td><td>TCC AGR is the system-generated rate recorded in the Compensation Report RD tab (&quot;TAG&quot; field), shown as recorded (e.g. 1.27%). Annualized = (current ÷ previous)^(1 ÷ years) − 1 (RRI) between consecutive comp events. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
     '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.</td></tr>' +
     '<tr><td><b>QTA interim</b></td><td>Latest &quot;Next Review&quot; per Rocketeer from RD events, sorted overdue-first.</td></tr></table>' +
     '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available. Universal filters recompute every view for the filtered population, EXCEPT anchors and equity group medians (always full-population facts).</p>' +
@@ -794,9 +794,6 @@ function openDrill(empNo) {
     (emp.tenureCompanyYears != null
       ? '<span class="chip">tenure ' + emp.tenureCompanyYears + 'y company / ' + (emp.tenureProfileYears != null ? emp.tenureProfileYears + 'y in role' : "—") + '</span>' : '') +
     (emp.ttmGrowthPct != null ? '<span class="chip">TTM growth ' + pctFmt(emp.ttmGrowthPct) + '</span>' : '');
-  if (g && g.overallAnnualized != null) {
-    body += '<span class="chip green">overall growth ' + pctFmt(g.overallAnnualized) + '/yr (RRI)</span>';
-  }
   if (emp.priority && emp.priority.score != null) {
     const c = emp.priority.components;
     body += '<span class="chip yellow" title="perf ' + (c.perf != null ? (c.perf * 100).toFixed(0) + '%' : '—') +
@@ -813,12 +810,12 @@ function openDrill(empNo) {
       '<h3>TCC growth waterfall (local Total Target Compensation)</h3>' +
       waterfallSvg(g.events, 500, 200) +
       '<h3>Comp events</h3>' +
-      '<table><tr><th>Date</th><th>Event</th><th>TCC</th><th>Δ</th><th>Δ%</th><th>Annualized</th></tr>' +
+      '<table><tr><th>Date</th><th>Event</th><th>TCC</th><th>Δ</th><th>TCC AGR</th><th>Annualized</th></tr>' +
       g.events.map(e =>
         '<tr><td>' + esc(e.date) + '</td><td>' + esc(e.reason) + '</td>' +
         '<td>' + (e.tcc != null ? Math.round(e.tcc).toLocaleString() : "—") + '</td>' +
         '<td>' + (e.deltaAbs != null ? (e.deltaAbs >= 0 ? "+" : "") + Math.round(e.deltaAbs).toLocaleString() : "—") + '</td>' +
-        '<td>' + pctFmt(e.deltaPct) + '</td><td>' + pctFmt(e.annualized) + '</td></tr>').join("") +
+        '<td>' + pctFmt(e.tag, 2) + '</td><td>' + pctFmt(e.annualized) + '</td></tr>').join("") +
       '</table>' +
       '<div class="sub" style="margin-top:6px">First event is the baseline (usually New Hire) — no growth math applies to it.</div>';
   }
