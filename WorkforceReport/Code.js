@@ -2135,6 +2135,13 @@ function exportReportToDoc(scope, quarter, fyCount, view) {
     return JSON.stringify({ ok: true, url: doc.getUrl(), name });
   } catch (e) {
     Logger.log("❌ exportReportToDoc: " + e.message);
+    // The permission error has a fixed remedy — say it, don't just relay it.
+    if (/permission|authoriz/i.test(String(e.message))) {
+      return JSON.stringify({ ok: false, error:
+        "Doc export is not authorized yet. An admin must run authorizeDocExport() " +
+        "in the Apps Script editor (accept the Docs/Drive consent), then publish a " +
+        "NEW deployment version." });
+    }
     return JSON.stringify({ ok: false, error: "Export failed: " + e.message });
   }
 }
@@ -2220,6 +2227,37 @@ function checkGeminiKey() {
 function clearGeminiKey() {
   props_().deleteProperty("GEMINI_API_KEY");
   Logger.log("✅ GEMINI_API_KEY removed from Script Properties.");
+}
+
+// ── One-time setup: Google Doc export authorization ─────────────────────────
+// "You do not have permission to call DocumentApp.create" means the OAuth
+// grant behind the web app predates the export feature. The grant only
+// refreshes when the script REQUESTS the scope interactively, and the web app
+// only uses the refreshed grant from a NEW deployment version. So:
+//   1. Run authorizeDocExport() from the GAS editor and accept the consent
+//      screen (it will now list Google Docs and Drive).
+//   2. Deploy → Manage deployments → edit the deployment → Version: New
+//      version → Deploy. The 📄 Export Doc button works from then on.
+// (With the manifest in appsscript.json the consent screen lists the scopes
+// explicitly; without it, this function still triggers scope auto-detection.)
+
+/**
+ * Creates a throwaway doc to force the Docs+Drive authorization prompt, then
+ * trashes it. Safe to run anytime; changes nothing but the OAuth grant.
+ */
+function authorizeDocExport() {
+  const doc = DocumentApp.create("WR authorization check — safe to delete");
+  const body = doc.getBody();
+  body.appendParagraph("Workforce & Compensation Report")
+      .setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph("Authorization check succeeded — the Docs scope is granted.");
+  doc.saveAndClose();
+  const url = doc.getUrl();
+  // Trashing via DriveApp exercises the Drive scope (used to share exports).
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  Logger.log("✅ authorizeDocExport: Docs + Drive scopes granted. Test doc created and trashed — " + url);
+  Logger.log("➡️ Final step: publish a NEW deployment version (Deploy → Manage deployments) " +
+             "so the web app runs under the refreshed grant.");
 }
 
 // ── Diagnostics — run from the GAS editor at deploy (spec §11 step 3) ───────
