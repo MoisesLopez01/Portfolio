@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      /* COMPANY_COLORS — brand palette (see frontend standard) */
+      --void-blue:   #0F1941; /* primary background (dark) */
+      --light-cream: #FFFAF5; /* primary text on dark */
+      --orbe-blue:   #058CDC; /* accent / CTAs */
+      --ivory:       #DCCDBE; /* neutral surfaces / muted labels */
+      --june:        #FF9B87; /* highlight accents (banners, emphasis) */
+      --bg: var(--void-blue);
+      --panel: #16224E; --panel-2: #1C2B5E; --border: #2C3D78;
+      --text: var(--light-cream); --muted: var(--ivory); --chip: #202F66;
+      --cta: var(--orbe-blue);
+      /* Status colors — data semantics, deliberately NOT brand colors */
+      --accent: #35c26e;  /* green — FACT */
+      --warn:   #e8b93c;  /* yellow — attention */
+      --bad:    #e05252;  /* red — RISK */
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", Arial, sans-serif; }
+    header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+    header h1 { font-size: 17px; margin: 0; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .hdr-right { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+    button:hover { border-color: var(--cta); }
+    button:disabled { opacity: .5; cursor: default; }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: 0; border-radius: 0; background: transparent; }
+    .seg button.on { background: var(--cta); color: var(--void-blue); font-weight: 600; }
+    select, textarea { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
+    main { padding: 16px 18px 60px; max-width: 1080px; margin: 0 auto; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+    .banner { background: #3B2833; border: 1px solid var(--june); color: #FFD8CC; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .banner.err { background: #3a2020; border-color: var(--bad); color: #f2b8b8; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    h3 { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    .twrap { overflow-x: auto; }
+    .chip { display: inline-block; background: var(--chip); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; margin: 0 6px 6px 0; }
+    /* FAR/N line badges — the evidence idiom of View A */
+    .line { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; }
+    .badge { flex: 0 0 96px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .4px; border: 1px solid; border-radius: 6px; padding: 1px 0; }
+    .badge.FACT       { color: var(--accent); border-color: var(--accent); }
+    .badge.ASSUMPTION { color: var(--cta);    border-color: var(--cta); }
+    .badge.RISK       { color: var(--bad);    border-color: var(--bad); }
+    .badge.NOTE       { color: var(--muted);  border-color: var(--muted); }
+    .cover { text-align: center; padding: 44px 18px; }
+    .cover h1 { font-size: 26px; margin: 0 0 6px; }
+    .cover .sub { font-size: 14px; }
+    .ai-block { border: 1px dashed var(--cta); border-radius: 10px; padding: 12px 14px; margin-top: 10px; background: rgba(5,140,220,.06); }
+    .ai-tag { color: var(--cta); font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+    .hidden { display: none !important; }
+    #loading { position: fixed; inset: 0; background: rgba(13,21,55,.85); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
+    a { color: var(--cta); }
+    ul { margin: 6px 0; padding-left: 22px; }
+    li { margin: 3px 0; }
+    /* Print — either view goes to PDF for board distribution (spec §7) */
+    @media print {
+      :root { --bg: #fff; --panel: #fff; --panel-2: #fff; --border: #bbb;
+              --text: #111; --muted: #555; --chip: #f2f2f2; }
+      body { background: #fff; color: #111; }
+      header, #loading, .noprint { display: none !important; }
+      main { max-width: none; padding: 0; }
+      .card { break-inside: avoid; box-shadow: none; }
+      .ai-block { background: #f4f9fd; }
+      a { color: #111; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+<header class="noprint">
+  <div>
+    <h1>Workforce &amp; Compensation Report</h1>
+    <div class="sub" id="subTitle">loading…</div>
+  </div>
+  <div class="hdr-right">
+    <div class="seg" id="viewSeg">
+      <button data-view="report" class="on" onclick="switchView('report')">📄 Location report</button>
+      <button data-view="brief" onclick="switchView('brief')">📊 Board brief</button>
+    </div>
+    <select id="scopeSel" onchange="setScope(this.value)"></select>
+    <button onclick="window.print()" title="Print / save as PDF">🖨 Print</button>
+    <button id="refreshBtn" onclick="loadData(true)" title="Bypass cache for a live read">⟳ Refresh</button>
+    <button id="accessBtn" class="hidden" onclick="toggleAccess()">🔒 Access</button>
+  </div>
+</header>
+<main><div id="pane"></div></main>
+<div id="loading">Loading workforce data…</div>
+
+<script>
+"use strict";
+const USER_ROLE  = "<?= userRole ?>";
+const USER_EMAIL = "<?= userEmail ?>";
+
+const STATE = {
+  data: null,          // payload for the CURRENT scope
+  scope: "company",
+  view: "report",      // "report" | "brief" | "access"
+  narrative: null,     // validated AI narrative (View B), or null
+  aiBusy: false,
+  cache: {},           // scope → payload (client-side, per session)
+};
+
+// ── helpers ─────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fmtInt(n) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") : "—"; }
+function fmtPct(x, dp) { return (typeof x === "number" && isFinite(x)) ? (x * 100).toFixed(dp == null ? 1 : dp) + "%" : "—"; }
+function fmtMoney(n, code) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") + (code ? " " + code : "") : "—"; }
+
+function lineHtml(l) {
+  return '<div class="line"><span class="badge ' + esc(l.badge) + '">' + esc(l.badge) +
+    '</span><span>' + esc(l.text) + '</span></div>';
+}
+function tableHtml(t) {
+  return '<h3>' + esc(t.title) + '</h3><div class="twrap"><table><tr>' +
+    t.headers.map(h => '<th>' + esc(h) + '</th>').join("") + '</tr>' +
+    t.rows.map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join("") + '</tr>').join("") +
+    '</table></div>';
+}
+function sourceBanner() {
+  const s = (STATE.data && STATE.data.meta.sources) || {};
+  return Object.keys(s).filter(k => s[k] !== "ok").map(k =>
+    '<div class="banner err">⚠️ ' + esc(k) + ' source unavailable — ' + esc(s[k]) + '</div>').join("");
+}
+
+// ── navigation ──────────────────────────────────────────────
+function switchView(v) {
+  // The Board brief synthesizes across ALL locations — it always reads the
+  // company payload, so selecting it snaps the scope back to company.
+  if (v === "brief" && STATE.scope !== "company") {
+    STATE.view = "brief";
+    setScope("company");
+    return;
+  }
+  STATE.view = v;
+  syncHeader();
+  render();
+}
+function setScope(scope) {
+  STATE.scope = scope || "company";
+  if (STATE.view === "brief" && STATE.scope !== "company") STATE.view = "report";
+  if (STATE.cache[STATE.scope]) {
+    STATE.data = STATE.cache[STATE.scope];
+    syncHeader();
+    render();
+  } else {
+    loadData(false);
+  }
+}
+function toggleAccess() {
+  STATE.view = (STATE.view === "access") ? "report" : "access";
+  syncHeader();
+  render();
+}
+function syncHeader() {
+  document.querySelectorAll("#viewSeg button").forEach(b =>
+    b.classList.toggle("on", b.getAttribute("data-view") === STATE.view));
+  const d = STATE.data;
+  if (d) {
+    const sel = document.getElementById("scopeSel");
+    sel.innerHTML = '<option value="company">🌐 Company-wide</option>' +
+      d.meta.scopes.map(s => '<option value="' + esc(s) + '"' +
+        (s === STATE.scope ? " selected" : "") + '>' + esc(s) + '</option>').join("");
+    sel.value = STATE.scope;
+    document.getElementById("subTitle").textContent =
+      d.meta.fys.map(f => f.label).join("–").replace(/–.*–/, "–") + " · extracted " + d.meta.asOf +
+      " · " + (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
+  }
+  document.getElementById("accessBtn").classList.toggle("hidden", USER_ROLE !== "admin");
+}
+
+// ── data load ───────────────────────────────────────────────
+function loadData(force) {
+  document.getElementById("loading").classList.remove("hidden");
+  google.script.run
+    .withSuccessHandler(onData)
+    .withFailureHandler(onLoadError)
+    .getWorkforceReportData(STATE.scope, !!force);
+}
+function onData(raw) {
+  let d = raw;
+  if (typeof raw === "string") {
+    try { d = JSON.parse(raw); } catch (e) { onLoadError(e); return; }
+  }
+  if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
+  STATE.data = d;
+  STATE.scope = d.meta.scope; // server may degrade an unknown scope to company
+  STATE.cache[d.meta.scope] = d;
+  document.getElementById("loading").classList.add("hidden");
+  syncHeader();
+  render();
+}
+function onLoadError(err) {
+  document.getElementById("loading").classList.add("hidden");
+  document.getElementById("pane").innerHTML =
+    '<div class="banner err">❌ Could not load the report: ' + esc((err && err.message) || err) + '</div>';
+}
+
+function render() {
+  const el = document.getElementById("pane");
+  if (!STATE.data) return;
+  if (STATE.view === "access") { renderAccess(el); return; }
+  if (STATE.view === "brief")  { renderBrief(el);  return; }
+  renderReport(el);
+}
+
+// ── View A — Location report (FAR/N evidence layer) ─────────
+function renderReport(el) {
+  const d = STATE.data, r = d.report;
+  const scopeLabel = r.scope === "company" ? "Company-wide" : r.scope;
+  el.innerHTML =
+    sourceBanner() +
+    '<div class="card cover"><h1>Workforce &amp; Compensation Report — ' + esc(scopeLabel) + '</h1>' +
+    '<div class="sub">' + d.meta.fys.map(f => f.label).join(" · ") +
+    ' · data extracted on ' + esc(d.meta.asOf) + ' · figures in ' + esc(r.currency.code) + '</div></div>' +
+    r.sections.map(s =>
+      '<div class="card"><h2>' + esc(s.title) + '</h2>' +
+      s.lines.map(lineHtml).join("") +
+      (s.tables || []).map(tableHtml).join("") +
+      '</div>').join("");
+}
+
+// ── View B — Board brief (synthesis layer) ──────────────────
+function aiBlock(id, bodyHtml) {
+  return '<div class="ai-block" id="' + id + '"><div class="ai-tag">✨ AI synthesis — generated text, ' +
+    'figures come from the computed report</div>' + bodyHtml + '</div>';
+}
+function aiPlaceholder(what) {
+  return '<span class="sub">' + (STATE.aiBusy
+    ? "Generating…"
+    : what + ' not generated yet — use the ✨ button above.') + '</span>';
+}
+function narrativeControls() {
+  const has = !!STATE.narrative;
+  return '<div class="noprint" style="margin-bottom:14px">' +
+    '<button onclick="generateNarrative(' + (has ? "true" : "false") + ')"' +
+    (STATE.aiBusy ? " disabled" : "") + '>' +
+    (STATE.aiBusy ? "✨ Generating…" : has ? "↻ Regenerate AI synthesis" : "✨ Generate AI synthesis") +
+    '</button> <span class="sub">Gemini receives computed aggregates only — never names or individual compensation. ' +
+    'The brief renders fully without it.</span></div>';
+}
+function generateNarrative(force) {
+  if (STATE.aiBusy) return;
+  STATE.aiBusy = true;
+  render();
+  google.script.run
+    .withSuccessHandler(raw => {
+      STATE.aiBusy = false;
+      let d = raw;
+      try { if (typeof raw === "string") d = JSON.parse(raw); } catch (e) { d = null; }
+      if (d && d.ok) STATE.narrative = d.narrative;
+      else onNarrativeError((d && d.error) || "Narrative generation failed.");
+      render();
+    })
+    .withFailureHandler(err => {
+      STATE.aiBusy = false;
+      onNarrativeError((err && err.message) || err);
+      render();
+    })
+    .getBriefNarrative(!!force);
+}
+function onNarrativeError(msg) {
+  STATE.narrativeError = String(msg);
+}
+
+function renderBrief(el) {
+  const d = STATE.data, b = d.brief;
+  if (!b) {
+    el.innerHTML = '<div class="banner err">Board brief is company-scope only — switching scope…</div>';
+    return;
+  }
+  const n = STATE.narrative;
+  const fyNow = d.meta.fys[d.meta.fys.length - 1].label;
+  const g = b.glance;
+  const errBanner = STATE.narrativeError
+    ? '<div class="banner err noprint">⚠️ ' + esc(STATE.narrativeError) +
+      ' — the report below is complete without the AI text.</div>' : "";
+  STATE.narrativeError = null;
+
+  // 1 · Cover
+  let html = sourceBanner() + errBanner + narrativeControls() +
+    '<div class="card cover"><h1>Global Workforce &amp; Compensation Review · ' + esc(fyNow) + '</h1>' +
+    '<div class="sub">ServiceRocket · ' + d.meta.fys.map(f => f.label).join(" – ") +
+    ' · data extracted on ' + esc(d.meta.asOf) + '</div></div>';
+
+  // 2 · Executive summary (AI)
+  html += '<div class="card"><h2>2 · Executive summary</h2>' +
+    aiBlock("aiExec", n && n.execSummary.length
+      ? '<ul>' + n.execSummary.map(s => '<li>' + esc(s) + '</li>').join("") + '</ul>'
+      : aiPlaceholder("Executive summary")) + '</div>';
+
+  // 3 · Company at a glance
+  html += '<div class="card"><h2>3 · Company at a glance</h2>' +
+    '<span class="chip">' + fmtInt(g.headcount) + ' active employees</span>' +
+    '<span class="chip">TCC envelope ' + fmtMoney(g.tccEnvelopeUsd, "USD") + '</span>' +
+    (g.missingUsd ? '<span class="chip">' + fmtInt(g.missingUsd) + ' missing TCC USD (headcount only)</span>' : "") +
+    tableHtml({ title: "Headcount by location", headers: ["Key Location", "Headcount"],
+      rows: g.byLocation.map(x => [x.key, x.count]) }) +
+    tableHtml({ title: "Headcount by function", headers: ["Department", "Headcount"],
+      rows: g.byDept.map(x => [x.key, x.count]) }) + '</div>';
+
+  // 4 · Movement & attrition
+  html += '<div class="card"><h2>4 · Movement &amp; attrition</h2>' +
+    tableHtml({ title: "Company movement by fiscal year",
+      headers: ["FY", "Hires", "Exits", "Net", "Attrition rate"],
+      rows: b.movement.company.map(m => [m.label + (m.inProgress ? " (to date)" : ""),
+        m.hires, m.exits, (m.net >= 0 ? "+" : "") + m.net, fmtPct(m.rate)]) }) +
+    tableHtml({ title: "Regretted-attrition trend",
+      headers: ["FY", "Regretted", "Exits", "Regretted share"],
+      rows: b.movement.regrettedTrend.map(t => [t.label, t.regretted, t.exits, fmtPct(t.pct, 0)]) }) +
+    tableHtml({ title: "Per-location matrix (" + esc(fyNow) + " column last)",
+      headers: ["Location"].concat(d.meta.fys.map(f => f.label + " exits (rate)")),
+      rows: b.movement.byLocation.map(L => [L.location].concat(
+        L.perFy.map(p => p.exits + " (" + fmtPct(p.rate) + ")"))) }) + '</div>';
+
+  // 5 · The retention signal
+  html += '<div class="card"><h2>5 · The retention signal</h2>' +
+    '<div class="sub">Where regretted loss concentrates across ' +
+    d.meta.fys.map(f => f.label).join("–") + ' — computed crosstab, largest first.</div>' +
+    (b.retention.length
+      ? tableHtml({ title: "Regretted leavers: level × tenure × reason",
+          headers: ["Level", "Tenure", "Reason", "Count"],
+          rows: b.retention.map(r => [r.level, r.tenureBucket, r.reason, r.count]) })
+      : '<p class="sub">No regretted exits recorded in the window.</p>') + '</div>';
+
+  // 6 · Compensation strategy
+  html += '<div class="card"><h2>6 · Compensation strategy</h2>' +
+    '<div class="sub">Promotions vs adjustments, FY-over-FY (company scope, growth is currency-free).</div>' +
+    tableHtml({ title: "Growth by lever",
+      headers: ["FY", "Promotions", "Promo growth", "Adjustments", "Adjustment growth"],
+      rows: b.levers.map(v => [v.label + (v.inProgress ? " (to date)" : ""),
+        v.promo.count, fmtPct(v.promo.growthPct), v.adjust.count, fmtPct(v.adjust.growthPct)]) }) + '</div>';
+
+  // 7 · Structural risks (computed candidates only)
+  html += '<div class="card"><h2>7 · Structural risks</h2>' +
+    '<div class="sub">Computed candidates only — thresholds live in CONFIG_WR, echoed by the server.</div>' +
+    (b.structuralRisks.length
+      ? '<ul>' + b.structuralRisks.map(r =>
+          '<li><b>' + esc(r.title) + '</b> — ' + esc(r.detail) + '</li>').join("") + '</ul>'
+      : '<p class="sub">No structural-risk candidate fired at current thresholds.</p>') + '</div>';
+
+  // 8 · Location spotlights
+  html += '<div class="card"><h2>8 · Location spotlights</h2>' +
+    tableHtml({ title: "Comparison matrix (" + esc(fyNow) + ")",
+      headers: ["Location", "Headcount", "Attrition", "Regretted", "Avg TCC USD", "Promo rate", "Flag"],
+      rows: b.spotlights.map(s => [s.location, s.headcount, fmtPct(s.attritionRate),
+        fmtPct(s.regrettedPct, 0), fmtInt(s.avgTccUsd), fmtPct(s.promoRate),
+        (n && n.spotlightFlags && n.spotlightFlags[s.location]) || s.candidates[0]]) }) +
+    '<div class="sub">Flags are selected from each location’s computed candidate list' +
+    (n ? " (✨ AI-selected)" : " (first candidate shown until AI synthesis runs)") + '.</div></div>';
+
+  // 9 · Decisions for the board (AI draft)
+  html += '<div class="card"><h2>9 · Decisions for the board</h2>' +
+    aiBlock("aiDecisions", n && n.decisions.length
+      ? '<ul>' + n.decisions.map(dd =>
+          '<li><b>' + esc(dd.title) + '</b>' + (dd.rationale ? ' — ' + esc(dd.rationale) : '') + '</li>').join("") + '</ul>' +
+        '<div class="sub">Draft only — AI-generated for discussion, not a recommendation of record.</div>'
+      : aiPlaceholder("Board-decision draft")) + '</div>';
+
+  // 10 · Appendix — location reports (same app, scope switch)
+  html += '<div class="card"><h2>10 · Appendix — location reports</h2>' +
+    '<div class="sub">Each opens the FAR/N evidence report for that location.</div><p>' +
+    b.appendix.map(loc =>
+      '<button class="noprint" onclick="openLocation(\'' + esc(loc).replace(/'/g, "\\'") + '\')">' +
+      esc(loc) + ' ↗</button> ').join("") + '</p></div>';
+
+  el.innerHTML = html;
+}
+function openLocation(loc) {
+  STATE.view = "report";
+  setScope(loc);
+}
+
+// ── 🔒 Access (admin only) ──────────────────────────────────
+function renderAccess(el) {
+  el.innerHTML = '<div class="card"><h2>🔒 Access control</h2><div class="sub">loading…</div></div>';
+  google.script.run
+    .withSuccessHandler(s => {
+      el.innerHTML =
+        '<div class="card"><h2>🔒 Access control</h2>' +
+        '<div class="sub">One email per line. Bootstrap admin <b>' + esc(s.bootstrapAdmin) +
+        '</b> is always an admin and cannot be removed here. Saving busts the report cache.</div>' +
+        '<h3>Admins</h3><textarea id="accAdmins" rows="4" style="width:100%">' +
+        esc(s.admins.join("\n")) + '</textarea>' +
+        '<h3>Viewers (board emails go here at share time)</h3>' +
+        '<textarea id="accViewers" rows="6" style="width:100%">' +
+        esc(s.viewers.join("\n")) + '</textarea>' +
+        '<p><button onclick="saveAccess()">💾 Save</button> ' +
+        '<button onclick="toggleAccess()">← Back to the report</button></p>' +
+        '<div id="accMsg" class="sub"></div></div>';
+    })
+    .withFailureHandler(err => {
+      el.innerHTML = '<div class="banner err">❌ ' + esc((err && err.message) || err) + '</div>';
+    })
+    .getReportAccessSettings();
+}
+function saveAccess() {
+  const lines = id => document.getElementById(id).value
+    .split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+  document.getElementById("accMsg").textContent = "Saving…";
+  google.script.run
+    .withSuccessHandler(() => { document.getElementById("accMsg").textContent = "✅ Saved — cache busted."; })
+    .withFailureHandler(err => {
+      document.getElementById("accMsg").textContent = "❌ " + ((err && err.message) || err);
+    })
+    .saveReportAccessSettings({ admins: lines("accAdmins"), viewers: lines("accViewers") });
+}
+
+// ── boot ────────────────────────────────────────────────────
+loadData(false);
+</script>
+</body>
+</html>

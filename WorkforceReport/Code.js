@@ -1,0 +1,1687 @@
+// ============================================================
+// SCRIPT NAME: Workforce & Compensation Report — Code
+// PURPOSE:     Standalone GAS web app rendering the Workforce &
+//              Compensation Report across FY25/FY26/FY27 in two views:
+//              View A — per-scope Location report (FAR/N evidence layer)
+//              View B — company Board brief (synthesis layer, AI-assisted)
+// VERSION:     1.0.0
+// ENVIRONMENT: Google Apps Script
+// SPEC:        docs/superpowers/specs/2026-07-22-workforce-comp-report-design.md
+//
+// Layout: PURE LOGIC first (no GAS APIs — Node-testable via tests/),
+//         GAS LAYER second (SpreadsheetApp/CacheService/HtmlService).
+//
+// Data-integrity contract: every FACT sentence is TEMPLATED from computed
+// numbers — the AI narrative (View B only) receives aggregates and can never
+// alter a figure. Ratings reader deliberately omitted: no V1 section consumes
+// performance ratings (spec §3 lists it as optional).
+// ============================================================
+
+const CONFIG_WR = {
+  // Fallback source IDs — overridable via Script Properties (WR_ prefix).
+  // Defaults are the CompDash sources: the sheets are the shared contract.
+  ROSTER_SS_ID:    "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0", // roster + attrition + TCC USD
+  COMP_HIST_SS_ID: "1I_JeFU3mcF0wYrENUT-9tqGAgSHymLAdlOb8l0MASpU", // Compensation Report (RD tab)
+  BENCH_SS_ID:     "1juJwP9RLCYoaz3-ONYR8HvaHG9fp5a5AIEMCuouNlx0", // market benchmark compilation
+  ROSTER_TAB: "Data",        // override via WR_ROSTER_TAB
+  HIST_TAB:   "RD",          // override via WR_HIST_TAB
+  BENCH_TAB:  "Compilation", // override via WR_BENCH_TAB
+  TCC_USD_COL: "TCC USD",    // column INSIDE the roster tab; position shifts, resolved by header
+
+  CACHE_TTL_SEC: 65 * 60,
+  CACHE_KEY_PREFIX: "wr_",
+
+  FY_COUNT: 3, // FYs rendered: current FY and the two before it (FY25/26/27 at build time)
+
+  // Lever classification (RD "TCC Change Reason") — spec §6.6.
+  PROMO_RE:  /promotion|microband promotion/i,
+  ADJUST_RE: /annual adjustment|microband adjustment|market calibration/i,
+  // Everything else (New Hire, Internal Transfer, Historical Data Update, Other)
+  // is excluded from the lever analysis — counted and noted, never deltas.
+
+  // Attrition RISK thresholds — spec §6.5 (config-tunable).
+  RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
+  RISK_REASON_SHARE: 0.5,  // single recorded reason ≥ this share of exits → RISK line
+
+  // Structural-risk detectors — spec §7.7 (computed candidates only).
+  SENIOR_IC_MIN:      4,   // IC levels at/above this compare against manager bands
+  FUNC_CONC_PCT:     40,   // top department share of headcount ≥ this % → candidate
+  TENURE_CONC_PCT:   40,   // single tenure bucket ≥ this % of actives → candidate
+  MIDLEVEL_RE:  /^I[34]$/, // "mid-level flight" levels
+  MIDLEVEL_FLIGHT_PCT: 40, // exit share at mid levels ≥ this % → candidate
+  MIDLEVEL_MIN_EXITS:   4, // shares are noise below this many exits
+
+  // Copied from CONFIG_CD at fork time (spec §6.7) — independently tunable after.
+  COMPA_LOW_MIN:    0.80,
+  COMPA_TARGET_MIN: 0.95,
+  COMPA_HIGH_MAX:   1.10,
+  MARKET_LOW:       0.90,
+  EQUITY_GAP_PCT:     10,
+  EQUITY_OUTLIER_PCT: 25,
+  TENURE_YEARS_MIN:    3,
+  TENURE_BELOW_PCT:   15,
+  SMALL_GROUP_MIN:     3,
+
+  CREW_RE: /crew member|contractor/i, // same crew rule as PS / CompDash
+  INACTIVE_RE: /terminat|job offer|resign|left|inactive|former|offboard/i,
+
+  DEBUG: false,
+};
+
+// ============================================================
+// PURE LOGIC — no GAS APIs below this line until the GAS LAYER marker
+// ============================================================
+
+function normWR_(name) {
+  return String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Extracts the level token from a Job Title like "04.I3.1" / "04.M10.2".
+ * @returns {{level: string, track: ("IC"|"M"|null)}} level "—" when unparseable.
+ */
+function parseLevel_(jobTitle) {
+  const m = String(jobTitle || "").match(/(?:^|[^A-Za-z0-9])([IM])(\d{1,2})(?![0-9])/i);
+  if (!m) return { level: "—", track: null };
+  const letter = m[1].toUpperCase();
+  return { level: letter + parseInt(m[2], 10), track: letter === "I" ? "IC" : "M" };
+}
+
+/** Sort key: ICs before management, numeric within track, "—" last. */
+function levelRank_(level) {
+  const m = String(level || "").match(/^([IM])(\d+)$/);
+  if (!m) return 999;
+  return (m[1] === "I" ? 0 : 100) + parseInt(m[2], 10);
+}
+
+function asNum_(v) {
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  const s = String(v == null ? "" : v).replace(/[^0-9.\-]/g, "");
+  if (!s) return null;
+  const n = parseFloat(s);
+  return isFinite(n) ? n : null;
+}
+
+function asDate_(v) {
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  const s = String(v == null ? "" : v).trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+function isoDate_(d) {
+  if (!(d instanceof Date) || isNaN(d)) return "";
+  const p = n => String(n).padStart(2, "0");
+  return d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate());
+}
+
+function median_(nums) {
+  const a = nums.filter(n => typeof n === "number" && isFinite(n)).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+const YEAR_MS_ = 365.25 * 86400000;
+
+function tenureYears_(hireDate, asOf) {
+  if (!(hireDate instanceof Date) || isNaN(hireDate)) return null;
+  return (asOf - hireDate) / YEAR_MS_;
+}
+
+// ── Formatting (templated FACT sentences interpolate through these only) ────
+
+function fmtInt_(n) {
+  return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") : "—";
+}
+
+/** Fraction → "12.3%". dp defaults to 1. */
+function fmtPct_(x, dp) {
+  return (typeof x === "number" && isFinite(x))
+    ? (x * 100).toFixed(dp == null ? 1 : dp) + "%" : "—";
+}
+
+function fmtMoney_(n, code) {
+  if (!(typeof n === "number" && isFinite(n))) return "—";
+  return Math.round(n).toLocaleString("en-US") + (code ? " " + code : "");
+}
+
+// FAR/N line constructors — every View A sentence carries one of these badges.
+function fact_(t)   { return { badge: "FACT",       text: t }; }
+function assume_(t) { return { badge: "ASSUMPTION", text: t }; }
+function risk_(t)   { return { badge: "RISK",       text: t }; }
+function note_(t)   { return { badge: "NOTE",       text: t }; }
+
+/** The automatic in-progress-FY NOTE every section with open-FY figures renders. */
+function noteInProgress_(fys, asOfIso) {
+  const open = fys.find(f => f.inProgress);
+  return open
+    ? note_(open.label + " in progress — data as of " + asOfIso + ".")
+    : null;
+}
+
+// ── Fiscal calendar (FY starts July 1; FY27 = Jul 2026 – Jun 2027) ─────────
+// Same derivation rules as fiscalContextCD_ / computeFiscalContext_.
+
+function fiscalContextWR_(refDate) {
+  const today = (refDate instanceof Date && !isNaN(refDate)) ? refDate : new Date();
+  const m = today.getMonth() + 1;
+  const yr = today.getFullYear();
+  const fyStartCalYear = (m >= 7) ? yr : yr - 1;
+  const fyNum = fyStartCalYear + 1;
+  return {
+    asOf: today,
+    fyNum,
+    fyLabel: "FY" + String(fyNum).slice(-2),
+    fyStartCalYear,
+  };
+}
+
+/**
+ * The FY windows this report renders, OLDEST FIRST — [FY25, FY26, FY27] at
+ * build time, self-advancing at every FY rollover (no annual maintenance).
+ * @returns {Array<{label, startCalYear, start: Date, end: Date, inProgress: boolean}>}
+ */
+function fyListWR_(refDate, count) {
+  const ctx = fiscalContextWR_(refDate);
+  const n = count || CONFIG_WR.FY_COUNT;
+  const out = [];
+  for (let back = n - 1; back >= 0; back--) {
+    const startCalYear = ctx.fyStartCalYear - back;
+    out.push({
+      label: "FY" + String(startCalYear + 1).slice(-2),
+      startCalYear,
+      start: new Date(startCalYear, 6, 1),
+      end: new Date(startCalYear + 1, 5, 30),
+      inProgress: back === 0,
+    });
+  }
+  return out;
+}
+
+function classifyTerm_(cat) {
+  const c = String(cat || "").toLowerCase();
+  if (/invol/.test(c)) return "invol";
+  if (/vol/.test(c)) return "vol";
+  return "other";
+}
+
+// ── Currency resolution — spec §5 ───────────────────────────────────────────
+// Country scope: local currency when the Key Location is single-currency;
+// multi-currency locations fall back to TCC USD with a NOTE naming what was
+// found. Company scope: always TCC USD.
+
+function currencyModeForScope_(records, scope) {
+  if (scope === "company") {
+    return { mode: "usd", code: "USD", currencies: [] };
+  }
+  const currencies = [...new Set(
+    records.filter(r => r.active && r.currency).map(r => r.currency))].sort();
+  if (currencies.length === 1) {
+    return { mode: "local", code: currencies[0], currencies };
+  }
+  return { mode: "usd", code: "USD", currencies };
+}
+
+/** The comp value for a record under the resolved currency mode. */
+function tccOf_(r, mode) {
+  return mode === "usd" ? r.tccUsd : r.tcc;
+}
+
+// ── Headcount / movement / attrition engines — spec §6.4–6.5 ───────────────
+
+function headcountOn_(records, date) {
+  // Null hireDate = employment start unknown → treat as already hired, keeping
+  // the denominator symmetric with the termination numerator.
+  return records.filter(r =>
+    (!r.hireDate || r.hireDate <= date) && (!r.termDate || r.termDate > date)).length;
+}
+
+/**
+ * One FY's movement block. Rate = exits ÷ mean(start, end headcount);
+ * end = asOf for the in-progress FY (existing fyAttritionBlock_ behavior).
+ */
+function fyMovement_(records, fy, asOf) {
+  const end = (fy.inProgress && asOf && asOf < fy.end) ? asOf : fy.end;
+  const hires = records.filter(r =>
+    r.hireDate && r.hireDate >= fy.start && r.hireDate <= fy.end).length;
+  const exits = records.filter(r =>
+    r.termDate && r.termDate >= fy.start && r.termDate <= fy.end).length;
+  const hcStart = headcountOn_(records, fy.start);
+  const hcEnd = headcountOn_(records, end);
+  const avg = (hcStart + hcEnd) / 2;
+  return {
+    label: fy.label, inProgress: fy.inProgress,
+    hires, exits, net: hires - exits,
+    hcStart, hcEnd,
+    rate: avg > 0 ? exits / avg : null,
+  };
+}
+
+/** One FY's attrition detail — regretted, reasons, leaver slices, leaver tenure. */
+function fyAttritionStats_(records, fy, asOf) {
+  const leavers = records.filter(r =>
+    r.termDate && r.termDate >= fy.start && r.termDate <= fy.end);
+  const hist = (keyFn) => {
+    const m = new Map();
+    leavers.forEach(r => {
+      const k = keyFn(r) || "—";
+      m.set(k, (m.get(k) || 0) + 1);
+    });
+    return [...m.entries()].map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  };
+  const regretted = leavers.filter(r => /yes|true/i.test(String(r.termRegretted || ""))).length;
+  const vol = leavers.filter(r => classifyTerm_(r.termCategory) === "vol").length;
+  const invol = leavers.filter(r => classifyTerm_(r.termCategory) === "invol").length;
+  const tenures = leavers
+    .map(r => tenureYears_(r.hireDate, r.termDate))
+    .filter(t => t != null && t >= 0);
+  return {
+    label: fy.label, inProgress: fy.inProgress,
+    exits: leavers.length, vol, invol,
+    regretted,
+    regrettedPct: leavers.length ? regretted / leavers.length : null,
+    reasons: hist(r => r.termReason),
+    depts: hist(r => r.dept),
+    levels: hist(r => r.level).sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+    avgLeaverTenureYears: tenures.length
+      ? Math.round(tenures.reduce((t, x) => t + x, 0) / tenures.length * 10) / 10 : null,
+  };
+}
+
+// ── Compensation growth by lever — spec §6.6 ────────────────────────────────
+// Only source is RD comp history. Promotions vs adjustments per FY; each
+// event's delta compares against the employee's PRIOR valued comp record.
+// Events lacking a prior record are excluded from deltas (counted, noted).
+
+function classifyLever_(reason, cfg) {
+  const c = cfg || CONFIG_WR;
+  const s = String(reason || "");
+  if (c.PROMO_RE.test(s)) return "promo";
+  if (c.ADJUST_RE.test(s)) return "adjust";
+  return "other";
+}
+
+/**
+ * Lever blocks for one FY over the scope's employees.
+ * Amount totals only carry meaning when every event shares one currency
+ * (mode "local"); in "usd" mode the RD history is LOCAL TCC with no
+ * historical FX, so totals are withheld and growth uses the mean of
+ * per-event % deltas (unit-free) instead of sum(delta)/sum(prev).
+ * @param {string[]} scopeEmpNos - Employee Numbers in scope
+ * @param {Object} histByEmp - Employee Number → RD events
+ */
+function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
+  const mk = () => ({ count: 0, totalRaise: 0, sumPrev: 0, pctDeltas: [], noPrior: 0 });
+  const acc = { promo: mk(), adjust: mk() };
+  let excluded = 0;
+  scopeEmpNos.forEach(emp => {
+    const evs = (histByEmp[emp] || [])
+      .filter(e => e && e.date instanceof Date && !isNaN(e.date))
+      .sort((a, b) => a.date - b.date);
+    evs.forEach((e, i) => {
+      if (e.date < fy.start || e.date > fy.end) return;
+      const cls = classifyLever_(e.reason, cfg);
+      if (cls === "other") { excluded++; return; }
+      const a = acc[cls];
+      a.count++;
+      // Prior valued record = latest event strictly before this one with TCC.
+      let prev = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (evs[j].tcc != null && evs[j].tcc > 0) { prev = evs[j]; break; }
+      }
+      if (!prev || !(e.tcc != null && e.tcc > 0)) { a.noPrior++; return; }
+      a.totalRaise += e.tcc - prev.tcc;
+      a.sumPrev += prev.tcc;
+      a.pctDeltas.push((e.tcc - prev.tcc) / prev.tcc);
+    });
+  });
+  const finish = a => ({
+    count: a.count,
+    noPrior: a.noPrior,
+    totalRaise: (mode === "local" && a.count > a.noPrior) ? a.totalRaise : null,
+    growthPct: mode === "local"
+      ? (a.sumPrev > 0 ? a.totalRaise / a.sumPrev : null)
+      : (a.pctDeltas.length
+          ? a.pctDeltas.reduce((t, x) => t + x, 0) / a.pctDeltas.length : null),
+  });
+  return {
+    label: fy.label, inProgress: fy.inProgress, mode,
+    promo: finish(acc.promo), adjust: finish(acc.adjust),
+    excluded,
+  };
+}
+
+/**
+ * The lever-shift RISK — spec §6.6: promotion count AND size down while
+ * adjustment count up, comparing consecutive FYs.
+ * @returns {string[]} "FY26→FY27"-style labels of shifted pairs.
+ */
+function detectLeverShift_(leverBlocks) {
+  const shifts = [];
+  for (let i = 1; i < leverBlocks.length; i++) {
+    const a = leverBlocks[i - 1], b = leverBlocks[i];
+    if (b.promo.count < a.promo.count &&
+        b.promo.growthPct != null && a.promo.growthPct != null &&
+        b.promo.growthPct < a.promo.growthPct &&
+        b.adjust.count > a.adjust.count) {
+      shifts.push(a.label + "→" + b.label);
+    }
+  }
+  return shifts;
+}
+
+// ── Composition — spec §6.2 ─────────────────────────────────────────────────
+
+function tenureBucket_(years) {
+  if (years == null) return "unknown";
+  if (years < 1) return "<1y";
+  if (years < 3) return "1–3y";
+  if (years < 5) return "3–5y";
+  return "≥5y";
+}
+
+const TENURE_BUCKETS_ = ["<1y", "1–3y", "3–5y", "≥5y", "unknown"];
+
+function buildComposition_(active, asOf) {
+  const deptMap = new Map();
+  active.forEach(r => {
+    const k = r.dept || "—";
+    deptMap.set(k, (deptMap.get(k) || 0) + 1);
+  });
+  const levelMap = new Map();
+  active.forEach(r => {
+    levelMap.set(r.level, (levelMap.get(r.level) || 0) + 1);
+  });
+  const buckets = {};
+  TENURE_BUCKETS_.forEach(b => { buckets[b] = 0; });
+  const tenures = [];
+  active.forEach(r => {
+    const t = tenureYears_(r.hireDate, asOf);
+    buckets[tenureBucket_(t)]++;
+    if (t != null) tenures.push(t);
+  });
+  return {
+    total: active.length,
+    depts: [...deptMap.entries()].map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
+    icCount: active.filter(r => r.track === "IC").length,
+    mCount: active.filter(r => r.track === "M").length,
+    unparsedCount: active.filter(r => !r.track).length,
+    levels: [...levelMap.entries()].map(([key, count]) => ({ key, count }))
+      .sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+    tenureBuckets: TENURE_BUCKETS_
+      .map(b => ({ key: b, count: buckets[b] }))
+      .filter(x => x.key !== "unknown" || x.count > 0),
+    avgTenureYears: tenures.length
+      ? Math.round(tenures.reduce((t, x) => t + x, 0) / tenures.length * 10) / 10 : null,
+  };
+}
+
+// ── Compensation structure — spec §6.3 ──────────────────────────────────────
+// Level bands with fewer than SMALL_GROUP_MIN members keep their headcount but
+// withhold the average — an N-of-1 "average" is an individual's comp.
+
+function buildCompStructure_(active, mode, cfg) {
+  const byLevel = new Map();
+  let envelope = 0, valued = 0, missingComp = 0;
+  active.forEach(r => {
+    const v = tccOf_(r, mode);
+    if (!(v > 0)) { missingComp++; return; }
+    envelope += v;
+    valued++;
+    if (!byLevel.has(r.level)) byLevel.set(r.level, []);
+    byLevel.get(r.level).push(v);
+  });
+  const bands = [...byLevel.entries()].map(([level, vals]) => ({
+    level,
+    count: vals.length,
+    avg: vals.length >= cfg.SMALL_GROUP_MIN
+      ? Math.round(vals.reduce((t, x) => t + x, 0) / vals.length) : null,
+    suppressed: vals.length < cfg.SMALL_GROUP_MIN,
+  })).sort((a, b) => levelRank_(a.level) - levelRank_(b.level));
+  return {
+    envelope: valued ? envelope : null,
+    perHead: valued ? Math.round(envelope / valued) : null,
+    valued, missingComp,
+    bands,
+    inversions: detectInversions_(bands, cfg),
+  };
+}
+
+/**
+ * Salary inversion — a manager band average sitting BELOW a senior IC band
+ * average (IC level ≥ SENIOR_IC_MIN). Only bands large enough to carry an
+ * average participate (small bands are suppressed upstream).
+ * @returns {Array<{mLevel, mAvg, icLevel, icAvg}>}
+ */
+function detectInversions_(bands, cfg) {
+  const withAvg = bands.filter(b => b.avg != null);
+  const mgrs = withAvg.filter(b => /^M\d+$/.test(b.level));
+  const seniorIcs = withAvg.filter(b => {
+    const m = b.level.match(/^I(\d+)$/);
+    return m && parseInt(m[1], 10) >= cfg.SENIOR_IC_MIN;
+  });
+  const out = [];
+  mgrs.forEach(m => {
+    seniorIcs.forEach(ic => {
+      if (m.avg < ic.avg) {
+        out.push({ mLevel: m.level, mAvg: m.avg, icLevel: ic.level, icAvg: ic.avg });
+      }
+    });
+  });
+  return out;
+}
+
+// ── Internal position / market / equity flag COUNTS — spec §6.7 ────────────
+// Counts only, never names. Anchor tiering forked from CompDash
+// buildCompaGroups_ so the two apps agree on what "position" means.
+
+function benchKey_(location, jobTitle) {
+  return normWR_(location) + "||" + normWR_(jobTitle);
+}
+
+/** @returns {{row: (Object|null), mismatch: boolean}} */
+function lookupBench_(benchMap, keyLocation, jobTitle, empCurrency) {
+  const row = benchMap ? benchMap[benchKey_(keyLocation, jobTitle)] : null;
+  if (!row) return { row: null, mismatch: false };
+  if (row.currency && empCurrency && normWR_(row.currency) !== normWR_(empCurrency)) {
+    return { row: null, mismatch: true };
+  }
+  return { row, mismatch: false };
+}
+
+// Forked from CompDash buildCompaGroups_ (V2 tiered anchors); members carry
+// ratios only for counting into bands here — no member rows leave this module.
+function buildCompaGroups_(activeRecords, benchMap, cfg) {
+  const min = cfg.SMALL_GROUP_MIN;
+  const cohorts = new Map(); // "keyLocation||level" → tcc[]
+  activeRecords.forEach(r => {
+    if (!(r.tcc > 0) || !r.level || r.level === "—") return;
+    const k = (r.keyLocation || "—") + "||" + r.level;
+    if (!cohorts.has(k)) cohorts.set(k, []);
+    cohorts.get(k).push(r.tcc);
+  });
+  const map = new Map();
+  activeRecords.forEach(r => {
+    const key = (r.keyLocation || "—") + "||" + (r.jobTitle || "—");
+    if (!map.has(key)) {
+      map.set(key, { keyLocation: r.keyLocation || "—", jobTitle: r.jobTitle || "—",
+                     level: r.level, currency: r.currency || "", members: [] });
+    }
+    if (r.tcc == null || r.tcc <= 0) return;
+    map.get(key).members.push(r);
+  });
+  return [...map.values()].map(g => {
+    const count = g.members.length;
+    let anchor = null, anchorTier = "none";
+    if (count >= min) {
+      anchor = median_(g.members.map(r => r.tcc));
+      anchorTier = "title";
+    } else if (count > 0) {
+      const b = lookupBench_(benchMap, g.keyLocation, g.jobTitle, g.currency);
+      if (b.row && b.row.mean > 0) {
+        anchor = b.row.mean;
+        anchorTier = "market";
+      } else if (g.level && g.level !== "—") {
+        const cohort = cohorts.get(g.keyLocation + "||" + g.level) || [];
+        if (cohort.length >= min) { anchor = median_(cohort); anchorTier = "level"; }
+      }
+    }
+    return {
+      keyLocation: g.keyLocation, jobTitle: g.jobTitle, anchorTier,
+      ratios: anchor > 0 ? g.members.map(r => r.tcc / anchor) : [],
+      unresolved: anchorTier === "none" ? count : 0,
+    };
+  });
+}
+
+function compaBandCounts_(groups, cfg) {
+  const counts = { belowLow: 0, low: 0, target: 0, aboveHigh: 0, unresolved: 0 };
+  groups.forEach(g => {
+    counts.unresolved += g.unresolved;
+    g.ratios.forEach(r => {
+      if (r < cfg.COMPA_LOW_MIN) counts.belowLow++;
+      else if (r < cfg.COMPA_TARGET_MIN) counts.low++;
+      else if (r <= cfg.COMPA_HIGH_MAX) counts.target++;
+      else counts.aboveHigh++;
+    });
+  });
+  return counts;
+}
+
+/** Market-gap flags: actives matched to a benchmark row sitting below MARKET_LOW × mean. */
+function marketGapCounts_(activeRecords, benchMap, cfg) {
+  let matched = 0, below = 0, mismatch = 0;
+  activeRecords.forEach(r => {
+    const b = lookupBench_(benchMap, r.keyLocation, r.jobTitle, r.currency);
+    if (b.mismatch) mismatch++;
+    if (!b.row || !(b.row.mean > 0) || !(r.tcc > 0)) return;
+    matched++;
+    if (r.tcc / b.row.mean < cfg.MARKET_LOW) below++;
+  });
+  return { matched, below, mismatch };
+}
+
+/**
+ * Pay-equity flag COUNTS within Key Location + level groups (same location ⇒
+ * same local currency). Groups smaller than SMALL_GROUP_MIN are suppressed
+ * entirely (counted for the NOTE). Gender lens reports "pending" upstream
+ * when the column is absent.
+ */
+function buildEquityCounts_(activeRecords, cfg, asOf) {
+  const groups = new Map();
+  activeRecords.forEach(r => {
+    if (r.tcc == null || r.tcc <= 0) return;
+    const key = (r.keyLocation || "—") + "||" + (r.level || "—");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+  const genderAvailable = activeRecords.some(r => r.gender);
+  let genderFlagged = 0, genderGroups = 0, outliers = 0, tenureFlags = 0, suppressed = 0;
+  groups.forEach(members => {
+    if (members.length < cfg.SMALL_GROUP_MIN) { suppressed++; return; }
+    const med = median_(members.map(r => r.tcc));
+    if (genderAvailable) {
+      const byG = new Map();
+      members.forEach(r => {
+        const gd = String(r.gender || "").trim();
+        if (!gd) return;
+        if (!byG.has(gd)) byG.set(gd, []);
+        byG.get(gd).push(r.tcc);
+      });
+      const eligible = [...byG.values()].filter(v => v.length >= 2);
+      if (eligible.length >= 2) {
+        genderGroups++;
+        const meds = eligible.map(v => median_(v));
+        const gapPct = (Math.max.apply(null, meds) - Math.min.apply(null, meds)) /
+                       Math.max.apply(null, meds) * 100;
+        if (gapPct >= cfg.EQUITY_GAP_PCT) genderFlagged++;
+      }
+    }
+    members.forEach(r => {
+      if (med == null || med <= 0) return;
+      const pctBelow = (med - r.tcc) / med * 100;
+      if (pctBelow >= cfg.EQUITY_OUTLIER_PCT) outliers++;
+      const ten = tenureYears_(r.hireDate, asOf);
+      if (ten != null && ten >= cfg.TENURE_YEARS_MIN && pctBelow >= cfg.TENURE_BELOW_PCT) {
+        tenureFlags++;
+      }
+    });
+  });
+  return { genderAvailable, genderGroups, genderFlagged, outliers, tenureFlags, suppressed };
+}
+
+// ── FY25 depth guards — spec §4 ─────────────────────────────────────────────
+// FY25 movement/attrition is only as good as the roster's retention of rows
+// terminated back to the first FY's start; the lever section is only as good
+// as RD history depth. Both fire RISK lines, never a silently wrong number.
+
+function coverageStats_(records, histByEmp, fys) {
+  let earliestTerm = null;
+  records.forEach(r => {
+    if (r.termDate && (!earliestTerm || r.termDate < earliestTerm)) earliestTerm = r.termDate;
+  });
+  let earliestEvent = null;
+  Object.keys(histByEmp).forEach(emp => {
+    histByEmp[emp].forEach(e => {
+      if (e.date instanceof Date && !isNaN(e.date) &&
+          (!earliestEvent || e.date < earliestEvent)) earliestEvent = e.date;
+    });
+  });
+  const first = fys[0], second = fys[1];
+  return {
+    earliestTermDate: isoDate_(earliestTerm),
+    earliestCompEvent: isoDate_(earliestEvent),
+    // Terminations guard: earliest retained term row is inside/after the first FY.
+    firstFyTermGuard: !earliestTerm || earliestTerm > first.start,
+    // Lever guard: no comp events predate the SECOND FY's start (spec: 2025-07-01).
+    firstFyLeverGuard: !earliestEvent || earliestEvent >= second.start,
+    firstFyLabel: first.label,
+    termsPerFy: fys.map(fy => ({
+      label: fy.label,
+      count: records.filter(r => r.termDate && r.termDate >= fy.start && r.termDate <= fy.end).length,
+    })),
+    eventsPerFy: fys.map(fy => ({
+      label: fy.label,
+      count: Object.keys(histByEmp).reduce((t, emp) =>
+        t + histByEmp[emp].filter(e => e.date >= fy.start && e.date <= fy.end).length, 0),
+    })),
+  };
+}
+
+// ── View A section builders — spec §6 ───────────────────────────────────────
+// Every builder returns { id, title, lines: [{badge, text}], tables: [...] }.
+// Tables: { title, headers: string[], rows: Array<Array<string|number>> }.
+
+function secScope_(records, active, scope, mode) {
+  const lines = [
+    fact_(fmtInt_(active.length) + " active employees in scope (" +
+      (scope === "company" ? "company-wide" : scope) + ")."),
+    fact_(fmtInt_(records.length) + " roster records in scope including terminated rows — " +
+      "the evidence base for movement and attrition."),
+    note_("Crew members and contractors are excluded by the job-title rule " +
+      "(/crew member|contractor/i) — no employee-type column exists in the roster."),
+    note_("Interns cannot be split out (no employee-type column) — a divergence from " +
+      "the NetSuite-sourced report example, stated here explicitly."),
+  ];
+  if (mode.mode === "usd" && scope !== "company" && mode.currencies.length > 1) {
+    lines.push(note_("This location spans " + mode.currencies.length + " currencies (" +
+      mode.currencies.join(", ") + ") — compensation aggregates use the TCC USD column."));
+  }
+  return { id: "scope", title: "1 · Scope & population", lines, tables: [] };
+}
+
+function secComposition_(comp) {
+  const lines = [
+    fact_(fmtInt_(comp.icCount) + " individual contributors and " + fmtInt_(comp.mCount) +
+      " managers" + (comp.unparsedCount
+        ? " (" + fmtInt_(comp.unparsedCount) + " titles carry no parseable level)" : "") + "."),
+    fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") + "."),
+    assume_("Levels are parsed from the Job Title grade token (e.g. \"04.I3.1\" → I3); " +
+      "titles without a token are grouped under \"—\"."),
+    assume_("Tenure counts from the roster Hire Date to the extraction date."),
+  ];
+  return {
+    id: "composition", title: "2 · Composition", lines,
+    tables: [
+      { title: "Headcount by department", headers: ["Department", "Headcount"],
+        rows: comp.depts.map(d => [d.key, d.count]) },
+      { title: "Level distribution", headers: ["Level", "Headcount"],
+        rows: comp.levels.map(l => [l.key, l.count]) },
+      { title: "Tenure", headers: ["Bucket", "Headcount"],
+        rows: comp.tenureBuckets.map(b => [b.key, b.count]) },
+    ],
+  };
+}
+
+function secCompStructure_(cs, mode, cfg) {
+  const lines = [
+    fact_("Total TCC envelope is " + fmtMoney_(cs.envelope, mode.code) + " across " +
+      fmtInt_(cs.valued) + " employees with a recorded value — " +
+      fmtMoney_(cs.perHead, mode.code) + " per head."),
+    note_("TCC includes variable target; it is not base wage."),
+  ];
+  cs.inversions.forEach(inv => {
+    lines.push(fact_("Salary inversion: the " + inv.mLevel + " band average (" +
+      fmtMoney_(inv.mAvg, mode.code) + ") sits below the " + inv.icLevel +
+      " band average (" + fmtMoney_(inv.icAvg, mode.code) + ")."));
+  });
+  if (cs.missingComp) {
+    lines.push(note_(fmtInt_(cs.missingComp) + " employees are missing a " +
+      (mode.mode === "usd" ? "TCC USD" : "TCC") +
+      " value — excluded from compensation aggregates, included in headcount."));
+  }
+  if (mode.mode === "usd") {
+    lines.push(assume_("USD figures come from the roster \"TCC USD\" column — " +
+      "the conversion source of record for this report."));
+  }
+  if (cs.bands.some(b => b.suppressed)) {
+    lines.push(note_("Level bands with fewer than " + cfg.SMALL_GROUP_MIN +
+      " members show headcount only — an average that small is an individual's compensation."));
+  }
+  return {
+    id: "comp-structure", title: "3 · Compensation structure", lines,
+    tables: [
+      { title: "Average TCC by level (" + mode.code + ")",
+        headers: ["Level", "Headcount", "Avg TCC"],
+        rows: cs.bands.map(b => [b.level, b.count, b.avg != null ? fmtInt_(b.avg) : "—"]) },
+    ],
+  };
+}
+
+function secMovement_(moves, coverage, fys, asOfIso) {
+  const lines = [];
+  moves.forEach(m => {
+    lines.push(fact_(m.label + ": " + fmtInt_(m.hires) + " hires, " + fmtInt_(m.exits) +
+      " exits (net " + (m.net >= 0 ? "+" : "") + fmtInt_(m.net) + "), attrition rate " +
+      fmtPct_(m.rate) + "."));
+  });
+  lines.push(assume_("Attrition rate = exits ÷ mean(headcount at period start, headcount at " +
+    "period end); the open FY uses the as-of headcount as the period end."));
+  lines.push(note_("Hires are counted by Hire Date and exits by Termination/Release Date."));
+  if (coverage.firstFyTermGuard) {
+    lines.push(risk_(coverage.firstFyLabel + " exits may be undercounted — earliest retained " +
+      "termination is " + (coverage.earliestTermDate || "none on file") + "."));
+  }
+  const ip = noteInProgress_(fys, asOfIso);
+  if (ip) lines.push(ip);
+  return {
+    id: "movement", title: "4 · Workforce movement", lines,
+    tables: [
+      { title: "Movement by fiscal year",
+        headers: ["FY", "Hires", "Exits", "Net", "Headcount start → end", "Attrition rate"],
+        rows: moves.map(m => [m.label + (m.inProgress ? " (to date)" : ""), m.hires, m.exits,
+          (m.net >= 0 ? "+" : "") + m.net, m.hcStart + " → " + m.hcEnd, fmtPct_(m.rate)]) },
+    ],
+  };
+}
+
+function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso) {
+  const lines = [];
+  stats.forEach(s => {
+    lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
+      " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
+      (s.avgLeaverTenureYears != null
+        ? "; average leaver tenure " + s.avgLeaverTenureYears + " years" : "") + "."));
+    if (s.exits > 0 && s.regrettedPct != null && s.regrettedPct * 100 >= cfg.RISK_REGRET_PCT) {
+      lines.push(risk_(s.label + ": regretted share of exits is " + fmtPct_(s.regrettedPct, 0) +
+        " — at or above the " + cfg.RISK_REGRET_PCT + "% review threshold."));
+    }
+    const top = s.reasons.find(x => x.key !== "—");
+    if (top && s.exits > 0 && top.count / s.exits >= cfg.RISK_REASON_SHARE) {
+      lines.push(risk_(s.label + ": a single recorded reason (\"" + top.key + "\") accounts for " +
+        fmtInt_(top.count) + " of " + fmtInt_(s.exits) + " exits."));
+    }
+  });
+  const ip = noteInProgress_(fys, asOfIso);
+  if (ip) lines.push(ip);
+  if (coverage.firstFyTermGuard) {
+    lines.push(risk_(coverage.firstFyLabel + " attrition detail shares the movement-section " +
+      "coverage limit — earliest retained termination is " +
+      (coverage.earliestTermDate || "none on file") + "."));
+  }
+  const cross = (dim, pick) => ({
+    title: "Leavers by " + dim,
+    headers: ["FY", dim, "Exits"],
+    rows: stats.flatMap(s => pick(s).map(x => [s.label, x.key, x.count])),
+  });
+  return {
+    id: "attrition", title: "5 · Attrition detail", lines,
+    tables: [
+      cross("recorded reason", s => s.reasons),
+      cross("department", s => s.depts),
+      cross("level", s => s.levels),
+    ],
+  };
+}
+
+function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
+  const lines = [];
+  leverBlocks.forEach(b => {
+    lines.push(fact_(b.label + ": " + fmtInt_(b.promo.count) + " promotion events" +
+      (b.promo.totalRaise != null ? " totalling " + fmtMoney_(b.promo.totalRaise, mode.code) : "") +
+      (b.promo.growthPct != null ? " (aggregate growth " + fmtPct_(b.promo.growthPct) + ")" : "") +
+      "; " + fmtInt_(b.adjust.count) + " adjustment events" +
+      (b.adjust.totalRaise != null ? " totalling " + fmtMoney_(b.adjust.totalRaise, mode.code) : "") +
+      (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") + "."));
+  });
+  lines.push(assume_("Promotions = TCC Change Reasons matching promotion/microband promotion; " +
+    "adjustments = Annual Adjustment, Microband Adjustment, Market Calibration. New Hire, " +
+    "Internal Transfer, Historical Data Update and Other are excluded from the lever analysis."));
+  const noPrior = leverBlocks.reduce((t, b) => t + b.promo.noPrior + b.adjust.noPrior, 0);
+  if (noPrior) {
+    lines.push(note_(fmtInt_(noPrior) + " lever events lack a prior comp record — " +
+      "counted above, excluded from raise totals and growth."));
+  }
+  if (mode.mode === "usd") {
+    lines.push(note_("Raise totals are withheld in this scope — RD history records local TCC " +
+      "only and events span multiple currencies; growth uses the mean of per-event % changes."));
+  }
+  const shifts = detectLeverShift_(leverBlocks);
+  shifts.forEach(s => {
+    lines.push(risk_("Lever shift " + s + ": promotion count and size are down while " +
+      "adjustment count is up — growth is drifting from career progression to corrections."));
+  });
+  if (coverage.firstFyLeverGuard) {
+    lines.push(risk_(coverage.firstFyLabel + " lever figures may be incomplete — earliest " +
+      "comp event on file is " + (coverage.earliestCompEvent || "none") + "."));
+  }
+  const ip = noteInProgress_(fys, asOfIso);
+  if (ip) lines.push(ip);
+  return {
+    id: "levers", title: "6 · Compensation growth by lever", lines,
+    tables: [
+      { title: "Lever events by fiscal year",
+        headers: ["FY", "Lever", "Events", "No prior record", "Total raise", "Aggregate growth"],
+        rows: leverBlocks.flatMap(b => [
+          [b.label, "Promotions", b.promo.count, b.promo.noPrior,
+           b.promo.totalRaise != null ? fmtMoney_(b.promo.totalRaise, mode.code) : "—",
+           fmtPct_(b.promo.growthPct)],
+          [b.label, "Adjustments", b.adjust.count, b.adjust.noPrior,
+           b.adjust.totalRaise != null ? fmtMoney_(b.adjust.totalRaise, mode.code) : "—",
+           fmtPct_(b.adjust.growthPct)],
+        ]) },
+    ],
+  };
+}
+
+function secFlags_(bandCounts, market, equity, cfg) {
+  const lines = [
+    fact_(fmtInt_(bandCounts.belowLow) + " employees sit below " +
+      fmtPct_(cfg.COMPA_LOW_MIN, 0) + " of their internal anchor; " +
+      fmtInt_(bandCounts.low) + " between " + fmtPct_(cfg.COMPA_LOW_MIN, 0) + " and " +
+      fmtPct_(cfg.COMPA_TARGET_MIN, 0) + "; " + fmtInt_(bandCounts.target) +
+      " at target; " + fmtInt_(bandCounts.aboveHigh) + " above " +
+      fmtPct_(cfg.COMPA_HIGH_MAX, 0) + "."),
+    fact_(fmtInt_(market.below) + " of " + fmtInt_(market.matched) +
+      " benchmark-matched employees sit below " + fmtPct_(cfg.MARKET_LOW, 0) +
+      " of the external market mean."),
+    assume_("Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
+      "median, market mean for one-of-a-kind roles, then the location's level-cohort median."),
+    note_("This section reports counts only — individual flags live in the Comp Health " +
+      "Report, which carries the drill-downs."),
+  ];
+  if (equity.genderAvailable) {
+    lines.push(fact_(fmtInt_(equity.genderFlagged) + " of " + fmtInt_(equity.genderGroups) +
+      " gender-comparable groups carry a median gap at or above " + cfg.EQUITY_GAP_PCT + "%; " +
+      fmtInt_(equity.outliers) + " below-median outlier flags; " + fmtInt_(equity.tenureFlags) +
+      " long-tenure-low-position flags."));
+  } else {
+    lines.push(note_("Pay-equity gender lens pending — the Gender column has not landed in " +
+      "the roster; it activates automatically when it does."));
+  }
+  if (equity.suppressed) {
+    lines.push(note_(fmtInt_(equity.suppressed) + " location+level groups smaller than " +
+      cfg.SMALL_GROUP_MIN + " members are suppressed from the equity lenses."));
+  }
+  if (bandCounts.unresolved) {
+    lines.push(note_(fmtInt_(bandCounts.unresolved) + " employees have no resolvable internal " +
+      "anchor (insufficient peers at every tier) — excluded from the position distribution."));
+  }
+  if (market.mismatch) {
+    lines.push(note_(fmtInt_(market.mismatch) + " benchmark rows were withheld for currency " +
+      "mismatch — never silently compared across currencies."));
+  }
+  return { id: "flags", title: "7 · Market & equity flags", lines, tables: [
+    { title: "Internal position distribution",
+      headers: ["Band", "Employees"],
+      rows: [
+        ["Below " + fmtPct_(cfg.COMPA_LOW_MIN, 0), bandCounts.belowLow],
+        [fmtPct_(cfg.COMPA_LOW_MIN, 0) + "–" + fmtPct_(cfg.COMPA_TARGET_MIN, 0), bandCounts.low],
+        ["At target (" + fmtPct_(cfg.COMPA_TARGET_MIN, 0) + "–" + fmtPct_(cfg.COMPA_HIGH_MAX, 0) + ")", bandCounts.target],
+        ["Above " + fmtPct_(cfg.COMPA_HIGH_MAX, 0), bandCounts.aboveHigh],
+        ["No resolvable anchor", bandCounts.unresolved],
+      ] },
+  ] };
+}
+
+/**
+ * View A — the full Location report for one scope.
+ * @returns {{scope, currency, sections: Array}}
+ */
+function buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg, coverage) {
+  const inScope = scope === "company"
+    ? records : records.filter(r => r.keyLocation === scope);
+  const active = inScope.filter(r => r.active);
+  const mode = currencyModeForScope_(inScope, scope);
+  const asOfIso = isoDate_(ctx.asOf);
+  const empNos = [...new Set(inScope.map(r => r.empNo).filter(Boolean))];
+
+  const moves = fys.map(fy => fyMovement_(inScope, fy, ctx.asOf));
+  const attr = fys.map(fy => fyAttritionStats_(inScope, fy, ctx.asOf));
+  const levers = fys.map(fy => buildLeversForFy_(empNos, histByEmp, fy, mode.mode, cfg));
+  const compaGroups = buildCompaGroups_(active, benchMap, cfg);
+
+  return {
+    scope, currency: mode,
+    sections: [
+      secScope_(inScope, active, scope, mode),
+      secComposition_(buildComposition_(active, ctx.asOf)),
+      secCompStructure_(buildCompStructure_(active, mode.mode, cfg), mode, cfg),
+      secMovement_(moves, coverage, fys, asOfIso),
+      secAttritionDetail_(attr, cfg, coverage, fys, asOfIso),
+      secLevers_(levers, mode, coverage, cfg, fys, asOfIso),
+      secFlags_(compaBandCounts_(compaGroups, cfg),
+                marketGapCounts_(active, benchMap, cfg),
+                buildEquityCounts_(active, cfg, ctx.asOf), cfg),
+    ],
+    // Compact stats reused by the board brief's location matrix.
+    stats: {
+      headcount: active.length,
+      moves, attr, levers,
+    },
+  };
+}
+
+// ── View B — Board brief computed layer — spec §7 ───────────────────────────
+
+/** Regretted-leaver crosstab: level × tenure bucket × reason across the FY window. */
+function buildRetentionCrosstab_(records, fys) {
+  const start = fys[0].start, end = fys[fys.length - 1].end;
+  const m = new Map();
+  records.forEach(r => {
+    if (!r.termDate || r.termDate < start || r.termDate > end) return;
+    if (!/yes|true/i.test(String(r.termRegretted || ""))) return;
+    const key = [r.level, tenureBucket_(tenureYears_(r.hireDate, r.termDate)),
+                 r.termReason || "—"].join("||");
+    m.set(key, (m.get(key) || 0) + 1);
+  });
+  return [...m.entries()].map(([k, count]) => {
+    const p = k.split("||");
+    return { level: p[0], tenureBucket: p[1], reason: p[2], count };
+  }).sort((a, b) => b.count - a.count ||
+      levelRank_(a.level) - levelRank_(b.level));
+}
+
+/**
+ * Structural-risk candidates — spec §7.7. COMPUTED candidates only; the AI
+ * may select and phrase around these but can never add one.
+ */
+function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure) {
+  const out = [];
+  compStructure.inversions.forEach(inv => {
+    out.push({
+      id: "inversion-" + inv.mLevel + "-" + inv.icLevel, kind: "inversion",
+      title: "Salary inversion " + inv.mLevel + " vs " + inv.icLevel,
+      detail: inv.mLevel + " band average (" + fmtInt_(inv.mAvg) + " USD) sits below the " +
+        inv.icLevel + " band average (" + fmtInt_(inv.icAvg) + " USD).",
+    });
+  });
+  const total = active.length;
+  if (total > 0) {
+    const byDept = new Map();
+    active.forEach(r => {
+      const k = r.dept || "—";
+      byDept.set(k, (byDept.get(k) || 0) + 1);
+    });
+    const top = [...byDept.entries()].sort((a, b) => b[1] - a[1])[0];
+    const share = top[1] / total * 100;
+    if (share >= cfg.FUNC_CONC_PCT) {
+      out.push({
+        id: "func-concentration", kind: "concentration",
+        title: "Function concentration in " + top[0],
+        detail: top[0] + " holds " + fmtInt_(top[1]) + " of " + fmtInt_(total) +
+          " active employees (" + Math.round(share) + "% — threshold " + cfg.FUNC_CONC_PCT + "%).",
+      });
+    }
+    const buckets = new Map();
+    active.forEach(r => {
+      const b = tenureBucket_(tenureYears_(r.hireDate, ctx.asOf));
+      buckets.set(b, (buckets.get(b) || 0) + 1);
+    });
+    const topB = [...buckets.entries()].filter(([k]) => k !== "unknown")
+      .sort((a, b) => b[1] - a[1])[0];
+    if (topB && topB[1] / total * 100 >= cfg.TENURE_CONC_PCT) {
+      out.push({
+        id: "tenure-concentration", kind: "concentration",
+        title: "Tenure concentration at " + topB[0],
+        detail: fmtInt_(topB[1]) + " of " + fmtInt_(total) + " active employees (" +
+          Math.round(topB[1] / total * 100) + "%) sit in the " + topB[0] +
+          " tenure bucket (threshold " + cfg.TENURE_CONC_PCT + "%).",
+      });
+    }
+  }
+  // Mid-level flight — exit share at I3–I4 in the current FY.
+  const cur = fys[fys.length - 1];
+  const exits = records.filter(r => r.termDate && r.termDate >= cur.start && r.termDate <= cur.end);
+  const mid = exits.filter(r => cfg.MIDLEVEL_RE.test(r.level)).length;
+  if (exits.length >= cfg.MIDLEVEL_MIN_EXITS && mid / exits.length * 100 >= cfg.MIDLEVEL_FLIGHT_PCT) {
+    out.push({
+      id: "midlevel-flight", kind: "flight",
+      title: "Mid-level flight (I3–I4)",
+      detail: fmtInt_(mid) + " of " + fmtInt_(exits.length) + " " + cur.label +
+        " exits (" + Math.round(mid / exits.length * 100) + "%) are at I3–I4 (threshold " +
+        cfg.MIDLEVEL_FLIGHT_PCT + "%).",
+    });
+  }
+  return out;
+}
+
+/**
+ * Location spotlight rows + per-location computed flag candidates. The AI
+ * selects ONE flag per location from `candidates` only (enforced server-side
+ * in validateNarrative_).
+ */
+function buildSpotlights_(records, histByEmp, fys, ctx, cfg) {
+  const cur = fys[fys.length - 1];
+  const locs = [...new Set(records.filter(r => r.active).map(r => r.keyLocation).filter(Boolean))].sort();
+  const companyMove = fyMovement_(records, cur, ctx.asOf);
+  const companyActive = records.filter(r => r.active).length;
+  const companyPromos = countPromosInFy_(records, histByEmp, cur, cfg);
+  const companyPromoRate = companyActive > 0 ? companyPromos / companyActive : null;
+  return locs.map(loc => {
+    const inLoc = records.filter(r => r.keyLocation === loc);
+    const active = inLoc.filter(r => r.active);
+    const move = fyMovement_(inLoc, cur, ctx.asOf);
+    const attr = fyAttritionStats_(inLoc, cur, ctx.asOf);
+    const usd = active.map(r => r.tccUsd).filter(v => v > 0);
+    const promos = countPromosInFy_(inLoc, histByEmp, cur, cfg);
+    const promoRate = active.length > 0 ? promos / active.length : null;
+    const bands = buildCompStructure_(active, "usd", cfg);
+    const candidates = [];
+    if (move.rate != null && companyMove.rate != null && move.rate > companyMove.rate) {
+      candidates.push("Attrition above the company rate (" + fmtPct_(move.rate) +
+        " vs " + fmtPct_(companyMove.rate) + ").");
+    }
+    if (attr.exits > 0 && attr.regrettedPct != null &&
+        attr.regrettedPct * 100 >= cfg.RISK_REGRET_PCT) {
+      candidates.push("Regretted share of exits at " + fmtPct_(attr.regrettedPct, 0) +
+        " (threshold " + cfg.RISK_REGRET_PCT + "%).");
+    }
+    if (bands.inversions.length) {
+      candidates.push("Salary inversion present (" +
+        bands.inversions.map(i => i.mLevel + "<" + i.icLevel).join(", ") + ").");
+    }
+    if (promoRate != null && companyPromoRate != null && promoRate < companyPromoRate) {
+      candidates.push("Promotion rate below the company rate (" + fmtPct_(promoRate) +
+        " vs " + fmtPct_(companyPromoRate) + ").");
+    }
+    if (!candidates.length) candidates.push("Steady state — no computed flag this period.");
+    return {
+      location: loc,
+      headcount: active.length,
+      attritionRate: move.rate,
+      regrettedPct: attr.regrettedPct,
+      avgTccUsd: usd.length
+        ? Math.round(usd.reduce((t, x) => t + x, 0) / usd.length) : null,
+      promoRate,
+      candidates,
+    };
+  });
+}
+
+function countPromosInFy_(records, histByEmp, fy, cfg) {
+  let n = 0;
+  [...new Set(records.map(r => r.empNo).filter(Boolean))].forEach(emp => {
+    (histByEmp[emp] || []).forEach(e => {
+      if (e.date instanceof Date && !isNaN(e.date) &&
+          e.date >= fy.start && e.date <= fy.end &&
+          classifyLever_(e.reason, cfg) === "promo") n++;
+    });
+  });
+  return n;
+}
+
+/**
+ * View B — company-scope brief aggregates (spec §7). Sections 2, 8-flags and
+ * 9 are AI-filled client-side via getBriefNarrative; everything here is math.
+ */
+function buildBrief_(records, histByEmp, fys, ctx, cfg, companyReport) {
+  const active = records.filter(r => r.active);
+  const usd = active.map(r => r.tccUsd).filter(v => v > 0);
+  const byLoc = new Map(), byDept = new Map();
+  active.forEach(r => {
+    const l = r.keyLocation || "—", d = r.dept || "—";
+    byLoc.set(l, (byLoc.get(l) || 0) + 1);
+    byDept.set(d, (byDept.get(d) || 0) + 1);
+  });
+  const moveByLoc = [...byLoc.keys()].sort().map(loc => {
+    const inLoc = records.filter(r => r.keyLocation === loc);
+    return {
+      location: loc,
+      perFy: fys.map(fy => {
+        const m = fyMovement_(inLoc, fy, ctx.asOf);
+        const a = fyAttritionStats_(inLoc, fy, ctx.asOf);
+        return { label: fy.label, hires: m.hires, exits: m.exits, net: m.net,
+                 rate: m.rate, regrettedPct: a.regrettedPct };
+      }),
+    };
+  });
+  const cs = buildCompStructure_(active, "usd", cfg);
+  return {
+    glance: {
+      headcount: active.length,
+      byLocation: [...byLoc.entries()].map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count),
+      byDept: [...byDept.entries()].map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count),
+      tccEnvelopeUsd: usd.length ? Math.round(usd.reduce((t, x) => t + x, 0)) : null,
+      missingUsd: active.length - usd.length,
+    },
+    movement: {
+      company: companyReport.stats.moves,
+      regrettedTrend: companyReport.stats.attr.map(a => ({
+        label: a.label, regretted: a.regretted, exits: a.exits, pct: a.regrettedPct,
+      })),
+      byLocation: moveByLoc,
+    },
+    retention: buildRetentionCrosstab_(records, fys),
+    levers: companyReport.stats.levers,
+    structuralRisks: buildStructuralRisks_(active, records, fys, ctx, cfg, cs),
+    spotlights: buildSpotlights_(records, histByEmp, fys, ctx, cfg),
+    appendix: [...byLoc.keys()].sort(),
+  };
+}
+
+// ── AI narrative contract — spec §8 ─────────────────────────────────────────
+// Prompt receives computed FY aggregates ONLY (counts, rates, deltas, the
+// candidate list) — never names, emails, or per-person TCC.
+
+function promptForBrief_(brief, meta) {
+  const j = o => JSON.stringify(o);
+  return [
+    "You are drafting interpretive text for a board-level Workforce & Compensation " +
+    "Review covering " + meta.fys.map(f => f.label).join(", ") + " (data as of " +
+    meta.asOf + "). Fiscal years start July 1.",
+    "STRICT RULES: cite only figures provided below; never invent or recompute a number; " +
+    "frame interpretation as risk or observation, never as certainty; " +
+    "British-neutral business register; no names of individuals.",
+    "",
+    "COMPANY AT A GLANCE: " + j(brief.glance),
+    "MOVEMENT & ATTRITION (company + per-location): " + j(brief.movement),
+    "REGRETTED-LOSS CROSSTAB (level × tenure × reason): " + j(brief.retention.slice(0, 20)),
+    "COMPENSATION LEVERS PER FY: " + j(brief.levers),
+    "STRUCTURAL RISK CANDIDATES (the only risks you may reference): " + j(brief.structuralRisks),
+    "LOCATION SPOTLIGHTS with computed flag candidates: " + j(brief.spotlights),
+    "",
+    "Return ONLY a JSON object, no markdown fences, with exactly these keys:",
+    '{"execSummary": [3-4 headline-signal sentences],',
+    ' "spotlightFlags": {<location>: <ONE flag chosen VERBATIM from that location\'s candidates>},',
+    ' "decisions": [2-3 items of {"title": short imperative, "rationale": 1-2 sentences citing provided figures}]}',
+  ].join("\n");
+}
+
+/**
+ * Server-side enforcement of the AI contract: spotlight flags must be VERBATIM
+ * members of the computed candidate list; shapes are coerced, junk dropped.
+ * @returns {{execSummary: string[], spotlightFlags: Object, decisions: Array}|null}
+ */
+function validateNarrative_(obj, brief) {
+  if (!obj || typeof obj !== "object") return null;
+  const execSummary = Array.isArray(obj.execSummary)
+    ? obj.execSummary.filter(s => typeof s === "string" && s.trim()).slice(0, 4) : [];
+  const spotlightFlags = {};
+  const byLoc = {};
+  (brief.spotlights || []).forEach(s => { byLoc[s.location] = s.candidates; });
+  if (obj.spotlightFlags && typeof obj.spotlightFlags === "object") {
+    Object.keys(obj.spotlightFlags).forEach(loc => {
+      const v = obj.spotlightFlags[loc];
+      if (byLoc[loc] && byLoc[loc].indexOf(v) !== -1) spotlightFlags[loc] = v;
+    });
+  }
+  // A location the model skipped or corrupted falls back to its first candidate.
+  Object.keys(byLoc).forEach(loc => {
+    if (!spotlightFlags[loc]) spotlightFlags[loc] = byLoc[loc][0];
+  });
+  const decisions = Array.isArray(obj.decisions)
+    ? obj.decisions
+        .filter(d => d && typeof d.title === "string" && d.title.trim())
+        .map(d => ({ title: String(d.title).trim(),
+                     rationale: typeof d.rationale === "string" ? d.rationale.trim() : "" }))
+        .slice(0, 3)
+    : [];
+  if (!execSummary.length && !decisions.length) return null;
+  return { execSummary, spotlightFlags, decisions };
+}
+
+/**
+ * Full payload for one scope — spec §3 data flow.
+ * @returns {Object} {ok, meta, report, brief?} — brief only at company scope.
+ */
+function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg) {
+  const fys = fyListWR_(ctx.asOf, cfg.FY_COUNT);
+  const coverage = coverageStats_(records, histByEmp, fys);
+  const report = buildLocationReport_(records, histByEmp, benchMap, scope, fys, ctx, cfg, coverage);
+  const scopes = [...new Set(records.filter(r => r.active).map(r => r.keyLocation).filter(Boolean))].sort();
+  const payload = {
+    ok: true,
+    meta: {
+      scope,
+      scopes,
+      asOf: isoDate_(ctx.asOf),
+      fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
+      currency: report.currency,
+      coverage: {
+        earliestTermDate: coverage.earliestTermDate,
+        earliestCompEvent: coverage.earliestCompEvent,
+        firstFyTermGuard: coverage.firstFyTermGuard,
+        firstFyLeverGuard: coverage.firstFyLeverGuard,
+      },
+      // Threshold echoes — the client documents from these, never its own literals.
+      cfg: {
+        compaBands: { low: cfg.COMPA_LOW_MIN, target: cfg.COMPA_TARGET_MIN, high: cfg.COMPA_HIGH_MAX },
+        marketLow: cfg.MARKET_LOW,
+        riskRegretPct: cfg.RISK_REGRET_PCT,
+        smallGroupMin: cfg.SMALL_GROUP_MIN,
+      },
+    },
+    report: { scope: report.scope, currency: report.currency, sections: report.sections },
+  };
+  if (scope === "company") {
+    payload.brief = buildBrief_(records, histByEmp, fys, ctx, cfg, report);
+  }
+  return payload;
+}
+
+// ============================================================
+// GAS LAYER — everything below touches GAS services.
+// Nothing below this line is exercised by the Node test harness.
+// ============================================================
+
+function log_(msg) { if (CONFIG_WR.DEBUG) Logger.log(msg); }
+
+function props_() { return PropertiesService.getScriptProperties(); }
+
+function ssIdsWR_() {
+  const p = props_();
+  return {
+    roster:    p.getProperty("WR_ROSTER_SS_ID")    || CONFIG_WR.ROSTER_SS_ID,
+    hist:      p.getProperty("WR_COMP_HIST_SS_ID") || CONFIG_WR.COMP_HIST_SS_ID,
+    bench:     p.getProperty("WR_BENCH_SS_ID")     || CONFIG_WR.BENCH_SS_ID,
+    rosterTab: p.getProperty("WR_ROSTER_TAB")      || CONFIG_WR.ROSTER_TAB,
+    histTab:   p.getProperty("WR_HIST_TAB")        || CONFIG_WR.HIST_TAB,
+    benchTab:  p.getProperty("WR_BENCH_TAB")       || CONFIG_WR.BENCH_TAB,
+  };
+}
+
+// ── Large-payload cache (gzip + chunking) — same pattern as PS / CompDash ───
+const CACHE_CHUNK_BYTES_ = 90 * 1024;
+
+function cachePutLarge_(cache, key, str, ttlSec) {
+  try {
+    const b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(str, "application/json")).getBytes());
+    const entries = {};
+    let n = 0;
+    for (let i = 0; i < b64.length; i += CACHE_CHUNK_BYTES_, n++) {
+      entries[key + "_" + n] = b64.slice(i, i + CACHE_CHUNK_BYTES_);
+    }
+    entries[key + "_meta"] = String(n);
+    cache.putAll(entries, ttlSec);
+    log_("cachePutLarge_: " + key + " — " + str.length + " chars → " + n + " chunk(s)");
+    return true;
+  } catch (e) {
+    Logger.log("⚠️ cachePutLarge_ (" + key + "): " + e.message);
+    return false;
+  }
+}
+
+function cacheGetLarge_(cache, key) {
+  try {
+    const meta = parseInt(cache.get(key + "_meta"), 10);
+    if (!(meta > 0)) return null;
+    const names = [];
+    for (let i = 0; i < meta; i++) names.push(key + "_" + i);
+    const got = cache.getAll(names);
+    let b64 = "";
+    for (let i = 0; i < meta; i++) {
+      const part = got[key + "_" + i];
+      if (!part) return null; // chunk evicted — treat as a miss
+      b64 += part;
+    }
+    return Utilities.ungzip(
+      Utilities.newBlob(Utilities.base64Decode(b64), "application/x-gzip")).getDataAsString();
+  } catch (e) {
+    Logger.log("⚠️ cacheGetLarge_ (" + key + "): " + e.message);
+    return null;
+  }
+}
+
+/** Bump WR_CACHE_VER — strands every prior cache entry (all scopes + AI) at once. */
+function bustReportCache_() {
+  const p = props_();
+  const cur = parseInt(p.getProperty("WR_CACHE_VER") || "1", 10);
+  p.setProperty("WR_CACHE_VER", String(cur + 1));
+  Logger.log("✅ bustReportCache_: WR_CACHE_VER → " + (cur + 1));
+}
+
+// ── Sheet readers (header-name access only) ─────────────────────────────────
+
+function fetchTab_(ssId, tabName) {
+  const ss = SpreadsheetApp.openById(ssId);
+  let sh = ss.getSheetByName(tabName);
+  if (!sh) {
+    const want = String(tabName).toLowerCase().replace(/\s+/g, " ").trim();
+    sh = ss.getSheets().find(s =>
+      s.getName().toLowerCase().replace(/\s+/g, " ").trim() === want) || null;
+    if (sh) Logger.log('⚠️ fetchTab_: using tab "' + sh.getName() + '" for requested "' + tabName + '"');
+  }
+  if (!sh) {
+    Logger.log('❌ fetchTab_: tab "' + tabName + '" not found — available: ' +
+               ss.getSheets().map(s => s.getName()).join(" | "));
+    throw new Error('Tab "' + tabName + '" not found (execution log lists available tabs)');
+  }
+  const values = sh.getDataRange().getValues();
+  const headers = (values.shift() || []).map(h => String(h).trim());
+  return { headers, rows: values };
+}
+
+function colIdx_(headers, name, re) {
+  let i = headers.indexOf(name);
+  if (i === -1 && re) i = headers.findIndex(h => re.test(h));
+  return i;
+}
+
+/** @returns {{records: Object[], genderAvailable: boolean, tccUsdAvailable: boolean}} normalized roster (crew excluded). */
+function readRosterWR_() {
+  const ids = ssIdsWR_();
+  const { headers, rows } = fetchTab_(ids.roster, ids.rosterTab);
+  const col = (name, re) => colIdx_(headers, name, re);
+  const c = {
+    empNo: col("Employee Number"), name: col("Name"), status: col("Employee Status"),
+    title: col("Job Title"), hire: col("Hire Date"),
+    term: col("Termination/Release Date"), currency: col("Currency"),
+    location: col("Location"), tcc: col("Total Cash Compensation (TCC)", /total cash comp/i),
+    lob: col("LOB"), dept: col("Department"), email: col("Email"),
+    termReason: col("Termination Reason"), termRegret: col("Termination Regretted"),
+    termCat: col("Termination Category"), keyLoc: col("Key Location"),
+    gender: col("Gender"),
+    tccUsd: col(CONFIG_WR.TCC_USD_COL, /tcc.*usd/i),
+  };
+  const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
+  Object.keys(required).forEach(k => {
+    if (required[k] === -1) throw new Error("Roster column missing: " + k);
+  });
+  const genderAvailable = c.gender !== -1;
+  const tccUsdAvailable = c.tccUsd !== -1;
+  const records = [];
+  rows.forEach(row => {
+    const name = String(row[c.name] || "").trim();
+    if (!name) return;
+    const title = String(row[c.title] || "").trim();
+    if (CONFIG_WR.CREW_RE.test(title)) return; // crew/contractors out of scope
+    const status = c.status !== -1 ? String(row[c.status] || "").trim() : "";
+    const termDate = c.term !== -1 ? asDate_(row[c.term]) : null;
+    const lvl = parseLevel_(title);
+    records.push({
+      empNo: String(row[c.empNo] || "").trim(),
+      name,
+      active: !termDate && !CONFIG_WR.INACTIVE_RE.test(status),
+      jobTitle: title, level: lvl.level, track: lvl.track,
+      dept: c.dept !== -1 ? String(row[c.dept] || "").trim() : "",
+      lob: c.lob !== -1 ? String(row[c.lob] || "").trim() : "",
+      keyLocation: String(row[c.keyLoc] || "").trim(),
+      location: c.location !== -1 ? String(row[c.location] || "").trim() : "",
+      currency: c.currency !== -1 ? String(row[c.currency] || "").trim() : "",
+      hireDate: c.hire !== -1 ? asDate_(row[c.hire]) : null,
+      termDate,
+      termReason: c.termReason !== -1 ? String(row[c.termReason] || "").trim() : "",
+      termCategory: c.termCat !== -1 ? String(row[c.termCat] || "").trim() : "",
+      termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
+      gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
+      tcc: c.tcc !== -1 ? asNum_(row[c.tcc]) : null,
+      tccUsd: c.tccUsd !== -1 ? asNum_(row[c.tccUsd]) : null,
+    });
+  });
+  log_("readRosterWR_: " + records.length + " records, gender " +
+       (genderAvailable ? "available" : "pending") +
+       ", TCC USD " + (tccUsdAvailable ? "available" : "pending"));
+  return { records, genderAvailable, tccUsdAvailable };
+}
+
+/** @returns {Object<string, Array>} Employee Number → comp events (order NOT guaranteed). */
+function readCompHistoryWR_() {
+  const ids = ssIdsWR_();
+  const { headers, rows } = fetchTab_(ids.hist, ids.histTab);
+  const iEmp    = colIdx_(headers, "Employee Number");
+  const iDate   = colIdx_(headers, "Effective Date");
+  const iTtc    = colIdx_(headers, "Total Target Compensation");
+  const iReason = colIdx_(headers, "TCC Change Reason");
+  if (iEmp === -1 || iDate === -1 || iTtc === -1) {
+    Logger.log("❌ readCompHistoryWR_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("RD tab: required columns missing (see execution log).");
+  }
+  const byEmp = {};
+  rows.forEach(row => {
+    const emp = String(row[iEmp] || "").trim();
+    const date = asDate_(row[iDate]);
+    if (!emp || !date) return;
+    if (!byEmp[emp]) byEmp[emp] = [];
+    byEmp[emp].push({
+      date,
+      reason: iReason !== -1 ? String(row[iReason] || "").trim() : "",
+      tcc: asNum_(row[iTtc]), // LOCAL Total Target Compensation at the event
+    });
+  });
+  log_("readCompHistoryWR_: " + Object.keys(byEmp).length + " employees with events");
+  return byEmp;
+}
+
+/** @returns {{map: Object, count: number}} benchmark rows keyed by benchKey_. */
+function readBenchmarksWR_() {
+  const ids = ssIdsWR_();
+  const { headers, rows } = fetchTab_(ids.bench, ids.benchTab);
+  const iLoc   = colIdx_(headers, "Location");
+  const iTitle = colIdx_(headers, "Job Title");
+  const iCur   = colIdx_(headers, "Local Currency");
+  const iMean  = colIdx_(headers, "Mean TCC", /mean/i);
+  if (iLoc === -1 || iTitle === -1 || iMean === -1) {
+    Logger.log("❌ readBenchmarksWR_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Benchmark tab: required columns missing (see execution log).");
+  }
+  const map = {};
+  let count = 0;
+  rows.forEach(row => {
+    const loc = String(row[iLoc] || "").trim();
+    const title = String(row[iTitle] || "").trim();
+    const mean = asNum_(row[iMean]);
+    if (!loc || !title || mean == null) return;
+    map[benchKey_(loc, title)] = {
+      mean,
+      currency: iCur !== -1 ? String(row[iCur] || "").trim() : "",
+    };
+    count++;
+  });
+  log_("readBenchmarksWR_: " + count + " benchmark rows");
+  return { map, count };
+}
+
+// ── Assembly + web app ──────────────────────────────────────────────────────
+
+function cacheKeyForScope_(scope) {
+  const ver = props_().getProperty("WR_CACHE_VER") || "1";
+  const slug = scope === "company"
+    ? "company" : normWR_(scope).replace(/[^a-z0-9]+/g, "_");
+  return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug;
+}
+
+/**
+ * Full report payload for one scope. Access-checked server-side (defense in
+ * depth — callable directly via google.script.run).
+ * @param {string} scope - "company" or a roster Key Location.
+ * @param {boolean} force - true bypasses cache (Refresh button).
+ * @returns {string} JSON string — ViewReport.html parses it client-side
+ *   (marshalling a large nested object through the iframe bridge is slow).
+ */
+function getWorkforceReportData(scope, force) {
+  const access = checkReportAccess();
+  if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
+
+  scope = String(scope || "company").trim() || "company";
+  const cache = CacheService.getScriptCache();
+  const key = cacheKeyForScope_(scope);
+  if (!force) {
+    const hit = cacheGetLarge_(cache, key);
+    if (hit) {
+      const obj = JSON.parse(hit);
+      obj.meta.fromCache = true;
+      obj.meta.role = access.role;   // never serve the cached builder's identity
+      obj.meta.email = access.email;
+      return JSON.stringify(obj);
+    }
+  }
+
+  const t0 = Date.now();
+  const ctx = fiscalContextWR_();
+  const sources = { roster: "ok", history: "ok", benchmarks: "ok" };
+
+  let records = [];
+  try { records = readRosterWR_().records; }
+  catch (e) { sources.roster = "error: " + e.message; Logger.log("❌ readRosterWR_: " + e.message); }
+  let histByEmp = {};
+  try { histByEmp = readCompHistoryWR_(); }
+  catch (e) { sources.history = "error: " + e.message; Logger.log("⚠️ readCompHistoryWR_: " + e.message); }
+  let bench = { map: {}, count: 0 };
+  try { bench = readBenchmarksWR_(); }
+  catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarksWR_: " + e.message); }
+
+  // An unknown scope (stale link, renamed location) degrades to company.
+  if (scope !== "company" &&
+      !records.some(r => r.keyLocation === scope)) {
+    Logger.log('⚠️ getWorkforceReportData: unknown scope "' + scope + '" → company');
+    scope = "company";
+  }
+
+  const payload = buildReportPayload_(records, histByEmp, bench.map, scope, ctx, CONFIG_WR);
+  payload.meta.generatedAt = new Date().toISOString();
+  payload.meta.role = access.role;
+  payload.meta.email = access.email;
+  payload.meta.fromCache = false;
+  payload.meta.sources = sources;
+  payload.meta.benchRows = bench.count;
+
+  const json = JSON.stringify(payload);
+  cachePutLarge_(cache, cacheKeyForScope_(scope), json, CONFIG_WR.CACHE_TTL_SEC);
+  Logger.log("✅ getWorkforceReportData(" + scope + "): built in " +
+             Math.round((Date.now() - t0) / 1000) + "s — " + json.length + " chars");
+  return json;
+}
+
+// ── AI narrative — spec §8 ──────────────────────────────────────────────────
+
+/**
+ * Board-brief narrative (View B AI blocks). Generated on demand, cached per
+ * WR_CACHE_VER; force = Regenerate. Degrades to {ok:false} — the report
+ * renders fully without it (AI is additive, never load-bearing).
+ * @returns {string} JSON of {ok, narrative, fromCache} | {ok:false, error}.
+ */
+function getBriefNarrative(force) {
+  const access = checkReportAccess();
+  if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
+
+  // Per-user rate limit — same containment pattern as the PS report.
+  const RL_MAX = 10, RL_WINDOW = 60;
+  const cache = CacheService.getScriptCache();
+  const rlKey = "wr_gem_rl_" + (access.email || "anon");
+  const rlCount = parseInt(cache.get(rlKey) || "0", 10);
+  if (rlCount >= RL_MAX) {
+    return JSON.stringify({ ok: false, error: "Rate limit reached — please wait a minute." });
+  }
+  cache.put(rlKey, String(rlCount + 1), RL_WINDOW);
+
+  const ver = props_().getProperty("WR_CACHE_VER") || "1";
+  const aiKey = CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_ai_company";
+  if (!force) {
+    const hit = cacheGetLarge_(cache, aiKey);
+    if (hit) {
+      const obj = JSON.parse(hit);
+      obj.fromCache = true;
+      return JSON.stringify(obj);
+    }
+  }
+
+  // The narrative derives from the same company payload the client renders.
+  const raw = getWorkforceReportData("company", false);
+  const payload = JSON.parse(raw);
+  if (!payload.ok || !payload.brief) {
+    return JSON.stringify({ ok: false, error: "Company report unavailable." });
+  }
+
+  const result = callGeminiWR_(promptForBrief_(payload.brief, payload.meta));
+  if (!result.ok) return JSON.stringify(result);
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(String(result.text).replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, ""));
+  } catch (e) {
+    Logger.log("⚠️ getBriefNarrative: unparseable model output — " + e.message);
+  }
+  const narrative = validateNarrative_(parsed, payload.brief);
+  if (!narrative) return JSON.stringify({ ok: false, error: "Narrative generation failed — try Regenerate." });
+
+  const out = { ok: true, narrative, fromCache: false };
+  cachePutLarge_(cache, aiKey, JSON.stringify(out), CONFIG_WR.CACHE_TTL_SEC);
+  return JSON.stringify(out);
+}
+
+/**
+ * Gemini 2.5 Flash via UrlFetchApp — key in Script Properties GEMINI_API_KEY,
+ * sent as x-goog-api-key header (never in the URL or logs).
+ * @returns {{ok: boolean, text?: string, error?: string}}
+ */
+function callGeminiWR_(prompt) {
+  try {
+    const apiKey = props_().getProperty("GEMINI_API_KEY");
+    if (!apiKey) return { ok: false, error: "GEMINI_API_KEY not set in Script Properties." };
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    const response = UrlFetchApp.fetch(url, {
+      method: "post",
+      contentType: "application/json",
+      headers: { "x-goog-api-key": apiKey },
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          // thinkingBudget 0: reasoning tokens would count against
+          // maxOutputTokens and truncate the JSON — a synthesis task needs none.
+          maxOutputTokens: 4096,
+          temperature: 0.4,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+      muteHttpExceptions: true,
+    });
+    const code = response.getResponseCode();
+    if (code !== 200) {
+      Logger.log("⚠️ callGeminiWR_: HTTP " + code);
+      return { ok: false, error: "Gemini returned HTTP " + code + "." };
+    }
+    const body = JSON.parse(response.getContentText());
+    const parts = body && body.candidates && body.candidates[0] &&
+                  body.candidates[0].content && body.candidates[0].content.parts;
+    const text = (parts || []).map(p => p.text || "").join("");
+    if (!text) return { ok: false, error: "Gemini returned an empty response." };
+    return { ok: true, text };
+  } catch (e) {
+    Logger.log("⚠️ callGeminiWR_: " + e.message);
+    return { ok: false, error: "Gemini call failed: " + e.message };
+  }
+}
+
+function doGet() {
+  const access = checkReportAccess();
+  if (!access.allowed) {
+    Logger.log("⚠️ doGet denied: " + access.email);
+    return HtmlService.createHtmlOutput(deniedPageHtmlWR_(access.email))
+      .setTitle("Access restricted");
+  }
+  const t = HtmlService.createTemplateFromFile("ViewReport");
+  t.userRole = access.role;
+  t.userEmail = access.email;
+  return t.evaluate()
+    .setTitle("Workforce & Compensation Report")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+// ── Diagnostics — run from the GAS editor at deploy (spec §11 step 3) ───────
+function debugReportPipeline() {
+  const ctx = fiscalContextWR_();
+  const fys = fyListWR_(ctx.asOf, CONFIG_WR.FY_COUNT);
+  Logger.log("FY windows: " + fys.map(f =>
+    f.label + " " + isoDate_(f.start) + "→" + isoDate_(f.end) +
+    (f.inProgress ? " (in progress)" : "")).join(" | "));
+
+  const r = readRosterWR_();
+  const active = r.records.filter(x => x.active);
+  Logger.log("Roster: " + r.records.length + " rows after crew exclusion, " + active.length +
+             " active, gender " + (r.genderAvailable ? "AVAILABLE" : "PENDING") +
+             ", TCC USD " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND"));
+  const usdHits = active.filter(x => x.tccUsd != null).length;
+  Logger.log("TCC USD values: " + usdHits + "/" + active.length + " active");
+
+  let hist = {};
+  try { hist = readCompHistoryWR_(); }
+  catch (e) { Logger.log("⚠️ readCompHistoryWR_ (debug): " + e.message); }
+  const cov = coverageStats_(r.records, hist, fys);
+  Logger.log("Per-FY coverage — terminations: " +
+    cov.termsPerFy.map(x => x.label + ": " + x.count).join(" · "));
+  Logger.log("Per-FY coverage — comp events: " +
+    cov.eventsPerFy.map(x => x.label + ": " + x.count).join(" · "));
+  Logger.log("Earliest termination on file: " + (cov.earliestTermDate || "none") +
+    (cov.firstFyTermGuard ? " ⚠️ " + cov.firstFyLabel + " TERM GUARD FIRES" : " — depth ok"));
+  Logger.log("Earliest comp event on file: " + (cov.earliestCompEvent || "none") +
+    (cov.firstFyLeverGuard ? " ⚠️ " + cov.firstFyLabel + " LEVER GUARD FIRES" : " — depth ok"));
+
+  let bench = { map: {}, count: 0 };
+  try { bench = readBenchmarksWR_(); }
+  catch (e) { Logger.log("⚠️ readBenchmarksWR_ (debug): " + e.message); }
+  Logger.log("Benchmarks: " + bench.count + " rows");
+
+  const scopes = [...new Set(active.map(x => x.keyLocation).filter(Boolean))].sort();
+  Logger.log("Scopes (" + scopes.length + "): " + scopes.join(" | "));
+  scopes.forEach(loc => {
+    const inLoc = r.records.filter(x => x.keyLocation === loc);
+    const mode = currencyModeForScope_(inLoc, loc);
+    if (mode.mode === "usd") {
+      Logger.log("⚠️ " + loc + " spans currencies [" + mode.currencies.join(", ") +
+                 "] — aggregates fall back to TCC USD");
+    }
+  });
+
+  const payload = buildReportPayload_(r.records, hist, bench.map, "company", ctx, CONFIG_WR);
+  Logger.log("Company payload: " + JSON.stringify(payload).length + " chars, " +
+             payload.report.sections.length + " sections, " +
+             (payload.brief ? payload.brief.structuralRisks.length : 0) + " structural-risk candidates");
+}

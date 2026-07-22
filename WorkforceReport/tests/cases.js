@@ -1,0 +1,427 @@
+// ============================================================
+// WorkforceReport test cases — run via: node WorkforceReport/tests/run_tests.js
+// Uses check(desc, cond) and approx(a, b, eps) from the runner prelude.
+// Reference date everywhere: 2026-07-21 → FY27 in progress, fys = [FY25, FY26, FY27].
+// ============================================================
+
+var REF = new Date(2026, 6, 21);
+
+var __seq = 0;
+function mkEmp(over) {
+  __seq++;
+  const base = {
+    empNo: "E" + __seq, name: "Emp " + __seq,
+    active: true, jobTitle: "04.I3.1", level: "I3", track: "IC",
+    dept: "Services", lob: "", keyLocation: "Mexico", location: "", currency: "MXN",
+    hireDate: new Date(2020, 0, 1), termDate: null,
+    termReason: "", termCategory: "", termRegretted: "",
+    gender: null, tcc: 100000, tccUsd: 5000,
+  };
+  return Object.assign(base, over || {});
+}
+function term(over) {
+  return mkEmp(Object.assign({ active: false, termCategory: "Voluntary" }, over || {}));
+}
+
+// ── FY calendar: fyListWR_ + the Jun 30 / Jul 1 edge ────────────────────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  check("fyList: three FYs oldest first",
+    fys.length === 3 && fys[0].label === "FY25" && fys[1].label === "FY26" && fys[2].label === "FY27");
+  check("fyList: FY25 window Jul 2024 – Jun 2025",
+    fys[0].start.getFullYear() === 2024 && fys[0].start.getMonth() === 6 && fys[0].start.getDate() === 1 &&
+    fys[0].end.getFullYear() === 2025 && fys[0].end.getMonth() === 5 && fys[0].end.getDate() === 30);
+  check("fyList: only the last FY is in progress",
+    !fys[0].inProgress && !fys[1].inProgress && fys[2].inProgress);
+  check("fyList: self-advances at rollover",
+    fyListWR_(new Date(2027, 6, 1), 3)[2].label === "FY28");
+  check("fiscalContextWR_: Jun 30 is the closing FY",
+    fiscalContextWR_(new Date(2026, 5, 30)).fyLabel === "FY26");
+  check("fiscalContextWR_: Jul 1 opens the next FY",
+    fiscalContextWR_(new Date(2026, 6, 1)).fyLabel === "FY27");
+})();
+
+// ── Movement engine: counts + boundary pins + rate reconstruction ───────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const records = [
+    mkEmp({ hireDate: new Date(2020, 0, 1) }),                    // long-tenured active
+    mkEmp({ hireDate: new Date(2024, 5, 30) }),                   // hired Jun 30 2024 → FY24, NOT an FY25 hire
+    mkEmp({ hireDate: new Date(2024, 6, 1) }),                    // hired Jul 1 2024 → FY25 hire (edge)
+    term({ hireDate: new Date(2022, 0, 1), termDate: new Date(2025, 5, 30) }), // Jun 30 2025 → FY25 exit (edge)
+    term({ hireDate: new Date(2022, 0, 1), termDate: new Date(2025, 6, 1) }),  // Jul 1 2025 → FY26 exit (edge)
+    term({ hireDate: new Date(2022, 0, 1), termDate: new Date(2026, 6, 10),    // FY27 exit before asOf
+           termCategory: "Involuntary" }),
+  ];
+  const m25 = fyMovement_(records, fys[0], REF);
+  const m26 = fyMovement_(records, fys[1], REF);
+  const m27 = fyMovement_(records, fys[2], REF);
+  check("movement: FY25 hires = 1 (Jul 1 in, Jun 30 out)", m25.hires === 1);
+  check("movement: FY25 exits = 1 (Jun 30 edge in)", m25.exits === 1);
+  check("movement: FY26 exits = 1 (Jul 1 edge in)", m26.exits === 1);
+  check("movement: FY27 exits = 1", m27.exits === 1);
+  check("movement: net math", m25.net === 0 && m26.net === -1);
+  // FY27 headcount: start Jul 1 2026 → E1,E2,E3 active + E6 (terms Jul 10 > Jul 1) = 4;
+  // end = asOf Jul 21 2026 → E1,E2,E3 = 3. Rate = 1 / mean(4,3) = 1/3.5.
+  check("movement: FY27 headcount start→end uses asOf", m27.hcStart === 4 && m27.hcEnd === 3);
+  check("movement: rate = exits ÷ mean(start,end)", approx(m27.rate, 1 / 3.5));
+  check("movement: closed FY uses FY end not asOf", m25.inProgress === false && m27.inProgress === true);
+})();
+
+// ── Attrition detail: regretted, reasons, leaver tenure ─────────────────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const records = [
+    mkEmp({}),
+    term({ hireDate: new Date(2024, 6, 1), termDate: new Date(2026, 6, 5),
+           termRegretted: "Yes", termReason: "Better offer", level: "I4", dept: "R&D" }),
+    term({ hireDate: new Date(2025, 6, 1), termDate: new Date(2026, 6, 10),
+           termRegretted: "Yes", termReason: "Better offer" }),
+    term({ hireDate: new Date(2016, 6, 1), termDate: new Date(2026, 6, 15),
+           termRegretted: "No", termReason: "Relocation", termCategory: "Involuntary" }),
+  ];
+  const s = fyAttritionStats_(records, fys[2], REF);
+  check("attr: exits 3, vol 2, invol 1", s.exits === 3 && s.vol === 2 && s.invol === 1);
+  check("attr: regretted 2 of 3", s.regretted === 2 && approx(s.regrettedPct, 2 / 3));
+  check("attr: top reason histogram", s.reasons[0].key === "Better offer" && s.reasons[0].count === 2);
+  check("attr: leaver levels sorted by rank", s.levels[0].key === "I3" && s.levels[1].key === "I4");
+  // Tenures: ~2.0y + ~1.0y + ~10.0y → avg ≈ 4.36, rounds to 4.4 (1 decimal)
+  check("attr: avg leaver tenure", s.avgLeaverTenureYears != null &&
+    Math.abs(s.avgLeaverTenureYears - 4.4) <= 0.11);
+})();
+
+// ── Lever engine: classification, delta math, no-prior, currency modes ──────
+(function () {
+  check("lever: promotion reasons", classifyLever_("Promotion", CONFIG_WR) === "promo" &&
+    classifyLever_("Microband Promotion", CONFIG_WR) === "promo");
+  check("lever: adjustment reasons",
+    classifyLever_("Annual Adjustment", CONFIG_WR) === "adjust" &&
+    classifyLever_("Microband Adjustment", CONFIG_WR) === "adjust" &&
+    classifyLever_("Market Calibration", CONFIG_WR) === "adjust");
+  check("lever: excluded reasons → other",
+    classifyLever_("New Hire", CONFIG_WR) === "other" &&
+    classifyLever_("Internal Transfer", CONFIG_WR) === "other" &&
+    classifyLever_("Historical Data Update", CONFIG_WR) === "other");
+
+  const fys = fyListWR_(REF, 3);
+  const hist = {
+    A: [
+      { date: new Date(2024, 7, 1), reason: "New Hire", tcc: 100 },
+      { date: new Date(2025, 7, 1), reason: "Annual Adjustment", tcc: 110 },   // FY26: +10 vs 100
+      { date: new Date(2026, 6, 10), reason: "Promotion", tcc: 130 },          // FY27: +20 vs 110
+    ],
+    B: [
+      { date: new Date(2025, 8, 1), reason: "Promotion", tcc: 200 },           // FY26: no prior record
+    ],
+  };
+  const f26 = buildLeversForFy_(["A", "B"], hist, fys[1], "local", CONFIG_WR);
+  check("lever FY26: 1 adjustment, delta 10, growth 10%",
+    f26.adjust.count === 1 && f26.adjust.totalRaise === 10 && approx(f26.adjust.growthPct, 0.10));
+  check("lever FY26: promo counted but no-prior excluded from deltas",
+    f26.promo.count === 1 && f26.promo.noPrior === 1 && f26.promo.totalRaise === null);
+  const f27 = buildLeversForFy_(["A", "B"], hist, fys[2], "local", CONFIG_WR);
+  check("lever FY27: promo +20 vs 110",
+    f27.promo.count === 1 && f27.promo.totalRaise === 20 && approx(f27.promo.growthPct, 20 / 110));
+  const f25 = buildLeversForFy_(["A", "B"], hist, fys[0], "local", CONFIG_WR);
+  check("lever FY25: New Hire excluded, counted", f25.promo.count === 0 && f25.excluded === 1);
+
+  const u27 = buildLeversForFy_(["A", "B"], hist, fys[2], "usd", CONFIG_WR);
+  check("lever usd mode: totals withheld, growth = mean per-event pct",
+    u27.promo.totalRaise === null && approx(u27.promo.growthPct, 20 / 110));
+
+  const mk = (label, pc, pg, ac) => ({ label,
+    promo: { count: pc, growthPct: pg, noPrior: 0, totalRaise: null },
+    adjust: { count: ac, growthPct: 0.03, noPrior: 0, totalRaise: null } });
+  check("lever shift: fires on count+size down, adjustments up",
+    detectLeverShift_([mk("FY26", 10, 0.12, 5), mk("FY27", 6, 0.08, 9)]).join() === "FY26→FY27");
+  check("lever shift: silent when promo size holds",
+    detectLeverShift_([mk("FY26", 10, 0.12, 5), mk("FY27", 6, 0.15, 9)]).length === 0);
+})();
+
+// ── Currency mode — spec §5 ─────────────────────────────────────────────────
+(function () {
+  const recs = [mkEmp({ currency: "CLP" }), mkEmp({ currency: "CLP" })];
+  const single = currencyModeForScope_(recs, "Chile");
+  check("currency: single-currency country → local", single.mode === "local" && single.code === "CLP");
+  const multi = currencyModeForScope_(recs.concat([mkEmp({ currency: "USD" })]), "Chile");
+  check("currency: multi-currency location → USD with currencies named",
+    multi.mode === "usd" && multi.currencies.join() === "CLP,USD");
+  check("currency: company scope always USD",
+    currencyModeForScope_(recs, "company").mode === "usd");
+  const r = mkEmp({ tcc: 900, tccUsd: 42 });
+  check("currency: tccOf_ obeys mode", tccOf_(r, "local") === 900 && tccOf_(r, "usd") === 42);
+})();
+
+// ── Composition + tenure buckets ────────────────────────────────────────────
+(function () {
+  const active = [
+    mkEmp({ hireDate: new Date(2026, 3, 1) }),                        // <1y
+    mkEmp({ hireDate: new Date(2024, 6, 1) }),                        // 1–3y
+    mkEmp({ hireDate: new Date(2022, 6, 1), jobTitle: "04.M4.1", level: "M4", track: "M" }), // 3–5y
+    mkEmp({ hireDate: new Date(2016, 6, 1), dept: "R&D" }),           // ≥5y
+    mkEmp({ hireDate: null, jobTitle: "Advisor", level: "—", track: null }),
+  ];
+  const c = buildComposition_(active, REF);
+  check("comp: IC/M/unparsed split", c.icCount === 3 && c.mCount === 1 && c.unparsedCount === 1);
+  check("comp: dept table sorted desc", c.depts[0].key === "Services" && c.depts[0].count === 4);
+  const b = {};
+  c.tenureBuckets.forEach(x => { b[x.key] = x.count; });
+  check("comp: tenure buckets", b["<1y"] === 1 && b["1–3y"] === 1 && b["3–5y"] === 1 &&
+    b["≥5y"] === 1 && b["unknown"] === 1);
+  check("comp: levels sorted by rank", c.levels[0].key === "I3" && c.levels[1].key === "M4" &&
+    c.levels[c.levels.length - 1].key === "—");
+  check("tenureBucket_ boundaries", tenureBucket_(0.99) === "<1y" && tenureBucket_(1) === "1–3y" &&
+    tenureBucket_(3) === "3–5y" && tenureBucket_(5) === "≥5y" && tenureBucket_(null) === "unknown");
+})();
+
+// ── Comp structure: bands, small-band suppression, inversions ───────────────
+(function () {
+  const mk3 = (level, track, tcc) => [1, 2, 3].map(() =>
+    mkEmp({ jobTitle: "04." + level + ".1", level, track, tcc, tccUsd: tcc / 20 }));
+  const active = []
+    .concat(mk3("I5", "IC", 120000))       // senior IC band avg 120k
+    .concat(mk3("M4", "M", 110000))        // manager band avg 110k → INVERTED vs I5
+    .concat(mk3("I3", "IC", 90000))        // junior IC — never compared (below SENIOR_IC_MIN)
+    .concat([mkEmp({ jobTitle: "04.M8.1", level: "M8", track: "M", tcc: 300000 }),
+             mkEmp({ jobTitle: "04.M8.1", level: "M8", track: "M", tcc: 310000 })]); // 2 members → suppressed
+  const cs = buildCompStructure_(active, "local", CONFIG_WR);
+  check("structure: envelope + per-head", cs.valued === 11 &&
+    cs.envelope === 120000 * 3 + 110000 * 3 + 90000 * 3 + 610000);
+  const m8 = cs.bands.find(x => x.level === "M8");
+  check("structure: small band suppressed (count kept, avg withheld)",
+    m8.count === 2 && m8.avg === null && m8.suppressed === true);
+  check("structure: inversion M4 < I5 detected", cs.inversions.length === 1 &&
+    cs.inversions[0].mLevel === "M4" && cs.inversions[0].icLevel === "I5");
+  check("structure: junior IC never triggers inversion",
+    !cs.inversions.some(i => i.icLevel === "I3"));
+  const noInv = buildCompStructure_(mk3("I5", "IC", 100000).concat(mk3("M4", "M", 150000)), "local", CONFIG_WR);
+  check("structure: no inversion when manager band higher", noInv.inversions.length === 0);
+})();
+
+// ── Compa band counts + market gap + equity counts ──────────────────────────
+(function () {
+  const mkT = (tcc, over) => mkEmp(Object.assign({ jobTitle: "04.I3.1 Analyst", level: "I3", tcc }, over));
+  const active = [mkT(80000), mkT(100000), mkT(120000)]; // title peers, median 100k
+  const groups = buildCompaGroups_(active, {}, CONFIG_WR);
+  check("compa: title-tier anchor for 3 peers", groups.length === 1 && groups[0].anchorTier === "title");
+  const bc = compaBandCounts_(groups, CONFIG_WR);
+  check("compa bands: 0.8→low, 1.0→target, 1.2→above",
+    bc.belowLow === 0 && bc.low === 1 && bc.target === 1 && bc.aboveHigh === 1);
+  const lone = [mkEmp({ jobTitle: "Unicorn Wrangler", level: "—", tcc: 50000 })];
+  const g2 = buildCompaGroups_(lone, {}, CONFIG_WR);
+  check("compa: unresolvable singleton counted", compaBandCounts_(g2, CONFIG_WR).unresolved === 1);
+
+  const bench = {};
+  bench[benchKey_("Mexico", "04.I3.1 Analyst")] = { mean: 100000, currency: "MXN" };
+  const mg = marketGapCounts_([mkT(80000), mkT(95000), mkT(110000)], bench, CONFIG_WR);
+  check("market gap: below MARKET_LOW counted", mg.matched === 3 && mg.below === 1);
+  const mism = {};
+  mism[benchKey_("Mexico", "04.I3.1 Analyst")] = { mean: 100000, currency: "USD" };
+  check("market gap: currency mismatch withheld",
+    marketGapCounts_([mkT(80000)], mism, CONFIG_WR).matched === 0 &&
+    marketGapCounts_([mkT(80000)], mism, CONFIG_WR).mismatch === 1);
+
+  const eq = buildEquityCounts_([
+    mkT(100000, { hireDate: new Date(2016, 0, 1) }),
+    mkT(100000),
+    mkT(70000, { hireDate: new Date(2016, 0, 1) }),   // 30% below median, long tenure
+  ], CONFIG_WR, REF);
+  check("equity: outlier + tenure flags counted", eq.outliers === 1 && eq.tenureFlags === 1);
+  check("equity: gender pending when column absent", eq.genderAvailable === false);
+  const eqSmall = buildEquityCounts_([mkT(100000), mkT(50000)], CONFIG_WR, REF);
+  check("equity: small groups suppressed entirely",
+    eqSmall.suppressed === 1 && eqSmall.outliers === 0);
+  const eqG = buildEquityCounts_([
+    mkT(100000, { gender: "F" }), mkT(102000, { gender: "F" }),
+    mkT(120000, { gender: "M" }), mkT(122000, { gender: "M" }),
+  ], CONFIG_WR, REF);
+  check("equity: gender gap ≥ threshold flagged",
+    eqG.genderAvailable && eqG.genderGroups === 1 && eqG.genderFlagged === 1);
+})();
+
+// ── FY25 depth guards — spec §4 ─────────────────────────────────────────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const shallow = [mkEmp({}), term({ termDate: new Date(2025, 8, 1) })]; // earliest term Sep 2025
+  const covShallow = coverageStats_(shallow, { A: [{ date: new Date(2025, 7, 1), reason: "x", tcc: 1 }] }, fys);
+  check("guard: shallow roster fires the FY25 term guard",
+    covShallow.firstFyTermGuard === true && covShallow.firstFyLabel === "FY25");
+  check("guard: shallow RD fires the FY25 lever guard", covShallow.firstFyLeverGuard === true);
+
+  const deep = [mkEmp({}), term({ termDate: new Date(2024, 6, 1) })]; // term on FY25 day one
+  const covDeep = coverageStats_(deep, { A: [{ date: new Date(2025, 5, 30), reason: "x", tcc: 1 }] }, fys);
+  check("guard: term on 2024-07-01 does NOT fire (retention reaches FY25 start)",
+    covDeep.firstFyTermGuard === false);
+  check("guard: comp event on 2025-06-30 does NOT fire the lever guard",
+    covDeep.firstFyLeverGuard === false);
+  check("guard: per-FY coverage counts", covDeep.termsPerFy[0].count === 1 &&
+    covDeep.eventsPerFy[0].count === 1 && covDeep.eventsPerFy[1].count === 0);
+
+  const noTerms = coverageStats_([mkEmp({})], {}, fys);
+  check("guard: empty history fires both guards",
+    noTerms.firstFyTermGuard === true && noTerms.firstFyLeverGuard === true);
+})();
+
+// ── Templated sentence builders: numbers land in the right slots ────────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const moves = [
+    { label: "FY25", inProgress: false, hires: 12, exits: 7, net: 5, hcStart: 90, hcEnd: 95, rate: 7 / 92.5 },
+    { label: "FY26", inProgress: false, hires: 9, exits: 11, net: -2, hcStart: 95, hcEnd: 93, rate: 11 / 94 },
+    { label: "FY27", inProgress: true, hires: 3, exits: 2, net: 1, hcStart: 93, hcEnd: 94, rate: 2 / 93.5 },
+  ];
+  const cov = { firstFyTermGuard: true, firstFyLabel: "FY25", earliestTermDate: "2024-10-02",
+                firstFyLeverGuard: false, earliestCompEvent: "2024-01-05" };
+  const sec = secMovement_(moves, cov, fys, "2026-07-21");
+  check("sentences: FY25 movement FACT carries its numbers",
+    sec.lines[0].badge === "FACT" &&
+    sec.lines[0].text.indexOf("12 hires") !== -1 &&
+    sec.lines[0].text.indexOf("7 exits") !== -1 &&
+    sec.lines[0].text.indexOf("net +5") !== -1 &&
+    sec.lines[0].text.indexOf("7.6%") !== -1);
+  check("sentences: negative net renders with sign",
+    sec.lines[1].text.indexOf("net -2") !== -1);
+  check("sentences: reconstruction ASSUMPTION present",
+    sec.lines.some(l => l.badge === "ASSUMPTION" && l.text.indexOf("mean(headcount") !== -1));
+  check("sentences: FY25 coverage RISK fires with the retained date",
+    sec.lines.some(l => l.badge === "RISK" && l.text.indexOf("2024-10-02") !== -1 &&
+      l.text.indexOf("FY25 exits may be undercounted") !== -1));
+  check("sentences: in-progress NOTE stamps the extraction date",
+    sec.lines.some(l => l.badge === "NOTE" && l.text.indexOf("FY27 in progress — data as of 2026-07-21") !== -1));
+  check("sentences: movement table row shape",
+    sec.tables[0].rows.length === 3 && sec.tables[0].rows[2][0] === "FY27 (to date)");
+
+  const attrStats = [{
+    label: "FY27", inProgress: true, exits: 5, vol: 4, invol: 1,
+    regretted: 4, regrettedPct: 0.8,
+    reasons: [{ key: "Better offer", count: 3 }, { key: "Relocation", count: 2 }],
+    depts: [{ key: "Services", count: 5 }], levels: [{ key: "I3", count: 5 }],
+    avgLeaverTenureYears: 2.4,
+  }];
+  const sa = secAttritionDetail_(attrStats, CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-21");
+  check("sentences: regretted RISK fires at 80% ≥ 60%",
+    sa.lines.some(l => l.badge === "RISK" && l.text.indexOf("80%") !== -1));
+  check("sentences: single-reason RISK fires at 3 of 5",
+    sa.lines.some(l => l.badge === "RISK" && l.text.indexOf("Better offer") !== -1));
+
+  const lv = [
+    { label: "FY26", inProgress: false, mode: "local",
+      promo: { count: 4, noPrior: 0, totalRaise: 40000, growthPct: 0.11 },
+      adjust: { count: 6, noPrior: 1, totalRaise: 30000, growthPct: 0.05 }, excluded: 2 },
+  ];
+  const sl = secLevers_(lv, { mode: "local", code: "MXN" },
+    { firstFyLeverGuard: true, firstFyLabel: "FY25", earliestCompEvent: "2025-09-01" },
+    CONFIG_WR, fys, "2026-07-21");
+  check("sentences: lever FACT carries counts + totals + growth",
+    sl.lines[0].text.indexOf("4 promotion events") !== -1 &&
+    sl.lines[0].text.indexOf("40,000 MXN") !== -1 &&
+    sl.lines[0].text.indexOf("11.0%") !== -1 &&
+    sl.lines[0].text.indexOf("6 adjustment events") !== -1);
+  check("sentences: lever classification ASSUMPTION present",
+    sl.lines.some(l => l.badge === "ASSUMPTION" && l.text.indexOf("Market Calibration") !== -1));
+  check("sentences: no-prior NOTE counts excluded deltas",
+    sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("1 lever events lack a prior comp record") !== -1));
+  check("sentences: FY25 lever RISK fires with earliest event",
+    sl.lines.some(l => l.badge === "RISK" && l.text.indexOf("2025-09-01") !== -1));
+})();
+
+// ── Structural risks + retention crosstab + spotlights — spec §7 ────────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const ctx = { asOf: REF };
+  // 10 actives: 5 in Consulting (50% ≥ 40% threshold), all hired ≥ 5y ago.
+  const active = [];
+  for (let i = 0; i < 5; i++) active.push(mkEmp({ dept: "Consulting", hireDate: new Date(2015, 0, 1) }));
+  for (let i = 0; i < 3; i++) active.push(mkEmp({ dept: "R&D", hireDate: new Date(2015, 0, 1) }));
+  for (let i = 0; i < 2; i++) active.push(mkEmp({ dept: "Sales", hireDate: new Date(2015, 0, 1) }));
+  // 4 current-FY exits, 2 at I3/I4 (50% ≥ 40%).
+  const exits = [
+    term({ termDate: new Date(2026, 6, 5), level: "I3", termRegretted: "Yes",
+           termReason: "Better offer", hireDate: new Date(2024, 6, 1) }),
+    term({ termDate: new Date(2026, 6, 6), level: "I4", jobTitle: "04.I4.1", termRegretted: "Yes",
+           termReason: "Better offer", hireDate: new Date(2024, 6, 1) }),
+    term({ termDate: new Date(2026, 6, 7), level: "M5", jobTitle: "04.M5.1" }),
+    term({ termDate: new Date(2026, 6, 8), level: "M6", jobTitle: "04.M6.1" }),
+  ];
+  const records = active.concat(exits);
+  const cs = { inversions: [{ mLevel: "M4", mAvg: 5000, icLevel: "I5", icAvg: 6000 }] };
+  const risks = buildStructuralRisks_(active, records, fys, ctx, CONFIG_WR, cs);
+  const ids = risks.map(r => r.id);
+  check("risks: inversion candidate emitted", ids.indexOf("inversion-M4-I5") !== -1);
+  check("risks: function concentration at 50%", ids.indexOf("func-concentration") !== -1);
+  check("risks: tenure concentration at 100% ≥5y", ids.indexOf("tenure-concentration") !== -1);
+  check("risks: mid-level flight at 2 of 4 exits", ids.indexOf("midlevel-flight") !== -1);
+  check("risks: candidates carry templated detail",
+    risks.find(r => r.id === "func-concentration").detail.indexOf("5 of 10") !== -1);
+
+  const belowThresh = buildStructuralRisks_(
+    active, active.concat(exits.slice(0, 2)), fys, ctx, CONFIG_WR, { inversions: [] });
+  check("risks: mid-level share below MIN_EXITS stays silent",
+    belowThresh.every(r => r.id !== "midlevel-flight"));
+
+  const xt = buildRetentionCrosstab_(records, fys);
+  check("crosstab: regretted-only, level × tenure × reason",
+    xt.length === 1 && xt[0].count === 2 || (xt.length === 2 && xt[0].count === 1));
+  check("crosstab: reason + bucket populated",
+    xt.every(r => r.reason === "Better offer" && r.tenureBucket === "1–3y"));
+
+  const spots = buildSpotlights_(records, {}, fys, ctx, CONFIG_WR);
+  check("spotlights: one row per active location", spots.length === 1 && spots[0].location === "Mexico");
+  check("spotlights: regretted candidate fires at 50% ≥ 60%? no — 2 of 4 = 50% < 60%",
+    spots[0].candidates.every(c => c.indexOf("Regretted share") === -1));
+  check("spotlights: candidates never empty", spots[0].candidates.length >= 1);
+})();
+
+// ── AI narrative validation: verbatim-candidate enforcement — spec §8 ───────
+(function () {
+  const brief = { spotlights: [
+    { location: "Chile", candidates: ["Attrition above the company rate (10.0% vs 8.0%).", "Steady state — no computed flag this period."] },
+    { location: "Mexico", candidates: ["Steady state — no computed flag this period."] },
+  ] };
+  const good = validateNarrative_({
+    execSummary: ["Signal one.", "Signal two.", "Signal three."],
+    spotlightFlags: { Chile: "Attrition above the company rate (10.0% vs 8.0%).",
+                      Mexico: "An invented risk the model made up." },
+    decisions: [{ title: "Fund a retention pool", rationale: "Because of the 10.0% rate." },
+                { title: "", rationale: "dropped" }, { junk: true }],
+  }, brief);
+  check("narrative: verbatim flag kept", good.spotlightFlags.Chile.indexOf("Attrition above") === 0);
+  check("narrative: invented flag replaced by first computed candidate",
+    good.spotlightFlags.Mexico === "Steady state — no computed flag this period.");
+  check("narrative: junk decisions dropped, valid kept",
+    good.decisions.length === 1 && good.decisions[0].title === "Fund a retention pool");
+  check("narrative: exec summary capped and clean", good.execSummary.length === 3);
+  check("narrative: garbage input → null", validateNarrative_(null, brief) === null &&
+    validateNarrative_({ execSummary: [], decisions: [] }, brief) === null);
+})();
+
+// ── End-to-end payload shape — spec §3 ──────────────────────────────────────
+(function () {
+  const ctx = { asOf: REF };
+  const records = [
+    mkEmp({ keyLocation: "Chile", currency: "CLP" }),
+    mkEmp({ keyLocation: "Chile", currency: "CLP" }),
+    mkEmp({ keyLocation: "Chile", currency: "CLP" }),
+    mkEmp({ keyLocation: "Mexico" }),
+    term({ keyLocation: "Mexico", termDate: new Date(2026, 6, 3), termRegretted: "Yes" }),
+  ];
+  const hist = { E1: [{ date: new Date(2024, 6, 15), reason: "Annual Adjustment", tcc: 90000 }] };
+
+  const company = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR);
+  check("payload: company carries brief + 7 sections",
+    company.ok && company.brief != null && company.report.sections.length === 7);
+  check("payload: meta FY labels", company.meta.fys.map(f => f.label).join() === "FY25,FY26,FY27");
+  check("payload: company currency is USD", company.report.currency.mode === "usd");
+  check("payload: scopes sorted", company.meta.scopes.join() === "Chile,Mexico");
+  check("payload: appendix mirrors scopes", company.brief.appendix.join() === "Chile,Mexico");
+  check("payload: sections all carry FAR/N lines",
+    company.report.sections.every(s => s.lines.length > 0 &&
+      s.lines.every(l => ["FACT", "ASSUMPTION", "RISK", "NOTE"].indexOf(l.badge) !== -1)));
+
+  const chile = buildReportPayload_(records, hist, {}, "Chile", ctx, CONFIG_WR);
+  check("payload: location scope has no brief", chile.brief === undefined);
+  check("payload: single-currency location stays local",
+    chile.report.currency.mode === "local" && chile.report.currency.code === "CLP");
+  check("payload: location scope excludes other locations",
+    chile.report.sections[0].lines[0].text.indexOf("3 active employees") !== -1);
+})();
