@@ -49,7 +49,9 @@
     .menu button { text-align: left; border: none; background: transparent; }
     .menu button:hover { background: var(--chip); }
     .drill { position: fixed; top: 0; right: 0; width: min(560px, 96vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); z-index: 40; padding: 18px; overflow-y: auto; box-shadow: -12px 0 30px rgba(0,0,0,.4); }
-    .hidden { display: none; }
+    /* !important so this beats the higher-specificity #loading { display:flex }
+       — without it the loading overlay can never be hidden. */
+    .hidden { display: none !important; }
     #loading { position: fixed; inset: 0; background: rgba(10,20,15,.85); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
     select, textarea { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
     details { margin-top: 8px; }
