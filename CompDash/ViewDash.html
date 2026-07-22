@@ -487,7 +487,7 @@ function renderReference(el) {
     '<div class="card"><h2>📊 Data Reference</h2>' +
     '<h3>Sources</h3><table><tr><th>Module</th><th>Source</th><th>Status</th></tr>' +
     '<tr><td>Roster, attrition, TCC</td><td>Roster file — active + terminated rows; crew/contractors excluded everywhere in V1</td><td>' + esc(m.sources.roster) + '</td></tr>' +
-    '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.tccUsd) + '</td></tr>' +
+    '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; column in the roster tab (position may shift; resolved by header name, not a separate tab)</td><td>' + (m.tccUsdAvailable ? "ok" : "column not found — USD toggle shows local-only") + '</td></tr>' +
     '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr></table>' +
     '<h3>Formulas</h3><table>' +
     '<tr><td><b>Internal Position</b></td><td>TCC ÷ max TCC among ACTIVE peers in the same Key Location + Job Title, local currency. NOT band-midpoint compa — 1.00 = the local peer max. Bands: green ≥ ' + b.green.toFixed(2) + ', yellow ' + b.yellow.toFixed(2) + '–' + b.green.toFixed(2) + ', red &lt; ' + b.yellow.toFixed(2) + '. Groups under ' + q.smallGroupMin + ' members flagged &quot;small group&quot;; singletons &quot;no peers&quot;.</td></tr>' +

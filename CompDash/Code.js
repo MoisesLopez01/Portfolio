@@ -15,7 +15,9 @@ const CONFIG_CD = {
   ROSTER_SS_ID:    "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0", // roster + attrition + TCC USD
   COMP_HIST_SS_ID: "1I_JeFU3mcF0wYrENUT-9tqGAgSHymLAdlOb8l0MASpU", // Compensation Report (RD tab)
   ROSTER_TAB:  "Data",     // verify at deploy; override via CD_ROSTER_TAB property
-  TCC_USD_TAB: "TCC USD",  // override via CD_TCC_USD_TAB property
+  // TCC USD is a COLUMN inside the roster Data tab (not a separate tab) — its
+  // position shifts (seen around col AS/AT), always resolved by header name below.
+  TCC_USD_COL: "TCC USD",
   HIST_TAB:    "RD",       // override via CD_HIST_TAB property
 
   CACHE_TTL_SEC: 65 * 60,
@@ -446,7 +448,6 @@ function ssIds_() {
     roster:    p.getProperty("CD_ROSTER_SS_ID")    || CONFIG_CD.ROSTER_SS_ID,
     hist:      p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
     rosterTab: p.getProperty("CD_ROSTER_TAB")      || CONFIG_CD.ROSTER_TAB,
-    tccUsdTab: p.getProperty("CD_TCC_USD_TAB")     || CONFIG_CD.TCC_USD_TAB,
     histTab:   p.getProperty("CD_HIST_TAB")        || CONFIG_CD.HIST_TAB,
   };
 }
@@ -536,7 +537,7 @@ function colIdx_(headers, name, re) {
   return i;
 }
 
-/** @returns {{records: Object[], genderAvailable: boolean}} normalized roster records (crew excluded). */
+/** @returns {{records: Object[], genderAvailable: boolean, tccUsdAvailable: boolean}} normalized roster records (crew excluded). */
 function readRosterCD_() {
   const ids = ssIds_();
   const { headers, rows } = fetchTab_(ids.roster, ids.rosterTab);
@@ -550,12 +551,14 @@ function readRosterCD_() {
     termReason: col("Termination Reason"), termRegret: col("Termination Regretted"),
     termCat: col("Termination Category"), keyLoc: col("Key Location"),
     gender: col("Gender"), // optional — being added to the roster
+    tccUsd: col(CONFIG_CD.TCC_USD_COL, /tcc.*usd/i), // optional — column position shifts, resolved by header
   };
   const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
   Object.keys(required).forEach(k => {
     if (required[k] === -1) throw new Error("Roster column missing: " + k);
   });
   const genderAvailable = c.gender !== -1;
+  const tccUsdAvailable = c.tccUsd !== -1;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -583,33 +586,12 @@ function readRosterCD_() {
       termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
       gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
       tcc: c.tcc !== -1 ? asNum_(row[c.tcc]) : null,
-      tccUsd: null, // joined from the TCC USD tab in getCompReportData
+      tccUsd: c.tccUsd !== -1 ? asNum_(row[c.tccUsd]) : null, // read directly off the roster row
     });
   });
-  log_("readRosterCD_: " + records.length + " records, gender " + (genderAvailable ? "available" : "pending"));
-  return { records, genderAvailable };
-}
-
-/** @returns {Object<string, number>} Employee Number → USD TCC. */
-function readTccUsd_() {
-  const ids = ssIds_();
-  const { headers, rows } = fetchTab_(ids.roster, ids.tccUsdTab);
-  const iEmp = colIdx_(headers, "Employee Number", /employee.*number/i);
-  const iTcc = colIdx_(headers, "Total Cash Compensation (TCC)", /tcc|total cash/i);
-  if (iEmp === -1 || iTcc === -1) {
-    // Header dump stays in the execution log only — the thrown message reaches
-    // every dashboard user via meta.sources, so it must not disclose sheet structure.
-    Logger.log("❌ readTccUsd_: columns not recognized — headers: " + headers.join(" | "));
-    throw new Error("TCC USD tab: columns not recognized (see execution log).");
-  }
-  const map = {};
-  rows.forEach(row => {
-    const emp = String(row[iEmp] || "").trim();
-    const usd = asNum_(row[iTcc]);
-    if (emp && usd != null) map[emp] = usd;
-  });
-  log_("readTccUsd_: " + Object.keys(map).length + " employees");
-  return map;
+  log_("readRosterCD_: " + records.length + " records, gender " + (genderAvailable ? "available" : "pending") +
+       ", TCC USD " + (tccUsdAvailable ? "available" : "pending"));
+  return { records, genderAvailable, tccUsdAvailable };
 }
 
 /**
@@ -625,7 +607,7 @@ function readCompHistory_() {
   const iReason = colIdx_(headers, "TCC Change Reason");
   const iNext   = colIdx_(headers, "Next Review");
   if (iEmp === -1 || iDate === -1 || iTtc === -1) {
-    // Same rule as readTccUsd_: header dump is log-only, client message generic.
+    // Header dump is log-only, client message generic (same rule as readRosterCD_).
     Logger.log("❌ readCompHistory_: required columns missing — headers: " + headers.join(" | "));
     throw new Error("RD tab: required columns missing (see execution log).");
   }
@@ -678,25 +660,22 @@ function getCompReportData(force) {
 
   const t0 = Date.now();
   const ctx = fiscalContextCD_();
-  const sources = { roster: "ok", tccUsd: "ok", history: "ok" };
+  const sources = { roster: "ok", history: "ok" };
 
-  let records = [], genderAvailable = false;
+  let records = [], genderAvailable = false, tccUsdAvailable = false;
   try {
     const r = readRosterCD_();
     records = r.records;
     genderAvailable = r.genderAvailable;
+    tccUsdAvailable = r.tccUsdAvailable;
   } catch (e) {
     sources.roster = "error: " + e.message;
     Logger.log("❌ readRosterCD_: " + e.message);
   }
-  let usdMap = {};
-  try { usdMap = readTccUsd_(); }
-  catch (e) { sources.tccUsd = "error: " + e.message; Logger.log("⚠️ readTccUsd_: " + e.message); }
   let histByEmp = {};
   try { histByEmp = readCompHistory_(); }
   catch (e) { sources.history = "error: " + e.message; Logger.log("⚠️ readCompHistory_: " + e.message); }
 
-  records.forEach(r => { r.tccUsd = (usdMap[r.empNo] != null) ? usdMap[r.empNo] : null; });
   const active = records.filter(r => r.active);
 
   const history = {};
@@ -710,7 +689,7 @@ function getCompReportData(force) {
       fyLabel: ctx.fyLabel, prevFyLabel: ctx.prevFyLabel, qLabel: ctx.qLabel,
       monthLabels: ctx.monthLabels,
       fiscalMonthIdx: fiscalMonthIdx_(ctx.asOf, ctx.fyStartCalYear),
-      sources, genderAvailable,
+      sources, genderAvailable, tccUsdAvailable,
       activeCount: active.length,
       contribUrl: props_().getProperty("CD_CONTRIB_URL") || "",
       // Threshold echoes — the client colors and documents from these, never
@@ -766,13 +745,9 @@ function debugCompPipeline() {
   Logger.log("Level parse: " + parsed + "/" + active.length + " (" +
              Math.round(parsed / Math.max(1, active.length) * 100) + "%) — sample misses: " +
              active.filter(x => x.level === "—").slice(0, 5).map(x => x.jobTitle).join(" | "));
-  // Degrade exactly like getCompReportData — a missing tab should report,
-  // not kill the rest of the diagnostic.
-  let usd = {};
-  try { usd = readTccUsd_(); }
-  catch (e) { Logger.log("⚠️ readTccUsd_ (debug): " + e.message); }
-  const usdHits = active.filter(x => usd[x.empNo] != null).length;
-  Logger.log("TCC USD join: " + usdHits + "/" + active.length + " active matched");
+  const usdHits = active.filter(x => x.tccUsd != null).length;
+  Logger.log("TCC USD column: " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND") + " — " +
+             usdHits + "/" + active.length + " active have a value");
   let hist = {};
   try { hist = readCompHistory_(); }
   catch (e) { Logger.log("⚠️ readCompHistory_ (debug): " + e.message); }
