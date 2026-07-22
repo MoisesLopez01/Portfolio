@@ -51,7 +51,9 @@ const CONFIG_CD = {
   PRIORITY_W:    { perf: 57, tenure: 29, compaGap: 14 },
   PRIORITY_CAPS: { companyYears: 10, profileYears: 5, gapPct: 0.25 },
 
-  PROMO_RE: /promot|title change|role change/i, // RD reasons that reset profile tenure
+  // RD reasons that reset in-role (profile) tenure. Internal Transfer counts:
+  // it changes job title/responsibilities even when the salary doesn't move.
+  PROMO_RE: /promot|title change|role change|internal transfer/i,
 
   CREW_RE: /crew member|contractor/i, // same crew rule as the PS Contribution Report
   // Narrower than PS Security's regex ON PURPOSE: Rocketeers on maternity/parental

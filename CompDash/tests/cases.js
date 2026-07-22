@@ -220,6 +220,18 @@ function mkEmp(over) {
   check("tag: missing/absent tag stays null", g.events[0].tag === null && g.events[2].tag === null);
 })();
 
+// ── Internal Transfer resets in-role tenure ─────────────────
+(function () {
+  const asOf = new Date(2026, 6, 15);
+  const hire = new Date(2020, 0, 15);
+  check("cfg: PROMO_RE matches Internal Transfer",
+    CONFIG_CD.PROMO_RE.test("Internal Transfer") && !CONFIG_CD.PROMO_RE.test("Salary adjustment"));
+  check("profileTenure: internal transfer resets the in-role clock",
+    approx(profileTenureYears_(
+      [{ date: new Date(2025, 6, 15), reason: "Internal Transfer", tcc: 1 }],
+      hire, asOf, CONFIG_CD.PROMO_RE), 1.0, 0.05));
+})();
+
 // ── Task 6: buildEquity_ ────────────────────────────────────
 (function () {
   const cfg = { EQUITY_GAP_PCT: 10, EQUITY_OUTLIER_PCT: 25, TENURE_YEARS_MIN: 3, TENURE_BELOW_PCT: 15 };

@@ -115,6 +115,7 @@ const USER_EMAIL = "<?= userEmail ?>";
 // Single source of truth for navigation — same pattern as PS Dashboard.
 const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
+  { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
   { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
   { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
   { id: "market",    label: "🌍 Market Gap",          roles: ["admin", "viewer"] },
@@ -498,24 +499,33 @@ function sortRank(key) {
   s.key = key;
   render();
 }
-function renderCompa(el) {
+function renderRanking(el) {
   const d = STATE.data, s = STATE.rankSort;
   const emps = d.employees.filter(visibleEmp);
+  const marketLow = d.meta.marketLow || 0.9;
+  const pc = d.meta.priorityCfg || { weights: { perf: 57, tenure: 29, compaGap: 14 },
+                                     caps: { companyYears: 10, profileYears: 5, gapPct: 0.25 }, ratingMax: 5 };
 
-  const th = (key, label) => '<th style="cursor:pointer" onclick="sortRank(\'' + key + '\')">' +
+  const th = (key, label, tip) => '<th style="cursor:pointer" title="' + esc(tip) +
+    '" onclick="sortRank(\'' + key + '\')">' +
     label + (s.key === key ? (s.dir < 0 ? " ▼" : " ▲") : "") + '</th>';
   const ranked = emps.slice().sort((a, b) => {
     const va = rankVal(a, s.key), vb = rankVal(b, s.key);
     return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
   });
-  const marketLow = d.meta.marketLow || 0.9;
 
-  let html =
+  el.innerHTML =
     sourceBanner("ratings", "Performance ratings") +
-    '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>' +
-    '<div class="card"><h2>🎯 Priority ranking <span class="sub">(config-weighted: performance / tenure / compa gap — click a column to sort)</span></h2>' +
-    '<table><tr>' + th("name", "Name") + th("ratio", "Position") + th("marketRatio", "vs Market") +
-      th("perfAvg", "Avg rating") + th("tenure", "Tenure C/P") + th("ttm", "TTM growth") + th("score", "Score") + '</tr>' +
+    '<div class="banner">🎯 <b>Priority ranking</b> — a config-weighted 0–100 composite answering &quot;who should we prioritize for a comp adjustment&quot;: strong performers with real tenure who currently sit below their peer anchor rank highest. Click a column header to sort; click a row for the full drill. Hover any header for what the column means.</div>' +
+    '<div class="card"><h2>🎯 Priority ranking <span class="sub">(click a column to sort)</span></h2>' +
+    '<table><tr>' +
+      th("name", "Name", "Rocketeer — Key Location · level shown under the name") +
+      th("ratio", "Position", "Internal Position: TCC ÷ peer anchor (title median; market mean for one-of-a-kind roles; level cohort as fallback). 1.00 = at the anchor.") +
+      th("marketRatio", "vs Market", "TCC ÷ external benchmark Mean for the same Location + Job Title (local currency). Red below " + marketLow.toFixed(2) + " = priority read. — means no benchmark row yet.") +
+      th("perfAvg", "Avg rating", "Average Small Improvements rating on a 1–" + pc.ratingMax + " scale; ×N = number of quarters averaged.") +
+      th("tenure", "Tenure C/P", "Company years / in-role years. The in-role clock resets at a promotion, title change, or internal transfer (responsibilities change even when pay doesn't).") +
+      th("ttm", "TTM growth", "Trailing-12-month TCC growth: TCC now vs the TCC in effect 12 months ago. — when history is younger than a year.") +
+      th("score", "Score", "The weighted composite (see how it's built below). ° = partial: a component was missing and its weight was redistributed.") + '</tr>' +
     ranked.map(e => {
       const p = e.priority || {};
       const mrCls = e.marketRatio == null ? "" : e.marketRatio < marketLow ? "red" : "green";
@@ -529,7 +539,21 @@ function renderCompa(el) {
         '<td>' + (p.score != null
           ? '<b>' + p.score + '</b>' + (p.partial ? ' <span class="sub" title="missing: ' + esc((p.missing || []).join(", ")) + '">°</span>' : '')
           : "—") + '</td></tr>';
-    }).join("") + '</table></div>';
+    }).join("") + '</table></div>' +
+    '<div class="card"><h2>How the score is built</h2>' +
+    '<table>' +
+    '<tr><th>Component</th><th>Weight</th><th>What it measures</th></tr>' +
+    '<tr><td><b>Performance</b></td><td>' + pc.weights.perf + '%</td><td>Average Small Improvements rating ÷ ' + pc.ratingMax + '. A 5.0 average = full credit.</td></tr>' +
+    '<tr><td><b>Tenure</b></td><td>' + pc.weights.tenure + '%</td><td>50/50 blend of company tenure (full credit at ' + pc.caps.companyYears + 'y) and in-role tenure (full credit at ' + pc.caps.profileYears + 'y). In-role resets at promotion / title change / internal transfer.</td></tr>' +
+    '<tr><td><b>Compa gap</b></td><td>' + pc.weights.compaGap + '%</td><td>How far TCC sits BELOW the peer anchor — full credit at ' + Math.round(pc.caps.gapPct * 100) + '% below. At or above the anchor scores 0 (no gap to close).</td></tr>' +
+    '</table>' +
+    '<div class="sub" style="margin-top:8px">Missing data never fakes a zero: if a component is unavailable (e.g. no ratings yet), it drops out and its weight is redistributed across the rest — the score is then marked partial (°). Weights and caps are configuration (CONFIG_CD), echoed live from the server, so this page can never drift from the actual math.</div></div>';
+}
+function renderCompa(el) {
+  const d = STATE.data;
+
+  let html =
+    '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>';
 
   const f = STATE.filters;
   const empIndex = {};
@@ -720,9 +744,9 @@ function renderReference(el) {
     '<tr><td>Market benchmarks</td><td>Benchmarking file — &quot;Compilation&quot; tab, joined by normalized Location + Job Title, LOCAL currency; compilation grows over time</td><td>' + esc(m.sources.benchmarks || "—") + '</td></tr></table>' +
     '<h3>Formulas</h3><table>' +
     '<tr><td><b>Internal Position</b></td><td>TCC ÷ anchor, ACTIVE peers, local currency. Anchor tiers: (1) median of Key Location + Job Title peers when the group has ≥ ' + q.smallGroupMin + ' members; (2) the external <b>market mean</b> for that Location + Job Title (N-of-1 rule — external parity replaces internal equity for unique roles); (3) median of the Key Location + Level cohort (≥ ' + q.smallGroupMin + '); else &quot;insufficient peers&quot;. Anchors always derive from the FULL active population — the universal filters never recompute them. Bands: red &lt; ' + b.low.toFixed(2) + ', yellow &lt; ' + b.target.toFixed(2) + ', green ≤ ' + b.high.toFixed(2) + ', violet above (ceiling watch).</td></tr>' +
-    '<tr><td><b>Priority Score</b></td><td>Weighted 0–100: performance (avg rating ÷ ' + p.ratingMax + ') × ' + p.weights.perf + '% + tenure (50/50 company capped ' + p.caps.companyYears + 'y / in-role capped ' + p.caps.profileYears + 'y) × ' + p.weights.tenure + '% + compa gap (below-anchor %, full credit at ' + Math.round(p.caps.gapPct * 100) + '%) × ' + p.weights.compaGap + '%. Missing components redistribute their weight (° = partial). Mastery banding is a planned future component.</td></tr>' +
+    '<tr><td><b>Priority Score</b></td><td>Weighted 0–100: performance (avg rating ÷ ' + p.ratingMax + ') × ' + p.weights.perf + '% + tenure (50/50 company capped ' + p.caps.companyYears + 'y / in-role capped ' + p.caps.profileYears + 'y) × ' + p.weights.tenure + '% + compa gap (below-anchor %, full credit at ' + Math.round(p.caps.gapPct * 100) + '%) × ' + p.weights.compaGap + '%. Missing components redistribute their weight (° = partial). Shown on the 🎯 Priority Ranking tab, which carries a full component legend. Mastery banding is a planned future component.</td></tr>' +
     '<tr><td><b>vs Market</b></td><td>TCC ÷ benchmark <b>Mean</b> (a mean, not P50) for the same Location + Job Title, local currency only — currency-mismatched rows are skipped and counted. Below ' + (m.marketLow || 0.9).toFixed(2) + ' renders red (priority read). Coverage: ' + cov.matchedEmployees + ' matched / ' + cov.rows + ' rows' + (cov.currencyMismatch ? ' / ' + cov.currencyMismatch + ' currency mismatches' : '') + '.</td></tr>' +
-    '<tr><td><b>Tenure</b></td><td>Company = years since Hire Date. In-role = years since the latest promotion/title-change comp event (falls back to Hire Date). TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger).</td></tr>' +
+    '<tr><td><b>Tenure</b></td><td>Company = years since Hire Date. In-role = years since the latest promotion, title-change, or internal-transfer comp event (falls back to Hire Date) — an Internal Transfer changes responsibilities even when pay doesn&#39;t move, so it resets the in-role clock. TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger).</td></tr>' +
     '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
     '<tr><td><b>TCC AGR / Growth</b></td><td>TCC AGR is the system-generated rate recorded in the Compensation Report RD tab (&quot;TAG&quot; field), shown as recorded (e.g. 1.27%). Annualized = (current ÷ previous)^(1 ÷ years) − 1 (RRI) between consecutive comp events. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
     '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.</td></tr>' +
@@ -764,8 +788,8 @@ function saveAccess() {
 }
 
 const RENDERERS = {
-  overview: renderOverview, attrition: renderAttrition, compa: renderCompa,
-  market: renderMarket, equity: renderEquity, qta: renderQta,
+  overview: renderOverview, ranking: renderRanking, attrition: renderAttrition,
+  compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
   contrib: renderContrib, reference: renderReference, access: renderAccess,
 };
 
