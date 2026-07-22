@@ -381,6 +381,37 @@ function tenureYears_(hireDate, asOf) {
   return (asOf - hireDate) / YEAR_MS_;
 }
 
+/**
+ * Years in the CURRENT role: since the most recent RD event whose reason
+ * matches promoRe (promotion / title change), falling back to hireDate.
+ * The "just getting started vs historical expert" distinction.
+ */
+function profileTenureYears_(events, hireDate, asOf, promoRe) {
+  const promos = (events || [])
+    .filter(e => e && e.date instanceof Date && !isNaN(e.date) &&
+                 promoRe.test(String(e.reason || "")))
+    .sort((a, b) => b.date - a.date);
+  const anchor = promos.length ? promos[0].date : hireDate;
+  if (!(anchor instanceof Date) || isNaN(anchor)) return null;
+  return Math.round((asOf - anchor) / YEAR_MS_ * 10) / 10;
+}
+
+/**
+ * Trailing-12-month TCC growth: current TCC vs the TCC in effect one year ago
+ * (the latest RD event dated ≤ asOf − 1 year). Null when history is younger
+ * than a year — never extrapolated.
+ */
+function ttmGrowth_(events, currentTcc, asOf) {
+  if (!(currentTcc > 0)) return null;
+  const cutoff = new Date(asOf.getTime() - YEAR_MS_);
+  const base = (events || [])
+    .filter(e => e && e.date instanceof Date && !isNaN(e.date) &&
+                 e.tcc > 0 && e.date <= cutoff)
+    .sort((a, b) => b.date - a.date)[0];
+  if (!base) return null;
+  return Math.round((currentTcc / base.tcc - 1) * 1000) / 1000;
+}
+
 function buildEquity_(activeRecords, cfg, asOf) {
   const groups = new Map();
   activeRecords.forEach(r => {

@@ -253,3 +253,30 @@ function mkEmp(over) {
   check("perf: non-numeric rates dropped", bad.count === 0 && bad.avg === null && bad.latest === null);
   check("perf: empty/null input safe", buildPerfForEmp_(null).count === 0);
 })();
+
+// ── V2 Task 3: profileTenureYears_ / ttmGrowth_ ─────────────
+(function () {
+  const asOf = new Date(2026, 6, 15); // 2026-07-15
+  const hire = new Date(2020, 0, 15);
+  const evs = [
+    { date: new Date(2020, 0, 15), reason: "New Hire",          tcc: 50000 },
+    { date: new Date(2023, 3, 15), reason: "Salary adjustment", tcc: 60000 },
+    { date: new Date(2024, 6, 15), reason: "Promotion",         tcc: 75000 },
+    { date: new Date(2025, 3, 15), reason: "Salary adjustment", tcc: 80000 },
+  ];
+  check("profileTenure: since latest promotion (2y)",
+    approx(profileTenureYears_(evs, hire, asOf, CONFIG_CD.PROMO_RE), 2.0, 0.05));
+  check("profileTenure: no promo → falls back to hire date",
+    approx(profileTenureYears_([{ date: new Date(2022, 0, 15), reason: "Salary adjustment", tcc: 1 }],
+      hire, asOf, CONFIG_CD.PROMO_RE), 6.5, 0.05));
+  check("profileTenure: no promo + no hire date → null",
+    profileTenureYears_([], null, asOf, CONFIG_CD.PROMO_RE) === null);
+
+  // TTM: base = last event dated ≤ asOf − 1y = 2025-07-15 → the 2025-04 event (80000)
+  check("ttm: current 88000 vs 80000 = +10%",
+    approx(ttmGrowth_(evs, 88000, asOf), 0.1, 0.001));
+  check("ttm: history younger than 1y → null",
+    ttmGrowth_([{ date: new Date(2026, 1, 10), reason: "New Hire", tcc: 70000 }], 70000, asOf) === null);
+  check("ttm: no current TCC → null", ttmGrowth_(evs, null, asOf) === null);
+  check("ttm: null events safe", ttmGrowth_(null, 80000, asOf) === null);
+})();
