@@ -33,15 +33,18 @@ const CONFIG_WR = {
 
   FY_COUNT: 3, // FYs rendered: current FY and the two before it (FY25/26/27 at build time)
 
-  // Lever classification (RD "TCC Change Reason") — spec §6.6, revised
-  // 2026-07-22: promotions are the well-defined match; adjustments are the
-  // CATCH-ALL for every other recorded reason (Annual Adjustment, Microband
-  // Adjustment, Market Calibration, and whatever new flavors RD grows) so no
-  // adjustment type is ever silently dropped by a whitelist. Only the
-  // non-raise events in EXCLUDE_RE (plus blank reasons) are excluded —
-  // counted and noted, never deltas.
+  // Lever classification (RD "TCC Change Reason") — the reason domain is a
+  // KNOWN CLOSED SET (confirmed 2026-07-22): New Hire, Annual Adjustment,
+  // Microband Adjustment, Promotion, Market Calibration, Internal Transfer,
+  // Microband Promotion, Historical Data Update.
+  //   promotions  = Promotion + Microband Promotion (well-defined match)
+  //   new hires   = their own growth event (baseline record, no delta)
+  //   adjustments = everything else (Annual/Microband Adjustment, Market
+  //                 Calibration — catch-all so a future flavor never drops)
+  //   excluded    = Internal Transfer, Historical Data Update, blank reasons
   PROMO_RE:   /promotion|microband promotion/i,
-  EXCLUDE_RE: /new hire|internal transfer|historical data update/i,
+  NEWHIRE_RE: /new hire/i,
+  EXCLUDE_RE: /internal transfer|historical data update/i,
 
   // Attrition RISK thresholds — spec §6.5 (config-tunable).
   RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
@@ -323,6 +326,7 @@ function classifyLever_(reason, cfg) {
   const c = cfg || CONFIG_WR;
   const s = String(reason || "").trim();
   if (!s || c.EXCLUDE_RE.test(s)) return "other"; // blank = unclassifiable, never a lever
+  if (c.NEWHIRE_RE.test(s)) return "newhire";     // separate growth event, no delta
   if (c.PROMO_RE.test(s)) return "promo";
   return "adjust"; // catch-all — any other recorded reason is an adjustment
 }
@@ -339,7 +343,7 @@ function classifyLever_(reason, cfg) {
 function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
   const mk = () => ({ count: 0, totalRaise: 0, sumPrev: 0, pctDeltas: [], noPrior: 0 });
   const acc = { promo: mk(), adjust: mk() };
-  let excluded = 0;
+  let excluded = 0, newHires = 0;
   scopeEmpNos.forEach(emp => {
     const evs = (histByEmp[emp] || [])
       .filter(e => e && e.date instanceof Date && !isNaN(e.date))
@@ -348,6 +352,7 @@ function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
       if (e.date < fy.start || e.date > fy.end) return;
       const cls = classifyLever_(e.reason, cfg);
       if (cls === "other") { excluded++; return; }
+      if (cls === "newhire") { newHires++; return; } // baseline record — counted, no delta
       const a = acc[cls];
       a.count++;
       // Prior valued record = latest event strictly before this one with TCC.
@@ -373,7 +378,7 @@ function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
   return {
     label: fy.label, inProgress: fy.inProgress, mode,
     promo: finish(acc.promo), adjust: finish(acc.adjust),
-    excluded,
+    newHires, excluded,
   };
 }
 
@@ -705,10 +710,8 @@ function secComposition_(comp) {
     fact_(fmtInt_(comp.icCount) + " individual contributors and " + fmtInt_(comp.mCount) +
       " managers" + (comp.unparsedCount
         ? " (" + fmtInt_(comp.unparsedCount) + " titles carry no parseable level)" : "") + "."),
-    fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") + "."),
-    assume_("Levels are parsed from the Job Title grade token (e.g. \"04.I3.1\" → I3); " +
-      "titles without a token are grouped under \"—\"."),
-    assume_("Tenure counts from the roster Hire Date to the extraction date."),
+    fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") +
+      " (Hire Date to extraction date)."),
   ];
   return {
     id: "composition", title: "2 · Composition", lines,
@@ -765,9 +768,9 @@ function secMovement_(moves, coverage, fys, asOfIso) {
       " exits (net " + (m.net >= 0 ? "+" : "") + fmtInt_(m.net) + "), attrition rate " +
       fmtPct_(m.rate) + "."));
   });
-  lines.push(assume_("Attrition rate = exits ÷ mean(headcount at period start, headcount at " +
-    "period end); the open FY uses the as-of headcount as the period end."));
-  lines.push(note_("Hires are counted by Hire Date and exits by Termination/Release Date."));
+  lines.push(note_("Attrition rate = exits ÷ mean(headcount at period start, period end); " +
+    "the open FY uses the as-of headcount as the period end. Hires are counted by " +
+    "Hire Date and exits by Termination/Release Date."));
   if (coverage.firstFyTermGuard) {
     lines.push(risk_(coverage.firstFyLabel + " exits may be undercounted — earliest retained " +
       "termination is " + (coverage.earliestTermDate || "none on file") + "."));
@@ -832,12 +835,13 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
       (b.promo.growthPct != null ? " (aggregate growth " + fmtPct_(b.promo.growthPct) + ")" : "") +
       "; " + fmtInt_(b.adjust.count) + " adjustment events" +
       (b.adjust.totalRaise != null ? " totalling " + fmtMoney_(b.adjust.totalRaise, mode.code) : "") +
-      (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") + "."));
+      (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") +
+      "; " + fmtInt_(b.newHires) + " new-hire comp records."));
   });
-  lines.push(assume_("Promotions = TCC Change Reasons matching promotion/microband promotion; " +
-    "every other recorded reason counts as an adjustment (Annual Adjustment, Microband " +
-    "Adjustment, Market Calibration, etc.). Only New Hire, Internal Transfer, Historical " +
-    "Data Update and blank reasons are excluded from the lever analysis."));
+  lines.push(note_("Classification of record: promotions = Promotion and Microband Promotion; " +
+    "adjustments = Annual Adjustment, Microband Adjustment and Market Calibration; new hires " +
+    "are their own growth event (baseline record, no delta); Internal Transfer and " +
+    "Historical Data Update are excluded."));
   const noPrior = leverBlocks.reduce((t, b) => t + b.promo.noPrior + b.adjust.noPrior, 0);
   if (noPrior) {
     lines.push(note_(fmtInt_(noPrior) + " lever events lack a prior comp record — " +
@@ -870,6 +874,7 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
           [b.label, "Adjustments", b.adjust.count, b.adjust.noPrior,
            b.adjust.totalRaise != null ? fmtMoney_(b.adjust.totalRaise, mode.code) : "—",
            fmtPct_(b.adjust.growthPct)],
+          [b.label, "New hires (baseline)", b.newHires, "—", "—", "—"],
         ]) },
     ],
   };

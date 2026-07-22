@@ -103,8 +103,9 @@ function term(over) {
     classifyLever_("Cost of Living Adjustment", CONFIG_WR) === "adjust" &&
     classifyLever_("Other", CONFIG_WR) === "adjust" &&
     classifyLever_("Retention Bonus Restructure", CONFIG_WR) === "adjust");
+  check("lever: New Hire is its own growth event",
+    classifyLever_("New Hire", CONFIG_WR) === "newhire");
   check("lever: excluded non-raise reasons → other",
-    classifyLever_("New Hire", CONFIG_WR) === "other" &&
     classifyLever_("Internal Transfer", CONFIG_WR) === "other" &&
     classifyLever_("Historical Data Update", CONFIG_WR) === "other");
   check("lever: blank reason is unclassifiable, never a lever",
@@ -132,7 +133,8 @@ function term(over) {
   check("lever FY27: promo +20 vs 110",
     f27.promo.count === 1 && f27.promo.totalRaise === 20 && approx(f27.promo.growthPct, 20 / 110));
   const f25 = buildLeversForFy_(["A", "B"], hist, fys[0], "local", CONFIG_WR);
-  check("lever FY25: New Hire excluded, counted", f25.promo.count === 0 && f25.excluded === 1);
+  check("lever FY25: New Hire counted as its own event, not excluded",
+    f25.promo.count === 0 && f25.newHires === 1 && f25.excluded === 0);
 
   const u27 = buildLeversForFy_(["A", "B"], hist, fys[2], "usd", CONFIG_WR);
   check("lever usd mode: totals withheld, growth = mean per-event pct",
@@ -290,8 +292,9 @@ function term(over) {
     sec.lines[0].text.indexOf("7.6%") !== -1);
   check("sentences: negative net renders with sign",
     sec.lines[1].text.indexOf("net -2") !== -1);
-  check("sentences: reconstruction ASSUMPTION present",
-    sec.lines.some(l => l.badge === "ASSUMPTION" && l.text.indexOf("mean(headcount") !== -1));
+  check("sentences: rate definition is a NOTE, movement carries no ASSUMPTION",
+    sec.lines.some(l => l.badge === "NOTE" && l.text.indexOf("mean(headcount") !== -1) &&
+    sec.lines.every(l => l.badge !== "ASSUMPTION"));
   check("sentences: FY25 coverage RISK fires with the retained date",
     sec.lines.some(l => l.badge === "RISK" && l.text.indexOf("2024-10-02") !== -1 &&
       l.text.indexOf("FY25 exits may be undercounted") !== -1));
@@ -316,18 +319,24 @@ function term(over) {
   const lv = [
     { label: "FY26", inProgress: false, mode: "local",
       promo: { count: 4, noPrior: 0, totalRaise: 40000, growthPct: 0.11 },
-      adjust: { count: 6, noPrior: 1, totalRaise: 30000, growthPct: 0.05 }, excluded: 2 },
+      adjust: { count: 6, noPrior: 1, totalRaise: 30000, growthPct: 0.05 },
+      newHires: 3, excluded: 2 },
   ];
   const sl = secLevers_(lv, { mode: "local", code: "MXN" },
     { firstFyLeverGuard: true, firstFyLabel: "FY25", earliestCompEvent: "2025-09-01" },
     CONFIG_WR, fys, "2026-07-21");
-  check("sentences: lever FACT carries counts + totals + growth",
+  check("sentences: lever FACT carries counts + totals + growth + new hires",
     sl.lines[0].text.indexOf("4 promotion events") !== -1 &&
     sl.lines[0].text.indexOf("40,000 MXN") !== -1 &&
     sl.lines[0].text.indexOf("11.0%") !== -1 &&
-    sl.lines[0].text.indexOf("6 adjustment events") !== -1);
-  check("sentences: lever classification ASSUMPTION present",
-    sl.lines.some(l => l.badge === "ASSUMPTION" && l.text.indexOf("Market Calibration") !== -1));
+    sl.lines[0].text.indexOf("6 adjustment events") !== -1 &&
+    sl.lines[0].text.indexOf("3 new-hire comp records") !== -1);
+  check("sentences: classification is a NOTE of record, no ASSUMPTION in levers",
+    sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("Market Calibration") !== -1 &&
+      l.text.indexOf("own growth event") !== -1) &&
+    sl.lines.every(l => l.badge !== "ASSUMPTION"));
+  check("sentences: lever table carries the new-hire baseline row",
+    sl.tables[0].rows.some(r => r[1] === "New hires (baseline)" && r[2] === 3));
   check("sentences: no-prior NOTE counts excluded deltas",
     sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("1 lever events lack a prior comp record") !== -1));
   check("sentences: FY25 lever RISK fires with earliest event",
@@ -490,6 +499,12 @@ function term(over) {
   check("payload: sections all carry FAR/N lines",
     company.report.sections.every(s => s.lines.length > 0 &&
       s.lines.every(l => ["FACT", "ASSUMPTION", "RISK", "NOTE"].indexOf(l.badge) !== -1)));
+  // De-hedged sections (user directive 2026-07-22): the reason domain is a
+  // known closed set, so 2/4/6 carry definitions as NOTEs, never ASSUMPTIONs.
+  check("payload: composition, movement and levers carry no ASSUMPTION lines",
+    ["composition", "movement", "levers"].every(id =>
+      company.report.sections.find(s => s.id === id)
+        .lines.every(l => l.badge !== "ASSUMPTION")));
 
   check("payload: company brief spotlights by location",
     company.brief.dim.field === "keyLocation" && company.brief.currency.code === "USD");

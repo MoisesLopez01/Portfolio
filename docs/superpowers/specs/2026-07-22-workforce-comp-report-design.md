@@ -106,27 +106,31 @@ numbers interpolated — no AI in this view.**
    NOTE that interns cannot be split out (no employee-type column — divergence from the
    NetSuite example, stated explicitly).
 2. **Composition** — department headcount table; IC vs Manager split; level distribution
-   (`parseLevel_`); tenure buckets (<1y, 1–3y, 3–5y, ≥5y) + average; grade-parsing and
-   tenure ASSUMPTION lines.
+   (`parseLevel_`); tenure buckets (<1y, 1–3y, 3–5y, ≥5y) + average. No ASSUMPTION lines
+   (de-hedged 2026-07-22 — parsing/tenure derivations fold into the FACT wording).
 3. **Compensation structure** — avg TCC by level table; total TCC envelope + per-head
    average; NOTE: *TCC includes variable target; it is not base wage*. Salary-inversion
    FACT auto-fires when a manager band average sits below a senior IC band average.
-4. **Workforce movement** — hires/exits/net per FY25/26/27; attrition rate per FY with
-   the reconstruction ASSUMPTION (rate = exits ÷ mean(start, end headcount); end = asOf
-   for FY27); hire-by-hire-date / exit-by-term-date NOTE.
+4. **Workforce movement** — hires/exits/net per FY25/26/27; attrition rate per FY. The
+   rate definition (rate = exits ÷ mean(start, end headcount); end = asOf for FY27) and
+   hire-by-hire-date / exit-by-term-date dating render as one NOTE — no ASSUMPTION lines
+   (de-hedged 2026-07-22).
 5. **Attrition detail** — per FY: regretted count and %; recorded termination reasons;
    departments and levels of leavers; average leaver tenure. RISK lines auto-fire on
    thresholds (config-tunable): regretted share ≥ `RISK_REGRET_PCT` (default 60%),
    single-reason concentration ≥ half of exits.
 6. **Compensation growth by lever** — the example's sections 6+7 merged (only source is
    RD comp history; no cycle-event source exists, so no reconciliation NOTE is needed).
-   Per FY: promotions vs adjustments — event counts, total raise (scope currency),
-   aggregate % TCC growth vs prior comp record. ASSUMPTION: promotions =
-   `/promotion|microband promotion/i` change reasons; adjustments = **every other
-   recorded reason** (Annual Adjustment, Microband Adjustment, Market Calibration, and
-   any new flavor — catch-all, revised 2026-07-22 so no adjustment type is silently
-   dropped by a whitelist); only New Hire / Internal Transfer / Historical Data Update /
-   blank reasons excluded. Changes lacking a prior comp record are excluded from
+   Per FY: promotions vs adjustments vs new hires — event counts, total raise (scope
+   currency), aggregate % TCC growth vs prior comp record. The TCC Change Reason domain
+   is a KNOWN CLOSED SET (confirmed 2026-07-22): New Hire, Annual Adjustment, Microband
+   Adjustment, Promotion, Market Calibration, Internal Transfer, Microband Promotion,
+   Historical Data Update — so the classification renders as a NOTE of record, not an
+   ASSUMPTION: promotions = Promotion + Microband Promotion; **new hires are their own
+   growth event** (baseline record row, count only, no delta); adjustments = every other
+   recorded reason (catch-all so a future flavor never silently drops); only Internal
+   Transfer / Historical Data Update / blank reasons excluded. Changes lacking a prior
+   comp record are excluded from
    deltas (counted, noted). RISK auto-fires on the lever-shift pattern (promotion count
    and size down while adjustment count up, FY-over-FY).
 7. **Market & equity flags** — **counts only, never names**: compa-ratio distribution vs
