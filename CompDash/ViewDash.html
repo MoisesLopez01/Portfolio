@@ -231,6 +231,74 @@ function svgSpark(series, w, h, color) {
          '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2"/></svg>';
 }
 
+// MIRROR of fyAttritionFromPeople_ in Code.js — parity-tested there; keep in sync.
+function fyAttritionFromPeople_(people, fyStartCalYear, asOfIso, label) {
+  const fyStartIso = fyStartCalYear + "-07-01";
+  const fyEndIso = (fyStartCalYear + 1) + "-06-30";
+  const endIso = (asOfIso && asOfIso < fyEndIso) ? asOfIso : fyEndIso;
+  const idxOf = iso => (+iso.slice(0, 4) - fyStartCalYear) * 12 + (+iso.slice(5, 7) - 1) - 6;
+  const hcOn = iso => people.filter(p =>
+    (!p.hireDate || p.hireDate <= iso) && (!p.termDate || p.termDate > iso)).length;
+  const monthly = Array.from({ length: 12 }, () => ({ terms: 0, vol: 0, invol: 0 }));
+  const terms = people.filter(p => p.termDate && p.termDate >= fyStartIso && p.termDate <= fyEndIso);
+  terms.forEach(p => {
+    const i = idxOf(p.termDate);
+    if (i < 0 || i > 11) return;
+    monthly[i].terms++;
+    if (p.termCls === "vol") monthly[i].vol++;
+    else if (p.termCls === "invol") monthly[i].invol++;
+  });
+  const quarterly = [0, 1, 2, 3].map(q => {
+    const s = monthly.slice(q * 3, q * 3 + 3);
+    return { terms: s.reduce((t, x) => t + x.terms, 0),
+             vol:   s.reduce((t, x) => t + x.vol, 0),
+             invol: s.reduce((t, x) => t + x.invol, 0) };
+  });
+  const vol = terms.filter(p => p.termCls === "vol").length;
+  const invol = terms.filter(p => p.termCls === "invol").length;
+  const regretted = terms.filter(p => p.regretted).length;
+  const avgHeadcount = (hcOn(fyStartIso) + hcOn(endIso)) / 2;
+  return { label, monthly, quarterly, total: terms.length, vol, invol, regretted,
+           avgHeadcount, rate: avgHeadcount > 0 ? terms.length / avgHeadcount : null };
+}
+
+// MIRROR of sliceAttritionFromPeople_ in Code.js — parity-tested there; keep in sync.
+function sliceAttritionFromPeople_(people, fyStartCalYear, asOfIso, keyFn) {
+  const fyStartIso = fyStartCalYear + "-07-01";
+  const fyEndIso = (fyStartCalYear + 1) + "-06-30";
+  const endIso = (asOfIso && asOfIso < fyEndIso) ? asOfIso : fyEndIso;
+  const groups = new Map();
+  const get = k => {
+    if (!groups.has(k)) groups.set(k, { key: k, terms: 0, vol: 0, invol: 0, hcStart: 0, hcEnd: 0 });
+    return groups.get(k);
+  };
+  people.forEach(p => {
+    const g = get(keyFn(p) || "—");
+    if ((!p.hireDate || p.hireDate <= fyStartIso) && (!p.termDate || p.termDate > fyStartIso)) g.hcStart++;
+    if ((!p.hireDate || p.hireDate <= endIso) && (!p.termDate || p.termDate > endIso)) g.hcEnd++;
+    if (p.termDate && p.termDate >= fyStartIso && p.termDate <= fyEndIso) {
+      g.terms++;
+      if (p.termCls === "vol") g.vol++;
+      else if (p.termCls === "invol") g.invol++;
+    }
+  });
+  return [...groups.values()]
+    .map(g => {
+      const avg = (g.hcStart + g.hcEnd) / 2;
+      return { key: g.key, terms: g.terms, vol: g.vol, invol: g.invol,
+               headcount: g.hcEnd, rate: avg > 0 ? g.terms / avg : null };
+    })
+    .filter(g => g.terms > 0 || g.headcount > 0)
+    .sort((x, y) => y.terms - x.terms || y.headcount - x.headcount);
+}
+
+// MIRROR of levelRank_ in Code.js.
+function levelRankC(level) {
+  const m = String(level || "").match(/^([IM])(\d+)$/);
+  if (!m) return 999;
+  return (m[1] === "I" ? 0 : 100) + parseInt(m[2], 10);
+}
+
 // ── navigation ──────────────────────────────────────────────
 function buildNav() {
   const bar = document.getElementById("tabbar");
@@ -347,13 +415,25 @@ function renderOverview(el) {
     '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
 }
 function renderAttrition(el) {
-  const d = STATE.data, a = d.attrition, cur = a.currentFY, prev = a.previousFY;
+  const d = STATE.data, a = d.attrition, act = filtersActive();
+  const dimField = { department: "dept", level: "level", keyLocation: "keyLocation" };
+  const people = act ? d.people.filter(visibleEmp) : null;
+  const cur = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, d.meta.fyLabel)
+    : a.currentFY;
+  const prev = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
+    : a.previousFY;
   const isM = STATE.attrGran === "month";
   const labels = isM ? d.meta.monthLabels : ["Q1", "Q2", "Q3", "Q4"];
   const upto = isM ? d.meta.fiscalMonthIdx : Math.floor(d.meta.fiscalMonthIdx / 3);
   const dim = STATE.attrDim;
   const dimLabel = { department: "Department", level: "Level", keyLocation: "Key Location" };
-  const slices = a.slices[dim] || [];
+  let slices = act
+    ? sliceAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, p => p[dimField[dim]])
+    : (a.slices[dim] || []);
+  if (dim === "level") slices = slices.slice().sort((x, y) => levelRankC(x.key) - levelRankC(y.key));
+  const detail = a.detail.filter(t => !act || visibleEmp(t));
   el.innerHTML =
     sourceBanner("roster", "Roster data") +
     '<div class="card"><h2>' + esc(cur.label) + ' vs ' + esc(prev.label) + ' terminations</h2>' +
@@ -378,9 +458,9 @@ function renderAttrition(el) {
     slices.map(s =>
       '<tr><td>' + esc(s.key) + '</td><td>' + s.headcount + '</td><td>' + s.terms + '</td><td>' + s.vol +
       '</td><td>' + s.invol + '</td><td>' + pctFmt(s.rate) + '</td></tr>').join("") + '</table>' +
-    '<details><summary>Termination detail — ' + a.detail.length + ' rows (names inside)</summary>' +
+    '<details><summary>Termination detail — ' + detail.length + ' rows (names inside)</summary>' +
     '<table><tr><th>Date</th><th>Name</th><th>Dept</th><th>Level</th><th>Location</th><th>Type</th><th>Regretted</th><th>Reason</th></tr>' +
-    a.detail.map(t =>
+    detail.map(t =>
       '<tr><td>' + esc(t.termDate) + '</td><td>' + esc(t.name) + '</td><td>' + esc(t.dept) + '</td><td>' + esc(t.level) +
       '</td><td>' + esc(t.keyLocation) + '</td><td>' + esc(t.cls) + '</td><td>' + (t.regretted ? "⚠️ yes" : "no") +
       '</td><td>' + esc(t.reason) + '</td></tr>').join("") + '</table></details></div>';
@@ -524,14 +604,25 @@ function suggestionChip(e) {
 
 function renderEquity(el) {
   const eq = STATE.data.equity;
+  const empIndex = {};
+  STATE.data.employees.forEach(e => { empIndex[e.empNo] = e; });
+  const act = filtersActive();
+  const flagVisible = r => !act || (empIndex[r.empNo] ? visibleEmp(empIndex[r.empNo]) : false);
+  const f = STATE.filters;
+  const groupVisible = g => (!f.loc || g.keyLocation === f.loc) && (!f.level || g.level === f.level);
+  // Filters only hide/show rows below — group STATS (medians, gap %) are server
+  // facts about the full group and are never recomputed on the client.
+  const genderRows = eq.gender.filter(groupVisible);
+  const outlierRows = eq.outliers.filter(flagVisible);
+  const tenureRows = eq.tenure.filter(flagVisible);
   let html = "";
   if (!eq.genderAvailable) {
     html += '<div class="banner">🧭 <b>Gender data pending</b> — the Gender column hasn&#39;t landed in the roster yet; the gender lens activates automatically when it does.</div>';
   }
   html += '<div class="card"><h2>Gender pay gap by location + level</h2>';
-  if (eq.gender.length) {
+  if (genderRows.length) {
     html += '<table><tr><th>Location</th><th>Level</th><th>Group</th><th>Medians (local)</th><th>Gap</th><th></th></tr>' +
-      eq.gender.map(g =>
+      genderRows.map(g =>
         '<tr><td>' + esc(g.keyLocation) + '</td><td>' + esc(g.level) + '</td>' +
         '<td>' + Object.keys(g.counts).map(k => esc(k) + ": " + g.counts[k]).join(" · ") + '</td>' +
         '<td>' + Object.keys(g.medians).map(k => esc(k) + " " + Math.round(g.medians[k]).toLocaleString()).join(" · ") + '</td>' +
@@ -542,10 +633,10 @@ function renderEquity(el) {
     html += '<p class="sub">No location+level groups with ≥2 members per gender yet.</p>';
   }
   html += '</div>' +
-    '<div class="card"><h2>Outliers far below group median <span class="chip red">' + eq.outliers.length + '</span></h2>' +
-    flagTable(eq.outliers, false) + '</div>' +
-    '<div class="card"><h2>Long tenure, low position <span class="chip yellow">' + eq.tenure.length + '</span></h2>' +
-    flagTable(eq.tenure, true) + '</div>';
+    '<div class="card"><h2>Outliers far below group median <span class="chip red">' + outlierRows.length + '</span></h2>' +
+    flagTable(outlierRows, false) + '</div>' +
+    '<div class="card"><h2>Long tenure, low position <span class="chip yellow">' + tenureRows.length + '</span></h2>' +
+    flagTable(tenureRows, true) + '</div>';
   el.innerHTML = html;
 }
 
@@ -566,7 +657,7 @@ function flagTable(rows, withTenure) {
 }
 function renderQta(el) {
   const d = STATE.data;
-  const rows = d.qtaInterim;
+  const rows = d.qtaInterim.filter(r => !filtersActive() || visibleEmp(r));
   const overdue = rows.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length;
   el.innerHTML =
     '<div class="banner">📋 <b>Official QTA-cycle source pending</b> — interim signal below uses each Rocketeer&#39;s latest <i>Next Review</i> date from the Compensation Report, waiting-longest first.</div>' +
