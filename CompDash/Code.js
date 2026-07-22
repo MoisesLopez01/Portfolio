@@ -30,10 +30,28 @@ const CONFIG_CD = {
   TENURE_BELOW_PCT:   15, // tenure lens: % below group median that flags
   SMALL_GROUP_MIN:     3, // compa groups smaller than this get a smallGroup flag
 
-  // Internal Position color bands — shipped to the client via meta.compaBands
-  // so ratioClass() and the Data Reference prose can never drift from these.
-  COMPA_GREEN_MIN:  0.90, // ratio ≥ this renders green
-  COMPA_YELLOW_MIN: 0.75, // ratio ≥ this renders yellow; below is red
+  // Internal Position color bands V2 — median anchor means ratios can exceed 1.0.
+  // Shipped to the client via meta.compaBands so ratioClass() and the Data
+  // Reference prose can never drift from these.
+  COMPA_LOW_MIN:    0.80, // ≥ this renders yellow; below is red
+  COMPA_TARGET_MIN: 0.95, // ≥ this renders green ("at target", 95–100% guideline)
+  COMPA_HIGH_MAX:   1.10, // > this renders the violet "above median" chip
+
+  // Small Improvements performance ratings
+  RATINGS_SS_ID: "1_V-i2BHvk6RFOdksYSpyW_hrPVJ-pIyAWSN5timy5fw", // CD_RATINGS_SS_ID override
+  RATINGS_TAB:   "Small Improvements RD",                        // CD_RATINGS_TAB override
+  RATING_MAX:    5,     // scale ceiling — perf component normalizes as avg ÷ this
+
+  // External market benchmarks (compilation grows over time — missing rows are normal)
+  BENCH_SS_ID: "1juJwP9RLCYoaz3-ONYR8HvaHG9fp5a5AIEMCuouNlx0",   // CD_BENCH_SS_ID override
+  BENCH_TAB:   "Compilation",                                    // CD_BENCH_TAB override
+  MARKET_LOW:  0.90,    // vs-market ratio below this = priority read (red chip)
+
+  // Priority Score — mastery band descoped; 40/30/20/10 renormalized to sum 100.
+  PRIORITY_W:    { perf: 57, tenure: 29, compaGap: 14 },
+  PRIORITY_CAPS: { companyYears: 10, profileYears: 5, gapPct: 0.25 },
+
+  PROMO_RE: /promot|title change|role change/i, // RD reasons that reset profile tenure
 
   CREW_RE: /crew member|contractor/i, // same crew rule as the PS Contribution Report
   // Narrower than PS Security's regex ON PURPOSE: Rocketeers on maternity/parental

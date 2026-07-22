@@ -215,3 +215,23 @@ function mkEmp(over) {
   check("qta: no history sorts last with null review", rows[2].empNo === "Q3" && rows[2].nextReview === null);
   check("qta: last event surfaced", rows[0].lastEventReason === "Salary adjustment");
 })();
+
+// ── V2 Task 1: CONFIG_CD additions ──────────────────────────
+(function () {
+  const w = CONFIG_CD.PRIORITY_W;
+  check("cfg: priority weights sum to 100", w.perf + w.tenure + w.compaGap === 100);
+  check("cfg: priority caps present",
+    CONFIG_CD.PRIORITY_CAPS.companyYears === 10 &&
+    CONFIG_CD.PRIORITY_CAPS.profileYears === 5 &&
+    approx(CONFIG_CD.PRIORITY_CAPS.gapPct, 0.25));
+  check("cfg: compa bands low<target<high",
+    CONFIG_CD.COMPA_LOW_MIN < CONFIG_CD.COMPA_TARGET_MIN &&
+    CONFIG_CD.COMPA_TARGET_MIN < CONFIG_CD.COMPA_HIGH_MAX);
+  check("cfg: old band constants removed",
+    CONFIG_CD.COMPA_GREEN_MIN === undefined && CONFIG_CD.COMPA_YELLOW_MIN === undefined);
+  check("cfg: PROMO_RE matches promotion reasons",
+    CONFIG_CD.PROMO_RE.test("Promotion") && CONFIG_CD.PROMO_RE.test("Title Change") &&
+    !CONFIG_CD.PROMO_RE.test("Salary adjustment"));
+  check("cfg: rating max 5", CONFIG_CD.RATING_MAX === 5);
+  check("cfg: market low 0.90", approx(CONFIG_CD.MARKET_LOW, 0.90));
+})();
