@@ -280,3 +280,26 @@ function mkEmp(over) {
   check("ttm: no current TCC → null", ttmGrowth_(evs, null, asOf) === null);
   check("ttm: null events safe", ttmGrowth_(null, 80000, asOf) === null);
 })();
+
+// ── V2 Task 4: benchKey_ / lookupBench_ ─────────────────────
+(function () {
+  const map = {
+    [benchKey_("El Salvador", "Data Analyst")]:
+      { p25: 20000, mean: 26000, p75: 32000, currency: "USD", source: "AI scan" },
+    [benchKey_("Chile", "04.I3.1 Consultant")]:
+      { p25: null, mean: null, p75: 40000000, currency: "CLP", source: "site" },
+  };
+  check("benchKey: normalized", benchKey_("  El  SALVADOR ", "Data  Analyst") ===
+    benchKey_("El Salvador", "Data Analyst"));
+
+  const hit = lookupBench_(map, "El Salvador", "Data Analyst", "USD");
+  check("lookup: match returns row", hit.row && hit.row.mean === 26000 && !hit.mismatch);
+  check("lookup: case/space tolerant", lookupBench_(map, "el salvador", "DATA ANALYST", "USD").row !== null);
+  const miss = lookupBench_(map, "Mexico", "Data Analyst", "MXN");
+  check("lookup: no row → null, no mismatch", miss.row === null && !miss.mismatch);
+  const cur = lookupBench_(map, "El Salvador", "Data Analyst", "MXN");
+  check("lookup: currency disagreement → mismatch, row withheld", cur.row === null && cur.mismatch === true);
+  check("lookup: blank emp currency tolerated",
+    lookupBench_(map, "El Salvador", "Data Analyst", "").row !== null);
+  check("lookup: null map safe", lookupBench_(null, "X", "Y", "USD").row === null);
+})();

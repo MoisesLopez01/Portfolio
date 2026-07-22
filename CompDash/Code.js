@@ -287,11 +287,28 @@ function buildCompaGroups_(activeRecords, smallGroupMin) {
     a.keyLocation.localeCompare(b.keyLocation) || a.jobTitle.localeCompare(b.jobTitle));
 }
 
-// ── Market Gap suggestion (used once Payscale P25/P50/P75 data lands) ──────
-// Returns the priority-of-read status the UI colors red/yellow/green.
-// TODO: wire into getCompReportData() (attach p25/p50/p75 + suggestion per
-// employee) once the Payscale source lands — until then only the client-side
-// mirror marketRow() in ViewDash.html executes, and the two can drift.
+// ── External market benchmarks (Benchmarking → Compilation tab) ────────────
+// Joined by normalized Location + Job Title ↔ roster Key Location + Job Title.
+// All values LOCAL currency; a row whose currency disagrees with the roster is
+// withheld (mismatch flag) — never silently compared across currencies.
+
+function benchKey_(location, jobTitle) {
+  return normCD_(location) + "||" + normCD_(jobTitle);
+}
+
+/** @returns {{row: (Object|null), mismatch: boolean}} */
+function lookupBench_(benchMap, keyLocation, jobTitle, empCurrency) {
+  const row = benchMap ? benchMap[benchKey_(keyLocation, jobTitle)] : null;
+  if (!row) return { row: null, mismatch: false };
+  if (row.currency && empCurrency && normCD_(row.currency) !== normCD_(empCurrency)) {
+    return { row: null, mismatch: true };
+  }
+  return { row, mismatch: false };
+}
+
+// ── Market suggestion — runs SERVER-SIDE per employee (V2) ──────────────────
+// p50 slot carries the benchmark MEAN (labeled "Mean" in the UI, never P50).
+// Red = raise to P25 is the priority read; yellow = move to mean; green = at market.
 function marketSuggestion_(tcc, p25, p50) {
   if (!(tcc > 0) || !(p25 > 0) || !(p50 > 0)) {
     return { status: "pending", pctToP25: null, pctToP50: null };
