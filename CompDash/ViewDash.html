@@ -127,6 +127,14 @@ function sourceBanner(key, label) {
   return s === "ok" ? "" :
     '<div class="banner err">⚠️ ' + esc(label) + ' unavailable — ' + esc(s) + '</div>';
 }
+function svgSpark(series, w, h, color) {
+  const max = Math.max.apply(null, series.concat([1]));
+  const step = w / Math.max(1, series.length - 1);
+  const pts = series.map((v, i) =>
+    (i * step).toFixed(1) + "," + (h - v / max * (h - 4) - 2).toFixed(1)).join(" ");
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '">' +
+         '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2"/></svg>';
+}
 
 // ── navigation ──────────────────────────────────────────────
 function buildNav() {
@@ -188,8 +196,42 @@ function onLoadError(err) {
     '<div class="banner err">❌ Could not load the report: ' + esc((err && err.message) || err) + '</div>';
 }
 
-// ── stub renderers — each is REPLACED (in this source file) by a later task ──
-function renderOverview(el)  { el.innerHTML = '<div class="card">Overview — Task 11</div>'; }
+// ── tab renderers ───────────────────────────────────────────
+function renderOverview(el) {
+  const d = STATE.data, cur = d.attrition.currentFY, prev = d.attrition.previousFY, eq = d.equity;
+  const ratios = [];
+  d.compaGroups.forEach(g => g.members.forEach(m => {
+    if (m.ratio != null && !m.noPeers) ratios.push(m.ratio);
+  }));
+  const medRatio = median(ratios);
+  const flags = eq.outliers.length + eq.tenure.length +
+    (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0);
+  const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length;
+
+  // The six manager mental-model questions, in reading order (spec §1).
+  const cards = [
+    { q: "Is my team healthy? Are people staying?", v: pctFmt(cur.rate),
+      s: d.meta.fyLabel + " attrition · " + prev.label + " " + pctFmt(prev.rate), tab: "attrition" },
+    { q: "Are Rocketeers paid fairly vs peers?", v: medRatio != null ? medRatio.toFixed(2) : "—",
+      s: "median Internal Position (vs peer max)", tab: "compa" },
+    { q: "Is our band still competitive in the market?", v: "Pending",
+      s: "Payscale benchmarks not loaded yet", tab: "market" },
+    { q: "Is anyone being paid inequitably?", v: String(flags),
+      s: eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)", tab: "equity" },
+    { q: "Who is coming up for review this quarter?", v: String(overdue),
+      s: "Next Review dates overdue", tab: "qta" },
+    { q: "Whose contribution warrants recognition?", v: "→",
+      s: "open the Contribution Report", tab: "contrib" },
+  ];
+  el.innerHTML =
+    '<div class="kpi-grid">' + cards.map(c =>
+      '<div class="kpi" onclick="switchTab(\'' + c.tab + '\')">' +
+      '<div class="kpi-q">' + esc(c.q) + '</div><div class="kpi-v">' + esc(c.v) + '</div>' +
+      '<div class="kpi-s">' + esc(c.s) + '</div></div>').join("") + '</div>' +
+    '<div class="card"><h2>' + esc(d.meta.fyLabel) + ' terminations by fiscal month</h2>' +
+    svgSpark(cur.monthly.map(m => m.terms), 640, 60, "var(--warn)") +
+    '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
+}
 function renderAttrition(el) { el.innerHTML = '<div class="card">Attrition — Task 12</div>'; }
 function renderCompa(el)     { el.innerHTML = '<div class="card">Internal Position — Task 13</div>'; }
 function renderMarket(el)    { el.innerHTML = '<div class="card">Market Gap — Task 15</div>'; }
