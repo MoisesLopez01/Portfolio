@@ -650,14 +650,17 @@ function coverageStats_(records, histByEmp, fys) {
           (!earliestEvent || e.date < earliestEvent)) earliestEvent = e.date;
     });
   });
-  const first = fys[0], second = fys[1];
+  const first = fys[0];
+  // The lever-depth boundary is the first FY's end + 1 day (= the second FY's
+  // start when one exists) — derived from first so any FY-range length works.
+  const leverBoundary = new Date(first.startCalYear + 1, 6, 1);
   return {
     earliestTermDate: isoDate_(earliestTerm),
     earliestCompEvent: isoDate_(earliestEvent),
     // Terminations guard: earliest retained term row is inside/after the first FY.
     firstFyTermGuard: !earliestTerm || earliestTerm > first.start,
-    // Lever guard: no comp events predate the SECOND FY's start (spec: 2025-07-01).
-    firstFyLeverGuard: !earliestEvent || earliestEvent >= second.start,
+    // Lever guard: no comp events predate the first FY's close (spec: 2025-07-01).
+    firstFyLeverGuard: !earliestEvent || earliestEvent >= leverBoundary,
     firstFyLabel: first.label,
     termsPerFy: fys.map(fy => ({
       label: fy.label,
@@ -982,15 +985,16 @@ function buildRetentionCrosstab_(records, fys) {
 /**
  * Structural-risk candidates — spec §7.7. COMPUTED candidates only; the AI
  * may select and phrase around these but can never add one.
+ * @param {string} curCode - currency the band averages are stated in.
  */
-function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure) {
+function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure, curCode) {
   const out = [];
   compStructure.inversions.forEach(inv => {
     out.push({
       id: "inversion-" + inv.mLevel + "-" + inv.icLevel, kind: "inversion",
       title: "Salary inversion " + inv.mLevel + " vs " + inv.icLevel,
-      detail: inv.mLevel + " band average (" + fmtInt_(inv.mAvg) + " USD) sits below the " +
-        inv.icLevel + " band average (" + fmtInt_(inv.icAvg) + " USD).",
+      detail: inv.mLevel + " band average (" + fmtMoney_(inv.mAvg, curCode) + ") sits below the " +
+        inv.icLevel + " band average (" + fmtMoney_(inv.icAvg, curCode) + ").",
     });
   });
   const total = active.length;
@@ -1044,30 +1048,35 @@ function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure) {
 }
 
 /**
- * Location spotlight rows + per-location computed flag candidates. The AI
- * selects ONE flag per location from `candidates` only (enforced server-side
+ * Spotlight rows + per-group computed flag candidates. Company scope groups
+ * by Key Location; a single-country brief groups by Department instead. The
+ * AI selects ONE flag per group from `candidates` only (enforced server-side
  * in validateNarrative_).
+ * @param {{field: string, label: string}} dim - grouping dimension.
+ * @param {{mode: string, code: string}} mode - currency mode for avg comp.
  */
-function buildSpotlights_(records, histByEmp, fys, ctx, cfg) {
+function buildSpotlights_(records, histByEmp, fys, ctx, cfg, dim, mode) {
   const cur = fys[fys.length - 1];
-  const locs = [...new Set(records.filter(r => r.active).map(r => r.keyLocation).filter(Boolean))].sort();
-  const companyMove = fyMovement_(records, cur, ctx.asOf);
-  const companyActive = records.filter(r => r.active).length;
-  const companyPromos = countPromosInFy_(records, histByEmp, cur, cfg);
-  const companyPromoRate = companyActive > 0 ? companyPromos / companyActive : null;
-  return locs.map(loc => {
-    const inLoc = records.filter(r => r.keyLocation === loc);
-    const active = inLoc.filter(r => r.active);
-    const move = fyMovement_(inLoc, cur, ctx.asOf);
-    const attr = fyAttritionStats_(inLoc, cur, ctx.asOf);
-    const usd = active.map(r => r.tccUsd).filter(v => v > 0);
-    const promos = countPromosInFy_(inLoc, histByEmp, cur, cfg);
+  const compOf = r => tccOf_(r, mode.mode);
+  const keys = [...new Set(records.filter(r => r.active)
+    .map(r => r[dim.field]).filter(Boolean))].sort();
+  const scopeMove = fyMovement_(records, cur, ctx.asOf);
+  const scopeActive = records.filter(r => r.active).length;
+  const scopePromos = countPromosInFy_(records, histByEmp, cur, cfg);
+  const scopePromoRate = scopeActive > 0 ? scopePromos / scopeActive : null;
+  return keys.map(k => {
+    const inGrp = records.filter(r => r[dim.field] === k);
+    const active = inGrp.filter(r => r.active);
+    const move = fyMovement_(inGrp, cur, ctx.asOf);
+    const attr = fyAttritionStats_(inGrp, cur, ctx.asOf);
+    const comp = active.map(compOf).filter(v => v > 0);
+    const promos = countPromosInFy_(inGrp, histByEmp, cur, cfg);
     const promoRate = active.length > 0 ? promos / active.length : null;
-    const bands = buildCompStructure_(active, "usd", cfg);
+    const bands = buildCompStructure_(active, mode.mode, cfg);
     const candidates = [];
-    if (move.rate != null && companyMove.rate != null && move.rate > companyMove.rate) {
-      candidates.push("Attrition above the company rate (" + fmtPct_(move.rate) +
-        " vs " + fmtPct_(companyMove.rate) + ").");
+    if (move.rate != null && scopeMove.rate != null && move.rate > scopeMove.rate) {
+      candidates.push("Attrition above the scope rate (" + fmtPct_(move.rate) +
+        " vs " + fmtPct_(scopeMove.rate) + ").");
     }
     if (attr.exits > 0 && attr.regrettedPct != null &&
         attr.regrettedPct * 100 >= cfg.RISK_REGRET_PCT) {
@@ -1078,18 +1087,18 @@ function buildSpotlights_(records, histByEmp, fys, ctx, cfg) {
       candidates.push("Salary inversion present (" +
         bands.inversions.map(i => i.mLevel + "<" + i.icLevel).join(", ") + ").");
     }
-    if (promoRate != null && companyPromoRate != null && promoRate < companyPromoRate) {
-      candidates.push("Promotion rate below the company rate (" + fmtPct_(promoRate) +
-        " vs " + fmtPct_(companyPromoRate) + ").");
+    if (promoRate != null && scopePromoRate != null && promoRate < scopePromoRate) {
+      candidates.push("Promotion rate below the scope rate (" + fmtPct_(promoRate) +
+        " vs " + fmtPct_(scopePromoRate) + ").");
     }
     if (!candidates.length) candidates.push("Steady state — no computed flag this period.");
     return {
-      location: loc,
+      key: k,
       headcount: active.length,
       attritionRate: move.rate,
       regrettedPct: attr.regrettedPct,
-      avgTccUsd: usd.length
-        ? Math.round(usd.reduce((t, x) => t + x, 0) / usd.length) : null,
+      avgComp: comp.length
+        ? Math.round(comp.reduce((t, x) => t + x, 0) / comp.length) : null,
       promoRate,
       candidates,
     };
@@ -1109,53 +1118,65 @@ function countPromosInFy_(records, histByEmp, fy, cfg) {
 }
 
 /**
- * View B — company-scope brief aggregates (spec §7). Sections 2, 8-flags and
- * 9 are AI-filled client-side via getBriefNarrative; everything here is math.
+ * View B — board-brief aggregates (spec §7), for the COMPANY or for a single
+ * country (sample: Chile). A country brief spotlights DEPARTMENTS instead of
+ * locations and states comp in the scope currency. Sections 2, 8-flags and 9
+ * are AI-filled client-side via getBriefNarrative; everything here is math.
+ * @param {Object[]} scopeRecords - records already narrowed to the scope.
  */
-function buildBrief_(records, histByEmp, fys, ctx, cfg, companyReport) {
-  const active = records.filter(r => r.active);
-  const usd = active.map(r => r.tccUsd).filter(v => v > 0);
+function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) {
+  const scope = report.scope;
+  const mode = report.currency;
+  const dim = scope === "company"
+    ? { field: "keyLocation", label: "Location" }
+    : { field: "dept", label: "Department" };
+  const active = scopeRecords.filter(r => r.active);
+  const comp = active.map(r => tccOf_(r, mode.mode)).filter(v => v > 0);
   const byLoc = new Map(), byDept = new Map();
   active.forEach(r => {
     const l = r.keyLocation || "—", d = r.dept || "—";
     byLoc.set(l, (byLoc.get(l) || 0) + 1);
     byDept.set(d, (byDept.get(d) || 0) + 1);
   });
-  const moveByLoc = [...byLoc.keys()].sort().map(loc => {
-    const inLoc = records.filter(r => r.keyLocation === loc);
+  const byGroupKeys = [...new Set(active.map(r => r[dim.field] || "—"))].sort();
+  const moveByGroup = byGroupKeys.map(k => {
+    const inGrp = scopeRecords.filter(r => (r[dim.field] || "—") === k);
     return {
-      location: loc,
+      key: k,
       perFy: fys.map(fy => {
-        const m = fyMovement_(inLoc, fy, ctx.asOf);
-        const a = fyAttritionStats_(inLoc, fy, ctx.asOf);
+        const m = fyMovement_(inGrp, fy, ctx.asOf);
+        const a = fyAttritionStats_(inGrp, fy, ctx.asOf);
         return { label: fy.label, hires: m.hires, exits: m.exits, net: m.net,
                  rate: m.rate, regrettedPct: a.regrettedPct };
       }),
     };
   });
-  const cs = buildCompStructure_(active, "usd", cfg);
+  const cs = buildCompStructure_(active, mode.mode, cfg);
   return {
+    scope,
+    dim,
+    currency: { mode: mode.mode, code: mode.code },
     glance: {
       headcount: active.length,
       byLocation: [...byLoc.entries()].map(([key, count]) => ({ key, count }))
         .sort((a, b) => b.count - a.count),
       byDept: [...byDept.entries()].map(([key, count]) => ({ key, count }))
         .sort((a, b) => b.count - a.count),
-      tccEnvelopeUsd: usd.length ? Math.round(usd.reduce((t, x) => t + x, 0)) : null,
-      missingUsd: active.length - usd.length,
+      tccEnvelope: comp.length ? Math.round(comp.reduce((t, x) => t + x, 0)) : null,
+      missingComp: active.length - comp.length,
     },
     movement: {
-      company: companyReport.stats.moves,
-      regrettedTrend: companyReport.stats.attr.map(a => ({
+      scopeTotals: report.stats.moves,
+      regrettedTrend: report.stats.attr.map(a => ({
         label: a.label, regretted: a.regretted, exits: a.exits, pct: a.regrettedPct,
       })),
-      byLocation: moveByLoc,
+      byGroup: moveByGroup,
     },
-    retention: buildRetentionCrosstab_(records, fys),
-    levers: companyReport.stats.levers,
-    structuralRisks: buildStructuralRisks_(active, records, fys, ctx, cfg, cs),
-    spotlights: buildSpotlights_(records, histByEmp, fys, ctx, cfg),
-    appendix: [...byLoc.keys()].sort(),
+    retention: buildRetentionCrosstab_(scopeRecords, fys),
+    levers: report.stats.levers,
+    structuralRisks: buildStructuralRisks_(active, scopeRecords, fys, ctx, cfg, cs, mode.code),
+    spotlights: buildSpotlights_(scopeRecords, histByEmp, fys, ctx, cfg, dim, mode),
+    appendix: allScopes,
   };
 }
 
@@ -1165,24 +1186,28 @@ function buildBrief_(records, histByEmp, fys, ctx, cfg, companyReport) {
 
 function promptForBrief_(brief, meta) {
   const j = o => JSON.stringify(o);
+  const scopeLabel = brief.scope === "company"
+    ? "the whole company" : "the " + brief.scope + " entity";
+  const dimWord = brief.dim.label.toLowerCase();
   return [
     "You are drafting interpretive text for a board-level Workforce & Compensation " +
-    "Review covering " + meta.fys.map(f => f.label).join(", ") + " (data as of " +
-    meta.asOf + "). Fiscal years start July 1.",
+    "Review of " + scopeLabel + " covering " + meta.fys.map(f => f.label).join(", ") +
+    " (data as of " + meta.asOf + "). Fiscal years start July 1. Monetary figures are " +
+    brief.currency.code + ".",
     "STRICT RULES: cite only figures provided below; never invent or recompute a number; " +
     "frame interpretation as risk or observation, never as certainty; " +
     "British-neutral business register; no names of individuals.",
     "",
-    "COMPANY AT A GLANCE: " + j(brief.glance),
-    "MOVEMENT & ATTRITION (company + per-location): " + j(brief.movement),
+    "SCOPE AT A GLANCE: " + j(brief.glance),
+    "MOVEMENT & ATTRITION (scope + per-" + dimWord + "): " + j(brief.movement),
     "REGRETTED-LOSS CROSSTAB (level × tenure × reason): " + j(brief.retention.slice(0, 20)),
     "COMPENSATION LEVERS PER FY: " + j(brief.levers),
     "STRUCTURAL RISK CANDIDATES (the only risks you may reference): " + j(brief.structuralRisks),
-    "LOCATION SPOTLIGHTS with computed flag candidates: " + j(brief.spotlights),
+    brief.dim.label.toUpperCase() + " SPOTLIGHTS with computed flag candidates: " + j(brief.spotlights),
     "",
     "Return ONLY a JSON object, no markdown fences, with exactly these keys:",
     '{"execSummary": [3-4 headline-signal sentences],',
-    ' "spotlightFlags": {<location>: <ONE flag chosen VERBATIM from that location\'s candidates>},',
+    ' "spotlightFlags": {<' + dimWord + '>: <ONE flag chosen VERBATIM from that ' + dimWord + "'s candidates>},",
     ' "decisions": [2-3 items of {"title": short imperative, "rationale": 1-2 sentences citing provided figures}]}',
   ].join("\n");
 }
@@ -1197,17 +1222,17 @@ function validateNarrative_(obj, brief) {
   const execSummary = Array.isArray(obj.execSummary)
     ? obj.execSummary.filter(s => typeof s === "string" && s.trim()).slice(0, 4) : [];
   const spotlightFlags = {};
-  const byLoc = {};
-  (brief.spotlights || []).forEach(s => { byLoc[s.location] = s.candidates; });
+  const byKey = {};
+  (brief.spotlights || []).forEach(s => { byKey[s.key] = s.candidates; });
   if (obj.spotlightFlags && typeof obj.spotlightFlags === "object") {
-    Object.keys(obj.spotlightFlags).forEach(loc => {
-      const v = obj.spotlightFlags[loc];
-      if (byLoc[loc] && byLoc[loc].indexOf(v) !== -1) spotlightFlags[loc] = v;
+    Object.keys(obj.spotlightFlags).forEach(k => {
+      const v = obj.spotlightFlags[k];
+      if (byKey[k] && byKey[k].indexOf(v) !== -1) spotlightFlags[k] = v;
     });
   }
-  // A location the model skipped or corrupted falls back to its first candidate.
-  Object.keys(byLoc).forEach(loc => {
-    if (!spotlightFlags[loc]) spotlightFlags[loc] = byLoc[loc][0];
+  // A group the model skipped or corrupted falls back to its first candidate.
+  Object.keys(byKey).forEach(k => {
+    if (!spotlightFlags[k]) spotlightFlags[k] = byKey[k][0];
   });
   const decisions = Array.isArray(obj.decisions)
     ? obj.decisions
@@ -1225,11 +1250,15 @@ function validateNarrative_(obj, brief) {
  * @param {number} [quarter] - 1–4 applies the quarterly filter to the
  *   time-based sections (Q<n> of every FY, not-yet-started quarters dropped);
  *   anything else = full fiscal years.
- * @returns {Object} {ok, meta, report, brief?} — brief only at company scope
- *   with no quarterly filter (the board story is told in full FYs).
+ * @param {number} [fyCount] - how many FYs to report, newest last: 3 = all,
+ *   2 = previous + current, 1 = current only. Defaults to CONFIG_WR.FY_COUNT.
+ * @returns {Object} {ok, meta, report, brief?} — brief for ANY scope (company
+ *   or a single country) when no quarterly filter is active (the board story
+ *   is told in full FYs).
  */
-function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter) {
-  const fys = fyListWR_(ctx.asOf, cfg.FY_COUNT);
+function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter, fyCount) {
+  const nFy = (fyCount >= 1 && fyCount <= cfg.FY_COUNT) ? Math.floor(fyCount) : cfg.FY_COUNT;
+  const fys = fyListWR_(ctx.asOf, nFy);
   const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
   const qWindows = q ? fys.map(fy => fyQuarterWindow_(fy, q, ctx.asOf)) : null;
   const windows = q ? qWindows.filter(w => w.started) : fys;
@@ -1245,6 +1274,7 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
       scopes,
       quarter: q,
       quarterSkipped: q ? qWindows.filter(w => !w.started).map(w => w.label) : [],
+      fyCount: nFy,
       asOf: isoDate_(ctx.asOf),
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
@@ -1264,8 +1294,10 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
     },
     report: { scope: report.scope, currency: report.currency, sections: report.sections },
   };
-  if (scope === "company" && !q) {
-    payload.brief = buildBrief_(records, histByEmp, fys, ctx, cfg, report);
+  if (!q) {
+    const scopeRecords = scope === "company"
+      ? records : records.filter(r => r.keyLocation === scope);
+    payload.brief = buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, scopes);
   }
   return payload;
 }
@@ -1485,12 +1517,18 @@ function readBenchmarksWR_() {
 
 // ── Assembly + web app ──────────────────────────────────────────────────────
 
-function cacheKeyForScope_(scope, quarter) {
+function cacheKeyForScope_(scope, quarter, fyCount) {
   const ver = props_().getProperty("WR_CACHE_VER") || "1";
   const slug = scope === "company"
     ? "company" : normWR_(scope).replace(/[^a-z0-9]+/g, "_");
   return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug +
-    (quarter ? "_q" + quarter : "");
+    (quarter ? "_q" + quarter : "") +
+    (fyCount && fyCount !== CONFIG_WR.FY_COUNT ? "_f" + fyCount : "");
+}
+
+function sanitizeFyCount_(fyCount) {
+  return (fyCount >= 1 && fyCount <= CONFIG_WR.FY_COUNT)
+    ? Math.floor(fyCount) : CONFIG_WR.FY_COUNT;
 }
 
 /**
@@ -1499,17 +1537,19 @@ function cacheKeyForScope_(scope, quarter) {
  * @param {string} scope - "company" or a roster Key Location.
  * @param {boolean} force - true bypasses cache (Refresh button).
  * @param {number} [quarter] - 1–4 for the quarterly view; 0/absent = full FYs.
+ * @param {number} [fyCount] - FY comparison range: 3 all, 2 prev+current, 1 current.
  * @returns {string} JSON string — ViewReport.html parses it client-side
  *   (marshalling a large nested object through the iframe bridge is slow).
  */
-function getWorkforceReportData(scope, force, quarter) {
+function getWorkforceReportData(scope, force, quarter, fyCount) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
   let scopeName = String(scope || "company").trim() || "company";
   const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
+  const nFy = sanitizeFyCount_(fyCount);
   const cache = CacheService.getScriptCache();
-  const key = cacheKeyForScope_(scopeName, q);
+  const key = cacheKeyForScope_(scopeName, q, nFy);
   if (!force) {
     const hit = cacheGetLarge_(cache, key);
     if (hit) {
@@ -1542,7 +1582,7 @@ function getWorkforceReportData(scope, force, quarter) {
     scopeName = "company";
   }
 
-  const payload = buildReportPayload_(records, histByEmp, bench.map, scopeName, ctx, CONFIG_WR, q);
+  const payload = buildReportPayload_(records, histByEmp, bench.map, scopeName, ctx, CONFIG_WR, q, nFy);
   payload.meta.generatedAt = new Date().toISOString();
   payload.meta.role = access.role;
   payload.meta.email = access.email;
@@ -1551,8 +1591,9 @@ function getWorkforceReportData(scope, force, quarter) {
   payload.meta.benchRows = bench.count;
 
   const json = JSON.stringify(payload);
-  cachePutLarge_(cache, cacheKeyForScope_(scopeName, q), json, CONFIG_WR.CACHE_TTL_SEC);
-  Logger.log("✅ getWorkforceReportData(" + scopeName + (q ? " Q" + q : "") + "): built in " +
+  cachePutLarge_(cache, cacheKeyForScope_(scopeName, q, nFy), json, CONFIG_WR.CACHE_TTL_SEC);
+  Logger.log("✅ getWorkforceReportData(" + scopeName + (q ? " Q" + q : "") +
+             (nFy !== CONFIG_WR.FY_COUNT ? " ×" + nFy + "FY" : "") + "): built in " +
              Math.round((Date.now() - t0) / 1000) + "s — " + json.length + " chars");
   return json;
 }
@@ -1560,12 +1601,13 @@ function getWorkforceReportData(scope, force, quarter) {
 // ── AI narrative — spec §8 ──────────────────────────────────────────────────
 
 /**
- * Board-brief narrative (View B AI blocks). Generated on demand, cached per
+ * Board-brief narrative (View B AI blocks) — for the company OR a single
+ * country (e.g. Chile). Generated on demand, cached per scope + FY range +
  * WR_CACHE_VER; force = Regenerate. Degrades to {ok:false} — the report
  * renders fully without it (AI is additive, never load-bearing).
  * @returns {string} JSON of {ok, narrative, fromCache} | {ok:false, error}.
  */
-function getBriefNarrative(force) {
+function getBriefNarrative(force, scope, fyCount) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
@@ -1579,8 +1621,15 @@ function getBriefNarrative(force) {
   }
   cache.put(rlKey, String(rlCount + 1), RL_WINDOW);
 
-  const ver = props_().getProperty("WR_CACHE_VER") || "1";
-  const aiKey = CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_ai_company";
+  // The narrative derives from the same payload the client renders — an
+  // unknown scope degrades to company inside getWorkforceReportData.
+  const raw = getWorkforceReportData(scope, false, 0, fyCount);
+  const payload = JSON.parse(raw);
+  if (!payload.ok || !payload.brief) {
+    return JSON.stringify({ ok: false, error: "Brief data unavailable for this scope." });
+  }
+
+  const aiKey = cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai";
   if (!force) {
     const hit = cacheGetLarge_(cache, aiKey);
     if (hit) {
@@ -1588,13 +1637,6 @@ function getBriefNarrative(force) {
       obj.fromCache = true;
       return JSON.stringify(obj);
     }
-  }
-
-  // The narrative derives from the same company payload the client renders.
-  const raw = getWorkforceReportData("company", false);
-  const payload = JSON.parse(raw);
-  if (!payload.ok || !payload.brief) {
-    return JSON.stringify({ ok: false, error: "Company report unavailable." });
   }
 
   const result = callGeminiWR_(promptForBrief_(payload.brief, payload.meta));
@@ -1654,6 +1696,264 @@ function callGeminiWR_(prompt) {
   } catch (e) {
     Logger.log("⚠️ callGeminiWR_: " + e.message);
     return { ok: false, error: "Gemini call failed: " + e.message };
+  }
+}
+
+// ── Google Doc export — keeps the Chile-example format ──────────────────────
+// Big bold title, muted subtitle with FY windows + extraction date, a badge
+// legend, numbered navy section headings, badge-chip FAR/N lines, and shaded-
+// header tables with a bold Total row on pure count tables.
+
+const DOC_STYLE_ = {
+  TITLE_COLOR: "#0F1941", TEXT: "#1E293B", MUTED: "#64748b",
+  TH_BG: "#F8FAFC", BORDER: "#E2E8F0",
+  BADGES: { FACT: "#17365D", ASSUMPTION: "#D68910", RISK: "#C0392B", NOTE: "#7F8C8D" },
+  LEGEND: {
+    FACT: "observed in source data", ASSUMPTION: "applied to derive a figure",
+    RISK: "exposure implied by the data", NOTE: "definition or caveat",
+  },
+};
+
+function docTitle_(body, text) {
+  const p = body.appendParagraph(text);
+  p.editAsText().setBold(true).setFontSize(20).setForegroundColor(DOC_STYLE_.TITLE_COLOR);
+  p.setSpacingAfter(4);
+  return p;
+}
+
+function docSub_(body, text) {
+  const p = body.appendParagraph(text);
+  p.editAsText().setBold(false).setFontSize(10).setForegroundColor(DOC_STYLE_.MUTED);
+  p.setSpacingAfter(10);
+  return p;
+}
+
+function docHeading_(body, text) {
+  const p = body.appendParagraph(text);
+  p.editAsText().setBold(true).setFontSize(13).setForegroundColor(DOC_STYLE_.TITLE_COLOR);
+  p.setSpacingBefore(16).setSpacingAfter(4);
+  return p;
+}
+
+/** One FAR/N line: a colored badge chip followed by the sentence. */
+function docBadgeLine_(body, badge, text) {
+  const p = body.appendParagraph("");
+  const chip = p.appendText(" " + badge + " ");
+  chip.setBold(true).setFontSize(8).setForegroundColor("#FFFFFF")
+      .setBackgroundColor(DOC_STYLE_.BADGES[badge] || DOC_STYLE_.BADGES.NOTE);
+  const t = p.appendText("  " + text);
+  t.setBold(false).setFontSize(10).setForegroundColor(DOC_STYLE_.TEXT).setBackgroundColor(null);
+  p.setSpacingAfter(5);
+  return p;
+}
+
+/** The FACT/ASSUMPTION/RISK/NOTE legend row under the subtitle. */
+function docLegend_(body) {
+  const p = body.appendParagraph("");
+  Object.keys(DOC_STYLE_.LEGEND).forEach((badge, i) => {
+    const chip = p.appendText((i ? "   " : "") + " " + badge + " ");
+    chip.setBold(true).setFontSize(8).setForegroundColor("#FFFFFF")
+        .setBackgroundColor(DOC_STYLE_.BADGES[badge]);
+    const t = p.appendText(" " + DOC_STYLE_.LEGEND[badge]);
+    t.setBold(false).setFontSize(9).setForegroundColor(DOC_STYLE_.MUTED).setBackgroundColor(null);
+  });
+  p.setSpacingAfter(12);
+  return p;
+}
+
+/**
+ * Styled table: shaded bold header row; a bold Total row is appended to pure
+ * two-column count tables (the screenshot idiom).
+ */
+function docTable_(body, tbl) {
+  if (tbl.title) {
+    const tp = body.appendParagraph(tbl.title.toUpperCase());
+    tp.editAsText().setBold(true).setFontSize(8).setForegroundColor(DOC_STYLE_.MUTED);
+    tp.setSpacingBefore(8).setSpacingAfter(2);
+  }
+  const rows = [tbl.headers.map(String)].concat(tbl.rows.map(r => r.map(c => String(c))));
+  const isCountTable = tbl.headers.length === 2 && tbl.rows.length > 1 &&
+    tbl.rows.every(r => typeof r[1] === "number" && isFinite(r[1]));
+  if (isCountTable) {
+    rows.push(["Total", String(tbl.rows.reduce((t, r) => t + r[1], 0))]);
+  }
+  const t = body.appendTable(rows);
+  t.setBorderColor(DOC_STYLE_.BORDER);
+  for (let r = 0; r < t.getNumRows(); r++) {
+    const row = t.getRow(r);
+    const isHeader = r === 0;
+    const isTotal = isCountTable && r === t.getNumRows() - 1;
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      const text = cell.editAsText();
+      text.setFontSize(isHeader ? 9 : 10)
+          .setBold(isHeader || isTotal)
+          .setForegroundColor(isHeader ? DOC_STYLE_.MUTED : DOC_STYLE_.TEXT);
+      if (isHeader) cell.setBackgroundColor(DOC_STYLE_.TH_BG);
+    }
+  }
+  return t;
+}
+
+/** "FY25 (1 Jul 2024 to 30 Jun 2025)" from a meta.fys entry. */
+function docFyWindowLabel_(fy) {
+  return fy.label + " (1 Jul " + fy.startCalYear + " to 30 Jun " + (fy.startCalYear + 1) + ")";
+}
+
+function writeReportDoc_(body, payload) {
+  const m = payload.meta, r = payload.report;
+  const scopeLabel = m.scope === "company" ? "ServiceRocket" : m.scope;
+  docTitle_(body, scopeLabel + " Workforce & Compensation Report");
+  docSub_(body, "fiscal years " + m.fys.map(docFyWindowLabel_).join(" and ") +
+    (m.quarter ? " · Q" + m.quarter + " view" : "") +
+    " · data extracted on " + m.asOf + " · figures in " + r.currency.code +
+    ". All figures are stated as Fact, Assumption, Risk, or Note.");
+  docLegend_(body);
+  r.sections.forEach(s => {
+    docHeading_(body, s.title.replace(" · ", ". "));
+    s.lines.forEach(l => docBadgeLine_(body, l.badge, l.text));
+    (s.tables || []).forEach(t => docTable_(body, t));
+  });
+}
+
+function writeBriefDoc_(body, payload, narrative) {
+  const m = payload.meta, b = payload.brief;
+  const fyNow = m.fys[m.fys.length - 1].label;
+  const scopeLabel = b.scope === "company" ? "Global" : b.scope;
+  const cur = b.currency.code;
+  docTitle_(body, scopeLabel + " Workforce & Compensation Review · " + fyNow);
+  docSub_(body, "ServiceRocket · " + m.fys.map(f => f.label).join(" – ") +
+    " · data extracted on " + m.asOf + " · figures in " + cur);
+
+  docHeading_(body, "2. Executive summary");
+  if (narrative && narrative.execSummary.length) {
+    docSub_(body, "✨ AI synthesis — generated text; figures come from the computed report.");
+    narrative.execSummary.forEach(s => body.appendListItem(s).editAsText().setFontSize(10));
+  } else {
+    docBadgeLine_(body, "NOTE", "AI synthesis not generated at export time.");
+  }
+
+  docHeading_(body, "3. " + (b.scope === "company" ? "Company" : b.scope) + " at a glance");
+  docBadgeLine_(body, "FACT", fmtInt_(b.glance.headcount) + " active employees; TCC envelope " +
+    fmtMoney_(b.glance.tccEnvelope, cur) +
+    (b.glance.missingComp ? "; " + fmtInt_(b.glance.missingComp) +
+      " employees missing a comp value (headcount only)" : "") + ".");
+  if (b.glance.byLocation.length > 1) {
+    docTable_(body, { title: "Headcount by location", headers: ["Key Location", "Headcount"],
+      rows: b.glance.byLocation.map(x => [x.key, x.count]) });
+  }
+  docTable_(body, { title: "Headcount by function", headers: ["Department", "Headcount"],
+    rows: b.glance.byDept.map(x => [x.key, x.count]) });
+
+  docHeading_(body, "4. Movement & attrition");
+  docTable_(body, { title: "Movement by fiscal year",
+    headers: ["FY", "Hires", "Exits", "Net", "Attrition rate"],
+    rows: b.movement.scopeTotals.map(x => [x.label + (x.inProgress ? " (to date)" : ""),
+      x.hires, x.exits, (x.net >= 0 ? "+" : "") + x.net, fmtPct_(x.rate)]) });
+  docTable_(body, { title: "Regretted-attrition trend",
+    headers: ["FY", "Regretted", "Exits", "Regretted share"],
+    rows: b.movement.regrettedTrend.map(t => [t.label, t.regretted, t.exits, fmtPct_(t.pct, 0)]) });
+  docTable_(body, { title: "Per-" + b.dim.label.toLowerCase() + " matrix",
+    headers: [b.dim.label].concat(m.fys.map(f => f.label + " exits (rate)")),
+    rows: b.movement.byGroup.map(L => [L.key].concat(
+      L.perFy.map(p => p.exits + " (" + fmtPct_(p.rate) + ")"))) });
+
+  docHeading_(body, "5. The retention signal");
+  if (b.retention.length) {
+    docTable_(body, { title: "Regretted leavers: level × tenure × reason",
+      headers: ["Level", "Tenure", "Reason", "Count"],
+      rows: b.retention.map(x => [x.level, x.tenureBucket, x.reason, x.count]) });
+  } else {
+    docBadgeLine_(body, "NOTE", "No regretted exits recorded in the window.");
+  }
+
+  docHeading_(body, "6. Compensation strategy");
+  docTable_(body, { title: "Growth by lever",
+    headers: ["FY", "Promotions", "Promo growth", "Adjustments", "Adjustment growth"],
+    rows: b.levers.map(v => [v.label + (v.inProgress ? " (to date)" : ""),
+      v.promo.count, fmtPct_(v.promo.growthPct), v.adjust.count, fmtPct_(v.adjust.growthPct)]) });
+
+  docHeading_(body, "7. Structural risks");
+  if (b.structuralRisks.length) {
+    b.structuralRisks.forEach(x =>
+      docBadgeLine_(body, "RISK", x.title + " — " + x.detail));
+  } else {
+    docBadgeLine_(body, "NOTE", "No structural-risk candidate fired at current thresholds.");
+  }
+
+  docHeading_(body, "8. " + b.dim.label + " spotlights");
+  docTable_(body, { title: "Comparison matrix (" + fyNow + ")",
+    headers: [b.dim.label, "Headcount", "Attrition", "Regretted", "Avg TCC (" + cur + ")", "Promo rate", "Flag"],
+    rows: b.spotlights.map(s => [s.key, s.headcount, fmtPct_(s.attritionRate),
+      fmtPct_(s.regrettedPct, 0), fmtInt_(s.avgComp), fmtPct_(s.promoRate),
+      (narrative && narrative.spotlightFlags && narrative.spotlightFlags[s.key]) || s.candidates[0]]) });
+
+  docHeading_(body, "9. Decisions for the board");
+  if (narrative && narrative.decisions.length) {
+    docSub_(body, "✨ AI-generated draft for discussion — not a recommendation of record.");
+    narrative.decisions.forEach(dd => {
+      const li = body.appendListItem(dd.title + (dd.rationale ? " — " + dd.rationale : ""));
+      li.editAsText().setFontSize(10);
+    });
+  } else {
+    docBadgeLine_(body, "NOTE", "AI draft not generated at export time.");
+  }
+}
+
+/**
+ * Exports the current view to a formatted Google Doc and returns its URL.
+ * The doc is created in the executing account's Drive; the requesting viewer
+ * is added as a Doc viewer when the app runs as the owner.
+ * @param {string} view - "report" (View A) or "brief" (View B).
+ * @returns {string} JSON of {ok, url, name} | {ok:false, error}.
+ */
+function exportReportToDoc(scope, quarter, fyCount, view) {
+  const access = checkReportAccess();
+  if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
+  try {
+    // A brief export must not carry a quarterly filter (brief is full-FY).
+    const q = view === "brief" ? 0 : quarter;
+    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyCount));
+    if (!payload.ok) return JSON.stringify({ ok: false, error: "Report unavailable." });
+    const wantBrief = view === "brief" && payload.brief;
+
+    // Include the AI narrative only if already cached — export never spends
+    // Gemini quota on its own.
+    let narrative = null;
+    if (wantBrief) {
+      const hit = cacheGetLarge_(CacheService.getScriptCache(),
+        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai");
+      if (hit) {
+        try { narrative = JSON.parse(hit).narrative || null; } catch (e) { narrative = null; }
+      }
+    }
+
+    const scopeLabel = payload.meta.scope === "company" ? "Company-wide" : payload.meta.scope;
+    const name = (wantBrief ? "Board Brief" : "Workforce & Compensation Report") +
+      " — " + scopeLabel +
+      " · " + payload.meta.fys.map(f => f.label).join("–") +
+      (payload.meta.quarter ? " Q" + payload.meta.quarter : "") +
+      " · " + payload.meta.asOf;
+    const doc = DocumentApp.create(name);
+    const body = doc.getBody();
+    if (wantBrief) writeBriefDoc_(body, payload, narrative);
+    else writeReportDoc_(body, payload);
+    body.editAsText().setFontFamily("Roboto");
+    doc.saveAndClose();
+
+    try {
+      const me = (Session.getEffectiveUser().getEmail() || "").toLowerCase();
+      if (access.email && access.email !== me) {
+        DriveApp.getFileById(doc.getId()).addViewer(access.email);
+      }
+    } catch (e) {
+      Logger.log("⚠️ exportReportToDoc share: " + e.message);
+    }
+    Logger.log("✅ exportReportToDoc: " + name);
+    return JSON.stringify({ ok: true, url: doc.getUrl(), name });
+  } catch (e) {
+    Logger.log("❌ exportReportToDoc: " + e.message);
+    return JSON.stringify({ ok: false, error: "Export failed: " + e.message });
   }
 }
 

@@ -345,7 +345,7 @@ function term(over) {
   ];
   const records = active.concat(exits);
   const cs = { inversions: [{ mLevel: "M4", mAvg: 5000, icLevel: "I5", icAvg: 6000 }] };
-  const risks = buildStructuralRisks_(active, records, fys, ctx, CONFIG_WR, cs);
+  const risks = buildStructuralRisks_(active, records, fys, ctx, CONFIG_WR, cs, "USD");
   const ids = risks.map(r => r.id);
   check("risks: inversion candidate emitted", ids.indexOf("inversion-M4-I5") !== -1);
   check("risks: function concentration at 50%", ids.indexOf("func-concentration") !== -1);
@@ -355,9 +355,11 @@ function term(over) {
     risks.find(r => r.id === "func-concentration").detail.indexOf("5 of 10") !== -1);
 
   const belowThresh = buildStructuralRisks_(
-    active, active.concat(exits.slice(0, 2)), fys, ctx, CONFIG_WR, { inversions: [] });
+    active, active.concat(exits.slice(0, 2)), fys, ctx, CONFIG_WR, { inversions: [] }, "USD");
   check("risks: mid-level share below MIN_EXITS stays silent",
     belowThresh.every(r => r.id !== "midlevel-flight"));
+  check("risks: inversion detail states the scope currency",
+    risks.find(r => r.kind === "inversion").detail.indexOf("USD") !== -1);
 
   const xt = buildRetentionCrosstab_(records, fys);
   check("crosstab: regretted-only, level × tenure × reason",
@@ -365,22 +367,29 @@ function term(over) {
   check("crosstab: reason + bucket populated",
     xt.every(r => r.reason === "Better offer" && r.tenureBucket === "1–3y"));
 
-  const spots = buildSpotlights_(records, {}, fys, ctx, CONFIG_WR);
-  check("spotlights: one row per active location", spots.length === 1 && spots[0].location === "Mexico");
+  const LOC_DIM = { field: "keyLocation", label: "Location" };
+  const USD_MODE = { mode: "usd", code: "USD" };
+  const spots = buildSpotlights_(records, {}, fys, ctx, CONFIG_WR, LOC_DIM, USD_MODE);
+  check("spotlights: one row per active location", spots.length === 1 && spots[0].key === "Mexico");
   check("spotlights: regretted candidate fires at 50% ≥ 60%? no — 2 of 4 = 50% < 60%",
     spots[0].candidates.every(c => c.indexOf("Regretted share") === -1));
   check("spotlights: candidates never empty", spots[0].candidates.length >= 1);
+  // Department dimension (single-country brief): same records, grouped by dept.
+  const dSpots = buildSpotlights_(records, {}, fys, ctx, CONFIG_WR,
+    { field: "dept", label: "Department" }, USD_MODE);
+  check("spotlights: department dimension groups by dept",
+    dSpots.length >= 1 && dSpots.every(s => ["Consulting", "R&D", "Sales", "Services"].indexOf(s.key) !== -1));
 })();
 
 // ── AI narrative validation: verbatim-candidate enforcement — spec §8 ───────
 (function () {
   const brief = { spotlights: [
-    { location: "Chile", candidates: ["Attrition above the company rate (10.0% vs 8.0%).", "Steady state — no computed flag this period."] },
-    { location: "Mexico", candidates: ["Steady state — no computed flag this period."] },
+    { key: "Chile", candidates: ["Attrition above the scope rate (10.0% vs 8.0%).", "Steady state — no computed flag this period."] },
+    { key: "Mexico", candidates: ["Steady state — no computed flag this period."] },
   ] };
   const good = validateNarrative_({
     execSummary: ["Signal one.", "Signal two.", "Signal three."],
-    spotlightFlags: { Chile: "Attrition above the company rate (10.0% vs 8.0%).",
+    spotlightFlags: { Chile: "Attrition above the scope rate (10.0% vs 8.0%).",
                       Mexico: "An invented risk the model made up." },
     decisions: [{ title: "Fund a retention pool", rationale: "Because of the 10.0% rate." },
                 { title: "", rationale: "dropped" }, { junk: true }],
@@ -473,10 +482,37 @@ function term(over) {
     company.report.sections.every(s => s.lines.length > 0 &&
       s.lines.every(l => ["FACT", "ASSUMPTION", "RISK", "NOTE"].indexOf(l.badge) !== -1)));
 
+  check("payload: company brief spotlights by location",
+    company.brief.dim.field === "keyLocation" && company.brief.currency.code === "USD");
+
   const chile = buildReportPayload_(records, hist, {}, "Chile", ctx, CONFIG_WR);
-  check("payload: location scope has no brief", chile.brief === undefined);
   check("payload: single-currency location stays local",
     chile.report.currency.mode === "local" && chile.report.currency.code === "CLP");
   check("payload: location scope excludes other locations",
     chile.report.sections[0].lines[0].text.indexOf("3 active employees") !== -1);
+  // Single-country board brief — the Chile sample.
+  check("payload: country brief present, spotlights by department, local currency",
+    chile.brief != null && chile.brief.scope === "Chile" &&
+    chile.brief.dim.field === "dept" && chile.brief.currency.code === "CLP");
+  check("payload: country brief glance counts scope only",
+    chile.brief.glance.headcount === 3 &&
+    chile.brief.glance.byLocation.length === 1);
+  check("payload: country brief appendix still lists every scope",
+    chile.brief.appendix.join() === "Chile,Mexico");
+  check("payload: country brief spotlight rows are departments",
+    chile.brief.spotlights.every(s => s.key === "Services"));
+
+  // FY comparison range — manager view: previous + current, or current only.
+  const two = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, 2);
+  check("payload: fyCount 2 = previous + current FY",
+    two.meta.fys.map(f => f.label).join() === "FY26,FY27" && two.meta.fyCount === 2);
+  check("payload: fyCount 2 movement table carries two rows",
+    two.report.sections.find(s => s.id === "movement").tables[0].rows.length === 2);
+  check("payload: fyCount 2 brief trend matches the range",
+    two.brief.movement.regrettedTrend.map(t => t.label).join() === "FY26,FY27");
+  const one = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, 1);
+  check("payload: fyCount 1 = current FY only",
+    one.meta.fys.map(f => f.label).join() === "FY27" && one.brief != null);
+  const bad = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, 9);
+  check("payload: out-of-range fyCount falls back to all FYs", bad.meta.fyCount === 3);
 })();

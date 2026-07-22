@@ -111,8 +111,41 @@
     textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px;
                padding: 8px 10px; font: inherit; font-size: 13px; color: var(--text); }
 
-    /* Print — either view goes to PDF for board distribution (spec §7) */
+    /* ── Dark mode (PS Dashboard body.dark-mode pattern) ── */
+    body.dark-mode {
+      --surface: #0B1230; --card-bg: #141C3D; --border: #2C3D78;
+      --text: #E8ECF8; --muted: #8A97C0; --slate: #A8B3D6; --th-bg: #1A2450;
+      --st-critical-bg: #3A2020; --st-critical-fg: #F2B8B8;
+      --st-watch-bg:    #3A3220; --st-watch-fg:    #E8D9A0;
+      --st-healthy-bg:  #1D3328; --st-healthy-fg:  #9FDCB4;
+      --st-champion-bg: #1A2A52; --st-champion-fg: #9DB9F2;
+      --shadow: 0 1px 4px rgba(0,0,0,.4);
+    }
+    body.dark-mode .hdr-title h1, body.dark-mode h2, body.dark-mode .cover h1 { color: var(--text); }
+    body.dark-mode button, body.dark-mode select { background: var(--card-bg); color: var(--slate); }
+    body.dark-mode button:hover { background: var(--th-bg); color: var(--text); }
+    body.dark-mode .seg { background: var(--th-bg); }
+    body.dark-mode .seg button { background: transparent; }
+    body.dark-mode .seg button.on { background: var(--orbe); color: #fff; }
+    body.dark-mode .btn-cta { background: var(--orbe); color: #fff; }
+    body.dark-mode tr:hover td { background: #1E295A; }
+    body.dark-mode .banner { background: #3B2833; border-color: var(--june); color: #FFD8CC; }
+    body.dark-mode #loading { background: rgba(11,18,48,.88); }
+    body.dark-mode .ai-block { background: var(--st-champion-bg); }
+    body.dark-mode .chip { background: var(--th-bg); }
+    body.dark-mode textarea { background: var(--th-bg); color: var(--text); }
+
+    /* Print — either view goes to PDF for board distribution (spec §7).
+       Force the light tokens so a dark-mode session still prints clean. */
     @media print {
+      body.dark-mode {
+        --surface: #fff; --card-bg: #fff; --border: #E2E8F0;
+        --text: #1E293B; --muted: #94A3B8; --slate: #64748b; --th-bg: #F8FAFC;
+        --st-critical-bg: #FDECEA; --st-critical-fg: #B71C1C;
+        --st-watch-bg:    #FFF8E1; --st-watch-fg:    #7B4800;
+        --st-healthy-bg:  #F1F8F4; --st-healthy-fg:  #1B5E20;
+        --st-champion-bg: #EEF4FF; --st-champion-fg: #0D3B8C;
+      }
       body { background: #fff; }
       header, #loading, .noprint { display: none !important; }
       main { max-width: none; padding: 0; }
@@ -135,6 +168,11 @@
       <button data-view="brief" onclick="switchView('brief')">📊 Board brief</button>
     </div>
     <select id="scopeSel" onchange="setScope(this.value)"></select>
+    <select id="fySel" onchange="setFyCount(this.value)" title="Fiscal-year comparison range">
+      <option value="3">All 3 FYs</option>
+      <option value="2">Prev + current FY</option>
+      <option value="1">Current FY only</option>
+    </select>
     <select id="quarterSel" onchange="setQuarter(this.value)" title="Quarterly performance view">
       <option value="0">All quarters</option>
       <option value="1">Q1 (Jul–Sep)</option>
@@ -142,7 +180,9 @@
       <option value="3">Q3 (Jan–Mar)</option>
       <option value="4">Q4 (Apr–Jun)</option>
     </select>
+    <button id="exportBtn" onclick="exportDoc()" title="Export the current view to a formatted Google Doc">📄 Export Doc</button>
     <button onclick="window.print()" title="Print / save as PDF">🖨 Print</button>
+    <button id="themeBtn" onclick="toggleTheme()" title="Light / dark theme">🌙</button>
     <button id="refreshBtn" onclick="loadData(true)" title="Bypass cache for a live read">⟳ Refresh</button>
     <button id="accessBtn" class="hidden" onclick="toggleAccess()">🔒 Access</button>
   </div>
@@ -156,14 +196,17 @@ const USER_ROLE  = "<?= userRole ?>";
 const USER_EMAIL = "<?= userEmail ?>";
 
 const STATE = {
-  data: null,          // payload for the CURRENT scope+quarter
+  data: null,          // payload for the CURRENT scope+quarter+fyCount
   scope: "company",
   quarter: 0,          // 0 = full FYs, 1–4 = fiscal-quarter view
+  fyCount: 3,          // 3 = all FYs, 2 = previous + current, 1 = current only
   view: "report",      // "report" | "brief" | "access"
-  narrative: null,     // validated AI narrative (View B), or null
+  narratives: {},      // "scope|fyCount" → validated AI narrative (View B)
   narrativeError: null,
   aiBusy: false,
-  cache: {},           // "scope|quarter" → payload (client-side, per session)
+  exportBusy: false,
+  exportResult: null,  // {url, name} of the last Google Doc export
+  cache: {},           // "scope|quarter|fyCount" → payload (client-side, per session)
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -174,7 +217,9 @@ function esc(s) {
 function fmtInt(n) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") : "—"; }
 function fmtPct(x, dp) { return (typeof x === "number" && isFinite(x)) ? (x * 100).toFixed(dp == null ? 1 : dp) + "%" : "—"; }
 function fmtMoney(n, code) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") + (code ? " " + code : "") : "—"; }
-function cacheKey() { return STATE.scope + "|" + STATE.quarter; }
+function cacheKey() { return STATE.scope + "|" + STATE.quarter + "|" + STATE.fyCount; }
+function narrativeKey() { return STATE.scope + "|" + STATE.fyCount; }
+function currentNarrative() { return STATE.narratives[narrativeKey()] || null; }
 
 function lineHtml(l) {
   return '<div class="line"><span class="badge ' + esc(l.badge) + '">' + esc(l.badge) +
@@ -203,27 +248,34 @@ function quarterBanner() {
 
 // ── navigation ──────────────────────────────────────────────
 function switchView(v) {
-  // The Board brief synthesizes across ALL locations in FULL fiscal years —
-  // selecting it snaps scope to company and clears the quarterly filter.
-  if (v === "brief" && (STATE.scope !== "company" || STATE.quarter !== 0)) {
-    STATE.view = "brief";
+  // The Board brief works for the company OR a single country, but always in
+  // FULL fiscal years — selecting it clears the quarterly filter only.
+  STATE.view = v;
+  if (v === "brief" && STATE.quarter !== 0) {
     STATE.quarter = 0;
-    setScope("company");
+    refetchOrRender();
     return;
   }
-  STATE.view = v;
   syncHeader();
   render();
 }
 function setScope(scope) {
   STATE.scope = scope || "company";
-  if (STATE.view === "brief" && STATE.scope !== "company") STATE.view = "report";
   refetchOrRender();
 }
 function setQuarter(q) {
   STATE.quarter = parseInt(q, 10) || 0;
   if (STATE.view === "brief" && STATE.quarter !== 0) STATE.view = "report";
   refetchOrRender();
+}
+function setFyCount(n) {
+  STATE.fyCount = parseInt(n, 10) || 3;
+  refetchOrRender();
+}
+function toggleTheme() {
+  const dark = document.body.classList.toggle("dark-mode");
+  document.getElementById("themeBtn").textContent = dark ? "☀️" : "🌙";
+  try { localStorage.setItem("wr_theme", dark ? "dark" : "light"); } catch (e) { /* private mode */ }
 }
 function refetchOrRender() {
   const hit = STATE.cache[cacheKey()];
@@ -251,13 +303,25 @@ function syncHeader() {
         (s === STATE.scope ? " selected" : "") + '>' + esc(s) + '</option>').join("");
     sel.value = STATE.scope;
     document.getElementById("quarterSel").value = String(STATE.quarter);
-    const fyRange = d.meta.fys[0].label + "–" + d.meta.fys[d.meta.fys.length - 1].label;
+    // Relabel the FY-range options with real FY labels ("FY26–FY27" beats
+    // "Prev + current FY" once we know which years those are).
+    const curFy = parseInt(d.meta.fys[d.meta.fys.length - 1].label.slice(2), 10);
+    const fySel = document.getElementById("fySel");
+    const label = n => n === 1 ? "FY" + curFy + " only" : "FY" + (curFy - n + 1) + "–FY" + curFy;
+    [...fySel.options].forEach(o => { o.textContent = label(parseInt(o.value, 10)); });
+    fySel.value = String(STATE.fyCount);
+    const fyRange = d.meta.fys.length === 1
+      ? d.meta.fys[0].label
+      : d.meta.fys[0].label + "–" + d.meta.fys[d.meta.fys.length - 1].label;
     document.getElementById("fyBadge").textContent =
       fyRange + (d.meta.quarter ? " · Q" + d.meta.quarter : "");
     document.getElementById("subTitle").textContent =
       "extracted " + d.meta.asOf + " · " + (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
   }
   document.getElementById("accessBtn").classList.toggle("hidden", USER_ROLE !== "admin");
+  document.getElementById("exportBtn").disabled = STATE.exportBusy;
+  document.getElementById("exportBtn").textContent =
+    STATE.exportBusy ? "📄 Exporting…" : "📄 Export Doc";
 }
 
 // ── data load ───────────────────────────────────────────────
@@ -266,7 +330,7 @@ function loadData(force) {
   google.script.run
     .withSuccessHandler(onData)
     .withFailureHandler(onLoadError)
-    .getWorkforceReportData(STATE.scope, !!force, STATE.quarter);
+    .getWorkforceReportData(STATE.scope, !!force, STATE.quarter, STATE.fyCount);
 }
 function onData(raw) {
   let d = raw;
@@ -276,7 +340,8 @@ function onData(raw) {
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
   STATE.data = d;
   STATE.scope = d.meta.scope;     // server may degrade an unknown scope to company
-  STATE.quarter = d.meta.quarter; // and echoes the applied quarter
+  STATE.quarter = d.meta.quarter; // and echoes the applied quarter + FY range
+  STATE.fyCount = d.meta.fyCount || 3;
   STATE.cache[cacheKey()] = d;
   document.getElementById("loading").classList.add("hidden");
   syncHeader();
@@ -301,7 +366,7 @@ function renderReport(el) {
   const d = STATE.data, r = d.report;
   const scopeLabel = r.scope === "company" ? "Company-wide" : r.scope;
   el.innerHTML =
-    sourceBanner() + quarterBanner() +
+    sourceBanner() + exportBanner() + errorBanner() + quarterBanner() +
     '<div class="card cover"><h1>Workforce &amp; Compensation Report — ' + esc(scopeLabel) + '</h1>' +
     '<div class="sub">' + d.meta.fys.map(f => f.label).join(" · ") +
     (d.meta.quarter ? ' · Q' + d.meta.quarter + ' view' : '') +
@@ -324,7 +389,7 @@ function aiPlaceholder(what) {
     : what + ' not generated yet — use the ✨ button above.') + '</span>';
 }
 function narrativeControls() {
-  const has = !!STATE.narrative;
+  const has = !!currentNarrative();
   return '<div class="noprint" style="margin-bottom:14px">' +
     '<button class="btn-cta" onclick="generateNarrative(' + (has ? "true" : "false") + ')"' +
     (STATE.aiBusy ? " disabled" : "") + '>' +
@@ -335,13 +400,14 @@ function narrativeControls() {
 function generateNarrative(force) {
   if (STATE.aiBusy) return;
   STATE.aiBusy = true;
+  const key = narrativeKey();
   render();
   google.script.run
     .withSuccessHandler(raw => {
       STATE.aiBusy = false;
       let d = raw;
       try { if (typeof raw === "string") d = JSON.parse(raw); } catch (e) { d = null; }
-      if (d && d.ok) STATE.narrative = d.narrative;
+      if (d && d.ok) STATE.narratives[key] = d.narrative;
       else STATE.narrativeError = String((d && d.error) || "Narrative generation failed.");
       render();
     })
@@ -350,28 +416,71 @@ function generateNarrative(force) {
       STATE.narrativeError = String((err && err.message) || err);
       render();
     })
-    .getBriefNarrative(!!force);
+    .getBriefNarrative(!!force, STATE.scope, STATE.fyCount);
+}
+
+// ── Google Doc export (current view + filters) ──────────────
+function exportDoc() {
+  if (STATE.exportBusy) return;
+  STATE.exportBusy = true;
+  STATE.exportResult = null;
+  syncHeader();
+  const view = STATE.view === "brief" ? "brief" : "report";
+  google.script.run
+    .withSuccessHandler(raw => {
+      STATE.exportBusy = false;
+      let d = raw;
+      try { if (typeof raw === "string") d = JSON.parse(raw); } catch (e) { d = null; }
+      if (d && d.ok) STATE.exportResult = { url: d.url, name: d.name };
+      else STATE.narrativeError = "Export failed: " + ((d && d.error) || "unknown error");
+      syncHeader();
+      render();
+    })
+    .withFailureHandler(err => {
+      STATE.exportBusy = false;
+      STATE.narrativeError = "Export failed: " + ((err && err.message) || err);
+      syncHeader();
+      render();
+    })
+    .exportReportToDoc(STATE.scope, STATE.quarter, STATE.fyCount, view);
+}
+function dismissExport() {
+  STATE.exportResult = null;
+  render();
+}
+function exportBanner() {
+  if (!STATE.exportResult) return "";
+  return '<div class="banner info noprint">📄 <b>Google Doc created:</b> ' +
+    '<a href="' + esc(STATE.exportResult.url) + '" target="_blank" rel="noopener">' +
+    esc(STATE.exportResult.name) + ' ↗</a> ' +
+    '<button style="float:right;padding:1px 8px" onclick="dismissExport()">✕</button></div>';
+}
+function errorBanner() {
+  if (!STATE.narrativeError) return "";
+  const html = '<div class="banner err noprint">⚠️ ' + esc(STATE.narrativeError) + '</div>';
+  STATE.narrativeError = null;
+  return html;
 }
 
 function renderBrief(el) {
   const d = STATE.data, b = d.brief;
   if (!b) {
-    el.innerHTML = '<div class="banner err">Board brief is company-scope only — switching scope…</div>';
+    el.innerHTML = '<div class="banner err">Brief unavailable for this view — clear the quarterly filter.</div>';
     return;
   }
-  const n = STATE.narrative;
+  const n = currentNarrative();
   const fyNow = d.meta.fys[d.meta.fys.length - 1].label;
   const g = b.glance;
-  const errBanner = STATE.narrativeError
-    ? '<div class="banner err noprint">⚠️ ' + esc(STATE.narrativeError) +
-      ' — the report below is complete without the AI text.</div>' : "";
-  STATE.narrativeError = null;
+  const cur = b.currency.code;
+  const dimLabel = b.dim.label;
+  const isCompany = b.scope === "company";
 
   // 1 · Cover
-  let html = sourceBanner() + errBanner + narrativeControls() +
-    '<div class="card cover"><h1>Global Workforce &amp; Compensation Review · ' + esc(fyNow) + '</h1>' +
+  let html = sourceBanner() + exportBanner() + errorBanner() + narrativeControls() +
+    '<div class="card cover"><h1>' + esc(isCompany ? "Global" : b.scope) +
+    ' Workforce &amp; Compensation Review · ' + esc(fyNow) + '</h1>' +
     '<div class="sub">ServiceRocket · ' + d.meta.fys.map(f => f.label).join(" – ") +
-    ' · data extracted on ' + esc(d.meta.asOf) + '</div></div>';
+    ' · data extracted on ' + esc(d.meta.asOf) + ' · figures in ' + esc(cur) + '</div></div>';
 
   // 2 · Executive summary (AI)
   html += '<div class="card"><h2>2 · Executive summary</h2>' +
@@ -379,28 +488,30 @@ function renderBrief(el) {
       ? '<ul>' + n.execSummary.map(s => '<li>' + esc(s) + '</li>').join("") + '</ul>'
       : aiPlaceholder("Executive summary")) + '</div>';
 
-  // 3 · Company at a glance
-  html += '<div class="card"><h2>3 · Company at a glance</h2>' +
+  // 3 · At a glance
+  html += '<div class="card"><h2>3 · ' + esc(isCompany ? "Company" : b.scope) + ' at a glance</h2>' +
     '<span class="chip">' + fmtInt(g.headcount) + ' active employees</span>' +
-    '<span class="chip">TCC envelope ' + fmtMoney(g.tccEnvelopeUsd, "USD") + '</span>' +
-    (g.missingUsd ? '<span class="chip">' + fmtInt(g.missingUsd) + ' missing TCC USD (headcount only)</span>' : "") +
-    tableHtml({ title: "Headcount by location", headers: ["Key Location", "Headcount"],
-      rows: g.byLocation.map(x => [x.key, x.count]) }) +
+    '<span class="chip">TCC envelope ' + fmtMoney(g.tccEnvelope, cur) + '</span>' +
+    (g.missingComp ? '<span class="chip">' + fmtInt(g.missingComp) + ' missing a comp value (headcount only)</span>' : "") +
+    (g.byLocation.length > 1
+      ? tableHtml({ title: "Headcount by location", headers: ["Key Location", "Headcount"],
+          rows: g.byLocation.map(x => [x.key, x.count]) })
+      : "") +
     tableHtml({ title: "Headcount by function", headers: ["Department", "Headcount"],
       rows: g.byDept.map(x => [x.key, x.count]) }) + '</div>';
 
   // 4 · Movement & attrition
   html += '<div class="card"><h2>4 · Movement &amp; attrition</h2>' +
-    tableHtml({ title: "Company movement by fiscal year",
+    tableHtml({ title: "Movement by fiscal year",
       headers: ["FY", "Hires", "Exits", "Net", "Attrition rate"],
-      rows: b.movement.company.map(m => [m.label + (m.inProgress ? " (to date)" : ""),
+      rows: b.movement.scopeTotals.map(m => [m.label + (m.inProgress ? " (to date)" : ""),
         m.hires, m.exits, (m.net >= 0 ? "+" : "") + m.net, fmtPct(m.rate)]) }) +
     tableHtml({ title: "Regretted-attrition trend",
       headers: ["FY", "Regretted", "Exits", "Regretted share"],
       rows: b.movement.regrettedTrend.map(t => [t.label, t.regretted, t.exits, fmtPct(t.pct, 0)]) }) +
-    tableHtml({ title: "Per-location matrix (" + esc(fyNow) + " column last)",
-      headers: ["Location"].concat(d.meta.fys.map(f => f.label + " exits (rate)")),
-      rows: b.movement.byLocation.map(L => [L.location].concat(
+    tableHtml({ title: "Per-" + dimLabel.toLowerCase() + " matrix (" + esc(fyNow) + " column last)",
+      headers: [dimLabel].concat(d.meta.fys.map(f => f.label + " exits (rate)")),
+      rows: b.movement.byGroup.map(L => [L.key].concat(
         L.perFy.map(p => p.exits + " (" + fmtPct(p.rate) + ")"))) }) + '</div>';
 
   // 5 · The retention signal
@@ -429,14 +540,15 @@ function renderBrief(el) {
           '<li><b>' + esc(r.title) + '</b> — ' + esc(r.detail) + '</li>').join("") + '</ul>'
       : '<p class="sub">No structural-risk candidate fired at current thresholds.</p>') + '</div>';
 
-  // 8 · Location spotlights
-  html += '<div class="card"><h2>8 · Location spotlights</h2>' +
+  // 8 · Spotlights (locations company-wide; departments for a single country)
+  html += '<div class="card"><h2>8 · ' + esc(dimLabel) + ' spotlights</h2>' +
     tableHtml({ title: "Comparison matrix (" + esc(fyNow) + ")",
-      headers: ["Location", "Headcount", "Attrition", "Regretted", "Avg TCC USD", "Promo rate", "Flag"],
-      rows: b.spotlights.map(s => [s.location, s.headcount, fmtPct(s.attritionRate),
-        fmtPct(s.regrettedPct, 0), fmtInt(s.avgTccUsd), fmtPct(s.promoRate),
-        (n && n.spotlightFlags && n.spotlightFlags[s.location]) || s.candidates[0]]) }) +
-    '<div class="sub">Flags are selected from each location’s computed candidate list' +
+      headers: [dimLabel, "Headcount", "Attrition", "Regretted", "Avg TCC (" + esc(cur) + ")", "Promo rate", "Flag"],
+      rows: b.spotlights.map(s => [s.key, s.headcount, fmtPct(s.attritionRate),
+        fmtPct(s.regrettedPct, 0), fmtInt(s.avgComp), fmtPct(s.promoRate),
+        (n && n.spotlightFlags && n.spotlightFlags[s.key]) || s.candidates[0]]) }) +
+    '<div class="sub">Flags are selected from each ' + esc(dimLabel.toLowerCase()) +
+    '’s computed candidate list' +
     (n ? " (✨ AI-selected)" : " (first candidate shown until AI synthesis runs)") + '.</div></div>';
 
   // 9 · Decisions for the board (AI draft)
@@ -497,6 +609,12 @@ function saveAccess() {
 }
 
 // ── boot ────────────────────────────────────────────────────
+try {
+  if (localStorage.getItem("wr_theme") === "dark") {
+    document.body.classList.add("dark-mode");
+    document.getElementById("themeBtn").textContent = "☀️";
+  }
+} catch (e) { /* private mode — default light */ }
 loadData(false);
 </script>
 </body>
