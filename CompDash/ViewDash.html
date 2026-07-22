@@ -434,10 +434,89 @@ function flagTable(rows, withTenure) {
       '<td><span class="chip red">' + r.pctBelow + '%</span></td></tr>').join("") +
     '</table></details>';
 }
-function renderQta(el)       { el.innerHTML = '<div class="card">QTA Status — Task 16</div>'; }
-function renderContrib(el)   { el.innerHTML = '<div class="card">Contribution — Task 16</div>'; }
-function renderReference(el) { el.innerHTML = '<div class="card">Data Reference — Task 16</div>'; }
-function renderAccess(el)    { el.innerHTML = '<div class="card">Access Control — Task 16</div>'; }
+function renderQta(el) {
+  const d = STATE.data;
+  const rows = d.qtaInterim;
+  const overdue = rows.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length;
+  el.innerHTML =
+    '<div class="banner">📋 <b>Official QTA-cycle source pending</b> — interim signal below uses each Rocketeer&#39;s latest <i>Next Review</i> date from the Compensation Report, waiting-longest first.</div>' +
+    sourceBanner("history", "Compensation history") +
+    '<div class="card"><h2>Review readiness <span class="chip red">' + overdue + ' overdue</span>' +
+    '<span class="chip">' + rows.length + ' active Rocketeers</span></h2>' +
+    '<table><tr><th>Name</th><th>Dept</th><th>Location</th><th>Level</th><th>Next Review</th><th>Status</th><th>Last comp event</th></tr>' +
+    rows.map(r => {
+      const st = r.daysOverdue == null ? '<span class="chip">no review date</span>'
+        : r.daysOverdue > 0 ? '<span class="chip red">' + r.daysOverdue + 'd overdue</span>'
+        : '<span class="chip green">in ' + (-r.daysOverdue) + 'd</span>';
+      return '<tr class="click" onclick="openDrill(\'' + esc(r.empNo) + '\')">' +
+        '<td>' + esc(r.name) + '</td><td>' + esc(r.dept) + '</td><td>' + esc(r.keyLocation) + '</td>' +
+        '<td>' + esc(r.level) + '</td><td>' + esc(r.nextReview || "—") + '</td><td>' + st + '</td>' +
+        '<td>' + esc(r.lastEventReason) + (r.lastEventDate ? " · " + esc(r.lastEventDate) : "") + '</td></tr>';
+    }).join("") + '</table></div>';
+}
+
+function renderContrib(el) {
+  const url = STATE.data.meta.contribUrl;
+  el.innerHTML =
+    '<div class="card" style="max-width:560px;margin:40px auto;text-align:center">' +
+    '<h2>🚀 Contribution data lives in the Contribution Report</h2>' +
+    '<p class="sub">Comp decisions need contribution context — goals, tracked time, kudos, and recognition signals are already curated there. This report links out instead of duplicating that work.</p>' +
+    (url
+      ? '<p><a href="' + esc(url) + '" target="_blank"><button>Open the Contribution Report ↗</button></a></p>'
+      : '<div class="banner">Link not configured — an admin should set the <b>CD_CONTRIB_URL</b> Script Property to the Contribution Report web-app URL.</div>') +
+    '</div>';
+}
+
+// Threshold numbers in this text must match CONFIG_CD (10 / 25 / 3y / 15) — update both together if tuned.
+function renderReference(el) {
+  const m = STATE.data.meta;
+  el.innerHTML =
+    '<div class="card"><h2>📊 Data Reference</h2>' +
+    '<h3>Sources</h3><table><tr><th>Module</th><th>Source</th><th>Status</th></tr>' +
+    '<tr><td>Roster, attrition, TCC</td><td>Roster file — active + terminated rows; crew/contractors excluded everywhere in V1</td><td>' + esc(m.sources.roster) + '</td></tr>' +
+    '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.tccUsd) + '</td></tr>' +
+    '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr></table>' +
+    '<h3>Formulas</h3><table>' +
+    '<tr><td><b>Internal Position</b></td><td>TCC ÷ max TCC among ACTIVE peers in the same Key Location + Job Title, local currency. NOT band-midpoint compa — 1.00 = the local peer max. Bands: green ≥ 0.90, yellow 0.75–0.90, red &lt; 0.75. Groups under 3 members flagged &quot;small group&quot;; singletons &quot;no peers&quot;.</td></tr>' +
+    '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
+    '<tr><td><b>Growth (RRI)</b></td><td>(current ÷ previous)^(1 ÷ years) − 1 between consecutive comp events from the RD tab. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
+    '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ 10% flags the group (needs ≥2 members per gender); individuals ≥ 25% below group median flag as outliers; ≥ 3y tenure AND ≥ 15% below median flags the tenure lens.</td></tr>' +
+    '<tr><td><b>QTA interim</b></td><td>Latest &quot;Next Review&quot; per Rocketeer from RD events, sorted overdue-first.</td></tr></table>' +
+    '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available.</p>' +
+    '<h3>Freshness</h3><p class="sub">Payload generated ' + esc(m.generatedAt) +
+    (m.fromCache ? " — served from cache (⟳ Refresh forces a live read)." : " — live read.") +
+    ' Cache TTL 65 minutes.</p></div>';
+}
+
+function renderAccess(el) {
+  el.innerHTML = '<div class="card"><h2>🔒 Access Control</h2><p class="sub">Loading…</p></div>';
+  google.script.run
+    .withSuccessHandler(s => renderAccessForm(el, s))
+    .withFailureHandler(e => {
+      el.innerHTML = '<div class="banner err">❌ ' + esc((e && e.message) || e) + '</div>';
+    })
+    .getAccessSettings();
+}
+function renderAccessForm(el, s) {
+  el.innerHTML =
+    '<div class="card"><h2>🔒 Access Control</h2>' +
+    '<p class="sub">One email per line (commas also work). Bootstrap admin (' + esc(s.bootstrapAdmin) +
+    ') is always active and not listed here. Every grant means <b>global</b> comp visibility — ' +
+    'org-scoped manager access is a V2 feature; do not hand this out casually.</p>' +
+    '<h3>Admins (manage this list + full dashboard)</h3>' +
+    '<textarea id="accAdmins" rows="4" style="width:100%">' + esc(s.admins.join("\n")) + '</textarea>' +
+    '<h3>Viewers (full dashboard, read-only settings)</h3>' +
+    '<textarea id="accViewers" rows="6" style="width:100%">' + esc(s.viewers.join("\n")) + '</textarea>' +
+    '<p><button onclick="saveAccess()">Save access lists</button> <span id="accMsg" class="sub"></span></p></div>';
+}
+function saveAccess() {
+  const split = id => document.getElementById(id).value.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+  document.getElementById("accMsg").textContent = "saving…";
+  google.script.run
+    .withSuccessHandler(() => { document.getElementById("accMsg").textContent = "✅ saved — cache version bumped"; })
+    .withFailureHandler(e => { document.getElementById("accMsg").textContent = "❌ " + ((e && e.message) || e); })
+    .saveAccessSettings({ admins: split("accAdmins"), viewers: split("accViewers") });
+}
 
 const RENDERERS = {
   overview: renderOverview, attrition: renderAttrition, compa: renderCompa,
