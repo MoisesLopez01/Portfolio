@@ -10,10 +10,11 @@
       --accent: #35c26e;  /* green — good / primary */
       --warn:   #e8b93c;  /* yellow — attention */
       --bad:    #e05252;  /* red — priority read */
+      --above: #9d7bff;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
-    header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
+    header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
     header h1 { font-size: 17px; margin: 0; }
     .sub { color: var(--muted); font-size: 12px; }
     .hdr-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
@@ -24,6 +25,10 @@
     .seg button.on { background: var(--accent); color: #08130d; font-weight: 600; }
     nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
     nav button.on { background: var(--panel-2); border-color: var(--accent); font-weight: 600; }
+    #stickyBar { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+    .filterbar { display: flex; gap: 8px; padding: 8px 18px 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
+    .filterbar input[type=search] { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 190px; }
+    .chip.violet { border-color: var(--above); color: var(--above); }
     main { padding: 16px 18px 60px; max-width: 1280px; margin: 0 auto; }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
     .banner { background: #3a3320; border: 1px solid var(--warn); color: #f2e2ad; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
@@ -63,6 +68,7 @@
   </style>
 </head>
 <body>
+<div id="stickyBar">
 <header>
   <button id="menuBtn" title="Menu">☰</button>
   <div>
@@ -79,6 +85,15 @@
 </header>
 <div id="menuPanel" class="menu hidden"></div>
 <nav id="tabbar"></nav>
+<div class="filterbar">
+  <select id="fLoc" onchange="setFilter('loc', this.value)"></select>
+  <select id="fLevel" onchange="setFilter('level', this.value)"></select>
+  <select id="fDept" onchange="setFilter('dept', this.value)"></select>
+  <input id="fQ" type="search" placeholder="🔎 Find a Rocketeer…" oninput="setFilter('q', this.value)">
+  <button id="fClear" class="hidden" onclick="clearFilters()">✕ Clear</button>
+  <span class="sub" id="fNote"></span>
+</div>
+</div>
 <main><div id="pane"></div></main>
 <div id="drill" class="drill hidden"></div>
 <div id="loading">Loading compensation data…</div>
@@ -104,13 +119,59 @@ const VIEWS = [
 const STATE = {
   data: null, tab: "overview", currency: "LOCAL",
   attrGran: "month", attrDim: "department",
-  compaFilters: { loc: "", level: "", dept: "" },
+  filters: { loc: "", level: "", dept: "", q: "" },
+  rankSort: { key: "score", dir: -1 },
 };
 
 // ── helpers ─────────────────────────────────────────────────
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+// ── universal filters ───────────────────────────────────────────────────────────
+function normName(s) { return String(s || "").toLowerCase().replace(/\s+/g, " ").trim(); }
+function filtersActive() {
+  const f = STATE.filters;
+  return !!(f.loc || f.level || f.dept || f.q);
+}
+// One predicate for employees[], people[], and any row carrying these fields.
+function visibleEmp(e) {
+  const f = STATE.filters;
+  return (!f.loc || e.keyLocation === f.loc) &&
+         (!f.level || e.level === f.level) &&
+         (!f.dept || e.dept === f.dept) &&
+         (!f.q || normName(e.name).indexOf(normName(f.q)) !== -1);
+}
+function setFilter(k, v) {
+  STATE.filters[k] = v;
+  syncFilterBar();
+  render();
+}
+function clearFilters() {
+  STATE.filters = { loc: "", level: "", dept: "", q: "" };
+  populateFilters();
+  syncFilterBar();
+  render();
+}
+function syncFilterBar() {
+  document.getElementById("fClear").classList.toggle("hidden", !filtersActive());
+  document.getElementById("fNote").textContent = filtersActive()
+    ? STATE.data.employees.filter(visibleEmp).length + " Rocketeers match" : "";
+}
+function populateFilters() {
+  const d = STATE.data;
+  if (!d) return;
+  const f = STATE.filters;
+  const opt = (id, label, vals, cur) => {
+    document.getElementById(id).innerHTML =
+      '<option value="">' + label + ': All</option>' +
+      vals.map(v => '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") +
+        '>' + esc(v) + '</option>').join("");
+  };
+  opt("fLoc", "Location", [...new Set(d.employees.map(e => e.keyLocation))].filter(Boolean).sort(), f.loc);
+  opt("fLevel", "Level", [...new Set(d.employees.map(e => e.level))].sort(), f.level);
+  opt("fDept", "Department", [...new Set(d.employees.map(e => e.dept))].filter(Boolean).sort(), f.dept);
+  document.getElementById("fQ").value = f.q;
 }
 function fmtMoney(tcc, tccUsd, currency) {
   if (STATE.currency === "USD") return tccUsd != null ? "$" + Math.round(tccUsd).toLocaleString() : "—";
@@ -224,6 +285,8 @@ function onData(raw) {
     d.meta.fyLabel + " " + d.meta.qLabel + " · " + d.meta.activeCount + " active Rocketeers · " +
     (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
   document.getElementById("loading").classList.add("hidden");
+  populateFilters();
+  syncFilterBar();
   render();
 }
 function onLoadError(err) {
