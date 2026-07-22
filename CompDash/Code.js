@@ -2,7 +2,7 @@
 // SCRIPT NAME: Comp Health Report — Code
 // PURPOSE:     Rocketeer Global Comp Health Report (V1).
 //              Data readers, metric engines, doGet, getCompReportData.
-// VERSION:     1.0.0
+// VERSION:     1.1.0
 // ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-21-comp-health-dashboard-design.md
 //
@@ -950,7 +950,7 @@ function getCompReportData(force) {
 
   const t0 = Date.now();
   const ctx = fiscalContextCD_();
-  const sources = { roster: "ok", history: "ok" };
+  const sources = { roster: "ok", history: "ok", ratings: "ok", benchmarks: "ok" };
 
   let records = [], genderAvailable = false, tccUsdAvailable = false;
   try {
@@ -965,11 +965,71 @@ function getCompReportData(force) {
   let histByEmp = {};
   try { histByEmp = readCompHistory_(); }
   catch (e) { sources.history = "error: " + e.message; Logger.log("⚠️ readCompHistory_: " + e.message); }
+  let ratings = { byEmp: {}, count: 0 };
+  try { ratings = readRatings_(); }
+  catch (e) { sources.ratings = "error: " + e.message; Logger.log("⚠️ readRatings_: " + e.message); }
+  let bench = { map: {}, count: 0 };
+  try { bench = readBenchmarks_(); }
+  catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarks_: " + e.message); }
 
   const active = records.filter(r => r.active);
 
+  const perfByEmp = {};
+  active.forEach(r => {
+    if (ratings.byEmp[r.empNo]) perfByEmp[r.empNo] = buildPerfForEmp_(ratings.byEmp[r.empNo]);
+  });
+
+  const compaGroups = buildCompaGroups_(active, bench.map, CONFIG_CD);
+  const anchorByEmp = {};
+  compaGroups.forEach(g => g.members.forEach(m => {
+    anchorByEmp[m.empNo] = { ratio: m.ratio, anchor: g.anchor, anchorTier: g.anchorTier };
+  }));
+
+  let matchedBench = 0, currencyMismatch = 0;
+  const employees = active.map(r => {
+    const a = anchorByEmp[r.empNo] || { ratio: null, anchor: null, anchorTier: "none" };
+    const perf = perfByEmp[r.empNo] || null;
+    const b = lookupBench_(bench.map, r.keyLocation, r.jobTitle, r.currency);
+    if (b.mismatch) currencyMismatch++;
+    if (b.row) matchedBench++;
+    const row = b.row;
+    const companyYears = r.hireDate
+      ? Math.round(tenureYears_(r.hireDate, ctx.asOf) * 10) / 10 : null;
+    const profileYears = profileTenureYears_(histByEmp[r.empNo], r.hireDate, ctx.asOf, CONFIG_CD.PROMO_RE);
+    return {
+      empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
+      dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
+      tcc: r.tcc, tccUsd: r.tccUsd, hireDate: isoDate_(r.hireDate), gender: r.gender,
+      ratio: a.ratio, anchor: a.anchor, anchorTier: a.anchorTier,
+      p25: row ? row.p25 : null,
+      p50: row ? row.mean : null, // MEAN in the p50 slot — UI labels it "Mean", never P50
+      p75: row ? row.p75 : null,
+      benchSource: row ? row.source : "",
+      marketRatio: (row && row.mean > 0 && r.tcc > 0)
+        ? Math.round(r.tcc / row.mean * 1000) / 1000 : null,
+      suggestion: marketSuggestion_(r.tcc, row ? row.p25 : null, row ? row.mean : null),
+      perfAvg: perf ? perf.avg : null, perfLatest: perf ? perf.latest : null,
+      perfCount: perf ? perf.count : 0,
+      tenureCompanyYears: companyYears, tenureProfileYears: profileYears,
+      ttmGrowthPct: ttmGrowth_(histByEmp[r.empNo], r.tcc, ctx.asOf),
+      priority: priorityScore_({
+        perfAvg: perf ? perf.avg : null, perfCount: perf ? perf.count : 0,
+        companyYears, profileYears, ratio: a.ratio,
+      }, CONFIG_CD),
+    };
+  });
+
   const history = {};
-  active.forEach(r => { if (histByEmp[r.empNo]) history[r.empNo] = buildGrowthForEmp_(histByEmp[r.empNo]); });
+  active.forEach(r => {
+    const g = histByEmp[r.empNo]
+      ? buildGrowthForEmp_(histByEmp[r.empNo])
+      : { events: [], overallAnnualized: null };
+    const perf = perfByEmp[r.empNo] || null;
+    if (g.events.length || perf) {
+      history[r.empNo] = { events: g.events, overallAnnualized: g.overallAnnualized,
+                           ratings: perf ? perf.history : [] };
+    }
+  });
 
   const payload = {
     ok: true,
@@ -979,25 +1039,29 @@ function getCompReportData(force) {
       fyLabel: ctx.fyLabel, prevFyLabel: ctx.prevFyLabel, qLabel: ctx.qLabel,
       monthLabels: ctx.monthLabels,
       fiscalMonthIdx: fiscalMonthIdx_(ctx.asOf, ctx.fyStartCalYear),
+      fyStartCalYear: ctx.fyStartCalYear, asOf: isoDate_(ctx.asOf),
       sources, genderAvailable, tccUsdAvailable,
       activeCount: active.length,
+      ratingsCount: ratings.count,
+      benchCoverage: { rows: bench.count, matchedEmployees: matchedBench, currencyMismatch },
       contribUrl: props_().getProperty("CD_CONTRIB_URL") || "",
       // Threshold echoes — the client colors and documents from these, never
       // from its own literals, so UI text can't drift from CONFIG_CD.
-      compaBands: { green: CONFIG_CD.COMPA_GREEN_MIN, yellow: CONFIG_CD.COMPA_YELLOW_MIN },
+      compaBands: { low: CONFIG_CD.COMPA_LOW_MIN, target: CONFIG_CD.COMPA_TARGET_MIN,
+                    high: CONFIG_CD.COMPA_HIGH_MAX },
+      marketLow: CONFIG_CD.MARKET_LOW,
+      priorityCfg: { weights: CONFIG_CD.PRIORITY_W, caps: CONFIG_CD.PRIORITY_CAPS,
+                     ratingMax: CONFIG_CD.RATING_MAX },
       equityCfg: {
         gapPct: CONFIG_CD.EQUITY_GAP_PCT, outlierPct: CONFIG_CD.EQUITY_OUTLIER_PCT,
         tenureYearsMin: CONFIG_CD.TENURE_YEARS_MIN, tenureBelowPct: CONFIG_CD.TENURE_BELOW_PCT,
         smallGroupMin: CONFIG_CD.SMALL_GROUP_MIN,
       },
     },
-    employees: active.map(r => ({
-      empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
-      dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
-      tcc: r.tcc, tccUsd: r.tccUsd, hireDate: isoDate_(r.hireDate), gender: r.gender,
-    })),
+    employees,
+    people: records.map(personLite_),
     attrition: buildAttrition_(records, ctx),
-    compaGroups: buildCompaGroups_(active, CONFIG_CD.SMALL_GROUP_MIN),
+    compaGroups,
     equity: buildEquity_(active, CONFIG_CD, ctx.asOf),
     qtaInterim: buildQtaInterim_(active, histByEmp, ctx.asOf),
     history,
@@ -1044,8 +1108,26 @@ function debugCompPipeline() {
   const histHits = active.filter(x => hist[x.empNo]).length;
   Logger.log("RD history join: " + histHits + "/" + active.length + " active matched, " +
              Object.keys(hist).length + " employees total in RD");
-  const groups = buildCompaGroups_(active, CONFIG_CD.SMALL_GROUP_MIN);
-  const small = groups.filter(g => g.smallGroup).length;
-  Logger.log("Compa groups: " + groups.length + " (" + small + " small, " +
-             groups.filter(g => g.count === 1).length + " singletons)");
+  let ratings = { byEmp: {}, count: 0 };
+  try { ratings = readRatings_(); }
+  catch (e) { Logger.log("⚠️ readRatings_ (debug): " + e.message); }
+  const perfHits = active.filter(x => ratings.byEmp[x.empNo]).length;
+  Logger.log("Ratings join: " + perfHits + "/" + active.length + " active matched, " +
+             ratings.count + " rating rows total");
+  let bench = { map: {}, count: 0 };
+  try { bench = readBenchmarks_(); }
+  catch (e) { Logger.log("⚠️ readBenchmarks_ (debug): " + e.message); }
+  let benchHits = 0, mism = 0;
+  active.forEach(x => {
+    const b = lookupBench_(bench.map, x.keyLocation, x.jobTitle, x.currency);
+    if (b.row) benchHits++;
+    if (b.mismatch) mism++;
+  });
+  Logger.log("Benchmark coverage: " + bench.count + " rows, " + benchHits + "/" + active.length +
+             " active matched, " + mism + " currency mismatches");
+  const groupsV2 = buildCompaGroups_(active, bench.map, CONFIG_CD);
+  const tiers = { title: 0, market: 0, level: 0, none: 0 };
+  groupsV2.forEach(g => { tiers[g.anchorTier] = (tiers[g.anchorTier] || 0) + 1; });
+  Logger.log("Anchor tiers: title " + tiers.title + " · market " + tiers.market +
+             " · level " + tiers.level + " · none " + tiers.none);
 }
