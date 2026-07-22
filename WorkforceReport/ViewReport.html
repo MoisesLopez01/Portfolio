@@ -82,6 +82,14 @@
          text-transform: uppercase; letter-spacing: .05em; }
     tr:hover td { background: #FAFBFF; }
     .twrap { overflow-x: auto; }
+    /* Section bar charts (tenure distribution etc.) */
+    .bar-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
+    .bar-label { flex: 0 0 64px; font-size: 12px; color: var(--slate); text-align: right; }
+    .bar-track { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; height: 16px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--orbe); border-radius: 5px 0 0 5px; min-width: 2px; }
+    .bar-val { flex: 0 0 36px; font-size: 12px; font-weight: 700; color: var(--void); }
+    body.dark-mode .bar-val { color: var(--text); }
+    body.dark-mode .bar-track { background: var(--th-bg); }
     .chip { display: inline-block; background: var(--surface); border: 1px solid var(--border);
             color: var(--slate); border-radius: 999px; padding: 2px 10px; font-size: 12px;
             font-weight: 600; margin: 0 6px 6px 0; }
@@ -181,7 +189,7 @@
       <option value="4">Q4 (Apr–Jun)</option>
     </select>
     <button id="exportBtn" onclick="exportDoc()" title="Export the current view to a formatted Google Doc">📄 Export Doc</button>
-    <button onclick="window.print()" title="Print / save as PDF">🖨 Print</button>
+    <button id="confBtn" onclick="copyConfluence()" title="Copy the current view as rich text — paste straight into Confluence">📋 Copy for Confluence</button>
     <button id="themeBtn" onclick="toggleTheme()" title="Light / dark theme">🌙</button>
     <button id="refreshBtn" onclick="loadData(true)" title="Bypass cache for a live read">⟳ Refresh</button>
     <button id="accessBtn" class="hidden" onclick="toggleAccess()">🔒 Access</button>
@@ -230,6 +238,14 @@ function tableHtml(t) {
     t.headers.map(h => '<th>' + esc(h) + '</th>').join("") + '</tr>' +
     t.rows.map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join("") + '</tr>').join("") +
     '</table></div>';
+}
+function chartHtml(ch) {
+  const max = Math.max.apply(null, ch.bars.map(b => b.value).concat([1]));
+  return '<h3>' + esc(ch.title) + '</h3>' + ch.bars.map(b =>
+    '<div class="bar-row"><span class="bar-label">' + esc(b.label) + '</span>' +
+    '<div class="bar-track"><div class="bar-fill" style="width:' +
+    Math.round(b.value / max * 100) + '%"></div></div>' +
+    '<span class="bar-val">' + b.value + '</span></div>').join("");
 }
 function sourceBanner() {
   const s = (STATE.data && STATE.data.meta.sources) || {};
@@ -374,6 +390,7 @@ function renderReport(el) {
     r.sections.map(s =>
       '<div class="card"><h2>' + esc(s.title) + '</h2>' +
       s.lines.map(lineHtml).join("") +
+      (s.charts || []).map(chartHtml).join("") +
       (s.tables || []).map(tableHtml).join("") +
       '</div>').join("");
 }
@@ -448,6 +465,61 @@ function dismissExport() {
   STATE.exportResult = null;
   render();
 }
+
+// ── Copy for Confluence — rich HTML on the clipboard (PS_Post idiom) ────────
+function copyConfluence() {
+  if (STATE.confBusy) return;
+  STATE.confBusy = true;
+  const btn = document.getElementById("confBtn");
+  btn.disabled = true;
+  btn.textContent = "📋 Building…";
+  const view = STATE.view === "brief" ? "brief" : "report";
+  const done = (label) => {
+    STATE.confBusy = false;
+    btn.disabled = false;
+    btn.textContent = label;
+    setTimeout(() => { btn.textContent = "📋 Copy for Confluence"; }, 2500);
+  };
+  google.script.run
+    .withSuccessHandler(raw => {
+      let d = raw;
+      try { if (typeof raw === "string") d = JSON.parse(raw); } catch (e) { d = null; }
+      if (!d || !d.ok) {
+        STATE.narrativeError = (d && d.error) || "Copy failed.";
+        done("📋 Copy for Confluence");
+        render();
+        return;
+      }
+      done(copyHtmlToClipboard(d.html) ? "✅ Copied — paste in Confluence" : "❌ Copy blocked");
+    })
+    .withFailureHandler(err => {
+      STATE.narrativeError = "Copy failed: " + ((err && err.message) || err);
+      done("📋 Copy for Confluence");
+      render();
+    })
+    .getConfluenceMarkup(STATE.scope, STATE.quarter, STATE.fyCount, view);
+}
+
+// Rich-text copy: a hidden contenteditable selection + execCommand keeps the
+// text/html flavor on the clipboard, which the Confluence editor converts to
+// native headings/tables on paste (works inside the GAS iframe sandbox).
+function copyHtmlToClipboard(html) {
+  const host = document.createElement("div");
+  host.setAttribute("contenteditable", "true");
+  host.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+  host.innerHTML = html;
+  document.body.appendChild(host);
+  const range = document.createRange();
+  range.selectNodeContents(host);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  sel.removeAllRanges();
+  document.body.removeChild(host);
+  return ok;
+}
 function exportBanner() {
   if (!STATE.exportResult) return "";
   return '<div class="banner info noprint">📄 <b>Google Doc created:</b> ' +
@@ -465,9 +537,21 @@ function errorBanner() {
 function renderBrief(el) {
   const d = STATE.data, b = d.brief;
   if (!b) {
-    el.innerHTML = '<div class="banner err">Brief unavailable for this view — clear the quarterly filter.</div>';
+    // Self-recover: the brief needs a full-FY payload. Clear the quarterly
+    // filter and refetch ONCE; if the payload still has no brief (stale
+    // server deployment), offer an explicit reload — never a dead end.
+    if (!STATE.briefRetry) {
+      STATE.briefRetry = true;
+      STATE.quarter = 0;
+      refetchOrRender();
+      return;
+    }
+    el.innerHTML = '<div class="banner err">Board brief data missing from this payload. ' +
+      '<button style="margin-left:8px" onclick="STATE.briefRetry=false;STATE.quarter=0;loadData(true)">' +
+      '⟳ Load board brief</button></div>';
     return;
   }
+  STATE.briefRetry = false;
   const n = currentNarrative();
   const fyNow = d.meta.fys[d.meta.fys.length - 1].label;
   const g = b.glance;

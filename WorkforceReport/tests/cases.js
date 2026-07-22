@@ -343,6 +343,87 @@ function term(over) {
     sl.lines.some(l => l.badge === "RISK" && l.text.indexOf("2025-09-01") !== -1));
 })();
 
+// ── Exec short numbers + section reshape (composition/structure/attrition) ──
+(function () {
+  check("fmtShort_: exec magnitudes", fmtShort_(1000000) === "1M" &&
+    fmtShort_(1250000) === "1.25M" && fmtShort_(4320) === "4.32K" &&
+    fmtShort_(950) === "950" && fmtShort_(null) === "—");
+  check("fmtMoneyShort_: code appended", fmtMoneyShort_(4050000, "MXN") === "4.05M MXN" &&
+    fmtMoneyShort_(null, "MXN") === "—");
+
+  const active = [1, 2, 3].map(() => mkEmp({ tcc: 1250000, hireDate: new Date(2024, 6, 1) }))
+    .concat([1, 2, 3].map(() => mkEmp({ jobTitle: "04.M4.1", level: "M4", track: "M",
+      tcc: 2000000, hireDate: new Date(2016, 0, 1) })));
+  const comp = buildComposition_(active, REF);
+  const secC = secComposition_(comp);
+  check("composition: no level-distribution table (lives in section 3 only)",
+    secC.tables.every(t => t.title.indexOf("Level") === -1) && secC.tables.length === 1);
+  check("composition: tenure renders as a bar chart, not a table",
+    secC.charts.length === 1 && secC.charts[0].title === "Tenure distribution" &&
+    secC.charts[0].bars.some(b => b.label === "1–3y" && b.value === 3));
+
+  const cs = buildCompStructure_(active, "local", CONFIG_WR);
+  const secS = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
+  const tbl = secS.tables[0];
+  check("structure: level table = end active headcount + short avg cost",
+    tbl.headers[1] === "End active headcount" && tbl.headers[2] === "Avg TCC (MXN)" &&
+    tbl.rows.some(r => r[0] === "I3" && r[1] === 3 && r[2] === "1.25M") &&
+    tbl.rows.some(r => r[0] === "M4" && r[2] === "2M"));
+  check("structure: envelope FACT uses short format",
+    secS.lines[0].text.indexOf("9.75M MXN") !== -1);
+
+  const chart = chartAsTable_({ title: "Tenure distribution",
+    bars: [{ label: "<1y", value: 9 }, { label: "≥5y", value: 3 }, { label: "3–5y", value: 0 }] });
+  check("chartAsTable_: ▇ bars scale to max, zero stays empty",
+    chart.rows[0][1] === "▇".repeat(18) && chart.rows[1][1] === "▇".repeat(6) &&
+    chart.rows[2][1] === "");
+})();
+
+// ── Single leaver table: department × level × reason, per-FY columns ────────
+(function () {
+  const fys = fyListWR_(REF, 3);
+  const records = [
+    mkEmp({}),
+    term({ termDate: new Date(2024, 8, 1), dept: "Services", termReason: "Better offer" }),  // FY25
+    term({ termDate: new Date(2025, 8, 1), dept: "Services", termReason: "Better offer" }),  // FY26
+    term({ termDate: new Date(2025, 9, 1), dept: "Services", termReason: "Better offer" }),  // FY26
+    term({ termDate: new Date(2026, 6, 5), dept: "R&D", level: "M5", jobTitle: "04.M5.1",
+           termReason: "Relocation" }),                                                       // FY27
+  ];
+  const stats = fys.map(fy => fyAttritionStats_(records, fy, REF));
+  const sec = secAttritionDetail_(stats, CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-21");
+  check("leavers: exactly one combined table", sec.tables.length === 1 &&
+    sec.tables[0].title === "Leavers by department, level and reason");
+  check("leavers: headers = dims + one column per FY + Total",
+    sec.tables[0].headers.join() === "Department,Level,Reason,FY25,FY26,FY27,Total");
+  const rows = sec.tables[0].rows;
+  check("leavers: combo rows aggregate per FY and sort by total",
+    rows.length === 2 &&
+    rows[0].join() === "Services,I3,Better offer,1,2,0,3" &&
+    rows[1].join() === "R&D,M5,Relocation,0,0,1,1");
+})();
+
+// ── Confluence-paste HTML builders ──────────────────────────────────────────
+(function () {
+  check("confLine_: badge token colored + escaped",
+    confLine_(fact_("5 < 10 exits")).indexOf('[FACT]</strong> 5 &lt; 10 exits') !== -1);
+  const t = confTable_({ title: "T", headers: ["A", "B"], rows: [["x", 1]] });
+  check("confTable_: native table markup",
+    t.indexOf("<table><tbody><tr><th>A</th>") !== -1 && t.indexOf("<td>1</td>") !== -1);
+  const ctx = { asOf: REF };
+  const payload = buildReportPayload_([mkEmp({}), mkEmp({}), mkEmp({})], {}, {}, "company", ctx, CONFIG_WR);
+  const html = confluenceReportHtml_(payload);
+  check("confluenceReportHtml_: title + every section heading present",
+    html.indexOf("<h1>ServiceRocket Workforce &amp; Compensation Report</h1>") !== -1 &&
+    payload.report.sections.every(s =>
+      html.indexOf("<h2>" + confEsc_(s.title.replace(" · ", ". ")) + "</h2>") !== -1));
+  const bhtml = confluenceBriefHtml_(payload, null);
+  check("confluenceBriefHtml_: brief sections render without narrative",
+    bhtml.indexOf("Executive summary") !== -1 &&
+    bhtml.indexOf("AI synthesis not generated") !== -1 &&
+    bhtml.indexOf("Decisions for the board") !== -1);
+})();
+
 // ── Structural risks + retention crosstab + spotlights — spec §7 ────────────
 (function () {
   const fys = fyListWR_(REF, 3);

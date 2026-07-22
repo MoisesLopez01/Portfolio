@@ -154,6 +154,24 @@ function fmtMoney_(n, code) {
   return Math.round(n).toLocaleString("en-US") + (code ? " " + code : "");
 }
 
+/**
+ * Executive short number: 1000000 → "1M", 1250000 → "1.25M", 4320 → "4.32K".
+ * Managers and the CEO read magnitudes, not digit strings.
+ */
+function fmtShort_(n) {
+  if (!(typeof n === "number" && isFinite(n))) return "—";
+  const trim = v => v.toFixed(2).replace(/\.?0+$/, "");
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return trim(n / 1e6) + "M";
+  if (abs >= 1e3) return trim(n / 1e3) + "K";
+  return String(Math.round(n));
+}
+
+function fmtMoneyShort_(n, code) {
+  const s = fmtShort_(n);
+  return s === "—" ? s : s + (code ? " " + code : "");
+}
+
 // FAR/N line constructors — every View A sentence carries one of these badges.
 function fact_(t)   { return { badge: "FACT",       text: t }; }
 function assume_(t) { return { badge: "ASSUMPTION", text: t }; }
@@ -304,6 +322,13 @@ function fyAttritionStats_(records, fy, asOf) {
   const tenures = leavers
     .map(r => tenureYears_(r.hireDate, r.termDate))
     .filter(t => t != null && t >= 0);
+  // Joint dept × level × reason combos feed the single leaver table — the
+  // per-dimension histograms alone can't reconstruct them.
+  const comboMap = new Map();
+  leavers.forEach(r => {
+    const k = [(r.dept || "—"), (r.level || "—"), (r.termReason || "—")].join("||");
+    comboMap.set(k, (comboMap.get(k) || 0) + 1);
+  });
   return {
     label: fy.label, inProgress: fy.inProgress,
     exits: leavers.length, vol, invol,
@@ -312,6 +337,10 @@ function fyAttritionStats_(records, fy, asOf) {
     reasons: hist(r => r.termReason),
     depts: hist(r => r.dept),
     levels: hist(r => r.level).sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+    combos: [...comboMap.entries()].map(([k, count]) => {
+      const p = k.split("||");
+      return { dept: p[0], level: p[1], reason: p[2], count };
+    }),
     avgLeaverTenureYears: tenures.length
       ? Math.round(tenures.reduce((t, x) => t + x, 0) / tenures.length * 10) / 10 : null,
   };
@@ -718,19 +747,20 @@ function secComposition_(comp) {
     tables: [
       { title: "Headcount by department", headers: ["Department", "Headcount"],
         rows: comp.depts.map(d => [d.key, d.count]) },
-      { title: "Level distribution", headers: ["Level", "Headcount"],
-        rows: comp.levels.map(l => [l.key, l.count]) },
-      { title: "Tenure", headers: ["Bucket", "Headcount"],
-        rows: comp.tenureBuckets.map(b => [b.key, b.count]) },
+    ],
+    // Tenure reads faster as a bar chart than as a table; level distribution
+    // lives ONLY in section 3 (with average cost) — never duplicated here.
+    charts: [
+      { title: "Tenure distribution", bars: comp.tenureBuckets.map(b => ({ label: b.key, value: b.count })) },
     ],
   };
 }
 
 function secCompStructure_(cs, mode, cfg) {
   const lines = [
-    fact_("Total TCC envelope is " + fmtMoney_(cs.envelope, mode.code) + " across " +
+    fact_("Total TCC envelope is " + fmtMoneyShort_(cs.envelope, mode.code) + " across " +
       fmtInt_(cs.valued) + " employees with a recorded value — " +
-      fmtMoney_(cs.perHead, mode.code) + " per head."),
+      fmtMoneyShort_(cs.perHead, mode.code) + " per head."),
     note_("TCC includes variable target; it is not base wage."),
   ];
   cs.inversions.forEach(inv => {
@@ -754,9 +784,11 @@ function secCompStructure_(cs, mode, cfg) {
   return {
     id: "comp-structure", title: "3 · Compensation structure", lines,
     tables: [
-      { title: "Average TCC by level (" + mode.code + ")",
-        headers: ["Level", "Headcount", "Avg TCC"],
-        rows: cs.bands.map(b => [b.level, b.count, b.avg != null ? fmtInt_(b.avg) : "—"]) },
+      // THE level-distribution table of the report (section 2 never repeats it):
+      // end-of-period active headcount per level + average cost, exec short form.
+      { title: "Level distribution — end active headcount & average cost (" + mode.code + ")",
+        headers: ["Level", "End active headcount", "Avg TCC (" + mode.code + ")"],
+        rows: cs.bands.map(b => [b.level, b.count, fmtMoneyShort_(b.avg, "")]) },
     ],
   };
 }
@@ -812,17 +844,31 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso) {
       "coverage limit — earliest retained termination is " +
       (coverage.earliestTermDate || "none on file") + "."));
   }
-  const cross = (dim, pick) => ({
-    title: "Leavers by " + dim,
-    headers: ["FY", dim, "Exits"],
-    rows: stats.flatMap(s => pick(s).map(x => [s.label, x.key, x.count])),
-  });
+  // ONE readable table instead of three FY-interleaved histograms: each row is
+  // a department × level × reason combination with one count column per FY.
+  const comboMap = new Map();
+  stats.forEach(s => (s.combos || []).forEach(c => {
+    const k = [c.dept, c.level, c.reason].join("||");
+    if (!comboMap.has(k)) {
+      comboMap.set(k, { dept: c.dept, level: c.level, reason: c.reason, perFy: {}, total: 0 });
+    }
+    const e = comboMap.get(k);
+    e.perFy[s.label] = (e.perFy[s.label] || 0) + c.count;
+    e.total += c.count;
+  }));
+  const comboRows = [...comboMap.values()].sort((a, b) =>
+    b.total - a.total ||
+    a.dept.localeCompare(b.dept) ||
+    levelRank_(a.level) - levelRank_(b.level) ||
+    a.reason.localeCompare(b.reason));
   return {
     id: "attrition", title: "5 · Attrition detail", lines,
     tables: [
-      cross("recorded reason", s => s.reasons),
-      cross("department", s => s.depts),
-      cross("level", s => s.levels),
+      { title: "Leavers by department, level and reason",
+        headers: ["Department", "Level", "Reason"]
+          .concat(stats.map(s => s.label)).concat(["Total"]),
+        rows: comboRows.map(e => [e.dept, e.level, e.reason]
+          .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])) },
     ],
   };
 }
@@ -1188,6 +1234,131 @@ function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) 
     spotlights: buildSpotlights_(scopeRecords, histByEmp, fys, ctx, cfg, dim, mode),
     appendix: allScopes,
   };
+}
+
+// ── Chart + Confluence rendering (pure) ─────────────────────────────────────
+
+/**
+ * Text rendering of a section bar chart — ▇-glyph bars scale to the max value
+ * so the shape survives in Docs and Confluence, where the CSS bars can't.
+ */
+function chartAsTable_(chart) {
+  const max = Math.max.apply(null, chart.bars.map(b => b.value).concat([1]));
+  return {
+    title: chart.title,
+    headers: ["Bucket", "", "Headcount"],
+    rows: chart.bars.map(b => [
+      b.label,
+      "▇".repeat(Math.max(b.value > 0 ? 1 : 0, Math.round(b.value / max * 18))),
+      b.value,
+    ]),
+  };
+}
+
+// Confluence-paste HTML — the report equivalent of PS_Post's ADF idiom:
+// bold colored badge tokens, native tables, ▇ bar charts. Copied to the
+// clipboard as text/html, the Confluence editor converts it to native
+// headings/tables on paste.
+
+const CONF_BADGE_COLORS_ = { FACT: "#1B5E20", ASSUMPTION: "#0D3B8C", RISK: "#B71C1C", NOTE: "#5E6C84" };
+
+function confEsc_(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function confLine_(l) {
+  return '<p><strong style="color:' + (CONF_BADGE_COLORS_[l.badge] || CONF_BADGE_COLORS_.NOTE) +
+    '">[' + confEsc_(l.badge) + ']</strong> ' + confEsc_(l.text) + "</p>";
+}
+
+function confTable_(t) {
+  return "<p><strong>" + confEsc_(t.title) + "</strong></p>" +
+    "<table><tbody><tr>" +
+    t.headers.map(h => "<th>" + confEsc_(h) + "</th>").join("") + "</tr>" +
+    t.rows.map(r => "<tr>" + r.map(c => "<td>" + confEsc_(c) + "</td>").join("") + "</tr>").join("") +
+    "</tbody></table>";
+}
+
+/** View A as Confluence-paste HTML. */
+function confluenceReportHtml_(payload) {
+  const m = payload.meta, r = payload.report;
+  const scopeLabel = m.scope === "company" ? "ServiceRocket" : m.scope;
+  return "<h1>" + confEsc_(scopeLabel + " Workforce & Compensation Report") + "</h1>" +
+    "<p><em>" + confEsc_(m.fys.map(f => f.label).join(" · ") +
+      (m.quarter ? " · Q" + m.quarter + " view" : "") +
+      " · data extracted on " + m.asOf + " · figures in " + r.currency.code) + "</em></p>" +
+    r.sections.map(s =>
+      "<h2>" + confEsc_(s.title.replace(" · ", ". ")) + "</h2>" +
+      s.lines.map(confLine_).join("") +
+      (s.charts || []).map(ch => confTable_(chartAsTable_(ch))).join("") +
+      (s.tables || []).map(confTable_).join("")).join("");
+}
+
+/** View B as Confluence-paste HTML (AI text only when already generated). */
+function confluenceBriefHtml_(payload, narrative) {
+  const m = payload.meta, b = payload.brief;
+  const fyNow = m.fys[m.fys.length - 1].label;
+  const cur = b.currency.code;
+  let html = "<h1>" + confEsc_((b.scope === "company" ? "Global" : b.scope) +
+      " Workforce & Compensation Review · " + fyNow) + "</h1>" +
+    "<p><em>" + confEsc_("ServiceRocket · " + m.fys.map(f => f.label).join(" – ") +
+      " · data extracted on " + m.asOf + " · figures in " + cur) + "</em></p>";
+  html += "<h2>2. Executive summary</h2>";
+  html += (narrative && narrative.execSummary.length)
+    ? "<p><em>✨ AI synthesis — figures come from the computed report.</em></p><ul>" +
+      narrative.execSummary.map(s => "<li>" + confEsc_(s) + "</li>").join("") + "</ul>"
+    : confLine_(note_("AI synthesis not generated at copy time."));
+  html += "<h2>3. " + confEsc_(b.scope === "company" ? "Company" : b.scope) + " at a glance</h2>" +
+    confLine_(fact_(fmtInt_(b.glance.headcount) + " active employees; TCC envelope " +
+      fmtMoneyShort_(b.glance.tccEnvelope, cur) + "."));
+  if (b.glance.byLocation.length > 1) {
+    html += confTable_({ title: "Headcount by location", headers: ["Key Location", "Headcount"],
+      rows: b.glance.byLocation.map(x => [x.key, x.count]) });
+  }
+  html += confTable_({ title: "Headcount by function", headers: ["Department", "Headcount"],
+    rows: b.glance.byDept.map(x => [x.key, x.count]) });
+  html += "<h2>4. Movement & attrition</h2>" +
+    confTable_({ title: "Movement by fiscal year",
+      headers: ["FY", "Hires", "Exits", "Net", "Attrition rate"],
+      rows: b.movement.scopeTotals.map(x => [x.label + (x.inProgress ? " (to date)" : ""),
+        x.hires, x.exits, (x.net >= 0 ? "+" : "") + x.net, fmtPct_(x.rate)]) }) +
+    confTable_({ title: "Regretted-attrition trend",
+      headers: ["FY", "Regretted", "Exits", "Regretted share"],
+      rows: b.movement.regrettedTrend.map(t => [t.label, t.regretted, t.exits, fmtPct_(t.pct, 0)]) }) +
+    confTable_({ title: "Per-" + b.dim.label.toLowerCase() + " matrix",
+      headers: [b.dim.label].concat(m.fys.map(f => f.label + " exits (rate)")),
+      rows: b.movement.byGroup.map(L => [L.key].concat(
+        L.perFy.map(p => p.exits + " (" + fmtPct_(p.rate) + ")"))) });
+  html += "<h2>5. The retention signal</h2>" +
+    (b.retention.length
+      ? confTable_({ title: "Regretted leavers: level × tenure × reason",
+          headers: ["Level", "Tenure", "Reason", "Count"],
+          rows: b.retention.map(x => [x.level, x.tenureBucket, x.reason, x.count]) })
+      : confLine_(note_("No regretted exits recorded in the window.")));
+  html += "<h2>6. Compensation strategy</h2>" +
+    confTable_({ title: "Growth by lever",
+      headers: ["FY", "Promotions", "Promo growth", "Adjustments", "Adjustment growth", "New hires"],
+      rows: b.levers.map(v => [v.label + (v.inProgress ? " (to date)" : ""),
+        v.promo.count, fmtPct_(v.promo.growthPct), v.adjust.count,
+        fmtPct_(v.adjust.growthPct), v.newHires]) });
+  html += "<h2>7. Structural risks</h2>" +
+    (b.structuralRisks.length
+      ? b.structuralRisks.map(x => confLine_(risk_(x.title + " — " + x.detail))).join("")
+      : confLine_(note_("No structural-risk candidate fired at current thresholds.")));
+  html += "<h2>8. " + confEsc_(b.dim.label) + " spotlights</h2>" +
+    confTable_({ title: "Comparison matrix (" + fyNow + ")",
+      headers: [b.dim.label, "Headcount", "Attrition", "Regretted", "Avg TCC (" + cur + ")", "Promo rate", "Flag"],
+      rows: b.spotlights.map(s => [s.key, s.headcount, fmtPct_(s.attritionRate),
+        fmtPct_(s.regrettedPct, 0), fmtMoneyShort_(s.avgComp, ""), fmtPct_(s.promoRate),
+        (narrative && narrative.spotlightFlags && narrative.spotlightFlags[s.key]) || s.candidates[0]]) });
+  html += "<h2>9. Decisions for the board</h2>";
+  html += (narrative && narrative.decisions.length)
+    ? "<p><em>✨ AI-generated draft for discussion — not a recommendation of record.</em></p><ul>" +
+      narrative.decisions.map(dd => "<li><strong>" + confEsc_(dd.title) + "</strong>" +
+        (dd.rationale ? " — " + confEsc_(dd.rationale) : "") + "</li>").join("") + "</ul>"
+    : confLine_(note_("AI draft not generated at copy time."));
+  return html;
 }
 
 // ── AI narrative contract — spec §8 ─────────────────────────────────────────
@@ -1822,6 +1993,7 @@ function writeReportDoc_(body, payload) {
   r.sections.forEach(s => {
     docHeading_(body, s.title.replace(" · ", ". "));
     s.lines.forEach(l => docBadgeLine_(body, l.badge, l.text));
+    (s.charts || []).forEach(ch => docTable_(body, chartAsTable_(ch)));
     (s.tables || []).forEach(t => docTable_(body, t));
   });
 }
@@ -1964,6 +2136,35 @@ function exportReportToDoc(scope, quarter, fyCount, view) {
   } catch (e) {
     Logger.log("❌ exportReportToDoc: " + e.message);
     return JSON.stringify({ ok: false, error: "Export failed: " + e.message });
+  }
+}
+
+/**
+ * Confluence-paste HTML for the current view — the client copies it to the
+ * clipboard as rich text (PS_Post idiom, paste-not-publish). AI text is
+ * embedded only when already cached; this never calls Gemini.
+ * @returns {string} JSON of {ok, html} | {ok:false, error}.
+ */
+function getConfluenceMarkup(scope, quarter, fyCount, view) {
+  const access = checkReportAccess();
+  if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
+  try {
+    const q = view === "brief" ? 0 : quarter;
+    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyCount));
+    if (!payload.ok) return JSON.stringify({ ok: false, error: "Report unavailable." });
+    if (view === "brief" && payload.brief) {
+      let narrative = null;
+      const hit = cacheGetLarge_(CacheService.getScriptCache(),
+        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai");
+      if (hit) {
+        try { narrative = JSON.parse(hit).narrative || null; } catch (e) { narrative = null; }
+      }
+      return JSON.stringify({ ok: true, html: confluenceBriefHtml_(payload, narrative) });
+    }
+    return JSON.stringify({ ok: true, html: confluenceReportHtml_(payload) });
+  } catch (e) {
+    Logger.log("❌ getConfluenceMarkup: " + e.message);
+    return JSON.stringify({ ok: false, error: "Copy failed: " + e.message });
   }
 }
 
