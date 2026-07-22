@@ -15,8 +15,8 @@ const CONFIG_CD = {
   ROSTER_SS_ID:    "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0", // roster + attrition + TCC USD
   COMP_HIST_SS_ID: "1I_JeFU3mcF0wYrENUT-9tqGAgSHymLAdlOb8l0MASpU", // Compensation Report (RD tab)
   ROSTER_TAB:  "Data",     // verify at deploy; override via CD_ROSTER_TAB property
-  TCC_USD_TAB: "TCC USD",
-  HIST_TAB:    "RD",
+  TCC_USD_TAB: "TCC USD",  // override via CD_TCC_USD_TAB property
+  HIST_TAB:    "RD",       // override via CD_HIST_TAB property
 
   CACHE_TTL_SEC: 65 * 60,
   CACHE_KEY_PREFIX: "cd_",
@@ -446,6 +446,8 @@ function ssIds_() {
     roster:    p.getProperty("CD_ROSTER_SS_ID")    || CONFIG_CD.ROSTER_SS_ID,
     hist:      p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
     rosterTab: p.getProperty("CD_ROSTER_TAB")      || CONFIG_CD.ROSTER_TAB,
+    tccUsdTab: p.getProperty("CD_TCC_USD_TAB")     || CONFIG_CD.TCC_USD_TAB,
+    histTab:   p.getProperty("CD_HIST_TAB")        || CONFIG_CD.HIST_TAB,
   };
 }
 
@@ -507,8 +509,22 @@ function bustCompCache_() {
 // ── Sheet readers (header-name access only) ─────────────────────────────────
 
 function fetchTab_(ssId, tabName) {
-  const sh = SpreadsheetApp.openById(ssId).getSheetByName(tabName);
-  if (!sh) throw new Error('Tab "' + tabName + '" not found');
+  const ss = SpreadsheetApp.openById(ssId);
+  let sh = ss.getSheetByName(tabName);
+  if (!sh) {
+    // Tolerate whitespace/case drift in tab names ("TCC USD " vs "TCC USD").
+    const want = String(tabName).toLowerCase().replace(/\s+/g, " ").trim();
+    sh = ss.getSheets().find(s =>
+      s.getName().toLowerCase().replace(/\s+/g, " ").trim() === want) || null;
+    if (sh) Logger.log('⚠️ fetchTab_: using tab "' + sh.getName() + '" for requested "' + tabName + '"');
+  }
+  if (!sh) {
+    // Available-tab listing stays log-only — the thrown message reaches
+    // dashboard users via meta.sources.
+    Logger.log('❌ fetchTab_: tab "' + tabName + '" not found — available: ' +
+               ss.getSheets().map(s => s.getName()).join(" | "));
+    throw new Error('Tab "' + tabName + '" not found (execution log lists available tabs)');
+  }
   const values = sh.getDataRange().getValues();
   const headers = (values.shift() || []).map(h => String(h).trim());
   return { headers, rows: values };
@@ -577,7 +593,7 @@ function readRosterCD_() {
 /** @returns {Object<string, number>} Employee Number → USD TCC. */
 function readTccUsd_() {
   const ids = ssIds_();
-  const { headers, rows } = fetchTab_(ids.roster, CONFIG_CD.TCC_USD_TAB);
+  const { headers, rows } = fetchTab_(ids.roster, ids.tccUsdTab);
   const iEmp = colIdx_(headers, "Employee Number", /employee.*number/i);
   const iTcc = colIdx_(headers, "Total Cash Compensation (TCC)", /tcc|total cash/i);
   if (iEmp === -1 || iTcc === -1) {
@@ -602,7 +618,7 @@ function readTccUsd_() {
  */
 function readCompHistory_() {
   const ids = ssIds_();
-  const { headers, rows } = fetchTab_(ids.hist, CONFIG_CD.HIST_TAB);
+  const { headers, rows } = fetchTab_(ids.hist, ids.histTab);
   const iEmp    = colIdx_(headers, "Employee Number");
   const iDate   = colIdx_(headers, "Effective Date");
   const iTtc    = colIdx_(headers, "Total Target Compensation");
@@ -636,13 +652,15 @@ function readCompHistory_() {
  * Full report payload. Access-checked server-side (defense in depth — the
  * client can call this via google.script.run without going through doGet).
  * @param {boolean} force - true bypasses cache (Refresh button).
- * @returns {{ok: boolean, meta: Object, employees: Object[], attrition: Object,
- *   compaGroups: Object[], equity: Object, qtaInterim: Object[], history: Object}}
- *   On denial: {ok: false, error: "denied"}. ViewDash.html depends on this exact shape.
+ * @returns {string} JSON of {ok, meta, employees[], attrition, compaGroups[],
+ *   equity, qtaInterim[], history} — or {ok:false, error:"denied"}. Returned as a
+ *   STRING on purpose: google.script.run marshals a large nested object across the
+ *   iframe bridge minutes-slow, while one string + client-side JSON.parse is fast.
+ *   ViewDash.html's onData() parses it and depends on this exact shape.
  */
 function getCompReportData(force) {
   const access = checkDashboardAccess();
-  if (!access.allowed) return { ok: false, error: "denied" };
+  if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
   const cache = CacheService.getScriptCache();
   const ver = props_().getProperty("CD_CACHE_VER") || "1";
@@ -654,7 +672,7 @@ function getCompReportData(force) {
       obj.meta.fromCache = true;
       obj.meta.role = access.role;   // never serve the cached builder's identity
       obj.meta.email = access.email;
-      return obj;
+      return JSON.stringify(obj);
     }
   }
 
@@ -720,7 +738,7 @@ function getCompReportData(force) {
   cachePutLarge_(cache, key, json, CONFIG_CD.CACHE_TTL_SEC);
   Logger.log("✅ getCompReportData: built in " + Math.round((Date.now() - t0) / 1000) + "s — " +
              json.length + " chars, " + active.length + " active");
-  return payload;
+  return json;
 }
 
 function doGet() {
@@ -748,10 +766,16 @@ function debugCompPipeline() {
   Logger.log("Level parse: " + parsed + "/" + active.length + " (" +
              Math.round(parsed / Math.max(1, active.length) * 100) + "%) — sample misses: " +
              active.filter(x => x.level === "—").slice(0, 5).map(x => x.jobTitle).join(" | "));
-  const usd = readTccUsd_();
+  // Degrade exactly like getCompReportData — a missing tab should report,
+  // not kill the rest of the diagnostic.
+  let usd = {};
+  try { usd = readTccUsd_(); }
+  catch (e) { Logger.log("⚠️ readTccUsd_ (debug): " + e.message); }
   const usdHits = active.filter(x => usd[x.empNo] != null).length;
   Logger.log("TCC USD join: " + usdHits + "/" + active.length + " active matched");
-  const hist = readCompHistory_();
+  let hist = {};
+  try { hist = readCompHistory_(); }
+  catch (e) { Logger.log("⚠️ readCompHistory_ (debug): " + e.message); }
   const histHits = active.filter(x => hist[x.empNo]).length;
   Logger.log("RD history join: " + histHits + "/" + active.length + " active matched, " +
              Object.keys(hist).length + " employees total in RD");

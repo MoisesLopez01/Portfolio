@@ -209,7 +209,13 @@ function loadData(force) {
     .withFailureHandler(onLoadError)
     .getCompReportData(!!force);
 }
-function onData(d) {
+function onData(raw) {
+  // Server returns one JSON STRING (marshalling a large nested object through
+  // google.script.run is minutes-slow); parse here. Object tolerated for safety.
+  let d = raw;
+  if (typeof raw === "string") {
+    try { d = JSON.parse(raw); } catch (e) { onLoadError(e); return; }
+  }
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
   STATE.data = d;
   document.getElementById("subTitle").textContent =
