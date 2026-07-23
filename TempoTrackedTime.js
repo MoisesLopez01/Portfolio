@@ -19,11 +19,22 @@ const CONFIGLogged = {
   get TO_DATE()   { return fmtDate_(new Date()); }, // always today, evaluated on every access
   DIAG_PER_WORKLOG: true,
   API_BATCH_SIZE:   50,
+  // Classic Epic Link custom field (matches CONFIGJ.EPIC_LINK_FIELD in
+  // "Jira Backlog.js"). Team-managed projects link via parent instead.
+  EPIC_LINK_FIELD:  "customfield_10014",
   TEMPO_PAGE_LIMIT: 500,
   HEADER_BG:        "#4472C4",
   HEADER_FONT:      "#FFFFFF",
   TOTAL_ROW_BG:     "#D6E4F0",
 };
+
+// Tempo's own service account authors synced worklogs — it is a sync artifact,
+// never a real time-logger. (This is the account Jira showed for every
+// MAVC-227 worklog.) Add further app/bot accountIds here as they surface.
+const NON_HUMAN_AUTHOR_IDS = new Set([
+  "557058:295406f3-a1fc-4733-b906-dd15d021bd79", // "Timesheets by Tempo - Jira Time Tracking"
+]);
+const UNATTRIBUTED_LABEL = "⚠️ Unattributed (no human author)";
 
 // ============================================================
 // 🔎  FILTERS & EXCLUSIONS — What is left out of the report
@@ -48,9 +59,11 @@ const CONFIGLogged = {
 //     the collected-vs-grouped integrity check.
 //
 //  3. WORKER DISCOVERY SCOPE  (Tempo Teams)
-//     Only people who are members of at least one Tempo Team are processed
-//     (plus MERGE_MAP secondary IDs, see #5). Anyone not on a Tempo Team —
-//     even if they have worklogs — is OMITTED ENTIRELY.
+//     Only people who are members of at least one Tempo Team are QUERIED
+//     (plus MERGE_MAP secondary IDs, see #5). Anyone not on a Tempo Team is
+//     not fetched directly — their worklogs appear only if surfaced under a
+//     member's endpoint (on-behalf logging), in which case they are credited
+//     to the real author (see #6a) and their display name is resolved.
 //
 //  4. EXCLUDE_IDS
 //     Account IDs listed in EXCLUDE_IDS are dropped during discovery
@@ -62,9 +75,15 @@ const CONFIGLogged = {
 //
 //  6. DUPLICATE WORKLOGS  (content fingerprint)
 //     A worklog is counted once per fingerprint of
-//     effectiveUserId | worklogId | issueId | startDate | timeSpentSeconds | description.
-//     Exact repeats (e.g. the same worklog surfaced via two merged accounts)
-//     are skipped and reported as "Duplicates skipped".
+//     effectiveAuthorId | worklogId | issueId | startDate | timeSpentSeconds | description.
+//     Exact repeats (e.g. the same worklog surfaced via two merged accounts,
+//     or an on-behalf worklog returned under both users' endpoints) are
+//     skipped and reported as "Duplicates skipped".
+//
+//  6a. AUTHOR ATTRIBUTION
+//     Hours are credited to the worklog's own author.accountId, never to the
+//     account whose endpoint returned it. Query-vs-author mismatches are
+//     logged as ⚠️ AUTHOR MISMATCH lines.
 //
 //  7. ZERO-HOUR WORKLOGS
 //     Worklogs with timeSpentSeconds ≤ 0 contribute nothing and are skipped
@@ -97,8 +116,10 @@ function fetchTempoLoggedTime() {
     // Echo the active filters so the log shows what will be left out
     logActiveLoggedFilters_(fromDate, weeks);
 
-    const sheet = prepareLoggedSheet_(weeks);
-
+    // The sheet is prepared (cleared) only AFTER every fetch has succeeded —
+    // preparing it up front meant a failed Tempo/Jira call (e.g. the
+    // 2026-07-23 transient 401 on the Teams fetch) left a wiped, empty
+    // sheet instead of keeping yesterday's data.
     Logger.log("ℹ️ Discovering team members from Tempo Teams...");
     const workerIds = fetchAllTeamMembers_(tempoToken);
     Logger.log(`ℹ️ Workers discovered: ${workerIds.length}`);
@@ -107,14 +128,25 @@ function fetchTempoLoggedTime() {
     const userMap = fetchUserNames_(workerIds, jiraEmail, jiraToken);
 
     Logger.log("ℹ️ Fetching Tempo worklogs for every worker...");
-    const { allWorklogs, issueIds, skippedCount } = fetchAllWorklogs_(
+    const { allWorklogs, issueIds, skippedCount, unknownAuthorIds } = fetchAllWorklogs_(
       tempoToken, workerIds, userMap,
     );
     Logger.log(
       `ℹ️ Worklogs collected: ${allWorklogs.length} | Duplicates skipped: ${skippedCount}`,
     );
 
+    // Worklog authors outside the Tempo-team roster (on-behalf logging) still
+    // need display names, or their rows would show a raw accountId.
+    if (unknownAuthorIds.length > 0) {
+      Logger.log(
+        `ℹ️ Resolving ${unknownAuthorIds.length} worklog author(s) not on any Tempo Team...`,
+      );
+      const extraNames = fetchUserNames_(unknownAuthorIds, jiraEmail, jiraToken);
+      Object.keys(extraNames).forEach((id) => { userMap[id] = extraNames[id]; });
+    }
+
     if (allWorklogs.length === 0) {
+      const sheet = prepareLoggedSheet_(weeks);
       sheet.getRange(3, 1).setValue("⚠️ No logged time data found for this period.");
       Logger.log("⚠️ No worklogs found — nothing to write.");
       return;
@@ -160,7 +192,18 @@ function fetchTempoLoggedTime() {
     }
 
     const sortedRows = buildLoggedSortedRows_(grouped, weeks);
+    const sheet = prepareLoggedSheet_(weeks);
     writeLoggedRows_(sheet, sortedRows, weeks);
+
+    // Name normalization (Change Names.js) — Tempo display names → roster
+    // legal names, in-place, so downstream joins match without the manual
+    // normalizeAllNames() step after every run.
+    try {
+      const renamed = normalizeSheetNames_(sheet, NAME_MAPST.TEMPO, 1, 3);
+      Logger.log(`ℹ️ Name normalization: ${renamed} name(s) updated.`);
+    } catch (e) {
+      Logger.log(`⚠️ Name normalization skipped (${e.message}) — run normalizeAllNames() manually.`);
+    }
 
     Logger.log(`✅ [fetchTempoLoggedTime] Done. ${sortedRows.length} rows written.`);
   } catch (e) {
@@ -221,9 +264,9 @@ function logActiveLoggedFilters_(fromDate, weeks) {
     `5. MERGE_MAP: ${Object.keys(MERGE_MAP).length} secondary account(s) merged into a primary (hours combined, not dropped).`,
   );
 
-  // 6. Duplicate dedup (rule; count reported later)
+  // 6. Duplicate dedup + author attribution (rule; counts reported later)
   Logger.log(
-    "6. Duplicate worklogs: collapsed by fingerprint user|worklogId|issue|date|seconds|description (count logged after fetch).",
+    "6. Duplicate worklogs: collapsed by fingerprint author|worklogId|issue|date|seconds|description (count logged after fetch); hours credited to the worklog author, not the queried account.",
   );
 
   // 7–8. Record-level drops
@@ -241,14 +284,16 @@ function logActiveLoggedFilters_(fromDate, weeks) {
  *
  * Row 1 (initial header): ISO calendar week name above each week column,
  *                         e.g. "2026.W14". Fixed columns are left blank.
- * Row 2 (date header):    "User", "Space", "Key", "PM", "Issue", "Summary",
- *                         "Logged (hrs)", the week date ranges
+ * Row 2 (date header):    "User", "Space", "Key", "PM", "Assignee", "Issue",
+ *                         "Summary", "Logged (hrs)", the week date ranges
  *                         (e.g. "Mar 30 - Apr 05 2026"), and "Total (hrs)".
  *
  * "Key" stays the PROJECT key — the PS dashboard and the demand dashboard
  * both locate it by that exact header for project context. "PM" is the Jira
  * project lead (see attachProjectLeads_), placed after "Key" to match the
- * Planned Time Tempo sheet. "Issue" carries the issue-level trace
+ * Planned Time Tempo sheet. "Assignee" is the Jira issue assignee (ticket
+ * owner) — shown beside User (who logged the time) so the two stop reading
+ * as a contradiction. "Issue" carries the issue-level trace
  * (e.g. SRSO-123, or #<id> when unresolvable).
  *
  * @param {Array<{label: string, isoLabel: string}>} weeks
@@ -260,11 +305,11 @@ function prepareLoggedSheet_(weeks) {
   if (!sheet) sheet = ss.insertSheet(CONFIGLogged.SHEET_NAME);
   sheet.clear();
 
-  const isoRow = ["", "", "", "", "", "", ""];
+  const isoRow = ["", "", "", "", "", "", "", "", "", ""];
   weeks.forEach((w) => isoRow.push(w.isoLabel));
   isoRow.push("");
 
-  const dateRow = ["User", "Space", "Key", "PM", "Issue", "Summary", "Logged (hrs)"];
+  const dateRow = ["User", "Space", "Key", "PM", "Assignee", "Issue", "Summary", "Epic Key", "Parent Key", "Logged (hrs)"];
   weeks.forEach((w) => dateRow.push(w.label));
   dateRow.push("Total (hrs)");
 
@@ -275,7 +320,7 @@ function prepareLoggedSheet_(weeks) {
   headerRange.setBackground(CONFIGLogged.HEADER_BG);
   headerRange.setFontColor(CONFIGLogged.HEADER_FONT);
   sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(7);
+  sheet.setFrozenColumns(10);
 
   return sheet;
 }
@@ -285,36 +330,52 @@ function prepareLoggedSheet_(weeks) {
 /**
  * Fetches Tempo worklogs for all workers and collects the issue IDs to resolve.
  *
+ * AUTHOR ATTRIBUTION (v2 fix): each worklog is credited to its own
+ * author.accountId, NOT the account the endpoint was queried with. Tempo's
+ * /4/worklogs/user/{id} can return worklogs authored by someone else (logged
+ * on behalf, shared accounts, MERGE_MAP overlaps); stamping the queried id
+ * credited those hours to the wrong person (e.g. MAVC-227 showed the querier,
+ * not the real author). Every query-vs-author mismatch is logged with an
+ * ⚠️ AUTHOR MISMATCH line. Authors missing from the Tempo-team roster are
+ * returned in unknownAuthorIds so the caller can resolve their display names.
+ *
  * DEDUP STRATEGY (mirrors fetchAllPlans_ in TempoPlanExport.js):
  * The duplicate fingerprint is content-based —
- *   effectiveUserId + worklogId + issueId + startDate + timeSpentSeconds + description
- * — so the same worklog surfaced via two merged accounts is counted once,
- * while distinct worklogs that share a date/issue are all kept.
+ *   effectiveAuthorId + worklogId + issueId + startDate + timeSpentSeconds + description
+ * — keyed to the REAL author, so the same on-behalf worklog surfacing under
+ * two users' endpoints is counted once (previously it double-counted), while
+ * distinct worklogs that share a date/issue are all kept.
  *
  * @param {string} tempoToken
  * @param {string[]} workerIds - Dynamic list from fetchAllTeamMembers_()
  * @param {Object} userMap - accountId → display name (for logging only)
- * @returns {{ allWorklogs: Array, issueIds: string[], skippedCount: number }}
+ * @returns {{ allWorklogs: Array, issueIds: string[], skippedCount: number, unknownAuthorIds: string[] }}
  */
 function fetchAllWorklogs_(tempoToken, workerIds, userMap) {
   const allWorklogs = [];
   const issueIds = new Set();
+  const unknownAuthorIds = new Set();
   let skippedCount = 0;
+  let mismatchCount = 0;
+  let noAuthorCount = 0;
+  let unattributedCount = 0;
   const seenFingerprintsByUser = {};
+
+  // One parallel batched fetch for every user (was 1 sequential round-trip
+  // per user — the export's dominant cost). Attribution below is unchanged:
+  // it works off each worklog's own author, not the queried account.
+  Logger.log(`ℹ️ Fetching worklogs for ${workerIds.length} workers (batched)…`);
+  const worklogsByUser = fetchWorklogsBatched_(tempoToken, workerIds);
 
   for (let w = 0; w < workerIds.length; w++) {
     const rawId = workerIds[w];
     const effectiveId = MERGE_MAP[rawId] || rawId;
     const displayName = userMap[effectiveId] || effectiveId;
 
-    Logger.log(`ℹ️ [${w + 1}/${workerIds.length}] ${displayName} (raw: ${rawId})`);
-
-    const userWorklogs = fetchUserWorklogs_(tempoToken, rawId);
-    Logger.log(`   → ${userWorklogs.length} worklogs returned from Tempo`);
-
-    if (!seenFingerprintsByUser[effectiveId]) {
-      seenFingerprintsByUser[effectiveId] = new Set();
-    }
+    const userWorklogs = worklogsByUser[rawId] || [];
+    Logger.log(
+      `ℹ️ [${w + 1}/${workerIds.length}] ${displayName} (raw: ${rawId}) → ${userWorklogs.length} worklogs`,
+    );
 
     for (let i = 0; i < userWorklogs.length; i++) {
       const wl = userWorklogs[i];
@@ -325,8 +386,65 @@ function fetchAllWorklogs_(tempoToken, workerIds, userMap) {
             ? String(wl.issueId)
             : "none";
 
+      // Credit the worklog's ACTUAL author. Tempo has shipped the author in
+      // several shapes, so resolve across all of them before giving up:
+      //   1. v4 nested object   { author: { accountId: "..." } }
+      //   2. flat field         { authorAccountId: "..." }
+      //   3. author self URL    { author: { self: "...user?accountId=..." } }
+      // Only when every path is empty does the queried account stand in —
+      // and that fallback is logged LOUDLY, never applied silently.
+      const authorFromSelf =
+        wl.author && wl.author.self
+          ? (String(wl.author.self).match(/accountId=([^&]+)/) || [])[1]
+          : null;
+      const actualAuthorId =
+        (wl.author && wl.author.accountId ? String(wl.author.accountId) : null) ||
+        (wl.authorAccountId ? String(wl.authorAccountId) : null) ||
+        (authorFromSelf ? decodeURIComponent(authorFromSelf) : null);
+
+      if (!actualAuthorId) {
+        noAuthorCount++;
+        Logger.log(
+          `   ⚠️ NO AUTHOR FIELD on worklog ${wl.tempoWorklogId || wl.id || "?"} ` +
+            `(issue ${issueId}, date ${wl.startDate || "?"}). ` +
+            `raw: ${JSON.stringify(wl).slice(0, 200)}`,
+        );
+      }
+
+      // An app-account author is a sync artifact — treat it as no human author.
+      let humanAuthorId = actualAuthorId;
+      if (humanAuthorId && NON_HUMAN_AUTHOR_IDS.has(humanAuthorId)) humanAuthorId = null;
+
+      // NEVER silently credit the queried account. If the real author is
+      // unknown, quarantine the worklog so its hours stay visible but are not
+      // pinned on whoever we happened to query (this is what put MAVC-227
+      // under two different consultants and double-counted it).
+      let resolvedAuthor;
+      if (humanAuthorId) {
+        resolvedAuthor = MERGE_MAP[humanAuthorId] || humanAuthorId;
+        if (humanAuthorId !== rawId) {
+          mismatchCount++;
+          Logger.log(
+            `   ⚠️ AUTHOR MISMATCH: queried ${rawId} but worklog author is ${humanAuthorId} ` +
+              `(issue ${issueId}, date ${wl.startDate || "?"}) — credited to the author.`,
+          );
+        }
+      } else {
+        unattributedCount++;
+        resolvedAuthor = UNATTRIBUTED_LABEL;
+        Logger.log(
+          `   ⛔ UNATTRIBUTED worklog ${wl.tempoWorklogId || wl.id || "?"} ` +
+            `(issue ${issueId}, date ${wl.startDate || "?"}) — no human author; ` +
+            `queried ${rawId}. NOT credited to the queried account.`,
+        );
+      }
+
+      if (!seenFingerprintsByUser[resolvedAuthor]) {
+        seenFingerprintsByUser[resolvedAuthor] = new Set();
+      }
+
       const fingerprint = [
-        effectiveId,
+        resolvedAuthor,
         wl.tempoWorklogId || wl.id || "",
         issueId,
         wl.startDate || "",
@@ -334,13 +452,18 @@ function fetchAllWorklogs_(tempoToken, workerIds, userMap) {
         wl.description || "",
       ].join("|");
 
-      if (seenFingerprintsByUser[effectiveId].has(fingerprint)) {
-        Logger.log(`   ⚠️ Duplicate worklog skipped for ${displayName}: ${fingerprint}`);
+      if (seenFingerprintsByUser[resolvedAuthor].has(fingerprint)) {
+        Logger.log(`   ⚠️ Duplicate worklog skipped (author ${resolvedAuthor}): ${fingerprint}`);
         skippedCount++;
         continue;
       }
-      seenFingerprintsByUser[effectiveId].add(fingerprint);
-      wl._userId = effectiveId;
+      seenFingerprintsByUser[resolvedAuthor].add(fingerprint);
+      wl._userId = resolvedAuthor;
+      // The sentinel is a display label, not an accountId — keep it out of
+      // the Jira name-resolution batch.
+      if (resolvedAuthor !== UNATTRIBUTED_LABEL && !userMap[resolvedAuthor]) {
+        unknownAuthorIds.add(resolvedAuthor);
+      }
       allWorklogs.push(wl);
 
       if (issueId !== "none") {
@@ -349,15 +472,112 @@ function fetchAllWorklogs_(tempoToken, workerIds, userMap) {
     }
   }
 
+  if (mismatchCount > 0) {
+    Logger.log(
+      `⚠️ [fetchAllWorklogs_] ${mismatchCount} worklog(s) had an author different from the ` +
+        `queried account — see AUTHOR MISMATCH lines above; each was credited to its real author.`,
+    );
+  }
+  if (noAuthorCount > 0) {
+    Logger.log(
+      `⚠️ [fetchAllWorklogs_] ${noAuthorCount} worklog(s) carried NO author field in any known ` +
+        `shape — see NO AUTHOR FIELD lines above. If this count is high, run ` +
+        `_diagFetchUserWorklogs_ to inspect the raw Tempo response shape.`,
+    );
+  }
+  if (unattributedCount > 0) {
+    Logger.log(
+      `⛔ [fetchAllWorklogs_] ${unattributedCount} worklog(s) had no identifiable human author ` +
+        `(missing field or Tempo app account) and were bucketed under "${UNATTRIBUTED_LABEL}" ` +
+        `rather than credited to the queried account.`,
+    );
+  }
+
   return {
     allWorklogs,
     issueIds: Array.from(issueIds),
     skippedCount,
+    unknownAuthorIds: Array.from(unknownAuthorIds),
   };
 }
 
 /**
+ * Fetches worklogs for ALL users in parallel via UrlFetchApp.fetchAll —
+ * the sequential per-user loop was the tracked export's main cost (~228
+ * round-trips ≈ 6+ minutes; batched it's a handful of parallel rounds).
+ *
+ * Queue mechanics: every (user, offset) page is one request. A page that
+ * fills up (results ≥ TEMPO_PAGE_LIMIT) enqueues the user's next offset;
+ * a transient failure (5xx/429) re-enqueues the same page up to 2 retries
+ * with a pause. Final failures are logged per user — that user's remaining
+ * pages are lost, same contract as fetchUserWorklogs_.
+ *
+ * @param {string} token - Tempo Bearer token.
+ * @param {string[]} workerIds - raw account IDs.
+ * @returns {Object} rawId → worklog objects (possibly empty array).
+ */
+function fetchWorklogsBatched_(token, workerIds) {
+  const byUser = {};
+  workerIds.forEach((id) => { byUser[id] = []; });
+
+  const BATCH = 40;
+  const mkReq = (userId, offset) => ({
+    url:
+      `https://api.tempo.io/4/worklogs/user/${userId}` +
+      `?from=${CONFIGLogged.FROM_DATE}&to=${CONFIGLogged.TO_DATE}` +
+      `&offset=${offset}&limit=${CONFIGLogged.TEMPO_PAGE_LIMIT}`,
+    method: "get",
+    headers: { Authorization: `Bearer ${token}` },
+    muteHttpExceptions: true,
+  });
+
+  let queue = workerIds.map((id) => ({ userId: id, offset: 0, attempts: 0 }));
+  const gaveUp = [];
+
+  while (queue.length > 0) {
+    const next = [];
+    for (let b = 0; b < queue.length; b += BATCH) {
+      const slice = queue.slice(b, b + BATCH);
+      const responses = UrlFetchApp.fetchAll(
+        slice.map((q) => mkReq(q.userId, q.offset)),
+      );
+      responses.forEach((res, i) => {
+        const q = slice[i];
+        const code = res.getResponseCode();
+        if (code !== 200) {
+          if ((code >= 500 || code === 429 || code === 401) && q.attempts < 2) {
+            next.push({ userId: q.userId, offset: q.offset, attempts: q.attempts + 1, isRetry: true });
+          } else {
+            gaveUp.push(`${q.userId} (HTTP ${code} @offset ${q.offset})`);
+          }
+          return;
+        }
+        const results = JSON.parse(res.getContentText()).results || [];
+        byUser[q.userId].push(...results);
+        if (results.length >= CONFIGLogged.TEMPO_PAGE_LIMIT) {
+          next.push({ userId: q.userId, offset: q.offset + CONFIGLogged.TEMPO_PAGE_LIMIT, attempts: 0 });
+        }
+      });
+    }
+    if (next.some((q) => q.isRetry)) {
+      Logger.log(`ℹ️ [fetchWorklogsBatched_] retrying ${next.filter((q) => q.isRetry).length} failed page(s)…`);
+      Utilities.sleep(1500);
+    }
+    queue = next;
+  }
+
+  if (gaveUp.length > 0) {
+    Logger.log(
+      `⚠️ [fetchWorklogsBatched_] gave up on ${gaveUp.length} page(s) after retries — ` +
+        `those users' hours are incomplete: ${gaveUp.join("; ")}`,
+    );
+  }
+  return byUser;
+}
+
+/**
  * Fetches all Tempo worklogs for a single user, handling pagination automatically.
+ * Kept for the _diag helpers; the main run uses fetchWorklogsBatched_.
  * @param {string} token - Tempo Bearer token.
  * @param {string} userId - Jira account ID.
  * @returns {Array} All worklog objects from Tempo for this user.
@@ -373,15 +593,25 @@ function fetchUserWorklogs_(token, userId) {
       `?from=${CONFIGLogged.FROM_DATE}&to=${CONFIGLogged.TO_DATE}` +
       `&offset=${offset}&limit=${CONFIGLogged.TEMPO_PAGE_LIMIT}`;
 
-    const response = UrlFetchApp.fetch(url, {
-      method: "get",
-      headers: { Authorization: `Bearer ${token}` },
-      muteHttpExceptions: true,
-    });
+    // Tempo throws transient 500s under load (the planned-time export lost
+    // ~40 of 222 users to them on 2026-07-15) and transient 401s
+    // (2026-07-23). Retry 5xx/429/401 twice with backoff before giving up —
+    // a lost user here silently drops ALL their tracked hours from the sheet.
+    let response, code;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) Utilities.sleep(500 * attempt);
+      response = UrlFetchApp.fetch(url, {
+        method: "get",
+        headers: { Authorization: `Bearer ${token}` },
+        muteHttpExceptions: true,
+      });
+      code = response.getResponseCode();
+      if (code === 200 || (code < 500 && code !== 429 && code !== 401)) break;
+    }
 
-    if (response.getResponseCode() !== 200) {
+    if (code !== 200) {
       Logger.log(
-        `   ⚠️ Tempo Worklogs API ${response.getResponseCode()} for user ${userId}: ${response.getContentText()}`,
+        `   ⚠️ Tempo Worklogs API ${code} for user ${userId} (after retries): ${response.getContentText()}`,
       );
       return allResults;
     }
@@ -406,12 +636,15 @@ function fetchUserWorklogs_(token, userId) {
  * project name/key plus the issue's own key, summary, and type.
  *
  * PM (project lead) is NOT resolved here — issue responses never carry it;
- * the caller fills it afterwards via attachProjectLeads_.
+ * the caller fills it afterwards via attachProjectLeads_. `assignee` is the
+ * Jira issue assignee (who owns the ticket) — deliberately distinct from the
+ * sheet's User column (who logged the time); surfacing both stops them from
+ * reading as a contradiction.
  *
  * @param {string[]} issueIds
  * @param {string}   email
  * @param {string}   token
- * @returns {Object} issueId → { name, key, issueKey, summary, issueType }
+ * @returns {Object} issueId → { name, key, issueKey, summary, issueType, assignee }
  */
 function resolveWorklogIssues_(issueIds, email, token) {
   const itemMap = {};
@@ -431,7 +664,7 @@ function resolveWorklogIssues_(issueIds, email, token) {
           headers: { Authorization: `Basic ${auth}` },
           payload: JSON.stringify({
             jql,
-            fields: ["project", "summary", "issuetype"],
+            fields: ["project", "summary", "issuetype", "assignee", "parent", CONFIGLogged.EPIC_LINK_FIELD],
             maxResults: CONFIGLogged.API_BATCH_SIZE,
           }),
           muteHttpExceptions: true,
@@ -447,6 +680,9 @@ function resolveWorklogIssues_(issueIds, email, token) {
             issueKey:  issue.key                      || "",
             summary:   issue.fields?.summary          || "",
             issueType: issue.fields?.issuetype?.name || "",
+            assignee:  issue.fields?.assignee?.displayName || "",
+            epicKey:   epicKeyFromFields_(issue.fields),
+            parentKey: issue.fields?.parent?.key      || "",
           };
         });
       } else {
@@ -462,7 +698,7 @@ function resolveWorklogIssues_(issueIds, email, token) {
     const unresolved = batch.filter((id) => !itemMap[id]);
     if (unresolved.length > 0) {
       const fallback = unresolved.map((id) => ({
-        url: `${CONFIGLogged.JIRA_BASE}/rest/api/3/issue/${id}?fields=project,summary,issuetype`,
+        url: `${CONFIGLogged.JIRA_BASE}/rest/api/3/issue/${id}?fields=project,summary,issuetype,assignee,parent,${CONFIGLogged.EPIC_LINK_FIELD}`,
         method: "get",
         headers: { Authorization: `Basic ${auth}` },
         muteHttpExceptions: true,
@@ -480,12 +716,15 @@ function resolveWorklogIssues_(issueIds, email, token) {
                 issueKey:  issue.key                      || "",
                 summary:   issue.fields?.summary          || "",
                 issueType: issue.fields?.issuetype?.name || "",
+                assignee:  issue.fields?.assignee?.displayName || "",
+                epicKey:   epicKeyFromFields_(issue.fields),
+                parentKey: issue.fields?.parent?.key      || "",
               };
             } else {
-              itemMap[id] = { name: "Unknown", key: "", issueKey: "", summary: "", issueType: "" };
+              itemMap[id] = { name: "Unknown", key: "", issueKey: "", summary: "", issueType: "", assignee: "", epicKey: "", parentKey: "" };
             }
           } catch (e2) {
-            itemMap[id] = { name: "Unknown", key: "", issueKey: "", summary: "", issueType: "" };
+            itemMap[id] = { name: "Unknown", key: "", issueKey: "", summary: "", issueType: "", assignee: "", epicKey: "", parentKey: "" };
           }
         });
       } catch (e3) {
@@ -503,23 +742,42 @@ function resolveWorklogIssues_(issueIds, email, token) {
 }
 
 /**
+ * Best-effort epic key from a Jira issue's fields: the classic Epic Link
+ * custom field, or the parent key when the parent itself is an epic
+ * (team-managed projects). Mirrors resolvedEpicKey_ in "Jira Backlog.js".
+ * @param {Object} fields - Jira issue fields object
+ * @returns {string} epic key or ""
+ */
+function epicKeyFromFields_(fields) {
+  if (!fields) return "";
+  if (fields[CONFIGLogged.EPIC_LINK_FIELD]) return fields[CONFIGLogged.EPIC_LINK_FIELD];
+  const pType = String(fields.parent?.fields?.issuetype?.name || "").toLowerCase();
+  if (pType.indexOf("epic") !== -1) return fields.parent?.key || "";
+  return "";
+}
+
+/**
  * Second-chance resolution for issues Jira could not return (deleted issues,
  * archived projects, missing browse permission). Tempo's default worklog
- * description is "Working on issue KEY-123", so the issue key is usually
- * recoverable from the worklog itself:
- *   - issueKey   = first KEY-123 token found in any of that issue's worklogs
- *   - projectKey = the KEY prefix
- *   - project    = real project name when another resolved issue shares the
- *                  prefix, otherwise the prefix itself
- * Heuristic by design: a hand-written description mentioning a different
- * issue would mislabel the record, so every rescue is logged with a 🛟 line.
+ * description is exactly "Working on issue KEY-123", so the issue key is
+ * usually recoverable from the worklog itself:
+ *   - issueKey   = the key in that exact auto-generated phrase (anchored —
+ *                  a hand-written "blocked by OTHER-99" can no longer hijack
+ *                  an unrelated worklog)
+ *   - projectKey = the KEY prefix — rescued ONLY when another Jira-resolved
+ *                  issue already confirmed that project exists
+ *   - project    = the confirmed project name
+ * Every rescue is logged with a 🛟 line; refused rescues log 🛟✋.
  * Mutates issueMap in place; entries Jira resolved are never touched.
  *
  * @param {Array}  allWorklogs - Deduplicated worklogs from fetchAllWorklogs_()
  * @param {Object} issueMap    - issueId → { name, key, issueKey, summary, issueType }
  */
 function enrichUnresolvedFromDescriptions_(allWorklogs, issueMap) {
-  const ISSUE_KEY_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/;
+  // Tempo's auto-generated description is exactly "Working on issue KEY-123".
+  // Anchoring to it stops a hand-written mention of another ticket from
+  // hijacking an unrelated worklog.
+  const TEMPO_DEFAULT_DESC_RE = /^\s*Working on issue ([A-Z][A-Z0-9]+-\d+)\s*$/;
 
   // Project names learned from the issues Jira DID resolve, keyed by project key.
   const keyToName = {};
@@ -541,17 +799,24 @@ function enrichUnresolvedFromDescriptions_(allWorklogs, issueMap) {
     const info = issueMap[issueId];
     if (info && info.name !== "Unknown") continue; // resolved (or already rescued)
 
-    const m = ISSUE_KEY_RE.exec(String(wl.description || ""));
+    const m = TEMPO_DEFAULT_DESC_RE.exec(String(wl.description || ""));
     if (!m) continue; // another worklog on this issue may still match
 
     const issueKey = m[1];
     const projectKey = issueKey.split("-")[0];
+    if (!keyToName[projectKey]) { // unverified project → don't guess
+      Logger.log(`   🛟✋ Skipped rescue for ${issueKey} — unknown project ${projectKey}.`);
+      continue;
+    }
     issueMap[issueId] = {
-      name:      keyToName[projectKey] || projectKey,
+      name:      keyToName[projectKey],
       key:       projectKey,
       issueKey:  issueKey,
       summary:   (info && info.summary) || "",
       issueType: (info && info.issueType) || "",
+      assignee:  (info && info.assignee) || "",
+      epicKey:   (info && info.epicKey) || "",
+      parentKey: (info && info.parentKey) || "",
     };
     rescued++;
     Logger.log(
@@ -591,8 +856,8 @@ function enrichUnresolvedFromDescriptions_(allWorklogs, issueMap) {
  * @param {Array}  allWorklogs
  * @param {Array}  weeks
  * @param {Object} userMap  - effectiveId → display name
- * @param {Object} issueMap - issueId → { name, key, pm, issueKey, summary, issueType }
- * @returns {Object} groupKey → { worker, project, projectKey, pm, issueRef, summary, weeklyHours[], total }
+ * @param {Object} issueMap - issueId → { name, key, pm, issueKey, summary, issueType, assignee, epicKey, parentKey }
+ * @returns {Object} groupKey → { worker, project, projectKey, pm, assignee, issueRef, summary, epicKey, parentKey, weeklyHours[], total }
  */
 function groupWorklogsByUserIssueWeek_(allWorklogs, weeks, userMap, issueMap) {
   const grouped = {};
@@ -613,9 +878,12 @@ function groupWorklogsByUserIssueWeek_(allWorklogs, weeks, userMap, issueMap) {
     const project    = issueInfo ? issueInfo.name : `Unknown issue ${issueId}`;
     const projectKey = issueInfo ? issueInfo.key  : "";
     const pm = issueInfo && issueInfo.pm ? issueInfo.pm : "";
+    const assignee = issueInfo && issueInfo.assignee ? issueInfo.assignee : "";
     const issueRef =
       issueInfo && issueInfo.issueKey ? issueInfo.issueKey : `#${issueId}`;
     const summary = issueInfo && issueInfo.summary ? issueInfo.summary : "";
+    const epicKey   = issueInfo && issueInfo.epicKey   ? issueInfo.epicKey   : "";
+    const parentKey = issueInfo && issueInfo.parentKey ? issueInfo.parentKey : "";
 
     const worklogDateStr = wl.startDate;
     if (!worklogDateStr) {
@@ -649,8 +917,11 @@ function groupWorklogsByUserIssueWeek_(allWorklogs, weeks, userMap, issueMap) {
         project,
         projectKey,
         pm,
+        assignee,
         issueRef,
         summary,
+        epicKey,
+        parentKey,
         weeklyHours: new Array(weeks.length).fill(0),
         total: 0,
       };
@@ -724,8 +995,11 @@ function buildLoggedSortedRows_(grouped, weeks) {
       entry.project,
       entry.projectKey,
       entry.pm || "",
+      entry.assignee || "",
       entry.issueRef,
       summary,
+      entry.epicKey || "",
+      entry.parentKey || "",
       roundedTotal,
     ];
     roundedWeeks.forEach((h) => row.push(h));
@@ -751,9 +1025,9 @@ function writeLoggedRows_(sheet, rows, weeks) {
     return;
   }
 
-  // 7 fixed columns (User, Space, Key, PM, Issue, Summary, Logged) + weeks + Total
-  const FIRST_HOURS_COL = 6; // 0-based index of "Logged (hrs)"
-  const totalCols = 7 + weeks.length + 1;
+  // 10 fixed columns (User, Space, Key, PM, Assignee, Issue, Summary, Epic Key, Parent Key, Logged) + weeks + Total
+  const FIRST_HOURS_COL = 9; // 0-based index of "Logged (hrs)"
+  const totalCols = 10 + weeks.length + 1;
   sheet.getRange(3, 1, rows.length, totalCols).setValues(rows);
 
   const totalRow = new Array(totalCols).fill(0);
@@ -783,7 +1057,7 @@ function writeLoggedRows_(sheet, rows, weeks) {
   sheet.getRange(timestampRowNum, 1, 1, 2).setFontSize(9).setFontColor("#666666");
   
   sheet.autoResizeColumns(1, totalCols);
-  sheet.setColumnWidth(6, 250); // cap the Summary column — autoResize makes it huge
+  sheet.setColumnWidth(7, 250); // cap the Summary column — autoResize makes it huge
 
   const uniqueUsers = new Set(rows.map((r) => r[0]));
   const grandTotal  = totalRow[totalCols - 1];
@@ -870,6 +1144,18 @@ function _diagFetchUserWorklogs_() {
     Logger.log(`     issue.id         : ${wl.issue ? wl.issue.id : "n/a"}`);
     Logger.log(`     issueId (alt)    : ${wl.issueId || "n/a"}`);
     Logger.log(`     tempoWorklogId   : ${wl.tempoWorklogId || wl.id || "n/a"}`);
+    // Author shape inspection — confirms which field carries the author so
+    // fetchAllWorklogs_'s multi-path resolver is known to cover it.
+    Logger.log(`     RAW WORKLOG      : ${JSON.stringify(wl)}`);
+    Logger.log(`     author field     : ${JSON.stringify(wl.author)}`);
+    Logger.log(`     author.accountId : ${wl.author?.accountId || "n/a"}`);
+    Logger.log(`     authorAccountId  : ${wl.authorAccountId || "n/a"}`);
+    Logger.log(`     queried sampleId : ${sampleId}`);
+    const mismatched = worklogs.filter((x) => {
+      const a = x.author?.accountId || x.authorAccountId;
+      return a && String(a) !== String(sampleId);
+    });
+    Logger.log(`     worklogs whose author ≠ queried id: ${mismatched.length} of ${worklogs.length}`);
   }
 }
 
@@ -877,12 +1163,13 @@ function _diagFetchAllWorklogs_() {
   const { tempoToken, jiraEmail, jiraToken } = getCredentials_();
   const workerIds = fetchAllTeamMembers_(tempoToken);
   const userMap = fetchUserNames_(workerIds, jiraEmail, jiraToken);
-  const { allWorklogs, issueIds, skippedCount } = fetchAllWorklogs_(
+  const { allWorklogs, issueIds, skippedCount, unknownAuthorIds } = fetchAllWorklogs_(
     tempoToken, workerIds, userMap,
   );
   Logger.log(`✅ allWorklogs: ${allWorklogs.length}`);
   Logger.log(`   issueIds collected: ${issueIds.length}`);
   Logger.log(`   skippedCount (dupes): ${skippedCount}`);
+  Logger.log(`   unknownAuthorIds (off-roster authors): ${unknownAuthorIds.length}`);
 }
 
 function _diagResolveWorklogIssues_() {
@@ -957,7 +1244,7 @@ function _diagBuildAndWriteRows_() {
   Logger.log(`Row 0: ${rows[0][0]} / ${rows[0][1]} (expect Alice / Proj A)`);
   Logger.log(`Row 1: ${rows[1][0]} / ${rows[1][1]} (expect Alice / Proj B)`);
   Logger.log(`Row 2: ${rows[2][0]} / ${rows[2][1]} (expect Bob / Proj B)`);
-  Logger.log(`Row 0 cols: [${rows[0].join(", ")}] (expect Alice,Proj A,PA,,PA-1,Task one,12,8,4,12 — blank PM col)`);
+  Logger.log(`Row 0 cols: [${rows[0].join(", ")}] (expect Alice,Proj A,PA,,,PA-1,Task one,,,12,8,4,12 — blank PM/Assignee/Epic Key/Parent Key cols)`);
 
   const sheet = prepareLoggedSheet_(fakeWeeks);
   writeLoggedRows_(sheet, rows, fakeWeeks);

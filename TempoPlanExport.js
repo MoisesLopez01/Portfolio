@@ -11,6 +11,10 @@ const CONFIGPlan = {
   DIAG_PER_PLAN: true, // true = log a per-plan + per-project diagnostic table (find missing hours)
   API_BATCH_SIZE: 50, // Max items per Jira batch request
   TEMPO_PAGE_LIMIT: 500, // Max results per Tempo API page
+  // fetchAll batch size for the week-scoped Tempo pass. Larger batches cut
+  // wall time roughly linearly (each batch is one parallel round-trip); the
+  // retry rounds absorb the extra transient 500s that bursts provoke.
+  WEEK_FETCH_BATCH: 100,
   HEADER_BG: "#4472C4", // Header row background color
   HEADER_FONT: "#FFFFFF", // Header row font color
   TOTAL_ROW_BG: "#D6E4F0", // Total row background color
@@ -158,8 +162,10 @@ function fetchTempoPlannedTime() {
     // Step 3b: Echo the active filters so the log shows what will be left out
     logActiveFilters_(fromDate, weeks);
 
-    // Step 4: Prepare the output sheet (clear + write headers)
-    const sheet = prepareSheet_(weeks);
+    // Step 4 (moved): the output sheet is prepared (cleared) only AFTER the
+    // fetches succeed — preparing it up front meant a failed Tempo/Jira call
+    // (e.g. the 2026-07-23 transient 401 on the Teams fetch) left a wiped,
+    // empty sheet instead of keeping yesterday's data.
 
     // Step 5: Discover all worker account IDs dynamically from Tempo Teams.
     //         Any ID in EXCLUDE_IDS is removed. MERGE_MAP secondary IDs are
@@ -174,17 +180,16 @@ function fetchTempoPlannedTime() {
 
     // Step 7: Fetch all Tempo plans for every worker
     //         Duplicate accounts are merged; true plan duplicates are skipped
-    const { allPlans, typeMap, skippedCount } = fetchAllPlans_(
-      tempoToken,
-      workerIds,
-      userMap,
-    );
+    const {
+      allPlans, typeMap, skippedCount, planRangesByUser, failedUserIds,
+      windowHrsByWorker, rawIdsByWorker,
+    } = fetchAllPlans_(tempoToken, workerIds, userMap);
     Logger.log(
       `ℹ️ Plans collected: ${allPlans.length} | Duplicates skipped: ${skippedCount}`,
     );
 
     if (allPlans.length === 0) {
-      sheet
+      prepareSheet_(weeks)
         .getRange(3, 1)
         .setValue("⚠️ No planned time data found for this period.");
       Logger.log("⚠️ No plans found — nothing to write.");
@@ -204,13 +209,15 @@ function fetchTempoPlannedTime() {
     // Step 9: Build per-week hours by re-querying Tempo scoped to each
     //         Monday→Sunday week (exact for any work week — Sun–Thu, Mon–Fri,
     //         etc. — and for holidays). No Mon–Fri heuristic, no scaleFactor.
-    const grouped = groupPlansByWeekScoped_(
+    let grouped = groupPlansByWeekScoped_(
       tempoToken,
       weeks,
       workerIds,
       userMap,
       itemMap,
       toDate,
+      planRangesByUser,
+      failedUserIds,
     );
 
     // Step 9b: Integrity — the per-week scoped grand total should equal the
@@ -220,7 +227,7 @@ function fetchTempoPlannedTime() {
         (s, p) => s + (p.totalPlannedSecondsInScope || 0) / 3600,
         0,
       );
-    const weekScopedTotalHrs = Object.values(grouped).reduce(
+    let weekScopedTotalHrs = Object.values(grouped).reduce(
       (s, g) => s + g.total,
       0,
     );
@@ -228,6 +235,62 @@ function fetchTempoPlannedTime() {
       `ℹ️ Grand total — whole-window: ${round2_(windowTotalHrs)} hrs | ` +
         `per-week scoped: ${round2_(weekScopedTotalHrs)} hrs`,
     );
+
+    // Step 9c: PERSON-PARITY repair. Grand-total tolerance can't see a few
+    // low-hour people vanish (lost cells dropped whole employees from the
+    // dashboard: 147 → 134 on 2026-07-15). Every worker's grid total must
+    // reproduce their whole-window total; any shortfall re-fetches JUST that
+    // worker's weeks, unfiltered, and replaces their rows.
+    const gridHrsByWorker = {};
+    Object.values(grouped).forEach((g) => {
+      gridHrsByWorker[g.worker] = (gridHrsByWorker[g.worker] || 0) + g.total;
+    });
+    const repairRawIds = [];
+    const repairWorkers = new Set();
+    Object.keys(windowHrsByWorker).forEach((worker) => {
+      const shortBy = windowHrsByWorker[worker] - (gridHrsByWorker[worker] || 0);
+      if (shortBy > 0.5) {
+        repairWorkers.add(worker);
+        (rawIdsByWorker[worker] || []).forEach((id) => repairRawIds.push(id));
+        Logger.log(
+          `   🔧 [personParity] ${worker}: grid ${round2_(gridHrsByWorker[worker] || 0)} hrs ` +
+            `< window ${round2_(windowHrsByWorker[worker])} hrs — re-fetching their weeks.`,
+        );
+      }
+    });
+    if (repairRawIds.length > 0) {
+      Logger.log(
+        `🔧 [personParity] repairing ${repairWorkers.size} worker(s) (${repairRawIds.length} account id(s))…`,
+      );
+      const repaired = groupPlansByWeekScoped_(
+        tempoToken, weeks, repairRawIds, userMap, itemMap, toDate,
+      );
+      Object.keys(grouped).forEach((k) => {
+        if (repairWorkers.has(grouped[k].worker)) delete grouped[k];
+      });
+      Object.keys(repaired).forEach((k) => { grouped[k] = repaired[k]; });
+      weekScopedTotalHrs = Object.values(grouped).reduce((s, g) => s + g.total, 0);
+      Logger.log(`ℹ️ [personParity] post-repair total: ${round2_(weekScopedTotalHrs)} hrs.`);
+    }
+
+    // Self-healing: a material UNDER-count with the prefilter active means
+    // the prefilter skipped cells that really had plans (e.g. a plan shape
+    // whose coverage the ranges don't capture). Redo the pass unfiltered
+    // rather than write a lossy sheet — slower, never wrong.
+    const shortfall = windowTotalHrs - weekScopedTotalHrs;
+    if (shortfall > Math.max(40, windowTotalHrs * 0.01)) {
+      Logger.log(
+        `⚠️ Week-scoped total is ${round2_(shortfall)} hrs BELOW the whole-window total — ` +
+          `re-running the week-scoped pass WITHOUT the plan-range prefilter.`,
+      );
+      grouped = groupPlansByWeekScoped_(
+        tempoToken, weeks, workerIds, userMap, itemMap, toDate,
+      );
+      weekScopedTotalHrs = Object.values(grouped).reduce((s, g) => s + g.total, 0);
+      Logger.log(
+        `ℹ️ Unfiltered re-run total: ${round2_(weekScopedTotalHrs)} hrs.`,
+      );
+    }
     if (Math.abs(windowTotalHrs - weekScopedTotalHrs) > 0.5) {
       Logger.log(
         `⚠️ Week-scoped total differs from whole-window by ` +
@@ -238,8 +301,21 @@ function fetchTempoPlannedTime() {
     // Step 10: Sort rows and build 2D array for the sheet
     const sortedRows = buildSortedRows_(grouped, weeks);
 
-    // Step 11: Write rows + grand-total footer to the sheet
+    // Step 11: Prepare the sheet (clear + headers) and write rows +
+    // grand-total footer — deferred to here so a failed run above never
+    // wipes the previous export.
+    const sheet = prepareSheet_(weeks);
     writeRows_(sheet, sortedRows, weeks);
+
+    // Step 12: Name normalization (Change Names.js) — Tempo display names →
+    // roster legal names, in-place, so downstream joins match without the
+    // manual normalizeAllNames() step after every run.
+    try {
+      const renamed = normalizeSheetNames_(sheet, NAME_MAPST.TEMPO, 1, 3);
+      Logger.log(`ℹ️ Name normalization: ${renamed} name(s) updated.`);
+    } catch (e) {
+      Logger.log(`⚠️ Name normalization skipped (${e.message}) — run normalizeAllNames() manually.`);
+    }
 
     Logger.log(
       `✅ [fetchTempoPlannedTime] Done. ${sortedRows.length} rows written.`,
@@ -326,13 +402,16 @@ function logActiveFilters_(fromDate, weeks) {
  *
  * Row 1 (initial header): ISO calendar week name above each week column,
  *                         e.g. "2026.W14". Fixed columns are left blank.
- * Row 2 (date header):    "User", "Space", "Key", "PM", "Planned (hrs)",
- *                         the week date ranges (e.g. "Mar 30 - Apr 05 2026"),
- *                         and "Total (hrs)".
+ * Row 2 (date header):    "User", "Space", "Key", "PM", "Issue",
+ *                         "Planned (hrs)", the week date ranges
+ *                         (e.g. "Mar 30 - Apr 05 2026"), and "Total (hrs)".
  *
  * "PM" is the Jira project lead of the plan's project (see attachProjectLeads_).
- * Downstream readers (PS dashboard, demand dashboard) locate columns by header
- * name, so the insert is safe for them.
+ * "Issue" is the plan's issue key for ISSUE-level plans (planning-granularity
+ * validation); blank means a PROJECT-level plan, which has no issue by nature.
+ * Column order mirrors the Tempo Tracked Time sheet. Downstream readers
+ * (PS dashboard, demand dashboard) locate columns by header name, so the
+ * inserts are safe for them.
  *
  * @param {Array<{label: string, isoLabel: string}>} weeks
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
@@ -344,12 +423,12 @@ function prepareSheet_(weeks) {
   sheet.clear();
 
   // Row 1 — ISO week names; blank over the fixed columns and the total column.
-  const isoRow = ["", "", "", "", ""];
+  const isoRow = ["", "", "", "", "", ""];
   weeks.forEach((w) => isoRow.push(w.isoLabel));
   isoRow.push("");
 
   // Row 2 — existing date-range headers.
-  const dateRow = ["User", "Space", "Key", "PM", "Planned (hrs)"];
+  const dateRow = ["User", "Space", "Key", "PM", "Issue", "Planned (hrs)"];
   weeks.forEach((w) => dateRow.push(w.label));
   dateRow.push("Total (hrs)");
 
@@ -360,7 +439,7 @@ function prepareSheet_(weeks) {
   headerRange.setBackground(CONFIGPlan.HEADER_BG);
   headerRange.setFontColor(CONFIGPlan.HEADER_FONT);
   sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(5);
+  sheet.setFrozenColumns(6);
 
   return sheet;
 }
@@ -386,17 +465,34 @@ function prepareSheet_(weeks) {
 function fetchAllTeamMembers_(token) {
   const headers = { Authorization: `Bearer ${token}` };
 
+  // Tempo throws transient 500s under load — one on the very first call
+  // killed an entire run (2026-07-15), and per-team 500s silently dropped
+  // whole teams' members. Tempo's auth layer ALSO throws transient 401s
+  // (daily 5:57 AM trigger runs died on them, 2026-07-23) — the token is
+  // valid again minutes later, so 401 is retried like 5xx/429. A genuinely
+  // revoked token still fails every attempt and surfaces the same error.
+  const fetchWithRetry = (url) => {
+    let res, code;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (attempt > 0) Utilities.sleep(1500 * attempt);
+      res = UrlFetchApp.fetch(url, {
+        method: "get",
+        headers: headers,
+        muteHttpExceptions: true,
+      });
+      code = res.getResponseCode();
+      if (code === 200 || (code < 500 && code !== 429 && code !== 401)) break;
+    }
+    return res;
+  };
+
   // Step 1: Fetch all Tempo Teams
   Logger.log("ℹ️ [fetchAllTeamMembers_] Fetching all Tempo Teams...");
-  const teamsRes = UrlFetchApp.fetch("https://api.tempo.io/4/teams?limit=200", {
-    method: "get",
-    headers: headers,
-    muteHttpExceptions: true,
-  });
+  const teamsRes = fetchWithRetry("https://api.tempo.io/4/teams?limit=200");
 
   if (teamsRes.getResponseCode() !== 200) {
     throw new Error(
-      `❌ Failed to fetch Tempo Teams: HTTP ${teamsRes.getResponseCode()} — ${teamsRes.getContentText()}`,
+      `❌ Failed to fetch Tempo Teams after retries: HTTP ${teamsRes.getResponseCode()} — ${teamsRes.getContentText()}`,
     );
   }
 
@@ -418,18 +514,15 @@ function fetchAllTeamMembers_(token) {
     let hasMore = true;
 
     while (hasMore) {
-      const membersRes = UrlFetchApp.fetch(
+      const membersRes = fetchWithRetry(
         `https://api.tempo.io/4/teams/${teamId}/members?limit=200&offset=${offset}`,
-        {
-          method: "get",
-          headers: headers,
-          muteHttpExceptions: true,
-        },
       );
 
       if (membersRes.getResponseCode() !== 200) {
         Logger.log(
-          `   ⚠️ Could not fetch members for team ${teamId}: HTTP ${membersRes.getResponseCode()}`,
+          `   ⚠️ Could not fetch members for team ${teamId} after retries: ` +
+            `HTTP ${membersRes.getResponseCode()} — this team's members are ` +
+            `MISSING from this run unless they're in another team.`,
         );
         break;
       }
@@ -497,12 +590,19 @@ function fetchAllTeamMembers_(token) {
  * @param {string} tempoToken
  * @param {string[]} workerIds - Dynamic list from fetchAllTeamMembers_()
  * @param {Object} userMap - accountId → display name (for logging only)
- * @returns {{ allPlans: Array, typeMap: Object, skippedCount: number }}
+ * @returns {{ allPlans: Array, typeMap: Object, skippedCount: number,
+ *             planRangesByUser: Object, failedUserIds: Object }}
+ *          planRangesByUser: rawId → [{start, end}] plan date ranges (raw,
+ *          pre-dedup) — lets the week-scoped pass skip weeks a user provably
+ *          has no plans in. failedUserIds: rawId → true for users whose fetch
+ *          failed after retries (coverage unknown — never prefilter them).
  */
 function fetchAllPlans_(tempoToken, workerIds, userMap) {
   const allPlans = [];
   const typeMap = {};
   let skippedCount = 0;
+  const planRangesByUser = {};
+  const failedUserIds = {};
 
   // One fingerprint Set per effective (merged) user ID
   const seenFingerprintsByUser = {};
@@ -516,7 +616,24 @@ function fetchAllPlans_(tempoToken, workerIds, userMap) {
       `ℹ️ [${w + 1}/${workerIds.length}] ${displayName} (raw: ${rawId})`,
     );
 
-    const userPlans = fetchUserPlans_(tempoToken, rawId);
+    const fetchResult = fetchUserPlans_(tempoToken, rawId);
+    const userPlans = fetchResult.plans;
+    if (!fetchResult.ok) failedUserIds[rawId] = true;
+    // Coverage ranges for the week-scoped prefilter. RECURRING plans carry
+    // startDate/endDate for the FIRST occurrence only — the repeats live in
+    // rule + recurrenceEndDate, so the range must extend to recurrenceEndDate
+    // or the user's later weeks get skipped (a first cut ignored this and
+    // dropped ~30 people whose plans recur from before the window). Missing
+    // dates widen to sentinels: over-fetching an empty cell is cheap, a
+    // skipped real one silently zeroes the sheet.
+    planRangesByUser[rawId] = userPlans.map((p) => {
+      const start = p.startDate || "0000-01-01";
+      let end = p.endDate || "";
+      if (p.recurrenceEndDate && p.recurrenceEndDate > end) end = p.recurrenceEndDate;
+      const recursForever = p.rule && p.rule !== "NEVER" && !p.recurrenceEndDate;
+      if (!end || recursForever) end = "9999-12-31";
+      return { start: start, end: end };
+    });
     Logger.log(`   → ${userPlans.length} plans returned from Tempo`);
 
     if (!seenFingerprintsByUser[effectiveId]) {
@@ -565,14 +682,36 @@ function fetchAllPlans_(tempoToken, workerIds, userMap) {
     }
   }
 
-  return { allPlans, typeMap, skippedCount };
+  // Per-worker control totals + raw-id map for the person-parity check:
+  // the week-scoped grid must reproduce each worker's whole-window hours;
+  // any shortfall means lost cells (failed requests / prefilter miss) and
+  // that worker's weeks get re-fetched individually.
+  const windowHrsByWorker = {};
+  const rawIdsByWorker = {};
+  allPlans.forEach((plan) => {
+    const worker = userMap[plan._userId] || plan._userId;
+    windowHrsByWorker[worker] =
+      (windowHrsByWorker[worker] || 0) +
+      (plan.totalPlannedSecondsInScope || 0) / 3600;
+  });
+  workerIds.forEach((rawId) => {
+    const worker = userMap[MERGE_MAP[rawId] || rawId] || (MERGE_MAP[rawId] || rawId);
+    (rawIdsByWorker[worker] = rawIdsByWorker[worker] || []).push(rawId);
+  });
+
+  return {
+    allPlans, typeMap, skippedCount, planRangesByUser, failedUserIds,
+    windowHrsByWorker, rawIdsByWorker,
+  };
 }
 
 /**
  * Fetches all Tempo plans for a single user, handling pagination automatically.
  * @param {string} token - Tempo Bearer token.
  * @param {string} userId - Jira account ID.
- * @returns {Array} All plan objects from Tempo for this user.
+ * @returns {{ plans: Array, ok: boolean }} ok=false when a fetch failed after
+ *          retries — the caller must then treat this user's coverage as
+ *          UNKNOWN (never as "has no plans").
  */
 function fetchUserPlans_(token, userId) {
   const allResults = [];
@@ -585,17 +724,28 @@ function fetchUserPlans_(token, userId) {
       `?from=${CONFIGPlan.FROM_DATE}&to=${CONFIGPlan.TO_DATE}` +
       `&offset=${offset}&limit=${CONFIGPlan.TEMPO_PAGE_LIMIT}`;
 
-    const response = UrlFetchApp.fetch(url, {
-      method: "get",
-      headers: { Authorization: `Bearer ${token}` },
-      muteHttpExceptions: true,
-    });
+    // Tempo throws transient 500s under load (a 2026-07-15 run lost ~40 of
+    // 222 users to them) and transient 401s (2026-07-23). Retry 5xx/429/401
+    // twice with backoff before giving up — a lost user here also strands
+    // their plan items unresolved (no Key/PM/Issue) even when the
+    // week-scoped pass later recovers their hours.
+    let response, code;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) Utilities.sleep(500 * attempt);
+      response = UrlFetchApp.fetch(url, {
+        method: "get",
+        headers: { Authorization: `Bearer ${token}` },
+        muteHttpExceptions: true,
+      });
+      code = response.getResponseCode();
+      if (code === 200 || (code < 500 && code !== 429 && code !== 401)) break;
+    }
 
-    if (response.getResponseCode() !== 200) {
+    if (code !== 200) {
       Logger.log(
-        `   ⚠️ Tempo API ${response.getResponseCode()} for user ${userId}`,
+        `   ⚠️ Tempo API ${code} for user ${userId} (after retries)`,
       );
-      return allResults;
+      return { plans: allResults, ok: false };
     }
 
     const data = JSON.parse(response.getContentText());
@@ -606,20 +756,22 @@ function fetchUserPlans_(token, userId) {
     offset += CONFIGPlan.TEMPO_PAGE_LIMIT;
   }
 
-  return allResults;
+  return { plans: allResults, ok: true };
 }
 
 // ── SECTION: JIRA DATA RESOLUTION ────────────────────────────
 
 /**
- * Resolves plan item IDs → { name, key, pm } using Jira.
+ * Resolves plan item IDs → { name, key, pm, issueKey } using Jira.
  * Dispatches PROJECT IDs and ISSUE IDs to separate resolvers, then fills the
  * project-manager (Jira project lead) for entries the resolvers couldn't.
+ * issueKey carries the issue trace for ISSUE-type plan items (e.g. MAVC-227);
+ * it is "" for PROJECT-type items, whose plans have no issue by nature.
  * @param {string[]} itemIds
  * @param {Object} typeMap - itemId → "PROJECT" | "ISSUE"
  * @param {string} email
  * @param {string} token
- * @returns {Object} itemId → { name: string, key: string, pm: string }
+ * @returns {Object} itemId → { name: string, key: string, pm: string, issueKey: string }
  */
 function resolvePlanItems_(itemIds, typeMap, email, token) {
   const itemMap = {};
@@ -672,11 +824,12 @@ function resolveProjects_(projectIds, itemMap, auth) {
                   name: p.name || `Project-${id}`,
                   key: p.key || "",
                   pm: p.lead?.displayName || "",
+                  issueKey: "", // PROJECT-level plan item — no issue trace
                 };
               })()
-            : { name: `Project-${id}`, key: "", pm: "" };
+            : { name: `Project-${id}`, key: "", pm: "", issueKey: "" };
       } catch (e) {
-        itemMap[id] = { name: `Project-${id}`, key: "", pm: "" };
+        itemMap[id] = { name: `Project-${id}`, key: "", pm: "", issueKey: "" };
       }
     });
   }
@@ -718,6 +871,7 @@ function resolveIssues_(issueIds, itemMap, auth) {
             name: issue.fields?.project?.name || "Unknown",
             key: issue.fields?.project?.key || "",
             pm: "",
+            issueKey: issue.key || "",
           };
         });
       }
@@ -747,11 +901,12 @@ function resolveIssues_(issueIds, itemMap, auth) {
                       name: iss.fields?.project?.name || "Unknown",
                       key: iss.fields?.project?.key || "",
                       pm: "",
+                      issueKey: iss.key || "",
                     };
                   })()
-                : { name: "Unknown", key: "", pm: "" };
+                : { name: "Unknown", key: "", pm: "", issueKey: "" };
           } catch (e2) {
-            itemMap[id] = { name: "Unknown", key: "", pm: "" };
+            itemMap[id] = { name: "Unknown", key: "", pm: "", issueKey: "" };
           }
         });
       } catch (e3) {
@@ -925,9 +1080,15 @@ function fmtDate_(d) {
  * @param {Array}  weeks      - from buildWeekRanges_ (start, calcEnd, label…)
  * @param {string[]} workerIds - raw account IDs (MERGE_MAP applied per row)
  * @param {Object} userMap    - effectiveId → display name
- * @param {Object} itemMap    - planItemId → { name, key, pm }
+ * @param {Object} itemMap    - planItemId → { name, key, pm, issueKey }
  * @param {Date}   toDate     - report end; clamps the final partial week
- * @returns {Object} groupKey → { worker, project, projectKey, pm, weeklyHours[], total }
+ * @param {Object=} planRangesByUser - rawId → [{start, end}] from fetchAllPlans_;
+ *                  a (user, week) with no overlapping range provably has no
+ *                  plans, so its request is skipped (the 2026-07-15 run spent
+ *                  ~6 of its 8 minutes on 8,880 requests, most of them empty).
+ * @param {Object=} failedUserIds - rawId → true where pass 1 failed after
+ *                  retries; those users' coverage is unknown → never skipped.
+ * @returns {Object} groupKey → { worker, project, projectKey, pm, issue, weeklyHours[], total }
  */
 function groupPlansByWeekScoped_(
   tempoToken,
@@ -936,17 +1097,38 @@ function groupPlansByWeekScoped_(
   userMap,
   itemMap,
   toDate,
+  planRangesByUser,
+  failedUserIds,
 ) {
   const grouped = {};
 
-  // Build one request per (week, raw worker id); fetchAll batches them.
+  // Build one request per (week, raw worker id) that MAY have plans;
+  // fetchAll batches them.
   const requests = [];
   const meta = []; // parallel to requests: { wi, rawId }
+  let skippedCells = 0;
   for (let wi = 0; wi < weeks.length; wi++) {
     const fromStr = fmtDate_(weeks[wi].start);
     const toStr = fmtDate_(minDate_(weeks[wi].calcEnd, toDate));
     for (let u = 0; u < workerIds.length; u++) {
       const rawId = workerIds[u];
+
+      // Prefilter: skip the cell when pass 1 succeeded for this user and none
+      // of their plan ranges touch this week (YYYY-MM-DD strings compare
+      // lexicographically). Unknown coverage (pass-1 failure or no range
+      // info) always fetches.
+      const ranges = planRangesByUser ? planRangesByUser[rawId] : null;
+      const unknown = !ranges || (failedUserIds && failedUserIds[rawId]);
+      if (!unknown) {
+        const overlaps = ranges.some(
+          (r) => r.start <= toStr && r.end >= fromStr,
+        );
+        if (!overlaps) {
+          skippedCells++;
+          continue;
+        }
+      }
+
       requests.push({
         url:
           `https://api.tempo.io/4/plans/user/${rawId}` +
@@ -961,82 +1143,120 @@ function groupPlansByWeekScoped_(
 
   Logger.log(
     `ℹ️ [weekScoped] ${requests.length} requests ` +
-      `(${weeks.length} weeks × ${workerIds.length} users)`,
+      `(${weeks.length} weeks × ${workerIds.length} users; ` +
+      `${skippedCells} plan-free cell(s) skipped via pass-1 ranges)`,
   );
 
   const seen = {}; // fingerprint → true, scoped per (effective user, week)
   let pageCapHits = 0;
-  let errorCount = 0;
 
-  for (let b = 0; b < requests.length; b += CONFIGPlan.API_BATCH_SIZE) {
-    const responses = UrlFetchApp.fetchAll(
-      requests.slice(b, b + CONFIGPlan.API_BATCH_SIZE),
-    );
-    responses.forEach((res, i) => {
-      const wi = meta[b + i].wi;
-      const rawId = meta[b + i].rawId;
-      const effectiveId = MERGE_MAP[rawId] || rawId;
-      const worker = userMap[effectiveId] || effectiveId;
+  // Tempo throws transient 500s under load — a 2026-07-15 run lost 1512 of
+  // 8880 (user,week) cells to them, silently zeroing those weeks in the
+  // sheet. Failed requests re-queue for up to 2 retry rounds (with a pause)
+  // before a cell is finally given up on.
+  const MAX_ROUNDS = 3;
+  let pending = requests.map((req, i) => ({ req: req, m: meta[i] }));
 
-      if (res.getResponseCode() !== 200) {
-        errorCount++;
-        Logger.log(
-          `   ⚠️ Tempo ${res.getResponseCode()} for ${rawId} (week ${wi + 1})`,
-        );
-        return;
-      }
+  for (let round = 1; round <= MAX_ROUNDS && pending.length > 0; round++) {
+    if (round > 1) {
+      Logger.log(
+        `ℹ️ [weekScoped] retry round ${round - 1}: ${pending.length} failed request(s)…`,
+      );
+      Utilities.sleep(2000 * (round - 1));
+    }
+    const failed = [];
 
-      const results = JSON.parse(res.getContentText()).results || [];
-      if (results.length >= CONFIGPlan.TEMPO_PAGE_LIMIT) pageCapHits++;
+    // The transient 500s are load-induced (~17% of a 100-wide burst fails),
+    // so retry rounds drop to small batches — slower per request, but nearly
+    // every retried cell recovers instead of failing again.
+    const batchSize = round === 1 ? CONFIGPlan.WEEK_FETCH_BATCH : 25;
+    for (let b = 0; b < pending.length; b += batchSize) {
+      const slice = pending.slice(b, b + batchSize);
+      const responses = UrlFetchApp.fetchAll(slice.map((s) => s.req));
+      responses.forEach((res, i) => {
+        const wi = slice[i].m.wi;
+        const rawId = slice[i].m.rawId;
+        const effectiveId = MERGE_MAP[rawId] || rawId;
+        const worker = userMap[effectiveId] || effectiveId;
 
-      for (let p = 0; p < results.length; p++) {
-        const plan = results[p];
-        const planType = plan.planItem ? plan.planItem.type : "UNKNOWN";
-        if (!CONFIGPlan.INCLUDE_PROJECT_PLANS && planType === "PROJECT") {
-          continue;
+        if (res.getResponseCode() !== 200) {
+          failed.push(slice[i]);
+          return;
         }
 
-        const itemId = plan.planItem ? String(plan.planItem.id) : "none";
+        const results = JSON.parse(res.getContentText()).results || [];
+        if (results.length >= CONFIGPlan.TEMPO_PAGE_LIMIT) pageCapHits++;
 
-        // Dedup true duplicates within this (effective user, week) bucket.
-        const fingerprint = [
-          effectiveId,
-          wi,
-          itemId,
-          plan.startDate || "",
-          plan.endDate || "",
-          plan.plannedSecondsPerDay || 0,
-        ].join("|");
-        if (seen[fingerprint]) continue;
-        seen[fingerprint] = true;
+        for (let p = 0; p < results.length; p++) {
+          const plan = results[p];
+          const planType = plan.planItem ? plan.planItem.type : "UNKNOWN";
+          if (!CONFIGPlan.INCLUDE_PROJECT_PLANS && planType === "PROJECT") {
+            continue;
+          }
 
-        const inScope = (plan.totalPlannedSecondsInScope || 0) / 3600;
-        if (inScope <= 0) continue;
+          const itemId = plan.planItem ? String(plan.planItem.id) : "none";
 
-        const itemInfo = itemMap[itemId];
-        const project = itemInfo ? itemInfo.name : `${planType}-${itemId}`;
-        const projectKey = itemInfo ? itemInfo.key : "";
-        const pm = itemInfo && itemInfo.pm ? itemInfo.pm : "";
-        const groupKey = `${worker}|||${project}`;
+          // Dedup true duplicates within this (effective user, week) bucket.
+          const fingerprint = [
+            effectiveId,
+            wi,
+            itemId,
+            plan.startDate || "",
+            plan.endDate || "",
+            plan.plannedSecondsPerDay || 0,
+          ].join("|");
+          if (seen[fingerprint]) continue;
+          seen[fingerprint] = true;
 
-        if (!grouped[groupKey]) {
-          grouped[groupKey] = {
-            worker,
-            project,
-            projectKey,
-            pm,
-            weeklyHours: new Array(weeks.length).fill(0),
-            total: 0,
-          };
+          const inScope = (plan.totalPlannedSecondsInScope || 0) / 3600;
+          if (inScope <= 0) continue;
+
+          const itemInfo = itemMap[itemId];
+          const project = itemInfo ? itemInfo.name : `${planType}-${itemId}`;
+          const projectKey = itemInfo ? itemInfo.key : "";
+          const pm = itemInfo && itemInfo.pm ? itemInfo.pm : "";
+          // Issue trace: blank for PROJECT-level plans; "#<id>" keeps an
+          // unresolved ISSUE-level plan traceable instead of collapsing it.
+          const issue =
+            itemInfo && itemInfo.issueKey
+              ? itemInfo.issueKey
+              : planType === "ISSUE"
+                ? `#${itemId}`
+                : "";
+          const groupKey = `${worker}|||${project}|||${issue}`;
+
+          if (!grouped[groupKey]) {
+            grouped[groupKey] = {
+              worker,
+              project,
+              projectKey,
+              pm,
+              issue,
+              weeklyHours: new Array(weeks.length).fill(0),
+              total: 0,
+            };
+          }
+          grouped[groupKey].weeklyHours[wi] += inScope;
+          grouped[groupKey].total += inScope;
         }
-        grouped[groupKey].weeklyHours[wi] += inScope;
-        grouped[groupKey].total += inScope;
-      }
-    });
+      });
+    }
+
+    pending = failed;
   }
 
-  if (errorCount > 0) {
-    Logger.log(`⚠️ [weekScoped] ${errorCount} request(s) returned non-200.`);
+  if (pending.length > 0) {
+    // Cells that failed every round — the sheet shows 0 planned hours for
+    // these (user, week) pairs, so name them instead of hiding the gap.
+    pending.forEach((s) => {
+      Logger.log(
+        `   ⚠️ Tempo gave up on ${s.m.rawId} (week ${s.m.wi + 1}) after ${MAX_ROUNDS} attempts.`,
+      );
+    });
+    Logger.log(
+      `⚠️ [weekScoped] ${pending.length} (user,week) cell(s) still failed after ` +
+        `${MAX_ROUNDS - 1} retry round(s) — those weeks read as 0 planned hours.`,
+    );
   }
   if (pageCapHits > 0) {
     Logger.log(
@@ -1047,11 +1267,14 @@ function groupPlansByWeekScoped_(
   }
 
   // Per-project rollup so DIAG_PER_PLAN keeps surfacing where hours land.
+  // Rows are split per issue for ISSUE-level plans, so the issue trace is shown.
   if (CONFIGPlan.DIAG_PER_PLAN) {
     Logger.log("   ──────── PER-PROJECT TOTALS (week-scoped) ────────");
     Object.values(grouped)
       .sort((a, b) =>
-        (a.worker + a.project).localeCompare(b.worker + b.project),
+        (a.worker + a.project + (a.issue || "")).localeCompare(
+          b.worker + b.project + (b.issue || ""),
+        ),
       )
       .forEach((g) => {
         const flag =
@@ -1061,7 +1284,7 @@ function groupPlansByWeekScoped_(
             ? " ⚠️UNRESOLVED"
             : "";
         Logger.log(
-          `   📊 ${g.worker} | "${g.project}" ${g.projectKey} = ${round2_(g.total)} hrs${flag}`,
+          `   📊 ${g.worker} | "${g.project}" ${g.projectKey}${g.issue ? " | " + g.issue : ""} = ${round2_(g.total)} hrs${flag}`,
         );
       });
   }
@@ -1093,7 +1316,7 @@ function groupPlansByWeekScoped_(
  * @param {Object} itemMap
  * @param {Date}   fromDate
  * @param {Date}   toDate
- * @returns {Object} groupKey → { worker, project, projectKey, pm, weeklyHours[], total }
+ * @returns {Object} groupKey → { worker, project, projectKey, pm, issue, weeklyHours[], total }
  */
 function groupPlansByUserProject_(
   allPlans,
@@ -1115,7 +1338,13 @@ function groupPlansByUserProject_(
     const project = itemInfo ? itemInfo.name : `${itemType}-${itemId}`;
     const projectKey = itemInfo ? itemInfo.key : "";
     const pm = itemInfo && itemInfo.pm ? itemInfo.pm : "";
-    const groupKey = `${worker}|||${project}`;
+    const issue =
+      itemInfo && itemInfo.issueKey
+        ? itemInfo.issueKey
+        : itemType === "ISSUE"
+          ? `#${itemId}`
+          : "";
+    const groupKey = `${worker}|||${project}|||${issue}`;
 
     if (!grouped[groupKey]) {
       grouped[groupKey] = {
@@ -1123,6 +1352,7 @@ function groupPlansByUserProject_(
         project,
         projectKey,
         pm,
+        issue,
         weeklyHours: new Array(weeks.length).fill(0), // full precision floats
         total: 0,
       };
@@ -1302,10 +1532,12 @@ function groupPlansByUserProject_(
 function buildSortedRows_(grouped, weeks) {
   const entries = Object.values(grouped);
 
-  // Sort: primary by worker name, secondary by project name
+  // Sort: worker name, then project name, then issue trace
   entries.sort((a, b) => {
-    const c = a.worker.localeCompare(b.worker);
-    return c !== 0 ? c : a.project.localeCompare(b.project);
+    let c = a.worker.localeCompare(b.worker);
+    if (c !== 0) return c;
+    c = a.project.localeCompare(b.project);
+    return c !== 0 ? c : (a.issue || "").localeCompare(b.issue || "");
   });
 
   return entries.map((entry) => {
@@ -1318,6 +1550,7 @@ function buildSortedRows_(grouped, weeks) {
       entry.project,
       entry.projectKey,
       entry.pm || "",
+      entry.issue || "",
       roundedTotal,
     ];
     roundedWeeks.forEach((h) => row.push(h));
@@ -1342,9 +1575,9 @@ function writeRows_(sheet, rows, weeks) {
     return;
   }
 
-  // 4 fixed columns (User, Space, Key, PM) + Planned + weeks + Total
-  const FIRST_HOURS_COL = 4; // 0-based index of "Planned (hrs)"
-  const totalCols = 5 + weeks.length + 1;
+  // 5 fixed columns (User, Space, Key, PM, Issue) + Planned + weeks + Total
+  const FIRST_HOURS_COL = 5; // 0-based index of "Planned (hrs)"
+  const totalCols = 6 + weeks.length + 1;
 
   // Write data rows starting at row 3 (rows 1–2 are the stacked headers)
   sheet.getRange(3, 1, rows.length, totalCols).setValues(rows);
