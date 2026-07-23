@@ -1051,56 +1051,11 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
 }
 
 function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
+  // Evidence first, caveats last — a CEO reads the FY FACTs and RISKs, not
+  // methodology plumbing. Config internals (DEPT_REMAP, REASON_REMAP names,
+  // the taxonomy list) live in the Confluence definitions appendix and the
+  // debug log, never in reader-facing lines.
   const lines = [];
-  // The org was deliberately restructured across the window (teams removed,
-  // units merged) — historical leaver departments are EXPECTED to differ from
-  // today's org chart, so this renders as ONE quiet definition NOTE, never a
-  // per-department RISK wall. Consolidate merged units via CONFIG_WR.DEPT_REMAP.
-  if (ghostDepts && ghostDepts.length) {
-    lines.push(note_("Leaver departments reflect the organisation at exit time — " +
-      fmtInt_(ghostDepts.length) + " historical department" +
-      (ghostDepts.length === 1 ? "" : "s") + " no longer exist after restructuring " +
-      "(e.g. " + ghostDepts.slice(0, 3).join(", ") + "). Merged units can be " +
-      "consolidated into their current department via CONFIG_WR.DEPT_REMAP."));
-  } else {
-    lines.push(note_("Historical departments are consolidated into the current 8-department " +
-      "structure (DEPT_REMAP) — leavers and their historical headcount both count against " +
-      "today's departments, so department-level attrition is apples-to-apples."));
-  }
-  // "Regretted" is a recorded fact, not an inference — say so, and surface
-  // how it overlaps with structural exits instead of leaving the reader to
-  // wonder whether a position elimination counts.
-  const structTotal = stats.reduce((t, s) => t + s.structuralExits, 0);
-  const structRegret = stats.reduce((t, s) => t + s.structuralRegretted, 0);
-  lines.push(note_("Regretted = the roster's 'Termination Regretted' flag as recorded by " +
-    "People at exit — the report never infers it. Structural exits (Job Position " +
-    "Eliminated or Changed) are included in the attrition rate" +
-    (structTotal
-      ? "; " + fmtInt_(structRegret) + " of the " + fmtInt_(structTotal) +
-        " structural exits in this window carry a regretted flag"
-      : "") + "."));
-  const reasonPairs = Object.keys(cfg.REASON_REMAP || {});
-  if (reasonPairs.length) {
-    lines.push(note_("Exit reasons are consolidated to current classification standards: " +
-      reasonPairs.map(k => k + " → " + cfg.REASON_REMAP[k]).join("; ") + "."));
-  }
-  // The active taxonomy, plus anything in history that falls outside it.
-  const valid = cfg.VALID_EXIT_REASONS || [];
-  if (valid.length) {
-    const legacy = new Map();
-    stats.forEach(s => s.reasons.forEach(x => {
-      if (x.key !== "—" && valid.indexOf(x.key) === -1) {
-        legacy.set(x.key, (legacy.get(x.key) || 0) + x.count);
-      }
-    }));
-    lines.push(note_("Active exit-reason taxonomy: " + valid.join(", ") +
-      ". Voluntary Other = voluntary exits not classified under a more specific reason." +
-      (legacy.size
-        ? " Legacy reasons still present in history: " +
-          [...legacy.entries()].map(([k, n]) => k + " (" + fmtInt_(n) + ")").join(", ") +
-          " — consolidate via REASON_REMAP if deprecated."
-        : "")));
-  }
   stats.forEach(s => {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
       " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
@@ -1130,6 +1085,21 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
     lines.push(risk_(coverage.firstFyLabel + " attrition detail shares the movement-section " +
       "coverage limit — earliest retained termination is " +
       (coverage.earliestTermDate || "none on file") + "."));
+  }
+  // Closing definition NOTE — the one caveat a board reader needs, kept short.
+  const structTotal = stats.reduce((t, s) => t + s.structuralExits, 0);
+  const structRegret = stats.reduce((t, s) => t + s.structuralRegretted, 0);
+  lines.push(note_("Regretted = the 'Termination Regretted' flag recorded by People at " +
+    "exit, never inferred by this report" +
+    (structTotal
+      ? "; " + fmtInt_(structRegret) + " of the " + fmtInt_(structTotal) +
+        " structural exits carry it"
+      : "") + "."));
+  if (ghostDepts && ghostDepts.length) {
+    lines.push(note_("Leaver departments reflect the organisation at exit time — " +
+      fmtInt_(ghostDepts.length) + " historical department" +
+      (ghostDepts.length === 1 ? " (" : "s (e.g. ") + ghostDepts.slice(0, 3).join(", ") +
+      ") " + (ghostDepts.length === 1 ? "has" : "have") + " since been merged or dissolved."));
   }
   // ONE readable table: each row is a department × reason combination with a
   // count column per FY. Level detail stays out — the IC vs Manager split is
@@ -1315,11 +1285,14 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
   const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf, cfg));
   const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
   const compaGroups = buildCompaGroups_(active, benchMap, cfg);
-  // Ghost departments: present among leavers, absent among active regulars —
-  // a renamed/absorbed unit distorting department-level attrition.
-  const activeDepts = new Set(active.map(r => r.dept).filter(Boolean));
+  // Ghost departments: present among scope leavers, absent among active
+  // regulars ANYWHERE in the company — a department alive elsewhere (e.g. IT
+  // with no Chile actives) is NOT a ghost just because this location's
+  // actives sit in other functions.
+  const companyActiveDepts = new Set(records
+    .filter(r => r.active && !r.isIntern).map(r => r.dept).filter(Boolean));
   const ghostDepts = [...new Set(regulars
-    .filter(r => r.termDate && r.dept && !activeDepts.has(r.dept))
+    .filter(r => r.termDate && r.dept && !companyActiveDepts.has(r.dept))
     .map(r => r.dept))].sort();
 
   return {
@@ -1646,6 +1619,10 @@ function confluenceDefinitionsHtml_() {
           ? "; exceptions: " + Object.keys(c.JOB_FAMILY_MAP)
               .map(k => k + " → " + c.JOB_FAMILY_MAP[k]).join(", ")
           : "") + "."],
+      ["Regretted exit", "the roster's 'Termination Regretted' flag as recorded by " +
+        "People at exit — never inferred by the report."],
+      ["Exit-reason taxonomy", (c.VALID_EXIT_REASONS || []).join(", ") +
+        ". Voluntary Other = voluntary exits not classified under a more specific reason."],
     ] });
   html += confTable_({ title: "Compensation lever classification (TCC Change Reason)",
     headers: ["Lever", "Reasons"],
@@ -2733,6 +2710,18 @@ function debugReportPipeline() {
     .map(x => x.dept))].sort();
   Logger.log("Dept remap: " + r.remapped + " rows consolidated (defaults + WR_DEPT_REMAP property)");
   Logger.log("Exit-reason remap: " + r.reasonRemapped + " rows consolidated (defaults + WR_REASON_REMAP property)");
+  const legacyReasons = new Map();
+  r.records.forEach(x => {
+    if (x.termDate && x.termReason &&
+        CONFIG_WR.VALID_EXIT_REASONS.indexOf(x.termReason) === -1) {
+      legacyReasons.set(x.termReason, (legacyReasons.get(x.termReason) || 0) + 1);
+    }
+  });
+  Logger.log(legacyReasons.size
+    ? "⚠️ LEGACY EXIT REASONS in history (outside the active taxonomy): " +
+      [...legacyReasons.entries()].map(([k, n]) => k + " (" + n + ")").join(", ") +
+      " — consolidate via REASON_REMAP / WR_REASON_REMAP if deprecated"
+    : "Exit reasons: all leaver reasons sit inside the active taxonomy");
   if (ghosts.length) {
     Logger.log("⚠️ GHOST DEPARTMENTS after remap (leavers only, no active staff): " + ghosts.join(" | ") +
                " — true merges belong in DEPT_REMAP / WR_DEPT_REMAP; eliminated units are correct history");

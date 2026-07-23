@@ -443,26 +443,27 @@ function term(over) {
     p.brief.glance.headcount === 4 && p.brief.glance.interns === 2);
 
   const attrSec = p.report.sections.find(s => s.id === "attrition");
-  // Re-org directive 2026-07-22: historical departments are expected, so ONE
-  // quiet NOTE — never a per-department RISK wall.
-  check("ghost dept: single NOTE names the restructuring, no RISK lines",
+  // Re-org directive 2026-07-22 + CEO feedback 2026-07-23: ONE quiet NOTE at
+  // the END, board-facing language, zero config internals.
+  check("ghost dept: single closing NOTE, merged-or-dissolved wording",
     attrSec.lines.some(l => l.badge === "NOTE" &&
       l.text.indexOf("1 historical department") !== -1 &&
       l.text.indexOf("Managed Services") !== -1 &&
-      l.text.indexOf("DEPT_REMAP") !== -1) &&
+      l.text.indexOf("since been merged or dissolved") !== -1) &&
     attrSec.lines.every(l => l.badge !== "RISK" || l.text.indexOf("Managed Services") === -1));
+  check("attrition: evidence first — the section OPENS with a FACT, no config-speak",
+    attrSec.lines[0].badge === "FACT" &&
+    attrSec.lines.every(l => l.text.indexOf("CONFIG_WR") === -1 &&
+      l.text.indexOf("REASON_REMAP") === -1 && l.text.indexOf("taxonomy") === -1));
 
-  // Business-context notes (2026-07-23 doc): consolidation policy is stated
-  // in FAR/N, both when ghosts remain and when the remap has fully landed.
-  check("remap notes: exit-reason consolidation policy stated from config",
-    attrSec.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("Involuntary Retirement → Job Position Eliminated or Changed") !== -1 &&
-      l.text.indexOf("Relocation to a New Employer → Another Job") !== -1));
+  // CEO feedback 2026-07-23: consolidation policy moved to the Confluence
+  // definitions appendix — ghost-free data renders NO restructuring note.
   const clean = buildReportPayload_(
     records.filter(r => r.dept !== "Managed Services"), {}, {}, "company", ctx, CONFIG_WR);
-  check("remap notes: ghost-free data states the apples-to-apples consolidation",
+  check("remap notes: ghost-free data carries no restructuring note at all",
     clean.report.sections.find(s => s.id === "attrition")
-      .lines.some(l => l.badge === "NOTE" && l.text.indexOf("apples-to-apples") !== -1));
+      .lines.every(l => l.text.indexOf("merged or dissolved") === -1 &&
+        l.text.indexOf("apples-to-apples") === -1));
 
   // Headcount chain + the CFO identity: closing = opening + hires − exits.
   const fys = fyListWR_(REF, 3);
@@ -573,14 +574,11 @@ function term(over) {
     sec.tables[1].title === "Leavers by job family (sub-function view)" &&
     sec.tables[1].headers.join() === "Job family,FY25,FY26,FY27,Total" &&
     sec.tables[1].rows[0][0] === "JF004" && sec.tables[1].rows[0][4] === 4);
-  check("leavers: regretted definition NOTE (recorded flag, never inferred)",
-    sec.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("'Termination Regretted' flag as recorded") !== -1));
-  check("leavers: taxonomy NOTE lists active reasons + legacy stragglers",
-    sec.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("Active exit-reason taxonomy") !== -1 &&
-      l.text.indexOf("Voluntary Other = voluntary exits") !== -1 &&
-      l.text.indexOf("Better offer (3)") !== -1));
+  check("leavers: closing regretted NOTE (recorded flag, never inferred)",
+    sec.lines[sec.lines.length - 1].badge === "NOTE" &&
+    sec.lines[sec.lines.length - 1].text.indexOf("'Termination Regretted' flag recorded by People") !== -1);
+  check("leavers: taxonomy lives in the appendix, not the section",
+    sec.lines.every(l => l.text.indexOf("Active exit-reason taxonomy") === -1));
 })();
 
 // ── Confluence-paste HTML builders ──────────────────────────────────────────
@@ -615,6 +613,10 @@ function term(over) {
   check("definitions appendix: thresholds echo config values",
     html.indexOf(CONFIG_WR.RISK_REGRET_PCT + "%") !== -1 &&
     html.indexOf("I" + CONFIG_WR.SENIOR_IC_MIN + "+") !== -1);
+  check("definitions appendix: regretted + taxonomy definitions moved here",
+    html.indexOf("Regretted exit") !== -1 &&
+    html.indexOf("Exit-reason taxonomy") !== -1 &&
+    html.indexOf("Voluntary Other = voluntary exits") !== -1);
 })();
 
 // ── Structural risks + retention crosstab + spotlights — spec §7 ────────────
