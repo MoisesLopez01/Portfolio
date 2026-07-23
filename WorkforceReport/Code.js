@@ -4,7 +4,7 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.1.3 — per-year FY story/comparison, snapshot anchoring,
+// VERSION:     1.1.4 — per-year FY story/comparison, snapshot anchoring,
 //              within-location comparison rule (exec review 2026-07-23);
 //              body ASSUMPTION lines removed, build badge in the header,
 //              "investigation trigger" wording out of section 4
@@ -25,7 +25,7 @@ const CONFIG_WR = {
   // header, so "did the new version actually deploy?" is answered by
   // looking at the subtitle instead of hunting for changed sentences.
   // Bump alongside the VERSION line above on every deployable change.
-  BUILD: "1.1.3",
+  BUILD: "1.1.4",
 
   // Fallback source IDs — overridable via Script Properties (WR_ prefix).
   // Defaults are the CompDash sources: the sheets are the shared contract.
@@ -1019,14 +1019,16 @@ function coverageStats_(records, histByEmp, fys) {
 // Every builder returns { id, title, lines: [{badge, text}], tables: [...] }.
 // Tables: { title, headers: string[], rows: Array<Array<string|number>> }.
 
-function secScope_(records, active, scope, mode, activeInternCount, anchorIso, ipNote) {
+function secScope_(records, active, scope, mode, activeInternCount, anchorIso, ipNote, evidenceCount) {
   const asAt = anchorIso ? " as of " + anchorIso : "";
   const lines = [
     fact_(fmtInt_(active.length) + " active regular employees in scope (" +
       (scope === "company" ? "company-wide" : scope) + ")" + asAt + " — Regular Employee, " +
       "Employer of Record and Part Time types."),
-    fact_(fmtInt_(records.length) + " regular roster records in scope including terminated " +
-      "rows — the evidence base for movement and attrition."),
+    fact_(fmtInt_(evidenceCount != null ? evidenceCount : records.length) +
+      " regular roster records in the evaluated period — employees active during the " +
+      "selected fiscal window plus its leavers; the evidence base for movement and " +
+      "attrition."),
     fact_(fmtInt_(activeInternCount || 0) + " active interns" + asAt + " — reported separately; " +
       "excluded from headline movement, attrition and compensation metrics."),
     note_("Crew members and contractors are excluded from this report."),
@@ -1718,7 +1720,16 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
     scope, currency: mode,
     sections: [
       secScope_(regulars, active, scope, mode, activeInterns.length,
-        ctx.anchored ? asOfIso : null, noteInProgress_(windows, asOfIso)),
+        ctx.anchored ? asOfIso : null, noteInProgress_(windows, asOfIso),
+        // Evidence base = rows employed at some instant inside a SELECTED
+        // window — actives during the period plus its leavers (user directive
+        // 2026-07-23). A row terminated before the selection contributes
+        // nothing to movement/attrition and must not inflate the count.
+        regulars.filter(r => windows.some(w => {
+          const evEnd = (w.inProgress && ctx.asOf < w.end) ? ctx.asOf : w.end;
+          return (!r.hireDate || r.hireDate <= evEnd) &&
+                 (!r.termDate || r.termDate >= w.start);
+        })).length),
       secFyStory_(moves, attr, levers, tccMoves, windows, mode, cfg, asOfIso, matched, allMoves),
       secComposition_(buildComposition_(active, ctx.asOf), !!ctx.anchored,
         scope === "company" ? buildLocationTable_(active) : null),

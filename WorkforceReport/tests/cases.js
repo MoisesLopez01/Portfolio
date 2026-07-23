@@ -1283,6 +1283,19 @@ function term(over) {
     scope25.lines[0].text.indexOf("as of 2025-06-30") !== -1);
   check("anchor: FY25 evidence base excludes rows hired later",
     scope25.lines[1].text.indexOf("2 regular roster records") !== -1);
+  // A leaver from BEFORE the selected period is not evidence for it — the
+  // count is actives-during-the-window plus its leavers, never all history
+  // (user directive 2026-07-23).
+  const withOldLeaver = records.concat([
+    term({ hireDate: new Date(2015, 0, 1), termDate: new Date(2020, 5, 30) })]);
+  const fy25b = buildReportPayload_(withOldLeaver, {}, {}, "company", ctx, CONFIG_WR, 0, "25");
+  check("anchor: pre-selection leaver stays out of the evidence base",
+    fy25b.report.sections.find(s => s.id === "scope")
+      .lines[1].text.indexOf("2 regular roster records") !== -1);
+  const liveEv = buildReportPayload_(withOldLeaver, {}, {}, "company", ctx, CONFIG_WR, 0, "all");
+  check("evidence base: live selection also excludes leavers from before FY25",
+    liveEv.report.sections.find(s => s.id === "scope")
+      .lines[1].text.indexOf("3 regular roster records") !== -1);
   // The long snapshot NOTE was pruned (2026-07-23); the anchor stays visible
   // through the FACT "as of" suffixes and the cover's meta.anchor.
   check("anchor: anchoring visible via FACT suffixes without the long NOTE",
