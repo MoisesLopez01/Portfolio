@@ -37,14 +37,32 @@
     h1, h2, .cover h1 { font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif; }
     a { color: var(--orbe); text-decoration: none; }
 
-    /* ── HEADER (PS Dashboard idiom) ── */
+    /* ── HEADER (PS Dashboard idiom) — two rows: identity/actions + filter bar ── */
     header { position: sticky; top: 0; z-index: 40;
-             background: var(--card-bg); border-bottom: 1px solid var(--border);
-             padding: 12px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+             background: var(--card-bg); border-bottom: 1px solid var(--border); }
+    .hdr-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+               padding: 10px 24px; }
     .hdr-title h1 { font-size: 17px; font-weight: 700; color: var(--void); line-height: 1.2; }
     .hdr-title p { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
                    color: var(--muted); font-weight: 600; }
     .hdr-right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .icon-btn { padding: 7px 10px; font-size: 13px; line-height: 1; }
+    .hdr-filters { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+                   padding: 8px 24px 10px; border-top: 1px solid var(--border);
+                   background: var(--surface); }
+    .fgroup { display: inline-flex; align-items: center; gap: 6px; }
+    .flabel { font-size: 10px; font-weight: 700; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--muted); }
+    .fdiv { width: 1px; height: 22px; background: var(--border); }
+    /* Share dropdown — Export Doc + Copy for Confluence live here */
+    .menu-wrap { position: relative; }
+    .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+            background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 6px;
+            display: flex; flex-direction: column; gap: 2px; min-width: 240px; }
+    .menu button { border: none; background: transparent; border-radius: 8px;
+                   width: 100%; justify-content: flex-start; text-align: left; }
+    .menu button:hover { background: var(--surface); }
     .fy-badge { background: var(--orbe); color: #fff; border-radius: 99px;
                 padding: 4px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     button, select {
@@ -81,6 +99,7 @@
     th { background: var(--th-bg); color: var(--muted); font-weight: 700; font-size: 11px;
          text-transform: uppercase; letter-spacing: .05em; }
     tr:hover td { background: #FAFBFF; }
+    tr.total-row td { font-weight: 700; border-top: 2px solid var(--border); }
     .twrap { overflow-x: auto; }
     /* Section bar charts (tenure distribution etc.) */
     .bar-row { display: flex; align-items: center; gap: 10px; margin: 5px 0; }
@@ -134,6 +153,10 @@
     body.dark-mode button:hover { background: var(--th-bg); color: var(--text); }
     body.dark-mode .seg { background: var(--th-bg); }
     body.dark-mode .seg button { background: transparent; }
+    body.dark-mode .hdr-filters { background: var(--th-bg); }
+    body.dark-mode .menu { box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+    body.dark-mode .menu button { background: transparent; }
+    body.dark-mode .menu button:hover { background: var(--th-bg); }
     body.dark-mode .seg button.on { background: var(--orbe); color: #fff; }
     body.dark-mode .btn-cta { background: var(--orbe); color: #fff; }
     body.dark-mode tr:hover td { background: #1E295A; }
@@ -165,30 +188,49 @@
 </head>
 <body>
 <header class="noprint">
-  <div class="hdr-title">
-    <h1>Workforce &amp; Compensation Report</h1>
-    <p id="subTitle">loading…</p>
+  <div class="hdr-top">
+    <div class="hdr-title">
+      <h1>Workforce &amp; Compensation Report</h1>
+      <p id="subTitle">loading…</p>
+    </div>
+    <span class="fy-badge" id="fyBadge"></span>
+    <div class="hdr-right">
+      <div class="menu-wrap">
+        <button id="shareBtn" onclick="toggleShareMenu(event)" title="Export or copy the current view">📤 Share ▾</button>
+        <div class="menu hidden" id="shareMenu">
+          <button id="exportBtn" onclick="exportDoc()" title="Export the current view to a formatted Google Doc">📄 Export Doc</button>
+          <button id="confBtn" onclick="copyConfluence()" title="Copy the current view as rich text — paste straight into Confluence">📋 Copy for Confluence</button>
+        </div>
+      </div>
+      <button id="refreshBtn" class="icon-btn" onclick="loadData(true)" title="Refresh — bypass cache for a live read">⟳</button>
+      <button id="themeBtn" class="icon-btn" onclick="toggleTheme()" title="Light / dark theme">🌙</button>
+      <button id="accessBtn" class="icon-btn hidden" onclick="toggleAccess()" title="Access control (admin)">🔒</button>
+    </div>
   </div>
-  <span class="fy-badge" id="fyBadge"></span>
-  <div class="hdr-right">
+  <div class="hdr-filters">
     <div class="seg" id="viewSeg">
       <button data-view="report" class="on" onclick="switchView('report')">📄 Location report</button>
       <button data-view="brief" onclick="switchView('brief')">📊 Board brief</button>
     </div>
-    <select id="scopeSel" onchange="setScope(this.value)"></select>
-    <div class="seg" id="fySeg" title="Toggle fiscal years — any combination"></div>
-    <select id="quarterSel" onchange="setQuarter(this.value)" title="Quarterly performance view">
-      <option value="0">All quarters</option>
-      <option value="1">Q1 (Jul–Sep)</option>
-      <option value="2">Q2 (Oct–Dec)</option>
-      <option value="3">Q3 (Jan–Mar)</option>
-      <option value="4">Q4 (Apr–Jun)</option>
-    </select>
-    <button id="exportBtn" onclick="exportDoc()" title="Export the current view to a formatted Google Doc">📄 Export Doc</button>
-    <button id="confBtn" onclick="copyConfluence()" title="Copy the current view as rich text — paste straight into Confluence">📋 Copy for Confluence</button>
-    <button id="themeBtn" onclick="toggleTheme()" title="Light / dark theme">🌙</button>
-    <button id="refreshBtn" onclick="loadData(true)" title="Bypass cache for a live read">⟳ Refresh</button>
-    <button id="accessBtn" class="hidden" onclick="toggleAccess()">🔒 Access</button>
+    <span class="fdiv"></span>
+    <div class="fgroup">
+      <span class="flabel">Scope</span>
+      <select id="scopeSel" onchange="setScope(this.value)"></select>
+    </div>
+    <div class="fgroup">
+      <span class="flabel">Years</span>
+      <div class="seg" id="fySeg" title="Toggle fiscal years — any combination"></div>
+    </div>
+    <div class="fgroup">
+      <span class="flabel">Quarter</span>
+      <select id="quarterSel" onchange="setQuarter(this.value)" title="Quarterly performance view">
+        <option value="0">All quarters</option>
+        <option value="1">Q1 (Jul–Sep)</option>
+        <option value="2">Q2 (Oct–Dec)</option>
+        <option value="3">Q3 (Jan–Mar)</option>
+        <option value="4">Q4 (Apr–Jun)</option>
+      </select>
+    </div>
   </div>
 </header>
 <main><div id="pane"></div></main>
@@ -211,6 +253,8 @@ const STATE = {
   exportBusy: false,
   exportResult: null,  // {url, name} of the last Google Doc export
   cache: {},           // "scope|quarter|fyCount" → payload (client-side, per session)
+  pendingFyRange: "",  // FY range sent with the in-flight load — compared to the echo
+  staleServer: false,  // server echoed a different FY range → deployed Code.js is old
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -232,7 +276,9 @@ function lineHtml(l) {
 function tableHtml(t) {
   return '<h3>' + esc(t.title) + '</h3><div class="twrap"><table><tr>' +
     t.headers.map(h => '<th>' + esc(h) + '</th>').join("") + '</tr>' +
-    t.rows.map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join("") + '</tr>').join("") +
+    t.rows.map(r =>
+      '<tr' + (String(r[0]) === "Total" ? ' class="total-row"' : '') + '>' +
+      r.map(c => '<td>' + esc(c) + '</td>').join("") + '</tr>').join("") +
     '</table></div>';
 }
 function chartHtml(ch) {
@@ -248,12 +294,20 @@ function sourceBanner() {
   return Object.keys(s).filter(k => s[k] !== "ok").map(k =>
     '<div class="banner err">⚠️ ' + esc(k) + ' source unavailable — ' + esc(s[k]) + '</div>').join("");
 }
+function staleBanner() {
+  return STATE.staleServer
+    ? '<div class="banner err">⚠️ <b>The server ignored the fiscal-year selection</b> — the deployed ' +
+      'Code.js is older than this page, so every year combination returns the same full-range data. ' +
+      'An admin needs to re-paste Code.js in the Apps Script editor and publish a new deployment version.</div>'
+    : "";
+}
 function quarterBanner() {
   const m = STATE.data.meta;
   if (!m.quarter) return "";
   return '<div class="banner info">📅 <b>Quarterly performance view — Q' + m.quarter +
-    ' of each fiscal year.</b> Applies to Workforce movement, Attrition detail and Growth by lever; ' +
-    'composition, compensation structure and flag sections remain as-of snapshots.' +
+    ' of each fiscal year.</b> Applies to the Fiscal-year story, Workforce movement, ' +
+    'Attrition detail and Growth by lever; composition, compensation structure and ' +
+    'flag sections snapshot the company as of the end of the selected period.' +
     (m.quarterSkipped.length
       ? ' Not started yet: ' + m.quarterSkipped.map(esc).join(", ") + '.' : '') + '</div>';
 }
@@ -309,6 +363,18 @@ function fySelected(num) {
   if (STATE.fyRange === "all") return true;
   return STATE.fyRange.split(",").indexOf(String(num)) !== -1;
 }
+// Share ▾ dropdown — stays open while Export/Copy run so their busy /
+// success feedback is visible on the menu items; any outside click closes it.
+function toggleShareMenu(e) {
+  e.stopPropagation();
+  document.getElementById("shareMenu").classList.toggle("hidden");
+}
+document.addEventListener("click", e => {
+  const menu = document.getElementById("shareMenu");
+  if (!menu.classList.contains("hidden") && !e.target.closest(".menu-wrap")) {
+    menu.classList.add("hidden");
+  }
+});
 function toggleTheme() {
   const dark = document.body.classList.toggle("dark-mode");
   document.getElementById("themeBtn").textContent = dark ? "☀️" : "🌙";
@@ -362,6 +428,7 @@ function syncHeader() {
 // ── data load ───────────────────────────────────────────────
 function loadData(force) {
   document.getElementById("loading").classList.remove("hidden");
+  STATE.pendingFyRange = STATE.fyRange; // echoed back — stale-deploy tripwire
   google.script.run
     .withSuccessHandler(onData)
     .withFailureHandler(onLoadError)
@@ -373,6 +440,12 @@ function onData(raw) {
     try { d = JSON.parse(raw); } catch (e) { onLoadError(e); return; }
   }
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
+  // Stale-deploy tripwire: this UI sends "25"-style FY csv toggles; a server
+  // build older than the toggles collapses ANY csv back to all FYs. When a
+  // non-default selection comes back changed, the filter was IGNORED — say so
+  // instead of silently rendering unchanged numbers.
+  STATE.staleServer = !!(STATE.pendingFyRange && STATE.pendingFyRange !== "all" &&
+    (d.meta.fyRange || "all") !== STATE.pendingFyRange);
   STATE.data = d;
   STATE.scope = d.meta.scope;     // server may degrade an unknown scope to company
   STATE.quarter = d.meta.quarter; // and echoes the applied quarter + FY range
@@ -401,10 +474,11 @@ function renderReport(el) {
   const d = STATE.data, r = d.report;
   const scopeLabel = r.scope === "company" ? "Company-wide" : r.scope;
   el.innerHTML =
-    sourceBanner() + exportBanner() + errorBanner() + quarterBanner() +
+    staleBanner() + sourceBanner() + exportBanner() + errorBanner() + quarterBanner() +
     '<div class="card cover"><h1>Workforce &amp; Compensation Report — ' + esc(scopeLabel) + '</h1>' +
     '<div class="sub">' + d.meta.fys.map(f => f.label).join(" · ") +
     (d.meta.quarter ? ' · Q' + d.meta.quarter + ' view' : '') +
+    (d.meta.anchor ? ' · company as of ' + esc(d.meta.anchor) : '') +
     ' · data extracted on ' + esc(d.meta.asOf) + ' · figures in ' + esc(r.currency.code) + '</div></div>' +
     r.sections.map(s =>
       '<div class="card"><h2>' + esc(s.title) + '</h2>' +
@@ -579,7 +653,7 @@ function renderBrief(el) {
   const isCompany = b.scope === "company";
 
   // 1 · Cover
-  let html = sourceBanner() + exportBanner() + errorBanner() + narrativeControls() +
+  let html = staleBanner() + sourceBanner() + exportBanner() + errorBanner() + narrativeControls() +
     '<div class="card cover"><h1>' + esc(isCompany ? "Global" : b.scope) +
     ' Workforce &amp; Compensation Review · ' + esc(fyNow) + '</h1>' +
     '<div class="sub">ServiceRocket · ' + d.meta.fys.map(f => f.label).join(" – ") +

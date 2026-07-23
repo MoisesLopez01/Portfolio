@@ -4,7 +4,8 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.0.0
+// VERSION:     1.1.0 — per-year FY story/comparison, snapshot anchoring,
+//              within-location comparison rule (exec review 2026-07-23)
 // ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-22-workforce-comp-report-design.md
 //
@@ -49,6 +50,11 @@ const CONFIG_WR = {
   // Attrition RISK thresholds — spec §6.5 (config-tunable).
   RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
   RISK_REASON_SHARE: 0.5,  // single recorded reason ≥ this share of exits → RISK line
+
+  // FY-over-FY verdict thresholds (section 2 comparison read) — moves smaller
+  // than these percentage points read as "held steady", never as a verdict.
+  COMPARE_ATTR_PP:   1.0,  // attrition-rate move ≥ this many pp → improved / attention
+  COMPARE_REGRET_PP: 5.0,  // regretted-share move ≥ this many pp → improved / attention
 
   // The CURRENT exit-reason taxonomy (business-context doc 2026-07-23).
   // Leaver reasons outside this list (after REASON_REMAP) are flagged as
@@ -394,6 +400,21 @@ function headcountCloseOn_(records, date) {
 }
 
 /**
+ * The roster as it stood at `date` (closing instant): rows hired by then,
+ * with the active flag re-derived from the termination date. Compensation
+ * values stay each person's LATEST recorded TCC — historical salaries are
+ * not reconstructed; the scope section discloses this whenever it applies.
+ * Movement/attrition engines are date-driven, so feeding them this view for
+ * windows ending at or before `date` changes nothing — only the snapshot
+ * sections (scope, composition, comp structure, flags, brief) re-anchor.
+ */
+function rosterAsAt_(records, date) {
+  return records
+    .filter(r => !r.hireDate || r.hireDate <= date)
+    .map(r => Object.assign({}, r, { active: !r.termDate || r.termDate > date }));
+}
+
+/**
  * One FY's movement block. Rate = exits ÷ mean(opening, closing headcount);
  * the in-progress FY closes at asOf, and its hire/exit counts stop there too
  * (a future-dated hire is not yet a "to date" hire).
@@ -417,6 +438,37 @@ function fyMovement_(records, fy, asOf) {
     hcStart, hcEnd,
     reclass: hcEnd - hcStart - hires + exits,
     rate: avg > 0 ? exits / avg : null,
+  };
+}
+
+/**
+ * Annualized TCC lens on one window's movement (PEOPLE-39417: headcount
+ * impact by count AND financial TCC impact): what the window's hires ADD to
+ * run-rate compensation cost and what its exits REMOVE. Values are each
+ * person's latest recorded roster TCC (a hire's current, a leaver's last) —
+ * a cost-structure lens, never payroll actuals. Valued coverage is carried
+ * so the reader sees how much of the movement is priced.
+ */
+function movementTccImpact_(records, w, asOf, mode) {
+  const evEnd = (w.inProgress && asOf && asOf < w.end) ? asOf : w.end;
+  const sum = list => {
+    let total = 0, valued = 0;
+    list.forEach(r => {
+      const v = tccOf_(r, mode);
+      if (v > 0) { total += v; valued++; }
+    });
+    return { total, valued, count: list.length };
+  };
+  const hires = sum(records.filter(r =>
+    r.hireDate && r.hireDate >= w.start && r.hireDate <= evEnd));
+  const exits = sum(records.filter(r =>
+    r.termDate && r.termDate >= w.start && r.termDate <= evEnd));
+  return {
+    label: w.label, inProgress: !!w.inProgress,
+    hiresTotal: hires.total, hiresValued: hires.valued, hiresCount: hires.count,
+    exitsTotal: exits.total, exitsValued: exits.valued, exitsCount: exits.count,
+    net: hires.total - exits.total,
+    anyValued: hires.valued + exits.valued > 0,
   };
 }
 
@@ -489,15 +541,19 @@ function classifyLever_(reason, cfg) {
 
 /**
  * Lever blocks for one FY over the scope's employees.
- * Amount totals only carry meaning when every event shares one currency
- * (mode "local"); in "usd" mode the RD history is LOCAL TCC with no
- * historical FX, so totals are withheld and growth uses the mean of
- * per-event % deltas (unit-free) instead of sum(delta)/sum(prev).
+ * Amount totals carry native meaning when every event shares one currency
+ * (mode "local"). In "usd" mode the RD history is LOCAL TCC with no
+ * historical FX, so each event's delta converts at the employee's CURRENT
+ * roster rate (TCC USD ÷ local TCC, `usdRates`) — an approximation the
+ * section discloses — and growth uses the mean of per-event % deltas
+ * (unit-free) instead of sum(delta)/sum(prev).
  * @param {string[]} scopeEmpNos - Employee Numbers in scope
  * @param {Object} histByEmp - Employee Number → RD events
+ * @param {Object} [usdRates] - Employee Number → tccUsd/tcc (usd mode only)
  */
-function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
-  const mk = () => ({ count: 0, totalRaise: 0, sumPrev: 0, pctDeltas: [], noPrior: 0 });
+function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg, usdRates) {
+  const mk = () => ({ count: 0, totalRaise: 0, sumPrev: 0, pctDeltas: [], noPrior: 0,
+    usdRaise: 0, usdConv: 0 });
   const acc = { promo: mk(), adjust: mk() };
   let excluded = 0, newHires = 0;
   scopeEmpNos.forEach(emp => {
@@ -520,12 +576,16 @@ function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
       a.totalRaise += e.tcc - prev.tcc;
       a.sumPrev += prev.tcc;
       a.pctDeltas.push((e.tcc - prev.tcc) / prev.tcc);
+      const rate = usdRates ? usdRates[emp] : null;
+      if (rate > 0) { a.usdRaise += (e.tcc - prev.tcc) * rate; a.usdConv++; }
     });
   });
   const finish = a => ({
     count: a.count,
     noPrior: a.noPrior,
-    totalRaise: (mode === "local" && a.count > a.noPrior) ? a.totalRaise : null,
+    totalRaise: mode === "local"
+      ? (a.count > a.noPrior ? a.totalRaise : null)
+      : (a.usdConv > 0 ? a.usdRaise : null),
     growthPct: mode === "local"
       ? (a.sumPrev > 0 ? a.totalRaise / a.sumPrev : null)
       : (a.pctDeltas.length
@@ -644,8 +704,47 @@ function buildCompStructure_(active, mode, cfg) {
     perHead: valued ? Math.round(envelope / valued) : null,
     valued, missingComp,
     bands,
-    inversions: qualifyInversions_(active, detectInversions_(bands, cfg), mode),
+    // COMPARISON RULE (exec review 2026-07-23): band-vs-band judgments must be
+    // within one location — a blended multi-currency USD band average is a
+    // geography-weighted MIX (Simpson's paradox: it moves with WHERE people
+    // sit, not what they're paid), so it never fires an equity flag. Raw USD
+    // stays a cost/budget lens only. Single-currency scopes keep the direct
+    // comparison — that is what made the Chile report sound.
+    inversions: mode === "usd"
+      ? detectInversionsByLocation_(active, cfg)
+      : qualifyInversions_(active, detectInversions_(bands, cfg), mode),
   };
+}
+
+/**
+ * Within-location inversion detection for multi-currency scopes: each Key
+ * Location is a single-currency cohort compared on LOCAL TCC, small-group
+ * floor applied per location, then family-qualified inside that same
+ * location. Mixed-currency locations are skipped — never silently blended.
+ * @returns {Array} inversion flags carrying {location, currency}
+ */
+function detectInversionsByLocation_(active, cfg) {
+  const locs = [...new Set(active.map(r => r.keyLocation).filter(Boolean))].sort();
+  const out = [];
+  locs.forEach(loc => {
+    const grp = active.filter(r => r.keyLocation === loc);
+    const curs = [...new Set(grp.map(r => r.currency).filter(Boolean))];
+    if (curs.length > 1) return;
+    const byLevel = new Map();
+    grp.forEach(r => {
+      if (!(r.tcc > 0)) return;
+      if (!byLevel.has(r.level)) byLevel.set(r.level, []);
+      byLevel.get(r.level).push(r.tcc);
+    });
+    const bands = [...byLevel.entries()].map(([level, vals]) => ({
+      level, count: vals.length,
+      avg: vals.reduce((t, x) => t + x, 0) / vals.length,
+    }));
+    qualifyInversions_(grp, detectInversions_(bands, cfg), "local").forEach(inv => {
+      out.push(Object.assign({ location: loc, currency: curs[0] || "" }, inv));
+    });
+  });
+  return out;
 }
 
 /**
@@ -912,17 +1011,29 @@ function coverageStats_(records, histByEmp, fys) {
 // Every builder returns { id, title, lines: [{badge, text}], tables: [...] }.
 // Tables: { title, headers: string[], rows: Array<Array<string|number>> }.
 
-function secScope_(records, active, scope, mode, activeInternCount) {
+function secScope_(records, active, scope, mode, activeInternCount, anchorIso, ipNote) {
+  const asAt = anchorIso ? " as of " + anchorIso : "";
   const lines = [
     fact_(fmtInt_(active.length) + " active regular employees in scope (" +
-      (scope === "company" ? "company-wide" : scope) + ") — Regular Employee, " +
+      (scope === "company" ? "company-wide" : scope) + ")" + asAt + " — Regular Employee, " +
       "Employer of Record and Part Time types."),
     fact_(fmtInt_(records.length) + " regular roster records in scope including terminated " +
       "rows — the evidence base for movement and attrition."),
-    fact_(fmtInt_(activeInternCount || 0) + " active interns — reported separately; " +
+    fact_(fmtInt_(activeInternCount || 0) + " active interns" + asAt + " — reported separately; " +
       "excluded from headline movement, attrition and compensation metrics."),
     note_("Crew members and contractors are excluded from this report."),
   ];
+  if (anchorIso) {
+    lines.push(note_("Snapshot anchored to " + anchorIso + " — the end of the selected " +
+      "period. Population, composition, compensation structure and flag sections show " +
+      "the company as it stood then; compensation is valued at each person's latest " +
+      "recorded TCC (historical salaries are not reconstructed). Select the current " +
+      "fiscal year to return to a live view."));
+  }
+  // THE one in-progress caveat of the whole report (exec review 2026-07-23:
+  // the same note five times reads as noise) — every other section relies on
+  // this line plus its own "(to date)" row labels.
+  if (ipNote) lines.push(ipNote);
   if (scope !== "company") {
     lines.push(note_("Location scope uses each roster row's CURRENT Key Location — an " +
       "international transfer counts in the destination location's history (including " +
@@ -935,23 +1046,58 @@ function secScope_(records, active, scope, mode, activeInternCount) {
   return { id: "scope", title: "1 · Scope & population", lines, tables: [] };
 }
 
-function secComposition_(comp) {
+/**
+ * Headcount & annualized cost by location — the location lens a 12-location
+ * company reads first (exec review 2026-07-23: "location is essentially
+ * invisible"). USD here is deliberately the COST lens — per-location averages
+ * are single-geography figures, so they are also safely comparable.
+ * @returns {Object|null} a section table, or null when nothing to compare
+ */
+function buildLocationTable_(active) {
+  const byLoc = new Map();
+  active.forEach(r => {
+    const k = r.keyLocation || "—";
+    if (!byLoc.has(k)) byLoc.set(k, { hc: 0, usd: 0, valued: 0 });
+    const e = byLoc.get(k);
+    e.hc++;
+    const v = tccOf_(r, "usd");
+    if (v > 0) { e.usd += v; e.valued++; }
+  });
+  if (byLoc.size < 2) return null;
+  const rows = [...byLoc.entries()]
+    .sort((a, b) => b[1].hc - a[1].hc || String(a[0]).localeCompare(String(b[0])))
+    .map(([loc, e]) => [loc, e.hc,
+      e.valued ? fmtMoneyShort_(e.usd / e.valued, "") : "—",
+      e.valued ? fmtMoneyShort_(e.usd, "") : "—"]);
+  const tot = [...byLoc.values()].reduce(
+    (t, e) => ({ hc: t.hc + e.hc, usd: t.usd + e.usd, valued: t.valued + e.valued }),
+    { hc: 0, usd: 0, valued: 0 });
+  rows.push(["Total", tot.hc,
+    tot.valued ? fmtMoneyShort_(tot.usd / tot.valued, "") : "—",
+    tot.valued ? fmtMoneyShort_(tot.usd, "") : "—"]);
+  return { title: "Headcount & annualized cost by location (USD)",
+    headers: ["Location", "Headcount", "Avg TCC", "Total TCC"], rows };
+}
+
+function secComposition_(comp, anchored, locTable) {
   const lines = [
     fact_(fmtInt_(comp.icCount) + " individual contributors and " + fmtInt_(comp.mCount) +
       " managers" + (comp.unparsedCount
         ? " (" + fmtInt_(comp.unparsedCount) + " titles carry no parseable level)" : "") + "."),
     fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") +
-      " (Hire Date to extraction date)."),
+      " (Hire Date to " + (anchored ? "the period-end anchor" : "extraction date") + ")."),
   ];
   // Job family stays an ANALYSIS dimension (inversion qualification, leaver
   // sub-function view) — a standalone family headcount table added no
   // decision value and was removed 2026-07-23 per CEO feedback.
   return {
-    id: "composition", title: "2 · Composition", lines,
-    tables: [
+    id: "composition", title: "3 · Composition", lines,
+    tables: (locTable ? [locTable] : []).concat([
       { title: "Headcount by department", headers: ["Department", "Headcount"],
-        rows: comp.depts.map(d => [d.key, d.count]) },
-    ],
+        rows: comp.depts.map(d => [d.key, d.count])
+          .concat(comp.depts.length > 1
+            ? [["Total", comp.depts.reduce((t, d) => t + d.count, 0)]] : []) },
+    ]),
     // Tenure reads faster as a bar chart than as a table; level distribution
     // lives ONLY in section 3 (with average cost) — never duplicated here.
     charts: [
@@ -967,14 +1113,26 @@ function secCompStructure_(cs, mode, cfg) {
       fmtMoneyShort_(cs.perHead, mode.code) + " per head."),
     note_("TCC includes variable target; it is not base wage."),
   ];
+  if (mode.mode === "usd") {
+    // The rule that keeps this section honest company-wide: blended USD band
+    // averages are cost figures, never equity comparisons (exec review
+    // 2026-07-23 — a mix of US and El Salvador headcount moves the average,
+    // not pay decisions). Inversions below are within-location only.
+    lines.push(note_("Band averages in this scope are geography-weighted COST figures " +
+      "— useful for budget reading only, never compared band-vs-band for equity. " +
+      "Inversion checks run within each location on local currency; person-level " +
+      "position is the compa-ratio view in the flags section."));
+  }
   cs.inversions.forEach(inv => {
+    const code = inv.currency || mode.code;
+    const where = inv.location ? " within " + inv.location : "";
     const span = (inv.mGroups && inv.mGroups.length && inv.icGroups && inv.icGroups.length)
       ? " (" + inv.mLevel + " spans " + inv.mGroups.join(", ") + "; " +
         inv.icLevel + " spans " + inv.icGroups.join(", ") + ")"
       : "";
-    lines.push(fact_("Salary inversion — investigation trigger: the " + inv.mLevel +
-      " band average (" + fmtMoneyShort_(inv.mAvg, mode.code) + ") sits below the " +
-      inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, mode.code) + ")" + span +
+    lines.push(fact_("Salary inversion" + where + " — investigation trigger: the " + inv.mLevel +
+      " band average (" + fmtMoneyShort_(inv.mAvg, code) + ") sits below the " +
+      inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, code) + ")" + span +
       (inv.withinGroups && inv.withinGroups.length
         ? "; the pattern holds inside " + inv.withinGroups.join(", ") +
           " — a genuine inversion candidate"
@@ -986,6 +1144,9 @@ function secCompStructure_(cs, mode, cfg) {
       "in a lower-market job family (e.g. People or Finance) can legitimately earn below " +
       "a senior IC in a high-demand technical family. Verify whether the flagged managers " +
       "actually oversee the higher-paid ICs before treating a flag as an equity issue."));
+  } else if (mode.mode === "usd") {
+    lines.push(fact_("No within-location salary inversion clears the small-group floor — " +
+      "no band-structure flag stands once geography mix is removed."));
   }
   if (cs.missingComp) {
     lines.push(note_(fmtInt_(cs.missingComp) + " employees are missing a " +
@@ -993,23 +1154,226 @@ function secCompStructure_(cs, mode, cfg) {
       " value — excluded from compensation aggregates, included in headcount."));
   }
   if (mode.mode === "usd") {
-    lines.push(assume_("USD figures come from the roster \"TCC USD\" column — " +
-      "the conversion source of record for this report."));
+    // Data lineage, not an assumption (CFO review 2026-07-23): say what the
+    // source is and what it lacks — rate basis + as-of live in the roster
+    // pipeline, and a frozen plan rate for FY-over-FY USD reads is pending.
+    lines.push(note_("Data lineage: USD figures come from the roster \"TCC USD\" column — " +
+      "the conversion source of record. Rate basis and as-of date are owned by the " +
+      "roster pipeline; period-over-period USD movements include FX drift until a " +
+      "frozen plan rate is adopted."));
   }
   if (cs.bands.some(b => b.count < cfg.SMALL_GROUP_MIN)) {
     lines.push(note_("Bands with fewer than " + cfg.SMALL_GROUP_MIN + " members show their " +
       "actual average but are excluded from band-level comparisons (e.g. inversion flags)."));
   }
   return {
-    id: "comp-structure", title: "3 · Compensation structure", lines,
+    id: "comp-structure", title: "4 · Compensation structure", lines,
     tables: [
       // THE level-distribution table of the report (section 2 never repeats it):
       // end-of-period active headcount per level + average cost, exec short form.
       { title: "Level distribution — end active headcount & average cost (" + mode.code + ")",
         headers: ["Level", "End active headcount", "Avg TCC (" + mode.code + ")"],
-        rows: cs.bands.map(b => [b.level, b.count, fmtMoneyShort_(b.avg, "")]) },
+        rows: cs.bands.map(b => [b.level, b.count, fmtMoneyShort_(b.avg, "")])
+          .concat(cs.bands.length > 1
+            ? [["Total", cs.bands.reduce((t, b) => t + b.count, 0),
+                fmtMoneyShort_(cs.perHead, "")]] : []) },
     ],
   };
+}
+
+// ── Section 2 — the fiscal-year story / FY-over-FY comparison ───────────────
+// The reason the FY toggles exist (user directive 2026-07-23):
+//   ONE window selected  → the year's story — what the period DID (open→close
+//     headcount, hiring vs exits, attrition quality, recognition, annualized
+//     cost of movement) read in one place instead of assembled from §5–§7.
+//   TWO+ windows         → the comparison read — every consecutive selected
+//     pair is judged per measure: what improved lands as FACT, what moved
+//     against the business as RISK, sub-threshold moves as a held-steady
+//     NOTE, plus one side-by-side table. A pair ending in the IN-PROGRESS
+//     window compares against the closed year's SAME-PERIOD twin (`matched`,
+//     truncated to the same elapsed span) — a partial year must never be
+//     judged against a full one; the table still shows full periods with the
+//     open one marked "(to date)".
+// Headcount change is stated as closing − opening and DECOMPOSED into
+// hires − exits ± reclassification — the story sentence must foot exactly,
+// like the §5 reconciliation. `allMoves` (regulars + interns) is the tie-out
+// to all-population headcount reports that skip the Employee Type split.
+// Windows may be full FYs or same-quarter slices (quarter view) — labels
+// carry the difference; the logic is identical.
+
+/** "+23" / "−4" / "0" — signed integer for movement sentences. */
+function fmtSigned_(n) {
+  if (!(typeof n === "number" && isFinite(n))) return "—";
+  const r = Math.round(n);
+  return (r > 0 ? "+" : r < 0 ? "−" : "") + Math.abs(r).toLocaleString("en-US");
+}
+
+/** Signed percentage-point move: 2.6 → "+2.6 pp". */
+function fmtPp_(pp) {
+  return (pp >= 0 ? "+" : "−") + Math.abs(pp).toFixed(1) + " pp";
+}
+
+function secFyStory_(moves, attr, levers, tccs, windows, mode, cfg, asOfIso, matched, allMoves) {
+  const lines = [];
+  const tables = [];
+  const recTotal = l => l.promo.count + l.adjust.count;
+  // The year's REAL headcount change (closing − opening) decomposed so the
+  // sentence foots: hires − exits ± reclassification (residue per fyMovement_).
+  const hcChange = m => {
+    const delta = m.hcEnd - m.hcStart;
+    return fmtSigned_(delta) + " for the period (" + fmtInt_(m.hires) + " hires − " +
+      fmtInt_(m.exits) + " exits" +
+      (m.reclass ? (m.reclass > 0 ? " + " : " − ") + fmtInt_(Math.abs(m.reclass)) +
+        " reclassification" : "") + ")";
+  };
+
+  if (windows.length === 1) {
+    // ── Story mode ──
+    const m = moves[0], a = attr[0], l = levers[0], t = tccs[0];
+    const tag = m.inProgress ? " (to date)" : "";
+    const growthPct = m.hcStart > 0 ? (m.hcEnd - m.hcStart) / m.hcStart : null;
+    lines.push(fact_(m.label + tag + ": opened at " + fmtInt_(m.hcStart) +
+      " regular employees and closed at " + fmtInt_(m.hcEnd) + " — " + hcChange(m) +
+      (growthPct != null ? ", " + (growthPct >= 0 ? "+" : "−") +
+        fmtPct_(Math.abs(growthPct)) : "") + "."));
+    if (allMoves) {
+      const am = allMoves[0];
+      lines.push(note_("All employee types (regular + intern/fixed-term): " +
+        fmtInt_(am.hcStart) + " → " + fmtInt_(am.hcEnd) +
+        " — the tie-out figure for headcount reports that count every roster row."));
+    }
+    if (a.exits > 0) {
+      const top = a.reasons.find(x => x.key !== "—");
+      lines.push(fact_("Attrition " + fmtPct_(m.rate) + " for the period; " +
+        fmtInt_(a.regretted) + " of " + fmtInt_(a.exits) + " exits regretted (" +
+        fmtPct_(a.regrettedPct, 0) + "), " + fmtInt_(a.organicExits) + " organic vs " +
+        fmtInt_(a.structuralExits) + " structural" +
+        (top ? "; most recorded reason “" + top.key + "” (" +
+          fmtInt_(top.count) + " of " + fmtInt_(a.exits) + ")" : "") + "."));
+    } else {
+      lines.push(fact_("No exits recorded in " + m.label + tag + " — attrition 0%."));
+    }
+    lines.push(recTotal(l) > 0
+      ? fact_("Recognition: " + fmtInt_(recTotal(l)) + " compensation events — " +
+          fmtInt_(l.promo.count) + " promotions, " + fmtInt_(l.adjust.count) +
+          " adjustments (deltas and growth in the Compensation growth section).")
+      : note_("No promotion or adjustment events recorded in " + m.label + tag + "."));
+    if (t && t.anyValued) {
+      // Valuation caveat rides inside the FACT — the method detail is an
+      // appendix row, not a second body line (exec review 2026-07-23).
+      lines.push(fact_("Annualized TCC impact of movement (at latest recorded TCC, " +
+        "not payroll actuals): hires add ~" +
+        fmtMoney_(t.hiresTotal, mode.code) + " (" + fmtInt_(t.hiresValued) + " of " +
+        fmtInt_(t.hiresCount) + " priced), exits remove ~" +
+        fmtMoney_(t.exitsTotal, mode.code) + " (" + fmtInt_(t.exitsValued) + " of " +
+        fmtInt_(t.exitsCount) + " priced) — net " + fmtSigned_(t.net) + " " + mode.code + "."));
+    }
+    return { id: "fy-story", title: "2 · Fiscal-year story", lines, tables };
+  }
+
+  // ── Comparison mode ──
+  // Every consecutive selected pair gets verdicts. When the later window is
+  // in progress, the earlier one swaps in its same-period twin (`matched`) —
+  // never a full year against a partial one.
+  const samePeriods = [];
+  for (let i = 1; i < moves.length; i++) {
+    let a = moves[i - 1], aa = attr[i - 1], la = levers[i - 1], samePeriod = false;
+    const b = moves[i], ab = attr[i], lb = levers[i];
+    if (b.inProgress) {
+      const tw = matched && matched[i - 1];
+      if (!tw) continue; // no twin available — the pair stays table-only
+      a = tw.move; aa = tw.attr; la = tw.lever; samePeriod = true;
+      samePeriods.push(a.label + " through " + tw.endIso);
+    }
+    const lbl = samePeriod
+      ? b.label + " to date vs " + a.label + " same period"
+      : b.label + " vs " + a.label;
+    lines.push(fact_(lbl + ": headcount " + a.label + (samePeriod ? " same period" : "") +
+      " " + fmtInt_(a.hcStart) + " → " + fmtInt_(a.hcEnd) +
+      "; " + b.label + (b.inProgress ? " to date" : "") +
+      " " + fmtInt_(b.hcStart) + " → " + fmtInt_(b.hcEnd) +
+      " (hires " + fmtInt_(a.hires) + " → " + fmtInt_(b.hires) +
+      ", exits " + fmtInt_(a.exits) + " → " + fmtInt_(b.exits) + ")."));
+    if (a.rate != null && b.rate != null) {
+      const pp = (b.rate - a.rate) * 100;
+      if (pp <= -cfg.COMPARE_ATTR_PP) {
+        lines.push(fact_(lbl + ": attrition improved " + fmtPct_(a.rate) + " → " +
+          fmtPct_(b.rate) + " (" + fmtPp_(pp) + ")."));
+      } else if (pp >= cfg.COMPARE_ATTR_PP) {
+        lines.push(risk_(lbl + ": attrition rose " + fmtPct_(a.rate) + " → " +
+          fmtPct_(b.rate) + " (" + fmtPp_(pp) +
+          ") — the Attrition detail section carries the reasons."));
+      } else {
+        lines.push(note_(lbl + ": attrition held steady (" + fmtPct_(a.rate) +
+          " → " + fmtPct_(b.rate) + ")."));
+      }
+    }
+    if (aa.exits > 0 && ab.exits > 0 &&
+        aa.regrettedPct != null && ab.regrettedPct != null) {
+      const pp = (ab.regrettedPct - aa.regrettedPct) * 100;
+      if (pp <= -cfg.COMPARE_REGRET_PP) {
+        lines.push(fact_(lbl + ": regretted share of exits improved " +
+          fmtPct_(aa.regrettedPct, 0) + " → " + fmtPct_(ab.regrettedPct, 0) +
+          " (" + fmtPp_(pp) + ") — fewer of the leavers were people the company wanted to keep."));
+      } else if (pp >= cfg.COMPARE_REGRET_PP) {
+        lines.push(risk_(lbl + ": regretted share of exits rose " +
+          fmtPct_(aa.regrettedPct, 0) + " → " + fmtPct_(ab.regrettedPct, 0) +
+          " (" + fmtPp_(pp) + ") — more of the leavers were people the company wanted to keep."));
+      } else {
+        lines.push(note_(lbl + ": regretted share held steady (" +
+          fmtPct_(aa.regrettedPct, 0) + " → " + fmtPct_(ab.regrettedPct, 0) + ")."));
+      }
+    }
+    lines.push(fact_(lbl + ": total recognition events " + fmtInt_(recTotal(la)) +
+      " → " + fmtInt_(recTotal(lb)) +
+      " (the promotion vs adjustment mix is read in the Compensation growth section)."));
+  }
+  if (samePeriods.length) {
+    // One compact line — the "same period" labels on the verdicts carry the
+    // meaning; the full rule is an appendix row.
+    lines.push(note_("Same-period read: " + samePeriods.join("; ") +
+      "; the table below shows full periods."));
+  }
+
+  // Side-by-side table — one column per window, a Δ column when the selection
+  // is exactly two closed windows (the canonical what-changed read).
+  const dCol = moves.length === 2 && moves.every(m => !m.inProgress);
+  const d = (fmt, va, vb) =>
+    (va != null && vb != null && isFinite(va) && isFinite(vb)) ? fmt(vb - va) : "—";
+  const a0 = moves[0], b0 = moves[moves.length - 1];
+  const row = (label, vals, delta) => [label].concat(vals).concat(dCol ? [delta] : []);
+  tables.push({
+    title: "Fiscal periods side by side",
+    headers: ["Measure"].concat(moves.map(m =>
+      m.label + (m.inProgress ? " (to date)" : ""))).concat(dCol ? ["Δ"] : []),
+    rows: [
+      row("Headcount start → end",
+        moves.map(m => fmtInt_(m.hcStart) + " → " + fmtInt_(m.hcEnd)),
+        d(fmtSigned_, a0.hcEnd, b0.hcEnd)),
+    ].concat(allMoves ? [
+      row("Incl. intern/fixed-term (start → end)",
+        allMoves.map(m => fmtInt_(m.hcStart) + " → " + fmtInt_(m.hcEnd)),
+        d(fmtSigned_, allMoves[0].hcEnd, allMoves[allMoves.length - 1].hcEnd)),
+    ] : []).concat([
+      row("Hires", moves.map(m => fmtInt_(m.hires)), d(fmtSigned_, a0.hires, b0.hires)),
+      row("Exits", moves.map(m => fmtInt_(m.exits)), d(fmtSigned_, a0.exits, b0.exits)),
+      row("Net movement", moves.map(m => fmtSigned_(m.net)), d(fmtSigned_, a0.net, b0.net)),
+      row("Attrition rate", moves.map(m => fmtPct_(m.rate)),
+        d(x => fmtPp_(x * 100), a0.rate, b0.rate)),
+      row("Regretted share of exits", attr.map(s => fmtPct_(s.regrettedPct, 0)),
+        d(x => fmtPp_(x * 100), attr[0].regrettedPct, attr[attr.length - 1].regrettedPct)),
+      row("Organic / structural exits",
+        attr.map(s => fmtInt_(s.organicExits) + " / " + fmtInt_(s.structuralExits)), "—"),
+      row("Recognition events (promos + adjustments)",
+        levers.map(l => fmtInt_(recTotal(l))),
+        d(fmtSigned_, recTotal(levers[0]), recTotal(levers[levers.length - 1]))),
+      row("Net TCC impact of movement (" + mode.code + ")",
+        tccs.map(t => t.anyValued ? fmtMoney_(t.net) : "—"),
+        (tccs[0].anyValued && tccs[tccs.length - 1].anyValued)
+          ? d(fmtSigned_, tccs[0].net, tccs[tccs.length - 1].net) : "—"),
+    ]),
+  });
+  return { id: "fy-story", title: "2 · Fiscal years compared", lines, tables };
 }
 
 function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
@@ -1023,13 +1387,10 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
     lines.push(note_("Headline figures cover regular employees only; the intern/fixed-term " +
       "strand below is reported separately and never blended into the attrition rate."));
   }
-  lines.push(note_("Attrition rate = exits ÷ mean(headcount at period start, period end); " +
-    "the open FY uses the as-of headcount as the period end. Hires are counted by " +
-    "Hire Date and exits by Termination/Release Date."));
-  // The CFO reconciliation line: opening + hires − exits (± reclassification)
-  // = closing. With opening/closing measured at start/end-of-day instants the
-  // equation is an identity; any residue is real reclassification and is
-  // stated per FY, never left as an unexplained gap.
+  // Methodology (rate formula, headcount instants) lives in the definitions
+  // appendix only (exec review 2026-07-23) — the body states findings. The
+  // reconciliation NOTE renders ONLY when a real ± residue exists: that is a
+  // finding (conversions/roster corrections), not method plumbing.
   const offFys = moves.filter(m => m.reclass);
   if (offFys.length) {
     lines.push(note_("Headcount reconciliation: closing = opening + hires − exits ± " +
@@ -1038,16 +1399,14 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
         (m.reclass > 0 ? " + " : " − ") + Math.abs(m.reclass) + " = " + m.hcEnd).join("; ") +
       ". The ± term is movement between the regular and intern/fixed-term populations " +
       "or roster corrections — headcount that changes with no hire or exit event."));
-  } else {
-    lines.push(note_("Headcount reconciliation: closing = opening + hires − exits — " +
-      "the movement table foots exactly for every period shown."));
   }
   if (coverage.firstFyTermGuard) {
     lines.push(risk_(coverage.firstFyLabel + " exits may be undercounted — earliest retained " +
       "termination is " + (coverage.earliestTermDate || "none on file") + "."));
   }
-  const ip = noteInProgress_(fys, asOfIso);
-  if (ip) lines.push(ip);
+  // No Total rows here (user directive 2026-07-23 round 3): per-FY movement
+  // rows don't sum into one meaningful figure — a multi-year attrition rate
+  // is not an annual rate, and spans across years are the §2 story's job.
   const tables = [
     { title: "Movement by fiscal year — regular employees",
       headers: ["FY", "Hires", "Exits", "Net", "Headcount start → end", "Attrition rate"],
@@ -1062,7 +1421,7 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
         m.hires, m.exits, m.hcStart + " → " + m.hcEnd]),
     });
   }
-  return { id: "movement", title: "4 · Workforce movement", lines, tables };
+  return { id: "movement", title: "5 · Workforce movement", lines, tables };
 }
 
 function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
@@ -1084,18 +1443,29 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
         ? "; leavers: " + fmtInt_(s.icExits) + " individual contributors (I-levels), " +
           fmtInt_(s.mExits) + " managers (M-levels)"
         : "") + "."));
-    if (s.exits > 0 && s.regrettedPct != null && s.regrettedPct * 100 >= cfg.RISK_REGRET_PCT) {
-      lines.push(risk_(s.label + ": regretted share of exits is " + fmtPct_(s.regrettedPct, 0) +
-        " — at or above the " + cfg.RISK_REGRET_PCT + "% review threshold."));
-    }
     const top = s.reasons.find(x => x.key !== "—");
     if (top && s.exits > 0 && top.count / s.exits >= cfg.RISK_REASON_SHARE) {
       lines.push(risk_(s.label + ": a single recorded reason (\"" + top.key + "\") accounts for " +
         fmtInt_(top.count) + " of " + fmtInt_(s.exits) + " exits."));
     }
   });
-  const ip = noteInProgress_(fys, asOfIso);
-  if (ip) lines.push(ip);
+  // Regretted-share breaches synthesized into ONE finding (exec review
+  // 2026-07-23): a multi-period pattern is the headline — repeating the same
+  // RISK per FY scattered the report's strongest signal.
+  const breaches = stats.filter(s =>
+    s.exits > 0 && s.regrettedPct != null && s.regrettedPct * 100 >= cfg.RISK_REGRET_PCT);
+  if (breaches.length > 1) {
+    lines.push(risk_("Regretted share of exits has been at or above the " +
+      cfg.RISK_REGRET_PCT + "% review threshold in " +
+      (breaches.length === stats.length ? "every period shown" :
+        breaches.length + " of " + stats.length + " periods") + " (" +
+      breaches.map(s => s.label + " " + fmtPct_(s.regrettedPct, 0)).join(" → ") +
+      ") — a persistent retention pattern, not a single-period spike."));
+  } else if (breaches.length === 1) {
+    lines.push(risk_(breaches[0].label + ": regretted share of exits is " +
+      fmtPct_(breaches[0].regrettedPct, 0) + " — at or above the " +
+      cfg.RISK_REGRET_PCT + "% review threshold."));
+  }
   if (coverage.firstFyTermGuard) {
     lines.push(risk_(coverage.firstFyLabel + " attrition detail shares the movement-section " +
       "coverage limit — earliest retained termination is " +
@@ -1138,7 +1508,10 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       headers: ["Department", "Reason"]
         .concat(stats.map(s => s.label)).concat(["Total"]),
       rows: comboRows.map(e => [e.dept, e.reason]
-        .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])) },
+        .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total]))
+        .concat(comboRows.length > 1 ? [["Total", ""]
+          .concat(stats.map(s => s.exits))
+          .concat([stats.reduce((t, s) => t + s.exits, 0)])] : []) },
   ];
   // Sub-function breakdown: departments are consolidated (Services can hold
   // ~3/4 of a scope), so job family is the dimension that shows WHERE inside
@@ -1158,10 +1531,14 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       rows: [...famMap.entries()]
         .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
         .map(([fam, e]) => [fam]
-          .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])),
+          .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total]))
+        .concat(famMap.size > 1 ? [["Total"]
+          .concat(stats.map(s => [...famMap.values()]
+            .reduce((t, e) => t + (e.perFy[s.label] || 0), 0)))
+          .concat([[...famMap.values()].reduce((t, e) => t + e.total, 0)])] : []),
     });
   }
-  return { id: "attrition", title: "5 · Attrition detail", lines, tables };
+  return { id: "attrition", title: "6 · Attrition detail", lines, tables };
 }
 
 function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
@@ -1196,17 +1573,17 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
     }
   });
   if (mode.mode === "usd") {
-    lines.push(note_("Raise totals are withheld in this scope — comp events span multiple " +
-      "currencies; growth uses the mean of per-event % changes."));
+    lines.push(note_("Growth percentages are computed in LOCAL currency (mean per-event " +
+      "% change) — FX drift never contaminates them. USD raise totals are a labelled " +
+      "convenience: each local delta valued at the employee's current TCC USD ÷ local " +
+      "TCC rate."));
   }
   if (coverage.firstFyLeverGuard) {
     lines.push(risk_(coverage.firstFyLabel + " lever figures may be incomplete — earliest " +
       "comp event on file is " + (coverage.earliestCompEvent || "none") + "."));
   }
-  const ip = noteInProgress_(fys, asOfIso);
-  if (ip) lines.push(ip);
   return {
-    id: "levers", title: "6 · Compensation growth by lever", lines,
+    id: "levers", title: "7 · Compensation growth by lever", lines,
     tables: [
       // No-prior events stay disclosed via the NOTE above — a column of
       // near-zeros earned no board attention (removed 2026-07-23).
@@ -1269,20 +1646,31 @@ function secFlags_(bandCounts, market, equity, cfg) {
     lines.push(note_("Pay-equity gender lens pending — the Gender column has not landed in " +
       "the roster; it activates automatically when it does."));
   }
-  if (equity.suppressed) {
-    lines.push(note_(fmtInt_(equity.suppressed) + " location+level groups smaller than " +
-      cfg.SMALL_GROUP_MIN + " members are suppressed from the equity lenses."));
-  }
+  // Coverage gaps are LIMITATIONS of the equity conclusions, not footnotes
+  // (exec review 2026-07-23) — the reader must know how much of the org this
+  // section actually assesses before acting on it.
+  const anchorTotal = bandCounts.belowLow + bandCounts.low + bandCounts.target +
+    bandCounts.aboveHigh + bandCounts.unresolved;
   if (bandCounts.unresolved) {
-    lines.push(note_(fmtInt_(bandCounts.unresolved) + " employees have no resolvable internal " +
-      "anchor (insufficient peers at every tier) — excluded from the position distribution."));
+    lines.push(risk_(fmtInt_(bandCounts.unresolved) + " of " + fmtInt_(anchorTotal) +
+      " employees (" + fmtPct_(anchorTotal ? bandCounts.unresolved / anchorTotal : null, 0) +
+      ") have no resolvable internal anchor — the position and equity view covers only " +
+      "the remaining " + fmtInt_(anchorTotal - bandCounts.unresolved) +
+      "; treat its conclusions as partial."));
+  }
+  if (equity.suppressed) {
+    lines.push(risk_(fmtInt_(equity.suppressed) + " location+level groups smaller than " +
+      cfg.SMALL_GROUP_MIN + " members are suppressed from the equity lenses — thin cells " +
+      "are structural in a multi-location org, so parts of the org cannot be assessed at " +
+      "location+title granularity at all (a region or cost-tier anchor level would widen " +
+      "coverage)."));
   }
   if (market && market.mismatch) {
     lines.push(note_(fmtInt_(market.mismatch) + " benchmark rows were withheld for currency " +
       "mismatch — never silently compared across currencies."));
   }
   return { id: "flags",
-    title: market ? "7 · Market & equity flags" : "7 · Internal position & equity flags",
+    title: market ? "8 · Market & equity flags" : "8 · Internal position & equity flags",
     lines, tables: [
     { title: "Internal position distribution",
       headers: ["Band", "Employees"],
@@ -1292,6 +1680,8 @@ function secFlags_(bandCounts, market, equity, cfg) {
         ["At target (" + fmtPct_(cfg.COMPA_TARGET_MIN, 0) + "–" + fmtPct_(cfg.COMPA_HIGH_MAX, 0) + ")", bandCounts.target],
         ["Above " + fmtPct_(cfg.COMPA_HIGH_MAX, 0), bandCounts.aboveHigh],
         ["No resolvable anchor", bandCounts.unresolved],
+        ["Total", bandCounts.belowLow + bandCounts.low + bandCounts.target +
+          bandCounts.aboveHigh + bandCounts.unresolved],
       ] },
   ] };
 }
@@ -1300,8 +1690,11 @@ function secFlags_(bandCounts, market, equity, cfg) {
  * View A — the full Location report for one scope.
  * `windows` are the periods the time-based sections (movement, attrition,
  * levers) run over — the FY list by default, or per-FY quarter windows when
- * the quarterly filter is active. Snapshot sections (1–3, 7) are as-of and
- * ignore the windows on purpose.
+ * the quarterly filter is active. Snapshot sections (scope, composition,
+ * comp structure, flags) describe the population in `records` at `ctx.asOf`:
+ * the caller anchors both to the END of the selected period (rosterAsAt_)
+ * when the selection is fully closed, so a past-FY selection reads as the
+ * company as it stood then.
  * @returns {{scope, currency, sections: Array}}
  */
 function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx, cfg, coverage) {
@@ -1318,11 +1711,45 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
   const asOfIso = isoDate_(ctx.asOf);
   const empNos = [...new Set(regulars.map(r => r.empNo).filter(Boolean))];
 
+  // usd mode: per-employee current FX (TCC USD ÷ local TCC) so lever raise
+  // totals are reportable company-wide — the active row wins over old stints.
+  const usdRates = {};
+  if (mode.mode === "usd") {
+    regulars.forEach(r => {
+      if (!r.empNo || !(r.tcc > 0) || !(r.tccUsd > 0)) return;
+      if (!(r.empNo in usdRates) || r.active) usdRates[r.empNo] = r.tccUsd / r.tcc;
+    });
+  }
+
   const moves = windows.map(w => fyMovement_(regulars, w, ctx.asOf));
   const internFlow = interns.length
     ? windows.map(w => fyMovement_(interns, w, ctx.asOf)) : [];
   const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf, cfg));
-  const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
+  const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg, usdRates));
+  const tccMoves = windows.map(w => movementTccImpact_(regulars, w, ctx.asOf, mode.mode));
+
+  // Same-period twins: when the selection ends in an in-progress window, each
+  // CLOSED window gets a slice truncated to the same elapsed calendar span so
+  // section 2 compares apples-to-apples ("FY27 to date vs FY26 same period").
+  const curWin = windows[windows.length - 1];
+  const matched = windows.map(w => {
+    if (!curWin || !curWin.inProgress || w.inProgress) return null;
+    const yearGap = curWin.startCalYear - w.startCalYear;
+    const end = new Date(ctx.asOf.getFullYear() - yearGap,
+      ctx.asOf.getMonth(), ctx.asOf.getDate());
+    const twin = { label: w.label, start: w.start, end,
+      inProgress: false, startCalYear: w.startCalYear };
+    return {
+      move: fyMovement_(regulars, twin, ctx.asOf),
+      attr: fyAttritionStats_(regulars, twin, ctx.asOf, cfg),
+      lever: buildLeversForFy_(empNos, histByEmp, twin, mode.mode, cfg, usdRates),
+      endIso: isoDate_(end),
+    };
+  });
+  // All-population movement (regulars + interns) — the tie-out to headcount
+  // reports that count every roster row without an Employee Type split.
+  const allMoves = interns.length
+    ? windows.map(w => fyMovement_(inScope, w, ctx.asOf)) : null;
   // Internal-only mode: an empty bench map disables the market anchor tier,
   // so small groups resolve straight to the level-cohort median.
   const compaGroups = buildCompaGroups_(active, cfg.MARKET_ENABLED ? benchMap : {}, cfg);
@@ -1339,8 +1766,11 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
   return {
     scope, currency: mode,
     sections: [
-      secScope_(regulars, active, scope, mode, activeInterns.length),
-      secComposition_(buildComposition_(active, ctx.asOf)),
+      secScope_(regulars, active, scope, mode, activeInterns.length,
+        ctx.anchored ? asOfIso : null, noteInProgress_(windows, asOfIso)),
+      secFyStory_(moves, attr, levers, tccMoves, windows, mode, cfg, asOfIso, matched, allMoves),
+      secComposition_(buildComposition_(active, ctx.asOf), !!ctx.anchored,
+        scope === "company" ? buildLocationTable_(active) : null),
       secCompStructure_(buildCompStructure_(active, mode.mode, cfg), mode, cfg),
       secMovement_(moves, coverage, windows, asOfIso, internFlow),
       secAttritionDetail_(attr, cfg, coverage, windows, asOfIso, ghostDepts),
@@ -1389,13 +1819,18 @@ function buildRetentionCrosstab_(records, fys) {
 function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure, curCode) {
   const out = [];
   compStructure.inversions.forEach(inv => {
+    // Within-location inversions (multi-currency scopes) carry their own
+    // location + local currency — never relabel them in the blended code.
+    const invCode = inv.currency || curCode;
     out.push({
-      id: "inversion-" + inv.mLevel + "-" + inv.icLevel, kind: "inversion",
+      id: "inversion-" + (inv.location ? inv.location + "-" : "") +
+        inv.mLevel + "-" + inv.icLevel, kind: "inversion",
       title: "Salary inversion " + inv.mLevel + " vs " + inv.icLevel +
+        (inv.location ? " within " + inv.location : "") +
         (inv.crossFamilyOnly ? " (cross-family — verify)" : ""),
-      detail: inv.mLevel + " band average (" + fmtMoneyShort_(inv.mAvg, curCode) +
+      detail: inv.mLevel + " band average (" + fmtMoneyShort_(inv.mAvg, invCode) +
         ") sits below the " + inv.icLevel + " band average (" +
-        fmtMoneyShort_(inv.icAvg, curCode) + "). Investigation trigger: " +
+        fmtMoneyShort_(inv.icAvg, invCode) + "). Investigation trigger: " +
         (inv.withinGroups && inv.withinGroups.length
           ? "the pattern holds inside " + inv.withinGroups.join(", ") +
             " — a genuine inversion candidate."
@@ -1630,7 +2065,12 @@ function confTable_(t) {
   return "<p><strong>" + confEsc_(t.title) + "</strong></p>" +
     "<table><tbody><tr>" +
     t.headers.map(h => "<th>" + confEsc_(h) + "</th>").join("") + "</tr>" +
-    t.rows.map(r => "<tr>" + r.map(c => "<td>" + confEsc_(c) + "</td>").join("") + "</tr>").join("") +
+    t.rows.map(r => {
+      const tot = String(r[0]) === "Total"; // section-shipped Total rows read bold
+      return "<tr>" + r.map(c => "<td>" +
+        (tot ? "<strong>" + confEsc_(c) + "</strong>" : confEsc_(c)) +
+        "</td>").join("") + "</tr>";
+    }).join("") +
     "</tbody></table>";
 }
 
@@ -1658,6 +2098,32 @@ function confluenceDefinitionsHtml_() {
         "by construction."],
       ["Hires / exits", "counted by Hire Date / Termination-Release Date inside the " +
         "fiscal window (FY starts 1 Jul)."],
+      ["Fiscal-year story / comparison", "one selected year tells that year's story; " +
+        "two or more compare consecutive pairs — attrition moves ≥ " + c.COMPARE_ATTR_PP +
+        " pp and regretted-share moves ≥ " + c.COMPARE_REGRET_PP + " pp read as verdicts, " +
+        "smaller moves as held steady. The in-progress year is judged against the prior " +
+        "year's SAME-PERIOD slice (equal elapsed span), never against a full year."],
+      ["TCC impact of movement", "hires and exits priced at each person's latest recorded " +
+        "TCC — an annualized cost-structure lens, not payroll actuals."],
+      ["Raise totals (multi-currency scopes)", "each comp event's delta converts at the " +
+        "employee's current TCC USD ÷ local TCC rate; historical FX is not recorded. " +
+        "Growth percentages are always computed in local currency — FX-clean."],
+      ["Comparison rule", "band-vs-band and person-vs-anchor comparisons are made WITHIN " +
+        "one location (or as a compa-ratio to a local anchor). Blended multi-currency " +
+        "USD averages are cost/budget figures only — they move with geography mix and " +
+        "never fire equity flags."],
+      ["FX lineage", "USD figures come from the roster TCC USD column, the conversion " +
+        "source of record; rate basis and as-of date are owned by the roster pipeline. " +
+        "A frozen plan rate for FY-over-FY USD comparison is a pending data-side " +
+        "improvement."],
+      ["All-employee-types tie-out", "story and comparison views also state headcount " +
+        "including the intern/fixed-term strand — the figure that matches headcount " +
+        "reports counting every roster row."],
+      ["Snapshot anchor", "population, composition, compensation-structure and flag " +
+        "sections are anchored to the END of the selected period — the extraction date " +
+        "while the in-progress fiscal year is selected, otherwise the last selected " +
+        "period's closing date. Compensation at the anchor uses each person's latest " +
+        "recorded TCC."],
       ["Job family", "Job Title numeric prefix → JF + zero-padded prefix " +
         "(04.I3.1 → JF004, 18.M4.3 → JF018)" +
         (Object.keys(c.JOB_FAMILY_MAP).length
@@ -1909,7 +2375,20 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
   // Coverage guards always judge the FULL first FY — a quarter view narrows
   // the reporting window, not the depth question.
   const coverage = coverageStats_(records, histByEmp, fys);
-  const report = buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx, cfg, coverage);
+  // Snapshot anchor (user directive 2026-07-23): the report is a photograph
+  // taken at the END of the selected period. While the selection includes the
+  // in-progress window, the anchor is the extraction date (live behavior);
+  // a fully closed selection re-anchors EVERYTHING downstream — population,
+  // composition, compensation structure, flags, brief — so "FY25" reads as
+  // the company as it stood on 30 Jun 2025. Movement/attrition figures are
+  // window-driven and unaffected. The scope dropdown (meta.scopes) stays on
+  // today's roster so navigation never shifts under the reader.
+  const lastW = windows[windows.length - 1];
+  const anchored = !!(lastW && !lastW.inProgress);
+  const view = anchored ? rosterAsAt_(records, lastW.end) : records;
+  const viewCtx = anchored
+    ? Object.assign({}, ctx, { asOf: lastW.end, anchored: true }) : ctx;
+  const report = buildLocationReport_(view, histByEmp, benchMap, scope, windows, viewCtx, cfg, coverage);
   const scopes = [...new Set(records.filter(r => r.active).map(r => r.keyLocation).filter(Boolean))].sort();
   const payload = {
     ok: true,
@@ -1922,6 +2401,7 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
       fyRange: fyRangeCanon_(fySel.all, fys),
       availableFys: fySel.all.map(f => ({ label: f.label, num: (f.startCalYear + 1) % 100 })),
       asOf: isoDate_(ctx.asOf),
+      anchor: anchored ? isoDate_(lastW.end) : null,
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
       coverage: {
@@ -1942,8 +2422,8 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
   };
   if (!q) {
     const scopeRecords = scope === "company"
-      ? records : records.filter(r => r.keyLocation === scope);
-    payload.brief = buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, scopes);
+      ? view : view.filter(r => r.keyLocation === scope);
+    payload.brief = buildBrief_(scopeRecords, histByEmp, fys, viewCtx, cfg, report, scopes);
   }
   return payload;
 }
@@ -2456,7 +2936,10 @@ function docTable_(body, tbl) {
     tp.setSpacingBefore(8).setSpacingAfter(2);
   }
   const rows = [tbl.headers.map(String)].concat(tbl.rows.map(r => r.map(c => String(c))));
-  const isCountTable = tbl.headers.length === 2 && tbl.rows.length > 1 &&
+  // Sections now ship their own Total rows — auto-append only when absent.
+  const hasOwnTotal = tbl.rows.length &&
+    String(tbl.rows[tbl.rows.length - 1][0]) === "Total";
+  const isCountTable = !hasOwnTotal && tbl.headers.length === 2 && tbl.rows.length > 1 &&
     tbl.rows.every(r => typeof r[1] === "number" && isFinite(r[1]));
   if (isCountTable) {
     rows.push(["Total", String(tbl.rows.reduce((t, r) => t + r[1], 0))]);
@@ -2466,7 +2949,7 @@ function docTable_(body, tbl) {
   for (let r = 0; r < t.getNumRows(); r++) {
     const row = t.getRow(r);
     const isHeader = r === 0;
-    const isTotal = isCountTable && r === t.getNumRows() - 1;
+    const isTotal = r > 0 && rows[r][0] === "Total";
     for (let c = 0; c < row.getNumCells(); c++) {
       const cell = row.getCell(c);
       const text = cell.editAsText();

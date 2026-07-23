@@ -151,8 +151,13 @@ function term(over) {
     f25.promo.count === 0 && f25.newHires === 1 && f25.excluded === 0);
 
   const u27 = buildLeversForFy_(["A", "B"], hist, fys[2], "usd", CONFIG_WR);
-  check("lever usd mode: totals withheld, growth = mean per-event pct",
+  check("lever usd mode without rates: totals withheld, growth = mean per-event pct",
     u27.promo.totalRaise === null && approx(u27.promo.growthPct, 20 / 110));
+  // With per-employee current FX (TCC USD ÷ local TCC), the usd-mode Total
+  // raise is reportable — user report 2026-07-23: the column showed only "—".
+  const u27r = buildLeversForFy_(["A", "B"], hist, fys[2], "usd", CONFIG_WR, { A: 0.05 });
+  check("lever usd mode with rates: raise converts at the current rate",
+    approx(u27r.promo.totalRaise, 20 * 0.05) && approx(u27r.promo.growthPct, 20 / 110));
 
   // Recognition read (user directive 2026-07-23): 20 promotions → 10 with
   // adjustments up is a LEVER MIX change (people were considered for annual
@@ -376,15 +381,15 @@ function term(over) {
     sec.lines[0].text.indexOf("7.6%") !== -1);
   check("sentences: negative net renders with sign",
     sec.lines[1].text.indexOf("net -2") !== -1);
-  check("sentences: rate definition is a NOTE, movement carries no ASSUMPTION",
-    sec.lines.some(l => l.badge === "NOTE" && l.text.indexOf("mean(headcount") !== -1) &&
+  check("sentences: rate definition lives in the appendix only, no ASSUMPTION lines",
+    sec.lines.every(l => l.text.indexOf("mean(headcount") === -1) &&
     sec.lines.every(l => l.badge !== "ASSUMPTION"));
   check("sentences: FY25 coverage RISK fires with the retained date",
     sec.lines.some(l => l.badge === "RISK" && l.text.indexOf("2024-10-02") !== -1 &&
       l.text.indexOf("FY25 exits may be undercounted") !== -1));
-  check("sentences: in-progress NOTE stamps the extraction date",
-    sec.lines.some(l => l.badge === "NOTE" && l.text.indexOf("FY27 in progress — data as of 2026-07-21") !== -1));
-  check("sentences: movement table row shape",
+  check("sentences: movement carries NO in-progress NOTE (one global note in scope)",
+    sec.lines.every(l => l.text.indexOf("in progress") === -1));
+  check("sentences: movement table row shape (no Total row — user directive)",
     sec.tables[0].rows.length === 3 && sec.tables[0].rows[2][0] === "FY27 (to date)");
 
   const attrStats = [{
@@ -535,10 +540,11 @@ function term(over) {
   const f27 = fyMovement_(future, fys[2], REF);
   check("identity: future-dated hire excluded from to-date counts, still foots",
     f27.hires === 0 && f27.reclass === 0 && f27.hcEnd === f27.hcStart);
-  // Reconciliation NOTE: clean data states that the table foots exactly.
+  // Reconciliation NOTE renders ONLY on real residue — clean data stays silent
+  // (methodology lives in the appendix; exec review 2026-07-23).
   const secClean = secMovement_([m25, m26, m27], { firstFyTermGuard: false }, fys, "2026-07-21");
-  check("recon NOTE: clean data → 'foots exactly'",
-    secClean.lines.some(l => l.badge === "NOTE" && l.text.indexOf("foots exactly") !== -1));
+  check("recon NOTE: clean data renders no reconciliation line",
+    secClean.lines.every(l => l.text.indexOf("reconciliation") === -1));
   // Genuine residue (e.g. a two-row intern→regular conversion) is stated per FY.
   const off = Object.assign({}, m26, { reclass: 2, hcEnd: m26.hcEnd + 2 });
   const secOff = secMovement_([m25, off], { firstFyTermGuard: false }, fys, "2026-07-21");
@@ -605,10 +611,11 @@ function term(over) {
   check("leavers: headers = dept + reason + one column per FY + Total",
     sec.tables[0].headers.join() === "Department,Reason,FY25,FY26,FY27,Total");
   const rows = sec.tables[0].rows;
-  check("leavers: combo rows aggregate per FY and sort by total",
-    rows.length === 2 &&
+  check("leavers: combo rows aggregate per FY and sort by total (+ Total row)",
+    rows.length === 3 &&
     rows[0].join() === "Services,Better offer,1,2,0,3" &&
-    rows[1].join() === "R&D,Relocation,0,0,1,1");
+    rows[1].join() === "R&D,Relocation,0,0,1,1" &&
+    rows[2].join() === "Total,,1,2,1,4");
   check("leavers: IC/Manager split stated in the FY FACT lines",
     sec.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("individual contributors (I-levels)") !== -1 &&
@@ -785,8 +792,10 @@ function term(over) {
   check("qpayload: meta echoes the quarter, nothing skipped for Q1",
     p1.meta.quarter === 1 && p1.meta.quarterSkipped.length === 0);
   check("qpayload: quarterly company view drops the brief", p1.brief === undefined);
-  check("qpayload: in-progress NOTE names the quarter window",
-    mv1.lines.some(l => l.badge === "NOTE" && l.text.indexOf("FY27 Q1 in progress") !== -1));
+  check("qpayload: the ONE in-progress NOTE sits in scope and names the quarter window",
+    p1.report.sections.find(s => s.id === "scope")
+      .lines.some(l => l.badge === "NOTE" && l.text.indexOf("FY27 Q1 in progress") !== -1) &&
+    mv1.lines.every(l => l.text.indexOf("in progress") === -1));
 
   const p3 = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 3);
   const mv3 = p3.report.sections.find(s => s.id === "movement");
@@ -813,8 +822,8 @@ function term(over) {
   const hist = { E1: [{ date: new Date(2024, 6, 15), reason: "Annual Adjustment", tcc: 90000 }] };
 
   const company = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR);
-  check("payload: company carries brief + 7 sections",
-    company.ok && company.brief != null && company.report.sections.length === 7);
+  check("payload: company carries brief + 8 sections",
+    company.ok && company.brief != null && company.report.sections.length === 8);
   check("payload: meta FY labels", company.meta.fys.map(f => f.label).join() === "FY25,FY26,FY27");
   check("payload: company currency is USD", company.report.currency.mode === "usd");
   check("payload: scopes sorted", company.meta.scopes.join() === "Chile,Mexico");
@@ -837,7 +846,7 @@ function term(over) {
   // benchmark compilation is complete.
   const flags = company.report.sections.find(s => s.id === "flags");
   check("flags: internal-only title while market is disabled",
-    flags.title === "7 · Internal position & equity flags");
+    flags.title === "8 · Internal position & equity flags");
   check("flags: no market FACT/coverage lines while disabled",
     flags.lines.every(l => l.text.indexOf("market mean") === -1 &&
       l.text.indexOf("Benchmark coverage") === -1));
@@ -922,4 +931,382 @@ function term(over) {
   check("payload: c2 keeps the brief and two movement rows",
     closed.brief != null &&
     closed.report.sections.find(s => s.id === "movement").tables[0].rows.length === 2);
+})();
+
+// ── Section 2 — fiscal-year story / FY-over-FY comparison ──────────────────
+// Pure-input unit tests: synthetic movement/attrition/lever/TCC blocks so
+// every verdict threshold is exercised without roster plumbing.
+(function () {
+  const win = (lbl, ip) => ({ label: lbl, inProgress: !!ip });
+  const mv = over => Object.assign({ label: "FY25", inProgress: false, hires: 10,
+    exits: 5, net: 5, hcStart: 100, hcEnd: 105, reclass: 0, rate: 0.05 }, over || {});
+  const at = over => Object.assign({ label: "FY25", inProgress: false, exits: 5,
+    regretted: 2, regrettedPct: 0.4, organicExits: 4, structuralExits: 1,
+    reasons: [{ key: "Another Job", count: 3 }] }, over || {});
+  const lv = over => Object.assign({ label: "FY25", inProgress: false,
+    promo: { count: 4 }, adjust: { count: 6 } }, over || {});
+  const tc = over => Object.assign({ label: "FY25", inProgress: false,
+    hiresTotal: 500000, hiresValued: 10, hiresCount: 10,
+    exitsTotal: 250000, exitsValued: 5, exitsCount: 5,
+    net: 250000, anyValued: true }, over || {});
+  const mode = { mode: "usd", code: "USD" };
+
+  // Story mode — one window.
+  const story = secFyStory_([mv()], [at()], [lv()], [tc()],
+    [win("FY25")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-story: single window renders story mode",
+    story.id === "fy-story" && story.title === "2 · Fiscal-year story" &&
+    story.tables.length === 0);
+  check("fy-story: open-to-close FACT foots (close − open decomposed)",
+    story.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("opened at 100") !== -1 && l.text.indexOf("closed at 105") !== -1 &&
+      l.text.indexOf("+5 for the period (10 hires − 5 exits)") !== -1));
+
+  // Reclassification residue must appear in the sentence — the story FACT
+  // foots exactly, like the §5 reconciliation (user report 2026-07-23:
+  // "headcount not reflecting the right start/end").
+  const reclassed = secFyStory_(
+    [mv({ hcEnd: 108, reclass: 3 })], [at()], [lv()], [tc()],
+    [win("FY25")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-story: reclass residue stated so open + change = close",
+    reclassed.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("closed at 108") !== -1 &&
+      l.text.indexOf("+8 for the period (10 hires − 5 exits + 3 reclassification)") !== -1));
+
+  // All-population tie-out (regulars + interns) — matches headcount reports
+  // that count every roster row (FullAnalysisAttrition idiom).
+  const tied = secFyStory_([mv()], [at()], [lv()], [tc()],
+    [win("FY25")], mode, CONFIG_WR, "2026-07-23", null,
+    [{ label: "FY25", inProgress: false, hcStart: 110, hcEnd: 118 }]);
+  check("fy-story: all-population NOTE ties out to every-roster-row counts",
+    tied.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("All employee types") !== -1 &&
+      l.text.indexOf("110 → 118") !== -1));
+  check("fy-story: attrition FACT carries regretted, split and top reason",
+    story.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("2 of 5 exits regretted") !== -1 &&
+      l.text.indexOf("4 organic vs 1 structural") !== -1 &&
+      l.text.indexOf("Another Job") !== -1));
+  check("fy-story: recognition FACT totals both levers",
+    story.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("10 compensation events") !== -1 &&
+      l.text.indexOf("4 promotions, 6 adjustments") !== -1));
+  check("fy-story: TCC impact FACT nets hires minus exits, caveat inline",
+    story.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("net +250,000 USD") !== -1 &&
+      l.text.indexOf("not payroll actuals") !== -1));
+
+  // Story mode with zero exits and no recognition — degrades to clean lines.
+  const quiet = secFyStory_([mv({ exits: 0, net: 10, rate: 0 })],
+    [at({ exits: 0, regretted: 0, regrettedPct: null, organicExits: 0,
+      structuralExits: 0, reasons: [] })],
+    [lv({ promo: { count: 0 }, adjust: { count: 0 } })],
+    [tc({ anyValued: false })],
+    [win("FY25")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-story: zero exits gives a no-exits FACT and a no-recognition NOTE",
+    quiet.lines.some(l => l.badge === "FACT" && l.text.indexOf("No exits recorded") !== -1) &&
+    quiet.lines.some(l => l.badge === "NOTE" && l.text.indexOf("No promotion or adjustment") !== -1) &&
+    quiet.lines.every(l => l.text.indexOf("TCC impact") === -1));
+
+  // Comparison mode — a better FY26: attrition and regretted share both improve.
+  const better = secFyStory_(
+    [mv(), mv({ label: "FY26", exits: 2, net: 8, hcEnd: 108, rate: 0.02 })],
+    [at(), at({ label: "FY26", exits: 2, regretted: 0, regrettedPct: 0,
+      organicExits: 2, structuralExits: 0 })],
+    [lv(), lv({ label: "FY26", promo: { count: 5 }, adjust: { count: 8 } })],
+    [tc(), tc({ label: "FY26" })],
+    [win("FY25"), win("FY26")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-compare: two windows render comparison mode",
+    better.title === "2 · Fiscal years compared" && better.tables.length === 1);
+  check("fy-compare: attrition improvement is a FACT with pp delta",
+    better.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("attrition improved 5.0% → 2.0%") !== -1 &&
+      l.text.indexOf("−3.0 pp") !== -1));
+  check("fy-compare: regretted improvement is a FACT",
+    better.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("regretted share of exits improved 40% → 0%") !== -1));
+  check("fy-compare: recognition totals FACT defers mix to the lever section",
+    better.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("total recognition events 10 → 13") !== -1));
+  check("fy-compare: side-by-side table carries a delta column for 2 closed windows",
+    better.tables[0].headers.join("|") === "Measure|FY25|FY26|Δ" &&
+    better.tables[0].rows.some(r => r[0] === "Attrition rate" && r[3] === "−3.0 pp") &&
+    better.tables[0].rows.some(r => r[0] === "Headcount start → end" &&
+      r[1] === "100 → 105" && r[2] === "100 → 108" && r[3] === "+3"));
+
+  // Comparison mode — a worse FY26: both verdicts flip to RISK.
+  const worse = secFyStory_(
+    [mv(), mv({ label: "FY26", exits: 9, net: 1, hcEnd: 101, rate: 0.09 })],
+    [at(), at({ label: "FY26", exits: 9, regretted: 6, regrettedPct: 6 / 9 })],
+    [lv(), lv({ label: "FY26" })],
+    [tc(), tc({ label: "FY26" })],
+    [win("FY25"), win("FY26")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-compare: attrition rise is a RISK",
+    worse.lines.some(l => l.badge === "RISK" && l.text.indexOf("attrition rose") !== -1));
+  check("fy-compare: regretted rise is a RISK",
+    worse.lines.some(l => l.badge === "RISK" &&
+      l.text.indexOf("regretted share of exits rose") !== -1));
+
+  // Sub-threshold moves — held-steady NOTEs, never verdicts.
+  const steady = secFyStory_(
+    [mv(), mv({ label: "FY26", rate: 0.055 })],
+    [at(), at({ label: "FY26", regrettedPct: 0.42 })],
+    [lv(), lv({ label: "FY26" })],
+    [tc(), tc({ label: "FY26" })],
+    [win("FY25"), win("FY26")], mode, CONFIG_WR, "2026-07-23");
+  check("fy-compare: sub-threshold moves are held-steady NOTEs",
+    steady.lines.some(l => l.badge === "NOTE" && l.text.indexOf("attrition held steady") !== -1) &&
+    steady.lines.some(l => l.badge === "NOTE" && l.text.indexOf("regretted share held steady") !== -1) &&
+    steady.lines.every(l => l.badge !== "RISK"));
+
+  // In-progress window WITHOUT a same-period twin — pair stays table-only.
+  const partial = secFyStory_(
+    [mv(), mv({ label: "FY27", inProgress: true, rate: 0.01 })],
+    [at(), at({ label: "FY27", inProgress: true })],
+    [lv(), lv({ label: "FY27", inProgress: true })],
+    [tc(), tc({ label: "FY27", inProgress: true })],
+    [win("FY25"), win("FY27", true)], mode, CONFIG_WR, "2026-07-23");
+  check("fy-compare: in-progress pair without a twin yields no verdicts, no delta column",
+    partial.lines.every(l => l.text.indexOf("attrition") === -1) &&
+    partial.tables[0].headers.indexOf("FY27 (to date)") !== -1 &&
+    partial.tables[0].headers.indexOf("Δ") === -1);
+
+  // In-progress window WITH a same-period twin — the closed year is judged on
+  // its equivalent slice, labeled "to date vs same period" (user directive
+  // 2026-07-23: any 2-year selection must compare, including the open FY).
+  const matched = [{
+    move: mv({ label: "FY25", exits: 3, rate: 0.03, hcEnd: 102 }),
+    attr: at({ label: "FY25", exits: 3, regretted: 1, regrettedPct: 1 / 3 }),
+    lever: lv({ promo: { count: 2 }, adjust: { count: 3 } }),
+    endIso: "2025-07-23",
+  }, null];
+  const samePd = secFyStory_(
+    [mv(), mv({ label: "FY27", inProgress: true, rate: 0.01, exits: 1,
+      regretted: 0 })],
+    [at(), at({ label: "FY27", inProgress: true, exits: 1, regretted: 0,
+      regrettedPct: 0 })],
+    [lv(), lv({ label: "FY27", inProgress: true, promo: { count: 1 }, adjust: { count: 2 } })],
+    [tc(), tc({ label: "FY27", inProgress: true })],
+    [win("FY25"), win("FY27", true)], mode, CONFIG_WR, "2026-07-23", matched);
+  check("fy-compare: same-period twin produces verdicts for the open year",
+    samePd.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("FY27 to date vs FY25 same period") !== -1 &&
+      l.text.indexOf("attrition improved 3.0% → 1.0%") !== -1));
+  check("fy-compare: same-period NOTE names the truncated span",
+    samePd.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("FY25 through 2025-07-23") !== -1));
+  check("fy-compare: recognition totals use the twin, not the full year",
+    samePd.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("total recognition events 5 → 3") !== -1));
+})();
+
+// ── Section 2 integration — fyRange drives story vs comparison ─────────────
+(function () {
+  const ctx = { asOf: REF };
+  const records = [
+    mkEmp({ hireDate: new Date(2020, 0, 1) }),
+    mkEmp({ hireDate: new Date(2020, 0, 1) }),
+    mkEmp({ hireDate: new Date(2024, 8, 1) }), // FY25 hire
+    term({ hireDate: new Date(2020, 0, 1), termDate: new Date(2025, 9, 10),
+      termReason: "Another Job", termRegretted: "Yes" }), // FY26 exit
+  ];
+  const one = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0, "25");
+  const sOne = one.report.sections.find(s => s.id === "fy-story");
+  check("payload: single-FY selection renders the year story",
+    sOne != null && sOne.title === "2 · Fiscal-year story" &&
+    one.report.sections[1].id === "fy-story");
+  const two = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0, "25,26");
+  const sTwo = two.report.sections.find(s => s.id === "fy-story");
+  check("payload: two-FY selection renders the comparison",
+    sTwo != null && sTwo.title === "2 · Fiscal years compared" &&
+    sTwo.tables.length === 1 && sTwo.tables[0].headers.length === 4);
+  // Two years where the later one is IN PROGRESS — the report still compares,
+  // via the same-period twin (user directive 2026-07-23: "should work when
+  // the user selects 2 or more fiscal years").
+  const open2 = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0, "26,27");
+  const sOpen = open2.report.sections.find(s => s.id === "fy-story");
+  check("payload: FY26+FY27 selection compares via the same-period twin",
+    sOpen != null &&
+    sOpen.lines.some(l => l.text.indexOf("FY27 to date vs FY26 same period") !== -1) &&
+    sOpen.lines.some(l => l.badge === "NOTE" && l.text.indexOf("Same-period read") !== -1));
+  // Company scope carries TCC USD on every fixture row → the usd-mode lever
+  // Total raise column is populated, not "—".
+  const hist2 = { [records[0].empNo]: [
+    { date: new Date(2020, 1, 1), reason: "New Hire", tcc: 90000 },
+    { date: new Date(2025, 9, 1), reason: "Promotion", tcc: 100000 },
+  ] };
+  const usdPay = buildReportPayload_(records, hist2, {}, "company", ctx, CONFIG_WR, 0, "26");
+  const levT = usdPay.report.sections.find(s => s.id === "levers").tables[0];
+  check("payload: usd-mode lever table shows a converted Total raise (no Total row)",
+    levT.rows.some(r => r[1] === "Promotions" && r[3] !== "—") &&
+    levT.rows.every(r => r[0] !== "Total"));
+})();
+
+// ── Within-location comparisons — the Simpson's-paradox guard ───────────────
+// Exec review 2026-07-23: a blended multi-currency USD band average is a
+// geography-weighted MIX — it must never fire an equity flag. Inversions in
+// usd scopes are detected within each single-currency location on local TCC.
+(function () {
+  const mk = (loc, cur, level, track, tcc, usd) => mkEmp({
+    keyLocation: loc, currency: cur, level, track,
+    jobTitle: "04." + level + ".1", tcc, tccUsd: usd });
+
+  // Two-location scope where managers out-earn ICs INSIDE every location —
+  // whatever a blended USD average says, no equity flag may fire.
+  const trap = [
+    mk("US", "USD", "I4", "IC", 150000, 150000), mk("US", "USD", "I4", "IC", 152000, 152000),
+    mk("US", "USD", "I4", "IC", 148000, 148000),
+    mk("US", "USD", "M4", "M", 170000, 170000), mk("US", "USD", "M4", "M", 172000, 172000),
+    mk("US", "USD", "M4", "M", 168000, 168000),
+    mk("Chile", "CLP", "I4", "IC", 40000000, 45000), mk("Chile", "CLP", "I4", "IC", 41000000, 46000),
+    mk("Chile", "CLP", "I4", "IC", 39000000, 44000),
+    mk("Chile", "CLP", "M4", "M", 52000000, 58000), mk("Chile", "CLP", "M4", "M", 53000000, 59000),
+    mk("Chile", "CLP", "M4", "M", 51000000, 57000),
+  ];
+  const csTrap = buildCompStructure_(trap, "usd", CONFIG_WR);
+  check("inversion guard: blended-USD mix artifact fires NO within-location flag",
+    csTrap.inversions.length === 0);
+  const secTrap = secCompStructure_(csTrap, { mode: "usd", code: "USD" }, CONFIG_WR);
+  check("inversion guard: usd scope states the cost-lens rule and the clean result",
+    secTrap.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("geography-weighted COST figures") !== -1) &&
+    secTrap.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("No within-location salary inversion") !== -1));
+  check("inversion guard: usd lineage is a NOTE, never an ASSUMPTION",
+    secTrap.lines.every(l => l.badge !== "ASSUMPTION") &&
+    secTrap.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("Data lineage") !== -1 && l.text.indexOf("FX drift") !== -1));
+
+  // A REAL within-location inversion still fires, named with its location and
+  // reported in LOCAL currency.
+  const real = trap.concat([
+    mk("Mexico", "MXN", "I4", "IC", 900000, 45000), mk("Mexico", "MXN", "I4", "IC", 920000, 46000),
+    mk("Mexico", "MXN", "I4", "IC", 910000, 45500),
+    mk("Mexico", "MXN", "M4", "M", 700000, 35000), mk("Mexico", "MXN", "M4", "M", 710000, 35500),
+    mk("Mexico", "MXN", "M4", "M", 705000, 35250),
+  ]);
+  const csReal = buildCompStructure_(real, "usd", CONFIG_WR);
+  check("inversion guard: genuine within-location inversion still fires, located",
+    csReal.inversions.length === 1 && csReal.inversions[0].location === "Mexico" &&
+    csReal.inversions[0].currency === "MXN");
+  const secReal = secCompStructure_(csReal, { mode: "usd", code: "USD" }, CONFIG_WR);
+  check("inversion guard: FACT names the location and uses local currency",
+    secReal.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("Salary inversion within Mexico") !== -1 &&
+      l.text.indexOf("MXN") !== -1));
+})();
+
+// ── Regretted-trend synthesis + coverage promotion ───────────────────────────
+(function () {
+  const st = (label, regrettedPct) => ({
+    label, inProgress: false, exits: 10, vol: 8, invol: 2,
+    regretted: Math.round(regrettedPct * 10), regrettedPct,
+    reasons: [{ key: "Another Job", count: 3 }], depts: [], levels: [], families: [],
+    icExits: 7, mExits: 3, structuralExits: 1, organicExits: 9,
+    structuralRegretted: 0, combos: [], avgLeaverTenureYears: 3,
+  });
+  const fys = fyListWR_(REF, 3);
+  const sec = secAttritionDetail_([st("FY25", 0.76), st("FY26", 0.67), st("FY27", 0.67)],
+    CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-23");
+  const trendRisks = sec.lines.filter(l => l.badge === "RISK" &&
+    l.text.indexOf("review threshold") !== -1);
+  check("regretted trend: three breaches synthesize into ONE RISK with the trend",
+    trendRisks.length === 1 &&
+    trendRisks[0].text.indexOf("every period shown") !== -1 &&
+    trendRisks[0].text.indexOf("FY25 76% → FY26 67% → FY27 67%") !== -1 &&
+    trendRisks[0].text.indexOf("persistent retention pattern") !== -1);
+  const single = secAttritionDetail_([st("FY25", 0.2), st("FY26", 0.7)],
+    CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-23");
+  check("regretted trend: a single breach keeps the per-FY RISK",
+    single.lines.filter(l => l.badge === "RISK" &&
+      l.text.indexOf("review threshold") !== -1).length === 1 &&
+    single.lines.some(l => l.text.indexOf("FY26: regretted share") !== -1));
+
+  const flags = secFlags_(
+    { belowLow: 10, low: 20, target: 100, aboveHigh: 36, unresolved: 48 },
+    null, { genderAvailable: false, suppressed: 35 }, CONFIG_WR);
+  check("flags: no-anchor exclusion promoted to RISK with coverage math",
+    flags.lines.some(l => l.badge === "RISK" &&
+      l.text.indexOf("48 of 214") !== -1 && l.text.indexOf("22%") !== -1 &&
+      l.text.indexOf("covers only the remaining 166") !== -1));
+  check("flags: suppressed thin cells promoted to RISK as a structural finding",
+    flags.lines.some(l => l.badge === "RISK" &&
+      l.text.indexOf("35 location+level groups") !== -1 &&
+      l.text.indexOf("cost-tier anchor") !== -1));
+})();
+
+// ── Location lens — headcount & cost by location (company scope only) ──────
+(function () {
+  const ctx = { asOf: REF };
+  const records = [
+    mkEmp({ keyLocation: "Chile", currency: "CLP", tcc: 40000000, tccUsd: 45000 }),
+    mkEmp({ keyLocation: "Chile", currency: "CLP", tcc: 42000000, tccUsd: 47000 }),
+    mkEmp({ keyLocation: "US", currency: "USD", tcc: 150000, tccUsd: 150000 }),
+  ];
+  const company = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR);
+  const compTables = company.report.sections.find(s => s.id === "composition").tables;
+  const locT = compTables.find(t => t.title.indexOf("by location") !== -1);
+  check("location lens: company composition leads with the by-location cost table",
+    locT != null && compTables[0] === locT &&
+    locT.headers.join() === "Location,Headcount,Avg TCC,Total TCC");
+  check("location lens: sorted by headcount with a Total row",
+    locT.rows[0][0] === "Chile" && locT.rows[0][1] === 2 &&
+    locT.rows[locT.rows.length - 1][0] === "Total" &&
+    locT.rows[locT.rows.length - 1][1] === 3);
+  const chile = buildReportPayload_(records, {}, {}, "Chile", ctx, CONFIG_WR);
+  check("location lens: single-location scope carries no by-location table",
+    chile.report.sections.find(s => s.id === "composition")
+      .tables.every(t => t.title.indexOf("by location") === -1));
+})();
+
+// ── Snapshot anchor — a closed selection is a photograph of that period ────
+// User directive 2026-07-23: "if a single year is selected we can read about
+// the statistics of that year only" — scope/composition/comp-structure/flags
+// re-anchor to the END of the last selected window instead of today.
+(function () {
+  const ctx = { asOf: REF };
+  const records = [
+    mkEmp({ hireDate: new Date(2020, 0, 1) }),                    // active all years
+    mkEmp({ hireDate: new Date(2026, 0, 10) }),                   // FY26 hire — not in FY25
+    term({ hireDate: new Date(2019, 0, 1),
+      termDate: new Date(2025, 9, 10), termReason: "Another Job" }), // left in FY26
+  ];
+
+  const asAt = rosterAsAt_(records, new Date(2025, 5, 30));
+  check("rosterAsAt: rows hired after the date drop out",
+    asAt.length === 2);
+  check("rosterAsAt: active flag re-derived — the FY26 leaver was active then",
+    asAt.filter(r => r.active).length === 2);
+
+  const fy25 = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0, "25");
+  const scope25 = fy25.report.sections.find(s => s.id === "scope");
+  check("anchor: FY25 selection stamps meta.anchor with the FY25 close",
+    fy25.meta.anchor === "2025-06-30" && fy25.meta.asOf === isoDate_(REF));
+  check("anchor: FY25 scope counts actives as of 2025-06-30 (leaver still in)",
+    scope25.lines[0].text.indexOf("2 active regular employees") !== -1 &&
+    scope25.lines[0].text.indexOf("as of 2025-06-30") !== -1);
+  check("anchor: FY25 evidence base excludes rows hired later",
+    scope25.lines[1].text.indexOf("2 regular roster records") !== -1);
+  check("anchor: scope carries the snapshot NOTE",
+    scope25.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("Snapshot anchored to 2025-06-30") !== -1));
+  check("anchor: composition tenure names the anchor, not the extraction date",
+    fy25.report.sections.find(s => s.id === "composition")
+      .lines.some(l => l.text.indexOf("the period-end anchor") !== -1));
+
+  // A selection including the in-progress FY stays live — no anchor.
+  const live = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR, 0, "all");
+  check("anchor: live selection (current FY in) has no anchor and no as-of suffix",
+    live.meta.anchor === null &&
+    live.report.sections.find(s => s.id === "scope")
+      .lines[0].text.indexOf("as of ") === -1);
+  check("anchor: live scope counts today's actives (leaver out, FY26 hire in)",
+    live.report.sections.find(s => s.id === "scope")
+      .lines[0].text.indexOf("2 active regular employees") !== -1);
+
+  // Movement figures are window-driven — anchoring must not change them.
+  const mv25anch = fy25.report.sections.find(s => s.id === "movement").tables[0].rows[0];
+  const mvAll = live.report.sections.find(s => s.id === "movement").tables[0].rows[0];
+  check("anchor: FY25 movement row identical in anchored and live payloads",
+    mv25anch.join() === mvAll.join());
 })();
