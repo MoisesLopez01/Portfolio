@@ -4,7 +4,7 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.1.2 — per-year FY story/comparison, snapshot anchoring,
+// VERSION:     1.1.3 — per-year FY story/comparison, snapshot anchoring,
 //              within-location comparison rule (exec review 2026-07-23);
 //              body ASSUMPTION lines removed, build badge in the header,
 //              "investigation trigger" wording out of section 4
@@ -25,7 +25,7 @@ const CONFIG_WR = {
   // header, so "did the new version actually deploy?" is answered by
   // looking at the subtitle instead of hunting for changed sentences.
   // Bump alongside the VERSION line above on every deployable change.
-  BUILD: "1.1.2",
+  BUILD: "1.1.3",
 
   // Fallback source IDs — overridable via Script Properties (WR_ prefix).
   // Defaults are the CompDash sources: the sheets are the shared contract.
@@ -1137,12 +1137,10 @@ function secCompStructure_(cs, mode, cfg) {
         : "; the two bands never invert within a single " + (inv.dimLabel || "department") +
           " — likely a job-family market-rate mix, not an equity error") + "."));
   });
-  if (cs.inversions.length) {
-    lines.push(note_("A manager in a lower-market job family (e.g. People or Finance) can " +
-      "legitimately earn below a senior IC in a high-demand technical family. Verify " +
-      "whether the flagged managers actually oversee the higher-paid ICs before treating " +
-      "a flag as an equity issue."));
-  } else if (mode.mode === "usd") {
+  // No caution NOTE (user directive 2026-07-23): each FACT's own branch text
+  // ("genuine inversion candidate" / "market-rate mix, not an equity error")
+  // carries the read.
+  if (!cs.inversions.length && mode.mode === "usd") {
     lines.push(fact_("No within-location salary inversion clears the small-group floor — " +
       "no band-structure flag stands once geography mix is removed."));
   }
@@ -1262,7 +1260,6 @@ function secFyStory_(moves, attr, levers, tccs, windows, mode, cfg, asOfIso, mat
   // Every consecutive selected pair gets verdicts. When the later window is
   // in progress, the earlier one swaps in its same-period twin (`matched`) —
   // never a full year against a partial one.
-  const samePeriods = [];
   for (let i = 1; i < moves.length; i++) {
     let a = moves[i - 1], aa = attr[i - 1], la = levers[i - 1], samePeriod = false;
     const b = moves[i], ab = attr[i], lb = levers[i];
@@ -1270,7 +1267,6 @@ function secFyStory_(moves, attr, levers, tccs, windows, mode, cfg, asOfIso, mat
       const tw = matched && matched[i - 1];
       if (!tw) continue; // no twin available — the pair stays table-only
       a = tw.move; aa = tw.attr; la = tw.lever; samePeriod = true;
-      samePeriods.push(a.label + " through " + tw.endIso);
     }
     const lbl = samePeriod
       ? b.label + " to date vs " + a.label + " same period"
@@ -1315,12 +1311,8 @@ function secFyStory_(moves, attr, levers, tccs, windows, mode, cfg, asOfIso, mat
       " → " + fmtInt_(recTotal(lb)) +
       " (the promotion vs adjustment mix is read in the Compensation growth section)."));
   }
-  if (samePeriods.length) {
-    // One compact line — the "same period" labels on the verdicts carry the
-    // meaning; the full rule is an appendix row.
-    lines.push(note_("Same-period read: " + samePeriods.join("; ") +
-      "; the table below shows full periods."));
-  }
+  // No same-period NOTE (user directive 2026-07-23): the "to date vs same
+  // period" verdict labels carry the meaning; the rule is an appendix row.
 
   // Side-by-side table — one column per window, a Δ column when the selection
   // is exactly two closed windows (the canonical what-changed read).
@@ -1455,15 +1447,8 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       "coverage limit — earliest retained termination is " +
       (coverage.earliestTermDate || "none on file") + "."));
   }
-  // Closing definition NOTE — the one caveat a board reader needs, kept short.
-  const structTotal = stats.reduce((t, s) => t + s.structuralExits, 0);
-  const structRegret = stats.reduce((t, s) => t + s.structuralRegretted, 0);
-  lines.push(note_("Regretted = the 'Termination Regretted' flag recorded by People at " +
-    "exit, never inferred by this report" +
-    (structTotal
-      ? "; " + fmtInt_(structRegret) + " of the " + fmtInt_(structTotal) +
-        " structural exits carry it"
-      : "") + "."));
+  // Regretted-flag provenance lives in the definitions appendix only (user
+  // directive 2026-07-23) — no definition NOTE in the body.
   if (ghostDepts && ghostDepts.length) {
     lines.push(note_("Leaver departments reflect the organisation at exit time — " +
       fmtInt_(ghostDepts.length) + " historical department" +
@@ -1610,14 +1595,13 @@ function secFlags_(bandCounts, market, equity, cfg) {
   }
 
 
+  // The gender lens renders only when the data exists — no pending-status
+  // NOTE while it doesn't (user directive 2026-07-23).
   if (equity.genderAvailable) {
     lines.push(fact_(fmtInt_(equity.genderFlagged) + " of " + fmtInt_(equity.genderGroups) +
       " gender-comparable groups carry a median gap at or above " + cfg.EQUITY_GAP_PCT + "%; " +
       fmtInt_(equity.outliers) + " below-median outlier flags; " + fmtInt_(equity.tenureFlags) +
       " long-tenure-low-position flags."));
-  } else {
-    lines.push(note_("Pay-equity gender lens pending — the Gender column has not landed in " +
-      "the roster; it activates automatically when it does."));
   }
   // Coverage gaps are LIMITATIONS of the equity conclusions, not footnotes
   // (exec review 2026-07-23) — the reader must know how much of the org this

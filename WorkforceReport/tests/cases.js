@@ -290,9 +290,8 @@ function term(over) {
       l.text.indexOf("never invert within a single job family") !== -1 &&
       l.text.indexOf("(M4 spans JF007; I5 spans JF004)") !== -1 &&
       l.text.indexOf("job-family market-rate mix") !== -1));
-  check("inversion NOTE: verify-oversight guidance renders once, no trigger wording",
-    secInv.lines.filter(l => l.badge === "NOTE" &&
-      l.text.indexOf("Verify whether the flagged managers") !== -1).length === 1 &&
+  check("inversion: no caution NOTE, no trigger wording — the FACT branch carries the read",
+    secInv.lines.every(l => l.text.indexOf("Verify whether the flagged managers") === -1) &&
     secInv.lines.every(l => l.text.indexOf("investigation trigger") === -1));
 })();
 
@@ -629,9 +628,9 @@ function term(over) {
     sec.tables[1].title === "Leavers by job family (sub-function view)" &&
     sec.tables[1].headers.join() === "Job family,FY25,FY26,FY27,Total" &&
     sec.tables[1].rows[0][0] === "JF004" && sec.tables[1].rows[0][4] === 4);
-  check("leavers: closing regretted NOTE (recorded flag, never inferred)",
-    sec.lines[sec.lines.length - 1].badge === "NOTE" &&
-    sec.lines[sec.lines.length - 1].text.indexOf("'Termination Regretted' flag recorded by People") !== -1);
+  check("leavers: regretted-definition NOTE pruned from the body (appendix owns it)",
+    sec.lines.every(l =>
+      l.text.indexOf("'Termination Regretted' flag recorded by People") === -1));
   check("leavers: taxonomy lives in the appendix, not the section",
     sec.lines.every(l => l.text.indexOf("Active exit-reason taxonomy") === -1));
 })();
@@ -1091,9 +1090,8 @@ function term(over) {
     samePd.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("FY27 to date vs FY25 same period") !== -1 &&
       l.text.indexOf("attrition improved 3.0% → 1.0%") !== -1));
-  check("fy-compare: same-period NOTE names the truncated span",
-    samePd.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("FY25 through 2025-07-23") !== -1));
+  check("fy-compare: no same-period NOTE — the verdict labels carry the meaning",
+    samePd.lines.every(l => l.text.indexOf("Same-period read") === -1));
   check("fy-compare: recognition totals use the twin, not the full year",
     samePd.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("total recognition events 5 → 3") !== -1));
@@ -1127,7 +1125,7 @@ function term(over) {
   check("payload: FY26+FY27 selection compares via the same-period twin",
     sOpen != null &&
     sOpen.lines.some(l => l.text.indexOf("FY27 to date vs FY26 same period") !== -1) &&
-    sOpen.lines.some(l => l.badge === "NOTE" && l.text.indexOf("Same-period read") !== -1));
+    sOpen.lines.every(l => l.text.indexOf("Same-period read") === -1));
   // Company scope carries TCC USD on every fixture row → the usd-mode lever
   // Total raise column is populated, not "—".
   const hist2 = { [records[0].empNo]: [
