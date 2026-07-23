@@ -539,22 +539,30 @@ function buildLeversForFy_(scopeEmpNos, histByEmp, fy, mode, cfg) {
 }
 
 /**
- * The lever-shift RISK — spec §6.6: promotion count AND size down while
- * adjustment count up, comparing consecutive FYs.
- * @returns {string[]} "FY26→FY27"-style labels of shifted pairs.
+ * FY-over-FY recognition read — the two-year comparison story (user
+ * directive 2026-07-23). Fewer promotions with more adjustments is a change
+ * of recognition LEVER (salary calibration instead of title moves), NOT a
+ * recognition gap — people were still considered, through a different lever.
+ * The genuine RISK is a CONTRACTION: total recognition events falling
+ * alongside fewer promotions. Pairs touching an in-progress FY are skipped —
+ * a partial year always compares low.
+ * @returns {Array<{from, to, totalFrom, totalTo, mixShift, contraction}>}
  */
-function detectLeverShift_(leverBlocks) {
-  const shifts = [];
+function compareLeverPairs_(leverBlocks) {
+  const out = [];
   for (let i = 1; i < leverBlocks.length; i++) {
     const a = leverBlocks[i - 1], b = leverBlocks[i];
-    if (b.promo.count < a.promo.count &&
-        b.promo.growthPct != null && a.promo.growthPct != null &&
-        b.promo.growthPct < a.promo.growthPct &&
-        b.adjust.count > a.adjust.count) {
-      shifts.push(a.label + "→" + b.label);
-    }
+    if (a.inProgress || b.inProgress) continue;
+    const totalFrom = a.promo.count + a.adjust.count;
+    const totalTo = b.promo.count + b.adjust.count;
+    out.push({
+      from: a, to: b, totalFrom, totalTo,
+      mixShift: b.promo.count < a.promo.count &&
+                b.adjust.count > a.adjust.count && totalTo >= totalFrom,
+      contraction: totalTo < totalFrom && b.promo.count < a.promo.count,
+    });
   }
-  return shifts;
+  return out;
 }
 
 // ── Composition — spec §6.2 ─────────────────────────────────────────────────
@@ -913,8 +921,7 @@ function secScope_(records, active, scope, mode, activeInternCount) {
       "rows — the evidence base for movement and attrition."),
     fact_(fmtInt_(activeInternCount || 0) + " active interns — reported separately; " +
       "excluded from headline movement, attrition and compensation metrics."),
-    note_("Crew members and contractors are excluded by the job-title rule " +
-      "(/crew member|contractor/i)."),
+    note_("Crew members and contractors are excluded from this report."),
   ];
   if (scope !== "company") {
     lines.push(note_("Location scope uses each roster row's CURRENT Key Location — an " +
@@ -1167,24 +1174,31 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
       (b.adjust.totalRaise != null ? " totalling " + fmtMoney_(b.adjust.totalRaise, mode.code) : "") +
       (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") + "."));
   });
-  lines.push(note_("Classification of record: promotions = Promotion and Microband Promotion; " +
-    "adjustments = Annual Adjustment, Microband Adjustment and Market Calibration. New Hire " +
-    "(reported under Workforce movement), Internal Transfer and Historical Data Update are " +
-    "excluded from the lever analysis."));
-  const noPrior = leverBlocks.reduce((t, b) => t + b.promo.noPrior + b.adjust.noPrior, 0);
-  if (noPrior) {
-    lines.push(note_(fmtInt_(noPrior) + " lever events lack a prior comp record — " +
-      "counted above, excluded from raise totals and growth."));
-  }
-  if (mode.mode === "usd") {
-    lines.push(note_("Raise totals are withheld in this scope — RD history records local TCC " +
-      "only and events span multiple currencies; growth uses the mean of per-event % changes."));
-  }
-  const shifts = detectLeverShift_(leverBlocks);
-  shifts.forEach(s => {
-    lines.push(risk_("Lever shift " + s + ": promotion count and size are down while " +
-      "adjustment count is up — growth is drifting from career progression to corrections."));
+  // FY-over-FY recognition comparison — what improved, what got worse, read
+  // REASONABLY: total recognition first, lever mix second. Classification
+  // mechanics live in the definitions appendix, never here.
+  compareLeverPairs_(leverBlocks).forEach(p => {
+    lines.push(fact_(p.from.label + " → " + p.to.label + ": total recognition events " +
+      fmtInt_(p.totalFrom) + " → " + fmtInt_(p.totalTo) +
+      " — promotions " + fmtInt_(p.from.promo.count) + " → " + fmtInt_(p.to.promo.count) +
+      ", adjustments " + fmtInt_(p.from.adjust.count) + " → " + fmtInt_(p.to.adjust.count) + "."));
+    if (p.mixShift) {
+      lines.push(note_("Fewer promotions with more adjustments is a change of recognition " +
+        "lever, not of coverage — rocketeers were considered through salary calibration " +
+        "rather than title moves. Weigh promotion growth (" +
+        fmtPct_(p.from.promo.growthPct) + " → " + fmtPct_(p.to.promo.growthPct) +
+        ") before reading this as under-recognition."));
+    }
+    if (p.contraction) {
+      lines.push(risk_(p.from.label + " → " + p.to.label + ": total recognition events fell (" +
+        fmtInt_(p.totalFrom) + " → " + fmtInt_(p.totalTo) + ") alongside fewer promotions — " +
+        "a genuine recognition gap, not a lever change."));
+    }
   });
+  if (mode.mode === "usd") {
+    lines.push(note_("Raise totals are withheld in this scope — comp events span multiple " +
+      "currencies; growth uses the mean of per-event % changes."));
+  }
   if (coverage.firstFyLeverGuard) {
     lines.push(risk_(coverage.firstFyLabel + " lever figures may be incomplete — earliest " +
       "comp event on file is " + (coverage.earliestCompEvent || "none") + "."));
@@ -1668,6 +1682,11 @@ function confluenceDefinitionsHtml_() {
         "Adjustment, Market Calibration, …) — catch-all, new flavors never drop"],
       ["New hires", "New Hire — classified separately, reported under Workforce movement"],
       ["Excluded", "Internal Transfer, Historical Data Update, blank reasons"],
+      ["No prior record", "events lacking an earlier comp record count as events but are " +
+        "excluded from raise totals and growth"],
+      ["Recognition read", "total recognition events = promotions + adjustments; a promotions " +
+        "drop offset by adjustments is a lever-mix change, not under-recognition — RISK fires " +
+        "only when total recognition falls alongside fewer promotions"],
     ] });
   html += confTable_({ title: "Department consolidation (historical → current)",
     headers: ["Historical department", "Maps to"],

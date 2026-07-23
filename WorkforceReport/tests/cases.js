@@ -154,13 +154,21 @@ function term(over) {
   check("lever usd mode: totals withheld, growth = mean per-event pct",
     u27.promo.totalRaise === null && approx(u27.promo.growthPct, 20 / 110));
 
-  const mk = (label, pc, pg, ac) => ({ label,
+  // Recognition read (user directive 2026-07-23): 20 promotions → 10 with
+  // adjustments up is a LEVER MIX change (people were considered for annual
+  // adjustment instead) — never a recognition gap by itself.
+  const mk = (label, pc, pg, ac, ip) => ({ label, inProgress: !!ip,
     promo: { count: pc, growthPct: pg, noPrior: 0, totalRaise: null },
     adjust: { count: ac, growthPct: 0.03, noPrior: 0, totalRaise: null } });
-  check("lever shift: fires on count+size down, adjustments up",
-    detectLeverShift_([mk("FY26", 10, 0.12, 5), mk("FY27", 6, 0.08, 9)]).join() === "FY26→FY27");
-  check("lever shift: silent when promo size holds",
-    detectLeverShift_([mk("FY26", 10, 0.12, 5), mk("FY27", 6, 0.15, 9)]).length === 0);
+  const shift = compareLeverPairs_([mk("FY25", 20, 0.29, 127), mk("FY26", 10, 0.184, 205)]);
+  check("recognition: promo drop offset by adjustments = mix shift, NOT contraction",
+    shift.length === 1 && shift[0].mixShift === true && shift[0].contraction === false &&
+    shift[0].totalFrom === 147 && shift[0].totalTo === 215);
+  const gap = compareLeverPairs_([mk("FY25", 20, 0.29, 127), mk("FY26", 10, 0.18, 100)]);
+  check("recognition: total falling with fewer promotions = genuine contraction",
+    gap[0].contraction === true && gap[0].mixShift === false);
+  check("recognition: pairs touching an in-progress FY are skipped",
+    compareLeverPairs_([mk("FY26", 20, 0.2, 100), mk("FY27", 3, 0.1, 20, true)]).length === 0);
 })();
 
 // ── Currency mode — spec §5 ─────────────────────────────────────────────────
@@ -407,19 +415,47 @@ function term(over) {
     sl.lines[0].text.indexOf("11.0%") !== -1 &&
     sl.lines[0].text.indexOf("6 adjustment events") !== -1 &&
     sl.lines[0].text.indexOf("new-hire") === -1);
-  check("sentences: classification NOTE routes New Hire to Workforce movement",
-    sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("Market Calibration") !== -1 &&
-      l.text.indexOf("Workforce movement") !== -1) &&
+  check("sentences: method notes gone from section 6 (appendix owns them)",
+    sl.lines.every(l => l.text.indexOf("Classification of record") === -1 &&
+      l.text.indexOf("lack a prior comp record") === -1) &&
     sl.lines.every(l => l.badge !== "ASSUMPTION"));
   check("sentences: lever table has no new-hire row (movement owns that story)",
     sl.tables[0].rows.every(r => String(r[1]).indexOf("New hire") === -1));
-  check("sentences: lever table drops the No-prior-record column (NOTE keeps the caveat)",
+  check("sentences: lever table drops the No-prior-record column",
     sl.tables[0].headers.join() === "FY,Lever,Events,Total raise,Aggregate growth" &&
     sl.tables[0].rows[0].length === 5);
-  check("sentences: no-prior NOTE counts excluded deltas",
-    sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("1 lever events lack a prior comp record") !== -1));
   check("sentences: FY25 lever RISK fires with earliest event",
     sl.lines.some(l => l.badge === "RISK" && l.text.indexOf("2025-09-01") !== -1));
+
+  // The two-year comparison story — balanced recognition read in FAR/N lines.
+  const lv2 = [
+    { label: "FY25", inProgress: false,
+      promo: { count: 20, noPrior: 0, totalRaise: 900000, growthPct: 0.29 },
+      adjust: { count: 127, noPrior: 0, totalRaise: 400000, growthPct: 0.035 } },
+    { label: "FY26", inProgress: false,
+      promo: { count: 10, noPrior: 0, totalRaise: 300000, growthPct: 0.184 },
+      adjust: { count: 205, noPrior: 0, totalRaise: 700000, growthPct: 0.035 } },
+  ];
+  const sl2 = secLevers_(lv2, { mode: "local", code: "MXN" },
+    { firstFyLeverGuard: false }, CONFIG_WR, fys, "2026-07-21");
+  check("sentences: FY-over-FY recognition FACT totals both levers",
+    sl2.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("total recognition events 147 → 215") !== -1 &&
+      l.text.indexOf("promotions 20 → 10") !== -1));
+  check("sentences: mix-shift NOTE reframes, citing promotion growth",
+    sl2.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("change of recognition lever, not of coverage") !== -1 &&
+      l.text.indexOf("29.0% → 18.4%") !== -1) &&
+    sl2.lines.every(l => l.text.indexOf("drifting") === -1));
+  const lv3 = [lv2[0], { label: "FY26", inProgress: false,
+    promo: { count: 10, noPrior: 0, totalRaise: 300000, growthPct: 0.18 },
+    adjust: { count: 100, noPrior: 0, totalRaise: 350000, growthPct: 0.03 } }];
+  const sl3 = secLevers_(lv3, { mode: "local", code: "MXN" },
+    { firstFyLeverGuard: false }, CONFIG_WR, fys, "2026-07-21");
+  check("sentences: contraction RISK only when total recognition falls too",
+    sl3.lines.some(l => l.badge === "RISK" &&
+      l.text.indexOf("genuine recognition gap") !== -1) &&
+    sl2.lines.every(l => l.badge !== "RISK"));
 })();
 
 // ── Regular vs intern split + headcount chain + ghost departments ───────────
