@@ -86,6 +86,7 @@ function term(over) {
   check("attr: regretted 2 of 3", s.regretted === 2 && approx(s.regrettedPct, 2 / 3));
   check("attr: top reason histogram", s.reasons[0].key === "Better offer" && s.reasons[0].count === 2);
   check("attr: leaver levels sorted by rank", s.levels[0].key === "I3" && s.levels[1].key === "I4");
+  check("attr: IC vs Manager leaver split", s.icExits === 3 && s.mExits === 0);
   // Tenures: ~2.0y + ~1.0y + ~10.0y → avg ≈ 4.36, rounds to 4.4 (1 decimal)
   check("attr: avg leaver tenure", s.avgLeaverTenureYears != null &&
     Math.abs(s.avgLeaverTenureYears - 4.4) <= 0.11);
@@ -326,18 +327,18 @@ function term(over) {
   const sl = secLevers_(lv, { mode: "local", code: "MXN" },
     { firstFyLeverGuard: true, firstFyLabel: "FY25", earliestCompEvent: "2025-09-01" },
     CONFIG_WR, fys, "2026-07-21");
-  check("sentences: lever FACT carries counts + totals + growth + new hires",
+  check("sentences: lever FACT carries counts + totals + growth, NO new hires",
     sl.lines[0].text.indexOf("4 promotion events") !== -1 &&
     sl.lines[0].text.indexOf("40,000 MXN") !== -1 &&
     sl.lines[0].text.indexOf("11.0%") !== -1 &&
     sl.lines[0].text.indexOf("6 adjustment events") !== -1 &&
-    sl.lines[0].text.indexOf("3 new-hire comp records") !== -1);
-  check("sentences: classification is a NOTE of record, no ASSUMPTION in levers",
+    sl.lines[0].text.indexOf("new-hire") === -1);
+  check("sentences: classification NOTE routes New Hire to Workforce movement",
     sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("Market Calibration") !== -1 &&
-      l.text.indexOf("own growth event") !== -1) &&
+      l.text.indexOf("Workforce movement") !== -1) &&
     sl.lines.every(l => l.badge !== "ASSUMPTION"));
-  check("sentences: lever table carries the new-hire baseline row",
-    sl.tables[0].rows.some(r => r[1] === "New hires (baseline)" && r[2] === 3));
+  check("sentences: lever table has no new-hire row (movement owns that story)",
+    sl.tables[0].rows.every(r => String(r[1]).indexOf("New hire") === -1));
   check("sentences: no-prior NOTE counts excluded deltas",
     sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("1 lever events lack a prior comp record") !== -1));
   check("sentences: FY25 lever RISK fires with earliest event",
@@ -448,15 +449,19 @@ function term(over) {
   ];
   const stats = fys.map(fy => fyAttritionStats_(records, fy, REF));
   const sec = secAttritionDetail_(stats, CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-21");
-  check("leavers: exactly one combined table", sec.tables.length === 1 &&
-    sec.tables[0].title === "Leavers by department, level and reason");
-  check("leavers: headers = dims + one column per FY + Total",
-    sec.tables[0].headers.join() === "Department,Level,Reason,FY25,FY26,FY27,Total");
+  check("leavers: exactly one combined table, level-free", sec.tables.length === 1 &&
+    sec.tables[0].title === "Leavers by department and reason");
+  check("leavers: headers = dept + reason + one column per FY + Total",
+    sec.tables[0].headers.join() === "Department,Reason,FY25,FY26,FY27,Total");
   const rows = sec.tables[0].rows;
   check("leavers: combo rows aggregate per FY and sort by total",
     rows.length === 2 &&
-    rows[0].join() === "Services,I3,Better offer,1,2,0,3" &&
-    rows[1].join() === "R&D,M5,Relocation,0,0,1,1");
+    rows[0].join() === "Services,Better offer,1,2,0,3" &&
+    rows[1].join() === "R&D,Relocation,0,0,1,1");
+  check("leavers: IC/Manager split stated in the FY FACT lines",
+    sec.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("individual contributors (I-levels)") !== -1 &&
+      l.text.indexOf("managers (M-levels)") !== -1));
 })();
 
 // ── Confluence-paste HTML builders ──────────────────────────────────────────

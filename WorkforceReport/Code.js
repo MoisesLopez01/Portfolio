@@ -342,11 +342,12 @@ function fyAttritionStats_(records, fy, asOf) {
   const tenures = leavers
     .map(r => tenureYears_(r.hireDate, r.termDate))
     .filter(t => t != null && t >= 0);
-  // Joint dept × level × reason combos feed the single leaver table — the
-  // per-dimension histograms alone can't reconstruct them.
+  // Joint dept × reason combos feed the single leaver table. Level detail is
+  // deliberately absent — the board reads the IC (I-levels) vs Manager
+  // (M-levels) split, carried as icExits/mExits below.
   const comboMap = new Map();
   leavers.forEach(r => {
-    const k = [(r.dept || "—"), (r.level || "—"), (r.termReason || "—")].join("||");
+    const k = [(r.dept || "—"), (r.termReason || "—")].join("||");
     comboMap.set(k, (comboMap.get(k) || 0) + 1);
   });
   return {
@@ -357,9 +358,11 @@ function fyAttritionStats_(records, fy, asOf) {
     reasons: hist(r => r.termReason),
     depts: hist(r => r.dept),
     levels: hist(r => r.level).sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+    icExits: leavers.filter(r => r.track === "IC").length,
+    mExits: leavers.filter(r => r.track === "M").length,
     combos: [...comboMap.entries()].map(([k, count]) => {
       const p = k.split("||");
-      return { dept: p[0], level: p[1], reason: p[2], count };
+      return { dept: p[0], reason: p[1], count };
     }),
     avgLeaverTenureYears: tenures.length
       ? Math.round(tenures.reduce((t, x) => t + x, 0) / tenures.length * 10) / 10 : null,
@@ -868,7 +871,11 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
       " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
       (s.avgLeaverTenureYears != null
-        ? "; average leaver tenure " + s.avgLeaverTenureYears + " years" : "") + "."));
+        ? "; average leaver tenure " + s.avgLeaverTenureYears + " years" : "") +
+      (s.exits > 0
+        ? "; leavers: " + fmtInt_(s.icExits) + " individual contributors (I-levels), " +
+          fmtInt_(s.mExits) + " managers (M-levels)"
+        : "") + "."));
     if (s.exits > 0 && s.regrettedPct != null && s.regrettedPct * 100 >= cfg.RISK_REGRET_PCT) {
       lines.push(risk_(s.label + ": regretted share of exits is " + fmtPct_(s.regrettedPct, 0) +
         " — at or above the " + cfg.RISK_REGRET_PCT + "% review threshold."));
@@ -886,13 +893,14 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       "coverage limit — earliest retained termination is " +
       (coverage.earliestTermDate || "none on file") + "."));
   }
-  // ONE readable table instead of three FY-interleaved histograms: each row is
-  // a department × level × reason combination with one count column per FY.
+  // ONE readable table: each row is a department × reason combination with a
+  // count column per FY. Level detail stays out — the IC vs Manager split is
+  // stated in the per-FY FACT lines above.
   const comboMap = new Map();
   stats.forEach(s => (s.combos || []).forEach(c => {
-    const k = [c.dept, c.level, c.reason].join("||");
+    const k = [c.dept, c.reason].join("||");
     if (!comboMap.has(k)) {
-      comboMap.set(k, { dept: c.dept, level: c.level, reason: c.reason, perFy: {}, total: 0 });
+      comboMap.set(k, { dept: c.dept, reason: c.reason, perFy: {}, total: 0 });
     }
     const e = comboMap.get(k);
     e.perFy[s.label] = (e.perFy[s.label] || 0) + c.count;
@@ -901,15 +909,14 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
   const comboRows = [...comboMap.values()].sort((a, b) =>
     b.total - a.total ||
     a.dept.localeCompare(b.dept) ||
-    levelRank_(a.level) - levelRank_(b.level) ||
     a.reason.localeCompare(b.reason));
   return {
     id: "attrition", title: "5 · Attrition detail", lines,
     tables: [
-      { title: "Leavers by department, level and reason",
-        headers: ["Department", "Level", "Reason"]
+      { title: "Leavers by department and reason",
+        headers: ["Department", "Reason"]
           .concat(stats.map(s => s.label)).concat(["Total"]),
-        rows: comboRows.map(e => [e.dept, e.level, e.reason]
+        rows: comboRows.map(e => [e.dept, e.reason]
           .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])) },
     ],
   };
@@ -923,13 +930,12 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
       (b.promo.growthPct != null ? " (aggregate growth " + fmtPct_(b.promo.growthPct) + ")" : "") +
       "; " + fmtInt_(b.adjust.count) + " adjustment events" +
       (b.adjust.totalRaise != null ? " totalling " + fmtMoney_(b.adjust.totalRaise, mode.code) : "") +
-      (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") +
-      "; " + fmtInt_(b.newHires) + " new-hire comp records."));
+      (b.adjust.growthPct != null ? " (aggregate growth " + fmtPct_(b.adjust.growthPct) + ")" : "") + "."));
   });
   lines.push(note_("Classification of record: promotions = Promotion and Microband Promotion; " +
-    "adjustments = Annual Adjustment, Microband Adjustment and Market Calibration; new hires " +
-    "are their own growth event (baseline record, no delta); Internal Transfer and " +
-    "Historical Data Update are excluded."));
+    "adjustments = Annual Adjustment, Microband Adjustment and Market Calibration. New Hire " +
+    "(reported under Workforce movement), Internal Transfer and Historical Data Update are " +
+    "excluded from the lever analysis."));
   const noPrior = leverBlocks.reduce((t, b) => t + b.promo.noPrior + b.adjust.noPrior, 0);
   if (noPrior) {
     lines.push(note_(fmtInt_(noPrior) + " lever events lack a prior comp record — " +
@@ -962,7 +968,6 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
           [b.label, "Adjustments", b.adjust.count, b.adjust.noPrior,
            b.adjust.totalRaise != null ? fmtMoney_(b.adjust.totalRaise, mode.code) : "—",
            fmtPct_(b.adjust.growthPct)],
-          [b.label, "New hires (baseline)", b.newHires, "—", "—", "—"],
         ]) },
     ],
   };
@@ -1399,10 +1404,10 @@ function confluenceBriefHtml_(payload, narrative) {
       : confLine_(note_("No regretted exits recorded in the window.")));
   html += "<h2>6. Compensation strategy</h2>" +
     confTable_({ title: "Growth by lever",
-      headers: ["FY", "Promotions", "Promo growth", "Adjustments", "Adjustment growth", "New hires"],
+      headers: ["FY", "Promotions", "Promo growth", "Adjustments", "Adjustment growth"],
       rows: b.levers.map(v => [v.label + (v.inProgress ? " (to date)" : ""),
         v.promo.count, fmtPct_(v.promo.growthPct), v.adjust.count,
-        fmtPct_(v.adjust.growthPct), v.newHires]) });
+        fmtPct_(v.adjust.growthPct)]) });
   html += "<h2>7. Structural risks</h2>" +
     (b.structuralRisks.length
       ? b.structuralRisks.map(x => confLine_(risk_(x.title + " — " + x.detail))).join("")

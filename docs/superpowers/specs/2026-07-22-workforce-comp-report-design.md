@@ -115,10 +115,14 @@ numbers interpolated — no AI in this view.**
    rate definition (rate = exits ÷ mean(start, end headcount); end = asOf for FY27) and
    hire-by-hire-date / exit-by-term-date dating render as one NOTE — no ASSUMPTION lines
    (de-hedged 2026-07-22).
-5. **Attrition detail** — per FY: regretted count and %; recorded termination reasons;
-   departments and levels of leavers; average leaver tenure. RISK lines auto-fire on
+5. **Attrition detail** — per FY: regretted count and %; average leaver tenure; IC vs
+   Manager leaver split in the FACT lines (level tables removed 2026-07-22 — I-levels
+   are ICs, M-levels are managers, per-level rows added noise). ONE combined table:
+   department × reason with a count column per FY + Total. RISK lines auto-fire on
    thresholds (config-tunable): regretted share ≥ `RISK_REGRET_PCT` (default 60%),
-   single-reason concentration ≥ half of exits.
+   single-reason concentration ≥ half of exits. Departments that exist only among
+   leavers (deliberate re-org) render as one definition NOTE, never per-dept RISKs;
+   merged units consolidate via `DEPT_REMAP`.
 6. **Compensation growth by lever** — the example's sections 6+7 merged (only source is
    RD comp history; no cycle-event source exists, so no reconciliation NOTE is needed).
    Per FY: promotions vs adjustments vs new hires — event counts, total raise (scope
@@ -126,11 +130,12 @@ numbers interpolated — no AI in this view.**
    is a KNOWN CLOSED SET (confirmed 2026-07-22): New Hire, Annual Adjustment, Microband
    Adjustment, Promotion, Market Calibration, Internal Transfer, Microband Promotion,
    Historical Data Update — so the classification renders as a NOTE of record, not an
-   ASSUMPTION: promotions = Promotion + Microband Promotion; **new hires are their own
-   growth event** (baseline record row, count only, no delta); adjustments = every other
-   recorded reason (catch-all so a future flavor never silently drops); only Internal
-   Transfer / Historical Data Update / blank reasons excluded. Changes lacking a prior
-   comp record are excluded from
+   ASSUMPTION: promotions = Promotion + Microband Promotion; adjustments = every other
+   recorded reason (catch-all so a future flavor never silently drops); New Hire is
+   classified separately so it NEVER enters the adjustment catch-all but is not
+   displayed here (its story lives in Workforce movement — display removed
+   2026-07-22); Internal Transfer / Historical Data Update / blank reasons excluded.
+   Changes lacking a prior comp record are excluded from
    deltas (counted, noted). RISK auto-fires on the lever-shift pattern (promotion count
    and size down while adjustment count up, FY-over-FY).
 7. **Market & equity flags** — **counts only, never names**: compa-ratio distribution vs
