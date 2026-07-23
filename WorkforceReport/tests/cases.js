@@ -88,6 +88,17 @@ function term(over) {
   check("attr: top reason histogram", s.reasons[0].key === "Better offer" && s.reasons[0].count === 2);
   check("attr: leaver levels sorted by rank", s.levels[0].key === "I3" && s.levels[1].key === "I4");
   check("attr: IC vs Manager leaver split", s.icExits === 3 && s.mExits === 0);
+  check("attr: all organic when no position eliminations",
+    s.organicExits === 3 && s.structuralExits === 0);
+  const sStruct = fyAttritionStats_(records.concat([
+    term({ termDate: new Date(2026, 6, 18), termRegretted: "Yes",
+           termReason: "Job Position Eliminated or Changed" }),
+  ]), fys[2], REF, CONFIG_WR);
+  check("attr: structural exits split out with regretted overlap",
+    sStruct.structuralExits === 1 && sStruct.organicExits === 3 &&
+    sStruct.structuralRegretted === 1);
+  check("attr: leaver families histogram for the sub-function view",
+    s.families.some(x => x.key === "JF004" && x.count === 3));
   // Tenures: ~2.0y + ~1.0y + ~10.0y → avg ≈ 4.36, rounds to 4.4 (1 decimal)
   check("attr: avg leaver tenure", s.avgLeaverTenureYears != null &&
     Math.abs(s.avgLeaverTenureYears - 4.4) <= 0.11);
@@ -249,10 +260,13 @@ function term(over) {
     secInv.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("investigation trigger") !== -1 &&
       l.text.indexOf("holds inside JF004 — a genuine inversion candidate") !== -1));
+  check("inversion FACT: names the families each band spans",
+    secInv.lines.some(l => l.text.indexOf("(M4 spans JF004; I5 spans JF004)") !== -1));
   const secCross = secCompStructure_(cross, { mode: "local", code: "MXN" }, CONFIG_WR);
   check("inversion FACT: cross-family branch names the market-rate mix",
     secCross.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("never invert within a single job family") !== -1 &&
+      l.text.indexOf("(M4 spans JF007; I5 spans JF004)") !== -1 &&
       l.text.indexOf("job-family market-rate mix") !== -1));
   check("inversion NOTE: triggers-not-errors guidance renders once",
     secInv.lines.filter(l => l.badge === "NOTE" &&
@@ -276,6 +290,9 @@ function term(over) {
   bench[benchKey_("Mexico", "04.I3.1 Analyst")] = { mean: 100000, currency: "MXN" };
   const mg = marketGapCounts_([mkT(80000), mkT(95000), mkT(110000)], bench, CONFIG_WR);
   check("market gap: below MARKET_LOW counted", mg.matched === 3 && mg.below === 1);
+  check("market gap: below-market flags carry a level distribution + coverage total",
+    mg.total === 3 && mg.belowLevels.length === 1 &&
+    mg.belowLevels[0].key === "I3" && mg.belowLevels[0].count === 1);
   const mism = {};
   mism[benchKey_("Mexico", "04.I3.1 Analyst")] = { mean: 100000, currency: "USD" };
   check("market gap: currency mismatch withheld",
@@ -534,8 +551,9 @@ function term(over) {
   ];
   const stats = fys.map(fy => fyAttritionStats_(records, fy, REF));
   const sec = secAttritionDetail_(stats, CONFIG_WR, { firstFyTermGuard: false }, fys, "2026-07-21");
-  check("leavers: exactly one combined table, level-free", sec.tables.length === 1 &&
-    sec.tables[0].title === "Leavers by department and reason");
+  check("leavers: combined dept×reason table is level-free",
+    sec.tables[0].title === "Leavers by department and reason" &&
+    sec.tables[0].headers.indexOf("Level") === -1);
   check("leavers: headers = dept + reason + one column per FY + Total",
     sec.tables[0].headers.join() === "Department,Reason,FY25,FY26,FY27,Total");
   const rows = sec.tables[0].rows;
@@ -547,6 +565,22 @@ function term(over) {
     sec.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("individual contributors (I-levels)") !== -1 &&
       l.text.indexOf("managers (M-levels)") !== -1));
+  check("leavers: organic/structural split in the FY FACT lines",
+    sec.lines.some(l => l.badge === "FACT" && l.text.indexOf("organic") !== -1 &&
+      l.text.indexOf("structural (position eliminated)") !== -1));
+  check("leavers: job-family sub-function table with per-FY columns",
+    sec.tables.length === 2 &&
+    sec.tables[1].title === "Leavers by job family (sub-function view)" &&
+    sec.tables[1].headers.join() === "Job family,FY25,FY26,FY27,Total" &&
+    sec.tables[1].rows[0][0] === "JF004" && sec.tables[1].rows[0][4] === 4);
+  check("leavers: regretted definition NOTE (recorded flag, never inferred)",
+    sec.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("'Termination Regretted' flag as recorded") !== -1));
+  check("leavers: taxonomy NOTE lists active reasons + legacy stragglers",
+    sec.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("Active exit-reason taxonomy") !== -1 &&
+      l.text.indexOf("Voluntary Other = voluntary exits") !== -1 &&
+      l.text.indexOf("Better offer (3)") !== -1));
 })();
 
 // ── Confluence-paste HTML builders ──────────────────────────────────────────
@@ -754,6 +788,12 @@ function term(over) {
     chile.report.currency.mode === "local" && chile.report.currency.code === "CLP");
   check("payload: location scope excludes other locations",
     chile.report.sections[0].lines[0].text.indexOf("3 active regular employees") !== -1);
+  check("scope NOTE: location scope explains current-Key-Location semantics",
+    chile.report.sections[0].lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("CURRENT Key Location") !== -1));
+  check("scope NOTE: company scope carries no transfer note",
+    company.report.sections[0].lines.every(l =>
+      l.text.indexOf("CURRENT Key Location") === -1));
   // Single-country board brief — the Chile sample.
   check("payload: country brief present, spotlights by department, local currency",
     chile.brief != null && chile.brief.scope === "Chile" &&

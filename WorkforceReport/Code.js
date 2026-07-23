@@ -50,6 +50,18 @@ const CONFIG_WR = {
   RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
   RISK_REASON_SHARE: 0.5,  // single recorded reason ≥ this share of exits → RISK line
 
+  // The CURRENT exit-reason taxonomy (business-context doc 2026-07-23).
+  // Leaver reasons outside this list (after REASON_REMAP) are flagged as
+  // legacy in a NOTE — candidates for consolidation, never silently ignored.
+  VALID_EXIT_REASONS: [
+    "Another Job", "Voluntary Other", "Personal Reasons",
+    "Dissatisfaction with Compensation", "Working Conditions",
+    "Unsatisfactory Performance", "Job Position Eliminated or Changed",
+  ],
+  // Structural (company-initiated redundancy) vs organic exits — feeds the
+  // per-FY organic/structural split and the regretted-overlap transparency.
+  STRUCTURAL_REASON_RE: /job position eliminated/i,
+
   // Structural-risk detectors — spec §7.7 (computed candidates only).
   SENIOR_IC_MIN:      4,   // IC levels at/above this compare against manager bands
   FUNC_CONC_PCT:     40,   // top department share of headcount ≥ this % → candidate
@@ -401,9 +413,11 @@ function fyMovement_(records, fy, asOf) {
 }
 
 /** One FY's attrition detail — regretted, reasons, leaver slices, leaver tenure. */
-function fyAttritionStats_(records, fy, asOf) {
+function fyAttritionStats_(records, fy, asOf, cfg) {
+  const c = cfg || CONFIG_WR;
   const leavers = records.filter(r =>
     r.termDate && r.termDate >= fy.start && r.termDate <= fy.end);
+  const structural = leavers.filter(r => c.STRUCTURAL_REASON_RE.test(String(r.termReason || "")));
   const hist = (keyFn) => {
     const m = new Map();
     leavers.forEach(r => {
@@ -435,8 +449,13 @@ function fyAttritionStats_(records, fy, asOf) {
     reasons: hist(r => r.termReason),
     depts: hist(r => r.dept),
     levels: hist(r => r.level).sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+    families: hist(r => r.jobFamily),
     icExits: leavers.filter(r => r.track === "IC").length,
     mExits: leavers.filter(r => r.track === "M").length,
+    structuralExits: structural.length,
+    organicExits: leavers.length - structural.length,
+    structuralRegretted: structural.filter(r =>
+      /yes|true/i.test(String(r.termRegretted || ""))).length,
     combos: [...comboMap.entries()].map(([k, count]) => {
       const p = k.split("||");
       return { dept: p[0], reason: p[1], count };
@@ -629,6 +648,9 @@ function qualifyInversions_(active, inversions, mode) {
   const field = useFamily ? "jobFamily" : "dept";
   const dimLabel = useFamily ? "job family" : "department";
   const groups = [...new Set(active.map(r => r[field]).filter(Boolean))].sort();
+  const bandGroups = level => [...new Set(active
+    .filter(r => r.level === level && tccOf_(r, mode) > 0)
+    .map(r => r[field]).filter(Boolean))].sort();
   return inversions.map(inv => {
     const withinGroups = groups.filter(g => {
       const grp = active.filter(r => r[field] === g);
@@ -643,6 +665,10 @@ function qualifyInversions_(active, inversions, mode) {
     });
     return Object.assign({}, inv, {
       withinGroups,
+      // Which families each band actually spans — so the reader never has to
+      // guess whether the M4s are Services managers or People managers.
+      mGroups: bandGroups(inv.mLevel),
+      icGroups: bandGroups(inv.icLevel),
       dimLabel,
       crossFamilyOnly: withinGroups.length === 0,
     });
@@ -753,14 +779,23 @@ function compaBandCounts_(groups, cfg) {
 /** Market-gap flags: actives matched to a benchmark row sitting below MARKET_LOW × mean. */
 function marketGapCounts_(activeRecords, benchMap, cfg) {
   let matched = 0, below = 0, mismatch = 0;
+  const belowLevels = new Map();
   activeRecords.forEach(r => {
     const b = lookupBench_(benchMap, r.keyLocation, r.jobTitle, r.currency);
     if (b.mismatch) mismatch++;
     if (!b.row || !(b.row.mean > 0) || !(r.tcc > 0)) return;
     matched++;
-    if (r.tcc / b.row.mean < cfg.MARKET_LOW) below++;
+    if (r.tcc / b.row.mean < cfg.MARKET_LOW) {
+      below++;
+      belowLevels.set(r.level, (belowLevels.get(r.level) || 0) + 1);
+    }
   });
-  return { matched, below, mismatch };
+  return {
+    matched, below, mismatch,
+    total: activeRecords.length,
+    belowLevels: [...belowLevels.entries()].map(([key, count]) => ({ key, count }))
+      .sort((a, b) => levelRank_(a.key) - levelRank_(b.key)),
+  };
 }
 
 /**
@@ -869,6 +904,11 @@ function secScope_(records, active, scope, mode, activeInternCount) {
     note_("Crew members and contractors are excluded by the job-title rule " +
       "(/crew member|contractor/i)."),
   ];
+  if (scope !== "company") {
+    lines.push(note_("Location scope uses each roster row's CURRENT Key Location — an " +
+      "international transfer counts in the destination location's history (including " +
+      "prior-year presence), never in both."));
+  }
   if (mode.mode === "usd" && scope !== "company" && mode.currencies.length > 1) {
     lines.push(note_("This location spans " + mode.currencies.length + " currencies (" +
       mode.currencies.join(", ") + ") — compensation aggregates use the TCC USD column."));
@@ -913,9 +953,13 @@ function secCompStructure_(cs, mode, cfg) {
     note_("TCC includes variable target; it is not base wage."),
   ];
   cs.inversions.forEach(inv => {
+    const span = (inv.mGroups && inv.mGroups.length && inv.icGroups && inv.icGroups.length)
+      ? " (" + inv.mLevel + " spans " + inv.mGroups.join(", ") + "; " +
+        inv.icLevel + " spans " + inv.icGroups.join(", ") + ")"
+      : "";
     lines.push(fact_("Salary inversion — investigation trigger: the " + inv.mLevel +
       " band average (" + fmtMoneyShort_(inv.mAvg, mode.code) + ") sits below the " +
-      inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, mode.code) + ")" +
+      inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, mode.code) + ")" + span +
       (inv.withinGroups && inv.withinGroups.length
         ? "; the pattern holds inside " + inv.withinGroups.join(", ") +
           " — a genuine inversion candidate"
@@ -1023,14 +1067,47 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       "structure (DEPT_REMAP) — leavers and their historical headcount both count against " +
       "today's departments, so department-level attrition is apples-to-apples."));
   }
+  // "Regretted" is a recorded fact, not an inference — say so, and surface
+  // how it overlaps with structural exits instead of leaving the reader to
+  // wonder whether a position elimination counts.
+  const structTotal = stats.reduce((t, s) => t + s.structuralExits, 0);
+  const structRegret = stats.reduce((t, s) => t + s.structuralRegretted, 0);
+  lines.push(note_("Regretted = the roster's 'Termination Regretted' flag as recorded by " +
+    "People at exit — the report never infers it. Structural exits (Job Position " +
+    "Eliminated or Changed) are included in the attrition rate" +
+    (structTotal
+      ? "; " + fmtInt_(structRegret) + " of the " + fmtInt_(structTotal) +
+        " structural exits in this window carry a regretted flag"
+      : "") + "."));
   const reasonPairs = Object.keys(cfg.REASON_REMAP || {});
   if (reasonPairs.length) {
     lines.push(note_("Exit reasons are consolidated to current classification standards: " +
       reasonPairs.map(k => k + " → " + cfg.REASON_REMAP[k]).join("; ") + "."));
   }
+  // The active taxonomy, plus anything in history that falls outside it.
+  const valid = cfg.VALID_EXIT_REASONS || [];
+  if (valid.length) {
+    const legacy = new Map();
+    stats.forEach(s => s.reasons.forEach(x => {
+      if (x.key !== "—" && valid.indexOf(x.key) === -1) {
+        legacy.set(x.key, (legacy.get(x.key) || 0) + x.count);
+      }
+    }));
+    lines.push(note_("Active exit-reason taxonomy: " + valid.join(", ") +
+      ". Voluntary Other = voluntary exits not classified under a more specific reason." +
+      (legacy.size
+        ? " Legacy reasons still present in history: " +
+          [...legacy.entries()].map(([k, n]) => k + " (" + fmtInt_(n) + ")").join(", ") +
+          " — consolidate via REASON_REMAP if deprecated."
+        : "")));
+  }
   stats.forEach(s => {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
       " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
+      (s.exits > 0
+        ? " — " + fmtInt_(s.organicExits) + " organic, " + fmtInt_(s.structuralExits) +
+          " structural (position eliminated)"
+        : "") +
       (s.avgLeaverTenureYears != null
         ? "; average leaver tenure " + s.avgLeaverTenureYears + " years" : "") +
       (s.exits > 0
@@ -1071,16 +1148,35 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
     b.total - a.total ||
     a.dept.localeCompare(b.dept) ||
     a.reason.localeCompare(b.reason));
-  return {
-    id: "attrition", title: "5 · Attrition detail", lines,
-    tables: [
-      { title: "Leavers by department and reason",
-        headers: ["Department", "Reason"]
-          .concat(stats.map(s => s.label)).concat(["Total"]),
-        rows: comboRows.map(e => [e.dept, e.reason]
-          .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])) },
-    ],
-  };
+  const tables = [
+    { title: "Leavers by department and reason",
+      headers: ["Department", "Reason"]
+        .concat(stats.map(s => s.label)).concat(["Total"]),
+      rows: comboRows.map(e => [e.dept, e.reason]
+        .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])) },
+  ];
+  // Sub-function breakdown: departments are consolidated (Services can hold
+  // ~3/4 of a scope), so job family is the dimension that shows WHERE inside
+  // a department the talent is leaving.
+  const famMap = new Map();
+  stats.forEach(s => (s.families || []).forEach(x => {
+    if (x.key === "—") return;
+    if (!famMap.has(x.key)) famMap.set(x.key, { perFy: {}, total: 0 });
+    const e = famMap.get(x.key);
+    e.perFy[s.label] = (e.perFy[s.label] || 0) + x.count;
+    e.total += x.count;
+  }));
+  if (famMap.size) {
+    tables.push({
+      title: "Leavers by job family (sub-function view)",
+      headers: ["Job family"].concat(stats.map(s => s.label)).concat(["Total"]),
+      rows: [...famMap.entries()]
+        .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
+        .map(([fam, e]) => [fam]
+          .concat(stats.map(s => e.perFy[s.label] || 0)).concat([e.total])),
+    });
+  }
+  return { id: "attrition", title: "5 · Attrition detail", lines, tables };
 }
 
 function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
@@ -1144,7 +1240,14 @@ function secFlags_(bandCounts, market, equity, cfg) {
       fmtPct_(cfg.COMPA_HIGH_MAX, 0) + "."),
     fact_(fmtInt_(market.below) + " of " + fmtInt_(market.matched) +
       " benchmark-matched employees sit below " + fmtPct_(cfg.MARKET_LOW, 0) +
-      " of the external market mean."),
+      " of the external market mean" +
+      (market.below && market.belowLevels.length
+        ? " (levels: " + market.belowLevels.map(x => x.key + " ×" + x.count).join(", ") + ")"
+        : "") + "."),
+    note_("Benchmark coverage: " + fmtInt_(market.matched) + " of " + fmtInt_(market.total) +
+      " active employees matched — external rows exist only where a location + job title " +
+      "has been compiled (the compilation grows over time); currency-mismatched rows are " +
+      "withheld, and unmatched employees simply have no local benchmark yet."),
     assume_("Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
       "median, market mean for one-of-a-kind roles, then the location's level-cohort median."),
     note_("This section reports counts only — individual flags live in the Comp Health " +
@@ -1209,7 +1312,7 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
   const moves = windows.map(w => fyMovement_(regulars, w, ctx.asOf));
   const internFlow = interns.length
     ? windows.map(w => fyMovement_(interns, w, ctx.asOf)) : [];
-  const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf));
+  const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf, cfg));
   const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
   const compaGroups = buildCompaGroups_(active, benchMap, cfg);
   // Ghost departments: present among leavers, absent among active regulars —
