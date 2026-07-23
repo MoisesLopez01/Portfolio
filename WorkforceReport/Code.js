@@ -73,9 +73,9 @@ const CONFIG_WR = {
   INACTIVE_RE: /terminat|job offer|resign|left|inactive|former|offboard/i,
 
   // Job family from the Job Title numeric prefix: "04.I3.1" → JF004,
-  // "18.M4.3" → JF018 (identity rule, prefix zero-padded to 3 digits).
-  // Exceptions go here as prefix → family overrides, e.g. { "04": "JF005" } —
-  // one config entry, no parser change.
+  // "18.M4.3" → JF018 (identity rule, prefix zero-padded to 3 digits —
+  // confirmed 2026-07-23). Catalog exceptions go here as prefix → family
+  // overrides ({ "NN": "JFxxx" }) — one config entry, no parser change.
   JOB_FAMILY_MAP: {},
 
   // Employee Type (roster column, restored 2026-07-22): Intern is excluded
@@ -135,9 +135,9 @@ const CONFIG_WR = {
     "Involuntary Retirement": "Job Position Eliminated or Changed",
     // Relocation detail is a sub-reason of taking another job, not a category.
     "Relocation to a New Employer": "Another Job",
-    // "Attendance": "Unsatisfactory Performance", // PENDING DECISION —
-    //   consolidate here, or keep distinct as a Policy Violation bucket for
-    //   compliance? Uncomment / adjust once decided.
+    // Decision 2026-07-23: consolidate under the behavioral-exit bucket
+    // rather than a distinct Policy Violation category.
+    "Attendance": "Unsatisfactory Performance",
   },
 
   DEBUG: false,
@@ -1513,6 +1513,66 @@ function confTable_(t) {
     "</tbody></table>";
 }
 
+/**
+ * "Data definitions" appendix — generated LIVE from CONFIG_WR at copy time,
+ * so the published Confluence page can never drift from the rules the report
+ * actually computed with (docs-as-config, decision 2026-07-23).
+ */
+function confluenceDefinitionsHtml_() {
+  const c = CONFIG_WR;
+  let html = "<h2>Appendix — Data definitions (generated from configuration)</h2>" +
+    "<p><em>Auto-generated from the report configuration at copy time — these are the " +
+    "exact rules behind every figure above. Script-property extensions " +
+    "(WR_DEPT_REMAP / WR_REASON_REMAP) apply on top of the tables below.</em></p>";
+  html += confTable_({ title: "Population & movement rules",
+    headers: ["Rule", "Definition"],
+    rows: [
+      ["Headline population", "Regular employees — Employee Type: Regular Employee, " +
+        "Employer of Record, Part Time. Interns reported separately, never blended; " +
+        "crew/contractors excluded by job title."],
+      ["Attrition rate", "exits ÷ mean(opening, closing headcount); the in-progress FY " +
+        "closes at the extraction date."],
+      ["Headcount instants", "opening = start of day (hired strictly before, not yet " +
+        "terminated); closing = end of day — so closing = opening + hires − exits holds " +
+        "by construction."],
+      ["Hires / exits", "counted by Hire Date / Termination-Release Date inside the " +
+        "fiscal window (FY starts 1 Jul)."],
+      ["Job family", "Job Title numeric prefix → JF + zero-padded prefix " +
+        "(04.I3.1 → JF004, 18.M4.3 → JF018)" +
+        (Object.keys(c.JOB_FAMILY_MAP).length
+          ? "; exceptions: " + Object.keys(c.JOB_FAMILY_MAP)
+              .map(k => k + " → " + c.JOB_FAMILY_MAP[k]).join(", ")
+          : "") + "."],
+    ] });
+  html += confTable_({ title: "Compensation lever classification (TCC Change Reason)",
+    headers: ["Lever", "Reasons"],
+    rows: [
+      ["Promotions", "Promotion, Microband Promotion"],
+      ["Adjustments", "Every other recorded reason (Annual Adjustment, Microband " +
+        "Adjustment, Market Calibration, …) — catch-all, new flavors never drop"],
+      ["New hires", "New Hire — classified separately, reported under Workforce movement"],
+      ["Excluded", "Internal Transfer, Historical Data Update, blank reasons"],
+    ] });
+  html += confTable_({ title: "Department consolidation (historical → current)",
+    headers: ["Historical department", "Maps to"],
+    rows: Object.keys(c.DEPT_REMAP).sort().map(k => [k, c.DEPT_REMAP[k]]) });
+  html += confTable_({ title: "Exit-reason consolidation",
+    headers: ["Historical reason", "Current classification"],
+    rows: Object.keys(c.REASON_REMAP).sort().map(k => [k, c.REASON_REMAP[k]]) });
+  html += confTable_({ title: "Thresholds & flags",
+    headers: ["Threshold", "Value", "Meaning"],
+    rows: [
+      ["Regretted-share RISK", c.RISK_REGRET_PCT + "%", "regretted share of exits at/above this fires a RISK line"],
+      ["Single-reason RISK", Math.round(c.RISK_REASON_SHARE * 100) + "%", "one recorded reason covering this share of exits fires a RISK line"],
+      ["Internal position bands", fmtPct_(c.COMPA_LOW_MIN, 0) + " / " + fmtPct_(c.COMPA_TARGET_MIN, 0) + " / " + fmtPct_(c.COMPA_HIGH_MAX, 0), "below-low / target-from / above-high vs the internal anchor"],
+      ["Market-gap flag", fmtPct_(c.MARKET_LOW, 0), "TCC below this share of the external market mean"],
+      ["Small-group floor", String(c.SMALL_GROUP_MIN), "groups below this size suppress averages and equity lenses"],
+      ["Senior-IC inversion floor", "I" + c.SENIOR_IC_MIN + "+", "manager bands compare against IC bands at/above this level"],
+      ["Concentration flags", c.FUNC_CONC_PCT + "% / " + c.TENURE_CONC_PCT + "% / " + c.MIDLEVEL_FLIGHT_PCT + "%", "function share / tenure-bucket share / mid-level (I3–I4) exit share"],
+    ] });
+  return html;
+}
+
 /** View A as Confluence-paste HTML. */
 function confluenceReportHtml_(payload) {
   const m = payload.meta, r = payload.report;
@@ -1525,7 +1585,8 @@ function confluenceReportHtml_(payload) {
       "<h2>" + confEsc_(s.title.replace(" · ", ". ")) + "</h2>" +
       s.lines.map(confLine_).join("") +
       (s.charts || []).map(ch => confTable_(chartAsTable_(ch))).join("") +
-      (s.tables || []).map(confTable_).join("")).join("");
+      (s.tables || []).map(confTable_).join("")).join("") +
+    confluenceDefinitionsHtml_();
 }
 
 /** View B as Confluence-paste HTML (AI text only when already generated). */
@@ -1592,6 +1653,7 @@ function confluenceBriefHtml_(payload, narrative) {
       narrative.decisions.map(dd => "<li><strong>" + confEsc_(dd.title) + "</strong>" +
         (dd.rationale ? " — " + confEsc_(dd.rationale) : "") + "</li>").join("") + "</ul>"
     : confLine_(note_("AI draft not generated at copy time."));
+  html += confluenceDefinitionsHtml_();
   return html;
 }
 

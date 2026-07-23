@@ -568,6 +568,19 @@ function term(over) {
     bhtml.indexOf("Executive summary") !== -1 &&
     bhtml.indexOf("AI synthesis not generated") !== -1 &&
     bhtml.indexOf("Decisions for the board") !== -1);
+  // Docs-as-config appendix (decision 2026-07-23): both views publish the
+  // exact applied rules — remap tables, lever classes, thresholds.
+  [html, bhtml].forEach((h, i) => {
+    const which = i === 0 ? "report" : "brief";
+    check("definitions appendix on the " + which + " copy",
+      h.indexOf("Data definitions (generated from configuration)") !== -1 &&
+      h.indexOf("<td>Managed Services</td><td>Services</td>") !== -1 &&
+      h.indexOf("<td>Attendance</td><td>Unsatisfactory Performance</td>") !== -1 &&
+      h.indexOf("Microband Promotion") !== -1);
+  });
+  check("definitions appendix: thresholds echo config values",
+    html.indexOf(CONFIG_WR.RISK_REGRET_PCT + "%") !== -1 &&
+    html.indexOf("I" + CONFIG_WR.SENIOR_IC_MIN + "+") !== -1);
 })();
 
 // ── Structural risks + retention crosstab + spotlights — spec §7 ────────────
