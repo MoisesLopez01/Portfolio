@@ -282,9 +282,16 @@ function setQuarter(q) {
 }
 // FY toggles: each of FY25/FY26/FY27 flips independently — any 1, 2 or 3
 // years at a time. The last remaining year can't be switched off.
+// Falls back to meta.fys when availableFys is missing (a payload cached by an
+// older server version) — the filter must never silently disappear.
+function availFys() {
+  const m = STATE.data && STATE.data.meta;
+  if (!m) return [];
+  if (m.availableFys && m.availableFys.length) return m.availableFys;
+  return (m.fys || []).map(f => ({ label: f.label, num: parseInt(f.label.slice(2), 10) }));
+}
 function toggleFy(num) {
-  const avail = (STATE.data && STATE.data.meta.availableFys) || [];
-  const nums = avail.map(f => f.num);
+  const nums = availFys().map(f => f.num);
   let sel = STATE.fyRange === "all"
     ? nums.slice()
     : STATE.fyRange.split(",").map(n => parseInt(n, 10));
@@ -335,7 +342,7 @@ function syncHeader() {
     document.getElementById("quarterSel").value = String(STATE.quarter);
     // FY toggle chips — one per available year, any combination stays on.
     const fySeg = document.getElementById("fySeg");
-    fySeg.innerHTML = (d.meta.availableFys || []).map(f =>
+    fySeg.innerHTML = availFys().map(f =>
       '<button class="' + (fySelected(f.num) ? "on" : "") + '" onclick="toggleFy(' + f.num + ')">' +
       esc(f.label) + '</button>').join("");
     const fyBadge = d.meta.fyRange === "all" && d.meta.fys.length > 1
