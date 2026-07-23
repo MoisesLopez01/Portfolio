@@ -876,10 +876,10 @@ function computeFilteredProjectData_(){
   return { cap: cap, head: head, order: totals.map(function(t){ return t.key; }), maxCell: maxCell };
 }
 
-// isos defaults to the 8-week server window (WEEKS) but accepts any custom list — the
+// isos defaults to the rolling server window (WEEKS) but accepts any custom list — the
 // Planned vs Tracked chart passes the full QTD+forecast range via capChartWeeks_() below.
 // personWeekPlan/personWeekTracked are unwindowed (span the whole sheet), so summing over
-// them works for any iso, not just the ones inside the 8-week window.
+// them works for any iso, not just the ones inside the display window.
 function filteredWeekTotals_(isos){
   isos = isos || WEEKS.map(function(w){ return w.iso; });
   var pset = filteredPersonSet_();
@@ -2859,9 +2859,11 @@ function renderAvailability() {
     return;
   }
 
-  // Full QTD history + up to 3 future planned weeks
-  var displayIsos = qtdIsos.slice();
-  var futureWks = WEEKS.filter(function(w){ return w.iso>currentIso && w.status==='plan'; }).slice(0,3);
+  // Focused planning window: last 3 completed weeks + current (sliced from QTD data, so
+  // early-quarter weeks with no behavior data never render as empty bars) + every future
+  // planned week in the server window. QTD-wide stats (score/streak/blend) stay quarter-based.
+  var displayIsos = qtdIsos.slice(-4);
+  var futureWks = WEEKS.filter(function(w){ return w.iso>currentIso && w.status==='plan'; });
   displayIsos = displayIsos.concat(futureWks.map(function(w){ return w.iso; }));
 
   var html = '';
