@@ -545,8 +545,40 @@ function buildCompStructure_(active, mode, cfg) {
     perHead: valued ? Math.round(envelope / valued) : null,
     valued, missingComp,
     bands,
-    inversions: detectInversions_(bands, cfg),
+    inversions: qualifyInversions_(active, detectInversions_(bands, cfg), mode),
   };
+}
+
+/**
+ * Job-family qualification of inversion flags — inversions are INVESTIGATION
+ * TRIGGERS, not errors: a manager in a lower-market family (People, Finance)
+ * can legitimately earn below a senior IC in a high-demand technical family.
+ * For each flagged pair, find departments (the job-family proxy) where BOTH
+ * bands are present AND the manager average still sits below the IC average:
+ * those are genuine inversion candidates. A pair whose bands never share a
+ * department is likely a market-rate mix across families. Only membership is
+ * exposed — never the tiny per-department averages themselves.
+ */
+function qualifyInversions_(active, inversions, mode) {
+  if (!inversions.length) return inversions;
+  const depts = [...new Set(active.map(r => r.dept).filter(Boolean))].sort();
+  return inversions.map(inv => {
+    const withinDepts = depts.filter(d => {
+      const grp = active.filter(r => r.dept === d);
+      const avgOf = level => {
+        const vals = grp.filter(r => r.level === level)
+          .map(r => tccOf_(r, mode)).filter(v => v > 0);
+        return vals.length
+          ? vals.reduce((t, x) => t + x, 0) / vals.length : null;
+      };
+      const m = avgOf(inv.mLevel), ic = avgOf(inv.icLevel);
+      return m != null && ic != null && m < ic;
+    });
+    return Object.assign({}, inv, {
+      withinDepts,
+      crossFamilyOnly: withinDepts.length === 0,
+    });
+  });
 }
 
 /**
@@ -806,10 +838,21 @@ function secCompStructure_(cs, mode, cfg) {
     note_("TCC includes variable target; it is not base wage."),
   ];
   cs.inversions.forEach(inv => {
-    lines.push(fact_("Salary inversion: the " + inv.mLevel + " band average (" +
-      fmtMoney_(inv.mAvg, mode.code) + ") sits below the " + inv.icLevel +
-      " band average (" + fmtMoney_(inv.icAvg, mode.code) + ")."));
+    lines.push(fact_("Salary inversion — investigation trigger: the " + inv.mLevel +
+      " band average (" + fmtMoneyShort_(inv.mAvg, mode.code) + ") sits below the " +
+      inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, mode.code) + ")" +
+      (inv.withinDepts && inv.withinDepts.length
+        ? "; the pattern holds inside " + inv.withinDepts.join(", ") +
+          " — a genuine inversion candidate"
+        : "; the two bands never invert within a single department — likely a " +
+          "job-family market-rate mix, not an equity error") + "."));
   });
+  if (cs.inversions.length) {
+    lines.push(note_("Inversion flags are investigation triggers, not errors: a manager " +
+      "in a lower-market job family (e.g. People or Finance) can legitimately earn below " +
+      "a senior IC in a high-demand technical family. Verify whether the flagged managers " +
+      "actually oversee the higher-paid ICs before treating a flag as an equity issue."));
+  }
   if (cs.missingComp) {
     lines.push(note_(fmtInt_(cs.missingComp) + " employees are missing a " +
       (mode.mode === "usd" ? "TCC USD" : "TCC") +
@@ -1143,9 +1186,16 @@ function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure, cu
   compStructure.inversions.forEach(inv => {
     out.push({
       id: "inversion-" + inv.mLevel + "-" + inv.icLevel, kind: "inversion",
-      title: "Salary inversion " + inv.mLevel + " vs " + inv.icLevel,
-      detail: inv.mLevel + " band average (" + fmtMoney_(inv.mAvg, curCode) + ") sits below the " +
-        inv.icLevel + " band average (" + fmtMoney_(inv.icAvg, curCode) + ").",
+      title: "Salary inversion " + inv.mLevel + " vs " + inv.icLevel +
+        (inv.crossFamilyOnly ? " (cross-family — verify)" : ""),
+      detail: inv.mLevel + " band average (" + fmtMoneyShort_(inv.mAvg, curCode) +
+        ") sits below the " + inv.icLevel + " band average (" +
+        fmtMoneyShort_(inv.icAvg, curCode) + "). Investigation trigger: " +
+        (inv.withinDepts && inv.withinDepts.length
+          ? "the pattern holds inside " + inv.withinDepts.join(", ") +
+            " — a genuine inversion candidate."
+          : "the bands never invert within a single department — likely a job-family " +
+            "market-rate mix; verify before treating as an equity issue."),
     });
   });
   const total = active.length;

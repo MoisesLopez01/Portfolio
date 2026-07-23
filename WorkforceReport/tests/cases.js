@@ -209,6 +209,32 @@ function term(over) {
     !cs.inversions.some(i => i.icLevel === "I3"));
   const noInv = buildCompStructure_(mk3("I5", "IC", 100000).concat(mk3("M4", "M", 150000)), "local", CONFIG_WR);
   check("structure: no inversion when manager band higher", noInv.inversions.length === 0);
+
+  // Job-family qualification: same-department inversion = genuine candidate.
+  check("inversion qual: pattern holding within a department is flagged as genuine",
+    cs.inversions[0].withinDepts.join() === "Services" &&
+    cs.inversions[0].crossFamilyOnly === false);
+  // Cross-family case: the manager band lives in People, the IC band in
+  // Services — scope-wide averages invert but no single department does.
+  const cross = buildCompStructure_(
+    mk3("M4", "M", 110000).map(r => Object.assign(r, { dept: "People" }))
+      .concat(mk3("I5", "IC", 120000)), "local", CONFIG_WR);
+  check("inversion qual: bands that never share a department read cross-family",
+    cross.inversions.length === 1 && cross.inversions[0].crossFamilyOnly === true &&
+    cross.inversions[0].withinDepts.length === 0);
+
+  const secInv = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
+  check("inversion FACT: investigation-trigger wording + genuine-candidate branch",
+    secInv.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("investigation trigger") !== -1 &&
+      l.text.indexOf("holds inside Services — a genuine inversion candidate") !== -1));
+  const secCross = secCompStructure_(cross, { mode: "local", code: "MXN" }, CONFIG_WR);
+  check("inversion FACT: cross-family branch names the market-rate mix",
+    secCross.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("job-family market-rate mix") !== -1));
+  check("inversion NOTE: triggers-not-errors guidance renders once",
+    secInv.lines.filter(l => l.badge === "NOTE" &&
+      l.text.indexOf("investigation triggers, not errors") !== -1).length === 1);
 })();
 
 // ── Compa band counts + market gap + equity counts ──────────────────────────
