@@ -1345,12 +1345,16 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
 
 // ── View B — Board brief computed layer — spec §7 ───────────────────────────
 
-/** Regretted-leaver crosstab: level × tenure bucket × reason across the FY window. */
+/**
+ * Regretted-leaver crosstab: level × tenure bucket × reason across the
+ * SELECTED FY windows — membership is tested per window (never first-start to
+ * last-end) so a non-adjacent selection like FY25 + FY27 never leaks FY26.
+ */
 function buildRetentionCrosstab_(records, fys) {
-  const start = fys[0].start, end = fys[fys.length - 1].end;
   const m = new Map();
   records.forEach(r => {
-    if (!r.termDate || r.termDate < start || r.termDate > end) return;
+    if (!r.termDate) return;
+    if (!fys.some(fy => r.termDate >= fy.start && r.termDate <= fy.end)) return;
     if (!/yes|true/i.test(String(r.termRegretted || ""))) return;
     const key = [r.level, tenureBucket_(tenureYears_(r.hireDate, r.termDate)),
                  r.termReason || "—"].join("||");
@@ -1838,28 +1842,48 @@ function validateNarrative_(obj, brief) {
 }
 
 /**
+ * FY selection: users pick ANY combination of the available fiscal years
+ * (FY25 / FY26 / FY27 toggles — 1, 2 or 3 at a time, adjacency optional).
+ * Accepted specs: "25,27"-style csv of 2-digit FY numbers (the toggle UI),
+ * plus legacy forms — "3"/"2"/"1" trailing windows and "c2" (closed years).
+ * An empty/unknown spec = all available FYs.
+ * @returns {{all: Array, fys: Array}} available windows + the selected subset.
+ */
+function selectFys_(ctx, cfg, fyRange) {
+  const all = fyListWR_(ctx.asOf, cfg.FY_COUNT);
+  const s = String(fyRange == null ? "" : fyRange).trim().toLowerCase();
+  let sel = all;
+  if (s === "c2") {
+    sel = all.filter(f => !f.inProgress);
+  } else if (s === "1" || s === "2" || s === "3") {
+    sel = all.slice(all.length - parseInt(s, 10));
+  } else if (/^\d{2}(,\d{2})*$/.test(s)) {
+    const want = new Set(s.split(",").map(x => parseInt(x, 10)));
+    sel = all.filter(f => want.has((f.startCalYear + 1) % 100));
+  }
+  return { all, fys: sel.length ? sel : all };
+}
+
+/** Canonical wire form of a selection: "all" or "25,27". Pure — cache keys + meta echo. */
+function fyRangeCanon_(all, fys) {
+  return fys.length === all.length
+    ? "all"
+    : fys.map(f => (f.startCalYear + 1) % 100).join(",");
+}
+
+/**
  * Full payload for one scope — spec §3 data flow.
  * @param {number} [quarter] - 1–4 applies the quarterly filter to the
  *   time-based sections (Q<n> of every FY, not-yet-started quarters dropped);
  *   anything else = full fiscal years.
- * @param {(number|string)} [fyRange] - "3"/"2"/"1" trailing FYs, or "c2" =
- *   the two closed FYs (FY25–FY26 at build time). Defaults to all.
+ * @param {(number|string)} [fyRange] - see selectFys_ (csv toggles + legacy).
  * @returns {Object} {ok, meta, report, brief?} — brief for ANY scope (company
  *   or a single country) when no quarterly filter is active (the board story
  *   is told in full FYs).
  */
 function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter, fyRange) {
-  // fyRange: 3/2/1 = trailing FYs (all / prev+current / current), or "c2" =
-  // the two CLOSED fiscal years (FY25–FY26 at build time) — the board-deck
-  // view where the in-progress year would only add noise.
-  const spec = String(fyRange == null ? "" : fyRange).trim();
-  let fys;
-  if (spec === "c2") {
-    fys = fyListWR_(ctx.asOf, cfg.FY_COUNT).filter(f => !f.inProgress);
-  } else {
-    const n = parseInt(spec, 10);
-    fys = fyListWR_(ctx.asOf, (n >= 1 && n <= cfg.FY_COUNT) ? n : cfg.FY_COUNT);
-  }
+  const fySel = selectFys_(ctx, cfg, fyRange);
+  const fys = fySel.fys;
   const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
   const qWindows = q ? fys.map(fy => fyQuarterWindow_(fy, q, ctx.asOf)) : null;
   const windows = q ? qWindows.filter(w => w.started) : fys;
@@ -1876,7 +1900,8 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
       quarter: q,
       quarterSkipped: q ? qWindows.filter(w => !w.started).map(w => w.label) : [],
       fyCount: fys.length,
-      fyRange: spec === "c2" ? "c2" : String(fys.length),
+      fyRange: fyRangeCanon_(fySel.all, fys),
+      availableFys: fySel.all.map(f => ({ label: f.label, num: (f.startCalYear + 1) % 100 })),
       asOf: isoDate_(ctx.asOf),
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
@@ -2156,15 +2181,14 @@ function cacheKeyForScope_(scope, quarter, fyRange) {
     ? "company" : normWR_(scope).replace(/[^a-z0-9]+/g, "_");
   return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug +
     (quarter ? "_q" + quarter : "") +
-    (fyRange && String(fyRange) !== String(CONFIG_WR.FY_COUNT) ? "_f" + fyRange : "");
+    (fyRange && fyRange !== "all" ? "_f" + String(fyRange).replace(/[^0-9c]+/g, "_") : "");
 }
 
-/** Valid ranges: "3"/"2"/"1" trailing FYs, "c2" = the two closed FYs. */
+/** Canonical FY selection ("all" / "25,27") for cache keys — any accepted spec in. */
 function sanitizeFyRange_(fyRange) {
-  const s = String(fyRange == null ? "" : fyRange).trim();
-  if (s === "c2") return "c2";
-  const n = parseInt(s, 10);
-  return (n >= 1 && n <= CONFIG_WR.FY_COUNT) ? String(n) : String(CONFIG_WR.FY_COUNT);
+  const ctx = fiscalContextWR_();
+  const sel = selectFys_(ctx, CONFIG_WR, fyRange);
+  return fyRangeCanon_(sel.all, sel.fys);
 }
 
 /**
@@ -2234,7 +2258,7 @@ function getWorkforceReportData(scope, force, quarter, fyRange) {
   const json = JSON.stringify(payload);
   cachePutLarge_(cache, cacheKeyForScope_(scopeName, q, nFy), json, CONFIG_WR.CACHE_TTL_SEC);
   Logger.log("✅ getWorkforceReportData(" + scopeName + (q ? " Q" + q : "") +
-             (nFy !== String(CONFIG_WR.FY_COUNT) ? " fy:" + nFy : "") + "): built in " +
+             (nFy !== "all" ? " fy:" + nFy : "") + "): built in " +
              Math.round((Date.now() - t0) / 1000) + "s — " + json.length + " chars");
   return json;
 }

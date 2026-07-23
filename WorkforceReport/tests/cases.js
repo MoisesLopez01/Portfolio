@@ -853,9 +853,32 @@ function term(over) {
 
   // Closed-years view — the FY25–FY26 board-deck range (no in-progress noise).
   const closed = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "c2");
-  check("payload: c2 = the two closed FYs",
+  check("payload: c2 = the two closed FYs (canonical csv echo)",
     closed.meta.fys.map(f => f.label).join() === "FY25,FY26" &&
-    closed.meta.fyRange === "c2" && closed.meta.fyCount === 2);
+    closed.meta.fyRange === "25,26" && closed.meta.fyCount === 2);
+
+  // FY toggles: any combination of individual years, adjacency optional.
+  const picked = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "25,27");
+  check("payload: csv toggles select exactly FY25 + FY27",
+    picked.meta.fys.map(f => f.label).join() === "FY25,FY27" &&
+    picked.meta.fyRange === "25,27" &&
+    picked.report.sections.find(s => s.id === "movement").tables[0].rows.length === 2);
+  check("payload: availableFys always lists every toggle with its number",
+    picked.meta.availableFys.map(f => f.label).join() === "FY25,FY26,FY27" &&
+    picked.meta.availableFys.map(f => f.num).join() === "25,26,27");
+  const solo = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "26");
+  check("payload: single-year toggle works", solo.meta.fys.map(f => f.label).join() === "FY26");
+  check("payload: full csv selection canonicalizes to 'all'",
+    buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "25,26,27").meta.fyRange === "all");
+  check("payload: unknown years in the csv fall back to all FYs",
+    buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "99").meta.fyCount === 3);
+  // Non-adjacent selection never leaks the skipped year into the crosstab.
+  const leakRecords = records.concat([
+    term({ termDate: new Date(2025, 9, 1), termRegretted: "Yes", termReason: "Another Job" }), // FY26
+  ]);
+  const noLeak = buildReportPayload_(leakRecords, hist, {}, "company", ctx, CONFIG_WR, 0, "25,27");
+  check("payload: FY25+FY27 retention crosstab excludes the FY26 regretted exit",
+    noLeak.brief.retention.every(r => r.reason !== "Another Job"));
   check("payload: c2 has no in-progress window (no as-of NOTE)",
     closed.meta.fys.every(f => !f.inProgress) &&
     closed.report.sections.find(s => s.id === "movement")
