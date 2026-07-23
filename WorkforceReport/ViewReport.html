@@ -417,7 +417,8 @@ function syncHeader() {
     document.getElementById("fyBadge").textContent =
       fyBadge + (d.meta.quarter ? " · Q" + d.meta.quarter : "");
     document.getElementById("subTitle").textContent =
-      "extracted " + d.meta.asOf + " · " + (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
+      "extracted " + d.meta.asOf + " · " + (d.meta.fromCache ? "cached" : "live") +
+      " · " + USER_ROLE + (d.meta.build ? " · v" + d.meta.build : " · pre-1.1.1 build");
   }
   document.getElementById("accessBtn").classList.toggle("hidden", USER_ROLE !== "admin");
   document.getElementById("exportBtn").disabled = STATE.exportBusy;

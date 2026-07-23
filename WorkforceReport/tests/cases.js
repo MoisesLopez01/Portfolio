@@ -850,10 +850,8 @@ function term(over) {
   check("flags: no market FACT/coverage lines while disabled",
     flags.lines.every(l => l.text.indexOf("market mean") === -1 &&
       l.text.indexOf("Benchmark coverage") === -1));
-  check("flags: internal mid-point ASSUMPTION (two tiers only)",
-    flags.lines.some(l => l.badge === "ASSUMPTION" &&
-      l.text.indexOf("title-peer median, then the location's level-cohort median") !== -1 &&
-      l.text.indexOf("mid-point evaluation") !== -1));
+  check("flags: no ASSUMPTION lines in the body (anchor tiers live in the appendix)",
+    flags.lines.every(l => l.badge !== "ASSUMPTION"));
   check("flags: out-of-scope NOTE promises the market-calibration view",
     flags.lines.some(l => l.badge === "NOTE" &&
       l.text.indexOf("out of scope in this version") !== -1 &&
@@ -1172,10 +1170,9 @@ function term(over) {
       l.text.indexOf("geography-weighted COST figures") !== -1) &&
     secTrap.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("No within-location salary inversion") !== -1));
-  check("inversion guard: usd lineage is a NOTE, never an ASSUMPTION",
+  check("inversion guard: no ASSUMPTION and no USD-source line in the body",
     secTrap.lines.every(l => l.badge !== "ASSUMPTION") &&
-    secTrap.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("Data lineage") !== -1 && l.text.indexOf("FX drift") !== -1));
+    secTrap.lines.every(l => l.text.indexOf("Data lineage") === -1));
 
   // A REAL within-location inversion still fires, named with its location and
   // reported in LOCAL currency.

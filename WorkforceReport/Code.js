@@ -4,8 +4,9 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.1.0 — per-year FY story/comparison, snapshot anchoring,
-//              within-location comparison rule (exec review 2026-07-23)
+// VERSION:     1.1.1 — per-year FY story/comparison, snapshot anchoring,
+//              within-location comparison rule (exec review 2026-07-23);
+//              body ASSUMPTION lines removed, build badge in the header
 // ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-22-workforce-comp-report-design.md
 //
@@ -19,6 +20,12 @@
 // ============================================================
 
 const CONFIG_WR = {
+  // Deployed-build marker — echoed as meta.build and shown in the page
+  // header, so "did the new version actually deploy?" is answered by
+  // looking at the subtitle instead of hunting for changed sentences.
+  // Bump alongside the VERSION line above on every deployable change.
+  BUILD: "1.1.1",
+
   // Fallback source IDs — overridable via Script Properties (WR_ prefix).
   // Defaults are the CompDash sources: the sheets are the shared contract.
   ROSTER_SS_ID:    "1n6x9Hj9FH5CcCQhhJnD-vCTMpk-D1u0ntnYYqHI-Bp0", // roster + attrition + TCC USD
@@ -1153,15 +1160,8 @@ function secCompStructure_(cs, mode, cfg) {
       (mode.mode === "usd" ? "TCC USD" : "TCC") +
       " value — excluded from compensation aggregates, included in headcount."));
   }
-  if (mode.mode === "usd") {
-    // Data lineage, not an assumption (CFO review 2026-07-23): say what the
-    // source is and what it lacks — rate basis + as-of live in the roster
-    // pipeline, and a frozen plan rate for FY-over-FY USD reads is pending.
-    lines.push(note_("Data lineage: USD figures come from the roster \"TCC USD\" column — " +
-      "the conversion source of record. Rate basis and as-of date are owned by the " +
-      "roster pipeline; period-over-period USD movements include FX drift until a " +
-      "frozen plan rate is adopted."));
-  }
+  // No USD-source line in the body (user directive 2026-07-23): FX lineage
+  // lives in the definitions appendix only.
   if (cs.bands.some(b => b.count < cfg.SMALL_GROUP_MIN)) {
     lines.push(note_("Bands with fewer than " + cfg.SMALL_GROUP_MIN + " members show their " +
       "actual average but are excluded from band-level comparisons (e.g. inversion flags)."));
@@ -1624,12 +1624,8 @@ function secFlags_(bandCounts, market, equity, cfg) {
       "has been compiled (the compilation grows over time); currency-mismatched rows are " +
       "withheld, and unmatched employees simply have no local benchmark yet."));
   }
-  lines.push(assume_(market
-    ? "Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
-      "median, market mean for one-of-a-kind roles, then the location's level-cohort median."
-    : "Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
-      "median, then the location's level-cohort median — an internal salary mid-point " +
-      "evaluation."));
+  // Anchor-tier methodology moved to the definitions appendix (user directive
+  // 2026-07-23: no ASSUMPTION lines in the body of this section).
   if (!market) {
     lines.push(note_("Market competitiveness (compa-ratio vs external benchmarks) is out " +
       "of scope in this version — the benchmark compilation is incomplete. It returns as " +
@@ -2402,6 +2398,7 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
       availableFys: fySel.all.map(f => ({ label: f.label, num: (f.startCalYear + 1) % 100 })),
       asOf: isoDate_(ctx.asOf),
       anchor: anchored ? isoDate_(lastW.end) : null,
+      build: cfg.BUILD,
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
       coverage: {
