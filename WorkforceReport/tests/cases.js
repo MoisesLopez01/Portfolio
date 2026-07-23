@@ -1192,6 +1192,52 @@ function term(over) {
       l.text.indexOf("MXN") !== -1));
 })();
 
+// ── JF015 exclusion — heterogeneous families never enter inversion bands ────
+// User directive 2026-07-23: JF015 (Operations) mixes PMs, admin/exec
+// assistants, revenue ops and the C-suite — excluded from inversion band
+// averages and qualification via CONFIG_WR.INVERSION_EXCLUDE_FAMILIES,
+// while staying in headcount/cost/level views.
+(function () {
+  const mk = (level, track, tcc, family, title) => mkEmp({
+    keyLocation: "Chile", currency: "CLP", level, track,
+    jobFamily: family, jobTitle: title, tcc, tccUsd: Math.round(tcc / 900) });
+
+  // Without exclusion this WOULD invert: three JF015 I5 high earners push the
+  // I5 band average above M4. With JF015 excluded, the I5 band loses its
+  // members entirely — no comparison, no flag.
+  const roster = [
+    mk("M4", "M", 47000000, "JF007", "07.M4.2"),
+    mk("M4", "M", 48000000, "JF007", "07.M4.1"),
+    mk("M4", "M", 47500000, "JF013", "13.M4.2"),
+    mk("I5", "IC", 58000000, "JF015", "15.I5.2"),
+    mk("I5", "IC", 59000000, "JF015", "15.I5.3"),
+    mk("I5", "IC", 58500000, "JF015", "15.I5.4"),
+  ];
+  const cs = buildCompStructure_(roster, "local", CONFIG_WR);
+  check("jf015: excluded family cannot fire an inversion flag",
+    cs.inversions.length === 0);
+  check("jf015: excluded members still counted in the level table and envelope",
+    cs.bands.find(b => b.level === "I5").count === 3 && cs.valued === 6);
+
+  // The same shape with a comparable family still fires — the exclusion is
+  // family-targeted, not a blanket relaxation.
+  const rosterCmp = roster.map(r => r.jobFamily === "JF015"
+    ? Object.assign({}, r, { jobFamily: "JF009", jobTitle: "09.I5.1" }) : r);
+  const csCmp = buildCompStructure_(rosterCmp, "local", CONFIG_WR);
+  check("jf015: comparable family in the same shape still fires the flag",
+    csCmp.inversions.length === 1 && csCmp.inversions[0].icLevel === "I5");
+  check("jf015: excluded family never appears in band spans",
+    csCmp.inversions[0].icGroups.indexOf("JF015") === -1);
+
+  // usd mode (within-location path) applies the same exclusion.
+  const usd = buildCompStructure_(roster.concat([
+    mkEmp({ keyLocation: "US", currency: "USD", level: "I3", track: "IC",
+      jobFamily: "JF009", jobTitle: "09.I3.1", tcc: 90000, tccUsd: 90000 }),
+  ]), "usd", CONFIG_WR);
+  check("jf015: usd within-location path applies the exclusion too",
+    usd.inversions.length === 0);
+})();
+
 // ── Regretted-trend synthesis + coverage promotion ───────────────────────────
 (function () {
   const st = (label, regrettedPct) => ({

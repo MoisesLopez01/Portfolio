@@ -4,7 +4,7 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.1.4 — per-year FY story/comparison, snapshot anchoring,
+// VERSION:     1.1.5 — per-year FY story/comparison, snapshot anchoring,
 //              within-location comparison rule (exec review 2026-07-23);
 //              body ASSUMPTION lines removed, build badge in the header,
 //              "investigation trigger" wording out of section 4
@@ -25,7 +25,7 @@ const CONFIG_WR = {
   // header, so "did the new version actually deploy?" is answered by
   // looking at the subtitle instead of hunting for changed sentences.
   // Bump alongside the VERSION line above on every deployable change.
-  BUILD: "1.1.4",
+  BUILD: "1.1.5",
 
   // Fallback source IDs — overridable via Script Properties (WR_ prefix).
   // Defaults are the CompDash sources: the sheets are the shared contract.
@@ -58,6 +58,13 @@ const CONFIG_WR = {
   // Attrition RISK thresholds — spec §6.5 (config-tunable).
   RISK_REGRET_PCT:    60,  // regretted share of exits ≥ this % → RISK line
   RISK_REASON_SHARE: 0.5,  // single recorded reason ≥ this share of exits → RISK line
+
+  // Families whose internal role mix is too heterogeneous for band-level
+  // comparison (user directive 2026-07-23: JF015 Operations spans project
+  // managers, admin/exec assistants, revenue ops and the C-suite — never
+  // apples to apples). Members are EXCLUDED from inversion detection and
+  // qualification but stay in headcount, cost and the level table.
+  INVERSION_EXCLUDE_FAMILIES: ["JF015"],
 
   // FY-over-FY verdict thresholds (section 2 comparison read) — moves smaller
   // than these percentage points read as "held steady", never as a verdict.
@@ -687,26 +694,43 @@ function buildComposition_(active, asOf) {
 // Level bands with fewer than SMALL_GROUP_MIN members keep their headcount but
 // withhold the average — an N-of-1 "average" is an individual's comp.
 
+/** True when the row's job family is config-excluded from band comparisons. */
+function isInversionExcluded_(r, cfg) {
+  const ex = (cfg && cfg.INVERSION_EXCLUDE_FAMILIES) || [];
+  return !!(r.jobFamily && ex.indexOf(r.jobFamily) !== -1);
+}
+
 function buildCompStructure_(active, mode, cfg) {
-  const byLevel = new Map();
+  const bandsOf = list => {
+    const byLevel = new Map();
+    list.forEach(r => {
+      const v = tccOf_(r, mode);
+      if (!(v > 0)) return;
+      if (!byLevel.has(r.level)) byLevel.set(r.level, []);
+      byLevel.get(r.level).push(v);
+    });
+    return [...byLevel.entries()].map(([level, vals]) => ({
+      level,
+      count: vals.length,
+      avg: vals.length
+        ? Math.round(vals.reduce((t, x) => t + x, 0) / vals.length) : null,
+    })).sort((a, b) => levelRank_(a.level) - levelRank_(b.level));
+  };
   let envelope = 0, valued = 0, missingComp = 0;
   active.forEach(r => {
     const v = tccOf_(r, mode);
     if (!(v > 0)) { missingComp++; return; }
     envelope += v;
     valued++;
-    if (!byLevel.has(r.level)) byLevel.set(r.level, []);
-    byLevel.get(r.level).push(v);
   });
   // Averages render for EVERY band, including 1–2 person levels (user
   // directive 2026-07-23) — small bands are still excluded from inversion
   // comparisons so one salary can never fire a band-level structural flag.
-  const bands = [...byLevel.entries()].map(([level, vals]) => ({
-    level,
-    count: vals.length,
-    avg: vals.length
-      ? Math.round(vals.reduce((t, x) => t + x, 0) / vals.length) : null,
-  })).sort((a, b) => levelRank_(a.level) - levelRank_(b.level));
+  const bands = bandsOf(active);
+  // Inversion detection runs on the COMPARABLE population only: config-
+  // excluded families (heterogeneous role mixes like JF015 Operations) never
+  // enter a band average that fires a flag — they stay in the table above.
+  const comparable = active.filter(r => !isInversionExcluded_(r, cfg));
   return {
     envelope: valued ? envelope : null,
     perHead: valued ? Math.round(envelope / valued) : null,
@@ -719,8 +743,8 @@ function buildCompStructure_(active, mode, cfg) {
     // stays a cost/budget lens only. Single-currency scopes keep the direct
     // comparison — that is what made the Chile report sound.
     inversions: mode === "usd"
-      ? detectInversionsByLocation_(active, cfg)
-      : qualifyInversions_(active, detectInversions_(bands, cfg), mode),
+      ? detectInversionsByLocation_(comparable, cfg)
+      : qualifyInversions_(comparable, detectInversions_(bandsOf(comparable), cfg), mode),
   };
 }
 
@@ -2074,6 +2098,12 @@ function confluenceDefinitionsHtml_() {
         "one location (or as a compa-ratio to a local anchor). Blended multi-currency " +
         "USD averages are cost/budget figures only — they move with geography mix and " +
         "never fire equity flags."],
+      ["Inversion exclusions", (c.INVERSION_EXCLUDE_FAMILIES || []).length
+        ? (c.INVERSION_EXCLUDE_FAMILIES.join(", ") + " — role mix too heterogeneous for " +
+           "band-level comparison (e.g. JF015 Operations spans project management, " +
+           "administrative and executive roles); members stay in headcount, cost and " +
+           "level tables but never enter an inversion band average.")
+        : "none configured."],
       ["FX lineage", "USD figures come from the roster TCC USD column, the conversion " +
         "source of record; rate basis and as-of date are owned by the roster pipeline. " +
         "A frozen plan rate for FY-over-FY USD comparison is a pending data-side " +
