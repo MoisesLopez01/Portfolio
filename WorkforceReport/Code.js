@@ -4,9 +4,10 @@
 //              Compensation Report across FY25/FY26/FY27 in two views:
 //              View A — per-scope Location report (FAR/N evidence layer)
 //              View B — company Board brief (synthesis layer, AI-assisted)
-// VERSION:     1.1.1 — per-year FY story/comparison, snapshot anchoring,
+// VERSION:     1.1.2 — per-year FY story/comparison, snapshot anchoring,
 //              within-location comparison rule (exec review 2026-07-23);
-//              body ASSUMPTION lines removed, build badge in the header
+//              body ASSUMPTION lines removed, build badge in the header,
+//              "investigation trigger" wording out of section 4
 // ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-22-workforce-comp-report-design.md
 //
@@ -24,7 +25,7 @@ const CONFIG_WR = {
   // header, so "did the new version actually deploy?" is answered by
   // looking at the subtitle instead of hunting for changed sentences.
   // Bump alongside the VERSION line above on every deployable change.
-  BUILD: "1.1.1",
+  BUILD: "1.1.2",
 
   // Fallback source IDs — overridable via Script Properties (WR_ prefix).
   // Defaults are the CompDash sources: the sheets are the shared contract.
@@ -1030,22 +1031,12 @@ function secScope_(records, active, scope, mode, activeInternCount, anchorIso, i
       "excluded from headline movement, attrition and compensation metrics."),
     note_("Crew members and contractors are excluded from this report."),
   ];
-  if (anchorIso) {
-    lines.push(note_("Snapshot anchored to " + anchorIso + " — the end of the selected " +
-      "period. Population, composition, compensation structure and flag sections show " +
-      "the company as it stood then; compensation is valued at each person's latest " +
-      "recorded TCC (historical salaries are not reconstructed). Select the current " +
-      "fiscal year to return to a live view."));
-  }
+
   // THE one in-progress caveat of the whole report (exec review 2026-07-23:
   // the same note five times reads as noise) — every other section relies on
   // this line plus its own "(to date)" row labels.
   if (ipNote) lines.push(ipNote);
-  if (scope !== "company") {
-    lines.push(note_("Location scope uses each roster row's CURRENT Key Location — an " +
-      "international transfer counts in the destination location's history (including " +
-      "prior-year presence), never in both."));
-  }
+
   if (mode.mode === "usd" && scope !== "company" && mode.currencies.length > 1) {
     lines.push(note_("This location spans " + mode.currencies.length + " currencies (" +
       mode.currencies.join(", ") + ") — compensation aggregates use the TCC USD column."));
@@ -1137,7 +1128,7 @@ function secCompStructure_(cs, mode, cfg) {
       ? " (" + inv.mLevel + " spans " + inv.mGroups.join(", ") + "; " +
         inv.icLevel + " spans " + inv.icGroups.join(", ") + ")"
       : "";
-    lines.push(fact_("Salary inversion" + where + " — investigation trigger: the " + inv.mLevel +
+    lines.push(fact_("Salary inversion" + where + " — the " + inv.mLevel +
       " band average (" + fmtMoneyShort_(inv.mAvg, code) + ") sits below the " +
       inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, code) + ")" + span +
       (inv.withinGroups && inv.withinGroups.length
@@ -1147,10 +1138,10 @@ function secCompStructure_(cs, mode, cfg) {
           " — likely a job-family market-rate mix, not an equity error") + "."));
   });
   if (cs.inversions.length) {
-    lines.push(note_("Inversion flags are investigation triggers, not errors: a manager " +
-      "in a lower-market job family (e.g. People or Finance) can legitimately earn below " +
-      "a senior IC in a high-demand technical family. Verify whether the flagged managers " +
-      "actually oversee the higher-paid ICs before treating a flag as an equity issue."));
+    lines.push(note_("A manager in a lower-market job family (e.g. People or Finance) can " +
+      "legitimately earn below a senior IC in a high-demand technical family. Verify " +
+      "whether the flagged managers actually oversee the higher-paid ICs before treating " +
+      "a flag as an equity issue."));
   } else if (mode.mode === "usd") {
     lines.push(fact_("No within-location salary inversion clears the small-group floor — " +
       "no band-structure flag stands once geography mix is removed."));
@@ -1162,10 +1153,6 @@ function secCompStructure_(cs, mode, cfg) {
   }
   // No USD-source line in the body (user directive 2026-07-23): FX lineage
   // lives in the definitions appendix only.
-  if (cs.bands.some(b => b.count < cfg.SMALL_GROUP_MIN)) {
-    lines.push(note_("Bands with fewer than " + cfg.SMALL_GROUP_MIN + " members show their " +
-      "actual average but are excluded from band-level comparisons (e.g. inversion flags)."));
-  }
   return {
     id: "comp-structure", title: "4 · Compensation structure", lines,
     tables: [
@@ -1383,10 +1370,7 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
       " exits (net " + (m.net >= 0 ? "+" : "") + fmtInt_(m.net) + "), regular-employee " +
       "attrition rate " + fmtPct_(m.rate) + "."));
   });
-  if (internFlow && internFlow.length) {
-    lines.push(note_("Headline figures cover regular employees only; the intern/fixed-term " +
-      "strand below is reported separately and never blended into the attrition rate."));
-  }
+
   // Methodology (rate formula, headcount instants) lives in the definitions
   // appendix only (exec review 2026-07-23) — the body states findings. The
   // reconciliation NOTE renders ONLY when a real ± residue exists: that is a
@@ -1624,15 +1608,8 @@ function secFlags_(bandCounts, market, equity, cfg) {
       "has been compiled (the compilation grows over time); currency-mismatched rows are " +
       "withheld, and unmatched employees simply have no local benchmark yet."));
   }
-  // Anchor-tier methodology moved to the definitions appendix (user directive
-  // 2026-07-23: no ASSUMPTION lines in the body of this section).
-  if (!market) {
-    lines.push(note_("Market competitiveness (compa-ratio vs external benchmarks) is out " +
-      "of scope in this version — the benchmark compilation is incomplete. It returns as " +
-      "a dedicated market-calibration view once coverage lands."));
-  }
-  lines.push(note_("This section reports counts only — individual flags live in the Comp " +
-    "Health Report, which carries the drill-downs."));
+
+
   if (equity.genderAvailable) {
     lines.push(fact_(fmtInt_(equity.genderFlagged) + " of " + fmtInt_(equity.genderGroups) +
       " gender-comparable groups carry a median gap at or above " + cfg.EQUITY_GAP_PCT + "%; " +
@@ -1654,13 +1631,7 @@ function secFlags_(bandCounts, market, equity, cfg) {
       "the remaining " + fmtInt_(anchorTotal - bandCounts.unresolved) +
       "; treat its conclusions as partial."));
   }
-  if (equity.suppressed) {
-    lines.push(risk_(fmtInt_(equity.suppressed) + " location+level groups smaller than " +
-      cfg.SMALL_GROUP_MIN + " members are suppressed from the equity lenses — thin cells " +
-      "are structural in a multi-location org, so parts of the org cannot be assessed at " +
-      "location+title granularity at all (a region or cost-tier anchor level would widen " +
-      "coverage)."));
-  }
+
   if (market && market.mismatch) {
     lines.push(note_(fmtInt_(market.mismatch) + " benchmark rows were withheld for currency " +
       "mismatch — never silently compared across currencies."));

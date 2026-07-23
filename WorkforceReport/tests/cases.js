@@ -278,9 +278,9 @@ function term(over) {
     noFam.inversions[0].withinGroups.join() === "Services");
 
   const secInv = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
-  check("inversion FACT: investigation-trigger wording + genuine-candidate branch",
+  check("inversion FACT: no trigger wording (user directive), genuine-candidate branch",
     secInv.lines.some(l => l.badge === "FACT" &&
-      l.text.indexOf("investigation trigger") !== -1 &&
+      l.text.indexOf("investigation trigger") === -1 &&
       l.text.indexOf("holds inside JF004 — a genuine inversion candidate") !== -1));
   check("inversion FACT: names the families each band spans",
     secInv.lines.some(l => l.text.indexOf("(M4 spans JF004; I5 spans JF004)") !== -1));
@@ -290,9 +290,10 @@ function term(over) {
       l.text.indexOf("never invert within a single job family") !== -1 &&
       l.text.indexOf("(M4 spans JF007; I5 spans JF004)") !== -1 &&
       l.text.indexOf("job-family market-rate mix") !== -1));
-  check("inversion NOTE: triggers-not-errors guidance renders once",
+  check("inversion NOTE: verify-oversight guidance renders once, no trigger wording",
     secInv.lines.filter(l => l.badge === "NOTE" &&
-      l.text.indexOf("investigation triggers, not errors") !== -1).length === 1);
+      l.text.indexOf("Verify whether the flagged managers") !== -1).length === 1 &&
+    secInv.lines.every(l => l.text.indexOf("investigation trigger") === -1));
 })();
 
 // ── Compa band counts + market gap + equity counts ──────────────────────────
