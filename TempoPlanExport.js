@@ -118,6 +118,50 @@ function storeCredentials() {
 }
 
 /**
+ * DIAGNOSTIC: Checks whether the stored Tempo token is currently accepted.
+ * Run from the GAS editor when exports fail with 401. Logs the token's
+ * shape (masked), flags accidental whitespace, and probes one lightweight
+ * Tempo endpoint. A persistent 401 here = the token itself is expired or
+ * revoked (Tempo tokens are created WITH an expiration date) → generate a
+ * new one in Tempo > Settings > API Integration, then update the
+ * TEMPO_API_TOKEN Script Property (Project Settings > Script Properties,
+ * or edit + run storeCredentials()).
+ */
+function probeTempoAuth() {
+  const raw = PropertiesService.getScriptProperties().getProperty("TEMPO_API_TOKEN");
+  if (!raw) {
+    Logger.log("❌ TEMPO_API_TOKEN is not set in Script Properties.");
+    return;
+  }
+  const trimmed = raw.trim();
+  Logger.log(
+    `ℹ️ Token: length ${raw.length}, starts "${trimmed.slice(0, 4)}…", ends "…${trimmed.slice(-4)}"`,
+  );
+  if (raw !== trimmed) {
+    Logger.log(
+      "⚠️ Token has leading/trailing whitespace — re-store it without the stray characters.",
+    );
+  }
+  const res = UrlFetchApp.fetch("https://api.tempo.io/4/teams?limit=1", {
+    method: "get",
+    headers: { Authorization: `Bearer ${trimmed}` },
+    muteHttpExceptions: true,
+  });
+  const code = res.getResponseCode();
+  Logger.log(`ℹ️ GET /4/teams → HTTP ${code} — body: ${res.getContentText().slice(0, 300)}`);
+  if (code === 200) {
+    Logger.log("✅ Token accepted. If trigger runs still fail, the 401s are transient (now retried).");
+  } else if (code === 401) {
+    Logger.log(
+      "❌ Token REJECTED — it is expired or revoked. Generate a new Tempo API token " +
+        "(Tempo > Settings > API Integration) and update the TEMPO_API_TOKEN Script Property.",
+    );
+  } else {
+    Logger.log("⚠️ Unexpected status — see body above.");
+  }
+}
+
+/**
  * Retrieves stored credentials from Script Properties.
  * @returns {{ tempoToken: string, jiraEmail: string, jiraToken: string }}
  * @throws {Error} If any credential is missing.
