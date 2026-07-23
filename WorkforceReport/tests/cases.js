@@ -853,19 +853,19 @@ function term(over) {
       l.text.indexOf("Benchmark coverage") === -1));
   check("flags: no ASSUMPTION lines in the body (anchor tiers live in the appendix)",
     flags.lines.every(l => l.badge !== "ASSUMPTION"));
-  check("flags: out-of-scope NOTE promises the market-calibration view",
-    flags.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("out of scope in this version") !== -1 &&
-      l.text.indexOf("market-calibration") !== -1));
+  // Body notes pruned 2026-07-23 (concurrent session, user noise directive):
+  // the out-of-scope promise now lives only in the appendix/config.
+  check("flags: no out-of-scope NOTE in the body",
+    flags.lines.every(l => l.text.indexOf("out of scope in this version") === -1));
 
   const chile = buildReportPayload_(records, hist, {}, "Chile", ctx, CONFIG_WR);
   check("payload: single-currency location stays local",
     chile.report.currency.mode === "local" && chile.report.currency.code === "CLP");
   check("payload: location scope excludes other locations",
     chile.report.sections[0].lines[0].text.indexOf("3 active regular employees") !== -1);
-  check("scope NOTE: location scope explains current-Key-Location semantics",
-    chile.report.sections[0].lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("CURRENT Key Location") !== -1));
+  check("scope NOTE: transfer-semantics note pruned from the body (2026-07-23)",
+    chile.report.sections[0].lines.every(l =>
+      l.text.indexOf("CURRENT Key Location") === -1));
   check("scope NOTE: company scope carries no transfer note",
     company.report.sections[0].lines.every(l =>
       l.text.indexOf("CURRENT Key Location") === -1));
@@ -1227,10 +1227,10 @@ function term(over) {
     flags.lines.some(l => l.badge === "RISK" &&
       l.text.indexOf("48 of 214") !== -1 && l.text.indexOf("22%") !== -1 &&
       l.text.indexOf("covers only the remaining 166") !== -1));
-  check("flags: suppressed thin cells promoted to RISK as a structural finding",
-    flags.lines.some(l => l.badge === "RISK" &&
-      l.text.indexOf("35 location+level groups") !== -1 &&
-      l.text.indexOf("cost-tier anchor") !== -1));
+  // Suppressed-thin-cells line removed by the 2026-07-23 note-pruning pass —
+  // only the no-anchor coverage RISK remains in the body.
+  check("flags: suppressed thin cells carry no body line after the pruning pass",
+    flags.lines.every(l => l.text.indexOf("location+level groups") === -1));
 })();
 
 // ── Location lens — headcount & cost by location (company scope only) ──────
@@ -1285,9 +1285,11 @@ function term(over) {
     scope25.lines[0].text.indexOf("as of 2025-06-30") !== -1);
   check("anchor: FY25 evidence base excludes rows hired later",
     scope25.lines[1].text.indexOf("2 regular roster records") !== -1);
-  check("anchor: scope carries the snapshot NOTE",
-    scope25.lines.some(l => l.badge === "NOTE" &&
-      l.text.indexOf("Snapshot anchored to 2025-06-30") !== -1));
+  // The long snapshot NOTE was pruned (2026-07-23); the anchor stays visible
+  // through the FACT "as of" suffixes and the cover's meta.anchor.
+  check("anchor: anchoring visible via FACT suffixes without the long NOTE",
+    scope25.lines.filter(l => l.text.indexOf("as of 2025-06-30") !== -1).length >= 2 &&
+    scope25.lines.every(l => l.text.indexOf("Snapshot anchored") === -1));
   check("anchor: composition tenure names the anchor, not the extraction date",
     fy25.report.sections.find(s => s.id === "composition")
       .lines.some(l => l.text.indexOf("the period-end anchor") !== -1));
