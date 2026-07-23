@@ -853,11 +853,17 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
 
 function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
   const lines = [];
-  (ghostDepts || []).forEach(gd => {
-    lines.push(risk_('"' + gd + '" appears among leavers but not among active staff — a ' +
-      "renamed or absorbed unit distorting department-level attrition. Map it to its " +
-      "current department via CONFIG_WR.DEPT_REMAP."));
-  });
+  // The org was deliberately restructured across the window (teams removed,
+  // units merged) — historical leaver departments are EXPECTED to differ from
+  // today's org chart, so this renders as ONE quiet definition NOTE, never a
+  // per-department RISK wall. Consolidate merged units via CONFIG_WR.DEPT_REMAP.
+  if (ghostDepts && ghostDepts.length) {
+    lines.push(note_("Leaver departments reflect the organisation at exit time — " +
+      fmtInt_(ghostDepts.length) + " historical department" +
+      (ghostDepts.length === 1 ? "" : "s") + " no longer exist after restructuring " +
+      "(e.g. " + ghostDepts.slice(0, 3).join(", ") + "). Merged units can be " +
+      "consolidated into their current department via CONFIG_WR.DEPT_REMAP."));
+  }
   stats.forEach(s => {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
       " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
@@ -1486,15 +1492,24 @@ function validateNarrative_(obj, brief) {
  * @param {number} [quarter] - 1–4 applies the quarterly filter to the
  *   time-based sections (Q<n> of every FY, not-yet-started quarters dropped);
  *   anything else = full fiscal years.
- * @param {number} [fyCount] - how many FYs to report, newest last: 3 = all,
- *   2 = previous + current, 1 = current only. Defaults to CONFIG_WR.FY_COUNT.
+ * @param {(number|string)} [fyRange] - "3"/"2"/"1" trailing FYs, or "c2" =
+ *   the two closed FYs (FY25–FY26 at build time). Defaults to all.
  * @returns {Object} {ok, meta, report, brief?} — brief for ANY scope (company
  *   or a single country) when no quarterly filter is active (the board story
  *   is told in full FYs).
  */
-function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter, fyCount) {
-  const nFy = (fyCount >= 1 && fyCount <= cfg.FY_COUNT) ? Math.floor(fyCount) : cfg.FY_COUNT;
-  const fys = fyListWR_(ctx.asOf, nFy);
+function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quarter, fyRange) {
+  // fyRange: 3/2/1 = trailing FYs (all / prev+current / current), or "c2" =
+  // the two CLOSED fiscal years (FY25–FY26 at build time) — the board-deck
+  // view where the in-progress year would only add noise.
+  const spec = String(fyRange == null ? "" : fyRange).trim();
+  let fys;
+  if (spec === "c2") {
+    fys = fyListWR_(ctx.asOf, cfg.FY_COUNT).filter(f => !f.inProgress);
+  } else {
+    const n = parseInt(spec, 10);
+    fys = fyListWR_(ctx.asOf, (n >= 1 && n <= cfg.FY_COUNT) ? n : cfg.FY_COUNT);
+  }
   const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
   const qWindows = q ? fys.map(fy => fyQuarterWindow_(fy, q, ctx.asOf)) : null;
   const windows = q ? qWindows.filter(w => w.started) : fys;
@@ -1510,7 +1525,8 @@ function buildReportPayload_(records, histByEmp, benchMap, scope, ctx, cfg, quar
       scopes,
       quarter: q,
       quarterSkipped: q ? qWindows.filter(w => !w.started).map(w => w.label) : [],
-      fyCount: nFy,
+      fyCount: fys.length,
+      fyRange: spec === "c2" ? "c2" : String(fys.length),
       asOf: isoDate_(ctx.asOf),
       fys: fys.map(f => ({ label: f.label, startCalYear: f.startCalYear, inProgress: f.inProgress })),
       currency: report.currency,
@@ -1763,18 +1779,21 @@ function readBenchmarksWR_() {
 
 // ── Assembly + web app ──────────────────────────────────────────────────────
 
-function cacheKeyForScope_(scope, quarter, fyCount) {
+function cacheKeyForScope_(scope, quarter, fyRange) {
   const ver = props_().getProperty("WR_CACHE_VER") || "1";
   const slug = scope === "company"
     ? "company" : normWR_(scope).replace(/[^a-z0-9]+/g, "_");
   return CONFIG_WR.CACHE_KEY_PREFIX + "v" + ver + "_" + slug +
     (quarter ? "_q" + quarter : "") +
-    (fyCount && fyCount !== CONFIG_WR.FY_COUNT ? "_f" + fyCount : "");
+    (fyRange && String(fyRange) !== String(CONFIG_WR.FY_COUNT) ? "_f" + fyRange : "");
 }
 
-function sanitizeFyCount_(fyCount) {
-  return (fyCount >= 1 && fyCount <= CONFIG_WR.FY_COUNT)
-    ? Math.floor(fyCount) : CONFIG_WR.FY_COUNT;
+/** Valid ranges: "3"/"2"/"1" trailing FYs, "c2" = the two closed FYs. */
+function sanitizeFyRange_(fyRange) {
+  const s = String(fyRange == null ? "" : fyRange).trim();
+  if (s === "c2") return "c2";
+  const n = parseInt(s, 10);
+  return (n >= 1 && n <= CONFIG_WR.FY_COUNT) ? String(n) : String(CONFIG_WR.FY_COUNT);
 }
 
 /**
@@ -1783,17 +1802,17 @@ function sanitizeFyCount_(fyCount) {
  * @param {string} scope - "company" or a roster Key Location.
  * @param {boolean} force - true bypasses cache (Refresh button).
  * @param {number} [quarter] - 1–4 for the quarterly view; 0/absent = full FYs.
- * @param {number} [fyCount] - FY comparison range: 3 all, 2 prev+current, 1 current.
+ * @param {(number|string)} [fyRange] - "3"/"2"/"1" trailing FYs, "c2" = closed FYs.
  * @returns {string} JSON string — ViewReport.html parses it client-side
  *   (marshalling a large nested object through the iframe bridge is slow).
  */
-function getWorkforceReportData(scope, force, quarter, fyCount) {
+function getWorkforceReportData(scope, force, quarter, fyRange) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
   let scopeName = String(scope || "company").trim() || "company";
   const q = (quarter >= 1 && quarter <= 4) ? Math.floor(quarter) : 0;
-  const nFy = sanitizeFyCount_(fyCount);
+  const nFy = sanitizeFyRange_(fyRange);
   const cache = CacheService.getScriptCache();
   const key = cacheKeyForScope_(scopeName, q, nFy);
   if (!force) {
@@ -1839,7 +1858,7 @@ function getWorkforceReportData(scope, force, quarter, fyCount) {
   const json = JSON.stringify(payload);
   cachePutLarge_(cache, cacheKeyForScope_(scopeName, q, nFy), json, CONFIG_WR.CACHE_TTL_SEC);
   Logger.log("✅ getWorkforceReportData(" + scopeName + (q ? " Q" + q : "") +
-             (nFy !== CONFIG_WR.FY_COUNT ? " ×" + nFy + "FY" : "") + "): built in " +
+             (nFy !== String(CONFIG_WR.FY_COUNT) ? " fy:" + nFy : "") + "): built in " +
              Math.round((Date.now() - t0) / 1000) + "s — " + json.length + " chars");
   return json;
 }
@@ -1853,7 +1872,7 @@ function getWorkforceReportData(scope, force, quarter, fyCount) {
  * renders fully without it (AI is additive, never load-bearing).
  * @returns {string} JSON of {ok, narrative, fromCache} | {ok:false, error}.
  */
-function getBriefNarrative(force, scope, fyCount) {
+function getBriefNarrative(force, scope, fyRange) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
 
@@ -1869,13 +1888,13 @@ function getBriefNarrative(force, scope, fyCount) {
 
   // The narrative derives from the same payload the client renders — an
   // unknown scope degrades to company inside getWorkforceReportData.
-  const raw = getWorkforceReportData(scope, false, 0, fyCount);
+  const raw = getWorkforceReportData(scope, false, 0, fyRange);
   const payload = JSON.parse(raw);
   if (!payload.ok || !payload.brief) {
     return JSON.stringify({ ok: false, error: "Brief data unavailable for this scope." });
   }
 
-  const aiKey = cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai";
+  const aiKey = cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyRange) + "_ai";
   if (!force) {
     const hit = cacheGetLarge_(cache, aiKey);
     if (hit) {
@@ -2155,13 +2174,13 @@ function writeBriefDoc_(body, payload, narrative) {
  * @param {string} view - "report" (View A) or "brief" (View B).
  * @returns {string} JSON of {ok, url, name} | {ok:false, error}.
  */
-function exportReportToDoc(scope, quarter, fyCount, view) {
+function exportReportToDoc(scope, quarter, fyRange, view) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
   try {
     // A brief export must not carry a quarterly filter (brief is full-FY).
     const q = view === "brief" ? 0 : quarter;
-    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyCount));
+    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyRange));
     if (!payload.ok) return JSON.stringify({ ok: false, error: "Report unavailable." });
     const wantBrief = view === "brief" && payload.brief;
 
@@ -2170,7 +2189,7 @@ function exportReportToDoc(scope, quarter, fyCount, view) {
     let narrative = null;
     if (wantBrief) {
       const hit = cacheGetLarge_(CacheService.getScriptCache(),
-        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai");
+        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyRange) + "_ai");
       if (hit) {
         try { narrative = JSON.parse(hit).narrative || null; } catch (e) { narrative = null; }
       }
@@ -2218,17 +2237,17 @@ function exportReportToDoc(scope, quarter, fyCount, view) {
  * embedded only when already cached; this never calls Gemini.
  * @returns {string} JSON of {ok, html} | {ok:false, error}.
  */
-function getConfluenceMarkup(scope, quarter, fyCount, view) {
+function getConfluenceMarkup(scope, quarter, fyRange, view) {
   const access = checkReportAccess();
   if (!access.allowed) return JSON.stringify({ ok: false, error: "denied" });
   try {
     const q = view === "brief" ? 0 : quarter;
-    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyCount));
+    const payload = JSON.parse(getWorkforceReportData(scope, false, q, fyRange));
     if (!payload.ok) return JSON.stringify({ ok: false, error: "Report unavailable." });
     if (view === "brief" && payload.brief) {
       let narrative = null;
       const hit = cacheGetLarge_(CacheService.getScriptCache(),
-        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyCount) + "_ai");
+        cacheKeyForScope_(payload.meta.scope, 0, payload.meta.fyRange) + "_ai");
       if (hit) {
         try { narrative = JSON.parse(hit).narrative || null; } catch (e) { narrative = null; }
       }

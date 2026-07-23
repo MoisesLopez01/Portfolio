@@ -377,10 +377,14 @@ function term(over) {
     p.brief.glance.headcount === 4 && p.brief.glance.interns === 2);
 
   const attrSec = p.report.sections.find(s => s.id === "attrition");
-  check("ghost dept: RISK fires for a leaver-only department",
-    attrSec.lines.some(l => l.badge === "RISK" &&
-      l.text.indexOf('"Managed Services"') !== -1 &&
-      l.text.indexOf("DEPT_REMAP") !== -1));
+  // Re-org directive 2026-07-22: historical departments are expected, so ONE
+  // quiet NOTE — never a per-department RISK wall.
+  check("ghost dept: single NOTE names the restructuring, no RISK lines",
+    attrSec.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("1 historical department") !== -1 &&
+      l.text.indexOf("Managed Services") !== -1 &&
+      l.text.indexOf("DEPT_REMAP") !== -1) &&
+    attrSec.lines.every(l => l.badge !== "RISK" || l.text.indexOf("Managed Services") === -1));
 
   // Headcount chain: a closed FY's ending headcount IS the next FY's opening one.
   const fys = fyListWR_(REF, 3);
@@ -672,4 +676,17 @@ function term(over) {
     one.meta.fys.map(f => f.label).join() === "FY27" && one.brief != null);
   const bad = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, 9);
   check("payload: out-of-range fyCount falls back to all FYs", bad.meta.fyCount === 3);
+
+  // Closed-years view — the FY25–FY26 board-deck range (no in-progress noise).
+  const closed = buildReportPayload_(records, hist, {}, "company", ctx, CONFIG_WR, 0, "c2");
+  check("payload: c2 = the two closed FYs",
+    closed.meta.fys.map(f => f.label).join() === "FY25,FY26" &&
+    closed.meta.fyRange === "c2" && closed.meta.fyCount === 2);
+  check("payload: c2 has no in-progress window (no as-of NOTE)",
+    closed.meta.fys.every(f => !f.inProgress) &&
+    closed.report.sections.find(s => s.id === "movement")
+      .lines.every(l => l.text.indexOf("in progress") === -1));
+  check("payload: c2 keeps the brief and two movement rows",
+    closed.brief != null &&
+    closed.report.sections.find(s => s.id === "movement").tables[0].rows.length === 2);
 })();

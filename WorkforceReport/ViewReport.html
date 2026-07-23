@@ -176,8 +176,9 @@
       <button data-view="brief" onclick="switchView('brief')">📊 Board brief</button>
     </div>
     <select id="scopeSel" onchange="setScope(this.value)"></select>
-    <select id="fySel" onchange="setFyCount(this.value)" title="Fiscal-year comparison range">
+    <select id="fySel" onchange="setFyRange(this.value)" title="Fiscal-year comparison range">
       <option value="3">All 3 FYs</option>
+      <option value="c2">Closed FYs</option>
       <option value="2">Prev + current FY</option>
       <option value="1">Current FY only</option>
     </select>
@@ -207,7 +208,7 @@ const STATE = {
   data: null,          // payload for the CURRENT scope+quarter+fyCount
   scope: "company",
   quarter: 0,          // 0 = full FYs, 1–4 = fiscal-quarter view
-  fyCount: 3,          // 3 = all FYs, 2 = previous + current, 1 = current only
+  fyRange: "3",        // "3"/"2"/"1" trailing FYs; "c2" = the two closed FYs
   view: "report",      // "report" | "brief" | "access"
   narratives: {},      // "scope|fyCount" → validated AI narrative (View B)
   narrativeError: null,
@@ -225,8 +226,8 @@ function esc(s) {
 function fmtInt(n) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") : "—"; }
 function fmtPct(x, dp) { return (typeof x === "number" && isFinite(x)) ? (x * 100).toFixed(dp == null ? 1 : dp) + "%" : "—"; }
 function fmtMoney(n, code) { return (typeof n === "number" && isFinite(n)) ? Math.round(n).toLocaleString("en-US") + (code ? " " + code : "") : "—"; }
-function cacheKey() { return STATE.scope + "|" + STATE.quarter + "|" + STATE.fyCount; }
-function narrativeKey() { return STATE.scope + "|" + STATE.fyCount; }
+function cacheKey() { return STATE.scope + "|" + STATE.quarter + "|" + STATE.fyRange; }
+function narrativeKey() { return STATE.scope + "|" + STATE.fyRange; }
 function currentNarrative() { return STATE.narratives[narrativeKey()] || null; }
 
 function lineHtml(l) {
@@ -284,8 +285,8 @@ function setQuarter(q) {
   if (STATE.view === "brief" && STATE.quarter !== 0) STATE.view = "report";
   refetchOrRender();
 }
-function setFyCount(n) {
-  STATE.fyCount = parseInt(n, 10) || 3;
+function setFyRange(v) {
+  STATE.fyRange = String(v || "3");
   refetchOrRender();
 }
 function toggleTheme() {
@@ -321,11 +322,17 @@ function syncHeader() {
     document.getElementById("quarterSel").value = String(STATE.quarter);
     // Relabel the FY-range options with real FY labels ("FY26–FY27" beats
     // "Prev + current FY" once we know which years those are).
-    const curFy = parseInt(d.meta.fys[d.meta.fys.length - 1].label.slice(2), 10);
+    // The newest FY in a "c2" payload is the last CLOSED year — anchor the
+    // option labels on the true current FY either way.
+    const lastFy = parseInt(d.meta.fys[d.meta.fys.length - 1].label.slice(2), 10);
+    const curFy = STATE.fyRange === "c2" ? lastFy + 1 : lastFy;
+    const label = v =>
+      v === "1"  ? "FY" + curFy + " only" :
+      v === "c2" ? "FY" + (curFy - 2) + "–FY" + (curFy - 1) + " (closed)" :
+                   "FY" + (curFy - parseInt(v, 10) + 1) + "–FY" + curFy;
     const fySel = document.getElementById("fySel");
-    const label = n => n === 1 ? "FY" + curFy + " only" : "FY" + (curFy - n + 1) + "–FY" + curFy;
-    [...fySel.options].forEach(o => { o.textContent = label(parseInt(o.value, 10)); });
-    fySel.value = String(STATE.fyCount);
+    [...fySel.options].forEach(o => { o.textContent = label(o.value); });
+    fySel.value = STATE.fyRange;
     const fyRange = d.meta.fys.length === 1
       ? d.meta.fys[0].label
       : d.meta.fys[0].label + "–" + d.meta.fys[d.meta.fys.length - 1].label;
@@ -346,7 +353,7 @@ function loadData(force) {
   google.script.run
     .withSuccessHandler(onData)
     .withFailureHandler(onLoadError)
-    .getWorkforceReportData(STATE.scope, !!force, STATE.quarter, STATE.fyCount);
+    .getWorkforceReportData(STATE.scope, !!force, STATE.quarter, STATE.fyRange);
 }
 function onData(raw) {
   let d = raw;
@@ -357,7 +364,7 @@ function onData(raw) {
   STATE.data = d;
   STATE.scope = d.meta.scope;     // server may degrade an unknown scope to company
   STATE.quarter = d.meta.quarter; // and echoes the applied quarter + FY range
-  STATE.fyCount = d.meta.fyCount || 3;
+  STATE.fyRange = d.meta.fyRange || String(d.meta.fyCount || 3);
   STATE.cache[cacheKey()] = d;
   document.getElementById("loading").classList.add("hidden");
   syncHeader();
@@ -433,7 +440,7 @@ function generateNarrative(force) {
       STATE.narrativeError = String((err && err.message) || err);
       render();
     })
-    .getBriefNarrative(!!force, STATE.scope, STATE.fyCount);
+    .getBriefNarrative(!!force, STATE.scope, STATE.fyRange);
 }
 
 // ── Google Doc export (current view + filters) ──────────────
@@ -459,7 +466,7 @@ function exportDoc() {
       syncHeader();
       render();
     })
-    .exportReportToDoc(STATE.scope, STATE.quarter, STATE.fyCount, view);
+    .exportReportToDoc(STATE.scope, STATE.quarter, STATE.fyRange, view);
 }
 function dismissExport() {
   STATE.exportResult = null;
@@ -497,7 +504,7 @@ function copyConfluence() {
       done("📋 Copy for Confluence");
       render();
     })
-    .getConfluenceMarkup(STATE.scope, STATE.quarter, STATE.fyCount, view);
+    .getConfluenceMarkup(STATE.scope, STATE.quarter, STATE.fyRange, view);
 }
 
 // Rich-text copy: a hidden contenteditable selection + execCommand keeps the
