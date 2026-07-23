@@ -72,6 +72,12 @@ const CONFIG_WR = {
   CREW_RE: /crew member|contractor/i, // same crew rule as PS / CompDash
   INACTIVE_RE: /terminat|job offer|resign|left|inactive|former|offboard/i,
 
+  // Job family from the Job Title numeric prefix: "04.I3.1" → JF004,
+  // "18.M4.3" → JF018 (identity rule, prefix zero-padded to 3 digits).
+  // Exceptions go here as prefix → family overrides, e.g. { "04": "JF005" } —
+  // one config entry, no parser change.
+  JOB_FAMILY_MAP: {},
+
   // Employee Type (roster column, restored 2026-07-22): Intern is excluded
   // from the HEADLINE population; Regular Employee, Employer of Record and
   // Part Time are all regular employees. A 30% blended attrition in front of
@@ -113,6 +119,18 @@ function parseLevel_(jobTitle) {
   if (!m) return { level: "—", track: null };
   const letter = m[1].toUpperCase();
   return { level: letter + parseInt(m[2], 10), track: letter === "I" ? "IC" : "M" };
+}
+
+/**
+ * Job family from the Job Title numeric prefix ("04.I3.1" → JF004,
+ * "18.M4.3" → JF018). CONFIG_WR.JOB_FAMILY_MAP overrides individual prefixes.
+ * @returns {string} "JFnnn", or "" when the title carries no numeric prefix.
+ */
+function parseJobFamily_(jobTitle, cfg) {
+  const m = String(jobTitle || "").match(/^\s*(\d{1,3})\./);
+  if (!m) return "";
+  const map = (cfg || CONFIG_WR).JOB_FAMILY_MAP || {};
+  return map[m[1]] || "JF" + m[1].padStart(3, "0");
 }
 
 /** Sort key: ICs before management, numeric within track, "—" last. */
@@ -484,10 +502,11 @@ function tenureBucket_(years) {
 const TENURE_BUCKETS_ = ["<1y", "1–3y", "3–5y", "≥5y", "unknown"];
 
 function buildComposition_(active, asOf) {
-  const deptMap = new Map();
+  const deptMap = new Map(), familyMap = new Map();
   active.forEach(r => {
     const k = r.dept || "—";
     deptMap.set(k, (deptMap.get(k) || 0) + 1);
+    if (r.jobFamily) familyMap.set(r.jobFamily, (familyMap.get(r.jobFamily) || 0) + 1);
   });
   const levelMap = new Map();
   active.forEach(r => {
@@ -504,6 +523,8 @@ function buildComposition_(active, asOf) {
   return {
     total: active.length,
     depts: [...deptMap.entries()].map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
+    families: [...familyMap.entries()].map(([key, count]) => ({ key, count }))
       .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
     icCount: active.filter(r => r.track === "IC").length,
     mCount: active.filter(r => r.track === "M").length,
@@ -553,18 +574,23 @@ function buildCompStructure_(active, mode, cfg) {
  * Job-family qualification of inversion flags — inversions are INVESTIGATION
  * TRIGGERS, not errors: a manager in a lower-market family (People, Finance)
  * can legitimately earn below a senior IC in a high-demand technical family.
- * For each flagged pair, find departments (the job-family proxy) where BOTH
- * bands are present AND the manager average still sits below the IC average:
- * those are genuine inversion candidates. A pair whose bands never share a
- * department is likely a market-rate mix across families. Only membership is
- * exposed — never the tiny per-department averages themselves.
+ * The dimension is the TRUE job family from the title prefix (JF004, JF018 —
+ * parseJobFamily_) when present, falling back to department. For each flagged
+ * pair, find groups where BOTH bands are present AND the manager average
+ * still sits below the IC average: those are genuine inversion candidates.
+ * A pair whose bands never invert inside one group is likely a market-rate
+ * mix across families. Only membership is exposed — never the tiny per-group
+ * averages themselves.
  */
 function qualifyInversions_(active, inversions, mode) {
   if (!inversions.length) return inversions;
-  const depts = [...new Set(active.map(r => r.dept).filter(Boolean))].sort();
+  const useFamily = active.some(r => r.jobFamily);
+  const field = useFamily ? "jobFamily" : "dept";
+  const dimLabel = useFamily ? "job family" : "department";
+  const groups = [...new Set(active.map(r => r[field]).filter(Boolean))].sort();
   return inversions.map(inv => {
-    const withinDepts = depts.filter(d => {
-      const grp = active.filter(r => r.dept === d);
+    const withinGroups = groups.filter(g => {
+      const grp = active.filter(r => r[field] === g);
       const avgOf = level => {
         const vals = grp.filter(r => r.level === level)
           .map(r => tccOf_(r, mode)).filter(v => v > 0);
@@ -575,8 +601,9 @@ function qualifyInversions_(active, inversions, mode) {
       return m != null && ic != null && m < ic;
     });
     return Object.assign({}, inv, {
-      withinDepts,
-      crossFamilyOnly: withinDepts.length === 0,
+      withinGroups,
+      dimLabel,
+      crossFamilyOnly: withinGroups.length === 0,
     });
   });
 }
@@ -816,12 +843,19 @@ function secComposition_(comp) {
     fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") +
       " (Hire Date to extraction date)."),
   ];
+  const tables = [
+    { title: "Headcount by department", headers: ["Department", "Headcount"],
+      rows: comp.depts.map(d => [d.key, d.count]) },
+  ];
+  // Job family (from the title prefix — JF004, JF018, …): the market-rate
+  // segmentation dimension the inversion triggers qualify against.
+  if (comp.families.length) {
+    tables.push({ title: "Headcount by job family", headers: ["Job family", "Headcount"],
+      rows: comp.families.map(f => [f.key, f.count]) });
+  }
   return {
     id: "composition", title: "2 · Composition", lines,
-    tables: [
-      { title: "Headcount by department", headers: ["Department", "Headcount"],
-        rows: comp.depts.map(d => [d.key, d.count]) },
-    ],
+    tables,
     // Tenure reads faster as a bar chart than as a table; level distribution
     // lives ONLY in section 3 (with average cost) — never duplicated here.
     charts: [
@@ -841,11 +875,11 @@ function secCompStructure_(cs, mode, cfg) {
     lines.push(fact_("Salary inversion — investigation trigger: the " + inv.mLevel +
       " band average (" + fmtMoneyShort_(inv.mAvg, mode.code) + ") sits below the " +
       inv.icLevel + " band average (" + fmtMoneyShort_(inv.icAvg, mode.code) + ")" +
-      (inv.withinDepts && inv.withinDepts.length
-        ? "; the pattern holds inside " + inv.withinDepts.join(", ") +
+      (inv.withinGroups && inv.withinGroups.length
+        ? "; the pattern holds inside " + inv.withinGroups.join(", ") +
           " — a genuine inversion candidate"
-        : "; the two bands never invert within a single department — likely a " +
-          "job-family market-rate mix, not an equity error") + "."));
+        : "; the two bands never invert within a single " + (inv.dimLabel || "department") +
+          " — likely a job-family market-rate mix, not an equity error") + "."));
   });
   if (cs.inversions.length) {
     lines.push(note_("Inversion flags are investigation triggers, not errors: a manager " +
@@ -1191,11 +1225,11 @@ function buildStructuralRisks_(active, records, fys, ctx, cfg, compStructure, cu
       detail: inv.mLevel + " band average (" + fmtMoneyShort_(inv.mAvg, curCode) +
         ") sits below the " + inv.icLevel + " band average (" +
         fmtMoneyShort_(inv.icAvg, curCode) + "). Investigation trigger: " +
-        (inv.withinDepts && inv.withinDepts.length
-          ? "the pattern holds inside " + inv.withinDepts.join(", ") +
+        (inv.withinGroups && inv.withinGroups.length
+          ? "the pattern holds inside " + inv.withinGroups.join(", ") +
             " — a genuine inversion candidate."
-          : "the bands never invert within a single department — likely a job-family " +
-            "market-rate mix; verify before treating as an equity issue."),
+          : "the bands never invert within a single " + (inv.dimLabel || "department") +
+            " — likely a job-family market-rate mix; verify before treating as an equity issue."),
     });
   });
   const total = active.length;
@@ -1792,6 +1826,7 @@ function readRosterWR_() {
       name,
       active: !termDate && !CONFIG_WR.INACTIVE_RE.test(status),
       jobTitle: title, level: lvl.level, track: lvl.track,
+      jobFamily: parseJobFamily_(title),
       employeeType: empType,
       // Intern is the only non-regular type; Regular Employee, Employer of
       // Record, Part Time (and blank) all count as regular employees.
@@ -2463,6 +2498,11 @@ function debugReportPipeline() {
   Logger.log("Employee Type split: " + (r.records.length - interns.length) + " regular records / " +
              interns.length + " intern records (" + interns.filter(x => x.active).length +
              " active interns) — headline attrition covers regulars only");
+  const withFam = active.filter(x => x.jobFamily).length;
+  const fams = [...new Set(active.map(x => x.jobFamily).filter(Boolean))].sort();
+  Logger.log("Job family parse: " + withFam + "/" + active.length + " actives → " +
+             fams.length + " families (" + fams.join(", ") + ") — verify against the " +
+             "catalog; prefix exceptions go in CONFIG_WR.JOB_FAMILY_MAP");
   const activeDepts = new Set(active.filter(x => !x.isIntern).map(x => x.dept).filter(Boolean));
   const ghosts = [...new Set(r.records
     .filter(x => !x.isIntern && x.termDate && x.dept && !activeDepts.has(x.dept))

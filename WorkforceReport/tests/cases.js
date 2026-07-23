@@ -12,6 +12,7 @@ function mkEmp(over) {
   const base = {
     empNo: "E" + __seq, name: "Emp " + __seq,
     active: true, jobTitle: "04.I3.1", level: "I3", track: "IC",
+    jobFamily: "JF004",
     employeeType: "Regular Employee", isIntern: false,
     dept: "Services", lob: "", keyLocation: "Mexico", location: "", currency: "MXN",
     hireDate: new Date(2020, 0, 1), termDate: null,
@@ -187,6 +188,17 @@ function term(over) {
     tenureBucket_(3) === "3–5y" && tenureBucket_(5) === "≥5y" && tenureBucket_(null) === "unknown");
 })();
 
+// ── Job family from the title prefix ────────────────────────────────────────
+(function () {
+  check("jobFamily: 04.I3.1 → JF004 (identity, zero-padded)",
+    parseJobFamily_("04.I3.1", CONFIG_WR) === "JF004");
+  check("jobFamily: 18.M4.3 → JF018", parseJobFamily_("18.M4.3", CONFIG_WR) === "JF018");
+  check("jobFamily: no numeric prefix → unknown",
+    parseJobFamily_("Senior Engineer", CONFIG_WR) === "" && parseJobFamily_(null, CONFIG_WR) === "");
+  check("jobFamily: JOB_FAMILY_MAP override wins",
+    parseJobFamily_("04.I3.1", Object.assign({}, CONFIG_WR, { JOB_FAMILY_MAP: { "04": "JF005" } })) === "JF005");
+})();
+
 // ── Comp structure: bands, small-band suppression, inversions ───────────────
 (function () {
   const mk3 = (level, track, tcc) => [1, 2, 3].map(() =>
@@ -210,27 +222,37 @@ function term(over) {
   const noInv = buildCompStructure_(mk3("I5", "IC", 100000).concat(mk3("M4", "M", 150000)), "local", CONFIG_WR);
   check("structure: no inversion when manager band higher", noInv.inversions.length === 0);
 
-  // Job-family qualification: same-department inversion = genuine candidate.
-  check("inversion qual: pattern holding within a department is flagged as genuine",
-    cs.inversions[0].withinDepts.join() === "Services" &&
+  // Job-family qualification (title-prefix families, JF004 fixtures):
+  // the same-family inversion is a genuine candidate.
+  check("inversion qual: pattern holding within a job family is flagged as genuine",
+    cs.inversions[0].withinGroups.join() === "JF004" &&
+    cs.inversions[0].dimLabel === "job family" &&
     cs.inversions[0].crossFamilyOnly === false);
-  // Cross-family case: the manager band lives in People, the IC band in
-  // Services — scope-wide averages invert but no single department does.
+  // Cross-family case: the manager band is JF007, the IC band JF004 —
+  // scope-wide averages invert but no single family does.
   const cross = buildCompStructure_(
-    mk3("M4", "M", 110000).map(r => Object.assign(r, { dept: "People" }))
+    mk3("M4", "M", 110000).map(r => Object.assign(r, { jobFamily: "JF007", jobTitle: "07.M4.1" }))
       .concat(mk3("I5", "IC", 120000)), "local", CONFIG_WR);
-  check("inversion qual: bands that never share a department read cross-family",
+  check("inversion qual: bands that never share a family read cross-family",
     cross.inversions.length === 1 && cross.inversions[0].crossFamilyOnly === true &&
-    cross.inversions[0].withinDepts.length === 0);
+    cross.inversions[0].withinGroups.length === 0);
+  // Family absent everywhere → the qualifier falls back to department.
+  const noFam = buildCompStructure_(
+    mk3("M4", "M", 110000).concat(mk3("I5", "IC", 120000))
+      .map(r => Object.assign(r, { jobFamily: "" })), "local", CONFIG_WR);
+  check("inversion qual: department fallback when no family parses",
+    noFam.inversions[0].dimLabel === "department" &&
+    noFam.inversions[0].withinGroups.join() === "Services");
 
   const secInv = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
   check("inversion FACT: investigation-trigger wording + genuine-candidate branch",
     secInv.lines.some(l => l.badge === "FACT" &&
       l.text.indexOf("investigation trigger") !== -1 &&
-      l.text.indexOf("holds inside Services — a genuine inversion candidate") !== -1));
+      l.text.indexOf("holds inside JF004 — a genuine inversion candidate") !== -1));
   const secCross = secCompStructure_(cross, { mode: "local", code: "MXN" }, CONFIG_WR);
   check("inversion FACT: cross-family branch names the market-rate mix",
     secCross.lines.some(l => l.badge === "FACT" &&
+      l.text.indexOf("never invert within a single job family") !== -1 &&
       l.text.indexOf("job-family market-rate mix") !== -1));
   check("inversion NOTE: triggers-not-errors guidance renders once",
     secInv.lines.filter(l => l.badge === "NOTE" &&
@@ -462,10 +484,13 @@ function term(over) {
   const comp = buildComposition_(active, REF);
   const secC = secComposition_(comp);
   check("composition: no level-distribution table (lives in section 3 only)",
-    secC.tables.every(t => t.title.indexOf("Level") === -1) && secC.tables.length === 1);
+    secC.tables.every(t => t.title.indexOf("Level") === -1));
   check("composition: tenure renders as a bar chart, not a table",
     secC.charts.length === 1 && secC.charts[0].title === "Tenure distribution" &&
     secC.charts[0].bars.some(b => b.label === "1–3y" && b.value === 3));
+  check("composition: job-family headcount table renders when families parse",
+    secC.tables.some(t => t.title === "Headcount by job family" &&
+      t.rows.some(r => r[0] === "JF004" && r[1] === 6)));
 
   const cs = buildCompStructure_(active, "local", CONFIG_WR);
   const secS = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
