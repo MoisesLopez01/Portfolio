@@ -387,17 +387,39 @@ function term(over) {
       l.text.indexOf("DEPT_REMAP") !== -1) &&
     attrSec.lines.every(l => l.badge !== "RISK" || l.text.indexOf("Managed Services") === -1));
 
-  // Headcount chain: a closed FY's ending headcount IS the next FY's opening one.
+  // Headcount chain + the CFO identity: closing = opening + hires − exits.
   const fys = fyListWR_(REF, 3);
   const chain = [
     mkEmp({ hireDate: new Date(2019, 0, 1) }),
-    mkEmp({ hireDate: new Date(2025, 6, 1) }),   // hired Jul 1 2025 — the old FY25-close vs FY26-open gap
+    mkEmp({ hireDate: new Date(2025, 6, 1) }),   // hired Jul 1 2025 — the old ±2 seam artifact
     term({ hireDate: new Date(2020, 0, 1), termDate: new Date(2025, 5, 30) }), // term Jun 30 2025
   ];
   const m25 = fyMovement_(chain, fys[0], REF);
   const m26 = fyMovement_(chain, fys[1], REF);
+  const m27 = fyMovement_(chain, fys[2], REF);
   check("chain: FY25 closing headcount === FY26 opening headcount",
-    m25.hcEnd === m26.hcStart && m25.hcEnd === 2);
+    m25.hcEnd === m26.hcStart && m25.hcEnd === 1);
+  check("identity: closing = opening + hires − exits for every FY (reclass 0)",
+    [m25, m26, m27].every(m =>
+      m.hcEnd === m.hcStart + m.hires - m.exits && m.reclass === 0));
+  check("identity: Jul-1 hire is an FY26 hire, not FY25 closing headcount",
+    m25.hires === 0 && m26.hires === 1 && m25.hcEnd === 1 && m26.hcEnd === 2);
+  // In-progress FY: a future-dated hire is not yet a "to date" hire.
+  const future = chain.concat([mkEmp({ hireDate: new Date(2026, 7, 15) })]); // Aug 2026 > asOf
+  const f27 = fyMovement_(future, fys[2], REF);
+  check("identity: future-dated hire excluded from to-date counts, still foots",
+    f27.hires === 0 && f27.reclass === 0 && f27.hcEnd === f27.hcStart);
+  // Reconciliation NOTE: clean data states that the table foots exactly.
+  const secClean = secMovement_([m25, m26, m27], { firstFyTermGuard: false }, fys, "2026-07-21");
+  check("recon NOTE: clean data → 'foots exactly'",
+    secClean.lines.some(l => l.badge === "NOTE" && l.text.indexOf("foots exactly") !== -1));
+  // Genuine residue (e.g. a two-row intern→regular conversion) is stated per FY.
+  const off = Object.assign({}, m26, { reclass: 2, hcEnd: m26.hcEnd + 2 });
+  const secOff = secMovement_([m25, off], { firstFyTermGuard: false }, fys, "2026-07-21");
+  check("recon NOTE: residue renders the per-FY equation with the ± term",
+    secOff.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("± reclassification") !== -1 &&
+      l.text.indexOf("FY26: " + off.hcStart + " + " + off.hires + " − " + off.exits + " + 2 = " + off.hcEnd) !== -1));
 })();
 
 // ── Exec short numbers + section reshape (composition/structure/attrition) ──

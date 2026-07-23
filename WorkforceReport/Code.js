@@ -79,10 +79,19 @@ const CONFIG_WR = {
   // conversation — interns flow in their own strand.
   INTERN_RE: /intern/i,
 
-  // Ghost-department remap: departments that were renamed/absorbed live on in
-  // leaver rows and distort department-level attrition. Map old → current
-  // here (e.g. "Managed Services": "Services"); unmapped ghosts fire a RISK.
-  DEPT_REMAP: {},
+  // Ghost-department remap — APPLIED BY DEFAULT at roster read, so every
+  // scope computes on the same consolidated departments. Renamed/absorbed
+  // units live on in leaver rows; map old → CURRENT roster department here.
+  // Eliminated units (the Marketing family, …) stay unmapped on purpose —
+  // they are correct history, covered by the restructuring NOTE.
+  // Extend WITHOUT a code deploy via the WR_DEPT_REMAP Script Property
+  // (JSON, merged over this map): {"Old Dept":"Current Dept", ...}.
+  // Verify targets against debugReportPipeline's ghost list — a wrong target
+  // name would itself become a ghost.
+  DEPT_REMAP: {
+    "Managed Services":      "Services", // merged into Services (re-org, confirmed 2026-07-22)
+    "Professional Services": "Services",
+  },
 
   DEBUG: false,
 };
@@ -287,38 +296,47 @@ function tccOf_(r, mode) {
 
 // ── Headcount / movement / attrition engines — spec §6.4–6.5 ───────────────
 
-function headcountOn_(records, date) {
-  // Null hireDate = employment start unknown → treat as already hired, keeping
-  // the denominator symmetric with the termination numerator.
+// Two headcount instants, chosen so `opening + hires − exits = closing` is an
+// IDENTITY for every roster row (the CFO's "why doesn't this add up?" can
+// never happen from measurement):
+//   opening = START of day: hired strictly before it, not yet terminated
+//   closing = END of day:  hired on/before it, terminated after it
+// closing(Jun 30) ≡ opening(Jul 1), so the FY chain stays continuous too.
+// Null hireDate = employment start unknown → treated as already hired.
+
+function headcountOpenOn_(records, date) {
+  return records.filter(r =>
+    (!r.hireDate || r.hireDate < date) && (!r.termDate || r.termDate >= date)).length;
+}
+
+function headcountCloseOn_(records, date) {
   return records.filter(r =>
     (!r.hireDate || r.hireDate <= date) && (!r.termDate || r.termDate > date)).length;
 }
 
-function dayAfter_(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-}
-
 /**
- * One FY's movement block. Rate = exits ÷ mean(start, end headcount);
- * end = asOf for the in-progress FY (existing fyAttritionBlock_ behavior).
- * A CLOSED period's ending headcount is measured at the NEXT period's opening
- * instant (end + 1 day), so the chain is continuous by construction — FY25's
- * closing headcount IS FY26's opening headcount, never a phantom ±2 gap from
- * Jun-30 exits / Jul-1 hires landing between two measurement instants.
+ * One FY's movement block. Rate = exits ÷ mean(opening, closing headcount);
+ * the in-progress FY closes at asOf, and its hire/exit counts stop there too
+ * (a future-dated hire is not yet a "to date" hire).
+ * reclass = closing − opening − hires + exits: 0 by identity for single-stint
+ * rows; a non-zero value is genuine reclassification/data residue (e.g. an
+ * intern-to-regular conversion recorded as two roster rows) and is surfaced
+ * in the reconciliation NOTE, never silently absorbed.
  */
 function fyMovement_(records, fy, asOf) {
-  const end = (fy.inProgress && asOf && asOf < fy.end) ? asOf : dayAfter_(fy.end);
+  const evEnd = (fy.inProgress && asOf && asOf < fy.end) ? asOf : fy.end;
   const hires = records.filter(r =>
-    r.hireDate && r.hireDate >= fy.start && r.hireDate <= fy.end).length;
+    r.hireDate && r.hireDate >= fy.start && r.hireDate <= evEnd).length;
   const exits = records.filter(r =>
-    r.termDate && r.termDate >= fy.start && r.termDate <= fy.end).length;
-  const hcStart = headcountOn_(records, fy.start);
-  const hcEnd = headcountOn_(records, end);
+    r.termDate && r.termDate >= fy.start && r.termDate <= evEnd).length;
+  const hcStart = headcountOpenOn_(records, fy.start);
+  const hcEnd = headcountCloseOn_(records, evEnd);
   const avg = (hcStart + hcEnd) / 2;
   return {
     label: fy.label, inProgress: fy.inProgress,
     hires, exits, net: hires - exits,
     hcStart, hcEnd,
+    reclass: hcEnd - hcStart - hires + exits,
     rate: avg > 0 ? exits / avg : null,
   };
 }
@@ -831,6 +849,22 @@ function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
   lines.push(note_("Attrition rate = exits ÷ mean(headcount at period start, period end); " +
     "the open FY uses the as-of headcount as the period end. Hires are counted by " +
     "Hire Date and exits by Termination/Release Date."));
+  // The CFO reconciliation line: opening + hires − exits (± reclassification)
+  // = closing. With opening/closing measured at start/end-of-day instants the
+  // equation is an identity; any residue is real reclassification and is
+  // stated per FY, never left as an unexplained gap.
+  const offFys = moves.filter(m => m.reclass);
+  if (offFys.length) {
+    lines.push(note_("Headcount reconciliation: closing = opening + hires − exits ± " +
+      "reclassification — " +
+      offFys.map(m => m.label + ": " + m.hcStart + " + " + m.hires + " − " + m.exits +
+        (m.reclass > 0 ? " + " : " − ") + Math.abs(m.reclass) + " = " + m.hcEnd).join("; ") +
+      ". The ± term is movement between the regular and intern/fixed-term populations " +
+      "or roster corrections — headcount that changes with no hire or exit event."));
+  } else {
+    lines.push(note_("Headcount reconciliation: closing = opening + hires − exits — " +
+      "the movement table foots exactly for every period shown."));
+  }
   if (coverage.firstFyTermGuard) {
     lines.push(risk_(coverage.firstFyLabel + " exits may be undercounted — earliest retained " +
       "termination is " + (coverage.earliestTermDate || "none on file") + "."));
@@ -1682,6 +1716,16 @@ function readRosterWR_() {
   const genderAvailable = c.gender !== -1;
   const tccUsdAvailable = c.tccUsd !== -1;
   const empTypeAvailable = c.empType !== -1;
+  // Effective remap = code defaults + WR_DEPT_REMAP Script Property (JSON),
+  // property entries winning — new merges never need a code deploy.
+  const deptRemap = Object.assign({}, CONFIG_WR.DEPT_REMAP);
+  try {
+    const extra = props_().getProperty("WR_DEPT_REMAP");
+    if (extra) Object.assign(deptRemap, JSON.parse(extra));
+  } catch (e) {
+    Logger.log("⚠️ readRosterWR_: WR_DEPT_REMAP property is not valid JSON — ignored (" + e.message + ")");
+  }
+  let remapped = 0;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -1703,7 +1747,7 @@ function readRosterWR_() {
       // Record, Part Time (and blank) all count as regular employees.
       isIntern: empTypeAvailable && CONFIG_WR.INTERN_RE.test(empType),
       // Ghost-department remap (renamed/absorbed units live on in leaver rows).
-      dept: CONFIG_WR.DEPT_REMAP[rawDept] || rawDept,
+      dept: deptRemap[rawDept] ? (remapped++, deptRemap[rawDept]) : rawDept,
       lob: c.lob !== -1 ? String(row[c.lob] || "").trim() : "",
       keyLocation: String(row[c.keyLoc] || "").trim(),
       location: c.location !== -1 ? String(row[c.location] || "").trim() : "",
@@ -1721,8 +1765,9 @@ function readRosterWR_() {
   log_("readRosterWR_: " + records.length + " records, gender " +
        (genderAvailable ? "available" : "pending") +
        ", TCC USD " + (tccUsdAvailable ? "available" : "pending") +
-       ", Employee Type " + (empTypeAvailable ? "available" : "pending"));
-  return { records, genderAvailable, tccUsdAvailable, empTypeAvailable };
+       ", Employee Type " + (empTypeAvailable ? "available" : "pending") +
+       ", dept remap applied to " + remapped + " rows");
+  return { records, genderAvailable, tccUsdAvailable, empTypeAvailable, remapped };
 }
 
 /** @returns {Object<string, Array>} Employee Number → comp events (order NOT guaranteed). */
@@ -2372,9 +2417,10 @@ function debugReportPipeline() {
   const ghosts = [...new Set(r.records
     .filter(x => !x.isIntern && x.termDate && x.dept && !activeDepts.has(x.dept))
     .map(x => x.dept))].sort();
+  Logger.log("Dept remap: " + r.remapped + " rows consolidated (defaults + WR_DEPT_REMAP property)");
   if (ghosts.length) {
-    Logger.log("⚠️ GHOST DEPARTMENTS (leavers only, no active staff): " + ghosts.join(" | ") +
-               " — map via CONFIG_WR.DEPT_REMAP to fix department-level attrition");
+    Logger.log("⚠️ GHOST DEPARTMENTS after remap (leavers only, no active staff): " + ghosts.join(" | ") +
+               " — true merges belong in DEPT_REMAP / WR_DEPT_REMAP; eliminated units are correct history");
   } else {
     Logger.log("Ghost departments: none — leaver departments all exist among active staff");
   }
