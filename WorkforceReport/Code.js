@@ -70,11 +70,19 @@ const CONFIG_WR = {
   MIDLEVEL_FLIGHT_PCT: 40, // exit share at mid levels ≥ this % → candidate
   MIDLEVEL_MIN_EXITS:   4, // shares are noise below this many exits
 
+  // TEMPORARY GATE (2026-07-23): the external benchmark compilation is
+  // incomplete, so this version evaluates INTERNAL salary mid-points only —
+  // no market data anywhere in the report. Flip to true in a future version
+  // to reactivate the market-calibration / compa-ratio competitiveness view
+  // (benchmark reader, market anchor tier, market-gap flags, coverage notes).
+  MARKET_ENABLED: false,
+
   // Copied from CONFIG_CD at fork time (spec §6.7) — independently tunable after.
   COMPA_LOW_MIN:    0.80,
   COMPA_TARGET_MIN: 0.95,
   COMPA_HIGH_MAX:   1.10,
-  MARKET_LOW:       0.90,
+  MARKET_LOW:       0.90, // used only while MARKET_ENABLED
+
   EQUITY_GAP_PCT:     10,
   EQUITY_OUTLIER_PCT: 25,
   TENURE_YEARS_MIN:    3,
@@ -614,12 +622,14 @@ function buildCompStructure_(active, mode, cfg) {
     if (!byLevel.has(r.level)) byLevel.set(r.level, []);
     byLevel.get(r.level).push(v);
   });
+  // Averages render for EVERY band, including 1–2 person levels (user
+  // directive 2026-07-23) — small bands are still excluded from inversion
+  // comparisons so one salary can never fire a band-level structural flag.
   const bands = [...byLevel.entries()].map(([level, vals]) => ({
     level,
     count: vals.length,
-    avg: vals.length >= cfg.SMALL_GROUP_MIN
+    avg: vals.length
       ? Math.round(vals.reduce((t, x) => t + x, 0) / vals.length) : null,
-    suppressed: vals.length < cfg.SMALL_GROUP_MIN,
   })).sort((a, b) => levelRank_(a.level) - levelRank_(b.level));
   return {
     envelope: valued ? envelope : null,
@@ -682,7 +692,9 @@ function qualifyInversions_(active, inversions, mode) {
  * @returns {Array<{mLevel, mAvg, icLevel, icAvg}>}
  */
 function detectInversions_(bands, cfg) {
-  const withAvg = bands.filter(b => b.avg != null);
+  // Only bands with enough members carry a comparable average — a 1–2 person
+  // band's figure is an individual's comp, not a band position.
+  const withAvg = bands.filter(b => b.avg != null && b.count >= cfg.SMALL_GROUP_MIN);
   const mgrs = withAvg.filter(b => /^M\d+$/.test(b.level));
   const seniorIcs = withAvg.filter(b => {
     const m = b.level.match(/^I(\d+)$/);
@@ -924,19 +936,15 @@ function secComposition_(comp) {
     fact_("Average tenure is " + (comp.avgTenureYears != null ? comp.avgTenureYears + " years" : "—") +
       " (Hire Date to extraction date)."),
   ];
-  const tables = [
-    { title: "Headcount by department", headers: ["Department", "Headcount"],
-      rows: comp.depts.map(d => [d.key, d.count]) },
-  ];
-  // Job family (from the title prefix — JF004, JF018, …): the market-rate
-  // segmentation dimension the inversion triggers qualify against.
-  if (comp.families.length) {
-    tables.push({ title: "Headcount by job family", headers: ["Job family", "Headcount"],
-      rows: comp.families.map(f => [f.key, f.count]) });
-  }
+  // Job family stays an ANALYSIS dimension (inversion qualification, leaver
+  // sub-function view) — a standalone family headcount table added no
+  // decision value and was removed 2026-07-23 per CEO feedback.
   return {
     id: "composition", title: "2 · Composition", lines,
-    tables,
+    tables: [
+      { title: "Headcount by department", headers: ["Department", "Headcount"],
+        rows: comp.depts.map(d => [d.key, d.count]) },
+    ],
     // Tenure reads faster as a bar chart than as a table; level distribution
     // lives ONLY in section 3 (with average cost) — never duplicated here.
     charts: [
@@ -981,9 +989,9 @@ function secCompStructure_(cs, mode, cfg) {
     lines.push(assume_("USD figures come from the roster \"TCC USD\" column — " +
       "the conversion source of record for this report."));
   }
-  if (cs.bands.some(b => b.suppressed)) {
-    lines.push(note_("Level bands with fewer than " + cfg.SMALL_GROUP_MIN +
-      " members show headcount only — an average that small is an individual's compensation."));
+  if (cs.bands.some(b => b.count < cfg.SMALL_GROUP_MIN)) {
+    lines.push(note_("Bands with fewer than " + cfg.SMALL_GROUP_MIN + " members show their " +
+      "actual average but are excluded from band-level comparisons (e.g. inversion flags)."));
   }
   return {
     id: "comp-structure", title: "3 · Compensation structure", lines,
@@ -1186,13 +1194,15 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
   return {
     id: "levers", title: "6 · Compensation growth by lever", lines,
     tables: [
+      // No-prior events stay disclosed via the NOTE above — a column of
+      // near-zeros earned no board attention (removed 2026-07-23).
       { title: "Lever events by fiscal year",
-        headers: ["FY", "Lever", "Events", "No prior record", "Total raise", "Aggregate growth"],
+        headers: ["FY", "Lever", "Events", "Total raise", "Aggregate growth"],
         rows: leverBlocks.flatMap(b => [
-          [b.label, "Promotions", b.promo.count, b.promo.noPrior,
+          [b.label, "Promotions", b.promo.count,
            b.promo.totalRaise != null ? fmtMoney_(b.promo.totalRaise, mode.code) : "—",
            fmtPct_(b.promo.growthPct)],
-          [b.label, "Adjustments", b.adjust.count, b.adjust.noPrior,
+          [b.label, "Adjustments", b.adjust.count,
            b.adjust.totalRaise != null ? fmtMoney_(b.adjust.totalRaise, mode.code) : "—",
            fmtPct_(b.adjust.growthPct)],
         ]) },
@@ -1201,6 +1211,8 @@ function secLevers_(leverBlocks, mode, coverage, cfg, fys, asOfIso) {
 }
 
 function secFlags_(bandCounts, market, equity, cfg) {
+  // `market` is null while MARKET_ENABLED is off — this section is then a
+  // pure INTERNAL salary mid-point evaluation, and says so.
   const lines = [
     fact_(fmtInt_(bandCounts.belowLow) + " employees sit below " +
       fmtPct_(cfg.COMPA_LOW_MIN, 0) + " of their internal anchor; " +
@@ -1208,21 +1220,32 @@ function secFlags_(bandCounts, market, equity, cfg) {
       fmtPct_(cfg.COMPA_TARGET_MIN, 0) + "; " + fmtInt_(bandCounts.target) +
       " at target; " + fmtInt_(bandCounts.aboveHigh) + " above " +
       fmtPct_(cfg.COMPA_HIGH_MAX, 0) + "."),
-    fact_(fmtInt_(market.below) + " of " + fmtInt_(market.matched) +
+  ];
+  if (market) {
+    lines.push(fact_(fmtInt_(market.below) + " of " + fmtInt_(market.matched) +
       " benchmark-matched employees sit below " + fmtPct_(cfg.MARKET_LOW, 0) +
       " of the external market mean" +
       (market.below && market.belowLevels.length
         ? " (levels: " + market.belowLevels.map(x => x.key + " ×" + x.count).join(", ") + ")"
-        : "") + "."),
-    note_("Benchmark coverage: " + fmtInt_(market.matched) + " of " + fmtInt_(market.total) +
+        : "") + "."));
+    lines.push(note_("Benchmark coverage: " + fmtInt_(market.matched) + " of " + fmtInt_(market.total) +
       " active employees matched — external rows exist only where a location + job title " +
       "has been compiled (the compilation grows over time); currency-mismatched rows are " +
-      "withheld, and unmatched employees simply have no local benchmark yet."),
-    assume_("Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
-      "median, market mean for one-of-a-kind roles, then the location's level-cohort median."),
-    note_("This section reports counts only — individual flags live in the Comp Health " +
-      "Report, which carries the drill-downs."),
-  ];
+      "withheld, and unmatched employees simply have no local benchmark yet."));
+  }
+  lines.push(assume_(market
+    ? "Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
+      "median, market mean for one-of-a-kind roles, then the location's level-cohort median."
+    : "Internal anchors resolve per Key Location + Job Title in tiers: title-peer " +
+      "median, then the location's level-cohort median — an internal salary mid-point " +
+      "evaluation."));
+  if (!market) {
+    lines.push(note_("Market competitiveness (compa-ratio vs external benchmarks) is out " +
+      "of scope in this version — the benchmark compilation is incomplete. It returns as " +
+      "a dedicated market-calibration view once coverage lands."));
+  }
+  lines.push(note_("This section reports counts only — individual flags live in the Comp " +
+    "Health Report, which carries the drill-downs."));
   if (equity.genderAvailable) {
     lines.push(fact_(fmtInt_(equity.genderFlagged) + " of " + fmtInt_(equity.genderGroups) +
       " gender-comparable groups carry a median gap at or above " + cfg.EQUITY_GAP_PCT + "%; " +
@@ -1240,11 +1263,13 @@ function secFlags_(bandCounts, market, equity, cfg) {
     lines.push(note_(fmtInt_(bandCounts.unresolved) + " employees have no resolvable internal " +
       "anchor (insufficient peers at every tier) — excluded from the position distribution."));
   }
-  if (market.mismatch) {
+  if (market && market.mismatch) {
     lines.push(note_(fmtInt_(market.mismatch) + " benchmark rows were withheld for currency " +
       "mismatch — never silently compared across currencies."));
   }
-  return { id: "flags", title: "7 · Market & equity flags", lines, tables: [
+  return { id: "flags",
+    title: market ? "7 · Market & equity flags" : "7 · Internal position & equity flags",
+    lines, tables: [
     { title: "Internal position distribution",
       headers: ["Band", "Employees"],
       rows: [
@@ -1284,7 +1309,9 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
     ? windows.map(w => fyMovement_(interns, w, ctx.asOf)) : [];
   const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf, cfg));
   const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
-  const compaGroups = buildCompaGroups_(active, benchMap, cfg);
+  // Internal-only mode: an empty bench map disables the market anchor tier,
+  // so small groups resolve straight to the level-cohort median.
+  const compaGroups = buildCompaGroups_(active, cfg.MARKET_ENABLED ? benchMap : {}, cfg);
   // Ghost departments: present among scope leavers, absent among active
   // regulars ANYWHERE in the company — a department alive elsewhere (e.g. IT
   // with no Chile actives) is NOT a ghost just because this location's
@@ -1305,7 +1332,7 @@ function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx,
       secAttritionDetail_(attr, cfg, coverage, windows, asOfIso, ghostDepts),
       secLevers_(levers, mode, coverage, cfg, windows, asOfIso),
       secFlags_(compaBandCounts_(compaGroups, cfg),
-                marketGapCounts_(active, benchMap, cfg),
+                cfg.MARKET_ENABLED ? marketGapCounts_(active, benchMap, cfg) : null,
                 buildEquityCounts_(active, cfg, ctx.asOf), cfg),
     ],
     // Compact stats reused by the board brief's location matrix.
@@ -1623,6 +1650,11 @@ function confluenceDefinitionsHtml_() {
         "People at exit — never inferred by the report."],
       ["Exit-reason taxonomy", (c.VALID_EXIT_REASONS || []).join(", ") +
         ". Voluntary Other = voluntary exits not classified under a more specific reason."],
+      ["Internal anchor", c.MARKET_ENABLED
+        ? "per Key Location + Job Title: title-peer median → market mean for one-of-a-kind roles → level-cohort median."
+        : "per Key Location + Job Title: title-peer median → level-cohort median. Internal " +
+          "salary mid-point evaluation only — market competitiveness returns as a dedicated " +
+          "market-calibration view once the benchmark compilation is complete."],
     ] });
   html += confTable_({ title: "Compensation lever classification (TCC Change Reason)",
     headers: ["Lever", "Reasons"],
@@ -1639,17 +1671,20 @@ function confluenceDefinitionsHtml_() {
   html += confTable_({ title: "Exit-reason consolidation",
     headers: ["Historical reason", "Current classification"],
     rows: Object.keys(c.REASON_REMAP).sort().map(k => [k, c.REASON_REMAP[k]]) });
+  const thresholds = [
+    ["Regretted-share RISK", c.RISK_REGRET_PCT + "%", "regretted share of exits at/above this fires a RISK line"],
+    ["Single-reason RISK", Math.round(c.RISK_REASON_SHARE * 100) + "%", "one recorded reason covering this share of exits fires a RISK line"],
+    ["Internal position bands", fmtPct_(c.COMPA_LOW_MIN, 0) + " / " + fmtPct_(c.COMPA_TARGET_MIN, 0) + " / " + fmtPct_(c.COMPA_HIGH_MAX, 0), "below-low / target-from / above-high vs the internal anchor"],
+    ["Small-group floor", String(c.SMALL_GROUP_MIN), "groups below this size suppress averages and equity lenses"],
+    ["Senior-IC inversion floor", "I" + c.SENIOR_IC_MIN + "+", "manager bands compare against IC bands at/above this level"],
+    ["Concentration flags", c.FUNC_CONC_PCT + "% / " + c.TENURE_CONC_PCT + "% / " + c.MIDLEVEL_FLIGHT_PCT + "%", "function share / tenure-bucket share / mid-level (I3–I4) exit share"],
+  ];
+  if (c.MARKET_ENABLED) {
+    thresholds.splice(3, 0,
+      ["Market-gap flag", fmtPct_(c.MARKET_LOW, 0), "TCC below this share of the external market mean"]);
+  }
   html += confTable_({ title: "Thresholds & flags",
-    headers: ["Threshold", "Value", "Meaning"],
-    rows: [
-      ["Regretted-share RISK", c.RISK_REGRET_PCT + "%", "regretted share of exits at/above this fires a RISK line"],
-      ["Single-reason RISK", Math.round(c.RISK_REASON_SHARE * 100) + "%", "one recorded reason covering this share of exits fires a RISK line"],
-      ["Internal position bands", fmtPct_(c.COMPA_LOW_MIN, 0) + " / " + fmtPct_(c.COMPA_TARGET_MIN, 0) + " / " + fmtPct_(c.COMPA_HIGH_MAX, 0), "below-low / target-from / above-high vs the internal anchor"],
-      ["Market-gap flag", fmtPct_(c.MARKET_LOW, 0), "TCC below this share of the external market mean"],
-      ["Small-group floor", String(c.SMALL_GROUP_MIN), "groups below this size suppress averages and equity lenses"],
-      ["Senior-IC inversion floor", "I" + c.SENIOR_IC_MIN + "+", "manager bands compare against IC bands at/above this level"],
-      ["Concentration flags", c.FUNC_CONC_PCT + "% / " + c.TENURE_CONC_PCT + "% / " + c.MIDLEVEL_FLIGHT_PCT + "%", "function share / tenure-bucket share / mid-level (I3–I4) exit share"],
-    ] });
+    headers: ["Threshold", "Value", "Meaning"], rows: thresholds });
   return html;
 }
 
@@ -2164,7 +2199,10 @@ function getWorkforceReportData(scope, force, quarter, fyRange) {
 
   const t0 = Date.now();
   const ctx = fiscalContextWR_();
-  const sources = { roster: "ok", history: "ok", benchmarks: "ok" };
+  // benchmarks joins sources only while MARKET_ENABLED — a deliberately
+  // disabled source must not render as an error banner on the client.
+  const sources = { roster: "ok", history: "ok" };
+  if (CONFIG_WR.MARKET_ENABLED) sources.benchmarks = "ok";
 
   let records = [];
   try { records = readRosterWR_().records; }
@@ -2173,8 +2211,10 @@ function getWorkforceReportData(scope, force, quarter, fyRange) {
   try { histByEmp = readCompHistoryWR_(); }
   catch (e) { sources.history = "error: " + e.message; Logger.log("⚠️ readCompHistoryWR_: " + e.message); }
   let bench = { map: {}, count: 0 };
-  try { bench = readBenchmarksWR_(); }
-  catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarksWR_: " + e.message); }
+  if (CONFIG_WR.MARKET_ENABLED) {
+    try { bench = readBenchmarksWR_(); }
+    catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarksWR_: " + e.message); }
+  }
 
   // An unknown scope (stale link, renamed location) degrades to company.
   if (scopeName !== "company" &&
@@ -2745,9 +2785,13 @@ function debugReportPipeline() {
     (cov.firstFyLeverGuard ? " ⚠️ " + cov.firstFyLabel + " LEVER GUARD FIRES" : " — depth ok"));
 
   let bench = { map: {}, count: 0 };
-  try { bench = readBenchmarksWR_(); }
-  catch (e) { Logger.log("⚠️ readBenchmarksWR_ (debug): " + e.message); }
-  Logger.log("Benchmarks: " + bench.count + " rows");
+  if (CONFIG_WR.MARKET_ENABLED) {
+    try { bench = readBenchmarksWR_(); }
+    catch (e) { Logger.log("⚠️ readBenchmarksWR_ (debug): " + e.message); }
+    Logger.log("Benchmarks: " + bench.count + " rows");
+  } else {
+    Logger.log("Benchmarks: DISABLED (MARKET_ENABLED=false) — internal mid-point evaluation only");
+  }
 
   const scopes = [...new Set(active.map(x => x.keyLocation).filter(Boolean))].sort();
   Logger.log("Scopes (" + scopes.length + "): " + scopes.join(" | "));

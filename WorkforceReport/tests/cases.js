@@ -224,8 +224,17 @@ function term(over) {
   check("structure: envelope + per-head", cs.valued === 11 &&
     cs.envelope === 120000 * 3 + 110000 * 3 + 90000 * 3 + 610000);
   const m8 = cs.bands.find(x => x.level === "M8");
-  check("structure: small band suppressed (count kept, avg withheld)",
-    m8.count === 2 && m8.avg === null && m8.suppressed === true);
+  check("structure: small band shows its ACTUAL average (user directive 2026-07-23)",
+    m8.count === 2 && m8.avg === 305000);
+  // …but small bands never join band-level comparisons: a lone underpaid M4
+  // is an individual, not an inverted band.
+  const lone = buildCompStructure_(
+    [mkEmp({ jobTitle: "04.M4.1", level: "M4", track: "M", tcc: 90000 })]
+      .concat([1, 2, 3].map(() => mkEmp({ jobTitle: "04.I5.1", level: "I5", track: "IC", tcc: 120000 }))),
+    "local", CONFIG_WR);
+  check("structure: 1-person band excluded from inversion comparisons",
+    lone.inversions.length === 0 &&
+    lone.bands.find(x => x.level === "M4").avg === 90000);
   check("structure: inversion M4 < I5 detected", cs.inversions.length === 1 &&
     cs.inversions[0].mLevel === "M4" && cs.inversions[0].icLevel === "I5");
   check("structure: junior IC never triggers inversion",
@@ -404,6 +413,9 @@ function term(over) {
     sl.lines.every(l => l.badge !== "ASSUMPTION"));
   check("sentences: lever table has no new-hire row (movement owns that story)",
     sl.tables[0].rows.every(r => String(r[1]).indexOf("New hire") === -1));
+  check("sentences: lever table drops the No-prior-record column (NOTE keeps the caveat)",
+    sl.tables[0].headers.join() === "FY,Lever,Events,Total raise,Aggregate growth" &&
+    sl.tables[0].rows[0].length === 5);
   check("sentences: no-prior NOTE counts excluded deltas",
     sl.lines.some(l => l.badge === "NOTE" && l.text.indexOf("1 lever events lack a prior comp record") !== -1));
   check("sentences: FY25 lever RISK fires with earliest event",
@@ -518,9 +530,8 @@ function term(over) {
   check("composition: tenure renders as a bar chart, not a table",
     secC.charts.length === 1 && secC.charts[0].title === "Tenure distribution" &&
     secC.charts[0].bars.some(b => b.label === "1–3y" && b.value === 3));
-  check("composition: job-family headcount table renders when families parse",
-    secC.tables.some(t => t.title === "Headcount by job family" &&
-      t.rows.some(r => r[0] === "JF004" && r[1] === 6)));
+  check("composition: single dept table — no job-family headcount table (removed 2026-07-23)",
+    secC.tables.length === 1 && secC.tables[0].title === "Headcount by department");
 
   const cs = buildCompStructure_(active, "local", CONFIG_WR);
   const secS = secCompStructure_(cs, { mode: "local", code: "MXN" }, CONFIG_WR);
@@ -784,6 +795,24 @@ function term(over) {
 
   check("payload: company brief spotlights by location",
     company.brief.dim.field === "keyLocation" && company.brief.currency.code === "USD");
+
+  // Internal-only mode (MARKET_ENABLED=false, 2026-07-23): section 7 is a pure
+  // internal salary mid-point evaluation — zero market content until the
+  // benchmark compilation is complete.
+  const flags = company.report.sections.find(s => s.id === "flags");
+  check("flags: internal-only title while market is disabled",
+    flags.title === "7 · Internal position & equity flags");
+  check("flags: no market FACT/coverage lines while disabled",
+    flags.lines.every(l => l.text.indexOf("market mean") === -1 &&
+      l.text.indexOf("Benchmark coverage") === -1));
+  check("flags: internal mid-point ASSUMPTION (two tiers only)",
+    flags.lines.some(l => l.badge === "ASSUMPTION" &&
+      l.text.indexOf("title-peer median, then the location's level-cohort median") !== -1 &&
+      l.text.indexOf("mid-point evaluation") !== -1));
+  check("flags: out-of-scope NOTE promises the market-calibration view",
+    flags.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("out of scope in this version") !== -1 &&
+      l.text.indexOf("market-calibration") !== -1));
 
   const chile = buildReportPayload_(records, hist, {}, "Chile", ctx, CONFIG_WR);
   check("payload: single-currency location stays local",
