@@ -435,6 +435,18 @@ function term(over) {
       l.text.indexOf("DEPT_REMAP") !== -1) &&
     attrSec.lines.every(l => l.badge !== "RISK" || l.text.indexOf("Managed Services") === -1));
 
+  // Business-context notes (2026-07-23 doc): consolidation policy is stated
+  // in FAR/N, both when ghosts remain and when the remap has fully landed.
+  check("remap notes: exit-reason consolidation policy stated from config",
+    attrSec.lines.some(l => l.badge === "NOTE" &&
+      l.text.indexOf("Involuntary Retirement → Job Position Eliminated or Changed") !== -1 &&
+      l.text.indexOf("Relocation to a New Employer → Another Job") !== -1));
+  const clean = buildReportPayload_(
+    records.filter(r => r.dept !== "Managed Services"), {}, {}, "company", ctx, CONFIG_WR);
+  check("remap notes: ghost-free data states the apples-to-apples consolidation",
+    clean.report.sections.find(s => s.id === "attrition")
+      .lines.some(l => l.badge === "NOTE" && l.text.indexOf("apples-to-apples") !== -1));
+
   // Headcount chain + the CFO identity: closing = opening + hires − exits.
   const fys = fyListWR_(REF, 3);
   const chain = [

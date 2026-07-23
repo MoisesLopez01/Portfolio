@@ -86,17 +86,58 @@ const CONFIG_WR = {
   INTERN_RE: /intern/i,
 
   // Ghost-department remap — APPLIED BY DEFAULT at roster read, so every
-  // scope computes on the same consolidated departments. Renamed/absorbed
-  // units live on in leaver rows; map old → CURRENT roster department here.
-  // Eliminated units (the Marketing family, …) stay unmapped on purpose —
-  // they are correct history, covered by the restructuring NOTE.
-  // Extend WITHOUT a code deploy via the WR_DEPT_REMAP Script Property
-  // (JSON, merged over this map): {"Old Dept":"Current Dept", ...}.
-  // Verify targets against debugReportPipeline's ghost list — a wrong target
-  // name would itself become a ghost.
+  // scope computes on the same consolidated departments and remapped leavers
+  // also count in the target department's HISTORICAL headcount (denominators
+  // stay apples-to-apples). Business context doc 2026-07-23: ServiceRocket
+  // moved from the color-coded multi-BU model (Blue = Professional Services,
+  // Green = Apps, Teal = Managed Services — retired per Lingo List / COE OCD)
+  // to 8 active departments (Services 158, Sales 19, Marketing 11, People 11,
+  // Finance 7, IT 5, Management 2, Legal 1). All 20 historical departments
+  // map below. Extend WITHOUT a code deploy via the WR_DEPT_REMAP Script
+  // Property (JSON, merged over this map, property wins).
   DEPT_REMAP: {
-    "Managed Services":      "Services", // merged into Services (re-org, confirmed 2026-07-22)
-    "Professional Services": "Services",
+    // → Services (Blue/Green/Teal delivery functions consolidated)
+    "Managed Services":        "Services", // Teal BU retired; MS terminology deprecated (COE OCD)
+    "Professional Services":   "Services",
+    "Engineering":             "Services", // Green BU engineering folded into delivery
+    "Product":                 "Services", // Green BU product team dissolved
+    "PM - Customer Experience": "Services",
+    "PM - Customer Success":   "Services",
+    "PM - Product":            "Services",
+    "Project Management":      "Services", // Blue/PS project management
+    "R&D":                     "Services", // R&D capacity embedded in technical delivery
+    "Support (Learndot & Apps)": "Services", // Green BU app + Learndot support
+    // → Sales (revenue functions incl. Navy License Renewals absorption)
+    "Customer Success/Renewals": "Sales",
+    "Marketing - SDR":         "Sales", // SDR pipeline ownership moved to Sales
+    "Sales - Accounts":        "Sales",
+    "Sales - Licensing":       "Sales", // Navy sub-unit
+    "Sales - SDR":             "Sales",
+    // → Marketing
+    "MKT Development, Brand & Story": "Marketing",
+    "Marketing Team":          "Marketing", // generic predecessor label
+    // → People
+    "Rewards & Workforce Planning": "People",
+    "Rocketeer Experience":    "People",
+    "Talent Acquisition":      "People",
+    // → Finance
+    "Administration":          "Finance", // procurement / office ops consolidated
+  },
+
+  // Exit-reason consolidation to CURRENT classification standards — applied
+  // at roster read, same mechanics as DEPT_REMAP (WR_REASON_REMAP Script
+  // Property merges over this map). Valid current reasons stay untouched:
+  // Another Job, Voluntary Other, Personal Reasons, Dissatisfaction with
+  // Compensation, Working Conditions, Unsatisfactory Performance, Job
+  // Position Eliminated or Changed.
+  REASON_REMAP: {
+    // Functionally a forced exit due to role removal, not voluntary retirement.
+    "Involuntary Retirement": "Job Position Eliminated or Changed",
+    // Relocation detail is a sub-reason of taking another job, not a category.
+    "Relocation to a New Employer": "Another Job",
+    // "Attendance": "Unsatisfactory Performance", // PENDING DECISION —
+    //   consolidate here, or keep distinct as a Policy Violation bucket for
+    //   compliance? Uncomment / adjust once decided.
   },
 
   DEBUG: false,
@@ -977,6 +1018,15 @@ function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
       (ghostDepts.length === 1 ? "" : "s") + " no longer exist after restructuring " +
       "(e.g. " + ghostDepts.slice(0, 3).join(", ") + "). Merged units can be " +
       "consolidated into their current department via CONFIG_WR.DEPT_REMAP."));
+  } else {
+    lines.push(note_("Historical departments are consolidated into the current 8-department " +
+      "structure (DEPT_REMAP) — leavers and their historical headcount both count against " +
+      "today's departments, so department-level attrition is apples-to-apples."));
+  }
+  const reasonPairs = Object.keys(cfg.REASON_REMAP || {});
+  if (reasonPairs.length) {
+    lines.push(note_("Exit reasons are consolidated to current classification standards: " +
+      reasonPairs.map(k => k + " → " + cfg.REASON_REMAP[k]).join("; ") + "."));
   }
   stats.forEach(s => {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
@@ -1800,16 +1850,21 @@ function readRosterWR_() {
   const genderAvailable = c.gender !== -1;
   const tccUsdAvailable = c.tccUsd !== -1;
   const empTypeAvailable = c.empType !== -1;
-  // Effective remap = code defaults + WR_DEPT_REMAP Script Property (JSON),
-  // property entries winning — new merges never need a code deploy.
-  const deptRemap = Object.assign({}, CONFIG_WR.DEPT_REMAP);
-  try {
-    const extra = props_().getProperty("WR_DEPT_REMAP");
-    if (extra) Object.assign(deptRemap, JSON.parse(extra));
-  } catch (e) {
-    Logger.log("⚠️ readRosterWR_: WR_DEPT_REMAP property is not valid JSON — ignored (" + e.message + ")");
-  }
-  let remapped = 0;
+  // Effective remaps = code defaults + Script Property JSON (property wins) —
+  // new department merges or reason consolidations never need a code deploy.
+  const propMap = (prop, base) => {
+    const map = Object.assign({}, base);
+    try {
+      const extra = props_().getProperty(prop);
+      if (extra) Object.assign(map, JSON.parse(extra));
+    } catch (e) {
+      Logger.log("⚠️ readRosterWR_: " + prop + " property is not valid JSON — ignored (" + e.message + ")");
+    }
+    return map;
+  };
+  const deptRemap = propMap("WR_DEPT_REMAP", CONFIG_WR.DEPT_REMAP);
+  const reasonRemap = propMap("WR_REASON_REMAP", CONFIG_WR.REASON_REMAP);
+  let remapped = 0, reasonRemapped = 0;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -1839,7 +1894,10 @@ function readRosterWR_() {
       currency: c.currency !== -1 ? String(row[c.currency] || "").trim() : "",
       hireDate: c.hire !== -1 ? asDate_(row[c.hire]) : null,
       termDate,
-      termReason: c.termReason !== -1 ? String(row[c.termReason] || "").trim() : "",
+      termReason: (() => {
+        const raw = c.termReason !== -1 ? String(row[c.termReason] || "").trim() : "";
+        return reasonRemap[raw] ? (reasonRemapped++, reasonRemap[raw]) : raw;
+      })(),
       termCategory: c.termCat !== -1 ? String(row[c.termCat] || "").trim() : "",
       termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
       gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
@@ -1851,8 +1909,9 @@ function readRosterWR_() {
        (genderAvailable ? "available" : "pending") +
        ", TCC USD " + (tccUsdAvailable ? "available" : "pending") +
        ", Employee Type " + (empTypeAvailable ? "available" : "pending") +
-       ", dept remap applied to " + remapped + " rows");
-  return { records, genderAvailable, tccUsdAvailable, empTypeAvailable, remapped };
+       ", dept remap applied to " + remapped + " rows, exit-reason remap to " +
+       reasonRemapped + " rows");
+  return { records, genderAvailable, tccUsdAvailable, empTypeAvailable, remapped, reasonRemapped };
 }
 
 /** @returns {Object<string, Array>} Employee Number → comp events (order NOT guaranteed). */
@@ -2508,6 +2567,7 @@ function debugReportPipeline() {
     .filter(x => !x.isIntern && x.termDate && x.dept && !activeDepts.has(x.dept))
     .map(x => x.dept))].sort();
   Logger.log("Dept remap: " + r.remapped + " rows consolidated (defaults + WR_DEPT_REMAP property)");
+  Logger.log("Exit-reason remap: " + r.reasonRemapped + " rows consolidated (defaults + WR_REASON_REMAP property)");
   if (ghosts.length) {
     Logger.log("⚠️ GHOST DEPARTMENTS after remap (leavers only, no active staff): " + ghosts.join(" | ") +
                " — true merges belong in DEPT_REMAP / WR_DEPT_REMAP; eliminated units are correct history");
