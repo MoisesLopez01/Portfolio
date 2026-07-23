@@ -72,6 +72,18 @@ const CONFIG_WR = {
   CREW_RE: /crew member|contractor/i, // same crew rule as PS / CompDash
   INACTIVE_RE: /terminat|job offer|resign|left|inactive|former|offboard/i,
 
+  // Employee Type (roster column, restored 2026-07-22): Intern is excluded
+  // from the HEADLINE population; Regular Employee, Employer of Record and
+  // Part Time are all regular employees. A 30% blended attrition in front of
+  // the board when the regular-staff figure is ~21% misdirects the
+  // conversation — interns flow in their own strand.
+  INTERN_RE: /intern/i,
+
+  // Ghost-department remap: departments that were renamed/absorbed live on in
+  // leaver rows and distort department-level attrition. Map old → current
+  // here (e.g. "Managed Services": "Services"); unmapped ghosts fire a RISK.
+  DEPT_REMAP: {},
+
   DEBUG: false,
 };
 
@@ -282,12 +294,20 @@ function headcountOn_(records, date) {
     (!r.hireDate || r.hireDate <= date) && (!r.termDate || r.termDate > date)).length;
 }
 
+function dayAfter_(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+}
+
 /**
  * One FY's movement block. Rate = exits ÷ mean(start, end headcount);
  * end = asOf for the in-progress FY (existing fyAttritionBlock_ behavior).
+ * A CLOSED period's ending headcount is measured at the NEXT period's opening
+ * instant (end + 1 day), so the chain is continuous by construction — FY25's
+ * closing headcount IS FY26's opening headcount, never a phantom ±2 gap from
+ * Jun-30 exits / Jul-1 hires landing between two measurement instants.
  */
 function fyMovement_(records, fy, asOf) {
-  const end = (fy.inProgress && asOf && asOf < fy.end) ? asOf : fy.end;
+  const end = (fy.inProgress && asOf && asOf < fy.end) ? asOf : dayAfter_(fy.end);
   const hires = records.filter(r =>
     r.hireDate && r.hireDate >= fy.start && r.hireDate <= fy.end).length;
   const exits = records.filter(r =>
@@ -716,16 +736,17 @@ function coverageStats_(records, histByEmp, fys) {
 // Every builder returns { id, title, lines: [{badge, text}], tables: [...] }.
 // Tables: { title, headers: string[], rows: Array<Array<string|number>> }.
 
-function secScope_(records, active, scope, mode) {
+function secScope_(records, active, scope, mode, activeInternCount) {
   const lines = [
-    fact_(fmtInt_(active.length) + " active employees in scope (" +
-      (scope === "company" ? "company-wide" : scope) + ")."),
-    fact_(fmtInt_(records.length) + " roster records in scope including terminated rows — " +
-      "the evidence base for movement and attrition."),
+    fact_(fmtInt_(active.length) + " active regular employees in scope (" +
+      (scope === "company" ? "company-wide" : scope) + ") — Regular Employee, " +
+      "Employer of Record and Part Time types."),
+    fact_(fmtInt_(records.length) + " regular roster records in scope including terminated " +
+      "rows — the evidence base for movement and attrition."),
+    fact_(fmtInt_(activeInternCount || 0) + " active interns — reported separately; " +
+      "excluded from headline movement, attrition and compensation metrics."),
     note_("Crew members and contractors are excluded by the job-title rule " +
-      "(/crew member|contractor/i) — no employee-type column exists in the roster."),
-    note_("Interns cannot be split out (no employee-type column) — a divergence from " +
-      "the NetSuite-sourced report example, stated here explicitly."),
+      "(/crew member|contractor/i)."),
   ];
   if (mode.mode === "usd" && scope !== "company" && mode.currencies.length > 1) {
     lines.push(note_("This location spans " + mode.currencies.length + " currencies (" +
@@ -793,13 +814,17 @@ function secCompStructure_(cs, mode, cfg) {
   };
 }
 
-function secMovement_(moves, coverage, fys, asOfIso) {
+function secMovement_(moves, coverage, fys, asOfIso, internFlow) {
   const lines = [];
   moves.forEach(m => {
     lines.push(fact_(m.label + ": " + fmtInt_(m.hires) + " hires, " + fmtInt_(m.exits) +
-      " exits (net " + (m.net >= 0 ? "+" : "") + fmtInt_(m.net) + "), attrition rate " +
-      fmtPct_(m.rate) + "."));
+      " exits (net " + (m.net >= 0 ? "+" : "") + fmtInt_(m.net) + "), regular-employee " +
+      "attrition rate " + fmtPct_(m.rate) + "."));
   });
+  if (internFlow && internFlow.length) {
+    lines.push(note_("Headline figures cover regular employees only; the intern/fixed-term " +
+      "strand below is reported separately and never blended into the attrition rate."));
+  }
   lines.push(note_("Attrition rate = exits ÷ mean(headcount at period start, period end); " +
     "the open FY uses the as-of headcount as the period end. Hires are counted by " +
     "Hire Date and exits by Termination/Release Date."));
@@ -809,19 +834,30 @@ function secMovement_(moves, coverage, fys, asOfIso) {
   }
   const ip = noteInProgress_(fys, asOfIso);
   if (ip) lines.push(ip);
-  return {
-    id: "movement", title: "4 · Workforce movement", lines,
-    tables: [
-      { title: "Movement by fiscal year",
-        headers: ["FY", "Hires", "Exits", "Net", "Headcount start → end", "Attrition rate"],
-        rows: moves.map(m => [m.label + (m.inProgress ? " (to date)" : ""), m.hires, m.exits,
-          (m.net >= 0 ? "+" : "") + m.net, m.hcStart + " → " + m.hcEnd, fmtPct_(m.rate)]) },
-    ],
-  };
+  const tables = [
+    { title: "Movement by fiscal year — regular employees",
+      headers: ["FY", "Hires", "Exits", "Net", "Headcount start → end", "Attrition rate"],
+      rows: moves.map(m => [m.label + (m.inProgress ? " (to date)" : ""), m.hires, m.exits,
+        (m.net >= 0 ? "+" : "") + m.net, m.hcStart + " → " + m.hcEnd, fmtPct_(m.rate)]) },
+  ];
+  if (internFlow && internFlow.length) {
+    tables.push({
+      title: "Intern & fixed-term flow (excluded from the headline)",
+      headers: ["FY", "Hires", "Exits", "Active start → end"],
+      rows: internFlow.map(m => [m.label + (m.inProgress ? " (to date)" : ""),
+        m.hires, m.exits, m.hcStart + " → " + m.hcEnd]),
+    });
+  }
+  return { id: "movement", title: "4 · Workforce movement", lines, tables };
 }
 
-function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso) {
+function secAttritionDetail_(stats, cfg, coverage, fys, asOfIso, ghostDepts) {
   const lines = [];
+  (ghostDepts || []).forEach(gd => {
+    lines.push(risk_('"' + gd + '" appears among leavers but not among active staff — a ' +
+      "renamed or absorbed unit distorting department-level attrition. Map it to its " +
+      "current department via CONFIG_WR.DEPT_REMAP."));
+  });
   stats.forEach(s => {
     lines.push(fact_(s.label + ": " + fmtInt_(s.regretted) + " of " + fmtInt_(s.exits) +
       " exits regretted (" + fmtPct_(s.regrettedPct, 0) + ")" +
@@ -987,24 +1023,38 @@ function secFlags_(bandCounts, market, equity, cfg) {
 function buildLocationReport_(records, histByEmp, benchMap, scope, windows, ctx, cfg, coverage) {
   const inScope = scope === "company"
     ? records : records.filter(r => r.keyLocation === scope);
-  const active = inScope.filter(r => r.active);
-  const mode = currencyModeForScope_(inScope, scope);
+  // HEADLINE population = regular employees (Regular Employee, Employer of
+  // Record, Part Time). Interns flow in their own strand — a blended
+  // attrition figure would misdirect the board (30% blended vs ~21% regular).
+  const regulars = inScope.filter(r => !r.isIntern);
+  const interns = inScope.filter(r => r.isIntern);
+  const active = regulars.filter(r => r.active);
+  const activeInterns = interns.filter(r => r.active);
+  const mode = currencyModeForScope_(regulars, scope);
   const asOfIso = isoDate_(ctx.asOf);
-  const empNos = [...new Set(inScope.map(r => r.empNo).filter(Boolean))];
+  const empNos = [...new Set(regulars.map(r => r.empNo).filter(Boolean))];
 
-  const moves = windows.map(w => fyMovement_(inScope, w, ctx.asOf));
-  const attr = windows.map(w => fyAttritionStats_(inScope, w, ctx.asOf));
+  const moves = windows.map(w => fyMovement_(regulars, w, ctx.asOf));
+  const internFlow = interns.length
+    ? windows.map(w => fyMovement_(interns, w, ctx.asOf)) : [];
+  const attr = windows.map(w => fyAttritionStats_(regulars, w, ctx.asOf));
   const levers = windows.map(w => buildLeversForFy_(empNos, histByEmp, w, mode.mode, cfg));
   const compaGroups = buildCompaGroups_(active, benchMap, cfg);
+  // Ghost departments: present among leavers, absent among active regulars —
+  // a renamed/absorbed unit distorting department-level attrition.
+  const activeDepts = new Set(active.map(r => r.dept).filter(Boolean));
+  const ghostDepts = [...new Set(regulars
+    .filter(r => r.termDate && r.dept && !activeDepts.has(r.dept))
+    .map(r => r.dept))].sort();
 
   return {
     scope, currency: mode,
     sections: [
-      secScope_(inScope, active, scope, mode),
+      secScope_(regulars, active, scope, mode, activeInterns.length),
       secComposition_(buildComposition_(active, ctx.asOf)),
       secCompStructure_(buildCompStructure_(active, mode.mode, cfg), mode, cfg),
-      secMovement_(moves, coverage, windows, asOfIso),
-      secAttritionDetail_(attr, cfg, coverage, windows, asOfIso),
+      secMovement_(moves, coverage, windows, asOfIso, internFlow),
+      secAttritionDetail_(attr, cfg, coverage, windows, asOfIso, ghostDepts),
       secLevers_(levers, mode, coverage, cfg, windows, asOfIso),
       secFlags_(compaBandCounts_(compaGroups, cfg),
                 marketGapCounts_(active, benchMap, cfg),
@@ -1186,7 +1236,10 @@ function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) 
   const dim = scope === "company"
     ? { field: "keyLocation", label: "Location" }
     : { field: "dept", label: "Department" };
-  const active = scopeRecords.filter(r => r.active);
+  // Board story = regular employees only; interns surface as one glance count.
+  const regulars = scopeRecords.filter(r => !r.isIntern);
+  const activeInterns = scopeRecords.filter(r => r.isIntern && r.active).length;
+  const active = regulars.filter(r => r.active);
   const comp = active.map(r => tccOf_(r, mode.mode)).filter(v => v > 0);
   const byLoc = new Map(), byDept = new Map();
   active.forEach(r => {
@@ -1196,7 +1249,7 @@ function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) 
   });
   const byGroupKeys = [...new Set(active.map(r => r[dim.field] || "—"))].sort();
   const moveByGroup = byGroupKeys.map(k => {
-    const inGrp = scopeRecords.filter(r => (r[dim.field] || "—") === k);
+    const inGrp = regulars.filter(r => (r[dim.field] || "—") === k);
     return {
       key: k,
       perFy: fys.map(fy => {
@@ -1214,6 +1267,7 @@ function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) 
     currency: { mode: mode.mode, code: mode.code },
     glance: {
       headcount: active.length,
+      interns: activeInterns,
       byLocation: [...byLoc.entries()].map(([key, count]) => ({ key, count }))
         .sort((a, b) => b.count - a.count),
       byDept: [...byDept.entries()].map(([key, count]) => ({ key, count }))
@@ -1228,10 +1282,10 @@ function buildBrief_(scopeRecords, histByEmp, fys, ctx, cfg, report, allScopes) 
       })),
       byGroup: moveByGroup,
     },
-    retention: buildRetentionCrosstab_(scopeRecords, fys),
+    retention: buildRetentionCrosstab_(regulars, fys),
     levers: report.stats.levers,
-    structuralRisks: buildStructuralRisks_(active, scopeRecords, fys, ctx, cfg, cs, mode.code),
-    spotlights: buildSpotlights_(scopeRecords, histByEmp, fys, ctx, cfg, dim, mode),
+    structuralRisks: buildStructuralRisks_(active, regulars, fys, ctx, cfg, cs, mode.code),
+    spotlights: buildSpotlights_(regulars, histByEmp, fys, ctx, cfg, dim, mode),
     appendix: allScopes,
   };
 }
@@ -1310,8 +1364,9 @@ function confluenceBriefHtml_(payload, narrative) {
       narrative.execSummary.map(s => "<li>" + confEsc_(s) + "</li>").join("") + "</ul>"
     : confLine_(note_("AI synthesis not generated at copy time."));
   html += "<h2>3. " + confEsc_(b.scope === "company" ? "Company" : b.scope) + " at a glance</h2>" +
-    confLine_(fact_(fmtInt_(b.glance.headcount) + " active employees; TCC envelope " +
-      fmtMoneyShort_(b.glance.tccEnvelope, cur) + "."));
+    confLine_(fact_(fmtInt_(b.glance.headcount) + " active regular employees" +
+      (b.glance.interns ? " (+" + fmtInt_(b.glance.interns) + " interns, reported separately)" : "") +
+      "; TCC envelope " + fmtMoneyShort_(b.glance.tccEnvelope, cur) + "."));
   if (b.glance.byLocation.length > 1) {
     html += confTable_({ title: "Headcount by location", headers: ["Key Location", "Headcount"],
       rows: b.glance.byLocation.map(x => [x.key, x.count]) });
@@ -1596,6 +1651,7 @@ function readRosterWR_() {
     termReason: col("Termination Reason"), termRegret: col("Termination Regretted"),
     termCat: col("Termination Category"), keyLoc: col("Key Location"),
     gender: col("Gender"),
+    empType: col("Employee Type"), // Intern | Regular Employee | Employer of Record | Part Time
     tccUsd: col(CONFIG_WR.TCC_USD_COL, /tcc.*usd/i),
   };
   const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
@@ -1604,6 +1660,7 @@ function readRosterWR_() {
   });
   const genderAvailable = c.gender !== -1;
   const tccUsdAvailable = c.tccUsd !== -1;
+  const empTypeAvailable = c.empType !== -1;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -1613,12 +1670,19 @@ function readRosterWR_() {
     const status = c.status !== -1 ? String(row[c.status] || "").trim() : "";
     const termDate = c.term !== -1 ? asDate_(row[c.term]) : null;
     const lvl = parseLevel_(title);
+    const empType = empTypeAvailable ? String(row[c.empType] || "").trim() : "";
+    const rawDept = c.dept !== -1 ? String(row[c.dept] || "").trim() : "";
     records.push({
       empNo: String(row[c.empNo] || "").trim(),
       name,
       active: !termDate && !CONFIG_WR.INACTIVE_RE.test(status),
       jobTitle: title, level: lvl.level, track: lvl.track,
-      dept: c.dept !== -1 ? String(row[c.dept] || "").trim() : "",
+      employeeType: empType,
+      // Intern is the only non-regular type; Regular Employee, Employer of
+      // Record, Part Time (and blank) all count as regular employees.
+      isIntern: empTypeAvailable && CONFIG_WR.INTERN_RE.test(empType),
+      // Ghost-department remap (renamed/absorbed units live on in leaver rows).
+      dept: CONFIG_WR.DEPT_REMAP[rawDept] || rawDept,
       lob: c.lob !== -1 ? String(row[c.lob] || "").trim() : "",
       keyLocation: String(row[c.keyLoc] || "").trim(),
       location: c.location !== -1 ? String(row[c.location] || "").trim() : "",
@@ -1635,8 +1699,9 @@ function readRosterWR_() {
   });
   log_("readRosterWR_: " + records.length + " records, gender " +
        (genderAvailable ? "available" : "pending") +
-       ", TCC USD " + (tccUsdAvailable ? "available" : "pending"));
-  return { records, genderAvailable, tccUsdAvailable };
+       ", TCC USD " + (tccUsdAvailable ? "available" : "pending") +
+       ", Employee Type " + (empTypeAvailable ? "available" : "pending"));
+  return { records, genderAvailable, tccUsdAvailable, empTypeAvailable };
 }
 
 /** @returns {Object<string, Array>} Employee Number → comp events (order NOT guaranteed). */
@@ -2016,8 +2081,9 @@ function writeBriefDoc_(body, payload, narrative) {
   }
 
   docHeading_(body, "3. " + (b.scope === "company" ? "Company" : b.scope) + " at a glance");
-  docBadgeLine_(body, "FACT", fmtInt_(b.glance.headcount) + " active employees; TCC envelope " +
-    fmtMoney_(b.glance.tccEnvelope, cur) +
+  docBadgeLine_(body, "FACT", fmtInt_(b.glance.headcount) + " active regular employees" +
+    (b.glance.interns ? " (+" + fmtInt_(b.glance.interns) + " interns, reported separately)" : "") +
+    "; TCC envelope " + fmtMoneyShort_(b.glance.tccEnvelope, cur) +
     (b.glance.missingComp ? "; " + fmtInt_(b.glance.missingComp) +
       " employees missing a comp value (headcount only)" : "") + ".");
   if (b.glance.byLocation.length > 1) {
@@ -2272,7 +2338,22 @@ function debugReportPipeline() {
   const active = r.records.filter(x => x.active);
   Logger.log("Roster: " + r.records.length + " rows after crew exclusion, " + active.length +
              " active, gender " + (r.genderAvailable ? "AVAILABLE" : "PENDING") +
-             ", TCC USD " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND"));
+             ", TCC USD " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND") +
+             ", Employee Type " + (r.empTypeAvailable ? "FOUND" : "NOT FOUND — intern split inactive"));
+  const interns = r.records.filter(x => x.isIntern);
+  Logger.log("Employee Type split: " + (r.records.length - interns.length) + " regular records / " +
+             interns.length + " intern records (" + interns.filter(x => x.active).length +
+             " active interns) — headline attrition covers regulars only");
+  const activeDepts = new Set(active.filter(x => !x.isIntern).map(x => x.dept).filter(Boolean));
+  const ghosts = [...new Set(r.records
+    .filter(x => !x.isIntern && x.termDate && x.dept && !activeDepts.has(x.dept))
+    .map(x => x.dept))].sort();
+  if (ghosts.length) {
+    Logger.log("⚠️ GHOST DEPARTMENTS (leavers only, no active staff): " + ghosts.join(" | ") +
+               " — map via CONFIG_WR.DEPT_REMAP to fix department-level attrition");
+  } else {
+    Logger.log("Ghost departments: none — leaver departments all exist among active staff");
+  }
   const usdHits = active.filter(x => x.tccUsd != null).length;
   Logger.log("TCC USD values: " + usdHits + "/" + active.length + " active");
 

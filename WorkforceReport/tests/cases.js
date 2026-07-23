@@ -12,6 +12,7 @@ function mkEmp(over) {
   const base = {
     empNo: "E" + __seq, name: "Emp " + __seq,
     active: true, jobTitle: "04.I3.1", level: "I3", track: "IC",
+    employeeType: "Regular Employee", isIntern: false,
     dept: "Services", lob: "", keyLocation: "Mexico", location: "", currency: "MXN",
     hireDate: new Date(2020, 0, 1), termDate: null,
     termReason: "", termCategory: "", termRegretted: "",
@@ -343,6 +344,57 @@ function term(over) {
     sl.lines.some(l => l.badge === "RISK" && l.text.indexOf("2025-09-01") !== -1));
 })();
 
+// ── Regular vs intern split + headcount chain + ghost departments ───────────
+(function () {
+  const ctx = { asOf: REF };
+  const mkIntern = over => mkEmp(Object.assign(
+    { employeeType: "Intern", isIntern: true }, over || {}));
+  const records = [
+    mkEmp({}), mkEmp({}), mkEmp({ employeeType: "Employer of Record" }),
+    mkEmp({ employeeType: "Part Time" }),
+    term({ termDate: new Date(2026, 6, 5), dept: "Managed Services" }),   // regular FY27 exit, GHOST dept
+    mkIntern({}),                                                          // active intern
+    mkIntern({ active: false, termDate: new Date(2026, 6, 8),
+               termCategory: "Voluntary" }),                               // intern FY27 exit
+    mkIntern({ hireDate: new Date(2026, 6, 2) }),                          // intern FY27 hire
+  ];
+  const p = buildReportPayload_(records, {}, {}, "company", ctx, CONFIG_WR);
+  const scope = p.report.sections.find(s => s.id === "scope");
+  check("split: scope headline counts regulars only (EOR + Part Time included)",
+    scope.lines[0].text.indexOf("4 active regular employees") !== -1);
+  check("split: active interns stated separately",
+    scope.lines.some(l => l.badge === "FACT" && l.text.indexOf("2 active interns") !== -1));
+  const mv = p.report.sections.find(s => s.id === "movement");
+  // Regular exits FY27 = 1 (the Managed Services leaver) — intern exit NOT blended.
+  check("split: headline FY27 exits exclude the intern exit",
+    mv.tables[0].rows[2][2] === 1);
+  check("split: intern flow table present with its own counts",
+    mv.tables.length === 2 && mv.tables[1].title.indexOf("Intern") === 0 &&
+    mv.tables[1].rows[2][1] === 1 && mv.tables[1].rows[2][2] === 1); // FY27: 1 hire, 1 exit
+  check("split: headline FACT names the regular-employee rate",
+    mv.lines[0].text.indexOf("regular-employee attrition rate") !== -1);
+  check("split: brief glance = regulars + intern count",
+    p.brief.glance.headcount === 4 && p.brief.glance.interns === 2);
+
+  const attrSec = p.report.sections.find(s => s.id === "attrition");
+  check("ghost dept: RISK fires for a leaver-only department",
+    attrSec.lines.some(l => l.badge === "RISK" &&
+      l.text.indexOf('"Managed Services"') !== -1 &&
+      l.text.indexOf("DEPT_REMAP") !== -1));
+
+  // Headcount chain: a closed FY's ending headcount IS the next FY's opening one.
+  const fys = fyListWR_(REF, 3);
+  const chain = [
+    mkEmp({ hireDate: new Date(2019, 0, 1) }),
+    mkEmp({ hireDate: new Date(2025, 6, 1) }),   // hired Jul 1 2025 — the old FY25-close vs FY26-open gap
+    term({ hireDate: new Date(2020, 0, 1), termDate: new Date(2025, 5, 30) }), // term Jun 30 2025
+  ];
+  const m25 = fyMovement_(chain, fys[0], REF);
+  const m26 = fyMovement_(chain, fys[1], REF);
+  check("chain: FY25 closing headcount === FY26 opening headcount",
+    m25.hcEnd === m26.hcStart && m25.hcEnd === 2);
+})();
+
 // ── Exec short numbers + section reshape (composition/structure/attrition) ──
 (function () {
   check("fmtShort_: exec magnitudes", fmtShort_(1000000) === "1M" &&
@@ -594,7 +646,7 @@ function term(over) {
   check("payload: single-currency location stays local",
     chile.report.currency.mode === "local" && chile.report.currency.code === "CLP");
   check("payload: location scope excludes other locations",
-    chile.report.sections[0].lines[0].text.indexOf("3 active employees") !== -1);
+    chile.report.sections[0].lines[0].text.indexOf("3 active regular employees") !== -1);
   // Single-country board brief — the Chile sample.
   check("payload: country brief present, spotlights by department, local currency",
     chile.brief != null && chile.brief.scope === "Chile" &&

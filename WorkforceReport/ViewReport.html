@@ -574,7 +574,8 @@ function renderBrief(el) {
 
   // 3 · At a glance
   html += '<div class="card"><h2>3 · ' + esc(isCompany ? "Company" : b.scope) + ' at a glance</h2>' +
-    '<span class="chip">' + fmtInt(g.headcount) + ' active employees</span>' +
+    '<span class="chip">' + fmtInt(g.headcount) + ' active regular employees</span>' +
+    (g.interns ? '<span class="chip">' + fmtInt(g.interns) + ' interns (reported separately)</span>' : "") +
     '<span class="chip">TCC envelope ' + fmtMoney(g.tccEnvelope, cur) + '</span>' +
     (g.missingComp ? '<span class="chip">' + fmtInt(g.missingComp) + ' missing a comp value (headcount only)</span>' : "") +
     (g.byLocation.length > 1
