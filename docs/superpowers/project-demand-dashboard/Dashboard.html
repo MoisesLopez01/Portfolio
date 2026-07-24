@@ -607,7 +607,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows every actual week in the data + the next 5 weeks of scheduled capacity as a dashed forecast · dashed coral line = the 70% target in hours · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows every actual week since tracked data begins + the next 5 weeks of scheduled capacity as a dashed forecast · dashed coral line = the 70% target in hours · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
         </div>
       </div>
@@ -1787,6 +1787,20 @@ function renderUtilization(){
     .map(function(w){return w.iso;})
     .filter(function(iso){ return capIsos.indexOf(iso)!==-1 && isoOrd(iso)<=futMaxOrd; }); // forecast only where real schedule data exists, capped at the shared 5-week horizon
   cw=cw.filter(function(w){return w.status!=='plan';});
+  // Actuals follow TRACKED-data availability — the same "better logic" as the
+  // fidelity chart: utilization only exists once tracking exists, so leading
+  // capacity-only history (Tempo schedule rows from long before tracking began,
+  // e.g. W14–W21) is dropped instead of drawing a dead zero-tracked tail. The
+  // current week always stays; mid-history zero weeks after the first tracked
+  // week still show (a real silent week is a signal, an untracked era is not).
+  var firstTrkOrd=null;
+  Object.keys(DATA.personWeekTracked||{}).forEach(function(np){
+    var tw=DATA.personWeekTracked[np];
+    Object.keys(tw).forEach(function(iso){
+      if((tw[iso]||0)>0){ var o=isoOrd(iso); if(firstTrkOrd==null||o<firstTrkOrd) firstTrkOrd=o; }
+    });
+  });
+  if(firstTrkOrd!=null) cw=cw.filter(function(w){ return w.status!=='done' || isoOrd(w.iso)>=firstTrkOrd; });
 
   // Population: People filters first (utilNpList_), then the universal scope
   // carve — the SAME effective-include rules Planned vs Tracked applies via
