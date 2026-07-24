@@ -12,6 +12,7 @@
   --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
   --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
   --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
+  --heatf-lo:#F5F3FF; --heatf-mid:#8B5CF6; --heatf-hi:#312E81;
   --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
   --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
   --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
@@ -21,6 +22,7 @@
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
   --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
   --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
+  --heatf-lo:#1D1A45; --heatf-mid:#7C6AEA; --heatf-hi:#A493F5;
   --up:#34D399; --down:#FB7185; --neutral:#1E295A;
   --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
@@ -203,6 +205,7 @@ button:hover,.btn:hover{border-color:var(--orbe)}
 .legend{display:flex;align-items:center;gap:8px;font-size:calc(11.5px*var(--scale));color:var(--muted)}
 .legbar{width:calc(140px*var(--scale));height:10px;border-radius:5px;border:1px solid var(--border)}
 .legbar.hours{background:linear-gradient(90deg,var(--heat-lo),var(--heat-mid),var(--heat-hi))}
+.legbar.future{background:linear-gradient(90deg,var(--heatf-lo),var(--heatf-mid),var(--heatf-hi))}
 .legbar.change{background:linear-gradient(90deg,var(--down),var(--neutral),var(--up))}
 .legbar.risk{background:linear-gradient(90deg,var(--neutral),var(--warn))}
 .qfilters{display:flex;gap:6px;flex-wrap:wrap}
@@ -573,7 +576,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · quarter-to-date trend · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · last 7 actual weeks (or as many as the data holds) + every future planned week · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
           <span class="hint" id="billableRatioChip" style="display:none"></span><!-- visibility driven by BILLING_UI (JS flag) — un-hides on its own for the Jira-Raw outage warning -->
           <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — hidden while classification is unreliable (visibility driven by the BILLING_UI flag in JS; flip it to restore all billing surfaces). Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
@@ -604,7 +607,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows the last 7 actual weeks per page (Hours view adds future scheduled capacity as a dashed forecast) · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
@@ -687,7 +690,7 @@ input[type=file]{display:none}
       </div>
       </div><!-- /projDrillPark -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;flex-wrap:wrap;gap:10px">
-        <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span></div>
+        <div class="legend"><span id="legLo">Down</span><div class="legbar change" id="legBar"></div><span id="legHi">Up</span><span id="legFut" style="display:none;align-items:center;gap:6px"><div class="legbar future" style="width:calc(70px*var(--scale))"></div><span>future (planned) wks</span></span></div>
         <div class="hint" id="heatNote"></div>
       </div>
     </div>
@@ -877,7 +880,7 @@ function computeFilteredProjectData_(){
 }
 
 // isos defaults to the rolling server window (WEEKS) but accepts any custom list — the
-// Planned vs Tracked chart passes the full QTD+forecast range via capChartWeeks_() below.
+// Planned vs Tracked chart passes its adaptive actuals+forecast range via capChartWeeks_() below.
 // personWeekPlan/personWeekTracked are unwindowed (span the whole sheet), so summing over
 // them works for any iso, not just the ones inside the display window.
 function filteredWeekTotals_(isos){
@@ -1285,17 +1288,30 @@ function bindBillingChips_(){
   });
 }
 
-// Quarter-to-date window for the Planned vs Tracked chart: every completed/in-progress
-// week of the current quarter (server-computed in behaviorSignals.qtdIsos), merged with
-// WEEKS so the future planned weeks the "Week" dropdown can select are always present too.
+// Adaptive window for the Planned vs Tracked chart: the last CAP_ACTUAL_WEEKS actual
+// weeks (completed + in-progress) that carry any planned or tracked data — fewer when
+// the sheets hold less history, and free to cross a quarter boundary — plus EVERY
+// future week with planned data (the plan sheet's real horizon, not a fixed count).
+// WEEKS (the server window) is always merged in so the "Week" dropdown's selectable
+// weeks are guaranteed present.
+var CAP_ACTUAL_WEEKS = 7;
 function capChartWeeks_(){
   var currentIso = (DATA.behaviorSignals && DATA.behaviorSignals.currentIso) || CURRENT_ISO;
-  var qtdIsos = (DATA.behaviorSignals && DATA.behaviorSignals.qtdIsos) || WEEKS.map(function(w){ return w.iso; });
-  var seen = {}, arr = [];
-  qtdIsos.forEach(function(iso){ if (!seen[iso]) { seen[iso]=true; arr.push({ iso: iso, status: iso===currentIso?'now':'done' }); } });
-  WEEKS.forEach(function(w){ if (!seen[w.iso]) { seen[w.iso]=true; arr.push(w); } });
-  arr.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
-  return arr;
+  var curOrd = isoOrd(currentIso);
+  var avail = {};
+  [DATA.personWeekPlan, DATA.personWeekTracked].forEach(function(map){
+    Object.keys(map||{}).forEach(function(np){
+      var byIso = map[np] || {};
+      Object.keys(byIso).forEach(function(iso){ if ((byIso[iso]||0) > 0) avail[iso] = true; });
+    });
+  });
+  WEEKS.forEach(function(w){ avail[w.iso] = true; });
+  avail[currentIso] = true; // the live week is always drawn, data or not
+  var isos = Object.keys(avail).sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
+  var actuals = isos.filter(function(iso){ return isoOrd(iso) <= curOrd; }).slice(-CAP_ACTUAL_WEEKS);
+  var future  = isos.filter(function(iso){ return isoOrd(iso) >  curOrd; });
+  return actuals.map(function(iso){ return { iso: iso, status: iso===currentIso?'now':'done' }; })
+    .concat(future.map(function(iso){ return { iso: iso, status: 'plan' }; }));
 }
 
 // Hover/click handlers for the chart's week labels — hover previews the week's numbers
@@ -1417,6 +1433,10 @@ function mix(c1,c2,t){var a=hx(c1),b=hx(c2);return 'rgb('+Math.round(lerp(a[0],b
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 function hexVar(v){ var c=css(v); return /^#/.test(c)?c:'#888888'; }
 function heatColorHours(t){var lo=css('--heat-lo'),mid=css('--heat-mid'),hi=css('--heat-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
+// Violet ramp for FUTURE (planned) weeks in the heatmap's Hours mode — same intensity
+// scale as heatColorHours, different hue, so actual+current cells and forecast cells
+// never read as the same kind of number.
+function heatColorFutureHours(t){var lo=css('--heatf-lo'),mid=css('--heatf-mid'),hi=css('--heatf-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
 
 /* ---------------- Render: range ---------------- */
 function renderRange(){
@@ -1562,7 +1582,7 @@ function renderCapChart(wt,cw){
   var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
   var y=function(v){return pad.t+ih-Math.min(v,maxv)/maxv*ih;};
   var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked, quarter to date">';
+  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="planned vs tracked, recent actual weeks and forecast">';
   // future region tint
   var firstPlan=-1; cw.forEach(function(wk,i){if(firstPlan<0&&wk.status==='plan')firstPlan=i;});
   if(firstPlan>=0){var x0=x(Math.max(0,firstPlan-0.5));g+='<rect x="'+x0+'" y="'+pad.t+'" width="'+(w-pad.r-x0)+'" height="'+ih+'" fill="'+hexVar('--orbe')+'" opacity="0.05"/>';}
@@ -1688,10 +1708,11 @@ var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) �
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
 var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
 function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
-var UTIL_WIN_WEEKS=16, UTIL_WIN_PAGE=0;          // chart week-window pager: 0 = latest window, 1 = one earlier…
+var UTIL_WIN_WEEKS=7, UTIL_WIN_PAGE=0;           // chart week-window pager (7 actual weeks per page, matching Planned vs Tracked): 0 = latest window, 1 = one earlier…
 var UTIL_LAST_ANCHOR=null;                       // last rendered anchor — a CHANGED anchor auto-pages into view
 function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
+var UTIL_FUT={};                                // last-render future-week capacity forecast (iso → {cap, covered}) for the Hours chart + tooltips
 
 // Scope chips re-render exactly what they scope (both charts + the filter bar) —
 // not reRenderAll_, which would reset open Team Focus drills the carve doesn't touch.
@@ -1741,7 +1762,9 @@ function renderUtilization(){
   if(csvBtn) csvBtn.style.display='';
   if(exploreBtn) exploreBtn.style.display='';
 
-  // Week range: PvT's QTD window ∪ every capacity week (incl. future) — unchanged.
+  // Week range: PvT's adaptive window ∪ every capacity week. Actual weeks feed the
+  // utilization math; future weeks are split out below as the capacity FORECAST
+  // (Hours view) — adaptive to however far the capacity sheet actually reaches.
   var cw=capChartWeeks_().slice();
   var seen={}; cw.forEach(function(w){seen[w.iso]=true;});
   var curOrd=isoOrd(CURRENT_ISO);
@@ -1752,6 +1775,9 @@ function renderUtilization(){
     }
   });
   cw.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
+  var futIsos=cw.filter(function(w){return w.status==='plan';})
+    .map(function(w){return w.iso;})
+    .filter(function(iso){ return capIsos.indexOf(iso)!==-1; }); // forecast only where real schedule data exists
   cw=cw.filter(function(w){return w.status!=='plan';});
 
   // Population: People filters first (utilNpList_), then the universal scope
@@ -1773,6 +1799,10 @@ function renderUtilization(){
   var ut=utilWeekTotals_(isos, capMap, trkMap, npList);
   UTIL_WT=ut; UTIL_CW=cw;
   UTIL_CAPS={raw:rawCapMap, adj:capMap};
+  // Future capacity forecast (PTO-adjusted, same population) — Hours view + tooltips.
+  var futUt=futIsos.length?utilWeekTotals_(futIsos, capMap, trkMap, npList):null;
+  UTIL_FUT={};
+  futIsos.forEach(function(iso){ UTIL_FUT[iso]={cap:(futUt&&futUt.cap[iso])||0, covered:(futUt&&futUt.covered[iso])||0}; });
 
   // Week states: latest 'done' week is PROVISIONAL (late logging still arriving);
   // older 'done' weeks are SETTLED; the 'now' week is PROJECTED.
@@ -1836,11 +1866,14 @@ function renderUtilization(){
       wLbl.textContent=cwWin.length?(cwWin[0].iso+' → '+cwWin[cwWin.length-1].iso
         +(anchorShown?'':' · anchor '+anchor+' off-screen ▶')):'';
     }
-    renderUtilLegend_(stats!=null, proj!=null&&winHasNow, UTIL_CHART_MODE);
+    // The capacity forecast rides only on the latest page (the one whose right edge
+    // is the live week) — a history page followed by a forecast jump would misread.
+    var futShown=(UTIL_CHART_MODE==='hours'&&winHasNow)?futIsos:[];
+    renderUtilLegend_(stats!=null, proj!=null&&winHasNow, UTIL_CHART_MODE, futShown.length>0);
     // proj is passed only when the live week is actually in the window — otherwise
     // its (possibly huge) early-week band would stretch the y-domain of a page
     // that never draws the projected point.
-    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor);
+    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor, futShown);
     else renderUtilChart_(ut, cwWin, stats, winHasNow?proj:null, provisionalIso, anchor);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
@@ -1921,7 +1954,7 @@ function syncScopeChips_(){
     :'Add managers — they legitimately log little delivery time, so they’re excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.';
 }
 
-function renderUtilLegend_(hasBand, hasProj, mode){
+function renderUtilLegend_(hasBand, hasProj, mode, hasFut){
   var el=$('utilLegend'); if(!el) return;
   var h;
   if(mode==='hours'){
@@ -1929,6 +1962,7 @@ function renderUtilLegend_(hasBand, hasProj, mode){
       +'<span><i style="background:'+hexVar('--pos')+'"></i>Tracked</span>'
       +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>'
       +'<span><i class="dashed"></i>Live week (logged so far)</span>';
+    if(hasFut) h+='<span><i class="dashed"></i>Future capacity (forecast)</span>';
   } else {
     h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
     if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
@@ -2139,6 +2173,14 @@ function renderUtilPeople_(anchor, split, npList, trkMap){
 }
 
 function utilChartHover_(e, iso){
+  // Future forecast weeks live in UTIL_FUT, not the actuals totals — scheduled
+  // capacity only, nothing tracked yet.
+  if(UTIL_FUT&&UTIL_FUT[iso]){
+    var fht=holidayTipHtml_(iso);
+    showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(UTIL_FUT[iso].cap)+' hrs scheduled capacity (forecast)'
+      +'<br>'+UTIL_FUT[iso].covered+' people with schedule data<br>no tracked time yet'+(fht?'<br>'+fht:''));
+    return;
+  }
   var ut=UTIL_WT||{cap:{},tracked:{},covered:{},trackedOnly:{},util:{}};
   var cv=ut.cap[iso]||0, tv=ut.tracked[iso]||0, u=ut.util[iso];
   var utxt=u!=null?(Math.round(u)+'% utilization'+(iso===CURRENT_ISO?' (partial)':'')):'no capacity data';
@@ -2250,18 +2292,21 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
     g+='<text x="'+p.x+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
   });
 
-  // hit-columns + thinned week labels (same interaction as before)
+  // hit-columns + thinned week labels (same interaction as before). Highlighted
+  // label follows SEL_ISO like the Planned vs Tracked chart — the anchor stays bold
+  // but muted, so both charts spotlight the same week (fixes the mismatched
+  // current-week highlight between the two panels).
   var spacing=n>1?iw/(n-1):iw;
   var labelStep=Math.max(1,Math.ceil(26/spacing));
   var rectW=Math.max(10,Math.min(36,spacing));
   cw.forEach(function(wk,i){
     var lx=x(i);
-    var isAnchor=wk.iso===anchor, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    var isAnchor=wk.iso===anchor, isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
     g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
       +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
-    if(isAnchor||isCur||isEdge||i%labelStep===0){
+    if(isSel||isAnchor||isCur||isEdge||i%labelStep===0){
       var shortLbl=wk.iso.replace(/^\d{4}\./,'');
-      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isAnchor?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isAnchor?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+((isSel||isAnchor)?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
     }
   });
   g+='</svg>';
@@ -2272,13 +2317,17 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
 // the "what actually happened" complement to the %-space Rate chart. No band/target/
 // projection (those live in %-space); the per-week rate is annotated as a label
 // instead, so both readings are on screen without duplicating the Rate chart.
-function renderUtilHoursChart_(ut, cw, provisionalIso, anchor){
-  var n=cw.length;
+// futIsos (optional) extends the x-axis past the live week with the scheduled-capacity
+// FORECAST (dashed) — adaptive to however far the capacity sheet actually reaches.
+function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
+  futIsos=futIsos||[];
+  var n=cw.length+futIsos.length;
   var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
   var maxRaw=1;
   cw.forEach(function(wk){
     maxRaw=Math.max(maxRaw, ut.cap[wk.iso]||0, ut.tracked[wk.iso]||0);
   });
+  futIsos.forEach(function(iso){ maxRaw=Math.max(maxRaw,(UTIL_FUT[iso]||{}).cap||0); });
   var maxH=niceRound(maxRaw);
   var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
   var yh=function(v){return pad.t+ih-Math.min(v,maxH)/maxH*ih;};
@@ -2308,6 +2357,31 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor){
     g+='<path d="'+capPath+'" fill="'+hexVar('--slate')+'" opacity="0.12"/>';
     for(var ci=1;ci<capPts.length;ci++){
       g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+    }
+  }
+
+  // capacity FORECAST — future schedule weeks continue the capacity line as a dashed,
+  // faintly-filled extension past an Actuals | Forecast divider (same convention as
+  // the Planned vs Tracked chart). No tracked/rate marks out there — nothing happened yet.
+  if(futIsos.length){
+    var lastIdx=cw.length-1;
+    var fPts=[];
+    if(lastIdx>=0&&hasCapData(cw[lastIdx].iso)) fPts.push({x:x(lastIdx),y:yh(ut.cap[cw[lastIdx].iso]||0)});
+    futIsos.forEach(function(iso,fi){ fPts.push({x:x(cw.length+fi),y:yh((UTIL_FUT[iso]||{}).cap||0)}); });
+    if(fPts.length>1){
+      var fPath='M'+fPts[0].x+','+yh(0);
+      fPts.forEach(function(p){ fPath+=' L'+p.x+','+p.y; });
+      fPath+=' L'+fPts[fPts.length-1].x+','+yh(0)+' Z';
+      g+='<path d="'+fPath+'" fill="'+hexVar('--slate')+'" opacity="0.06"/>';
+      for(var fj=1;fj<fPts.length;fj++){
+        g+='<line x1="'+fPts[fj-1].x+'" y1="'+fPts[fj-1].y+'" x2="'+fPts[fj].x+'" y2="'+fPts[fj].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>';
+      }
+    }
+    if(lastIdx>=0){
+      var dvx=x(lastIdx);
+      g+='<line x1="'+dvx+'" y1="'+pad.t+'" x2="'+dvx+'" y2="'+(pad.t+ih)+'" stroke="'+css('--muted')+'" stroke-width="1" stroke-dasharray="2 3" opacity=".6"/>';
+      g+='<text x="'+(dvx-5)+'" y="'+(pad.t-8)+'" text-anchor="end" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">Actuals</text>';
+      g+='<text x="'+(dvx+5)+'" y="'+(pad.t-8)+'" text-anchor="start" font-size="7.5" fill="'+css('--muted')+'" font-weight="700">Forecast</text>';
     }
   }
 
@@ -2351,18 +2425,22 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor){
     g+='<text x="'+x(i)+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+hexVar('--text')+'" font-weight="700">'+lbl+'</text>';
   });
 
-  // hit-columns + thinned week labels — same interaction as the Rate chart
+  // hit-columns + thinned week labels — same interaction as the Rate chart. The
+  // highlighted label follows SEL_ISO (the Week filter / current week), exactly like
+  // the Planned vs Tracked chart — the anchor week stays bold but keeps the muted
+  // color, so the two charts always spotlight the SAME week.
+  var allW=cw.map(function(wk){return {iso:wk.iso};}).concat(futIsos.map(function(iso){return {iso:iso};}));
   var spacing=n>1?iw/(n-1):iw;
   var labelStep=Math.max(1,Math.ceil(26/spacing));
   var rectW=Math.max(10,Math.min(36,spacing));
-  cw.forEach(function(wk,i){
+  allW.forEach(function(wk,i){
     var lx=x(i);
-    var isAnchor=wk.iso===anchor, isCur=i===curIdx, isEdge=(i===0||i===n-1);
+    var isAnchor=wk.iso===anchor, isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
     g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
       +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
-    if(isAnchor||isCur||isEdge||i%labelStep===0){
+    if(isSel||isAnchor||isCur||isEdge||i%labelStep===0){
       var shortLbl=wk.iso.replace(/^\d{4}\./,'');
-      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isAnchor?hexVar('--orbe'):css('--muted'))+'" font-weight="'+(isAnchor?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
+      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+((isSel||isAnchor)?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
     }
   });
   g+='</svg>';
@@ -2633,7 +2711,7 @@ function sparkLegendHtml_(){
     html+='<span class="spark-legend-item"><i style="background:'+SPARK_COLORS[tier-1]+'"></i>'+tierLbl[tier]+' that week</span>';
   });
   html+='<span class="spark-legend-item"><i style="background:'+SPARK_PTO_COLOR+'"></i>PTO / leave</span>';
-  html+='<span class="spark-legend-item"><i style="background:'+SPARK_FUTURE_COLOR+'"></i>Future planned</span>';
+  html+='<span class="spark-legend-item"><i style="background:'+SPARK_FUTURE_COLOR+'"></i>Future planned (bar = planned hrs vs capacity)</span>';
   html+='<span class="spark-legend-item"><i class="spark-legend-cur"></i>Current week (outlined)</span>';
   html+='</div>';
   return html;
@@ -2752,9 +2830,22 @@ function plannedProjectsAtIso_(np, iso) {
     .sort(function(a, b) { return (pp[b][iso] || 0) - (pp[a][iso] || 0); });
 }
 
-function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap) {
+function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap, np) {
   var n = displayIsos.length;
   if (!n) return '';
+  // Future planned hours per week (behavior-signal counts stop at the current week —
+  // the future regime is drawn from the plan sheet instead: bar height = planned hrs
+  // vs capacity, tooltip carries the hours + project count).
+  var futPlan = {};
+  if (np != null) {
+    var ppAll = (DATA.personProjectPlan || {})[np] || {};
+    displayIsos.forEach(function(iso) {
+      if (iso <= currentIso) return;
+      var hSum = 0, nProj = 0;
+      Object.keys(ppAll).forEach(function(key) { var ph = (ppAll[key] || {})[iso] || 0; if (ph > 0) { hSum += ph; nProj++; } });
+      futPlan[iso] = { h: hSum, nProj: nProj };
+    });
+  }
   var BAR_W = 11, GAP = 4, SLOT = BAR_W + GAP, LBL_H = 10, BAR_AREA_H = 36, H = BAR_AREA_H + LBL_H, ARROW_W = 16;
   var W = n * SLOT + ARROW_W;
   var COLOR = SPARK_COLORS;
@@ -2774,11 +2865,19 @@ function renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap)
     if (isFullPto) {
       svg += '<rect x="' + x + '" y="2" width="' + BAR_W + '" height="' + (BAR_AREA_H - 4) + '" fill="' + SPARK_PTO_COLOR + '" rx="1"><title>' + esc(iso + ' · full PTO (' + pto.toFixed(0) + 'h) — compliance-exempt') + '</title></rect>';
     } else {
-      var bh = c > 0 ? Math.max(4, Math.round((c / maxCount) * (BAR_AREA_H - 4))) : 2;
+      var fp = isFut ? (futPlan[iso] || { h: 0, nProj: 0 }) : null;
+      var bh, projLabel;
+      if (isFut) {
+        // Future regime: bar = planned hours vs weekly capacity (not project count).
+        bh = fp.h > 0 ? Math.max(4, Math.round(Math.min(1, fp.h / cap) * (BAR_AREA_H - 4))) : 2;
+        projLabel = fp.h > 0 ? (fp.h.toFixed(0) + 'h planned · ' + fp.nProj + ' project' + (fp.nProj !== 1 ? 's' : '')) : 'nothing planned yet';
+      } else {
+        bh = c > 0 ? Math.max(4, Math.round((c / maxCount) * (BAR_AREA_H - 4))) : 2;
+        projLabel = c > 0 ? (c + ' project' + (c !== 1 ? 's' : '')) : 'no data';
+      }
       var y = BAR_AREA_H - bh - 2;
       var fill = isFut ? SPARK_FUTURE_COLOR : (c === 0 ? SPARK_NONE_COLOR : COLOR[Math.min(3, c - 1)]);
       var strokeAttr = isCur ? ' stroke="#6366f1" stroke-width="1.5"' : '';
-      var projLabel = c > 0 ? (c + ' project' + (c !== 1 ? 's' : '')) : 'no data';
       var ptoNote = pto > 0 ? ' · ' + pto.toFixed(0) + 'h PTO' : '';
       svg += '<rect x="' + x + '" y="' + y + '" width="' + BAR_W + '" height="' + bh + '" fill="' + fill + '" rx="1"' + strokeAttr + '><title>' + esc(iso + ' · ' + projLabel + ptoNote) + '</title></rect>';
       if (pto > 0) {
@@ -2878,7 +2977,7 @@ function renderAvailability() {
     var counts   = personQtdProjectCounts[np] || {};
     var ptoByIso  = (DATA.personWeekPTO || {})[np] || {};
     var weekCap   = personWeekCap_(np);
-    var spark     = renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap);
+    var spark     = renderSparklineSvg_(counts, displayIsos, currentIso, ptoByIso, weekCap, np);
     var streakLen = personStreakLen[np] || 0;
     var refProjects = plannedProjectsAtIso_(np, refIso);
     var isOpen   = AVAIL_OPEN === np;
@@ -3690,9 +3789,15 @@ function visibleOrder(){
   return order.slice(0,HEAT_TOPN);
 }
 
-function cellColor(k,iso){
+function cellColor(k,iso,status){
   var mc=(FPROJ||DATA).maxCell||1;
-  if(COLOR_MODE==='hours'){ var t=Math.min(1,capAt(k,iso)/mc); return {bg:heatColorHours(t),fg:t>0.55?'#fff':css('--text'),txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''}; }
+  if(COLOR_MODE==='hours'){
+    var t=Math.min(1,capAt(k,iso)/mc);
+    // Actual + current weeks share one ramp; future (planned) weeks get the violet
+    // ramp so forecast cells are visually distinct from delivered/current ones.
+    var bgH=status==='plan'?heatColorFutureHours(t):heatColorHours(t);
+    return {bg:bgH,fg:t>0.55?'#fff':css('--text'),txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''};
+  }
   if(COLOR_MODE==='change'){
     var pr=priorIso(iso); var d = pr? (capAt(k,iso)-capAt(k,pr)) : 0;
     var t=Math.max(-1,Math.min(1, d/(mc*0.5)));
@@ -3890,7 +3995,7 @@ function renderHeat(){
     html+='<tr><td><div class="rowlabel '+act+'" data-key="'+esc(k)+'">'+chip(k)+'<span class="nm">'+esc(KEYNAME[k]||k)+'</span></div></td>';
     WEEKS.forEach(function(w){
       var v=capAt(k,w.iso);
-      var col=cellColor(k,w.iso);
+      var col=cellColor(k,w.iso,w.status);
       var hd=(FPROJ.head[k]&&FPROJ.head[k][w.iso])||0;
       html+='<td style="padding:2px"><div class="hcell" data-key="'+esc(k)+'" data-iso="'+w.iso+'" data-v="'+fmt(v)+'" data-h="'+hd+'"'
         +' style="background:'+col.bg+';color:'+col.fg+'">'+col.txt+'</div></td>';
@@ -3915,8 +4020,11 @@ function renderHeat(){
     bar.className='legbar '+COLOR_MODE;
     bar.style.background=''; bar.style.border='';
     $('legLo').textContent = COLOR_MODE==='hours'?'Lower':COLOR_MODE==='risk'?'Steady':'Falling';
-    $('legHi').textContent = COLOR_MODE==='hours'?'Higher planned hrs':COLOR_MODE==='risk'?'Dropping / to zero':'Rising';
+    $('legHi').textContent = COLOR_MODE==='hours'?'Higher planned hrs (actual + current)':COLOR_MODE==='risk'?'Dropping / to zero':'Rising';
   }
+  // Hours mode carries a second ramp: violet = future (planned) weeks.
+  var legFut=$('legFut');
+  if(legFut) legFut.style.display = COLOR_MODE==='hours' ? 'inline-flex' : 'none';
   var losingCount=FPROJ.order.filter(losingThisWeek).length;
   var filterNote = filteredPersonSet_() ? ' (filtered to selected people)' : '';
   // Sanitization receipt: how much duplicated planning was capped out of SEL_ISO's totals.
