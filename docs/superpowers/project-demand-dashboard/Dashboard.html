@@ -12,7 +12,7 @@
   --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
   --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
   --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
-  --heatf-lo:#F5F3FF; --heatf-mid:#8B5CF6; --heatf-hi:#312E81;
+  --heatf-lo:#FFFAF5; --heatf-mid:#DCCDBE; --heatf-hi:#FF9B87;
   --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
   --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
   --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
@@ -22,7 +22,7 @@
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
   --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
   --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
-  --heatf-lo:#1D1A45; --heatf-mid:#7C6AEA; --heatf-hi:#A493F5;
+  --heatf-lo:#16203F; --heatf-mid:#DCCDBE; --heatf-hi:#FFFAF5;
   --up:#34D399; --down:#FB7185; --neutral:#1E295A;
   --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
@@ -1440,9 +1440,10 @@ function mix(c1,c2,t){var a=hx(c1),b=hx(c2);return 'rgb('+Math.round(lerp(a[0],b
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 function hexVar(v){ var c=css(v); return /^#/.test(c)?c:'#888888'; }
 function heatColorHours(t){var lo=css('--heat-lo'),mid=css('--heat-mid'),hi=css('--heat-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
-// Violet ramp for FUTURE (planned) weeks in the heatmap's Hours mode — same intensity
-// scale as heatColorHours, different hue, so actual+current cells and forecast cells
-// never read as the same kind of number.
+// Company-palette ramp for FUTURE (planned) weeks in the heatmap's Hours mode —
+// cream → ivory → june (warm family), against the cool cream → orbe → void actual
+// ramp: same intensity scale, different hue family, all brand colors, so
+// actual+current cells and forecast cells never read as the same kind of number.
 function heatColorFutureHours(t){var lo=css('--heatf-lo'),mid=css('--heatf-mid'),hi=css('--heatf-hi');return t<0.5?mix(lo,mid,t/0.5):mix(mid,hi,(t-0.5)/0.5);}
 
 /* ---------------- Render: range ---------------- */
@@ -1967,16 +1968,16 @@ function renderUtilLegend_(hasBand, hasProj, mode, hasFut){
   var el=$('utilLegend'); if(!el) return;
   var h;
   if(mode==='hours'){
-    h='<span><i style="background:'+hexVar('--slate')+';opacity:.4"></i>Capacity (PTO-adjusted)</span>'
-      +'<span><i style="background:'+hexVar('--pos')+'"></i>Tracked</span>'
-      +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>'
+    h='<span><i style="background:'+utilCapCol_()+';opacity:.5"></i>Capacity (PTO-adjusted)</span>'
+      +'<span><i style="background:'+hexVar('--royal')+'"></i>Tracked</span>'
+      +'<span><i style="border:2px solid '+hexVar('--june')+';background:transparent;border-radius:50%"></i>Still settling</span>'
       +'<span><i class="dashed"></i>Live week (logged so far)</span>';
     if(hasFut) h+='<span><i class="dashed"></i>Future capacity (forecast)</span>';
   } else {
     h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
     if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
-    h+='<span><i style="background:'+hexVar('--pos')+'"></i>Target '+UTIL_TARGET+'%</span>'
-      +'<span><i style="border:2px solid '+hexVar('--amber')+';background:transparent;border-radius:50%"></i>Still settling</span>';
+    h+='<span><i style="background:'+hexVar('--june')+'"></i>Target '+UTIL_TARGET+'%</span>'
+      +'<span><i style="border:2px solid '+hexVar('--june')+';background:transparent;border-radius:50%"></i>Still settling</span>';
     if(hasProj) h+='<span><i class="dashed"></i>Projected (current week)</span>';
   }
   el.innerHTML=h;
@@ -2210,6 +2211,11 @@ function utilChartHover_(e, iso){
   showTip(e, '<b>'+esc(iso)+'</b><br>'+fmt(cv)+' hrs capacity<br>'+fmt(tv)+' hrs tracked<br>'+esc(utxt)+covTxt+(ht?'<br>'+ht:''));
 }
 
+// Capacity tone for the Utilization charts — ivory pulled toward void, a pure
+// brand-palette blend that stays legible as a backdrop on both themes (replaces
+// the off-palette slate gray).
+function utilCapCol_(){ return mix(hexVar('--ivory'), hexVar('--void'), 0.45); }
+
 function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   var n=cw.length;
   var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
@@ -2234,9 +2240,9 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
     g+='<rect x="'+pad.l+'" y="'+yp(stats.hi)+'" width="'+iw+'" height="'+(yp(stats.lo)-yp(stats.hi))+'" fill="'+hexVar('--orbe')+'" opacity="0.10"/>';
     g+='<line x1="'+pad.l+'" y1="'+yp(stats.mean)+'" x2="'+(w-pad.r)+'" y2="'+yp(stats.mean)+'" stroke="'+hexVar('--orbe')+'" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>';
   }
-  // target line
-  g+='<line x1="'+pad.l+'" y1="'+yp(UTIL_TARGET)+'" x2="'+(w-pad.r)+'" y2="'+yp(UTIL_TARGET)+'" stroke="'+hexVar('--pos')+'" stroke-width="1.5" stroke-dasharray="6 4"/>';
-  g+='<text x="'+(w-pad.r)+'" y="'+(yp(UTIL_TARGET)-4)+'" text-anchor="end" font-size="9" fill="'+hexVar('--pos')+'" font-weight="700">Target '+UTIL_TARGET+'%</text>';
+  // target line — june (brand coral) so the goal reads as an accent, not a status color
+  g+='<line x1="'+pad.l+'" y1="'+yp(UTIL_TARGET)+'" x2="'+(w-pad.r)+'" y2="'+yp(UTIL_TARGET)+'" stroke="'+hexVar('--june')+'" stroke-width="1.5" stroke-dasharray="6 4"/>';
+  g+='<text x="'+(w-pad.r)+'" y="'+(yp(UTIL_TARGET)-4)+'" text-anchor="end" font-size="9" fill="'+hexVar('--june')+'" font-weight="700">Target '+UTIL_TARGET+'%</text>';
 
   // % gridlines + axis — ticks at 10s (20s when the domain is wide)
   var tickStep=(hiPct-loPct)>60?20:10;
@@ -2257,7 +2263,7 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   });
   for(var ui=1;ui<uPts.length;ui++){
     var a=uPts[ui-1],b=uPts[ui];
-    var seg = b.state==='proj' ? ' stroke="'+hexVar('--slate')+'" stroke-dasharray="3 4"'
+    var seg = b.state==='proj' ? ' stroke="'+css('--muted')+'" stroke-dasharray="3 4"'
             : b.state==='prov' ? ' stroke="'+hexVar('--text')+'" stroke-dasharray="4 3"'
             : ' stroke="'+hexVar('--text')+'"';
     g+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"'+seg+' stroke-width="2.4"/>';
@@ -2265,9 +2271,9 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
   // projection range whisker (before the points so points sit on top)
   if(proj && proj.lo!=null && curIdx>=0){
     var px=x(curIdx);
-    g+='<line x1="'+px+'" y1="'+yp(proj.hi)+'" x2="'+px+'" y2="'+yp(proj.lo)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>'
-      +'<line x1="'+(px-5)+'" y1="'+yp(proj.hi)+'" x2="'+(px+5)+'" y2="'+yp(proj.hi)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>'
-      +'<line x1="'+(px-5)+'" y1="'+yp(proj.lo)+'" x2="'+(px+5)+'" y2="'+yp(proj.lo)+'" stroke="'+hexVar('--slate')+'" stroke-width="1"/>';
+    g+='<line x1="'+px+'" y1="'+yp(proj.hi)+'" x2="'+px+'" y2="'+yp(proj.lo)+'" stroke="'+css('--muted')+'" stroke-width="1"/>'
+      +'<line x1="'+(px-5)+'" y1="'+yp(proj.hi)+'" x2="'+(px+5)+'" y2="'+yp(proj.hi)+'" stroke="'+css('--muted')+'" stroke-width="1"/>'
+      +'<line x1="'+(px-5)+'" y1="'+yp(proj.lo)+'" x2="'+(px+5)+'" y2="'+yp(proj.lo)+'" stroke="'+css('--muted')+'" stroke-width="1"/>';
   }
   // projected callout (replaces the stacked % label at the live week). The live
   // week is the domain's right edge, so the callout sits LEFT of the point —
@@ -2283,9 +2289,9 @@ function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
     if(p.state==='settled'){
       g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--text')+'"/>';
     } else if(p.state==='prov'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--amber')+'" stroke-width="2"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--june')+'" stroke-width="2"/>';
     } else {
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+css('--muted')+'" stroke-width="2"/>';
     }
   });
   // % labels on EVERY settled + provisional point (user directive — managers read
@@ -2357,15 +2363,18 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
 
   // adjusted-capacity area — only weeks with real capacity data; the live week's
   // capacity is real schedule data (not a forecast), so its line stays solid.
+  // Capacity wears the ivory→void brand blend (utilCapCol_), tracked wears royal —
+  // company palette only.
+  var capCol=utilCapCol_();
   var capPts=[];
   cw.forEach(function(wk,i){ if(hasCapData(wk.iso)) capPts.push({x:x(i),y:yh(ut.cap[wk.iso]||0)}); });
   if(capPts.length){
     var capPath='M'+capPts[0].x+','+yh(0);
     capPts.forEach(function(p){ capPath+=' L'+p.x+','+p.y; });
     capPath+=' L'+capPts[capPts.length-1].x+','+yh(0)+' Z';
-    g+='<path d="'+capPath+'" fill="'+hexVar('--slate')+'" opacity="0.12"/>';
+    g+='<path d="'+capPath+'" fill="'+capCol+'" opacity="0.14"/>';
     for(var ci=1;ci<capPts.length;ci++){
-      g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+      g+='<line x1="'+capPts[ci-1].x+'" y1="'+capPts[ci-1].y+'" x2="'+capPts[ci].x+'" y2="'+capPts[ci].y+'" stroke="'+capCol+'" stroke-width="2"/>';
     }
   }
 
@@ -2381,9 +2390,9 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
       var fPath='M'+fPts[0].x+','+yh(0);
       fPts.forEach(function(p){ fPath+=' L'+p.x+','+p.y; });
       fPath+=' L'+fPts[fPts.length-1].x+','+yh(0)+' Z';
-      g+='<path d="'+fPath+'" fill="'+hexVar('--slate')+'" opacity="0.06"/>';
+      g+='<path d="'+fPath+'" fill="'+capCol+'" opacity="0.07"/>';
       for(var fj=1;fj<fPts.length;fj++){
-        g+='<line x1="'+fPts[fj-1].x+'" y1="'+fPts[fj-1].y+'" x2="'+fPts[fj].x+'" y2="'+fPts[fj].y+'" stroke="'+hexVar('--slate')+'" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>';
+        g+='<line x1="'+fPts[fj-1].x+'" y1="'+fPts[fj-1].y+'" x2="'+fPts[fj].x+'" y2="'+fPts[fj].y+'" stroke="'+capCol+'" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>';
       }
     }
     if(lastIdx>=0){
@@ -2406,19 +2415,19 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
   var tPath='M'+trkPts[0].x+','+yh(0);
   trkPts.forEach(function(p){ tPath+=' L'+p.x+','+p.y; });
   tPath+=' L'+trkPts[trkPts.length-1].x+','+yh(0)+' Z';
-  g+='<path d="'+tPath+'" fill="'+hexVar('--pos')+'" opacity="0.15"/>';
+  g+='<path d="'+tPath+'" fill="'+hexVar('--royal')+'" opacity="0.15"/>';
   for(var ti=1;ti<trkPts.length;ti++){
     var intoNow=trkPts[ti].state==='now';
-    g+='<line x1="'+trkPts[ti-1].x+'" y1="'+trkPts[ti-1].y+'" x2="'+trkPts[ti].x+'" y2="'+trkPts[ti].y+'" stroke="'+hexVar('--pos')+'" stroke-width="2.4"'
+    g+='<line x1="'+trkPts[ti-1].x+'" y1="'+trkPts[ti-1].y+'" x2="'+trkPts[ti].x+'" y2="'+trkPts[ti].y+'" stroke="'+hexVar('--royal')+'" stroke-width="2.4"'
       +(intoNow?' stroke-dasharray="3 4" opacity="0.5"':'')+'/>';
   }
   trkPts.forEach(function(p){
     if(p.state==='settled'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--pos')+'"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--royal')+'"/>';
     } else if(p.state==='prov'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--amber')+'" stroke-width="2"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--june')+'" stroke-width="2"/>';
     } else {
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--slate')+'" stroke-width="2"/>';
+      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+capCol+'" stroke-width="2"/>';
     }
   });
 
@@ -3802,10 +3811,13 @@ function cellColor(k,iso,status){
   var mc=(FPROJ||DATA).maxCell||1;
   if(COLOR_MODE==='hours'){
     var t=Math.min(1,capAt(k,iso)/mc);
-    // Actual + current weeks share one ramp; future (planned) weeks get the violet
-    // ramp so forecast cells are visually distinct from delivered/current ones.
-    var bgH=status==='plan'?heatColorFutureHours(t):heatColorHours(t);
-    return {bg:bgH,fg:t>0.55?'#fff':css('--text'),txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''};
+    // Actual + current weeks share the cool brand ramp; future (planned) weeks get
+    // the warm cream→ivory→june ramp so forecast cells are visually distinct.
+    // The future ramp's high end is LIGHT in both themes → dark (void) text there.
+    var isFutC=status==='plan';
+    var bgH=isFutC?heatColorFutureHours(t):heatColorHours(t);
+    var fgH=t>0.55?(isFutC?'#0F1941':'#fff'):css('--text');
+    return {bg:bgH,fg:fgH,txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''};
   }
   if(COLOR_MODE==='change'){
     var pr=priorIso(iso); var d = pr? (capAt(k,iso)-capAt(k,pr)) : 0;
