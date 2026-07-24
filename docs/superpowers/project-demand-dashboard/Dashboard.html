@@ -607,25 +607,23 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows every actual week in the data (Hours view adds the next 5 weeks of scheduled capacity as a dashed forecast) · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows every actual week in the data + the next 5 weeks of scheduled capacity as a dashed forecast · dashed coral line = the 70% target in hours · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
-          <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
       </div>
       <div class="util-head" id="utilHead"></div>
       <div id="utilExplore" style="display:none">
         <div class="util-tools">
-          <div class="chip-toggle" id="utilChartMode">
-            <button id="utilModeHours" onclick="utilSetMode_('hours')">Hours</button>
-            <button id="utilModeRate" onclick="utilSetMode_('rate')">Rate</button>
-          </div>
           <div class="chip-toggle" id="utilWinNav">
             <button id="utilWinPrev" onclick="utilWinShift_(1)" title="Earlier weeks">◀</button>
             <button id="utilWinNext" onclick="utilWinShift_(-1)" title="Later weeks">▶</button>
           </div>
           <span class="hint" id="utilWinLbl"></span>
           <!-- population scope chips moved to the People filters bar (universal — see #scopeChips) -->
-          <button class="btn" id="utilCsvBtn" style="font-size:11px;padding:5px 10px" title="Person × week capacity report — full population (Delivery + Manager + Non-tracking, Group column), regardless of the toggles; respects the People filters">⇣ CSV</button>
+          <!-- Single chart (Hours) since 2026-07-24: the Rate toggle/chart is retired — its
+               70% threshold lives ON the hours chart as the june target line. CSV export
+               replaced by Save PNG (user directive: this surface is a chart). -->
+          <button class="png-btn" id="utilPngBtn" data-png="utilization">⬇ Save PNG</button>
         </div>
         <div id="utilChart"></div>
         <div class="cap-legend" id="utilLegend"></div>
@@ -1714,8 +1712,8 @@ var UTIL_DRILL_OPEN=false, UTIL_DRILL_DIM='family'; // contribution drill state
 var UTIL_PEOPLE_OPEN=false, UTIL_PERSON_OPEN=null;   // people-detail table state (person np whose history row is expanded)
 var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) — not persisted
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
-var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
-function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
+// Single chart mode (Hours) — the Rate chart + toggle were retired 2026-07-24; the
+// 70% threshold now draws on the hours chart as the june target line.
 var UTIL_WIN_WEEKS=999, UTIL_WIN_PAGE=0;         // chart draws EVERY actual week (user directive 2026-07-24, matching Planned vs Tracked); pager machinery kept but auto-hidden (maxPage 0)
 var UTIL_LAST_ANCHOR=null;                       // last rendered anchor — a CHANGED anchor auto-pages into view
 function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
@@ -1750,7 +1748,7 @@ function renderUtilization(){
   if(SOURCE!=='live'){ panel.style.display='none'; return; }   // capacity isn't in the offline CSV
   panel.style.display='';
   var capIsos=(DATA&&DATA.capacityIsoList)||[];
-  var csvBtn=$('utilCsvBtn');
+  var pngBtn=$('utilPngBtn');
   var exploreBtn=$('utilExploreBtn');
   if(!capIsos.length){
     $('utilHead').innerHTML='';
@@ -1762,12 +1760,12 @@ function renderUtilization(){
     $('utilSoWhat').innerHTML='<b>Capacity data unavailable</b>'
       +(DATA&&DATA.capacityError?' — '+esc(DATA.capacityError):'')
       +' Run fetchTempoCapacity() in the Tempo export project, then ↻ Refresh.';
-    if(csvBtn) csvBtn.style.display='none';
+    if(pngBtn) pngBtn.style.display='none';
     if(exploreBtn) exploreBtn.style.display='none';
     $('utilExplore').style.display='none';
     return;
   }
-  if(csvBtn) csvBtn.style.display='';
+  if(pngBtn) pngBtn.style.display='';
   if(exploreBtn) exploreBtn.style.display='';
 
   // Week range: PvT's adaptive window ∪ every capacity week. Actual weeks feed the
@@ -1849,9 +1847,6 @@ function renderUtilization(){
     exploreBtn.className='btn'+(verdict==='below'?' explore-why':'');
   }
   if(UTIL_EXPLORE_OPEN){
-    var utilModeHoursBtn=$('utilModeHours'), utilModeRateBtn=$('utilModeRate');
-    if(utilModeHoursBtn) utilModeHoursBtn.className = UTIL_CHART_MODE==='hours'?'on':'';
-    if(utilModeRateBtn)  utilModeRateBtn.className  = UTIL_CHART_MODE==='rate'?'on':'';
     // Week-window pager (sliding — utilWindow_ keeps the earliest page full instead
     // of stranding a remainder). Headline, band, anchor and projection always use
     // the FULL range — paging only changes which weeks are drawn. A newly selected
@@ -1878,13 +1873,9 @@ function renderUtilization(){
     }
     // The capacity forecast rides only on the latest page (the one whose right edge
     // is the live week) — a history page followed by a forecast jump would misread.
-    var futShown=(UTIL_CHART_MODE==='hours'&&winHasNow)?futIsos:[];
-    renderUtilLegend_(stats!=null, proj!=null&&winHasNow, UTIL_CHART_MODE, futShown.length>0);
-    // proj is passed only when the live week is actually in the window — otherwise
-    // its (possibly huge) early-week band would stretch the y-domain of a page
-    // that never draws the projected point.
-    if(UTIL_CHART_MODE==='hours') renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor, futShown);
-    else renderUtilChart_(ut, cwWin, stats, winHasNow?proj:null, provisionalIso, anchor);
+    var futShown=winHasNow?futIsos:[];
+    renderUtilLegend_(futShown.length>0);
+    renderUtilHoursChart_(ut, cwWin, provisionalIso, anchor, futShown);
     renderUtilSoWhat_(anchor, ut, stats);
     if (typeof renderUtilDrill_==='function') renderUtilDrill_(anchor, split, settledIsos, capMap, trkMap);
     if (typeof renderUtilPeople_==='function') renderUtilPeople_(anchor, split, npList, trkMap);
@@ -1964,22 +1955,16 @@ function syncScopeChips_(){
     :'Add managers — they legitimately log little delivery time, so they’re excluded from the default denominator. Applies to both Planned vs Tracked and Utilization.';
 }
 
-function renderUtilLegend_(hasBand, hasProj, mode, hasFut){
+// Single-mode legend — the Rate chart was folded into the hours chart as the june
+// target line (UTIL_TARGET % of each week's capacity).
+function renderUtilLegend_(hasFut){
   var el=$('utilLegend'); if(!el) return;
-  var h;
-  if(mode==='hours'){
-    h='<span><i style="background:'+utilCapCol_()+';opacity:.5"></i>Capacity (PTO-adjusted)</span>'
-      +'<span><i style="background:'+hexVar('--royal')+'"></i>Tracked</span>'
-      +'<span><i style="border:2px solid '+hexVar('--june')+';background:transparent;border-radius:50%"></i>Still settling</span>'
-      +'<span><i class="dashed"></i>Live week (logged so far)</span>';
-    if(hasFut) h+='<span><i class="dashed"></i>Future capacity (forecast)</span>';
-  } else {
-    h='<span><i style="background:'+hexVar('--text')+'"></i>Utilization %</span>';
-    if(hasBand) h+='<span><i style="background:'+hexVar('--orbe')+';opacity:.25"></i>Normal range (±2σ)</span>';
-    h+='<span><i style="background:'+hexVar('--june')+'"></i>Target '+UTIL_TARGET+'%</span>'
-      +'<span><i style="border:2px solid '+hexVar('--june')+';background:transparent;border-radius:50%"></i>Still settling</span>';
-    if(hasProj) h+='<span><i class="dashed"></i>Projected (current week)</span>';
-  }
+  var h='<span><i style="background:'+utilCapCol_()+';opacity:.5"></i>Capacity (PTO-adjusted)</span>'
+    +'<span><i style="background:'+hexVar('--royal')+'"></i>Tracked</span>'
+    +'<span><i style="background:'+hexVar('--june')+'"></i>Target '+UTIL_TARGET+'% of capacity</span>'
+    +'<span><i style="border:2px solid '+hexVar('--june')+';background:transparent;border-radius:50%"></i>Still settling</span>'
+    +'<span><i class="dashed"></i>Live week (logged so far)</span>';
+  if(hasFut) h+='<span><i class="dashed"></i>Future capacity (forecast)</span>';
   el.innerHTML=h;
 }
 
@@ -2216,122 +2201,10 @@ function utilChartHover_(e, iso){
 // the off-palette slate gray).
 function utilCapCol_(){ return mix(hexVar('--ivory'), hexVar('--void'), 0.45); }
 
-function renderUtilChart_(ut, cw, stats, proj, provisionalIso, anchor){
-  var n=cw.length;
-  var w=620,h=190,pad={l:44,r:14,t:20,b:24},iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
-  // % scale (left axis). The domain hugs the plotted values (line, band, target,
-  // projection) instead of a fixed 0–100 — the story lives in a ~15pp corridor and
-  // deserves the vertical space. Values are still capped at 160 so one outlier week
-  // can't flatten the chart, and the span never shrinks below 20pp (no over-zoom).
-  var vals=[UTIL_TARGET];
-  if(stats){ vals.push(stats.lo, stats.hi); }
-  if(proj){ vals.push(Math.min(proj.pct,160)); if(proj.lo!=null){ vals.push(proj.lo, Math.min(proj.hi,160)); } }
-  cw.forEach(function(wk){ var u=ut.util[wk.iso]; if(u!=null) vals.push(Math.min(u,160)); });
-  var hiPct=Math.max.apply(null,vals)+6;
-  var loPct=Math.max(0, Math.min.apply(null,vals)-6);
-  if(hiPct-loPct<20) loPct=Math.max(0, hiPct-20);
-  var x=function(i){return pad.l+(n===1?0:i/(n-1)*iw);};
-  var yp=function(v){return pad.t+ih-(Math.min(Math.max(v,loPct),hiPct)-loPct)/(hiPct-loPct)*ih;};
-  var curIdx=-1; cw.forEach(function(wk,i){ if(wk.status==='now') curIdx=i; });
-  var g='<svg viewBox="0 0 '+w+' '+h+'" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="utilization % per week with control band, target and current-week projection">';
-
-  // control band + mean (under the line)
-  if(stats){
-    g+='<rect x="'+pad.l+'" y="'+yp(stats.hi)+'" width="'+iw+'" height="'+(yp(stats.lo)-yp(stats.hi))+'" fill="'+hexVar('--orbe')+'" opacity="0.10"/>';
-    g+='<line x1="'+pad.l+'" y1="'+yp(stats.mean)+'" x2="'+(w-pad.r)+'" y2="'+yp(stats.mean)+'" stroke="'+hexVar('--orbe')+'" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>';
-  }
-  // target line — june (brand coral) so the goal reads as an accent, not a status color
-  g+='<line x1="'+pad.l+'" y1="'+yp(UTIL_TARGET)+'" x2="'+(w-pad.r)+'" y2="'+yp(UTIL_TARGET)+'" stroke="'+hexVar('--june')+'" stroke-width="1.5" stroke-dasharray="6 4"/>';
-  g+='<text x="'+(w-pad.r)+'" y="'+(yp(UTIL_TARGET)-4)+'" text-anchor="end" font-size="9" fill="'+hexVar('--june')+'" font-weight="700">Target '+UTIL_TARGET+'%</text>';
-
-  // % gridlines + axis — ticks at 10s (20s when the domain is wide)
-  var tickStep=(hiPct-loPct)>60?20:10;
-  for(var gv=Math.ceil(loPct/tickStep)*tickStep; gv<=hiPct; gv+=tickStep){
-    g+='<line x1="'+pad.l+'" y1="'+yp(gv)+'" x2="'+(w-pad.r)+'" y2="'+yp(gv)+'" stroke="'+css('--border')+'" stroke-width="1" opacity=".5"/>';
-    g+='<text x="'+(pad.l-6)+'" y="'+(yp(gv)+3)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">'+gv+'%</text>';
-  }
-
-  // utilization line: settled solid → provisional dashed inbound → projection dashed gray.
-  var uPts=[];
-  cw.forEach(function(wk,i){
-    if(wk.status==='plan') return;
-    var u=ut.util[wk.iso]; if(u==null) return;
-    var state = wk.status==='now'?'proj':(wk.iso===provisionalIso?'prov':'settled');
-    // the 'now' point plots the PROJECTED value when available, else logged-so-far
-    var v=(state==='proj'&&proj)?proj.pct:u;
-    uPts.push({i:i,x:x(i),y:yp(v),v:v,state:state,iso:wk.iso});
-  });
-  for(var ui=1;ui<uPts.length;ui++){
-    var a=uPts[ui-1],b=uPts[ui];
-    var seg = b.state==='proj' ? ' stroke="'+css('--muted')+'" stroke-dasharray="3 4"'
-            : b.state==='prov' ? ' stroke="'+hexVar('--text')+'" stroke-dasharray="4 3"'
-            : ' stroke="'+hexVar('--text')+'"';
-    g+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"'+seg+' stroke-width="2.4"/>';
-  }
-  // projection range whisker (before the points so points sit on top)
-  if(proj && proj.lo!=null && curIdx>=0){
-    var px=x(curIdx);
-    g+='<line x1="'+px+'" y1="'+yp(proj.hi)+'" x2="'+px+'" y2="'+yp(proj.lo)+'" stroke="'+css('--muted')+'" stroke-width="1"/>'
-      +'<line x1="'+(px-5)+'" y1="'+yp(proj.hi)+'" x2="'+(px+5)+'" y2="'+yp(proj.hi)+'" stroke="'+css('--muted')+'" stroke-width="1"/>'
-      +'<line x1="'+(px-5)+'" y1="'+yp(proj.lo)+'" x2="'+(px+5)+'" y2="'+yp(proj.lo)+'" stroke="'+css('--muted')+'" stroke-width="1"/>';
-  }
-  // projected callout (replaces the stacked % label at the live week). The live
-  // week is the domain's right edge, so the callout sits LEFT of the point —
-  // right-anchored text at x+9 would clip off the SVG edge.
-  if(proj && curIdx>=0){
-    var cx=x(curIdx)-9;
-    g+='<text x="'+cx+'" y="'+(yp(proj.pct)-2)+'" text-anchor="end" font-size="9" fill="'+css('--muted')+'">projected '+Math.round(proj.pct)+'%</text>';
-    if(proj.lo!=null){
-      g+='<text x="'+cx+'" y="'+(yp(proj.pct)+9)+'" text-anchor="end" font-size="8" fill="'+css('--muted')+'">('+Math.round(proj.lo)+'–'+Math.round(proj.hi)+')</text>';
-    }
-  }
-  uPts.forEach(function(p){
-    if(p.state==='settled'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="3" fill="'+hexVar('--text')+'"/>';
-    } else if(p.state==='prov'){
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+hexVar('--june')+'" stroke-width="2"/>';
-    } else {
-      g+='<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="'+hexVar('--surface')+'" stroke="'+css('--muted')+'" stroke-width="2"/>';
-    }
-  });
-  // % labels on EVERY settled + provisional point (user directive — managers read
-  // the rate per week here too); the projected point keeps the callout instead.
-  // The provisional label drops BELOW its point when the callout is drawn — the
-  // right-anchored callout text spans back over the provisional point's x position
-  // and the two would collide whenever the values are close.
-  uPts.forEach(function(p){
-    if(p.state==='proj') return;
-    var lbl=Math.round(p.v)+'%';
-    if(p.state==='prov') lbl+='˜';
-    var ly=(p.state==='prov'&&proj)?(p.y+16):(p.y-8);
-    g+='<text x="'+p.x+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+(p.state==='settled'?hexVar('--text'):css('--muted'))+'" font-weight="700">'+lbl+'</text>';
-  });
-
-  // hit-columns + thinned week labels (same interaction as before). Highlighted
-  // label follows SEL_ISO like the Planned vs Tracked chart — the anchor stays bold
-  // but muted, so both charts spotlight the same week (fixes the mismatched
-  // current-week highlight between the two panels).
-  var spacing=n>1?iw/(n-1):iw;
-  var labelStep=Math.max(1,Math.ceil(26/spacing));
-  var rectW=Math.max(10,Math.min(36,spacing));
-  cw.forEach(function(wk,i){
-    var lx=x(i);
-    var isAnchor=wk.iso===anchor, isSel=wk.iso===SEL_ISO, isCur=i===curIdx, isEdge=(i===0||i===n-1);
-    g+='<rect x="'+(lx-rectW/2)+'" y="'+pad.t+'" width="'+rectW+'" height="'+(h-pad.t)+'" fill="transparent" style="cursor:pointer" '
-      +'onmouseenter="utilChartHover_(event,\''+wk.iso+'\')" onmouseleave="hideTip()" onclick="capChartNav_(\''+wk.iso+'\')"/>';
-    if(isSel||isAnchor||isCur||isEdge||i%labelStep===0){
-      var shortLbl=wk.iso.replace(/^\d{4}\./,'');
-      g+='<text x="'+lx+'" y="'+(h-7)+'" text-anchor="middle" font-size="9" fill="'+(isSel?hexVar('--orbe'):css('--muted'))+'" font-weight="'+((isSel||isAnchor)?'700':'400')+'" style="pointer-events:none">'+shortLbl+'</text>';
-    }
-  });
-  g+='</svg>';
-  $('utilChart').innerHTML=g;
-}
-
-// Hours-space chart: capacity (PTO-adjusted) area vs tracked area, in raw hours —
-// the "what actually happened" complement to the %-space Rate chart. No band/target/
-// projection (those live in %-space); the per-week rate is annotated as a label
-// instead, so both readings are on screen without duplicating the Rate chart.
+// THE utilization chart (single mode since 2026-07-24 — the %-space Rate chart is
+// retired): capacity (PTO-adjusted) area vs tracked area in raw hours, the per-week
+// utilization rate annotated as a label, and the 70% threshold drawn in hours-space
+// as the june target line (UTIL_TARGET % of each week's capacity, forecast included).
 // futIsos (optional) extends the x-axis past the live week with the scheduled-capacity
 // FORECAST (dashed) — adaptive to however far the capacity sheet actually reaches.
 function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
@@ -2403,6 +2276,18 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
     }
   }
 
+  // 70% threshold in hours-space — UTIL_TARGET % of each week's (PTO-adjusted)
+  // capacity, extended across the forecast. This replaces the retired Rate chart:
+  // the tracked line sitting below the june dashes IS "below target", no second
+  // chart needed. Skips no-capacity weeks like the capacity line does.
+  var tgtPts=[];
+  cw.forEach(function(wk,i){ if(hasCapData(wk.iso)) tgtPts.push({x:x(i), y:yh((ut.cap[wk.iso]||0)*UTIL_TARGET/100)}); });
+  futIsos.forEach(function(iso,fi){ tgtPts.push({x:x(cw.length+fi), y:yh(((UTIL_FUT[iso]||{}).cap||0)*UTIL_TARGET/100)}); });
+  if(tgtPts.length>1){
+    g+='<polyline points="'+tgtPts.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="'+hexVar('--june')+'" stroke-width="1.5" stroke-dasharray="6 4"/>';
+    g+='<text x="'+(tgtPts[0].x+3)+'" y="'+(tgtPts[0].y-5)+'" text-anchor="start" font-size="9" fill="'+hexVar('--june')+'" font-weight="700">Target '+UTIL_TARGET+'%</text>';
+  }
+
   // tracked area on top — every week in cw (plan weeks are already filtered out
   // upstream by renderUtilization). Settled points solid, provisional hollow amber,
   // the segment INTO the live week ghosted (dashed + faded) with a hollow gray point
@@ -2431,15 +2316,18 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
     }
   });
 
-  // per-week utilization % labels — every settled + provisional + live point,
-  // sitting 7px above the higher of the two series so they never collide with
-  // either area/line. Provisional gets a ˜ (still settling); the live week gets
-  // a * (logged-so-far, not a full-week rate).
+  // per-week utilization % labels — settled + provisional + live points, sitting
+  // 7px above the higher of the two series. Weeks with NO tracked hours print no
+  // label: a row of 0% over pre-tracking history is noise, and the zeroed live
+  // point's "0%*" was colliding with the Actuals|Forecast header. The label also
+  // clamps below the header row so a max-capacity week can't overlap it either.
+  // Provisional gets a ˜ (still settling); the live week a * (logged so far).
   cw.forEach(function(wk,i){
     var u=ut.util[wk.iso]; if(u==null) return;
+    if(!((ut.tracked[wk.iso]||0)>0)) return;
     var state = wk.status==='now'?'now':(wk.iso===provisionalIso?'prov':'settled');
     var lbl=Math.round(u)+'%'+(state==='prov'?'˜':state==='now'?'*':'');
-    var ly=Math.min(yh(ut.cap[wk.iso]||0), yh(ut.tracked[wk.iso]||0))-7;
+    var ly=Math.max(pad.t+9, Math.min(yh(ut.cap[wk.iso]||0), yh(ut.tracked[wk.iso]||0))-7);
     g+='<text x="'+x(i)+'" y="'+ly+'" text-anchor="middle" font-size="8" fill="'+hexVar('--text')+'" font-weight="700">'+lbl+'</text>';
   });
 
@@ -2465,6 +2353,8 @@ function renderUtilHoursChart_(ut, cw, provisionalIso, anchor, futIsos){
   $('utilChart').innerHTML=g;
 }
 
+// No UI button since 2026-07-24 (replaced by Save PNG) — run from the console when
+// the person×week capacity audit is needed; the pure builders stay node-tested.
 function downloadUtilCsv_(){
   var capIsos=(DATA&&DATA.capacityIsoList)||[]; if(!capIsos.length) return;
   var npList=utilNpList_();
@@ -4238,7 +4128,8 @@ Array.prototype.forEach.call($('colorMode').children,function(b){ b.onclick=func
 // "Tracked billing" chip toggle — scopes the Planned vs Tracked panel's tracked series only
 // (see trackedForWeek_ / BILLING_FILTER); planned/capacity figures never read this state.
 bindBillingChips_();
-var ucb=$('utilCsvBtn'); if(ucb) ucb.onclick=downloadUtilCsv_;
+// Utilization CSV button removed 2026-07-24 (panel is a chart — Save PNG instead);
+// downloadUtilCsv_ is kept callable from the console for audits.
 // View tabs — Overview | Project heatmap | Delivery & PM load.
 Array.prototype.forEach.call($('viewTabs').children,function(b){ b.onclick=function(){ setViewTab_(b.dataset.view); }; });
 // TOPN caps PEOPLE lists (Team Focus) only — the heatmap and epic table carry their own panel-local Top N chips.
