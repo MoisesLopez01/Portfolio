@@ -576,7 +576,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Planned vs Tracked</h2>
         <div class="panel-tools">
-          <div class="hint">Planned hours (blue) vs actual tracked (green) · last 7 actual weeks (or as many as the data holds) + every future planned week · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
+          <div class="hint">Planned hours (blue) vs actual tracked (green) · every actual week in the data + the next 5 weeks of forecast · fidelity % shown per week · dashed = future planned · ghosted segment + hollow point = current week still logging · click a week label to navigate · reflects the People filters &amp; scope chips above — same population as Utilization, so the fidelity numbers match</div>
           <span class="hint" id="billableRatioChip" style="display:none"></span><!-- visibility driven by BILLING_UI (JS flag) — un-hides on its own for the Jira-Raw outage warning -->
           <div class="chip-toggle" id="billingFilter" style="display:none" title="Tracked billing — hidden while classification is unreliable (visibility driven by the BILLING_UI flag in JS; flip it to restore all billing surfaces). Billable = SRSO fix version · Internal = tagged, no SRSO · Untagged = no fix version · Unclassified = no Jira Raw match">
             <button data-billing="all" class="on">All</button>
@@ -607,7 +607,7 @@ input[type=file]{display:none}
       <div class="panel-h">
         <h2>Utilization — Delivery</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows the last 7 actual weeks per page (Hours view adds future scheduled capacity as a dashed forecast) · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
+          <div class="hint">Tracked ÷ Tempo schedule capacity (PTO-adjusted) for tracking-required roles · Coverage = planned ÷ capacity, Fidelity = tracked ÷ planned · verdict = position vs the normal ±2σ band · chart shows every actual week in the data (Hours view adds the next 5 weeks of scheduled capacity as a dashed forecast) · reflects the People filters &amp; scope chips above — same population as Planned vs Tracked</div>
           <button class="btn" id="utilExploreBtn" style="font-size:11px;padding:5px 10px" onclick="utilToggleExplore_()">Explore ▸</button>
           <button class="png-btn" data-png="utilization">⬇ Save PNG</button>
         </div>
@@ -1288,13 +1288,21 @@ function bindBillingChips_(){
   });
 }
 
-// Adaptive window for the Planned vs Tracked chart: the last CAP_ACTUAL_WEEKS actual
-// weeks (completed + in-progress) that carry any planned or tracked data — fewer when
-// the sheets hold less history, and free to cross a quarter boundary — plus EVERY
-// future week with planned data (the plan sheet's real horizon, not a fixed count).
-// WEEKS (the server window) is always merged in so the "Week" dropdown's selectable
-// weeks are guaranteed present.
-var CAP_ACTUAL_WEEKS = 7;
+// Window for the Overview charts (user directive 2026-07-24): EVERY actual week that
+// carries planned/tracked data (plus the server window's past weeks), the current
+// week, and exactly the next CAP_FUTURE_WEEKS calendar weeks of forecast. The fixed
+// 5-week horizon keeps the axis stable — a stray far-future plan row can no longer
+// stretch the chart, and the forecast never collapses when nothing is planned yet.
+var CAP_FUTURE_WEEKS = 5;
+// The next `count` calendar ISO weeks after today's — the charts' forecast horizon.
+function nextIsos_(count){
+  var out=[], t=new Date();
+  for(var i=1;i<=count;i++){
+    var d=new Date(t.getTime()+i*7*86400000);
+    out.push(isoWeekYearC(d)+'.W'+isoWeekNumC(d));
+  }
+  return out;
+}
 function capChartWeeks_(){
   var currentIso = (DATA.behaviorSignals && DATA.behaviorSignals.currentIso) || CURRENT_ISO;
   var curOrd = isoOrd(currentIso);
@@ -1307,11 +1315,10 @@ function capChartWeeks_(){
   });
   WEEKS.forEach(function(w){ avail[w.iso] = true; });
   avail[currentIso] = true; // the live week is always drawn, data or not
-  var isos = Object.keys(avail).sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
-  var actuals = isos.filter(function(iso){ return isoOrd(iso) <= curOrd; }).slice(-CAP_ACTUAL_WEEKS);
-  var future  = isos.filter(function(iso){ return isoOrd(iso) >  curOrd; });
+  var actuals = Object.keys(avail).filter(function(iso){ return isoOrd(iso) <= curOrd; })
+    .sort(function(a,b){ return isoOrd(a)-isoOrd(b); });
   return actuals.map(function(iso){ return { iso: iso, status: iso===currentIso?'now':'done' }; })
-    .concat(future.map(function(iso){ return { iso: iso, status: 'plan' }; }));
+    .concat(nextIsos_(CAP_FUTURE_WEEKS).map(function(iso){ return { iso: iso, status: 'plan' }; }));
 }
 
 // Hover/click handlers for the chart's week labels — hover previews the week's numbers
@@ -1708,7 +1715,7 @@ var UTIL_EXPLORE_OPEN=false;                     // glance/explore split (v2) �
 function utilToggleExplore_(){ UTIL_EXPLORE_OPEN=!UTIL_EXPLORE_OPEN; renderUtilization(); }
 var UTIL_CHART_MODE='hours';                     // 'hours' (capacity+tracked areas) | 'rate' (% band chart)
 function utilSetMode_(m){ UTIL_CHART_MODE=m; renderUtilization(); }
-var UTIL_WIN_WEEKS=7, UTIL_WIN_PAGE=0;           // chart week-window pager (7 actual weeks per page, matching Planned vs Tracked): 0 = latest window, 1 = one earlier…
+var UTIL_WIN_WEEKS=999, UTIL_WIN_PAGE=0;         // chart draws EVERY actual week (user directive 2026-07-24, matching Planned vs Tracked); pager machinery kept but auto-hidden (maxPage 0)
 var UTIL_LAST_ANCHOR=null;                       // last rendered anchor — a CHANGED anchor auto-pages into view
 function utilWinShift_(d){ UTIL_WIN_PAGE=Math.max(0, UTIL_WIN_PAGE+d); renderUtilization(); }
 var UTIL_EXTRA=null;                            // last-render {stats,proj,provisionalIso,projIso} for tooltips
@@ -1775,9 +1782,11 @@ function renderUtilization(){
     }
   });
   cw.sort(function(a,b){ return isoOrd(a.iso)-isoOrd(b.iso); });
+  var futHorizon=nextIsos_(CAP_FUTURE_WEEKS);
+  var futMaxOrd=futHorizon.length?isoOrd(futHorizon[futHorizon.length-1]):curOrd;
   var futIsos=cw.filter(function(w){return w.status==='plan';})
     .map(function(w){return w.iso;})
-    .filter(function(iso){ return capIsos.indexOf(iso)!==-1; }); // forecast only where real schedule data exists
+    .filter(function(iso){ return capIsos.indexOf(iso)!==-1 && isoOrd(iso)<=futMaxOrd; }); // forecast only where real schedule data exists, capped at the shared 5-week horizon
   cw=cw.filter(function(w){return w.status!=='plan';});
 
   // Population: People filters first (utilNpList_), then the universal scope
