@@ -747,6 +747,31 @@ function ssIds_() {
   };
 }
 
+/**
+ * CONFIG_CD.RAG with CD_RAG_CFG Script Property overrides merged in.
+ * The property is a JSON object; each top-level group (attritionTotal, …) is
+ * shallow-merged over the default so a partial override ({"peerVolBand":
+ * {"high":0.16}}) keeps the untouched keys. Invalid JSON logs and falls back.
+ */
+function ragCfg_() {
+  const base = JSON.parse(JSON.stringify(CONFIG_CD.RAG));
+  const raw = props_().getProperty("CD_RAG_CFG");
+  if (!raw) return base;
+  try {
+    const o = JSON.parse(raw);
+    Object.keys(o).forEach(k => {
+      if (o[k] && typeof o[k] === "object" && base[k] && typeof base[k] === "object") {
+        Object.assign(base[k], o[k]);
+      } else {
+        base[k] = o[k];
+      }
+    });
+  } catch (e) {
+    Logger.log("⚠️ ragCfg_: CD_RAG_CFG is not valid JSON — using defaults: " + e.message);
+  }
+  return base;
+}
+
 // ── Large-payload cache (gzip + chunking) ───────────────────────────────────
 // Same pattern as PS Contribution Report: CacheService rejects any single
 // value over 100 KB and a plain put() fails silently, so the JSON is gzipped
@@ -832,7 +857,7 @@ function colIdx_(headers, name, re) {
   return i;
 }
 
-/** @returns {{records: Object[], genderAvailable: boolean, tccUsdAvailable: boolean}} normalized roster records (crew excluded). */
+/** @returns {{records: Object[], genderAvailable: boolean, tccUsdAvailable: boolean, supervisorAvailable: boolean}} normalized roster records (crew excluded). */
 function readRosterCD_() {
   const ids = ssIds_();
   const { headers, rows } = fetchTab_(ids.roster, ids.rosterTab);
@@ -847,6 +872,7 @@ function readRosterCD_() {
     termCat: col("Termination Category"), keyLoc: col("Key Location"),
     gender: col("Gender"), // optional — being added to the roster
     tccUsd: col(CONFIG_CD.TCC_USD_COL, /tcc.*usd/i), // optional — column position shifts, resolved by header
+    supervisor: col("Supervisor"), // optional — powers the Managers view; absent column degrades gracefully
   };
   const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
   Object.keys(required).forEach(k => {
@@ -854,6 +880,7 @@ function readRosterCD_() {
   });
   const genderAvailable = c.gender !== -1;
   const tccUsdAvailable = c.tccUsd !== -1;
+  const supervisorAvailable = c.supervisor !== -1;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -880,13 +907,15 @@ function readRosterCD_() {
       termCategory: c.termCat !== -1 ? String(row[c.termCat] || "").trim() : "",
       termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
       gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
+      supervisor: c.supervisor !== -1 ? String(row[c.supervisor] || "").trim() : "",
       tcc: c.tcc !== -1 ? asNum_(row[c.tcc]) : null,
       tccUsd: c.tccUsd !== -1 ? asNum_(row[c.tccUsd]) : null, // read directly off the roster row
     });
   });
   log_("readRosterCD_: " + records.length + " records, gender " + (genderAvailable ? "available" : "pending") +
-       ", TCC USD " + (tccUsdAvailable ? "available" : "pending"));
-  return { records, genderAvailable, tccUsdAvailable };
+       ", TCC USD " + (tccUsdAvailable ? "available" : "pending") +
+       ", supervisor " + (supervisorAvailable ? "available" : "MISSING"));
+  return { records, genderAvailable, tccUsdAvailable, supervisorAvailable };
 }
 
 /**
@@ -1179,6 +1208,9 @@ function debugCompPipeline() {
   const usdHits = active.filter(x => x.tccUsd != null).length;
   Logger.log("TCC USD column: " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND") + " — " +
              usdHits + "/" + active.length + " active have a value");
+  const supHits = active.filter(x => x.supervisor).length;
+  Logger.log("Supervisor column: " + (r.supervisorAvailable ? "FOUND" : "NOT FOUND — Managers view will show its unavailable notice") +
+             " — " + supHits + "/" + active.length + " active have a value");
   let hist = {};
   try { hist = readCompHistory_(); }
   catch (e) { Logger.log("⚠️ readCompHistory_ (debug): " + e.message); }
