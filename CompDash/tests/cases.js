@@ -448,3 +448,23 @@ function mkEmp(over) {
     JSON.stringify(cSlice.map(s => [s.key, s.terms, s.headcount])) ===
     JSON.stringify(sSlice.map(s => [s.key, s.terms, s.headcount])));
 })();
+
+// ── V3 Task 1: RAG config + ragBand_ ────────────────────────
+check("CONFIG_CD.RAG exists with all V3 threshold groups",
+  !!(CONFIG_CD.RAG && CONFIG_CD.RAG.attritionTotal && CONFIG_CD.RAG.attritionVol &&
+     CONFIG_CD.RAG.regrettedShare && CONFIG_CD.RAG.peerVolBand &&
+     CONFIG_CD.RAG.floorHeads === 10 && CONFIG_CD.RAG.floorExits === 3 &&
+     CONFIG_CD.RAG.spanTarget === 6));
+check("CONFIG_CD.MGR_MIN_REPORTS is 3", CONFIG_CD.MGR_MIN_REPORTS === 3);
+check("CONFIG_CD.FORECAST_MIN_MONTHS is 6", CONFIG_CD.FORECAST_MIN_MONTHS === 6);
+check("CONFIG_CD.REASON_CLASS classifies 'Another Job' as labor-market/comp",
+  CONFIG_CD.REASON_CLASS.find(rc => rc.re.test("Another Job")).driver === "labor-market/comp");
+check("CONFIG_CD.REASON_CLASS classifies 'Job Position Eliminated or Changed' as role-design/structural",
+  CONFIG_CD.REASON_CLASS.find(rc => rc.re.test("Job Position Eliminated or Changed")).driver === "role-design/structural");
+check("CONFIG_CD.GLOSSARY has entries and BENCH_SOURCES cited",
+  CONFIG_CD.GLOSSARY.length >= 8 && CONFIG_CD.BENCH_SOURCES.length >= 4);
+
+check("ragBand_ green at/below green bound", ragBand_(0.13, { green: 0.13, yellow: 0.18 }) === "green");
+check("ragBand_ yellow between bounds", ragBand_(0.15, { green: 0.13, yellow: 0.18 }) === "yellow");
+check("ragBand_ red above yellow bound", ragBand_(0.19, { green: 0.13, yellow: 0.18 }) === "red");
+check("ragBand_ null-safe", ragBand_(null, { green: 0.13, yellow: 0.18 }) === null);

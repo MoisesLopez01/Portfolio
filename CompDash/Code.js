@@ -51,6 +51,57 @@ const CONFIG_CD = {
   PRIORITY_W:    { perf: 57, tenure: 29, compaGap: 14 },
   PRIORITY_CAPS: { companyYears: 10, profileYears: 5, gapPct: 0.25 },
 
+  // ── V3: RAG thresholds & benchmarks ─────────────────────────────────────
+  // Research-seeded 2026-07-27 (Mercer US Turnover Survey 2025; SHRM
+  // Benchmarking 2025; SPI PS Maturity Benchmark 2025/2026; Umbrex regretted-
+  // attrition guide; Visier span-of-control 2024; McKinsey span archetypes).
+  // Every value overridable via the CD_RAG_CFG Script Property — a JSON object
+  // shallow-merged per group over these defaults (see ragCfg_ in the GAS layer).
+  // Sources render in Data Reference; services/BPO-adjacent roles run a few
+  // points above pure-software norms.
+  RAG: {
+    attritionTotal: { green: 0.13, yellow: 0.18 }, // ≤green / ≤yellow / above = red
+    attritionVol:   { green: 0.10, yellow: 0.18 },
+    regrettedShare: { green: 0.25, yellow: 0.40 }, // share of VOLUNTARY exits
+    peerVolBand:    { low: 0.11, high: 0.15 },     // PS peer voluntary band (chart zone + text)
+    concentration:  0.60,   // top-2 dept share of exits that reads as concentrated
+    spanTarget: 6, spanNarrow: 4, spanWide: 10,    // manager:IC ratio guides
+    floorHeads: 10, floorExits: 3,                 // sample-size guards (caveat + severity cap)
+  },
+  MGR_MIN_REPORTS: 3,      // managers below this pool into a "small teams" row
+  FORECAST_MIN_MONTHS: 6,  // forecast requires this many actual FY months
+
+  // Exit-reason → driver classification for the "trends & drivers" verdict.
+  // First matching regex wins; unmatched reasons read as "other".
+  REASON_CLASS: [
+    { re: /another job|better offer/i,             driver: "labor-market/comp" },
+    { re: /position eliminated|contract ended/i,   driver: "role-design/structural" },
+    { re: /unsatisfactory|attendance/i,            driver: "performance-managed" },
+    { re: /personal|school|voluntary other/i,      driver: "personal" },
+  ],
+
+  BENCH_SOURCES: [
+    "Mercer US Turnover Survey 2025 — US avg voluntary 13%, tech ~12%",
+    "SHRM Benchmarking Report 2025 — median voluntary 9%, average 13%",
+    "SPI Professional Services Maturity Benchmark 2025/2026 — PS total attrition 11.4–12.8%",
+    "Umbrex Regretted Attrition guide — typical firms 15–35% of voluntary exits regretted",
+    "Visier Span of Control 2024 / McKinsey archetypes — knowledge-work span 6–8",
+  ],
+
+  GLOSSARY: [
+    { term: "I-level (I1–I8)", def: "Individual-contributor career track parsed from the Job Title level token (e.g. 04.I3.1). Higher number = more senior." },
+    { term: "M-level (M4–M10)", def: "Management career track from the same title token (e.g. 04.M5.2)." },
+    { term: "JF codes (JF001…)", def: "Job Catalog family codes (e.g. JF004 = Sales & Success). Not displayed in this dashboard; listed here because sibling reports use them." },
+    { term: "TCC", def: "Total Cash Compensation — base plus variable target, local currency unless the USD toggle is on." },
+    { term: "Internal Position (compa-ratio)", def: "TCC ÷ peer anchor. 1.00 = at the anchor; bands are shown in the threshold table below." },
+    { term: "Anchor tiers", def: "Where the peer anchor comes from: title-peer median (≥3 peers) → external market mean (one-of-a-kind roles) → location level-cohort median → none." },
+    { term: "Voluntary / involuntary", def: "From the roster Termination Category. Voluntary = the Rocketeer chose to leave." },
+    { term: "Regretted exit", def: "A leaver the company would have preferred to keep (roster Termination Regretted flag). Reported as a share of voluntary exits." },
+    { term: "Attrition rate", def: "FY terminations ÷ mean(headcount at FY start, headcount at FY end — today for the running FY)." },
+    { term: "Span of control", def: "Active ICs ÷ active managers (anyone who supervises ≥1 active report)." },
+    { term: "RAG", def: "Red / Amber(yellow) / Green status coding. Every threshold is configuration, shown with its source in the table below." },
+  ],
+
   // RD reasons that reset in-role (profile) tenure. Internal Transfer counts:
   // it changes job title/responsibilities even when the salary doesn't move.
   PROMO_RE: /promot|title change|role change|internal transfer/i,
@@ -95,6 +146,12 @@ function asNum_(v) {
   if (!s) return null;
   const n = parseFloat(s);
   return isFinite(n) ? n : null;
+}
+
+/** RAG band for a fraction metric where LOWER is better. @returns "green"|"yellow"|"red"|null */
+function ragBand_(value, bands) {
+  if (value == null || !bands) return null;
+  return value <= bands.green ? "green" : value <= bands.yellow ? "yellow" : "red";
 }
 
 function asDate_(v) {
