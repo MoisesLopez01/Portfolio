@@ -38,7 +38,45 @@
     .filterbar { display: flex; gap: 8px; padding: 8px 18px 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
     .filterbar input[type=search] { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 190px; }
     .chip.violet { border-color: var(--above); color: var(--above); }
-    main { padding: 16px 18px 60px; max-width: 1280px; margin: 0 auto; }
+    /* Layout width. 1280px letterboxed an ultrawide into roughly a third of the
+       glass, so the page now grows with the viewport in tiers up to --page-max
+       instead of stopping at a laptop width. The tiers are widths, not device
+       guesses: each one is the point where the content genuinely earns more
+       room (wider tables, more KPI columns per row). */
+    :root { --page-max: 1280px; }
+    @media (min-width: 1600px) { :root { --page-max: 1500px; } }
+    @media (min-width: 1920px) { :root { --page-max: 1760px; } }
+    @media (min-width: 2560px) { :root { --page-max: 2200px; } }
+    main { padding: 16px 18px 60px; max-width: var(--page-max); margin: 0 auto; }
+    /* The sticky bars stay FULL-BLEED — their panel background and bottom rule
+       should span the glass — but their contents line up with main's measure, so
+       a filter never drifts away from the column it filters. Padding rather than
+       max-width is what keeps the background full width. */
+    header, nav, .filterbar {
+      padding-left:  max(18px, calc((100% - var(--page-max)) / 2));
+      padding-right: max(18px, calc((100% - var(--page-max)) / 2));
+    }
+
+    /* Tables scroll INSIDE their own box. Without this the 6-column Managers
+       table and the 8-column termination detail push the whole document
+       sideways on a narrow window — the page itself must never scroll
+       horizontally. min-width keeps columns legible rather than crushed. */
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .scroll-x > table { min-width: 620px; }
+    .scroll-x > table.wide { min-width: 860px; }
+
+    @media (max-width: 820px) {
+      main { padding: 12px 12px 60px; }
+      header, nav, .filterbar { padding-left: 12px; padding-right: 12px; }
+      /* A search box with a 190px floor plus four selects overflowed the row;
+         let them share the line instead. */
+      .filterbar input[type=search], .filterbar select { min-width: 0; flex: 1 1 140px; }
+      .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .kpi-v { font-size: 22px; }
+      .kpi-q { min-height: 0; }
+      h1 { font-size: 16px; }
+      .drill { width: 100vw; }
+    }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
     .banner { background: #3B2833; border: 1px solid var(--june); color: #FFD8CC; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
     .banner.err { background: #3a2020; border-color: var(--bad); color: #f2b8b8; }
@@ -229,6 +267,22 @@ function verdictHtml(v) {
 function verdictsFor(view) {
   return ((STATE.data && STATE.data.verdicts) || []).filter(v => v.view === view);
 }
+/**
+ * The drawing width a chart should use: the pane's real inner width, less card
+ * padding. Measured rather than assumed, so one viewBox unit is one screen pixel
+ * and nothing stretches — the same reason the chart sets "meet" instead of
+ * "none". Falls back to the old fixed 720 before the pane exists.
+ *
+ * @param {number=} fallback
+ * @returns {number}
+ */
+function chartWidth(fallback) {
+  const pane = document.getElementById("pane");
+  const w = pane ? pane.clientWidth : 0;
+  if (!w) return fallback || 720;
+  // 34px = the card's own horizontal padding plus its borders.
+  return Math.max(560, Math.min(2000, Math.round(w - 34)));
+}
 function median(nums) {
   const a = nums.slice().sort((x, y) => x - y);
   if (!a.length) return null;
@@ -277,7 +331,13 @@ function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h, opts) {
       : "").join("");
   const yTicks = [0, Math.ceil(maxY / 2), maxY].map(v =>
     '<text x="2" y="' + (y(v) + 3).toFixed(1) + '">' + v + '</text>').join("");
-  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+  // preserveAspectRatio="xMidYMid meet" rather than "none": non-uniform scaling
+  // stretched the drawing horizontally as the container widened, which showed up
+  // as uneven forecast dashes and horizontally smeared axis labels on a wide
+  // screen. "meet" scales both axes together, so type and dash patterns keep
+  // their shape; the chart simply centres in a wider card.
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h +
+    '" preserveAspectRatio="xMidYMid meet" style="max-width:100%">' +
     band +
     '<polygon points="' + area + '" fill="var(--chip)" opacity="0.75"/>' +
     '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
@@ -394,7 +454,34 @@ function switchTab(id) {
 }
 function render() {
   if (!STATE.data) return;
-  (RENDERERS[STATE.tab] || renderOverview)(document.getElementById("pane"));
+  const pane = document.getElementById("pane");
+  (RENDERERS[STATE.tab] || renderOverview)(pane);
+  wrapTables(pane);
+}
+
+/**
+ * Puts every rendered table in its own horizontal scroll box.
+ *
+ * Done here rather than in the twelve renderers that build table markup: one
+ * pass cannot forget a table, and any table added later is covered for free.
+ * Without it a wide table (Managers is 6 columns, the termination detail 8)
+ * pushes the whole document sideways — the page itself must never scroll
+ * horizontally, only the table inside its card.
+ *
+ * @param {HTMLElement} el Container just re-rendered.
+ */
+function wrapTables(el) {
+  if (!el) return;
+  Array.prototype.forEach.call(el.querySelectorAll("table"), function (t) {
+    if (t.parentElement && t.parentElement.classList.contains("scroll-x")) return;
+    const box = document.createElement("div");
+    box.className = "scroll-x";
+    t.parentNode.insertBefore(box, t);
+    box.appendChild(t);
+    // Wide tables get a bigger floor so their columns stay readable rather than
+    // compressing to nothing before the scrollbar appears.
+    if (t.rows[0] && t.rows[0].cells.length >= 7) t.classList.add("wide");
+  });
 }
 
 // ── data load ───────────────────────────────────────────────
@@ -520,7 +607,7 @@ function renderOverview(el) {
       '<div class="kpi-q">' + esc(c.q) + '</div><div class="kpi-v">' + esc(c.v) + '</div>' +
       '<div class="kpi-s">' + esc(c.s) + '</div></div>').join("") + '</div>' +
     '<div class="card"><h2>' + esc(cur.label) + ' terminations by fiscal month' + esc(suffix) + '</h2>' +
-    svgSpark(cur.monthly.map(m => m.terms), 640, 60, "var(--warn)") +
+    svgSpark(cur.monthly.map(m => m.terms), chartWidth(640), 60, "var(--warn)") +
     '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
 }
 function renderAttrition(el) {
@@ -567,7 +654,8 @@ function renderAttrition(el) {
     '<div class="seg" style="margin-bottom:10px">' +
       '<button onclick="setAttrGran(\'month\')" class="' + (isM ? "on" : "") + '">Month</button>' +
       '<button onclick="setAttrGran(\'quarter\')" class="' + (!isM ? "on" : "") + '">Quarter</button></div>' +
-    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly, labels, upto, 720, 190, chartOpts) +
+    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly,
+                   labels, upto, chartWidth(720), 190, chartOpts) +
     '<div class="sub">Shadow area = ' + esc(prev.label) + ' · line = ' + esc(cur.label) + ' to date' +
     (chartOpts.forecastMonths && chartOpts.forecastMonths.length ? ' · dashed = full-year projection' : '') +
     (chartOpts.bandLo != null ? ' · shaded zone = peer voluntary band ' + pctFmt(band.low, 0) + '–' + pctFmt(band.high, 0) + ' (monthly equivalent)' : '') + '</div>' +
@@ -1054,6 +1142,9 @@ function openDrill(empNo) {
       ' over ' + emp.perfCount + ' quarter(s)</div>';
   }
   box.innerHTML = body;
+  // The drill panel renders outside render(), so it needs the same pass — its
+  // comp-history table is 6 columns inside a 560px drawer.
+  wrapTables(box);
   box.classList.remove("hidden");
 }
 
@@ -1099,6 +1190,18 @@ document.addEventListener("click", e => {
   const menu = document.getElementById("menuPanel");
   if (!menu.classList.contains("hidden") &&
       !menu.contains(e.target) && e.target.id !== "menuBtn") menu.classList.add("hidden");
+});
+
+// Charts are drawn to a MEASURED width, so a resized window (or a laptop
+// docked to an ultrawide) has to redraw them or they keep the old scale. Only
+// width matters, and it is debounced — a drag would otherwise re-render on
+// every animation frame. Height-only changes (the mobile URL bar) are ignored.
+let RESIZE_T = null, LAST_W = window.innerWidth;
+window.addEventListener("resize", () => {
+  if (window.innerWidth === LAST_W) return;
+  LAST_W = window.innerWidth;
+  clearTimeout(RESIZE_T);
+  RESIZE_T = setTimeout(render, 180);
 });
 
 buildNav();
