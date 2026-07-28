@@ -455,6 +455,32 @@ function buildManagers_(records, ctx, cfg) {
   };
 }
 
+// ── Financial impact of FY exits (V3) ───────────────────────────────────────
+// Payroll released this FY by leavers: TCC USD ÷ 12 × full months remaining
+// in the FY after the exit month. Rows without TCC USD are skipped and
+// reported via coverage — never zero-filled (coverage-counter pattern).
+// Field name annualPayrollReleasedUsd is the spec contract; the value is the
+// FY-prorated release, not a flat annual sum.
+
+function buildFinancialImpact_(records, ctx) {
+  const leavers = records.filter(r =>
+    r.termDate && r.termDate >= ctx.fyStart && r.termDate <= ctx.fyEnd);
+  let counted = 0, released = 0, regretted = 0;
+  leavers.forEach(r => {
+    const idx = fiscalMonthIdx_(r.termDate, ctx.fyStartCalYear);
+    if (idx === -1 || !(r.tccUsd > 0)) return;
+    const amt = r.tccUsd / 12 * (11 - idx);
+    counted++;
+    released += amt;
+    if (/yes|true/i.test(String(r.termRegretted || ""))) regretted += amt;
+  });
+  return {
+    annualPayrollReleasedUsd: Math.round(released),
+    regrettedPortionUsd: Math.round(regretted),
+    coverage: { counted, total: leavers.length },
+  };
+}
+
 // ── Internal Position engine V2 ─────────────────────────────────────────────
 // ratio = TCC ÷ anchor, ACTIVE employees, LOCAL currency, where the anchor is
 // resolved per Key Location + Job Title group in tiers:

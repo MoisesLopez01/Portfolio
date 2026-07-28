@@ -514,3 +514,24 @@ function mkV3(over) {
   const none = buildManagers_(recs.map(r => Object.assign({}, r, { supervisor: "" })), ctx, CONFIG_CD);
   check("managers: no supervisor values → available:false", none.available === false);
 })();
+
+// ── V3 Task 4: buildFinancialImpact_ ────────────────────────
+(function () {
+  const ctx = fiscalContextCD_(new Date(2027, 1, 15)); // FY27
+  const recs = [
+    // Exit in Sep 2026 = fiscal month idx 2 → 9 months remaining → 120000/12*9 = 90000
+    mkV3({ active: false, termDate: new Date(2026, 8, 10), termCategory: "Voluntary",
+           termRegretted: "Yes", tccUsd: 120000 }),
+    // Exit in Jul 2026 = idx 0 → 11 months → 60000/12*11 = 55000 (not regretted)
+    mkV3({ active: false, termDate: new Date(2026, 6, 20), termCategory: "Involuntary", tccUsd: 60000 }),
+    // Exit with NO TCC USD → skipped, counted in coverage.total only
+    mkV3({ active: false, termDate: new Date(2026, 9, 1), termCategory: "Voluntary", tccUsd: null }),
+    // Prior-FY exit → outside window entirely
+    mkV3({ active: false, termDate: new Date(2025, 8, 1), tccUsd: 999999 }),
+    mkV3({}), // active — ignored
+  ];
+  const fi = buildFinancialImpact_(recs, ctx);
+  check("financial: released = 90000 + 55000", fi.annualPayrollReleasedUsd === 145000);
+  check("financial: regretted portion = 90000", fi.regrettedPortionUsd === 90000);
+  check("financial: coverage 2 of 3 FY leavers", fi.coverage.counted === 2 && fi.coverage.total === 3);
+})();
