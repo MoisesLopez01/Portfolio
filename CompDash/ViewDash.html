@@ -241,18 +241,36 @@ function sourceBanner(key, label) {
     '<div class="banner err">⚠️ ' + esc(label) + ' unavailable — ' + esc(s) + '</div>';
 }
 // Previous FY as a shadow area, current FY as a trend line cut at the current
-// fiscal month (uptoIdx) so future months don't render as zero.
-function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h) {
+// fiscal month (uptoIdx). V3: optional dashed forecast extension and a subtle
+// peer-band zone (annual voluntary rate mapped to monthly-equivalent counts:
+// rate × avgHeadcount ÷ 12 — like-for-like with the monthly series).
+function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h, opts) {
+  opts = opts || {};
   const P = 26, n = labels.length;
   const prevV = prevSeries.map(m => m.terms);
   const curV = curSeries.map(m => m.terms);
-  const maxY = Math.max.apply(null, prevV.concat(curV, [1]));
+  const fcV = (opts.forecastMonths || []).map(m => m.terms);
+  const maxY = Math.max.apply(null, prevV.concat(curV, fcV, [1]));
   const x = i => P + i * ((w - P - 6) / Math.max(1, n - 1));
   const y = v => h - 18 - v / maxY * (h - 30);
   const area = prevV.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ") +
     " " + x(n - 1).toFixed(1) + "," + y(0).toFixed(1) + " " + x(0).toFixed(1) + "," + y(0).toFixed(1);
   const cut = Math.max(0, Math.min(uptoIdx, n - 1));
   const line = curV.slice(0, cut + 1).map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+  let band = "";
+  if (opts.bandLo != null && opts.bandHi != null) {
+    band = '<rect x="' + P + '" y="' + y(opts.bandHi).toFixed(1) + '" width="' + (w - P - 6) +
+      '" height="' + Math.max(1, y(opts.bandLo) - y(opts.bandHi)).toFixed(1) +
+      '" fill="var(--cta)" opacity="0.12"/>';
+  }
+  let fc = "";
+  if (opts.forecastMonths && opts.forecastMonths.length && cut < n - 1) {
+    const pts = [x(cut).toFixed(1) + "," + y(curV[cut]).toFixed(1)]
+      .concat(opts.forecastMonths.filter(m => m.forecast && m.idx < n).map(m =>
+        x(m.idx).toFixed(1) + "," + y(m.terms).toFixed(1)));
+    fc = '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--accent)" ' +
+      'stroke-width="2" stroke-dasharray="5,4" opacity="0.8"/>';
+  }
   const ticks = labels.map((L, i) =>
     (n <= 4 || i % 3 === 0 || i === n - 1)
       ? '<text x="' + x(i).toFixed(1) + '" y="' + (h - 4) + '" text-anchor="middle">' + esc(L) + '</text>'
@@ -260,9 +278,10 @@ function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h) {
   const yTicks = [0, Math.ceil(maxY / 2), maxY].map(v =>
     '<text x="2" y="' + (y(v) + 3).toFixed(1) + '">' + v + '</text>').join("");
   return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+    band +
     '<polygon points="' + area + '" fill="var(--chip)" opacity="0.75"/>' +
     '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
-    ticks + yTicks + '</svg>';
+    fc + ticks + yTicks + '</svg>';
 }
 function svgSpark(series, w, h, color) {
   const max = Math.max.apply(null, series.concat([1]));
@@ -524,21 +543,51 @@ function renderAttrition(el) {
     : (a.slices[dim] || []);
   if (dim === "level") slices = slices.slice().sort((x, y) => levelRankC(x.key) - levelRankC(y.key));
   const detail = a.detail.filter(t => !act || visibleEmp(t));
+
+  const rag = d.meta.ragCfg || {};
+  const fullCur = a.currentFY; // verdicts/forecast/impact are full-population blocks
+  const band = rag.peerVolBand || null;
+  const chartOpts = (isM && !act) ? {
+    forecastMonths: (a.forecast && a.forecast.months) || [],
+    bandLo: band && fullCur.avgHeadcount > 0 ? band.low * fullCur.avgHeadcount / 12 : null,
+    bandHi: band && fullCur.avgHeadcount > 0 ? band.high * fullCur.avgHeadcount / 12 : null,
+  } : {};
+  const volRate = fullCur.avgHeadcount > 0 ? fullCur.vol / fullCur.avgHeadcount : null;
+  const fi = a.financialImpact;
+  const vs = verdictsFor("attrition");
+  const vOrder = ["concentration", "attr-total", "attr-vol", "regretted", "trends-drivers", "forecast", "financial"];
+  const vSorted = vOrder.map(id => vs.find(v => v.id === id)).filter(Boolean);
+  const filteredNote = act
+    ? '<div class="sub" style="margin-bottom:8px">Verdicts, forecast and financial impact are company-wide facts — the chart and tables below reflect your filters.</div>' : '';
+
   el.innerHTML =
     sourceBanner("roster", "Roster data") +
+    vSorted.map(verdictHtml).join("") + filteredNote +
     '<div class="card"><h2>' + esc(cur.label) + ' vs ' + esc(prev.label) + ' terminations</h2>' +
     '<div class="seg" style="margin-bottom:10px">' +
       '<button onclick="setAttrGran(\'month\')" class="' + (isM ? "on" : "") + '">Month</button>' +
       '<button onclick="setAttrGran(\'quarter\')" class="' + (!isM ? "on" : "") + '">Quarter</button></div>' +
-    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly, labels, upto, 720, 190) +
-    '<div class="sub">Shadow area = ' + esc(prev.label) + ' · line = ' + esc(cur.label) + ' to date</div>' +
+    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly, labels, upto, 720, 190, chartOpts) +
+    '<div class="sub">Shadow area = ' + esc(prev.label) + ' · line = ' + esc(cur.label) + ' to date' +
+    (chartOpts.forecastMonths && chartOpts.forecastMonths.length ? ' · dashed = full-year projection' : '') +
+    (chartOpts.bandLo != null ? ' · shaded zone = peer voluntary band ' + pctFmt(band.low, 0) + '–' + pctFmt(band.high, 0) + ' (monthly equivalent)' : '') + '</div>' +
     '<div style="margin-top:10px">' +
       '<span class="chip">' + cur.total + ' terminations ' + esc(cur.label) + '</span>' +
       '<span class="chip green">' + cur.vol + ' voluntary</span>' +
       '<span class="chip yellow">' + cur.invol + ' involuntary</span>' +
-      '<span class="chip red">' + (cur.total ? Math.round(cur.regretted / cur.total * 100) : 0) + '% regretted</span>' +
-      '<span class="chip">rate ' + pctFmt(cur.rate) + ' (prev ' + pctFmt(prev.rate) + ')</span>' +
-    '</div></div>' +
+      '<span class="chip">' + ragDot(ragBandC(cur.vol ? cur.regretted / cur.vol : null, rag.regrettedShare),
+        (cur.vol ? Math.round(cur.regretted / cur.vol * 100) : 0) + '% of voluntary regretted') + '</span>' +
+      '<span class="chip">' + ragDot(ragBandC(cur.rate, rag.attritionTotal),
+        'total ' + pctFmt(cur.rate) + ' vs healthy ≤ ' + pctFmt((rag.attritionTotal || {}).green, 0)) + '</span>' +
+      '<span class="chip">' + ragDot(ragBandC(volRate, rag.attritionVol),
+        'voluntary ' + pctFmt(volRate) + ' vs peers ' + (band ? pctFmt(band.low, 0) + '–' + pctFmt(band.high, 0) : '—')) + '</span>' +
+    '</div>' +
+    (fi && fi.coverage.total > 0
+      ? '<div class="sub" style="margin-top:8px">💰 ' + esc(fullCur.label) + ' exits released ~$' +
+        fi.annualPayrollReleasedUsd.toLocaleString() + ' of FY payroll (regretted ~$' +
+        fi.regrettedPortionUsd.toLocaleString() + ') · method: leaver TCC USD ÷ 12 × months remaining · based on ' +
+        fi.coverage.counted + ' of ' + fi.coverage.total + ' leavers</div>' : '') +
+    '</div>' +
     '<div class="card"><h2>Breakdown</h2>' +
     '<select onchange="setAttrDim(this.value)">' +
       Object.keys(dimLabel).map(k =>
@@ -547,7 +596,9 @@ function renderAttrition(el) {
     '<table><tr><th>' + esc(dimLabel[dim]) + '</th><th>Headcount</th><th>Terms</th><th>Voluntary</th><th>Involuntary</th><th>Rate</th></tr>' +
     slices.map(s =>
       '<tr><td>' + esc(s.key) + '</td><td>' + s.headcount + '</td><td>' + s.terms + '</td><td>' + s.vol +
-      '</td><td>' + s.invol + '</td><td>' + pctFmt(s.rate) + '</td></tr>').join("") + '</table>' +
+      '</td><td>' + s.invol + '</td><td>' + ragDot(ragBandC(s.rate, rag.attritionTotal), pctFmt(s.rate)) +
+      (s.headcount < (rag.floorHeads || 10) ? ' <span class="chip yellow" title="Small group — rate is noisy">⚠</span>' : '') +
+      '</td></tr>').join("") + '</table>' +
     '<details><summary>Termination detail — ' + detail.length + ' rows (names inside)</summary>' +
     '<table><tr><th>Date</th><th>Name</th><th>Dept</th><th>Level</th><th>Location</th><th>Type</th><th>Regretted</th><th>Reason</th></tr>' +
     detail.map(t =>
