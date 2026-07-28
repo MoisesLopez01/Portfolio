@@ -296,6 +296,11 @@ function buildAttrition_(records, ctx) {
   return {
     currentFY:  fyAttritionBlock_(records, ctx.fyStart, ctx.fyEnd, ctx.asOf, ctx.fyLabel),
     previousFY: fyAttritionBlock_(records, ctx.prevFyStart, ctx.prevFyEnd, null, ctx.prevFyLabel),
+    // Prior FY cut at the same calendar point — the like-for-like basis for
+    // "vs last year" trend arrows (a full prior FY vs a part-year FY misleads).
+    previousFYSamePeriod: fyAttritionBlock_(records, ctx.prevFyStart, ctx.prevFyEnd,
+      new Date(ctx.asOf.getFullYear() - 1, ctx.asOf.getMonth(), ctx.asOf.getDate()),
+      ctx.prevFyLabel + " YTD"),
     slices: {
       department:  sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.dept),
       level:       sliceAttrition_(records, ctx.fyStart, ctx.fyEnd, end, r => r.level)
@@ -478,6 +483,34 @@ function buildFinancialImpact_(records, ctx) {
     annualPayrollReleasedUsd: Math.round(released),
     regrettedPortionUsd: Math.round(regretted),
     coverage: { counted, total: leavers.length },
+  };
+}
+
+// ── Attrition forecast (V3) ─────────────────────────────────────────────────
+// Trend × prior-FY seasonality, ported (reduced) from termination-analysis
+// applyForecasting: baseline = actual FY exits ÷ actual months; each future
+// month scales the baseline by the prior FY's share of that fiscal month.
+// Returns null with < cfg.FORECAST_MIN_MONTHS actual months (too little
+// signal) or when the FY is complete (nothing left to forecast).
+
+function buildForecast_(currentFY, previousFY, ctx, cfg) {
+  const actualMonths = fiscalMonthIdx_(ctx.asOf, ctx.fyStartCalYear) + 1;
+  if (actualMonths < cfg.FORECAST_MIN_MONTHS || actualMonths >= 12) return null;
+  const actualTerms = currentFY.monthly.slice(0, actualMonths).reduce((t, m) => t + m.terms, 0);
+  const baseline = actualTerms / actualMonths;
+  const prevTotal = previousFY.monthly.reduce((t, m) => t + m.terms, 0);
+  const months = currentFY.monthly.map((m, i) => {
+    if (i < actualMonths) return { idx: i, terms: m.terms, forecast: false };
+    const seasonal = prevTotal > 0 ? previousFY.monthly[i].terms / (prevTotal / 12) : 1;
+    return { idx: i, terms: Math.round(baseline * seasonal * 10) / 10, forecast: true };
+  });
+  const projectedTotal = months.reduce((t, m) => t + m.terms, 0);
+  return {
+    months,
+    projectedTotal: Math.round(projectedTotal * 10) / 10,
+    annualizedRate: currentFY.avgHeadcount > 0
+      ? Math.round(projectedTotal / currentFY.avgHeadcount * 1000) / 1000 : null,
+    method: "trend × prior-FY seasonality (" + actualMonths + " actual months)",
   };
 }
 

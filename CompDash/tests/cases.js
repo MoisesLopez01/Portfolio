@@ -535,3 +535,36 @@ function mkV3(over) {
   check("financial: regretted portion = 90000", fi.regrettedPortionUsd === 90000);
   check("financial: coverage 2 of 3 FY leavers", fi.coverage.counted === 2 && fi.coverage.total === 3);
 })();
+
+// ── V3 Task 5: buildForecast_ + previousFYSamePeriod ────────
+(function () {
+  const ctx = fiscalContextCD_(new Date(2027, 1, 15)); // FY27, fiscalMonthIdx = 7 → 8 actual months
+  const mkFY = terms => ({
+    monthly: terms.map(t => ({ terms: t, vol: 0, invol: 0 })),
+    avgHeadcount: 100, total: terms.reduce((a, b) => a + b, 0),
+  });
+  // 8 actual months, 8 exits → baseline 1/mo; prev FY flat 1/mo → seasonal 1 everywhere
+  const cur = mkFY([1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]);
+  const prev = mkFY([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  const fc = buildForecast_(cur, prev, ctx, CONFIG_CD);
+  check("forecast: exists with 8 actual months", fc != null);
+  check("forecast: 12 months, first 8 actual, last 4 forecast",
+    fc.months.length === 12 && fc.months[7].forecast === false && fc.months[8].forecast === true);
+  check("forecast: flat seasonality projects baseline (1/mo)", approx(fc.months[8].terms, 1));
+  check("forecast: projected total 12, annualized 12%", approx(fc.projectedTotal, 12) && approx(fc.annualizedRate, 0.12));
+
+  // Guard: asOf in Oct (idx 3) → 4 actual months < 6 → null
+  const early = fiscalContextCD_(new Date(2026, 9, 15));
+  check("forecast: <6 actual months → null", buildForecast_(cur, prev, early, CONFIG_CD) === null);
+
+  // Seasonality: prev FY concentrated in Dec (idx 5) → future Dec-equivalent months scale up
+  const seasonalPrev = mkFY([0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0]);
+  const fc2 = buildForecast_(cur, seasonalPrev, ctx, CONFIG_CD);
+  check("forecast: zero-seasonality future month projects 0", approx(fc2.months[8].terms, 0));
+
+  // previousFYSamePeriod lands on the attrition payload
+  const recs = [mkV3({}), mkV3({}), mkV3({ active: false, termDate: new Date(2025, 8, 5), termCategory: "Voluntary" })];
+  const attr = buildAttrition_(recs, ctx);
+  check("attrition: previousFYSamePeriod block present with a rate",
+    attr.previousFYSamePeriod && attr.previousFYSamePeriod.rate != null);
+})();
