@@ -2,9 +2,11 @@
 // SCRIPT NAME: Comp Health Report — Code
 // PURPOSE:     Rocketeer Global Comp Health Report (V1).
 //              Data readers, metric engines, doGet, getCompReportData.
-// VERSION:     1.1.0
+// VERSION:     1.2.0
 // ENVIRONMENT: Google Apps Script
 // SPEC:        docs/superpowers/specs/2026-07-21-comp-health-dashboard-design.md
+// V3 (2026-07-27): managers, verdicts, forecast, financial impact, RAG config —
+//              spec 2026-07-27-compdash-v3-exec-feedback-design.md
 //
 // Layout: PURE LOGIC first (no GAS APIs — Node-testable via tests/),
 //         GAS LAYER second (SpreadsheetApp/CacheService/HtmlService).
@@ -1388,8 +1390,9 @@ function readBenchmarks_() {
  * Full report payload. Access-checked server-side (defense in depth — the
  * client can call this via google.script.run without going through doGet).
  * @param {boolean} force - true bypasses cache (Refresh button).
- * @returns {string} JSON of {ok, meta, employees[], attrition, compaGroups[],
- *   equity, qtaInterim[], history} — or {ok:false, error:"denied"}. Returned as a
+ * @returns {string} JSON of {ok, meta, employees[], attrition, managers,
+ *   verdicts[], compaGroups[], equity, qtaInterim[], history} — or
+ *   {ok:false, error:"denied"}. Returned as a
  *   STRING on purpose: google.script.run marshals a large nested object across the
  *   iframe bridge minutes-slow, while one string + client-side JSON.parse is fast.
  *   ViewDash.html's onData() parses it and depends on this exact shape.
@@ -1416,12 +1419,13 @@ function getCompReportData(force) {
   const ctx = fiscalContextCD_();
   const sources = { roster: "ok", history: "ok", ratings: "ok", benchmarks: "ok" };
 
-  let records = [], genderAvailable = false, tccUsdAvailable = false;
+  let records = [], genderAvailable = false, tccUsdAvailable = false, supervisorAvailable = false;
   try {
     const r = readRosterCD_();
     records = r.records;
     genderAvailable = r.genderAvailable;
     tccUsdAvailable = r.tccUsdAvailable;
+    supervisorAvailable = r.supervisorAvailable;
   } catch (e) {
     sources.roster = "error: " + e.message;
     Logger.log("❌ readRosterCD_: " + e.message);
@@ -1495,6 +1499,22 @@ function getCompReportData(force) {
     }
   });
 
+  // ── V3 blocks — all full-population, deterministic, cached with the payload ──
+  const ragCfg = ragCfg_();
+  const cfgV3 = Object.assign({}, CONFIG_CD, { RAG: ragCfg });
+  const attrition = buildAttrition_(records, ctx);
+  attrition.financialImpact = buildFinancialImpact_(records, ctx);
+  attrition.forecast = buildForecast_(attrition.currentFY, attrition.previousFY, ctx, cfgV3);
+  const managers = supervisorAvailable
+    ? buildManagers_(records, ctx, cfgV3)
+    : { available: false, rows: [], pooledSmallTeams: null, spanOfControl: null };
+  const equity = buildEquity_(active, CONFIG_CD, ctx.asOf);
+  const verdicts = buildVerdicts_({
+    fyLabel: ctx.fyLabel, prevFyLabel: ctx.prevFyLabel,
+    activeCount: active.length, hcFyStart: headcountOn_(records, ctx.fyStart),
+    attrition, managers, employees, equity,
+  }, cfgV3);
+
   const payload = {
     ok: true,
     meta: {
@@ -1521,12 +1541,21 @@ function getCompReportData(force) {
         tenureYearsMin: CONFIG_CD.TENURE_YEARS_MIN, tenureBelowPct: CONFIG_CD.TENURE_BELOW_PCT,
         smallGroupMin: CONFIG_CD.SMALL_GROUP_MIN,
       },
+      supervisorAvailable,
+      ragCfg: Object.assign({}, ragCfg, {
+        mgrMinReports: CONFIG_CD.MGR_MIN_REPORTS,
+        forecastMinMonths: CONFIG_CD.FORECAST_MIN_MONTHS,
+      }),
+      benchmarks: { sources: CONFIG_CD.BENCH_SOURCES },
+      glossary: CONFIG_CD.GLOSSARY,
     },
     employees,
     people: records.map(personLite_),
-    attrition: buildAttrition_(records, ctx),
+    attrition,
+    managers,
+    verdicts,
     compaGroups,
-    equity: buildEquity_(active, CONFIG_CD, ctx.asOf),
+    equity,
     qtaInterim: buildQtaInterim_(active, histByEmp, ctx.asOf),
     history,
   };
@@ -1597,4 +1626,20 @@ function debugCompPipeline() {
   groupsV2.forEach(g => { tiers[g.anchorTier] = (tiers[g.anchorTier] || 0) + 1; });
   Logger.log("Anchor tiers: title " + tiers.title + " · market " + tiers.market +
              " · level " + tiers.level + " · none " + tiers.none);
+  const ctxDbg = fiscalContextCD_();
+  const cfgDbg = Object.assign({}, CONFIG_CD, { RAG: ragCfg_() });
+  const mgrDbg = buildManagers_(r.records, ctxDbg, cfgDbg);
+  Logger.log("Managers: " + (mgrDbg.available
+    ? mgrDbg.rows.length + " rows (≥" + CONFIG_CD.MGR_MIN_REPORTS + " reports)" +
+      (mgrDbg.pooledSmallTeams ? " + pooled " + mgrDbg.pooledSmallTeams.pooledManagers + " small teams" : "") +
+      " · span 1:" + (mgrDbg.spanOfControl ? mgrDbg.spanOfControl.ratio : "—")
+    : "UNAVAILABLE (no Supervisor values)"));
+  const attrDbg = buildAttrition_(r.records, ctxDbg);
+  attrDbg.financialImpact = buildFinancialImpact_(r.records, ctxDbg);
+  attrDbg.forecast = buildForecast_(attrDbg.currentFY, attrDbg.previousFY, ctxDbg, cfgDbg);
+  Logger.log("Financial impact: " + attrDbg.financialImpact.annualPayrollReleasedUsd +
+    " USD released, coverage " + attrDbg.financialImpact.coverage.counted + "/" + attrDbg.financialImpact.coverage.total);
+  Logger.log("Forecast: " + (attrDbg.forecast
+    ? "~" + attrDbg.forecast.projectedTotal + " exits (" + attrDbg.forecast.method + ")"
+    : "omitted (needs ≥" + CONFIG_CD.FORECAST_MIN_MONTHS + " actual months)"));
 }
