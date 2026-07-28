@@ -117,6 +117,7 @@ const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
   { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
   { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
+  { id: "managers",  label: "👤 Managers",            roles: ["admin", "viewer"] },
   { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
   { id: "market",    label: "🌍 Market Gap",          roles: ["admin", "viewer"] },
   { id: "equity",    label: "🧭 Pay Equity",          roles: ["admin", "viewer"] },
@@ -196,6 +197,37 @@ function ratioClass(r) {
 function ratioBarColor(cls) {
   return cls === "green" ? "var(--accent)" : cls === "yellow" ? "var(--warn)" :
          cls === "violet" ? "var(--above)" : "var(--bad)";
+}
+// MIRROR of ragBand_ in Code.js (3-line band classifier) — keep in sync.
+function ragBandC(value, bands) {
+  if (value == null || !bands) return null;
+  return value <= bands.green ? "green" : value <= bands.yellow ? "yellow" : "red";
+}
+// Colored status dot + value. band null → plain value.
+function ragDot(band, text) {
+  const col = band === "green" ? "var(--accent)" : band === "yellow" ? "var(--warn)" :
+              band === "red" ? "var(--bad)" : "var(--muted)";
+  return '<span style="color:' + col + '">●</span> ' + text;
+}
+// Trend arrow vs a prior-basis value (±0.5pp dead zone). Direction only —
+// the RAG dot carries the judgment. Empty string when either basis is missing.
+function trendArrow(cur, prev) {
+  if (cur == null || prev == null) return "";
+  const d = cur - prev;
+  return Math.abs(d) < 0.005 ? " →" : d > 0 ? " ▲" : " ▼";
+}
+// One verdict line: severity → fact → so-what → action → caveat.
+function verdictHtml(v) {
+  const col = v.severity === "RISK" ? "var(--bad)" : v.severity === "NOTE" ? "var(--warn)" : "var(--accent)";
+  return '<div style="border-left:3px solid ' + col + ';padding:5px 10px;margin:0 0 8px">' +
+    '<b style="color:' + col + '">' + esc(v.severity) + '</b> — ' + esc(v.fact) +
+    (v.soWhat ? ' <i class="sub">' + esc(v.soWhat) + '</i>' : '') +
+    (v.action ? ' <b>→ ' + esc(v.action) + '</b>' : '') +
+    (v.caveat ? ' <span class="sub">⚠ ' + esc(v.caveat) + '</span>' : '') + '</div>';
+}
+// All verdicts for a view, in payload order.
+function verdictsFor(view) {
+  return ((STATE.data && STATE.data.verdicts) || []).filter(v => v.view === view);
 }
 function median(nums) {
   const a = nums.slice().sort((x, y) => x - y);
@@ -478,6 +510,7 @@ function renderAttrition(el) {
 }
 function setAttrGran(g) { STATE.attrGran = g; render(); }
 function setAttrDim(k) { STATE.attrDim = k; render(); }
+function renderManagers(el) { el.innerHTML = '<div class="card sub">👤 Managers view — building…</div>'; }
 const TIER_LABEL = {
   title: "median · title peers", market: "market mean",
   level: "median · level cohort", none: "insufficient peers",
@@ -789,6 +822,7 @@ function saveAccess() {
 
 const RENDERERS = {
   overview: renderOverview, ranking: renderRanking, attrition: renderAttrition,
+  managers: renderManagers,
   compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
   contrib: renderContrib, reference: renderReference, access: renderAccess,
 };
