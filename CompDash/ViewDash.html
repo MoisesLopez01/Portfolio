@@ -410,6 +410,52 @@ function onLoadError(err) {
 }
 
 // ── tab renderers ───────────────────────────────────────────
+// Exec TL;DR strip — verdict paragraph + click-through RAG chips. Always
+// FULL-population (verdicts are server facts); a suffix notes active filters.
+// Paragraph order is fixed so it always reads like an executive summary.
+const STRIP_ORDER = ["headcount", "attr-total", "attr-vol", "regretted", "concentration",
+                     "compa-below", "mgr-hotspots", "equity", "fy-caveat"];
+function execStripHtml(d) {
+  const byId = {};
+  (d.verdicts || []).forEach(v => { byId[v.id] = v; });
+  const sentences = STRIP_ORDER.map(id => byId[id]).filter(Boolean)
+    .map(v => v.fact + (v.action ? " — " + v.action : ""));
+  if (!sentences.length) return "";
+
+  const rag = d.meta.ragCfg || {};
+  const cur = d.attrition.currentFY, prevSp = d.attrition.previousFYSamePeriod;
+  const volRate = cur.avgHeadcount > 0 ? cur.vol / cur.avgHeadcount : null;
+  const regShare = cur.vol > 0 ? cur.regretted / cur.vol : null;
+  const prevVolRate = (prevSp && prevSp.avgHeadcount > 0) ? prevSp.vol / prevSp.avgHeadcount : null;
+  const prevRegShare = (prevSp && prevSp.vol > 0) ? prevSp.regretted / prevSp.vol : null;
+  const below = d.employees.filter(e => e.ratio != null && e.ratio < (d.meta.compaBands || {}).low).length;
+  const eq = d.equity;
+  const eqFlags = (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0) +
+    eq.outliers.length + eq.tenure.length;
+  const chips = [
+    { t: "Headcount " + d.meta.activeCount, band: null, tab: "overview" },
+    { t: "Attrition " + pctFmt(cur.rate) + trendArrow(cur.rate, prevSp ? prevSp.rate : null),
+      band: ragBandC(cur.rate, rag.attritionTotal), tab: "attrition" },
+    { t: "Voluntary " + pctFmt(volRate) + trendArrow(volRate, prevVolRate),
+      band: ragBandC(volRate, rag.attritionVol), tab: "attrition" },
+    { t: "Regretted " + pctFmt(regShare) + trendArrow(regShare, prevRegShare),
+      band: ragBandC(regShare, rag.regrettedShare), tab: "attrition" },
+    { t: below + " below anchor", band: below > 0 ? "red" : "green", tab: "compa" },
+    { t: eqFlags + " equity flags", band: eqFlags > 0 ? "yellow" : "green", tab: "equity" },
+  ];
+  if (d.managers && d.managers.available) {
+    const hot = d.managers.rows.filter(r =>
+      r.attritionRate != null && r.attritionRate > (rag.attritionTotal || {}).yellow).length;
+    chips.push({ t: hot + " mgr hotspots", band: hot > 0 ? "red" : "green", tab: "managers" });
+  }
+  return '<div class="card">' +
+    '<h2>' + esc(d.meta.fyLabel) + ' in one paragraph' +
+    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') + '</h2>' +
+    '<p style="margin:0 0 10px">' + sentences.map(esc).join(" ") + '</p>' +
+    '<div>' + chips.map(c =>
+      '<span class="chip" style="cursor:pointer" onclick="switchTab(\'' + c.tab + '\')">' +
+      ragDot(c.band, esc(c.t)) + '</span>').join("") + '</div></div>';
+}
 function renderOverview(el) {
   const d = STATE.data, act = filtersActive();
   const emps = d.employees.filter(visibleEmp);
@@ -449,6 +495,7 @@ function renderOverview(el) {
       s: "open the Contribution Report", tab: "contrib" },
   ];
   el.innerHTML =
+    execStripHtml(d) +
     '<div class="kpi-grid">' + cards.map(c =>
       '<div class="kpi" onclick="switchTab(\'' + c.tab + '\')">' +
       '<div class="kpi-q">' + esc(c.q) + '</div><div class="kpi-v">' + esc(c.v) + '</div>' +
