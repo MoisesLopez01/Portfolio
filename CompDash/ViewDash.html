@@ -922,7 +922,38 @@ function renderReference(el) {
     '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available. Universal filters recompute every view for the filtered population, EXCEPT anchors and equity group medians (always full-population facts).</p>' +
     '<h3>Freshness</h3><p class="sub">Payload generated ' + esc(m.generatedAt) +
     (m.fromCache ? " — served from cache (⟳ Refresh forces a live read)." : " — live read.") +
-    ' Cache TTL 65 minutes.</p></div>';
+    ' Cache TTL 65 minutes.</p>' +
+    '<h3>Glossary</h3><table><tr><th>Term</th><th>Meaning</th></tr>' +
+    (m.glossary || []).map(g =>
+      '<tr><td><b>' + esc(g.term) + '</b></td><td>' + esc(g.def) + '</td></tr>').join("") + '</table>' +
+    '<h3>RAG thresholds &amp; benchmark provenance</h3>' +
+    (function () {
+      const r = m.ragCfg || {};
+      const row = (label, bands, note) => bands
+        ? '<tr><td><b>' + label + '</b></td>' +
+          '<td><span style="color:var(--accent)">≤ ' + (bands.green * 100).toFixed(0) + '%</span></td>' +
+          '<td><span style="color:var(--warn)">≤ ' + (bands.yellow * 100).toFixed(0) + '%</span></td>' +
+          '<td><span style="color:var(--bad)">above</span></td><td class="sub">' + esc(note) + '</td></tr>'
+        : "";
+      return '<table><tr><th>Metric</th><th>Green</th><th>Yellow</th><th>Red</th><th>Note</th></tr>' +
+        row("Total attrition", r.attritionTotal, "Mercer 2025 + SPI center total attrition at ~11–14%") +
+        row("Voluntary attrition", r.attritionVol, "SHRM 2025 median voluntary is 9%") +
+        row("Regretted share (of voluntary)", r.regrettedShare, "Typical firms run 15–35% (Umbrex)") +
+        (r.peerVolBand ? '<tr><td><b>Peer voluntary band</b></td><td colspan="3">' +
+          (r.peerVolBand.low * 100).toFixed(0) + '–' + (r.peerVolBand.high * 100).toFixed(0) +
+          '%</td><td class="sub">Professional-services peer set; BPO-adjacent roles run higher</td></tr>' : "") +
+        '<tr><td><b>Span of control</b></td><td colspan="3">target 1:' + (r.spanTarget || 6) +
+          ' · narrow &lt; ' + (r.spanNarrow || 4) + ' · overload &gt; ' + (r.spanWide || 10) +
+          '</td><td class="sub">Knowledge-work norm 6–8 (Visier, McKinsey)</td></tr>' +
+        '<tr><td><b>Sample-size floors</b></td><td colspan="3">&lt; ' + (r.floorHeads || 10) +
+          ' heads or &lt; ' + (r.floorExits || 3) + ' exits</td><td class="sub">Rates under the floor get a ⚠ caveat and never render as RISK</td></tr>' +
+        '<tr><td><b>Manager rows / forecast</b></td><td colspan="3">≥ ' + (r.mgrMinReports || 3) +
+          ' reports · ≥ ' + (r.forecastMinMonths || 6) + ' actual FY months</td>' +
+          '<td class="sub">Smaller teams pool into one row; a shorter FY shows no projection</td></tr>' +
+        '</table>' +
+        '<p class="sub">Sources: ' + ((m.benchmarks && m.benchmarks.sources) || []).map(esc).join(" · ") +
+        '. Every value is configuration (CONFIG_CD.RAG) overridable via the <b>CD_RAG_CFG</b> Script Property — this table always shows the live values.</p>';
+    })() + '</div>';
 }
 
 function renderAccess(el) {
