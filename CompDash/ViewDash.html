@@ -557,7 +557,44 @@ function renderAttrition(el) {
 }
 function setAttrGran(g) { STATE.attrGran = g; render(); }
 function setAttrDim(k) { STATE.attrDim = k; render(); }
-function renderManagers(el) { el.innerHTML = '<div class="card sub">👤 Managers view — building…</div>'; }
+// Manager rows are read-only on purpose: employees[] doesn't carry supervisor,
+// so a row click can't scope the other views to a team (roadmap backlog item).
+// Department filter and name search apply; Location/Level don't — a manager's
+// team spans both, so a sub-note says so when those filters are active.
+function renderManagers(el) {
+  const d = STATE.data, m = d.managers;
+  if (!m || !m.available) {
+    el.innerHTML = '<div class="banner">👤 <b>Manager data unavailable</b> — the roster extract has no Supervisor values. The view activates automatically when the column lands.</div>';
+    return;
+  }
+  const rag = d.meta.ragCfg || {};
+  const f = STATE.filters;
+  const rows = m.rows.filter(r =>
+    (!f.dept || r.dept === f.dept) &&
+    (!f.q || normName(r.name).indexOf(normName(f.q)) !== -1));
+  const ignored = (f.loc || f.level)
+    ? '<div class="sub" style="margin-bottom:8px">Location/Level filters don&#39;t apply to manager rows (teams span both).</div>' : '';
+  const tr = (r, pooled) =>
+    '<tr><td>' + esc(r.name) +
+    (pooled ? ' <span class="sub">(' + r.pooledManagers + ' managers pooled — sample-size rule)</span>' : '') + '</td>' +
+    '<td>' + r.teamSize + '</td><td>' + r.exitsFY + '</td><td>' + r.voluntaryExits + '</td>' +
+    '<td>' + ragDot(ragBandC(r.attritionRate, rag.attritionTotal), pctFmt(r.attritionRate)) +
+    (r.teamSize < (rag.floorHeads || 10) ? ' <span class="chip yellow" title="Small team — rate is noisy">⚠</span>' : '') +
+    '</td><td>' + esc(r.dept) + '</td></tr>';
+  const span = m.spanOfControl;
+  el.innerHTML =
+    verdictsFor("managers").map(verdictHtml).join("") + ignored +
+    '<div class="card"><h2>👤 Team attrition by manager <span class="sub">(' + esc(d.meta.fyLabel) +
+    ' · managers with ' + (rag.mgrMinReports || 3) + '+ reports · worst first)</span></h2>' +
+    '<table><tr><th>Manager</th><th>Team size</th><th>FY exits</th><th>Voluntary</th><th>Team attrition</th><th>Department</th></tr>' +
+    rows.map(r => tr(r, false)).join("") +
+    (m.pooledSmallTeams ? tr(m.pooledSmallTeams, true) : "") +
+    '</table>' +
+    (rows.length ? "" : '<p class="sub">No manager rows match the current filters.</p>') +
+    (span ? '<div class="sub" style="margin-top:8px">Span of control: <b>1:' + span.ratio + '</b> (' +
+      span.managers + ' managers · ' + span.ics + ' ICs) vs 1:' + span.target + ' target.</div>' : '') +
+    '</div>';
+}
 const TIER_LABEL = {
   title: "median · title peers", market: "market mean",
   level: "median · level cohort", none: "insufficient peers",
