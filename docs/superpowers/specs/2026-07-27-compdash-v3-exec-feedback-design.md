@@ -57,7 +57,7 @@ Cache: payload shape changes ⇒ deploy requires `bustCompCache_()` (`CD_CACHE_V
 ## 3. Views (ViewDash.html)
 
 ### 3.1 Overview — exec TL;DR strip
-Top of pane, above the existing 6 KPI cards. (a) **Verdict paragraph**: top-severity verdicts assembled in fixed order — headcount → attrition vs benchmark → regretted → inversions → equity → data caveats. (b) **RAG chip row**: one chip per headline metric (status dot + value + trend arrow), each a `switchTab()` click-through to its home view. Reuses existing chip styling; status colors stay semantic (green/yellow/red, non-brand), theme untouched.
+Top of pane, above the existing 6 KPI cards. (a) **Verdict paragraph**: top-severity verdicts assembled in fixed order — headcount → attrition vs benchmark → regretted → inversions → equity → data caveats. (b) **RAG chip row**: one chip per headline metric (status dot + value + trend arrow — direction vs the same period of the prior FY; no arrow when the prior-FY basis is under the sample-size floor), each a `switchTab()` click-through to its home view. Reuses existing chip styling; status colors stay semantic (green/yellow/red, non-brand), theme untouched.
 
 ### 3.2 👤 Managers — new tab
 New `VIEWS` entry (admin + viewer, like other tabs). Layout: verdict line on top, then sortable table — Manager | Team size | FY exits | Voluntary | Team attrition (RAG dot + %) | Department — worst-first default. "Small teams" pooled row pinned at bottom with caveat chip. Span-of-control line under the table ("1:X vs 1:6 target"). Row click opens the existing employee drill filtered to that supervisor's team. **No TCC columns** — retention lens, not a pay lens.
@@ -65,7 +65,7 @@ New `VIEWS` entry (admin + viewer, like other tabs). Layout: verdict line on top
 ### 3.3 📉 Attrition — enriched
 In render order:
 1. Department-concentration verdict as the **first line** of the view.
-2. Existing FY SVG chart gains: dashed **forecast extension** to FY end; subtle horizontal **peer-band zone** (voluntary peer band, §5); benchmark comparison repeated as text beside the headline rate ("FY26 20.5% vs professional-services ~11–15% voluntary").
+2. Existing FY SVG chart gains: dashed **forecast extension** to FY end; subtle horizontal **peer-band zone** (voluntary peer band, §5, drawn against the voluntary series only — like-for-like); benchmark text beside the headline rates compares **voluntary vs voluntary band** and **total vs total thresholds**, never across bases (e.g., "FY26 voluntary 14.2% vs peers 11–15%; total 20.5% vs healthy ≤13%").
 3. **Financial impact** line with method footnote and coverage note.
 4. **Exit-by-location** table with RAG dots (mirrors existing dept/level tables).
 5. **Trends & drivers** verdict: 3–5 sentences naming dominant exit reasons and classifying the pattern (comp / role-design / labor-market).
