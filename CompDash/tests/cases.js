@@ -568,3 +568,92 @@ function mkV3(over) {
   check("attrition: previousFYSamePeriod block present with a rate",
     attr.previousFYSamePeriod && attr.previousFYSamePeriod.rate != null);
 })();
+
+// ── V3 Task 6: buildVerdicts_ ───────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  const mkFY = (terms, vol, regretted, hc) => ({
+    monthly: [], quarterly: [], total: terms, vol, invol: terms - vol,
+    regretted, avgHeadcount: hc, rate: hc > 0 ? terms / hc : null, label: "FY27",
+  });
+  const model = {
+    fyLabel: "FY27", prevFyLabel: "FY26", activeCount: 200, hcFyStart: 205,
+    attrition: {
+      currentFY: mkFY(40, 30, 15, 200),          // 20% total → red; 15% vol → yellow; 50% regretted → red
+      previousFY: mkFY(30, 22, 8, 200),
+      previousFYSamePeriod: mkFY(20, 15, 6, 200),
+      slices: { department: [
+        { key: "Services", terms: 25, vol: 20, invol: 5, headcount: 100, rate: 0.25 },
+        { key: "Sales", terms: 10, vol: 7, invol: 3, headcount: 40, rate: 0.25 },
+        { key: "R&D", terms: 5, vol: 3, invol: 2, headcount: 60, rate: 0.08 },
+      ], level: [], keyLocation: [] },
+      detail: [
+        { reason: "Another Job", cls: "vol" }, { reason: "Another Job", cls: "vol" },
+        { reason: "Another Job", cls: "vol" }, { reason: "Job Position Eliminated or Changed", cls: "invol" },
+        { reason: "Personal Reasons", cls: "vol" },
+      ],
+      financialImpact: { annualPayrollReleasedUsd: 500000, regrettedPortionUsd: 200000,
+                         coverage: { counted: 38, total: 40 } },
+      forecast: { projectedTotal: 55, annualizedRate: 0.275, method: "trend × prior-FY seasonality (8 actual months)", months: [] },
+    },
+    managers: { available: true, rows: [
+      { name: "A", teamSize: 6, exitsFY: 3, voluntaryExits: 3, attritionRate: 0.42, dept: "Services" },
+      { name: "B", teamSize: 9, exitsFY: 3, voluntaryExits: 2, attritionRate: 0.31, dept: "Sales" },
+      { name: "C", teamSize: 7, exitsFY: 1, voluntaryExits: 1, attritionRate: 0.14, dept: "Services" },
+    ], pooledSmallTeams: null, spanOfControl: { managers: 40, ics: 160, ratio: 4.0, target: 6 } },
+    employees: [{ ratio: 0.75 }, { ratio: 0.9 }, { ratio: 1.0 }, { ratio: null }],
+    equity: { genderAvailable: true, gender: [{ flagged: true }, { flagged: false }], outliers: [{}, {}], tenure: [{}] },
+  };
+  const vs = buildVerdicts_(model, cfg);
+  const byId = {};
+  vs.forEach(v => { byId[v.id] = v; });
+
+  check("verdicts: every verdict has fact + soWhat + view + severity",
+    vs.length >= 10 && vs.every(v => v.fact && v.soWhat && v.view &&
+      ["FACT", "NOTE", "RISK"].indexOf(v.severity) !== -1));
+  check("verdicts: attr-total red → RISK with action",
+    byId["attr-total"].severity === "RISK" && byId["attr-total"].action.length > 0);
+  check("verdicts: regretted 50% of voluntary → RISK", byId["regretted"].severity === "RISK");
+  check("verdicts: concentration names top-2 depts with counts",
+    /Services/.test(byId["concentration"].fact) && /Sales/.test(byId["concentration"].fact) &&
+    /35 of 40/.test(byId["concentration"].fact));
+  check("verdicts: mgr-hotspots counts only, no manager names",
+    /2/.test(byId["mgr-hotspots"].fact) && byId["mgr-hotspots"].fact.indexOf("A") !== 0 &&
+    !/\bB\b/.test(byId["mgr-hotspots"].fact));
+  // JS stringifies the numeric ratio 4.0 as "4" — accept either rendering.
+  // 4.0 sits exactly ON spanNarrow, so it is not flagged narrow and not RISK.
+  check("verdicts: span states ratio, managers, ICs and target",
+    /1:4(\.0)?\b/.test(byId["span"].fact) && /40 managers/.test(byId["span"].fact) &&
+    /1:6 target/.test(byId["span"].fact) && byId["span"].severity === "NOTE");
+  check("verdicts: span below spanNarrow reads narrow",
+    /narrow/i.test(buildVerdicts_(Object.assign({}, model, { managers: Object.assign({}, model.managers,
+      { spanOfControl: { managers: 60, ics: 140, ratio: 2.3, target: 6 } }) }), cfg)
+      .find(v => v.id === "span").soWhat));
+  check("verdicts: span above spanWide reads RISK",
+    buildVerdicts_(Object.assign({}, model, { managers: Object.assign({}, model.managers,
+      { spanOfControl: { managers: 10, ics: 190, ratio: 19, target: 6 } }) }), cfg)
+      .find(v => v.id === "span").severity === "RISK");
+  check("verdicts: compa-below counts ratios under the low band", /1 /.test(byId["compa-below"].fact));
+  check("verdicts: trends-drivers names Another Job and classifies labor-market/comp",
+    /Another Job/.test(byId["trends-drivers"].fact) && /labor-market\/comp/.test(byId["trends-drivers"].soWhat));
+  check("verdicts: financial includes released $ and coverage caveat",
+    /500,000/.test(byId["financial"].fact) && /38 of 40/.test(byId["financial"].caveat));
+  check("verdicts: forecast projects", /55/.test(byId["forecast"].fact));
+  check("verdicts: deterministic — same input, same strings",
+    JSON.stringify(buildVerdicts_(model, cfg)) === JSON.stringify(vs));
+
+  // Sample-size guard: 2 exits on 200 heads → severity capped at NOTE + caveat
+  const small = JSON.parse(JSON.stringify(model));
+  small.attrition.currentFY = mkFY(2, 2, 2, 200); // 100% regretted but only 2 exits
+  small.attrition.forecast = null;
+  const vs2 = buildVerdicts_(small, cfg);
+  const reg2 = vs2.find(v => v.id === "regretted");
+  check("verdicts: sample guard caps regretted at NOTE with caveat",
+    reg2.severity === "NOTE" && /too few/i.test(reg2.caveat));
+  check("verdicts: missing forecast block → no forecast verdict",
+    !vs2.find(v => v.id === "forecast"));
+  const noMgr = JSON.parse(JSON.stringify(model));
+  noMgr.managers = { available: false, rows: [], pooledSmallTeams: null, spanOfControl: null };
+  check("verdicts: managers unavailable → no mgr-hotspots / span verdicts",
+    !buildVerdicts_(noMgr, cfg).find(v => v.id === "mgr-hotspots" || v.id === "span"));
+})();
