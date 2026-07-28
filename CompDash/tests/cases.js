@@ -468,3 +468,49 @@ check("ragBand_ green at/below green bound", ragBand_(0.13, { green: 0.13, yello
 check("ragBand_ yellow between bounds", ragBand_(0.15, { green: 0.13, yellow: 0.18 }) === "yellow");
 check("ragBand_ red above yellow bound", ragBand_(0.19, { green: 0.13, yellow: 0.18 }) === "red");
 check("ragBand_ null-safe", ragBand_(null, { green: 0.13, yellow: 0.18 }) === null);
+
+// ── V3 Task 3: buildManagers_ ───────────────────────────────
+function mkV3(over) {
+  return Object.assign({
+    empNo: "X" + Math.random().toString(36).slice(2, 8), name: "P " + Math.random().toString(36).slice(2, 6),
+    active: true, dept: "Services", level: "I3", keyLocation: "Malaysia",
+    hireDate: new Date(2022, 0, 15), termDate: null, termCategory: "", termReason: "",
+    termRegretted: "", supervisor: "", tcc: 100000, tccUsd: 50000, ratio: null,
+  }, over || {});
+}
+(function () {
+  const ctx = fiscalContextCD_(new Date(2027, 1, 15)); // FY27, asOf 2027-02-15
+  const recs = [];
+  // Manager A: 4 active + 2 FY27 exits (1 vol, 1 invol)
+  for (let i = 0; i < 4; i++) recs.push(mkV3({ supervisor: "Mgr A" }));
+  recs.push(mkV3({ supervisor: "Mgr A", active: false, termDate: new Date(2026, 8, 10), termCategory: "Voluntary" }));
+  recs.push(mkV3({ supervisor: "Mgr A", active: false, termDate: new Date(2026, 10, 3), termCategory: "Involuntary" }));
+  // Manager B: 5 active, no exits
+  for (let i = 0; i < 5; i++) recs.push(mkV3({ supervisor: "Mgr B", dept: "R&D" }));
+  // Manager C: 2 active (below MGR_MIN_REPORTS → pooled)
+  for (let i = 0; i < 2; i++) recs.push(mkV3({ supervisor: "Mgr C" }));
+  // Managers themselves as active employees (so span-of-control can count them)
+  ["Mgr A", "Mgr B", "Mgr C"].forEach(n => recs.push(mkV3({ name: n, supervisor: "Mgr Top" })));
+  recs.push(mkV3({ name: "Mgr Top" }));
+
+  const m = buildManagers_(recs, ctx, CONFIG_CD);
+  check("managers: available", m.available === true);
+  const a = m.rows.find(r => r.name === "Mgr A");
+  check("managers: Mgr A team of 4 active, 2 FY exits, 1 voluntary",
+    a && a.teamSize === 4 && a.exitsFY === 2 && a.voluntaryExits === 1);
+  // Mgr A team: hc(fyStart 2026-07-01)=6 (all hired 2022, exits Sep/Nov), hc(asOf)=4 → avg 5 → rate 2/5
+  check("managers: Mgr A rate = exits ÷ avg team headcount", approx(a.attritionRate, 0.4));
+  check("managers: worst-first sort (Mgr A before Mgr B)",
+    m.rows.indexOf(a) < m.rows.indexOf(m.rows.find(r => r.name === "Mgr B")));
+  check("managers: Mgr C pooled, not a row",
+    !m.rows.find(r => r.name === "Mgr C") && m.pooledSmallTeams && m.pooledSmallTeams.pooledManagers === 1 &&
+    m.pooledSmallTeams.teamSize === 2);
+  // span: active sups who are themselves active employees = Mgr A/B/C/Top = 4 managers
+  check("managers: span counts 4 managers", m.spanOfControl.managers === 4);
+  check("managers: span ics = active − managers",
+    m.spanOfControl.ics === recs.filter(r => r.active).length - 4);
+  check("managers: span target echoed from cfg", m.spanOfControl.target === CONFIG_CD.RAG.spanTarget);
+
+  const none = buildManagers_(recs.map(r => Object.assign({}, r, { supervisor: "" })), ctx, CONFIG_CD);
+  check("managers: no supervisor values → available:false", none.available === false);
+})();

@@ -383,6 +383,78 @@ function sliceAttritionFromPeople_(people, fyStartCalYear, asOfIso, keyFn) {
     .sort((x, y) => y.terms - x.terms || y.headcount - x.headcount);
 }
 
+// ── Managers engine (V3) ────────────────────────────────────────────────────
+// Attrition by supervisor — the "manager-quality vs department-wide" lens.
+// Team = everyone whose Supervisor equals the manager's name; rate uses the
+// same FY framing as fyAttritionBlock_ (exits ÷ mean team headcount).
+// Managers with < cfg.MGR_MIN_REPORTS active reports pool into one row
+// (sample-size rule). Verdict lines about this data carry counts only.
+
+function buildManagers_(records, ctx, cfg) {
+  const bySup = new Map();
+  records.forEach(r => {
+    const s = String(r.supervisor || "").trim();
+    if (!s) return;
+    if (!bySup.has(s)) bySup.set(s, []);
+    bySup.get(s).push(r);
+  });
+  if (!bySup.size) return { available: false, rows: [], pooledSmallTeams: null, spanOfControl: null };
+
+  const end = (ctx.asOf < ctx.fyEnd) ? ctx.asOf : ctx.fyEnd;
+  const mkRow = (name, team) => {
+    const active = team.filter(r => r.active);
+    const exits = team.filter(r => r.termDate && r.termDate >= ctx.fyStart && r.termDate <= ctx.fyEnd);
+    const avg = (headcountOn_(team, ctx.fyStart) + headcountOn_(team, end)) / 2;
+    const deptCounts = {};
+    active.forEach(r => { const d = r.dept || "—"; deptCounts[d] = (deptCounts[d] || 0) + 1; });
+    const dept = Object.keys(deptCounts).sort((a, b) => deptCounts[b] - deptCounts[a])[0] || "—";
+    return {
+      name, teamSize: active.length, exitsFY: exits.length,
+      voluntaryExits: exits.filter(r => classifyTerm_(r.termCategory) === "vol").length,
+      attritionRate: avg > 0 ? exits.length / avg : null,
+      dept,
+    };
+  };
+
+  const rows = [];
+  const smallTeams = [];
+  bySup.forEach((team, name) => {
+    const row = mkRow(name, team);
+    if (row.teamSize >= cfg.MGR_MIN_REPORTS) rows.push(row);
+    else if (row.teamSize > 0 || row.exitsFY > 0) smallTeams.push(team);
+  });
+  rows.sort((a, b) =>
+    (b.attritionRate || 0) - (a.attritionRate || 0) || b.exitsFY - a.exitsFY ||
+    a.name.localeCompare(b.name));
+
+  let pooledSmallTeams = null;
+  if (smallTeams.length) {
+    const flat = [].concat.apply([], smallTeams);
+    pooledSmallTeams = Object.assign(
+      mkRow("Small teams (<" + cfg.MGR_MIN_REPORTS + " reports)", flat),
+      { pooledManagers: smallTeams.length });
+  }
+
+  // Span of control: managers = ACTIVE employees who supervise ≥1 active report.
+  const activeNames = new Set(records.filter(r => r.active).map(r => normCD_(r.name)));
+  const activeSups = new Set();
+  records.filter(r => r.active && r.supervisor).forEach(r => {
+    const k = normCD_(r.supervisor);
+    if (activeNames.has(k)) activeSups.add(k);
+  });
+  const managers = activeSups.size;
+  const activeCount = records.filter(r => r.active).length;
+  const ics = activeCount - managers;
+  return {
+    available: true, rows, pooledSmallTeams,
+    spanOfControl: {
+      managers, ics,
+      ratio: managers > 0 ? Math.round(ics / managers * 10) / 10 : null,
+      target: cfg.RAG.spanTarget,
+    },
+  };
+}
+
 // ── Internal Position engine V2 ─────────────────────────────────────────────
 // ratio = TCC ÷ anchor, ACTIVE employees, LOCAL currency, where the anchor is
 // resolved per Key Location + Job Title group in tiers:
