@@ -53,6 +53,23 @@ const CONFIG_CD = {
   PRIORITY_W:    { perf: 57, tenure: 29, compaGap: 14 },
   PRIORITY_CAPS: { companyYears: 10, profileYears: 5, gapPct: 0.25 },
 
+  // ── V4: decision signals (2026.W31 exec ask) ─────────────────────────────
+  // Deterministic per-employee flags feeding the 🚨 Risk Signals view. They
+  // surface people for a human conversation — never an automatic re-score.
+  // Numeric keys overridable via the CD_SIGNALS_CFG Script Property (JSON,
+  // shallow-merged); the regexes stay code (they define cohorts, not tuning).
+  SIGNALS: {
+    perfWindowQuarters: 4,     // SI ratings window: last N COMPLETED fiscal quarters
+    promoStaleYears: 3,        // ≥ N years without a promotion/title-change event
+    earlyCareerRe: /^I[123]$/, // early-career lens (exec emphasis: levels 2–3)
+    earlyCareerLabel: "I1–I3", // display twin of earlyCareerRe — change together
+    coreLevelRe: /^I[34]$/,    // core mature cohort at comp-driven flight risk
+    coreLevelLabel: "I3–I4",   // display twin of coreLevelRe — change together
+    recogMinRating: 4.5,       // "excellent performer" floor — latest completed-quarter rating
+    recogMaxTtm: 0.05,         // excellent rating + TTM TCC growth below 5% = recognition risk
+    riskFactorMin: 2,          // retention flag needs ≥ N concurrent factors
+  },
+
   // ── V3: RAG thresholds & benchmarks ─────────────────────────────────────
   // Research-seeded 2026-07-27 (Mercer US Turnover Survey 2025; SHRM
   // Benchmarking 2025; SPI PS Maturity Benchmark 2025/2026; Umbrex regretted-
@@ -203,6 +220,25 @@ function fiscalMonthIdx_(date, fyStartCalYear) {
   if (!(date instanceof Date) || isNaN(date)) return -1;
   const idx = (date.getFullYear() - fyStartCalYear) * 12 + date.getMonth() - 6;
   return (idx >= 0 && idx < 12) ? idx : -1;
+}
+
+/**
+ * Labels of the last `n` COMPLETED fiscal quarters, oldest first, in the
+ * fixed-width form the ratings sheet uses ("FY26Q4"). The in-progress quarter
+ * never counts — "last 4 completed" is the SI evidence window for comp
+ * decisions (V4 rule), so a quarter that hasn't closed can't contribute.
+ * @returns {string[]}
+ */
+function lastCompletedQuarters_(ctx, n) {
+  const qNum = parseInt(String(ctx.qLabel).replace(/\D/g, ""), 10);
+  const out = [];
+  let fy = ctx.fyNum, q = qNum - 1; // step back from the quarter before the current one
+  for (let i = 0; i < n; i++) {
+    if (q < 1) { q = 4; fy--; }
+    out.unshift("FY" + String(fy).slice(-2) + "Q" + q);
+    q--;
+  }
+  return out;
 }
 
 // ── Attrition engine ────────────────────────────────────────────────────────
@@ -680,6 +716,50 @@ function buildVerdicts_(model, cfg) {
     });
   }
 
+  // 9b — decision signals (V4): counts only, detail lives on 🚨 Risk Signals.
+  if (model.employees && model.employees.length && cfg.SIGNALS) {
+    const S = cfg.SIGNALS;
+    const sig = model.employees.filter(e => e.signals);
+    const stale = sig.filter(e => e.signals.promoStale);
+    const staleEarly = stale.filter(e => e.signals.earlyCareer).length;
+    push({
+      id: "promo-stale", view: "signals",
+      severity: staleEarly > 0 ? "NOTE" : "FACT",
+      fact: stale.length + " active Rocketeer" + (stale.length === 1 ? "" : "s") + " have gone " +
+        S.promoStaleYears + "+ years without a promotion (" + staleEarly + " early-career, levels " +
+        S.earlyCareerLabel + ").",
+      soWhat: staleEarly > 0
+        ? "Early-career people stall fastest — a stale profile at I2/I3 is a growth-path signal, not just a comp one."
+        : "No early-career profiles are promotion-stale.",
+      action: staleEarly > 0 ? "Review the early-career rows on the Risk Signals view before the next promotion cycle." : "",
+    });
+
+    const recog = sig.filter(e => e.signals.recognitionRisk).length;
+    push({
+      id: "recognition-risk", view: "signals",
+      severity: recog > 0 ? "NOTE" : "FACT",
+      fact: recog + " top performer" + (recog === 1 ? "" : "s") + " (latest completed quarter ≥ " +
+        S.recogMinRating + ") received under " + Math.round(S.recogMaxTtm * 100) + "% TCC growth in the trailing 12 months.",
+      soWhat: recog > 0
+        ? "Excellent quarters answered with flat pay reads as non-recognition — a leading indicator of regretted exits."
+        : "Every recent top performer saw meaningful TCC movement.",
+      action: recog > 0 ? "Cross-check these names against Market Gap before the next QTA cycle closes." : "",
+    });
+
+    const core = sig.filter(e => e.signals.coreLevel);
+    const risky = core.filter(e => e.signals.retentionRisk).length;
+    push({
+      id: "retention-core", view: "signals",
+      severity: risky > 0 ? "RISK" : "FACT",
+      fact: risky + " of " + core.length + " core-level Rocketeers (" + S.coreLevelLabel + ") carry " +
+        S.riskFactorMin + "+ concurrent comp risk factors.",
+      soWhat: risky > 0
+        ? "Core mature employees are the costliest cohort to lose to compensation — factors are listed per person."
+        : "No core-level Rocketeer stacks multiple comp risk factors.",
+      action: risky > 0 ? "Work the retention cohort table (Risk Signals view) with the HRBP, worst-stacked first." : "",
+    });
+  }
+
   // 10 — trends & drivers (dominant exit reasons → driver classification)
   if (A.detail && A.detail.length) {
     const counts = {};
@@ -901,17 +981,63 @@ function buildGrowthForEmp_(events) {
 // Rows come from the "Small Improvements RD" tab keyed by Employee Number.
 // Fixed-width fiscal-quarter labels ("FY24Q2") sort correctly as strings.
 
-function buildPerfForEmp_(rows) {
+/**
+ * Performance summary per employee. `windowFqs` (from lastCompletedQuarters_)
+ * restricts avg/count/windowLatest to the SI evidence window — full history is
+ * always preserved for the drawer. No window ratings → avg null (the Priority
+ * Score component drops out as partial °), never a stale all-time average and
+ * never a fake zero. Omitting windowFqs keeps the legacy all-history average.
+ */
+function buildPerfForEmp_(rows, windowFqs) {
   const hist = (rows || [])
     .filter(r => r && typeof r.rate === "number" && isFinite(r.rate))
     .sort((a, b) => String(a.fq).localeCompare(String(b.fq)));
-  if (!hist.length) return { avg: null, latest: null, count: 0, history: [] };
-  const avg = hist.reduce((t, r) => t + r.rate, 0) / hist.length;
+  if (!hist.length) {
+    return { avg: null, latest: null, windowLatest: null, count: 0, totalCount: 0, history: [] };
+  }
+  const win = windowFqs ? hist.filter(r => windowFqs.indexOf(String(r.fq)) !== -1) : hist;
+  const avg = win.length ? win.reduce((t, r) => t + r.rate, 0) / win.length : null;
   return {
-    avg: Math.round(avg * 100) / 100,
+    avg: avg != null ? Math.round(avg * 100) / 100 : null,
     latest: hist[hist.length - 1].rate,
-    count: hist.length,
+    windowLatest: win.length ? win[win.length - 1].rate : null,
+    count: win.length,
+    totalCount: hist.length,
     history: hist.map(r => ({ fq: r.fq, rate: r.rate, explanation: r.explanation || "" })),
+  };
+}
+
+// ── Decision signals (V4) ───────────────────────────────────────────────────
+// Deterministic per-employee flags for the 🚨 Risk Signals view. Every flag is
+// explainable: retentionRisk carries the exact factors that fired. Thresholds
+// come from cfg.SIGNALS (CD_SIGNALS_CFG-overridable) and echo via
+// meta.signalsCfg — the UI never hardcodes them.
+
+/**
+ * @param {{level:string, ratio:?number, marketRatio:?number, ttmGrowthPct:?number,
+ *   profileYears:?number, everPromoted:boolean, windowLatest:?number}} v
+ * @param {Object} cfg CONFIG_CD-shaped (SIGNALS, MARKET_LOW, COMPA_TARGET_MIN)
+ */
+function buildSignalsForEmp_(v, cfg) {
+  const S = cfg.SIGNALS;
+  const promoStale = v.profileYears != null && v.profileYears >= S.promoStaleYears;
+  const earlyCareer = S.earlyCareerRe.test(String(v.level || ""));
+  const coreLevel = S.coreLevelRe.test(String(v.level || ""));
+  // Excellent latest completed quarter + a sub-threshold trailing increase.
+  // ttm null (history < 1y) never fires — a new hire hasn't missed a raise.
+  const recognitionRisk = v.windowLatest != null && v.windowLatest >= S.recogMinRating &&
+    v.ttmGrowthPct != null && v.ttmGrowthPct < S.recogMaxTtm;
+  const riskFactors = [];
+  if (v.ratio != null && v.ratio < cfg.COMPA_TARGET_MIN) riskFactors.push("below internal anchor");
+  if (v.marketRatio != null && v.marketRatio < cfg.MARKET_LOW) riskFactors.push("below market");
+  if (promoStale) riskFactors.push("promotion stale " +
+    (v.everPromoted ? Math.round(v.profileYears * 10) / 10 + "y" : "(never promoted)"));
+  if (recognitionRisk) riskFactors.push("recognition risk");
+  return {
+    everPromoted: !!v.everPromoted,
+    promoStale, earlyCareer, coreLevel, recognitionRisk,
+    retentionRisk: coreLevel && riskFactors.length >= S.riskFactorMin,
+    riskFactors,
   };
 }
 
@@ -1128,6 +1254,26 @@ function ragCfg_() {
     });
   } catch (e) {
     Logger.log("⚠️ ragCfg_: CD_RAG_CFG is not valid JSON — using defaults: " + e.message);
+  }
+  return base;
+}
+
+/**
+ * CONFIG_CD.SIGNALS with CD_SIGNALS_CFG Script Property overrides (JSON,
+ * numeric keys only — the cohort regexes stay code). Invalid JSON logs and
+ * falls back, same contract as ragCfg_.
+ */
+function signalsCfg_() {
+  const base = Object.assign({}, CONFIG_CD.SIGNALS);
+  const raw = props_().getProperty("CD_SIGNALS_CFG");
+  if (!raw) return base;
+  try {
+    const o = JSON.parse(raw);
+    Object.keys(o).forEach(k => {
+      if (typeof o[k] === "number" && isFinite(o[k])) base[k] = o[k];
+    });
+  } catch (e) {
+    Logger.log("⚠️ signalsCfg_: CD_SIGNALS_CFG is not valid JSON — using defaults: " + e.message);
   }
   return base;
 }
@@ -1442,9 +1588,14 @@ function getCompReportData(force) {
 
   const active = records.filter(r => r.active);
 
+  // SI evidence window: the last N completed fiscal quarters (V4 rule).
+  const sigCfg = signalsCfg_(); // regexes included; numeric keys may be overridden
+  const cfgV4 = Object.assign({}, CONFIG_CD, { SIGNALS: sigCfg });
+  const windowFqs = lastCompletedQuarters_(ctx, sigCfg.perfWindowQuarters);
+
   const perfByEmp = {};
   active.forEach(r => {
-    if (ratings.byEmp[r.empNo]) perfByEmp[r.empNo] = buildPerfForEmp_(ratings.byEmp[r.empNo]);
+    if (ratings.byEmp[r.empNo]) perfByEmp[r.empNo] = buildPerfForEmp_(ratings.byEmp[r.empNo], windowFqs);
   });
 
   const compaGroups = buildCompaGroups_(active, bench.map, CONFIG_CD);
@@ -1464,6 +1615,11 @@ function getCompReportData(force) {
     const companyYears = r.hireDate
       ? Math.round(tenureYears_(r.hireDate, ctx.asOf) * 10) / 10 : null;
     const profileYears = profileTenureYears_(histByEmp[r.empNo], r.hireDate, ctx.asOf, CONFIG_CD.PROMO_RE);
+    const everPromoted = (histByEmp[r.empNo] || []).some(e =>
+      e && e.date instanceof Date && !isNaN(e.date) && CONFIG_CD.PROMO_RE.test(String(e.reason || "")));
+    const marketRatio = (row && row.mean > 0 && r.tcc > 0)
+      ? Math.round(r.tcc / row.mean * 1000) / 1000 : null;
+    const ttmGrowthPct = ttmGrowth_(histByEmp[r.empNo], r.tcc, ctx.asOf);
     return {
       empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
       dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
@@ -1473,13 +1629,19 @@ function getCompReportData(force) {
       p50: row ? row.mean : null, // MEAN in the p50 slot — UI labels it "Mean", never P50
       p75: row ? row.p75 : null,
       benchSource: row ? row.source : "",
-      marketRatio: (row && row.mean > 0 && r.tcc > 0)
-        ? Math.round(r.tcc / row.mean * 1000) / 1000 : null,
+      marketRatio,
       suggestion: marketSuggestion_(r.tcc, row ? row.p25 : null, row ? row.mean : null),
       perfAvg: perf ? perf.avg : null, perfLatest: perf ? perf.latest : null,
+      perfWindowLatest: perf ? perf.windowLatest : null,
       perfCount: perf ? perf.count : 0,
+      perfTotalCount: perf ? perf.totalCount : 0,
       tenureCompanyYears: companyYears, tenureProfileYears: profileYears,
-      ttmGrowthPct: ttmGrowth_(histByEmp[r.empNo], r.tcc, ctx.asOf),
+      ttmGrowthPct,
+      signals: buildSignalsForEmp_({
+        level: r.level, ratio: a.ratio, marketRatio, ttmGrowthPct,
+        profileYears, everPromoted,
+        windowLatest: perf ? perf.windowLatest : null,
+      }, cfgV4),
       priority: priorityScore_({
         perfAvg: perf ? perf.avg : null, perfCount: perf ? perf.count : 0,
         companyYears, profileYears, ratio: a.ratio,
@@ -1501,7 +1663,7 @@ function getCompReportData(force) {
 
   // ── V3 blocks — all full-population, deterministic, cached with the payload ──
   const ragCfg = ragCfg_();
-  const cfgV3 = Object.assign({}, CONFIG_CD, { RAG: ragCfg });
+  const cfgV3 = Object.assign({}, CONFIG_CD, { RAG: ragCfg, SIGNALS: sigCfg });
   const attrition = buildAttrition_(records, ctx);
   attrition.financialImpact = buildFinancialImpact_(records, ctx);
   attrition.forecast = buildForecast_(attrition.currentFY, attrition.previousFY, ctx, cfgV3);
@@ -1546,6 +1708,14 @@ function getCompReportData(force) {
         mgrMinReports: CONFIG_CD.MGR_MIN_REPORTS,
         forecastMinMonths: CONFIG_CD.FORECAST_MIN_MONTHS,
       }),
+      // Regexes don't survive JSON — echo displayable twins + numbers only.
+      signalsCfg: {
+        perfWindowQuarters: sigCfg.perfWindowQuarters, windowFqs,
+        promoStaleYears: sigCfg.promoStaleYears,
+        earlyCareerLevels: sigCfg.earlyCareerLabel, coreLevels: sigCfg.coreLevelLabel,
+        recogMinRating: sigCfg.recogMinRating, recogMaxTtm: sigCfg.recogMaxTtm,
+        riskFactorMin: sigCfg.riskFactorMin,
+      },
       benchmarks: { sources: CONFIG_CD.BENCH_SOURCES },
       glossary: CONFIG_CD.GLOSSARY,
     },
@@ -1642,4 +1812,26 @@ function debugCompPipeline() {
   Logger.log("Forecast: " + (attrDbg.forecast
     ? "~" + attrDbg.forecast.projectedTotal + " exits (" + attrDbg.forecast.method + ")"
     : "omitted (needs ≥" + CONFIG_CD.FORECAST_MIN_MONTHS + " actual months)"));
+  const sigCfgDbg = signalsCfg_();
+  const winDbg = lastCompletedQuarters_(ctxDbg, sigCfgDbg.perfWindowQuarters);
+  Logger.log("SI window (completed quarters): " + winDbg.join(", "));
+  let ratingsDbg = { byEmp: {}, count: 0 };
+  try { ratingsDbg = readRatings_(); } catch (e) { /* already logged above */ }
+  let staleN = 0, recogN = 0, coreRiskN = 0;
+  active.forEach(x => {
+    const perf = ratingsDbg.byEmp[x.empNo] ? buildPerfForEmp_(ratingsDbg.byEmp[x.empNo], winDbg) : null;
+    const profileYears = profileTenureYears_(hist[x.empNo], x.hireDate, ctxDbg.asOf, CONFIG_CD.PROMO_RE);
+    const s = buildSignalsForEmp_({
+      level: x.level, ratio: null, marketRatio: null,
+      ttmGrowthPct: ttmGrowth_(hist[x.empNo], x.tcc, ctxDbg.asOf),
+      profileYears,
+      everPromoted: (hist[x.empNo] || []).some(e => CONFIG_CD.PROMO_RE.test(String(e.reason || ""))),
+      windowLatest: perf ? perf.windowLatest : null,
+    }, Object.assign({}, CONFIG_CD, { SIGNALS: sigCfgDbg }));
+    if (s.promoStale) staleN++;
+    if (s.recognitionRisk) recogN++;
+    if (s.retentionRisk) coreRiskN++;
+  });
+  Logger.log("Signals (ratio/market factors excluded in this debug pass): promo-stale " + staleN +
+    " · recognition-risk " + recogN + " · core retention (partial factors) " + coreRiskN);
 }

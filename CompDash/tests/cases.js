@@ -657,3 +657,113 @@ function mkV3(over) {
   check("verdicts: managers unavailable → no mgr-hotspots / span verdicts",
     !buildVerdicts_(noMgr, cfg).find(v => v.id === "mgr-hotspots" || v.id === "span"));
 })();
+
+// ── V4: SI window (lastCompletedQuarters_ + windowed buildPerfForEmp_) ──────
+(function () {
+  const ctxQ1 = fiscalContextCD_(new Date(2026, 6, 28));  // FY27 Q1 in progress
+  check("lastCompletedQuarters_: FY27Q1 → the four FY26 quarters, oldest first",
+    JSON.stringify(lastCompletedQuarters_(ctxQ1, 4)) ===
+    JSON.stringify(["FY26Q1", "FY26Q2", "FY26Q3", "FY26Q4"]));
+  const ctxQ3 = fiscalContextCD_(new Date(2026, 0, 15)); // FY26 Q3 in progress
+  check("lastCompletedQuarters_: FY26Q3 → crosses the FY boundary",
+    JSON.stringify(lastCompletedQuarters_(ctxQ3, 4)) ===
+    JSON.stringify(["FY25Q3", "FY25Q4", "FY26Q1", "FY26Q2"]));
+  check("lastCompletedQuarters_: n=2 keeps only the two most recent",
+    JSON.stringify(lastCompletedQuarters_(ctxQ1, 2)) === JSON.stringify(["FY26Q3", "FY26Q4"]));
+
+  const rows = [
+    { fq: "FY25Q2", rate: 2 }, { fq: "FY26Q1", rate: 4 },
+    { fq: "FY26Q3", rate: 5 }, { fq: "FY26Q4", rate: 3 },
+  ];
+  const win = lastCompletedQuarters_(ctxQ1, 4);
+  const p = buildPerfForEmp_(rows, win);
+  check("perf window: avg over in-window ratings only", approx(p.avg, 4));
+  check("perf window: count windowed, totalCount full", p.count === 3 && p.totalCount === 4);
+  check("perf window: windowLatest = most recent in-window rating", p.windowLatest === 3);
+  check("perf window: latest stays the overall latest", p.latest === 3);
+  check("perf window: full history preserved", p.history.length === 4);
+  const stale = buildPerfForEmp_([{ fq: "FY24Q1", rate: 5 }], win);
+  check("perf window: no in-window ratings → avg null, never a stale all-time avg",
+    stale.avg === null && stale.count === 0 && stale.totalCount === 1 && stale.latest === 5);
+  const legacy = buildPerfForEmp_(rows);
+  check("perf window: omitted window keeps legacy all-history average", approx(legacy.avg, 3.5));
+})();
+
+// ── V4: decision signals (buildSignalsForEmp_) ──────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  const base = { level: "I3", ratio: 1.0, marketRatio: 1.0, ttmGrowthPct: 0.08,
+                 profileYears: 1, everPromoted: true, windowLatest: 4 };
+  const mk = o => buildSignalsForEmp_(Object.assign({}, base, o), cfg);
+
+  check("signals: clean profile carries no flags", (function () {
+    const s = mk({});
+    return !s.promoStale && !s.recognitionRisk && !s.retentionRisk && s.riskFactors.length === 0;
+  })());
+  check("signals: promoStale at exactly the threshold", mk({ profileYears: 3 }).promoStale);
+  check("signals: profileYears null never stale", !mk({ profileYears: null }).promoStale);
+  check("signals: earlyCareer matches I1–I3, not I4/M5", (function () {
+    return mk({ level: "I2" }).earlyCareer && mk({ level: "I3" }).earlyCareer &&
+           !mk({ level: "I4" }).earlyCareer && !mk({ level: "M5" }).earlyCareer;
+  })());
+  check("signals: coreLevel matches I3/I4 only",
+    mk({ level: "I4" }).coreLevel && !mk({ level: "I5" }).coreLevel && !mk({ level: "M4" }).coreLevel);
+  check("signals: recognition risk = excellent latest quarter + sub-5% TTM",
+    mk({ windowLatest: 4.5, ttmGrowthPct: 0.03 }).recognitionRisk);
+  check("signals: recognition risk never fires on null TTM (history < 1y)",
+    !mk({ windowLatest: 5, ttmGrowthPct: null }).recognitionRisk);
+  check("signals: recognition risk never fires on a 4.0 rating",
+    !mk({ windowLatest: 4, ttmGrowthPct: 0 }).recognitionRisk);
+  check("signals: retention risk needs coreLevel AND 2+ factors", (function () {
+    const risky = mk({ level: "I3", ratio: 0.9, marketRatio: 0.85 });   // 2 factors
+    const oneFactor = mk({ level: "I3", ratio: 0.9 });                  // 1 factor
+    const notCore = mk({ level: "I6", ratio: 0.9, marketRatio: 0.85 }); // 2 factors, wrong level
+    return risky.retentionRisk && risky.riskFactors.length === 2 &&
+           !oneFactor.retentionRisk && !notCore.retentionRisk;
+  })());
+  check("signals: factors are named for the UI chips", (function () {
+    const s = mk({ level: "I3", ratio: 0.9, marketRatio: 0.85, profileYears: 4,
+                   windowLatest: 5, ttmGrowthPct: 0.02 });
+    return s.riskFactors.indexOf("below internal anchor") !== -1 &&
+           s.riskFactors.indexOf("below market") !== -1 &&
+           s.riskFactors.some(f => /promotion stale 4y/.test(f)) &&
+           s.riskFactors.indexOf("recognition risk") !== -1 && s.retentionRisk;
+  })());
+  check("signals: never-promoted staleness names it instead of a number",
+    mk({ profileYears: 5, everPromoted: false }).riskFactors
+      .some(f => /never promoted/.test(f)));
+  check("signals: null ratio / null marketRatio contribute no factor",
+    mk({ level: "I3", ratio: null, marketRatio: null }).riskFactors.length === 0);
+})();
+
+// ── V4: signals verdicts ─────────────────────────────────────────────────────
+(function () {
+  const sig = (o) => ({ signals: Object.assign({ everPromoted: true, promoStale: false,
+    earlyCareer: false, coreLevel: false, recognitionRisk: false, retentionRisk: false,
+    riskFactors: [] }, o) });
+  const model = {
+    fyLabel: "FY27",
+    employees: [
+      sig({ promoStale: true, earlyCareer: true }),
+      sig({ promoStale: true }),
+      sig({ recognitionRisk: true }),
+      sig({ coreLevel: true, retentionRisk: true, riskFactors: ["below market", "recognition risk"] }),
+      sig({ coreLevel: true }),
+    ],
+  };
+  const vs = buildVerdicts_(model, CONFIG_CD);
+  const byId = {};
+  vs.forEach(v => { byId[v.id] = v; });
+  check("verdicts: promo-stale counts total and early-career subset",
+    /2 active/.test(byId["promo-stale"].fact) && /\(1 early-career/.test(byId["promo-stale"].fact) &&
+    byId["promo-stale"].severity === "NOTE");
+  check("verdicts: recognition-risk counts flagged top performers",
+    /^1 top performer/.test(byId["recognition-risk"].fact) && byId["recognition-risk"].severity === "NOTE");
+  check("verdicts: retention-core is x-of-y over the core cohort and reads RISK",
+    /1 of 2 core-level/.test(byId["retention-core"].fact) && byId["retention-core"].severity === "RISK");
+  check("verdicts: clean signals read FACT", (function () {
+    const clean = buildVerdicts_({ fyLabel: "FY27", employees: [sig({})] }, CONFIG_CD);
+    return clean.find(v => v.id === "promo-stale").severity === "FACT" &&
+           clean.find(v => v.id === "retention-core").severity === "FACT";
+  })());
+})();

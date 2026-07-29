@@ -154,6 +154,7 @@ const USER_EMAIL = "<?= userEmail ?>";
 const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
   { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
+  { id: "signals",   label: "🚨 Risk Signals",        roles: ["admin", "viewer"] },
   { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
   { id: "managers",  label: "👤 Managers",            roles: ["admin", "viewer"] },
   { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
@@ -170,6 +171,7 @@ const STATE = {
   attrGran: "month", attrDim: "department",
   filters: { loc: "", level: "", dept: "", q: "" },
   rankSort: { key: "score", dir: -1 },
+  sigEarly: false,
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -520,7 +522,7 @@ function onLoadError(err) {
 // FULL-population (verdicts are server facts); a suffix notes active filters.
 // Paragraph order is fixed so it always reads like an executive summary.
 const STRIP_ORDER = ["headcount", "attr-total", "attr-vol", "regretted", "concentration",
-                     "compa-below", "mgr-hotspots", "equity", "fy-caveat"];
+                     "compa-below", "retention-core", "mgr-hotspots", "equity", "fy-caveat"];
 function execStripHtml(d) {
   const byId = {};
   (d.verdicts || []).forEach(v => { byId[v.id] = v; });
@@ -549,6 +551,10 @@ function execStripHtml(d) {
     { t: below + " below anchor", band: below > 0 ? "red" : "green", tab: "compa" },
     { t: eqFlags + " equity flags", band: eqFlags > 0 ? "yellow" : "green", tab: "equity" },
   ];
+  const risky = d.employees.filter(e => e.signals && e.signals.retentionRisk).length;
+  const recogN = d.employees.filter(e => e.signals && e.signals.recognitionRisk).length;
+  chips.push({ t: risky + " retention risks", band: risky > 0 ? "red" : "green", tab: "signals" });
+  chips.push({ t: recogN + " recognition risks", band: recogN > 0 ? "yellow" : "green", tab: "signals" });
   if (d.managers && d.managers.available) {
     const hot = d.managers.rows.filter(r =>
       r.attritionRate != null && r.attritionRate > (rag.attritionTotal || {}).yellow).length;
@@ -778,7 +784,8 @@ function renderRanking(el) {
       th("name", "Name", "Rocketeer — Key Location · level shown under the name") +
       th("ratio", "Position", "Internal Position: TCC ÷ peer anchor (title median; market mean for one-of-a-kind roles; level cohort as fallback). 1.00 = at the anchor.") +
       th("marketRatio", "vs Market", "TCC ÷ external benchmark Mean for the same Location + Job Title (local currency). Red below " + marketLow.toFixed(2) + " = priority read. — means no benchmark row yet.") +
-      th("perfAvg", "Avg rating", "Average Small Improvements rating on a 1–" + pc.ratingMax + " scale; ×N = number of quarters averaged.") +
+      th("perfAvg", "Avg rating", "Average Small Improvements rating (1–" + pc.ratingMax + ") over the last " +
+        ((d.meta.signalsCfg || {}).perfWindowQuarters || 4) + " COMPLETED fiscal quarters; ×N = ratings in that window.") +
       th("tenure", "Tenure C/P", "Company years / in-role years. The in-role clock resets at a promotion, title change, or internal transfer (responsibilities change even when pay doesn't).") +
       th("ttm", "TTM growth", "Trailing-12-month TCC growth: TCC now vs the TCC in effect 12 months ago. — when history is younger than a year.") +
       th("score", "Score", "The weighted composite (see how it's built below). ° = partial: a component was missing and its weight was redistributed.") + '</tr>' +
@@ -799,12 +806,94 @@ function renderRanking(el) {
     '<div class="card"><h2>How the score is built</h2>' +
     '<table>' +
     '<tr><th>Component</th><th>Weight</th><th>What it measures</th></tr>' +
-    '<tr><td><b>Performance</b></td><td>' + pc.weights.perf + '%</td><td>Average Small Improvements rating ÷ ' + pc.ratingMax + '. A 5.0 average = full credit.</td></tr>' +
+    '<tr><td><b>Performance</b></td><td>' + pc.weights.perf + '%</td><td>Average Small Improvements rating ÷ ' + pc.ratingMax + ' over the last ' + ((d.meta.signalsCfg || {}).perfWindowQuarters || 4) + ' completed quarters. A 5.0 average = full credit.</td></tr>' +
     '<tr><td><b>Tenure</b></td><td>' + pc.weights.tenure + '%</td><td>50/50 blend of company tenure (full credit at ' + pc.caps.companyYears + 'y) and in-role tenure (full credit at ' + pc.caps.profileYears + 'y). In-role resets at promotion / title change / internal transfer.</td></tr>' +
     '<tr><td><b>Compa gap</b></td><td>' + pc.weights.compaGap + '%</td><td>How far TCC sits BELOW the peer anchor — full credit at ' + Math.round(pc.caps.gapPct * 100) + '% below. At or above the anchor scores 0 (no gap to close).</td></tr>' +
     '</table>' +
     '<div class="sub" style="margin-top:8px">Missing data never fakes a zero: if a component is unavailable (e.g. no ratings yet), it drops out and its weight is redistributed across the rest — the score is then marked partial (°). Weights and caps are configuration (CONFIG_CD), echoed live from the server, so this page can never drift from the actual math.</div></div>';
 }
+// 🚨 Risk Signals (V4) — deterministic decision signals for the comp cycle.
+// Principle (PROCESS §7): these tables surface people for a human conversation;
+// they never re-score anyone. Thresholds echo from meta.signalsCfg.
+function setSigEarly(v) { STATE.sigEarly = v; render(); }
+function renderSignals(el) {
+  const d = STATE.data;
+  const sc = d.meta.signalsCfg || { perfWindowQuarters: 4, windowFqs: [], promoStaleYears: 3,
+    earlyCareerLevels: "I1–I3", coreLevels: "I3–I4", recogMinRating: 4.5, recogMaxTtm: 0.05, riskFactorMin: 2 };
+  const emps = d.employees.filter(e => visibleEmp(e) && e.signals);
+  const posChip = e => e.ratio != null
+    ? '<span class="chip ' + ratioClass(e.ratio) + '">' + e.ratio.toFixed(2) + '</span>' : '<span class="sub">—</span>';
+  const mktChip = e => e.marketRatio != null
+    ? '<span class="chip ' + (e.marketRatio < (d.meta.marketLow || 0.9) ? "red" : "green") + '">' +
+      e.marketRatio.toFixed(2) + '</span>' : '<span class="sub">—</span>';
+
+  const cohort = emps.filter(e => e.signals.retentionRisk)
+    .sort((a, b) => b.signals.riskFactors.length - a.signals.riskFactors.length ||
+                    (a.ratio || 99) - (b.ratio || 99) || a.name.localeCompare(b.name));
+  const recog = emps.filter(e => e.signals.recognitionRisk)
+    .sort((a, b) => (a.ttmGrowthPct || 0) - (b.ttmGrowthPct || 0));
+  const staleAll = emps.filter(e => e.signals.promoStale);
+  const stale = (STATE.sigEarly ? staleAll.filter(e => e.signals.earlyCareer) : staleAll)
+    .sort((a, b) => (b.tenureProfileYears || 0) - (a.tenureProfileYears || 0));
+
+  el.innerHTML =
+    verdictsFor("signals").map(verdictHtml).join("") +
+    '<div class="banner">🚨 <b>Risk Signals</b> — deterministic flags that surface Rocketeers for a comp conversation; ' +
+    'nothing here re-scores anyone. Performance evidence uses the last ' + sc.perfWindowQuarters +
+    ' completed quarters (' + esc((sc.windowFqs || []).join(", ")) + ').</div>' +
+
+    '<div class="card"><h2>🔥 Core-level retention cohort <span class="chip red">' + cohort.length + '</span>' +
+    ' <span class="sub">(levels ' + esc(sc.coreLevels) + ' stacking ' + sc.riskFactorMin + '+ comp risk factors)</span></h2>' +
+    (cohort.length
+      ? '<table><tr><th>Name</th><th>Position</th><th>vs Market</th><th>TTM growth</th><th>In role</th><th>Risk factors</th></tr>' +
+        cohort.map(e =>
+          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
+          '<td>' + posChip(e) + '</td><td>' + mktChip(e) + '</td>' +
+          '<td>' + pctFmt(e.ttmGrowthPct) + '</td>' +
+          '<td>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</td>' +
+          '<td>' + e.signals.riskFactors.map(f => '<span class="chip red">' + esc(f) + '</span>').join("") + '</td></tr>'
+        ).join("") + '</table>'
+      : '<p class="sub">No core-level Rocketeer stacks ' + sc.riskFactorMin + '+ factors at current thresholds.</p>') +
+    '</div>' +
+
+    '<div class="card"><h2>⭐ Recognition risk <span class="chip yellow">' + recog.length + '</span>' +
+    ' <span class="sub">(latest completed quarter ≥ ' + sc.recogMinRating + ' · TTM TCC growth under ' +
+    Math.round(sc.recogMaxTtm * 100) + '%)</span></h2>' +
+    (recog.length
+      ? '<table><tr><th>Name</th><th>Latest rating</th><th>TTM growth</th><th>Position</th><th>vs Market</th><th>In role</th></tr>' +
+        recog.map(e =>
+          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
+          '<td><span class="chip green">' + esc(e.perfWindowLatest) + '</span></td>' +
+          '<td><b>' + pctFmt(e.ttmGrowthPct) + '</b></td>' +
+          '<td>' + posChip(e) + '</td><td>' + mktChip(e) + '</td>' +
+          '<td>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</td></tr>'
+        ).join("") + '</table>'
+      : '<p class="sub">Every recent top performer saw TCC movement of ' + Math.round(sc.recogMaxTtm * 100) + '%+ — no dissatisfaction signal.</p>') +
+    '<div class="sub" style="margin-top:6px">An excellent quarter answered with a flat trailing increase is a leading indicator of regretted exits — worth a stay conversation before the next cycle.</div></div>' +
+
+    '<div class="card"><h2>🪜 Promotion staleness <span class="chip yellow">' + stale.length + '</span>' +
+    ' <span class="sub">(' + sc.promoStaleYears + '+ years in role)</span></h2>' +
+    '<div class="seg" style="margin-bottom:10px">' +
+      '<button onclick="setSigEarly(false)" class="' + (!STATE.sigEarly ? "on" : "") + '">All (' + staleAll.length + ')</button>' +
+      '<button onclick="setSigEarly(true)" class="' + (STATE.sigEarly ? "on" : "") + '">Early career ' +
+        esc(sc.earlyCareerLevels) + ' (' + staleAll.filter(e => e.signals.earlyCareer).length + ')</button></div>' +
+    (stale.length
+      ? '<table><tr><th>Name</th><th>Level</th><th>In role</th><th>Company</th><th>Promotion history</th><th>Position</th></tr>' +
+        stale.map(e =>
+          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.dept) + '</div></td>' +
+          '<td>' + esc(e.level) + (e.signals.earlyCareer ? ' <span class="chip yellow">🌱 early career</span>' : '') + '</td>' +
+          '<td><b>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</b></td>' +
+          '<td>' + (e.tenureCompanyYears != null ? e.tenureCompanyYears + 'y' : '—') + '</td>' +
+          '<td>' + (e.signals.everPromoted ? 'promoted before' : '<span class="chip">never promoted</span>') + '</td>' +
+          '<td>' + posChip(e) + '</td></tr>'
+        ).join("") + '</table>'
+      : '<p class="sub">Nobody matches the staleness rule' + (STATE.sigEarly ? ' in the early-career band' : '') + '.</p>') +
+    '<div class="sub" style="margin-top:6px">The in-role clock resets at a promotion, title change, or internal transfer; it falls back to the hire date for Rocketeers never promoted.</div></div>';
+}
+
 function renderCompa(el) {
   const d = STATE.data;
 
@@ -1075,7 +1164,8 @@ function saveAccess() {
 }
 
 const RENDERERS = {
-  overview: renderOverview, ranking: renderRanking, attrition: renderAttrition,
+  overview: renderOverview, ranking: renderRanking, signals: renderSignals,
+  attrition: renderAttrition,
   managers: renderManagers,
   compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
   contrib: renderContrib, reference: renderReference, access: renderAccess,
@@ -1114,6 +1204,14 @@ function openDrill(empNo) {
       (emp.priority.partial ? ' · partial (missing: ' + emp.priority.missing.join(", ") + ')' : '') +
       '">priority ' + emp.priority.score + (emp.priority.partial ? '°' : '') + '</span>';
   }
+  if (emp.signals) {
+    const s = emp.signals;
+    if (s.retentionRisk) body += '<span class="chip red" title="' + esc(s.riskFactors.join(" · ")) + '">🔥 retention risk (' + s.riskFactors.length + ' factors)</span>';
+    if (s.recognitionRisk) body += '<span class="chip yellow">⭐ recognition risk</span>';
+    if (s.promoStale) body += '<span class="chip yellow">🪜 ' +
+      (s.everPromoted ? 'no promotion in ' + (emp.tenureProfileYears != null ? emp.tenureProfileYears + 'y' : '3y+') : 'never promoted') + '</span>';
+    if (s.earlyCareer) body += '<span class="chip">🌱 early career</span>';
+  }
   body += '</div>';
   if (!g || !g.events.length) {
     body += '<div class="banner">No comp history found in the Compensation Report (RD) for this Rocketeer.</div>';
@@ -1139,7 +1237,7 @@ function openDrill(empNo) {
         (r.explanation ? ' title="' + esc(r.explanation) + '"' : '') + '>' +
         esc(r.fq) + ' · ' + esc(r.rate) + '</span>').join("") + '</div>' +
       '<div class="sub" style="margin-top:4px">avg ' + (emp.perfAvg != null ? emp.perfAvg.toFixed(2) : "—") +
-      ' over ' + emp.perfCount + ' quarter(s)</div>';
+      ' over ' + emp.perfCount + ' windowed quarter(s) · ' + (emp.perfTotalCount || emp.perfCount) + ' total on record</div>';
   }
   box.innerHTML = body;
   // The drill panel renders outside render(), so it needs the same pass — its
