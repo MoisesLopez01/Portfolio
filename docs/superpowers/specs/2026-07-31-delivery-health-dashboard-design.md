@@ -168,10 +168,37 @@ deploy as Web app (Execute as Me; ServiceRocket-with-link; allowlist is the real
 2. **Enumerate actual Roster `Key Location` values** → finalize `LOCATION_REGION_MAP` buckets (AMER / EMEA / APAC / ANZ / Other).
 3. **Confirm tint/RAG thresholds** (≥70 / 50–70 / <50) with the business before the MBR uses them.
 4. Decide whether `Employee Type Category` (NS Billable) should annotate crew rows in the accordion (display only — population stays roster-gated).
+5. **Phase 2 pre-work (can run in parallel):** audit `Jira Raw` fill rates for `Due Date`, `Original Estimate`, `Region` (col 32), `Team` (col 33); agree the rework convention (reopen changelog vs `Rework` link/label) and the CSAT feed — see §11.
 
-## 11. Out of scope (Phase 1)
+## 11. Phase 2+ forward look — Jira data requirements for the final dashboard
 
-- The three Jira-based metric tiles (On-Time Delivery, Forecast Accuracy, Quality/Rework) and the Jira Region/Team custom-field prerequisite they carry.
+The final dashboard is **four tiles** (metrics dictionary), each with the same Region filter +
+Team filter + 6-period trend controls that Phase 1 builds. The tile row, filter plumbing, and
+trend rendering are therefore designed once in Phase 1 and reused. The `Jira Raw` sheet
+(produced by `Jira Backlog.js` into the same Tempo spreadsheet) already exports most of the
+required fields — including issue-level **Region** (col 32, Resource region field) and
+**Team** (col 33, Atlassian Team field), so the metrics dictionary's "stand up Region/Team
+fields" prerequisite is about **fill-rate coverage**, not field creation.
+
+| Tile (phase) | Formula (dictionary) | Jira Raw columns available today | Gaps to close before build |
+|---|---|---|---|
+| **On-Time Delivery Rate** | resolved ≤ Due Date ÷ resolved-with-Due-Date, ×100 | `Due Date` (12), `Resolution Date` (11), `Completed Date` (19), `Workstream (Issue Type)` (3), `Labels` (20 — Client Commitment), `Region` (32), `Team` (33). `Jira Backlog.js` already computes "Delivered On Time (≤ Due Date)" WoW | Due Date fill-rate audit; agree the commitment scope (Epic/Milestone vs Client Commitment label) |
+| **Forecast Accuracy** | 1 − (\|actual − estimate\| ÷ estimate), avg over closed engagements | `Original Estimate (sec)` (23), `Time Spent (sec)` (24), `Tempo Logged (hrs)` (26), `Epic Tempo Rollup (hrs)` (28), `Epic Key` (17) — epic-level fidelity section already exists in Jira Backlog | Original Estimate fill-rate at Epic level; define "engagement closed in period" (Epic resolution vs Fix Version) |
+| **Quality / Rework Rate** | reopened-or-Rework-linked ÷ delivered, ×100 (+ CSAT companion) | `Resolution` (22), `Issue Links (count)` (25), `Status` (8) | **Reopen events are not exported** — needs either a changelog fetch (new export work) or an agreed `Rework` link type / label convention; CSAT lives outside Jira entirely (survey tool feed TBD) |
+| **Utilization Rate** (Phase 1, this spec) | billable ÷ available capacity | n/a — Tempo + NS Billable + Roster (§3) | — |
+
+**Region caveat:** Phase 1 Region comes from Roster Key Location (person-level); Jira Raw's
+Region is issue-level (which region the work is *for*). Both are legitimate but different
+lenses — the Phase 2 design must decide per-tile which one each metric rolls up by, and the
+filter UI must label it honestly.
+
+**Cadence:** the dictionary reviews monthly ahead of the MBR; the tile trend stays weekly with
+6 periods visible, which a monthly review can read directly (no separate monthly rollup needed
+until asked).
+
+## 12. Out of scope (Phase 1)
+
+- Building the three Jira-based metric tiles themselves (data requirements mapped in §11).
 - FTE vs crew toggle (population includes both; toggle is backlog).
 - Monthly/quarterly period rollups (tile trend is weekly; MBR cadence reads the weekly trend).
 - Manager org-tree scoping.
