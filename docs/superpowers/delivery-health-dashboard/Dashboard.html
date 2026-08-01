@@ -51,6 +51,14 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;
        padding:14px;box-shadow:var(--shadow)}
 .loading{padding:60px;text-align:center;color:var(--muted)}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.tile .lbl{font-size:calc(10px*var(--scale));color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.tile .big{font-size:calc(26px*var(--scale));font-weight:800;margin:2px 0}
+.tile .big.g{color:var(--pos)} .tile .big.a{color:var(--amber)} .tile .big.r{color:var(--warn)}
+.tile .cmp{font-size:calc(11px*var(--scale));color:var(--muted)}
+.tile.ph{opacity:.55;border-style:dashed}
+.spark{display:flex;align-items:flex-end;gap:2px;height:26px;margin-top:6px}
+.spark i{flex:1;background:var(--orbe);border-radius:2px 2px 0 0;min-height:2px}
 /* grid + tile CSS appended in Tasks 11–13 */
 </style>
 </head>
@@ -70,6 +78,9 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 <div id="loading" class="loading">Loading delivery health…</div>
 <div id="app" style="display:none">
   <div class="tiles" id="tiles"></div>
+  <div class="sub" style="margin:-10px 0 14px;color:var(--muted);font-size:11px">
+    ⓘ Team rates are membership-based — multi-team people count in each of their teams, so team figures don't sum to All.
+  </div>
   <div class="panel" id="gridPanel"></div>
 </div>
 <div id="accessPanel" class="panel" style="display:none;margin-top:14px"></div>
@@ -142,7 +153,94 @@ document.getElementById("btnTheme").onclick = function () {
 };
 document.getElementById("btnAccess").onclick = function () { toggleAccessPanel_(); }; // Task 14
 
-function renderTiles_() {} // replaced in Task 11
+function ragClass_(pct) {
+  if (pct === null || pct === undefined) return "";
+  var t = MODEL.meta.thresholds;
+  return pct >= t.green ? "g" : (pct >= t.amber ? "a" : "r");
+}
+
+/** Utilization rollup over the filtered people for one week (mirrors server utilRollup_). */
+function utilFor_(iso) {
+  var s = { avail: 0, billable: 0, tracked: 0 };
+  filteredPeople_().forEach(function (p) {
+    var w = p.weeks[iso];
+    if (!w) return;
+    s.avail += w.avail; s.billable += w.billable; s.tracked += w.tracked;
+  });
+  s.billablePct = s.avail > 0 ? s.billable / s.avail * 100 : null;
+  s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
+  return s;
+}
+
+/** Filter-scoped sums over additive Jira buckets for one week. */
+function bucketsFor_(buckets, iso) {
+  var out = { n: 0, onTime: 0, sumAcc: 0 };
+  buckets.forEach(function (b) {
+    if (b.iso !== iso) return;
+    if (STATE.region && b.region !== STATE.region) return;
+    if (STATE.team && b.team !== STATE.team) return;
+    out.n += b.n; out.onTime += (b.onTime || 0); out.sumAcc += (b.sumAcc || 0);
+  });
+  return out;
+}
+
+function sparkHtml_(vals) {
+  var max = Math.max.apply(null, vals.map(function (v) { return v === null ? 0 : v; }).concat([1]));
+  return '<div class="spark">' + vals.map(function (v) {
+    var h = v === null ? 2 : Math.max(2, Math.round(v / max * 26));
+    return '<i style="height:' + h + 'px" title="' + (v === null ? "–" : Math.round(v) + "%") + '"></i>';
+  }).join("") + "</div>";
+}
+
+function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
+  opts = opts || {};
+  if (opts.placeholder) {
+    return '<div class="tile ph"><div class="lbl">' + label + '</div>' +
+      '<div class="big">—</div><div class="cmp">data pending — reopen/CSAT feed not yet connected</div></div>';
+  }
+  if (opts.unavailable) {
+    return '<div class="tile ph"><div class="lbl">' + label + '</div>' +
+      '<div class="big">—</div><div class="cmp">' + opts.unavailable + '</div></div>';
+  }
+  var big = headlinePct === null ? "—" : Math.round(headlinePct) + "%";
+  return '<div class="tile"><div class="lbl">' + label + " · " + MODEL.meta.headlineIso + '</div>' +
+    '<div class="big ' + ragClass_(headlinePct) + '">' + big + '</div>' +
+    '<div class="cmp">' + cmpText + '</div>' + sparkHtml_(trendVals) + '</div>';
+}
+
+function renderTiles_() {
+  var tw = MODEL.meta.trendWeeks, hi = MODEL.meta.headlineIso;
+  var u = utilFor_(hi);
+  var utilTrend = tw.map(function (w) { return utilFor_(w).billablePct; });
+  var utilCmp = MODEL.meta.nsAvailable
+    ? "tracked/capacity " + (u.trackedPct === null ? "—" : Math.round(u.trackedPct) + "%")
+    : "billable data unavailable — showing tracked/capacity";
+  var utilHeadline = MODEL.meta.nsAvailable ? u.billablePct : u.trackedPct;
+  var utilTrendShown = MODEL.meta.nsAvailable ? utilTrend
+    : tw.map(function (w) { return utilFor_(w).trackedPct; });
+
+  var ot = bucketsFor_(MODEL.onTimeBuckets, hi);
+  var otTrend = tw.map(function (w) {
+    var b = bucketsFor_(MODEL.onTimeBuckets, w);
+    return b.n > 0 ? b.onTime / b.n * 100 : null;
+  });
+  var fc = bucketsFor_(MODEL.forecastBuckets, hi);
+  var fcTrend = tw.map(function (w) {
+    var b = bucketsFor_(MODEL.forecastBuckets, w);
+    return b.n > 0 ? b.sumAcc / b.n * 100 : null;
+  });
+
+  document.getElementById("tiles").innerHTML =
+    tileHtml_("Billable Utilization", utilHeadline, utilCmp, utilTrendShown) +
+    (MODEL.meta.jiraAvailable
+      ? tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null,
+                  ot.n + " resolved with due date", otTrend) +
+        tileHtml_("Forecast Accuracy", fc.n > 0 ? fc.sumAcc / fc.n * 100 : null,
+                  fc.n + " estimated epics closed", fcTrend)
+      : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
+        tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" })) +
+    tileHtml_("Quality / Rework", null, "", [], { placeholder: true });
+}
 function renderGrid_() {}  // replaced in Task 12
 function toggleAccessPanel_() {} // replaced in Task 14
 
