@@ -98,8 +98,11 @@ Region/Team — `onTime` (resolved ≤ Due Date ÷ resolved-with-Due-Date per we
 resolved in the period; estimate-less epics excluded and counted as coverage). `Jira Raw`
 missing → those tiles degrade to a "Jira data unavailable" state; utilization unaffected.
 
-**Payload:** `{ meta (weeks, generatedAt, thresholds, regions, teams), people[ {name, region,
-team, weeks{...}} ], rollups, trend }` — one JSON, gzip-chunked into CacheService
+**Payload:** `{ meta (weeks, generatedAt, thresholds, regions, teams, nsAvailable,
+jiraAvailable), people[ {name, region, regionSource, teams[], isCrew, weeks{...}} ],
+onTimeBuckets[], forecastBuckets[] }` — rollups and trends are computed **client-side**
+from people + additive buckets so Region/Team filtering never re-hits the server
+(as-built note, 2026-07-31). One JSON, gzip-chunked into CacheService
 (`dh_v<DH_CACHE_VER>`, TTL 65 min). `setupDeliveryCacheWarmer()` installs the 30-min warmer;
 `bustDeliveryCache_()` bumps the version. Error models are never cached. ↻ Refresh
 (`getDeliveryData(true)`) bypasses cache.
