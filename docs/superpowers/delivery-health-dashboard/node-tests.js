@@ -30,5 +30,6 @@ _test_dhWindow_();
 _test_nameJoin_();
 _test_teamSplit_();
 _test_nsWeekBucketing_();
+_test_netCapacity_(); _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
 
 console.log("✅ node-tests: all suites passed");

@@ -196,6 +196,51 @@ function aggregateNsWeeks_(rows) {
   return map;
 }
 
+// ── NET CAPACITY (spec §4) ───────────────────────────────────
+
+/**
+ * available = max(0, cap − pto − effectiveHoliday);
+ * effectiveHoliday = max(0, holidayHrs − pto) so a holiday already booked as
+ * NETSUITE time-off is never counted twice (demand-dashboard convention).
+ * @returns {{avail:number, hol:number}} hol = effective (deduped) holiday hours
+ */
+function netCapacity_(cap, pto, holidayHrs) {
+  var c = Number(cap) || 0, p = Number(pto) || 0, h = Number(holidayHrs) || 0;
+  var effHol = Math.max(0, h - p);
+  return { avail: Math.max(0, c - p - effHol), hol: effHol };
+}
+
+// ── REGION RESOLUTION (spec: issue-level standard, roster fallback) ──
+
+function regionBucketFromLocation_(keyLocation) {
+  var k = normDH_(keyLocation);
+  return CONFIG_DH.LOCATION_REGION_MAP[k] || CONFIG_DH.REGION_FALLBACK;
+}
+
+/**
+ * Person region = region receiving the most Jira-tagged tracked hours in the
+ * trend window; ties break alphabetically (deterministic). No tagged hours
+ * (> 0) → roster-location fallback, labeled source:"roster".
+ */
+function assignPersonRegion_(hoursByRegion, rosterBucket) {
+  var best = null, bestH = 0;
+  Object.keys(hoursByRegion).sort().forEach(function (r) {
+    var h = Number(hoursByRegion[r]) || 0;
+    if (h > bestH) { best = r; bestH = h; }
+  });
+  if (best !== null && bestH > 0) return { region: best, source: "jira" };
+  return { region: rosterBucket || CONFIG_DH.REGION_FALLBACK, source: "roster" };
+}
+
+// ── BAR OVERFLOW CLAMP (spec §5: clamp at 100% + ⚠ flag) ──────
+
+function clampToCapacity_(hours, capacity) {
+  var c = Number(capacity) || 0, h = Number(hours) || 0;
+  if (c <= 0) return { pct: null, over: false, realPct: null };
+  var real = h / c * 100;
+  return { pct: Math.min(100, real), over: real > 100, realPct: Math.round(real) };
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
@@ -260,4 +305,52 @@ function _test_nsWeekBucketing_() {
   assert_(m["maria alvarez"]["2026.W32"].billable === 8, "Monday starts next week");
   assert_(m["tom baker"]["2026.W31"].billable === 0 && m["tom baker"]["2026.W31"].nonBillable === 8, "zero billable kept");
   Logger.log("✅ _test_nsWeekBucketing_ passed");
+}
+
+function _test_netCapacity_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_netCapacity_: " + m); }
+  // holiday hrs arg is the person's holiday hours that week BEFORE dedup vs booked PTO
+  assert_(netCapacity_(40, 8, 0).avail === 32, "cap − pto");
+  assert_(netCapacity_(40, 0, 8).avail === 32, "cap − holiday");
+  // booked-holiday no-double-count: effective holiday = max(0, hol − pto)
+  var n = netCapacity_(40, 8, 8);
+  assert_(n.avail === 32 && n.hol === 0, "booked holiday not double-counted");
+  var p = netCapacity_(40, 4, 8);
+  assert_(p.hol === 4 && p.avail === 32, "partial booking subtracts remainder only");
+  assert_(netCapacity_(32, 40, 0).avail === 0, "floor at 0");
+  assert_(netCapacity_(0, 8, 0).avail === 0, "zero capacity stays 0");
+  Logger.log("✅ _test_netCapacity_ passed");
+}
+
+function _test_regionMap_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_regionMap_: " + m); }
+  assert_(regionBucketFromLocation_("Malaysia") === "APAC", "known location");
+  assert_(regionBucketFromLocation_("  MALAYSIA ") === "APAC", "case/space insensitive");
+  assert_(regionBucketFromLocation_("Atlantis") === "Other", "unknown → Other");
+  assert_(regionBucketFromLocation_("") === "Other", "blank → Other");
+  Logger.log("✅ _test_regionMap_ passed");
+}
+
+function _test_personRegion_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_personRegion_: " + m); }
+  // hoursByRegion from Key→Jira Raw join over the trend window
+  var r = assignPersonRegion_({ "AMER": 60, "EMEA": 20 }, "APAC");
+  assert_(r.region === "AMER" && r.source === "jira", "majority wins");
+  var t = assignPersonRegion_({ "AMER": 40, "EMEA": 40 }, "APAC");
+  assert_(t.region === "AMER" && t.source === "jira", "tie → alphabetical (deterministic)");
+  var f = assignPersonRegion_({}, "APAC");
+  assert_(f.region === "APAC" && f.source === "roster", "no tagged hours → roster fallback");
+  var z = assignPersonRegion_({ "AMER": 0 }, "APAC");
+  assert_(z.region === "APAC" && z.source === "roster", "zero hours = untagged");
+  Logger.log("✅ _test_personRegion_ passed");
+}
+
+function _test_overflowClamp_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_overflowClamp_: " + m); }
+  var ok = clampToCapacity_(30, 40);
+  assert_(ok.pct === 75 && ok.over === false, "under capacity");
+  var over = clampToCapacity_(44, 40);
+  assert_(over.pct === 100 && over.over === true && over.realPct === 110, "clamped + flagged");
+  assert_(clampToCapacity_(10, 0).pct === null, "zero capacity → null pct");
+  Logger.log("✅ _test_overflowClamp_ passed");
 }
