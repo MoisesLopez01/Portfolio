@@ -241,6 +241,69 @@ function clampToCapacity_(hours, capacity) {
   return { pct: Math.min(100, real), over: real > 100, realPct: Math.round(real) };
 }
 
+// ── UTILIZATION ROLLUP (also mirrored client-side for filtering) ──
+
+/**
+ * Filter-scoped weekly sums. region/team null = All. Team matching is by
+ * MEMBERSHIP (multi-team person counts in each of their teams — per-team
+ * rates honest; team numbers do not sum to All by design, spec §4).
+ * @returns {{avail,billable,tracked,planned,billablePct,trackedPct}}
+ */
+function utilRollup_(people, iso, region, team) {
+  var s = { avail: 0, billable: 0, tracked: 0, planned: 0 };
+  people.forEach(function (p) {
+    if (region && p.region !== region) return;
+    if (team && (p.teams || []).indexOf(team) === -1) return;
+    var w = p.weeks && p.weeks[iso];
+    if (!w) return;
+    s.avail += Number(w.avail) || 0;
+    s.billable += Number(w.billable) || 0;
+    s.tracked += Number(w.tracked) || 0;
+    s.planned += Number(w.planned) || 0;
+  });
+  s.billablePct = s.avail > 0 ? s.billable / s.avail * 100 : null;
+  s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
+  return s;
+}
+
+// ── JIRA TILE BUCKETS (additive per iso×region×team, spec §11) ──
+
+/** Issues with a Due Date, resolved → per-week on-time buckets. */
+function onTimeBuckets_(issues) {
+  var map = {};
+  issues.forEach(function (it) {
+    if (!it.due || !it.resolved || isNaN(it.due.getTime()) || isNaN(it.resolved.getTime())) return;
+    var iso = weekKeyFromDate_(it.resolved);
+    var region = it.region || "Other", team = it.team || "";
+    var k = iso + "" + region + "" + team;
+    if (!map[k]) map[k] = { iso: iso, region: region, team: team, n: 0, onTime: 0 };
+    map[k].n++;
+    // On time = resolved on or before the due CALENDAR DAY (time-of-day ignored)
+    var d = new Date(it.due.getFullYear(), it.due.getMonth(), it.due.getDate());
+    var r = new Date(it.resolved.getFullYear(), it.resolved.getMonth(), it.resolved.getDate());
+    if (r <= d) map[k].onTime++;
+  });
+  return Object.keys(map).map(function (k) { return map[k]; });
+}
+
+/** Estimated, resolved epics → per-week forecast-accuracy buckets. */
+function forecastBuckets_(epics) {
+  var map = {};
+  epics.forEach(function (ep) {
+    var est = Number(ep.estSec) || 0;
+    if (est <= 0 || !ep.resolved || isNaN(ep.resolved.getTime())) return;
+    var spent = Number(ep.spentSec) || 0;
+    var acc = Math.max(0, 1 - Math.abs(spent - est) / est);
+    var iso = weekKeyFromDate_(ep.resolved);
+    var region = ep.region || "Other", team = ep.team || "";
+    var k = iso + "" + region + "" + team;
+    if (!map[k]) map[k] = { iso: iso, region: region, team: team, n: 0, sumAcc: 0 };
+    map[k].n++;
+    map[k].sumAcc += acc;
+  });
+  return Object.keys(map).map(function (k) { return map[k]; });
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
@@ -353,4 +416,64 @@ function _test_overflowClamp_() {
   assert_(over.pct === 100 && over.over === true && over.realPct === 110, "clamped + flagged");
   assert_(clampToCapacity_(10, 0).pct === null, "zero capacity → null pct");
   Logger.log("✅ _test_overflowClamp_ passed");
+}
+
+function _test_utilizationRollup_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_utilizationRollup_: " + m); }
+  var people = [
+    { name: "A", region: "AMER", teams: ["T1", "T2"],
+      weeks: { W1: { avail: 32, billable: 24, tracked: 28, planned: 30 } } },
+    { name: "B", region: "EMEA", teams: ["T2"],
+      weeks: { W1: { avail: 40, billable: 10, tracked: 20, planned: 40 } } },
+    { name: "C", region: "AMER", teams: [],
+      weeks: { W1: { avail: 0, billable: 0, tracked: 0, planned: 0 } } }, // full-PTO week
+  ];
+  var all = utilRollup_(people, "W1", null, null);
+  // avail 72, billable 34 → 47.2%
+  assert_(Math.abs(all.billablePct - 34 / 72 * 100) < 1e-9, "billable util all");
+  assert_(Math.abs(all.trackedPct - 48 / 72 * 100) < 1e-9, "tracked util all");
+  var amer = utilRollup_(people, "W1", "AMER", null);
+  assert_(amer.avail === 32 && amer.billable === 24, "region filter");
+  var t2 = utilRollup_(people, "W1", null, "T2");
+  assert_(t2.avail === 72, "team membership filter (A on T1|T2 counts in T2)");
+  var t1 = utilRollup_(people, "W1", null, "T1");
+  assert_(t1.avail === 32, "single-team filter");
+  assert_(utilRollup_(people, "W9", null, null).billablePct === null, "no data week → null");
+  Logger.log("✅ _test_utilizationRollup_ passed");
+}
+
+function _test_onTimeRate_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_onTimeRate_: " + m); }
+  var issues = [
+    { due: new Date(2026, 6, 29), resolved: new Date(2026, 6, 28), region: "AMER", team: "T1" }, // early ✓
+    { due: new Date(2026, 6, 29), resolved: new Date(2026, 6, 29), region: "AMER", team: "T1" }, // boundary day ✓
+    { due: new Date(2026, 6, 27), resolved: new Date(2026, 6, 30), region: "EMEA", team: "T2" }, // late ✗
+    { due: null,                  resolved: new Date(2026, 6, 30), region: "AMER", team: "T1" }, // no due — excluded
+    { due: new Date(2026, 6, 20), resolved: null,                  region: "AMER", team: "T1" }, // unresolved — excluded
+  ];
+  var buckets = onTimeBuckets_(issues);
+  // resolved dates 2026-07-28/29/30 are all ISO 2026.W31
+  var a = buckets.filter(function (b) { return b.region === "AMER" && b.team === "T1"; })[0];
+  assert_(a.iso === "2026.W31" && a.n === 2 && a.onTime === 2, "AMER/T1: 2 with due, both on time");
+  var e = buckets.filter(function (b) { return b.region === "EMEA"; })[0];
+  assert_(e.n === 1 && e.onTime === 0, "late issue counted, not on time");
+  assert_(buckets.length === 2, "no-due and unresolved rows excluded");
+  Logger.log("✅ _test_onTimeRate_ passed");
+}
+
+function _test_forecastAccuracy_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_forecastAccuracy_: " + m); }
+  var epics = [
+    { estSec: 36000, spentSec: 36000, resolved: new Date(2026, 6, 28), region: "AMER", team: "T1" }, // perfect: acc 1
+    { estSec: 36000, spentSec: 54000, resolved: new Date(2026, 6, 29), region: "AMER", team: "T1" }, // 50% over: acc .5
+    { estSec: 36000, spentSec: 90000, resolved: new Date(2026, 6, 29), region: "AMER", team: "T1" }, // 150% over: acc floored 0
+    { estSec: 0,     spentSec: 36000, resolved: new Date(2026, 6, 29), region: "AMER", team: "T1" }, // no estimate — excluded
+    { estSec: 36000, spentSec: 36000, resolved: null,                  region: "AMER", team: "T1" }, // unresolved — excluded
+  ];
+  var buckets = forecastBuckets_(epics);
+  assert_(buckets.length === 1, "one bucket");
+  var b = buckets[0];
+  assert_(b.iso === "2026.W31" && b.n === 3, "3 estimated resolved epics");
+  assert_(Math.abs(b.sumAcc - 1.5) < 1e-9, "acc: 1 + 0.5 + 0 (negative floored)");
+  Logger.log("✅ _test_forecastAccuracy_ passed");
 }

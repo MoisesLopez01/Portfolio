@@ -31,5 +31,6 @@ _test_nameJoin_();
 _test_teamSplit_();
 _test_nsWeekBucketing_();
 _test_netCapacity_(); _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
+_test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_();
 
 console.log("✅ node-tests: all suites passed");
