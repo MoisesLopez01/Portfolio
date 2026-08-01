@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+:root{
+  --void:#0F1941; --orbe:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5;
+  --royal:#2864E6; --june:#FF9B87; --slate:#64748B;
+  --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
+  --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
+  --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
+  --heatf-lo:#FFFAF5; --heatf-mid:#DCCDBE; --heatf-hi:#FF9B87;
+  --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
+  --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
+  --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
+  --scale:1;
+}
+[data-theme="dark"]{
+  --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
+  --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
+  --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
+  --heatf-lo:#16203F; --heatf-mid:#DCCDBE; --heatf-hi:#FFFAF5;
+  --up:#34D399; --down:#FB7185; --neutral:#1E295A;
+  --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+/* Fluid type/space scale — every font-size and several key dimensions below multiply
+   this token, so laptop and (especially) ultrawide screens get visibly bigger text and
+   controls instead of the same fixed-size column floating in empty margin. */
+@media(max-width:420px){:root{--scale:.94}}
+@media(min-width:1024px){:root{--scale:1.08}}
+@media(min-width:1440px){:root{--scale:1.16}}
+@media(min-width:1920px){:root{--scale:1.28}}
+@media(min-width:2560px){:root{--scale:1.4}}
+@media(min-width:3440px){:root{--scale:1.5}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Roboto',-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:calc(16px*var(--scale))}
+.hdr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.hdr h1{font-size:calc(19px*var(--scale));font-weight:800}
+.hdr .sub{color:var(--muted);font-size:calc(12px*var(--scale))}
+.btn{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+     padding:6px 12px;font-size:calc(12px*var(--scale));cursor:pointer;color:var(--text)}
+.btn:hover{filter:brightness(.97)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{border:1px solid var(--border);border-radius:999px;padding:4px 12px;cursor:pointer;
+      font-size:calc(11px*var(--scale));background:var(--surface)}
+.chip.on{background:var(--orbe);border-color:var(--orbe);color:#fff}
+select,input[type=search]{background:var(--surface);border:1px solid var(--border);
+      border-radius:8px;padding:6px 10px;font-size:calc(12px*var(--scale));color:var(--text)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:16px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+       padding:14px;box-shadow:var(--shadow)}
+.loading{padding:60px;text-align:center;color:var(--muted)}
+/* grid + tile CSS appended in Tasks 11–13 */
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>Delivery Health</h1>
+  <span class="sub" id="asOf"></span>
+  <span style="flex:1"></span>
+  <div class="chips" id="regionChips"></div>
+  <select id="teamSel"><option value="">All teams</option></select>
+  <input type="search" id="personSearch" placeholder="Find person…">
+  <button class="btn" id="btnRefresh">↻ Refresh</button>
+  <button class="btn" id="btnAccess" style="display:none">🔒 Access</button>
+  <button class="btn" id="btnTheme">🌓</button>
+</div>
+
+<div id="loading" class="loading">Loading delivery health…</div>
+<div id="app" style="display:none">
+  <div class="tiles" id="tiles"></div>
+  <div class="panel" id="gridPanel"></div>
+</div>
+<div id="accessPanel" class="panel" style="display:none;margin-top:14px"></div>
+
+<script>
+var MODEL = null;
+var STATE = { region: "", team: "", search: "", expandedWeeks: {}, openDetail: {} };
+
+function loadData(force) {
+  document.getElementById("loading").style.display = "";
+  document.getElementById("app").style.display = "none";
+  google.script.run
+    .withSuccessHandler(function (m) {
+      if (m.error) { document.getElementById("loading").textContent = "⚠️ " + m.error; return; }
+      MODEL = m;
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("app").style.display = "";
+      document.getElementById("asOf").textContent =
+        "Data as of " + new Date(m.meta.generatedAt).toLocaleTimeString();
+      if (m.viewerRole === "admin") document.getElementById("btnAccess").style.display = "";
+      buildFilters_();
+      renderAll_();
+    })
+    .withFailureHandler(function (e) {
+      document.getElementById("loading").textContent = "⚠️ Load failed: " + e.message;
+    })
+    .getDeliveryData(!!force);
+}
+
+function buildFilters_() {
+  var rc = document.getElementById("regionChips");
+  rc.innerHTML = "";
+  ["", ].concat(MODEL.meta.regions).forEach(function (r) {
+    var b = document.createElement("span");
+    b.className = "chip" + ((STATE.region === r) ? " on" : "");
+    b.textContent = r === "" ? "All regions" : r;
+    b.onclick = function () { STATE.region = r; buildFilters_(); renderAll_(); };
+    rc.appendChild(b);
+  });
+  var sel = document.getElementById("teamSel");
+  if (sel.options.length <= 1) {
+    MODEL.meta.teams.forEach(function (t) {
+      var o = document.createElement("option");
+      o.value = t; o.textContent = t; sel.appendChild(o);
+    });
+  }
+}
+
+/** People passing the active Region/Team/search filters. */
+function filteredPeople_() {
+  return MODEL.people.filter(function (p) {
+    if (STATE.region && p.region !== STATE.region) return false;
+    if (STATE.team && p.teams.indexOf(STATE.team) === -1) return false;
+    if (STATE.search && p.name.toLowerCase().indexOf(STATE.search.toLowerCase()) === -1) return false;
+    return true;
+  });
+}
+
+function renderAll_() {
+  renderTiles_();   // Task 11
+  renderGrid_();    // Tasks 12–13
+}
+
+document.getElementById("btnRefresh").onclick = function () { loadData(true); };
+document.getElementById("teamSel").onchange = function () { STATE.team = this.value; renderAll_(); };
+document.getElementById("personSearch").oninput = function () { STATE.search = this.value; renderGrid_(); };
+document.getElementById("btnTheme").onclick = function () {
+  var root = document.documentElement;
+  root.setAttribute("data-theme", root.getAttribute("data-theme") === "dark" ? "" : "dark");
+};
+document.getElementById("btnAccess").onclick = function () { toggleAccessPanel_(); }; // Task 14
+
+function renderTiles_() {} // replaced in Task 11
+function renderGrid_() {}  // replaced in Task 12
+function toggleAccessPanel_() {} // replaced in Task 14
+
+loadData(false);
+</script>
+</body>
+</html>
