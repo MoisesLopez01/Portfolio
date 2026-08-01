@@ -24,7 +24,7 @@ controls on every tile.
 | Headline metric | **Billable utilization** = NS Total Billable Hours ÷ net capacity; tracked ÷ capacity shown as companion |
 | Denominator | **Net capacity** = scheduled hours − PTO − public holidays ("available delivery hours") |
 | Region source | **Issue-level Jira `Region` field** (`Jira Raw` col 32) — the standard lens for every tile (decided 2026-07-31, superseding the earlier Roster-Key-Location choice). For person-level metrics (utilization), a person's Region = the region receiving the **majority of their tracked hours** in the trend window (tracked `Key` → `Jira Raw` Region join); fallback = Roster `Key Location` bucket when none of their tracked work is region-classified. Roster Key Location still drives the ANZ 38h capacity fallback (schedule, not rollup) |
-| Team source | `Team` column from Tempo Tracked/Planned exports (pipe-joined; each combo = its own filter value, never collapsed) |
+| Team source | `Team` column from Tempo Tracked/Planned exports. **Filter values = the individual Tempo teams** (pipe-joined cells split on `" | "`, deduplicated) plus **All**; a person matches a team filter by **membership**, so someone on `Team A \| Team B` appears under either selection (decided 2026-07-31; the export sheet itself stays pipe-joined — splitting happens in this dashboard's reader) |
 | Population | Active Roster, Class = Professional Services / Department = Services, **FTE + crew** (`Data` + `Contractors Data` tabs) |
 | Week window (grid) | **6 weeks: 2 completed + current + 3 future**, `YYYY.WN` labels |
 | Week bar | **Single stacked bar** (billable / non-billable / idle / OOO segments, planned ▼ tick) |
@@ -88,6 +88,9 @@ region-classified. The accordion notes when a person's region is roster-fallback
 
 **Rollups:** by Region, by Team, and overall — per week: Σbillable, Σavailable, Σtracked,
 Σplanned → utilization rates. Trend series = last 6 completed weeks, filter-scoped.
+Team rollups are **membership-based**: a multi-team person contributes their full hours to
+each of their teams' rollups, so per-team numbers are honest per team but do **not** sum to
+the All total (documented in the tile's ⓘ note — utilization is a rate, so this is safe).
 
 **Jira tiles (same payload):** from `Jira Raw` weekly snapshots, grouped by issue-level
 Region/Team — `onTime` (resolved ≤ Due Date ÷ resolved-with-Due-Date per week) and
@@ -115,8 +118,9 @@ light/dark themes, per-panel ⬇ Save PNG.
   3. **Forecast Accuracy** (companion: estimate coverage %),
   4. **Quality/Rework** — placeholder: muted tile, "data pending — reopen/CSAT feed not yet
      connected", no fake numbers.
-- **Filters:** Region chips + Team dropdown (unique pipe-joined combos) + person search box.
-  Filters scope the tile, trend, and grid together.
+- **Filters:** Region chips + **Team dropdown listing each individual Tempo team** (split from
+  the pipe-joined column, deduped, alphabetical, "All" default; membership matching) + person
+  search box. Filters scope the tiles, trends, and grid together.
 - ↻ Refresh (live read) · 🔒 Access (admins) · theme toggle.
 
 **People × weeks grid:**
@@ -168,6 +172,7 @@ Pure `_test_` functions in `Code.js`, runnable in the GAS editor and locally via
 - `_test_nsWeekBucketing_` — daily NS rows → ISO weeks (incl. Sunday/Monday boundaries)
 - `_test_netCapacity_` — capacity − PTO − holiday math, floor at 0, booked-holiday no-double-count
 - `_test_nameJoin_` — normalization + "Last, First" alias variants across the four sheets
+- `_test_teamSplit_` — pipe-joined Team cells → individual filter values + membership matching (multi-team person appears under each of their teams)
 - `_test_personRegion_` — majority-of-tracked-hours region assignment + roster-bucket fallback (incl. ties and fully-unclassified people)
 - `_test_regionMap_` — Key Location → fallback region buckets + `Other`
 - `_test_overflowClamp_` — planned/tracked > capacity → clamp + flag
@@ -191,6 +196,7 @@ deploy as Web app (Execute as Me; ServiceRocket-with-link; allowlist is the real
 3. **Confirm tint/RAG thresholds** (≥70 / 50–70 / <50) with the business before the MBR uses them.
 4. Decide whether `Employee Type Category` (NS Billable) should annotate crew rows in the accordion (display only — population stays roster-gated).
 5. **Required for the W32 build:** audit `Jira Raw` fill rates for `Due Date`, `Original Estimate`, `Region` (col 32), `Team` (col 33) — low coverage changes tile so-what wording, not the design.
+   Also compare the **Atlassian Team names (col 33) against the Tempo team names**: if they match, one Team dropdown drives all four tiles; if not, the Jira tiles list their own team values (grouped in the same dropdown under a divider) until the vocabularies are aligned.
 6. **Parallel (unblocks the Rework tile later):** agree the rework convention (reopen changelog vs `Rework` link/label) and the CSAT feed — see §11.
 
 ## 11. Jira data requirements per tile (final dashboard, ships 2026.W32)
