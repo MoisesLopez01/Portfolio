@@ -304,6 +304,81 @@ function forecastBuckets_(epics) {
   return Object.keys(map).map(function (k) { return map[k]; });
 }
 
+// ── CACHE (gzip chunked) ──────────────────────────────────────
+
+var CACHE_CHUNK_BYTES_ = 90 * 1024; // CacheService hard-fails >100KB per value
+
+/** Current cache version — Script Property DH_CACHE_VER (default 1). */
+function deliveryCacheVer_() {
+  try {
+    var v = parseInt(PropertiesService.getScriptProperties().getProperty("DH_CACHE_VER"), 10);
+    return v > 0 ? v : 1;
+  } catch (e) { return 1; }
+}
+
+/**
+ * Bumps DH_CACHE_VER, stranding all prior-version entries (they expire on TTL —
+ * CacheService can't enumerate keys, so versioning is how invalidation works).
+ * Run manually from the GAS editor to force-invalidate the cache.
+ */
+function bustDeliveryCache_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var next = (parseInt(props.getProperty("DH_CACHE_VER"), 10) || 1) + 1;
+    props.setProperty("DH_CACHE_VER", String(next));
+    Logger.log("✅ bustDeliveryCache_: cache version bumped to " + next);
+    return next;
+  } catch (e) {
+    Logger.log("⚠️ bustDeliveryCache_: " + e.message);
+    return null;
+  }
+}
+
+/** The single shared cache key for the delivery model. */
+function deliveryCacheKey_() { return "dh_v" + deliveryCacheVer_(); }
+
+/** Gzips + chunks `str` into `<key>_0..n` + `<key>_meta`. Returns true on success. */
+function cachePutLarge_(cache, key, str, ttlSec) {
+  try {
+    var b64 = Utilities.base64Encode(
+      Utilities.gzip(Utilities.newBlob(str, "application/json")).getBytes());
+    var entries = {};
+    var n = 0;
+    for (var i = 0; i < b64.length; i += CACHE_CHUNK_BYTES_, n++) {
+      entries[key + "_" + n] = b64.slice(i, i + CACHE_CHUNK_BYTES_);
+    }
+    entries[key + "_meta"] = String(n);
+    cache.putAll(entries, ttlSec);
+    Logger.log("cachePutLarge_: " + key + " — " + str.length + " chars → " + b64.length + " b64 in " + n + " chunk(s)");
+    return true;
+  } catch (e) {
+    Logger.log("⚠️ cachePutLarge_ (" + key + "): " + e.message);
+    return false;
+  }
+}
+
+/** Reads a chunked entry; returns the JSON string or null on any miss. */
+function cacheGetLarge_(cache, key) {
+  try {
+    var meta = parseInt(cache.get(key + "_meta"), 10);
+    if (!(meta > 0)) return null;
+    var names = [];
+    for (var i = 0; i < meta; i++) names.push(key + "_" + i);
+    var got = cache.getAll(names);
+    var b64 = "";
+    for (var j = 0; j < meta; j++) {
+      var part = got[key + "_" + j];
+      if (!part) return null;  // chunk expired/evicted — whole entry is a miss
+      b64 += part;
+    }
+    return Utilities.ungzip(
+      Utilities.newBlob(Utilities.base64Decode(b64), "application/x-gzip")).getDataAsString();
+  } catch (e) {
+    Logger.log("⚠️ cacheGetLarge_ (" + key + "): " + e.message);
+    return null;
+  }
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
@@ -476,4 +551,18 @@ function _test_forecastAccuracy_() {
   assert_(b.iso === "2026.W31" && b.n === 3, "3 estimated resolved epics");
   assert_(Math.abs(b.sumAcc - 1.5) < 1e-9, "acc: 1 + 0.5 + 0 (negative floored)");
   Logger.log("✅ _test_forecastAccuracy_ passed");
+}
+
+function _test_cacheRoundtrip_(cache) {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_cacheRoundtrip_: " + m); }
+  var big = JSON.stringify({ people: new Array(4000).fill({ name: "Maria Alvarez", weeks: { "2026.W31": { cap: 40, avail: 32 } } }) });
+  assert_(cachePutLarge_(cache, "dh_test", big, 60) === true, "put ok");
+  assert_(cacheGetLarge_(cache, "dh_test") === big, "roundtrip identical");
+  assert_(cacheGetLarge_(cache, "dh_missing") === null, "missing key → null");
+  // Simulate an evicted chunk → whole entry misses cleanly
+  var meta = parseInt(cache.get("dh_test_meta"), 10);
+  if (meta > 1) { cache.m["dh_test_1"] = null; delete cache.m["dh_test_1"]; }
+  else { delete cache.m["dh_test_0"]; }
+  assert_(cacheGetLarge_(cache, "dh_test") === null, "missing chunk → clean miss");
+  Logger.log("✅ _test_cacheRoundtrip_ passed");
 }
