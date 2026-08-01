@@ -27,5 +27,8 @@ FakeCache.prototype.getAll = function (names) {
 eval(fs.readFileSync(path.join(__dirname, "Code.js"), "utf8"));
 
 _test_dhWindow_();
+_test_nameJoin_();
+_test_teamSplit_();
+_test_nsWeekBucketing_();
 
 console.log("✅ node-tests: all suites passed");

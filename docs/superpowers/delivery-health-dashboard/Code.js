@@ -108,6 +108,94 @@ function buildDhWindow_(today) {
            headlineIso: shift(-1) };
 }
 
+// ── NAME JOINS ───────────────────────────────────────────────
+
+/** Canonical name key — same convention as normPS_ in the PS report. */
+function normDH_(name) {
+  return String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * All normalized variants a source cell may appear as. "Last, First" cells
+ * (NS Billable / Planned) also produce "First Last" and "Last First".
+ * @returns {string[]} deduped normalized keys
+ */
+function nameAliases_(raw) {
+  var norm = normDH_(raw);
+  if (!norm) return [];
+  var out = [norm];
+  var m = norm.match(/^([^,]+),\s*(.+)$/);
+  if (m) {
+    var flipped = normDH_(m[2] + " " + m[1]);   // "first last"
+    var spaced  = normDH_(m[1] + " " + m[2]);   // "last first"
+    if (out.indexOf(flipped) === -1) out.push(flipped);
+    if (out.indexOf(spaced) === -1) out.push(spaced);
+  }
+  return out;
+}
+
+/** Roster display names → lookup index: every alias key → display name. */
+function buildNameIndex_(displayNames) {
+  var idx = {};
+  displayNames.forEach(function (dn) {
+    nameAliases_(dn).forEach(function (k) { if (!(k in idx)) idx[k] = dn; });
+    // Also index the "Last, First" form of a "First Last" roster name so
+    // comma-form source cells resolve: "Maria Alvarez" → key "alvarez, maria".
+    var parts = normDH_(dn).split(" ");
+    if (parts.length >= 2) {
+      var last = parts[parts.length - 1];
+      var first = parts.slice(0, -1).join(" ");
+      var commaKey = normDH_(last + ", " + first);
+      if (!(commaKey in idx)) idx[commaKey] = dn;
+      var lastFirstKey = normDH_(last + " " + first);
+      if (!(lastFirstKey in idx)) idx[lastFirstKey] = dn;
+    }
+  });
+  return idx;
+}
+
+/** Resolves a raw source-cell name to the roster display name, else null. */
+function resolveName_(idx, raw) {
+  var aliases = nameAliases_(raw);
+  for (var i = 0; i < aliases.length; i++) {
+    if (aliases[i] in idx) return idx[aliases[i]];
+  }
+  return null;
+}
+
+// ── TEAM SPLIT (spec: filter = individual Tempo teams, membership match) ──
+
+/** "Team A | Team B" → ["Team A","Team B"], trimmed, deduped, blanks dropped. */
+function splitTeams_(cell) {
+  var seen = {}, out = [];
+  String(cell || "").split("|").forEach(function (t) {
+    var v = t.trim();
+    if (v && !(v.toLowerCase() in seen)) { seen[v.toLowerCase()] = 1; out.push(v); }
+  });
+  return out;
+}
+
+// ── NS BILLABLE WEEK AGGREGATION ─────────────────────────────
+
+/**
+ * Daily NS rows → { normName: { iso: {billable, nonBillable} } }.
+ * @param {Array<{name:string,date:Date,billable:number,nonBillable:number}>} rows
+ */
+function aggregateNsWeeks_(rows) {
+  var map = {};
+  rows.forEach(function (r) {
+    if (!r.date || isNaN(r.date.getTime())) return;
+    var key = normDH_(r.name);
+    if (!key) return;
+    var iso = weekKeyFromDate_(r.date);
+    if (!map[key]) map[key] = {};
+    if (!map[key][iso]) map[key][iso] = { billable: 0, nonBillable: 0 };
+    map[key][iso].billable += Number(r.billable) || 0;
+    map[key][iso].nonBillable += Number(r.nonBillable) || 0;
+  });
+  return map;
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
@@ -130,4 +218,46 @@ function _test_dhWindow_() {
   assert_(weekKeyFromDate_(new Date(2026, 6, 27)) === "2026.W31", "Mon 2026-07-27 → W31");
   assert_(weekKeyFromDate_(new Date(2026, 7, 2)) === "2026.W31", "Sun 2026-08-02 → W31");
   Logger.log("✅ _test_dhWindow_ passed");
+}
+
+function _test_nameJoin_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_nameJoin_: " + m); }
+  assert_(normDH_("  Maria   ALVAREZ ") === "maria alvarez", "normalize whitespace+case");
+  var a = nameAliases_("Alvarez, Maria");
+  // "Last, First" cell → also match "First Last" and "Last First"
+  assert_(a.indexOf("alvarez, maria") !== -1 && a.indexOf("maria alvarez") !== -1 &&
+          a.indexOf("alvarez maria") !== -1, "comma cell yields all variants");
+  var b = nameAliases_("Maria Alvarez");
+  assert_(b.indexOf("maria alvarez") !== -1 && b.length === 1, "no-comma name = itself only");
+  // Index build + lookup: NS "Last, First" resolves to roster "First Last"
+  var idx = buildNameIndex_(["Maria Alvarez", "Tom Baker"]);
+  assert_(resolveName_(idx, "ALVAREZ,  Maria") === "Maria Alvarez", "comma variant resolves");
+  assert_(resolveName_(idx, "Tom Baker") === "Tom Baker", "exact resolves");
+  assert_(resolveName_(idx, "Nobody Here") === null, "unknown → null");
+  Logger.log("✅ _test_nameJoin_ passed");
+}
+
+function _test_teamSplit_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_teamSplit_: " + m); }
+  assert_(splitTeams_("Team A | Team B").join("|") === "Team A|Team B", "split pipe-join");
+  assert_(splitTeams_(" Team A ").join("|") === "Team A", "single team trimmed");
+  assert_(splitTeams_("").length === 0 && splitTeams_(null).length === 0, "blank → []");
+  assert_(splitTeams_("A | A | B").join("|") === "A|B", "dedup within a cell");
+  Logger.log("✅ _test_teamSplit_ passed");
+}
+
+function _test_nsWeekBucketing_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_nsWeekBucketing_: " + m); }
+  var rows = [
+    { name: "Maria Alvarez", date: new Date(2026, 6, 27), billable: 6, nonBillable: 2 }, // Mon W31
+    { name: "Maria Alvarez", date: new Date(2026, 7, 2),  billable: 4, nonBillable: 0 }, // Sun W31
+    { name: "Maria Alvarez", date: new Date(2026, 7, 3),  billable: 8, nonBillable: 0 }, // Mon W32
+    { name: "Tom Baker",     date: new Date(2026, 6, 28), billable: 0, nonBillable: 8 },
+  ];
+  var m = aggregateNsWeeks_(rows);
+  assert_(m["maria alvarez"]["2026.W31"].billable === 10, "Mon+Sun same ISO week");
+  assert_(m["maria alvarez"]["2026.W31"].nonBillable === 2, "nonBillable summed");
+  assert_(m["maria alvarez"]["2026.W32"].billable === 8, "Monday starts next week");
+  assert_(m["tom baker"]["2026.W31"].billable === 0 && m["tom baker"]["2026.W31"].nonBillable === 8, "zero billable kept");
+  Logger.log("✅ _test_nsWeekBucketing_ passed");
 }
