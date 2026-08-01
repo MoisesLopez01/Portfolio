@@ -118,6 +118,11 @@ tr.detail td{background:var(--surface-2);padding:12px 16px 14px;text-align:left}
 var MODEL = null;
 var STATE = { region: "", team: "", search: "", expandedWeeks: {}, openDetail: {} };
 
+function esc_(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function loadData(force) {
   document.getElementById("loading").style.display = "";
   document.getElementById("app").style.display = "none";
@@ -321,7 +326,7 @@ function renderGrid_() {
   });
   html += "</tr>";
   filteredPeople_().forEach(function (p) {
-    html += '<tr><td class="name">' + p.name +
+    html += '<tr><td class="name">' + esc_(p.name) +
       (p.regionSource === "roster" ? ' <span class="cellSub" title="region from roster location (no region-tagged work)">◦</span>' : "") +
       "</td>";
     weeks.forEach(function (wk) {
@@ -389,9 +394,9 @@ function detailRowHtml_(p, iso, nWeeks) {
         '<div class="b" style="width:' + (w.tracked > 0 ? w.billable / w.tracked * 100 : 0) + '%"></div>' +
         '<div class="n" style="flex:1"></div></div>');
   return '<tr class="detail"><td colspan="' + (nWeeks + 1) + '">' +
-    "<b>" + p.name + " — " + iso + "</b> <span class=\"cellSub\">" +
-    p.region + (p.regionSource === "roster" ? " (roster)" : "") +
-    (p.teams.length ? " · " + p.teams.join(", ") : "") + "</span>" +
+    "<b>" + esc_(p.name) + " — " + iso + "</b> <span class=\"cellSub\">" +
+    esc_(p.region) + (p.regionSource === "roster" ? " (roster)" : "") +
+    (p.teams.length ? " · " + esc_(p.teams.join(", ")) : "") + "</span>" +
     stats + bullets + "</td></tr>";
 }
 
