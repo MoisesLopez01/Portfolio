@@ -658,6 +658,229 @@ function readJiraRaw_() {
   }
 }
 
+// ── MODEL ASSEMBLY (pure — all reader outputs injected) ──────
+
+function assembleModel_(inputs, win) {
+  if (inputs.roster.error) {
+    return { meta: {}, people: [], onTimeBuckets: [], forecastBuckets: [],
+             error: inputs.roster.error };
+  }
+  var displayNames = inputs.roster.people.map(function (p) { return p.name; });
+  var nameIdx = buildNameIndex_(displayNames);
+  var byPerson = {}; // display name → accumulator
+  inputs.roster.people.forEach(function (p) {
+    byPerson[p.name] = { roster: p, teams: [], weeks: {}, regionHours: {} };
+  });
+
+  // Tempo tracked/planned rows → per-person weekly sums, team collection,
+  // PTO (NETSUITE planned rows), region-tagged hours (tracked keys × Jira Region)
+  function eachTempoRow_(row, kind) {
+    var dn = resolveName_(nameIdx, row.user);
+    if (!dn) return; // not in population — excluded per spec §7
+    var acc = byPerson[dn];
+    splitTeams_(row.teamCell).forEach(function (t) {
+      if (acc.teams.indexOf(t) === -1) acc.teams.push(t);
+    });
+    var timeOff = isTimeOffKey_(row.key);
+    Object.keys(row.weekHours).forEach(function (iso) {
+      if (win.allWeeks.indexOf(iso) === -1) return;
+      if (!acc.weeks[iso]) acc.weeks[iso] = { pto: 0, planned: 0, tracked: 0 };
+      var h = row.weekHours[iso];
+      if (kind === "planned") {
+        if (timeOff) acc.weeks[iso].pto += h;
+        else acc.weeks[iso].planned += h;
+      } else if (!timeOff) {
+        acc.weeks[iso].tracked += h;
+        var region = inputs.jira.keyRegion[row.key];
+        if (region) acc.regionHours[region] = (acc.regionHours[region] || 0) + h;
+      }
+    });
+  }
+  inputs.planned.rows.forEach(function (r) { eachTempoRow_(r, "planned"); });
+  inputs.tracked.rows.forEach(function (r) { eachTempoRow_(r, "tracked"); });
+
+  // NS billable weekly aggregation, joined through the alias index
+  var nsAvailable = !inputs.ns.error;
+  var nsWeekly = aggregateNsWeeks_(inputs.ns.rows.map(function (r) {
+    var dn = resolveName_(nameIdx, r.name);
+    return dn ? { name: dn, date: r.date, billable: r.billable, nonBillable: r.nonBillable } : null;
+  }).filter(Boolean));
+
+  // Holiday hours per person-week (fuzzy location match, per-day hours by region)
+  var holByPersonWeek = {}; // dn → iso → hrs
+  inputs.holidays.rows.forEach(function (hrow) {
+    var iso = weekKeyFromDate_(hrow.date);
+    if (win.allWeeks.indexOf(iso) === -1) return;
+    inputs.roster.people.forEach(function (p) {
+      if (!phLocMatchesEmp_(hrow.location, p.keyLocation)) return;
+      var perDay = normDH_(p.keyLocation) === normDH_(CONFIG_DH.ANZ_LOCATION)
+        ? CONFIG_DH.ANZ_HOLIDAY_HRS_PER_DAY : CONFIG_DH.HOLIDAY_HRS_PER_DAY;
+      if (!holByPersonWeek[p.name]) holByPersonWeek[p.name] = {};
+      holByPersonWeek[p.name][iso] = (holByPersonWeek[p.name][iso] || 0) + perDay;
+    });
+  });
+
+  // Assemble people records
+  var capMap = inputs.capacity.byName || {};
+  var teamSet = {};
+  var people = displayNames.slice().sort(function (a, b) {
+    return a.localeCompare(b);
+  }).map(function (dn) {
+    var acc = byPerson[dn], p = acc.roster;
+    var reg = assignPersonRegion_(acc.regionHours, p.rosterBucket);
+    acc.teams.forEach(function (t) { teamSet[t] = 1; });
+    var weeks = {};
+    win.allWeeks.forEach(function (iso) {
+      var w = acc.weeks[iso] || { pto: 0, planned: 0, tracked: 0 };
+      var capCell = capMap[normDH_(dn)] ? capMap[normDH_(dn)][iso] : undefined;
+      var capEst = capCell === undefined;
+      var cap = capEst
+        ? (normDH_(p.keyLocation) === normDH_(CONFIG_DH.ANZ_LOCATION)
+            ? CONFIG_DH.ANZ_CAPACITY_HRS : CONFIG_DH.WEEKLY_CAPACITY_HRS)
+        : capCell;
+      var holHrs = (holByPersonWeek[dn] && holByPersonWeek[dn][iso]) || 0;
+      var net = netCapacity_(cap, w.pto, holHrs);
+      var ns = (nsWeekly[normDH_(dn)] && nsWeekly[normDH_(dn)][iso]) || { billable: 0, nonBillable: 0 };
+      weeks[iso] = { cap: cap, capEst: capEst, pto: w.pto, hol: net.hol, avail: net.avail,
+                     planned: w.planned, tracked: w.tracked,
+                     billable: nsAvailable ? ns.billable : 0,
+                     nonBillable: nsAvailable ? ns.nonBillable : 0 };
+    });
+    return { name: dn, region: reg.region, regionSource: reg.source,
+             teams: acc.teams.slice().sort(), isCrew: p.isCrew, weeks: weeks };
+  });
+
+  // Jira buckets (already deduped issues/epics)
+  var onTime = inputs.jira.available ? onTimeBuckets_(inputs.jira.issues) : [];
+  var forecast = inputs.jira.available ? forecastBuckets_(inputs.jira.epics) : [];
+  onTime.concat(forecast).forEach(function (b) { if (b.team) teamSet[b.team] = 1; });
+
+  return {
+    meta: {
+      gridWeeks: win.gridWeeks, trendWeeks: win.trendWeeks, headlineIso: win.headlineIso,
+      generatedAt: new Date().toISOString(),
+      thresholds: { green: CONFIG_DH.TINT_GREEN, amber: CONFIG_DH.TINT_AMBER },
+      regions: ["AMER", "EMEA", "APAC", "ANZ", "Other"],
+      teams: Object.keys(teamSet).sort(),
+      nsAvailable: nsAvailable, jiraAvailable: !!inputs.jira.available,
+      capacityError: inputs.capacity.error || null,
+    },
+    people: people, onTimeBuckets: onTime, forecastBuckets: forecast,
+  };
+}
+
+/** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
+function buildDeliveryModel_() {
+  var win = buildDhWindow_(new Date());
+  return assembleModel_({
+    roster: readRosterPeople_(),
+    capacity: readCapacitySheet_(),
+    tracked: readTempoGrid_(CONFIG_DH.TRACKED_SHEET),
+    planned: readTempoGrid_(CONFIG_DH.PLANNED_SHEET),
+    ns: readNsBillable_(),
+    holidays: readHolidays_(),
+    jira: readJiraRaw_(),
+  }, win);
+}
+
+// ── ENTRY POINT + DATA ENDPOINT ──────────────────────────────
+
+function doGet() {
+  var access = checkDeliveryAccess();
+  if (!access.allowed) {
+    return HtmlService.createHtmlOutput(buildAccessDeniedPage_(access.email))
+      .setTitle(CONFIG_DH.TITLE + " — Access Restricted");
+  }
+  return HtmlService.createHtmlOutputFromFile("Dashboard")
+    .setTitle(CONFIG_DH.TITLE)
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+function getDeliveryData(forceRefresh) {
+  var access = checkDeliveryAccess();
+  if (!access.allowed) {
+    return { error: "Access restricted to authorized users.", meta: {}, people: [] };
+  }
+  var cache = CacheService.getScriptCache();
+  var key = deliveryCacheKey_();
+  if (!forceRefresh) {
+    var hit = cacheGetLarge_(cache, key);
+    if (hit) {
+      try {
+        var cached = JSON.parse(hit);
+        cached.viewerRole = access.role;
+        cached.viewerEmail = access.email;
+        return cached;
+      } catch (e) { Logger.log("⚠️ getDeliveryData: bad cache entry — recomputing"); }
+    }
+  }
+  var model = buildDeliveryModel_();
+  if (!model.error) cachePutLarge_(cache, key, JSON.stringify(model), CONFIG_DH.CACHE_TTL_SEC);
+  model.viewerRole = access.role;
+  model.viewerEmail = access.email;
+  return model;
+}
+
+// ── CACHE WARMER ─────────────────────────────────────────────
+
+function warmDeliveryCache() {
+  var s0 = Date.now();
+  var model = buildDeliveryModel_();
+  var secs = Math.round((Date.now() - s0) / 1000);
+  if (model.error) { Logger.log("❌ warmDeliveryCache after " + secs + "s: " + model.error); return; }
+  var ok = cachePutLarge_(CacheService.getScriptCache(), deliveryCacheKey_(),
+                          JSON.stringify(model), CONFIG_DH.CACHE_TTL_SEC);
+  Logger.log(ok ? "✅ warmDeliveryCache: rebuilt in " + secs + "s"
+                : "❌ warmDeliveryCache: compute ok but cache write failed");
+}
+
+function setupDeliveryCacheWarmer() {
+  ScriptApp.getProjectTriggers()
+    .filter(function (t) { return t.getHandlerFunction() === "warmDeliveryCache"; })
+    .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger("warmDeliveryCache").timeBased()
+    .everyMinutes(CONFIG_DH.CACHE_WARM_EVERY_MIN).create();
+  Logger.log("✅ Delivery cache warmer installed — every " + CONFIG_DH.CACHE_WARM_EVERY_MIN + " min");
+}
+
+// ── DIAGNOSTICS (run once in the GAS editor after deploy) ────
+
+/** Verifies every source is reachable and logs shape + join coverage. */
+function probeDeliverySources() {
+  var r = readRosterPeople_();
+  Logger.log("Roster: " + r.people.length + " people" + (r.error ? " — ❌ " + r.error : ""));
+  var c = readCapacitySheet_();
+  Logger.log("Capacity: " + Object.keys(c.byName).length + " users" + (c.error ? " — ⚠️ " + c.error : ""));
+  var t = readTempoGrid_(CONFIG_DH.TRACKED_SHEET);
+  Logger.log("Tracked: " + t.rows.length + " rows / weeks " + t.weekIsos.join(","));
+  var p = readTempoGrid_(CONFIG_DH.PLANNED_SHEET);
+  Logger.log("Planned: " + p.rows.length + " rows");
+  var ns = readNsBillable_();
+  Logger.log("NS Billable: " + ns.rows.length + " rows" + (ns.error ? " — ⚠️ " + ns.error : ""));
+  if (ns.rows.length) Logger.log("NS sample Employee: \"" + ns.rows[0].name + "\" (verify name format — spec §10.1)");
+  var j = readJiraRaw_();
+  Logger.log("Jira Raw: available=" + j.available + ", issues=" + j.issues.length + ", epics=" + j.epics.length);
+  var idx = buildNameIndex_(r.people.map(function (x) { return x.name; }));
+  var nsMatched = ns.rows.filter(function (row) { return resolveName_(idx, row.name); }).length;
+  Logger.log("NS→roster join: " + nsMatched + "/" + ns.rows.length + " rows matched");
+}
+
+/** Spec §10.5 — Jira Raw fill-rate audit. Run once before trusting the tiles. */
+function auditJiraFillRates() {
+  var sh = SpreadsheetApp.openById(dhSourceIds_().source).getSheetByName(CONFIG_DH.JIRA_RAW_SHEET);
+  if (!sh) { Logger.log("❌ Jira Raw tab not found"); return; }
+  var raw = sh.getDataRange().getValues();
+  var h = raw[0].map(String);
+  ["Due Date", "Original Estimate (sec)", "Region", "Team"].forEach(function (col) {
+    var i = colIdx_(h, [col]);
+    if (i === -1) { Logger.log("❌ column missing: " + col); return; }
+    var filled = 0;
+    for (var r = 1; r < raw.length; r++) if (String(raw[r][i] || "").trim()) filled++;
+    Logger.log(col + ": " + filled + "/" + (raw.length - 1) + " filled (" +
+               Math.round(filled / (raw.length - 1) * 100) + "%)");
+  });
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
@@ -844,4 +1067,61 @@ function _test_cacheRoundtrip_(cache) {
   else { delete cache.m["dh_test_0"]; }
   assert_(cacheGetLarge_(cache, "dh_test") === null, "missing chunk → clean miss");
   Logger.log("✅ _test_cacheRoundtrip_ passed");
+}
+
+function _test_modelAssembly_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_modelAssembly_: " + m); }
+  var win = buildDhWindow_(new Date(2026, 6, 31)); // grid W29–W34, trend W25–W30
+  var inputs = {
+    roster: { people: [
+      { name: "Maria Alvarez", keyLocation: "Malaysia", rosterBucket: "APAC", isCrew: false },
+      { name: "Tom Baker", keyLocation: "Australia & New Zealand", rosterBucket: "ANZ", isCrew: false },
+    ] },
+    capacity: { byName: { "maria alvarez": { "2026.W31": 40, "2026.W30": 40 } } }, // Tom missing → fallback
+    tracked: { rows: [
+      { user: "Maria Alvarez", teamCell: "Team A | Team B", key: "ACME-1",
+        weekHours: { "2026.W30": 20, "2026.W31": 8 } },
+      { user: "Maria Alvarez", teamCell: "Team A | Team B", key: "NETSUITE-TIMEOFF",
+        weekHours: { "2026.W31": 8 } },  // tracked time-off excluded from `tracked`
+    ] },
+    planned: { rows: [
+      { user: "Maria Alvarez", teamCell: "Team A | Team B", key: "ACME-1",
+        weekHours: { "2026.W31": 30 } },
+      { user: "Maria Alvarez", teamCell: "", key: "NETSUITE-TIMEOFF",
+        weekHours: { "2026.W31": 8 } },  // → PTO 8h in W31
+    ] },
+    ns: { rows: [
+      { name: "Alvarez, Maria", date: new Date(2026, 6, 27), billable: 6, nonBillable: 2 },
+    ] },
+    holidays: { rows: [ { date: new Date(2026, 6, 29), location: "Malaysia" } ] }, // Wed W31, 8h
+    jira: { available: true, keyRegion: { "ACME-1": "AMER" },
+      issues: [ { due: new Date(2026, 6, 28), resolved: new Date(2026, 6, 28),
+                  region: "AMER", team: "Squad X", estSec: 0, spentSec: 0 } ],
+      epics: [ { estSec: 36000, spentSec: 18000, resolved: new Date(2026, 6, 28),
+                 region: "AMER", team: "Squad X" } ] },
+  };
+  var m = assembleModel_(inputs, win);
+  assert_(!m.error, "no fatal error");
+  assert_(m.people.length === 2 && m.people[0].name === "Maria Alvarez", "alphabetical people");
+  var maria = m.people[0], w31 = maria.weeks["2026.W31"];
+  // cap 40, pto 8 (planned NETSUITE), holiday 8h but fully booked → effHol 0, avail 32
+  assert_(w31.cap === 40 && w31.pto === 8 && w31.hol === 0 && w31.avail === 32, "net capacity chain");
+  assert_(w31.tracked === 8 && w31.planned === 30, "NETSUITE excluded from tracked/planned");
+  assert_(w31.billable === 6 && w31.nonBillable === 2, "NS joined via comma-name alias");
+  assert_(maria.teams.join("|") === "Team A|Team B", "teams split");
+  assert_(maria.region === "AMER" && maria.regionSource === "jira", "region from tracked ACME-1 hours");
+  var tom = m.people[1], t31 = tom.weeks["2026.W31"];
+  assert_(t31.cap === 38 && t31.capEst === true, "ANZ fallback capacity flagged estimated");
+  assert_(tom.region === "ANZ" && tom.regionSource === "roster", "no tracked → roster fallback");
+  assert_(m.onTimeBuckets.length === 1 && m.onTimeBuckets[0].onTime === 1, "onTime buckets");
+  assert_(m.forecastBuckets.length === 1 && Math.abs(m.forecastBuckets[0].sumAcc - 0.5) < 1e-9, "forecast buckets");
+  assert_(m.meta.teams.indexOf("Team A") !== -1 && m.meta.teams.indexOf("Squad X") !== -1, "team dropdown = union");
+  assert_(m.meta.headlineIso === "2026.W30" && m.meta.nsAvailable === true && m.meta.jiraAvailable === true, "meta");
+  // Degradation: NS missing → nsAvailable false, people still built
+  var m2 = assembleModel_(Object.assign({}, inputs, { ns: { rows: [], error: "missing" } }), win);
+  assert_(m2.meta.nsAvailable === false && m2.people.length === 2, "NS-off degradation");
+  // Fatal: roster error → model.error set
+  var m3 = assembleModel_(Object.assign({}, inputs, { roster: { people: [], error: "boom" } }), win);
+  assert_(!!m3.error, "roster failure is fatal");
+  Logger.log("✅ _test_modelAssembly_ passed");
 }
