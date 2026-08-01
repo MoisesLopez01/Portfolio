@@ -78,6 +78,16 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
 .planTick{position:absolute;top:-6px;font-size:9px;color:var(--royal);transform:translateX(-50%)}
 .warnFlag{color:var(--warn);font-weight:700;margin-left:4px}
 .cellSub{font-size:9px;color:var(--muted)}
+tr.detail td{background:var(--surface-2);padding:12px 16px 14px;text-align:left}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font-size:calc(12px*var(--scale));margin-bottom:10px}
+.stats b{font-size:calc(14px*var(--scale))}
+.blbl{font-size:calc(9px*var(--scale));color:var(--muted);text-transform:uppercase;margin:6px 0 2px}
+.btrack{position:relative;height:10px;background:var(--orbe);border-radius:3px;max-width:360px}
+.btrack .ooo{position:absolute;right:0;top:0;height:100%;border-radius:0 3px 3px 0;
+  background:repeating-linear-gradient(45deg,var(--june),var(--june) 4px,rgba(255,155,135,.35) 4px,rgba(255,155,135,.35) 8px)}
+.bline{height:8px;border-radius:3px;max-width:360px;display:flex;overflow:hidden}
+.bline .b{background:var(--void)} .bline .n{background:var(--slate)}
+.bplanned{height:8px;background:var(--royal);border-radius:3px;max-width:360px;opacity:.85}
 /* grid + tile CSS appended in Tasks 11–13 */
 </style>
 </head>
@@ -344,7 +354,48 @@ function toggleDetail_(el) {
   renderGrid_();
 }
 
-function detailRowHtml_(p, iso, nWeeks) { return ""; } // replaced in Task 13
+function pctStr_(num, den) {
+  return den > 0 ? Math.round(num / den * 100) + "%" : "—";
+}
+
+function detailRowHtml_(p, iso, nWeeks) {
+  var w = p.weeks[iso];
+  if (!w) return "";
+  var isFuture = MODEL.meta.gridWeeks.some(function (g) { return g.iso === iso && g.status === "plan"; });
+  var maxW = 360; // px at 100% = capacity
+  function px(h) { return w.cap > 0 ? Math.min(maxW, h / w.cap * maxW) : 0; }
+  var oooH = w.pto + w.hol;
+  var stats =
+    '<div class="stats">' +
+    '<span><b>' + (MODEL.meta.nsAvailable && !isFuture ? pctStr_(w.billable, w.avail) : "—") +
+      '</b> <span class="cellSub">billable util (' + r1_(w.billable) + "/" + r1_(w.avail) + ')</span></span>' +
+    '<span><b>' + (isFuture ? "—" : pctStr_(w.tracked, w.avail)) +
+      '</b> <span class="cellSub">tracked/capacity (' + r1_(w.tracked) + "/" + r1_(w.avail) + ')</span></span>' +
+    '<span><b>' + (isFuture ? "—" : pctStr_(w.tracked, w.planned)) +
+      '</b> <span class="cellSub">tracked/planned (' + r1_(w.tracked) + "/" + r1_(w.planned) + ')</span></span>' +
+    '<span><b>' + r1_(oooH) + "h</b> <span class=\"cellSub\">OOO (PTO " + r1_(w.pto) +
+      " · Hol " + r1_(w.hol) + ")</span></span>" +
+    (w.capEst ? '<span class="cellSub">⚠ capacity estimated (no Tempo schedule row)</span>' : "") +
+    "</div>";
+  var bullets =
+    '<div class="blbl">CAPACITY ' + r1_(w.cap) + "h − OOO " + r1_(oooH) + "h = " + r1_(w.avail) + "h available</div>" +
+    '<div class="btrack"><div class="ooo" style="width:' + (w.cap > 0 ? Math.min(100, oooH / w.cap * 100) : 0) + '%"></div></div>' +
+    '<div class="blbl">PLANNED ' + r1_(w.planned) + "h</div>" +
+    '<div class="bplanned" style="width:' + px(w.planned) + 'px"></div>' +
+    (isFuture ? "" :
+      '<div class="blbl">TRACKED ' + r1_(w.tracked) + "h — billable " + r1_(w.billable) +
+      " / non-bill " + r1_(w.nonBillable) + "</div>" +
+      '<div class="bline" style="width:' + px(w.tracked) + 'px">' +
+        '<div class="b" style="width:' + (w.tracked > 0 ? w.billable / w.tracked * 100 : 0) + '%"></div>' +
+        '<div class="n" style="flex:1"></div></div>');
+  return '<tr class="detail"><td colspan="' + (nWeeks + 1) + '">' +
+    "<b>" + p.name + " — " + iso + "</b> <span class=\"cellSub\">" +
+    p.region + (p.regionSource === "roster" ? " (roster)" : "") +
+    (p.teams.length ? " · " + p.teams.join(", ") : "") + "</span>" +
+    stats + bullets + "</td></tr>";
+}
+
+function r1_(v) { return Math.round((Number(v) || 0) * 10) / 10; }
 function toggleAccessPanel_() {} // replaced in Task 14
 
 loadData(false);
