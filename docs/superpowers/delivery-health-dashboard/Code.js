@@ -491,6 +491,173 @@ function readCapacitySheet_() {
   }
 }
 
+/**
+ * Shared Tempo grid reader for Tracked/Planned. Detects the week-label row
+ * and the fixed-header row, then aggregates.
+ * @returns {{ rows: Array<{user,teamCell,key,weekHours:Object}>, weekIsos:string[], error?:string }}
+ */
+function readTempoGrid_(sheetName) {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source).getSheetByName(sheetName);
+    if (!sh) return { rows: [], weekIsos: [], error: 'Tab "' + sheetName + '" not found' };
+    var raw = sh.getDataRange().getValues();
+    if (raw.length < 3) return { rows: [], weekIsos: [] };
+    var wkRow = raw[0].map(function (c) { return String(c).trim(); });
+    var hdRow = raw[1].map(function (c) { return String(c).trim(); });
+    var iUser = colIdx_(hdRow, ["User"]);
+    var iTeam = colIdx_(hdRow, ["Team"]);
+    var iKey = colIdx_(hdRow, ["Key"]);
+    if (iUser === -1) return { rows: [], weekIsos: [], error: 'No "User" column in ' + sheetName };
+    var weekCols = [];
+    wkRow.forEach(function (w, i) { if (/^\d{4}\.W\d{1,2}$/.test(w)) weekCols.push({ col: i, iso: w }); });
+    var rows = [];
+    for (var r = 2; r < raw.length; r++) {
+      var user = String(raw[r][iUser] || "").trim();
+      if (!user || /^total/i.test(user)) continue;
+      var weekHours = {};
+      weekCols.forEach(function (wc) {
+        var v = Number(raw[r][wc.col]);
+        if (v) weekHours[wc.iso] = (weekHours[wc.iso] || 0) + v;
+      });
+      rows.push({ user: user,
+                  teamCell: iTeam === -1 ? "" : String(raw[r][iTeam] || "").trim(),
+                  key: iKey === -1 ? "" : String(raw[r][iKey] || "").trim().toUpperCase(),
+                  weekHours: weekHours });
+    }
+    return { rows: rows, weekIsos: weekCols.map(function (w) { return w.iso; }) };
+  } catch (e) {
+    return { rows: [], weekIsos: [], error: sheetName + " read failed: " + e.message };
+  }
+}
+
+/** True when a Tempo Key is a NETSUITE/time-off row. */
+function isTimeOffKey_(key) {
+  return CONFIG_DH.NONPROJECT_KEYS.some(function (k) {
+    return String(key || "").toUpperCase().indexOf(k.toUpperCase()) === 0;
+  });
+}
+
+/**
+ * NS Billable daily rows → aggregateNsWeeks_ input.
+ * Headers: Employee, Employee Type Category, Billable Hours Billed,
+ * Billable Hours Unbilled, Total Billable Hours, Non-Billable Hours,
+ * Total Hours (B+NB), Date.
+ */
+function readNsBillable_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source).getSheetByName(CONFIG_DH.NS_SHEET);
+    if (!sh) return { rows: [], error: 'Tab "' + CONFIG_DH.NS_SHEET + '" not found' };
+    var raw = sh.getDataRange().getValues();
+    if (raw.length < 2) return { rows: [] };
+    var h = raw[0].map(String);
+    var iEmp = colIdx_(h, ["Employee", "Resource"]);
+    var iBill = colIdx_(h, ["Total Billable Hours", "Total Billable"]);
+    var iNon = colIdx_(h, ["Non-Billable Hours", "Non-Billable"]);
+    var iDate = colIdx_(h, ["Date"]);
+    if (iEmp === -1 || iDate === -1 || iBill === -1) {
+      return { rows: [], error: "NS Billable: required columns missing" };
+    }
+    var rows = [];
+    for (var r = 1; r < raw.length; r++) {
+      var emp = String(raw[r][iEmp] || "").trim();
+      var d = parseDhDate_(raw[r][iDate]);
+      if (!emp || !d) continue;
+      rows.push({ name: emp, date: d,
+                  billable: Number(raw[r][iBill]) || 0,
+                  nonBillable: iNon === -1 ? 0 : Number(raw[r][iNon]) || 0 });
+    }
+    return { rows: rows };
+  } catch (e) {
+    return { rows: [], error: "NS Billable read failed: " + e.message };
+  }
+}
+
+/** PH tab (Date | Location | Holiday) → [{date, location}]. */
+function readHolidays_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source).getSheetByName(CONFIG_DH.PH_SHEET);
+    if (!sh) return { rows: [] };  // silently off per spec §7
+    var raw = sh.getDataRange().getValues();
+    var h = raw[0].map(String);
+    var iDate = colIdx_(h, ["Date"]), iLoc = colIdx_(h, ["Location"]);
+    if (iDate === -1 || iLoc === -1) return { rows: [] };
+    var rows = [];
+    for (var r = 1; r < raw.length; r++) {
+      var d = parseDhDate_(raw[r][iDate]);
+      var loc = String(raw[r][iLoc] || "").trim();
+      if (d && loc) rows.push({ date: d, location: loc });
+    }
+    return { rows: rows };
+  } catch (e) { return { rows: [] }; }
+}
+
+/**
+ * Fuzzy PH-location ↔ roster Key Location matcher — ported verbatim from the
+ * demand dashboard's phLocMatchesEmp_ (compound locations split on "&"/"and"/"/",
+ * case-insensitive substring both directions, blank never matches).
+ */
+function phLocMatchesEmp_(phLoc, empLoc) {
+  var a = normDH_(phLoc), b = normDH_(empLoc);
+  if (!a || !b || a === "unknown" || b === "unknown") return false;
+  var parts = a.split(/\s*(?:&|\band\b|\/)\s*/).filter(Boolean);
+  return parts.some(function (p) {
+    return p.indexOf(b) !== -1 || b.indexOf(p) !== -1;
+  });
+}
+
+/**
+ * Jira Raw → issues + epics for the tile buckets, keyRegion for person-region.
+ * Columns by header name: Key(1), Workstream (Issue Type)(3), Resolution Date(11),
+ * Due Date(12), Epic Key(17), Original Estimate (sec)(23), Time Spent (sec)(24),
+ * Region(32), Team(33). Rows repeat per weekly snapshot — dedupe on Key keeping
+ * the LAST occurrence (latest snapshot wins).
+ * @returns {{ issues:[], epics:[], keyRegion:Object, available:boolean, error?:string }}
+ */
+function readJiraRaw_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source).getSheetByName(CONFIG_DH.JIRA_RAW_SHEET);
+    if (!sh) return { issues: [], epics: [], keyRegion: {}, available: false };
+    var raw = sh.getDataRange().getValues();
+    if (raw.length < 2) return { issues: [], epics: [], keyRegion: {}, available: false };
+    var h = raw[0].map(String);
+    var iKey = colIdx_(h, ["Key"]);
+    var iType = colIdx_(h, ["Workstream (Issue Type)", "Issue Type"]);
+    var iRes = colIdx_(h, ["Resolution Date", "Resolved"]);
+    var iDue = colIdx_(h, ["Due Date"]);
+    var iEst = colIdx_(h, ["Original Estimate (sec)"]);
+    var iSpent = colIdx_(h, ["Time Spent (sec)"]);
+    var iRegion = colIdx_(h, ["Region"]);
+    var iTeam = colIdx_(h, ["Team"]);
+    if (iKey === -1) return { issues: [], epics: [], keyRegion: {}, available: false };
+    var byKey = {};
+    for (var r = 1; r < raw.length; r++) {
+      var key = String(raw[r][iKey] || "").trim().toUpperCase();
+      if (!key) continue;
+      byKey[key] = r; // last snapshot wins
+    }
+    var issues = [], epics = [], keyRegion = {};
+    Object.keys(byKey).forEach(function (key) {
+      var r = byKey[key];
+      var region = iRegion === -1 ? "" : String(raw[r][iRegion] || "").trim();
+      var team = iTeam === -1 ? "" : String(raw[r][iTeam] || "").trim();
+      if (region) keyRegion[key] = region;
+      var rec = {
+        due: iDue === -1 ? null : parseDhDate_(raw[r][iDue]),
+        resolved: iRes === -1 ? null : parseDhDate_(raw[r][iRes]),
+        estSec: iEst === -1 ? 0 : Number(raw[r][iEst]) || 0,
+        spentSec: iSpent === -1 ? 0 : Number(raw[r][iSpent]) || 0,
+        region: region || "Other", team: team,
+      };
+      issues.push(rec);
+      var type = iType === -1 ? "" : normDH_(raw[r][iType]);
+      if (type.indexOf("epic") !== -1) epics.push(rec);
+    });
+    return { issues: issues, epics: epics, keyRegion: keyRegion, available: true };
+  } catch (e) {
+    return { issues: [], epics: [], keyRegion: {}, available: false, error: e.message };
+  }
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
