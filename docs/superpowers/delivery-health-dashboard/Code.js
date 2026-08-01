@@ -379,6 +379,118 @@ function cacheGetLarge_(cache, key) {
   }
 }
 
+// ── SHEET READERS (GAS-only; header-name column lookups) ─────
+
+function dhSourceIds_() {
+  var p = PropertiesService.getScriptProperties();
+  return {
+    source: p.getProperty("DH_SOURCE_SS_ID") || CONFIG_DH.SOURCE_SS_ID,
+    roster: p.getProperty("DH_ROSTER_SS_ID") || CONFIG_DH.ROSTER_SS_ID,
+  };
+}
+
+/** Case-insensitive header index lookup; -1 when absent. */
+function colIdx_(headers, names) {
+  var low = headers.map(function (h) { return normDH_(h); });
+  for (var i = 0; i < names.length; i++) {
+    var at = low.indexOf(normDH_(names[i]));
+    if (at !== -1) return at;
+  }
+  return -1;
+}
+
+function parseDhDate_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return v;
+  if (typeof v === "string" && v.trim()) {
+    var d = new Date(v.trim());
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+/**
+ * Population: active Class=Professional Services / Department=Services from
+ * Data + Contractors Data (crew: the Class gate is skipped — their Class is
+ * "Contractors"; Department must still be Services).
+ * @returns {{ people: Array<{name, keyLocation, rosterBucket, isCrew}>, error?:string }}
+ */
+function readRosterPeople_() {
+  try {
+    var ss = SpreadsheetApp.openById(dhSourceIds_().roster);
+    var out = [];
+    [{ tab: CONFIG_DH.ROSTER_SHEET, crew: false },
+     { tab: CONFIG_DH.CONTRACTORS_SHEET, crew: true }].forEach(function (src) {
+      var sh = ss.getSheetByName(src.tab);
+      if (!sh) { if (!src.crew) throw new Error('Tab "' + src.tab + '" not found'); return; }
+      var raw = sh.getDataRange().getValues();
+      if (raw.length < 2) return;
+      var h = raw[0].map(String);
+      var iName = colIdx_(h, ["Full Name", "Employee Name", "Name"]);
+      var iStatus = colIdx_(h, ["Status", "Employment Status"]);
+      var iClass = colIdx_(h, ["Class"]);
+      var iDept = colIdx_(h, ["Department"]);
+      var iLoc = colIdx_(h, ["Key Location", "Location"]);
+      if (iName === -1) throw new Error('No name column in "' + src.tab + '"');
+      for (var r = 1; r < raw.length; r++) {
+        var name = String(raw[r][iName] || "").trim();
+        if (!name) continue;
+        var status = iStatus === -1 ? "active" : normDH_(raw[r][iStatus]);
+        if (status && /termin|inactive/.test(status)) continue;
+        if (!src.crew && iClass !== -1 &&
+            normDH_(raw[r][iClass]) !== normDH_(CONFIG_DH.ROSTER_CLASS)) continue;
+        if (iDept !== -1 && normDH_(raw[r][iDept]) !== normDH_(CONFIG_DH.ROSTER_DEPT)) continue;
+        var loc = iLoc === -1 ? "" : String(raw[r][iLoc] || "").trim();
+        out.push({ name: name, keyLocation: loc,
+                   rosterBucket: regionBucketFromLocation_(loc), isCrew: src.crew });
+      }
+    });
+    return { people: out };
+  } catch (e) {
+    return { people: [], error: "Roster read failed: " + e.message };
+  }
+}
+
+/**
+ * Capacity Tempo grid → { normName: { iso: hours } }.
+ * Sheet shape (TempoCapacityTime.js): header row carries "YYYY.WN" labels;
+ * fixed cols before the week columns include the User column.
+ * @returns {{ byName: Object, error?: string }}
+ */
+function readCapacitySheet_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source)
+      .getSheetByName(CONFIG_DH.CAPACITY_SHEET);
+    if (!sh) return { byName: {}, error: 'Tab "' + CONFIG_DH.CAPACITY_SHEET + '" not found' };
+    var raw = sh.getDataRange().getValues();
+    if (raw.length < 2) return { byName: {} };
+    // Find the header row: first row containing a ".W" week label
+    var hRow = -1;
+    for (var r = 0; r < Math.min(3, raw.length); r++) {
+      if (raw[r].some(function (c) { return /^\d{4}\.W\d{1,2}$/.test(String(c).trim()); })) { hRow = r; break; }
+    }
+    if (hRow === -1) return { byName: {}, error: "No week columns found in Capacity Tempo" };
+    var headers = raw[hRow].map(function (c) { return String(c).trim(); });
+    var iUser = colIdx_(headers, ["User"]);
+    if (iUser === -1) iUser = 1; // TempoCapacityTime.js: User is column B
+    var weekCols = [];
+    headers.forEach(function (hh, i) { if (/^\d{4}\.W\d{1,2}$/.test(hh)) weekCols.push({ col: i, iso: hh }); });
+    var byName = {};
+    for (var r2 = hRow + 1; r2 < raw.length; r2++) {
+      var user = String(raw[r2][iUser] || "").trim();
+      if (!user || /^total/i.test(user)) continue;
+      var key = normDH_(user);
+      if (!byName[key]) byName[key] = {};
+      weekCols.forEach(function (wc) {
+        var v = raw[r2][wc.col];
+        if (v !== "" && v !== null && !isNaN(Number(v))) byName[key][wc.iso] = Number(v);
+      });
+    }
+    return { byName: byName };
+  } catch (e) {
+    return { byName: {}, error: "Capacity read failed: " + e.message };
+  }
+}
+
 // ── TESTS ────────────────────────────────────────────────────
 
 function _test_dhWindow_() {
