@@ -32,7 +32,12 @@ _test_teamSplit_();
 _test_nsWeekBucketing_();
 _test_netCapacity_(); _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
 _test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_();
+_test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
+_test_newHire_();
 _test_cacheRoundtrip_(new FakeCache());
 _test_modelAssembly_();
+_test_periods_();
+_test_levelTrack_();
+_test_ptoUsage_();
 
 console.log("✅ node-tests: all suites passed");

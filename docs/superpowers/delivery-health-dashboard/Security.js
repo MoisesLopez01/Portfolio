@@ -198,9 +198,10 @@ function buildAccessDeniedPage_(email) {
     }
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Roboto',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  body{font-family:'Roboto','Franklin Gothic Book',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
        background:var(--bg);display:flex;align-items:center;
        justify-content:center;min-height:100vh;color:var(--text)}
+  h1{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
   .card{background:var(--surface);border-radius:14px;padding:40px 48px;
         text-align:center;max-width:440px;width:90%;
         box-shadow:0 1px 4px rgba(15,25,65,.08);border:1px solid var(--border)}
