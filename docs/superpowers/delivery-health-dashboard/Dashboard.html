@@ -409,7 +409,8 @@ var PERIOD_LABELS = { week: "Week", month: "Month", quarter: "Quarter" };
 var VIEWS = [
   { id: "exec",    label: "📊 Executive", pane: "viewExec",    roles: null,
     hint: "The four cards and one comparison — the 30-second read." },
-  { id: "trend",   label: "📈 Trends",    pane: "viewTrend",   roles: null,
+  // Per-person utilization by construction, so it sits in the margin tier.
+  { id: "trend",   label: "📈 Trends",    pane: "viewTrend",   roles: ["admin", "viewer"],
     hint: "Where the headroom is — one row per person, ranked by the hours that could be recovered." },
   { id: "people",  label: "👥 People",    pane: "viewPeople",  roles: null,
     hint: "The operational roster: who needs attention this period, with per-person drill-downs." },
@@ -422,6 +423,26 @@ var VIEWS = [
 function viewDef_(id) {
   for (var i = 0; i < VIEWS.length; i++) if (VIEWS[i].id === id) return VIEWS[i];
   return VIEWS[0];
+}
+
+/**
+ * ── MARGIN TIER ──
+ * The Metrics Dictionary limits utilization and forecast-variance detail to
+ * "directs and above". Admins and named viewers are that audience; an
+ * open-access guest (the demo / all-hands switch) is not.
+ *
+ * HIDDEN, NOT DIMMED. A dimmed number is still a number on a projector, and
+ * "greyed out" invites someone to ask what it says. Out-of-tier cards are not
+ * rendered at all, the metric is removed from every chip strip and comparison
+ * chart, and the headroom tab — which is per-person utilization by definition —
+ * is gated in VIEWS like Access is.
+ *
+ * Server-side twin: dhMarginTier_() in Security.js. Change one, change both.
+ */
+var MARGIN_METRICS_ = { util: 1, forecast: 1 };
+function canSeeMargin_() {
+  var r = (MODEL && MODEL.viewerRole) || "";
+  return r === "admin" || r === "viewer";
 }
 
 /** A view the current viewer is allowed to open. */
@@ -2000,6 +2021,9 @@ function renderTiles_() {
 
   // Outcome measures lead (director decision 2026-07-31): On-Time is the hero,
   // Forecast second; utilization is a capacity-health tile in slot three.
+  // Out-of-tier cards are omitted from the string entirely — not dimmed, not
+  // rendered-then-hidden. There is nothing in the DOM to inspect or screenshot.
+  var margin = canSeeMargin_();
   document.getElementById("tiles").innerHTML =
     (MODEL.meta.jiraAvailable
       ? gatedTile_("On-Time Delivery", otConf, regOt,
@@ -2010,24 +2034,24 @@ function renderTiles_() {
                              { headlineLabel: opts.headlineLabel, target: tg.onTime, conf: otConf,
                                metric: regOt, std: otStd, trendLabels: trendLabels });
           }, opts.headlineLabel, otCovTrend, trendLabels) +
-        gatedTile_("Forecast Accuracy", fcConf, regFc,
+        (!margin ? "" : gatedTile_("Forecast Accuracy", fcConf, regFc,
           "no epics closed in this period under the active filters",
           (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.forecast, conf: fcConf,
                                metric: regFc, std: fcStd, trendLabels: trendLabels });
-          }, opts.headlineLabel, fcCovTrend, trendLabels)
+          }, opts.headlineLabel, fcCovTrend, trendLabels))
       : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
-        tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" })) +
-    gatedTile_(utilLabel, utilConf, regU,
+        (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" }))) +
+    (!margin ? "" : gatedTile_(utilLabel, utilConf, regU,
       "no availability in this period under the active filters",
       r1_(u.tracked - u.trackedCov) + "h of " + r1_(u.tracked) + "h tracked carry no billable classification",
       function () {
         return tileHtml_(utilLabel, utilHeadline, utilCmp, utilTrendShown,
                          { headlineLabel: opts.headlineLabel, target: tg.util, conf: utilConf,
                            metric: regU, std: utilStd, trendLabels: trendLabels });
-      }, opts.headlineLabel, utilCovTrend, trendLabels) +
+      }, opts.headlineLabel, utilCovTrend, trendLabels)) +
     qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head);
 }
 
@@ -2211,7 +2235,10 @@ var METRICS_ = {
 
 /** Metric ids the current payload can actually chart. */
 function liveMetrics_() {
-  return Object.keys(METRICS_).filter(function (k) { return METRICS_[k].available(); });
+  return Object.keys(METRICS_).filter(function (k) {
+    if (MARGIN_METRICS_[k] && !canSeeMargin_()) return false;
+    return METRICS_[k].available();
+  });
 }
 
 /** The metric the Trends view is on, falling back if Jira went away. */

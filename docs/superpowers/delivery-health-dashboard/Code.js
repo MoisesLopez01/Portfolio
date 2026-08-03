@@ -50,7 +50,19 @@ var CONFIG_DH = {
   // Epic/Milestone or Client-Commitment-labelled items — raise it with Bill as a
   // dictionary question, don't silently switch. Changing this changes the rate's
   // MEANING: bump DH_SCHEMA_VER_ and bust the cache with it.
-  ONTIME_SCOPE:      "delivery",
+  // ── On-Time scope ──
+  // "dictionary" (SHIPPED 2026-08-03, user directive "set the formulas as
+  //   requested") = the Metrics Dictionary definition verbatim: issue type
+  //   Epic or Milestone, OR any issue carrying the Client Commitment label.
+  // "delivery" = Stories/Tasks, epics excluded — the previous shipped default
+  //   and an accepted deviation at the time. Kept so the two can be compared.
+  // "epic" / "all" = the other two readings, kept for the same reason.
+  //
+  // ⚠️ Switching to "dictionary" moves BOTH the rate and its coverage
+  // denominator sharply: epics have a much lower due-date fill rate than
+  // Stories, so expect coverage to fall and the confidence chip to drop.
+  // That is the dictionary's metric, honestly measured — not a regression.
+  ONTIME_SCOPE:      "dictionary",
 
   // ── Tracking mandate (ALLOWLIST, not blocklist) ──
   // Only these families are held to a time-tracking standard, and ONLY they are
@@ -124,7 +136,48 @@ var CONFIG_DH = {
     util:     { green: 70, amber: 50 },   // billable utilization %
     onTime:   { green: 85, amber: 70 },   // on-time delivery %
     forecast: { green: 80, amber: 60 },   // forecast accuracy %
+    hygiene:  { green: 90, amber: 75 },   // % of delivery work fully attributed
+    // Rework Rate is the one metric where LOWER IS BETTER, so green is a
+    // CEILING not a floor. The registry entry carries invertTarget:true and the
+    // client's ragOf_/tileHtml_ read it — without that a 3% rework rate would
+    // paint red for sitting "below target".
+    quality:  { green: 5,  amber: 10 },   // % of delivered work needing rework
   },
+
+  // ── Coverage-gate policy (requirements v1.1 FR-2.2) ──
+  // false = a metric below its registry coverage gate is still PUBLISHED, with
+  // its confidence level and attribution % shown beside it.
+  // true  = it is suppressed and replaced with "Not yet measurable".
+  //
+  // USER DECISION 2026-08-03: ship false. This is a KNOWN, ACCEPTED deviation
+  // from FR-2.2, which calls publishing a low-confidence number a defect. The
+  // trade was made deliberately: gating dark two of four tiles (On-Time at 64%
+  // attributed against an 80% gate, Forecast at 23% against 70%) and took the
+  // historical series with them, and a dashboard nobody can read teaches nobody
+  // anything. Confidence is still computed, still displayed on every tile, and
+  // a low-confidence card still links into the hygiene queue — what changed is
+  // that the reader decides what to do with a weak number instead of the tool
+  // deciding for them.
+  //
+  // The whole suppression path is intact behind this flag. Flip it to true and
+  // the FR-2.2 behaviour returns with no other change; render-smoke covers both
+  // settings. Owner of this decision: Services Director (same as the gates).
+  SUPPRESS_BELOW_GATE: false,
+
+  // ── Quality / Rework Rate (Metrics Dictionary metric #4) ──
+  // Resolutions that mean the work was NEVER DELIVERED. The dictionary's
+  // denominator is "total issues delivered in period", so these leave it —
+  // counting a cancelled ticket as delivered work would deflate the rate.
+  // Matches FIELD_REFERENCE.md ("Exclude Won't Do, Duplicate, Incomplete").
+  NON_DELIVERED_RESOLUTIONS: /won'?t\s*(do|fix)|duplicate|incomplete|cannot\s*reproduce|declined|abandoned/i,
+
+  // ── Forecast Accuracy tolerance band (requirements v1.1 FR-1.4) ──
+  // An epic counts as "on estimate" when |actual − estimate| ÷ estimate ≤ this.
+  // Registry parameter — owner: Services Director; reviewable at fiscal period
+  // close (open decision #9: is ±10% right for 40h-week granularity?).
+  // Changing it changes the metric's MEANING: add a METRIC_REGISTRY_.changeLog
+  // entry and bump DH_SCHEMA_VER_ with it.
+  FORECAST_BAND: 0.10,
 
   TITLE: "Delivery Health Dashboard",
 
@@ -132,6 +185,296 @@ var CONFIG_DH = {
   CACHE_TTL_SEC:        3900,
   CACHE_WARM_EVERY_MIN: 30,
 };
+
+/**
+ * ── CANONICAL METRIC REGISTRY (requirements v1.1 FR-1.1/FR-1.2) ─────────────
+ *
+ * The single definitional source for every published metric: what it means, how
+ * it is computed, what it reads, what "good" is, how much of the data has to be
+ * there before the number may be shown at all, who owns the number, and who may
+ * change its parameters.
+ *
+ * The dashboard renders labels, targets, coverage gates, tooltips and the
+ * suppressed state FROM this object. A definition must never live only in
+ * presentation code — that is exactly how two people reading one tile compute
+ * two different numbers (principle P8: one definition, one owner).
+ *
+ * `deviations` is not decoration. Every entry is a known, accepted gap between
+ * what the metric SAYS and what the data can currently support; they surface
+ * in-product on the metric's ⓘ so nobody quotes a number without them.
+ *
+ * CHANGING A DEFINITION: add a `changeLog` entry AND bump `version`. The client
+ * marks trend lines whose metric changed inside the visible window, so a step in
+ * a trend is never misread as a performance move (FR-1.2).
+ *
+ * Shipped to the client as meta.registry.
+ */
+var METRIC_REGISTRY_ = {
+  version: "2.0",
+  updated: "2026-08-03",  // 2026.W32
+
+  metrics: {
+    onTime: {
+      id: "onTime",
+      name: "On-Time Delivery",
+      definition: "Share of committed delivery milestones completed on or before the committed due date.",
+      formula: "milestones resolved on or before the due calendar day ÷ milestones resolved in period carrying a due date × 100",
+      sources: ["Jira Raw — Due Date, Resolution Date, Issue Type, Labels, Assignee"],
+      grain: "Epic or Milestone, OR any issue labelled Client Commitment (CONFIG_DH.ONTIME_SCOPE = \"dictionary\"), rolled up by person → team → region",
+      target: CONFIG_DH.TARGETS.onTime,
+      coverageGate: 0.80,
+      coverageOf: "resolved issues that carry a due date",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (target); Delivery leadership (issue scope)",
+      ebitda: "Late delivery → cost of lateness: client credits, expedite/overtime premium, subcontractor spend. Not yet quantified — blocked on PR-06 (cost/bill rate) and PR-07 (engagement key).",
+      deviations: [
+        "Measured against the MUTABLE Jira Due Date. The baselined committed date (PR-02) does not exist yet, so a re-baselined milestone reads as on time and the rate is optimistic by an unknown amount.",
+        "Milestone detection is by issue-type NAME. If this Jira has no Milestone type, the scope reduces to Epics plus Client-Commitment-labelled issues.",
+        "The Client Commitment label is matched loosely (client-commitment / ClientCommitment / client_commitment). PR-08 label discipline is what makes this scope complete rather than approximate.",
+      ],
+    },
+
+    forecast: {
+      id: "forecast",
+      name: "Forecast Accuracy",
+      definition: "How closely actual hours on an engagement track the original estimate at kickoff.",
+      formula: "mean of max(0, 1 − |actual − estimate| ÷ estimate) across epics closed in period × 100",
+      formulaSecondary: "companions: share of epics inside the ±10% tolerance band, and the median absolute % variance. The mean answers \"how close on average\", the band answers \"how often did we actually hit it\" — 40% inside the band at a 12% median is a very different engagement from 40% at 90%.",
+      sources: ["Jira Raw — Original Estimate (sec), Time Spent (sec), Resolution Date, Assignee"],
+      grain: "Epic, rolled up by person → team → region",
+      target: CONFIG_DH.TARGETS.forecast,
+      coverageGate: 0.70,
+      coverageOf: "closed epics carrying an estimate AND logged time",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (±10% band width; Finance for any rate-based variant)",
+      ebitda: "Forecast variance → margin erosion on engagements closed in period: (actual cost − estimated cost) against contracted value. Not yet quantified — blocked on PR-06/PR-07.",
+      deviations: [
+        "Estimate is the MUTABLE Jira Original Estimate. The baselined estimate (PR-03) does not exist yet, so an estimate revised mid-flight toward the actual scores as accurate.",
+        "Accuracy is FLOORED AT ZERO. The raw Dictionary expression goes negative past a 2× over-run (1 − 2.0 = −100%), which is not a share of anything; the floor keeps the mean interpretable.",
+        "Epics carrying an estimate but zero logged time are a time-tracking failure, not a forecasting one: counted toward coverage only, never scored. The raw formula would score them 0% accuracy, reporting a worklog gap as a forecasting miss.",
+        "Time Spent comes from Jira, not Tempo. Where a team logs to Tempo but not to the Jira issue, the two diverge.",
+      ],
+    },
+
+    util: {
+      id: "util",
+      name: "Billable Utilization",
+      definition: "Percentage of available delivery hours logged as billable client work.",
+      formula: "(Tempo tracked hours × NetSuite billable share) ÷ scheduled capacity (headcount × standard hours) × 100, over NetSuite-classified person-weeks only",
+      formulaSecondary: "net-of-absence companion = the same numerator ÷ (capacity − PTO − holiday); the gap between the two IS the cost of approved absence",
+      sources: ["Tempo Tracked Time", "Capacity Tempo", "NS Billable", "PTO Accumulation Cost ledger", "PH (public holidays)", "Roster"],
+      grain: "Person → team → region",
+      target: CONFIG_DH.TARGETS.util,
+      coverageGate: 0.90,
+      coverageOf: "tracked hours carrying a NetSuite billable classification",
+      owner: "WFP",
+      paramOwner: "Services Director (target); Delivery + Tempo admin (billable-flag discipline)",
+      ebitda: "Utilization gap → unrecovered labour cost: (target hours − billable hours) × blended cost rate. Not yet quantified — blocked on PR-06 (Finance rate basis, open decision #3).",
+      deviations: [
+        "Headcount × standard hours is summed from each person's SCHEDULED Tempo capacity (40h, 38h ANZ), not a flat headcount × 40. Same figure for a full-timer and more accurate for a part-timer.",
+        "Billable is a RATIO applied to Tempo hours — NetSuite classifies, Tempo quantifies — never NetSuite absolute hours. Billable can therefore never exceed tracked.",
+        "Population is the tracking-mandated job families only (JF007/JF009 + blank/crew). Families with no tracking obligation are out of the dashboard entirely.",
+        "People on long leave are excluded from both numerator and denominator: Tempo capacity can lag HR, so their scheduled hours would otherwise read as idle capacity.",
+      ],
+    },
+
+    quality: {
+      id: "quality",
+      name: "Quality / Rework",
+      definition: "Share of delivered work requiring rework after client acceptance, paired with CSAT where available.",
+      formula: "issues reopened OR carrying a Rework link ÷ issues delivered in period × 100",
+      formulaSecondary: "CSAT (0–100) is a declared companion input, not part of this rate — the survey API is not connected (PR-09).",
+      sources: [
+        "Jira Raw — Rework Link (issue link type, Jira Backlog.js v3.6.0)",
+        "Jira Raw — Reopened (changelog; only populated when CONFIGJ.FETCH_CHANGELOG is on)",
+        "Jira Raw — Status Category, Resolution (the delivered denominator)",
+        "CSAT survey API — NOT CONNECTED",
+      ],
+      grain: "Delivered issue, rolled up by person → team → region",
+      target: { green: 5, amber: 10 },   // LOWER IS BETTER — see invertTarget
+      invertTarget: true,
+      coverageGate: 0.80,
+      coverageOf: "delivered issues whose rework signals were actually measured",
+      owner: "Delivery + CX",
+      paramOwner: "Services Director (target threshold); Delivery leadership (Rework link-type discipline)",
+      ebitda: "Rework → uncompensated labour: hours on reopened or Rework-linked issues × cost rate, presented as margin given away.",
+      deviations: [
+        "REOPENS ARE NOT COUNTED unless CONFIGJ.FETCH_CHANGELOG is on in the export — it is off by default because expand=changelog is expensive. Until it is enabled the rate is link-only and UNDERSTATES rework; the card says so and coverage reflects it.",
+        "The Rework link type name is matched by pattern (CONFIGJ.REWORK_LINK_RE). If this Jira has no such link type, the numerator is reopens alone — confirm with getIssueLinkTypes.",
+        "Denominator excludes Won't Do / Duplicate / Incomplete resolutions: those were never delivered, and counting them would deflate the rate.",
+        "\"After client acceptance\" is approximated by \"after Done\" — Jira records no client-acceptance event, so an internal reopen counts the same as a client-triggered one.",
+        "CSAT is not connected, so the Dictionary's companion score is absent (PR-09, target 2026.W37).",
+      ],
+    },
+
+    hygiene: {
+      id: "hygiene",
+      name: "Delivery Data Attributed",
+      definition: "Share of resolved delivery work carrying every field the published metrics need: a due date, an assignee who joins the roster, and a region.",
+      formula: "resolved delivery issues with due date AND roster-joinable assignee AND a region ÷ all resolved delivery issues × 100",
+      sources: ["Jira Raw — Due Date, Assignee, Region"],
+      grain: "Issue",
+      target: CONFIG_DH.TARGETS.hygiene,
+      coverageGate: 0,   // this metric IS the coverage metric — always publishable
+      coverageOf: "n/a — measures attribution itself",
+      owner: "WFP (measurement) · Delivery leadership + Gon (the fix)",
+      paramOwner: "Services Director (target threshold)",
+      ebitda: "No direct translation. Closing this gap is what makes the other four quotable — it is an organisational instruction, not a technical chore.",
+      deviations: [],
+    },
+  },
+
+  /** Newest first. Each entry names what changed, why, and which metrics moved. */
+  changeLog: [
+    // `affects` drives the in-product "definition changed" marker, so it lists
+    // ONLY the metrics whose computed VALUES moved. Introducing the registry and
+    // the coverage gates changed what gets published, not what any other metric
+    // computes — marking every trend line for it would put a "the step in this
+    // trend is a definition change" note on a series that didn't step, which
+    // trains people to ignore the marker when it's real.
+    // Publication-rule change: no metric's computed values move, so `affects` is
+    // empty and no trend line gets a "definition changed" marker.
+    // METRICS-DICTIONARY CONFORMANCE. Three of the four rates change how they
+    // are COMPUTED and a fourth appears for the first time, so `affects` lists
+    // all of them and every visible trend line gets a "definition changed"
+    // marker at this date. That marker is the point: the step people will see
+    // in W32 is the definition moving, not delivery moving.
+    { version: "2.0", date: "2026-08-03", author: "Alex López",
+      affects: ["onTime", "forecast", "util", "quality"],
+      change: "Aligned all four metrics to the Metrics Dictionary. On-Time rescoped from Stories/Tasks to Epic/Milestone OR Client-Commitment-labelled issues. Forecast Accuracy headline returned to mean(max(0, 1 − |A−E|/E)), with the ±10% band and median variance kept as companions. Utilization headline denominator returned to gross scheduled capacity (headcount × standard hours), with the net-of-absence rate kept as a companion. Quality / Rework built and published for the first time, replacing the placeholder tile.",
+      rationale: "User directive 2026-08-03: \"set the formulas as requested so we can provide the actual results, and definitions based on the documented requirements\". The dashboard and the Dictionary had drifted into describing different metrics under the same four names, which is worse than either definition being wrong — two readers of one tile computed two numbers. Expect all four values to move on deploy; the earlier readings survive as companions or config switches rather than being deleted." },
+    { version: "1.1", date: "2026-08-03", author: "Alex López",
+      affects: [],
+      change: "Coverage gates no longer suppress. A metric below its gate is published with its confidence level and attribution % shown beside it (CONFIG_DH.SUPPRESS_BELOW_GATE = false). Gates, confidence bands and the hygiene queue are unchanged.",
+      rationale: "Accepted deviation from FR-2.2, decided by the Services Director. Suppression darkened two of four tiles and removed their history with them; a dashboard nobody can read teaches nobody anything. Confidence is still on every card and a weak number still links to the hygiene queue — the reader judges it rather than the tool refusing to show it." },
+    { version: "1.0", date: "2026-08-03", author: "Alex López",
+      affects: ["forecast"],
+      change: "Forecast Accuracy switched from 1 − |A−E|/E to the ±10% binary band, with median absolute variance as the secondary form. Registry established and coverage gates made binding across all metrics (below gate → suppressed, not published) — a publication rule, so no other metric's values changed.",
+      rationale: "requirements v1.1 FR-1.1/FR-1.4/FR-2.2. The old accuracy form was asymmetric (a 50% over-run and a 50% under-run scored identically), produced meaningless decimals on n=28, and conflated direction. Publishing a 17% figure built on 28 epics is the single largest credibility risk to the programme." },
+    { version: "0.9", date: "2026-08-03", author: "Alex López",
+      affects: ["onTime", "forecast"],   // both rates genuinely moved
+      change: "On-Time scoped to delivery issues (epics excluded). Forecast stopped scoring zero-worklog epics as total misses.",
+      rationale: "W32 code audit. Epics and Stories measure different lifecycles; a closed epic with no worklog is a time-tracking failure, not a forecasting one." },
+  ],
+};
+
+/**
+ * Data-confidence verdict for one metric (requirements v1.1 FR-2.1/2.2/2.6).
+ *
+ * High   — coverage ≥ gate AND ≥2 complete periods of data
+ * Medium — coverage within 10 points of the gate, or fewer than 2 periods
+ * Low    — coverage below (gate − 10 pts): the value is SUPPRESSED, not shown
+ *
+ * Suppression is the point of this function. A number whose inputs are two
+ * thirds missing is not a cautious number, it is a different number, and the
+ * only safe thing to publish in its place is what is missing and who owns it.
+ *
+ * FR-2.6 reads two ways — "Medium = within 10 pts of threshold" overlaps "Low =
+ * below threshold". Resolved in favour of the spec's own §13.3 skeleton: the
+ * suppression line sits at gate − 10 pts, and the band between that and the gate
+ * publishes as Medium with a "coverage approaching threshold" note.
+ *
+ * Pure and duplicated verbatim in Dashboard.html (coverage is filter-dependent,
+ * so the client recomputes it) — _test_confidenceParity_ in node-tests.js diffs
+ * the two copies. Keep them identical.
+ *
+ * @param {number} gate     registry coverageGate, 0–1
+ * @param {number} coverage measured attribution, 0–1 (null when nothing in scope)
+ * @param {number} periods  complete periods carrying data
+ * @returns {{level:string, publish:boolean, coverage:number}}
+ */
+// ── ADMIN GATE OVERRIDES ──────────────────────────────────────
+//
+// The registry holds the AGREED gate for each metric. Admins can override it at
+// runtime from the Data Hygiene view without a deploy, because "what counts as
+// enough coverage" is a judgement the Services Director owns and revisits at
+// period close — and making that a code change means it happens in a deploy
+// window rather than in the review where the decision is actually made.
+//
+// Stored as one JSON blob in Script Properties, applied over the registry when
+// the model is built. An override is a decision with a name and a date on it,
+// so each one records who set it and when, and the hygiene view shows both.
+// Registry defaults are never mutated: clearing an override restores the agreed
+// value exactly, which is what makes the override safe to experiment with.
+var DH_GATES_PROP_ = "DH_GATE_OVERRIDES";
+
+/** @returns {Object} metricId → {gate, by, at} — {} when nothing is overridden. */
+function readGateOverrides_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(DH_GATES_PROP_);
+    if (!raw) return {};
+    var o = JSON.parse(raw);
+    return (o && typeof o === "object") ? o : {};
+  } catch (e) {
+    Logger.log("⚠️ readGateOverrides_: " + e.message);
+    return {};
+  }
+}
+
+/**
+ * Deep-copies the registry and applies any admin overrides, tagging each
+ * affected metric so the UI can say the gate is not the agreed one.
+ * Pure apart from the property read, so the result is safe to cache.
+ */
+function registryWithOverrides_(overrides) {
+  var reg = JSON.parse(JSON.stringify(METRIC_REGISTRY_));
+  Object.keys(overrides || {}).forEach(function (id) {
+    var m = reg.metrics[id], o = overrides[id];
+    if (!m || !o || typeof o.gate !== "number") return;
+    if (!(o.gate >= 0 && o.gate <= 1)) return;      // ignore anything nonsensical
+    m.gateDefault = m.coverageGate;                  // what the registry agreed
+    m.coverageGate = o.gate;
+    m.gateOverride = { by: o.by || "", at: o.at || "" };
+  });
+  return reg;
+}
+
+/**
+ * Saves an admin's gate overrides. Admin-only.
+ * A gate of null/absent clears that metric back to the registry default.
+ * Busts the cache, because every tile's published/withheld state and the whole
+ * hygiene view are computed against these numbers.
+ * @param {Object} gates metricId → percentage 0–100, or null to clear
+ */
+function saveGateOverrides(gates) {
+  var access = checkDeliveryAccess();
+  if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+  gates = gates || {};
+  var cur = readGateOverrides_();
+  var stamp = new Date().toISOString().slice(0, 10);
+  Object.keys(gates).forEach(function (id) {
+    if (!METRIC_REGISTRY_.metrics[id]) return;       // unknown metric — ignore
+    var v = gates[id];
+    if (v === null || v === "" || v === undefined) { delete cur[id]; return; }
+    var pct = Number(v);
+    if (!(pct >= 0 && pct <= 100)) throw new Error("Gate for " + id + " must be 0–100.");
+    var frac = Math.round(pct) / 100;
+    // An "override" back to the agreed value is not an override — clear it, so
+    // the UI doesn't show a permanent "changed by" badge on an unchanged gate.
+    if (Math.abs(frac - METRIC_REGISTRY_.metrics[id].coverageGate) < 1e-9) {
+      delete cur[id];
+      return;
+    }
+    cur[id] = { gate: frac, by: access.email || "", at: stamp };
+  });
+  PropertiesService.getScriptProperties().setProperty(DH_GATES_PROP_, JSON.stringify(cur));
+  bustDeliveryCache_();
+  Logger.log("✅ saveGateOverrides by " + access.email + ": " + JSON.stringify(cur));
+  return cur;
+}
+
+function metricConfidence_(gate, coverage, periods) {
+  var g = Number(gate) || 0;
+  if (coverage === null || coverage === undefined || isNaN(coverage)) {
+    return { level: "none", publish: false, coverage: null };
+  }
+  var c = Math.max(0, Math.min(1, Number(coverage)));
+  var p = Number(periods) || 0;
+  if (g <= 0) return { level: "high", publish: true, coverage: c };  // ungated
+  if (c >= g && p >= 2) return { level: "high", publish: true, coverage: c };
+  if (c >= g - 0.10) return { level: "medium", publish: true, coverage: c };
+  return { level: "low", publish: false, coverage: c };
+}
 
 // ── ISO WEEK HELPERS (Monday-start, ISO-8601 — ported from demand Code.js) ──
 
@@ -441,7 +784,7 @@ function clampToCapacity_(hours, capacity) {
  * @returns {{avail,availCov,billable,tracked,planned,billablePct,trackedPct}}
  */
 function utilRollup_(people, iso, region, team, includeNonTracking) {
-  var s = { avail: 0, availCov: 0, billable: 0, tracked: 0, planned: 0 };
+  var s = { avail: 0, availCov: 0, cap: 0, capCov: 0, billable: 0, tracked: 0, planned: 0 };
   people.forEach(function (p) {
     if (p.onLeave === true) return;
     if (!includeNonTracking && p.tracks === false) return;
@@ -451,10 +794,23 @@ function utilRollup_(people, iso, region, team, includeNonTracking) {
     if (!w) return;
     s.avail += Number(w.avail) || 0;
     s.availCov += Number(w.availCov) || 0;
+    s.cap += Number(w.cap) || 0;
+    s.capCov += Number(w.capCov) || 0;
     s.billable += Number(w.billable) || 0;
     s.tracked += Number(w.tracked) || 0;
     s.planned += Number(w.planned) || 0;
   });
+  // TWO denominators, both published, because they answer different questions
+  // and each one alone is misleading:
+  //   grossPct — the Metrics Dictionary's rate: billable ÷ headcount × standard
+  //              hours. "How much of the capacity we PAY FOR did we bill?"
+  //              Approved absence is a cost, so it stays in the denominator.
+  //   billablePct — billable ÷ net available (PTO/holidays removed). "Of the
+  //              capacity the team actually HAD, how much did they bill?" This
+  //              is the fair operational read and the one a manager is judged on.
+  // The gap between them is the cost of absence, which is why the card shows
+  // both instead of picking a side.
+  s.grossPct = s.capCov > 0 ? s.billable / s.capCov * 100 : null;
   s.billablePct = s.availCov > 0 ? s.billable / s.availCov * 100 : null;
   s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
   return s;
@@ -508,6 +864,91 @@ function nsCoverage_(people, unmatched) {
 
 // ── JIRA TILE BUCKETS (additive per iso×region×team, spec §11) ──
 
+/**
+ * Is this issue inside the On-Time scope?
+ *
+ * One predicate, four readings, so the scopes can never drift apart and each is
+ * testable in isolation:
+ *
+ *   "dictionary" — the Metrics Dictionary verbatim: issue type Epic OR
+ *                  Milestone, OR any issue carrying the Client Commitment
+ *                  label. A commitment to a client is a commitment whatever
+ *                  the issue type, which is why the label is a UNION and not
+ *                  a narrowing filter.
+ *   "delivery"   — Stories/Tasks only (epics excluded). The team's own
+ *                  commitments rather than programme milestones.
+ *   "epic"       — epics only.
+ *   "all"        — every resolved issue type.
+ *
+ * Milestone detection is by type NAME because the export writes the type name
+ * and sites differ on whether "Milestone" is a real type or an epic subtype.
+ */
+function onTimeInScope_(it, scope) {
+  switch (scope) {
+    case "dictionary": return !!(it.isEpic || it.isMilestone || it.isClientCommitment);
+    case "epic":       return !!it.isEpic;
+    case "all":        return true;
+    case "delivery":
+    default:           return !it.isEpic;
+  }
+}
+
+/**
+ * Resolved DELIVERED issues → per-week rework buckets (Metrics Dictionary
+ * metric #4, built 2026-08-03).
+ *
+ *   Rework Rate = (reopened OR rework-linked) ÷ delivered in period × 100
+ *
+ * Denominator = work actually DELIVERED, so resolutions meaning "never shipped"
+ * (Won't Do / Duplicate / Incomplete — CONFIG_DH.NON_DELIVERED_RESOLUTIONS) are
+ * excluded. Counting a cancelled ticket as delivered work would deflate the
+ * rate, which is the direction that flatters us.
+ *
+ * COVERAGE IS TRACKED SEPARATELY per signal, and this is the whole reason the
+ * metric can be trusted:
+ *   nLinkCov — issues from an export that carried a Rework Link column at all
+ *   nReopenCov — issues whose Reopened cell was actually populated (the export
+ *                only fills it when CONFIG_DH/CONFIGJ.FETCH_CHANGELOG is on)
+ * An unmeasured signal reads as "not measured", never as "no rework". With
+ * changelog off, the rate is link-only and the card says so — a partially
+ * measured rate presented as complete is exactly the failure mode the coverage
+ * gates exist to catch.
+ *
+ * @param {Array} issues     records from readJiraRaw_
+ * @param {Function} resolvePerson  raw assignee → roster display name
+ * @returns {{buckets:Array, unattributed:number}}
+ */
+function reworkBuckets_(issues, resolvePerson) {
+  var map = {}, unattributed = 0;
+  (issues || []).forEach(function (it) {
+    if (!it.resolved || isNaN(it.resolved.getTime())) return;
+    // Delivered only. statusCategory is authoritative when the export provides
+    // it; otherwise a resolution date already implies the issue reached Done.
+    if (it.statusCategory && !/^done$/i.test(it.statusCategory)) return;
+    if (it.resolution && CONFIG_DH.NON_DELIVERED_RESOLUTIONS.test(it.resolution)) return;
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!person) { unattributed++; return; }
+    var iso = weekKeyFromDate_(it.resolved);
+    var k = iso + "" + person;
+    if (!map[k]) {
+      map[k] = { iso: iso, person: person, nDelivered: 0, nRework: 0,
+                 nLinked: 0, nReopened: 0, nReopenCov: 0 };
+    }
+    var b = map[k];
+    b.nDelivered++;
+    if (it.reworkLink) b.nLinked++;
+    if (it.reopened !== null && it.reopened !== undefined) {
+      b.nReopenCov++;
+      if (it.reopened) b.nReopened++;
+    }
+    // The dictionary says "reopened OR linked as Rework" — one issue that did
+    // both is still one piece of rework, so this is a union, not a sum.
+    if (it.reworkLink || it.reopened === true) b.nRework++;
+  });
+  return { buckets: Object.keys(map).map(function (k) { return map[k]; }),
+           unattributed: unattributed };
+}
+
 /** Resolved DELIVERY issues → per-week on-time buckets. n/onTime cover issues
     WITH a due date; nAll counts every resolved delivery issue (coverage
     denominator).
@@ -520,16 +961,13 @@ function nsCoverage_(people, unmatched) {
     card read as a delivery miss when it was really a missing-due-date artifact.
     Epic-level forecasting lives in forecastBuckets_ instead.
 
-    scope — CONFIG_DH.ONTIME_SCOPE ("delivery" | "epic" | "all"); see the config
-    note. Passed in so the tests can pin each reading. */
+    scope — CONFIG_DH.ONTIME_SCOPE; see onTimeInScope_ and the config note.
+    Passed in so the tests can pin each reading. */
 function onTimeBuckets_(issues, resolvePerson, scope) {
   var map = {}, unattributed = 0;
-  var sc = scope || CONFIG_DH.ONTIME_SCOPE || "delivery";
+  var sc = scope || CONFIG_DH.ONTIME_SCOPE || "dictionary";
   issues.forEach(function (it) {
-    // Scope gate: an epic is a programme container, a Story/Task is the team's
-    // own commitment — never both in one rate.
-    if (sc === "delivery" && it.isEpic) return;
-    if (sc === "epic" && !it.isEpic) return;
+    if (!onTimeInScope_(it, sc)) return;
     if (!it.resolved || isNaN(it.resolved.getTime())) return;
     // Person attribution (user decision 2026-07-31: ALL filters drive ALL three
     // KPI cards): issues join to the roster via Assignee, so the tiles filter
@@ -556,7 +994,7 @@ function onTimeBuckets_(issues, resolvePerson, scope) {
 }
 
 /**
- * Resolved epics → per-week forecast-accuracy buckets. n/sumAcc cover epics
+ * Resolved epics → per-week forecast-accuracy buckets. n/nWithin cover epics
  * that are actually MEASURABLE (estimate AND logged time both present); nAll
  * counts every resolved epic (coverage denominator), nNoTime the
  * estimated-but-untracked ones.
@@ -568,37 +1006,194 @@ function onTimeBuckets_(issues, resolvePerson, scope) {
  * silently dragged the tile down. Nothing was measured, so it now counts toward
  * coverage only, exactly like an unestimated epic.
  *
- * Variance direction: accuracy alone can't tell a team that closes early from
- * one that over-runs — both lose the same points. lossOver/lossUnder split the
- * lost accuracy by direction (additive across buckets, so the client can roll
- * them up under any filter) which is the actionable half of the number.
+ * ±10% BINARY BAND (requirements v1.1 FR-1.4, registry v1.0 — this REPLACED the
+ * old `1 − |A−E|/E` accuracy score). The old form was retired because:
+ *   · it is asymmetric in meaning but symmetric in score — an engagement that
+ *     ran 50% over and one that closed 50% early lost identical points, and
+ *     those two need opposite conversations;
+ *   · it floors at 0, so a 3× over-run and a 10× over-run read the same;
+ *   · averaged over n=28 it produces a decimal nobody can act on.
+ * The band answers the executive question directly ("are we hitting estimates?")
+ * and the median absolute variance (secondary form) answers the director's
+ * follow-up ("by how much are we off?").
+ *
+ * Bucket fields:
+ *   n         measurable epics — the band's denominator
+ *   nWithin   measurable epics inside ±band — the band's numerator
+ *   absVars   |actual − estimate| ÷ estimate per measurable epic. A median is
+ *             NOT additive across buckets, so the raw values ship and the client
+ *             takes the median of whatever the active filter selects. Rounded to
+ *             3 dp and capped at 20× so one runaway epic can't bloat the payload;
+ *             n here is tens of epics per window, not thousands.
+ *   nMissOver / nMissUnder   misses by direction (FR-1.6) — additive, so they
+ *             roll up under any filter. Counted on MISSES only: an epic inside
+ *             the band is on target and which side of centre it sat is noise.
+ *
+ * @param {Array} epics resolved-epic records
+ * @param {Function} resolvePerson Jira assignee → roster display name, or null
+ * @param {number=} band tolerance, default CONFIG_DH.FORECAST_BAND (test hook)
  */
-function forecastBuckets_(epics, resolvePerson) {
+function forecastBuckets_(epics, resolvePerson, band) {
   var map = {}, unattributed = 0;
+  var bnd = band === undefined ? (CONFIG_DH.FORECAST_BAND || 0.10) : band;
   epics.forEach(function (ep) {
     if (!ep.resolved || isNaN(ep.resolved.getTime())) return;
     var person = resolvePerson ? resolvePerson(ep.assignee || "") : null;
     if (!person) { unattributed++; return; }
     var iso = weekKeyFromDate_(ep.resolved);
     var k = iso + "" + person;
-    if (!map[k]) map[k] = { iso: iso, person: person, n: 0, sumAcc: 0, nAll: 0,
-                            nNoTime: 0, nOver: 0, nUnder: 0,
-                            lossOver: 0, lossUnder: 0 };
+    if (!map[k]) map[k] = { iso: iso, person: person, n: 0, nWithin: 0, nAll: 0,
+                            nNoTime: 0, absVars: [],
+                            nMissOver: 0, nMissUnder: 0 };
     map[k].nAll++; // every resolved epic — coverage denominator for the tile
     var est = Number(ep.estSec) || 0;
     if (est <= 0) return; // unestimated — counted in coverage only
     var spent = Number(ep.spentSec) || 0;
     if (spent <= 0) { map[k].nNoTime++; return; } // no worklog — nothing measured
-    var dev = (spent - est) / est;          // signed relative deviation
-    var loss = Math.min(1, Math.abs(dev));  // accuracy points lost (acc floors at 0)
+    var dev = (spent - est) / est;   // signed relative deviation
+    var absDev = Math.abs(dev);
     map[k].n++;
-    map[k].sumAcc += 1 - loss;
-    if (dev > 0) { map[k].nOver++; map[k].lossOver += loss; }
-    else if (dev < 0) { map[k].nUnder++; map[k].lossUnder += loss; }
+    map[k].absVars.push(Math.round(Math.min(20, absDev) * 1000) / 1000);
+    if (absDev <= bnd) { map[k].nWithin++; return; }
+    if (dev > 0) map[k].nMissOver++; else map[k].nMissUnder++;
   });
   return { buckets: Object.keys(map).map(function (k) { return map[k]; }),
            unattributed: unattributed };
 }
+
+/**
+ * Per-week attribution counts over the raw Jira feed (requirements v1.1
+ * FR-2.3/FR-2.4, §4.2).
+ *
+ * These are the numbers the KPI cards used to carry in small grey type — "404 of
+ * 615 resolved had a due date" — presented as if they qualified a metric when
+ * they are really a work queue with an owner. They live here so the Data Hygiene
+ * view can show each gap with a trend, and so the confidence gate has a
+ * denominator that includes the records the metrics THREW AWAY.
+ *
+ * That last part matters: onTimeBuckets_ drops issues whose assignee isn't on
+ * the roster, so its own nAll can't see them. Coverage measured only over what
+ * survived the join would always look better than the truth.
+ *
+ * @param {Object} jira readJiraRaw_ output
+ * @param {Function} resolvePerson Jira assignee → roster display name, or null
+ * @param {string=} scope CONFIG_DH.ONTIME_SCOPE reading (delivery|epic|all)
+ * @returns {Array} one row per ISO week, additive so the client can aggregate
+ */
+function hygieneBuckets_(jira, resolvePerson, scope) {
+  // Same scope predicate as the metric (onTimeInScope_), never a second copy of
+  // the rule: hygiene reports the coverage of the population On-Time actually
+  // measures, so if the two ever disagreed the view would be diagnosing a
+  // denominator nobody publishes.
+  var sc = scope || CONFIG_DH.ONTIME_SCOPE || "delivery";
+  var map = {};
+  function row(iso) {
+    if (!map[iso]) map[iso] = { iso: iso, res: 0, resDue: 0, resAttr: 0,
+                                resRegion: 0, resTeam: 0, resReady: 0, resFull: 0,
+                                epics: 0, epicsEst: 0, epicsTime: 0 };
+    return map[iso];
+  }
+  (jira.issues || []).forEach(function (it) {
+    if (!it.resolved || isNaN(it.resolved.getTime())) return;
+    var iso = weekKeyFromDate_(it.resolved);
+    if (onTimeInScope_(it, sc)) {
+      var r = row(iso);
+      r.res++;
+      var hasDue = !!(it.due && !isNaN(it.due.getTime()));
+      var hasPerson = !!(resolvePerson && resolvePerson(it.assignee || ""));
+      var hasRegion = !!it.region && it.region !== DH_REGION_UNASSIGNED_;
+      if (hasDue) r.resDue++;
+      if (hasPerson) r.resAttr++;
+      if (hasRegion) r.resRegion++;
+      if (it.team) r.resTeam++;
+      // TWO composites, on purpose.
+      //
+      // resFull = everything the finished system needs, region included. Region
+      // is in the AND deliberately: without it there is no Region × Team
+      // comparison, which is the executive layer's whole premise.
+      //
+      // resReady = what the metrics published TODAY actually need — a due date
+      // and an assignee who joins the roster. Region is excluded.
+      //
+      // Both exist because a single strict composite is useless as a trend right
+      // now: the Region field is unpopulated org-wide, so resFull is pinned at 0%
+      // and STAYS at 0% however much the due-date and assignee fill rates
+      // improve. A number that cannot move is a number people stop looking at,
+      // and it would hide exactly the progress the hygiene push is meant to
+      // create. resFull remains the headline (the target is the finished
+      // system); resReady is shown beside it so movement is visible.
+      if (hasDue && hasPerson) r.resReady++;
+      if (hasDue && hasPerson && hasRegion) r.resFull++;
+    }
+    if (it.isEpic) {
+      var e = row(iso);
+      e.epics++;
+      var est = Number(it.estSec) || 0;
+      if (est > 0) {
+        e.epicsEst++;
+        if ((Number(it.spentSec) || 0) > 0) e.epicsTime++;
+      }
+    }
+  });
+  return Object.keys(map).sort().map(function (k) { return map[k]; });
+}
+
+/** Median of a numeric array; null when empty. Backs the forecast secondary
+    form (median absolute % variance) over the active filter's selection. */
+function medianOf_(vals) {
+  if (!vals || !vals.length) return null;
+  var s = vals.slice().sort(function (a, b) { return a - b; });
+  var mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// ── JIRA REGION VOCABULARY (requirements v1.1 §4.3) ───────────
+//
+// The Jira Region custom field (customfield_10047) stores option values in the
+// form "RR01 North America". Every rollup in this dashboard speaks a five-value
+// vocabulary. The translation happens ONCE, at the data-ingestion layer — never
+// in presentation code, or the same raw value ends up mapped two ways on two
+// screens.
+//
+// ⚠ Confirm the exact option list with Gon during PR-01 and extend this table
+// (open decision #1, target 2026.W34). Anything unrecognised lands in "Other",
+// anything BLANK lands in "Unassigned" — and the two are deliberately different:
+// "Other" is a region we haven't mapped, "Unassigned" is a tagging gap somebody
+// owns. §4.2 requires the gap be displayed, counted and trended, never quietly
+// folded into a real region's total, because visible discomfort is the only
+// mechanism that gets Jira tagging fixed.
+var JIRA_REGION_TO_DH_ = {
+  "rr01 north america": "AMER",
+  "rr01 americas":      "AMER",
+  "rr02 emea":          "EMEA",
+  "rr02 europe":        "EMEA",
+  "rr03 apac":          "APAC",
+  "rr03 asia pacific":  "APAC",
+  "rr04 anz":           "ANZ",
+  "rr04 australia":     "ANZ",
+};
+
+/** Jira Region option value → dashboard token. Blank → "Unassigned". */
+function mapRegionToDh_(jiraValue) {
+  var key = String(jiraValue === null || jiraValue === undefined ? "" : jiraValue)
+              .toLowerCase().replace(/\s+/g, " ").trim();
+  if (!key) return DH_REGION_UNASSIGNED_;
+  if (JIRA_REGION_TO_DH_[key]) return JIRA_REGION_TO_DH_[key];
+  // Prefix/containment match so "RR02 Europe/Middle East/Africa" and a bare
+  // "EMEA" both land, without needing every variant enumerated up front.
+  var keys = Object.keys(JIRA_REGION_TO_DH_);
+  for (var i = 0; i < keys.length; i++) {
+    if (key.indexOf(keys[i]) !== -1 || keys[i].indexOf(key) !== -1) {
+      return JIRA_REGION_TO_DH_[keys[i]];
+    }
+  }
+  // A bare token already in the vocabulary ("APAC", "amer") passes through.
+  var bare = key.toUpperCase();
+  if (["AMER", "EMEA", "APAC", "ANZ"].indexOf(bare) !== -1) return bare;
+  return CONFIG_DH.REGION_FALLBACK;  // recognised as a value, not as a region
+}
+
+var DH_REGION_UNASSIGNED_ = "Unassigned";
 
 // ── CACHE (gzip chunked) ──────────────────────────────────────
 
@@ -773,6 +1368,14 @@ function readRosterPeople_() {
   try {
     var ss = SpreadsheetApp.openById(dhSourceIds_().roster);
     var out = [], seen = {};
+    // Employment status of EVERY roster row, whatever the department or class.
+    // `out` is the Services delivery population; these two are a wider lookup so
+    // names that appear in the data but not in the population — Tempo project
+    // managers, most of all — can still be checked for "is this person gone?".
+    // Without it a PM who left last year keeps a filter chip and a chart bar
+    // forever, because their name is stamped on projects other people still
+    // book to.
+    var activeAll = {}, inactiveAll = {};
     [{ tab: CONFIG_DH.ROSTER_SHEET, crew: false },
      { tab: CONFIG_DH.CONTRACTORS_SHEET, crew: true }].forEach(function (src) {
       var sh = ss.getSheetByName(src.tab);
@@ -805,7 +1408,12 @@ function readRosterPeople_() {
         if (!name) continue;
         var status = iStatus === -1 ? "" : String(raw[r][iStatus] || "");
         var term = iTerm === -1 ? "" : String(raw[r][iTerm] || "");
-        if (!dhRosterRowActive_(status, term)) continue; // attrition — never shown
+        var active = dhRosterRowActive_(status, term);
+        // Recorded BEFORE the department/class gates — a PM in Sales or R&D is
+        // still a live person, and we only want to drop the ones who have left.
+        if (active) activeAll[normDH_(name)] = 1;
+        else inactiveAll[normDH_(name)] = 1;
+        if (!active) continue;                           // attrition — never shown
         if (seen[normDH_(name)]) continue;               // boomerang/collision: first active wins
         // Gates are FAIL-CLOSED: a missing/blank Class or Department cell excludes
         // the row instead of waving it through — the Contractors Data tab has no
@@ -835,10 +1443,35 @@ function readRosterPeople_() {
                    hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
       }
     });
-    return { people: out };
+    return { people: out, activeAll: activeAll, inactiveAll: inactiveAll };
   } catch (e) {
-    return { people: [], error: "Roster read failed: " + e.message };
+    return { people: [], activeAll: {}, inactiveAll: {},
+             error: "Roster read failed: " + e.message };
   }
+}
+
+/**
+ * Drops names the roster can PROVE have left (user report 2026-08-03: the PM
+ * filter carried 52 entries, several of them former employees).
+ *
+ * The rule is deliberately one-sided. A name is removed only when the roster
+ * shows it inactive AND shows no active row for it; anything the roster doesn't
+ * know — an external PM, a contractor never listed, a spelling the join can't
+ * resolve — is KEPT. Guessing that an unknown name is a leaver would quietly
+ * delete live work from the filters, which is a worse failure than one stale
+ * chip: the first is invisible, the second is merely untidy.
+ *
+ * @returns {{kept: Array, dropped: Array}} dropped is reported in meta so the
+ *   count is visible rather than the list silently shrinking.
+ */
+function filterActiveNames_(names, roster) {
+  var act = roster.activeAll || {}, inact = roster.inactiveAll || {};
+  var kept = [], dropped = [];
+  (names || []).forEach(function (n) {
+    var k = normDH_(n);
+    if (inact[k] && !act[k]) dropped.push(n); else kept.push(n);
+  });
+  return { kept: kept, dropped: dropped };
 }
 
 /**
@@ -1123,6 +1756,15 @@ function phLocMatchesEmp_(phLoc, empLoc) {
 var DH_CLOSED_STATUS_ = /done|closed|resolved|complete|cancel|abandon|reject|won'?t|duplicate|deploy/i;
 
 /**
+ * The Metrics Dictionary's "Client Commitment" label, matched loosely because
+ * label conventions drift across projects (`client-commitment`,
+ * `ClientCommitment`, `client_commitment` are all the same intent).
+ * Word-bounded on "client" so an unrelated `client-portal` label can't smuggle
+ * an issue into the On-Time denominator.
+ */
+var DH_CLIENT_COMMITMENT_ = /\bclient[\s_-]*commitment\b/i;
+
+/**
  * Jira Raw → issues + epics for the tile buckets, keyRegion for person-region,
  * openIssues (unresolved, assigned) for the per-person backlog drill-down.
  * Columns by header name: Key(1), Work (Summary)(2), Workstream (Issue Type)(3),
@@ -1149,15 +1791,25 @@ function readJiraRaw_() {
     var iDue = colIdx_(h, ["Due Date"]);
     var iEst = colIdx_(h, ["Original Estimate (sec)"]);
     var iSpent = colIdx_(h, ["Time Spent (sec)"]);
-    // Region / Team: RETIRED upstream. Jira Backlog.js v3.3.0 dropped these two
-    // Jira Raw columns because the underlying custom fields were never populated
-    // (they always exported blank), so both lookups now return -1 permanently and
-    // the guarded fallbacks below are the only live path: person region comes from
-    // the roster (assignPersonRegion_ source:"roster"), team vocabulary from the
-    // Tempo exports. Kept as lookups rather than deleted so an older Jira Raw
-    // snapshot still parses identically.
+    // Region / Team: the columns are BACK (Jira Backlog.js v3.4.0 restored them
+    // after v3.3.0 dropped them) but the underlying Jira custom fields are still
+    // unpopulated, so they export blank — every row lands in "Unassigned" until
+    // PR-01 closes. Person region therefore still resolves from the roster
+    // (assignPersonRegion_ source:"roster") and team vocabulary from Tempo.
+    // The gap is not hidden: hygieneBuckets_ counts it and the Data Hygiene view
+    // trends it with Gon's name against it (§4.2).
     var iRegion = colIdx_(h, ["Region"]);
     var iTeam = colIdx_(h, ["Team"]);
+    // ── Metrics-Dictionary columns (Jira Backlog.js v3.6.0, append-only) ──
+    // All resolved BY HEADER, all optional: colIdx_ returns -1 on an older
+    // export and every consumer below degrades to "not measured" rather than to
+    // a false zero. That is what lets the export and the dashboard deploy in
+    // either order.
+    var iLabels = colIdx_(h, ["Labels"]);
+    var iResName = colIdx_(h, ["Resolution"]);
+    var iStatCat = colIdx_(h, ["Status Category"]);
+    var iRework = colIdx_(h, ["Rework Link"]);
+    var iReopen = colIdx_(h, ["Reopened"]);
     if (iKey === -1) return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false };
     var byKey = {};
     for (var r = 1; r < raw.length; r++) {
@@ -1168,24 +1820,61 @@ function readJiraRaw_() {
       // duplicate rows for a key all come from the same API fetch and differ
       // only in the week label, which this dashboard never reads. Any row is
       // therefore equivalent; keeping the last is arbitrary, not chronological.
+      //
+      // NFR-10 / CA-04: this is why "last row wins" is safe here, and it holds
+      // only while the tab stays export-owned. The constraint is: Jira Raw is
+      // rewritten whole on every run and is never hand-edited or re-sorted
+      // between runs. If incremental writes are ever introduced, this dedup must
+      // change with them — add a Snapshot Date column and keep MAX(date) per key.
+      // (The v1.1 audit flagged a re-sort as a live risk; it isn't today, because
+      // the rows carry no ordering the dashboard depends on.)
       byKey[key] = r;
     }
-    var issues = [], epics = [], openIssues = [], keyRegion = {};
+    var issues = [], epics = [], openIssues = [], keyRegion = {}, regionRaw = {};
     Object.keys(byKey).forEach(function (key) {
       var r = byKey[key];
-      var region = iRegion === -1 ? "" : String(raw[r][iRegion] || "").trim();
+      // Region vocabulary is normalised HERE, at ingestion (§4.3) — the rest of
+      // the codebase only ever sees AMER/EMEA/APAC/ANZ/Other/Unassigned.
+      var rawRegion = iRegion === -1 ? "" : String(raw[r][iRegion] || "").trim();
+      var region = mapRegionToDh_(rawRegion);
       var team = iTeam === -1 ? "" : String(raw[r][iTeam] || "").trim();
-      if (region) keyRegion[key] = region;
+      if (rawRegion && region !== DH_REGION_UNASSIGNED_) keyRegion[key] = region;
+      // Raw tally for probeDeliverySources: once the mapping runs, every value
+      // downstream is already in the vocabulary, so a probe over MAPPED values
+      // can only ever report "✅ all match" — which verifies nothing. The raw
+      // counts are what tell you an option value is missing from the table.
+      var rawKey = rawRegion || "(blank)";
+      regionRaw[rawKey] = (regionRaw[rawKey] || 0) + 1;
       var type = iType === -1 ? "" : normDH_(raw[r][iType]);
       var isEpic = type.indexOf("epic") !== -1;
+      var labels = iLabels === -1 ? "" : String(raw[r][iLabels] || "");
+      var statCat = iStatCat === -1 ? "" : String(raw[r][iStatCat] || "").trim();
+      var reopenCell = iReopen === -1 ? "" : String(raw[r][iReopen] || "").trim();
       var rec = {
         isEpic: isEpic,
+        // The Metrics Dictionary scopes On-Time to "issue type Epic/Milestone OR
+        // Client Commitment label", so both signals have to survive ingestion.
+        isMilestone: /milestone/.test(type),
+        isClientCommitment: DH_CLIENT_COMMITMENT_.test(labels),
         due: iDue === -1 ? null : parseDhDate_(raw[r][iDue]),
         resolved: iRes === -1 ? null : parseDhDate_(raw[r][iRes]),
         estSec: iEst === -1 ? 0 : Number(raw[r][iEst]) || 0,
         spentSec: iSpent === -1 ? 0 : Number(raw[r][iSpent]) || 0,
-        region: region || "Other", team: team,
+        region: region, team: team,
         assignee: iAssignee === -1 ? "" : String(raw[r][iAssignee] || "").trim(),
+        // ── Quality / Rework inputs ──
+        // resolution: the dictionary's denominator is work DELIVERED, so
+        // Won't Do / Duplicate / Incomplete are excluded — they were never
+        // delivered, and counting them would deflate the rework rate.
+        resolution: iResName === -1 ? "" : String(raw[r][iResName] || "").trim(),
+        // statusCategory is authoritative "Done"; fall back to the status-name
+        // regex only on a pre-v3.6.0 export that has no such column.
+        statusCategory: statCat,
+        reworkLink: iRework !== -1 && /^y/i.test(String(raw[r][iRework] || "")),
+        // TRISTATE, deliberately: true / false / null = "nobody looked".
+        // A blank cell must never read as "not reopened" — that silently
+        // deflates the rate, which is the failure the coverage gates exist for.
+        reopened: reopenCell === "" ? null : /^y/i.test(reopenCell),
       };
       issues.push(rec);
       if (isEpic) epics.push(rec);
@@ -1205,7 +1894,8 @@ function readJiraRaw_() {
         });
       }
     });
-    return { issues: issues, epics: epics, openIssues: openIssues, keyRegion: keyRegion, available: true };
+    return { issues: issues, epics: epics, openIssues: openIssues, keyRegion: keyRegion,
+             regionRaw: regionRaw, available: true };
   } catch (e) {
     return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false, error: e.message };
   }
@@ -1388,6 +2078,15 @@ function assembleModel_(inputs, win) {
                      planned: w.planned, tracked: w.tracked,
                      nsCov: nsCov,
                      availCov: nsCov ? net.avail : 0,
+                     // capCov = GROSS scheduled capacity of NS-classified weeks.
+                     // The Metrics Dictionary's Utilization denominator is
+                     // "headcount × standard hours", i.e. capacity BEFORE PTO
+                     // and holidays are removed. Summing per-person `cap` gives
+                     // exactly that, and handles part-timers better than a flat
+                     // headcount × 40 would. It has to be coverage-matched the
+                     // same way availCov is, or an unclassified week would sit
+                     // in the denominator with a forced-zero numerator.
+                     capCov: nsCov ? cap : 0,
                      trackedCov: nsCov ? w.tracked : 0,
                      billShare: share,
                      billable: nsCov ? w.tracked * share : 0,
@@ -1417,6 +2116,15 @@ function assembleModel_(inputs, win) {
     ? onTimeBuckets_(inputs.jira.issues, resolvePerson) : { buckets: [], unattributed: 0 };
   var forecast = inputs.jira.available
     ? forecastBuckets_(inputs.jira.epics, resolvePerson) : { buckets: [], unattributed: 0 };
+  var hygiene = inputs.jira.available
+    ? hygieneBuckets_(inputs.jira, resolvePerson) : [];
+  var rework = inputs.jira.available
+    ? reworkBuckets_(inputs.jira.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+  // PM vocabulary comes from the Tempo project rows, which carry whoever led the
+  // project at the time — including people who have since left. Gate it on the
+  // roster so the filter and the PM comparison chart describe the people who can
+  // actually be asked about the work.
+  var activePms = filterActiveNames_(Object.keys(pmSet), inputs.roster);
 
   return {
     schemaVer: DH_SCHEMA_VER_,
@@ -1428,21 +2136,47 @@ function assembleModel_(inputs, win) {
       targets: CONFIG_DH.TARGETS,
       regions: ["AMER", "EMEA", "APAC", "ANZ", "Other"],
       teams: Object.keys(teamSet).sort(),
-      pms: Object.keys(pmSet).sort(),
+      pms: activePms.kept.sort(),
+      // Count only — the tooltip says how many former employees were removed
+      // without listing people who have left the company on a dashboard.
+      pmsDropped: activePms.dropped.length,
       families: Object.keys(famSet).sort(),
       nsAvailable: nsAvailable, jiraAvailable: !!inputs.jira.available,
       // NS join/coverage telemetry — the billable split is only as good as this.
       // Reported so a low rate can be read as "poor coverage" vs "low billing",
       // the same way jiraUnattributed qualifies the issue tiles.
       nsCoverage: nsCoverage_(people, nsUnmatched),
-      jiraUnattributed: { onTime: onTime.unattributed, forecast: forecast.unattributed },
+      jiraUnattributed: { onTime: onTime.unattributed, forecast: forecast.unattributed,
+                          rework: rework.unattributed },
       // Which issue types the On-Time rate covers — the card names it so the
       // number is never read as "all delivery work" when it isn't.
       onTimeScope: CONFIG_DH.ONTIME_SCOPE || "delivery",
+      forecastBand: CONFIG_DH.FORECAST_BAND || 0.10,
+      // Only an explicit true suppresses. A cached model predating this field
+      // therefore publishes rather than going dark for the rest of the TTL —
+      // the safer failure direction for a flag whose shipped value is false.
+      suppressBelowGate: CONFIG_DH.SUPPRESS_BELOW_GATE === true,
       ptoSource: ptoAccumOk ? "accumulation" : "netsuite-fallback",
       capacityError: inputs.capacity.error || null,
+      // Canonical metric definitions, targets, coverage gates, owners and known
+      // deviations (FR-1.1). The client renders labels, tooltips, the RAG bands
+      // and the suppressed state from this — never from its own constants.
+      registry: registryWithOverrides_(readGateOverrides_()),
+      // Source systems + refresh cadence (FR-2.5): every view has to be able to
+      // say where its numbers came from and how fresh they are.
+      sources: [
+        { system: "Jira (via Exec Contribution Tracker export)", feeds: "On-Time, Forecast, backlog", tab: CONFIG_DH.JIRA_RAW_SHEET },
+        { system: "Tempo", feeds: "tracked hours, planned hours, capacity",
+          tab: [CONFIG_DH.TRACKED_SHEET, CONFIG_DH.PLANNED_SHEET, CONFIG_DH.CAPACITY_SHEET].join(" · ") },
+        { system: "NetSuite", feeds: "billable / non-billable classification", tab: CONFIG_DH.NS_SHEET },
+        { system: "PTO ledger", feeds: "PTO hours", tab: CONFIG_DH.PTO_ACCUM_SHEET },
+        { system: "Roster", feeds: "population, job family, region fallback, hire dates", tab: CONFIG_DH.ROSTER_SHEET },
+      ],
+      refreshEveryMin: CONFIG_DH.CACHE_WARM_EVERY_MIN,
     },
     people: people, onTimeBuckets: onTime.buckets, forecastBuckets: forecast.buckets,
+    reworkBuckets: rework.buckets,
+    hygieneBuckets: hygiene,
   };
 }
 
@@ -1463,7 +2197,25 @@ function assembleModel_(inputs, win) {
 //     trackedCov/billShare/nsBillRaw/nsNonBillRaw + meta.nsCoverage. A cached v6
 //     model would keep serving the inflated absolutes against the wrong
 //     denominator, so this MUST force a rebuild.
-var DH_SCHEMA_VER_ = 7;
+// v8: Forecast Accuracy re-formulated to the ±10% binary band (FR-1.4) — the
+//     buckets lose sumAcc/nOver/nUnder/lossOver/lossUnder and gain nWithin/
+//     absVars/nMissOver/nMissUnder, so a cached v7 model would render the
+//     forecast tile as 0% (no nWithin anywhere). Also adds hygieneBuckets and
+//     meta.registry/sources/forecastBand, and normalises Jira Region to the
+//     AMER/EMEA/APAC/ANZ/Other/Unassigned vocabulary at ingestion.
+// v9: hygieneBuckets gain resReady (due date + roster assignee, region excluded).
+//     Without it the Data Hygiene headline is pinned at 0% for as long as the
+//     Jira Region field stays unpopulated, so no amount of due-date or assignee
+//     progress would ever show. A cached v8 model has no resReady and would
+//     render that second figure as 0%.
+// v10: METRICS-DICTIONARY CONFORMANCE PASS (2026-08-03). New payload fields:
+//      people[].weeks[].capCov (gross NS-classified capacity, the dictionary
+//      Utilization denominator), reworkBuckets (metric #4, previously a
+//      placeholder tile), issue records carry resolution/statusCategory/
+//      reworkLink/reopened, and meta.jiraUnattributed.rework. On-Time also
+//      changes SCOPE (delivery -> dictionary) and Forecast changes FORMULA,
+//      so a v9 entry would serve the old readings under the new labels.
+var DH_SCHEMA_VER_ = 10;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -1610,18 +2362,29 @@ function probeDeliverySources() {
   // from the roster. That case is called out explicitly — an empty map would
   // otherwise sail through the check below and print "✅ all match", which reads
   // as a verified pass when nothing was actually checked.
-  var expected = { "AMER": 1, "EMEA": 1, "APAC": 1, "ANZ": 1, "Other": 1 };
-  var seen = {};
-  Object.keys(j.keyRegion).forEach(function (k) { seen[j.keyRegion[k]] = (seen[j.keyRegion[k]] || 0) + 1; });
-  var unexpected = Object.keys(seen).filter(function (v) { return !(v in expected); });
-  if (!Object.keys(seen).length) {
-    Logger.log("ℹ️ No Jira region values — expected: the Jira Raw Region column was retired in " +
-               "Jira Backlog.js v3.3.0. Person region resolves from the roster instead.");
+  //
+  // Probed over RAW values, not mapped ones: mapRegionToDh_ guarantees the
+  // output vocabulary, so a check on its output could only ever print
+  // "✅ all match" and would verify nothing. What matters is which raw option
+  // values exist and which of them fall through to "Other" — that's the list to
+  // take to Gon (open decision #1).
+  var raw = j.regionRaw || {};
+  var rawKeys = Object.keys(raw).filter(function (k) { return k !== "(blank)"; });
+  var blanks = raw["(blank)"] || 0;
+  if (!rawKeys.length) {
+    Logger.log("ℹ️ Jira Region: " + blanks + " rows, ALL BLANK — expected until PR-01 " +
+               "(the custom field isn't populated yet). Every issue lands in the Unassigned " +
+               "bucket; the Data Hygiene view trends the gap. Person region resolves from the roster.");
   } else {
-    Logger.log("Jira Region distinct values: " + JSON.stringify(seen));
-    Logger.log(unexpected.length
-      ? "⚠️ Region values NOT in the chip vocabulary (AMER/EMEA/APAC/ANZ/Other): " + unexpected.join(", ")
-      : "✅ All Jira Region values match the chip vocabulary");
+    var unmapped = rawKeys.filter(function (v) { return mapRegionToDh_(v) === CONFIG_DH.REGION_FALLBACK; });
+    Logger.log("Jira Region raw values: " + JSON.stringify(raw));
+    Logger.log("  → mapped: " + rawKeys.map(function (v) {
+      return '"' + v + '" → ' + mapRegionToDh_(v);
+    }).join(" · "));
+    Logger.log(unmapped.length
+      ? "⚠️ Region values falling through to \"Other\" — add them to JIRA_REGION_TO_DH_ (§4.3): " + unmapped.join(", ")
+      : "✅ Every Jira Region value maps to a dashboard region");
+    if (blanks) Logger.log("ℹ️ " + blanks + " rows have no Region → Unassigned bucket (PR-01, owner Gon)");
   }
 }
 
@@ -1945,9 +2708,45 @@ function _test_onTimeRate_() {
   var everything = onTimeBuckets_(issues, resolve, "all");
   var aa = everything.buckets.filter(function (b) { return b.person === "Ana"; })[0];
   assert_(aa.n === 3 && aa.nAll === 5, 'scope "all": pre-audit behaviour, epics folded back in');
-  assert_(CONFIG_DH.ONTIME_SCOPE === "delivery", "shipped default is the delivery-issue scope");
-  assert_(onTimeBuckets_(issues, resolve).buckets.length === r.buckets.length,
+  // Shipped default moved "delivery" → "dictionary" on 2026-08-03 (align the
+  // formulas with the Metrics Dictionary). The assertion is pinned rather than
+  // read from the config on purpose: this switch changes what the published rate
+  // MEANS, so it should never move without a test failing and someone deciding.
+  assert_(CONFIG_DH.ONTIME_SCOPE === "dictionary", "shipped default is the dictionary scope");
+  // Omitting the scope must land on the CONFIG_DH default — compared against an
+  // explicit run of that same scope, not against `r` (which pins "delivery"),
+  // so this stays true whatever the shipped default becomes.
+  assert_(JSON.stringify(onTimeBuckets_(issues, resolve).buckets) ===
+          JSON.stringify(onTimeBuckets_(issues, resolve, CONFIG_DH.ONTIME_SCOPE).buckets),
           "omitted scope falls back to the CONFIG_DH default");
+  // ── SHIPPED SCOPE: the Metrics Dictionary reading (2026-08-03) ──
+  // "issue type Epic/Milestone OR Client Commitment label" — a UNION, because a
+  // commitment made to a client is a commitment whatever the issue type.
+  var dictIssues = [
+    { due: new Date(2026, 6, 29), resolved: new Date(2026, 6, 28), assignee: "Ana", isEpic: true },          // epic, on time
+    { due: new Date(2026, 6, 27), resolved: new Date(2026, 6, 30), assignee: "Ana", isMilestone: true },     // milestone, late
+    { due: new Date(2026, 6, 29), resolved: new Date(2026, 6, 28), assignee: "Ana", isClientCommitment: true }, // labelled story, on time
+    { due: new Date(2026, 6, 29), resolved: new Date(2026, 6, 28), assignee: "Ana" },                        // plain story — OUT of scope
+    { due: null,                  resolved: new Date(2026, 6, 30), assignee: "Ana", isEpic: true },          // epic, no due — coverage only
+  ];
+  var dict = onTimeBuckets_(dictIssues, resolve, "dictionary").buckets[0];
+  assert_(dict.nAll === 4, "dictionary scope: epics + milestones + labelled issues, plain story excluded");
+  assert_(dict.n === 3, "dictionary scope: 3 of those 4 carry a due date");
+  assert_(dict.onTime === 2, "dictionary scope: epic + labelled story on time, milestone late");
+  // Each of the three signals must ADMIT on its own — an AND here would silently
+  // shrink the metric to epics that also happen to be labelled.
+  assert_(onTimeInScope_({ isEpic: true }, "dictionary"), "epic alone is in scope");
+  assert_(onTimeInScope_({ isMilestone: true }, "dictionary"), "milestone alone is in scope");
+  assert_(onTimeInScope_({ isClientCommitment: true }, "dictionary"), "the label alone is in scope");
+  assert_(!onTimeInScope_({}, "dictionary"), "a plain Story carries none of the three and is out");
+  // The label regex tolerates the ways people actually write labels, but must
+  // not swallow an unrelated label that merely starts with "client".
+  assert_(DH_CLIENT_COMMITMENT_.test("client-commitment") &&
+          DH_CLIENT_COMMITMENT_.test("ClientCommitment") &&
+          DH_CLIENT_COMMITMENT_.test("a, client_commitment, b"),
+          "Client Commitment label matched across the common spellings");
+  assert_(!DH_CLIENT_COMMITMENT_.test("client-portal"), "an unrelated client-* label is not a commitment");
+
   var e = r.buckets.filter(function (b) { return b.person === "Ben"; })[0];
   assert_(e.n === 1 && e.onTime === 0 && e.nAll === 1, "late issue counted, not on time");
   assert_(r.buckets.length === 2, "person-keyed buckets; unresolved rows excluded");
@@ -1959,10 +2758,10 @@ function _test_forecastAccuracy_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_forecastAccuracy_: " + m); }
   var resolve = function (raw) { return raw === "Ana" ? "Ana" : null; };
   var epics = [
-    { estSec: 36000, spentSec: 36000, resolved: new Date(2026, 6, 28), assignee: "Ana" }, // perfect: acc 1
-    { estSec: 36000, spentSec: 54000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 50% over: acc .5
-    { estSec: 36000, spentSec: 90000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 150% over: acc floored 0
-    { estSec: 36000, spentSec: 18000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 50% UNDER: acc .5
+    { estSec: 36000, spentSec: 36000, resolved: new Date(2026, 6, 28), assignee: "Ana" }, // exact: within band
+    { estSec: 36000, spentSec: 54000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 50% over: miss
+    { estSec: 36000, spentSec: 90000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 150% over: miss
+    { estSec: 36000, spentSec: 18000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // 50% UNDER: miss
     { estSec: 0,     spentSec: 36000, resolved: new Date(2026, 6, 29), assignee: "Ana" }, // no estimate — coverage only
     { estSec: 36000, spentSec: 0,     resolved: new Date(2026, 6, 29), assignee: "Ana" }, // estimated, ZERO worklog — coverage only
     { estSec: 36000, spentSec: 36000, resolved: null,                  assignee: "Ana" }, // unresolved — excluded
@@ -1974,15 +2773,327 @@ function _test_forecastAccuracy_() {
   assert_(b.person === "Ana" && b.iso === "2026.W31" && b.n === 4, "4 measurable resolved epics for Ana");
   assert_(b.nAll === 6, "coverage: unestimated + zero-worklog epics count in nAll only");
   assert_(b.nNoTime === 1, "estimated epic with no logged time tallied separately");
-  assert_(Math.abs(b.sumAcc - 2.0) < 1e-9, "acc: 1 + 0.5 + 0 (floored) + 0.5 under");
-  // A zero-worklog epic used to score acc 0 — the worst possible — which would
-  // have made sumAcc 2.0 over n=5 (40%) instead of 2.0 over n=4 (50%).
-  assert_(Math.abs(b.sumAcc / b.n * 100 - 50) < 1e-9, "zero-worklog epic no longer drags the rate down");
-  assert_(b.nOver === 2 && b.nUnder === 1, "variance direction counted per epic");
-  assert_(Math.abs(b.lossOver - 1.5) < 1e-9, "over-run loss: 0.5 + 1.0 (capped)");
-  assert_(Math.abs(b.lossUnder - 0.5) < 1e-9, "under-run loss: 0.5");
+  // ±10% BAND (FR-1.4): only the exact epic lands inside it. The three misses
+  // are 50% over, 150% over and 50% under.
+  assert_(b.nWithin === 1, "band: 1 of 4 measurable epics inside ±10%");
+  assert_(Math.abs(b.nWithin / b.n * 100 - 25) < 1e-9, "forecast accuracy = 25%");
+  assert_(b.nMissOver === 2 && b.nMissUnder === 1, "misses split by direction");
+  assert_(b.nMissOver + b.nMissUnder + b.nWithin === b.n, "every measurable epic is within or a miss");
+  // Secondary form: median |variance| over 0, 0.5, 1.5, 0.5 → (0.5 + 0.5)/2.
+  assert_(medianOf_(b.absVars) === 0.5, "median absolute variance = 50%");
+  // The old score would have read 1 + 0.5 + 0 (floored) + 0.5 = 50% — the same
+  // number for a team that over-runs 150% as for one that closes 50% early.
+  assert_(b.sumAcc === undefined, "retired accuracy score no longer emitted");
+  // A zero-worklog epic must stay OUT of the band denominator: in nAll, not n.
+  assert_(b.n === 4 && b.nAll === 6, "zero-worklog + unestimated epics are coverage-only");
+  // The band width is a registry parameter, not a constant baked into the loop.
+  var wide = forecastBuckets_(epics, resolve, 0.60).buckets[0];
+  assert_(wide.nWithin === 3, "±60% band admits the two 50% epics as well");
+  assert_(CONFIG_DH.FORECAST_BAND === 0.10, "shipped band is ±10% (registry v1.0)");
   assert_(r.unattributed === 1, "non-roster epic tallied as unattributed");
+
+  // ── SHIPPED HEADLINE: the Metrics Dictionary mean (2026-08-03) ──
+  // absVars are 0, 0.5, 1.5, 0.5 → per-epic accuracy 1, 0.5, 0 (FLOORED), 0.5
+  // → mean 0.5 → 50%. The floor is the load-bearing part: without it the 150%
+  // over-run would score −50% and drag the mean to 25%, letting one runaway
+  // engagement cancel out two good ones.
+  var accPct = function (v) {         // mirror of the client's forecastAccuracyPct_
+    if (!v || !v.length) return null;
+    var t = 0;
+    v.forEach(function (x) { t += Math.max(0, 1 - x); });
+    return t / v.length * 100;
+  };
+  assert_(Math.abs(accPct(b.absVars) - 50) < 1e-9,
+          "dictionary mean accuracy = 50% (1 + 0.5 + 0 floored + 0.5) / 4");
+  assert_(accPct([1.5]) === 0, "a 150% over-run floors at 0, never negative");
+  assert_(accPct([0]) === 100, "an exact estimate scores 100%");
+  assert_(accPct([]) === null, "nothing measurable → no number, not a zero");
+  // The band and the mean must stay INDEPENDENT: same epics, different answers,
+  // and publishing either alone is quotable in a misleading direction.
+  assert_(Math.abs(b.nWithin / b.n * 100 - 25) < 1e-9 && Math.abs(accPct(b.absVars) - 50) < 1e-9,
+          "25% inside the band but 50% mean accuracy — both true, both shipped");
   Logger.log("✅ _test_forecastAccuracy_ passed");
+}
+
+/**
+ * Quality / Rework Rate (Metrics Dictionary metric #4, built 2026-08-03).
+ *
+ * The rules that matter here are all about NOT overstating what was measured:
+ * an unmeasured reopen must never read as "no rework", and work that was never
+ * delivered must never sit in the delivered denominator.
+ */
+function _test_reworkRate_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_reworkRate_: " + m); }
+  var resolve = function (raw) { return raw === "Ana" ? "Ana" : null; };
+  var W = new Date(2026, 6, 29);   // ISO 2026.W31
+  var issues = [
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: true,  reopened: false },                       // rework via link
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: false, reopened: true },                        // rework via reopen
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: true,  reopened: true },                        // BOTH — still ONE piece of rework
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: false, reopened: false },                       // clean
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: false, reopened: null },                        // clean, reopen NOT measured
+    // Never delivered — out of the denominator entirely.
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Won't Do",
+      reworkLink: true,  reopened: true },
+    { resolved: W, assignee: "Ana", statusCategory: "Done", resolution: "Duplicate",
+      reworkLink: false, reopened: false },
+    // Not Done, unresolved, and non-roster — each excluded for its own reason.
+    { resolved: W, assignee: "Ana", statusCategory: "In Progress", resolution: "",
+      reworkLink: true,  reopened: false },
+    { resolved: null, assignee: "Ana", statusCategory: "Done", resolution: "Done",
+      reworkLink: true, reopened: true },
+    { resolved: W, assignee: "Ghost", statusCategory: "Done", resolution: "Done",
+      reworkLink: true, reopened: false },
+  ];
+  var r = reworkBuckets_(issues, resolve);
+  assert_(r.buckets.length === 1, "one person bucket");
+  var b = r.buckets[0];
+  assert_(b.person === "Ana" && b.iso === "2026.W31", "keyed by iso × person");
+  assert_(b.nDelivered === 5, "denominator = delivered only (Won't Do / Duplicate / not-Done excluded)");
+  assert_(b.nRework === 3, "numerator = reopened OR linked, counted once each");
+  assert_(b.nLinked === 2 && b.nReopened === 2,
+          "the two signals are also reported separately, and they overlap");
+  assert_(b.nLinked + b.nReopened !== b.nRework,
+          "the union is NOT the sum — the issue that did both must not be double-counted");
+  assert_(Math.abs(b.nRework / b.nDelivered * 100 - 60) < 1e-9, "rework rate = 3 of 5 = 60%");
+  assert_(r.unattributed === 1, "non-roster delivered issue tallied as unattributed");
+
+  // COVERAGE: the reopen signal is tristate, and the difference between
+  // "not reopened" and "nobody looked" is the whole credibility of this metric.
+  assert_(b.nReopenCov === 4, "only the 4 issues with a populated Reopened cell count toward coverage");
+  var unmeasured = issues.map(function (it) {
+    return { resolved: it.resolved, assignee: it.assignee, statusCategory: it.statusCategory,
+             resolution: it.resolution, reworkLink: it.reworkLink, reopened: null };
+  });
+  var u = reworkBuckets_(unmeasured, resolve).buckets[0];
+  assert_(u.nReopenCov === 0, "changelog off → zero reopen coverage");
+  assert_(u.nReopened === 0 && u.nRework === 2,
+          "with reopens unmeasured the rate falls back to links alone — an UNDERSTATEMENT, " +
+          "which is why the card calls it a floor rather than a measurement");
+  assert_(u.nRework < b.nRework, "and it is strictly lower than the fully measured rate");
+
+  // A pre-v3.6.0 export has no Rework/Reopened columns at all: every signal
+  // absent must produce a 0% rate with 0 coverage, never a crash and never a
+  // confident zero.
+  var bare = reworkBuckets_([{ resolved: W, assignee: "Ana", statusCategory: "Done",
+                               resolution: "Done", reworkLink: false, reopened: null }], resolve).buckets[0];
+  assert_(bare.nDelivered === 1 && bare.nRework === 0 && bare.nReopenCov === 0,
+          "old export: delivered counted, no rework claimed, no reopen coverage");
+
+  // The denominator regex is the contract with FIELD_REFERENCE.md.
+  ["Won't Do", "Wont Fix", "Duplicate", "Incomplete", "Declined"].forEach(function (res) {
+    assert_(CONFIG_DH.NON_DELIVERED_RESOLUTIONS.test(res), res + " is not delivered work");
+  });
+  ["Done", "Fixed", "Completed"].forEach(function (res) {
+    assert_(!CONFIG_DH.NON_DELIVERED_RESOLUTIONS.test(res), res + " IS delivered work");
+  });
+  Logger.log("✅ _test_reworkRate_ passed");
+}
+
+/** Registry integrity (FR-1.1/FR-1.2) — the payload's definitional contract.
+    A metric that ships without an owner or a coverage gate can't be defended in
+    a review, and a gate the tiles can't read is a gate that never fires. */
+function _test_registry_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_registry_: " + m); }
+  var R = METRIC_REGISTRY_;
+  assert_(R.version && R.updated, "registry carries a version and a date");
+  ["onTime", "forecast", "util", "quality", "hygiene"].forEach(function (id) {
+    var m = R.metrics[id];
+    assert_(m, "registry defines " + id);
+    ["name", "definition", "formula", "grain", "owner", "paramOwner", "ebitda"].forEach(function (f) {
+      assert_(m[f] && String(m[f]).trim().length >= 3, id + " has a " + f);
+    });
+    assert_(m.id === id, id + " id matches its key");
+    assert_(m.sources && m.sources.length, id + " names its source fields");
+    assert_(typeof m.coverageGate === "number" && m.coverageGate >= 0 && m.coverageGate <= 1,
+            id + " coverage gate is a 0–1 fraction");
+    assert_(m.target && typeof m.target.green === "number", id + " has a target");
+  });
+  // Targets are shared with the tile RAG bands — one number, not two.
+  assert_(R.metrics.onTime.target === CONFIG_DH.TARGETS.onTime, "onTime target is the CONFIG_DH one");
+  assert_(R.metrics.util.target === CONFIG_DH.TARGETS.util, "util target is the CONFIG_DH one");
+  assert_(R.changeLog.length >= 1 && R.changeLog[0].version === R.version,
+          "newest change-log entry matches the registry version");
+  R.changeLog.forEach(function (c) {
+    // `affects` may legitimately be EMPTY: a publication-rule change (e.g. gates
+    // no longer suppressing) moves no metric's values, and marking trend lines
+    // for it would put a false "definition changed" note on a series that
+    // didn't step. The property must still be present and be an array.
+    assert_(c.date && c.author && c.change && c.rationale && c.affects instanceof Array,
+            "change-log entry " + c.version + " is complete");
+  });
+  // Known deviations are part of the definition, not a footnote someone can drop.
+  assert_(R.metrics.onTime.deviations.length >= 1, "on-time records its baselined-date gap");
+  assert_(R.metrics.forecast.deviations.length >= 1, "forecast records its mutable-estimate gap");
+  Logger.log("✅ _test_registry_ passed");
+}
+
+/** PM vocabulary must not carry people who have left (user report 2026-08-03). */
+function _test_activeNameFilter_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_activeNameFilter_: " + m); }
+  var roster = {
+    activeAll:   { "ana perez": 1, "sam lee": 1, "rita boomerang": 1 },
+    inactiveAll: { "gone guy": 1, "rita boomerang": 1 },  // rehired: both rows exist
+  };
+  var r = filterActiveNames_(["Ana Perez", "Gone Guy", "Rita Boomerang", "External PM"], roster);
+  assert_(r.kept.indexOf("Ana Perez") !== -1, "active name kept");
+  assert_(r.dropped.indexOf("Gone Guy") !== -1, "terminated name dropped");
+  assert_(r.kept.indexOf("Gone Guy") === -1, "…and not also kept");
+  // A rehire has both an old terminated row and a current active one. Active
+  // wins — the same first-active-wins rule the roster reader uses.
+  assert_(r.kept.indexOf("Rita Boomerang") !== -1, "boomerang rehire kept (an active row exists)");
+  // The rule is one-sided ON PURPOSE: only names the roster PROVES are gone get
+  // dropped. Deleting unknown names would silently remove live work from the
+  // filters, which is invisible; a stale chip is merely untidy.
+  assert_(r.kept.indexOf("External PM") !== -1, "unknown name kept — absence of proof is not proof");
+  assert_(r.kept.length === 3 && r.dropped.length === 1, "counts add up");
+  // Case/spacing differences must not resurrect a leaver.
+  assert_(filterActiveNames_(["  GONE   GUY "], roster).dropped.length === 1,
+          "name match is normalised");
+  assert_(filterActiveNames_(["Anyone"], {}).kept.length === 1, "no roster data → keep everything");
+  Logger.log("✅ _test_activeNameFilter_ passed");
+}
+
+/** Admin gate overrides layer over the registry (user request 2026-08-03). */
+function _test_gateOverrides_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_gateOverrides_: " + m); }
+  var base = METRIC_REGISTRY_.metrics.onTime.coverageGate;
+  var plain = registryWithOverrides_({});
+  assert_(plain.metrics.onTime.coverageGate === base, "no overrides → registry values");
+  assert_(plain.metrics.onTime.gateOverride === undefined, "…and no override badge");
+
+  var r = registryWithOverrides_({ onTime: { gate: 0.55, by: "a@b.com", at: "2026-08-03" } });
+  assert_(r.metrics.onTime.coverageGate === 0.55, "override applied");
+  assert_(r.metrics.onTime.gateDefault === base, "agreed default preserved for the UI");
+  assert_(r.metrics.onTime.gateOverride.by === "a@b.com", "who changed it is recorded");
+  assert_(r.metrics.onTime.gateOverride.at === "2026-08-03", "…and when");
+  // The registry itself must never be mutated, or one override would leak into
+  // every later build in the same execution and there'd be no default to restore.
+  assert_(METRIC_REGISTRY_.metrics.onTime.coverageGate === base, "REGISTRY UNTOUCHED");
+  assert_(r.metrics.forecast.coverageGate === METRIC_REGISTRY_.metrics.forecast.coverageGate,
+          "other metrics unaffected");
+
+  // Garbage in must not silently redefine a gate.
+  ["", null, 1.5, -0.2, "0.5", undefined].forEach(function (bad) {
+    var g = registryWithOverrides_({ onTime: { gate: bad } });
+    assert_(g.metrics.onTime.coverageGate === base, "invalid gate ignored: " + String(bad));
+  });
+  assert_(registryWithOverrides_({ nosuch: { gate: 0.5 } }).metrics.nosuch === undefined,
+          "unknown metric id ignored");
+  assert_(registryWithOverrides_({ onTime: { gate: 0 } }).metrics.onTime.coverageGate === 0,
+          "0 is a legitimate gate (ungated), not a falsy no-op");
+  Logger.log("✅ _test_gateOverrides_ passed");
+}
+
+/** Confidence gate + suppression (FR-2.1/2.2/2.6). */
+function _test_confidence_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_confidence_: " + m); }
+  var gate = 0.80;
+  assert_(metricConfidence_(gate, 0.92, 6).level === "high", "above gate with history → high");
+  assert_(metricConfidence_(gate, 0.92, 6).publish === true, "high publishes");
+  assert_(metricConfidence_(gate, 0.92, 1).level === "medium", "above gate but <2 periods → medium");
+  assert_(metricConfidence_(gate, 0.75, 6).level === "medium", "within 10 pts of gate → medium");
+  assert_(metricConfidence_(gate, 0.75, 6).publish === true, "medium still publishes, with a note");
+  assert_(metricConfidence_(gate, 0.69, 6).level === "low", "10+ pts below gate → low");
+  assert_(metricConfidence_(gate, 0.69, 6).publish === false, "LOW IS SUPPRESSED — the whole point");
+  // The two numbers that started this: 43% forecast coverage and 66% on-time.
+  assert_(metricConfidence_(0.70, 0.43, 6).publish === false, "forecast at 43% coverage is suppressed");
+  assert_(metricConfidence_(0.80, 0.66, 6).publish === false, "on-time at 66% coverage is suppressed");
+  // Nothing in scope is not the same as badly attributed.
+  assert_(metricConfidence_(gate, null, 6).level === "none", "no data → none, not low");
+  assert_(metricConfidence_(gate, null, 6).publish === false, "no data never publishes");
+  // The hygiene metric measures coverage, so it can't be gated on its own.
+  assert_(metricConfidence_(0, 0.10, 0).publish === true, "an ungated metric always publishes");
+  assert_(metricConfidence_(gate, 1.4, 6).coverage === 1, "coverage clamps to 1");
+  Logger.log("✅ _test_confidence_ passed");
+}
+
+/** Jira Region vocabulary normalisation (§4.3) + the Unassigned bucket (§4.2). */
+function _test_regionVocab_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_regionVocab_: " + m); }
+  assert_(mapRegionToDh_("RR01 North America") === "AMER", "exact option value maps");
+  assert_(mapRegionToDh_("  rr02   EMEA  ") === "EMEA", "case + whitespace tolerated");
+  assert_(mapRegionToDh_("RR02 Europe/Middle East/Africa") === "EMEA", "prefix match on a longer label");
+  assert_(mapRegionToDh_("RR03 Asia Pacific") === "APAC", "asia pacific maps");
+  assert_(mapRegionToDh_("RR04 Australia & New Zealand") === "ANZ", "anz maps");
+  assert_(mapRegionToDh_("APAC") === "APAC", "a bare token already in the vocabulary passes through");
+  assert_(mapRegionToDh_("RR09 Antarctica") === "Other", "unrecognised value → Other");
+  // The distinction the executive layer depends on: a region we haven't mapped
+  // is a mapping bug, a BLANK region is a tagging gap somebody owns. Folding
+  // blanks into "Other" would hide the gap §4.2 exists to make uncomfortable.
+  assert_(mapRegionToDh_("") === "Unassigned", "blank → Unassigned, never Other");
+  assert_(mapRegionToDh_(null) === "Unassigned", "null → Unassigned");
+  assert_(mapRegionToDh_(undefined) === "Unassigned", "undefined → Unassigned");
+  assert_(DH_REGION_UNASSIGNED_ !== CONFIG_DH.REGION_FALLBACK, "Unassigned and Other are different buckets");
+  Logger.log("✅ _test_regionVocab_ passed");
+}
+
+/** Attribution counters behind the Data Hygiene view (FR-2.3/2.4). */
+function _test_hygieneBuckets_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_hygieneBuckets_: " + m); }
+  var resolve = function (raw) { return String(raw).toLowerCase() === "ana" ? "Ana" : null; };
+  var d = new Date(2026, 6, 29); // 2026.W31
+  var jira = { issues: [
+    // fully attributed: due + roster assignee + region
+    { resolved: d, due: d, assignee: "Ana", region: "AMER", team: "RR: SEA 1", isEpic: false },
+    // no due date
+    { resolved: d, due: null, assignee: "Ana", region: "AMER", team: "", isEpic: false },
+    // assignee not on the roster — the metrics DROP this one, hygiene must not
+    { resolved: d, due: d, assignee: "Contractor X", region: "AMER", team: "", isEpic: false },
+    // region never tagged
+    { resolved: d, due: d, assignee: "Ana", region: "Unassigned", team: "", isEpic: false },
+    // unresolved — out of scope entirely
+    { resolved: null, due: d, assignee: "Ana", region: "AMER", team: "", isEpic: false },
+    // epics: one measurable, one estimated-but-untracked, one unestimated
+    { resolved: d, due: d, assignee: "Ana", region: "AMER", team: "", isEpic: true,
+      estSec: 3600, spentSec: 3600 },
+    { resolved: d, due: null, assignee: "Ana", region: "Unassigned", team: "", isEpic: true,
+      estSec: 3600, spentSec: 0 },
+    { resolved: d, due: null, assignee: "Ana", region: "Unassigned", team: "", isEpic: true,
+      estSec: 0, spentSec: 7200 },
+  ] };
+  var rows = hygieneBuckets_(jira, resolve, "delivery");
+  assert_(rows.length === 1 && rows[0].iso === "2026.W31", "one ISO-week row");
+  var h = rows[0];
+  assert_(h.res === 4, "4 resolved delivery issues in scope (epics and unresolved excluded)");
+  assert_(h.resDue === 3, "3 carry a due date");
+  assert_(h.resAttr === 3, "3 join the roster");
+  assert_(h.resRegion === 3, "3 carry a mapped region");
+  assert_(h.resTeam === 1, "1 carries a team");
+  assert_(h.resFull === 1, "fully attributed = due AND roster assignee AND region");
+  // resReady drops the region term: with Region unpopulated org-wide, resFull is
+  // pinned at 0 and can't show due-date/assignee progress. Fixture: issues 1 and
+  // 4 both carry a due date and a roster assignee; only issue 1 has a region.
+  assert_(h.resReady === 2, "ready = due AND roster assignee, region excluded");
+  assert_(h.resReady >= h.resFull, "resReady is the looser composite, always ≥ resFull");
+  // This is why hygiene reads the raw feed instead of the metric buckets: the
+  // non-roster issue is invisible to onTimeBuckets_, so coverage measured there
+  // would flatter itself by dropping the very records that are the problem.
+  assert_(h.res > h.resAttr, "unattributed issues stay in the hygiene denominator");
+  assert_(h.epics === 3, "epics counted separately, whatever the on-time scope");
+  assert_(h.epicsEst === 2 && h.epicsTime === 1, "estimate fill vs measurable epics");
+  // Scope switch moves the delivery counts but never the epic ones.
+  var asEpic = hygieneBuckets_(jira, resolve, "epic")[0];
+  assert_(asEpic.res === 3 && asEpic.epics === 3, 'scope "epic" counts epics as the delivery population');
+  // Hygiene shares onTimeInScope_ with the metric rather than keeping its own
+  // copy of the rule — otherwise the view would diagnose the coverage of a
+  // population nobody publishes. Under "dictionary" that means epics +
+  // milestones + client-commitment items.
+  var jiraD = { issues: jira.issues.concat([
+    { resolved: d, due: d, assignee: "Ana", region: "AMER", team: "", isEpic: false,
+      isClientCommitment: true },
+  ]) };
+  var asDict = hygieneBuckets_(jiraD, resolve, "dictionary")[0];
+  assert_(asDict.res === 4, 'scope "dictionary" counts epics + client-commitment items (3 epics + 1)');
+  assert_(hygieneBuckets_(jiraD, resolve, "delivery")[0].res === 5,
+          '…while "delivery" counts the non-epics instead');
+  assert_(hygieneBuckets_({ issues: [] }, resolve, "delivery").length === 0, "empty feed → no rows");
+  Logger.log("✅ _test_hygieneBuckets_ passed");
 }
 
 function _test_cacheRoundtrip_(cache) {
@@ -2038,10 +3149,16 @@ function _test_modelAssembly_() {
     // row; W30 4h exists ONLY here — proves the ledger wins over NETSUITE.
     pto: { ok: true, byEmp: { "1001": { "2026.W31": 8, "2026.W30": 4 } } },
     jira: { available: true, keyRegion: { "ACME-1": "AMER" },
+      // isClientCommitment so both rows sit inside the shipped "dictionary"
+      // scope as well as "delivery" — this fixture is testing the roster join
+      // and the hygiene counters, and it should not silently empty out the next
+      // time ONTIME_SCOPE moves.
       issues: [ { due: new Date(2026, 6, 28), resolved: new Date(2026, 6, 28),
-                  assignee: "Alvarez, Maria", estSec: 0, spentSec: 0 },   // comma-form → alias join
+                  assignee: "Alvarez, Maria", estSec: 0, spentSec: 0,
+                  isClientCommitment: true },                             // comma-form → alias join
                 { due: new Date(2026, 6, 28), resolved: new Date(2026, 6, 28),
-                  assignee: "Random Dev", estSec: 0, spentSec: 0 } ],     // not roster → unattributed
+                  assignee: "Random Dev", estSec: 0, spentSec: 0,
+                  isClientCommitment: true } ],                           // not roster → unattributed
       epics: [ { estSec: 36000, spentSec: 18000, resolved: new Date(2026, 6, 28),
                  assignee: "Maria Alvarez" } ],
       openIssues: [ { key: "ACME-7", summary: "Open work", assignee: "Alvarez, Maria",
@@ -2128,8 +3245,20 @@ function _test_modelAssembly_() {
           "families list = included population only, blank → Uncatalogued");
   assert_(m.onTimeBuckets.length === 1 && m.onTimeBuckets[0].onTime === 1 &&
           m.onTimeBuckets[0].person === "Maria Alvarez", "onTime buckets person-attributed via alias join");
-  assert_(m.forecastBuckets.length === 1 && Math.abs(m.forecastBuckets[0].sumAcc - 0.5) < 1e-9 &&
+  // Fixture epic ran 18000s against a 36000s estimate — 50% under, well outside
+  // the ±10% band, so it is measurable (n=1) but not on target (nWithin=0).
+  assert_(m.forecastBuckets.length === 1 && m.forecastBuckets[0].n === 1 &&
+          m.forecastBuckets[0].nWithin === 0 && m.forecastBuckets[0].nMissUnder === 1 &&
           m.forecastBuckets[0].person === "Maria Alvarez", "forecast buckets person-attributed");
+  // Hygiene reads the RAW feed, so it sees the non-roster issue the tiles drop.
+  var hyg = m.hygieneBuckets.filter(function (h) { return h.iso === "2026.W31"; })[0];
+  assert_(hyg && hyg.res === 2 && hyg.resDue === 2 && hyg.resAttr === 1,
+          "hygiene counts both resolved issues, only one of them attributed");
+  assert_(hyg.resRegion === 0 && hyg.resFull === 0,
+          "no issue-level region in the fixture → nothing fully attributed");
+  assert_(m.meta.registry.version === METRIC_REGISTRY_.version, "registry shipped in meta");
+  assert_(m.meta.forecastBand === CONFIG_DH.FORECAST_BAND, "band shipped so the tile can name it");
+  assert_(m.meta.sources.length >= 4, "source systems listed for the data-provenance line");
   assert_(m.meta.jiraUnattributed.onTime === 1 && m.meta.jiraUnattributed.forecast === 0,
           "non-roster assignee tallied as unattributed");
   assert_(m.meta.teams.indexOf("Team A") !== -1 && m.meta.teams.indexOf("Squad X") === -1,

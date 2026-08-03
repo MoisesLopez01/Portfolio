@@ -101,7 +101,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
-             " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_ })";
+             " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -1012,5 +1012,57 @@ assert_(/class="big r"/.test(qCardOf(qModel(25, 100))), "25% measured is red");
 // what the numerator can contain, not about whether the number looks bad.
 assert_(!/class="big [gar]"/.test(qCardOf(qModel(25, 0))),
         "25% unmeasured is uncoloured too — the rule is structural, not cosmetic");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 19. MARGIN TIER — HIDDEN, NOT DIMMED (F4)
+// The Dictionary limits utilization and forecast-variance detail to "directs and
+// above". Open access is the demo switch and used to hand every unidentified
+// visitor the viewer role — and the margin numbers with it.
+// ══════════════════════════════════════════════════════════════════════════
+function asRole(role) {
+  var mdl = fresh(model({ otCov: 0.95, fcCov: 0.92 }));
+  mdl.viewerRole = role;
+  C.renderTiles_();
+  return els.tiles.innerHTML;
+}
+var asAdmin = asRole("admin");
+var asViewer = asRole("viewer");
+var asGuest = asRole("guest");
+
+assert_(/Billable Utilization|Capacity Utilization/.test(asAdmin), "admin sees utilization");
+assert_(/Forecast Accuracy/.test(asAdmin), "admin sees forecast");
+assert_(/Billable Utilization|Capacity Utilization/.test(asViewer),
+        "a NAMED viewer is a direct and stays in the margin tier");
+
+// The gate: absent from the DOM, not greyed. A dimmed number is still a number
+// on a projector, and "greyed out" invites someone to ask what it says.
+assert_(!/Utilization/.test(asGuest), "a guest does not see utilization AT ALL");
+assert_(!/Forecast Accuracy/.test(asGuest), "…nor forecast accuracy");
+assert_(!/opacity|\.ph|disabled/.test(asGuest.split("Quality")[0] || ""),
+        "…and they are omitted from the string, not rendered-then-dimmed");
+// The two non-margin metrics still answer their questions for everyone.
+assert_(/On-Time Delivery/.test(asGuest), "a guest still sees On-Time");
+assert_(/Quality \/ Rework/.test(asGuest), "…and Quality/Rework");
+
+// The metric must leave every chip strip and comparison chart too, or the guest
+// can select a hidden metric and read it off the bars instead.
+C.setModel(fresh(model({}))); C.getModel().viewerRole = "guest";
+assert_(C.liveMetrics_().indexOf("util") === -1 && C.liveMetrics_().indexOf("forecast") === -1,
+        "hidden metrics are not offered in the metric chips or the comparison chart");
+assert_(C.liveMetrics_().length >= 1, "…but the chart still has something to show");
+assert_(!C.canSeeMargin_(), "guest is out of tier");
+C.getModel().viewerRole = "admin";
+assert_(C.canSeeMargin_() && C.liveMetrics_().indexOf("util") !== -1, "admin gets them back");
+
+// The headroom tab is per-person utilization by construction — same tier.
+var trendView = C.VIEWS.filter(function (v) { return v.id === "trend"; })[0];
+assert_(trendView.roles && trendView.roles.indexOf("guest") === -1,
+        "the headroom tab is role-gated like Access");
+C.getModel().viewerRole = "guest";
+C.switchView_("trend");
+assert_(C.STATE.view !== "trend",
+        "…and asking for it by id lands elsewhere — the gate is in the router, not the tab bar");
+C.getModel().viewerRole = "admin";
+C.switchView_("exec");
 
 console.log("✅ render-smoke: " + checks + " checks passed");

@@ -1,3 +1,9 @@
+// ⚠️⚠️ DO NOT PASTE THIS FILE INTO THE GAS PROJECT. ⚠️⚠️
+// It is a LOCAL Node script. Apps Script has no `require`, so it fails on the
+// first line of the imports below with "ReferenceError: require is not defined".
+// Only three files belong in the GAS project: Code.js, Security.js, Dashboard.html.
+// Run it here instead:   node node-tests.js
+//
 // node-tests.js — local runner for the pure _test_ functions in Code.js.
 // Stubs: Logger→console, Utilities gzip/base64 via zlib/Buffer, FakeCache
 // for _test_cacheRoundtrip_. SpreadsheetApp/CacheService/ScriptApp are NOT
@@ -31,7 +37,9 @@ _test_nameJoin_();
 _test_teamSplit_();
 _test_nsWeekBucketing_();
 _test_netCapacity_(); _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
-_test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_();
+_test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_(); _test_reworkRate_();
+_test_registry_(); _test_confidence_(); _test_regionVocab_(); _test_hygieneBuckets_();
+_test_activeNameFilter_(); _test_gateOverrides_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
 _test_newHire_();
 _test_cacheRoundtrip_(new FakeCache());
@@ -102,6 +110,47 @@ _test_ptoUsage_();
   assert_(agg.covWeeks === 1 && agg.nWeeks === 2, "coverage counted per aggregated cell");
   assert_(C.nsRawTot_(agg) === 20 && C.nsShare_(agg) === 0.75, "raw NS totals + share carried");
   Logger.log("✅ _test_clientParity_ passed");
+})();
+
+// ── CONFIDENCE / MEDIAN PARITY ───────────────────────────────
+// metricConfidence_ and medianOf_ exist twice on purpose: the server needs them
+// for the payload, the client needs them because coverage is filter-dependent.
+// Same failure mode as utilFor_ — two copies of one rule drift silently and each
+// looks correct alone. The gate is the one rule that must NEVER differ between
+// layers: a metric suppressed on the server and published on the client is the
+// exact defect FR-2.2 exists to prevent.
+(function _test_confidenceParity_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_confidenceParity_: " + m); }
+  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var want = ["metricConfidence_", "medianOf_"];
+  var src = want.map(function (fn) {
+    var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
+    if (!m) throw new Error("❌ _test_confidenceParity_: could not extract " + fn + " from Dashboard.html");
+    return m[0];
+  }).join("\n");
+  var C = new Function(src + "return { metricConfidence_: metricConfidence_, medianOf_: medianOf_ };")();
+
+  var gates = [0, 0.7, 0.8, 0.9, 1.0];
+  var covs = [null, 0, 0.05, 0.43, 0.59, 0.6, 0.66, 0.69, 0.7, 0.7999, 0.8, 0.9, 1, 1.5];
+  var periods = [0, 1, 2, 7];
+  var checked = 0;
+  gates.forEach(function (g) {
+    covs.forEach(function (c) {
+      periods.forEach(function (p) {
+        var s = metricConfidence_(g, c, p), k = C.metricConfidence_(g, c, p);
+        assert_(s.level === k.level && s.publish === k.publish && s.coverage === k.coverage,
+                "confidence parity at gate " + g + " coverage " + c + " periods " + p +
+                " — server " + JSON.stringify(s) + " vs client " + JSON.stringify(k));
+        checked++;
+      });
+    });
+  });
+  assert_(checked === gates.length * covs.length * periods.length, "full matrix walked");
+
+  [[], [1], [1, 2], [3, 1, 2], [0, 0.5, 0.5, 1.5], [2, 2, 2]].forEach(function (v) {
+    assert_(medianOf_(v) === C.medianOf_(v), "median parity on [" + v.join(",") + "]");
+  });
+  Logger.log("✅ _test_confidenceParity_ passed (" + checked + " gate combinations)");
 })();
 
 console.log("✅ node-tests: all suites passed");

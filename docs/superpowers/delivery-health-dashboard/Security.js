@@ -104,15 +104,36 @@ function _readDeliveryAccessLists_() {
 /**
  * Returns the access status for the current session user.
  * Server-side authority — called from doGet() and getDeliveryData().
- * @returns {{ allowed:boolean, role:'admin'|'viewer'|'denied', email:string }}
+ * ROLES AND MARGIN-ADJACENT DETAIL
+ * The Metrics Dictionary limits utilization and forecast-variance detail to
+ * "directs and above". Admins and named viewers ARE that audience. Open access
+ * is not: it is the demo / all-hands switch, and it used to hand every
+ * unidentified visitor the "viewer" role and with it the margin numbers.
+ *
+ * So an open-access session now resolves to "guest" — allowed in, but outside
+ * the margin tier. The dashboard hides those cards outright rather than dimming
+ * them (a dimmed number is still a number on a projector).
+ *
+ * @returns {{ allowed:boolean, role:'admin'|'viewer'|'guest'|'denied', email:string }}
  */
 function checkDeliveryAccess() {
   const email = (Session.getActiveUser().getEmail() || "").toLowerCase().trim();
   const { admins, viewers, openAccess } = _readDeliveryAccessLists_();
 
-  if (admins.includes(email))                return { allowed: true,  role: "admin",  email };
-  if (openAccess || viewers.includes(email)) return { allowed: true,  role: "viewer", email };
+  if (admins.includes(email))  return { allowed: true,  role: "admin",  email };
+  if (viewers.includes(email)) return { allowed: true,  role: "viewer", email };
+  // Named people are matched FIRST, so turning open access on never demotes a
+  // director to guest — same precedence rule as the PS dashboard's manager check.
+  if (openAccess)              return { allowed: true,  role: "guest",  email };
   return { allowed: false, role: "denied", email };
+}
+
+/**
+ * Is this role inside the margin tier (utilization + forecast variance)?
+ * Server-side twin of canSeeMargin_() in Dashboard.html — change one, change both.
+ */
+function dhMarginTier_(role) {
+  return role === "admin" || role === "viewer";
 }
 
 /**
