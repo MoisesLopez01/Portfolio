@@ -1722,12 +1722,24 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   // Per-metric RAG (director feedback: one shared orange made every number look
   // equally alarming) + delta vs the prior complete period + explicit target.
   var t = opts.target || null;
-  var rag = ragOf_(headlinePct, t);
+  // FLOOR: a rate whose numerator signal is structurally absent can only
+  // undercount, so its value is a lower bound, not a measurement. It gets NO RAG
+  // colour at all — not green, not amber. Colour is a verdict, and there is no
+  // verdict to give: 0% detected is not 0% happened, and rendering it green made
+  // the least-measured number the healthiest-looking card on the screen.
+  // Distinct from low coverage (which the confidence chip already handles) —
+  // this is about what the numerator can physically contain.
+  var floor = !!opts.floor;
+  var rag = floor ? "" : ragOf_(headlinePct, t);
   // Lower-is-better metrics (Rework Rate) invert both the colour AND the
   // direction words, or a falling rate would read as a decline.
   var inv = !!(t && t.invert);
   var signal = "";
-  if (t && headlinePct !== null) {
+  if (floor && headlinePct !== null) {
+    signal = '<span title="' + esc_(opts.floorWhy || "") +
+      '">▱ at least ' + Math.round(headlinePct) + "% — lower bound, not a measurement" +
+      (t ? " (target " + (inv ? "≤" : "≥") + t.green + "%)" : "") + "</span>";
+  } else if (t && headlinePct !== null) {
     // Variance to TARGET leads (P5/FR-4.1): "3 pts better than last month" is
     // not an answer to "will we make the year?". vs-prior comes second, and is
     // dropped entirely when the data is stale (NFR-7) — a delta computed across
@@ -2064,6 +2076,10 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
   }
 
   var pct = q.nRework / q.nDelivered * 100;
+  // Reopens are one of the two signals in the Dictionary definition. When the
+  // export never fetched the changelog (CONFIGJ.FETCH_CHANGELOG off) the
+  // numerator CANNOT contain them, so the rate is a floor whatever its value.
+  var isFloor = q.nReopenCov === 0;
   // Coverage = the share of delivered work whose rework signals were actually
   // measurable. The link signal exists on every v3.6.0 row; the reopen signal
   // only where the changelog was fetched. With reopens off, half the definition
@@ -2100,6 +2116,11 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
     function () {
       return tileHtml_("Quality / Rework", pct, cmp, trend,
                        { headlineLabel: headlineLabel, target: tg, conf: conf,
+                         floor: isFloor,
+                         floorWhy: "Reopen detection is one of the two signals in this metric and " +
+                           "the export did not fetch it (CONFIGJ.FETCH_CHANGELOG is off), so the " +
+                           "numerator can only undercount. The true rate is this value or higher — " +
+                           "which is why it carries no red/amber/green verdict.",
                          metric: reg,
                          std: stdFor_(series, conf), trendLabels: trendLabels });
     }, headlineLabel, series.map(function () { return coverage * 100; }), trendLabels);

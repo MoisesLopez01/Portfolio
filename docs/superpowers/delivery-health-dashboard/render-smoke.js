@@ -971,4 +971,46 @@ assert_(C.filteredPeople_().length === oneDef.people.length,
         "…and cleared even when an accessor throws (finally, not a trailing assignment)");
 resetFilters();
 
+// ══════════════════════════════════════════════════════════════════════════
+// 18. A FLOOR IS NOT A VERDICT (F2)
+// 0% rework used to render in positive green — the best-looking number on the
+// screen — while the card's own body said reopens are not counted. With the
+// changelog off the numerator CANNOT contain reopens, so 0% means nothing was
+// detected, not nothing happened. No colour, because there is no verdict.
+// ══════════════════════════════════════════════════════════════════════════
+function qModel(rework, reopenCov) {
+  var mdl = model({ otCov: 0.95, fcCov: 0.92 });
+  mdl.reworkBuckets = WEEKS.map(function (iso) {
+    return { iso: iso, person: "Ana Perez", nDelivered: 100, nRework: rework,
+             nLinked: rework, nReopened: 0, nReopenCov: reopenCov };
+  });
+  return mdl;
+}
+function qCardOf(mdl) { return tiles(mdl).split("Quality / Rework")[1].split("</div></div>")[0]; }
+
+// THE bug: zero detected, changelog off.
+var zeroFloor = qCardOf(qModel(0, 0));
+assert_(/class="big[^"]*">0%/.test(zeroFloor), "0% is still shown — suppression is not the fix");
+assert_(!/class="big g"/.test(zeroFloor),
+        "0% with reopens unmeasured is NOT green — it was the healthiest-looking card on screen");
+assert_(!/class="big [gar]"/.test(zeroFloor), "…and carries no RAG colour at all: a floor has no verdict");
+assert_(/at least 0% — lower bound, not a measurement/.test(zeroFloor),
+        "…it states plainly that the value is a lower bound");
+assert_(!/vs target ≤/.test(zeroFloor),
+        "…and shows no vs-target chip, which would read as passing a target it cannot be judged against");
+assert_(/reopens NOT measured/.test(zeroFloor), "…with the reason still on the card");
+
+// Measured, and genuinely good: colour returns.
+var measuredGood = qCardOf(qModel(3, 100));
+assert_(/class="big g"/.test(measuredGood),
+        "3% WITH reopens measured is green — the fix removes false verdicts, not true ones");
+assert_(/vs target ≤5%/.test(measuredGood), "…and gets its vs-target chip back");
+
+// Measured and bad still reads bad.
+assert_(/class="big r"/.test(qCardOf(qModel(25, 100))), "25% measured is red");
+// A high rate that is ALSO a floor stays uncoloured — the floor rule is about
+// what the numerator can contain, not about whether the number looks bad.
+assert_(!/class="big [gar]"/.test(qCardOf(qModel(25, 0))),
+        "25% unmeasured is uncoloured too — the rule is structural, not cosmetic");
+
 console.log("✅ render-smoke: " + checks + " checks passed");

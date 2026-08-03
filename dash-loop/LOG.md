@@ -14,3 +14,4 @@ Environment notes recorded once:
 | iter | row | before→after | total | elapsed | note |
 |---|---|---|---|---|---|
 | 1 | R5 (F1) | 0→2 | 10→12 | 17:20–17:37 | scopedMetric_ was a second, divergent definition of every metric. Routed through the METRICS_ accessors over a scoped population. |
+| 2 | R4 (F2) | 1→2 | 12→13 | 17:37–17:46 | 0% rework rendered positive green while its own body said reopens are not counted. A rate whose numerator signal is structurally absent now renders with NO RAG colour and says "at least N% — lower bound, not a measurement". |
