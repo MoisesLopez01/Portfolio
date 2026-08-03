@@ -434,10 +434,14 @@ function clampToCapacity_(hours, capacity) {
  * are ALWAYS excluded, no include flag: their capacity rows may still carry
  * avail > 0 (Tempo schedules lag HR), which would drag the rate down for an
  * absence, not a performance signal.
- * @returns {{avail,billable,tracked,planned,billablePct,trackedPct}}
+ * Billable % divides by availCov — the availability of NS-CLASSIFIED person-weeks
+ * only — not by total avail. Mixing them would put unclassifiable weeks in the
+ * denominator with a forced-zero numerator, understating the rate by however much
+ * the NS export lags (audit fix 2026-08-03). Tracked % keeps the full avail base.
+ * @returns {{avail,availCov,billable,tracked,planned,billablePct,trackedPct}}
  */
 function utilRollup_(people, iso, region, team, includeNonTracking) {
-  var s = { avail: 0, billable: 0, tracked: 0, planned: 0 };
+  var s = { avail: 0, availCov: 0, billable: 0, tracked: 0, planned: 0 };
   people.forEach(function (p) {
     if (p.onLeave === true) return;
     if (!includeNonTracking && p.tracks === false) return;
@@ -446,13 +450,60 @@ function utilRollup_(people, iso, region, team, includeNonTracking) {
     var w = p.weeks && p.weeks[iso];
     if (!w) return;
     s.avail += Number(w.avail) || 0;
+    s.availCov += Number(w.availCov) || 0;
     s.billable += Number(w.billable) || 0;
     s.tracked += Number(w.tracked) || 0;
     s.planned += Number(w.planned) || 0;
   });
-  s.billablePct = s.avail > 0 ? s.billable / s.avail * 100 : null;
+  s.billablePct = s.availCov > 0 ? s.billable / s.availCov * 100 : null;
   s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
   return s;
+}
+
+// ── NS COVERAGE TELEMETRY (audit 2026-08-03) ─────────────────
+
+/**
+ * How much of the tracked-hour base the NS feed actually classified, plus the
+ * reconciliation gap between the two feeds. Every field is diagnostic — none of
+ * it enters a rate.
+ *
+ * gapHours = Σ|NS raw total − Tempo tracked| over classified person-weeks. Large
+ * values mean the feeds disagree about how much work happened, which the ratio
+ * model absorbs silently (it trusts Tempo's total) — so it is surfaced here
+ * rather than left invisible. unmatchedNames are NS employees no roster alias
+ * resolved: their hours classify nothing at all.
+ *
+ * @returns {{personWeeks,covered,coveredPct,trackedHours,classifiedHours,
+ *            classifiedPct,gapHours,unmatchedRows,unmatchedHours,unmatchedNames}}
+ */
+function nsCoverage_(people, unmatched) {
+  var pw = 0, cov = 0, trk = 0, clf = 0, gap = 0;
+  (people || []).forEach(function (p) {
+    Object.keys(p.weeks || {}).forEach(function (iso) {
+      var w = p.weeks[iso];
+      pw++;
+      trk += Number(w.tracked) || 0;
+      if (!w.nsCov) return;
+      cov++;
+      clf += Number(w.trackedCov) || 0;
+      gap += Math.abs(((Number(w.nsBillRaw) || 0) + (Number(w.nsNonBillRaw) || 0)) -
+                      (Number(w.tracked) || 0));
+    });
+  });
+  var u = unmatched || { rows: 0, hours: 0, names: {} };
+  var names = Object.keys(u.names || {}).sort();
+  return {
+    personWeeks: pw, covered: cov,
+    coveredPct: pw > 0 ? Math.round(cov / pw * 1000) / 10 : null,
+    trackedHours: Math.round(trk * 10) / 10,
+    classifiedHours: Math.round(clf * 10) / 10,
+    classifiedPct: trk > 0 ? Math.round(clf / trk * 1000) / 10 : null,
+    gapHours: Math.round(gap * 10) / 10,
+    unmatchedRows: u.rows || 0,
+    unmatchedHours: Math.round((u.hours || 0) * 10) / 10,
+    // Capped: this rides in the cached payload and only needs to be actionable.
+    unmatchedNames: names.slice(0, 25),
+  };
 }
 
 // ── JIRA TILE BUCKETS (additive per iso×region×team, spec §11) ──
@@ -1237,13 +1288,23 @@ function assembleModel_(inputs, win) {
   inputs.planned.rows.forEach(function (r) { eachTempoRow_(r, "planned"); });
   inputs.tracked.rows.forEach(function (r) { eachTempoRow_(r, "tracked"); });
 
-  // NS billable weekly aggregation, joined through the alias index
+  // NS billable weekly aggregation, joined through the alias index.
+  // Unmatched employee names are counted, not just dropped: a silent join failure
+  // reads downstream as "this person billed nothing", which is indistinguishable
+  // from a real 0% — so meta.nsCoverage reports it (audit fix 2026-08-03).
   var nsAvailable = !inputs.ns.error;
   var ptoAccumOk = !!(inputs.pto && inputs.pto.ok);
   var ptoByEmp = ptoAccumOk ? inputs.pto.byEmp : {};
+  var nsUnmatched = { rows: 0, hours: 0, names: {} };
   var nsWeekly = aggregateNsWeeks_(inputs.ns.rows.map(function (r) {
     var dn = resolveName_(nameIdx, r.name);
-    return dn ? { name: dn, date: r.date, billable: r.billable, nonBillable: r.nonBillable } : null;
+    if (!dn) {
+      nsUnmatched.rows++;
+      nsUnmatched.hours += (Number(r.billable) || 0) + (Number(r.nonBillable) || 0);
+      nsUnmatched.names[String(r.name || "").trim()] = 1;
+      return null;
+    }
+    return { name: dn, date: r.date, billable: r.billable, nonBillable: r.nonBillable };
   }).filter(Boolean));
 
   // Holiday hours per person-week (fuzzy location match, per-day hours by region)
@@ -1297,16 +1358,43 @@ function assembleModel_(inputs, win) {
       }
       var net = netCapacity_(cap, ptoH, holHrs);
       var ns = (nsWeekly[normDH_(dn)] && nsWeekly[normDH_(dn)][iso]) || { billable: 0, nonBillable: 0 };
+      // ── NS CLASSIFIES, TEMPO QUANTIFIES (user decision 2026-08-03) ──
+      // Tempo is the source of truth for HOW MANY hours were worked; NS is the
+      // source of truth for WHAT KIND. So the NS billable/non-billable split is
+      // applied as a RATIO to the Tempo tracked total rather than being carried
+      // as absolute hours.
+      //
+      // Why: the two feeds are independent, so NS absolutes are not bounded by
+      // hours anyone actually logged. Carrying them directly let billable hours
+      // exceed tracked hours, and billable ÷ available then reported utilization
+      // that no worklog supported — the headline inflated by exactly the feed
+      // disagreement. Under the ratio, billable + nonBillable === tracked by
+      // construction, so billableUtil can never exceed trackedUtil.
+      //
+      // NS "Non-Billable Hours" = REAL project non-billable work. PTO/holidays
+      // live ONLY in the Time off Report (the NETSUITE rows + PH tab feeding
+      // pto/hol above) — they never appear in this bucket, so nothing is netted
+      // out (user clarification 2026-08-01, reverting the same-day OOO
+      // subtraction). PTO's only metric effect is shrinking the avail denominator.
+      var nsTot = ns.billable + ns.nonBillable;
+      // No NS signal for this person-week = UNCLASSIFIABLE, not 0% billable. The
+      // week keeps its tracked hours but leaves the billable numerator AND its
+      // matching denominator (availCov) entirely — otherwise an export that lags
+      // or covers fewer weeks than the trend window paints real zeros and the
+      // sparkline shows a ramp that is pure coverage.
+      var nsCov = nsAvailable && nsTot > 0;
+      var share = nsCov ? ns.billable / nsTot : null;
       weeks[iso] = { cap: cap, capEst: capEst, pto: ptoH, hol: net.hol, avail: net.avail,
                      planned: w.planned, tracked: w.tracked,
-                     billable: nsAvailable ? ns.billable : 0,
-                     // NS "Non-Billable Hours" = REAL project non-billable work.
-                     // PTO/holidays live ONLY in the Time off Report (the NETSUITE
-                     // rows + PH tab feeding pto/hol above) — they never appear in
-                     // this bucket, so nothing is netted out (user clarification
-                     // 2026-08-01, reverting the same-day OOO subtraction). PTO's
-                     // only metric effect is shrinking the avail denominator.
-                     nonBillable: nsAvailable ? ns.nonBillable : 0 };
+                     nsCov: nsCov,
+                     availCov: nsCov ? net.avail : 0,
+                     trackedCov: nsCov ? w.tracked : 0,
+                     billShare: share,
+                     billable: nsCov ? w.tracked * share : 0,
+                     nonBillable: nsCov ? w.tracked * (1 - share) : 0,
+                     // Finance's raw NS absolutes, kept for the drill-down and the
+                     // reconciliation flag — never used in any rate.
+                     nsBillRaw: ns.billable, nsNonBillRaw: ns.nonBillable };
     });
     return { name: dn, region: reg.region, regionSource: reg.source,
              teams: acc.teams.slice().sort(), pms: acc.pms.slice().sort(), isCrew: p.isCrew,
@@ -1343,6 +1431,10 @@ function assembleModel_(inputs, win) {
       pms: Object.keys(pmSet).sort(),
       families: Object.keys(famSet).sort(),
       nsAvailable: nsAvailable, jiraAvailable: !!inputs.jira.available,
+      // NS join/coverage telemetry — the billable split is only as good as this.
+      // Reported so a low rate can be read as "poor coverage" vs "low billing",
+      // the same way jiraUnattributed qualifies the issue tiles.
+      nsCoverage: nsCoverage_(people, nsUnmatched),
       jiraUnattributed: { onTime: onTime.unattributed, forecast: forecast.unattributed },
       // Which issue types the On-Time rate covers — the card names it so the
       // number is never read as "all delivery work" when it isn't.
@@ -1366,7 +1458,12 @@ function assembleModel_(inputs, win) {
 //     carries only 34 weeks of people[].weeks — served as-is, the Quarterly
 //     view would render its older quarters as empty (which reads as zero
 //     activity, not missing data). Bumping forces one clean rebuild.
-var DH_SCHEMA_VER_ = 6;
+// v7: billable/nonBillable are now the NS split applied as a RATIO to Tempo
+//     tracked hours, not NS absolute hours. New per-week fields nsCov/availCov/
+//     trackedCov/billShare/nsBillRaw/nsNonBillRaw + meta.nsCoverage. A cached v6
+//     model would keep serving the inflated absolutes against the wrong
+//     denominator, so this MUST force a rebuild.
+var DH_SCHEMA_VER_ = 7;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -1679,11 +1776,11 @@ function _test_utilizationRollup_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_utilizationRollup_: " + m); }
   var people = [
     { name: "A", region: "AMER", teams: ["T1", "T2"],
-      weeks: { W1: { avail: 32, billable: 24, tracked: 28, planned: 30 } } },
+      weeks: { W1: { avail: 32, availCov: 32, billable: 24, tracked: 28, planned: 30 } } },
     { name: "B", region: "EMEA", teams: ["T2"],
-      weeks: { W1: { avail: 40, billable: 10, tracked: 20, planned: 40 } } },
+      weeks: { W1: { avail: 40, availCov: 40, billable: 10, tracked: 20, planned: 40 } } },
     { name: "C", region: "AMER", teams: [],
-      weeks: { W1: { avail: 0, billable: 0, tracked: 0, planned: 0 } } }, // full-PTO week
+      weeks: { W1: { avail: 0, availCov: 0, billable: 0, tracked: 0, planned: 0 } } }, // full-PTO week
   ];
   var all = utilRollup_(people, "W1", null, null);
   // avail 72, billable 34 → 47.2%
@@ -1696,16 +1793,34 @@ function _test_utilizationRollup_() {
   var t1 = utilRollup_(people, "W1", null, "T1");
   assert_(t1.avail === 32, "single-team filter");
   assert_(utilRollup_(people, "W9", null, null).billablePct === null, "no data week → null");
+  // Coverage-matched denominator (audit 2026-08-03): an NS-uncovered week keeps
+  // its tracked hours in trackedPct but leaves billablePct entirely — its avail
+  // must NOT sit in the billable denominator with a forced-zero numerator.
+  var partial = [
+    { name: "A", region: "AMER", teams: [],
+      weeks: { W1: { avail: 40, availCov: 40, billable: 30, tracked: 40, planned: 40, nsCov: true } } },
+    { name: "B", region: "AMER", teams: [], // NS export hasn't reached this person yet
+      weeks: { W1: { avail: 40, availCov: 0, billable: 0, tracked: 36, planned: 40, nsCov: false } } },
+  ];
+  var pr = utilRollup_(partial, "W1", null, null);
+  assert_(Math.abs(pr.billablePct - 75) < 1e-9, "uncovered week excluded from billable denominator");
+  assert_(Math.abs(pr.trackedPct - 76 / 80 * 100) < 1e-9, "uncovered week still counts in tracked util");
+  // Ratio invariant: billable can never exceed tracked, so billable util can
+  // never exceed tracked util on the same covered base (the old inflation).
+  var same = [{ name: "A", region: "AMER", teams: [],
+    weeks: { W1: { avail: 40, availCov: 40, billable: 40, tracked: 40, planned: 40, nsCov: true } } }];
+  var sm = utilRollup_(same, "W1", null, null);
+  assert_(sm.billablePct <= sm.trackedPct + 1e-9, "billable util never exceeds tracked util");
   // Non-tracking carve: tracks:false excluded by default, back via the include flag;
   // legacy people without the flag (undefined) stay included.
   var mixed = people.concat([{ name: "D", region: "AMER", teams: [], tracks: false,
-    weeks: { W1: { avail: 40, billable: 0, tracked: 0, planned: 40 } } }]);
+    weeks: { W1: { avail: 40, availCov: 40, billable: 0, tracked: 0, planned: 40 } } }]);
   assert_(utilRollup_(mixed, "W1", null, null).avail === 72, "tracks:false carved out by default");
   assert_(utilRollup_(mixed, "W1", null, null, true).avail === 112, "include flag brings them back");
   // Long-leave carve: onLeave people never move utilization, even with the
   // include flag — leave is an absence, not a tracking-scope decision.
   var withLeave = people.concat([{ name: "E", region: "AMER", teams: [], onLeave: true,
-    weeks: { W1: { avail: 40, billable: 0, tracked: 0, planned: 40 } } }]);
+    weeks: { W1: { avail: 40, availCov: 40, billable: 0, tracked: 0, planned: 40 } } }]);
   assert_(utilRollup_(withLeave, "W1", null, null).avail === 72, "onLeave excluded by default");
   assert_(utilRollup_(withLeave, "W1", null, null, true).avail === 72, "onLeave excluded even with include flag");
   Logger.log("✅ _test_utilizationRollup_ passed");
@@ -1940,13 +2055,42 @@ function _test_modelAssembly_() {
   // cap 40, pto 8 (planned NETSUITE), holiday 8h but fully booked → effHol 0, avail 32
   assert_(w31.cap === 40 && w31.pto === 8 && w31.hol === 0 && w31.avail === 32, "net capacity chain");
   assert_(w31.tracked === 8 && w31.planned === 30, "NETSUITE excluded from tracked/planned");
-  assert_(w31.billable === 6, "NS joined via comma-name alias");
+  // ── Ratio classification (audit 2026-08-03) ──
+  // W31: NS 6b/2nb = 8h total, Tempo tracked 8h — the feeds agree, so the split
+  // is identical to the old absolute reading (6/2). This is the happy path.
+  assert_(w31.nsCov === true && w31.billShare === 0.75, "NS joined via comma-name alias → 75% billable share");
+  assert_(w31.billable === 6, "share applied to tracked: 8h × 0.75");
   // NS Non-Billable = real project work — PTO lives only in the Time off
   // Report (NETSUITE rows), never in this bucket, so the 2h survives even in
   // a week with 8h PTO (user clarification 2026-08-01, no OOO netting).
   assert_(w31.nonBillable === 2, "non-billable work untouched by PTO");
+  assert_(Math.abs(w31.billable + w31.nonBillable - w31.tracked) < 1e-9,
+          "INVARIANT: billable + nonBillable === tracked");
+  // W30: NS captured only 8h (5b/3nb) of a 20h tracked week. The old absolute
+  // reading reported 5h billable — understating a 20h week to 13.9% util. The
+  // share (62.5%) now classifies the FULL tracked total: 12.5h / 7.5h. The raw
+  // absolutes stay on the record for the finance drill-down + the gap flag.
   var w30 = maria.weeks["2026.W30"];
-  assert_(w30.billable === 5 && w30.nonBillable === 3, "no-OOO week non-billable work intact");
+  assert_(w30.tracked === 20 && w30.billShare === 0.625, "W30 share from NS mix");
+  assert_(w30.billable === 12.5 && w30.nonBillable === 7.5, "share extrapolated over the full tracked total");
+  assert_(w30.nsBillRaw === 5 && w30.nsNonBillRaw === 3, "raw NS absolutes retained");
+  assert_(Math.abs(w30.billable + w30.nonBillable - w30.tracked) < 1e-9,
+          "INVARIANT: billable + nonBillable === tracked (W30)");
+  // An NS-uncovered week is unclassifiable, NOT 0% billable: it keeps tracked
+  // hours but contributes nothing to either side of the billable rate.
+  var w29 = maria.weeks["2026.W29"];
+  assert_(w29 && w29.nsCov === false && w29.availCov === 0 && w29.billable === 0,
+          "no NS rows → uncovered, zero billable denominator");
+  // Coverage telemetry: 2 of Maria's weeks classified, unmatched NS names counted.
+  var cov = m.meta.nsCoverage;
+  assert_(cov.covered === 2 && cov.personWeeks > 2, "coverage counts classified person-weeks");
+  assert_(cov.classifiedHours === 28 && cov.trackedHours === 28, "classified vs total tracked hours");
+  assert_(cov.gapHours === 12, "reconciliation gap = |NS 8h − tracked 20h| in W30");
+  var mUn = assembleModel_(Object.assign({}, inputs, { ns: { rows: inputs.ns.rows.concat(
+    [{ name: "Ghost Employee", date: new Date(2026, 6, 27), billable: 9, nonBillable: 1 }]) } }), win);
+  assert_(mUn.meta.nsCoverage.unmatchedRows === 1 && mUn.meta.nsCoverage.unmatchedHours === 10 &&
+          mUn.meta.nsCoverage.unmatchedNames[0] === "Ghost Employee",
+          "unresolved NS employee reported, not silently dropped");
   assert_(w30.pto === 4 && w30.avail === 36,
           "W30 PTO comes from the Accumulation ledger (no NETSUITE row that week)");
   assert_(m.meta.ptoSource === "accumulation", "meta names the PTO source");

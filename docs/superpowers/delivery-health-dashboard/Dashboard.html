@@ -105,6 +105,9 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
      border-radius:4px;overflow:hidden;display:flex;cursor:pointer}
 .bar .sB{background:var(--void)} .bar .sN{background:var(--slate)}
 .bar .sI{background:var(--neutral)}
+/* Unclassified: tracked in Tempo, no NetSuite split. Hatched slate so it reads
+   as "real work, unknown kind" — distinct from solid-slate non-billable. */
+.bar .sU{background:repeating-linear-gradient(45deg,var(--slate),var(--slate) 3px,rgba(100,116,139,.3) 3px,rgba(100,116,139,.3) 6px)}
 .bar .sO{background:repeating-linear-gradient(45deg,var(--june),var(--june) 4px,rgba(255,155,135,.35) 4px,rgba(255,155,135,.35) 8px)}
 .planTick{position:absolute;top:-6px;font-size:9px;color:var(--royal);transform:translateX(-50%)}
 .warnFlag{color:var(--warn);font-weight:700;margin-left:4px}
@@ -119,6 +122,7 @@ tr.detail td{background:var(--surface-2);padding:12px 16px 14px;text-align:left}
   background:repeating-linear-gradient(45deg,var(--june),var(--june) 4px,rgba(255,155,135,.35) 4px,rgba(255,155,135,.35) 8px)}
 .bline{height:8px;border-radius:3px;max-width:360px;display:flex;overflow:hidden}
 .bline .b{background:var(--void)} .bline .n{background:var(--slate)}
+.bline .u{background:repeating-linear-gradient(45deg,var(--slate),var(--slate) 3px,rgba(100,116,139,.3) 3px,rgba(100,116,139,.3) 6px)}
 .bplanned{height:8px;background:var(--royal);border-radius:3px;max-width:360px;opacity:.85}
 table.bklog{border-collapse:collapse;font-size:calc(11px*var(--scale));margin-top:2px}
 .bklog th{font-size:calc(10px*var(--scale));color:var(--muted);text-transform:uppercase;
@@ -168,7 +172,7 @@ tr.detail td.dback{padding:8px 16px 12px}
     <div class="fgroup" title="Role — split managers (M-level job codes) from individual contributors. Managers often plan without tracking much, which drags delivery rates; the IC view removes that effect. Universal: scopes the KPI tiles and the grid.">
       <span class="flbl">Role</span><div class="chips seg" id="roleChips"></div>
     </div>
-    <div class="fgroup" title="Value focus — what the grid cells show and how people are ranked. Plan = planned hours, alphabetical. Billable = NS-classified billable hours, most first. Non-bill = real project non-billable work, most first (PTO/holidays come from the Time off Report and are never in this bucket — absence only reduces availability).">
+    <div class="fgroup" title="Value focus — what the grid cells show and how people are ranked. Plan = planned hours, alphabetical. Billable = tracked hours falling on the billable side of the NetSuite split, most first. Non-bill = the non-billable side — real project work (PTO/holidays come from the Time off Report and are never in this bucket; absence only reduces availability). Both are Tempo tracked hours apportioned by the NetSuite billable mix, so they always sum to tracked.">
       <span class="flbl">Focus</span><div class="chips seg" id="focusChips"></div>
     </div>
     <div class="fgroup" title="Region — universal: scopes the KPI tiles and the grid.">
@@ -485,7 +489,9 @@ function aggWeeks_(p, isos) {
     var w = p.weeks[iso];
     if (!w) return;
     if (!a) a = { cap: 0, pto: 0, hol: 0, avail: 0, planned: 0, effPlanned: 0,
-                  tracked: 0, billable: 0, nonBillable: 0, capEst: false };
+                  tracked: 0, billable: 0, nonBillable: 0, capEst: false,
+                  availCov: 0, trackedCov: 0, nsBillRaw: 0, nsNonBillRaw: 0,
+                  covWeeks: 0, nWeeks: 0 };
     a.cap += w.cap; a.pto += w.pto; a.hol += w.hol; a.avail += w.avail;
     a.planned += w.planned;
     // Planning pairs with ACTUAL capacity (user feedback 2026-07-31): the cap
@@ -494,8 +500,32 @@ function aggWeeks_(p, isos) {
     a.effPlanned += w.cap > 0 ? Math.min(w.planned, w.avail) : w.planned;
     a.tracked += w.tracked; a.billable += w.billable; a.nonBillable += w.nonBillable;
     a.capEst = a.capEst || w.capEst;
+    // NS-coverage companions: billable rates divide by availCov (classified weeks
+    // only), so a period spanning covered and uncovered weeks reports the rate of
+    // the part NS actually classified instead of diluting it with forced zeros.
+    a.availCov += w.availCov || 0; a.trackedCov += w.trackedCov || 0;
+    a.nsBillRaw += w.nsBillRaw || 0; a.nsNonBillRaw += w.nsNonBillRaw || 0;
+    a.nWeeks++; if (w.nsCov) a.covWeeks++;
   });
   return a;
+}
+
+/** Unclassified tracked hours in an aggregated cell — logged in Tempo but with
+    no NS billable/non-billable signal, so they belong to neither bucket. */
+function unclassifiedH_(w) {
+  return w ? Math.max(0, (w.tracked || 0) - (w.trackedCov || 0)) : 0;
+}
+
+/** Raw NetSuite hours behind a cell (billable + non-billable, as exported).
+    Diagnostic only — never a rate numerator; the rates use the ratio split. */
+function nsRawTot_(w) {
+  return w ? (w.nsBillRaw || 0) + (w.nsNonBillRaw || 0) : 0;
+}
+
+/** The NS billable share driving a cell's split (0–1), or 0 with no NS signal. */
+function nsShare_(w) {
+  var t = nsRawTot_(w);
+  return t > 0 ? (w.nsBillRaw || 0) / t : 0;
 }
 
 /** THE filter predicate — every filter is universal (user decision 2026-07-31,
@@ -576,7 +606,7 @@ function ragClass_(pct) {
     person selection re-bases the utilization tile too. The payload is already
     tracking-mandated families only. */
 function utilFor_(isos) {
-  var s = { avail: 0, billable: 0, tracked: 0, cap: 0, ooo: 0 };
+  var s = { avail: 0, availCov: 0, billable: 0, tracked: 0, trackedCov: 0, cap: 0, ooo: 0 };
   MODEL.people.forEach(function (p) {
     // Long leave (maternity/paternity/parental/sabbatical) never moves the
     // rate: Tempo capacity can lag HR, so their avail would read as idle time.
@@ -586,12 +616,17 @@ function utilFor_(isos) {
       var w = p.weeks[iso];
       if (!w) return;
       s.avail += w.avail; s.billable += w.billable; s.tracked += w.tracked;
+      // availCov = availability of NS-CLASSIFIED person-weeks only. Billable %
+      // divides by this, never by total avail: an unclassified week has a
+      // forced-zero numerator, so leaving its avail in the denominator would
+      // report the NS export's lag as a drop in billing (audit 2026-08-03).
+      s.availCov += w.availCov || 0; s.trackedCov += w.trackedCov || 0;
       // cap/ooo aren't in the rate — they let the tile SAY how much the
       // denominator shrank, so a high % for a part-absent team is readable.
       s.cap += w.cap; s.ooo += w.pto + w.hol;
     });
   });
-  s.billablePct = s.avail > 0 ? s.billable / s.avail * 100 : null;
+  s.billablePct = s.availCov > 0 ? s.billable / s.availCov * 100 : null;
   s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
   return s;
 }
@@ -666,16 +701,18 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
 }
 
 /** True when the NS billable feed is actually delivering data — nsAvailable
-    with ZERO billable hours anywhere is a broken join/empty feed, not a
-    measured 0% (director feedback: the hero read 0% next to tracked 71%). */
+    with ZERO classified person-weeks is a broken join/empty feed, not a
+    measured 0% (director feedback: the hero read 0% next to tracked 71%).
+    Keyed on nsCov rather than billable hours: under the ratio model a covered
+    week with a 0% billable mix is a real measurement, not an empty feed. */
 function nsLive_() {
   if (!MODEL.meta.nsAvailable) return false;
   if (MODEL._nsLive === undefined) {
-    var tot = 0;
+    var cov = 0;
     MODEL.people.forEach(function (p) {
-      Object.keys(p.weeks).forEach(function (iso) { tot += p.weeks[iso].billable || 0; });
+      Object.keys(p.weeks).forEach(function (iso) { if (p.weeks[iso].nsCov) cov++; });
     });
-    MODEL._nsLive = tot > 0;
+    MODEL._nsLive = cov > 0;
   }
   return MODEL._nsLive;
 }
@@ -720,6 +757,16 @@ function renderTiles_() {
     utilCmp += '<br><span title="Billable Utilization divides by AVAILABLE hours, not gross capacity — PTO and public holidays are removed from the denominator, so the rate is not diluted by approved absence. It also means a high % can sit on a much smaller base.">' +
       "base " + r1_(u.avail) + "h available of " + r1_(u.cap) + "h capacity — " +
       r1_(u.ooo) + "h PTO/holiday removed (" + Math.round(u.ooo / u.cap * 100) + "%)</span>";
+  }
+  // NS classification coverage (audit 2026-08-03). The rate only describes the
+  // hours NetSuite actually classified; say what share that is, so a headline
+  // built on a third of the tracked base is never read as the whole team's.
+  if (live && u.tracked > 0) {
+    var covPct = Math.round(u.trackedCov / u.tracked * 100);
+    if (covPct < 99) {
+      utilCmp += '<br><span title="Tempo says how many hours were worked; NetSuite says what share of them is billable. Person-weeks with no NetSuite signal are excluded from BOTH sides of this rate rather than counted as 0% billable — so this % describes the classified portion of the tracked base only.">⚠ classification covers ' +
+        covPct + "% of tracked hours (" + r1_(u.trackedCov) + "h of " + r1_(u.tracked) + "h)</span>";
+    }
   }
   var utilTrendShown = trendPer.map(function (p) {
     var s = utilFor_(p.isos);
@@ -788,8 +835,10 @@ function tintClass_(w, status, frac) {
   // nsLive_ (not just nsAvailable): an empty billable feed must not paint the
   // whole grid red. frac pro-rates the current period — mid-week always looks
   // bad against a full-week denominator (director feedback).
-  if (status === "plan" || !nsLive_() || !w || w.avail <= 0) return "";
-  var den = w.avail * (frac === undefined ? 1 : frac);
+  // availCov, not avail: an NS-unclassified cell gets NO tint rather than a red
+  // one — absent classification is not a low billable rate (audit 2026-08-03).
+  if (status === "plan" || !nsLive_() || !w || (w.availCov || 0) <= 0) return "";
+  var den = w.availCov * (frac === undefined ? 1 : frac);
   if (den <= 0) return "";
   var pct = w.billable / den * 100;
   var t = MODEL.meta.thresholds;
@@ -865,9 +914,16 @@ function barHtml_(pName, iso, w, status) {
   var cap = w.cap;
   var ooo = Math.min(cap, w.pto + w.hol);
   var isFuture = status === "plan";
+  // Segments come straight from the payload's ratio split, which already sums to
+  // tracked. The old bar derived non-billable as (tracked − NS billable), which
+  // both contradicted the NS non-billable figure shown everywhere else and swept
+  // unclassified hours into "non-billable work" (audit 2026-08-03).
+  // Unclassified = tracked hours with no NS signal: shown as its own hatched
+  // segment so they never read as either billable or non-billable.
   var billable = isFuture ? 0 : Math.min(w.billable, cap);
-  var nonBill = isFuture ? 0 : Math.min(Math.max(0, w.tracked - w.billable), cap - billable);
-  var idle = Math.max(0, cap - billable - nonBill - ooo);
+  var nonBill = isFuture ? 0 : Math.min(w.nonBillable, Math.max(0, cap - billable));
+  var unclass = isFuture ? 0 : Math.min(unclassifiedH_(w), Math.max(0, cap - billable - nonBill));
+  var idle = Math.max(0, cap - billable - nonBill - unclass - ooo);
   function pc(h) { return (h / cap * 100).toFixed(1) + "%"; }
   var planVal = w.effPlanned !== undefined ? w.effPlanned : w.planned;
   var plan = clampPct_(planVal, cap);
@@ -882,6 +938,8 @@ function barHtml_(pName, iso, w, status) {
     '<div class="bar" data-p="' + encodeURIComponent(pName) + '" data-w="' + iso + '" onclick="toggleDetail_(this)">' +
       '<div class="sB" style="width:' + pc(billable) + '"></div>' +
       '<div class="sN" style="width:' + pc(nonBill) + '"></div>' +
+      '<div class="sU" style="width:' + pc(unclass) + '"' +
+        (unclass > 0 ? ' title="' + r1_(unclass) + 'h tracked with no NetSuite classification — neither billable nor non-billable"' : "") + '></div>' +
       '<div class="sI" style="width:' + pc(idle) + '"></div>' +
       '<div class="sO" style="width:' + pc(ooo) + '"></div>' +
     '</div>' +
@@ -904,9 +962,9 @@ function renderGrid_() {
   var focusLegend = STATE.focus === "plan"
     ? 'Cells show <b>planned hours</b> per ' + unit + '.'
     : (STATE.focus === "billable"
-        ? 'Cells show <b>billable hours</b> (NS-classified) per ' + unit + ' — ranked most billable first.'
+        ? 'Cells show <b>billable hours</b> per ' + unit + ' — ranked most billable first.'
         : 'Cells show <b>non-billable hours</b> per ' + unit + ' (real project work — PTO/holidays live in the Time off Report, never in this bucket) — ranked most non-billable first.') +
-      ' <span title="Non-billable time still includes real contribution (internal projects, presales, enablement) — use this as a conversation starter, not a verdict.">ⓘ</span>';
+      ' <span title="Tempo tracked hours apportioned by the NetSuite billable mix — billable + non-billable + unclassified always equals tracked. Non-billable time still includes real contribution (internal projects, presales, enablement) — use this as a conversation starter, not a verdict.">ⓘ</span>';
   // Triage first (director feedback: "who needs me this week", not a roster):
   // exceptions computed for everyone, worst first in the default Plan focus.
   var people = filteredPeople_();
@@ -944,6 +1002,7 @@ function renderGrid_() {
     '<div class="cellSub" style="margin-bottom:6px">Bars: ' +
     '<span class="lgd"><i style="background:var(--void)"></i>billable</span>' +
     '<span class="lgd"><i style="background:var(--slate)"></i>non-billable</span>' +
+    '<span class="lgd" title="Tracked in Tempo but with no NetSuite billable/non-billable signal for that week — real work of unknown kind, counted in neither bucket"><i style="background:repeating-linear-gradient(45deg,var(--slate),var(--slate) 3px,rgba(100,116,139,.3) 3px,rgba(100,116,139,.3) 6px)"></i>unclassified</span>' +
     '<span class="lgd"><i style="background:var(--neutral)"></i>idle capacity</span>' +
     '<span class="lgd"><i style="background:repeating-linear-gradient(45deg,var(--june),var(--june) 3px,rgba(255,155,135,.35) 3px,rgba(255,155,135,.35) 6px)"></i>OOO (PTO/holiday)</span>' +
     '<span class="lgd" style="color:var(--royal)">▼ planned</span>' +
@@ -1011,9 +1070,10 @@ function renderGrid_() {
           '" data-p="' + encodeURIComponent(p.name) + '" data-w="' + pr.key +
           '" onclick="toggleDetail_(this)" style="cursor:pointer" title="' +
           (p.onLeave ? esc_(p.leaveStatus || "On leave") + " — hours hidden and excluded from utilization while on leave"
-            : (w ? "planned " + r1_(w.planned) + "h · billable " + r1_(w.billable) +
-                   "h · non-bill " + r1_(w.nonBillable) + "h · capacity " + r1_(w.cap) +
-                   "h — click for detail"
+            : (w ? "planned " + r1_(w.planned) + "h · tracked " + r1_(w.tracked) +
+                   "h → billable " + r1_(w.billable) + "h · non-bill " + r1_(w.nonBillable) + "h" +
+                   (unclassifiedH_(w) > 0.05 ? " · unclassified " + r1_(unclassifiedH_(w)) + "h" : "") +
+                   " · capacity " + r1_(w.cap) + "h — click for detail"
                  : (preHire ? "joined " + esc_(p.hired) + " — this period predates the hire" : "no data"))) +
           '">' + (preHire ? "🌱" : (absent ? "🏖" : (noData ? "—" : Math.round(v)))) + "</td>";
       }
@@ -1078,6 +1138,9 @@ function detailCellHtml_(w, status, frac) {
   // denominator (director feedback — same fairness rule as PTO-adjusted pacing).
   var f = (status === "now" && frac !== undefined) ? Math.max(frac, 0) : 1;
   var proAvail = w.avail * f;
+  // Billable util has its own denominator — the availability of NS-classified
+  // weeks only. In a single week it equals proAvail when covered and 0 when not.
+  var proAvailCov = (w.availCov || 0) * f;
   var oooH = w.pto + w.hol;
   // Effective planned = min(planned, AVAILABLE): Tempo repeats the weekly plan
   // per project assignment, and PTO/holidays kill capacity — planning pairs
@@ -1090,8 +1153,13 @@ function detailCellHtml_(w, status, frac) {
   // numbers per cell is a lot); the bars underneath carry the shape.
   var headVal, headLbl;
   if (isFuture) { headVal = r1_(effPlanned) + "h"; headLbl = "planned"; }
-  else if (nsLive_()) { headVal = pctStr_(w.billable, proAvail); headLbl = "billable util"; }
-  else { headVal = pctStr_(w.tracked, proAvail); headLbl = "tracked/capacity"; }
+  else if (nsLive_() && proAvailCov > 0) {
+    headVal = pctStr_(w.billable, proAvailCov); headLbl = "billable util";
+  } else if (nsLive_()) {
+    // Classified nothing here — fall back to tracked rather than printing a 0%
+    // billable rate that is really an absent classification.
+    headVal = pctStr_(w.tracked, proAvail); headLbl = "tracked/capacity · unclassified";
+  } else { headVal = pctStr_(w.tracked, proAvail); headLbl = "tracked/capacity"; }
   return '' +
     '<div class="mstat"><b>' + headVal + '</b> <span class="cellSub">' + headLbl + '</span></div>' +
     (isFuture ? "" :
@@ -1102,22 +1170,34 @@ function detailCellHtml_(w, status, frac) {
     (w.capEst ? '<div class="cellSub">⚠ capacity estimated</div>' : "") +
     (planCapped ? '<div class="cellSub" title="Tempo repeats plans per project assignment, and PTO/holidays reduce capacity — ratios use the plan capped at ACTUAL availability">ⓘ plan ' +
       r1_(w.planned) + "h → capped " + r1_(effPlanned) + "h (net capacity)</div>" : "") +
-    // Billable (NetSuite) and tracked (Tempo) are independent feeds, so billable
-    // CAN exceed tracked — time approved in NS that never got a Tempo worklog.
-    // The bar already normalises this silently (non-billable clamps to 0); this
-    // line lives only in the drill-down so the two numbers don't read as a bug.
-    (!isFuture && w.billable - w.tracked > 0.1
-      ? '<div class="cellSub" title="Billable hours come from NetSuite and tracked hours from Tempo — two separate feeds. Billable above tracked usually means time was approved in NS without a matching Tempo worklog; the billable figure is the one finance uses.">ⓘ billable ' +
-        r1_(w.billable) + "h exceeds tracked " + r1_(w.tracked) + "h — NS and Tempo differ</div>"
+    // Feed reconciliation (audit 2026-08-03). NetSuite and Tempo are independent,
+    // so their totals disagree. Tempo decides HOW MANY hours; NS only decides the
+    // billable/non-billable MIX. That means the NS mix is extrapolated across the
+    // whole tracked total, which is the intended model but IS an assumption — so
+    // whenever the two totals differ materially the drill-down says so out loud
+    // instead of letting the split look directly measured.
+    (!isFuture && nsRawTot_(w) > 0 && Math.abs(nsRawTot_(w) - w.tracked) > 0.5
+      ? '<div class="cellSub" title="NetSuite classifies the billable/non-billable MIX; Tempo is the source of truth for how many hours were worked. The mix is applied to the tracked total, so these hours are classified by proportion, not measured one-for-one. A large difference between the two totals means the extrapolation is carrying more weight — worth a look at the NetSuite export for this person-week.">ⓘ NS totals ' +
+        r1_(nsRawTot_(w)) + "h vs tracked " + r1_(w.tracked) + "h — mix (" +
+        Math.round(nsShare_(w) * 100) + "% billable) applied by proportion</div>"
+      : "") +
+    (!isFuture && unclassifiedH_(w) > 0.5
+      ? '<div class="cellSub" title="These tracked hours fall in weeks with no NetSuite billable/non-billable signal at all, so they are counted in neither bucket and are excluded from the billable-utilization denominator rather than reported as 0% billable.">ⓘ ' +
+        r1_(unclassifiedH_(w)) + "h tracked unclassified (no NS signal)</div>"
       : "") +
     '<div class="blbl">CAP ' + r1_(w.cap) + "h − OOO = " + r1_(w.avail) + "h avail</div>" +
     '<div class="btrack" style="max-width:none"><div class="ooo" style="width:' + pw(oooH) + '%"></div></div>' +
     '<div class="blbl">PLANNED ' + r1_(effPlanned) + "h</div>" +
     '<div class="bplanned" style="max-width:none;width:' + pw(effPlanned) + '%"></div>' +
     (isFuture ? "" :
-      '<div class="blbl">TRACKED ' + r1_(w.tracked) + "h — b " + r1_(w.billable) + " / nb " + r1_(w.nonBillable) + "</div>" +
+      // b + nb + unclassified === tracked by construction, so this line now
+      // actually adds up (it previously printed NS absolutes under a Tempo total).
+      '<div class="blbl">TRACKED ' + r1_(w.tracked) + "h — b " + r1_(w.billable) +
+        " / nb " + r1_(w.nonBillable) +
+        (unclassifiedH_(w) > 0.05 ? " / unclassified " + r1_(unclassifiedH_(w)) : "") + "</div>" +
       '<div class="bline" style="max-width:none;width:' + pw(w.tracked) + '%">' +
-        '<div class="b" style="width:' + (w.tracked > 0 ? w.billable / w.tracked * 100 : 0) + '%"></div>' +
+        '<div class="b" style="width:' + (w.tracked > 0 ? Math.min(100, w.billable / w.tracked * 100) : 0) + '%"></div>' +
+        '<div class="u" style="width:' + (w.tracked > 0 ? Math.min(100, unclassifiedH_(w) / w.tracked * 100) : 0) + '%"></div>' +
         '<div class="n" style="flex:1"></div></div>');
 }
 
@@ -1253,9 +1333,14 @@ function saveAccess_() {
     period, tidy-format (director feedback: PNG-only export). */
 function saveCsv_() {
   var periods = activePeriods_();
+  // Billable/Non-billable h are the NS mix applied to Tracked h (they sum to
+  // Tracked, minus Unclassified). The NS raw columns are what NetSuite exported —
+  // kept so finance can reconcile the two feeds from the same file.
   var rows = [["Person", "Region", "Job family", "Teams", "New hire", "On leave", "Period", "Status",
                "Capacity h", "PTO h", "Holiday h", "Available h", "Planned h (raw)",
-               "Planned h (capped)", "Tracked h", "Billable h", "Non-billable h"]];
+               "Planned h (capped)", "Tracked h", "Billable h", "Non-billable h",
+               "Unclassified h", "Available h (NS-classified)", "NS billable h (raw)",
+               "NS non-billable h (raw)", "NS billable share %", "Weeks NS-classified"]];
   filteredPeople_().forEach(function (p) {
     periods.forEach(function (pr) {
       var w = aggWeeks_(p, pr.isos);
@@ -1265,8 +1350,12 @@ function saveCsv_() {
         p.onLeave ? (p.leaveStatus || "yes") : "",
         pr.label, pr.status].concat(w && !p.onLeave
           ? [r1_(w.cap), r1_(w.pto), r1_(w.hol), r1_(w.avail), r1_(w.planned),
-             r1_(w.effPlanned), r1_(w.tracked), r1_(w.billable), r1_(w.nonBillable)]
-          : ["", "", "", "", "", "", "", "", ""]));
+             r1_(w.effPlanned), r1_(w.tracked), r1_(w.billable), r1_(w.nonBillable),
+             r1_(unclassifiedH_(w)), r1_(w.availCov || 0), r1_(w.nsBillRaw || 0),
+             r1_(w.nsNonBillRaw || 0),
+             nsRawTot_(w) > 0 ? Math.round(nsShare_(w) * 1000) / 10 : "",
+             (w.covWeeks || 0) + " of " + (w.nWeeks || 0)]
+          : ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]));
     });
   });
   var csv = rows.map(function (r) {

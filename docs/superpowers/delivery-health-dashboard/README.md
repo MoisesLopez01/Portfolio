@@ -44,7 +44,7 @@ overridden via Script Properties without touching code.
 | Tracked | same | `Tempo Tracked Time` | Tracked hours per person-week (NETSUITE keys excluded); `Team` cell; `Key` for the Jira Region join |
 | Planned | same | `Planned Time Tempo` | Planned hours per person-week (NETSUITE excluded); NETSUITE rows = PTO **fallback** only |
 | PTO | PTO accumulation workbook (`DH_PTO_SS_ID` override; same source as the PS Dashboard's PTO metric) | `Accumulation Cost` | **Primary PTO source**: dated Usage/Time Off transactions per Employee Number → weekly hours (`CONFIG_DH.PTO_UNIT` — verify hours-vs-days via `probeDeliverySources()`); unreadable → NETSUITE-row fallback, labeled in `meta.ptoSource` |
-| Billable | same | `NS Billable` | Daily rows (`Employee`, `Total Billable Hours`, `Non-Billable Hours`, `Date`, …) bucketed to ISO weeks |
+| Billable | same | `NS Billable` | Daily rows (`Employee`, `Total Billable Hours`, `Non-Billable Hours`, `Date`, …) bucketed to ISO weeks. Supplies the billable **mix** only — hour counts come from Tempo |
 | Holidays | same | `PH` | `Date \| Location \| Holiday` → per-person holiday hours by fuzzy location match |
 | Jira | same | `Jira Raw` | `Region` (col 32) and `Team` (col 33) per issue, dedup'd on `Key` (the tab holds one row per issue *per week bucket* and `Jira Backlog.js` rewrites it whole on every export, so duplicates differ only in the week label — any row is equivalent); On-Time Delivery (`Due Date`, `Resolution Date`, non-epics only) and Forecast Accuracy (`Original Estimate (sec)`, `Time Spent (sec)`, epic type) |
 | Roster | Roster SS (`ROSTER_SS_ID`) | `Data` + `Contractors Data` | Population gate — active, Class = Professional Services (Class check skipped for crew) / Department = Services; `Key Location` drives the ANZ capacity fallback and the person-region fallback |
@@ -67,10 +67,16 @@ holiday    = per-person PH hours (8h/day, 7.6h ANZ) minus already-booked NETSUIT
 available  = max(0, capacity − pto − holiday)
 planned    = planned hours (non-NETSUITE)
 tracked    = tracked hours (non-NETSUITE)
-billable   = NS Billable "Total Billable Hours" summed over the ISO week
-nonBillable= NS Billable "Non-Billable Hours" summed over the ISO week
+nsBillRaw  = NS Billable "Total Billable Hours" summed over the ISO week   (raw, diagnostic only)
+nsNonBillRaw = NS Billable "Non-Billable Hours" summed over the ISO week   (raw, diagnostic only)
+billShare  = nsBillRaw / (nsBillRaw + nsNonBillRaw)      — null when NS has no rows that week
+nsCov      = NS classified this person-week (billShare exists)
+billable   = tracked × billShare        — NS classifies, Tempo quantifies
+nonBillable= tracked × (1 − billShare)
+unclassified = tracked − trackedCov     — tracked hours in NS-uncovered weeks
+availCov   = available, but only for NS-classified person-weeks
 
-billableUtil = billable / available     (Utilization tile headline)
+billableUtil = billable / availCov      (Utilization tile headline)
 trackedUtil  = tracked / available      (Utilization tile companion)
 onTime       = resolved ≤ Due Date ÷ resolved-with-Due-Date, per week          (On-Time Delivery tile)
                over NON-EPIC issues only
@@ -117,8 +123,29 @@ rework       = placeholder — no formula yet (reopen/CSAT feeds don't exist)
   `Jira Raw`. Tempo is the authoritative time source, so an issue whose hours went into Tempo but
   never mirrored into Jira reads as more remaining work than there is. Planning signal, not a
   committed number.
-- **Billable can exceed tracked.** NetSuite (billable) and Tempo (tracked) are independent feeds.
-  The bars normalise the overlap silently; the drill-down card names it when it happens.
+- **NetSuite classifies, Tempo quantifies — the split is a ratio, not a pair of hour counts.**
+  Tempo tracks every hour worked but cannot say which are billable; NetSuite knows the
+  billable/non-billable mix. So the NS mix is applied as a **proportion of the Tempo tracked total**:
+  `billable = tracked × billShare`. Two consequences worth knowing:
+  - `billable + nonBillable === tracked` **by construction**, so `billableUtil` can never exceed
+    `trackedUtil`. Before 2026-08-03 the dashboard carried NS *absolute* hours over a Tempo
+    denominator, and because the feeds are independent nothing bounded the numerator — a person with
+    20h tracked and 32h NS-billable reported 80% utilization on 20h of logged work. That inflation
+    reached the hero tile, the trend sparkline, the ▲/▼ delta, every rollup, and the grid tint.
+  - The mix is **extrapolated** over the whole tracked total. Where NS captured only part of a
+    tracked week, the classified portion's mix is assumed to represent the rest. That is the intended
+    model, but it *is* an assumption, so the drill-down states the two feed totals side by side
+    whenever they differ by more than 0.5h and names the share being applied.
+- **A person-week NetSuite never classified is `unclassified`, not 0% billable.** It keeps its tracked
+  hours (so `trackedUtil` is unaffected) but leaves **both** sides of the billable rate — its
+  availability is excluded from the denominator via `availCov`. Otherwise an export that lags or
+  covers a shorter window than the trend would paint real zeros, and the sparkline would show a ramp
+  that is pure coverage. These hours get their own hatched bar segment and their own legend entry.
+- **Check `meta.nsCoverage` before quoting the utilization number.** It reports classified
+  person-weeks, `classifiedPct` of tracked hours, the `gapHours` reconciliation total between the two
+  feeds, and any NS employee names no roster alias resolved (`unmatchedRows` / `unmatchedNames`) —
+  an unresolved name classifies nothing, which used to look exactly like a person who billed nothing.
+  The Utilization card shows a `⚠ classification covers N% of tracked hours` line below 99%.
 
 `NS Billable` unreadable → the Utilization tile falls back to `tracked/capacity` with a "billable
 data unavailable" chip; the grid still renders. `Jira Raw` unreadable → On-Time Delivery and
@@ -280,6 +307,7 @@ deploy can never serve a stale-shaped entry even if nobody remembers to bust the
 | 4 | PTO read from Accumulation Cost (`meta.ptoSource`) |
 | 5 | On-Time excludes epics; forecast buckets gain `nNoTime` / `nOver` / `nUnder` / `lossOver` / `lossUnder` and skip zero-worklog epics |
 | 6 | `WEEKS_PAST_DEEP` 30 → 52. Shape unchanged, but a cached v5 model holds only 34 weeks of `people[].weeks`, so the Quarterly view would render its older quarters empty — which reads as zero activity, not missing data |
+| 7 | `billable` / `nonBillable` are the NS mix applied as a **ratio** to Tempo tracked hours, not NS absolute hours. Adds `nsCov` / `availCov` / `trackedCov` / `billShare` / `nsBillRaw` / `nsNonBillRaw` per week + `meta.nsCoverage`. **Must** force a rebuild — a cached v6 model would keep serving the inflated absolutes against the wrong denominator |
 
 **Warmer:** `warmDeliveryCache()` runs on a time trigger (install once with
 `setupDeliveryCacheWarmer()` in the GAS editor as the owner; interval =
@@ -292,7 +320,11 @@ for a live read. Error models are never cached.
 2. Add files: `Code` (Code.js), `Security` (Security.js), HTML file named `Dashboard` (Dashboard.html — name must match doGet).
 3. Run `node node-tests.js` locally — all suites must pass before pasting.
 4. In the GAS editor run `probeDeliverySources()` — verify every source logs a row count,
-   the NS sample Employee name format, and NS→roster join coverage >90%. Also check the
+   the NS sample Employee name format, and NS→roster join coverage >90%. Then check
+   `meta.nsCoverage` on a built model: `unmatchedRows` should be ~0 (each unresolved NS employee
+   classifies nothing), and `classifiedPct` is the share of tracked hours the billable rate
+   actually describes — if it is low, fix the NS export window or the name join before
+   quoting utilization at all. Also check the
    "Jira Region distinct values" line: every value must match the chip vocabulary
    (AMER / EMEA / APAC / ANZ / Other) — a ⚠️ there means the region chips would filter
    to empty; map or rename the offending values before trusting region filters.
@@ -310,6 +342,16 @@ for a live read. Error models are never cached.
 - [ ] Click a week header → stacked bars; ⚠ appears when planned or tracked > capacity.
 - [ ] Click a bar → accordion with 4 stats + bullet lines; multiple accordions can be open.
 - [ ] A known PTO week shows OOO hatch and reduced available hours.
+- [ ] **Billable Utilization is ≤ the tracked/capacity companion on every filter combination.**
+      Billable above tracked is now arithmetically impossible — if you see it, the payload is a
+      stale pre-v7 cache: run `bustDeliveryCache_()` then ↻ Refresh.
+- [ ] In an accordion, `TRACKED Xh — b … / nb … / unclassified …` adds up to X.
+- [ ] A person-week with no NetSuite rows shows **no tint**, an `unclassified` hatched bar segment,
+      and a `tracked/capacity · unclassified` header — never `0% billable util`.
+- [ ] Where the NS and Tempo totals differ, the accordion shows the `ⓘ NS totals Xh vs tracked Yh`
+      line naming the applied share (this is the extrapolation being disclosed, not a bug).
+- [ ] The Utilization card shows `⚠ classification covers N% of tracked hours` whenever N < 99.
+- [ ] CSV export: `Billable h + Non-billable h + Unclassified h == Tracked h` on every row.
 - [ ] 🔒 Access panel loads/saves for admins; a non-listed account gets the denied page.
 - [ ] ↻ Refresh forces a live read (check generatedAt changes).
 - [ ] On-Time coverage reads lower than before schema 5 (epics no longer in the denominator) and the
