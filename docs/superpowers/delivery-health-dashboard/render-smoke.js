@@ -219,9 +219,9 @@ assert_(/high confidence/.test(good), "coverage above gate with 2 periods → hi
 assert_(/96% attributed/.test(good), "confidence chip states measured coverage (48 of 50)");
 assert_(/pts vs target/.test(good), "variance to TARGET leads the signal line (FR-4.1)");
 assert_(!/Not yet measurable/.test(good), "nothing suppressed when coverage is good");
-assert_(/median variance/.test(good), "forecast secondary form present (FR-1.4)");
+assert_(/Median absolute variance/.test(good), "forecast secondary form present (FR-1.4) — moved to the context tooltip in R6, still present");
 assert_(/inside ±10%/.test(good), "forecast headline names the ±10% band");
-assert_(/of \d+ misses, \d+% over-run/.test(good), "variance direction on misses (FR-1.6)");
+assert_(/Of [0-9]+ miss(es)?, [0-9]+% over-run/.test(good), "variance direction on misses (FR-1.6)");
 // The "definition changed" marker is gone from the KPI tiles (user 2026-08-03:
 // "this is not meaningful"). On a single headline number there is no visible
 // step for it to explain; it survives only on the Trends line chart, where the
@@ -254,14 +254,22 @@ assert_((bad.match(/Not yet measurable/g) || []).length === 2,
 assert_(!/Owner:/.test(bad), "suppressed tile carries no owner line (same rule as the hygiene table)");
 assert_(/What's missing/.test(bad), "suppressed tile links to the hygiene queue");
 assert_(!/class="big/.test(forecastCard), "suppressed card renders NO hero number");
-assert_(!/median variance/.test(forecastCard), "suppressed card renders no secondary figure either");
+assert_(!/Median absolute variance/.test(forecastCard), "suppressed card renders no secondary figure either");
 assert_(/45% attributed · gate 70%/.test(bad), "suppressed card states coverage against its gate");
 // Defects found in the 2026.W31 tiles PNG (2026-08-03):
 // a suppressed card carried no period label, so "64% attributed" described an
 // unnamed window; and it trended nothing, so the state read as permanent.
-assert_(/Forecast Accuracy · last complete week/.test(bad),
-        "suppressed card names the period it covers");
-assert_(/On-Time Delivery · last complete week/.test(bad), "…on every suppressed card");
+//
+// The REQUIREMENT is unchanged — "64% attributed" must never describe an unnamed
+// window. Where it is satisfied moved: the period is now stated once globally
+// above the card row (R6, 2026-08-03) instead of repeated in all four headers,
+// and each card keeps it as a tooltip. Same guarantee, one line instead of four.
+assert_(/title="last complete week[^"]*"[^>]*>Forecast Accuracy/.test(bad),
+        "suppressed card still names the period it covers");
+assert_(/title="last complete week[^"]*"[^>]*>On-Time Delivery/.test(bad),
+        "…on every suppressed card");
+assert_(!/Forecast Accuracy · last complete week/.test(bad),
+        "…but no longer repeats it in the visible header, which cost every card a line");
 assert_(/attribution trend/.test(bad),
         "suppressed card trends its COVERAGE — 'is the gap closing?' is publishable, the metric isn't");
 assert_(!/class="big/.test(forecastCard), "…and still no metric value anywhere on it");
@@ -798,7 +806,7 @@ assert_(/class="big[^"]*">55%/.test(fcCard),
         "mean of (1 − |A−E|/E) over 0.05/0.4/0.9 = 55%");
 assert_(/inside ±10%/.test(fcCard),
         "the ±10% band survives as a companion rather than being deleted");
-assert_(/median variance/.test(fcCard), "so does the median absolute variance");
+assert_(/Median absolute variance/.test(fcCard), "so does the median absolute variance");
 
 // ── Quality / Rework: built, not a placeholder ──
 assert_(!/data pending — reopen\/CSAT feed not yet connected/.test(dict),
@@ -806,9 +814,9 @@ assert_(!/data pending — reopen\/CSAT feed not yet connected/.test(dict),
 var qCard = dict.split("Quality / Rework")[1].split("</div></div>")[0];
 assert_(/class="big[^"]*">25%/.test(qCard), "rework rate = 2 of 8 delivered = 25%");
 assert_(/2 of 8 delivered items needed rework/.test(qCard), "…with its denominator stated");
-assert_(/1 rework-linked/.test(qCard) && /1 reopened \(of 8 checked\)/.test(qCard),
+assert_(/1 rework-linked/.test(qCard) && /1 reopened .of 8 checked/.test(qCard),
         "both signals reported separately, with reopen coverage");
-assert_(/CSAT companion: not connected/.test(qCard),
+assert_(/CSAT companion not connected/.test(qCard),
         "the Dictionary's CSAT companion is declared absent rather than omitted");
 
 // LOWER IS BETTER. 25% against a ≤5% target must read as bad, and the target
@@ -833,8 +841,8 @@ linkOnly.reworkBuckets = WEEKS.map(function (iso) {
 });
 var lo = tiles(linkOnly);
 var loCard = lo.split("Quality / Rework")[1].split("</div></div>")[0];
-assert_(/reopens NOT measured/.test(loCard), "an unmeasured reopen signal says so");
-assert_(/this rate is a floor, not a measurement/.test(loCard),
+assert_(/Reopens NOT measured/.test(loCard), "an unmeasured reopen signal says so (context tooltip)");
+assert_(/lower bound, not a measurement/.test(loCard),
         "…and the card states the rate is an understatement, not a result");
 
 // A pre-v10 cached payload has no reworkBuckets at all: that is a stale schema,
@@ -998,7 +1006,7 @@ assert_(/at least 0% — lower bound, not a measurement/.test(zeroFloor),
         "…it states plainly that the value is a lower bound");
 assert_(!/vs target ≤/.test(zeroFloor),
         "…and shows no vs-target chip, which would read as passing a target it cannot be judged against");
-assert_(/reopens NOT measured/.test(zeroFloor), "…with the reason still on the card");
+assert_(/Reopens NOT measured/.test(zeroFloor), "…with the reason still on the card");
 
 // Measured, and genuinely good: colour returns.
 var measuredGood = qCardOf(qModel(3, 100));

@@ -1097,8 +1097,14 @@ function renderScope_() {
   if (STATE.family) parts.push(STATE.family);
   if (STATE.flag) parts.push(FLAG_LABELS[STATE.flag].icon + " " + FLAG_LABELS[STATE.flag].label);
   if (STATE.search) parts.push("“" + STATE.search + "”");
-  document.getElementById("scopeChip").textContent =
-    "Showing: " + parts.join(" · ") + " — " + filteredPeople_().length + " people";
+  // The period is stated HERE and nowhere else. It used to repeat in all four
+  // card headers — one fact, four times, one stolen line per card.
+  var done = donePeriods_();
+  var head = done.length ? done[done.length - 1] : null;
+  var unit = PERIOD_LABELS[STATE.period].toLowerCase();
+  document.getElementById("scopeChip").innerHTML =
+    (head ? "<b>Last complete " + unit + " · " + esc_(head.label) + "</b> — " : "") +
+    esc_(parts.join(" · ")) + " — " + filteredPeople_().length + " people";
 }
 
 document.getElementById("btnRefresh").onclick = function () { loadData(true); };
@@ -1663,11 +1669,12 @@ function confChip_(conf, metric) {
  */
 function suppressedTileHtml_(label, metric, conf, detail, headlineLabel, covTrend, covLabels) {
   var pct = conf.coverage === null ? "—" : Math.round(conf.coverage * 100) + "%";
-  return '<div class="tile sup"><div class="lbl">' + label +
-    // The period belongs on a suppressed card as much as a published one: "64%
-    // attributed" is a statement about a window, and without it nobody can tell
-    // whether they're looking at last month or last quarter.
-    (headlineLabel ? " · " + esc_(headlineLabel) : "") + '</div>' +
+  // The period used to be repeated here for the same reason it was on every
+  // published card — now that it is stated once globally above the row, the
+  // repetition is just a stolen line. (Kept as a tooltip: a suppressed card is
+  // still a statement about a window.)
+  return '<div class="tile sup"><div class="lbl"' +
+    (headlineLabel ? ' title="' + esc_(headlineLabel) + '"' : "") + ">" + label + '</div>' +
     '<div class="supbig" title="' + esc_((metric.definition || "") + " Gate: " +
       Math.round((metric.coverageGate || 0) * 100) + "% of " + (metric.coverageOf || "records") +
       ".") + '">Not yet measurable</div>' +
@@ -1735,8 +1742,8 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
       "What's missing →</a></div></div>";
   }
   if (opts.unavailable) {
-    return '<div class="tile ph"><div class="lbl">' + label +
-      (opts.headlineLabel ? " · " + esc_(opts.headlineLabel) : "") + '</div>' +
+    return '<div class="tile ph"><div class="lbl"' +
+      (opts.headlineLabel ? ' title="' + esc_(opts.headlineLabel) + '"' : "") + ">" + label + '</div>' +
       '<div class="big">—</div><div class="cmp">' + opts.unavailable + '</div></div>';
   }
   var big = headlinePct === null ? "—" : Math.round(headlinePct) + "%";
@@ -1807,12 +1814,30 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
         " consecutive periods on the same side of the norm — a sustained shift in the operating rate, " +
         'not a single bad period">' + std.run + " in a row</span>" : "");
   }
-  return '<div class="tile"><div class="lbl">' + label + " · " + esc_(opts.headlineLabel || MODEL.meta.headlineIso) + '</div>' +
+  // ── CARD GRAMMAR (fixed, four lines maximum) ────────────────────────────
+  //   label → hero → coverage chip → delta-vs-target → ONE context line → sparkline
+  //
+  // The period is NOT in the label: it was repeating in all four headers,
+  // stating one fact four times and stealing a line from each card. It is
+  // printed once, globally, above the row.
+  //
+  // Everything else — unattributed counts, median variance, miss-direction
+  // split, absence points, classification coverage, the CSAT note — is real and
+  // stays reachable, but as the context line's tooltip, not as a fifth through
+  // eighth line. Quality carried eight lines and Forecast seven, which put the
+  // four sparkline baselines at four different heights: the row stopped reading
+  // as a set of comparable cards and started reading as four unrelated blocks.
+  // A director scanning for the worst number should not have to re-find the
+  // baseline in each card.
+  var detail = (opts.detail || []).filter(Boolean).join(" · ");
+  var context = cmpText + (detail
+    ? ' <span class="cellSub" title="' + esc_(detail) + '" style="cursor:help">ⓘ</span>' : "");
+  return '<div class="tile"><div class="lbl">' + label + '</div>' +
     '<div class="big ' + rag + '">' + big + '</div>' +
     (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, opts.metric || {}) + '</div>' : "") +
     (signal ? '<div class="cmp">' + signal + '</div>' : "") +
     (stdLine ? '<div class="cmp">' + stdLine + '</div>' : "") +
-    '<div class="cmp">' + cmpText + '</div>' +
+    '<div class="cmp">' + context + '</div>' +
     // A published-but-below-gate number keeps its route into the hygiene queue.
     // Suppression is off, so this line is the whole safeguard: the reader is
     // told the figure sits under its gate and where to go to see why, instead of
@@ -1951,22 +1976,30 @@ function renderTiles_() {
   // actually hit, and the median says how big a typical miss is. Any one of the
   // three alone is quotable in a misleading direction.
   var fcHeadline = forecastAccuracyPct_(fc.absVars);
+  var fcDetail = [];
   var fcCmp = '<span title="' + esc_(reg_("forecast").formula || "") +
     ' Floored at zero per epic, so one runaway engagement cannot drag a good period negative.">' +
     "mean accuracy over " + fc.n + " measurable epic" + (fc.n === 1 ? "" : "s") + " ⓘ</span>" +
-    " · <span title=\"How OFTEN we landed inside the tolerance band, as opposed to how close we were on average. The band is a registry parameter owned by the Services Director, reviewable at fiscal period close.\">" +
-    fc.nWithin + " of " + fc.n + " inside ±" + band + "%</span>" +
-    smallN_(fc.n) +
-    (fc.nAll > fc.n ? ' · <span title="closed epics with no estimate, or an estimate but no logged time at all — nothing to compare, so they count toward coverage only instead of scoring as misses">' +
-      (fc.nAll - fc.n) + " of " + fc.nAll + " not measurable</span>" : "") +
-    (unatt.forecast ? ' <span title="closed epics whose Jira assignee is not on the delivery roster — excluded from this card under every filter">· ' + unatt.forecast + " unattributed</span>" : "");
+    smallN_(fc.n);
+  fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
+    fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
+  if (fc.nAll > fc.n) {
+    fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
+      "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
+      "only instead of scoring as misses.");
+  }
+  if (unatt.forecast) {
+    fcDetail.push(unatt.forecast + " closed epics unattributed — the Jira assignee is not on the " +
+      "delivery roster, so they are excluded from this card under every filter.");
+  }
   // Secondary form (FR-1.4): the band says whether we hit estimates, the median
   // says by how much we miss. Both are needed — 40% inside the band reads very
   // differently at a 12% median variance than at a 90% one.
   var med = medianOf_(fc.absVars);
   if (med !== null) {
-    fcCmp += '<br><span title="median of |actual − estimate| ÷ estimate across the measurable epics in scope. A median, not a mean: one runaway engagement should not define the team\'s forecasting.">' +
-      "median variance " + Math.round(med * 100) + "%</span>";
+    fcDetail.push("Median absolute variance " + Math.round(med * 100) + "% — median of " +
+      "|actual − estimate| ÷ estimate across the measurable epics. A median, not a mean: one " +
+      "runaway engagement should not define the team's forecasting.");
   }
   // Direction of the miss (FR-1.6): the same accuracy reads the same whether the
   // team over-runs or closes early, and those need opposite conversations —
@@ -1975,9 +2008,9 @@ function renderTiles_() {
   var misses = fc.nMissOver + fc.nMissUnder;
   if (misses > 0) {
     var overShare = Math.round(fc.nMissOver / misses * 100);
-    fcCmp += ' · <span title="of the epics that fell outside the band, the split by direction — over-run = took longer than estimated, under-run = closed with time to spare">' +
-      "of " + misses + " miss" + (misses === 1 ? "" : "es") + ", " +
-      overShare + "% over-run</span>";
+    fcDetail.push("Of " + misses + " miss" + (misses === 1 ? "" : "es") + ", " + overShare +
+      "% over-run — over-runs burn margin, under-runs mean capacity was held that could have " +
+      "been sold. Opposite conversations.");
   }
 
   // ── Confidence gates (FR-2.1/2.2) ──────────────────────────────────────────
@@ -2040,7 +2073,8 @@ function renderTiles_() {
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.forecast, conf: fcConf,
-                               metric: regFc, std: fcStd, trendLabels: trendLabels });
+                               metric: regFc, std: fcStd, trendLabels: trendLabels,
+                               detail: fcDetail });
           }, opts.headlineLabel, fcCovTrend, trendLabels))
       : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
         (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" }))) +
@@ -2114,25 +2148,31 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
     metricConfidence_(reg.coverageGate, coverage,
                       series.filter(function (v) { return v !== null; }).length));
 
+  var qDetail = [];
   var cmp = q.nRework + " of " + q.nDelivered + " delivered items needed rework" +
-    smallN_(q.nDelivered) +
-    '<br><span title="Rework Link = the issue carries a link of a rework-ish type. Reopened = the issue left Done at least once, which is only visible when the export fetches the Jira changelog.">' +
-    q.nLinked + " rework-linked · " +
+    smallN_(q.nDelivered);
+  qDetail.push("Signals: " + q.nLinked + " rework-linked" +
     (q.nReopenCov > 0
-      ? q.nReopened + " reopened (of " + q.nReopenCov + " checked)"
-      : "reopens NOT measured") + "</span>" +
-    ((MODEL.meta.jiraUnattributed || {}).rework
-      ? ' · <span title="delivered items whose Jira assignee is not on the delivery roster — excluded from this card under every filter">' +
-        MODEL.meta.jiraUnattributed.rework + " unattributed</span>"
-      : "");
+      ? ", " + q.nReopened + " reopened (of " + q.nReopenCov + " checked)."
+      : ". Reopens NOT measured — the export did not fetch the Jira changelog."));
+  if ((MODEL.meta.jiraUnattributed || {}).rework) {
+    qDetail.push(MODEL.meta.jiraUnattributed.rework + " delivered items unattributed — the Jira " +
+      "assignee is not on the delivery roster, so they are excluded under every filter.");
+  }
 
   // The single most important caveat on this card, stated in plain words rather
   // than buried in the ⓘ: a link-only rate is a FLOOR, not a measurement.
+  // The floor caveat is NOT demoted: it is the difference between "we ship clean
+  // work" and "we cannot see rework". It rides on the hero's own signal line now
+  // (tileHtml_ opts.floor), which is MORE prominent than the fifth body line it
+  // used to occupy, not less.
   if (q.nReopenCov === 0) {
-    cmp += '<br><span class="clow" title="Reopen detection needs expand=changelog on the Jira export (CONFIGJ.FETCH_CHANGELOG), which is off by default because it is expensive. Until it is on, an issue that was reopened but never link-tagged is invisible here.">' +
-      "⚠ reopens not counted — this rate is a floor, not a measurement</span>";
+    qDetail.push("Reopen detection needs expand=changelog on the Jira export " +
+      "(CONFIGJ.FETCH_CHANGELOG), which is off by default because it is expensive. Until it is " +
+      "on, an issue that was reopened but never link-tagged is invisible here.");
   }
-  cmp += '<br><span class="cellSub" title="The Metrics Dictionary pairs this rate with a CSAT score (0–100) as a companion input. The survey API is not connected — PR-09, target 2026.W37.">CSAT companion: not connected</span>';
+  qDetail.push("CSAT companion not connected: the Metrics Dictionary pairs this rate with a CSAT " +
+    "score (0–100). The survey API is not wired — PR-09, target 2026.W37.");
 
   return gatedTile_("Quality / Rework", conf, reg,
     "no delivered work in this period under the active filters",
@@ -2140,7 +2180,7 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
     function () {
       return tileHtml_("Quality / Rework", pct, cmp, trend,
                        { headlineLabel: headlineLabel, target: tg, conf: conf,
-                         floor: isFloor,
+                         floor: isFloor, detail: qDetail,
                          floorWhy: "Reopen detection is one of the two signals in this metric and " +
                            "the export did not fetch it (CONFIGJ.FETCH_CHANGELOG is off), so the " +
                            "numerator can only undercount. The true rate is this value or higher — " +
