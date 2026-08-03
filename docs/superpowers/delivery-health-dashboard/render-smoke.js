@@ -676,10 +676,13 @@ var trView = els.oppPanel.innerHTML;
 assert_(/Where the headroom is/.test(trView), "the tab is the headroom table");
 assert_(!/class="chart line"/.test(trView), "and draws no history chart");
 assert_(!/ — history/.test(trView), "and carries no history heading");
-// The metric chips lived on the deleted chart; without them this tab would be
-// stuck on whatever was last picked on the Executive tab.
-assert_(/setMetric_\('util'\)/.test(trView), "the metric selector moved onto the headroom panel");
-assert_(/class="chip on"/.test(trView), "…showing which metric is active");
+// The metric chips were moved here when the history chart was deleted, but this
+// table computes recoverable HOURS, which only exist for utilization — so the
+// chips changed themselves and nothing else. A control that visibly does nothing
+// costs more trust than the flexibility it pretends to offer (F3, R5).
+assert_(!/setMetric_\(/.test(trView), "no metric selector on the headroom tab — it was a no-op");
+assert_(/Billable Utilization|Capacity Utilization/.test(trView),
+        "…the heading names the metric instead, so the tab is not silently scoped");
 
 // ── 13. Opportunity table ───────────────────────────────────
 fresh(histModel({}));

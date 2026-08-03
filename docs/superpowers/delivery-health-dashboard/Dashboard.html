@@ -8,8 +8,6 @@
   --royal:#2864E6; --june:#FF9B87; --slate:#64748B;
   --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
   --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
-  --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
-  --heatf-lo:#FFFAF5; --heatf-mid:#DCCDBE; --heatf-hi:#FF9B87;
   --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
   --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
   --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
@@ -38,8 +36,6 @@
 [data-theme="dark"]{
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
   --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
-  --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
-  --heatf-lo:#16203F; --heatf-mid:#DCCDBE; --heatf-hi:#FFFAF5;
   --up:#34D399; --down:#FB7185; --neutral:#1E295A;
   --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
@@ -142,8 +138,6 @@ table.hyg td.hnum.r{color:var(--warn)}
 .hbar{height:5px;border-radius:3px;background:var(--border);margin:4px 0 2px;overflow:hidden}
 .hbar i{display:block;height:100%;border-radius:3px}
 .hbar i.g{background:var(--pos)} .hbar i.a{background:var(--amber)} .hbar i.r{background:var(--warn)}
-.spark{display:flex;align-items:flex-end;gap:2px;height:26px;margin-top:6px}
-.spark i{flex:1;background:var(--orbe);border-radius:2px 2px 0 0;min-height:2px}
 .dUp{color:var(--pos);font-weight:700} .dDown{color:var(--warn);font-weight:700}
 .lgd{font-size:calc(9px*var(--scale));color:var(--muted);margin-right:10px;white-space:nowrap}
 .lgd i{display:inline-block;width:10px;height:8px;border-radius:2px;margin-right:3px}
@@ -180,8 +174,6 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
 /* Small print must stay readable — was a raw 9px (unscaled), reported unreadable. */
 .cellSub{font-size:calc(10.5px*var(--scale));color:var(--muted)}
 tr.detail td{background:var(--surface-2);padding:12px 16px 14px;text-align:left}
-.stats{display:flex;gap:18px;flex-wrap:wrap;font-size:calc(12px*var(--scale));margin-bottom:10px}
-.stats b{font-size:calc(14px*var(--scale))}
 .blbl{font-size:calc(10px*var(--scale));color:var(--muted);text-transform:uppercase;margin:6px 0 2px}
 .btrack{position:relative;height:10px;background:var(--orbe);border-radius:3px;max-width:360px}
 .btrack .ooo{position:absolute;right:0;top:0;height:100%;border-radius:0 3px 3px 0;
@@ -410,7 +402,9 @@ var VIEWS = [
   { id: "exec",    label: "📊 Executive", pane: "viewExec",    roles: null,
     hint: "The four cards and one comparison — the 30-second read." },
   // Per-person utilization by construction, so it sits in the margin tier.
-  { id: "trend",   label: "📈 Trends",    pane: "viewTrend",   roles: ["admin", "viewer"],
+  // Named for what it HOLDS. It was "📈 Trends" from when it carried a history
+  // line chart; that chart was removed and the label kept promising one.
+  { id: "trend",   label: "🎯 Headroom",  pane: "viewTrend",   roles: ["admin", "viewer"],
     hint: "Where the headroom is — one row per person, ranked by the hours that could be recovered." },
   { id: "people",  label: "👥 People",    pane: "viewPeople",  roles: null,
     hint: "The operational roster: who needs attention this period, with per-person drill-downs." },
@@ -1140,12 +1134,6 @@ document.getElementById("btnTheme").onclick = function () {
   this.textContent = toDark ? "☀️ Light" : "🌙 Dark";
 };
 
-function ragClass_(pct) {
-  if (pct === null || pct === undefined) return "";
-  var t = MODEL.meta.thresholds;
-  return pct >= t.green ? "g" : (pct >= t.amber ? "a" : "r");
-}
-
 /** Utilization rollup over a period's weeks (mirrors server utilRollup_).
     Scopes on passesFilters_ — ALL filters are universal (user decision
     2026-07-31, superseded the finding-I2 grid-finder rule): a job-family or
@@ -1434,18 +1422,6 @@ function pctDomain_(vals, refs) {
   return { lo: lo, hi: hi };
 }
 
-
-/**
- * Signed whole-point delta. A sub-half-point move rounds to zero, and printing
- * that as "−0" reads as a decline that did not happen — so zero is zero, with
- * no sign and no direction colour.
- */
-function deltaStr_(d) {
-  if (d === null || d === undefined || isNaN(d)) return { txt: "—", cls: "" };
-  var r = Math.round(d);
-  if (r === 0) return { txt: "0", cls: "" };
-  return { txt: (r > 0 ? "+" : "−") + Math.abs(r), cls: r > 0 ? "dUp" : "dDown" };
-}
 
 
 /**
@@ -3259,10 +3235,12 @@ function renderOpportunity_() {
     '<div class="chartHead"><h3>Where the headroom is</h3>' +
       '<span class="sub">' + esc_(m.label()) + " · " + esc_(head.label) +
       " · one row per person</span><span style=\"flex:1\"></span>" +
-      // The metric chips used to live on the history chart. With that gone they
-      // move here, or this tab would be stuck on whatever metric was last picked
-      // on the Executive tab with no way to change it.
-      '<span class="chips seg">' + metricChips_() + "</span>" +
+      // NO metric chips here. They were moved onto this tab when the history
+      // chart was removed, but renderOpportunity_ computes recoverable HOURS,
+      // which only exist for utilization — so picking "On-Time Delivery" changed
+      // the chip and nothing else. A control that visibly does nothing costs
+      // more trust than the flexibility it pretends to offer. The heading below
+      // names the metric instead.
       '<button class="iconbtn" onclick="saveOppCsv_()" title="Download this table as CSV">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>CSV</button>' +
       "</div>" +
