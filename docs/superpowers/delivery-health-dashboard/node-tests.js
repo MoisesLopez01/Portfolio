@@ -70,6 +70,10 @@ _test_ptoUsage_();
   var C = new Function(
     "var MODEL = null;" +
     "function passesFilters_() { return true; }" +
+    // utilFor_ consults the client-only WHAT-IF flag (2026-08-03); parity is a
+    // REAL-mode invariant (the server has no simulation mode), so the stub
+    // pins the flag off exactly like passesFilters_ pins the filters open.
+    "function whatIfOn_() { return false; }" +
     src +
     "return { setModel: function (m) { MODEL = m; }, aggWeeks_: aggWeeks_," +
     " unclassifiedH_: unclassifiedH_, nsRawTot_: nsRawTot_, nsShare_: nsShare_," +
