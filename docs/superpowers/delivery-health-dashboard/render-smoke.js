@@ -1490,4 +1490,35 @@ assert_(C.STATE.role === "ic" && C.STATE.pop === "crew", "role chip routes throu
 C.setState("role", "all"); C.setState("pop", "fte");
 C.buildFilters_(); C.renderAll_();
 
+// ══════════════════════════════════════════════════════════════════════════
+// 30. THE BRIEF NAMES ITS OWN SCOPE (user report 2026-08-04: with filters
+// active, a copied brief read as if it honored them). The counts are
+// deliberately whole-population — feed-level records have no person to filter
+// by — so active filters must be NAMED as not applying, never silently
+// ignored, and the scope line must travel with 📋 Copy.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+C.setState("region", ""); C.setState("team", ""); C.setState("pop", "fte");
+C.renderHygiene_();
+var scoped0 = els.viewHygiene.innerHTML;
+assert_(/Scope: 2026\.W31 · whole delivery population/.test(scoped0),
+        "brief names its window and the whole-population rule");
+assert_(!/Active filters NOT applied/.test(scoped0),
+        "…with no filter caveat when nothing is filtered");
+assert_(/Scope: 2026\.W31/.test(C.STATE._briefText),
+        "the scope line travels with the copied text");
+C.setState("region", "AMER"); C.setState("team", "Team A"); C.setState("pop", "crew");
+C.renderHygiene_();
+var scoped1 = els.viewHygiene.innerHTML;
+assert_(/Active filters NOT applied here: population Crew · AMER · Team A/.test(scoped1),
+        "active filters are named as deliberately not applying");
+assert_(/Active filters NOT applied here/.test(C.STATE._briefText),
+        "…and the caveat is in the copied text too");
+// the numbers themselves must NOT move under person filters — whole population
+function briefFact0_(s) { return s.split("Top 3 Facts")[1].split("<h5>")[0]; }
+assert_(briefFact0_(scoped0) === briefFact0_(scoped1),
+        "person filters never change the feed-level counts — only the scope line changes");
+C.setState("region", ""); C.setState("team", ""); C.setState("pop", "fte");
+C.renderHygiene_();
+
 console.log("✅ render-smoke: " + checks + " checks passed");

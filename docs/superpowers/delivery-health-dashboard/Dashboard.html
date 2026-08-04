@@ -1073,7 +1073,7 @@ function renderFilterWarn_() {
   var culprit = null;
   ["region", "team", "pm", "family", "flag"].forEach(function (dim) {
     if (!STATE[dim]) return;
-    var n = MODEL.people.filter(function (p) { return passesFilters_(p, dim); }).length;
+    var n = MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p, dim); }).length;
     if (n > 0 && (!culprit || n > culprit.n)) culprit = { dim: dim, n: n };
   });
   el.innerHTML = culprit
@@ -2617,10 +2617,16 @@ function renderCompare_() {
     var members = MODEL.people.filter(function (p) {
       return passesFilters_(p, STATE.compare) && dimMatch_(p, STATE.compare, val);
     });
+    // attribOnly stubs STAY in the metric scope — bucketsFor_ joins a leaver's
+    // or non-Services assignee's issues through their stub name, and dropping
+    // them here would silently un-attribute that work from every issue-based
+    // bar (v13 whole-roster attribution). They only leave the HEADCOUNT: the
+    // number left of the bar counts people in the operational population.
     var names = {};
     members.forEach(function (p) { names[p.name] = 1; });
     var v = scopedMetric_(m, head.isos, names);
-    return { key: val, label: val, value: v, n: members.length };
+    var realN = members.filter(function (p) { return !p.attribOnly; }).length;
+    return { key: val, label: val, value: v, n: realN };
   }).filter(function (r) { return r.n > 0; })
     .sort(function (a, b) {
       // Nulls last: "no measurable data" is not a low score and must not sit at
@@ -2640,15 +2646,19 @@ function renderCompare_() {
   // is in two bars and the counts add up past the headcount. Anyone missing here
   // is a person the chart is silently not describing — the failure this line
   // exists to make impossible.
+  // attribOnly stubs are excluded from BOTH sides of "shown of inScope": this
+  // sentence proves the chart covers the operational population, and stubs are
+  // not in it (their issues still move the bar values via the scope names above).
   var seen = {};
   rows.forEach(function (r) {
     MODEL.people.forEach(function (p) {
-      if (passesFilters_(p, STATE.compare) && dimMatch_(p, STATE.compare, r.key)) seen[p.name] = 1;
+      if (!p.attribOnly && passesFilters_(p, STATE.compare) &&
+          dimMatch_(p, STATE.compare, r.key)) seen[p.name] = 1;
     });
   });
   var shown = Object.keys(seen).length;
   var inScope = MODEL.people.filter(function (p) {
-    return passesFilters_(p, STATE.compare);
+    return !p.attribOnly && passesFilters_(p, STATE.compare);
   }).length;
   var untaggedRow = rows.filter(function (r) { return isUntagged_(r.key); })[0];
   var overlaps = rows.reduce(function (t, r) { return t + r.n; }, 0) > shown;
@@ -2932,7 +2942,10 @@ function renderGrid_() {
   // flag, so the strip keeps showing all three totals while one of them is
   // active — otherwise clicking "4 overloaded" would leave a line reading
   // "4 of 4 people need attention · ⚠ 4 overloaded" and no way back.
-  var flagPool = MODEL.people.filter(function (p) { return passesFilters_(p, "flag"); });
+  // attribOnly stubs are excluded like everywhere else people are counted:
+  // they carry no weeks, so they can never be flagged, and leaving them in
+  // only inflates the "of N" denominator past the scope headcount.
+  var flagPool = MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p, "flag"); });
   var counts = { 3: 0, 2: 0, 1: 0 }, attnTotal = 0;
   flagPool.forEach(function (p) {
     var e = exceptionsOf_(p);
@@ -3748,7 +3761,31 @@ function briefFor_(h, pp) {
   return { facts: facts, highlights: highlights, notes: notes, concerns: concerns };
 }
 
-function briefHtml_(brief) {
+/**
+ * One line naming exactly what the brief covers (user report 2026-08-04: with
+ * filters active, a copied brief carried no scope and read as if it honored
+ * them). The counts are deliberately WHOLE-POPULATION: they come from the raw
+ * Jira feed, where an unattributed issue has no person attached — filtering by
+ * person would drop exactly the records this brief exists to count. So active
+ * filters are NAMED as not applying, never silently ignored.
+ */
+function briefScope_(winLabel) {
+  var act = [];
+  if (STATE.pop !== "fte") act.push("population " + POP_LABELS[STATE.pop]);
+  if (STATE.role !== "all") act.push("role " + ROLE_LABELS[STATE.role]);
+  if (STATE.region) act.push(STATE.region);
+  if (STATE.team) act.push(STATE.team);
+  if (STATE.pm) act.push("PM " + STATE.pm);
+  if (STATE.family) act.push(STATE.family);
+  if (STATE.search) act.push("search “" + STATE.search + "”");
+  return "Scope: " + winLabel + " · whole delivery population. These are feed-level " +
+    "counts — an unattributed issue has no person to filter by, so the dashboard " +
+    "filters cannot narrow them" +
+    (act.length ? ". Active filters NOT applied here: " + act.join(" · ") : "") +
+    (whatIfOn_() ? ". WHAT-IF is on elsewhere; this brief always reports real-mode counts." : ".");
+}
+
+function briefHtml_(brief, scope) {
   function sec(title, items) {
     return "<h5>" + title + "</h5><ul>" + items.map(function (t) {
       return "<li>" + esc_(t) + "</li>";
@@ -3759,16 +3796,19 @@ function briefHtml_(brief) {
     ' <span class="cellSub" title="Derived by fixed rules from the measured profile — same data, same brief, reproducible when quoted.">deterministic ⓘ</span></h4>' +
     '<button class="btn" onclick="copyBrief_()">📋 Copy</button>' +
     '<span id="briefMsg" class="cellSub"></span></div>' +
+    (scope ? '<div class="cellSub">' + esc_(scope) + "</div>" : "") +
     sec("Top 3 Facts", brief.facts) + sec("Top 3 Highlights", brief.highlights) +
     sec("Top 3 Notes", brief.notes) + sec("Top Concerns", brief.concerns) + "</div>";
 }
 
-/** Plain-text form for pasting into the review deck / doc. */
-function briefText_(brief) {
+/** Plain-text form for pasting into the review deck / doc. The scope line
+    travels with the copy — a pasted brief must name its own window. */
+function briefText_(brief, scope) {
   function sec(title, items) {
     return "## " + title + "\n" + items.map(function (t) { return "- " + t; }).join("\n");
   }
-  return "# Delivery Health — CEO Brief\n\n" + sec("Top 3 Facts", brief.facts) + "\n\n" +
+  return "# Delivery Health — CEO Brief\n\n" + (scope ? scope + "\n\n" : "") +
+    sec("Top 3 Facts", brief.facts) + "\n\n" +
     sec("Top 3 Highlights", brief.highlights) + "\n\n" + sec("Top 3 Notes", brief.notes) +
     "\n\n" + sec("Top Concerns", brief.concerns) + "\n";
 }
@@ -3848,8 +3888,9 @@ function profilePanelHtml_(h, pp, winLabel) {
     "session-only, banner on every tab, a reload always returns to real mode</span></div>" +
     (function () {
       var brief = briefFor_(h, pp);
-      STATE._briefText = briefText_(brief);   // what 📋 Copy copies
-      return briefHtml_(brief);
+      var scope = briefScope_(winLabel);
+      STATE._briefText = briefText_(brief, scope);   // what 📋 Copy copies
+      return briefHtml_(brief, scope);
     })() + "</div>";
 }
 
