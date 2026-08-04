@@ -1316,4 +1316,65 @@ assert_(b0.facts.length === 3 && b0.highlights.length === 3 && b0.notes.length =
         b0.concerns.length >= 1, "sparse data still yields a full 3/3/3 + concern brief");
 assert_(/not measurable/.test(b0.facts[0]), "…with facts saying 'not measurable', not fake zeros");
 
+// ══════════════════════════════════════════════════════════════════════════
+// 26. WHAT-IF THREADS INTO THE HEADROOM TABLE + util COVERAGE ACCESSOR PARITY
+// (final-review blocker fix, 2026.W32). oppRows_ aggregated every person's
+// hours via aggWeeks_ with NO WHAT-IF gate, while the cohort norm it compares
+// against comes from utilFor_ (which DOES drop capEst weeks) — a real
+// per-person rate was being diffed against a simulated norm. Fix: drop a
+// capEst week from a person's own aggregation too, mirroring utilFor_'s
+// per-week drop. Fold-in: METRICS_.util.coverage must agree with the tile's
+// WHAT-IF override (~line 2142) instead of only the KPI card getting it.
+// ══════════════════════════════════════════════════════════════════════════
+var wiOppModel = fresh(model({}));
+// A single-period month spanning both fixture weeks, so dropping ONE of a
+// person's two headline weeks under WHAT-IF still leaves a valid remainder to
+// aggregate — the row survives with different numbers, not a vanished row.
+wiOppModel.meta.periods = {
+  month: [{ key: "2026-07", label: "Jul 2026", status: "done", partial: false, isos: WEEKS }],
+};
+// Ana Perez's W30 becomes a defaulted-capacity week AND under-bills relative
+// to her W31 week, so the drop moves both the denominator and the rate by a
+// number computed from the fixture, not just "the row looks different".
+wiOppModel.people[0].weeks["2026.W30"] = week({
+  billable: 20, nonBillable: 20, nsBillRaw: 20, nsNonBillRaw: 20, capEst: true,
+});
+C.setState("whatIf", false);
+C.STATE.period = "month";
+resetFilters();
+C.renderOpportunity_();
+var oppReal = els.oppPanel.innerHTML;
+var anaReal = oppReal.split("Ana Perez")[1].split("</tr>")[0];
+// Real mode: both weeks count — availCov 40+40=80, billable 20+30=50 → 62.5% → 63%.
+assert_(/63%<span class="cellSub"> of 80h<\/span>/.test(anaReal),
+        "real mode: Ana's capEst week still counts (80h avail, 63% rate)");
+
+C.setState("whatIf", true);
+C.renderOpportunity_();
+var oppWi = els.oppPanel.innerHTML;
+var anaWi = oppWi.split("Ana Perez")[1].split("</tr>")[0];
+// WHAT-IF: the capEst W30 week drops out — only W31 counts: availCov 40,
+// billable 30 → 75%. The row survives (unlike a single-week head period)
+// with a concrete, different number, proving the drop actually threaded in.
+assert_(/75%<span class="cellSub"> of 40h<\/span>/.test(anaWi),
+        "WHAT-IF: Ana's capEst week is dropped (40h avail, 75% rate)");
+assert_(anaReal !== anaWi, "the rendered row differs between real and WHAT-IF mode");
+C.setState("whatIf", false);
+C.STATE.period = "week";
+
+// METRICS_.util.coverage: must return 1 under WHAT-IF (agreeing with the
+// tile's utilCov override) and the real ratio otherwise. Fixture: Ana's W30
+// tracked hours are only half-classified (trackedCov 20 of 40), so the real
+// ratio is (20 + 40 + 40 + 40) / (40*4) = 140/160 = 0.875 — not 1, or the
+// override couldn't be distinguished from "already 1".
+var covModel = fresh(model({}));
+covModel.people[0].weeks["2026.W30"].trackedCov = 20;
+C.setState("whatIf", false);
+var covReal = C.METRICS_.util.coverage(WEEKS);
+assert_(Math.abs(covReal - 0.875) < 1e-9, "real mode: coverage is the measured tracked/trackedCov ratio (0.875)");
+C.setState("whatIf", true);
+var covWi = C.METRICS_.util.coverage(WEEKS);
+assert_(covWi === 1, "WHAT-IF: coverage is forced to 1, matching the Executive tile's utilCov override");
+C.setState("whatIf", false);
+
 console.log("✅ render-smoke: " + checks + " checks passed");

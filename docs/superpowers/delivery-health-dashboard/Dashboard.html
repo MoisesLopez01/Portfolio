@@ -2322,7 +2322,11 @@ var METRICS_ = {
     coverage: function (isos) {
       var s = utilFor_(isos);
       if (!nsLive_()) return s.avail > 0 ? 1 : null;
-      return s.tracked > 0 ? s.trackedCov / s.tracked : null;
+      var cov = s.tracked > 0 ? s.trackedCov / s.tracked : null;
+      // WHAT-IF: must agree with the Executive tile's override (~line 2142,
+      // utilCov) — the kept population is fully classified by construction,
+      // so this accessor cannot show a below-gate coverage the tile doesn't.
+      return whatIfOn_() && cov !== null ? 1 : cov;
     },
     n: function (isos) { return utilFor_(isos).avail; },
   },
@@ -3239,11 +3243,22 @@ function setOppSort_(col) {
  * per issue, and an individual's on-time rate over three closed stories is not
  * a number anybody should act on.
  */
+// WHAT-IF: same validity rule as utilFor_'s per-week drop — a person-week
+// whose capacity fell back to a default is not a valid record, so it must not
+// count in this table's per-person aggregation either. Without this, a real
+// per-person rate was being diffed against a norm computed on the simulated
+// (capEst-dropped) population, contradicting the WHAT-IF banner on this tab.
+function whatIfIsos_(p, isos) {
+  return whatIfOn_()
+    ? isos.filter(function (iso) { var w = p.weeks[iso]; return !(w && w.capEst); })
+    : isos;
+}
+
 function oppRows_(head, trendPer, norm) {
   var live = nsLive_();
   return filteredPeople_().map(function (p) {
     if (p.onLeave) return null;
-    var w = aggWeeks_(p, head.isos);
+    var w = aggWeeks_(p, whatIfIsos_(p, head.isos));
     if (!w) return null;                       // pre-hire: the period predates them
     var den = live ? (w.availCov || 0) : w.avail;
     if (den <= 0) return null;                 // fully OOO, or nothing NS classified
@@ -3253,7 +3268,7 @@ function oppRows_(head, trendPer, norm) {
     // Hours, not points: the unit a manager can actually move.
     var opp = norm === null ? 0 : Math.max(0, den * (norm / 100) - num);
     var spark = trendPer.map(function (pr) {
-      var aw = aggWeeks_(p, pr.isos);
+      var aw = aggWeeks_(p, whatIfIsos_(p, pr.isos));
       if (!aw) return null;
       var d = live ? (aw.availCov || 0) : aw.avail;
       return d > 0 ? (live ? aw.billable : aw.tracked) / d * 100 : null;
@@ -3406,7 +3421,8 @@ function saveOppCsv_() {
       r.gap === null ? "" : Math.round(r.gap), r1_(r.opp),
       r.flags.map(function (x) { return x.label; }).join(" | ")]);
   });
-  downloadCsv_(out, "delivery-health-opportunity-" + pngPeriodStamp_() + ".csv");
+  downloadCsv_(out, "delivery-health-opportunity-" + (whatIfOn_() ? "WHATIF-" : "") +
+    pngPeriodStamp_() + ".csv");
 }
 
 // ── DATA HYGIENE VIEW (FR-2.3/FR-2.4) ────────────────────────────────────────
