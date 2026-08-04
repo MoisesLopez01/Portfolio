@@ -110,8 +110,16 @@ About tags re-audited under the same rule.
 ## Section 2 — Flagship live demo (sanitized Demand dashboard)
 
 A copy of `docs/superpowers/project-demand-dashboard/` deployed as its **own public
-GAS web app running offline/CSV mode** (the mode that runs the full UI with zero
-sheet access).
+GAS web app reading a generated synthetic demo workbook**.
+
+> **Mechanism amendment (2026-08-03, during planning):** the app's "offline/CSV"
+> path turned out to be a degraded fallback — it hides the capacity/utilization
+> panel (the ±2σ band) and drops holiday data, exactly the features being
+> showcased. The full experience requires `getDemandData()` reading sheets. The
+> demo therefore ships a checked-in `buildDemoWorkbook()` seeder that generates
+> ONE synthetic Google Sheets workbook (all 7 tabs, deterministic, anchored on
+> the run date) and points the sanitized copy's `CONFIG` at it. The
+> data-protection guarantee is unchanged: zero company sheets, zero company data.
 
 - **Source:** new folder `docs/superpowers/gas-portfolio-demos/workforce-demand/`
   (`Code.js`, `Dashboard.html`, `Security.js`, README). Internal app untouched.
@@ -125,11 +133,13 @@ sheet access).
 - **Access model:** open access, no allowlist (personal public demo per
   gas-project-standards: personal + no security). A persistent, visible banner:
   *"Live demo — synthetic data, fictional company."* Badge remains `○ Offline / CSV`.
-- **Synthetic dataset:** a deterministic, seeded generator script (checked in — it is
-  itself a portfolio artifact) produces the person×week CSV: ~40 fictional people,
-  3 regions (incl. ANZ for the 38h/7.6h rules), ~15 ISO weeks, seeded PTO + public
+- **Synthetic dataset:** a deterministic, seeded `buildDemoWorkbook()` GAS function
+  (checked in — it is itself a portfolio artifact) generates one demo workbook with
+  all 7 tabs (Planned Time Tempo, Tempo Tracked Time, PH, Capacity Tempo, Jira Raw,
+  Data, Contractors Data): ~27 fictional people, 4 regions (incl. ANZ for the
+  38h/7.6h rules), 23 ISO weeks anchored on the run date, seeded PTO + public
   holidays, billable/internal mix — tuned so every panel demonstrates: 🏖 tooltips
-  fire with named (fictional) holidays, the ±2σ band has excursions, every question
+  fire with named (fictional) holidays, the ±2σ band renders, every question
   chip returns hits, the billable-evidence panel classifies, the CSV export works.
   No value derived from real company data.
 - **Portfolio integration:** demos section led by a flagship hero card — synthetic
