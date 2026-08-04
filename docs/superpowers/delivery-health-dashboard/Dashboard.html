@@ -453,9 +453,18 @@ function renderWhatIfBanner_() {
   if (!on) { el.style.display = "none"; el.innerHTML = ""; return; }
   var c = whatIfCounts_();
   el.style.display = "";
+  // Under the Dictionary/epic scope the On-Time population IS the epic
+  // population — "332 of 1396 · 169 of 1396" printed the same total twice and
+  // read as a collision (user report 2026-08-04). One population, two
+  // validity readings.
+  var samePop = MODEL.meta.onTimeScope === "dictionary" || MODEL.meta.onTimeScope === "epic";
+  var kept = samePop
+    ? "kept " + c.readyKept + " of " + c.res + " resolved epics for On-Time · " +
+      c.epicsKept + " for Forecast"
+    : "kept " + c.readyKept + " of " + c.res + " delivery items · " +
+      c.epicsKept + " of " + c.epics + " epics";
   el.innerHTML = "🧪 <b>WHAT-IF SIMULATION</b> — invalid records removed " +
-    "(kept " + c.readyKept + " of " + c.res + " delivery items · " +
-    c.epicsKept + " of " + c.epics + " epics, whole export window). " +
+    "(" + kept + ", whole export window). " +
     "These are <b>not the real numbers</b>: every rate below describes only the " +
     "records complete enough to measure. " +
     '<button class="btn" onclick="toggleWhatIf_()">Exit WHAT-IF</button>';
@@ -873,9 +882,13 @@ function passesFilters_(p, skip) {
   return true;
 }
 
-/** People passing every active filter. */
+/** People passing every active filter. attribOnly stubs (whole-roster issue
+    attribution, schema v12) exist only so buckets can join a person record —
+    they are not the operational population, so the grid, the scope headcount
+    and the person CSV never see them. Their BUCKETS still count everywhere:
+    bucketsFor_ runs passesFilters_ directly, on purpose. */
 function filteredPeople_() {
-  return MODEL.people.filter(function (p) { return passesFilters_(p); });
+  return MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p); });
 }
 
 /**
@@ -887,6 +900,7 @@ function optionsFor_(dim) {
   var d = FILTER_DIMS[dim], counts = {};
   (d.all() || []).forEach(function (v) { counts[v] = 0; });
   MODEL.people.forEach(function (p) {
+    if (p.attribOnly) return; // identity stubs must not inflate headcounts
     if (!passesFilters_(p, dim)) return;
     d.vals(p).forEach(function (v) {
       if (v === undefined || v === null || v === "") return;
@@ -3579,7 +3593,9 @@ function briefGaps_(h, pp) {
     { name: "Assignee resolves to a roster person", kept: h.resAttr, total: h.resAssigned, gate: 0.95, cards: 4,
       owner: "WFP / this dashboard", week: "2026.W35",
       action: "fix the roster name index + crew Department gate (our bug, not Jira's)" },
-    { name: "Due date on the work On-Time measures", kept: h.resDue, total: h.res, gate: 0.80, cards: 1,
+    // "set" disambiguates vs the funnel's final stage: this counts due dates
+    // ALONE; the funnel's "measurable" additionally requires the roster join.
+    { name: "Due date set on the work On-Time measures", kept: h.resDue, total: h.res, gate: 0.80, cards: 1,
       owner: "Delivery leadership", week: "2026.W34", action: "set due dates on epics at kickoff" },
     { name: "Estimate on closed epics", kept: h.epicsEst, total: h.epics, gate: 0.70, cards: 1,
       owner: "Delivery leadership", week: "2026.W34",
@@ -3649,8 +3665,21 @@ function briefFor_(h, pp) {
         " · owner: " + g.owner + " · target: " + g.week;
     });
   if (concerns.length) {
+    // n-aware verdict (live-data fix 2026-08-04): "publishable, not meaningful"
+    // was written for n≈2 and is FALSE at the measured n=164 — a wrong judgment
+    // in the one line the CEO reads first. Below the honesty floor the sample
+    // is the problem; above it the problem is the share of work still
+    // unmeasured — say whichever is true.
+    var wiVerdict;
+    if (h.resReady < WHATIF_MIN_N_ || h.epicsTime < WHATIF_MIN_N_) {
+      wiVerdict = "publishable, not meaningful";
+    } else {
+      var unmeasured = h.res > 0
+        ? Math.round((1 - Math.min(h.resReady, h.res) / h.res) * 100) : 0;
+      wiVerdict = "real rates, but " + unmeasured + "% of the work stays unmeasured";
+    }
     concerns[0] = "Keeping only valid records leaves On-Time evaluating on n=" + h.resReady +
-      " and Forecast on n=" + h.epicsTime + " — publishable, not meaningful. The fix is " +
+      " and Forecast on n=" + h.epicsTime + " — " + wiVerdict + ". The fix is " +
       "upstream data entry, not filtering. Biggest lever: " + concerns[0];
   } else {
     concerns.push("No funnel gap is failing its gate in this window — hold the line and re-run at period close.");

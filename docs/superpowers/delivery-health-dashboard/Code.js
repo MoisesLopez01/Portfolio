@@ -1402,6 +1402,14 @@ function readRosterPeople_() {
   try {
     var ss = SpreadsheetApp.openById(dhSourceIds_().roster);
     var out = [], seen = {};
+    // Whole-roster attribution list (2026-08-04, user decision): every ACTIVE
+    // row on either tab, captured BEFORE the class/department gates. The gates
+    // scope the CAPACITY population (who owes planned+tracked time); issue
+    // metrics attribute by Jira Assignee, and a contractor's or a non-Services
+    // FTE's closed epic was still delivered — it must land on a person, not on
+    // "unattributed". Live FY26 Q4 measured the narrow index losing 173 of 351
+    // assigned issues (49%), the single largest evaluability drop.
+    var attrib = [], seenAttr = {};
     // Employment status of EVERY roster row, whatever the department or class.
     // `out` is the Services delivery population; these two are a wider lookup so
     // names that appear in the data but not in the population — Tempo project
@@ -1448,6 +1456,18 @@ function readRosterPeople_() {
         if (active) activeAll[normDH_(name)] = 1;
         else inactiveAll[normDH_(name)] = 1;
         if (!active) continue;                           // attrition — never shown
+        if (!seenAttr[normDH_(name)]) {                  // attribution record — pre-gates
+          seenAttr[normDH_(name)] = 1;
+          attrib.push({ name: name,
+                        rosterBucket: regionBucketFromLocation_(
+                          iLoc === -1 ? "" : String(raw[r][iLoc] || "").trim()),
+                        isCrew: src.crew,
+                        jobFamily: dhFamilyFromTitle_(
+                          iFam === -1 ? "" : String(raw[r][iFam] || "").trim(),
+                          iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim()),
+                        jobTitle: iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim(),
+                        hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
+        }
         if (seen[normDH_(name)]) continue;               // boomerang/collision: first active wins
         // Gates are FAIL-CLOSED: a missing/blank Class or Department cell excludes
         // the row instead of waving it through — the Contractors Data tab has no
@@ -1477,9 +1497,9 @@ function readRosterPeople_() {
                    hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
       }
     });
-    return { people: out, activeAll: activeAll, inactiveAll: inactiveAll };
+    return { people: out, attrib: attrib, activeAll: activeAll, inactiveAll: inactiveAll };
   } catch (e) {
-    return { people: [], activeAll: {}, inactiveAll: {},
+    return { people: [], attrib: [], activeAll: {}, inactiveAll: {},
              error: "Roster read failed: " + e.message };
   }
 }
@@ -1977,6 +1997,16 @@ function assembleModel_(inputs, win) {
   var population = inputs.roster.people.filter(function (p) { return p.tracks !== false; });
   var displayNames = population.map(function (p) { return p.name; });
   var nameIdx = buildNameIndex_(displayNames);
+  // ── ISSUE-ATTRIBUTION INDEX (2026-08-04, user decision) ─────────────────────
+  // Delivery metrics attribute against the WHOLE active roster — Data tab AND
+  // Contractors — not just the utilization population above. nameIdx keeps
+  // scoping Tempo/NS/backlog joins (capacity math stays population-only);
+  // attribIdx feeds resolvePerson only. Population names go in first so their
+  // display strings win any alias collision. Falls back to the population when
+  // an injected/legacy roster has no attrib list.
+  var attribPeople = inputs.roster.attrib || [];
+  var attribIdx = buildNameIndex_(
+    displayNames.concat(attribPeople.map(function (p) { return p.name; })));
   var byPerson = {}; // display name → accumulator
   population.forEach(function (p) {
     byPerson[p.name] = { roster: p, teams: [], pms: [], weeks: {}, regionHours: {} };
@@ -2145,7 +2175,7 @@ function assembleModel_(inputs, win) {
   // Jira buckets, person-attributed via Assignee → roster (user decision
   // 2026-07-31: every filter drives every KPI card). Bucket teams no longer
   // feed the Team dropdown — the vocabulary is Tempo teams only.
-  var resolvePerson = function (raw) { return raw ? resolveName_(nameIdx, raw) : null; };
+  var resolvePerson = function (raw) { return raw ? resolveName_(attribIdx, raw) : null; };
   var onTime = inputs.jira.available
     ? onTimeBuckets_(inputs.jira.issues, resolvePerson) : { buckets: [], unattributed: 0 };
   var forecast = inputs.jira.available
@@ -2159,6 +2189,36 @@ function assembleModel_(inputs, win) {
   // roster so the filter and the PM comparison chart describe the people who can
   // actually be asked about the work.
   var activePms = filterActiveNames_(Object.keys(pmSet), inputs.roster);
+
+  // Attribution-only stubs: a bucket person outside the utilization population
+  // still needs a person record — the client joins every bucket to
+  // MODEL.people and drives it through the universal filters. Stubs carry
+  // identity fields only (weeks: {}), so they can never move a capacity or
+  // hygiene denominator; the client keeps them out of the grid, the scope
+  // headcount and the dropdown counts via the attribOnly flag. Only persons
+  // the buckets actually reference ship, so the payload grows by the people
+  // who did work, not by the whole company.
+  var attribByNorm = {};
+  attribPeople.forEach(function (p) { attribByNorm[normDH_(p.name)] = p; });
+  var referenced = {};
+  [onTime.buckets, forecast.buckets, rework.buckets].forEach(function (bs) {
+    (bs || []).forEach(function (b) { if (b.person) referenced[b.person] = 1; });
+  });
+  Object.keys(referenced).sort().forEach(function (dn) {
+    if (byPerson[dn]) return;                 // already a population person
+    var rec = attribByNorm[normDH_(dn)];
+    if (!rec) return;                         // unknown name — cannot stub it
+    var reg = assignPersonRegion_({}, rec.rosterBucket);
+    people.push({ name: dn, region: reg.region, regionSource: reg.source,
+                  teams: [], pms: [], isCrew: rec.isCrew === true,
+                  jobTitle: rec.jobTitle || "",
+                  onLeave: false, leaveStatus: "",
+                  isManager: dhLevelTrack_(rec.jobTitle || "").track === "M",
+                  jobFamily: rec.jobFamily || "", tracks: false,
+                  newHire: isDhNewHire_(rec.hireDate, win.today || new Date()),
+                  hired: dhDateStr_(rec.hireDate),
+                  backlog: null, weeks: {}, attribOnly: true });
+  });
 
   return {
     schemaVer: DH_SCHEMA_VER_,
@@ -2252,7 +2312,13 @@ function assembleModel_(inputs, win) {
 // v11: hygieneBuckets gain resAssigned — 'has a Jira assignee' split from
 //      'assignee resolves to a roster person'. Two gaps, two owners; a v10
 //      entry has no resAssigned and the split row would read 0%.
-var DH_SCHEMA_VER_ = 11;
+// v12: WHOLE-ROSTER ISSUE ATTRIBUTION (2026-08-04) — resolvePerson joins
+//      against every active roster row (Data + Contractors, pre-gates), and
+//      people[] gains weeks-less attribOnly stubs for bucket persons outside
+//      the utilization population. A cached v11 model was built on the narrow
+//      index (measured: it dropped 173 of 351 assigned issues), so it MUST
+//      miss cleanly — serving it would keep every card undercounting.
+var DH_SCHEMA_VER_ = 12;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -3314,6 +3380,37 @@ function _test_modelAssembly_() {
   // Fatal: roster error → model.error set
   var m3 = assembleModel_(Object.assign({}, inputs, { roster: { people: [], error: "boom" } }), win);
   assert_(!!m3.error, "roster failure is fatal");
+  // ── Whole-roster attribution (v12, 2026-08-04) ──
+  // A contractor sits outside the utilization population (no Department column
+  // on the Contractors tab) but closes an issue: it must attribute via the
+  // pre-gates attrib list, ship a weeks-less attribOnly stub, and never touch
+  // capacity math or the family dropdown.
+  var m6 = assembleModel_(Object.assign({}, inputs, {
+    roster: { people: inputs.roster.people,
+              attrib: [{ name: "Carlos Crew", rosterBucket: "APAC", isCrew: true,
+                         jobFamily: "", jobTitle: "", hireDate: null }] },
+    jira: Object.assign({}, inputs.jira, {
+      issues: inputs.jira.issues.concat([
+        { due: new Date(2026, 6, 28), resolved: new Date(2026, 6, 28),
+          assignee: "Crew, Carlos", estSec: 0, spentSec: 0, isClientCommitment: true }]) }),
+  }), win);
+  var carlos = m6.people.filter(function (x) { return x.name === "Carlos Crew"; })[0];
+  assert_(!!carlos && carlos.attribOnly === true && Object.keys(carlos.weeks).length === 0,
+          "contractor referenced by an issue → weeks-less attribOnly stub");
+  assert_(carlos.region === "APAC" && carlos.isCrew === true,
+          "stub carries roster-bucket region + crew flag");
+  assert_(m6.onTimeBuckets.some(function (b) { return b.person === "Carlos Crew"; }),
+          "comma-form contractor assignee attributes via the whole-roster index");
+  assert_(m6.meta.jiraUnattributed.onTime === 1,
+          "Random Dev is still the only unattributed issue");
+  var hyg6 = m6.hygieneBuckets.filter(function (h) { return h.iso === "2026.W31"; })[0];
+  assert_(hyg6.res === 3 && hyg6.resAttr === 2, "hygiene resAttr counts the contractor join");
+  assert_(m6.people.length === 4 && m6.people[3].name === "Carlos Crew",
+          "stubs appended after the alphabetical population");
+  assert_(m6.meta.families.join("|") === "Service Delivery|Uncatalogued",
+          "attribOnly stubs never widen the family dropdown");
+  assert_(m6.meta.nsCoverage.personWeeks === m.meta.nsCoverage.personWeeks,
+          "weeks-less stub adds nothing to the NS-coverage denominator");
   Logger.log("✅ _test_modelAssembly_ passed");
 }
 

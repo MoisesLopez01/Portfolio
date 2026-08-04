@@ -1377,4 +1377,63 @@ var covWi = C.METRICS_.util.coverage(WEEKS);
 assert_(covWi === 1, "WHAT-IF: coverage is forced to 1, matching the Executive tile's utilCov override");
 C.setState("whatIf", false);
 
+// ══════════════════════════════════════════════════════════════════════════
+// 27. WHOLE-ROSTER ATTRIBUTION + LIVE-DATA FIXES (2026-08-04)
+// attribOnly stubs join buckets to the KPI cards without ever entering the
+// grid, the headcounts or the dropdowns; the banner stops printing the same
+// total twice under the Dictionary scope; and the CEO brief's verdict is
+// n-aware — "publishable, not meaningful" was written for n≈2 and is false
+// at the measured n=164.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+var baseOt27 = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
+var stubModel = model({});
+stubModel.people.push({ name: "Sol Architect", region: "APAC", teams: [], pms: [],
+                        isCrew: false, jobTitle: "", onLeave: false, isManager: false,
+                        jobFamily: "", tracks: false, newHire: false, backlog: null,
+                        weeks: {}, attribOnly: true });
+stubModel.onTimeBuckets = stubModel.onTimeBuckets.concat(
+  WEEKS.map(function (iso) { return { iso: iso, person: "Sol Architect", n: 10, onTime: 10, nAll: 10 }; }));
+fresh(stubModel);
+assert_(C.filteredPeople_().every(function (p) { return p.name !== "Sol Architect"; }),
+        "attribOnly stub excluded from the operational population (grid/scope/CSV)");
+var stubOt = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
+assert_(stubOt.n === baseOt27.n + 20 && stubOt.onTime === baseOt27.onTime + 20,
+        "…but the stub's BUCKETS count in the KPI aggregation under the default lens");
+assert_((C.optionsFor_("family").counts["Uncatalogued"] || 0) === 0,
+        "stub does not inflate dropdown headcounts");
+// Banner: one population, two validity readings under the Dictionary scope
+C.setState("whatIf", true);
+C.getModel().meta.onTimeScope = "dictionary";
+C.renderAll_();
+assert_(/kept 64 of 100 resolved epics for On-Time · 18 for Forecast/.test(els.whatifBanner.innerHTML),
+        "dictionary scope: no doubled total in the banner");
+assert_(!/of 40 epics/.test(els.whatifBanner.innerHTML), "…the second total is gone");
+C.getModel().meta.onTimeScope = "delivery";
+C.renderAll_();
+assert_(/kept 64 of 100 delivery items/.test(els.whatifBanner.innerHTML) &&
+        /18 of 40 epics/.test(els.whatifBanner.innerHTML),
+        "delivery scope keeps the two-population wording");
+C.setState("whatIf", false);
+C.renderAll_();
+// n-aware CEO-brief verdict, live FY26 Q4-shaped fixture
+var bHealthy = C.briefFor_(
+  { res: 402, resDue: 308, resAssigned: 351, resAttr: 178, resReady: 164,
+    epics: 402, epicsEst: 91, epicsTime: 49 },
+  { tracked: 55756, trackedCov: 50605, weeks: 2198, capEst: 54 });
+assert_(/n=164 and Forecast on n=49/.test(bHealthy.concerns[0]),
+        "concern #1 carries the live n values");
+assert_(/real rates, but 59% of the work stays unmeasured/.test(bHealthy.concerns[0]),
+        "healthy n → share-unmeasured verdict (1 − 164/402 = 59%)");
+assert_(!/not meaningful/.test(bHealthy.concerns[0]),
+        "…and no false 'not meaningful' judgment at n=164");
+var bTiny27 = C.briefFor_(
+  { res: 100, resDue: 80, resAssigned: 94, resAttr: 54, resReady: 50,
+    epics: 18, epicsEst: 4, epicsTime: 3 },
+  { tracked: 4000, trackedCov: 3800, weeks: 100, capEst: 3 });
+assert_(/publishable, not meaningful/.test(bTiny27.concerns[0]),
+        "sub-floor n (Forecast n=3) keeps the honesty verdict");
+assert_(JSON.stringify(bHealthy).indexOf("Due date set on the work") !== -1,
+        "due-date gap says 'set' — due dates alone, distinct from the roster-joined funnel stage");
+
 console.log("✅ render-smoke: " + checks + " checks passed");
