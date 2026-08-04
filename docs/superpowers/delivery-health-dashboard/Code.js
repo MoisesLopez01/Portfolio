@@ -210,7 +210,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "2.0",
+  version: "2.1",
   updated: "2026-08-03",  // 2026.W32
 
   metrics: {
@@ -339,6 +339,12 @@ var METRIC_REGISTRY_ = {
     // all of them and every visible trend line gets a "definition changed"
     // marker at this date. That marker is the point: the step people will see
     // in W32 is the definition moving, not delivery moving.
+    // Measurement change, not a definition change: no metric's computed value
+    // moves, so `affects` is empty and no trend line gets a marker.
+    { version: "2.1", date: "2026-08-03", author: "Alex López",
+      affects: [],
+      change: "Data Hygiene splits the assignee gap in two: 'resolved work carries a Jira assignee' and 'that assignee resolves to a roster person'. No metric definition changed.",
+      rationale: "Profiling the real export (2025.W32-33, 218 rows) showed 94% of resolved issues DO carry an assignee while only about half resolve to a roster person. Reported as one number it read as a Jira hygiene failure and was routed to the Jira admin queue, where there was nothing to fix. They are two problems with two owners and two different fixes." },
     { version: "2.0", date: "2026-08-03", author: "Alex López",
       affects: ["onTime", "forecast", "util", "quality"],
       change: "Aligned all four metrics to the Metrics Dictionary. On-Time rescoped from Stories/Tasks to Epic/Milestone OR Client-Commitment-labelled issues. Forecast Accuracy headline returned to mean(max(0, 1 − |A−E|/E)), with the ±10% band and median variance kept as companions. Utilization headline denominator returned to gross scheduled capacity (headcount × standard hours), with the net-of-absence rate kept as a companion. Quality / Rework built and published for the first time, replacing the placeholder tile.",
@@ -1088,7 +1094,16 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
   var sc = scope || CONFIG_DH.ONTIME_SCOPE || "delivery";
   var map = {};
   function row(iso) {
-    if (!map[iso]) map[iso] = { iso: iso, res: 0, resDue: 0, resAttr: 0,
+    if (!map[iso]) map[iso] = { iso: iso, res: 0, resDue: 0,
+                                // resAssigned vs resAttr: SEPARATE PROBLEMS with
+                                // separate owners. Measured 2025.W32-33 sample:
+                                // 94% of resolved issues carry a Jira assignee,
+                                // but only ~54% of those resolve to a roster
+                                // person. Reporting one number ("unattributed")
+                                // sent a name-matching problem to the Jira admin
+                                // queue, where it sat because there was nothing
+                                // for them to fix.
+                                resAssigned: 0, resAttr: 0,
                                 resRegion: 0, resTeam: 0, resReady: 0, resFull: 0,
                                 epics: 0, epicsEst: 0, epicsTime: 0 };
     return map[iso];
@@ -1100,7 +1115,13 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
       var r = row(iso);
       r.res++;
       var hasDue = !!(it.due && !isNaN(it.due.getTime()));
+      // "⚠️ UNASSIGNED" is what the exporter writes for an empty Jira assignee,
+      // so an unassigned issue is NOT an empty string here — it is a sentinel,
+      // and treating it as a name would score the gap as filled.
+      var raw = String(it.assignee || "").trim();
+      var hasAssignee = !!raw && !/unassigned/i.test(raw);
       var hasPerson = !!(resolvePerson && resolvePerson(it.assignee || ""));
+      if (hasAssignee) r.resAssigned++;
       var hasRegion = !!it.region && it.region !== DH_REGION_UNASSIGNED_;
       if (hasDue) r.resDue++;
       if (hasPerson) r.resAttr++;
@@ -2215,7 +2236,10 @@ function assembleModel_(inputs, win) {
 //      reworkLink/reopened, and meta.jiraUnattributed.rework. On-Time also
 //      changes SCOPE (delivery -> dictionary) and Forecast changes FORMULA,
 //      so a v9 entry would serve the old readings under the new labels.
-var DH_SCHEMA_VER_ = 10;
+// v11: hygieneBuckets gain resAssigned — 'has a Jira assignee' split from
+//      'assignee resolves to a roster person'. Two gaps, two owners; a v10
+//      entry has no resAssigned and the split row would read 0%.
+var DH_SCHEMA_VER_ = 11;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {

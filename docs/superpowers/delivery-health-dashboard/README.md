@@ -84,7 +84,7 @@ all derive from it. The role gate is enforced inside `switchView_()`, not just b
 
 | Tab | Answers | Contents |
 |---|---|---|
-| 📊 **Executive** | "Are we on target, and where aren't we?" | The four KPI cards + one **comparison chart**: the active metric broken down by Region / Team / PM / Job family on a common 0–100 axis, with the target rule and the operating band drawn in. **Every bar is a click-through** to that filter. |
+| 📊 **Executive** | "Are we on target, and where aren't we?" | The four KPI cards + one **comparison chart**: the active metric broken down by Region / Team / PM / Job family on a common 0–100 axis, with the target rule and the operating band drawn in. The bars are **read-only** — scope changes belong to the header filters. |
 | 📈 **Trends** | "Who moves it?" | The **opportunity table** and nothing else: one row per person, ranked by the hours between them and the cohort's operating rate, with its own metric selector. The history line chart was removed — the tiles already carry a sparkline and a vs-target read. |
 | 👥 **People** | "Who needs me this period?" | The triage-ordered people × period grid, expandable into stacked workload bars with per-person drill-downs. |
 | 🧪 **Data Hygiene** | "What's missing, and who owns it?" | The attribution work queue. Deliberately **unfiltered** — a well-tagged region does not make the feed publishable. |
@@ -202,8 +202,11 @@ If a label states a count, clicking it shows you that count:
   dashboard — cards, charts and grid — to those people, and always offers `clear ✕`. Counts are
   computed over the population passing every filter *except* the flag, so the other totals stay
   visible and the filter can be swapped rather than only cleared;
-- the workload-bar legend's `billable` / `non-billable` / `▼ planned` entries set the Focus lens;
-- comparison-chart bars set the matching Region / Team / PM / Family filter.
+- the workload-bar legend's `billable` / `non-billable` / `▼ planned` entries set the Focus lens.
+
+Comparison-chart bars are the deliberate exception (user 2026-08-03): they report, they don't filter.
+Two ways to change scope — a header control and a chart click — meant the same question had two
+answers depending on which one you last touched.
 
 Entries that act carry a dotted underline; entries with no lens of their own stay inert and explain
 themselves in their tooltip instead.
@@ -740,7 +743,7 @@ for a live read. Error models are never cached.
       (marked `(0)`), and the filter row says `⚠ No one matches — clear region to see N people`.
       Clicking that link restores the view.
 - [ ] Executive: every comparison bar carries a value **and** a ✔/▲/✖ glyph; the target rule is
-      labelled. Click a bar → the whole dashboard filters to it; click again → cleared.
+      labelled. Bars are read-only — clicking one does nothing; scope changes via the header filters.
 - [ ] Trends shows **only** "Where the headroom is" — no history chart, no values table — and its
       metric chips switch the metric for the Executive comparison too.
 - [ ] Opportunity table: headline is **hours**; ramping 🌱 new hires appear but the footnote says they

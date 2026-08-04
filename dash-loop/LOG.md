@@ -22,3 +22,17 @@ Environment notes recorded once:
 STOP 18:45 — 90-minute budget elapsed. 5 of 6 iterations used; iteration 6 not started
 rather than begun and abandoned mid-edit. Total 10 → 18/30. R1/R2 blocked on PR-01.
 Acceptance: Q1 Q2 Q3 pass; Q4 now honest (was misleading); Q5 passes at 1440x900.
+
+POST-LOOP 2026-08-03 — real-export profiling + blocker report.
+Profiled the actual Jira Raw output (218 rows, 2026.W32 sample; resolution dates 2025-08-04→18,
+~350 days old — percentages indicative, structure conclusive). Findings drove:
+- schema v10→v11: hygieneBuckets gain resAssigned. Registry v2.1, changeLog affects: [] (a
+  measurement change, no metric's value moves).
+- Data Hygiene: the assignee gap SPLIT into "carries a Jira assignee" (94%, Jira discipline) and
+  "that assignee joins the roster" (~54% of those, OUR name index). One number had been routing a
+  name-matching problem to the Jira admin queue.
+- Due-date row renamed to name the population it measures — under the Dictionary scope it counts
+  epics (11% fill), not "delivery work" (73%).
+- ONTIME_SCOPE stays "dictionary". Reverting to "delivery" would raise the number by hiding the
+  blocker, which is the opposite of what this report is for.
+- dash-loop/DATA-BLOCKERS.md written for the Services Director.

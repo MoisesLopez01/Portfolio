@@ -185,7 +185,9 @@ function model(o) {
     }),
     hygieneBuckets: WEEKS.map(function (iso, i) {
       // W31 improves on W30 so the trend has somewhere to go.
-      return { iso: iso, res: 50, resDue: 40, resAttr: 45, resRegion: 10, resTeam: 5,
+      // resAssigned 47 vs resAttr 45: nearly everything HAS an assignee; the loss
+      // is in the roster join. Two different gaps (schema v11).
+      return { iso: iso, res: 50, resDue: 40, resAssigned: 47, resAttr: 45, resRegion: 10, resTeam: 5,
                resReady: 30 + i * 4, resFull: 8, epics: 20, epicsEst: 14, epicsTime: 9 };
     }),
     viewerRole: "admin",
@@ -596,14 +598,18 @@ var hb = C.hbarChart_({
   rows: [{ key: "AMER", label: "AMER", value: 73, n: 12 },
          { key: "EMEA", label: "EMEA", value: 44, n: 8 },
          { key: "APAC", label: "APAC", value: null, n: 3 }],
-  target: { green: 70, amber: 50 }, onclick: "compareDrill_", activeKey: "" });
+  target: { green: 70, amber: 50 } });
 assert_(/✔ 73%/.test(hb), "a bar at or above target carries the ✔ glyph beside its value");
 assert_(/✖ 44%/.test(hb), "and one below the amber floor carries ✖ — status is never colour alone");
 assert_(/no measurable data/.test(hb), "a category with nothing measurable says so, and shows no bar");
 assert_(/target 70%/.test(hb), "the target rule is labelled");
 assert_(/>0%<\/text>/.test(hb) && />100%<\/text>/.test(hb),
         "the axis runs 0–100 — a percentage bar that doesn't start at zero is a lie");
-assert_(/compareDrill_\('AMER'\)/.test(hb), "each bar clicks through to its own filter");
+// The bars are READ-ONLY (user 2026-08-03): filtering lives in the header
+// controls only, so scope has one home rather than two.
+assert_(!/onclick/.test(hb), "bars carry no click handler");
+assert_(!/click to filter/.test(hb), "…and no tooltip promising one");
+assert_(/<title>AMER — 73%/.test(hb), "…while the informational tooltip survives");
 // The bar chart is width-capped, which is what caps its rendered height: an
 // uncapped 100%-wide SVG multiplies its viewBox height by the container width.
 assert_(/class="chart hbar"/.test(hb),
@@ -1075,5 +1081,27 @@ assert_(C.STATE.view !== "trend",
         "…and asking for it by id lands elsewhere — the gate is in the router, not the tab bar");
 C.getModel().viewerRole = "admin";
 C.switchView_("exec");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 20. THE ASSIGNEE GAP IS TWO GAPS (2026-08-03, from real-export profiling)
+// 94% of resolved issues carry an assignee; only ~54% of those join the roster.
+// Reported as one "unattributed" number it read as a Jira hygiene failure and
+// went to the Jira admin queue, where there was nothing to fix.
+// ══════════════════════════════════════════════════════════════════════════
+C.setModel(model({}));
+C.renderHygiene_();
+var hyg2 = els.viewHygiene.innerHTML;
+assert_(/Resolved work carries a Jira assignee/.test(hyg2), "gap 1: does the issue have an assignee at all");
+assert_(/and that assignee resolves to a roster person/.test(hyg2), "gap 2: does that name join the roster");
+assert_(/94%/.test(hyg2), "…47 of 50 carry an assignee");
+assert_(/2 of 47 named assignees do not match the roster/.test(hyg2),
+        "…and the join is measured against the ASSIGNED population, not the whole one — " +
+        "dividing by all 50 would blame Jira for a name-matching problem");
+assert_(/not by Jira admin/.test(hyg2), "…the row says explicitly who cannot fix it");
+// The due-date row must name the population it measures, not say "delivery work"
+// when the scope is epics.
+assert_(/Due date on the work On-Time measures/.test(hyg2), "the due-date row names its own population");
+assert_(!/Due date on resolved delivery work/.test(hyg2),
+        "…and no longer says 'delivery work' while measuring epics");
 
 console.log("✅ render-smoke: " + checks + " checks passed");

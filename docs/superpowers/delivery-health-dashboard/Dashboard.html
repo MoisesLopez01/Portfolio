@@ -239,8 +239,6 @@ tr.detail td.dback{padding:8px 16px 12px}
 .chart text.axis{font-size:10px;font-variant-numeric:tabular-nums}
 .chart .gl{stroke:var(--grid);stroke-width:1;shape-rendering:crispEdges}
 .chart .hit{fill:transparent;cursor:crosshair}
-.chart .clickable{cursor:pointer}
-.chart .clickable:hover .barfill{opacity:.78}
 .chartHead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px}
 .chartHead h3{font-size:calc(14px*var(--scale));font-weight:800}
 .chartHead .sub{color:var(--muted);font-size:calc(11px*var(--scale))}
@@ -1426,11 +1424,12 @@ function pctDomain_(vals, refs) {
 
 /**
  * Horizontal comparison bars. One row per category, value labelled at the tip
- * with its status glyph, target drawn as a vertical rule. Rows are clickable —
- * clicking a category filters the whole dashboard to it.
+ * with its status glyph, target drawn as a vertical rule. Read-only: the bars
+ * report, they don't filter — scope changes belong to the header controls.
  *
  * @param {{rows:Array<{key:string,label:string,value:?number,n:number,sub:string}>,
- *          target:?Object, std:?Object, onclick:string, activeKey:string}} o
+ *          target:?Object, std:?Object, cap:?number, expanded:?boolean,
+ *          onExpand:?string}} o
  */
 function hbarChart_(o) {
   var all = o.rows || [];
@@ -1493,15 +1492,12 @@ function hbarChart_(o) {
     var bh = 16;                                 // ≤24px: the band's leftover is air
     var by = yTop + (RH - bh) / 2;
     var rag = ragOf_(r.value, o.target);
-    var active = o.activeKey && o.activeKey === r.key;
-    s += '<g class="clickable"' + (o.onclick ? ' onclick="' + o.onclick + "('" +
-      encodeURIComponent(r.key).replace(/'/g, "%27") + "')\"" : "") + ">" +
+    s += "<g>" +
       "<title>" + esc_(r.label + " — " +
         (r.value === null ? "no measurable data" : Math.round(r.value) + "%") +
-        " · " + r.n + (r.n === 1 ? " person" : " people") + (r.sub ? " · " + r.sub : "") +
-        (o.onclick ? " · click to filter to " + r.label : "")) + "</title>" +
+        " · " + r.n + (r.n === 1 ? " person" : " people") + (r.sub ? " · " + r.sub : "")) + "</title>" +
       '<rect x="0" y="' + yTop + '" width="' + W + '" height="' + RH + '" fill="transparent"/>' +
-      '<text class="val" x="0" y="' + (by + 8) + '"' + (active ? ' fill="var(--orbe)"' : "") + ">" +
+      '<text class="val" x="0" y="' + (by + 8) + '">' +
         esc_(trunc_(r.label, 22)) + "</text>" +
       '<text class="axis" x="' + (L - 8) + '" y="' + (by + 8) + '" text-anchor="end">' +
         r.n + "</text>";
@@ -2322,8 +2318,9 @@ function completeWeekSeries_(m) {
 // The cards say how the whole slice is doing. The one question that always
 // follows is "where?", and answering it used to mean changing the Region filter
 // five times and remembering five numbers. One labelled chart, every category
-// against the same 0–100 axis, the target and the operating band drawn in, and
-// each bar clickable straight through to that filter.
+// against the same 0–100 axis, and the target and operating band drawn in.
+// The bars are a READ-ONLY comparison (user 2026-08-03): filtering stays in the
+// header controls, so there is one way to change scope rather than two.
 // ══════════════════════════════════════════════════════════════════════════
 /** Metric selector chips. Shared by the Executive comparison and the Trends
     headroom table so one click changes the metric on both — two independent
@@ -2368,13 +2365,6 @@ function setCompare_(dim) {
 }
 
 /** Click-through from a bar to the matching filter (toggles off if re-clicked). */
-function compareDrill_(encodedKey) {
-  var key = decodeURIComponent(encodedKey);
-  var dim = STATE.compare;
-  STATE[dim] = STATE[dim] === key ? "" : key;
-  buildFilters_();
-  renderAll_();
-}
 
 function renderCompare_() {
   var panel = document.getElementById("comparePanel");
@@ -2480,11 +2470,9 @@ function renderCompare_() {
       esc_(m.axis()) + " ⓘ</span></div>" +
     '<div class="verdict">' + verdict + "</div>" +
     hbarChart_({ rows: rows, target: target, std: std, title: m.label(),
-                 onclick: "compareDrill_", activeKey: STATE[STATE.compare],
                  expanded: !!STATE.compareAll, onExpand: "toggleCompareAll_()" }) +
-    '<div class="cellSub" style="margin-top:6px">Click any bar to filter the whole ' +
-      "dashboard to that " + cmpNoun_(STATE.compare, 1) +
-      "; click it again to clear. The number left of each bar is its headcount. " +
+    '<div class="cellSub" style="margin-top:6px">' +
+      "The number left of each bar is its headcount. " +
       (overlaps
         ? "Membership overlaps, so the bars sum to more than the headcount — " +
           "someone on two teams appears in both. "
@@ -3302,10 +3290,18 @@ function saveOppCsv_() {
 // Deliberately UNFILTERED: hygiene is a whole-population question. A region
 // slice that looks well-tagged doesn't make the feed publishable.
 
+/** Plain-language name for the population On-Time measures, so the hygiene row
+    says which issues its percentage is about rather than "delivery work". */
+function onTimeScopeWord_() {
+  return { dictionary: "epics / milestones / client commitments",
+           epic: "resolved epics",
+           all: "resolved items (all types)" }[MODEL.meta.onTimeScope] || "resolved delivery items";
+}
+
 /** Sums the server's per-week attribution counts over a set of ISO weeks. */
 function hygieneFor_(isos) {
-  var s = { res: 0, resDue: 0, resAttr: 0, resRegion: 0, resTeam: 0, resReady: 0,
-            resFull: 0, epics: 0, epicsEst: 0, epicsTime: 0 };
+  var s = { res: 0, resDue: 0, resAssigned: 0, resAttr: 0, resRegion: 0, resTeam: 0,
+            resReady: 0, resFull: 0, epics: 0, epicsEst: 0, epicsTime: 0 };
   (MODEL.hygieneBuckets || []).forEach(function (h) {
     if (isos.indexOf(h.iso) === -1) return;
     Object.keys(s).forEach(function (k) { s[k] += (h[k] || 0); });
@@ -3501,18 +3497,37 @@ function renderHygiene_() {
       "complete " + unit + "s · unit follows the header toggle</span></div>";
 
   var gaps = [
-    { name: "Due date on resolved delivery work",
+    // The row NAMES the population it measures. Under the Dictionary scope this
+    // is epics / milestones / Client-Commitment-labelled work — not "delivery
+    // work" — and the distinction is the whole finding: Stories and Tasks carry
+    // due dates at ~73%, epics at ~11%, so a label saying "delivery work" sent
+    // people looking for a problem that isn't where the number says it is.
+    { name: "Due date on the work On-Time measures",
       value: h.res > 0 ? h.resDue / h.res : null, gate: 0.80,
-      detail: h.resDue + " of " + h.res + " resolved items",
+      detail: h.resDue + " of " + h.res + " " + onTimeScopeWord_(),
       prereq: "PR-08 / PR-02", week: "2026.W34",
-      blocks: "On-Time Delivery",
-      note: "Measured against the mutable Jira Due Date — a baselined committed date does not exist yet." },
-    { name: "Assignee resolves to a roster person",
-      value: h.res > 0 ? h.resAttr / h.res : null, gate: 0.95,
-      detail: (h.res - h.resAttr) + " of " + h.res + " unattributed",
-      prereq: "—", week: "2026.W35",
-      blocks: "all three delivery cards",
-      note: "Unattributed items are excluded from every card under every filter." },
+      blocks: "On-Time Delivery — the metric cannot publish without it",
+      note: "Measured against the mutable Jira Due Date — a baselined committed date does not exist yet. " +
+            "Under the Metrics Dictionary scope this counts epics and milestones, which carry due dates far " +
+            "less often than the Stories and Tasks the previous scope measured." },
+    // SPLIT IN TWO (2026-08-03). Reported as one number, ~46% \"unattributed\"
+    // read as a Jira hygiene failure and was routed to the Jira admin queue,
+    // where there was nothing to fix: the assignee is nearly always THERE, it
+    // just doesn't match a roster name. Two gaps, two owners, two fixes.
+    { name: "Resolved work carries a Jira assignee",
+      value: h.res > 0 ? h.resAssigned / h.res : null, gate: 0.95,
+      detail: (h.res - h.resAssigned) + " of " + h.res + " have no assignee at all",
+      prereq: "PR-08", week: "2026.W35",
+      blocks: "all four delivery cards",
+      note: "This one is a Jira discipline gap — an issue closed with nobody on it." },
+    { name: "…and that assignee resolves to a roster person",
+      value: h.resAssigned > 0 ? h.resAttr / h.resAssigned : null, gate: 0.95,
+      detail: (h.resAssigned - h.resAttr) + " of " + h.resAssigned + " named assignees do not match the roster",
+      prereq: "— (name normalisation, not Jira)", week: "2026.W35",
+      blocks: "all four delivery cards",
+      note: "NOT a Jira problem: the person is named on the issue, but the display name does not join to " +
+            "the roster (leavers, contractors, display-name changes, alias gaps). Fixed in the name index, " +
+            "not by Jira admin. Unmatched items are excluded from every card under every filter." },
     { name: "Region tagged on delivery work",
       value: h.res > 0 ? h.resRegion / h.res : null, gate: 1.00,
       detail: (h.res - h.resRegion) + " of " + h.res + " land in Unassigned",
