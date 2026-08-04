@@ -101,7 +101,10 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
-             " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_ })";
+             " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
+             // WHAT-IF simulation + data profiling (spec 2026-08-03)
+             " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
+             " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -1103,5 +1106,46 @@ assert_(/not by Jira admin/.test(hyg2), "…the row says explicitly who cannot f
 assert_(/Due date on the work On-Time measures/.test(hyg2), "the due-date row names its own population");
 assert_(!/Due date on resolved delivery work/.test(hyg2),
         "…and no longer says 'delivery work' while measuring epics");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 21. WHAT-IF CORE (spec 2026-08-03): one flag flips the population every
+// shared aggregation helper uses to "valid records only". The rates never
+// change — they were always computed over valid records; the flag changes the
+// denominators and the confidence framing. Admin-only, session-only.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({ otCov: 0.66, fcCov: 0.43 }));
+C.setState("whatIf", true);
+assert_(C.whatIfOn_(), "whatIf turns on for an admin viewer");
+var wiOt = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
+assert_(wiOt.nAll === wiOt.n, "WHAT-IF collapses the coverage denominator to the valid population");
+assert_(wiOt.nAllReal === 100, "…keeping the real total (2 weeks × 50) for restating");
+var wiFc = C.bucketsFor_(C.getModel().forecastBuckets, WEEKS);
+assert_(wiFc.nNoTime === 0 && wiFc.nAll === wiFc.n,
+        "estimated-but-untracked epics vanish from the displayed population");
+assert_(wiFc.nNoTimeReal === 4, "…their real count survives (2 per week × 2)");
+C.setState("whatIf", false);
+var realOt = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
+assert_(realOt.nAll === 100 && realOt.nAllReal === undefined, "flag off → untouched shape");
+// utilization: a defaulted-capacity person-week is not a valid record
+var wiModel = model({});
+wiModel.people[0].weeks["2026.W30"].capEst = true;
+fresh(wiModel);
+C.setState("whatIf", true);
+var wiU = C.utilFor_(WEEKS);
+assert_(wiU.cap === 120, "capEst person-week dropped from the WHAT-IF capacity (4×40h − 40h)");
+assert_(wiU.wiWeeksDropped === 1, "…and the drop is counted for restating");
+C.setState("whatIf", false);
+var realU = C.utilFor_(WEEKS);
+assert_(realU.cap === 160, "flag off → the full population is back");
+// banner counts: Σ over the whole export window, straight off hygieneBuckets
+C.setState("whatIf", true);
+var wiCounts = C.whatIfCounts_();
+assert_(wiCounts.res === 100 && wiCounts.readyKept === 64, "delivery kept/total = resReady/res (30+34 of 100)");
+assert_(wiCounts.epics === 40 && wiCounts.epicsKept === 18, "epic kept/total = epicsTime/epics (18 of 40)");
+// the flag is a no-op for anyone who is not an admin
+C.getModel().viewerRole = "viewer";
+assert_(!C.whatIfOn_(), "whatIfOn_ is admin-only regardless of the raw flag");
+C.getModel().viewerRole = "admin";
+C.setState("whatIf", false);
 
 console.log("✅ render-smoke: " + checks + " checks passed");

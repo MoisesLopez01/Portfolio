@@ -382,8 +382,35 @@ var MODEL = null;
 // oppSort: opportunity-table sort column.
 var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {}, hygIdx: null,
               view: "exec", flag: "", metric: "util", compare: "region", compareAll: false,
-              oppSort: "opp", oppDesc: true };
+              oppSort: "opp", oppDesc: true,
+              // whatIf: admin-only, session-only "valid records only" simulation
+              // (spec 2026-08-03). Never persisted — a reload is always real mode.
+              whatIf: false };
 var PERIOD_LABELS = { week: "Week", month: "Month", quarter: "Quarter" };
+
+// ── WHAT-IF simulation (spec 2026-08-03) ─────────────────────────────────────
+// One flag flips the whole dashboard to "valid records only": each metric keeps
+// the records that are complete FOR IT (roster assignee + due date; epics also
+// need estimate + logged time; utilization drops defaulted-capacity weeks),
+// coverage reads 100% and every gate flag clears. Region/Team are OUT of the
+// exercise by decision — the Jira fields are unpopulated org-wide (PR-01).
+// The rates themselves never change: they were always computed over valid
+// records. What changes is the population and the confidence framing.
+var WHATIF_MIN_N_ = 5; // below this, a card says "publishable, not meaningful"
+function whatIfOn_() {
+  return !!STATE.whatIf && !!MODEL && MODEL.viewerRole === "admin";
+}
+function toggleWhatIf_() { STATE.whatIf = !STATE.whatIf; renderAll_(); }
+/** Kept/total counts for the banner — Σ over the WHOLE export window, never
+    filtered: the banner states what the simulation did to the whole feed. */
+function whatIfCounts_() {
+  var s = { res: 0, readyKept: 0, epics: 0, epicsKept: 0 };
+  ((MODEL && MODEL.hygieneBuckets) || []).forEach(function (h) {
+    s.res += h.res || 0; s.readyKept += h.resReady || 0;
+    s.epics += h.epics || 0; s.epicsKept += h.epicsTime || 0;
+  });
+  return s;
+}
 
 /**
  * ── VIEWS: the single source of truth for navigation ─────────────────────────
@@ -1147,6 +1174,10 @@ function utilFor_(isos) {
     isos.forEach(function (iso) {
       var w = p.weeks[iso];
       if (!w) return;
+      // WHAT-IF: a person-week whose capacity fell back to a default is not a
+      // valid record — it leaves the simulation entirely (counted for the
+      // restating line on the tile).
+      if (whatIfOn_() && w.capEst) { s.wiWeeksDropped = (s.wiWeeksDropped || 0) + 1; return; }
       s.avail += w.avail; s.billable += w.billable; s.tracked += w.tracked;
       // availCov = availability of NS-CLASSIFIED person-weeks only. Billable %
       // divides by this, never by total avail: an unclassified week has a
@@ -1214,6 +1245,14 @@ function bucketsFor_(buckets, isos) {
     // re-medianed over whatever this filter selected.
     if (b.absVars && b.absVars.length) out.absVars = out.absVars.concat(b.absVars);
   });
+  // WHAT-IF: the displayed world holds only valid records, so the coverage
+  // denominator IS the measurable population and the not-measurable tallies go
+  // to zero. Real totals ride along so the tiles can RESTATE the exclusions
+  // ("N excluded by the WHAT-IF filter") instead of hiding them silently.
+  if (whatIfOn_()) {
+    out.nAllReal = out.nAll; out.nNoTimeReal = out.nNoTime;
+    out.nAll = out.n; out.nNoTime = 0;
+  }
   return out;
 }
 
