@@ -1249,7 +1249,7 @@ assert_(/carries a due date/.test(profOnly), "…down to the measurable populati
 assert_(/−11/.test(profOnly), "the drop at each stage is stated (45 roster-joined → 34 with due date)");
 assert_(/resolved epics/.test(profOnly) && /has an estimate/.test(profOnly), "forecast funnel present");
 assert_(/cannot be profiled/.test(profOnly), "Quality states it cannot be profiled — no fake funnel");
-assert_(!/[Rr]egion/.test(profOnly), "Region appears in NO funnel");
+assert_(/Region and Team are excluded/.test(profOnly), "…the panel NAMES the excluded fields, not just 'some fields'");
 // pure-function funnel monotonicity — each stage ≤ the one before
 var pf = C.profileFor_(
   { res: 50, resDue: 40, resAssigned: 47, resAttr: 45, resReady: 34, epics: 20, epicsEst: 14, epicsTime: 9 },
@@ -1259,6 +1259,8 @@ var pf = C.profileFor_(
     assert_(st[i].n <= st[i - 1].n, "funnel is monotone: " + st[i].label);
   }
 });
+assert_(JSON.stringify(pf).indexOf("egion") === -1,
+        "Region appears in NO funnel definition — titles and stage labels are Region-free");
 assert_(pf.util.bars[0].n === 3 && pf.util.bars[0].of === 4, "util bar 1 = real-capacity person-weeks");
 // viewer: the whole section simply does not render
 C.getModel().viewerRole = "viewer";
