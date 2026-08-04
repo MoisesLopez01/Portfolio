@@ -351,14 +351,15 @@ assert_(!/Coverage gates \(admin\)/.test(els.viewHygiene.innerHTML),
 C.setModel(model({}));
 C.renderHygiene_();
 
-// ── 5b. The view must SAY which window it covers, and let you leave it ──
-// Before this, it silently showed one period and read as the whole dataset.
+// ── 5b. The view must SAY which window it covers — and the window is the
+// GLOBAL analysis-period picker (2026-08-04: universal filters; the view's
+// own ◀ ▶ / Σ stepper is gone).
 assert_(/Every figure above covers/.test(hyg), "the view states its own window");
 assert_(/2026\.W31/.test(hyg), "window label names the period (weekly framing here)");
-assert_(/setHygIdx_/.test(hyg), "period stepper rendered");
-assert_(/Σ All history/.test(hyg), "whole-window rollup offered");
-assert_(/complete weeks · unit follows the header toggle/.test(hyg),
-        "says the header chips choose the unit and only complete periods appear");
+assert_(!/setHygIdx_/.test(hyg), "no per-view stepper — the header picker is the one control");
+assert_(!/Σ All history/.test(hyg), "no per-view whole-window rollup either");
+assert_(/window follows the header period picker/.test(hyg),
+        "says exactly which control owns the window");
 // A composite pinned by one org-wide-empty term must name that term, or 0% reads
 // as total failure and hides the two components that ARE moving.
 assert_(/Held down by region/.test(hyg), "binding constraint named");
@@ -371,20 +372,13 @@ assert_(fullPct_(hyg) === "16", "strict composite still reported honestly (8 of 
 assert_(Number(readyPct_(hyg)) > Number(fullPct_(hyg)),
         "the measurable-today figure sits above the strict one — that's the point of showing both");
 
-// Stepping back changes the window, and the arrows bound correctly.
-C.STATE.hygIdx = 0;
+// The GLOBAL picker re-bases this view exactly like the tiles.
+C.setState("periodIdx", 0);
 C.renderHygiene_();
 var older = els.viewHygiene.innerHTML;
-assert_(/2026\.W30/.test(older), "stepping back shows the earlier period");
-assert_(readyPct_(older) === "60", "and its own numbers (resReady 30 of 50)");
-assert_(/<button class="btn" disabled/.test(older), "◀ disabled at the oldest period");
-C.STATE.hygIdx = "all";
-C.renderHygiene_();
-var all = els.viewHygiene.innerHTML;
-assert_(/all 2 complete weeks/.test(all), "Σ sums every complete period");
-assert_(readyPct_(all) === "64", "whole-window resReady = 64 of 100");
-assert_(/2026\.W30 → 2026\.W31/.test(all), "Σ names the span it covers");
-C.STATE.hygIdx = null;
+assert_(/2026\.W30/.test(older), "picking the earlier period re-bases the hygiene window");
+assert_(readyPct_(older) === "60", "and its own numbers follow (resReady 30 of 50)");
+C.setState("periodIdx", null);
 
 // ── 6. Empty scope is not the same as bad data ──────────────
 var empty = model({});

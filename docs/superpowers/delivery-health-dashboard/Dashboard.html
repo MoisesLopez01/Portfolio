@@ -402,14 +402,14 @@ select option:disabled{color:var(--muted);font-style:italic}
 var MODEL = null;
 // period: "month" (default per user decision 2026-07-31) | "week" | "quarter"
 // pop: population lens — "fte" (default: FTEs are the primary focus) | "crew" | "all"
-// hygIdx: which complete period the Data Hygiene view is showing — an index into
-// hygPeriods_(), "all" for the whole window, or null for the most recent.
+// (hygIdx removed 2026-08-04 — the Data Hygiene window follows the global
+// analysis-period picker like every other surface.)
 // view:    which tab is open — see VIEWS below.
 // flag:    triage filter driven by clicking the attention legend ("" = off).
 // metric:  which metric the Trends view charts.
 // compare: which dimension the Executive comparison chart breaks down by.
 // oppSort: opportunity-table sort column.
-var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {}, hygIdx: null,
+var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
               view: "exec", flag: "", metric: "util", compare: "region", compareAll: false,
               oppSort: "opp", oppDesc: true,
               // whatIf: admin-only, session-only "valid records only" simulation
@@ -759,8 +759,7 @@ function setPeriod_(k) {
   STATE.period = k;
   STATE.expandedWeeks = {}; // period keys change — stale expansions/drills reset
   STATE.openDetail = {};
-  STATE.hygIdx = null;      // "3 back" means a different window per unit — reset to latest
-  STATE.periodIdx = null;   // the picked index means a different window per unit too
+  STATE.periodIdx = null;   // a picked index means a different window per unit — reset to latest
   buildPeriodChips_();
   renderAll_();
 }
@@ -3581,18 +3580,9 @@ function hygieneRow_(g) {
 }
 
 /** Complete periods of the ACTIVE period type, oldest first. */
-function hygPeriods_() {
-  return allPeriods_().filter(function (p) { return p.status === "done" && !p.partial; });
-}
-
-/** Step the hygiene view through history. `v` is an index, or "all" for the
-    whole export window, or null for the most recent complete period. */
-function setHygIdx_(v) {
-  var per = hygPeriods_();
-  if (v !== "all" && v !== null) v = Math.max(0, Math.min(per.length - 1, v));
-  STATE.hygIdx = v;
-  renderHygiene_();
-}
+// The view's own ◀ ▶ / Σ stepper (hygPeriods_/setHygIdx_) was removed
+// 2026-08-04: the header's analysis-period picker is universal, so one
+// selection drives this view like every other surface.
 
 /**
  * Admin-only coverage-gate editor (user request 2026-08-03).
@@ -3933,21 +3923,17 @@ function saveGates_() {
 
 function renderHygiene_() {
   var panel = document.getElementById("viewHygiene");
-  var done = hygPeriods_();
+  var done = donePeriods_();
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
-  var isAll = STATE.hygIdx === "all";
-  // Default = the most recent COMPLETE period. Anything in-flight would read as
-  // a hygiene collapse when it's really a period that hasn't finished.
-  var idx = (STATE.hygIdx === null || STATE.hygIdx === undefined || isAll)
-    ? done.length - 1 : Math.max(0, Math.min(done.length - 1, STATE.hygIdx));
+  // Window = the GLOBAL analysis-period picker (user decision 2026-08-04: the
+  // main filters are universal — one selection drives every surface, so this
+  // view's own date stepper is gone). Complete periods only, as before: an
+  // in-flight period would read as a hygiene collapse when it's really a
+  // period that hasn't finished.
+  var idx = headPeriodIdx_(done);
   var head = done[idx] || { label: "—", isos: [] };
-  var isos = isAll
-    ? done.reduce(function (a, p) { return a.concat(p.isos); }, [])
-    : head.isos;
-  var winLabel = isAll
-    ? "all " + done.length + " complete " + unit + "s" +
-      (done.length ? " · " + done[0].label + " → " + done[done.length - 1].label : "")
-    : head.label;
+  var isos = head.isos;
+  var winLabel = head.label;
   var trendPer = done.slice(Math.max(0, idx - 5), idx + 1);
   var h = hygieneFor_(isos), pp = hygienePeopleFor_(isos);
   var tg = (MODEL.meta.targets || {}).hygiene || { green: 90, amber: 75 };
@@ -3968,21 +3954,14 @@ function renderHygiene_() {
     { name: "region", v: h.res > 0 ? h.resRegion / h.res : 1 },
   ].sort(function (a, b) { return a.v - b.v; });
 
-  // Period stepper. The header's Week/Month/Quarter chips choose the UNIT; these
-  // arrows walk the history. Without them the view silently showed one period
-  // and looked like the whole dataset.
+  // Window banner. The header's Week/Month/Quarter chips choose the UNIT and
+  // the period picker beside them chooses the WINDOW — one selection drives
+  // this view like every other surface (the view's own stepper is gone).
   var nav =
-    '<div class="hnav">' +
-    '<button class="btn" ' + (idx <= 0 || isAll ? "disabled" : "") +
-      ' onclick="setHygIdx_(' + (idx - 1) + ')" title="previous complete ' + unit + '">◀</button>' +
-    '<span class="hper">' + esc_(winLabel) + "</span>" +
-    '<button class="btn" ' + (idx >= done.length - 1 || isAll ? "disabled" : "") +
-      ' onclick="setHygIdx_(' + (idx + 1) + ')" title="next complete ' + unit + '">▶</button>' +
-    '<button class="chip' + (isAll ? " on" : "") + '" onclick="setHygIdx_(' +
-      (isAll ? "null" : '"all"') + ')" title="every complete ' + unit +
-      ' in the export window, summed — the whole-history picture">Σ All history</button>' +
-    '<span class="cellSub" title="The Week / Month / Quarter chips in the header choose the unit; these arrows walk the history. Only COMPLETE periods appear — an in-flight one would read as a hygiene collapse.">' +
-      "complete " + unit + "s · unit follows the header toggle</span></div>";
+    '<div class="hnav"><span class="hper">' + esc_(winLabel) + "</span>" +
+    '<span class="cellSub" title="One selection drives every view: the header chips choose the unit, the period picker chooses the window. Only COMPLETE ' +
+      unit + 's appear — an in-flight one would read as a hygiene collapse.">' +
+      "window follows the header period picker</span></div>";
 
   var gaps = [
     // The row NAMES the population it measures. Under the Dictionary scope this
@@ -4094,7 +4073,7 @@ function renderHygiene_() {
     gaps.map(hygieneRow_).join("") + "</table></div>" +
     gateEditorHtml_() +
     '<p class="cellSub">Every figure above covers <b>' + esc_(winLabel) + "</b>" +
-      (isAll ? "" : " — use ◀ ▶ to walk the history, or Σ for the whole export window") + ". " +
+      " — pick another period in the header to walk the history. " +
       "Gates come from the metric registry (v" +
       esc_((MODEL.meta.registry || {}).version || "—") + "). " +
       (MODEL.meta.suppressBelowGate === true
