@@ -1471,4 +1471,29 @@ C.renderAll_();
 assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
         "clearing the selection returns to the latest complete period");
 
+// ══════════════════════════════════════════════════════════════════════════
+// 29. POP/ROLE LENS RE-CASCADES THE FILTER ROW (user report 2026-08-04:
+// "filters get stuck on filtered records — does not change on FTE/Crew/All").
+// The chips set STATE and re-rendered the panes, but never rebuilt the region
+// counts / dropdown cascades, so the filter row kept describing the
+// population the reader had just left.
+// ══════════════════════════════════════════════════════════════════════════
+var lensM = model({});
+lensM.people.push(person("Cara Crew", { isCrew: true }));
+fresh(lensM);
+C.setState("pop", "fte"); C.setState("region", ""); C.setState("role", "all");
+C.buildFilters_();
+var fteRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
+var fteTiles = (C.renderAll_(), els.tiles.innerHTML);
+els.popChips.children[1].onclick();   // click the Crew chip
+var crewRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
+assert_(/AMER 2/.test(fteRegions), "FTE lens: two FTEs count in AMER");
+assert_(/AMER 1/.test(crewRegions), "Crew chip click re-cascades the region counts (Cara only)");
+assert_(fteRegions !== crewRegions, "the filter row follows the population lens");
+assert_(els.tiles.innerHTML !== fteTiles, "…and the tiles re-base in the same click");
+els.roleChips.children[1].onclick();  // IC — must not throw, must rebuild the row
+assert_(C.STATE.role === "ic" && C.STATE.pop === "crew", "role chip routes through the same rebuild");
+C.setState("role", "all"); C.setState("pop", "fte");
+C.buildFilters_(); C.renderAll_();
+
 console.log("✅ render-smoke: " + checks + " checks passed");

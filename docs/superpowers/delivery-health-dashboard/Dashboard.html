@@ -670,7 +670,13 @@ function loadData(force) {
       // a delta measured across a gap in refreshes is a fiction.
       MODEL._stale = (Date.now() - builtAt.getTime()) > 48 * 3600 * 1000;
       var asOfEl = document.getElementById("asOf");
-      asOfEl.textContent = (MODEL._stale ? "⚠ Data stale — last refresh " : "Data as of ") +
+      // The routine "Data as of …" line is gone (user request 2026-08-04 — it
+      // read as noise on every load). The element survives for the ONE state a
+      // reader must see: the NFR-7 staleness warning. Provenance still lives
+      // in meta.sources (Data Hygiene view).
+      asOfEl.style.display = MODEL._stale ? "" : "none";
+      asOfEl.textContent = !MODEL._stale ? "" :
+        "⚠ Data stale — last refresh " +
         builtAt.toLocaleString([], {
           month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }) +
         (m.meta.refreshEveryMin ? " · refreshes every " + m.meta.refreshEveryMin + " min" : "");
@@ -769,7 +775,10 @@ function buildRoleChips_() {
     b.onclick = function () {
       if (STATE.role === k) return;
       STATE.role = k;
-      buildRoleChips_();
+      // Full cascade rebuild, not just this strip (user report 2026-08-04:
+      // "filters get stuck") — the region counts and the Team/PM/Family
+      // dropdowns are computed against the lens, so they must follow it.
+      buildFilters_();
       renderAll_();
     };
     rc.appendChild(b);
@@ -786,7 +795,11 @@ function buildPopChips_() {
     b.onclick = function () {
       if (STATE.pop === k) return;
       STATE.pop = k;
-      buildPopChips_();
+      // Full cascade rebuild, not just this strip (user report 2026-08-04:
+      // "filters get stuck") — switching FTE/Crew/All must re-count the
+      // region chips and re-cascade every dropdown, or the filter row keeps
+      // describing the population you just left.
+      buildFilters_();
       renderAll_();
     };
     pc.appendChild(b);
