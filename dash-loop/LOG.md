@@ -36,3 +36,6 @@ Profiled the actual Jira Raw output (218 rows, 2026.W32 sample; resolution dates
 - ONTIME_SCOPE stays "dictionary". Reverting to "delivery" would raise the number by hiding the
   blocker, which is the opposite of what this report is for.
 - dash-loop/DATA-BLOCKERS.md written for the Services Director.
+2026-08-03 — ONTIME_SCOPE="dictionary" RATIFIED by the user after seeing the measured n=2, with
+the revert option explicitly on the table. Rationale recorded in CONFIG_DH beside the value and in
+DATA-BLOCKERS.md item 1. _test_onTimeRate_ pins it, so a future change is a decision, not a drive-by.

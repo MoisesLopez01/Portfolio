@@ -35,6 +35,10 @@ For contrast, the Stories and Tasks we previously measured carry due dates on 14
 discipline exists at task level and not at milestone level — which is the opposite of where a client
 commitment actually lives.
 
+- **Decision, ratified 2026-08-03:** we keep measuring the Dictionary definition and let the
+  card show as below-gate. The alternative — reverting to the Stories/Tasks scope — would report
+  146 of 200 at 73% instead of 2 of 18 at 11%, but only by measuring something the Dictionary
+  does not define. That would make the number look healthier by hiding this blocker.
 - **Owner:** Delivery leadership (due-date discipline on epics) · **Prereq:** PR-08
 - **Also needed:** PR-02, a *baselined* committed date. Today we measure the mutable Jira Due Date,
   so a re-baselined milestone silently scores as on time.

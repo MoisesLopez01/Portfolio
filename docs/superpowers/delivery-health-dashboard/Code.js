@@ -58,10 +58,23 @@ var CONFIG_DH = {
   //   and an accepted deviation at the time. Kept so the two can be compared.
   // "epic" / "all" = the other two readings, kept for the same reason.
   //
-  // ⚠️ Switching to "dictionary" moves BOTH the rate and its coverage
-  // denominator sharply: epics have a much lower due-date fill rate than
-  // Stories, so expect coverage to fall and the confidence chip to drop.
-  // That is the dictionary's metric, honestly measured — not a regression.
+  // ⚠️ DO NOT FLIP THIS TO RAISE THE NUMBER. Measured on the real export
+  // (2026.W32 profile, 218 rows): the dictionary scope selects 18 epics of which
+  // only 2 carry a due date — n=2 at 11% coverage against an 80% gate, so the
+  // card publishes flagged as below-gate. "delivery" would report 146 of 200 at
+  // 73% instead.
+  //
+  // That gap is the POINT, not a bug. n=2 is what "we do not set due dates on
+  // milestones" looks like when you measure the metric the Dictionary actually
+  // defines. Switching back to "delivery" would lift the number by measuring
+  // something the Dictionary does not define, and would hide the blocker the
+  // Services Director is being asked to fix (dash-loop/DATA-BLOCKERS.md, item 1;
+  // owner Delivery leadership, PR-08, target 2026.W34).
+  //
+  // Ratified by the user 2026-08-03 after seeing the measured n=2, with the
+  // alternative on the table: "keep dictionary scope, that's the right call."
+  // _test_onTimeRate_ pins this value so a future change is a decision, not a
+  // drive-by. Reopen it with Bill, not in this file.
   ONTIME_SCOPE:      "dictionary",
 
   // ── Tracking mandate (ALLOWLIST, not blocklist) ──
