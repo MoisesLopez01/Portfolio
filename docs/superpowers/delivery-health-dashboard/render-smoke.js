@@ -104,6 +104,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              // WHAT-IF simulation + data profiling (spec 2026-08-03)
              " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
+             " renderAll_: renderAll_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
 var C = eval(m[1] + bridge);
 
@@ -1147,5 +1148,33 @@ C.getModel().viewerRole = "viewer";
 assert_(!C.whatIfOn_(), "whatIfOn_ is admin-only regardless of the raw flag");
 C.getModel().viewerRole = "admin";
 C.setState("whatIf", false);
+
+// ══════════════════════════════════════════════════════════════════════════
+// 22. WHAT-IF GUARDRAILS: a simulation must be unmistakable on every view and
+// impossible for a non-admin. Banner + body watermark render in the same pass
+// as the numbers, so they can never desynchronise.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+C.setState("whatIf", true);
+C.renderAll_();
+var wiBanner = els.whatifBanner.innerHTML;
+assert_(/WHAT-IF SIMULATION/.test(wiBanner), "banner renders while the flag is on");
+assert_(/kept 64 of 100 delivery items/.test(wiBanner), "…with live kept/total delivery counts");
+assert_(/18 of 40 epics/.test(wiBanner), "…and epic counts");
+assert_(/not the real numbers/.test(wiBanner), "…and says plainly these are not the real numbers");
+assert_(/toggleWhatIf_\(\)/.test(wiBanner), "…and carries the Exit control");
+assert_(global.document.body.className === "whatif", "body carries the watermark class");
+C.setState("whatIf", false);
+C.renderAll_();
+assert_(els.whatifBanner.innerHTML === "", "flag off → banner gone");
+assert_(global.document.body.className === "", "…and watermark class removed");
+// defence in depth: renderAll_ force-resets the flag for non-admins, mirroring
+// how switchView_ gates in the router instead of trusting hidden buttons
+C.setState("whatIf", true);
+C.getModel().viewerRole = "viewer";
+C.renderAll_();
+assert_(C.STATE.whatIf === false, "renderAll_ force-resets whatIf for a non-admin");
+assert_(els.whatifBanner.innerHTML === "", "…and renders no banner");
+C.getModel().viewerRole = "admin";
 
 console.log("✅ render-smoke: " + checks + " checks passed");

@@ -118,6 +118,16 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .hyglink{color:var(--orbe);font-weight:700;text-decoration:none}
 .hyglink:hover{text-decoration:underline}
 .stalenote{color:var(--warn);font-weight:700}
+/* ── WHAT-IF simulation (admin-only) ── */
+#whatifBanner { background: var(--c-warn); color: #fff; padding: 8px 12px;
+  border-radius: 6px; margin: 0 0 12px; font-size: 13px; }
+#whatifBanner .btn { margin-left: 10px; }
+/* The watermark: a screenshot of ANY corner of a simulated dashboard must be
+   unmistakable — dashed frame + fixed corner stamp, both pointer-transparent. */
+body.whatif { outline: 4px dashed var(--c-warn); outline-offset: -4px; }
+body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
+  position: fixed; right: 10px; bottom: 8px; font-size: 11px; letter-spacing: .1em;
+  color: var(--c-warn); opacity: .85; pointer-events: none; z-index: 99; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
@@ -326,6 +336,11 @@ select option:disabled{color:var(--muted);font-style:italic}
   <!-- Tab bar — generated from VIEWS in JS, so a view is declared in one place. -->
   <div class="tabs" id="tabBar"></div>
 
+  <!-- WHAT-IF simulation banner — rendered by renderWhatIfBanner_() on every
+       view while the admin-only simulation is on. Sits above the scope chip so
+       no tab can render a simulated number without it. -->
+  <div id="whatifBanner" style="display:none"></div>
+
   <!-- Live scope chip: states exactly WHAT slice is on screen. Above the panes,
        because the filter row scopes every view (never per-chart filters). -->
   <div class="sub" id="scopeChip" style="margin:-6px 0 12px;color:var(--muted);font-size:11px;cursor:help"
@@ -410,6 +425,26 @@ function whatIfCounts_() {
     s.epics += h.epics || 0; s.epicsKept += h.epicsTime || 0;
   });
   return s;
+}
+
+/** Banner + watermark, rendered FIRST on every renderAll_ pass. Also the
+    enforcement point: a non-admin's flag is force-reset here (defence in
+    depth — the toggle button is admin-only, but hidden buttons are not a
+    security model; same reasoning as the switchView_ router gate). */
+function renderWhatIfBanner_() {
+  if (MODEL && MODEL.viewerRole !== "admin") STATE.whatIf = false;
+  var el = document.getElementById("whatifBanner");
+  var on = whatIfOn_();
+  document.body.className = on ? "whatif" : "";
+  if (!on) { el.style.display = "none"; el.innerHTML = ""; return; }
+  var c = whatIfCounts_();
+  el.style.display = "";
+  el.innerHTML = "🧪 <b>WHAT-IF SIMULATION</b> — invalid records removed " +
+    "(kept " + c.readyKept + " of " + c.res + " delivery items · " +
+    c.epicsKept + " of " + c.epics + " epics, whole export window). " +
+    "These are <b>not the real numbers</b>: every rate below describes only the " +
+    "records complete enough to measure. " +
+    '<button class="btn" onclick="toggleWhatIf_()">Exit WHAT-IF</button>';
 }
 
 /**
@@ -1096,6 +1131,7 @@ function nsShare_(w) {
  * header controls (the bug the old always-render-everything code had).
  */
 function renderAll_() {
+  renderWhatIfBanner_();
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
@@ -1136,6 +1172,7 @@ document.getElementById("btnReset").onclick = function () {
   STATE.pop = "fte"; STATE.role = "all"; STATE.focus = "plan";
   STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {};
+  STATE.whatIf = false;   // Reset returns EVERYTHING to the default view
   document.getElementById("personSearch").value = "";
   buildFilters_();   // rebuilds every dropdown from the now-unfiltered population
   renderAll_();
@@ -3771,7 +3808,11 @@ function savePng_(elId, name) {
         // model's ISO week. A board-pack PNG of July 2026 saved as
         // "…-2026.W31.png" is a figure filed under the wrong period, and nobody
         // opens the file again to check.
-        a.download = "delivery-health-" + name + "-" + pngPeriodStamp_() + ".png";
+        // A WHAT-IF screenshot must carry the label even in its filename — the
+        // captured element is inside the watermark frame, but the name is what
+        // survives a file share.
+        a.download = "delivery-health-" + name + "-" +
+          (whatIfOn_() ? "WHATIF-" : "") + pngPeriodStamp_() + ".png";
         a.href = canvas.toDataURL("image/png");
         a.click();
       })
