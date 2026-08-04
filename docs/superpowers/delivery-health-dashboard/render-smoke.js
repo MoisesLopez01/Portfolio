@@ -104,7 +104,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              // WHAT-IF simulation + data profiling (spec 2026-08-03)
              " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
-             " renderAll_: renderAll_," +
+             " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " profileFor_: profileFor_," +
              " briefFor_: briefFor_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
@@ -1435,5 +1435,40 @@ assert_(/publishable, not meaningful/.test(bTiny27.concerns[0]),
         "sub-floor n (Forecast n=3) keeps the honesty verdict");
 assert_(JSON.stringify(bHealthy).indexOf("Due date set on the work") !== -1,
         "due-date gap says 'set' — due dates alone, distinct from the roster-joined funnel stage");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 28. ANALYSIS-PERIOD PICKER (user request 2026-08-04): the reader chooses
+// WHICH complete period drives the tiles, comparison, headroom and brief —
+// the unit chips only chose the granularity. Latest stays the default; the
+// People grid stays pinned to the current weeks by design.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+C.buildPeriodChips_();
+var pick28 = els.periodChips.children.filter(function (c) { return c.tagName === "select"; })[0];
+assert_(!!pick28 && pick28.options.length === 3,
+        "picker lists Latest complete + both complete weeks (weekly-fallback model included)");
+// W30 gets a perfect on-time week, so re-basing is visible in the number itself
+var pMod = model({});
+pMod.onTimeBuckets[0].onTime = pMod.onTimeBuckets[0].n;   // 2026.W30 → 100%
+fresh(pMod);
+C.renderAll_();
+assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
+        "no selection → the scope chip frames the latest complete period");
+var latestOt28 = els.tiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+assert_(/class="big[^"]*">90%/.test(latestOt28),
+        "latest window (W31) reads 90% on time — 43 of 48");
+C.setState("periodIdx", 0);
+C.renderAll_();
+assert_(/Selected week · 2026\.W30/.test(els.scopeChip.innerHTML),
+        "picker selection re-frames the scope chip as 'Selected'");
+var selOt28 = els.tiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+assert_(/class="big[^"]*">100%/.test(selOt28),
+        "…and the numbers re-base with it (W30 fixture = 100% on time)");
+assert_(/unattributed \(export window\)/.test(els.tiles.innerHTML),
+        "the whole-window unattributed count says which window it counts");
+C.setState("periodIdx", null);
+C.renderAll_();
+assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
+        "clearing the selection returns to the latest complete period");
 
 console.log("✅ render-smoke: " + checks + " checks passed");

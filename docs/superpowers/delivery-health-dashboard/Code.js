@@ -1455,8 +1455,13 @@ function readRosterPeople_() {
         // still a live person, and we only want to drop the ones who have left.
         if (active) activeAll[normDH_(name)] = 1;
         else inactiveAll[normDH_(name)] = 1;
-        if (!active) continue;                           // attrition — never shown
-        if (!seenAttr[normDH_(name)]) {                  // attribution record — pre-gates
+        // Attribution record — pre-gates AND pre-attrition (v13, 2026-08-04):
+        // work delivered last quarter by someone who has since left was still
+        // delivered, so historical issue attribution needs every roster row
+        // ever seen. Only the POPULATION below stays active-only. Dedup is
+        // first-row-wins; for a rehire the two rows share the same name string,
+        // which is all the join needs.
+        if (!seenAttr[normDH_(name)]) {
           seenAttr[normDH_(name)] = 1;
           attrib.push({ name: name,
                         rosterBucket: regionBucketFromLocation_(
@@ -1468,6 +1473,7 @@ function readRosterPeople_() {
                         jobTitle: iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim(),
                         hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
         }
+        if (!active) continue;                           // attrition — never in the population
         if (seen[normDH_(name)]) continue;               // boomerang/collision: first active wins
         // Gates are FAIL-CLOSED: a missing/blank Class or Department cell excludes
         // the row instead of waving it through — the Contractors Data tab has no
@@ -2318,7 +2324,12 @@ function assembleModel_(inputs, win) {
 //      the utilization population. A cached v11 model was built on the narrow
 //      index (measured: it dropped 173 of 351 assigned issues), so it MUST
 //      miss cleanly — serving it would keep every card undercounting.
-var DH_SCHEMA_VER_ = 12;
+// v13: attribution index also covers INACTIVE roster rows (leavers) — the
+//      live tiles showed "419 unattributed" across the 52-week window, mostly
+//      historical work by people who have since left; their names are on the
+//      roster, just on terminated rows. Population stays active-only. A cached
+//      v12 model was bucketed without leaver attribution, so it must rebuild.
+var DH_SCHEMA_VER_ = 13;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {

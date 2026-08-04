@@ -414,7 +414,11 @@ var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "
               oppSort: "opp", oppDesc: true,
               // whatIf: admin-only, session-only "valid records only" simulation
               // (spec 2026-08-03). Never persisted — a reload is always real mode.
-              whatIf: false };
+              whatIf: false,
+              // periodIdx: WHICH complete period the analysis surfaces render —
+              // an index into donePeriods_(), or null for the latest (user
+              // request 2026-08-04: the reader picks the month/quarter).
+              periodIdx: null };
 var PERIOD_LABELS = { week: "Week", month: "Month", quarter: "Quarter" };
 
 // ── WHAT-IF simulation (spec 2026-08-03) ─────────────────────────────────────
@@ -688,21 +692,60 @@ function loadData(force) {
     .getDeliveryData(!!force);
 }
 
+/** The analysis-period index into a done-periods list: the picker's selection,
+    clamped, or the latest complete period when nothing is picked. Every
+    analysis surface (tiles, comparison, headroom, scope chip) renders
+    done[headPeriodIdx_(done)] — one selection drives them all. */
+function headPeriodIdx_(done) {
+  if (STATE.periodIdx === null || STATE.periodIdx === undefined) return done.length - 1;
+  return Math.max(0, Math.min(done.length - 1, STATE.periodIdx));
+}
+
+function setPeriodIdx_(v) {
+  STATE.periodIdx = (v === "" || v === null) ? null : Number(v);
+  renderAll_();
+}
+
 function buildPeriodChips_() {
   var pc = document.getElementById("periodChips");
   pc.innerHTML = "";
-  // Stale cache (pre-period-toggle model) — hide the whole labeled group, not
-  // just its chips, so no empty "PERIOD" label dangles in the filter row.
   var grp = document.getElementById("periodGroup");
-  grp.style.display = MODEL.meta.periods ? "" : "none";
-  if (!MODEL.meta.periods) return; // weekly only
-  ["week", "month", "quarter"].forEach(function (k) {
-    var b = document.createElement("span");
-    b.className = "chip" + ((STATE.period === k) ? " on" : "");
-    b.textContent = PERIOD_LABELS[k];
-    b.onclick = function () { setPeriod_(k); };
-    pc.appendChild(b);
-  });
+  grp.style.display = "";
+  // Unit chips need the periods payload (a stale pre-toggle cache is weekly
+  // only); the analysis-period PICKER below works either way — weeks are
+  // complete periods too, so the group is never an empty dangling label.
+  if (MODEL.meta.periods) {
+    ["week", "month", "quarter"].forEach(function (k) {
+      var b = document.createElement("span");
+      b.className = "chip" + ((STATE.period === k) ? " on" : "");
+      b.textContent = PERIOD_LABELS[k];
+      b.onclick = function () { setPeriod_(k); };
+      pc.appendChild(b);
+    });
+  }
+  // ── Analysis-period picker (user request 2026-08-04) ──────────────────────
+  // The unit chips choose the GRANULARITY; this chooses the WINDOW: which
+  // complete period the KPI cards, the comparison, the headroom table and the
+  // CEO brief analyse. Newest first, "Latest complete" as the default. The
+  // People grid stays pinned to the current weeks — it is the operational
+  // "who needs me now" view, not an analysis surface.
+  var done = donePeriods_();
+  var sel = document.createElement("select");
+  sel.id = "periodPick";
+  sel.title = "Which complete " + PERIOD_LABELS[STATE.period].toLowerCase() +
+    " the KPI cards, comparison, headroom and CEO brief analyse. " +
+    "The People grid always shows the current weeks.";
+  var opt0 = document.createElement("option");
+  opt0.value = ""; opt0.textContent = "Latest complete";
+  sel.appendChild(opt0);
+  for (var i = done.length - 1; i >= 0; i--) {
+    var op = document.createElement("option");
+    op.value = String(i); op.textContent = done[i].label;
+    if (STATE.periodIdx === i) op.selected = true;
+    sel.appendChild(op);
+  }
+  sel.onchange = function () { setPeriodIdx_(this.value); };
+  pc.appendChild(sel);
 }
 
 function setPeriod_(k) {
@@ -711,6 +754,7 @@ function setPeriod_(k) {
   STATE.expandedWeeks = {}; // period keys change — stale expansions/drills reset
   STATE.openDetail = {};
   STATE.hygIdx = null;      // "3 back" means a different window per unit — reset to latest
+  STATE.periodIdx = null;   // the picked index means a different window per unit too
   buildPeriodChips_();
   renderAll_();
 }
@@ -1183,10 +1227,11 @@ function renderScope_() {
   // The period is stated HERE and nowhere else. It used to repeat in all four
   // card headers — one fact, four times, one stolen line per card.
   var done = donePeriods_();
-  var head = done.length ? done[done.length - 1] : null;
+  var head = done.length ? done[headPeriodIdx_(done)] : null;
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
   document.getElementById("scopeChip").innerHTML =
-    (head ? "<b>Last complete " + unit + " · " + esc_(head.label) + "</b> — " : "") +
+    (head ? "<b>" + (STATE.periodIdx === null ? "Last complete" : "Selected") + " " +
+            unit + " · " + esc_(head.label) + "</b> — " : "") +
     esc_(parts.join(" · ")) + " — " + filteredPeople_().length + " people";
 }
 
@@ -1201,6 +1246,8 @@ document.getElementById("btnReset").onclick = function () {
   STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {};
   STATE.whatIf = false;   // Reset returns EVERYTHING to the default view
+  STATE.periodIdx = null; // …including the analysis-period picker
+  buildPeriodChips_();    // reflect the reset in the picker's selection
   document.getElementById("personSearch").value = "";
   buildFilters_();   // rebuilds every dropdown from the now-unfiltered population
   renderAll_();
@@ -1963,17 +2010,20 @@ function nsLive_() {
 function smallN_(n) { return n > 0 && n < 15 ? " · ⚠ small sample" : ""; }
 
 function renderTiles_() {
-  // Headline = last COMPLETE period of the active type; trend = up to the
-  // last 6 complete periods (partials excluded — an honest 6-period trend).
+  // Headline = the ANALYSIS period (picker selection, or the last complete
+  // period); trend = up to the 6 complete periods ENDING at it, so a reader
+  // stepping back in time sees the history as it stood then.
   var per = allPeriods_();
   var done = per.filter(function (p) { return p.status === "done" && !p.partial; });
-  var head = done.length ? done[done.length - 1] : { label: "—", isos: [] };
-  var trendPer = done.slice(-6);
+  var hi = headPeriodIdx_(done);
+  var head = done.length ? done[hi] : { label: "—", isos: [] };
+  var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
   var trendLabels = trendPer.map(function (p) { return p.label; });
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
-  // Explicit period framing: the tiles are the LAST COMPLETE period, the grid
+  // Explicit period framing: the tiles are the analysis period, the grid
   // highlights the current one — say so instead of two bare labels.
-  var opts = { headlineLabel: "last complete " + unit + " (" + head.label + ")" };
+  var opts = { headlineLabel: (STATE.periodIdx === null ? "last complete " : "selected ") +
+                              unit + " (" + head.label + ")" };
   var tg = MODEL.meta.targets || {};
 
   var live = nsLive_();
@@ -2038,18 +2088,23 @@ function renderTiles_() {
     var s = utilFor_(p.isos);
     return live ? s.grossPct : s.grossTrackedPct;   // same definition as the headline
   });
-  var utilTrendShown = utilSeries.slice(-6);
+  var utilTrendShown = utilSeries.slice(Math.max(0, hi - 5), hi + 1);
 
   var ot = bucketsFor_(MODEL.onTimeBuckets, head.isos);
   var otSeries = done.map(function (p) {
     var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
     return b.n > 0 ? b.onTime / b.n * 100 : null;
   });
-  var otTrend = otSeries.slice(-6);
+  var otTrend = otSeries.slice(Math.max(0, hi - 5), hi + 1);
   var unatt = MODEL.meta.jiraUnattributed || { onTime: 0, forecast: 0 };
   // Name the scope on the card: "85% on time" means something different over
   // Stories/Tasks than over epics, and the switch lives in CONFIG_DH.
   var OT_SCOPE = {
+    // The shipped scope. Missing from this map until 2026-08-04, so the card
+    // fell back to "resolved issues" with a tooltip claiming epics were
+    // excluded — the exact opposite of what the number measured.
+    dictionary: { word: "resolved epics / milestones / commitments",
+      why: "The Metrics Dictionary scope: epics, Milestone-type issues and Client-Commitment-labelled work. Stories and Tasks are excluded — an epic's due date is the client-facing milestone." },
     delivery: { word: "resolved issues",
       why: "Stories and Tasks — the team's own delivery commitments. Epics are excluded: an epic's due date is a programme milestone set by the PM and its resolution trails its last child, so the two measure different lifecycles." },
     epic: { word: "resolved epics",
@@ -2064,15 +2119,15 @@ function renderTiles_() {
       ? (whatIfOn_()
         ? ' <span title="resolved items whose Jira assignee is not on the delivery roster — removed by the WHAT-IF filter, stated rather than hidden">· ' +
           unatt.onTime + " excluded by the WHAT-IF filter</span>"
-        : ' <span title="resolved items whose Jira assignee is not on the delivery roster — excluded from this card under every filter">· ' +
-          unatt.onTime + " unattributed</span>")
+        : ' <span title="resolved items whose Jira assignee does not resolve to any roster row — excluded from this card under every filter. Counted over the WHOLE 52-week export, not just the period on screen; the Data Hygiene funnel shows the per-period join rate.">· ' +
+          unatt.onTime + " unattributed (export window)</span>")
       : "");
   var fc = bucketsFor_(MODEL.forecastBuckets, head.isos);
   var fcSeries = done.map(function (p) {
     var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
     return forecastAccuracyPct_(b.absVars);   // Dictionary formula, same as the headline
   });
-  var fcTrend = fcSeries.slice(-6);
+  var fcTrend = fcSeries.slice(Math.max(0, hi - 5), hi + 1);
   var band = Math.round((MODEL.meta.forecastBand || 0.10) * 100);
   // Headline = the Dictionary mean. The band and the median ride underneath as
   // companions: the mean says how close on average, the band says how often we
@@ -2097,8 +2152,8 @@ function renderTiles_() {
   if (unatt.forecast) {
     fcDetail.push(unatt.forecast + (whatIfOn_()
       ? " closed epics excluded by the WHAT-IF filter — the Jira assignee is not on the delivery roster."
-      : " closed epics unattributed — the Jira assignee is not on the " +
-        "delivery roster, so they are excluded from this card under every filter."));
+      : " closed epics unattributed across the whole export window — the Jira assignee " +
+        "does not resolve to any roster row, so they are excluded from this card under every filter."));
   }
   // Secondary form (FR-1.4): the band says whether we hit estimates, the median
   // says by how much we miss. Both are needed — 40% inside the band reads very
@@ -2202,7 +2257,7 @@ function renderTiles_() {
                          { headlineLabel: opts.headlineLabel, target: tg.util, conf: utilConf,
                            metric: regU, std: utilStd, trendLabels: trendLabels });
       }, opts.headlineLabel, utilCovTrend, trendLabels)) +
-    qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head);
+    qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head, hi);
 }
 
 /**
@@ -2219,7 +2274,7 @@ function renderTiles_() {
  * of the time this rate is LINK-ONLY and therefore an understatement. Saying so
  * on the card is the difference between a floor and a measurement.
  */
-function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
+function qualityTile_(done, trendPer, trendLabels, headlineLabel, head, hi) {
   var reg = reg_("quality");
   var tg = (MODEL.meta.targets || {}).quality ||
            (reg.target ? { green: reg.target.green, amber: reg.target.amber } : null);
@@ -2240,7 +2295,8 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head) {
     var b = bucketsFor_(MODEL.reworkBuckets, p.isos);
     return b.nDelivered > 0 ? b.nRework / b.nDelivered * 100 : null;
   });
-  var trend = series.slice(-6);
+  var hIdx = hi === undefined ? done.length - 1 : hi;
+  var trend = series.slice(Math.max(0, hIdx - 5), hIdx + 1);
 
   if (!q.nDelivered) {
     return tileHtml_("Quality / Rework", null, "", [], {
@@ -2519,7 +2575,7 @@ function renderCompare_() {
   if (!panel) return;
   var m = activeMetric_();
   var done = donePeriods_();
-  var head = done.length ? done[done.length - 1] : { label: "—", isos: [] };
+  var head = done.length ? done[headPeriodIdx_(done)] : { label: "—", isos: [] };
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
   var target = (MODEL.meta.targets || {})[m.targetKey] || null;
 
@@ -3297,7 +3353,8 @@ function renderOpportunity_() {
   var panel = document.getElementById("oppPanel");
   if (!panel) return;
   var done = donePeriods_();
-  var head = done.length ? done[done.length - 1] : null;
+  var hi = headPeriodIdx_(done);
+  var head = done.length ? done[hi] : null;
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
   var live = nsLive_();
   var m = METRICS_.util;
@@ -3311,7 +3368,7 @@ function renderOpportunity_() {
   // AMER consultant is compared with how AMER consultants normally run, not with
   // a company-wide figure that no one in the slice has ever hit.
   var norm = ser.std && ser.std.ok ? ser.std.baseline : null;
-  var trendPer = done.slice(-6);
+  var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
   var rows = oppRows_(head, trendPer, norm);
 
   if (!rows.length) {
@@ -3416,12 +3473,13 @@ function renderOpportunity_() {
 /** CSV of the opportunity table as it stands, sort and filters included. */
 function saveOppCsv_() {
   var done = donePeriods_();
-  var head = done.length ? done[done.length - 1] : null;
+  var hi = headPeriodIdx_(done);
+  var head = done.length ? done[hi] : null;
   if (!head) return;
   var live = nsLive_();
   var ser = metricSeries_(METRICS_.util, done);
   var norm = ser.std && ser.std.ok ? ser.std.baseline : null;
-  var rows = oppRows_(head, done.slice(-6), norm);
+  var rows = oppRows_(head, done.slice(Math.max(0, hi - 5), hi + 1), norm);
   var col = OPP_COLS[STATE.oppSort] || OPP_COLS.opp;
   rows.sort(col.sort);
   if (!STATE.oppDesc) rows.reverse();
