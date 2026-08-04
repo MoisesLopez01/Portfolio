@@ -119,15 +119,18 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .hyglink:hover{text-decoration:underline}
 .stalenote{color:var(--warn);font-weight:700}
 /* ── WHAT-IF simulation (admin-only) ── */
-#whatifBanner { background: var(--c-warn); color: #fff; padding: 8px 12px;
+#whatifBanner { background: var(--c-warn); color: #1c1207; padding: 8px 12px;
   border-radius: 6px; margin: 0 0 12px; font-size: 13px; }
 #whatifBanner .btn { margin-left: 10px; }
 /* The watermark: a screenshot of ANY corner of a simulated dashboard must be
-   unmistakable — dashed frame + fixed corner stamp, both pointer-transparent. */
+   unmistakable — dashed frame + fixed corner stamp, both pointer-transparent.
+   Text rides on the theme's own text/bg pair (AA by definition); the amber
+   identity lives in the border, which never has to carry contrast. */
 body.whatif { outline: 4px dashed var(--c-warn); outline-offset: -4px; }
 body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
   position: fixed; right: 10px; bottom: 8px; font-size: 11px; letter-spacing: .1em;
-  color: var(--c-warn); opacity: .85; pointer-events: none; z-index: 99; }
+  color: var(--text); background: var(--bg); border: 1px dashed var(--c-warn);
+  border-radius: 4px; padding: 2px 8px; opacity: .9; pointer-events: none; z-index: 99; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
