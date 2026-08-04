@@ -1883,9 +1883,20 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   var detail = (opts.detail || []).filter(Boolean).join(" · ");
   var context = cmpText + (detail
     ? ' <span class="cellSub" title="' + esc_(detail) + '" style="cursor:help">ⓘ</span>' : "");
+  // WHAT-IF small-n honesty (spec 2026-08-03): a valid population under
+  // WHATIF_MIN_N_ replaces the confidence chip — "n=2, 100% attributed" is
+  // technically true and practically meaningless, and the chip would lend it
+  // exactly the authority the simulation must not fake.
+  var wiSmall = whatIfOn_() && opts.whatIfN !== undefined && opts.whatIfN !== null &&
+                opts.whatIfN > 0 && opts.whatIfN < WHATIF_MIN_N_;
   return '<div class="tile"><div class="lbl">' + label + '</div>' +
     '<div class="big ' + rag + '">' + big + '</div>' +
-    (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, opts.metric || {}) + '</div>' : "") +
+    (opts.conf ? '<div class="cmp">' + (wiSmall
+      ? '<span class="clow" title="Under the WHAT-IF filter this metric evaluates on fewer than ' +
+        WHATIF_MIN_N_ + ' records. The rate is computable but not quotable — the fix is upstream ' +
+        'data entry, not filtering.">🧪 n=' + opts.whatIfN +
+        " valid records — publishable, not meaningful</span>"
+      : confChip_(opts.conf, opts.metric || {})) + '</div>' : "") +
     (signal ? '<div class="cmp">' + signal + '</div>' : "") +
     (stdLine ? '<div class="cmp">' + stdLine + '</div>' : "") +
     '<div class="cmp">' + context + '</div>' +
@@ -1975,12 +1986,22 @@ function renderTiles_() {
       "base " + r1_(u.avail) + "h available of " + r1_(u.cap) + "h capacity — " +
       r1_(u.ooo) + "h PTO/holiday removed (" + Math.round(u.ooo / u.cap * 100) + "%)</span>";
   }
+  // WHAT-IF: defaulted-capacity person-weeks left the population in utilFor_ —
+  // restate the drop on the card.
+  if (whatIfOn_() && u.wiWeeksDropped) {
+    utilCmp += '<br><span title="person-weeks whose capacity fell back to a default (no real Tempo schedule) — removed by the WHAT-IF filter">' +
+      u.wiWeeksDropped + " defaulted-capacity person-week" + (u.wiWeeksDropped === 1 ? "" : "s") +
+      " excluded by the WHAT-IF filter</span>";
+  }
   // NS classification coverage (audit 2026-08-03). The rate only describes the
   // hours NetSuite actually classified; say what share that is, so a headline
   // built on a third of the tracked base is never read as the whole team's.
   if (live && u.tracked > 0) {
     var covPct = Math.round(u.trackedCov / u.tracked * 100);
-    if (covPct < 99) {
+    if (whatIfOn_() && covPct < 99) {
+      utilCmp += '<br><span title="Unclassified hours already leave both sides of this rate; under WHAT-IF they are part of the removed population and stated here rather than hidden.">' +
+        r1_(u.tracked - u.trackedCov) + "h unclassified — excluded by the WHAT-IF filter</span>";
+    } else if (covPct < 99) {
       utilCmp += '<br><span title="Tempo says how many hours were worked; NetSuite says what share of them is billable. Person-weeks with no NetSuite signal are excluded from BOTH sides of this rate rather than counted as 0% billable — so this % describes the classified portion of the tracked base only.">⚠ classification covers ' +
         covPct + "% of tracked hours (" + r1_(u.trackedCov) + "h of " + r1_(u.tracked) + "h)</span>";
     }
@@ -2014,7 +2035,13 @@ function renderTiles_() {
   var otSc = OT_SCOPE[MODEL.meta.onTimeScope] || OT_SCOPE.delivery;
   var otCmp = ot.n + " of " + ot.nAll + " " + otSc.word +
     ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n) +
-    (unatt.onTime ? ' <span title="resolved items whose Jira assignee is not on the delivery roster — excluded from this card under every filter">· ' + unatt.onTime + " unattributed</span>" : "");
+    (unatt.onTime
+      ? (whatIfOn_()
+        ? ' <span title="resolved items whose Jira assignee is not on the delivery roster — removed by the WHAT-IF filter, stated rather than hidden">· ' +
+          unatt.onTime + " excluded by the WHAT-IF filter</span>"
+        : ' <span title="resolved items whose Jira assignee is not on the delivery roster — excluded from this card under every filter">· ' +
+          unatt.onTime + " unattributed</span>")
+      : "");
   var fc = bucketsFor_(MODEL.forecastBuckets, head.isos);
   var fcSeries = done.map(function (p) {
     var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
@@ -2034,14 +2061,19 @@ function renderTiles_() {
     smallN_(fc.n);
   fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
     fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
-  if (fc.nAll > fc.n) {
+  if (whatIfOn_() && fc.nAllReal > fc.n) {
+    fcDetail.push((fc.nAllReal - fc.n) + " closed epics excluded by the WHAT-IF filter — no estimate, " +
+      "or an estimate with no logged time at all. Removed from the displayed population, stated here.");
+  } else if (fc.nAll > fc.n) {
     fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
       "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
       "only instead of scoring as misses.");
   }
   if (unatt.forecast) {
-    fcDetail.push(unatt.forecast + " closed epics unattributed — the Jira assignee is not on the " +
-      "delivery roster, so they are excluded from this card under every filter.");
+    fcDetail.push(unatt.forecast + (whatIfOn_()
+      ? " closed epics excluded by the WHAT-IF filter — the Jira assignee is not on the delivery roster."
+      : " closed epics unattributed — the Jira assignee is not on the " +
+        "delivery roster, so they are excluded from this card under every filter."));
   }
   // Secondary form (FR-1.4): the band says whether we hit estimates, the median
   // says by how much we miss. Both are needed — 40% inside the band reads very
@@ -2091,9 +2123,14 @@ function renderTiles_() {
   // is tracked ÷ capacity — a DIFFERENT metric. Relabel it rather than publish
   // it under a billable heading (P8: one definition, one owner).
   var utilLabel = live ? "Billable Utilization" : "Capacity Utilization (tracked)";
+  // WHAT-IF: the kept population is fully classified by construction, so
+  // coverage reads 100% (the buckets-based metrics get this for free from the
+  // nAll collapse; utilization's coverage is an hour ratio, so it is overridden
+  // here — the ONE per-renderer touch the flag needs).
+  var utilCov = u.tracked > 0 ? u.trackedCov / u.tracked : null;
+  if (whatIfOn_() && utilCov !== null) utilCov = 1;
   var utilConf = applyGatePolicy_(live
-    ? metricConfidence_(regU.coverageGate, u.tracked > 0 ? u.trackedCov / u.tracked : null,
-                        stable_(utilTrendShown))
+    ? metricConfidence_(regU.coverageGate, utilCov, stable_(utilTrendShown))
     : metricConfidence_(0, u.avail > 0 ? 1 : null, stable_(utilTrendShown)));
 
   // Operating rates. stdFor_ returns null — not a number — for a stale model or
@@ -2111,21 +2148,24 @@ function renderTiles_() {
   document.getElementById("tiles").innerHTML =
     (MODEL.meta.jiraAvailable
       ? gatedTile_("On-Time Delivery", otConf, regOt,
-          "no resolved delivery items in this period under the active filters",
+          whatIfOn_() ? "0 valid records — nothing to evaluate"
+                      : "no resolved delivery items in this period under the active filters",
           (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
           function () {
             return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.onTime, conf: otConf,
-                               metric: regOt, std: otStd, trendLabels: trendLabels });
+                               metric: regOt, std: otStd, trendLabels: trendLabels,
+                               whatIfN: ot.n });
           }, opts.headlineLabel, otCovTrend, trendLabels) +
         (!margin ? "" : gatedTile_("Forecast Accuracy", fcConf, regFc,
-          "no epics closed in this period under the active filters",
+          whatIfOn_() ? "0 valid records — nothing to evaluate"
+                      : "no epics closed in this period under the active filters",
           (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.forecast, conf: fcConf,
                                metric: regFc, std: fcStd, trendLabels: trendLabels,
-                               detail: fcDetail });
+                               detail: fcDetail, whatIfN: fc.n });
           }, opts.headlineLabel, fcCovTrend, trendLabels))
       : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
         (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" }))) +

@@ -1177,4 +1177,28 @@ assert_(C.STATE.whatIf === false, "renderAll_ force-resets whatIf for a non-admi
 assert_(els.whatifBanner.innerHTML === "", "…and renders no banner");
 C.getModel().viewerRole = "admin";
 
+// ══════════════════════════════════════════════════════════════════════════
+// 23. WHAT-IF ON THE TILES: gate flags clear (the kept population is 100%
+// attributed by construction), exclusions are RESTATED rather than hidden,
+// and a tiny valid population says so instead of wearing a confidence chip.
+// ══════════════════════════════════════════════════════════════════════════
+C.setState("whatIf", true);
+var wiShown = tiles(model({ otCov: 0.66, fcCov: 0.43 }));
+assert_(!/below gate — directional only/.test(wiShown), "no below-gate caveat in WHAT-IF mode");
+assert_(!/low confidence/.test(wiShown), "no low-confidence chip either");
+assert_(/high confidence · 100% attributed/.test(wiShown), "kept records are 100% attributed by construction");
+assert_(/33 of 33 resolved issues/.test(wiShown), "the displayed population is the valid one (W31: n=33 of 33)");
+assert_(/3 excluded by the WHAT-IF filter/.test(wiShown), "unattributed items are restated, not hidden");
+assert_(!/3 unattributed/.test(wiShown), "…and the real-mode wording is gone");
+assert_(/closed epics excluded by the WHAT-IF filter/.test(wiShown), "not-measurable epics restated on Forecast");
+// small-n honesty: n=2 valid records must not wear a confidence chip
+var wiTiny = tiles(model({ otCov: 0.04, fcCov: 0.43 }));   // n = round(50×0.04) = 2
+var wiTinyOt = wiTiny.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+assert_(/n=2 valid records — publishable, not meaningful/.test(wiTinyOt),
+        "a sub-5 valid population says so on the card");
+assert_(!/high confidence/.test(wiTinyOt), "…INSTEAD of a confidence chip, not beside one");
+C.setState("whatIf", false);
+var realTiny = tiles(model({ otCov: 0.04, fcCov: 0.43 }));
+assert_(!/publishable, not meaningful/.test(realTiny), "the honesty line is WHAT-IF-only");
+
 console.log("✅ render-smoke: " + checks + " checks passed");
