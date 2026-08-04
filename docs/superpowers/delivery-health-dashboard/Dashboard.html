@@ -138,6 +138,10 @@ body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
 .fnRow { display: grid; grid-template-columns: 260px 1fr 170px; gap: 8px; align-items: center; font-size: 12px; }
 .fnRow .hbar i { background: var(--c-series); }
 .fnDrop { color: var(--c-bad); font-weight: 600; }
+.brief { border-top: 1px dashed var(--line, #4443); margin-top: 10px; padding-top: 8px; }
+.brief h5 { margin: 8px 0 2px; font-size: 12px; }
+.brief ul { margin: 0 0 4px 18px; padding: 0; font-size: 12px; }
+.brief li { margin: 2px 0; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
@@ -3530,6 +3534,159 @@ function profileFor_(h, pp) {
   };
 }
 
+/**
+ * ── 📄 CEO BRIEF (spec 2026-08-03) ──────────────────────────────────────────
+ * Deterministic by design: same data in, same brief out, so a quoted line can
+ * always be reproduced. No API calls, no randomness — a Gemini rewrite was
+ * considered and rejected (wording that changes between loads is a liability
+ * when executives quote it).
+ *
+ * Owners ARE named here, deliberately. The public gaps table dropped its Owner
+ * column (2026-08-03 — a widely-read blame board doesn't fix tagging); this
+ * brief is admin-only and exists to hand the Director accountable actions.
+ */
+var BRIEF_NOTES_ = [
+  { date: "2026-08-03", text: "On-Time keeps the Metrics Dictionary scope (epics / milestones / client commitments) — ratified over the healthier-looking Stories/Tasks reading, which would hide the epic due-date blocker" },
+  { date: "2026-08-03", text: "Region and Team are excluded from the WHAT-IF exercise: the Jira fields are unpopulated org-wide (PR-01). Region shown elsewhere is derived from where hours were logged (◦ marker)" },
+  { date: "2026-08-03", text: "Due dates and estimates are the mutable Jira fields, not baselined commitments — a re-baselined milestone or a revised estimate silently scores as on target (PR-02 / PR-03)" },
+];
+
+/** Gap candidates. kept/total are records; the two hour-based gaps rank in
+    person-week equivalents (÷40h) so `dropped × cards` compares like units.
+    cards = how many of the four KPI cards the gap starves (fixed map — the
+    assignee and roster-join gaps starve all four; the rest starve one). */
+function briefGaps_(h, pp) {
+  var wkH = 40;
+  return [
+    { name: "Jira assignee on resolved work", kept: h.resAssigned, total: h.res, gate: 0.95, cards: 4,
+      owner: "Delivery leadership", week: "2026.W35", action: "close issues with an assignee on them" },
+    { name: "Assignee resolves to a roster person", kept: h.resAttr, total: h.resAssigned, gate: 0.95, cards: 4,
+      owner: "WFP / this dashboard", week: "2026.W35",
+      action: "fix the roster name index + crew Department gate (our bug, not Jira's)" },
+    { name: "Due date on the work On-Time measures", kept: h.resDue, total: h.res, gate: 0.80, cards: 1,
+      owner: "Delivery leadership", week: "2026.W34", action: "set due dates on epics at kickoff" },
+    { name: "Estimate on closed epics", kept: h.epicsEst, total: h.epics, gate: 0.70, cards: 1,
+      owner: "Delivery leadership", week: "2026.W34",
+      action: "estimate epics at kickoff (real forecasts, not 10h placeholders)" },
+    { name: "Logged time on estimated epics", kept: h.epicsTime, total: h.epicsEst, gate: 0.70, cards: 1,
+      owner: "Delivery leadership", week: "2026.W35", action: "log time on the epic or its children" },
+    { name: "Billable classification on tracked hours", kept: Math.round(pp.trackedCov / wkH),
+      total: Math.round(pp.tracked / wkH), gate: 0.90, cards: 1,
+      owner: "Ops (NetSuite feed)", week: "2026.W35", action: "classify tracked hours in NetSuite" },
+    { name: "Real Tempo capacity (not defaulted)", kept: pp.weeks - pp.capEst, total: pp.weeks,
+      gate: 0.95, cards: 1,
+      owner: "Ops (Tempo feed)", week: "2026.W34", action: "load real schedules into Tempo" },
+  ];
+}
+
+/** Alphabetical tiebreak so equal-scoring rows always order the same way. */
+function briefTie_(a, b) { return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); }
+
+function briefFor_(h, pp) {
+  var gaps = briefGaps_(h, pp).map(function (g) {
+    g.pct = g.total > 0 ? g.kept / g.total : null;
+    g.dropped = g.total - g.kept;
+    return g;
+  });
+  var measured = gaps.filter(function (g) { return g.pct !== null; });
+
+  // FACTS — measured kept-of-total statements, biggest population first.
+  var facts = measured.slice().sort(function (a, b) {
+    return b.total - a.total || briefTie_(a, b);
+  }).slice(0, 3).map(function (g) {
+    return g.kept + " of " + g.total + " — " + g.name + " (" +
+      Math.round(g.pct * 100) + "% vs gate " + Math.round(g.gate * 100) + "%)";
+  });
+  while (facts.length < 3) facts.push("not measurable this window — no complete-period data");
+
+  // HIGHLIGHTS — what already works, best first; padded with fixed truths so
+  // the brief never renders short (deterministic fallbacks, not filler prose).
+  var hi = [];
+  measured.filter(function (g) { return g.pct >= g.gate; })
+    .sort(function (a, b) { return b.pct - a.pct || briefTie_(a, b); })
+    .forEach(function (g) { hi.push(g.name + " already meets its gate (" + Math.round(g.pct * 100) + "%)"); });
+  measured.filter(function (g) { return g.pct < g.gate && g.pct >= 0.70; })
+    .sort(function (a, b) { return b.pct - a.pct || briefTie_(a, b); })
+    .forEach(function (g) {
+      hi.push(g.name + " at " + Math.round(g.pct * 100) + "% — within reach of its " +
+        Math.round(g.gate * 100) + "% gate");
+    });
+  hi.push("52-week export window in place — supports the six-period trend the Dictionary asks for");
+  hi.push("every card states its own coverage and gate — a weak number is never presented as a strong one");
+  hi.push("every gap in this view is trended — progress is visible between reviews instead of re-litigated");
+  var highlights = hi.slice(0, 3);
+
+  // NOTES — the decision registry, newest first.
+  var notes = BRIEF_NOTES_.slice().sort(function (a, b) {
+    return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0);
+  }).slice(0, 3).map(function (n) { return n.text + " (" + n.date + ")"; });
+
+  // CONCERNS — failing gaps ranked by dropped × cards-blocked; each ends in the
+  // action. The WHAT-IF consequence LEADS concern #1: "filter the garbage" must
+  // never read as the fix.
+  var concerns = measured.filter(function (g) { return g.pct < g.gate; })
+    .sort(function (a, b) {
+      return b.dropped * b.cards - a.dropped * a.cards || briefTie_(a, b);
+    }).slice(0, 4).map(function (g) {
+      return g.name + " — " + g.kept + " of " + g.total + " (" + Math.round(g.pct * 100) +
+        "% vs gate " + Math.round(g.gate * 100) + "%) → change: " + g.action +
+        " · owner: " + g.owner + " · target: " + g.week;
+    });
+  if (concerns.length) {
+    concerns[0] = "Keeping only valid records leaves On-Time evaluating on n=" + h.resReady +
+      " and Forecast on n=" + h.epicsTime + " — publishable, not meaningful. The fix is " +
+      "upstream data entry, not filtering. Biggest lever: " + concerns[0];
+  } else {
+    concerns.push("No funnel gap is failing its gate in this window — hold the line and re-run at period close.");
+  }
+  return { facts: facts, highlights: highlights, notes: notes, concerns: concerns };
+}
+
+function briefHtml_(brief) {
+  function sec(title, items) {
+    return "<h5>" + title + "</h5><ul>" + items.map(function (t) {
+      return "<li>" + esc_(t) + "</li>";
+    }).join("") + "</ul>";
+  }
+  return '<div class="brief">' +
+    '<div style="display:flex;align-items:center;gap:8px"><h4 style="flex:1;margin:0">📄 CEO Brief' +
+    ' <span class="cellSub" title="Derived by fixed rules from the measured profile — same data, same brief, reproducible when quoted.">deterministic ⓘ</span></h4>' +
+    '<button class="btn" onclick="copyBrief_()">📋 Copy</button>' +
+    '<span id="briefMsg" class="cellSub"></span></div>' +
+    sec("Top 3 Facts", brief.facts) + sec("Top 3 Highlights", brief.highlights) +
+    sec("Top 3 Notes", brief.notes) + sec("Top Concerns", brief.concerns) + "</div>";
+}
+
+/** Plain-text form for pasting into the review deck / doc. */
+function briefText_(brief) {
+  function sec(title, items) {
+    return "## " + title + "\n" + items.map(function (t) { return "- " + t; }).join("\n");
+  }
+  return "# Delivery Health — CEO Brief\n\n" + sec("Top 3 Facts", brief.facts) + "\n\n" +
+    sec("Top 3 Highlights", brief.highlights) + "\n\n" + sec("Top 3 Notes", brief.notes) +
+    "\n\n" + sec("Top Concerns", brief.concerns) + "\n";
+}
+
+/** Copies the brief rendered by the LAST renderHygiene_ pass (stashed on
+    STATE), with the textarea fallback the GAS iframe sometimes needs. */
+function copyBrief_() {
+  var txt = STATE._briefText || "";
+  var msg = document.getElementById("briefMsg");
+  function ok() { if (msg) msg.textContent = "✅ copied"; }
+  function fallback() {
+    var ta = document.createElement("textarea");
+    ta.value = txt;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); ok(); }
+    catch (e) { if (msg) msg.textContent = "⚠️ copy blocked — select the text manually"; }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(ok, fallback);
+  } else { fallback(); }
+}
+
 /** One funnel: bar width vs the TOP stage, count · %, and −drop vs the stage
     before — the drop is the finding, so it is printed, not inferred. */
 function funnelHtml_(f) {
@@ -3582,7 +3739,12 @@ function profilePanelHtml_(h, pp, winLabel) {
       '" onclick="toggleWhatIf_()">' +
       (on ? "Exit WHAT-IF" : "🧪 WHAT-IF: valid records only") + "</button> " +
     '<span class="cellSub">flips the WHOLE dashboard to the measurable populations above — ' +
-    "session-only, banner on every tab, a reload always returns to real mode</span></div></div>";
+    "session-only, banner on every tab, a reload always returns to real mode</span></div>" +
+    (function () {
+      var brief = briefFor_(h, pp);
+      STATE._briefText = briefText_(brief);   // what 📋 Copy copies
+      return briefHtml_(brief);
+    })() + "</div>";
 }
 
 function gateEditorHtml_() {

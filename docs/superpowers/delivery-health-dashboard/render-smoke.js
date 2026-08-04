@@ -106,6 +106,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
              " renderAll_: renderAll_," +
              " profileFor_: profileFor_," +
+             " briefFor_: briefFor_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
 var C = eval(m[1] + bridge);
 
@@ -1268,5 +1269,43 @@ C.renderHygiene_();
 var profV = els.viewHygiene.innerHTML;
 assert_(!/Data Profile/.test(profV) && !/WHAT-IF/.test(profV), "no profile, no button for a viewer");
 C.getModel().viewerRole = "admin";
+
+// ══════════════════════════════════════════════════════════════════════════
+// 25. CEO BRIEF: deterministic rules — same data in, same brief out. Facts by
+// population size; highlights = what already meets its gate; notes = the
+// decision registry; concerns ranked by dropped × cards-blocked, each ending
+// in change/owner/target, with the WHAT-IF consequence leading concern #1.
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+C.setState("whatIf", false);
+C.renderHygiene_();
+assert_(/CEO Brief/.test(els.viewHygiene.innerHTML), "brief renders inside the profile panel");
+assert_(/copyBrief_\(\)/.test(els.viewHygiene.innerHTML), "…with a Copy control");
+// DATA-BLOCKERS.md-shaped input: the roster join is the biggest lever
+var bh = { res: 100, resDue: 80, resAssigned: 94, resAttr: 54, resReady: 50,
+           epics: 18, epicsEst: 4, epicsTime: 3 };
+var bp = { tracked: 4000, trackedCov: 3800, weeks: 100, capEst: 3 };
+var b1 = C.briefFor_(bh, bp), b2 = C.briefFor_(bh, bp);
+assert_(JSON.stringify(b1) === JSON.stringify(b2), "deterministic: identical output on repeat calls");
+assert_(b1.facts.length === 3 && b1.highlights.length === 3 && b1.notes.length === 3,
+        "exactly 3 facts / 3 highlights / 3 notes");
+assert_(b1.concerns.length >= 1 && b1.concerns.length <= 4, "1–4 concerns");
+assert_(/n=50/.test(b1.concerns[0]) && /upstream data entry, not filtering/.test(b1.concerns[0]),
+        "concern #1 leads with the WHAT-IF consequence and the measured n");
+assert_(/roster person/.test(b1.concerns[0]),
+        "ranking is dropped × cards-blocked: the roster join (40 × 4) outranks everything");
+assert_(/owner: /.test(b1.concerns[0]) && /target: 2026\.W3[45]/.test(b1.concerns[0]),
+        "every concern ends in owner + ISO target week");
+assert_(b1.facts.every(function (f) { return /\d+ of \d+/.test(f) && /vs gate \d+%/.test(f); }),
+        "facts are measured kept-of-total statements against their gates");
+assert_(b1.notes.every(function (n) { return /2026-\d\d-\d\d/.test(n); }),
+        "notes are date-stamped decisions");
+// sparse window: the brief never renders short and never fakes a number
+var b0 = C.briefFor_({ res: 0, resDue: 0, resAssigned: 0, resAttr: 0, resReady: 0,
+                       epics: 0, epicsEst: 0, epicsTime: 0 },
+                     { tracked: 0, trackedCov: 0, weeks: 0, capEst: 0 });
+assert_(b0.facts.length === 3 && b0.highlights.length === 3 && b0.notes.length === 3 &&
+        b0.concerns.length >= 1, "sparse data still yields a full 3/3/3 + concern brief");
+assert_(/not measurable/.test(b0.facts[0]), "…with facts saying 'not measurable', not fake zeros");
 
 console.log("✅ render-smoke: " + checks + " checks passed");
