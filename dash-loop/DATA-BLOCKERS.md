@@ -15,41 +15,38 @@ strong one. **Nothing below is a reason to delay the review — it is the agenda
 
 ## Evidence base
 
-Profiled from a real `Jira Raw` export: **218 resolved issues, 2026.W32 sample window**.
-⚠️ That sample's resolution dates run 2025-08-04 → 2025-08-18 — roughly **350 days old** — so treat
-the percentages as indicative and re-run the profile against a current 52-week export before
-quoting them externally. The *structural* findings (fields and issue types that do not exist) do
-not depend on how recent the sample is.
+**Updated 2026-08-04:** profiled live in-product (🧪 Data Hygiene → 🔬 Data Profile) over
+**FY26 Q4 — 402 resolved epics, 2,198 person-weeks**. This supersedes the 2026-08-03 stale
+sample (218 issues, ~350 days old); several numbers below changed materially, one blocker
+was downgraded, and one was fixed in code. The *structural* findings (fields and issue types
+that do not exist) are unchanged.
 
 ---
 
 ## Blockers, worst first
 
-### 1 · Epics do not carry due dates → **On-Time Delivery cannot publish**
-**Measured: 2 of 18 epics (11%) have a due date. Gate is 80%.**
+### 1 · ~~Epics do not carry due dates~~ → **DOWNGRADED 2026-08-04: 3 points from gate**
+**Live FY26 Q4: 308 of 402 epics (77%) have a due date. Gate is 80%.**
 
-The Metrics Dictionary defines On-Time over *"Epic/Milestone or Client Commitment"*. We implemented
-exactly that. On this data it leaves **two measurable issues**.
+The stale sample said 11% and "cannot publish" — the live number is **77%**, three points under
+the gate. Due-date discipline on epics is far better than previously reported; this is now a
+close-the-gap ask, not a blocker. Combined with the attribution fix below, On-Time evaluates on
+**n=164** measurable epics this quarter, not n=2.
 
-For contrast, the Stories and Tasks we previously measured carry due dates on 146 of 200 (73%). The
-discipline exists at task level and not at milestone level — which is the opposite of where a client
-commitment actually lives.
+- **Decision, ratified 2026-08-03 (unchanged):** we measure the Dictionary definition
+  (epics / milestones / client commitments) and let the card state its own coverage.
+- **Owner:** Delivery leadership (close the last 3 points) · **Prereq:** PR-08
+- **Also still needed:** PR-02, a *baselined* committed date. Today we measure the mutable Jira
+  Due Date, so a re-baselined milestone silently scores as on time.
+- **Unblocks:** On-Time Delivery at full confidence.
 
-- **Decision, ratified 2026-08-03:** we keep measuring the Dictionary definition and let the
-  card show as below-gate. The alternative — reverting to the Stories/Tasks scope — would report
-  146 of 200 at 73% instead of 2 of 18 at 11%, but only by measuring something the Dictionary
-  does not define. That would make the number look healthier by hiding this blocker.
-- **Owner:** Delivery leadership (due-date discipline on epics) · **Prereq:** PR-08
-- **Also needed:** PR-02, a *baselined* committed date. Today we measure the mutable Jira Due Date,
-  so a re-baselined milestone silently scores as on time.
-- **Unblocks:** On-Time Delivery, the headline outcome metric.
+### 2 · Closed epics have no estimates → **Forecast Accuracy is the biggest upstream gap**
+**Live FY26 Q4: 91 of 402 closed epics carry an estimate (23%); 49 have both an estimate and
+logged time (12%). Gate is 70%.**
 
-### 2 · Closed epics have no estimates → **Forecast Accuracy is running on three**
-**Measured: 4 of 18 closed epics carry an estimate; 3 have both an estimate and logged time (17%). Gate is 70%.**
-
-Worse than the count: the four estimates that exist are 10h, 10h, 10h and 8h against actuals of
-17.8h, 1.0h, 0h and 21.8h. Those read as placeholders, not forecasts. A "forecast accuracy" built
-on them measures nothing.
+The live number confirms the stale sample's direction: estimation at kickoff is the one habit
+that hasn't formed. The estimates that do exist skew toward placeholder values (10h defaults in
+the sample), so even the measured 12% overstates real forecasting.
 
 - **Owner:** Delivery leadership (estimate at kickoff) · **Prereq:** PR-03 (baselined estimate)
 - **Unblocks:** Forecast Accuracy.
@@ -93,16 +90,21 @@ created in Jira, or the Dictionary should say "Epic" and mean it.
 
 ---
 
-## The "unattributed" problem is OURS, and it is a bug — not a data gap
+## The "unattributed" problem is OURS, and it is a bug — **FIXED IN CODE 2026-08-04, deploy pending**
 
-**This supersedes an earlier version of this note that blamed roster name-matching. That was wrong.**
+**Live FY26 Q4 measured the damage: 173 of 351 assigned issues (49%) were dropped by our own
+join — the single largest evaluability loss in the system, 4× any other drop.** The roster
+('Data' tab + 'Contractors Data') carries the assignee names; the dashboard was refusing to
+look at most of it.
 
-Cross-checked the 48 distinct Jira assignees against the live roster workbook
-(`ServiceRocket || Historical Headcount`, the same file the Demand dashboard uses):
-**44 of 48 (92%) are on the roster.** The names are fine. Only four are absent entirely
-(Miguel Ramon, Olyviah Amwoma, Septa Cahyadiputra, Wilson Lai).
+**The fix (schema v12):** issue metrics now attribute against the *whole active roster* — both
+tabs, before the Department/Class gates — while the utilization/capacity population keeps its
+gates unchanged. A contractor's or a Solution Architect's closed epic lands on that person and
+counts in On-Time / Forecast / Quality; their capacity still counts nowhere, because they owe
+none. Expected effect: attribution jumps from 51% of assigned work toward the 95% gate on all
+four cards, needing **nothing from Jira**.
 
-The dashboard drops them anyway, in two places, both ours:
+The two bugs it closes, for the record:
 
 **1 · Every crew member and contractor is excluded outright.**
 `readRosterPeople_` gates each roster row on `Department === "Services"` and the gate is
@@ -124,10 +126,11 @@ epic on time still delivered it on time.
 **Impact:** every one of those issues is silently missing from three of the four cards, and the
 Region and Team comparisons under-count by the same amount.
 
-**Owner: us (WFP / this dashboard).** Fixing it needs a decision — whether crew and non-tracking
-FTEs should count toward the delivery metrics while staying out of the utilization population — so
-it is on tomorrow's agenda rather than already changed. **Very likely the largest single improvement
-available**, and it needs nothing from Jira.
+**Owner: us (WFP / this dashboard).** The decision — crew and non-tracking FTEs count toward the
+delivery metrics while staying out of the utilization population — was **ratified 2026-08-04**
+and is implemented. Remaining exposure: the handful of assignees absent from the roster
+entirely (measured at 4 of 48 distinct assignees in the earlier cross-check) stay unattributed,
+correctly.
 
 ---
 
@@ -143,12 +146,12 @@ available**, and it needs nothing from Jira.
 
 | # | Blocker | Owner | Target |
 |---|---|---|---|
-| 1 | Due dates on epics / milestones | Delivery leadership | 2026.W34 |
-| 2 | Estimates at kickoff on epics | Delivery leadership | 2026.W34 |
+| 1 | ~~Due dates on epics~~ **downgraded 2026-08-04: 77% live, close the last 3 pts to the 80% gate** | Delivery leadership | 2026.W34 |
+| 2 | Estimates at kickoff on epics — **23% live, the biggest remaining upstream gap** | Delivery leadership | 2026.W34 |
 | 3 | Populate Region + Team in Jira | Gon | 2026.W34 |
 | 4 | Deploy export v3.6.0; decide on changelog fetch | Delivery + CX | 2026.W35 |
 | 5 | Milestone type / Client Commitment label — or amend the Dictionary | Bill + Gon | 2026.W35 |
-| 6 | **Crew excluded by a fail-closed Department gate + name index built from the tracking population — both ours, both bugs** | WFP + this dashboard | 2026.W34 |
+| 6 | ~~Crew excluded + narrow name index~~ **FIXED IN CODE 2026-08-04 (schema v12) — deploy pending; was dropping 49% of assigned work** | WFP + this dashboard | ✅ done |
 
 **We are not waiting on these to ship.** The dashboard is live, honest about what it cannot yet
 measure, and every one of these gaps has a trend line so the next review can see movement rather
