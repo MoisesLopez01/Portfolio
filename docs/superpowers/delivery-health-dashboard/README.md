@@ -498,6 +498,24 @@ data unavailable" chip; the grid still renders. `Jira Raw` unreadable → On-Tim
 Forecast Accuracy show "Jira data unavailable"; Utilization and the grid are unaffected. Roster
 unreadable is the one **fatal** error (population and Region can't be derived without it).
 
+### 🔬 Data Profile + WHAT-IF (admin-only)
+
+Above the gaps table, admins get per-metric **evaluability funnels** (resolved → assignee →
+roster join → due date; epics → estimate → logged time; utilization's two coverage bars —
+Quality states it cannot be profiled until export v3.6.0). One button — **🧪 WHAT-IF: valid
+records only** — flips the whole dashboard to the measurable populations: coverage reads 100%,
+gate flags clear, exclusions are restated on each card, and a metric left with under 5 valid
+records says *"publishable, not meaningful"* instead of wearing a confidence chip. The mode is
+session-only, admin-only (force-reset in `renderAll_` for anyone else), and unmistakable: a
+banner on every tab, a dashed watermark frame, and a `WHATIF-` stamp on PNG filenames.
+
+Underneath, a **deterministic CEO brief** (top 3 Facts / 3 Highlights / 3 Notes / top
+Concerns) is derived by fixed rules from the same profile — concerns ranked by
+records-dropped × cards-blocked, each ending in change / owner / target week, with the
+WHAT-IF consequence leading concern #1 so "filter the garbage" never reads as the fix.
+Owners are named here (admin-only) even though the public gaps table stays owner-free.
+Spec: `docs/superpowers/specs/2026-08-03-hygiene-whatif-profiling-design.md`.
+
 ## Region lens
 
 The standard region for every tile is the **issue-level Jira `Region` field** (`Jira Raw` col 32,
