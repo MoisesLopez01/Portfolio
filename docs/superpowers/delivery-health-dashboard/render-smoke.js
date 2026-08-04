@@ -1298,6 +1298,14 @@ assert_(/owner: /.test(b1.concerns[0]) && /target: 2026\.W3[45]/.test(b1.concern
         "every concern ends in owner + ISO target week");
 assert_(b1.facts.every(function (f) { return /\d+ of \d+/.test(f) && /vs gate \d+%/.test(f); }),
         "facts are measured kept-of-total statements against their gates");
+// Four gaps tie at total=100 (assignee, due date, classification, capacity);
+// briefTie_ resolves alphabetically, so the winners and their order are fixed:
+// Billable classification (95 kept), Due date (80), Jira assignee (94) — and
+// "Real Tempo capacity" is the alphabetical loser, dropped as 4th.
+assert_(/^95 of 100 — Billable classification/.test(b1.facts[0]) &&
+        /^80 of 100 — Due date/.test(b1.facts[1]) &&
+        /^94 of 100 — Jira assignee/.test(b1.facts[2]),
+        "facts tie at total=100 resolves alphabetically via briefTie_ — order pinned");
 assert_(b1.notes.every(function (n) { return /2026-\d\d-\d\d/.test(n); }),
         "notes are date-stamped decisions");
 // sparse window: the brief never renders short and never fakes a number
