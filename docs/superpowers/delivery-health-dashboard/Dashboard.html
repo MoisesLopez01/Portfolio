@@ -131,6 +131,13 @@ body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
   position: fixed; right: 10px; bottom: 8px; font-size: 11px; letter-spacing: .1em;
   color: var(--text); background: var(--bg); border: 1px dashed var(--c-warn);
   border-radius: 4px; padding: 2px 8px; opacity: .9; pointer-events: none; z-index: 99; }
+.profPanel { border: 1px solid var(--line, #4443); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.profPanel h4 { margin: 0 0 4px; }
+.funnel { margin: 10px 0 4px; }
+.fnTitle { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+.fnRow { display: grid; grid-template-columns: 260px 1fr 170px; gap: 8px; align-items: center; font-size: 12px; }
+.fnRow .hbar i { background: var(--c-series); }
+.fnDrop { color: var(--c-bad); font-weight: 600; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
@@ -3494,6 +3501,88 @@ function setHygIdx_(v) {
  * override records who set it and when, and Restore puts the agreed number back
  * exactly. Moving a gate is a visible decision, not a quiet one.
  */
+/**
+ * ── 🔬 DATA PROFILE + WHAT-IF (spec 2026-08-03, admin-only) ─────────────────
+ * Per-metric evaluability funnels over one hygiene window: where records fall
+ * out of "measurable", stage by stage, with the drop at each step stated. Pure
+ * over hygieneFor_/hygienePeopleFor_ output so render-smoke can pin it down.
+ * Region/Team appear in NO funnel — excluded from the WHAT-IF exercise by
+ * decision (the Jira fields are unpopulated org-wide, PR-01); they stay in the
+ * gaps table below, which is unchanged.
+ */
+function profileFor_(h, pp) {
+  return {
+    onTime: { title: "On-Time Delivery — " + onTimeScopeWord_(), stages: [
+      { label: "resolved in scope", n: h.res },
+      { label: "has a Jira assignee", n: h.resAssigned },
+      { label: "assignee joins the roster", n: h.resAttr },
+      { label: "…and carries a due date — measurable", n: h.resReady },
+    ] },
+    forecast: { title: "Forecast Accuracy — resolved epics", stages: [
+      { label: "resolved epics", n: h.epics },
+      { label: "has an estimate", n: h.epicsEst },
+      { label: "…and logged time — measurable", n: h.epicsTime },
+    ] },
+    util: { title: "Billable Utilization", bars: [
+      { label: "person-weeks on real Tempo capacity", n: pp.weeks - pp.capEst, of: pp.weeks, unit: " weeks" },
+      { label: "tracked hours billable-classified", n: r1_(pp.trackedCov), of: r1_(pp.tracked), unit: "h" },
+    ] },
+  };
+}
+
+/** One funnel: bar width vs the TOP stage, count · %, and −drop vs the stage
+    before — the drop is the finding, so it is printed, not inferred. */
+function funnelHtml_(f) {
+  var top = f.stages.length ? f.stages[0].n : 0;
+  var rows = f.stages.map(function (st, i) {
+    var pct = top > 0 ? Math.round(st.n / top * 100) : 0;
+    var drop = i > 0 ? f.stages[i - 1].n - st.n : 0;
+    return '<div class="fnRow"><span>' + esc_(st.label) + "</span>" +
+      '<div class="hbar"><i style="width:' + pct + '%"></i></div>' +
+      "<span>" + st.n + (top > 0 ? " · " + pct + "%" : "") +
+      (i > 0 ? ' <b class="fnDrop"' + (drop > 0 ? "" : ' style="opacity:.35"') + ">−" + drop + "</b>" : "") +
+      "</span></div>";
+  }).join("");
+  return '<div class="funnel"><div class="fnTitle">' + esc_(f.title) + "</div>" + rows + "</div>";
+}
+
+/** Utilization's two coverage bars — not a chain, so no drop column. */
+function utilBarsHtml_(u) {
+  var rows = u.bars.map(function (b) {
+    var pct = b.of > 0 ? Math.round(b.n / b.of * 100) : 0;
+    return '<div class="fnRow"><span>' + esc_(b.label) + "</span>" +
+      '<div class="hbar"><i style="width:' + pct + '%"></i></div>' +
+      "<span>" + b.n + " of " + b.of + b.unit + " · " + pct + "%</span></div>";
+  }).join("");
+  return '<div class="funnel"><div class="fnTitle">' + esc_(u.title) + "</div>" + rows + "</div>";
+}
+
+/** The whole 🔬 section: funnels + the ONE WHAT-IF button. Admin-only — the
+    same code-level gate as gateEditorHtml_, and whatIfOn_/renderWhatIfBanner_
+    enforce the role even if this HTML leaked. */
+function profilePanelHtml_(h, pp, winLabel) {
+  if (MODEL.viewerRole !== "admin") return "";
+  var on = whatIfOn_();
+  var body = (h.res > 0 || pp.weeks > 0)
+    ? (function () {
+        var pf = profileFor_(h, pp);
+        return funnelHtml_(pf.onTime) + funnelHtml_(pf.forecast) + utilBarsHtml_(pf.util) +
+          '<div class="cellSub">Quality / Rework cannot be profiled — Status Category, Rework Link ' +
+          "and Reopened are not in the deployed export (needs v3.6.0, PR-09). Filtering cannot " +
+          "conjure columns that were never exported.</div>";
+      })()
+    : '<div class="emptyState">no complete-period data in this window</div>';
+  return '<div class="profPanel"><h4>🔬 Data Profile · ' + esc_(winLabel) + "</h4>" +
+    '<p class="cellSub">Where records fall out of evaluability, per metric — the drop at each ' +
+    "stage is the work queue. Some fields are excluded from this exercise (unpopulated in " +
+    "Jira, PR-01 — tracked in the gaps table below).</p>" + body +
+    '<div style="margin:10px 0"><button class="btn' + (on ? " on" : "") +
+      '" onclick="toggleWhatIf_()">' +
+      (on ? "Exit WHAT-IF" : "🧪 WHAT-IF: valid records only") + "</button> " +
+    '<span class="cellSub">flips the WHOLE dashboard to the measurable populations above — ' +
+    "session-only, banner on every tab, a reload always returns to real mode</span></div></div>";
+}
+
 function gateEditorHtml_() {
   if (MODEL.viewerRole !== "admin") return "";
   var reg = MODEL.meta.registry || {};
@@ -3699,6 +3788,7 @@ function renderHygiene_() {
     '<h3 style="flex:1">🧪 Data Hygiene</h3></div>' +
     '<p class="cellSub">Whole-population view — the dashboard filters deliberately do not apply. ' +
     "A well-tagged region does not make the feed publishable.</p>" + nav +
+    profilePanelHtml_(h, pp, winLabel) +
     '<div class="tiles"><div class="tile"><div class="lbl">Delivery work fully attributed · ' +
       esc_(winLabel) + '</div><div class="big ' + rag + '">' +
       (full === null ? "—" : Math.round(full) + "%") + "</div>" +

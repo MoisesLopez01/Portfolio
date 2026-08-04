@@ -105,6 +105,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // WHAT-IF simulation + data profiling (spec 2026-08-03)
              " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
              " renderAll_: renderAll_," +
+             " profileFor_: profileFor_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
 var C = eval(m[1] + bridge);
 
@@ -1228,5 +1229,42 @@ assert_(/⚠ classification covers 75% of tracked hours/.test(realUtilCard),
         "real mode keeps the coverage warning (60h of 80h classified)");
 assert_(/below gate — directional only/.test(realUtilCard),
         "real mode: 75% classification vs the 90% gate stays flagged — proving the override changed something");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 24. DATA PROFILE PANEL (admin-only): per-metric evaluability funnels — where
+// records fall out of "measurable", stage by stage. Region/Team in NO funnel
+// (excluded from the exercise by decision 2026-08-03 — tracked in the gaps table
+// instead).
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({}));
+C.setState("whatIf", false);
+C.renderHygiene_();
+var prof = els.viewHygiene.innerHTML;
+assert_(/Data Profile/.test(prof), "profile panel renders for an admin");
+assert_(/WHAT-IF: valid records only/.test(prof), "…and carries the single WHAT-IF button");
+var profOnly = prof.split("Data Profile")[1].split("Delivery work fully attributed")[0];
+assert_(/resolved in scope/.test(profOnly) && /assignee joins the roster/.test(profOnly),
+        "on-time funnel names its stages");
+assert_(/carries a due date/.test(profOnly), "…down to the measurable population");
+assert_(/−11/.test(profOnly), "the drop at each stage is stated (45 roster-joined → 34 with due date)");
+assert_(/resolved epics/.test(profOnly) && /has an estimate/.test(profOnly), "forecast funnel present");
+assert_(/cannot be profiled/.test(profOnly), "Quality states it cannot be profiled — no fake funnel");
+assert_(!/[Rr]egion/.test(profOnly), "Region appears in NO funnel");
+// pure-function funnel monotonicity — each stage ≤ the one before
+var pf = C.profileFor_(
+  { res: 50, resDue: 40, resAssigned: 47, resAttr: 45, resReady: 34, epics: 20, epicsEst: 14, epicsTime: 9 },
+  { tracked: 160, trackedCov: 150, weeks: 4, capEst: 1 });
+[pf.onTime.stages, pf.forecast.stages].forEach(function (st) {
+  for (var i = 1; i < st.length; i++) {
+    assert_(st[i].n <= st[i - 1].n, "funnel is monotone: " + st[i].label);
+  }
+});
+assert_(pf.util.bars[0].n === 3 && pf.util.bars[0].of === 4, "util bar 1 = real-capacity person-weeks");
+// viewer: the whole section simply does not render
+C.getModel().viewerRole = "viewer";
+C.renderHygiene_();
+var profV = els.viewHygiene.innerHTML;
+assert_(!/Data Profile/.test(profV) && !/WHAT-IF/.test(profV), "no profile, no button for a viewer");
+C.getModel().viewerRole = "admin";
 
 console.log("✅ render-smoke: " + checks + " checks passed");
