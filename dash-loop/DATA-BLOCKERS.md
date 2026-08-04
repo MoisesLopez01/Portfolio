@@ -93,20 +93,41 @@ created in Jira, or the Dictionary should say "Epic" and mean it.
 
 ---
 
-## One finding that changes who fixes it
+## The "unattributed" problem is OURS, and it is a bug — not a data gap
 
-We previously reported roughly **half of all issues as "unattributed"**, which read as a Jira hygiene
-failure and went to the Jira admin queue.
+**This supersedes an earlier version of this note that blamed roster name-matching. That was wrong.**
 
-The data says otherwise. **94% of resolved issues DO carry an assignee** — only 6% are genuinely
-unassigned. The loss is almost entirely in the **roster name-join**: the person is named on the
-issue, but the display name doesn't match our roster (leavers, contractors, display-name changes,
-missing aliases).
+Cross-checked the 48 distinct Jira assignees against the live roster workbook
+(`ServiceRocket || Historical Headcount`, the same file the Demand dashboard uses):
+**44 of 48 (92%) are on the roster.** The names are fine. Only four are absent entirely
+(Miguel Ramon, Olyviah Amwoma, Septa Cahyadiputra, Wilson Lai).
 
-That is **not a Jira problem and no Jira admin can fix it.** It is a name-index fix on our side, and
-it is almost certainly the cheapest large win on this list — it feeds all four cards.
+The dashboard drops them anyway, in two places, both ours:
 
-The Data Hygiene view now reports these as two separate rows with two separate owners.
+**1 · Every crew member and contractor is excluded outright.**
+`readRosterPeople_` gates each roster row on `Department === "Services"` and the gate is
+**fail-closed**: no Department column means the row is dropped. The `Contractors Data` tab
+**has no Department column** — so *every* crew row is excluded, always. Their Jira work then has no
+roster person to join to and is counted as "unattributed".
+
+The fail-closed gate was a deliberate fix (fail-open had been letting every contractor in
+regardless of status), and it is waiting on a Department column that was never added. That is a
+one-column change to the roster, or a targeted code change — not a Jira problem.
+
+**2 · The name index is built from the tracking-mandated population, not the roster.**
+`assembleModel_` filters to JF007/JF009 before building the name index, so an FTE outside those
+families — Solution Architecture, Operations, Training — also fails to resolve. That filter is
+correct for **Utilization** (those people have no tracking obligation) but wrong for **On-Time,
+Forecast and Quality**, which are issue metrics: someone outside the tracking families who closes an
+epic on time still delivered it on time.
+
+**Impact:** every one of those issues is silently missing from three of the four cards, and the
+Region and Team comparisons under-count by the same amount.
+
+**Owner: us (WFP / this dashboard).** Fixing it needs a decision — whether crew and non-tracking
+FTEs should count toward the delivery metrics while staying out of the utilization population — so
+it is on tomorrow's agenda rather than already changed. **Very likely the largest single improvement
+available**, and it needs nothing from Jira.
 
 ---
 
@@ -127,7 +148,7 @@ The Data Hygiene view now reports these as two separate rows with two separate o
 | 3 | Populate Region + Team in Jira | Gon | 2026.W34 |
 | 4 | Deploy export v3.6.0; decide on changelog fetch | Delivery + CX | 2026.W35 |
 | 5 | Milestone type / Client Commitment label — or amend the Dictionary | Bill + Gon | 2026.W35 |
-| 6 | Roster name-join (ours, not Jira's) | WFP | 2026.W35 |
+| 6 | **Crew excluded by a fail-closed Department gate + name index built from the tracking population — both ours, both bugs** | WFP + this dashboard | 2026.W34 |
 
 **We are not waiting on these to ship.** The dashboard is live, honest about what it cannot yet
 measure, and every one of these gaps has a trend line so the next review can see movement rather
