@@ -1201,4 +1201,32 @@ C.setState("whatIf", false);
 var realTiny = tiles(model({ otCov: 0.04, fcCov: 0.43 }));
 assert_(!/publishable, not meaningful/.test(realTiny), "the honesty line is WHAT-IF-only");
 
+// ── 23b. WHAT-IF utilization restatements actually render on the card ──
+// The default fixture is fully classified (trackedCov === tracked, capEst
+// false), so edits (d)/(e) were previously verified only at the utilFor_ data
+// layer. This fixture makes both lines light up in the HEADLINE week (W31):
+// person 0's W31 is a defaulted-capacity week (dropped under WHAT-IF), and
+// person 1's W31 carries 20h of unclassified time.
+var wiUtilModel = model({});
+wiUtilModel.people[0].weeks["2026.W31"].capEst = true;
+wiUtilModel.people[1].weeks["2026.W31"].trackedCov = 20;
+C.setState("whatIf", true);
+var wiUtil = tiles(wiUtilModel);
+var wiUtilCard = wiUtil.split("Billable Utilization")[1] || "";
+assert_(/1 defaulted-capacity person-week excluded by the WHAT-IF filter/.test(wiUtilCard),
+        "(d) the dropped capEst week is restated on the card, singular form");
+assert_(/20h unclassified — excluded by the WHAT-IF filter/.test(wiUtilCard),
+        "(d) unclassified hours restated under WHAT-IF (40h kept − 20h classified)");
+assert_(/high confidence · 100% attributed/.test(wiUtilCard),
+        "(e) utilization coverage is overridden to 100% under WHAT-IF");
+assert_(!/below gate — directional only/.test(wiUtilCard),
+        "(e) …so the below-gate caveat clears");
+C.setState("whatIf", false);
+var realUtil = tiles(model({})) && tiles(wiUtilModel);
+var realUtilCard = realUtil.split("Billable Utilization")[1] || "";
+assert_(/⚠ classification covers 75% of tracked hours/.test(realUtilCard),
+        "real mode keeps the coverage warning (60h of 80h classified)");
+assert_(/below gate — directional only/.test(realUtilCard),
+        "real mode: 75% classification vs the 90% gate stays flagged — proving the override changed something");
+
 console.log("✅ render-smoke: " + checks + " checks passed");
