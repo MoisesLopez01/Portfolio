@@ -109,11 +109,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
              " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
-             // WHAT-IF simulation + data profiling (spec 2026-08-03)
-             " whatIfOn_: whatIfOn_, toggleWhatIf_: toggleWhatIf_, whatIfCounts_: whatIfCounts_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
-             " profileFor_: profileFor_," +
-             " briefFor_: briefFor_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
              // rebuild are two clocks, and only rendering can prove they stay apart.
@@ -343,12 +339,12 @@ C.setModel(model({}));
 C.renderHygiene_();
 var hyg = els.viewHygiene.innerHTML;
 // The "Delivery work fully attributed" KPI tile was DELETED (user decision
-// 2026-08-04) — the 🔬 Data Profile headline carries the good-of-total read.
+// 2026-08-04) — the gaps table below carries the per-component read.
 assert_(!/Delivery work fully attributed/.test(hyg), "hygiene KPI tile deleted (user 2026-08-04)");
 assert_(/Region tagged on delivery work/.test(hyg), "region gap listed");
 // Prereq + Target-week columns removed (user decision 2026-08-04), same rule
 // as the Owner column (2026-08-03): accountability and scheduling live in the
-// requirements doc and the Brief, not in a widely-read table.
+// requirements doc, not in a widely-read table.
 assert_(!/<th>Prereq<\/th>/.test(hyg) && !/<th>Target week<\/th>/.test(hyg),
         "no Prereq / Target-week columns in the hygiene table");
 assert_(!/<th>Owner<\/th>/.test(hyg), "no Owner column in the hygiene table");
@@ -395,19 +391,12 @@ assert_(!/setHygIdx_/.test(hyg), "no per-view stepper — the header picker is t
 assert_(!/Σ All history/.test(hyg), "no per-view whole-window rollup either");
 assert_(/window follows the header period picker/.test(hyg),
         "says exactly which control owns the window");
-// No headline stat row (user 2026-08-04, round 2: the big top numbers were
-// clutter) — the good-of-total read is each funnel's final "…measurable" row,
-// anchored on its "N · P%" format, not a bare /68%/ which would happily match
-// any gap row's coverage.
-assert_(!/good records overall/.test(hyg), "no big-number stat row on the profile panel");
-assert_(/34 · 68%/.test(hyg), "funnel's final row: On-Time measurable 34 of 50 = 68% for the latest week");
 
 // The GLOBAL picker re-bases this view exactly like the tiles.
 C.setState("periodIdx", 0);
 C.renderHygiene_();
 var older = els.viewHygiene.innerHTML;
 assert_(/2026\.W30/.test(older), "picking the earlier period re-bases the hygiene window");
-assert_(/30 · 60%/.test(older), "and its own numbers follow (resReady 30 of 50)");
 C.setState("periodIdx", null);
 
 // ── 6. Empty scope is not the same as bad data ──────────────
@@ -1139,282 +1128,58 @@ assert_(!/Due date on resolved delivery work/.test(hyg2),
         "…and no longer says 'delivery work' while measuring epics");
 
 // ══════════════════════════════════════════════════════════════════════════
-// 21. WHAT-IF CORE (spec 2026-08-03): one flag flips the population every
-// shared aggregation helper uses to "valid records only". The rates never
-// change — they were always computed over valid records; the flag changes the
-// denominators and the confidence framing. Admin-only, session-only.
+// 21. CLASSIFICATION-COVERAGE WARNING RENDERS ON THE UTILIZATION CARD
+// When NetSuite hasn't classified all tracked hours, the card must carry both
+// the coverage-warning line and the below-gate caveat — a surviving check that
+// used to be verified only as a WHAT-IF contrast (removed 2026-08-05).
 // ══════════════════════════════════════════════════════════════════════════
-fresh(model({ otCov: 0.66, fcCov: 0.43 }));
-C.setState("whatIf", true);
-assert_(C.whatIfOn_(), "whatIf turns on for an admin viewer");
-var wiOt = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
-assert_(wiOt.nAll === wiOt.n, "WHAT-IF collapses the coverage denominator to the valid population");
-assert_(wiOt.nAllReal === 100, "…keeping the real total (2 weeks × 50) for restating");
-var wiFc = C.bucketsFor_(C.getModel().forecastBuckets, WEEKS);
-assert_(wiFc.nNoTime === 0 && wiFc.nAll === wiFc.n,
-        "estimated-but-untracked epics vanish from the displayed population");
-assert_(wiFc.nNoTimeReal === 4, "…their real count survives (2 per week × 2)");
-C.setState("whatIf", false);
-var realOt = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
-assert_(realOt.nAll === 100 && realOt.nAllReal === undefined, "flag off → untouched shape");
-// utilization: a defaulted-capacity person-week is not a valid record
-var wiModel = model({});
-wiModel.people[0].weeks["2026.W30"].capEst = true;
-fresh(wiModel);
-C.setState("whatIf", true);
-var wiU = C.utilFor_(WEEKS);
-assert_(wiU.cap === 120, "capEst person-week dropped from the WHAT-IF capacity (4×40h − 40h)");
-assert_(wiU.wiWeeksDropped === 1, "…and the drop is counted for restating");
-C.setState("whatIf", false);
-var realU = C.utilFor_(WEEKS);
-assert_(realU.cap === 160, "flag off → the full population is back");
-// banner counts: Σ over the whole export window, straight off hygieneBuckets
-C.setState("whatIf", true);
-var wiCounts = C.whatIfCounts_();
-assert_(wiCounts.res === 100 && wiCounts.readyKept === 64, "delivery kept/total = resReady/res (30+34 of 100)");
-assert_(wiCounts.epics === 40 && wiCounts.epicsKept === 18, "epic kept/total = epicsTime/epics (18 of 40)");
-// the flag is a no-op for anyone who is not an admin
-C.getModel().viewerRole = "viewer";
-assert_(!C.whatIfOn_(), "whatIfOn_ is admin-only regardless of the raw flag");
-C.getModel().viewerRole = "admin";
-C.setState("whatIf", false);
+var covUtilModel = model({});
+covUtilModel.people[1].weeks["2026.W31"].trackedCov = 20;
+var covUtilCard = tiles(covUtilModel).split("Billable Utilization")[1] || "";
+assert_(/⚠ classification covers 75% of tracked hours/.test(covUtilCard),
+        "unclassified tracked hours surface a coverage warning (60h of 80h classified)");
+assert_(/below gate — directional only/.test(covUtilCard),
+        "75% classification vs the 90% gate stays flagged as below-gate");
 
 // ══════════════════════════════════════════════════════════════════════════
-// 22. WHAT-IF GUARDRAILS: a simulation must be unmistakable on every view and
-// impossible for a non-admin. Banner + body watermark render in the same pass
-// as the numbers, so they can never desynchronise.
+// 22. HEADROOM TABLE + util COVERAGE ACCESSOR AGREE WITH utilFor_
+// oppRows_ aggregates a person's hours via aggWeeks_; METRICS_.util.coverage
+// aggregates via utilFor_. Both must report the SAME numbers for the same
+// weeks, including a defaulted-capacity (capEst) week, which counts normally
+// in real mode (no WHAT-IF filtering exists any more).
 // ══════════════════════════════════════════════════════════════════════════
-fresh(model({}));
-C.setState("whatIf", true);
-C.renderAll_();
-var wiBanner = els.whatifBanner.innerHTML;
-assert_(/WHAT-IF SIMULATION/.test(wiBanner), "banner renders while the flag is on");
-assert_(/kept 64 of 100 delivery items/.test(wiBanner), "…with live kept/total delivery counts");
-assert_(/18 of 40 epics/.test(wiBanner), "…and epic counts");
-assert_(/not the real numbers/.test(wiBanner), "…and says plainly these are not the real numbers");
-assert_(/toggleWhatIf_\(\)/.test(wiBanner), "…and carries the Exit control");
-assert_(global.document.body.className === "whatif", "body carries the watermark class");
-C.setState("whatIf", false);
-C.renderAll_();
-assert_(els.whatifBanner.innerHTML === "", "flag off → banner gone");
-assert_(global.document.body.className === "", "…and watermark class removed");
-// defence in depth: renderAll_ force-resets the flag for non-admins, mirroring
-// how switchView_ gates in the router instead of trusting hidden buttons
-C.setState("whatIf", true);
-C.getModel().viewerRole = "viewer";
-C.renderAll_();
-assert_(C.STATE.whatIf === false, "renderAll_ force-resets whatIf for a non-admin");
-assert_(els.whatifBanner.innerHTML === "", "…and renders no banner");
-C.getModel().viewerRole = "admin";
-
-// ══════════════════════════════════════════════════════════════════════════
-// 23. WHAT-IF ON THE TILES: gate flags clear (the kept population is 100%
-// attributed by construction), exclusions are RESTATED rather than hidden,
-// and a tiny valid population says so instead of wearing a confidence chip.
-// ══════════════════════════════════════════════════════════════════════════
-C.setState("whatIf", true);
-var wiShown = tiles(model({ otCov: 0.66, fcCov: 0.43 }));
-assert_(!/below gate — directional only/.test(wiShown), "no below-gate caveat in WHAT-IF mode");
-assert_(!/low confidence/.test(wiShown), "no low-confidence chip either");
-assert_(/high confidence · 100% attributed/.test(wiShown), "kept records are 100% attributed by construction");
-assert_(/33 of 33 resolved issues/.test(wiShown), "the displayed population is the valid one (W31: n=33 of 33)");
-assert_(/3 excluded by the WHAT-IF filter/.test(wiShown), "unattributed items are restated, not hidden");
-assert_(!/3 unattributed/.test(wiShown), "…and the real-mode wording is gone");
-assert_(/closed epics excluded by the WHAT-IF filter/.test(wiShown), "not-measurable epics restated on Forecast");
-// small-n honesty: n=2 valid records must not wear a confidence chip
-var wiTiny = tiles(model({ otCov: 0.04, fcCov: 0.43 }));   // n = round(50×0.04) = 2
-var wiTinyOt = wiTiny.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
-assert_(/n=2 valid records — publishable, not meaningful/.test(wiTinyOt),
-        "a sub-5 valid population says so on the card");
-assert_(!/high confidence/.test(wiTinyOt), "…INSTEAD of a confidence chip, not beside one");
-C.setState("whatIf", false);
-var realTiny = tiles(model({ otCov: 0.04, fcCov: 0.43 }));
-assert_(!/publishable, not meaningful/.test(realTiny), "the honesty line is WHAT-IF-only");
-
-// ── 23b. WHAT-IF utilization restatements actually render on the card ──
-// The default fixture is fully classified (trackedCov === tracked, capEst
-// false), so edits (d)/(e) were previously verified only at the utilFor_ data
-// layer. This fixture makes both lines light up in the HEADLINE week (W31):
-// person 0's W31 is a defaulted-capacity week (dropped under WHAT-IF), and
-// person 1's W31 carries 20h of unclassified time.
-var wiUtilModel = model({});
-wiUtilModel.people[0].weeks["2026.W31"].capEst = true;
-wiUtilModel.people[1].weeks["2026.W31"].trackedCov = 20;
-C.setState("whatIf", true);
-var wiUtil = tiles(wiUtilModel);
-var wiUtilCard = wiUtil.split("Billable Utilization")[1] || "";
-assert_(/1 defaulted-capacity person-week excluded by the WHAT-IF filter/.test(wiUtilCard),
-        "(d) the dropped capEst week is restated on the card, singular form");
-assert_(/20h unclassified — excluded by the WHAT-IF filter/.test(wiUtilCard),
-        "(d) unclassified hours restated under WHAT-IF (40h kept − 20h classified)");
-assert_(/high confidence · 100% attributed/.test(wiUtilCard),
-        "(e) utilization coverage is overridden to 100% under WHAT-IF");
-assert_(!/below gate — directional only/.test(wiUtilCard),
-        "(e) …so the below-gate caveat clears");
-C.setState("whatIf", false);
-var realUtil = tiles(model({})) && tiles(wiUtilModel);
-var realUtilCard = realUtil.split("Billable Utilization")[1] || "";
-assert_(/⚠ classification covers 75% of tracked hours/.test(realUtilCard),
-        "real mode keeps the coverage warning (60h of 80h classified)");
-assert_(/below gate — directional only/.test(realUtilCard),
-        "real mode: 75% classification vs the 90% gate stays flagged — proving the override changed something");
-
-// ══════════════════════════════════════════════════════════════════════════
-// 24. DATA PROFILE PANEL (admin-only): per-metric evaluability funnels — where
-// records fall out of "measurable", stage by stage. Region/Team in NO funnel
-// (excluded from the exercise by decision 2026-08-03 — tracked in the gaps table
-// instead).
-// ══════════════════════════════════════════════════════════════════════════
-fresh(model({}));
-C.setState("whatIf", false);
-C.renderHygiene_();
-var prof = els.viewHygiene.innerHTML;
-assert_(/Data Profile/.test(prof), "profile panel renders for an admin");
-assert_(/WHAT-IF: valid records only/.test(prof), "…and carries the single WHAT-IF button");
-// Right anchor = the coverage-colour key that opens the gaps table (the old
-// "Delivery work fully attributed" tile anchor was deleted 2026-08-04).
-var profOnly = prof.split("Data Profile")[1].split("Coverage colour")[0];
-assert_(/resolved in scope/.test(profOnly) && /assignee joins the roster/.test(profOnly),
-        "on-time funnel names its stages");
-assert_(/carries a due date/.test(profOnly), "…down to the measurable population");
-assert_(/−11/.test(profOnly), "the drop at each stage is stated (45 roster-joined → 34 with due date)");
-assert_(/resolved epics/.test(profOnly) && /has an estimate/.test(profOnly), "forecast funnel present");
-assert_(/cannot be profiled/.test(profOnly), "Quality states it cannot be profiled — no fake funnel");
-assert_(/Region and Team are excluded/.test(profOnly), "…the panel NAMES the excluded fields, not just 'some fields'");
-// pure-function funnel monotonicity — each stage ≤ the one before
-var pf = C.profileFor_(
-  { res: 50, resDue: 40, resAssigned: 47, resAttr: 45, resReady: 34, epics: 20, epicsEst: 14, epicsTime: 9 },
-  { tracked: 160, trackedCov: 150, weeks: 4, capEst: 1 });
-[pf.onTime.stages, pf.forecast.stages].forEach(function (st) {
-  for (var i = 1; i < st.length; i++) {
-    assert_(st[i].n <= st[i - 1].n, "funnel is monotone: " + st[i].label);
-  }
-});
-assert_(JSON.stringify(pf).indexOf("egion") === -1,
-        "Region appears in NO funnel definition — titles and stage labels are Region-free");
-assert_(pf.util.bars[0].n === 3 && pf.util.bars[0].of === 4, "util bar 1 = real-capacity person-weeks");
-// viewer: the whole section simply does not render
-C.getModel().viewerRole = "viewer";
-C.renderHygiene_();
-var profV = els.viewHygiene.innerHTML;
-assert_(!/Data Profile/.test(profV) && !/WHAT-IF/.test(profV), "no profile, no button for a viewer");
-C.getModel().viewerRole = "admin";
-
-// ══════════════════════════════════════════════════════════════════════════
-// 25. CEO BRIEF: deterministic rules — same data in, same brief out. Facts by
-// population size; highlights = what already meets its gate; notes = the
-// decision registry; concerns ranked by dropped × cards-blocked, each ending
-// in change/owner/target, with the WHAT-IF consequence leading concern #1.
-// ══════════════════════════════════════════════════════════════════════════
-fresh(model({}));
-C.setState("whatIf", false);
-C.renderHygiene_();
-assert_(/📄 Brief/.test(els.viewHygiene.innerHTML), "brief renders inside the profile panel");
-assert_(!/CEO Brief/.test(els.viewHygiene.innerHTML), "renamed: no 'CEO Brief' anywhere (user 2026-08-04)");
-assert_(/copyBrief_\(\)/.test(els.viewHygiene.innerHTML), "…with a Copy control");
-// DATA-BLOCKERS.md-shaped input: the roster join is the biggest lever
-var bh = { res: 100, resDue: 80, resAssigned: 94, resAttr: 54, resReady: 50,
-           epics: 18, epicsEst: 4, epicsTime: 3 };
-var bp = { tracked: 4000, trackedCov: 3800, weeks: 100, capEst: 3 };
-var b1 = C.briefFor_(bh, bp), b2 = C.briefFor_(bh, bp);
-assert_(JSON.stringify(b1) === JSON.stringify(b2), "deterministic: identical output on repeat calls");
-assert_(b1.facts.length === 3 && b1.highlights.length === 3 && b1.notes.length === 3,
-        "exactly 3 facts / 3 highlights / 3 notes");
-assert_(b1.concerns.length >= 1 && b1.concerns.length <= 4, "1–4 concerns");
-assert_(/n=50/.test(b1.concerns[0]) && /upstream data entry, not filtering/.test(b1.concerns[0]),
-        "concern #1 leads with the WHAT-IF consequence and the measured n");
-assert_(/roster person/.test(b1.concerns[0]),
-        "ranking is dropped × cards-blocked: the roster join (40 × 4) outranks everything");
-assert_(/owner: /.test(b1.concerns[0]) && /target: 2026\.W3[45]/.test(b1.concerns[0]),
-        "every concern ends in owner + ISO target week");
-assert_(b1.facts.every(function (f) { return /\d+ of \d+/.test(f) && /vs gate \d+%/.test(f); }),
-        "facts are measured kept-of-total statements against their gates");
-// Four gaps tie at total=100 (assignee, due date, classification, capacity);
-// briefTie_ resolves alphabetically, so the winners and their order are fixed:
-// Billable classification (95 kept), Due date (80), Jira assignee (94) — and
-// "Real Tempo capacity" is the alphabetical loser, dropped as 4th.
-assert_(/^95 of 100 — Billable classification/.test(b1.facts[0]) &&
-        /^80 of 100 — Due date/.test(b1.facts[1]) &&
-        /^94 of 100 — Jira assignee/.test(b1.facts[2]),
-        "facts tie at total=100 resolves alphabetically via briefTie_ — order pinned");
-assert_(b1.notes.every(function (n) { return /2026-\d\d-\d\d/.test(n); }),
-        "notes are date-stamped decisions");
-// sparse window: the brief never renders short and never fakes a number
-var b0 = C.briefFor_({ res: 0, resDue: 0, resAssigned: 0, resAttr: 0, resReady: 0,
-                       epics: 0, epicsEst: 0, epicsTime: 0 },
-                     { tracked: 0, trackedCov: 0, weeks: 0, capEst: 0 });
-assert_(b0.facts.length === 3 && b0.highlights.length === 3 && b0.notes.length === 3 &&
-        b0.concerns.length >= 1, "sparse data still yields a full 3/3/3 + concern brief");
-assert_(/not measurable/.test(b0.facts[0]), "…with facts saying 'not measurable', not fake zeros");
-
-// ══════════════════════════════════════════════════════════════════════════
-// 26. WHAT-IF THREADS INTO THE HEADROOM TABLE + util COVERAGE ACCESSOR PARITY
-// (final-review blocker fix, 2026.W32). oppRows_ aggregated every person's
-// hours via aggWeeks_ with NO WHAT-IF gate, while the cohort norm it compares
-// against comes from utilFor_ (which DOES drop capEst weeks) — a real
-// per-person rate was being diffed against a simulated norm. Fix: drop a
-// capEst week from a person's own aggregation too, mirroring utilFor_'s
-// per-week drop. Fold-in: METRICS_.util.coverage must agree with the tile's
-// WHAT-IF override (~line 2142) instead of only the KPI card getting it.
-// ══════════════════════════════════════════════════════════════════════════
-var wiOppModel = fresh(model({}));
-// A single-period month spanning both fixture weeks, so dropping ONE of a
-// person's two headline weeks under WHAT-IF still leaves a valid remainder to
-// aggregate — the row survives with different numbers, not a vanished row.
-wiOppModel.meta.periods = {
+var oppModel = fresh(model({}));
+// A single-period month spanning both fixture weeks.
+oppModel.meta.periods = {
   month: [{ key: "2026-07", label: "Jul 2026", status: "done", partial: false, isos: WEEKS }],
 };
-// Ana Perez's W30 becomes a defaulted-capacity week AND under-bills relative
-// to her W31 week, so the drop moves both the denominator and the rate by a
-// number computed from the fixture, not just "the row looks different".
-wiOppModel.people[0].weeks["2026.W30"] = week({
+// Ana Perez's W30 is a defaulted-capacity week AND under-bills relative to her
+// W31 week, so the number is computed from the fixture, not eyeballed.
+oppModel.people[0].weeks["2026.W30"] = week({
   billable: 20, nonBillable: 20, nsBillRaw: 20, nsNonBillRaw: 20, capEst: true,
 });
-C.setState("whatIf", false);
 C.STATE.period = "month";
 resetFilters();
 C.renderOpportunity_();
 var oppReal = els.oppPanel.innerHTML;
 var anaReal = oppReal.split("Ana Perez")[1].split("</tr>")[0];
-// Real mode: both weeks count — availCov 40+40=80, billable 20+30=50 → 62.5% → 63%.
+// Both weeks count — availCov 40+40=80, billable 20+30=50 → 62.5% → 63%.
 assert_(/63%<span class="cellSub"> of 80h<\/span>/.test(anaReal),
-        "real mode: Ana's capEst week still counts (80h avail, 63% rate)");
-
-C.setState("whatIf", true);
-C.renderOpportunity_();
-var oppWi = els.oppPanel.innerHTML;
-var anaWi = oppWi.split("Ana Perez")[1].split("</tr>")[0];
-// WHAT-IF: the capEst W30 week drops out — only W31 counts: availCov 40,
-// billable 30 → 75%. The row survives (unlike a single-week head period)
-// with a concrete, different number, proving the drop actually threaded in.
-assert_(/75%<span class="cellSub"> of 40h<\/span>/.test(anaWi),
-        "WHAT-IF: Ana's capEst week is dropped (40h avail, 75% rate)");
-assert_(anaReal !== anaWi, "the rendered row differs between real and WHAT-IF mode");
-C.setState("whatIf", false);
+        "Ana's capEst week still counts (80h avail, 63% rate)");
 C.STATE.period = "week";
 
-// METRICS_.util.coverage: must return 1 under WHAT-IF (agreeing with the
-// tile's utilCov override) and the real ratio otherwise. Fixture: Ana's W30
-// tracked hours are only half-classified (trackedCov 20 of 40), so the real
-// ratio is (20 + 40 + 40 + 40) / (40*4) = 140/160 = 0.875 — not 1, or the
-// override couldn't be distinguished from "already 1".
+// METRICS_.util.coverage: the measured tracked/trackedCov ratio. Fixture:
+// Ana's W30 tracked hours are only half-classified (trackedCov 20 of 40), so
+// the ratio is (20 + 40 + 40 + 40) / (40*4) = 140/160 = 0.875.
 var covModel = fresh(model({}));
 covModel.people[0].weeks["2026.W30"].trackedCov = 20;
-C.setState("whatIf", false);
 var covReal = C.METRICS_.util.coverage(WEEKS);
-assert_(Math.abs(covReal - 0.875) < 1e-9, "real mode: coverage is the measured tracked/trackedCov ratio (0.875)");
-C.setState("whatIf", true);
-var covWi = C.METRICS_.util.coverage(WEEKS);
-assert_(covWi === 1, "WHAT-IF: coverage is forced to 1, matching the Executive tile's utilCov override");
-C.setState("whatIf", false);
+assert_(Math.abs(covReal - 0.875) < 1e-9, "coverage is the measured tracked/trackedCov ratio (0.875)");
 
 // ══════════════════════════════════════════════════════════════════════════
-// 27. WHOLE-ROSTER ATTRIBUTION + LIVE-DATA FIXES (2026-08-04)
+// 23. WHOLE-ROSTER ATTRIBUTION (2026-08-04)
 // attribOnly stubs join buckets to the KPI cards without ever entering the
-// grid, the headcounts or the dropdowns; the banner stops printing the same
-// total twice under the Dictionary scope; and the CEO brief's verdict is
-// n-aware — "publishable, not meaningful" was written for n≈2 and is false
-// at the measured n=164.
+// grid, the headcounts or the dropdowns.
 // ══════════════════════════════════════════════════════════════════════════
 fresh(model({}));
 var baseOt27 = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
@@ -1433,43 +1198,10 @@ assert_(stubOt.n === baseOt27.n + 20 && stubOt.onTime === baseOt27.onTime + 20,
         "…but the stub's BUCKETS count in the KPI aggregation under the default lens");
 assert_((C.optionsFor_("family").counts["Uncatalogued"] || 0) === 0,
         "stub does not inflate dropdown headcounts");
-// Banner: one population, two validity readings under the Dictionary scope
-C.setState("whatIf", true);
-C.getModel().meta.onTimeScope = "dictionary";
-C.renderAll_();
-assert_(/kept 64 of 100 resolved epics for On-Time · 18 for Forecast/.test(els.whatifBanner.innerHTML),
-        "dictionary scope: no doubled total in the banner");
-assert_(!/of 40 epics/.test(els.whatifBanner.innerHTML), "…the second total is gone");
-C.getModel().meta.onTimeScope = "delivery";
-C.renderAll_();
-assert_(/kept 64 of 100 delivery items/.test(els.whatifBanner.innerHTML) &&
-        /18 of 40 epics/.test(els.whatifBanner.innerHTML),
-        "delivery scope keeps the two-population wording");
-C.setState("whatIf", false);
-C.renderAll_();
-// n-aware CEO-brief verdict, live FY26 Q4-shaped fixture
-var bHealthy = C.briefFor_(
-  { res: 402, resDue: 308, resAssigned: 351, resAttr: 178, resReady: 164,
-    epics: 402, epicsEst: 91, epicsTime: 49 },
-  { tracked: 55756, trackedCov: 50605, weeks: 2198, capEst: 54 });
-assert_(/n=164 and Forecast on n=49/.test(bHealthy.concerns[0]),
-        "concern #1 carries the live n values");
-assert_(/real rates, but 59% of the work stays unmeasured/.test(bHealthy.concerns[0]),
-        "healthy n → share-unmeasured verdict (1 − 164/402 = 59%)");
-assert_(!/not meaningful/.test(bHealthy.concerns[0]),
-        "…and no false 'not meaningful' judgment at n=164");
-var bTiny27 = C.briefFor_(
-  { res: 100, resDue: 80, resAssigned: 94, resAttr: 54, resReady: 50,
-    epics: 18, epicsEst: 4, epicsTime: 3 },
-  { tracked: 4000, trackedCov: 3800, weeks: 100, capEst: 3 });
-assert_(/publishable, not meaningful/.test(bTiny27.concerns[0]),
-        "sub-floor n (Forecast n=3) keeps the honesty verdict");
-assert_(JSON.stringify(bHealthy).indexOf("Due date set on the work") !== -1,
-        "due-date gap says 'set' — due dates alone, distinct from the roster-joined funnel stage");
 
 // ══════════════════════════════════════════════════════════════════════════
-// 28. ANALYSIS-PERIOD PICKER (user request 2026-08-04): the reader chooses
-// WHICH complete period drives the tiles, comparison, headroom and brief —
+// 24. ANALYSIS-PERIOD PICKER (user request 2026-08-04): the reader chooses
+// WHICH complete period drives the tiles, comparison and headroom —
 // the unit chips only chose the granularity. Latest stays the default; the
 // People grid stays pinned to the current weeks by design.
 // ══════════════════════════════════════════════════════════════════════════
@@ -1528,7 +1260,7 @@ C.setState("periodIdx", null);
 C.renderAll_();
 
 // ══════════════════════════════════════════════════════════════════════════
-// 29. POP/ROLE LENS RE-CASCADES THE FILTER ROW (user report 2026-08-04:
+// 25. POP/ROLE LENS RE-CASCADES THE FILTER ROW (user report 2026-08-04:
 // "filters get stuck on filtered records — does not change on FTE/Crew/All").
 // The chips set STATE and re-rendered the panes, but never rebuilt the region
 // counts / dropdown cascades, so the filter row kept describing the
@@ -1551,37 +1283,6 @@ els.roleChips.children[1].onclick();  // IC — must not throw, must rebuild the
 assert_(C.STATE.role === "ic" && C.STATE.pop === "crew", "role chip routes through the same rebuild");
 C.setState("role", "all"); C.setState("pop", "fte");
 C.buildFilters_(); C.renderAll_();
-
-// ══════════════════════════════════════════════════════════════════════════
-// 30. THE BRIEF NAMES ITS OWN SCOPE (user report 2026-08-04: with filters
-// active, a copied brief read as if it honored them). The counts are
-// deliberately whole-population — feed-level records have no person to filter
-// by — so active filters must be NAMED as not applying, never silently
-// ignored, and the scope line must travel with 📋 Copy.
-// ══════════════════════════════════════════════════════════════════════════
-fresh(model({}));
-C.setState("region", ""); C.setState("team", ""); C.setState("pop", "fte");
-C.renderHygiene_();
-var scoped0 = els.viewHygiene.innerHTML;
-assert_(/Scope: 2026\.W31 · whole delivery population/.test(scoped0),
-        "brief names its window and the whole-population rule");
-assert_(!/Active filters NOT applied/.test(scoped0),
-        "…with no filter caveat when nothing is filtered");
-assert_(/Scope: 2026\.W31/.test(C.STATE._briefText),
-        "the scope line travels with the copied text");
-C.setState("region", "AMER"); C.setState("team", "Team A"); C.setState("pop", "crew");
-C.renderHygiene_();
-var scoped1 = els.viewHygiene.innerHTML;
-assert_(/Active filters NOT applied here: population Crew · AMER · Team A/.test(scoped1),
-        "active filters are named as deliberately not applying");
-assert_(/Active filters NOT applied here/.test(C.STATE._briefText),
-        "…and the caveat is in the copied text too");
-// the numbers themselves must NOT move under person filters — whole population
-function briefFact0_(s) { return s.split("Top 3 Facts")[1].split("<h5>")[0]; }
-assert_(briefFact0_(scoped0) === briefFact0_(scoped1),
-        "person filters never change the feed-level counts — only the scope line changes");
-C.setState("region", ""); C.setState("team", ""); C.setState("pop", "fte");
-C.renderHygiene_();
 
 // ══════════════════════════════════════════════════════════════════════════
 // COLOUR KEYS + JOB TITLES (user request 2026-08-04)
@@ -1623,7 +1324,7 @@ assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.viewH
         "the hygiene table says coverage colours grade against the gate, not 100%");
 
 // ══════════════════════════════════════════════════════════════════════════
-// 31. INTERNS (I1) NEVER MOVE A RATE (user decision 2026-08-04): profile and
+// 26. INTERNS (I1) NEVER MOVE A RATE (user decision 2026-08-04): profile and
 // hours stay on the roster, marked 🎓, but no published number — utilization,
 // issue rates, triage flags, headroom — may change on an intern's account.
 // ══════════════════════════════════════════════════════════════════════════
@@ -1870,13 +1571,12 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(C.typeHygRows_(["2026.W31"])[0].n === 5, "a one-week window sums only that week");
 
   // ALL ROLES — this is a ticket-owner's work queue, unlike the admin-only
-  // 🔬 Data Profile. A viewer who cannot see it cannot action it.
+  // gate editor below it.
   var viewerMdl = fresh(model({ overrides: { viewerRole: "viewer" } }));
   C.STATE.typePop = "open";
   C.renderHygiene_();
   var hv = els.viewHygiene.innerHTML;
   assert_(/Field fill by issue type/.test(hv), "a viewer sees the by-type matrix");
-  assert_(!/Data Profile/.test(hv), "…but still not the admin-only profile panel");
 
   // Pre-v17 payload: must SAY it is missing. An empty matrix reads as "no gaps".
   var legacy = fresh(model({}));

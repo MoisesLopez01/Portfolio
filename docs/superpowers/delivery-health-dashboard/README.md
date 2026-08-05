@@ -379,24 +379,27 @@ and their CSS went with it.
 ## Data Hygiene view (🧪 Hygiene)
 
 The attribution counts that used to sit on the cards as grey caveat text now have their own view:
-the 🔬 Data Profile (per-metric evaluability funnels — each funnel's final row is the share of
-records that is good data to use) plus a table of every gap with its coverage, gate, and what it
-blocks.
+a table of every gap with its coverage, gate and what it blocks (with a **"Coverage colour —"**
+legend so a reader learns the grading from the key, not a tooltip), the 🧬 **Field fill by issue
+type** matrix below it (which type to go fix, not just how much is missing org-wide), and the
+⚙ **Coverage gates** editor for admins.
+
+> The 🔬 Data Profile funnels, the 📄 Brief and the 🧪 WHAT-IF simulation were removed 2026-08-05
+> (user decision): the gaps table and the 🧬 by-type matrix carry the what-to-improve story on
+> their own.
 
 The **"% of delivery work fully attributed" KPI tile was deleted** (user decision 2026-08-04): the
-Data Profile funnels already carry the good-of-total read, and the composite — pinned by the
-org-wide-empty Region field (PR-01) — mostly restated its own binding constraint. A headline
-stat row of big numbers above the funnels was tried the same day and **removed as clutter**
-(round 2 of the same feedback) — don't re-add it.
+composite — pinned by the org-wide-empty Region field (PR-01) — mostly restated its own binding
+constraint, and the gaps table below remains the per-component read.
 
 Deliberately **unfiltered** — hygiene is a whole-population question, and a well-tagged region slice
 doesn't make the feed publishable. Every below-gate tile links straight into it.
 
 **No Owner column** (user decision 2026-08-03) **and no Prereq / Target-week columns** (user
-decision 2026-08-04). Accountability and scheduling are tracked in the requirements doc and the
-Brief. A standing table of names against failures in a widely-read view reads as a blame board
-rather than a work queue, and that is not what gets Jira tagging fixed. The registry still records
-`owner` and `paramOwner` per metric — it just isn't rendered onto a card.
+decision 2026-08-04). Accountability and scheduling are tracked in the requirements doc. A standing
+table of names against failures in a widely-read view reads as a blame board rather than a work
+queue, and that is not what gets Jira tagging fixed. The registry still records `owner` and
+`paramOwner` per metric — it just isn't rendered onto a card.
 
 **Which window it covers.** The **last complete period** of whatever unit the header's
 Week / Month / Quarter chips are set to — never an in-flight period, which would read as a hygiene
@@ -545,30 +548,11 @@ data unavailable" chip; the grid still renders. `Jira Raw` unreadable → On-Tim
 Forecast Accuracy show "Jira data unavailable"; Utilization and the grid are unaffected. Roster
 unreadable is the one **fatal** error (population and Region can't be derived without it).
 
-### 🔬 Data Profile + WHAT-IF (admin-only)
-
-Above the gaps table, admins get per-metric **evaluability funnels** (resolved → assignee →
-roster join → due date; epics → estimate → logged time; utilization's two coverage bars —
-Quality states it cannot be profiled until export v3.6.0). One button — **🧪 WHAT-IF: valid
-records only** — flips the whole dashboard to the measurable populations: coverage reads 100%,
-gate flags clear, exclusions are restated on each card, and a metric left with under 5 valid
-records says *"publishable, not meaningful"* instead of wearing a confidence chip. The mode is
-session-only, admin-only (force-reset in `renderAll_` for anyone else), and unmistakable: a
-banner on every tab, a dashed watermark frame, and a `WHATIF-` stamp on PNG filenames.
-
-Underneath, a **deterministic Brief** (top 3 Facts / 3 Highlights / 3 Notes / top
-Concerns) is derived by fixed rules from the same profile — concerns ranked by
-records-dropped × cards-blocked, each ending in change / owner / target week, with the
-WHAT-IF consequence leading concern #1 so "filter the garbage" never reads as the fix.
-Owners are named here (admin-only) even though the public gaps table stays owner-free.
-Spec: `docs/superpowers/specs/2026-08-03-hygiene-whatif-profiling-design.md`.
-
 ### 🧬 Field fill by issue type (all roles)
 
 The gaps table says *how much* is missing. This says **which issue type to go and fix**, which
 is a different question with a different reader — the gaps table belongs to whoever owns the
-metric, this belongs to whoever owns the tickets. Hence all-roles, unlike the admin-only profile
-panel above it.
+metric, this belongs to whoever owns the tickets. Hence all-roles.
 
 **Two populations, one toggle, and Open is the default.** A due date added to an open ticket
 moves next period's number; one added to a closed ticket is archaeology.
@@ -602,7 +586,7 @@ Layout rules, all of them load-bearing:
   columns instead of over its own data — it looked misaligned because it was.
 - **Each cell carries a fill bar** under the percentage. Nine columns of bare numbers have to be
   read digit by digit; the bars make a row's shape readable at a glance. Same labelled-bar idiom
-  as the funnels and the gaps table.
+  as the gaps table.
 - **The bars use the chart tokens (`--c-good`/`--c-warn`/`--c-bad`), never the text ones.** In
   dark mode `--warn` and `--amber` are the same hex — survivable for words, where `✔ ▲ ✖` still
   separate them, and fatal for a bar, where colour is the only channel. Pinned by a render-smoke
@@ -1012,7 +996,10 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
       Gate, Blocks (**no Owner, no Prereq, no Target-week — removed 2026-08-03 / 2026-08-04**) and
       **no individual's name** appears anywhere in it.
 - [ ] There is **no "Delivery work fully attributed" KPI tile** (deleted 2026-08-04) — the
-      🔬 Data Profile headline carries the good-records-of-total figures instead.
+      gaps table below it carries the per-component good-of-total read.
+- [ ] There is **no 🔬 Data Profile panel, no 📄 Brief and no 🧪 WHAT-IF button anywhere in
+      Hygiene** (removed 2026-08-05) — only the gaps table, the 🧬 by-type matrix and the
+      ⚙ Coverage gates editor remain.
 - [ ] The hygiene view **names the window it covers** and follows the header period picker.
       Switching the header Week/Month/Quarter chips re-renders it — the toggle must never look
       inert while that view is open.

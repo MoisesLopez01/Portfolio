@@ -132,39 +132,11 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .hyglink{color:var(--orbe);font-weight:700;text-decoration:none}
 .hyglink:hover{text-decoration:underline}
 .stalenote{color:var(--warn);font-weight:700}
-/* ── WHAT-IF simulation (admin-only) ── */
-#whatifBanner { background: var(--c-warn); color: #1c1207; padding: 8px 12px;
-  border-radius: 6px; margin: 0 0 12px; font-size: 13px; }
-#whatifBanner .btn { margin-left: 10px; }
-/* The watermark: a screenshot of ANY corner of a simulated dashboard must be
-   unmistakable — dashed frame + fixed corner stamp, both pointer-transparent.
-   Text rides on the theme's own text/bg pair (AA by definition); the amber
-   identity lives in the border, which never has to carry contrast. */
-body.whatif { outline: 4px dashed var(--c-warn); outline-offset: -4px; }
-body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
-  position: fixed; right: 10px; bottom: 8px; font-size: 11px; letter-spacing: .1em;
-  color: var(--text); background: var(--bg); border: 1px dashed var(--c-warn);
-  border-radius: 4px; padding: 2px 8px; opacity: .9; pointer-events: none; z-index: 99; }
-/* 🔬 Data Profile is built to be SCREEN-SHARED live (user 2026-08-04): bigger
-   type and taller bars so a room can read it. No headline stat row — the same
-   round of feedback that sized it up later removed the big top numbers as
-   clutter; the funnels' final rows carry the good-of-total read. */
+/* .profPanel: shared panel chrome for the 🧬 field-fill-by-issue-type matrix
+   (built to be SCREEN-SHARED live, user 2026-08-04 — bigger type so a room can
+   read it). */
 .profPanel { border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin: 10px 0; }
 .profPanel h4 { margin: 0 0 4px; font-size: calc(17px*var(--scale)); }
-.funnel { margin: 14px 0 6px; }
-.fnTitle { font-weight: 600; font-size: calc(14px*var(--scale)); margin-bottom: 4px; }
-.fnRow { display: grid; grid-template-columns: minmax(240px,320px) 1fr minmax(170px,210px);
-  gap: 10px; align-items: center; font-size: calc(13.5px*var(--scale)); }
-.fnRow .hbar { height: 12px; margin: 5px 0; }
-.fnRow .hbar i { background: var(--c-series); }
-.fnDrop { color: var(--c-bad); font-weight: 600; }
-/* 📄 Brief: read out loud in meetings — meeting-comfortable reading size. */
-.brief { border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 10px;
-  font-size: calc(14.5px*var(--scale)); line-height: 1.5; }
-.brief h4 { font-size: calc(17px*var(--scale)); }
-.brief h5 { margin: 10px 0 3px; font-size: calc(14px*var(--scale)); }
-.brief ul { margin: 0 0 6px 20px; padding: 0; }
-.brief li { margin: 3px 0; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
@@ -425,11 +397,6 @@ select option:disabled{color:var(--muted);font-style:italic}
   <!-- Tab bar — generated from VIEWS in JS, so a view is declared in one place. -->
   <div class="tabs" id="tabBar"></div>
 
-  <!-- WHAT-IF simulation banner — rendered by renderWhatIfBanner_() on every
-       view while the admin-only simulation is on. Sits above the scope chip so
-       no tab can render a simulated number without it. -->
-  <div id="whatifBanner" style="display:none"></div>
-
   <!-- Live scope chip: states exactly WHAT slice is on screen. Above the panes,
        because the filter row scopes every view (never per-chart filters). -->
   <div class="sub" id="scopeChip" style="margin:-6px 0 12px;color:var(--muted);font-size:11px;cursor:help"
@@ -501,67 +468,11 @@ var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "
               // default because it is the half anyone can act on — fixing a
               // resolved ticket's due date changes history, not the next report.
               typePop: "open",
-              // whatIf: admin-only, session-only "valid records only" simulation
-              // (spec 2026-08-03). Never persisted — a reload is always real mode.
-              whatIf: false,
               // periodIdx: WHICH complete period the analysis surfaces render —
               // an index into donePeriods_(), or null for the latest (user
               // request 2026-08-04: the reader picks the month/quarter).
               periodIdx: null };
 var PERIOD_LABELS = { week: "Week", month: "Month", quarter: "Quarter" };
-
-// ── WHAT-IF simulation (spec 2026-08-03) ─────────────────────────────────────
-// One flag flips the whole dashboard to "valid records only": each metric keeps
-// the records that are complete FOR IT (roster assignee + due date; epics also
-// need estimate + logged time; utilization drops defaulted-capacity weeks),
-// coverage reads 100% and every gate flag clears. Region/Team are OUT of the
-// exercise by decision — the Jira fields are unpopulated org-wide (PR-01).
-// The rates themselves never change: they were always computed over valid
-// records. What changes is the population and the confidence framing.
-var WHATIF_MIN_N_ = 5; // below this, a card says "publishable, not meaningful"
-function whatIfOn_() {
-  return !!STATE.whatIf && !!MODEL && MODEL.viewerRole === "admin";
-}
-function toggleWhatIf_() { STATE.whatIf = !STATE.whatIf; renderAll_(); }
-/** Kept/total counts for the banner — Σ over the WHOLE export window, never
-    filtered: the banner states what the simulation did to the whole feed. */
-function whatIfCounts_() {
-  var s = { res: 0, readyKept: 0, epics: 0, epicsKept: 0 };
-  ((MODEL && MODEL.hygieneBuckets) || []).forEach(function (h) {
-    s.res += h.res || 0; s.readyKept += h.resReady || 0;
-    s.epics += h.epics || 0; s.epicsKept += h.epicsTime || 0;
-  });
-  return s;
-}
-
-/** Banner + watermark, rendered FIRST on every renderAll_ pass. Also the
-    enforcement point: a non-admin's flag is force-reset here (defence in
-    depth — the toggle button is admin-only, but hidden buttons are not a
-    security model; same reasoning as the switchView_ router gate). */
-function renderWhatIfBanner_() {
-  if (MODEL && MODEL.viewerRole !== "admin") STATE.whatIf = false;
-  var el = document.getElementById("whatifBanner");
-  var on = whatIfOn_();
-  document.body.className = on ? "whatif" : "";
-  if (!on) { el.style.display = "none"; el.innerHTML = ""; return; }
-  var c = whatIfCounts_();
-  el.style.display = "";
-  // Under the Dictionary/epic scope the On-Time population IS the epic
-  // population — "332 of 1396 · 169 of 1396" printed the same total twice and
-  // read as a collision (user report 2026-08-04). One population, two
-  // validity readings.
-  var samePop = MODEL.meta.onTimeScope === "dictionary" || MODEL.meta.onTimeScope === "epic";
-  var kept = samePop
-    ? "kept " + c.readyKept + " of " + c.res + " resolved epics for On-Time · " +
-      c.epicsKept + " for Forecast"
-    : "kept " + c.readyKept + " of " + c.res + " delivery items · " +
-      c.epicsKept + " of " + c.epics + " epics";
-  el.innerHTML = "🧪 <b>WHAT-IF SIMULATION</b> — invalid records removed " +
-    "(" + kept + ", whole export window). " +
-    "These are <b>not the real numbers</b>: every rate below describes only the " +
-    "records complete enough to measure. " +
-    '<button class="btn" onclick="toggleWhatIf_()">Exit WHAT-IF</button>';
-}
 
 /**
  * ── VIEWS: the single source of truth for navigation ─────────────────────────
@@ -1393,7 +1304,6 @@ function nsShare_(w) {
  * header controls (the bug the old always-render-everything code had).
  */
 function renderAll_() {
-  renderWhatIfBanner_();
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
@@ -1449,7 +1359,6 @@ document.getElementById("btnReset").onclick = function () {
   STATE.pop = "fte"; STATE.role = "all"; STATE.focus = "plan";
   STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {};
-  STATE.whatIf = false;   // Reset returns EVERYTHING to the default view
   STATE.periodIdx = null; // …including the analysis-period picker
   buildPeriodChips_();    // reflect the reset in the picker's selection
   document.getElementById("personSearch").value = "";
@@ -1493,10 +1402,6 @@ function utilFor_(isos) {
     isos.forEach(function (iso) {
       var w = p.weeks[iso];
       if (!w) return;
-      // WHAT-IF: a person-week whose capacity fell back to a default is not a
-      // valid record — it leaves the simulation entirely (counted for the
-      // restating line on the tile).
-      if (whatIfOn_() && w.capEst) { s.wiWeeksDropped = (s.wiWeeksDropped || 0) + 1; return; }
       s.avail += w.avail; s.billable += w.billable; s.tracked += w.tracked;
       // availCov = availability of NS-CLASSIFIED person-weeks only. Billable %
       // divides by this, never by total avail: an unclassified week has a
@@ -1567,14 +1472,6 @@ function bucketsFor_(buckets, isos) {
     // re-medianed over whatever this filter selected.
     if (b.absVars && b.absVars.length) out.absVars = out.absVars.concat(b.absVars);
   });
-  // WHAT-IF: the displayed world holds only valid records, so the coverage
-  // denominator IS the measurable population and the not-measurable tallies go
-  // to zero. Real totals ride along so the tiles can RESTATE the exclusions
-  // ("N excluded by the WHAT-IF filter") instead of hiding them silently.
-  if (whatIfOn_()) {
-    out.nAllReal = out.nAll; out.nNoTimeReal = out.nNoTime;
-    out.nAll = out.n; out.nNoTime = 0;
-  }
   return out;
 }
 
@@ -2189,20 +2086,9 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   var detail = (opts.detail || []).filter(Boolean).join(" · ");
   var context = cmpText + (detail
     ? ' <span class="cellSub" title="' + esc_(detail) + '" style="cursor:help">ⓘ</span>' : "");
-  // WHAT-IF small-n honesty (spec 2026-08-03): a valid population under
-  // WHATIF_MIN_N_ replaces the confidence chip — "n=2, 100% attributed" is
-  // technically true and practically meaningless, and the chip would lend it
-  // exactly the authority the simulation must not fake.
-  var wiSmall = whatIfOn_() && opts.whatIfN !== undefined && opts.whatIfN !== null &&
-                opts.whatIfN > 0 && opts.whatIfN < WHATIF_MIN_N_;
   return '<div class="tile"><div class="lbl">' + label + '</div>' +
     '<div class="big ' + rag + '">' + big + '</div>' +
-    (opts.conf ? '<div class="cmp">' + (wiSmall
-      ? '<span class="clow" title="Under the WHAT-IF filter this metric evaluates on fewer than ' +
-        WHATIF_MIN_N_ + ' records. The rate is computable but not quotable — the fix is upstream ' +
-        'data entry, not filtering.">🧪 n=' + opts.whatIfN +
-        " valid records — publishable, not meaningful</span>"
-      : confChip_(opts.conf, opts.metric || {})) + '</div>' : "") +
+    (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, opts.metric || {}) + '</div>' : "") +
     (signal ? '<div class="cmp">' + signal + '</div>' : "") +
     (stdLine ? '<div class="cmp">' + stdLine + '</div>' : "") +
     '<div class="cmp">' + context + '</div>' +
@@ -2288,22 +2174,12 @@ function renderTiles_() {
     utilCmp += ' · <span title="Interns (level I1) never move a published rate — in training, not delivery capacity. Their profiles and hours stay on the People roster, marked 🎓.">' +
       internN + " intern" + (internN === 1 ? "" : "s") + " excluded</span>";
   }
-  // WHAT-IF: defaulted-capacity person-weeks left the population in utilFor_ —
-  // restate the drop on the card.
-  if (whatIfOn_() && u.wiWeeksDropped) {
-    utilCmp += '<br><span title="person-weeks whose capacity fell back to a default (no real Tempo schedule) — removed by the WHAT-IF filter">' +
-      u.wiWeeksDropped + " defaulted-capacity person-week" + (u.wiWeeksDropped === 1 ? "" : "s") +
-      " excluded by the WHAT-IF filter</span>";
-  }
   // NS classification coverage (audit 2026-08-03). The rate only describes the
   // hours NetSuite actually classified; say what share that is, so a headline
   // built on a third of the tracked base is never read as the whole team's.
   if (live && u.tracked > 0) {
     var covPct = Math.round(u.trackedCov / u.tracked * 100);
-    if (whatIfOn_() && covPct < 99) {
-      utilCmp += '<br><span title="Unclassified hours already leave both sides of this rate; under WHAT-IF they are part of the removed population and stated here rather than hidden.">' +
-        r1_(u.tracked - u.trackedCov) + "h unclassified — excluded by the WHAT-IF filter</span>";
-    } else if (covPct < 99) {
+    if (covPct < 99) {
       utilCmp += '<br><span title="Tempo says how many hours were worked; NetSuite says what share of them is billable. Person-weeks with no NetSuite signal are excluded from BOTH sides of this rate rather than counted as 0% billable — so this % describes the classified portion of the tracked base only.">⚠ classification covers ' +
         covPct + "% of tracked hours (" + r1_(u.trackedCov) + "h of " + r1_(u.tracked) + "h)</span>";
     }
@@ -2343,11 +2219,8 @@ function renderTiles_() {
   var otCmp = ot.n + " of " + ot.nAll + " " + otSc.word +
     ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n) +
     (unatt.onTime
-      ? (whatIfOn_()
-        ? ' <span title="resolved items whose Jira assignee is not on the delivery roster — removed by the WHAT-IF filter, stated rather than hidden">· ' +
-          unatt.onTime + " excluded by the WHAT-IF filter</span>"
-        : ' <span title="resolved items whose Jira assignee does not resolve to any roster row — excluded from this card under every filter. Counted over the WHOLE 52-week export, not just the period on screen; the Data Hygiene funnel shows the per-period join rate.">· ' +
-          unatt.onTime + " unattributed (export window)</span>")
+      ? ' <span title="resolved items whose Jira assignee does not resolve to any roster row — excluded from this card under every filter. Counted over the WHOLE 52-week export, not just the period on screen; the Data Hygiene gaps table shows the per-period join rate.">· ' +
+        unatt.onTime + " unattributed (export window)</span>"
       : "");
   var fc = bucketsFor_(MODEL.forecastBuckets, head.isos);
   var fcSeries = done.map(function (p) {
@@ -2368,19 +2241,14 @@ function renderTiles_() {
     smallN_(fc.n);
   fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
     fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
-  if (whatIfOn_() && fc.nAllReal > fc.n) {
-    fcDetail.push((fc.nAllReal - fc.n) + " closed epics excluded by the WHAT-IF filter — no estimate, " +
-      "or an estimate with no logged time at all. Removed from the displayed population, stated here.");
-  } else if (fc.nAll > fc.n) {
+  if (fc.nAll > fc.n) {
     fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
       "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
       "only instead of scoring as misses.");
   }
   if (unatt.forecast) {
-    fcDetail.push(unatt.forecast + (whatIfOn_()
-      ? " closed epics excluded by the WHAT-IF filter — the Jira assignee is not on the delivery roster."
-      : " closed epics unattributed across the whole export window — the Jira assignee " +
-        "does not resolve to any roster row, so they are excluded from this card under every filter."));
+    fcDetail.push(unatt.forecast + " closed epics unattributed across the whole export window — the Jira assignee " +
+      "does not resolve to any roster row, so they are excluded from this card under every filter.");
   }
   // Secondary form (FR-1.4): the band says whether we hit estimates, the median
   // says by how much we miss. Both are needed — 40% inside the band reads very
@@ -2430,12 +2298,7 @@ function renderTiles_() {
   // is tracked ÷ capacity — a DIFFERENT metric. Relabel it rather than publish
   // it under a billable heading (P8: one definition, one owner).
   var utilLabel = live ? "Billable Utilization" : "Capacity Utilization (tracked)";
-  // WHAT-IF: the kept population is fully classified by construction, so
-  // coverage reads 100% (the buckets-based metrics get this for free from the
-  // nAll collapse; utilization's coverage is an hour ratio, so it is overridden
-  // here — the ONE per-renderer touch the flag needs).
   var utilCov = u.tracked > 0 ? u.trackedCov / u.tracked : null;
-  if (whatIfOn_() && utilCov !== null) utilCov = 1;
   var utilConf = applyGatePolicy_(live
     ? metricConfidence_(regU.coverageGate, utilCov, stable_(utilTrendShown))
     : metricConfidence_(0, u.avail > 0 ? 1 : null, stable_(utilTrendShown)));
@@ -2455,24 +2318,21 @@ function renderTiles_() {
   document.getElementById("tiles").innerHTML =
     (MODEL.meta.jiraAvailable
       ? gatedTile_("On-Time Delivery", otConf, regOt,
-          whatIfOn_() ? "0 valid records — nothing to evaluate"
-                      : "no resolved delivery items in this period under the active filters",
+          "no resolved delivery items in this period under the active filters",
           (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
           function () {
             return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.onTime, conf: otConf,
-                               metric: regOt, std: otStd, trendLabels: trendLabels,
-                               whatIfN: ot.n });
+                               metric: regOt, std: otStd, trendLabels: trendLabels });
           }, opts.headlineLabel, otCovTrend, trendLabels) +
         (!margin ? "" : gatedTile_("Forecast Accuracy", fcConf, regFc,
-          whatIfOn_() ? "0 valid records — nothing to evaluate"
-                      : "no epics closed in this period under the active filters",
+          "no epics closed in this period under the active filters",
           (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
                              { headlineLabel: opts.headlineLabel, target: tg.forecast, conf: fcConf,
                                metric: regFc, std: fcStd, trendLabels: trendLabels,
-                               detail: fcDetail, whatIfN: fc.n });
+                               detail: fcDetail });
           }, opts.headlineLabel, fcCovTrend, trendLabels))
       : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
         (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" }))) +
@@ -2897,10 +2757,7 @@ var METRICS_ = {
       var s = utilFor_(isos);
       if (!nsLive_()) return s.avail > 0 ? 1 : null;
       var cov = s.tracked > 0 ? s.trackedCov / s.tracked : null;
-      // WHAT-IF: must agree with the Executive tile's override (~line 2142,
-      // utilCov) — the kept population is fully classified by construction,
-      // so this accessor cannot show a below-gate coverage the tile doesn't.
-      return whatIfOn_() && cov !== null ? 1 : cov;
+      return cov;
     },
     n: function (isos) { return utilFor_(isos).avail; },
   },
@@ -3861,17 +3718,6 @@ function setOppSort_(col) {
  * per issue, and an individual's on-time rate over three closed stories is not
  * a number anybody should act on.
  */
-// WHAT-IF: same validity rule as utilFor_'s per-week drop — a person-week
-// whose capacity fell back to a default is not a valid record, so it must not
-// count in this table's per-person aggregation either. Without this, a real
-// per-person rate was being diffed against a norm computed on the simulated
-// (capEst-dropped) population, contradicting the WHAT-IF banner on this tab.
-function whatIfIsos_(p, isos) {
-  return whatIfOn_()
-    ? isos.filter(function (iso) { var w = p.weeks[iso]; return !(w && w.capEst); })
-    : isos;
-}
-
 function oppRows_(head, trendPer, norm) {
   var live = nsLive_();
   return filteredPeople_().map(function (p) {
@@ -3879,7 +3725,7 @@ function oppRows_(head, trendPer, norm) {
     // No headroom row for an intern — ranking them by "hours that could be
     // recovered" is exactly the punishment this flag exists to prevent.
     if (p.isIntern) return null;
-    var w = aggWeeks_(p, whatIfIsos_(p, head.isos));
+    var w = aggWeeks_(p, head.isos);
     if (!w) return null;                       // pre-hire: the period predates them
     var den = live ? (w.availCov || 0) : w.avail;
     if (den <= 0) return null;                 // no capacity, or nothing NS classified
@@ -3889,7 +3735,7 @@ function oppRows_(head, trendPer, norm) {
     // Hours, not points: the unit a manager can actually move.
     var opp = norm === null ? 0 : Math.max(0, den * (norm / 100) - num);
     var spark = trendPer.map(function (pr) {
-      var aw = aggWeeks_(p, whatIfIsos_(p, pr.isos));
+      var aw = aggWeeks_(p, pr.isos);
       if (!aw) return null;
       var d = live ? (aw.availCov || 0) : aw.avail;
       return d > 0 ? (live ? aw.billable : aw.tracked) / d * 100 : null;
@@ -4054,8 +3900,7 @@ function saveOppCsv_() {
       r.gap === null ? "" : Math.round(r.gap), r1_(r.opp),
       r.flags.map(function (x) { return x.label; }).join(" | ")]);
   });
-  downloadCsv_(out, "delivery-health-opportunity-" + (whatIfOn_() ? "WHATIF-" : "") +
-    pngPeriodStamp_() + ".csv");
+  downloadCsv_(out, "delivery-health-opportunity-" + pngPeriodStamp_() + ".csv");
 }
 
 // ── DATA HYGIENE VIEW (FR-2.3/FR-2.4) ────────────────────────────────────────
@@ -4167,295 +4012,6 @@ function hygieneRow_(g) {
  * override records who set it and when, and Restore puts the agreed number back
  * exactly. Moving a gate is a visible decision, not a quiet one.
  */
-/**
- * ── 🔬 DATA PROFILE + WHAT-IF (spec 2026-08-03, admin-only) ─────────────────
- * Per-metric evaluability funnels over one hygiene window: where records fall
- * out of "measurable", stage by stage, with the drop at each step stated. Pure
- * over hygieneFor_/hygienePeopleFor_ output so render-smoke can pin it down.
- * Region/Team appear in NO funnel — excluded from the WHAT-IF exercise by
- * decision (the Jira fields are unpopulated org-wide, PR-01); they stay in the
- * gaps table below, which is unchanged.
- */
-function profileFor_(h, pp) {
-  return {
-    onTime: { title: "On-Time Delivery — " + onTimeScopeWord_(), stages: [
-      { label: "resolved in scope", n: h.res },
-      { label: "has a Jira assignee", n: h.resAssigned },
-      { label: "assignee joins the roster", n: h.resAttr },
-      { label: "…and carries a due date — measurable", n: h.resReady },
-    ] },
-    forecast: { title: "Forecast Accuracy — resolved epics", stages: [
-      { label: "resolved epics", n: h.epics },
-      { label: "has an estimate", n: h.epicsEst },
-      { label: "…and logged time — measurable", n: h.epicsTime },
-    ] },
-    util: { title: "Billable Utilization", bars: [
-      { label: "person-weeks on real Tempo capacity", n: pp.weeks - pp.capEst, of: pp.weeks, unit: " weeks" },
-      { label: "tracked hours billable-classified", n: r1_(pp.trackedCov), of: r1_(pp.tracked), unit: "h" },
-    ] },
-  };
-}
-
-/**
- * ── 📄 BRIEF (spec 2026-08-03; renamed from "CEO Brief", user 2026-08-04) ───
- * Deterministic by design: same data in, same brief out, so a quoted line can
- * always be reproduced. No API calls, no randomness — a Gemini rewrite was
- * considered and rejected (wording that changes between loads is a liability
- * when executives quote it).
- *
- * Owners ARE named here, deliberately. The public gaps table dropped its Owner
- * column (2026-08-03 — a widely-read blame board doesn't fix tagging); this
- * brief is admin-only and exists to hand the Director accountable actions.
- */
-var BRIEF_NOTES_ = [
-  { date: "2026-08-03", text: "On-Time keeps the Metrics Dictionary scope (epics / milestones / client commitments) — ratified over the healthier-looking Stories/Tasks reading, which would hide the epic due-date blocker" },
-  { date: "2026-08-03", text: "Region and Team are excluded from the WHAT-IF exercise: the Jira fields are unpopulated org-wide (PR-01). Region shown elsewhere is derived from where hours were logged (◦ marker)" },
-  { date: "2026-08-03", text: "Due dates and estimates are the mutable Jira fields, not baselined commitments — a re-baselined milestone or a revised estimate silently scores as on target (PR-02 / PR-03)" },
-];
-
-/** Gap candidates. kept/total are records; the two hour-based gaps rank in
-    person-week equivalents (÷40h) so `dropped × cards` compares like units.
-    cards = how many of the four KPI cards the gap starves (fixed map — the
-    assignee and roster-join gaps starve all four; the rest starve one). */
-function briefGaps_(h, pp) {
-  var wkH = 40;
-  return [
-    { name: "Jira assignee on resolved work", kept: h.resAssigned, total: h.res, gate: 0.95, cards: 4,
-      owner: "Delivery leadership", week: "2026.W35", action: "close issues with an assignee on them" },
-    { name: "Assignee resolves to a roster person", kept: h.resAttr, total: h.resAssigned, gate: 0.95, cards: 4,
-      owner: "WFP / this dashboard", week: "2026.W35",
-      action: "fix the roster name index + crew Department gate (our bug, not Jira's)" },
-    // "set" disambiguates vs the funnel's final stage: this counts due dates
-    // ALONE; the funnel's "measurable" additionally requires the roster join.
-    { name: "Due date set on the work On-Time measures", kept: h.resDue, total: h.res, gate: 0.80, cards: 1,
-      owner: "Delivery leadership", week: "2026.W34", action: "set due dates on epics at kickoff" },
-    { name: "Estimate on closed epics", kept: h.epicsEst, total: h.epics, gate: 0.70, cards: 1,
-      owner: "Delivery leadership", week: "2026.W34",
-      action: "estimate epics at kickoff (real forecasts, not 10h placeholders)" },
-    { name: "Logged time on estimated epics", kept: h.epicsTime, total: h.epicsEst, gate: 0.70, cards: 1,
-      owner: "Delivery leadership", week: "2026.W35", action: "log time on the epic or its children" },
-    { name: "Billable classification on tracked hours", kept: Math.round(pp.trackedCov / wkH),
-      total: Math.round(pp.tracked / wkH), gate: 0.90, cards: 1,
-      owner: "Ops (NetSuite feed)", week: "2026.W35", action: "classify tracked hours in NetSuite" },
-    { name: "Real Tempo capacity (not defaulted)", kept: pp.weeks - pp.capEst, total: pp.weeks,
-      gate: 0.95, cards: 1,
-      owner: "Ops (Tempo feed)", week: "2026.W34", action: "load real schedules into Tempo" },
-  ];
-}
-
-/** Alphabetical tiebreak so equal-scoring rows always order the same way. */
-function briefTie_(a, b) { return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); }
-
-function briefFor_(h, pp) {
-  var gaps = briefGaps_(h, pp).map(function (g) {
-    g.pct = g.total > 0 ? g.kept / g.total : null;
-    g.dropped = g.total - g.kept;
-    return g;
-  });
-  var measured = gaps.filter(function (g) { return g.pct !== null; });
-
-  // FACTS — measured kept-of-total statements, biggest population first.
-  var facts = measured.slice().sort(function (a, b) {
-    return b.total - a.total || briefTie_(a, b);
-  }).slice(0, 3).map(function (g) {
-    return g.kept + " of " + g.total + " — " + g.name + " (" +
-      Math.round(g.pct * 100) + "% vs gate " + Math.round(g.gate * 100) + "%)";
-  });
-  while (facts.length < 3) facts.push("not measurable this window — no complete-period data");
-
-  // HIGHLIGHTS — what already works, best first; padded with fixed truths so
-  // the brief never renders short (deterministic fallbacks, not filler prose).
-  var hi = [];
-  measured.filter(function (g) { return g.pct >= g.gate; })
-    .sort(function (a, b) { return b.pct - a.pct || briefTie_(a, b); })
-    .forEach(function (g) { hi.push(g.name + " already meets its gate (" + Math.round(g.pct * 100) + "%)"); });
-  measured.filter(function (g) { return g.pct < g.gate && g.pct >= 0.70; })
-    .sort(function (a, b) { return b.pct - a.pct || briefTie_(a, b); })
-    .forEach(function (g) {
-      hi.push(g.name + " at " + Math.round(g.pct * 100) + "% — within reach of its " +
-        Math.round(g.gate * 100) + "% gate");
-    });
-  hi.push("52-week export window in place — supports the six-period trend the Dictionary asks for");
-  hi.push("every card states its own coverage and gate — a weak number is never presented as a strong one");
-  hi.push("every gap in this view is trended — progress is visible between reviews instead of re-litigated");
-  var highlights = hi.slice(0, 3);
-
-  // NOTES — the decision registry, newest first.
-  var notes = BRIEF_NOTES_.slice().sort(function (a, b) {
-    return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0);
-  }).slice(0, 3).map(function (n) { return n.text + " (" + n.date + ")"; });
-
-  // CONCERNS — failing gaps ranked by dropped × cards-blocked; each ends in the
-  // action. The WHAT-IF consequence LEADS concern #1: "filter the garbage" must
-  // never read as the fix.
-  var concerns = measured.filter(function (g) { return g.pct < g.gate; })
-    .sort(function (a, b) {
-      return b.dropped * b.cards - a.dropped * a.cards || briefTie_(a, b);
-    }).slice(0, 4).map(function (g) {
-      return g.name + " — " + g.kept + " of " + g.total + " (" + Math.round(g.pct * 100) +
-        "% vs gate " + Math.round(g.gate * 100) + "%) → change: " + g.action +
-        " · owner: " + g.owner + " · target: " + g.week;
-    });
-  if (concerns.length) {
-    // n-aware verdict (live-data fix 2026-08-04): "publishable, not meaningful"
-    // was written for n≈2 and is FALSE at the measured n=164 — a wrong judgment
-    // in the one line the CEO reads first. Below the honesty floor the sample
-    // is the problem; above it the problem is the share of work still
-    // unmeasured — say whichever is true.
-    var wiVerdict;
-    if (h.resReady < WHATIF_MIN_N_ || h.epicsTime < WHATIF_MIN_N_) {
-      wiVerdict = "publishable, not meaningful";
-    } else {
-      var unmeasured = h.res > 0
-        ? Math.round((1 - Math.min(h.resReady, h.res) / h.res) * 100) : 0;
-      wiVerdict = "real rates, but " + unmeasured + "% of the work stays unmeasured";
-    }
-    concerns[0] = "Keeping only valid records leaves On-Time evaluating on n=" + h.resReady +
-      " and Forecast on n=" + h.epicsTime + " — " + wiVerdict + ". The fix is " +
-      "upstream data entry, not filtering. Biggest lever: " + concerns[0];
-  } else {
-    concerns.push("No funnel gap is failing its gate in this window — hold the line and re-run at period close.");
-  }
-  return { facts: facts, highlights: highlights, notes: notes, concerns: concerns };
-}
-
-/**
- * One line naming exactly what the brief covers (user report 2026-08-04: with
- * filters active, a copied brief carried no scope and read as if it honored
- * them). The counts are deliberately WHOLE-POPULATION: they come from the raw
- * Jira feed, where an unattributed issue has no person attached — filtering by
- * person would drop exactly the records this brief exists to count. So active
- * filters are NAMED as not applying, never silently ignored.
- */
-function briefScope_(winLabel) {
-  var act = [];
-  if (STATE.pop !== "fte") act.push("population " + POP_LABELS[STATE.pop]);
-  if (STATE.role !== "all") act.push("role " + ROLE_LABELS[STATE.role]);
-  if (STATE.region) act.push(STATE.region);
-  if (STATE.team) act.push(STATE.team);
-  if (STATE.pm) act.push("PM " + STATE.pm);
-  if (STATE.family) act.push(STATE.family);
-  if (STATE.search) act.push("search “" + STATE.search + "”");
-  return "Scope: " + winLabel + " · whole delivery population. These are feed-level " +
-    "counts — an unattributed issue has no person to filter by, so the dashboard " +
-    "filters cannot narrow them" +
-    (act.length ? ". Active filters NOT applied here: " + act.join(" · ") : "") +
-    (whatIfOn_() ? ". WHAT-IF is on elsewhere; this brief always reports real-mode counts." : ".");
-}
-
-function briefHtml_(brief, scope) {
-  function sec(title, items) {
-    return "<h5>" + title + "</h5><ul>" + items.map(function (t) {
-      return "<li>" + esc_(t) + "</li>";
-    }).join("") + "</ul>";
-  }
-  return '<div class="brief">' +
-    '<div style="display:flex;align-items:center;gap:8px"><h4 style="flex:1;margin:0">📄 Brief' +
-    ' <span class="cellSub" title="Derived by fixed rules from the measured profile — same data, same brief, reproducible when quoted.">deterministic ⓘ</span></h4>' +
-    '<button class="btn" onclick="copyBrief_()">📋 Copy</button>' +
-    '<span id="briefMsg" class="cellSub"></span></div>' +
-    (scope ? '<div class="cellSub">' + esc_(scope) + "</div>" : "") +
-    sec("Top 3 Facts", brief.facts) + sec("Top 3 Highlights", brief.highlights) +
-    sec("Top 3 Notes", brief.notes) + sec("Top Concerns", brief.concerns) + "</div>";
-}
-
-/** Plain-text form for pasting into the review deck / doc. The scope line
-    travels with the copy — a pasted brief must name its own window. */
-function briefText_(brief, scope) {
-  function sec(title, items) {
-    return "## " + title + "\n" + items.map(function (t) { return "- " + t; }).join("\n");
-  }
-  return "# Delivery Health — Brief\n\n" + (scope ? scope + "\n\n" : "") +
-    sec("Top 3 Facts", brief.facts) + "\n\n" +
-    sec("Top 3 Highlights", brief.highlights) + "\n\n" + sec("Top 3 Notes", brief.notes) +
-    "\n\n" + sec("Top Concerns", brief.concerns) + "\n";
-}
-
-/** Copies the brief rendered by the LAST renderHygiene_ pass (stashed on
-    STATE), with the textarea fallback the GAS iframe sometimes needs. */
-function copyBrief_() {
-  var txt = STATE._briefText || "";
-  var msg = document.getElementById("briefMsg");
-  function ok() { if (msg) msg.textContent = "✅ copied"; }
-  function fallback() {
-    var ta = document.createElement("textarea");
-    ta.value = txt;
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand("copy"); ok(); }
-    catch (e) { if (msg) msg.textContent = "⚠️ copy blocked — select the text manually"; }
-    document.body.removeChild(ta);
-  }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt).then(ok, fallback);
-  } else { fallback(); }
-}
-
-/** One funnel: bar width vs the TOP stage, count · %, and −drop vs the stage
-    before — the drop is the finding, so it is printed, not inferred. */
-function funnelHtml_(f) {
-  var top = f.stages.length ? f.stages[0].n : 0;
-  var rows = f.stages.map(function (st, i) {
-    var pct = top > 0 ? Math.round(st.n / top * 100) : 0;
-    // Monotone by construction upstream; clamp so a future data bug prints −0,
-    // never a double negative.
-    var drop = i > 0 ? Math.max(0, f.stages[i - 1].n - st.n) : 0;
-    return '<div class="fnRow"><span>' + esc_(st.label) + "</span>" +
-      '<div class="hbar"><i style="width:' + pct + '%"></i></div>' +
-      "<span>" + st.n + (top > 0 ? " · " + pct + "%" : "") +
-      (i > 0 ? ' <b class="fnDrop"' + (drop > 0 ? "" : ' style="opacity:.35"') + ">−" + drop + "</b>" : "") +
-      "</span></div>";
-  }).join("");
-  return '<div class="funnel"><div class="fnTitle">' + esc_(f.title) + "</div>" + rows + "</div>";
-}
-
-/** Utilization's two coverage bars — not a chain, so no drop column. */
-function utilBarsHtml_(u) {
-  var rows = u.bars.map(function (b) {
-    var pct = b.of > 0 ? Math.round(b.n / b.of * 100) : 0;
-    return '<div class="fnRow"><span>' + esc_(b.label) + "</span>" +
-      '<div class="hbar"><i style="width:' + pct + '%"></i></div>' +
-      "<span>" + b.n + " of " + b.of + b.unit + " · " + pct + "%</span></div>";
-  }).join("");
-  return '<div class="funnel"><div class="fnTitle">' + esc_(u.title) + "</div>" + rows + "</div>";
-}
-
-/** The whole 🔬 section: funnels + the ONE WHAT-IF button. Admin-only — the
-    same code-level gate as gateEditorHtml_, and whatIfOn_/renderWhatIfBanner_
-    enforce the role even if this HTML leaked. */
-function profilePanelHtml_(h, pp, winLabel) {
-  if (MODEL.viewerRole !== "admin") return "";
-  var on = whatIfOn_();
-  // No headline stat row (user 2026-08-04, round 2: "remove those big top
-  // numbers"). The good-of-total read lives in each funnel's final
-  // "…measurable" row — the same figures, in the context that explains them.
-  var body = (h.res > 0 || pp.weeks > 0)
-    ? (function () {
-        var pf = profileFor_(h, pp);
-        return funnelHtml_(pf.onTime) + funnelHtml_(pf.forecast) + utilBarsHtml_(pf.util) +
-          '<div class="cellSub">Quality / Rework cannot be profiled — Status Category, Rework Link ' +
-          "and Reopened are not in the deployed export (needs v3.6.0, PR-09). Filtering cannot " +
-          "conjure columns that were never exported.</div>";
-      })()
-    : '<div class="emptyState">no complete-period data in this window</div>';
-  return '<div class="profPanel"><h4>🔬 Data Profile · ' + esc_(winLabel) + "</h4>" +
-    '<p class="cellSub">Where records fall out of evaluability, per metric — the drop at each ' +
-    "stage is the work queue, and each funnel's final row is the share that is good data to use. " +
-    "Region and Team are not funnelled here — they gate no published metric " +
-    "today, so their coverage is tracked in the gaps table below instead.</p>" + body +
-    '<div style="margin:10px 0"><button class="btn' + (on ? " on" : "") +
-      '" onclick="toggleWhatIf_()">' +
-      (on ? "Exit WHAT-IF" : "🧪 WHAT-IF: valid records only") + "</button> " +
-    '<span class="cellSub">flips the WHOLE dashboard to the measurable populations above — ' +
-    "session-only, banner on every tab, a reload always returns to real mode</span></div>" +
-    (function () {
-      var brief = briefFor_(h, pp);
-      var scope = briefScope_(winLabel);
-      STATE._briefText = briefText_(brief, scope);   // what 📋 Copy copies
-      return briefHtml_(brief, scope);
-    })() + "</div>";
-}
-
 function gateEditorHtml_() {
   if (MODEL.viewerRole !== "admin") return "";
   var reg = MODEL.meta.registry || {};
@@ -4622,11 +4178,9 @@ function renderHygiene_() {
     '<p class="cellSub">Whole-population view — the dashboard filters deliberately do not apply. ' +
     "A well-tagged region does not make the feed publishable.</p>" + nav +
     leaverNoteHtml_() +
-    profilePanelHtml_(h, pp, winLabel) +
     // "Delivery work fully attributed" KPI tile DELETED (user decision
-    // 2026-08-04): the 🔬 Data Profile headline above already states good
-    // records of total, and the composite (pinned by org-wide-empty Region,
-    // PR-01) mostly restated its own binding constraint. The gaps table below
+    // 2026-08-04): the composite (pinned by org-wide-empty Region, PR-01)
+    // mostly restated its own binding constraint. The gaps table below
     // remains the per-component read.
     // Coverage-colour key (user request 2026-08-04). "Its gate, never 100%"
     // is the caption's whole job: a 90% gate met at 91% is green, and a reader
@@ -5060,11 +4614,7 @@ function savePng_(elId, name) {
         // model's ISO week. A board-pack PNG of July 2026 saved as
         // "…-2026.W31.png" is a figure filed under the wrong period, and nobody
         // opens the file again to check.
-        // A WHAT-IF screenshot must carry the label even in its filename — the
-        // captured element is inside the watermark frame, but the name is what
-        // survives a file share.
-        a.download = "delivery-health-" + name + "-" +
-          (whatIfOn_() ? "WHATIF-" : "") + pngPeriodStamp_() + ".png";
+        a.download = "delivery-health-" + name + "-" + pngPeriodStamp_() + ".png";
         a.href = canvas.toDataURL("image/png");
         a.click();
       })
