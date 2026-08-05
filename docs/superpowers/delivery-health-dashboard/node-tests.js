@@ -36,9 +36,10 @@ _test_dhWindow_();
 _test_nameJoin_();
 _test_teamSplit_();
 _test_nsWeekBucketing_();
-_test_netCapacity_(); _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
+_test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
 _test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_(); _test_reworkRate_();
 _test_registry_(); _test_confidence_(); _test_regionVocab_(); _test_hygieneBuckets_();
+_test_parseExportStamp_(); _test_typeHygieneBuckets_(); _test_leaverTest_();
 _test_activeNameFilter_(); _test_gateOverrides_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
 _test_newHire_();
@@ -46,7 +47,6 @@ _test_cacheRoundtrip_(new FakeCache());
 _test_modelAssembly_();
 _test_periods_();
 _test_levelTrack_();
-_test_ptoUsage_();
 
 // ── CLIENT/SERVER PARITY ─────────────────────────────────────
 // Dashboard.html keeps its own copy of the utilization math (utilFor_/aggWeeks_)
@@ -82,10 +82,10 @@ _test_ptoUsage_();
   // Mixed coverage: one classified week, one NS-uncovered week with real hours.
   var people = [
     { name: "A", region: "AMER", teams: [], weeks: {
-        W1: { cap: 40, pto: 0, hol: 0, avail: 40, availCov: 40, planned: 40, tracked: 40,
+        W1: { cap: 40, avail: 40, availCov: 40, planned: 40, tracked: 40,
               trackedCov: 40, billable: 30, nonBillable: 10, nsCov: true,
               nsBillRaw: 15, nsNonBillRaw: 5, capEst: false },
-        W2: { cap: 40, pto: 0, hol: 0, avail: 40, availCov: 0, planned: 40, tracked: 36,
+        W2: { cap: 40, avail: 40, availCov: 0, planned: 40, tracked: 36,
               trackedCov: 0, billable: 0, nonBillable: 0, nsCov: false,
               nsBillRaw: 0, nsNonBillRaw: 0, capEst: false } } },
   ];

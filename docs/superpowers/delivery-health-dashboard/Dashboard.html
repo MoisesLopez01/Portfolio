@@ -31,7 +31,7 @@
      be reused in dark: billable was --void (#0F1941) on a #141C3D surface —
      the most important segment in the grid was effectively invisible in dark
      mode, which is how a manager reads a full bar as an empty one. */
-  --seg-bill:#0F1941; --seg-nonbill:#64748B; --seg-idle:#E7DDD2; --seg-ooo:#FF9B87;
+  --seg-bill:#0F1941; --seg-nonbill:#64748B; --seg-idle:#E7DDD2;
 }
 [data-theme="dark"]{
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
@@ -51,7 +51,7 @@
   /* Billable takes the series blue so a filled bar reads as filled; non-billable
      stays a cool grey a clear step away from it; idle is a near-surface navy so
      empty capacity reads as absence rather than as another kind of work. */
-  --seg-bill:#38BDF8; --seg-nonbill:#94A3B8; --seg-idle:#222D57; --seg-ooo:#FF9B87;
+  --seg-bill:#38BDF8; --seg-nonbill:#94A3B8; --seg-idle:#222D57;
 }
 /* Fluid type/space scale — every font-size and several key dimensions below multiply
    this token, so laptop and (especially) ultrawide screens get visibly bigger text and
@@ -95,6 +95,20 @@ h1,h2,h3,.title,.tile .big{font-family:'Roboto Condensed','Franklin Gothic Mediu
 .chip.on{background:var(--orbe);border-color:var(--orbe);color:#fff}
 select,input[type=search]{background:var(--surface);border:1px solid var(--border);
       border-radius:8px;padding:6px 10px;font-size:calc(12px*var(--scale));color:var(--text)}
+/* The filter row must NOT reflow when a cascade changes its text (user report
+   2026-08-04: "filters move their position"). A select sizes itself to its
+   longest option, so every cascade rebuild resized it — and in a wrapping flex
+   row that moves every control after it, sometimes onto another line, right as
+   the user reaches for it. Fixed widths pin the row: the closed control may
+   clip a long selection, but the open list and the tooltip carry it in full. */
+#teamSel,#pmSel{width:calc(150px*var(--scale))}
+#famSel{width:calc(175px*var(--scale))}
+#personSearch{width:calc(140px*var(--scale))}
+#periodPick{width:calc(150px*var(--scale))}
+/* Chips: tabular figures + a width floor so a live count changing from 140 to
+   7 doesn't change the chip's size (the Region strip re-counts on every click). */
+.chip{font-variant-numeric:tabular-nums}
+#regionChips .chip{min-width:calc(78px*var(--scale));text-align:center}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:16px}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;
        padding:14px;box-shadow:var(--shadow)}
@@ -131,17 +145,26 @@ body.whatif::after { content: "WHAT-IF SIMULATION — not the real numbers";
   position: fixed; right: 10px; bottom: 8px; font-size: 11px; letter-spacing: .1em;
   color: var(--text); background: var(--bg); border: 1px dashed var(--c-warn);
   border-radius: 4px; padding: 2px 8px; opacity: .9; pointer-events: none; z-index: 99; }
-.profPanel { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
-.profPanel h4 { margin: 0 0 4px; }
-.funnel { margin: 10px 0 4px; }
-.fnTitle { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
-.fnRow { display: grid; grid-template-columns: 260px 1fr 170px; gap: 8px; align-items: center; font-size: 12px; }
+/* 🔬 Data Profile is built to be SCREEN-SHARED live (user 2026-08-04): bigger
+   type and taller bars so a room can read it. No headline stat row — the same
+   round of feedback that sized it up later removed the big top numbers as
+   clutter; the funnels' final rows carry the good-of-total read. */
+.profPanel { border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin: 10px 0; }
+.profPanel h4 { margin: 0 0 4px; font-size: calc(17px*var(--scale)); }
+.funnel { margin: 14px 0 6px; }
+.fnTitle { font-weight: 600; font-size: calc(14px*var(--scale)); margin-bottom: 4px; }
+.fnRow { display: grid; grid-template-columns: minmax(240px,320px) 1fr minmax(170px,210px);
+  gap: 10px; align-items: center; font-size: calc(13.5px*var(--scale)); }
+.fnRow .hbar { height: 12px; margin: 5px 0; }
 .fnRow .hbar i { background: var(--c-series); }
 .fnDrop { color: var(--c-bad); font-weight: 600; }
-.brief { border-top: 1px dashed var(--border); margin-top: 10px; padding-top: 8px; }
-.brief h5 { margin: 8px 0 2px; font-size: 12px; }
-.brief ul { margin: 0 0 4px 18px; padding: 0; font-size: 12px; }
-.brief li { margin: 2px 0; }
+/* 📄 Brief: read out loud in meetings — meeting-comfortable reading size. */
+.brief { border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 10px;
+  font-size: calc(14.5px*var(--scale)); line-height: 1.5; }
+.brief h4 { font-size: calc(17px*var(--scale)); }
+.brief h5 { margin: 10px 0 3px; font-size: calc(14px*var(--scale)); }
+.brief ul { margin: 0 0 6px 20px; padding: 0; }
+.brief li { margin: 3px 0; }
 /* ── Data Hygiene view ── */
 .hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
 .hnav .btn[disabled]{opacity:.35;cursor:default}
@@ -159,6 +182,61 @@ table.hyg td{padding:8px;border-bottom:1px solid var(--border);vertical-align:to
 table.hyg td.hnum{white-space:nowrap;font-weight:700;min-width:150px}
 table.hyg td.hnum.g{color:var(--pos)} table.hyg td.hnum.a{color:var(--amber)}
 table.hyg td.hnum.r{color:var(--warn)}
+/* ── 🧬 by-type matrix ──
+   Nine columns of numbers, so the layout rules are stricter than the gaps table:
+   EVERY column right of the type name is right-aligned, header included. The
+   first cut left the headers default-left over right-aligned values, which put
+   each label over the gap between two columns instead of over its own data —
+   the table looked misaligned because it was. */
+table.hyg.tmx{table-layout:fixed}
+table.hyg.tmx td,table.hyg.tmx th{padding:7px 10px;white-space:nowrap;
+                                  border-bottom:1px solid var(--border)}
+table.hyg.tmx th{padding-bottom:6px}
+table.hyg.tmx .tnum{text-align:right}
+/* The type name is the row's identity — it stays left, wraps, and is the one
+   column allowed to be wide. Sticky so a horizontal scroll on a narrow screen
+   never leaves a row of numbers with nothing naming it. */
+table.hyg.tmx .tname{text-align:left;white-space:normal;width:26%;min-width:150px;
+                     position:sticky;left:0;background:var(--surface);z-index:1}
+table.hyg.tmx td.tn{font-weight:700;color:var(--muted);width:52px}
+/* Zebra banding: at nine columns the eye loses its row on the way across. */
+table.hyg.tmx tr:nth-child(even) td{background:var(--surface-2)}
+table.hyg.tmx tr:nth-child(even) td.tname{background:var(--surface-2)}
+/* Theme-neutral hover: a translucent grey reads on both the cream and the navy
+   surface, so no second token is needed and neither theme can be forgotten. */
+table.hyg.tmx tr:hover td{background:rgba(127,127,127,.12)}
+table.hyg.tmx td.tcell .tval{font-weight:700;font-variant-numeric:tabular-nums}
+/* .n = "gates nothing published for this type" — muted, never a RAG colour. A
+   grey em-dash must not compete with a real verdict for attention. */
+table.hyg.tmx td.tcell.n .tval{color:var(--muted);font-weight:400}
+table.hyg.tmx td.tcell.g .tval{color:var(--pos)}
+table.hyg.tmx td.tcell.a .tval{color:var(--amber)}
+table.hyg.tmx td.tcell.r .tval{color:var(--warn)}
+/* Fill bar per cell. Nine columns of bare percentages have to be read digit by
+   digit; the bars give the row a shape you can take in at a glance. Same idiom
+   as the gaps table and the funnels — this view is built on labelled bars. */
+/* Bars use the CHART tokens, not the text ones. In dark mode --warn and --amber
+   are literally the same hex, which is survivable for words (the ✔ ▲ ✖ marks
+   still separate them) but fatal for a bar, where colour is the only channel
+   there is. --c-good/--c-warn/--c-bad are the palette-validated set that stays
+   distinguishable in both themes — the same reason the charts use them. */
+.tbar{height:3px;border-radius:2px;background:var(--border);margin-top:4px;overflow:hidden}
+.tbar i{display:block;height:100%;border-radius:2px;background:var(--muted)}
+.tbar i.g{background:var(--c-good)} .tbar i.a{background:var(--c-warn)}
+.tbar i.r{background:var(--c-bad)}
+.tbar i.n{background:var(--muted);opacity:.4}
+/* The miss count rides inside the cell but must read as secondary to the % —
+   it is the size of the job, not the verdict on it. */
+.tmiss{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
+       background:var(--surface);border:1px solid var(--border);
+       color:var(--muted);font-weight:700;font-size:calc(9.5px*var(--scale));
+       font-variant-numeric:tabular-nums}
+table.hyg.tmx tr:nth-child(even) .tmiss{background:var(--surface-2)}
+/* "epic" tag on the type name — states that this row is pooled into the
+   epic-grain metrics, which is the finding the whole table exists to expose. */
+.tepic{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
+       background:var(--royal);color:#fff;font-size:calc(8.5px*var(--scale));
+       font-weight:700;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
 .hbar{height:5px;border-radius:3px;background:var(--border);margin:4px 0 2px;overflow:hidden}
 .hbar i{display:block;height:100%;border-radius:3px}
 .hbar i.g{background:var(--pos)} .hbar i.a{background:var(--amber)} .hbar i.r{background:var(--warn)}
@@ -192,7 +270,6 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
 /* Unclassified: tracked in Tempo, no NetSuite split. Hatched slate so it reads
    as "real work, unknown kind" — distinct from solid-slate non-billable. */
 .bar .sU{background:repeating-linear-gradient(45deg,var(--seg-nonbill),var(--seg-nonbill) 3px,transparent 3px,transparent 6px)}
-.bar .sO{background:repeating-linear-gradient(45deg,var(--seg-ooo),var(--seg-ooo) 4px,transparent 4px,transparent 8px)}
 .planTick{position:absolute;top:-6px;font-size:9px;color:var(--royal);transform:translateX(-50%)}
 .warnFlag{color:var(--warn);font-weight:700;margin-left:4px}
 /* Small print must stay readable — was a raw 9px (unscaled), reported unreadable. */
@@ -200,8 +277,6 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
 tr.detail td{background:var(--surface-2);padding:12px 16px 14px;text-align:left}
 .blbl{font-size:calc(10px*var(--scale));color:var(--muted);text-transform:uppercase;margin:6px 0 2px}
 .btrack{position:relative;height:10px;background:var(--orbe);border-radius:3px;max-width:360px}
-.btrack .ooo{position:absolute;right:0;top:0;height:100%;border-radius:0 3px 3px 0;
-  background:repeating-linear-gradient(45deg,var(--june),var(--june) 4px,rgba(255,155,135,.35) 4px,rgba(255,155,135,.35) 8px)}
 .bline{height:8px;border-radius:3px;max-width:360px;display:flex;overflow:hidden}
 .bline .b{background:var(--seg-bill)} .bline .n{background:var(--seg-nonbill)}
 .bline .u{background:repeating-linear-gradient(45deg,var(--seg-nonbill),var(--seg-nonbill) 3px,transparent 3px,transparent 6px)}
@@ -330,7 +405,7 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div class="fgroup" title="Role — split managers (M-level job codes) from individual contributors. Managers often plan without tracking much, which drags delivery rates; the IC view removes that effect. Universal: scopes the KPI tiles and the grid.">
       <span class="flbl">Role</span><div class="chips seg" id="roleChips"></div>
     </div>
-    <div class="fgroup" title="Value focus — what the grid cells show and how people are ranked. Plan = planned hours, alphabetical. Billable = tracked hours falling on the billable side of the NetSuite split, most first. Non-bill = the non-billable side — real project work (PTO/holidays come from the Time off Report and are never in this bucket; absence only reduces availability). Both are Tempo tracked hours apportioned by the NetSuite billable mix, so they always sum to tracked.">
+    <div class="fgroup" title="Value focus — what the grid cells show and how people are ranked. Plan = planned hours, alphabetical. Billable = tracked hours falling on the billable side of the NetSuite split, most first. Non-bill = the non-billable side — real project work plus any time off tracked in Tempo (time off cannot be charged to a customer project, so it is non-billable by rule). Both are Tempo tracked hours apportioned by the NetSuite billable mix, so they always sum to tracked.">
       <span class="flbl">Focus</span><div class="chips seg" id="focusChips"></div>
     </div>
     <div class="fgroup" title="Region — universal: scopes the KPI tiles and the grid.">
@@ -365,6 +440,9 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div style="text-align:right"><button class="iconbtn" onclick="savePng_('tiles','tiles')" title="Save the KPI cards as a PNG image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
     <div class="tiles" id="tiles"></div>
+    <!-- Colour key for the cards and the comparison bars below them — readers
+         learn colours from legends, not tooltips (user request 2026-08-04). -->
+    <div id="tileColorKey"></div>
     <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
   </div>
 
@@ -410,8 +488,12 @@ var MODEL = null;
 // compare: which dimension the Executive comparison chart breaks down by.
 // oppSort: opportunity-table sort column.
 var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
-              view: "exec", flag: "", metric: "util", compare: "region", compareAll: false,
+              view: "exec", flag: "", metric: "onTime", compare: "region", compareAll: false,
               oppSort: "opp", oppDesc: true,
+              // typePop: which population the 🧬 by-type matrix shows. OPEN is the
+              // default because it is the half anyone can act on — fixing a
+              // resolved ticket's due date changes history, not the next report.
+              typePop: "open",
               // whatIf: admin-only, session-only "valid records only" simulation
               // (spec 2026-08-03). Never persisted — a reload is always real mode.
               whatIf: false,
@@ -607,24 +689,17 @@ function preHireMark_(p) {
 }
 
 /**
- * Absence marker (user feedback 2026-07-31): PTO/holidays kill availability,
- * so a fully-absent period shows 🏖, never a 0 that reads as non-delivery.
- * Two flavors: long leave from roster Employee Status (maternity/parental/…)
- * covers the person's whole row; a fully-OOO period (avail 0, all hours PTO/
- * holiday) covers just that cell.
+ * Long-leave marker: roster Employee Status (maternity/parental/…) covers the
+ * person's whole row — 🏖, never a 0 that reads as non-delivery. This is the
+ * ONLY absence signal left: no time-based absence (PTO/holiday hours) is
+ * modelled anywhere (user decision 2026-08-04) — time off someone tracks is
+ * simply non-billable time and capacity is always gross.
  */
-function absenceMark_(p, w) {
-  if (p.onLeave) {
-    return '<span class="cellSub" title="' + esc_(p.leaveStatus || "On leave") +
-      ' (roster Employee Status) — no availability expected">🏖 ' +
-      esc_(p.leaveStatus || "on leave") + "</span>";
-  }
-  return '<span class="cellSub" title="entire period on PTO/holiday (' +
-    r1_(w.pto + w.hol) + "h) — no availability, so nothing to plan or track\">🏖 PTO</span>";
+function absenceMark_(p) {
+  return '<span class="cellSub" title="' + esc_(p.leaveStatus || "On leave") +
+    ' (roster Employee Status) — no availability expected">🏖 ' +
+    esc_(p.leaveStatus || "on leave") + "</span>";
 }
-
-/** True when the whole period's capacity is consumed by PTO/holidays. */
-function fullyOoo_(w) { return !!w && w.avail <= 0 && (w.pto + w.hol) > 0; }
 
 // role: "all" (default) | "ic" | "mgr" — managers = M-level job codes
 // ("07.M5.1 - …"); managers often plan without tracking much, so the IC view
@@ -639,6 +714,78 @@ function roleMatch_(p) {
 function esc_(s) {
   return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * The header freshness line: what the DATA's age is, plus the model-staleness
+ * warning when that also applies.
+ *
+ * Two clocks, and conflating them is the bug this function exists to prevent:
+ *   · meta.dataAsOf.jira — when the Jira export last wrote Jira Raw. Moves daily.
+ *     This is what a reader means by "how current is this?".
+ *   · meta.generatedAt   — when this model was assembled. The warmer resets it
+ *     every 30 min, so it is always fresh and always uninformative.
+ *
+ * AGE COMES FROM THE SERVER (`jiraAgeH`), never from a browser-clock diff: two
+ * people in one review would otherwise read different staleness verdicts off the
+ * same payload because one laptop's clock drifts. The wall-clock time IS
+ * localised — same instant, the reader's own timezone — and always carries its
+ * timezone name, because the exporter's "03:00" is meaningless to SEA without it.
+ *
+ * Three states: fresh (muted, informational), stale (warn — a scheduled export
+ * was missed), unknown (muted — an older exporter or a cropped footer; NOT a
+ * warning, because a reader can do nothing about it and a false alarm here
+ * teaches them to ignore the real one).
+ *
+ * Pure over (meta, modelStale, builtAt) so render-smoke can pin every state.
+ * @returns {{html:string, warn:boolean, title:string}}
+ */
+function dataAsOfView_(meta, modelStale, builtAt) {
+  var d = (meta && meta.dataAsOf) || {};
+  var parts = [], warn = false, tips = [];
+  function localStamp_(iso) {
+    return new Date(iso).toLocaleString([], {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      timeZoneName: "short" });
+  }
+  function ageWords_(h) {
+    if (h === null || h === undefined) return "";
+    if (h < 1) return "under an hour ago";
+    if (h < 48) return Math.round(h) + "h ago";
+    return Math.round(h / 24) + " days ago";
+  }
+  if (d.jira) {
+    warn = d.jiraStale === true;
+    parts.push((warn ? "⚠ " : "📅 ") + "Data as of " + esc_(localStamp_(d.jira)) +
+               " · " + esc_(ageWords_(d.jiraAgeH)));
+    tips.push("Jira export last wrote the Jira Raw tab at " + localStamp_(d.jira) +
+      " (" + d.jiraAgeH + "h ago). This is the age of the DATA — the four delivery " +
+      "cards cannot be more current than this.");
+    if (warn) {
+      parts.push("export may have failed");
+      tips.push("Older than " + (meta.jiraExportStaleH || 30) + "h, so a scheduled " +
+        "export run was missed — check the Jira Backlog.js trigger. Every Jira-based " +
+        "number on screen describes the world as it was at the stamp above.");
+    }
+  } else if (d.jiraUnknown) {
+    parts.push("📅 Data refresh time unknown");
+    tips.push("The Jira Raw tab carries no readable \"Generated:\" footer, so the age of " +
+      "the data cannot be stated. Run probeDeliverySources for the diagnosis. Not a " +
+      "staleness warning — the data may be current; we just cannot prove it.");
+  }
+  // The model-rebuild warning is a SEPARATE condition (NFR-7) and keeps its own
+  // consequence: trend comparisons are suppressed while it holds. Shown alongside
+  // the data age rather than instead of it — they fail independently.
+  if (modelStale) {
+    warn = true;
+    parts.push("⚠ dashboard not rebuilt since " + esc_(localStamp_(builtAt.toISOString())));
+    tips.push("The model itself has not been reassembled inside the stated refresh " +
+      "cadence" + (meta.refreshEveryMin ? " (every " + meta.refreshEveryMin + " min)" : "") +
+      ", so trend comparisons are suppressed until it refreshes.");
+  }
+  (meta.sources || []).forEach(function (s) { tips.push(s.system + " → " + s.feeds); });
+  return { html: parts.join(' <span style="opacity:.5">·</span> '),
+           warn: warn, title: tips.join("\n\n") };
 }
 
 function loadData(force) {
@@ -662,7 +809,7 @@ function loadData(force) {
       document.getElementById("loading").style.display = "none";
       document.getElementById("app").style.display = "";
       MODEL._exCache = {};   // per-person triage flags, recomputed per payload
-      // Date + timezone matter on a dashboard with AMER/EMEA/APAC/ANZ filters;
+      // Date + timezone matter on a dashboard with AMER/EMEA/SEA/ANZ filters;
       // seconds don't (director feedback).
       var builtAt = new Date(m.meta.generatedAt);
       // NFR-7: a figure older than 48h presented as current is worse than no
@@ -670,20 +817,19 @@ function loadData(force) {
       // a delta measured across a gap in refreshes is a fiction.
       MODEL._stale = (Date.now() - builtAt.getTime()) > 48 * 3600 * 1000;
       var asOfEl = document.getElementById("asOf");
-      // The routine "Data as of …" line is gone (user request 2026-08-04 — it
-      // read as noise on every load). The element survives for the ONE state a
-      // reader must see: the NFR-7 staleness warning. Provenance still lives
-      // in meta.sources (Data Hygiene view).
-      asOfEl.style.display = MODEL._stale ? "" : "none";
-      asOfEl.textContent = !MODEL._stale ? "" :
-        "⚠ Data stale — last refresh " +
-        builtAt.toLocaleString([], {
-          month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" }) +
-        (m.meta.refreshEveryMin ? " · refreshes every " + m.meta.refreshEveryMin + " min" : "");
-      asOfEl.className = "sub" + (MODEL._stale ? " stalenote" : "");
-      asOfEl.title = (m.meta.sources || []).map(function (s) {
-        return s.system + " → " + s.feeds;
-      }).join("\n") || "";
+      // ── DATA FRESHNESS, ALWAYS ON (user request 2026-08-04) ──
+      // A "Data as of" line WAS removed on 2026-08-04 for reading as noise — but
+      // that line reported meta.generatedAt, the model rebuild, which the cache
+      // warmer resets every 30 minutes and which therefore says nothing. This one
+      // reports the Jira export's own "Generated:" stamp: it moves once a day, it
+      // is the answer to "how current is this?", and it is the one clock that can
+      // be days stale while the dashboard looks brand new. Different number,
+      // different reason to be on screen.
+      var af = dataAsOfView_(m.meta, MODEL._stale, builtAt);
+      asOfEl.style.display = "";
+      asOfEl.innerHTML = af.html;
+      asOfEl.className = "sub" + (af.warn ? " stalenote" : "");
+      asOfEl.title = af.title;
       // Stale cache from before the period toggle shipped → no meta.periods;
       // fall back to weekly until a refresh/warm rebuilds the model.
       if (!m.meta.periods) STATE.period = "week";
@@ -732,14 +878,14 @@ function buildPeriodChips_() {
   // ── Analysis-period picker (user request 2026-08-04) ──────────────────────
   // The unit chips choose the GRANULARITY; this chooses the WINDOW: which
   // complete period the KPI cards, the comparison, the headroom table and the
-  // CEO brief analyse. Newest first, "Latest complete" as the default. The
+  // brief analyse. Newest first, "Latest complete" as the default. The
   // People grid stays pinned to the current weeks — it is the operational
   // "who needs me now" view, not an analysis surface.
   var done = donePeriods_();
   var sel = document.createElement("select");
   sel.id = "periodPick";
   sel.title = "Which complete " + PERIOD_LABELS[STATE.period].toLowerCase() +
-    " the KPI cards, comparison, headroom and CEO brief analyse. " +
+    " the KPI cards, comparison, headroom and brief analyse. " +
     "The People grid always shows the current weeks.";
   var opt0 = document.createElement("option");
   opt0.value = ""; opt0.textContent = "Latest complete";
@@ -829,6 +975,16 @@ function buildFocusChips_() {
 
 /** Person's family label for the filter (blank roster family → Uncatalogued). */
 function famName_(p) { return p.jobFamily || "Uncatalogued"; }
+
+/** Roster job titles arrive as "07.M5.1 - Manager, Service Delivery" or
+    "09.P3.Consultant" — the leading grade code is roster plumbing, not a
+    title. Strip it for display; the full string stays in the tooltip and in
+    the CSV. A title without the code prefix passes through untouched. */
+function jobTitleDisp_(t) {
+  t = String(t || "").trim();
+  var clean = t.replace(/^\d{1,3}\.\s*(?:[A-Za-z]\d+(?:\.\d+)*)?[\s.\-–—]*/, "").trim();
+  return clean || t;
+}
 
 // ── CASCADING FILTERS ────────────────────────────────────────
 //
@@ -945,6 +1101,20 @@ function passesFilters_(p, skip) {
     bucketsFor_ runs passesFilters_ directly, on purpose. */
 function filteredPeople_() {
   return MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p); });
+}
+
+/** True when the person EXISTED during the period. Pre-hire weeks are never
+    emitted by the server (user decision 2026-07-31), so a person with no week
+    cell in any of the period's isos was not yet hired then. Period-scoped
+    headcounts use this (user report 2026-08-04: a June window counted July's
+    two new hires — "140 people" regardless of the selected time). An empty
+    isos list means no period is framing the count, so everyone counts. */
+function existsIn_(p, isos) {
+  if (!isos || !isos.length) return true;
+  for (var i = 0; i < isos.length; i++) {
+    if (p.weeks && p.weeks[isos[i]]) return true;
+  }
+  return false;
 }
 
 /**
@@ -1167,15 +1337,14 @@ function aggWeeks_(p, isos) {
   isos.forEach(function (iso) {
     var w = p.weeks[iso];
     if (!w) return;
-    if (!a) a = { cap: 0, pto: 0, hol: 0, avail: 0, planned: 0, effPlanned: 0,
-                  tracked: 0, billable: 0, nonBillable: 0, capEst: false,
+    if (!a) a = { cap: 0, avail: 0, planned: 0, effPlanned: 0,
+                  tracked: 0, trackedOff: 0, billable: 0, nonBillable: 0, capEst: false,
                   availCov: 0, capCov: 0, trackedCov: 0, nsBillRaw: 0, nsNonBillRaw: 0,
                   covWeeks: 0, nWeeks: 0 };
-    a.cap += w.cap; a.pto += w.pto; a.hol += w.hol; a.avail += w.avail;
-    a.planned += w.planned;
-    // Planning pairs with ACTUAL capacity (user feedback 2026-07-31): the cap
-    // is net availability — PTO/holidays kill capacity, so a fully-planned
-    // week with 8h PTO can only honestly plan 32h.
+    a.cap += w.cap; a.avail += w.avail;
+    a.planned += w.planned; a.trackedOff += w.trackedOff || 0;
+    // Planning is capped at capacity: a 60h plan against a 40h schedule is an
+    // over-plan, not extra deliverable capacity.
     a.effPlanned += w.cap > 0 ? Math.min(w.planned, w.avail) : w.planned;
     a.tracked += w.tracked; a.billable += w.billable; a.nonBillable += w.nonBillable;
     a.capEst = a.capEst || w.capEst;
@@ -1241,10 +1410,23 @@ function renderScope_() {
   var done = donePeriods_();
   var head = done.length ? done[headPeriodIdx_(done)] : null;
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
+  // Headcount is PERIOD-SCOPED (user report 2026-08-04): "Jun 2026 — N people"
+  // must count June's roster, not today's — someone hired in July did not
+  // exist in a June window. Only hires can be corrected for (the payload is
+  // active-roster only, so leavers are invisible either way); the delta is
+  // stated so 140 → 138 reads as a fact, not a glitch.
+  var pool = filteredPeople_();
+  var n = head ? pool.filter(function (p) { return existsIn_(p, head.isos); }).length : pool.length;
+  var later = pool.length - n;
   document.getElementById("scopeChip").innerHTML =
     (head ? "<b>" + (STATE.periodIdx === null ? "Last complete" : "Selected") + " " +
             unit + " · " + esc_(head.label) + "</b> — " : "") +
-    esc_(parts.join(" · ")) + " — " + filteredPeople_().length + " people";
+    esc_(parts.join(" · ")) + " — " + n + " people" +
+    (later > 0
+      ? ' <span class="cellSub" title="On the roster today but hired after this ' + unit +
+        " — they did not exist in this window, so they are not in its headcount or its rates.\">(+" +
+        later + " hired later)</span>"
+      : "");
 }
 
 document.getElementById("btnRefresh").onclick = function () { loadData(true); };
@@ -1289,11 +1471,14 @@ document.getElementById("btnTheme").onclick = function () {
     person selection re-bases the utilization tile too. The payload is already
     tracking-mandated families only. */
 function utilFor_(isos) {
-  var s = { avail: 0, availCov: 0, billable: 0, tracked: 0, trackedCov: 0, cap: 0, capCov: 0, ooo: 0 };
+  var s = { avail: 0, availCov: 0, billable: 0, tracked: 0, trackedCov: 0, cap: 0, capCov: 0 };
   MODEL.people.forEach(function (p) {
     // Long leave (maternity/paternity/parental/sabbatical) never moves the
     // rate: Tempo capacity can lag HR, so their avail would read as idle time.
     if (p.onLeave) return;
+    // Interns (I1) never move a rate — in training, not delivery capacity
+    // (user decision 2026-08-04). Their grid hours stay visible, unlike leave.
+    if (p.isIntern) return;
     if (!passesFilters_(p)) return;
     isos.forEach(function (iso) {
       var w = p.weeks[iso];
@@ -1312,21 +1497,15 @@ function utilFor_(isos) {
       // Dictionary's "headcount × standard hours" denominator, coverage-matched
       // the same way availCov is.
       s.capCov += w.capCov || 0;
-      // cap/ooo aren't in the rate — they let the tile SAY how much the
-      // denominator shrank, so a high % for a part-absent team is readable.
-      s.cap += w.cap; s.ooo += w.pto + w.hol;
+      s.cap += w.cap;
     });
   });
-  // THREE readings of the same numerator, each answering a different question.
-  //   grossPct    — ÷ scheduled capacity. The Dictionary's rate: "of the
-  //                 capacity we PAY FOR, how much did we bill?" Absence is a
-  //                 cost, so it stays in the denominator. THIS IS THE HEADLINE.
-  //   billablePct — ÷ net available. "Of the capacity the team actually HAD,
-  //                 how much did they bill?" The fair operational read.
-  //   trackedPct  — ÷ net available, tracked hours. Used when NetSuite is
-  //                 classifying nothing and no billable claim can be made.
-  // Publishing gross alone would read as a team failing; publishing net alone
-  // hides the cost of absence from the people who pay for it. Both ship.
+  // grossPct is THE rate — the Dictionary's: billable ÷ gross scheduled
+  // capacity (headcount × standard hours). No absenteeism is modelled (user
+  // decision 2026-08-04), so avail === cap and billablePct is numerically the
+  // same gross rate (the field survives for the shared accessors/tests).
+  // trackedPct/grossTrackedPct are the fallback readings when NetSuite is
+  // classifying nothing and no billable claim can be made.
   s.grossPct = s.capCov > 0 ? s.billable / s.capCov * 100 : null;
   s.billablePct = s.availCov > 0 ? s.billable / s.availCov * 100 : null;
   s.trackedPct = s.avail > 0 ? s.tracked / s.avail * 100 : null;
@@ -1355,6 +1534,10 @@ function bucketsFor_(buckets, isos) {
     if (isos.indexOf(b.iso) === -1) return;
     var person = b.person ? MODEL._pByName[b.person] : null;
     if (!person || !passesFilters_(person)) return;
+    // Intern-assigned issues leave BOTH sides of every issue rate (n and
+    // nAll) — an intern's late milestone or estimate miss must never move a
+    // published number, in either direction (user decision 2026-08-04).
+    if (person.isIntern) return;
     out.n += b.n; out.onTime += (b.onTime || 0);
     out.nAll += (b.nAll || b.n || 0); // stale cache pre-nAll: coverage = n
     // Forecast-only fields (schema v8) — absent on an older bucket, so default
@@ -1569,6 +1752,30 @@ var RAG_FILL = { g: "var(--c-good)", a: "var(--c-warn)", r: "var(--c-bad)", "": 
 // Status is never colour alone (FR-4.4) — the glyph survives a monochrome board
 // pack, a photocopy and a colour-vision difference.
 var RAG_MARK = { g: "✔", a: "▲", r: "✖", "": "•" };
+
+/** One inert colour-key entry: a swatch beside the words it stands for.
+    Inert on purpose — the clickable legends (.lgd.act) say so; a colour KEY
+    is a caption, and making some captions buttons is how readers stop
+    trusting either (user request 2026-08-04: every coloured surface carries
+    a key, because readers learn colours from legends, not from tooltips). */
+function keySwatch_(color, words, why) {
+  return '<span class="lgd"' + (why ? ' title="' + esc_(why) + '"' : "") +
+    '><i style="background:' + color + '"></i>' + words + "</span>";
+}
+
+/** The tile/bar RAG key, shared by every surface that colours a value against
+    a target or gate. `scaleWord` names what the colour is judged against
+    ("its own target", "its gate"), because the thresholds differ per metric
+    and a key claiming one number for all of them would be wrong. */
+function ragKeyHtml_(scaleWord, tail) {
+  return '<div class="cellSub" style="margin:4px 0 8px">Colour key — each value is judged against ' +
+    scaleWord + ": " +
+    keySwatch_("var(--c-good)", "✔ green = at or better") + " · " +
+    keySwatch_("var(--c-warn)", "▲ amber = below it, inside the watch band") + " · " +
+    keySwatch_("var(--c-bad)", "✖ red = past the watch band") +
+    " · no colour = no verdict (no target, or nothing measurable)." +
+    (tail ? " " + tail : "") + "</div>";
+}
 
 /** A nice y-domain for a percentage series: padded, clamped to 0–100, snapped
     to 10s, and always wide enough to contain its own reference lines. */
@@ -1957,7 +2164,7 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   // printed once, globally, above the row.
   //
   // Everything else — unattributed counts, median variance, miss-direction
-  // split, absence points, classification coverage, the CSAT note — is real and
+  // split, classification coverage, the CSAT note — is real and
   // stays reachable, but as the context line's tooltip, not as a fifth through
   // eighth line. Quality carried eight lines and Forecast seven, which put the
   // four sparkline baselines at four different heights: the row stopped reading
@@ -2042,17 +2249,11 @@ function renderTiles_() {
   var u = utilFor_(head.isos);
   // Metrics Dictionary: "Hours logged / total available capacity hours
   // (headcount × standard hours)". The headline divides by GROSS scheduled
-  // capacity; the net-of-absence rate rides alongside it, because the gap
-  // between the two IS the cost of approved absence and both audiences need it.
+  // capacity — the ONLY denominator: no absenteeism is modelled (user decision
+  // 2026-08-04), so there is no net-of-absence companion rate any more.
   var utilHeadline = live ? u.grossPct : u.grossTrackedPct;
   var utilCmp = live
-    ? "of scheduled capacity · <span title=\"Same billable hours divided by capacity AFTER PTO and public holidays are removed. The headline asks what share of the capacity we PAY FOR was billed; this asks what share of the capacity the team actually HAD was billed. The gap between them is the cost of approved absence.\">" +
-      (u.billablePct === null ? "—" : Math.round(u.billablePct) + "%") +
-      " of net available</span>" +
-      (u.grossPct !== null && u.billablePct !== null
-        ? ' · <span title="Percentage points of utilization lost to approved absence in this period.">' +
-          Math.max(0, Math.round(u.billablePct - u.grossPct)) + " pts absence</span>"
-        : "")
+    ? 'of scheduled capacity · <span title="Tracked time is classified two ways only — billable and non-billable. Time off tracked in Tempo is non-billable (it cannot be charged to a customer project); capacity is never reduced for absence.">billable vs non-billable only</span>'
     : (MODEL.meta.nsAvailable
         ? "tracked ÷ scheduled capacity · the NetSuite billable feed is empty, so no billable claim is made here"
         : "tracked ÷ scheduled capacity · the NetSuite billable feed is unavailable, so no billable claim is made here");
@@ -2065,13 +2266,12 @@ function renderTiles_() {
     utilCmp += ' · <span title="on maternity/parental/long leave (roster Employee Status) — capacity and hours excluded from this rate">' +
       onLeaveN + " on leave excluded</span>";
   }
-  // The denominator is NET availability (capacity − PTO − holiday), so a team
-  // that was partly out reads high on a smaller base. Say so on the card: a
-  // director comparing 87% across two teams needs to know one lost a day.
-  if (u.ooo > 0 && u.cap > 0) {
-    utilCmp += '<br><span title="Billable Utilization divides by AVAILABLE hours, not gross capacity — PTO and public holidays are removed from the denominator, so the rate is not diluted by approved absence. It also means a high % can sit on a much smaller base.">' +
-      "base " + r1_(u.avail) + "h available of " + r1_(u.cap) + "h capacity — " +
-      r1_(u.ooo) + "h PTO/holiday removed (" + Math.round(u.ooo / u.cap * 100) + "%)</span>";
+  var internN = MODEL.people.filter(function (p) {
+    return p.isIntern && !p.attribOnly && passesFilters_(p);
+  }).length;
+  if (internN) {
+    utilCmp += ' · <span title="Interns (level I1) never move a published rate — in training, not delivery capacity. Their profiles and hours stay on the People roster, marked 🎓.">' +
+      internN + " intern" + (internN === 1 ? "" : "s") + " excluded</span>";
   }
   // WHAT-IF: defaulted-capacity person-weeks left the population in utilFor_ —
   // restate the drop on the card.
@@ -2270,6 +2470,13 @@ function renderTiles_() {
                            metric: regU, std: utilStd, trendLabels: trendLabels });
       }, opts.headlineLabel, utilCovTrend, trendLabels)) +
     qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head, hi);
+  // Colour key for the cards AND the comparison bars below — one key, because
+  // they use the same grading. "Its own target" rather than a number: On-Time
+  // grades against 85/70, Forecast 80/60, Utilization 70/50, and each card
+  // prints its own, so the key names the rule and the cards carry the numbers.
+  document.getElementById("tileColorKey").innerHTML = ragKeyHtml_(
+    "the metric's <b>own</b> FY27 target, printed on its card",
+    "Rework Rate reverses the scale — lower is better. The comparison bars below use the same colours.");
 }
 
 /**
@@ -2461,9 +2668,13 @@ var METRICS_ = {
   },
 };
 
-/** Metric ids the current payload can actually chart. */
+/** Metric ids the current payload can actually chart — in the SAME order as
+    the KPI cards (On-Time, Forecast, Utilization, Quality; user 2026-08-04):
+    the chips and charts below the cards must never shuffle that sequence. */
+var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality"];
 function liveMetrics_() {
-  return Object.keys(METRICS_).filter(function (k) {
+  return METRIC_ORDER_.filter(function (k) {
+    if (!METRICS_[k]) return false;
     if (MARGIN_METRICS_[k] && !canSeeMargin_()) return false;
     return METRICS_[k].available();
   });
@@ -2472,7 +2683,7 @@ function liveMetrics_() {
 /** The metric the Trends view is on, falling back if Jira went away. */
 function activeMetric_() {
   var ids = liveMetrics_();
-  if (ids.indexOf(STATE.metric) === -1) STATE.metric = ids[0] || "util";
+  if (ids.indexOf(STATE.metric) === -1) STATE.metric = ids[0] || "onTime";
   return METRICS_[STATE.metric];
 }
 
@@ -2621,11 +2832,15 @@ function renderCompare_() {
     // or non-Services assignee's issues through their stub name, and dropping
     // them here would silently un-attribute that work from every issue-based
     // bar (v13 whole-roster attribution). They only leave the HEADCOUNT: the
-    // number left of the bar counts people in the operational population.
+    // number left of the bar counts people in the operational population —
+    // and only people who EXISTED in the compared period (existsIn_), so an
+    // older window shows that window's roster, not today's.
     var names = {};
     members.forEach(function (p) { names[p.name] = 1; });
     var v = scopedMetric_(m, head.isos, names);
-    var realN = members.filter(function (p) { return !p.attribOnly; }).length;
+    var realN = members.filter(function (p) {
+      return !p.attribOnly && existsIn_(p, head.isos);
+    }).length;
     return { key: val, label: val, value: v, n: realN };
   }).filter(function (r) { return r.n > 0; })
     .sort(function (a, b) {
@@ -2649,16 +2864,19 @@ function renderCompare_() {
   // attribOnly stubs are excluded from BOTH sides of "shown of inScope": this
   // sentence proves the chart covers the operational population, and stubs are
   // not in it (their issues still move the bar values via the scope names above).
+  // Same period gate as the per-bar counts: "all N people represented" must
+  // describe the compared period's roster, or the sentence contradicts the
+  // scope chip whenever an older window is selected (2026-08-04).
   var seen = {};
   rows.forEach(function (r) {
     MODEL.people.forEach(function (p) {
-      if (!p.attribOnly && passesFilters_(p, STATE.compare) &&
+      if (!p.attribOnly && existsIn_(p, head.isos) && passesFilters_(p, STATE.compare) &&
           dimMatch_(p, STATE.compare, r.key)) seen[p.name] = 1;
     });
   });
   var shown = Object.keys(seen).length;
   var inScope = MODEL.people.filter(function (p) {
-    return !p.attribOnly && passesFilters_(p, STATE.compare);
+    return !p.attribOnly && existsIn_(p, head.isos) && passesFilters_(p, STATE.compare);
   }).length;
   var untaggedRow = rows.filter(function (r) { return isUntagged_(r.key); })[0];
   var overlaps = rows.reduce(function (t, r) { return t + r.n; }, 0) > shown;
@@ -2787,6 +3005,9 @@ function personExceptions_(p) {
   // On leave = no availability expected: zero-tracked / under-planned /
   // overloaded flags would all misread the absence as a delivery problem.
   if (p.onLeave) return [];
+  // Interns carry no triage flags — "zero-tracked" or "under-planned" on
+  // someone who is here to learn reads as a performance verdict it isn't.
+  if (p.isIntern) return [];
   var ex = [];
   var hi = MODEL.meta.headlineIso;
   var w = p.weeks[hi];
@@ -2866,7 +3087,6 @@ function toggleFlag_(flag) {
 function barHtml_(pName, iso, w, status) {
   if (!w || w.cap <= 0) return '<span class="cellSub">no schedule</span>';
   var cap = w.cap;
-  var ooo = Math.min(cap, w.pto + w.hol);
   var isFuture = status === "plan";
   // Segments come straight from the payload's ratio split, which already sums to
   // tracked. The old bar derived non-billable as (tracked − NS billable), which
@@ -2874,10 +3094,12 @@ function barHtml_(pName, iso, w, status) {
   // unclassified hours into "non-billable work" (audit 2026-08-03).
   // Unclassified = tracked hours with no NS signal: shown as its own hatched
   // segment so they never read as either billable or non-billable.
+  // No OOO segment: absence is not modelled (2026-08-04) — time off someone
+  // tracked is already inside the non-billable segment.
   var billable = isFuture ? 0 : Math.min(w.billable, cap);
   var nonBill = isFuture ? 0 : Math.min(w.nonBillable, Math.max(0, cap - billable));
   var unclass = isFuture ? 0 : Math.min(unclassifiedH_(w), Math.max(0, cap - billable - nonBill));
-  var idle = Math.max(0, cap - billable - nonBill - unclass - ooo);
+  var idle = Math.max(0, cap - billable - nonBill - unclass);
   function pc(h) { return (h / cap * 100).toFixed(1) + "%"; }
   var planVal = w.effPlanned !== undefined ? w.effPlanned : w.planned;
   var plan = clampPct_(planVal, cap);
@@ -2895,7 +3117,6 @@ function barHtml_(pName, iso, w, status) {
       '<div class="sU" style="width:' + pc(unclass) + '"' +
         (unclass > 0 ? ' title="' + r1_(unclass) + 'h tracked with no NetSuite classification — neither billable nor non-billable"' : "") + '></div>' +
       '<div class="sI" style="width:' + pc(idle) + '"></div>' +
-      '<div class="sO" style="width:' + pc(ooo) + '"></div>' +
     '</div>' +
     (trackedOver ? '<span class="warnFlag" title="tracked ' +
       Math.round(w.tracked / cap * 100) + '% of capacity">⚠</span>' : "") +
@@ -2917,7 +3138,7 @@ function renderGrid_() {
     ? 'Cells show <b>planned hours</b> per ' + unit + '.'
     : (STATE.focus === "billable"
         ? 'Cells show <b>billable hours</b> per ' + unit + ' — ranked most billable first.'
-        : 'Cells show <b>non-billable hours</b> per ' + unit + ' (real project work — PTO/holidays live in the Time off Report, never in this bucket) — ranked most non-billable first.') +
+        : 'Cells show <b>non-billable hours</b> per ' + unit + ' (real project work plus any tracked time off, which is non-billable by rule) — ranked most non-billable first.') +
       ' <span title="Tempo tracked hours apportioned by the NetSuite billable mix — billable + non-billable + unclassified always equals tracked. Non-billable time still includes real contribution (internal projects, presales, enablement) — use this as a conversation starter, not a verdict.">ⓘ</span>';
   // Triage first (director feedback: "who needs me this week", not a roster):
   // exceptions computed for everyone, worst first in the default Plan focus.
@@ -2991,17 +3212,32 @@ function renderGrid_() {
     focusLgd_("billable", "var(--seg-bill)", "billable",
       "Tracked hours on the billable side of the NetSuite mix.") +
     focusLgd_("nonbill", "var(--seg-nonbill)", "non-billable",
-      "Real project work on the non-billable side of the NetSuite mix — internal projects, presales, enablement. PTO and holidays are never in here.") +
+      "The non-billable side of the NetSuite mix — internal projects, presales, enablement — plus any time off tracked in Tempo (non-billable by rule).") +
     '<span class="lgd" title="Tracked in Tempo but with no NetSuite billable/non-billable signal for that week — real work of unknown kind, counted in neither bucket and excluded from both sides of the billable rate"><i style="background:repeating-linear-gradient(45deg,var(--seg-nonbill),var(--seg-nonbill) 3px,transparent 3px,transparent 6px)"></i>unclassified</span>' +
-    '<span class="lgd" title="Available hours with nothing tracked against them"><i style="background:var(--seg-idle);outline:1px solid var(--border)"></i>idle capacity</span>' +
-    '<span class="lgd" title="PTO and public holidays — capacity removed, never counted as non-delivery"><i style="background:repeating-linear-gradient(45deg,var(--seg-ooo),var(--seg-ooo) 3px,transparent 3px,transparent 6px)"></i>OOO (PTO/holiday)</span>' +
+    '<span class="lgd" title="Scheduled hours with nothing tracked against them"><i style="background:var(--seg-idle);outline:1px solid var(--border)"></i>idle capacity</span>' +
     focusLgd_("plan", "var(--royal)", "▼ planned",
-      "Planned hours, capped at actual net availability.") +
+      "Planned hours, capped at scheduled capacity.") +
     '<span class="lgd" title="Tracked hours exceeded capacity in that period — real overtime">⚠ tracked over capacity</span></div>';
+  // Cell-tint key (user request 2026-08-04: readers learn colours from
+  // legends). Only rendered when tints can actually paint — tintClass_ returns
+  // nothing without a live NetSuite feed, and a key describing colours that
+  // never appear would send readers hunting for them. Thresholds come from the
+  // model, not re-typed here, so a config change can't strand the caption.
+  var tt = MODEL.meta.thresholds || { green: 70, amber: 50 };
+  var tintKey = nsLive_()
+    ? '<div class="cellSub" style="margin-bottom:6px">Cell colour = billable share of available hours: ' +
+      keySwatch_("rgba(31,138,87,.45)", "green ≥ " + tt.green + "%") + " · " +
+      keySwatch_("rgba(180,83,9,.45)", "amber ≥ " + tt.amber + "%") + " · " +
+      keySwatch_("rgba(194,65,12,.5)", "red < " + tt.amber + "%") +
+      ' · no colour = a future ' + unit + ', on leave, an intern (🎓), or no billable signal ' +
+      '<span title="Person-weeks with no NetSuite billable/non-billable classification get no tint rather than a red one — absent classification is not a low billable rate. The current ' +
+      unit + ' is pro-rated to elapsed working time before grading.">ⓘ</span></div>'
+    : "";
   var html = attnHtml +
     '<div class="cellSub" style="margin-bottom:6px">' + focusLegend + ' ' +
     'Click a column header for workload bars · a cell for that ' + unit + '\'s detail · a person\'s name for their full story.' +
     (STATE.period !== "week" ? ' ◐ = period truncated by the data window.' : '') + '</div>' +
+    tintKey +
     legendHtml +
     '<div class="gwrap"><table class="grid"><tr><th style="text-align:left">Person</th>';
   periods.forEach(function (pr) {
@@ -3028,12 +3264,17 @@ function renderGrid_() {
       '’s full-window story">' + esc_(p.name) +
       (p.isManager ? ' <span title="Manager (' + esc_(p.jobTitle) +
         ') — managers often plan without tracking much; use the Role lens to split IC vs Mgr">👔</span>' : "") +
+      (p.isIntern ? ' <span title="Intern (job-title level I1) — shown on the roster with their hours, but excluded from every published rate, triage flag and headroom ranking: they are here to learn, and a metric must never read as a verdict on an intern">🎓 intern</span>' : "") +
       (p.onLeave ? ' <span title="' + esc_(p.leaveStatus || "On leave") +
         ' (roster Employee Status) — no availability expected while on leave">🏖</span>' : "") +
       exHtml + focusBadge +
       (p.newHire ? ' <span title="New hire — joined ' + esc_(p.hired || "recently") +
         ', ramping up (~first 3 months). Weeks before hiring are excluded from every metric.">🌱</span>' : "") +
       (p.regionSource === "roster" ? ' <span class="cellSub" title="region from roster location (no region-tagged work)">◦</span>' : "") +
+      // Job title on its own muted line (user request 2026-08-04) — the grade
+      // code is stripped for reading, the full roster string rides the tooltip.
+      (p.jobTitle ? '<div class="cellSub" title="' + esc_(p.jobTitle) + '">' +
+        esc_(trunc_(jobTitleDisp_(p.jobTitle), 30)) + "</div>" : "") +
       "</td>";
     periods.forEach(function (pr) {
       var w = aggWeeks_(p, pr.isos);
@@ -3041,23 +3282,24 @@ function renderGrid_() {
       // show the 🌱 marker, never "—" or 0 — a blank zero reads as non-delivery
       // and creates the wrong impression about a new Rocketeer/crew member.
       var preHire = !w && p.hired;
-      var absent = p.onLeave || fullyOoo_(w); // 🏖 beats numbers: absence ≠ non-delivery
+      var absent = p.onLeave; // 🏖 beats numbers: leave status ≠ non-delivery
       if (STATE.expandedWeeks[pr.key]) {
         html += '<td class="' + pr.status + '">' +
           (preHire ? preHireMark_(p)
-            : (absent ? absenceMark_(p, w || { pto: 0, hol: 0 })
+            : (absent ? absenceMark_(p)
                       : barHtml_(p.name, pr.key, w, pr.status))) + "</td>";
       } else {
         // Cell metric follows the Focus lens. Value grammar (director feedback):
         // "—" = unknown or not-yet-applicable (no data, future billable/non-bill,
         // future period with no plan yet); a number = a measured value; 0 only
         // ever appears for completed/current periods; 🌱 = predates the hire;
-        // 🏖 = on leave / whole period on PTO-holiday.
+        // 🏖 = on leave (roster Employee Status).
         var v = focusVal_(w);
         var noData = !w || (pr.status === "plan" && (STATE.focus !== "plan" || !v));
         // On leave: no RAG tint and no hour tooltip — hours are hidden for the
-        // whole row, the cell only says why.
-        html += '<td class="' + pr.status + " " + (p.onLeave ? "" : tintClass_(w, pr.status, pr._frac)) +
+        // whole row, the cell only says why. Interns keep their hours but get
+        // no tint either — a red cell is a verdict, and interns don't get one.
+        html += '<td class="' + pr.status + " " + (p.onLeave || p.isIntern ? "" : tintClass_(w, pr.status, pr._frac)) +
           '" data-p="' + encodeURIComponent(p.name) + '" data-w="' + pr.key +
           '" onclick="toggleDetail_(this)" style="cursor:pointer" title="' +
           (p.onLeave ? esc_(p.leaveStatus || "On leave") + " — hours hidden and excluded from utilization while on leave"
@@ -3126,16 +3368,14 @@ function detailCellHtml_(w, status, frac) {
   if (!w) return '<span class="cellSub">no data</span>';
   var isFuture = status === "plan";
   // Pro-rate the current period: mid-week always looks bad against a full-week
-  // denominator (director feedback — same fairness rule as PTO-adjusted pacing).
+  // denominator (director feedback — same fairness rule as elapsed-time pacing).
   var f = (status === "now" && frac !== undefined) ? Math.max(frac, 0) : 1;
   var proAvail = w.avail * f;
   // Billable util has its own denominator — the availability of NS-classified
   // weeks only. In a single week it equals proAvail when covered and 0 when not.
   var proAvailCov = (w.availCov || 0) * f;
-  var oooH = w.pto + w.hol;
-  // Effective planned = min(planned, AVAILABLE): Tempo repeats the weekly plan
-  // per project assignment, and PTO/holidays kill capacity — planning pairs
-  // with the actual net capacity, never the gross schedule.
+  // Effective planned = min(planned, capacity): Tempo repeats the weekly plan
+  // per project assignment, so an over-capacity plan is a data artifact.
   var effPlanned = w.effPlanned !== undefined ? w.effPlanned
     : (w.cap > 0 ? Math.min(w.planned, w.avail) : w.planned);
   var planCapped = w.planned > effPlanned;
@@ -3155,29 +3395,29 @@ function detailCellHtml_(w, status, frac) {
     '<div class="mstat"><b>' + headVal + '</b> <span class="cellSub">' + headLbl + '</span></div>' +
     (isFuture ? "" :
       '<div class="cellSub">tracked ' + r1_(w.tracked) + "h (" + pctStr_(w.tracked, proAvail) +
-        " of avail · " + pctStr_(w.tracked, effPlanned * f) + " of plan) · OOO " + r1_(oooH) +
-        "h (PTO " + r1_(w.pto) + " / Hol " + r1_(w.hol) + ")</div>") +
+        " of capacity · " + pctStr_(w.tracked, effPlanned * f) + " of plan)" +
+        ((w.trackedOff || 0) > 0.05 ? " · incl. time off " + r1_(w.trackedOff) + "h (non-billable)" : "") +
+        "</div>") +
     (f < 1 ? '<div class="cellSub">⏳ pro-rated — ' + Math.round(f * 100) + "% of period elapsed</div>" : "") +
     (w.capEst ? '<div class="cellSub">⚠ capacity estimated</div>' : "") +
-    (planCapped ? '<div class="cellSub" title="Tempo repeats plans per project assignment, and PTO/holidays reduce capacity — ratios use the plan capped at ACTUAL availability">ⓘ plan ' +
-      r1_(w.planned) + "h → capped " + r1_(effPlanned) + "h (net capacity)</div>" : "") +
+    (planCapped ? '<div class="cellSub" title="Tempo repeats plans per project assignment — ratios use the plan capped at scheduled capacity">ⓘ plan ' +
+      r1_(w.planned) + "h → capped " + r1_(effPlanned) + "h (capacity)</div>" : "") +
     // Feed reconciliation (audit 2026-08-03). NetSuite and Tempo are independent,
     // so their totals disagree. Tempo decides HOW MANY hours; NS only decides the
     // billable/non-billable MIX. That means the NS mix is extrapolated across the
     // whole tracked total, which is the intended model but IS an assumption — so
     // whenever the two totals differ materially the drill-down says so out loud
     // instead of letting the split look directly measured.
-    (!isFuture && nsRawTot_(w) > 0 && Math.abs(nsRawTot_(w) - w.tracked) > 0.5
-      ? '<div class="cellSub" title="NetSuite classifies the billable/non-billable MIX; Tempo is the source of truth for how many hours were worked. The mix is applied to the tracked total, so these hours are classified by proportion, not measured one-for-one. A large difference between the two totals means the extrapolation is carrying more weight — worth a look at the NetSuite export for this person-week.">ⓘ NS totals ' +
-        r1_(nsRawTot_(w)) + "h vs tracked " + r1_(w.tracked) + "h — mix (" +
+    (!isFuture && nsRawTot_(w) > 0 && Math.abs(nsRawTot_(w) - (w.tracked - (w.trackedOff || 0))) > 0.5
+      ? '<div class="cellSub" title="NetSuite classifies the billable/non-billable MIX; Tempo is the source of truth for how many hours were worked. The mix is applied to the project-tracked total (time off is non-billable by rule and never in this comparison), so these hours are classified by proportion, not measured one-for-one. A large difference between the two totals means the extrapolation is carrying more weight — worth a look at the NetSuite export for this person-week.">ⓘ NS totals ' +
+        r1_(nsRawTot_(w)) + "h vs project-tracked " + r1_(w.tracked - (w.trackedOff || 0)) + "h — mix (" +
         Math.round(nsShare_(w) * 100) + "% billable) applied by proportion</div>"
       : "") +
     (!isFuture && unclassifiedH_(w) > 0.5
       ? '<div class="cellSub" title="These tracked hours fall in weeks with no NetSuite billable/non-billable signal at all, so they are counted in neither bucket and are excluded from the billable-utilization denominator rather than reported as 0% billable.">ⓘ ' +
         r1_(unclassifiedH_(w)) + "h tracked unclassified (no NS signal)</div>"
       : "") +
-    '<div class="blbl">CAP ' + r1_(w.cap) + "h − OOO = " + r1_(w.avail) + "h avail</div>" +
-    '<div class="btrack" style="max-width:none"><div class="ooo" style="width:' + pw(oooH) + '%"></div></div>' +
+    '<div class="blbl">CAPACITY ' + r1_(w.cap) + "h (gross — no absence deduction)</div>" +
     '<div class="blbl">PLANNED ' + r1_(effPlanned) + "h</div>" +
     '<div class="bplanned" style="max-width:none;width:' + pw(effPlanned) + '%"></div>' +
     (isFuture ? "" :
@@ -3210,20 +3450,18 @@ function personDetailRows_(p, periods) {
     " · " + esc_(famName_(p)) +
     (p.teams.length ? "<br>" + esc_(p.teams.join(", ")) : "") +
     (p.newHire ? "<br>🌱 new hire — joined " + esc_(p.hired || "recently") : "") +
+    (p.isIntern ? "<br>🎓 intern — hours shown, excluded from every published rate" : "") +
     (p.onLeave ? "<br>🏖 " + esc_(p.leaveStatus || "on leave") + " — hours hidden, excluded from utilization" : "") +
     "</span></td>";
   periods.forEach(function (pr) {
     if (STATE.openDetail[key + pr.key]) {
       var agg = aggWeeks_(p, pr.isos);
       // Long leave: the expandable stays (context + why), but every hour
-      // metric is blanked — leave is an absence, not a set of numbers.
+      // metric is blanked — leave is an employment status, not a set of numbers.
       var card = !agg && p.hired ? preHireMark_(p)
         : p.onLeave
-          ? absenceMark_(p, agg || { pto: 0, hol: 0 })
-          : fullyOoo_(agg)
-            ? absenceMark_(p, agg || { pto: 0, hol: 0 }) +
-              (agg ? detailCellHtml_(agg, pr.status, pr._frac) : "")
-            : detailCellHtml_(agg, pr.status, pr._frac);
+          ? absenceMark_(p)
+          : detailCellHtml_(agg, pr.status, pr._frac);
       html += '<td class="dcell">' + card + "</td>";
     } else {
       html += '<td class="dcell"></td>';
@@ -3315,7 +3553,7 @@ function setMetric_(id) {
 //   · periods before someone's hire date (they did not exist yet)
 //   · new hires inside the ramp window — flagged, and kept OUT of the total,
 //     because "ramping" is the explanation and the total is a call to act
-//   · anyone with no availability in the period (fully OOO)
+//   · anyone with no scheduled capacity in the period
 // Whichever denominator the metric uses is the one used here, so the column can
 // be reconciled against the KPI card rather than being a second opinion.
 
@@ -3353,10 +3591,13 @@ function oppRows_(head, trendPer, norm) {
   var live = nsLive_();
   return filteredPeople_().map(function (p) {
     if (p.onLeave) return null;
+    // No headroom row for an intern — ranking them by "hours that could be
+    // recovered" is exactly the punishment this flag exists to prevent.
+    if (p.isIntern) return null;
     var w = aggWeeks_(p, whatIfIsos_(p, head.isos));
     if (!w) return null;                       // pre-hire: the period predates them
     var den = live ? (w.availCov || 0) : w.avail;
-    if (den <= 0) return null;                 // fully OOO, or nothing NS classified
+    if (den <= 0) return null;                 // no capacity, or nothing NS classified
     var num = live ? w.billable : w.tracked;
     var rate = num / den * 100;
     var gap = norm === null ? null : rate - norm;
@@ -3445,7 +3686,9 @@ function renderOpportunity_() {
     return "<tr><td class=\"who\">" + esc_(r.name) +
       (r.ramping ? ' <span title="new hire, ramping — shown for context but excluded from the recoverable total">🌱</span>' : "") +
       (r.p.isManager ? ' <span title="Manager — plans without tracking much is normal here; use the Role lens">👔</span>' : "") +
-      flagIcons + "</td>" +
+      flagIcons +
+      (r.p.jobTitle ? '<div class="cellSub" title="' + esc_(r.p.jobTitle) + '">' +
+        esc_(trunc_(jobTitleDisp_(r.p.jobTitle), 26)) + "</div>" : "") + "</td>" +
       '<td class="where">' + esc_(r.region) +
         (r.teams && r.teams.length ? " · " + esc_(trunc_(r.teams.join(", "), 26)) : "") + "</td>" +
       "<td>" + Math.round(r.rate) + '%<span class="cellSub"> of ' + r1_(r.den) + "h</span></td>" +
@@ -3489,9 +3732,17 @@ function renderOpportunity_() {
           ? esc_(trendPer[0].label) + " → " + esc_(trendPer[trendPer.length - 1].label)
           : "Trend") + "</th></tr>" +
       body + "</table></div>" +
-    '<div class="cellSub" style="margin-top:8px">People on long leave, periods before ' +
-      "someone's hire date, and anyone fully out on PTO are absent from this table by " +
-      "construction — an absence is not headroom. Open the 👥 People tab for the full " +
+    // Gap-colour key (user request 2026-08-04). Only when a norm exists —
+    // without one the Gap column prints "—" and there is nothing to explain.
+    (norm !== null
+      ? '<div class="cellSub" style="margin-top:8px">Gap colour: ' +
+        keySwatch_("var(--pos)", "green = at or above the " + Math.round(norm) + "% cohort operating rate") + " · " +
+        keySwatch_("var(--amber)", "amber = under 10 pts below it") + " · " +
+        keySwatch_("var(--warn)", "red = 10+ pts below") + "</div>"
+      : "") +
+    '<div class="cellSub" style="margin-top:8px">People on long leave (roster Employee ' +
+      "Status) and periods before someone's hire date are absent from this table by " +
+      "construction — neither is headroom. Open the 👥 People tab for the full " +
       "roster with per-period drill-downs.</div>";
 }
 
@@ -3508,11 +3759,11 @@ function saveOppCsv_() {
   var col = OPP_COLS[STATE.oppSort] || OPP_COLS.opp;
   rows.sort(col.sort);
   if (!STATE.oppDesc) rows.reverse();
-  var out = [["Person", "Region", "Teams", "Ramping", "Period",
+  var out = [["Person", "Job title", "Region", "Teams", "Ramping", "Period",
               (live ? "Billable" : "Tracked") + " h", "Available h", "Their rate %",
               "Cohort operating rate %", "Gap pts", "Opportunity h", "Flags"]];
   rows.forEach(function (r) {
-    out.push([r.name, r.region, (r.teams || []).join(" | "), r.ramping ? "yes" : "",
+    out.push([r.name, r.p.jobTitle || "", r.region, (r.teams || []).join(" | "), r.ramping ? "yes" : "",
       head.label, r1_(r.num), r1_(r.den), Math.round(r.rate),
       norm === null ? "" : Math.round(norm),
       r.gap === null ? "" : Math.round(r.gap), r1_(r.opp),
@@ -3526,9 +3777,10 @@ function saveOppCsv_() {
 //
 // The raw attribution counts used to sit on the KPI cards in small grey type —
 // "404 of 615 resolved had a due date" — which framed an organisational work
-// queue as a caveat on a number. They live here instead, each with an owner, a
-// prerequisite ID and a committed week, because closing these gaps is an
-// instruction to the delivery org, not a technical chore for analytics.
+// queue as a caveat on a number. They live here instead: what's missing, how
+// much, and what it blocks. Owner / prereq-ID / target-week columns were all
+// removed (2026-08-03 / 2026-08-04) — accountability and scheduling live in
+// the requirements doc and the Brief, not in a widely-read table.
 //
 // Deliberately UNFILTERED: hygiene is a whole-population question. A region
 // slice that looks well-tagged doesn't make the feed publishable.
@@ -3539,6 +3791,30 @@ function onTimeScopeWord_() {
   return { dictionary: "epics / milestones / client commitments",
            epic: "resolved epics",
            all: "resolved items (all types)" }[MODEL.meta.onTimeScope] || "resolved delivery items";
+}
+
+/**
+ * States the attrition exclusion, on the one view where someone might otherwise
+ * hunt for the missing records.
+ *
+ * Placed at the TOP of Data Hygiene and styled as information, never as a gap
+ * row: this is a scoping decision ("attrition cannot be acted on, active people
+ * can be coached"), not something anyone is meant to fix. Put it in the gaps
+ * table and the next reader opens a ticket to chase leavers' due dates.
+ *
+ * Silent when nothing was excluded — a permanent "0 excluded" line is noise.
+ */
+function leaverNoteHtml_() {
+  var lx = (MODEL.meta || {}).leaverExcluded;
+  if (!lx || !lx.issues) return "";
+  return '<div class="cellSub" style="margin:8px 0" title="Former employees are ' +
+    "identified from the roster (an inactive row with no active row anywhere, so a rehire is " +
+    "never treated as gone). Their issues leave BOTH sides of every rate, and they are not " +
+    "counted as unattributed — an unattributed issue is a gap somebody owns, this is a " +
+    'scoping decision.">👥 <b>' + lx.issues + "</b> issue" + (lx.issues === 1 ? "" : "s") +
+    " by former employees excluded from every figure on this dashboard" +
+    (lx.epics ? " (" + lx.epics + " of them epics)" : "") +
+    " — attrition cannot be coached, so it is out of scope rather than a gap to close. ⓘ</div>";
 }
 
 /** Sums the server's per-week attribution counts over a set of ISO weeks. */
@@ -3571,11 +3847,10 @@ function hygienePeopleFor_(isos) {
 /** One gap row: coloured against its gate, never against 100% — a 90% gate met
     at 91% is green, and pretending otherwise trains people to ignore the view.
 
-    No Owner column (user decision 2026-08-03). The prerequisite ID still points
-    at who owns each gap in the requirements doc, where the accountability is
-    tracked and reviewed; a standing table of names against failures in a
-    widely-read view reads as a blame board rather than a work queue, which is
-    not what gets tagging fixed. */
+    No Owner column (user decision 2026-08-03) and no Prereq / Target-week
+    columns either (user decision 2026-08-04) — accountability and scheduling
+    live in the requirements doc and the Brief; this table is the work queue:
+    what's missing, how much, and what it blocks. */
 function hygieneRow_(g) {
   var pct = g.value === null ? null : Math.round(g.value * 100);
   var gate = Math.round(g.gate * 100);
@@ -3587,8 +3862,6 @@ function hygieneRow_(g) {
       '<div class="hbar"><i class="' + rag + '" style="width:' + (pct === null ? 0 : pct) + '%"></i></div>' +
       (g.detail ? '<div class="cellSub">' + esc_(g.detail) + "</div>" : "") + "</td>" +
     "<td>" + gate + "%</td>" +
-    "<td>" + esc_(g.prereq || "—") + "</td>" +
-    "<td>" + esc_(g.week || "—") + "</td>" +
     "<td>" + esc_(g.blocks) + "</td></tr>";
 }
 
@@ -3639,7 +3912,7 @@ function profileFor_(h, pp) {
 }
 
 /**
- * ── 📄 CEO BRIEF (spec 2026-08-03) ──────────────────────────────────────────
+ * ── 📄 BRIEF (spec 2026-08-03; renamed from "CEO Brief", user 2026-08-04) ───
  * Deterministic by design: same data in, same brief out, so a quoted line can
  * always be reproduced. No API calls, no randomness — a Gemini rewrite was
  * considered and rejected (wording that changes between loads is a liability
@@ -3792,7 +4065,7 @@ function briefHtml_(brief, scope) {
     }).join("") + "</ul>";
   }
   return '<div class="brief">' +
-    '<div style="display:flex;align-items:center;gap:8px"><h4 style="flex:1;margin:0">📄 CEO Brief' +
+    '<div style="display:flex;align-items:center;gap:8px"><h4 style="flex:1;margin:0">📄 Brief' +
     ' <span class="cellSub" title="Derived by fixed rules from the measured profile — same data, same brief, reproducible when quoted.">deterministic ⓘ</span></h4>' +
     '<button class="btn" onclick="copyBrief_()">📋 Copy</button>' +
     '<span id="briefMsg" class="cellSub"></span></div>' +
@@ -3807,7 +4080,7 @@ function briefText_(brief, scope) {
   function sec(title, items) {
     return "## " + title + "\n" + items.map(function (t) { return "- " + t; }).join("\n");
   }
-  return "# Delivery Health — CEO Brief\n\n" + (scope ? scope + "\n\n" : "") +
+  return "# Delivery Health — Brief\n\n" + (scope ? scope + "\n\n" : "") +
     sec("Top 3 Facts", brief.facts) + "\n\n" +
     sec("Top 3 Highlights", brief.highlights) + "\n\n" + sec("Top 3 Notes", brief.notes) +
     "\n\n" + sec("Top Concerns", brief.concerns) + "\n";
@@ -3868,6 +4141,9 @@ function utilBarsHtml_(u) {
 function profilePanelHtml_(h, pp, winLabel) {
   if (MODEL.viewerRole !== "admin") return "";
   var on = whatIfOn_();
+  // No headline stat row (user 2026-08-04, round 2: "remove those big top
+  // numbers"). The good-of-total read lives in each funnel's final
+  // "…measurable" row — the same figures, in the context that explains them.
   var body = (h.res > 0 || pp.weeks > 0)
     ? (function () {
         var pf = profileFor_(h, pp);
@@ -3879,8 +4155,9 @@ function profilePanelHtml_(h, pp, winLabel) {
     : '<div class="emptyState">no complete-period data in this window</div>';
   return '<div class="profPanel"><h4>🔬 Data Profile · ' + esc_(winLabel) + "</h4>" +
     '<p class="cellSub">Where records fall out of evaluability, per metric — the drop at each ' +
-    "stage is the work queue. Region and Team are excluded from this exercise (unpopulated in " +
-    "Jira, PR-01 — tracked in the gaps table below).</p>" + body +
+    "stage is the work queue, and each funnel's final row is the share that is good data to use. " +
+    "Region and Team are not funnelled here — they gate no published metric " +
+    "today, so their coverage is tracked in the gaps table below instead.</p>" + body +
     '<div style="margin:10px 0"><button class="btn' + (on ? " on" : "") +
       '" onclick="toggleWhatIf_()">' +
       (on ? "Exit WHAT-IF" : "🧪 WHAT-IF: valid records only") + "</button> " +
@@ -3975,25 +4252,7 @@ function renderHygiene_() {
   var head = done[idx] || { label: "—", isos: [] };
   var isos = head.isos;
   var winLabel = head.label;
-  var trendPer = done.slice(Math.max(0, idx - 5), idx + 1);
   var h = hygieneFor_(isos), pp = hygienePeopleFor_(isos);
-  var tg = (MODEL.meta.targets || {}).hygiene || { green: 90, amber: 75 };
-  var full = h.res > 0 ? h.resFull / h.res * 100 : null;
-  var ready = h.res > 0 ? h.resReady / h.res * 100 : null;
-  var trend = trendPer.map(function (p) {
-    var x = hygieneFor_(p.isos);
-    return x.res > 0 ? x.resFull / x.res * 100 : null;
-  });
-  var rag = full === null ? "" : (full >= tg.green ? "g" : (full >= tg.amber ? "a" : "r"));
-
-  // Which component is holding the composite down. With Region unpopulated
-  // org-wide this is permanently "Region", and saying so is the difference
-  // between a 0% that looks like total failure and a 0% with one named cause.
-  var comps = [
-    { name: "due date", v: h.res > 0 ? h.resDue / h.res : 1 },
-    { name: "roster assignee", v: h.res > 0 ? h.resAttr / h.res : 1 },
-    { name: "region", v: h.res > 0 ? h.resRegion / h.res : 1 },
-  ].sort(function (a, b) { return a.v - b.v; });
 
   // Window banner. The header's Week/Month/Quarter chips choose the UNIT and
   // the period picker beside them chooses the WINDOW — one selection drives
@@ -4013,7 +4272,6 @@ function renderHygiene_() {
     { name: "Due date on the work On-Time measures",
       value: h.res > 0 ? h.resDue / h.res : null, gate: 0.80,
       detail: h.resDue + " of " + h.res + " " + onTimeScopeWord_(),
-      prereq: "PR-08 / PR-02", week: "2026.W34",
       blocks: "On-Time Delivery — the metric cannot publish without it",
       note: "Measured against the mutable Jira Due Date — a baselined committed date does not exist yet. " +
             "Under the Metrics Dictionary scope this counts epics and milestones, which carry due dates far " +
@@ -4025,13 +4283,11 @@ function renderHygiene_() {
     { name: "Resolved work carries a Jira assignee",
       value: h.res > 0 ? h.resAssigned / h.res : null, gate: 0.95,
       detail: (h.res - h.resAssigned) + " of " + h.res + " have no assignee at all",
-      prereq: "PR-08", week: "2026.W35",
       blocks: "all four delivery cards",
       note: "This one is a Jira discipline gap — an issue closed with nobody on it." },
     { name: "…and that assignee resolves to a roster person",
       value: h.resAssigned > 0 ? h.resAttr / h.resAssigned : null, gate: 0.95,
       detail: (h.resAssigned - h.resAttr) + " of " + h.resAssigned + " named assignees do not match the roster",
-      prereq: "— (name normalisation, not Jira)", week: "2026.W35",
       blocks: "all four delivery cards",
       note: "NOT a Jira problem: the person is named on the issue, but the display name does not join to " +
             "the roster (leavers, contractors, display-name changes, alias gaps). Fixed in the name index, " +
@@ -4039,46 +4295,38 @@ function renderHygiene_() {
     { name: "Region tagged on delivery work",
       value: h.res > 0 ? h.resRegion / h.res : null, gate: 1.00,
       detail: (h.res - h.resRegion) + " of " + h.res + " land in Unassigned",
-      prereq: "PR-01", week: "2026.W34",
       blocks: "Region × Team comparison — the executive layer's whole premise",
       note: "Blank ≠ Other. Unassigned is a tagging gap tracked under PR-01; Other is a value we haven't mapped yet." },
     { name: "Team tagged on delivery work",
       value: h.res > 0 ? h.resTeam / h.res : null, gate: 1.00,
       detail: (h.res - h.resTeam) + " of " + h.res + " untagged",
-      prereq: "PR-01", week: "2026.W34",
       blocks: "Region × Team comparison",
       note: "Open decision #1: is the Jira Team picker the same vocabulary as Tempo team names?" },
     { name: "Estimate on closed epics",
       value: h.epics > 0 ? h.epicsEst / h.epics : null, gate: 0.70,
       detail: h.epicsEst + " of " + h.epics + " closed epics estimated",
-      prereq: "PR-03", week: "2026.W34",
       blocks: "Forecast Accuracy",
       note: "The estimate is mutable — one revised mid-flight scores as accurate." },
     { name: "Logged time on estimated epics",
       value: h.epicsEst > 0 ? h.epicsTime / h.epicsEst : null, gate: 0.70,
       detail: (h.epicsEst - h.epicsTime) + " estimated epics carry no worklog at all",
-      prereq: "—", week: "2026.W35",
       blocks: "Forecast Accuracy",
       note: "Counted toward coverage only — a hygiene failure must not score as a forecasting miss." },
     { name: "Billable / non-billable classification on tracked hours",
       value: pp.tracked > 0 ? pp.trackedCov / pp.tracked : null, gate: 0.90,
       detail: r1_(pp.tracked - pp.trackedCov) + "h of " + r1_(pp.tracked) + "h unclassified",
-      prereq: "PR-04", week: "2026.W35",
       blocks: "Billable Utilization",
       note: "Unclassified hours leave BOTH sides of the rate — they are never counted as 0% billable." },
     { name: "Capacity from the Tempo feed (not estimated)",
       value: pp.weeks > 0 ? (pp.weeks - pp.capEst) / pp.weeks : null, gate: 0.95,
       detail: pp.capEst + " of " + pp.weeks + " person-weeks fell back to a default",
-      prereq: "PR-05", week: "2026.W34",
       blocks: "the utilization denominator" },
     { name: "Reopen events + CSAT feed",
       value: null, gate: 1.00,
-      prereq: "PR-09", week: "2026.W37",
       blocks: "Quality / Rework — the tile stays suppressed until both are live",
       note: "The Jira changelog is not exported, no Rework link type is defined, and the CSAT API is not connected." },
     { name: "Engagement key + rate card (Jira ↔ NetSuite ↔ contract)",
       value: null, gate: 0.80,
-      prereq: "PR-06 / PR-07", week: "2026.W35",
       blocks: "every dollar translation — no cost rate means no margin",
       note: "Open decision #3: cost rate basis — individual actual, role blended, or region blended?" },
   ];
@@ -4088,39 +4336,325 @@ function renderHygiene_() {
     '<h3 style="flex:1">🧪 Data Hygiene</h3></div>' +
     '<p class="cellSub">Whole-population view — the dashboard filters deliberately do not apply. ' +
     "A well-tagged region does not make the feed publishable.</p>" + nav +
+    leaverNoteHtml_() +
     profilePanelHtml_(h, pp, winLabel) +
-    '<div class="tiles"><div class="tile"><div class="lbl">Delivery work fully attributed · ' +
-      esc_(winLabel) + '</div><div class="big ' + rag + '">' +
-      (full === null ? "—" : Math.round(full) + "%") + "</div>" +
-      '<div class="cmp">' + h.resFull + " of " + h.res +
-      ' resolved items carry a due date, a roster assignee and a region</div>' +
-      // Name the binding constraint. A composite sitting at 0% because ONE of
-      // its three terms is org-wide empty otherwise reads as "everything is
-      // broken", and the two components that are moving become invisible.
-      (comps[0].v < 0.5
-        ? '<div class="cmp"><b>Held down by ' + esc_(comps[0].name) + "</b> at " +
-          Math.round(comps[0].v * 100) + "% — the composite cannot rise above it</div>"
-        : "") +
-      '<div class="cmp"><span title="A due date and an assignee who joins the roster: what the metrics published TODAY actually need. Region is excluded because it is unpopulated org-wide (PR-01), which would otherwise pin the headline at 0% however much the other two improve.">' +
-        "Excluding region: <b>" + (ready === null ? "—" : Math.round(ready) + "%</b> (" +
-        h.resReady + " of " + h.res + ") are measurable today") + "</span></div>" +
-      '<div class="cmp">target ≥' + tg.green + "% — closing this is what makes the other four quotable</div>" +
-      sparkHtml_(trend, { labels: trendPer.map(function (p) { return p.label; }) }) +
-      '<div class="cellSub">' + (trendPer.length > 1
-        ? "trend: " + esc_(trendPer[0].label) + " → " + esc_(trendPer[trendPer.length - 1].label)
-        : "not enough complete " + unit + "s for a trend") + "</div></div></div>" +
+    // "Delivery work fully attributed" KPI tile DELETED (user decision
+    // 2026-08-04): the 🔬 Data Profile headline above already states good
+    // records of total, and the composite (pinned by org-wide-empty Region,
+    // PR-01) mostly restated its own binding constraint. The gaps table below
+    // remains the per-component read.
+    // Coverage-colour key (user request 2026-08-04). "Its gate, never 100%"
+    // is the caption's whole job: a 90% gate met at 91% is green, and a reader
+    // grading rows against 100% would escalate rows that are already done.
+    '<div class="cellSub" style="margin:10px 0 4px">Coverage colour — each row is graded against its <b>own gate</b>, never against 100%: ' +
+    keySwatch_("var(--pos)", "✔ green = at or above the gate") + " · " +
+    keySwatch_("var(--amber)", "▲ amber = under 10 pts below it") + " · " +
+    keySwatch_("var(--warn)", "✖ red = 10+ pts below, or the feed is not connected") + "</div>" +
     '<div class="gwrap"><table class="hyg"><tr><th>Gap</th><th>Coverage</th><th>Gate</th>' +
-    "<th>Prereq</th><th>Target week</th><th>Blocks</th></tr>" +
+    "<th>Blocks</th></tr>" +
     gaps.map(hygieneRow_).join("") + "</table></div>" +
+    // Below the gaps table on purpose: that table is the metric owner's view
+    // ("is this publishable?"), this is the ticket owner's ("where do I go?").
+    typeMatrixHtml_(isos, winLabel) +
     gateEditorHtml_() +
     '<p class="cellSub">Every figure above covers <b>' + esc_(winLabel) + "</b>" +
       " — pick another period in the header to walk the history. " +
       "Gates come from the metric registry (v" +
       esc_((MODEL.meta.registry || {}).version || "—") + "). " +
       (MODEL.meta.suppressBelowGate === true
-        ? "A metric more than 10 points below its gate is suppressed rather than published (FR-2.2). "
-        : "A metric below its gate is published with a low-confidence chip rather than suppressed. ") +
-      "Prerequisites not confirmed by their target week escalate to the Services Director in that week's steering review.</p>";
+        ? "A metric more than 10 points below its gate is suppressed rather than published (FR-2.2)."
+        : "A metric below its gate is published with a low-confidence chip rather than suppressed.") + "</p>";
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🧬 FIELD FILL BY ISSUE TYPE (spec 2026-08-04-hygiene-by-issue-type-design.md)
+//
+// The gaps table above says HOW MUCH is missing, org-wide, pooled. This says
+// WHICH TYPE to go and fix — a different question with a different reader: the
+// gaps table belongs to whoever owns the metric, this belongs to whoever owns
+// the tickets. Hence all-roles, unlike the admin-only 🔬 Data Profile.
+//
+// Two populations behind one toggle, and OPEN is the default: a due date added
+// to an open ticket moves next quarter's number, one added to a closed ticket
+// is archaeology. Resolved explains today's cards; open is the work queue.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Column set, in display order. `gate` is null where the registry has no gate
+    for that field — those cells report fill without grading it. */
+var TYPE_FIELDS_ = [
+  { k: "due",      label: "Due date",   gateOf: "onTime",
+    feeds: "On-Time",  needs: "gatesOnTime" },
+  { k: "assigned", label: "Assignee",   gate: 0.95,
+    feeds: "all four cards", needs: null },
+  { k: "attr",     label: "→ roster",   gate: 0.95,
+    feeds: "all four cards", needs: null },
+  { k: "est",      label: "Estimate",   gateOf: "forecast",
+    feeds: "Forecast", needs: "gatesForecast" },
+  { k: "time",     label: "Logged",     gateOf: "forecast",
+    feeds: "Forecast", needs: "gatesForecast" },
+  // Region and Team READ near-0% until the exporter's multi-select fix ("Jira
+  // Backlog.js" v3.7.0, 2026-08-04) — the field was populated, the export was
+  // dropping it. They are still footnoted, because a uniform column reads as one
+  // field gap with one owner rather than as seven separate per-type failures, and
+  // the uniformity test below is computed from the data either way.
+  // The prereq ID is named; the PERSON is not. Same rule as the gaps table and
+  // the suppressed tiles (2026-08-03): accountability lives in the requirements
+  // doc, because a standing table of names against failures in a widely-read
+  // view reads as a blame board rather than a work queue.
+  { k: "region",   label: "Region",     gate: 1.00, feeds: "Region compare", needs: null, pr01: true },
+  { k: "team",     label: "Team",       gate: 1.00, feeds: "Team compare",   needs: null, pr01: true },
+];
+
+/** Gate for a field, from the registry when it owns one. Never re-typed here —
+    an admin gate override has to reach this table like it reaches the tiles. */
+function typeFieldGate_(f) {
+  if (f.gateOf) {
+    var m = (MODEL.meta.registry || {}).metrics || {};
+    return m[f.gateOf] ? m[f.gateOf].coverageGate : null;
+  }
+  return f.gate === undefined ? null : f.gate;
+}
+
+/** Does this field gate a PUBLISHED metric for this row's type? A Story's due
+    date does not, under dictionary scope — grading it red would send someone to
+    fix records that move no number. */
+function typeFieldLive_(f, row) {
+  if (!f.needs) return true;
+  return row[f.needs] === true;
+}
+
+/**
+ * Is this column IDENTICAL across every type? Then it carries no per-type
+ * information — which is the only thing this table exists to show.
+ *
+ * Region and Team read uniformly low (they were blank org-wide before the
+ * v3.7.0 exporter fix), so grading them paints two red cells on every single
+ * row and the genuine per-type findings drown in them.
+ * A uniform column is one org-wide gap with one owner, and it is rendered as
+ * one: muted, with the real percentage still on screen and the severity carried
+ * by the footnote instead of by colour.
+ *
+ * Computed from the DATA, not hardcoded, so the day PR-01 lands and Region
+ * starts varying by type, this column starts grading itself again with no code
+ * change — and if it varies from the first row, it was never muted at all.
+ */
+function typeColUniform_(f, rows) {
+  if (!f.pr01 || rows.length < 2) return false;
+  var first = null;
+  return rows.every(function (r) {
+    var pct = r.n > 0 ? Math.round((r[f.k] || 0) / r.n * 100) : null;
+    if (first === null) { first = pct; return true; }
+    return pct === first;
+  });
+}
+
+/** Rows for the active population, summed over the window (resolved) or taken
+    whole (open — a backlog has no history to walk). */
+function typeHygRows_(isos) {
+  var th = MODEL.typeHygiene || { resolved: [], open: [] };
+  if (STATE.typePop === "resolved") {
+    var by = {};
+    (th.resolved || []).forEach(function (r) {
+      if (isos.indexOf(r.iso) === -1) return;
+      var t = by[r.type];
+      if (!t) {
+        t = by[r.type] = { type: r.type, isEpic: r.isEpic, gatesOnTime: r.gatesOnTime,
+                           gatesForecast: r.gatesForecast, n: 0,
+                           keys: {}, keysCapped: {} };
+        TYPE_FIELDS_.forEach(function (f) { t[f.k] = 0; });
+      }
+      t.n += r.n;
+      TYPE_FIELDS_.forEach(function (f) {
+        t[f.k] += r[f.k] || 0;
+        var ks = (r.keys || {})[f.k];
+        if (ks && ks.length) t.keys[f.k] = (t.keys[f.k] || []).concat(ks);
+        if ((r.keysCapped || {})[f.k]) t.keysCapped[f.k] = true;
+      });
+    });
+    return Object.keys(by).map(function (k) { return by[k]; });
+  }
+  return (th.open || []).slice();
+}
+
+/**
+ * Recoverable impact: records missing the field, counted ONLY where that field
+ * gates a published metric for that type.
+ *
+ * This is the sort key, and it is the whole reason the table is useful. Sorting
+ * by worst percentage puts a 21%-filled Sub-task column on top, where fixing all
+ * of it moves nothing; sorting alphabetically buries the four Go-live epics whose
+ * missing due dates are the entire On-Time gap.
+ *
+ * Region and Team (pr01) are excluded even now that Region VARIES by type
+ * (v3.7.0 exporter fix, 2026-08-04). Tried counting them here and reverted:
+ * they gate no PUBLISHED metric — they are rollup dimensions — so 300 sub-tasks
+ * missing a region would outrank the 12 Go-live epics whose missing due dates
+ * are the entire On-Time gap, which is the precise failure this sort exists to
+ * prevent. Their per-type gaps are not hidden: the columns un-mute and show
+ * graded fill % plus miss counts as soon as they stop being uniform.
+ */
+function typeImpact_(row) {
+  return TYPE_FIELDS_.reduce(function (t, f) {
+    if (f.pr01 || !typeFieldLive_(f, row)) return t;
+    return t + Math.max(0, row.n - (row[f.k] || 0));
+  }, 0);
+}
+
+function setTypePop_(v) { STATE.typePop = v; renderHygiene_(); }
+
+/** One cell: fill %, grade against the field's own gate, and the miss count. */
+function typeCellHtml_(f, row, uniform) {
+  var have = row[f.k] || 0, miss = Math.max(0, row.n - have);
+  var pct = row.n > 0 ? Math.round(have / row.n * 100) : null;
+  var live = typeFieldLive_(f, row) && !uniform;
+  var gate = typeFieldGate_(f);
+  var rag, mark;
+  if (!live || pct === null || gate === null) {
+    // Informational, not a gap. "—" is doing real work here: it separates
+    // "this is fine" from "this does not apply to this type".
+    rag = "n"; mark = "—";
+  } else {
+    var g = Math.round(gate * 100);
+    rag = pct >= g ? "g" : (pct >= g - 10 ? "a" : "r");
+    mark = { g: "✔", a: "▲", r: "✖" }[rag];
+  }
+  var why = live
+    ? ". This gates " + f.feeds + " — fixing these moves the number."
+    : (uniform
+        // Two different reasons a cell isn't graded, and conflating them would
+        // send the reader to the wrong fix: one is "not your problem", the
+        // other is "everyone's problem, and not a per-type one".
+        ? ". Identical across every issue type, so this is one org-wide field " +
+          "gap (PR-01), not something to fix type by type."
+        : ". Gates no published metric for this type today.");
+  var missHtml = miss > 0
+    ? ' <span class="tmiss"' + (live ? "" : ' style="opacity:.55"') +
+      ' title="' + esc_(miss + " " + row.type + (miss === 1 ? " record is" : " records are") +
+        " missing " + f.label.toLowerCase() + why) + '">' + miss + "</span>"
+    : "";
+  // A fill bar under every cell. Nine columns of bare percentages force the
+  // reader to compare numbers digit by digit; the bars make a row's shape
+  // readable at a glance, and this view's established idiom is labelled bars
+  // (the funnels and the gaps table) rather than bare figures.
+  var bar = pct === null ? "" :
+    '<div class="tbar"><i class="' + rag + '" style="width:' + Math.max(0, Math.min(100, pct)) +
+    '%"></i></div>';
+  return '<td class="tnum tcell ' + rag + '">' +
+    '<div class="tval">' + mark + " " + (pct === null ? "—" : pct + "%") + missHtml + "</div>" +
+    bar + "</td>";
+}
+
+function typeMatrixHtml_(isos, winLabel) {
+  var th = MODEL.typeHygiene;
+  if (!th) {
+    // Pre-v17 cached payload. Say so — an empty matrix reads as "no gaps",
+    // which is the exact opposite of what an absent payload means.
+    return '<div class="profPanel"><h4>🧬 Field fill by issue type</h4>' +
+      '<div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the ' +
+      "current schema.</div></div>";
+  }
+  var open = STATE.typePop !== "resolved";
+  var rows = typeHygRows_(isos);
+  rows.sort(function (a, b) { return typeImpact_(b) - typeImpact_(a) || b.n - a.n; });
+  var total = rows.reduce(function (t, r) { return t + r.n; }, 0);
+
+  var chips =
+    '<span class="chip' + (open ? " on" : "") + '" onclick="setTypePop_(\'open\')"' +
+      ' title="Unresolved work, as at the last export. THIS is the actionable half — a due date ' +
+      'added here moves next period\'s number.">Open backlog</span>' +
+    '<span class="chip' + (open ? "" : " on") + '" onclick="setTypePop_(\'resolved\')"' +
+      ' title="Work resolved in the selected window. Explains the numbers on the cards today; ' +
+      'fixing these records changes history, not the next report.">Resolved · ' + esc_(winLabel) + "</span>";
+
+  var lead = open
+    ? "Snapshot at the last export — <b>" + total + "</b> open issue" + (total === 1 ? "" : "s") +
+      ". Fix these and the next period's numbers move. " +
+      '<span title="A backlog has no history to walk: an open issue has no date that would make ' +
+      'a time series honest, so this half ignores the period picker by design.">Not affected by ' +
+      "the period picker ⓘ</span>"
+    : "Resolved in <b>" + esc_(winLabel) + "</b> — <b>" + total + "</b> issue" +
+      (total === 1 ? "" : "s") + ". This is where the cards' numbers come from.";
+
+  if (!rows.length) {
+    return '<div class="profPanel" id="typeMatrix"><h4>🧬 Field fill by issue type</h4>' +
+      '<div class="chips seg" style="margin-bottom:8px">' + chips + "</div>" +
+      '<div class="emptyState">' + (open ? "No open work in the feed."
+        : "No work resolved in " + esc_(winLabel) + ".") + "</div></div>";
+  }
+
+  // Computed once over the whole table, not per row — "is this column constant?"
+  // is a question about the column.
+  var uniform = {};
+  TYPE_FIELDS_.forEach(function (f) { uniform[f.k] = typeColUniform_(f, rows); });
+  var anyUniform = TYPE_FIELDS_.some(function (f) { return uniform[f.k]; });
+
+  // Every column right of the type name is numeric, so its HEADER is
+  // right-aligned to sit over its own values. Left-aligned headers over
+  // right-aligned numbers is what made the first cut unreadable: each label
+  // pointed at the gap between two columns rather than at its data.
+  var head = '<tr><th class="tname">Issue type</th><th class="tnum">n</th>' +
+    TYPE_FIELDS_.map(function (f) {
+      return '<th class="tnum" title="' + esc_(f.label + " — feeds " + f.feeds +
+        (uniform[f.k] ? ". Identical for every issue type here, so it is shown ungraded: " +
+          "one org-wide field gap (PR-01), not a per-type one."
+          : f.pr01 ? ". Region and Team come from Jira custom fields — tagging is owned " +
+            "upstream, but the gaps ARE counted per type here."
+          : "")) + '">' +
+        esc_(f.label) + (uniform[f.k] ? " *" : "") + "</th>";
+    }).join("") + "</tr>";
+
+  var body = rows.map(function (r) {
+    var impact = typeImpact_(r);
+    return "<tr>" +
+      '<td class="tname"><b>' + esc_(r.type) + "</b>" +
+      (r.isEpic ? ' <span class="tepic" title="Counted as an epic by the export\'s substring ' +
+        'rule, so this type is already inside the On-Time dictionary scope and the Forecast ' +
+        'denominator — pooled with every other epic type.">epic</span>' : "") +
+      // Shortened from a full sentence per row: repeated six times it was noise,
+      // and the explanation belongs in one tooltip rather than in every row.
+      (impact > 0 ? '<div class="cellSub" title="Records missing a field that gates a published ' +
+        'metric for this issue type. Fixing these moves a number; the other gaps on this row do ' +
+        'not.">' + impact + " fixable</div>" : "") + "</td>" +
+      '<td class="tnum tn">' + r.n + "</td>" +
+      TYPE_FIELDS_.map(function (f) { return typeCellHtml_(f, r, uniform[f.k]); }).join("") +
+      "</tr>";
+  }).join("");
+
+  return '<div class="profPanel" id="typeMatrix">' +
+    // Title row carries the PNG button, so a screenshot of this table lands in a
+    // deck at full width instead of being cropped out of a whole-page capture.
+    // The population chips ride inside the shot — a matrix with no population
+    // label is unreadable out of context, since Open and Resolved look alike.
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<h4 style="flex:1;margin:0">🧬 Field fill by issue type</h4>' +
+      '<button class="iconbtn" onclick="savePng_(\'typeMatrix\',\'field-fill-by-type\')"' +
+        ' title="Save this table as a PNG image">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+      '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+      "PNG</button></div>" +
+    '<div class="chips seg" style="margin:8px 0">' + chips + "</div>" +
+    '<p class="cellSub">' + lead + "</p>" +
+    '<div class="cellSub" style="margin:8px 0 4px">Each cell is graded against ' +
+      "<b>that field's own gate</b>: " +
+      keySwatch_("var(--pos)", "✔ at or above") + " · " +
+      keySwatch_("var(--amber)", "▲ under 10 pts below") + " · " +
+      keySwatch_("var(--warn)", "✖ 10+ pts below") + " · " +
+      '<b>—</b> = gates no published metric for this type today ' +
+      '<span title="Under the current On-Time scope only epic-grain work carries a due-date ' +
+      'obligation, and estimates only matter at epic grain. Grading a Sub-task red for a missing ' +
+      'due date would send someone to fix records that move no number.">ⓘ</span>. ' +
+      "The small number after each percentage is the record count missing that field.</div>" +
+    '<div class="gwrap"><table class="hyg tmx">' + head + body + "</table></div>" +
+    '<div class="cellSub" style="margin-top:6px">' +
+      (anyUniform ? "* This column reads the same for every issue type, so it is shown " +
+        "ungraded — it is <b>one org-wide field gap</b> tracked under PR-01, not something " +
+        "to chase type by type. It starts grading itself again the moment it varies. " : "") +
+      "Rows are ordered by fixable gaps on metric-gating fields, not by worst percentage: " +
+      "four missing due dates on epics outrank four hundred on sub-tasks." +
+      '</div>' +
+    "</div>";
 }
 
 /** Legacy entry point — the suppressed KPI cards link to the hygiene queue by
@@ -4167,26 +4701,26 @@ function saveCsv_() {
   // Billable/Non-billable h are the NS mix applied to Tracked h (they sum to
   // Tracked, minus Unclassified). The NS raw columns are what NetSuite exported —
   // kept so finance can reconcile the two feeds from the same file.
-  var rows = [["Person", "Region", "Job family", "Teams", "New hire", "On leave", "Period", "Status",
-               "Capacity h", "PTO h", "Holiday h", "Available h", "Planned h (raw)",
-               "Planned h (capped)", "Tracked h", "Billable h", "Non-billable h",
-               "Unclassified h", "Available h (NS-classified)", "NS billable h (raw)",
+  var rows = [["Person", "Job title", "Region", "Job family", "Teams", "New hire", "On leave", "Period", "Status",
+               "Capacity h", "Planned h (raw)",
+               "Planned h (capped)", "Tracked h", "Tracked time off h", "Billable h", "Non-billable h",
+               "Unclassified h", "Capacity h (NS-classified)", "NS billable h (raw)",
                "NS non-billable h (raw)", "NS billable share %", "Weeks NS-classified"]];
   filteredPeople_().forEach(function (p) {
     periods.forEach(function (pr) {
       var w = aggWeeks_(p, pr.isos);
       // On-leave rows keep the person but blank every hour column — same rule
       // as the grid: hours are hidden and excluded while on leave.
-      rows.push([p.name, p.region, famName_(p), p.teams.join(" | "), p.newHire ? "yes" : "",
+      rows.push([p.name, p.jobTitle || "", p.region, famName_(p), p.teams.join(" | "), p.newHire ? "yes" : "",
         p.onLeave ? (p.leaveStatus || "yes") : "",
         pr.label, pr.status].concat(w && !p.onLeave
-          ? [r1_(w.cap), r1_(w.pto), r1_(w.hol), r1_(w.avail), r1_(w.planned),
-             r1_(w.effPlanned), r1_(w.tracked), r1_(w.billable), r1_(w.nonBillable),
+          ? [r1_(w.cap), r1_(w.planned),
+             r1_(w.effPlanned), r1_(w.tracked), r1_(w.trackedOff || 0), r1_(w.billable), r1_(w.nonBillable),
              r1_(unclassifiedH_(w)), r1_(w.availCov || 0), r1_(w.nsBillRaw || 0),
              r1_(w.nsNonBillRaw || 0),
              nsRawTot_(w) > 0 ? Math.round(nsShare_(w) * 1000) / 10 : "",
              (w.covWeeks || 0) + " of " + (w.nWeeks || 0)]
-          : ["", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]));
+          : ["", "", "", "", "", "", "", "", "", "", "", "", ""]));
     });
   });
   downloadCsv_(rows, "delivery-health-" + MODEL.meta.headlineIso + ".csv");

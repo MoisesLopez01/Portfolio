@@ -89,6 +89,10 @@ if (!m) throw new Error("❌ render-smoke: could not find the inline <script> bl
 var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function () { return MODEL; }," +
              " setState: function (k, v) { STATE[k] = v; }, STATE: STATE," +
              " renderTiles_: renderTiles_, renderHygiene_: renderHygiene_," +
+             // 🧬 by-type matrix (2026-08-04) — impact ordering and the
+             // "gates nothing today" marking only exist in rendering.
+             " typeMatrixHtml_: typeMatrixHtml_, typeImpact_: typeImpact_," +
+             " typeHygRows_: typeHygRows_, setTypePop_: setTypePop_, TYPE_FIELDS_: TYPE_FIELDS_," +
              " metricConfidence_: metricConfidence_, pngPeriodStamp_: pngPeriodStamp_," +
              // Navigation, cascading filters, operating rate, charts and the two
              // new views — all client-only, so render-smoke is the only place
@@ -107,7 +111,10 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " profileFor_: profileFor_," +
              " briefFor_: briefFor_," +
-             " utilFor_: utilFor_, bucketsFor_: bucketsFor_ })";
+             " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
+             // Header freshness line (2026-08-04): the export stamp vs the model
+             // rebuild are two clocks, and only rendering can prove they stay apart.
+             " dataAsOfView_: dataAsOfView_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -117,8 +124,8 @@ function week(o) {
   // capCov = gross scheduled capacity of an NS-classified week. Schema v10: the
   // Metrics Dictionary Utilization denominator divides by this, so a fixture
   // without it reports null and every utilization assertion goes quiet.
-  return Object.assign({ cap: 40, pto: 0, hol: 0, avail: 40, availCov: 40, capCov: 40, planned: 40,
-                         tracked: 40, trackedCov: 40, billable: 30, nonBillable: 10,
+  return Object.assign({ cap: 40, avail: 40, availCov: 40, capCov: 40, planned: 40,
+                         tracked: 40, trackedOff: 0, trackedCov: 40, billable: 30, nonBillable: 10,
                          nsCov: true, nsBillRaw: 30, nsNonBillRaw: 10, capEst: false,
                          effPlanned: 40 }, o || {});
 }
@@ -147,12 +154,12 @@ function model(o) {
       targets: { util: { green: 70, amber: 50 }, onTime: { green: 85, amber: 70 },
                  forecast: { green: 80, amber: 60 }, hygiene: { green: 90, amber: 75 },
                  quality: { green: 5, amber: 10 } },
-      regions: ["AMER", "EMEA", "APAC", "ANZ", "Other"], teams: ["Team A"], pms: [], families: ["Service Delivery"],
+      regions: ["AMER", "EMEA", "SEA", "ANZ", "Other"], teams: ["Team A"], pms: [], families: ["Service Delivery"],
       nsAvailable: true, jiraAvailable: true,
       nsCoverage: { personWeeks: 4, covered: 4, classifiedPct: 1, gapHours: 0, unmatchedNames: [] },
       jiraUnattributed: { onTime: 3, forecast: 1 },
       onTimeScope: "delivery", forecastBand: 0.10,
-      ptoSource: "accumulation", capacityError: null,
+      capacityError: null,
       refreshEveryMin: 30,
       sources: [{ system: "Jira", feeds: "On-Time", tab: "Jira Raw" }],
       registry: {
@@ -196,6 +203,29 @@ function model(o) {
       return { iso: iso, res: 50, resDue: 40, resAssigned: 47, resAttr: 45, resRegion: 10, resTeam: 5,
                resReady: 30 + i * 4, resFull: 8, epics: 20, epicsEst: 14, epicsTime: 9 };
     }),
+    // Field fill by issue type (schema v17). Shaped like the real finding: a
+    // small, well-disciplined Go-live epic population and a large, poorly-filled
+    // Story one — so impact ordering has something to get wrong.
+    typeHygiene: {
+      keyCap: 500,
+      resolved: WEEKS.map(function (iso) {
+        return { iso: iso, type: "Go-live epic", isEpic: true, gatesOnTime: true,
+                 gatesForecast: true, n: 5, due: 5, assigned: 5, attr: 4, est: 3, time: 2,
+                 region: 0, team: 0, keys: { attr: ["R-1"], est: ["R-2", "R-3"] }, keysCapped: {} };
+      }),
+      open: [
+        // 4 of 12 due dates missing, and it gates On-Time → 8 fixable gaps here
+        // (4 due + 0 assigned + 2 attr + 10 est + 12 time … impact is what sorts).
+        { iso: "", type: "Go-live epic", isEpic: true, gatesOnTime: true, gatesForecast: true,
+          n: 12, due: 8, assigned: 12, attr: 10, est: 2, time: 0, region: 0, team: 0,
+          keys: { due: ["G-1", "G-2", "G-3", "G-4"], attr: ["G-5", "G-6"],
+                  est: ["G-7"], time: ["G-8"] }, keysCapped: { time: true } },
+        // Big, badly filled, but gates NOTHING today — must not outrank the epics.
+        { iso: "", type: "Sub-task", isEpic: false, gatesOnTime: false, gatesForecast: false,
+          n: 300, due: 30, assigned: 300, attr: 300, est: 5, time: 5, region: 0, team: 0,
+          keys: { due: ["S-1"] }, keysCapped: {} },
+      ],
+    },
     viewerRole: "admin",
   }, o.overrides || {});
 }
@@ -309,13 +339,15 @@ assert_(/pts vs target/.test(stale), "target gap survives staleness — it isn't
 C.setModel(model({}));
 C.renderHygiene_();
 var hyg = els.viewHygiene.innerHTML;
-assert_(/Delivery work fully attributed/.test(hyg), "hygiene headline tile present (FR-2.4)");
-assert_(/16%/.test(hyg), "8 of 50 fully attributed = 16%");
+// The "Delivery work fully attributed" KPI tile was DELETED (user decision
+// 2026-08-04) — the 🔬 Data Profile headline carries the good-of-total read.
+assert_(!/Delivery work fully attributed/.test(hyg), "hygiene KPI tile deleted (user 2026-08-04)");
 assert_(/Region tagged on delivery work/.test(hyg), "region gap listed");
-assert_(/PR-01/.test(hyg) && /2026\.W34/.test(hyg), "each gap carries a prerequisite and an ISO target week");
-// Owner column removed (user decision 2026-08-03) — accountability lives in the
-// requirements doc via the prereq ID, not as a standing table of names against
-// failures in a widely-read view.
+// Prereq + Target-week columns removed (user decision 2026-08-04), same rule
+// as the Owner column (2026-08-03): accountability and scheduling live in the
+// requirements doc and the Brief, not in a widely-read table.
+assert_(!/<th>Prereq<\/th>/.test(hyg) && !/<th>Target week<\/th>/.test(hyg),
+        "no Prereq / Target-week columns in the hygiene table");
 assert_(!/<th>Owner<\/th>/.test(hyg), "no Owner column in the hygiene table");
 assert_(!/Gon/.test(hyg) && !/Tempo admin/.test(hyg), "no owner names rendered in the gap rows");
 assert_(/not connected/.test(hyg), "feeds that don't exist say so instead of showing 0%");
@@ -360,24 +392,19 @@ assert_(!/setHygIdx_/.test(hyg), "no per-view stepper — the header picker is t
 assert_(!/Σ All history/.test(hyg), "no per-view whole-window rollup either");
 assert_(/window follows the header period picker/.test(hyg),
         "says exactly which control owns the window");
-// A composite pinned by one org-wide-empty term must name that term, or 0% reads
-// as total failure and hides the two components that ARE moving.
-assert_(/Held down by region/.test(hyg), "binding constraint named");
-assert_(/Excluding region/.test(hyg), "the measurable-today figure is shown beside the strict one");
-// Anchored read — a bare /68%/ would happily match any gap row's coverage.
-function readyPct_(s) { var t = s.split("Excluding region: <b>")[1]; return t ? t.split("%")[0] : null; }
-function fullPct_(s) { var t = s.split('class="big ')[1]; return t ? t.split(">")[1].split("%")[0] : null; }
-assert_(readyPct_(hyg) === "68", "resReady 34 of 50 = 68% for the latest week");
-assert_(fullPct_(hyg) === "16", "strict composite still reported honestly (8 of 50), not replaced");
-assert_(Number(readyPct_(hyg)) > Number(fullPct_(hyg)),
-        "the measurable-today figure sits above the strict one — that's the point of showing both");
+// No headline stat row (user 2026-08-04, round 2: the big top numbers were
+// clutter) — the good-of-total read is each funnel's final "…measurable" row,
+// anchored on its "N · P%" format, not a bare /68%/ which would happily match
+// any gap row's coverage.
+assert_(!/good records overall/.test(hyg), "no big-number stat row on the profile panel");
+assert_(/34 · 68%/.test(hyg), "funnel's final row: On-Time measurable 34 of 50 = 68% for the latest week");
 
 // The GLOBAL picker re-bases this view exactly like the tiles.
 C.setState("periodIdx", 0);
 C.renderHygiene_();
 var older = els.viewHygiene.innerHTML;
 assert_(/2026\.W30/.test(older), "picking the earlier period re-bases the hygiene window");
-assert_(readyPct_(older) === "60", "and its own numbers follow (resReady 30 of 50)");
+assert_(/30 · 60%/.test(older), "and its own numbers follow (resReady 30 of 50)");
 C.setState("periodIdx", null);
 
 // ── 6. Empty scope is not the same as bad data ──────────────
@@ -597,7 +624,7 @@ fresh(histModel({}));
 var hb = C.hbarChart_({
   rows: [{ key: "AMER", label: "AMER", value: 73, n: 12 },
          { key: "EMEA", label: "EMEA", value: 44, n: 8 },
-         { key: "APAC", label: "APAC", value: null, n: 3 }],
+         { key: "SEA", label: "SEA", value: null, n: 3 }],
   target: { green: 70, amber: 50 } });
 assert_(/✔ 73%/.test(hb), "a bar at or above target carries the ✔ glyph beside its value");
 assert_(/✖ 44%/.test(hb), "and one below the amber floor carries ✖ — status is never colour alone");
@@ -784,28 +811,32 @@ resetFilters();
 // ══════════════════════════════════════════════════════════════════════════
 var dict = tiles(model({ otCov: 0.95, fcCov: 0.92 }));
 
-// ── Utilization: gross denominator is the headline, net is the companion ──
-// week() is cap 40 / avail 40 with no PTO, so the two rates coincide here; what
-// is under test is that BOTH are stated and the headline names the gross base.
+// ── Utilization: gross denominator is THE rate — no absence modelling ──
+// (user decision 2026-08-04: no absenteeism of any kind; time off tracked in
+// Tempo is simply non-billable, capacity is never reduced for absence.)
 assert_(/of scheduled capacity/.test(dict),
         "utilization headline divides by scheduled capacity (headcount × standard hours)");
-assert_(/of net available/.test(dict),
-        "…with the net-of-absence rate shown beside it, not instead of it");
-var oooModel = model({ otCov: 0.95, fcCov: 0.92 });
-oooModel.people.forEach(function (p) {
+assert_(!/of net available/.test(dict) && !/pts absence/.test(dict),
+        "no net-of-absence companion — absenteeism is not modelled (2026-08-04)");
+assert_(/billable vs non-billable only/.test(dict),
+        "the card states the two-way classification rule");
+var offModel = model({ otCov: 0.95, fcCov: 0.92 });
+offModel.people.forEach(function (p) {
   Object.keys(p.weeks).forEach(function (iso) {
-    // 8h PTO: capacity still 40 (we pay for it), availability drops to 32.
-    Object.assign(p.weeks[iso], { pto: 8, avail: 32, availCov: 32, cap: 40, capCov: 40,
-                                  tracked: 32, trackedCov: 32, billable: 24, nonBillable: 8 });
+    // 8h of tracked time off inside a 40h tracked week: capacity stays 40
+    // (gross), the 8h is non-billable BY RULE, NS classifies the other 32h
+    // as 24b/8nb — so billable 24, non-billable 16, everything classified.
+    Object.assign(p.weeks[iso], { avail: 40, availCov: 40, cap: 40, capCov: 40,
+                                  tracked: 40, trackedOff: 8, trackedCov: 40,
+                                  billable: 24, nonBillable: 16 });
   });
 });
-var withOoo = tiles(oooModel);
-// 24 ÷ 40 = 60% gross; 24 ÷ 32 = 75% net. The gross figure MUST be the hero.
-assert_(/class="big[^"]*">60%/.test(withOoo),
+var withOff = tiles(offModel);
+// 24 ÷ 40 = 60% gross — the only rate published.
+assert_(/class="big[^"]*">60%/.test(withOff),
         "gross is the published number: 24h billable ÷ 40h scheduled = 60%");
-assert_(/75% of net available/.test(withOoo), "net companion reports 24 ÷ 32 = 75%");
-assert_(/15 pts absence/.test(withOoo),
-        "and the gap between them is named as the cost of approved absence");
+assert_(!/pts absence/.test(withOff) && !/PTO\/holiday removed/.test(withOff),
+        "no absence framing anywhere on the utilization card");
 
 // ── Forecast: the Dictionary mean, not the band ──
 // The fixture's absVars are [0.05, 0.4, 0.9] → accuracy 0.95, 0.6, 0.1 → 55%.
@@ -879,7 +910,7 @@ var untagged = fresh(histModel({}));
 untagged.people.push(
   histPerson("Omar Reyes",  { region: "AMER", teams: [], pms: [] }, [60, 60, 60, 60, 60, 60, 60, 60]),
   histPerson("Pia Lindqvist", { region: "EMEA", teams: ["Cygnus"], pms: [] }, [70, 70, 70, 70, 70, 70, 70, 70]),
-  histPerson("Quinn Bauer", { region: "APAC", teams: [], pms: ["Ann Cho"] }, [55, 55, 55, 55, 55, 55, 55, 55])
+  histPerson("Quinn Bauer", { region: "SEA", teams: [], pms: ["Ann Cho"] }, [55, 55, 55, 55, 55, 55, 55, 55])
 );
 resetFilters();
 C.STATE.period = "week";
@@ -1237,7 +1268,9 @@ C.renderHygiene_();
 var prof = els.viewHygiene.innerHTML;
 assert_(/Data Profile/.test(prof), "profile panel renders for an admin");
 assert_(/WHAT-IF: valid records only/.test(prof), "…and carries the single WHAT-IF button");
-var profOnly = prof.split("Data Profile")[1].split("Delivery work fully attributed")[0];
+// Right anchor = the coverage-colour key that opens the gaps table (the old
+// "Delivery work fully attributed" tile anchor was deleted 2026-08-04).
+var profOnly = prof.split("Data Profile")[1].split("Coverage colour")[0];
 assert_(/resolved in scope/.test(profOnly) && /assignee joins the roster/.test(profOnly),
         "on-time funnel names its stages");
 assert_(/carries a due date/.test(profOnly), "…down to the measurable population");
@@ -1273,7 +1306,8 @@ C.getModel().viewerRole = "admin";
 fresh(model({}));
 C.setState("whatIf", false);
 C.renderHygiene_();
-assert_(/CEO Brief/.test(els.viewHygiene.innerHTML), "brief renders inside the profile panel");
+assert_(/📄 Brief/.test(els.viewHygiene.innerHTML), "brief renders inside the profile panel");
+assert_(!/CEO Brief/.test(els.viewHygiene.innerHTML), "renamed: no 'CEO Brief' anywhere (user 2026-08-04)");
 assert_(/copyBrief_\(\)/.test(els.viewHygiene.innerHTML), "…with a Copy control");
 // DATA-BLOCKERS.md-shaped input: the roster join is the biggest lever
 var bh = { res: 100, resDue: 80, resAssigned: 94, resAttr: 54, resReady: 50,
@@ -1382,7 +1416,7 @@ C.setState("whatIf", false);
 fresh(model({}));
 var baseOt27 = C.bucketsFor_(C.getModel().onTimeBuckets, WEEKS);
 var stubModel = model({});
-stubModel.people.push({ name: "Sol Architect", region: "APAC", teams: [], pms: [],
+stubModel.people.push({ name: "Sol Architect", region: "SEA", teams: [], pms: [],
                         isCrew: false, jobTitle: "", onLeave: false, isManager: false,
                         jobFamily: "", tracks: false, newHire: false, backlog: null,
                         weeks: {}, attribOnly: true });
@@ -1465,6 +1499,31 @@ C.renderAll_();
 assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
         "clearing the selection returns to the latest complete period");
 
+// ── 28b. PERIOD-SCOPED HEADCOUNT (user report 2026-08-04: the scope chip said
+// "140 people" for every window — an older period must count ITS roster, not
+// today's). Pre-hire weeks are never emitted, so a W31 hire has no W30 cell.
+var hireM = model({});
+hireM.people.push(person("Nina New", {
+  newHire: true, hired: "2026-07-28",
+  weeks: { "2026.W31": week() },   // hired in W31 — no W30 cell exists
+}));
+fresh(hireM);
+C.renderAll_();
+assert_(/— 3 people/.test(els.scopeChip.innerHTML),
+        "latest window (W31) counts the new hire — 3 people");
+assert_(!/hired later/.test(els.scopeChip.innerHTML),
+        "no hired-later note when the whole roster existed in the window");
+C.setState("periodIdx", 0);   // W30 — before Nina's hire
+C.renderAll_();
+assert_(/— 2 people/.test(els.scopeChip.innerHTML),
+        "the W30 window counts only the people who existed then");
+assert_(/\(\+1 hired later\)/.test(els.scopeChip.innerHTML),
+        "…and states the delta so 3 → 2 reads as a fact, not a glitch");
+assert_(/all 2<\/b> people represented/.test(els.comparePanel.innerHTML),
+        "the comparison's coverage sentence agrees with the period-scoped headcount");
+C.setState("periodIdx", null);
+C.renderAll_();
+
 // ══════════════════════════════════════════════════════════════════════════
 // 29. POP/ROLE LENS RE-CASCADES THE FILTER ROW (user report 2026-08-04:
 // "filters get stuck on filtered records — does not change on FTE/Crew/All").
@@ -1520,5 +1579,344 @@ assert_(briefFact0_(scoped0) === briefFact0_(scoped1),
         "person filters never change the feed-level counts — only the scope line changes");
 C.setState("region", ""); C.setState("team", ""); C.setState("pop", "fte");
 C.renderHygiene_();
+
+// ══════════════════════════════════════════════════════════════════════════
+// COLOUR KEYS + JOB TITLES (user request 2026-08-04)
+// Readers learn colours from legends, not tooltips — every coloured surface
+// carries an inert key, and every roster surface names the person's job title
+// (grade code stripped for reading, full roster string in the tooltip/CSV).
+// ══════════════════════════════════════════════════════════════════════════
+fresh(model({ otCov: 0.95, fcCov: 0.92 }));
+C.renderTiles_();
+var tk = els.tileColorKey.innerHTML;
+assert_(/Colour key — each value is judged against/.test(tk),
+        "the executive cards carry a colour key");
+assert_(/own<\/b> FY27 target/.test(tk),
+        "…that says each card grades against its OWN target, since thresholds differ per metric");
+assert_(/lower is better/.test(tk), "…and names the Rework Rate inversion");
+
+fresh(histModel({}));
+resetFilters();
+C.STATE.expandedWeeks = {}; C.STATE.openDetail = {}; C.STATE.flag = "";
+C.renderGrid_();
+var gk = els.gridPanel.innerHTML;
+assert_(/Cell colour = billable share of available hours/.test(gk),
+        "the grid explains its RAG cell tints");
+assert_(/green ≥ 70%/.test(gk) && /red < 50%/.test(gk),
+        "…with the thresholds read from the model, not re-typed prose");
+assert_(/>Consultant</.test(gk),
+        "each person carries a job-title line, grade code stripped");
+assert_(/title="09\.P3\.Consultant"/.test(gk),
+        "…with the full roster title in the tooltip");
+
+C.renderOpportunity_();
+var ok = els.oppPanel.innerHTML;
+assert_(/Gap colour:/.test(ok), "the headroom table explains its gap colours");
+assert_(/>Consultant</.test(ok), "…and names each person's job title too");
+
+fresh(model({}));
+C.renderHygiene_();
+assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.viewHygiene.innerHTML),
+        "the hygiene table says coverage colours grade against the gate, not 100%");
+
+// ══════════════════════════════════════════════════════════════════════════
+// 31. INTERNS (I1) NEVER MOVE A RATE (user decision 2026-08-04): profile and
+// hours stay on the roster, marked 🎓, but no published number — utilization,
+// issue rates, triage flags, headroom — may change on an intern's account.
+// ══════════════════════════════════════════════════════════════════════════
+var internM = model({});
+internM.people.push(person("Ivy Intern", {
+  isIntern: true, jobTitle: "09.I1.2 - Associate Consultant",
+  // A week that WOULD tank the rates if it counted: zero billable, all idle.
+  weeks: { "2026.W30": week({ tracked: 0, trackedCov: 0, billable: 0, nonBillable: 0 }),
+           "2026.W31": week({ tracked: 0, trackedCov: 0, billable: 0, nonBillable: 0 }) },
+}));
+// …and an intern-assigned issue bucket that would drag On-Time to the floor.
+internM.onTimeBuckets.push({ iso: "2026.W31", person: "Ivy Intern", n: 20, onTime: 0, nAll: 20 });
+var internTiles = tiles(internM);
+var internOt = internTiles.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+assert_(/class="big[^"]*">90%/.test(internOt),
+        "an intern's 0-of-20 on-time bucket moves NOTHING — the rate stays 90%");
+assert_(/1 intern excluded/.test(internTiles),
+        "the utilization card states the intern exclusion out loud");
+// Base fixture: 60h billable / 80h classified capacity = 75%. If Ivy's empty
+// 40h counted, the headline would read 50% — the exact dilution this prevents.
+var internUtil = internTiles.split("Utilization")[1].split("Quality")[0];
+assert_(/class="big[^"]*">75%/.test(internUtil),
+        "utilization headline stays 75% — the intern's empty capacity never dilutes it to 50%");
+// Grid + headroom need the object-form gridWeeks fixture (histModel).
+var internHist = fresh(histModel({}));
+internHist.people.push(histPerson("Ivy Intern",
+  { region: "AMER", teams: ["Atlas"], isIntern: true,
+    jobTitle: "09.I1.2 - Associate Consultant" }, [0, 0, 0, 0, 0, 0, 0, 0]));
+C.STATE.period = "week"; resetFilters();
+C.renderGrid_();
+var internGrid = els.gridPanel.innerHTML;
+assert_(/🎓 intern/.test(internGrid), "the roster marks the intern with a 🎓 note");
+assert_(/Ivy Intern/.test(internGrid), "…and their profile row is fully present");
+C.renderOpportunity_();
+assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
+        "no headroom row for an intern — ranking them by recoverable hours is the punishment this prevents");
+
+// ── DATA FRESHNESS HEADER (user request 2026-08-04) ─────────
+// The header must state when the DATA was refreshed, not when the model was
+// rebuilt. Those are two clocks and the warmer keeps one of them permanently
+// fresh, so the failure this guards is a three-day-old export presented as
+// current because generatedAt is 20 minutes old.
+(function () {
+  function meta_(o) {
+    return Object.assign({ refreshEveryMin: 30, jiraExportStaleH: 30,
+                           sources: [{ system: "Jira", feeds: "On-Time" }] }, o || {});
+  }
+  var built = new Date();
+
+  // FRESH: stamp shown, informational, no warning styling.
+  var fresh7h = C.dataAsOfView_(meta_({
+    dataAsOf: { jira: "2026-08-04T03:00:00.000Z", jiraAgeH: 7, jiraStale: false, jiraUnknown: false },
+  }), false, built);
+  assert_(/Data as of/.test(fresh7h.html), "fresh export prints a Data-as-of stamp");
+  assert_(/7h ago/.test(fresh7h.html), "…with the age in hours");
+  assert_(fresh7h.warn === false, "a fresh export is not styled as a warning");
+  assert_(/📅/.test(fresh7h.html) && !/⚠/.test(fresh7h.html), "fresh uses the calendar mark, not the warning mark");
+  assert_(/age of the DATA/.test(fresh7h.title), "tooltip says this is the age of the data");
+
+  // STALE: the export missed a run. Must warn, and must say WHY it matters.
+  var stale = C.dataAsOfView_(meta_({
+    dataAsOf: { jira: "2026-08-01T03:00:00.000Z", jiraAgeH: 78, jiraStale: true, jiraUnknown: false },
+  }), false, built);
+  assert_(stale.warn === true, "a stale export warns");
+  assert_(/⚠/.test(stale.html), "…with the warning mark");
+  assert_(/export may have failed/.test(stale.html), "…and names the likely cause");
+  assert_(/3 days ago/.test(stale.html), "78h renders as days, not as '78h ago'");
+  assert_(/trigger/.test(stale.title), "tooltip points at the export trigger");
+
+  // UNKNOWN: no readable footer. Must NOT masquerade as a staleness warning —
+  // a reader can't act on it, and a false alarm here devalues the real one.
+  var unknown = C.dataAsOfView_(meta_({
+    dataAsOf: { jira: null, jiraAgeH: null, jiraStale: false, jiraUnknown: true },
+  }), false, built);
+  assert_(/refresh time unknown/.test(unknown.html), "an unreadable stamp says so plainly");
+  assert_(unknown.warn === false, "unknown is NOT a warning — absent ≠ stale");
+  assert_(/probeDeliverySources/.test(unknown.title), "tooltip names the diagnostic to run");
+
+  // THE CORE SEPARATION: a fresh model on a stale export must still read stale.
+  // This is the exact deception the feature exists to prevent.
+  assert_(C.dataAsOfView_(meta_({
+    dataAsOf: { jira: "2026-07-28T03:00:00.000Z", jiraAgeH: 200, jiraStale: true, jiraUnknown: false },
+  }), false, built).warn === true,
+    "a 200h-old export warns even though the model was just rebuilt");
+
+  // …and the converse: a stale MODEL keeps its own separate warning, alongside
+  // the data age rather than replacing it. They fail independently.
+  var bothBad = C.dataAsOfView_(meta_({
+    dataAsOf: { jira: "2026-08-01T03:00:00.000Z", jiraAgeH: 78, jiraStale: true, jiraUnknown: false },
+  }), true, built);
+  assert_(/Data as of/.test(bothBad.html) && /not rebuilt since/.test(bothBad.html),
+    "both clocks are reported when both are bad — one does not hide the other");
+  assert_(/trend comparisons are suppressed/.test(bothBad.title),
+    "the model-staleness consequence (NFR-7) survives");
+
+  // A stale model with a HEALTHY export still reports the model problem.
+  var modelOnly = C.dataAsOfView_(meta_({
+    dataAsOf: { jira: "2026-08-04T03:00:00.000Z", jiraAgeH: 7, jiraStale: false, jiraUnknown: false },
+  }), true, built);
+  assert_(modelOnly.warn === true && /not rebuilt since/.test(modelOnly.html),
+    "model staleness warns on its own");
+
+  // Pre-v16 cached payload: no dataAsOf at all. Must render empty rather than
+  // throwing or inventing a stamp — the header is above every view, so an
+  // exception here is a blank dashboard.
+  var legacy = C.dataAsOfView_(meta_({}), false, built);
+  assert_(legacy.html === "" && legacy.warn === false,
+    "a payload with no dataAsOf renders nothing and does not throw");
+})();
+
+// ── 🧬 FIELD FILL BY ISSUE TYPE (spec 2026-08-04) ───────────
+// The two failures worth guarding: a matrix that grades a type against a metric
+// it does not feed (sends people to fix records that move nothing), and one that
+// ranks by worst percentage (buries four epics under three hundred sub-tasks).
+(function () {
+  // Read from the client rather than restated here, so adding a field to the
+  // matrix can never leave this suite asserting an out-of-date column count.
+  var TYPE_FIELD_COUNT = C.TYPE_FIELDS_.length;
+  var mdl = fresh(model({}));
+  C.STATE.period = "week";
+  C.STATE.typePop = "open";
+  C.renderHygiene_();
+  var h = els.viewHygiene.innerHTML;
+
+  assert_(/Field fill by issue type/.test(h), "the by-type matrix renders inside Data Hygiene");
+  assert_(/Go-live epic/.test(h) && /Sub-task/.test(h), "each issue type gets its own row");
+  assert_(/class="tepic"/.test(h),
+          "an epic-family type is tagged as such — being pooled into the epic-grain " +
+          "metrics is the finding this table exists to expose");
+
+  // OPEN is the default population: it is the half anyone can act on.
+  assert_(/Open backlog/.test(h), "the open-backlog population is offered");
+  assert_(/Snapshot at the last export/.test(h), "…and is the default view");
+  assert_(/Not affected by the period picker/.test(h),
+          "the open matrix says it ignores the period picker — a backlog has no history");
+
+  // IMPACT ORDERING: 12 Go-live epics must outrank 300 badly-filled Sub-tasks.
+  // Anchored on the ROW markup, not a bare substring — both type names also
+  // appear in the colour-key caption above the table, and a loose indexOf
+  // matched that instead (same trap as the 2026-08-03 `/64%/` false positive).
+  var iGolive = h.indexOf('<td class="tname"><b>Go-live epic</b>');
+  var iSub = h.indexOf('<td class="tname"><b>Sub-task</b>');
+  assert_(iGolive > -1 && iSub > -1, "both type rows rendered");
+  assert_(iSub > iGolive,
+          "ordered by fixable gaps on metric-gating fields — 12 epics beat 300 sub-tasks");
+  var rows = C.typeHygRows_([]);
+  var golive = rows.filter(function (r) { return r.type === "Go-live epic"; })[0];
+  var sub = rows.filter(function (r) { return r.type === "Sub-task"; })[0];
+  assert_(C.typeImpact_(golive) > C.typeImpact_(sub),
+          "impact counts only fields that gate a published metric for that type");
+  assert_(C.typeImpact_(sub) === 0,
+          "a Sub-task's 270 missing due dates score ZERO impact — they gate nothing today");
+
+  // The marking that stops a pointless campaign.
+  assert_(/gates no published metric for this type today/.test(h),
+          "the colour key explains what '—' means");
+  assert_(/class="tnum tcell n"/.test(h),
+          "a non-gating cell is rendered muted, not as a red failure");
+
+  // PR-01 / uniform columns. Region and Team read 0% on every row, so grading
+  // them paints two red cells per row and the real per-type findings drown.
+  // A column identical across every type carries no per-type information —
+  // it is shown ungraded and footnoted as ONE org-wide gap.
+  assert_(/PR-01/.test(h), "the uniform column names its prereq");
+  assert_(/one org-wide field gap/.test(h), "…framed as one gap, not one per type");
+  assert_(/starts grading itself again the moment it varies/.test(h),
+          "the muting is data-driven and self-healing, not a hardcoded exemption");
+  // The rule is computed from the data: a column that VARIES must still grade.
+  var varied = fresh(model({}));
+  varied.typeHygiene = { keyCap: 500, resolved: [], open: [
+    { iso: "", type: "Alpha", isEpic: true, gatesOnTime: true, gatesForecast: true,
+      n: 10, due: 10, assigned: 10, attr: 10, est: 10, time: 10, region: 10, team: 10,
+      keys: {}, keysCapped: {} },
+    { iso: "", type: "Beta", isEpic: true, gatesOnTime: true, gatesForecast: true,
+      n: 10, due: 10, assigned: 10, attr: 10, est: 10, time: 10, region: 0, team: 5,
+      keys: { region: ["B-1"] }, keysCapped: {} },
+  ] };
+  C.STATE.typePop = "open";
+  C.renderHygiene_();
+  var hvar = els.viewHygiene.innerHTML;
+  assert_(/<td class="tnum tcell r"><div class="tval">✖ 0%/.test(hvar),
+          "a Region column that VARIES by type is graded normally — PR-01 is not an exemption");
+  assert_(!/one org-wide field gap/.test(hvar),
+          "…and the uniform footnote does not appear when the column varies");
+  fresh(mdl);
+  C.STATE.typePop = "open";
+  C.renderHygiene_();
+  h = els.viewHygiene.innerHTML;
+
+  // Miss counts are the size of the job and must be present, not just percentages.
+  assert_(/class="tmiss"/.test(h), "each cell states how many records are missing the field");
+  assert_(/28 fixable/.test(h), "each row states its fixable-gap total");
+
+  // Chrome: PNG out, CSV gone (user 2026-08-04).
+  assert_(!/CSV/.test(h), "no CSV button on this table");
+  assert_(/savePng_\('typeMatrix'/.test(h), "the table can be saved as a PNG");
+  assert_(/id="typeMatrix"/.test(h), "…and the capture target wraps the whole panel");
+  // Scope every structural assertion to the MATRIX PANEL. `h` is the whole
+  // hygiene view and the gaps table sits above this one, so a bare
+  // indexOf("<table") finds the wrong table and the assertion silently checks
+  // someone else's markup — the same class of false anchor as the "Sub-task"
+  // caption match above.
+  var hm = h.slice(h.indexOf('id="typeMatrix"'));
+  assert_(hm.indexOf("Open backlog") < hm.indexOf("<table"),
+          "the population chips are INSIDE the capture — a matrix with no population " +
+          "label is unreadable out of context");
+
+  // ALIGNMENT: every column right of the type name is numeric, header included.
+  // Left headers over right-aligned values is what made the first cut look
+  // broken — each label sat over the gap between two columns, not its own data.
+  var thead = hm.slice(hm.indexOf("<table"), hm.indexOf("</tr>", hm.indexOf("<table")));
+  assert_(/<th class="tname">Issue type<\/th>/.test(thead), "the type column header stays left");
+  assert_((thead.match(/<th class="tnum"/g) || []).length === 1 + TYPE_FIELD_COUNT,
+          "every numeric header is right-aligned — n plus all " + TYPE_FIELD_COUNT + " fields");
+  assert_(!/<th>/.test(thead), "no unaligned header survives");
+  assert_(/class="tnum tcell/.test(h), "…and the cells carry the same alignment class");
+
+  // Each cell gets a fill bar — nine columns of bare percentages have to be read
+  // digit by digit. Same labelled-bar idiom as the gaps table and the funnels.
+  assert_(/class="tbar"/.test(h), "cells carry a fill bar");
+  assert_(/<i class="r" style="width:67%"/.test(h), "…scaled to the fill % and RAG-coloured");
+  assert_(/class="tval"/.test(h), "the percentage is its own element, so the bar can sit under it");
+  // DARK-MODE COLOUR CHANNEL. --warn and --amber are the SAME hex in dark, which
+  // words survive (✔ ▲ ✖ still differ) but a bar cannot — colour is all it has.
+  // The bars must use the palette-validated chart tokens. Found by screenshotting
+  // dark mode, not by a test; this pins it so it cannot come back.
+  var css = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var tbarCss = css.slice(css.indexOf(".tbar{"), css.indexOf(".tbar i.n{"));
+  assert_(/\.tbar i\.a\{background:var\(--c-warn\)\}/.test(tbarCss) &&
+          /\.tbar i\.r\{background:var\(--c-bad\)\}/.test(tbarCss),
+          "fill bars use the chart tokens — --warn and --amber are identical in dark mode");
+  assert_(!/\.tbar i\.[ar]\{background:var\(--(warn|amber)\)\}/.test(tbarCss),
+          "…and never the text tokens");
+
+  // RESOLVED population: follows the period picker and says which window it covers.
+  C.setTypePop_("resolved");
+  var hr = els.viewHygiene.innerHTML;
+  assert_(/Resolved in/.test(hr), "the resolved matrix names its window");
+  assert_(/where the cards' numbers come from/.test(hr), "…and says what it explains");
+  var rres = C.typeHygRows_(["2026.W30", "2026.W31"]);
+  assert_(rres.length === 1 && rres[0].n === 10,
+          "resolved rows SUM across the selected weeks (5 + 5), not just the latest");
+  assert_(rres[0].keys.est.length === 4, "…and their failing-key lists concatenate");
+  assert_(C.typeHygRows_(["2026.W31"])[0].n === 5, "a one-week window sums only that week");
+
+  // ALL ROLES — this is a ticket-owner's work queue, unlike the admin-only
+  // 🔬 Data Profile. A viewer who cannot see it cannot action it.
+  var viewerMdl = fresh(model({ overrides: { viewerRole: "viewer" } }));
+  C.STATE.typePop = "open";
+  C.renderHygiene_();
+  var hv = els.viewHygiene.innerHTML;
+  assert_(/Field fill by issue type/.test(hv), "a viewer sees the by-type matrix");
+  assert_(!/Data Profile/.test(hv), "…but still not the admin-only profile panel");
+
+  // Pre-v17 payload: must SAY it is missing. An empty matrix reads as "no gaps".
+  var legacy = fresh(model({}));
+  delete legacy.typeHygiene;
+  C.renderHygiene_();
+  var hl = els.viewHygiene.innerHTML;
+  assert_(/Not in this payload/.test(hl),
+          "a payload with no typeHygiene says so — silence would read as 'no gaps'");
+
+  // ── ATTRITION IS STATED, NOT HIDDEN, AND NEVER A GAP ROW (v18) ──
+  // Excluding a leaver's work makes numbers smaller. A number that quietly got
+  // smaller is indistinguishable from a broken feed, so the exclusion is stated;
+  // but it is a scoping decision, not something to fix, so it must never appear
+  // as a hygiene gap row or someone will open a ticket to chase leavers.
+  var lv = fresh(model({}));
+  lv.meta.leaverExcluded = { issues: 42, epics: 7 };
+  C.renderHygiene_();
+  var hlv = els.viewHygiene.innerHTML;
+  assert_(/42<\/b> issues by former employees excluded/.test(hlv),
+          "the attrition exclusion is stated on the hygiene view");
+  assert_(/7 of them epics/.test(hlv), "…with the epic split, since Forecast is epic-grain");
+  assert_(/attrition cannot be coached/.test(hlv), "…and says why it is out of scope");
+  assert_(!/<td>.*former employees/.test(hlv), "it is NOT a gap row in the table");
+  // Silent when there is nothing to say — a permanent "0 excluded" line is noise.
+  var lv0 = fresh(model({}));
+  lv0.meta.leaverExcluded = { issues: 0, epics: 0 };
+  C.renderHygiene_();
+  assert_(!/former employees/.test(els.viewHygiene.innerHTML),
+          "no note when nothing was excluded");
+  var lvNone = fresh(model({}));
+  delete lvNone.meta.leaverExcluded;
+  C.renderHygiene_();
+  assert_(!/former employees/.test(els.viewHygiene.innerHTML),
+          "a pre-v18 payload renders no note rather than throwing");
+
+  // Empty feed is not the same as a broken one.
+  var empty = fresh(model({}));
+  empty.typeHygiene = { resolved: [], open: [], keyCap: 500 };
+  C.renderHygiene_();
+  assert_(/No open work in the feed/.test(els.viewHygiene.innerHTML),
+          "an empty population says so plainly");
+  fresh(model({}));
+  C.STATE.typePop = "open";
+})();
 
 console.log("✅ render-smoke: " + checks + " checks passed");
