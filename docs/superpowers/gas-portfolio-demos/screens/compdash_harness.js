@@ -19,5 +19,10 @@ var stub = "<script>window.google={script:{run:new Proxy({},{get:function(t,k){"
   JSON.stringify(D).replace(/<\/script/gi, "<\\/script") + ")},50);};}})}};<\/script>";
 
 html = html.replace(/<script>/, stub + "\n<script>");
+
+// De-brand the SPA's own UI copy in the OUTPUT only (source stays untouched):
+// word-boundary swaps so identifiers and unrelated words can't be corrupted.
+html = html.replace(/\bRocketeers\b/g, "Employees").replace(/\bRocketeer\b/g, "Employee");
+
 fs.writeFileSync(path.join(__dirname, "compdash_demo.html"), html, "utf8");
 console.log("Wrote compdash_demo.html — open in a browser, cycle the views, screenshot.");
