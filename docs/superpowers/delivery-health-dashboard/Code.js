@@ -18,6 +18,10 @@ var CONFIG_DH = {
   NS_SHEET:          "NS Billable",
 
   JIRA_RAW_SHEET:    "Jira Raw",
+  // Flow-metrics feeds (Jira Backlog.js v3.9.0). Absent tab = absent feature,
+  // never an error — see readJiraBugs_ / readFlowSnapshots_.
+  JIRA_BUGS_SHEET:   "Jira Bugs",
+  FLOW_SNAP_SHEET:   "Flow Snapshots",
   ROSTER_SHEET:      "Data",
   CONTRACTORS_SHEET: "Contractors Data",
   ROSTER_CLASS:      "Professional Services",
@@ -2262,6 +2266,95 @@ function readJiraRaw_() {
 }
 
 /**
+ * Pure parse of the Jira Bugs tab (Jira Backlog.js v3.9.0). Columns BY NAME.
+ * Bug Count needs only created/resolved; assignee is deliberately unused —
+ * the tile is population-wide (bugs are routinely unassigned at creation, so
+ * a person join would silently drop most of the population).
+ */
+function parseBugRows_(values) {
+  if (!values || values.length < 2) return { bugs: [], available: false };
+  var h = values[0].map(String);
+  var iKey = colIdx_(h, ["Key"]);
+  var iCreated = colIdx_(h, ["Created"]);
+  var iRes = colIdx_(h, ["Resolution Date"]);
+  if (iKey === -1 || iCreated === -1) return { bugs: [], available: false };
+  var bugs = [];
+  for (var r = 1; r < values.length; r++) {
+    var key = String(values[r][iKey] || "").trim();
+    if (!key || /^(GENERATED|TOTAL ROWS):/i.test(key)) continue;
+    var created = parseDhDate_(values[r][iCreated]);
+    if (!created || isNaN(created.getTime())) continue;
+    bugs.push({ key: key.toUpperCase(), created: created,
+                resolved: iRes === -1 ? null : parseDhDate_(values[r][iRes]) });
+  }
+  return { bugs: bugs, available: true };
+}
+
+/** Bugs → per-ISO-week tallies. One bug can hit TWO weeks: nCreated at its
+    creation week, nResolved at its resolution week. Population-wide (no person
+    key) — see parseBugRows_. */
+function bugWeekly_(bugs) {
+  var map = {};
+  function row(iso) {
+    if (!map[iso]) map[iso] = { iso: iso, nCreated: 0, nResolved: 0 };
+    return map[iso];
+  }
+  (bugs || []).forEach(function (b) {
+    if (b.created && !isNaN(b.created.getTime())) row(weekKeyFromDate_(b.created)).nCreated++;
+    if (b.resolved && !isNaN(b.resolved.getTime())) row(weekKeyFromDate_(b.resolved)).nResolved++;
+  });
+  return Object.keys(map).map(function (k) { return map[k]; });
+}
+
+/** Thin sheet wrapper — a missing tab is ABSENT (export predates v3.9.0),
+    never an error. Same contract as readJiraRaw_. */
+function readJiraBugs_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source)
+               .getSheetByName(CONFIG_DH.JIRA_BUGS_SHEET);
+    if (!sh) return { bugs: [], available: false };
+    return parseBugRows_(sh.getDataRange().getValues());
+  } catch (e) { return { bugs: [], available: false, error: e.message }; }
+}
+
+/**
+ * Pure parse of the Flow Snapshots tab. The exporter appends one row per RUN
+ * and can run several times a week — the LAST row per ISO week wins (freshest
+ * state of that week). Rows whose ISO Week cell isn't YYYY.WN are skipped.
+ */
+function parseFlowSnapshotRows_(values) {
+  if (!values || values.length < 2) return { snaps: [], available: false };
+  var h = values[0].map(String);
+  var iGen = colIdx_(h, ["Generated"]);
+  var iIso = colIdx_(h, ["ISO Week"]);
+  var iWip = colIdx_(h, ["WIP Count"]);
+  var iHrs = colIdx_(h, ["Backlog Hrs"]);
+  var iN = colIdx_(h, ["Backlog Items"]);
+  if (iGen === -1 || iIso === -1) return { snaps: [], available: false };
+  var byIso = {}, order = [];
+  for (var r = 1; r < values.length; r++) {
+    var iso = String(values[r][iIso] || "").trim();
+    if (!/^\d{4}\.W\d{1,2}$/.test(iso)) continue;
+    if (!byIso[iso]) order.push(iso);
+    byIso[iso] = { iso: iso, at: String(values[r][iGen] || ""),
+                   wip: Number(values[r][iWip]) || 0,
+                   backlogHrs: Number(values[r][iHrs]) || 0,
+                   backlogN: Number(values[r][iN]) || 0 };
+  }
+  return { snaps: order.map(function (k) { return byIso[k]; }), available: true };
+}
+
+/** Thin sheet wrapper for Flow Snapshots — same absent-≠-error contract. */
+function readFlowSnapshots_() {
+  try {
+    var sh = SpreadsheetApp.openById(dhSourceIds_().source)
+               .getSheetByName(CONFIG_DH.FLOW_SNAP_SHEET);
+    if (!sh) return { snaps: [], available: false };
+    return parseFlowSnapshotRows_(sh.getDataRange().getValues());
+  } catch (e) { return { snaps: [], available: false, error: e.message }; }
+}
+
+/**
  * Groups open Jira issues by roster person (name-alias join). Items sorted by
  * remaining estimate DESC then due ASC, capped at BACKLOG_MAX_ITEMS per person —
  * count/estHrs totals always cover ALL of the person's open issues.
@@ -3537,6 +3630,53 @@ function _test_flowOpenBuckets_() {
   assert_(r.uncategorized === 1, "blank status category measured as neither, tallied");
   assert_(r.unattributed === 1, "ghost tallied");
   Logger.log("✅ _test_flowOpenBuckets_ passed");
+}
+
+function _test_bugFeed_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_bugFeed_: " + m); }
+  // Header order shuffled on purpose — consumers resolve BY NAME.
+  var values = [
+    ["Summary", "Key", "Created", "Resolution Date", "Status Category"],
+    ["login broken", "BUG-1", "7/20/2026 09:00", "7/22/2026 10:00", "Done"],
+    ["slow page", "BUG-2", "7/21/2026 09:00", "", "To Do"],
+    ["", "", "", "", ""],                       // blank spacer row
+    ["", "Generated: 8/5/2026 07:00", "", "", ""],  // footer must not parse as a bug
+  ];
+  var r = parseBugRows_(values);
+  assert_(r.available === true, "parsed feed is available");
+  assert_(r.bugs.length === 2, "two bugs, footer + blank skipped");
+  assert_(r.bugs[0].key === "BUG-1" && r.bugs[0].resolved instanceof Date, "resolved date parsed");
+  assert_(r.bugs[1].resolved === null, "open bug has null resolved");
+
+  var wk = bugWeekly_(r.bugs);
+  // both created in the week of 2026-07-20 (2026.W30); one resolved same week
+  var w30 = wk.filter(function (x) { return x.iso === "2026.W30"; })[0];
+  assert_(w30 && w30.nCreated === 2 && w30.nResolved === 1,
+          "weekly tally: 2 created, 1 resolved in 2026.W30");
+
+  assert_(parseBugRows_(null).available === false, "no values → unavailable");
+  assert_(parseBugRows_([["Key"]]).available === false, "header-only → unavailable");
+  Logger.log("✅ _test_bugFeed_ passed");
+}
+
+function _test_flowSnapshots_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_flowSnapshots_: " + m); }
+  var values = [
+    ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items"],
+    ["7/28/2026 07:00", "2026.W31", "10", "120.5", "40"],
+    ["7/30/2026 07:00", "2026.W31", "12", "118",   "38"],  // later run, same week
+    ["8/3/2026 07:00",  "2026.W32", "11", "99",    "35"],
+    ["not a date",      "garbage",  "",   "",      ""],    // junk row skipped
+  ];
+  var r = parseFlowSnapshotRows_(values);
+  assert_(r.available === true, "parsed");
+  assert_(r.snaps.length === 2, "one snapshot per ISO week, junk skipped");
+  assert_(r.snaps[0].iso === "2026.W31" && r.snaps[0].wip === 12,
+          "LAST run of the week wins (12, not 10)");
+  assert_(Math.abs(r.snaps[0].backlogHrs - 118) < 0.001, "hours from the winning row");
+  assert_(r.snaps[1].iso === "2026.W32" && r.snaps[1].backlogN === 35, "second week intact");
+  assert_(parseFlowSnapshotRows_([]).available === false, "empty → unavailable");
+  Logger.log("✅ _test_flowSnapshots_ passed");
 }
 
 /** Registry integrity (FR-1.1/FR-1.2) — the payload's definitional contract.
