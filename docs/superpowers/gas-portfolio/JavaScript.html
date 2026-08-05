@@ -665,30 +665,23 @@ var Chat = (function() {
 
   // ── RAG: Project retrieval ────────────────────────────────────────────────
 
-  var PROJECT_DATABASE = {
-    'ai-sales': { name: 'Pipeline Risk Analyzer', domain: 'AI/Sales', tech: ['Groq', 'LLM', 'GAS'], impact: 'Reduced deal slippage by 23%' },
-    'tcc-forecast': { name: 'TCC Forecasting Engine', domain: 'Finance', tech: ['SQL', 'Monte Carlo', 'GAS'], impact: '$2.1M variance analysis' },
-    'comp-reporting': { name: 'Global Comp Normalizer', domain: 'HR/Comp', tech: ['Python', 'PPP Index', 'BigQuery'], impact: '10-country benchmark' },
-    'ps-dashboard': { name: 'PS Contribution Scorer', domain: 'Operations', tech: ['GAS', 'Dashboards', 'Metrics'], impact: '200-person scoring system' },
-    'ai-salary-benchmarking': { name: 'AI Salary Benchmarking', domain: 'HR/Comp', tech: ['AI', 'Python', 'Data Analysis'], impact: 'Market rate analysis' },
-    'global-comp-reporting': { name: 'Global Compensation', domain: 'Finance/HR', tech: ['Python', 'Currency API', 'SQL'], impact: 'Multi-currency reporting' },
-    'goals-quality-audit': { name: 'Goals Quality Audit', domain: 'Operations', tech: ['Python', 'NLP', 'Analytics'], impact: 'OKR compliance tracking' },
-    'ps-contribution-dashboard': { name: 'PS Contribution Dashboard', domain: 'Operations', tech: ['GAS', 'Apps Script', 'Sheets'], impact: 'Team performance tracking' },
-    'tcc-financial-forecasting': { name: 'TCC Financial Forecasting', domain: 'Finance', tech: ['SQL', 'Proration', 'Forecasting'], impact: 'Attrition modeling' },
-    'ai-chat': { name: 'RAG-Powered Portfolio Assistant', domain: 'AI/LLM', tech: ['Llama 3.3', 'RAG', 'Groq'], impact: 'Intelligent Q&A system' },
-    'data-pipeline': { name: 'ETL Data Pipeline', domain: 'Engineering', tech: ['Python', 'GCP', 'BigQuery'], impact: 'Automated data ingestion' },
-    'workforce-analytics': { name: 'Workforce Analytics Suite', domain: 'HR/Analytics', tech: ['Python', 'Pandas', 'Visualization'], impact: 'Headcount forecasting' }
-  };
-
+  // Grounding retrieval — single source of truth is window.PROJECTS (injected by
+  // the server / baked by build-static). No parallel copies, no invented metrics.
   function retrieveProject(query) {
     var q = query.toLowerCase();
-    for (var key in PROJECT_DATABASE) {
-      var proj = PROJECT_DATABASE[key];
-      if (q.indexOf(key.replace(/-/g, ' ')) !== -1 || 
-          q.indexOf(proj.name.toLowerCase()) !== -1 ||
-          q.indexOf(proj.domain.toLowerCase()) !== -1) {
-        return { id: key, data: proj };
+    var all = window.PROJECTS || [];
+    for (var i = 0; i < all.length; i++) {
+      var p = all[i];
+      var hay = [p.id.replace(/-/g, ' '), p.title, p.category || '', (p.tech || []).join(' ')]
+        .join(' ').toLowerCase();
+      var words = p.title.toLowerCase().split(/\s+/).filter(function (w) { return w.length > 4; });
+      var titleHit = words.some(function (w) { return q.indexOf(w) !== -1; });
+      if (titleHit || q.indexOf(p.id.replace(/-/g, ' ')) !== -1 ||
+          (p.category && q.indexOf(p.category.toLowerCase()) !== -1)) {
+        return { id: p.id, data: { name: p.title, domain: p.category || p.domain,
+          tech: (p.tech || []).slice(0, 4), impact: p.impact || '' } };
       }
+      void hay;
     }
     return null;
   }
