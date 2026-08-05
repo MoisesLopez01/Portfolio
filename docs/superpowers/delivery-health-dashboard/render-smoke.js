@@ -89,6 +89,9 @@ if (!m) throw new Error("❌ render-smoke: could not find the inline <script> bl
 var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function () { return MODEL; }," +
              " setState: function (k, v) { STATE[k] = v; }, STATE: STATE," +
              " renderTiles_: renderTiles_, renderHygiene_: renderHygiene_," +
+             // 🌊 Flow view (spec 2026-08-05) — render-smoke is the only place
+             // its grammar, absence and degradation rules can be pinned down.
+             " renderFlow_: renderFlow_, flowOpenFor_: flowOpenFor_, flowMedian_: flowMedian_," +
              // 🧬 by-type matrix (2026-08-04) — impact ordering and the
              // "gates nothing today" marking only exist in rendering.
              " typeMatrixHtml_: typeMatrixHtml_, typeImpact_: typeImpact_," +
@@ -1917,6 +1920,84 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
           "an empty population says so plainly");
   fresh(model({}));
   C.STATE.typePop = "open";
+})();
+
+// ── 🌊 FLOW VIEW (spec 2026-08-05) ──────────────────────────
+(function () {
+  var M = C.getModel();
+  var who = M.people[0].name;   // a real fixture person who passes open filters
+  var W = WEEKS[WEEKS.length - 1];             // latest complete week
+  M.leadTimeBuckets = [{ iso: W, person: who, n: 2, nAll: 3, days: [4, 10] }];
+  M.throughputBuckets = [{ iso: W, person: who, nAll: 3, nEst: 2, estHrs: 12.5 }];
+  M.flowOpenBuckets = [{ person: who, wipN: 3, todoN: 5, todoEst: 4, todoHrs: 22.5 }];
+  M.bugWeekly = [{ iso: W, nCreated: 4, nResolved: 1 }];
+  M.meta.bugsAvailable = true;
+  M.meta.flowSnapshotsAvailable = true;
+  M.meta.flowSnapshots = [
+    { iso: WEEKS[0], at: "", wip: 2, backlogHrs: 30, backlogN: 6 },
+    { iso: W,        at: "", wip: 3, backlogHrs: 22.5, backlogN: 5 },
+  ];
+  M.meta.flowUncategorized = 0;
+  M.meta.jiraUnattributed = Object.assign({}, M.meta.jiraUnattributed,
+    { leadTime: 0, throughput: 0, flowOpen: 0 });
+  // Registry entries ride in meta.registry — give the renderer the real ones.
+  M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
+    target: null, coverageGate: 0.9, coverageOf: "resolved non-epic issues carrying both dates" };
+  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
+    target: null, coverageGate: 0.6, coverageOf: "resolved non-epic issues carrying an estimate" };
+  M.meta.registry.metrics.backlog = { id: "backlog", name: "Backlog (Inventory)", unit: "hrs",
+    target: null, coverageGate: 0.6, coverageOf: "waiting items carrying an estimate" };
+  M.meta.registry.metrics.wip = { id: "wip", name: "Work In Progress", unit: "items",
+    target: null, coverageGate: 0 };
+  M.meta.registry.metrics.bugCount = { id: "bugCount", name: "Bug Count", unit: "bugs",
+    target: null, coverageGate: 0 };
+  M.meta.registry.metrics.cycleTime = { id: "cycleTime", name: "Cycle Time", status: "absent",
+    absentReason: "needs first-In-Progress date from the Jira changelog — not yet exported" };
+  M.meta.registry.metrics.flowEfficiency = { id: "flowEfficiency", name: "Flow Efficiency",
+    status: "absent", absentReason: "needs per-status dwell time from the Jira changelog — not yet exported" };
+  C.setModel(M);
+
+  // The tab exists, routes, and is open to every role.
+  var flowView = C.VIEWS.filter(function (v) { return v.id === "flow"; })[0];
+  assert_(flowView && flowView.roles === null, "🌊 Flow is declared in VIEWS, all roles");
+
+  C.setState("view", "flow");
+  C.setState("period", "week");
+  C.setState("periodIdx", null);
+  C.renderAll_();
+  var h = els["flowTiles"].innerHTML;
+
+  assert_(h.indexOf("Lead Time") !== -1 && h.indexOf("7d") !== -1,
+          "lead-time median of [4,10] renders 7d");
+  assert_(h.indexOf("p85") !== -1, "p85 companion stated");
+  assert_(h.indexOf("Throughput") !== -1 && h.indexOf("2 of 3 resolved issues carried an estimate") !== -1,
+          "throughput states its estimated-share coverage in words");
+  assert_(h.indexOf("Work In Progress") !== -1 && h.indexOf("3 active items right now") !== -1,
+          "WIP counts the fixture's active items");
+  assert_(h.indexOf("5 items waiting to start") !== -1, "backlog counts waiting items");
+  assert_(h.indexOf("Bug Count") !== -1 && h.indexOf("4") !== -1 &&
+          h.indexOf("population-wide") !== -1,
+          "bug tile renders the created count and states it is unfiltered");
+  // No-target grammar: flow tiles carry NO RAG verdict and NO vs-target line.
+  assert_(h.indexOf("vs target") === -1, "target: null → no vs-target sentence anywhere");
+  // Declared-absent tiles state their reason instead of a number.
+  assert_(h.indexOf("Cycle Time") !== -1 && h.indexOf("Flow Efficiency") !== -1 &&
+          h.split('tile ph').length >= 3,
+          "Cycle Time + Flow Efficiency render as declared-absent placeholder tiles");
+
+  // Missing feeds degrade, never error: kill both new feeds and re-render.
+  M.meta.bugsAvailable = false;
+  M.meta.flowSnapshotsAvailable = false;
+  M.meta.flowSnapshots = [];
+  C.setModel(M);
+  C.renderAll_();
+  var h2 = els["flowTiles"].innerHTML;
+  assert_(h2.indexOf("export predates Jira Backlog.js v3.9.0") !== -1,
+          "absent feeds name the exporter version, not an error");
+
+  // Restore view state for any assertions that follow.
+  C.setState("view", "exec");
+  C.renderAll_();
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");
