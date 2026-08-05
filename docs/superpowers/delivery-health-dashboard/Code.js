@@ -984,6 +984,74 @@ function reworkBuckets_(issues, resolvePerson) {
            unattributed: unattributed };
 }
 
+/**
+ * Resolved NON-EPIC issues → per-week lead-time buckets (🌊 Flow, spec
+ * 2026-08-05 §3.1). Same shape and rules as onTimeBuckets_: person-attributed
+ * via the roster join, unattributed tallied for the honesty note.
+ *
+ * Median (and p85) are NOT additive, so the raw day values ship per bucket and
+ * the client aggregates whatever the active filter selects — the same pattern
+ * as forecast's absVars. Values rounded to 0.1d and capped at 1000d so one
+ * archaeological ticket can't bloat the payload.
+ *
+ *   nAll  every resolved non-epic issue (coverage denominator)
+ *   n     those with a usable created date (created ≤ resolved)
+ *   days  calendar days created → resolved, one per measured issue
+ */
+function leadTimeBuckets_(issues, resolvePerson) {
+  var map = {}, unattributed = 0;
+  (issues || []).forEach(function (it) {
+    if (it.isEpic) return;                       // grain decision D4
+    if (!it.resolved || isNaN(it.resolved.getTime())) return;
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!person) { unattributed++; return; }
+    var iso = weekKeyFromDate_(it.resolved);
+    var k = iso + "" + person;
+    if (!map[k]) map[k] = { iso: iso, person: person, n: 0, nAll: 0, days: [] };
+    map[k].nAll++;
+    if (!it.created || isNaN(it.created.getTime())) return;
+    var days = (it.resolved.getTime() - it.created.getTime()) / 86400000;
+    if (days < 0) return;  // clock skew / bad data — a gap, not a measurement
+    map[k].n++;
+    map[k].days.push(Math.round(Math.min(1000, days) * 10) / 10);
+  });
+  return { buckets: Object.keys(map).map(function (k) { return map[k]; }),
+           unattributed: unattributed };
+}
+
+/**
+ * Resolved NON-EPIC issues → per-week throughput buckets (🌊 Flow, spec §3.3):
+ * Σ Original Estimate hours delivered. Non-epic only — an epic AND its children
+ * both carrying estimates would double-count the sum (grain decision D4).
+ *
+ *   nAll    every resolved non-epic issue (coverage denominator)
+ *   nEst    those carrying a non-zero estimate
+ *   estHrs  Σ estimate hours over nEst — unestimated work delivers INVISIBLY
+ *           here; the card's coverage chip carries that caveat.
+ */
+function throughputBuckets_(issues, resolvePerson) {
+  var map = {}, unattributed = 0;
+  (issues || []).forEach(function (it) {
+    if (it.isEpic) return;
+    if (!it.resolved || isNaN(it.resolved.getTime())) return;
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!person) { unattributed++; return; }
+    var iso = weekKeyFromDate_(it.resolved);
+    var k = iso + "" + person;
+    if (!map[k]) map[k] = { iso: iso, person: person, nAll: 0, nEst: 0, estHrs: 0 };
+    map[k].nAll++;
+    var est = Number(it.estSec) || 0;
+    if (est <= 0) return;
+    map[k].nEst++;
+    map[k].estHrs += est / 3600;
+  });
+  var buckets = Object.keys(map).map(function (k) {
+    map[k].estHrs = Math.round(map[k].estHrs * 10) / 10;
+    return map[k];
+  });
+  return { buckets: buckets, unattributed: unattributed };
+}
+
 /** Resolved DELIVERY issues → per-week on-time buckets. n/onTime cover issues
     WITH a due date; nAll counts every resolved delivery issue (coverage
     denominator).
@@ -1986,6 +2054,7 @@ function readJiraRaw_() {
     var iPriority = colIdx_(h, ["Priority"]);
     var iStatus = colIdx_(h, ["Status"]);
     var iRes = colIdx_(h, ["Resolution Date", "Resolved"]);
+    var iCreated = colIdx_(h, ["Created"]);
     var iDue = colIdx_(h, ["Due Date"]);
     var iEst = colIdx_(h, ["Original Estimate (sec)"]);
     var iSpent = colIdx_(h, ["Time Spent (sec)"]);
@@ -2097,6 +2166,9 @@ function readJiraRaw_() {
         isClientCommitment: DH_CLIENT_COMMITMENT_.test(labels),
         due: iDue === -1 ? null : parseDhDate_(raw[r][iDue]),
         resolved: iRes === -1 ? null : parseDhDate_(raw[r][iRes]),
+        // Lead Time input (flow metrics, spec 2026-08-05). Optional like every
+        // header here: -1 on an exotic export → null → coverage gap, not zero.
+        created: iCreated === -1 ? null : parseDhDate_(raw[r][iCreated]),
         estSec: iEst === -1 ? 0 : Number(raw[r][iEst]) || 0,
         spentSec: iSpent === -1 ? 0 : Number(raw[r][iSpent]) || 0,
         region: region, team: team,
@@ -3335,6 +3407,51 @@ function _test_reworkRate_() {
     assert_(!CONFIG_DH.NON_DELIVERED_RESOLUTIONS.test(res), res + " IS delivered work");
   });
   Logger.log("✅ _test_reworkRate_ passed");
+}
+
+function _test_flowBuckets_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_flowBuckets_: " + m); }
+  var who = function (a) { return a === "maria" ? "Maria Alvarez" : null; };
+  var d = function (s) { return new Date(s); };
+  var issues = [
+    // resolved story, 4.0 days lead, 7200s estimate → counted everywhere
+    { isEpic: false, assignee: "maria", created: d("2026-07-20T09:00:00"),
+      resolved: d("2026-07-24T09:00:00"), estSec: 7200, spentSec: 3600 },
+    // resolved task, NO created date → nAll only (lead-time coverage gap)
+    { isEpic: false, assignee: "maria", created: null,
+      resolved: d("2026-07-24T12:00:00"), estSec: 0, spentSec: 0 },
+    // epic → excluded from BOTH metrics (grain decision D4)
+    { isEpic: true, assignee: "maria", created: d("2026-07-01"),
+      resolved: d("2026-07-24"), estSec: 360000, spentSec: 0 },
+    // non-roster assignee → unattributed tally
+    { isEpic: false, assignee: "ghost", created: d("2026-07-20"),
+      resolved: d("2026-07-24"), estSec: 3600, spentSec: 0 },
+    // unresolved → ignored by both
+    { isEpic: false, assignee: "maria", created: d("2026-07-20"),
+      resolved: null, estSec: 3600, spentSec: 0 },
+  ];
+
+  var lt = leadTimeBuckets_(issues, who);
+  assert_(lt.buckets.length === 1, "one iso+person lead-time bucket");
+  var b = lt.buckets[0];
+  assert_(b.person === "Maria Alvarez", "person resolved via roster join");
+  assert_(b.nAll === 2 && b.n === 1, "nAll counts both resolved stories; n only the dated one");
+  assert_(b.days.length === 1 && Math.abs(b.days[0] - 4) < 0.05, "4.0 days lead time");
+  assert_(lt.unattributed === 1, "ghost assignee tallied, not dropped silently");
+
+  var tp = throughputBuckets_(issues, who);
+  assert_(tp.buckets.length === 1, "one throughput bucket");
+  var t = tp.buckets[0];
+  assert_(t.nAll === 2 && t.nEst === 1, "coverage = estimated ÷ resolved");
+  assert_(Math.abs(t.estHrs - 2) < 0.001, "7200s = 2.0 estimate-hours delivered");
+  assert_(tp.unattributed === 1, "throughput tallies the ghost too");
+
+  // negative lead time (created after resolved — clock skew) is not a measurement
+  var skew = leadTimeBuckets_([{ isEpic: false, assignee: "maria",
+    created: d("2026-07-25"), resolved: d("2026-07-24") }], who);
+  assert_(skew.buckets[0].nAll === 1 && skew.buckets[0].n === 0 &&
+          skew.buckets[0].days.length === 0, "negative lead time → coverage gap, not a data point");
+  Logger.log("✅ _test_flowBuckets_ passed");
 }
 
 /** Registry integrity (FR-1.1/FR-1.2) — the payload's definitional contract.
