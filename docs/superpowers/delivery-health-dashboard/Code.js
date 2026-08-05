@@ -1052,6 +1052,52 @@ function throughputBuckets_(issues, resolvePerson) {
   return { buckets: buckets, unattributed: unattributed };
 }
 
+/**
+ * OPEN assigned non-epic issues → per-PERSON backlog/WIP buckets (🌊 Flow,
+ * spec §3.4/§3.5). No iso key — a backlog is a snapshot, not a time series
+ * (history comes from the exporter's Flow Snapshots tab instead).
+ *
+ * Status category partitions the open book:
+ *   "To Do"       → backlog (waiting to start): todoN, todoEst,
+ *                   todoHrs = Σ max(0, est − spent)
+ *   "In Progress" → WIP: wipN (same semantics as the exporter's fetchActiveWIP_)
+ *   blank/other   → uncategorized tally — a pre-v3.6.0 export has no Status
+ *                   Category column, and inventing a side would be a guess.
+ *
+ * Open = unresolved + assigned + status not closed-ish — the SAME rule as
+ * readJiraRaw_'s openIssues, restated over `issues` because openIssues records
+ * don't carry statusCategory/estSec.
+ */
+function flowOpenBuckets_(issues, resolvePerson) {
+  var map = {}, unattributed = 0, uncategorized = 0;
+  (issues || []).forEach(function (it) {
+    if (it.isEpic) return;
+    if (it.resolved && !isNaN(it.resolved.getTime())) return;
+    var raw = String(it.assignee || "").trim();
+    if (!raw || /unassigned/i.test(raw)) return;
+    if (DH_CLOSED_STATUS_.test(String(it.status || ""))) return;
+    var person = resolvePerson ? resolvePerson(raw) : null;
+    if (!person) { unattributed++; return; }
+    if (!map[person]) map[person] = { person: person, wipN: 0,
+                                      todoN: 0, todoEst: 0, todoHrs: 0 };
+    var cat = String(it.statusCategory || "");
+    if (/in progress/i.test(cat)) { map[person].wipN++; return; }
+    if (/to do/i.test(cat)) {
+      map[person].todoN++;
+      var est = Number(it.estSec) || 0;
+      if (est > 0) map[person].todoEst++;
+      map[person].todoHrs += Math.max(0, est - (Number(it.spentSec) || 0)) / 3600;
+      return;
+    }
+    uncategorized++;
+  });
+  var buckets = Object.keys(map).map(function (k) {
+    map[k].todoHrs = Math.round(map[k].todoHrs * 10) / 10;
+    return map[k];
+  });
+  return { buckets: buckets, unattributed: unattributed, uncategorized: uncategorized };
+}
+
 /** Resolved DELIVERY issues → per-week on-time buckets. n/onTime cover issues
     WITH a due date; nAll counts every resolved delivery issue (coverage
     denominator).
@@ -3452,6 +3498,45 @@ function _test_flowBuckets_() {
   assert_(skew.buckets[0].nAll === 1 && skew.buckets[0].n === 0 &&
           skew.buckets[0].days.length === 0, "negative lead time → coverage gap, not a data point");
   Logger.log("✅ _test_flowBuckets_ passed");
+}
+
+function _test_flowOpenBuckets_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_flowOpenBuckets_: " + m); }
+  var who = function (a) { return a === "maria" ? "Maria Alvarez" : null; };
+  var issues = [
+    // waiting to start: To Do, 2h est, 0.5h spent → backlog 1.5h
+    { isEpic: false, assignee: "maria", resolved: null, status: "To Do",
+      statusCategory: "To Do", estSec: 7200, spentSec: 1800 },
+    // active: In Progress → WIP, hours NOT counted in backlog
+    { isEpic: false, assignee: "maria", resolved: null, status: "In Progress",
+      statusCategory: "In Progress", estSec: 36000, spentSec: 0 },
+    // To Do with no estimate → item counted, 0 hours, coverage gap
+    { isEpic: false, assignee: "maria", resolved: null, status: "Backlog",
+      statusCategory: "To Do", estSec: 0, spentSec: 0 },
+    // blank status category (pre-v3.6.0 export) → measured as NEITHER
+    { isEpic: false, assignee: "maria", resolved: null, status: "Waiting",
+      statusCategory: "", estSec: 3600, spentSec: 0 },
+    // epic → excluded; resolved → excluded; unassigned → excluded
+    { isEpic: true, assignee: "maria", resolved: null, statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    { isEpic: false, assignee: "maria", resolved: new Date(), statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    { isEpic: false, assignee: "⚠️ UNASSIGNED", resolved: null, statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    // closed-ish status but no resolution date → excluded (matches openIssues rule)
+    { isEpic: false, assignee: "maria", resolved: null, status: "Canceled",
+      statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    // non-roster assignee → unattributed
+    { isEpic: false, assignee: "ghost", resolved: null, status: "To Do",
+      statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+  ];
+  var r = flowOpenBuckets_(issues, who);
+  assert_(r.buckets.length === 1, "one person bucket");
+  var b = r.buckets[0];
+  assert_(b.person === "Maria Alvarez", "keyed by roster name");
+  assert_(b.wipN === 1, "one item in progress");
+  assert_(b.todoN === 2 && b.todoEst === 1, "two waiting items, one estimated");
+  assert_(Math.abs(b.todoHrs - 1.5) < 0.001, "backlog hrs = max(0, est − spent) = 1.5");
+  assert_(r.uncategorized === 1, "blank status category measured as neither, tallied");
+  assert_(r.unattributed === 1, "ghost tallied");
+  Logger.log("✅ _test_flowOpenBuckets_ passed");
 }
 
 /** Registry integrity (FR-1.1/FR-1.2) — the payload's definitional contract.

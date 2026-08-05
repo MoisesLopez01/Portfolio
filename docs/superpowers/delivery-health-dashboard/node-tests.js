@@ -48,6 +48,7 @@ _test_modelAssembly_();
 _test_periods_();
 _test_levelTrack_();
 _test_flowBuckets_();
+_test_flowOpenBuckets_();
 
 // ── CLIENT/SERVER PARITY ─────────────────────────────────────
 // Dashboard.html keeps its own copy of the utilization math (utilFor_/aggWeeks_)
