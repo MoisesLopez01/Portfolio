@@ -22,7 +22,7 @@ function read(f) {
 
 // 1. Extract PROJECTS / DOMAINS from Code.gs without a GAS runtime.
 function extractData() {
-  var code = read("Code.gs");
+  var code = read("Code.js");
   var noop = function () {};
   var stub = new Proxy({}, { get: function () { return noop; } });
   var sandbox = {
@@ -31,9 +31,9 @@ function extractData() {
     Utilities: stub, console: console, Logger: { log: noop },
   };
   vm.createContext(sandbox);
-  vm.runInContext(code, sandbox, { filename: "Code.gs" });
+  vm.runInContext(code, sandbox, { filename: "Code.js" });
   if (!Array.isArray(sandbox.PROJECTS) || !Array.isArray(sandbox.DOMAINS)) {
-    throw new Error("Could not extract PROJECTS/DOMAINS from Code.gs");
+    throw new Error("Could not extract PROJECTS/DOMAINS from Code.js");
   }
   return { PROJECTS: sandbox.PROJECTS, DOMAINS: sandbox.DOMAINS };
 }
@@ -72,12 +72,6 @@ function build() {
 
   if (!fs.existsSync(DIST)) fs.mkdirSync(DIST, { recursive: true });
   fs.writeFileSync(path.join(DIST, "index.html"), html, "utf8");
-
-  // Copy the favicon/hero image if present (referenced by the page).
-  ["_shot_hero.png"].forEach(function (asset) {
-    var src = path.join(ROOT, asset);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(DIST, asset));
-  });
 
   console.log(
     "[build] dist/index.html written — " +

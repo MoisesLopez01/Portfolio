@@ -82,6 +82,7 @@ async function proxyGroqChat(args) {
   var userMessage = String(args[0] || "");
   var history = Array.isArray(args[1]) ? args[1].slice(-10) : [];
   var sessionId = String(args[2] || "anon");
+  var ragContext = args[3] || null;
 
   if (!userMessage.trim()) throw new Error("Empty message.");
   if (userMessage.length > MAX_MSG_LEN) userMessage = userMessage.substring(0, MAX_MSG_LEN);
@@ -100,6 +101,15 @@ async function proxyGroqChat(args) {
   }
 
   var messages = [{ role: "system", content: systemPrompt }];
+  if (ragContext) {
+    messages.push({
+      role: "system",
+      content: "[RETRIEVED PROJECT CONTEXT]\n" + JSON.stringify(ragContext, null, 2) +
+        "\n\nUse this context to answer the user's question. If they asked about a specific " +
+        "demo, you can suggest they try it live by saying something like: 'You can try this " +
+        "live in the demos section above' or include a [DEMO:demoId] tag in your response."
+    });
+  }
   history.forEach(function (t) {
     messages.push({
       role: t.role === "assistant" ? "assistant" : "user",
