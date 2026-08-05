@@ -1407,7 +1407,7 @@ function buildEpicAssignmentGaps_(recs, metaMap) {
  * Classifies a Fix Versions string into a revenue bucket:
  *   "Billable"  — any token carries a BILL code (sales order / FixedPrice); matched
  *                 anywhere in the name, so client-prefixed versions like
- *                 "CLVT02 BILL-016559" count, not just names starting with BILL.
+ *                 "ACME02 BILL-016559" count, not just names starting with BILL.
  *   "Internal"  — tagged with fix versions, none of them BILL (release/phase markers).
  *   "Untagged"  — no fix version at all: internal work OR client work nobody tagged —
  *                 the data-hygiene bucket that may hide missing revenue attribution.
@@ -1519,7 +1519,7 @@ function _test_enrichTracked_() {
     "COE-456": { fixVersions: "BILL-4455, 2026.Q3", epicKey: "COE-100", status: "Done" },
     "COE-457": { fixVersions: "",                    epicKey: "COE-100", status: "In Progress" },
     "COE-458": { fixVersions: "bill-9",              epicKey: "",        status: "Done" }, // lowercase bill
-    "COE-459": { fixVersions: "CLVT02 BILL-016559",  epicKey: "",        status: "Done" }, // client-prefixed BILL
+    "COE-459": { fixVersions: "ACME02 BILL-016559",  epicKey: "",        status: "Done" }, // client-prefixed BILL
     "COE-460": { fixVersions: "v2.1.0, Phase 2",     epicKey: "",        status: "Done" }, // tagged, no BILL
   };
   var recs = [
