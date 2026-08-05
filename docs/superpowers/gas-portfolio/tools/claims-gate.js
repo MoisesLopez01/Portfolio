@@ -6,7 +6,7 @@ var FILES = ["index.html", "JavaScript.html", "Code.js",
 var BANNED = [
   "GPT-4", "Embeddings", "Claude API", "with RAG",
   "11 production apps", "312 contributors", "9 LLM systems",
-  "ai-salary-benchmarking", "ps-contribution-dashboard", "'ps-dashboard'",
+  "ai-salary-benchmarking", "ps-contribution-dashboard", "ps-dashboard",
   "7571-9264",
 ];
 var hits = 0;

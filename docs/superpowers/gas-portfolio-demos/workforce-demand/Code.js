@@ -6,7 +6,7 @@
 //              available-capacity denominator, and serves Dashboard.html.
 // ENVIRONMENT: Google Apps Script (separate project from PS report)
 // DATA SOURCE: Planned Time Tempo tab + Roster sheet, both by ID.
-// ACCESS:      Email allowlist — see Security.js (checkDemandAccess()).
+// ACCESS:      Open access (demo build) — see Security.js (checkDemandAccess()).
 // ============================================================
 
 var CONFIG = {
