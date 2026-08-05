@@ -17,7 +17,6 @@ Each of these ships complete source, a synthetic data generator, and a passing t
 | [global-comp-reporting](./projects/global-comp-reporting) | Python · Vertex AI | Multi-currency normalization, COL adjustment, micro-banding, market benchmarking. 6 tests. |
 | [tcc-financial-forecasting](./projects/tcc-financial-forecasting) | SQL · SQLite | Attrition proration, cost drivers, actuals-vs-forecast — runnable SQL models. 4 tests. |
 | [goals-quality-audit](./projects/goals-quality-audit) | Python · pandas | Compliance rule-engine pipeline with exception reporting. 5 tests. |
-| [ai-salary-benchmarking](./projects/ai-salary-benchmarking) | Google Apps Script · Gemini | Market salary benchmarking excerpt. |
 
 ```bash
 # Run any Python project end-to-end, e.g.:

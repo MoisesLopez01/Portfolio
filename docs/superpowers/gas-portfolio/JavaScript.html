@@ -1981,7 +1981,7 @@ var DemosSection = (function() {
         mount(tab.getAttribute('data-demo'));
       });
     });
-    // Mount the default tab (Ops / ps-dashboard, marked .active in the markup)
+    // Mount the default tab (the button marked .active in the markup)
     var activeTab = document.querySelector('#demos .demo-tab.active');
     setFormula(activeTab);
     mount(activeTab ? activeTab.getAttribute('data-demo') : 'ps-dashboard');
@@ -2333,7 +2333,7 @@ var ScrollNudge = (function() {
   var hideTimer = null;
 
   var HINTS = {
-    'demos':    'How does the Pipeline Risk Analyzer work?',
+    'demos':    'Which demo should I try first?',
     'projects': 'Which project shows your strongest AI work?',
     'about':    'What kinds of roles fit Alex best?',
     'contact':  'Is Alex open to new opportunities right now?'
