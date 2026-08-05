@@ -1917,6 +1917,73 @@
     Logger.log("✅ Jira Bugs: " + (rows.length - 1) + " rows written.");
   }
 
+  /**
+   * Appends ONE row per export run to the Flow Snapshots tab: timestamp,
+   * ISO week, WIP count, backlog hrs, backlog item count (v3.9.0).
+   *
+   * APPEND-ONLY — never clearContents. A snapshot can't be recomputed later,
+   * so this tab is the system of record for WIP/Backlog history. Rows older
+   * than RAW_HISTORY_WEEKS are pruned on write (the shared 52-week dial).
+   *
+   * The split follows the spec (§3.4/3.5) VERBATIM — non-epic, assigned,
+   * unresolved; status category To Do = backlog (waiting), In Progress = WIP.
+   * Backlog hours = max(0, Original Estimate − Time Spent). The dashboard
+   * recomputes today's values from Jira Raw with the same rules; this row
+   * exists only because history cannot be rebuilt. If the definition ever
+   * changes, old rows stay as old-definition history (✎ definition changed).
+   *
+   * @param {Object[]} openCandidates raw Jira issues — the union of the
+   *   open-backlog fetch and the epic-children fetch (the same open issues
+   *   that reach Jira Raw), unresolved rows filtered here.
+   */
+  function writeFlowSnapshot_(openCandidates) {
+    var FLOW_HEADERS = ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items"];
+    var sheet = jb_getOrCreateSheet_(CONFIGJ.FLOW_SNAP_SHEET);
+    if (sheet.getLastRow() === 0) {
+      sheet.getRange(1, 1, 1, FLOW_HEADERS.length).setValues([FLOW_HEADERS]);
+      styleHeader_(sheet.getRange(1, 1, 1, FLOW_HEADERS.length));
+      sheet.setFrozenRows(1);
+    }
+
+    var wip = 0, backlogHrs = 0, backlogN = 0;
+    openCandidates.forEach(function(issue) {
+      var f = issue.fields || {};
+      if (String(dig_(f, "issuetype.name") || "").toLowerCase().indexOf("epic") !== -1) return;
+      if (!dig_(f, "assignee.displayName")) return;
+      if (f.resolutiondate) return;   // resolved-outside-window epic children
+      var cat = String(dig_(f, "status.statusCategory.name") || "");
+      if (/^done$/i.test(cat)) return;
+      if (/in progress/i.test(cat)) { wip++; return; }
+      if (/to do/i.test(cat)) {
+        backlogN++;
+        var est   = Number(f.timeoriginalestimate || 0);
+        var spent = Number(f.timespent || 0);
+        backlogHrs += Math.max(0, est - spent) / 3600;
+      }
+      // any other category (custom): measured as neither — same rule as the
+      // dashboard's flowOpenBuckets_, so the two stay reconcilable.
+    });
+
+    // Prune BEFORE appending so the tab never grows past the retained window.
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - CONFIGJ.RAW_HISTORY_WEEKS * 7);
+    var vals = sheet.getDataRange().getValues();
+    for (var r = vals.length - 1; r >= 1; r--) {
+      var d = new Date(vals[r][0]);
+      if (!isNaN(d.getTime()) && d < cutoff) sheet.deleteRow(r + 1);
+    }
+
+    sheet.appendRow([
+      fmtDateTime_(new Date()),
+      jb_isoWeekLabel_(new Date()),
+      wip,
+      Math.round(backlogHrs * 10) / 10,
+      backlogN,
+    ]);
+    Logger.log("🌊 Flow snapshot: WIP " + wip + ", backlog " +
+               (Math.round(backlogHrs * 10) / 10) + "h across " + backlogN + " items.");
+  }
+
   // ── SECTION: EXEC Q&A — Duplo + Lego signal levels ───────────
 
   /**
@@ -2489,6 +2556,12 @@
       var bugs = fetchBugsCreated_(rawWeeks[0].fromStr);
       Logger.log("📝 Writing 'Jira Bugs' sheet...");
       writeBugsSheet_(bugs);
+      SpreadsheetApp.flush();
+
+      // Point-in-time WIP/backlog snapshot over the same open candidates that
+      // reach Jira Raw (open-backlog fetch + open epic children). Appended,
+      // never rewritten — see writeFlowSnapshot_.
+      writeFlowSnapshot_(epicChildren.concat(openIssues));
       SpreadsheetApp.flush();
 
       // Exec Q&A — uses all weeks for trend context, but WoW compares last 2.
