@@ -1129,22 +1129,50 @@ function detectIntent_(userMessage, history) {
   )
     return "demo_request";
 
+  // Portfolio question signals (checked first: a recruiter asking about the
+  // work must get an answer, never a brush-off)
+  var portfolioSignals = [
+    "project",
+    "built",
+    "build",
+    "demo",
+    "stack",
+    "tech",
+    "experience",
+    "skill",
+    "impact",
+    "achieve",
+    "dashboard",
+    "api",
+    "python",
+    "sql",
+    "apps script",
+    "gemini",
+    "llm",
+    "pipeline",
+    "forecast",
+    "workforce",
+    "capacity",
+    "approach",
+  ];
+  if (
+    portfolioSignals.some(function (s) {
+      return msg.indexOf(s) !== -1;
+    })
+  )
+    return "portfolio_question";
+
   // Meeting request signals
   var meetingSignals = [
     "schedule",
     "calendar",
-    "call",
     "meeting",
-    "connect",
-    "chat",
     "zoom",
     "google meet",
-    "teams",
-    "available",
     "availability",
-    "book",
+    "book a",
+    "book time",
     "slot",
-    "time",
   ];
   if (
     meetingSignals.some(function (s) {
@@ -1153,11 +1181,10 @@ function detectIntent_(userMessage, history) {
   )
     return "meeting_request";
 
-  // Job offer signals
+  // Job offer signals (salary/comp words stay so Donna still routes those to Alex)
   var offerSignals = [
     "hiring",
     "position",
-    "role",
     "opportunity",
     "job",
     "opening",
@@ -1168,20 +1195,6 @@ function detectIntent_(userMessage, history) {
     "pay",
     "package",
     "offer",
-    "remote",
-    "hybrid",
-    "onsite",
-    "full.time",
-    "part.time",
-    "contract",
-    "freelance",
-    "hourly",
-    "monthly",
-    "annual",
-    "joining",
-    "team",
-    "company",
-    "startup",
     "we're looking",
     "we are looking",
     "reach out",
@@ -1192,34 +1205,6 @@ function detectIntent_(userMessage, history) {
     })
   )
     return "job_offer";
-
-  // Portfolio question signals
-  var portfolioSignals = [
-    "project",
-    "built",
-    "demo",
-    "stack",
-    "tech",
-    "experience",
-    "skill",
-    "work",
-    "impact",
-    "achieve",
-    "dashboard",
-    "api",
-    "python",
-    "sql",
-    "tableau",
-    "looker",
-    "gemini",
-    "claude",
-  ];
-  if (
-    portfolioSignals.some(function (s) {
-      return msg.indexOf(s) !== -1;
-    })
-  )
-    return "portfolio_question";
 
   return "general";
 }
