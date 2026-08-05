@@ -18,6 +18,7 @@ var EXACT_TOKENS = [
   "1I_JeFU3mcF0wYrENUT-9tqGAgSHymLAdlOb8l0MASpU",   // CompDash SS
   "1juJwP9RLCYoaz3-ONYR8HvaHG9fp5a5AIEMCuouNlx0",   // CompDash SS 2
   "1HIRAMuKZAfPWgOsbFw-r_6UmxgfSUHZC",                // PS dashboard header logo asset
+  "AKfycbxIVw7SQFSc897CEt-Zv8s7vSMy5_A1Lb3zrZtQ_aBbl2XqmqzL765CNkFbesqmKUvMjA", // PS dashboard prod deployment ID
   "moises.lopez@servicerocket.com",
   "gonzalo.riquelme", "william.mock", "robert.castaneda",
   "rocketeers.atlassian", "atlassian.net", "customfield_",
