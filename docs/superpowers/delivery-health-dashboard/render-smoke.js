@@ -683,14 +683,14 @@ resetFilters();
 C.switchView_("trend");
 assert_(els.viewTrend.style.display === "" && els.viewExec.style.display === "none",
         "switching view shows exactly one pane");
-assert_(els.tabBar.children.length === 5, "an admin sees all five tabs");
+assert_(els.tabBar.children.length === 6, "an admin sees all six tabs");
 C.switchView_("exec");
 assert_(els.viewExec.style.display === "" && els.viewTrend.style.display === "none",
         "and switching back hides the other");
 var mdlV = fresh(histModel({}));
 mdlV.viewerRole = "viewer";
 C.switchView_("exec");
-assert_(els.tabBar.children.length === 4, "a viewer does not get the Access tab");
+assert_(els.tabBar.children.length === 5, "a viewer does not get the Access tab");
 C.switchView_("access");
 assert_(C.STATE.view === "exec",
         "and asking for it by id lands on the default view — the gate is in the router, not the tab bar");

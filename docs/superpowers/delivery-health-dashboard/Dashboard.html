@@ -468,6 +468,13 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div class="panel" id="gridPanel"></div>
   </div>
 
+  <!-- 🌊 Flow — how work moves through the system (spec 2026-08-05). -->
+  <div id="viewFlow" class="viewPane" style="display:none">
+    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('flowTiles','flow')" title="Save the flow cards as a PNG image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
+    <div class="tiles" id="flowTiles"></div>
+  </div>
+
   <!-- Data Hygiene (FR-2.3/2.4): the attribution work queue that used to live as
        grey caveat text on the KPI cards. Deliberately unfiltered. -->
   <div id="viewHygiene" class="viewPane panel" style="display:none"></div>
@@ -575,6 +582,8 @@ var VIEWS = [
   // line chart; that chart was removed and the label kept promising one.
   { id: "trend",   label: "🎯 Headroom",  pane: "viewTrend",   roles: ["admin", "viewer"],
     hint: "Where the headroom is — one row per person, ranked by the hours that could be recovered." },
+  { id: "flow",    label: "🌊 Flow",     pane: "viewFlow",    roles: null,
+    hint: "How work moves through the system — lead time, throughput, backlog, WIP and bugs." },
   { id: "people",  label: "👥 People",    pane: "viewPeople",  roles: null,
     hint: "The operational roster: who needs attention this period, with per-person drill-downs." },
   { id: "hygiene", label: "🧪 Data Hygiene", pane: "viewHygiene", roles: null,
@@ -1390,6 +1399,7 @@ function renderAll_() {
   switch (STATE.view) {
     case "exec":    renderTiles_(); renderCompare_(); break;
     case "trend":   renderOpportunity_(); break;
+    case "flow":    renderFlow_(); break;
     case "people":  syncExpandAllBtn_(); renderGrid_(); break;
     case "hygiene": renderHygiene_(); break;
     case "access":  renderAccess_(); break;
@@ -1529,7 +1539,10 @@ function bucketsFor_(buckets, isos) {
               nMissOver: 0, nMissUnder: 0, absVars: [],
               // Quality / Rework counters (schema v10). Absent on the other
               // bucket kinds, so they simply stay zero there.
-              nDelivered: 0, nRework: 0, nLinked: 0, nReopened: 0, nReopenCov: 0 };
+              nDelivered: 0, nRework: 0, nLinked: 0, nReopened: 0, nReopenCov: 0,
+              // 🌊 Flow (schema v11). days concats like absVars — a median is
+              // not additive, so the raw values travel.
+              days: [], estHrs: 0, nEst: 0 };
   buckets.forEach(function (b) {
     if (isos.indexOf(b.iso) === -1) return;
     var person = b.person ? MODEL._pByName[b.person] : null;
@@ -1548,6 +1561,8 @@ function bucketsFor_(buckets, isos) {
     out.nDelivered += (b.nDelivered || 0); out.nRework += (b.nRework || 0);
     out.nLinked += (b.nLinked || 0); out.nReopened += (b.nReopened || 0);
     out.nReopenCov += (b.nReopenCov || 0);
+    out.estHrs += (b.estHrs || 0); out.nEst += (b.nEst || 0);
+    if (b.days && b.days.length) out.days = out.days.concat(b.days);
     // Median is not additive — the per-epic variances have to travel and be
     // re-medianed over whatever this filter selected.
     if (b.absVars && b.absVars.length) out.absVars = out.absVars.concat(b.absVars);
@@ -2477,6 +2492,276 @@ function renderTiles_() {
   document.getElementById("tileColorKey").innerHTML = ragKeyHtml_(
     "the metric's <b>own</b> FY27 target, printed on its card",
     "Rework Rate reverses the scale — lower is better. The comparison bars below use the same colours.");
+}
+
+// ── 🌊 FLOW VIEW (spec 2026-08-05-flow-metrics-design.md) ────────────────────
+
+function flowMedian_(arr) {
+  if (!arr || !arr.length) return null;
+  var s = arr.slice().sort(function (a, b) { return a - b; });
+  var mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function flowP85_(arr) {
+  if (!arr || !arr.length) return null;
+  var s = arr.slice().sort(function (a, b) { return a - b; });
+  return s[Math.min(s.length - 1, Math.max(0, Math.ceil(s.length * 0.85) - 1))];
+}
+
+/** Backlog/WIP current values over the people passing the active filters.
+    Person-keyed and snapshot-shaped — no iso (a backlog is not a time series). */
+function flowOpenFor_() {
+  if (!MODEL._pByName) {
+    MODEL._pByName = {};
+    MODEL.people.forEach(function (p) { MODEL._pByName[p.name] = p; });
+  }
+  var out = { wipN: 0, todoN: 0, todoEst: 0, todoHrs: 0 };
+  (MODEL.flowOpenBuckets || []).forEach(function (b) {
+    var person = b.person ? MODEL._pByName[b.person] : null;
+    if (!person || !passesFilters_(person)) return;
+    if (person.isIntern) return;   // same rule as bucketsFor_
+    out.wipN += b.wipN || 0; out.todoN += b.todoN || 0;
+    out.todoEst += b.todoEst || 0; out.todoHrs += b.todoHrs || 0;
+  });
+  return out;
+}
+
+/** True when every person passes the filters — the only state in which the
+    whole-population snapshot trend is honest to draw under the current scope. */
+function flowUnfiltered_() {
+  return filteredPeople_().length === MODEL.people.length;
+}
+
+function fmtFlowVal_(v, unit) {
+  if (v === null || v === undefined) return "—";
+  var n = unit === "days" ? Math.round(v * 10) / 10 : Math.round(v);
+  return n + (unit === "days" ? "d" : unit === "hrs" ? "h" : "");
+}
+
+/**
+ * Flow KPI card. tileHtml_ is deliberately NOT reused: it renders percentages
+ * with RAG-vs-target grammar, and every flow metric is unit-bearing (days,
+ * hours, items) with target: null — neutral by design (registry D6).
+ * Grammar: label → hero value → confidence chip → context line → sparkline.
+ */
+function flowTileHtml_(m, headline, opts) {
+  opts = opts || {};
+  var name = (m && m.name) || opts.label || "";
+  if (m && m.status === "absent") {
+    return '<div class="tile ph"><div class="lbl">' + esc_(name) + '</div>' +
+      '<div class="big">—</div><div class="cmp" title="' + esc_(m.absentReason || "") + '">' +
+      esc_((m.absentReason || "not measured").split("—")[0].trim()) +
+      ' <span class="cellSub" style="cursor:help">ⓘ</span></div></div>';
+  }
+  if (opts.unavailable) {
+    return '<div class="tile ph"><div class="lbl">' + esc_(name) + '</div>' +
+      '<div class="big">—</div><div class="cmp">' + esc_(opts.unavailable) + '</div></div>';
+  }
+  var detail = (opts.detail || []).filter(Boolean).join(" · ");
+  var context = (opts.context || "") + (detail
+    ? ' <span class="cellSub" title="' + esc_(detail) + '" style="cursor:help">ⓘ</span>' : "");
+  var vals = (opts.trend || []).filter(function (v) { return v !== null; });
+  var delta = "";
+  if (vals.length >= 2 && !MODEL._stale && headline !== null) {
+    var d = vals[vals.length - 1] - vals[vals.length - 2];
+    var mag = m && m.unit === "days" ? Math.round(d * 10) / 10 : Math.round(d);
+    // NEUTRAL arrows — no dUp/dDown class: with target: null there is no
+    // verdict, and colouring a direction would invent one (registry D6).
+    delta = mag === 0
+      ? '<span title="unchanged vs the prior complete period">unchanged vs prior</span>'
+      : '<span>' + (mag > 0 ? "▲" : "▼") + " " + Math.abs(mag) +
+        (m && m.unit === "days" ? "d" : m && m.unit === "hrs" ? "h" : "") + " vs prior</span>";
+  }
+  return '<div class="tile"><div class="lbl">' + esc_(name) + '</div>' +
+    '<div class="big">' + fmtFlowVal_(headline, m && m.unit) + '</div>' +
+    (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, m || {}) + '</div>' : "") +
+    (delta ? '<div class="cmp">' + delta + '</div>' : "") +
+    '<div class="cmp">' + context + '</div>' +
+    (MODEL._stale
+      ? '<div class="cmp stalenote" title="the model has not been rebuilt inside the stated refresh cadence — trend comparisons are suppressed until it refreshes">trend suppressed — data stale</div>'
+      : (opts.trend ? sparkHtml_(opts.trend, { labels: opts.trendLabels }) : "")) +
+    '</div>';
+}
+
+function renderFlow_() {
+  var el = document.getElementById("flowTiles");
+  var reg = ((MODEL.meta.registry || {}).metrics) || {};
+  if (!MODEL.meta.jiraAvailable) {
+    el.innerHTML = '<div class="tile ph"><div class="lbl">🌊 Flow</div>' +
+      '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>';
+    return;
+  }
+  var done = donePeriods_();
+  var hi = headPeriodIdx_(done);
+  var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
+  var head = done[hi] || { isos: [], label: "—" };
+  var labels = trendPer.map(function (p) { return p.label; });
+  var periodsWithData = 0;   // recomputed per metric below
+  var html = "";
+
+  // 1 · Lead Time — median days, p85 companion (raw day values travel per
+  // bucket; the client medians whatever the filters select).
+  (function () {
+    var m = reg.leadTime || { unit: "days", coverageGate: 0.9, name: "Lead Time" };
+    var series = trendPer.map(function (p) {
+      var b = bucketsFor_(MODEL.leadTimeBuckets || [], p.isos);
+      return b.days.length ? flowMedian_(b.days) : null;
+    });
+    var b = bucketsFor_(MODEL.leadTimeBuckets || [], head.isos);
+    periodsWithData = series.filter(function (v) { return v !== null; }).length;
+    var conf = metricConfidence_(m.coverageGate || 0,
+      b.nAll > 0 ? b.n / b.nAll : null, periodsWithData);
+    html += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
+      conf: b.nAll > 0 ? conf : null,
+      trend: series, trendLabels: labels,
+      context: b.n > 0
+        ? "p85 " + fmtFlowVal_(flowP85_(b.days), "days") + " · " + b.n + " issues measured" + smallN_(b.n)
+        : "no issues resolved this period",
+      detail: [
+        "Calendar days from Created to Resolution Date, non-epic issues, median of the period.",
+        b.nAll > b.n ? (b.nAll - b.n) + " resolved issues had no usable created date" : "",
+        unattribNote_("leadTime"),
+      ],
+    });
+  })();
+
+  // 2 · Cycle Time — declared absent (registry carries the reason).
+  html += flowTileHtml_(reg.cycleTime || { name: "Cycle Time", status: "absent",
+    absentReason: "needs first-In-Progress date from the Jira changelog — not yet exported" }, null, {});
+
+  // 3 · Throughput — Σ estimate-hours delivered.
+  (function () {
+    var m = reg.throughput || { unit: "hrs", coverageGate: 0.6, name: "Throughput" };
+    var series = trendPer.map(function (p) {
+      var b = bucketsFor_(MODEL.throughputBuckets || [], p.isos);
+      return b.nAll > 0 ? b.estHrs : null;
+    });
+    var b = bucketsFor_(MODEL.throughputBuckets || [], head.isos);
+    var conf = metricConfidence_(m.coverageGate || 0,
+      b.nAll > 0 ? b.nEst / b.nAll : null,
+      series.filter(function (v) { return v !== null; }).length);
+    html += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
+      conf: b.nAll > 0 ? conf : null,
+      trend: series, trendLabels: labels,
+      context: b.nAll > 0
+        ? b.nEst + " of " + b.nAll + " resolved issues carried an estimate" + smallN_(b.nEst)
+        : "no issues resolved this period",
+      detail: [
+        "Sum of Original Estimate hours on non-epic issues resolved in the period. Unestimated work delivers invisibly here — the fix is estimate fill.",
+        unattribNote_("throughput"),
+      ],
+    });
+  })();
+
+  // 4+5 · Backlog and WIP — snapshot metrics: current value from the filtered
+  // open book; trend from the exporter's whole-population snapshot log.
+  (function () {
+    var open = flowOpenFor_();
+    var snaps = MODEL.meta.flowSnapshots || [];
+    var snapsOk = !!MODEL.meta.flowSnapshotsAvailable;
+    var unfiltered = flowUnfiltered_();
+    // Trend at week grain regardless of the unit chips — snapshots are weekly
+    // rows; month/quarter would need a last-snapshot-per-period walk that the
+    // spec assigns to the same rule (last row of the period), so pick the
+    // snapshot whose iso is the LAST iso of each displayed period.
+    function snapTrend(field) {
+      if (!snapsOk || !unfiltered) return null;
+      var byIso = {};
+      snaps.forEach(function (s) { byIso[s.iso] = s; });
+      return trendPer.map(function (p) {
+        for (var i = p.isos.length - 1; i >= 0; i--) {
+          if (byIso[p.isos[i]]) return byIso[p.isos[i]][field];
+        }
+        return null;
+      });
+    }
+    var noSnapNote = !snapsOk
+      ? "trend pending — export predates Jira Backlog.js v3.9.0"
+      : (!unfiltered ? "trend available for the full population only — clear filters to see it" : "");
+    var histStart = snapsOk && snaps.length ? snaps[0].iso : null;
+
+    var mB = reg.backlog || { unit: "hrs", coverageGate: 0.6, name: "Backlog (Inventory)" };
+    var bTrend = snapTrend("backlogHrs");
+    var bPoints = (bTrend || []).filter(function (v) { return v !== null; }).length;
+    var bConf = metricConfidence_(mB.coverageGate || 0,
+      open.todoN > 0 ? open.todoEst / open.todoN : null, Math.max(1, bPoints));
+    html += flowTileHtml_(mB, open.todoN > 0 || open.todoEst > 0 ? open.todoHrs : (open.todoN === 0 ? 0 : null), {
+      conf: open.todoN > 0 ? bConf : null,
+      trend: bPoints >= 2 ? bTrend : null, trendLabels: labels,
+      context: open.todoN + " items waiting to start · " +
+        open.todoEst + " estimated" +
+        (noSnapNote ? " · " + noSnapNote
+          : (bPoints < 2 && histStart ? " · history accumulates from " + histStart : "")),
+      detail: [
+        "Σ max(0, Original Estimate − Time Spent) over open assigned non-epic issues in status category To Do.",
+        "Trend is whole-population — the exporter's snapshot knows nothing of dashboard filters.",
+        MODEL.meta.flowUncategorized ? MODEL.meta.flowUncategorized +
+          " open items sit in a status category that is neither To Do nor In Progress — counted in neither tile" : "",
+        unattribNote_("flowOpen"),
+      ],
+    });
+
+    var mW = reg.wip || { unit: "items", coverageGate: 0, name: "Work In Progress" };
+    var wTrend = snapTrend("wip");
+    var wPoints = (wTrend || []).filter(function (v) { return v !== null; }).length;
+    html += flowTileHtml_(mW, open.wipN, {
+      conf: null,   // a count over rows that exist — a coverage chip would be noise
+      trend: wPoints >= 2 ? wTrend : null, trendLabels: labels,
+      context: open.wipN + " active items right now" +
+        (noSnapNote ? " · " + noSnapNote
+          : (wPoints < 2 && histStart ? " · history accumulates from " + histStart : "")),
+      detail: [
+        "Open, assigned, non-epic issues in status category In Progress — a point-in-time count, not a period rate.",
+        "Trend is whole-population — same snapshot log as Backlog.",
+      ],
+    });
+  })();
+
+  // 6 · Flow Efficiency — declared absent.
+  html += flowTileHtml_(reg.flowEfficiency || { name: "Flow Efficiency", status: "absent",
+    absentReason: "needs per-status dwell time from the Jira changelog — not yet exported" }, null, {});
+
+  // 7 · Bug Count — POPULATION-WIDE (registry deviation: bugs are routinely
+  // unassigned at creation, so a roster join would silently drop most of them).
+  (function () {
+    var m = reg.bugCount || { unit: "bugs", coverageGate: 0, name: "Bug Count" };
+    if (!MODEL.meta.bugsAvailable) {
+      html += flowTileHtml_(m, null,
+        { unavailable: "export predates Jira Backlog.js v3.9.0 — no Jira Bugs tab yet" });
+      return;
+    }
+    var byIso = {};
+    (MODEL.bugWeekly || []).forEach(function (w) { byIso[w.iso] = w; });
+    function sumOver(isos, field) {
+      var t = 0;
+      isos.forEach(function (iso) { if (byIso[iso]) t += byIso[iso][field] || 0; });
+      return t;
+    }
+    var series = trendPer.map(function (p) { return sumOver(p.isos, "nCreated"); });
+    var created = sumOver(head.isos, "nCreated");
+    var resolved = sumOver(head.isos, "nResolved");
+    html += flowTileHtml_(m, created, {
+      conf: null,
+      trend: series, trendLabels: labels,
+      context: resolved + " resolved this period — book " +
+        (created > resolved ? "growing" : created < resolved ? "shrinking" : "flat") +
+        " · population-wide, filters don't apply",
+      detail: [
+        "Bug issues created in the period, whole population. A zero here is a REAL zero — bugs are a countable absence.",
+        "Noise-filtered at export: Won't Do / Duplicate / Canceled bugs were reports, not defects.",
+        "Distinct from Quality/Rework — a bug feeds neither leg of the rework rate.",
+      ],
+    });
+  })();
+
+  el.innerHTML = html;
+}
+
+/** "N issues not attributable to a roster person" note, or "" when clean. */
+function unattribNote_(key) {
+  var u = (MODEL.meta.jiraUnattributed || {})[key] || 0;
+  return u > 0 ? u + " issues excluded — assignee doesn't join the roster (window-wide count)" : "";
 }
 
 /**
