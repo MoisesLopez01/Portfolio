@@ -140,13 +140,13 @@ function buildAccessDeniedPage_(email) {
 <title>Project Demand — Access Restricted</title>
 <style>
   :root{
-    --bg:#FFFAF5; --surface:#fff; --surface-2:#FBF6F0; --border:#E7DDD2;
-    --text:#0F1941; --muted:#64748B; --chip:#475569; --accent:#058CDC;
+    --bg:#F6FAF8; --surface:#fff; --surface-2:#EFF5F2; --border:#D9E4DF;
+    --text:#0E2A32; --muted:#64748B; --chip:#475569; --accent:#089E86;
   }
   @media (prefers-color-scheme: dark){
     :root{
-      --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733; --border:#1E295A;
-      --text:#FFFAF5; --muted:#94A3B8; --chip:#94A3B8;
+      --bg:#07201D; --surface:#0E2B28; --surface-2:#0A2320; --border:#1B3C38;
+      --text:#F6FAF8; --muted:#94A3B8; --chip:#94A3B8;
     }
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -155,7 +155,7 @@ function buildAccessDeniedPage_(email) {
        justify-content:center;min-height:100vh;color:var(--text)}
   .card{background:var(--surface);border-radius:14px;padding:40px 48px;
         text-align:center;max-width:440px;width:90%;
-        box-shadow:0 1px 4px rgba(15,25,65,.08);border:1px solid var(--border)}
+        box-shadow:0 1px 4px rgba(14,42,50,.08);border:1px solid var(--border)}
   .lock{font-size:40px;margin-bottom:16px}
   h1{font-size:19px;font-weight:800;margin-bottom:8px}
   p{color:var(--muted);font-size:13px;line-height:1.65}

@@ -7,24 +7,24 @@
 <title>Helix Delivery Group — Project Demand (Live Demo)</title>
 <style>
 :root{
-  --void:#0F1941; --accent:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5;
-  --royal:#2864E6; --june:#FF9B87; --slate:#64748B;
-  --bg:var(--cream); --surface:#ffffff; --surface-2:#FBF6F0;
-  --border:#E7DDD2; --text:var(--void); --muted:#6B7280;
-  --heat-lo:#FFFAF5; --heat-mid:#058CDC; --heat-hi:#0F1941;
-  --heatf-lo:#FFFAF5; --heatf-mid:#DCCDBE; --heatf-hi:#FF9B87;
-  --up:#1F8A57; --down:#C2410C; --neutral:#E7DDD2;
-  --winner:#FF9B87; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
-  --shadow:0 1px 2px rgba(15,25,65,.06), 0 8px 24px rgba(15,25,65,.06);
+  --void:#0E2A32; --accent:#089E86; --ivory:#C9D9D3; --cream:#F6FAF8;
+  --royal:#5B5BD6; --june:#B8770E; --slate:#64748B;
+  --bg:var(--cream); --surface:#ffffff; --surface-2:#EFF5F2;
+  --border:#D9E4DF; --text:var(--void); --muted:#6B7280;
+  --heat-lo:#F6FAF8; --heat-mid:#089E86; --heat-hi:#0E2A32;
+  --heatf-lo:#F6FAF8; --heatf-mid:#C9D9D3; --heatf-hi:#B8770E;
+  --up:#1F8A57; --down:#C2410C; --neutral:#D9E4DF;
+  --winner:#B8770E; --pos:#1F8A57; --warn:#C2410C; --amber:#B45309;
+  --shadow:0 1px 2px rgba(14,42,50,.06), 0 8px 24px rgba(14,42,50,.06);
   --scale:1;
 }
 [data-theme="dark"]{
-  --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
-  --border:#1E295A; --text:#FFFAF5; --muted:#94A3B8;
-  --heat-lo:#16203F; --heat-mid:#058CDC; --heat-hi:#FF9B87;
-  --heatf-lo:#16203F; --heatf-mid:#DCCDBE; --heatf-hi:#FFFAF5;
-  --up:#34D399; --down:#FB7185; --neutral:#1E295A;
-  --winner:#FF9B87; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
+  --bg:#07201D; --surface:#0E2B28; --surface-2:#0A2320;
+  --border:#1B3C38; --text:#F2F7F5; --muted:#94A3B8;
+  --heat-lo:#11302C; --heat-mid:#17A08C; --heat-hi:#E8A13C;
+  --heatf-lo:#11302C; --heatf-mid:#9FB8B0; --heatf-hi:#F2F7F5;
+  --up:#34D399; --down:#FB7185; --neutral:#1B3C38;
+  --winner:#E8A13C; --pos:#34D399; --warn:#FDBA74; --amber:#FDBA74;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
 }
 /* Fluid type/space scale — every font-size and several key dimensions below multiply
@@ -81,7 +81,7 @@ button:hover,.btn:hover{border-color:var(--accent)}
   padding:28px;text-align:center;color:var(--muted);font-size:calc(14px*var(--scale));margin:22px 0}
 
 /* Access Control modal (admin-only) */
-.modal-back{position:fixed;inset:0;background:rgba(15,25,65,.45);display:flex;align-items:flex-start;
+.modal-back{position:fixed;inset:0;background:rgba(14,42,50,.45);display:flex;align-items:flex-start;
   justify-content:center;padding:6vh 16px 16px;z-index:60;overflow-y:auto}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);
   width:100%;max-width:560px;padding:calc(20px*var(--scale)) calc(22px*var(--scale))}
@@ -248,7 +248,7 @@ input[type=file]{display:none}
   padding:10px 16px 10px;
   margin-bottom:14px;
   display:flex;flex-wrap:wrap;gap:8px;align-items:center;
-  box-shadow:0 2px 8px rgba(15,25,65,.06);
+  box-shadow:0 2px 8px rgba(14,42,50,.06);
 }
 .dash-filters-lbl{font-size:calc(10px*var(--scale));font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px;white-space:nowrap}
 /* Team Availability — collapsible list */
@@ -768,7 +768,7 @@ var HEAT_TOPN = 15, HEAT_PRECAP = 0; // heatmap row cap + its pre-cap row count 
 var PM_CONC_EPICS = 5; // a PM carrying ≥ this many active epics gets a concentration flag
 
 var STATUS_LABEL = { done:"Actual", now:"Current", plan:"Planned" };
-var KEY_COLORS = ["#0F1941","#058CDC","#2864E6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
+var KEY_COLORS = ["#0E2A32","#089E86","#5B5BD6","#0E7C86","#6D28D9","#B45309","#9D174D","#15803D","#1D4ED8","#A21CAF","#0369A1","#7C2D12"];
 function keyColor(i){ return KEY_COLORS[(i||0) % KEY_COLORS.length]; }
 // Shared 1/2/3/4+ distinct-project tier colors — used by both the per-person sparkline
 // bars and the "Project load distribution" chart so the two visuals read as one system.
@@ -3757,7 +3757,7 @@ function cellColor(k,iso,status){
     // The future ramp's high end is LIGHT in both themes → dark (void) text there.
     var isFutC=status==='plan';
     var bgH=isFutC?heatColorFutureHours(t):heatColorHours(t);
-    var fgH=t>0.55?(isFutC?'#0F1941':'#fff'):css('--text');
+    var fgH=t>0.55?(isFutC?'#0E2A32':'#fff'):css('--text');
     return {bg:bgH,fg:fgH,txt:capAt(k,iso)>=0.5?fmt(capAt(k,iso)):''};
   }
   if(COLOR_MODE==='change'){
@@ -3769,7 +3769,7 @@ function cellColor(k,iso,status){
   if(COLOR_MODE==='people'){
     var hd=((FPROJ||DATA).head[k]&&(FPROJ||DATA).head[k][iso])||0;
     var t=HEAT_MAX_HEAD>0?hd/HEAT_MAX_HEAD:0;
-    var bg=t<0.5?mix(hexVar('--surface-2'),'#2864E6',t/0.5):mix('#2864E6',hexVar('--void'),(t-0.5)/0.5);
+    var bg=t<0.5?mix(hexVar('--surface-2'),'#5B5BD6',t/0.5):mix('#5B5BD6',hexVar('--void'),(t-0.5)/0.5);
     return {bg:bg,fg:t>0.4?'#fff':css('--text'),txt:hd>0?hd+'p':''};
   }
   // risk
@@ -3974,7 +3974,7 @@ function renderHeat(){
   var bar=$('legBar');
   if(COLOR_MODE==='people'){
     bar.className='legbar';
-    bar.style.background='linear-gradient(90deg,'+hexVar('--surface-2')+',#2864E6,'+hexVar('--void')+')';
+    bar.style.background='linear-gradient(90deg,'+hexVar('--surface-2')+',#5B5BD6,'+hexVar('--void')+')';
     bar.style.border='1px solid var(--border)';
     $('legLo').textContent='0 people';
     $('legHi').textContent=HEAT_MAX_HEAD+' people';
