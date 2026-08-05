@@ -2273,19 +2273,164 @@ var Resume = (function() {
     window.print();
   }
 
+  // ── Hand-rolled PDF writer (no libraries) ─────────────────────────────────
+  // Letter pages, Helvetica base-14 fonts, WinAnsi encoding. Word-wrap uses the
+  // real AFM glyph widths (ASCII 32–126; accented glyphs approximated at 556).
+  var PDF_WIDTHS = {
+    reg:  [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,
+           556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,
+           1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,
+           667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,
+           333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,
+           556,556,333,500,278,556,500,722,500,500,500,334,260,334,584],
+    bold: [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,
+           556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,
+           975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,
+           667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,
+           333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,
+           611,611,389,556,333,611,556,778,556,556,500,389,280,389,584]
+  };
+
+  // ATS text extractors are unreliable beyond ASCII, so transliterate:
+  // accents drop, typographic punctuation becomes its plain-ASCII equivalent.
+  function pdfSanitize(s) {
+    var MAP = {
+      225:'a', 233:'e', 237:'i', 243:'o', 250:'u', 252:'u', 241:'n',
+      193:'A', 201:'E', 205:'I', 211:'O', 218:'U', 220:'U', 209:'N',
+      183:'|', 177:'+/-',
+      8211:'-', 8212:'-', 8216:"'", 8217:"'", 8220:'"', 8221:'"',
+      8226:'-', 8230:'...', 8594:'->', 963:'s'
+    };
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 32 && c <= 126) out += s.charAt(i);
+      else if (MAP[c])         out += MAP[c];
+      // anything else is dropped
+    }
+    return out;
+  }
+
+  function pdfTextWidth(s, size, bold) {
+    var W = bold ? PDF_WIDTHS.bold : PDF_WIDTHS.reg, w = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      w += (c >= 32 && c <= 126) ? W[c - 32] : 556;
+    }
+    return w * size / 1000;
+  }
+
+  function pdfWrap(text, size, bold, maxW) {
+    var words = text.split(' '), lines = [], cur = '';
+    for (var i = 0; i < words.length; i++) {
+      var probe = cur ? cur + ' ' + words[i] : words[i];
+      if (cur && pdfTextWidth(probe, size, bold) > maxW) { lines.push(cur); cur = words[i]; }
+      else cur = probe;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  // Flatten the CV into styled lines, wrap, paginate, and emit PDF bytes.
+  function buildCvPdf() {
+    var PAGE_W = 612, PAGE_H = 792, MARGIN = 54, maxW = PAGE_W - 2 * MARGIN;
+    var flat = [];  // {t, size, bold, lead, gap}
+    function add(text, size, bold, lead, gap, indent) {
+      pdfWrap(pdfSanitize(text), size, bold, maxW - (indent || 0)).forEach(function (t, i) {
+        flat.push({ t: t, size: size, bold: bold, lead: lead, gap: i === 0 ? (gap || 0) : 0,
+                    indent: indent || 0 });
+      });
+    }
+    function header(t) { add(t.toUpperCase(), 11, true, 15, 12); }
+
+    add(PROFILE.name, 20, true, 24);
+    add(PROFILE.title, 11, false, 15, 2);
+    add([PROFILE.email, PROFILE.linkedin, PROFILE.github].join('  ·  '), 9, false, 12, 4);
+    add(PROFILE.location, 9, false, 12);
+    header('Summary');
+    add(PROFILE.summary, 9.5, false, 13);
+    header('Core Competencies');
+    SKILLS.forEach(function (s) {
+      add('  ' + s.name + '  ' + s.level + ' (' + s.yrs + '): ' + s.proof, 9.5, false, 13, 2);
+    });
+    header('Selected Projects');
+    projects().forEach(function (p) {
+      var line = '  ' + p.title;
+      if (p.impact)   line += '  ' + p.impact;
+      if (p.category) line += '  [' + p.category + ']';
+      add(line, 9.5, false, 13, 2);
+      if (p.tech) add('Tech: ' + p.tech, 8.5, false, 12, 0, 12);
+    });
+    header('Education');
+    add(PROFILE.education, 9.5, false, 13);
+    header('Availability');
+    add(PROFILE.availability, 9.5, false, 13);
+
+    // Paginate top-down.
+    var pages = [], page = [], y = PAGE_H - MARGIN;
+    flat.forEach(function (ln) {
+      y -= ln.gap + ln.lead;
+      if (y < MARGIN) { pages.push(page); page = []; y = PAGE_H - MARGIN - ln.lead; }
+      page.push({ x: MARGIN + ln.indent, y: y, ln: ln });
+    });
+    if (page.length) pages.push(page);
+
+    function esc(s) { return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)'); }
+    var streams = pages.map(function (pg) {
+      var out = 'BT\n';
+      pg.forEach(function (row) {
+        out += '/F' + (row.ln.bold ? 2 : 1) + ' ' + row.ln.size + ' Tf\n' +
+               '1 0 0 1 ' + row.x + ' ' + row.y.toFixed(1) + ' Tm\n' +
+               '(' + esc(row.ln.t) + ') Tj\n';
+      });
+      return out + 'ET';
+    });
+
+    // Object layout: 1 Catalog, 2 Pages, then n Page objs, n streams, 2 fonts.
+    var n = pages.length, objs = [];
+    objs.push('<< /Type /Catalog /Pages 2 0 R >>');
+    var kids = [];
+    for (var k = 0; k < n; k++) kids.push((3 + k) + ' 0 R');
+    objs.push('<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + n + ' >>');
+    var fontRef = 3 + 2 * n;
+    for (var p2 = 0; p2 < n; p2++) {
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PAGE_W + ' ' + PAGE_H + '] ' +
+        '/Resources << /Font << /F1 ' + fontRef + ' 0 R /F2 ' + (fontRef + 1) + ' 0 R >> >> ' +
+        '/Contents ' + (3 + n + p2) + ' 0 R >>');
+    }
+    streams.forEach(function (s) {
+      objs.push('<< /Length ' + s.length + ' >>\nstream\n' + s + '\nendstream');
+    });
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+
+    var pdf = '%PDF-1.4\n', offsets = [];
+    objs.forEach(function (body, i) {
+      offsets.push(pdf.length);
+      pdf += (i + 1) + ' 0 obj\n' + body + '\nendobj\n';
+    });
+    var xref = pdf.length;
+    pdf += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    offsets.forEach(function (o) { pdf += ('0000000000' + o).slice(-10) + ' 00000 n \n'; });
+    pdf += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+    return pdf;
+  }
+
   function download() {
-    var text = plainText();
-    var blob = new Blob([text], { type: 'text/plain; charset=utf-8' });
+    var pdf   = buildCvPdf();
+    var bytes = new Uint8Array(pdf.length);
+    for (var i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xFF;
+    var blob = new Blob([bytes], { type: 'application/pdf' });
     var url  = URL.createObjectURL(blob);
     var a    = document.createElement('a');
     a.href     = url;
-    a.download = 'Alex-Lopez-CV.txt';
+    a.download = 'Alex-Lopez-CV.pdf';
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    Toast.show('CV downloaded', 'success');
+    Toast.show('CV downloaded (PDF)', 'success');
   }
 
   return { copy: copy, print: print, download: download };
