@@ -520,6 +520,12 @@ section { padding: clamp(56px, 7vw, 100px) 2rem; }
 #demos .section-desc    { color: var(--dark-muted); }
 #demos .section-eyebrow { color: var(--teal-vivid); }
 
+.flagship-card{border:1px solid rgba(76,201,138,.35);border-radius:14px;padding:22px 24px;margin:0 0 26px;background:linear-gradient(160deg,rgba(76,201,138,.07),transparent 60%)}
+.flagship-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;opacity:.75;margin:0 0 6px}
+.flagship-title{font-family:'Fraunces',serif;font-size:1.5rem;margin:0 0 10px}
+.flagship-points{margin:0 0 16px;padding-left:18px;font-size:.92rem;line-height:1.7}
+.flagship-note{font-size:.78rem;opacity:.65;margin:10px 0 0}
+
 .demo-tabs {
   display: flex; gap: 10px; flex-wrap: wrap;
   margin-bottom: 24px;
@@ -2342,8 +2348,19 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <p class="section-eyebrow reveal">Try it live</p>
     <h2 class="section-title reveal reveal-delay-1">Don't take my word for it.<br>Touch the work.</h2>
     <p class="section-desc reveal reveal-delay-2">
-      Two AI-powered simulators — synthetic data in the browser, real LLM calls on the server.
+      One live production-grade dashboard. Two AI simulators. Synthetic data everywhere.
     </p>
+    <div class="flagship-card reveal reveal-delay-2" id="flagship-card">
+      <p class="flagship-eyebrow">Flagship · live Google Apps Script web app</p>
+      <h3 class="flagship-title">Project Demand — C-Suite Resourcing Dashboard</h3>
+      <ul class="flagship-points">
+        <li>Capacity = regional base hours − PTO − public holidays, double-count-protected</li>
+        <li>±2σ statistical control band on utilization — honesty, not a trendline</li>
+        <li>~30s cold compute → ~2s warm via gzip-chunked CacheService</li>
+      </ul>
+      <a class="btn-primary" id="flagship-open" href="https://script.google.com/macros/s/AKfycbzM10B1aHawzby8naU7NKORip9Y641Ulbc45yhLim0mw4LZpzE5uDEH_q04srAdrJX4/exec" target="_blank" rel="noopener">Open the live demo →</a>
+      <p class="flagship-note">Synthetic data · “Helix Delivery Group” is fictional · same architecture as the production app</p>
+    </div>
     <div class="demo-tabs reveal reveal-delay-3" role="tablist" aria-label="Live demos">
       <button class="demo-tab active" data-demo="ai-sales"     role="tab" aria-selected="true"  data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Pipeline Risk · Groq AI</button>
       <button class="demo-tab"        data-demo="team-scoring" role="tab" aria-selected="false" data-formula="=WEIGHTED(Alignment×0.30 + Performance×0.35 + Health×0.20 + Recognition×0.15)">Team Scoring · LLM brief</button>

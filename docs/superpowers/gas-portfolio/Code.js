@@ -57,7 +57,7 @@ var PROJECTS = [
     category: "Workforce Analytics · Resourcing",
     impact: "Live demo",
     langScale: "~8K lines",
-    liveUrl: "",   // filled by the Phase 3 deploy task
+    liveUrl: "https://script.google.com/macros/s/AKfycbzM10B1aHawzby8naU7NKORip9Y641Ulbc45yhLim0mw4LZpzE5uDEH_q04srAdrJX4/exec",
     context:
       "Leadership's Monday question is simple: are we over- or under-staffed next month, and what changed since last week? Answering it honestly needs a real capacity denominator — not headcount × 40.",
     action: [
