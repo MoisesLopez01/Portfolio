@@ -10,7 +10,7 @@
 // ============================================================
 
 var CONFIG = {
-  SOURCE_SS_ID:        "PASTE_DEMO_WORKBOOK_ID",
+  SOURCE_SS_ID:        "1FKSLZO3g7eieyBOFzSA7m5qEskK0Si9_A8XH_1-Rw84",
   SHEET_NAME:          "Planned Time Tempo",
   NONPROJECT_KEYS:     ["NETSUITE"],   // excluded (time-off synced from NetSuite); case-insensitive
   EXCLUDED_NAMES:      [],             // display names excluded from grid/charts (still populate filter dropdowns)
@@ -29,7 +29,7 @@ var CONFIG = {
   TITLE:               "Helix Delivery Group — Project Demand (Live Demo)",
 
   // ── Capacity denominator: active Services base hours (38 ANZ / 40 else), minus PTO/holidays ──
-  ROSTER_SS_ID:        "PASTE_DEMO_WORKBOOK_ID",
+  ROSTER_SS_ID:        "1FKSLZO3g7eieyBOFzSA7m5qEskK0Si9_A8XH_1-Rw84",
   ROSTER_SHEET:        "Data",               // roster tab — renamed from "Roster" (matches PS Contribution Report.js)
   CONTRACTORS_SHEET:   "Contractors Data",   // crew/contractor tab in the same SS — same headers as Data
   ROSTER_CLASS:        "Professional Services",
