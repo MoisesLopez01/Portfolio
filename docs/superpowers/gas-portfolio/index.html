@@ -634,6 +634,9 @@ section { padding: clamp(56px, 7vw, 100px) 2rem; }
 /* Before / After */
 .ba-strip { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 0; margin-bottom: 28px; align-items: stretch; }
 @media (max-width: 540px) { .ba-strip { grid-template-columns: 1fr; } .ba-arrow { display: none; } }
+#pm-shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:18px 0}
+.pm-shot img{width:100%;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+.pm-shot figcaption{font-size:.75rem;opacity:.65;margin-top:4px}
 .ba-card { padding: 18px 20px; border-radius: 12px; }
 .ba-card.bef { background: #fef2f2; border: 1px solid #fecaca; }
 .ba-card.aft { background: #f0fdf9; border: 1px solid rgba(56,189,248,0.25); }
@@ -2382,6 +2385,7 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <div class="pmodal-body">
       <div class="car-grid"    id="pm-car"></div>
       <div class="ba-strip"    id="pm-ba"></div>
+      <div id="pm-shots"></div>
       <div id="pm-live-btn"></div>
       <div class="pm-github-wrap" id="pm-github-btn"></div>
       <div class="pmodal-footer">

@@ -255,6 +255,14 @@ var ProjectModal = (function() {
         '<div class="ba-metric">'  + escHtml(p.after.metrics) + '</div>' +
       '</div>';
 
+    var shotsWrap = document.getElementById('pm-shots');
+    if (shotsWrap) {
+      shotsWrap.innerHTML = (p.shots || []).map(function (s) {
+        return '<figure class="pm-shot"><img loading="lazy" src="' + escHtml(s.src) +
+          '" alt="' + escHtml(s.caption) + '"><figcaption>' + escHtml(s.caption) + '</figcaption></figure>';
+      }).join('');
+    }
+
     var liveWrap = document.getElementById('pm-live-btn');
     if (liveWrap) {
       liveWrap.innerHTML = p.liveUrl

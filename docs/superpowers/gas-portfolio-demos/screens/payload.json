@@ -1,0 +1,936 @@
+{
+  "ok": true,
+  "meta": {
+    "generatedAt": "2026-07-29T04:00:00.000Z",
+    "role": "admin",
+    "email": "x@example.com",
+    "fromCache": true,
+    "fyLabel": "FY27",
+    "prevFyLabel": "FY26",
+    "qLabel": "Q1",
+    "monthLabels": [
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun"
+    ],
+    "fiscalMonthIdx": 0,
+    "fyStartCalYear": 2026,
+    "asOf": "2026-07-29",
+    "sources": {
+      "roster": "ok",
+      "history": "ok",
+      "ratings": "ok",
+      "benchmarks": "ok",
+      "contribution": "ok"
+    },
+    "genderAvailable": true,
+    "tccUsdAvailable": true,
+    "employmentTypeAvailable": true,
+    "employmentCounts": {
+      "partTime": 1,
+      "intern": 0
+    },
+    "restricted": {
+      "hidden": 0,
+      "minMLevel": 9
+    },
+    "activeCount": 218,
+    "ratingsCount": 400,
+    "benchCoverage": {
+      "rows": 40,
+      "matchedEmployees": 120,
+      "currencyMismatch": 1
+    },
+    "contribUrl": "https://example.org",
+    "compaBands": {
+      "low": 0.8,
+      "target": 0.95,
+      "high": 1.1
+    },
+    "marketLow": 0.9,
+    "priorityCfg": {
+      "weights": {
+        "perf": 57,
+        "tenure": 29,
+        "compaGap": 14
+      },
+      "caps": {
+        "companyYears": 10,
+        "profileYears": 5,
+        "gapPct": 0.25
+      },
+      "ratingMax": 5
+    },
+    "equityCfg": {
+      "gapPct": 10,
+      "outlierPct": 25,
+      "tenureYearsMin": 3,
+      "tenureBelowPct": 15,
+      "smallGroupMin": 3
+    },
+    "supervisorAvailable": true,
+    "ragCfg": {
+      "attritionTotal": {
+        "green": 0.11,
+        "yellow": 0.14
+      },
+      "attritionVol": {
+        "green": 0.09,
+        "yellow": 0.12
+      },
+      "regrettedShare": {
+        "green": 0.25,
+        "yellow": 0.35
+      },
+      "peerVolBand": {
+        "low": 0.11,
+        "high": 0.15
+      },
+      "concentration": 0.5,
+      "floorHeads": 10,
+      "floorExits": 3,
+      "spanTarget": 6,
+      "spanNarrow": 4,
+      "spanWide": 10,
+      "mgrMinReports": 3,
+      "forecastMinMonths": 6
+    },
+    "signalsCfg": {
+      "perfWindowQuarters": 4,
+      "windowFqs": [
+        "FY26Q1",
+        "FY26Q2",
+        "FY26Q3",
+        "FY26Q4"
+      ],
+      "promoStaleYears": 3,
+      "earlyCareerLevels": "I1–I3",
+      "coreLevels": "I3–I4",
+      "recogMinRating": 4.5,
+      "recogMaxTtm": 0.05,
+      "riskFactorMin": 2,
+      "invisibleMinScore": 0.75,
+      "invisibleWeakSi": 4
+    },
+    "contribution": {
+      "quarter": "FY26Q4",
+      "matched": 210
+    },
+    "benchmarks": {
+      "sources": [
+        "Mercer 2025"
+      ]
+    },
+    "glossary": [
+      {
+        "term": "TCC",
+        "def": "Total cash comp"
+      }
+    ]
+  },
+  "employees": [
+    {
+      "empNo": "E1",
+      "name": "Person 1",
+      "jobTitle": "Engineer",
+      "level": "I4",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "currency": "MYR",
+      "employmentType": "regular",
+      "tcc": 100000,
+      "tccUsd": 22000,
+      "ratio": 0.97,
+      "marketRatio": 0.95,
+      "anchorTier": "title",
+      "p25": 90000,
+      "p50": 105000,
+      "p75": 120000,
+      "benchSource": "src",
+      "suggestion": {
+        "status": "at-market"
+      },
+      "perfAvg": 4.1,
+      "perfWindowLatest": 4,
+      "perfCount": 4,
+      "perfTotalCount": 6,
+      "tenureCompanyYears": 3.2,
+      "tenureProfileYears": 1.4,
+      "ttmGrowthPct": 0.06,
+      "contrib": null,
+      "signals": {
+        "retentionRisk": false,
+        "recognitionRisk": false,
+        "promoStale": false,
+        "earlyCareer": false,
+        "riskFactors": [],
+        "everPromoted": true,
+        "invisibleContributor": false
+      },
+      "priority": {
+        "score": 61,
+        "partial": false,
+        "missing": [],
+        "components": {
+          "perf": 0.8,
+          "tenure": 0.4,
+          "compaGap": 0.1
+        }
+      }
+    },
+    {
+      "empNo": "E2",
+      "name": "Person 2",
+      "jobTitle": "Engineer",
+      "level": "I4",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "currency": "MYR",
+      "employmentType": "regular",
+      "tcc": 100000,
+      "tccUsd": 22000,
+      "ratio": 0.72,
+      "marketRatio": 0.95,
+      "anchorTier": "title",
+      "p25": 90000,
+      "p50": 105000,
+      "p75": 120000,
+      "benchSource": "src",
+      "suggestion": {
+        "status": "at-market"
+      },
+      "perfAvg": 4.1,
+      "perfWindowLatest": 4,
+      "perfCount": 4,
+      "perfTotalCount": 6,
+      "tenureCompanyYears": 3.2,
+      "tenureProfileYears": 1.4,
+      "ttmGrowthPct": 0.06,
+      "contrib": null,
+      "signals": {
+        "retentionRisk": false,
+        "recognitionRisk": false,
+        "promoStale": false,
+        "earlyCareer": false,
+        "riskFactors": [],
+        "everPromoted": true,
+        "invisibleContributor": false
+      },
+      "priority": {
+        "score": 61,
+        "partial": false,
+        "missing": [],
+        "components": {
+          "perf": 0.8,
+          "tenure": 0.4,
+          "compaGap": 0.1
+        }
+      }
+    },
+    {
+      "empNo": "E3",
+      "name": "Person 3",
+      "jobTitle": "Engineer",
+      "level": "I4",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "currency": "MYR",
+      "employmentType": "regular",
+      "tcc": 100000,
+      "tccUsd": 22000,
+      "ratio": 0.97,
+      "marketRatio": 0.95,
+      "anchorTier": "title",
+      "p25": 90000,
+      "p50": 105000,
+      "p75": 120000,
+      "benchSource": "src",
+      "suggestion": {
+        "status": "at-market"
+      },
+      "perfAvg": 4.1,
+      "perfWindowLatest": 4,
+      "perfCount": 4,
+      "perfTotalCount": 6,
+      "tenureCompanyYears": 3.2,
+      "tenureProfileYears": 1.4,
+      "ttmGrowthPct": 0.06,
+      "contrib": null,
+      "signals": {
+        "retentionRisk": true,
+        "recognitionRisk": false,
+        "promoStale": false,
+        "earlyCareer": false,
+        "riskFactors": [
+          "below-anchor",
+          "flat-ttm"
+        ],
+        "everPromoted": true,
+        "invisibleContributor": false
+      },
+      "priority": {
+        "score": 61,
+        "partial": false,
+        "missing": [],
+        "components": {
+          "perf": 0.8,
+          "tenure": 0.4,
+          "compaGap": 0.1
+        }
+      }
+    },
+    {
+      "empNo": "E4",
+      "name": "Person 4",
+      "jobTitle": "Engineer",
+      "level": "I4",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "currency": "MYR",
+      "employmentType": "regular",
+      "tcc": 100000,
+      "tccUsd": 22000,
+      "ratio": 0.97,
+      "marketRatio": 0.95,
+      "anchorTier": "title",
+      "p25": 90000,
+      "p50": 105000,
+      "p75": 120000,
+      "benchSource": "src",
+      "suggestion": {
+        "status": "at-market"
+      },
+      "perfAvg": 4.1,
+      "perfWindowLatest": 4,
+      "perfCount": 4,
+      "perfTotalCount": 6,
+      "tenureCompanyYears": 3.2,
+      "tenureProfileYears": 1.4,
+      "ttmGrowthPct": 0.06,
+      "contrib": null,
+      "signals": {
+        "retentionRisk": false,
+        "recognitionRisk": true,
+        "promoStale": false,
+        "earlyCareer": false,
+        "riskFactors": [],
+        "everPromoted": true,
+        "invisibleContributor": false
+      },
+      "priority": {
+        "score": 61,
+        "partial": false,
+        "missing": [],
+        "components": {
+          "perf": 0.8,
+          "tenure": 0.4,
+          "compaGap": 0.1
+        }
+      }
+    },
+    {
+      "empNo": "E5",
+      "name": "Person 5",
+      "jobTitle": "Engineer",
+      "level": "I4",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "currency": "MYR",
+      "employmentType": "regular",
+      "tcc": 100000,
+      "tccUsd": 22000,
+      "ratio": 0.97,
+      "marketRatio": 0.95,
+      "anchorTier": "title",
+      "p25": 90000,
+      "p50": 105000,
+      "p75": 120000,
+      "benchSource": "src",
+      "suggestion": {
+        "status": "at-market"
+      },
+      "perfAvg": 4.1,
+      "perfWindowLatest": 4,
+      "perfCount": 4,
+      "perfTotalCount": 6,
+      "tenureCompanyYears": 3.2,
+      "tenureProfileYears": 1.4,
+      "ttmGrowthPct": 0.06,
+      "contrib": {
+        "quarter": "FY26Q4",
+        "score": 0.82,
+        "goalCompliant": true,
+        "goalsTotal": 8,
+        "ptoCompliance": 0.9,
+        "trackedCoverage": 0.85,
+        "trackedHrs": 400,
+        "rcr": 1.1,
+        "kudosReceived": 2,
+        "kudosGiven": 1
+      },
+      "signals": {
+        "retentionRisk": false,
+        "recognitionRisk": false,
+        "promoStale": false,
+        "earlyCareer": false,
+        "riskFactors": [],
+        "everPromoted": true,
+        "invisibleContributor": false
+      },
+      "priority": {
+        "score": 61,
+        "partial": false,
+        "missing": [],
+        "components": {
+          "perf": 0.8,
+          "tenure": 0.4,
+          "compaGap": 0.1
+        }
+      }
+    }
+  ],
+  "people": [
+    {
+      "name": "Person 1",
+      "dept": "Services",
+      "level": "I4",
+      "keyLocation": "Malaysia",
+      "hireDate": "2023-01-01",
+      "termDate": null,
+      "termCls": null,
+      "regretted": false
+    },
+    {
+      "name": "Leaver",
+      "dept": "Services",
+      "level": "I3",
+      "keyLocation": "Malaysia",
+      "hireDate": "2022-01-01",
+      "termDate": "2026-07-15",
+      "termCls": "vol",
+      "regretted": true
+    }
+  ],
+  "attrition": {
+    "currentFY": {
+      "label": "FY27",
+      "monthly": [
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        }
+      ],
+      "quarterly": [
+        {
+          "terms": 3,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        }
+      ],
+      "total": 3,
+      "vol": 3,
+      "invol": 0,
+      "regretted": 2,
+      "avgHeadcount": 218,
+      "rate": 0.013761467889908258
+    },
+    "previousFY": {
+      "label": "FY26",
+      "monthly": [
+        {
+          "terms": 4,
+          "vol": 4,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 4,
+          "vol": 4,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 4,
+          "vol": 4,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 4,
+          "vol": 4,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        },
+        {
+          "terms": 3,
+          "vol": 3,
+          "invol": 0
+        }
+      ],
+      "quarterly": [
+        {
+          "terms": 10,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 10,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 10,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 10,
+          "vol": 0,
+          "invol": 0
+        }
+      ],
+      "total": 40,
+      "vol": 40,
+      "invol": 0,
+      "regretted": 12,
+      "avgHeadcount": 210,
+      "rate": 0.19047619047619047
+    },
+    "previousFYSamePeriod": {
+      "label": "FY26 same period",
+      "monthly": [
+        {
+          "terms": 4,
+          "vol": 4,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        }
+      ],
+      "quarterly": [
+        {
+          "terms": 4,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        },
+        {
+          "terms": 0,
+          "vol": 0,
+          "invol": 0
+        }
+      ],
+      "total": 4,
+      "vol": 4,
+      "invol": 0,
+      "regretted": 1,
+      "avgHeadcount": 210,
+      "rate": 0.01904761904761905
+    },
+    "slices": {
+      "department": [
+        {
+          "key": "Services",
+          "terms": 2,
+          "vol": 2,
+          "invol": 0,
+          "headcount": 100,
+          "rate": 0.02
+        },
+        {
+          "key": "Sales",
+          "terms": 1,
+          "vol": 1,
+          "invol": 0,
+          "headcount": 40,
+          "rate": 0.025
+        }
+      ],
+      "level": [],
+      "keyLocation": []
+    },
+    "detail": [
+      {
+        "termDate": "2026-07-15",
+        "name": "Leaver",
+        "dept": "Services",
+        "level": "I3",
+        "keyLocation": "Malaysia",
+        "cls": "vol",
+        "regretted": true,
+        "reason": "Another Job"
+      }
+    ],
+    "forecast": {
+      "months": [],
+      "projectedTotal": 30,
+      "annualizedRate": 0.13,
+      "method": "run-rate"
+    },
+    "financialImpact": {
+      "annualPayrollReleasedUsd": 200000,
+      "regrettedPortionUsd": 90000,
+      "coverage": {
+        "counted": 3,
+        "total": 3
+      }
+    }
+  },
+  "managers": {
+    "available": true,
+    "rows": [
+      {
+        "name": "Mgr A",
+        "teamSize": 8,
+        "exitsFY": 2,
+        "voluntaryExits": 2,
+        "attritionRate": 0.25,
+        "dept": "Services"
+      },
+      {
+        "name": "Mgr B",
+        "teamSize": 12,
+        "exitsFY": 0,
+        "voluntaryExits": 0,
+        "attritionRate": 0.05,
+        "dept": "Sales"
+      }
+    ],
+    "pooledSmallTeams": null,
+    "spanOfControl": {
+      "managers": 30,
+      "ics": 180,
+      "ratio": 6,
+      "target": 6
+    }
+  },
+  "verdicts": [
+    {
+      "id": "headcount",
+      "view": "overview",
+      "severity": "FACT",
+      "fact": "Headcount stable at 218 active (215 at FY27 start).",
+      "soWhat": "No shift.",
+      "action": "",
+      "caveat": ""
+    },
+    {
+      "id": "attr-total",
+      "view": "attrition",
+      "severity": "NOTE",
+      "fact": "FY27 total attrition 1.4% (FY26 same period 1.9%).",
+      "soWhat": "Watch.",
+      "action": "",
+      "caveat": "Small sample (3 exits) — too few to read as a trend."
+    },
+    {
+      "id": "attr-vol",
+      "view": "attrition",
+      "severity": "FACT",
+      "fact": "FY27 voluntary attrition 0.9% vs professional-services peers 11.0%–15.0%.",
+      "soWhat": "Below the peer band.",
+      "action": "",
+      "caveat": ""
+    },
+    {
+      "id": "regretted",
+      "view": "attrition",
+      "severity": "NOTE",
+      "fact": "100.0% of FY27 voluntary exits were regretted (2 of 2).",
+      "soWhat": "…",
+      "action": "Run an exit-driver review with the HRBP; prioritize stay-interviews.",
+      "caveat": "Small sample (2 exits) — too few to read as a trend."
+    },
+    {
+      "id": "mgr-hotspots",
+      "view": "attrition",
+      "severity": "RISK",
+      "fact": "1 of 2 teams (managers with 3+ reports) show attrition above 14.0% — the manager may need support.",
+      "soWhat": "…",
+      "action": "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Attrition view's manager hotspots, not in decks).",
+      "caveat": ""
+    },
+    {
+      "id": "compa-below",
+      "view": "compa",
+      "severity": "RISK",
+      "fact": "1 employee sits below 0.80 of their peer anchor.",
+      "soWhat": "…",
+      "action": "Review the flagged cases with the HRBP before the next comp cycle closes (Internal Position view, red chips).",
+      "caveat": ""
+    },
+    {
+      "id": "fy-caveat",
+      "view": "overview",
+      "severity": "NOTE",
+      "fact": "FY27 figures rest on 3 exits so far.",
+      "soWhat": "Too few to read.",
+      "action": "",
+      "caveat": ""
+    }
+  ],
+  "compaGroups": [
+    {
+      "keyLocation": "Malaysia",
+      "jobTitle": "Engineer",
+      "count": 2,
+      "anchorTier": "title",
+      "smallGroup": false,
+      "missingTcc": 0,
+      "anchor": 103000,
+      "currency": "MYR",
+      "members": [
+        {
+          "empNo": "E1",
+          "name": "Person 1",
+          "level": "I4",
+          "tcc": 100000,
+          "tccUsd": 22000,
+          "currency": "MYR",
+          "ratio": 0.97,
+          "nonComparable": false,
+          "noPeers": false
+        }
+      ]
+    }
+  ],
+  "equity": {
+    "genderAvailable": true,
+    "gender": [
+      {
+        "keyLocation": "Malaysia",
+        "level": "I4",
+        "counts": {
+          "F": 3,
+          "M": 4
+        },
+        "medians": {
+          "F": 100000,
+          "M": 104000
+        },
+        "gapPct": 4,
+        "flagged": false
+      }
+    ],
+    "outliers": [
+      {
+        "empNo": "E2",
+        "name": "Person 2",
+        "keyLocation": "Malaysia",
+        "level": "I4",
+        "tcc": 70000,
+        "groupMedian": 100000,
+        "pctBelow": 30
+      }
+    ],
+    "tenure": []
+  },
+  "qtaInterim": [
+    {
+      "empNo": "E1",
+      "name": "Person 1",
+      "dept": "Services",
+      "keyLocation": "Malaysia",
+      "level": "I4",
+      "nextReview": "2026-06-01",
+      "daysOverdue": 58,
+      "lastEventReason": "Merit",
+      "lastEventDate": "2025-06-01"
+    }
+  ],
+  "history": {
+    "E1": {
+      "events": [
+        {
+          "date": "2023-01-01",
+          "reason": "New Hire",
+          "tcc": 90000,
+          "deltaAbs": null,
+          "tag": null,
+          "annualized": null
+        }
+      ],
+      "overallAnnualized": 0.05,
+      "ratings": [
+        {
+          "fq": "FY26Q4",
+          "rate": 4,
+          "explanation": "solid"
+        }
+      ]
+    }
+  }
+}
