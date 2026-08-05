@@ -2,12 +2,161 @@
   // SCRIPT NAME: Exec Contribution Tracker — Backlog WoW from Jira
   // PURPOSE:     Fetches completed internal work from Jira per Space
   //              (COE, R&D), buckets by completion date across the
-  //              last 3 Mon–Sun weeks, writes Jira Raw + Weekly Report
-  //              + Exec Q&A (WoW Δ for last 2 completed weeks).
+  //              last 3 Mon–Sun weeks, writes Jira Raw + Exec Q&A
+  //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.0.0
+  // VERSION:     3.8.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.8.0 (Region vocabulary: APAC retired — reviewer feedback 2026-08-05):
+  //   APAC is a superset of ANZ and SEA (and more), so using it as a sibling
+  //   bucket next to ANZ double-speaks the taxonomy. Reviewer correction:
+  //     · "RR05 South East Asia" → SEA   (was APAC)
+  //     · "RR08 Asia"            → SEA   (was APAC; 4 issues site-wide, and this
+  //       org's Asia delivery hub is SEA — revisit if East-Asia work appears)
+  //   The exported short-form set is now AMER / EMEA / SEA / ANZ / Global.
+  //   Re-run the export after deploying — until then the sheet still carries
+  //   "APAC" rows (the delivery-health reader maps that legacy token to SEA).
+  // CHANGES v3.7.0 (Region actually works — multi-select bug + verified vocabulary):
+  //   The Region column was never blank because "the Jira field isn't populated"
+  //   (what v3.3.0 and v3.4.0 both recorded). It was blank because
+  //   customfield_10047 "Resource region" is a MULTI-SELECT: Jira returns an
+  //   ARRAY of option objects, and jbRegionValue_ read `raw.value` off the array
+  //   — undefined on an array — so every tagged issue exported "". Probed live
+  //   against servicerocket-coe on the rows this export ACTUALLY WRITES — the
+  //   52-week Done window (EXEC_ISSUE_TYPES, statusCategory = Done, resolved
+  //   within RAW_HISTORY_WEEKS, n = 12,082):
+  //     · customfield_10047 "Resource region"  4,158 / 12,082 = 34%  ← the data
+  //     · customfield_10001 "Team" (Atlassian) 4,146 / 12,082 = 34%  ← the data
+  //     · customfield_11057 "Workstream"       2,499 / 12,082 = 21%
+  //     · customfield_11561 "Region"               0 / 12,082 =  0%  (4 site-wide)
+  //     · customfield_10065 "Tempo Team"           0 / 12,082 =  0%  (7 site-wide)
+  //     · customfield_10600 "Region/Timezone"   DOES NOT EXIST on this site
+  //   ⚠️ SCOPE THE NUMBER OR IT MISLEADS. Region tagging is DECLINING, so the
+  //   window you measure decides the answer you get:
+  //     · 52-week Done window (what Jira Raw holds)  4,158 / 12,082 = 34%
+  //     · last 90 days only                             632 /  3,624 = 17%
+  //     · OPEN backlog rows (the actionable half)        144 /  1,477 = 10%
+  //   Team runs the other way on the backlog (327/1,477 = 22%). An earlier draft
+  //   of this comment said "17%" with no window named; it described a 90-day
+  //   slice of a 52-week sheet and could not be reconciled against Jira Raw.
+  //   Both primaries were already configured correctly. What was broken was the
+  //   READER (array) and the VOCABULARY: REGION_VOCAB_ mapped "RR02 EMEA",
+  //   "RR03 APAC" and "RR04 ANZ" — three labels that do not exist on this site.
+  //   The real option list is RR01/RR02/RR03/RR04/RR05/RR07/RR08/RR09 (below).
+  //   - jbRegionValue_ now maps EVERY option in the array through the vocabulary,
+  //     dedupes and joins with " | ". On the sampled population 122/126 tagged
+  //     issues collapse to one token (24% carry 2 options, 2% carry 3 — usually
+  //     "RR01 North America" + "RR02 Latin America", both AMER); only 4 are
+  //     genuinely cross-region and export as e.g. "AMER | APAC".
+  //   - "RR07 Global" (23 of 126) maps to its own token "Global", NOT folded into
+  //     a geography and NOT blanked: it is a deliberate tag, so inventing a
+  //     region for it or hiding it as untagged would both be lies (decision
+  //     2026-08-04).
+  //   - Three APPEND-ONLY candidate columns (36 Region (Alt), 37 Tempo Team,
+  //     38 Workstream) so the attribution field can be chosen off the sheet
+  //     instead of another probe. Kept OUT of REGION_FIELD/TEAM_FIELD until the
+  //     sheet shows one overtaking its primary — promoting a 0% field would
+  //     silently zero a working column.
+  //   - probeRegionTeamFields() now probes all six fields, reports multi-select
+  //     option counts, and would have caught the array bug: it measured "0%"
+  //     because it called the same broken reader.
+  // CHANGES v3.6.0 (quality / rework feed — Metrics Dictionary metric #4):
+  //   Three APPEND-ONLY columns on Jira Raw (33 Status Category, 34 Rework Link,
+  //   35 Reopened) so the delivery-health dashboard can finally compute Rework
+  //   Rate instead of showing a "data pending" placeholder.
+  //     · Status Category — free: status.statusCategory.name was already in the
+  //       response, we just never wrote it. Authoritative "delivered", replacing
+  //       the consumer's hand-maintained done-status regex.
+  //     · Rework Link — free: `issuelinks` was already fetched and reduced to a
+  //       bare count. Matched against CONFIGJ.REWORK_LINK_RE (name + both
+  //       direction labels). ⚠️ Confirm the real link-type name via
+  //       getIssueLinkTypes before trusting the column.
+  //     · Reopened — needs expand=changelog, gated behind CONFIGJ.FETCH_CHANGELOG
+  //       (default OFF). Exports "" when not measured, never "No": a consumer
+  //       must be able to tell "not reopened" from "nobody looked", or the
+  //       Rework Rate silently deflates.
+  //   Columns are appended, never inserted — every consumer resolves Jira Raw by
+  //   HEADER NAME, so old readers are unaffected and new ones light up with no
+  //   redeploy. (This is the rule that Region/Team moving 32/33 → 31/32 broke.)
+  // CHANGES v3.5.0 (Jira-only export — dropped all non-Jira sheet reads):
+  //   This script is an EXPORTER. Every consumer now joins Tempo hours, capacity
+  //   and PTO itself, straight off the Jira Raw sheet plus its own sources, so
+  //   reading those tabs here was duplicated work that silently produced nothing
+  //   whenever the tabs lived in a different workbook (which is the case today).
+  //   - REMOVED readers: readCapacity_ ("Capacity"), readTimeOff_ ("Time Off"),
+  //     readTempoTrend_ ("Capacity" + "Tempo Transposed"), readPlannedTimeTempo_
+  //     ("Planned Time Tempo"). Plus their now-unused helpers isoWeekNum_ and
+  //     jb_weekKey_, and the CONFIGJ keys CAPACITY_SHEET / TIME_OFF_SHEET /
+  //     TEMPO_SHEET / PLANNED_TEMPO_SHEET.
+  //   - REMOVED the Exec Q&A "Tempo Tracking Trend" section
+  //     (writeTempoTrendSection_, ~390 lines) and its call site. It had been
+  //     writing NOTHING in practice — it bailed at "not enough week data"
+  //     because the Capacity tab isn't in this workbook. No output is lost.
+  //   - REMOVED the dead Capacity/PTO aggregation in writeExecQASheet_:
+  //     totalCapacityHrs / totalPtoHrs were accumulated and never read by
+  //     anything. Also dropped _personMilestones, whose only consumer was the
+  //     deleted Tempo section.
+  //   - ⚠️ NAMESPACE FIX (side benefit): readCapacity_ and readTimeOff_ were ALSO
+  //     defined in "Hours Analysis.js". GAS shares one namespace across a
+  //     project, so whichever file loaded last won, and "Full HC Analysis.js"
+  //     calls readCapacity_() expecting Hours Analysis's shape. That collision
+  //     is now gone.
+  //   - The Roster tab is the ONE sheet still read (readTargetedRoster_): Exec
+  //     Q&A's engagement rate and runDebugRosterMatching() both depend on it.
+  //   - Tempo remains wired up via its REST API (fetchTempoWorklogsForIssues_)
+  //     for Jira Raw cols 26–29. Only the SHEET reads went away.
+  //   - Documented jb_isoWeekLabel_'s W01-vs-W1 padding divergence from the
+  //     delivery-health dashboard's weekKeyFromDate_, and the cross-file
+  //     normalizeName_ dependency in getSpaceForIssue_.
+  // CHANGES v3.4.0 (Delivery Health alignment):
+  //   - Region (col 31) and Team (col 32) restored, with a vocabulary mapping
+  //     (REGION_VOCAB_: "RR01 North America" → "AMER", …). Expected to export
+  //     BLANK until the Jira custom fields are actually populated — the columns
+  //     exist now so the dashboard picks them up by header the moment they fill,
+  //     with no second deploy. Run probeRegionTeamFields() to check fill rate.
+  //   - Open-issues fetch: unresolved ASSIGNED issues are written to Jira Raw
+  //     under the sentinel Week label "Open", feeding the delivery-health
+  //     dashboard's per-person backlog drill-down (readJiraRaw_ keys off Status
+  //     and Resolution Date, never the Week column). Deduped against the Done
+  //     fetch and the epic-child expansion so no issue is written twice.
+  //     Bounded by OPEN_BACKLOG_UPDATED_WEEKS and fetched WITHOUT the heavyweight
+  //     "comment" field (nothing reads comments off backlog rows).
+  //   - Exec Space now falls back to the PROJECT KEY instead of the generic
+  //     "Customer" for projects that match no configured space and no entry in
+  //     CUSTOMER_PROJECT_MAP, so an unmapped client is identifiable in Jira Raw.
+  //     NOTE: this never excluded anything — getSpaceForIssue_ only returns null
+  //     for an explicitly DISABLED space (R&D today). No consumer reads the
+  //     "Exec Space" column, and scopeForSpace_ / bySpace are both dead code.
+  //   - fetchAllIssuesByJql_ takes an optional field-list override.
+  // CHANGES v3.3.0:
+  //   - Jira Raw trimmed to columns 0–30: dropped "Tempo This Week (hrs)" (31),
+  //     "Region" (32) and "Team" (33). All three shipped empty in practice —
+  //     Region/Team custom fields aren't populated on these issues, and the
+  //     this-week burn is structurally blank because Jira Raw rows are issues
+  //     that completed in PAST weeks. REGION_FIELD/TEAM_FIELD left the fetch
+  //     field list too, so pages got smaller as a side effect.
+  //   - Truncated-response hardening: Jira and Tempo occasionally return a
+  //     SHORT 200 body, which used to surface as a bare "SyntaxError: Expected
+  //     ',' or ']' after array element in JSON at position …" with no clue
+  //     which call died. Both parse sites now go through jb_tryParseJson_ and
+  //     retry the same cursor with a halved page size.
+  // CHANGES v3.2.0:
+  //   - Removed the "Weekly Report" and "Top Performers" tabs (retired) —
+  //     writers, CONFIGJ tab names, and the writeReportSheet_ aggregation
+  //     adapter are gone. Jira Raw + Exec Q&A are the remaining outputs.
+  // CHANGES v3.1.0:
+  //   - Epic expansion: children of every in-scope epic land in Jira Raw
+  //     under the sentinel Week label "Epic Child" (open or resolved outside
+  //     the analysed window) — weekly metrics sheets are unaffected
+  //   - Epic-level Tempo rollup columns (28–29) on epic rows: own + child +
+  //     sub-task hours and contributors
+  //   - "Billing Type" column (30): Billable (SRSO) / Internal / Untagged
+  //   - Unassigned issues flagged "⚠️ UNASSIGNED" in the Assignee column
+  //   - Exec Q&A: "📐 EPIC FIDELITY" section — planned (Original Estimate)
+  //     vs tracked (Tempo) per epic, worst fidelity first
+  //   - CUSTOMER_PROJECT_MAP: known client project keys tag the real client
+  //     name instead of the generic "Customer" space
   // CHANGES v3.0.0:
   //   - Buckets by resolutiondate (not updated) for accurate completion tracking
   //   - Per-Space JQL fetches (COE, R&D) with statusCategory = Done
@@ -29,20 +178,64 @@
 
     // How many days back to fetch from Jira (covers 4 full weeks + buffer)
     // Converted to explicit ISO date at runtime — no relative syntax like "-4w"
-    LOOKBACK_DAYS: 35, // Changed from 35 for one-time 20-week export
+    // Fallback only: runJiraEpicTracker fetches from the first week window's
+    // Monday, so this never truncates the analysed weeks.
+    LOOKBACK_DAYS: 35,
 
-    // Number of completed calendar weeks to analyse (Mon–Sun boundaries)
+    // ── TWO WINDOWS (split 2026-08-03) ────────────────────────
+    // "Jira Raw" feeds the dashboards, which offer Weekly/Monthly/Quarterly
+    // period views and therefore need deep history. "Exec Q&A" is a WoW
+    // narrative sheet that wants the last few weeks and nothing more — one
+    // column per week, so widening it would just bloat the sheet and the
+    // runtime for no reader.
+    //
+    // Both windows are cut from the SAME single broad JQL fetch (see
+    // runJiraEpicTracker → fetchJiraIssues_, which is anchored at the DEEP
+    // window start and bucketed by resolution date client-side), so the deep
+    // window costs no extra Jira queries — only extra result pages.
+
+    // Number of completed calendar weeks in the NARRATIVE sheets (Mon–Sun).
     // Use 4 so Exec Q&A has trend context beyond the 2-week WoW compare.
-    WEEKS_BACK: 4, // Changed from 4 for one-time 20-week export
+    WEEKS_BACK: 4,
 
-    // Sheet tab names — auto-created if missing
+    // Completed calendar weeks of history written to "Jira Raw" — the depth
+    // every dashboard period view is limited by. Reads the shared export dial
+    // (EXPORT_HISTORY_WEEKS in TempoPlanExport.js) when the exporters share a
+    // GAS project, else falls back to the same value so this file still runs
+    // standalone. 52 weeks = 11 complete months and 3 complete fiscal quarters
+    // (the window's oldest period is always partial, so usable depth is not
+    // weeks/13) — enough for a real Quarterly trend instead of the single data
+    // point a 30-week window gave. See the WHY 52 note in TempoPlanExport.js.
+    get RAW_HISTORY_WEEKS() {
+      return typeof exportHistoryWeeks_ === "function" ? exportHistoryWeeks_() : 52;
+    },
+
+    // Epic expansion depth (weeks). Children of epics resolved inside this
+    // window are added to "Jira Raw" under the "Epic Child" sentinel week.
+    // Deliberately NOT the deep window: expansion is the one part of this
+    // export whose cost multiplies (every epic fans out to its children), and
+    // children of programmes closed 10 months ago add rows nobody reads. One
+    // quarter keeps active programmes fully expanded. Raise if a consumer
+    // needs older trees — and watch the row count when you do.
+    EPIC_EXPAND_WEEKS: 13,
+
+    // OPTIONAL: fixed starting calendar week (ISO, "YYYY.WN"). When set, the
+    // week windows run from this week through the last completed week and
+    // WEEKS_BACK is ignored. Set to null for the rolling WEEKS_BACK behaviour.
+    // ⚠️ MUST STAY null: a fixed anchor grows the window by one week every
+    // week forever, so trigger runtime creeps up until the export starts
+    // timing out. It was "2026.W14" (18 weeks and counting by 2026.W32);
+    // RAW_HISTORY_WEEKS replaces it with a bounded rolling window.
+    START_ISO_WEEK: null,
+
+    // Sheet tab names. RAW_SHEET / EXEC_SHEET are OUTPUTS (auto-created if
+    // missing); ROSTER_SHEET is the only tab this script still READS.
+    // CAPACITY_SHEET / TIME_OFF_SHEET / TEMPO_SHEET / PLANNED_TEMPO_SHEET were
+    // dropped in v3.5.0 along with their readers — see the note under
+    // SECTION: HELPERS.
     RAW_SHEET:    "Jira Raw",
-    REPORT_SHEET: "Weekly Report",
     EXEC_SHEET:   "Exec Q&A",
-    TOP_SHEET:    "Top Performers",
     ROSTER_SHEET: "Roster",
-    CAPACITY_SHEET: "Capacity",
-    TIME_OFF_SHEET: "Time Off",
 
     // ── Executive reporting ────────────────────────────────────
     // Number of completed weeks used for the Exec Q&A WoW comparison
@@ -76,6 +269,18 @@
       { key: "R&D",  enabled: false , match: ["RND", "RND-OPS", "RDP", "R&D", "R&D Projects", "R & D"] }, // To exclude R&D, simply change enabled to false
     ],
 
+    // Customer projects — Jira project key → client display name. Matching
+    // issues get the client name (instead of the generic "Customer") in the
+    // Exec Space column; unlisted customer projects still fall back to
+    // "Customer". Aggregations that bucket by COE / R&D / Customer collapse
+    // client names back to "Customer" via scopeForSpace_().
+    CUSTOMER_PROJECT_MAP: {
+      "CLVT":  "Cultivate",
+      "NVDA":  "NVIDIA",
+      "MSTLY": "Mostly",
+      // add more as needed
+    },
+
     // Issue types considered "execution work"
     EXEC_ISSUE_TYPES: ['Epic', '"Kick-off epic"', '"Go-live epic"', 'Story', 'Task', '"Sub-task"'],
 
@@ -86,16 +291,90 @@
     // Revenue-linked fix version filter (SRSO)
     FIX_VERSION_JQL: 'fixVersion ~ "SRSO*"',
 
-    // Tempo tracking sheet name (transposed: rows = employees, cols = weeks)
-    TEMPO_SHEET: "Tempo Transposed",
-
-    // Planned Time Tempo sheet (fields: User (Resource), Resource Type, Program, Team, Role, Skills, W21, W22, ...)
-    PLANNED_TEMPO_SHEET: "Planned Time Tempo",
-
     // Site-specific custom field IDs (IMPORTANT: verify via /rest/api/3/field)
     STORY_POINTS_FIELD: "customfield_10026",  // ← replace if different
     EPIC_LINK_FIELD:    "customfield_10014",  // ← replace if different (Epic Link)
     EPIC_TYPE_FIELD:    null,                 // e.g. "customfield_12345" if you have one
+
+    // ── REGION / TEAM ATTRIBUTION (IDs VERIFIED live 2026-08-04) ──
+    // Measured on the rows this export actually writes — the 52-week Done window
+    // (EXEC_ISSUE_TYPES, statusCategory = Done, resolved within RAW_HISTORY_WEEKS,
+    // n = 12,082 on servicerocket-coe), with the open-backlog leg beside it
+    // (n = 1,477) because Jira Raw carries both:
+    //
+    //                                          Done 52w      Open backlog
+    //   customfield_10047  "Resource region"   4,158  34%    144  10%  ← REGION_FIELD
+    //   customfield_10001  "Team" (Atlassian)  4,146  34%    327  22%  ← TEAM_FIELD
+    //   customfield_11057  "Workstream"        2,499  21%      —
+    //   customfield_11561  "Region"                0   0%      —       (4 site-wide)
+    //   customfield_10065  "Tempo Team"            0   0%      —       (7 site-wide)
+    //   customfield_10600  "Region/Timezone"   does not exist on this site
+    //
+    // ⚠️ ALWAYS NAME THE WINDOW. Region tagging is declining — 34% across the
+    // 52-week sheet, 17% in the last 90 days, 10% on open work — so an unscoped
+    // "the fill rate is N%" is meaningless and will not reconcile against Jira
+    // Raw. The open backlog is both the worst-tagged and the only actionable
+    // half: tagging a resolved issue rewrites history, tagging an open one moves
+    // next period's number.
+    //
+    // Both primaries were already the right choice. The blank column was a READER
+    // bug (Resource region is a MULTI-SELECT — see jbRegionValue_) plus a wrong
+    // REGION_VOCAB_, not an unpopulated field. Re-run probeRegionTeamFields()
+    // after any Jira field admin change; it now reports all six.
+    //
+    // ⚠️ Do NOT promote a candidate below into REGION_FIELD/TEAM_FIELD on the
+    // strength of its name — "Region" (11561) looks canonical and carries 4
+    // issues site-wide. Promote only when the sheet shows it overtaking.
+    REGION_FIELD: "customfield_10047",  // multi-select, array of option objects
+    TEAM_FIELD:   "customfield_10001",  // Atlassian team object → {id, name, title}
+
+    // Candidate attribution fields, exported as their own columns (36–38) so the
+    // choice can be made from real sheet data. Blank columns here are the
+    // EXPECTED state for the two 0% fields — they are cheap forward plumbing
+    // (one entry in the fetch field list, one column), and the moment somebody
+    // starts populating them the fill rate is visible without a code change.
+    REGION_ALT_FIELD: "customfield_11561",  // "Region" — single-select
+    TEAM_TEMPO_FIELD: "customfield_10065",  // "Tempo Team"
+    WORKSTREAM_FIELD: "customfield_11057",  // delivery phase: "1. Discovery", …
+
+    // ── QUALITY / REWORK FEED (Metrics Dictionary metric #4) ──
+    // The dictionary defines Rework Rate as "issues reopened or linked as Rework
+    // after Done ÷ total issues delivered in period". Two independent signals,
+    // with very different costs:
+    //
+    //   Rework LINK  — free. `issuelinks` is already in JIRA_FIELDS (we were
+    //                  throwing away everything but the count). Just needs the
+    //                  link type name matched.
+    //   REOPENED     — needs `expand=changelog`, which returns the full history
+    //                  of every issue. That is a real cost on an export whose
+    //                  pages already shrink-and-retry because `comment` returns
+    //                  ADF trees. OFF by default; turn it on once a real run has
+    //                  been timed (user decision 2026-08-03).
+    //
+    // ⚠️ Confirm the actual link-type name in your Jira before trusting the
+    // column — `getIssueLinkTypes` lists them. If no link of this name exists,
+    // the column exports blank and the dashboard's Rework Rate reports on
+    // reopens alone (and says so on the card).
+    REWORK_LINK_RE: /rework|defect|bug\s*fix/i,
+    FETCH_CHANGELOG: false,
+    // A reopen = a changelog transition where statusCategory left "Done" (or the
+    // resolution was cleared) AFTER the issue had reached Done at least once.
+    REOPEN_FROM_DONE_RE: /^(done|closed|resolved|complete)/i,
+
+    // ── OPEN BACKLOG FEED ─────────────────────────────────────
+    // Unresolved ASSIGNED issues written to Jira Raw under Week = "Open", for the
+    // delivery-health dashboard's per-person backlog drill-down.
+    OPEN_BACKLOG_ENABLED: true,
+
+    // Staleness bound: only open issues touched within this many weeks are
+    // exported. The backlog feed answers "what load is this person carrying?",
+    // and a ticket nobody has touched in 6 months is not real load — it is
+    // abandoned work that would inflate every person's backlog total and make
+    // the dashboard's "needs planning" signal meaningless. Unlike the Done
+    // fetch there is no resolution date to bound this query, so without a
+    // filter it returns every open assigned issue on the site, forever.
+    // Set to null for a genuinely unbounded fetch (watch the row count).
+    OPEN_BACKLOG_UPDATED_WEEKS: 26,
 
     // Fields to request from Jira REST API
     // To map custom fields: https://servicerocket-coe.atlassian.net/rest/api/3/field
@@ -129,7 +408,163 @@
     "customfield_10015",              // Start Date
     CONFIGJ.STORY_POINTS_FIELD,
     CONFIGJ.EPIC_LINK_FIELD,
+    CONFIGJ.REGION_FIELD,
+    CONFIGJ.TEAM_FIELD,
+    CONFIGJ.REGION_ALT_FIELD,
+    CONFIGJ.TEAM_TEMPO_FIELD,
+    CONFIGJ.WORKSTREAM_FIELD,
   ].filter(Boolean);
+  // NOTE on page size: "comment" above is the heavyweight field — it returns
+  // every comment as a full ADF tree, so a 100-issue page can run past 500 KB.
+  // It is load-bearing (analyzeComments_ drives the Exec Q&A behavioural
+  // scores), so instead of dropping it, fetchAllIssuesByJql_ shrinks its page
+  // size when a response comes back truncated.
+
+  // Field list for queries that don't need comment bodies. "comment" is the one
+  // heavyweight field in JIRA_FIELDS (a full ADF tree per comment) and only
+  // analyzeComments_ — an Exec Q&A concern, driven off the Done fetch — ever
+  // reads it. The open-backlog fetch therefore drops it: smaller pages, fewer
+  // truncation retries, same columns written.
+  var JIRA_FIELDS_NO_COMMENTS = CONFIGJ.JIRA_FIELDS.filter(function(f) {
+    return f !== "comment";
+  });
+
+  // ── Region vocabulary ────────────────────────────────────────
+  // Jira's Resource Region picker uses ordered option labels ("RR01 North
+  // America") so they sort in the UI; every downstream consumer — the
+  // delivery-health region chips, the Tempo exports, the Roster buckets —
+  // speaks the short form. Mapping here means the sheet only ever carries the
+  // short form, so nobody has to strip the "RRnn " prefix twice.
+  //
+  // ⚠️ EVERY key below was read off live Jira on 2026-08-04 (the full set of
+  // option labels in use across all 11,658 tagged issues). The previous table
+  // guessed at "RR02 EMEA" / "RR03 APAC" / "RR04 ANZ", none of which exist —
+  // RR02 is Latin America, RR03 is Europe and RR04 is Australia. Getting this
+  // wrong is silent: unmapped labels pass through verbatim, so the sheet said
+  // "RR05 South East Asia" and the dashboard bucketed it as "Other".
+  //
+  // Note RR06 is absent — no issue on the site carries it. If it (or any new
+  // option) appears it passes through VERBATIM rather than becoming "Other", so
+  // it shows up as itself in probeRegionTeamFields() instead of silently
+  // collapsing into a bucket nobody owns.
+  //
+  // ⚠️ APAC is NOT in the vocabulary (retired v3.8.0, reviewer feedback
+  // 2026-08-05): APAC is a superset of ANZ and SEA, so shipping it as a sibling
+  // bucket next to ANZ made the taxonomy self-contradictory. South East Asia
+  // exports as SEA; "RR08 Asia" (4 issues site-wide) folds into SEA because this
+  // org's Asia delivery hub IS the SEA hub — revisit if East-Asia work appears.
+  var REGION_VOCAB_ = {
+    "RR01 North America":   "AMER",
+    "RR02 Latin America":   "AMER",
+    "RR03 Europe":          "EMEA",
+    "RR09 Africa":          "EMEA",   // EMEA includes Africa
+    "RR04 Australia":       "ANZ",
+    "RR05 South East Asia": "SEA",
+    "RR08 Asia":            "SEA",    // 4 issues site-wide; Asia hub = SEA here
+    // "Global" is deliberately NOT a geography and NOT blank. It is the single
+    // most common tag (23 of 126 in the sample), so folding it into a real
+    // region would invent delivery presence that doesn't exist, and blanking it
+    // would file a deliberate choice under "nobody tagged this".
+    "RR07 Global":          "Global",
+  };
+
+  // Canonical order for compound values, so an issue tagged SEA+AMER and one
+  // tagged AMER+SEA produce the SAME string. Without this, Jira's per-issue
+  // option order leaks into the sheet and a consumer grouping on the Region
+  // column silently gets two groups for one pair. Tokens outside this list sort
+  // alphabetically after it.
+  var REGION_ORDER_ = ["AMER", "EMEA", "SEA", "ANZ", "Global"];
+
+  /**
+   * Short-form region(s) for an issue's Resource Region field value.
+   *
+   * ⚠️ This field is a MULTI-SELECT: Jira returns an ARRAY of option objects,
+   * [{value: "RR01 North America"}, …]. The pre-v3.7.0 reader took `raw.value`
+   * off that array — undefined — and returned "", which is the entire reason
+   * the Region column looked unpopulated for two releases while 17% of the
+   * exported population was in fact tagged. Anything that reads a Jira
+   * custom field here must handle the array case first.
+   *
+   * Multiple options are mapped individually, deduped and joined with " | ", so
+   * the common real case (RR01 North America + RR02 Latin America) collapses to
+   * a single "AMER" and only genuinely cross-region work carries a compound
+   * value like "AMER | SEA". Order is the vocabulary's, not Jira's, so the
+   * same pair always produces the same string (a consumer may group on it).
+   *
+   * @param {*} raw  fields[CONFIGJ.REGION_FIELD] — array, option object, or string
+   * @returns {string} e.g. "AMER", "AMER | SEA"; "" when empty or unset.
+   */
+  function jbRegionValue_(raw) {
+    if (!raw) return "";
+    var opts = Array.isArray(raw) ? raw : [raw];
+    var seen = {}, out = [];
+    opts.forEach(function(opt) {
+      if (!opt) return;
+      var label = String(typeof opt === "object"
+        ? (opt.value || opt.name || "") : opt).trim();
+      if (!label) return;
+      var token = REGION_VOCAB_[label] || label;
+      if (seen[token]) return;
+      seen[token] = true;
+      out.push(token);
+    });
+    if (out.length < 2) return out.join("");
+    out.sort(function(a, b) {
+      var ia = REGION_ORDER_.indexOf(a), ib = REGION_ORDER_.indexOf(b);
+      if (ia === -1 && ib === -1) return a < b ? -1 : (a > b ? 1 : 0);
+      if (ia === -1) return 1;   // unknown tokens sort last
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    return out.join(" | ");
+  }
+
+  /**
+   * Display label for any single- or multi-select custom field that has no
+   * vocabulary of its own (the candidate Region/Team/Workstream columns).
+   * Same array-first rule as jbRegionValue_, and the same shape tolerance as
+   * jbTeamValue_ — an id-only value is returned as-is rather than dropped,
+   * because a visible id is a fixable mapping problem and a blank cell is
+   * indistinguishable from "not tagged".
+   * @param {*} raw  any fields[customfield_…] value
+   * @returns {string} joined label(s), or "" when empty or unset.
+   */
+  function jbOptionLabel_(raw) {
+    if (!raw) return "";
+    var opts = Array.isArray(raw) ? raw : [raw];
+    var seen = {}, out = [];
+    opts.forEach(function(opt) {
+      if (!opt) return;
+      var label = typeof opt === "object"
+        ? String(opt.value || opt.name || opt.title || opt.id || "").trim()
+        : String(opt).trim();
+      if (!label || seen[label]) return;
+      seen[label] = true;
+      out.push(label);
+    });
+    return out.join(" | ");
+  }
+
+  /**
+   * Display name for an issue's Atlassian Team field value. The Team picker has
+   * returned several shapes across Jira versions — an object with .name, an
+   * object with .title, or a bare team id string — so all three are handled and
+   * an id-only value is returned as-is rather than dropped (a visible id is a
+   * fixable mapping problem; a blank column looks like "no team").
+   * @param {*} raw  fields[CONFIGJ.TEAM_FIELD]
+   * @returns {string} team name/id, or "" when the field is empty or unset.
+   */
+  function jbTeamValue_(raw) {
+    if (!raw) return "";
+    if (typeof raw === "string") return raw.trim();
+    // Array-tolerant for the same reason jbRegionValue_ is: a picker that looks
+    // single-valued in the UI can still come back as a one-element array, and
+    // reading .name off an array yields "" with no error. Verified live
+    // 2026-08-04: this field returns a bare object {id, name, title} —
+    // real values on this site are "Harbour", "Laneway", "Solution Architect".
+    if (Array.isArray(raw)) return jbOptionLabel_(raw);
+    return String(raw.name || raw.title || raw.value || raw.id || "").trim();
+  }
 
   // ============================================================
   // 🎨  COMPANY BRAND PALETTE — Do not modify
@@ -225,349 +660,14 @@
 
   // ── SECTION: HELPERS ─────────────────────────────────────────
 
-  /**
-   * Reads the Capacity sheet to determine the weekly capacity hours per employee.
-   * Returns a Map: Normalized Name -> { weeklyCapacity: number }
-   */
-  function readCapacity_() {
-    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIGJ.CAPACITY_SHEET || "Capacity");
-    if (!sh) {
-      Logger.log("⚠️ Capacity sheet not found. Using default capacity (40h).");
-      return new Map();
-    }
-    
-    const raw = sh.getDataRange().getValues();
-    if (raw.length <= 1) return new Map();
-
-    const headers = raw[0].map(h => String(h || "").trim());
-    const f_empIdx = headers.findIndex(h => /employee|name|resource|worker/i.test(h) && !/role|title/i.test(h));
-    
-    // Find capacity columns (W18, W19, etc.)
-    const capCols = [];
-    headers.forEach((h, idx) => {
-      if (/capacity \(hrs\) w\d+/i.test(h)) {
-        capCols.push({ idx: idx, label: h.match(/W\d+/i)[0].toUpperCase() });
-      }
-    });
-
-    const map = new Map();
-    for (let i = 1; i < raw.length; i++) {
-      const empRaw = String(raw[i][f_empIdx] || "").trim();
-      if (!empRaw || empRaw.toLowerCase() === "employee") continue;
-      const emp = normalizeToRoster_(empRaw);
-      
-      const weeklyCaps = {};
-      capCols.forEach(col => {
-        weeklyCaps[col.label] = parseFloat(raw[i][col.idx]) || 40;
-      });
-      
-      map.set(emp, { weeklyCaps: weeklyCaps });
-    }
-
-    return map;
-  }
-
-  function isoWeekNum_(d) {
-    var dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    var day = dt.getUTCDay() || 7;
-    dt.setUTCDate(dt.getUTCDate() + 4 - day);
-    var yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
-    return Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
-  }
-
-  /**
-   * Reads the Capacity sheet (wide format: one row per employee, one col per week)
-   * and the "Tempo Transposed" sheet (same shape, but tracking hours).
-   * Returns { weeks, weekAgg, byEmp, currentWn, nextW1, nextW2, planningTotal, planningMet }
-   * weekAgg[wKey] = { headcount, totalCap, totalTempo }
-   * byEmp[normName][wKey] = { cap, tempo }
-   */
-  function readTempoTrend_() {
-    var result = { weeks: [], weekAgg: {}, byEmp: {}, currentWn: 0, nextW1: "", nextW2: "", planningTotal: 0, planningMet: 0, targetedTotal: 0, targetedNames: {} };
-
-    var capSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIGJ.CAPACITY_SHEET || "Capacity");
-    if (!capSh) { Logger.log("⚠️ Capacity sheet not found — Tempo trend skipped."); return result; }
-
-    var raw = capSh.getDataRange().getValues();
-    if (raw.length <= 1) return result;
-
-    var headers = raw[0].map(function(h) { return String(h || "").trim(); });
-    var empIdx = -1;
-    for (var j = 0; j < headers.length; j++) {
-      if (/employee|name|rocketeer|resource/i.test(headers[j]) && !/role|title|id/i.test(headers[j])) { empIdx = j; break; }
-    }
-    if (empIdx === -1) return result;
-
-    // Capacity week cols: "Capacity (hrs) W18"
-    var capCols = [];
-    // Tempo cols embedded in Capacity sheet (fallback): "Tempo (hrs) W18" or "Tempo Tracked W18"
-    var inlineTempoCols = [];
-    headers.forEach(function(h, idx) {
-      var cm = h.match(/capacity.*w(\d+)/i);
-      if (cm) { capCols.push({ wNum: parseInt(cm[1]), idx: idx, key: "W" + cm[1] }); return; }
-      var tm = h.match(/tempo.*w(\d+)/i) || h.match(/tracked.*w(\d+)/i);
-      if (tm) inlineTempoCols.push({ wNum: parseInt(tm[1]), idx: idx, key: "W" + tm[1] });
-    });
-    if (capCols.length === 0) return result;
-
-    // Read Tempo sheet — supports two layouts:
-    //   Wide/transposed:  User | W16 | W17 | W18 | ...
-    //   Long-form:        User | Date | Hours  (one row per day — auto-summed into ISO weeks)
-    var tempoData = {};  // tempoData[normName][wKey] = total hours
-    var tempoShName = CONFIGJ.TEMPO_SHEET || "Tempo Transposed";
-    var tempoSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(tempoShName);
-    if (tempoSh) {
-      var tRaw = tempoSh.getDataRange().getValues();
-      if (tRaw.length > 1) {
-        var tHdr = tRaw[0].map(function(h) { return String(h || "").trim(); });
-        var tEmpIdx = -1;
-        for (var j = 0; j < tHdr.length; j++) {
-          if (/user|employee|name|rocketeer|resource/i.test(tHdr[j]) && !/role|title|id|type/i.test(tHdr[j])) { tEmpIdx = j; break; }
-        }
-        if (tEmpIdx !== -1) {
-          // Detect format: wide if any column header is exactly W\d+
-          var isWide = tHdr.some(function(h) { return /^W\d+$/i.test(h); });
-          if (isWide) {
-            // Wide format: one row per employee, week totals in W\d+ columns
-            var tWeekCols = [];
-            tHdr.forEach(function(h, idx) {
-              var m = h.match(/^W(\d+)$/i);
-              if (m) tWeekCols.push({ wNum: parseInt(m[1]), idx: idx, key: "W" + m[1] });
-            });
-            for (var i = 1; i < tRaw.length; i++) {
-              var empRaw = String(tRaw[i][tEmpIdx] || "").trim();
-              if (!empRaw) continue;
-              var emp = normalizeToRoster_(empRaw);
-              if (!tempoData[emp]) tempoData[emp] = {};
-              tWeekCols.forEach(function(col) {
-                tempoData[emp][col.key] = (tempoData[emp][col.key] || 0) + (parseFloat(tRaw[i][col.idx]) || 0);
-              });
-            }
-          } else {
-            // Long-form format: User | Date | Hours — one row per day entry
-            var tDateIdx = -1, tHoursIdx = -1;
-            for (var j = 0; j < tHdr.length; j++) {
-              if (/^date$/i.test(tHdr[j]) || (/date|day/i.test(tHdr[j]) && tDateIdx === -1)) tDateIdx = j;
-              if (/^hours?$/i.test(tHdr[j]) || (/hours?|time|duration/i.test(tHdr[j]) && tHoursIdx === -1)) tHoursIdx = j;
-            }
-            if (tDateIdx !== -1 && tHoursIdx !== -1) {
-              for (var i = 1; i < tRaw.length; i++) {
-                var empRaw = String(tRaw[i][tEmpIdx] || "").trim();
-                if (!empRaw) continue;
-                var emp = normalizeToRoster_(empRaw);
-                var dateVal = tRaw[i][tDateIdx];
-                var d = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
-                if (isNaN(d.getTime())) continue;
-                var wKey = "W" + isoWeekNum_(d);
-                var hrs = parseFloat(tRaw[i][tHoursIdx]) || 0;
-                if (!tempoData[emp]) tempoData[emp] = {};
-                tempoData[emp][wKey] = (tempoData[emp][wKey] || 0) + hrs;
-              }
-            } else {
-              Logger.log("⚠️ Tempo sheet: could not find Date or Hours columns. Headers: " + tHdr.join(", "));
-            }
-          }
-        }
-      }
-    }
-
-    // Determine current ISO week first — used to filter to completed weeks only
-    var currentWn = isoWeekNum_(new Date());
-    result.currentWn = currentWn;
-    result.nextW1 = "W" + (currentWn + 1);
-    result.nextW2 = "W" + (currentWn + 2);
-
-    // Build week list: completed weeks only (strictly < currentWn), sorted ascending
-    result.weeks = capCols
-      .map(function(c) { return c.wNum; })
-      .filter(function(n, i, a) { return a.indexOf(n) === i && n < currentWn; })
-      .sort(function(a, b) { return a - b; })
-      .map(function(n) { return "W" + n; });
-
-    // Init aggregates only for completed weeks
-    result.weeks.forEach(function(wKey) {
-      result.weekAgg[wKey] = { headcount: 0, totalCap: 0, totalTempo: 0 };
-    });
-
-    // Load targeted roster — only targeted ICs contribute to headcount / capacity / tempo
-    var rosterData = readTargetedRoster_();
-    var targetedNames = rosterData.names; // { normName: true }
-    result.targetedTotal = rosterData.count;
-    result.targetedNames = targetedNames;
-    // lowercase → canonical roster name, so byEmp keys always match targetedNames keys
-    var targetedLower = {};
-    var targetedCanonical = {};
-    Object.keys(targetedNames).forEach(function(n) {
-      targetedLower[n.toLowerCase()] = true;
-      targetedCanonical[n.toLowerCase()] = n;
-    });
-
-    // Build lowercased tempoData keys so Capacity↔Tempo name casing mismatches don't break lookups
-    var tempoDataLC = {};
-    Object.keys(tempoData).forEach(function(k) { tempoDataLC[k.toLowerCase()] = tempoData[k]; });
-
-    // Aggregate per employee row — targeted contributors only
-    for (var i = 1; i < raw.length; i++) {
-      var empRaw = String(raw[i][empIdx] || "").trim();
-      if (!empRaw || /employee|name/i.test(empRaw)) continue;
-      var emp = normalizeToRoster_(empRaw);
-
-      if (!targetedNames[emp] && !targetedLower[emp.toLowerCase()]) continue; // skip non-targeted ICs
-
-      capCols.forEach(function(col) {
-        if (!result.weekAgg[col.key]) return; // skip future / non-completed weeks
-        var cap = parseFloat(raw[i][col.idx]) || 0;
-        if (cap <= 0) return;
-
-        var agg = result.weekAgg[col.key];
-        agg.headcount++;
-        agg.totalCap += cap;
-
-        // Tempo: prefer Transposed sheet (case-insensitive name lookup), fall back to inline column
-        var tempo = 0;
-        var empLC = emp.toLowerCase();
-        var empTempoRow = tempoData[emp] || tempoDataLC[empLC];
-        if (empTempoRow && empTempoRow[col.key] !== undefined) {
-          tempo = empTempoRow[col.key];
-        } else {
-          for (var ti = 0; ti < inlineTempoCols.length; ti++) {
-            if (inlineTempoCols[ti].key === col.key) { tempo = parseFloat(raw[i][inlineTempoCols[ti].idx]) || 0; break; }
-          }
-        }
-        agg.totalTempo += tempo;
-
-        // Per-employee record — keyed by canonical roster name so compliance lookups match
-        var canonical = targetedCanonical[emp.toLowerCase()] || emp;
-        if (!result.byEmp[canonical]) result.byEmp[canonical] = {};
-        result.byEmp[canonical][col.key] = { cap: cap, tempo: tempo };
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Reads the "Planned Time Tempo" sheet.
-   * Fields: User (Resource), Resource Type, Program, Team, Role, Skills, W21, W22, W23, ...
-   * Week columns grow over time as contributors plan further ahead.
-   *
-   * Returns:
-   *   total       — total unique contributors found
-   *   none        — 0 future weeks planned
-   *   one         — exactly 1 future week planned
-   *   two         — exactly 2 future weeks planned  (meets minimum)
-   *   threeplus   — 3+ future weeks planned         (positive/proactive)
-   *   byEmp       — { normName: { count: N, weeks: ["W21","W22",...] } }
-   *   futureWeeks — sorted list of future week keys found in the sheet
-   */
-  function readPlannedTimeTempo_() {
-    var result = { total: 0, none: 0, one: 0, two: 0, threeplus: 0, byEmp: {}, futureWeeks: [] };
-
-    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIGJ.PLANNED_TEMPO_SHEET || "Planned Time Tempo");
-    if (!sh) { Logger.log("⚠️ 'Planned Time Tempo' sheet not found — planning section skipped."); return result; }
-
-    var raw = sh.getDataRange().getValues();
-    if (raw.length <= 1) return result;
-
-    var headers = raw[0].map(function(h) { return String(h || "").trim(); });
-
-    // Find the employee/resource column ("User (Resource)" or similar)
-    var empIdx = -1;
-    for (var j = 0; j < headers.length; j++) {
-      if (/user|resource|rocketeer|name|employee/i.test(headers[j]) &&
-          !/type|role|skill|program|team/i.test(headers[j])) { empIdx = j; break; }
-    }
-    if (empIdx === -1) { Logger.log("⚠️ Employee column not found in Planned Time Tempo."); return result; }
-
-    var currentWn = isoWeekNum_(new Date());
-
-    // Collect all week columns; split into past/current and future
-    var futureWeekCols = [];
-    headers.forEach(function(h, idx) {
-      var m = h.match(/^W(\d+)$/i);
-      if (!m) return;
-      var wn = parseInt(m[1]);
-      if (wn > currentWn) futureWeekCols.push({ wNum: wn, idx: idx, key: "W" + wn });
-    });
-    futureWeekCols.sort(function(a, b) { return a.wNum - b.wNum; });
-
-    if (futureWeekCols.length === 0) {
-      Logger.log("⚠️ No future week columns found in Planned Time Tempo (current week: W" + currentWn + ").");
-      return result;
-    }
-    result.futureWeeks = futureWeekCols.map(function(c) { return c.key; });
-
-    // Scope to targeted contributors only (case-insensitive fallback for name mismatches)
-    var rosterData = readTargetedRoster_();
-    var targetedNames = rosterData.names;
-    var targetedLower = {};
-    var targetedCanonical = {};
-    Object.keys(targetedNames).forEach(function(n) {
-      targetedLower[n.toLowerCase()] = true;
-      targetedCanonical[n.toLowerCase()] = n;
-    });
-
-    for (var i = 1; i < raw.length; i++) {
-      var empRaw = String(raw[i][empIdx] || "").trim();
-      if (!empRaw) continue;
-      var emp = normalizeToRoster_(empRaw);
-      if (!targetedNames[emp] && !targetedLower[emp.toLowerCase()]) continue; // skip non-targeted ICs
-      var canonical = targetedCanonical[emp.toLowerCase()] || emp;
-      result.total++;
-
-      // Count future weeks where the person has planned hours > 0
-      var plannedWeeks = [];
-      futureWeekCols.forEach(function(col) {
-        if ((parseFloat(raw[i][col.idx]) || 0) > 0) plannedWeeks.push(col.key);
-      });
-
-      result.byEmp[canonical] = { count: plannedWeeks.length, weeks: plannedWeeks };
-
-      if      (plannedWeeks.length === 0) result.none++;
-      else if (plannedWeeks.length === 1) result.one++;
-      else if (plannedWeeks.length === 2) result.two++;
-      else                                result.threeplus++;
-    }
-
-    return result;
-  }
-
-  /**
-   * Reads the Time Off sheet to determine PTO hours per employee per day.
-   * Returns a Map: "Normalized Name|YYYY-MM-DD" -> hours
-   */
-  function readTimeOff_() {
-    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIGJ.TIME_OFF_SHEET || "Time Off");
-    if (!sh) {
-      Logger.log("⚠️ Time Off sheet not found. Assuming 0 PTO.");
-      return new Map();
-    }
-    
-    const raw = sh.getDataRange().getValues();
-    if (raw.length <= 1) return new Map();
-
-    const headers = raw[0].map(h => String(h || "").toLowerCase().trim());
-    const iEmp = headers.findIndex(h => h === "name" || h === "employee" || h === "resource");
-    const iDate = headers.findIndex(h => h === "date");
-    const iHours = headers.findIndex(h => /hours|amount|sum/i.test(h));
-
-    const map = new Map();
-    for (let i = 1; i < raw.length; i++) {
-      const empRaw = String(raw[i][iEmp] || "").trim();
-      if (!empRaw) continue;
-      const emp = normalizeToRoster_(empRaw);
-
-      const date = (raw[i][iDate] instanceof Date) ? raw[i][iDate] : new Date(raw[i][iDate]);
-      if (isNaN(date.getTime())) continue;
-      
-      const iso = toIsoDate_(date);
-      const key = emp + "|" + iso;
-      const hrs = iHours !== -1 ? (parseFloat(raw[i][iHours]) || 8) : 8;
-      map.set(key, (map.get(key) || 0) + hrs);
-    }
-    
-    return map;
-  }
+  // NOTE (v3.5.0): the Capacity / Tempo Transposed / Planned Time Tempo /
+  // Time Off readers used to live here. They were removed — this script is a
+  // Jira EXPORTER, and every consumer now joins Tempo, capacity and PTO itself
+  // straight off the Jira Raw sheet plus its own sources. Two of them
+  // (readCapacity_, readTimeOff_) also collided by name with globals in
+  // Hours Analysis.js, and GAS shares one namespace across a project.
+  // The Roster reader (readTargetedRoster_) deliberately STAYS: Exec Q&A's
+  // engagement rate and runDebugRosterMatching() both need it.
 
   function buildHeaders_() {
     const token = getAPI__Jira();
@@ -576,6 +676,70 @@
       "Accept":        "application/json",
       "Content-Type":  "application/json",
     };
+  }
+
+  /**
+   * Returns the Monday (00:00 local) of a given ISO week.
+   * Jan 4 is always inside ISO week 1, so W1's Monday anchors the math.
+   * jb_ prefix: TempoCapacityTime.js defines a global mondayOfIsoWeek_(isoLabel)
+   * with a different signature — GAS shares one namespace across files, and the
+   * unprefixed name got shadowed (label-parser received the year 2026 → threw).
+   */
+  function jb_mondayOfIsoWeek_(year, week) {
+    var jan4 = new Date(year, 0, 4);
+    var mon = new Date(jan4);
+    mon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7) + (week - 1) * 7);
+    mon.setHours(0, 0, 0, 0);
+    return mon;
+  }
+
+  /**
+   * Returns the org-standard ISO week label for a date — "2026.W27".
+   * Inverse of jb_mondayOfIsoWeek_. Mirrors isoWeekLabel_() in
+   * TempoPlanExport.js so the Jira Raw "Week" column, the Tempo tracked /
+   * planned / capacity exports, and the dashboards that join them all speak
+   * one vocabulary.
+   *
+   *   - Weeks start Monday; week 1 is the week containing Jan 4 (first Thursday).
+   *   - The year prefix is the ISO week-year taken from the week's Thursday, so
+   *     late-Dec / early-Jan dates land in the adjacent year where ISO says they
+   *     belong (2026-12-31 → "2027.W01").
+   *   - The week number is zero-padded to two digits (W01–W53), which also makes
+   *     the labels sort lexically.
+   *
+   * jb_ prefix: PS_Post.js and TempoPlanExport.js both define a global
+   * isoWeekLabel_ — same convention as jb_mondayOfIsoWeek_ above, keeping this
+   * file independent of whichever copy wins GAS's shared namespace.
+   *
+   * ⚠️ PADDING DIVERGENCE — this pads to two digits ("2026.W05"); the delivery-
+   * health dashboard's weekKeyFromDate_ (Code.js) is
+   * `isoWeekYear_(d) + ".W" + isoWeekNum_(d)` and does NOT pad ("2026.W5").
+   * The two agree for W10–W53 and disagree for W01–W09. Nothing joins on the
+   * Week column across the two systems today — the dashboard derives its own
+   * ISO week from the Resolution Date and never reads this column — so the
+   * mismatch is currently inert. If a cross-system Week join is ever added,
+   * normalise BOTH sides to the unpadded form first. This will not surface
+   * until the 52-week window rolls into W01–W09 (January).
+   *
+   * @param {Date} date  Any day inside the target week (typically the Monday).
+   * @returns {string} e.g. "2026.W27"
+   */
+  function jb_isoWeekLabel_(date) {
+    // UTC throughout so DST shifts can't push a Monday into the prior week.
+    var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+
+    // Thursday of this week — its calendar year IS the ISO week-year.
+    var dayNum = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
+    d.setUTCDate(d.getUTCDate() - dayNum + 3);
+    var isoYear = d.getUTCFullYear();
+
+    // Thursday of ISO week 1 (the week containing Jan 4).
+    var firstThursday = new Date(Date.UTC(isoYear, 0, 4));
+    var firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+    firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+
+    var week = 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 86400000));
+    return isoYear + ".W" + String(week).padStart(2, "0");
   }
 
   function getLastNWeeks_(n) {
@@ -587,6 +751,27 @@
     const thisMonday = new Date(today);
     thisMonday.setDate(today.getDate() - daysSinceMonday);
     thisMonday.setHours(0, 0, 0, 0);
+
+    // START_ISO_WEEK override — anchor the window to a fixed calendar week
+    // (e.g. "2026.W14") and run through the last completed week.
+    if (CONFIGJ.START_ISO_WEEK) {
+      var m = /^(\d{4})\.W(\d{1,2})$/.exec(String(CONFIGJ.START_ISO_WEEK).trim());
+      if (m) {
+        var startMon = jb_mondayOfIsoWeek_(Number(m[1]), Number(m[2]));
+        var span = Math.round((thisMonday - startMon) / (7 * 86400000));
+        if (span > 0) {
+          n = span;
+          Logger.log("📅 START_ISO_WEEK " + CONFIGJ.START_ISO_WEEK + " → " + n +
+                     " completed weeks (" + toIsoDate_(startMon) + " onward).");
+        } else {
+          Logger.log("⚠️ START_ISO_WEEK " + CONFIGJ.START_ISO_WEEK +
+                     " is not a past week — falling back to WEEKS_BACK.");
+        }
+      } else {
+        Logger.log("⚠️ START_ISO_WEEK \"" + CONFIGJ.START_ISO_WEEK +
+                   "\" invalid (expected \"YYYY.WN\") — falling back to WEEKS_BACK.");
+      }
+    }
 
     var weeks = [];
     for (var i = 1; i <= n; i++) {
@@ -603,7 +788,7 @@
       nextMon.setHours(0, 0, 0, 0);
 
       weeks.unshift({
-        label:      getWeekLabel_(mon),
+        label:      jb_isoWeekLabel_(mon),
         from:       mon,
         to:         sun,
         fromStr:    toIsoDate_(mon),
@@ -716,40 +901,113 @@
   // ── SECTION: JIRA FETCH ───────────────────────────────────────
 
   /**
+   * Parses a response body as JSON without throwing, returning the evidence
+   * needed to tell a TRUNCATED body apart from a genuinely malformed one.
+   *
+   * Why this exists: Jira and Tempo both occasionally answer 200 with a body
+   * that stops mid-array. JSON.parse then dies with
+   *   "Expected ',' or ']' after array element in JSON at position 679018"
+   * where the position is simply however many characters arrived — it reads
+   * like corrupt data, but it's a short read, and the bare SyntaxError names
+   * neither the endpoint nor the page. Callers use the {ok:false} result to
+   * retry the same cursor with a smaller page (fat pages truncate, small ones
+   * don't) and log which call it was.
+   *
+   * @param {HTTPResponse} resp  a muteHttpExceptions response, code already checked
+   * @param {string} what        human label for logs, e.g. "Jira search/jql page"
+   * @returns {{ok:boolean, data:Object|null, len:number, tail:string, err:string}}
+   */
+  function jb_tryParseJson_(resp, what) {
+    var txt = "";
+    try {
+      txt = resp.getContentText();
+    } catch (e) {
+      return { ok: false, data: null, len: 0, tail: "", err: "getContentText failed: " + e.message };
+    }
+    try {
+      return { ok: true, data: JSON.parse(txt), len: txt.length, tail: "", err: "" };
+    } catch (e) {
+      Logger.log("⚠️ " + what + ": unparseable body — " + e.message
+        + " · received " + txt.length + " chars · tail: …" + txt.slice(-120));
+      return { ok: false, data: null, len: txt.length, tail: txt.slice(-120), err: e.message };
+    }
+  }
+
+  // Jira page size. Starts at JQL_PAGE_MAX and halves toward JQL_PAGE_MIN
+  // whenever a body arrives truncated — the "comment" field makes page weight
+  // wildly uneven (a handful of heavily-discussed issues can triple a page),
+  // so the size that works is data-dependent and can't be picked up front.
+  var JQL_PAGE_MAX = 100;
+  var JQL_PAGE_MIN = 10;
+
+  /**
    * Generic Jira search using cursor-based pagination (nextPageToken).
    * Uses /rest/api/3/search/jql endpoint. Filters out "to delete" issues.
+   *
+   * @param {string}   jql      the query
+   * @param {string[]} [fields] field list override; defaults to CONFIGJ.JIRA_FIELDS.
+   *                            Pass JIRA_FIELDS_NO_COMMENTS for queries whose rows
+   *                            nobody reads comments off.
    */
-  function fetchAllIssuesByJql_(jql) {
+  function fetchAllIssuesByJql_(jql, fields) {
+    var fieldList = fields || CONFIGJ.JIRA_FIELDS;
     var headers = buildHeaders_();
     var url     = CONFIGJ.JIRA_BASE_URL + "/rest/api/3/search/jql";
     var all     = [];
-    var maxResults = 100;
+    var maxResults = JQL_PAGE_MAX;
     var nextPageToken = null;
 
     while (true) {
-      var body = {
-        jql:        jql,
-        maxResults: maxResults,
-        fields:     CONFIGJ.JIRA_FIELDS,
-      };
-      if (nextPageToken) body.nextPageToken = nextPageToken;
+      // One page, with shrink-and-retry on a truncated body. nextPageToken is a
+      // POSITION, not a slice, so re-asking the same cursor for fewer issues is
+      // safe and skips nothing. A shrink sticks for the rest of the run —
+      // slower, but a run that finishes beats a run that dies at page 30.
+      var data = null;
+      for (var shrink = 0; data === null; shrink++) {
+        var body = {
+          jql:        jql,
+          maxResults: maxResults,
+          fields:     fieldList,
+        };
+        // Reopen detection needs each issue's status history, which only comes
+        // back under expand=changelog. OFF by default: the changelog is a full
+        // history per issue on an export whose pages already shrink-and-retry
+        // because `comment` returns ADF trees, so this is a measured decision,
+        // not a default. See CONFIGJ.FETCH_CHANGELOG.
+        if (CONFIGJ.FETCH_CHANGELOG) body.expand = ["changelog"];
+        if (nextPageToken) body.nextPageToken = nextPageToken;
 
-      var resp = UrlFetchApp.fetch(url, {
-        method:             "POST",
-        headers:            headers,
-        payload:            JSON.stringify(body),
-        muteHttpExceptions: true,
-      });
+        var resp = UrlFetchApp.fetch(url, {
+          method:             "POST",
+          headers:            headers,
+          payload:            JSON.stringify(body),
+          muteHttpExceptions: true,
+        });
 
-      var code = resp.getResponseCode();
-      if (code === 401) throw new Error("❌ 401 Unauthorized — check JIRA_EMAIL and re-run setAPI__Jira().");
-      if (code === 400) {
-        var err = JSON.parse(resp.getContentText());
-        throw new Error("❌ 400 Bad Request — " + JSON.stringify(err.errorMessages || err));
+        var code = resp.getResponseCode();
+        if (code === 401) throw new Error("❌ 401 Unauthorized — check JIRA_EMAIL and re-run setAPI__Jira().");
+        if (code === 400) {
+          var errParsed = jb_tryParseJson_(resp, "Jira 400 body");
+          var err = errParsed.ok ? errParsed.data : {};
+          throw new Error("❌ 400 Bad Request — " + JSON.stringify(err.errorMessages || err));
+        }
+        if (code !== 200) throw new Error("❌ Jira API error " + code + ": " + resp.getContentText().substring(0, 400));
+
+        var parsed = jb_tryParseJson_(resp, "Jira search/jql page (maxResults=" + maxResults + ")");
+        if (parsed.ok) { data = parsed.data; break; }
+
+        if (maxResults > JQL_PAGE_MIN) {
+          maxResults = Math.max(JQL_PAGE_MIN, Math.floor(maxResults / 2));
+          Logger.log("   ↩️ retrying that page with maxResults=" + maxResults
+            + " (comment-heavy issues make oversized pages)");
+          Utilities.sleep(500 * (shrink + 1));
+          continue;
+        }
+        throw new Error("❌ Jira returned a truncated body even at maxResults=" + JQL_PAGE_MIN
+          + " — " + parsed.err + " (received " + parsed.len + " chars). One issue's payload is"
+          + " likely oversized; check its comment history. Tail: …" + parsed.tail);
       }
-      if (code !== 200) throw new Error("❌ Jira API error " + code + ": " + resp.getContentText().substring(0, 400));
 
-      var data   = JSON.parse(resp.getContentText());
       var issues = data.issues || [];
       all.push.apply(all, issues);
 
@@ -792,10 +1050,14 @@
    * Broad fetch — original working JQL that returns all Done issues
    * across all projects. Uses fetchAllIssuesByJql_ for pagination.
    */
-  function fetchJiraIssues_() {
-    var since    = new Date();
-    since.setDate(since.getDate() - CONFIGJ.LOOKBACK_DAYS);
-    var sinceStr = toIsoDate_(since);
+  function fetchJiraIssues_(sinceStr) {
+    // Default: rolling LOOKBACK_DAYS window. runJiraEpicTracker passes the
+    // first week window's Monday so the fetch always covers every analysed week.
+    if (!sinceStr) {
+      var since = new Date();
+      since.setDate(since.getDate() - CONFIGJ.LOOKBACK_DAYS);
+      sinceStr = toIsoDate_(since);
+    }
     var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
 
     var jql = [
@@ -808,11 +1070,67 @@
     + ' ORDER BY resolutiondate DESC';
     Logger.log("📋 JQL: " + jql);
 
-    // Fetch and then filter by enabled spaces
+    // Fetch, then filter by enabled spaces and drop non-delivery noise
     var all = fetchAllIssuesByJql_(jql);
-    return all.filter(function(i) {
+    var scoped = all.filter(function(i) {
       return getSpaceForIssue_(i) !== null;
     });
+    var clean = scoped.filter(function(i) { return !isNoiseIssue_(i); });
+    Logger.log("🧹 Noise filter: dropped " + (scoped.length - clean.length) +
+               " of " + scoped.length + " issues (Canceled/Expired status or non-delivery resolution).");
+    return clean;
+  }
+
+  /**
+   * Fetches UNRESOLVED assigned issues — the open-backlog feed for the
+   * delivery-health dashboard's per-person drill-down.
+   *
+   * Why a second query: fetchJiraIssues_ is scoped to statusCategory = Done, so
+   * nothing in Jira Raw described work still in flight. The dashboard's
+   * readJiraRaw_ picks these up by Status + an empty Resolution Date, so they
+   * ride in the same sheet under the sentinel Week label "Open" — it never reads
+   * the Week column, and the tile buckets ignore rows with no resolution date.
+   *
+   * Bounded by CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS: with no resolution date to
+   * anchor on, an unbounded query returns every open assigned issue on the site
+   * for all time, and abandoned tickets would inflate every person's backlog.
+   *
+   * @returns {Object[]} in-scope, non-noise open issues (empty when disabled).
+   */
+  function fetchOpenIssues_() {
+    if (CONFIGJ.OPEN_BACKLOG_ENABLED === false) {
+      Logger.log("ℹ️ Open-backlog feed disabled (CONFIGJ.OPEN_BACKLOG_ENABLED = false).");
+      return [];
+    }
+
+    var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
+    var clauses = [
+      'issuetype in (' + types + ')',
+      'statusCategory != Done',
+      'assignee is not EMPTY',
+      'project NOT IN (TEMPLATE)',
+      'summary !~ "to delete"'
+    ];
+
+    var staleWeeks = CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS;
+    if (staleWeeks) {
+      var since = new Date();
+      since.setDate(since.getDate() - staleWeeks * 7);
+      clauses.push('updated >= "' + toIsoDate_(since) + '"');
+    }
+
+    var jql = clauses.join(" AND ") + ' ORDER BY priority DESC';
+    Logger.log("📋 Open-issues JQL (backlog): " + jql);
+
+    // No comment bodies: nothing reads comments off a backlog row, and dropping
+    // the field keeps this extra fetch cheap.
+    var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS);
+    var open = all.filter(function(i) {
+      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+    });
+    Logger.log("   Open issues fetched: " + all.length + " → " + open.length +
+               " in scope" + (staleWeeks ? " (updated within " + staleWeeks + " weeks)" : ""));
+    return open;
   }
 
   /**
@@ -826,7 +1144,28 @@
     return s === "won't do" || s === "wont do"
         || s === "duplicate" || s === "cannot reproduce"
         || s === "not a bug"  || s === "declined"
-        || s === "rejected"   || s === "incomplete";
+        || s === "rejected"   || s === "incomplete"
+        || s === "known error"
+        || s === "canceled"   || s === "cancelled"
+        || s === "expired";
+  }
+
+  // Status names that mean the item was closed without delivering value —
+  // statusCategory is still "Done", so JQL alone can't exclude them.
+  var NOISE_STATUSES_ = { "canceled": true, "cancelled": true, "expired": true };
+
+  /**
+   * True when a Done-category issue carries no delivery value: closed via a
+   * noise status (Canceled / Expired) or a non-delivery resolution (Won't Do,
+   * Duplicate, Incomplete, Known Error, …). Filtered at the fetch so these
+   * never reach Jira Raw or Exec Q&A.
+   */
+  function isNoiseIssue_(issue) {
+    var f = issue.fields || {};
+    var status = String(dig_(f, "status.name") || "").toLowerCase().trim();
+    if (NOISE_STATUSES_[status]) return true;
+    var resName = (f.resolution && f.resolution.name) || "";
+    return isNonDelivery_(resName);
   }
 
   /**
@@ -853,12 +1192,28 @@
 
   /**
    * Determines the Space key for an issue based on its project key or name.
-   * Matches against CONFIGJ.SPACES[].match array. Returns "Other" if no match.
-   * NEW: Respects the 'enabled' flag in CONFIGJ.SPACES.
+   * Matches against CONFIGJ.SPACES[].match array.
+   *
+   * Return contract:
+   *   null            → the issue matched a space with enabled:false (R&D today).
+   *                     THIS IS THE ONLY EXCLUSION — callers drop these issues.
+   *   space.key       → matched an enabled configured space (e.g. "COE").
+   *   client name     → project key found in CUSTOMER_PROJECT_MAP.
+   *   project key     → matched nothing (v3.4.0; was the generic "Customer").
+   *                     An unmapped client project is now identifiable in Jira
+   *                     Raw instead of blending into one "Customer" blob.
+   *
+   * Note this function never excluded "projects outside COE/R&D/Customer" —
+   * unmatched projects have always fallen through to the last branch.
    */
   function getSpaceForIssue_(issue) {
     var f = issue.fields || {};
     var projKey  = (dig_(f, "project.key")  || "").toUpperCase();
+    // normalizeName_ is a CROSS-FILE global defined in "Contribution Report.js"
+    // (lowercase + collapse whitespace + trim). GAS shares one namespace across
+    // the project, so it resolves at runtime — but this file will not run
+    // standalone without it. Do NOT add a local copy: a second declaration of
+    // the same top-level name breaks the whole project at load.
     var projName = normalizeName_(dig_(f, "project.name") || "");
 
     if (!projKey && !projName) return "Customer";
@@ -879,7 +1234,22 @@
         }
       }
     }
-    return "Customer";
+    // Known client projects surface the actual client name so the Exec Space
+    // column differentiates customers instead of one "Customer" blob; unmapped
+    // ones fall back to their project key for the same reason (v3.4.0).
+    var clientName = CONFIGJ.CUSTOMER_PROJECT_MAP && CONFIGJ.CUSTOMER_PROJECT_MAP[projKey];
+    return clientName || projKey || "Other";
+  }
+
+  /**
+   * Collapses client-named customer spaces (CUSTOMER_PROJECT_MAP values) back
+   * to the generic "Customer" key for aggregations that bucket by
+   * COE / R&D / Customer. Configured space keys pass through unchanged.
+   */
+  function scopeForSpace_(space) {
+    if (!space) return space;
+    var configured = CONFIGJ.SPACES.some(function(s) { return s.key === space; });
+    return configured ? space : "Customer";
   }
 
   /**
@@ -891,6 +1261,58 @@
     return f.resolutiondate           ? new Date(f.resolutiondate)
         : f.statuscategorychangedate ? new Date(f.statuscategorychangedate)
         : null;
+  }
+
+  /**
+   * Best-effort epic key for an issue: the classic Epic Link custom field,
+   * or the parent key when the parent itself is an epic (team-managed
+   * projects). Sub-tasks (parent = story) resolve transitively in
+   * rollupTempoToEpics_; here they return "".
+   */
+  function resolvedEpicKey_(f) {
+    if (f[CONFIGJ.EPIC_LINK_FIELD]) return f[CONFIGJ.EPIC_LINK_FIELD];
+    var pType = String(dig_(f, "parent.fields.issuetype.name") || "").toLowerCase();
+    if (pType.indexOf("epic") !== -1) return (f.parent && f.parent.key) || "";
+    return "";
+  }
+
+  /**
+   * Fetches all child issues (Stories, Tasks, Sub-tasks) of the given epic
+   * keys, in ANY status — classic projects link children via "Epic Link"
+   * (CONFIGJ.EPIC_LINK_FIELD), team-managed projects via parent. Keys are
+   * batched to keep the JQL under the length limit; if the "Epic Link" field
+   * name isn't valid on this site, the batch retries with parent-only JQL.
+   * Returns a flat array of Jira issue objects.
+   */
+  function fetchChildrenForEpics_(epicKeys) {
+    if (!epicKeys || !epicKeys.length) return [];
+    var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
+    var all = [];
+    var BATCH = 50;
+    Logger.log("🔗 Fetching children for " + epicKeys.length + " epics…");
+    for (var i = 0; i < epicKeys.length; i += BATCH) {
+      var keyList = epicKeys.slice(i, i + BATCH)
+        .map(function(k) { return '"' + k + '"'; }).join(", ");
+      var base = [
+        'issuetype in (' + types + ')',
+        'project NOT IN (TEMPLATE)',
+        'summary !~ "to delete"'
+      ];
+      var jqlBoth = base
+        .concat(['("Epic Link" in (' + keyList + ') OR parent in (' + keyList + '))'])
+        .join(" AND ") + " ORDER BY created ASC";
+      try {
+        all = all.concat(fetchAllIssuesByJql_(jqlBoth));
+      } catch (e) {
+        Logger.log('⚠️ "Epic Link" JQL failed (' + e.message + ') — retrying batch with parent-only.');
+        var jqlParent = base
+          .concat(['parent in (' + keyList + ')'])
+          .join(" AND ") + " ORDER BY created ASC";
+        all = all.concat(fetchAllIssuesByJql_(jqlParent));
+      }
+    }
+    Logger.log("   → " + all.length + " child issues found.");
+    return all;
   }
 
   /**
@@ -936,26 +1358,229 @@
     return weeklyData;
   }
 
+  // ── SECTION: TEMPO WORKLOG ENRICHMENT ─────────────────────────
+
   /**
-   * Adapts the new space×week weeklyData into the old per-week format
-   * needed by writeReportSheet_ (merges all spaces per week).
+   * Fetches Tempo worklogs for the already-fetched Jira issues and rolls
+   * them up per issue key, so Jira Raw can connect Fix Version (engagement /
+   * SRSO code) → issue → actual hours per person.
+   *
+   * Uses POST /4/worklogs/search (batched issue ids, offset pagination).
+   * Tempo v4 returns only numeric issue ids and author accountIds — issue
+   * keys come from the in-memory issues, author names are resolved via Jira
+   * and normalised to roster names so they match the Assignee column.
+   *
+   * Reuses the TEMPO_API_TOKEN stored by storeCredentials() (TempoPlanExport.js).
+   * Skips gracefully (empty result) when the token is absent.
+   *
+   * @param {Object[]} issues  Jira issue objects (need .id and .key).
+   * @returns {Object} issueKey → { totalHrs, contributors: Object<name, hrs> }
    */
-  function aggregateByWeek_(weeklyData, weeks) {
-    return weeks.map(function(week) {
-      var merged = [];
-      weeklyData.forEach(function(wd) {
-        if (wd.label === week.label) {
-          merged.push.apply(merged, wd.issues);
+  function fetchTempoWorklogsForIssues_(issues) {
+    var tempoToken = PropertiesService.getScriptProperties().getProperty("TEMPO_API_TOKEN");
+    if (!tempoToken) {
+      Logger.log("⚠️ TEMPO_API_TOKEN not found — skipping Tempo worklog enrichment. Run storeCredentials() to enable.");
+      return {};
+    }
+
+    // Tempo v4 identifies issues by numeric id only — map back to keys here.
+    var idToKey = {};
+    issues.forEach(function(iss) {
+      if (iss.id && iss.key) idToKey[String(iss.id)] = iss.key;
+    });
+    var issueIds = Object.keys(idToKey).map(Number);
+    if (!issueIds.length) return {};
+
+    var byIssue   = {}; // issueKey → { totalHrs, byAuthor: accountId → hrs }
+    var authorIds = {};
+    // PAGE halves toward PAGE_MIN on a truncated body, same tactic as the Jira
+    // fetch above — 1000 fat worklog objects is comfortably enough to produce a
+    // several-hundred-KB response, and that is where short reads show up.
+    var ID_BATCH = 100, PAGE = 1000, PAGE_MIN = 50;
+
+    for (var b = 0; b < issueIds.length; b += ID_BATCH) {
+      var batchIds = issueIds.slice(b, b + ID_BATCH);
+      var offset = 0, hasMore = true;
+
+      while (hasMore) {
+        var results = null;
+        while (results === null) {
+          // Tempo throws transient 500s under load — retry 5xx/429 twice with
+          // backoff; a failed page here silently drops a whole batch's hours.
+          var resp, respCode;
+          for (var attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) Utilities.sleep(500 * attempt);
+            resp = UrlFetchApp.fetch(
+              "https://api.tempo.io/4/worklogs/search?offset=" + offset + "&limit=" + PAGE,
+              {
+                method: "post",
+                contentType: "application/json",
+                headers: { "Authorization": "Bearer " + tempoToken, "Accept": "application/json" },
+                payload: JSON.stringify({ issueIds: batchIds }),
+                muteHttpExceptions: true,
+              }
+            );
+            respCode = resp.getResponseCode();
+            if (respCode === 200 || (respCode < 500 && respCode !== 429)) break;
+          }
+
+          if (respCode !== 200) {
+            Logger.log("⚠️ Tempo worklogs/search HTTP " + respCode +
+                       " (batch @" + b + ", after retries): " + resp.getContentText().slice(0, 300));
+            results = []; hasMore = false; break;
+          }
+
+          var parsed = jb_tryParseJson_(resp, "Tempo worklogs/search (batch @" + b + ", limit=" + PAGE + ")");
+          if (parsed.ok) { results = parsed.data.results || []; break; }
+
+          if (PAGE > PAGE_MIN) {
+            PAGE = Math.max(PAGE_MIN, Math.floor(PAGE / 2));
+            Logger.log("   ↩️ retrying Tempo page @" + offset + " with limit=" + PAGE);
+            Utilities.sleep(500);
+            continue;
+          }
+          // Fail-soft, matching the HTTP-error path above: Tempo enrichment is
+          // additive (hours columns go blank), so one bad batch must not take
+          // the whole Jira Raw export down with it.
+          Logger.log("⚠️ Tempo worklogs unreadable at limit=" + PAGE_MIN
+            + " — dropping batch @" + b + " (" + batchIds.length + " issues). Their logged hours will be blank.");
+          results = []; hasMore = false; break;
+        }
+
+        results.forEach(function(wl) {
+          var key = idToKey[String(wl.issue && wl.issue.id)];
+          if (!key) return;
+          var hrs  = (wl.timeSpentSeconds || 0) / 3600;
+          var acct = (wl.author && wl.author.accountId) || "unknown";
+          if (!byIssue[key]) byIssue[key] = { totalHrs: 0, byAuthor: {} };
+          byIssue[key].totalHrs += hrs;
+          byIssue[key].byAuthor[acct] = (byIssue[key].byAuthor[acct] || 0) + hrs;
+          authorIds[acct] = true;
+        });
+
+        // `hasMore &&` keeps an explicit stop from the HTTP-error / unreadable
+        // paths above, instead of relying on their empty results to re-derive it.
+        // offset advances by the CURRENT PAGE, so a mid-batch shrink leaves
+        // neither a gap nor an overlap in the cursor.
+        hasMore = hasMore && results.length >= PAGE;
+        offset += PAGE;
+        Utilities.sleep(150); // be kind to the Tempo API
+      }
+    }
+
+    // Resolve author accountIds → display names once, then re-key each
+    // issue's contributor map onto roster-normalised names.
+    var nameMap = fetchJiraUserNames_(
+      Object.keys(authorIds).filter(function(a) { return a !== "unknown"; })
+    );
+    Object.keys(byIssue).forEach(function(key) {
+      var named = {};
+      Object.keys(byIssue[key].byAuthor).forEach(function(acct) {
+        var name = normalizeToRoster_(nameMap[acct] || acct);
+        named[name] = (named[name] || 0) + byIssue[key].byAuthor[acct];
+      });
+      byIssue[key].contributors = named;
+      delete byIssue[key].byAuthor;
+    });
+
+    return byIssue;
+  }
+
+  /**
+   * Resolves Jira accountIds → displayName via /rest/api/3/user (fetchAll batches).
+   * @param {string[]} accountIds
+   * @returns {Object} accountId → displayName (falls back to the id itself)
+   */
+  function fetchJiraUserNames_(accountIds) {
+    var nameMap = {};
+    if (!accountIds.length) return nameMap;
+
+    var headers = buildHeaders_();
+    var requests = accountIds.map(function(id) {
+      return {
+        url: CONFIGJ.JIRA_BASE_URL + "/rest/api/3/user?accountId=" + encodeURIComponent(id),
+        method: "get",
+        headers: headers,
+        muteHttpExceptions: true,
+      };
+    });
+
+    var BATCH = 25;
+    for (var b = 0; b < requests.length; b += BATCH) {
+      var responses = UrlFetchApp.fetchAll(requests.slice(b, b + BATCH));
+      responses.forEach(function(res, i) {
+        var id = accountIds[b + i];
+        try {
+          nameMap[id] = res.getResponseCode() === 200
+            ? (JSON.parse(res.getContentText()).displayName || id)
+            : id;
+        } catch (e) {
+          nameMap[id] = id;
         }
       });
-      return { label: week.label, issues: merged };
+    }
+    return nameMap;
+  }
+
+  /**
+   * Rolls Tempo hours up to the epic level: an epic's own worklogs plus every
+   * child's — and sub-task grandchild's, resolved via the child's parent —
+   * so epic rows can show the true burn across the whole tree.
+   *
+   * @param {Object}   tempoMap  issueKey → { totalHrs, contributors } (fetchTempoWorklogsForIssues_)
+   * @param {Object[]} issues    all issues headed for Jira Raw (epics + children)
+   * @returns {Object} epicKey → { totalHrs: number, contributors: Object<name, hrs> }
+   */
+  function rollupTempoToEpics_(tempoMap, issues) {
+    var directEpic = {}, parentOf = {}, isEpic = {};
+    issues.forEach(function(issue) {
+      var f = issue.fields || {};
+      isEpic[issue.key] = String(dig_(f, "issuetype.name") || "").toLowerCase().indexOf("epic") !== -1;
+      directEpic[issue.key] = resolvedEpicKey_(f);
+      parentOf[issue.key] = (f.parent && f.parent.key) || "";
     });
+
+    var rollup = {}, seen = {};
+    issues.forEach(function(issue) {
+      if (seen[issue.key]) return; // an issue can sit in more than one week group
+      seen[issue.key] = true;
+      var tempo = tempoMap[issue.key];
+      if (!tempo) return;
+
+      // Epic rows roll to themselves; sub-tasks without a direct epic link
+      // fall back to their parent story's epic.
+      var epicKey = isEpic[issue.key] ? issue.key
+        : (directEpic[issue.key] || directEpic[parentOf[issue.key]] || "");
+      if (!epicKey) return;
+
+      if (!rollup[epicKey]) rollup[epicKey] = { totalHrs: 0, contributors: {} };
+      rollup[epicKey].totalHrs += tempo.totalHrs;
+      Object.keys(tempo.contributors || {}).forEach(function(name) {
+        rollup[epicKey].contributors[name] =
+          (rollup[epicKey].contributors[name] || 0) + tempo.contributors[name];
+      });
+    });
+    return rollup;
   }
 
   // ── SECTION: SHEET WRITERS ────────────────────────────────────
 
   // Columns 0–14 are locked for backward compatibility (Contribution Report reads by index).
-  // New columns appended at indices 15–26.
+  // New columns appended at indices 15–32 — append-only, never insert.
+  //
+  // "Tempo This Week (hrs)" (was 31) stays REMOVED: Jira Raw rows are issues that
+  // completed in PAST weeks, so a this-week burn column is structurally blank.
+  //
+  // Region (31) and Team (32) came back in v3.4.0 at NEW indices — they sat at
+  // 32–33 before v3.3.0 dropped them, so an index-based reader written against
+  // the pre-v3.3.0 layout would now be off by one. Nothing reads them by index:
+  // the delivery-health dashboard resolves both BY HEADER (readJiraRaw_) and
+  // guards on -1, so it picks up whichever layout the sheet currently has.
+  //
+  // As of v3.7.0 both columns carry DATA (Region 17%, Team 35% of the exported
+  // population). The "expect both to export BLANK" note that stood here for two
+  // releases was wrong: the field was populated all along and the reader was
+  // dropping it. See jbRegionValue_ and CONFIGJ.REGION_FIELD.
   var RAW_HEADERS = [
     /* 0 */ "Week", /* 1 */ "Key", /* 2 */ "Work (Summary)",
     /* 3 */ "Workstream (Issue Type)", /* 4 */ "Space (Project)",
@@ -973,14 +1598,37 @@
     /* 23 */ "Original Estimate (sec)",
     /* 24 */ "Time Spent (sec)",
     /* 25 */ "Issue Links (count)",
-    /* 26 */ "Comments (ADF Extracted)",
+    /* 26 */ "Tempo Logged (hrs)",
+    /* 27 */ "Tempo Contributors",
+    /* 28 */ "Epic Tempo Rollup (hrs)",
+    /* 29 */ "Epic Tempo Contributors",
+    /* 30 */ "Billing Type", // "Billable (SRSO)" | "Internal" | "Untagged"
+    /* 31 */ "Region",       // CONFIGJ.REGION_FIELD, short form via REGION_VOCAB_
+    /* 32 */ "Team",         // CONFIGJ.TEAM_FIELD (Atlassian Team picker)
+    // ── Quality / Rework feed (v3.6.0) ──
+    // APPEND-ONLY. Every consumer resolves Jira Raw columns BY HEADER NAME
+    // (colIdx_ in the delivery-health reader, the same pattern elsewhere), so
+    // adding to the end is safe and an older consumer simply doesn't see them.
+    // Never insert into the middle — that is what made Region/Team move from
+    // 32/33 to 31/32 and broke readers pinned to indices.
+    /* 33 */ "Status Category",  // status.statusCategory.name — authoritative Done
+    /* 34 */ "Rework Link",      // "Yes" when any issue link matches REWORK_LINK_RE
+    /* 35 */ "Reopened",         // "Yes"/"No" from changelog; blank = not measured
+    // ── Candidate attribution fields (v3.7.0) ──
+    // Alternatives to columns 31–32, exported side by side so the attribution
+    // field can be picked by looking at the sheet. Verified fill rates on the
+    // Done/90-day population are in CONFIGJ next to each ID; the first two are
+    // 0% today and are EXPECTED to be blank.
+    /* 36 */ "Region (Alt)",   // CONFIGJ.REGION_ALT_FIELD — "Region" single-select
+    /* 37 */ "Tempo Team",     // CONFIGJ.TEAM_TEMPO_FIELD
+    /* 38 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
   ];
 
-  function issueToRow_(issue, weekLabel, spaceKey) {
+  function issueToRow_(issue, weekLabel, spaceKey, tempoMap, epicTempoRollup) {
     var f = issue.fields || {};
     var assignee  = f.assignee || {};
     var completed = getCompletedDate_(issue);
-    var epicKey   = f[CONFIGJ.EPIC_LINK_FIELD] || "";
+    var epicKey   = resolvedEpicKey_(f);
     var parentKey = (f.parent && f.parent.key) || "";
 
     var labels    = (f.labels || []).join(", ");
@@ -990,14 +1638,51 @@
     var timeSpent = Number(f.timespent || 0);
     var linkCount = (f.issuelinks || []).length;
 
-    // Extract comments for behavioral analysis
-    var commentsArr = (f.comment && f.comment.comments) || [];
-    var commentStr = commentsArr.map(function(c) {
-      var author = (c.author && c.author.displayName) || "Unknown";
-      var date = fmtDateTime_(c.created);
-      var bodyText = extractTextFromADF_(c.body).trim();
-      return "[" + author + " @ " + date + "]: " + bodyText;
-    }).join("\n---\n");
+    // Tempo enrichment — actual logged hours per issue, all authors
+    var tempo = tempoMap ? tempoMap[issue.key] : null;
+    var tempoHrs = tempo ? Math.round(tempo.totalHrs * 10) / 10 : 0;
+    var tempoContribs = tempo
+      ? Object.keys(tempo.contributors)
+          .sort(function(a, b) { return tempo.contributors[b] - tempo.contributors[a]; })
+          .map(function(n) {
+            return n + " (" + (Math.round(tempo.contributors[n] * 10) / 10) + "h)";
+          })
+          .join(", ")
+      : "";
+
+    // Epic-level Tempo rollup — populated on epic rows only (own + child hrs)
+    var typeIsEpic = String(dig_(f, "issuetype.name") || "").toLowerCase().indexOf("epic") !== -1;
+    var epicTempo = (typeIsEpic && epicTempoRollup) ? epicTempoRollup[issue.key] : null;
+    var epicTempoHrs = epicTempo ? Math.round(epicTempo.totalHrs * 10) / 10 : "";
+    var epicTempoContribs = epicTempo
+      ? Object.keys(epicTempo.contributors)
+          .sort(function(a, b) { return epicTempo.contributors[b] - epicTempo.contributors[a]; })
+          .map(function(n) {
+            return n + " (" + (Math.round(epicTempo.contributors[n] * 10) / 10) + "h)";
+          })
+          .join(", ")
+      : "";
+
+    // Billing classification from Fix Versions (same SRSO token rule as Exec Q&A)
+    var fixNames = (f.fixVersions || []).map(function(v) { return v.name || ""; });
+    var hasSRSO = fixNames.some(function(n) { return /\bSRSO\b|SRSO-/i.test(n); });
+    var billingType = hasSRSO ? "Billable (SRSO)"
+      : fixNames.length > 0 ? "Internal"
+      : "Untagged";
+
+    // Assignment hygiene — unassigned issues carry a visible flag so they
+    // surface on any Jira Raw sort/filter without a separate debug run
+    var assigneeName = normalizeToRoster_(dig_(f, "assignee.displayName") || "");
+
+    // Issue-level region / team. Both carry real data as of v3.7.0 (17% and 35%
+    // of the exported population respectively) — the blanks before that were a
+    // multi-select reader bug, not an empty Jira field. Candidate alternatives
+    // ride along in columns 36–38 so the choice is visible in the sheet.
+    var regionVal = jbRegionValue_(f[CONFIGJ.REGION_FIELD]);
+    var teamVal   = jbTeamValue_(f[CONFIGJ.TEAM_FIELD]);
+    var regionAlt = jbOptionLabel_(f[CONFIGJ.REGION_ALT_FIELD]);
+    var teamTempo = jbTeamValue_(f[CONFIGJ.TEAM_TEMPO_FIELD]);
+    var workstream = jbOptionLabel_(f[CONFIGJ.WORKSTREAM_FIELD]);
 
     return [
       // ── Columns 0–14 (unchanged) ──
@@ -1006,7 +1691,7 @@
       f.summary || "",
       dig_(f, "issuetype.name") || "",
       dig_(f, "project.name")   || "",
-      normalizeToRoster_(dig_(f, "assignee.displayName") || "Unassigned"),
+      assigneeName || "⚠️ UNASSIGNED",
       dig_(f, "reporter.displayName") || "",
       dig_(f, "priority.name") || "",
       dig_(f, "status.name")   || "",
@@ -1015,8 +1700,8 @@
       fmtDateTime_(f.resolutiondate),
       fmtDateTime_(f.duedate),
       fmtDateTime_(f.customfield_10015),
-      (f.fixVersions || []).map(function(v) { return v.name; }).join(", "),
-      // ── Columns 15–26 ──
+      fixNames.join(", "),
+      // ── Columns 15–25 ──
       spaceKey || "",
       assignee.accountId || "",
       epicKey,
@@ -1028,8 +1713,76 @@
       origEst,
       timeSpent,
       linkCount,
-      commentStr,
+      // ── Columns 26–27 (Tempo enrichment) ──
+      tempoHrs,
+      tempoContribs,
+      // ── Columns 28–29 (epic rollup, epic rows only) ──
+      epicTempoHrs,
+      epicTempoContribs,
+      // ── Column 30 (billing classification) ──
+      billingType,
+      // ── Columns 31–32 (issue-level region / team) ──
+      regionVal,
+      teamVal,
+      // ── Columns 33–35 (quality / rework feed, v3.6.0) ──
+      dig_(f, "status.statusCategory.name") || "",
+      jbHasReworkLink_(f) ? "Yes" : "",
+      jbReopenedFlag_(issue),
+      // ── Columns 36–38 (candidate attribution fields, v3.7.0) ──
+      regionAlt,
+      teamTempo,
+      workstream,
     ];
+  }
+
+  /**
+   * True when any issue link is of a rework-ish type (CONFIGJ.REWORK_LINK_RE).
+   *
+   * `issuelinks` was already being fetched and reduced to a bare count, so this
+   * costs nothing extra. Both directions count: an issue can be the source of a
+   * "causes rework" link or its target, and either way it is entangled in
+   * rework — the dictionary asks for work "linked as Rework", not for who
+   * pointed at whom.
+   */
+  function jbHasReworkLink_(f) {
+    var links = (f && f.issuelinks) || [];
+    for (var i = 0; i < links.length; i++) {
+      var t = links[i].type || {};
+      // Match the type NAME plus both direction labels: sites commonly name the
+      // type something neutral ("Problem/Incident") and put the meaning in the
+      // inward/outward wording ("is caused by", "causes rework for").
+      var hay = [t.name, t.inward, t.outward].filter(Boolean).join(" ");
+      if (CONFIGJ.REWORK_LINK_RE.test(hay)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * "Yes" / "No" when the changelog was fetched, "" when it wasn't.
+   *
+   * The empty string is load-bearing: a consumer must be able to tell "this
+   * issue was never reopened" from "nobody looked". Reporting an unmeasured
+   * issue as "No" would silently deflate the Rework Rate — the exact failure the
+   * dashboard's coverage gates exist to prevent.
+   *
+   * A reopen = any transition whose FROM value looks Done-ish
+   * (CONFIGJ.REOPEN_FROM_DONE_RE) — i.e. the issue had reached Done and then
+   * left it. Counted at most once per issue: the dictionary asks whether work
+   * required rework, not how many times it bounced.
+   */
+  function jbReopenedFlag_(issue) {
+    if (!CONFIGJ.FETCH_CHANGELOG) return "";
+    var histories = dig_(issue, "changelog.histories");
+    if (!histories) return "";            // expand didn't come back — not measured
+    for (var i = 0; i < histories.length; i++) {
+      var items = histories[i].items || [];
+      for (var j = 0; j < items.length; j++) {
+        var it = items[j];
+        if (String(it.field || "").toLowerCase() !== "status") continue;
+        if (CONFIGJ.REOPEN_FROM_DONE_RE.test(String(it.fromString || "").trim())) return "Yes";
+      }
+    }
+    return "No";
   }
 
   function writeRawSheet_(weeklyData) {
@@ -1037,17 +1790,28 @@
     sheet.clearContents();
     sheet.clearFormats();
 
+    // One Tempo batch pass across all weeks — issueToRow_ looks up by issue key
+    var allIssues = [];
+    weeklyData.forEach(function(w) {
+      allIssues = allIssues.concat(w.issues);
+    });
+    Logger.log("⏱️ Fetching Tempo worklogs for " + allIssues.length + " issues...");
+    var tempoMap = fetchTempoWorklogsForIssues_(allIssues);
+    Logger.log("   Tempo worklogs found for " + Object.keys(tempoMap).length + " issues.");
+
+    var epicTempoRollup = rollupTempoToEpics_(tempoMap, allIssues);
+    Logger.log("   Epic Tempo rollup: " + Object.keys(epicTempoRollup).length + " epics with logged hours.");
+
     var rows = [RAW_HEADERS];
     weeklyData.forEach(function(w) {
       w.issues.forEach(function(issue) {
-        rows.push(issueToRow_(issue, w.label, getSpaceForIssue_(issue)));
+        rows.push(issueToRow_(issue, w.label, getSpaceForIssue_(issue), tempoMap, epicTempoRollup));
       });
     });
 
     sheet.getRange(1, 1, rows.length, RAW_HEADERS.length).setValues(rows);
     styleHeader_(sheet.getRange(1, 1, 1, RAW_HEADERS.length));
     sheet.setFrozenRows(1);
-    sheet.autoResizeColumns(1, RAW_HEADERS.length);
 
     var foot = rows.length + 2;
     sheet.getRange(foot, 1)
@@ -1058,124 +1822,6 @@
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
 
     Logger.log("✅ Raw sheet: " + (rows.length - 1) + " data rows written.");
-  }
-
-  function writeReportSheet_(weeklyData, weeks) {
-    var sheet = jb_getOrCreateSheet_(CONFIGJ.REPORT_SHEET);
-    sheet.clearContents();
-    sheet.clearFormats();
-
-    // Build pivot
-    var pivot = {};
-    weeklyData.forEach(function(week) {
-      week.issues.forEach(function(issue) {
-        var rawName = dig_(issue.fields, "assignee.displayName") || "Unassigned";
-        var name    = normalizeToRoster_(rawName);
-        var status = dig_(issue.fields, "status.name") || "Unknown";
-        if (!pivot[name]) pivot[name] = {};
-        if (!pivot[name][week.label]) pivot[name][week.label] = { count: 0, statuses: {} };
-        pivot[name][week.label].count++;
-        pivot[name][week.label].statuses[status] =
-          (pivot[name][week.label].statuses[status] || 0) + 1;
-      });
-    });
-
-    var assignees  = Object.keys(pivot).sort();
-    var weekLabels = weeks.map(function(w) { return w.label; });
-    var numWeeks   = weekLabels.length;
-    var numDeltas  = numWeeks - 1;
-
-    var headers = ["Assignee"]
-      .concat(weekLabels)
-      .concat(weeks.slice(1).map(function(_, i) { return "Δ Wk" + (i+1) + "→Wk" + (i+2); }))
-      .concat(["Latest Week — Status Breakdown"]);
-
-    var reportRows = [headers];
-
-    assignees.forEach(function(name) {
-      var counts = weekLabels.map(function(lbl) {
-        return pivot[name][lbl] ? pivot[name][lbl].count : 0;
-      });
-      var deltas = [];
-      for (var i = 1; i < counts.length; i++) {
-        var d = counts[i] - counts[i - 1];
-        deltas.push((d > 0 ? "↑ +" : d < 0 ? "↓ " : "→ ") + d);
-      }
-      var lastData  = pivot[name][weekLabels[numWeeks - 1]];
-      var breakdown = lastData
-        ? Object.keys(lastData.statuses).map(function(s) {
-            return s + ": " + lastData.statuses[s];
-          }).join(" | ")
-        : "—";
-      reportRows.push([name].concat(counts).concat(deltas).concat([breakdown]));
-    });
-
-    // Totals row
-    var totalCounts = weekLabels.map(function(lbl) {
-      var t = 0;
-      weeklyData.forEach(function(w) { if (w.label === lbl) t = w.issues.length; });
-      return t;
-    });
-    var totalDeltas = [];
-    for (var i = 1; i < totalCounts.length; i++) {
-      var d = totalCounts[i] - totalCounts[i - 1];
-      totalDeltas.push((d > 0 ? "↑ +" : d < 0 ? "↓ " : "→ ") + d);
-    }
-    reportRows.push(["TOTAL"].concat(totalCounts).concat(totalDeltas).concat([""]));
-
-    var numCols = headers.length;
-    sheet.getRange(1, 1, reportRows.length, numCols).setValues(reportRows);
-
-    // Header styling
-    styleHeader_(sheet.getRange(1, 1, 1, numCols));
-    sheet.setRowHeight(1, 36);
-
-    // ── Batch formatting (avoids per-cell round-trips) ──
-    var dataRows = reportRows.length - 1; // excludes header
-    if (dataRows > 0) {
-      // Delta columns — build background + fontColor + fontWeight arrays
-      var deltaBg    = [];
-      var deltaFc    = [];
-      for (var r = 1; r < reportRows.length; r++) {
-        var bgRow = [];
-        var fcRow = [];
-        for (var dc = 0; dc < numDeltas; dc++) {
-          var val = String(reportRows[r][1 + numWeeks + dc]);
-          if (val.indexOf("↑") === 0)      { bgRow.push("#C6EFCE"); fcRow.push("#276221"); }
-          else if (val.indexOf("↓") === 0) { bgRow.push("#FFC7CE"); fcRow.push("#9C0006"); }
-          else                             { bgRow.push("#F2F2F2"); fcRow.push("#666666"); }
-        }
-        deltaBg.push(bgRow);
-        deltaFc.push(fcRow);
-      }
-      var deltaRange = sheet.getRange(2, 1 + numWeeks + 1, dataRows, numDeltas);
-      deltaRange.setBackgrounds(deltaBg);
-      deltaRange.setFontColors(deltaFc);
-      deltaRange.setFontWeight("bold");
-      deltaRange.setHorizontalAlignment("center");
-
-      // Count columns — center align in one call
-      sheet.getRange(2, 2, dataRows, numWeeks).setHorizontalAlignment("center");
-    }
-
-    // Totals row styling
-    sheet.getRange(reportRows.length, 1, 1, numCols)
-      .setFontWeight("bold").setBackground(COLORS.IVORY);
-
-    sheet.setFrozenRows(1);
-    sheet.setFrozenColumns(1);
-    sheet.autoResizeColumns(1, numCols);
-
-    // Footer
-    var metaRow = reportRows.length + 2;
-    sheet.getRange(metaRow, 1, 1, 2)
-      .setValues([["Generated:", fmtDateTime_(new Date())]]);
-    sheet.getRange(metaRow + 1, 1, 1, 2)
-      .setValues([["Window:", weeks[0].fromStr + " → " + weeks[numWeeks - 1].toStr]]);
-    sheet.getRange(metaRow, 1, 2, 1)
-      .setFontColor(COLORS.VOID_BLUE).setFontWeight("bold");
-
-    Logger.log("✅ Report sheet: " + assignees.length + " assignees × " + numWeeks + " weeks.");
   }
 
   // ── SECTION: EXEC Q&A — Duplo + Lego signal levels ───────────
@@ -1214,10 +1860,6 @@
     var headers = ["Level", "Metric"].concat(labels).concat(["WoW Δ", "WoW %", "Signal"]);
     var numCols = headers.length;
 
-    // ── Load External Context ──────────────────────────────────
-    var capacityMap = readCapacity_();
-    var ptoMap = readTimeOff_();
-
     // ── Aggregation scaffolding ────────────────────────────────
     function blankAgg() {
       var agg = {
@@ -1231,16 +1873,12 @@
         doneEpics: 0, doneStories: 0, doneTasks: 0,
         // Behavioral Scores
         behaviorScores: {},
-        // Capacity & PTO
-        totalCapacityHrs: 0, totalPtoHrs: 0,
         // On-time delivery (resolved on or before due date)
         onTimeCount: 0,
         // Revenue milestone tracking (SRSO fix versions)
         srsoMilestones: 0, srsoContributors: {},
         // Contributor display names for Signal column
-        _names: {},
-        // Per-person milestone count (tasks + stories, non-epic, genuinely done)
-        _personMilestones: {}
+        _names: {}
       };
       Object.keys(BEHAVIOR_KEYWORDS).forEach(cat => agg.behaviorScores[cat] = 0);
       return agg;
@@ -1260,27 +1898,6 @@
       if (rawName) {
         wipAssignees[normalizeToRoster_(rawName)] = true;
       }
-    });
-
-    // ── Calculate Weekly Capacity & PTO ────────────────────────
-    execWeeks.forEach(function(week) {
-      var label = week.label;
-      var wNum = label.match(/W\d+/i) ? label.match(/W\d+/i)[0].toUpperCase() : null;
-      
-      capacityMap.forEach(function(cap, empName) {
-        // Add Capacity for this week
-        var weeklyCap = (wNum && cap.weeklyCaps[wNum]) ? cap.weeklyCaps[wNum] : 40;
-        company[label].totalCapacityHrs += weeklyCap;
-        
-        // Calculate PTO for this week
-        var d = new Date(week.from);
-        while (d <= week.to) {
-          var dayKey = empName + "|" + toIsoDate_(d);
-          var ptoHrs = ptoMap.get(dayKey) || 0;
-          company[label].totalPtoHrs += ptoHrs;
-          d.setDate(d.getDate() + 1);
-        }
-      });
     });
 
     // Re-bucket all issues based on resolutiondate boundaries
@@ -1332,7 +1949,9 @@
 
         // RPE: any item with a Due Date that reached a resolution
         var isRPE = !!(due && resolved);
-        var isSRSO = (f.fixVersions || []).some(function(fv) { return /^SRSO/i.test(fv.name || ''); });
+        // SRSO token anywhere in the name — covers both "SRSO-016559" and
+        // client-prefixed names like "CLVT02 SRSO-016559"
+        var isSRSO = (f.fixVersions || []).some(function(fv) { return /\bSRSO\b|SRSO-/i.test(fv.name || ''); });
 
         function bump(agg) {
           agg.count++;
@@ -1368,9 +1987,6 @@
           if (!nonDelivery && isSRSO && !isEpicType) {
             agg.srsoMilestones++;
             if (normName) agg.srsoContributors[normName] = (agg.srsoContributors[normName] || 0) + 1;
-          }
-          if (!nonDelivery && !isEpicType && normName) {
-            agg._personMilestones[normName] = (agg._personMilestones[normName] || 0) + 1;
           }
           // Accumulate Behavioral Scores
           Object.keys(BEHAVIOR_KEYWORDS).forEach(function(cat) {
@@ -1534,6 +2150,74 @@
       .join(", ") || "—";
     rows.push(wowRow("SRSO", "Revenue Milestones (fixVersion ~ SRSO*)", srsoCounts, srsoContribSummary));
 
+    // ── 3. EPIC FIDELITY — planned (Original Estimate) vs tracked (Tempo) ──
+    // Reads the just-written Jira Raw sheet (runJiraEpicTracker flushes it
+    // first), so the rollup includes the epic-children rows — open tickets
+    // and out-of-window completions count toward each epic's burn.
+    rows.push(sectionRow("📐 EPIC FIDELITY — Planned vs Tracked"));
+
+    function fidelityRow(cells, signal) {
+      var r = [""].concat(cells);
+      while (r.length < numCols - 1) r.push("");
+      r.push(signal || "");
+      return r;
+    }
+
+    var epicFidelity = {};
+    var rawSh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIGJ.RAW_SHEET);
+    var rawVals = rawSh ? rawSh.getDataRange().getValues() : [];
+    if (rawVals.length > 1) {
+      var rHdr = rawVals[0];
+      var iEpicK  = rHdr.indexOf("Epic Key");
+      var iOrig   = rHdr.indexOf("Original Estimate (sec)");
+      var iTempoH = rHdr.indexOf("Tempo Logged (hrs)");
+      var iBill   = rHdr.indexOf("Billing Type");
+      if (iEpicK !== -1 && iOrig !== -1 && iTempoH !== -1) {
+        for (var ri = 1; ri < rawVals.length; ri++) {
+          var ek = String(rawVals[ri][iEpicK] || "").trim();
+          if (!ek) continue;
+          if (!epicFidelity[ek]) epicFidelity[ek] = { planned: 0, tracked: 0, billing: "Untagged" };
+          epicFidelity[ek].planned += (Number(rawVals[ri][iOrig]) || 0) / 3600; // sec → hrs
+          epicFidelity[ek].tracked += Number(rawVals[ri][iTempoH]) || 0;
+          // Billing precedence: any SRSO child makes the epic Billable,
+          // otherwise any tagged child makes it Internal.
+          var childBill = iBill !== -1 ? String(rawVals[ri][iBill] || "") : "";
+          if (/SRSO/i.test(childBill)) epicFidelity[ek].billing = "Billable (SRSO)";
+          else if (childBill === "Internal" && epicFidelity[ek].billing === "Untagged") epicFidelity[ek].billing = "Internal";
+        }
+      }
+    }
+
+    var fidelityKeys = Object.keys(epicFidelity).filter(function(ek) {
+      var e = epicFidelity[ek];
+      return e.planned > 0 || e.tracked > 0;
+    }).sort(function(a, b) {
+      var ea = epicFidelity[a], eb = epicFidelity[b];
+      var ra = ea.planned > 0 ? ea.tracked / ea.planned : 0;
+      var rb = eb.planned > 0 ? eb.tracked / eb.planned : 0;
+      return ra - rb; // worst fidelity (incl. no-estimate) first
+    });
+
+    if (fidelityKeys.length === 0) {
+      rows.push(fidelityRow(["No epic carries estimates or logged hours in the current Jira Raw."]));
+    } else {
+      rows.push(fidelityRow(["Epic Key", "Planned (hrs)", "Tracked (hrs)", "Fidelity %", "Billing"], "Signal"));
+      var FIDELITY_MAX_ROWS = 25;
+      fidelityKeys.slice(0, FIDELITY_MAX_ROWS).forEach(function(ek) {
+        var e = epicFidelity[ek];
+        var fidelityPct = e.planned > 0 ? Math.round(e.tracked / e.planned * 100) : "—";
+        var signal = e.planned === 0 ? "⚠️ No estimate set"
+          : fidelityPct < 50 ? "🚨 Under-tracked"
+          : fidelityPct > 130 ? "🔴 Over-burning"
+          : "✅ On track";
+        rows.push(fidelityRow([ek, r1(e.planned), r1(e.tracked), fidelityPct, e.billing], signal));
+      });
+      if (fidelityKeys.length > FIDELITY_MAX_ROWS) {
+        rows.push(fidelityRow(["… " + (fidelityKeys.length - FIDELITY_MAX_ROWS)
+          + " more epics not shown (worst fidelity listed first)"]));
+      }
+    }
+
     // ── Write to Sheet ─────────────────────────────────────────
     if (rows.length > 0) {
       var range = sheet.getRange(1, 1, rows.length, numCols);
@@ -1578,716 +2262,9 @@
       sheet.setColumnWidth(2, 320);
       for (var c = 3; c <= numCols - 1; c++) sheet.setColumnWidth(c, 100);
       sheet.setColumnWidth(numCols, 450); // Wider for Signals
-
-      // ── Tempo Tracking Trend (below Jira section) ────────────────────────
-      var foot = rows.length + 2;
-      writeTempoTrendSection_(sheet, foot, company[latestLabel]._personMilestones || {},
-        execWeeks[0].fromStr + " → " + execWeeks[execWeeks.length-1].toStr);
     }
   }
 
-
-
-  // ── SECTION: TEMPO TREND ─────────────────────────────────────────
-
-  /**
-   * Writes the Tempo tracking trend table directly into the Exec Q&A sheet,
-   * starting at startRow (below the Jira section footer).
-   *
-   * Columns: [blank] | Metric | W(n-3) | W(n-2) | W(n-1) | W(n) | WoW Δ | WoW % | Signal
-   *
-   * Rows:
-   *   Section header
-   *   Column header
-   *   Headcount (employees with planned capacity)
-   *   Total Capacity (hrs)
-   *   Tempo Tracked (hrs)
-   *   Tracking Rate (%)
-   *   Planned Ahead for next 2 weeks (ratio + names)
-   */
-  function writeTempoTrendSection_(sheet, startRow, jiraMilestones, windowStr) {
-    jiraMilestones = jiraMilestones || {};
-    var trend = readTempoTrend_();
-    if (!trend.weeks || trend.weeks.length < 2) {
-      Logger.log("⚠️ Tempo trend: not enough week data to write section.");
-      return;
-    }
-
-    var displayWeeks = trend.weeks.slice(-4); // last 4 available weeks
-    var latestW = displayWeeks[displayWeeks.length - 1];
-    var priorW  = displayWeeks[displayWeeks.length - 2];
-    var agg = trend.weekAgg;
-    var r1 = function(n) { return Math.round(n * 10) / 10; };
-
-    // col1=blank, col2=Metric, col3..col(2+n)=week data, col(n+3)=WoW Δ, col(n+4)=WoW %, col(n+5)=Signal
-    var numCols = 2 + displayWeeks.length + 3;
-
-    function tRow(metric, vals, signal) {
-      var vLatest = vals[vals.length - 1] || 0;
-      var vPrior  = vals[vals.length - 2] || 0;
-      var delta = vLatest - vPrior;
-      var pct = vPrior === 0 ? (vLatest === 0 ? 0 : 100) : Math.round(delta / vPrior * 1000) / 10;
-      return ["", metric].concat(vals).concat([delta, pct, signal || ""]);
-    }
-
-    function sRow(title) {
-      var r = [title, ""];
-      while (r.length < numCols) r.push("");
-      return r;
-    }
-
-    var rows = [];
-
-    // Section header
-    rows.push(sRow("⏱️ TEMPO TRACKING TREND — Targeted HC | Last 4 completed weeks"));
-
-    // Column header
-    rows.push(["", "Metric"].concat(displayWeeks).concat(["WoW Δ", "WoW %", "Signal"]));
-
-    // Headcount
-    var hcVals = displayWeeks.map(function(w) { return (agg[w] || {}).headcount || 0; });
-    rows.push(tRow("Headcount (Targeted HC with capacity)", hcVals,
-      "Targeted ICs from roster with planned capacity > 0 for that week"));
-
-    // Total Capacity
-    var capVals = displayWeeks.map(function(w) { return r1((agg[w] || {}).totalCap || 0); });
-    rows.push(tRow("Total Capacity (hrs)", capVals,
-      "Sum of all planned capacity hours across the team"));
-
-    // Tempo Tracked
-    var tempoVals = displayWeeks.map(function(w) { return r1((agg[w] || {}).totalTempo || 0); });
-    rows.push(tRow("Tempo Tracked (hrs)", tempoVals,
-      "Hours logged in Tempo. Source: Tempo Transposed sheet."));
-
-    // Tracking Rate
-    var trackVals = displayWeeks.map(function(w) {
-      var a = agg[w] || {};
-      return a.totalCap > 0 ? Math.round((a.totalTempo || 0) / a.totalCap * 1000) / 10 : 0;
-    });
-    var latestRate = trackVals[trackVals.length - 1];
-    rows.push(tRow("Tracking Rate (%)", trackVals,
-      "Tempo logged as % of capacity. Target: ≥ 80%. Latest: " + latestRate + "%."));
-
-    // ── Write trend rows ──────────────────────────────────────────────
-    sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
-
-    var fullRange = sheet.getRange(startRow, 1, rows.length, numCols);
-    fullRange.setFontFamily("Consolas").setFontSize(12).setVerticalAlignment("middle");
-
-    // Section header + column header: dark blue
-    sheet.getRange(startRow, 1, 2, numCols)
-      .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM).setFontWeight("bold");
-
-    var GREEN = "#2E7D32", AMBER = "#E65100", RED = "#C62828";
-    var dCol = numCols - 2;
-    var pCol = numCols - 1;
-    for (var r = 2; r < rows.length; r++) {
-      var dv = rows[r][numCols - 3];
-      var pv = rows[r][numCols - 2];
-      if (typeof dv === "number" && dv !== 0)
-        sheet.getRange(startRow + r, dCol).setFontColor(dv > 0 ? GREEN : RED).setFontWeight("bold");
-      if (typeof pv === "number" && pv !== 0)
-        sheet.getRange(startRow + r, pCol).setFontColor(pv > 0 ? GREEN : RED).setFontWeight("bold");
-    }
-
-    sheet.setColumnWidth(2, 320);
-    sheet.setColumnWidth(numCols, 460);
-
-    // ── Build shared contributor data for all three tables ───────────────
-    var pt = readPlannedTimeTempo_();
-    var totalHC = trend.targetedTotal || 1; // denominator for compliance rates
-
-    // ── Compliance Summary Table ─────────────────────────────────────────
-    // Sits between the trend aggregate and the individual top-10 tables.
-    // Answers: how many targeted ICs are tracking AND planning?
-    var compStart = startRow + rows.length + 2;
-    var COMP_COLS = 7; // Metric | Period | Met ✓ | Not Met | Total HC | Rate | Focus (names)
-
-    var compLastTwo = displayWeeks.slice(-2);
-    var trackedCount = 0, plannedMet = 0, bothCount = 0;
-    // Both byEmp dicts now use canonical roster names as keys — case-insensitive fallback kept for safety
-    var ptByEmpLCComp = {};
-    Object.keys(pt.byEmp).forEach(function(n) { ptByEmpLCComp[n.toLowerCase()] = pt.byEmp[n]; });
-
-    // Build set of names that have tracked time in last 2 completed weeks
-    var trackedSet = {};
-    Object.keys(trend.byEmp).forEach(function(name) {
-      var weekData = trend.byEmp[name];
-      var w1 = (weekData[compLastTwo[0]] && weekData[compLastTwo[0]].tempo) || 0;
-      var w2 = (weekData[compLastTwo[1]] && weekData[compLastTwo[1]].tempo) || 0;
-      if (w1 + w2 > 0) { trackedCount++; trackedSet[name.toLowerCase()] = true; }
-    });
-
-    // Build set of names that have >= 2 future weeks planned
-    var plannedSet = {};
-    Object.keys(pt.byEmp).forEach(function(name) {
-      if ((pt.byEmp[name].count || 0) >= 2) { plannedMet++; plannedSet[name.toLowerCase()] = true; }
-    });
-
-    // Both
-    Object.keys(plannedSet).forEach(function(nameLc) {
-      if (trackedSet[nameLc]) bothCount++;
-    });
-
-    // "Focus" lists — targeted ICs who have NOT met each criterion
-    var allTargeted = Object.keys(trend.targetedNames); // full 134 list
-    var notTrackedNames = allTargeted
-      .filter(function(n) { return !trackedSet[n.toLowerCase()]; })
-      .sort().join(", ") || "—";
-    var notPlannedNames = allTargeted
-      .filter(function(n) {
-        var pd = pt.byEmp[n] || ptByEmpLCComp[n.toLowerCase()];
-        return !pd || (pd.count || 0) < 2;
-      })
-      .sort().join(", ") || "—";
-    var notBothNames = allTargeted
-      .filter(function(n) {
-        return !(trackedSet[n.toLowerCase()] && plannedSet[n.toLowerCase()]);
-      })
-      .sort().join(", ") || "—";
-
-    function compRate(n) { return totalHC > 0 ? Math.round(n / totalHC * 100) + "%" : "—"; }
-
-    // Build a human-readable summary of the 17 targeted job profile families
-    var profileFamilies = "Customer Support · Delivery · Service Delivery · Technical Consulting · Solution Architecture · Project Management";
-    var scopeNote = "Scope: Individual Contributors (ICs), Delivery Team — " + totalHC + " people across 17 job profiles · " + profileFamilies;
-
-    // Pre-build the two standard FACT statements
-    var trackedPct  = compRate(trackedCount);
-    var plannedPct  = compRate(plannedMet);
-    var factTracked = trackedPct + " (" + trackedCount + "/" + totalHC + ") Service Individual Contributors reported consistent Tracking Time (" + compLastTwo.join(" + ") + ")";
-    var factPlanned = plannedPct + " (" + plannedMet  + "/" + totalHC + ") Service Individual Contributors are Planning Time for Next 2 Weeks";
-
-    var compRows = [
-      // Row 0 — Section header (dark)
-      (function() { var r = ["📊 TEMPO COMPLIANCE SUMMARY"]; while (r.length < COMP_COLS) r.push(""); return r; })(),
-      // Row 1 — Scope note (ivory subtitle)
-      (function() { var r = [scopeNote]; while (r.length < COMP_COLS) r.push(""); return r; })(),
-      // Row 2 — FACT: Tracking Time statement
-      (function() { var r = ["FACT", factTracked]; while (r.length < COMP_COLS) r.push(""); return r; })(),
-      // Row 3 — FACT: Planning Time statement
-      (function() { var r = ["FACT", factPlanned]; while (r.length < COMP_COLS) r.push(""); return r; })(),
-      // Row 4 — Column header (dark)
-      ["Metric", "Period", "Met ✓", "Not Met", "Targeted HC", "Rate", "Focus — who needs follow-up"],
-      // Row 5 — Tracked time
-      ["⏱️ Tracked Time",
-        compLastTwo.join(" + ") + " (Mon–Sun)",
-        trackedCount, totalHC - trackedCount, totalHC, compRate(trackedCount),
-        notTrackedNames],
-      // Row 6 — Planned ahead
-      ["📅 Planned Ahead (≥ 2 wks)",
-        pt.futureWeeks.length > 0 ? pt.futureWeeks.slice(0, 3).join(", ") + (pt.futureWeeks.length > 3 ? "…" : "") : "—",
-        plannedMet, totalHC - plannedMet, totalHC, compRate(plannedMet),
-        notPlannedNames],
-      // Row 7 — Both
-      ["✅ Both (Tracked + Planned)",
-        "—",
-        bothCount, totalHC - bothCount, totalHC, compRate(bothCount),
-        notBothNames]
-    ];
-
-    sheet.getRange(compStart, 1, compRows.length, COMP_COLS).setValues(compRows);
-    sheet.getRange(compStart, 1, compRows.length, COMP_COLS)
-      .setFontFamily("Consolas").setFontSize(12).setVerticalAlignment("middle")
-      .setWrap(true);
-
-    // Row 0: dark section header
-    sheet.getRange(compStart, 1, 1, COMP_COLS)
-      .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM).setFontWeight("bold");
-
-    // Row 1: ivory scope note — italic
-    sheet.getRange(compStart + 1, 1, 1, COMP_COLS)
-      .setBackground(COLORS.IVORY).setFontColor(COLORS.VOID_BLUE)
-      .setFontStyle("italic").setFontWeight("normal").setFontSize(10);
-
-    // Rows 2–3: FACT statements — light cream background, "FACT" label in royal blue
-    sheet.getRange(compStart + 2, 1, 2, COMP_COLS)
-      .setBackground(COLORS.LIGHT_CREAM).setFontColor(COLORS.VOID_BLUE);
-    sheet.getRange(compStart + 2, 1, 2, 1) // "FACT" label column
-      .setFontColor(COLORS.ROYAL).setFontWeight("bold");
-
-    // Row 4: dark column header
-    sheet.getRange(compStart + 4, 1, 1, COMP_COLS)
-      .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM).setFontWeight("bold");
-
-    // Colour Met / Not Met / Rate per row (data starts at row 5)
-    var compDataRows = [
-      { row: compStart + 5, val: trackedCount },
-      { row: compStart + 6, val: plannedMet },
-      { row: compStart + 7, val: bothCount }
-    ];
-    compDataRows.forEach(function(cr) {
-      var rate = totalHC > 0 ? cr.val / totalHC : 0;
-      var rateCol = rate >= 0.8 ? GREEN : (rate >= 0.5 ? AMBER : RED);
-      sheet.getRange(cr.row, 3).setFontColor(GREEN).setFontWeight("bold");
-      sheet.getRange(cr.row, 4).setFontColor(cr.val < totalHC ? RED : GREEN).setFontWeight("bold");
-      sheet.getRange(cr.row, 6).setFontColor(rateCol).setFontWeight("bold");
-      sheet.getRange(cr.row, 7).setFontColor(RED).setFontSize(10); // Focus names in red, smaller
-    });
-
-    sheet.setColumnWidth(1, 240); // Metric
-    sheet.setColumnWidth(2, 160); // Period
-    sheet.setColumnWidth(3, 80);  // Met
-    sheet.setColumnWidth(4, 80);  // Not Met
-    sheet.setColumnWidth(5, 90);  // Total HC
-    sheet.setColumnWidth(6, 100); // Rate
-    sheet.setColumnWidth(7, 500); // Focus names — wide for the list
-
-    var tableStart = compStart + compRows.length + 2;
-
-    var lastTwoWeeks = compLastTwo; // last 2 completed Mon–Sun weeks (same as compliance table)
-
-    var allNames = {};
-    Object.keys(jiraMilestones).forEach(function(n) { allNames[n] = true; });
-    Object.keys(trend.byEmp).forEach(function(n) { allNames[n] = true; });
-    // Case-insensitive merge: Planned Time names may differ in casing vs Tempo/Roster
-    Object.keys(pt.byEmp).forEach(function(n) {
-      var matched = allNames[n] ? n
-        : Object.keys(allNames).find(function(k) { return k.toLowerCase() === n.toLowerCase(); });
-      allNames[matched || n] = true;
-    });
-
-    var r1f = function(n) { return Math.round(n * 10) / 10; };
-
-    var empEntries = Object.keys(allNames).map(function(name) {
-      var weekData = trend.byEmp[name] || {};
-      var w1 = (weekData[lastTwoWeeks[0]] && weekData[lastTwoWeeks[0]].tempo) || 0;
-      var w2 = (weekData[lastTwoWeeks[1]] && weekData[lastTwoWeeks[1]].tempo) || 0;
-      var twoWkTracked = w1 + w2;
-      var milestones = jiraMilestones[name] || 0;
-      var plannedData = pt.byEmp[name] || ptByEmpLCComp[name.toLowerCase()] || { count: 0, weeks: [] };
-      return { name: name, milestones: milestones, w1: w1, w2: w2,
-               twoWkTracked: twoWkTracked,
-               plannedCount: plannedData.count || 0,
-               plannedWeeks: plannedData.weeks || [] };
-    });
-
-    function consistencySignal(e) {
-      var hasOutput  = e.milestones > 0;
-      var hasTracked = e.twoWkTracked > 0;
-      var hasPlanned = e.plannedCount >= 2;
-      if (hasOutput && hasTracked && hasPlanned)   return "✅ All-in — output + tracked + planned";
-      if (hasOutput && hasTracked && !hasPlanned)  return "⚠️ Not planned ahead (< 2 wks)";
-      if (hasOutput && !hasTracked && hasPlanned)  return "⚠️ Not tracking time";
-      if (hasOutput && !hasTracked && !hasPlanned) return "🚨 No tracking & no planning";
-      if (!hasOutput && hasTracked && hasPlanned)  return "⭐ Tracking + planned (no Jira output yet)";
-      if (!hasOutput && hasTracked)                return "⏱️ Time tracked, no Jira output";
-      if (!hasOutput && e.plannedCount > 0)        return "📅 Planned only, no output yet";
-      return "";
-    }
-
-    var C_COLS = 8;
-    var podiumColors = ["#FFF9C4", "#F1F8E9", "#E3F2FD"];
-
-    // Shared table writer — returns the row number after the last data row
-    function writeTop10Table_(title, entries, colHdrs, rowBuilder, atRow) {
-      var tRows = [];
-      var hdr = [title]; while (hdr.length < C_COLS) hdr.push("");
-      tRows.push(hdr);
-      tRows.push(colHdrs);
-      entries.slice(0, 10).forEach(function(e, idx) {
-        tRows.push([idx + 1].concat(rowBuilder(e)));
-      });
-
-      sheet.getRange(atRow, 1, tRows.length, C_COLS).setValues(tRows);
-      sheet.getRange(atRow, 1, tRows.length, C_COLS)
-        .setFontFamily("Consolas").setFontSize(12).setVerticalAlignment("middle");
-      sheet.getRange(atRow, 1, 2, C_COLS)
-        .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM).setFontWeight("bold");
-
-      for (var pi = 0; pi < Math.min(3, tRows.length - 2); pi++) {
-        sheet.getRange(atRow + 2 + pi, 1, 1, C_COLS).setBackground(podiumColors[pi]);
-      }
-      for (var ri = 0; ri < tRows.length - 2; ri++) {
-        var sig = tRows[2 + ri][C_COLS - 1];
-        if (!sig) continue;
-        var sc = sheet.getRange(atRow + 2 + ri, C_COLS);
-        if (sig.indexOf("✅") === 0 || sig.indexOf("⭐") === 0) sc.setFontColor(GREEN).setFontWeight("bold");
-        else if (sig.indexOf("⚠️") === 0) sc.setFontColor(AMBER).setFontWeight("bold");
-        else if (sig.indexOf("🚨") === 0) sc.setFontColor(RED).setFontWeight("bold");
-      }
-      return atRow + tRows.length;
-    }
-
-    // ── Table 1: Top 10 by Milestones ─────────────────────────────────────
-    var byMilestones = empEntries
-      .filter(function(e) { return e.milestones > 0; })
-      .sort(function(a, b) { return b.milestones !== a.milestones ? b.milestones - a.milestones : b.twoWkTracked - a.twoWkTracked; });
-
-    var t1End = writeTop10Table_(
-      "🎯 TOP 10 — Milestones (Jira Throughput)",
-      byMilestones,
-      ["Rank", "Contributor", "Milestones", lastTwoWeeks[0] + " Tracked", lastTwoWeeks[1] + " Tracked", "2-wk Tracked", "Planned Wks", "Consistency"],
-      function(e) { return [e.name, e.milestones, r1f(e.w1), r1f(e.w2), r1f(e.twoWkTracked), e.plannedCount, consistencySignal(e)]; },
-      tableStart
-    );
-
-    // ── Table 2: Top 10 by Tracked Time (last 2 completed Mon–Sun weeks) ──
-    var byTracked = empEntries
-      .filter(function(e) { return e.twoWkTracked > 0; })
-      .sort(function(a, b) { return b.twoWkTracked !== a.twoWkTracked ? b.twoWkTracked - a.twoWkTracked : b.milestones - a.milestones; });
-
-    var t2End = writeTop10Table_(
-      "⏱️ TOP 10 — Tracked Time (" + lastTwoWeeks.join(" & ") + ", Mon–Sun)",
-      byTracked,
-      ["Rank", "Contributor", lastTwoWeeks[0] + " Tracked", lastTwoWeeks[1] + " Tracked", "2-wk Total (hrs)", "Milestones", "Planned Wks", "Consistency"],
-      function(e) { return [e.name, r1f(e.w1), r1f(e.w2), r1f(e.twoWkTracked), e.milestones, e.plannedCount, consistencySignal(e)]; },
-      t1End + 2
-    );
-
-    // ── Table 3: Top 10 by Planned Ahead (future weeks) ───────────────────
-    var byPlanned = empEntries
-      .filter(function(e) { return e.plannedCount > 0; })
-      .sort(function(a, b) { return b.plannedCount !== a.plannedCount ? b.plannedCount - a.plannedCount : b.milestones - a.milestones; });
-
-    var t3End = writeTop10Table_(
-      "📅 TOP 10 — Planned Ahead (Next 2+ Weeks)",
-      byPlanned,
-      ["Rank", "Contributor", "Planned Wks", "Weeks Planned", "Milestones", "2-wk Tracked", "", "Consistency"],
-      function(e) { return [e.name, e.plannedCount, e.plannedWeeks.join(", ") || "—", e.milestones, r1f(e.twoWkTracked), "", consistencySignal(e)]; },
-      t2End + 2
-    );
-
-    sheet.setColumnWidth(1, 60);   // Rank
-    sheet.setColumnWidth(2, 220);  // Contributor
-    sheet.setColumnWidth(3, 130);  // col 3 varies per table
-    sheet.setColumnWidth(4, 130);  // col 4
-    sheet.setColumnWidth(5, 130);  // col 5
-    sheet.setColumnWidth(6, 110);  // col 6
-    sheet.setColumnWidth(7, 100);  // col 7
-    sheet.setColumnWidth(8, 320);  // Consistency
-
-    // ── Footer — written once, after all three tables ────────────────────
-    var footRow = t3End + 2;
-    sheet.getRange(footRow, 1, 1, 2).setValues([["Generated:", fmtDateTime_(new Date())]]);
-    if (windowStr) {
-      sheet.getRange(footRow + 1, 1, 1, 2).setValues([["Window:", windowStr]]);
-    }
-    sheet.getRange(footRow, 1, 2, 1).setFontColor(COLORS.VOID_BLUE).setFontWeight("bold")
-      .setFontStyle("italic").setFontSize(9);
-    sheet.getRange(footRow, 2, 2, 1).setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
-
-    Logger.log("⏱️ Tempo sections written. Trend at row " + startRow
-      + ". Tables at rows " + tableStart + " / " + (t1End + 2) + " / " + (t2End + 2)
-      + ". Weeks (tracked): " + lastTwoWeeks.join(", "));
-  }
-
-
-  // ── SECTION: TOP PERFORMERS ───────────────────────────────────
-
-  /**
-   * Writes the "Top Performers" tab — behaviour-led recognition, not volume ranking.
-   *
-   * Anchor phrase (lead line of the tab):
-   *   "We recognise how the work gets done, not just how much."
-   *
-   * Sections (top → bottom):
-   *   🏅 Consistency Champions — cadence & repeatability (Leadership 9.5, 10.1)
-   *   🎯 Committed Delivery — dependability / decisive (10.1, 7.2)
-   *   🧭 Epic Stewards — vision & coherent strategy (1.1, 8.6)
-   *   🧠 Deep Work & Focus — sustained engagement on complex initiatives
-   *
-   * Each section shows top 5.
-   * Every section carries a 📏 "How this is measured" + 🗣️ "How to recognise it"
-   * box so execs have the evaluation criteria and recognition language in hand.
-   * Scope: Company-wide.
-   */
-  function writeTopPerformersSheet_(weeklyData, weeks, activeWIP) {
-    var sheet = jb_getOrCreateSheet_(CONFIGJ.TOP_SHEET);
-    sheet.clearContents();
-    sheet.clearFormats();
-
-    var labels = weeks.map(function(w) { return w.label; });
-    var scopes = ["Company", "R&D", "Customer"];
-
-    // ── Tallies ─────────────────────────────────────────────────
-    // tally[scope][label][name] = count of Done tasks
-    var tally = {};
-    // weeksActive[name] = Set of week labels where the person closed ≥1 Done task (company-wide)
-    var weeksActive = {};
-    // committedDelivery[scope][name] = count of items with Due Date that were resolved on/before it
-    var committed = {};
-    // epicCounts[scope][name] = count of Done Epics
-    var epicCounts = {};
-
-    scopes.forEach(function(sc) {
-      tally[sc] = {};
-      committed[sc] = {};
-      epicCounts[sc] = {};
-      labels.forEach(function(l) { tally[sc][l] = {}; });
-    });
-
-    function bumpName(bucket, scope, label, name) {
-      if (label) { // Weekly bucketing
-        if (!bucket[scope][label][name]) bucket[scope][label][name] = 0;
-        bucket[scope][label][name]++;
-      } else { // Flat bucketing (like Epic counts)
-        if (!bucket[scope][name]) bucket[scope][name] = 0;
-        bucket[scope][name]++;
-      }
-    }
-
-    (weeklyData || []).forEach(function(weekGroup) {
-      (weekGroup.issues || []).forEach(function(issue) {
-        var f = issue.fields || {};
-        var resName = (f.resolution && f.resolution.name) ? f.resolution.name : "";
-        if (String(resName).toLowerCase() !== "done") return;
-
-        var resolved = f.resolutiondate ? new Date(f.resolutiondate) : null;
-        if (!resolved) return;
-
-        var targetLabel = null;
-        for (var i = 0; i < weeks.length; i++) {
-          if (resolved >= weeks[i].from && resolved <= weeks[i].to) {
-            targetLabel = weeks[i].label;
-            break;
-          }
-        }
-        if (!targetLabel) return;
-
-        var rawName = dig_(f, "assignee.displayName");
-        if (!rawName) return;
-        var name = normalizeToRoster_(rawName);
-        var space = getSpaceForIssue_(issue);
-        var typeName = String(dig_(f, "issuetype.name") || "").toLowerCase();
-        var isEpic = typeName.indexOf("epic") !== -1;
-        var due = f.duedate ? new Date(f.duedate) : null;
-
-        // Base tally — weekly counts for Weekly Trend + Monthly Rollup.
-        bumpName(tally, "Company", targetLabel, name);
-        if (tally[space]) bumpName(tally, space, targetLabel, name);
-
-        // Consistency: record which weeks the person was active.
-        if (!weeksActive[name]) weeksActive[name] = {};
-        weeksActive[name][targetLabel] = true;
-
-        // Committed Delivery: had a Due Date and landed on/before it.
-        if (due && resolved <= due) {
-          if (!committed["Company"][name]) committed["Company"][name] = 0;
-          committed["Company"][name]++;
-          if (committed[space]) {
-            if (!committed[space][name]) committed[space][name] = 0;
-            committed[space][name]++;
-          }
-        }
-
-        // Epic Stewards: Rank by count of Done Epics
-        if (isEpic) {
-          bumpName(epicCounts, "Company", null, name);
-          if (epicCounts[space]) bumpName(epicCounts, space, null, name);
-        }
-      });
-    });
-
-    // ── Deep Work (Active WIP) Analysis ─────────────────────────
-    var wipCounts = {};
-    (activeWIP || []).forEach(function(issue) {
-      var rawName = dig_(issue.fields, "assignee.displayName");
-      if (!rawName) return;
-      var name = normalizeToRoster_(rawName);
-      wipCounts[name] = (wipCounts[name] || 0) + 1;
-    });
-
-    // ── Query helper ───────────────────────────────────────────
-    function topNFlat(obj, n) {
-      return Object.keys(obj)
-        .map(function(k) { return [k, obj[k]]; })
-        .sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0]); })
-        .slice(0, n);
-    }
-
-    // Consistency: for each person, weeks present + total Done count (company-wide).
-    // Qualifier: present in ≥ ceil(weeks/2)+1 of the window (i.e. majority + 1).
-    var minWeeksForConsistency = Math.min(labels.length, Math.max(3, Math.ceil(labels.length * 0.75)));
-    var consistency = Object.keys(weeksActive).map(function(name) {
-      var wks = Object.keys(weeksActive[name]).length;
-      var totalDone = 0;
-      labels.forEach(function(l) { totalDone += (tally["Company"][l][name] || 0); });
-      return { name: name, weeks: wks, total: totalDone };
-    })
-      .filter(function(r) { return r.weeks >= minWeeksForConsistency; })
-      .sort(function(a, b) {
-        if (b.weeks !== a.weeks) return b.weeks - a.weeks;
-        if (b.total !== a.total) return b.total - a.total;
-        return a.name.localeCompare(b.name);
-      })
-      .slice(0, 10);
-
-    // Epic Stewards: Top closed Epics
-    var topEpics = topNFlat(epicCounts["Company"] || {}, 5);
-
-    // Deep Work & Focus: Top In-Progress count (excluding those who just close tiny tickets)
-    var deepWorkTop = topNFlat(wipCounts, 5);
-
-    // ── Build rows ─────────────────────────────────────────────
-    var rows = [];
-    var sectionIdxs = [];
-    var subheaderIdxs = [];
-    var explainerIdxs = [];
-    var anchorIdx = -1;
-    var NUM_COLS = 6;
-
-    function pad(arr, len) {
-      while (arr.length < len) arr.push("");
-      return arr;
-    }
-    function sectionRow(title) {
-      sectionIdxs.push(rows.length);
-      return pad([title], NUM_COLS);
-    }
-    function subheaderRow(cells) {
-      subheaderIdxs.push(rows.length);
-      return pad(cells.slice(), NUM_COLS);
-    }
-    function explainerRow(text) {
-      explainerIdxs.push(rows.length);
-      return pad([text], NUM_COLS);
-    }
-
-    // Title + anchor phrase + 3-bullet explainer.
-    rows.push(pad(["🏆 TOP PERFORMERS"], NUM_COLS));
-    anchorIdx = rows.length;
-    rows.push(pad(['"We recognise how the work gets done, not just how much."'], NUM_COLS));
-    rows.push(pad([""], NUM_COLS));
-    rows.push(explainerRow("📖 How to read this tab"));
-    rows.push(explainerRow("• Each section below surfaces a specific behaviour aligned with ServiceRocket Leadership Behaviors. The box under each heading shows exactly how people are evaluated."));
-    rows.push(explainerRow("• A missing estimate or missing time log does NOT disqualify anyone. Consistent contributors are consistent contributors — full stop."));
-    rows.push(explainerRow("• Scope: Company-wide across the last " + labels.length + " weeks. All recognitions show top 5."));
-    rows.push(pad([""], NUM_COLS));
-
-    // Helper: renders the "How this is measured / How to recognise" box that sits
-    // under every section header. This is what execs cite when appraising someone.
-    function metricBox(measured, recognise) {
-      rows.push(explainerRow("📏 How this is measured: " + measured));
-      rows.push(explainerRow("🗣️ How to recognise it: " + recognise));
-    }
-
-    // ── Recognition 1: Consistency Champions ───────────────────
-    rows.push(sectionRow("🏅 CONSISTENCY CHAMPIONS"));
-    metricBox(
-      "Lego Signal (Reliability): Weeks where the person closed ≥1 Done task, contributing to Net Value Delivered. Qualifier: active in ≥" + minWeeksForConsistency + " weeks.",
-      "\"Master of cadence and repeatability — shows up week after week.\" Leadership Behaviors 9.5 (Master of cadence and repeatability) and 10.1 (Dependable)."
-    );
-    rows.push(subheaderRow(["Rank", "Rocketeer", "Weeks Active", "Total Done (context)", "", ""]));
-    if (consistency.length === 0) {
-      rows.push(pad(["—", "No one met the consistency threshold in this window.", "", "", "", ""], NUM_COLS));
-    } else {
-      consistency.slice(0, 5).forEach(function(r, i) {
-        rows.push(pad([i + 1, r.name, r.weeks + " / " + labels.length, r.total], NUM_COLS));
-      });
-    }
-    rows.push(pad([""], NUM_COLS));
-
-    // ── Recognition 2: Committed Delivery ──────────────────────
-    rows.push(sectionRow("🎯 COMMITTED DELIVERY"));
-    metricBox(
-      "Lego Signal (Planning Reliability & Availability): Count of Revenue Protection Events (RPEs) resolved on or before their committed Due Date.",
-      "\"Keeps commitments. Decisive — the team can count on their dates.\" Leadership Behaviors 10.1 (Dependable and communicates effectively) and 7.2 (Efficient at decision making)."
-    );
-    rows.push(subheaderRow(["Rank", "Rocketeer", "On-Time Deliveries", "", "", ""]));
-    var committedTop = topNFlat(committed["Company"] || {}, 5);
-    if (committedTop.length === 0) {
-      rows.push(pad(["—", "No on-time committed deliveries in this window.", "", "", "", ""], NUM_COLS));
-    } else {
-      committedTop.forEach(function(entry, i) {
-        rows.push(pad([i + 1, entry[0], entry[1]], NUM_COLS));
-      });
-    }
-    rows.push(pad([""], NUM_COLS));
-
-    // ── Recognition 3: Epic Stewards ───────────────────────────
-    rows.push(sectionRow("🧭 EPIC STEWARDS"));
-    metricBox(
-      "Duplo Signal (Throughput): Count of Epics closed with Resolution = 'Done'. Epics are the largest unit of Net Value Delivered and drive revenue.",
-      "\"Stewards larger initiatives — articulates vision and integrates work into a coherent strategy.\" Leadership Behaviors 1.1 (Articulates a vision aligned with Company, Customers and Rocketeers) and 8.6 (Integrates multiple streams of information into a coherent strategy)."
-    );
-    rows.push(subheaderRow(["Rank", "Rocketeer", "Epics Closed", "", "", ""]));
-    if (topEpics.length === 0) {
-      rows.push(pad(["—", "No Epics were closed in this window.", "", "", "", ""], NUM_COLS));
-    } else {
-      topEpics.forEach(function(entry, i) {
-        rows.push(pad([i + 1, entry[0], entry[1]], NUM_COLS));
-      });
-    }
-    rows.push(pad([""], NUM_COLS));
-
-    // ── Recognition 4: Deep Work & Focus ───────────────────────
-    rows.push(sectionRow("🧠 DEEP WORK & FOCUS"));
-    metricBox(
-      "Duplo Signal (Active Engagement): Count of high-value items currently 'In Progress'. Measures sustained effort on complex or long-running initiatives.",
-      "\"Maintains focus on the big picture. Handles complexity without getting distracted by noise.\" Leadership Behaviors 8.6 (Integrates streams of info into a coherent strategy) and 9.4 (Focuses on the most impactful work)."
-    );
-    rows.push(subheaderRow(["Rank", "Rocketeer", "Items In-Progress", "", "", ""]));
-    if (deepWorkTop.length === 0) {
-      rows.push(pad(["—", "No Active In-Progress items found.", "", "", "", ""], NUM_COLS));
-    } else {
-      deepWorkTop.forEach(function(entry, i) {
-        rows.push(pad([i + 1, entry[0], entry[1]], NUM_COLS));
-      });
-    }
-
-    // ── Write + style ─────────────────────────────────────────
-    sheet.getRange(1, 1, rows.length, NUM_COLS).setValues(rows);
-
-    // Title
-    sheet.getRange(1, 1, 1, NUM_COLS)
-      .merge()
-      .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM)
-      .setFontWeight("bold").setFontSize(14).setHorizontalAlignment("center");
-
-    // Anchor phrase — larger, June accent, centered, italic.
-    if (anchorIdx >= 0) {
-      sheet.getRange(anchorIdx + 1, 1, 1, NUM_COLS)
-        .merge()
-        .setBackground(COLORS.LIGHT_CREAM).setFontColor(COLORS.VOID_BLUE)
-        .setFontWeight("bold").setFontStyle("italic").setFontSize(12)
-        .setHorizontalAlignment("center");
-    }
-
-    // Explainer rows — style depends on content:
-    //   "📖 How to read this tab" → Ivory header
-    //   "📏 How this is measured" / "🗣️ How to recognise it" → Ivory metric box (bold)
-    //   anything else → cream italic body
-    explainerIdxs.forEach(function(idx) {
-      var cellVal = String(rows[idx][0] || "");
-      var range = sheet.getRange(idx + 1, 1, 1, NUM_COLS).merge();
-      if (cellVal.indexOf("📖") === 0) {
-        range.setBackground(COLORS.IVORY).setFontWeight("bold").setFontColor(COLORS.VOID_BLUE);
-      } else if (cellVal.indexOf("📏") === 0 || cellVal.indexOf("🗣️") === 0) {
-        range.setBackground(COLORS.IVORY).setFontColor(COLORS.VOID_BLUE)
-          .setFontWeight("bold").setWrap(true);
-      } else {
-        range.setBackground(COLORS.LIGHT_CREAM).setFontColor("#333333").setFontStyle("italic");
-      }
-    });
-
-    sectionIdxs.forEach(function(idx) {
-      sheet.getRange(idx + 1, 1, 1, NUM_COLS)
-        .merge()
-        .setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM)
-        .setFontWeight("bold");
-    });
-    subheaderIdxs.forEach(function(idx) {
-      sheet.getRange(idx + 1, 1, 1, NUM_COLS)
-        .setBackground(COLORS.IVORY).setFontWeight("bold");
-    });
-
-    sheet.setFrozenRows(1);
-    sheet.setColumnWidth(1, 80);   // Rank / Epic Key
-    sheet.setColumnWidth(2, 220);  // Rocketeer / Assignee
-    sheet.setColumnWidth(3, 180);  // Weeks / Spaces / Count / Space
-    sheet.setColumnWidth(4, 360);  // Total Done / Summary
-    sheet.setColumnWidth(5, 80);
-    sheet.setColumnWidth(6, 80);
-
-    // Footer
-    var foot = rows.length + 2;
-    sheet.getRange(foot, 1, 1, 2).setValues([["Generated:", fmtDateTime_(new Date())]]);
-    sheet.getRange(foot + 1, 1, 1, 2).setValues([["Window:", weeks[0].fromStr + " → " + weeks[weeks.length - 1].toStr]]);
-    sheet.getRange(foot, 1, 2, 1).setFontColor(COLORS.VOID_BLUE).setFontWeight("bold");
-
-    Logger.log("✅ Top Performers sheet written.");
-  }
 
   // ── SECTION: MAIN ENTRY POINT ─────────────────────────────────
 
@@ -2295,37 +2272,120 @@
     try {
       Logger.log("🚀 Exec Contribution Tracker starting…");
 
+      // NARRATIVE window (Exec Q&A).
       var weeks = getLastNWeeks_(CONFIGJ.WEEKS_BACK);
-      Logger.log("📅 Week windows (" + weeks.length + " weeks):");
+      Logger.log("📅 Narrative week windows (" + weeks.length + " weeks):");
       weeks.forEach(function(w, i) {
         Logger.log("   Wk " + (i + 1) + ": " + w.fromStr + " → " + w.toStr);
       });
 
-      // Broad fetch — all Done issues across all projects (original working approach)
-      var allIssues = fetchJiraIssues_();
+      // DEEP window ("Jira Raw" only) — what the dashboards' Weekly/Monthly/
+      // Quarterly period views are limited by. Rolling, so runtime stays flat.
+      var rawWeeks = getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS);
+      Logger.log("📅 Jira Raw deep window: " + rawWeeks.length + " weeks (" +
+                 rawWeeks[0].fromStr + " → " + rawWeeks[rawWeeks.length - 1].toStr + ")");
+
+      // Broad fetch — all Done issues across all projects (original working
+      // approach), anchored at the DEEP window start so ONE query serves both
+      // windows. This is why deeper history costs pages, not queries.
+      var allIssues = fetchJiraIssues_(rawWeeks[0].fromStr);
 
       // Active Engagement fetch (Phase 2)
       var activeWIP = fetchActiveWIP_();
       Logger.log("🛠️ Active WIP issues fetched: " + activeWIP.length);
 
-      // Bucket by Resolution Date into weeks
-      var weeklyData = weeks.map(function(week) {
-        var issues = allIssues.filter(function(issue) {
-          var completed = getCompletedDate_(issue);
-          return completed && completed >= week.from && completed <= week.to;
+      // Epic expansion — fetch every child of the in-scope epics so Jira Raw
+      // shows what's inside each epic, not just the epic row. Children that
+      // completed inside the analysed window are already in allIssues (the
+      // broad Done fetch); everything else (open, or resolved outside the
+      // window) is collected separately for the raw sheet.
+      // Expansion is scoped to EPIC_EXPAND_WEEKS, not the deep window: this is
+      // the one fan-out cost in the export (each epic pulls its whole child
+      // tree), and children of programmes closed months ago add rows no
+      // consumer reads.
+      var expandWeeks = getLastNWeeks_(
+        Math.min(CONFIGJ.EPIC_EXPAND_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
+      var expandFrom = expandWeeks[0].from;
+      var epicKeys = allIssues
+        .filter(function(i) {
+          if (String(dig_(i.fields, "issuetype.name") || "").toLowerCase().indexOf("epic") === -1) return false;
+          var completed = getCompletedDate_(i);
+          return completed && completed >= expandFrom;
+        })
+        .map(function(i) { return i.key; });
+      Logger.log("📦 Epic expansion scope: " + epicKeys.length + " epic(s) resolved since "
+        + expandWeeks[0].fromStr + " (" + expandWeeks.length + "-week expansion window).");
+
+      // Shared across the epic-child expansion AND the open-backlog fetch below,
+      // so an issue lands in Jira Raw exactly once no matter how many fetches
+      // legitimately return it (an OPEN child of a recent epic is returned by
+      // both, and would otherwise be written twice under two different week
+      // labels).
+      var seenKeys = {};
+      allIssues.forEach(function(i) { seenKeys[i.key] = true; });
+
+      var epicChildren = [];
+      if (epicKeys.length > 0) {
+        var children = fetchChildrenForEpics_(epicKeys);
+        children.forEach(function(i) {
+          if (seenKeys[i.key]) return;                // already fetched
+          if (getSpaceForIssue_(i) === null) return;  // disabled space
+          if (isNoiseIssue_(i)) return;               // Canceled / Won't Do etc.
+          seenKeys[i.key] = true;
+          epicChildren.push(i);
         });
-        Logger.log("   " + week.label + ": " + issues.length + " completed issues");
-        return { label: week.label, issues: issues };
+        Logger.log("📦 Epic expansion: " + children.length + " children fetched, "
+          + epicChildren.length + " new (open or resolved outside the window).");
+      }
+
+      // Bucket by Resolution Date into weeks. Each issue resolves exactly once,
+      // so it lands in exactly ONE bucket — row count grows with the number of
+      // issues, never with weeks × issues. That is what makes a 52-week Jira
+      // Raw affordable.
+      function bucketByWeek_(weekList, quiet) {
+        return weekList.map(function(week) {
+          var issues = allIssues.filter(function(issue) {
+            var completed = getCompletedDate_(issue);
+            return completed && completed >= week.from && completed <= week.to;
+          });
+          if (!quiet) Logger.log("   " + week.label + ": " + issues.length + " completed issues");
+          return { label: week.label, issues: issues };
+        });
+      }
+
+      // Exec Q&A: the narrow window, exactly as before.
+      var weeklyData = bucketByWeek_(weeks, false);
+
+      // Jira Raw: the DEEP window, plus the epic children that fall outside
+      // the weekly buckets under the sentinel Week label "Epic Child". Exec Q&A
+      // keeps using weeklyData only, so its WoW numbers are unaffected by the
+      // deeper raw history.
+      var rawWeeklyData = bucketByWeek_(rawWeeks, true);
+      var rawRowCount = rawWeeklyData.reduce(function(n, w) { return n + w.issues.length; }, 0);
+      Logger.log("📊 Jira Raw: " + rawRowCount + " completed-issue rows across "
+        + rawWeeks.length + " weeks" + (epicChildren.length
+            ? " + " + epicChildren.length + " epic-child rows" : ""));
+      if (epicChildren.length > 0) {
+        rawWeeklyData = rawWeeklyData.concat([{ label: "Epic Child", issues: epicChildren }]);
+      }
+
+      // Open-backlog feed — unresolved assigned work, under the sentinel week
+      // label "Open". Same pattern as "Epic Child": these rows have no
+      // resolution date, so every date-bucketed consumer skips them, while the
+      // delivery-health dashboard reads them as each person's carried backlog.
+      var openIssues = fetchOpenIssues_().filter(function(i) {
+        if (seenKeys[i.key]) return false;   // already written (Done or epic child)
+        seenKeys[i.key] = true;
+        return true;
       });
+      if (openIssues.length > 0) {
+        rawWeeklyData = rawWeeklyData.concat([{ label: "Open", issues: openIssues }]);
+        Logger.log("📊 Jira Raw: + " + openIssues.length + " open-backlog rows.");
+      }
 
       Logger.log("📝 Writing 'Jira Raw' sheet...");
-      writeRawSheet_(weeklyData);
+      writeRawSheet_(rawWeeklyData);
       Logger.log("💾 Flushing 'Jira Raw'...");
-      SpreadsheetApp.flush();
-
-      Logger.log("📝 Writing 'Weekly Report' sheet...");
-      writeReportSheet_(weeklyData, weeks);
-      Logger.log("💾 Flushing 'Weekly Report'...");
       SpreadsheetApp.flush();
 
       // Exec Q&A — uses all weeks for trend context, but WoW compares last 2.
@@ -2338,12 +2398,8 @@
       Logger.log("💾 Flushing 'Exec Q&A'...");
       SpreadsheetApp.flush();
 
-      Logger.log("📝 Writing 'Top Performers' sheet...");
-      writeTopPerformersSheet_(weeklyData, weeks, activeWIP);
-
-      Logger.log("✅ Done. Check tabs: \"" + CONFIGJ.RAW_SHEET + "\", \""
-        + CONFIGJ.REPORT_SHEET + "\", \"" + CONFIGJ.EXEC_SHEET
-        + "\", \"" + CONFIGJ.TOP_SHEET + "\".");
+      Logger.log("✅ Done. Check tabs: \"" + CONFIGJ.RAW_SHEET
+        + "\", \"" + CONFIGJ.EXEC_SHEET + "\".");
 
     } catch (e) {
       Logger.log("❌ [runJiraEpicTracker] " + e.message);
@@ -2391,6 +2447,7 @@
 
       var headers = rawData[0];
       var assigneeIdx = headers.indexOf("Assignee");
+      var weekIdx = headers.indexOf("Week");
       var keyIdx = headers.indexOf("Key");
       var summaryIdx = headers.indexOf("Work (Summary)");
       var statusIdx = headers.indexOf("Status");
@@ -2410,12 +2467,15 @@
         var summary = row[summaryIdx];
         var status = String(row[statusIdx] || "").toLowerCase();
         
-        // Determine if it's "Done" or "WIP" based on the fact that 'Jira Raw' currently only has Done items.
-        // Note: If you want to debug WIP, you need to write WIP to a sheet first or fetch it.
-        // For now, this just looks at the existing Done data.
-        var type = "Done"; 
+        // Jira Raw is no longer Done-only: the Week column carries an ISO label
+        // ("2026.W30") for completed work and a sentinel for the two additive
+        // feeds — "Epic Child" (v3.1.0) and "Open" (v3.4.0, unresolved backlog).
+        // Read it so this helper reports what a person actually has, instead of
+        // labelling every row "Done".
+        var weekVal = weekIdx === -1 ? "" : String(row[weekIdx] || "").trim();
+        var type = /^\d{4}\.W\d{1,2}$/.test(weekVal) ? "Done" : (weekVal || "Done");
 
-        if (!rawName || rawName === "Unassigned") {
+        if (!rawName || /unassigned/i.test(rawName)) { // covers "Unassigned" and "⚠️ UNASSIGNED"
           unassignedKeys.push(key + " (" + type + " - " + summary + ")");
           continue;
         }
@@ -2453,7 +2513,6 @@
       sheet.getRange(1, 1, rows.length, 4).setValues(rows);
       sheet.getRange(1, 1, 1, 4).setBackground(COLORS.VOID_BLUE).setFontColor(COLORS.LIGHT_CREAM).setFontWeight("bold");
       sheet.setFrozenRows(1);
-      sheet.autoResizeColumns(1, 4);
 
       Logger.log("✅ Debug complete. Check the '" + sheetName + "' tab.");
     } catch (e) {
@@ -2484,13 +2543,243 @@
     }
   }
 
+  /**
+   * DIAGNOSTIC — measures every region/team candidate field against live Jira,
+   * so the attribution field is chosen from fill rates instead of field names.
+   *
+   * Run this in the GAS editor. It answers three questions:
+   *   1. Do the configured ids exist, and what are they really called?
+   *      (/rest/api/3/field, matched by name)
+   *   2. What share of the exported population carries each candidate, and what
+   *      values do they hold? (samples the same Done population the export writes)
+   *   3. Are any region option labels missing from REGION_VOCAB_?
+   *
+   * ⚠️ Read the RAW-SHAPE line for each field. This probe reported "0%" for
+   * Region across v3.4.0–v3.6.0 and the conclusion drawn was "the field isn't
+   * populated" — wrong. It called jbRegionValue_, which silently returned "" for
+   * every multi-select array, so the probe was measuring the bug rather than the
+   * data. It now prints the raw JSON shape of the first non-empty value it sees,
+   * which is the check that would have caught it.
+   */
+  function probeRegionTeamFields() {
+    Logger.log("🔍 Region / Team field probe — site: " + CONFIGJ.JIRA_BASE_URL);
+    Logger.log("   Configured: REGION_FIELD=" + CONFIGJ.REGION_FIELD
+      + ", TEAM_FIELD=" + CONFIGJ.TEAM_FIELD);
+    Logger.log("   Candidates: REGION_ALT_FIELD=" + CONFIGJ.REGION_ALT_FIELD
+      + ", TEAM_TEMPO_FIELD=" + CONFIGJ.TEAM_TEMPO_FIELD
+      + ", WORKSTREAM_FIELD=" + CONFIGJ.WORKSTREAM_FIELD);
+
+    // ── 1. Do the IDs exist, and what are they really called? ──
+    try {
+      var resp = UrlFetchApp.fetch(CONFIGJ.JIRA_BASE_URL + "/rest/api/3/field", {
+        method: "get", headers: buildHeaders_(), muteHttpExceptions: true,
+      });
+      if (resp.getResponseCode() !== 200) {
+        Logger.log("⚠️ /rest/api/3/field returned HTTP " + resp.getResponseCode()
+          + " — skipping the ID check: " + resp.getContentText().slice(0, 200));
+      } else {
+        var parsed = jb_tryParseJson_(resp, "Jira /field");
+        var fields = parsed.ok ? (parsed.data || []) : [];
+        var byId = {};
+        fields.forEach(function(fl) { byId[fl.id] = fl.name; });
+
+        PROBE_FIELDS_.forEach(function(pf) {
+          var name = byId[pf.id];
+          Logger.log(name
+            ? "   ✅ " + pf.key + " " + pf.id + " exists → \"" + name + "\""
+            : "   ❌ " + pf.key + " " + pf.id + " does NOT exist on this site.");
+        });
+
+        // Name-side search: catches the case where the right field exists under a
+        // DIFFERENT id than the one configured above. Widened past /region|team/
+        // to the words this org actually uses for delivery attribution — the
+        // Workstream field would never have surfaced under the old pattern.
+        var configuredIds = {};
+        PROBE_FIELDS_.forEach(function(pf) { configuredIds[pf.id] = true; });
+        var candidates = fields.filter(function(fl) {
+          return /region|team|workstream|squad|practice|geo|location/i.test(fl.name || "");
+        });
+        Logger.log("   Fields whose name mentions region/team/workstream ("
+          + candidates.length + "):");
+        candidates.forEach(function(fl) {
+          Logger.log("      " + fl.id + "  \"" + fl.name + "\""
+            + (configuredIds[fl.id] ? "   ← configured" : ""));
+        });
+      }
+    } catch (e) {
+      Logger.log("⚠️ Field-list check failed: " + e.message);
+    }
+
+    // ── 2. Fill rate on the population the export ACTUALLY WRITES ──
+    //
+    // ⚠️ This leg used to sample "Done, last 90 days, first 300" and report that
+    // as THE fill rate. It is not: Jira Raw carries RAW_HISTORY_WEEKS (52) of
+    // Done work plus the open backlog, and the three populations disagree badly
+    // — measured 2026-08-04: 34% over the 52-week window, 17% over 90 days, 10%
+    // on open rows. A probe scoped to a window the export doesn't write produced
+    // a number nobody could reconcile against the sheet, which is the same class
+    // of mistake as the multi-select bug: measuring something adjacent to the
+    // thing you ship. Both legs are now measured and reported separately.
+    try {
+      var probeIds = PROBE_FIELDS_.map(function(pf) { return pf.id; });
+      var probeFields = ["summary", "project"].concat(probeIds).filter(Boolean);
+
+      var deepSince = new Date();
+      deepSince.setDate(deepSince.getDate() - CONFIGJ.RAW_HISTORY_WEEKS * 7);
+      var doneJql = [
+        'issuetype in (' + CONFIGJ.EXEC_ISSUE_TYPES.join(", ") + ')',
+        CONFIGJ.DONE_JQL,
+        'project NOT IN (TEMPLATE)',
+        'resolutiondate >= "' + toIsoDate_(deepSince) + '"',
+      ].join(" AND ") + ' ORDER BY resolutiondate DESC';
+
+      // The open backlog is the ACTIONABLE half — tagging one of these changes a
+      // future number, where tagging resolved work only rewrites history. It is
+      // also the worst-tagged half, so leaving it out flatters the report.
+      var openClauses = [
+        'issuetype in (' + CONFIGJ.EXEC_ISSUE_TYPES.join(", ") + ')',
+        'statusCategory != Done',
+        'assignee is not EMPTY',
+        'project NOT IN (TEMPLATE)',
+      ];
+      if (CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS) {
+        var openSince = new Date();
+        openSince.setDate(openSince.getDate() - CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS * 7);
+        openClauses.push('updated >= "' + toIsoDate_(openSince) + '"');
+      }
+      var openJql = openClauses.join(" AND ") + ' ORDER BY updated DESC';
+
+      var legs = [
+        { label: "Done · " + CONFIGJ.RAW_HISTORY_WEEKS + "-week export window", jql: doneJql },
+      ];
+      if (CONFIGJ.OPEN_BACKLOG_ENABLED !== false) {
+        legs.push({ label: "Open backlog (actionable half)", jql: openJql });
+      }
+
+      legs.forEach(function(leg) {
+        // NOT capped at 300. The cap was the other half of the reconciliation
+        // problem: a truncated sample of a 12,000-row window is a different
+        // population again, and nobody reading "17%" knew it came from 300 rows.
+        var sample = fetchAllIssuesByJql_(leg.jql, probeFields);
+        probeReportLeg_(leg.label, sample);
+      });
+    } catch (e) {
+      Logger.log("⚠️ Fill-rate sample failed: " + e.message);
+    }
+  }
+
+  /**
+   * Reports every PROBE_FIELDS_ fill rate over one sampled population, plus the
+   * region-vocabulary check. Split out of probeRegionTeamFields so the Done and
+   * open-backlog legs are measured identically — two copies of this loop would
+   * drift, and a fill rate that means something different per leg is worse than
+   * no fill rate.
+   * @param {string} label  human name for the population
+   * @param {Object[]} sample  issues, already fetched with the probe field list
+   */
+  function probeReportLeg_(label, sample) {
+    var n = sample.length;
+    Logger.log("   ── " + label + " — " + n + " issues ──");
+    if (!n) {
+      Logger.log("      (no issues returned — nothing to measure)");
+      return;
+    }
+
+    var regionVals = {};   // kept aside for the vocabulary check below
+    PROBE_FIELDS_.forEach(function(pf) {
+      var filled = 0, multi = 0, vals = {}, rawShape = null;
+
+      sample.forEach(function(iss) {
+        var f = iss.fields || {};
+        var raw = f[pf.id];
+        if (raw === null || raw === undefined || raw === "") return;
+        if (Array.isArray(raw) && !raw.length) return;
+        if (rawShape === null) rawShape = JSON.stringify(raw).slice(0, 160);
+        if (Array.isArray(raw) && raw.length > 1) multi++;
+
+        // NOT named `label` — that is this function's parameter, and shadowing
+        // it here is how a leg silently reports under the wrong heading.
+        var readVal = pf.read(raw);
+        if (!readVal) return;   // present in Jira but the reader dropped it
+        filled++;
+        vals[readVal] = (vals[readVal] || 0) + 1;
+      });
+
+      Logger.log("      " + pf.label + " (" + pf.id + "): " + filled + "/" + n
+        + " (" + Math.round(filled / n * 100) + "%)"
+        + (multi ? "  [" + multi + " carry 2+ options]" : ""));
+      if (rawShape !== null) {
+        // The line that would have caught the v3.4.0 array bug: if the raw
+        // shape shows values but the fill rate above is 0%, the READER is
+        // broken, not the Jira field.
+        Logger.log("         raw shape: " + rawShape);
+        if (!filled) {
+          Logger.log("         ⚠️ Jira RETURNED values but the reader produced none"
+            + " — this is a reader bug, not an unpopulated field.");
+        }
+      }
+      if (filled) Logger.log("         values: " + JSON.stringify(vals));
+      if (pf.id === CONFIGJ.REGION_FIELD) regionVals = vals;
+    });
+
+    // Any region label that fell through REGION_VOCAB_ unmapped needs either
+    // a vocabulary entry here or a fix in the dashboard's chip list. Compound
+    // values ("AMER | SEA") are split so a single bad half still surfaces.
+    var mapped = {};
+    Object.keys(REGION_VOCAB_).forEach(function(k) { mapped[REGION_VOCAB_[k]] = true; });
+    var unmapped = {};
+    Object.keys(regionVals).forEach(function(v) {
+      v.split(" | ").forEach(function(part) {
+        if (!mapped[part]) unmapped[part] = true;
+      });
+    });
+    var unmappedList = Object.keys(unmapped);
+    Logger.log(unmappedList.length
+      ? "      ⚠️ Region values outside REGION_VOCAB_: " + unmappedList.join(", ")
+        + " — add them to REGION_VOCAB_ (and to the dashboard's chip list)."
+      : "      ✅ All region values map to the short-form vocabulary.");
+  }
+
+  /**
+   * The region/team attribution fields this probe measures, with the reader each
+   * column actually uses — so the probe can never report a fill rate the export
+   * doesn't reproduce. Add a row here when a new candidate field appears.
+   */
+  var PROBE_FIELDS_ = [
+    { key: "REGION_FIELD",     id: CONFIGJ.REGION_FIELD,
+      label: "Region (col 31)",       read: jbRegionValue_ },
+    { key: "TEAM_FIELD",       id: CONFIGJ.TEAM_FIELD,
+      label: "Team (col 32)",         read: jbTeamValue_ },
+    { key: "REGION_ALT_FIELD", id: CONFIGJ.REGION_ALT_FIELD,
+      label: "Region (Alt) (col 36)", read: jbOptionLabel_ },
+    { key: "TEAM_TEMPO_FIELD", id: CONFIGJ.TEAM_TEMPO_FIELD,
+      label: "Tempo Team (col 37)",   read: jbTeamValue_ },
+    { key: "WORKSTREAM_FIELD", id: CONFIGJ.WORKSTREAM_FIELD,
+      label: "Workstream (col 38)",   read: jbOptionLabel_ },
+  ].filter(function(pf) { return !!pf.id; });
+
   function previewWeekWindows() {
     var weeks = getLastNWeeks_(CONFIGJ.WEEKS_BACK);
-    Logger.log("📅 Week windows (today = " + toShortDate_(new Date()) + "):");
+    Logger.log("📅 Narrative window — Exec Q&A (today = "
+      + toShortDate_(new Date()) + "):");
     weeks.forEach(function(w, i) {
       Logger.log("   Week " + (i + 1) + ": " + w.fromStr + " → " + w.toStr + "  (" + w.label + ")");
     });
     Logger.log("📊 Exec Q&A will compare: Week " + (weeks.length - 1) + " vs Week " + weeks.length);
+
+    // Deep window — what the dashboards' Monthly/Quarterly views are capped by.
+    var rawWeeks = getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS);
+    var expandWeeks = getLastNWeeks_(
+      Math.min(CONFIGJ.EPIC_EXPAND_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
+    Logger.log("📅 Jira Raw deep window: " + rawWeeks.length + " weeks, "
+      + rawWeeks[0].fromStr + " → " + rawWeeks[rawWeeks.length - 1].toStr);
+    Logger.log("   Epic expansion window: " + expandWeeks.length + " weeks, from "
+      + expandWeeks[0].fromStr);
+    if (CONFIGJ.START_ISO_WEEK) {
+      Logger.log("⚠️ START_ISO_WEEK is set to \"" + CONFIGJ.START_ISO_WEEK
+        + "\" — that is a FIXED anchor and grows the narrative window by a week "
+        + "every week until the export times out. It should be null.");
+    }
   }
 
 
@@ -2528,7 +2817,7 @@
   //
   // 6. Run testJiraConnection()   → should return sample issues with keys + summaries.
   //
-  // 7. Run runJiraEpicTracker()   → writes "Jira Raw" + "Weekly Report" + "Exec Q&A".
+  // 7. Run runJiraEpicTracker()   → writes "Jira Raw" + "Exec Q&A".
   // ============================================================OINTS_FIELD, EPIC_LINK_FIELD.
   //    Discover yours at: https://servicerocket-coe.atlassian.net/rest/api/3/field
   //    If Story Points column is all 0 after first run, the field ID is wrong.
@@ -2537,5 +2826,5 @@
   //
   // 6. Run testJiraConnection()   → should return sample issues with keys + summaries.
   //
-  // 7. Run runJiraEpicTracker()   → writes "Jira Raw" + "Weekly Report" + "Exec Q&A".
+  // 7. Run runJiraEpicTracker()   → writes "Jira Raw" + "Exec Q&A".
   // ============================================================
