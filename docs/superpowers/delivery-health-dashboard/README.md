@@ -938,7 +938,7 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
       0% means the export was not redeployed or not re-run, not that Jira is untagged.
 
 ### Executive rebuild (2026-08-03)
-- [ ] Five tabs render: 📊 Executive · 📈 Trends · 👥 People · 🧪 Data Hygiene · 🔒 Access.
+- [ ] Six tabs render: 📊 Executive · 🎯 Headroom · 🌊 Flow · 👥 People · 🧪 Data Hygiene · 🔒 Access.
       A **viewer** account sees four — no Access tab.
 - [ ] Pick Region `AMER`: the Team, PM and Job-family dropdowns shrink to AMER's values, each with a
       headcount. Clear it — the full lists come back.
