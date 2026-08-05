@@ -6,8 +6,22 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.8.0
+  // VERSION:     3.9.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.9.0 (flow-metrics feeds — spec 2026-08-05-flow-metrics-design.md):
+  //   Two NEW output tabs, zero changes to Jira Raw / Exec Q&A / FETCH_CHANGELOG:
+  //     · "Jira Bugs"      — one row per Bug created in the RAW_HISTORY_WEEKS
+  //       window (same space scoping + isNoiseIssue_ filter as the main fetch:
+  //       a bug closed Won't Do / Duplicate was a report, not a defect).
+  //       Bugs are NOT in EXEC_ISSUE_TYPES on purpose — dropping Bug rows into
+  //       Jira Raw would silently move every consumer's On-Time/Throughput
+  //       denominators. Full rewrite per run, append-only header contract.
+  //     · "Flow Snapshots" — ONE ROW APPENDED PER RUN: timestamp, ISO week,
+  //       WIP count, backlog hrs, backlog item count, computed over the same
+  //       open candidates written to Jira Raw. Snapshots exist because a
+  //       backlog is a point-in-time state that can never be reconstructed
+  //       later. Rows older than RAW_HISTORY_WEEKS are pruned on write.
+  //   Consumer: the delivery-health dashboard's 🌊 Flow tab.
   // CHANGES v3.8.0 (Region vocabulary: APAC retired — reviewer feedback 2026-08-05):
   //   APAC is a superset of ANZ and SEA (and more), so using it as a sibling
   //   bucket next to ANZ double-speaks the taxonomy. Reviewer correction:
@@ -235,6 +249,9 @@
     // SECTION: HELPERS.
     RAW_SHEET:    "Jira Raw",
     EXEC_SHEET:   "Exec Q&A",
+    // Flow-metrics feeds (v3.9.0) — outputs, auto-created like the two above.
+    BUGS_SHEET:      "Jira Bugs",
+    FLOW_SNAP_SHEET: "Flow Snapshots",
     ROSTER_SHEET: "Roster",
 
     // ── Executive reporting ────────────────────────────────────
@@ -1191,6 +1208,35 @@
   }
 
   /**
+   * Fetches Bug issues CREATED inside the deep window — the flow-metrics
+   * Bug Count feed (v3.9.0). A separate tab and a separate query on purpose:
+   * Bug is not in EXEC_ISSUE_TYPES, and Bug rows inside Jira Raw would
+   * silently move every consumer's On-Time/Throughput denominators.
+   *
+   * isNoiseIssue_ applies: a bug closed Won't Do / Duplicate / Canceled was a
+   * report, not a defect (spec §3.7). Open bugs carry no noise status or
+   * resolution and always pass.
+   */
+  function fetchBugsCreated_(sinceStr) {
+    var jql = [
+      'issuetype = Bug',
+      'project NOT IN (TEMPLATE)',
+      'created >= "' + sinceStr + '"',
+      'summary !~ "to delete"'
+    ].join(" AND ") + ' ORDER BY created DESC';
+    Logger.log("📋 Bugs-created JQL: " + jql);
+
+    // No comment bodies — nothing reads comments off a bug-count row.
+    var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS);
+    var scoped = all.filter(function(i) {
+      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+    });
+    Logger.log("🐛 Bugs fetched: " + all.length + " → " + scoped.length +
+               " in scope (disabled spaces + noise excluded).");
+    return scoped;
+  }
+
+  /**
    * Determines the Space key for an issue based on its project key or name.
    * Matches against CONFIGJ.SPACES[].match array.
    *
@@ -1824,6 +1870,53 @@
     Logger.log("✅ Raw sheet: " + (rows.length - 1) + " data rows written.");
   }
 
+  // APPEND-ONLY, same contract as RAW_HEADERS: consumers resolve columns by
+  // header name, so new columns go at the END, never the middle.
+  var BUGS_HEADERS = [
+    /* 0 */ "Key", /* 1 */ "Summary", /* 2 */ "Project", /* 3 */ "Priority",
+    /* 4 */ "Status", /* 5 */ "Status Category", /* 6 */ "Created",
+    /* 7 */ "Resolution Date", /* 8 */ "Resolution", /* 9 */ "Assignee",
+  ];
+
+  function writeBugsSheet_(bugs) {
+    var sheet = jb_getOrCreateSheet_(CONFIGJ.BUGS_SHEET);
+    sheet.clearContents();
+    sheet.clearFormats();
+
+    var rows = [BUGS_HEADERS];
+    bugs.forEach(function(issue) {
+      var f = issue.fields || {};
+      rows.push([
+        issue.key,
+        String(f.summary || ""),
+        dig_(f, "project.key") || "",
+        dig_(f, "priority.name") || "",
+        dig_(f, "status.name") || "",
+        dig_(f, "status.statusCategory.name") || "",
+        fmtDateTime_(f.created),
+        fmtDateTime_(f.resolutiondate),
+        (f.resolution && f.resolution.name) || "",
+        dig_(f, "assignee.displayName") || "",
+      ]);
+    });
+
+    sheet.getRange(1, 1, rows.length, BUGS_HEADERS.length).setValues(rows);
+    styleHeader_(sheet.getRange(1, 1, 1, BUGS_HEADERS.length));
+    sheet.setFrozenRows(1);
+
+    // Same "Generated:" footer convention as Jira Raw, so the dashboard's
+    // staleness parse works identically on this tab.
+    var foot = rows.length + 2;
+    sheet.getRange(foot, 1)
+      .setValue("Generated: " + fmtDateTime_(new Date()))
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    sheet.getRange(foot + 1, 1)
+      .setValue("Total rows: " + (rows.length - 1))
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+
+    Logger.log("✅ Jira Bugs: " + (rows.length - 1) + " rows written.");
+  }
+
   // ── SECTION: EXEC Q&A — Duplo + Lego signal levels ───────────
 
   /**
@@ -2388,6 +2481,16 @@
       Logger.log("💾 Flushing 'Jira Raw'...");
       SpreadsheetApp.flush();
 
+      // ── Flow-metrics feeds (v3.9.0) ─────────────────────────
+      // Bugs created in the deep window — Bug Count for the 🌊 Flow tab.
+      // A separate tab: Bug is NOT in EXEC_ISSUE_TYPES, and Bug rows in
+      // Jira Raw would move every consumer's denominators.
+      Logger.log("🐛 Fetching bugs for the flow feed...");
+      var bugs = fetchBugsCreated_(rawWeeks[0].fromStr);
+      Logger.log("📝 Writing 'Jira Bugs' sheet...");
+      writeBugsSheet_(bugs);
+      SpreadsheetApp.flush();
+
       // Exec Q&A — uses all weeks for trend context, but WoW compares last 2.
       Logger.log("📦 Fetching created issues for Exec window...");
       var createdIssues = fetchCreatedIssues_(weeks[0].fromStr, weeks[weeks.length-1].toStr);
@@ -2399,7 +2502,8 @@
       SpreadsheetApp.flush();
 
       Logger.log("✅ Done. Check tabs: \"" + CONFIGJ.RAW_SHEET
-        + "\", \"" + CONFIGJ.EXEC_SHEET + "\".");
+        + "\", \"" + CONFIGJ.EXEC_SHEET + "\", \"" + CONFIGJ.BUGS_SHEET
+        + "\", \"" + CONFIGJ.FLOW_SNAP_SHEET + "\".");
 
     } catch (e) {
       Logger.log("❌ [runJiraEpicTracker] " + e.message);
