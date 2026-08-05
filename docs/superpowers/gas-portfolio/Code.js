@@ -703,7 +703,6 @@ function buildAgentContext_() {
     "Languages:  English (Full Professional) · Spanish (Native)",
     "LinkedIn:   linkedin.com/in/analystd",
     "Email:      moisesalex.01@gmail.com",
-    "Phone:      +1 (503) 7571-9264",
     "",
     "Headline:   Alex engineers systems that turn messy data into decisions — not just reports.",
     "            He combines 3+ years of SaaS analytics at ServiceRocket with 5+ years of",
