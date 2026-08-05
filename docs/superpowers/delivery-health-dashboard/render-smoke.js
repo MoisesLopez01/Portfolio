@@ -1640,6 +1640,15 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   M.meta.flowUncategorized = 0;
   M.meta.jiraUnattributed = Object.assign({}, M.meta.jiraUnattributed,
     { leadTime: 0, throughput: 0, flowOpen: 0 });
+  // Regression pin (final review, 2026-08-05): flowUnfiltered_ used to compare
+  // filteredPeople_().length to MODEL.people.length, which can never be equal
+  // on a real payload — an attribOnly stub and the default FTE lens both widen
+  // that gap. Shape the fixture the same way so this test would have caught it.
+  M.people.push({ name: "Sol Architect", region: "SEA", teams: [], pms: [],
+                  isCrew: false, jobTitle: "", onLeave: false, isManager: false,
+                  jobFamily: "", tracks: false, newHire: false, backlog: null,
+                  weeks: {}, attribOnly: true });
+  M.people.push(person("Cara Crew", { isCrew: true }));
   // Registry entries ride in meta.registry — give the renderer the real ones.
   M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
     target: null, coverageGate: 0.9, coverageOf: "resolved non-epic issues carrying both dates" };
@@ -1684,6 +1693,31 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(h.indexOf("Cycle Time") !== -1 && h.indexOf("Flow Efficiency") !== -1 &&
           h.split('tile ph').length >= 3,
           "Cycle Time + Flow Efficiency render as declared-absent placeholder tiles");
+
+  // Regression pin (final review, 2026-08-05): flowUnfiltered_ used to compare
+  // filteredPeople_().length to MODEL.people.length, which can never be equal
+  // on a real payload — the attribOnly stub (Sol Architect) and the crew
+  // person (Cara Crew, excluded by the default FTE lens) pushed onto this
+  // fixture above are exactly that shape. Under DEFAULT state — no user
+  // filter, default "fte" pop lens — the snapshot trend must still render.
+  var backlogTile = h.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
+  assert_(backlogTile.indexOf("trend available for the full population only") === -1,
+          "default state (nothing narrowed) — the clear-filters note is ABSENT");
+  assert_(backlogTile.indexOf('<svg class="chart"') !== -1,
+          "…and the sparkline itself IS in the markup (2 fixture snapshots, both weeks)");
+
+  // Set one real filter — the exporter's whole-population snapshot log has no
+  // notion of "AMER only", so the trend must now defer to the note.
+  C.setState("region", "AMER");
+  C.renderAll_();
+  var hFiltered = els["flowTiles"].innerHTML;
+  var backlogFiltered = hFiltered.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
+  assert_(backlogFiltered.indexOf("trend available for the full population only — clear filters to see it") !== -1,
+          "a user-set region filter brings back the clear-filters note");
+  assert_(backlogFiltered.indexOf('<svg class="chart"') === -1,
+          "…and withholds the sparkline while the note is showing");
+  C.setState("region", "");
+  C.renderAll_();
 
   // Missing feeds degrade, never error: kill both new feeds and re-render.
   M.meta.bugsAvailable = false;

@@ -2387,10 +2387,26 @@ function flowOpenFor_() {
   return out;
 }
 
-/** True when every person passes the filters — the only state in which the
-    whole-population snapshot trend is honest to draw under the current scope. */
+/** True when the user has NOT actively narrowed scope — the only state in
+    which the whole-population snapshot trend is honest to draw under the
+    current filters.
+    Deliberately NOT `filteredPeople_().length === MODEL.people.length`: that
+    equality can never hold on a real payload. MODEL.people always includes
+    attribOnly identity stubs (filteredPeople_ excludes them unconditionally,
+    §"People passing every active filter" above) and the default population
+    lens is "fte" (STATE.pop), which excludes crew — so even with every filter
+    at its default, filteredPeople_().length is strictly less than
+    MODEL.people.length. That made this always false, so the Backlog/WIP
+    snapshot sparkline never rendered and the "clear filters" note showed with
+    nothing to clear.
+    The correct rule: compare STATE's filter dimensions to their defaults
+    directly, not headcounts. Default state (including the default "fte"
+    population lens) counts as unfiltered; any user-set narrowing — including
+    switching the population lens away from its default — hides the trend. */
 function flowUnfiltered_() {
-  return filteredPeople_().length === MODEL.people.length;
+  return STATE.pop === "fte" && STATE.role === "all" &&
+    !STATE.region && !STATE.team && !STATE.pm && !STATE.family &&
+    !STATE.flag && !STATE.search;
 }
 
 function fmtFlowVal_(v, unit) {
@@ -3910,7 +3926,7 @@ function saveOppCsv_() {
 // queue as a caveat on a number. They live here instead: what's missing, how
 // much, and what it blocks. Owner / prereq-ID / target-week columns were all
 // removed (2026-08-03 / 2026-08-04) — accountability and scheduling live in
-// the requirements doc and the Brief, not in a widely-read table.
+// the requirements doc, not in a widely-read table.
 //
 // Deliberately UNFILTERED: hygiene is a whole-population question. A region
 // slice that looks well-tagged doesn't make the feed publishable.
@@ -3979,8 +3995,8 @@ function hygienePeopleFor_(isos) {
 
     No Owner column (user decision 2026-08-03) and no Prereq / Target-week
     columns either (user decision 2026-08-04) — accountability and scheduling
-    live in the requirements doc and the Brief; this table is the work queue:
-    what's missing, how much, and what it blocks. */
+    live in the requirements doc; this table is the work queue: what's
+    missing, how much, and what it blocks. */
 function hygieneRow_(g) {
   var pct = g.value === null ? null : Math.round(g.value * 100);
   var gate = Math.round(g.gate * 100);
@@ -4211,7 +4227,8 @@ function renderHygiene_() {
 // The gaps table above says HOW MUCH is missing, org-wide, pooled. This says
 // WHICH TYPE to go and fix — a different question with a different reader: the
 // gaps table belongs to whoever owns the metric, this belongs to whoever owns
-// the tickets. Hence all-roles, unlike the admin-only 🔬 Data Profile.
+// the tickets. Hence all-roles by design: fixing a ticket's fields is a task
+// for anyone who touches that issue type, not a privileged action.
 //
 // Two populations behind one toggle, and OPEN is the default: a due date added
 // to an open ticket moves next quarter's number, one added to a closed ticket

@@ -87,7 +87,7 @@ all derive from it. The role gate is enforced inside `switchView_()`, not just b
 | Tab | Answers | Contents |
 |---|---|---|
 | 📊 **Executive** | "Are we on target, and where aren't we?" | The four KPI cards + one **comparison chart**: the active metric broken down by Region / Team / PM / Job family on a common 0–100 axis, with the target rule and the operating band drawn in. The bars are **read-only** — scope changes belong to the header filters. |
-| 📈 **Trends** | "Who moves it?" | The **opportunity table** and nothing else: one row per person, ranked by the hours between them and the cohort's operating rate, with its own metric selector. The history line chart was removed — the tiles already carry a sparkline and a vs-target read. |
+| 🎯 **Headroom** | "Who moves it?" | The **opportunity table** and nothing else: one row per person, ranked by the hours between them and the cohort's operating rate, with its own metric selector. The history line chart was removed — the tiles already carry a sparkline and a vs-target read. |
 | 🌊 **Flow** | "How does work move through the system?" | Seven cards: Lead Time, Throughput, Backlog, WIP, Bug Count (live, `target: null` — informational until targets are agreed) plus Cycle Time and Flow Efficiency (declared absent — the changelog is not exported, `FETCH_CHANGELOG` off). Non-epic grain throughout. Backlog/WIP trends come from the exporter's `Flow Snapshots` append log and accumulate from the first v3.9.0 run; under active filters the snapshot trend hides (it is whole-population). Bug Count is population-wide by design — bugs are routinely unassigned at creation. Spec: `docs/superpowers/specs/2026-08-05-flow-metrics-design.md`. |
 | 👥 **People** | "Who needs me this period?" | The triage-ordered people × period grid, expandable into stacked workload bars with per-person drill-downs. |
 | 🧪 **Data Hygiene** | "What's missing, and who owns it?" | The attribution work queue. Deliberately **unfiltered** — a well-tagged region does not make the feed publishable. |
@@ -161,7 +161,7 @@ the opportunity table ranks against.
   screen** — the metric is a rate, so the two are comparable, but an unlabelled change of basis would
   be worse than no rate.
 
-## Opportunity table (Trends tab)
+## Opportunity table (Headroom tab)
 
 "Areas of opportunity" made arithmetic. Per person, for the last complete period:
 
@@ -218,11 +218,11 @@ themselves in their tooltip instead.
 
 | File | Role |
 |---|---|
-| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. 24 `_test_*` unit tests. |
+| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. 35 `_test_*` unit tests. |
 | `Security.js` | Email allowlist (admin / viewer / open-access) — `SEC_DH`, `checkDeliveryAccess()`, `getDeliveryAccessSettings()`, `saveDeliveryAccessSettings()`, `buildAccessDeniedPage_()`. Inherited from the demand dashboard's `Security.js` (itself inherited from `PS Security.js`). |
 | `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Six tabs from the `VIEWS` array (Executive / Headroom / Flow / People / Data Hygiene / Access). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`) and the opportunity table. Per-panel ⬇ Save PNG + two CSV exports. |
 | `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the two cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_` against the server's. Not pasted into the GAS project. |
-| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (168 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the hygiene view — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, and the opportunity table's exclusions. Not pasted into the GAS project. |
+| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (344 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the hygiene view — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, and the opportunity table's exclusions. Not pasted into the GAS project. |
 
 ## Data sources
 
