@@ -12,6 +12,13 @@
 // ── PROJECT DATA ──────────────────────────────────────────────
 var DOMAINS = [
   {
+    id: "workforce",
+    label: "Workforce Analytics",
+    icon: "📈",
+    tagline: "Resourcing, comp health & contribution — decision-grade",
+    color: "teal",
+  },
+  {
     id: "ai",
     label: "AI & LLM Integration",
     icon: "⚡",
@@ -42,6 +49,128 @@ var DOMAINS = [
 ];
 
 var PROJECTS = [
+  {
+    id: "workforce-demand",
+    domain: "workforce",
+    title: "Project Demand — C-Suite Resourcing Dashboard",
+    tagline: "Weekly demand vs true available capacity — holiday-aware, statistically honest",
+    category: "Workforce Analytics · Resourcing",
+    impact: "Live demo",
+    langScale: "~8K lines",
+    liveUrl: "",   // filled by the Phase 3 deploy task
+    context:
+      "Leadership's Monday question is simple: are we over- or under-staffed next month, and what changed since last week? Answering it honestly needs a real capacity denominator — not headcount × 40.",
+    action: [
+      "Modeled **available capacity** per person-week: regional base hours (38/40), net of PTO **and** public holidays, with double-count protection when time off is booked over a holiday.",
+      "Put a **±2σ statistical control band** on utilization and a 90% planning-target line — honesty instead of a trendline; every tile ends in a written *so-what* sentence.",
+      "Engineered the load path: gzip + chunked CacheService entries kept warm by a trigger — **~30s cold compute → ~2s warm**, with graceful degradation when any source is missing.",
+      "Zero runtime JS dependencies: 25 hand-rolled SVG chart panels, question-filter chips, a week-paged heatmap, and a formula-injection-safe CSV export.",
+    ],
+    resolution:
+      "A live, clickable demo of the real app — synthetic data, fictional company. The same architecture runs in production for a global professional-services org.",
+    tech: [
+      "Google Apps Script",
+      "HtmlService SPA",
+      "CacheService (gzip + chunked)",
+      "Statistical process control",
+      "Hand-rolled SVG charts",
+      "ISO-week engine",
+    ],
+    metrics: [
+      { val: "30s→2s", label: "cold → warm load" },
+      { val: "±2σ", label: "control band" },
+      { val: "0", label: "JS dependencies" },
+    ],
+    before: {
+      process: "Resourcing debates ran on anecdote and a static spreadsheet nobody trusted",
+      metrics: "No capacity denominator · no week-over-week visibility",
+    },
+    after: {
+      process: "One page: demand vs true available capacity, WoW, with so-what verdicts",
+      metrics: "±2σ honesty · ~2s warm loads · holiday-aware",
+    },
+  },
+  {
+    id: "comp-health",
+    domain: "workforce",
+    title: "Global Comp Health Dashboard",
+    tagline: "Who should the next comp cycle look at first — defensible, tested, redacted",
+    category: "Workforce Analytics · Compensation",
+    impact: "242 tests",
+    langScale: "12 views",
+    context:
+      "Compensation review across countries and currencies fails in predictable ways: bad peer comparisons, scores quietly fabricated from missing data, and sensitive rows 'hidden' only by CSS. This tool was built to fail in none of them.",
+    action: [
+      "Built a **4-tier anchor-resolution model** (title peers → market row → level cohort → *excluded*): a person with no sound comparison is excluded and the coverage number is a headline, never a footnote.",
+      "Priority scoring **renormalizes over the data that exists** per person, carrying partial/missing flags all the way to the UI — a number is never silently invented.",
+      "**Server-side redaction**: restricted profiles are stripped from the payload before it leaves the server — open devtools and there is nothing to unhide.",
+      "**242 automated assertions** plus a render smoke harness that executes all 12 view renderers against a synthetic payload — in a Google Apps Script project.",
+      "Pay-equity lenses (gender gap, individual outliers, long-tenure drift) with small-group suppression; statistical honesty rules (small-n → counts, not rates).",
+    ],
+    resolution:
+      "Quarterly comp triage runs on evidence: ranked focus lists, provable privacy, and a test suite most SaaS dashboards don't have.",
+    tech: [
+      "Google Apps Script",
+      "Node test harness (242 assertions)",
+      "Server-side RBAC + redaction",
+      "CacheService (gzip + chunked)",
+      "Hand-rolled SVG charts",
+    ],
+    metrics: [
+      { val: "242", label: "test assertions" },
+      { val: "12", label: "views" },
+      { val: "4-tier", label: "anchor model" },
+    ],
+    before: {
+      process: "Spreadsheet passes and gut feel; sensitive rows hidden client-side at best",
+      metrics: "Unverifiable scores · privacy by CSS",
+    },
+    after: {
+      process: "Anchored comparisons, renormalized scores, server-redacted payloads",
+      metrics: "242 assertions green · coverage as a headline",
+    },
+  },
+  {
+    id: "ps-contribution",
+    domain: "workforce",
+    title: "PS Weekly Contribution Report",
+    tagline: "Seven metrics, one Monday picture — with an AI exec brief that writes itself",
+    category: "Workforce Analytics · Performance",
+    impact: "30s→2s loads",
+    langScale: "~15K lines",
+    context:
+      "A services leader needs one Monday view of a ~200-person org: who's on track, who needs support, and what to say in the leadership meeting — across goals, tracked/planned time, recognition, PTO and quality signals.",
+    action: [
+      "Diagnosed CacheService's **silent >100KB failure** (every load was a cold multi-minute compute) and fixed it with gzip (~10×) + 90KB chunked entries — **~30s → ~2s**, warmed by a trigger.",
+      "Built a **team-aligned scoring matrix** ('team gates, family tunes'): nobody is ever scored on a metric their role doesn't own, enforced by a hard mask on every resolution path.",
+      "**4-role access model** (admin/viewer/manager/denied) where manager scope resolves automatically from the roster's supervisor column — checked *before* the open-access fallback so a demo flag can never over-share.",
+      "**Gemini-written executive brief** with prompt allowlisting and five distinct handled failure modes (missing key, API error, block reason, empty text, token truncation).",
+      "Adaptive Team Radar: axis count follows the grouping level — more context earns more dimensions.",
+    ],
+    resolution:
+      "Leadership opens it every Monday. The engineering underneath — caching, RBAC, LLM guardrails, unit-tested fiscal calendar — is the portfolio's deepest case study.",
+    tech: [
+      "Google Apps Script",
+      "Chart.js",
+      "Gemini API (guardrailed)",
+      "CacheService (gzip + chunked)",
+      "RBAC (roster-scoped managers)",
+      "Unit-tested ISO fiscal engine",
+    ],
+    metrics: [
+      { val: "7", label: "metrics per person" },
+      { val: "30s→2s", label: "cache story" },
+      { val: "4-role", label: "access model" },
+    ],
+    before: {
+      process: "Manual weekly consolidation; slow loads; one-size-fits-all scoring",
+      metrics: "Multi-minute loads · unscoped access",
+    },
+    after: {
+      process: "Cached, role-scoped dashboard with an AI brief and fair per-team scoring",
+      metrics: "~2s loads · masked scoring invariant · 5 LLM failure modes handled",
+    },
+  },
   {
     id: "sales-pipeline-etl",
     domain: "ops",
