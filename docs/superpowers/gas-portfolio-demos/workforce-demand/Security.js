@@ -146,7 +146,7 @@ function buildAccessDeniedPage_(email) {
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#07201D; --surface:#0E2B28; --surface-2:#0A2320; --border:#1B3C38;
-      --text:#F6FAF8; --muted:#94A3B8; --chip:#94A3B8;
+      --text:#F2F7F5; --muted:#94A3B8; --chip:#94A3B8;
     }
   }
   *{box-sizing:border-box;margin:0;padding:0}
