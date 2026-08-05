@@ -699,10 +699,8 @@ var Chat = (function() {
   function checkDemoTrigger(query) {
     var q = query.toLowerCase();
     var triggers = {
-      'ai-sales': ['pipeline', 'risk', 'deal', 'sales forecast', 'close probability'],
-      'tcc-forecast': ['tcc', 'total cost', 'compensation forecast', 'headcount', 'attrition'],
-      'comp-reporting': ['salary', 'compensation', 'benchmark', 'market rate', 'col adjust'],
-      'ps-dashboard': ['contribution', 'scorer', 'performance', 'team metrics', 'ps dashboard']
+      'ai-sales':     ['pipeline', 'risk', 'deal', 'sales forecast', 'close probability'],
+      'team-scoring': ['contribution', 'scorer', 'team scoring', 'team metrics', 'leaderboard']
     };
     
     for (var demo in triggers) {
@@ -1951,9 +1949,9 @@ function _test_contribMath() {
 
 var DEMOS = {
   'ai-sales':       DealRiskDemo,
-  'tcc-forecast':   TccDemo,
-  'comp-reporting': CompNormalizerDemo,
-  'ps-dashboard':   ContribScoreDemo
+  'team-scoring':   ContribScoreDemo,
+  'tcc-forecast':   TccDemo,          // modal-only (project tile still mounts it)
+  'comp-reporting': CompNormalizerDemo // modal-only
 };
 
 // ── LIVE DEMOS SECTION (#demos) ───────────────────────────────────────────────
@@ -1992,7 +1990,7 @@ var DemosSection = (function() {
     // Mount the default tab (the button marked .active in the markup)
     var activeTab = document.querySelector('#demos .demo-tab.active');
     setFormula(activeTab);
-    mount(activeTab ? activeTab.getAttribute('data-demo') : 'ps-dashboard');
+    mount(activeTab ? activeTab.getAttribute('data-demo') : 'ai-sales');
   }
 
   return { init: init };

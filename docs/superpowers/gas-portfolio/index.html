@@ -534,9 +534,7 @@ section { padding: clamp(56px, 7vw, 100px) 2rem; }
   white-space: nowrap;
 }
 .demo-tab:hover { color: var(--dark-text); border-color: rgba(255,255,255,0.25); }
-.demo-tab.active[data-demo="ps-dashboard"]   { background: rgba(245,158,11,0.14); color: var(--amber);      border-color: rgba(245,158,11,0.45); }
-.demo-tab.active[data-demo="tcc-forecast"]   { background: rgba(96,165,250,0.14); color: #93c5fd;           border-color: rgba(96,165,250,0.45); }
-.demo-tab.active[data-demo="comp-reporting"] { background: rgba(168,85,247,0.14); color: #d8b4fe;           border-color: rgba(168,85,247,0.45); }
+.demo-tab.active[data-demo="team-scoring"]   { background: rgba(245,158,11,0.14); color: var(--amber);      border-color: rgba(245,158,11,0.45); }
 .demo-tab.active[data-demo="ai-sales"]       { background: var(--teal-dim);       color: var(--teal-vivid); border-color: rgba(56,189,248,0.45); }
 
 .demo-tab-panel { max-width: 760px; }
@@ -2344,13 +2342,11 @@ sup.cr-footnote-mark { font-size: 0.55em; }
     <p class="section-eyebrow reveal">Try it live</p>
     <h2 class="section-title reveal reveal-delay-1">Don't take my word for it.<br>Touch the work.</h2>
     <p class="section-desc reveal reveal-delay-2">
-      Four working simulators built from real projects. Synthetic data — everything runs in your browser.
+      Two AI-powered simulators — synthetic data in the browser, real LLM calls on the server.
     </p>
     <div class="demo-tabs reveal reveal-delay-3" role="tablist" aria-label="Live demos">
-      <button class="demo-tab active" data-demo="ai-sales"       role="tab" aria-selected="true"  data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Pipeline Risk</button>
-      <button class="demo-tab"        data-demo="tcc-forecast"   role="tab" aria-selected="false" data-formula="=FORECAST(Actuals, Plan) → Σ(LOB variance) ÷ Budget">TCC Forecast</button>
-      <button class="demo-tab"        data-demo="comp-reporting" role="tab" aria-selected="false" data-formula="=NORMALIZE(Salary ÷ PPP_index[region]) × Band_midpoint">Salary Benchmark</button>
-      <button class="demo-tab"        data-demo="ps-dashboard"   role="tab" aria-selected="false" data-formula="=WEIGHTED(Alignment×0.30 + Performance×0.35 + Health×0.20 + Recognition×0.15)">Sales Intelligence</button>
+      <button class="demo-tab active" data-demo="ai-sales"     role="tab" aria-selected="true"  data-formula="=RISK(DealAge, Amount, Signal) → P(close) × Weighted_value">Pipeline Risk · Groq AI</button>
+      <button class="demo-tab"        data-demo="team-scoring" role="tab" aria-selected="false" data-formula="=WEIGHTED(Alignment×0.30 + Performance×0.35 + Health×0.20 + Recognition×0.15)">Team Scoring · LLM brief</button>
     </div>
     <div class="formula-bar reveal reveal-delay-3" id="fx-bar"><span class="fx">ƒx</span><span id="fx-formula"></span></div>
     <div class="demo-tab-panel reveal reveal-delay-3" id="demo-panel"></div>
