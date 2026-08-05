@@ -255,6 +255,14 @@ var ProjectModal = (function() {
         '<div class="ba-metric">'  + escHtml(p.after.metrics) + '</div>' +
       '</div>';
 
+    var liveWrap = document.getElementById('pm-live-btn');
+    if (liveWrap) {
+      liveWrap.innerHTML = p.liveUrl
+        ? '<a class="pm-github-link pm-live-link" href="' + escHtml(p.liveUrl) +
+          '" target="_blank" rel="noopener" aria-label="Open the live demo">▶ Open the live demo →</a>'
+        : '';
+    }
+
     var githubWrap = document.getElementById('pm-github-btn');
     if (githubWrap) {
       if (p.repoUrl) {
