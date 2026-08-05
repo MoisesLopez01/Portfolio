@@ -2422,6 +2422,15 @@ document.addEventListener('DOMContentLoaded', function() {
   wireModalEvents();
 
   UI.initStackBar();
+
+  // Counts derive from PROJECTS/DOMAINS — hand-typed numbers can't drift again.
+  var pc = document.querySelector('.counter[data-stat="projects"]');
+  if (pc && window.PROJECTS) pc.setAttribute('data-target', String(window.PROJECTS.length));
+  var ph = document.querySelector('#projects .section-title');
+  if (ph && window.PROJECTS && window.DOMAINS) {
+    ph.innerHTML = window.PROJECTS.length + ' projects. ' + window.DOMAINS.length + ' domains.<br>Real impact.';
+  }
+
   UI.initCounters();
   UI.initScrollReveal();
   UI.initSkillBars();
@@ -2555,19 +2564,19 @@ document.addEventListener('DOMContentLoaded', function() {
 (function() {
   var CURSOR = '<span class="hpf-cursor"></span>';
   var LINES = [
-    { cmd: 'alex run pipeline --weekly' },
-    { out: '<span class="c-arrow">→</span> reading 7 Google Sheets <span class="c-dim">…</span> <span class="c-ok">ok</span>' },
-    { out: '<span class="c-arrow">→</span> joining roster × RCR × goals <span class="c-dim">1,240 rows</span>' },
-    { out: '<span class="c-arrow">→</span> scoring 312 contributors <span class="c-ok">done</span>' },
-    { out: '<span class="c-arrow">→</span> Gemini narrative <span class="c-dim">1.8s</span>' },
-    { out: '<span class="c-ok">✓</span> dashboard published · 5-week rolling view' },
-    { out: '<span class="c-dim">  saved ≈14 manual hours / cycle</span>' }
+    { cmd: 'alex run demand-dashboard --week current' },
+    { out: '<span class="c-arrow">→</span> reading planned · tracked · roster <span class="c-dim">…</span> <span class="c-ok">ok</span>' },
+    { out: '<span class="c-arrow">→</span> capacity = base − PTO − public holidays <span class="c-dim">3 regions</span>' },
+    { out: '<span class="c-arrow">→</span> ±2σ control band <span class="c-dim">8-week sample</span>' },
+    { out: '<span class="c-arrow">→</span> 6 chart panels · every tile ends in a so-what <span class="c-ok">done</span>' },
+    { out: '<span class="c-ok">✓</span> served warm in ~2s <span class="c-dim">(cold compute ~30s, gzip-chunked cache)</span>' },
+    { out: '<span class="c-dim">  try it live in the demos section below</span>' }
   ];
   var ROTATE = [
-    '11 production apps shipped',
-    '9 LLM systems live (Gemini · Claude)',
-    'RBAC web apps · live exec dashboards',
-    'SuiteQL audits across NetSuite + Oracle'
+    '3 dashboards a C-suite opens weekly',
+    '250+ automated tests across the suite',
+    'gzip-chunked caching: 30s → 2s',
+    '4-role access · roster-scoped managers'
   ];
 
   function lineHTML(item) {
