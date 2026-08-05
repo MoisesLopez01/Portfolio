@@ -59,7 +59,7 @@ var CONFIG = {
 // ── ENTRY POINT ──────────────────────────────────────────────
 
 /**
- * Serves the dashboard HTML, gated by the email allowlist (Security.js).
+ * Serves the dashboard HTML — open access in this demo build (Security.js).
  * Denied users get a minimal "access restricted" page instead.
  */
 function doGet() {
