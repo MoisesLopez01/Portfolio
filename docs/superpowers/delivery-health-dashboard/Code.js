@@ -239,8 +239,8 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "2.1",
-  updated: "2026-08-03",  // 2026.W32
+  version: "3.0",
+  updated: "2026-08-05",  // 2026.W32
 
   metrics: {
     onTime: {
@@ -353,6 +353,155 @@ var METRIC_REGISTRY_ = {
       ebitda: "No direct translation. Closing this gap is what makes the other four quotable — it is an organisational instruction, not a technical chore.",
       deviations: [],
     },
+
+    // ── 🌊 FLOW METRICS (spec 2026-08-05-flow-metrics-design.md) ──
+    // All five live metrics: NON-EPIC grain (D4), target: null (D6 — no RAG
+    // until the Services Director sets targets; a neutral tile beats an
+    // invented threshold). Two more are declared absent below, CSAT-style.
+    leadTime: {
+      id: "leadTime",
+      name: "Lead Time",
+      definition: "Calendar days between a work item's creation and its resolution — how long a request lives in the system end to end.",
+      formula: "median(resolution date − created date) in calendar days over non-epic issues resolved in period; p85 companion (the tail is the finding)",
+      sources: ["Jira Raw — Created, Resolution Date, Issue Type, Assignee"],
+      grain: "Non-epic issue (Story/Task/Sub-task), rolled up by person → team → region",
+      target: null,
+      unit: "days",
+      lowerIsBetter: true,
+      coverageGate: 0.90,
+      coverageOf: "resolved non-epic issues carrying both dates",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (target, once one is agreed)",
+      ebitda: "Long lead times delay revenue recognition and stretch client commitments. Not quantified — no rate basis (PR-06).",
+      deviations: [
+        "CALENDAR days, not working days — weekends and holidays count. Stated on the card so a 9-day median is never read as 9 working days.",
+        "Non-epic grain (spec D4): an epic's lead time is a programme lifecycle, not a work-item lifecycle — same reasoning as ONTIME_SCOPE.",
+        "Issues whose created date postdates their resolution (clock skew / imported records) count toward coverage but are never scored.",
+      ],
+    },
+
+    cycleTime: {
+      id: "cycleTime",
+      name: "Cycle Time",
+      definition: "Calendar days between the first transition into In Progress and resolution — how long active work takes once started.",
+      formula: "median(resolution date − first In-Progress date); NOT COMPUTABLE on the current export",
+      sources: ["Jira changelog (first In-Progress transition) — NOT EXPORTED (CONFIGJ.FETCH_CHANGELOG is off, user decision 2026-08-05)"],
+      grain: "Non-epic issue",
+      target: null,
+      unit: "days",
+      lowerIsBetter: true,
+      coverageGate: 0,
+      coverageOf: "n/a — no feed",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      ebitda: "Not quantified.",
+      status: "absent",
+      absentReason: "Needs the first In-Progress date from the Jira changelog — not yet exported (FETCH_CHANGELOG off, user decision 2026-08-05). The changelog-free approximation (resolution − last status change) is ≈0 for every Done issue and is deliberately NOT published.",
+      deviations: [],
+    },
+
+    throughput: {
+      id: "throughput",
+      name: "Throughput",
+      definition: "Estimated hours of work delivered in the period — the sum of Original Estimate on resolved items.",
+      formula: "Σ Original Estimate (hrs) over non-epic issues resolved in period",
+      sources: ["Jira Raw — Original Estimate (sec), Resolution Date, Issue Type, Assignee"],
+      grain: "Non-epic issue (epic + child estimates would double-count the sum — spec D4), rolled up by person → team → region",
+      target: null,
+      unit: "hrs",
+      coverageGate: 0.60,
+      coverageOf: "resolved non-epic issues carrying a non-zero estimate",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      ebitda: "Throughput × blended rate approximates delivered value per period. Not quantified — no rate basis (PR-06).",
+      deviations: [
+        "UNESTIMATED WORK DELIVERS INVISIBLY here — the sum only sees issues carrying an estimate. The card states the estimated share; the fix is estimate fill, not a different formula.",
+      ],
+    },
+
+    backlog: {
+      id: "backlog",
+      name: "Backlog (Inventory)",
+      definition: "Estimated hours of assigned work waiting to start — open items in status category To Do.",
+      formula: "Σ max(0, Original Estimate − Time Spent) (hrs) over open, assigned, non-epic issues in status category To Do",
+      sources: ["Jira Raw — Week=Open rows: Status Category, Original Estimate (sec), Time Spent (sec), Assignee",
+                "Flow Snapshots tab (trend — the exporter appends one row per run; history accumulates forward)"],
+      grain: "Open non-epic issue, by person → team → region (current value); whole population (trend)",
+      target: null,
+      unit: "hrs",
+      coverageGate: 0.60,
+      coverageOf: "waiting items carrying an estimate",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      ebitda: "Backlog hours × blended rate approximates contracted-but-undelivered value. Not quantified (PR-06).",
+      deviations: [
+        "The open-backlog export is bounded by CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS (26): a ticket untouched for 6 months is treated as abandoned, not inventory.",
+        "The TREND is whole-population (the exporter's snapshot knows nothing of dashboard filters) — the sparkline hides under active filters and the card says so.",
+        "History accumulates from the first v3.9.0 export run — snapshots cannot be back-filled.",
+      ],
+    },
+
+    wip: {
+      id: "wip",
+      name: "Work In Progress",
+      definition: "Open assigned items currently in status category In Progress — the active work inside the system right now.",
+      formula: "count of open, assigned, non-epic issues in status category In Progress",
+      sources: ["Jira Raw — Week=Open rows: Status Category, Assignee",
+                "Flow Snapshots tab (trend)"],
+      grain: "Open non-epic issue, by person → team → region (current value); whole population (trend)",
+      target: null,
+      unit: "items",
+      coverageGate: 0,
+      coverageOf: "n/a — a count over rows that exist",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      ebitda: "No direct translation — WIP is a flow-control signal, not a cost line.",
+      deviations: [
+        "Together with Backlog this PARTITIONS the open assigned book by status category; items in a custom category that is neither To Do nor In Progress land in neither tile and are counted on the card.",
+        "Same trend caveats as Backlog: whole-population snapshots, history from the first v3.9.0 run.",
+      ],
+    },
+
+    flowEfficiency: {
+      id: "flowEfficiency",
+      name: "Flow Efficiency",
+      definition: "Share of an item's elapsed life spent actively being worked vs waiting.",
+      formula: "Σ active-status dwell ÷ Σ (resolution − created); NOT COMPUTABLE on the current export",
+      sources: ["Jira changelog (per-status dwell time) — NOT EXPORTED"],
+      grain: "Non-epic issue",
+      target: null,
+      unit: "%",
+      coverageGate: 0,
+      coverageOf: "n/a — no feed",
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      ebitda: "Not quantified.",
+      status: "absent",
+      absentReason: "Needs per-status dwell time from the Jira changelog plus an agreed active-statuses vocabulary — the most expensive item on the flow list. Revisit only after Cycle Time proves the changelog path (cost + truncation on long-lived issues).",
+      deviations: [],
+    },
+
+    bugCount: {
+      id: "bugCount",
+      name: "Bug Count",
+      definition: "Defects reported in the period — Bug issues created, with bugs resolved as the companion so the tile says whether the bug book is growing.",
+      formula: "count of Bug issues created in period (companion: resolved in period)",
+      sources: ["Jira Bugs tab (Jira Backlog.js v3.9.0) — Created, Resolution Date"],
+      grain: "Bug issue, POPULATION-WIDE (header filters do not apply — see deviations)",
+      target: null,
+      unit: "bugs",
+      lowerIsBetter: true,
+      coverageGate: 0,
+      coverageOf: "n/a — a count over rows that exist",
+      owner: "Delivery + CX",
+      paramOwner: "Services Director",
+      ebitda: "Bug fixing is uncompensated labour — hours on bugs × cost rate. Not quantified (PR-06).",
+      deviations: [
+        "POPULATION-WIDE, unlike every other tile: bugs are routinely unassigned at creation, so a roster join would silently drop most of the population — the exact silent-subset failure the comparison charts were fixed for. The card states it.",
+        "Noise-filtered at export: a bug closed Won't Do / Duplicate / Canceled was a report, not a defect (isNoiseIssue_ in Jira Backlog.js).",
+        "DISTINCT from Quality/Rework: rework counts delivered work that came back; this counts defects reported. A bug feeds neither leg of the rework rate.",
+      ],
+    },
   },
 
   /** Newest first. Each entry names what changed, why, and which metrics moved. */
@@ -372,6 +521,10 @@ var METRIC_REGISTRY_ = {
     // in W32 is the definition moving, not delivery moving.
     // Measurement change, not a definition change: no metric's computed value
     // moves, so `affects` is empty and no trend line gets a marker.
+    { version: "3.0", date: "2026-08-05", author: "Alex López",
+      affects: [],
+      change: "Added the 🌊 Flow metric family: Lead Time, Throughput, Backlog, WIP, Bug Count (live, target: null — informational until targets are agreed) and Cycle Time + Flow Efficiency (declared absent — changelog not exported). Non-epic grain throughout.",
+      rationale: "Spec 2026-08-05-flow-metrics-design.md, decisions D1–D6. New metrics on a new tab; nothing existing recomputes, so affects is empty and no existing trend line gets a definition-changed marker." },
     { version: "2.1", date: "2026-08-03", author: "Alex López",
       affects: [],
       change: "Data Hygiene splits the assignee gap in two: 'resolved work carries a Jira assignee' and 'that assignee resolves to a roster person'. No metric definition changed.",
@@ -2626,6 +2779,15 @@ function assembleModel_(inputs, win) {
     : { resolved: [], open: [], keyCap: TYPE_HYG_MAX_KEYS_ };
   var rework = inputs.jira.available
     ? reworkBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+  // 🌊 Flow metrics (spec 2026-08-05) — same person-attribution join (and the
+  // same leaver-scoped issue set) as the other issue metrics; Bug Count is
+  // population-wide (see registry deviation) and reads inputs.bugs directly.
+  var leadTime = inputs.jira.available
+    ? leadTimeBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+  var throughput = inputs.jira.available
+    ? throughputBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+  var flowOpen = inputs.jira.available
+    ? flowOpenBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0, uncategorized: 0 };
   // PM vocabulary comes from the Tempo project rows, which carry whoever led the
   // project at the time — including people who have since left. Gate it on the
   // roster so the filter and the PM comparison chart describe the people who can
@@ -2719,7 +2881,16 @@ function assembleModel_(inputs, win) {
       // the same way jiraUnattributed qualifies the issue tiles.
       nsCoverage: nsCoverage_(people, nsUnmatched),
       jiraUnattributed: { onTime: onTime.unattributed, forecast: forecast.unattributed,
-                          rework: rework.unattributed },
+                          rework: rework.unattributed,
+                          leadTime: leadTime.unattributed, throughput: throughput.unattributed,
+                          flowOpen: flowOpen.unattributed },
+      // 🌊 Flow feeds. Absent tab = export predates Jira Backlog.js v3.9.0 —
+      // the tiles say so instead of erroring (absent ≠ stale, same pattern as
+      // dataAsOf.jiraUnknown).
+      bugsAvailable: !!inputs.bugs.available,
+      flowSnapshotsAvailable: !!inputs.flowSnaps.available,
+      flowSnapshots: inputs.flowSnaps.snaps,
+      flowUncategorized: flowOpen.uncategorized,
       // Work by former employees, removed from every rate before bucketing.
       // Reported as a COUNT so the exclusion is stated rather than inferred —
       // a number that quietly got smaller is indistinguishable from a broken
@@ -2742,6 +2913,8 @@ function assembleModel_(inputs, win) {
       // say where its numbers came from and how fresh they are.
       sources: [
         { system: "Jira (via Exec Contribution Tracker export)", feeds: "On-Time, Forecast, backlog", tab: CONFIG_DH.JIRA_RAW_SHEET },
+        { system: "Jira (via Exec Contribution Tracker export)", feeds: "Bug Count, WIP/Backlog trend",
+          tab: CONFIG_DH.JIRA_BUGS_SHEET + " · " + CONFIG_DH.FLOW_SNAP_SHEET },
         { system: "Tempo", feeds: "tracked hours, planned hours, capacity",
           tab: [CONFIG_DH.TRACKED_SHEET, CONFIG_DH.PLANNED_SHEET, CONFIG_DH.CAPACITY_SHEET].join(" · ") },
         { system: "NetSuite", feeds: "billable / non-billable classification", tab: CONFIG_DH.NS_SHEET },
@@ -2751,6 +2924,10 @@ function assembleModel_(inputs, win) {
     },
     people: people, onTimeBuckets: onTime.buckets, forecastBuckets: forecast.buckets,
     reworkBuckets: rework.buckets,
+    leadTimeBuckets: leadTime.buckets,
+    throughputBuckets: throughput.buckets,
+    flowOpenBuckets: flowOpen.buckets,
+    bugWeekly: bugWeekly_(inputs.bugs.bugs),
     hygieneBuckets: hygiene,
     // Field fill per issue type, resolved + open. The gaps table says how much
     // is missing; this says which type to go and fix.
@@ -2851,7 +3028,11 @@ function assembleModel_(inputs, win) {
 //      (v19) no person can ever be "Global", so the chip was structurally
 //      pinned at 0. meta.regions drops it; "Global" remains an ISSUE token for
 //      hygiene fill counts. A cached v19 model still ships the dead chip.
-var DH_SCHEMA_VER_ = 20;
+// v21: 🌊 Flow metrics — leadTimeBuckets/throughputBuckets/flowOpenBuckets/
+//      bugWeekly + meta.flowSnapshots/bugsAvailable/flowSnapshotsAvailable.
+//      A cached older model has none of these; the Flow tab would render
+//      every tile as absent, so force one clean rebuild.
+var DH_SCHEMA_VER_ = 21;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -2863,6 +3044,8 @@ function buildDeliveryModel_() {
     planned: readTempoGrid_(CONFIG_DH.PLANNED_SHEET),
     ns: readNsBillable_(),
     jira: readJiraRaw_(),
+    bugs: readJiraBugs_(),
+    flowSnaps: readFlowSnapshots_(),
   }, win);
 }
 
@@ -3717,6 +3900,30 @@ function _test_registry_() {
   Logger.log("✅ _test_registry_ passed");
 }
 
+/** 🌊 Flow metric registry entries (spec 2026-08-05-flow-metrics-design.md):
+    five live metrics ship with NO target (D6 — neutral tile, no invented RAG
+    threshold), and two more (Cycle Time, Flow Efficiency) are declared
+    absent, CSAT-style, because the Jira changelog isn't exported. */
+function _test_flowRegistry_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_flowRegistry_: " + m); }
+  var m = METRIC_REGISTRY_.metrics;
+  ["leadTime", "throughput", "backlog", "wip", "bugCount"].forEach(function (id) {
+    assert_(m[id], id + " registered");
+    assert_(m[id].target === null, id + " ships with NO target (D6 — neutral tile, no RAG)");
+    assert_(m[id].owner, id + " has an owner");
+    assert_(typeof m[id].coverageGate === "number", id + " has a numeric coverage gate");
+  });
+  ["cycleTime", "flowEfficiency"].forEach(function (id) {
+    assert_(m[id] && m[id].status === "absent", id + " is declared absent");
+    assert_(m[id].absentReason && m[id].absentReason.length > 10, id + " states why");
+  });
+  // registry v3.0 change-log entry exists and marks no existing trend line
+  assert_(METRIC_REGISTRY_.changeLog[0].version === "3.0", "changeLog leads with 3.0");
+  assert_(METRIC_REGISTRY_.changeLog[0].affects.length === 0,
+          "new metrics move no EXISTING metric's values — no ✎ marker on old trends");
+  Logger.log("✅ _test_flowRegistry_ passed");
+}
+
 /** PM vocabulary must not carry people who have left (user report 2026-08-03). */
 function _test_activeNameFilter_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_activeNameFilter_: " + m); }
@@ -4167,6 +4374,13 @@ function _test_modelAssembly_() {
       // The export's own "Generated:" footer, parsed by readJiraRaw_. Fixed 7h
       // back so the freshness assertions below don't drift with wall-clock time.
       exportedAt: new Date(Date.now() - 7 * 3600 * 1000).toISOString() },
+    // 🌊 Flow feeds absent in this fixture (export predates Jira Backlog.js
+    // v3.9.0) — assembleModel_ must read inputs.bugs/inputs.flowSnaps
+    // unconditionally (readJiraBugs_/readFlowSnapshots_ always return this
+    // shape even when the tab is missing), so a fixture without these keys
+    // would crash rather than degrade.
+    bugs: { bugs: [], available: false },
+    flowSnaps: { snaps: [], available: false },
   };
   var m = assembleModel_(inputs, win);
   assert_(!m.error, "no fatal error");
@@ -4282,9 +4496,31 @@ function _test_modelAssembly_() {
           "no issue-level region in the fixture → nothing fully attributed");
   assert_(m.meta.registry.version === METRIC_REGISTRY_.version, "registry shipped in meta");
   assert_(m.meta.forecastBand === CONFIG_DH.FORECAST_BAND, "band shipped so the tile can name it");
-  assert_(m.meta.sources.length >= 4, "source systems listed for the data-provenance line");
+  assert_(m.meta.sources.length >= 5, "source systems listed for the data-provenance line (Jira Bugs/Flow Snapshots row added v21)");
   assert_(m.meta.jiraUnattributed.onTime === 1 && m.meta.jiraUnattributed.forecast === 0,
           "non-roster assignee tallied as unattributed");
+  // ── 🌊 Flow metrics wiring (v21) ── same two fixture issues (Maria attributed
+  // via alias, Random Dev not) drive leadTime/throughput; neither carries a
+  // `created` date or a non-zero estimate, and neither is open, so the buckets
+  // exist but score nothing measurable — exactly what a partially-filled export
+  // should show, not an error.
+  assert_(m.leadTimeBuckets.length === 1 && m.leadTimeBuckets[0].person === "Maria Alvarez" &&
+          m.leadTimeBuckets[0].nAll === 1 && m.leadTimeBuckets[0].n === 0,
+          "leadTime bucketed and person-attributed; no created date → measured n=0");
+  assert_(m.throughputBuckets.length === 1 && m.throughputBuckets[0].person === "Maria Alvarez" &&
+          m.throughputBuckets[0].nAll === 1 && m.throughputBuckets[0].estHrs === 0,
+          "throughput bucketed; zero estimate → estHrs=0, still counted in nAll");
+  assert_(m.flowOpenBuckets.length === 0,
+          "both fixture issues are resolved → nothing open, no WIP/backlog bucket");
+  assert_(m.meta.jiraUnattributed.leadTime === 1 && m.meta.jiraUnattributed.throughput === 1 &&
+          m.meta.jiraUnattributed.flowOpen === 0,
+          "Random Dev is unattributed for the flow metrics too, same roster join as onTime/forecast");
+  assert_(m.meta.flowUncategorized === 0, "no open issues in the fixture → nothing uncategorized either");
+  assert_(m.bugWeekly.length === 0, "no bugs in the fixture → empty weekly tally, not an error");
+  assert_(m.meta.bugsAvailable === false && m.meta.flowSnapshotsAvailable === false,
+          "absent flow tabs are reported as absent, never as an error or a silent zero");
+  assert_(Array.isArray(m.meta.flowSnapshots) && m.meta.flowSnapshots.length === 0,
+          "no Flow Snapshots tab → empty trend array shipped, client can render 'no history yet'");
   assert_(m.meta.teams.indexOf("Team A") !== -1 && m.meta.teams.indexOf("Squad X") === -1,
           "team dropdown = Tempo teams only (bucket teams no longer unioned)");
   assert_(m.meta.pms.join("|") === "Pat Manager", "PM dropdown vocabulary");
