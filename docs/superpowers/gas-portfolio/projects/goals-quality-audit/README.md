@@ -35,8 +35,8 @@ bonus payout with fewer goals.
 ## Results
 
 Achieved **100% compliance enforcement** on every bonus cycle with **zero manual
-intervention**. Highlighted at **Rocket Ops All Hands** for driving company-wide improvement
-in goals compliance. Operates at scale: roughly **~230 employees × 10 goals × up to 26
+intervention**. Recognized at a company all-hands for driving org-wide improvement in goals
+compliance. Operates at scale: roughly **~230 employees × 10 goals × up to 26
 comments/quarter ≈ 60K data points per cycle.**
 
 | Metric | Value |
@@ -55,24 +55,28 @@ enforcement, zero manual intervention.
 
 ## How to run
 
-> **Source status: PENDING.** The full production source for this pipeline is **not yet
-> included** in this repo. [`src/audit_goal_compliance.py`](./src/audit_goal_compliance.py)
-> contains an **illustrative, well-commented excerpt** (the core compliance-rule function)
-> drawn from the documented approach — it is a representative stub, not the complete
-> production file. The full SuiteQL extraction queries and the JSON-to-CSV / HR-notification
-> layers will be added before publishing.
-
-### When the full source is present
+> This repo ships a **runnable, sanitized** version of the compliance rule engine with a
+> synthetic data generator and a pytest suite. All data is fabricated — no real employees,
+> ids, or company data. In production the goals JSON is produced by warehouse extraction
+> queries; here a generator stands in so the audit runs offline.
 
 ```bash
-pip install -r requirements.txt        # pandas, etc.
-# 1. SuiteQL extracts goal data from NetSuite → goals.json
-# 2. Run the audit:
-python audit_goal_compliance.py --input goals.json --min-goals 10
+pip install -r requirements.txt        # pandas, pytest
+
+# 1. Generate synthetic goal records (with deliberate non-compliant cases)
+python src/generate_sample_goals.py --out data/goals.json --n 230
+
+# 2. Run the audit (two rules: min active goals + min commented goals)
+python src/run_audit.py --input data/goals.json --min-goals 10 --min-commented 6
+
+# 3. Tests
+python -m pytest tests/ -q          # 5 passed
 ```
 
-The audit emits a compliance DataFrame plus a non-compliant subset that drives the automated
-HR notification and a Google Sheets export.
+The audit emits a full compliance DataFrame plus a non-compliant subset (written to
+`exceptions.csv`) — the rows that drive the automated HR notification in production.
+
+Example run (230 synthetic employees): **174 compliant / 56 exceptions → 75.6% compliance.**
 
 ## License
 

@@ -23,12 +23,12 @@ methodology** for currency conversion, benefit valuation, or band positioning.
 
 ## Tech
 
-- Gemini Pro API
-- Python
-- PDF Automation
-- Google Sheets
-- Multi-currency Logic
-- COL Modeling
+- Python (pandas)
+- Vertex AI (Gemini) — market benchmarking, with an offline fallback
+- Multi-currency normalization
+- Cost-of-living modeling + micro-banding
+- pytest
+- PDF / Google Sheets output (production)
 
 ## Results
 
@@ -52,24 +52,34 @@ Board-level quality, 10+ regions, consistent method.
 
 ## How to run
 
-> **Source status: PENDING.** The full production source for this tool is **not yet
-> included** in this repo. [`src/normalize_to_usd.py`](./src/normalize_to_usd.py) contains
-> an **illustrative, well-commented excerpt** (the multi-currency / COL normalization
-> function) drawn from the documented approach — it is a representative stub, not the
-> complete production file. The full Gemini-Pro prompting logic, micro-banding engine, and
-> PDF / Google Sheets output generators will be added before publishing.
-
-### When the full source is present
+> This repo ships a **runnable, sanitized** version — synthetic multi-currency roster,
+> full normalization + micro-banding, and market benchmarking. The benchmarking layer calls
+> **Vertex AI (Gemini)** in production; without GCP credentials it transparently falls back
+> to a deterministic market table, so the whole report runs offline. No real pay data.
 
 ```bash
-pip install -r requirements.txt
-# Set the Gemini Pro API key as an environment variable (never hard-code it):
-export GEMINI_API_KEY="..."
-python generate_report.py --region all --fx-rates fx.json --col-index col.json
+pip install -r requirements.txt        # pandas, pytest
+
+# 1. Generate a synthetic multi-currency roster (6 regions)
+python src/generate_sample_comp.py --out data/roster.json --n 300
+
+# 2. Run the report: normalize → COL-adjust → micro-band → benchmark (compa-ratio)
+python src/run_report.py --roster data/roster.json
+
+# 3. Tests
+python -m pytest tests/ -q          # 6 passed
 ```
 
-The tool normalizes each region's salaries to USD with COL adjustment, applies micro-banding,
-and writes board-ready PDF and Google Sheets outputs.
+To use live Vertex AI benchmarking instead of the fallback table:
+
+```bash
+export GCP_PROJECT="your-project"        # + GCP_LOCATION (default us-central1)
+pip install google-cloud-aiplatform      # see requirements.txt
+```
+
+The tool normalizes each region's salaries to USD with COL adjustment, applies micro-banding
+within each role, and computes a market compa-ratio. In production it also writes board-ready
+PDF and Google Sheets outputs (omitted from this sanitized demo).
 
 ## License
 

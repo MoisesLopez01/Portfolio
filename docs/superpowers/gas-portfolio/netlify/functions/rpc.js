@@ -179,26 +179,54 @@ async function calculatePipelineRisk(args) {
     deals.map(async function (deal) {
       var age = Math.max(0, Math.min(3650, parseInt(deal.ageDays, 10) || 0));
       var amount = Math.max(1, Math.min(10000, parseInt(deal.amountK, 10) || 1));
-      var prompt =
-        "Sales risk engine. Deal in pipeline: " + age + " days, $" + amount + "K. " +
-        "Base close probability decays ~15% every 30 days. >$100K decays 30% slower. >$250K decays 50% slower. " +
-        'Reply ONLY with JSON: {"score": 68, "level": "High", "nextAction": "Schedule executive sponsor call."}';
+      var closeP = Math.max(0, Math.min(100, parseInt(deal.closePct, 10) || 0));
+      var gapK = Math.max(0, Math.min(1000000, parseInt(deal.gapK, 10) || 0));
+      var name = String(deal.name || "Deal").replace(/[^\w \-&.]/g, "").slice(0, 60);
+      var prompt = buildPipelinePrompt(name, age, amount, closeP, gapK);
       try {
         var data = await groqChat({
           model: RISK_MODEL,
           messages: [{ role: "user", content: prompt }],
-          max_tokens: 120,
-          temperature: 0.1,
+          max_tokens: 240,
+          temperature: 0.25,
         });
         return parseRiskJson(data.choices[0].message.content, {
-          score: 50, level: "Unknown", nextAction: "Could not parse — try again.",
+          score: 50, level: "Unknown", lossRisk: "", who: "Deal Desk",
+          nextAction: "Could not parse — try again.", timeline: "", proposal: "",
         });
       } catch (e) {
-        return { score: 50, level: "Unknown", nextAction: "API error — retry." };
+        return {
+          score: 50, level: "Unknown", lossRisk: "", who: "Deal Desk",
+          nextAction: "API error — retry.", timeline: "", proposal: "",
+        };
       }
     })
   );
   return results;
+}
+
+// Revenue-recovery prompt shared shape with GAS Code.js buildPipelinePrompt_.
+// Returns { score, level, lossRisk, who, nextAction, timeline, proposal }.
+function buildPipelinePrompt(name, age, amount, closeP, gapK) {
+  return (
+    "You are a revenue-recovery strategist for a B2B sales team. Write for the rep who owns this deal — " +
+    "concrete, specific, and useful today. No filler, no generic 'schedule a call' advice.\n" +
+    'Deal: "' + name + '" — $' + amount + "K, " + age + " days in pipeline, current close probability " +
+    closeP + "%. The team is $" + gapK + "K short of quota this quarter.\n" +
+    "Close probability decays ~15% every 30 days; deals over $100K decay 30% slower, over $250K 50% slower. " +
+    "An aging, high-value deal below 50% is where the quarter is won or lost. Infer the likely deal type from its name " +
+    "(renewal, new logo, expansion, mid-market, SMB) and tailor every field to it.\n" +
+    "Return a rescue plan with these fields:\n" +
+    "1. score — close probability 0-100 (integer).\n" +
+    "2. level — one of Low, Medium, High, Critical (risk of LOSING the deal).\n" +
+    "3. lossRisk — one sentence: WHY it is slipping and roughly WHEN it slips if nobody acts (a week window). Deal-specific.\n" +
+    "4. who — the specific role AND stakeholder to reach now (e.g. 'Economic buyer (VP Ops) — bring in your Exec Sponsor and loop VP Sales'). Never a person's name.\n" +
+    "5. nextAction — the single highest-leverage play this week (name the meeting, the lever, the blocker to clear). Time-bound.\n" +
+    "6. timeline — how fast this must move, with a concrete gate (e.g. '5 business days — decision gate by Thursday').\n" +
+    "7. proposal — a specific commercial offer to accelerate signature (term, discount, bundle, pilot, or milestone). Deal-appropriate.\n" +
+    "Reply ONLY with JSON, no markdown: " +
+    '{"score":62,"level":"High","lossRisk":"Momentum stalled after the security review; likely to push to next quarter within ~2 weeks without a forcing event.","who":"Economic buyer (VP Operations) — bring in your Exec Sponsor and loop VP Sales for air cover.","nextAction":"Run a mutual close plan and clear the open security-review item; secure a verbal commit.","timeline":"5 business days — lock a decision gate by Thursday.","proposal":"Offer a 2-year term at an 8% discount to pull signature into this quarter."}'
+  );
 }
 
 // ── PROJECTS (custom only; built-ins are baked into the static page) ──────────

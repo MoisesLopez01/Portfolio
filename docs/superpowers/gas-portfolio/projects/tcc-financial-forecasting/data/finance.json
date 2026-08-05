@@ -1,0 +1,1946 @@
+{
+  "employees": [
+    {
+      "employee_id": "E-0000",
+      "department": "Data",
+      "annual_tcc": 77812.97
+    },
+    {
+      "employee_id": "E-0001",
+      "department": "Data",
+      "annual_tcc": 104004.69
+    },
+    {
+      "employee_id": "E-0002",
+      "department": "Engineering",
+      "annual_tcc": 82326.07
+    },
+    {
+      "employee_id": "E-0003",
+      "department": "Delivery",
+      "annual_tcc": 168271.92
+    },
+    {
+      "employee_id": "E-0004",
+      "department": "Product",
+      "annual_tcc": 73910.21
+    },
+    {
+      "employee_id": "E-0005",
+      "department": "Design",
+      "annual_tcc": 65085.23
+    },
+    {
+      "employee_id": "E-0006",
+      "department": "Delivery",
+      "annual_tcc": 94982.08
+    },
+    {
+      "employee_id": "E-0007",
+      "department": "Product",
+      "annual_tcc": 156323.0
+    },
+    {
+      "employee_id": "E-0008",
+      "department": "Product",
+      "annual_tcc": 91814.02
+    },
+    {
+      "employee_id": "E-0009",
+      "department": "Data",
+      "annual_tcc": 172212.0
+    },
+    {
+      "employee_id": "E-0010",
+      "department": "Design",
+      "annual_tcc": 95270.5
+    },
+    {
+      "employee_id": "E-0011",
+      "department": "Product",
+      "annual_tcc": 104510.51
+    },
+    {
+      "employee_id": "E-0012",
+      "department": "Delivery",
+      "annual_tcc": 181409.18
+    },
+    {
+      "employee_id": "E-0013",
+      "department": "Engineering",
+      "annual_tcc": 171702.3
+    },
+    {
+      "employee_id": "E-0014",
+      "department": "Support",
+      "annual_tcc": 104459.41
+    },
+    {
+      "employee_id": "E-0015",
+      "department": "Engineering",
+      "annual_tcc": 213154.09
+    },
+    {
+      "employee_id": "E-0016",
+      "department": "Support",
+      "annual_tcc": 76353.64
+    },
+    {
+      "employee_id": "E-0017",
+      "department": "Design",
+      "annual_tcc": 75474.62
+    },
+    {
+      "employee_id": "E-0018",
+      "department": "Support",
+      "annual_tcc": 156596.17
+    },
+    {
+      "employee_id": "E-0019",
+      "department": "Delivery",
+      "annual_tcc": 176757.09
+    },
+    {
+      "employee_id": "E-0020",
+      "department": "Product",
+      "annual_tcc": 79972.19
+    },
+    {
+      "employee_id": "E-0021",
+      "department": "Design",
+      "annual_tcc": 72608.03
+    },
+    {
+      "employee_id": "E-0022",
+      "department": "Support",
+      "annual_tcc": 192704.75
+    },
+    {
+      "employee_id": "E-0023",
+      "department": "Product",
+      "annual_tcc": 201672.28
+    },
+    {
+      "employee_id": "E-0024",
+      "department": "Support",
+      "annual_tcc": 152376.34
+    },
+    {
+      "employee_id": "E-0025",
+      "department": "Data",
+      "annual_tcc": 71128.82
+    },
+    {
+      "employee_id": "E-0026",
+      "department": "Data",
+      "annual_tcc": 96463.72
+    },
+    {
+      "employee_id": "E-0027",
+      "department": "Support",
+      "annual_tcc": 217635.44
+    },
+    {
+      "employee_id": "E-0028",
+      "department": "Engineering",
+      "annual_tcc": 198637.39
+    },
+    {
+      "employee_id": "E-0029",
+      "department": "Design",
+      "annual_tcc": 104475.78
+    },
+    {
+      "employee_id": "E-0030",
+      "department": "Data",
+      "annual_tcc": 193457.67
+    },
+    {
+      "employee_id": "E-0031",
+      "department": "Engineering",
+      "annual_tcc": 119228.95
+    },
+    {
+      "employee_id": "E-0032",
+      "department": "Engineering",
+      "annual_tcc": 167228.03
+    },
+    {
+      "employee_id": "E-0033",
+      "department": "Data",
+      "annual_tcc": 209864.73
+    },
+    {
+      "employee_id": "E-0034",
+      "department": "Data",
+      "annual_tcc": 71424.4
+    },
+    {
+      "employee_id": "E-0035",
+      "department": "Data",
+      "annual_tcc": 87382.18
+    },
+    {
+      "employee_id": "E-0036",
+      "department": "Data",
+      "annual_tcc": 99169.75
+    },
+    {
+      "employee_id": "E-0037",
+      "department": "Design",
+      "annual_tcc": 120712.87
+    },
+    {
+      "employee_id": "E-0038",
+      "department": "Data",
+      "annual_tcc": 170105.91
+    },
+    {
+      "employee_id": "E-0039",
+      "department": "Engineering",
+      "annual_tcc": 169538.28
+    },
+    {
+      "employee_id": "E-0040",
+      "department": "Delivery",
+      "annual_tcc": 96647.69
+    },
+    {
+      "employee_id": "E-0041",
+      "department": "Delivery",
+      "annual_tcc": 188807.33
+    },
+    {
+      "employee_id": "E-0042",
+      "department": "Design",
+      "annual_tcc": 102838.54
+    },
+    {
+      "employee_id": "E-0043",
+      "department": "Engineering",
+      "annual_tcc": 206101.78
+    },
+    {
+      "employee_id": "E-0044",
+      "department": "Product",
+      "annual_tcc": 200218.82
+    },
+    {
+      "employee_id": "E-0045",
+      "department": "Support",
+      "annual_tcc": 94020.25
+    },
+    {
+      "employee_id": "E-0046",
+      "department": "Design",
+      "annual_tcc": 123301.1
+    },
+    {
+      "employee_id": "E-0047",
+      "department": "Data",
+      "annual_tcc": 133416.3
+    },
+    {
+      "employee_id": "E-0048",
+      "department": "Support",
+      "annual_tcc": 82340.85
+    },
+    {
+      "employee_id": "E-0049",
+      "department": "Data",
+      "annual_tcc": 149818.9
+    },
+    {
+      "employee_id": "E-0050",
+      "department": "Support",
+      "annual_tcc": 179522.21
+    },
+    {
+      "employee_id": "E-0051",
+      "department": "Design",
+      "annual_tcc": 203651.66
+    },
+    {
+      "employee_id": "E-0052",
+      "department": "Design",
+      "annual_tcc": 117919.43
+    },
+    {
+      "employee_id": "E-0053",
+      "department": "Engineering",
+      "annual_tcc": 141524.21
+    },
+    {
+      "employee_id": "E-0054",
+      "department": "Delivery",
+      "annual_tcc": 180925.15
+    },
+    {
+      "employee_id": "E-0055",
+      "department": "Delivery",
+      "annual_tcc": 84454.61
+    },
+    {
+      "employee_id": "E-0056",
+      "department": "Engineering",
+      "annual_tcc": 186732.7
+    },
+    {
+      "employee_id": "E-0057",
+      "department": "Design",
+      "annual_tcc": 155425.44
+    },
+    {
+      "employee_id": "E-0058",
+      "department": "Design",
+      "annual_tcc": 121059.09
+    },
+    {
+      "employee_id": "E-0059",
+      "department": "Design",
+      "annual_tcc": 144658.3
+    },
+    {
+      "employee_id": "E-0060",
+      "department": "Product",
+      "annual_tcc": 197724.75
+    },
+    {
+      "employee_id": "E-0061",
+      "department": "Delivery",
+      "annual_tcc": 168845.35
+    },
+    {
+      "employee_id": "E-0062",
+      "department": "Delivery",
+      "annual_tcc": 169073.66
+    },
+    {
+      "employee_id": "E-0063",
+      "department": "Product",
+      "annual_tcc": 180140.45
+    },
+    {
+      "employee_id": "E-0064",
+      "department": "Data",
+      "annual_tcc": 114428.08
+    },
+    {
+      "employee_id": "E-0065",
+      "department": "Support",
+      "annual_tcc": 129562.44
+    },
+    {
+      "employee_id": "E-0066",
+      "department": "Design",
+      "annual_tcc": 60519.25
+    },
+    {
+      "employee_id": "E-0067",
+      "department": "Data",
+      "annual_tcc": 200136.47
+    },
+    {
+      "employee_id": "E-0068",
+      "department": "Support",
+      "annual_tcc": 215502.1
+    },
+    {
+      "employee_id": "E-0069",
+      "department": "Engineering",
+      "annual_tcc": 141229.07
+    },
+    {
+      "employee_id": "E-0070",
+      "department": "Delivery",
+      "annual_tcc": 199282.97
+    },
+    {
+      "employee_id": "E-0071",
+      "department": "Support",
+      "annual_tcc": 194667.1
+    },
+    {
+      "employee_id": "E-0072",
+      "department": "Product",
+      "annual_tcc": 157435.23
+    },
+    {
+      "employee_id": "E-0073",
+      "department": "Engineering",
+      "annual_tcc": 119826.22
+    },
+    {
+      "employee_id": "E-0074",
+      "department": "Engineering",
+      "annual_tcc": 146300.64
+    },
+    {
+      "employee_id": "E-0075",
+      "department": "Product",
+      "annual_tcc": 206958.96
+    },
+    {
+      "employee_id": "E-0076",
+      "department": "Product",
+      "annual_tcc": 111864.97
+    },
+    {
+      "employee_id": "E-0077",
+      "department": "Delivery",
+      "annual_tcc": 77898.84
+    },
+    {
+      "employee_id": "E-0078",
+      "department": "Support",
+      "annual_tcc": 200595.5
+    },
+    {
+      "employee_id": "E-0079",
+      "department": "Support",
+      "annual_tcc": 98312.37
+    },
+    {
+      "employee_id": "E-0080",
+      "department": "Engineering",
+      "annual_tcc": 200481.54
+    },
+    {
+      "employee_id": "E-0081",
+      "department": "Delivery",
+      "annual_tcc": 73704.55
+    },
+    {
+      "employee_id": "E-0082",
+      "department": "Design",
+      "annual_tcc": 190563.72
+    },
+    {
+      "employee_id": "E-0083",
+      "department": "Product",
+      "annual_tcc": 182533.51
+    },
+    {
+      "employee_id": "E-0084",
+      "department": "Engineering",
+      "annual_tcc": 165560.13
+    },
+    {
+      "employee_id": "E-0085",
+      "department": "Product",
+      "annual_tcc": 86420.31
+    },
+    {
+      "employee_id": "E-0086",
+      "department": "Product",
+      "annual_tcc": 199589.29
+    },
+    {
+      "employee_id": "E-0087",
+      "department": "Design",
+      "annual_tcc": 214298.06
+    },
+    {
+      "employee_id": "E-0088",
+      "department": "Product",
+      "annual_tcc": 180842.43
+    },
+    {
+      "employee_id": "E-0089",
+      "department": "Data",
+      "annual_tcc": 92184.17
+    },
+    {
+      "employee_id": "E-0090",
+      "department": "Support",
+      "annual_tcc": 123838.77
+    },
+    {
+      "employee_id": "E-0091",
+      "department": "Data",
+      "annual_tcc": 163980.49
+    },
+    {
+      "employee_id": "E-0092",
+      "department": "Design",
+      "annual_tcc": 203938.25
+    },
+    {
+      "employee_id": "E-0093",
+      "department": "Design",
+      "annual_tcc": 79360.67
+    },
+    {
+      "employee_id": "E-0094",
+      "department": "Engineering",
+      "annual_tcc": 70244.14
+    },
+    {
+      "employee_id": "E-0095",
+      "department": "Delivery",
+      "annual_tcc": 154129.39
+    },
+    {
+      "employee_id": "E-0096",
+      "department": "Engineering",
+      "annual_tcc": 154150.42
+    },
+    {
+      "employee_id": "E-0097",
+      "department": "Delivery",
+      "annual_tcc": 71358.89
+    },
+    {
+      "employee_id": "E-0098",
+      "department": "Data",
+      "annual_tcc": 69419.8
+    },
+    {
+      "employee_id": "E-0099",
+      "department": "Delivery",
+      "annual_tcc": 204867.2
+    },
+    {
+      "employee_id": "E-0100",
+      "department": "Support",
+      "annual_tcc": 71337.18
+    },
+    {
+      "employee_id": "E-0101",
+      "department": "Engineering",
+      "annual_tcc": 104556.36
+    },
+    {
+      "employee_id": "E-0102",
+      "department": "Design",
+      "annual_tcc": 94277.89
+    },
+    {
+      "employee_id": "E-0103",
+      "department": "Engineering",
+      "annual_tcc": 175736.41
+    },
+    {
+      "employee_id": "E-0104",
+      "department": "Product",
+      "annual_tcc": 152193.86
+    },
+    {
+      "employee_id": "E-0105",
+      "department": "Engineering",
+      "annual_tcc": 185539.11
+    },
+    {
+      "employee_id": "E-0106",
+      "department": "Design",
+      "annual_tcc": 90465.59
+    },
+    {
+      "employee_id": "E-0107",
+      "department": "Delivery",
+      "annual_tcc": 165437.24
+    },
+    {
+      "employee_id": "E-0108",
+      "department": "Support",
+      "annual_tcc": 127772.58
+    },
+    {
+      "employee_id": "E-0109",
+      "department": "Design",
+      "annual_tcc": 198213.88
+    },
+    {
+      "employee_id": "E-0110",
+      "department": "Delivery",
+      "annual_tcc": 167738.33
+    },
+    {
+      "employee_id": "E-0111",
+      "department": "Data",
+      "annual_tcc": 75746.86
+    },
+    {
+      "employee_id": "E-0112",
+      "department": "Design",
+      "annual_tcc": 176514.17
+    },
+    {
+      "employee_id": "E-0113",
+      "department": "Delivery",
+      "annual_tcc": 99785.01
+    },
+    {
+      "employee_id": "E-0114",
+      "department": "Engineering",
+      "annual_tcc": 145805.72
+    },
+    {
+      "employee_id": "E-0115",
+      "department": "Engineering",
+      "annual_tcc": 127501.06
+    },
+    {
+      "employee_id": "E-0116",
+      "department": "Support",
+      "annual_tcc": 134020.49
+    },
+    {
+      "employee_id": "E-0117",
+      "department": "Delivery",
+      "annual_tcc": 130900.92
+    },
+    {
+      "employee_id": "E-0118",
+      "department": "Product",
+      "annual_tcc": 75665.4
+    },
+    {
+      "employee_id": "E-0119",
+      "department": "Data",
+      "annual_tcc": 219885.19
+    },
+    {
+      "employee_id": "E-0120",
+      "department": "Delivery",
+      "annual_tcc": 215039.4
+    },
+    {
+      "employee_id": "E-0121",
+      "department": "Engineering",
+      "annual_tcc": 86609.78
+    },
+    {
+      "employee_id": "E-0122",
+      "department": "Design",
+      "annual_tcc": 137017.35
+    },
+    {
+      "employee_id": "E-0123",
+      "department": "Design",
+      "annual_tcc": 204390.86
+    },
+    {
+      "employee_id": "E-0124",
+      "department": "Engineering",
+      "annual_tcc": 120635.7
+    },
+    {
+      "employee_id": "E-0125",
+      "department": "Design",
+      "annual_tcc": 102432.49
+    },
+    {
+      "employee_id": "E-0126",
+      "department": "Design",
+      "annual_tcc": 105639.88
+    },
+    {
+      "employee_id": "E-0127",
+      "department": "Data",
+      "annual_tcc": 213170.82
+    },
+    {
+      "employee_id": "E-0128",
+      "department": "Product",
+      "annual_tcc": 165899.41
+    },
+    {
+      "employee_id": "E-0129",
+      "department": "Design",
+      "annual_tcc": 84767.49
+    },
+    {
+      "employee_id": "E-0130",
+      "department": "Support",
+      "annual_tcc": 94832.14
+    },
+    {
+      "employee_id": "E-0131",
+      "department": "Delivery",
+      "annual_tcc": 152668.85
+    },
+    {
+      "employee_id": "E-0132",
+      "department": "Product",
+      "annual_tcc": 69753.21
+    },
+    {
+      "employee_id": "E-0133",
+      "department": "Support",
+      "annual_tcc": 69146.44
+    },
+    {
+      "employee_id": "E-0134",
+      "department": "Product",
+      "annual_tcc": 136286.16
+    },
+    {
+      "employee_id": "E-0135",
+      "department": "Product",
+      "annual_tcc": 85189.24
+    },
+    {
+      "employee_id": "E-0136",
+      "department": "Product",
+      "annual_tcc": 72817.83
+    },
+    {
+      "employee_id": "E-0137",
+      "department": "Engineering",
+      "annual_tcc": 70963.41
+    },
+    {
+      "employee_id": "E-0138",
+      "department": "Delivery",
+      "annual_tcc": 168034.01
+    },
+    {
+      "employee_id": "E-0139",
+      "department": "Engineering",
+      "annual_tcc": 124604.09
+    },
+    {
+      "employee_id": "E-0140",
+      "department": "Product",
+      "annual_tcc": 99394.46
+    },
+    {
+      "employee_id": "E-0141",
+      "department": "Product",
+      "annual_tcc": 66358.67
+    },
+    {
+      "employee_id": "E-0142",
+      "department": "Delivery",
+      "annual_tcc": 127075.99
+    },
+    {
+      "employee_id": "E-0143",
+      "department": "Product",
+      "annual_tcc": 150436.31
+    },
+    {
+      "employee_id": "E-0144",
+      "department": "Support",
+      "annual_tcc": 209553.0
+    },
+    {
+      "employee_id": "E-0145",
+      "department": "Engineering",
+      "annual_tcc": 167156.16
+    },
+    {
+      "employee_id": "E-0146",
+      "department": "Support",
+      "annual_tcc": 98189.75
+    },
+    {
+      "employee_id": "E-0147",
+      "department": "Design",
+      "annual_tcc": 80940.53
+    },
+    {
+      "employee_id": "E-0148",
+      "department": "Data",
+      "annual_tcc": 107999.53
+    },
+    {
+      "employee_id": "E-0149",
+      "department": "Support",
+      "annual_tcc": 208642.93
+    },
+    {
+      "employee_id": "E-0150",
+      "department": "Delivery",
+      "annual_tcc": 61490.47
+    },
+    {
+      "employee_id": "E-0151",
+      "department": "Product",
+      "annual_tcc": 219752.71
+    },
+    {
+      "employee_id": "E-0152",
+      "department": "Delivery",
+      "annual_tcc": 71721.72
+    },
+    {
+      "employee_id": "E-0153",
+      "department": "Engineering",
+      "annual_tcc": 140941.55
+    },
+    {
+      "employee_id": "E-0154",
+      "department": "Engineering",
+      "annual_tcc": 209321.5
+    },
+    {
+      "employee_id": "E-0155",
+      "department": "Delivery",
+      "annual_tcc": 200683.24
+    },
+    {
+      "employee_id": "E-0156",
+      "department": "Support",
+      "annual_tcc": 105597.98
+    },
+    {
+      "employee_id": "E-0157",
+      "department": "Design",
+      "annual_tcc": 193399.19
+    },
+    {
+      "employee_id": "E-0158",
+      "department": "Data",
+      "annual_tcc": 108402.74
+    },
+    {
+      "employee_id": "E-0159",
+      "department": "Data",
+      "annual_tcc": 144630.51
+    },
+    {
+      "employee_id": "E-0160",
+      "department": "Data",
+      "annual_tcc": 190736.66
+    },
+    {
+      "employee_id": "E-0161",
+      "department": "Support",
+      "annual_tcc": 209080.97
+    },
+    {
+      "employee_id": "E-0162",
+      "department": "Delivery",
+      "annual_tcc": 210228.8
+    },
+    {
+      "employee_id": "E-0163",
+      "department": "Engineering",
+      "annual_tcc": 102314.55
+    },
+    {
+      "employee_id": "E-0164",
+      "department": "Delivery",
+      "annual_tcc": 178786.67
+    },
+    {
+      "employee_id": "E-0165",
+      "department": "Engineering",
+      "annual_tcc": 103575.71
+    },
+    {
+      "employee_id": "E-0166",
+      "department": "Product",
+      "annual_tcc": 93700.74
+    },
+    {
+      "employee_id": "E-0167",
+      "department": "Support",
+      "annual_tcc": 92575.57
+    },
+    {
+      "employee_id": "E-0168",
+      "department": "Data",
+      "annual_tcc": 196466.05
+    },
+    {
+      "employee_id": "E-0169",
+      "department": "Product",
+      "annual_tcc": 138165.1
+    },
+    {
+      "employee_id": "E-0170",
+      "department": "Delivery",
+      "annual_tcc": 74767.75
+    },
+    {
+      "employee_id": "E-0171",
+      "department": "Design",
+      "annual_tcc": 192695.69
+    },
+    {
+      "employee_id": "E-0172",
+      "department": "Delivery",
+      "annual_tcc": 60567.31
+    },
+    {
+      "employee_id": "E-0173",
+      "department": "Engineering",
+      "annual_tcc": 161938.14
+    },
+    {
+      "employee_id": "E-0174",
+      "department": "Support",
+      "annual_tcc": 85853.12
+    },
+    {
+      "employee_id": "E-0175",
+      "department": "Design",
+      "annual_tcc": 148268.87
+    },
+    {
+      "employee_id": "E-0176",
+      "department": "Design",
+      "annual_tcc": 149745.1
+    },
+    {
+      "employee_id": "E-0177",
+      "department": "Delivery",
+      "annual_tcc": 72039.02
+    },
+    {
+      "employee_id": "E-0178",
+      "department": "Data",
+      "annual_tcc": 204628.57
+    },
+    {
+      "employee_id": "E-0179",
+      "department": "Product",
+      "annual_tcc": 65764.5
+    },
+    {
+      "employee_id": "E-0180",
+      "department": "Support",
+      "annual_tcc": 153201.53
+    },
+    {
+      "employee_id": "E-0181",
+      "department": "Engineering",
+      "annual_tcc": 128765.87
+    },
+    {
+      "employee_id": "E-0182",
+      "department": "Delivery",
+      "annual_tcc": 109321.34
+    },
+    {
+      "employee_id": "E-0183",
+      "department": "Delivery",
+      "annual_tcc": 203827.94
+    },
+    {
+      "employee_id": "E-0184",
+      "department": "Engineering",
+      "annual_tcc": 169130.67
+    },
+    {
+      "employee_id": "E-0185",
+      "department": "Data",
+      "annual_tcc": 76446.98
+    },
+    {
+      "employee_id": "E-0186",
+      "department": "Product",
+      "annual_tcc": 201461.55
+    },
+    {
+      "employee_id": "E-0187",
+      "department": "Design",
+      "annual_tcc": 215813.92
+    },
+    {
+      "employee_id": "E-0188",
+      "department": "Data",
+      "annual_tcc": 84728.53
+    },
+    {
+      "employee_id": "E-0189",
+      "department": "Engineering",
+      "annual_tcc": 198336.91
+    },
+    {
+      "employee_id": "E-0190",
+      "department": "Engineering",
+      "annual_tcc": 201026.59
+    },
+    {
+      "employee_id": "E-0191",
+      "department": "Delivery",
+      "annual_tcc": 88697.71
+    },
+    {
+      "employee_id": "E-0192",
+      "department": "Support",
+      "annual_tcc": 185181.84
+    },
+    {
+      "employee_id": "E-0193",
+      "department": "Design",
+      "annual_tcc": 188357.62
+    },
+    {
+      "employee_id": "E-0194",
+      "department": "Data",
+      "annual_tcc": 189719.89
+    },
+    {
+      "employee_id": "E-0195",
+      "department": "Support",
+      "annual_tcc": 85471.65
+    },
+    {
+      "employee_id": "E-0196",
+      "department": "Data",
+      "annual_tcc": 77295.3
+    },
+    {
+      "employee_id": "E-0197",
+      "department": "Delivery",
+      "annual_tcc": 197374.92
+    },
+    {
+      "employee_id": "E-0198",
+      "department": "Engineering",
+      "annual_tcc": 91931.65
+    },
+    {
+      "employee_id": "E-0199",
+      "department": "Design",
+      "annual_tcc": 115945.35
+    },
+    {
+      "employee_id": "E-0200",
+      "department": "Engineering",
+      "annual_tcc": 95667.77
+    },
+    {
+      "employee_id": "E-0201",
+      "department": "Data",
+      "annual_tcc": 90900.77
+    },
+    {
+      "employee_id": "E-0202",
+      "department": "Support",
+      "annual_tcc": 104576.49
+    },
+    {
+      "employee_id": "E-0203",
+      "department": "Delivery",
+      "annual_tcc": 214702.26
+    },
+    {
+      "employee_id": "E-0204",
+      "department": "Support",
+      "annual_tcc": 116183.38
+    },
+    {
+      "employee_id": "E-0205",
+      "department": "Product",
+      "annual_tcc": 123948.54
+    },
+    {
+      "employee_id": "E-0206",
+      "department": "Product",
+      "annual_tcc": 112983.98
+    },
+    {
+      "employee_id": "E-0207",
+      "department": "Delivery",
+      "annual_tcc": 78454.68
+    },
+    {
+      "employee_id": "E-0208",
+      "department": "Support",
+      "annual_tcc": 88570.85
+    },
+    {
+      "employee_id": "E-0209",
+      "department": "Support",
+      "annual_tcc": 66121.15
+    },
+    {
+      "employee_id": "E-0210",
+      "department": "Product",
+      "annual_tcc": 129530.2
+    },
+    {
+      "employee_id": "E-0211",
+      "department": "Data",
+      "annual_tcc": 185828.51
+    },
+    {
+      "employee_id": "E-0212",
+      "department": "Design",
+      "annual_tcc": 156993.42
+    },
+    {
+      "employee_id": "E-0213",
+      "department": "Product",
+      "annual_tcc": 78503.33
+    },
+    {
+      "employee_id": "E-0214",
+      "department": "Product",
+      "annual_tcc": 90412.6
+    },
+    {
+      "employee_id": "E-0215",
+      "department": "Delivery",
+      "annual_tcc": 173405.65
+    },
+    {
+      "employee_id": "E-0216",
+      "department": "Delivery",
+      "annual_tcc": 143187.26
+    },
+    {
+      "employee_id": "E-0217",
+      "department": "Product",
+      "annual_tcc": 169897.14
+    },
+    {
+      "employee_id": "E-0218",
+      "department": "Data",
+      "annual_tcc": 177926.03
+    },
+    {
+      "employee_id": "E-0219",
+      "department": "Engineering",
+      "annual_tcc": 118275.44
+    },
+    {
+      "employee_id": "E-0220",
+      "department": "Delivery",
+      "annual_tcc": 211819.92
+    },
+    {
+      "employee_id": "E-0221",
+      "department": "Support",
+      "annual_tcc": 159704.87
+    },
+    {
+      "employee_id": "E-0222",
+      "department": "Data",
+      "annual_tcc": 195682.44
+    },
+    {
+      "employee_id": "E-0223",
+      "department": "Data",
+      "annual_tcc": 204007.49
+    },
+    {
+      "employee_id": "E-0224",
+      "department": "Product",
+      "annual_tcc": 109485.55
+    },
+    {
+      "employee_id": "E-0225",
+      "department": "Design",
+      "annual_tcc": 112189.26
+    },
+    {
+      "employee_id": "E-0226",
+      "department": "Data",
+      "annual_tcc": 107304.83
+    },
+    {
+      "employee_id": "E-0227",
+      "department": "Engineering",
+      "annual_tcc": 90694.41
+    },
+    {
+      "employee_id": "E-0228",
+      "department": "Data",
+      "annual_tcc": 210458.19
+    },
+    {
+      "employee_id": "E-0229",
+      "department": "Data",
+      "annual_tcc": 179701.53
+    },
+    {
+      "employee_id": "E-0230",
+      "department": "Engineering",
+      "annual_tcc": 158482.39
+    },
+    {
+      "employee_id": "E-0231",
+      "department": "Support",
+      "annual_tcc": 124972.03
+    },
+    {
+      "employee_id": "E-0232",
+      "department": "Delivery",
+      "annual_tcc": 108619.99
+    },
+    {
+      "employee_id": "E-0233",
+      "department": "Engineering",
+      "annual_tcc": 128782.1
+    },
+    {
+      "employee_id": "E-0234",
+      "department": "Product",
+      "annual_tcc": 157065.85
+    },
+    {
+      "employee_id": "E-0235",
+      "department": "Support",
+      "annual_tcc": 134398.11
+    },
+    {
+      "employee_id": "E-0236",
+      "department": "Design",
+      "annual_tcc": 168100.36
+    },
+    {
+      "employee_id": "E-0237",
+      "department": "Product",
+      "annual_tcc": 135709.79
+    },
+    {
+      "employee_id": "E-0238",
+      "department": "Data",
+      "annual_tcc": 87150.62
+    },
+    {
+      "employee_id": "E-0239",
+      "department": "Delivery",
+      "annual_tcc": 105405.82
+    }
+  ],
+  "terminations": [
+    {
+      "employee_id": "E-0169",
+      "term_date": "2026-07-15",
+      "term_day": 15,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0162",
+      "term_date": "2026-08-21",
+      "term_day": 21,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0158",
+      "term_date": "2026-09-07",
+      "term_day": 7,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0085",
+      "term_date": "2026-09-23",
+      "term_day": 23,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0023",
+      "term_date": "2026-08-16",
+      "term_day": 16,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0209",
+      "term_date": "2026-08-08",
+      "term_day": 8,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0192",
+      "term_date": "2026-07-21",
+      "term_day": 21,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0060",
+      "term_date": "2026-09-01",
+      "term_day": 1,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0172",
+      "term_date": "2026-07-25",
+      "term_day": 25,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0079",
+      "term_date": "2026-08-08",
+      "term_day": 8,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0057",
+      "term_date": "2026-07-26",
+      "term_day": 26,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0206",
+      "term_date": "2026-09-17",
+      "term_day": 17,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0050",
+      "term_date": "2026-08-02",
+      "term_day": 2,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0037",
+      "term_date": "2026-09-08",
+      "term_day": 8,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0006",
+      "term_date": "2026-07-15",
+      "term_day": 15,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0011",
+      "term_date": "2026-07-26",
+      "term_day": 26,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0062",
+      "term_date": "2026-08-22",
+      "term_day": 22,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "E-0121",
+      "term_date": "2026-09-18",
+      "term_day": 18,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0156",
+      "term_date": "2026-09-11",
+      "term_day": 11,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "E-0217",
+      "term_date": "2026-08-20",
+      "term_day": 20,
+      "days_in_month": 31
+    }
+  ],
+  "comp_events": [
+    {
+      "employee_id": "E-0208",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 9444.01
+    },
+    {
+      "employee_id": "E-0184",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 4897.75
+    },
+    {
+      "employee_id": "E-0228",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 7607.35
+    },
+    {
+      "employee_id": "E-0129",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 11527.6
+    },
+    {
+      "employee_id": "E-0109",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 5269.05
+    },
+    {
+      "employee_id": "E-0212",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 3276.57
+    },
+    {
+      "employee_id": "E-0232",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 13853.39
+    },
+    {
+      "employee_id": "E-0140",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 9099.87
+    },
+    {
+      "employee_id": "E-0114",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 7205.96
+    },
+    {
+      "employee_id": "E-0229",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 8483.33
+    },
+    {
+      "employee_id": "E-0040",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 12217.23
+    },
+    {
+      "employee_id": "E-0190",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 22113.51
+    },
+    {
+      "employee_id": "E-0220",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 4555.94
+    },
+    {
+      "employee_id": "E-0121",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 2282.15
+    },
+    {
+      "employee_id": "E-0115",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 5461.75
+    },
+    {
+      "employee_id": "E-0066",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 2575.72
+    },
+    {
+      "employee_id": "E-0192",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 8341.95
+    },
+    {
+      "employee_id": "E-0063",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7650.7
+    },
+    {
+      "employee_id": "E-0215",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 4634.55
+    },
+    {
+      "employee_id": "E-0163",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 8473.49
+    },
+    {
+      "employee_id": "E-0070",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 5177.54
+    },
+    {
+      "employee_id": "E-0196",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7008.11
+    },
+    {
+      "employee_id": "E-0199",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 4647.53
+    },
+    {
+      "employee_id": "E-0133",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 2347.59
+    },
+    {
+      "employee_id": "E-0124",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 3019.95
+    },
+    {
+      "employee_id": "E-0160",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 24850.13
+    },
+    {
+      "employee_id": "E-0061",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 3924.47
+    },
+    {
+      "employee_id": "E-0219",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 4408.59
+    },
+    {
+      "employee_id": "E-0112",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 8515.77
+    },
+    {
+      "employee_id": "E-0019",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 6674.87
+    },
+    {
+      "employee_id": "E-0182",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 2520.63
+    },
+    {
+      "employee_id": "E-0073",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 14622.25
+    },
+    {
+      "employee_id": "E-0060",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 26650.23
+    },
+    {
+      "employee_id": "E-0069",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 15533.29
+    },
+    {
+      "employee_id": "E-0085",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 3040.16
+    },
+    {
+      "employee_id": "E-0081",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 3352.62
+    },
+    {
+      "employee_id": "E-0138",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 5546.08
+    },
+    {
+      "employee_id": "E-0020",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 11388.86
+    },
+    {
+      "employee_id": "E-0035",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7926.38
+    },
+    {
+      "employee_id": "E-0038",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 19821.13
+    },
+    {
+      "employee_id": "E-0059",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 5566.07
+    },
+    {
+      "employee_id": "E-0098",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 2356.54
+    },
+    {
+      "employee_id": "E-0177",
+      "event_type": "promotion",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7116.57
+    },
+    {
+      "employee_id": "E-0039",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 4809.44
+    },
+    {
+      "employee_id": "E-0180",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 6513.25
+    },
+    {
+      "employee_id": "E-0054",
+      "event_type": "promotion",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 22936.46
+    },
+    {
+      "employee_id": "E-0016",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 2659.34
+    },
+    {
+      "employee_id": "E-0106",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 3132.51
+    },
+    {
+      "employee_id": "E-0104",
+      "event_type": "merit",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 4597.8
+    },
+    {
+      "employee_id": "E-0084",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 23444.56
+    },
+    {
+      "employee_id": "E-0203",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7621.68
+    },
+    {
+      "employee_id": "E-0119",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 5989.82
+    },
+    {
+      "employee_id": "E-0223",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 7477.95
+    },
+    {
+      "employee_id": "E-0015",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 24156.01
+    },
+    {
+      "employee_id": "E-0052",
+      "event_type": "merit",
+      "effective_date": "2026-07-01",
+      "delta_annual_tcc": 3943.84
+    },
+    {
+      "employee_id": "E-0107",
+      "event_type": "merit",
+      "effective_date": "2026-08-01",
+      "delta_annual_tcc": 4769.07
+    },
+    {
+      "employee_id": "E-0099",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 19878.54
+    },
+    {
+      "employee_id": "E-0149",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 22080.98
+    },
+    {
+      "employee_id": "E-0178",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 21294.27
+    },
+    {
+      "employee_id": "E-0005",
+      "event_type": "promotion",
+      "effective_date": "2026-09-01",
+      "delta_annual_tcc": 6713.89
+    }
+  ],
+  "new_hires": [
+    {
+      "employee_id": "N-0000",
+      "department": "Support",
+      "annual_tcc": 90168.44,
+      "start_date": "2026-08-09",
+      "start_day": 9,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0001",
+      "department": "Engineering",
+      "annual_tcc": 97865.75,
+      "start_date": "2026-07-24",
+      "start_day": 24,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0002",
+      "department": "Data",
+      "annual_tcc": 82217.98,
+      "start_date": "2026-09-18",
+      "start_day": 18,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0003",
+      "department": "Design",
+      "annual_tcc": 93179.96,
+      "start_date": "2026-07-24",
+      "start_day": 24,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0004",
+      "department": "Product",
+      "annual_tcc": 131614.89,
+      "start_date": "2026-09-25",
+      "start_day": 25,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0005",
+      "department": "Engineering",
+      "annual_tcc": 95549.58,
+      "start_date": "2026-07-27",
+      "start_day": 27,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0006",
+      "department": "Support",
+      "annual_tcc": 61697.8,
+      "start_date": "2026-08-06",
+      "start_day": 6,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0007",
+      "department": "Support",
+      "annual_tcc": 65461.88,
+      "start_date": "2026-09-05",
+      "start_day": 5,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0008",
+      "department": "Support",
+      "annual_tcc": 143690.09,
+      "start_date": "2026-07-18",
+      "start_day": 18,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0009",
+      "department": "Design",
+      "annual_tcc": 72310.52,
+      "start_date": "2026-07-21",
+      "start_day": 21,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0010",
+      "department": "Support",
+      "annual_tcc": 116327.63,
+      "start_date": "2026-07-19",
+      "start_day": 19,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0011",
+      "department": "Engineering",
+      "annual_tcc": 175859.72,
+      "start_date": "2026-08-11",
+      "start_day": 11,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0012",
+      "department": "Design",
+      "annual_tcc": 73690.46,
+      "start_date": "2026-08-28",
+      "start_day": 28,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0013",
+      "department": "Design",
+      "annual_tcc": 68889.86,
+      "start_date": "2026-07-13",
+      "start_day": 13,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0014",
+      "department": "Delivery",
+      "annual_tcc": 78207.24,
+      "start_date": "2026-09-22",
+      "start_day": 22,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0015",
+      "department": "Delivery",
+      "annual_tcc": 179270.17,
+      "start_date": "2026-09-10",
+      "start_day": 10,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0016",
+      "department": "Design",
+      "annual_tcc": 132758.12,
+      "start_date": "2026-07-18",
+      "start_day": 18,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0017",
+      "department": "Product",
+      "annual_tcc": 105645.36,
+      "start_date": "2026-09-08",
+      "start_day": 8,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0018",
+      "department": "Product",
+      "annual_tcc": 178803.75,
+      "start_date": "2026-08-10",
+      "start_day": 10,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0019",
+      "department": "Product",
+      "annual_tcc": 67227.64,
+      "start_date": "2026-08-19",
+      "start_day": 19,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0020",
+      "department": "Engineering",
+      "annual_tcc": 135061.8,
+      "start_date": "2026-09-04",
+      "start_day": 4,
+      "days_in_month": 30
+    },
+    {
+      "employee_id": "N-0021",
+      "department": "Delivery",
+      "annual_tcc": 78846.85,
+      "start_date": "2026-08-22",
+      "start_day": 22,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0022",
+      "department": "Delivery",
+      "annual_tcc": 78783.91,
+      "start_date": "2026-07-18",
+      "start_day": 18,
+      "days_in_month": 31
+    },
+    {
+      "employee_id": "N-0023",
+      "department": "Data",
+      "annual_tcc": 131257.34,
+      "start_date": "2026-08-15",
+      "start_day": 15,
+      "days_in_month": 31
+    }
+  ],
+  "forecast": [
+    {
+      "department": "Delivery",
+      "period": "FY27Q1",
+      "forecast_tcc": 1440770.44
+    },
+    {
+      "department": "Engineering",
+      "period": "FY27Q1",
+      "forecast_tcc": 2355302.83
+    },
+    {
+      "department": "Support",
+      "period": "FY27Q1",
+      "forecast_tcc": 1798868.92
+    },
+    {
+      "department": "Design",
+      "period": "FY27Q1",
+      "forecast_tcc": 2832604.3
+    },
+    {
+      "department": "Product",
+      "period": "FY27Q1",
+      "forecast_tcc": 2175127.62
+    },
+    {
+      "department": "Data",
+      "period": "FY27Q1",
+      "forecast_tcc": 2854070.61
+    }
+  ],
+  "actuals": [
+    {
+      "department": "Delivery",
+      "period": "FY27Q1",
+      "actual_tcc": 1385539.55
+    },
+    {
+      "department": "Engineering",
+      "period": "FY27Q1",
+      "actual_tcc": 2464913.35
+    },
+    {
+      "department": "Support",
+      "period": "FY27Q1",
+      "actual_tcc": 1877532.17
+    },
+    {
+      "department": "Design",
+      "period": "FY27Q1",
+      "actual_tcc": 3007684.87
+    },
+    {
+      "department": "Product",
+      "period": "FY27Q1",
+      "actual_tcc": 2259985.76
+    },
+    {
+      "department": "Data",
+      "period": "FY27Q1",
+      "actual_tcc": 2844152.75
+    }
+  ]
+}

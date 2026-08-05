@@ -25,12 +25,11 @@ impact of attrition, promotions, merit increases, or new hires.
 
 ## Tech
 
-- Google Apps Script
-- NetSuite SuiteQL
-- SQL
-- Oracle Warehouse
-- Tableau
-- Looker
+- SQL (window-free, warehouse-portable models)
+- SQLite demo harness (ports to BigQuery / Snowflake / Oracle)
+- Python (data generator + SQL runner)
+- pytest
+- Tableau / Looker (BI layer, production)
 
 ## Results
 
@@ -54,27 +53,29 @@ audit accuracy, 0 manual steps, C-suite ready.
 
 ## How to run
 
-> **Source status: PENDING.** The full production source for this system is **not yet
-> included** in this repo. [`src/attrition_proration.sql`](./src/attrition_proration.sql)
-> contains an **illustrative, well-commented excerpt** (the SuiteQL attrition-proration
-> query) drawn from the documented approach — it is a representative stub, not the complete
-> production file. The full Apps Script forecasting engine and the warehouse query set will
-> be added before publishing.
+> This repo ships **runnable, sanitized** SQL models plus a tiny SQLite harness and a
+> synthetic-data generator, so the queries actually execute — not just parse. All data is
+> fabricated. In production these models run against a cloud data warehouse and feed a
+> Tableau / Looker P&L dashboard.
 
-### When the full source is present
-
-This system runs as a Google Apps Script project against a NetSuite / Oracle warehouse:
+Three models are included:
+- **`attrition_proration.sql`** — partial-month TCC cost of each attrition event
+- **`cost_drivers.sql`** — annualised impact by department & driver (attrition / merit /
+  promotion / new-hire)
+- **`actuals_vs_forecast.sql`** — quarterly variance (top departments first)
 
 ```bash
-npm install -g @google/clasp
-clasp login
-clasp push        # push the .gs forecasting engine into the GAS project
-```
+pip install -r requirements.txt        # pytest only (SQL runs on stdlib sqlite3)
 
-- Configure warehouse / NetSuite connection details and period bounds in Script Properties.
-- The SuiteQL queries (such as `attrition_proration.sql`) are executed against the data
-  warehouse; their output feeds the Apps Script proration and LOB-allocation engines, which
-  render the Quarterly Actuals vs. Forecast and Department Variance dashboards.
+# 1. Generate synthetic finance tables
+python src/generate_sample_finance.py --out data/finance.json --n 240
+
+# 2. Run all three SQL models against the demo warehouse
+python src/run_sql.py --data data/finance.json --period-start 2026-07-01 --period-end 2026-09-30
+
+# 3. Tests (execute the SQL against in-memory SQLite and assert the math)
+python -m pytest tests/ -q          # 4 passed
+```
 
 ## License
 

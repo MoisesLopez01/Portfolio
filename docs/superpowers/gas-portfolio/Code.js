@@ -43,6 +43,50 @@ var DOMAINS = [
 
 var PROJECTS = [
   {
+    id: "sales-pipeline-etl",
+    domain: "ops",
+    title: "Sales Pipeline Analytics ETL",
+    tagline:
+      "Python + SQL ETL/ELT → clean, warehouse-ready CRM pipeline for BI dashboards",
+    category: "Data Engineering · ETL/ELT",
+    impact: "Runnable + tested",
+    langScale: "400+ deals/run",
+    context:
+      "CRM exports are messy — the same deal lands on overlapping API pages, $0 placeholder deals inflate pipeline totals, and stage ids are opaque codes. Fed straight into a dashboard, that produces numbers leadership can't trust.",
+    action: [
+      "Built an end-to-end **Extract → Transform → Load** pipeline in **Python**: cursor-paginated REST extraction with retry/backoff, then cleaning, **deduplication**, and **data-quality gates** that reject bad rows without dropping them silently.",
+      "Enriched each deal with a **risk-adjusted (weighted) value**, fiscal-period bucketing, and deal-health scoring; loaded to a warehouse via an **idempotent keyed upsert** plus a run-audit table.",
+      "Layered a **SQL modeling** set (staging → dim/fact → windowed analytics) that a BI tool binds to — warehouse-portable to **BigQuery / Snowflake**.",
+    ],
+    resolution:
+      "A fully **runnable, tested** pipeline (synthetic data, 12 passing unit tests) that turns 431 raw records into 400 clean, deduplicated, quality-gated rows — and stays at 400 on re-run (idempotent). A concrete demonstration of ETL/ELT, strong SQL, and data-reliability engineering.",
+    tech: [
+      "Python",
+      "pandas",
+      "SQL (window functions)",
+      "REST APIs",
+      "SQLite → BigQuery/Snowflake",
+      "pytest",
+    ],
+    metrics: [
+      { val: "12", label: "tests passing" },
+      { val: "431→400", label: "rows cleaned" },
+      { val: "Idempotent", label: "re-runs" },
+    ],
+    before: {
+      process:
+        "Raw CRM export straight to dashboard — duplicates, $0 deals, opaque stages",
+      metrics: "Untrusted totals · No data-quality visibility",
+    },
+    after: {
+      process:
+        "E→T→L with dedup, quality gates, idempotent load + run audit",
+      metrics: "400 clean rows · 12 tests · warehouse-portable",
+    },
+    repoUrl:
+      "https://github.com/MoisesLopez01/Portfolio/tree/main/projects/sales-pipeline-analytics",
+  },
+  {
     id: "ai-sales",
     domain: "ai",
     title: "AI Sales Analytics Ecosystem",
@@ -82,7 +126,8 @@ var PROJECTS = [
         "Automated AI pipeline delivers Monday summaries with deal risk flags",
       metrics: "0h manual · C-suite ready every week",
     },
-    repoUrl: "https://github.com/MoisesLopez01/ai-sales-analytics",
+    repoUrl:
+      "https://github.com/MoisesLopez01/Portfolio/tree/main/projects/ai-sales-analytics",
   },
   {
     id: "salary-bench",
@@ -125,7 +170,7 @@ var PROJECTS = [
         "Automated engine returns P25/P50/P75 benchmarks in minutes per region",
       metrics: "90% faster · Board-level outputs · 15+ countries",
     },
-    repoUrl: "https://github.com/MoisesLopez01/salary-benchmarking-engine",
+    repoUrl: "",
   },
   {
     id: "hr-eval",
@@ -166,7 +211,7 @@ var PROJECTS = [
         "Automated pipeline: ingestion → normalization → AI executive summary",
       metrics: "40% faster · Consistent outputs · More frequent runs",
     },
-    repoUrl: "https://github.com/MoisesLopez01/360-leadership-automation",
+    repoUrl: "",
   },
   {
     id: "atlassian-intelligence",
@@ -209,7 +254,7 @@ var PROJECTS = [
         "Automated pipeline: ingest → Claude extraction → Confluence brief → Rovo Q&A",
       metrics: "< 15 min review · Weekly auto-brief · Zero manual mining",
     },
-    repoUrl: "https://github.com/MoisesLopez01/atlassian-signal-intelligence",
+    repoUrl: "",
   },
   {
     id: "tcc-forecast",
@@ -251,7 +296,8 @@ var PROJECTS = [
         "Automated CFO dashboards: actuals vs. forecast, LOB variance, cost drivers",
       metrics: "100% audit accuracy · 0 manual steps · C-suite ready",
     },
-    repoUrl: "https://github.com/MoisesLopez01/tcc-financial-forecasting",
+    repoUrl:
+      "https://github.com/MoisesLopez01/Portfolio/tree/main/projects/tcc-financial-forecasting",
   },
   {
     id: "goals-audit",
@@ -294,7 +340,8 @@ var PROJECTS = [
         "Automated Python pipeline flags non-compliance before bonus cycle runs",
       metrics: "100% enforcement · Zero manual intervention",
     },
-    repoUrl: "https://github.com/MoisesLopez01/goals-quality-audit",
+    repoUrl:
+      "https://github.com/MoisesLopez01/Portfolio/tree/main/projects/goals-quality-audit",
   },
   {
     id: "netsuite-suitelet",
@@ -370,7 +417,7 @@ var PROJECTS = [
         "Automated band positioning with comp-ratio and quartile analysis per employee",
       metrics: "Minutes per cycle · Consistent across all levels",
     },
-    repoUrl: "https://github.com/MoisesLopez01/total-rewards-analysis",
+    repoUrl: "",
   },
   {
     id: "comp-reporting",
@@ -412,7 +459,8 @@ var PROJECTS = [
         "Unified tool: multi-currency, COL-adjusted, PDF + Sheets auto-generated",
       metrics: "Board-level quality · 10+ regions · Consistent method",
     },
-    repoUrl: "https://github.com/MoisesLopez01/global-comp-reporting",
+    repoUrl:
+      "https://github.com/MoisesLopez01/Portfolio/tree/main/projects/global-comp-reporting",
   },
   {
     id: "hc-analysis",
@@ -454,51 +502,7 @@ var PROJECTS = [
         "Automated LOB headcount analytics with attrition trends in customed Web App",
       metrics: "Live visibility · 0 manual effort · Proactive planning",
     },
-    repoUrl: "https://github.com/MoisesLopez01/global-headcount-analysis",
-  },
-  {
-    id: "ps-dashboard",
-    domain: "ops",
-    title: "PS Contribution Dashboard",
-    tagline:
-      "Role-based GAS web app · Bitbucket CI/CD · Goals audit + Confluence executive brief",
-    category: "Ops · Engineering",
-    impact: "Weekly auto-reports",
-    context:
-      "The Professional Services org — **146 FTEs + 35 crew members tracked weekly** — had no systematic way to measure contribution quality or team health. Managers relied on **ad hoc manual reports** compiled from Jira tickets and Tempo timesheets — time-consuming, with no standardized scoring, **no role-based access control**, and no historical trend visibility.",
-    action: [
-      "Built a full-stack web app in **Google Apps Script** with a **3-layer RBAC** model and **Jira + Tempo** data aggregation.",
-      "Engineered a **weighted composite scoring engine** plus a goals-compliance override that backfills Q4 comment thresholds across all weeks.",
-      "Automated **Confluence executive briefs** via REST API and set up **Bitbucket Pipelines + clasp** for staged GAS deployments.",
-      "Built in **Google Apps Script** to eliminate infrastructure overhead and run the whole web app inside the Google Workspace and Atlassian tools the PS team and its leadership already use — no separate app to provision and grant access to for 180+ people.",
-    ],
-    resolution:
-      "Delivered automated team-health visibility for the **Professional Services** org. Weekly reports and **executive Confluence briefs** run with **zero manual intervention**, and a **GitOps pipeline** validates every change before it reaches production.",
-    tech: [
-      "Google Apps Script",
-      "Bitbucket Pipelines",
-      "Google Clasp",
-      "Confluence REST API",
-      "Jira API",
-      "Tempo API",
-      "Role-based Access Control",
-    ],
-    metrics: [
-      { val: "Weekly", label: "auto-reports" },
-      { val: "CI/CD", label: "Bitbucket" },
-      { val: "Confluence", label: "exec briefs" },
-    ],
-    before: {
-      process:
-        "Ad hoc manual reports from Jira + Tempo — no scoring, no RBAC, no version control",
-      metrics: "Manager bottleneck · No deployment pipeline",
-    },
-    after: {
-      process:
-        "RBAC webapp + Bitbucket CI/CD + automated Confluence executive briefs",
-      metrics: "Zero manual effort · Gated releases · Exec-ready weekly",
-    },
-    repoUrl: "https://github.com/MoisesLopez01/ps-contribution-dashboard",
+    repoUrl: "",
   },
   {
     id: "benchmarking",
@@ -540,7 +544,7 @@ var PROJECTS = [
         "Normalized 0–100 engine with role-weighted tiers and ranked reports",
       metrics: "Objective baseline · Consistent across functions",
     },
-    repoUrl: "https://github.com/MoisesLopez01/benchmarking-performance-engine",
+    repoUrl: "",
   },
 ];
 
@@ -568,7 +572,7 @@ function include(filename) {
 }
 
 // ── AUTH ──────────────────────────────────────────────────────
-var ADMIN_EMAIL_ = "moises.lopez@servicerocket.com";
+var ADMIN_EMAIL_ = "moisesalex.01@gmail.com";
 
 function isAdmin() {
   try {
@@ -751,6 +755,16 @@ function buildAgentContext_() {
     "  Avaya, and Calabrio. Maintained SLA compliance under dynamic conditions.",
     "• Created FTE requirements from volume forecasting; implemented data-driven overtime",
     "  and time-off allocation.",
+    "• Owned scheduling and real-time operations for the Hopper account (local and",
+    "  Canada-based teams) — built schedules in Verint/Calabrio and exported data for",
+    "  shrinkage, time-off, and break/lunch-change analysis.",
+    "• Ran recurring manager meetings to align staffing coverage with service-level targets",
+    "  across accounts including Hopper, Lucira, and First American Home Warranty.",
+    "• Coordinated the real-time representatives assigned to each account, consolidating",
+    "  their reporting into a weekly schedule-compliance and service-level summary presented",
+    "  to managers and stakeholders — across both chat and voice channels.",
+    "• Reviewed Avaya auxiliary-code usage monthly with account managers, running an",
+    "  end-of-month validation process to resolve payroll exceptions.",
     "• Customer Service Representative (March 2020 – January 2021): First American insurance",
     "  account. Transitioned to workforce analytics via internal bootcamp — demonstrating",
     "  self-directed analytical aptitude.",
@@ -762,11 +776,39 @@ function buildAgentContext_() {
     "Industry: BPO / Contact Center",
     "",
     "• Progressed from CSR to Real-Time Analyst within 12 months.",
+    "• Built and managed schedules against forecasted demand for Hotels.com — a high-volume,",
+    "  seasonal inbound account — timing overtime recruitment, incentive design, and",
+    "  new-hire waves ahead of peak demand.",
+    "• Balanced service quality against labor cost by layering trailing 3-month call volume",
+    "  over 12 months of seasonality history, targeting a ~10% coverage surplus; ran",
+    "  low-season LOA/PTO/unpaid-time-off campaigns to right-size staffing without layoffs.",
+    "• Supported Hotels.com through overnight (graveyard) coverage before moving to MetLife,",
+    "  where expanded real-time and planning duties introduced the EWFM and Verint platforms.",
     "• Monitored schedule adherence, aux time, talk time, VTO, and overtime across MetLife",
     "  and Hotels.com accounts.",
     "• Hybrid Agent: split duties between MetLife insurance interpretation and real-time",
     "  workforce analysis.",
     "• Recognized as high-performance agent for multiple consecutive periods.",
+    "",
+    "--- WORKFORCE MANAGEMENT FOUNDATION (SYKES + TELUS, 2017–2022) ---",
+    "Alex spent 5+ years in hands-on contact-center workforce management before moving into",
+    "data analytics, and is actively interested in workforce planning / WFM roles.",
+    "Planning methodology: demand-driven staffing plans that layer trailing 3-month call",
+    "volume against 12 months of historical seasonality, targeting a ~10% coverage surplus.",
+    "Overtime with incentive pay absorbs short-term spikes; new-hire waves are timed ahead",
+    "of sustained demand growth; proactive LOA/PTO/unpaid-time-off campaigns right-size",
+    "headcount in low season without layoffs.",
+    "Core WFM competencies:",
+    "• Forecasting & capacity planning: short- and long-range volume forecasting,",
+    "  seasonality & trend analysis, FTE requirement modeling, staffing optimization.",
+    "• Real-time operations: real-time adherence (RTA), shrinkage tracking, schedule",
+    "  exceptions (breaks, lunches, swaps), auxiliary-code monitoring, intraday",
+    "  staffing reallocation.",
+    "• Service level & performance: SLA monitoring, occupancy & adherence metrics,",
+    "  compliance reporting, peak-volume contingency planning — chat and voice.",
+    "• Stakeholder & payroll: manager and account-manager reporting, weekly compliance",
+    "  summaries, end-of-month payroll exception validation, cross-team coordination.",
+    "Platforms: Verint, Calabrio, EWFM, Avaya, Cisco, Workday (HRIS).",
     "",
     "TOTAL PROFESSIONAL EXPERIENCE: ~8.5 years",
     "  Data analytics & AI: 3.5 years (current role)",
@@ -789,7 +831,7 @@ function buildAgentContext_() {
     "Cloud & Platforms:Google Cloud Platform (GCP), Vertex AI, NetSuite Analytics Warehouse,",
     "                  Atlassian Suite (Jira, Confluence, Rovo, Tempo), HubSpot, Aleph, Lever",
     "Dev & DevOps:     GitHub, Bitbucket Pipelines, Google Clasp, VS Code, GitOps",
-    "Workforce Tools:  Verint, Cisco, Avaya, Calabrio, Workday",
+    "Workforce Tools:  Verint, Calabrio, EWFM, Cisco, Avaya, Workday (HRIS)",
     "Finance/HR:       TCC Forecasting, Compensation Modeling, Attrition Analysis,",
     "                  Headcount Planning, Predictive Forecasting, A/B Testing",
     "",
@@ -825,6 +867,9 @@ function buildAgentContext_() {
     "AI & LLM Integration:    UNIQUE — 9 production systems with Gemini Pro API, prompt",
     "                         engineering, multi-stage validation. Claude Code practitioner.",
     "Compensation Analytics:  UNIQUE — 18 job families, 12 countries, micro-banding frameworks.",
+    "Workforce Management:    AT SENIOR LEVEL — 5+ years of contact-center WFM: forecasting,",
+    "                         scheduling, real-time operations, and SLA management on",
+    "                         Verint, Calabrio, EWFM, and Avaya.",
     "",
     "═══════════════════════════════════════════════",
     "SECTION 6 — HIRING, OFFERS & SALARY → HAND OFF TO ALEX",
@@ -854,6 +899,10 @@ function buildAgentContext_() {
     "    Senior Data Analyst, Analytics Engineer, BI Engineer, People/Revenue Operations",
     "    Analytics, AI/Data Engineer, Business Analyst, and data-science roles with an",
     "    analytics or AI/LLM focus. Any role with a strong AI/LLM component fits his interests.",
+    "    Also a strong fit: Workforce Planning Analyst, WFM Analyst/Scheduler, Capacity",
+    "    Planner, and Real-Time Operations roles — Alex has 5+ years of hands-on",
+    "    contact-center WFM and is actively interested in workforce planning teams, where",
+    "    his analytics and AI toolkit compounds the traditional WFM craft.",
     "  - Note his preferred work: AI/LLM integration + web dashboards (JS/HTML) +",
     "    Tableau/Power BI, plus financial modeling, comp analytics, workforce planning, ETL.",
     "  - Confirm availability and timezone, then invite them to reach out directly.",
@@ -1231,14 +1280,10 @@ function calculatePipelineRisk(deals) {
   var requests = deals.map(function (deal) {
     var age = Math.max(0, Math.min(3650, parseInt(deal.ageDays, 10) || 0));
     var amount = Math.max(1, Math.min(10000, parseInt(deal.amountK, 10) || 1));
-    var prompt =
-      "Sales risk engine. Deal in pipeline: " +
-      age +
-      " days, $" +
-      amount +
-      "K. " +
-      "Base close probability decays ~15% every 30 days. >$100K decays 30% slower. >$250K decays 50% slower. " +
-      'Reply ONLY with JSON: {"score": 68, "level": "High", "nextAction": "Schedule executive sponsor call."}';
+    var closeP = Math.max(0, Math.min(100, parseInt(deal.closePct, 10) || 0));
+    var gapK = Math.max(0, Math.min(1000000, parseInt(deal.gapK, 10) || 0));
+    var name = String(deal.name || "Deal").replace(/[^\w \-&.]/g, "").slice(0, 60);
+    var prompt = buildPipelinePrompt_(name, age, amount, closeP, gapK);
     return {
       url: "https://api.groq.com/openai/v1/chat/completions",
       method: "post",
@@ -1247,15 +1292,18 @@ function calculatePipelineRisk(deals) {
       payload: JSON.stringify({
         model: "llama-3.1-8b-instant",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 120,
-        temperature: 0.1,
+        max_tokens: 420,
+        temperature: 0.3,
       }),
       muteHttpExceptions: true,
     };
   });
   return UrlFetchApp.fetchAll(requests).map(function (resp) {
     if (resp.getResponseCode() !== 200)
-      return { score: 50, level: "Unknown", nextAction: "API error — retry." };
+      return {
+        score: 50, level: "Unknown", lossRisk: "", who: "Deal Desk",
+        nextAction: "API error — retry.", timeline: "", proposal: "",
+      };
     var raw = JSON.parse(resp.getContentText())
       .choices[0].message.content.trim()
       .replace(/^```[a-z]*\n?/i, "")
@@ -1266,12 +1314,44 @@ function calculatePipelineRisk(deals) {
       return JSON.parse(match ? match[0] : raw);
     } catch (e) {
       return {
-        score: 50,
-        level: "Unknown",
-        nextAction: "Could not parse — try again.",
+        score: 50, level: "Unknown", lossRisk: "", who: "Deal Desk",
+        nextAction: "Could not parse — try again.", timeline: "", proposal: "",
       };
     }
   });
+}
+
+/**
+ * Builds the revenue-recovery prompt for a single deal. Shared shape with the
+ * Netlify rpc.js proxy so GAS and the live demo return identical fields:
+ * { score, level, owner, nextAction, impact }.
+ * @param {string} name     - Deal name (already sanitised).
+ * @param {number} age      - Days in pipeline.
+ * @param {number} amount   - Deal size in $K.
+ * @param {number} closeP   - Current close probability, 0-100.
+ * @param {number} gapK     - Team's remaining gap to quota this quarter, in $K.
+ * @returns {string} The prompt text.
+ */
+function buildPipelinePrompt_(name, age, amount, closeP, gapK) {
+  return (
+    "You are a revenue-recovery strategist for a B2B sales team. Write for the rep who owns this deal — " +
+    "concrete, specific, and useful today. No filler, no generic 'schedule a call' advice.\n" +
+    'Deal: "' + name + '" — $' + amount + "K, " + age + " days in pipeline, current close probability " +
+    closeP + "%. The team is $" + gapK + "K short of quota this quarter.\n" +
+    "Close probability decays ~15% every 30 days; deals over $100K decay 30% slower, over $250K 50% slower. " +
+    "An aging, high-value deal below 50% is where the quarter is won or lost. Infer the likely deal type from its name " +
+    "(renewal, new logo, expansion, mid-market, SMB) and tailor every field to it.\n" +
+    "Return a rescue plan with these fields:\n" +
+    "1. score — close probability 0-100 (integer).\n" +
+    "2. level — one of Low, Medium, High, Critical (risk of LOSING the deal).\n" +
+    "3. lossRisk — one sentence: WHY it is slipping and roughly WHEN it slips if nobody acts (a week window). Deal-specific.\n" +
+    "4. who — the specific role AND stakeholder to reach now (e.g. 'Economic buyer (VP Ops) — bring in your Exec Sponsor and loop VP Sales'). Never a person's name.\n" +
+    "5. nextAction — the single highest-leverage play this week (name the meeting, the lever, the blocker to clear). Time-bound.\n" +
+    "6. timeline — how fast this must move, with a concrete gate (e.g. '5 business days — decision gate by Thursday').\n" +
+    "7. proposal — a specific commercial offer to accelerate signature (term, discount, bundle, pilot, or milestone). Deal-appropriate.\n" +
+    "Reply ONLY with JSON, no markdown: " +
+    '{"score":62,"level":"High","lossRisk":"Momentum stalled after the security review; likely to push to next quarter within ~2 weeks without a forcing event.","who":"Economic buyer (VP Operations) — bring in your Exec Sponsor and loop VP Sales for air cover.","nextAction":"Run a mutual close plan and clear the open security-review item; secure a verbal commit.","timeline":"5 business days — lock a decision gate by Thursday.","proposal":"Offer a 2-year term at an 8% discount to pull signature into this quarter."}'
+  );
 }
 
 // ── GROQ CHAT PROXY ───────────────────────────────────────────

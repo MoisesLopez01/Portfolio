@@ -10,7 +10,7 @@ function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+
     .replace(/"/g, '&quot;');
 }
 
@@ -1034,8 +1034,20 @@ var DealRiskDemo = (function() {
           '<span class="demo-loading-text">Groq AI analyzing pipeline…</span>' +
         '</div>';
 
+      // Quota gap today (fwd=0) so the model can size each deal's impact
+      var forecastNowK = DEALS.reduce(function(s, d) {
+        return s + d.amountK * closePct(d.ageDays, d.amountK);
+      }, 0);
+      var gapK = Math.max(0, Math.round(TARGET_K - forecastNowK));
+
       var payload = DEALS.map(function(d) {
-        return { ageDays: d.ageDays, amountK: d.amountK };
+        return {
+          name:     d.name,
+          ageDays:  d.ageDays,
+          amountK:  d.amountK,
+          closePct: Math.round(closePct(d.ageDays, d.amountK) * 100),
+          gapK:     gapK
+        };
       });
 
       runServer('calculatePipelineRisk', [payload],
@@ -1043,14 +1055,44 @@ var DealRiskDemo = (function() {
           refs.aiBtn.disabled = false;
           refs.aiNote.textContent = 'AI recommendations loaded';
           refs.aiResults.innerHTML = scores.map(function(s, i) {
-            var lvl = ['Low','Medium','High','Critical'].indexOf(s.level) >= 0 ? s.level : 'Medium';
+            var d       = DEALS[i];
+            var lvl     = ['Low','Medium','High','Critical'].indexOf(s.level) >= 0 ? s.level : 'Medium';
+            var closeNow = closePct(d.ageDays, d.amountK);          // 0..1, deterministic
+            var atRiskK  = Math.round(d.amountK * (1 - closeNow));  // weighted $ exposed if lost
+
+            function line(ico, label, val) {
+              if (!val) return '';
+              return (
+                '<div class="pl-ai-line">' +
+                  '<span class="pl-ai-ico">' + ico + '</span>' +
+                  '<span class="pl-ai-txt"><strong>' + label + '</strong> ' + escHtml(val) + '</span>' +
+                '</div>'
+              );
+            }
+
+            var proposal = s.proposal
+              ? '<div class="pl-ai-proposal"><span class="pl-ai-ico">💡</span>' +
+                  '<span class="pl-ai-txt"><strong>Proposal</strong> ' + escHtml(s.proposal) + '</span></div>'
+              : '';
+
             return (
-              '<div class="pl-ai-card">' +
-                '<div class="pl-ai-card-name">' +
-                  escHtml(DEALS[i].name) +
-                  ' <span class="demo-level ' + lvl + '">' + escHtml(s.level || '—') + '</span>' +
+              '<div class="pl-ai-card pl-lvl-' + lvl + '">' +
+                '<div class="pl-ai-head">' +
+                  '<div class="pl-ai-head-l">' +
+                    '<div class="pl-ai-name">' + escHtml(d.name) +
+                      ' <span class="demo-level ' + lvl + '">' + escHtml(s.level || '—') + ' risk</span></div>' +
+                    '<div class="pl-ai-sub">' + fmt(d.amountK) + ' · ' + d.ageDays + 'd in pipeline · ' +
+                      Math.round(closeNow * 100) + '% close prob</div>' +
+                  '</div>' +
+                  '<div class="pl-ai-risk-chip">' + fmt(atRiskK) + '<span>at risk</span></div>' +
                 '</div>' +
-                '<div class="pl-ai-action">' + escHtml(s.nextAction || '—') + '</div>' +
+                '<div class="pl-ai-body">' +
+                  line('⚠️', 'Why slipping:', s.lossRisk) +
+                  line('👤', 'Reach:',        s.who) +
+                  line('🎯', 'Action:',       s.nextAction || '—') +
+                  line('⏱️', 'Timeline:',     s.timeline) +
+                  proposal +
+                '</div>' +
               '</div>'
             );
           }).join('');
@@ -1344,6 +1386,14 @@ var CompNormalizerDemo = (function() {
     return '$' + Math.round(v);
   }
 
+  // Compact local-currency string, e.g. 912285 MXN -> "912K MXN"
+  function fmtLocal(v, ccy) {
+    var s = v >= 1000000 ? (v / 1000000).toFixed(1) + 'M'
+          : v >= 1000    ? Math.round(v / 1000) + 'K'
+          : String(Math.round(v));
+    return s + ' ' + ccy;
+  }
+
   // Default salary for a country+level: band mid converted to local currency
   function defaultSalary(country, levelKey) {
     var band = BANDS[levelKey];
@@ -1365,7 +1415,10 @@ var CompNormalizerDemo = (function() {
       bandMin:       mount.querySelector('.cn-band-min'),
       bandMax:       mount.querySelector('.cn-band-max'),
       marker:        mount.querySelector('.cn-marker'),
-      quartileLbl:   mount.querySelector('.cn-quartile-lbl')
+      quartileLbl:   mount.querySelector('.cn-quartile-lbl'),
+      verdict:       mount.querySelector('.cn-verdict'),
+      verdictLine:   mount.querySelector('.cn-verdict-line'),
+      verdictRec:    mount.querySelector('.cn-verdict-rec')
     };
 
     // Populate country options
@@ -1375,7 +1428,11 @@ var CompNormalizerDemo = (function() {
       opt.textContent = COUNTRIES[i].name + ' (' + COUNTRIES[i].ccy + ')';
       refs.countrySelect.appendChild(opt);
     }
-    refs.countrySelect.value = '0'; // default: United States
+    // Default to a non-US country so the FX + cost-of-living normalization is
+    // visible on first render (US has fx=1, col=1 → nothing to show). Mexico shows
+    // the point clearly: a large local number that lands as fair US buying power.
+    var idxDefault = COUNTRIES.map(function(c) { return c.name; }).indexOf('Mexico');
+    refs.countrySelect.value = String(idxDefault >= 0 ? idxDefault : 0);
 
     function selectedCountry() {
       return COUNTRIES[parseInt(refs.countrySelect.value, 10) || 0];
@@ -1433,6 +1490,40 @@ var CompNormalizerDemo = (function() {
       // Marker position — clamp to [1%, 99%] of strip width
       var markerPct = isBelow ? 0 : isAbove ? 100 : posFrac * 100;
       refs.marker.style.left = Math.max(1, Math.min(99, markerPct)) + '%';
+
+      // ── Plain-language verdict — translate the numbers into the answer ────────
+      var state, line, rec;
+      if (salary <= 0) {
+        state = '';
+        line = 'Enter a salary above to see where it lands.';
+        rec  = '';
+      } else {
+        var head = levelKey + ' in ' + country.name + ' earning ' + fmtLocal(salary, country.ccy) +
+          ' → paid like <strong>' + fmtUsd(colAdjusted) + '</strong> in US buying power. ';
+        if (isBelow) {
+          state = 'below';
+          line = head + 'That is <strong>below the target band.</strong>';
+          rec  = '⚠ About ' + fmtUsd(band.min - colAdjusted) + ' under the band minimum — recommend an ' +
+                 'adjustment toward ' + fmtUsd(band.min) + ' to reach fair pay.';
+        } else if (isAbove) {
+          state = 'above';
+          line = head + 'That is <strong>above the target band.</strong>';
+          rec  = '▲ About ' + fmtUsd(colAdjusted - band.max) + ' over the band maximum — flag for ' +
+                 'compensation review (retention value vs. band integrity).';
+        } else {
+          state = 'fair';
+          var tier = posFrac < 0.25 ? 'entry' : posFrac < 0.50 ? 'lower-mid'
+                   : posFrac < 0.75 ? 'upper-mid' : 'top';
+          line = head + '<strong>Fairly paid</strong> — ' + tier + ' of band.';
+          rec  = '✓ Within the target band (' + fmtUsd(band.min) + '–' + fmtUsd(band.max) +
+                 '). No action needed.';
+        }
+      }
+      refs.verdictLine.innerHTML = line;
+      refs.verdictRec.textContent = rec;
+      ['cn-below', 'cn-above', 'cn-fair'].forEach(function(c) {
+        refs.verdict.classList.toggle(c, ('cn-' + state) === c);
+      });
     }
 
     // On country change: update currency suffix + reset salary to sensible default
@@ -2061,9 +2152,9 @@ var Resume = (function() {
     linkedin:'linkedin.com/in/analystd',
     github:  'github.com/MoisesLopez01/Portfolio',
     location:'Remote · Central Time (UTC-6) · EN / ES',
-    summary: '5+ years engineering analytics systems that close the gap between raw business data and executive-level clarity — AI-powered compensation engines, real-time financial dashboards, and the automation underneath both. I design and ship production web apps (Google Apps Script, RBAC, CI/CD) that serve the daily decisions managers and operations leaders depend on.',
+    summary: '5+ years engineering analytics systems that close the gap between raw business data and executive-level clarity — AI-powered compensation engines, real-time financial dashboards, and the automation underneath both. I design and ship production web apps (Google Apps Script, RBAC, CI/CD) that serve the daily decisions managers and operations leaders depend on. Built on 5+ years of contact-center workforce management: forecasting, scheduling, and real-time operations on Verint, Calabrio, and EWFM.',
     education:'MSc, Data Science Applied to Business Intelligence — European University of the Atlantic (2024–2026)',
-    availability:'Open to senior Data / AI engineering roles. Remote-first with US & LatAm overlap. Response within 24h.'
+    availability:'Open to senior Data / AI engineering and Workforce Planning roles. Remote-first with US & LatAm overlap. Response within 24h.'
   };
 
   var SKILLS = [
@@ -2074,6 +2165,7 @@ var Resume = (function() {
     { name: 'Tableau · Looker · BI Visualization',      level: 'Advanced',   yrs: '4 yrs', proof: 'Board-ready P&L, variance & headcount dashboards' },
     { name: 'Financial Modeling · TCC Analysis',        level: 'Advanced',   yrs: '3 yrs', proof: 'CFO forecasting: actuals vs forecast, LOB cost drivers' },
     { name: 'HR Analytics · Workforce Planning',        level: 'Advanced',   yrs: '6 yrs', proof: 'Forecasting, headcount planning & comp benchmarking' },
+    { name: 'Contact-Center WFM (Verint · Calabrio · EWFM)', level: 'Advanced', yrs: '5 yrs', proof: 'Forecasting, scheduling, real-time adherence & SLA management' },
     { name: 'HubSpot / NetSuite / APIs',                level: 'Proficient', yrs: '3 yrs', proof: 'REST integrations: HubSpot CRM v3/v4, SuiteQL' }
   ];
 

@@ -26,10 +26,10 @@ blockers** or forecast with confidence.
 
 ## Tech
 
-- HubSpot API v3/v4
-- Google Apps Script
-- Python
-- Google Gemini LLM
+- Python (pandas, numpy)
+- scikit-learn — KMeans clustering + PCA
+- HubSpot API v3/v4 (ingestion, production)
+- Google Apps Script (ingestion excerpt)
 - ETL Pipelines
 - Time Decay Forecasting
 
@@ -55,30 +55,37 @@ C-suite ready every week.
 
 ## How to run
 
-> **Source status: PENDING.** The full production source for this system is **not yet
-> included** in this repo. [`src/ingestion.gs`](./src/ingestion.gs) contains an
-> **illustrative, well-commented excerpt** of the Apps Script ingestion layer (the
-> parallelized CRM pull) drawn from the documented approach — it is a representative stub,
-> not the complete production file. The full GAS ingestion code and the Python
-> semantic-analysis / Time Decay forecasting modules will be added before publishing.
+> This repo ships a **runnable, sanitized** ML layer: an unsupervised cross-sell recommender
+> (KMeans + PCA) over synthetic won-deal data, with a pytest suite. No real accounts,
+> products, or revenue. The Apps Script ingestion excerpt
+> ([`src/ingestion.gs`](./src/ingestion.gs)) shows the production CRM-pull pattern.
 
-### Apps Script ingestion layer (when full source is present)
+### Python ML layer (runnable)
 
 ```bash
-npm install -g @google/clasp
-clasp login
-clasp push    # push the .gs files into the GAS project
+pip install -r requirements.txt        # pandas, numpy, scikit-learn, pytest
+
+# 1. Generate synthetic won-deal data (accounts have latent product-affinity segments)
+python src/generate_sample_accounts.py --out data/won_deals.json --n 120
+
+# 2. Cluster accounts and recommend each one's next-best product
+python src/run_recommendations.py --input data/won_deals.json
+
+# 3. Tests
+python -m pytest tests/ -q          # 4 passed
 ```
 
-Set the HubSpot private-app token in Script Properties (e.g. `HUBSPOT_API_KEY`) — never hard
--code it.
+Example run (120 synthetic accounts): **99 accounts receive a cross-sell recommendation
+across 5 cohorts; PCA explains ~61% of variance in two components.**
 
-### Python downstream layer (when full source is present)
+### Apps Script ingestion layer (production)
 
 ```bash
-pip install -r requirements.txt
-python run_pipeline.py        # ingestion JSON → Gemini analysis → Time Decay forecast
+npm install -g @google/clasp && clasp login && clasp push
 ```
+
+Set the CRM private-app token in Script Properties (e.g. `HUBSPOT_API_KEY`) — never
+hard-code it.
 
 ## License
 

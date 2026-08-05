@@ -1,0 +1,6 @@
+pandas>=1.3
+pytest>=7.0
+
+# Optional — live market benchmarking. The demo falls back to a deterministic
+# table when these (and GCP credentials) are absent.
+# google-cloud-aiplatform>=1.40

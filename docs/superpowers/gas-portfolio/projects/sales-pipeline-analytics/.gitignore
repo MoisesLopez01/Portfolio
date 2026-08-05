@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Built warehouse / local artifacts
+*.db
+warehouse.db
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
