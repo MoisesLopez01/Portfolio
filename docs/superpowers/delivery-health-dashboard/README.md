@@ -80,7 +80,7 @@ The numbers are real; *"by Region and Team"* does not yet mean what the Dictiona
 
 Everything used to stack into a single scroll, so an executive looking for *are we on target* waded
 through a 200-row roster and a manager looking for *who needs me this week* waded through executive
-KPIs. There are now five tabs, generated from the **`VIEWS` array in `Dashboard.html`** — label, pane
+KPIs. There are now six tabs, generated from the **`VIEWS` array in `Dashboard.html`** — label, pane
 id and role gate are declared once, and `buildTabs_()` / `switchView_()` / `renderAll_()`'s dispatch
 all derive from it. The role gate is enforced inside `switchView_()`, not just by hiding a tab.
 
@@ -88,6 +88,7 @@ all derive from it. The role gate is enforced inside `switchView_()`, not just b
 |---|---|---|
 | 📊 **Executive** | "Are we on target, and where aren't we?" | The four KPI cards + one **comparison chart**: the active metric broken down by Region / Team / PM / Job family on a common 0–100 axis, with the target rule and the operating band drawn in. The bars are **read-only** — scope changes belong to the header filters. |
 | 📈 **Trends** | "Who moves it?" | The **opportunity table** and nothing else: one row per person, ranked by the hours between them and the cohort's operating rate, with its own metric selector. The history line chart was removed — the tiles already carry a sparkline and a vs-target read. |
+| 🌊 **Flow** | "How does work move through the system?" | Seven cards: Lead Time, Throughput, Backlog, WIP, Bug Count (live, `target: null` — informational until targets are agreed) plus Cycle Time and Flow Efficiency (declared absent — the changelog is not exported, `FETCH_CHANGELOG` off). Non-epic grain throughout. Backlog/WIP trends come from the exporter's `Flow Snapshots` append log and accumulate from the first v3.9.0 run; under active filters the snapshot trend hides (it is whole-population). Bug Count is population-wide by design — bugs are routinely unassigned at creation. Spec: `docs/superpowers/specs/2026-08-05-flow-metrics-design.md`. |
 | 👥 **People** | "Who needs me this period?" | The triage-ordered people × period grid, expandable into stacked workload bars with per-person drill-downs. |
 | 🧪 **Data Hygiene** | "What's missing, and who owns it?" | The attribution work queue. Deliberately **unfiltered** — a well-tagged region does not make the feed publishable. |
 | 🔒 **Access** | — | Admin only. |
@@ -235,6 +236,8 @@ overridden via Script Properties without touching code.
 | Planned | same | `Planned Time Tempo` | Planned hours per person-week (NETSUITE rows dropped — they plan no project work) |
 | Billable | same | `NS Billable` | Daily rows (`Employee`, `Total Billable Hours`, `Non-Billable Hours`, `Date`, …) bucketed to ISO weeks. Supplies the billable **mix** only — hour counts come from Tempo |
 | Jira | same | `Jira Raw` | `Region` and `Team` per issue (restored by `Jira Backlog.js` v3.4.0, still exporting blank until PR-01 — read by header name, not index, and normalised through `mapRegionToDh_`), dedup'd on `Key` (the tab holds one row per issue *per week bucket* and `Jira Backlog.js` rewrites it whole on every export, so duplicates differ only in the week label — any row is equivalent); On-Time Delivery (`Due Date`, `Resolution Date`, non-epics only) and Forecast Accuracy (`Original Estimate (sec)`, `Time Spent (sec)`, epic type) |
+| Jira Bugs | same | `Jira Bugs` | Bug Count (created/resolved per week) — Jira Backlog.js v3.9.0, noise-filtered |
+| Flow Snapshots | same | `Flow Snapshots` | WIP/Backlog trend — one appended row per export run, 52-week retention |
 | Roster | Roster SS (`ROSTER_SS_ID`) | `Data` + `Contractors Data` | Population gate — active, Class = Professional Services (Class check skipped for crew) / Department = Services; `Key Location` drives the ANZ capacity fallback and the person-region fallback |
 
 Both spreadsheet IDs are overridable via Script Properties:
