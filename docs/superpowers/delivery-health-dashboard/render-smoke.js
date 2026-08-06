@@ -88,7 +88,7 @@ var m = html.match(/<script>([\s\S]*)<\/script>/);
 if (!m) throw new Error("❌ render-smoke: could not find the inline <script> block");
 var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function () { return MODEL; }," +
              " setState: function (k, v) { STATE[k] = v; }, STATE: STATE," +
-             " renderTiles_: renderTiles_, renderHygiene_: renderHygiene_," +
+             " renderTiles_: renderTiles_, renderHygPanel_: renderHygPanel_, gapsRows_: gapsRows_," +
              // 🌊 Flow view (spec 2026-08-05) — render-smoke is the only place
              // its grammar, absence and degradation rules can be pinned down.
              " renderFlow_: renderFlow_, flowOpenFor_: flowOpenFor_, flowMedian_: flowMedian_," +
@@ -100,7 +100,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // Navigation, cascading filters, operating rate, charts and the two
              // new views — all client-only, so render-smoke is the only place
              // their rules can be pinned down.
-             " switchView_: switchView_, buildFilters_: buildFilters_," +
+             " switchView_: switchView_, showHygiene_: showHygiene_, buildFilters_: buildFilters_," +
              " optionsFor_: optionsFor_, passesFilters_: passesFilters_," +
              " filteredPeople_: filteredPeople_, renderFilterWarn_: renderFilterWarn_," +
              " standardRate_: standardRate_, stdFor_: stdFor_," +
@@ -108,7 +108,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
-             " renderGrid_: renderGrid_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
+             " renderRoster_: renderRoster_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
@@ -336,8 +336,8 @@ assert_(/pts vs target/.test(stale), "target gap survives staleness — it isn't
 
 // ── 5. Data Hygiene view ────────────────────────────────────
 C.setModel(model({}));
-C.renderHygiene_();
-var hyg = els.viewHygiene.innerHTML;
+C.renderHygPanel_();
+var hyg = els.hygPanel.innerHTML;
 // The "Delivery work fully attributed" KPI tile was DELETED (user decision
 // 2026-08-04) — the gaps table below carries the per-component read.
 assert_(!/Delivery work fully attributed/.test(hyg), "hygiene KPI tile deleted (user 2026-08-04)");
@@ -366,8 +366,8 @@ ovModel.meta.registry.metrics.onTime.gateDefault = 0.80;
 ovModel.meta.registry.metrics.onTime.coverageGate = 0.55;
 ovModel.meta.registry.metrics.onTime.gateOverride = { by: "someone@x.com", at: "2026-08-03" };
 C.setModel(ovModel);
-C.renderHygiene_();
-var ovHyg = els.viewHygiene.innerHTML;
+C.renderHygPanel_();
+var ovHyg = els.hygPanel.innerHTML;
 assert_(/id="gate_onTime" value="55"/.test(ovHyg), "the override value is what's editable");
 assert_(/>80%/.test(ovHyg), "the AGREED default stays on screen beside it");
 assert_(/✎ changed 2026-08-03/.test(ovHyg), "and the change is stamped with its date");
@@ -376,11 +376,11 @@ assert_(/restoreGate_\('onTime'\)/.test(ovHyg), "with a one-click restore to the
 var viewer = model({});
 viewer.viewerRole = "viewer";
 C.setModel(viewer);
-C.renderHygiene_();
-assert_(!/Coverage gates \(admin\)/.test(els.viewHygiene.innerHTML),
+C.renderHygPanel_();
+assert_(!/Coverage gates \(admin\)/.test(els.hygPanel.innerHTML),
         "viewers get no gate editor");
 C.setModel(model({}));
-C.renderHygiene_();
+C.renderHygPanel_();
 
 // ── 5b. The view must SAY which window it covers — and the window is the
 // GLOBAL analysis-period picker (2026-08-04: universal filters; the view's
@@ -394,8 +394,8 @@ assert_(/window follows the header period picker/.test(hyg),
 
 // The GLOBAL picker re-bases this view exactly like the tiles.
 C.setState("periodIdx", 0);
-C.renderHygiene_();
-var older = els.viewHygiene.innerHTML;
+C.renderHygPanel_();
+var older = els.hygPanel.innerHTML;
 assert_(/2026\.W30/.test(older), "picking the earlier period re-bases the hygiene window");
 C.setState("periodIdx", null);
 
@@ -672,31 +672,38 @@ assert_(/operating rate/.test(sp), "with the norm band explained on hover");
 // ── 11. Tab routing + role gate ─────────────────────────────
 fresh(histModel({}));
 resetFilters();
-C.switchView_("trend");
-assert_(els.viewTrend.style.display === "" && els.viewExec.style.display === "none",
+C.switchView_("actions");
+assert_(els.viewActions.style.display === "" && els.viewExec.style.display === "none",
         "switching view shows exactly one pane");
-// 🌊 Flow retired 2026-08-05 (§4.1) — five tabs remain: Executive, Headroom,
-// People, Data Hygiene, Access.
-assert_(els.tabBar.children.length === 5, "an admin sees all five tabs");
+// 🌊 Flow retired 2026-08-05 (§4.1); People + Data Hygiene retired 2026-08-05
+// (Task 3, §5) — three tabs remain: Executive, Actions, Access.
+assert_(els.tabBar.children.length === 3, "an admin sees all three tabs");
 C.switchView_("exec");
-assert_(els.viewExec.style.display === "" && els.viewTrend.style.display === "none",
+assert_(els.viewExec.style.display === "" && els.viewActions.style.display === "none",
         "and switching back hides the other");
 var mdlV = fresh(histModel({}));
 mdlV.viewerRole = "viewer";
 C.switchView_("exec");
-assert_(els.tabBar.children.length === 4, "a viewer does not get the Access tab");
+assert_(els.tabBar.children.length === 2, "a viewer does not get the Access tab");
 C.switchView_("access");
 assert_(C.STATE.view === "exec",
         "and asking for it by id lands on the default view — the gate is in the router, not the tab bar");
 fresh(histModel({}));
 
-// ── 12. Trends view = the headroom table only ──
+// Deep links from the suppressed cards land on Actions (spec §3).
+C.setState("view", "exec");
+C.switchView_("hygiene");                       // dead id → falls back to exec
+assert_(C.STATE.view === "exec", "unknown view id falls back to exec");
+C.showHygiene_();
+assert_(C.STATE.view === "actions", "showHygiene_ re-routes to the Actions tab");
+
+// ── 12. Actions tab = the headroom table (+ roster + hygiene) ──
 // The history line chart was deleted (user 2026-08-03). The tiles already carry
 // a sparkline plus a vs-target/vs-prior read, so a second larger telling of the
 // same series was page weight, not a second answer.
 C.STATE.period = "week"; C.STATE.metric = "util";
 resetFilters();
-C.switchView_("trend");
+C.switchView_("actions");
 assert_(document.getElementById("trendPanel").innerHTML === "",
         "no trend chart panel is rendered any more");
 var trView = els.oppPanel.innerHTML;
@@ -747,54 +754,11 @@ assert_(!/Fay Lund/.test(els.oppPanel.innerHTML),
         "someone on long leave is absent from the table entirely — no availability is expected");
 
 // ── 14. Legends are controls ────────────────────────────────
-// The attention counts only exist when somebody trips a flag, so this fixture
-// adds a forward-planning week: Cleo has availability there and almost nothing
-// planned against it, which is the "under-planned" cliff the flag is for.
-function flagModel() {
-  var mdl = fresh(histModel({}));
-  mdl.meta.gridWeeks = mdl.meta.gridWeeks.concat([{ iso: "2026.W32", status: "plan" }]);
-  mdl.people.forEach(function (p) {
-    mdl.people.indexOf(p);
-    p.weeks["2026.W32"] = week(p.name === "Cleo Diaz"
-      ? { planned: 4, effPlanned: 4, tracked: 0, billable: 0, nonBillable: 0 }
-      : { planned: 40, effPlanned: 40, tracked: 0, billable: 0, nonBillable: 0 });
-  });
-  delete mdl._exCache;
-  return mdl;
-}
-flagModel();
-resetFilters();
-C.STATE.period = "week";
-C.STATE.expandedWeeks = {}; C.STATE.openDetail = {};
-C.renderGrid_();
-var grid = els.gridPanel.innerHTML;
-assert_(/under-planned/.test(grid), "the fixture does trip a triage flag");
-assert_(/toggleFlag_\('/.test(grid), "the attention counts are clickable filters, not a caption");
-assert_(/click one to filter/.test(grid), "and the strip says they are");
-// Expanding a column reveals the bar vocabulary, two entries of which set the lens.
-C.STATE.expandedWeeks["2026.W30"] = true;
-C.renderGrid_();
-var grid2 = els.gridPanel.innerHTML;
-assert_(/setFocus_\('billable'\)/.test(grid2),
-        "the 'billable' legend entry switches the Focus lens");
-assert_(/setFocus_\('nonbill'\)/.test(grid2), "and so does 'non-billable'");
-assert_(/class="lgd" title="Tracked in Tempo but with no NetSuite/.test(grid2),
-        "an entry with no lens of its own stays inert and explains itself instead");
-C.STATE.expandedWeeks = {};
-
-// Filtering by a flag must not erase the counts that let you unfilter.
-flagModel();
-resetFilters();
-var before = C.filteredPeople_().length;
-C.STATE.flag = "under";
-C.renderGrid_();
-var flagged = els.gridPanel.innerHTML;
-assert_(C.filteredPeople_().length < before, "a flag filter narrows the population");
-assert_(/clear ✕/.test(flagged), "an active flag filter always offers the way out");
-assert_(new RegExp("of " + before + "\n?\\s*people need attention").test(flagged) ||
-        flagged.indexOf("of " + before + " people need attention") !== -1,
-        "the counts are still computed over the UNFLAGGED population, so the strip " +
-        "keeps its other totals and the filter can be swapped, not just cleared");
+// RETIRED (Task 3, 2026-08-05): this section asserted on the People grid's
+// own attention-line/bar-legend markup (renderGrid_ → #gridPanel), which was
+// deleted along with the People tab. STATE.flag/toggleFlag_ and the
+// filteredPeople_ narrowing they drive still exist for the roster that
+// replaces the grid (Task 5) — only the grid-rendering assertions are gone.
 resetFilters();
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1096,13 +1060,13 @@ assert_(!C.canSeeMargin_(), "guest is out of tier");
 C.getModel().viewerRole = "admin";
 assert_(C.canSeeMargin_() && C.liveMetrics_().indexOf("util") !== -1, "admin gets them back");
 
-// The headroom tab is per-person utilization by construction — same tier.
-var trendView = C.VIEWS.filter(function (v) { return v.id === "trend"; })[0];
-assert_(trendView.roles && trendView.roles.indexOf("guest") === -1,
-        "the headroom tab is role-gated like Access");
+// The Actions tab carries per-person utilization by construction — same tier.
+var actionsView = C.VIEWS.filter(function (v) { return v.id === "actions"; })[0];
+assert_(actionsView.roles && actionsView.roles.indexOf("guest") === -1,
+        "the Actions tab is role-gated like Access");
 C.getModel().viewerRole = "guest";
-C.switchView_("trend");
-assert_(C.STATE.view !== "trend",
+C.switchView_("actions");
+assert_(C.STATE.view !== "actions",
         "…and asking for it by id lands elsewhere — the gate is in the router, not the tab bar");
 C.getModel().viewerRole = "admin";
 C.switchView_("exec");
@@ -1114,8 +1078,8 @@ C.switchView_("exec");
 // went to the Jira admin queue, where there was nothing to fix.
 // ══════════════════════════════════════════════════════════════════════════
 C.setModel(model({}));
-C.renderHygiene_();
-var hyg2 = els.viewHygiene.innerHTML;
+C.renderHygPanel_();
+var hyg2 = els.hygPanel.innerHTML;
 assert_(/Resolved work carries a Jira assignee/.test(hyg2), "gap 1: does the issue have an assignee at all");
 assert_(/and that assignee resolves to a roster person/.test(hyg2), "gap 2: does that name join the roster");
 assert_(/94%/.test(hyg2), "…47 of 50 carry an assignee");
@@ -1304,25 +1268,17 @@ assert_(/lower is better/.test(tk), "…and names the Rework Rate inversion");
 fresh(histModel({}));
 resetFilters();
 C.STATE.expandedWeeks = {}; C.STATE.openDetail = {}; C.STATE.flag = "";
-C.renderGrid_();
-var gk = els.gridPanel.innerHTML;
-assert_(/Cell colour = billable share of available hours/.test(gk),
-        "the grid explains its RAG cell tints");
-assert_(/green ≥ 70%/.test(gk) && /red < 50%/.test(gk),
-        "…with the thresholds read from the model, not re-typed prose");
-assert_(/>Consultant</.test(gk),
-        "each person carries a job-title line, grade code stripped");
-assert_(/title="09\.P3\.Consultant"/.test(gk),
-        "…with the full roster title in the tooltip");
-
+// The People grid's own RAG-tint colour key was retired with the grid
+// (Task 3, 2026-08-05) — the headroom table's own gap-colour key below is
+// the surviving coverage of this rule on the Actions tab.
 C.renderOpportunity_();
 var ok = els.oppPanel.innerHTML;
 assert_(/Gap colour:/.test(ok), "the headroom table explains its gap colours");
 assert_(/>Consultant</.test(ok), "…and names each person's job title too");
 
 fresh(model({}));
-C.renderHygiene_();
-assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.viewHygiene.innerHTML),
+C.renderHygPanel_();
+assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.hygPanel.innerHTML),
         "the hygiene table says coverage colours grade against the gate, not 100%");
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1350,16 +1306,14 @@ assert_(/1 intern excluded/.test(internTiles),
 var internUtil = internTiles.split("Utilization")[1].split("Quality")[0];
 assert_(/class="big[^"]*">75%/.test(internUtil),
         "utilization headline stays 75% — the intern's empty capacity never dilutes it to 50%");
-// Grid + headroom need the object-form gridWeeks fixture (histModel).
+// Headroom needs the object-form gridWeeks fixture (histModel).
 var internHist = fresh(histModel({}));
 internHist.people.push(histPerson("Ivy Intern",
   { region: "AMER", teams: ["Atlas"], isIntern: true,
     jobTitle: "09.I1.2 - Associate Consultant" }, [0, 0, 0, 0, 0, 0, 0, 0]));
 C.STATE.period = "week"; resetFilters();
-C.renderGrid_();
-var internGrid = els.gridPanel.innerHTML;
-assert_(/🎓 intern/.test(internGrid), "the roster marks the intern with a 🎓 note");
-assert_(/Ivy Intern/.test(internGrid), "…and their profile row is fully present");
+// The roster's own 🎓-note/profile-row coverage (formerly the People grid,
+// retired Task 3, 2026-08-05) returns with the Task 5 signals roster.
 C.renderOpportunity_();
 assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
         "no headroom row for an intern — ranking them by recoverable hours is the punishment this prevents");
@@ -1448,8 +1402,8 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   var mdl = fresh(model({}));
   C.STATE.period = "week";
   C.STATE.typePop = "open";
-  C.renderHygiene_();
-  var h = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  var h = els.hygPanel.innerHTML;
 
   assert_(/Field fill by issue type/.test(h), "the by-type matrix renders inside Data Hygiene");
   assert_(/Go-live epic/.test(h) && /Sub-task/.test(h), "each issue type gets its own row");
@@ -1505,16 +1459,16 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
       keys: { region: ["B-1"] }, keysCapped: {} },
   ] };
   C.STATE.typePop = "open";
-  C.renderHygiene_();
-  var hvar = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  var hvar = els.hygPanel.innerHTML;
   assert_(/<td class="tnum tcell r"><div class="tval">✖ 0%/.test(hvar),
           "a Region column that VARIES by type is graded normally — PR-01 is not an exemption");
   assert_(!/one org-wide field gap/.test(hvar),
           "…and the uniform footnote does not appear when the column varies");
   fresh(mdl);
   C.STATE.typePop = "open";
-  C.renderHygiene_();
-  h = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  h = els.hygPanel.innerHTML;
 
   // Miss counts are the size of the job and must be present, not just percentages.
   assert_(/class="tmiss"/.test(h), "each cell states how many records are missing the field");
@@ -1563,7 +1517,7 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
 
   // RESOLVED population: follows the period picker and says which window it covers.
   C.setTypePop_("resolved");
-  var hr = els.viewHygiene.innerHTML;
+  var hr = els.hygPanel.innerHTML;
   assert_(/Resolved in/.test(hr), "the resolved matrix names its window");
   assert_(/where the cards' numbers come from/.test(hr), "…and says what it explains");
   var rres = C.typeHygRows_(["2026.W30", "2026.W31"]);
@@ -1576,15 +1530,15 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // gate editor below it.
   var viewerMdl = fresh(model({ overrides: { viewerRole: "viewer" } }));
   C.STATE.typePop = "open";
-  C.renderHygiene_();
-  var hv = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  var hv = els.hygPanel.innerHTML;
   assert_(/Field fill by issue type/.test(hv), "a viewer sees the by-type matrix");
 
   // Pre-v17 payload: must SAY it is missing. An empty matrix reads as "no gaps".
   var legacy = fresh(model({}));
   delete legacy.typeHygiene;
-  C.renderHygiene_();
-  var hl = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  var hl = els.hygPanel.innerHTML;
   assert_(/Not in this payload/.test(hl),
           "a payload with no typeHygiene says so — silence would read as 'no gaps'");
 
@@ -1595,8 +1549,8 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // as a hygiene gap row or someone will open a ticket to chase leavers.
   var lv = fresh(model({}));
   lv.meta.leaverExcluded = { issues: 42, epics: 7 };
-  C.renderHygiene_();
-  var hlv = els.viewHygiene.innerHTML;
+  C.renderHygPanel_();
+  var hlv = els.hygPanel.innerHTML;
   assert_(/42<\/b> issues by former employees excluded/.test(hlv),
           "the attrition exclusion is stated on the hygiene view");
   assert_(/7 of them epics/.test(hlv), "…with the epic split, since Forecast is epic-grain");
@@ -1605,20 +1559,20 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // Silent when there is nothing to say — a permanent "0 excluded" line is noise.
   var lv0 = fresh(model({}));
   lv0.meta.leaverExcluded = { issues: 0, epics: 0 };
-  C.renderHygiene_();
-  assert_(!/former employees/.test(els.viewHygiene.innerHTML),
+  C.renderHygPanel_();
+  assert_(!/former employees/.test(els.hygPanel.innerHTML),
           "no note when nothing was excluded");
   var lvNone = fresh(model({}));
   delete lvNone.meta.leaverExcluded;
-  C.renderHygiene_();
-  assert_(!/former employees/.test(els.viewHygiene.innerHTML),
+  C.renderHygPanel_();
+  assert_(!/former employees/.test(els.hygPanel.innerHTML),
           "a pre-v18 payload renders no note rather than throwing");
 
   // Empty feed is not the same as a broken one.
   var empty = fresh(model({}));
   empty.typeHygiene = { resolved: [], open: [], keyCap: 500 };
-  C.renderHygiene_();
-  assert_(/No open work in the feed/.test(els.viewHygiene.innerHTML),
+  C.renderHygPanel_();
+  assert_(/No open work in the feed/.test(els.hygPanel.innerHTML),
           "an empty population says so plainly");
   fresh(model({}));
   C.STATE.typePop = "open";
