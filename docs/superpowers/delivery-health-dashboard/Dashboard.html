@@ -1893,7 +1893,8 @@ function suppressedTileHtml_(label, metric, conf, detail, headlineLabel, covTren
   // repetition is just a stolen line. (Kept as a tooltip: a suppressed card is
   // still a statement about a window.)
   return '<div class="tile sup"><div class="lbl"' +
-    (headlineLabel ? ' title="' + esc_(headlineLabel) + '"' : "") + ">" + label + '</div>' +
+    (headlineLabel ? ' title="' + esc_(headlineLabel) + '"' : "") + ">" + label +
+    scopeTag_("period") + '</div>' +
     '<div class="supbig" title="' + esc_((metric.definition || "") + " Gate: " +
       Math.round((metric.coverageGate || 0) * 100) + "% of " + (metric.coverageOf || "records") +
       ".") + '">Not yet measurable</div>' +
@@ -1955,14 +1956,15 @@ function gatedTile_(label, conf, metric, emptyMsg, suppressDetail, publish, head
 function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   opts = opts || {};
   if (opts.placeholder) {
-    return '<div class="tile ph"><div class="lbl">' + label + '</div>' +
+    return '<div class="tile ph"><div class="lbl">' + label + scopeTag_("period") + '</div>' +
       '<div class="big">—</div><div class="cmp">data pending — reopen/CSAT feed not yet connected</div>' +
       '<div class="cmp"><a href="#" class="hyglink" onclick="showHygiene_();return false">' +
       "What's missing →</a></div></div>";
   }
   if (opts.unavailable) {
     return '<div class="tile ph"><div class="lbl"' +
-      (opts.headlineLabel ? ' title="' + esc_(opts.headlineLabel) + '"' : "") + ">" + label + '</div>' +
+      (opts.headlineLabel ? ' title="' + esc_(opts.headlineLabel) + '"' : "") + ">" + label +
+      scopeTag_("period") + '</div>' +
       '<div class="big">—</div><div class="cmp">' + opts.unavailable + '</div></div>';
   }
   var big = headlinePct === null ? "—" : Math.round(headlinePct) + "%";
@@ -2051,7 +2053,7 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   var detail = (opts.detail || []).filter(Boolean).join(" · ");
   var context = cmpText + (detail
     ? ' <span class="cellSub" title="' + esc_(detail) + '" style="cursor:help">ⓘ</span>' : "");
-  return '<div class="tile"><div class="lbl">' + label + '</div>' +
+  return '<div class="tile"><div class="lbl">' + label + scopeTag_("period") + '</div>' +
     '<div class="big ' + rag + '">' + big + '</div>' +
     (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, opts.metric || {}) + '</div>' : "") +
     (signal ? '<div class="cmp">' + signal + '</div>' : "") +
@@ -2390,14 +2392,18 @@ function fmtFlowVal_(v, unit) {
 function flowTileHtml_(m, headline, opts) {
   opts = opts || {};
   var name = (m && m.name) || opts.label || "";
+  // Scope defaults to PERIOD — every flowTileHtml_ caller states its scope
+  // explicitly (renderFlow_ passes "snap" for Backlog/WIP), but a dash tile
+  // still has a scope, so a fallback is here rather than a crash.
+  var scope = opts.scope || "period";
   if (m && m.status === "absent") {
-    return '<div class="tile ph"><div class="lbl">' + esc_(name) + '</div>' +
+    return '<div class="tile ph"><div class="lbl">' + esc_(name) + scopeTag_(scope) + '</div>' +
       '<div class="big">—</div><div class="cmp" title="' + esc_(m.absentReason || "") + '">' +
       esc_((m.absentReason || "not measured").split("—")[0].trim()) +
       ' <span class="cellSub" style="cursor:help">ⓘ</span></div></div>';
   }
   if (opts.unavailable) {
-    return '<div class="tile ph"><div class="lbl">' + esc_(name) + '</div>' +
+    return '<div class="tile ph"><div class="lbl">' + esc_(name) + scopeTag_(scope) + '</div>' +
       '<div class="big">—</div><div class="cmp">' + esc_(opts.unavailable) + '</div></div>';
   }
   var detail = (opts.detail || []).filter(Boolean).join(" · ");
@@ -2415,7 +2421,7 @@ function flowTileHtml_(m, headline, opts) {
       : '<span>' + (mag > 0 ? "▲" : "▼") + " " + Math.abs(mag) +
         (m && m.unit === "days" ? "d" : m && m.unit === "hrs" ? "h" : "") + " vs prior</span>";
   }
-  return '<div class="tile"><div class="lbl">' + esc_(name) + '</div>' +
+  return '<div class="tile"><div class="lbl">' + esc_(name) + scopeTag_(scope) + '</div>' +
     '<div class="big">' + fmtFlowVal_(headline, m && m.unit) + '</div>' +
     (opts.conf ? '<div class="cmp">' + confChip_(opts.conf, m || {}) + '</div>' : "") +
     (delta ? '<div class="cmp">' + delta + '</div>' : "") +
@@ -2455,6 +2461,7 @@ function renderFlow_() {
     var conf = metricConfidence_(m.coverageGate || 0,
       b.nAll > 0 ? b.n / b.nAll : null, periodsWithData);
     html += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
+      scope: "period",
       conf: b.nAll > 0 ? conf : null,
       trend: series, trendLabels: labels,
       context: b.n > 0
@@ -2486,6 +2493,7 @@ function renderFlow_() {
       b.nAll > 0 ? b.nEst / b.nAll : null,
       series.filter(function (v) { return v !== null; }).length);
     html += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
+      scope: "period",
       conf: b.nAll > 0 ? conf : null,
       trend: series, trendLabels: labels,
       context: b.nAll > 0
@@ -2531,6 +2539,7 @@ function renderFlow_() {
     var bConf = metricConfidence_(mB.coverageGate || 0,
       open.todoN > 0 ? open.todoEst / open.todoN : null, Math.max(1, bPoints));
     html += flowTileHtml_(mB, open.todoN > 0 || open.todoEst > 0 ? open.todoHrs : (open.todoN === 0 ? 0 : null), {
+      scope: "snap",
       conf: open.todoN > 0 ? bConf : null,
       trend: bPoints >= 2 ? bTrend : null, trendLabels: labels,
       context: open.todoN + " items waiting to start · " +
@@ -2550,6 +2559,7 @@ function renderFlow_() {
     var wTrend = snapTrend("wip");
     var wPoints = (wTrend || []).filter(function (v) { return v !== null; }).length;
     html += flowTileHtml_(mW, open.wipN, {
+      scope: "snap",
       conf: null,   // a count over rows that exist — a coverage chip would be noise
       trend: wPoints >= 2 ? wTrend : null, trendLabels: labels,
       context: open.wipN + " active items right now" +
@@ -2568,7 +2578,7 @@ function renderFlow_() {
     var m = reg.bugCount || { unit: "bugs", coverageGate: 0, name: "Bug Count" };
     if (!MODEL.meta.bugsAvailable) {
       html += flowTileHtml_(m, null,
-        { unavailable: "export predates Jira Backlog.js v3.9.0 — no Jira Bugs tab yet" });
+        { scope: "period", unavailable: "export predates Jira Backlog.js v3.9.0 — no Jira Bugs tab yet" });
       return;
     }
     var byIso = {};
@@ -2582,6 +2592,7 @@ function renderFlow_() {
     var created = sumOver(head.isos, "nCreated");
     var resolved = sumOver(head.isos, "nResolved");
     html += flowTileHtml_(m, created, {
+      scope: "period",
       conf: null,
       trend: series, trendLabels: labels,
       context: resolved + " resolved this period — book " +
@@ -3027,7 +3038,7 @@ function renderCompare_() {
 
   panel.innerHTML =
     '<div class="chartHead"><h3>' + esc_(m.label()) + " by " +
-      esc_(COMPARE_LABELS[STATE.compare]) + "</h3>" +
+      esc_(COMPARE_LABELS[STATE.compare]) + scopeTag_("period") + "</h3>" +
       '<span class="sub">' + esc_(head.label) + " · last complete " + unit + "</span>" +
       '<span style="flex:1"></span><span class="chips seg">' + chips + "</span></div>" +
     '<div class="chartHead" style="margin-bottom:6px"><span class="sub">Metric</span>' +

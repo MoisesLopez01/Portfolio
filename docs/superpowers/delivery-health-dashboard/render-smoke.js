@@ -2376,4 +2376,101 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   C.renderAll_();
 })();
 
+// ── TASK 9 — SCOPE TAGS ON EVERY TILE (spec §4.5) ───────────────────────────
+// scopeTag_ already sits on the roster headers, pulse heading and trust strip
+// (Tasks 5, 7, 8). This pins it on the three surfaces that were still bare:
+// the four hero KPI tiles (tileHtml_/suppressedTileHtml_) → PERIOD, the flow
+// tier (flowTileHtml_) split PERIOD/SNAP by metric, and the comparison
+// heading → PERIOD.
+(function () {
+  var M = model({});
+  // Flow fixture (same shape as the 🌊 Flow tiles test above) — all five
+  // flowTileHtml_ calls need to render LIVE tiles, not absent/unavailable
+  // placeholders, so every scope can be pinned to its own metric.
+  var who = M.people[0].name;
+  var W = WEEKS[WEEKS.length - 1];
+  M.leadTimeBuckets = [{ iso: W, person: who, n: 2, nAll: 3, days: [4, 10] }];
+  M.throughputBuckets = [{ iso: W, person: who, nAll: 3, nEst: 2, estHrs: 12.5 }];
+  M.flowOpenBuckets = [{ person: who, wipN: 3, todoN: 5, todoEst: 4, todoHrs: 22.5 }];
+  M.bugWeekly = [{ iso: W, nCreated: 4, nResolved: 1 }];
+  M.meta.bugsAvailable = true;
+  M.meta.flowSnapshotsAvailable = true;
+  M.meta.flowSnapshots = [
+    { iso: WEEKS[0], at: "", wip: 2, backlogHrs: 30, backlogN: 6 },
+    { iso: W,        at: "", wip: 3, backlogHrs: 22.5, backlogN: 5 },
+  ];
+  M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
+    target: null, coverageGate: 0.9 };
+  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
+    target: null, coverageGate: 0.6 };
+  M.meta.registry.metrics.backlog = { id: "backlog", name: "Backlog (Inventory)", unit: "hrs",
+    target: null, coverageGate: 0.6 };
+  M.meta.registry.metrics.wip = { id: "wip", name: "Work In Progress", unit: "items",
+    target: null, coverageGate: 0 };
+  M.meta.registry.metrics.bugCount = { id: "bugCount", name: "Bug Count", unit: "bugs",
+    target: null, coverageGate: 0 };
+  fresh(M);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+
+  // ── Hero tiles (tileHtml_) → PERIOD ────────────────────────────────────
+  var tilesHtml = els.tiles.innerHTML;
+  assert_(tilesHtml.indexOf(">PERIOD<") !== -1, "hero tiles carry PERIOD scope tags");
+  // On-Time (always renders) + Forecast + Utilization (margin-gated on for
+  // admin) + Quality (always renders) = 4 hero tiles, one PERIOD tag each.
+  assert_(tilesHtml.split(">PERIOD<").length - 1 === 4,
+          "…exactly one PERIOD tag per hero tile (4 tiles under the admin fixture)");
+  assert_(tilesHtml.indexOf(">SNAP<") === -1 && tilesHtml.indexOf(">ORG<") === -1,
+          "…and never SNAP or ORG — every hero tile follows the period picker");
+
+  // ── Flow tier (flowTileHtml_) → PERIOD/SNAP split by metric ────────────
+  var ft = els.flowTiles.innerHTML;
+  assert_(ft.indexOf(">SNAP<") !== -1 && ft.indexOf(">PERIOD<") !== -1,
+          "flow tier: Backlog/WIP tag SNAP, Lead Time/Throughput/Bugs tag PERIOD");
+  assert_(ft.split(">SNAP<").length - 1 === 2, "…exactly two SNAP tags (Backlog + WIP)");
+  assert_(ft.split(">PERIOD<").length - 1 === 3,
+          "…exactly three PERIOD tags (Lead Time, Throughput, Bug Count)");
+  // Placement pin: the tag rides with the RIGHT tile, not just anywhere in the
+  // markup — slice the strip between consecutive tile labels and check each.
+  var leadSeg = ft.split("Lead Time")[1].split("Throughput")[0];
+  var throughputSeg = ft.split("Throughput")[1].split("Backlog (Inventory)")[0];
+  var backlogSeg = ft.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
+  var wipSeg = ft.split("Work In Progress")[1].split("Bug Count")[0];
+  var bugSeg = ft.split("Bug Count")[1];
+  assert_(leadSeg.indexOf(">PERIOD<") !== -1, "Lead Time tile tags PERIOD");
+  assert_(throughputSeg.indexOf(">PERIOD<") !== -1, "Throughput tile tags PERIOD");
+  assert_(backlogSeg.indexOf(">SNAP<") !== -1, "Backlog tile tags SNAP");
+  assert_(wipSeg.indexOf(">SNAP<") !== -1, "WIP tile tags SNAP");
+  assert_(bugSeg.indexOf(">PERIOD<") !== -1, "Bug Count tile tags PERIOD");
+  assert_(leadSeg.indexOf(">SNAP<") === -1 && throughputSeg.indexOf(">SNAP<") === -1 &&
+          bugSeg.indexOf(">SNAP<") === -1,
+          "…and SNAP never leaks onto Lead Time, Throughput or Bug Count");
+  assert_(backlogSeg.indexOf(">PERIOD<") === -1 && wipSeg.indexOf(">PERIOD<") === -1,
+          "…and PERIOD never leaks onto Backlog or WIP");
+
+  // Missing-feed placeholder: a dash tile still has a scope (brief note) —
+  // Bug Count's "unavailable" branch must still carry PERIOD.
+  M.meta.bugsAvailable = false;
+  C.setModel(M);
+  C.renderAll_();
+  var ftNoBugs = els.flowTiles.innerHTML;
+  var bugSegAbsent = ftNoBugs.split("Bug Count")[1];
+  assert_(bugSegAbsent.indexOf(">PERIOD<") !== -1,
+          "Bug Count's unavailable placeholder still carries PERIOD, not a bare label");
+  M.meta.bugsAvailable = true;
+  C.setModel(M);
+  C.renderAll_();
+
+  // ── Comparison panel heading → PERIOD ──────────────────────────────────
+  var cmp = els.comparePanel.innerHTML;
+  assert_(cmp.indexOf(">PERIOD<") !== -1, "comparison panel heading carries PERIOD scope tag");
+
+  // Teardown (sibling discipline): restore the standard fixture and view.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
 console.log("✅ render-smoke: " + checks + " checks passed");
