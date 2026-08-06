@@ -478,6 +478,17 @@ function _test_clearRateMedian_() {
   var withGap = [300, null, 310, 295, 305, 300];
   assert_(clearRateMedian_(withGap, 8) === 300,
           "null weeks dropped, not treated as 0 — got " + clearRateMedian_(withGap, 8));
+
+  // THE CRUX: the minimum is checked AFTER the nulls are dropped. Eight weeks of
+  // which four are gaps leaves four usable points — below the floor — so this must
+  // refuse to publish. A check against the PRE-filter count would see 8, sail past
+  // the floor, and return a median over four points. This is the ONLY assertion
+  // here that tells those two implementations apart: `withGap` above has 6 raw and
+  // 5 usable, so both counts clear the floor and a buggy guard passes it too.
+  var halfGaps = [300, null, 290, null, 310, null, 295, null];
+  assert_(clearRateMedian_(halfGaps, 8) === null,
+          "8 weeks with 4 gaps → null (4 usable < 5), not a median over the survivors — got " +
+          clearRateMedian_(halfGaps, 8));
   Logger.log("✅ _test_clearRateMedian_ passed");
 }
 ```
@@ -1179,12 +1190,20 @@ After that statement, add:
   // ── Queue model (spec 2026-08-06) ──────────────────────────────────────────
   // Two halves, never summed here: one is filterable downstream, the other is
   // org-wide. The client decides, once, with a scope tag on it.
+  // `flowOpen` is passed IN, not recomputed: assembleModel_ already built it
+  // above over the same issues and resolvePerson, and a second O(n) pass over
+  // every Jira issue to rebuild an identical answer is waste on a payload
+  // already large enough to need gzipping and chunking. Passing it also carries
+  // its `unattributed` / `uncategorized` counts through to the hero's own
+  // number, so the total owns its loss instead of deferring to a counter
+  // computed elsewhere in the payload (review finding, Task 4).
   var queue = inputs.jira.available
-    ? queueSnapshot_(jiraScoped.issues, resolvePerson)
-    : { assigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0 },
+    ? queueSnapshot_(jiraScoped.issues, resolvePerson, flowOpen)
+    : { assigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0,
+                    unattributed: 0, uncategorized: 0 },
         // NULL, not 0 — with no feed we did not look, and "0 unowned" is the
         // most dangerous false read on this surface (spec §5).
-        unassigned: { items: null, hrs: null } };
+        unassigned: { items: null, wipN: null, todoN: null, todoHrs: null } };
 
   var arrWeeks = (inputs.arrivals && inputs.arrivals.available) ? inputs.arrivals.weeks : [];
   // Ordered oldest-first by ISO key so the walkback and the median both read a
@@ -1492,10 +1511,17 @@ Replace with:
     // 'assignee is not EMPTY' from fetchOpenIssues_ (spec D7) — before that these
     // rows were never fetched, which is why the dashboard reported a 1,440-item
     // queue when the true figure was 3,279.
+    // Hours are TO-DO ONLY, matching the dashboard's queueSnapshot_ on both
+    // halves (Task 4 review): flowOpenBuckets_ contributes no hours for
+    // In Progress work, so an "all open" figure here would put a different
+    // population in the sheet than the dashboard computes from Jira Raw, and the
+    // two would quietly disagree. Items still count every unassigned open row.
     var unItems = 0, unSecs = 0;
     (openCandidates || []).forEach(function (i) {
       if (dig_(i, "fields.assignee.displayName")) return;
       unItems++;
+      var cat = String(dig_(i, "fields.status.statusCategory.name") || "");
+      if (!/to do/i.test(cat)) return;          // WIP carries no hours here
       var est = Number(dig_(i, "fields.timeoriginalestimate")) || 0;
       var spent = Number(dig_(i, "fields.timespent")) || 0;
       unSecs += Math.max(0, est - spent);

@@ -291,8 +291,13 @@ it currently feeds only `Exec Q&A`).
 
 | Column | Meaning |
 |---|---|
-| `Unassigned Items` | open, unassigned, updated within the bound |
-| `Unassigned Hrs` | Σ max(0, est − spent) over those |
+| `Unassigned Items` | open, unassigned, updated within the bound — every status category |
+| `Unassigned Hrs` | Σ max(0, est − spent) over the **To Do** ones only |
+
+`Unassigned Hrs` is To-Do-only to match `flowOpenBuckets_`, which contributes no hours for
+In Progress work (Task 4 review, 2026-08-06). An "all open" figure here would put a different
+population in the sheet than the dashboard computes from `Jira Raw`, and the two would quietly
+disagree — on a page whose whole premise is one honest total.
 
 Append-only contract preserved; readers index by header name, so existing rows stay readable and
 simply carry no value for the new columns.
@@ -310,7 +315,7 @@ Four new pure functions, all unit-testable without GAS:
 | Function | Contract |
 |---|---|
 | `readArrivals_()` / `parseArrivalRows_()` | the new tab → `[{iso, created, resolved, createdUnassigned}]`. **Missing column → `null`, never `0`** — same tristate discipline as `parseBugRows_` and `reopened`. **`available` reports whether the tab is READABLE, not whether it holds data** (user decision 2026-08-06, aligning with `parseBugRows_` and `parseFlowSnapshotRows_`): no tab or a missing required column → `false`; a tab whose rows all fail to parse → `true` with `weeks.length === 0`. Collapsing those two would let an exporter date-format regression hide as "the export has not run yet" |
-| `queueSnapshot_()` | assigned inventory from the unchanged, still person-keyed `flowOpenBuckets_`, **plus** unassigned counted directly off `jira.issues` (D7). Returns both halves separately and **never a sum**. `flowOpenBuckets_` **keeps its `/unassigned/i` guard** — the assigned sub-row must stay assigned-only, so the guard is load-bearing, not vestigial |
+| `queueSnapshot_(issues, resolvePerson, flowOpen)` | assigned inventory from the unchanged, still person-keyed `flowOpenBuckets_` (**passed in**, not recomputed — `assembleModel_` already built it, and a second O(n) pass over every issue is waste on a payload that needs gzipping), **plus** unassigned counted directly off `jira.issues` (D7). Returns both halves separately and **never a sum**. `flowOpenBuckets_` **keeps its `/unassigned/i` guard** — the assigned sub-row must stay assigned-only, so the guard is load-bearing, and the unassigned loop's condition is its exact complement, which is what makes the halves provably disjoint. **Both halves carry the same shape** — `{items, wipN, todoN, todoHrs}` — so no caller can compare a To-Do-only figure against a To-Do-plus-WIP one. `assigned` additionally carries `unattributed` and `uncategorized`: records whose assignee exists but does not resolve to a roster person, and records in neither status category, fall out of **both** halves, so the total owns its own loss rather than deferring to a counter computed elsewhere in the payload (Task 4 review) |
 | `clearRateMedian_(weeks)` | median of the last 8 complete weeks' `resolved`, via the existing `medianOf_`. **Returns `null` under 5 weeks of history**, matching `standardRate_`'s existing refusal-to-publish rule rather than inventing a second one. Called twice with two series: the ORG `resolved` series from `Jira Arrivals` for the hero, and the filtered `throughputBuckets_` cleared series for the assigned sub-row (§3 §2) |
 | `sampleFloorFor_(metricId, n)` | the new org-level floor; reads `SAMPLE_FLOOR` per registry entry so the Services Director can tune it per metric the way `coverageGate` already is |
 
