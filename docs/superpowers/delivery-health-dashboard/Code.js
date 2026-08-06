@@ -4362,12 +4362,17 @@ function _test_bugFeed_() {
 function _test_arrivalParse_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_arrivalParse_: " + m); }
 
+  // Sheets delivers dates as local midnight. Construct them the same way to ensure
+  // isoWeekNum_'s local getters (getFullYear/getMonth/getDate) read the correct
+  // calendar day. A UTC instant like new Date("2026-07-27T00:00:00Z") would bucket
+  // to the prior day in behind-UTC timezones (e.g. America/Guatemala), causing the
+  // same week-label code to silently return the wrong week.
   // Deliberately NOT in the order the exporter writes them.
   var values = [
     ["Resolved", "Week Start", "Created Unassigned", "Created"],
-    [204, new Date("2026-07-28T00:00:00Z"), 90, 224],
-    [297, new Date("2026-07-20T00:00:00Z"), 71, 250],
-    ["", "", "", ""],                                  // trailing blank row
+    [204, new Date(2026, 6, 27), 90, 224],  // Monday of ISO week 31
+    [297, new Date(2026, 6, 20), 71, 250],  // Monday of ISO week 30
+    ["", "", "", ""],                        // trailing blank row
   ];
   var r = parseArrivalRows_(values);
   assert_(r.available === true, "available on a well-formed tab");
@@ -4376,11 +4381,13 @@ function _test_arrivalParse_() {
   assert_(w31.iso === "2026.W31", "week key computed from Week Start — got " + w31.iso);
   assert_(w31.created === 224 && w31.resolved === 204, "counts read by NAME, not position");
   assert_(w31.createdUnassigned === 90, "createdUnassigned read");
+  var w30 = r.weeks[1];
+  assert_(w30.iso === "2026.W30", "second week is W30 — got " + w30.iso);
 
   // Missing optional column → null, not 0.
   var noUnassigned = parseArrivalRows_([
     ["Week Start", "Created", "Resolved"],
-    [new Date("2026-07-28T00:00:00Z"), 224, 204],
+    [new Date(2026, 6, 27), 224, 204],
   ]);
   assert_(noUnassigned.weeks[0].createdUnassigned === null,
           "absent column → null, never 0 — got " + noUnassigned.weeks[0].createdUnassigned);
@@ -4389,7 +4396,7 @@ function _test_arrivalParse_() {
   var junk = parseArrivalRows_([
     ["Week Start", "Created", "Resolved"],
     ["not a date", 5, 5],
-    [new Date("2026-07-27T00:00:00Z"), 224, 204],
+    [new Date(2026, 6, 27), 224, 204],
   ]);
   assert_(junk.weeks.length === 1, "unparseable Week Start skipped — got " + junk.weeks.length);
 
