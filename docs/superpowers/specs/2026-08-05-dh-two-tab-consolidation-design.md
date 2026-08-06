@@ -88,7 +88,7 @@ The existing opportunity table (`renderOpportunity_`, `oppRows_`) **unchanged in
 
 ### 5.2 People signals roster (new)
 
-One row per **active employee in the dashboard population** (the same tracking-mandated-families population the dashboard already models), respecting the universal filters and population lens.
+One row per **active employee in the dashboard population** (the same tracking-mandated-families population the dashboard already models), respecting the universal filters and population lens. The attribution index is broader than the population (it includes the whole active roster, per the 2026-08-04 decision); issues attributed to someone outside the population/lens simply surface no row and are excluded from the Executive summary counts — same behaviour as every other person-attributed metric.
 
 **Column registry** (client-side array, same pattern as `TYPE_FIELDS_`): each entry = `{ key, label, tooltip, gate | gateOf, cellRenderer, sortFn, csv }`. Adding a future signal = registering a column. Launch set:
 
@@ -99,7 +99,7 @@ One row per **active employee in the dashboard population** (the same tracking-m
 | Due date | RAG signal | share of the person's issues carrying a due date — **same predicate as the 🧬 matrix's `due` field**, graded against the same gate |
 | Estimate | RAG signal | share carrying an original estimate — matrix `est` predicate + gate |
 | Logged | RAG signal | share carrying logged time (Time Spent > 0) — matrix `time` predicate + gate |
-| Hours | info (no RAG) | compact stacked bar: billable / non-billable / idle capacity for the analysis period, from the existing per-person Tempo×NetSuite split (the numbers the old People-grid workload bars drew). Exact hours in tooltip + CSV. Sorts by billable share |
+| Hours | info (no RAG) | compact stacked bar: billable / non-billable / idle capacity, from the existing per-person Tempo×NetSuite split (the numbers the old People-grid workload bars drew). **Always scoped to the analysis period**, regardless of the Open ↔ Resolved toggle (worklogs are period-shaped; a backlog snapshot has no hours). Exact hours in tooltip + CSV. Sorts by billable share |
 | Overall | RAG signal | worst of the three RAG signals ("a chain is as compliant as its weakest field"); "—" cells are ignored; all-"—" → overall "—" |
 
 **Cell grammar:** RAG dot + person's own fill % + offending count (e.g. `🔴 33% · 4 missing`). Grading thresholds are the matrix's: ✔ at/above the field's gate · ▲ under 10 pts below · ✖ 10+ pts below. Zero issues in the selected population → `—` (ungraded), never red: no data is not a failure.
