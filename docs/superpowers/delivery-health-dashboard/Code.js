@@ -25,6 +25,7 @@ var CONFIG_DH = {
   ARRIVALS_SHEET:    "Jira Arrivals",   // weekly created/resolved tally (Jira Backlog.js v3.11.0)
   CLEAR_RATE_WEEKS:  8,   // trailing window for the weeks-to-clear denominator
   CLEAR_RATE_MIN_N:  5,   // below this it publishes nothing — same bar as STD_MIN_PERIODS
+  WALKBACK_MAX_WEEKS: 26,  // reconstruction horizon — matches OPEN_BACKLOG_UPDATED_WEEKS upstream
   ROSTER_SHEET:      "Data",
   CONTRACTORS_SHEET: "Contractors Data",
   ROSTER_CLASS:      "Professional Services",
@@ -2072,6 +2073,54 @@ function clearRateMedian_(series, weeks) {
   var vals = win.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
   if (vals.length < (CONFIG_DH.CLEAR_RATE_MIN_N || 5)) return null;
   return medianOf_(vals);
+}
+
+/**
+ * Reconstructs a weekly open-inventory series by walking deltas BACKWARDS from
+ * the measured present:
+ *
+ *     inventory(W-1) = inventory(W) - created(W) + resolved(W)
+ *
+ * Why reconstruct at all: Flow Snapshots appends one row per export run and
+ * started 2026.W32, so the measured series is a single point — and a hero number
+ * with no trend is a headline with no context. Cumulative created-minus-resolved
+ * from scratch would undercount (anything created before the export window is
+ * missing), but anchoring on a MEASURED total removes that error entirely: only
+ * the deltas need to be right, and they are, because created and resolution dates
+ * are on every row.
+ *
+ * Two limits, both recorded in the registry's deviations:
+ *  1. it assumes nothing was deleted or moved out of scope;
+ *  2. the anchor carries the updated>=-26w bound while the deltas do not, so
+ *     drift grows with distance from today — hence the 26-week cap, where that
+ *     bound is coherent.
+ *
+ * Every point carries `measured`, so the client can draw reconstructed points
+ * differently. As Flow Snapshots accumulates real measurements they replace
+ * reconstructed points week by week and the series improves on its own.
+ *
+ * @param {number|null} anchorItems measured open inventory NOW
+ * @param {Array<{iso,created,resolved}>} weeks oldest first, ending at the anchor week
+ * @param {number} maxWeeks horizon cap
+ * @returns {Array<{iso,items,measured}>} oldest first; empty when unanchorable
+ */
+function inventoryWalkback_(anchorItems, weeks, maxWeeks) {
+  if (anchorItems === null || anchorItems === undefined || isNaN(anchorItems)) return [];
+  if (!weeks || !weeks.length) return [];
+  var cap = maxWeeks || CONFIG_DH.WALKBACK_MAX_WEEKS || 26;
+  var win = weeks.slice(Math.max(0, weeks.length - cap));
+  var out = new Array(win.length);
+  var items = Number(anchorItems);
+  for (var i = win.length - 1; i >= 0; i--) {
+    out[i] = {
+      iso: win[i].iso,
+      items: Math.max(0, Math.round(items)),   // a negative inventory is not a state
+      // Only the newest point is measured; everything behind it is inferred.
+      measured: i === win.length - 1,
+    };
+    items = items - (Number(win[i].created) || 0) + (Number(win[i].resolved) || 0);
+  }
+  return out;
 }
 
 // ── JIRA REGION VOCABULARY (requirements v1.1 §4.3) ───────────
@@ -4684,6 +4733,59 @@ function _test_unassignedInventory_() {
   assert_(noneBlank.unassigned.wipN === 0 && noneBlank.unassigned.todoN === 0,
           "unassigned shape preserved on all-assigned data");
   Logger.log("✅ _test_unassignedInventory_ passed");
+}
+
+/**
+ * inventory(W-1) = inventory(W) - created(W) + resolved(W), anchored on the
+ * MEASURED present and walked backwards. Recovers a real weeks-to-clear trend on
+ * day one instead of waiting for Flow Snapshots to accumulate (spec §4.5).
+ *
+ * Capped at 26 weeks because the anchor carries the updated>=-26w bound while the
+ * weekly deltas do not, so drift grows with distance from today. Reconstructed
+ * points are FLAGGED, never silently mixed with measured ones.
+ */
+function _test_inventoryWalkback_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_inventoryWalkback_: " + m); }
+
+  // Forward truth: start at 100, apply the deltas, end at 130.
+  //   W28: +20 -10 → 110 | W29: +15 -5 → 120 | W30: +10 -10 → 120 | W31: +20 -10 → 130
+  var weeks = [
+    { iso: "2026.W28", created: 20, resolved: 10 },
+    { iso: "2026.W29", created: 15, resolved: 5 },
+    { iso: "2026.W30", created: 10, resolved: 10 },
+    { iso: "2026.W31", created: 20, resolved: 10 },
+  ];
+  var r = inventoryWalkback_(130, weeks, 26);
+
+  assert_(r.length === 4, "one point per week — got " + r.length);
+  assert_(r[3].iso === "2026.W31" && r[3].items === 130, "newest point IS the anchor");
+  assert_(r[2].items === 120, "W30 = 130 - 20 + 10 = 120 — got " + r[2].items);
+  assert_(r[1].items === 120, "W29 = 120 - 10 + 10 = 120 — got " + r[1].items);
+  assert_(r[0].items === 110, "W28 = 120 - 15 + 5 = 110 — got " + r[0].items);
+
+  // The anchor is MEASURED; everything behind it is RECONSTRUCTED and says so.
+  assert_(r[3].measured === true, "the anchor is flagged measured");
+  assert_(r[0].measured === false && r[1].measured === false && r[2].measured === false,
+          "walked-back points are flagged reconstructed");
+
+  // Cap: 30 weeks of deltas yields at most 26 points.
+  var many = [];
+  for (var i = 0; i < 30; i++) many.push({ iso: "2026.W" + (i + 1), created: 10, resolved: 10 });
+  assert_(inventoryWalkback_(500, many, 26).length === 26,
+          "capped at 26 — got " + inventoryWalkback_(500, many, 26).length);
+
+  // Inventory can never be negative: a bad delta clamps at 0 rather than
+  // printing a queue of -40 items, which is not a state the world can be in.
+  var bad = [{ iso: "2026.W30", created: 500, resolved: 0 },
+             { iso: "2026.W31", created: 10, resolved: 10 }];
+  var clamped = inventoryWalkback_(100, bad, 26);
+  assert_(clamped[0].items >= 0, "clamped at zero — got " + clamped[0].items);
+
+  // No anchor means no series. A reconstruction with nothing to anchor on is a
+  // guess, and a guessed trend under a headline is worse than no trend.
+  assert_(inventoryWalkback_(null, weeks, 26).length === 0, "null anchor → empty");
+  assert_(inventoryWalkback_(130, [], 26).length === 0, "no weeks → empty");
+  Logger.log("✅ _test_inventoryWalkback_ passed");
 }
 
 function _test_flowSnapshots_() {
