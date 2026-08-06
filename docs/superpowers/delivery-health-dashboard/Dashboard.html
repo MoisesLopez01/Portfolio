@@ -1715,18 +1715,38 @@ function hbarChart_(o) {
   // and a rescaled x-axis would make 62% and 68% look like a chasm.
   function x(v) { return L + Math.max(0, Math.min(100, v)) / 100 * pw; }
 
+  // Unit-bearing metrics (Task 10: Lead Time in days, Throughput in hrs) have
+  // no fixed 0–100 range — a "70%"-style axis on a value of 12.5 days would be
+  // fabricated. o.unit (from METRICS_[id].unit) switches the axis to scale
+  // against this chart's own max(values) instead, reusing the SAME x() pixel
+  // mapping (0–100 = 0–domainMax) so every position/width formula below is
+  // untouched — only what a value is converted to, and how it is LABELLED,
+  // changes.
+  var unit = o.unit || null;
+  var domainMax = 1;
+  if (unit) {
+    rows.forEach(function (r) { if (r.value !== null && r.value > domainMax) domainMax = r.value; });
+  }
+  /** Value → pixel, riding x()'s existing 0–100 mapping for unit metrics too. */
+  function xv(v) { return unit ? x(domainMax ? v / domainMax * 100 : 0) : x(v); }
+  /** Axis/value label: unit-formatted (12.5d / 412h) when unit is set, plain
+      percent otherwise — never both, so a flow metric can't grow a stray "%". */
+  function lbl(v) { return unit ? fmtFlowVal_(v, unit) : Math.round(v) + "%"; }
+
   var s = '<svg class="chart hbar" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' +
     esc_(o.title || "comparison") + '">';
   for (var g = 0; g <= 100; g += 25) {
     s += '<line class="gl" x1="' + x(g) + '" x2="' + x(g) + '" y1="' + (TOP - 6) +
       '" y2="' + (TOP + rows.length * RH) + '"/>' +
-      '<text class="axis" x="' + x(g) + '" y="' + (H - 6) + '" text-anchor="middle">' + g + "%</text>";
+      '<text class="axis" x="' + x(g) + '" y="' + (H - 6) + '" text-anchor="middle">' +
+      (unit ? lbl(g / 100 * domainMax) : g + "%") + "</text>";
   }
   if (o.std && o.std.ok) {
-    s += '<rect x="' + x(o.std.lo) + '" y="' + (TOP - 6) + '" width="' +
-      Math.max(1, x(o.std.hi) - x(o.std.lo)) + '" height="' + (rows.length * RH + 6) +
+    s += '<rect x="' + xv(o.std.lo) + '" y="' + (TOP - 6) + '" width="' +
+      Math.max(1, xv(o.std.hi) - xv(o.std.lo)) + '" height="' + (rows.length * RH + 6) +
       '" fill="var(--c-ref)" opacity="0.10"><title>operating rate ' +
-      Math.round(o.std.lo) + "–" + Math.round(o.std.hi) + "% — where this metric normally sits</title></rect>";
+      (unit ? lbl(o.std.lo) + "–" + lbl(o.std.hi) : Math.round(o.std.lo) + "–" + Math.round(o.std.hi) + "%") +
+      " — where this metric normally sits</title></rect>";
   }
   if (o.target) {
     s += '<line x1="' + x(o.target.green) + '" x2="' + x(o.target.green) + '" y1="' + (TOP - 12) +
@@ -1741,7 +1761,7 @@ function hbarChart_(o) {
     var rag = ragOf_(r.value, o.target);
     s += "<g>" +
       "<title>" + esc_(r.label + " — " +
-        (r.value === null ? "no measurable data" : Math.round(r.value) + "%") +
+        (r.value === null ? "no measurable data" : lbl(r.value)) +
         " · " + r.n + (r.n === 1 ? " person" : " people") + (r.sub ? " · " + r.sub : "")) + "</title>" +
       '<rect x="0" y="' + yTop + '" width="' + W + '" height="' + RH + '" fill="transparent"/>' +
       '<text class="val" x="0" y="' + (by + 8) + '">' +
@@ -1753,11 +1773,11 @@ function hbarChart_(o) {
       return;
     }
     // 4px rounded data-end, square at the baseline.
-    var bw = Math.max(2, x(r.value) - L);
+    var bw = Math.max(2, xv(r.value) - L);
     s += '<path d="' + roundEndBar_(L, by, bw, bh, 4) + '" class="barfill" fill="' +
         RAG_FILL[rag] + '"/>' +
       '<text class="val" x="' + (L + bw + 7) + '" y="' + (by + 8) + '">' +
-        RAG_MARK[rag] + " " + Math.round(r.value) + "%</text></g>";
+        RAG_MARK[rag] + " " + lbl(r.value) + "</text></g>";
   });
   s += "</svg>";
   // Say what was cut. A chart that silently stops at 12 of 52 reads as "there
@@ -2799,12 +2819,52 @@ var METRICS_ = {
     },
     n: function (isos) { return bucketsFor_(MODEL.forecastBuckets, isos).n; },
   },
+  // 🌊 Flow additions (Task 10, 2026-08-05): Lead Time and Throughput join the
+  // comparison chips. Both are person-joined and period-shaped — the same two
+  // things every other METRICS_ entry already requires — via bucketsFor_, so
+  // scopedMetric_'s one-accessor rule (see its own doc comment) holds for them
+  // with no special case. targetKey: null on purpose: neither has a Metrics
+  // Dictionary target today, and ragOf_/hbarChart_ are already null-safe on a
+  // missing target, so the bars render neutral rather than inventing a verdict.
+  leadTime: {
+    id: "leadTime", targetKey: null, unit: "days",
+    label: function () { return "Lead Time"; },
+    axis: function () { return "median days created → resolved (lower is faster)"; },
+    available: function () { return !!MODEL.meta.jiraAvailable; },
+    value: function (isos) {
+      var b = bucketsFor_(MODEL.leadTimeBuckets || [], isos);
+      return b.days && b.days.length ? flowMedian_(b.days) : null;
+    },
+    coverage: function (isos) {
+      var b = bucketsFor_(MODEL.leadTimeBuckets || [], isos);
+      return b.nAll > 0 ? b.n / b.nAll : null;
+    },
+    n: function (isos) { return bucketsFor_(MODEL.leadTimeBuckets || [], isos).n; },
+  },
+  throughput: {
+    id: "throughput", targetKey: null, unit: "hrs",
+    label: function () { return "Throughput"; },
+    axis: function () { return "estimate-hours delivered in the period"; },
+    available: function () { return !!MODEL.meta.jiraAvailable; },
+    value: function (isos) {
+      var b = bucketsFor_(MODEL.throughputBuckets || [], isos);
+      return b.nAll > 0 ? b.estHrs : null;
+    },
+    coverage: function (isos) {
+      var b = bucketsFor_(MODEL.throughputBuckets || [], isos);
+      return b.nAll > 0 ? b.n / b.nAll : null;
+    },
+    n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).n; },
+  },
 };
 
 /** Metric ids the current payload can actually chart — in the SAME order as
-    the KPI cards (On-Time, Forecast, Utilization, Quality; user 2026-08-04):
-    the chips and charts below the cards must never shuffle that sequence. */
-var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality"];
+    the KPI cards (On-Time, Forecast, Utilization, Quality; user 2026-08-04),
+    with the two joinable 🌊 Flow metrics appended (Task 10, 2026-08-05).
+    Backlog/WIP (snapshot — no period grain) and Bug Count (population-wide —
+    no person join to dimension by) are NOT comparable metrics; see the tile
+    scope tags. Deliberate narrowing of spec §4.2, flagged at review. */
+var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality", "leadTime", "throughput"];
 function liveMetrics_() {
   return METRIC_ORDER_.filter(function (k) {
     if (!METRICS_[k]) return false;
@@ -3046,7 +3106,7 @@ function renderCompare_() {
       '<span class="sub" title="' + esc_(reg_(m.id).formula || "") + '">' +
       esc_(m.axis()) + " ⓘ</span></div>" +
     '<div class="verdict">' + verdict + "</div>" +
-    hbarChart_({ rows: rows, target: target, std: std, title: m.label(),
+    hbarChart_({ rows: rows, target: target, std: std, title: m.label(), unit: m.unit,
                  expanded: !!STATE.compareAll, onExpand: "toggleCompareAll_()" }) +
     '<div class="cellSub" style="margin-top:6px">' +
       "The number left of each bar is its headcount. " +

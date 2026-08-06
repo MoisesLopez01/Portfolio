@@ -112,7 +112,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " renderPulse_: renderPulse_, openRoster_: openRoster_, rosterCsvLines_: rosterCsvLines_," +
              " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
              " hoursCellHtml_: hoursCellHtml_, rosterDetailRow_: rosterDetailRow_, toggleRosterDetail_: toggleRosterDetail_," +
-             " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
+             " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, METRIC_ORDER_: METRIC_ORDER_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
@@ -2292,6 +2292,110 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   var h2 = els["flowTiles"].innerHTML;
   assert_(h2.indexOf("export predates Jira Backlog.js v3.9.0") !== -1,
           "absent feeds name the exporter version, not an error");
+})();
+
+// ── TASK 10 — COMPARISON CHIPS GAIN THE FLOW METRICS ────────────────────────
+// Lead Time and Throughput join METRICS_/METRIC_ORDER_ so the Executive
+// comparison chart (and its shared metric chips) can chart them by Region/
+// Team/PM/Family — riding the SAME renderCompare_/hbarChart_/scopedMetric_
+// mechanism every other metric already uses, per scopedMetric_'s one-
+// accessor rule. Backlog/WIP/Bug Count are deliberately excluded (comment on
+// METRIC_ORDER_) — no test for them here, there is nothing to render.
+(function () {
+  var M = fresh(model({}));
+  var W = WEEKS[WEEKS.length - 1];             // latest complete week
+  // Single-region fixture (both fixture people are AMER) — one bar is enough
+  // to pin label/unit/colour grammar without the noise of a second category.
+  // median([10,15]) = 12.5 → the exact "12.5d" the task brief's self-review
+  // asks for; estHrs 412 → "412h" likewise.
+  M.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [10, 15] }];
+  M.throughputBuckets = [{ iso: W, person: "Ana Perez", nAll: 2, nEst: 2, estHrs: 412 }];
+  M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
+    target: null, coverageGate: 0.9,
+    definition: "Median calendar days from Created to Resolution Date." };
+  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
+    target: null, coverageGate: 0.6,
+    definition: "Sum of Original Estimate hours delivered in the period." };
+  C.setModel(M);
+  C.switchView_("exec");
+  C.STATE.compare = "region";
+
+  // RED (brief Step 2, literal): before METRICS_/METRIC_ORDER_ carried the two
+  // flow entries, activeMetric_ found "leadTime" absent from liveMetrics_() and
+  // fell back to onTime — the panel rendered "On-Time Delivery", never "Lead
+  // Time", and this assertion failed. It now passes because METRIC_ORDER_
+  // includes "leadTime" and METRICS_.leadTime.available() is jiraAvailable.
+  C.setState("metric", "leadTime");
+  C.renderAll_();
+  assert_(document.getElementById("comparePanel").innerHTML.indexOf("Lead Time") !== -1,
+          "flow metric charts in the comparison");
+
+  // ── Lead Time: unit label, axis prose, neutral colour, no fabricated % ──
+  var cmpLead = els.comparePanel.innerHTML;
+  assert_(cmpLead.indexOf("median days created") !== -1,
+          "axis states the metric's own prose (m.axis()), not a percent caption");
+  assert_(cmpLead.indexOf("Median calendar days from Created") !== -1,
+          "the ⓘ tooltip carries the registry definition — chips/axis share reg_()");
+  assert_(cmpLead.indexOf("12.5d") !== -1,
+          "the bar value label is unit-formatted via fmtFlowVal_, not '12%'");
+  assert_(!/>25%</.test(cmpLead) && !/>50%</.test(cmpLead) && !/>100%</.test(cmpLead),
+          "grid ticks do not fall back to the 0/25/50/75/100% percent axis for a unit metric");
+  assert_(!/target \d/.test(cmpLead),
+          "targetKey: null → no target line/label — nothing to draw a verdict against");
+  assert_(cmpLead.indexOf('fill="var(--c-series)"') !== -1,
+          "the bar renders the NEUTRAL series colour");
+  assert_(cmpLead.indexOf('fill="var(--c-good)"') === -1 &&
+          cmpLead.indexOf('fill="var(--c-warn)"') === -1 &&
+          cmpLead.indexOf('fill="var(--c-bad)"') === -1,
+          "…and never a RAG colour — Lead Time is lower-is-better but has no target to grade against");
+  assert_(cmpLead.indexOf("•") !== -1, "the neutral glyph (•) marks the value, not a RAG check/triangle/cross");
+
+  // ── Throughput: same grammar, different unit ────────────────────────────
+  C.setState("metric", "throughput");
+  C.renderAll_();
+  var cmpThr = els.comparePanel.innerHTML;
+  assert_(cmpThr.indexOf("Throughput") !== -1, "throughput also charts in the comparison");
+  assert_(cmpThr.indexOf("412h") !== -1, "…formatted in hours, not '412%' or a bare number");
+  assert_(!/>25%</.test(cmpThr) && !/>50%</.test(cmpThr),
+          "…and the same percent-axis fallback stays absent for throughput");
+
+  // ── Existing four metrics render byte-identically (unit is undefined for
+  //    them, so hbarChart_'s new branch must be a no-op on their path) ──────
+  C.setState("metric", "util");
+  C.renderAll_();
+  var cmpUtil = els.comparePanel.innerHTML;
+  assert_(/>25%</.test(cmpUtil) && />50%</.test(cmpUtil) && />100%</.test(cmpUtil),
+          "a percent metric (Utilization) still draws the 0/25/50/75/100% grid — untouched by the unit branch");
+  assert_(cmpUtil.indexOf("Billable Utilization") !== -1 || cmpUtil.indexOf("Capacity Utilization") !== -1,
+          "…and still renders its own label, not a flow metric's");
+
+  // ── The chip order matches METRIC_ORDER_, flow metrics appended last ────
+  assert_(C.METRIC_ORDER_.join(",") === "onTime,forecast,util,quality,leadTime,throughput",
+          "METRIC_ORDER_ appends the two joinable flow metrics after the four KPI-card metrics");
+  assert_(C.liveMetrics_().indexOf("leadTime") !== -1 && C.liveMetrics_().indexOf("throughput") !== -1,
+          "both are live metrics under a Jira-available fixture");
+
+  // ── renderOpportunity_ observation (brief ambiguity note): the Actions
+  // opportunity table is hardcoded to METRICS_.util (Dashboard.html ~line
+  // 3350: "var m = METRICS_.util;") and never reads STATE.metric/activeMetric_
+  // — confirmed by reading renderOpportunity_ end to end. Selecting a flow
+  // metric elsewhere on the page must not make the headroom table compute
+  // nonsense from a days/hrs value as if it were a percent rate. Pinned here
+  // as a permanent regression check, not just a one-time read.
+  C.setState("metric", "leadTime");
+  C.renderOpportunity_();
+  var opp = els.oppPanel.innerHTML;
+  assert_(/operating rate/.test(opp),
+          "the opportunity table still frames its headroom as a % operating rate — Utilization's, unaffected by STATE.metric");
+  assert_(opp.indexOf("Lead Time") === -1 && opp.indexOf("Throughput") === -1,
+          "…and never renders a flow-metric label, even with a flow metric selected elsewhere on the page");
+
+  // Teardown (sibling discipline): restore the standard fixture and state.
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
+  C.switchView_("exec");
+  C.renderAll_();
 })();
 
 // ── EXECUTIVE DATA-TRUST STRIP (Task 8, spec §4.4) ──────────────────────────
