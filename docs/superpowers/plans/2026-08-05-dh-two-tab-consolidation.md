@@ -431,7 +431,9 @@ git add Dashboard.html render-smoke.js
 git commit -m "feat(dh): three tabs — Actions absorbs headroom + matrix + gaps queue; People grid and Hygiene tab retired"
 ```
 
----### Task 4: Client signals engine — `SIGNAL_FIELDS_`, grading, small-n guard
+---
+
+### Task 4: Client signals engine — `SIGNAL_FIELDS_`, grading, small-n guard
 
 **Files:**
 - Modify: `Dashboard.html` (new functions next to `TYPE_FIELDS_`/`typeFieldGate_`, ~line 4240 area)
