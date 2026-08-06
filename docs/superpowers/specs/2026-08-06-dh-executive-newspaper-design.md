@@ -348,8 +348,22 @@ it currently feeds only `Exec Q&A`).
 
 | Column | Meaning |
 |---|---|
-| `Unassigned Items` | open, unassigned, updated within the bound — every status category |
+| `Unassigned Items` | open, unassigned, updated within the bound — **To Do + In Progress only** |
 | `Unassigned Hrs` | Σ max(0, est − spent) over the **To Do** ones only |
+
+> **Correction (Task 9 review, 2026-08-06).** This table previously said `Unassigned Items` counted
+> *every* status category. That was wrong: `queueSnapshot_.unassigned.items` is `wipN + todoN` and
+> tallies anything in neither category separately as `uncategorized`, so an every-category count would
+> make the sheet exceed the dashboard by the uncategorized rows — the two describing different
+> populations while appearing to be the same number. The snapshot log is the *measured continuation*
+> of the series the dashboard plots, so it must match it exactly.
+
+**The header row must MIGRATE, not merely be created.** `writeFlowSnapshot_` writes `FLOW_HEADERS`
+only when the sheet is empty, and this tab has had rows since v3.9.0 — so on any live sheet that
+branch never fires again. Appending columns without widening row 1 populates F/G under a five-name
+header, every `colIdx_` lookup for the new names returns `-1`, and the feature is silently dead with
+nothing erroring. An append-only tab gains columns over time **by design**, so its header has to be
+able to catch up.
 
 `Unassigned Hrs` is To-Do-only to match `flowOpenBuckets_`, which contributes no hours for
 In Progress work (Task 4 review, 2026-08-06). An "all open" figure here would put a different
