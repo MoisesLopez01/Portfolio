@@ -2038,6 +2038,37 @@
       sheet.setFrozenRows(1);
     }
 
+    // Header MIGRATION, not just creation. This tab has existed since v3.9.0, so
+    // getLastRow() is never 0 on a live sheet and the create-only branch above
+    // never fires again — appending new columns would populate F/G under a row 1
+    // that still names only the original five, and every colIdx_ lookup by the
+    // new names would return -1 forever, silently killing the whole point of
+    // Part A with nothing erroring. Append-only means new columns arrive over
+    // time BY DESIGN, so the header has to be able to catch up. Only row 1 is
+    // ever written here — the range is 1 row tall, so data rows are untouched.
+    //
+    // Widen only when the CURRENT row 1 is a strict prefix of FLOW_HEADERS —
+    // i.e. nobody has hand-edited, reordered, or renamed the existing header
+    // cells. If it isn't a clean prefix, log a warning and leave row 1 alone
+    // rather than blindly overwrite someone's edits; the new columns still get
+    // written by appendRow below, just unlabeled until a human reconciles it.
+    var lastCol = sheet.getLastColumn();
+    if (sheet.getLastRow() > 0 && lastCol > 0 && lastCol < FLOW_HEADERS.length) {
+      var curHeader = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var isCleanPrefix = true;
+      for (var hc = 0; hc < lastCol; hc++) {
+        if (String(curHeader[hc]) !== FLOW_HEADERS[hc]) { isCleanPrefix = false; break; }
+      }
+      if (isCleanPrefix) {
+        sheet.getRange(1, 1, 1, FLOW_HEADERS.length).setValues([FLOW_HEADERS]);
+        styleHeader_(sheet.getRange(1, 1, 1, FLOW_HEADERS.length));
+      } else {
+        Logger.log("⚠️ Flow Snapshots header (" + curHeader.join(", ") + ") is not a " +
+                   "clean prefix of FLOW_HEADERS — leaving row 1 untouched. New columns " +
+                   "will be written but unlabeled until this is reconciled by hand.");
+      }
+    }
+
     var wip = 0, backlogHrs = 0, backlogN = 0;
     // The unassigned half of the queue. Reachable only because v3.11.0 dropped
     // 'assignee is not EMPTY' from fetchOpenIssues_ (spec D7) — before that
@@ -2048,9 +2079,16 @@
     // queueSnapshot_ on both halves (Task 4 review): neither contributes
     // hours for In Progress work, so an "all open" figure here would put a
     // different population in the sheet than the dashboard computes from
-    // Jira Raw, and the two would quietly disagree. Items still count every
-    // unassigned open row (no per-category split needed — this is one total
-    // for the sheet, not a bucketed payload).
+    // Jira Raw, and the two would quietly disagree.
+    //
+    // Items counts To Do + In Progress ONLY, so this column equals
+    // queueSnapshot_.unassigned.items on the dashboard side EXACTLY (u.items =
+    // u.wipN + u.todoN there). A row in neither category is a status-hygiene
+    // oddity, not inventory; the dashboard tallies those separately as
+    // `uncategorized`, and counting them here would make the measured
+    // snapshot series step away from the series it is meant to be the
+    // measured continuation of — the "sheet and dashboard quietly disagree
+    // about the same number" failure this whole log exists to prevent.
     //
     // Folded into the SAME pass as wip/backlogN/backlogHrs above (rather than
     // a second forEach over openCandidates) so both halves share one "open"
@@ -2064,12 +2102,15 @@
       var cat = String(dig_(f, "status.statusCategory.name") || "");
       if (/^done$/i.test(cat)) return;
       if (!dig_(f, "assignee.displayName")) {
-        unItems++;
+        if (/in progress/i.test(cat)) { unItems++; return; }
         if (/to do/i.test(cat)) {
+          unItems++;
           var uEst   = Number(f.timeoriginalestimate || 0);
           var uSpent = Number(f.timespent || 0);
           unHrs += Math.max(0, uEst - uSpent) / 3600;
         }
+        // any other category (custom): a status-hygiene oddity, not counted —
+        // mirrors queueSnapshot_'s `uncategorized` split on the unassigned side.
         return;
       }
       if (/in progress/i.test(cat)) { wip++; return; }
