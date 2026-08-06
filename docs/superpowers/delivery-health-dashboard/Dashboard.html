@@ -435,6 +435,7 @@ select option:disabled{color:var(--muted);font-style:italic}
          learn colours from legends, not tooltips (user request 2026-08-04). -->
     <div id="tileColorKey"></div>
     <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
+    <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
   </div>
 
   <!-- ── 🎯 ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
@@ -1266,7 +1267,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); break;
+    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); break;
     case "actions": renderOpportunity_(); renderRoster_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -3045,6 +3046,41 @@ function renderCompare_() {
       "The shaded band is the operating range, the vertical rule is the target.</div>";
 }
 
+/** 👥 pulse — counts only, never names (standing rule: names live behind the
+    Actions gate). Hidden, not dimmed, without margin tier — same doctrine as
+    the Utilization card. */
+function renderPulse_() {
+  var el = document.getElementById("pulsePanel");
+  if (!canSeeMargin_()) { el.innerHTML = ""; el.style.display = "none"; return; }
+  el.style.display = "";
+  var done = donePeriods_(), hi = headPeriodIdx_(done);
+  var head = done[hi] || { label: "—", isos: [] };
+  var s = signalSummary_(head.isos);
+  if (!s.available) { el.innerHTML = '<div class="cellSub">People signals arrive after the next refresh (new payload).</div>'; return; }
+  // Recoverable hours: the SAME number the headroom table headlines.
+  var ser = metricSeries_(METRICS_.util, done);
+  var norm = ser.std && ser.std.ok ? ser.std.baseline : null;
+  var opp = 0;
+  if (norm !== null) oppRows_(head, [head], norm).forEach(function (r) {
+    if (!r.ramping && r.opp > 0.5) opp += r.opp;
+  });
+  el.innerHTML =
+    '<h3>👥 People signals ' + scopeTag_(STATE.typePop === "resolved" ? "period" : "snap") + "</h3>" +
+    '<div class="pulseRow" onclick="openRoster_()" style="cursor:pointer" title="Open the full roster on the Actions tab, sorted by biggest opportunity">' +
+    '<span class="sigDot sigGood">●</span> ' + s.good + " on track · " +
+    '<span class="sigDot sigWarn">●</span> ' + s.warn + " watch · " +
+    '<span class="sigDot sigBad">●</span> ' + s.bad + " need action" +
+    (s.small ? ' · <span class="sigDot sigSmall" title="Have issues but fewer than ' + signalMinN_() +
+      ' — ungraded, never counted red.">●</span> ' + s.small + " ungraded (small n)" : "") +
+    (norm !== null ? " · <b>" + Math.round(opp) + "h</b> recoverable" : "") +
+    " → open the roster</div>";
+}
+
+function openRoster_() {
+  STATE.rosterSort = "opp"; STATE.rosterDesc = false;
+  switchView_("actions");
+}
+
 /**
  * A metric restricted to a named set of people.
  *
@@ -4349,20 +4385,30 @@ function csvCell_(v) {
   return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 
-/** CSV of the opportunity table (interim — Task 5 re-points this at the
-    signals roster). One row per person: rate, gap, opportunity hours. */
+/** CSV = the signals roster: one row per person, signal values + offending
+    counts + the hours split (spec §5). Replaces the Task-3 interim, which
+    exported the opportunity table instead. */
 function saveCsv_() {
-  var done = donePeriods_(), hi = headPeriodIdx_(done), head = done[hi];
-  if (!head) return;
-  var ser = metricSeries_(METRICS_.util, done);
-  var norm = ser.std && ser.std.ok ? ser.std.baseline : null;
-  var rows = oppRows_(head, [head], norm);
-  var lines = ["Person,Region,Rate %,Gap pts,Opportunity h"];
+  var done = donePeriods_(), hi = headPeriodIdx_(done);
+  var head = done[hi] || { label: "", isos: [] };
+  var rows = personSignalRows_(head.isos);
+  if (rows === null) return;
+  var lines = ["Person,Job title,Region,n,Due %,Due missing,Estimate %,Estimate missing," +
+               "Logged %,Logged missing,Overall,Billable h,Non-billable h,Idle h,Note"];
   rows.forEach(function (r) {
-    lines.push([csvCell_(r.name), csvCell_(r.region), r.rate === null ? "" : r.rate.toFixed(1),
-                r.gap === null ? "" : r.gap.toFixed(1), r.opp.toFixed(1)].join(","));
+    var w = aggWeeks_(r.p, head.isos) || { billable: 0, nonBillable: 0, tracked: 0, avail: 0 };
+    var inel = r.p.newHire === true || r.p.onLeave === true;
+    function pc(g) { return g.pct === null ? "" : Math.round(g.pct * 100); }
+    lines.push([csvCell_(r.p.name), csvCell_(r.p.jobTitle), csvCell_(r.p.region), r.n,
+      pc(r.sig.due), r.sig.due.miss, pc(r.sig.est), r.sig.est.miss,
+      pc(r.sig.logged), r.sig.logged.miss, r.overall,
+      r1_(w.billable), r1_(w.nonBillable),
+      inel ? "" : r1_(Math.max(0, w.avail - w.tracked)),
+      inel ? (r.p.onLeave ? "on leave" : "ramping") : ""].join(","));
   });
-  downloadCsv_(lines.join("\n"), "delivery-headroom");
+  // Line endings + extension: matches saveOppCsv_'s convention (downloadCsv_
+  // itself does neither — it writes the filename and content verbatim).
+  downloadCsv_(lines.join("\r\n"), "delivery-people-signals.csv");
 }
 
 /** A CSV string → a downloaded file. Shared by every CSV export. */

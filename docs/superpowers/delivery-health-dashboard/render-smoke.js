@@ -109,6 +109,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
+             " renderPulse_: renderPulse_, openRoster_: openRoster_," +
              " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
              " hoursCellHtml_: hoursCellHtml_, rosterDetailRow_: rosterDetailRow_, toggleRosterDetail_: toggleRosterDetail_," +
              " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
@@ -1986,6 +1987,102 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   C.toggleRosterDetail_("Ivy Preh");   // close — teardown
 
   // Teardown, same convention as the sibling block above.
+  resetFilters();
+  C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
+  C.STATE.typePop = "open";
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── 👥 EXECUTIVE PULSE (spec §4.3, Task 7, 2026-08-05) ──────────────────────
+// Counts-only summary card on the Executive tab: never a name (roster detail
+// lives behind the Actions gate), hidden — not dimmed — below the margin
+// tier (same doctrine as the Utilization card), and its recoverable-hours
+// figure is the SAME number the headroom table headlines, because both walk
+// metricSeries_(METRICS_.util, done) -> oppRows_ for the identical head period.
+(function () {
+  var mdl = fresh(histModel({}));
+  resetFilters();
+  C.STATE.period = "week";
+  C.setState("periodIdx", null);
+  C.setState("view", "exec");
+  C.setState("typePop", "open");
+  mdl.personHygiene = {
+    open: [
+      { person: "Ana Perez", n: 10, due: 10, est: 10, logged: 10 },  // 100% everywhere -> good
+      { person: "Ben Ortiz", n: 10, due: 6,  est: 10, logged: 10 },  // due 60% (< gate-0.10) -> bad
+      { person: "Cleo Diaz", n: 20, due: 15, est: 20, logged: 20 },  // due 75% (in [gate-0.10, gate)) -> warn
+      { person: "Dev Rao",   n: 1,  due: 0,  est: 0,  logged: 0 },   // n < signalMinN -> small
+    ],
+    resolved: [],
+  };
+  mdl.meta.signalMinN = 4;
+  C.setModel(mdl);
+  C.renderAll_();
+  var pulse = els.pulsePanel.innerHTML;
+
+  assert_(pulse.indexOf("on track") !== -1, "pulse renders counts");
+  assert_(/1 on track/.test(pulse) && /1 watch/.test(pulse) && /1 need action/.test(pulse),
+          "the four graded fixture rows land good/warn/bad 1-1-1");
+  assert_(/1 ungraded \(small n\)/.test(pulse),
+          "the small-n row surfaces its own count, never folded into 'need action'");
+
+  // NO names on the Executive pulse — check every synthetic person by name.
+  C.getModel().people.forEach(function (p) {
+    assert_(pulse.indexOf(p.name) === -1, "pulse must not name " + p.name);
+  });
+
+  // Recoverable hours must equal the headroom table's own headline — both are
+  // the same computation over the same head period, so they cannot legitimately
+  // diverge.
+  C.setState("view", "actions");
+  C.renderAll_();
+  var oppBig = /<span class="big">([0-9]+)h<\/span>/.exec(els.oppPanel.innerHTML);
+  assert_(oppBig, "sanity: the headroom table published a recoverable-hours headline");
+  var pulseBig = /<b>([0-9]+)h<\/b> recoverable/.exec(pulse);
+  assert_(pulseBig, "pulse published its own recoverable-hours figure");
+  assert_(pulseBig[1] === oppBig[1],
+          "pulse recoverable hours (" + pulseBig[1] + "h) equals the headroom headline (" + oppBig[1] + "h)");
+  C.setState("view", "exec");
+
+  // The small-n clause is CONDITIONAL — omitted entirely when s.small === 0,
+  // never rendered as "0 ungraded".
+  mdl.personHygiene.open.pop();
+  mdl.personHygiene.open.push({ person: "Dev Rao", n: 10, due: 10, est: 10, logged: 10 });
+  C.setModel(mdl);
+  C.renderAll_();
+  assert_(els.pulsePanel.innerHTML.indexOf("ungraded") === -1,
+          "no small-n row in the fixture -> no 'ungraded (small n)' clause at all");
+
+  // Margin gate: hidden, not dimmed.
+  C.getModel().viewerRole = "guest";
+  C.renderAll_();
+  assert_(document.getElementById("pulsePanel").innerHTML === "",
+          "pulse hidden from open-access guests");
+  assert_(document.getElementById("pulsePanel").style.display === "none",
+          "…the panel itself is display:none, not just emptied — no ghost heading left behind");
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
+  assert_(document.getElementById("pulsePanel").style.display === "",
+          "…and restored for an admin");
+
+  // Pre-v22 payload: personHygiene missing entirely -> a plain message, not a
+  // silent empty pulse (same doctrine as the roster/matrix's own "Not in this
+  // payload" states).
+  var legacy = fresh(histModel({}));
+  delete legacy.personHygiene;
+  C.renderAll_();
+  assert_(/People signals arrive after the next refresh/.test(els.pulsePanel.innerHTML),
+          "a pre-v22 payload says so plainly rather than rendering an empty pulse");
+
+  // Deep link: opens Actions pre-sorted by opportunity, ascending (worst first).
+  C.STATE.rosterSort = "due"; C.STATE.rosterDesc = true;   // prove openRoster_ actually resets these
+  C.setState("view", "exec");
+  C.openRoster_();
+  assert_(C.STATE.view === "actions" && C.STATE.rosterSort === "opp" && C.STATE.rosterDesc === false,
+          "deep link lands sorted by opportunity, ascending (worst first)");
+
+  // Teardown — same convention as the sibling blocks above.
   resetFilters();
   C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
   C.STATE.typePop = "open";
