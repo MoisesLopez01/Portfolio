@@ -1732,6 +1732,31 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(C.STATE.rosterDesc === true, "clicking the SAME header again flips direction");
   assert_(/▾/.test(els.rosterPanel.innerHTML), "the active header shows the descending arrow");
 
+  // Sorter-less column (hours — Task 6 fills it in) is click-inert, not a
+  // crash (review finding 2026-08-05): rows.sort(null) throws a TypeError, so
+  // clicking a column with no sorter must leave STATE untouched instead of
+  // reaching that line. Reaching the assertion at all — no throw — is half
+  // of what this pins.
+  var sortBefore = C.STATE.rosterSort, descBefore = C.STATE.rosterDesc;
+  C.setRosterSort_("hours");
+  assert_(C.STATE.rosterSort === sortBefore && C.STATE.rosterDesc === descBefore,
+          "clicking a sorter-less column leaves STATE.rosterSort/rosterDesc unchanged, and does not throw");
+
+  // The Overall cell must never fabricate a percentage (review finding
+  // 2026-08-05): its g.pct is null, and null*100 JS-coerces to a literal
+  // "0%" that would read as a real measurement — exactly the misleading-
+  // signal class this dashboard exists to stamp out.
+  var hSnap = els.rosterPanel.innerHTML;
+  var anaIdx = hSnap.indexOf("Ana Perez");
+  var anaRow = hSnap.slice(hSnap.lastIndexOf("<tr>", anaIdx), hSnap.indexOf("</tr>", anaIdx));
+  var anaOverallCell = anaRow.slice(anaRow.lastIndexOf("<td"));
+  assert_(anaOverallCell.indexOf("sigBad") !== -1,
+          "sanity: Ana's Overall cell is the graded (bad) one under test");
+  assert_(anaOverallCell.indexOf("%") === -1,
+          "the Overall cell of a graded row contains no % character — no fabricated 0%");
+  assert_(anaOverallCell.indexOf("missing") !== -1,
+          "…but still states its miss count, which IS real");
+
   // One toggle scopes both surfaces (spec §5.4) — flipping it must re-render
   // the roster too, not just the 🧬 matrix.
   C.setTypePop_("resolved");

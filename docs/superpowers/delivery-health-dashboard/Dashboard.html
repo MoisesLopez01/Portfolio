@@ -3432,20 +3432,29 @@ Object.keys(ROSTER_COLS_).forEach(function (k) {
 });
 
 function setRosterSort_(col) {
+  // A column with no sorter yet (hours — Task 6 fills it in) is click-inert
+  // rather than a crash: rows.sort(null) throws a TypeError, and that rule
+  // has to hold for ANY future sorter-less column, not just this one today
+  // (review finding 2026-08-05).
+  if (!ROSTER_COLS_[col] || !ROSTER_COLS_[col].sort) return;
   if (STATE.rosterSort === col) STATE.rosterDesc = !STATE.rosterDesc;
   else { STATE.rosterSort = col; STATE.rosterDesc = false; }
   renderRoster_();
 }
 
 /** One signal cell: dot + % together (FR-4.4 — colour never carries the verdict
-    alone), plus the miss count when there is one. "na" = nothing to grade. */
+    alone), plus the miss count when there is one. "na" = nothing to grade.
+    g.pct === null (the Overall column's synthetic grade) renders the dot with
+    no percentage — `null * 100` JS-coerces to 0, and a fabricated "0%" would
+    read as a real measurement, exactly the misleading-signal class this
+    dashboard exists to stamp out (review finding 2026-08-05). */
 function sigCellHtml_(g) {
   if (g.cls === "na") return '<td class="tnum">—</td>';
-  var pct = Math.round(g.pct * 100) + "%";
+  var pct = g.pct === null ? "" : " " + Math.round(g.pct * 100) + "%";
   var body = g.cls === "small"
     ? '<span class="sigDot sigSmall" title="Fewer than ' + signalMinN_() +
-      ' issues — shown ungraded: one missing field on one ticket is not a signal (SIGNAL_MIN_N).">●</span> ' + pct
-    : '<span class="sigDot sig' + g.cls.charAt(0).toUpperCase() + g.cls.slice(1) + '">●</span> ' + pct;
+      ' issues — shown ungraded: one missing field on one ticket is not a signal (SIGNAL_MIN_N).">●</span>' + pct
+    : '<span class="sigDot sig' + g.cls.charAt(0).toUpperCase() + g.cls.slice(1) + '">●</span>' + pct;
   return '<td class="tnum">' + body +
     (g.miss ? ' <span class="cellSub">· ' + g.miss + " missing</span>" : "") + "</td>";
 }
