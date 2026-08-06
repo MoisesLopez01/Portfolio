@@ -1300,10 +1300,16 @@ function flowOpenBuckets_(issues, resolvePerson) {
  *
  * @param {Array<Object>} issues readJiraRaw_ `issues` — every row, all statuses
  * @param {Function} resolvePerson raw assignee → roster display name, or null
- * @returns {{assigned:{items,wipN,todoN,todoHrs}, unassigned:{items,hrs}}}
+ * @param {Object} flowOpen optional precomputed flowOpenBuckets_ result
+ * @returns {{assigned:{items,wipN,todoN,todoHrs,unattributed,uncategorized}, unassigned:{items,wipN,todoN,todoHrs,uncategorized}}}
  */
-function queueSnapshot_(issues, resolvePerson) {
-  var assigned = flowOpenBuckets_(issues, resolvePerson);
+function queueSnapshot_(issues, resolvePerson, flowOpen) {
+  // Accept a precomputed flowOpenBuckets_ result. assembleModel_ already calls
+  // flowOpenBuckets_ over the same issues and resolvePerson, and repeating an
+  // O(n) pass over every Jira issue to rebuild an identical answer is waste on a
+  // payload already large enough to need gzipping and chunking. The fallback
+  // keeps this function callable on its own, which is what the tests do.
+  var assigned = flowOpen || flowOpenBuckets_(issues, resolvePerson);
   var a = { items: 0, wipN: 0, todoN: 0, todoHrs: 0 };
   assigned.buckets.forEach(function (b) {
     a.wipN += b.wipN || 0;
@@ -1313,7 +1319,17 @@ function queueSnapshot_(issues, resolvePerson) {
   a.items = a.wipN + a.todoN;
   a.todoHrs = Math.round(a.todoHrs * 10) / 10;
 
-  var u = { items: 0, hrs: 0 };
+  // These two are the records that fall out of BOTH halves: an assignee that
+  // exists but does not resolve to a roster person (unattributed), and a status
+  // category that is neither To Do nor In Progress (uncategorized). Neither is
+  // unassigned, so the complement guard below never sees them, and no bucket was
+  // built for them either. Carried here so the hero's own number owns its loss
+  // rather than relying on a counter computed somewhere else in the payload —
+  // the same "tally, don't drop silently" rule the rest of this file follows.
+  a.unattributed = assigned.unattributed || 0;
+  a.uncategorized = assigned.uncategorized || 0;
+
+  var u = { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 };
   (issues || []).forEach(function (it) {
     if (it.isEpic) return;                                        // epics roll up their children
     if (it.resolved && !isNaN(it.resolved.getTime())) return;      // an inventory is open work
@@ -1322,10 +1338,20 @@ function queueSnapshot_(issues, resolvePerson) {
     // The complement of flowOpenBuckets_'s guard, so the halves are disjoint by
     // construction rather than by coincidence.
     if (raw && !/unassigned/i.test(raw)) return;
-    u.items++;
-    u.hrs += Math.max(0, (Number(it.estSec) || 0) - (Number(it.spentSec) || 0)) / 3600;
+    // Mirror the status category split from flowOpenBuckets_ so the two shapes
+    // never drift and both exclude WIP hours identically.
+    var cat = String(it.statusCategory || "");
+    if (/in progress/i.test(cat)) { u.wipN++; return; }
+    if (/to do/i.test(cat)) {
+      u.todoN++;
+      var est = Number(it.estSec) || 0;
+      u.todoHrs += Math.max(0, est - (Number(it.spentSec) || 0)) / 3600;
+      return;
+    }
+    u.uncategorized++;
   });
-  u.hrs = Math.round(u.hrs * 10) / 10;
+  u.items = u.wipN + u.todoN;
+  u.todoHrs = Math.round(u.todoHrs * 10) / 10;
 
   return { assigned: a, unassigned: u };
 }
@@ -4575,40 +4601,50 @@ function _test_unassignedInventory_() {
     // assigned + open + To Do → the assigned half
     { key: "Q-1", isEpic: false, resolved: null, assignee: "maria", status: "Open",
       statusCategory: "To Do", estSec: 7200, spentSec: 0 },
-    // assigned + open + In Progress → assigned WIP
+    // assigned + open + In Progress → assigned WIP (contributes items but NOT hours)
     { key: "Q-2", isEpic: false, resolved: null, assignee: "maria", status: "In Progress",
       statusCategory: "In Progress", estSec: 3600, spentSec: 1800 },
-    // UNASSIGNED + open → the unassigned half only
+    // UNASSIGNED + open + To Do → the unassigned half only
     { key: "Q-3", isEpic: false, resolved: null, assignee: "⚠️ UNASSIGNED", status: "Open",
       statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    // UNASSIGNED + open + In Progress → unassigned WIP (contributes items but NOT hours)
     { key: "Q-4", isEpic: false, resolved: null, assignee: "", status: "Open",
-      statusCategory: "To Do", estSec: 1800, spentSec: 0 },
+      statusCategory: "In Progress", estSec: 1800, spentSec: 0 },
     // RESOLVED → neither half; an inventory is open work only
     { key: "Q-5", isEpic: false, resolved: new Date("2026-07-28"), assignee: "⚠️ UNASSIGNED",
       status: "Done", statusCategory: "Done", estSec: 3600, spentSec: 3600 },
     // EPIC → neither half; epics roll up their children (same rule as flowOpenBuckets_)
     { key: "Q-6", isEpic: true, resolved: null, assignee: "⚠️ UNASSIGNED", status: "Open",
       statusCategory: "To Do", estSec: 36000, spentSec: 0 },
+    // assignee exists but does NOT resolve to a person → falls out of both halves
+    { key: "Q-7", isEpic: false, resolved: null, assignee: "ghost", status: "Open",
+      statusCategory: "To Do", estSec: 1800, spentSec: 0 },
   ];
   var s = queueSnapshot_(issues, who);
 
   assert_(s.assigned.items === 2, "assigned half = 2 (Q-1 To Do + Q-2 WIP) — got " + s.assigned.items);
   assert_(s.assigned.wipN === 1 && s.assigned.todoN === 1, "assigned split into WIP and To Do");
-  assert_(s.unassigned.items === 2, "unassigned half = 2 (Q-3, Q-4) — got " + s.unassigned.items);
-  assert_(s.unassigned.hrs === 1.5, "unassigned remaining hours summed — got " + s.unassigned.hrs);
+  assert_(s.assigned.todoHrs === 2, "assigned To Do hours only (Q-1: 2h) — got " + s.assigned.todoHrs);
+
+  assert_(s.unassigned.items === 2, "unassigned half = 2 (Q-3 To Do + Q-4 WIP) — got " + s.unassigned.items);
+  assert_(s.unassigned.wipN === 1 && s.unassigned.todoN === 1, "unassigned split into WIP and To Do");
+  assert_(s.unassigned.todoHrs === 1, "unassigned To Do hours only (Q-3: 1h, not Q-4 WIP) — got " + s.unassigned.todoHrs);
+
+  // Q-7 (ghost) falls out of BOTH halves because assignee exists but doesn't resolve.
+  assert_(s.assigned.items === 2 && s.unassigned.items === 2, "Q-7 ghost excluded from both halves");
+  assert_(s.assigned.unattributed === 1, "Q-7 ghost tallied in unattributed — got " + s.assigned.unattributed);
 
   // No pre-summed total on the object: the caller must ask for it explicitly.
   assert_(s.items === undefined && s.total === undefined,
           "queueSnapshot_ must NOT expose a pre-summed total");
-
-  // Disjoint: no record counted twice.
-  assert_(s.assigned.items + s.unassigned.items === 4, "the two halves are disjoint");
 
   // An all-assigned population reports zero unassigned, which is a MEASURED zero
   // (we looked and found none) and legitimately different from the null the
   // client shows when the feed cannot answer at all.
   var noneBlank = queueSnapshot_([issues[0]], who);
   assert_(noneBlank.unassigned.items === 0, "measured zero unassigned");
+  assert_(noneBlank.unassigned.wipN === 0 && noneBlank.unassigned.todoN === 0,
+          "unassigned shape preserved on all-assigned data");
   Logger.log("✅ _test_unassignedInventory_ passed");
 }
 
