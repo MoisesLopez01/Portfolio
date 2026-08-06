@@ -6,8 +6,22 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.10.0
+  // VERSION:     3.11.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.11.0 (Delivery Health Executive newspaper — spec 2026-08-06):
+  //   - fetchOpenIssues_ NO LONGER filters 'assignee is not EMPTY'. Measured live
+  //     2026-08-06: 1,839 unassigned open issues vs 1,440 assigned — the clause
+  //     hid 56% of the queue. Jira Raw grows by ~1,839 rows.
+  //     ⚠️ Consequence: the dashboard's by-type matrix and gaps queue open-half
+  //     fill rates DROP, because unowned tickets are the worst-tagged population.
+  //     That is hidden debt surfacing, not a regression. Requires Code.js's attrN
+  //     denominator (schema v26) or Roster join falsely reads ~44%.
+  //   - NEW tab "Jira Arrivals": one row per ISO week, org-wide Created / Resolved
+  //     / Created Unassigned. Counts only — no per-issue rows, so no consumer's
+  //     denominators move. Week Start is a DATE, not a label, because
+  //     jb_isoWeekLabel_ pads W07 and the dashboard's weekKeyFromDate_ does not.
+  //   - "Flow Snapshots" gains Unassigned Items / Unassigned Hrs, appended at the
+  //     end and read by header name so historical rows stay valid.
   // CHANGES v3.10.0 (retire two dead candidate columns — 2026-08-06):
   //   "Region (Alt)" (36) and "Tempo Team" (37) are REMOVED from Jira Raw, and
   //   their custom fields dropped from JIRA_FIELDS. Workstream moves 38 → 36.
@@ -1147,10 +1161,14 @@
    * the Week column, and the tile buckets ignore rows with no resolution date.
    *
    * Bounded by CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS: with no resolution date to
-   * anchor on, an unbounded query returns every open assigned issue on the site
-   * for all time, and abandoned tickets would inflate every person's backlog.
+   * anchor on, an unbounded query returns every open issue on the site for all
+   * time, and abandoned tickets would inflate both the per-person backlog and
+   * the org queue depth. Since v3.11.0 this fetch includes UNASSIGNED work, so
+   * the bound now also decides how much dead unowned inventory is counted — the
+   * exported unassigned figure is a floor, not a total (spec D8).
    *
-   * @returns {Object[]} in-scope, non-noise open issues (empty when disabled).
+   * @returns {Object[]} in-scope, non-noise open issues, assigned AND unassigned
+   *   (empty when disabled).
    */
   function fetchOpenIssues_() {
     if (CONFIGJ.OPEN_BACKLOG_ENABLED === false) {
@@ -1159,10 +1177,25 @@
     }
 
     var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
+    // ── 'assignee is not EMPTY' REMOVED in v3.11.0 (spec 2026-08-06, D7) ──
+    // Measured live 2026-08-06 on servicerocket-coe: 1,839 unassigned open issues
+    // against 1,440 assigned. The clause hid 56% of the queue, and assigned-only
+    // weeks-to-clear read 4.9w where the true queue reads 11.0w — the dashboard
+    // was describing a five-week queue as if that were all of it.
+    //
+    // ⚠️ Downstream, before changing this back or forward:
+    //  · typeHygOpen_ does NOT require an assignee, so these rows enter the
+    //    by-type matrix and the gaps queue. Unowned tickets are the worst-tagged
+    //    population on the site, so due/est/region/team open fill rates DROP.
+    //    That is previously-hidden hygiene debt becoming visible, not tagging
+    //    getting worse (README carries the dated note).
+    //  · attr MUST divide by attrN, not n, or an absent assignee scores as a
+    //    failed roster join and un-retires a solved check at ~44%. Code.js
+    //    typeHygieneBuckets_ handles this — do not revert it.
+    //  · Resolved-work metrics are untouched: they all skip unresolved records.
     var clauses = [
       'issuetype in (' + types + ')',
       'statusCategory != Done',
-      'assignee is not EMPTY',
       'project NOT IN (TEMPLATE)',
       'summary !~ "to delete"'
     ];
@@ -2021,9 +2054,10 @@
    *
    * @param {Object[]} openCandidates raw Jira issues — the union of the
    *   open-backlog fetch and the epic-children fetch (the same open issues
-   *   that reach Jira Raw), unresolved rows filtered here. Until a later task
-   *   removes 'assignee is not EMPTY' from fetchOpenIssues_, this array
-   *   contains no unassigned rows, so the two new columns legitimately read 0.
+   *   that reach Jira Raw), unresolved rows filtered here. Since v3.11.0
+   *   dropped 'assignee is not EMPTY' from fetchOpenIssues_, this array now
+   *   contains unassigned rows too, so the two new columns carry real values —
+   *   see the assignee branch inside the forEach below.
    */
   function writeFlowSnapshot_(openCandidates) {
     // APPEND-ONLY contract: new columns go on the END, and every reader indexes
