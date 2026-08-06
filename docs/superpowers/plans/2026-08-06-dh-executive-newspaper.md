@@ -588,6 +588,13 @@ The hero is ORG (assigned + unassigned). The sub-row is the filterable assigned 
 
 - [ ] **Step 1: Write the failing test**
 
+> **Note (added during execution).** The shipped `_test_unassignedInventory_` **extends** the fixture
+> below to nine records, adding a non-resolving assignee (`"ghost"` → proves `unattributed` is tallied
+> and the record enters neither half) and two blank-`statusCategory` records (one on each side → exercise
+> both `uncategorized` branches), plus a call passing a hand-built `flowOpen` to prove the parameter is
+> used rather than recomputed. `eligibleCount` is 7 there, not 4. Read the function in `Code.js` for the
+> current fixture; the snippet below is the starting point it grew from.
+
 Add to `Code.js` after `_test_clearRateMedian_`:
 
 ```js
@@ -633,8 +640,21 @@ function _test_unassignedInventory_() {
   assert_(s.items === undefined && s.total === undefined,
           "queueSnapshot_ must NOT expose a pre-summed total");
 
-  // Disjoint: no record counted twice.
-  assert_(s.assigned.items + s.unassigned.items === 4, "the two halves are disjoint");
+  // PARTITION CHECK — not `assigned.items + unassigned.items === 4`, which is a
+  // conjunction of two facts the assertions above already pin and therefore
+  // cannot fail independently. Every record surviving the base filters (non-epic,
+  // unresolved, not closed-ish) must land in exactly ONE of five outcomes:
+  // assigned-bucketed, assigned-unattributed, assigned-uncategorized,
+  // unassigned-bucketed, unassigned-uncategorized. This is the only assertion
+  // that catches a record going missing ANYWHERE — the per-half counts each pin
+  // one outcome, but none notices a record that falls out of every bucket at
+  // once, which is the exact defect this function was written to close.
+  var eligibleCount = 4;   // Q-1..Q-4 — Q-5 is resolved, Q-6 is an epic
+  var accounted = s.assigned.items + s.assigned.unattributed + s.assigned.uncategorized +
+                  s.unassigned.items + s.unassigned.uncategorized;
+  assert_(accounted === eligibleCount,
+          "every eligible record accounted for exactly once — expected " + eligibleCount +
+          ", got " + accounted);
 
   // An all-assigned population reports zero unassigned, which is a MEASURED zero
   // (we looked and found none) and legitimately different from the null the
@@ -796,12 +816,20 @@ function _test_inventoryWalkback_() {
   assert_(inventoryWalkback_(500, many, 26).length === 26,
           "capped at 26 — got " + inventoryWalkback_(500, many, 26).length);
 
-  // Inventory can never be negative: a bad delta clamps at 0 rather than
-  // printing a queue of -40 items, which is not a state the world can be in.
-  var bad = [{ iso: "2026.W30", created: 500, resolved: 0 },
-             { iso: "2026.W31", created: 10, resolved: 10 }];
+  // Inventory can never be negative: a bad delta clamps at 0 rather than printing
+  // a queue of -900 items, which is not a state the world can be in.
+  //
+  // The oversized delta sits on the NEWEST week deliberately. Put it on the oldest
+  // and the resulting negative lands in the accumulator AFTER the final write and
+  // is discarded — the clamp is never invoked and the assertion passes with the
+  // clamp DELETED. `=== 0` rather than `>= 0` for the same reason: `>= 0` is
+  // satisfied by any healthy value.
+  var bad = [{ iso: "2026.W30", created: 10, resolved: 10 },
+             { iso: "2026.W31", created: 1000, resolved: 0 }];
   var clamped = inventoryWalkback_(100, bad, 26);
-  assert_(clamped[0].items >= 0, "clamped at zero — got " + clamped[0].items);
+  assert_(clamped[1].items === 100, "anchor week is unaffected by the clamp");
+  assert_(clamped[0].items === 0,
+          "walked-back negative clamps to exactly 0 — got " + clamped[0].items);
 
   // No anchor means no series. A reconstruction with nothing to anchor on is a
   // guess, and a guessed trend under a headline is worse than no trend.
@@ -917,6 +945,31 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ## Task 6: `sampleFloorFor_` and the three registry entries
 
 The floor guards **rates and averages, never counts**: a mean over one epic is not a mean, but three items cleared *is* three items cleared. And all three new metrics ship `target: null` — nobody owns a ≤4w or ≤0 bar, and an unratified target on a C-suite headline reads as agreed the moment it is on screen.
+
+> **Added during execution — this task also touches FIVE EXISTING entries.** Spec §4.4 floors seven
+> metrics: `onTime`, `forecast`, `quality`, `leadTime`, `util`, `queueCover`, `clearedPerHead`. The steps
+> below only add floors to the *new* entries, which left five of the seven unwired. `sampleFloorFor_`
+> treats an absent `sampleFloor` as `null` — a **count, never floored** — so `onTime` was publishable on
+> a single resolved commitment, and Task 16's shelf would never have shelved any of them however small
+> the sample got. **Add `sampleFloor: 5` to the existing `onTime`, `forecast`, `util`, `leadTime` and
+> `quality` entries as part of this task.**
+>
+> Note the id is **`quality`**, not `rework`. "Rework" is the metric's English name; no registry id by
+> that name exists, so a floor written against it would have attached to nothing.
+>
+> The discriminating assertion — it must fail before the floors are added and pass after:
+>
+> ```js
+>   ["onTime", "util", "leadTime", "quality"].forEach(function (id) {
+>     assert_(sampleFloorFor_(id, 2).ok === false,
+>             id + " below its floor must not publish — got ok=" + sampleFloorFor_(id, 2).ok);
+>     assert_(sampleFloorFor_(id, 5).ok === true,
+>             id + " at exactly its floor publishes — got ok=" + sampleFloorFor_(id, 5).ok);
+>   });
+> ```
+>
+> `assert_(sampleFloorFor_("onTime", 19).ok === true, ...)` in Step 1 below passes *either way* — with no
+> floor it falls through the count branch — so it proves nothing on its own.
 
 **Files:**
 - Modify: `docs/superpowers/delivery-health-dashboard/Code.js` (`METRIC_REGISTRY_`, ~line 371-500)
@@ -1203,12 +1256,27 @@ After that statement, add:
                     unattributed: 0, uncategorized: 0 },
         // NULL, not 0 — with no feed we did not look, and "0 unowned" is the
         // most dangerous false read on this surface (spec §5).
-        unassigned: { items: null, wipN: null, todoN: null, todoHrs: null } };
+        unassigned: { items: null, wipN: null, todoN: null, todoHrs: null,
+                      uncategorized: null } };
 
   var arrWeeks = (inputs.arrivals && inputs.arrivals.available) ? inputs.arrivals.weeks : [];
-  // Ordered oldest-first by ISO key so the walkback and the median both read a
-  // series in time order regardless of how the sheet happened to be sorted.
-  arrWeeks = arrWeeks.slice().sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  // Oldest-first by (year, week), compared NUMERICALLY, so the walkback and the
+  // median both read a series in time order regardless of sheet order.
+  //
+  // ⚠️ A STRING compare is wrong here and silently so — this shipped once and was
+  // caught in review. weekKeyFromDate_ does NOT zero-pad, so lexicographically
+  // "2026.W10" < "2026.W6" and the series comes back scrambled. It corrupts live
+  // data rather than an edge case: WALKBACK_MAX_WEEKS is 26, so a window anchored
+  // near W32 reaches back to ~W6 and mixes single- and double-digit weeks today.
+  // Neither consumer re-checks the order — clearRateMedian_ slices "the last N"
+  // off the tail and inventoryWalkback_ anchors on the last element as the
+  // measured present — so a bad sort yields a wrong median and a fabricated
+  // history, not an error. Parse the pair the way periodInfoForIso_ already does.
+  arrWeeks = arrWeeks.slice().sort(function (a, b) {
+    var A = /^(\d{4})\.W(\d{1,2})$/.exec(a.iso), B = /^(\d{4})\.W(\d{1,2})$/.exec(b.iso);
+    if (!A || !B) return !A && !B ? 0 : (!A ? 1 : -1);   // unparseable sorts LAST
+    return (Number(A[1]) - Number(B[1])) || (Number(A[2]) - Number(B[2]));
+  });
   var resolvedSeries = arrWeeks.map(function (w) { return w.resolved; });
   var clearRate = clearRateMedian_(resolvedSeries, CONFIG_DH.CLEAR_RATE_WEEKS);
   var totalItems = (queue.unassigned.items === null)
@@ -1269,7 +1337,38 @@ And add to the version-history comment block above it (the block listing `v21`, 
 //      clearedPerHead/inventory/arrived/cleared (all target: null).
 ```
 
-- [ ] **Step 6: Verify the whole server suite is green**
+- [ ] **Step 6: Extend `_test_modelAssembly_` — this task must not ship unverified**
+
+> **Added during execution.** As originally written this task's only verification was "existing suites
+> still pass," which exercises **none** of the new wiring. `assembleModel_(inputs, win)` takes its inputs
+> as an argument and `_test_modelAssembly_` (`Code.js:5771`) already calls it with synthetic inputs and
+> several degraded variants (`Object.assign({}, inputs, {…})`) — so this is testable end-to-end without
+> `SpreadsheetApp`, and there is no excuse for wiring it blind.
+
+Add to `_test_modelAssembly_`, following its existing `Object.assign` idiom:
+
+1. **Happy path** — `inputs.arrivals` populated with ≥5 weeks. Assert `m.queue.assigned` and
+   `m.queue.unassigned` are both present, `m.arrivalWeeks` is sorted **oldest-first by `iso`** (supply
+   it out of order and assert it comes back ordered), `m.inventoryHistory` is non-empty with exactly one
+   `measured: true` point, and `m.meta.clearRateMedian` is a number.
+
+2. **`flowOpen` is threaded, not recomputed** — the whole point of Task 4's signature change. Assert
+   `m.queue.assigned.unattributed` reflects the `flowOpenBuckets_` result the model built, so a wiring
+   that dropped the third argument would lose the counter.
+
+3. **Arrivals tab absent** — `Object.assign({}, inputs, { arrivals: { weeks: [], available: false } })`.
+   Assert `m.meta.arrivalsAvailable === false`, `m.meta.clearRateMedian === null`, and
+   `m.inventoryHistory` is `[]` — **not** a fabricated series.
+
+4. **THE DANGEROUS ONE — Jira unavailable.** Assert `m.queue.unassigned.items === null`, and explicitly
+   that it `!== 0`. Spec §5: *"0 unowned" is the most dangerous false read on this page* — with no feed we
+   did not look, and a zero would claim the entire queue is owned. Assert the same for `wipN`, `todoN`
+   and `todoHrs`.
+
+5. **Schema version** — assert `m.schemaVer === 26`, so a future bump that forgets the payload, or a
+   payload change that forgets the bump, is caught. A stale-shape cache read is gated on this number.
+
+- [ ] **Step 7: Verify the whole server suite is green**
 
 ```bash
 node node-tests.js
@@ -1277,7 +1376,7 @@ node node-tests.js
 
 Expected: `✅ node-tests: all suites passed`
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 cd "D:/Contribution"
@@ -1475,6 +1574,31 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `D:/Contribution/Jira Backlog.js` (`writeFlowSnapshot_`, ~line 1983-2010)
+- Modify: `docs/superpowers/delivery-health-dashboard/Code.js` (`parseFlowSnapshotRows_`)
+
+> **Added during execution — a live pre-existing bug in this same feed, fixed here under the §4.0
+> boundary contract.** `writeFlowSnapshot_` writes its `ISO Week` column via
+> `jb_isoWeekLabel_`, which ends `String(week).padStart(2, "0")` → **`2026.W07`**. The dashboard builds
+> `byIso[s.iso]` and looks it up with keys from `weekKeyFromDate_` → **`2026.W7`**. Those never match,
+> so **the Backlog/WIP snapshot trend silently drops every week 1–9, every year.** Weeks 10–53 render
+> identically in both, which is why it has gone unnoticed: it looks like "no export ran" rather than a
+> mismatch, and only in Q1.
+>
+> **Fix on the READ side only — the exporter's output is respected and left alone** (user decision
+> 2026-08-06). `parseFlowSnapshotRows_` canonicalises `YYYY.W0N` → `YYYY.WN` on ingest.
+>
+> Why read-side is the right fix here rather than a compromise: the padded form loses **no
+> information** — `2026.W07` and `2026.W7` denote the same week unambiguously — so the dashboard can
+> recover the canonical key entirely on its own. And because the tab is append-only with 52-week
+> retention, normalising on read repairs **all existing history immediately, with no re-export**,
+> which changing the writer would not do. One file changes, not two, and nothing else consuming that
+> sheet is disturbed.
+>
+> Pin it with a test whose fixture uses a **single-digit** week — a two-digit fixture passes under both
+> the broken and the fixed implementation, which is exactly how this survived.
+>
+> **`writeFlowSnapshot_`'s `ISO Week` write is NOT changed.** The only edit to that function in this
+> task remains the two appended unassigned columns.
 
 - [ ] **Step 1: Read the current writer**
 

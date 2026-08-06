@@ -257,6 +257,40 @@ executive page — it is why every chart is hand-rolled SVG. **No `@import`.** T
 
 ## 4. Data layer
 
+### 4.0 Boundary format contract — binding on every crossing
+
+Three defects in this plan were the same mistake: `W07` vs `W7` padding, lexicographic ISO ordering,
+and UTC-instant date transport. Each is a value crossing a boundary where the two sides disagree
+about what "the day" is, and each is **silent** — it yields a plausible sheet, a plausible dashboard
+and a number that is quietly wrong.
+
+So the rule is not "be careful": **one canonical form per crossing, loyal on both sides, enforced by
+a test.** Any new I/O in this project conforms or changes this table.
+
+| Crossing | Canonical form | Never |
+|---|---|---|
+| Date written to a sheet | `yyyy-mm-dd` string (`toIsoDate_`) | a `Date` object — Apps Script serializes it in the *script's* timezone |
+| Date read from a sheet | explicit **local component** parse (regex on the string; local getters on a coerced `Date`) | `new Date(string)` — a date-only string is UTC-midnight per the ES spec and shifts the calendar day in any behind-UTC zone |
+| ISO week key | `weekKeyFromDate_`, unpadded `2026.W7` | the exporter's padded `2026.W07` crossing a join |
+| Ordering ISO week keys | numeric `(year, week)` compare | a string compare — `"2026.W10" < "2026.W6"` |
+| Counts vs "nobody looked" | `null` | `0` |
+
+**Every fixture that guards one of these must contain the case that distinguishes correct from
+plausible-but-wrong** — a behind-UTC timezone, a single-digit ISO week, an absent column. A fixture
+of two-digit weeks in UTC passes under both a correct and a broken implementation, which is precisely
+how two of the three shipped.
+
+**Which side gets fixed — respect the producer's output, adapt the consumer** (user decision
+2026-08-06). Normalise on **read** wherever the incoming form is merely *different*, not *lossy*: the
+dashboard owns the canonical vocabulary, one file changes instead of two, existing history is repaired
+without a re-export, and no other consumer of that sheet is disturbed.
+
+The one case that must still be fixed at the **write** side is where the producer has already
+**destroyed** information the reader cannot recover. A `Date` object written to a cell is serialised
+in the script's timezone, so a UTC-midnight instant is stored as the *previous calendar day* — by the
+time the dashboard reads it, the correct day is simply gone. Padding (`W07` vs `W7`) loses nothing and
+is a read-side fix; a shifted calendar day loses the value itself and is not.
+
 ### 4.1 Exporter — `Jira Backlog.js` v3.11.0
 
 **One removal (D7) and two count-only additions.**
@@ -285,6 +319,29 @@ it currently feeds only `Exec Q&A`).
 `Jira Backlog.js` v3.5.0, and a label written by the exporter would **silently fail to join for weeks
 1–9**. Shipping the Monday date keeps **one** week-label authority — the dashboard's — and mirrors
 `Jira Bugs`, which ships raw `Created` dates and lets `parseBugRows_` / `bugWeekly_` bucket them.
+
+> **⚠️ The date must cross the boundary as a calendar day, never as a UTC instant** (Task 8 review,
+> 2026-08-06). Apps Script serializes a `Date` to a cell using the *script's* timezone, so writing
+> `new Date("2026-07-27T00:00:00Z")` lands on the previous calendar day in any behind-UTC zone and
+> buckets **every row one ISO week early** — silently, straight into the headline denominator.
+>
+> A bare `yyyy-mm-dd` **string is not a fix on its own**: JS parses a date-only string as UTC midnight
+> per the ES spec, so `parseDhDate_("2026-07-27")` also yields `2026.W30` in a behind-UTC zone.
+> Measured across zones:
+>
+> | Form | UTC | UTC−6 | UTC+12 |
+> |---|---|---|---|
+> | `new Date("2026-07-27")` | W31 | **W30** | **W30** |
+> | `new Date("2026-07-27T00:00:00")` | W31 | W31 | W31 |
+> | component parse `new Date(y, m−1, d)` | W31 | W31 | W31 |
+>
+> So the contract is: the exporter writes `yyyy-mm-dd` (its own `toIsoDate_` convention), and
+> `parseArrivalRows_` reads the calendar date from **local components** — regex-parsed from the string,
+> or from a `Date`'s local getters when Sheets coerces the cell — never via `new Date(string)`.
+>
+> This is the third instance of one hazard family in this plan: `W07` vs `W7` padding, lexicographic
+> ISO ordering, and now UTC-instant date transport. All three are the same mistake — a date or label
+> crossing a boundary where the two sides disagree about what "the day" is.
 
 **`Flow Snapshots` gains two columns**, from a count-only unassigned-open fetch bounded by
 `OPEN_BACKLOG_UPDATED_WEEKS` (D8):
@@ -349,10 +406,16 @@ bound on the unassigned count (D8), and both limits of the walk-back reconstruct
 A mean over one epic is not a mean, so Forecast shelves at n=1. But three items cleared *is* three
 items cleared — flooring a count would hide real work.
 
-- **Floored:** `onTime`, `forecast`, `rework`, `leadTime`, `util`, `queueCover`, `clearedPerHead`
+- **Floored:** `onTime`, `forecast`, `quality`, `leadTime`, `util`, `queueCover`, `clearedPerHead`
 - **Never floored:** `inventory`, `arrived`, `cleared`, `netFlow`
 
-`SAMPLE_FLOOR: 5` by default, per registry entry.
+`sampleFloor: 5` per registry entry. **`sampleFloor: null` (or absent) marks a COUNT** and means never
+floored — so a metric that should be floored but omits the key is silently unfloorable, which is how
+four of the seven above shipped unwired in the first pass (Task 6 review).
+
+> The Quality / Rework metric's **registry id is `quality`**, not `rework`. Earlier drafts of this
+> section said `rework`, which is the metric's English name, and no such id exists — a floor written
+> against it would have attached to nothing.
 
 ### 4.5 Reconstructed inventory history
 
