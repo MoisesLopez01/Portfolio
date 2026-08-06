@@ -1254,6 +1254,13 @@
    * subtraction is meaningless. Person-keyed arrivals also under-report the
    * newest weeks, because an issue filed unassigned only counts once somebody
    * picks it up — so a growing queue would read as flat exactly when it matters.
+   *
+   * Space-scoped only (v3.11.1) — matches fetchCreatedIssues_'s shape exactly,
+   * which also filters space and nothing else. Noise (Won't Do / Duplicate /
+   * Cancelled) is deliberately NOT filtered here: it's applied once, symmetrically
+   * to both the created and resolved arrays, inside writeArrivals_ instead — see
+   * that function's comment. Filtering noise independently on each half is how
+   * the two populations drifted apart in the first place.
    */
   function fetchResolvedInWindow_(fromStr, toStr) {
     var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
@@ -1269,7 +1276,7 @@
 
     var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS);
     return all.filter(function (i) {
-      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+      return getSpaceForIssue_(i) !== null;
     });
   }
 
@@ -2067,16 +2074,34 @@
    * counts over date fields, so they are recomputable from Jira at any time and
    * a rewrite keeps the tab self-healing after a partial run.
    *
-   * ── Week Start is a DATE, not a label ──
-   * jb_isoWeekLabel_ zero-pads ("2026.W07"); the dashboard's weekKeyFromDate_
-   * does not ("2026.W7"). That divergence is documented in v3.5.0. Writing a
-   * label here would silently fail to join for weeks 1-9, so this ships the
-   * week's Monday and lets the dashboard own week labelling — exactly as the
-   * Jira Bugs tab ships raw Created dates for parseBugRows_ to bucket.
+   * ── Week Start is a CALENDAR DATE, shipped as a "yyyy-mm-dd" STRING ──
+   * Not a label — jb_isoWeekLabel_ zero-pads ("2026.W07"); the dashboard's
+   * weekKeyFromDate_ does not ("2026.W7"). Writing a label here would silently
+   * fail to join for weeks 1-9, so this ships the week's Monday and lets the
+   * dashboard own week labelling — exactly as the Jira Bugs tab ships raw
+   * Created dates for parseBugRows_ to bucket.
+   *
+   * And not a Date OBJECT either (v3.11.1 fix) — Apps Script serializes a Date
+   * to a cell using the SCRIPT's timezone. `keyOf_` below already derives the
+   * correct calendar day via `.toISOString()`, which the ES spec fixes to UTC
+   * regardless of the running environment; wrapping that string back into
+   * `new Date(k + "T00:00:00Z")` reintroduced the exact bug this exists to avoid
+   * — a UTC-midnight INSTANT that a behind-UTC script timezone then reads back
+   * as the previous calendar day, bucketing the row one ISO week early. `k` is
+   * already the right string — write it as-is, never re-wrap it in a Date.
    */
   function writeArrivals_(createdIssues, resolvedIssues) {
     var HEADERS = ["Week Start", "Created", "Resolved", "Created Unassigned"];
     var sheet = jb_getOrCreateSheet_(CONFIGJ.ARRIVALS_SHEET);
+
+    // Both halves must describe the SAME population or "arrived minus cleared"
+    // is meaningless. fetchCreatedIssues_ is shared with Exec Q&A and applies no
+    // noise filter, so filter here rather than upstream: a ticket closed Won't Do
+    // / Duplicate / Cancelled was never delivery work, and counting it as an
+    // arrival that can never be cleared inflates net flow forever. Filtered on
+    // both arrays, in this one place, so the two halves can't drift apart again.
+    var createdClean = (createdIssues || []).filter(function (i) { return !isNoiseIssue_(i); });
+    var resolvedClean = (resolvedIssues || []).filter(function (i) { return !isNoiseIssue_(i); });
 
     // Monday of the ISO week containing `d`, in UTC — same convention as
     // jb_isoWeekLabel_ so a DST shift cannot push a Monday into the prior week.
@@ -2086,6 +2111,12 @@
       u.setUTCDate(u.getUTCDate() - dayNum);
       return u;
     }
+    // toISOString() always renders in UTC regardless of the running environment's
+    // timezone (ES spec) — so this string is the UTC calendar day mondayUtc_
+    // computed, full stop, with no local-timezone re-interpretation possible.
+    // Do NOT swap this for toIsoDate_: that helper reads Date via LOCAL getters,
+    // and applying local getters to mondayUtc_'s UTC-instant Date reintroduces
+    // the identical class of shift in any script timezone behind UTC.
     function keyOf_(d) { return mondayUtc_(d).toISOString().slice(0, 10); }
 
     var byWeek = {};
@@ -2094,7 +2125,7 @@
       return byWeek[k];
     }
 
-    (createdIssues || []).forEach(function (i) {
+    createdClean.forEach(function (i) {
       var raw = dig_(i, "fields.created");
       if (!raw) return;
       var d = new Date(raw);
@@ -2104,7 +2135,7 @@
       if (!dig_(i, "fields.assignee.displayName")) r.createdUnassigned++;
     });
 
-    (resolvedIssues || []).forEach(function (i) {
+    resolvedClean.forEach(function (i) {
       var raw = dig_(i, "fields.resolutiondate");
       if (!raw) return;
       var d = new Date(raw);
@@ -2116,14 +2147,18 @@
     var out = [HEADERS];
     keys.forEach(function (k) {
       var r = byWeek[k];
-      out.push([new Date(k + "T00:00:00Z"), r.created, r.resolved, r.createdUnassigned]);
+      // k is already "yyyy-mm-dd", UTC-correct by construction — write the
+      // STRING, never a `new Date(...)` wrapper. See the function docstring.
+      out.push([k, r.created, r.resolved, r.createdUnassigned]);
     });
 
     sheet.clearContents();
     sheet.clearFormats();
     sheet.getRange(1, 1, out.length, HEADERS.length).setValues(out);
     styleHeader_(sheet.getRange(1, 1, 1, HEADERS.length));
-    sheet.getRange(2, 1, Math.max(1, out.length - 1), 1).setNumberFormat("yyyy-mm-dd");
+    // Column A is plain text now, not a Date-typed cell (see docstring) — a
+    // date number format has no effect on a text value, so it is dropped here
+    // rather than left as dead formatting.
     Logger.log("📈 Jira Arrivals written: " + keys.length + " weeks");
   }
 

@@ -2520,6 +2520,36 @@ function parseDhDate_(v) {
   return null;
 }
 
+/**
+ * Reads a bare CALENDAR date ("Week Start" — no time-of-day, no offset) from
+ * local components, never through `new Date(string)`. Do NOT use parseDhDate_
+ * for this column: a bare "yyyy-mm-dd" string is parsed as UTC MIDNIGHT per the
+ * ES spec (unlike a full ISO datetime, which carries its own offset and is
+ * unambiguous), so `new Date("2026-07-27")` read back with local getters lands
+ * on 2026-07-26 in any behind-UTC timezone — and weekKeyFromDate_ reads with
+ * local getters, so that one calendar day shifts the whole row one ISO week
+ * early. Silent, and it feeds the Executive net-flow figure directly.
+ *
+ * Handles both forms getValues() can hand back for this column:
+ *   - a STRING "yyyy-mm-dd" — what the exporter writes (v3.11.1+, deliberately
+ *     a string rather than a Date, so Apps Script's own Date→cell serialization,
+ *     which uses the SCRIPT's timezone, can't reintroduce the same shift on write).
+ *   - a DATE — what Sheets may hand back if it coerced that string into a
+ *     date-typed cell; its LOCAL y/m/d is the calendar day the reading script
+ *     sees, so re-deriving local components (not trusting the instant) keeps
+ *     this correct regardless of which timezone wrote it.
+ */
+function dhCellDateLocal_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  }
+  if (typeof v === "string") {
+    var m = v.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  return null;
+}
+
 /** Gone-for-good roster statuses (demand-dashboard convention — readRosterFull_). */
 var DH_TERMINATED_ = /terminat|job offer|resign|left|inactive|former|offboard/i;
 
@@ -3223,6 +3253,11 @@ function readJiraBugs_() {
  * zero-pads ("2026.W07") and weekKeyFromDate_ does not ("2026.W7"); shipping a
  * date keeps ONE week-label authority and makes the divergence unreachable.
  *
+ * Week Start is parsed via dhCellDateLocal_, NOT parseDhDate_ — parseDhDate_
+ * calls `new Date(string)`, which is exactly the UTC-midnight trap that shifts
+ * a bare "yyyy-mm-dd" calendar date one ISO week early in a behind-UTC zone.
+ * See dhCellDateLocal_'s comment for the full reasoning.
+ *
  * @param {Array<Array>} values raw getValues() including the header row
  * @returns {{weeks:Array<{iso,created,resolved,createdUnassigned}>, available:boolean}}
  */
@@ -3238,7 +3273,7 @@ function parseArrivalRows_(values) {
   }
   var weeks = [];
   for (var r = 1; r < values.length; r++) {
-    var d = parseDhDate_(values[r][iWeek]);
+    var d = dhCellDateLocal_(values[r][iWeek]);
     if (!d || isNaN(d.getTime())) continue;   // blank or unparseable row: skip, never bucket to epoch
     weeks.push({
       iso: weekKeyFromDate_(d),
@@ -4743,13 +4778,18 @@ function _test_bugFeed_() {
 }
 
 /**
- * Jira Arrivals parse. Three rules, each a bug that has bitten this codebase:
+ * Jira Arrivals parse. Four rules, each a bug that has bitten this codebase:
  *  · columns BY NAME, so a column order change upstream cannot silently shift data;
  *  · a MISSING column yields null, never 0 — "nobody measured" and "measured zero"
  *    are different facts, and conflating them is how a feed outage reads as good news;
  *  · the ISO week key is computed HERE from Week Start. weekKeyFromDate_ emits
  *    "2026.W7"; the exporter's jb_isoWeekLabel_ emits "2026.W07". A label written
- *    upstream would fail to join for weeks 1-9 (spec §4.1).
+ *    upstream would fail to join for weeks 1-9 (spec §4.1);
+ *  · Week Start must parse correctly as BOTH a "yyyy-mm-dd" STRING (what the
+ *    exporter writes) and a Date (what Sheets may coerce it to) — via
+ *    dhCellDateLocal_, never parseDhDate_'s `new Date(string)`, which is UTC
+ *    midnight per spec and shifts a bare calendar date a day early (and a week
+ *    early) in any behind-UTC timezone.
  */
 function _test_arrivalParse_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_arrivalParse_: " + m); }
@@ -4775,6 +4815,20 @@ function _test_arrivalParse_() {
   assert_(w31.createdUnassigned === 90, "createdUnassigned read");
   var w30 = r.weeks[1];
   assert_(w30.iso === "2026.W30", "second week is W30 — got " + w30.iso);
+
+  // The exporter (v3.11.1+) ships Week Start as a "yyyy-mm-dd" STRING, not a
+  // Date object — pin that form directly, not just the Date form above. A bare
+  // string parsed via `new Date(string)` is UTC midnight per spec and would
+  // bucket to the prior day (and prior ISO week) in any behind-UTC timezone;
+  // dhCellDateLocal_ must read it from the string's digits instead. Run under
+  // multiple TZ env vars (see task-8-report.md) to prove this holds everywhere,
+  // not just on whichever machine happens to run this file.
+  var fromString = parseArrivalRows_([
+    ["Week Start", "Created", "Resolved"],
+    ["2026-07-27", 224, 204],
+  ]);
+  assert_(fromString.weeks[0].iso === "2026.W31",
+          "STRING Week Start '2026-07-27' → 2026.W31 — got " + fromString.weeks[0].iso);
 
   // Missing optional column → null, not 0.
   var noUnassigned = parseArrivalRows_([
