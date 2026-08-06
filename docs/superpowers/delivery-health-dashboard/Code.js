@@ -3571,6 +3571,39 @@ function assembleModel_(inputs, win) {
     ? throughputBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
   var flowOpen = inputs.jira.available
     ? flowOpenBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0, uncategorized: 0 };
+
+  // ── Queue model (spec 2026-08-06) ──────────────────────────────────────────
+  // Two halves, never summed here: one is filterable downstream, the other is
+  // org-wide. The client decides, once, with a scope tag on it.
+  // `flowOpen` is passed IN, not recomputed: assembleModel_ already built it
+  // above over the same issues and resolvePerson, and a second O(n) pass over
+  // every Jira issue to rebuild an identical answer is waste on a payload
+  // already large enough to need gzipping and chunking. Passing it also carries
+  // its `unattributed` / `uncategorized` counts through to the hero's own
+  // number, so the total owns its loss instead of deferring to a counter
+  // computed elsewhere in the payload (review finding, Task 4).
+  var queue = inputs.jira.available
+    ? queueSnapshot_(jiraScoped.issues, resolvePerson, flowOpen)
+    : { assigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0,
+                    unattributed: 0, uncategorized: 0 },
+        // NULL, not 0 — with no feed we did not look, and "0 unowned" is the
+        // most dangerous false read on this surface (spec §5). uncategorized
+        // is null too, matching queueSnapshot_'s real unassigned shape
+        // (items, wipN, todoN, todoHrs, uncategorized) key-for-key — the brief's
+        // original fallback dropped this key entirely (Task 7 review finding).
+        unassigned: { items: null, wipN: null, todoN: null, todoHrs: null,
+                      uncategorized: null } };
+
+  var arrWeeks = (inputs.arrivals && inputs.arrivals.available) ? inputs.arrivals.weeks : [];
+  // Ordered oldest-first by ISO key so the walkback and the median both read a
+  // series in time order regardless of how the sheet happened to be sorted.
+  arrWeeks = arrWeeks.slice().sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  var resolvedSeries = arrWeeks.map(function (w) { return w.resolved; });
+  var clearRate = clearRateMedian_(resolvedSeries, CONFIG_DH.CLEAR_RATE_WEEKS);
+  var totalItems = (queue.unassigned.items === null)
+    ? null
+    : queue.assigned.items + queue.unassigned.items;
+
   var personHyg = inputs.jira.available
     ? personHygieneBuckets_(jiraScoped, resolvePerson)
     : { resolved: [], open: [] };
@@ -3681,6 +3714,10 @@ function assembleModel_(inputs, win) {
       flowSnapshotsAvailable: !!inputs.flowSnaps.available,
       flowSnapshots: inputs.flowSnaps.snaps,
       flowUncategorized: flowOpen.uncategorized,
+      arrivalsAvailable: !!(inputs.arrivals && inputs.arrivals.available),
+      clearRateMedian: clearRate,
+      clearRateWeeks: CONFIG_DH.CLEAR_RATE_WEEKS,
+      walkbackMaxWeeks: CONFIG_DH.WALKBACK_MAX_WEEKS,
       // Work by former employees, removed from every rate before bucketing.
       // Reported as a COUNT so the exclusion is stated rather than inferred —
       // a number that quietly got smaller is indistinguishable from a broken
@@ -3717,6 +3754,12 @@ function assembleModel_(inputs, win) {
     leadTimeBuckets: leadTime.buckets,
     throughputBuckets: throughput.buckets,
     flowOpenBuckets: flowOpen.buckets,
+    // Queue halves kept separate all the way to the client (spec §3 §2).
+    queue: queue,
+    arrivalWeeks: arrWeeks,
+    // Reconstructed inventory history — anchored on the measured total, so it is
+    // empty rather than fabricated when the total cannot be measured.
+    inventoryHistory: inventoryWalkback_(totalItems, arrWeeks, CONFIG_DH.WALKBACK_MAX_WEEKS),
     bugWeekly: bugWeekly_(inputs.bugs.bugs),
     hygieneBuckets: hygiene,
     // Field fill per issue type, resolved + open. The gaps table says how much
@@ -3857,7 +3900,13 @@ function assembleModel_(inputs, win) {
 //      perfectly fresh backlog, which is worse than reporting nothing. Must miss
 //      cleanly. `Updated` itself is Jira Raw column 10 and has always been
 //      exported: no export change, no re-run.
-var DH_SCHEMA_VER_ = 25;
+// v26: Executive newspaper (spec 2026-08-06) — model.queue {assigned,unassigned}
+//      (halves NEVER summed server-side), model.arrivalWeeks, model.inventoryHistory
+//      (walked back from the measured anchor, `measured` flag per point),
+//      meta.arrivalsAvailable/clearRateMedian/clearRateWeeks/walkbackMaxWeeks,
+//      typeHygiene rows gain `attrN`, and registry gains queueCover/netFlow/
+//      clearedPerHead/inventory/arrived/cleared (all target: null).
+var DH_SCHEMA_VER_ = 26;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -3871,6 +3920,7 @@ function buildDeliveryModel_() {
     jira: readJiraRaw_(),
     bugs: readJiraBugs_(),
     flowSnaps: readFlowSnapshots_(),
+    arrivals: readArrivals_(),
   }, win);
 }
 
@@ -6057,6 +6107,108 @@ function _test_modelAssembly_() {
   assert_(m8.meta.leaverExcluded.issues === 0 &&
           m8.onTimeBuckets.some(function (b) { return b.person === "Departed Dev"; }),
           "a BOOMERANG rehire keeps counting — an active row beats an inactive one");
+
+  // ── Queue model wiring (Task 7, schema v26) ──────────────────────────────
+  // 1. Happy path: arrivals populated with 5 weeks, supplied OUT OF ORDER, plus
+  // two new open issues so the queue halves carry real (non-zero) numbers —
+  // proving they are wired to `issues`, not just present-but-empty objects.
+  var arrivalsFixture = { available: true, weeks: [
+    { iso: "2026.W31", created: 320, resolved: 305, createdUnassigned: 12 },
+    { iso: "2026.W27", created: 280, resolved: 300, createdUnassigned: 9 },
+    { iso: "2026.W29", created: 300, resolved: 310, createdUnassigned: 11 },
+    { iso: "2026.W28", created: 290, resolved: 290, createdUnassigned: 8 },
+    { iso: "2026.W30", created: 310, resolved: 295, createdUnassigned: 10 },
+  ] };
+  var queueIssues = inputs.jira.issues.concat([
+    // Open, assigned to a roster person, In Progress → assigned.wipN.
+    { key: "ACME-9", status: "In Progress", statusCategory: "In Progress",
+      assignee: "Alvarez, Maria", estSec: 0, spentSec: 0, resolved: null },
+    // Open, unassigned, To Do, 2h remaining → unassigned.todoN/todoHrs, and
+    // ONLY the unassigned half, proving the two halves are not conflated.
+    { key: "ACME-10", status: "Open", statusCategory: "To Do",
+      assignee: "Unassigned", estSec: 7200, spentSec: 0, resolved: null },
+  ]);
+  var qInputs = Object.assign({}, inputs, {
+    arrivals: arrivalsFixture,
+    jira: Object.assign({}, inputs.jira, { issues: queueIssues }),
+  });
+  var mQ = assembleModel_(qInputs, win);
+  assert_(mQ.queue && mQ.queue.assigned && mQ.queue.unassigned,
+          "both queue halves present on the payload");
+  assert_(mQ.queue.assigned.wipN === 1 && mQ.queue.assigned.items === 1,
+          "assigned half counts the new open+assigned issue");
+  assert_(mQ.queue.unassigned.todoN === 1 && Math.abs(mQ.queue.unassigned.todoHrs - 2) < 1e-9,
+          "unassigned half counted independently off `issues` — the assigned issue never lands here");
+  var isoOrder = mQ.arrivalWeeks.map(function (w) { return w.iso; }).join("|");
+  assert_(isoOrder === "2026.W27|2026.W28|2026.W29|2026.W30|2026.W31",
+          "arrivalWeeks sorted oldest-first even though the fixture supplied them out of order — got " + isoOrder);
+  assert_(mQ.inventoryHistory.length > 0, "inventory history reconstructed from a measurable anchor");
+  assert_(mQ.inventoryHistory.filter(function (p) { return p.measured; }).length === 1,
+          "exactly one measured point in the walkback");
+  assert_(mQ.inventoryHistory[mQ.inventoryHistory.length - 1].measured === true,
+          "the measured point is the newest — last in an oldest-first series");
+  assert_(typeof mQ.meta.clearRateMedian === "number",
+          "5 usable weeks clears CLEAR_RATE_MIN_N → a numeric median, not null");
+  assert_(mQ.meta.arrivalsAvailable === true, "arrivals tab reported available");
+  assert_(mQ.meta.clearRateWeeks === CONFIG_DH.CLEAR_RATE_WEEKS &&
+          mQ.meta.walkbackMaxWeeks === CONFIG_DH.WALKBACK_MAX_WEEKS,
+          "the window/cap constants ship so the client never re-types them");
+
+  // 2. flowOpen is THREADED into queueSnapshot_, not recomputed. Both paths
+  // (threaded vs. queueSnapshot_'s own `flowOpen || flowOpenBuckets_(...)`
+  // fallback) produce the SAME NUMBER on identical inputs, so no value-only
+  // assertion can tell them apart — a dropped third argument is invisible to
+  // every assertion above. A call-count spy is what actually discriminates:
+  // correct wiring calls flowOpenBuckets_ exactly once (to build `flowOpen`
+  // itself); a dropped third argument makes queueSnapshot_'s fallback call it
+  // a second time on the same issues/resolvePerson.
+  var realFlowOpenBuckets_ = flowOpenBuckets_;
+  var flowOpenCallCount = 0;
+  flowOpenBuckets_ = function (issues, resolvePersonArg) {
+    flowOpenCallCount++;
+    return realFlowOpenBuckets_(issues, resolvePersonArg);
+  };
+  try {
+    assembleModel_(qInputs, win);
+  } finally {
+    flowOpenBuckets_ = realFlowOpenBuckets_;
+  }
+  assert_(flowOpenCallCount === 1,
+          "flowOpenBuckets_ computed exactly once per assembleModel_ run and threaded into " +
+          "queueSnapshot_'s third argument — got " + flowOpenCallCount + " call(s)");
+
+  // 3. Arrivals tab absent — empty history, not a fabricated one, and no median.
+  var mNoArrivals = assembleModel_(
+    Object.assign({}, inputs, { arrivals: { weeks: [], available: false } }), win);
+  assert_(mNoArrivals.meta.arrivalsAvailable === false, "no arrivals tab → reported absent");
+  assert_(mNoArrivals.meta.clearRateMedian === null, "no arrivals data → no clear-rate median");
+  assert_(Array.isArray(mNoArrivals.inventoryHistory) && mNoArrivals.inventoryHistory.length === 0,
+          "no arrival weeks → EMPTY inventory history, never a fabricated series");
+
+  // 4. THE DANGEROUS ONE — Jira unavailable. "0 unowned" would claim the whole
+  // queue is owned when nobody looked; it must be null, and explicitly not 0.
+  var mNoJiraQueue = assembleModel_(Object.assign({}, inputs, {
+    jira: { available: false, issues: [], epics: [], openIssues: [], keyRegion: {} },
+  }), win);
+  var noJiraU = mNoJiraQueue.queue.unassigned;
+  assert_(noJiraU.items === null && noJiraU.items !== 0,
+          "no Jira feed → unassigned.items is null, never a false '0 unowned' (spec §5)");
+  assert_(noJiraU.wipN === null && noJiraU.wipN !== 0, "…and wipN null, not 0");
+  assert_(noJiraU.todoN === null && noJiraU.todoN !== 0, "…and todoN null, not 0");
+  assert_(noJiraU.todoHrs === null && noJiraU.todoHrs !== 0, "…and todoHrs null, not 0");
+  assert_(noJiraU.uncategorized === null,
+          "unassigned.uncategorized is also unknowable with no feed — matches queueSnapshot_'s " +
+          "real 5-key unassigned shape (items/wipN/todoN/todoHrs/uncategorized)");
+  var noJiraA = mNoJiraQueue.queue.assigned;
+  assert_(noJiraA.items === 0 && noJiraA.unattributed === 0 && noJiraA.uncategorized === 0,
+          "assigned half stays 0 (known-empty), not null — only the UNOWNED half is unknowable");
+
+  // 5. Schema version — read off the model, not the constant, so a payload
+  // change that forgets the bump (or a bump that forgets the payload) is caught
+  // even if DH_SCHEMA_VER_ itself silently drifted.
+  assert_(m.schemaVer === 26,
+          "payload schema is v26 (queue model) — literal check, independent of DH_SCHEMA_VER_");
+
   Logger.log("✅ _test_modelAssembly_ passed");
 }
 
