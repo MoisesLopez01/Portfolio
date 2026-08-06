@@ -2919,7 +2919,11 @@ function parseArrivalRows_(values) {
         : (Number(values[r][iUnassigned]) || 0),
     });
   }
-  return { weeks: weeks, available: weeks.length > 0 };
+  // `available` reports that the tab is READABLE (has the required columns),
+  // not that it currently holds data. A tab whose rows all fail to parse is then
+  // distinguishable from one that was never exported — the former signals a
+  // data-quality issue, the latter an expected pre-launch state.
+  return { weeks: weeks, available: true };
 }
 
 /** Reads the Jira Arrivals tab. Absent tab is a clean unavailable, not an error:
@@ -4404,6 +4408,24 @@ function _test_arrivalParse_() {
   assert_(parseArrivalRows_([]).available === false, "empty values → unavailable");
   assert_(parseArrivalRows_([["Week Start", "Created", "Resolved"]]).available === false,
           "header-only → unavailable");
+
+  // Valid header with zero usable rows: `available: true` (tab is readable)
+  // but `weeks.length === 0` (no data), distinguishing this from "export not yet run".
+  var allUnparseable = parseArrivalRows_([
+    ["Week Start", "Created", "Resolved"],
+    ["not a date", 5, 5],
+  ]);
+  assert_(allUnparseable.available === true && allUnparseable.weeks.length === 0,
+          "all-unparseable rows: available=true, weeks.length=0 — got available=" +
+          allUnparseable.available + ", weeks.length=" + allUnparseable.weeks.length);
+
+  // Missing a required column: unavailable, never readable.
+  var missingResolved = parseArrivalRows_([
+    ["Week Start", "Created"],
+    [new Date(2026, 6, 27), 224],
+  ]);
+  assert_(missingResolved.available === false, "missing required column → unavailable");
+
   Logger.log("✅ _test_arrivalParse_ passed");
 }
 
