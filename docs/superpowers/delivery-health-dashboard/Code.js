@@ -938,6 +938,26 @@ function adjacentIso_(iso, dir) {
 }
 
 /**
+ * Numeric sort key for a "YYYY.WN" label — year*100+week. A STRING compare is
+ * wrong here and silently so: weekKeyFromDate_ does not zero-pad (bug fix,
+ * Task 7 review 2026-08-06), so "2026.W10" < "2026.W6" lexicographically
+ * ('1' < '6') and a naive .sort() on the label scrambles any window that spans
+ * the single/double-digit boundary — which the live 26-week walkback does
+ * every year, not just at a January rollover. Week numbers never reach 100
+ * (max 53), so year*100+week preserves chronological order exactly.
+ * Unparseable labels sort OLDEST (key 0), never newest: both consumers of
+ * this order trust it without re-checking — clearRateMedian_ takes the last
+ * N elements as "the last N weeks", and inventoryWalkback_ anchors on the
+ * LAST element as the measured present. Parking a garbage label at the new
+ * end would mislabel it as "now"; parking it at the old end merely loses it
+ * to the walkback's window cap, which is the safer failure.
+ */
+function isoSortKey_(iso) {
+  var m = String(iso || "").match(/^(\d{4})\.W(\d{1,2})$/);
+  return m ? parseInt(m[1], 10) * 100 + parseInt(m[2], 10) : 0;
+}
+
+/**
  * Groups the window's weeks into Month and fiscal-Quarter periods for the
  * client's period toggle. Each period: { key, label, isos[], status, partial }.
  * status: "now" when it contains the current week, "done" when fully past,
@@ -3597,7 +3617,12 @@ function assembleModel_(inputs, win) {
   var arrWeeks = (inputs.arrivals && inputs.arrivals.available) ? inputs.arrivals.weeks : [];
   // Ordered oldest-first by ISO key so the walkback and the median both read a
   // series in time order regardless of how the sheet happened to be sorted.
-  arrWeeks = arrWeeks.slice().sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  // NUMERIC key (isoSortKey_), not a string compare — weekKeyFromDate_ does not
+  // zero-pad, so "2026.W10" < "2026.W6" as strings and a naive sort scrambles
+  // any window spanning the single/double-digit boundary (bug fix, Task 7
+  // review 2026-08-06; see isoSortKey_'s comment for why this corrupts both
+  // consumers below silently rather than erroring).
+  arrWeeks = arrWeeks.slice().sort(function (a, b) { return isoSortKey_(a.iso) - isoSortKey_(b.iso); });
   var resolvedSeries = arrWeeks.map(function (w) { return w.resolved; });
   var clearRate = clearRateMedian_(resolvedSeries, CONFIG_DH.CLEAR_RATE_WEEKS);
   var totalItems = (queue.unassigned.items === null)
@@ -6109,15 +6134,27 @@ function _test_modelAssembly_() {
           "a BOOMERANG rehire keeps counting — an active row beats an inactive one");
 
   // ── Queue model wiring (Task 7, schema v26) ──────────────────────────────
-  // 1. Happy path: arrivals populated with 5 weeks, supplied OUT OF ORDER, plus
-  // two new open issues so the queue halves carry real (non-zero) numbers —
+  // 1. Happy path: arrivals populated with 7 weeks, supplied OUT OF ORDER and
+  // SPANNING THE SINGLE/DOUBLE-DIGIT BOUNDARY (W6..W12) — not just a shuffle
+  // within same-width labels. weekKeyFromDate_ does not zero-pad, so a naive
+  // string sort puts W10/W11/W12 before W6..W9 ('1' < '6'); the original
+  // version of this fixture used W27..W31 (all two-digit), which a broken
+  // string comparator sorts identically to a correct numeric one — the exact
+  // blind spot that let the bug ship (Task 7 review, 2026-08-06). Also carries
+  // two new open issues so the queue halves show real (non-zero) numbers,
   // proving they are wired to `issues`, not just present-but-empty objects.
+  //
+  // Chronological resolved series (for the median derivation below):
+  //   W6=310  W7=295  W8=300  W9=305  W10=290  W11=320  W12=315
+  // Supplied order: W10, W7, W12, W6, W9, W11, W8.
   var arrivalsFixture = { available: true, weeks: [
-    { iso: "2026.W31", created: 320, resolved: 305, createdUnassigned: 12 },
-    { iso: "2026.W27", created: 280, resolved: 300, createdUnassigned: 9 },
-    { iso: "2026.W29", created: 300, resolved: 310, createdUnassigned: 11 },
-    { iso: "2026.W28", created: 290, resolved: 290, createdUnassigned: 8 },
-    { iso: "2026.W30", created: 310, resolved: 295, createdUnassigned: 10 },
+    { iso: "2026.W10", created: 305, resolved: 290, createdUnassigned: 9 },
+    { iso: "2026.W7",  created: 310, resolved: 295, createdUnassigned: 8 },
+    { iso: "2026.W12", created: 330, resolved: 315, createdUnassigned: 13 },
+    { iso: "2026.W6",  created: 325, resolved: 310, createdUnassigned: 11 },
+    { iso: "2026.W9",  created: 320, resolved: 305, createdUnassigned: 10 },
+    { iso: "2026.W11", created: 335, resolved: 320, createdUnassigned: 14 },
+    { iso: "2026.W8",  created: 315, resolved: 300, createdUnassigned: 9 },
   ] };
   var queueIssues = inputs.jira.issues.concat([
     // Open, assigned to a roster person, In Progress → assigned.wipN.
@@ -6140,15 +6177,23 @@ function _test_modelAssembly_() {
   assert_(mQ.queue.unassigned.todoN === 1 && Math.abs(mQ.queue.unassigned.todoHrs - 2) < 1e-9,
           "unassigned half counted independently off `issues` — the assigned issue never lands here");
   var isoOrder = mQ.arrivalWeeks.map(function (w) { return w.iso; }).join("|");
-  assert_(isoOrder === "2026.W27|2026.W28|2026.W29|2026.W30|2026.W31",
-          "arrivalWeeks sorted oldest-first even though the fixture supplied them out of order — got " + isoOrder);
+  assert_(isoOrder === "2026.W6|2026.W7|2026.W8|2026.W9|2026.W10|2026.W11|2026.W12",
+          "arrivalWeeks sorted oldest-first NUMERICALLY across the digit-width boundary " +
+          "even though the fixture supplied them out of order — got " + isoOrder);
   assert_(mQ.inventoryHistory.length > 0, "inventory history reconstructed from a measurable anchor");
   assert_(mQ.inventoryHistory.filter(function (p) { return p.measured; }).length === 1,
           "exactly one measured point in the walkback");
-  assert_(mQ.inventoryHistory[mQ.inventoryHistory.length - 1].measured === true,
-          "the measured point is the newest — last in an oldest-first series");
-  assert_(typeof mQ.meta.clearRateMedian === "number",
-          "5 usable weeks clears CLEAR_RATE_MIN_N → a numeric median, not null");
+  assert_(mQ.inventoryHistory[mQ.inventoryHistory.length - 1].measured === true &&
+          mQ.inventoryHistory[mQ.inventoryHistory.length - 1].iso === "2026.W12",
+          "the measured point is the newest — chronologically W12, not whatever a string sort " +
+          "happened to put last");
+  // 7 weeks all sit inside the 8-week trailing window (CLEAR_RATE_WEEKS), so
+  // the WHOLE series is used; medianOf_ sorts numerically internally, so the
+  // median value itself doesn't move with a scrambled order here — the
+  // digit-boundary bug is caught by isoOrder/the walkback anchor above, not by
+  // this number. Median of [290,295,300,305,310,315,320] (7 values) = 305.
+  assert_(mQ.meta.clearRateMedian === 305,
+          "median of the 7-week resolved series — got " + mQ.meta.clearRateMedian);
   assert_(mQ.meta.arrivalsAvailable === true, "arrivals tab reported available");
   assert_(mQ.meta.clearRateWeeks === CONFIG_DH.CLEAR_RATE_WEEKS &&
           mQ.meta.walkbackMaxWeeks === CONFIG_DH.WALKBACK_MAX_WEEKS,
