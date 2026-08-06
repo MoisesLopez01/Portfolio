@@ -4790,19 +4790,26 @@ function _test_inventoryWalkback_() {
   // spot-checking values proves individual arithmetic, this proves the series
   // hangs together.
   for (var k = 0; k < capped.length - 1; k++) {
-    var w = varied[varied.length - 26 + k + 1];
+    var w = varied[varied.length - capped.length + k + 1];
     var stepped = capped[k].items + (w.created - w.resolved);
     assert_(stepped === capped[k + 1].items,
             "forward step from " + capped[k].iso + " lands on " + capped[k + 1].iso +
             " — expected " + capped[k + 1].items + ", stepped to " + stepped);
   }
 
-  // Inventory can never be negative: a bad delta clamps at 0 rather than
-  // printing a queue of -40 items, which is not a state the world can be in.
-  var bad = [{ iso: "2026.W30", created: 500, resolved: 0 },
-             { iso: "2026.W31", created: 10, resolved: 10 }];
-  var badResult = inventoryWalkback_(100, bad, 26);
-  assert_(badResult[0].items >= 0, "clamped at zero — got " + badResult[0].items);
+  // Inventory can never be negative: a bad delta clamps at 0 rather than printing
+  // a queue of -900 items, which is not a state the world can be in.
+  // The oversized delta sits on the NEWEST week deliberately. Put it on the oldest
+  // and the resulting negative lands in the accumulator AFTER the final write and
+  // is discarded — the clamp is never invoked and the assertion passes with the
+  // clamp deleted. Here W31's delta is applied while walking back to W30, so the
+  // negative is a value that actually gets stored.
+  var bad = [{ iso: "2026.W30", created: 10, resolved: 10 },
+             { iso: "2026.W31", created: 1000, resolved: 0 }];
+  var clamped = inventoryWalkback_(100, bad, 26);
+  assert_(clamped[1].items === 100, "anchor week is unaffected by the clamp");
+  assert_(clamped[0].items === 0,
+          "walked-back negative clamps to exactly 0 — got " + clamped[0].items);
 
   // No anchor means no series. A reconstruction with nothing to anchor on is a
   // guess, and a guessed trend under a headline is worse than no trend.
