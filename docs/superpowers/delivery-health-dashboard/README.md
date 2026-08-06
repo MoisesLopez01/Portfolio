@@ -24,12 +24,14 @@ moved):
    2026-08-03; **lower is better**, so its target is a ceiling (≤5%) and its RAG is inverted. CSAT
    remains a declared-absent companion (PR-09).
 
-**Every tile carries its confidence.** Each metric has a registry coverage gate, and each tile shows
-its confidence level (◆ high / ◈ medium / ◇ low) with the attribution % it was measured on. A metric
-below its gate is still published — flagged `below gate — directional only` with a link into the
-Actions tab's gaps queue — because the reader judging a weak number beats the tool refusing to show it.
-That is an accepted deviation from FR-2.2, owned by the Services Director and reversible with one
-flag (`CONFIG_DH.SUPPRESS_BELOW_GATE`). See [Data confidence](#data-confidence-and-suppression).
+**Confidence still gates, but the cards stopped narrating it (2026-08-05).** Each metric has a
+registry coverage gate and `metricConfidence_` still decides publish/suppress exactly as before — but
+the per-card chatter (the ◆/◈/◇ confidence chip, the `below gate — directional only` caveat, the
+`What's missing →` link) was removed as noise: coverage-vs-gate reads on the **Data trust strip** on
+the same Executive view, and *who* can close each gap reads on the **Actions** tab (signals roster +
+gaps queue). A metric below its gate is still published (accepted deviation from FR-2.2, owned by the
+Services Director, reversible with `CONFIG_DH.SUPPRESS_BELOW_GATE`); the compact flow tiles keep
+their chips. See [Data confidence](#data-confidence-and-suppression).
 
 Spec: [`docs/superpowers/specs/2026-07-31-delivery-health-dashboard-design.md`](../specs/2026-07-31-delivery-health-dashboard-design.md).
 
@@ -43,7 +45,7 @@ will see in W32 is the definition moving, not delivery moving, and the in-produc
 
 | Metric | Was | Now (Dictionary) | Effect |
 |---|---|---|---|
-| **On-Time** | Stories/Tasks, epics *excluded* | Epic **or** Milestone **or** `Client Commitment` label | Rate **and** coverage move sharply — epics have a much lower due-date fill rate, so expect the confidence chip to drop |
+| **On-Time** | Stories/Tasks, epics *excluded* | Epic **or** Milestone **or** `Client Commitment` label | Rate **and** coverage move sharply — epics have a much lower due-date fill rate, so expect the Data trust strip's due-date tile to drop |
 | **Utilization** | ÷ net available (PTO/holidays removed) | ÷ **scheduled capacity** (headcount × standard hours) | Headline falls by the absence share. Since 2026-08-04 the gross rate is the ONLY rate — absence is not modelled at all, and tracked time off counts as non-billable time |
 | **Forecast** | share inside the ±10% band | **mean of `1 − |A−E|/E`**, floored at 0 | A different, generally higher number; the band survives as a companion |
 | **Quality / Rework** | placeholder tile | `(reopened OR Rework-linked) ÷ delivered` | A tile that has never shown a number starts showing one |
@@ -92,7 +94,7 @@ enforced inside `switchView_()`, not just by hiding a tab.
 | Tab | Answers | Contents |
 |---|---|---|
 | 📊 **Executive** | "Are we on target, and where aren't we?" | Tiered KPI strip — 4 hero cards + 5 compact flow tiles — → one **comparison chart** (Region/Team/PM/Job family, now including Lead Time and Throughput chips) → **people-signals pulse** (margin-gated, counts only) → **data-trust strip** (org-wide). The 30-second read. |
-| 🎯 **Actions** | "Who and what needs action?" | **Headroom table** (the opportunity table, unchanged) → **signals roster** (every person, Due/Estimate/Logged/Hours RAG columns, drill-downs) → 🧬 **field-fill matrix** (by issue type) → **gaps queue**. Admin + viewer only. |
+| 🎯 **Actions** | "Who and what needs action?" | **Signals roster** (every person, job-title tag, Due/Estimate/Logged/Hours RAG columns, drill-downs) → 🧬 **field-fill matrix** (by issue type) → **gaps queue**. Admin + viewer only. |
 | 🔒 **Access** | — | Admin only. |
 
 The filter row sits **above** the tabs and scopes every view — there are no per-chart filters.
@@ -100,8 +102,10 @@ The filter row sits **above** the tabs and scopes every view — there are no pe
 **What retired, and where its content moved** — nothing here was deleted outright; each retired tab's
 job is answered by something on Executive or Actions:
 
-- 🎯 **Headroom** tab → its opportunity table moved onto **Actions**, byte-for-byte the same table
-  (see "Opportunity table (Actions tab)" below).
+- 🎯 **Headroom** tab → its opportunity table first moved onto **Actions**, then **retired outright
+  (user 2026-08-05)**: the signals roster covers the same people with the same exclusions (and
+  inherited the visible job-title tag), and the recoverable-hours figure lives on the Executive
+  **people-signals pulse** (see "Recoverable hours" below).
 - 🌊 **Flow** tab → its five live cards (Lead Time, Throughput, Backlog, WIP, Bug Count — non-epic
   grain, Backlog/WIP from the exporter's `Flow Snapshots` append log) became the **compact flow
   tier** inside the Executive KPI strip, tagged `SNAP` or `PERIOD` per tile (see "Scope tags" below).
@@ -137,6 +141,64 @@ own tile, tile by tile, not just anywhere in the strip's markup. On the signals 
 Due/Estimate/Logged columns follow the roster's own Open/Resolved population toggle (`SNAP` under
 Open, `PERIOD` under Resolved), while the Hours column always reads `PERIOD` — worklogs are
 period-shaped even when the rest of the row is looking at a snapshot.
+
+## Forward windows: the current period and the next two weeks (2026-08-06)
+
+The analysis-period picker offered **complete periods only** until 2026-08-06. That is right for a
+scorecard — an unfinished month graded against a full-month target reads as a collapse on the 1st —
+but it left the two questions coaching actually starts from unanswerable: *what is the team on right
+now*, and *is the next fortnight planned?* (user request). The picker now has three groups:
+
+| Group | What it offers | Grammar |
+|---|---|---|
+| **Complete** | every closed period of the active unit. `Latest complete` is still the default | graded exactly as before |
+| **In progress** | the current week / month / quarter | published, but **never compared to the period before it** |
+| **Planning · next N weeks** | the next ≤2 ISO weeks (`PLAN_WEEKS_AHEAD_`), and only those the payload actually reaches | outcome metrics say so and stay blank; **plan** is what is measured |
+
+**The invariant that makes this safe.** `donePeriods_()` is unchanged and is still the *only* input
+to any trend, sparkline or operating rate. `analysisPeriods_()` = `donePeriods_()` + the in-flight
+period + the planning weeks, and it keeps **index parity** — for `i < done.length`, `all[i]` *is*
+`done[i]` — so the trend anchor is `min(idx, done.length−1)`. A forward window trends the complete
+history behind it; it can never trend itself. `analysisHead_()` returns `{head, hi, phase}` and is
+the single resolution of "which window is on screen"; the old `headPeriodIdx_(done)` is gone,
+because the selected window and the trend anchor stopped being the same thing.
+
+**What each phase changes.**
+
+- `now` — every card wears a `◐ in progress` chip on its hero, and the **vs-prior delta is dropped**:
+  two weeks of a month against a whole prior month is a length difference wearing an arrow. The
+  target gap *survives* — it judges the number that is actually on the card.
+- `now`, utilization only — the rate becomes a **floor** (`opts.floor`, the same grammar the
+  link-only rework rate uses): capacity is booked for the whole window while hours have accrued for
+  part of it, so it reads "at least N%" and carries no RAG colour. The other three are shares of
+  what has *closed*, and a share of a smaller set is still a real share.
+- `plan` — On-Time, Forecast and Quality render `—` with "has not happened yet". They are never
+  computed over an empty set: 100% on-time for next week would be quoted. The capacity slot becomes
+  **Planned Coverage**, `liveMetrics_()` collapses to `planCov` so the comparison chart re-points
+  itself, and the roster gains a **Plan** column.
+- `plan`, surfaces that need resolved work — the gaps view and the data-trust strip **fall back to
+  the last complete period and say so**; the pulse drops recoverable hours (measured on hours already
+  delivered) and states planned coverage instead.
+
+### Planned Coverage
+
+`planFor_(isos)` — planned hours ÷ scheduled capacity, over the same population as the utilization
+rate (long leave and interns out: neither owes a plan). Planned is **capped at capacity per week
+before summing**, because Tempo records a weekly plan *per project assignment* and someone on two
+projects otherwise reads as twice their week.
+
+**No target, therefore no RAG colour.** No planned-coverage bar has been agreed, and inventing one
+would put a verdict on screen no owner stands behind. What the card carries instead is the
+actionable count — `▽ N of M under 50% planned · K with no plan` — because the fix is a conversation
+with a person, and 58% does not tell you whether nine people are half planned or four have nothing.
+`PLAN_CLIFF_` (0.5) is *not* a new threshold: it is the coverage cliff `personExceptions_` has
+flagged people on since 2026-07-31, named once so the tile, the roster column and the triage flag
+cannot drift apart.
+
+The roster's Plan column is **conditional on purpose** — over a closed period it would show a plan
+nobody can change any more, which is history dressed as an action. `Planned h` / `Capacity h` ship
+in the CSV on *every* export regardless, because a header that moves with a dropdown cannot be
+appended to.
 
 ## Every person is in a bar (2026-08-03)
 
@@ -182,8 +244,8 @@ returns. Implementation: `passesFilters_(p, skipDim)`, `optionsFor_(dim)`, `fill
 A target says what someone decided; the **operating rate** says what the organisation has
 demonstrably done, period after period. A month at 64% against a 70% target is a miss; the same month
 against an observed norm of 63% is an ordinary month. Those are different conversations, so both
-references are shown — on every KPI card, on the trend chart as a shaded band, and as the benchmark
-the opportunity table ranks against.
+references are shown — on every KPI card, on the comparison chart as a shaded band, and as the
+benchmark the recoverable-hours figure is measured against.
 
 `standardRate_(vals)` in `Dashboard.html`:
 
@@ -204,9 +266,10 @@ the opportunity table ranks against.
   screen** — the metric is a rate, so the two are comparable, but an unlabelled change of basis would
   be worse than no rate.
 
-## Opportunity table (Actions tab)
+## Recoverable hours (Executive pulse)
 
-"Areas of opportunity" made arithmetic. Per person, for the last complete period:
+"Areas of opportunity" made arithmetic — `oppRows_` in `Dashboard.html`. Per person, for the
+analysis period:
 
 ```
 opportunity_hours = max(0, operating_rate% × their available hours − their billable hours)
@@ -214,26 +277,48 @@ opportunity_hours = max(0, operating_rate% × their available hours − their bi
 
 Hours, not percentage points, because a point is not something anyone can reassign. Floored at zero —
 someone above the norm is carrying it, not owed negative work. Excluded by construction, because a
-gap there is not an opportunity: people on long leave (roster Employee Status) and periods before
-someone's hire date. Ramping new hires are **shown and flagged 🌱 but left out of the headline total** —
-ramping is the explanation, and the total is a call to act. The norm re-bases on whatever the filters
-select, so an AMER consultant is compared with how AMER consultants normally run.
+gap there is not an opportunity: people on long leave (roster Employee Status), interns, periods
+before someone's hire date, and anyone with no measurable capacity. Ramping new hires come back
+flagged and are **left out of the total** — ramping is the explanation, and the total is a call to
+act. The norm re-bases on whatever the filters select, so an AMER consultant is compared with how
+AMER consultants normally run.
+
+The standalone **"Where the headroom is" table that used to render this per person was retired
+(user 2026-08-05)** — the signals roster is the per-person surface now, and the summed figure
+survives as the `N h recoverable` clause on the Executive people-signals pulse.
 
 ## Signals roster (Actions tab)
 
 One row per person in the filtered population — the roster that replaced the retired People grid.
 `renderRoster_()` / `ROSTER_COLS_` in `Dashboard.html`, graded by `gradeSignal_()` off
-`personSignalRows_()`, backed server-side by `personHygieneBuckets_()` (schema v22).
+`personSignalRows_()`, backed server-side by `personHygieneBuckets_()` (schema v22; `loggedN` added
+in v24).
 
 | Column | What it shows | Scope tag |
 |---|---|---|
-| Person | name, click to expand the drill-down row | — |
+| Person | name + job-title tag (grade code stripped for reading, full roster string in the tooltip/CSV — inherited from the retired headroom table, user 2026-08-05), click to expand the drill-down row | — |
 | n | issue count behind this row's signals | — |
 | Due date | % of this person's issues carrying a due date, RAG-graded against the On-Time metric's own coverage gate | `SNAP` (Open) / `PERIOD` (Resolved) |
 | Estimate | % carrying an original estimate, graded against the Forecast gate | same |
-| Logged | % carrying logged time, graded against the Forecast gate | same |
+| Logged | % carrying logged time, graded against the Forecast gate. **Denominator is STARTED work only** (`loggedN`) — see below | same |
 | Hours | billable-share mini-bar (billable / non-billable / idle) for the analysis period, most-billable first | `PERIOD` always — worklogs are period-shaped even when Due/Estimate/Logged are reading a snapshot |
 
+- **Logged time is only expected on work that has STARTED** (schema v24, 2026-08-06). Time is
+  logged as work is done, so a ticket nobody has picked up is expected to carry no worklog. On the
+  Open population the Logged column divides by the records whose Jira **status category is
+  In Progress** (`loggedN` on the roster, `timeN` on the 🧬 matrix — the same tristate idiom as
+  `billN`); To Do issues are in neither half and never enter the work queue. Resolved work is
+  unchanged: finished work is always expected to carry its cost.
+  Measured live on the 26-week open backlog the exporter feeds (1,444 assigned open issues,
+  2026-08-06): **782 of the 1,116 flagged rows — 70% — were tickets nobody had started**, and open
+  Logged fill read 23% where the honest figure against the started population is 45%. The queue was
+  seven times larger than the work in it, which is why none of the 334 real gaps were being cleared.
+  · The In Progress **category** is used, not the status name: it holds `In Progress`, `Review`,
+  `Blocked` and `Ready`, all of which are work somebody has picked up (`dhStarted_()`, shared with
+  the Flow tab's `wip` metric so the two can never disagree).
+  · The counterpart gap is **not** measured here: 57 To Do tickets do carry logged time, which is a
+  status-hygiene problem (work started, board never moved) with a different owner. Those are
+  excluded from both halves rather than scored as logging credit.
 - **Shared population with the 🧬 matrix.** The roster and the by-type matrix both follow
   `STATE.typePop` (Open backlog / Resolved), so a reader comparing "who" against "which issue type"
   is comparing the same slice of work, never two independently filtered ones.
@@ -246,8 +331,8 @@ One row per person in the filtered population — the roster that replaced the r
   the data-trust strip use) — never a separately-tuned threshold, so all three surfaces can never
   disagree about one record.
 - **Ramping new hires and on-leave people sort last** on the Hours column regardless of sort
-  direction (same exclusion as the opportunity table), and their mini-bar carries no idle segment —
-  their idle time is the explanation, not a coaching signal.
+  direction (same exclusion as the recoverable-hours figure), and their mini-bar carries no idle
+  segment — their idle time is the explanation, not a coaching signal.
 - **Drill-down rows** (click a name, `toggleRosterDetail_`) expand into that person's open backlog
   items by remaining hours (Open population) and the hours line — the People grid's per-person
   detail, reattached where the signal now lives, not deleted.
@@ -308,8 +393,8 @@ role added later can't accidentally expose per-person status on the page every a
   Actions signals roster, never a second copy. `signalSummary_()` buckets each row into good / warn
   / bad / **small (ungraded)**, and the pulse totals those: `● N on track · ● N watch · ● N need
   action`, plus `● N ungraded (small n)` whenever anyone falls under the small-n guard.
-- **Recoverable hours travels with it** — the same `oppRows_` total the Actions headroom table
-  headlines, computed over the latest complete period, ramping new hires excluded.
+- **Recoverable hours travels with it** — the `oppRows_` total (the retired headroom table's old
+  headline), computed over the latest complete period, ramping new hires excluded.
 - **Scope tag** follows the roster's own Open/Resolved toggle (`SNAP` under Open, `PERIOD` under
   Resolved) — the pulse and the roster describe the same population by construction, never two
   independently-scoped reads of "how are people doing".
@@ -322,12 +407,39 @@ role added later can't accidentally expose per-person status on the page every a
 
 Four fill-vs-gate tiles — Estimate coverage, Due-date fill, Logged fill, Roster join — picked **by
 key** from the same `gapsRows_()` definitions that back the Actions gaps queue, so the strip and the
-queue can never describe one gap two different ways. Tagged `ORG`: deliberately unfiltered and
+queue can never describe one gap two different ways. A check measuring **100%** retires from both
+(see below), so the strip may render fewer than four tiles. Tagged `ORG`: deliberately unfiltered and
 period-independent, because a well-tagged slice does not make the whole feed publishable, and this
 strip's whole job is the org-wide health check the six-tab design's Data Hygiene tab used to own on
 its own screen. Each tile states its value against its own gate and colours red/amber/green off that
 comparison, never against 100%; its footnote directs to the Actions tab's gaps queue for the full
 list.
+
+### A solved check retires itself (2026-08-06)
+
+User decision: *"we do not need 'assignee resolves to a roster person' as metric, we have solved all
+discrepancies so always 100%."*
+
+A check that reads 100% everywhere teaches nothing — it costs width on three surfaces and trains the
+reader to skim past the fields that do vary. So it is **hidden, not deleted**:
+
+| Surface | Behaviour when the check is at 100% |
+|---|---|
+| 🧪 Gaps queue | row drops out (`gapRetired_`), and a `✔ Solved and retired from the queue: …` line names it (`gapsSolvedHtml_`) |
+| 🔍 Data-trust strip | tile disappears — it is picked by key from the same filtered list |
+| 🧬 Field-fill matrix | the `→ roster` column is removed (`typeFieldRetired_` / `typeFieldsShown_`) and a footnote names it |
+
+- **The measurement never stops.** `Code.js` still counts `attr` (per issue type) and
+  `resAttr` (per week) on every rebuild. Only the rendering is conditional.
+- **It comes back on its own** — no deploy, no code change — the moment **one** record fails, in all
+  three places. Same data-driven idiom as `typeColUniform_` directly above it in `Dashboard.html`.
+- **Why hidden rather than deleted.** The roster join is this dashboard's historically dominant data
+  loss: 173 of 351 records (49%) on the 2026-08-04 profile. If it regressed with the instrument
+  deleted, it would surface as four quietly wrong cards, not as a missing column.
+- **A `null` value is not a solved check.** An unconnected feed (Reopen events / CSAT) has nothing
+  measured, so it never retires.
+- To delete the check outright instead, drop `retireWhenFull` from the `attr` entries in
+  `TYPE_FIELDS_` and `gapsRowsAll_()` along with the field itself — but then nothing is watching.
 
 ## Files
 
@@ -335,9 +447,9 @@ list.
 |---|---|
 | `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. 35 `_test_*` unit tests. |
 | `Security.js` | Email allowlist (admin / viewer / open-access) — `SEC_DH`, `checkDeliveryAccess()`, `getDeliveryAccessSettings()`, `saveDeliveryAccessSettings()`, `buildAccessDeniedPage_()`. Inherited from the demand dashboard's `Security.js` (itself inherited from `PS Security.js`). |
-| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Three tabs from the `VIEWS` array (Executive / Actions / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the opportunity table, the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + two CSV exports. |
+| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Three tabs from the `VIEWS` array (Executive / Actions / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + roster CSV export. |
 | `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the two cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_` against the server's. Not pasted into the GAS project. |
-| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (500 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue or the signals pulse — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, the opportunity table's exclusions, the signals roster's small-n guard, and the three-tab consolidation invariants (exactly `exec,actions,access`, no live render into a retired pane). Not pasted into the GAS project. |
+| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (488 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue or the signals pulse — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, and the three-tab consolidation invariants (exactly `exec,actions,access`, no live render into a retired pane). Not pasted into the GAS project. |
 
 ## Data sources
 
@@ -414,8 +526,8 @@ Confidence bands (`metricConfidence_`, duplicated verbatim client-side and diffe
 | Level | Condition | Behaviour |
 |---|---|---|
 | **High** ◆ | coverage ≥ gate **and** ≥2 complete periods | published |
-| **Medium** ◈ | coverage within 10 pts of the gate, or <2 periods | published with a "coverage approaching threshold" read |
-| **Low** ◇ | coverage more than 10 pts below the gate | published, flagged `below gate — directional only` with a hygiene link (or **suppressed** when `SUPPRESS_BELOW_GATE` is on) |
+| **Medium** ◈ | coverage within 10 pts of the gate, or <2 periods | published |
+| **Low** ◇ | coverage more than 10 pts below the gate | published clean (or **suppressed** when `SUPPRESS_BELOW_GATE` is on) — the KPI cards no longer print a below-gate caveat (user 2026-08-05); the Data trust strip carries the gate read |
 | *(none)* | nothing in scope | `—` with the reason ("no epics closed in this period") |
 
 The last row matters as much as the third: a quiet week with no closed epics is **not** a data-quality
@@ -425,15 +537,16 @@ failure, and rendering it as one teaches people to ignore the gate.
 an accepted deviation from FR-2.2, which calls publishing a low-confidence number a defect. Gating
 darkened two of four tiles — On-Time at ~64% attributed against an 80% gate, Forecast at ~23%
 against 70% — and took their historical series with them, and a dashboard nobody can read teaches
-nobody anything. What replaced it: the confidence chip on every card, a `below gate — directional
-only` line on weak ones, and the hygiene route one click away. The reader judges the number instead
-of the tool refusing to show it. The entire suppression path is intact behind the flag — set it to
-`true` and FR-2.2 behaviour returns with no other change; render-smoke covers both settings.
+nobody anything. What protects the reader now (since the cards dropped their coverage narration,
+user 2026-08-05): the **Data trust strip** on the same Executive view grades each feed against its
+gate, and the **Actions** tab names who and what closes each gap. The reader judges the number
+instead of the tool refusing to show it. The entire suppression path is intact behind the flag — set
+it to `true` and FR-2.2 behaviour returns with no other change; render-smoke covers both settings.
 
 Two consequences worth knowing before a demo:
 
-- **Forecast Accuracy is built on ~15 measurable epics.** It publishes, with a ◇ low chip. Treat it
-  as directional until estimate and worklog fill rates rise.
+- **Forecast Accuracy is built on ~15 measurable epics.** It publishes with no on-card caveat —
+  treat it as directional until the estimate and worklog fill rates on the Data trust strip rise.
 - **On-Time sits ~16 points under its gate** at roughly 64% due-date fill. Closing ~90 due dates a
   month would clear it honestly.
 - **With no NetSuite billable feed the utilization tile relabels itself** to *Capacity Utilization
@@ -635,8 +748,9 @@ flatter itself by excluding the very records that are the problem.
 - **Interns (job-title level I1) never move a published rate** (user decision 2026-08-04): they are
   in training, not delivery capacity, and a metric must never read as a verdict on an intern. They
   are excluded from utilization (both sides), the issue rates (their buckets leave n AND nAll),
-  triage flags, headroom rows and RAG cell tints — but their profile and hours stay fully visible
-  on the People roster, marked **🎓 intern**, and the Utilization card states "N interns excluded".
+  triage flags, recoverable-hours rows and RAG cell tints — but their profile and hours stay fully
+  visible on the signals roster, marked **🎓 intern**, and the Utilization card states "N interns
+  excluded".
 - **Backlog "est. remaining" is Jira-sourced.** `Original Estimate − Time Spent`, both from
   `Jira Raw`. Tempo is the authoritative time source, so an issue whose hours went into Tempo but
   never mirrored into Jira reads as more remaining work than there is. Planning signal, not a
@@ -667,10 +781,11 @@ flatter itself by excluding the very records that are the problem.
   person-weeks, `classifiedPct` of tracked hours, the `gapHours` reconciliation total between the two
   feeds, and any NS employee names no roster alias resolved (`unmatchedRows` / `unmatchedNames`) —
   an unresolved name classifies nothing, which used to look exactly like a person who billed nothing.
-  The Utilization card shows a `⚠ classification covers N% of tracked hours` line below 99%.
+  (The Utilization card's own `⚠ classification covers N%` line was removed with the rest of the
+  card's data-quality narration, user 2026-08-05 — the gaps queue row above is the disclosure.)
 
-`NS Billable` unreadable → the Utilization tile falls back to `tracked/capacity` with a "billable
-data unavailable" chip; the signals roster still renders. `Jira Raw` unreadable → On-Time Delivery
+`NS Billable` unreadable → the Utilization tile falls back to `tracked/capacity` and relabels
+itself *Capacity Utilization (tracked)*; the signals roster still renders. `Jira Raw` unreadable → On-Time Delivery
 and Forecast Accuracy show "Jira data unavailable"; Utilization and the roster are unaffected.
 Roster unreadable is the one **fatal** error (population and Region can't be derived without it).
 
@@ -1020,9 +1135,10 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 9. After any model-shape change: run `bustDeliveryCache_()` then ↻ Refresh.
    **This deploy is a schema v7 → v9 change — `bustDeliveryCache_()` is REQUIRED**, not optional.
    A v7 entry carries no `nWithin`, so the Forecast tile would read 0% instead of suppressing.
-10. On first load every tile shows a number plus a confidence chip; the weak ones carry
-    `below gate — directional only`. Open the **Actions** tab, review each gap's coverage against
-    its gate on the gaps queue, and take that view to the next steering review.
+10. On first load every tile shows its number clean (no confidence chip, no below-gate caveat —
+    user 2026-08-05); the Data trust strip beneath grades each feed against its gate. Open the
+    **Actions** tab, review each gap's coverage against its gate on the gaps queue, and take that
+    view to the next steering review.
 
 > ### ⚠️ Dictionary-conformance deploy (2026-08-03) — schema v9 → v10, ORDER MATTERS
 >
@@ -1068,6 +1184,30 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
 
+> ### ⚠️ Logged-time carve-out deploy (2026-08-06) — schema v23 → v24
+>
+> 1. Paste Code.js + Dashboard.html into the GAS project (Security.js unchanged) and deploy.
+> 2. The schema bump invalidates every cached entry on its own — `bustDeliveryCache_` is optional,
+>    and only makes it immediate rather than at the next warm.
+> 3. No exporter change and **no export re-run**: `Status Category` has been in Jira Raw since
+>    Jira Backlog.js v3.6.0 and the Flow tab already reads it.
+> 4. Live smoke, on the **Open backlog** population:
+>    - 🧬 matrix → the **Logged** column's percentage rises and its miss-counts drop; every other
+>      column is unchanged. Hover the header — it names the started-work scope.
+>    - Each row's **"n fixable"** figure falls by the number of unstarted tickets it was counting.
+>    - 👥 roster → anyone whose whole backlog is unstarted reads **ungraded** on Logged (grey, `—`),
+>      not 0%. Anyone with started work reads a higher percentage than before.
+>    - Switch to **Resolved** — nothing about the Logged column moves. That is the control.
+>    - 📖 Methodology → change log leads with **3.2**, dated 2026-08-06.
+> 5. **Roster-join retirement** (same deploy, `Dashboard.html` only — no schema dependency):
+>    - 🧪 Gaps queue → the "…and that assignee resolves to a roster person" row is **gone**, and a
+>      `✔ Solved and retired from the queue` line names it below the table.
+>    - 🔍 Data-trust strip → **three** tiles, no "Roster join".
+>    - 🧬 matrix → no `→ roster` column; the footnote names it as retired.
+>    - ⚠️ If any of these are still showing, the join is **not** at 100% in the current export — the
+>      row itself states how many assignees do not match. That is the signal, not a bug.
+> 6. Post the GTT-605 dated status comment.
+
 ## Manual QA (after deploy)
 
 ### Dictionary conformance (2026-08-03)
@@ -1077,8 +1217,8 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] Forecast headline says **"mean accuracy over N measurable epics"**, with `N of M inside ±10%`
       and `median variance N%` beneath it. The headline is NOT the band percentage.
 - [ ] On-Time coverage is **visibly lower than before** and the card names its scope — that is the
-      epic due-date fill rate, not a regression. If it now sits below its gate it shows the
-      `below gate — directional only` line rather than going dark.
+      epic due-date fill rate, not a regression. If it now sits below its gate it still publishes
+      clean (no on-card caveat since 2026-08-05); the Data trust strip carries the gate read.
 - [ ] **Quality / Rework shows a number**, not "data pending". Its target reads `≤5%` (a ceiling) and
       a *low* rate is GREEN. If a low rate paints red, `invertTarget` is not reaching the client.
 - [ ] The rework card states both signals: `N rework-linked · N reopened (of M checked)`, or
@@ -1108,13 +1248,13 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] Executive: the **compact flow tier** renders five smaller tiles beside the four hero cards
       (Lead Time, Throughput, Backlog, WIP, Bug Count) — no Cycle Time or Flow Efficiency tile
       anywhere (declared absent, registry-only).
-- [ ] Actions: the **opportunity table** headline is **hours**; ramping 🌱 new hires appear but the
-      footnote says they are excluded from the total; nobody on long leave appears at all. Its metric
-      chips switch the metric for the Executive comparison too (shared state — there is no separate
-      Trends/Headroom tab to hold its own selector).
-- [ ] Actions: the **signals roster** lists every filtered person once. Due/Estimate/Logged cells are
-      RAG-graded against each metric's own coverage gate (never a flat threshold) — colour matches the
-      same gate the 🧬 matrix and the Executive data-trust strip use.
+- [ ] Actions: there is **no "Where the headroom is" table** (retired 2026-08-05) — the tab opens
+      straight onto the signals roster. The recoverable-hours figure appears only as the
+      `N h recoverable` clause on the Executive pulse.
+- [ ] Actions: the **signals roster** lists every filtered person once, with a **job-title tag**
+      under each name (grade code stripped; full roster string on hover). Due/Estimate/Logged cells
+      are RAG-graded against each metric's own coverage gate (never a flat threshold) — colour
+      matches the same gate the 🧬 matrix and the Executive data-trust strip use.
 - [ ] A person with fewer than `SIGNAL_MIN_N` (4, `meta.signalMinN`) issues shows a **grey `●`** on
       the roster and the pulse, labelled "ungraded (small n)" — never a red or green cell, however low
       their percentage reads.
@@ -1140,7 +1280,8 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] **Billable Utilization is ≤ the tracked/capacity companion on every filter combination.**
       Billable above tracked is now arithmetically impossible — if you see it, the payload is a
       stale pre-v7 cache: run `bustDeliveryCache_()` then ↻ Refresh.
-- [ ] The Utilization card shows `⚠ classification covers N% of tracked hours` whenever N < 99.
+- [ ] The Utilization card carries **no** `⚠ classification covers …` line at any coverage (removed
+      2026-08-05) — the gaps queue's classification row is the disclosure.
 - [ ] `⬇ CSV` on Actions downloads `delivery-people-signals.csv` — Person/Job title/Region/n plus
       Due/Estimate/Logged % and miss-counts, Overall, and Billable h/Non-billable h/Idle h (blank for
       ramping/on-leave rows). Opens in Excel with the BOM intact (blob path); no console error.
@@ -1154,11 +1295,11 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
       resolved non-epic issues in that week.
 - [ ] Forecast card headline reads `N of M measurable epics inside ±10%`, with a `median variance N%`
       line and an `of N misses, X% over-run` split — **not** an averaged accuracy score.
-- [ ] **A metric below its gate still publishes**, carrying a `◇ low confidence · N% attributed`
-      chip, a `below gate — directional only` line, and a link into the Actions gaps queue. Then set
+- [ ] **A metric below its gate still publishes — clean.** No confidence chip, no
+      `below gate — directional only` line, no `What's missing →` link anywhere on the four KPI
+      cards (all removed 2026-08-05; the flow tiles keep their chips). Then set
       `CONFIG_DH.SUPPRESS_BELOW_GATE = true` once and confirm the same tile flips to
       `Not yet measurable` with no number anywhere on it — the reversal has to stay one flag away.
-- [ ] Every published tile carries a confidence chip (`◆ high` / `◈ medium`) with its coverage %.
 - [ ] With suppression on, suppressed tiles still name their period
       (`On-Time Delivery · last complete month (Jul 2026)`) and carry an `attribution trend`
       sparkline of *coverage* — a card with no window and no trend describes nothing.
@@ -1184,7 +1325,8 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] Utilization card never shows an absence base line — capacity is gross in every period
       (no-absenteeism model, 2026-08-04).
 - [ ] An I1-titled person shows on the signals roster with a 🎓 intern note and visible hours, but no
-      RAG tint, no headroom row — and no rate moves when they are filtered in or out.
+      RAG tint and no contribution to the pulse's recoverable hours — and no rate moves when they
+      are filtered in or out.
 - [ ] The PM filter lists only current employees; its tooltip states how many former ones were
       excluded. An external/unknown PM name is still listed — only proven leavers are dropped.
 - [ ] Compare by PM or Team: at most 12 bars by default, the chart no taller than about a screen,
@@ -1198,6 +1340,33 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] See the **motion QA** block under the deploy checklist above (paneIn cross-fade, one-shot
       stagger/count-up, `prefers-reduced-motion`) — those four need a real browser and are not
       re-listed here.
+
+### Forward windows (2026-08-06)
+- [ ] The period picker opens with three groups — **Planning · next 2 weeks**, **In progress**,
+      **Complete** — and `Latest complete` is still what loads by default. On a fresh load, no card
+      wears a `◐ in progress` or `planning` chip.
+- [ ] Pick the **In progress** entry: every card gains `◐ in progress`, the scope chip reads
+      `Current <unit> so far · <label>`, and **no card says "vs prior"**. The target gap line is
+      still there.
+- [ ] …and the utilization card reads **"at least N%"** with no red/amber/green colour on the
+      number. If it shows a plain graded percentage instead, the floor rule is not firing.
+- [ ] Pick a **Planning** week: On-Time, Forecast and Quality show `—` with "has not happened yet";
+      the third card becomes **Planned Coverage** with `Nh planned of Mh scheduled capacity` and a
+      `▽ N of M under 50% planned` line. Backlog and WIP (SNAP) still show real numbers — they are
+      snapshots and ignore the picker.
+- [ ] On that same planning week the comparison chart switches to **Planned Coverage** on its own
+      (one metric chip, no reader action), and its bars carry **no target rule** — there is no
+      agreed planned-coverage target.
+- [ ] Actions on a planning week: the roster shows a **Plan** column with `Nh / Mh` per person and a
+      dot legend; sorting by it puts the least-covered people first. Switch back to a complete
+      period — the column **disappears**, and no row's values shift a column sideways.
+- [ ] On a planning week the gaps view banner says "planning window selected — … last complete
+      \<unit\>", the data-trust strip names the period it fell back to, and the pulse shows
+      `planned N%` instead of `N h recoverable`.
+- [ ] Download the CSV from a **complete** window: it still carries `Planned h` and `Capacity h`
+      columns (fixed header), even though the on-screen Plan column is off.
+- [ ] If the Tempo plan export has not reached next week, that week is simply **absent** from the
+      Planning group — it must never appear as a window showing 0% coverage.
 
 ## Save PNG
 

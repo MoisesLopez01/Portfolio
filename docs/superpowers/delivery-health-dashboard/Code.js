@@ -245,7 +245,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "3.0",
+  version: "3.2",
   updated: "2026-08-05",  // 2026.W32
 
   metrics: {
@@ -527,6 +527,22 @@ var METRIC_REGISTRY_ = {
     // in W32 is the definition moving, not delivery moving.
     // Measurement change, not a definition change: no metric's computed value
     // moves, so `affects` is empty and no trend line gets a marker.
+    // PRESENTATION change only — nothing recomputes, nothing stops being
+    // measured, so `affects` is empty. The retirement is evaluated from the data
+    // on every render, which is why there is no config flag to find later.
+    { version: "3.2", date: "2026-08-06", author: "Alex López",
+      affects: [],
+      change: "'…and that assignee resolves to a roster person' is retired from the gaps queue, the Executive data-trust strip and the 🧬 matrix's → roster column while it measures 100%. It is still computed on every rebuild and returns to all three surfaces automatically — no deploy — if a single record stops joining.",
+      rationale: "User decision 2026-08-06: the roster-join discrepancies are solved, so the check is a column of 100%s that trains readers to skim past the fields that do vary. Hidden rather than deleted, because this is the dashboard's only view of a loss that was 173 of 351 records (49%) on the 2026-08-04 profile — and if it regressed it would show up as four wrong cards, not as a missing column. The queue names what it retired and says the measurement is still running, so a disappearing check can't be mistaken for a deleted one." },
+    // Coverage-measurement change on a hygiene surface, not a metric definition:
+    // no registry metric recomputes, so `affects` is empty and no trend line gets
+    // a "definition changed" marker. The Logged COLUMN on the 🧬 matrix and the
+    // 👥 roster will still step visibly upward on deploy — that step is the
+    // denominator being corrected, and this entry is what explains it.
+    { version: "3.1", date: "2026-08-06", author: "Alex López",
+      affects: [],
+      change: "Logged time is now expected only on work that has STARTED (Jira status category In Progress). On the open backlog, To Do issues are excluded from the Logged column's denominator on both the 🧬 field-fill matrix and the 👥 signals roster instead of counting as gaps. Resolved work is unchanged — finished work is still expected to carry its cost.",
+      rationale: "User report 2026-08-06. Time is logged as work is done, so a ticket nobody has picked up should carry no worklog. Live check on the 26-week open backlog (1,444 assigned open issues): 782 of the 1,116 flagged rows — 70% — were To Do tickets, and open Logged fill read 23% when the honest figure against the started population is 45%. The queue was seven times larger than the work in it, which is why none of the 334 real gaps were being cleared. Separately, 57 To Do tickets DO carry logged time; those are a status-hygiene problem with a different owner and are excluded from both halves rather than scored as credit." },
     { version: "3.0", date: "2026-08-05", author: "Alex López",
       affects: [],
       change: "Added the 🌊 Flow metric family: Lead Time, Throughput, Backlog, WIP, Bug Count (live, target: null — informational until targets are agreed) and Cycle Time + Flow Efficiency (declared absent — changelog not exported). Non-epic grain throughout.",
@@ -1518,6 +1534,59 @@ function typeHygOpen_(it) {
 }
 
 /**
+ * Has this record STARTED — status CATEGORY "In Progress"?
+ *
+ * One truth for two readers: the Flow tab's `wip` metric and the logged-time
+ * expectation below. They must never disagree about whether a ticket is being
+ * worked on.
+ *
+ * Category, not status name, on purpose. The live vocabulary inside the
+ * In Progress category (servicerocket-coe, 604 open assigned issues, 2026-08-06)
+ * is In Progress · Review · Blocked · Ready — all four are work somebody has
+ * picked up, and a name-based rule would have to be re-edited every time a
+ * project adds a workflow step. Falls back to the status name only on a
+ * pre-v3.6.0 export that carries no Status Category column.
+ */
+function dhStarted_(it) {
+  return /in\s*progress/i.test(String(it.statusCategory || it.status || ""));
+}
+
+/**
+ * Is logged time EXPECTED on this record — i.e. does its absence count as a gap?
+ *
+ * ── WHY THIS IS NOT "every open ticket" (2026-08-06, user finding) ───────────
+ * Time is logged against work as it is done. A ticket nobody has started yet
+ * SHOULD carry no worklog: that is the process working, not a hygiene failure.
+ * Counting it as one produced a queue that could not be worked. Measured live
+ * over the 26-week open backlog the exporter actually feeds (1,444 assigned
+ * open issues, servicerocket-coe, 2026-08-06):
+ *
+ *     To Do        840 — 782 with no worklog   ← every one of these was flagged
+ *     In Progress  604 — 334 with no worklog   ← the real queue
+ *
+ * So 782 of the 1,116 "missing logged time" rows — 70% — were tickets nobody
+ * had started. Open Logged fill read 23% (328/1,444) when the honest number
+ * against the started population is 45% (270/604). A metric that is wrong in
+ * the pessimistic direction is not the safe kind of wrong: it made the field
+ * unfixable, so nobody fixed the 334 that were real.
+ *
+ * The counterpart gap is NOT measured here and is deliberately left alone: 57
+ * To Do tickets DO carry logged time, which is a status-hygiene problem (work
+ * started, board never moved) with a different owner and a different fix. They
+ * are excluded from both halves of this ratio rather than scored as credit.
+ *
+ * Resolved work is always expected to carry its cost — finished work with no
+ * worklog is exactly the forecast-coverage gap the Forecast tile already owns.
+ *
+ * @param {Object} it     issue record from readJiraRaw_
+ * @param {boolean} isOpen  true for the open-backlog population
+ * @returns {boolean}
+ */
+function timeExpected_(it, isOpen) {
+  return isOpen ? dhStarted_(it) : true;
+}
+
+/**
  * Per-issue-type field fill, over the resolved and open populations.
  *
  * @param {Object} jira      readJiraRaw_ output
@@ -1541,12 +1610,19 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
                  // Estimates only gate Forecast at epic grain.
                  gatesForecast: !!isEpic,
                  n: 0, due: 0, assigned: 0, attr: 0, est: 0, time: 0, region: 0, team: 0,
+                 // `timeN` is a SEPARATE denominator for the `time` column, not a
+                 // typo for n — see timeExpected_. Every other field is expected on
+                 // every record in the row, so they divide by n; logged time is only
+                 // expected once work has started. Same tristate shape as billN on
+                 // the person roster: measure what you can grade, grade what you
+                 // measured. On the resolved half timeN === n by construction.
+                 timeN: 0,
                  keys: {}, keysCapped: {} };
     }
     return map[k];
   }
 
-  function tally(r, it) {
+  function tally(r, it, isOpen) {
     r.n++;
     // "⚠️ UNASSIGNED" is the exporter's sentinel for an empty Jira assignee, so
     // an unassigned issue is NOT an empty string here — treating it as a name
@@ -1563,7 +1639,14 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
       region:   !!it.region && it.region !== DH_REGION_UNASSIGNED_,
       team:     !!it.team,
     };
+    // Not-yet-started open work is outside the logged-time question entirely:
+    // neither numerator nor denominator, and no key in the queue. Scoring it as
+    // a hit instead would be worse than the bug it replaces — it would report an
+    // untouched backlog as perfectly tracked.
+    var wantTime = timeExpected_(it, isOpen);
+    if (wantTime) r.timeN++;
     TYPE_HYG_FIELDS_.forEach(function (f) {
+      if (f === "time" && !wantTime) return;
       if (got[f]) { r[f]++; return; }
       // MISSING records are what we collect — the queue, not the healthy ones.
       if (!r.keys[f]) r.keys[f] = [];
@@ -1581,9 +1664,9 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
       var iso = weekKeyFromDate_(it.resolved);
       var r = row(res, iso + "" + type, type, it.isEpic, inScope);
       r.iso = iso;
-      tally(r, it);
+      tally(r, it, false);
     } else if (typeHygOpen_(it)) {
-      tally(row(open, type, type, it.isEpic, inScope), it);
+      tally(row(open, type, type, it.isEpic, inScope), it, true);
     }
     // Everything else — closed without a resolution date — is deliberately in
     // NEITHER population. It is not open work anyone can fix, and it is not
@@ -1608,8 +1691,15 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
  *
  * @param {Object} jira            readJiraRaw_ output (leaver-scoped)
  * @param {Function} resolvePerson raw assignee → roster display name, or null
- * @returns {{resolved:Array<{iso,person,n,due,est,logged}>,
- *            open:Array<{person,n,due,est,logged}>}}
+ * Carries three COMMERCIAL-READINESS signals beyond the original three
+ * (2026-08-06): `link` (rollup-ability — hours that cannot reach an engagement
+ * cannot price the next one), `bill` over its own `billN` denominator (the
+ * revenue join) and `start` (started-late vs ran-long). Plus `estSec`/`spentSec`
+ * /`wip` so the open half reports how far along the load actually is, not only
+ * whether its fields are filled.
+ *
+ * @returns {{resolved:Array<{iso,person,n,due,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>,
+ *            open:Array<{person,n,due,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>}}
  *          resolved is bucketed person × ISO week so the client can scope it
  *          to the analysis period; open is a snapshot (no iso), mirroring
  *          flowOpenBuckets.
@@ -1617,14 +1707,49 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
 function personHygieneBuckets_(jira, resolvePerson) {
   var res = {}, open = {};
   function row(map, k, person) {
-    if (!map[k]) map[k] = { iso: "", person: person, n: 0, due: 0, est: 0, logged: 0 };
+    if (!map[k]) map[k] = { iso: "", person: person, n: 0, due: 0, est: 0, logged: 0,
+                            // Denominator for `logged` only — the started
+                            // population. See timeExpected_: an unstarted ticket is
+                            // not a logging gap, and on the open half n counts the
+                            // whole backlog. On the resolved half loggedN === n.
+                            loggedN: 0,
+                            // Commercial-readiness counts (2026-08-06).
+                            link: 0, start: 0, bill: 0,
+                            // `billN` is a SEPARATE denominator, not a typo for n.
+                            // Billing Type is tristate: an absent column means
+                            // nobody looked, and dividing by n would report a
+                            // 0%-tagged red for every person on an export that
+                            // never carried the column. Measured rows only.
+                            billN: 0,
+                            // Progress on the load being carried (open population).
+                            // Hours, not counts: "12 of 18 tickets logged
+                            // something" says nothing about how far along the work
+                            // is. Summed as seconds and converted once, at render.
+                            estSec: 0, spentSec: 0, wip: 0 };
     return map[k];
   }
-  function tally(r, it) {
+  function tally(r, it, isOpen) {
     r.n++;
     if (it.due && !isNaN(it.due.getTime())) r.due++;
-    if ((Number(it.estSec) || 0) > 0) r.est++;
-    if ((Number(it.spentSec) || 0) > 0) r.logged++;
+    var est = Number(it.estSec) || 0, spent = Number(it.spentSec) || 0;
+    if (est > 0) r.est++;
+    // Gated on BOTH sides (timeExpected_): a To Do ticket that happens to carry a
+    // worklog is a status-hygiene gap, not logging credit, so it scores in
+    // neither half. Leaving it in the numerator alone would push the ratio past
+    // 100% on anyone whose board has drifted.
+    if (timeExpected_(it, isOpen)) { r.loggedN++; if (spent > 0) r.logged++; }
+    // Rollup-ability: can this record's hours reach an engagement? Epics count as
+    // linked by construction (they ARE the container) — see readJiraRaw_.
+    if (it.linked) r.link++;
+    if (it.start && !isNaN(it.start.getTime())) r.start++;
+    var bill = String(it.billing || "").trim();
+    if (bill) { r.billN++; if (!/untagged/i.test(bill)) r.bill++; }
+    r.estSec += est;
+    r.spentSec += spent;
+    // WIP = actively being worked, per the dictionary's wip metric (status
+    // CATEGORY "In Progress"). Same predicate as the logged-time expectation —
+    // one function, so "started" can never mean two things on one row.
+    if (dhStarted_(it)) r.wip++;
   }
   (jira.issues || []).forEach(function (it) {
     var dn = resolvePerson ? resolvePerson(it.assignee || "") : null;
@@ -1632,15 +1757,190 @@ function personHygieneBuckets_(jira, resolvePerson) {
     if (it.resolved && !isNaN(it.resolved.getTime())) {
       var r = row(res, weekKeyFromDate_(it.resolved) + "|" + dn, dn);
       r.iso = weekKeyFromDate_(it.resolved);
-      tally(r, it);
+      tally(r, it, false);
     } else if (typeHygOpen_(it)) {
-      tally(row(open, dn, dn), it);
+      tally(row(open, dn, dn), it, true);
     }
     // Closed without a resolution date: in NEITHER population — same rule and
     // same reason as typeHygieneBuckets_.
   });
   function out(map) { return Object.keys(map).sort().map(function (k) { return map[k]; }); }
   return { resolved: out(res), open: out(open) };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BACKLOG HEALTH (2026-08-06)
+//
+// Every other Jira surface here answers "what did we deliver, and was the record
+// clean". This one answers the question a delivery manager actually opens the
+// dashboard with: **is the work we are carrying ready to be worked?**
+//
+// WHY IT IS A SEPARATE SURFACE and not more columns on the hygiene matrix:
+// hygiene grades FIELD FILL on a population. Backlog health is about STATES that
+// only exist on open work — overdue, stale, in-progress-but-never-logged, past
+// its own start date. None of those are a missing field; three of them are
+// combinations, and the most useful one (`ready`) is an intersection of four.
+//
+// WHY GOOD SIGNALS AT ALL, when a work queue only needs the bad ones: a list of
+// only failures gives no denominator and no sense of movement, so it reads as an
+// indictment rather than a state. "645 fresh / 492 stale" is a manageable
+// backlog; "492 stale" alone is just an accusation. The panel shows both sides.
+//
+// SNAPSHOT, never a time series. Same rule as flowOpenBuckets and the open half
+// of typeHygieneBuckets_: a backlog is a state of today, and bucketing it by
+// created/updated/due would invent a history it does not have. The Flow
+// Snapshots tab is where backlog history actually lives.
+//
+// ⚠️ `now` is MODEL BUILD TIME, not render time. Overdue and staleness are
+// computed server-side and then cached (CACHE_TTL, warmed every 30 min), so a
+// tab left open overnight shows yesterday's ageing. That is the same contract as
+// every other cached number here, and the header's freshness line is what tells
+// the reader how old the model is.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Failing keys carried per signal — enough to BE the work queue. Capped and the
+    cap REPORTED, same contract as TYPE_HYG_MAX_KEYS_: a clipped list read as
+    complete is how "we fixed them all" becomes wrong. */
+var BACKLOG_MAX_KEYS_ = 300;
+
+/** Days without an update before open work stops counting as live load. */
+var BACKLOG_STALE_DAYS_ = 30;
+var BACKLOG_STALE_HARD_DAYS_ = 90;
+/** Days within which an update makes a ticket "fresh" — one working fortnight. */
+var BACKLOG_FRESH_DAYS_ = 14;
+
+function bhDays_(from, to) { return (to - from) / 86400000; }
+
+/**
+ * The signal roster. ONE table, so a predicate can never drift between the count
+ * and the queue behind it, and adding a signal is one entry rather than edits in
+ * four places.
+ *
+ * `kind` splits the panel: "good" = ready to be worked, "bad" = needs an action.
+ * `queue: false` marks a signal whose key list is not worth carrying (the healthy
+ * ones — nobody drills into "these are fine").
+ */
+var BACKLOG_SIGNALS_ = [
+  // ── healthy ────────────────────────────────────────────────────────────────
+  { k: "fresh", kind: "good", queue: false,
+    test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) <= BACKLOG_FRESH_DAYS_; } },
+  { k: "dated", kind: "good", queue: false,
+    test: function (it) { return !!it.due; } },
+  { k: "futureDated", kind: "good", queue: false,
+    test: function (it, now) { return !!it.due && it.due >= now; } },
+  { k: "estimated", kind: "good", queue: false,
+    test: function (it) { return (Number(it.estSec) || 0) > 0; } },
+  { k: "linked", kind: "good", queue: false,
+    test: function (it) { return !!it.linked; } },
+  { k: "started", kind: "good", queue: false,
+    test: function (it) { return !!it.start; } },
+  // READY = the intersection that matters. Dated so it can be committed to,
+  // estimated so it can be planned and priced, linked so its hours reach an
+  // engagement, fresh so the other three are not stale claims. This is the
+  // headline: the share of the backlog that is actually plannable.
+  { k: "ready", kind: "good", queue: false,
+    test: function (it, now) {
+      return !!it.due && (Number(it.estSec) || 0) > 0 && !!it.linked &&
+             !!it.updated && bhDays_(it.updated, now) <= BACKLOG_STALE_DAYS_;
+    } },
+
+  // ── needs action, each one a queue ─────────────────────────────────────────
+  { k: "unestimated", kind: "bad",
+    test: function (it) { return !(Number(it.estSec) > 0); } },
+  { k: "undated", kind: "bad",
+    test: function (it) { return !it.due; } },
+  { k: "unlinked", kind: "bad",
+    test: function (it) { return !it.linked; } },
+  { k: "noStart", kind: "bad",
+    test: function (it) { return !it.start; } },
+  { k: "stale", kind: "bad",
+    test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_DAYS_; } },
+  { k: "staleHard", kind: "bad",
+    test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_HARD_DAYS_; } },
+  { k: "overdue", kind: "bad",
+    test: function (it, now) { return !!it.due && it.due < now; } },
+  // Ageing bands, because one "overdue" count hides the difference between a
+  // ticket that slipped a day and a commitment abandoned two months ago. Live
+  // measurement 2026-08-06: 62% of overdue open work was >30 days past due.
+  { k: "overdue7", kind: "bad",
+    test: function (it, now) { var d = it.due ? bhDays_(it.due, now) : -1; return d > 0 && d <= 7; } },
+  { k: "overdue30", kind: "bad",
+    test: function (it, now) { var d = it.due ? bhDays_(it.due, now) : -1; return d > 7 && d <= 30; } },
+  { k: "overdueOver30", kind: "bad",
+    test: function (it, now) { return !!it.due && bhDays_(it.due, now) > 30; } },
+  // Status says started, the clock says nothing happened. Either it is not really
+  // in progress or the time is not being tracked — and both are a conversation.
+  { k: "wipNoLog", kind: "bad",
+    test: function (it) {
+      return /in\s*progress/i.test(String(it.statusCategory || it.status || "")) &&
+             !((Number(it.spentSec) || 0) > 0);
+    } },
+  // The only FORWARD-looking signal in the set: everything else reports a miss
+  // that already happened, this one predicts the next.
+  { k: "shouldHaveStarted", kind: "bad",
+    test: function (it, now) {
+      return !!it.start && it.start < now &&
+             !/in\s*progress/i.test(String(it.statusCategory || it.status || ""));
+    } },
+];
+
+/**
+ * Per-person backlog-health counts over the OPEN population.
+ *
+ * Person-keyed for the same reason flowOpenBuckets_ is: every filter on this
+ * dashboard selects PEOPLE, so a panel keyed any other way could not follow them
+ * and would silently disagree with the Backlog and WIP tiles beside it.
+ * Unattributed open work carries no person and is counted separately rather than
+ * dropped — a backlog total that quietly omits it understates the load.
+ *
+ * @param {Object} jira readJiraRaw_ output (leaver-scoped)
+ * @param {Function} resolvePerson raw assignee → roster display name, or null
+ * @param {Date=} now injection point for tests; defaults to real now
+ * @returns {{buckets:Array, unattributed:number, keyCap:number, asOf:string}}
+ */
+function backlogHealthBuckets_(jira, resolvePerson, now) {
+  now = now || new Date();
+  var map = {}, unattributed = 0;
+
+  function row(person) {
+    if (!map[person]) {
+      var r = { person: person, n: 0, keys: {}, keysCapped: {} };
+      BACKLOG_SIGNALS_.forEach(function (s) { r[s.k] = 0; });
+      map[person] = r;
+    }
+    return map[person];
+  }
+
+  (jira.issues || []).forEach(function (it) {
+    // Resolved work is not backlog. typeHygOpen_ is reused rather than re-derived
+    // so "open" means the same thing on every surface — including its second
+    // half, which catches closed workflows that leave Resolution Date empty.
+    if (!typeHygOpen_(it)) return;
+    var dn = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!dn) { unattributed++; return; }
+    var r = row(dn);
+    r.n++;
+    BACKLOG_SIGNALS_.forEach(function (s) {
+      if (!s.test(it, now)) return;
+      r[s.k]++;
+      if (s.queue === false) return;
+      if (!r.keys[s.k]) r.keys[s.k] = [];
+      if (r.keys[s.k].length < BACKLOG_MAX_KEYS_) r.keys[s.k].push(it.key);
+      else r.keysCapped[s.k] = true;
+    });
+  });
+
+  return {
+    buckets: Object.keys(map).sort().map(function (k) { return map[k]; }),
+    unattributed: unattributed,
+    keyCap: BACKLOG_MAX_KEYS_,
+    // Stamped because overdue/staleness are relative to BUILD time, not render
+    // time — a reader looking at an hour-old cached model deserves to know which
+    // "today" the ageing was measured against.
+    asOf: now.toISOString(),
+    thresholds: { fresh: BACKLOG_FRESH_DAYS_, stale: BACKLOG_STALE_DAYS_,
+                  staleHard: BACKLOG_STALE_HARD_DAYS_ },
+  };
 }
 
 /** Median of a numeric array; null when empty. Backs the forecast secondary
@@ -2333,6 +2633,30 @@ function readJiraRaw_() {
     var iStatCat = colIdx_(h, ["Status Category"]);
     var iRework = colIdx_(h, ["Rework Link"]);
     var iReopen = colIdx_(h, ["Reopened"]);
+    // ── COMMERCIAL-READINESS columns (read from 2026-08-06) ──────────────────
+    // These four have been written by Jira Backlog.js for releases (RAW_HEADERS
+    // 13/14/17/18/30) and were never read here. They are what turns hygiene from
+    // "is the ticket tidy" into "can we price the next engagement":
+    //   Epic Key / Parent Key — without a parent, delivered hours cannot be
+    //     rolled to an engagement, so they cannot inform a quote. The live audit
+    //     (2026-08-05) put Story/Task linkage at 91% but found ~1,023 delivered
+    //     sub-tasks whose parent is a Story, not an epic — hence BOTH columns:
+    //     Epic Key is the direct link, Parent Key catches the sub-task chain.
+    //   Billing Type — "Billable (SRSO)" | "Internal" | "Untagged". The revenue
+    //     join. Untagged delivered work cannot be recognised against a milestone.
+    //   Start Date — separates "started late" from "ran long". A due date alone
+    //     tells you a commitment was missed but not which lever to pull.
+    // Same contract as every other column: colIdx_ → -1 on an older export, and
+    // the consumers below degrade to "not measured" rather than a false zero.
+    // `Updated` has been in Jira Raw since the beginning (column 10) and was
+    // never read. It is the ONLY input the backlog-health staleness signals need:
+    // an open assigned ticket nobody has touched in 90 days is not load, it is
+    // abandoned work inflating every capacity figure that counts it.
+    var iUpdated = colIdx_(h, ["Updated"]);
+    var iEpicKey = colIdx_(h, ["Epic Key"]);
+    var iParentKey = colIdx_(h, ["Parent Key"]);
+    var iBilling = colIdx_(h, ["Billing Type"]);
+    var iStart = colIdx_(h, ["Start Date"]);
     if (iKey === -1) return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false };
     // ── EXPORT FRESHNESS STAMP ────────────────────────────────────────────────
     // Jira Backlog.js writes two italic footer rows in column A, two rows below
@@ -2442,6 +2766,21 @@ function readJiraRaw_() {
         // A blank cell must never read as "not reopened" — that silently
         // deflates the rate, which is the failure the coverage gates exist for.
         reopened: reopenCell === "" ? null : /^y/i.test(reopenCell),
+        // ── Commercial-readiness inputs ──
+        // linked = this record can be rolled up to a programme. An epic IS the
+        // container, so it is linked by definition — grading an epic for having
+        // no parent would put a permanent red on the one row that cannot have
+        // one. For everything else, either link counts: Epic Key is the direct
+        // one, Parent Key catches sub-task → story → epic.
+        linked: isEpic || !!(
+          (iEpicKey !== -1 && String(raw[r][iEpicKey] || "").trim()) ||
+          (iParentKey !== -1 && String(raw[r][iParentKey] || "").trim())),
+        // TRISTATE like `reopened`: "" = the column is absent, so nobody looked.
+        // Never collapse an absent column into "Untagged" — that would invent a
+        // commercial gap on every row of an older export.
+        billing: iBilling === -1 ? "" : String(raw[r][iBilling] || "").trim(),
+        start: iStart === -1 ? null : parseDhDate_(raw[r][iStart]),
+        updated: iUpdated === -1 ? null : parseDhDate_(raw[r][iUpdated]),
       };
       issues.push(rec);
       if (isEpic) epics.push(rec);
@@ -2844,6 +3183,9 @@ function assembleModel_(inputs, win) {
   var personHyg = inputs.jira.available
     ? personHygieneBuckets_(jiraScoped, resolvePerson)
     : { resolved: [], open: [] };
+  var backlogHealth = inputs.jira.available
+    ? backlogHealthBuckets_(jiraScoped, resolvePerson)
+    : { buckets: [], unattributed: 0, keyCap: 0, asOf: null, thresholds: {} };
   // PM vocabulary comes from the Tempo project rows, which carry whoever led the
   // project at the time — including people who have since left. Gate it on the
   // roster so the filter and the PM comparison chart describe the people who can
@@ -2992,6 +3334,8 @@ function assembleModel_(inputs, win) {
     // Per-person field fill — the Actions roster (spec 2026-08-05). Same
     // predicates as typeHygiene, person grain, unattributed absent by design.
     personHygiene: personHyg,
+    // 🌊 Backlog health — snapshot, person-keyed, no iso (see the section header).
+    backlogHealth: backlogHealth,
   };
 }
 
@@ -3097,7 +3441,32 @@ function assembleModel_(inputs, win) {
 //      meta.signalMinN behind the Actions roster. A cached v21 model has
 //      neither; the roster would render its "Not in this payload" empty state
 //      for a whole TTL, so it must miss cleanly.
-var DH_SCHEMA_VER_ = 22;
+// v23: COMMERCIAL READINESS ON THE ROSTER (2026-08-06) — personHygiene rows
+//      gain `link`/`start`/`bill` (+`billN`, its own denominator) and
+//      `estSec`/`spentSec`/`wip`. Sourced from four Jira Raw columns the reader
+//      had never picked up (Epic Key, Parent Key, Billing Type, Start Date), so
+//      no export change is involved. A cached v22 row has none of these fields:
+//      the three new signal columns would grade every person off `undefined`
+//      (0% — a fabricated red on the whole roster) and the progress column would
+//      read 0h carried, which is indistinguishable from "no open work". Must
+//      miss cleanly.
+// v24: LOGGED TIME IS EXPECTED ONLY ON STARTED WORK (user report 2026-08-06 —
+//      "we are considering tickets in the status 'To Do' when we should expect
+//      this to happen on tickets in progress"). typeHygiene rows gain `timeN`
+//      and personHygiene rows gain `loggedN`: on the OPEN population both count
+//      only status-category "In Progress" records, so an unstarted ticket is no
+//      longer a logging gap. Resolved is unchanged (timeN === n, loggedN === n).
+//      A cached v23 row has neither denominator, so the Logged column would
+//      divide by 0 and render ungraded "—" for a whole TTL. Must miss cleanly.
+// v25: 🌊 BACKLOG HEALTH (2026-08-06) — new meta-level `backlogHealth`
+//      (person-keyed snapshot: 18 signals + per-signal work queues + an asOf
+//      stamp), behind the Actions-tab panel. Needs `updated` on the ingested
+//      record, which no earlier model carried — so on a cached v24 model all
+//      three staleness signals would read 0 and the panel would report a
+//      perfectly fresh backlog, which is worse than reporting nothing. Must miss
+//      cleanly. `Updated` itself is Jira Raw column 10 and has always been
+//      exported: no export change, no re-run.
+var DH_SCHEMA_VER_ = 25;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -3982,9 +4351,14 @@ function _test_flowRegistry_() {
     assert_(m[id] && m[id].status === "absent", id + " is declared absent");
     assert_(m[id].absentReason && m[id].absentReason.length > 10, id + " states why");
   });
-  // registry v3.0 change-log entry exists and marks no existing trend line
-  assert_(METRIC_REGISTRY_.changeLog[0].version === "3.0", "changeLog leads with 3.0");
-  assert_(METRIC_REGISTRY_.changeLog[0].affects.length === 0,
+  // The v3.0 change-log entry exists and marks no existing trend line. Looked up
+  // BY VERSION, not by position: this test is about the Flow entry, and pinning
+  // it to index 0 made the next unrelated change-log entry fail this suite.
+  var flowEntry = METRIC_REGISTRY_.changeLog.filter(function (e) {
+    return e.version === "3.0";
+  })[0];
+  assert_(flowEntry, "changeLog carries the 3.0 Flow entry");
+  assert_(flowEntry.affects.length === 0,
           "new metrics move no EXISTING metric's values — no ✎ marker on old trends");
   Logger.log("✅ _test_flowRegistry_ passed");
 }
@@ -4212,6 +4586,47 @@ function _test_typeHygieneBuckets_() {
   assert_(find_(sent.open, "Story").assigned === 0,
           "the exporter's UNASSIGNED sentinel is a GAP, not a name");
 
+  // ── LOGGED TIME IS EXPECTED ONLY ON STARTED WORK (user report 2026-08-06) ──
+  // The regression this pins: `time` divided by n, so 782 of 1,116 flagged rows
+  // on the live backlog were tickets nobody had started. Every assertion here is
+  // about the DENOMINATOR — a numerator-only fix would have looked identical on
+  // a healthy fixture and still shipped the unworkable queue.
+  assert_(openEpic.timeN === 1 && openEpic.time === 0 && openEpic.keys.time.join() === "A-4",
+          "an OPEN, STARTED ticket with no worklog IS a logging gap — counted and queued");
+  assert_(oStory.timeN === 0 && oStory.time === 0,
+          "an OPEN, NOT-STARTED ticket is in NEITHER half of the logged ratio");
+  assert_(!oStory.keys.time,
+          "…and never enters the work queue — a To Do ticket has nothing to log against yet");
+  assert_(rGolive.timeN === rGolive.n && rEpic.timeN === rEpic.n,
+          "RESOLVED work is always expected to carry its cost — timeN === n, unchanged by this rule");
+  // Every other column keeps dividing by n: the carve-out is time-specific, and
+  // a shared helper applied one field too wide would silently stop counting due
+  // dates on the backlog — the matrix's single most actionable column.
+  assert_(oStory.n === 1 && oStory.due === 1 && find_(t.open, "(blank)").keys.due.join() === "A-7",
+          "due/est/assignee still measure the WHOLE open population, started or not");
+
+  // A To Do ticket that DOES carry a worklog scores in neither half. It is a
+  // status-hygiene gap (work started, board never moved) with a different owner;
+  // counting it as credit would let a drifted board read as good tracking.
+  var drift = find_(typeHygieneBuckets_({ issues: [
+    it_({ key: "D-1", status: "To Do", spentSec: 3600, assignee: "Maria Alvarez" }) ] },
+    resolve, "dictionary").open, "Story");
+  assert_(drift.timeN === 0 && drift.time === 0,
+          "logged time on an unstarted ticket is neither credit nor gap");
+
+  // Status CATEGORY is authoritative — the live In Progress category holds
+  // Blocked/Review/Ready too, and all of them are work somebody has picked up.
+  var blocked = find_(typeHygieneBuckets_({ issues: [
+    it_({ key: "B-1", status: "Blocked", statusCategory: "In Progress" }) ] },
+    resolve, "dictionary").open, "Story");
+  assert_(blocked.timeN === 1 && blocked.keys.time.join() === "B-1",
+          "Blocked/Review/Ready sit in the In Progress CATEGORY — started work, time expected");
+  var groomed = find_(typeHygieneBuckets_({ issues: [
+    it_({ key: "G-1", status: "Ready for Dev", statusCategory: "To Do" }) ] },
+    resolve, "dictionary").open, "Story");
+  assert_(groomed.timeN === 0,
+          "an unrecognised status name in the To Do CATEGORY is still unstarted");
+
   // ── Key cap is enforced AND reported ──
   var many = [];
   for (var i = 0; i < TYPE_HYG_MAX_KEYS_ + 25; i++) many.push(it_({ key: "M-" + i, status: "To Do" }));
@@ -4288,6 +4703,33 @@ function _test_personHygieneBuckets_() {
   assert_(sum_(th.open, "est") === 1 && sum_(ph.open, "est") === 1, "est predicate parity");
   assert_(sum_(th.open, "time") === 0 && sum_(ph.open, "logged") === 0, "logged predicate parity");
   assert_(sum_(th.open, "due") === 1 && sum_(ph.open, "due") === 1, "due predicate parity");
+
+  // ── LOGGED DENOMINATOR = STARTED WORK ONLY (user report 2026-08-06) ────────
+  // Maria's open Task is In Progress → in the ratio. Ken's open Epic is To Do →
+  // outside it, so Ken's Logged cell reads ungraded rather than 0%. That is the
+  // whole fix at person grain: nobody is graded on a ticket they have not begun.
+  assert_(mOpen.loggedN === 1, "Maria's STARTED open task is in the logged denominator");
+  assert_(kOpen.loggedN === 0,
+          "Ken's unstarted open epic is NOT — an unbegun ticket cannot be a logging failure");
+  assert_(mRes[0].loggedN === mRes[0].n,
+          "resolved: every record is expected to carry its cost — loggedN === n");
+  // DENOMINATOR PARITY with the matrix, tested like the numerators above: the
+  // two surfaces must agree on the population as well as on each record.
+  assert_(sum_(th.open, "timeN") === 1 && sum_(ph.open, "loggedN") === 1,
+          "matrix and roster measure the logged ratio over the SAME started population");
+
+  // A To Do ticket carrying a worklog is excluded from BOTH halves. Left in the
+  // numerator alone it would score 1/0 and render over 100% on a drifted board.
+  var drift = personHygieneBuckets_({ issues: [
+    { assignee: "Maria Alvarez", resolved: null, due: null, estSec: 0, spentSec: 3600,
+      status: "To Do", typeLabel: "Task", key: "D-1" } ] }, resolve).open[0];
+  assert_(drift.loggedN === 0 && drift.logged === 0,
+          "logged time on an unstarted ticket is neither credit nor gap");
+  // `wip` and the logged expectation now share dhStarted_. Pin that they move
+  // together, or the roster could report 0 work in progress while grading the
+  // same person's logged time over it.
+  assert_(mOpen.wip === 1 && kOpen.wip === 0 && mOpen.wip === mOpen.loggedN,
+          "wip and loggedN read the same 'started' predicate");
   Logger.log("✅ _test_personHygieneBuckets_ passed");
 }
 

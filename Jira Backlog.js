@@ -6,8 +6,37 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.9.0
+  // VERSION:     3.10.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.10.0 (retire two dead candidate columns — 2026-08-06):
+  //   "Region (Alt)" (36) and "Tempo Team" (37) are REMOVED from Jira Raw, and
+  //   their custom fields dropped from JIRA_FIELDS. Workstream moves 38 → 36.
+  //     · They existed to let the attribution field be chosen off real sheet
+  //       data. That choice is made (REGION_FIELD/TEAM_FIELD = 10047 / 10001).
+  //     · Re-measured live 2026-08-06: customfield_11561 = 4 issues site-wide,
+  //       customfield_10065 = 7. Unchanged since 2026-08-04.
+  //     · No consumer anywhere ever read either header, and nothing reads Jira
+  //       Raw columns 31+ by index (the index-pinned readers stop at 14) — so the
+  //       Workstream shift is safe. Verified before removing, not assumed.
+  //     · Still MEASURED by probeRegionTeamFields(), which is where a "has anyone
+  //       started populating this?" check belongs: one query, not a blank column
+  //       on every row forever.
+  //   ⚠️ "Rework Link" (34) and "Reopened" (35) also read blank, and were DELIBERATELY
+  //   KEPT — they are not dead columns:
+  //     · Reopened is a TRISTATE. Blank means "nobody looked" (FETCH_CHANGELOG is
+  //       off) and the dashboard depends on that to render Rework Rate as a FLOOR
+  //       with no RAG verdict. Delete the column and blank reads as "not
+  //       reopened", which silently deflates the rate — the exact failure the
+  //       tristate prevents.
+  //     · Rework Link is blank because REWORK_LINK_RE matches NO link type that
+  //       exists on this site. getIssueLinkTypes (checked 2026-08-06) returns 15
+  //       types — Agenda, Blocks, Cloners, Discovery-Connected, Duplicate, I/O,
+  //       Parent-Child, Polaris ×3, Problem/Incident, Process/Policy, Relates,
+  //       Splitting, Work item split — and not one contains "rework", "defect" or
+  //       "bug fix". This is a VOCABULARY gap, not a tagging gap: the column is
+  //       correct and has nothing to find. Either create a real "Rework" link
+  //       type in Jira, or widen the regex to Problem/Incident and accept it as a
+  //       proxy. Until then Rework Rate has zero signal from BOTH its inputs.
   // CHANGES v3.9.0 (flow-metrics feeds — spec 2026-08-05-flow-metrics-design.md):
   //   Two NEW output tabs, zero changes to Jira Raw / Exec Q&A / FETCH_CHANGELOG:
   //     · "Jira Bugs"      — one row per Bug created in the RAW_HISTORY_WEEKS
@@ -72,6 +101,8 @@
   //     instead of another probe. Kept OUT of REGION_FIELD/TEAM_FIELD until the
   //     sheet shows one overtaking its primary — promoting a 0% field would
   //     silently zero a working column.
+  //     ⚠️ SUPERSEDED by v3.10.0: the first two were retired once the choice was
+  //     made; Workstream moved to 36. See RAW_HEADERS.
   //   - probeRegionTeamFields() now probes all six fields, reports multi-select
   //     option counts, and would have caught the array bug: it measured "0%"
   //     because it called the same broken reader.
@@ -345,14 +376,17 @@
     REGION_FIELD: "customfield_10047",  // multi-select, array of option objects
     TEAM_FIELD:   "customfield_10001",  // Atlassian team object → {id, name, title}
 
-    // Candidate attribution fields, exported as their own columns (36–38) so the
-    // choice can be made from real sheet data. Blank columns here are the
-    // EXPECTED state for the two 0% fields — they are cheap forward plumbing
-    // (one entry in the fetch field list, one column), and the moment somebody
-    // starts populating them the fill rate is visible without a code change.
-    REGION_ALT_FIELD: "customfield_11561",  // "Region" — single-select
-    TEAM_TEMPO_FIELD: "customfield_10065",  // "Tempo Team"
-    WORKSTREAM_FIELD: "customfield_11057",  // delivery phase: "1. Discovery", …
+    // Candidate attribution fields. PROBE-ONLY as of v3.10.0 (2026-08-06):
+    // REGION_ALT_FIELD and TEAM_TEMPO_FIELD are no longer fetched or exported —
+    // they carry 4 and 7 issues SITE-WIDE, the attribution choice they existed to
+    // inform has been made, and no consumer ever read their columns. They stay
+    // here because probeRegionTeamFields() still reports them: measuring a
+    // candidate costs one query, whereas exporting it costs a permanently blank
+    // column on every row. Promote one into REGION_FIELD/TEAM_FIELD only when the
+    // PROBE shows it overtaking its primary.
+    REGION_ALT_FIELD: "customfield_11561",  // "Region" — single-select · probe only
+    TEAM_TEMPO_FIELD: "customfield_10065",  // "Tempo Team"                · probe only
+    WORKSTREAM_FIELD: "customfield_11057",  // delivery phase: "1. Discovery", … · col 36
 
     // ── QUALITY / REWORK FEED (Metrics Dictionary metric #4) ──
     // The dictionary defines Rework Rate as "issues reopened or linked as Rework
@@ -427,8 +461,9 @@
     CONFIGJ.EPIC_LINK_FIELD,
     CONFIGJ.REGION_FIELD,
     CONFIGJ.TEAM_FIELD,
-    CONFIGJ.REGION_ALT_FIELD,
-    CONFIGJ.TEAM_TEMPO_FIELD,
+    // REGION_ALT_FIELD / TEAM_TEMPO_FIELD deliberately ABSENT (v3.10.0): they are
+    // probe-only now, and dropping two custom fields from every page also shrinks
+    // the responses that already shrink-and-retry on truncation.
     CONFIGJ.WORKSTREAM_FIELD,
   ].filter(Boolean);
   // NOTE on page size: "comment" above is the heavyweight field — it returns
@@ -1660,14 +1695,27 @@
     /* 33 */ "Status Category",  // status.statusCategory.name — authoritative Done
     /* 34 */ "Rework Link",      // "Yes" when any issue link matches REWORK_LINK_RE
     /* 35 */ "Reopened",         // "Yes"/"No" from changelog; blank = not measured
-    // ── Candidate attribution fields (v3.7.0) ──
-    // Alternatives to columns 31–32, exported side by side so the attribution
-    // field can be picked by looking at the sheet. Verified fill rates on the
-    // Done/90-day population are in CONFIGJ next to each ID; the first two are
-    // 0% today and are EXPECTED to be blank.
-    /* 36 */ "Region (Alt)",   // CONFIGJ.REGION_ALT_FIELD — "Region" single-select
-    /* 37 */ "Tempo Team",     // CONFIGJ.TEAM_TEMPO_FIELD
-    /* 38 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
+    // ── Delivery phase (v3.7.0) ──
+    // v3.10.0 (2026-08-06) RETIRED the two candidate attribution columns that
+    // used to sit at 36–37 ("Region (Alt)" = customfield_11561, "Tempo Team" =
+    // customfield_10065). They existed for ONE purpose — let the attribution
+    // field be chosen off real sheet data rather than another probe — and that
+    // choice has been made: REGION_FIELD/TEAM_FIELD (10047 / 10001) at ~34% each.
+    // Re-measured live 2026-08-06: 4 and 7 issues site-wide respectively, i.e.
+    // unchanged, and NOTHING in any consumer ever read either header. Keeping two
+    // permanently blank columns teaches readers to expect blank columns.
+    //
+    // They are still MEASURED, just not exported: probeRegionTeamFields() reports
+    // all five candidates against live Jira, which is the right home for "has
+    // anyone started populating this yet" — it costs one query, not a column on
+    // every row forever. If either ever overtakes its primary, the probe says so.
+    //
+    // ⚠️ Workstream MOVED 38 → 36. Safe, and verified before removing: every
+    // consumer resolves Jira Raw BY HEADER (colIdx_), and nothing anywhere reads
+    // columns 31+ by index — the index-pinned readers stop at 14. This is the one
+    // deviation from the APPEND-ONLY rule above, and it is a deletion from the
+    // TAIL, not an insertion into the middle.
+    /* 36 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
   ];
 
   function issueToRow_(issue, weekLabel, spaceKey, tempoMap, epicTempoRollup) {
@@ -1726,8 +1774,6 @@
     // ride along in columns 36–38 so the choice is visible in the sheet.
     var regionVal = jbRegionValue_(f[CONFIGJ.REGION_FIELD]);
     var teamVal   = jbTeamValue_(f[CONFIGJ.TEAM_FIELD]);
-    var regionAlt = jbOptionLabel_(f[CONFIGJ.REGION_ALT_FIELD]);
-    var teamTempo = jbTeamValue_(f[CONFIGJ.TEAM_TEMPO_FIELD]);
     var workstream = jbOptionLabel_(f[CONFIGJ.WORKSTREAM_FIELD]);
 
     return [
@@ -1774,9 +1820,7 @@
       dig_(f, "status.statusCategory.name") || "",
       jbHasReworkLink_(f) ? "Yes" : "",
       jbReopenedFlag_(issue),
-      // ── Columns 36–38 (candidate attribution fields, v3.7.0) ──
-      regionAlt,
-      teamTempo,
+      // ── Column 36 (delivery phase, v3.7.0) ──
       workstream,
     ];
   }
@@ -2927,12 +2971,15 @@
       label: "Region (col 31)",       read: jbRegionValue_ },
     { key: "TEAM_FIELD",       id: CONFIGJ.TEAM_FIELD,
       label: "Team (col 32)",         read: jbTeamValue_ },
+    // Probe-only since v3.10.0 — measured here, never exported. The label says so
+    // rather than naming a column, because a label naming a column that no longer
+    // exists is how somebody spends an afternoon looking for it in the sheet.
     { key: "REGION_ALT_FIELD", id: CONFIGJ.REGION_ALT_FIELD,
-      label: "Region (Alt) (col 36)", read: jbOptionLabel_ },
+      label: "Region (Alt) (not exported)", read: jbOptionLabel_ },
     { key: "TEAM_TEMPO_FIELD", id: CONFIGJ.TEAM_TEMPO_FIELD,
-      label: "Tempo Team (col 37)",   read: jbTeamValue_ },
+      label: "Tempo Team (not exported)",   read: jbTeamValue_ },
     { key: "WORKSTREAM_FIELD", id: CONFIGJ.WORKSTREAM_FIELD,
-      label: "Workstream (col 38)",   read: jbOptionLabel_ },
+      label: "Workstream (col 36)",         read: jbOptionLabel_ },
   ].filter(function(pf) { return !!pf.id; });
 
   function previewWeekWindows() {
