@@ -1757,6 +1757,23 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(anaOverallCell.indexOf("missing") !== -1,
           "…but still states its miss count, which IS real");
 
+  // The click guard in setRosterSort_ only protects CLICKS. STATE.rosterSort
+  // can still be set directly — a test, or a future deep-link reader — to a
+  // RECOGNIZED key ("hours") whose .sort is null, and the render path has its
+  // own choke point: renderRoster_ must fall back to opp there too, or
+  // rows.sort(null) throws regardless of how rosterSort got set (review
+  // finding 2026-08-05, second pass).
+  var sortSave = C.STATE.rosterSort, descSave = C.STATE.rosterDesc;
+  C.STATE.rosterSort = "hours";
+  C.STATE.rosterDesc = false;
+  C.renderRoster_();   // must not throw
+  var hoursSnap = els.rosterPanel.innerHTML;
+  assert_(hoursSnap.indexOf("Ana Perez") !== -1 && hoursSnap.indexOf("Ben Ortiz") !== -1,
+          "renderRoster_ with STATE.rosterSort='hours' (a recognized column with no sorter) renders without throwing");
+  assert_(hoursSnap.indexOf("Ana Perez") < hoursSnap.indexOf("Ben Ortiz"),
+          "…and falls back to the opp default order — Ana's bad overall still ranks ahead of Ben's na row");
+  C.STATE.rosterSort = sortSave; C.STATE.rosterDesc = descSave;
+
   // One toggle scopes both surfaces (spec §5.4) — flipping it must re-render
   // the roster too, not just the 🧬 matrix.
   C.setTypePop_("resolved");

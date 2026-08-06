@@ -3473,7 +3473,13 @@ function renderRoster_() {
   }
   var open = STATE.typePop !== "resolved";
   var scopeTag = open ? scopeTag_("snap") : scopeTag_("period");
-  var col = ROSTER_COLS_[STATE.rosterSort] || ROSTER_COLS_.opp;
+  // Fall back to opp whenever the resolved column has no sorter — not just
+  // when the key is unrecognized. setRosterSort_'s click guard only protects
+  // clicks; STATE.rosterSort can still be set directly (tests, a future
+  // deep-link reader) to a RECOGNIZED key like "hours" whose .sort is null,
+  // and rows.sort(null) throws (review finding 2026-08-05).
+  var col = ROSTER_COLS_[STATE.rosterSort];
+  if (!col || !col.sort) col = ROSTER_COLS_.opp;
   rows.sort(col.sort);
   if (STATE.rosterDesc) rows.reverse();
 
