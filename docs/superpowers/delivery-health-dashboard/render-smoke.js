@@ -109,7 +109,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
-             " renderRoster_: renderRoster_, toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
+             " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
+             " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
@@ -1672,6 +1673,90 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   resetFilters();
   fresh(model({}));
   C.STATE.typePop = "open";
+})();
+
+// ── 👥 SIGNALS ROSTER — RENDER (spec §5.2, Task 5, 2026-08-05) ──────────────
+// The block above pins personSignalRows_/signalSummary_'s grading math; this
+// one pins the RENDERING contract on top of it — one row per population
+// person, a RAG dot that never carries the verdict without its % beside it
+// (FR-4.4), the small-n grey carve-out, the SNAP/PERIOD scope tags, the
+// shared Open/Resolved toggle re-rendering both surfaces, and header-click sort.
+(function () {
+  var mdl = fresh(model({}));
+  resetFilters();
+  C.STATE.period = "week";
+  C.setState("periodIdx", null);
+  C.setState("view", "actions");
+  C.setState("typePop", "open");
+  mdl.personHygiene = {
+    open: [
+      { person: "Ana Perez", n: 10, due: 3, est: 10, logged: 9 },  // due bad, est/logged good
+      { person: "Ben Ortiz", n: 1,  due: 0, est: 0,  logged: 0 },  // 1 issue — SMALL, never red
+    ],
+    resolved: [],
+  };
+  mdl.meta.signalMinN = 4;
+  // A name with an apostrophe — proves the onclick escaping (esc_ + the extra
+  // \'-escape for the JS string literal it sits inside) survives real rosters.
+  mdl.people.push(person("Sam O'Neil", {}));
+  mdl.personHygiene.open.push({ person: "Sam O'Neil", n: 5, due: 5, est: 5, logged: 5 });
+  C.setModel(mdl);
+
+  C.renderAll_();
+  var roster = els.rosterPanel.innerHTML;
+  assert_(roster.indexOf("sigBad") !== -1, "a red cell renders with the sigBad class");
+  assert_(roster.indexOf("missing") !== -1, "cells state the offending count");
+  assert_(roster.indexOf("SNAP") !== -1, "signal headers carry the SNAP scope tag on the open population");
+  assert_(roster.indexOf("Ana Perez") !== -1 && roster.indexOf("Ben Ortiz") !== -1,
+          "one row per population person");
+  assert_(roster.indexOf("sigSmall") !== -1,
+          "the 1-issue person's cells render grey/ungraded, never red (SIGNAL_MIN_N)");
+  assert_(roster.indexOf("Open backlog") !== -1,
+          "the roster states the OPEN population in its lead line (spec §5.4)");
+  assert_(/sig(Bad|Warn|Good|Small)">●<\/span> [0-9]+%/.test(roster),
+          "the % text renders right beside every RAG dot — never colour alone (FR-4.4)");
+  assert_(roster.indexOf("toggleRosterDetail_('Sam O\\'Neil')") !== -1,
+          "an apostrophe in a person's name is escaped for the onclick attribute, not left to break it");
+
+  // Default sort: biggest opportunity first (worst overall, ascending rank).
+  assert_(C.STATE.rosterSort === "opp" && C.STATE.rosterDesc === false,
+          "default sort is opp/ascending — worst overall first");
+  assert_(roster.indexOf("Ana Perez") < roster.indexOf("Ben Ortiz"),
+          "Ana's BAD overall ranks ahead of Ben's ungraded (na) row by default");
+
+  // Clicking a header re-sorts; clicking the SAME header again flips direction.
+  C.setRosterSort_("due");
+  assert_(C.STATE.rosterSort === "due", "clicking a header re-sorts");
+  assert_(C.STATE.rosterDesc === false, "…a fresh column starts ascending");
+  C.setRosterSort_("due");
+  assert_(C.STATE.rosterDesc === true, "clicking the SAME header again flips direction");
+  assert_(/▾/.test(els.rosterPanel.innerHTML), "the active header shows the descending arrow");
+
+  // One toggle scopes both surfaces (spec §5.4) — flipping it must re-render
+  // the roster too, not just the 🧬 matrix.
+  C.setTypePop_("resolved");
+  var rosterResolved = els.rosterPanel.innerHTML;
+  assert_(rosterResolved.indexOf("Resolved in") !== -1,
+          "setTypePop_ re-renders the roster — the shared toggle drives both surfaces");
+  assert_(rosterResolved.indexOf("PERIOD") !== -1,
+          "…and its scope tag swaps from SNAP to PERIOD with the population");
+
+  // Pre-v22 payload: must say so, not render an empty table (same rule as the
+  // 🧬 matrix's own "Not in this payload" state).
+  var legacy = fresh(model({}));
+  delete legacy.personHygiene;
+  C.renderRoster_();
+  assert_(/Not in this payload/.test(els.rosterPanel.innerHTML),
+          "a payload with no personHygiene says so — silence would read as 'nobody has gaps'");
+
+  // Teardown — clean model + STATE reseeded, same convention as the sibling
+  // 🧬 by-type matrix and personHygiene-grading blocks above, so nothing here
+  // leaks into the 🌊 Flow block right after it.
+  resetFilters();
+  C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
+  C.STATE.typePop = "open";
+  C.setState("view", "exec");
+  fresh(model({}));
 })();
 
 // ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05 §4.1) ──

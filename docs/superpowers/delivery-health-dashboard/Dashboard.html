@@ -215,6 +215,16 @@ table.hyg.tmx tr:nth-child(even) .tmiss{background:var(--surface-2)}
 .tepic{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
        background:var(--royal);color:#fff;font-size:calc(8.5px*var(--scale));
        font-weight:700;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
+/* 👥 Signals roster (spec §5.2) — same RAG dot idiom as the fill bars above,
+   but per-cell rather than per-column: a dot alone is never the whole story,
+   so sigCellHtml_ always prints the % text right beside it (FR-4.4). */
+.sigDot{font-size:12px}
+.sigGood{color:var(--c-good)} .sigWarn{color:var(--c-warn)} .sigBad{color:var(--c-bad)}
+.sigSmall{color:var(--muted)}
+/* Scope tag chip — states which clock a column follows (SNAP / PERIOD / ORG)
+   right on the header, so "why did this number not move when I picked another
+   month" has its answer one glance away instead of in a tooltip nobody opens. */
+.scopeTag{font-size:9px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px;vertical-align:middle}
 .hbar{height:5px;border-radius:3px;background:var(--border);margin:4px 0 2px;overflow:hidden}
 .hbar i{display:block;height:100%;border-radius:3px}
 .hbar i.g{background:var(--pos)} .hbar i.a{background:var(--amber)} .hbar i.r{background:var(--warn)}
@@ -454,6 +464,11 @@ var MODEL = null;
 var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
               view: "exec", flag: "", metric: "onTime", compare: "region", compareAll: false,
               oppSort: "opp", oppDesc: true,
+              // rosterSort/rosterDesc: 👥 signals roster sort (spec §5.2). Default
+              // is biggest opportunity first — most-red overall, then most
+              // offending records — because the Executive pulse deep-links here
+              // with this sort already applied.
+              rosterSort: "opp", rosterDesc: false,
               // typePop: which population the 🧬 by-type matrix shows. OPEN is the
               // default because it is the half anyone can act on — fixing a
               // resolved ticket's due date changes history, not the next report.
@@ -3390,10 +3405,124 @@ function saveOppCsv_() {
   downloadCsv_(csv, "delivery-health-opportunity-" + pngPeriodStamp_() + ".csv");
 }
 
-/** Roster placeholder until Task 5 — pre-v22 payloads land here too. */
+// ── 👥 SIGNALS ROSTER RENDER (spec §5.2, 2026-08-05) ─────────────────────────
+// Default sort: biggest opportunity first — most-red overall, then most
+// offending records. The Executive pulse deep-links here with this sort.
+var ROSTER_RANK_ = { bad: 0, warn: 1, small: 2, good: 3, na: 4 };
+var ROSTER_COLS_ = {
+  person: { label: "Person", sort: function (a, b) { return a.p.name.localeCompare(b.p.name); } },
+  n:      { label: "n",      sort: function (a, b) { return b.n - a.n; } },
+  due:    { label: "Due date", sig: "due" },
+  est:    { label: "Estimate", sig: "est" },
+  logged: { label: "Logged",   sig: "logged" },
+  // Hours: header + scope tag ship now, the cell body arrives in Task 6
+  // (hoursCellHtml_ below) — hence no sorter yet either.
+  hours:  { label: "Hours",  sort: null /* Task 6 fills this in */ },
+  opp:    { label: "Overall", sort: function (a, b) {
+    return (ROSTER_RANK_[a.overall] - ROSTER_RANK_[b.overall]) || (b.miss - a.miss);
+  } },
+};
+// Signal columns share one sorter: worst grade first, most missing first.
+Object.keys(ROSTER_COLS_).forEach(function (k) {
+  var c = ROSTER_COLS_[k];
+  if (c.sig) c.sort = function (a, b) {
+    return (ROSTER_RANK_[a.sig[c.sig].cls] - ROSTER_RANK_[b.sig[c.sig].cls]) ||
+           (b.sig[c.sig].miss - a.sig[c.sig].miss);
+  };
+});
+
+function setRosterSort_(col) {
+  if (STATE.rosterSort === col) STATE.rosterDesc = !STATE.rosterDesc;
+  else { STATE.rosterSort = col; STATE.rosterDesc = false; }
+  renderRoster_();
+}
+
+/** One signal cell: dot + % together (FR-4.4 — colour never carries the verdict
+    alone), plus the miss count when there is one. "na" = nothing to grade. */
+function sigCellHtml_(g) {
+  if (g.cls === "na") return '<td class="tnum">—</td>';
+  var pct = Math.round(g.pct * 100) + "%";
+  var body = g.cls === "small"
+    ? '<span class="sigDot sigSmall" title="Fewer than ' + signalMinN_() +
+      ' issues — shown ungraded: one missing field on one ticket is not a signal (SIGNAL_MIN_N).">●</span> ' + pct
+    : '<span class="sigDot sig' + g.cls.charAt(0).toUpperCase() + g.cls.slice(1) + '">●</span> ' + pct;
+  return '<td class="tnum">' + body +
+    (g.miss ? ' <span class="cellSub">· ' + g.miss + " missing</span>" : "") + "</td>";
+}
+
+/** Every active person in the current population, RAG-graded on the same
+    fields and gates as the 🧬 matrix. Population + sort both follow shared
+    STATE, so the Open/Resolved chips on the matrix drive this table too. */
 function renderRoster_() {
-  document.getElementById("rosterPanel").innerHTML =
-    '<h3>👥 People signals</h3><div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
+  var el = document.getElementById("rosterPanel");
+  var done = donePeriods_(), hi = headPeriodIdx_(done);
+  var head = done[hi] || { label: "—", isos: [] };
+  var rows = personSignalRows_(head.isos);
+  if (rows === null) {
+    el.innerHTML = '<h3>👥 People signals</h3><div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
+    return;
+  }
+  var open = STATE.typePop !== "resolved";
+  var scopeTag = open ? scopeTag_("snap") : scopeTag_("period");
+  var col = ROSTER_COLS_[STATE.rosterSort] || ROSTER_COLS_.opp;
+  rows.sort(col.sort);
+  if (STATE.rosterDesc) rows.reverse();
+
+  var head_ = "<tr>" + Object.keys(ROSTER_COLS_).map(function (k) {
+    var c = ROSTER_COLS_[k];
+    var tag = (c.sig || k === "opp" || k === "n") ? " " + scopeTag
+            : k === "hours" ? " " + scopeTag_("period") : "";
+    return '<th class="' + (k === "person" ? "tname" : "tnum") + '" onclick="setRosterSort_(\'' + k + '\')" style="cursor:pointer"' +
+      (c.sig ? ' title="' + esc_(sigFieldByKey_(c.sig).tip) + '"' : "") + ">" +
+      esc_(c.label) + tag + (STATE.rosterSort === k ? (STATE.rosterDesc ? " ▾" : " ▴") : "") + "</th>";
+  }).join("") + "</tr>";
+
+  var body = rows.map(function (r) {
+    return '<tr>' +
+      '<td class="tname"><span class="rosterName" style="cursor:pointer" onclick="toggleRosterDetail_(\'' +
+        esc_(r.p.name).replace(/'/g, "\\'") + '\')" title="' + esc_(r.p.jobTitle || "") + '">▸ ' +
+        esc_(r.p.name) + "</span></td>" +
+      '<td class="tnum">' + r.n + "</td>" +
+      sigCellHtml_(r.sig.due) + sigCellHtml_(r.sig.est) + sigCellHtml_(r.sig.logged) +
+      '<td class="tnum">' + hoursCellHtml_(r.p, head.isos) + "</td>" +
+      sigCellHtml_({ cls: r.overall, pct: null, miss: r.miss }) +
+      "</tr>" + rosterDetailRow_(r.p, head);
+  }).join("");
+
+  el.innerHTML =
+    '<h3>👥 People signals — every active person in this slice</h3>' +
+    '<p class="cellSub">' + (open ? "Open backlog — fix these and next period moves. "
+                                   : "Resolved in " + esc_(head.label) + ". ") +
+    "Each cell: the share of the person's issues carrying that field, graded against " +
+    "the field's own gate — the same gates as the 🧬 matrix below. Grey = fewer than " + signalMinN_() +
+    " issues (not graded). Click a header to sort; default is biggest opportunity first.</p>" +
+    '<div class="gwrap"><table class="hyg tmx">' + head_ + body + "</table></div>";
+}
+
+/** SIGNAL_FIELDS_ lookup by key. */
+function sigFieldByKey_(k) {
+  for (var i = 0; i < SIGNAL_FIELDS_.length; i++) if (SIGNAL_FIELDS_[i].k === k) return SIGNAL_FIELDS_[i];
+  return { tip: "" };
+}
+
+// Interim stubs so this task stands alone — Task 6 replaces the first three
+// with the real hours cell and its drill-down row; they are staged seams, not
+// placeholders left for later cleanup.
+/** Hours-per-person cell (Task 6). The column header and its PERIOD scope tag
+    already render; only the cell body is pending. */
+function hoursCellHtml_() { return "—"; }
+/** Per-person drill-down row, expanded by the ▸ on the name cell (Task 6). */
+function rosterDetailRow_() { return ""; }
+/** Toggles the drill-down row above (Task 6). */
+function toggleRosterDetail_() {}
+/** Scope tag chip — states which clock a column follows. The full version
+    (threaded through the other tiles) arrives in Task 9; this one is real,
+    not a placeholder — its API does not change later. */
+function scopeTag_(kind) {
+  var t = { period: ["PERIOD", "Analysis period — follows the period picker and every filter."],
+            snap:   ["SNAP",   "Snapshot at the last export — follows filters, ignores the period picker."],
+            org:    ["ORG",    "Whole org — deliberately ignores filters and the period picker."] }[kind];
+  return '<span class="scopeTag" title="' + esc_(t[1]) + '">' + t[0] + "</span>";
 }
 
 // ── DATA HYGIENE VIEW (FR-2.3/FR-2.4) ────────────────────────────────────────
@@ -3928,7 +4057,12 @@ function typeImpact_(row) {
   }, 0);
 }
 
-function setTypePop_(v) { STATE.typePop = v; renderHygPanel_(); }
+// One toggle drives two surfaces (spec §5.4, Task 5): the 🧬 matrix's own
+// Open/Resolved chips stay INSIDE typeMatrixHtml_ (its PNG capture deliberately
+// includes them — comment above), but the 👥 roster reads the same STATE.typePop,
+// so flipping the chip has to re-render both rather than leaving the roster
+// showing the population the header no longer names.
+function setTypePop_(v) { STATE.typePop = v; renderHygPanel_(); renderRoster_(); }
 
 /** One cell: fill %, grade against the field's own gate, and the miss count. */
 function typeCellHtml_(f, row, uniform) {
