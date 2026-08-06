@@ -22,6 +22,7 @@ var CONFIG_DH = {
   // never an error — see readJiraBugs_ / readFlowSnapshots_.
   JIRA_BUGS_SHEET:   "Jira Bugs",
   FLOW_SNAP_SHEET:   "Flow Snapshots",
+  ARRIVALS_SHEET:    "Jira Arrivals",   // weekly created/resolved tally (Jira Backlog.js v3.11.0)
   ROSTER_SHEET:      "Data",
   CONTRACTORS_SHEET: "Contractors Data",
   ROSTER_CLASS:      "Professional Services",
@@ -2877,6 +2878,65 @@ function readJiraBugs_() {
 }
 
 /**
+ * Pure parse of the Jira Arrivals tab (Jira Backlog.js v3.11.0). Columns BY NAME.
+ *
+ * One row per ISO week, org-wide: no assignee join anywhere in this feed. That is
+ * the point of it — person-keyed arrivals under-report the newest weeks, because
+ * an issue filed unassigned on Monday only counts once somebody picks it up, so a
+ * growing queue can read as flat exactly when it matters most. Same reasoning as
+ * parseBugRows_'s deliberate refusal to join bugs to a person.
+ *
+ * The ISO key is derived from Week Start HERE. The exporter's jb_isoWeekLabel_
+ * zero-pads ("2026.W07") and weekKeyFromDate_ does not ("2026.W7"); shipping a
+ * date keeps ONE week-label authority and makes the divergence unreachable.
+ *
+ * @param {Array<Array>} values raw getValues() including the header row
+ * @returns {{weeks:Array<{iso,created,resolved,createdUnassigned}>, available:boolean}}
+ */
+function parseArrivalRows_(values) {
+  if (!values || values.length < 2) return { weeks: [], available: false };
+  var h = values[0];
+  var iWeek = colIdx_(h, ["Week Start"]);
+  var iCreated = colIdx_(h, ["Created"]);
+  var iResolved = colIdx_(h, ["Resolved"]);
+  var iUnassigned = colIdx_(h, ["Created Unassigned"]);
+  if (iWeek === -1 || iCreated === -1 || iResolved === -1) {
+    return { weeks: [], available: false };
+  }
+  var weeks = [];
+  for (var r = 1; r < values.length; r++) {
+    var d = parseDhDate_(values[r][iWeek]);
+    if (!d || isNaN(d.getTime())) continue;   // blank or unparseable row: skip, never bucket to epoch
+    weeks.push({
+      iso: weekKeyFromDate_(d),
+      created: Number(values[r][iCreated]) || 0,
+      resolved: Number(values[r][iResolved]) || 0,
+      // TRISTATE: an ABSENT column means nobody measured it. Collapsing that to 0
+      // would report "no unowned intake" on an older export, which is good news
+      // the data does not support.
+      createdUnassigned: iUnassigned === -1
+        ? null
+        : (Number(values[r][iUnassigned]) || 0),
+    });
+  }
+  return { weeks: weeks, available: weeks.length > 0 };
+}
+
+/** Reads the Jira Arrivals tab. Absent tab is a clean unavailable, not an error:
+    Code.js may legitimately be deployed before the export has run (spec §5). */
+function readArrivals_() {
+  try {
+    var ss = SpreadsheetApp.openById(dhSourceIds_().source);
+    var sh = ss.getSheetByName(CONFIG_DH.ARRIVALS_SHEET);
+    if (!sh) return { weeks: [], available: false };
+    return parseArrivalRows_(sh.getDataRange().getValues());
+  } catch (e) {
+    Logger.log("⚠️ readArrivals_ failed: " + e.message);
+    return { weeks: [], available: false };
+  }
+}
+
+/**
  * Pure parse of the Flow Snapshots tab. The exporter appends one row per RUN
  * and can run several times a week — the LAST row per ISO week wins (freshest
  * state of that week). Rows whose ISO Week cell isn't YYYY.WN are skipped.
@@ -4288,6 +4348,56 @@ function _test_bugFeed_() {
   assert_(parseBugRows_(null).available === false, "no values → unavailable");
   assert_(parseBugRows_([["Key"]]).available === false, "header-only → unavailable");
   Logger.log("✅ _test_bugFeed_ passed");
+}
+
+/**
+ * Jira Arrivals parse. Three rules, each a bug that has bitten this codebase:
+ *  · columns BY NAME, so a column order change upstream cannot silently shift data;
+ *  · a MISSING column yields null, never 0 — "nobody measured" and "measured zero"
+ *    are different facts, and conflating them is how a feed outage reads as good news;
+ *  · the ISO week key is computed HERE from Week Start. weekKeyFromDate_ emits
+ *    "2026.W7"; the exporter's jb_isoWeekLabel_ emits "2026.W07". A label written
+ *    upstream would fail to join for weeks 1-9 (spec §4.1).
+ */
+function _test_arrivalParse_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_arrivalParse_: " + m); }
+
+  // Deliberately NOT in the order the exporter writes them.
+  var values = [
+    ["Resolved", "Week Start", "Created Unassigned", "Created"],
+    [204, new Date("2026-07-28T00:00:00Z"), 90, 224],
+    [297, new Date("2026-07-20T00:00:00Z"), 71, 250],
+    ["", "", "", ""],                                  // trailing blank row
+  ];
+  var r = parseArrivalRows_(values);
+  assert_(r.available === true, "available on a well-formed tab");
+  assert_(r.weeks.length === 2, "blank rows skipped — got " + r.weeks.length);
+  var w31 = r.weeks[0];
+  assert_(w31.iso === "2026.W31", "week key computed from Week Start — got " + w31.iso);
+  assert_(w31.created === 224 && w31.resolved === 204, "counts read by NAME, not position");
+  assert_(w31.createdUnassigned === 90, "createdUnassigned read");
+
+  // Missing optional column → null, not 0.
+  var noUnassigned = parseArrivalRows_([
+    ["Week Start", "Created", "Resolved"],
+    [new Date("2026-07-28T00:00:00Z"), 224, 204],
+  ]);
+  assert_(noUnassigned.weeks[0].createdUnassigned === null,
+          "absent column → null, never 0 — got " + noUnassigned.weeks[0].createdUnassigned);
+
+  // An unusable Week Start is skipped, not crashed on and not bucketed to epoch.
+  var junk = parseArrivalRows_([
+    ["Week Start", "Created", "Resolved"],
+    ["not a date", 5, 5],
+    [new Date("2026-07-27T00:00:00Z"), 224, 204],
+  ]);
+  assert_(junk.weeks.length === 1, "unparseable Week Start skipped — got " + junk.weeks.length);
+
+  // No tab / empty tab is a clean unavailable, not an exception.
+  assert_(parseArrivalRows_([]).available === false, "empty values → unavailable");
+  assert_(parseArrivalRows_([["Week Start", "Created", "Resolved"]]).available === false,
+          "header-only → unavailable");
+  Logger.log("✅ _test_arrivalParse_ passed");
 }
 
 function _test_flowSnapshots_() {

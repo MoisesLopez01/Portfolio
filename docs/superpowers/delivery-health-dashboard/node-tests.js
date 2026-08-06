@@ -50,7 +50,7 @@ _test_periods_();
 _test_levelTrack_();
 _test_flowBuckets_();
 _test_flowOpenBuckets_();
-_test_bugFeed_(); _test_flowSnapshots_();
+_test_bugFeed_(); _test_arrivalParse_(); _test_flowSnapshots_();
 
 // ── CLIENT/SERVER PARITY ─────────────────────────────────────
 // Dashboard.html keeps its own copy of the utilization math (utilFor_/aggWeeks_)
