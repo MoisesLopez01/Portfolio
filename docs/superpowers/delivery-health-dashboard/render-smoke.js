@@ -109,7 +109,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " allIsoWeeks_: allIsoWeeks_," +
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
-             " renderPulse_: renderPulse_, openRoster_: openRoster_," +
+             " renderPulse_: renderPulse_, openRoster_: openRoster_, rosterCsvLines_: rosterCsvLines_," +
              " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
              " hoursCellHtml_: hoursCellHtml_, rosterDetailRow_: rosterDetailRow_, toggleRosterDetail_: toggleRosterDetail_," +
              " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
@@ -2085,6 +2085,98 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // Teardown — same convention as the sibling blocks above.
   resetFilters();
   C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
+  C.STATE.typePop = "open";
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── 👥 ROSTER CSV ROW GRAMMAR (Task 7 review finding, 2026-08-05) ───────────
+// rosterCsvLines_ is the pure builder saveCsv_ calls before handing off to
+// downloadCsv_ (DOM Blob/anchor — not reachable from this Node harness), so
+// it is the seam that makes the CSV's row-level honesty testable at all:
+//   - small-n rows keep their REAL percentages — small-n suppresses GRADING,
+//     never MEASUREMENT — and land Overall "na" (worst rank never counts
+//     "small").
+//   - a zero-issue person's percentage cells are blank (gradeSignal_ returns
+//     pct:null for n=0), not a fabricated "0%".
+//   - an ineligible (ramping/on-leave) row blanks Idle h and carries the
+//     Note; an eligible row gets a real Idle number and an empty Note —
+//     same rule as the roster's own Hours-column eligibility (Task 6).
+(function () {
+  var mdl = fresh(model({}));
+  resetFilters();
+  C.STATE.period = "week";
+  C.setState("periodIdx", null);
+  C.setState("typePop", "open");
+  mdl.meta.signalMinN = 4;
+  mdl.people.push(person("Rae Ramping", { newHire: true }));
+  mdl.people.push(person("Ollie OnLeave", { onLeave: true }));
+  // Ben Ortiz's tracked hours are shorted so his Idle cell is a nonzero
+  // number — the contrast that proves the ineligible rows' blank Idle is
+  // eligibility-driven, not a fixture where everyone happens to compute 0.
+  mdl.people.forEach(function (p) {
+    if (p.name === "Ben Ortiz") {
+      p.weeks["2026.W31"] = week({ tracked: 30, billable: 22, nonBillable: 8,
+                                    trackedCov: 30, nsBillRaw: 22, nsNonBillRaw: 8 });
+    }
+  });
+  mdl.personHygiene = {
+    open: [
+      { person: "Ana Perez",    n: 2,  due: 1,  est: 2,  logged: 0 },  // n < signalMinN -> small
+      { person: "Ben Ortiz",    n: 0,  due: 0,  est: 0,  logged: 0 },  // zero issues -> na, blank %
+      { person: "Rae Ramping",  n: 10, due: 10, est: 10, logged: 10 }, // eligible-grading, ineligible-hours
+      { person: "Ollie OnLeave", n: 10, due: 10, est: 10, logged: 10 },
+    ],
+    resolved: [],
+  };
+  C.setModel(mdl);
+  var lines = C.rosterCsvLines_();
+  assert_(lines !== null, "a payload with personHygiene builds CSV lines");
+  assert_(lines[0] === "Person,Job title,Region,n,Due %,Due missing,Estimate %,Estimate missing," +
+                        "Logged %,Logged missing,Overall,Billable h,Non-billable h,Idle h,Note",
+          "the header row matches the brief's exact column string");
+
+  function rowFields(name) {
+    var row = lines.filter(function (l) { return l.indexOf(name + ",") === 0; })[0];
+    assert_(row, "a CSV row exists for " + name);
+    return row.split(",");
+  }
+
+  // Small-n row: REAL ratios, not suppressed — small-n gates GRADING only.
+  var ana = rowFields("Ana Perez");
+  assert_(ana[3] === "2", "Ana's n is the real count (2), not zeroed by small-n");
+  assert_(ana[4] === "50" && ana[5] === "1", "Due %: real 50% (1 of 2), 1 missing — small-n never hides the ratio");
+  assert_(ana[6] === "100" && ana[7] === "0", "Estimate %: real 100% (2 of 2), 0 missing");
+  assert_(ana[8] === "0" && ana[9] === "2", "Logged %: real 0% (0 of 2), 2 missing");
+  assert_(ana[10] === "na", "small-n Overall is 'na' — 'small' never contributes to the worst-rank verdict");
+
+  // Zero-issue person: blank percentages (null, not a fabricated 0%), n = 0.
+  var ben = rowFields("Ben Ortiz");
+  assert_(ben[3] === "0", "Ben's n is 0");
+  assert_(ben[4] === "" && ben[6] === "" && ben[8] === "",
+          "a zero-issue person's percentage cells are BLANK, not '0%' — nothing was measured to grade");
+  assert_(ben[5] === "0" && ben[7] === "0" && ben[9] === "0", "…and the missing counts are 0, not blank");
+  assert_(ben[10] === "na", "zero-issue Overall is 'na'");
+  assert_(ben[13] === "10", "Ben is eligible: Idle h is a real number (avail 40 - shorted tracked 30 = 10)");
+  assert_(ben[14] === "", "…and an eligible row's Note is empty");
+
+  // Ineligible rows: blank Idle, Note states why.
+  var rae = rowFields("Rae Ramping");
+  assert_(rae[13] === "", "a ramping new hire's Idle h is blank");
+  assert_(rae[14] === "ramping", "…and the Note says why");
+  var ollie = rowFields("Ollie OnLeave");
+  assert_(ollie[13] === "", "an on-leave person's Idle h is blank");
+  assert_(ollie[14] === "on leave", "…and the Note carries the on-leave wording, distinct from ramping");
+
+  // Pre-v22 payload: the pure builder returns null (saveCsv_ no-ops on it),
+  // same contract as personSignalRows_ itself.
+  var legacy = fresh(model({}));
+  delete legacy.personHygiene;
+  assert_(C.rosterCsvLines_() === null,
+          "rosterCsvLines_ returns null on a pre-v22 payload, so saveCsv_ can no-op rather than download an empty file");
+
+  // Teardown.
+  resetFilters();
   C.STATE.typePop = "open";
   C.setState("view", "exec");
   fresh(model({}));

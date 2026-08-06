@@ -4385,14 +4385,20 @@ function csvCell_(v) {
   return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 
-/** CSV = the signals roster: one row per person, signal values + offending
-    counts + the hours split (spec §5). Replaces the Task-3 interim, which
-    exported the opportunity table instead. */
-function saveCsv_() {
+/** Pure builder for the signals-roster CSV: one row per person, signal
+    values + offending counts + the hours split (spec §5). Extracted from
+    saveCsv_ (review finding, 2026-08-05) so the row grammar — small-n rows
+    keep their REAL percentages (small-n suppresses grading, not
+    measurement), a zero-issue person's percentages are blank, and an
+    ineligible (ramping/on-leave) row blanks Idle and carries the Note
+    instead — is testable without a DOM/Blob download round-trip.
+    @returns {?Array<string>} CSV lines (header first), or null on a
+    pre-v22 payload (no personHygiene to grade). */
+function rosterCsvLines_() {
   var done = donePeriods_(), hi = headPeriodIdx_(done);
   var head = done[hi] || { label: "", isos: [] };
   var rows = personSignalRows_(head.isos);
-  if (rows === null) return;
+  if (rows === null) return null;
   var lines = ["Person,Job title,Region,n,Due %,Due missing,Estimate %,Estimate missing," +
                "Logged %,Logged missing,Overall,Billable h,Non-billable h,Idle h,Note"];
   rows.forEach(function (r) {
@@ -4406,6 +4412,14 @@ function saveCsv_() {
       inel ? "" : r1_(Math.max(0, w.avail - w.tracked)),
       inel ? (r.p.onLeave ? "on leave" : "ramping") : ""].join(","));
   });
+  return lines;
+}
+
+/** CSV = the signals roster (spec §5). Replaces the Task-3 interim, which
+    exported the opportunity table instead. */
+function saveCsv_() {
+  var lines = rosterCsvLines_();
+  if (lines === null) return;
   // Line endings + extension: matches saveOppCsv_'s convention (downloadCsv_
   // itself does neither — it writes the filename and content verbatim).
   downloadCsv_(lines.join("\r\n"), "delivery-people-signals.csv");
