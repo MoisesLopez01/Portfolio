@@ -1637,7 +1637,41 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   var sum = C.signalSummary_([]);
   assert_(sum.bad === 1 && sum.small === 1,
           "summary counts exclude small-n rows from the red count");
+
+  // ── resolved population: iso-scoped SUM across weekly buckets ──
+  // Review finding (2026-08-05): the "open" branch above never exercises the
+  // resolved branch's `isos.indexOf` filter or its `+=` accumulation — a
+  // stray `=` (overwrite instead of sum) or an off-by-one in the iso filter
+  // would ship silently. Same person, two in-window weekly buckets that must
+  // SUM, plus one huge out-of-window bucket that must be excluded entirely.
+  C.STATE.typePop = "resolved";
+  mdl.personHygiene.resolved = [
+    { iso: "2026.W30", person: "Ana Perez", n: 5, due: 5, est: 5, logged: 5 },
+    { iso: "2026.W31", person: "Ana Perez", n: 5, due: 3, est: 5, logged: 5 },
+    { iso: "2026.W29", person: "Ana Perez", n: 999, due: 0, est: 0, logged: 0 }, // OUT of window
+  ];
+  C.setModel(mdl);
+  var resRows = C.personSignalRows_(WEEKS);   // WEEKS = ["2026.W30", "2026.W31"]
+  var anaRes = resRows.filter(function (r) { return r.p.name === "Ana Perez"; })[0];
+  assert_(anaRes.n === 10,
+          "resolved rows SUM n across the two in-window buckets (5+5=10), not the last write (5) " +
+          "or the out-of-window bucket (1004+)");
+  assert_(anaRes.sig.due.miss === 2 && anaRes.sig.due.cls === "good",
+          "due SUMS to 8 of 10 (80%, at gate → good) — a stray '=' would leave only W31's " +
+          "3 of 5 (60%, bad), and a leaked W29 bucket would tank it to ~1%");
+  var resWide = C.personSignalRows_(WEEKS.concat(["2026.W29"]))
+    .filter(function (r) { return r.p.name === "Ana Perez"; })[0];
+  assert_(resWide.n === 1009 && resWide.sig.due.cls === "bad",
+          "widening the isos argument to include W29 pulls its 999-n bucket in — proves the " +
+          "filter genuinely gates on the isos PARAMETER, not a hardcoded skip");
+
+  // Teardown — same pattern as the sibling 🧬 by-type matrix block above
+  // (fresh model + typePop reset), so this block's personHygiene/resolved
+  // fixture and typePop="resolved" leave no residue for the next block, which
+  // reads C.getModel() directly rather than reseeding its own.
   resetFilters();
+  fresh(model({}));
+  C.STATE.typePop = "open";
 })();
 
 // ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05 §4.1) ──
