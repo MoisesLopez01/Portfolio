@@ -761,6 +761,34 @@ assert_(!/Fay Lund/.test(els.oppPanel.innerHTML),
 // replaces the grid (Task 5) — only the grid-rendering assertions are gone.
 resetFilters();
 
+// ── 14b. STATE.flag narrowing — pinned rendering-free (review finding,
+// 2026-08-05). Removing the grid removed the flag chips' only UI entry
+// point, but passesFilters_'s `skip !== "flag" && STATE.flag && !hasFlag_`
+// branch is still live code (Task 5 re-wires a UI onto it) — without this
+// block nothing in the suite ever sets STATE.flag to a truthy value, so the
+// branch would go completely unverified.
+(function () {
+  var mdl = fresh(histModel({}));
+  resetFilters();
+  var hi = mdl.meta.headlineIso;
+  // Give Ana Perez alone a "zero tracked" week (full capacity, nothing
+  // logged) — the rest of the fixture keeps its normal tracked hours, so
+  // exactly one person trips FLAG_LABELS.zero and the narrowing is provable.
+  mdl.people[0].weeks[hi] = week({ tracked: 0, trackedCov: 0, billable: 0, nonBillable: 0,
+                                    nsBillRaw: 0, nsNonBillRaw: 0 });
+  delete mdl._exCache;   // exceptionsOf_ memoizes per model load — drop the stale cache
+  var before = C.filteredPeople_().length;
+  assert_(before === mdl.people.length, "sanity: no flag set yet, nobody is filtered out");
+  C.setState("flag", "zero");
+  var narrowed = C.filteredPeople_();
+  assert_(narrowed.length === 1 && narrowed[0].name === "Ana Perez",
+          "STATE.flag=\"zero\" narrows to the one person exceptionsOf_ flags zero-tracked");
+  C.setState("flag", "");
+  assert_(C.filteredPeople_().length === before,
+          "clearing STATE.flag restores the full population");
+})();
+resetFilters();
+
 // ══════════════════════════════════════════════════════════════════════════
 // 15. METRICS-DICTIONARY CONFORMANCE (2026-08-03)
 // Each of the four rates now computes what the Dictionary says it computes.
