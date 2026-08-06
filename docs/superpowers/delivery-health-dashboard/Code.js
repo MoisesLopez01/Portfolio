@@ -4768,18 +4768,41 @@ function _test_inventoryWalkback_() {
   assert_(r[0].measured === false && r[1].measured === false && r[2].measured === false,
           "walked-back points are flagged reconstructed");
 
-  // Cap: 30 weeks of deltas yields at most 26 points.
-  var many = [];
-  for (var i = 0; i < 30; i++) many.push({ iso: "2026.W" + (i + 1), created: 10, resolved: 10 });
-  assert_(inventoryWalkback_(500, many, 26).length === 26,
-          "capped at 26 — got " + inventoryWalkback_(500, many, 26).length);
+  // SELF-CONSISTENCY on the capped window. The 4-week fixture above pins every
+  // value by hand, so a round-trip there proves nothing new — but this one
+  // supplies 30 weeks to exercise the cap, and asserting only `.length` would
+  // let an off-by-one in the slice window, or a window taken from the wrong end,
+  // pass unnoticed. Non-uniform deltas matter too: with created === resolved
+  // every point is identical and a direction error is invisible.
+  var varied = [];
+  for (var j = 0; j < 30; j++) {
+    varied.push({ iso: "2026.W" + (j + 1), created: 10 + (j % 5), resolved: 10 - (j % 3) });
+  }
+  var capped = inventoryWalkback_(500, varied, 26);
+  assert_(capped.length === 26, "capped at 26 — got " + capped.length);
+  assert_(capped[capped.length - 1].items === 500, "newest point is the anchor");
+  // The window must be the LAST 26 weeks, not the first.
+  assert_(capped[0].iso === "2026.W5" && capped[capped.length - 1].iso === "2026.W30",
+          "capped window is the trailing one — got " + capped[0].iso + ".." +
+          capped[capped.length - 1].iso);
+  // Walk FORWARD through the reconstruction and confirm each step lands on the
+  // next reported point. This is the invariant that makes the series trustworthy:
+  // spot-checking values proves individual arithmetic, this proves the series
+  // hangs together.
+  for (var k = 0; k < capped.length - 1; k++) {
+    var w = varied[varied.length - 26 + k + 1];
+    var stepped = capped[k].items + (w.created - w.resolved);
+    assert_(stepped === capped[k + 1].items,
+            "forward step from " + capped[k].iso + " lands on " + capped[k + 1].iso +
+            " — expected " + capped[k + 1].items + ", stepped to " + stepped);
+  }
 
   // Inventory can never be negative: a bad delta clamps at 0 rather than
   // printing a queue of -40 items, which is not a state the world can be in.
   var bad = [{ iso: "2026.W30", created: 500, resolved: 0 },
              { iso: "2026.W31", created: 10, resolved: 10 }];
-  var clamped = inventoryWalkback_(100, bad, 26);
-  assert_(clamped[0].items >= 0, "clamped at zero — got " + clamped[0].items);
+  var badResult = inventoryWalkback_(100, bad, 26);
+  assert_(badResult[0].items >= 0, "clamped at zero — got " + badResult[0].items);
 
   // No anchor means no series. A reconstruction with nothing to anchor on is a
   // guess, and a guessed trend under a headline is worse than no trend.
