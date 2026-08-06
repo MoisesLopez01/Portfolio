@@ -1280,6 +1280,56 @@ function flowOpenBuckets_(issues, resolvePerson) {
   return { buckets: buckets, unattributed: unattributed, uncategorized: uncategorized };
 }
 
+/**
+ * The open queue in TWO HALVES: assigned (person-keyed, filterable downstream)
+ * and unassigned (org-wide). Returned separately and NEVER pre-summed.
+ *
+ * Why not one number: the assigned half passes through passesFilters_ on the
+ * client, the unassigned half cannot — an unassigned issue belongs to no person
+ * and therefore to no Region/Team/PM/Family bucket. Adding a filtered count to
+ * an unfiltered one produces a figure that belongs to neither population, so the
+ * sum is the CALLER's decision, made once, in one place, with a scope tag on it.
+ *
+ * Why this matters at all (measured live 2026-08-06): 1,839 unassigned against
+ * 1,440 assigned. Assigned-only, weeks-to-clear reads 4.9w; the true queue reads
+ * 11.0w. The dashboard was describing a five-week queue as if that were all of it.
+ *
+ * The unassigned half is counted here off `issues` rather than off the Flow
+ * Snapshots log because Jira Raw is authoritative for NOW; the snapshot tab is
+ * the log that gives it a history (spec §4.1). Same split as WIP/backlog already.
+ *
+ * @param {Array<Object>} issues readJiraRaw_ `issues` — every row, all statuses
+ * @param {Function} resolvePerson raw assignee → roster display name, or null
+ * @returns {{assigned:{items,wipN,todoN,todoHrs}, unassigned:{items,hrs}}}
+ */
+function queueSnapshot_(issues, resolvePerson) {
+  var assigned = flowOpenBuckets_(issues, resolvePerson);
+  var a = { items: 0, wipN: 0, todoN: 0, todoHrs: 0 };
+  assigned.buckets.forEach(function (b) {
+    a.wipN += b.wipN || 0;
+    a.todoN += b.todoN || 0;
+    a.todoHrs += b.todoHrs || 0;
+  });
+  a.items = a.wipN + a.todoN;
+  a.todoHrs = Math.round(a.todoHrs * 10) / 10;
+
+  var u = { items: 0, hrs: 0 };
+  (issues || []).forEach(function (it) {
+    if (it.isEpic) return;                                        // epics roll up their children
+    if (it.resolved && !isNaN(it.resolved.getTime())) return;      // an inventory is open work
+    if (DH_CLOSED_STATUS_.test(String(it.status || ""))) return;
+    var raw = String(it.assignee || "").trim();
+    // The complement of flowOpenBuckets_'s guard, so the halves are disjoint by
+    // construction rather than by coincidence.
+    if (raw && !/unassigned/i.test(raw)) return;
+    u.items++;
+    u.hrs += Math.max(0, (Number(it.estSec) || 0) - (Number(it.spentSec) || 0)) / 3600;
+  });
+  u.hrs = Math.round(u.hrs * 10) / 10;
+
+  return { assigned: a, unassigned: u };
+}
+
 /** Resolved DELIVERY issues → per-week on-time buckets. n/onTime cover issues
     WITH a due date; nAll counts every resolved delivery issue (coverage
     denominator).
@@ -4507,6 +4557,59 @@ function _test_clearRateMedian_() {
           "8 weeks with 4 gaps → null (4 usable < 5), not a median over the survivors — got " +
           clearRateMedian_(halfGaps, 8));
   Logger.log("✅ _test_clearRateMedian_ passed");
+}
+
+/**
+ * The assigned and unassigned halves must be DISJOINT and never pre-summed.
+ * Disjoint because flowOpenBuckets_ keeps its unassigned guard, so the same
+ * record cannot land in both; never pre-summed because one half is filterable
+ * and the other is org-wide, and a caller adding them would produce a number
+ * belonging to neither population (spec §3 §2).
+ */
+function _test_unassignedInventory_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_unassignedInventory_: " + m); }
+  var who = function (raw) {
+    return String(raw || "").toLowerCase().trim() === "maria" ? "Maria" : null;
+  };
+  var issues = [
+    // assigned + open + To Do → the assigned half
+    { key: "Q-1", isEpic: false, resolved: null, assignee: "maria", status: "Open",
+      statusCategory: "To Do", estSec: 7200, spentSec: 0 },
+    // assigned + open + In Progress → assigned WIP
+    { key: "Q-2", isEpic: false, resolved: null, assignee: "maria", status: "In Progress",
+      statusCategory: "In Progress", estSec: 3600, spentSec: 1800 },
+    // UNASSIGNED + open → the unassigned half only
+    { key: "Q-3", isEpic: false, resolved: null, assignee: "⚠️ UNASSIGNED", status: "Open",
+      statusCategory: "To Do", estSec: 3600, spentSec: 0 },
+    { key: "Q-4", isEpic: false, resolved: null, assignee: "", status: "Open",
+      statusCategory: "To Do", estSec: 1800, spentSec: 0 },
+    // RESOLVED → neither half; an inventory is open work only
+    { key: "Q-5", isEpic: false, resolved: new Date("2026-07-28"), assignee: "⚠️ UNASSIGNED",
+      status: "Done", statusCategory: "Done", estSec: 3600, spentSec: 3600 },
+    // EPIC → neither half; epics roll up their children (same rule as flowOpenBuckets_)
+    { key: "Q-6", isEpic: true, resolved: null, assignee: "⚠️ UNASSIGNED", status: "Open",
+      statusCategory: "To Do", estSec: 36000, spentSec: 0 },
+  ];
+  var s = queueSnapshot_(issues, who);
+
+  assert_(s.assigned.items === 2, "assigned half = 2 (Q-1 To Do + Q-2 WIP) — got " + s.assigned.items);
+  assert_(s.assigned.wipN === 1 && s.assigned.todoN === 1, "assigned split into WIP and To Do");
+  assert_(s.unassigned.items === 2, "unassigned half = 2 (Q-3, Q-4) — got " + s.unassigned.items);
+  assert_(s.unassigned.hrs === 1.5, "unassigned remaining hours summed — got " + s.unassigned.hrs);
+
+  // No pre-summed total on the object: the caller must ask for it explicitly.
+  assert_(s.items === undefined && s.total === undefined,
+          "queueSnapshot_ must NOT expose a pre-summed total");
+
+  // Disjoint: no record counted twice.
+  assert_(s.assigned.items + s.unassigned.items === 4, "the two halves are disjoint");
+
+  // An all-assigned population reports zero unassigned, which is a MEASURED zero
+  // (we looked and found none) and legitimately different from the null the
+  // client shows when the feed cannot answer at all.
+  var noneBlank = queueSnapshot_([issues[0]], who);
+  assert_(noneBlank.unassigned.items === 0, "measured zero unassigned");
+  Logger.log("✅ _test_unassignedInventory_ passed");
 }
 
 function _test_flowSnapshots_() {
