@@ -284,6 +284,11 @@ var METRIC_REGISTRY_ = {
       target: CONFIG_DH.TARGETS.forecast,
       coverageGate: 0.70,
       coverageOf: "closed epics carrying an estimate AND logged time",
+      // SAMPLE FLOOR (Task 6, sampleFloorFor_), separate instrument from the
+      // coverage gate above: a mean over one or two closed epics is not a mean,
+      // no matter how much of the population is visible. Same bar as
+      // CLEAR_RATE_MIN_N / the other rate metrics' floors.
+      sampleFloor: 5,
       owner: "Delivery leadership",
       paramOwner: "Services Director (±10% band width; Finance for any rate-based variant)",
       ebitda: "Forecast variance → margin erosion on engagements closed in period: (actual cost − estimated cost) against contracted value. Not yet quantified — blocked on PR-06/PR-07.",
@@ -512,6 +517,84 @@ var METRIC_REGISTRY_ = {
         "DISTINCT from Quality/Rework: rework counts delivered work that came back; this counts defects reported. A bug feeds neither leg of the rework rate.",
       ],
     },
+
+    // ── Queue metrics (spec 2026-08-06, Executive newspaper) ──
+    // All three ship target: null (D11). Nobody owns a ≤4w or ≤0 bar, and an
+    // unratified target on the C-suite headline reads as agreed the moment it is
+    // on screen — it would be the number a board pack quotes. target: null is an
+    // established convention here, not a special case: neutral colour, no RAG
+    // verdict, no target rule drawn on any chart, neutral delta arrows, and
+    // grading against the operating norm from standardRate_ only.
+    queueCover: {
+      name: "Weeks to Clear",
+      definition: "Open inventory divided by the median weekly clearing rate — how long the current queue would take to drain at the rate the organisation has actually been clearing.",
+      formula: "(assigned open + unassigned open) ÷ median(resolved per week, last 8 complete weeks)",
+      sources: ["Jira Raw — Status Category, Resolution Date, Assignee",
+                "Jira Arrivals — Resolved per week"],
+      grain: "snapshot ÷ trailing rate",
+      unit: "weeks",
+      target: null,
+      dir: "down",
+      coverageGate: 0,
+      sampleFloor: 5,
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (target, once agreed)",
+      deviations: [
+        "The trailing basis is a MEDIAN of 8 complete weeks, not last week's rate. Measured 2026-08-06: W31 cleared 204 against an 8-week mean of 297, so a one-week denominator read 16.1 weeks where the trailing basis reads 11.0.",
+        "History behind the current week is RECONSTRUCTED by walking weekly deltas back from the measured present, capped at 26 weeks. It assumes nothing was deleted or moved out of scope, and the anchor carries the export's updated>=-26w bound while the deltas do not, so drift grows with distance from today.",
+        "The unassigned half is bounded by OPEN_BACKLOG_UPDATED_WEEKS (26), so genuinely abandoned tickets are excluded. The figure is a FLOOR on dead inventory, not the whole of it.",
+        "No target has been agreed. The metric is graded against its own operating norm only.",
+      ],
+    },
+    netFlow: {
+      name: "Net Flow",
+      definition: "Items arriving minus items cleared, per week, org-wide — whether the queue is growing or draining.",
+      formula: "created per week − resolved per week (both counted over every issue, no assignee join)",
+      sources: ["Jira Arrivals — Created, Resolved"],
+      grain: "week",
+      unit: "items",
+      target: null,
+      dir: "down",
+      coverageGate: 0,
+      sampleFloor: null,   // a COUNT: never floored
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (target, once agreed)",
+      deviations: [
+        "Counted org-wide with no assignee join on either half. Person-keyed arrivals under-report the newest weeks — an issue filed unassigned only counts once somebody picks it up — so a growing queue could read as flat exactly when it matters most. Same reasoning as the Bug Count feed.",
+        "Probe figures include R&D projects because JQL cannot reproduce getSpaceForIssue_; the exported series excludes them and reads slightly lower.",
+        "No target has been agreed.",
+      ],
+    },
+    clearedPerHead: {
+      name: "Cleared per Person",
+      definition: "Items cleared per person per week within a comparison group — throughput normalised for group size.",
+      formula: "items resolved in period ÷ people in the group ÷ weeks in period",
+      sources: ["Jira Raw — Resolution Date, Assignee", "Roster — headcount"],
+      grain: "group × period",
+      unit: "items",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      sampleFloor: 5,
+      owner: "Delivery leadership",
+      paramOwner: "Services Director",
+      deviations: [
+        "Replaces absolute cleared counts in the comparison grid. Grading absolute throughput against a flat target ranked groups by headcount: 8 people clearing 12 items scored a miss while 63 people clearing 61 scored a pass.",
+        "No target has been agreed. Graded against the operating norm only.",
+      ],
+    },
+    inventory: { name: "Open Inventory", definition: "Open non-epic issues, assigned plus unassigned.",
+      formula: "count of open non-epic issues", sources: ["Jira Raw"], grain: "snapshot", unit: "items",
+      target: null, dir: "down", coverageGate: 0, sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
+    arrived: { name: "Arrived", definition: "Issues created in the period, org-wide.",
+      formula: "count of issues created in period", sources: ["Jira Arrivals — Created"],
+      grain: "week", unit: "items", target: null, dir: "down", coverageGate: 0, sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
+    cleared: { name: "Cleared", definition: "Issues resolved in the period.",
+      formula: "count of issues resolved in period", sources: ["Jira Raw — Resolution Date"],
+      grain: "week", unit: "items", target: null, dir: "up", coverageGate: 0, sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
   },
 
   /** Newest first. Each entry names what changed, why, and which metrics moved. */
@@ -690,6 +773,41 @@ function metricConfidence_(gate, coverage, periods) {
   if (c >= g && p >= 2) return { level: "high", publish: true, coverage: c };
   if (c >= g - 0.10) return { level: "medium", publish: true, coverage: c };
   return { level: "low", publish: false, coverage: c };
+}
+
+/**
+ * Org-level SAMPLE FLOOR — is there enough to average?
+ *
+ * Distinct from the coverage gate, and the distinction is the whole point. A
+ * coverage gate asks "how much of the population can we see?" and a metric below
+ * it still publishes (CONFIG_DH.SUPPRESS_BELOW_GATE = false, user decision
+ * 2026-08-03, with the Data trust strip carrying the gate read). A sample floor
+ * asks "is there anything to average?" and a metric below it CANNOT publish —
+ * a mean over one epic is not a mean.
+ *
+ * Treating the two as one instrument was the prototype's inconsistency: it
+ * shelved Forecast at n=1 while publishing On-Time at n=19, and both are below
+ * their coverage gate. Sample size was doing the work.
+ *
+ * Rates are floored; COUNTS never are. Three items cleared is three items
+ * cleared, and labelling it "not measured" would hide real work.
+ *
+ * Fails CLOSED on an unknown id: a metric nobody registered must not publish on
+ * the strength of a typo.
+ *
+ * @param {string} metricId registry key
+ * @param {number} n measurable records behind the value
+ * @returns {{ok:boolean, need:number|null, n:number}}
+ */
+function sampleFloorFor_(metricId, n) {
+  var m = (METRIC_REGISTRY_.metrics || {})[metricId];
+  if (!m) return { ok: false, need: null, n: n };
+  // sampleFloor === null marks a COUNT — publishable at any n, zero included.
+  if (m.sampleFloor === null || m.sampleFloor === undefined) {
+    return { ok: true, need: null, n: n };
+  }
+  var need = m.sampleFloor;
+  return { ok: (Number(n) || 0) >= need, need: need, n: Number(n) || 0 };
 }
 
 // ── ISO WEEK HELPERS (Monday-start, ISO-8601 — ported from demand Code.js) ──
@@ -4816,6 +4934,74 @@ function _test_inventoryWalkback_() {
   assert_(inventoryWalkback_(null, weeks, 26).length === 0, "null anchor → empty");
   assert_(inventoryWalkback_(130, [], 26).length === 0, "no weeks → empty");
   Logger.log("✅ _test_inventoryWalkback_ passed");
+}
+
+/**
+ * The floor guards RATES, never COUNTS. A mean over one epic is not a mean, so
+ * Forecast shelves at n=1; but three items cleared IS three items cleared, and
+ * flooring a count would hide real work behind a "not measured" label.
+ *
+ * Also pins that the three new metrics carry NO target (spec D11): an unratified
+ * bar on a C-suite headline reads as agreed the moment it is on screen.
+ */
+function _test_sampleFloor_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_sampleFloor_: " + m); }
+
+  // Rates are floored.
+  assert_(sampleFloorFor_("forecast", 1).ok === false, "forecast at n=1 is below the floor");
+  assert_(sampleFloorFor_("forecast", 1).need === 5, "the floor states what it needs");
+  assert_(sampleFloorFor_("forecast", 5).ok === true, "n=5 clears the floor");
+  assert_(sampleFloorFor_("onTime", 19).ok === true, "onTime at n=19 clears it");
+  assert_(sampleFloorFor_("queueCover", 2).ok === false, "queueCover is a rate and IS floored");
+
+  // A floor is a THRESHOLD, not a decoration: it must actually bite between 1
+  // and the stated need, and release exactly at the need — not one below it,
+  // not one above it. Pins the boundary itself, which the n=1/n=5 pair above
+  // does not: those two alone would still pass with the floor set to 2, 3, or
+  // 4, or with `>=` swapped for `>`.
+  assert_(sampleFloorFor_("forecast", 4).ok === false, "n=4 still short of a floor of 5");
+  assert_(sampleFloorFor_("queueCover", 4).ok === false, "n=4 still short of queueCover's floor of 5");
+  assert_(sampleFloorFor_("queueCover", 5).ok === true, "n=5 exactly clears queueCover's floor");
+
+  // Counts are never floored, at any n — including zero.
+  ["netFlow", "arrived", "cleared", "inventory"].forEach(function (id) {
+    assert_(sampleFloorFor_(id, 0).ok === true, id + " is a count and must never be floored");
+    assert_(sampleFloorFor_(id, 1).ok === true, id + " at n=1 still publishes");
+    // n=0/n=1 alone can't tell "never floored" apart from "floored at a value
+    // that happens to coerce to 0" — sampleFloor:null coerces to 0 in a numeric
+    // `>=`, so (0 >= null) is already true even if the dedicated null-branch is
+    // deleted and every id falls through to the floored arithmetic. A NEGATIVE
+    // n is the one input where the two code paths disagree: the real
+    // never-floored branch ignores n entirely and always says ok, while the
+    // fallthrough computes (-1 >= 0) === false. This is what actually proves
+    // the branch exists rather than being accidentally unreachable.
+    assert_(sampleFloorFor_(id, -1).ok === true, id + " is never floored even for a garbage negative n");
+  });
+
+  // An unknown id must not silently publish — fail closed.
+  assert_(sampleFloorFor_("nonsense", 1).ok === false, "unknown metric fails closed");
+
+  // D11: no targets on the three new metrics.
+  var reg = METRIC_REGISTRY_.metrics;
+  ["queueCover", "netFlow", "clearedPerHead"].forEach(function (id) {
+    assert_(reg[id], id + " is in the registry");
+    assert_(reg[id].target === null, id + " must ship target: null — got " + reg[id].target);
+    assert_(reg[id].hasOwnProperty("target"), id + " must EXPLICITLY carry target: null, not merely omit it");
+  });
+  assert_(reg.queueCover.dir === "down", "lower weeks-to-clear is better");
+  assert_(reg.clearedPerHead.dir === "up", "more cleared per head is better");
+  assert_((reg.queueCover.deviations || []).length > 0,
+          "queueCover records its deviations (R&D scope, median basis, walkback limits)");
+  // The forward reference from inventoryWalkback_'s JSDoc (Task 5): both walkback
+  // limits — that nothing was deleted/moved out of scope, and that the anchor
+  // carries the export's updated>=-26w bound while the weekly deltas do not —
+  // must actually be recorded here, not just asserted to be non-empty above.
+  var devText = reg.queueCover.deviations.join(" ");
+  assert_(/nothing was deleted or moved out of scope/i.test(devText),
+          "queueCover deviations record the walkback's no-deletion assumption");
+  assert_(/updated>=-26w/i.test(devText),
+          "queueCover deviations record the anchor's updated>=-26w bound vs. the deltas' lack of it");
+  Logger.log("✅ _test_sampleFloor_ passed");
 }
 
 function _test_flowSnapshots_() {
