@@ -283,6 +283,9 @@
     // Flow-metrics feeds (v3.9.0) — outputs, auto-created like the two above.
     BUGS_SHEET:      "Jira Bugs",
     FLOW_SNAP_SHEET: "Flow Snapshots",
+    // Weekly created/resolved tally for the Executive queue metrics (v3.11.0).
+    // Counts only — no per-issue rows, so no consumer's denominators move.
+    ARRIVALS_SHEET:  "Jira Arrivals",
     ROSTER_SHEET: "Roster",
 
     // ── Executive reporting ────────────────────────────────────
@@ -1243,6 +1246,34 @@
   }
 
   /**
+   * Fetches issues RESOLVED inside a date window — the second half of the
+   * Executive net-flow subtraction (v3.11.0).
+   *
+   * No assignee clause, deliberately, and it must stay that way: both halves of
+   * "arrived minus cleared" have to describe the SAME population or the
+   * subtraction is meaningless. Person-keyed arrivals also under-report the
+   * newest weeks, because an issue filed unassigned only counts once somebody
+   * picks it up — so a growing queue would read as flat exactly when it matters.
+   */
+  function fetchResolvedInWindow_(fromStr, toStr) {
+    var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
+    var jql = [
+      'issuetype in (' + types + ')',
+      'project NOT IN (TEMPLATE)',
+      CONFIGJ.DONE_JQL,
+      'resolutiondate >= "' + fromStr + '"',
+      'resolutiondate <= "' + toStr + '"',
+      'summary !~ "to delete"'
+    ].join(" AND ") + ' ORDER BY resolutiondate DESC';
+    Logger.log("📋 Resolved-in-window JQL: " + jql);
+
+    var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS);
+    return all.filter(function (i) {
+      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+    });
+  }
+
+  /**
    * Fetches Bug issues CREATED inside the deep window — the flow-metrics
    * Bug Count feed (v3.9.0). A separate tab and a separate query on purpose:
    * Bug is not in EXEC_ISSUE_TYPES, and Bug rows inside Jira Raw would
@@ -2028,6 +2059,74 @@
                (Math.round(backlogHrs * 10) / 10) + "h across " + backlogN + " items.");
   }
 
+  /**
+   * Writes the Jira Arrivals tab: one row per ISO week with org-wide created and
+   * resolved counts, plus how many of the created are still unassigned.
+   *
+   * FULL REWRITE per run (unlike Flow Snapshots, which appends): these are
+   * counts over date fields, so they are recomputable from Jira at any time and
+   * a rewrite keeps the tab self-healing after a partial run.
+   *
+   * ── Week Start is a DATE, not a label ──
+   * jb_isoWeekLabel_ zero-pads ("2026.W07"); the dashboard's weekKeyFromDate_
+   * does not ("2026.W7"). That divergence is documented in v3.5.0. Writing a
+   * label here would silently fail to join for weeks 1-9, so this ships the
+   * week's Monday and lets the dashboard own week labelling — exactly as the
+   * Jira Bugs tab ships raw Created dates for parseBugRows_ to bucket.
+   */
+  function writeArrivals_(createdIssues, resolvedIssues) {
+    var HEADERS = ["Week Start", "Created", "Resolved", "Created Unassigned"];
+    var sheet = jb_getOrCreateSheet_(CONFIGJ.ARRIVALS_SHEET);
+
+    // Monday of the ISO week containing `d`, in UTC — same convention as
+    // jb_isoWeekLabel_ so a DST shift cannot push a Monday into the prior week.
+    function mondayUtc_(d) {
+      var u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      var dayNum = (u.getUTCDay() + 6) % 7;         // Mon=0 … Sun=6
+      u.setUTCDate(u.getUTCDate() - dayNum);
+      return u;
+    }
+    function keyOf_(d) { return mondayUtc_(d).toISOString().slice(0, 10); }
+
+    var byWeek = {};
+    function row_(k) {
+      if (!byWeek[k]) byWeek[k] = { created: 0, resolved: 0, createdUnassigned: 0 };
+      return byWeek[k];
+    }
+
+    (createdIssues || []).forEach(function (i) {
+      var raw = dig_(i, "fields.created");
+      if (!raw) return;
+      var d = new Date(raw);
+      if (isNaN(d.getTime())) return;
+      var r = row_(keyOf_(d));
+      r.created++;
+      if (!dig_(i, "fields.assignee.displayName")) r.createdUnassigned++;
+    });
+
+    (resolvedIssues || []).forEach(function (i) {
+      var raw = dig_(i, "fields.resolutiondate");
+      if (!raw) return;
+      var d = new Date(raw);
+      if (isNaN(d.getTime())) return;
+      row_(keyOf_(d)).resolved++;
+    });
+
+    var keys = Object.keys(byWeek).sort();
+    var out = [HEADERS];
+    keys.forEach(function (k) {
+      var r = byWeek[k];
+      out.push([new Date(k + "T00:00:00Z"), r.created, r.resolved, r.createdUnassigned]);
+    });
+
+    sheet.clearContents();
+    sheet.clearFormats();
+    sheet.getRange(1, 1, out.length, HEADERS.length).setValues(out);
+    styleHeader_(sheet.getRange(1, 1, 1, HEADERS.length));
+    sheet.getRange(2, 1, Math.max(1, out.length - 1), 1).setNumberFormat("yyyy-mm-dd");
+    Logger.log("📈 Jira Arrivals written: " + keys.length + " weeks");
+  }
+
   // ── SECTION: EXEC Q&A — Duplo + Lego signal levels ───────────
 
   /**
@@ -2612,6 +2711,12 @@
       Logger.log("📦 Fetching created issues for Exec window...");
       var createdIssues = fetchCreatedIssues_(weeks[0].fromStr, weeks[weeks.length-1].toStr);
       Logger.log("   Created issues fetched: " + createdIssues.length);
+
+      // Jira Arrivals (v3.11.0) — reuses the created fetch above and adds the
+      // resolved half over the SAME window, so net flow subtracts like for like.
+      Logger.log("📦 Fetching resolved issues for the Arrivals tally...");
+      var resolvedWindow = fetchResolvedInWindow_(weeks[0].fromStr, weeks[weeks.length - 1].toStr);
+      writeArrivals_(createdIssues, resolvedWindow);
 
       Logger.log("📝 Writing 'Exec Q&A' sheet...");
       writeExecQASheet_(weeklyData, weeks, createdIssues, activeWIP);
