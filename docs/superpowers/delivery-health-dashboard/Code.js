@@ -164,6 +164,12 @@ var CONFIG_DH = {
     quality:  { green: 5,  amber: 10 },   // % of delivered work needing rework
   },
 
+  // Minimum issues before a person's compliance signal is GRADED (Actions
+  // roster, spec 2026-08-05). Below it the cell shows the % ungraded/grey —
+  // one missing due date on one ticket must never render the same red as
+  // fifteen on forty. The roster's equivalent of STD_MIN_PERIODS.
+  SIGNAL_MIN_N: 4,
+
   // ── Coverage-gate policy (requirements v1.1 FR-2.2) ──
   // false = a metric below its registry coverage gate is still PUBLISHED, with
   // its confidence level and attribution % shown beside it.
@@ -1590,6 +1596,53 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
   return { resolved: out(res), open: out(open), keyCap: TYPE_HYG_MAX_KEYS_ };
 }
 
+/**
+ * Per-PERSON field fill over the same populations as the by-type matrix —
+ * the data behind the Actions roster (spec 2026-08-05 §6). Predicates are
+ * IDENTICAL to typeHygieneBuckets_ (due present · estSec>0 · spentSec>0) so
+ * the roster and the matrix can never disagree about the same record.
+ * Epics are counted (open epics missing estimates are the matrix's biggest
+ * lever, and the person who owns the epic owns the gap).
+ * Unattributed issues carry no person and are deliberately absent — they are
+ * the matrix's problem to expose, not a roster row.
+ *
+ * @param {Object} jira            readJiraRaw_ output (leaver-scoped)
+ * @param {Function} resolvePerson raw assignee → roster display name, or null
+ * @returns {{resolved:Array<{iso,person,n,due,est,logged}>,
+ *            open:Array<{person,n,due,est,logged}>}}
+ *          resolved is bucketed person × ISO week so the client can scope it
+ *          to the analysis period; open is a snapshot (no iso), mirroring
+ *          flowOpenBuckets.
+ */
+function personHygieneBuckets_(jira, resolvePerson) {
+  var res = {}, open = {};
+  function row(map, k, person) {
+    if (!map[k]) map[k] = { iso: "", person: person, n: 0, due: 0, est: 0, logged: 0 };
+    return map[k];
+  }
+  function tally(r, it) {
+    r.n++;
+    if (it.due && !isNaN(it.due.getTime())) r.due++;
+    if ((Number(it.estSec) || 0) > 0) r.est++;
+    if ((Number(it.spentSec) || 0) > 0) r.logged++;
+  }
+  (jira.issues || []).forEach(function (it) {
+    var dn = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!dn) return;
+    if (it.resolved && !isNaN(it.resolved.getTime())) {
+      var r = row(res, weekKeyFromDate_(it.resolved) + "|" + dn, dn);
+      r.iso = weekKeyFromDate_(it.resolved);
+      tally(r, it);
+    } else if (typeHygOpen_(it)) {
+      tally(row(open, dn, dn), it);
+    }
+    // Closed without a resolution date: in NEITHER population — same rule and
+    // same reason as typeHygieneBuckets_.
+  });
+  function out(map) { return Object.keys(map).sort().map(function (k) { return map[k]; }); }
+  return { resolved: out(res), open: out(open) };
+}
+
 /** Median of a numeric array; null when empty. Backs the forecast secondary
     form (median absolute % variance) over the active filter's selection. */
 function medianOf_(vals) {
@@ -2788,6 +2841,9 @@ function assembleModel_(inputs, win) {
     ? throughputBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
   var flowOpen = inputs.jira.available
     ? flowOpenBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0, uncategorized: 0 };
+  var personHyg = inputs.jira.available
+    ? personHygieneBuckets_(jiraScoped, resolvePerson)
+    : { resolved: [], open: [] };
   // PM vocabulary comes from the Tempo project rows, which carry whoever led the
   // project at the time — including people who have since left. Gate it on the
   // roster so the filter and the PM comparison chart describe the people who can
@@ -2861,6 +2917,7 @@ function assembleModel_(inputs, win) {
       jiraExportStaleH: CONFIG_DH.JIRA_EXPORT_STALE_H,
       thresholds: { green: CONFIG_DH.TINT_GREEN, amber: CONFIG_DH.TINT_AMBER },
       targets: CONFIG_DH.TARGETS,
+      signalMinN: CONFIG_DH.SIGNAL_MIN_N,
       // No "Global" chip (removed 2026-08-05, user report "Global shows 0 for
       // the whole data"): region chips filter PEOPLE (every metric bucket is
       // keyed by person, and person region is geographic-only since the
@@ -2932,6 +2989,9 @@ function assembleModel_(inputs, win) {
     // Field fill per issue type, resolved + open. The gaps table says how much
     // is missing; this says which type to go and fix.
     typeHygiene: typeHyg,
+    // Per-person field fill — the Actions roster (spec 2026-08-05). Same
+    // predicates as typeHygiene, person grain, unattributed absent by design.
+    personHygiene: personHyg,
   };
 }
 
@@ -3032,7 +3092,12 @@ function assembleModel_(inputs, win) {
 //      bugWeekly + meta.flowSnapshots/bugsAvailable/flowSnapshotsAvailable.
 //      A cached older model has none of these; the Flow tab would render
 //      every tile as absent, so force one clean rebuild.
-var DH_SCHEMA_VER_ = 21;
+// v22: TWO-TAB CONSOLIDATION (spec 2026-08-05) — new `personHygiene`
+//      (per-person field fill, resolved person×week + open snapshot) and
+//      meta.signalMinN behind the Actions roster. A cached v21 model has
+//      neither; the roster would render its "Not in this payload" empty state
+//      for a whole TTL, so it must miss cleanly.
+var DH_SCHEMA_VER_ = 22;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -4159,6 +4224,71 @@ function _test_typeHygieneBuckets_() {
   assert_(typeHygieneBuckets_({ issues: [] }, resolve, "dictionary").open.length === 0,
           "empty feed → no rows");
   Logger.log("✅ _test_typeHygieneBuckets_ passed");
+}
+
+function _test_personHygieneBuckets_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_personHygieneBuckets_: " + m); }
+  var resolve = function (raw) {
+    if (/maria/i.test(raw || "")) return "Maria Alvarez";
+    if (/ken/i.test(raw || "")) return "Ken Lim";
+    return null;                       // anyone else is unattributed
+  };
+  var d = function (s) { return new Date(s); };
+  var jira = { issues: [
+    // Resolved, fully filled → Maria resolved bucket W31: n1 due1 est1 logged1
+    { assignee: "Alvarez, Maria", resolved: d("2026-07-29"), due: d("2026-07-30"),
+      estSec: 3600, spentSec: 1800, status: "Done", typeLabel: "Story", key: "T-1" },
+    // Resolved, all three missing → Maria resolved W31: n2, counts unchanged
+    { assignee: "Maria Alvarez", resolved: d("2026-07-30"), due: null,
+      estSec: 0, spentSec: 0, status: "Done", typeLabel: "Story", key: "T-2" },
+    // OPEN, missing due + logged, has estimate → Maria open: n1 est1
+    { assignee: "Maria Alvarez", resolved: null, due: null,
+      estSec: 7200, spentSec: 0, status: "In Progress", typeLabel: "Task", key: "T-3" },
+    // Open EPIC → epics are counted (matrix parity — open epics missing
+    // estimates are the biggest lever)
+    { assignee: "Ken Lim", resolved: null, due: d("2026-09-01"),
+      estSec: 0, spentSec: 0, status: "To Do", typeLabel: "Epic", isEpic: true, key: "T-4" },
+    // Unattributed → in NO person bucket
+    { assignee: "Stranger Danger", resolved: null, due: null,
+      estSec: 0, spentSec: 0, status: "To Do", typeLabel: "Task", key: "T-5" },
+    // ⚠️ UNASSIGNED sentinel → resolver gets it, returns null → excluded
+    { assignee: "⚠️ UNASSIGNED", resolved: null, due: null,
+      estSec: 0, spentSec: 0, status: "To Do", typeLabel: "Task", key: "T-6" },
+    // Closed WITHOUT a resolution date → in NEITHER population (typeHygOpen_ rule)
+    { assignee: "Ken Lim", resolved: null, due: null,
+      estSec: 0, spentSec: 0, status: "Closed", typeLabel: "Task", key: "T-7" },
+  ] };
+  var ph = personHygieneBuckets_(jira, resolve);
+
+  var mOpen = ph.open.filter(function (b) { return b.person === "Maria Alvarez"; })[0];
+  assert_(mOpen && mOpen.n === 1 && mOpen.due === 0 && mOpen.est === 1 && mOpen.logged === 0,
+          "Maria open bucket counts");
+  var kOpen = ph.open.filter(function (b) { return b.person === "Ken Lim"; })[0];
+  assert_(kOpen && kOpen.n === 1 && kOpen.due === 1 && kOpen.est === 0,
+          "open epic counted for Ken (closed-no-resolution excluded)");
+  assert_(ph.open.length === 2, "exactly two open persons — unattributed excluded");
+
+  var mRes = ph.resolved.filter(function (b) { return b.person === "Maria Alvarez"; });
+  assert_(mRes.length === 1 && mRes[0].iso === "2026.W31",
+          "resolved bucketed by ISO week (both fell in W31)");
+  assert_(mRes[0].n === 2 && mRes[0].due === 1 && mRes[0].est === 1 && mRes[0].logged === 1,
+          "resolved counts: 2 issues, one filled");
+
+  // PREDICATE PARITY with the matrix: the same fixture through
+  // typeHygieneBuckets_ must count the same fills — the roster and the matrix
+  // must never disagree about the same record. The matrix counts EVERY row
+  // (attributed or not): its open population is the roster's 2 PLUS the
+  // unattributed one and the ⚠️ UNASSIGNED sentinel = 4.
+  var th = typeHygieneBuckets_(jira, resolve, "all");
+  function sum_(rows, k) { return rows.reduce(function (s, r) { return s + (r[k] || 0); }, 0); }
+  assert_(sum_(th.open, "n") === 4, "matrix open population = 4 (incl. unattributed + sentinel)");
+  assert_(sum_(ph.open, "n") === 2, "roster open population = 2 (attributed only)");
+  // Only Maria's open Task carries estSec>0; nothing open carries spentSec>0;
+  // only Ken's open Epic carries a due date. Both passes agree on each.
+  assert_(sum_(th.open, "est") === 1 && sum_(ph.open, "est") === 1, "est predicate parity");
+  assert_(sum_(th.open, "time") === 0 && sum_(ph.open, "logged") === 0, "logged predicate parity");
+  assert_(sum_(th.open, "due") === 1 && sum_(ph.open, "due") === 1, "due predicate parity");
+  Logger.log("✅ _test_personHygieneBuckets_ passed");
 }
 
 /**
