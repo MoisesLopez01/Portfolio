@@ -1421,7 +1421,12 @@ function bucketsFor_(buckets, isos) {
     // nAll) — an intern's late milestone or estimate miss must never move a
     // published number, in either direction (user decision 2026-08-04).
     if (person.isIntern) return;
-    out.n += b.n; out.onTime += (b.onTime || 0);
+    // ||0: a throughput bucket (Code.js throughputBuckets_) never carries a
+    // `.n` field — only nAll/nEst/estHrs — so this was reading undefined and
+    // turning the whole accumulator NaN for that metric, which
+    // metricConfidence_ then silently read as no-data (Task 10 follow-up).
+    // Every sibling field on this line already defaults to 0; this one didn't.
+    out.n += (b.n || 0); out.onTime += (b.onTime || 0);
     out.nAll += (b.nAll || b.n || 0); // stale cache pre-nAll: coverage = n
     // Forecast-only fields (schema v8) — absent on an older bucket, so default
     // to 0/[]: the variance line just won't render rather than reading NaN.
@@ -2850,11 +2855,17 @@ var METRICS_ = {
       var b = bucketsFor_(MODEL.throughputBuckets || [], isos);
       return b.nAll > 0 ? b.estHrs : null;
     },
+    // Coverage: nEst/nAll — throughputBuckets_ (Code.js) never populates a `.n`
+    // field on a throughput bucket (only nAll/nEst/estHrs), so `b.n` here reads
+    // undefined and bucketsFor_'s `out.n += b.n` (no ||0 fallback) turns it
+    // into NaN — metricConfidence_ then reads NaN as no-data and the operating
+    // band/verdict silently never draw. Same formula renderFlow_'s throughput
+    // tile already uses (Dashboard.html ~2513) — one definition, not two.
     coverage: function (isos) {
       var b = bucketsFor_(MODEL.throughputBuckets || [], isos);
-      return b.nAll > 0 ? b.n / b.nAll : null;
+      return b.nAll > 0 ? b.nEst / b.nAll : null;
     },
-    n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).n; },
+    n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).nEst; },
   },
 };
 

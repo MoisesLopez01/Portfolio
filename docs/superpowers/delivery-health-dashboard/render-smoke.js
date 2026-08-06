@@ -2309,7 +2309,7 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // median([10,15]) = 12.5 → the exact "12.5d" the task brief's self-review
   // asks for; estHrs 412 → "412h" likewise.
   M.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [10, 15] }];
-  M.throughputBuckets = [{ iso: W, person: "Ana Perez", nAll: 2, nEst: 2, estHrs: 412 }];
+  M.throughputBuckets = [{ iso: W, person: "Ana Perez", nAll: 3, nEst: 2, estHrs: 412 }];
   M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
     target: null, coverageGate: 0.9,
     definition: "Median calendar days from Created to Resolution Date." };
@@ -2359,6 +2359,22 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(!/>25%</.test(cmpThr) && !/>50%</.test(cmpThr),
           "…and the same percent-axis fallback stays absent for throughput");
 
+  // ── Reviewer regression pin: throughputBuckets_ (Code.js) never populates a
+  // `.n` field — only nAll/nEst/estHrs — so coverage()/n() reading `b.n` read
+  // undefined, and bucketsFor_'s `out.n += b.n` (no ||0 fallback at the time)
+  // turned the accumulator NaN. metricConfidence_ treats NaN as no-data
+  // (level: "none", publish: false), so the operating band/verdict silently
+  // never drew — headline value was unaffected, which is why the first pass
+  // of this test suite missed it. Assert directly against METRICS_ so a
+  // future change can't reintroduce `.n` without this failing loudly.
+  var thrCov = C.METRICS_.throughput.coverage([W]);
+  assert_(typeof thrCov === "number" && isFinite(thrCov),
+          "throughput coverage is a real finite number, never NaN (fixture nEst 2 / nAll 3)");
+  assert_(Math.abs(thrCov - 2 / 3) < 1e-9,
+          "…and equals nEst/nAll exactly — same formula renderFlow_'s throughput tile uses");
+  assert_(C.METRICS_.throughput.n([W]) === 2,
+          "n() reports nEst (the estimated-and-thus-measurable count), not the nonexistent `.n` field");
+
   // ── Existing four metrics render byte-identically (unit is undefined for
   //    them, so hbarChart_'s new branch must be a no-op on their path) ──────
   C.setState("metric", "util");
@@ -2391,6 +2407,44 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
           "…and never renders a flow-metric label, even with a flow metric selected elsewhere on the page");
 
   // Teardown (sibling discipline): restore the standard fixture and state.
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
+  C.switchView_("exec");
+  C.renderAll_();
+})();
+
+// ── TASK 10 FOLLOW-UP — throughput's operating band actually DRAWS with real
+// coverage (reviewer finding) ───────────────────────────────────────────────
+// The unit-level coverage()/n() assertion above pins the number; this pins
+// the end of the chain it feeds — with >= STD_MIN_PERIODS (5) of real,
+// non-NaN coverage, metricConfidence_ must not return level:"none", so
+// applyGatePolicy_ publishes and stdFor_ draws the shaded operating-range
+// rect. Before the fix, coverage was NaN every period → conf.level stayed
+// "none" → the band was silently absent with no error anywhere.
+(function () {
+  var M = histModel({});
+  // A flat 40h/week series, comfortably under the [0,100] std clamp
+  // (standardRate_ clips hi at 100 — a separate, pre-existing quirk for any
+  // metric whose values run past 100, out of scope for this fix) so the band
+  // itself is unambiguous rather than degenerate.
+  M.throughputBuckets = HIST.map(function (iso) {
+    return { iso: iso, person: "Ana Perez", nAll: 3, nEst: 2, estHrs: 40 };
+  });
+  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
+    target: null, coverageGate: 0.6 };
+  fresh(M);
+  C.STATE.compare = "region";
+  C.setState("metric", "throughput");
+  C.renderAll_();
+  var cmp = els.comparePanel.innerHTML;
+  assert_(cmp.indexOf('fill="var(--c-ref)"') !== -1,
+          "with >= STD_MIN_PERIODS of real (non-NaN) coverage, throughput's operating-range " +
+          "band DRAWS — before the fix this was silently absent (NaN coverage → conf.level 'none')");
+  assert_(cmp.indexOf("normal operating range") !== -1 || cmp.indexOf("below the normal operating range") !== -1,
+          "…and the verdict line's operating-range language is present, not silently dropped");
+
+  // Teardown.
   C.setState("metric", "onTime");
   C.STATE.compare = "region";
   fresh(model({}));
