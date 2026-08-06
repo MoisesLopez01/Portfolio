@@ -1,7 +1,7 @@
 # Delivery Health — Two-Tab Consolidation Design
 
 **Date:** 2026-08-05 (2026.W32)
-**Status:** Approved in brainstorming session (visual companion + terminal Q&A)
+**Status:** Approved in brainstorming session (visual companion + terminal Q&A); user review pass applied 2026-08-05 (small-n guard, Hours eligibility, scope tags, epic spine deferred, tab renamed 🎯 Actions)
 **Files affected:** `docs/superpowers/delivery-health-dashboard/Code.js`, `Dashboard.html`, `render-smoke.js`, `README.md`
 **Supersedes as UI surfaces:** 🌊 Flow tab (spec 2026-08-05-flow-metrics), 👥 People tab, 🧪 Data Hygiene tab. The metrics and data passes behind them all survive — only the tab homes change.
 
@@ -15,28 +15,29 @@ The dashboard has grown to six tabs (📊 Executive · 🎯 Headroom · 🌊 Flo
 
 | Decision | Choice |
 |---|---|
-| Target structure | **Option C**: 2 content tabs — rebuilt 📊 Executive one-pager + 🎯 Accountability — plus admin-only 🔒 Access |
+| Target structure | **Option C**: 2 content tabs — rebuilt 📊 Executive one-pager + 🎯 Actions — plus admin-only 🔒 Access |
 | Theme | **Option A**: ServiceRocket cream stays the default; existing dark toggle untouched; modernity via motion + hierarchy |
-| Executive blocks | KPI strip + **1** Comparison chart + **3** People-signals block + **5** Data-trust strip, in that order. Secondary flow row and epic spine table rejected |
+| Executive blocks | KPI strip + **1** Comparison chart + **3** People-signals block + **5** Data-trust strip, in that order. Secondary flow row rejected; epic spine not included (reclassified **deferred** in review — §10) |
 | Flow metrics kept | **All five live** (Lead Time, Throughput, Backlog, WIP, Bug Count) join the KPI strip as a compact tier. Absent placeholders (Cycle Time, Flow Efficiency) stop rendering |
 | Person-signal population | **Shared Open ↔ Resolved toggle** with the 🧬 matrix (one chip strip scopes both; Open default) |
-| Surviving tools | CSV + PNG exports, hygiene gaps queue, per-person drill-down — all move to Accountability |
-| Person surface | **Full-roster RAG signal table** (every active employee, sortable columns) replaces the sample's Celebrate/Coach panels; lives on Accountability; Executive shows a counts-only summary that deep-links to it |
+| Surviving tools | CSV + PNG exports, hygiene gaps queue, per-person drill-down — all move to the Actions tab |
+| Person surface | **Full-roster RAG signal table** (every active employee, sortable columns) replaces the sample's Celebrate/Coach panels; lives on the Actions tab; Executive shows a counts-only summary that deep-links to it |
 | Added late | **Billable / non-billable hours per person** — simple stacked-bar column in the roster |
+| Review pass (2026-08-05) | Small-n grading guard; Hours column reuses opportunity-table eligibility; epic spine reclassified **deferred**, not rejected; scope tags on every tile; tab renamed 🎯 **Actions** (was "Accountability" — accurate but punitive as a first word, and it framed the matrix/gaps queue — which are about fields and requirements — under a people-blame banner) |
 
 ## 3. Information architecture
 
 New `VIEWS` array (Dashboard.html):
 
 ```
-📊 Executive      id "exec"           roles: null              (open to every resolved role)
-🎯 Accountability id "accountability" roles: ["admin","viewer"] (inherits today's Headroom gate)
-🔒 Access         id "access"         roles: ["admin"]
+📊 Executive id "exec"    roles: null               (open to every resolved role)
+🎯 Actions   id "actions" roles: ["admin","viewer"] (inherits today's Headroom gate)
+🔒 Access    id "access"  roles: ["admin"]
 ```
 
-Removed: `flow`, `people`, `hygiene`, and the old `trend` id (its content moves into Accountability). Every existing deep link re-routes:
+Removed: `flow`, `people`, `hygiene`, and the old `trend` id (its content moves into the Actions tab). Every existing deep link re-routes:
 
-- `showHygiene_()` (linked from suppressed KPI cards) → `switchView_("accountability")` + scroll to the gaps queue.
+- `showHygiene_()` (linked from suppressed KPI cards) → `switchView_("actions")` + scroll to the gaps queue.
 - The Headroom "What's missing" link → same.
 - Role gating stays enforced inside `switchView_` (forbidden id → `exec`), exactly as today.
 
@@ -61,9 +62,9 @@ Unchanged mechanics (`renderCompare_`, chip selector, dimension picker). Two cha
 ### 4.3 People signals summary (margin-gated)
 
 - Rendered only when `canSeeMargin_()` — open-access guests never see it; the Executive tab stays safe to project.
-- Content: `🟢 N on track · 🟡 N watch · 🔴 N need action · Xh recoverable → open the roster`. Counts come from the same per-person grading the Accountability roster uses (§5.2) under the **current filters**; recoverable hours from the existing opportunity math.
-- Clicking it deep-links: `switchView_("accountability")` with the roster pre-sorted "biggest opportunity first".
-- **Counts only, never names, on this tab** — consistent with the standing "no names in widely-read surfaces" rule; the named table lives behind the Accountability gate.
+- Content: `🟢 N on track · 🟡 N watch · 🔴 N need action · Xh recoverable → open the roster`. Counts come from the same per-person grading the Actions roster uses (§5.2) under the **current filters**; recoverable hours from the existing opportunity math.
+- Clicking it deep-links: `switchView_("actions")` with the roster pre-sorted "biggest opportunity first".
+- **Counts only, never names, on this tab** — consistent with the standing "no names in widely-read surfaces" rule; the named table lives behind the Actions-tab gate.
 
 ### 4.4 Data-trust strip
 
@@ -78,7 +79,19 @@ Four small fill-rate tiles, org-wide (deliberately unfiltered, like the old Hygi
 
 Each tile: fill % vs gate, coloured horizontal bar (`--c-good`/`--c-warn`/`--c-bad` grading same as matrix cells), one-line "why it matters" from the registry. This strip is the executive's replacement for the Data Hygiene tab; the drill-downs live one tab over.
 
-## 5. 🎯 Accountability tab (top-down, four blocks + exports)
+### 4.5 Scope tags (review pass 2026-08-05)
+
+Three time-scopes coexist on this tab — hero tier is period + filtered, Backlog/WIP are snapshot with the `flowUnfiltered_()` trend rule, the trust strip is deliberately org-wide and unfiltered. Each rule is individually correct, but the tab is built to be projected in a room, and "why didn't the trust strip move when I filtered to SEA?" is an inevitable question. Every tile therefore carries a **micro scope tag** in its corner (uppercase, muted, `--muted` colour, tooltip with the full rule):
+
+| Tag | Meaning | Where |
+|---|---|---|
+| `PERIOD` | analysis period, follows filters | hero tier, Lead Time, Throughput, Bug Count, comparison chart |
+| `SNAP` | snapshot at last export, follows filters, no period | Backlog, WIP, signals summary (Open scope) |
+| `ORG` | whole org, ignores filters and period | data-trust strip |
+
+The same tag vocabulary is reused on the Actions roster: signal column headers tag `SNAP`/`PERIOD` with the Open ↔ Resolved toggle, and the Hours header always tags `PERIOD` (§5.2).
+
+## 5. 🎯 Actions tab (top-down, four blocks + exports)
 
 Header row: CSV + PNG buttons (top-right), re-pointed at the new tables. CSV = the signals roster (one row per person, all signal values + hours split); the old person-per-period grid CSV retires with the grid.
 
@@ -99,10 +112,12 @@ One row per **active employee in the dashboard population** (the same tracking-m
 | Due date | RAG signal | share of the person's issues carrying a due date — **same predicate as the 🧬 matrix's `due` field**, graded against the same gate |
 | Estimate | RAG signal | share carrying an original estimate — matrix `est` predicate + gate |
 | Logged | RAG signal | share carrying logged time (Time Spent > 0) — matrix `time` predicate + gate |
-| Hours | info (no RAG) | compact stacked bar: billable / non-billable / idle capacity, from the existing per-person Tempo×NetSuite split (the numbers the old People-grid workload bars drew). **Always scoped to the analysis period**, regardless of the Open ↔ Resolved toggle (worklogs are period-shaped; a backlog snapshot has no hours). Exact hours in tooltip + CSV. Sorts by billable share |
+| Hours | info (no RAG) | compact stacked bar: billable / non-billable / idle capacity, from the existing per-person Tempo×NetSuite split (the numbers the old People-grid workload bars drew). **Always scoped to the analysis period**, regardless of the Open ↔ Resolved toggle (worklogs are period-shaped; a backlog snapshot has no hours) — the column header carries a `period` scope tag (§4.5) because it sits beside snapshot-scoped signal columns. **Eligibility reuses the opportunity table's logic** (review pass 2026-08-05): for people `oppRows_` marks ramping/ineligible, the idle segment is not drawn (the bar shows billable/non-billable only, with a "ramping" chip) — a week-6 hire's or a manager's raw idle segment is exactly the false signal the old Headroom list was distrusted for, and the two blocks share a tab so they must not contradict each other. Billable-share sort treats ineligible rows as null (always sorted last). Exact hours in tooltip + CSV |
 | Overall | RAG signal | worst of the three RAG signals ("a chain is as compliant as its weakest field"); "—" cells are ignored; all-"—" → overall "—" |
 
 **Cell grammar:** RAG dot + person's own fill % + offending count (e.g. `🔴 33% · 4 missing`). Grading thresholds are the matrix's: ✔ at/above the field's gate · ▲ under 10 pts below · ✖ 10+ pts below. Zero issues in the selected population → `—` (ungraded), never red: no data is not a failure.
+
+**Small-n guard (review pass 2026-08-05):** the matrix gates were calibrated for aggregates; at n = 1–3 a single missing field renders a statistically meaningless red at full visual weight (`🔴 0% · 1 missing`). Below `CONFIG_DH.SIGNAL_MIN_N` (**4**, a named config constant like `STD_MIN_PERIODS`) the cell is rendered **grey/ungraded with the fill % and offending count still shown** and a "below minimum n" tooltip. Ungraded-by-small-n cells do not feed the Overall column, and rows whose grading is entirely small-n are **excluded from the Executive summary's 🟢/🟡/🔴 counts** — the summary's tooltip states "N people ungraded (fewer than 4 issues)" so they are visible without inflating the reds. This is the roster's equivalent of the opportunity table's `STD_MIN_PERIODS` guard.
 
 **Population toggle:** the roster sits under the **same Open ↔ Resolved chip strip as the 🧬 matrix** (`STATE.typePop`), placed once above both. Open (default) = actionable backlog snapshot, ignores the period picker (same rationale and ⓘ note as the matrix). Resolved = the analysis window, explains the period's numbers.
 
@@ -118,7 +133,7 @@ One row per **active employee in the dashboard population** (the same tracking-m
 
 ### 5.4 Gaps queue
 
-The Data Hygiene work queue (gap → owning requirement ID → committed week) moved as-is beneath the matrix. Keeps "requirements, not people" naming. The old `viewHygiene` pane and tab are deleted; `renderHygiene_`'s pieces are refactored into the Accountability renderer rather than kept as a hidden view.
+The Data Hygiene work queue (gap → owning requirement ID → committed week) moved as-is beneath the matrix. Keeps "requirements, not people" naming. The old `viewHygiene` pane and tab are deleted; `renderHygiene_`'s pieces are refactored into the Actions renderer rather than kept as a hidden view.
 
 ## 6. Backend: `personHygiene_` rollup (approach A — server-side)
 
@@ -154,9 +169,9 @@ Cream default, dark toggle untouched, all existing tokens kept. Modernization wi
 
 ## 8. Testing
 
-- **`render-smoke.js`:** tab count 6 → 3; new assertions — signals roster renders with RAG cells and sorts, Executive summary counts match roster grading, trust strip renders four tiles with gates, flow compact tier renders five tiles and no absent placeholders, retired panes (`viewFlow`, `viewPeople`, `viewHygiene`) absent, deep links land on Accountability, reduced-motion class present.
+- **`render-smoke.js`:** tab count 6 → 3; new assertions — signals roster renders with RAG cells and sorts, Executive summary counts match roster grading, **small-n rows render grey and are excluded from summary counts (a 1-issue person with a missing due date must not be 🔴)**, **Hours bar suppresses idle for a ramping fixture person and sorts them last**, scope tags present on hero/flow/trust tiles and roster headers, trust strip renders four tiles with gates, flow compact tier renders five tiles and no absent placeholders, retired panes (`viewFlow`, `viewPeople`, `viewHygiene`) absent, deep links land on the Actions tab, reduced-motion class present.
 - **Code.js unit test `_test_personHygiene_`** alongside `_test_typeHygieneBuckets_`: attribution via resolver, open/resolved split, predicate parity with the matrix on a shared fixture, zero-issue person absent from map, epic rows counted, unattributed issues excluded.
-- Manual QA: guest (open-access) sees no Utilization/Forecast tiles, no signals summary, no Accountability tab; admin sees all; dark-mode spot check on the new surfaces.
+- Manual QA: guest (open-access) sees no Utilization/Forecast tiles, no signals summary, no Actions tab; admin sees all; dark-mode spot check on the new surfaces.
 
 ## 9. Deploy (order matters)
 
@@ -170,7 +185,8 @@ No exporter deploy, no export re-run, no Region/Team dependency change (still bl
 ## 10. Out of scope
 
 - Dark-first "mission control" theme (user: "we already have the dark theme to change it later").
-- Epic spine table and secondary flow row (rejected block options).
+- Secondary flow row (rejected block option — its metrics live in the compact KPI tier instead).
+- **Epic spine table — deferred, not rejected** (review pass 2026-08-05): the projected-slip read ("what will slip", remaining estimate ÷ trailing burn vs due week) is the highest-leverage thing this dashboard doesn't do, and the forward-looking audit was an explicit earlier requirement. It is deferred **until estimate coverage reaches its gate** — the projection math is meaningless below it (estimate coverage is at 38% vs a 90% gate today), and shipping it now would publish confident-looking dates built on one-third coverage. The roster drill-down's due-week + remaining-hours is raw material for it, not a substitute. Revisit when the trust strip shows Estimate coverage at gate.
 - Celebrate/Coach panels (superseded by the full-roster signals table).
 - The sample's level-rate × tenure-ramp norm engine — the existing cohort-norm baseline stays.
 - New signal columns beyond Due/Estimate/Logged/Hours (the registry makes them cheap later; none ship now).
