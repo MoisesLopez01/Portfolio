@@ -4496,6 +4496,16 @@ function _test_clearRateMedian_() {
   var withGap = [300, null, 310, 295, 305, 300];
   assert_(clearRateMedian_(withGap, 8) === 300,
           "null weeks dropped, not treated as 0 — got " + clearRateMedian_(withGap, 8));
+
+  // THE CRUX: the minimum is checked AFTER the nulls are dropped. Eight weeks
+  // of which four are gaps leaves four usable points — below the floor — so this
+  // must refuse to publish. A check against the pre-filter count would see 8, sail
+  // past the floor, and return a median over four points instead. This assertion is
+  // the only one that tells those two implementations apart.
+  var halfGaps = [300, null, 290, null, 310, null, 295, null];
+  assert_(clearRateMedian_(halfGaps, 8) === null,
+          "8 weeks with 4 gaps → null (4 usable < 5), not a median over the survivors — got " +
+          clearRateMedian_(halfGaps, 8));
   Logger.log("✅ _test_clearRateMedian_ passed");
 }
 
