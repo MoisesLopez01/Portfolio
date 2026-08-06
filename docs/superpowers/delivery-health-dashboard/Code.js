@@ -1617,6 +1617,16 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
                  // the person roster: measure what you can grade, grade what you
                  // measured. On the resolved half timeN === n by construction.
                  timeN: 0,
+                 // `attrN` — attr's OWN denominator, exactly like timeN below.
+                 // A record with no assignee has no assignee to fail to join: it
+                 // belongs in neither half. Dividing attr by n instead scores an
+                 // ABSENT assignee as a FAILED roster join, which is a different
+                 // fact and one the `assigned` column already reports. That
+                 // conflation is harmless only while unassigned rows are absent
+                 // from Jira Raw; once they are exported it drops a solved,
+                 // retired check to ~44% and puts a false failure on three
+                 // surfaces at once (spec §4.6, D12).
+                 attrN: 0,
                  keys: {}, keysCapped: {} };
     }
     return map[k];
@@ -1645,8 +1655,12 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
     // untouched backlog as perfectly tracked.
     var wantTime = timeExpected_(it, isOpen);
     if (wantTime) r.timeN++;
+    // attr is only ANSWERABLE where an assignee exists — same tristate shape as
+    // timeN above: measure what you can grade, grade what you measured.
+    if (hasAssignee) r.attrN++;
     TYPE_HYG_FIELDS_.forEach(function (f) {
       if (f === "time" && !wantTime) return;
+      if (f === "attr" && !hasAssignee) return;
       if (got[f]) { r[f]++; return; }
       // MISSING records are what we collect — the queue, not the healthy ones.
       if (!r.keys[f]) r.keys[f] = [];
@@ -4418,6 +4432,53 @@ function _test_gateOverrides_() {
   assert_(registryWithOverrides_({ onTime: { gate: 0 } }).metrics.onTime.coverageGate === 0,
           "0 is a legitimate gate (ungated), not a falsy no-op");
   Logger.log("✅ _test_gateOverrides_ passed");
+}
+
+/**
+ * attr (roster join) must divide by records that HAVE an assignee, not by every
+ * record. An unassigned issue has no assignee to fail to join — that gap is what
+ * the `assigned` column measures. Scoring it as a join failure is how adding
+ * unassigned rows to the feed (Jira Backlog.js v3.11.0) would un-retire a solved
+ * check and report ~44% where the truth is 100%.
+ */
+function _test_attrDenominator_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_attrDenominator_: " + m); }
+  var who = function (raw) {
+    var n = String(raw || "").toLowerCase().trim();
+    return n === "maria" ? "Maria" : null;   // "ghost" and the sentinel resolve to nobody
+  };
+  var issues = [
+    // open, assigned, resolves → attrN 1, attr 1
+    { key: "A-1", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
+      statusCategory: "To Do", assignee: "maria", estSec: 3600, spentSec: 0, due: new Date() },
+    // open, UNASSIGNED sentinel → in NEITHER half of attr
+    { key: "A-2", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
+      statusCategory: "To Do", assignee: "⚠️ UNASSIGNED", estSec: 0, spentSec: 0, due: null },
+    // open, assigned but does NOT resolve → attrN 1, attr 0 (a real join failure)
+    { key: "A-3", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
+      statusCategory: "To Do", assignee: "ghost", estSec: 0, spentSec: 0, due: null },
+  ];
+  var r = typeHygieneBuckets_({ issues: issues }, who, "delivery");
+  var row = r.open[0];
+  assert_(row, "one open row for the Story type");
+  assert_(row.n === 3, "n counts every record — got " + row.n);
+  assert_(row.attrN === 2, "attrN counts only records WITH an assignee — got " + row.attrN);
+  assert_(row.attr === 1, "attr counts records whose assignee resolves — got " + row.attr);
+  assert_(row.assigned === 2, "assigned counts records with an assignee (A-1 maria + A-3 ghost, but not A-2 UNASSIGNED) — got " + row.assigned);
+
+  // The regression this exists to prevent: an all-unassigned population must not
+  // read as 0% roster join. attrN 0 means "nothing to grade", never "all failed".
+  var allBlank = typeHygieneBuckets_({ issues: [issues[1]] }, who, "delivery");
+  assert_(allBlank.open[0].attrN === 0, "all-unassigned → attrN 0");
+  assert_(allBlank.open[0].attr === 0, "all-unassigned → attr 0 (over a 0 denominator)");
+
+  // And a missing key in the queue: an unassigned record is not an attr miss, so
+  // it must not appear in the attr work queue.
+  assert_(!(row.keys.attr || []).length || (row.keys.attr || []).indexOf("A-2") === -1,
+          "the unassigned record must not be queued as an attr gap");
+  assert_((row.keys.attr || []).indexOf("A-3") !== -1,
+          "the genuine join failure IS queued as an attr gap");
+  Logger.log("✅ _test_attrDenominator_ passed");
 }
 
 /** Confidence gate + suppression (FR-2.1/2.2/2.6). */

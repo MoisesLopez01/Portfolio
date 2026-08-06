@@ -5071,7 +5071,10 @@ var TYPE_FIELDS_ = [
     feeds: "On-Time",  needs: "gatesOnTime" },
   { k: "assigned", label: "Assignee",   gate: 0.95,
     feeds: "all four cards", needs: null },
-  { k: "attr",     label: "→ roster",   gate: 0.95,
+  // `denom: "attrN"` — graded over records that HAVE an assignee only. Without
+  // it, an unassigned record reads as a roster-join failure, which un-retires
+  // this column the moment unassigned work enters the export (spec §4.6, D12).
+  { k: "attr",     label: "→ roster",   gate: 0.95, denom: "attrN",
     feeds: "all four cards", needs: null, retireWhenFull: true },
   { k: "est",      label: "Estimate",   gateOf: "forecast",
     feeds: "Forecast", needs: "gatesForecast" },

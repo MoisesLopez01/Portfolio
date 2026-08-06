@@ -41,6 +41,7 @@ _test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_(); _tes
 _test_registry_(); _test_flowRegistry_(); _test_confidence_(); _test_regionVocab_(); _test_hygieneBuckets_();
 _test_parseExportStamp_(); _test_typeHygieneBuckets_(); _test_personHygieneBuckets_(); _test_leaverTest_();
 _test_activeNameFilter_(); _test_gateOverrides_();
+_test_attrDenominator_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
 _test_newHire_();
 _test_cacheRoundtrip_(new FakeCache());
