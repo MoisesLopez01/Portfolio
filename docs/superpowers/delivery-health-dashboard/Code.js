@@ -547,6 +547,7 @@ var METRIC_REGISTRY_ = {
     // verdict, no target rule drawn on any chart, neutral delta arrows, and
     // grading against the operating norm from standardRate_ only.
     queueCover: {
+      id: "queueCover",
       name: "Weeks to Clear",
       definition: "Open inventory divided by the median weekly clearing rate — how long the current queue would take to drain at the rate the organisation has actually been clearing.",
       formula: "(assigned open + unassigned open) ÷ median(resolved per week, last 8 complete weeks)",
@@ -557,9 +558,11 @@ var METRIC_REGISTRY_ = {
       target: null,
       dir: "down",
       coverageGate: 0,
+      coverageOf: "n/a — a ratio of the whole open queue to the whole trailing clearing rate; neither side is a per-record attribute gate",
       sampleFloor: 5,
       owner: "Delivery leadership",
       paramOwner: "Services Director (target, once agreed)",
+      ebitda: "Not yet established: weeks of queue depth plausibly translates to cost of delay (SLA risk, client patience), but there is no agreed cost-of-delay rate to quantify it — same PR-06 rate-basis gap as the other metrics, stated rather than guessed.",
       deviations: [
         "The trailing basis is a MEDIAN of 8 complete weeks, not last week's rate. Measured 2026-08-06: W31 cleared 204 against an 8-week mean of 297, so a one-week denominator read 16.1 weeks where the trailing basis reads 11.0.",
         "History behind the current week is RECONSTRUCTED by walking weekly deltas back from the measured present, capped at 26 weeks. It assumes nothing was deleted or moved out of scope, and the anchor carries the export's updated>=-26w bound while the deltas do not, so drift grows with distance from today.",
@@ -568,6 +571,7 @@ var METRIC_REGISTRY_ = {
       ],
     },
     netFlow: {
+      id: "netFlow",
       name: "Net Flow",
       definition: "Items arriving minus items cleared, per week, org-wide — whether the queue is growing or draining.",
       formula: "created per week − resolved per week (both counted over every issue, no assignee join)",
@@ -577,9 +581,11 @@ var METRIC_REGISTRY_ = {
       target: null,
       dir: "down",
       coverageGate: 0,
+      coverageOf: "n/a — a count has no coverage denominator",
       sampleFloor: null,   // a COUNT: never floored
       owner: "Delivery leadership",
       paramOwner: "Services Director (target, once agreed)",
+      ebitda: "No direct translation — Net Flow is a flow-control signal (is the queue growing or draining), not a cost line, same reasoning as WIP.",
       deviations: [
         "Counted org-wide with no assignee join on either half. Person-keyed arrivals under-report the newest weeks — an issue filed unassigned only counts once somebody picks it up — so a growing queue could read as flat exactly when it matters most. Same reasoning as the Bug Count feed.",
         "Probe figures include R&D projects because JQL cannot reproduce getSpaceForIssue_; the exported series excludes them and reads slightly lower.",
@@ -587,6 +593,7 @@ var METRIC_REGISTRY_ = {
       ],
     },
     clearedPerHead: {
+      id: "clearedPerHead",
       name: "Cleared per Person",
       definition: "Items cleared per person per week within a comparison group — throughput normalised for group size.",
       formula: "items resolved in period ÷ people in the group ÷ weeks in period",
@@ -596,26 +603,37 @@ var METRIC_REGISTRY_ = {
       target: null,
       dir: "up",
       coverageGate: 0,
+      coverageOf: "n/a — a ratio of resolved count to comparison-group headcount; neither side is a per-record attribute gate",
       sampleFloor: 5,
       owner: "Delivery leadership",
       paramOwner: "Services Director",
+      ebitda: "Cleared-per-head × blended rate approximates delivered value normalised for group size. Not quantified — no rate basis (PR-06).",
       deviations: [
         "Replaces absolute cleared counts in the comparison grid. Grading absolute throughput against a flat target ranked groups by headcount: 8 people clearing 12 items scored a miss while 63 people clearing 61 scored a pass.",
         "No target has been agreed. Graded against the operating norm only.",
       ],
     },
-    inventory: { name: "Open Inventory", definition: "Open non-epic issues, assigned plus unassigned.",
+    inventory: { id: "inventory", name: "Open Inventory", definition: "Open non-epic issues, assigned plus unassigned.",
       formula: "count of open non-epic issues", sources: ["Jira Raw"], grain: "snapshot", unit: "items",
-      target: null, dir: "down", coverageGate: 0, sampleFloor: null,
-      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
-    arrived: { name: "Arrived", definition: "Issues created in the period, org-wide.",
+      target: null, dir: "down", coverageGate: 0,
+      coverageOf: "n/a — a count has no coverage denominator", sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director",
+      ebitda: "No direct translation — Open Inventory is a flow-control signal (queue depth), not a cost line; see Backlog (hours) for the EBITDA-linked view of open work.",
+      deviations: [] },
+    arrived: { id: "arrived", name: "Arrived", definition: "Issues created in the period, org-wide.",
       formula: "count of issues created in period", sources: ["Jira Arrivals — Created"],
-      grain: "week", unit: "items", target: null, dir: "down", coverageGate: 0, sampleFloor: null,
-      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
-    cleared: { name: "Cleared", definition: "Issues resolved in the period.",
+      grain: "week", unit: "items", target: null, dir: "down", coverageGate: 0,
+      coverageOf: "n/a — a count has no coverage denominator", sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director",
+      ebitda: "No direct translation — Arrived is a flow-control signal (demand entering the system), not a cost line.",
+      deviations: [] },
+    cleared: { id: "cleared", name: "Cleared", definition: "Issues resolved in the period.",
       formula: "count of issues resolved in period", sources: ["Jira Raw — Resolution Date"],
-      grain: "week", unit: "items", target: null, dir: "up", coverageGate: 0, sampleFloor: null,
-      owner: "Delivery leadership", paramOwner: "Services Director", deviations: [] },
+      grain: "week", unit: "items", target: null, dir: "up", coverageGate: 0,
+      coverageOf: "n/a — a count has no coverage denominator", sampleFloor: null,
+      owner: "Delivery leadership", paramOwner: "Services Director",
+      ebitda: "No direct translation — Cleared is a flow-control signal (work leaving the system), not a cost line.",
+      deviations: [] },
   },
 
   /** Newest first. Each entry names what changed, why, and which metrics moved. */
@@ -4991,9 +5009,27 @@ function _test_sampleFloor_() {
   ["onTime", "util", "leadTime", "quality"].forEach(function (id) {
     assert_(sampleFloorFor_(id, 2).ok === false,
             id + " below its floor must not publish — got ok=" + sampleFloorFor_(id, 2).ok);
+    // n=2/n=5 alone pin only "a floor at or below 5 exists" — a regression to
+    // sampleFloor:3 or :4 passes both (2<3 and 2<4 still fail; 5 still clears
+    // either). n=4 pins the VALUE, not just its existence.
+    assert_(sampleFloorFor_(id, 4).ok === false,
+            id + " at n=4 is still below a floor of 5 — got ok=" + sampleFloorFor_(id, 4).ok);
     assert_(sampleFloorFor_(id, 5).ok === true,
             id + " at exactly its floor publishes — got ok=" + sampleFloorFor_(id, 5).ok);
   });
+
+  // The floor and the coverage gate are DELIBERATELY separate instruments (the
+  // whole point of this task) — proven here by picking two metrics that share
+  // the same sampleFloor but carry different coverageGate values, and asserting
+  // `need` is identical for both. A mutation that coupled `need` to coverageGate
+  // (e.g. scaling it, or reading the wrong field) would pass every assertion
+  // above — onTime/util/leadTime/quality/forecast/queueCover/clearedPerHead ALL
+  // happen to carry sampleFloor:5, so a coupling bug would need two different
+  // gates to surface, which nothing above supplies.
+  assert_(METRIC_REGISTRY_.metrics.onTime.coverageGate !== METRIC_REGISTRY_.metrics.leadTime.coverageGate,
+          "fixture check: onTime and leadTime must actually differ in coverageGate for this to test anything");
+  assert_(sampleFloorFor_("onTime", 1).need === sampleFloorFor_("leadTime", 1).need,
+          "same sampleFloor, different coverageGate (0.80 vs 0.90) — need must not vary with the gate");
 
   // Counts are never floored, at any n — including zero.
   ["netFlow", "arrived", "cleared", "inventory"].forEach(function (id) {
@@ -5013,9 +5049,13 @@ function _test_sampleFloor_() {
   // An unknown id must not silently publish — fail closed.
   assert_(sampleFloorFor_("nonsense", 1).ok === false, "unknown metric fails closed");
 
-  // D11: no targets on the three new metrics.
+  // D11: no targets on ANY of the six new metrics — the three headline entries
+  // AND the three minimal count entries from the brief's trailing Note. All six
+  // are new to this task, and the contract ("target: null") binds all six
+  // equally; checking only three would leave the other three free to grow a
+  // target unnoticed.
   var reg = METRIC_REGISTRY_.metrics;
-  ["queueCover", "netFlow", "clearedPerHead"].forEach(function (id) {
+  ["queueCover", "netFlow", "clearedPerHead", "inventory", "arrived", "cleared"].forEach(function (id) {
     assert_(reg[id], id + " is in the registry");
     assert_(reg[id].target === null, id + " must ship target: null — got " + reg[id].target);
     assert_(reg[id].hasOwnProperty("target"), id + " must EXPLICITLY carry target: null, not merely omit it");
@@ -5063,9 +5103,27 @@ function _test_registry_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_registry_: " + m); }
   var R = METRIC_REGISTRY_;
   assert_(R.version && R.updated, "registry carries a version and a date");
-  ["onTime", "forecast", "util", "quality", "hygiene"].forEach(function (id) {
+
+  // CORE KEY SET — every metric, live or absent, rate or count, must carry all
+  // of these. This used to be checked on 5 hand-picked ids only, which is how 6
+  // new entries (queueCover/netFlow/clearedPerHead/inventory/arrived/cleared)
+  // shipped missing id/coverageOf/ebitda with every suite green — the omission
+  // was real but nothing was looking at those 6 ids. Iterating every registered
+  // id, not a fixed list, is what makes the next such omission loud.
+  //
+  // `target` is DELIBERATELY exempted from a SHAPE check in this loop: its
+  // value legitimately varies by design — a graded {green,amber} object for a
+  // metric with a client-visible RAG band, or null under the D6/D11 no-target
+  // convention for a metric nobody owns a bar for yet. What IS universal, and
+  // checked here, is that the KEY itself is always present rather than simply
+  // omitted — an omitted key and an explicit null must not be indistinguishable
+  // (see the D11 assertions above, which is exactly the omission this guards).
+  // The narrower graded-target loop below still pins the shape for the metrics
+  // that DO carry one.
+  var ids = Object.keys(R.metrics);
+  assert_(ids.length >= 10, "sanity: the registry actually has metrics registered");
+  ids.forEach(function (id) {
     var m = R.metrics[id];
-    assert_(m, "registry defines " + id);
     ["name", "definition", "formula", "grain", "owner", "paramOwner", "ebitda"].forEach(function (f) {
       assert_(m[f] && String(m[f]).trim().length >= 3, id + " has a " + f);
     });
@@ -5073,7 +5131,17 @@ function _test_registry_() {
     assert_(m.sources && m.sources.length, id + " names its source fields");
     assert_(typeof m.coverageGate === "number" && m.coverageGate >= 0 && m.coverageGate <= 1,
             id + " coverage gate is a 0–1 fraction");
-    assert_(m.target && typeof m.target.green === "number", id + " has a target");
+    assert_(m.hasOwnProperty("coverageOf") && String(m.coverageOf || "").trim().length >= 3,
+            id + " states what its coverage gate measures over, even when the answer is n/a");
+    assert_(m.deviations instanceof Array, id + " carries a deviations array (may legitimately be empty)");
+    assert_(m.hasOwnProperty("target"), id + " explicitly carries a target key (a graded object, or null)");
+  });
+
+  // GRADED TARGETS — narrower than the core set above: only the metrics that
+  // actually carry a client-visible RAG band need target.green to be a number.
+  ["onTime", "forecast", "util", "quality", "hygiene"].forEach(function (id) {
+    var m = R.metrics[id];
+    assert_(m.target && typeof m.target.green === "number", id + " has a graded target");
   });
   // Targets are shared with the tile RAG bands — one number, not two.
   assert_(R.metrics.onTime.target === CONFIG_DH.TARGETS.onTime, "onTime target is the CONFIG_DH one");
