@@ -110,6 +110,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " donePeriods_: donePeriods_," +
              " renderOpportunity_: renderOpportunity_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
              " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
+             " hoursCellHtml_: hoursCellHtml_, rosterDetailRow_: rosterDetailRow_, toggleRosterDetail_: toggleRosterDetail_," +
              " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
@@ -1732,15 +1733,18 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(C.STATE.rosterDesc === true, "clicking the SAME header again flips direction");
   assert_(/▾/.test(els.rosterPanel.innerHTML), "the active header shows the descending arrow");
 
-  // Sorter-less column (hours — Task 6 fills it in) is click-inert, not a
-  // crash (review finding 2026-08-05): rows.sort(null) throws a TypeError, so
-  // clicking a column with no sorter must leave STATE untouched instead of
-  // reaching that line. Reaching the assertion at all — no throw — is half
-  // of what this pins.
+  // Sorter-less column guard (review finding 2026-08-05): rows.sort(null)
+  // throws a TypeError, so setRosterSort_ must leave STATE untouched for ANY
+  // column with no sorter. "hours" USED to be that column, but Task 6
+  // (2026-08-05) filled its sorter in — so the guard is now pinned against an
+  // injected fake column instead, proving it is generic and not a one-off
+  // check that quietly stopped meaning anything the day hours got a sorter.
+  C.ROSTER_COLS_.__fake = { label: "Fake", sort: null };
   var sortBefore = C.STATE.rosterSort, descBefore = C.STATE.rosterDesc;
-  C.setRosterSort_("hours");
+  C.setRosterSort_("__fake");
   assert_(C.STATE.rosterSort === sortBefore && C.STATE.rosterDesc === descBefore,
           "clicking a sorter-less column leaves STATE.rosterSort/rosterDesc unchanged, and does not throw");
+  delete C.ROSTER_COLS_.__fake;
 
   // The Overall cell must never fabricate a percentage (review finding
   // 2026-08-05): its g.pct is null, and null*100 JS-coerces to a literal
@@ -1759,20 +1763,23 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
 
   // The click guard in setRosterSort_ only protects CLICKS. STATE.rosterSort
   // can still be set directly — a test, or a future deep-link reader — to a
-  // RECOGNIZED key ("hours") whose .sort is null, and the render path has its
-  // own choke point: renderRoster_ must fall back to opp there too, or
-  // rows.sort(null) throws regardless of how rosterSort got set (review
-  // finding 2026-08-05, second pass).
+  // sorter-less key, and the render path has its own choke point:
+  // renderRoster_ must fall back to opp there too, or rows.sort(null) throws
+  // regardless of how rosterSort got set (review finding 2026-08-05, second
+  // pass). "hours" was that key until Task 6 gave it a real sorter, so the
+  // fake column stands in for it — same reasoning as the guard test above.
+  C.ROSTER_COLS_.__fake = { label: "Fake", sort: null };
   var sortSave = C.STATE.rosterSort, descSave = C.STATE.rosterDesc;
-  C.STATE.rosterSort = "hours";
+  C.STATE.rosterSort = "__fake";
   C.STATE.rosterDesc = false;
   C.renderRoster_();   // must not throw
-  var hoursSnap = els.rosterPanel.innerHTML;
-  assert_(hoursSnap.indexOf("Ana Perez") !== -1 && hoursSnap.indexOf("Ben Ortiz") !== -1,
-          "renderRoster_ with STATE.rosterSort='hours' (a recognized column with no sorter) renders without throwing");
-  assert_(hoursSnap.indexOf("Ana Perez") < hoursSnap.indexOf("Ben Ortiz"),
+  var fakeSnap = els.rosterPanel.innerHTML;
+  assert_(fakeSnap.indexOf("Ana Perez") !== -1 && fakeSnap.indexOf("Ben Ortiz") !== -1,
+          "renderRoster_ with STATE.rosterSort pointing at a sorter-less column renders without throwing");
+  assert_(fakeSnap.indexOf("Ana Perez") < fakeSnap.indexOf("Ben Ortiz"),
           "…and falls back to the opp default order — Ana's bad overall still ranks ahead of Ben's na row");
   C.STATE.rosterSort = sortSave; C.STATE.rosterDesc = descSave;
+  delete C.ROSTER_COLS_.__fake;
 
   // One toggle scopes both surfaces (spec §5.4) — flipping it must re-render
   // the roster too, not just the 🧬 matrix.
@@ -1794,6 +1801,191 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   // Teardown — clean model + STATE reseeded, same convention as the sibling
   // 🧬 by-type matrix and personHygiene-grading blocks above, so nothing here
   // leaks into the 🌊 Flow block right after it.
+  resetFilters();
+  C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
+  C.STATE.typePop = "open";
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── 👥 SIGNALS ROSTER — HOURS COLUMN + DRILL-DOWN (Task 6, 2026-08-05) ──────
+// hoursCellHtml_/rosterDetailRow_ reuse the headroom (opportunity) table's
+// ramping/on-leave exclusions (review 2026-08-05 #2): an ineligible person's
+// idle capacity is the explanation, not a recoverable signal, so their bar
+// carries no idle segment, their cell carries a chip saying why, and the
+// hours SORTER ranks them last. Bar fixtures use 16/4/20 (billable/non-bill/
+// idle of a 40h week) on purpose — 40/10/50% with no rounding remainder, so a
+// bar-width assertion can't be flaky on an unrelated rounding artifact.
+(function () {
+  var mdl = fresh(model({}));
+  resetFilters();
+  C.setState("view", "actions");
+  C.STATE.period = "week";
+  C.setState("periodIdx", null);
+  C.setState("typePop", "open");
+  mdl.personHygiene = { open: [], resolved: [] };   // grading is irrelevant here — na for everyone
+
+  var idleWeek = { tracked: 20, billable: 16, nonBillable: 4, trackedCov: 20,
+                    nsBillRaw: 16, nsNonBillRaw: 4 };
+  mdl.people.forEach(function (p) {
+    // Ana Perez: a ramping new hire — same idle SHAPE as the eligible row
+    // below, so what differs in the render is eligibility, not the numbers.
+    if (p.name === "Ana Perez") { p.newHire = true; p.weeks["2026.W31"] = week(idleWeek); }
+    // Ben Ortiz: an ordinary, eligible row — the contrast this block exists to draw.
+    if (p.name === "Ben Ortiz") { p.weeks["2026.W31"] = week(idleWeek); }
+  });
+  // Uma Voss: the OTHER eligibility branch (on leave, not ramping) — a
+  // different chip word must render for it.
+  mdl.people.push(person("Uma Voss", { onLeave: true, weeks: { "2026.W31": week(idleWeek) } }));
+  // Zoe Null: HAS a week row for the period but zero scheduled capacity — the
+  // "—" branch (self-review: a zero-capacity person renders "—", not an
+  // empty bar).
+  mdl.people.push(person("Zoe Null", { weeks: { "2026.W31": week({ cap: 0, avail: 0, availCov: 0,
+    capCov: 0, planned: 0, tracked: 0, trackedCov: 0, billable: 0, nonBillable: 0,
+    nsBillRaw: 0, nsNonBillRaw: 0, effPlanned: 0 }) } }));
+  // Ivy Preh: no week row for the period AT ALL (pre-hire/termed shape) —
+  // aggWeeks_ returns null outright, the OTHER path into the same "—" cell
+  // and into rosterDetailRow_'s "No scheduled capacity" line.
+  mdl.people.push(person("Ivy Preh", { weeks: {} }));
+  mdl.personHygiene.open = mdl.people.map(function (p) {
+    return { person: p.name, n: 0, due: 0, est: 0, logged: 0 };
+  });
+  C.setModel(mdl);
+  C.renderAll_();
+  var html = els.rosterPanel.innerHTML;
+
+  /** The single <tr>…</tr> for one person's roster row (no drill-down open
+      yet, so exactly one <tr> per name — same slicing idiom as the Overall-
+      cell assertion in the sibling grading block above). */
+  function rowOf(h, name) {
+    var i = h.indexOf(name);
+    return h.slice(h.lastIndexOf("<tr>", i), h.indexOf("</tr>", i) + 6);
+  }
+  /** Just the Hours <td>…</td> out of a row — the 6th <td> (person, n, due,
+      est, logged, HOURS, opp). Every column's grading is "na" in this
+      fixture (personHygiene n=0 everywhere), so due/est/logged/opp ALSO
+      render a bare em dash; isolating the Hours td is what makes the
+      zero-capacity assertions below actually test the Hours cell and not an
+      unrelated na cell that happens to look the same. */
+  function hoursTd_(rowHtml) { return rowHtml.split("<td")[6] || ""; }
+  var benRow = rowOf(html, "Ben Ortiz");
+  var anaRow = rowOf(html, "Ana Perez");
+  var umaRow = rowOf(html, "Uma Voss");
+  var zoeRow = rowOf(html, "Zoe Null");
+  var ivyRow = rowOf(html, "Ivy Preh");
+
+  // ── Eligibility: the ramping chip + idle suppression ──
+  assert_(anaRow.indexOf("ramping") !== -1, "ramping chip renders in the Hours cell");
+  assert_(anaRow.indexOf("segIdle") === -1,
+          "idle segment suppressed for the ramping row — same shape as Ben's, but no idle segment");
+  assert_(umaRow.indexOf("on leave") !== -1, "on-leave chip renders with its own wording");
+  assert_(umaRow.indexOf("segIdle") === -1, "idle segment suppressed for the on-leave row too");
+  assert_(benRow.indexOf("segIdle") !== -1,
+          "an ELIGIBLE person with avail > tracked DOES show an idle segment — the contrast that " +
+          "proves suppression is eligibility-driven, not a bug that drops idle for everyone");
+
+  // Bar widths: exact percentages by construction (16/4/20 of 40 = 40/10/50%,
+  // no rounding remainder) — Ben's row carries all three segments and they
+  // must not overrun 100% between them.
+  assert_(/width:40%/.test(benRow) && /width:10%/.test(benRow) && /width:50%/.test(benRow),
+          "billable/non-billable/idle segment widths match the fixture exactly (40/10/50%)");
+
+  // ── "—", not an empty bar, for zero scheduled capacity (either shape) ──
+  var zoeHours = hoursTd_(zoeRow), ivyHours = hoursTd_(ivyRow);
+  assert_(zoeHours.indexOf("hbarMini") === -1, "a zero-avail person's Hours cell renders no bar markup");
+  assert_(zoeHours.indexOf("—") === 0 || zoeHours.indexOf(">—<") !== -1,
+          "…just a literal em dash, isolated to the Hours <td> itself");
+  assert_(ivyHours.indexOf("hbarMini") === -1,
+          "a person with NO week row for the period (aggWeeks_ null) also renders no bar in Hours");
+  assert_(ivyHours.indexOf("—") === 0 || ivyHours.indexOf(">—<") !== -1,
+          "…and the same em dash for the null-aggWeeks_ path, not a blank cell");
+
+  // ── Hours sorter: ranks the eligible cohort by billable share, ineligible last ──
+  C.setRosterSort_("hours");
+  assert_(C.STATE.rosterSort === "hours",
+          "the hours column is no longer click-inert now that it has a real sorter (Task 6)");
+  var sorted = els.rosterPanel.innerHTML;
+  assert_(sorted.indexOf("Ben Ortiz") < sorted.indexOf("Ana Perez") &&
+          sorted.indexOf("Ben Ortiz") < sorted.indexOf("Uma Voss"),
+          "sorted by Hours, the one ELIGIBLE row with a real billable share ranks ahead of both " +
+          "ineligible (ramping/on-leave) rows, regardless of their raw hours being identical to Ben's");
+  C.setRosterSort_("hours");   // second click: flips direction, still must not throw
+  assert_(C.STATE.rosterDesc === true, "clicking the hours header again flips direction like any other column");
+  C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
+  C.renderRoster_();
+
+  // ── Sorter-less column guard still holds (regression, see the grading block
+  // above): hours filled in is not license for the click guard itself to rot.
+  C.ROSTER_COLS_.__fake = { label: "Fake", sort: null };
+  var sb = C.STATE.rosterSort, db = C.STATE.rosterDesc;
+  C.setRosterSort_("__fake");
+  assert_(C.STATE.rosterSort === sb && C.STATE.rosterDesc === db,
+          "the click guard still protects a hypothetical future sorter-less column");
+  delete C.ROSTER_COLS_.__fake;
+
+  // ── Drill-down: closed by default, opens and closes on the toggle ──
+  assert_(html.indexOf("detailRow") === -1, "no drill-down row renders until the ▸ is clicked");
+
+  // Give Ben a backlog with MORE items than the cap, so the truncation note
+  // (count > items.length) has something to fire on; one item has no due
+  // date, so the missing-date glyph gets exercised too.
+  mdl.people.forEach(function (p) {
+    if (p.name === "Ben Ortiz") {
+      p.backlog = { count: 3, remHrs: 12, items: [
+        { key: "GTT-1", summary: "Fix the thing", status: "In Progress", priority: "High",
+          remHrs: 8, due: "2026.W32" },
+        { key: "GTT-2", summary: "Other thing", status: "To Do", priority: "Medium",
+          remHrs: 4, due: "" },
+      ] };
+    }
+  });
+  C.setModel(mdl);
+  C.toggleRosterDetail_("Ben Ortiz");
+  var openHtml = els.rosterPanel.innerHTML;
+  assert_(openHtml.indexOf("detailRow") !== -1, "toggling the ▸ opens the drill-down row");
+  assert_(openHtml.indexOf('colspan="' + Object.keys(C.ROSTER_COLS_).length + '"') !== -1,
+          "the detail row's colspan matches the live column count, not a hardcoded 7");
+  assert_(openHtml.indexOf("Tracked 20") !== -1 && openHtml.indexOf("of 40h scheduled") !== -1,
+          "the drill-down states the period's hours line");
+  assert_(openHtml.indexOf("billable 16h") !== -1 && openHtml.indexOf("non-billable 4h") !== -1,
+          "…including the billable/non-billable split");
+  assert_(openHtml.indexOf("GTT-1") !== -1 && openHtml.indexOf("GTT-2") !== -1,
+          "both backlog items render in the drill-down table");
+  assert_(openHtml.indexOf("Top 2 of 3 open items") !== -1,
+          "count (3) > rendered items (2) → the truncation note fires");
+  var gtt2Cell = openHtml.split("GTT-2")[1].split("</tr>")[0];
+  assert_(gtt2Cell.indexOf("sigBad") !== -1,
+          "an item with no due date shows the sigBad em-dash glyph, not a blank cell");
+
+  C.toggleRosterDetail_("Ben Ortiz");   // second click: closes it again
+  var closedHtml = els.rosterPanel.innerHTML;
+  assert_(closedHtml.indexOf("detailRow") === -1, "toggling the SAME ▸ again closes the drill-down row");
+
+  // Backlog cap note is ABSENT once count no longer exceeds what's shown.
+  mdl.people.forEach(function (p) { if (p.name === "Ben Ortiz") p.backlog.count = 2; });
+  C.setModel(mdl);
+  C.toggleRosterDetail_("Ben Ortiz");
+  var noCapHtml = els.rosterPanel.innerHTML;
+  assert_(noCapHtml.indexOf("open items (by remaining hours)") === -1,
+          "no truncation note once the backlog cap didn't actually truncate anything");
+  C.toggleRosterDetail_("Ben Ortiz");   // close again — teardown
+
+  // A person with no backlog at all gets an explicit empty state.
+  C.toggleRosterDetail_("Ana Perez");
+  var anaOpen = els.rosterPanel.innerHTML;
+  assert_(anaOpen.indexOf("No open backlog items attributed to this person.") !== -1,
+          "a person with backlog:null gets an explicit empty state, not a blank cell");
+  C.toggleRosterDetail_("Ana Perez");   // close — teardown
+
+  // A person with no week row for the period at all — the drill-down's OTHER
+  // empty state (distinct from "no backlog items").
+  C.toggleRosterDetail_("Ivy Preh");
+  var ivyOpen = els.rosterPanel.innerHTML;
+  assert_(ivyOpen.indexOf("No scheduled capacity in 2026.W31") !== -1,
+          "a person with no week row for the period gets its own empty state, not a false 'Tracked 0h'");
+  C.toggleRosterDetail_("Ivy Preh");   // close — teardown
+
+  // Teardown, same convention as the sibling block above.
   resetFilters();
   C.STATE.rosterSort = "opp"; C.STATE.rosterDesc = false;
   C.STATE.typePop = "open";

@@ -253,6 +253,12 @@ table.grid{width:100%;border-collapse:collapse;font-size:calc(12px*var(--scale))
 /* Unclassified: tracked in Tempo, no NetSuite split. Hatched slate so it reads
    as "real work, unknown kind" — distinct from solid-slate non-billable. */
 .bar .sU{background:repeating-linear-gradient(45deg,var(--seg-nonbill),var(--seg-nonbill) 3px,transparent 3px,transparent 6px)}
+/* 👥 Signals roster Hours cell (Task 6, 2026-08-05) — a small billable/
+   non-billable/idle bar, same segment vocabulary and tokens as the retired
+   People-grid .bar above, scaled down to sit inline in a table cell. */
+.hbarMini{display:inline-flex;width:110px;height:9px;border-radius:4px;overflow:hidden;background:var(--surface-2);vertical-align:middle}
+.hbarMini i{display:block;height:100%}
+.hbarMini .segBill{background:var(--seg-bill)} .hbarMini .segNonbill{background:var(--seg-nonbill)} .hbarMini .segIdle{background:var(--seg-idle)}
 .planTick{position:absolute;top:-6px;font-size:9px;color:var(--royal);transform:translateX(-50%)}
 .warnFlag{color:var(--warn);font-weight:700;margin-left:4px}
 /* Small print must stay readable — was a raw 9px (unscaled), reported unreadable. */
@@ -3409,15 +3415,28 @@ function saveOppCsv_() {
 // Default sort: biggest opportunity first — most-red overall, then most
 // offending records. The Executive pulse deep-links here with this sort.
 var ROSTER_RANK_ = { bad: 0, warn: 1, small: 2, good: 3, na: 4 };
+/** The Hours column's sorter has no other way to know which period the roster
+    is showing — renderRoster_ refreshes this to head.isos before every sort
+    (Task 6, 2026-08-05). */
+var ROSTER_ISOS_ = null;
 var ROSTER_COLS_ = {
   person: { label: "Person", sort: function (a, b) { return a.p.name.localeCompare(b.p.name); } },
   n:      { label: "n",      sort: function (a, b) { return b.n - a.n; } },
   due:    { label: "Due date", sig: "due" },
   est:    { label: "Estimate", sig: "est" },
   logged: { label: "Logged",   sig: "logged" },
-  // Hours: header + scope tag ship now, the cell body arrives in Task 6
-  // (hoursCellHtml_ below) — hence no sorter yet either.
-  hours:  { label: "Hours",  sort: null /* Task 6 fills this in */ },
+  // Hours: billable share, most first. Ramping new hires and on-leave people
+  // (same exclusion as the headroom table) sort last regardless of direction —
+  // their idle capacity is not a recoverable signal to rank on.
+  hours:  { label: "Hours",  sort: function (a, b) {
+    function share(r) {
+      if (r.p.newHire === true || r.p.onLeave === true) return null;   // ineligible → last
+      var w = aggWeeks_(r.p, ROSTER_ISOS_);
+      return w && w.tracked > 0 ? w.billable / w.tracked : null;
+    }
+    var sa = share(a), sb = share(b);
+    return (sb === null ? -1 : sb) - (sa === null ? -1 : sa);
+  } },
   opp:    { label: "Overall", sort: function (a, b) {
     return (ROSTER_RANK_[a.overall] - ROSTER_RANK_[b.overall]) || (b.miss - a.miss);
   } },
@@ -3432,10 +3451,10 @@ Object.keys(ROSTER_COLS_).forEach(function (k) {
 });
 
 function setRosterSort_(col) {
-  // A column with no sorter yet (hours — Task 6 fills it in) is click-inert
-  // rather than a crash: rows.sort(null) throws a TypeError, and that rule
-  // has to hold for ANY future sorter-less column, not just this one today
-  // (review finding 2026-08-05).
+  // A column with no sorter (hours had none until Task 6 filled it in) is
+  // click-inert rather than a crash: rows.sort(null) throws a TypeError, and
+  // that rule has to hold for ANY future sorter-less column, not just the one
+  // that used to be true of today (review finding 2026-08-05).
   if (!ROSTER_COLS_[col] || !ROSTER_COLS_[col].sort) return;
   if (STATE.rosterSort === col) STATE.rosterDesc = !STATE.rosterDesc;
   else { STATE.rosterSort = col; STATE.rosterDesc = false; }
@@ -3476,10 +3495,12 @@ function renderRoster_() {
   // Fall back to opp whenever the resolved column has no sorter — not just
   // when the key is unrecognized. setRosterSort_'s click guard only protects
   // clicks; STATE.rosterSort can still be set directly (tests, a future
-  // deep-link reader) to a RECOGNIZED key like "hours" whose .sort is null,
-  // and rows.sort(null) throws (review finding 2026-08-05).
+  // deep-link reader) to a RECOGNIZED key whose .sort is null (every column
+  // has one today, "hours" included since Task 6 — but a future column may
+  // not), and rows.sort(null) throws (review finding 2026-08-05).
   var col = ROSTER_COLS_[STATE.rosterSort];
   if (!col || !col.sort) col = ROSTER_COLS_.opp;
+  ROSTER_ISOS_ = head.isos;   // the hours sorter's only way to know the period
   rows.sort(col.sort);
   if (STATE.rosterDesc) rows.reverse();
 
@@ -3520,16 +3541,65 @@ function sigFieldByKey_(k) {
   return { tip: "" };
 }
 
-// Interim stubs so this task stands alone — Task 6 replaces the first three
-// with the real hours cell and its drill-down row; they are staged seams, not
-// placeholders left for later cleanup.
-/** Hours-per-person cell (Task 6). The column header and its PERIOD scope tag
-    already render; only the cell body is pending. */
-function hoursCellHtml_() { return "—"; }
-/** Per-person drill-down row, expanded by the ▸ on the name cell (Task 6). */
-function rosterDetailRow_() { return ""; }
-/** Toggles the drill-down row above (Task 6). */
-function toggleRosterDetail_() {}
+/**
+ * Billable / non-billable / idle mini-bar for the analysis period — the same
+ * per-person numbers the retired People-grid workload bars drew (aggWeeks_).
+ * ALWAYS period-scoped (worklogs are period-shaped; a backlog snapshot has no
+ * hours) — the header carries a PERIOD tag for exactly this reason.
+ * ELIGIBILITY reuses the opportunity table's exclusions (review 2026-08-05
+ * #2): ramping new hires and on-leave people get no idle segment — their
+ * "idle" is the explanation, not a recoverable signal — and sort last.
+ */
+function hoursCellHtml_(p, isos) {
+  var w = aggWeeks_(p, isos);
+  if (!w || !(w.avail > 0)) return "—";
+  var ineligible = p.newHire === true || p.onLeave === true;
+  var idle = Math.max(0, w.avail - w.tracked);
+  var total = Math.max(w.avail, w.tracked, 1);
+  function seg(h, cls, label) {
+    if (!(h > 0)) return "";
+    return '<i class="' + cls + '" style="width:' + Math.round(h / total * 100) + '%" title="' +
+      label + " " + r1_(h) + 'h"></i>';
+  }
+  return '<div class="hbarMini" title="billable ' + r1_(w.billable) + "h · non-billable " +
+    r1_(w.nonBillable) + "h · idle " + r1_(idle) + 'h of ' + r1_(w.avail) + 'h scheduled">' +
+    seg(w.billable, "segBill", "billable") +
+    seg(w.nonBillable, "segNonbill", "non-billable") +
+    (ineligible ? "" : seg(idle, "segIdle", "idle")) +
+    "</div>" +
+    (ineligible ? '<span class="cellSub" title="Ramping new hire / on leave — idle capacity is the explanation here, not a coaching signal (same exclusion as the headroom table).">' +
+      (p.onLeave ? "on leave" : "ramping") + "</span>" : "");
+}
+
+function toggleRosterDetail_(name) {
+  STATE.openDetail[name] = !STATE.openDetail[name];
+  renderRoster_();
+}
+
+/** ▸ row: the person's open backlog items (backlogByPerson_ payload, already
+    on p.backlog) + the period's hours line — the People grid's per-person
+    detail, reattached where the signal is (spec §5.2). */
+function rosterDetailRow_(p, head) {
+  if (!STATE.openDetail[p.name]) return "";
+  var w = aggWeeks_(p, head.isos);
+  var hours = w
+    ? "Tracked " + r1_(w.tracked) + "h of " + r1_(w.avail) + "h scheduled in " + esc_(head.label) +
+      (w.billable > 0 || w.nonBillable > 0
+        ? " · billable " + r1_(w.billable) + "h · non-billable " + r1_(w.nonBillable) + "h" : "")
+    : "No scheduled capacity in " + esc_(head.label);
+  var items = (p.backlog && p.backlog.items) || [];
+  var list = items.length
+    ? '<table class="hyg"><tr><th>Key</th><th>Summary</th><th>Status</th><th class="tnum">Rem. h</th><th>Due</th></tr>' +
+      items.map(function (it) {
+        return "<tr><td>" + esc_(it.key) + "</td><td>" + esc_(it.summary) + "</td><td>" +
+          esc_(it.status) + '</td><td class="tnum">' + r1_(it.remHrs) + "</td><td>" +
+          (it.due || '<span class="sigBad">—</span>') + "</td></tr>";
+      }).join("") + "</table>" +
+      (p.backlog.count > items.length
+        ? '<div class="cellSub">Top ' + items.length + " of " + p.backlog.count + " open items (by remaining hours).</div>" : "")
+    : '<div class="cellSub">No open backlog items attributed to this person.</div>';
+  return '<tr class="detailRow"><td colspan="' + Object.keys(ROSTER_COLS_).length + '"><div class="cellSub">' + hours + "</div>" + list + "</td></tr>";
+}
 /** Scope tag chip — states which clock a column follows. The full version
     (threaded through the other tiles) arrives in Task 9; this one is real,
     not a placeholder — its API does not change later. */
