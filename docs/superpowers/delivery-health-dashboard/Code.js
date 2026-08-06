@@ -23,6 +23,8 @@ var CONFIG_DH = {
   JIRA_BUGS_SHEET:   "Jira Bugs",
   FLOW_SNAP_SHEET:   "Flow Snapshots",
   ARRIVALS_SHEET:    "Jira Arrivals",   // weekly created/resolved tally (Jira Backlog.js v3.11.0)
+  CLEAR_RATE_WEEKS:  8,   // trailing window for the weeks-to-clear denominator
+  CLEAR_RATE_MIN_N:  5,   // below this it publishes nothing — same bar as STD_MIN_PERIODS
   ROSTER_SHEET:      "Data",
   CONTRACTORS_SHEET: "Contractors Data",
   ROSTER_CLASS:      "Professional Services",
@@ -1965,6 +1967,35 @@ function medianOf_(vals) {
   var s = vals.slice().sort(function (a, b) { return a - b; });
   var mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/**
+ * Median weekly clearing rate over the last `weeks` complete weeks.
+ *
+ * A MEDIAN, not a mean, and trailing rather than last-week: this is the
+ * denominator of the Executive tab's headline, and a single holiday week in it
+ * inflates weeks-to-clear by roughly the size of the holiday. Measured on the
+ * live feed 2026-08-06: W31 resolved 204 against an eight-week mean of 297, so
+ * a one-week basis read 16.1 weeks where the trailing basis read 11.0.
+ *
+ * Same median-and-MAD reasoning standardRate_ applies to every operating norm
+ * here, and the same refusal to publish below a minimum — reusing that bar
+ * rather than inventing a second one.
+ *
+ * @param {Array<number|null>} series weekly resolved counts, oldest first
+ * @param {number} weeks trailing window size
+ * @returns {number|null} null when fewer than CLEAR_RATE_MIN_N usable weeks
+ */
+function clearRateMedian_(series, weeks) {
+  if (!series || !series.length) return null;
+  var n = weeks || CONFIG_DH.CLEAR_RATE_WEEKS;
+  var win = series.slice(Math.max(0, series.length - n));
+  // A null week is a GAP (no export ran) and is dropped. A zero week is DATA
+  // (a shutdown) and counts — treating the two alike would let a broken feed
+  // masquerade as a quiet fortnight.
+  var vals = win.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); });
+  if (vals.length < (CONFIG_DH.CLEAR_RATE_MIN_N || 5)) return null;
+  return medianOf_(vals);
 }
 
 // ── JIRA REGION VOCABULARY (requirements v1.1 §4.3) ───────────
@@ -4427,6 +4458,45 @@ function _test_arrivalParse_() {
   assert_(missingResolved.available === false, "missing required column → unavailable");
 
   Logger.log("✅ _test_arrivalParse_ passed");
+}
+
+/**
+ * The median basis exists so one holiday week cannot move the headline. W31
+ * resolved 204 against an eight-week mean of 297 — on a one-week denominator
+ * weeks-to-clear read 16.1w against 11.0w on the trailing basis (spec §1.1).
+ */
+function _test_clearRateMedian_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_clearRateMedian_: " + m); }
+
+  var steady = [300, 290, 310, 295, 305, 300, 298, 302];
+  assert_(clearRateMedian_(steady, 8) === 300,
+          "median of a steady series — got " + clearRateMedian_(steady, 8));
+
+  // One holiday week at a third of normal must barely move it.
+  var holiday = [300, 290, 310, 295, 305, 300, 298, 100];
+  var m = clearRateMedian_(holiday, 8);
+  assert_(m >= 295 && m <= 300, "one bad week cannot move the median — got " + m);
+
+  // Refuses to publish under 5 weeks, and says nothing rather than guessing.
+  assert_(clearRateMedian_([300, 290, 310, 295], 8) === null,
+          "4 weeks → null");
+  assert_(clearRateMedian_([300, 290, 310, 295, 305], 8) === 300,
+          "5 weeks is enough — got " + clearRateMedian_([300, 290, 310, 295, 305], 8));
+  assert_(clearRateMedian_([], 8) === null, "empty → null");
+  assert_(clearRateMedian_(null, 8) === null, "null input → null");
+
+  // Only the LAST n weeks count: an old spike outside the window is ignored.
+  var withOldSpike = [9999, 9999, 9999, 300, 290, 310, 295, 305, 300, 298, 302, 300];
+  assert_(clearRateMedian_(withOldSpike, 8) === 300,
+          "window respected — got " + clearRateMedian_(withOldSpike, 8));
+
+  // A zero week is DATA (a shutdown), not a gap: it counts.
+  assert_(clearRateMedian_([0, 0, 0, 0, 0, 0], 8) === 0, "all-zero series → 0, not null");
+  // A null week is a GAP and is dropped before the median.
+  var withGap = [300, null, 310, 295, 305, 300];
+  assert_(clearRateMedian_(withGap, 8) === 300,
+          "null weeks dropped, not treated as 0 — got " + clearRateMedian_(withGap, 8));
+  Logger.log("✅ _test_clearRateMedian_ passed");
 }
 
 function _test_flowSnapshots_() {
