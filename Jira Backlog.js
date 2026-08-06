@@ -2822,10 +2822,14 @@
         rawWeeklyData = rawWeeklyData.concat([{ label: "Epic Child", issues: epicChildren }]);
       }
 
-      // Open-backlog feed — unresolved assigned work, under the sentinel week
-      // label "Open". Same pattern as "Epic Child": these rows have no
-      // resolution date, so every date-bucketed consumer skips them, while the
-      // delivery-health dashboard reads them as each person's carried backlog.
+      // Open-backlog feed — unresolved work, ASSIGNED AND UNASSIGNED since
+      // v3.11.0 (fetchOpenIssues_ no longer requires an assignee), under the
+      // sentinel week label "Open". Same pattern as "Epic Child": these rows
+      // have no resolution date, so every date-bucketed consumer skips them.
+      // The delivery-health dashboard reads assigned rows as each person's
+      // carried backlog; unassigned rows carry no person, so they reach the
+      // by-type matrix and gaps queue (typeHygOpen_) but not any person's
+      // drill-down.
       var openIssues = fetchOpenIssues_().filter(function(i) {
         if (seenKeys[i.key]) return false;   // already written (Done or epic child)
         seenKeys[i.key] = true;
@@ -3112,10 +3116,16 @@
       // The open backlog is the ACTIONABLE half — tagging one of these changes a
       // future number, where tagging resolved work only rewrites history. It is
       // also the worst-tagged half, so leaving it out flatters the report.
+      //
+      // No assignee clause — this probe must describe the SAME population
+      // fetchOpenIssues_ writes (v3.11.0 dropped it there). Keeping it here
+      // would report region/team fill for the assigned half only, and since
+      // unowned tickets are the worst-tagged work on the site that reads as
+      // healthier than what actually ships. A probe scoped differently from
+      // the code it checks measures a subset and calls it the whole.
       var openClauses = [
         'issuetype in (' + CONFIGJ.EXEC_ISSUE_TYPES.join(", ") + ')',
         'statusCategory != Done',
-        'assignee is not EMPTY',
         'project NOT IN (TEMPLATE)',
       ];
       if (CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS) {
