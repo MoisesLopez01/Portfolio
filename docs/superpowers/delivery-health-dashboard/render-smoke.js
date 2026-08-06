@@ -2670,4 +2670,34 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   C.renderAll_();
 })();
 
+// ── Consolidation invariants (spec 2026-08-05) ──────────────
+// Three tabs, not six — VIEWS is the single source of truth (see Dashboard.html),
+// and the retired panes (viewFlow/viewPeople/viewHygiene) must never receive a
+// live render again. The stub only creates an els[id] entry on first
+// getElementById(id) call (see El stub above), so if nothing in the client
+// code still looks those ids up, els.viewFlow etc. stay undefined here — that
+// absence is itself the strongest form of this assertion passing. If a future
+// change reintroduces a getElementById("viewFlow") call for any reason, this
+// still catches a live write via the innerHTML check.
+(function () {
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.VIEWS.forEach(function (v) {
+    C.setState("view", v.id);
+    C.renderAll_();
+  });
+
+  assert_(C.VIEWS.length === 3, "exactly three views");
+  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,access",
+          "view ids are exec/actions/access in order");
+  assert_(!els.viewFlow || els.viewFlow.innerHTML === "", "no live viewFlow pane");
+  assert_(!els.viewPeople || els.viewPeople.innerHTML === "", "no live viewPeople pane");
+  assert_(!els.viewHygiene || els.viewHygiene.innerHTML === "", "no live viewHygiene pane");
+
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
 console.log("✅ render-smoke: " + checks + " checks passed");
