@@ -225,6 +225,13 @@ table.hyg.tmx tr:nth-child(even) .tmiss{background:var(--surface-2)}
    right on the header, so "why did this number not move when I picked another
    month" has its answer one glance away instead of in a tooltip nobody opens. */
 .scopeTag{font-size:9px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px;vertical-align:middle}
+/* Executive data-trust strip (Task 8, spec §4.4) — four org-wide fill-vs-gate
+   tiles, same trust-at-a-glance grammar as the KPI cards above them. */
+.trustRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.trustItem{border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.trustVal{font-weight:700;font-size:calc(18px*var(--scale))}
+.trustBar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:4px 0}
+.trustBar i{display:block;height:100%}
 .hbar{height:5px;border-radius:3px;background:var(--border);margin:4px 0 2px;overflow:hidden}
 .hbar i{display:block;height:100%;border-radius:3px}
 .hbar i.g{background:var(--pos)} .hbar i.a{background:var(--amber)} .hbar i.r{background:var(--warn)}
@@ -436,6 +443,7 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div id="tileColorKey"></div>
     <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
     <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
+    <div class="panel" id="trustPanel"></div>
   </div>
 
   <!-- ── 🎯 ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
@@ -1267,7 +1275,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); break;
+    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
     case "actions": renderOpportunity_(); renderRoster_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -3079,6 +3087,37 @@ function renderPulse_() {
 function openRoster_() {
   STATE.rosterSort = "opp"; STATE.rosterDesc = false;
   switchView_("actions");
+}
+
+/** Data-trust strip (spec §4.4): four fill-vs-gate tiles picked BY KEY from
+    gapsRows_ — one list of definitions for the queue and the strip.
+    Deliberately org-wide + unfiltered like the old Hygiene view (ORG tag). */
+function renderTrust_() {
+  var el = document.getElementById("trustPanel");
+  var done = donePeriods_(), hi = headPeriodIdx_(done);
+  var head = done[hi] || { label: "—", isos: [] };
+  var h = hygieneFor_(head.isos), pp = hygienePeopleFor_(head.isos);
+  var byKey = {};
+  gapsRows_(h, pp).forEach(function (g) { if (g.key) byKey[g.key] = g; });
+  var order = ["est", "due", "logged", "attr"];
+  var titles = { est: "Estimate coverage", due: "Due-date fill", logged: "Logged fill", attr: "Roster join" };
+  el.innerHTML = '<h3>🔍 Data trust ' + scopeTag_("org") + "</h3>" +
+    '<div class="trustRow">' + order.map(function (k) {
+      var g = byKey[k];
+      if (!g) return "";
+      var pct = g.value === null ? null : Math.round(g.value * 100);
+      var col = pct === null ? "var(--muted)"
+        : g.value >= g.gate ? "var(--c-good)"
+        : g.value >= g.gate - 0.10 ? "var(--c-warn)" : "var(--c-bad)";
+      return '<div class="trustItem" title="' + esc_((g.note || "") + " Blocks: " + g.blocks) + '">' +
+        '<div class="cellSub">' + esc_(titles[k]) + "</div>" +
+        '<div class="trustVal" style="color:' + col + '">' + (pct === null ? "—" : pct + "%") +
+        ' <span class="cellSub">/ ' + Math.round(g.gate * 100) + "</span></div>" +
+        '<div class="trustBar"><i style="width:' + (pct || 0) + "%;background:" + col + '"></i></div>' +
+        '<div class="cellSub">' + esc_(g.detail || "") + "</div></div>";
+    }).join("") + "</div>" +
+    '<div class="cellSub">Gate = the coverage each published metric needs. The full queue — every gap, ' +
+    "its owner requirement and committed week — lives on the 🎯 Actions tab.</div>";
 }
 
 /**

@@ -117,7 +117,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
              // rebuild are two clocks, and only rendering can prove they stay apart.
-             " dataAsOfView_: dataAsOfView_ })";
+             " dataAsOfView_: dataAsOfView_, renderTrust_: renderTrust_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -2292,6 +2292,48 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   var h2 = els["flowTiles"].innerHTML;
   assert_(h2.indexOf("export predates Jira Backlog.js v3.9.0") !== -1,
           "absent feeds name the exporter version, not an error");
+})();
+
+// ── EXECUTIVE DATA-TRUST STRIP (Task 8, spec §4.4) ──────────────────────────
+// Four fill-vs-gate tiles, picked BY KEY from the same gapsRows_ definitions
+// the Actions-tab gaps queue renders from — one list, two surfaces. Org-wide
+// and unfiltered (ORG scope tag), unlike the margin-gated pulse panel above it.
+(function () {
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+  var trust = document.getElementById("trustPanel").innerHTML;
+  assert_(trust.split("trustItem").length - 1 === 4, "exactly four trust tiles");
+  assert_(trust.indexOf("ORG") !== -1, "trust strip carries the ORG scope tag");
+  // Order + identity: est, due, logged, attr (brief order) — each tile is
+  // recognisable by the plain-language title gapsRows_ assigns its key.
+  var order = ["Estimate coverage", "Due-date fill", "Logged fill", "Roster join"];
+  var idxs = order.map(function (t) { return trust.indexOf(t); });
+  assert_(idxs.every(function (i) { return i !== -1; }), "all four tile titles present");
+  assert_(idxs[0] < idxs[1] && idxs[1] < idxs[2] && idxs[2] < idxs[3],
+          "tiles render in brief order: est, due, logged, attr");
+  // Values against the model fixture's single headline week (2026.W31):
+  // due 40/50=80% (at its 80% gate → green), est 14/20=70% (at gate → green),
+  // logged 9/14≈64% (below the 70% gate but within the 10-pt band → amber),
+  // attr 45/47≈96% (above the 95% gate → green).
+  assert_(/80%/.test(trust) && /70%/.test(trust), "due-date and estimate percentages render");
+  assert_(/64%/.test(trust), "logged-fill percentage renders below its gate");
+  assert_(/96%/.test(trust), "roster-join percentage renders above its gate");
+  assert_(/var\(--c-warn\)/.test(trust), "the below-gate logged tile is graded amber, not red or green-only");
+  assert_(/Blocks: Forecast Accuracy/.test(trust), "each tile's tooltip states what it blocks (shared gapsRows_ note)");
+  assert_(/the full queue.*🎯 Actions/.test(trust) || /Actions tab/.test(trust),
+          "the footer points readers at the Actions tab for the full queue");
+
+  // Not margin-gated (brief note): a guest sees the same strip, unlike the
+  // pulse panel directly above it which disappears for that role.
+  C.getModel().viewerRole = "guest";
+  C.renderAll_();
+  var trustGuest = document.getElementById("trustPanel").innerHTML;
+  assert_(trustGuest.split("trustItem").length - 1 === 4,
+          "a guest still sees all four trust tiles — this strip is not margin-gated");
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");
