@@ -2001,11 +2001,16 @@
 
   /**
    * Appends ONE row per export run to the Flow Snapshots tab: timestamp,
-   * ISO week, WIP count, backlog hrs, backlog item count (v3.9.0).
+   * ISO week, WIP count, backlog hrs, backlog item count, and (v3.11.0) the
+   * unassigned half of the queue — unassigned open item count + unassigned
+   * to-do hrs.
    *
    * APPEND-ONLY — never clearContents. A snapshot can't be recomputed later,
    * so this tab is the system of record for WIP/Backlog history. Rows older
    * than RAW_HISTORY_WEEKS are pruned on write (the shared 52-week dial).
+   * New columns are appended at the END and every reader indexes by header
+   * NAME, so rows written before v3.11.0 stay valid — they simply carry no
+   * value for the two unassigned columns.
    *
    * The split follows the spec (§3.4/3.5) VERBATIM — non-epic, assigned,
    * unresolved; status category To Do = backlog (waiting), In Progress = WIP.
@@ -2016,10 +2021,16 @@
    *
    * @param {Object[]} openCandidates raw Jira issues — the union of the
    *   open-backlog fetch and the epic-children fetch (the same open issues
-   *   that reach Jira Raw), unresolved rows filtered here.
+   *   that reach Jira Raw), unresolved rows filtered here. Until a later task
+   *   removes 'assignee is not EMPTY' from fetchOpenIssues_, this array
+   *   contains no unassigned rows, so the two new columns legitimately read 0.
    */
   function writeFlowSnapshot_(openCandidates) {
-    var FLOW_HEADERS = ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items"];
+    // APPEND-ONLY contract: new columns go on the END, and every reader indexes
+    // by header NAME, so historical rows stay valid and simply carry no value
+    // for columns that did not exist when they were written (v3.11.0).
+    var FLOW_HEADERS = ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items",
+                        "Unassigned Items", "Unassigned Hrs"];
     var sheet = jb_getOrCreateSheet_(CONFIGJ.FLOW_SNAP_SHEET);
     if (sheet.getLastRow() === 0) {
       sheet.getRange(1, 1, 1, FLOW_HEADERS.length).setValues([FLOW_HEADERS]);
@@ -2028,13 +2039,39 @@
     }
 
     var wip = 0, backlogHrs = 0, backlogN = 0;
+    // The unassigned half of the queue. Reachable only because v3.11.0 dropped
+    // 'assignee is not EMPTY' from fetchOpenIssues_ (spec D7) — before that
+    // these rows were never fetched, which is why the dashboard reported a
+    // 1,440-item queue when the true figure was 3,279.
+    //
+    // Hours are TO-DO ONLY, matching the dashboard's flowOpenBuckets_ /
+    // queueSnapshot_ on both halves (Task 4 review): neither contributes
+    // hours for In Progress work, so an "all open" figure here would put a
+    // different population in the sheet than the dashboard computes from
+    // Jira Raw, and the two would quietly disagree. Items still count every
+    // unassigned open row (no per-category split needed — this is one total
+    // for the sheet, not a bucketed payload).
+    //
+    // Folded into the SAME pass as wip/backlogN/backlogHrs above (rather than
+    // a second forEach over openCandidates) so both halves share one "open"
+    // definition — epic-excluded, unresolved, not Done — instead of drifting
+    // if the two loops' guards are ever edited independently.
+    var unItems = 0, unHrs = 0;
     openCandidates.forEach(function(issue) {
       var f = issue.fields || {};
       if (String(dig_(f, "issuetype.name") || "").toLowerCase().indexOf("epic") !== -1) return;
-      if (!dig_(f, "assignee.displayName")) return;
       if (f.resolutiondate) return;   // resolved-outside-window epic children
       var cat = String(dig_(f, "status.statusCategory.name") || "");
       if (/^done$/i.test(cat)) return;
+      if (!dig_(f, "assignee.displayName")) {
+        unItems++;
+        if (/to do/i.test(cat)) {
+          var uEst   = Number(f.timeoriginalestimate || 0);
+          var uSpent = Number(f.timespent || 0);
+          unHrs += Math.max(0, uEst - uSpent) / 3600;
+        }
+        return;
+      }
       if (/in progress/i.test(cat)) { wip++; return; }
       if (/to do/i.test(cat)) {
         backlogN++;
@@ -2061,9 +2098,12 @@
       wip,
       Math.round(backlogHrs * 10) / 10,
       backlogN,
+      unItems,
+      Math.round(unHrs * 10) / 10,
     ]);
     Logger.log("🌊 Flow snapshot: WIP " + wip + ", backlog " +
-               (Math.round(backlogHrs * 10) / 10) + "h across " + backlogN + " items.");
+               (Math.round(backlogHrs * 10) / 10) + "h across " + backlogN + " items, " +
+               "unassigned " + unItems + " (" + (Math.round(unHrs * 10) / 10) + "h to-do).");
   }
 
   /**
