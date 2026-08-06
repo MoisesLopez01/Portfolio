@@ -270,7 +270,7 @@ consequences are enumerated in §4.6 and are **not** all benign.
 
 | Column | Meaning |
 |---|---|
-| `ISO Week` | `YYYY.WN` |
+| `Week Start` | the week's **Monday, as a date** — deliberately *not* an ISO week label |
 | `Created` | issues created in the week, **no assignee clause** |
 | `Resolved` | issues resolved in the week, same scope |
 | `Created Unassigned` | of `Created`, those still unassigned at export time — the signal for whether the *unowned* half of the queue is growing, which is a different question from whether the queue is growing, and feeds verdict finding #2 |
@@ -279,6 +279,12 @@ Built from one `created >= <window start>` fetch plus a resolved-date tally over
 with the same `getSpaceForIssue_` and `isNoiseIssue_` filtering as the existing `Jira Bugs` weekly
 tally — a pattern already in the file (`fetchCreatedIssues_` already exists with no assignee filter;
 it currently feeds only `Exec Q&A`).
+
+**Why a date and not a week label.** `weekKeyFromDate_` (dashboard) emits `2026.W7`;
+`jb_isoWeekLabel_` (exporter) emits `2026.W07`. That padding divergence is already documented in
+`Jira Backlog.js` v3.5.0, and a label written by the exporter would **silently fail to join for weeks
+1–9**. Shipping the Monday date keeps **one** week-label authority — the dashboard's — and mirrors
+`Jira Bugs`, which ships raw `Created` dates and lets `parseBugRows_` / `bugWeekly_` bucket them.
 
 **`Flow Snapshots` gains two columns**, from a count-only unassigned-open fetch bounded by
 `OPEN_BACKLOG_UPDATED_WEEKS` (D8):
@@ -478,8 +484,10 @@ The rule throughout: **an absent measurement never renders as a zero.**
 
 ### 6.3 Existing suite
 
-A number of the current 488 `render-smoke.js` checks are pinned to the present Executive markup and
-**will need rewriting**. This is a planned task in the implementation plan, not incidental breakage.
+Baseline measured 2026-08-06: `node node-tests.js` all suites pass; `node render-smoke.js` reports
+**648 checks passed**. (The README's "488" is stale.) A number of those 648 are pinned to the present
+Executive markup and **will need rewriting**. This is a planned task in the implementation plan, not
+incidental breakage — and the suite must be back to green, at ≥648 checks, before deploy.
 
 ---
 
