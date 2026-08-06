@@ -3309,9 +3309,38 @@ function readArrivals_() {
 }
 
 /**
+ * Canonicalises an ISO-week label's "YYYY.W0N" padded form to "YYYY.WN" —
+ * the form weekKeyFromDate_ (and buildDhWindow_) actually emit.
+ *
+ * Why this exists: writeFlowSnapshot_ (Jira Backlog.js) writes the ISO Week
+ * cell via jb_isoWeekLabel_, which zero-pads the week number — "2026.W07".
+ * Every OTHER iso key this dashboard builds is unpadded — "2026.W7". Left
+ * unreconciled, the snapshot trend's `byIso[s.iso]` never matches a lookup
+ * key built from a Date (Dashboard.html's `byIso[p.isos[i]]`), which silently
+ * drops the Backlog/WIP trend for weeks 1–9 of every year — invisible in
+ * testing because it looks like "no export ran" rather than a join mismatch.
+ *
+ * Fixed on the READ side only (not in the exporter): the padded form loses
+ * no information — "2026.W07" and "2026.W7" denote the same week — so this
+ * function alone recovers the canonical key, and because Flow Snapshots is
+ * append-only with 52-week retention, normalising here repairs ALL existing
+ * history immediately, with no re-export required.
+ *
+ * @param {string} iso e.g. "2026.W07" or "2026.W31"
+ * @returns {string} unpadded form, e.g. "2026.W7" or "2026.W31"
+ */
+function canonicalIsoWeek_(iso) {
+  var m = /^(\d{4}\.W)0*(\d+)$/.exec(String(iso || ""));
+  return m ? (m[1] + m[2]) : String(iso || "");
+}
+
+/**
  * Pure parse of the Flow Snapshots tab. The exporter appends one row per RUN
  * and can run several times a week — the LAST row per ISO week wins (freshest
  * state of that week). Rows whose ISO Week cell isn't YYYY.WN are skipped.
+ * The ISO Week cell is canonicalised (see canonicalIsoWeek_) before it is
+ * used as a key, so a zero-padded write ("2026.W07") joins correctly against
+ * unpadded lookup keys built from a Date elsewhere in this dashboard.
  */
 function parseFlowSnapshotRows_(values) {
   if (!values || values.length < 2) return { snaps: [], available: false };
@@ -3326,6 +3355,7 @@ function parseFlowSnapshotRows_(values) {
   for (var r = 1; r < values.length; r++) {
     var iso = String(values[r][iIso] || "").trim();
     if (!/^\d{4}\.W\d{1,2}$/.test(iso)) continue;
+    iso = canonicalIsoWeek_(iso);
     if (!byIso[iso]) order.push(iso);
     byIso[iso] = { iso: iso, at: String(values[r][iGen] || ""),
                    wip: Number(values[r][iWip]) || 0,
@@ -5223,6 +5253,37 @@ function _test_flowSnapshots_() {
   assert_(r.snaps[1].iso === "2026.W32" && r.snaps[1].backlogN === 35, "second week intact");
   assert_(parseFlowSnapshotRows_([]).available === false, "empty → unavailable");
   Logger.log("✅ _test_flowSnapshots_ passed");
+}
+
+/**
+ * Pins the padded/unpadded ISO-week join bug (audit 2026-08-06):
+ * writeFlowSnapshot_ writes via jb_isoWeekLabel_, which zero-pads
+ * ("2026.W07"); weekKeyFromDate_ never does ("2026.W7"). A fixture built only
+ * from two-digit weeks (e.g. the "2026.W31" rows in _test_flowSnapshots_
+ * above) passes under BOTH the broken and the fixed implementation — that is
+ * exactly how this survived — so this test's fixture MUST use a single-digit
+ * week to have any chance of failing.
+ */
+function _test_flowSnapshotIsoCanon_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_flowSnapshotIsoCanon_: " + m); }
+  var values = [
+    ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items"],
+    ["2/16/2026 07:00", "2026.W07", "5", "40", "12"],   // single-digit week, zero-padded
+    ["8/3/2026 07:00",  "2026.W31", "11", "99", "35"],  // two-digit week, must pass through as-is
+  ];
+  var r = parseFlowSnapshotRows_(values);
+  assert_(r.available === true, "parsed");
+  assert_(r.snaps.length === 2, "both rows kept");
+  assert_(r.snaps[0].iso === "2026.W7",
+          "single-digit week is canonicalised: 2026.W07 → 2026.W7, matching weekKeyFromDate_");
+  assert_(r.snaps[1].iso === "2026.W31",
+          "two-digit week passes through unchanged — normalisation must not over-reach");
+
+  // Unit-level pin on the helper itself, independent of the sheet-row parse.
+  assert_(canonicalIsoWeek_("2026.W07") === "2026.W7", "helper: single-digit padded → unpadded");
+  assert_(canonicalIsoWeek_("2026.W7") === "2026.W7", "helper: already-unpadded is idempotent");
+  assert_(canonicalIsoWeek_("2026.W31") === "2026.W31", "helper: two-digit week is untouched");
+  Logger.log("✅ _test_flowSnapshotIsoCanon_ passed");
 }
 
 /** Registry integrity (FR-1.1/FR-1.2) — the payload's definitional contract.
