@@ -675,14 +675,16 @@ resetFilters();
 C.switchView_("trend");
 assert_(els.viewTrend.style.display === "" && els.viewExec.style.display === "none",
         "switching view shows exactly one pane");
-assert_(els.tabBar.children.length === 6, "an admin sees all six tabs");
+// 🌊 Flow retired 2026-08-05 (§4.1) — five tabs remain: Executive, Headroom,
+// People, Data Hygiene, Access.
+assert_(els.tabBar.children.length === 5, "an admin sees all five tabs");
 C.switchView_("exec");
 assert_(els.viewExec.style.display === "" && els.viewTrend.style.display === "none",
         "and switching back hides the other");
 var mdlV = fresh(histModel({}));
 mdlV.viewerRole = "viewer";
 C.switchView_("exec");
-assert_(els.tabBar.children.length === 5, "a viewer does not get the Access tab");
+assert_(els.tabBar.children.length === 4, "a viewer does not get the Access tab");
 C.switchView_("access");
 assert_(C.STATE.view === "exec",
         "and asking for it by id lands on the default view — the gate is in the router, not the tab bar");
@@ -1622,7 +1624,10 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   C.STATE.typePop = "open";
 })();
 
-// ── 🌊 FLOW VIEW (spec 2026-08-05) ──────────────────────────
+// ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05 §4.1) ──
+// The 🌊 Flow tab is retired; its five live tiles render into #flowTiles
+// inside the Executive pane instead, and the two declared-absent placeholders
+// (Cycle Time, Flow Efficiency) no longer render at all.
 (function () {
   var M = C.getModel();
   var who = M.people[0].name;   // a real fixture person who passes open filters
@@ -1666,11 +1671,11 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
     status: "absent", absentReason: "needs per-status dwell time from the Jira changelog — not yet exported" };
   C.setModel(M);
 
-  // The tab exists, routes, and is open to every role.
-  var flowView = C.VIEWS.filter(function (v) { return v.id === "flow"; })[0];
-  assert_(flowView && flowView.roles === null, "🌊 Flow is declared in VIEWS, all roles");
+  // The tab is gone — "flow" is no longer a VIEWS entry, only a render target.
+  assert_(C.VIEWS.filter(function (v) { return v.id === "flow"; }).length === 0,
+          "🌊 Flow is retired from VIEWS — no tab, no route");
 
-  C.setState("view", "flow");
+  C.setState("view", "exec");
   C.setState("period", "week");
   C.setState("periodIdx", null);
   C.renderAll_();
@@ -1689,10 +1694,11 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
           "bug tile renders the created count and states it is unfiltered");
   // No-target grammar: flow tiles carry NO RAG verdict and NO vs-target line.
   assert_(h.indexOf("vs target") === -1, "target: null → no vs-target sentence anywhere");
-  // Declared-absent tiles state their reason instead of a number.
-  assert_(h.indexOf("Cycle Time") !== -1 && h.indexOf("Flow Efficiency") !== -1 &&
-          h.split('tile ph').length >= 3,
-          "Cycle Time + Flow Efficiency render as declared-absent placeholder tiles");
+  // Absent placeholders retired (spec 2026-08-05 §4.1): the compact tier must
+  // not render Cycle Time / Flow Efficiency "—" tiles.
+  assert_(h.indexOf("Cycle Time") === -1 && h.indexOf("Flow Efficiency") === -1,
+          "declared-absent flow tiles no longer render");
+  assert_(h.indexOf("Lead Time") !== -1, "live flow tiles render inside the exec strip");
 
   // Regression pin (final review, 2026-08-05): flowUnfiltered_ used to compare
   // filteredPeople_().length to MODEL.people.length, which can never be equal
@@ -1728,10 +1734,6 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   var h2 = els["flowTiles"].innerHTML;
   assert_(h2.indexOf("export predates Jira Backlog.js v3.9.0") !== -1,
           "absent feeds name the exporter version, not an error");
-
-  // Restore view state for any assertions that follow.
-  C.setState("view", "exec");
-  C.renderAll_();
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");

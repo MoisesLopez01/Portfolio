@@ -119,6 +119,12 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .tile .big.g{color:var(--pos)} .tile .big.a{color:var(--amber)} .tile .big.r{color:var(--warn)}
 .tile .cmp{font-size:calc(11px*var(--scale));color:var(--muted)}
 .tile.ph{opacity:.55;border-style:dashed}
+/* Compact tier (spec 2026-08-05 §4.1): the flow tiles sit under the primary
+   KPI cards in the Executive strip, so they read as a second, quieter row
+   rather than five more headline numbers competing for the same weight. */
+.tilesCompact .tile{padding:10px 12px}
+.tilesCompact .big{font-size:calc(20px*var(--scale));line-height:1.2}
+.tilesCompact .lbl{font-size:calc(10px*var(--scale))}
 /* ── Confidence + suppression (FR-2.1/2.2) ──
    A suppressed tile is styled as a distinct STATE, not a greyed-out number:
    dashed border, no hero figure, the coverage and the owner in its place. The
@@ -404,9 +410,16 @@ select option:disabled{color:var(--muted);font-style:italic}
 
   <!-- ── EXECUTIVE — the four cards and one comparison. The 30-second read. ── -->
   <div id="viewExec" class="viewPane">
-    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('tiles','tiles')" title="Save the KPI cards as a PNG image">
+    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('kpiStrip','tiles')" title="Save the KPI cards as a PNG image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
-    <div class="tiles" id="tiles"></div>
+    <div id="kpiStrip">
+      <div class="tiles" id="tiles"></div>
+      <!-- Compact flow tier (spec 2026-08-05 §4.1): the five live flow reads as
+           smaller neutral tiles inside the same KPI block. The 🌊 Flow tab is
+           retired; declared-absent placeholders (Cycle Time, Flow Efficiency)
+           no longer render — the registry stays their record. -->
+      <div class="tiles tilesCompact" id="flowTiles"></div>
+    </div>
     <!-- Colour key for the cards and the comparison bars below them — readers
          learn colours from legends, not tooltips (user request 2026-08-04). -->
     <div id="tileColorKey"></div>
@@ -433,13 +446,6 @@ select option:disabled{color:var(--muted);font-style:italic}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
     </div>
     <div class="panel" id="gridPanel"></div>
-  </div>
-
-  <!-- 🌊 Flow — how work moves through the system (spec 2026-08-05). -->
-  <div id="viewFlow" class="viewPane" style="display:none">
-    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('flowTiles','flow')" title="Save the flow cards as a PNG image">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
-    <div class="tiles" id="flowTiles"></div>
   </div>
 
   <!-- Data Hygiene (FR-2.3/2.4): the attribution work queue that used to live as
@@ -493,8 +499,6 @@ var VIEWS = [
   // line chart; that chart was removed and the label kept promising one.
   { id: "trend",   label: "🎯 Headroom",  pane: "viewTrend",   roles: ["admin", "viewer"],
     hint: "Where the headroom is — one row per person, ranked by the hours that could be recovered." },
-  { id: "flow",    label: "🌊 Flow",     pane: "viewFlow",    roles: null,
-    hint: "How work moves through the system — lead time, throughput, backlog, WIP and bugs." },
   { id: "people",  label: "👥 People",    pane: "viewPeople",  roles: null,
     hint: "The operational roster: who needs attention this period, with per-person drill-downs." },
   { id: "hygiene", label: "🧪 Data Hygiene", pane: "viewHygiene", roles: null,
@@ -1307,9 +1311,8 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderTiles_(); renderCompare_(); break;
+    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); break;
     case "trend":   renderOpportunity_(); break;
-    case "flow":    renderFlow_(); break;
     case "people":  syncExpandAllBtn_(); renderGrid_(); break;
     case "hygiene": renderHygiene_(); break;
     case "access":  renderAccess_(); break;
@@ -2354,7 +2357,8 @@ function renderTiles_() {
     "Rework Rate reverses the scale — lower is better. The comparison bars below use the same colours.");
 }
 
-// ── 🌊 FLOW VIEW (spec 2026-08-05-flow-metrics-design.md) ────────────────────
+// ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05-flow-metrics-design.md,
+//    §4.1 retirement of the standalone tab) ──────────────────────────────────
 
 function flowMedian_(arr) {
   if (!arr || !arr.length) return null;
@@ -2502,9 +2506,11 @@ function renderFlow_() {
     });
   })();
 
-  // 2 · Cycle Time — declared absent (registry carries the reason).
-  html += flowTileHtml_(reg.cycleTime || { name: "Cycle Time", status: "absent",
-    absentReason: "needs first-In-Progress date from the Jira changelog — not yet exported" }, null, {});
+  // 2/6 · Cycle Time and Flow Efficiency are declared ABSENT in the registry
+  // (no in-progress timestamps / no queue-state instrumentation). They used to
+  // render as "—" placeholder tiles; retired from the UI 2026-08-05 (spec
+  // §4.1) — the registry + Data Reference remain the record of what is
+  // deliberately not measured.
 
   // 3 · Throughput — Σ estimate-hours delivered.
   (function () {
@@ -2593,10 +2599,6 @@ function renderFlow_() {
       ],
     });
   })();
-
-  // 6 · Flow Efficiency — declared absent.
-  html += flowTileHtml_(reg.flowEfficiency || { name: "Flow Efficiency", status: "absent",
-    absentReason: "needs per-status dwell time from the Jira changelog — not yet exported" }, null, {});
 
   // 7 · Bug Count — POPULATION-WIDE (registry deviation: bugs are routinely
   // unassigned at creation, so a roster join would silently drop most of them).
