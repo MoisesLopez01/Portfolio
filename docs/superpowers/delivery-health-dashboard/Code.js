@@ -4619,6 +4619,12 @@ function _test_unassignedInventory_() {
     // assignee exists but does NOT resolve to a person → falls out of both halves
     { key: "Q-7", isEpic: false, resolved: null, assignee: "ghost", status: "Open",
       statusCategory: "To Do", estSec: 1800, spentSec: 0 },
+    // UNASSIGNED + open + blank statusCategory → unassigned uncategorized (not items)
+    { key: "Q-8", isEpic: false, resolved: null, assignee: "⚠️ UNASSIGNED", status: "Open",
+      statusCategory: "", estSec: 2400, spentSec: 600 },
+    // assigned + open + blank statusCategory → assigned uncategorized (not items)
+    { key: "Q-9", isEpic: false, resolved: null, assignee: "maria", status: "Open",
+      statusCategory: "", estSec: 1200, spentSec: 0 },
   ];
   var s = queueSnapshot_(issues, who);
 
@@ -4631,12 +4637,44 @@ function _test_unassignedInventory_() {
   assert_(s.unassigned.todoHrs === 1, "unassigned To Do hours only (Q-3: 1h, not Q-4 WIP) — got " + s.unassigned.todoHrs);
 
   // Q-7 (ghost) falls out of BOTH halves because assignee exists but doesn't resolve.
-  assert_(s.assigned.items === 2 && s.unassigned.items === 2, "Q-7 ghost excluded from both halves");
   assert_(s.assigned.unattributed === 1, "Q-7 ghost tallied in unattributed — got " + s.assigned.unattributed);
+
+  // Q-8 and Q-9 have blank statusCategory, landing in uncategorized, not items.
+  assert_(s.assigned.uncategorized === 1, "Q-9 blank statusCategory in assigned uncategorized — got " + s.assigned.uncategorized);
+  assert_(s.unassigned.uncategorized === 1, "Q-8 blank statusCategory in unassigned uncategorized — got " + s.unassigned.uncategorized);
 
   // No pre-summed total on the object: the caller must ask for it explicitly.
   assert_(s.items === undefined && s.total === undefined,
           "queueSnapshot_ must NOT expose a pre-summed total");
+
+  // PARTITION CHECK. Every record that survives the base filters (non-epic,
+  // unresolved, not closed-ish) must land in exactly one of five places:
+  // assigned-bucketed, assigned-unattributed, assigned-uncategorized,
+  // unassigned-bucketed, unassigned-uncategorized. This is the only assertion
+  // here that catches a record going missing ANYWHERE — the per-half counts
+  // above each pin one outcome, but none of them notices a record that falls
+  // out of every bucket at once, which is the exact defect this task fixed.
+  var eligible = 7;   // Q-1..Q-4, Q-7, Q-8, Q-9 — Q-5 resolved, Q-6 is an epic
+  var accounted = s.assigned.items + s.assigned.unattributed + s.assigned.uncategorized +
+                  s.unassigned.items + s.unassigned.uncategorized;
+  assert_(accounted === eligible,
+          "every eligible record is accounted for exactly once — expected " + eligible +
+          ", got " + accounted);
+
+  // The flowOpen parameter must be USED, not just accepted. Hand-build a result
+  // that could not arise from the fixture, so a version that ignored the argument
+  // and recomputed from `issues` would produce different numbers and fail here.
+  var fakeFlowOpen = { buckets: [{ person: "Maria", wipN: 5, todoN: 3, todoEst: 0, todoHrs: 9 }],
+                       unattributed: 7, uncategorized: 2 };
+  var supplied = queueSnapshot_(issues, who, fakeFlowOpen);
+  assert_(supplied.assigned.wipN === 5 && supplied.assigned.todoN === 3,
+          "flowOpen argument is used, not recomputed — got wipN=" + supplied.assigned.wipN +
+          " todoN=" + supplied.assigned.todoN);
+  assert_(supplied.assigned.todoHrs === 9, "supplied todoHrs carried through — got " + supplied.assigned.todoHrs);
+  assert_(supplied.assigned.unattributed === 7 && supplied.assigned.uncategorized === 2,
+          "supplied loss counters carried through");
+  // The unassigned half is computed from `issues` regardless, so it is unchanged.
+  assert_(supplied.unassigned.items === 2, "unassigned half still computed from issues");
 
   // An all-assigned population reports zero unassigned, which is a MEASURED zero
   // (we looked and found none) and legitimately different from the null the
