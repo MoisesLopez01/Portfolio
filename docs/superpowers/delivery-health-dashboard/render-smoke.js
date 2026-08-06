@@ -96,6 +96,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // "gates nothing today" marking only exist in rendering.
              " typeMatrixHtml_: typeMatrixHtml_, typeImpact_: typeImpact_," +
              " typeHygRows_: typeHygRows_, setTypePop_: setTypePop_, TYPE_FIELDS_: TYPE_FIELDS_," +
+             " personSignalRows_: personSignalRows_, signalSummary_: signalSummary_, SIGNAL_FIELDS_: SIGNAL_FIELDS_," +
              " metricConfidence_: metricConfidence_, pngPeriodStamp_: pngPeriodStamp_," +
              // Navigation, cascading filters, operating rate, charts and the two
              // new views — all client-only, so render-smoke is the only place
@@ -1604,6 +1605,39 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
           "an empty population says so plainly");
   fresh(model({}));
   C.STATE.typePop = "open";
+})();
+
+// ── Actions roster grading (spec §5.2) ──────────────────────
+// personSignalRows_ grades vs the matrix gates; below signalMinN the cell is
+// "small" (grey, % still shown) and never red. Uses the base fixture's own
+// people (Ana Perez, Ben Ortiz — model({}) at the top of this file) so the
+// rows are guaranteed to exist in model.people and pass default filters.
+(function () {
+  fresh(model({}));
+  resetFilters();
+  C.STATE.typePop = "open";
+  var mdl = C.getModel();
+  mdl.personHygiene = {
+    open: [
+      { person: "Ana Perez", n: 10, due: 3, est: 10, logged: 9 },  // due red, est green
+      { person: "Ben Ortiz", n: 1,  due: 0, est: 0,  logged: 0 },  // ALL small — never red
+    ],
+    resolved: [],
+  };
+  mdl.meta.signalMinN = 4;
+  C.setModel(mdl);
+  var rows = C.personSignalRows_([]);
+  var ana = rows.filter(function (r) { return r.p.name === "Ana Perez"; })[0];
+  var ben = rows.filter(function (r) { return r.p.name === "Ben Ortiz"; })[0];
+  assert_(ana && ana.sig.due.cls === "bad", "30% due fill vs 0.8 gate grades bad");
+  assert_(ana.sig.est.cls === "good", "100% est fill grades good");
+  assert_(ana.overall === "bad", "overall = worst graded signal");
+  assert_(ben && ben.sig.due.cls === "small" && ben.overall === "na",
+          "1-issue person is SMALL/ungraded, never red (review 2026-08-05 #1)");
+  var sum = C.signalSummary_([]);
+  assert_(sum.bad === 1 && sum.small === 1,
+          "summary counts exclude small-n rows from the red count");
+  resetFilters();
 })();
 
 // ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05 §4.1) ──

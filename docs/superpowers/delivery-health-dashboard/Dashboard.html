@@ -3760,6 +3760,89 @@ function typeFieldGate_(f) {
   return f.gate === undefined ? null : f.gate;
 }
 
+// ── 👥 PEOPLE SIGNALS (Actions roster, spec 2026-08-05 §5.2) ─────────────────
+// Same fields, same gates as the 🧬 matrix — one truth. Person grain.
+
+var SIGNAL_FIELDS_ = [
+  { k: "due",    label: "Due date", gateOf: "onTime",
+    tip: "Share of this person's issues carrying a due date. Same predicate and gate as the 🧬 matrix — the two surfaces can never disagree about a record." },
+  { k: "est",    label: "Estimate", gateOf: "forecast",
+    tip: "Share carrying an original estimate." },
+  { k: "logged", label: "Logged",   gateOf: "forecast",
+    tip: "Share carrying logged time (Jira Time Spent > 0)." },
+];
+
+function signalMinN_() { return (MODEL.meta && MODEL.meta.signalMinN) || 4; }
+
+/**
+ * Grade one signal. Below signalMinN_ the cell is "small": grey, ungraded,
+ * % still shown — one missing due date on one ticket must never render the
+ * same red as fifteen on forty (review 2026-08-05 #1; the roster's
+ * STD_MIN_PERIODS). "na" = nothing to grade at all.
+ */
+function gradeSignal_(hit, n, gate) {
+  if (!n) return { cls: "na", pct: null, miss: 0 };
+  var pct = hit / n;
+  var out = { pct: pct, miss: n - hit };
+  if (n < signalMinN_()) { out.cls = "small"; return out; }
+  if (gate === null)      { out.cls = "na";    return out; }
+  out.cls = pct >= gate ? "good" : pct >= gate - 0.10 ? "warn" : "bad";
+  return out;
+}
+
+var SIGNAL_RANK_ = { bad: 3, warn: 2, good: 1 };
+
+/**
+ * One row per person in the filtered population. Returns null on a pre-v22
+ * payload (renderers show the same "Not in this payload" state as the matrix).
+ * Population follows the 🧬 matrix's Open ↔ Resolved toggle (STATE.typePop);
+ * isos scope the resolved half only — a backlog has no history to walk.
+ * Interns excluded like every ranking surface (oppRows_ precedent).
+ */
+function personSignalRows_(isos) {
+  var ph = MODEL.personHygiene;
+  if (!ph) return null;
+  var byName = {};
+  if (STATE.typePop === "resolved") {
+    (ph.resolved || []).forEach(function (b) {
+      if (isos.indexOf(b.iso) === -1) return;
+      var t = byName[b.person] || (byName[b.person] = { n: 0, due: 0, est: 0, logged: 0 });
+      t.n += b.n; t.due += b.due; t.est += b.est; t.logged += b.logged;
+    });
+  } else {
+    (ph.open || []).forEach(function (b) {
+      byName[b.person] = { n: b.n, due: b.due, est: b.est, logged: b.logged };
+    });
+  }
+  var m = (MODEL.meta.registry || {}).metrics || {};
+  return filteredPeople_().filter(function (p) { return !p.isIntern; }).map(function (p) {
+    var t = byName[p.name] || { n: 0, due: 0, est: 0, logged: 0 };
+    var sig = {}, worst = 0, miss = 0;
+    SIGNAL_FIELDS_.forEach(function (f) {
+      var gate = m[f.gateOf] ? m[f.gateOf].coverageGate : null;
+      var g = gradeSignal_(t[f.k], t.n, gate);
+      sig[f.k] = g;
+      if (SIGNAL_RANK_[g.cls]) { worst = Math.max(worst, SIGNAL_RANK_[g.cls]); miss += g.miss; }
+    });
+    var overall = worst === 3 ? "bad" : worst === 2 ? "warn" : worst === 1 ? "good" : "na";
+    return { p: p, n: t.n, sig: sig, overall: overall, miss: miss };
+  });
+}
+
+/** 🟢/🟡/🔴 counts for the Executive pulse. Small-n rows are counted apart —
+    NEVER in bad (they would inflate the reds with statistical noise). */
+function signalSummary_(isos) {
+  var rows = personSignalRows_(isos);
+  var out = { good: 0, warn: 0, bad: 0, small: 0, na: 0, available: rows !== null };
+  (rows || []).forEach(function (r) {
+    if (r.overall === "na") {
+      // A row is "small" for the summary when it HAS issues but none graded.
+      out[r.n > 0 ? "small" : "na"]++;
+    } else out[r.overall]++;
+  });
+  return out;
+}
+
 /** Does this field gate a PUBLISHED metric for this row's type? A Story's due
     date does not, under dictionary scope — grading it red would send someone to
     fix records that move no number. */
