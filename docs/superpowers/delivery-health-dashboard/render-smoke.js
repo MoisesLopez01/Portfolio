@@ -679,12 +679,18 @@ resetFilters();
 C.switchView_("actions");
 assert_(els.viewActions.style.display === "" && els.viewExec.style.display === "none",
         "switching view shows exactly one pane");
+// Motion (spec §7): the shown pane carries paneIn for the cross-fade, and no
+// stale copy is left on a pane that's no longer showing.
+assert_(/\bpaneIn\b/.test(els.viewActions.className), "the shown pane carries paneIn");
+assert_(!/\bpaneIn\b/.test(els.viewExec.className), "a hidden pane does not carry paneIn");
 // 🌊 Flow retired 2026-08-05 (§4.1); People + Data Hygiene retired 2026-08-05
 // (Task 3, §5) — three tabs remain: Executive, Actions, Access.
 assert_(els.tabBar.children.length === 3, "an admin sees all three tabs");
 C.switchView_("exec");
 assert_(els.viewExec.style.display === "" && els.viewActions.style.display === "none",
         "and switching back hides the other");
+assert_(/\bpaneIn\b/.test(els.viewExec.className) && !/\bpaneIn\b/.test(els.viewActions.className),
+        "…and paneIn moves with it — re-entering a pane restarts the cross-fade, not a stale class");
 var mdlV = fresh(histModel({}));
 mdlV.viewerRole = "viewer";
 C.switchView_("exec");
@@ -2625,6 +2631,39 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   assert_(cmp.indexOf(">PERIOD<") !== -1, "comparison panel heading carries PERIOD scope tag");
 
   // Teardown (sibling discipline): restore the standard fixture and view.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ── TASK 11 — MOTION LAYER IS TRANSPARENT TO HEADLESS RENDERING (spec §7) ───
+// The motion layer is CSS + rAF only: the stub has no requestAnimationFrame
+// (El.getElementsByClassName also always returns [], belt-and-suspenders)
+// and window.matchMedia here always reports matches:false, so the count-up
+// guard's rAF check alone is what keeps it dark under this stub — this pins
+// that a full render still throws nothing and still produces real values,
+// which is the only thing render-smoke can prove about it.
+(function () {
+  fresh(model({ otCov: 0.95, fcCov: 0.9 }));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+  var tilesHtml = els.tiles.innerHTML;
+  assert_(/class="big/.test(tilesHtml), "motion layer on: hero tiles still carry .big values");
+  assert_(!/NaN/.test(tilesHtml), "…and no count-up NaN leaked into a tile (rAF never ran under the stub)");
+
+  // A re-render after "loaded" (the state every render past the first one is
+  // actually in) must not throw and must not re-run the count-up — it's a
+  // module-scoped one-shot guard, not something a re-render can retrigger.
+  document.body.className = "loaded";
+  C.renderAll_();
+  assert_(/\bloaded\b/.test(document.body.className),
+          "a renderAll_ pass after the class has settled to loaded leaves it there — " +
+          "renderAll_/renderTiles_ never touch body.className themselves");
+  assert_(/class="big/.test(els.tiles.innerHTML),
+          "…and tiles still render real values, not a count-up left mid-flight from a prior render");
+
   fresh(model({}));
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");

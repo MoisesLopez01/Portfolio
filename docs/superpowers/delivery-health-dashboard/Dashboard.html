@@ -379,6 +379,24 @@ table.opp{border-collapse:collapse;width:100%;font-size:calc(12px*var(--scale))}
    disabled, so a filter list never silently loses a value someone is looking for. */
 select option:disabled{color:var(--muted);font-style:italic}
 .chip.off{opacity:.38;cursor:not-allowed}
+/* ── Motion (spec §7) — portfolio language, ONCE per load. Every rule lives
+   behind prefers-reduced-motion; re-renders from filter/sort changes never
+   re-animate (body.loaded gates the entrance keyframes). ── */
+@media (prefers-reduced-motion: no-preference){
+  :root{--ease:cubic-bezier(.4,0,.2,1);--spring:cubic-bezier(.34,1.56,.64,1)}
+  body:not(.loaded) .tile{opacity:0;transform:translateY(14px)}
+  body.entering .tile{animation:dhReveal .5s var(--ease) both}
+  body.entering .tile:nth-child(2){animation-delay:.06s}
+  body.entering .tile:nth-child(3){animation-delay:.12s}
+  body.entering .tile:nth-child(4){animation-delay:.18s}
+  body.entering .tile:nth-child(5){animation-delay:.24s}
+  @keyframes dhReveal{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .tile,.trustItem{transition:transform .25s var(--spring),box-shadow .25s var(--ease)}
+  .tile:hover,.trustItem:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+  .viewPane.paneIn{animation:paneIn .15s var(--ease) both}
+  @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .trustBar i,.hbarMini i{transition:width .8s var(--spring)}
+}
 </style>
 </head>
 <body>
@@ -467,6 +485,10 @@ select option:disabled{color:var(--muted);font-style:italic}
 
 <script>
 var MODEL = null;
+// Count-up on the hero tiles runs ONCE per page load (Motion, spec §7) — set
+// the instant it fires, never reset, so a later filter/sort re-render can't
+// retrigger it.
+var countedUp_ = false;
 // period: "month" (default per user decision 2026-07-31) | "week" | "quarter"
 // pop: population lens — "fte" (default: FTEs are the primary focus) | "crew" | "all"
 // (hygIdx removed 2026-08-04 — the Data Hygiene window follows the global
@@ -575,6 +597,15 @@ function switchView_(id) {
     var el = document.getElementById(x.pane);
     if (el) el.style.display = x.id === v.id ? "" : "none";
   });
+  // Motion (spec §7): the shown pane cross-fades in; strip paneIn from every
+  // pane first (including the one about to be shown) so re-entering a view
+  // always restarts the animation rather than a no-op class re-add.
+  VIEWS.forEach(function (x) {
+    var pel = document.getElementById(x.pane);
+    if (pel) pel.className = pel.className.replace(/ ?paneIn/, "");
+  });
+  var pane = document.getElementById(v.pane);
+  if (pane) pane.className += " paneIn";
   // The scope chip describes the FILTERED population. Actions now mixes
   // filtered content (headroom, the signals roster) with the deliberately
   // whole-population gaps queue/matrix — the chip stays visible for the
@@ -734,6 +765,16 @@ function loadData(force) {
       if (!m.meta.periods) STATE.period = "week";
       buildFilters_();
       switchView_(STATE.view);   // paints the tab bar, the pane and everything in it
+      // Motion (spec §7), ONCE per load: stagger-reveal the tiles, then settle.
+      // classList (not className =) because body carries no other class today
+      // (theme lives on <html data-theme>, not body) but might one day — this
+      // way a future body class survives the entrance sequence instead of
+      // being clobbered.
+      document.body.classList.add("entering");
+      setTimeout(function () {
+        document.body.classList.remove("entering");
+        document.body.classList.add("loaded");
+      }, 900);
     })
     .withFailureHandler(function (e) {
       clearTimeout(slowHint);
@@ -2337,6 +2378,29 @@ function renderTiles_() {
                            metric: regU, std: utilStd, trendLabels: trendLabels });
       }, opts.headlineLabel, utilCovTrend, trendLabels)) +
     qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head, hi);
+  // Count-up runs ONCE per page load (Motion, spec §7), only where rAF exists
+  // (the render-smoke DOM stub has none — the whole feature is invisible to
+  // it by design) and never under prefers-reduced-motion. renderTiles_
+  // rewrites #tiles' innerHTML on every render (above), so a count-up
+  // mid-flight from a prior render can never corrupt a later one — the nodes
+  // it was mutating are simply gone.
+  if (!countedUp_ && window.requestAnimationFrame &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    countedUp_ = true;
+    var bigs = document.getElementById("tiles").getElementsByClassName("big");
+    Array.prototype.forEach.call(bigs, function (el) {
+      var m = /^(\d+)(.*)$/.exec(el.textContent || "");
+      if (!m) return;
+      var target = +m[1], suffix = m[2], t0 = null;
+      function step(ts) {
+        if (t0 === null) t0 = ts;
+        var k = Math.min(1, (ts - t0) / 700);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))) + suffix;
+        if (k < 1) window.requestAnimationFrame(step);
+      }
+      window.requestAnimationFrame(step);
+    });
+  }
   // Colour key for the cards AND the comparison bars below — one key, because
   // they use the same grading. "Its own target" rather than a number: On-Time
   // grades against 85/70, Forecast 80/60, Utilization 70/50, and each card
