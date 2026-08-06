@@ -2336,4 +2336,44 @@ assert_(!/Ivy Intern/.test(els.oppPanel.innerHTML),
   C.renderAll_();
 })();
 
+// ── EXECUTIVE DATA-TRUST STRIP — NULL-VALUE TILE GRAMMAR (reviewer follow-up:
+// the null branch must be pinned INSIDE renderTrust_ itself, not inferred
+// from a different renderer's coverage of the same `value === null` shape). ──
+// `est`'s value is `h.epics > 0 ? h.epicsEst / h.epics : null` (gapsRows_) —
+// zeroing h.epics is the cleanest lever: it nulls ONLY the "est" gap, since
+// due/logged/attr divide by h.res / h.epicsEst / h.resAssigned respectively,
+// none of which this touches.
+(function () {
+  var m = fresh(model({}));
+  m.hygieneBuckets = m.hygieneBuckets.map(function (b) {
+    return b.iso === "2026.W31" ? Object.assign({}, b, { epics: 0 }) : b;
+  });
+  C.setModel(m);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+  var trustNull = document.getElementById("trustPanel").innerHTML;
+  var segs = trustNull.split('class="trustItem"');
+  assert_(segs.length - 1 === 4, "still exactly four tiles when one key nulls out");
+  var estSeg = segs[1];   // order = [est, due, logged, attr] — est renders first
+  assert_(/trustVal" style="color:var\(--muted\)">—/.test(estSeg),
+          "null-value tile renders the em-dash in muted colour, not a fabricated 0%");
+  assert_(/width:0%;background:var\(--muted\)/.test(estSeg),
+          "…and its bar is width:0 with no colour fill (muted, not good/warn/bad)");
+  assert_(!/var\(--c-good\)|var\(--c-warn\)|var\(--c-bad\)/.test(estSeg),
+          "…the null tile carries none of the three graded colours");
+  // Isolation: zeroing h.epics must not ripple into the other three tiles —
+  // due/logged/attr keep the percentages they render under the base fixture.
+  var dueSeg = segs[2], loggedSeg = segs[3], attrSeg = segs[4];
+  assert_(/80%/.test(dueSeg), "due-date tile is untouched by the est-only null (still 80%)");
+  assert_(/64%/.test(loggedSeg), "logged-fill tile is untouched (still 64%)");
+  assert_(/96%/.test(attrSeg), "roster-join tile is untouched (still 96%)");
+
+  // Teardown (sibling discipline): restore the standard fixture and view.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
 console.log("✅ render-smoke: " + checks + " checks passed");
