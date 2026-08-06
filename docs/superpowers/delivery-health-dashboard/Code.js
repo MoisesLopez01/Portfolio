@@ -263,6 +263,11 @@ var METRIC_REGISTRY_ = {
       target: CONFIG_DH.TARGETS.onTime,
       coverageGate: 0.80,
       coverageOf: "resolved issues that carry a due date",
+      // SAMPLE FLOOR (Task 6, sampleFloorFor_ — spec §4.4), separate instrument
+      // from the coverage gate above: a share computed over one or two resolved
+      // commitments is not a rate, no matter how much of the population is
+      // visible. Same bar as the other rate metrics' floors.
+      sampleFloor: 5,
       owner: "Delivery leadership",
       paramOwner: "Services Director (target); Delivery leadership (issue scope)",
       ebitda: "Late delivery → cost of lateness: client credits, expedite/overtime premium, subcontractor spend. Not yet quantified — blocked on PR-06 (cost/bill rate) and PR-07 (engagement key).",
@@ -310,6 +315,14 @@ var METRIC_REGISTRY_ = {
       target: CONFIG_DH.TARGETS.util,
       coverageGate: 0.90,
       coverageOf: "tracked hours carrying a NetSuite billable classification",
+      // SAMPLE FLOOR (Task 6, sampleFloorFor_ — spec §4.4). `n` here is a
+      // different kind of quantity than it is for a per-record rate (util is a
+      // ratio over HOURS, not over a count of records) — Task 16's
+      // metricSampleN_ decides per metric what n even means, returning null
+      // where a metric has no sample notion. The floor still belongs on the
+      // registry entry; it is sampleFloorFor_'s caller's job to feed it a
+      // meaningful n, not this entry's.
+      sampleFloor: 5,
       owner: "WFP",
       paramOwner: "Services Director (target); Delivery + Tempo admin (billable-flag discipline)",
       ebitda: "Utilization gap → unrecovered labour cost: (target hours − billable hours) × blended cost rate. Not yet quantified — blocked on PR-06 (Finance rate basis, open decision #3).",
@@ -341,6 +354,10 @@ var METRIC_REGISTRY_ = {
       invertTarget: true,
       coverageGate: 0.80,
       coverageOf: "delivered issues whose rework signals were actually measured",
+      // SAMPLE FLOOR (Task 6, sampleFloorFor_ — spec §4.4 calls this metric
+      // "rework"; the registry id is quality, and the id is what binds). A
+      // rework rate over one or two delivered issues is not a rate.
+      sampleFloor: 5,
       owner: "Delivery + CX",
       paramOwner: "Services Director (target threshold); Delivery leadership (Rework link-type discipline)",
       ebitda: "Rework → uncompensated labour: hours on reopened or Rework-linked issues × cost rate, presented as margin given away.",
@@ -385,6 +402,10 @@ var METRIC_REGISTRY_ = {
       lowerIsBetter: true,
       coverageGate: 0.90,
       coverageOf: "resolved non-epic issues carrying both dates",
+      // SAMPLE FLOOR (Task 6, sampleFloorFor_ — spec §4.4), separate instrument
+      // from the coverage gate above: a median over one or two resolved issues
+      // is not a median.
+      sampleFloor: 5,
       owner: "Delivery leadership",
       paramOwner: "Services Director (target, once one is agreed)",
       ebitda: "Long lead times delay revenue recognition and stretch client commitments. Not quantified — no rate basis (PR-06).",
@@ -4962,6 +4983,17 @@ function _test_sampleFloor_() {
   assert_(sampleFloorFor_("forecast", 4).ok === false, "n=4 still short of a floor of 5");
   assert_(sampleFloorFor_("queueCover", 4).ok === false, "n=4 still short of queueCover's floor of 5");
   assert_(sampleFloorFor_("queueCover", 5).ok === true, "n=5 exactly clears queueCover's floor");
+
+  // A rate BELOW its floor must not publish. This is the assertion that proves the
+  // floor is actually attached to these metrics rather than merely defined: with
+  // sampleFloor absent, sampleFloorFor_ treats the metric as a COUNT and returns
+  // ok:true at any n, so this line fails until the entry carries a floor.
+  ["onTime", "util", "leadTime", "quality"].forEach(function (id) {
+    assert_(sampleFloorFor_(id, 2).ok === false,
+            id + " below its floor must not publish — got ok=" + sampleFloorFor_(id, 2).ok);
+    assert_(sampleFloorFor_(id, 5).ok === true,
+            id + " at exactly its floor publishes — got ok=" + sampleFloorFor_(id, 5).ok);
+  });
 
   // Counts are never floored, at any n — including zero.
   ["netFlow", "arrived", "cleared", "inventory"].forEach(function (id) {
