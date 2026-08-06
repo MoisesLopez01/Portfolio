@@ -151,7 +151,7 @@ personHygiene: {
 - Predicates identical to `typeHygieneBuckets_` (`due` present · `estSec > 0` · `spentSec > 0`) so the roster and the matrix can never disagree about the same record.
 - Resolved side is bucketed by ISO week (like other buckets) so the client can scope it to the selected analysis period; open side is a snapshot (no iso), mirroring `flowOpenBuckets`.
 - Payload cost ≈ one small object per person — fits the gzip-chunk cache comfortably.
-- **Schema v17 → v18** (comment block updated), `bustDeliveryCache_` on deploy. Pre-v18 cached payloads: the roster renders the same "Not in this payload — ↻ Refresh" empty-state pattern as the matrix.
+- **Schema v21 → v22** (the spec's earlier v17→v18 reference was stale — `DH_SCHEMA_VER_` is 21 as of 2026-08-05; comment block updated), `bustDeliveryCache_` on deploy. Pre-v22 cached payloads: the roster renders the same "Not in this payload — ↻ Refresh" empty-state pattern as the matrix.
 - **No exporter change, no export re-run** — Jira Raw already carries Due Date, Original Estimate (sec), Time Spent (sec), Assignee.
 - Rejected alternative (B): shipping slim per-issue records to the client — an order of magnitude more payload against the chunked-cache design, for flexibility the column registry already provides.
 
@@ -176,7 +176,7 @@ Cream default, dark toggle untouched, all existing tokens kept. Modernization wi
 ## 9. Deploy (order matters)
 
 1. Push `Code.js` + `Dashboard.html` (single GAS project, one deploy).
-2. Run `bustDeliveryCache_` (schema v18 makes stale cache unreadable anyway; bust makes it immediate).
+2. Run `bustDeliveryCache_` (schema v22 makes stale cache unreadable anyway; bust makes it immediate).
 3. Smoke-check live: all four hero numbers move, roster populates, matrix + gaps queue intact.
 4. Update `README.md` (tab docs) and post the GTT-605 status comment (dated, per ticket style).
 
