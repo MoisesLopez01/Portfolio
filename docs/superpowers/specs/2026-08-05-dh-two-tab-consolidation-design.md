@@ -1,0 +1,177 @@
+# Delivery Health — Two-Tab Consolidation Design
+
+**Date:** 2026-08-05 (2026.W32)
+**Status:** Approved in brainstorming session (visual companion + terminal Q&A)
+**Files affected:** `docs/superpowers/delivery-health-dashboard/Code.js`, `Dashboard.html`, `render-smoke.js`, `README.md`
+**Supersedes as UI surfaces:** 🌊 Flow tab (spec 2026-08-05-flow-metrics), 👥 People tab, 🧪 Data Hygiene tab. The metrics and data passes behind them all survive — only the tab homes change.
+
+---
+
+## 1. Problem
+
+The dashboard has grown to six tabs (📊 Executive · 🎯 Headroom · 🌊 Flow · 👥 People · 🧪 Data Hygiene · 🔒 Access). Readers wade through overlapping surfaces to answer two questions: *are we healthy?* and *who/what needs action?* The user wants a report that is not overcrowded, lands its impact at first glance, and adopts the modern motion language of the gas-portfolio site (`docs/superpowers/gas-portfolio/index.html`).
+
+## 2. Decision log (user choices, 2026-08-05)
+
+| Decision | Choice |
+|---|---|
+| Target structure | **Option C**: 2 content tabs — rebuilt 📊 Executive one-pager + 🎯 Accountability — plus admin-only 🔒 Access |
+| Theme | **Option A**: ServiceRocket cream stays the default; existing dark toggle untouched; modernity via motion + hierarchy |
+| Executive blocks | KPI strip + **1** Comparison chart + **3** People-signals block + **5** Data-trust strip, in that order. Secondary flow row and epic spine table rejected |
+| Flow metrics kept | **All five live** (Lead Time, Throughput, Backlog, WIP, Bug Count) join the KPI strip as a compact tier. Absent placeholders (Cycle Time, Flow Efficiency) stop rendering |
+| Person-signal population | **Shared Open ↔ Resolved toggle** with the 🧬 matrix (one chip strip scopes both; Open default) |
+| Surviving tools | CSV + PNG exports, hygiene gaps queue, per-person drill-down — all move to Accountability |
+| Person surface | **Full-roster RAG signal table** (every active employee, sortable columns) replaces the sample's Celebrate/Coach panels; lives on Accountability; Executive shows a counts-only summary that deep-links to it |
+| Added late | **Billable / non-billable hours per person** — simple stacked-bar column in the roster |
+
+## 3. Information architecture
+
+New `VIEWS` array (Dashboard.html):
+
+```
+📊 Executive      id "exec"           roles: null              (open to every resolved role)
+🎯 Accountability id "accountability" roles: ["admin","viewer"] (inherits today's Headroom gate)
+🔒 Access         id "access"         roles: ["admin"]
+```
+
+Removed: `flow`, `people`, `hygiene`, and the old `trend` id (its content moves into Accountability). Every existing deep link re-routes:
+
+- `showHygiene_()` (linked from suppressed KPI cards) → `switchView_("accountability")` + scroll to the gaps queue.
+- The Headroom "What's missing" link → same.
+- Role gating stays enforced inside `switchView_` (forbidden id → `exec`), exactly as today.
+
+`STATE.view` default stays `"exec"`. `STATE` keys for retired surfaces (`expandedWeeks`, `openDetail`) are kept — the drill-down reuses them.
+
+## 4. 📊 Executive tab (top-down, four blocks)
+
+### 4.1 Tiered KPI strip (one block, two visual tiers)
+
+- **Hero tier** — the four verdict tiles exactly as today: On-Time Delivery, Forecast Accuracy, Utilization, Quality/Rework. Targets, RAG grammar, suppression-below-gate behaviour, honesty notes: all unchanged. Forecast + Utilization remain margin-tier (`MARGIN_METRICS_`) and are not rendered for open-access guests, as today.
+- **Compact tier** — the five flow metrics as smaller tiles in a row beneath the heroes, inside the same panel: Lead Time (median, p85 in tooltip), Throughput, Backlog, WIP, Bug Count. They keep `flowTileHtml_`'s neutral grammar (target: null → no verdict colour, neutral ▲/▼ deltas, confidence chips, sparklines). Backlog/WIP keep their snapshot semantics including the `flowUnfiltered_()` trend rule.
+- The two **declared-absent** flow tiles (Cycle Time, Flow Efficiency) are removed from the UI. Their `status:"absent"` registry entries and reasons stay in the metrics registry / Data Reference — the registry remains the record of what is deliberately not measured.
+- PNG button captures the whole strip (both tiers).
+
+### 4.2 Comparison chart
+
+Unchanged mechanics (`renderCompare_`, chip selector, dimension picker). Two changes:
+
+- The metric chip strip **gains the flow metrics** (Lead Time, Throughput, Backlog, WIP, Bugs) so they can be compared by Region/Team/family like the verdict metrics. Margin-tier chips stay hidden from guests as today.
+- Bars adopt the grow-in animation (§7).
+
+### 4.3 People signals summary (margin-gated)
+
+- Rendered only when `canSeeMargin_()` — open-access guests never see it; the Executive tab stays safe to project.
+- Content: `🟢 N on track · 🟡 N watch · 🔴 N need action · Xh recoverable → open the roster`. Counts come from the same per-person grading the Accountability roster uses (§5.2) under the **current filters**; recoverable hours from the existing opportunity math.
+- Clicking it deep-links: `switchView_("accountability")` with the roster pre-sorted "biggest opportunity first".
+- **Counts only, never names, on this tab** — consistent with the standing "no names in widely-read surfaces" rule; the named table lives behind the Accountability gate.
+
+### 4.4 Data-trust strip
+
+Four small fill-rate tiles, org-wide (deliberately unfiltered, like the old Hygiene view):
+
+| Tile | Source (existing) | Gate |
+|---|---|---|
+| Estimate coverage | hygieneBuckets est fill | registry `forecast` coverage gate |
+| Due-date fill | hygieneBuckets due fill | registry `onTime` coverage gate |
+| Logged fill | hygieneBuckets time fill | registry `forecast` coverage gate |
+| Roster join | resAssigned / attr split | 0.95 (matrix's `attr` gate) |
+
+Each tile: fill % vs gate, coloured horizontal bar (`--c-good`/`--c-warn`/`--c-bad` grading same as matrix cells), one-line "why it matters" from the registry. This strip is the executive's replacement for the Data Hygiene tab; the drill-downs live one tab over.
+
+## 5. 🎯 Accountability tab (top-down, four blocks + exports)
+
+Header row: CSV + PNG buttons (top-right), re-pointed at the new tables. CSV = the signals roster (one row per person, all signal values + hours split); the old person-per-period grid CSV retires with the grid.
+
+### 5.1 Where the headroom is
+
+The existing opportunity table (`renderOpportunity_`, `oppRows_`) **unchanged in math and presentation**: cohort-norm baseline under active filters, ranked recoverable hours, ramping hires shown but never counted, `STD_MIN_PERIODS` guard.
+
+### 5.2 People signals roster (new)
+
+One row per **active employee in the dashboard population** (the same tracking-mandated-families population the dashboard already models), respecting the universal filters and population lens.
+
+**Column registry** (client-side array, same pattern as `TYPE_FIELDS_`): each entry = `{ key, label, tooltip, gate | gateOf, cellRenderer, sortFn, csv }`. Adding a future signal = registering a column. Launch set:
+
+| Column | Type | Definition |
+|---|---|---|
+| Person | identity | name + ▸ drill-down toggle; job title in tooltip |
+| n | count | issues in the selected population (Open or Resolved) attributed to the person |
+| Due date | RAG signal | share of the person's issues carrying a due date — **same predicate as the 🧬 matrix's `due` field**, graded against the same gate |
+| Estimate | RAG signal | share carrying an original estimate — matrix `est` predicate + gate |
+| Logged | RAG signal | share carrying logged time (Time Spent > 0) — matrix `time` predicate + gate |
+| Hours | info (no RAG) | compact stacked bar: billable / non-billable / idle capacity for the analysis period, from the existing per-person Tempo×NetSuite split (the numbers the old People-grid workload bars drew). Exact hours in tooltip + CSV. Sorts by billable share |
+| Overall | RAG signal | worst of the three RAG signals ("a chain is as compliant as its weakest field"); "—" cells are ignored; all-"—" → overall "—" |
+
+**Cell grammar:** RAG dot + person's own fill % + offending count (e.g. `🔴 33% · 4 missing`). Grading thresholds are the matrix's: ✔ at/above the field's gate · ▲ under 10 pts below · ✖ 10+ pts below. Zero issues in the selected population → `—` (ungraded), never red: no data is not a failure.
+
+**Population toggle:** the roster sits under the **same Open ↔ Resolved chip strip as the 🧬 matrix** (`STATE.typePop`), placed once above both. Open (default) = actionable backlog snapshot, ignores the period picker (same rationale and ⓘ note as the matrix). Resolved = the analysis window, explains the period's numbers.
+
+**Sorting:** every column sortable; default = biggest opportunity first (most ✖ signals, then most offending issues). The Executive summary deep-link applies this sort.
+
+**Drill-down (▸ per row):** the person's open items (key, summary, status, priority, due week, remaining hours — the existing `backlogByPerson_` payload, `BACKLOG_MAX_ITEMS` cap noted in the panel) plus their recent weekly tracked/planned/billable detail (the data the old People grid rendered per week). Reuses `STATE.openDetail`.
+
+**Naming rule:** this roster is the deliberate, gated exception to "no names against failures" — it exists to route coaching, sits behind the admin/viewer gate, and pairs every red with the exact records to fix (the drill-down), so it reads as a work queue, not a blame board.
+
+### 5.3 🧬 Field fill by issue type
+
+`typeMatrixHtml_` moved as-is: same chips (now shared, §5.2), same gate grading, uniform-column footnote, impact ordering, PNG button. No logic change.
+
+### 5.4 Gaps queue
+
+The Data Hygiene work queue (gap → owning requirement ID → committed week) moved as-is beneath the matrix. Keeps "requirements, not people" naming. The old `viewHygiene` pane and tab are deleted; `renderHygiene_`'s pieces are refactored into the Accountability renderer rather than kept as a hidden view.
+
+## 6. Backend: `personHygiene_` rollup (approach A — server-side)
+
+New pure pass in Code.js, run next to `typeHygieneBuckets_` over the **same `issues` array** (every row, epics included — the matrix's population), attributing via the existing `resolvePerson`/attribution index (leavers already excluded upstream):
+
+```
+personHygiene: {
+  "<display name>": {
+    open:     { n, due, est, logged },   // counts, not rates — client computes %
+    resolved: { n, due, est, logged, isos: implicit via window }
+  }, …
+}
+```
+
+- Predicates identical to `typeHygieneBuckets_` (`due` present · `estSec > 0` · `spentSec > 0`) so the roster and the matrix can never disagree about the same record.
+- Resolved side is bucketed by ISO week (like other buckets) so the client can scope it to the selected analysis period; open side is a snapshot (no iso), mirroring `flowOpenBuckets`.
+- Payload cost ≈ one small object per person — fits the gzip-chunk cache comfortably.
+- **Schema v17 → v18** (comment block updated), `bustDeliveryCache_` on deploy. Pre-v18 cached payloads: the roster renders the same "Not in this payload — ↻ Refresh" empty-state pattern as the matrix.
+- **No exporter change, no export re-run** — Jira Raw already carries Due Date, Original Estimate (sec), Time Spent (sec), Assignee.
+- Rejected alternative (B): shipping slim per-issue records to the client — an order of magnitude more payload against the chunked-cache design, for flexibility the column registry already provides.
+
+## 7. Theme & motion
+
+Cream default, dark toggle untouched, all existing tokens kept. Modernization within the token system:
+
+- Slightly larger hero-tile numbers; softer card radii/shadows on the portfolio's scale; one `--orbe` pulse dot in the header next to the as-of line.
+- **Motion, CSS-first, all inside `@media (prefers-reduced-motion: no-preference)`:**
+  - Tab switch: outgoing pane fades, incoming pane fades + 8px upward slide, ~150ms, portfolio `--ease` curve.
+  - First render per load: tiles stagger-reveal top-down (60ms steps); hero numbers count up once; comparison + workload + trust bars grow in with the portfolio `--spring` curve.
+  - Hover lift on tiles and roster rows (translateY(-2px) + shadow step).
+  - **One-time only:** filter/period/sort re-renders must not re-animate. Implementation: a `bodyLoaded` class set after the first `renderAll_`, animations keyed off its absence.
+- Charts stay on the validated CVD-safe mark tokens; no palette change.
+
+## 8. Testing
+
+- **`render-smoke.js`:** tab count 6 → 3; new assertions — signals roster renders with RAG cells and sorts, Executive summary counts match roster grading, trust strip renders four tiles with gates, flow compact tier renders five tiles and no absent placeholders, retired panes (`viewFlow`, `viewPeople`, `viewHygiene`) absent, deep links land on Accountability, reduced-motion class present.
+- **Code.js unit test `_test_personHygiene_`** alongside `_test_typeHygieneBuckets_`: attribution via resolver, open/resolved split, predicate parity with the matrix on a shared fixture, zero-issue person absent from map, epic rows counted, unattributed issues excluded.
+- Manual QA: guest (open-access) sees no Utilization/Forecast tiles, no signals summary, no Accountability tab; admin sees all; dark-mode spot check on the new surfaces.
+
+## 9. Deploy (order matters)
+
+1. Push `Code.js` + `Dashboard.html` (single GAS project, one deploy).
+2. Run `bustDeliveryCache_` (schema v18 makes stale cache unreadable anyway; bust makes it immediate).
+3. Smoke-check live: all four hero numbers move, roster populates, matrix + gaps queue intact.
+4. Update `README.md` (tab docs) and post the GTT-605 status comment (dated, per ticket style).
+
+No exporter deploy, no export re-run, no Region/Team dependency change (still blocked on Gon upstream — unaffected).
+
+## 10. Out of scope
+
+- Dark-first "mission control" theme (user: "we already have the dark theme to change it later").
+- Epic spine table and secondary flow row (rejected block options).
+- Celebrate/Coach panels (superseded by the full-roster signals table).
+- The sample's level-rate × tenure-ramp norm engine — the existing cohort-norm baseline stays.
+- New signal columns beyond Due/Estimate/Logged/Hours (the registry makes them cheap later; none ship now).
+- Any exporter (`Jira Backlog.js`) change.
