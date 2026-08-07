@@ -3907,4 +3907,239 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.renderAll_();
 })();
 
+// ══════════════════════════════════════════════════════════════════════════
+// §4/§5 FLOW BAND + CAPACITY BAND (Task 14, spec 2026-08-06 §4/§5)
+//
+// Flow band: the Arrived tile (ORG) joins the existing #flowTiles tier.
+// Capacity band: the existing canSeeMargin_ gate, the planning-window phase
+// switch (planTile_/notYetTile_) and the mid-period floor grammar (opts.floor)
+// are NOT rewritten here — this block only pins that they still hold, plus
+// the new CAPACITY kicker and the real people-signals reconciliation count
+// that replaces the design doc's "[object Object]" prototype caveat.
+//
+// Brief-vs-file note (see task-14-report.md for the full discussion): the
+// brief's own check #1 names "Cleared" and "On-Time" as flow-band tiles.
+// The file has no "Cleared" tile — the existing assigned/PERIOD/filterable
+// tile with that shape is "Throughput" (Σ estimate-hours), and On-Time lives
+// in #tiles (the four KPI cards), not #flowTiles — renaming/relocating either
+// was not one of this task's concrete steps (only "add Arrived" and "re-home
+// capacity under a kicker" were), and doing so unprompted would have put
+// ~25 existing regression assertions elsewhere in this file at risk for no
+// specified gain. Check 1 below pins the REAL shape: Arrived join Lead Time/
+// Throughput in #flowTiles, each with its OWN scope tag, and On-Time keeps
+// its own PERIOD tag where it already lives.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  function flowFixture(o) {
+    o = o || {};
+    var M = model({});
+    var who = M.people[0].name;
+    var W = WEEKS[WEEKS.length - 1];
+    M.leadTimeBuckets = [{ iso: W, person: who, n: 2, nAll: 3, days: [4, 10] }];
+    M.throughputBuckets = [{ iso: W, person: who, nAll: 3, nEst: 2, estHrs: 12.5 }];
+    M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
+      target: null, coverageGate: 0.9 };
+    M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
+      target: null, coverageGate: 0.6 };
+    M.meta.registry.metrics.arrived = { id: "arrived", name: "Arrived", unit: "items",
+      target: null, coverageGate: 0 };
+    M.meta.arrivalsAvailable = o.arrivalsAvailable === undefined ? true : o.arrivalsAvailable;
+    M.arrivalWeeks = o.arrivalWeeks !== undefined ? o.arrivalWeeks
+      : [{ iso: W, created: 18, resolved: 15, createdUnassigned: 4 }];
+    return M;
+  }
+
+  // ── 1. The flow band shows Lead Time (PERIOD) · Throughput (PERIOD) ·
+  // Arrived (ORG) each with ITS OWN scope tag — not one shared tag string
+  // standing in for three tiles — and On-Time (PERIOD) keeps its own tag
+  // where it already renders (#tiles). Catches: Arrived sharing another
+  // tile's tag, or a scope tag rendered once for the whole panel.
+  var M1 = flowFixture({});
+  fresh(M1);
+  C.setState("view", "exec");
+  C.renderAll_();
+  var flowHtml = els.flowTiles.innerHTML;
+  // Order in #flowTiles is Lead Time, Arrived, Throughput, Backlog, WIP, Bug
+  // Count (renderFlow_'s own sequence) — bound each tile's segment by its
+  // NEXT sibling's label, the same idiom the file already uses elsewhere
+  // (e.g. `bad.split("Forecast Accuracy")[1].split("Utilization")[0]`).
+  var leadSeg = flowHtml.split("Lead Time")[1].split("Arrived")[0];
+  var arrSeg = flowHtml.split("Arrived")[1].split("Throughput")[0];
+  var thrSeg = flowHtml.split("Throughput")[1].split("Backlog")[0];
+  assert_(leadSeg.indexOf(">PERIOD<") !== -1, "Lead Time carries its OWN PERIOD tag");
+  assert_(thrSeg.indexOf(">PERIOD<") !== -1, "Throughput carries its OWN PERIOD tag");
+  assert_(arrSeg.indexOf(">ORG<") !== -1 && arrSeg.indexOf(">PERIOD<") === -1,
+          "Arrived carries its OWN ORG tag, not PERIOD — it is population-wide, filters don't apply");
+  var tilesHtml2 = els.tiles.innerHTML;
+  var otSeg = tilesHtml2.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time keeps its own PERIOD tag where it already renders");
+  assert_(/18/.test(arrSeg), "Arrived's headline is the fixture's created count (18)");
+
+  // Filter-invariance companion: Arrived (ORG) must not move under a filter
+  // that DOES move Throughput (PERIOD) — proving the tags describe real,
+  // different behaviour, not decoration. Both fixture people are AMER in the
+  // default `model()` shape, so filtering to a region with nobody in it
+  // (EMEA) empties Throughput's coverage but must leave Arrived untouched.
+  var arrBefore = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  C.setState("region", "EMEA");
+  C.renderAll_();
+  var arrAfter = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  assert_(arrBefore === arrAfter, "Arrived (ORG) is byte-identical under a region filter that empties everyone else");
+  C.setState("region", "");
+  C.renderAll_();
+
+  // ── 2. Arrived renders "not measured" when meta.arrivalsAvailable is false.
+  // Catches: falling through to a fabricated 0 instead of the absence state.
+  var M2 = flowFixture({ arrivalsAvailable: false, arrivalWeeks: [] });
+  fresh(M2);
+  C.renderAll_();
+  var arrOff = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  assert_(/not measured/.test(arrOff), "Arrived states 'not measured' when the arrivals feed is unavailable");
+  assert_(/class="big">—<\/div>/.test(arrOff), "…and the hero renders the em-dash placeholder, no numeric value");
+  assert_(!/class="big">[0-9]/.test(arrOff), "…confirmed: no digit ever lands in the hero slot");
+  assert_(!/undefined|NaN/i.test(arrOff), "…with nothing printing undefined/NaN in its place");
+
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ── §5 CAPACITY BAND — kicker, margin gate, phase switch, floor grammar,
+// people-signals reconciliation ─────────────────────────────────────────────
+(function () {
+  // ── 3. The capacity band is ABSENT FROM THE DOM ENTIRELY for a non-margin
+  // role — asserted on the ABSENCE of the utilisation label (both surfaces
+  // the capacity band spans: the #tiles utilisation card AND the #pulsePanel
+  // kicker/reconciliation line), never on a hidden attribute. Catches: a
+  // regression that dims the tile instead of omitting it, or a kicker/
+  // reconcile line that survives the gate even though the numbers behind it
+  // are gone.
+  var mGuest = fresh(model({}));
+  mGuest.viewerRole = "guest";
+  C.setModel(mGuest);
+  C.setState("view", "exec");
+  C.renderAll_();
+  assert_(!/Billable Utilization|Capacity Utilization/.test(els.tiles.innerHTML),
+          "a non-margin role sees NO utilisation label anywhere in #tiles");
+  assert_(els.pulsePanel.innerHTML === "", "…and the capacity band's OWN panel is emptied entirely");
+  assert_(els.pulsePanel.style.display === "none",
+          "…display:none, not merely emptied — no ghost kicker/heading left in the DOM");
+  assert_(!/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML + els.tiles.innerHTML),
+          "the kicker text itself is nowhere in the DOM for this role — not hidden, ABSENT");
+
+  var mAdmin = fresh(model({}));
+  mAdmin.viewerRole = "admin";
+  // personHygiene has to be present for renderPulse_ to get past its own
+  // "arrives after the next refresh" pre-v22-payload guard and reach the
+  // kicker line at all.
+  mAdmin.personHygiene = { open: mAdmin.people.map(function (p) {
+    return { person: p.name, n: 10, due: 10, est: 10, logged: 10 };
+  }), resolved: [] };
+  C.setModel(mAdmin);
+  C.setState("typePop", "open");
+  C.renderAll_();
+  assert_(els.pulsePanel.style.display === "", "…and restored for an admin");
+  assert_(/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML),
+          "…with the capacity kicker back for a margin-tier role");
+
+  // ── 4. Planning-window phase switch survives: the capacity slot becomes
+  // Planned Coverage (#tiles), outcome tiles render notYet, and the capacity
+  // band's OWN kicker/reconciliation line still renders (planFor_ runs
+  // regardless of phase — only the #tiles utilisation card swaps its shape).
+  // A genuine planning week needs a gridWeeks entry with status "plan" AND at
+  // least one person carrying capacity/planned hours there (planWeeks_'s own
+  // "reach" guard) — same fixture shape as the FORWARD WINDOWS block above.
+  var PLAN1 = "2026.W32";
+  function planFixture() {
+    var mdl = histModel({});
+    mdl.meta.gridWeeks = HIST.map(function (iso, i) {
+      return { iso: iso, status: i < HIST.length - 1 ? "done" : "now" };
+    }).concat([{ iso: PLAN1, status: "plan" }]);
+    mdl.meta.periods.month[1].isos = HIST.slice(4).concat([PLAN1]);
+    mdl.personHygiene = { open: mdl.people.map(function (p) {
+      return { person: p.name, n: 10, due: 10, est: 10, logged: 10, loggedN: 10 };
+    }), resolved: [] };
+    mdl.people.forEach(function (p) {
+      p.weeks[PLAN1] = week({ tracked: 0, trackedCov: 0, billable: 0, nonBillable: 0,
+        nsCov: false, availCov: 0, capCov: 0, nsBillRaw: 0, nsNonBillRaw: 0,
+        planned: 20, effPlanned: 20 });
+    });
+    return mdl;
+  }
+  fresh(planFixture());
+  C.getModel().viewerRole = "admin";
+  C.STATE.period = "week";
+  C.setState("typePop", "open");
+  var planAll = C.analysisPeriods_();
+  C.setState("periodIdx", planAll.length - 1);   // the one forward planning week
+  C.renderAll_();
+  assert_(C.analysisHead_().phase === "plan", "sanity: the picker selection resolves as phase 'plan'");
+  var planTiles = els.tiles.innerHTML;
+  assert_(/Planned Coverage/.test(planTiles), "capacity slot becomes Planned Coverage on a planning window");
+  assert_(/has not happened yet/.test(planTiles), "outcome tiles (On-Time/Forecast) render their notYet state");
+  assert_(/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML),
+          "the capacity band's own kicker still renders on a planning window — only the #tiles " +
+          "utilisation card switches shape, the band itself doesn't disappear");
+  C.setState("periodIdx", null);
+
+  // ── 5. Mid-period floor grammar survives: "at least N%", no RAG colour.
+  fresh(histModel({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("periodIdx", C.donePeriods_().length);   // the in-flight "now" window
+  C.renderAll_();
+  assert_(C.analysisHead_().phase === "now", "sanity: this selection resolves as phase 'now' (mid-period)");
+  var nowTiles = els.tiles.innerHTML;
+  var nowUtilSeg = nowTiles.split("Utilization")[1] || "";
+  assert_(/at least \d+%/.test(nowUtilSeg), "mid-period utilisation carries the floor grammar ('at least N%')");
+  assert_(!/class="big (g|a|r)"/.test(nowUtilSeg.split("</div>")[0] + "</div>"),
+          "…and the hero carries NO RAG class — a floor has no verdict to give");
+  C.setState("periodIdx", null);
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+
+  // ── 6. The people-signals line reconciles to a REAL, computed count — not
+  // a hardcoded string and never a stringified object (the design doc's
+  // "[object Object]" prototype bug) — and it names nobody. Checked across
+  // TWO different filtered populations so a hardcoded number can't hide
+  // behind a single fixture, plus the "no names" guard the pulse already
+  // carries elsewhere in this file.
+  var mRec = fresh(model({}));
+  mRec.people.push(person("Gia Extra", { region: "EMEA" }));
+  mRec.personHygiene = { open: mRec.people.map(function (p) {
+    return { person: p.name, n: 10, due: 10, est: 10, logged: 10 };
+  }), resolved: [] };
+  mRec.viewerRole = "admin";
+  C.setModel(mRec);
+  C.setState("view", "exec");
+  C.setState("typePop", "open");
+  C.renderAll_();
+  var recAll = els.pulsePanel.innerHTML;
+  var reconcileFullMatch = /(\d+)(?:<\/b>)? of (\d+) people accounted for/.exec(recAll);
+  assert_(reconcileFullMatch, "the reconciliation line states an X of Y count — got: " + recAll);
+  assert_(reconcileFullMatch[1] === reconcileFullMatch[2] && reconcileFullMatch[2] === "3",
+          "unfiltered: all 3 fixture people accounted for (2 base + 1 pushed) — got: " + recAll);
+  assert_(!/\[object Object\]/.test(recAll), "never a stringified object where the count should be");
+
+  // Narrow the population — the reconciliation total must actually MOVE, not
+  // be a static string that happened to say "3" by coincidence.
+  C.setState("region", "EMEA");
+  C.renderAll_();
+  var recEmea = els.pulsePanel.innerHTML;
+  var reconcileEmea = /(\d+)(?:<\/b>)? of (\d+) people accounted for/.exec(recEmea);
+  assert_(reconcileEmea && reconcileEmea[1] === "1" && reconcileEmea[2] === "1",
+          "filtered to EMEA (1 person: Gia Extra) the reconciliation count drops to 1 of 1 — got: " + recEmea);
+  C.setState("region", "");
+
+  // No names, on this line specifically as well as the panel generally.
+  C.getModel().people.forEach(function (p) {
+    assert_(recAll.indexOf(p.name) === -1, "reconciliation line/panel must not name " + p.name);
+  });
+
+  C.setState("typePop", "open");
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
 console.log("✅ render-smoke: " + checks + " checks passed");

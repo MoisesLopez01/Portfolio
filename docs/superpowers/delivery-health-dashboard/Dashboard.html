@@ -274,6 +274,10 @@ table.hyg.tmx.rosterTbl thead th.tname{left:0;z-index:7}
    right on the header, so "why did this number not move when I picked another
    month" has its answer one glance away instead of in a tooltip nobody opens. */
 .scopeTag{font-size:9px;letter-spacing:.08em;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px;vertical-align:middle}
+/* Section kicker — a small caps label ABOVE a band's own heading (newspaper
+   sense: the line above the headline that names the section), distinct from
+   a scopeTag (which names a COLUMN's clock, not a band's section). */
+.kicker{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 /* Executive data-trust strip (Task 8, spec §4.4) — four org-wide fill-vs-gate
    tiles, same trust-at-a-glance grammar as the KPI cards above them. */
 .trustRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
@@ -3470,6 +3474,47 @@ function renderFlow_() {
     });
   })();
 
+  // 2 · Arrived — issues CREATED in the period, whole population, no
+  // assignee clause (Task 14, spec §4). ORG-scoped deliberately: this is the
+  // raw arrival side of the same trailing-weeks arithmetic netFlowPerWeek_
+  // and the backlog band's hero already use, so it must never be filtered —
+  // a Region slice of "how much work arrived" answers a different question
+  // than "is the whole queue growing". target: null (flowTileHtml_ already
+  // treats that neutrally, same grammar as every other flow tile).
+  (function () {
+    var m = reg.arrived || { unit: "items", coverageGate: 0, name: "Arrived" };
+    if (!MODEL.meta.arrivalsAvailable) {
+      html += flowTileHtml_(m, null,
+        { scope: "org", unavailable: "not measured — the Jira Arrivals tab isn't in this export yet" });
+      return;
+    }
+    var byIso = {};
+    (MODEL.arrivalWeeks || []).forEach(function (w) { byIso[w.iso] = w; });
+    function sumOver(isos, field) {
+      var t = 0;
+      isos.forEach(function (iso) { if (byIso[iso]) t += byIso[iso][field] || 0; });
+      return t;
+    }
+    var series = trendPer.map(function (p) { return sumOver(p.isos, "created"); });
+    var created = sumOver(head.isos, "created");
+    var resolvedCt = sumOver(head.isos, "resolved");
+    var createdUnassigned = sumOver(head.isos, "createdUnassigned");
+    html += flowTileHtml_(m, created, {
+      scope: "org",
+      conf: null,
+      trend: series, trendLabels: labels,
+      context: resolvedCt + " resolved this period — book " +
+        (created > resolvedCt ? "growing" : created < resolvedCt ? "shrinking" : "flat") +
+        " · population-wide, filters don't apply",
+      detail: [
+        "Issues created in the period, whole population, no assignee clause — the raw arrival " +
+          "side of the backlog band's net-flow figure.",
+        createdUnassigned > 0
+          ? createdUnassigned + " of " + created + " arrived still unassigned" : "",
+      ],
+    });
+  })();
+
   // 2/6 · Cycle Time and Flow Efficiency are declared ABSENT in the registry
   // (no in-progress timestamps / no queue-state instrumentation). They used to
   // render as "—" placeholder tiles; retired from the UI 2026-08-05 (spec
@@ -4208,7 +4253,24 @@ function renderPulse_() {
     if (!r.ramping && r.opp > 0.5) opp += r.opp;
   });
   var pl = A.phase === "done" ? null : planFor_(head.isos);
+  // Reconciliation count (Task 14, spec §5) — replaces the prototype's
+  // `[object Object]` people caveat (it collided `people` as both a number
+  // and the signals object; this is a REAL computed count, not a stringified
+  // object). personSignalRows_ is built as filteredPeople_().map(...), so
+  // every bucket signalSummary_ returns sums to the SAME population by
+  // construction — stating that sum against the independently-computed
+  // filteredPeople_().length turns an implicit invariant into a checkable
+  // fact on screen, the same way the comparison chart already proves its own
+  // "all N people represented" line rather than assuming it.
+  var pop = filteredPeople_().length;
+  var acct = s.good + s.warn + s.bad + s.small + s.learn + (s.na || 0);
+  var reconcile = '<div class="cellSub" style="margin-top:2px">' +
+    (acct === pop
+      ? "<b>" + acct + "</b> of " + pop + " people accounted for"
+      : '<b class="vr">' + acct + " of " + pop + "</b> people accounted for — " + (pop - acct) + " missing") +
+    "</div>";
   el.innerHTML =
+    '<div class="kicker">CAPACITY — what we have to throw at it</div>' +
     '<h3>👥 People signals ' + scopeTag_(STATE.typePop === "resolved" ? "period" : "snap") + "</h3>" +
     // EVERY COUNT IS ITS OWN DEEP LINK (user 2026-08-06). The pulse already
     // says "3 need action"; clicking that number now lands on exactly those 3
@@ -4232,7 +4294,7 @@ function renderPulse_() {
         'hours already delivered.">planned <b>' + Math.round(pl.pct) + "%</b>" +
         (pl.none + pl.thin ? " · ▽ " + (pl.none + pl.thin) + " under-planned" : "") + "</span>"
       : "") +
-    " → open the roster</div>";
+    " → open the roster</div>" + reconcile;
 }
 
 /**
