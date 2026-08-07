@@ -139,7 +139,12 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // the returned findings array directly, not just scrape HTML.
              " renderMasthead_: renderMasthead_, verdictFindings_: verdictFindings_," +
              " shelfRows_: shelfRows_, coverSeries_: coverSeries_, netFlowPerWeek_: netFlowPerWeek_," +
-             " nfDh_: nfDh_, n1Dh_: n1Dh_ })";
+             " nfDh_: nfDh_, n1Dh_: n1Dh_," +
+             // §2 BACKLOG BAND (Task 12, spec 2026-08-06) — the ORG hero triplet,
+             // the filterable assigned sub-row and the queue ruler.
+             " renderBacklogBand_: renderBacklogBand_, queueRulerSvg_: queueRulerSvg_," +
+             " trailingCompleteWeeks_: trailingCompleteWeeks_, orgClearRateGap_: orgClearRateGap_," +
+             " assignedClearRate_: assignedClearRate_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -3667,6 +3672,210 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 
   // Teardown.
   C.setState("region", "");
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// §2 BACKLOG BAND (Task 12, spec 2026-08-06 §2) — ORG hero triplet, filterable
+// assigned sub-row, three-segment queue ruler. NO target rule anywhere (D11).
+// Every check here asks "would this still pass if the behaviour it verifies
+// were deleted?" — see the per-check notes.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  function band(mdl) {
+    fresh(mdl);
+    C.renderBacklogBand_();
+    return els.backlogBand.innerHTML;
+  }
+  function aw(iso, created, resolved) {
+    return { iso: iso, created: created, resolved: resolved, createdUnassigned: 0 };
+  }
+  var WK8 = ["2026.W24", "2026.W25", "2026.W26", "2026.W27",
+             "2026.W28", "2026.W29", "2026.W30", "2026.W31"];
+
+  // Base fixture: two people, one AMER one EMEA, each carrying flowOpenBuckets
+  // rows so the SNAP sub-row (which reads flowOpenFor_, the only per-person,
+  // per-filter source — MODEL.queue.assigned is a single pre-summed ORG
+  // scalar with no region/team breakdown to filter) has something to move.
+  function baseFixture() {
+    var m = model({});
+    m.people = [
+      person("Ana AMER", { region: "AMER" }),
+      person("Cleo EMEA", { region: "EMEA" }),
+    ];
+    m.flowOpenBuckets = [
+      { person: "Ana AMER", wipN: 100, todoN: 50, todoEst: 40, todoHrs: 300 },
+      { person: "Cleo EMEA", wipN: 80, todoN: 40, todoEst: 30, todoHrs: 200 },
+    ];
+    m.meta.clearRateMedian = 300;
+    m.arrivalWeeks = WK8.map(function (iso) { return aw(iso, 314, 300); }); // +14/wk, all usable
+    m.queue = {
+      assigned: { items: 1440, wipN: 900, todoN: 540, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+      unassigned: { items: 1839, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 },
+    };
+    // Throughput history so the ASSIGNED clear rate (the sub-row's OWN
+    // denominator) can publish — 8 weeks, both people, so it differs
+    // numerically from the ORG rate (300) above (test 5-below/two-denominators).
+    m.throughputBuckets = [];
+    WK8.forEach(function (iso) {
+      m.throughputBuckets.push({ iso: iso, person: "Ana AMER", nAll: 30, nEst: 20, estHrs: 100 });
+      m.throughputBuckets.push({ iso: iso, person: "Cleo EMEA", nAll: 20, nEst: 15, estHrs: 80 });
+    });
+    return m;
+  }
+
+  // ── 1. ORG on the hero, SNAP on the sub-row — each tile carries its OWN
+  // tag (not merely present somewhere in the panel). Catches: a shared banner
+  // tag standing in for per-tile scopeTag_ calls, or the two tags swapped.
+  var h1 = band(baseFixture());
+  var heroSeg = h1.split("Assigned inventory")[0];   // hero triplet precedes the sub-row heading
+  var subSeg = h1.split("Assigned inventory")[1] || "";
+  assert_(heroSeg.indexOf(">ORG<") !== -1, "the hero triplet carries the ORG scope tag");
+  assert_(heroSeg.indexOf(">SNAP<") === -1, "…and never SNAP, on the hero side");
+  assert_(subSeg.indexOf(">SNAP<") !== -1, "the assigned sub-row carries the SNAP scope tag");
+  assert_((h1.match(/>ORG</g) || []).length === 3, "all three hero slots carry their own ORG tag (not one shared banner)");
+  assert_((h1.match(/>SNAP</g) || []).length === 2, "both sub-row slots carry their own SNAP tag");
+
+  // ── 2. Hero inventory = assigned + unassigned; sub-row = assigned alone;
+  // the two are NEVER the same number. Catches: the sub-row accidentally
+  // reading the ORG total, or the hero forgetting to add the unassigned half.
+  assert_(/3,279 items/.test(h1), "hero inventory is assigned (1,440) + unassigned (1,839) = 3,279 — got: " + h1);
+  assert_(/1,440 assigned \+ 1,839 unowned/.test(h1), "…stated explicitly as the sum of its two halves");
+  // Sub-row inventory = the FILTERED flowOpenFor_ total (100+50 + 80+40 = 270),
+  // not the ORG assigned scalar (1,440) — proving it reads the filterable
+  // source, not a re-display of the hero's own assigned half.
+  assert_(/270 items/.test(subSeg), "sub-row inventory is the filtered assigned total (270), not the ORG assigned scalar (1,440)");
+  assert_(h1.indexOf("3,279 items") !== h1.indexOf("270 items") &&
+          !/^270 items$/.test("3,279 items"),
+          "hero (3,279) and sub-row (270) are never rendered as the same figure");
+
+  // ── 3. null unassigned: no "0 unowned" ANYWHERE, the hero falls back to
+  // assigned-only WITH a stated reason, and the unowned ruler segment prints
+  // "not measured" rather than a hatched zero. Catches: `|| 0` coercion on the
+  // unassigned side (the exact bug the design doc calls out).
+  var mNull = baseFixture();
+  mNull.queue.unassigned = { items: null, wipN: null, todoN: null, todoHrs: null, uncategorized: null };
+  var hNull = band(mNull);
+  assert_(!/0 unowned|0% unowned/.test(hNull), "literal '0 unowned' / '0% unowned' never appears");
+  assert_(/1,440 items/.test(hNull), "hero falls back to the assigned total (1,440) alone");
+  assert_(/assigned only/.test(hNull) && /isn't available this refresh/.test(hNull),
+          "…WITH a stated reason, not a silent substitution");
+  assert_(/not measured this refresh/.test(hNull),
+          "the ruler's caption states the unowned segment is not measured, never a fabricated count");
+  assert_(!/undefined|NaN/i.test(hNull), "nothing prints undefined/NaN along the fallback path");
+
+  // ── 4. clearRateMedian = null → weeks-to-clear states how many more weeks
+  // it needs, and prints NO number in that slot. Catches: dividing by a null
+  // rate (Infinity/NaN) instead of gating the slot, or the "needs N more
+  // weeks" copy rendering without actually suppressing the numeric weeks value.
+  var mNoRate = baseFixture();
+  mNoRate.meta.clearRateMedian = null;
+  mNoRate.arrivalWeeks = [];   // also short of the 5-week bar the gap message reports against
+  var hNoRate = band(mNoRate);
+  var wtcSeg = hNoRate.split("Weeks to clear")[1].split("</div>")[0];
+  assert_(/needs \d+ more week/.test(hNoRate), "weeks-to-clear states how many more weeks it needs");
+  assert_(!/\d\.\dw/.test(wtcSeg), "…and prints NO weeks NUMBER in that slot (no lingering N.Nw)");
+  assert_(!/undefined|NaN/i.test(hNoRate), "…with no undefined/NaN printed in its place");
+
+  // ── 5. NO target rule anywhere on the ruler, checked against the ruler's
+  // OWN SVG content (not a tile caption elsewhere in the band) — and the
+  // POSITIVE case: the operating band IS shaded when the norm publishes.
+  // model()'s default inventoryHistory is [] (no norm) — give it 5 flat
+  // points so stdFor_(coverSeries_(), …) actually publishes.
+  var mBand = baseFixture();
+  mBand.inventoryHistory = [0, 1, 2, 3, 4].map(function (i) {
+    return { iso: "2026.W" + (24 + i), items: 3300, measured: i === 4 };
+  });   // 3300/300 = 11.0 flat → baseline 11.0, band floor ±2 → [9,13]
+  var hBand = band(mBand);
+  var rulerSvg = hBand.split("<svg")[1] ? "<svg" + hBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  assert_(rulerSvg, "the ruler rendered an <svg> at all (norm publishes, rate is set)");
+  assert_(!/target/i.test(rulerSvg), "the ruler SVG contains NO 'target' text anywhere");
+  assert_(!/x1="[^"]*" x2="[^"]*"[^>]*stroke="var\(--c-target\)"/.test(rulerSvg),
+          "…and no target-coloured reference LINE either");
+  assert_(rulerSvg.indexOf('fill="var(--c-ref)"') !== -1,
+          "the operating band SHADES (var(--c-ref)) now that the 5-point norm publishes — " +
+          "the positive case: every OTHER assertion in this block is negative and would pass " +
+          "even if the band never drew at all");
+  assert_(/operating band/.test(rulerSvg), "…with its own tooltip naming what the shading is");
+
+  // Negative companion on the SAME fixture family: fewer than 5 history points
+  // → no operating band drawn AT ALL, not merely an invented one.
+  var mNoBand = baseFixture();
+  mNoBand.inventoryHistory = [];
+  var hNoBand = band(mNoBand);
+  var rulerSvgNoBand = hNoBand.split("<svg")[1] ? "<svg" + hNoBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  assert_(rulerSvgNoBand.indexOf('fill="var(--c-ref)"') === -1,
+          "…and with an unpublishable norm (<5 points), NO reference band is drawn at all — " +
+          "not a green rect standing in for a target");
+
+  // ── 6. Setting STATE.region changes the sub-row but NOT the hero triplet —
+  // proving the hero is genuinely ORG (unfiltered), not merely tagged ORG
+  // while actually reading filtered data. Catches: a filter accidentally
+  // reaching the hero's numbers, or the sub-row NOT reacting to the filter at all.
+  fresh(baseFixture());
+  C.renderBacklogBand_();
+  var heroBefore = els.backlogBand.innerHTML.split("Assigned inventory")[0];
+  C.setState("region", "EMEA");
+  C.renderBacklogBand_();
+  var afterHtml = els.backlogBand.innerHTML;
+  var heroAfter = afterHtml.split("Assigned inventory")[0];
+  var subAfter = afterHtml.split("Assigned inventory")[1] || "";
+  assert_(heroBefore === heroAfter,
+          "the hero triplet's markup is BYTE-IDENTICAL before and after STATE.region — it never reads filters");
+  assert_(/3,279 items/.test(heroAfter), "…still the full 3,279-item ORG total under the EMEA filter");
+  // Cleo EMEA alone carries wipN 80 + todoN 40 = 120, down from 270 unfiltered.
+  assert_(/120 items/.test(subAfter),
+          "…while the sub-row DOES narrow, to the EMEA-only filtered total (120) — proving the " +
+          "SNAP tag is not just a label on data that never actually filters");
+  C.setState("region", "");
+
+  // ── 7. The backlog band is fixed to its own trailing-weeks basis (D3) —
+  // the SAME doctrine the masthead and netFlowPerWeek_ already follow — so it
+  // must not move when the ANALYSIS PERIOD PICKER changes, unlike the four
+  // KPI cards. Catches: the band silently wiring itself to analysisHead_()/
+  // STATE.periodIdx, which would make "the last 8 weeks" mean something
+  // different depending on what a reader happened to have selected upstream.
+  var mPhase = baseFixture();
+  fresh(mPhase);
+  C.renderBacklogBand_();
+  var beforePeriod = els.backlogBand.innerHTML;
+  // Pick an EARLIER period on the picker — if the band secretly depended on
+  // it, the trailing-weeks totals would move; they must not.
+  C.setState("periodIdx", 0);
+  C.renderBacklogBand_();
+  var afterPeriod = els.backlogBand.innerHTML;
+  assert_(beforePeriod === afterPeriod,
+          "the backlog band is BYTE-IDENTICAL when the period picker moves — it is fixed to its " +
+          "own trailing-weeks basis (D3), the same way the masthead and netFlowPerWeek_ already are");
+  C.setState("periodIdx", null);
+
+  // ── 8. The unowned ruler segment is drillable ONLY when unassigned rows
+  // exist (> 0) — not when they are zero, and not when they are null (rule 3
+  // already withholds the segment entirely in that case). Catches: an
+  // onclick handler that fires regardless of whether there is anything behind
+  // it, or one that never fires at all.
+  var mDrill = baseFixture();   // unassigned.items = 1839 > 0
+  var hDrill = band(mDrill);
+  assert_(/onclick="switchView_\('actions'\)"/.test(hDrill),
+          "the unowned segment IS a click-through when unassigned rows exist (1,839 > 0)");
+
+  var mZero = baseFixture();
+  mZero.queue.unassigned = { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 };
+  var hZero = band(mZero);
+  assert_(hZero.indexOf("onclick=\"switchView_('actions')\"") === -1,
+          "…but NOT when unassigned is a real, measured ZERO — there is nothing to drill into");
+
+  var mNullDrill = baseFixture();
+  mNullDrill.queue.unassigned = { items: null, wipN: null, todoN: null, todoHrs: null, uncategorized: null };
+  var hNullDrill = band(mNullDrill);
+  assert_(hNullDrill.indexOf("onclick=\"switchView_('actions')\"") === -1,
+          "…nor when unassigned is null (not measured) — rule 3 already withholds the segment itself");
+
+  // Teardown.
+  C.setState("region", "");
+  C.setState("periodIdx", null);
   fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();

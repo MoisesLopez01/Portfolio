@@ -519,6 +519,9 @@ select option:disabled{color:var(--muted);font-style:italic}
     <!-- §1 THE MASTHEAD (spec 2026-08-06) — the lede. Always first: a reader
          gets the verdict in one sentence before a single chart. -->
     <div class="panel" id="masthead" style="margin-bottom:14px"></div>
+    <!-- §2 BACKLOG BAND (spec 2026-08-06) — the page's hero: ORG triplet,
+         filterable assigned sub-row, queue ruler. -->
+    <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
     <div style="text-align:right"><button class="iconbtn" onclick="savePng_('kpiStrip','tiles')" title="Save the KPI cards as a PNG image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
     <div id="kpiStrip">
@@ -1545,7 +1548,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderMasthead_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
+    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
     case "actions": renderRoster_(); renderBacklogHealth_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -2639,6 +2642,238 @@ function netFlowPerWeek_() {
     }
   });
   return cnt > 0 ? sum / cnt : null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// §2 BACKLOG BAND — the page's hero (spec 2026-08-06 §2)
+//
+// The dashboard could only ever see ASSIGNED open work. Measured live
+// 2026-08-06: 1,440 assigned vs 1,839 unassigned — 56% of the queue invisible.
+// Assigned-only, weeks-to-clear reads 4.9w (at target); the true queue reads
+// 11.0w, 2.75x over. So this band ships two tiers on purpose:
+//   · a hero triplet, ORG-tagged, that ignores every filter — the true state,
+//     seen first;
+//   · a filterable assigned sub-row, SNAP-tagged, labelled "the work that has
+//     an owner" — for the reader who wants to slice by Region/Team/PM/Family.
+// NO TARGET RULE ANYWhERE IN THIS BAND (D11): queueCover and netFlow ship
+// target: null deliberately. Nobody owns a <=4w or <=0 bar, and an unratified
+// target on a C-suite headline reads as agreed the moment it appears. The
+// operating band (stdFor_) is shaded instead; when the norm is unpublishable,
+// no reference mark is drawn at all.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Minimum trailing weeks the ASSIGNED clear rate needs before it publishes —
+    the same bar clearRateMedian_ (Code.js) applies to the ORG rate, so the two
+    denominators the backlog band divides by are equally conservative. */
+var CLEAR_RATE_MIN_N_ = 5;
+
+/**
+ * Every ISO week the payload knows about, restricted to COMPLETE ("done")
+ * weeks, oldest first — period-picker-independent (spec D3: the queue/flow
+ * band is fixed to a trailing-weeks basis, the same way netFlowPerWeek_ and
+ * the masthead already are; a Month/Quarter picker selection must not change
+ * what "the last 8 weeks" means here). Mirrors allPeriods_'s own
+ * gridWeeks-status lookup rather than depending on donePeriods_(), which is
+ * shaped by STATE.period.
+ */
+function trailingCompleteWeeks_(n) {
+  var st = {};
+  (MODEL.meta.gridWeeks || []).forEach(function (wk) { if (wk && wk.iso) st[wk.iso] = wk.status; });
+  var isos = allIsoWeeks_().filter(function (iso) { return (st[iso] || "done") === "done"; });
+  return isos.slice(Math.max(0, isos.length - n));
+}
+
+/**
+ * How far the ORG clear rate is from publishing, mirrored client-side from
+ * MODEL.arrivalWeeks — the same trailing window and the same "a null week is
+ * a gap, a zero week is data" rule clearRateMedian_ (Code.js) applies, so the
+ * client can state "needs N more weeks" without duplicating the rate itself.
+ * @returns {{n:number, minN:number, need:number}}
+ */
+function orgClearRateGap_() {
+  var weeks = MODEL.arrivalWeeks || [];
+  var win = MODEL.meta.clearRateWeeks || 8;
+  var trailing = weeks.slice(Math.max(0, weeks.length - win));
+  var n = trailing.filter(function (w) { return w && typeof w.resolved === "number"; }).length;
+  return { n: n, minN: CLEAR_RATE_MIN_N_, need: Math.max(0, CLEAR_RATE_MIN_N_ - n) };
+}
+
+/**
+ * The ASSIGNED clear rate — median of the last CLEAR_RATE_WEEKS complete
+ * weeks of throughputBuckets_ CLEARED COUNTS (nAll, not estHrs), under the
+ * ACTIVE FILTERS. This is the second of the band's two denominators (D-two-
+ * denominators): the sub-row divides its filtered numerator by this, never by
+ * the ORG rate — a filtered numerator over an org-wide denominator would
+ * belong to neither population.
+ * @returns {number|null} null under CLEAR_RATE_MIN_N_ usable weeks
+ */
+function assignedClearRate_() {
+  var win = MODEL.meta.clearRateWeeks || 8;
+  var isos = trailingCompleteWeeks_(win);
+  if (isos.length < CLEAR_RATE_MIN_N_) return null;
+  var vals = isos.map(function (iso) {
+    return bucketsFor_(MODEL.throughputBuckets || [], [iso]).nAll;
+  });
+  return medianOf_(vals);
+}
+
+/**
+ * Three-segment queue ruler, hand-rolled SVG (no CDN, no library — a blocked
+ * external request inside the HtmlService iframe means an empty chart, the
+ * same reason every chart in the CHART KIT above is a string of inline SVG
+ * rather than a call into a library). Scaled in WEEKS at the ORG clear rate,
+ * because the ruler's total — assigned + unowned — IS the ORG total, the same
+ * population the hero triplet describes.
+ *
+ * NO target line (D11) — the operating band (o.std, from stdFor_(coverSeries_(),
+ * …), the SAME series the masthead's depth finding judges) shades instead, and
+ * is omitted outright while the norm is unpublishable.
+ *
+ * @param {{wipN:number, todoN:number, unItems:?number, rate:?number,
+ *           std:?Object, onDrill:?string}} o
+ */
+function queueRulerSvg_(o) {
+  var rate = o.rate;
+  if (!rate) {
+    var gap = orgClearRateGap_();
+    return '<div class="emptyState">Can\'t scale the ruler in weeks yet — needs ' + gap.need +
+      ' more week' + (gap.need === 1 ? "" : "s") + ' of clearing history (' + gap.n + ' of ' +
+      gap.minN + ' so far).</div>';
+  }
+  var hasUnowned = o.unItems !== null && o.unItems !== undefined;
+  var wipW = o.wipN / rate, todoW = o.todoN / rate;
+  var unW = hasUnowned ? o.unItems / rate : 0;
+  var totalW = wipW + todoW + unW;
+  var domainMax = Math.max(8, Math.ceil(totalW) + 1);
+  var W = 760, H = 92, L = 8, R = 8, barH = 34, barY = 34;
+  var pw = W - L - R;
+  function x(wk) { return L + Math.max(0, Math.min(domainMax, wk)) / domainMax * pw; }
+  var s = '<svg class="chart backlogRuler" viewBox="0 0 ' + W + ' ' + H +
+    '" role="img" aria-label="queue depth in weeks, three segments: in progress, queued, unowned">' +
+    '<defs><pattern id="unownedHatch" width="6" height="6" patternTransform="rotate(45)" ' +
+    'patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--ivory)"/>' +
+    '<line x1="0" y1="0" x2="0" y2="6" stroke="var(--c-bad)" stroke-width="2"/></pattern></defs>';
+  for (var g = 0; g <= domainMax; g += 2) {
+    s += '<line class="gl" x1="' + x(g) + '" x2="' + x(g) + '" y1="' + (barY - 6) + '" y2="' +
+      (barY + barH + 6) + '"/><text class="axis" x="' + x(g) + '" y="' + (barY + barH + 20) +
+      '" text-anchor="middle">' + g + 'w</text>';
+  }
+  // Operating band — no invented reference. Drawn ONLY when the norm publishes.
+  if (o.std && o.std.ok) {
+    s += '<rect x="' + x(o.std.lo) + '" y="' + (barY - 6) + '" width="' +
+      Math.max(1, x(o.std.hi) - x(o.std.lo)) + '" height="' + (barH + 12) +
+      '" fill="var(--c-ref)" opacity="0.16"><title>operating band ' + n1Dh_(o.std.lo) + "–" +
+      n1Dh_(o.std.hi) + "w — where this queue normally sits</title></rect>";
+  }
+  var x0 = x(0), x1 = x(wipW), x2 = x(wipW + todoW), x3 = x(totalW);
+  function segLabel(a, b, text) {
+    return (b - a > 24)
+      ? '<text class="val" x="' + ((a + b) / 2) + '" y="' + (barY + barH / 2 + 4) +
+        '" text-anchor="middle">' + text + "</text>" : "";
+  }
+  s += '<rect x="' + x0 + '" y="' + barY + '" width="' + Math.max(0, x1 - x0) + '" height="' + barH +
+    '" fill="var(--seg-bill)"><title>In progress (assigned WIP) — ' + nfDh_(o.wipN) + ' items, ' +
+    n1Dh_(wipW) + 'w</title></rect>' + segLabel(x0, x1, nfDh_(o.wipN));
+  s += '<rect x="' + x1 + '" y="' + barY + '" width="' + Math.max(0, x2 - x1) + '" height="' + barH +
+    '" fill="var(--ivory)"><title>Queued (assigned To Do) — ' + nfDh_(o.todoN) + ' items, ' +
+    n1Dh_(todoW) + 'w</title></rect>' + segLabel(x1, x2, nfDh_(o.todoN));
+  if (hasUnowned && o.unItems > 0) {
+    var drillable = !!o.onDrill;
+    s += '<rect x="' + x2 + '" y="' + barY + '" width="' + Math.max(0, x3 - x2) + '" height="' + barH +
+      '" fill="url(#unownedHatch)"' + (drillable ? ' style="cursor:pointer" onclick="' + o.onDrill + '"' : "") +
+      '><title>Unowned — ' + nfDh_(o.unItems) + ' items nobody has picked up, ' + n1Dh_(unW) + "w" +
+      (drillable ? " — click to open" : "") + '</title></rect>' + segLabel(x2, x3, nfDh_(o.unItems));
+  }
+  s += "</svg>";
+  var caption = '<div class="cellSub" style="margin-top:2px">In progress ' + nfDh_(o.wipN) +
+    " · Queued " + nfDh_(o.todoN) + " · Unowned " +
+    (hasUnowned ? nfDh_(o.unItems) : "not measured this refresh") +
+    " · scaled in weeks at " + nfDh_(Math.round(rate)) + "/wk.</div>";
+  return s + caption;
+}
+
+/** One backlog-band tile: label + scope tag, a hero VALUE (already formatted —
+    never a bare percentage, since inventory/net-flow/weeks-to-clear are not
+    percentages), and one context line. Deliberately NOT tileHtml_: that
+    grammar hardcodes `Math.round(headlinePct) + "%"` and a RAG verdict against
+    a target, neither of which this band's numbers carry (D11 — no target rule
+    anywhere in this band) — the same reason flowTileHtml_ was written apart
+    from tileHtml_ for the other unit-bearing metrics. */
+function backlogTileHtml_(label, big, context, scope) {
+  return '<div class="tile"><div class="lbl">' + esc_(label) + scopeTag_(scope) + '</div>' +
+    '<div class="big">' + big + '</div>' +
+    (context ? '<div class="cmp">' + context + '</div>' : "") + '</div>';
+}
+
+/**
+ * §2 BACKLOG BAND renderer — hero triplet (ORG), assigned sub-row (SNAP),
+ * queue ruler. See the section banner above for the two-tier rationale.
+ */
+function renderBacklogBand_() {
+  var el = document.getElementById("backlogBand");
+  if (!el) return;
+  var q = MODEL.queue || { assigned: {}, unassigned: {} };
+  var asg = q.assigned || {};
+  var unAsg = q.unassigned || {};
+  var rate = MODEL.meta.clearRateMedian;
+  var unItems = (unAsg.items === null || unAsg.items === undefined) ? null : unAsg.items;
+  var asgItems = asg.items || 0;
+  // Null unassigned must NEVER become 0 (D-null-guard): falling back to
+  // assigned-only is a stated choice, not a silent coercion.
+  var total = unItems === null ? null : asgItems + unItems;
+  var heroTotal = total === null ? asgItems : total;
+  var fallbackNote = unItems === null
+    ? "assigned only — the unassigned count isn't available this refresh, so this is a floor, not the whole queue"
+    : "";
+
+  var netFlow = netFlowPerWeek_();
+  var gap = orgClearRateGap_();
+
+  var invCtx = total === null
+    ? fallbackNote
+    : nfDh_(asgItems) + " assigned + " + nfDh_(unItems) + " unowned";
+  var heroHtml =
+    backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org") +
+    backlogTileHtml_("Net flow",
+      netFlow === null ? "—" : (netFlow > 0 ? "+" : "") + nfDh_(Math.round(netFlow)) + "/wk",
+      netFlow === null ? "needs an 8-week arrivals history"
+        : (netFlow > 0.0001 ? "growing" : netFlow < -0.0001 ? "draining" : "flat") + " · 8-week basis",
+      "org") +
+    backlogTileHtml_("Weeks to clear",
+      rate ? n1Dh_(heroTotal / rate) + "w" : "—",
+      rate ? "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only"
+        : "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") +
+          " of clearing history (" + gap.n + " of " + gap.minN + " so far)",
+      "org");
+
+  var open = flowOpenFor_();
+  var asgInv = open.wipN + open.todoN;
+  var asgRate = assignedClearRate_();
+  var subHtml =
+    backlogTileHtml_("Assigned inventory", nfDh_(asgInv) + " items",
+      nfDh_(open.wipN) + " in progress · " + nfDh_(open.todoN) + " queued", "snap") +
+    backlogTileHtml_("Assigned weeks to clear",
+      asgRate ? n1Dh_(asgInv / asgRate) + "w" : "—",
+      asgRate ? "at " + nfDh_(Math.round(asgRate)) + "/wk assigned clearing rate — filtered, never the ORG rate"
+        : "needs a longer assigned clearing history under this filter",
+      "snap");
+
+  var std = stdFor_(coverSeries_(), { publish: true });
+  var ruler = queueRulerSvg_({
+    wipN: asg.wipN || 0, todoN: asg.todoN || 0, unItems: unItems, rate: rate, std: std,
+    onDrill: (unItems !== null && unItems > 0) ? "switchView_('actions')" : null,
+  });
+
+  el.innerHTML =
+    '<h3>📥 Backlog — the queue nobody has finished</h3>' +
+    '<p class="cellSub">The hero below is the WHOLE queue, ignoring every filter — assigned-only ' +
+    "reads 4.9w and is at target; the true queue reads 11.0w. No target rule anywhere in this " +
+    "band (D11) — graded against the operating band instead.</p>" +
+    '<div class="tiles">' + heroHtml + '</div>' +
+    '<p class="cellSub" style="margin-top:10px">Assigned — the work that has an owner. Follows ' +
+    "Region / Team / PM / Family like every other filterable surface.</p>" +
+    '<div class="tiles">' + subHtml + '</div>' +
+    '<div style="margin-top:12px">' + ruler + '</div>';
 }
 
 /**
