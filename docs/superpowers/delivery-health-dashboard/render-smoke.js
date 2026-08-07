@@ -133,7 +133,13 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
              // rebuild are two clocks, and only rendering can prove they stay apart.
-             " dataAsOfView_: dataAsOfView_, renderTrust_: renderTrust_ })";
+             " dataAsOfView_: dataAsOfView_, renderTrust_: renderTrust_," +
+             // §1 THE MASTHEAD (Task 11, spec 2026-08-06) — the verdict engine
+             // and its formatters/series helpers, exposed so a check can pin
+             // the returned findings array directly, not just scrape HTML.
+             " renderMasthead_: renderMasthead_, verdictFindings_: verdictFindings_," +
+             " shelfRows_: shelfRows_, coverSeries_: coverSeries_, netFlowPerWeek_: netFlowPerWeek_," +
+             " nfDh_: nfDh_, n1Dh_: n1Dh_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -178,6 +184,11 @@ function model(o) {
       nsCoverage: { personWeeks: 4, covered: 4, classifiedPct: 1, gapHours: 0, unmatchedNames: [] },
       jiraUnattributed: { onTime: 3, forecast: 1 },
       onTimeScope: "delivery", forecastBand: 0.10,
+      // Queue metrics (Task 11, spec 2026-08-06 §1). Boring/inert defaults on
+      // purpose — clearRateMedian: null and empty history mean the masthead's
+      // depth/flow findings stay silent unless a test opts in explicitly, the
+      // same way every other per-test override in this file works.
+      arrivalsAvailable: true, clearRateMedian: null, clearRateWeeks: 8,
       capacityError: null,
       refreshEveryMin: 30,
       sources: [{ system: "Jira", feeds: "On-Time", tab: "Jira Raw" }],
@@ -201,6 +212,12 @@ function model(o) {
       },
     },
     people: [person("Ana Perez"), person("Ben Ortiz")],
+    // Queue halves, never summed here (Task 11, spec §1/§4.2) — 0, not null:
+    // a real measured empty queue, distinct from "we did not look".
+    queue: { assigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+             unassigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } },
+    arrivalWeeks: [],
+    inventoryHistory: [],
     onTimeBuckets: WEEKS.map(function (iso) {
       return { iso: iso, person: "Ana Perez", n: n, onTime: Math.round(n * 0.9), nAll: nAll };
     }),
@@ -3431,6 +3448,172 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(model({}));
   C.STATE.period = "week";
   C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// TASK 11 — THE MASTHEAD AND THE VERDICT ENGINE (spec 2026-08-06 §1)
+//
+// The verdict is composed from ranked findings, never a sentence template —
+// the prototype hardcoded "…and it grew by N items last week", which is false
+// on the real feed (+14/wk against a clearing rate of ~297). Every check here
+// answers "would this still pass if the behaviour it claims to verify were
+// deleted?" — see the per-check notes.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  /** Renders the masthead against a fresh model and returns its HTML. */
+  function masthead(mdl) {
+    fresh(mdl);
+    C.renderMasthead_();
+    return els.masthead.innerHTML;
+  }
+  /** One synthetic Jira Arrivals week. */
+  function aw(iso, created, resolved) {
+    return { iso: iso, created: created, resolved: resolved, createdUnassigned: 0 };
+  }
+  /** eight ISO weeks, oldest first — the trailing window netFlowPerWeek_ and
+      clearRateMedian_ both use (spec D3/D4). */
+  var WK8 = ["2026.W24", "2026.W25", "2026.W26", "2026.W27",
+             "2026.W28", "2026.W29", "2026.W30", "2026.W31"];
+
+  // ── 1. Net flow just UNDER the 5% materiality threshold → no growth clause ──
+  // rate=300 ⇒ threshold=15. Net flow here is 14 — deliberately one unit below
+  // the line, not zero: a zero-flow fixture passes under almost any
+  // implementation (even one with the threshold deleted), so it proves
+  // nothing. Mutation this catches: the >= comparison flipped to >, the 0.05
+  // constant dropped or changed, or the whole materiality gate removed.
+  var m1 = model({});
+  m1.meta.clearRateMedian = 300;
+  m1.arrivalWeeks = WK8.map(function (iso) { return aw(iso, 314, 300); }); // net +14/wk
+  var h1 = masthead(m1);
+  assert_(!/grew|growing|draining/i.test(h1),
+          "net flow (+14/wk) just under 5% of a 300/wk clearing rate (15) prints no growth/drain clause");
+
+  // ── 2. Net flow well OVER the threshold → the growth clause IS present ──
+  // Same rate, net flow now 80 (well past 15). Catches: the threshold check
+  // present but backwards (rendering only BELOW the line), or the clause
+  // wired to the wrong finding key.
+  var m2 = model({});
+  m2.meta.clearRateMedian = 300;
+  m2.arrivalWeeks = WK8.map(function (iso) { return aw(iso, 380, 300); }); // net +80/wk
+  var h2 = masthead(m2);
+  assert_(/growing by about 80 items a week/.test(h2),
+          "net flow (+80/wk, well over the 15/wk materiality line) states the growth clause with the right number");
+
+  // ── 3. Arrivals unavailable → no weeks-to-clear clause, no undefined/NaN ──
+  // Catches: a formatter called on a null/undefined rate or cover without a
+  // guard (nfDh_/n1Dh_ printing "NaN"), and the depth clause rendering off a
+  // rate of 0 instead of being suppressed by its absence.
+  var m3 = model({});
+  m3.meta.arrivalsAvailable = false;
+  m3.meta.clearRateMedian = null;
+  m3.arrivalWeeks = [];
+  var h3 = masthead(m3);
+  assert_(!/weeks of work/.test(h3), "no arrivals feed → no weeks-to-clear clause at all");
+  assert_(!/undefined|NaN/i.test(h3), "…and nothing prints undefined/NaN in its place");
+
+  // ── 4. null unassigned must NEVER become 0 — strengthened per the task brief ──
+  // Literal-string check first (the brief's own wording), THEN the
+  // discriminating version: assigned alone (1000 items) against a TIGHT
+  // 5-point history whose band sits at ~7 weeks. If the null-guard on `un`
+  // were deleted (or replaced with `|| 0`), JS coerces `1000 + null` to 1000
+  // — a real, non-null total — and the depth finding would fire off an
+  // assigned-only number the design explicitly forbids ("Flow Snapshots
+  // without the two new columns … Hero falls back to assigned-only and says
+  // so" is the BACKLOG band's job, not a silent leak into this one). A plain
+  // "does '0 unowned' appear" check cannot catch this: the unowned finding's
+  // own 20%-materiality gate makes a coerced-to-0 numerator produce 0% share,
+  // which never clears the gate under EITHER a correct or a buggy
+  // implementation — so the discriminating signal has to be the depth
+  // finding leaking a false total, not the unowned finding staying silent.
+  var m4 = model({});
+  m4.meta.clearRateMedian = 50;
+  m4.arrivalWeeks = [];
+  m4.inventoryHistory = [0, 1, 2, 3, 4].map(function (i) {
+    return { iso: "2026.W" + (24 + i), items: 250, measured: i === 4 };
+  }); // cover series = 250/50 = 5.0 flat ⇒ baseline 5, band floor 2 ⇒ hi = 7
+  m4.queue = {
+    assigned: { items: 1000, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+    unassigned: { items: null, wipN: null, todoN: null, todoHrs: null, uncategorized: null },
+  };
+  var h4 = masthead(m4);
+  assert_(!/0 unowned|0% unowned/.test(h4), "literal '0 unowned' / '0% unowned' never appears (brief's own wording)");
+  assert_(!/weeks of work/.test(h4),
+          "…and — the discriminating check — the DEPTH clause is ALSO silent: total is unknowable " +
+          "(null unassigned), not silently 1000 (assigned-only), which would read as a 20-week queue " +
+          "against a band whose ceiling is 7");
+  assert_(!/undefined|NaN/i.test(h4), "…with nothing printing undefined/NaN along the way");
+  var f4 = C.verdictFindings_();
+  assert_(!f4.some(function (x) { return x.key === "depth"; }),
+          "…confirmed on the findings array directly: no 'depth' key when the total is unknowable");
+  assert_(!f4.some(function (x) { return x.key === "unowned"; }),
+          "…nor an 'unowned' key — there is no denominator to compute a share from");
+
+  // ── 5. A real, large unowned share → the clause IS present, with the right
+  // numbers. Catches: share computed off the wrong denominator (e.g. assigned
+  // only, or a stale total), or the count formatted without its thousands grouping.
+  var m5 = model({});
+  m5.meta.clearRateMedian = null;
+  m5.arrivalWeeks = [];
+  m5.queue = {
+    assigned: { items: 1440, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+    unassigned: { items: 1839, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 },
+  };
+  var h5 = masthead(m5);
+  assert_(/56% of it has no owner — 1,839 items nobody has picked up\./.test(h5),
+          "1,839 of 3,279 (56%) states the unowned clause with the exact share and the exact " +
+          "thousands-grouped count — got: " + h5);
+
+  // ── 6. Genuinely unpublishable norm (<5 complete periods) suppresses the
+  // depth clause OUTRIGHT — even though the number itself is dramatically
+  // LARGE, not small. This is the case the task brief explicitly warns about:
+  // a fixture where the number "happens to be small" would pass under a
+  // broken implementation for the wrong reason. Cover here is 30 weeks
+  // (3000 items ÷ 100/wk) — undeniably "deep" by any target anyone might
+  // invent — and it must still print nothing, because there is no normal to
+  // be deep against with only 3 points of history.
+  var m6 = model({});
+  m6.meta.clearRateMedian = 100;
+  m6.arrivalWeeks = [];
+  m6.queue = {
+    assigned: { items: 3000, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+    unassigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 },
+  };
+  m6.inventoryHistory = [0, 1, 2].map(function (i) {
+    return { iso: "2026.W" + (29 + i), items: 300, measured: i === 2 };
+  }); // only 3 points — below STD_MIN_PERIODS (5)
+  var h6 = masthead(m6);
+  assert_(!/weeks of work/.test(h6),
+          "depth clause suppressed under 5 complete periods, even though cover (30wk) is huge, not small");
+  assert_(!/undefined|NaN/i.test(h6), "…with no undefined/NaN printed from the unpublishable std result");
+  var f6 = C.verdictFindings_();
+  assert_(!f6.some(function (x) { return x.key === "depth"; }),
+          "…confirmed directly: no 'depth' key while the operating norm has fewer than 5 periods");
+
+  // ── 7. Headcount is the FILTERED population, and it actually CHANGES ──
+  // Asserting a number is merely present would pass even if headcount were
+  // hardcoded to MODEL.people.length (unfiltered) — the fixture's two people
+  // are both AMER, so filtering to EMEA must visibly drop the count to 0.
+  var m7 = model({});
+  var h7a = masthead(m7);
+  var c7a = /<b>(\d+)<\/b> (?:person|people) in scope/.exec(h7a);
+  assert_(c7a && c7a[1] === "2", "unfiltered headcount is the full fixture population (2) — got: " + h7a);
+  C.setState("region", "EMEA");
+  var h7b = masthead(m7);
+  var c7b = /<b>(\d+)<\/b> (?:person|people) in scope/.exec(h7b);
+  assert_(c7b && c7b[1] === "0",
+          "headcount CHANGES to 0 once the region filter matches nobody in the fixture (both people are AMER)");
+  C.setState("region", "");
+
+  // ── 8. No individual is ever named on the masthead (P6) ──
+  var h8 = masthead(model({}));
+  assert_(!/Ana Perez/.test(h8) && !/Ben Ortiz/.test(h8),
+          "no person from MODEL.people appears anywhere in the masthead HTML");
+
+  // Teardown.
+  C.setState("region", "");
+  fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();
 })();

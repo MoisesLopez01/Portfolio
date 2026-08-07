@@ -440,6 +440,15 @@ tr.detail td.dback{padding:8px 16px 12px}
    disabled, so a filter list never silently loses a value someone is looking for. */
 select option:disabled{color:var(--muted);font-style:italic}
 .chip.off{opacity:.38;cursor:not-allowed}
+/* §1 THE MASTHEAD (spec 2026-08-06) — the lede, first child of #viewExec.
+   The evidence chip sits opposite the verdict so a reader weighs the sentence
+   against how much of the page it is standing on before reading anything else. */
+.mastRow{display:flex;align-items:flex-start;gap:16px;justify-content:space-between;flex-wrap:wrap}
+.mastLede{flex:1;min-width:260px}
+.mastHead{font-size:calc(13px*var(--scale));margin:2px 0}
+.mastVerdict{font-size:calc(15px*var(--scale));line-height:1.5;margin:4px 0 0;font-weight:600}
+.mastEvidence{font-size:calc(11px*var(--scale));color:var(--muted);text-align:right;
+              white-space:nowrap;cursor:help;padding-top:2px}
 /* ── Motion (spec §7) — portfolio language, ONCE per load. Every rule lives
    behind prefers-reduced-motion; re-renders from filter/sort changes never
    re-animate (body.loaded gates the entrance keyframes). ── */
@@ -507,6 +516,9 @@ select option:disabled{color:var(--muted);font-style:italic}
 
   <!-- ── EXECUTIVE — the four cards and one comparison. The 30-second read. ── -->
   <div id="viewExec" class="viewPane">
+    <!-- §1 THE MASTHEAD (spec 2026-08-06) — the lede. Always first: a reader
+         gets the verdict in one sentence before a single chart. -->
+    <div class="panel" id="masthead" style="margin-bottom:14px"></div>
     <div style="text-align:right"><button class="iconbtn" onclick="savePng_('kpiStrip','tiles')" title="Save the KPI cards as a PNG image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
     <div id="kpiStrip">
@@ -1533,7 +1545,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
+    case "exec":    renderMasthead_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
     case "actions": renderRoster_(); renderBacklogHealth_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -2568,6 +2580,224 @@ function planTile_(head, headlineLabel, phase) {
         "population as the utilization rate.",
         "Under-planned is under " + Math.round(PLAN_CLIFF_ * 100) + "% of scheduled " +
         "capacity, the same coverage-cliff line the signals roster flags per person."] });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// §1 THE MASTHEAD — the lede (spec 2026-08-06)
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Thousands-grouped integer — "3,279", never a bare run of digits a reader
+    has to count by eye. Scoped to the masthead/verdict on purpose: every
+    other tile already has its own display convention (r1_ for hours, a bare
+    number for small counts) and nothing here forces a second one on them. */
+function nfDh_(v) {
+  var n = Math.round(Number(v) || 0);
+  var s = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (n < 0 ? "-" : "") + s;
+}
+
+/** One-decimal string — "11.0", not the bare float r1_ rounds to. Guards NaN
+    the same way r1_ guards it; toFixed alone on a non-number prints "NaN". */
+function n1Dh_(v) {
+  var n = Number(v);
+  return isNaN(n) ? "0.0" : n.toFixed(1);
+}
+
+/**
+ * MODEL.inventoryHistory (queue size per week, oldest first) ÷ TODAY's clear
+ * rate → a weeks-to-clear series stdFor_ can judge the CURRENT cover
+ * against. One rate applied to every point, deliberately: the question this
+ * answers is "how unusual is carrying today's queue at the rate we clear
+ * today", the same question stdFor_ answers for every other metric on the
+ * page — a rate that varied per historical week would be a different
+ * question with a different answer.
+ */
+function coverSeries_() {
+  var rate = MODEL.meta.clearRateMedian;
+  if (!rate) return [];
+  return (MODEL.inventoryHistory || []).map(function (h) {
+    return (h && typeof h.items === "number") ? h.items / rate : null;
+  });
+}
+
+/**
+ * Average (created − resolved) per week over the TRAILING meta.clearRateWeeks
+ * of MODEL.arrivalWeeks (oldest first) — the same window clearRateMedian_
+ * uses server-side (spec D3/D4), so the verdict and the rate it is judged
+ * against can never describe different spans of history. A week the arrivals
+ * tab could not parse is skipped, never treated as zero flow.
+ */
+function netFlowPerWeek_() {
+  var weeks = MODEL.arrivalWeeks || [];
+  var win = MODEL.meta.clearRateWeeks || 8;
+  var trailing = weeks.slice(Math.max(0, weeks.length - win));
+  var sum = 0, cnt = 0;
+  trailing.forEach(function (w) {
+    if (w && typeof w.created === "number" && typeof w.resolved === "number") {
+      sum += w.created - w.resolved;
+      cnt++;
+    }
+  });
+  return cnt > 0 ? sum / cnt : null;
+}
+
+/**
+ * ── THE SHELF (partial) ─────────────────────────────────────────────────────
+ * "Not measured this week." verdictFindings_ needs a shelved COUNT now; the
+ * full shelf — sample-floor and feed-down detection, the rendered list, the
+ * computed trust detail — is a later task's job (spec 2026-08-06 §7 "Not
+ * measured this week" / implementation plan "the shelf and the trust
+ * detail"). That task's own brief fixes this function's signature — an
+ * array whose `.length` is the shelved count — and ADDS to it, not replaces
+ * it. This partial covers the one source that is real and knowable
+ * client-side today: a registry entry the server has already marked
+ * status:"absent" — no feed exists at all (Cycle Time, Flow Efficiency,
+ * CSAT, rework capture).
+ * @returns {Array<{id, name, why:Array<string>}>}
+ */
+function shelfRows_() {
+  var reg = (MODEL.meta.registry || {}).metrics || {};
+  var rows = [];
+  Object.keys(reg).forEach(function (id) {
+    var m = reg[id];
+    if (m.status === "absent") {
+      rows.push({ id: id, name: m.name || id, why: [m.absentReason || "no feed connected"] });
+    }
+  });
+  return rows;
+}
+
+/**
+ * ── THE VERDICT ────────────────────────────────────────────────────────────
+ * Composed from ranked findings, never a sentence template.
+ *
+ * The prototype hardcoded "…and it grew by N items last week". On the real
+ * feed net flow is +14/wk against a clearing rate of ~297 — the queue is
+ * stable, and that clause would have been simply false. A template cannot
+ * decline to make a claim; a findings list can.
+ *
+ * Rank order is FIXED and each finding carries its own materiality
+ * threshold, because not every finding has a target to be distant from
+ * (unowned share has none). A finding whose threshold is not met returns
+ * nothing and never renders.
+ *
+ * @returns {Array<{key:string, text:string, sev:string}>} worst first
+ */
+function verdictFindings_() {
+  var out = [];
+  var q = MODEL.queue || { assigned: {}, unassigned: {} };
+  var rate = MODEL.meta.clearRateMedian;
+  var un = q.unassigned ? q.unassigned.items : null;
+  var total = (un === null || un === undefined) ? null : (q.assigned.items || 0) + un;
+
+  // 1 — QUEUE DEPTH. Against the operating band, NOT a target: D11 ships
+  // queueCover with target: null. Suppressed outright while the norm is
+  // unpublishable, because "deep" is meaningless without a normal to be deep
+  // against, and inventing one here would put a verdict on screen no owner
+  // holds. `std.ok` (not `std.baseline !== null`) is the correct guard —
+  // standardRate_ returns {ok:false} with baseline left `undefined`, not
+  // `null`, under 5 periods, and `undefined !== null` is true in JS, so a
+  // null-check here would silently let an unpublishable norm through.
+  if (total !== null && rate) {
+    var cover = total / rate;
+    var std = stdFor_(coverSeries_(), { publish: true });
+    if (std && std.ok && cover > std.hi) {
+      out.push({ key: "depth", sev: "bad",
+        text: "We are holding " + nfDh_(total) + " items and clearing about " +
+              nfDh_(Math.round(rate)) + " a week — roughly " + n1Dh_(cover) +
+              " weeks of work, against a normal of " + n1Dh_(std.baseline) + "." });
+    }
+  }
+
+  // 2 — UNOWNED SHARE. Threshold 20%: below that it is housekeeping, above it
+  // the queue has no owner and that is the finding.
+  if (total !== null && total > 0 && un !== null) {
+    var share = un / total;
+    if (share >= 0.20) {
+      out.push({ key: "unowned", sev: "bad",
+        text: Math.round(share * 100) + "% of it has no owner — " + nfDh_(un) +
+              " items nobody has picked up." });
+    }
+  }
+
+  // 3 — NET FLOW. Threshold: 5% of the clearing rate. Below that the queue is
+  // stable, and calling a stable queue "growing" is noise dressed as a finding.
+  if (rate && MODEL.arrivalWeeks && MODEL.arrivalWeeks.length) {
+    var nf = netFlowPerWeek_();
+    if (nf !== null && Math.abs(nf) >= rate * 0.05) {
+      out.push({ key: "flow", sev: nf > 0 ? "bad" : "good",
+        text: nf > 0
+          ? "It is growing by about " + nfDh_(Math.round(nf)) + " items a week."
+          : "It is draining by about " + nfDh_(Math.abs(Math.round(nf))) + " items a week." });
+    }
+  }
+
+  // 4 — GATES. Same last-complete-period head, and the same gapsRows_ call,
+  // renderTrust_ already uses — one list of definitions, so the masthead and
+  // the gates band can never disagree about which checks are failing.
+  var gA = analysisHead_();
+  var gHead = gA.done[gA.done.length - 1] || { label: "—", isos: [] };
+  var gapsAll = gapsRows_(hygieneFor_(gHead.isos), hygienePeopleFor_(gHead.isos)) || [];
+  var failing = gapsAll.filter(function (g) {
+    return g.value !== null && g.gate !== null && g.value < g.gate;
+  });
+  if (failing.length) {
+    out.push({ key: "gates", sev: "warn",
+      text: failing.length + " of " + gapsAll.length +
+            " evidence gates are below their bar." });
+  }
+
+  // 5 — SHELVED. Says how much of the scorecard is not answerable at all.
+  var shelved = shelfRows_() || [];
+  if (shelved.length) {
+    out.push({ key: "shelf", sev: "warn",
+      text: shelved.length + " metric" + (shelved.length === 1 ? " is" : "s are") +
+            " not measurable this period." });
+  }
+  return out;
+}
+
+/**
+ * §1 THE MASTHEAD renderer. Grammar: week label · "last complete week" ·
+ * filtered headcount · the findings joined into prose · an evidence chip
+ * carrying the failing-gate and shelved counts.
+ *
+ * Headcount is the FILTERED population, matching the scope chip directly
+ * above the panes — the one number in this band that is not ORG (spec §1).
+ * The label is always the last COMPLETE week regardless of the period
+ * picker: the queue/flow findings are fixed to an 8-week trailing basis
+ * (spec D3), the same way the backlog band and the gates band both ignore
+ * the picker on purpose.
+ */
+function renderMasthead_() {
+  var el = document.getElementById("masthead");
+  if (!el) return;
+  var A = analysisHead_();
+  var head = A.done[A.done.length - 1] || { label: "—", isos: [] };
+  var n = filteredPeople_().length;
+  var findings = verdictFindings_();
+  var verdict = findings.length
+    ? findings.map(function (f) { return f.text; }).join(" ")
+    : "Nothing on the ranked findings list clears its bar this week — the queue, the flow and the gates all read as ordinary.";
+  var gapsAll = gapsRows_(hygieneFor_(head.isos), hygienePeopleFor_(head.isos)) || [];
+  var failingN = gapsAll.filter(function (g) {
+    return g.value !== null && g.gate !== null && g.value < g.gate;
+  }).length;
+  var shelvedN = (shelfRows_() || []).length;
+  el.innerHTML =
+    '<div class="mastRow">' +
+      '<div class="mastLede">' +
+        '<div class="cellSub">' + esc_(head.label) + " · last complete week" + scopeTag_("period") + "</div>" +
+        '<div class="mastHead"><b>' + n + "</b> " + (n === 1 ? "person" : "people") + " in scope</div>" +
+        '<p class="mastVerdict">' + esc_(verdict) + "</p>" +
+      "</div>" +
+      '<div class="mastEvidence" title="Gates below their bar, and metrics that could not be measured at all this period — check these before trusting anything above.">' +
+        (failingN
+          ? '<span class="dDown">' + failingN + " gate" + (failingN === 1 ? "" : "s") + " below bar</span>"
+          : '<span class="dUp">all gates clear</span>') +
+        (shelvedN ? " · " + shelvedN + " shelved" : "") +
+      "</div>" +
+    "</div>";
 }
 
 function renderTiles_() {
