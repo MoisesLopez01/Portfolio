@@ -526,22 +526,26 @@ select option:disabled{color:var(--muted);font-style:italic}
     <!-- §2 BACKLOG BAND (spec 2026-08-06) — the page's hero: ORG triplet,
          filterable assigned sub-row, queue ruler. -->
     <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
-    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('kpiStrip','tiles')" title="Save the KPI cards as a PNG image">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
-    <div id="kpiStrip">
-      <div class="tiles" id="tiles"></div>
-      <!-- Compact flow tier (spec 2026-08-05 §4.1): the five live flow reads as
-           smaller neutral tiles inside the same KPI block. The 🌊 Flow tab is
-           retired; declared-absent placeholders (Cycle Time, Flow Efficiency)
-           no longer render — the registry stays their record. -->
-      <div class="tiles tilesCompact" id="flowTiles"></div>
-    </div>
-    <!-- Colour key for the cards and the comparison bars below them — readers
-         learn colours from legends, not tooltips (user request 2026-08-04). -->
-    <div id="tileColorKey"></div>
-    <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
-    <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
+    <!-- §4.4 DATA TRUST (Task 16B, spec 2026-08-06) — moved up from last: "can
+         we publish these numbers?" belongs before the numbers, not after them. -->
     <div class="panel" id="trustPanel" style="margin-bottom:14px"></div>
+    <!-- FLOW BAND (Task 16B) — Cleared · Arrived · Lead Time (p85 companion) ·
+         On-Time · Forecast · Quality/Rework, plus Throughput and Bug Count.
+         On-Time/Forecast/Quality used to be the standalone #tiles strip
+         (retired Task 16B — see report); they are delivery-outcome measures,
+         so they join the other flow reads rather than getting their own band
+         (spec §3 omits Forecast/Quality from any band — resolved as a spec
+         gap, not an instruction to drop them). -->
+    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('flowTiles','flow')" title="Save the flow cards as a PNG image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
+    <div class="tiles tilesCompact" id="flowTiles"></div>
+    <!-- CAPACITY BAND (Task 16B) — Utilisation/Planned Coverage tile (moved
+         from the old #tiles strip) sits above the recoverable-hours/people-
+         signals row #pulsePanel already renders; both share the SAME margin
+         gate, so the whole band is omitted from the DOM together for a
+         non-margin role rather than each half being gated separately. -->
+    <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
+    <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
     <!-- §7 THE SHELF (spec 2026-08-06) — "not measured this week", data-driven. -->
     <div class="panel" id="shelfPanel" style="margin-bottom:14px"></div>
     <!-- §8 DATA TRUST DETAIL (spec 2026-08-06) — collapsed <details>, computed. -->
@@ -1556,7 +1560,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); renderShelf_(); renderTrustDetail_(); break;
+    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTrust_(); renderFlow_(); renderPulse_(); renderCompare_(); renderShelf_(); renderTrustDetail_(); break;
     case "actions": renderRoster_(); renderBacklogHealth_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -2755,11 +2759,22 @@ function assignedClearRate_() {
  */
 function queueRulerSvg_(o) {
   var rate = o.rate;
-  if (!rate) {
+  // rate === null → genuinely unmeasured (not enough clearing history) — the
+  // ruler can't be scaled in weeks at all. rate === 0 is a DIFFERENT, REAL
+  // state (an all-zero clearing week is a measured zero, per
+  // clearRateMedian_'s contract) — dividing by it here would produce Infinity
+  // rather than the "needs N more weeks" message a falsy check used to give
+  // it, so it gets its own honest message instead of either (Task 16B review
+  // finding: rate === 0 was being collapsed into rate === null).
+  if (rate === null || rate === undefined) {
     var gap = orgClearRateGap_();
     return '<div class="emptyState">Can\'t scale the ruler in weeks yet — needs ' + gap.need +
       ' more week' + (gap.need === 1 ? "" : "s") + ' of clearing history (' + gap.n + ' of ' +
       gap.minN + ' so far).</div>';
+  }
+  if (rate === 0) {
+    return '<div class="emptyState">Clearing rate is 0/wk this window — the queue isn\'t draining ' +
+      'at all, so it can\'t be scaled in weeks.</div>';
   }
   var hasUnowned = o.unItems !== null && o.unItems !== undefined;
   var wipW = o.wipN / rate, todoW = o.todoN / rate;
@@ -2821,9 +2836,36 @@ function queueRulerSvg_(o) {
     anywhere in this band) — the same reason flowTileHtml_ was written apart
     from tileHtml_ for the other unit-bearing metrics. */
 function backlogTileHtml_(label, big, context, scope) {
-  return '<div class="tile"><div class="lbl">' + esc_(label) + scopeTag_(scope) + '</div>' +
+  // House "unavailable" convention (tileHtml_/flowTileHtml_ both apply it):
+  // a "—" state gets the dashed placeholder shell, not a fully-formed tile —
+  // otherwise a Net-flow or Weeks-to-clear tile with nothing to show looks
+  // like a real measurement on a projector (Task 16B review finding).
+  var ph = big === "—" ? " ph" : "";
+  return '<div class="tile' + ph + '"><div class="lbl">' + esc_(label) + scopeTag_(scope) + '</div>' +
     '<div class="big">' + big + '</div>' +
     (context ? '<div class="cmp">' + context + '</div>' : "") + '</div>';
+}
+
+/**
+ * "Weeks to clear" at a given clearing rate — shared by the hero and the
+ * assigned sub-row so the null-vs-zero distinction is fixed in exactly one
+ * place (Task 16B review finding).
+ *
+ * `rate === null` means "not enough clearing history yet" — genuinely
+ * unmeasured, renders "—". `rate === 0` is a REAL measured rate:
+ * clearRateMedian_'s contract (Code.js, unit-tested) is explicit that an
+ * all-zero series is a measured zero, not missing history. Nothing clears at
+ * a rate of zero, so the queue is UNBOUNDED, not unmeasured — collapsing the
+ * two under a falsy check produced self-contradictory copy ("—" beside "needs
+ * 0 more weeks"). Returns null (not "—") for the null-rate case so callers can
+ * tell "no string" apart from "the string IS the em-dash" and write their own
+ * reason alongside it.
+ * @returns {?string} "∞w" / "0w" / "N.Nw", or null when rate itself is unmeasured
+ */
+function weeksToClearStr_(total, rate) {
+  if (rate === null || rate === undefined) return null;
+  if (rate === 0) return total > 0 ? "∞w" : "0w";
+  return n1Dh_(total / rate) + "w";
 }
 
 /**
@@ -2861,10 +2903,13 @@ function renderBacklogBand_() {
         : (netFlow > 0.0001 ? "growing" : netFlow < -0.0001 ? "draining" : "flat") + " · 8-week basis",
       "org") +
     backlogTileHtml_("Weeks to clear",
-      rate ? n1Dh_(heroTotal / rate) + "w" : "—",
-      rate ? "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only"
-        : "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") +
-          " of clearing history (" + gap.n + " of " + gap.minN + " so far)",
+      weeksToClearStr_(heroTotal, rate) || "—",
+      (rate === null || rate === undefined)
+        ? "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") +
+          " of clearing history (" + gap.n + " of " + gap.minN + " so far)"
+        : rate === 0
+        ? "clearing rate is 0/wk this window — the queue isn't draining, so this has no ceiling"
+        : "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only",
       "org");
 
   var open = flowOpenFor_();
@@ -2874,9 +2919,12 @@ function renderBacklogBand_() {
     backlogTileHtml_("Assigned inventory", nfDh_(asgInv) + " items",
       nfDh_(open.wipN) + " in progress · " + nfDh_(open.todoN) + " queued", "snap") +
     backlogTileHtml_("Assigned weeks to clear",
-      asgRate ? n1Dh_(asgInv / asgRate) + "w" : "—",
-      asgRate ? "at " + nfDh_(Math.round(asgRate)) + "/wk assigned clearing rate — filtered, never the ORG rate"
-        : "needs a longer assigned clearing history under this filter",
+      weeksToClearStr_(asgInv, asgRate) || "—",
+      (asgRate === null || asgRate === undefined)
+        ? "needs a longer assigned clearing history under this filter"
+        : asgRate === 0
+        ? "assigned clearing rate is 0/wk this window — filtered, never the ORG rate"
+        : "at " + nfDh_(Math.round(asgRate)) + "/wk assigned clearing rate — filtered, never the ORG rate",
       "snap");
 
   var std = stdFor_(coverSeries_(), { publish: true });
@@ -2887,9 +2935,17 @@ function renderBacklogBand_() {
 
   el.innerHTML =
     '<h3>📥 Backlog — the queue nobody has finished</h3>' +
-    '<p class="cellSub">The hero below is the WHOLE queue, ignoring every filter — assigned-only ' +
-    "reads 4.9w and is at target; the true queue reads 11.0w. No target rule anywhere in this " +
-    "band (D11) — graded against the operating band instead.</p>" +
+    // No literal figures here (Task 16B CRITICAL fix, review of Tasks 12–14):
+    // this sentence used to quote "4.9w"/"11.0w" — illustrative numbers
+    // copied from the spec, wired to nothing, sitting directly above the
+    // tiles that compute those exact figures live. It states the SHAPE of
+    // the band instead; the tiles beside it already carry the numbers, and
+    // a smoke check (render-smoke.js) asserts no bare "N.Nw"/"Nw" literal
+    // ever appears in this prose again.
+    '<p class="cellSub">The hero below is the WHOLE queue, ignoring every filter; the sub-row ' +
+    "beneath applies your active filters to the assigned-only slice of that same queue — the two " +
+    "read different numbers on purpose. No target rule anywhere in this band (D11) — both are " +
+    "graded against the operating band instead.</p>" +
     '<div class="tiles">' + heroHtml + '</div>' +
     '<p class="cellSub" style="margin-top:10px">Assigned — the work that has an owner. Follows ' +
     "Region / Team / PM / Family like every other filterable surface.</p>" +
@@ -3146,25 +3202,42 @@ function renderMasthead_() {
     "</div>";
 }
 
-function renderTiles_() {
-  // Headline = the ANALYSIS period (picker selection, or the last complete
-  // period); trend = up to the 6 complete periods ENDING at it, so a reader
-  // stepping back in time sees the history as it stood then.
+/**
+ * Explicit period framing shared by every outcome tile — On-Time, Forecast,
+ * Quality/Rework (all now in the Flow band) and Utilisation/Planned Coverage
+ * (capacity band). Moved here verbatim from the retired renderTiles_ (Task
+ * 16B — the old #tiles/#tileColorKey strip; see task-16b-report.md).
+ */
+function outcomeHeadlineLabel_(phase, head) {
+  var planning = phase === "plan";
+  var unit = PERIOD_LABELS[STATE.period].toLowerCase();
+  return (planning ? "planning window "
+                    : phase === "now" ? "current " + unit + " so far "
+                    : STATE.periodIdx === null ? "last complete " : "selected ") +
+    (planning ? "" : unit + " ") + "(" + head.label + ")";
+}
+
+/**
+ * CAPACITY BAND's own KPI tile — Utilisation, or Planned Coverage on a
+ * forward window (Task 16B: moved from the retired #tiles strip). Every
+ * behaviour renderTiles_ owned for this card survives unmoved: gatedTile_'s
+ * coverage gate, the planTile_ phase swap, the mid-period opts.floor grammar
+ * ("at least N%", no RAG colour) and the stdFor_ operating-rate read — see
+ * task-16b-report.md for the per-behaviour verification.
+ *
+ * canSeeMargin_() gating is NOT repeated here: renderPulse_ (the only caller)
+ * already omits its whole panel — this tile included — from the DOM for a
+ * non-margin role, so the card shares the capacity band's one gate instead of
+ * carrying a second one that could disagree with it.
+ */
+function capacityTileHtml_() {
   var A = analysisHead_();
   var done = A.done, hi = A.hi, head = A.head, phase = A.phase;
   var planning = phase === "plan";
-  // The trend is ALWAYS the complete periods up to the head — never the head
-  // itself when the head is unfinished. A forward or in-flight window shows the
-  // history behind it, so the reader still has a baseline to read against.
   var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
-  var trendLabels = trendPer.map(function (p) { return p.label; });
+  var labels = trendPer.map(function (p) { return p.label; });
   var unit = PERIOD_LABELS[STATE.period].toLowerCase();
-  // Explicit period framing: the tiles are the analysis period, the grid
-  // highlights the current one — say so instead of two bare labels.
-  var opts = { headlineLabel: (planning ? "planning window "
-                             : phase === "now" ? "current " + unit + " so far "
-                             : STATE.periodIdx === null ? "last complete " : "selected ") +
-                              (planning ? "" : unit + " ") + "(" + head.label + ")" };
+  var headlineLabel = outcomeHeadlineLabel_(phase, head);
   var tg = MODEL.meta.targets || {};
 
   var live = nsLive_();
@@ -3208,109 +3281,12 @@ function renderTiles_() {
   });
   var utilTrendShown = utilSeries.slice(Math.max(0, hi - 5), hi + 1);
 
-  var ot = bucketsFor_(MODEL.onTimeBuckets, head.isos);
-  var otSeries = done.map(function (p) {
-    var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
-    return b.n > 0 ? b.onTime / b.n * 100 : null;
-  });
-  var otTrend = otSeries.slice(Math.max(0, hi - 5), hi + 1);
-  // Name the scope on the card: "85% on time" means something different over
-  // Stories/Tasks than over epics, and the switch lives in CONFIG_DH.
-  var OT_SCOPE = {
-    // The shipped scope. Missing from this map until 2026-08-04, so the card
-    // fell back to "resolved issues" with a tooltip claiming epics were
-    // excluded — the exact opposite of what the number measured.
-    dictionary: { word: "resolved epics / milestones / commitments",
-      why: "The Metrics Dictionary scope: epics, Milestone-type issues and Client-Commitment-labelled work. Stories and Tasks are excluded — an epic's due date is the client-facing milestone." },
-    delivery: { word: "resolved issues",
-      why: "Stories and Tasks — the team's own delivery commitments. Epics are excluded: an epic's due date is a programme milestone set by the PM and its resolution trails its last child, so the two measure different lifecycles." },
-    epic: { word: "resolved epics",
-      why: "Epics only — milestone-level client commitments, per the Metrics Dictionary. Stories and Tasks are excluded." },
-    all: { word: "resolved items (all types)",
-      why: "Every resolved issue type in one rate, epics included. Mixes programme milestones with task-level commitments — kept only for comparison with the pre-2026-08-03 number." },
-  };
-  var otSc = OT_SCOPE[MODEL.meta.onTimeScope] || OT_SCOPE.delivery;
-  // No unattributed count here (user 2026-08-05: data-quality noise) — the
-  // roster-join rate lives on the 🔍 Data trust strip and the gaps queue.
-  var otCmp = ot.n + " of " + ot.nAll + " " + otSc.word +
-    ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n);
-  // The accepted deviations — chiefly that this rate is measured against a due
-  // date anyone can move after the fact. Live-audit context (2026-08-05): the
-  // changed-due-date signal is not merely unbuilt, it is unreadable from the
-  // export — `duedate CHANGED` is rejected by this Jira's JQL and the exporter
-  // runs with FETCH_CHANGELOG = false, so nothing downstream can currently tell
-  // a met commitment from a re-baselined one.
-  var otDetail = regCaveats_("onTime");
-  var fc = bucketsFor_(MODEL.forecastBuckets, head.isos);
-  var fcSeries = done.map(function (p) {
-    var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
-    return forecastAccuracyPct_(b.absVars);   // Dictionary formula, same as the headline
-  });
-  var fcTrend = fcSeries.slice(Math.max(0, hi - 5), hi + 1);
-  var band = Math.round((MODEL.meta.forecastBand || 0.10) * 100);
-  // Headline = the Dictionary mean. The band and the median ride underneath as
-  // companions: the mean says how close on average, the band says how often we
-  // actually hit, and the median says how big a typical miss is. Any one of the
-  // three alone is quotable in a misleading direction.
-  var fcHeadline = forecastAccuracyPct_(fc.absVars);
-  var fcDetail = [];
-  var fcCmp = '<span title="' + esc_(reg_("forecast").formula || "") +
-    ' Floored at zero per epic, so one runaway engagement cannot drag a good period negative.">' +
-    "mean accuracy over " + fc.n + " measurable epic" + (fc.n === 1 ? "" : "s") + " ⓘ</span>" +
-    smallN_(fc.n);
-  fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
-    fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
-  if (fc.nAll > fc.n) {
-    fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
-      "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
-      "only instead of scoring as misses.");
-  }
-  // Secondary form (FR-1.4): the band says whether we hit estimates, the median
-  // says by how much we miss. Both are needed — 40% inside the band reads very
-  // differently at a 12% median variance than at a 90% one.
-  var med = medianOf_(fc.absVars);
-  if (med !== null) {
-    fcDetail.push("Median absolute variance " + Math.round(med * 100) + "% — median of " +
-      "|actual − estimate| ÷ estimate across the measurable epics. A median, not a mean: one " +
-      "runaway engagement should not define the team's forecasting.");
-  }
-  // Direction of the miss (FR-1.6): the same accuracy reads the same whether the
-  // team over-runs or closes early, and those need opposite conversations —
-  // over-runs burn margin, under-runs mean capacity was held that could have
-  // been sold. Counted on misses only; an epic inside the band is on target.
-  var misses = fc.nMissOver + fc.nMissUnder;
-  if (misses > 0) {
-    var overShare = Math.round(fc.nMissOver / misses * 100);
-    fcDetail.push("Of " + misses + " miss" + (misses === 1 ? "" : "es") + ", " + overShare +
-      "% over-run — over-runs burn margin, under-runs mean capacity was held that could have " +
-      "been sold. Opposite conversations.");
-  }
-  // Accepted deviations last, so the measured companions lead the tooltip.
-  fcDetail = fcDetail.concat(regCaveats_("forecast"));
-
-  // ── Confidence gates (FR-2.1/2.2) ──────────────────────────────────────────
-  // Coverage is recomputed under the ACTIVE FILTERS, because a well-tagged
-  // region can be publishable while the whole population isn't. stablePeriods =
-  // complete periods that actually carried data.
   function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
-  var regOt = reg_("onTime"), regFc = reg_("forecast"), regU = reg_("util");
-  // Coverage per period — what a suppressed card trends instead of the metric.
-  var otCovTrend = trendPer.map(function (p) {
-    var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
-    return b.nAll > 0 ? b.n / b.nAll * 100 : null;
-  });
-  var fcCovTrend = trendPer.map(function (p) {
-    var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
-    return b.nAll > 0 ? b.n / b.nAll * 100 : null;
-  });
+  var regU = reg_("util");
   var utilCovTrend = trendPer.map(function (p) {
     var s = utilFor_(p.isos);
     return s.tracked > 0 ? s.trackedCov / s.tracked * 100 : null;
   });
-  var otConf = applyGatePolicy_(
-    metricConfidence_(regOt.coverageGate, ot.nAll > 0 ? ot.n / ot.nAll : null, stable_(otTrend)));
-  var fcConf = applyGatePolicy_(
-    metricConfidence_(regFc.coverageGate, fc.nAll > 0 ? fc.n / fc.nAll : null, stable_(fcTrend)));
   // Utilization: when NetSuite isn't classifying anything, the number on screen
   // is tracked ÷ capacity — a DIFFERENT metric. Relabel it rather than publish
   // it under a billable heading (P8: one definition, one owner).
@@ -3320,52 +3296,18 @@ function renderTiles_() {
     ? metricConfidence_(regU.coverageGate, utilCov, stable_(utilTrendShown))
     : metricConfidence_(0, u.avail > 0 ? 1 : null, stable_(utilTrendShown)));
 
-  // Operating rates. stdFor_ returns null — not a number — for a stale model or
+  // Operating rate. stdFor_ returns null — not a number — for a stale model or
   // a metric below its coverage gate, so a suppressed card can never sprout an
   // authoritative-looking "norm" derived from the very data that suppressed it.
-  var otStd = stdFor_(otSeries, otConf);
-  var fcStd = stdFor_(fcSeries, fcConf);
   var utilStd = stdFor_(utilSeries, utilConf);
 
-  // Outcome measures lead (director decision 2026-07-31): On-Time is the hero,
-  // Forecast second; utilization is a capacity-health tile in slot three.
-  // Out-of-tier cards are omitted from the string entirely — not dimmed, not
-  // rendered-then-hidden. There is nothing in the DOM to inspect or screenshot.
-  var margin = canSeeMargin_();
   // ── PHASE SWITCH (2026-08-06) ──────────────────────────────────────────────
-  // On a PLANNING window the three outcome cards say so and stay blank, and the
-  // capacity slot becomes Planned Coverage. This is the same rule as "no
+  // On a PLANNING window this slot becomes Planned Coverage. Same rule as "no
   // billable claim without a billable feed" (P8): when the thing a card names
   // cannot be measured, relabel — never publish a different number under the
   // old heading, and never publish a rate over an empty set.
-  document.getElementById("tiles").innerHTML =
-    (planning
-      ? notYetTile_("On-Time Delivery", head, opts.headlineLabel) +
-        (!margin ? "" : notYetTile_("Forecast Accuracy", head, opts.headlineLabel))
-      : MODEL.meta.jiraAvailable
-      ? gatedTile_("On-Time Delivery", otConf, regOt,
-          "no resolved delivery items in this period under the active filters",
-          (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
-          function () {
-            return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
-                             { headlineLabel: opts.headlineLabel, target: tg.onTime,
-                               std: otStd, trendLabels: trendLabels, phase: phase,
-                               detail: otDetail });
-          }, opts.headlineLabel, otCovTrend, trendLabels) +
-        (!margin ? "" : gatedTile_("Forecast Accuracy", fcConf, regFc,
-          "no epics closed in this period under the active filters",
-          (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
-          function () {
-            return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
-                             { headlineLabel: opts.headlineLabel, target: tg.forecast,
-                               std: fcStd, trendLabels: trendLabels, phase: phase,
-                               detail: fcDetail });
-          }, opts.headlineLabel, fcCovTrend, trendLabels))
-      : tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable" }) +
-        (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable" }))) +
-    (!margin ? ""
-      : planning ? planTile_(head, opts.headlineLabel, phase)
-      : gatedTile_(utilLabel, utilConf, regU,
+  return planning ? planTile_(head, headlineLabel, phase)
+    : gatedTile_(utilLabel, utilConf, regU,
       "no availability in this period under the active filters",
       r1_(u.tracked - u.trackedCov) + "h of " + r1_(u.tracked) + "h tracked carry no billable classification",
       function () {
@@ -3374,49 +3316,15 @@ function renderTiles_() {
         // Tuesday of a month the denominator is whole and the numerator is a
         // fifth. It can only rise, which is exactly what opts.floor means — so
         // it gets no RAG colour and says "at least N%" instead of "N%".
-        // The rates above are safe: they are shares of what has CLOSED, and a
-        // share of a smaller set is still a real share.
         return tileHtml_(utilLabel, utilHeadline, utilCmp, utilTrendShown,
-                         { headlineLabel: opts.headlineLabel, target: tg.util,
-                           std: utilStd, trendLabels: trendLabels, phase: phase,
+                         { headlineLabel: headlineLabel, target: tg.util,
+                           std: utilStd, trendLabels: labels, phase: phase,
                            floor: phase === "now",
                            floorWhy: "the " + unit + " is still running — hours accrue until it " +
                              "closes while capacity is booked for the whole of it, so this rate " +
                              "can only rise from here",
                            detail: regCaveats_("util") });
-      }, opts.headlineLabel, utilCovTrend, trendLabels)) +
-    (planning ? notYetTile_("Quality / Rework", head, opts.headlineLabel)
-              : qualityTile_(done, trendPer, trendLabels, opts.headlineLabel, head, hi, phase));
-  // Count-up runs ONCE per page load (Motion, spec §7), only where rAF exists
-  // (the render-smoke DOM stub has none — the whole feature is invisible to
-  // it by design) and never under prefers-reduced-motion. renderTiles_
-  // rewrites #tiles' innerHTML on every render (above), so a count-up
-  // mid-flight from a prior render can never corrupt a later one — the nodes
-  // it was mutating are simply gone.
-  if (!countedUp_ && window.requestAnimationFrame &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    countedUp_ = true;
-    var bigs = document.getElementById("tiles").getElementsByClassName("big");
-    Array.prototype.forEach.call(bigs, function (el) {
-      var m = /^(\d+)(.*)$/.exec(el.textContent || "");
-      if (!m) return;
-      var target = +m[1], suffix = m[2], t0 = null;
-      function step(ts) {
-        if (t0 === null) t0 = ts;
-        var k = Math.min(1, (ts - t0) / 700);
-        el.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))) + suffix;
-        if (k < 1) window.requestAnimationFrame(step);
-      }
-      window.requestAnimationFrame(step);
-    });
-  }
-  // Colour key for the cards AND the comparison bars below — one key, because
-  // they use the same grading. "Its own target" rather than a number: On-Time
-  // grades against 85/70, Forecast 80/60, Utilization 70/50, and each card
-  // prints its own, so the key names the rule and the cards carry the numbers.
-  document.getElementById("tileColorKey").innerHTML = ragKeyHtml_(
-    "the metric's <b>own</b> FY27 target, printed on its card",
-    "Rework Rate reverses the scale — lower is better. The comparison bars below use the same colours.");
+      }, headlineLabel, utilCovTrend, labels);
 }
 
 // ── 🌊 FLOW TILES — compact tier inside Executive (spec 2026-08-05-flow-metrics-design.md,
@@ -3453,27 +3361,6 @@ function flowOpenFor_() {
   return out;
 }
 
-/** True when the user has NOT actively narrowed scope — the only state in
-    which the whole-population snapshot trend is honest to draw under the
-    current filters.
-    Deliberately NOT `filteredPeople_().length === MODEL.people.length`: that
-    equality can never hold on a real payload. MODEL.people always includes
-    attribOnly identity stubs (filteredPeople_ excludes them unconditionally,
-    §"People passing every active filter" above) and the default population
-    lens is "fte" (STATE.pop), which excludes crew — so even with every filter
-    at its default, filteredPeople_().length is strictly less than
-    MODEL.people.length. That made this always false, so the Backlog/WIP
-    snapshot sparkline never rendered and the "clear filters" note showed with
-    nothing to clear.
-    The correct rule: compare STATE's filter dimensions to their defaults
-    directly, not headcounts. Default state (including the default "fte"
-    population lens) counts as unfiltered; any user-set narrowing — including
-    switching the population lens away from its default — hides the trend. */
-function flowUnfiltered_() {
-  return STATE.pop === "fte" && STATE.role === "all" &&
-    !STATE.region && !STATE.team && !STATE.pm && !STATE.family &&
-    !STATE.flag && !STATE.search;
-}
 
 function fmtFlowVal_(v, unit) {
   if (v === null || v === undefined) return "—";
@@ -3530,53 +3417,69 @@ function flowTileHtml_(m, headline, opts) {
     '</div>';
 }
 
+/**
+ * FLOW BAND (Task 16B, spec 2026-08-06 §3/§4 gap resolution): Cleared ·
+ * Arrived · Lead Time (p85 companion) · On-Time · Forecast · Quality/Rework,
+ * plus Throughput and Bug Count. On-Time/Forecast/Quality moved here from
+ * the retired #tiles strip — they are delivery-outcome measures, and the
+ * design's §3 band table has no home for Forecast/Quality at all (an
+ * omission, not an instruction to drop them; both fall to the shelf when
+ * below their sample floor, same as any other metric).
+ */
 function renderFlow_() {
   var el = document.getElementById("flowTiles");
   var reg = ((MODEL.meta.registry || {}).metrics) || {};
+  var A = analysisHead_();
+  var done = A.done, hi = A.hi, phase = A.phase;
+  var planning = phase === "plan";
+  var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
+  var labels = trendPer.map(function (p) { return p.label; });
+  var margin = canSeeMargin_();
+  var tg = MODEL.meta.targets || {};
+  // Outcome tiles (On-Time/Forecast/Quality) use the RAW analysis head, never
+  // the flow-metrics fallback below — a forward window must name the ACTUAL
+  // future period in its "has not happened yet" message, not the last
+  // complete one the other flow metrics fall back to.
+  var outHead = A.head;
+  var outHeadlineLabel = outcomeHeadlineLabel_(phase, outHead);
+
   if (!MODEL.meta.jiraAvailable) {
     el.innerHTML = '<div class="tile ph"><div class="lbl">🌊 Flow</div>' +
-      '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>';
+      '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>' +
+      tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel }) +
+      (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel })) +
+      qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase);
     return;
   }
-  var A = analysisHead_();
-  var done = A.done, hi = A.hi;
-  var trendPer = done.slice(Math.max(0, hi - 5), hi + 1);
-  // PERIOD-scoped flow metrics (lead time, throughput, bugs) fall back to the
-  // last complete period on a PLANNING window and label it: they count work
-  // that finished, and a week that has not happened has none. The two SNAP
-  // metrics — Backlog and WIP — are unaffected by the picker entirely: a
-  // backlog is a state of today, which is exactly why they still answer "what
-  // is the team carrying into that week".
-  var planning = A.phase === "plan";
+
+  // PERIOD-scoped flow metrics (lead time, throughput, cleared, bugs) fall
+  // back to the last complete period on a PLANNING window and label it: they
+  // count work that finished, and a week that has not happened has none.
   var head = planning ? (done[hi] || { isos: [], label: "—" })
                       : (A.head.isos.length ? A.head : (done[hi] || { isos: [], label: "—" }));
-  var labels = trendPer.map(function (p) { return p.label; });
-  var periodsWithData = 0;   // recomputed per metric below
   var html = "";
 
-  // 1 · Lead Time — median days, p85 companion (raw day values travel per
-  // bucket; the client medians whatever the filters select).
+  // 1 · Cleared — count of issues resolved in the period, assigned/filterable
+  // (Task 16B review finding: the spec names Cleared as a dedicated items
+  // count, distinct from Throughput's Σ estimate-hours; the registry already
+  // carried reg.cleared with zero callers). Reads the SAME bucket Throughput
+  // reads below — nAll IS the resolved-item count, so this is a free read,
+  // not a second pass. Throughput is KEPT alongside it (not redundant): one
+  // answers "how many", the other "how much effort" — see task-16b-report.md.
   (function () {
-    var m = reg.leadTime || { unit: "days", coverageGate: 0.9, name: "Lead Time" };
+    var m = reg.cleared || { unit: "items", coverageGate: 0, name: "Cleared" };
+    var b = bucketsFor_(MODEL.throughputBuckets || [], head.isos);
     var series = trendPer.map(function (p) {
-      var b = bucketsFor_(MODEL.leadTimeBuckets || [], p.isos);
-      return b.days.length ? flowMedian_(b.days) : null;
+      return bucketsFor_(MODEL.throughputBuckets || [], p.isos).nAll;
     });
-    var b = bucketsFor_(MODEL.leadTimeBuckets || [], head.isos);
-    periodsWithData = series.filter(function (v) { return v !== null; }).length;
-    var conf = metricConfidence_(m.coverageGate || 0,
-      b.nAll > 0 ? b.n / b.nAll : null, periodsWithData);
-    html += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
+    html += flowTileHtml_(m, b.nAll, {
       scope: "period",
-      conf: b.nAll > 0 ? conf : null,
+      conf: null,   // a count over rows that exist — a coverage chip would be noise, same as Arrived/Bug Count
       trend: series, trendLabels: labels,
-      context: b.n > 0
-        ? "p85 " + fmtFlowVal_(flowP85_(b.days), "days") + " · " + b.n + " issues measured" + smallN_(b.n)
-        : "no issues resolved this period",
+      context: "assigned, non-epic issues resolved this period",
       detail: [
-        "Calendar days from Created to Resolution Date, non-epic issues, median of the period.",
-        b.nAll > b.n ? (b.nAll - b.n) + " resolved issues had no usable created date" : "",
-        unattribNote_("leadTime"),
+        "Count of issues resolved in the period — the items side of Throughput's hours below. A zero here is a real zero, not missing data.",
+        unattribNote_("throughput"),
       ],
     });
   })();
@@ -3622,13 +3525,155 @@ function renderFlow_() {
     });
   })();
 
+  // 3 · Lead Time — median days, p85 companion (raw day values travel per
+  // bucket; the client medians whatever the filters select).
+  (function () {
+    var m = reg.leadTime || { unit: "days", coverageGate: 0.9, name: "Lead Time" };
+    var series = trendPer.map(function (p) {
+      var b = bucketsFor_(MODEL.leadTimeBuckets || [], p.isos);
+      return b.days.length ? flowMedian_(b.days) : null;
+    });
+    var b = bucketsFor_(MODEL.leadTimeBuckets || [], head.isos);
+    var periodsWithData = series.filter(function (v) { return v !== null; }).length;
+    var conf = metricConfidence_(m.coverageGate || 0,
+      b.nAll > 0 ? b.n / b.nAll : null, periodsWithData);
+    html += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
+      scope: "period",
+      conf: b.nAll > 0 ? conf : null,
+      trend: series, trendLabels: labels,
+      context: b.n > 0
+        ? "p85 " + fmtFlowVal_(flowP85_(b.days), "days") + " · " + b.n + " issues measured" + smallN_(b.n)
+        : "no issues resolved this period",
+      detail: [
+        "Calendar days from Created to Resolution Date, non-epic issues, median of the period.",
+        b.nAll > b.n ? (b.nAll - b.n) + " resolved issues had no usable created date" : "",
+        unattribNote_("leadTime"),
+      ],
+    });
+  })();
+
   // 2/6 · Cycle Time and Flow Efficiency are declared ABSENT in the registry
   // (no in-progress timestamps / no queue-state instrumentation). They used to
   // render as "—" placeholder tiles; retired from the UI 2026-08-05 (spec
   // §4.1) — the registry + Data Reference remain the record of what is
   // deliberately not measured.
 
-  // 3 · Throughput — Σ estimate-hours delivered.
+  // 4 · On-Time Delivery — outcome tile, moved from the retired #tiles strip
+  // (Task 16B). gatedTile_'s coverage gate, the planning-window notYetTile_
+  // swap and the stdFor_ operating-rate read all survive the move unchanged
+  // — verified by name in task-16b-report.md.
+  (function () {
+    var ot = bucketsFor_(MODEL.onTimeBuckets, outHead.isos);
+    var otSeries = done.map(function (p) {
+      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
+      return b.n > 0 ? b.onTime / b.n * 100 : null;
+    });
+    var otTrend = otSeries.slice(Math.max(0, hi - 5), hi + 1);
+    // Name the scope on the card: "85% on time" means something different over
+    // Stories/Tasks than over epics, and the switch lives in CONFIG_DH.
+    var OT_SCOPE = {
+      dictionary: { word: "resolved epics / milestones / commitments",
+        why: "The Metrics Dictionary scope: epics, Milestone-type issues and Client-Commitment-labelled work. Stories and Tasks are excluded — an epic's due date is the client-facing milestone." },
+      delivery: { word: "resolved issues",
+        why: "Stories and Tasks — the team's own delivery commitments. Epics are excluded: an epic's due date is a programme milestone set by the PM and its resolution trails its last child, so the two measure different lifecycles." },
+      epic: { word: "resolved epics",
+        why: "Epics only — milestone-level client commitments, per the Metrics Dictionary. Stories and Tasks are excluded." },
+      all: { word: "resolved items (all types)",
+        why: "Every resolved issue type in one rate, epics included. Mixes programme milestones with task-level commitments — kept only for comparison with the pre-2026-08-03 number." },
+    };
+    var otSc = OT_SCOPE[MODEL.meta.onTimeScope] || OT_SCOPE.delivery;
+    var otCmp = ot.n + " of " + ot.nAll + " " + otSc.word +
+      ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n);
+    var otDetail = regCaveats_("onTime");
+    function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
+    var regOt = reg_("onTime");
+    var otCovTrend = trendPer.map(function (p) {
+      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
+      return b.nAll > 0 ? b.n / b.nAll * 100 : null;
+    });
+    var otConf = applyGatePolicy_(
+      metricConfidence_(regOt.coverageGate, ot.nAll > 0 ? ot.n / ot.nAll : null, stable_(otTrend)));
+    var otStd = stdFor_(otSeries, otConf);
+    html += planning
+      ? notYetTile_("On-Time Delivery", outHead, outHeadlineLabel)
+      : gatedTile_("On-Time Delivery", otConf, regOt,
+          "no resolved delivery items in this period under the active filters",
+          (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
+          function () {
+            return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
+                             { headlineLabel: outHeadlineLabel, target: tg.onTime,
+                               std: otStd, trendLabels: labels, phase: phase,
+                               detail: otDetail });
+          }, outHeadlineLabel, otCovTrend, labels);
+  })();
+
+  // 5 · Forecast Accuracy — margin-tier outcome tile, moved from the retired
+  // #tiles strip. canSeeMargin_() gating survives unchanged: omitted from the
+  // html string entirely for a non-margin role, never dimmed — verified in
+  // task-16b-report.md.
+  if (margin) (function () {
+    var fc = bucketsFor_(MODEL.forecastBuckets, outHead.isos);
+    var fcSeries = done.map(function (p) {
+      var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
+      return forecastAccuracyPct_(b.absVars);   // Dictionary formula, same as the headline
+    });
+    var fcTrend = fcSeries.slice(Math.max(0, hi - 5), hi + 1);
+    var band = Math.round((MODEL.meta.forecastBand || 0.10) * 100);
+    var fcHeadline = forecastAccuracyPct_(fc.absVars);
+    var fcDetail = [];
+    var fcCmp = '<span title="' + esc_(reg_("forecast").formula || "") +
+      ' Floored at zero per epic, so one runaway engagement cannot drag a good period negative.">' +
+      "mean accuracy over " + fc.n + " measurable epic" + (fc.n === 1 ? "" : "s") + " ⓘ</span>" +
+      smallN_(fc.n);
+    fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
+      fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
+    if (fc.nAll > fc.n) {
+      fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
+        "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
+        "only instead of scoring as misses.");
+    }
+    var med = medianOf_(fc.absVars);
+    if (med !== null) {
+      fcDetail.push("Median absolute variance " + Math.round(med * 100) + "% — median of " +
+        "|actual − estimate| ÷ estimate across the measurable epics. A median, not a mean: one " +
+        "runaway engagement should not define the team's forecasting.");
+    }
+    var misses = fc.nMissOver + fc.nMissUnder;
+    if (misses > 0) {
+      var overShare = Math.round(fc.nMissOver / misses * 100);
+      fcDetail.push("Of " + misses + " miss" + (misses === 1 ? "" : "es") + ", " + overShare +
+        "% over-run — over-runs burn margin, under-runs mean capacity was held that could have " +
+        "been sold. Opposite conversations.");
+    }
+    fcDetail = fcDetail.concat(regCaveats_("forecast"));
+    function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
+    var regFc = reg_("forecast");
+    var fcCovTrend = trendPer.map(function (p) {
+      var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
+      return b.nAll > 0 ? b.n / b.nAll * 100 : null;
+    });
+    var fcConf = applyGatePolicy_(
+      metricConfidence_(regFc.coverageGate, fc.nAll > 0 ? fc.n / fc.nAll : null, stable_(fcTrend)));
+    var fcStd = stdFor_(fcSeries, fcConf);
+    html += planning
+      ? notYetTile_("Forecast Accuracy", outHead, outHeadlineLabel)
+      : gatedTile_("Forecast Accuracy", fcConf, regFc,
+          "no epics closed in this period under the active filters",
+          (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
+          function () {
+            return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
+                             { headlineLabel: outHeadlineLabel, target: tg.forecast,
+                               std: fcStd, trendLabels: labels, phase: phase,
+                               detail: fcDetail });
+          }, outHeadlineLabel, fcCovTrend, labels);
+  })();
+
+  // 6 · Quality / Rework — outcome tile, moved from #tiles. qualityTile_
+  // itself is unchanged (already its own function); only its caller moved.
+  html += planning ? notYetTile_("Quality / Rework", outHead, outHeadlineLabel)
+                   : qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase);
+
+  // 7 · Throughput — Σ estimate-hours delivered.
   (function () {
     var m = reg.throughput || { unit: "hrs", coverageGate: 0.6, name: "Throughput" };
     var series = trendPer.map(function (p) {
@@ -3653,86 +3698,7 @@ function renderFlow_() {
     });
   })();
 
-  // 4+5 · Backlog and WIP — snapshot metrics: current value from the filtered
-  // open book; trend from the exporter's whole-population snapshot log.
-  (function () {
-    var open = flowOpenFor_();
-    var snaps = MODEL.meta.flowSnapshots || [];
-    var snapsOk = !!MODEL.meta.flowSnapshotsAvailable;
-    var unfiltered = flowUnfiltered_();
-    // Trend at week grain regardless of the unit chips — snapshots are weekly
-    // rows; month/quarter would need a last-snapshot-per-period walk that the
-    // spec assigns to the same rule (last row of the period), so pick the
-    // snapshot whose iso is the LAST iso of each displayed period.
-    function snapTrend(field) {
-      if (!snapsOk || !unfiltered) return null;
-      var byIso = {};
-      snaps.forEach(function (s) { byIso[s.iso] = s; });
-      return trendPer.map(function (p) {
-        for (var i = p.isos.length - 1; i >= 0; i--) {
-          if (byIso[p.isos[i]]) return byIso[p.isos[i]][field];
-        }
-        return null;
-      });
-    }
-    var noSnapNote = !snapsOk
-      ? "trend pending — export predates Jira Backlog.js v3.9.0"
-      : (!unfiltered ? "trend available for the full population only — clear filters to see it" : "");
-    var histStart = snapsOk && snaps.length ? snaps[0].iso : null;
-
-    var mB = reg.backlog || { unit: "hrs", coverageGate: 0.6, name: "Backlog (Inventory)" };
-    var bTrend = snapTrend("backlogHrs");
-    var bPoints = (bTrend || []).filter(function (v) { return v !== null; }).length;
-    var bConf = metricConfidence_(mB.coverageGate || 0,
-      open.todoN > 0 ? open.todoEst / open.todoN : null, Math.max(1, bPoints));
-    html += flowTileHtml_(mB, open.todoN > 0 || open.todoEst > 0 ? open.todoHrs : (open.todoN === 0 ? 0 : null), {
-      scope: "snap",
-      conf: open.todoN > 0 ? bConf : null,
-      trend: bPoints >= 2 ? bTrend : null, trendLabels: labels,
-      context: open.todoN + " items waiting to start · " +
-        open.todoEst + " estimated" +
-        (noSnapNote ? " · " + noSnapNote
-          : (bPoints < 2 && histStart ? " · history accumulates from " + histStart : "")),
-      detail: [
-        "Σ max(0, Original Estimate − Time Spent) over open assigned non-epic issues in status category To Do.",
-        // LOWER BOUND, stated in words. An unestimated item contributes exactly
-        // zero hours, so this total can only ever undercount — and live
-        // measurement (2026-08-06) put 70% of the open backlog unestimated, i.e.
-        // the tile describes roughly a third of the work. It carries no RAG
-        // verdict already (target: null on every flow metric), so the risk here
-        // is not a false green, it is a reader treating a partial sum as the
-        // whole. The Backlog health panel on 🎯 Actions is where the missing
-        // two-thirds is named and queued.
-        open.todoN > open.todoEst
-          ? "LOWER BOUND: " + (open.todoN - open.todoEst) + " of " + open.todoN +
-            " waiting items carry no estimate and contribute 0h, so the real inventory is " +
-            "this figure or higher. See Backlog health on the Actions tab for the queue."
-          : "",
-        "Trend is whole-population — the exporter's snapshot knows nothing of dashboard filters.",
-        MODEL.meta.flowUncategorized ? MODEL.meta.flowUncategorized +
-          " open items sit in a status category that is neither To Do nor In Progress — counted in neither tile" : "",
-        unattribNote_("flowOpen"),
-      ],
-    });
-
-    var mW = reg.wip || { unit: "items", coverageGate: 0, name: "Work In Progress" };
-    var wTrend = snapTrend("wip");
-    var wPoints = (wTrend || []).filter(function (v) { return v !== null; }).length;
-    html += flowTileHtml_(mW, open.wipN, {
-      scope: "snap",
-      conf: null,   // a count over rows that exist — a coverage chip would be noise
-      trend: wPoints >= 2 ? wTrend : null, trendLabels: labels,
-      context: open.wipN + " active items right now" +
-        (noSnapNote ? " · " + noSnapNote
-          : (wPoints < 2 && histStart ? " · history accumulates from " + histStart : "")),
-      detail: [
-        "Open, assigned, non-epic issues in status category In Progress — a point-in-time count, not a period rate.",
-        "Trend is whole-population — same snapshot log as Backlog.",
-      ],
-    });
-  })();
-
-  // 7 · Bug Count — POPULATION-WIDE (registry deviation: bugs are routinely
+  // 8 · Bug Count — POPULATION-WIDE (registry deviation: bugs are routinely
   // unassigned at creation, so a roster join would silently drop most of them).
   (function () {
     var m = reg.bugCount || { unit: "bugs", coverageGate: 0, name: "Bug Count" };
@@ -4515,8 +4481,18 @@ function renderPulse_() {
   el.style.display = "";
   var A = analysisHead_();
   var done = A.done, head = A.head;
+  // CAPACITY BAND's own KPI tile (Task 16B: moved from the retired #tiles
+  // strip). Built FIRST and independent of signalSummary_'s own availability
+  // gate below — Utilisation/Planned Coverage rendered unconditionally
+  // whenever margin is visible before this merge, and a pre-v22 payload with
+  // no people signals must not silently drop it too.
+  var capacityHtml = '<div class="tiles">' + capacityTileHtml_() + '</div>';
   var s = signalSummary_(head.isos);
-  if (!s.available) { el.innerHTML = '<div class="cellSub">People signals arrive after the next refresh (new payload).</div>'; return; }
+  if (!s.available) {
+    el.innerHTML = capacityHtml + '<div class="cellSub">People signals arrive after the next refresh (new payload).</div>';
+    countUpTiles_();
+    return;
+  }
   // Recoverable hours: the norm-gap opportunity summed across the slice
   // (oppRows_) — the figure the retired headroom table used to headline; the
   // roster below the deep-link carries the per-person detail now.
@@ -4549,7 +4525,7 @@ function renderPulse_() {
       ? "<b>" + acct + "</b> of " + pop + " people accounted for"
       : '<b class="vr">' + acct + " of " + pop + "</b> people accounted for — " + (pop - acct) + " missing") +
     "</div>";
-  el.innerHTML =
+  el.innerHTML = capacityHtml +
     '<div class="kicker">CAPACITY — what we have to throw at it</div>' +
     '<h3>👥 People signals ' + scopeTag_(STATE.typePop === "resolved" ? "period" : "snap") + "</h3>" +
     // EVERY COUNT IS ITS OWN DEEP LINK (user 2026-08-06). The pulse already
@@ -4575,6 +4551,42 @@ function renderPulse_() {
         (pl.none + pl.thin ? " · ▽ " + (pl.none + pl.thin) + " under-planned" : "") + "</span>"
       : "") +
     " → open the roster</div>" + reconcile;
+  countUpTiles_();
+}
+
+/**
+ * Count-up animation (Motion, spec §7) — runs ONCE per page load, only where
+ * rAF exists (the render-smoke DOM stub has none — the whole feature is
+ * invisible to it by design) and never under prefers-reduced-motion. Moved
+ * here from the retired renderTiles_ (Task 16B) and generalised to scan BOTH
+ * bands that now carry KPI tiles with a live count-up: the Flow band
+ * (On-Time/Forecast/Quality/Cleared/Arrived/Lead Time/Throughput/Bug Count)
+ * and the Capacity band's own Utilisation/Planned-Coverage tile. One shared
+ * flag, not one per band, because the spec says "once per page load" — not
+ * once per band. Both #flowTiles and #pulsePanel rewrite their innerHTML on
+ * every render (renderFlow_/renderPulse_ above), so a count-up mid-flight
+ * from a prior render can never corrupt a later one — the nodes it was
+ * mutating are simply gone.
+ */
+function countUpTiles_() {
+  if (countedUp_ || !window.requestAnimationFrame ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  countedUp_ = true;
+  ["flowTiles", "pulsePanel"].forEach(function (id) {
+    var bigs = document.getElementById(id).getElementsByClassName("big");
+    Array.prototype.forEach.call(bigs, function (el) {
+      var m = /^(\d+)(.*)$/.exec(el.textContent || "");
+      if (!m) return;
+      var target = +m[1], suffix = m[2], t0 = null;
+      function step(ts) {
+        if (t0 === null) t0 = ts;
+        var k = Math.min(1, (ts - t0) / 700);
+        el.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))) + suffix;
+        if (k < 1) window.requestAnimationFrame(step);
+      }
+      window.requestAnimationFrame(step);
+    });
+  });
 }
 
 /**

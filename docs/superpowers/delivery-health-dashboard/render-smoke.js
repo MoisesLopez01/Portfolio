@@ -91,7 +91,13 @@ var m = html.match(/<script>([\s\S]*)<\/script>/);
 if (!m) throw new Error("❌ render-smoke: could not find the inline <script> block");
 var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function () { return MODEL; }," +
              " setState: function (k, v) { STATE[k] = v; }, STATE: STATE," +
-             " renderTiles_: renderTiles_, renderHygPanel_: renderHygPanel_, gapsRows_: gapsRows_," +
+             // Task 16B: #tiles/#tileColorKey and renderTiles_ are RETIRED — the
+             // four cards moved to the Flow band (On-Time/Forecast/Quality, via
+             // renderFlow_) and the Capacity band (Utilisation/Planned Coverage,
+             // via capacityTileHtml_/renderPulse_). See task-16b-report.md.
+             " capacityTileHtml_: capacityTileHtml_, outcomeHeadlineLabel_: outcomeHeadlineLabel_," +
+             " countUpTiles_: countUpTiles_," +
+             " renderHygPanel_: renderHygPanel_, gapsRows_: gapsRows_," +
              // A solved check retires itself from all three surfaces (2026-08-06).
              " gapsRetired_: gapsRetired_, gapsSolvedHtml_: gapsSolvedHtml_, gapRetired_: gapRetired_," +
              " typeFieldRetired_: typeFieldRetired_, typeFieldsShown_: typeFieldsShown_," +
@@ -306,10 +312,24 @@ function fresh(mdl) {
   return mdl;
 }
 
+// Task 16B: the old #tiles strip (On-Time/Forecast/Utilization/Quality) is
+// RETIRED. On-Time/Forecast/Quality moved into the Flow band (#flowTiles,
+// via renderFlow_); Utilisation/Planned Coverage moved into the Capacity
+// band (#pulsePanel, via renderPulse_/capacityTileHtml_). tiles() renders
+// BOTH and concatenates them in DOM order, so every existing split-on-label
+// idiom below (".split('Forecast Accuracy')[1].split('Utilization')[0]" etc.)
+// keeps working unchanged — the labels' relative order is preserved.
 function tiles(mdl) {
   fresh(mdl);
-  C.renderTiles_();
-  return els.tiles.innerHTML;
+  C.renderFlow_();
+  C.renderPulse_();
+  return els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+}
+/** Just the three outcome cards (On-Time/Forecast/Quality) — excludes the
+    OTHER flow-band tiles (Cleared/Arrived/Lead Time/Throughput/Bug Count),
+    which legitimately carry confidence chips the outcome cards never did. */
+function outcomeSeg_(html) {
+  return html.split("On-Time Delivery")[1].split("Throughput")[0];
 }
 
 // ── 1. Well-attributed data publishes ───────────────────────
@@ -319,8 +339,9 @@ assert_(/On-Time Delivery/.test(good), "on-time tile rendered");
 // data-quality noise — the Data trust strip on the same view carries
 // coverage-vs-gate). The chip survives only on the compact flow tiles,
 // which render into #flowTiles, not into this element.
-assert_(!/confidence/.test(good) && !/attributed/.test(good),
-        "no confidence chip on the four KPI cards (user 2026-08-05)");
+assert_(!/confidence/.test(outcomeSeg_(good)) && !/attributed/.test(outcomeSeg_(good)),
+        "no confidence chip on the three outcome cards (user 2026-08-05) — " +
+        "scoped to On-Time/Forecast/Quality, not the OTHER flow tiles sharing #flowTiles now (Task 16B), which legitimately carry one");
 assert_(/pts (above|below) target/.test(good), "variance to TARGET leads the signal line (FR-4.1)");
 // …and the THRESHOLD itself is printed once, as a quiet chip beside the hero —
 // never restated inside the delta sentence (user 2026-08-06: "vs target ≥85%"
@@ -364,7 +385,9 @@ strict.meta.suppressBelowGate = true;
 var bad = tiles(strict);
 // Slice ends at the NEXT card's label: the suppressed tile used to end with
 // the "What's missing →" link's </div></div>, which is gone (2026-08-05).
-var forecastCard = bad.split("Forecast Accuracy")[1].split("Utilization")[0];
+// Task 16B: Forecast's next sibling in #flowTiles is now Quality/Rework, not
+// Utilization (moved to the capacity band) — the boundary moved with it.
+var forecastCard = bad.split("Forecast Accuracy")[1].split("Quality / Rework")[0];
 assert_(/Not yet measurable/.test(bad), "below-gate metric shows the suppressed state (FR-2.2)");
 assert_((bad.match(/Not yet measurable/g) || []).length === 2,
         "BOTH on-time (66% vs 80% gate) and forecast (43% vs 70%) suppress");
@@ -411,8 +434,8 @@ var staleModel = model({ otCov: 0.95, fcCov: 0.92 });
 C.setModel(staleModel);
 staleModel._stale = true;
 delete staleModel._pByName; delete staleModel._nsLive;
-C.renderTiles_();
-var stale = els.tiles.innerHTML;
+C.renderFlow_(); C.renderPulse_();
+var stale = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
 assert_(/trend suppressed — data stale/.test(stale), "stale model suppresses the sparkline");
 assert_(!/vs prior/.test(stale), "stale model prints no period-over-period delta");
 assert_(/pts (above|below) target/.test(stale),
@@ -1140,8 +1163,8 @@ assert_(!/class="big [gar]"/.test(qCardOf(qModel(25, 0))),
 function asRole(role) {
   var mdl = fresh(model({ otCov: 0.95, fcCov: 0.92 }));
   mdl.viewerRole = role;
-  C.renderTiles_();
-  return els.tiles.innerHTML;
+  C.renderFlow_(); C.renderPulse_();
+  return els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
 }
 var asAdmin = asRole("admin");
 var asViewer = asRole("viewer");
@@ -1295,17 +1318,17 @@ fresh(pMod);
 C.renderAll_();
 assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
         "no selection → the scope chip frames the latest complete period");
-var latestOt28 = els.tiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+var latestOt28 = els.flowTiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
 assert_(/class="big[^"]*">90%/.test(latestOt28),
         "latest window (W31) reads 90% on time — 43 of 48");
 C.setState("periodIdx", 0);
 C.renderAll_();
 assert_(/Selected week · 2026\.W30/.test(els.scopeChip.innerHTML),
         "picker selection re-frames the scope chip as 'Selected'");
-var selOt28 = els.tiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+var selOt28 = els.flowTiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
 assert_(/class="big[^"]*">100%/.test(selOt28),
         "…and the numbers re-base with it (W30 fixture = 100% on time)");
-assert_(!/unattributed \(export window\)/.test(els.tiles.innerHTML),
+assert_(!/unattributed \(export window\)/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
         "no unattributed count on the cards (user 2026-08-05 — the trust strip carries the roster join)");
 C.setState("periodIdx", null);
 C.renderAll_();
@@ -1350,13 +1373,14 @@ fresh(lensM);
 C.setState("pop", "fte"); C.setState("region", ""); C.setState("role", "all");
 C.buildFilters_();
 var fteRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
-var fteTiles = (C.renderAll_(), els.tiles.innerHTML);
+C.renderAll_();
+var fteTiles = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
 els.popChips.children[1].onclick();   // click the Crew chip
 var crewRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
 assert_(/AMER 2/.test(fteRegions), "FTE lens: two FTEs count in AMER");
 assert_(/AMER 1/.test(crewRegions), "Crew chip click re-cascades the region counts (Cara only)");
 assert_(fteRegions !== crewRegions, "the filter row follows the population lens");
-assert_(els.tiles.innerHTML !== fteTiles, "…and the tiles re-base in the same click");
+assert_(els.flowTiles.innerHTML + els.pulsePanel.innerHTML !== fteTiles, "…and the tiles re-base in the same click");
 els.roleChips.children[1].onclick();  // IC — must not throw, must rebuild the row
 assert_(C.STATE.role === "ic" && C.STATE.pop === "crew", "role chip routes through the same rebuild");
 C.setState("role", "all"); C.setState("pop", "fte");
@@ -1368,14 +1392,16 @@ C.buildFilters_(); C.renderAll_();
 // carries an inert key, and every roster surface names the person's job title
 // (grade code stripped for reading, full roster string in the tooltip/CSV).
 // ══════════════════════════════════════════════════════════════════════════
-fresh(model({ otCov: 0.95, fcCov: 0.92 }));
-C.renderTiles_();
-var tk = els.tileColorKey.innerHTML;
-assert_(/Colour key — each value is judged against/.test(tk),
-        "the executive cards carry a colour key");
-assert_(/own<\/b> FY27 target/.test(tk),
-        "…that says each card grades against its OWN target, since thresholds differ per metric");
-assert_(/lower is better/.test(tk), "…and names the Rework Rate inversion");
+// Task 16B RETIREMENT: #tiles (the old four-card strip) and #tileColorKey
+// (its colour-key legend) are gone. This used to assert the legend's TEXT
+// (own-target grading, the Rework Rate inversion); that legend has no
+// replacement (see task-16b-report.md deleted-check accounting) — the
+// per-card RAG COLOURING itself is unaffected and still exercised by the
+// target-chip/RAG-class assertions elsewhere in this file. Assert the
+// retirement is REAL — checked on the raw markup, not on rendered output,
+// so an element that still exists but merely stays empty cannot pass this.
+assert_(html.indexOf('id="tiles"') === -1, "#tiles is absent from the markup (Task 16B retirement) — not merely emptied");
+assert_(html.indexOf('id="tileColorKey"') === -1, "#tileColorKey is absent from the markup (Task 16B retirement)");
 
 resetFilters();
 C.STATE.expandedWeeks = {}; C.STATE.openDetail = {}; C.STATE.flag = "";
@@ -2724,46 +2750,43 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(h.indexOf("p85") !== -1, "p85 companion stated");
   assert_(h.indexOf("Throughput") !== -1 && h.indexOf("2 of 3 resolved issues carried an estimate") !== -1,
           "throughput states its estimated-share coverage in words");
-  assert_(h.indexOf("Work In Progress") !== -1 && h.indexOf("3 active items right now") !== -1,
-          "WIP counts the fixture's active items");
-  assert_(h.indexOf("5 items waiting to start") !== -1, "backlog counts waiting items");
+  // Cleared (Task 16B review finding): the items-count sibling of Throughput's
+  // hours, reading the SAME bucket (nAll = 3 resolved issues).
+  assert_(h.indexOf("Cleared") !== -1, "Cleared tile renders using reg.cleared (Task 16B)");
+  var clearedSeg = h.split("Cleared")[1].split("Arrived")[0];
+  assert_(/class="big">3</.test(clearedSeg), "Cleared's headline is the resolved-item count (nAll = 3), not Throughput's hours");
   assert_(h.indexOf("Bug Count") !== -1 && h.indexOf("4") !== -1 &&
           h.indexOf("population-wide") !== -1,
           "bug tile renders the created count and states it is unfiltered");
-  // No-target grammar: flow tiles carry NO RAG verdict and NO vs-target line.
-  assert_(h.indexOf("below target") === -1 && h.indexOf("above target") === -1 &&
-          h.indexOf('class="tgt"') === -1,
-          "target: null → no target chip and no vs-target sentence anywhere");
+  // Task 16B RETIREMENT: Backlog (Inventory) and WIP no longer render as their
+  // own flow-tier tiles — the hero band (#backlogBand) already carries both
+  // figures from the SAME underlying data (flowOpenFor_, which this fixture's
+  // wipN:3/todoN:5 feeds). Two renderings of one number was the exact
+  // duplication this task exists to remove.
+  assert_(h.indexOf("Work In Progress") === -1 && h.indexOf("Backlog (Inventory)") === -1,
+          "flow tier renders NO Backlog/WIP tiles (Task 16B retirement)");
+  var heroSub = els.backlogBand.innerHTML.split("Assigned inventory")[1] || "";
+  assert_(/3 in progress/.test(heroSub) && /5 queued/.test(heroSub),
+          "…the SAME wipN(3)/todoN(5) figures publish exactly once, on the hero band's assigned sub-row");
+  // No-target grammar: the UNIT-BEARING flow tiles (Cleared/Arrived/Lead
+  // Time/Throughput/Bug Count) carry NO RAG verdict and NO vs-target line —
+  // scoped to exclude On-Time/Forecast/Quality, which now share #flowTiles
+  // (Task 16B) and legitimately DO carry a target.
+  // NOTE: split on the '<div class="lbl">…' TILE-BOUNDARY marker, not the bare
+  // label text — "Throughput"/"On-Time Delivery" also appear inside OTHER
+  // tiles' own tooltip prose (e.g. Cleared's detail references "Throughput's
+  // hours"), and a bare indexOf/split finds that first, silently including
+  // the very tiles this segment means to exclude.
+  var throughputLbl = h.indexOf('<div class="lbl">Throughput');
+  var pureFlowSeg = h.split('<div class="lbl">On-Time Delivery')[0] + h.slice(throughputLbl);
+  assert_(pureFlowSeg.indexOf("below target") === -1 && pureFlowSeg.indexOf("above target") === -1 &&
+          pureFlowSeg.indexOf('class="tgt"') === -1,
+          "target: null → no target chip and no vs-target sentence on the unit-bearing flow tiles");
   // Absent placeholders retired (spec 2026-08-05 §4.1): the compact tier must
   // not render Cycle Time / Flow Efficiency "—" tiles.
   assert_(h.indexOf("Cycle Time") === -1 && h.indexOf("Flow Efficiency") === -1,
           "declared-absent flow tiles no longer render");
   assert_(h.indexOf("Lead Time") !== -1, "live flow tiles render inside the exec strip");
-
-  // Regression pin (final review, 2026-08-05): flowUnfiltered_ used to compare
-  // filteredPeople_().length to MODEL.people.length, which can never be equal
-  // on a real payload — the attribOnly stub (Sol Architect) and the crew
-  // person (Cara Crew, excluded by the default FTE lens) pushed onto this
-  // fixture above are exactly that shape. Under DEFAULT state — no user
-  // filter, default "fte" pop lens — the snapshot trend must still render.
-  var backlogTile = h.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
-  assert_(backlogTile.indexOf("trend available for the full population only") === -1,
-          "default state (nothing narrowed) — the clear-filters note is ABSENT");
-  assert_(backlogTile.indexOf('<svg class="chart"') !== -1,
-          "…and the sparkline itself IS in the markup (2 fixture snapshots, both weeks)");
-
-  // Set one real filter — the exporter's whole-population snapshot log has no
-  // notion of "AMER only", so the trend must now defer to the note.
-  C.setState("region", "AMER");
-  C.renderAll_();
-  var hFiltered = els["flowTiles"].innerHTML;
-  var backlogFiltered = hFiltered.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
-  assert_(backlogFiltered.indexOf("trend available for the full population only — clear filters to see it") !== -1,
-          "a user-set region filter brings back the clear-filters note");
-  assert_(backlogFiltered.indexOf('<svg class="chart"') === -1,
-          "…and withholds the sparkline while the note is showing");
-  C.setState("region", "");
-  C.renderAll_();
 
   // Missing feeds degrade, never error: kill both new feeds and re-render.
   M.meta.bugsAvailable = false;
@@ -3168,40 +3191,55 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("view", "exec");
   C.renderAll_();
 
-  // ── Hero tiles (tileHtml_) → PERIOD ────────────────────────────────────
-  var tilesHtml = els.tiles.innerHTML;
-  assert_(tilesHtml.indexOf(">PERIOD<") !== -1, "hero tiles carry PERIOD scope tags");
-  // On-Time (always renders) + Forecast + Utilization (margin-gated on for
-  // admin) + Quality (always renders) = 4 hero tiles, one PERIOD tag each.
-  assert_(tilesHtml.split(">PERIOD<").length - 1 === 4,
-          "…exactly one PERIOD tag per hero tile (4 tiles under the admin fixture)");
-  assert_(tilesHtml.indexOf(">SNAP<") === -1 && tilesHtml.indexOf(">ORG<") === -1,
-          "…and never SNAP or ORG — every hero tile follows the period picker");
-
-  // ── Flow tier (flowTileHtml_) → PERIOD/SNAP split by metric ────────────
+  // ── Hero outcome tiles (tileHtml_) → PERIOD. Task 16B split the old single
+  // #tiles strip across TWO bands: On-Time/Forecast/Quality now render into
+  // #flowTiles (alongside Cleared/Arrived/Lead Time/Throughput/Bug Count),
+  // Utilisation now renders into #pulsePanel (the capacity band). Checked PER
+  // TILE via the '<div class="lbl">' tile-boundary marker, not by aggregate
+  // count across a whole panel — #pulsePanel also carries its OWN independent
+  // scope tag on the "People signals" heading, which an aggregate count would
+  // conflate with the Utilisation tile's own tag.
   var ft = els.flowTiles.innerHTML;
-  assert_(ft.indexOf(">SNAP<") !== -1 && ft.indexOf(">PERIOD<") !== -1,
-          "flow tier: Backlog/WIP tag SNAP, Lead Time/Throughput/Bugs tag PERIOD");
-  assert_(ft.split(">SNAP<").length - 1 === 2, "…exactly two SNAP tags (Backlog + WIP)");
-  assert_(ft.split(">PERIOD<").length - 1 === 3,
-          "…exactly three PERIOD tags (Lead Time, Throughput, Bug Count)");
+  var otSeg = ft.split('<div class="lbl">On-Time Delivery')[1].split('<div class="lbl">Forecast')[0];
+  var fcSeg = ft.split('<div class="lbl">Forecast Accuracy')[1].split('<div class="lbl">Quality')[0];
+  var qualSeg = ft.split('<div class="lbl">Quality')[1].split('<div class="lbl">Throughput')[0];
+  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time hero tile carries PERIOD scope tag");
+  assert_(fcSeg.indexOf(">PERIOD<") !== -1, "Forecast hero tile carries PERIOD scope tag");
+  assert_(qualSeg.indexOf(">PERIOD<") !== -1, "Quality hero tile carries PERIOD scope tag");
+  assert_(otSeg.indexOf(">SNAP<") === -1 && otSeg.indexOf(">ORG<") === -1 &&
+          fcSeg.indexOf(">SNAP<") === -1 && fcSeg.indexOf(">ORG<") === -1 &&
+          qualSeg.indexOf(">SNAP<") === -1 && qualSeg.indexOf(">ORG<") === -1,
+          "…and outcome tiles never tag SNAP or ORG — they follow the period picker, not a snapshot or the whole org");
+  var pulseHtml = els.pulsePanel.innerHTML;
+  var utilLbl = pulseHtml.indexOf('<div class="lbl">Billable Utilization') !== -1
+    ? '<div class="lbl">Billable Utilization' : '<div class="lbl">Capacity Utilization';
+  var utilSeg = pulseHtml.split(utilLbl)[1] || "";
+  assert_(utilSeg.indexOf(">PERIOD<") !== -1,
+          "Utilisation hero tile carries PERIOD scope tag, now inside the capacity band (#pulsePanel)");
+
+  // ── Flow tier (flowTileHtml_) → PERIOD/ORG split by metric. Backlog/WIP
+  // (the old two SNAP tags here) are RETIRED (Task 16B) — the flow tier now
+  // carries ZERO SNAP tags; Arrived alone tags ORG, everything else PERIOD.
+  assert_(ft.indexOf(">ORG<") !== -1 && ft.indexOf(">PERIOD<") !== -1,
+          "flow tier: Arrived tags ORG, the rest (Cleared/Lead Time/Throughput/Bug Count/outcome tiles) tag PERIOD");
+  assert_(ft.indexOf(">SNAP<") === -1,
+          "…and NO SNAP tags anywhere in the flow tier — Backlog/WIP (the old SNAP tiles) are retired");
   // Placement pin: the tag rides with the RIGHT tile, not just anywhere in the
   // markup — slice the strip between consecutive tile labels and check each.
-  var leadSeg = ft.split("Lead Time")[1].split("Throughput")[0];
-  var throughputSeg = ft.split("Throughput")[1].split("Backlog (Inventory)")[0];
-  var backlogSeg = ft.split("Backlog (Inventory)")[1].split("Work In Progress")[0];
-  var wipSeg = ft.split("Work In Progress")[1].split("Bug Count")[0];
-  var bugSeg = ft.split("Bug Count")[1];
+  var clearedSegPS = ft.split('<div class="lbl">Cleared')[1].split('<div class="lbl">Arrived')[0];
+  var arrivedSeg = ft.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var leadSeg = ft.split('<div class="lbl">Lead Time')[1].split('<div class="lbl">On-Time')[0];
+  var throughputSeg = ft.split('<div class="lbl">Throughput')[1].split('<div class="lbl">Bug Count')[0];
+  var bugSeg = ft.split('<div class="lbl">Bug Count')[1];
+  assert_(clearedSegPS.indexOf(">PERIOD<") !== -1, "Cleared tile tags PERIOD");
+  assert_(arrivedSeg.indexOf(">ORG<") !== -1, "Arrived tile tags ORG");
   assert_(leadSeg.indexOf(">PERIOD<") !== -1, "Lead Time tile tags PERIOD");
   assert_(throughputSeg.indexOf(">PERIOD<") !== -1, "Throughput tile tags PERIOD");
-  assert_(backlogSeg.indexOf(">SNAP<") !== -1, "Backlog tile tags SNAP");
-  assert_(wipSeg.indexOf(">SNAP<") !== -1, "WIP tile tags SNAP");
   assert_(bugSeg.indexOf(">PERIOD<") !== -1, "Bug Count tile tags PERIOD");
-  assert_(leadSeg.indexOf(">SNAP<") === -1 && throughputSeg.indexOf(">SNAP<") === -1 &&
-          bugSeg.indexOf(">SNAP<") === -1,
-          "…and SNAP never leaks onto Lead Time, Throughput or Bug Count");
-  assert_(backlogSeg.indexOf(">PERIOD<") === -1 && wipSeg.indexOf(">PERIOD<") === -1,
-          "…and PERIOD never leaks onto Backlog or WIP");
+  assert_(leadSeg.indexOf(">ORG<") === -1 && throughputSeg.indexOf(">ORG<") === -1 &&
+          bugSeg.indexOf(">ORG<") === -1 && clearedSegPS.indexOf(">ORG<") === -1,
+          "…and ORG never leaks onto Cleared, Lead Time, Throughput or Bug Count");
+  assert_(arrivedSeg.indexOf(">PERIOD<") === -1, "…and PERIOD never leaks onto Arrived");
 
   // Missing-feed placeholder: a dash tile still has a scope (brief note) —
   // Bug Count's "unavailable" branch must still carry PERIOD.
@@ -3239,7 +3277,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
-  var tilesHtml = els.tiles.innerHTML;
+  var tilesHtml = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
   assert_(/class="big/.test(tilesHtml), "motion layer on: hero tiles still carry .big values");
   assert_(!/NaN/.test(tilesHtml), "…and no count-up NaN leaked into a tile (rAF never ran under the stub)");
 
@@ -3250,8 +3288,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.renderAll_();
   assert_(/\bloaded\b/.test(document.body.className),
           "a renderAll_ pass after the class has settled to loaded leaves it there — " +
-          "renderAll_/renderTiles_ never touch body.className themselves");
-  assert_(/class="big/.test(els.tiles.innerHTML),
+          "renderAll_/renderFlow_/renderPulse_ never touch body.className themselves");
+  assert_(/class="big/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
           "…and tiles still render real values, not a count-up left mid-flight from a prior render");
 
   fresh(model({}));
@@ -3396,14 +3434,26 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(Anow.phase === "now", "selecting the in-flight entry reports phase 'now'");
   assert_(Anow.hi === done.length - 1,
           "…and the TREND ANCHOR stays on the last complete period — an open window never trends itself");
-  C.renderTiles_();
-  var nowT = els.tiles.innerHTML;
+  C.renderFlow_(); C.renderPulse_();
+  // Task 16B: On-Time/Forecast/Quality now render into #flowTiles (alongside
+  // OTHER flow tiles — Cleared/Arrived/Lead Time/Throughput/Bug Count — whose
+  // OWN flowTileHtml_ grammar always prints "vs prior" regardless of phase,
+  // unrelated to this test), the Utilisation floor card into #pulsePanel.
+  // Scoped to just the outcome tiles + capacity tile so those OTHER flow
+  // tiles' unrelated "vs prior" text can't leak a false failure below.
+  var nowOutcome = els.flowTiles.innerHTML.split('<div class="lbl">On-Time Delivery')[1]
+    .split('<div class="lbl">Throughput')[0];
+  var nowT = '<div class="lbl">On-Time Delivery' + nowOutcome + els.pulsePanel.innerHTML;
   assert_(/◐ in progress/.test(nowT), "every card wears the in-progress marker");
   assert_(!/vs prior/.test(nowT),
           "no vs-prior delta on an open window — a part-period against a whole one is a length difference");
   assert_(/pts (above|below) target|on target/.test(nowT),
           "…but the TARGET gap survives: it judges the number actually on the card");
-  var nowUtil = nowT.split("Utilization")[1].split("Quality")[0];
+  // Utilisation is the ONLY tile in #pulsePanel (the "People signals" text
+  // around it carries no RAG class and never says "lower bound"), so no
+  // bounding split is needed to isolate it — unlike #flowTiles, which now
+  // hosts multiple tiles sharing this string.
+  var nowUtil = els.pulsePanel.innerHTML;
   assert_(/lower bound, not a measurement/.test(nowUtil),
           "mid-period utilization is a FLOOR — capacity is booked for the whole window, hours are not");
   assert_(!/class="big [gar]"/.test(nowUtil),
@@ -3414,8 +3464,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var Aplan = C.analysisHead_();
   assert_(Aplan.phase === "plan" && Aplan.head.key === PLAN1, "the planning week resolves as phase 'plan'");
   assert_(Aplan.hi === done.length - 1, "…and still anchors its history on the last complete period");
-  C.renderTiles_();
-  var planT = els.tiles.innerHTML;
+  C.renderFlow_(); C.renderPulse_();
+  var planT = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
   assert_(/has not happened yet/.test(planT),
           "outcome cards say the window has not happened");
   var otCard = planT.split("On-Time Delivery")[1].split("Forecast")[0];
@@ -3922,6 +3972,82 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(hNullDrill.indexOf("onclick=\"switchView_('actions')\"") === -1,
           "…nor when unassigned is null (not measured) — rule 3 already withholds the segment itself");
 
+  // ── 9. TWO-DENOMINATOR TEST (Task 16B review finding): assignedClearRate_
+  // is correct and filter-aware, but nothing previously asserted the sub-row
+  // ACTUALLY USES it — a regression that divided the sub-row by the ORG rate
+  // instead would have passed every prior check. trailingCompleteWeeks_ needs
+  // >= CLEAR_RATE_MIN_N_ (5) known weeks to publish at all, so this fixture
+  // extends trendWeeks/gridWeeks to the same WK8 window the throughput/
+  // arrival history already uses — making the two rates genuinely differ:
+  // ORG = 300 (meta.clearRateMedian), assigned = median(30+20 per week) = 50
+  // (throughputBuckets, both people, unfiltered).
+  var m9 = baseFixture();
+  m9.meta.trendWeeks = WK8; m9.meta.gridWeeks = WK8;
+  var h9 = band(m9);
+  assert_(C.assignedClearRate_() === 50, "sanity: the fixture's assigned rate (50) differs from its ORG rate (300)");
+  var subTail = h9.split("Assigned weeks to clear")[1].split('<div style="margin-top:12px">')[0];
+  // Would this pass if the behaviour were deleted? No: if the sub-row read
+  // the ORG rate, "Assigned weeks to clear" would print asgInv(270)÷300 =
+  // 0.9w, not 5.4w — a different, wrong number this assertion pins.
+  assert_(/5\.4w/.test(subTail),
+          "the sub-row's weeks-to-clear is asgInv(270)÷assignedRate(50) = 5.4w — the ASSIGNED rate");
+  assert_(!/0\.9w/.test(subTail),
+          "…NOT asgInv(270)÷ORGrate(300) = 0.9w — the regression this test exists to catch");
+  assert_(/50\/wk assigned clearing rate/.test(subTail), "…and the sub-row states the rate it actually used (50/wk), not 300");
+
+  // ── 10. rate === 0 is a REAL measured value, not missing history (Task 16B
+  // review finding): clearRateMedian_'s contract (Code.js, unit-tested) is
+  // explicit that an all-zero series is 0, not null. The three sites that used
+  // to test `rate ? … : "—"` (falsy) conflated 0 with null, producing
+  // self-contradictory copy — "—" beside "needs 0 more weeks". Fixture: a
+  // genuine shutdown week, 8 complete weeks all resolving 0.
+  var mZeroRate = baseFixture();
+  mZeroRate.meta.clearRateMedian = 0;
+  mZeroRate.arrivalWeeks = WK8.map(function (iso) { return aw(iso, 0, 0); });
+  var hZeroRate = band(mZeroRate);
+  assert_(!/needs \d+ more week/.test(hZeroRate),
+          "rate === 0 is NOT reported as 'needs N more weeks' — that message is for rate === null only");
+  assert_(/clearing rate is 0\/wk this window/.test(hZeroRate),
+          "…it gets its OWN honest message instead — an unbounded queue, not an unmeasured one");
+  assert_(/∞w/.test(hZeroRate), "…and the hero prints ∞w (heroTotal > 0, rate 0 → unbounded), not '—'");
+  // Direct unit check on queueRulerSvg_ itself — the ruler cannot legally
+  // divide by its own rate of 0 (Infinity), so it must short-circuit to its
+  // own message rather than attempt the SVG.
+  var rulerAtZero = C.queueRulerSvg_({ wipN: 10, todoN: 10, unItems: 0, rate: 0, std: null, onDrill: null });
+  assert_(!/<svg/.test(rulerAtZero), "queueRulerSvg_ does not attempt to draw at rate === 0 (would divide by zero)");
+  assert_(/isn't draining at all/.test(rulerAtZero), "…and states plainly that the queue isn't draining, not that it needs more history");
+  var rulerAtNull = C.queueRulerSvg_({ wipN: 10, todoN: 10, unItems: 0, rate: null, std: null, onDrill: null });
+  assert_(/needs \d+ more week/.test(rulerAtNull),
+          "…while rate === null (genuinely unmeasured) keeps the ORIGINAL 'needs N more weeks' message — the two states stay distinct");
+
+  // ── 11. backlogTileHtml_ applies the house "unavailable" convention (Task
+  // 16B review finding): tileHtml_/flowTileHtml_ both apply class="tile ph"
+  // for every "—" state; backlogTileHtml_ never did, so an empty Weeks-to-
+  // clear tile looked like a fully-formed measurement rather than the dashed
+  // placeholder every other empty tile in this app uses.
+  var mNoRatePh = baseFixture();
+  mNoRatePh.meta.clearRateMedian = null;
+  mNoRatePh.arrivalWeeks = [];
+  var hNoRatePh = band(mNoRatePh);
+  var wtcTile = hNoRatePh.split("Weeks to clear")[0].split('<div class="tile').slice(-1)[0];
+  assert_(/^( ph)?">/.test(wtcTile) && / ph">/.test(wtcTile),
+          "Weeks to clear renders class=\"tile ph\" (the house placeholder shell) when it has no value — got: " + wtcTile.slice(0, 6));
+  // Companion: a tile that DOES have a value carries no ph class.
+  var invTile = h1.split("Inventory")[0].split('<div class="tile').slice(-1)[0];
+  assert_(!/ ph">/.test(invTile), "…but a real value (Inventory, always populated here) carries NO ph class");
+
+  // ── 12. CRITICAL fix regression guard: no hardcoded "N.Nw"/"Nw"-style
+  // literal in the band's prose. The retired sentence quoted "4.9w"/"11.0w" —
+  // illustrative spec figures wired to nothing, sitting directly above the
+  // tiles that compute those very numbers. This greps the PROSE line
+  // specifically (not the tiles, which legitimately print computed "N.Nw"
+  // values) so a future edit that pastes a figure back in fails loudly.
+  var mLiteralCheck = baseFixture();
+  var hLiteralCheck = band(mLiteralCheck);
+  var proseLine = hLiteralCheck.split('<p class="cellSub">')[1].split("</p>")[0];
+  assert_(!/\d+\.?\d*w\b/i.test(proseLine),
+          "the band's intro prose contains NO 'Nw'/'N.Nw'-style literal — got: " + proseLine);
+
   // Teardown.
   C.setState("region", "");
   C.setState("periodIdx", null);
@@ -3931,26 +4057,51 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
+// TASK 16B — EXECUTIVE BAND ORDER (spec 2026-08-06, retirement + resequence)
+// #viewExec must render, top to bottom: masthead, backlogBand, trustPanel
+// (moved up from last), the flow band (#flowTiles), the capacity band
+// (#pulsePanel), comparePanel, shelfPanel, trustDetail. Checked on the raw
+// markup — the actual DOM order a reader scrolls through — so a later edit
+// that reorders the panels fails loudly instead of merely reordering render
+// calls that still happen to land in the right containers.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  var order = ["masthead", "backlogBand", "trustPanel", "flowTiles", "pulsePanel",
+               "comparePanel", "shelfPanel", "trustDetail"];
+  var idxs = order.map(function (id) { return html.indexOf('id="' + id + '"'); });
+  idxs.forEach(function (i, k) {
+    assert_(i !== -1, "#" + order[k] + " exists in the markup");
+  });
+  for (var i = 1; i < idxs.length; i++) {
+    assert_(idxs[i - 1] < idxs[i],
+            "#" + order[i - 1] + " precedes #" + order[i] + " in DOM order (Task 16B band order) — " +
+            "got indices " + idxs[i - 1] + " then " + idxs[i]);
+  }
+  // Retirement is real, not merely unreferenced: #tiles/#tileColorKey are
+  // absent from the MARKUP itself (checked earlier too; repeated here beside
+  // the order check since both guard the same restructure).
+  assert_(html.indexOf('id="tiles"') === -1 && html.indexOf('id="tileColorKey"') === -1,
+          "#tiles and #tileColorKey are absent from the markup — retirement is structural, not incidental");
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
 // §4/§5 FLOW BAND + CAPACITY BAND (Task 14, spec 2026-08-06 §4/§5)
 //
-// Flow band: the Arrived tile (ORG) joins the existing #flowTiles tier.
+// Flow band: the Arrived tile (ORG) joins the #flowTiles tier.
 // Capacity band: the existing canSeeMargin_ gate, the planning-window phase
 // switch (planTile_/notYetTile_) and the mid-period floor grammar (opts.floor)
 // are NOT rewritten here — this block only pins that they still hold, plus
 // the new CAPACITY kicker and the real people-signals reconciliation count
 // that replaces the design doc's "[object Object]" prototype caveat.
 //
-// Brief-vs-file note (see task-14-report.md for the full discussion): the
-// brief's own check #1 names "Cleared" and "On-Time" as flow-band tiles.
-// The file has no "Cleared" tile — the existing assigned/PERIOD/filterable
-// tile with that shape is "Throughput" (Σ estimate-hours), and On-Time lives
-// in #tiles (the four KPI cards), not #flowTiles — renaming/relocating either
-// was not one of this task's concrete steps (only "add Arrived" and "re-home
-// capacity under a kicker" were), and doing so unprompted would have put
-// ~25 existing regression assertions elsewhere in this file at risk for no
-// specified gain. Check 1 below pins the REAL shape: Arrived join Lead Time/
-// Throughput in #flowTiles, each with its OWN scope tag, and On-Time keeps
-// its own PERIOD tag where it already lives.
+// UPDATED Task 16B: the Task-14 brief-vs-file note below is now STALE and
+// resolved the other way — "Cleared" (reg.cleared, an items count distinct
+// from Throughput's hours) now exists as its own tile (added Task 16B, review
+// finding), and On-Time (plus Forecast/Quality) moved OUT of the retired
+// #tiles strip INTO #flowTiles alongside Arrived/Lead Time/Throughput/Bug
+// Count. Check 1 below is updated to match: it now pins Cleared/Arrived/Lead
+// Time each carrying its OWN scope tag inside #flowTiles, and On-Time's tag
+// surviving the move into the same element.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   function flowFixture(o) {
@@ -3982,31 +4133,35 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("view", "exec");
   C.renderAll_();
   var flowHtml = els.flowTiles.innerHTML;
-  // Order in #flowTiles is Lead Time, Arrived, Throughput, Backlog, WIP, Bug
-  // Count (renderFlow_'s own sequence) — bound each tile's segment by its
-  // NEXT sibling's label, the same idiom the file already uses elsewhere
-  // (e.g. `bad.split("Forecast Accuracy")[1].split("Utilization")[0]`).
-  var leadSeg = flowHtml.split("Lead Time")[1].split("Arrived")[0];
-  var arrSeg = flowHtml.split("Arrived")[1].split("Throughput")[0];
-  var thrSeg = flowHtml.split("Throughput")[1].split("Backlog")[0];
+  // Order in #flowTiles is now Cleared, Arrived, Lead Time, On-Time, Forecast,
+  // Quality/Rework, Throughput, Bug Count (Task 16B resequence per spec §3/§4:
+  // Arrived comes BEFORE Lead Time, and On-Time/Forecast/Quality — moved from
+  // the retired #tiles strip — join the same band). Bound each tile's segment
+  // by the '<div class="lbl">' TILE-BOUNDARY marker, not the bare label text —
+  // Cleared's own tooltip mentions "Throughput's hours", so a bare split on
+  // "Throughput" would find that mention first, not the real tile.
+  var leadSeg = flowHtml.split('<div class="lbl">Lead Time')[1].split('<div class="lbl">On-Time')[0];
+  var arrSeg = flowHtml.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var thrSeg = flowHtml.split('<div class="lbl">Throughput')[1].split('<div class="lbl">Bug Count')[0];
   assert_(leadSeg.indexOf(">PERIOD<") !== -1, "Lead Time carries its OWN PERIOD tag");
   assert_(thrSeg.indexOf(">PERIOD<") !== -1, "Throughput carries its OWN PERIOD tag");
   assert_(arrSeg.indexOf(">ORG<") !== -1 && arrSeg.indexOf(">PERIOD<") === -1,
           "Arrived carries its OWN ORG tag, not PERIOD — it is population-wide, filters don't apply");
-  var tilesHtml2 = els.tiles.innerHTML;
-  var otSeg = tilesHtml2.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
-  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time keeps its own PERIOD tag where it already renders");
+  // Task 16B: On-Time now lives in #flowTiles too (moved from the retired
+  // #tiles strip), alongside Arrived/Lead Time/etc. — not a separate element.
+  var otSeg = flowHtml.split('<div class="lbl">On-Time Delivery')[1].split('<div class="lbl">Forecast Accuracy')[0];
+  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time keeps its own PERIOD tag, now inside #flowTiles alongside the other flow tiles");
   assert_(/18/.test(arrSeg), "Arrived's headline is the fixture's created count (18)");
 
   // Filter-invariance companion: Arrived (ORG) must not move under a filter
-  // that DOES move Throughput (PERIOD) — proving the tags describe real,
-  // different behaviour, not decoration. Both fixture people are AMER in the
-  // default `model()` shape, so filtering to a region with nobody in it
-  // (EMEA) empties Throughput's coverage but must leave Arrived untouched.
-  var arrBefore = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  // that DOES move Lead Time/Throughput (PERIOD) — proving the tags describe
+  // real, different behaviour, not decoration. Both fixture people are AMER in
+  // the default `model()` shape, so filtering to a region with nobody in it
+  // (EMEA) empties the PERIOD tiles' coverage but must leave Arrived untouched.
+  var arrBefore = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   C.setState("region", "EMEA");
   C.renderAll_();
-  var arrAfter = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  var arrAfter = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   assert_(arrBefore === arrAfter, "Arrived (ORG) is byte-identical under a region filter that empties everyone else");
   C.setState("region", "");
   C.renderAll_();
@@ -4016,7 +4171,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var M2 = flowFixture({ arrivalsAvailable: false, arrivalWeeks: [] });
   fresh(M2);
   C.renderAll_();
-  var arrOff = els.flowTiles.innerHTML.split("Arrived")[1].split("Throughput")[0];
+  var arrOff = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   assert_(/not measured/.test(arrOff), "Arrived states 'not measured' when the arrivals feed is unavailable");
   assert_(/class="big">—<\/div>/.test(arrOff), "…and the hero renders the em-dash placeholder, no numeric value");
   assert_(!/class="big">[0-9]/.test(arrOff), "…confirmed: no digit ever lands in the hero slot");
@@ -4031,23 +4186,26 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 // people-signals reconciliation ─────────────────────────────────────────────
 (function () {
   // ── 3. The capacity band is ABSENT FROM THE DOM ENTIRELY for a non-margin
-  // role — asserted on the ABSENCE of the utilisation label (both surfaces
-  // the capacity band spans: the #tiles utilisation card AND the #pulsePanel
-  // kicker/reconciliation line), never on a hidden attribute. Catches: a
-  // regression that dims the tile instead of omitting it, or a kicker/
-  // reconcile line that survives the gate even though the numbers behind it
-  // are gone.
+  // role. Task 16B moved the Utilisation tile OUT of the old #tiles strip
+  // INTO #pulsePanel, sharing renderPulse_'s ONE existing margin gate (rather
+  // than carrying a second gate of its own that could disagree with it) — so
+  // this now checks the capacity band's one panel, plus (belt-and-suspenders)
+  // that the label never leaks into #flowTiles either. Never on a hidden
+  // attribute. Catches: a regression that dims the tile instead of omitting
+  // it, or a kicker/reconcile line that survives the gate even though the
+  // numbers behind it are gone.
   var mGuest = fresh(model({}));
   mGuest.viewerRole = "guest";
   C.setModel(mGuest);
   C.setState("view", "exec");
   C.renderAll_();
-  assert_(!/Billable Utilization|Capacity Utilization/.test(els.tiles.innerHTML),
-          "a non-margin role sees NO utilisation label anywhere in #tiles");
-  assert_(els.pulsePanel.innerHTML === "", "…and the capacity band's OWN panel is emptied entirely");
+  assert_(!/Billable Utilization|Capacity Utilization/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
+          "a non-margin role sees NO utilisation label anywhere in the executive pane");
+  assert_(els.pulsePanel.innerHTML === "",
+          "…and the capacity band's OWN panel — the Utilisation tile included, now that it lives here — is emptied entirely");
   assert_(els.pulsePanel.style.display === "none",
           "…display:none, not merely emptied — no ghost kicker/heading left in the DOM");
-  assert_(!/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML + els.tiles.innerHTML),
+  assert_(!/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML + els.flowTiles.innerHTML),
           "the kicker text itself is nowhere in the DOM for this role — not hidden, ABSENT");
 
   var mAdmin = fresh(model({}));
@@ -4066,9 +4224,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…with the capacity kicker back for a margin-tier role");
 
   // ── 4. Planning-window phase switch survives: the capacity slot becomes
-  // Planned Coverage (#tiles), outcome tiles render notYet, and the capacity
-  // band's OWN kicker/reconciliation line still renders (planFor_ runs
-  // regardless of phase — only the #tiles utilisation card swaps its shape).
+  // Planned Coverage (now #pulsePanel, Task 16B), outcome tiles render notYet
+  // (now #flowTiles), and the capacity band's OWN kicker/reconciliation line
+  // still renders (planFor_ runs regardless of phase — only the Utilisation
+  // card itself swaps its shape).
   // A genuine planning week needs a gridWeeks entry with status "plan" AND at
   // least one person carrying capacity/planned hours there (planWeeks_'s own
   // "reach" guard) — same fixture shape as the FORWARD WINDOWS block above.
@@ -4097,12 +4256,15 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("periodIdx", planAll.length - 1);   // the one forward planning week
   C.renderAll_();
   assert_(C.analysisHead_().phase === "plan", "sanity: the picker selection resolves as phase 'plan'");
-  var planTiles = els.tiles.innerHTML;
-  assert_(/Planned Coverage/.test(planTiles), "capacity slot becomes Planned Coverage on a planning window");
-  assert_(/has not happened yet/.test(planTiles), "outcome tiles (On-Time/Forecast) render their notYet state");
-  assert_(/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML),
-          "the capacity band's own kicker still renders on a planning window — only the #tiles " +
-          "utilisation card switches shape, the band itself doesn't disappear");
+  var planCapacity = els.pulsePanel.innerHTML;
+  var planOutcome = els.flowTiles.innerHTML;
+  assert_(/Planned Coverage/.test(planCapacity),
+          "capacity slot becomes Planned Coverage on a planning window, now rendered inside #pulsePanel");
+  assert_(/has not happened yet/.test(planOutcome),
+          "outcome tiles (On-Time/Forecast) render their notYet state, now inside #flowTiles");
+  assert_(/CAPACITY — what we have to throw at it/.test(planCapacity),
+          "the capacity band's own kicker still renders on a planning window — only the Utilisation " +
+          "card switches shape, the band itself doesn't disappear");
   C.setState("periodIdx", null);
 
   // ── 5. Mid-period floor grammar survives: "at least N%", no RAG colour.
@@ -4111,7 +4273,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("periodIdx", C.donePeriods_().length);   // the in-flight "now" window
   C.renderAll_();
   assert_(C.analysisHead_().phase === "now", "sanity: this selection resolves as phase 'now' (mid-period)");
-  var nowTiles = els.tiles.innerHTML;
+  var nowTiles = els.pulsePanel.innerHTML;   // Utilisation now lives in the capacity band (Task 16B)
   var nowUtilSeg = nowTiles.split("Utilization")[1] || "";
   assert_(/at least \d+%/.test(nowUtilSeg), "mid-period utilisation carries the floor grammar ('at least N%')");
   assert_(!/class="big (g|a|r)"/.test(nowUtilSeg.split("</div>")[0] + "</div>"),
