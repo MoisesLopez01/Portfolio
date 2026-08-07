@@ -249,7 +249,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "3.2",
+  version: "3.3",
   updated: "2026-08-05",  // 2026.W32
 
   metrics: {
@@ -664,7 +664,7 @@ var METRIC_REGISTRY_ = {
     // drop on deploy, deliberately — that is a population getting bigger, not a
     // trend line stepping on a changed formula, so the `✎ definition changed`
     // marker is the wrong tool for it. This entry is the dated note instead.
-    { version: "3.2", date: "2026-08-06", author: "Alex López",
+    { version: "3.3", date: "2026-08-06", author: "Alex López",
       affects: [],
       change: "Open-backlog population widened to include unassigned work: `Jira Backlog.js` v3.11.0 drops 'assignee is not EMPTY' from `fetchOpenIssues_()` (spec 2026-08-06-dh-executive-newspaper-design.md, D7). Measured live against servicerocket-coe (2026-08-06): 1,839 unassigned open issues against 1,440 assigned — the true open inventory is 3,279, 56% of it unowned. Weeks-to-clear reads 4.9w on the assigned-only queue this dashboard used to see and 11.0w on the true queue. `attr` (the roster-join check) gained its own denominator `attrN` in the same release (D12) — measured only over records that HAVE an assignee, so an absent assignee is 'nothing to grade' rather than a failed join. Without that fix this widening would have dropped the just-retired, solved Roster-join check to roughly 1,440/3,279 ≈ 44% on all three surfaces it was just removed from.",
       rationale: "Every resolved-work bucket (`onTimeBuckets_`, `throughputBuckets_`, `forecastBuckets_`, `leadTimeBuckets_`, `reworkBuckets_`) skips unresolved records, and `personHygieneBuckets_` is person-keyed, so the four KPI cards and the signals roster do not move. `typeHygOpen_` has no assignee requirement, so unassigned rows enter the 🧬 matrix's open half and the gaps queue: `assigned`, `due`, `est`, `region` and `team` fill rates drop there, materially — unowned tickets are the worst-tagged population on the site, so this is previously-hidden hygiene debt becoming visible, not tagging getting worse. Without this note the next reader sees those fill rates fall on deploy and 'fixes' the regression by putting the assignee clause back, which is exactly the 56%-of-the-queue blind spot this release exists to remove. If the drop is judged unacceptable, the lever is `OPEN_BACKLOG_UPDATED_WEEKS` (open decision O4, owned by Delivery leadership) — never re-hiding the work." },
@@ -2179,11 +2179,11 @@ var BACKLOG_SIGNALS_ = [
  * @param {Object} jira readJiraRaw_ output (leaver-scoped)
  * @param {Function} resolvePerson raw assignee → roster display name, or null
  * @param {Date=} now injection point for tests; defaults to real now
- * @returns {{buckets:Array, unattributed:number, keyCap:number, asOf:string}}
+ * @returns {{buckets:Array, unattributed:number, unassigned:number, keyCap:number, asOf:string}}
  */
 function backlogHealthBuckets_(jira, resolvePerson, now) {
   now = now || new Date();
-  var map = {}, unattributed = 0;
+  var map = {}, unattributed = 0, unassigned = 0;
 
   function row(person) {
     if (!map[person]) {
@@ -2199,6 +2199,16 @@ function backlogHealthBuckets_(jira, resolvePerson, now) {
     // so "open" means the same thing on every surface — including its second
     // half, which catches closed workflows that leave Resolution Date empty.
     if (!typeHygOpen_(it)) return;
+    // hasAssignee mirrors typeHygieneBuckets_'s tally() EXACTLY (same sentinel
+    // check, same reasoning, spec §4.6/D12): "⚠️ UNASSIGNED" / blank is NOT a
+    // failed roster join, it is no assignee to join at all. Since unassigned
+    // rows joined the export (v3.11.0, +~1,839 open issues), collapsing both
+    // cases into one "unattributed" counter would report an ABSENT assignee as
+    // a FAILED roster join — the exact conflation attrN exists to prevent,
+    // now reappearing here as a fourth surface. Split exactly like attrN does.
+    var rawA = String(it.assignee || "").trim();
+    var hasAssignee = !!rawA && !/unassigned/i.test(rawA);
+    if (!hasAssignee) { unassigned++; return; }
     var dn = resolvePerson ? resolvePerson(it.assignee || "") : null;
     if (!dn) { unattributed++; return; }
     var r = row(dn);
@@ -2216,6 +2226,7 @@ function backlogHealthBuckets_(jira, resolvePerson, now) {
   return {
     buckets: Object.keys(map).sort().map(function (k) { return map[k]; }),
     unattributed: unattributed,
+    unassigned: unassigned,
     keyCap: BACKLOG_MAX_KEYS_,
     // Stamped because overdue/staleness are relative to BUILD time, not render
     // time — a reader looking at an hour-old cached model deserves to know which
@@ -5717,6 +5728,47 @@ function _test_typeHygieneBuckets_() {
           "empty feed → no rows");
   Logger.log("✅ _test_typeHygieneBuckets_ passed");
 }
+
+/**
+ * Pins the fix for the fourth "absent assignee scored as failed roster join"
+ * surface (spec §4.6/D12 conflation, reappearing in backlogHealthBuckets_):
+ * an issue with NO assignee must land in `unassigned`, never `unattributed` —
+ * mirroring typeHygieneBuckets_'s hasAssignee/attrN split exactly. Before the
+ * fix both cases fell through the same `if (!dn) unattributed++` line, so
+ * this assertion would still pass under the OLD code if it only checked the
+ * SUM of the two counters — it deliberately checks them apart.
+ *
+ * Self-invoking (like node-tests.js's own _test_clientParity_/_test_
+ * confidenceParity_) rather than added to the call list at the bottom of
+ * node-tests.js — that runner file was out of scope for this fix set, so this
+ * test wires itself in at eval() time instead of needing a second file touched.
+ */
+(function _test_backlogHealthUnassigned_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_backlogHealthUnassigned_: " + m); }
+  var resolve = function (raw) { return /maria/i.test(raw || "") ? "Maria Alvarez" : null; };
+  var jira = { issues: [
+    // Has an assignee, resolves to a roster person → a normal bucket row.
+    { key: "K-1", assignee: "Maria Alvarez", status: "To Do", statusCategory: "To Do" },
+    // Has an assignee, NOT on the roster → unattributed (a FAILED join).
+    { key: "K-2", assignee: "Random Dev", status: "To Do", statusCategory: "To Do" },
+    // No assignee at all (blank) → unassigned (nothing to join).
+    { key: "K-3", assignee: "", status: "To Do", statusCategory: "To Do" },
+    // No assignee at all (exporter's sentinel) → unassigned, same as blank.
+    { key: "K-4", assignee: "⚠️ UNASSIGNED", status: "To Do", statusCategory: "To Do" },
+    // Resolved work is not backlog — must not appear in either counter.
+    { key: "K-5", assignee: "", status: "Done", resolved: new Date(2026, 6, 28) },
+  ] };
+  var r = backlogHealthBuckets_(jira, resolve, new Date(2026, 6, 30));
+  assert_(r.unassigned === 2, "K-3 blank + K-4 sentinel → unassigned = 2, got " + r.unassigned);
+  assert_(r.unattributed === 1, "K-2 (assignee present, not on roster) → unattributed = 1, got " + r.unattributed);
+  assert_(r.buckets.length === 1 && r.buckets[0].person === "Maria Alvarez" && r.buckets[0].n === 1,
+          "only K-1 lands in a person bucket");
+  // The regression this guards: collapsing both into one counter would still
+  // read "3 excluded" in total, which is why the two must be asserted apart,
+  // not just their sum.
+  assert_(r.unassigned !== r.unattributed, "the two populations are genuinely different sizes here");
+  Logger.log("✅ _test_backlogHealthUnassigned_ passed");
+})();
 
 function _test_personHygieneBuckets_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_personHygieneBuckets_: " + m); }
