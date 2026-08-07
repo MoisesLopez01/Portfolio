@@ -157,4 +157,60 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   Logger.log("✅ _test_confidenceParity_ passed (" + checked + " gate combinations)");
 })();
 
+// ── SAMPLE-FLOOR PARITY ───────────────────────────────────────
+// sampleFloorFor_ (Code.js) and sampleFloorClient_ (Dashboard.html) exist twice
+// for the same reason metricConfidence_/medianOf_ do: the client has to answer
+// "may this number publish?" locally (shelfRows_ builds the whole §7 Shelf off
+// it) without a round-trip, and two copies of a publish/withhold rule that
+// silently drift are the exact defect this suite exists to catch.
+//
+// (Task 17: the brief's own Step 3 named the home for this walk as
+// `_test_clientParity_` — the file disagrees. `_test_clientParity_` extracts
+// aggWeeks_/utilFor_-family functions and is about utilization math; the
+// metric this item is actually twinning with — "proven identical, exactly as
+// metricConfidence_ and medianOf_ already are" (Task 17 brief text, item 2) —
+// lives in THIS suite. Filed here, next to its own kind, not in the unrelated
+// one the step-by-step recipe named.)
+(function _test_sampleFloorParity_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_sampleFloorParity_: " + m); }
+  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var want = ["reg_", "sampleFloorClient_"];
+  var src = want.map(function (fn) {
+    var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
+    if (!m) throw new Error("❌ _test_sampleFloorParity_: could not extract " + fn + " from Dashboard.html");
+    return m[0];
+  }).join("\n");
+  // reg_() reads MODEL.meta.registry — seed it with the SAME registry object
+  // sampleFloorFor_ reads server-side (no gate overrides in play; overrides
+  // only ever touch coverageGate, never sampleFloor, so a plain clone is the
+  // honest twin of what registryWithOverrides_({}) would ship).
+  var C = new Function(
+    "var MODEL = { meta: { registry: " + JSON.stringify(METRIC_REGISTRY_) + " } };" +
+    src +
+    "return { sampleFloorClient_: sampleFloorClient_ };")();
+
+  var ids = Object.keys(METRIC_REGISTRY_.metrics);
+  assert_(ids.length > 0, "sanity: the registry actually has metrics to walk");
+  var ns = [0, 1, 4, 5, 6, 50];
+  var checked = 0;
+  ids.forEach(function (id) {
+    ns.forEach(function (n) {
+      var s = sampleFloorFor_(id, n), c = C.sampleFloorClient_(id, n);
+      assert_(s.ok === c.ok && s.need === c.need && s.n === c.n,
+              "sampleFloor parity for '" + id + "' at n=" + n +
+              " — server " + JSON.stringify(s) + " vs client " + JSON.stringify(c));
+      checked++;
+    });
+  });
+  assert_(checked === ids.length * ns.length, "every registry id walked at every n in [0,1,4,5,6,50]");
+  // The one rule that must never differ between layers: fail CLOSED on a
+  // metric nobody registered — a typo must not publish on the strength of a
+  // missing lookup succeeding as "no floor" on one side and not the other.
+  var sUnknown = sampleFloorFor_("nonsense-id-nobody-registered", 50);
+  var cUnknown = C.sampleFloorClient_("nonsense-id-nobody-registered", 50);
+  assert_(sUnknown.ok === false && cUnknown.ok === false && sUnknown.ok === cUnknown.ok,
+          "both copies fail closed on an unknown id, even at a healthy n=50");
+  Logger.log("✅ _test_sampleFloorParity_ passed (" + checked + " id×n combinations)");
+})();
+
 console.log("✅ node-tests: all suites passed");
