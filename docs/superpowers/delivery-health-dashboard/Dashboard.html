@@ -539,6 +539,11 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div style="text-align:right"><button class="iconbtn" onclick="savePng_('flowTiles','flow')" title="Save the flow cards as a PNG image">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
     <div class="tiles tilesCompact" id="flowTiles"></div>
+    <!-- COLOUR KEY (Task 17 — regression fix). Retiring #tileColorKey with the
+         old #tiles strip (Task 16B) removed the legend with no successor —
+         readers learn colours from a legend, not a tooltip, and every swatch
+         here is an inert caption, never a filter. Populated by renderFlow_. -->
+    <div class="cellSub" id="flowKey" style="margin:2px 0 12px"></div>
     <!-- CAPACITY BAND (Task 16B) — Utilisation/Planned Coverage tile (moved
          from the old #tiles strip) sits above the recoverable-hours/people-
          signals row #pulsePanel already renders; both share the SAME margin
@@ -2238,10 +2243,26 @@ function trunc_(s, n) {
 function sparkHtml_(vals, opts) {
   opts = opts || {};
   var labels = opts.labels || [];
+  // `flags` (Task 17): a parallel boolean array, one per point in `vals` —
+  // true = measured, false/absent-at-that-index = reconstructed/inferred.
+  // Omitted entirely (the default, every existing caller), every point draws
+  // exactly as before — this is additive, not a behaviour change for the 20+
+  // percentage sparklines already on the page.
+  //
+  // `unit`/`fmt` let a caller plot something that is not a percentage (an
+  // item count, here) without lying about the axis: the old hardcoded "%"
+  // suffix on the value label and every point's tooltip would have read
+  // "3,279%" on an inventory series. `domain` lets that same caller supply
+  // its own y-range instead of pctDomain_'s hardcoded 0–100 clamp, which is
+  // correct for a rate but would flatten an item-count series against a
+  // ceiling it never approaches.
+  var flags = opts.flags || null;
+  var unit = opts.unit === undefined ? "%" : opts.unit;
+  var fmt = opts.fmt || function (v) { return Math.round(v) + unit; };
   var W = 240, H = 54, L = 2, R = 30, T = 12, B = 13;
   var pw = W - L - R, ph = H - T - B;
   var std = opts.std && opts.std.ok ? opts.std : null;
-  var dom = pctDomain_(vals, std ? [std.lo, std.hi] : []);
+  var dom = opts.domain || pctDomain_(vals, std ? [std.lo, std.hi] : []);
   var span = dom.hi - dom.lo || 1;
   function y(v) { return T + ph - (v - dom.lo) / span * ph; }
   function x(i) { return vals.length === 1 ? L + pw / 2 : L + (i / (vals.length - 1)) * pw; }
@@ -2253,10 +2274,20 @@ function sparkHtml_(vals, opts) {
       "% — where this metric normally sits</title></rect>";
   }
   var run = [], last = null, lastI = -1;
+  // Basis-of-the-line: dashed + muted whenever ANY point behind the line is
+  // reconstructed rather than measured — an unlabelled change of basis in a
+  // chart is worse than no chart (same rule the ✎ definition-changed marker
+  // applies to a trend that steps on a redefinition, reused here for a trend
+  // that steps on a change of EVIDENCE instead of a change of formula). A run
+  // that happens to be ALL measured draws solid, same as every other spark.
+  var runAllMeasured = true;
+  if (flags) for (var fi = 0; fi < vals.length; fi++) if (flags[fi] !== true) { runAllMeasured = false; break; }
+  var lineAttrs = (flags && !runAllMeasured)
+    ? ' stroke-dasharray="4,3" opacity="0.6"' : "";
   vals.forEach(function (v, i) {
     if (v === null || v === undefined || isNaN(v)) {
       if (run.length > 1) s += '<polyline points="' + run.join(" ") +
-        '" fill="none" stroke="var(--c-series)" stroke-width="2" stroke-linejoin="round"/>';
+        '" fill="none" stroke="var(--c-series)" stroke-width="2" stroke-linejoin="round"' + lineAttrs + '/>';
       run = [];
       return;
     }
@@ -2264,16 +2295,25 @@ function sparkHtml_(vals, opts) {
     last = v; lastI = i;
   });
   if (run.length > 1) s += '<polyline points="' + run.join(" ") +
-    '" fill="none" stroke="var(--c-series)" stroke-width="2" stroke-linejoin="round"/>';
+    '" fill="none" stroke="var(--c-series)" stroke-width="2" stroke-linejoin="round"' + lineAttrs + '/>';
   vals.forEach(function (v, i) {
     if (v === null || v === undefined || isNaN(v)) return;
-    s += '<circle cx="' + x(i) + '" cy="' + y(v) + '" r="' + (i === lastI ? 3.6 : 2.2) +
-      '" fill="var(--c-series)" stroke="var(--plot)" stroke-width="1.6"><title>' +
-      esc_((labels[i] || "period " + (i + 1)) + " · " + Math.round(v) + "%") + "</title></circle>";
+    // Reconstructed points draw HOLLOW (fill = the page background, not the
+    // series colour) at reduced opacity; the measured point(s) stay the same
+    // solid dot every other sparkline already draws — a reader distinguishes
+    // "this far back is inferred" from "this one is a real snapshot" without
+    // needing the tooltip, though the tooltip says it in words too.
+    var measured = flags ? flags[i] === true : true;
+    var r = i === lastI ? 3.6 : 2.2;
+    var basisWord = !flags ? "" : (measured ? " (measured)" : " (reconstructed — inferred, not a snapshot)");
+    s += '<circle class="' + (measured ? "pt-measured" : "pt-reconstructed") + '" cx="' + x(i) + '" cy="' + y(v) +
+      '" r="' + r + '" fill="' + (measured ? "var(--c-series)" : "var(--plot)") +
+      '" stroke="var(--c-series)" stroke-width="1.6"' + (measured ? "" : ' stroke-dasharray="1.5,1.2"') + '><title>' +
+      esc_((labels[i] || "period " + (i + 1)) + " · " + fmt(v) + basisWord) + "</title></circle>";
   });
   if (last !== null) {
     s += '<text class="val" x="' + (L + pw + 4) + '" y="' + (y(last) + 4) + '">' +
-      Math.round(last) + "%</text>";
+      esc_(fmt(last)) + "</text>";
   }
   // The two labels that turn a squiggle into a chart: what it starts at and
   // what it ends at, in time.
@@ -2835,7 +2875,7 @@ function queueRulerSvg_(o) {
     a target, neither of which this band's numbers carry (D11 — no target rule
     anywhere in this band) — the same reason flowTileHtml_ was written apart
     from tileHtml_ for the other unit-bearing metrics. */
-function backlogTileHtml_(label, big, context, scope) {
+function backlogTileHtml_(label, big, context, scope, trendHtml) {
   // House "unavailable" convention (tileHtml_/flowTileHtml_ both apply it):
   // a "—" state gets the dashed placeholder shell, not a fully-formed tile —
   // otherwise a Net-flow or Weeks-to-clear tile with nothing to show looks
@@ -2843,7 +2883,60 @@ function backlogTileHtml_(label, big, context, scope) {
   var ph = big === "—" ? " ph" : "";
   return '<div class="tile' + ph + '"><div class="lbl">' + esc_(label) + scopeTag_(scope) + '</div>' +
     '<div class="big">' + big + '</div>' +
-    (context ? '<div class="cmp">' + context + '</div>' : "") + '</div>';
+    (context ? '<div class="cmp">' + context + '</div>' : "") +
+    // `trendHtml` (Task 17): the Inventory tile's only caller, so a Net-flow
+    // or Weeks-to-clear tile gets no extra slot — those two are already
+    // derived FROM the same history, and a second trend line under each
+    // would restate the first rather than add information.
+    (trendHtml ? trendHtml : "") + '</div>';
+}
+
+/**
+ * The hero's inventory-history sparkline (Task 17 — regression fix). Tasks
+ * 5/7 built MODEL.inventoryHistory (a 26-week reconstructed walkback,
+ * inventoryWalkback_ in Code.js) explicitly so the hero would ship WITH a
+ * trend; Task 16B's retirement of the Backlog/WIP flow tiles removed the only
+ * place a queue-depth history was ever drawn and nothing replaced it — a
+ * headline with no context is a headline nobody can act on.
+ *
+ * Only the newest point in the walkback is a measured snapshot; every other
+ * point is inferred backwards from the arrivals feed (created − resolved per
+ * week). "An unlabelled change of basis in a chart is worse than no chart" —
+ * the same rule the ✎ definition-changed marker applies to a formula change —
+ * so sparkHtml_'s `flags` option draws the reconstructed run dashed/hollow and
+ * the measured point solid, and every point's tooltip says which it is in
+ * words, not just pixels.
+ *
+ * Draws NOTHING (with a stated reason) when the walkback is unanchorable —
+ * inventoryWalkback_ returns [] with no measurable anchor or no arrivals
+ * history at all (Code.js `_test_modelAssembly_`, part 3) — never a flat line
+ * at zero, which would read as a measured, stable queue instead of an absent
+ * one.
+ * @returns {string} an empty string is never returned FOR NO REASON — the
+ *   no-history branch always renders its own explanation instead.
+ */
+function inventoryHistoryTrendHtml_() {
+  var hist = MODEL.inventoryHistory || [];
+  if (!hist.length) {
+    return '<div class="cmp" style="margin-top:2px">no history — ' +
+      (MODEL.meta.arrivalsAvailable === false
+        ? "the Jira Arrivals tab isn't in this export yet, so there is no created/resolved " +
+          "series to walk the queue back from"
+        : "not enough arrivals history to reconstruct a trend yet") + '</div>';
+  }
+  var vals = hist.map(function (h) { return (h && typeof h.items === "number") ? h.items : null; });
+  var flags = hist.map(function (h) { return !!(h && h.measured); });
+  var labels = hist.map(function (h) { return (h && h.iso) || ""; });
+  var all = vals.filter(function (v) { return v !== null; });
+  var lo = all.length ? Math.min.apply(null, all) : 0;
+  var hi = all.length ? Math.max.apply(null, all) : 1;
+  var pad = Math.max(1, (hi - lo) * 0.12);
+  var domain = { lo: Math.max(0, Math.floor(lo - pad)), hi: Math.ceil(hi + pad) };
+  var nMeasured = flags.filter(function (f) { return f; }).length;
+  var nRecon = hist.length - nMeasured;
+  return '<div class="cmp" style="margin-top:2px">' +
+    nRecon + "w reconstructed (○, dashed) → " + nMeasured + " measured (●)</div>" +
+    sparkHtml_(vals, { labels: labels, flags: flags, fmt: nfDh_, domain: domain });
 }
 
 /**
@@ -2896,7 +2989,8 @@ function renderBacklogBand_() {
     ? fallbackNote
     : nfDh_(asgItems) + " assigned + " + nfDh_(unItems) + " unowned";
   var heroHtml =
-    backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org") +
+    backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
+      inventoryHistoryTrendHtml_()) +
     backlogTileHtml_("Net flow",
       netFlow === null ? "—" : (netFlow > 0 ? "+" : "") + nfDh_(Math.round(netFlow)) + "/wk",
       netFlow === null ? "needs an 8-week arrivals history"
@@ -3428,6 +3522,18 @@ function flowTileHtml_(m, headline, opts) {
  */
 function renderFlow_() {
   var el = document.getElementById("flowTiles");
+  // COLOUR KEY (Task 17 — regression fix, see task-16b-report.md's deleted-
+  // check accounting). Set unconditionally, before either exit branch below,
+  // so it explains the RAG colouring on this band for every viewer who can
+  // see it at all — On-Time/Forecast/Quality render here regardless of margin
+  // tier, so the key must not be gated behind canSeeMargin_() the way the
+  // Capacity band's own tile is. Inert: a caption, never a filter — clicking
+  // a swatch does nothing, same as the retired #tileColorKey.
+  var flowKeyEl = document.getElementById("flowKey");
+  if (flowKeyEl) flowKeyEl.innerHTML = ragKeyHtml_(
+    "the metric's own agreed target, printed on its card",
+    "Rework Rate reverses the scale — lower is better, same three colours. Utilisation and " +
+    "Planned Coverage (Capacity band below) and the comparison bars follow the same rule.");
   var reg = ((MODEL.meta.registry || {}).metrics) || {};
   var A = analysisHead_();
   var done = A.done, hi = A.hi, phase = A.phase;
