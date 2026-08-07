@@ -149,7 +149,11 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // table, its shared row cap and its per-cell grading rules.
              " gridMetrics_: gridMetrics_, GRID_METRIC_IDS_: GRID_METRIC_IDS_," +
              " capRows_: capRows_, gridCellHtml_: gridCellHtml_, setMetric_: setMetric_," +
-             " activeMetric_: activeMetric_, flowOpenFor_: flowOpenFor_ })";
+             " activeMetric_: activeMetric_, flowOpenFor_: flowOpenFor_," +
+             // §7/§8 THE SHELF + TRUST DETAIL (Task 16, spec 2026-08-06 §7/§8).
+             " renderShelf_: renderShelf_, renderTrustDetail_: renderTrustDetail_," +
+             " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
+             " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -4365,6 +4369,131 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.compare = "region";
   fresh(model({}));
   C.switchView_("exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// TASK 16 — THE SHELF + DATA TRUST DETAIL (spec 2026-08-06 §7/§8): fully
+// data-driven, no hand-written list, no owner column, no hardcoded editorial.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  var W = WEEKS[WEEKS.length - 1];
+  resetFilters();
+
+  // ── 1. registry status "absent" appears with its OWN reason ─────────────
+  var m1 = model({});
+  m1.meta.registry.metrics.cycleTime = {
+    id: "cycleTime", name: "Cycle Time", coverageGate: 0, status: "absent",
+    absentReason: "Needs the changelog, which is not exported.", deviations: [],
+  };
+  fresh(m1);
+  var rows1 = C.shelfRows_();
+  var ct = rows1.filter(function (r) { return r.id === "cycleTime"; })[0];
+  assert_(ct, "an absent-status registry metric appears on the shelf");
+  assert_(ct.why.join(" ").indexOf("Needs the changelog") !== -1,
+          "…carrying its OWN absentReason, not a generic placeholder — got: " + ct.why.join(" "));
+
+  // ── 2. below sample floor: n AND what it needs are stated ───────────────
+  var m2 = model({});
+  m2.meta.registry.metrics.onTime.sampleFloor = 5;
+  m2.onTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, onTime: 2, nAll: 2 }];
+  fresh(m2);
+  var ot2 = C.shelfRows_().filter(function (r) { return r.id === "onTime"; })[0];
+  assert_(ot2, "onTime resting on 2 measurable records (floor 5) appears on the shelf");
+  assert_(/\b2\b/.test(ot2.why.join(" ")) && /needs 5/.test(ot2.why.join(" ")),
+          "…stating BOTH how many it has (2) and how many it needs (5) — got: " + ot2.why.join(" "));
+
+  // ── 3. below the COVERAGE GATE but ABOVE the floor does NOT appear ──────
+  // n=6 (above floor 5), nAll=60 → 10% coverage against a 70% gate. Mutation
+  // this catches: a shelfRows_ that also checks the gate directly (the exact
+  // conflation the design spec warns against) would shelve forecast here.
+  var m3 = model({});
+  m3.meta.registry.metrics.forecast.sampleFloor = 5;
+  m3.forecastBuckets = [{ iso: W, person: "Ana Perez", n: 6, nWithin: 3, nAll: 60,
+                          nNoTime: 0, nMissOver: 2, nMissUnder: 1,
+                          absVars: [0.1, 0.2, 0.3, 0.1, 0.2, 0.4] }];
+  fresh(m3);
+  assert_(!C.shelfRows_().some(function (r) { return r.id === "forecast"; }),
+          "forecast (6 records, above its floor of 5, though only 10% covered) does NOT appear " +
+          "on the shelf — below-gate still publishes (D5), the gates band carries that read");
+
+  // ── 4. below floor AND below gate → exactly ONE entry, naming BOTH ──────
+  var m4 = model({});
+  m4.meta.registry.metrics.onTime.sampleFloor = 5;
+  m4.onTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, onTime: 1, nAll: 100 }]; // 2% cov, gate 80%
+  fresh(m4);
+  var matches4 = C.shelfRows_().filter(function (r) { return r.id === "onTime"; });
+  assert_(matches4.length === 1,
+          "below floor AND below gate produces exactly ONE shelf entry, not two — got " + matches4.length);
+  var reason4 = matches4[0].why.join(" ");
+  assert_(/needs 5/.test(reason4) && /coverage gate/.test(reason4),
+          "…and that one entry names BOTH the floor shortfall and the gate shortfall — got: " + reason4);
+
+  // ── 5. NO owner name anywhere in the rendered shelf HTML (D9) ───────────
+  var m5 = model({});
+  m5.meta.registry.metrics.cycleTime = {
+    id: "cycleTime", name: "Cycle Time", coverageGate: 0, status: "absent",
+    absentReason: "no feed", owner: "Delivery leadership", paramOwner: "Services Director",
+    deviations: [],
+  };
+  fresh(m5);
+  C.setState("view", "exec");
+  C.renderAll_();
+  var shelfHtml = els.shelfPanel.innerHTML;
+  assert_(/Cycle Time/.test(shelfHtml), "sanity: the shelf actually rendered the metric");
+  assert_(!/Delivery leadership/.test(shelfHtml) && !/Services Director/.test(shelfHtml),
+          "no owner/paramOwner name appears anywhere in the shelf HTML");
+
+  // ── 6. Trust detail is a COLLAPSED <details> ────────────────────────────
+  var detailHtml0 = els.trustDetail.innerHTML;
+  assert_(/<details>/.test(detailHtml0), "the trust detail is a <details> element");
+  assert_(!/<details open/.test(detailHtml0), "…and is NOT open by default — collapsed per spec §8");
+
+  // ── 7. Little's Law figures are COMPUTED from the model, not literal ────
+  var mA = model({});
+  mA.queue = { assigned: { items: 400, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+               unassigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } };
+  mA.meta.clearRateMedian = 100;
+  mA.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [14, 14] }];
+  fresh(mA);
+  C.renderAll_();
+  var detailA = els.trustDetail.innerHTML;
+  assert_(/400 items/.test(detailA) && /100\/wk/.test(detailA) && /2\.0 weeks/.test(detailA),
+          "Little's Law states the model's OWN measured inventory (400), rate (100/wk) and lead " +
+          "time (2.0wk) — got: " + detailA);
+  // Predicted = 100/wk × 2.0wk = 200 — half the measured 400, so the
+  // "material gap" branch, not "broadly consistent", must render.
+  assert_(/≈200 items/.test(detailA) && /material gap/.test(detailA),
+          "…and the PREDICTED figure (200) is computed from them, not hardcoded — got: " + detailA);
+
+  // Change the model — the printed figures, AND the consistency verdict,
+  // must move with it. Mutation this catches: a version that computed the
+  // sentence once and cached a literal string would still show 400/100/200
+  // and "material gap" here regardless of the new model.
+  var mB = model({});
+  mB.queue = { assigned: { items: 600, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+               unassigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } };
+  mB.meta.clearRateMedian = 300;
+  mB.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [14, 14] }];
+  fresh(mB);
+  C.renderAll_();
+  var detailB = els.trustDetail.innerHTML;
+  assert_(/600 items/.test(detailB) && /300\/wk/.test(detailB),
+          "…changing the model's queue/rate changes the printed figures — got: " + detailB);
+  assert_(/≈600 items/.test(detailB) && /broadly consistent/.test(detailB),
+          "…and the verdict flips to consistent (300 × 2.0 = 600 matches the measured 600 " +
+          "exactly) because it is computed, not the same cached sentence — got: " + detailB);
+
+  // ── 8. No hardcoded editorial anywhere in either rendered panel ─────────
+  var everyExecHtml = els.shelfPanel.innerHTML + els.trustDetail.innerHTML +
+                       els.pulsePanel.innerHTML + els.trustPanel.innerHTML;
+  assert_(!/not credible/i.test(everyExecHtml), "'not credible' appears nowhere");
+  assert_(!/1 person on leave/i.test(everyExecHtml), "'1 person on leave' appears nowhere");
+
+  // Teardown.
+  resetFilters();
+  fresh(model({}));
+  C.setState("view", "exec");
   C.renderAll_();
 })();
 

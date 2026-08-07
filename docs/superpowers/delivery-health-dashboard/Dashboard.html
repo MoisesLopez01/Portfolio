@@ -541,7 +541,11 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div id="tileColorKey"></div>
     <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
     <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
-    <div class="panel" id="trustPanel"></div>
+    <div class="panel" id="trustPanel" style="margin-bottom:14px"></div>
+    <!-- §7 THE SHELF (spec 2026-08-06) — "not measured this week", data-driven. -->
+    <div class="panel" id="shelfPanel" style="margin-bottom:14px"></div>
+    <!-- §8 DATA TRUST DETAIL (spec 2026-08-06) — collapsed <details>, computed. -->
+    <div class="panel" id="trustDetail"></div>
   </div>
 
   <!-- ── 🎯 ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
@@ -1552,7 +1556,7 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); break;
+    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTiles_(); renderFlow_(); renderCompare_(); renderPulse_(); renderTrust_(); renderShelf_(); renderTrustDetail_(); break;
     case "actions": renderRoster_(); renderBacklogHealth_(); renderHygPanel_(); break;
     case "access":  renderAccess_(); break;
   }
@@ -2894,27 +2898,117 @@ function renderBacklogBand_() {
 }
 
 /**
- * ── THE SHELF (partial) ─────────────────────────────────────────────────────
- * "Not measured this week." verdictFindings_ needs a shelved COUNT now; the
- * full shelf — sample-floor and feed-down detection, the rendered list, the
- * computed trust detail — is a later task's job (spec 2026-08-06 §7 "Not
- * measured this week" / implementation plan "the shelf and the trust
- * detail"). That task's own brief fixes this function's signature — an
- * array whose `.length` is the shelved count — and ADDS to it, not replaces
- * it. This partial covers the one source that is real and knowable
- * client-side today: a registry entry the server has already marked
- * status:"absent" — no feed exists at all (Cycle Time, Flow Efficiency,
- * CSAT, rework capture).
- * @returns {Array<{id, name, why:Array<string>}>}
+ * The sample size behind one metric's current value, or `null` when the
+ * metric has no sample notion at all (no METRICS_ accessor — a registry-only
+ * count like `inventory`/`arrived`/`cleared`/`netFlow`, or an absent-status
+ * metric with no accessor to ask). Reads the SAME METRICS_[id].n(isos) every
+ * other surface on this page already computes from, over the current
+ * filtered scope — coverage and sample size are both filter-dependent here
+ * for the same reason metricConfidence_ already is (a region slice can be
+ * thinly sampled while the whole population isn't).
+ */
+function metricSampleN_(id) {
+  var mm = METRICS_[id];
+  if (!mm || !mm.n) return null;
+  var isos = analysisHead_().head.isos;
+  var n = mm.n(isos);
+  return (n === null || n === undefined || isNaN(n)) ? null : n;
+}
+
+/**
+ * The CLIENT twin of `sampleFloorFor_` (Code.js) — same contract, same
+ * fail-closed-on-unknown-id rule, read from the registry the client already
+ * has rather than re-declaring the floors a second time. `_test_clientParity_`
+ * (Task 17) is expected to extract and diff this against the server copy the
+ * same way it already does for `metricConfidence_`.
+ * @returns {{ok:boolean, need:number|null, n:number}}
+ */
+function sampleFloorClient_(id, n) {
+  var m = reg_(id);
+  if (!m.id) return { ok: false, need: null, n: n };
+  if (m.sampleFloor === null || m.sampleFloor === undefined) return { ok: true, need: null, n: n };
+  var need = m.sampleFloor;
+  return { ok: (Number(n) || 0) >= need, need: need, n: Number(n) || 0 };
+}
+
+/** This metric's current coverage (0–1), or null when it has no accessor or
+    no measurable coverage — used ONLY to add context to an already-shelved
+    (below-floor) entry (see shelfRows_ below); gate alone never shelves a
+    metric on its own (below-gate still publishes, D5/2026-08-03). */
+function metricCoverageNow_(id) {
+  var mm = METRICS_[id];
+  if (!mm || !mm.coverage) return null;
+  var c = mm.coverage(analysisHead_().head.isos);
+  return (c === null || c === undefined || isNaN(c)) ? null : c;
+}
+
+/** True when a metric that DOES have an accessor cannot currently compute at
+    all — the export ran but this metric's own feed did not come back this
+    refresh (distinct from registry status "absent", which is "no feed exists
+    at all" — a permanent, structural gap rather than a this-run outage). */
+function metricFeedDown_(id) {
+  var mm = METRICS_[id];
+  return !!mm && !mm.available();
+}
+
+/** The one-line "what would clear this" — derived from the registry entry
+    itself, never hand-typed per metric, so a metric added to the registry
+    tomorrow gets a sensible line for free. */
+function shelfClears_(id, m) {
+  if (m.status === "absent") return m.absentReason || "connect the feed this metric reads from";
+  if (m.sampleFloor) return "collect " + m.sampleFloor + " or more measurable records in this window";
+  return "reconnect the feed this metric reads from";
+}
+
+/**
+ * ── §7 THE SHELF ─────────────────────────────────────────────────────────────
+ * "Not measured this week", built from data rather than curated by hand — a
+ * hand-written list cannot notice that a metric quietly dropped to two
+ * samples and is still sitting on a card looking authoritative.
+ *
+ * Three sources, in this order, and a metric appears ONCE however many apply:
+ *  · registry status "absent"  — no feed exists at all (Cycle Time, CSAT, rework)
+ *  · below its sample floor    — nothing to average (spec D5)
+ *  · its feed is unavailable   — the tab could not be read this run
+ *
+ * A metric below its COVERAGE GATE is deliberately NOT here — this function
+ * never checks the gate on its own account, only as CONTEXT once a metric is
+ * already shelved for being below its sample floor (the two-reasons case:
+ * one shelf entry naming both, never two entries). Below-gate alone still
+ * publishes (CONFIG_DH.SUPPRESS_BELOW_GATE = false, user decision
+ * 2026-08-03); the gates band carries that read. Conflating the two would
+ * reopen a settled decision by accident.
+ *
+ * NO OWNER on any row (D9). A standing table of names against failures in the
+ * most-read view on the dashboard reads as a blame board, and that is not
+ * what gets Jira tagging fixed.
+ *
+ * @returns {Array<{id, name, why:Array<string>, clears:string}>}
  */
 function shelfRows_() {
   var reg = (MODEL.meta.registry || {}).metrics || {};
   var rows = [];
   Object.keys(reg).forEach(function (id) {
-    var m = reg[id];
-    if (m.status === "absent") {
-      rows.push({ id: id, name: m.name || id, why: [m.absentReason || "no feed connected"] });
+    var m = reg[id], why = [];
+    if (m.status === "absent") why.push(m.absentReason || "no feed connected");
+    var n = metricSampleN_(id);
+    if (n !== null) {
+      var fl = sampleFloorClient_(id, n);
+      if (!fl.ok && fl.need !== null) {
+        var reason = "resting on " + n + " measurable record" + (n === 1 ? "" : "s") +
+                     " — needs " + fl.need;
+        var cov = metricCoverageNow_(id);
+        if (cov !== null && m.coverageGate && cov < m.coverageGate) {
+          reason += "; also below its " + Math.round(m.coverageGate * 100) +
+                    "% coverage gate (" + Math.round(cov * 100) + "%) — that alone would " +
+                    "still publish, the sample size is what shelves it here";
+        }
+        why.push(reason);
+      }
     }
+    if (metricFeedDown_(id)) why.push("its feed could not be read this run");
+    if (!why.length) return;
+    rows.push({ id: id, name: m.name || id, why: why, clears: shelfClears_(id, m) });
   });
   return rows;
 }
@@ -4540,6 +4634,119 @@ function renderTrust_() {
     (fellBack ? " Measured over <b>" + esc_(head.label) + "</b>, the last complete period: " +
       "field fill is counted on work that has been resolved, so a planning window has none." : "") +
     "</div>";
+}
+
+/**
+ * ── §7 THE SHELF renderer ────────────────────────────────────────────────────
+ * Dashed-border list, one row per shelfRows_() entry. NO owner column (D9) —
+ * the object shelfRows_ returns doesn't even carry one to accidentally print.
+ */
+function renderShelf_() {
+  var el = document.getElementById("shelfPanel");
+  if (!el) return;
+  var rows = shelfRows_();
+  if (!rows.length) {
+    el.innerHTML = '<h3>📭 Not measured this week ' + scopeTag_("org") + "</h3>" +
+      '<div class="emptyState">Nothing on the shelf — every registered metric is publishing.</div>';
+    return;
+  }
+  el.innerHTML = '<h3>📭 Not measured this week ' + scopeTag_("org") + "</h3>" +
+    '<p class="cellSub">Built from the registry, the sample floor and feed availability — not a ' +
+    "hand-written list, so a metric that quietly drops to a couple of samples cannot keep sitting " +
+    "on a card looking authoritative.</p>" +
+    '<ul style="list-style:none;padding:0;margin:0">' +
+    rows.map(function (r) {
+      return '<li style="border:1px dashed var(--border);border-radius:8px;padding:8px 10px;' +
+        'margin-bottom:6px"><b>' + esc_(r.name) + "</b> — " + esc_(r.why.join("; ")) +
+        '<div class="cellSub">Clears when: ' + esc_(r.clears) + "</div></li>";
+    }).join("") + "</ul>";
+}
+
+/**
+ * Little's Law (L = λW) sanity check on the queue: does the measured open
+ * inventory roughly match what the measured clearing rate (λ) and the
+ * measured median lead time (W) would predict? Every figure here is read off
+ * MODEL — there is no hand-typed threshold, so a change to either buckets
+ * feed changes what this prints on the next render, unlike the prototype's
+ * literal "1 person on leave is not credible" line, which would have been
+ * wrong the very next month with nothing to notice.
+ * @returns {{measured:?number, rate:?number, leadWeeks:?number, predicted:?number}}
+ */
+function littlesLawCheck_() {
+  var q = MODEL.queue || {};
+  var asg = q.assigned || {}, un = q.unassigned || {};
+  var unItems = (un.items === null || un.items === undefined) ? 0 : un.items;
+  var measured = (asg.items || 0) + unItems;
+  var rate = MODEL.meta.clearRateMedian || null;
+  var isos = analysisHead_().head.isos;
+  var b = bucketsFor_(MODEL.leadTimeBuckets || [], isos);
+  var leadWeeks = (b.days && b.days.length) ? flowMedian_(b.days) / 7 : null;
+  var predicted = (rate && leadWeeks !== null) ? rate * leadWeeks : null;
+  return { measured: measured, rate: rate, leadWeeks: leadWeeks, predicted: predicted };
+}
+
+/** People-signals reconciliation sentence — the SAME two computed quantities
+    the pulse panel's own reconcile line already proves against each other
+    (signalSummary_'s bucket sum vs filteredPeople_().length), stated again
+    here as a computed fact rather than the prototype's collided
+    `[object Object]` "people" caveat. */
+function signalsReconcileText_(isos) {
+  var s = signalSummary_(isos);
+  if (!s.available) return "People signals are not in this payload.";
+  var pop = filteredPeople_().length;
+  var acct = s.good + s.warn + s.bad + s.small + s.learn + (s.na || 0);
+  return acct === pop
+    ? acct + " of " + pop + " people accounted for across the signal buckets."
+    : acct + " of " + pop + " people accounted for — " + (pop - acct) + " missing from every bucket.";
+}
+
+/** Every registry `deviations` entry, rendered from source (never re-typed) —
+    the standing record of accepted gaps between a published number and the
+    Metrics Dictionary definition. */
+function registryDeviationsHtml_() {
+  var reg = (MODEL.meta.registry || {}).metrics || {};
+  var lines = [];
+  Object.keys(reg).forEach(function (id) {
+    var d = reg[id].deviations || [];
+    if (d.length) lines.push({ name: reg[id].name || id, deviations: d });
+  });
+  if (!lines.length) return '<div class="cellSub">No accepted deviations recorded.</div>';
+  return '<ul style="margin:4px 0 0;padding-left:18px">' + lines.map(function (l) {
+    return "<li><b>" + esc_(l.name) + "</b>: " +
+      l.deviations.map(function (d) { return esc_(d); }).join(" ") + "</li>";
+  }).join("") + "</ul>";
+}
+
+/**
+ * ── §8 DATA TRUST DETAIL ─────────────────────────────────────────────────────
+ * Collapsed <details> — computed, not prose. Little's Law check, the
+ * people-signals reconciliation, and every registry deviation, all read off
+ * the model at render time.
+ */
+function renderTrustDetail_() {
+  var el = document.getElementById("trustDetail");
+  if (!el) return;
+  var A = analysisHead_();
+  var ll = littlesLawCheck_();
+  var llText = (ll.predicted === null || ll.rate === null)
+    ? "Not enough data yet for a Little's Law check — needs a published clearing rate and at " +
+      "least one measurable lead time."
+    : "L = λW: measured open inventory is " + nfDh_(ll.measured) + " items. λ (the " +
+      "clearing rate) is " + nfDh_(Math.round(ll.rate)) + "/wk and W (median lead time) is " +
+      n1Dh_(ll.leadWeeks) + " weeks, predicting ≈" + nfDh_(Math.round(ll.predicted)) +
+      " items — " +
+      (Math.abs(ll.measured - ll.predicted) <= ll.predicted * 0.5
+        ? "broadly consistent with the measured queue."
+        : "a material gap against the measured queue, worth a second look.");
+  el.innerHTML =
+    "<details><summary>Data trust detail " + scopeTag_("org") + "</summary>" +
+    '<div class="cellSub" style="margin-top:8px"><b>Little’s Law check</b> — ' +
+      esc_(llText) + "</div>" +
+    '<div class="cellSub" style="margin-top:8px"><b>People-signals reconciliation</b> — ' +
+      esc_(signalsReconcileText_(A.head.isos)) + "</div>" +
+    '<div class="cellSub" style="margin-top:8px"><b>Registry deviations</b></div>' +
+    registryDeviationsHtml_() +
+    "</details>";
 }
 
 /**
