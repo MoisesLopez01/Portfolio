@@ -472,10 +472,15 @@ carry no person. `openIssues` (the per-person drill-down population) keeps its o
 `readJiraRaw_`. **So the four KPI cards and the signals roster do not move.**
 
 **Legitimately worse, and that is the finding.** `typeHygOpen_` does *not* require an assignee, so
-unassigned rows enter the 🧬 matrix's open half and the gaps queue. Unowned tickets are the
-worst-tagged population on the site, so `assigned`, `due`, `est`, `region` and `team` fill rates all
-**drop on deploy** — on the open half, materially. This is previously-hidden hygiene debt becoming
-visible, not tagging getting worse, and it needs the same treatment the v2.0 conformance pass got:
+unassigned rows enter **the 🧬 matrix's open half**. Unowned tickets are the worst-tagged population on
+the site, so `assigned`, `due`, `est`, `region` and `team` fill rates all **drop on deploy** — on the
+open half, materially. This is previously-hidden hygiene debt becoming visible, not tagging getting
+worse, and it needs the same treatment the v2.0 conformance pass got:
+
+> **⚠️ Correction (final review, 2026-08-06).** This paragraph previously said the **gaps queue** moves
+> too. It does not. `gapsRowsAll_` computes over **resolved work only**, and `hygieneBuckets_` returns
+> early on any unresolved row, so neither the gaps queue nor the data-trust strip that shares its
+> source is reachable from an open-population change.
 
 - a dated note in `README.md` stating that the population widened and the numbers moved because of it;
 - a `METRIC_REGISTRY_.changeLog` entry;
@@ -597,9 +602,28 @@ Order is not flexible.
 
    **MUST move** — if these are unchanged, the assignee clause did not actually come out:
    - ORG hero ≈ 3,279 items / ~11w, against ≈1,440 / ~4.9w on the assigned sub-row
-   - the 🧬 matrix's open half and the gaps queue: `assigned`, `due`, `est`, `region`, `team` all
-     **down**
+   - **the 🧬 matrix's OPEN HALF only**: `assigned`, `due`, `est`, `region`, `team` all **down**
+   - **Backlog health's unassigned count** (Actions tab) jumps from ~0 to ~1,839
    - the unowned ruler segment drills through to real rows
+
+   > **⚠️ Correction (final review, 2026-08-06).** This list previously included **the gaps queue**, and
+   > that was wrong. Every row in `gapsRowsAll_` is computed over **resolved work only** (`h.res`,
+   > `h.resDue`, `h.resAssigned`, `h.resAttr`, `h.resRegion`, `h.resTeam`), and `hygieneBuckets_`
+   > returns early on any unresolved row — so the gaps queue **will not move**, and neither will the
+   > "Can we publish these numbers?" strip that reads the same `gapsRows_`. Only the 🧬 matrix's open
+   > half moves. Because step 7's rule is *"the second list not moving means the export did not
+   > change"*, an operator following the old wording would have flagged a **correct** deploy as failed.
+   >
+   > **Backlog health's count was missing** and must be predicted: it sits on the exact surface the
+   > `attrN` fix just cleared, so an unforecast jump there reads as a catastrophic roster-join
+   > regression.
+
+   **Before pasting `Code.js`, confirm `Jira Arrivals` holds ≈52 rows.** Every hero figure except raw
+   inventory depends on it, and the failure is **silent**: fewer than 5 usable weeks makes
+   `clearRateMedian_` return `null`, which suppresses weeks-to-clear, the queue ruler, the depth and
+   net-flow verdict findings, and the walkback — leaving a masthead that reads *"Nothing on the ranked
+   findings list clears its bar this week."* The first build of this tab drew from the 4-week Exec Q&A
+   window instead of the 52-week deep window and would have shipped exactly that.
 
 A single number in the wrong half is a stop. The first list moving means something reached the shared
 population; the second list *not* moving means the export did not change.
