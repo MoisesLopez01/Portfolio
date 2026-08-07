@@ -6,8 +6,54 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.11.0
+  // VERSION:     3.12.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.12.0 (changelog unlocked on a narrow slice + weekly schedule):
+  //   ⚠️ FETCH_CHANGELOG was a GLOBAL switch: fetchAllIssuesByJql_ expanded
+  //   changelog on every fetch it made, which is exactly why it stayed OFF —
+  //   expanding a full status/field history across the 52-week Done window
+  //   (~12,000 issues) on top of the already-truncation-prone "comment" field
+  //   was correctly judged too expensive. That reasoning didn't change; the
+  //   shape did:
+  //     · fetchAllIssuesByJql_ now takes a third `opts` param — { expandChangelog:
+  //       true } asks Jira to expand changelog for THAT call only. Every
+  //       existing caller is unaffected (opts is optional, defaults undefined).
+  //     · A NEW narrow fetch, fetchChangelogForRecent_(), asks for changelog on
+  //       only the last CONFIGJ.CHANGELOG_WEEKS (13, i.e. one quarter — enough
+  //       for a rework rate and its trend) of resolved work — never the
+  //       52-week deep window, the epic-children expansion, or the open
+  //       backlog fetch. Its results are merged onto the matching rows in
+  //       allIssues BY ISSUE KEY before bucketing, so the merge is invisible
+  //       to bucketByWeek_ / writeRawSheet_ — they just see some issues that
+  //       happen to carry `.changelog` and most that don't.
+  //     · jbReopenedFlag_ no longer gates on CONFIGJ.FETCH_CHANGELOG (a global
+  //       switch can't describe a per-row fact anymore) — it gates on whether
+  //       THIS issue actually carries changelog.histories. That is what makes
+  //       the narrow scoping safe: rows outside the 13-week slice never get
+  //       `.changelog` attached, so they keep exporting "" (not measured),
+  //       never "No" (which would silently deflate Rework Rate — the exact
+  //       failure the tristate exists to prevent). Rows inside the slice now
+  //       actually get "Yes"/"No".
+  //     · CONFIGJ.FETCH_CHANGELOG is repurposed as the master switch for the
+  //       narrow fetch (not for a global expand) and is now ON by default —
+  //       the cost concern it existed to avoid no longer applies once the
+  //       window is 13 weeks instead of 52.
+  //   - NEW column 37 "Due Date Changed" — same tristate as Reopened, derived
+  //     the same way from the same merged changelog. WHY: the dashboard's
+  //     On-Time metric compares Resolution Date against Due Date, and Due
+  //     Date is editable by anyone at any time, including after the work
+  //     shipped — so a re-baselined milestone currently reads as "delivered
+  //     on time". Verified live against servicerocket-coe (QAN-659,
+  //     2026-08-06): a due-date edit's changelog item is {field: "duedate",
+  //     fieldtype: "jira", fieldId: "duedate", from, fromString, to,
+  //     toString} — lowercase, no space, the same idiom as the "status" items
+  //     jbReopenedFlag_ already matched on. Nothing reads this column yet;
+  //     it accumulates data for a later dashboard change.
+  //   - NEW setJiraExportTrigger() installs a weekly time-based trigger on
+  //     runJiraEpicTracker (idempotent — deletes any prior trigger on that
+  //     handler first). Previously this export only ran when a human
+  //     remembered, so every number downstream was as stale as the last
+  //     manual run with no signal saying how stale.
   // CHANGES v3.11.0 (Delivery Health Executive newspaper — spec 2026-08-06):
   //   - fetchOpenIssues_ NO LONGER filters 'assignee is not EMPTY'. Measured live
   //     2026-08-06: 1,839 unassigned open issues vs 1,440 assigned — the clause
@@ -416,15 +462,34 @@
     //   REOPENED     — needs `expand=changelog`, which returns the full history
     //                  of every issue. That is a real cost on an export whose
     //                  pages already shrink-and-retry because `comment` returns
-    //                  ADF trees. OFF by default; turn it on once a real run has
-    //                  been timed (user decision 2026-08-03).
+    //                  ADF trees — which is why it is NOT expanded on the
+    //                  52-week deep window, the epic-children expansion, or the
+    //                  open-backlog fetch. See CHANGELOG_WEEKS below.
     //
     // ⚠️ Confirm the actual link-type name in your Jira before trusting the
     // column — `getIssueLinkTypes` lists them. If no link of this name exists,
     // the column exports blank and the dashboard's Rework Rate reports on
     // reopens alone (and says so on the card).
     REWORK_LINK_RE: /rework|defect|bug\s*fix/i,
-    FETCH_CHANGELOG: false,
+
+    // ── CHANGELOG — narrow slice only (v3.12.0) ──────────────────
+    // Master switch for fetchChangelogForRecent_() (runJiraEpicTracker), a
+    // SEPARATE, NARROW fetch that asks Jira for changelog on only the last
+    // CHANGELOG_WEEKS of resolved work and merges it onto the matching rows
+    // in allIssues BY ISSUE KEY. It is no longer a global "expand everything"
+    // switch — fetchAllIssuesByJql_'s 52-week Done call, the epic-children
+    // expansion, and the open-backlog call never pass expandChangelog, no
+    // matter what this flag is set to. Setting this to false disables the
+    // narrow fetch entirely: every row's Reopened / Due Date Changed goes
+    // back to "" (not measured), which is always a safe fallback — the
+    // tristate means "nobody looked" is never confused with "no rework".
+    FETCH_CHANGELOG: true,
+    // How far back (weeks) the narrow changelog fetch reaches, independent of
+    // RAW_HISTORY_WEEKS (52). One quarter is enough for a rework rate AND its
+    // trend, at a fraction of the cost of expanding the full deep window —
+    // this is the number that makes "unlock changelog" different from
+    // "flip FETCH_CHANGELOG and pay for it on 12,000 issues".
+    CHANGELOG_WEEKS: 13,
     // A reopen = a changelog transition where statusCategory left "Done" (or the
     // resolution was cleared) AFTER the issue had reached Done at least once.
     REOPEN_FROM_DONE_RE: /^(done|closed|resolved|complete)/i,
@@ -1017,9 +1082,18 @@
    * @param {string[]} [fields] field list override; defaults to CONFIGJ.JIRA_FIELDS.
    *                            Pass JIRA_FIELDS_NO_COMMENTS for queries whose rows
    *                            nobody reads comments off.
+   * @param {Object}   [opts]   per-call options. opts.expandChangelog=true asks
+   *                            Jira to expand changelog for THIS call only — it
+   *                            no longer reads CONFIGJ.FETCH_CHANGELOG itself, so
+   *                            a caller must opt in explicitly. Every existing
+   *                            caller omits opts and is unaffected.
+   *                            ⚠️ Only fetchChangelogForRecent_() should pass
+   *                            this — the 52-week deep window, the epic-children
+   *                            expansion, and the open-backlog fetch must not.
    */
-  function fetchAllIssuesByJql_(jql, fields) {
+  function fetchAllIssuesByJql_(jql, fields, opts) {
     var fieldList = fields || CONFIGJ.JIRA_FIELDS;
+    var expandChangelog = !!(opts && opts.expandChangelog);
     var headers = buildHeaders_();
     var url     = CONFIGJ.JIRA_BASE_URL + "/rest/api/3/search/jql";
     var all     = [];
@@ -1038,12 +1112,15 @@
           maxResults: maxResults,
           fields:     fieldList,
         };
-        // Reopen detection needs each issue's status history, which only comes
-        // back under expand=changelog. OFF by default: the changelog is a full
-        // history per issue on an export whose pages already shrink-and-retry
-        // because `comment` returns ADF trees, so this is a measured decision,
-        // not a default. See CONFIGJ.FETCH_CHANGELOG.
-        if (CONFIGJ.FETCH_CHANGELOG) body.expand = ["changelog"];
+        // Reopen / Due-Date-Changed detection needs each issue's changelog,
+        // which only comes back under expand=changelog — a real cost per issue
+        // on an export whose pages already shrink-and-retry because `comment`
+        // returns ADF trees. PER-CALL, not global (v3.12.0): only a caller that
+        // explicitly passes opts.expandChangelog gets it, so the 52-week deep
+        // window, the epic-children expansion, and the open-backlog fetch stay
+        // cheap no matter what CONFIGJ.FETCH_CHANGELOG is set to. See
+        // fetchChangelogForRecent_(), the one caller that opts in.
+        if (expandChangelog) body.expand = ["changelog"];
         if (nextPageToken) body.nextPageToken = nextPageToken;
 
         var resp = UrlFetchApp.fetch(url, {
@@ -1148,6 +1225,50 @@
     Logger.log("🧹 Noise filter: dropped " + (scoped.length - clean.length) +
                " of " + scoped.length + " issues (Canceled/Expired status or non-delivery resolution).");
     return clean;
+  }
+
+  /**
+   * Narrow secondary fetch (v3.12.0) — changelog for RECENTLY-RESOLVED work
+   * only, never the full deep window. This is the one caller anywhere in the
+   * file that passes opts.expandChangelog to fetchAllIssuesByJql_.
+   *
+   * Same base population as fetchJiraIssues_ (issuetype/DONE_JQL/project/
+   * summary clauses), just bounded to CONFIGJ.CHANGELOG_WEEKS instead of the
+   * deep RAW_HISTORY_WEEKS window — a subset of the same Done population, so
+   * every key this returns is expected to already exist in allIssues. The
+   * caller (runJiraEpicTracker) merges .changelog onto those matching rows BY
+   * KEY; it never inserts new rows. No comment field: nothing here reads
+   * comment bodies, and it would only add truncation risk to a fetch that is
+   * already paying for changelog per issue.
+   *
+   * ⚠️ Rows this fetch DOESN'T cover — Done issues older than CHANGELOG_WEEKS,
+   * every epic-children row, every open-backlog row — are exactly the rows
+   * that must keep exporting "" for Reopened / Due Date Changed. That
+   * guarantee lives in the caller (nothing here writes rows), and in
+   * jbReopenedFlag_ / jbDueDateChangedFlag_ gating on `.changelog` presence
+   * rather than on a global flag.
+   *
+   * @param {string} sinceStr ISO date — start of the CHANGELOG_WEEKS window.
+   * @returns {Object[]} issues carrying `.changelog.histories`, scoped to
+   *   enabled spaces with noise dropped (same filters as fetchJiraIssues_).
+   */
+  function fetchChangelogForRecent_(sinceStr) {
+    var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
+    var jql = [
+      'issuetype in (' + types + ')',
+      CONFIGJ.DONE_JQL,
+      'project NOT IN (TEMPLATE)',
+      'resolutiondate >= "' + sinceStr + '"',
+      'summary !~ "to delete"'
+    ].join(" AND ") + ' ORDER BY resolutiondate DESC';
+    Logger.log("📋 Changelog (narrow, " + CONFIGJ.CHANGELOG_WEEKS + "w) JQL: " + jql);
+
+    var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS, { expandChangelog: true });
+    var scoped = all.filter(function(i) {
+      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+    });
+    Logger.log("   Changelog fetched for " + scoped.length + " recently-resolved issues.");
+    return scoped;
   }
 
   /**
@@ -1787,6 +1908,15 @@
     // deviation from the APPEND-ONLY rule above, and it is a deletion from the
     // TAIL, not an insertion into the middle.
     /* 36 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
+    // ── Due-date integrity (v3.12.0) ──
+    // APPEND-ONLY, same tristate contract as Reopened (35): "Yes"/"No" when
+    // changelog was fetched for this row (the narrow CHANGELOG_WEEKS slice —
+    // see fetchChangelogForRecent_), "" when it wasn't. Exists because the
+    // On-Time metric compares Resolution Date against Due Date, and Due Date
+    // is editable by anyone at any time — including after the issue shipped —
+    // so a re-baselined milestone currently reads as delivered on time with
+    // no way to tell. See jbDueDateChangedFlag_.
+    /* 37 */ "Due Date Changed",
   ];
 
   function issueToRow_(issue, weekLabel, spaceKey, tempoMap, epicTempoRollup) {
@@ -1893,6 +2023,8 @@
       jbReopenedFlag_(issue),
       // ── Column 36 (delivery phase, v3.7.0) ──
       workstream,
+      // ── Column 37 (due-date integrity, v3.12.0) ──
+      jbDueDateChangedFlag_(issue),
     ];
   }
 
@@ -1926,21 +2058,69 @@
    * issue as "No" would silently deflate the Rework Rate — the exact failure the
    * dashboard's coverage gates exist to prevent.
    *
+   * v3.12.0: gates on whether THIS issue carries changelog.histories, not on
+   * CONFIGJ.FETCH_CHANGELOG. The flag used to be global (every fetch either
+   * expanded changelog or none did), so checking it here was equivalent to
+   * checking the data. Now changelog is fetched narrowly (see
+   * fetchChangelogForRecent_ / runJiraEpicTracker's merge-by-key) and only
+   * SOME issues carry it — the presence check is what makes the narrow scope
+   * safe: an issue outside the fetched window has no `.changelog` and falls
+   * through to the `!histories` branch below, same as before FETCH_CHANGELOG
+   * existed. CONFIGJ.FETCH_CHANGELOG still matters — it's the switch that
+   * decides whether the narrow fetch runs at all — it just isn't checked here.
+   *
    * A reopen = any transition whose FROM value looks Done-ish
    * (CONFIGJ.REOPEN_FROM_DONE_RE) — i.e. the issue had reached Done and then
    * left it. Counted at most once per issue: the dictionary asks whether work
    * required rework, not how many times it bounced.
    */
   function jbReopenedFlag_(issue) {
-    if (!CONFIGJ.FETCH_CHANGELOG) return "";
     var histories = dig_(issue, "changelog.histories");
-    if (!histories) return "";            // expand didn't come back — not measured
+    if (!histories) return "";            // changelog not fetched for this row — not measured
     for (var i = 0; i < histories.length; i++) {
       var items = histories[i].items || [];
       for (var j = 0; j < items.length; j++) {
         var it = items[j];
         if (String(it.field || "").toLowerCase() !== "status") continue;
         if (CONFIGJ.REOPEN_FROM_DONE_RE.test(String(it.fromString || "").trim())) return "Yes";
+      }
+    }
+    return "No";
+  }
+
+  /**
+   * "Yes" / "No" when the changelog was fetched, "" when it wasn't — same
+   * tristate as jbReopenedFlag_, for the same reason: a consumer must be able
+   * to tell "the due date was never touched" from "nobody looked". Reporting
+   * an unmeasured row as "No" would silently understate how often
+   * commitments move.
+   *
+   * WHY THIS COLUMN EXISTS: the dashboard's On-Time metric compares
+   * Resolution Date against Due Date, but Due Date is a field anyone can edit
+   * at any time — including after the issue is done. An issue re-baselined
+   * the day before it shipped currently reads as "delivered on time", even
+   * though the commitment it's being measured against was moved to meet it.
+   * That's the biggest known integrity hole in a headline metric, and the
+   * changelog is the only record of what the original commitment actually
+   * was.
+   *
+   * Field name verified LIVE against servicerocket-coe (2026-08-06, issue
+   * QAN-659, via expand=changelog): a due-date edit's history item is
+   * {field: "duedate", fieldtype: "jira", fieldId: "duedate", from,
+   * fromString, to, toString} — lowercase, no space, the same idiom
+   * jbReopenedFlag_ already matches on for "status".
+   *
+   * "Yes" on ANY due-date change, not just the most recent one before
+   * resolution: the question is whether the commitment moved at all, not how
+   * many times or when.
+   */
+  function jbDueDateChangedFlag_(issue) {
+    var histories = dig_(issue, "changelog.histories");
+    if (!histories) return "";            // changelog not fetched for this row — not measured
+    for (var i = 0; i < histories.length; i++) {
+      var items = histories[i].items || [];
+      for (var j = 0; j < items.length; j++) {
+        if (String(items[j].field || "").toLowerCase() === "duedate") return "Yes";
       }
     }
     return "No";
@@ -2747,6 +2927,36 @@
       // windows. This is why deeper history costs pages, not queries.
       var allIssues = fetchJiraIssues_(rawWeeks[0].fromStr);
 
+      // ── Narrow changelog merge (v3.12.0) ──────────────────────
+      // Reopened / Due Date Changed both need changelog, which is a real cost
+      // per issue — so instead of expanding it on the broad fetch above (or on
+      // the epic-children expansion / open-backlog fetch below), a SEPARATE
+      // narrow fetch asks for changelog on only the last CHANGELOG_WEEKS of
+      // resolved work and merges it onto the matching rows in allIssues BY
+      // KEY. Everything that fetch doesn't cover — older Done rows, every
+      // epic-child row, every open-backlog row — never receives `.changelog`,
+      // so jbReopenedFlag_ / jbDueDateChangedFlag_ correctly keep writing ""
+      // for them (nobody looked), never "No" (which would silently deflate
+      // Rework Rate — the exact failure the tristate exists to prevent).
+      if (CONFIGJ.FETCH_CHANGELOG) {
+        var changelogWeeks = getLastNWeeks_(
+          Math.min(CONFIGJ.CHANGELOG_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
+        var changelogSince = changelogWeeks[0].fromStr;
+        Logger.log("🕰️ Fetching changelog for issues resolved since " + changelogSince
+          + " (" + CONFIGJ.CHANGELOG_WEEKS + "-week window)...");
+        var changelogIssues = fetchChangelogForRecent_(changelogSince);
+        var changelogByKey = {};
+        changelogIssues.forEach(function(i) { changelogByKey[i.key] = i.changelog; });
+        var changelogMerged = 0;
+        allIssues.forEach(function(i) {
+          if (changelogByKey[i.key]) { i.changelog = changelogByKey[i.key]; changelogMerged++; }
+        });
+        Logger.log("   Changelog merged onto " + changelogMerged + " of " + allIssues.length + " Jira Raw rows.");
+      } else {
+        Logger.log("ℹ️ Changelog fetch disabled (CONFIGJ.FETCH_CHANGELOG = false) — "
+          + "Reopened / Due Date Changed will export \"\" for every row.");
+      }
+
       // Active Engagement fetch (Phase 2)
       var activeWIP = fetchActiveWIP_();
       Logger.log("🛠️ Active WIP issues fetched: " + activeWIP.length);
@@ -3328,4 +3538,43 @@
   // 6. Run testJiraConnection()   → should return sample issues with keys + summaries.
   //
   // 7. Run runJiraEpicTracker()   → writes "Jira Raw" + "Exec Q&A".
+  //
+  // 8. Run setJiraExportTrigger() once → installs the weekly schedule (below),
+  //    so step 7 stops being something a human has to remember.
   // ============================================================
+
+  // ============================================================
+  // ⏰  SCHEDULED EXPORT — weekly time-based trigger (v3.12.0)
+  // ============================================================
+  // Nothing called runJiraEpicTracker() on its own before this: every number
+  // downstream was only as fresh as the last manual run, with no signal
+  // anywhere saying how stale that was. Weekly matches the dashboards' own
+  // analysis period, and this export fully REWRITES its tabs on every run
+  // (writeRawSheet_ clearContents()s "Jira Raw" before rewriting it, same for
+  // Jira Bugs / Jira Arrivals), so a weekly cadence is the right balance
+  // between freshness and Jira/Tempo API load — anything tighter re-fetches
+  // the same 52-week window for marginal new signal.
+  //
+  // ⚠️ An installable trigger runs as WHOEVER INSTALLS IT — Apps Script has
+  // no service-account concept. Run setJiraExportTrigger() from an account
+  // that has BOTH a valid Jira API token (setAPI__Jira()) AND edit access to
+  // this spreadsheet, or the weekly run fails silently in the trigger log
+  // with nobody watching it.
+
+  /**
+   * Installs the weekly Jira export trigger. Idempotent — deletes any
+   * existing trigger on runJiraEpicTracker first, so running this twice (or
+   * again after changing the day/hour below) never leaves two triggers
+   * firing the same export in the same week.
+   */
+  function setJiraExportTrigger() {
+    ScriptApp.getProjectTriggers()
+      .filter(function (t) { return t.getHandlerFunction() === "runJiraEpicTracker"; })
+      .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+    ScriptApp.newTrigger("runJiraEpicTracker").timeBased()
+      .onWeekDay(ScriptApp.WeekDay.MONDAY)
+      .atHour(3)
+      .create();
+    Logger.log("✅ Weekly Jira export trigger installed — every Monday ~03:00"
+      + " (installing account's script timezone).");
+  }
