@@ -80,6 +80,58 @@ The numbers are real; *"by Region and Team"* does not yet mean what the Dictiona
 The Executive data-trust strip and the Actions gaps queue both track and trend the gap, with Gon
 named against it.
 
+## Open-backlog population widened — hygiene numbers move by design (2026-08-06)
+
+`Jira Backlog.js` v3.11.0 drops `'assignee is not EMPTY'` from `fetchOpenIssues_()`
+(spec [`2026-08-06-dh-executive-newspaper-design.md`](../specs/2026-08-06-dh-executive-newspaper-design.md),
+decision D7). Until this release the open-backlog export silently excluded every unassigned issue
+— not filtered by the dashboard, **never exported at all** — so no amount of dashboard-side care
+could have counted it. **Measured live against `servicerocket-coe`, 2026-08-06:**
+
+| Measure | Count |
+|---|---|
+| Open **assigned** (what the dashboard saw before this release) | **1,440** |
+| Open **unassigned** (invisible until now) | **1,839** |
+| **True open inventory** | **3,279** — 56% unowned |
+| Weeks-to-clear, assigned-only | **4.9w** — reads as essentially at target |
+| Weeks-to-clear, true queue | **11.0w** — 2.25× the assigned-only reading |
+
+The 1,440 independently matches this README's own separately-measured **1,444** assigned open
+issues for the same date (see "Logged time is only expected on work that has STARTED" under
+Signals roster, below) — two different probes landing within rounding of each other calibrates
+both rather than disagreeing.
+
+**Provably unaffected — verified by reading each guard, not assumed:**
+
+- `onTimeBuckets_`, `throughputBuckets_`, `forecastBuckets_`, `leadTimeBuckets_`, `reworkBuckets_`
+  all skip unresolved records outright (`if (!it.resolved …) return;`), and this release adds only
+  *open* rows. **The four KPI cards do not move.**
+- `personHygieneBuckets_` is person-keyed, and an unassigned row resolves to no person. **The
+  signals roster does not move.**
+- `openIssues` (the per-person backlog drill-down population, inside `readJiraRaw_`) keeps its own
+  assignee filter — unaffected.
+
+**Legitimately worse, and that is the finding.** `typeHygOpen_` (the 🧬 by-type matrix's open-half
+gate) does **not** require an assignee, so unassigned rows now enter it and the gaps queue. Unowned
+tickets are the worst-tagged population on the site, so the open half's `assigned`, `due`, `est`,
+`region` and `team` fill rates **drop on deploy**, materially. This is previously-hidden hygiene
+debt becoming visible, not tagging getting worse — the fix for a falling number here is tagging the
+newly-visible tickets, not reverting the export.
+
+**Roster join stays retired at 100%, and must.** `attr` — the roster-join check retired from the
+gaps queue, the data-trust strip and the 🧬 matrix earlier the same day (see "A solved check
+retires itself" below) — gained its **own** denominator, `attrN`, in this release: it is measured
+only over records that *have* an assignee, so an absent assignee is "nothing to grade," never a
+failed join. Without that fix, this widening would have dropped the just-retired check to roughly
+`1,440 / 3,279` ≈ 44% on all three surfaces at once — a false failure resurrecting a check the org
+already solved, on the strength of a number that was never true.
+
+**If the drop reads as unacceptable rather than as the finding it is, the lever is
+`OPEN_BACKLOG_UPDATED_WEEKS`** (the 26-week export bound on the open-backlog fetch — narrowing it
+excludes more of the unassigned tail as abandoned rather than owed) — **not re-hiding the work** by
+restoring the assignee clause. This is an open decision (spec §5, O4) owned by Delivery leadership,
+not a bug for the next reader to silently patch.
+
 ## Navigation — one view per question (2026-08-05)
 
 Everything used to stack into a single scroll, then fanned out into six tabs (2026-08-03) — and an
@@ -449,7 +501,7 @@ reader to skim past the fields that do vary. So it is **hidden, not deleted**:
 | `Security.js` | Email allowlist (admin / viewer / open-access) — `SEC_DH`, `checkDeliveryAccess()`, `getDeliveryAccessSettings()`, `saveDeliveryAccessSettings()`, `buildAccessDeniedPage_()`. Inherited from the demand dashboard's `Security.js` (itself inherited from `PS Security.js`). |
 | `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Three tabs from the `VIEWS` array (Executive / Actions / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + roster CSV export. |
 | `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the two cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_` against the server's. Not pasted into the GAS project. |
-| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (488 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue or the signals pulse — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, and the three-tab consolidation invariants (exactly `exec,actions,access`, no live render into a retired pane). Not pasted into the GAS project. |
+| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` (667 checks). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue or the signals pulse — plus cascading option lists, the operating-rate maths, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, and the three-tab consolidation invariants (exactly `exec,actions,access`, no live render into a retired pane). Not pasted into the GAS project. |
 
 ## Data sources
 

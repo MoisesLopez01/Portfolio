@@ -656,6 +656,18 @@ var METRIC_REGISTRY_ = {
     // PRESENTATION change only — nothing recomputes, nothing stops being
     // measured, so `affects` is empty. The retirement is evaluated from the data
     // on every render, which is why there is no config flag to find later.
+    // POPULATION-WIDENING change, not a definition change: no metric in
+    // `metrics` is redefined, and queueCover/netFlow/inventory are NEW metrics
+    // shipping in the same release (same rule as the 3.0 Flow entry — a metric
+    // with no prior value cannot be marked as having moved). `affects` is empty
+    // on purpose even though the 🧬 matrix's open half and the gaps queue DO
+    // drop on deploy, deliberately — that is a population getting bigger, not a
+    // trend line stepping on a changed formula, so the `✎ definition changed`
+    // marker is the wrong tool for it. This entry is the dated note instead.
+    { version: "3.2", date: "2026-08-06", author: "Alex López",
+      affects: [],
+      change: "Open-backlog population widened to include unassigned work: `Jira Backlog.js` v3.11.0 drops 'assignee is not EMPTY' from `fetchOpenIssues_()` (spec 2026-08-06-dh-executive-newspaper-design.md, D7). Measured live against servicerocket-coe (2026-08-06): 1,839 unassigned open issues against 1,440 assigned — the true open inventory is 3,279, 56% of it unowned. Weeks-to-clear reads 4.9w on the assigned-only queue this dashboard used to see and 11.0w on the true queue. `attr` (the roster-join check) gained its own denominator `attrN` in the same release (D12) — measured only over records that HAVE an assignee, so an absent assignee is 'nothing to grade' rather than a failed join. Without that fix this widening would have dropped the just-retired, solved Roster-join check to roughly 1,440/3,279 ≈ 44% on all three surfaces it was just removed from.",
+      rationale: "Every resolved-work bucket (`onTimeBuckets_`, `throughputBuckets_`, `forecastBuckets_`, `leadTimeBuckets_`, `reworkBuckets_`) skips unresolved records, and `personHygieneBuckets_` is person-keyed, so the four KPI cards and the signals roster do not move. `typeHygOpen_` has no assignee requirement, so unassigned rows enter the 🧬 matrix's open half and the gaps queue: `assigned`, `due`, `est`, `region` and `team` fill rates drop there, materially — unowned tickets are the worst-tagged population on the site, so this is previously-hidden hygiene debt becoming visible, not tagging getting worse. Without this note the next reader sees those fill rates fall on deploy and 'fixes' the regression by putting the assignee clause back, which is exactly the 56%-of-the-queue blind spot this release exists to remove. If the drop is judged unacceptable, the lever is `OPEN_BACKLOG_UPDATED_WEEKS` (open decision O4, owned by Delivery leadership) — never re-hiding the work." },
     { version: "3.2", date: "2026-08-06", author: "Alex López",
       affects: [],
       change: "'…and that assignee resolves to a roster person' is retired from the gaps queue, the Executive data-trust strip and the 🧬 matrix's → roster column while it measures 100%. It is still computed on every rebuild and returns to all three surfaces automatically — no deploy — if a single record stops joining.",
