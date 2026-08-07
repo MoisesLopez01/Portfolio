@@ -2064,35 +2064,48 @@ function pctDomain_(vals, refs) {
  *          target:?Object, std:?Object, cap:?number, expanded:?boolean,
  *          onExpand:?string}} o
  */
+/**
+ * Which rows survive the HBAR_MAX_ROWS_ cap, and which were cut — factored out
+ * of hbarChart_ (Task 15) so the §6 metric grid and the bullet chart beneath
+ * it cap the SAME rows from the SAME ranking. Two independently-computed caps
+ * over one array cannot disagree by construction; two hand-written copies of
+ * this logic could, silently, the day only one of them is edited.
+ *
+ * Row cap (user report 2026-08-03: the PM breakdown rendered 52 bars and the
+ * chart ran several screens deep). A comparison with 52 bars is not a
+ * comparison, it is a list — nobody reads position 40. Rows arrive sorted
+ * worst-first, so the head of the list is the part that carries the decision
+ * (P2, management by exception); the tail is available by expanding, and the
+ * count of what was cut is stated rather than the chart quietly ending early.
+ *
+ * Which rows survive is chosen by NEED, not by list position: the ones
+ * furthest below target/reference. Taking the first N of a best-first list
+ * would have shown the healthiest categories and hidden every problem — the
+ * exact opposite of the question this chart exists to answer.
+ * @returns {{rows:Array, hidden:number, hiddenNoData:number}}
+ */
+function capRows_(all, expanded, cap) {
+  cap = expanded ? Infinity : (cap || HBAR_MAX_ROWS_);
+  if (all.length <= cap) return { rows: all, hidden: 0, hiddenNoData: 0 };
+  var ranked = all.filter(function (r) { return r.value !== null; })
+                  .sort(function (a, b) { return a.value - b.value; })
+                  .slice(0, cap);
+  var keep = {};
+  ranked.forEach(function (r) { keep[r.key] = 1; });
+  var rows = all.filter(function (r) { return keep[r.key]; });
+  var hiddenNoData = all.filter(function (r) {
+    return r.value === null && !keep[r.key];
+  }).length;
+  return { rows: rows, hidden: all.length - rows.length, hiddenNoData: hiddenNoData };
+}
+
 function hbarChart_(o) {
   var all = o.rows || [];
   if (!all.length) return '<div class="emptyState">Nothing to compare in this slice.</div>';
-  // Row cap (user report 2026-08-03: the PM breakdown rendered 52 bars and the
-  // chart ran several screens deep). A comparison with 52 bars is not a
-  // comparison, it is a list — nobody reads position 40. Rows arrive sorted
-  // worst-first, so the head of the list is the part that carries the decision
-  // (P2, management by exception); the tail is available in the Values table
-  // and by filtering, and the count of what was cut is stated rather than the
-  // chart quietly ending early.
-  // Which rows survive the cap is chosen by NEED, not by list position: the ones
-  // furthest below target. Taking the first N of a best-first list would have
-  // shown the healthiest categories and hidden every problem — the exact
-  // opposite of the question this chart exists to answer. Display order is left
-  // as it arrives, so the longest bar still sits on top.
-  var cap = o.expanded ? Infinity : (o.cap || HBAR_MAX_ROWS_);
-  var rows = all, hidden = 0, hiddenNoData = 0;
-  if (all.length > cap) {
-    var ranked = all.filter(function (r) { return r.value !== null; })
-                    .sort(function (a, b) { return a.value - b.value; })
-                    .slice(0, cap);
-    var keep = {};
-    ranked.forEach(function (r) { keep[r.key] = 1; });
-    rows = all.filter(function (r) { return keep[r.key]; });
-    hidden = all.length - rows.length;
-    hiddenNoData = all.filter(function (r) {
-      return r.value === null && !keep[r.key];
-    }).length;
-  }
+  // Display order is left as it arrives, so the longest bar still sits on top —
+  // capRows_ only decides WHICH rows survive, never their order.
+  var sel = capRows_(all, o.expanded, o.cap);
+  var rows = sel.rows, hidden = sel.hidden, hiddenNoData = sel.hiddenNoData;
   var W = 760, RH = 30, TOP = 26, B = 22;
   var H = TOP + rows.length * RH + B;
   var L = 176, R = 62;                          // L = category gutter, R = value labels
@@ -3891,6 +3904,65 @@ var METRICS_ = {
     },
     n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).nEst; },
   },
+  // ── Task 15 grid columns (spec 2026-08-06 §6) ──────────────────────────────
+  // Both carry targetKey: null on purpose (D11): nobody owns a per-head or a
+  // weeks-to-clear bar, and an unratified target on the C-suite grid reads as
+  // agreed the moment it is on screen. Labels/axis read from reg_() rather
+  // than a literal string — the registry is the one place the "no target,
+  // norm-graded only" language already lives (both metrics' `deviations`).
+  clearedPerHead: {
+    id: "clearedPerHead", targetKey: null, unit: "items",
+    label: function () { return reg_("clearedPerHead").name || "Cleared per Person"; },
+    axis: function () {
+      return reg_("clearedPerHead").formula || "items resolved ÷ people in the group ÷ weeks in period";
+    },
+    available: function () { return !!MODEL.meta.jiraAvailable; },
+    // Items cleared ÷ DISTINCT headcount ÷ weeks in the window — the fix for
+    // the prototype's flat-target grading, which ranked a group by size: 8
+    // people clearing 12 items scored a miss while 63 clearing 61 scored a
+    // pass. Per head, per week, the smaller group is not automatically worse.
+    value: function (isos) {
+      if (!isos || !isos.length) return null;
+      var head = filteredPeople_().filter(function (p) { return existsIn_(p, isos); }).length;
+      if (head <= 0) return null;
+      var b = bucketsFor_(MODEL.throughputBuckets || [], isos);
+      return b.nAll / head / isos.length;
+    },
+    // coverageGate is 0 in the registry — this is a ratio of a count to a
+    // headcount, never a per-record attribute gate (same reasoning as
+    // planCov's coverage below). metricConfidence_ still needs a non-null
+    // number to tell "measured" from "nothing in scope" apart.
+    coverage: function (isos) {
+      var head = filteredPeople_().filter(function (p) { return existsIn_(p, isos); }).length;
+      return head > 0 ? 1 : null;
+    },
+    n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).nAll; },
+  },
+  queueCover: {
+    id: "queueCover", targetKey: null, unit: "weeks",
+    label: function () { return reg_("queueCover").name || "Weeks to Clear"; },
+    axis: function () {
+      return reg_("queueCover").formula || "open assigned inventory ÷ median weekly clearing rate";
+    },
+    available: function () { return !!MODEL.meta.jiraAvailable; },
+    // Snapshot ÷ trailing rate (grain: "snapshot ÷ trailing rate", same as the
+    // backlog band's assigned sub-row) — flowOpenFor_ and assignedClearRate_
+    // both read passesFilters_ with no skip, so SCOPE_NAMES_ (scopedMetric_)
+    // already narrows both to one comparison bar's population; isos plays no
+    // part, same as the ASSIGNED tile in the backlog band (D3: fixed to its
+    // own trailing-weeks basis, not the period picker).
+    value: function () {
+      var open = flowOpenFor_();
+      var rate = assignedClearRate_();
+      return rate ? ((open.wipN || 0) + (open.todoN || 0)) / rate : null;
+    },
+    coverage: function () { return assignedClearRate_() ? 1 : null; },
+    // n() is deliberately NOT group-specific: the floor this feeds is "is
+    // there enough CALENDAR history for a trailing rate at all", the same
+    // question assignedClearRate_'s own CLEAR_RATE_MIN_N_ guard asks, and that
+    // question has one answer regardless of which bar is asking it.
+    n: function () { return trailingCompleteWeeks_(MODEL.meta.clearRateWeeks || 8).length; },
+  },
   // The only metric a window that has not happened yet can be compared on
   // (2026-08-06). targetKey null on purpose: no planned-coverage bar has been
   // agreed, so the bars carry no RAG and no reference line — the comparison is
@@ -3912,7 +3984,8 @@ var METRICS_ = {
     Backlog/WIP (snapshot — no period grain) and Bug Count (population-wide —
     no person join to dimension by) are NOT comparable metrics; see the tile
     scope tags. Deliberate narrowing of spec §4.2, flagged at review. */
-var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality", "leadTime", "throughput", "planCov"];
+var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality", "leadTime", "throughput",
+                     "clearedPerHead", "queueCover", "planCov"];
 function liveMetrics_() {
   // A PLANNING window and a completed one are disjoint metric sets, not a
   // superset and a subset: everything except planCov needs work that already
@@ -3926,6 +3999,24 @@ function liveMetrics_() {
     if (planning !== (k === "planCov")) return false;
     return METRICS_[k].available();
   });
+}
+
+/**
+ * The five columns of the §6 comparison grid (spec 2026-08-06): the four
+ * classic rates people already read the bullet chart on, plus the two D11
+ * additions. Deliberately narrower than METRIC_ORDER_ — Lead Time and
+ * Throughput stay reachable as bullet-chart-only metric chips (they already
+ * had their own compact tiles in §4, Task 10) rather than doubling up as
+ * grid columns too.
+ *
+ * Filtered through liveMetrics_() so the grid inherits its planning-phase
+ * collapse for free: on a forward window liveMetrics_() already returns only
+ * "planCov", so gridMetrics_() does too and the grid re-points itself with no
+ * separate switch to keep in sync.
+ */
+var GRID_METRIC_IDS_ = ["onTime", "forecast", "util", "clearedPerHead", "queueCover", "planCov"];
+function gridMetrics_() {
+  return liveMetrics_().filter(function (id) { return GRID_METRIC_IDS_.indexOf(id) !== -1; });
 }
 
 /** The metric the Trends view is on, falling back if Jira went away. */
@@ -4038,6 +4129,54 @@ function setCompare_(dim) {
   renderCompare_();
 }
 
+/**
+ * ── §6 THE GRID — one cell of the metric × dimension table ─────────────────
+ * Never a bare, uncoloured number that looks graded (brief D4): every branch
+ * states WHY there is no colour, so "no verdict" reads differently from
+ * "nothing here" and differently again from "not big enough to grade".
+ *
+ * Priority, checked in this order because each is a stronger reason than the
+ * one below it: no data at all > too few people to grade > no target rule for
+ * this metric at all (D11) > graded against a target.
+ * @param {{value:?number, n:number, target:?Object, std:?Object, unit:?string}} o
+ */
+function gridCellHtml_(o) {
+  var lbl = o.unit ? function (v) { return fmtFlowVal_(v, o.unit); } : function (v) { return Math.round(v) + "%"; };
+  if (o.value === null || o.value === undefined) {
+    return '<td class="tnum gridCell" title="No measurable data in this slice.">—</td>';
+  }
+  var txt = lbl(o.value);
+  // Sub-10 groups keep their value and lose ONLY the colour (§2.1) — the grey
+  // dot sits BESIDE the number, never in place of it, checked before target
+  // grading so a small group is never coloured by accident.
+  if (o.n !== null && o.n !== undefined && o.n < 10) {
+    return '<td class="tnum gridCell" title="Fewer than 10 people — the value is real, it is ' +
+      'just never graded. A region moves on one person, and a red badge on six people reads ' +
+      'as a systemic failure that is not there.">' +
+      '<span class="sigDot sigSmall">●</span> ' + txt +
+      ' <span class="cellSub">ungraded (small n)</span></td>';
+  }
+  if (!o.target) {
+    // D11: no target has been agreed, so the cell never colours. When a norm
+    // publishes, the operating band is what "graded" means for this column —
+    // drawn on the bullet chart below, not as a per-cell verdict here. When it
+    // does NOT publish either, the cell says so explicitly, so it can never be
+    // mistaken for a plain number that simply wasn't coloured.
+    if (o.std && o.std.ok) {
+      return '<td class="tnum gridCell" title="No target has been agreed for this metric. ' +
+        'Graded against the operating band (' + lbl(o.std.lo) + '–' + lbl(o.std.hi) +
+        ') on the chart below.">' + txt + "</td>";
+    }
+    return '<td class="tnum gridCell" title="No target has been agreed, and there is not yet ' +
+      'enough history for an operating norm either.">' + txt +
+      ' <span class="cellSub">no reference</span></td>';
+  }
+  var rag = ragOf_(o.value, o.target);
+  var cls = { g: "sigGood", a: "sigWarn", r: "sigBad" }[rag] || "";
+  return '<td class="tnum gridCell"><span class="sigDot ' + cls + '">' + RAG_MARK[rag] +
+    "</span> " + txt + "</td>";
+}
+
 /** Click-through from a bar to the matching filter (toggles off if re-clicked). */
 
 function renderCompare_() {
@@ -4088,7 +4227,13 @@ function renderCompare_() {
     var realN = members.filter(function (p) {
       return !p.attribOnly && existsIn_(p, head.isos);
     }).length;
-    return { key: val, label: val, value: v, n: realN };
+    // §6 THE GRID (Task 15) — every grid column's value for THIS same bar,
+    // computed alongside the active metric's so the grid and the bullet chart
+    // below it describe one row, not two independently-built lists that could
+    // silently disagree on membership.
+    var cells = {};
+    gridMetrics_().forEach(function (id) { cells[id] = scopedMetric_(METRICS_[id], head.isos, names); });
+    return { key: val, label: val, value: v, n: realN, cells: cells };
   }).filter(function (r) { return r.n > 0; })
     .sort(function (a, b) {
       // Nulls last: "no measurable data" is not a low score and must not sit at
@@ -4101,6 +4246,46 @@ function renderCompare_() {
 
   var std = metricSeries_(m, done).std;
   var withVal = rows.filter(function (r) { return r.value !== null; });
+
+  // ── §6 THE GRID (Task 15, spec 2026-08-06 §6) ──
+  // Rows are chosen by capRows_ against the ACTIVE metric's own value — the
+  // SAME ranking hbarChart_ applies to `rows` below, so the grid and the
+  // bullet chart can never disagree about which categories are "the ones that
+  // matter" (distance below reference, never list position). Target/std are
+  // computed per COLUMN (org-wide), never per row — grading is always a value
+  // against ITS OWN metric's reference, not the active metric's.
+  var gridIds = gridMetrics_();
+  var gridTargets = {}, gridStds = {};
+  gridIds.forEach(function (id) {
+    var mm = METRICS_[id];
+    var t = (MODEL.meta.targets || {})[mm.targetKey] || null;
+    if (t && reg_(id).invertTarget) t = { green: t.green, amber: t.amber, invert: true };
+    gridTargets[id] = t;
+    gridStds[id] = metricSeries_(mm, done).std;
+  });
+  var gridSel = capRows_(rows, !!STATE.compareAll);
+  var gridHtml = "";
+  if (gridIds.length) {
+    gridHtml = '<div class="gwrap" style="margin:8px 0"><table class="hyg gridTable">' +
+      '<thead><tr><th class="tname">' + esc_(COMPARE_LABELS[STATE.compare]) + "</th>" +
+      gridIds.map(function (id) {
+        var mm = METRICS_[id];
+        return '<th class="tnum' + (STATE.metric === id ? " on" : "") + '" role="button" tabindex="0" ' +
+          'onclick="setMetric_(\'' + id + '\')" ' +
+          'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
+          'setMetric_(\'' + id + '\');}" style="cursor:pointer" title="' +
+          esc_("Chart " + mm.label() + " in the bullet chart below.") + '">' +
+          esc_(mm.label()) + (STATE.metric === id ? " ▾" : "") + "</th>";
+      }).join("") + "</tr></thead><tbody>" +
+      gridSel.rows.map(function (r) {
+        return "<tr><td class=\"tname\">" + esc_(r.label) +
+          ' <span class="cellSub">(' + r.n + ")</span></td>" +
+          gridIds.map(function (id) {
+            return gridCellHtml_({ value: r.cells[id], n: r.n, target: gridTargets[id],
+                                   std: gridStds[id], unit: METRICS_[id].unit });
+          }).join("") + "</tr>";
+      }).join("") + "</tbody></table></div>";
+  }
 
   // ── Population accounting (user-reported 2026-08-03) ──
   // A breakdown must be able to prove it covers everybody. Distinct people, not
@@ -4159,6 +4344,7 @@ function renderCompare_() {
       '<span class="chips seg">' + mchips + "</span>" +
       '<span class="sub" title="' + esc_(reg_(m.id).formula || "") + '">' +
       esc_(m.axis()) + " ⓘ</span></div>" +
+    gridHtml +
     '<div class="verdict">' + verdict + "</div>" +
     hbarChart_({ rows: rows, target: target, std: std, title: m.label(), unit: m.unit,
                  expanded: !!STATE.compareAll, onExpand: "toggleCompareAll_()" }) +

@@ -144,7 +144,12 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // the filterable assigned sub-row and the queue ruler.
              " renderBacklogBand_: renderBacklogBand_, queueRulerSvg_: queueRulerSvg_," +
              " trailingCompleteWeeks_: trailingCompleteWeeks_, orgClearRateGap_: orgClearRateGap_," +
-             " assignedClearRate_: assignedClearRate_ })";
+             " assignedClearRate_: assignedClearRate_," +
+             // §6 THE GRID (Task 15, spec 2026-08-06 §6) — the metric × dimension
+             // table, its shared row cap and its per-cell grading rules.
+             " gridMetrics_: gridMetrics_, GRID_METRIC_IDS_: GRID_METRIC_IDS_," +
+             " capRows_: capRows_, gridCellHtml_: gridCellHtml_, setMetric_: setMetric_," +
+             " activeMetric_: activeMetric_, flowOpenFor_: flowOpenFor_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -2859,8 +2864,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and still renders its own label, not a flow metric's");
 
   // ── The chip order matches METRIC_ORDER_, flow metrics appended last ────
-  assert_(C.METRIC_ORDER_.join(",") === "onTime,forecast,util,quality,leadTime,throughput,planCov",
-          "METRIC_ORDER_ appends the two joinable flow metrics, then the forward-window metric");
+  assert_(C.METRIC_ORDER_.join(",") ===
+          "onTime,forecast,util,quality,leadTime,throughput,clearedPerHead,queueCover,planCov",
+          "METRIC_ORDER_ appends the two joinable flow metrics, then the two Task 15 grid " +
+          "columns, then the forward-window metric");
   assert_(C.liveMetrics_().indexOf("leadTime") !== -1 && C.liveMetrics_().indexOf("throughput") !== -1,
           "both are live metrics under a Jira-available fixture");
   // planCov is the FORWARD-window metric and must never be offered on a
@@ -3432,6 +3439,18 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.renderAll_();
   assert_(els.comparePanel.innerHTML.indexOf("Planned Coverage") !== -1,
           "…and the comparison chart follows the picker without the reader touching a chip");
+  // Task 15 req 7: the §6 grid re-points itself the SAME way — it is built
+  // from gridMetrics_(), which filters liveMetrics_() rather than keeping its
+  // own separate phase switch, so there is nothing for a planning window to
+  // fall out of sync with. Mutation this catches: a grid column list computed
+  // independently of liveMetrics_() (e.g. a literal GRID_METRIC_IDS_ walk with
+  // no phase filter) would still offer onTime/forecast/util here.
+  assert_(C.gridMetrics_().join(",") === "planCov",
+          "on a planning window the GRID also collapses to Planned Coverage and nothing else");
+  assert_(els.comparePanel.innerHTML.indexOf("gridTable") !== -1,
+          "…and it still renders AS a grid (one column), not silently skipped");
+  assert_(els.comparePanel.innerHTML.indexOf(">On-Time Delivery<") === -1,
+          "…with no stale onTime/forecast/util column left over from the done-window grid");
 
   // ── The roster's Plan column ─────────────────────────────────────────────
   C.setState("view", "actions");
@@ -4139,6 +4158,213 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("typePop", "open");
   fresh(model({}));
   C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// TASK 15 — THE COMPARISON GRID (spec 2026-08-06 §6): clearedPerHead replaces
+// absolute Cleared, queueCover joins the columns, and neither draws a target
+// rule anywhere. Every check below states the mutation it is there to catch.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── capRows_ at the unit level: the shared cap/rank primitive both the grid
+// and the bullet chart now call ──────────────────────────────────────────────
+(function () {
+  var many = [];
+  for (var i = 0; i < 15; i++) many.push({ key: "K" + i, label: "K" + i, value: 100 - i, n: 20 });
+  var sel = C.capRows_(many, false);
+  assert_(sel.rows.length === 12, "capRows_ defaults to the HBAR_MAX_ROWS_ cap (12)");
+  assert_(sel.hidden === 3, "…and reports exactly how many rows were cut");
+  // Ascending value order keeps the LOWEST 12 (K3..K14, values 86-97); the
+  // highest 3 (K0-K2, values 98-100 — closest to/over a hypothetical target)
+  // are cut. Mutation this catches: sorting descending, or slicing the first
+  // N of the ORIGINAL array by list position instead of by value, would keep
+  // K0-K11 instead and this assertion would fail.
+  var kept = many.filter(function (r) { return sel.rows.indexOf(r) !== -1; }).map(function (r) { return r.key; });
+  assert_(kept.indexOf("K14") !== -1 && kept.indexOf("K0") === -1,
+          "the LOWEST-value rows survive (furthest below reference), never the first N by position");
+  var full = C.capRows_(many, true);
+  assert_(full.rows.length === 15 && full.hidden === 0, "expanded:true lifts the cap entirely");
+})();
+
+// ── The grid and the bullet chart share the SAME capped row set (integration) ──
+(function () {
+  function manyTeamsFixture(n) {
+    var mdl = model({});
+    var teams = [], ppl = [], buckets = [];
+    for (var i = 0; i < n; i++) {
+      var t = "Team " + i;
+      teams.push(t);
+      var name = "P" + i;
+      ppl.push(person(name, { region: "AMER", teams: [t] }));
+      var pct = 40 + i * 3, cnt = 20;
+      buckets.push({ iso: WEEKS[WEEKS.length - 1], person: name, n: cnt,
+                     onTime: Math.round(cnt * pct / 100), nAll: cnt });
+    }
+    mdl.meta.teams = teams;
+    mdl.people = ppl;
+    mdl.onTimeBuckets = buckets;
+    return mdl;
+  }
+  fresh(manyTeamsFixture(15));
+  C.STATE.compare = "team";
+  C.setState("metric", "onTime");
+  C.switchView_("exec");
+  C.renderAll_();
+  var html = els.comparePanel.innerHTML;
+  var gridSeg = html.split("gridTable")[1] ? html.split("gridTable")[1].split("</table>")[0] : "";
+  var rowCount = (gridSeg.match(/<td class="tname">/g) || []).length;
+  assert_(rowCount === 12,
+          "the grid caps at HBAR_MAX_ROWS_ (12) rows, same as the bullet chart — got " + rowCount);
+  assert_(/Show all 15/.test(html), "…and the same 'Show all N' affordance is offered");
+  assert_(/role="button"/.test(html) && /tabindex="0"/.test(html),
+          "grid column headers are keyboard-reachable (role=button, tabindex=0)");
+  assert_(/onclick="setMetric_\('onTime'\)"/.test(html),
+          "…and clicking the onTime column header sets STATE.metric via setMetric_");
+  // Worst-first (Team 0, 40%, furthest below the 85% target) survives the
+  // cap in the grid; best (Team 14, 82%, closest to target) is cut — from
+  // BOTH the grid and the chart below it, proving they share one ranking
+  // rather than two independently-computed lists that could disagree.
+  assert_(gridSeg.indexOf(">Team 0 <") !== -1, "Team 0 (worst) survives the grid's cap");
+  assert_(gridSeg.indexOf(">Team 14 <") === -1, "Team 14 (best) is cut from the grid");
+  var chartSeg = html.split("<svg")[1] ? "<svg" + html.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  assert_(chartSeg.indexOf(">Team 0<") !== -1, "…Team 0 also survives in the bullet chart");
+  assert_(chartSeg.indexOf(">Team 14<") === -1,
+          "…while Team 14 is cut from the chart too — the grid and the chart share ONE selection");
+
+  C.STATE.compare = "region";
+  C.setState("metric", "onTime");
+  fresh(model({}));
+  C.switchView_("exec");
+  C.renderAll_();
+})();
+
+// ── Per-head fairness, sub-10 ungraded-but-visible, no target rule ──────────
+(function () {
+  var W = WEEKS[WEEKS.length - 1];
+  // The brief's own example, verbatim: ANZ (8 people) clears 12 items; AMER
+  // (63 people) clears 61. Absolute-count grading ranks AMER over ANZ; per-
+  // head grading must not — this is the one fixture shape that separates the
+  // fix from the bug (brief's own "assertion strength" note).
+  function headFixture() {
+    var mdl = model({});
+    var ppl = [];
+    for (var i = 0; i < 63; i++) ppl.push(person("AMER " + i, { region: "AMER", teams: [] }));
+    for (var j = 0; j < 8; j++) ppl.push(person("ANZ " + j, { region: "ANZ", teams: [] }));
+    mdl.people = ppl;
+    mdl.meta.regions = ["AMER", "ANZ"];
+    mdl.throughputBuckets = [
+      { iso: W, person: "AMER 0", nAll: 61, nEst: 61, estHrs: 300 },
+      { iso: W, person: "ANZ 0", nAll: 12, nEst: 12, estHrs: 60 },
+    ];
+    return mdl;
+  }
+
+  // ── 1. SAME per-head basis — ANZ (12/8/1wk = 1.5) beats AMER (61/63/1wk ≈
+  // 0.97) despite clearing far fewer items. Mutation this catches: reverting
+  // clearedPerHead.value to the raw resolved count (the prototype's bug)
+  // would make AMER (61) read higher than ANZ (12), flipping this.
+  fresh(headFixture());
+  var amerNames = {}, anzNames = {};
+  for (var a = 0; a < 63; a++) amerNames["AMER " + a] = 1;
+  for (var b = 0; b < 8; b++) anzNames["ANZ " + b] = 1;
+  var amerPerHead = C.scopedMetric_(C.METRICS_.clearedPerHead, [W], amerNames);
+  var anzPerHead = C.scopedMetric_(C.METRICS_.clearedPerHead, [W], anzNames);
+  assert_(Math.abs(amerPerHead - 61 / 63) < 1e-9, "AMER per-head = 61 items ÷ 63 people ÷ 1 week");
+  assert_(Math.abs(anzPerHead - 12 / 8) < 1e-9, "ANZ per-head = 12 items ÷ 8 people ÷ 1 week");
+  assert_(anzPerHead > amerPerHead,
+          "the SMALLER group (ANZ: 8 people, 12 items) outperforms the LARGER one (AMER: 63 " +
+          "people, 61 items) on a per-head basis — the smaller group is not automatically worse");
+
+  // Render the grid itself and pull each region's row.
+  C.STATE.compare = "region";
+  C.setState("metric", "clearedPerHead");
+  C.switchView_("exec");
+  C.renderAll_();
+  var cmp1 = els.comparePanel.innerHTML;
+  function gridRow_(html, label) {
+    var i = html.indexOf(">" + label + ' <span class="cellSub">(');
+    return i === -1 ? "" : html.slice(i).split("</tr>")[0];
+  }
+  // The row has ONE cell per gridMetrics_() column (onTime/forecast/util/
+  // clearedPerHead/queueCover here) — onTime/forecast/util are all null for
+  // this fixture (no onTimeBuckets/forecastBuckets), so a whole-ROW text
+  // check would also match THEIR "no measurable data"/neutral markup. Every
+  // clearedPerHead-specific assertion below is scoped to clearedPerHead's
+  // OWN cell for exactly that reason.
+  function cellFor_(rowHtml, id) {
+    var ids = C.gridMetrics_(), idx = ids.indexOf(id);
+    if (idx === -1) return "";
+    var parts = rowHtml.split('<td class="tnum gridCell"');
+    return parts[idx + 1] ? '<td class="tnum gridCell"' + parts[idx + 1].split("</td>")[0] + "</td>" : "";
+  }
+  var amerRow = gridRow_(cmp1, "AMER");
+  var anzRow = gridRow_(cmp1, "ANZ");
+  assert_(amerRow && anzRow, "both regions render a grid row — got: " + cmp1);
+  var anzCph = cellFor_(anzRow, "clearedPerHead");
+  var amerCph = cellFor_(amerRow, "clearedPerHead");
+  assert_(anzCph && amerCph, "clearedPerHead's own column cell is present in both rows");
+
+  // ── 2. Sub-10 (ANZ, 8 people) renders its VALUE and a grey dot, never a
+  // RAG colour class. Mutation this catches: hiding the small-group cell
+  // fails the "value present" half; still colouring it fails the "no RAG"
+  // half — a helper that only ever returns "none" for both cases would pass
+  // one check and not the other, which is why both are asserted separately.
+  assert_(/ungraded \(small n\)/.test(anzCph), "ANZ's (8 people) clearedPerHead cell is ungraded (small n)");
+  assert_(!/sigGood|sigWarn|sigBad/.test(anzCph), "…and it carries NO RAG colour class");
+  assert_(!/No measurable data/.test(anzCph),
+          "…it is NOT the null/no-data branch — it has a real, printed value");
+  // AMER (63 people) is NOT small-n — proving the rule keys off headcount,
+  // not off which metric column it happens to be looking at.
+  assert_(!/ungraded \(small n\)/.test(amerCph), "AMER's (63 people) clearedPerHead cell is not ungraded");
+
+  // ── 3/4. clearedPerHead has NO target (D11). This fixture's default WEEKS
+  // (2 periods) is under STD_MIN_PERIODS too, so the org-wide norm is also
+  // unpublishable — the compound case brief item 4 asks for: no target AND
+  // no norm. Mutation this catches: colouring AMER's cell here (e.g. by
+  // falling back to a different metric's target) fails the first; printing
+  // the value with no explanation fails the second.
+  assert_(!/sigGood|sigWarn|sigBad/.test(amerCph), "AMER's clearedPerHead cell carries no RAG colour");
+  assert_(/no reference/.test(amerCph),
+          "…and states explicitly that it has no reference — never a bare, uncoloured number " +
+          "that looks graded");
+
+  // ── 5. The mandatory coverage sentence survives the grid's addition ──────
+  assert_(/all 71<\/b> people represented/.test(cmp1),
+          "the coverage sentence still states all 71 (63+8) people represented");
+
+  // ── 3, negative half — with only 2 periods the BULLET CHART draws no band
+  // either (checked against the fixture ALREADY rendered above, cmp1) ──────
+  var svgNeg = cmp1.split("<svg")[1] ? "<svg" + cmp1.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  assert_(svgNeg.indexOf('fill="var(--c-ref)"') === -1,
+          "…and with an unpublishable norm (<5 periods), the bullet chart draws NO band either");
+  assert_(!/stroke="var\(--c-target\)"/.test(svgNeg),
+          "…nor a target line — clearedPerHead's targetKey is null everywhere it charts");
+
+  // ── 3, POSITIVE half — with ≥5 periods of real history the operating band
+  // DOES shade on the bullet chart, checked against the chart's OWN SVG, not
+  // a caption. Without this positive case, every "no target" assertion above
+  // is negative and would pass even if the band mechanism were deleted.
+  var mBand = histModel({});
+  mBand.throughputBuckets = HIST.map(function (iso) {
+    return { iso: iso, person: "Ana Perez", nAll: 40, nEst: 30, estHrs: 200 };
+  });
+  fresh(mBand);
+  C.STATE.compare = "region";
+  C.setState("metric", "clearedPerHead");
+  C.switchView_("exec");
+  C.renderAll_();
+  var cmpBand = els.comparePanel.innerHTML;
+  var svgPos = cmpBand.split("<svg")[1] ? "<svg" + cmpBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  assert_(svgPos, "the bullet chart rendered for clearedPerHead with a 5+ period fixture");
+  assert_(!/stroke="var\(--c-target\)"/.test(svgPos), "…still no target-coloured reference line (D11)");
+  assert_(svgPos.indexOf('fill="var(--c-ref)"') !== -1,
+          "…and the operating band NOW shades, now that the 5+ point norm publishes");
+
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
+  C.switchView_("exec");
   C.renderAll_();
 })();
 
