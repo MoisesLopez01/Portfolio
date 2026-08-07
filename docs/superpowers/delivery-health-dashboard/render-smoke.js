@@ -2937,6 +2937,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("view", "exec");
   C.renderAll_();
   var trust = document.getElementById("trustPanel").innerHTML;
+  // Task 13 re-head: "Can we publish these numbers?" replaces "🔍 Data trust",
+  // with the sub-line stating what the strip is actually answering. Mechanics
+  // (gapsRows_ source, tile count/order/values, ORG tag, retire-at-100%) are
+  // asserted unchanged below — this is a COPY-ONLY change, and the checks
+  // pin exactly that: the old heading is gone, the new one (and its sub-line)
+  // is there, and nothing else in this block had to change to stay green.
+  assert_(/<h3>Can we publish these numbers\?/.test(trust), "re-headed to the new heading");
+  assert_(/Each metric needs its gate met before it goes on a slide\./.test(trust),
+          "…with its sub-line stating what the strip actually answers");
+  assert_(!/Data trust/.test(trust), "the old '🔍 Data trust' heading is gone, not merely joined by the new one");
   assert_(trust.split("trustItem").length - 1 === 4, "exactly four trust tiles");
   assert_(trust.indexOf("ORG") !== -1, "trust strip carries the ORG scope tag");
   // Order + identity: est, due, logged, attr (brief order) — each tile is
@@ -2966,6 +2976,22 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(trustGuest.split("trustItem").length - 1 === 4,
           "a guest still sees all four trust tiles — this strip is not margin-gated");
   C.getModel().viewerRole = "admin";
+  C.renderAll_();
+
+  // The strip IGNORES FILTERS (Task 13 brief, explicitly named as a
+  // behaviour to preserve) — deliberately unfiltered like the old Hygiene
+  // view. Byte-identical before/after a region filter is the discriminating
+  // check: a test that only re-asserted "four tiles, ORG tag" would still
+  // pass even if the underlying VALUES had quietly started reading filtered
+  // data (hygieneFor_/hygienePeopleFor_ scoped by a filter argument they
+  // don't currently take).
+  var trustBefore = document.getElementById("trustPanel").innerHTML;
+  C.setState("region", "AMER");
+  C.renderAll_();
+  var trustAfterRegion = document.getElementById("trustPanel").innerHTML;
+  assert_(trustBefore === trustAfterRegion,
+          "the trust strip is BYTE-IDENTICAL before/after STATE.region — it deliberately ignores every filter");
+  C.setState("region", "");
   C.renderAll_();
 })();
 

@@ -4271,7 +4271,8 @@ function renderTrust_() {
   // comes back, with no edit.
   var order = ["est", "due", "logged", "attr"];
   var titles = { est: "Estimate coverage", due: "Due-date fill", logged: "Logged fill", attr: "Roster join" };
-  el.innerHTML = '<h3>🔍 Data trust ' + scopeTag_("org") + "</h3>" +
+  el.innerHTML = '<h3>Can we publish these numbers? ' + scopeTag_("org") + "</h3>" +
+    '<p class="cellSub">Each metric needs its gate met before it goes on a slide.</p>' +
     '<div class="trustRow">' + order.map(function (k) {
       var g = byKey[k];
       if (!g) return "";
