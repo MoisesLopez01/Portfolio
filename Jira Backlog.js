@@ -2206,6 +2206,10 @@
    * already the right string — write it as-is, never re-wrap it in a Date.
    */
   function writeArrivals_(createdIssues, resolvedIssues) {
+    // "Created Unassigned" is a SNAPSHOT: it counts issues that are still
+    // unassigned at export time (current fields.assignee, checked below), NOT
+    // issues that had no assignee at the moment they were created. A ticket
+    // created unassigned and picked up an hour later reads as 0 here.
     var HEADERS = ["Week Start", "Created", "Resolved", "Created Unassigned"];
     var sheet = jb_getOrCreateSheet_(CONFIGJ.ARRIVALS_SHEET);
 
@@ -2866,11 +2870,19 @@
       var createdIssues = fetchCreatedIssues_(weeks[0].fromStr, weeks[weeks.length-1].toStr);
       Logger.log("   Created issues fetched: " + createdIssues.length);
 
-      // Jira Arrivals (v3.11.0) — reuses the created fetch above and adds the
-      // resolved half over the SAME window, so net flow subtracts like for like.
-      Logger.log("📦 Fetching resolved issues for the Arrivals tally...");
-      var resolvedWindow = fetchResolvedInWindow_(weeks[0].fromStr, weeks[weeks.length - 1].toStr);
-      writeArrivals_(createdIssues, resolvedWindow);
+      // Jira Arrivals (v3.11.0) — MUST follow the DEEP window (rawWeeks /
+      // RAW_HISTORY_WEEKS), NOT the narrow Exec Q&A window (weeks / WEEKS_BACK
+      // = 4). This tab is fully rewritten every run (see writeArrivals_'s
+      // clearContents), so feeding it the 4-week Exec window would leave it
+      // permanently stuck at 4 rows — CLEAR_RATE_MIN_N is 5, so
+      // clearRateMedian_ would return null forever and silently blank the
+      // hero's weeks-to-clear, the queue ruler, both verdict findings, and the
+      // 26-week inventory walkback. Fetched independently of createdIssues/
+      // resolvedWindow above (those stay narrow — writeExecQASheet_ needs them).
+      Logger.log("📦 Fetching created/resolved issues for the Arrivals tally (deep window)...");
+      var arrCreated = fetchCreatedIssues_(rawWeeks[0].fromStr, rawWeeks[rawWeeks.length - 1].toStr);
+      var arrResolved = fetchResolvedInWindow_(rawWeeks[0].fromStr, rawWeeks[rawWeeks.length - 1].toStr);
+      writeArrivals_(arrCreated, arrResolved);
 
       Logger.log("📝 Writing 'Exec Q&A' sheet...");
       writeExecQASheet_(weeklyData, weeks, createdIssues, activeWIP);
