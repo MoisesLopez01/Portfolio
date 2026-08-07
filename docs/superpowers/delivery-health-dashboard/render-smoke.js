@@ -3591,6 +3591,60 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!f6.some(function (x) { return x.key === "depth"; }),
           "…confirmed directly: no 'depth' key while the operating norm has fewer than 5 periods");
 
+  // ── 6b. POSITIVE depth case — the norm PUBLISHES and cover exceeds it ──
+  // Every depth assertion above is negative (!/weeks of work/, !some(depth)).
+  // A verdictFindings_ that never emitted a depth finding AT ALL would satisfy
+  // every one of them — this is the one check that fails if that happens, and
+  // it is also the case that separates the fixed guard from the brief's
+  // original (coordinator review, 2026-08-06): with `std.band` undefined even
+  // when `ok:true` (standardRate_ never sets a `.band` field — only `sigma`,
+  // `lo`, `hi`), `cover > std.baseline + std.band` is `cover > NaN`, always
+  // false, so the original guard would silently drop the clause exactly when
+  // it is most needed. `std.ok && cover > std.hi` does not have that hole.
+  //
+  // Fixture derivation:
+  //   · 5 history points (>= STD_MIN_PERIODS) so stdFor_ returns {ok:true}.
+  //   · Every point's items÷rate = 250÷50 = 5.0 — a perfectly FLAT series, so
+  //     medianOf_ = 5 and every |v−median| = 0 → mad = 0.
+  //   · sigma = max(mad*1.4826, floor) = max(0, 2) = 2 (the ±2-point floor
+  //     standardRate_ imposes so a flat run doesn't flag every 1-point wobble).
+  //   · hi = min(100, median + sigma) = min(100, 5 + 2) = 7.
+  //   · TODAY's cover = total ÷ rate = 1000 ÷ 50 = 20 — chosen to clear 7 by a
+  //     wide, unambiguous margin, not by coincidence.
+  //   · Not stale: this fixture never sets MODEL._stale, and stdFor_ returns
+  //     null outright when it is set — confirmed by reading stdFor_ before
+  //     relying on it.
+  //   · arrivalWeeks: [] isolates this from the net-flow finding (rate is
+  //     truthy but the length gate on finding #3 is 0, so it stays silent).
+  var mP = model({});
+  mP.meta.clearRateMedian = 50;
+  mP.arrivalWeeks = [];
+  mP.inventoryHistory = [0, 1, 2, 3, 4].map(function (i) {
+    return { iso: "2026.W" + (24 + i), items: 250, measured: i === 4 };
+  });
+  mP.queue = {
+    assigned: { items: 1000, wipN: 0, todoN: 0, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+    unassigned: { items: 0, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 },
+  };
+  var hP = masthead(mP);
+  // POSITIVE depth case — the ONLY assertion here that can fail if the depth
+  // finding stops being emitted. Every other depth check is negative, so a
+  // verdictFindings_ that never produced a depth finding at all would satisfy
+  // all of them. This is also the case that separates the correct guard from
+  // the brief's original: with `std.band` undefined, `cover > std.baseline +
+  // std.band` is `cover > NaN` — false — so the clause would silently vanish
+  // exactly when it is most needed.
+  assert_(/weeks of work/.test(hP),
+          "depth clause RENDERS when the norm publishes and cover exceeds it");
+  var fP = C.verdictFindings_();
+  assert_(fP.some(function (x) { return x.key === "depth"; }),
+          "…and the findings array carries the depth key");
+  // Pin the exact numbers too, not just the clause's presence: 1,000 items ÷
+  // 50/wk ⇒ 20.0 weeks against a normal of 5.0 — catches a wrong-total, a
+  // wrong-rate, or a baseline read off the wrong series.
+  assert_(/We are holding 1,000 items and clearing about 50 a week — roughly 20\.0 weeks of work, against a normal of 5\.0\./.test(hP),
+          "…with the exact total, rate, cover and baseline all correct — got: " + hP);
+
   // ── 7. Headcount is the FILTERED population, and it actually CHANGES ──
   // Asserting a number is merely present would pass even if headcount were
   // hardcoded to MODEL.people.length (unfiltered) — the fixture's two people
