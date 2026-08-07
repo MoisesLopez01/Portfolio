@@ -2143,7 +2143,7 @@ function hbarChart_(o) {
   function xv(v) { return unit ? x(domainMax ? v / domainMax * 100 : 0) : x(v); }
   /** Axis/value label: unit-formatted (12.5d / 412h) when unit is set, plain
       percent otherwise — never both, so a flow metric can't grow a stray "%". */
-  function lbl(v) { return unit ? fmtFlowVal_(v, unit) : Math.round(v) + "%"; }
+  function lbl(v) { return unit ? fmtGridVal_(v, unit) : Math.round(v) + "%"; }
 
   var s = '<svg class="chart hbar" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' +
     esc_(o.title || "comparison") + '">';
@@ -3463,6 +3463,32 @@ function fmtFlowVal_(v, unit) {
 }
 
 /**
+ * Grid/comparison-chart formatter for the two Task 15 columns (blocking fix).
+ * NOT folded into fmtFlowVal_ itself, because "items" already means something
+ * else there: reg.cleared/reg.arrived (flowTileHtml_, above) also carry unit
+ * "items" as a WHOLE issue count, and Math.round is correct for those — a
+ * shared "items" branch giving them a decimal too would print "18.0 items"
+ * on the flow band. clearedPerHead/queueCover are different populations under
+ * the same unit strings: clearedPerHead lives in 0–2 (Math.round collapsed
+ * AMER's 61/63=0.968 and ANZ's 12/8=1.5 to indistinguishable integers — the
+ * exact ranking-by-headcount bug this column exists to fix), and queueCover
+ * needs the SAME "w" suffix the hero prints (11.0w) so the grid's ~4.9w is
+ * legibly the same kind of number, not a bare unlabelled "5".
+ */
+function fmtGridVal_(v, unit) {
+  if (v === null || v === undefined) return "—";
+  if (unit === "items" || unit === "weeks") {
+    // toFixed(1), not Math.round(v*10)/10: a JS Number drops a trailing .0
+    // on string-concat (1.0 + "" === "1"), which would silently regenerate
+    // the exact bug this exists to fix (AMER's 0.968 → "1", indistinguishable
+    // from a value that actually rounded to a clean 1). Same toFixed(1)
+    // pattern the hero's own weeks-to-clear number already uses (~2671).
+    return v.toFixed(1) + (unit === "weeks" ? "w" : "");
+  }
+  return fmtFlowVal_(v, unit);
+}
+
+/**
  * Flow KPI card. tileHtml_ is deliberately NOT reused: it renders percentages
  * with RAG-vs-target grammar, and every flow metric is unit-bearing (days,
  * hours, items) with target: null — neutral by design (registry D6).
@@ -3606,10 +3632,17 @@ function renderFlow_() {
     }
     var byIso = {};
     (MODEL.arrivalWeeks || []).forEach(function (w) { byIso[w.iso] = w; });
+    // Coverage-aware sum: null (not 0) when NO iso in the set has an arrivals
+    // row. A period with zero rows is "nobody looked", not "measured zero" —
+    // conflating the two would plot a flat zero line asserting "no work
+    // arrived" for a gap in the export. sparkHtml_ already breaks its
+    // polyline on null, so this alone restores the correct gap rendering.
     function sumOver(isos, field) {
-      var t = 0;
-      isos.forEach(function (iso) { if (byIso[iso]) t += byIso[iso][field] || 0; });
-      return t;
+      var found = false, t = 0;
+      isos.forEach(function (iso) {
+        if (byIso[iso]) { found = true; t += byIso[iso][field] || 0; }
+      });
+      return found ? t : null;
     }
     var series = trendPer.map(function (p) { return sumOver(p.isos, "created"); });
     var created = sumOver(head.isos, "created");
@@ -3619,7 +3652,8 @@ function renderFlow_() {
       scope: "org",
       conf: null,
       trend: series, trendLabels: labels,
-      context: resolvedCt + " resolved this period — book " +
+      context: created === null ? "no arrivals data for this period" :
+        resolvedCt + " resolved this period — book " +
         (created > resolvedCt ? "growing" : created < resolvedCt ? "shrinking" : "flat") +
         " · population-wide, filters don't apply",
       detail: [
@@ -4106,10 +4140,24 @@ var METRICS_ = {
   },
   queueCover: {
     id: "queueCover", targetKey: null, unit: "weeks",
-    label: function () { return reg_("queueCover").name || "Weeks to Clear"; },
-    axis: function () {
-      return reg_("queueCover").formula || "open assigned inventory ÷ median weekly clearing rate";
-    },
+    // NOT reg_("queueCover") (blocking fix): the server registry entry of
+    // that name describes the HERO's whole-population formula — "(assigned
+    // open + unassigned open) ÷ median(resolved per week…)" — because
+    // unassigned work belongs to no group and the hero is the only surface
+    // that can report it. This grid column's own value() below divides the
+    // ASSIGNED-ONLY snapshot by the ASSIGNED-ONLY clearing rate (same as the
+    // backlog band's filterable sub-row) — a materially smaller number
+    // (~4-5w here vs ~11w on the hero) under the SAME shared name/formula
+    // read as one metric disagreeing with itself. Own literal strings, own
+    // name, so hero and grid are visibly different measures.
+    label: function () { return "Assigned wks to clear"; },
+    axis: function () { return "open assigned inventory ÷ median assigned weekly clearing rate"; },
+    // Overrides renderCompare_'s reg_(m.id).formula fallback for the same
+    // reason label()/axis() above don't read reg_("queueCover") — the
+    // registry's formula names the unassigned half this computation never
+    // touches. Same text as axis() on purpose: there is no fuller server
+    // definition to point to that wouldn't reintroduce the mismatch.
+    detail: function () { return "open assigned inventory ÷ median assigned weekly clearing rate"; },
     available: function () { return !!MODEL.meta.jiraAvailable; },
     // Snapshot ÷ trailing rate (grain: "snapshot ÷ trailing rate", same as the
     // backlog band's assigned sub-row) — flowOpenFor_ and assignedClearRate_
@@ -4307,7 +4355,7 @@ function setCompare_(dim) {
  * @param {{value:?number, n:number, target:?Object, std:?Object, unit:?string}} o
  */
 function gridCellHtml_(o) {
-  var lbl = o.unit ? function (v) { return fmtFlowVal_(v, o.unit); } : function (v) { return Math.round(v) + "%"; };
+  var lbl = o.unit ? function (v) { return fmtGridVal_(v, o.unit); } : function (v) { return Math.round(v) + "%"; };
   if (o.value === null || o.value === undefined) {
     return '<td class="tnum gridCell" title="No measurable data in this slice.">—</td>';
   }
@@ -4508,7 +4556,16 @@ function renderCompare_() {
       '<span style="flex:1"></span><span class="chips seg">' + chips + "</span></div>" +
     '<div class="chartHead" style="margin-bottom:6px"><span class="sub">Metric</span>' +
       '<span class="chips seg">' + mchips + "</span>" +
-      '<span class="sub" title="' + esc_(reg_(m.id).formula || "") + '">' +
+      // The hover-detail defaults to the SERVER registry's formula (a fuller
+      // definition than the short axis() caption) — correct for every metric
+      // whose client computation matches the population that formula
+      // describes. queueCover is the one exception (blocking fix, D5): its
+      // registry entry describes the HERO's whole-population formula, but
+      // this grid/chart computes ASSIGNED-ONLY — reusing reg_() here would
+      // print the hero's "unassigned open" text as the hover-detail on a
+      // caption that no longer claims it. m.detail(), when a metric supplies
+      // one, overrides the registry fallback for exactly that metric.
+      '<span class="sub" title="' + esc_((m.detail ? m.detail() : reg_(m.id).formula) || "") + '">' +
       esc_(m.axis()) + " ⓘ</span></div>" +
     gridHtml +
     '<div class="verdict">' + verdict + "</div>" +
@@ -5483,6 +5540,7 @@ function backlogHealthFor_() {
     Object.keys(b.keysCapped || {}).forEach(function (k) { out.capped[k] = true; });
   });
   out.unattributed = bh.unattributed || 0;
+  out.unassigned = bh.unassigned || 0;
   out.asOf = bh.asOf || null;
   return out;
 }
@@ -5555,8 +5613,17 @@ function renderBacklogHealth_() {
       "A snapshot of what the team is carrying right now — it ignores the period picker " +
       "and follows every other filter. Ageing is measured against the model build time" +
       (t.asOf ? " (" + esc_(String(t.asOf).slice(0, 10)) + ")" : "") + ", not this moment." +
+      // Two DIFFERENT populations, named separately — never summed into one
+      // "excluded" count. `unassigned` has no assignee to join at all;
+      // `unattributed` has an assignee the roster join could not resolve.
+      // Collapsing them would report an absent assignee as a failed roster
+      // join, contradicting the 🧬 matrix's attrN-denominated `attr` column.
+      (t.unassigned ? " " + t.unassigned + " open item" + (t.unassigned === 1 ? "" : "s") +
+        " " + (t.unassigned === 1 ? "has" : "have") + " no assignee and " +
+        (t.unassigned === 1 ? "is" : "are") + " excluded." : "") +
       (t.unattributed ? " " + t.unattributed + " open item" + (t.unattributed === 1 ? "" : "s") +
-        " could not be matched to a roster person and are excluded — the 🧬 matrix below carries that gap." : "") +
+        " " + (t.unattributed === 1 ? "has" : "have") + " an assignee the roster join could not match and " +
+        (t.unattributed === 1 ? "is" : "are") + " excluded — the 🧬 matrix below carries that gap." : "") +
       "</p>" +
     '<div class="bhCols">' +
       '<div><h4 style="margin:0 0 6px">✅ Ready to be worked</h4>' +

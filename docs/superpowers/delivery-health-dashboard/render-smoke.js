@@ -159,7 +159,10 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // §7/§8 THE SHELF + TRUST DETAIL (Task 16, spec 2026-08-06 §7/§8).
              " renderShelf_: renderShelf_, renderTrustDetail_: renderTrustDetail_," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
-             " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_ })";
+             " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
+             // 🌊 Backlog health (blocking fix D3) — the unassigned/unattributed
+             // split's client-side rendering.
+             " backlogHealthFor_: backlogHealthFor_, renderBacklogHealth_: renderBacklogHealth_ })";
 var C = eval(m[1] + bridge);
 
 // ── Synthetic model ─────────────────────────────────────────
@@ -4327,6 +4330,21 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("region", "");
   C.renderAll_();
 
+  // ── 1b. A trend period with NO arrivalWeeks row must plot as a GAP, never
+  // a fabricated measured zero (blocking fix: sumOver's old `t += … || 0`
+  // fallback summed an absent week to 0, drawing a false "0 arrived" point
+  // straight into the real figure beside it — the flat-zero-line bug). The
+  // default fixture above already omits W30 (arrivalWeeks carries only the
+  // last week, W31), so the two-point trend is exactly [gap, 18]. Would this
+  // still pass if the coverage check were deleted? No — reverting sumOver to
+  // sum missing isos as 0 regenerates the polyline and the second dot this
+  // forbids.
+  var arrSpark = arrSeg.slice(arrSeg.indexOf("<svg"));
+  assert_(!/<polyline/.test(arrSpark),
+    "Arrived's [gap, 18] trend draws NO connecting polyline — a real gap, not a fabricated 0-to-18 line");
+  assert_((arrSpark.match(/<circle/g) || []).length === 1,
+    "…and exactly ONE point plots (W31's real 18) — the missing W30 draws no dot, i.e. it is null, not a measured zero");
+
   // ── 2. Arrived renders "not measured" when meta.arrivalsAvailable is false.
   // Catches: falling through to a fabricated 0 instead of the absence state.
   var M2 = flowFixture({ arrivalsAvailable: false, arrivalWeeks: [] });
@@ -4337,6 +4355,26 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/class="big">—<\/div>/.test(arrOff), "…and the hero renders the em-dash placeholder, no numeric value");
   assert_(!/class="big">[0-9]/.test(arrOff), "…confirmed: no digit ever lands in the hero slot");
   assert_(!/undefined|NaN/i.test(arrOff), "…with nothing printing undefined/NaN in its place");
+
+  // ── 2b. Different absence: the feed IS available (meta.arrivalsAvailable
+  // true) but the CURRENT period specifically has no arrivalWeeks row — the
+  // period-level twin of check 1b above. Before the fix this fell through to
+  // sumOver's 0-fallback: headline printed "0" (a measured-zero lie) and the
+  // context string concatenated "null resolved this period…" straight from
+  // the null resolvedCt/createdUnassigned. Catches: the same `|| 0` collapse,
+  // this time on the HEAD period rather than a trend point, and any residual
+  // "null"/"undefined" leaking into the sentence once created is null.
+  var M2b = flowFixture({ arrivalWeeks: [] });   // available: true (default), but zero rows
+  fresh(M2b);
+  C.renderAll_();
+  var arrGap = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  assert_(/class="big">—<\/div>/.test(arrGap),
+    "no arrivalWeeks row for the head period → hero renders '—', never a measured '0'");
+  assert_(!/class="big">0/.test(arrGap), "…specifically: no '0' in the hero slot (the exact conflation this fix targets)");
+  assert_(/no arrivals data for this period/.test(arrGap),
+    "…and the context line states the gap in words, distinct from the arrivalsAvailable:false 'not measured' wording");
+  assert_(!/null|undefined|NaN/i.test(arrGap),
+    "created===null never leaks into the resolvedCt/createdUnassigned concatenation as the literal string 'null'");
 
   fresh(model({}));
   C.setState("view", "exec");
@@ -4632,6 +4670,30 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var amerCph = cellFor_(amerRow, "clearedPerHead");
   assert_(anzCph && amerCph, "clearedPerHead's own column cell is present in both rows");
 
+  // ── 1b. RENDERED TEXT, not the raw value (blocking fix — the brief's own
+  // note: earlier checks in this fixture asserted amerPerHead/anzPerHead as
+  // raw numbers, which is why the quantisation bug could survive them even
+  // though the fixture is otherwise exactly what exposes it). AMER 61/63 =
+  // 0.968… must NOT print as the bare integer "1" — Math.round (the old
+  // behaviour) AND Math.round(v*10)/10 read back through naive string concat
+  // (1.0 + "" === "1" in JS) both regenerate it; toFixed(1) is required. ANZ
+  // 12/8 = 1.5 must print its real decimal too. Together this is the whole
+  // point: a 1.55x gap must read as 1.0 vs 1.5, never as 1 vs 2 (a fabricated
+  // 2x). Neither tooltip carries any other digit that could produce a false
+  // pass/fail on the bare-\b1\b/\b2\b checks (verified against the literal
+  // copy in gridCellHtml_ — the small-n tooltip's only digit is "10", which
+  // \b1\b does not match).
+  assert_(amerCph.indexOf("1.0") !== -1,
+    "AMER's clearedPerHead cell renders the decimal '1.0' (61/63 ≈ 0.968), not a bare rounded integer — got: " + amerCph);
+  assert_(!/\b1\b/.test(amerCph.replace("1.0", "")),
+    "…no lingering bare '1' once the decimal token itself is accounted for");
+  assert_(!/\b2\b/.test(amerCph), "…and AMER's value never rounds up to 2 either");
+  assert_(anzCph.indexOf("1.5") !== -1,
+    "ANZ's clearedPerHead cell renders the decimal '1.5' (12/8) — got: " + anzCph);
+  assert_(!/\b2\b/.test(anzCph), "…never rounds up to the fabricated '2' the old Math.round produced");
+  assert_(!/\b1\b/.test(anzCph.replace("1.5", "")),
+    "…no lingering bare '1' either, once the decimal token is accounted for");
+
   // ── 2. Sub-10 (ANZ, 8 people) renders its VALUE and a grey dot, never a
   // RAG colour class. Mutation this catches: hiding the small-group cell
   // fails the "value present" half; still colouring it fails the "no RAG"
@@ -4687,6 +4749,87 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/stroke="var\(--c-target\)"/.test(svgPos), "…still no target-coloured reference line (D11)");
   assert_(svgPos.indexOf('fill="var(--c-ref)"') !== -1,
           "…and the operating band NOW shades, now that the 5+ point norm publishes");
+
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
+  C.switchView_("exec");
+  C.renderAll_();
+})();
+
+// ── queueCover carries its OWN label/axis/detail — never the hero's shared
+// registry formula (blocking fix D5). Before the fix, METRICS_.queueCover
+// read reg_("queueCover").name/.formula directly, which is the HERO's
+// WHOLE-POPULATION formula ("assigned open + unassigned open ÷ …") even
+// though this column's own value() (unchanged) computes ASSIGNED-ONLY — the
+// grid printed ~4-5w under a caption that, read literally, claims to include
+// the ~1,839 unassigned issues the hero's ~11w actually does. Mutation this
+// catches: reverting label()/axis()/detail() back to the reg_() reads
+// reintroduces "Weeks to Clear" and "unassigned open" on this surface.
+(function () {
+  fresh(model({}));
+  C.STATE.compare = "region";
+  C.setState("metric", "queueCover");
+  C.switchView_("exec");
+  C.renderAll_();
+  var html = els.comparePanel.innerHTML;
+  assert_(html.indexOf("Assigned wks to clear") !== -1,
+    "queueCover's header/chart title reads 'Assigned wks to clear', not the hero's 'Weeks to Clear'");
+  assert_(html.indexOf("Weeks to Clear") === -1,
+    "…and the hero's own metric name never leaks onto this surface");
+  assert_(html.indexOf("median assigned weekly clearing rate") !== -1,
+    "the visible axis caption states the ASSIGNED-ONLY formula");
+  assert_(html.indexOf("unassigned open") === -1,
+    "…and the registry's whole-population formula ('assigned open + unassigned open') never " +
+    "prints on this panel at all — not in the caption, not in its hover-detail title");
+  // The hover-DETAIL title on the SAME span (renderCompare_'s `m.detail ?
+  // m.detail() : reg_(m.id).formula` fallback) must ALSO read the
+  // assigned-only string, not reg_("queueCover").formula. Extracted by its
+  // own unique `<span class="sub" title="` marker (the only element in this
+  // panel combining that class with a title attribute) so a match on some
+  // OTHER span elsewhere on the page can't produce a false pass.
+  var marker = '<span class="sub" title="';
+  var i = html.indexOf(marker);
+  var titleTxt = i === -1 ? "" : html.slice(i + marker.length).split('">')[0];
+  assert_(titleTxt.indexOf("assigned weekly clearing rate") !== -1,
+    "the header ⓘ's hover-detail title states the assigned-only formula — got: " + titleTxt);
+  assert_(titleTxt.indexOf("unassigned") === -1,
+    "…and never the registry's unassigned-inclusive wording, even in the hover-only text — got: " + titleTxt);
+
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
+  C.switchView_("exec");
+  C.renderAll_();
+})();
+
+// ── fmtGridVal_ "weeks" branch, RENDERED (blocking fix D4, the queueCover
+// half): the grid must print "5.0w" — one decimal AND the hero's own "w"
+// suffix — never a bare "5". A 7-complete-week fixture with clearRate=1 and
+// open (wipN 3 + todoN 2) = 5 makes queueCover's value EXACTLY 5, the one
+// value where Math.round(v) (the old code) and the fixed formatter agree on
+// the DIGITS and could only be told apart by the suffix/decimal — the
+// discriminating case for this specific bug (a bare "5" vs "5.0w").
+(function () {
+  var mdl = histModel({});
+  mdl.people = [person("Ana AMER", { region: "AMER" })];
+  mdl.flowOpenBuckets = [{ person: "Ana AMER", wipN: 3, todoN: 2, todoEst: 2, todoHrs: 10 }];
+  mdl.throughputBuckets = HIST.slice(0, -1).map(function (iso) {
+    return { iso: iso, person: "Ana AMER", nAll: 1, nEst: 1, estHrs: 5 };
+  });
+  fresh(mdl);
+  assert_(C.assignedClearRate_() === 1, "fixture's assigned clear rate is exactly 1 (median of 7 weeks at nAll=1)");
+  assert_(C.METRICS_.queueCover.value() === 5, "queueCover's raw value is exactly 5 (open 5 ÷ rate 1) — the case that discriminates suffix/decimal from digits");
+  C.STATE.compare = "region";
+  C.setState("metric", "queueCover");
+  C.switchView_("exec");
+  C.renderAll_();
+  var html = els.comparePanel.innerHTML;
+  var gridSeg = html.split("gridTable")[1] ? html.split("gridTable")[1].split("</table>")[0] : "";
+  assert_(gridSeg.indexOf("5.0w") !== -1,
+    "queueCover's grid cell renders '5.0w' (one decimal + the weeks suffix) — got: " + gridSeg);
+  assert_(!/>5</.test(gridSeg) && !/ 5 /.test(gridSeg.replace("5.0w", "")),
+    "…and never the bare unlabelled '5' the old Math.round(v) formatter produced");
 
   C.setState("metric", "onTime");
   C.STATE.compare = "region";
@@ -4815,6 +4958,80 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 
   // Teardown.
   resetFilters();
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🌊 BACKLOG HEALTH — unassigned vs unattributed (blocking fix D3): an
+// ABSENT assignee (`unassigned`) and an assignee the roster join could not
+// resolve (`unattributed`) are DIFFERENT populations and must render as two
+// separate sentences, never one combined "N excluded" count — the exact
+// conflation attrN (Code.js) already exists to prevent on the 🧬 matrix,
+// reappearing here on a fourth surface once unassigned rows joined the
+// export (Jira Backlog.js v3.11.0, +~1,839 open issues). No render-smoke
+// coverage existed for this panel before this fix set.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  var mdl = model({});
+  // Person-keyed bucket with only the fields this check needs — backlogRowHtml_
+  // skips any BACKLOG_META_ signal missing from a row (t[k] === undefined),
+  // so an intentionally-sparse fixture is safe and does not fabricate signals.
+  mdl.backlogHealth = {
+    buckets: [{ person: "Ana Perez", n: 3, keys: {}, keysCapped: {} }],
+    unattributed: 5,
+    unassigned: 12,
+    asOf: new Date(2026, 6, 30).toISOString(),
+  };
+  fresh(mdl);
+  C.renderBacklogHealth_();
+  var html = els.backlogPanel.innerHTML;
+
+  // ── 1. Both counts render, as TWO SEPARATE sentences with their own wording,
+  // not summed into one. Mutation this catches: a shared "N excluded" template
+  // fed unassigned+unattributed (17) would still be "truthy" and pass a naive
+  // "some exclusion note renders" check — these assertions require the ACTUAL
+  // per-population count and wording, and reject the summed figure outright.
+  assert_(/12 open items have no assignee and are excluded/.test(html),
+    "unassigned (12, no assignee at all) states its OWN count and reason — got: " + html);
+  assert_(/5 open items have an assignee the roster join could not match/.test(html),
+    "unattributed (5, assignee present, join failed) states its OWN, DIFFERENT reason — got: " + html);
+  assert_(!/17 open items/.test(html),
+    "…the two counts are NEVER pre-summed into one combined '17' sentence");
+  assert_(!/12 open items could not be matched to a roster person/.test(html),
+    "…and the OLD wording (which named 'unassigned' with the roster-join reason) is gone");
+
+  // ── 2. Singular/plural agreement holds at n=1 for each population
+  // independently — proving the two sentences are genuinely separate
+  // templates, not one template parameterised by a single shared count.
+  var mdl1 = model({});
+  mdl1.backlogHealth = {
+    buckets: [{ person: "Ana Perez", n: 1, keys: {}, keysCapped: {} }],
+    unattributed: 1, unassigned: 1, asOf: null,
+  };
+  fresh(mdl1);
+  C.renderBacklogHealth_();
+  var html1 = els.backlogPanel.innerHTML;
+  assert_(/1 open item has no assignee and is excluded/.test(html1),
+    "unassigned singular ('1 open item has… is excluded') — got: " + html1);
+  assert_(/1 open item has an assignee the roster join could not match and is excluded/.test(html1),
+    "unattributed singular, independently correct — got: " + html1);
+
+  // ── 3. Zero on either side renders NO sentence for that side (falsy count
+  // guard, unchanged from before this fix) — proving the split didn't turn a
+  // zero into a spurious "0 open items…" line.
+  var mdl0 = model({});
+  mdl0.backlogHealth = {
+    buckets: [{ person: "Ana Perez", n: 1, keys: {}, keysCapped: {} }],
+    unattributed: 0, unassigned: 0, asOf: null,
+  };
+  fresh(mdl0);
+  C.renderBacklogHealth_();
+  var html0 = els.backlogPanel.innerHTML;
+  assert_(!/no assignee/.test(html0) && !/roster join could not match/.test(html0),
+    "zero on both sides prints neither sentence — got: " + html0);
+
   fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();
