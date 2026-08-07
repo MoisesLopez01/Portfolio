@@ -718,6 +718,64 @@ assert_(C.stdFor_(s6, { publish: true }) === null,
         "a stale model gets no operating rate either (NFR-7) — the window can't be dated");
 delete C.getModel()._stale;
 
+// ── 9b. The operating rate's WEEKLY FALLBACK on the Quarter view ───────────
+// metricSeries_'s own doc comment: the export window holds far more complete
+// WEEKS than complete fiscal QUARTERS, so a norm built on the displayed
+// (quarterly) unit could never reach the 5-period minimum — the fallback
+// exists so the feature isn't simply missing exactly where an executive is
+// most likely to look. Untested until now: nothing walked STATE.period to
+// "quarter" and inspected metricSeries_'s std.basis/displayUnit.
+(function () {
+  // A dedicated fixture: 12 COMPLETE weeks (enough for the weekly minimum of
+  // 5) grouped into 3 COMPLETE quarters (short of the SAME minimum on the
+  // quarterly basis) — the exact shape metricSeries_'s own comment describes
+  // ("52 weeks … only 3 complete fiscal quarters"). histModel's single
+  // partial "now" quarter can't stand in for this: an ALL-empty done-quarters
+  // list never even reaches the fallback branch (metricConfidence_ on a
+  // zero-week window fails closed before stdFor_ gets a chance to fall back),
+  // which would test the wrong thing.
+  var QWEEKS = ["2026.W20", "2026.W21", "2026.W22", "2026.W23",
+                "2026.W24", "2026.W25", "2026.W26", "2026.W27",
+                "2026.W28", "2026.W29", "2026.W30", "2026.W31"];
+  var qwk = {};
+  QWEEKS.forEach(function (iso) { qwk[iso] = week(); });   // 75% util every week
+  var mQ = model({});
+  mQ.people = [person("Ana Perez", { weeks: qwk })];
+  mQ.meta.gridWeeks = QWEEKS.map(function (iso) { return { iso: iso, status: "done" }; });
+  mQ.meta.trendWeeks = QWEEKS;
+  mQ.meta.headlineIso = QWEEKS[QWEEKS.length - 1];
+  mQ.meta.periods = { quarter: [
+    { key: "Q1", label: "Q1", status: "done", partial: false, isos: QWEEKS.slice(0, 4) },
+    { key: "Q2", label: "Q2", status: "done", partial: false, isos: QWEEKS.slice(4, 8) },
+    { key: "Q3", label: "Q3", status: "done", partial: false, isos: QWEEKS.slice(8, 12) },
+  ] };
+  fresh(mQ);
+  C.STATE.period = "quarter";
+  var doneQ = C.donePeriods_();
+  assert_(doneQ.length === 3,
+          "sanity: the fixture's Quarter view has 3 COMPLETE quarters — fewer than the 5-period " +
+          "minimum, but not zero, so the fallback has something real to fall back FROM");
+  var serQ = C.metricSeries_(C.METRICS_.util, doneQ);
+  assert_(serQ.std && serQ.std.ok,
+          "the operating band still publishes on the Quarter view — the POSITIVE case, since a " +
+          "missing fallback would silently read as 'no operating rate here', not an error");
+  assert_(serQ.std.basis === "week",
+          "…by falling back to the WEEKLY series specifically, not just publishing SOME rate");
+  assert_(serQ.std.displayUnit === "quarter",
+          "…and the fallback is LABELLED with the view it stood in for — an unlabelled change of " +
+          "basis would be worse than no rate at all (metricSeries_'s own stated rule)");
+
+  // Negative companion: the Week view is the fallback's OWN basis — it must
+  // never claim to have fallen back to itself.
+  C.STATE.period = "week";
+  var doneW = C.donePeriods_();
+  var serW = C.metricSeries_(C.METRICS_.util, doneW);
+  assert_(serW.std && serW.std.ok, "sanity: the Week view publishes its own operating rate directly");
+  assert_(serW.std.basis === undefined,
+          "…with NO basis tag at all — the Week view IS the weekly basis, not a fallback onto it");
+  C.STATE.period = "week";
+})();
+
 // ── 10. Charts carry labels ─────────────────────────────────
 // The user's complaint that started this: "charts with no labels tells nothing."
 fresh(histModel({}));
@@ -1393,15 +1451,47 @@ C.buildFilters_(); C.renderAll_();
 // (grade code stripped for reading, full roster string in the tooltip/CSV).
 // ══════════════════════════════════════════════════════════════════════════
 // Task 16B RETIREMENT: #tiles (the old four-card strip) and #tileColorKey
-// (its colour-key legend) are gone. This used to assert the legend's TEXT
-// (own-target grading, the Rework Rate inversion); that legend has no
-// replacement (see task-16b-report.md deleted-check accounting) — the
-// per-card RAG COLOURING itself is unaffected and still exercised by the
-// target-chip/RAG-class assertions elsewhere in this file. Assert the
-// retirement is REAL — checked on the raw markup, not on rendered output,
-// so an element that still exists but merely stays empty cannot pass this.
+// (its colour-key legend) are gone. Checked on the raw markup, not rendered
+// output, so an element that still exists but merely stays empty cannot pass.
 assert_(html.indexOf('id="tiles"') === -1, "#tiles is absent from the markup (Task 16B retirement) — not merely emptied");
 assert_(html.indexOf('id="tileColorKey"') === -1, "#tileColorKey is absent from the markup (Task 16B retirement)");
+
+// Task 17 — REGRESSION FIX: #tileColorKey's legend shipped with no successor
+// (task-16b-report.md's deleted-check accounting flagged this explicitly).
+// Re-homed as #flowKey, populated by renderFlow_ from the SAME ragKeyHtml_
+// the old legend used (dead code with zero call sites until this fix — the
+// per-card RAG colouring survived the retirement; only its EXPLANATION did
+// not). Rewriting the three checks this section used to carry, against the
+// new home. Checked on RENDERED output (not raw markup) — the positive case,
+// since "the element exists" alone would pass even if renderFlow_ never
+// wrote to it.
+fresh(model({}));
+C.getModel().viewerRole = "admin";
+C.setState("view", "exec");
+C.renderAll_();
+var flowKeyHtml = els.flowKey.innerHTML;
+assert_(/Colour key/.test(flowKeyHtml), "the colour key has a live successor — #flowKey renders it");
+assert_(/own agreed target/.test(flowKeyHtml), "…names what the colour is judged against");
+assert_(/Rework Rate reverses the scale/.test(flowKeyHtml),
+        "…and keeps the inversion callout — Rework Rate colours by 'lower is better'");
+assert_(/no colour = no verdict/.test(flowKeyHtml), "…and the no-target/no-data case is explained too");
+// Inert, never a filter: no onclick anywhere in the key markup.
+assert_(!/onclick=/.test(flowKeyHtml), "the key is a caption — clicking a swatch does nothing");
+// Set unconditionally at the top of renderFlow_, so a non-margin role
+// (canSeeMargin_() false — "guest") who still sees On-Time/Forecast/Quality
+// in #flowTiles still gets the same explanation; the key is not gated behind
+// canSeeMargin_() the way the Capacity band's own tile is.
+fresh(model({}));
+C.getModel().viewerRole = "guest";
+C.setState("view", "exec");
+C.renderAll_();
+assert_(!C.canSeeMargin_ || C.canSeeMargin_() === false, "sanity: guest really is a non-margin role");
+assert_(/Colour key/.test(els.flowKey.innerHTML),
+        "the colour key renders for a non-margin role too — On-Time/Forecast/Quality are visible to them");
+fresh(model({}));
+C.getModel().viewerRole = "admin";
+C.setState("view", "exec");
+C.renderAll_();
 
 resetFilters();
 C.STATE.expandedWeeks = {}; C.STATE.openDetail = {}; C.STATE.flag = "";
@@ -1425,6 +1515,22 @@ fresh(model({}));
 C.renderHygPanel_();
 assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.hygPanel.innerHTML),
         "the hygiene table says coverage colours grade against the gate, not 100%");
+
+// Task 17 (Item 1): "no individual is named in the gaps queue" — the pulse
+// and masthead already carry this guard elsewhere in this file; the gaps
+// queue/🧬 matrix (renderHygPanel_) did not have its own. gapsRows_ is keyed
+// on FIELD name over AGGREGATE hygieneBuckets/personHygiene counts, so it
+// cannot name a person today by construction — the check still earns its
+// place as a regression guard, stated against every name in the actual
+// fixture (same idiom the pulse check already uses), so a future change
+// that threads a person into the queue (a "worst offender" drill-down, say)
+// trips it rather than shipping silently.
+var hygFixture = fresh(model({}));
+C.renderHygPanel_();
+var hygHtml = els.hygPanel.innerHTML;
+hygFixture.people.forEach(function (p) {
+  assert_(hygHtml.indexOf(p.name) === -1, "the gaps queue/🧬 matrix must not name " + p.name);
+});
 
 // ══════════════════════════════════════════════════════════════════════════
 // 26. INTERNS (I1) NEVER MOVE A RATE (user decision 2026-08-04): profile and
@@ -3788,6 +3894,21 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     C.renderBacklogBand_();
     return els.backlogBand.innerHTML;
   }
+  // The band now carries TWO <svg> elements — the Inventory tile's history
+  // sparkline (Task 17) renders first (it's inside the hero .tiles div, above
+  // the ruler in DOM order), then the ruler itself. A plain "first <svg on the
+  // page" split — the ruler-specific checks below used to get away with that
+  // when the ruler was the ONLY svg in this band — would silently start
+  // grading the sparkline instead. Anchored on the ruler's own CSS class
+  // (queueRulerSvg_ always emits `class="chart backlogRuler"`) so it keeps
+  // finding the ruler regardless of what else shares the band.
+  function rulerSvg_(html) {
+    var i = html.indexOf('<svg class="chart backlogRuler"');
+    if (i === -1) return "";
+    var rest = html.slice(i);
+    var end = rest.indexOf("</svg>");
+    return end === -1 ? "" : rest.slice(0, end + "</svg>".length);
+  }
   function aw(iso, created, resolved) {
     return { iso: iso, created: created, resolved: resolved, createdUnassigned: 0 };
   }
@@ -3888,7 +4009,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     return { iso: "2026.W" + (24 + i), items: 3300, measured: i === 4 };
   });   // 3300/300 = 11.0 flat → baseline 11.0, band floor ±2 → [9,13]
   var hBand = band(mBand);
-  var rulerSvg = hBand.split("<svg")[1] ? "<svg" + hBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  var rulerSvg = rulerSvg_(hBand);
   assert_(rulerSvg, "the ruler rendered an <svg> at all (norm publishes, rate is set)");
   assert_(!/target/i.test(rulerSvg), "the ruler SVG contains NO 'target' text anywhere");
   assert_(!/x1="[^"]*" x2="[^"]*"[^>]*stroke="var\(--c-target\)"/.test(rulerSvg),
@@ -3904,10 +4025,50 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var mNoBand = baseFixture();
   mNoBand.inventoryHistory = [];
   var hNoBand = band(mNoBand);
-  var rulerSvgNoBand = hNoBand.split("<svg")[1] ? "<svg" + hNoBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
+  var rulerSvgNoBand = rulerSvg_(hNoBand);
   assert_(rulerSvgNoBand.indexOf('fill="var(--c-ref)"') === -1,
           "…and with an unpublishable norm (<5 points), NO reference band is drawn at all — " +
           "not a green rect standing in for a target");
+
+  // ── 5b. The Inventory hero tile draws its reconstructed history (Task 17 —
+  // regression fix: Tasks 5/7 built the 26-week walkback expressly so the
+  // hero would ship WITH a trend; Task 16B's retirement of Backlog/WIP left
+  // it drawn nowhere — see task-16b-report.md's deleted-check accounting).
+  // Reuses mBand from check 5 above: 5 points, only the newest (index 4,
+  // "2026.W28") measured — everything behind it reconstructed.
+  var invTileBand = hBand.split(">Inventory<")[1].split("Net flow")[0];
+  assert_(/class="chart"/.test(invTileBand),
+          "the Inventory tile carries an actual chart — the POSITIVE case, since every " +
+          "polarity check below would equally pass on a tile that renders nothing");
+  assert_((invTileBand.match(/<circle/g) || []).length === 5,
+          "one point per week of history (5), not a summary dot");
+  assert_(invTileBand.indexOf('class="pt-measured"') !== -1 &&
+          invTileBand.indexOf('class="pt-reconstructed"') !== -1,
+          "measured and reconstructed points are TWO DIFFERENT visual classes, not one style for both");
+  assert_((invTileBand.match(/class="pt-measured"/g) || []).length === 1,
+          "exactly one measured point — the newest — the rest are reconstructed");
+  assert_((invTileBand.match(/class="pt-reconstructed"/g) || []).length === 4,
+          "…and the other four carry the reconstructed class");
+  assert_(/2026\.W28 · 3,300 \(measured\)/.test(invTileBand),
+          "the measured point's OWN tooltip says so, in words, not just in a CSS class");
+  assert_(/2026\.W24 · 3,300 \(reconstructed — inferred, not a snapshot\)/.test(invTileBand),
+          "…and a reconstructed point's tooltip says THAT, in words — same rule the " +
+          "✎ definition-changed marker applies to a formula change, reused for a change of evidence");
+  assert_(/stroke-dasharray="4,3"/.test(invTileBand),
+          "the connecting line itself is dashed — the series is flagged as substantially " +
+          "reconstructed, not just its endpoints");
+  assert_(/4w reconstructed \(○, dashed\) → 1 measured \(●\)/.test(invTileBand),
+          "the caption states the split in plain language too");
+
+  // Negative companion: an UNANCHORABLE walkback (inventoryHistory === [],
+  // Code.js `_test_modelAssembly_` part 3 — no arrivals tab, or no measurable
+  // anchor) draws NOTHING, and says why — never a flat line at zero, which
+  // would read as a measured, stable queue instead of an absent one.
+  var invTileNoBand = hNoBand.split(">Inventory<")[1].split("Net flow")[0];
+  assert_(!/<svg/.test(invTileNoBand),
+          "an unanchorable history renders NO chart at all — not a flat zero-value line");
+  assert_(!/<circle/.test(invTileNoBand), "…and no lone zero-point either");
+  assert_(/no history —/.test(invTileNoBand), "…and it SAYS why there's nothing to draw");
 
   // ── 6. Setting STATE.region changes the sub-row but NOT the hero triplet —
   // proving the hero is genuinely ORG (unfiltered), not merely tagged ORG
