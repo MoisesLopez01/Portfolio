@@ -3364,6 +3364,15 @@ function canonicalIsoWeek_(iso) {
  * The ISO Week cell is canonicalised (see canonicalIsoWeek_) before it is
  * used as a key, so a zero-padded write ("2026.W07") joins correctly against
  * unpadded lookup keys built from a Date elsewhere in this dashboard.
+ *
+ * Unassigned Items / Unassigned Hrs (added to the exporter after this tab was
+ * already live, v3.11.0) are the MEASURED history behind the hero's unowned
+ * figure — everything before that export version has neither column. Same
+ * TRISTATE discipline as parseArrivalRows_'s createdUnassigned: an ABSENT
+ * column reads as null (nobody measured it — collapsing to 0 would assert
+ * "no unowned work" on an export that predates the columns, which is good
+ * news the data does not support), while a PRESENT-but-blank cell is a real
+ * measured zero.
  */
 function parseFlowSnapshotRows_(values) {
   if (!values || values.length < 2) return { snaps: [], available: false };
@@ -3373,6 +3382,8 @@ function parseFlowSnapshotRows_(values) {
   var iWip = colIdx_(h, ["WIP Count"]);
   var iHrs = colIdx_(h, ["Backlog Hrs"]);
   var iN = colIdx_(h, ["Backlog Items"]);
+  var iUnN = colIdx_(h, ["Unassigned Items"]);
+  var iUnHrs = colIdx_(h, ["Unassigned Hrs"]);
   if (iGen === -1 || iIso === -1) return { snaps: [], available: false };
   var byIso = {}, order = [];
   for (var r = 1; r < values.length; r++) {
@@ -3383,7 +3394,10 @@ function parseFlowSnapshotRows_(values) {
     byIso[iso] = { iso: iso, at: String(values[r][iGen] || ""),
                    wip: Number(values[r][iWip]) || 0,
                    backlogHrs: Number(values[r][iHrs]) || 0,
-                   backlogN: Number(values[r][iN]) || 0 };
+                   backlogN: Number(values[r][iN]) || 0,
+                   // TRISTATE — see doc comment above.
+                   unassignedN: iUnN === -1 ? null : (Number(values[r][iUnN]) || 0),
+                   unassignedHrs: iUnHrs === -1 ? null : (Number(values[r][iUnHrs]) || 0) };
   }
   return { snaps: order.map(function (k) { return byIso[k]; }), available: true };
 }
@@ -4019,7 +4033,14 @@ function assembleModel_(inputs, win) {
 //      meta.arrivalsAvailable/clearRateMedian/clearRateWeeks/walkbackMaxWeeks,
 //      typeHygiene rows gain `attrN`, and registry gains queueCover/netFlow/
 //      clearedPerHead/inventory/arrived/cleared (all target: null).
-var DH_SCHEMA_VER_ = 26;
+// v27: meta.flowSnapshots rows gain `unassignedN`/`unassignedHrs` — the exporter's
+//      Flow Snapshots tab has carried these two columns for a while but nothing
+//      read them, so the unowned-queue trend was reconstructed by walkback
+//      forever instead of accumulating real measurements. TRISTATE: null on a
+//      row from before the columns existed, 0 on a measured-but-empty row. A
+//      cached v26 model has neither field, so a later chart reading them would
+//      render every point as undefined rather than null — must miss cleanly.
+var DH_SCHEMA_VER_ = 27;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 function buildDeliveryModel_() {
@@ -5275,6 +5296,45 @@ function _test_flowSnapshots_() {
   assert_(Math.abs(r.snaps[0].backlogHrs - 118) < 0.001, "hours from the winning row");
   assert_(r.snaps[1].iso === "2026.W32" && r.snaps[1].backlogN === 35, "second week intact");
   assert_(parseFlowSnapshotRows_([]).available === false, "empty → unavailable");
+
+  // ── Unassigned columns: the TRISTATE is the whole point ──────────────────────
+  // The exporter gained "Unassigned Items"/"Unassigned Hrs" after this tab already
+  // held rows, and the tab is append-only with 52-week retention — so historical
+  // rows genuinely have no value for them. An ABSENT column must therefore read
+  // `null` ("nobody measured this week"), while a present-but-EMPTY cell reads `0`
+  // ("we looked and the queue was fully owned"). Collapsing the two would assert
+  // that nobody was unassigned in weeks nobody measured, which is the most
+  // dangerous false read this dashboard has — it is the exact claim the whole
+  // unowned-queue feature exists to disprove.
+  assert_(r.snaps[0].unassignedN === null && r.snaps[0].unassignedHrs === null,
+          "columns ABSENT → null, never 0 — got " + r.snaps[0].unassignedN +
+          " / " + r.snaps[0].unassignedHrs);
+
+  var withUn = parseFlowSnapshotRows_([
+    ["Generated", "ISO Week", "WIP Count", "Backlog Hrs", "Backlog Items",
+     "Unassigned Items", "Unassigned Hrs"],
+    ["8/3/2026 07:00", "2026.W32", "11", "99", "35", "1839", "412.5"],
+    // A present-but-BLANK cell is a MEASURED ZERO, not a gap: the exporter ran,
+    // counted, and found none. This row is what separates a correct reader from
+    // one that treats blank and absent alike.
+    ["8/10/2026 07:00", "2026.W33", "9", "80", "30", "", ""],
+  ]);
+  assert_(withUn.snaps[0].unassignedN === 1839,
+          "unassigned items read by NAME — got " + withUn.snaps[0].unassignedN);
+  assert_(Math.abs(withUn.snaps[0].unassignedHrs - 412.5) < 0.001,
+          "unassigned hours read — got " + withUn.snaps[0].unassignedHrs);
+  assert_(withUn.snaps[1].unassignedN === 0 && withUn.snaps[1].unassignedHrs === 0,
+          "present-but-blank → 0 (measured zero), NOT null — got " +
+          withUn.snaps[1].unassignedN + " / " + withUn.snaps[1].unassignedHrs);
+
+  // Column ORDER must not matter — every reader here resolves by header name.
+  var shuffled = parseFlowSnapshotRows_([
+    ["Unassigned Hrs", "ISO Week", "Backlog Items", "Generated", "Unassigned Items",
+     "WIP Count", "Backlog Hrs"],
+    ["412.5", "2026.W32", "35", "8/3/2026 07:00", "1839", "11", "99"],
+  ]);
+  assert_(shuffled.snaps[0].unassignedN === 1839 && shuffled.snaps[0].backlogN === 35,
+          "columns resolved by name, not position");
   Logger.log("✅ _test_flowSnapshots_ passed");
 }
 
@@ -6430,8 +6490,14 @@ function _test_modelAssembly_() {
   // 5. Schema version — read off the model, not the constant, so a payload
   // change that forgets the bump (or a bump that forgets the payload) is caught
   // even if DH_SCHEMA_VER_ itself silently drifted.
-  assert_(m.schemaVer === 26,
-          "payload schema is v26 (queue model) — literal check, independent of DH_SCHEMA_VER_");
+  // v27: meta.flowSnapshots rows gained unassignedN/unassignedHrs. Bumping the
+  // literal here is DELIBERATE work, not maintenance friction — this assertion
+  // firing is the signal that a payload shape changed, and it is the moment to
+  // ask whether stale cached entries can still be read safely. If you are here
+  // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
+  assert_(m.schemaVer === 27,
+          "payload schema is v27 (queue model + snapshot unassigned columns) — " +
+          "literal check, independent of DH_SCHEMA_VER_");
 
   Logger.log("✅ _test_modelAssembly_ passed");
 }
