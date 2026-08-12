@@ -2462,6 +2462,67 @@ function dhProjectOf_(key) {
 }
 
 /**
+ * Fold the Tempo rows into a project → PM index.
+ *
+ * readTempoGrid_ already carries `key` (the PROJECT key) beside `pm` (that
+ * project's lead) on every row, so nothing new is read from the sheet.
+ *
+ * LAST-SEEN WINS on a project that names more than one PM across the 52-week
+ * window: the row in the most recent week carrying hours. This view is about
+ * now-and-forward ownership, so the current owner is the right answer — but the
+ * overwrite is COUNTED and reported (`superseded`), because a handover that
+ * resolves silently is indistinguishable from a data error.
+ *
+ * The week comparison is NUMERIC (see isoWeekBefore_ / spec §4.2). Week keys are
+ * unpadded, so a lexicographic max would resolve a W9→W10 handover backwards.
+ *
+ * Time-off rows never confer ownership, mirroring the acc.pms guard in
+ * assembleModel_ — a NETSUITE row carries no project, so it cannot name a lead.
+ * The test is isTimeOffKey_(row.key), the SAME predicate eachTempoRow_ uses:
+ * there is no `row.timeOff` property on a readTempoGrid_ row, and checking for
+ * one would leave the guard permanently disabled.
+ *
+ * @param {Array<Object>} rows readTempoGrid_ output rows
+ * @returns {{byProject: Object<string,string>, superseded: number}}
+ */
+function pmByProject_(rows) {
+  var best = {};       // project → { pm, y, w }
+  var superseded = 0;
+  (rows || []).forEach(function (row) {
+    if (!row || isTimeOffKey_(row.key)) return;
+    var proj = String(row.key || "").trim().toUpperCase();
+    var pm = String(row.pm || "").trim();
+    if (!proj || !pm) return;
+    // Most recent week in which this row carries hours. A row with no hours
+    // carries no evidence of current ownership.
+    var y = -1, w = -1;
+    var wh = row.weekHours || {};
+    for (var iso in wh) {
+      if (!wh[iso]) continue;
+      var m = /^(\d{4})\.W(\d{1,2})$/.exec(iso);
+      if (!m) continue;
+      var yy = +m[1], ww = +m[2];
+      if (yy > y || (yy === y && ww > w)) { y = yy; w = ww; }
+    }
+    if (y === -1) return;
+    var cur = best[proj];
+    if (!cur) { best[proj] = { pm: pm, y: y, w: w }; return; }
+    if (cur.pm === pm) {
+      if (y > cur.y || (y === cur.y && w > cur.w)) { cur.y = y; cur.w = w; }
+      return;
+    }
+    // A genuine conflict: two different PMs on one project. Either way round it
+    // is counted — the reader needs to know the project changed hands, not just
+    // which name survived.
+    if (y > cur.y || (y === cur.y && w > cur.w)) best[proj] = { pm: pm, y: y, w: w };
+    superseded++;
+  });
+  var byProject = {};
+  for (var p in best) byProject[p] = best[p].pm;
+  return { byProject: byProject, superseded: superseded };
+}
+
+/**
  * The signal roster. ONE table, so a predicate can never drift between the count
  * and the queue behind it, and adding a signal is one entry rather than edits in
  * four places.
@@ -8456,6 +8517,63 @@ function _test_pmAttribution_() {
   assert_(dhProjectOf_(null) === "", "null does not throw");
   assert_(dhProjectOf_("NOTAKEY") === "NOTAKEY",
           "a key with no -N degrades to itself rather than to a blank bucket");
+
+  // ── pmByProject_ ──
+  var rows = [
+    { user: "Ana", key: "GTT", pm: "Dana Reyes", weekHours: { "2026.W30": 8 } },
+    { user: "Bo",  key: "GTT", pm: "Dana Reyes", weekHours: { "2026.W31": 8 } },
+    { user: "Cy",  key: "ACME", pm: "Sam Ortiz", weekHours: { "2026.W31": 4 } },
+    // A blank PM must not create a "" entry — that would collide with the
+    // (No PM) bucket and make a tagging gap look like a named owner.
+    { user: "Di",  key: "NOPM", pm: "", weekHours: { "2026.W31": 4 } },
+  ];
+  var idx = pmByProject_(rows);
+  assert_(idx.byProject.GTT === "Dana Reyes", "GTT maps to its PM");
+  assert_(idx.byProject.ACME === "Sam Ortiz", "ACME maps to its PM");
+  assert_(!("NOPM" in idx.byProject), "a blank PM creates no entry");
+  assert_(idx.superseded === 0, "no conflicts in the clean case");
+
+  // Multi-PM project: LAST-SEEN WINS (spec §5.1) — the row in the most recent
+  // week carrying hours. Deliberately listed oldest-last to prove the rule is
+  // reading the WEEK, not the array order.
+  var churn = [
+    { user: "Ana", key: "GTT", pm: "New Owner", weekHours: { "2026.W33": 8 } },
+    { user: "Bo",  key: "GTT", pm: "Old Owner", weekHours: { "2026.W20": 8 } },
+  ];
+  var c = pmByProject_(churn);
+  assert_(c.byProject.GTT === "New Owner",
+          "last-seen wins — and by week, not by position in the array");
+  assert_(c.superseded === 1, "the overwrite is COUNTED, never silent");
+
+  // Single-digit weeks again: W9 vs W10 must compare numerically here too, or a
+  // handover in early spring resolves backwards.
+  var spring = [
+    { user: "Ana", key: "GTT", pm: "Later Owner", weekHours: { "2026.W10": 8 } },
+    { user: "Bo",  key: "GTT", pm: "Earlier Owner", weekHours: { "2026.W9": 8 } },
+  ];
+  assert_(pmByProject_(spring).byProject.GTT === "Later Owner",
+          "W10 is later than W9 — numeric week compare, not lexicographic");
+
+  // Time-off rows never confer ownership (mirrors the acc.pms guard at :5539).
+  // NOTE the key: time-off is decided by isTimeOffKey_(row.key) — CONFIG_DH
+  // .NONPROJECT_KEYS is ["NETSUITE"] and matches on PREFIX. There is no
+  // `row.timeOff` property; asserting on a fabricated one would pass while the
+  // production guard did nothing.
+  var off = [{ user: "Ana", key: "NETSUITE-PTO", pm: "Dana Reyes",
+               weekHours: { "2026.W31": 8 } }];
+  assert_(Object.keys(pmByProject_(off).byProject).length === 0,
+          "a NETSUITE time-off row confers no project ownership");
+  assert_(isTimeOffKey_("NETSUITE-PTO") === true,
+          "…and the guard is the shared predicate, not a local re-derivation");
+
+  // A row with a PM but no hours anywhere carries no evidence of CURRENT
+  // ownership, so it must not claim the project out from under a row that does.
+  var noHours = [
+    { user: "Ana", key: "GTT", pm: "Real Owner", weekHours: { "2026.W31": 8 } },
+    { user: "Bo",  key: "GTT", pm: "Ghost Owner", weekHours: {} },
+  ];
+  assert_(pmByProject_(noHours).byProject.GTT === "Real Owner",
+          "a zero-hours row cannot take ownership from a row with hours");
 
   Logger.log("✅ _test_pmAttribution_ passed");
 }
