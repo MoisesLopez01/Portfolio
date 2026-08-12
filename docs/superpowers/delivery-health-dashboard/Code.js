@@ -2462,6 +2462,30 @@ function dhProjectOf_(key) {
 }
 
 /**
+ * Canonical identity key for a PM name, so the SAME person from two sources
+ * collapses to one row.
+ *
+ * Jira writes an assignee as "Lopez, Moises"; the Tempo PM column writes
+ * "Moises Lopez". Without this the tab would list one person twice, split their
+ * epics between the two rows, and report both as half-done — a failure that
+ * looks like data rather than like a bug. Comma form is flipped to "first last",
+ * which is also the spelling dhPmName_ displays.
+ */
+function dhPmKey_(raw) {
+  var norm = normDH_(raw);
+  var m = norm.match(/^([^,]+),\s*(.+)$/);
+  return m ? normDH_(m[2] + " " + m[1]) : norm;
+}
+
+/** Display spelling for a PM name: "Lopez, Moises" → "Moises Lopez", original
+    capitalisation preserved. Everything else is returned untouched. */
+function dhPmName_(raw) {
+  var s = String(raw == null ? "" : raw).trim();
+  var m = s.match(/^([^,]+),\s*(.+)$/);
+  return m ? (m[2].trim() + " " + m[1].trim()) : s;
+}
+
+/**
  * Fold the Tempo rows into a project → PM index.
  *
  * readTempoGrid_ already carries `key` (the PROJECT key) beside `pm` (that
@@ -2582,12 +2606,57 @@ function pmOwnedWork_(jira, byProject, today) {
   var byKey = {};
   all.forEach(function (it) { if (it && it.key) byKey[String(it.key).toUpperCase()] = it; });
 
-  function rowFor(pm) {
-    if (!map[pm]) {
-      map[pm] = { pm: pm, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
-                  readyDen: 0, readyN: 0, ignoredN: 0, epics: [], orphanChildren: [] };
+  // ── WHO OWNS AN EPIC: the assignee, and only then the project lead ────────
+  // An epic's assignee IS its owner — the ticket states it. The Tempo project
+  // lead is an INFERENCE from who logs hours where, and it is right only as far
+  // as one project has one PM. Direct evidence first, inference to fill the
+  // gaps, and the source recorded either way so a PM can challenge a row rather
+  // than having to trust it.
+  //
+  // Resolved epics are included here even though the bars count only open ones:
+  // a child of a closed epic still has to reach the right PM.
+  var epicPm = {};                                  // EPIC KEY → { name, source }
+  var childCountAll = {};                           // EPIC KEY → children, any status
+  all.forEach(function (it) {
+    if (!it || !it.isEpic) return;
+    var lead = idx[dhProjectOf_(it.key)] || "";
+    var assignee = String(it.assignee || "").trim();
+    epicPm[String(it.key).toUpperCase()] = assignee
+      ? { name: dhPmName_(assignee), source: "assignee" }
+      : (lead ? { name: lead, source: "project" } : { name: DH_NO_PM_, source: "none" });
+  });
+  all.forEach(function (it) {
+    if (!it || it.isEpic) return;
+    var ek = dhEpicOfChain_(it, byKey);
+    if (ek) childCountAll[ek] = (childCountAll[ek] || 0) + 1;
+  });
+
+  /** The PM an issue belongs to. Children inherit their EPIC's PM — that is what
+      keeps the epic ▸ children hierarchy intact: a child assigned to an engineer
+      still belongs to the PM accountable for the epic above it. */
+  function pmOf(it) {
+    if (it.isEpic) return epicPm[String(it.key).toUpperCase()] || { name: DH_NO_PM_, source: "none" };
+    var ek = dhEpicOfChain_(it, byKey);
+    if (ek && epicPm[ek]) return epicPm[ek];
+    var lead = idx[dhProjectOf_(it.key)] || "";
+    return lead ? { name: lead, source: "project" } : { name: DH_NO_PM_, source: "none" };
+  }
+
+  // Bucketed by CANONICAL key so "Lopez, Moises" and "Moises Lopez" are one row.
+  // The display name prefers a spelling with no comma — whichever source it came
+  // from — because that is how a person's name is normally written.
+  function rowFor(who) {
+    var k = who.name === DH_NO_PM_ ? DH_NO_PM_ : dhPmKey_(who.name);
+    if (!map[k]) {
+      map[k] = { pm: who.name, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
+                 readyDen: 0, readyN: 0, ignoredN: 0, epics: [],
+                 viaAssignee: 0, viaProject: 0,
+                 oppNoDue: 0, oppChildOver: 0, oppNoChildren: 0, oppStale: 0 };
     }
-    return map[pm];
+    if (who.name !== DH_NO_PM_ && map[k].pm.indexOf(",") !== -1 && who.name.indexOf(",") === -1) {
+      map[k].pm = who.name;
+    }
+    return map[k];
   }
 
   // In window = overdue (before this week's Monday) OR due inside the current
@@ -2608,7 +2677,12 @@ function pmOwnedWork_(jira, byProject, today) {
 
   all.forEach(function (it) {
     if (!typeHygOpen_(it)) return;                 // open work only — same predicate
-    var r = rowFor(idx[dhProjectOf_(it.key)] || DH_NO_PM_);
+    var who = pmOf(it);
+    var r = rowFor(who);
+    if (it.isEpic) {
+      if (who.source === "assignee") r.viaAssignee++;
+      else if (who.source === "project") r.viaProject++;
+    }
 
     // ── The two bars. UNFILTERED and UNWINDOWED, always (spec §5.2). ──────────
     // Not even the ignorable() carve applies here: an epic with no date and no
@@ -2636,14 +2710,24 @@ function pmOwnedWork_(jira, byProject, today) {
   all.forEach(function (it) {
     if (!it.isEpic || !typeHygOpen_(it)) return;
     if (!(dhStarted_(it) || inWindow(it))) return;
-    var pm = idx[dhProjectOf_(it.key)] || DH_NO_PM_;
+    var ek = String(it.key).toUpperCase();
+    var who = pmOf(it);
+    // Untouched for longer than the backlog's own staleness bar. Reused rather
+    // than a second threshold, so "stale" means one thing across the app.
+    var stale = !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_DAYS_;
     var e = { key: it.key, name: it.summary || "", status: it.status || "",
-              started: dhStarted_(it),
+              started: dhStarted_(it), assignee: dhPmName_(it.assignee || ""),
+              via: who.source,
               due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
               overdue: dhOverdue_(it, now), _dueDate: dhHasDue_(it) ? it.due : null,
+              stale: stale, staleDays: it.updated ? Math.round(bhDays_(it.updated, now)) : null,
+              // Counted over EVERY status: an epic whose children are all
+              // delivered is linked, not empty. Only an epic nothing rolls up to
+              // is the gap — its hours can never reach an engagement.
+              childrenAll: childCountAll[ek] || 0,
               children: [], within: 0, over: 0, noDate: 0, ignoredN: 0 };
-    epicOf[String(it.key).toUpperCase()] = e;
-    rowFor(pm).epics.push(e);
+    epicOf[ek] = e;
+    rowFor(who).epics.push(e);
   });
 
   // ── Children, attached to the epic they roll up to ───────────────────────
@@ -2666,6 +2750,19 @@ function pmOwnedWork_(jira, byProject, today) {
 
   var rows = Object.keys(map).map(function (k) { return map[k]; });
   rows.forEach(function (r) {
+    // ── AREAS OF OPPORTUNITY ────────────────────────────────────────────────
+    // Four countable gaps, each one a different conversation, so they are never
+    // summed into a single "score": a missing date is a commitment nobody made,
+    // a child past its epic is a plan that cannot land, an epic nothing rolls up
+    // to cannot reach an engagement, and a stale epic may not be real work at
+    // all. Derived from what is already computed — no new definitions.
+    r.oppNoDue = r.epicN - r.epicDated;
+    r.epics.forEach(function (e) {
+      r.oppChildOver += e.over;
+      if (!e.childrenAll) r.oppNoChildren++;
+      if (e.stale) r.oppStale++;
+    });
+
     // Worst first inside a PM: epics missing a date, then those with children
     // past the epic's own deadline, then the rest.
     r.epics.sort(function (a, b) {
@@ -6571,7 +6668,12 @@ function assembleModel_(inputs, win) {
 // 39 — pmOwned restructured epic-first (user feedback 2026-08-11): rows carry
 //      `epics` (each with its own `children`) instead of a flat `items` list,
 //      plus `ignoredN`. A v38 entry has `items` and would render no epics.
-var DH_SCHEMA_VER_ = 39;
+// 40 — pmOwned attribution is ASSIGNEE-FIRST (user decision 2026-08-11) and rows
+//      carry the four opportunity counts + viaAssignee/viaProject; epics carry
+//      assignee/via/stale/staleDays/childrenAll. A v39 entry attributes every
+//      epic by project lead and shows no gap line — the numbers would be wrong,
+//      not merely missing, which is the case a schema bump exists for.
+var DH_SCHEMA_VER_ = 40;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8830,6 +8932,7 @@ function _test_pmAttribution_() {
              start: o.start === undefined ? new Date(2026, 6, 1) : o.start,
              updated: o.updated || new Date(2026, 7, 10),
              epicKey: o.epicKey || "", parentKey: o.parentKey || "",
+             assignee: o.assignee || "",
              typeLabel: o.isEpic ? "Epic" : "Task", summary: o.key };
   }
   var pmIdx = { GTT: "Dana Reyes", ACME: "Sam Ortiz" };
@@ -8931,6 +9034,73 @@ function _test_pmAttribution_() {
     iss({ key: "GTT-61", parentKey: "GTT-60" }),
   ] }, pmIdx, today);
   assert_(loop.rows.length === 1, "a parent cycle resolves to no epic instead of hanging");
+
+  // ── ASSIGNEE-FIRST ATTRIBUTION (user decision 2026-08-11) ────────────────
+  assert_(dhPmName_("Lopez, Moises") === "Moises Lopez", "comma form flips for display");
+  assert_(dhPmName_("Moises Lopez") === "Moises Lopez", "plain form is untouched");
+  assert_(dhPmKey_("Lopez, Moises") === dhPmKey_("Moises Lopez"),
+          "both spellings collapse to ONE identity — else a PM is listed twice, " +
+          "their epics split between the rows, and both halves read as half-done");
+
+  var att = pmOwnedWork_({ issues: [
+    // Assignee present → the assignee owns it, NOT the Tempo project lead.
+    iss({ key: "GTT-100", isEpic: true, due: new Date(2026, 7, 20),
+          assignee: "Rita Chen" }),
+    // Same person, Jira's OTHER spelling — must land in the same row.
+    iss({ key: "GTT-101", isEpic: true, due: new Date(2026, 7, 21),
+          assignee: "Chen, Rita" }),
+    // No assignee → falls back to the Tempo project lead (Dana Reyes for GTT).
+    iss({ key: "GTT-102", isEpic: true, due: new Date(2026, 7, 22) }),
+    // A child assigned to someone else entirely still belongs to the epic's PM.
+    iss({ key: "GTT-103", due: new Date(2026, 7, 19), epicKey: "GTT-100",
+          assignee: "Some Engineer" }),
+  ] }, pmIdx, today);
+  var byName = {};
+  att.rows.forEach(function (r) { byName[r.pm] = r; });
+
+  assert_(byName["Rita Chen"], "the epic's ASSIGNEE owns it, not the project lead");
+  assert_(byName["Rita Chen"].epicN === 2,
+          "…and both spellings of that assignee land in ONE row, got " +
+          (byName["Rita Chen"] || {}).epicN);
+  assert_(byName["Rita Chen"].pm.indexOf(",") === -1,
+          "the comma-free spelling is preferred for display");
+  assert_(byName["Rita Chen"].viaAssignee === 2 && byName["Rita Chen"].viaProject === 0,
+          "the row records WHICH rule placed it, so a PM can challenge an attribution");
+  assert_(byName["Dana Reyes"] && byName["Dana Reyes"].epicN === 1,
+          "an epic with no assignee falls back to the Tempo project lead");
+  assert_(byName["Dana Reyes"].viaProject === 1 && byName["Dana Reyes"].viaAssignee === 0,
+          "…and is recorded as an inference, not as direct evidence");
+
+  var rita = byName["Rita Chen"];
+  var e100 = rita.epics.filter(function (e) { return e.key === "GTT-100"; })[0];
+  assert_(e100.children.length === 1 && e100.children[0].key === "GTT-103",
+          "a child assigned to an ENGINEER still sits under the epic's PM — " +
+          "otherwise the epic ▸ children hierarchy falls apart");
+
+  // ── AREAS OF OPPORTUNITY ────────────────────────────────────────────────
+  var opp = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-200", isEpic: true, due: null, assignee: "Rita Chen" }),   // WIP, no date
+    iss({ key: "GTT-201", isEpic: true, due: new Date(2026, 7, 20),           // nothing rolls up
+          assignee: "Rita Chen" }),
+    iss({ key: "GTT-202", isEpic: true, due: new Date(2026, 7, 20),           // untouched 60d
+          assignee: "Rita Chen", updated: new Date(2026, 5, 12) }),
+    iss({ key: "GTT-203", due: new Date(2026, 8, 30), epicKey: "GTT-202" }),  // past the epic
+  ] }, pmIdx, today);
+  var o = opp.rows[0];
+  assert_(o.oppNoDue === 1, "opportunity: epics with no due date");
+  assert_(o.oppChildOver === 1, "opportunity: children committed past their epic's date");
+  assert_(o.oppNoChildren === 2,
+          "opportunity: epics nothing rolls up to — their hours cannot reach an engagement");
+  assert_(o.oppStale === 1, "opportunity: epics untouched beyond the backlog's staleness bar");
+  // A delivered child still counts as linkage — an epic whose work is DONE is
+  // not an unlinked epic, and counting it as one would send someone to fix
+  // something that is already finished.
+  var linked = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-300", isEpic: true, due: new Date(2026, 7, 20), assignee: "Rita Chen" }),
+    iss({ key: "GTT-301", epicKey: "GTT-300", status: "Done", cat: "Done" }),
+  ] }, pmIdx, today);
+  assert_(linked.rows[0].oppNoChildren === 0,
+          "an epic whose only child is DELIVERED is linked, not empty");
 
   // Closed work is out entirely — the same typeHygOpen_ predicate every other
   // hygiene surface uses, so the counts reconcile with the 🚩 audit.
@@ -9847,8 +10017,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 39,
-          "payload schema is v39 (pmOwned is epic-first: rows carry epics[].children) — " +
+  assert_(m.schemaVer === 40,
+          "payload schema is v40 (pmOwned is assignee-first and carries opportunity counts) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
   // v29 model read as v30 would give every person pool `undefined`, collapse the
@@ -9865,9 +10035,11 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 39,
-          "schema is 39 — a v38 entry carries pmOwned.items, not epics, and the tab " +
-          "would render no epics at all");
+  assert_(m.schemaVer === 40,
+          "schema is 40 — a v39 entry attributes every epic by project lead and has no " +
+          "opportunity counts, so the tab would be WRONG rather than merely empty");
+  assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppNoDue === "number",
+          "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");
 }
 

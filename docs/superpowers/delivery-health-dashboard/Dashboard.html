@@ -519,6 +519,11 @@ tr.detail td.dback{padding:8px 16px 12px}
 .pmHead:hover,.pmEpicHead:hover{background:var(--surface-2)}
 /* The epic level is indented so the hierarchy is legible without a tree line:
    PM ▸ epic ▸ children, each step in from the last. */
+/* The opportunity line sits between the PM heading and the drill-down, and is
+   visible whether or not the row is expanded — it is the answer to "what should
+   this PM fix first", which should not require a click. */
+.pmOpp{margin:2px 0 6px 18px}
+.pmOpp>div{line-height:1.5}
 .pmEpic{margin:2px 0 2px 14px;border-left:2px solid var(--border);padding-left:8px}
 .pmEpicHead{padding:3px 4px;font-size:calc(12px*var(--scale))}
 .pmEpic .gwrap{margin:4px 0 8px 14px}
@@ -7007,13 +7012,10 @@ function renderPm_() {
     var ownCls = missing === 0 ? "sigGood" : "sigBad";
     var open = !!STATE.pmOpen[r.pm];
     var epics = r.epics || [];
-    // Roll the epic tallies up to the PM's collapsed line. A reader deciding
-    // whether to expand needs to know whether there is anything in there.
-    var over = 0;
-    epics.forEach(function (e) { over += e.over || 0; });
 
     var body = open
-      ? '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
+      ? '<p class="cellSub">' + pmViaHtml_(r) + "</p>" +
+        '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
           '<b class="' + ownCls + '">' + r.epicDated + "</b> of " + r.epicN +
           (ownPct === null ? "" : " (" + ownPct + "%)") +
           " · the team's bar is 100%" +
@@ -7031,18 +7033,18 @@ function renderPm_() {
     return '<div class="pmRow">' +
       '<h4 class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
         (open ? "▾ " : "▸ ") + esc_(r.pm) +
-        ' <span class="cellSub">' + r.epicDated + "/" + r.epicN + " epics dated" +
-        (missing ? ' · <span class="sigBad">🚩 ' + missing + "</span>" : "") +
-        (over ? ' · <span class="sigBad">' + over + " past the epic date</span>" : "") +
-        "</span></h4>" + body +
+        ' <span class="cellSub">' + r.epicDated + "/" + r.epicN + " epics dated</span>" +
+      "</h4>" + pmOppHtml_(r) + body +
     "</div>";
   }).join("");
 
   el.innerHTML =
     "<h3>🗓 PM-owned work" + scopeTag_("org") + "</h3>" +
-    '<p class="cellSub">Work is attributed to a PM by its <b>project</b>, from the ' +
-      "Tempo PM field — not by who it is assigned to. A project with no hours in the " +
-      "Tempo export has no PM, and its work is listed under <b>(No PM)</b>: a coverage " +
+    '<p class="cellSub">An epic belongs to its <b>Jira assignee</b> — the ticket states ' +
+      "who owns it. Where an epic has no assignee, it falls back to the <b>Tempo project " +
+      "lead</b>, which is an inference from who logs hours where; each row says which " +
+      "rule placed it. Children follow the epic above them, whoever they are assigned " +
+      "to. Work that satisfies neither rule is listed under <b>(No PM)</b>: a coverage " +
       "gap with a name, not an empty state. The two bars are <b>never averaged</b> — " +
       "the first is the PM's own field, the second is what their project contains." +
       (d.supersededPms
@@ -7063,6 +7065,66 @@ function renderPm_() {
       " <b>The bars are not windowed</b>: they measure every open item the PM owns, " +
       "because a denominator of only dated epics could never report a missing date.</p>" +
     rows;
+}
+
+/**
+ * The four countable gaps in a PM's work, biggest first — visible WITHOUT
+ * expanding, because the question "what should this PM fix first" should not
+ * require a click.
+ *
+ * Never summed into one score. Each is a different conversation: a missing date
+ * is a commitment nobody made; a child past its epic is a plan that cannot land;
+ * an epic nothing rolls up to cannot reach an engagement; a stale epic may not
+ * be real work at all. A single "PM health %" would average four unrelated
+ * problems and point at none of them.
+ *
+ * Ranked by SIZE, with the declaration order as the tie-break so equal counts
+ * stay in a stable, severity-ordered sequence rather than shuffling per render.
+ */
+var PM_OPPS_ = [
+  { k: "oppNoDue", icon: "🚩", cls: "sigBad",
+    one: "epic with no due date", many: "epics with no due date",
+    tip: "An epic with no committed end. It can never appear in On-Time Delivery, and nothing under it can be graded against a deadline." },
+  { k: "oppChildOver", icon: "⏱", cls: "sigBad",
+    one: "child committed past its epic's date", many: "children committed past their epic's date",
+    tip: "The epic cannot land on its date if its own work is scheduled after it. Either the children move or the epic's date does." },
+  { k: "oppNoChildren", icon: "🔗", cls: "sigWarn",
+    one: "epic with nothing linked to it", many: "epics with nothing linked to them",
+    tip: "No ticket of any status rolls up to this epic, so its delivered hours cannot be attributed to an engagement — and it cannot be quoted from later." },
+  { k: "oppStale", icon: "🕒", cls: "sigWarn",
+    one: "epic untouched for 30+ days", many: "epics untouched for 30+ days",
+    tip: "Nobody has touched it in longer than the backlog's own staleness bar. It may be blocked, or it may not be real work — either way it is inflating what this PM appears to be carrying." },
+];
+
+function pmOppHtml_(r) {
+  var live = PM_OPPS_.filter(function (o) { return (r[o.k] || 0) > 0; });
+  if (!live.length) {
+    // A clean PM says so. A row that renders nothing reads as "not measured",
+    // and the whole point of this line is that its absence means something.
+    return '<div class="pmOpp cellSub"><span class="sigGood">✔ No open gaps</span> ' +
+           "— every epic dated, linked, current, and its work inside its date.</div>";
+  }
+  live.sort(function (a, b) {
+    return (r[b.k] - r[a.k]) || (PM_OPPS_.indexOf(a) - PM_OPPS_.indexOf(b));
+  });
+  return '<div class="pmOpp">' + live.map(function (o) {
+    var n = r[o.k];
+    return '<div class="cellSub" title="' + esc_(o.tip) + '">' + o.icon +
+      ' <b class="' + o.cls + '">' + n + "</b> " + (n === 1 ? o.one : o.many) + "</div>";
+  }).join("") + "</div>";
+}
+
+/** How this PM's epics were attributed — direct evidence vs inference. Shown so
+    a PM can challenge a row rather than having to take it on trust. */
+function pmViaHtml_(r) {
+  var a = r.viaAssignee || 0, p = r.viaProject || 0;
+  if (!a && !p) return "";
+  var parts = [];
+  if (a) parts.push("<b>" + a + "</b> by Jira assignee");
+  if (p) parts.push("<b>" + p + "</b> by Tempo project lead");
+  return '<span title="An epic\'s assignee is direct evidence of ownership. The project ' +
+    'lead is an inference from who logs hours where, used only when the epic has no ' +
+    'assignee.">Attributed: ' + parts.join(" · ") + "</span>";
 }
 
 /**
@@ -7088,7 +7150,28 @@ function pmEpicHtml_(e, nowIso) {
   if (e.over) tally.push('<span class="sigBad">' + e.over + " past the epic date</span>");
   if (e.noDate) tally.push('<span class="sigWarn">' + e.noDate + " with no date</span>");
   if (e.within) tally.push('<span class="sigGood">' + e.within + " within</span>");
-  if (!tally.length) tally.push('<span class="cellSub">no children listed</span>');
+  // "no children listed" only when there ARE children somewhere and none of them
+  // reached this list. When nothing rolls up to the epic at all, the 🔗 gap below
+  // says it precisely — printing both read as two findings about one fact.
+  if (!tally.length && e.childrenAll) {
+    tally.push('<span class="cellSub">no children in this window</span>');
+  }
+  // The two gaps that are properties of the EPIC rather than of its children.
+  // They appear in the PM's ranked line above; repeating them here is what lets
+  // a reader act on the specific epic instead of hunting for which one it was.
+  if (!e.childrenAll) {
+    tally.push('<span class="sigWarn" title="No ticket of any status rolls up to this ' +
+      'epic, so its hours cannot be attributed to an engagement.">🔗 nothing linked</span>');
+  }
+  if (e.stale) {
+    tally.push('<span class="sigWarn" title="Untouched for longer than the backlog\'s ' +
+      'staleness bar — it may be blocked, or it may not be real work.">🕒 ' +
+      (e.staleDays ? e.staleDays + "d untouched" : "stale") + "</span>");
+  }
+  if (e.assignee) {
+    tally.push('<span class="cellSub" title="This epic\'s Jira assignee — the direct ' +
+      'evidence this row is attributed on.">👤 ' + esc_(e.assignee) + "</span>");
+  }
 
   var table = open && kids.length
     ? '<div class="gwrap"><table class="hyg"><thead><tr><th>Key</th><th>Summary</th>' +

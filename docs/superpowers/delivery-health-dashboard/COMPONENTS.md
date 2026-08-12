@@ -65,7 +65,7 @@ hand — `Jira Raw`, `Jira Bugs` and `Jira Arrivals` are fully rewritten each ru
 **Watch for:** it has **no automated tests**. Syntax is checked, behaviour is not. Every change to it
 is verified by reading and by the next export's output.
 
-### 3.2 `Code.js` — the server (schema v39)
+### 3.2 `Code.js` — the server (schema v40)
 
 Reads all nine sheets, joins them to the roster, computes every metric, caches the result.
 
@@ -79,10 +79,11 @@ code appears. Nothing else changes: the engine does not model the org chart, so 
 just re-points pools.
 
 **Watch for:** results are cached (~65 min TTL) and a warmer rebuilds them every 30 minutes, so the
-dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v39 must be
+dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v40 must be
 deployed with a `bustDeliveryCache_()`** — and every schema bump before it for its own reason: a
-cached v38 model carries `pmOwned.items` instead of `epics`, so the 🗓 PM tab lists no epics at all;
-a v37 model has no `pmOwned` and the tab renders its empty state; a cached v29/v30 read as v31 gave
+cached v39 model attributes every epic by the project lead and carries no opportunity counts, so the
+🗓 PM tab is **wrong rather than merely empty**; a v38 model carries `pmOwned.items` instead of
+`epics` and lists no epics at all; a v37 model has no `pmOwned`; a cached v29/v30 read as v31 gave
 every person no pool, collapsing the population into one cell and silently reproducing the blended
 figure the Workforce tab exists to retire.
 
@@ -123,7 +124,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,147 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,163 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -178,12 +179,24 @@ Two claims per PM, deliberately never combined into one score.
 | **Owns — epic due-date fill** | Quotable. A count over open epics with no join and no estimate, graded against a bar the team itself set at **100%** — "every epic carries a date, even if it is only the project end date". The only caveat is the attribution below |
 | **In project — task readiness** | Context, not a verdict on the PM. It reuses `BACKLOG_SIGNALS_.ready` (dated **and** estimated **and** linked **and** fresh) and inherits every caveat that signal carries. These fields are filled by assignees, not by the PM |
 
-**The attribution is the thing to check first.** Work reaches a PM through its **project**
-(`GTT-605 → GTT → that project's PM`, from the Tempo PM field), never through an assignee. That is
-what lets this tab exist at all: PMs are structurally absent from this dashboard's population —
-family 15 is not a tracking family and a live assertion *requires* `PMO` to be in `absentPools` — so
-a person-grained approach would have needed a second roster. It also means unassigned tickets are
-covered, which matters because that is where due-date gaps hide.
+**The attribution is the thing to check first.** An epic belongs to its **Jira assignee** — the
+ticket states who owns it. Only when an epic has no assignee does it fall back to the **Tempo
+project lead** (`GTT-605 → GTT → that project's PM`), which is an inference from who logs hours
+where. Each PM row states how many of its epics came from each rule, so an attribution can be
+challenged rather than taken on trust. Children follow their epic whoever they are assigned to.
+
+Neither rule touches the roster, and that is what lets this tab exist at all: PMs are structurally
+absent from this dashboard's population — family 15 is not a tracking family and a live assertion
+*requires* `PMO` to be in `absentPools` — so a person-grained roster approach would have needed a
+second roster.
+
+**Names are normalised across the two sources.** Jira writes `"Lopez, Moises"`, Tempo writes
+`"Moises Lopez"`; without `dhPmKey_` the same PM appears twice with their epics split between the
+rows, and both halves read as half-done.
+
+**Areas of opportunity** — undated epics · children past their epic's date · epics nothing rolls up
+to · epics untouched 30+ days — are ranked biggest-first and **never summed**. Four different
+conversations; one blended score would point at none of them.
 
 **Read the `(No PM)` bucket before quoting any per-PM number.** A project with no hours in the Tempo
 export has no PM, and everything in it lands there. A large bucket is a finding about Tempo project

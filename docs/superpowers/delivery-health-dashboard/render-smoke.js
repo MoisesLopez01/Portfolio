@@ -181,6 +181,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " isoCmp_: isoCmp_, dueBand_: dueBand_," +
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
              " renderPm_: renderPm_, pmEpicHtml_: pmEpicHtml_," +
+             " pmOppHtml_: pmOppHtml_, pmViaHtml_: pmViaHtml_, PM_OPPS_: PM_OPPS_," +
+             " pmKeyLink_: pmKeyLink_," +
              " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
@@ -6208,9 +6210,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
       { pm: "Dana Reyes", epicN: 12, epicDated: 9,
         epicMissingKeys: ["GTT-41", "GTT-88", "GTT-91"], epicCapped: false,
         readyDen: 40, readyN: 25, ignoredN: 7,
+        viaAssignee: 10, viaProject: 2,
+        oppNoDue: 3, oppChildOver: 4, oppNoChildren: 1, oppStale: 0,
         epics: [
           { key: "GTT-7", name: "Migration", status: "In Progress", started: true,
             due: "2026.W31", overdue: false, within: 1, over: 1, noDate: 1, ignoredN: 2,
+            assignee: "Dana Reyes", via: "assignee", childrenAll: 5,
+            stale: false, staleDays: 2,
             children: [
               { key: "GTT-72", summary: "Cutover", status: "In Progress",
                 due: "2026.W34", verdict: "over", overByWeeks: 3 },
@@ -6221,10 +6227,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
             ] },
           { key: "GTT-41", name: "Rollout", status: "In Progress", started: true,
             due: "", overdue: false, within: 0, over: 0, noDate: 0, ignoredN: 0,
+            assignee: "", via: "project", childrenAll: 0, stale: true, staleDays: 61,
             children: [] },
         ] },
       { pm: "(No PM)", epicN: 4, epicDated: 0, epicMissingKeys: ["ORPH-1"],
-        epicCapped: false, readyDen: 2, readyN: 1, ignoredN: 0, epics: [] },
+        epicCapped: false, readyDen: 2, readyN: 1, ignoredN: 0,
+        viaAssignee: 0, viaProject: 0,
+        oppNoDue: 4, oppChildOver: 0, oppNoChildren: 0, oppStale: 0, epics: [] },
     ],
   };
   C.setModel(pmModel);
@@ -6242,9 +6251,20 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/Migration/.test(h), "…and not even its epic list");
   assert_(/9\/12 epics dated/.test(h),
           "the collapsed line still carries the number worth scanning");
-  assert_(/🚩 3/.test(h), "…and the undated-epic count, so you know whether to expand");
-  assert_(/1 past the epic date/.test(h),
-          "…and the count of children committed past their epic");
+
+  // ── AREAS OF OPPORTUNITY, VISIBLE WITHOUT EXPANDING ─────────────────────
+  assert_(/epics with no due date/.test(h) && /🚩/.test(h),
+          "the ranked gap line shows undated epics while still collapsed");
+  assert_(/children committed past their epic/.test(h),
+          "…children scheduled past the epic they belong to");
+  assert_(/epic with nothing linked to it/.test(h),
+          "…and epics nothing rolls up to, singular when there is one");
+  // Ranked by SIZE: 4 children-over outranks 3 undated epics.
+  assert_(h.indexOf("children committed past") < h.indexOf("epics with no due date"),
+          "gaps rank biggest-first, not in declaration order");
+  assert_(!/untouched for 30/.test(h.split("(No PM)")[0]),
+          "a gap with a zero count is NOT rendered — noise on the healthy rows is " +
+          "what teaches people to skip the line on the rows that matter");
 
   // ── EXPAND THE PM ───────────────────────────────────────────────────────
   C.togglePmOpen_("Dana Reyes");
@@ -6255,6 +6275,20 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/GTT-72/.test(h), "…but its children stay collapsed until asked for");
   assert_(/1 past the epic date/.test(h) && /1 with no date/.test(h) && /1 within/.test(h),
           "each epic line pre-states its child tally, so you know what expanding buys");
+  // Attribution is stated, so a PM can challenge a row rather than trust it.
+  assert_(/10<\/b> by Jira assignee/.test(h), "the row says how many epics came from the assignee");
+  assert_(/2<\/b> by Tempo project lead/.test(h), "…and how many are an inference");
+  assert_(/👤 Dana Reyes/.test(h), "an epic names its Jira assignee — the evidence for its row");
+  // Epic-level gaps repeat where the reader can act on the specific epic.
+  assert_(/🔗 nothing linked/.test(h), "an epic nothing rolls up to says so on its own line");
+  assert_(/🕒 61d untouched/.test(h), "…and a stale epic says how long it has been sitting");
+
+  // A PM with no gaps at all says so — silence would read as "not measured".
+  var clean = { pm: "Clean PM", epicN: 3, epicDated: 3, epicMissingKeys: [], epicCapped: false,
+                readyDen: 5, readyN: 5, ignoredN: 0, viaAssignee: 3, viaProject: 0,
+                oppNoDue: 0, oppChildOver: 0, oppNoChildren: 0, oppStale: 0, epics: [] };
+  assert_(/No open gaps/.test(C.pmOppHtml_(clean)),
+          "a PM with nothing to fix says so explicitly, rather than rendering nothing");
 
   // The two bars must never be averaged. 75% and 62.5% blend to ~69%; if that
   // number appears, someone combined the PM's field with the team's hygiene.

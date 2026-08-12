@@ -1020,13 +1020,17 @@ flatter itself by excluding the very records that are the problem.
   against. Sub-tasks reach their epic through the **parent chain** (sub-task → story → epic), not a
   single-level `epicKey` lookup — roughly 1,023 sub-tasks parent to a story rather than an epic, and
   a one-level lookup loses all of them.
-- **🗓 PM tab — attribution is by PROJECT, not by assignee** (schema v38, 2026-08-11). A ticket
-  belongs to the PM of its Jira project, taken from the Tempo PM field: `GTT-605 → GTT → that
-  project's PM`. It does **not** matter who the ticket is assigned to, which is deliberate —
-  unassigned tickets are exactly where due-date gaps hide. A project with no hours in the Tempo
-  export has no PM row, and its work lands in **(No PM)**: a coverage gap with a name, not a
-  tidy-up. Where a project changed PM inside the export window the **most recent** owner is shown
-  and the count of such handovers is stated on the tab.
+- **🗓 PM tab — an epic belongs to its ASSIGNEE, then to the project lead** (schema v40,
+  2026-08-11). The assignee is direct evidence of ownership; the Tempo project lead
+  (`GTT-605 → GTT → that project's PM`) is an inference from who logs hours where, used only when
+  the epic carries no assignee. **Each row states which rule placed it.** Children follow their
+  epic whoever they are assigned to. Work satisfying neither rule lands in **(No PM)**: a coverage
+  gap with a name, not a tidy-up. Where a project changed PM inside the export window the **most
+  recent** owner is shown and the count of handovers is stated on the tab.
+- **The four opportunity counts are never summed.** Undated epics · children past their epic's date
+  · epics nothing rolls up to · epics untouched 30+ days. Each is a different conversation and a
+  blended "PM health %" would average four unrelated problems and point at none of them. "Nothing
+  linked" counts children of **any status** — an epic whose work is delivered is linked, not empty.
 - **The two PM bars are different claims and must not be combined.** *Owns* (epic due-date fill) is
   the PM's own field, graded against the team's 100% bar. *In project* (task readiness) is what
   their project contains, filled by other people. Averaging them grades a PM on fields they do not
@@ -1652,6 +1656,31 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 >   cross-fade, no stagger, no count-up) — this is the accessibility escape hatch, not optional.
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
+
+> ### 🗓 PM tab — assignee-first + opportunity line (2026-08-11) — schema v39 → v40
+>
+> Supersedes both earlier PM-tab deploys. `Code.js` + `Dashboard.html`, then
+> **`bustDeliveryCache_()`**. A v39 entry attributes every epic by the Tempo project lead and
+> carries no opportunity counts, so the tab would be **wrong rather than merely empty** — which is
+> the case a schema bump exists for.
+>
+> 1. **An epic belongs to its Jira assignee**, falling back to the Tempo project lead only when the
+>    epic has no assignee. Direct evidence beats inference, and each PM row states how many of its
+>    epics came from each rule, so a PM can challenge an attribution rather than having to trust it.
+>    Children follow the epic above them whoever they are assigned to — an engineer's sub-task still
+>    belongs to the PM accountable for the epic.
+> 2. **Names are normalised across sources.** Jira writes `"Lopez, Moises"`, Tempo writes
+>    `"Moises Lopez"`. Without `dhPmKey_` the same person appears twice, their epics split between
+>    the two rows, and both halves read as half-done — a failure that looks like data, not a bug.
+> 3. **Areas of opportunity, visible without expanding:** epics with no due date · children
+>    committed past their epic's date · epics nothing rolls up to · epics untouched for 30+ days.
+>    Ranked biggest-first, **never summed into a score** — they are four different conversations,
+>    and one blended number would point at none of them. A PM with no gaps says so explicitly.
+> 4. **Every key is a Jira link**, on both the epic line and its children, plus "Open these N in
+>    Jira" per epic.
+>
+> Live smoke: a PM row shows its gaps while collapsed; expanding names the attribution split; an
+> epic line carries 👤 its assignee, and 🔗 / 🕒 where those gaps apply.
 
 > ### 🗓 PM tab — epic-first rework (2026-08-11) — schema v38 → v39
 >
