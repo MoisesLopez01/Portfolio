@@ -533,9 +533,23 @@ tr.detail td.dback{padding:8px 16px 12px}
 .pmKidTick{color:var(--muted);padding-left:10px}
 .pmTwist{display:inline-block;width:calc(10px*var(--scale));color:var(--muted)}
 .pmEmpty>td{padding:6px 10px}
-/* The Gaps column carries several chips; it wraps rather than forcing the whole
-   table wider than its panel. */
-.pmTable td:nth-child(5){white-space:normal}
+/* ── Layout ──
+   Fixed layout driven by the <colgroup> the renderer emits, and cells that WRAP.
+   This table deliberately does NOT use .tmx: that style is built for a matrix of
+   short numeric cells (nowrap, sized from the first row), and here the first row
+   is a full-width group header, so it had nothing to size from and every nowrap
+   cell overflowed on top of its neighbour. Text columns wrap; only the Due week
+   is nowrap, because "2026.W31" broken across two lines is unreadable. */
+.pmTable{table-layout:fixed}
+.pmTable th,.pmTable td{white-space:normal;vertical-align:top;
+                        overflow-wrap:anywhere;padding:7px 10px}
+.pmTable th{text-align:left}
+.pmTable .tnum{text-align:left}
+.pmTable td:nth-child(3){white-space:nowrap}
+/* The Gaps and Against-epic-date cells carry several chips each. Stacking them
+   keeps the row height honest instead of letting one long chip set the width of
+   a column every other row then has to live with. */
+.pmTable td:nth-child(4) span,.pmTable td:nth-child(5) span{display:inline-block}
 
 /* 🌊 Backlog health — two facing lists. Grid rather than flex so the two tables
    share a column width regardless of label length: a healthy column that is
@@ -7021,12 +7035,22 @@ function renderPm_() {
       (STATE.pmOpen[r.pm] ? pmEpicRowsHtml_(r, nowIso) : "");
   }).join("");
 
+  // An explicit <colgroup> is what actually fixes the widths. The shared .tmx
+  // style is table-layout:fixed + white-space:nowrap, which sizes columns from
+  // the first row — and this table's first row is a full-width PM group header,
+  // so the algorithm had nothing to size from and every nowrap cell overflowed
+  // into its neighbour (user 2026-08-11: the Gaps column painted on top of Due).
+  // Widths are declared once, beside the labels they belong to.
+  var cols = Object.keys(PM_COLS_).map(function (k) {
+    return '<col style="width:' + PM_COLS_[k].w + '">';
+  }).join("");
   var head = "<tr>" + Object.keys(PM_COLS_).map(function (k) {
     var c = PM_COLS_[k];
     return '<th class="' + (c.num ? "tnum" : "tname") + '"' +
       (c.tip ? ' title="' + esc_(c.tip) + '"' : "") + ">" + esc_(c.label) + "</th>";
   }).join("") + "</tr>";
-  var rows = '<div class="gwrap"><table class="hyg tmx pmTable"><thead>' + head +
+  var rows = '<div class="gwrap"><table class="hyg pmTable"><colgroup>' + cols +
+             "</colgroup><thead>" + head +
              "</thead><tbody>" + body + "</tbody></table></div>";
 
   el.innerHTML =
@@ -7132,18 +7156,24 @@ function pmViaHtml_(r) {
  * axis — "how does this sit against the epic's date" — at two grains.
  */
 var PM_COLS_ = {
-  work:   { label: "Epic / ticket",
+  work:   { label: "Epic / ticket", w: "30%",
             tip: "Epics in progress or due this month, with their children underneath. Click a row to expand it; click a key to open it in Jira." },
-  status: { label: "Status" },
-  due:    { label: "Due", num: true,
+  status: { label: "Status", w: "10%" },
+  due:    { label: "Due", w: "10%", num: true,
             tip: "The committed week. Red once that week has ended, amber during it — the current week is still in compliance (managers' rule, 2026-08-10)." },
-  vs:     { label: "Against epic date", num: true,
+  vs:     { label: "Against epic date", w: "16%", num: true,
             tip: "For an epic: how its children sit against its own committed week. For a child: whether it lands inside that week, past it, or carries no date of its own." },
-  gaps:   { label: "Gaps",
+  gaps:   { label: "Gaps", w: "20%",
             tip: "Countable problems on this row. Never summed into a score — each one is a different conversation." },
-  owner:  { label: "Assignee",
+  owner:  { label: "Assignee", w: "14%",
             tip: "The Jira assignee an epic is attributed on. Blank where the row fell back to the Tempo project lead." },
 };
+
+/** How many undated-epic keys the PM group row DRAWS. The payload carries up to
+    EPIC_DUE_MAX_KEYS_ (200) and "Open all in Jira" still covers every one of
+    them — this only bounds what is painted, because 134 inline links ran across
+    the page and buried the rest of the row. */
+var PM_KEYS_SHOWN_ = 8;
 
 /** The PM's own row: a full-width group header carrying the two bars, the
     attribution split and the ranked gap line. Clicking it opens the group. */
@@ -7169,9 +7199,11 @@ function pmGroupRowHtml_(r, d) {
     "</div>" +
     pmOppHtml_(r) +
     (open
-      ? '<div class="cellSub pmVia">' + pmViaHtml_(r) +
-        (missing ? " · 🚩 " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
-        "</div>"
+      ? '<div class="cellSub pmVia">' + pmViaHtml_(r) + "</div>" +
+        (missing
+          ? '<div class="cellSub pmVia">🚩 Undated epics: ' +
+            keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap, PM_KEYS_SHOWN_) + "</div>"
+          : "")
       : "") +
   "</td></tr>";
 }
@@ -7372,18 +7404,27 @@ function renderEpicDue_() {
 
 /** Key list as a compact, wrapping run of keys — the queue itself. Reports the cap
     rather than silently clipping, the same contract as every other key list here. */
-function keyListHtml_(keys, capped, cap) {
+function keyListHtml_(keys, capped, cap, showMax) {
   keys = keys || [];
   if (!keys.length) return '<span class="cellSub">—</span>';
   var base = jiraBase_();
+  // `showMax` bounds what is DRAWN, independently of `cap` which bounds what the
+  // payload carries. The 🚩 audit wants the whole list on screen — it is worked
+  // ticket by ticket. The PM tab does not: 134 undated epics rendered as 134
+  // inline links ran clean across the page and buried every other signal on the
+  // row (user 2026-08-11, "the Gaps column is a disaster"). Same data, same
+  // "Open all" affordance, a readable number of links.
+  var shown = (showMax && keys.length > showMax) ? keys.slice(0, showMax) : keys;
+  var hidden = keys.length - shown.length;
   // Every key is a link when a site is configured, plus one link that opens the
   // whole row at once — this list is worked by a PM going ticket by ticket, and
   // copy-pasting keys into a search was the actual cost of using it.
   var body = base
-    ? keys.map(function (k) { return jiraLink_(jiraIssueUrl_(k), k, "Open " + k + " in Jira"); })
+    ? shown.map(function (k) { return jiraLink_(jiraIssueUrl_(k), k, "Open " + k + " in Jira"); })
           .join(" · ")
-    : esc_(keys.join(" · "));
+    : esc_(shown.join(" · "));
   return '<span class="cellSub" style="word-break:break-word">' + body +
+    (hidden ? ' <span class="cellSub">+ ' + hidden + " more</span>" : "") +
     (capped ? " <b>… first " + cap + " shown; the count above is complete</b>" : "") +
     jiraOpenAll_(keys, "Open all in Jira") + "</span>";
 }

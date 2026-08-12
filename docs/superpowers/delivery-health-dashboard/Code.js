@@ -2486,6 +2486,25 @@ function dhPmName_(raw) {
 }
 
 /**
+ * A REAL assignee, or "" when the field is empty.
+ *
+ * `Jira Backlog.js` writes the literal string **"⚠️ UNASSIGNED"** where a Jira
+ * issue has no assignee (writeRawSheet_, `assigneeName || "⚠️ UNASSIGNED"`), so
+ * the column is never blank and a naive truthiness check treats the sentinel as
+ * a person. On the live feed that put 267 epics under a PM called "UNASSIGNED"
+ * instead of falling back to the project lead — a fabricated owner at the top of
+ * a page about ownership.
+ *
+ * The rest of this file already guards it (`/unassigned/i` in the flow reader,
+ * and the attribution notes in hygieneBuckets_); this is the same rule, applied
+ * where PM attribution needs it.
+ */
+function dhAssigneeOf_(raw) {
+  var s = String(raw == null ? "" : raw).trim();
+  return (!s || /unassigned/i.test(s)) ? "" : s;
+}
+
+/**
  * Fold the Tempo rows into a project → PM index.
  *
  * readTempoGrid_ already carries `key` (the PROJECT key) beside `pm` (that
@@ -2620,7 +2639,7 @@ function pmOwnedWork_(jira, byProject, today) {
   all.forEach(function (it) {
     if (!it || !it.isEpic) return;
     var lead = idx[dhProjectOf_(it.key)] || "";
-    var assignee = String(it.assignee || "").trim();
+    var assignee = dhAssigneeOf_(it.assignee);
     epicPm[String(it.key).toUpperCase()] = assignee
       ? { name: dhPmName_(assignee), source: "assignee" }
       : (lead ? { name: lead, source: "project" } : { name: DH_NO_PM_, source: "none" });
@@ -2716,7 +2735,7 @@ function pmOwnedWork_(jira, byProject, today) {
     // than a second threshold, so "stale" means one thing across the app.
     var stale = !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_DAYS_;
     var e = { key: it.key, name: it.summary || "", status: it.status || "",
-              started: dhStarted_(it), assignee: dhPmName_(it.assignee || ""),
+              started: dhStarted_(it), assignee: dhPmName_(dhAssigneeOf_(it.assignee)),
               via: who.source,
               due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
               overdue: dhOverdue_(it, now), _dueDate: dhHasDue_(it) ? it.due : null,
@@ -9068,6 +9087,25 @@ function _test_pmAttribution_() {
           "the row records WHICH rule placed it, so a PM can challenge an attribution");
   assert_(byName["Dana Reyes"] && byName["Dana Reyes"].epicN === 1,
           "an epic with no assignee falls back to the Tempo project lead");
+
+  // THE SENTINEL. Jira Backlog.js writes "⚠️ UNASSIGNED" rather than a blank, so
+  // a truthiness check invents a PM of that name — 267 epics landed under it on
+  // the live feed before this guard existed.
+  assert_(dhAssigneeOf_("⚠️ UNASSIGNED") === "", "the exporter's sentinel is NOT a person");
+  assert_(dhAssigneeOf_("Unassigned") === "", "…nor is the plain spelling");
+  assert_(dhAssigneeOf_("  ") === "", "…nor is whitespace");
+  assert_(dhAssigneeOf_("Rita Chen") === "Rita Chen", "…but a real name survives");
+  var unassigned = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-400", isEpic: true, due: new Date(2026, 7, 20),
+          assignee: "⚠️ UNASSIGNED" }),
+  ] }, pmIdx, today);
+  assert_(unassigned.rows[0].pm === "Dana Reyes",
+          "an epic carrying the sentinel falls back to the project lead, NOT to a " +
+          "fabricated PM named UNASSIGNED");
+  assert_(unassigned.rows[0].viaProject === 1 && unassigned.rows[0].viaAssignee === 0,
+          "…and is recorded as an inference");
+  assert_(!unassigned.rows[0].epics[0].assignee,
+          "…with the Assignee cell left empty rather than showing the sentinel");
   assert_(byName["Dana Reyes"].viaProject === 1 && byName["Dana Reyes"].viaAssignee === 0,
           "…and is recorded as an inference, not as direct evidence");
 

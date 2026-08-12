@@ -1027,6 +1027,9 @@ flatter itself by excluding the very records that are the problem.
   epic whoever they are assigned to. Work satisfying neither rule lands in **(No PM)**: a coverage
   gap with a name, not a tidy-up. Where a project changed PM inside the export window the **most
   recent** owner is shown and the count of handovers is stated on the tab.
+- **An empty Jira assignee is the string `"⚠️ UNASSIGNED"`, not a blank.** The exporter writes it
+  (`assigneeName || "⚠️ UNASSIGNED"`), so any truthiness check on the Assignee column invents a
+  person of that name. Every consumer must go through `dhAssigneeOf_` / `/unassigned/i`.
 - **The four opportunity counts are never summed.** Undated epics · children past their epic's date
   · epics nothing rolls up to · epics untouched 30+ days. Each is a different conversation and a
   blended "PM health %" would average four unrelated problems and point at none of them. "Nothing
@@ -1656,6 +1659,27 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 >   cross-fade, no stagger, no count-up) — this is the accessibility escape hatch, not optional.
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
+
+> ### 🗓 PM tab — three fixes from the first screenshot (2026-08-11)
+>
+> `Code.js` + `Dashboard.html`. **No schema bump** — but if v40 was already deployed, run
+> `bustDeliveryCache_()`: fix 1 changes the attribution of every unassigned epic, so a cached model
+> keeps showing the wrong owner until its TTL expires.
+>
+> 1. **`"⚠️ UNASSIGNED"` was being treated as a person.** `Jira Backlog.js` writes that literal
+>    string where an issue has no assignee, so the column is never blank. On the live feed that put
+>    **267 epics under a fabricated PM named UNASSIGNED** instead of falling back to the project
+>    lead — a made-up owner at the top of a page about ownership. `dhAssigneeOf_` now applies the
+>    same `/unassigned/i` guard the rest of the file already used.
+> 2. **The undated-epic key list drew every key.** 134 epics meant 134 inline links running across
+>    the page and burying every other signal on the row. `keyListHtml_` gained a `showMax`; the PM
+>    row draws `PM_KEYS_SHOWN_` (8) plus "+ N more", and **"Open all in Jira" still covers all of
+>    them** — bounded drawing, not lost data. The 🚩 audit panel is unchanged; it wants the full list.
+> 3. **Columns overlapped.** The table inherited `.tmx`, which is `table-layout:fixed` +
+>    `white-space:nowrap` and sizes columns from the first row — and this table's first row is a
+>    full-width PM group header, so there was nothing to size from and every nowrap cell painted on
+>    top of its neighbour. The table now declares an explicit `<colgroup>` from `PM_COLS_[].w` and
+>    wraps its text columns; only the Due week stays nowrap.
 
 > ### 🗓 PM tab — moved beside Actions, rebuilt as a table (2026-08-11) — `Dashboard.html` only
 >

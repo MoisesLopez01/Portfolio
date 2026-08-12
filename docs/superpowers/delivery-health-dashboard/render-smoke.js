@@ -6211,7 +6211,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     keyCap: 200, supersededPms: 1,
     rows: [
       { pm: "Dana Reyes", epicN: 12, epicDated: 9,
-        epicMissingKeys: ["GTT-41", "GTT-88", "GTT-91"], epicCapped: false,
+        // Twelve missing keys, deliberately more than PM_KEYS_SHOWN_ — the live
+        // feed had 134 and drew all of them across the page.
+        epicMissingKeys: ["GTT-41", "GTT-88", "GTT-91", "GTT-92", "GTT-93", "GTT-94",
+                          "GTT-95", "GTT-96", "GTT-97", "GTT-98", "GTT-99", "GTT-100"],
+        epicCapped: false,
         readyDen: 40, readyN: 25, ignoredN: 7,
         viaAssignee: 10, viaProject: 2,
         oppNoDue: 3, oppChildOver: 4, oppNoChildren: 1, oppStale: 0,
@@ -6298,6 +6302,28 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(headCells === 6,
           "exactly one header cell per column — a header without its cell shifts every " +
           "value one column left, which is the quiet kind of wrong that gets screenshotted");
+
+  // ── LAYOUT: the widths are DECLARED, not inferred ───────────────────────
+  // .tmx sizes columns from the first row, and this table's first row is a
+  // full-width group header — so without an explicit colgroup every nowrap cell
+  // overflowed onto its neighbour and Gaps painted on top of Due.
+  var colTags = (h.match(/<col style="width:[^"]+">/g) || []);
+  assert_(colTags.length === 6, "one <col> per column, got " + colTags.length);
+  assert_(!/class="hyg tmx pmTable"/.test(h),
+          "the PM table does NOT inherit .tmx — that style is a nowrap numeric matrix");
+
+  // ── THE KEY LIST IS BOUNDED ─────────────────────────────────────────────
+  // 12 undated keys, PM_KEYS_SHOWN_ of them drawn, the rest behind a count and
+  // still all reachable through "Open all in Jira".
+  assert_(/\+ 4 more/.test(h),
+          "only PM_KEYS_SHOWN_ keys are drawn; the remainder is a count, not 134 links");
+  // Anchor on the LINK TEXT, not the raw key: every key still appears inside the
+  // "Open all in Jira" JQL href, which is the point of that affordance.
+  assert_(/>GTT-41<\/a>/.test(h), "the first keys are drawn as links");
+  assert_(!/>GTT-100<\/a>/.test(h),
+          "…and the overflow is not painted, though it stays inside the Open-all query");
+  assert_(/Open all in Jira/.test(h),
+          "…and every key is still reachable in one click — bounded drawing, not lost data");
 
   // A PM with no gaps at all says so — silence would read as "not measured".
   var clean = { pm: "Clean PM", epicN: 3, epicDated: 3, epicMissingKeys: [], epicCapped: false,

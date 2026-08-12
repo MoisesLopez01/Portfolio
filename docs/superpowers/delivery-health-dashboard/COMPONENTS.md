@@ -127,7 +127,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,167 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,173 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -202,6 +202,11 @@ second roster.
 **Names are normalised across the two sources.** Jira writes `"Lopez, Moises"`, Tempo writes
 `"Moises Lopez"`; without `dhPmKey_` the same PM appears twice with their epics split between the
 rows, and both halves read as half-done.
+
+**An empty Jira assignee is the literal string `"⚠️ UNASSIGNED"`, never a blank** — the exporter
+writes it. Anything reading the Assignee column must go through `dhAssigneeOf_`, or it invents a
+person of that name: on the live feed 267 epics were briefly attributed to a PM called UNASSIGNED
+instead of falling back to their project lead.
 
 **Areas of opportunity** — undated epics · children past their epic's date · epics nothing rolls up
 to · epics untouched 30+ days — are ranked biggest-first and **never summed**. Four different
