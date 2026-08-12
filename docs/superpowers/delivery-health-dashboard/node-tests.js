@@ -39,7 +39,7 @@ _test_nsWeekBucketing_();
 _test_regionMap_(); _test_personRegion_(); _test_overflowClamp_();
 _test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_(); _test_reworkRate_();
 _test_registry_(); _test_flowRegistry_(); _test_confidence_(); _test_regionVocab_(); _test_hygieneBuckets_();
-_test_parseExportStamp_(); _test_typeHygieneBuckets_(); _test_personHygieneBuckets_(); _test_leaverTest_();
+_test_parseExportStamp_(); _test_typeHygieneBuckets_(); _test_personHygieneBuckets_(); _test_leaverTest_(); _test_workforceChange_(); _test_srsoBinding_();
 _test_activeNameFilter_(); _test_gateOverrides_();
 _test_attrDenominator_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
@@ -48,6 +48,8 @@ _test_cacheRoundtrip_(new FakeCache());
 _test_modelAssembly_();
 _test_periods_();
 _test_levelTrack_();
+_test_classification_();
+_test_workforceHealth_();
 _test_flowBuckets_();
 _test_flowOpenBuckets_();
 _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassignedInventory_(); _test_inventoryWalkback_(); _test_sampleFloor_(); _test_flowSnapshots_(); _test_flowSnapshotIsoCanon_();
@@ -211,6 +213,175 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   assert_(sUnknown.ok === false && cUnknown.ok === false && sUnknown.ok === cUnknown.ok,
           "both copies fail closed on an unknown id, even at a healthy n=50");
   Logger.log("✅ _test_sampleFloorParity_ passed (" + checked + " id×n combinations)");
+})();
+
+// ── WORKFORCE HEALTH CLIENT/SERVER PARITY ────────────────────
+// The fold and the reconcile exist twice: the server builds the payload, the
+// client re-slices it when the period picker or a filter moves. Same failure
+// mode as utilFor_ and metricConfidence_ — two copies of one rule drift
+// silently and each looks correct alone. Here the drift would be worse than
+// cosmetic: an action state that differs between layers means the grid tells a
+// pool to SELL while the payload says INTERVENE, and nobody can tell which is
+// the real answer.
+(function _test_workforceParity_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_workforceParity_: " + m); }
+  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var want = ["wfCfg_", "wfDiv_", "wfEmptyCell_", "wfFold_", "wfActionState_",
+              "wfTopReason_", "wfRead_", "wfReconcile_"];
+  var src = want.map(function (fn) {
+    var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
+    if (!m) throw new Error("❌ _test_workforceParity_: could not extract " + fn + " from Dashboard.html");
+    return m[0];
+  }).join("\n");
+  // The extracted functions close over the client's own config tables and
+  // medianOf_. Seeding them from the SERVER's objects is deliberate: if the two
+  // threshold tables ever diverge, that is itself a defect this walk should
+  // catch — so the config-table check below compares them directly.
+  var C = new Function(
+    "var WF_POOLS_ = " + JSON.stringify(DH_POOLS_) + ";" +
+    "var WF_CONFIG_ = " + JSON.stringify(DH_WFH_CONFIG_) + ";" +
+    "var WF_SHADOW_OWNER_ = " + JSON.stringify(DH_SHADOW_OWNER_) + ";" +
+    "var medianOf_ = arguments[0];" +
+    src +
+    "return { wfFold_: wfFold_, wfReconcile_: wfReconcile_, wfActionState_: wfActionState_," +
+    " wfRead_: wfRead_, wfDiv_: wfDiv_ };")(medianOf_);
+
+  // The client's OWN literal tables must match the server's, or the seeding
+  // above would hide a real divergence.
+  var clientPools = JSON.parse(JSON.stringify(eval(
+    "(" + html.match(/var WF_POOLS_ = (\{[\s\S]*?\n\});/)[1] + ")")));
+  assert_(JSON.stringify(clientPools) === JSON.stringify(DH_POOLS_),
+          "the client's pool envelopes are identical to the server's — " +
+          "server " + JSON.stringify(DH_POOLS_) + " vs client " + JSON.stringify(clientPools));
+  var clientCfg = eval("(" + html.match(/var WF_CONFIG_ = (\{[\s\S]*?\});/)[1] + ")");
+  assert_(JSON.stringify(clientCfg) === JSON.stringify(DH_WFH_CONFIG_),
+          "the client's signal thresholds are identical to the server's");
+  var clientOwner = eval("(" + html.match(/var WF_SHADOW_OWNER_ = (\{[\s\S]*?\});/)[1] + ")");
+  assert_(JSON.stringify(clientOwner) === JSON.stringify(DH_SHADOW_OWNER_),
+          "the client's shadow-reason owners are identical to the server's");
+
+  // ── Walk a weekly map through both folds and both reconciles ───────────────
+  var ISOS = ["2026.W30", "2026.W31", "2026.W32"];
+  function wcell(o) {
+    var base = { grossHrs: 0, ptoHrs: 0, committedHrs: 0, matchableCommittedHrs: 0, genericHrs: 0,
+                 trackedTotalHrs: 0, trackedCommittedHrs: 0, trackedShadowHrs: 0,
+                 unmeasuredHrs: 0,
+                 shadowReasons: { "no-epic": 0, "no-srso": 0, "not-committed": 0 } };
+    Object.keys(o || {}).forEach(function (k) { base[k] = o[k]; });
+    return base;
+  }
+  var weekly = {
+    "PS-CONSULT|CORE": {
+      "2026.W30": wcell({ grossHrs: 160, committedHrs: 140, trackedTotalHrs: 150,
+                          trackedCommittedHrs: 120, trackedShadowHrs: 30,
+                          shadowReasons: { "no-epic": 20, "no-srso": 10, "not-committed": 0 } }),
+      "2026.W31": wcell({ grossHrs: 160, committedHrs: 100, trackedTotalHrs: 140,
+                          trackedCommittedHrs: 140 }),
+    },
+    "PS-ENGINEER|SENIOR": {
+      "2026.W31": wcell({ grossHrs: 80, committedHrs: 79, trackedTotalHrs: 60,
+                          trackedCommittedHrs: 20, trackedShadowHrs: 40,
+                          shadowReasons: { "no-epic": 0, "no-srso": 0, "not-committed": 40 } }),
+    },
+    // Every hour unmeasurable: fidelity and shadow must BOTH be null on both sides.
+    "MS-SUPPORT|CORE": {
+      "2026.W30": wcell({ grossHrs: 400, committedHrs: 380, trackedTotalHrs: 390,
+                          unmeasuredHrs: 390 }),
+    },
+    // Capacity but no plan and no logged time at all.
+    "ARCH|SENIOR": { "2026.W32": wcell({ grossHrs: 40 }) },
+  };
+  var heads = { "PS-CONSULT|CORE": 4, "PS-ENGINEER|SENIOR": 2,
+                "MS-SUPPORT|CORE": 10, "ARCH|SENIOR": 1,
+                // A cell with people but NO hours in any week — it must survive
+                // the fold on both sides rather than vanishing.
+                "TRAINING|CORE": 1 };
+  var backlog = {
+    "PS-CONSULT": { backlogHrs: 900, backlogAdjHrs: 1200, epicCount: 10,
+                    unestimatedEpics: 3, estimateCoverage: 0.7 },
+    "PS-ENGINEER": { backlogHrs: 100, backlogAdjHrs: 100, epicCount: 4,
+                     unestimatedEpics: 0, estimateCoverage: 1 },
+    "MS-SUPPORT": { backlogHrs: 50, backlogAdjHrs: 50, epicCount: 2,
+                    unestimatedEpics: 0, estimateCoverage: 1 },
+  };
+
+  // Fold parity across several window shapes, including a single week and a
+  // window containing an ISO nobody has data for.
+  var WINDOWS = [ISOS, ["2026.W30"], ["2026.W31"], ["2026.W32"], ["2026.W30", "2026.W32"],
+                 ["2026.W99"], []];
+  var checked = 0;
+  WINDOWS.forEach(function (win) {
+    var s = dhFoldWeekly_(weekly, win, heads);
+    var c = C.wfFold_(weekly, win, heads);
+    assert_(Object.keys(s).sort().join(",") === Object.keys(c).sort().join(","),
+            "fold produces the same cells for [" + win.join(",") + "]");
+    Object.keys(s).forEach(function (k) {
+      ["grossHrs", "committedHrs", "matchableCommittedHrs", "trackedTotalHrs", "trackedCommittedHrs",
+       "trackedShadowHrs", "unmeasuredHrs", "head"].forEach(function (f) {
+        assert_(s[k][f] === c[k][f],
+                "fold parity " + k + "." + f + " over [" + win.join(",") + "] — " +
+                "server " + s[k][f] + " vs client " + c[k][f]);
+      });
+      ["no-epic", "no-srso", "not-committed"].forEach(function (r) {
+        assert_(s[k].shadowReasons[r] === c[k].shadowReasons[r],
+                "fold parity " + k + " shadow." + r);
+      });
+    });
+
+    // Reconcile parity on the same fold.
+    var sr = reconcileWorkforce_(s, backlog, win.length || 1);
+    var cr = C.wfReconcile_(c, backlog, win.length || 1);
+    assert_(sr.cells.length === cr.cells.length, "same cell count out of reconcile");
+    assert_(sr.medianCover === cr.medianCover ||
+            (sr.medianCover === null && cr.medianCover === null),
+            "median cover parity over [" + win.join(",") + "]");
+    sr.cells.forEach(function (sc, i) {
+      var cc = cr.cells[i];
+      assert_(sc.cell === cc.cell, "cells come out in the same order");
+      ["headroomHrs", "headroomPct", "commitmentFidelity", "shadowRatio", "coverWeeks",
+       "constraintIndex", "executionGapHrs", "capacityTruth", "estimateCoverage",
+       "backlogAdjHrs"].forEach(function (f) {
+        var a = sc[f], b = cc[f];
+        var same = (a === null && b === null) ||
+                   (typeof a === "number" && typeof b === "number" && Math.abs(a - b) < 1e-9) ||
+                   a === b;
+        assert_(same, "reconcile parity " + sc.cell + "." + f + " over [" + win.join(",") +
+                "] — server " + JSON.stringify(a) + " vs client " + JSON.stringify(b));
+      });
+      // The two that MUST never differ: what the reader is told to do, and why.
+      assert_(sc.actionState === cc.actionState,
+              "ACTION STATE parity " + sc.cell + " — server '" + sc.actionState +
+              "' vs client '" + cc.actionState + "'");
+      assert_(sc.read === cc.read, "READ parity " + sc.cell);
+      assert_(sc.structuralRisk === cc.structuralRisk, "structural-risk parity " + sc.cell);
+      checked++;
+    });
+  });
+  assert_(checked > 0, "sanity: the walk actually compared cells");
+
+  // A cell with people but no hours must exist on both sides — the emptiest
+  // cell on the grid is a real finding, not a row to drop.
+  var full = dhFoldWeekly_(weekly, ISOS, heads);
+  assert_(full["TRAINING|CORE"] && full["TRAINING|CORE"].head === 1,
+          "a staffed cell with zero hours survives the server fold");
+  assert_(C.wfFold_(weekly, ISOS, heads)["TRAINING|CORE"].head === 1,
+          "…and the client fold");
+
+  // The unmeasurable cell: both layers must say "not measured", not "0%".
+  var sFull = reconcileWorkforce_(full, backlog, 3);
+  var ms = sFull.cells.filter(function (c) { return c.cell === "MS-SUPPORT|CORE"; })[0];
+  assert_(ms.commitmentFidelity === null && ms.shadowRatio === null,
+          "a cell whose every hour was unmeasurable reports null, never 0");
+  assert_(ms.actionState === "DEMAND-DRIVEN", "…and is not painted INTERVENE for it");
+
+  // dhSafeDiv_ / wfDiv_ agree on the edges that decide null-vs-zero.
+  [[1, 0], [0, 0], [0, 5], [5, 2], [-3, 4]].forEach(function (p) {
+    var a = dhSafeDiv_(p[0], p[1]), b = C.wfDiv_(p[0], p[1]);
+    assert_((a === null && b === null) || Math.abs(a - b) < 1e-12,
+            "safe-division parity on " + p.join("/"));
+  });
+
+  Logger.log("✅ _test_workforceParity_ passed (" + checked + " cell comparisons)");
 })();
 
 console.log("✅ node-tests: all suites passed");

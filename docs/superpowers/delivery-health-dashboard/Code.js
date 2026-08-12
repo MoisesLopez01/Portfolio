@@ -93,7 +93,23 @@ var CONFIG_DH = {
                       "Professional Services"],      // defensive — see demand note
 
   // ── Backlog drill-down (open Jira issues per assignee, spec: swarm view) ──
-  BACKLOG_MAX_ITEMS: 8,   // issues listed per person in the detail row (totals cover all)
+  // ── Jira deep links (2026-08-10) ──
+  // Every key this dashboard shows is a real ticket somebody wants to open. The
+  // base is CONFIG, not a literal in the renderer: a second Jira site (or a
+  // sandbox) is a Script Property away, and a hardcoded host in the HTML would
+  // send a manager to the wrong instance with no way to tell.
+  // Override: PropertiesService.getScriptProperties().setProperty('DH_JIRA_BASE', '…')
+  JIRA_BASE_URL: "https://servicerocket-coe.atlassian.net",
+
+  BACKLOG_MAX_ITEMS: 8,   // issues shown per person when the detail row first opens
+  // Second-level expand (manager request 2026-08-10: "in case the manager wants
+  // to see all tickets, not only 8"). The PAYLOAD carries up to this many so the
+  // ▾ Show all is instant and needs no round-trip; 8 stays the opening view
+  // because a 60-row table inside a roster row buries the signal it sits under.
+  // Not unbounded on purpose — one pathological assignee would otherwise dominate
+  // a payload that is gzipped, chunked and cached, and the row states plainly
+  // when it clipped (totals always cover ALL of the person's open work).
+  BACKLOG_MAX_ITEMS_ALL: 60,
 
   // ── New-hire handling (user decision 2026-07-31) ──
   // Weeks BEFORE a person's hire date are removed from every per-person metric
@@ -249,7 +265,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "3.3",
+  version: "4.0",
   updated: "2026-08-05",  // 2026.W32
 
   metrics: {
@@ -570,6 +586,132 @@ var METRIC_REGISTRY_ = {
         "No target has been agreed. The metric is graded against its own operating norm only.",
       ],
     },
+    // ── Workforce Health (spec v1.1, 2026-08-10) ────────────────────────────
+    // All five ship target: null, same rule as the queue metrics (D11). The
+    // POOLS envelopes are Workforce Planning's PROPOSAL, not a ratified
+    // operating target — and an unratified number on a C-suite surface reads as
+    // agreed the moment it is on screen. Grading is against each pool's own
+    // envelope, shown as an action state, never as a RAG verdict on a target.
+    poolHeadroom: {
+      id: "poolHeadroom",
+      name: "Sellable Headroom",
+      definition: "Scheduled capacity a pool has left after everything it is already committed to — the hours Sales could actually sell, within one pool at one level band.",
+      formula: "(gross scheduled capacity − planned hours) ÷ gross scheduled capacity, per pool × band",
+      sources: ["Capacity Tempo — scheduled hours per person per week",
+                "Planned Time Tempo — planned hours per person per week",
+                "Roster — Job Title (job code → pool, band)"],
+      grain: "pool × band × period",
+      unit: "%",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      coverageOf: "n/a — capacity and plan are both whole-population sums within the pool, not per-record attribute fills",
+      sampleFloor: null,
+      owner: "Workforce Planning",
+      paramOwner: "Services Director (pool envelopes, once agreed)",
+      ebitda: "Headroom is unsold capacity: hours × blended bill rate is revenue foregone if it stays idle, or cost avoided if it absorbs backlog. Not quantified — same PR-06 rate-basis gap as every other metric here.",
+      deviations: [
+        "BENCH IS NOT SUBTRACTED. Bench is the RESULT of capacity minus commitment, not an input to it. Subtracting it would make headroom read ≈0 always, which is the exact failure this model exists to avoid.",
+        "PTO IS NOT SUBTRACTED and capacity truth is NOT MEASURED. The spec nets absence out of capacity; there is no absence feed here, only Tempo-tracked time off, which measures what people LOGGED rather than when they were away — subtracting it would make the best-tracking teams look least available. Capacity is gross scheduled hours (user decision 2026-08-10, upholding 2026-08-04).",
+        "NEVER PUBLISHED AS A SINGLE BLENDED NUMBER. A company-wide availability figure averages people who cannot do each other's work; the consumers-only figure is the honest version and always ships with its denominator.",
+        "Managers (M-track in families 07/09/18) are GOVERNORS and hold no pool, so they are outside every pool denominator (2026-08-10). This moved every capacity rate on deploy — see the 4.0 changeLog entry.",
+      ],
+    },
+    commitmentFidelity: {
+      id: "commitmentFidelity",
+      name: "Commitment Fidelity",
+      definition: "Share of what a pool was committed to that it actually delivered — how far the plan and reality have drifted apart.",
+      formula: "tracked hours on committed epics ÷ planned hours, per pool × band",
+      sources: ["Planned Time Tempo — Issue, planned hours",
+                "Tempo Tracked Time — Issue / Epic Key / Parent Key, logged hours",
+                "Jira Raw — Components (SRSO binding), Epic Key"],
+      grain: "pool × band × period",
+      unit: "%",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      coverageOf: "share of planned hours that name an issue and so can be resolved to an epic — reported as planIssueCoverage",
+      sampleFloor: null,
+      owner: "Resource Management",
+      paramOwner: "Services Director (floor, once agreed)",
+      ebitda: "The execution gap is allocated-but-undelivered labour: gap hours × cost rate is capacity paid for and not converted. Not quantified (PR-06).",
+      deviations: [
+        "COMMITMENT IS PER POOL, not global. An engineer working a consulting epic that only the consulting pool was staffed onto counts as not-committed, because that is a staffing decision somebody needs to see — not planned work.",
+        "PROJECT-LEVEL PLANS NAME NO EPIC. The Planned export carries an Issue only for issue-level plans, so the committed set is a LOWER BOUND and planIssueCoverage states how much of the planned volume could be resolved at all.",
+        "NULL, NOT ZERO, when every tracked hour in a cell was unclassifiable. A raw 0% would fire INTERVENE at a team that may have delivered everything — it was the measurement that was missing, not the work.",
+        "Generic (unnamed placeholder) allocations are NOT MEASURED: the Planned export resolves every plan to a named user before writing a row, so a pool running on unstaffed placeholders is currently invisible. Needs an exporter change.",
+      ],
+    },
+    shadowWork: {
+      id: "shadowWork",
+      name: "Shadow Work",
+      definition: "Share of logged hours that cannot be traced to a committed, sales-order-bound epic — real demand that planning cannot see.",
+      formula: "shadow hours ÷ (tracked hours − unmeasurable hours), per pool × band; shadow splits into no-epic, no-srso and not-committed",
+      sources: ["Tempo Tracked Time — Issue / Epic Key / Parent Key",
+                "Jira Raw — Epic Key, Parent Key, Components"],
+      grain: "pool × band × period",
+      unit: "%",
+      target: null,
+      dir: "down",
+      coverageGate: 0,
+      coverageOf: "share of tracked hours that could be classified at all — hours on an export with no Epic Key or Components column are unmeasurable, not shadow",
+      sampleFloor: null,
+      owner: "Delivery leadership",
+      paramOwner: "Services Director (ceiling, once agreed)",
+      ebitda: "Shadow work is unrecognised delivery: hours worked against no sales order cannot be recognised against a milestone. Hours × rate is the exposure. Not quantified (PR-06).",
+      deviations: [
+        "SPLIT BY REASON, NEVER SUMMED INTO ONE NUMBER. no-epic (Project Manager), no-srso (PM + Finance) and not-committed (Resource Manager) are three problems with three owners and three fixes — reported as one figure they get routed to a desk with nothing to do, the same failure the assignee/roster split already fixed.",
+        "UNMEASURABLE HOURS ARE EXCLUDED FROM THE DENOMINATOR. On an export missing the Epic Key or Components column the ratio would otherwise read ~100% and send the whole delivery org chasing a reporting artefact — the single named trap in the source spec.",
+        "SRSO binding is read from the COMPONENT field (runbook B2.6), not from Fix Versions. Work bound exactly as the runbook instructs but carrying no SRSO fix version is correctly counted as bound here, and still exports as 'Untagged' upstream.",
+        "Tracked time off (NETSUITE rows) is excluded from both sides — it is not project work, and counting it as shadow would make PTO look like invisible demand.",
+      ],
+    },
+    poolCover: {
+      id: "poolCover",
+      name: "Cover by Pool",
+      definition: "Weeks of remaining backlog a pool is carrying at its own weekly capacity — how long that pool could work without new sales.",
+      formula: "estimate-adjusted remaining backlog hours ÷ (pool weekly capacity), per pool; null for demand-driven pools",
+      sources: ["Jira Raw — Original Estimate, Time Spent, Status Category",
+                "Capacity Tempo — scheduled hours", "Tempo Tracked Time — Epic Key (routing history)"],
+      grain: "pool × period",
+      unit: "weeks",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      coverageOf: "estimate coverage — share of a pool's open epics carrying an original estimate; the raw hours figure is a lower bound below 100%",
+      sampleFloor: null,
+      owner: "Workforce Planning",
+      paramOwner: "Services Director (pool cover targets, once agreed)",
+      ebitda: "Cover below floor is a sales problem and above target a delivery-capacity problem; both translate to revenue timing rather than to a cost line. Not quantified (PR-06).",
+      deviations: [
+        "NULL FOR DEMAND-DRIVEN POOLS (MS-SUPPORT, PMO), rendered n/a and never 0. Their work arrives as tickets, not as a plannable backlog; a zero would imply 'no work left' for a pool that has no backlog BY DESIGN.",
+        "REMAINING IS A PROXY: the export carries Original Estimate and Time Spent but not Jira's remaining estimate, so remaining = max(0, original − spent). An epic that overran reads 0 remaining while real work is left, making the raw figure a lower bound twice over.",
+        "GROSSED UP BY ESTIMATE COVERAGE. At ~78% coverage the raw remaining-hours figure understates the real obligation by roughly a fifth. Both numbers ship and the raw one is labelled a lower bound.",
+        "ROUTING IS HISTORICAL, not declared. No requiredPool custom field and no allocationType field exist, so an epic routes to whichever pool logged the most hours to it. An epic nobody has touched routes to UNROUTED and is shown as its own bar — never distributed across the pools.",
+      ],
+    },
+    poolConstraint: {
+      id: "poolConstraint",
+      name: "Constraint Index",
+      definition: "A pool's cover against the portfolio median — which pool everybody else's plan is queuing behind.",
+      formula: "pool cover weeks ÷ median(cover weeks across pools that carry backlog)",
+      sources: ["derived from Cover by Pool"],
+      grain: "pool × period",
+      unit: "ratio",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      coverageOf: "n/a — a ratio of one pool's cover to the median of the same measure",
+      sampleFloor: null,
+      owner: "Workforce Planning",
+      paramOwner: "Services Director",
+      ebitda: "The bottleneck pool sets portfolio throughput, so its constraint is the binding limit on delivered revenue. Not quantified (PR-06).",
+      deviations: [
+        "RELATIVE, NOT ABSOLUTE. Every pool can be under-covered and the index will still show one of them near 1.0 — it says who is tightest, never whether the portfolio is healthy. Read it beside Cover, never instead of it.",
+        "Null for demand-driven pools, which carry no cover to compare.",
+        "The median is taken across the pools present in THIS population, so it moves when a pool enters or leaves scope.",
+      ],
+    },
     netFlow: {
       id: "netFlow",
       name: "Net Flow",
@@ -590,6 +732,31 @@ var METRIC_REGISTRY_ = {
         "Counted org-wide with no assignee join on either half. Person-keyed arrivals under-report the newest weeks — an issue filed unassigned only counts once somebody picks it up — so a growing queue could read as flat exactly when it matters most. Same reasoning as the Bug Count feed.",
         "Probe figures include R&D projects because JQL cannot reproduce getSpaceForIssue_; the exported series excludes them and reads slightly lower.",
         "No target has been agreed.",
+      ],
+    },
+    workforceChange: {
+      id: "workforceChange",
+      name: "Workforce Change",
+      definition: "Scheduled delivery capacity gained from people who joined and lost from people who left, in hours per week, over the period.",
+      formula: "Σ typical weekly scheduled capacity of joiners (hire date in period) − Σ typical weekly scheduled capacity of leavers (termination date in period). 'Typical' = median of that person's non-zero scheduled weeks in the 8 weeks after joining / before leaving.",
+      sources: ["Roster — Hire Date, Termination/Release Date, Employee Status", "Capacity Tempo — scheduled hours per person per week"],
+      grain: "period",
+      unit: "hrs",
+      target: null,
+      dir: "up",
+      coverageGate: 0,
+      coverageOf: "n/a — a count of roster events, not an attribute fill rate. People whose capacity is unknown are reported separately rather than counted as zero hours.",
+      sampleFloor: null,   // a COUNT of movements: never floored
+      owner: "Delivery leadership",
+      paramOwner: "n/a — no threshold to set",
+      ebitda: "The clearest cost line on this dashboard, and deliberately NOT quantified here: hours × a blended rate needs PR-06, and a headcount number carrying an invented money figure is worse than one carrying none.",
+      deviations: [
+        "Capacity, not delivered work. It says what the team can no longer staff, not what stopped being delivered — a leaver's final weeks are usually low-tracking (notice, handover), so a delivered-hours reading would understate every departure.",
+        "Median of the surrounding non-zero weeks, not the last week: the final week before a departure and the first after a hire are nearly always partial.",
+        "Attrition is one-sided, same rule as every other roster join here — a person counts as gone only when the roster proves it (an inactive row and no active row anywhere), so a boomerang rehire is never a departure.",
+        "Counts and hours ONLY. Who joined or left is never published; this is a capacity measure, not a personnel record.",
+        "A new joiner's capacity is scheduled from their hire week, but ramp-up means it is not yet fully productive. The ramping count is stated beside the number rather than discounted from it — the discount would be a guess.",
+        "No target has been agreed, and none is meaningful: net zero is not automatically good.",
       ],
     },
     clearedPerHead: {
@@ -664,6 +831,35 @@ var METRIC_REGISTRY_ = {
     // drop on deploy, deliberately — that is a population getting bigger, not a
     // trend line stepping on a changed formula, so the `✎ definition changed`
     // marker is the wrong tool for it. This entry is the dated note instead.
+    // ⚠ THE ONE ENTRY IN THIS LOG WHERE PUBLISHED NUMBERS MOVE DOWNWARD ON
+    // PURPOSE. Two changes ship together and both are definition changes:
+    //
+    //   1. POOL SEPARATION. Capacity was published as ONE blended figure across
+    //      JF007 (Managed Services & Support) and JF009 (Service Delivery).
+    //      Support capacity is contracted and recurring — it is never drawn from
+    //      the project backlog — so blending it made the org read as far more
+    //      available than it is, and mathematically hid whichever pool was
+    //      actually out of room. Every capacity reading is now per pool × band.
+    //   2. MGMT_GOVERNS. M-track people in families 07/09/18 are GOVERNORS and
+    //      hold no pool, so they leave every pool denominator. Before this, a
+    //      delivery manager's scheduled hours read as consultant capacity that
+    //      Sales could theoretically sell.
+    //
+    // `affects` names every rate whose COMPUTED VALUE moves, so each of their
+    // trend lines carries the "✎ definition changed" marker at this date. The
+    // step people will see in W33 is the definition moving, not delivery moving
+    // — which is exactly what that marker exists to say.
+    //
+    // The source spec's §9 asks for a dual-publish phase before cut-over, on the
+    // grounds that the new numbers look worse and that needs explaining before
+    // it needs defending. The user directed a straight cut-over (2026-08-10),
+    // with the trade stated. The blended prior reading is kept on screen as the
+    // pool grid's own footnote so the "why did this drop" answer is on the page
+    // rather than in a meeting — the dual read without the dual phase.
+    { version: "4.0", date: "2026-08-10", author: "Alex López",
+      affects: ["util", "poolHeadroom", "commitmentFidelity", "shadowWork", "poolCover", "poolConstraint"],
+      change: "Capacity is reported per DEPLOYMENT POOL × LEVEL BAND, never as one blended availability figure. People classify from their job code (family.variant sub-track) into a backlog role, a pool and a level band; M-track people in delivery families become GOVERNORS and leave the pool denominators. Five new metrics ship: Sellable Headroom, Commitment Fidelity, Shadow Work, Cover by Pool, Constraint Index.",
+      rationale: "Capacity is not fungible. A single company-wide availability percentage averages together people who cannot do each other's work — of this population only the CONSUMER pools draw on project backlog, while Managed Services & Support capacity is contracted and recurring. Blending them overstated availability and made it impossible to see the pool that is actually out of room. Source: Workforce Health Implementation Spec v1.1 (Workforce Planning, 2026.W32)." },
     { version: "3.3", date: "2026-08-06", author: "Alex López",
       affects: [],
       change: "Open-backlog population widened to include unassigned work: `Jira Backlog.js` v3.11.0 drops 'assignee is not EMPTY' from `fetchOpenIssues_()` (spec 2026-08-06-dh-executive-newspaper-design.md, D7). Measured live against servicerocket-coe (2026-08-06): 1,839 unassigned open issues against 1,440 assigned — the true open inventory is 3,279, 56% of it unowned. Weeks-to-clear reads 4.9w on the assigned-only queue this dashboard used to see and 11.0w on the true queue. `attr` (the roster-join check) gained its own denominator `attrN` in the same release (D12) — measured only over records that HAVE an assignee, so an absent assignee is 'nothing to grade' rather than a failed join. Without that fix this widening would have dropped the just-retired, solved Roster-join check to roughly 1,440/3,279 ≈ 44% on all three surfaces it was just removed from.",
@@ -1696,12 +1892,41 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
                                 // for them to fix.
                                 resAssigned: 0, resAttr: 0,
                                 resRegion: 0, resTeam: 0, resReady: 0, resFull: 0,
-                                epics: 0, epicsEst: 0, epicsTime: 0 };
+                                epics: 0, epicsEst: 0, epicsTime: 0,
+                                // ── SRSO binding (2026-08-07) ────────────────
+                                // srsoAny  = bound to a sales order by EITHER
+                                //            route (fix version or component)
+                                // srsoSeen = …and our Billing Type reader saw it
+                                // srsoCompOnly = bound the way the runbook says
+                                //            (component) and read as untagged —
+                                //            the count this exists to produce
+                                // srsoMeasurable = rows where the Components
+                                //            column was actually present, so a
+                                //            missing column reads as "not
+                                //            measured" rather than "none found"
+                                srsoAny: 0, srsoSeen: 0, srsoCompOnly: 0, srsoMeasurable: 0 };
     return map[iso];
   }
   (jira.issues || []).forEach(function (it) {
     if (!it.resolved || isNaN(it.resolved.getTime())) return;
     var iso = weekKeyFromDate_(it.resolved);
+    // ── SRSO BINDING, over ALL delivered work ────────────────────────────────
+    // Counted OUTSIDE the On-Time scope block on purpose. The runbook's
+    // component binding (B2.6) is set once for the whole customer project, so
+    // the question "is delivered work bound to its sales order" is about every
+    // resolved issue — not just the epic/milestone/client-commitment slice
+    // On-Time happens to measure. Scoping this to that slice would answer a
+    // narrower question than the one the mismatch is about.
+    if (it.srsoComponent !== null && it.srsoComponent !== undefined) {
+      var sr = row(iso);
+      sr.srsoMeasurable++;
+      var billed = it.billing === "Billable (SRSO)";
+      if (billed || it.srsoComponent) sr.srsoAny++;
+      if (billed) sr.srsoSeen++;
+      // THE COUNT THIS EXISTS TO PRODUCE: bound the way the runbook instructs,
+      // invisible to the reader that decides Billing Type.
+      if (it.srsoComponent && !billed) sr.srsoCompOnly++;
+    }
     if (onTimeInScope_(it, sc)) {
       var r = row(iso);
       r.res++;
@@ -1856,6 +2081,61 @@ function timeExpected_(it, isOpen) {
 }
 
 /**
+ * Is a DUE DATE expected on this record — i.e. does its absence count as a gap?
+ *
+ * ── THE THREE RULES (managers, 2026-08-10) ───────────────────────────────────
+ * Stated by the team as three rules, which reduce to ONE exclusion:
+ *
+ *   1. A due date inside the current week is compliant → dhOverdue_, not here.
+ *   2. A To Do ticket with NO due date is ignored entirely — not delayed, not
+ *      missing. It is not a commitment yet, and a date guessed onto work nobody
+ *      has picked up is what makes dates meaningless later.
+ *   3. **Anything that HAS a due date is tracked, whatever its status.** A date
+ *      is a commitment the moment somebody sets one, and a commitment nobody is
+ *      working is exactly the case worth seeing.
+ *
+ * So the excluded set is the intersection — unstarted AND undated — and nothing
+ * else. This is deliberately NOT the shape of `timeExpected_` above, which
+ * excludes every unstarted ticket including the ones carrying worklogs: logged
+ * time on a To Do ticket is a status-hygiene problem with a different owner,
+ * whereas a due date on a To Do ticket is a real commitment on real work.
+ *
+ * Reading the ratio: the denominator is "started, or carrying a date", so the
+ * column answers *"of the work that is either underway or committed to a date,
+ * how much carries a date"*. A To Do ticket WITH a date is a hit, never a
+ * silently-dropped row — rule 3 — which is also what keeps the ratio ≤ 100%.
+ *
+ * Resolved work is always expected to carry a due date — On-Time Delivery is
+ * exactly the question "did it land by the date we committed to", and a resolved
+ * item with no date is that metric's own coverage gap.
+ *
+ * ⚠️ NOT applied to backlog health's `undated`/`dated` signals, on purpose. That
+ * panel asks "is this backlog ready to be PLANNED", where an undated To Do item
+ * genuinely is not plannable — a different question from "is this person's
+ * record compliant", which is what the roster and the 🧬 matrix grade.
+ *
+ * ⚠️ Epics are exempt from rule 2 by team agreement — every epic must carry a
+ * date even when it is only the project end date. That agreement has its own
+ * surface (epicDueAudit_) rather than an exception in here, because it is a
+ * 100%-target audit over ALL epics, not a graded share of a population.
+ *
+ * @param {Object} it       issue record from readJiraRaw_
+ * @param {boolean} isOpen  true for the open-backlog population
+ * @returns {boolean}
+ */
+function dueExpected_(it, isOpen) {
+  if (!isOpen) return true;
+  return dhStarted_(it) || dhHasDue_(it);
+}
+
+/** Does this record carry a usable due date? One predicate, because "has a date"
+    is asked by the audit, the ageing bands and the fill columns, and a Date that
+    failed to parse must never read as a filled field. */
+function dhHasDue_(it) {
+  return !!(it && it.due && !isNaN(it.due.getTime()));
+}
+
+/**
  * Per-issue-type field fill, over the resolved and open populations.
  *
  * @param {Object} jira      readJiraRaw_ output
@@ -1886,6 +2166,12 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
                  // the person roster: measure what you can grade, grade what you
                  // measured. On the resolved half timeN === n by construction.
                  timeN: 0,
+                 // `dueN` — the same idiom for the due-date column (2026-08-10,
+                 // managers' feedback; see dueExpected_). On the OPEN half an
+                 // unstarted ticket is outside the commitment question, so it
+                 // counts in neither side of this ratio. On the resolved half
+                 // dueN === n by construction.
+                 dueN: 0,
                  // `attrN` — attr's OWN denominator, exactly like timeN below.
                  // A record with no assignee has no assignee to fail to join: it
                  // belongs in neither half. Dividing attr by n instead scores an
@@ -1910,7 +2196,7 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
     var hasAssignee = !!rawA && !/unassigned/i.test(rawA);
     var est = Number(it.estSec) || 0;
     var got = {
-      due:      !!(it.due && !isNaN(it.due.getTime())),
+      due:      dhHasDue_(it),
       assigned: hasAssignee,
       attr:     !!(resolvePerson && resolvePerson(it.assignee || "")),
       est:      est > 0,
@@ -1924,11 +2210,17 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
     // untouched backlog as perfectly tracked.
     var wantTime = timeExpected_(it, isOpen);
     if (wantTime) r.timeN++;
+    // Due-date carve on the open half — see dueExpected_ and the three rules it
+    // quotes. Only the UNSTARTED AND UNDATED rows leave the ratio; a To Do ticket
+    // that carries a date is tracked like any other (rule 3).
+    var wantDue = dueExpected_(it, isOpen);
+    if (wantDue) r.dueN++;
     // attr is only ANSWERABLE where an assignee exists — same tristate shape as
     // timeN above: measure what you can grade, grade what you measured.
     if (hasAssignee) r.attrN++;
     TYPE_HYG_FIELDS_.forEach(function (f) {
       if (f === "time" && !wantTime) return;
+      if (f === "due" && !wantDue) return;
       if (f === "attr" && !hasAssignee) return;
       if (got[f]) { r[f]++; return; }
       // MISSING records are what we collect — the queue, not the healthy ones.
@@ -1981,8 +2273,8 @@ function typeHygieneBuckets_(jira, resolvePerson, scope) {
  * /`wip` so the open half reports how far along the load actually is, not only
  * whether its fields are filled.
  *
- * @returns {{resolved:Array<{iso,person,n,due,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>,
- *            open:Array<{person,n,due,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>}}
+ * @returns {{resolved:Array<{iso,person,n,due,dueN,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>,
+ *            open:Array<{person,n,due,dueN,est,logged,loggedN,link,start,bill,billN,estSec,spentSec,wip}>}}
  *          resolved is bucketed person × ISO week so the client can scope it
  *          to the analysis period; open is a snapshot (no iso), mirroring
  *          flowOpenBuckets.
@@ -1991,6 +2283,12 @@ function personHygieneBuckets_(jira, resolvePerson) {
   var res = {}, open = {};
   function row(map, k, person) {
     if (!map[k]) map[k] = { iso: "", person: person, n: 0, due: 0, est: 0, logged: 0,
+                            // Denominator for `due` only — the started population,
+                            // exactly like loggedN below (2026-08-10 managers'
+                            // feedback; see dueExpected_). A person's undated To Do
+                            // tickets are no longer graded against them. On the
+                            // resolved half dueN === n.
+                            dueN: 0,
                             // Denominator for `logged` only — the started
                             // population. See timeExpected_: an unstarted ticket is
                             // not a logging gap, and on the open half n counts the
@@ -2013,7 +2311,13 @@ function personHygieneBuckets_(jira, resolvePerson) {
   }
   function tally(r, it, isOpen) {
     r.n++;
-    if (it.due && !isNaN(it.due.getTime())) r.due++;
+    // Due-date carve (dueExpected_): on the open half the only rows outside the
+    // ratio are the unstarted AND undated ones. A dated To Do ticket counts, and
+    // counts as a HIT — rule 3, and the reason this ratio cannot exceed 100%.
+    if (dueExpected_(it, isOpen)) {
+      r.dueN++;
+      if (dhHasDue_(it)) r.due++;
+    }
     var est = Number(it.estSec) || 0, spent = Number(it.spentSec) || 0;
     if (est > 0) r.est++;
     // Gated on BOTH sides (timeExpected_): a To Do ticket that happens to carry a
@@ -2095,6 +2399,43 @@ var BACKLOG_FRESH_DAYS_ = 14;
 function bhDays_(from, to) { return (to - from) / 86400000; }
 
 /**
+ * Monday 00:00 of the ISO week containing `now` — the boundary a due date has to
+ * fall behind before this dashboard calls it late.
+ *
+ * ── WHY A WEEK AND NOT A TIMESTAMP (2026-08-10, managers' feedback) ───────────
+ * `due < now` reads late the instant a date passes, which put tickets due EARLIER
+ * THIS WEEK — Monday's date, read on Wednesday — into the overdue queue while the
+ * week they were committed to was still running. Every reporting surface here is
+ * weekly (`YYYY.WN` labels, weekly exports, a weekly managers' review), so a
+ * commitment for this week is in compliance until the week is over.
+ *
+ * The bar was also unfair in a way that compounds: the model is rebuilt by the
+ * cache warmer, so the same ticket could read on-time at 9am and overdue at 10am
+ * with nobody having done anything. Now the boundary only moves on Mondays.
+ *
+ * Local-time Monday, matching the ISO-week labels the rest of the file uses. The
+ * boundary is stamped into the payload (`weekStart`) so a reader can see which
+ * week's edge the ageing was measured against.
+ */
+function dhWeekStart_(now) {
+  var d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var dow = d.getDay() || 7;          // JS Sunday = 0 → ISO Sunday = 7
+  d.setDate(d.getDate() - (dow - 1)); // back to Monday
+  return d;
+}
+
+/**
+ * Is this item's due date actually late? False for anything due in the CURRENT
+ * ISO week — that is a live commitment, not a broken one (see dhWeekStart_).
+ *
+ * ONE predicate for the overdue total, all three ageing bands and the
+ * `futureDated` counterpart, so "late" can never mean two things on one panel.
+ */
+function dhOverdue_(it, now) {
+  return !!it.due && it.due < dhWeekStart_(now);
+}
+
+/**
  * The signal roster. ONE table, so a predicate can never drift between the count
  * and the queue behind it, and adding a signal is one entry rather than edits in
  * four places.
@@ -2109,8 +2450,12 @@ var BACKLOG_SIGNALS_ = [
     test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) <= BACKLOG_FRESH_DAYS_; } },
   { k: "dated", kind: "good", queue: false,
     test: function (it) { return !!it.due; } },
+  // "Not yet due" is week-grained: a date inside the CURRENT week is still a live
+  // commitment. Expressed as the negation of dhOverdue_ so `dated` always splits
+  // exactly into this row plus the overdue row — no item can fall in both or
+  // neither, whatever the boundary rule is.
   { k: "futureDated", kind: "good", queue: false,
-    test: function (it, now) { return !!it.due && it.due >= now; } },
+    test: function (it, now) { return !!it.due && !dhOverdue_(it, now); } },
   { k: "estimated", kind: "good", queue: false,
     test: function (it) { return (Number(it.estSec) || 0) > 0; } },
   { k: "linked", kind: "good", queue: false,
@@ -2130,8 +2475,18 @@ var BACKLOG_SIGNALS_ = [
   // ── needs action, each one a queue ─────────────────────────────────────────
   { k: "unestimated", kind: "bad",
     test: function (it) { return !(Number(it.estSec) > 0); } },
+  // Undated work that somebody has STARTED. An unstarted undated ticket is
+  // excluded by rule 2 (user report 2026-08-10 — the queue was sending people
+  // after tickets the rate had already stopped counting), and is tallied
+  // separately as `undatedIgnored` so the three still partition the population:
+  //     dated + undated + undatedIgnored = n
   { k: "undated", kind: "bad",
-    test: function (it) { return !it.due; } },
+    test: function (it) { return !dhHasDue_(it) && dhStarted_(it); } },
+  // Context, not a queue: reported as a sentence on the panel, never as a row to
+  // work. `queue: false` keeps its keys out of the payload — nobody is meant to
+  // go and fix these, and a key list is an invitation to.
+  { k: "undatedIgnored", kind: "good", queue: false,
+    test: function (it) { return !dhHasDue_(it) && !dhStarted_(it); } },
   { k: "unlinked", kind: "bad",
     test: function (it) { return !it.linked; } },
   { k: "noStart", kind: "bad",
@@ -2140,17 +2495,26 @@ var BACKLOG_SIGNALS_ = [
     test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_DAYS_; } },
   { k: "staleHard", kind: "bad",
     test: function (it, now) { return !!it.updated && bhDays_(it.updated, now) > BACKLOG_STALE_HARD_DAYS_; } },
+  // Late means "the week we committed to has ended" — see dhOverdue_. Anything
+  // due inside the current week is in compliance and appears in no queue here.
   { k: "overdue", kind: "bad",
-    test: function (it, now) { return !!it.due && it.due < now; } },
+    test: function (it, now) { return dhOverdue_(it, now); } },
   // Ageing bands, because one "overdue" count hides the difference between a
   // ticket that slipped a day and a commitment abandoned two months ago. Live
   // measurement 2026-08-06: 62% of overdue open work was >30 days past due.
+  // Each band is gated on dhOverdue_ FIRST and then aged in days: without the
+  // gate, "≤7 days" would re-admit the current week's dates that the rule above
+  // just excluded, and the bands would not sum to the overdue total.
   { k: "overdue7", kind: "bad",
-    test: function (it, now) { var d = it.due ? bhDays_(it.due, now) : -1; return d > 0 && d <= 7; } },
+    test: function (it, now) { return dhOverdue_(it, now) && bhDays_(it.due, now) <= 7; } },
   { k: "overdue30", kind: "bad",
-    test: function (it, now) { var d = it.due ? bhDays_(it.due, now) : -1; return d > 7 && d <= 30; } },
+    test: function (it, now) {
+      if (!dhOverdue_(it, now)) return false;
+      var d = bhDays_(it.due, now);
+      return d > 7 && d <= 30;
+    } },
   { k: "overdueOver30", kind: "bad",
-    test: function (it, now) { return !!it.due && bhDays_(it.due, now) > 30; } },
+    test: function (it, now) { return dhOverdue_(it, now) && bhDays_(it.due, now) > 30; } },
   // Status says started, the clock says nothing happened. Either it is not really
   // in progress or the time is not being tracked — and both are a conversation.
   { k: "wipNoLog", kind: "bad",
@@ -2232,9 +2596,77 @@ function backlogHealthBuckets_(jira, resolvePerson, now) {
     // time — a reader looking at an hour-old cached model deserves to know which
     // "today" the ageing was measured against.
     asOf: now.toISOString(),
+    // The Monday every overdue verdict on this panel was measured against, so the
+    // week-grained rule is legible rather than folklore (2026-08-10).
+    weekStart: dhWeekStart_(now).toISOString(),
     thresholds: { fresh: BACKLOG_FRESH_DAYS_, stale: BACKLOG_STALE_DAYS_,
                   staleHard: BACKLOG_STALE_HARD_DAYS_ },
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🚩 EPICS WITHOUT A DUE DATE — the audit (team agreement, 2026-08-10)
+//
+// The team agreed that EVERY epic carries a due date, "even if it is just the
+// project end date". That makes this the only field rule on this dashboard with a
+// ratified 100% target, and it is why this is a flag rather than another graded
+// column: a gate of 80% would declare success while a fifth of the engagements
+// have no committed end.
+//
+// WHY IT IS A SEPARATE SURFACE from the 🧬 matrix, which already prints due-date
+// fill for the three epic types:
+//   · The matrix grades a SHARE against a coverage gate. This has a target of
+//     100% and an owner (Gon + the PMs), so it needs to name the offenders, not
+//     rate them.
+//   · The matrix's open half now excludes unstarted undated tickets by rule
+//     (dueExpected_). An epic in To Do with no date is EXACTLY what this audit is
+//     for, so it must not inherit that carve — hence its own pass over the feed
+//     rather than a filter on the matrix rows.
+//   · Epics are containers, so the assignee is often nobody. A surface keyed on
+//     people cannot see them at all.
+//
+// ORG SCOPE, deliberately: no person filter, no roster join, unassigned epics
+// included. This is an audit of tickets, and an epic that resolves to no
+// rocketeer is not thereby somebody else's problem.
+//
+// NAMES NOTHING BUT ISSUE KEYS. Same rule as the gaps queue: a standing list of
+// people against failures in a widely-read view is a blame board. An epic key is
+// a work item anyone can open and fix.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Keys carried per epic type. Capped and the cap REPORTED — a clipped list read
+    as complete is how "we dated them all" becomes wrong. */
+var EPIC_DUE_MAX_KEYS_ = 200;
+
+/**
+ * Open epics with no due date, split by epic type.
+ *
+ * @param {Object} jira readJiraRaw_ output (leaver-scoped, same feed as every
+ *                      other hygiene surface — so the counts reconcile)
+ * @returns {{rows:Array<{type:string,n:number,missing:number,keys:string[],capped:boolean}>,
+ *            n:number, missing:number, keyCap:number}}
+ *          `rows` sorted most-missing first: the audit's own work order.
+ */
+function epicDueAudit_(jira) {
+  var map = {}, n = 0, missing = 0;
+  (jira.issues || []).forEach(function (it) {
+    if (!it.isEpic) return;
+    // OPEN epics only. A resolved epic's missing date cannot be fixed in any way
+    // that changes a future number — the dashboard's standing rule about the open
+    // vs resolved split (typeHygOpen_ is reused so "open" means one thing here).
+    if (!typeHygOpen_(it)) return;
+    var type = it.typeLabel || "(blank)";
+    if (!map[type]) map[type] = { type: type, n: 0, missing: 0, keys: [], capped: false };
+    var r = map[type];
+    r.n++; n++;
+    if (dhHasDue_(it)) return;
+    r.missing++; missing++;
+    if (r.keys.length < EPIC_DUE_MAX_KEYS_) r.keys.push(it.key);
+    else r.capped = true;
+  });
+  var rows = Object.keys(map).map(function (k) { return map[k]; })
+    .sort(function (a, b) { return (b.missing - a.missing) || (b.n - a.n); });
+  return { rows: rows, n: n, missing: missing, keyCap: EPIC_DUE_MAX_KEYS_ };
 }
 
 /** Median of a numeric array; null when empty. Backs the forecast secondary
@@ -2495,6 +2927,23 @@ function dhSourceIds_() {
   };
 }
 
+/**
+ * The Jira site every deep link points at. Script Property first, config second.
+ *
+ * Trailing slashes are trimmed HERE, once, rather than defended against in each
+ * renderer: an override pasted with a trailing "/" would otherwise produce
+ * `…net//browse/KEY`, which Jira serves as a 404 and a reader reports as "the
+ * links are broken" rather than "somebody typed a slash".
+ */
+function dhJiraBase_() {
+  var p = null;
+  // Same try/catch idiom as readGateOverrides_: a property store that is
+  // unavailable must not take the whole model build down. Links to the default
+  // site are a small wrong; a dashboard that fails to render is a large one.
+  try { p = PropertiesService.getScriptProperties().getProperty("DH_JIRA_BASE"); } catch (e) { p = null; }
+  return String(p || CONFIG_DH.JIRA_BASE_URL || "").trim().replace(/\/+$/, "");
+}
+
 /** Case-insensitive header index lookup; -1 when absent. */
 function colIdx_(headers, names) {
   var low = headers.map(function (h) { return normDH_(h); });
@@ -2665,6 +3114,19 @@ function readRosterPeople_() {
         // still a live person, and we only want to drop the ones who have left.
         if (active) activeAll[normDH_(name)] = 1;
         else inactiveAll[normDH_(name)] = 1;
+        // ── Population gates, hoisted (2026-08-07) ────────────────────────────
+        // Evaluated here rather than inline below because WORKFORCE CHANGE needs
+        // them for people the population itself excludes: a leaver is gated out
+        // by `active` three lines down, and measuring the capacity they took with
+        // them requires knowing whether they were one of ours before they went.
+        // Same booleans drive both, so "a Services delivery person" cannot come
+        // to mean two things.
+        var cls = iClass === -1 ? "" : String(raw[r][iClass] || "").trim();
+        var dept = iDept === -1 ? "" : String(raw[r][iDept] || "").trim();
+        // Fail-closed, unchanged: blank Class (FTE) or blank Department excludes.
+        var classOk = src.crew || normDH_(cls) === normDH_(CONFIG_DH.ROSTER_CLASS);
+        var deptOk = normDH_(dept) === normDH_(CONFIG_DH.ROSTER_DEPT);
+        var inScope = classOk && deptOk;
         // Attribution record — pre-gates AND pre-attrition (v13, 2026-08-04):
         // work delivered last quarter by someone who has since left was still
         // delivered, so historical issue attribution needs every roster row
@@ -2681,7 +3143,21 @@ function readRosterPeople_() {
                           iFam === -1 ? "" : String(raw[r][iFam] || "").trim(),
                           iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim()),
                         jobTitle: iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim(),
-                        hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
+                        hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]),
+                        // WORKFORCE CHANGE (2026-08-07). The termination date was
+                        // read on the line above and thrown away — only its
+                        // truthiness reached dhRosterRowActive_ — so the roster
+                        // could say a person is gone but never WHEN. Without the
+                        // date a departure cannot be placed in a period, and a
+                        // capacity loss that cannot be placed in a period cannot
+                        // be set against the queue growth in that same period.
+                        termDate: iTerm === -1 ? null : parseDhDate_(raw[r][iTerm]),
+                        active: active,
+                        // Was this person part of the Services delivery
+                        // population? The family gate is NOT applied here —
+                        // dhTracksTime_ is a separate policy applied by the
+                        // caller, exactly as it is for the live population.
+                        inScope: inScope });
         }
         if (!active) continue;                           // attrition — never in the population
         if (seen[normDH_(name)]) continue;               // boomerang/collision: first active wins
@@ -2690,12 +3166,9 @@ function readRosterPeople_() {
         // Department column, and fail-open here let every contractor (any dept,
         // any status) into the population. Unallocated crew = R&D by default
         // (demand-dashboard rule 2026-07-15), so no Department → not Services.
-        if (!src.crew) {
-          var cls = iClass === -1 ? "" : String(raw[r][iClass] || "").trim();
-          if (normDH_(cls) !== normDH_(CONFIG_DH.ROSTER_CLASS)) continue;
-        }
-        var dept = iDept === -1 ? "" : String(raw[r][iDept] || "").trim();
-        if (normDH_(dept) !== normDH_(CONFIG_DH.ROSTER_DEPT)) continue;
+        // Computed above as classOk/deptOk so the workforce-change reader applies
+        // the identical test to people this loop is about to drop.
+        if (!inScope) continue;
         var loc = iLoc === -1 ? "" : String(raw[r][iLoc] || "").trim();
         var fam = dhFamilyFromTitle_(
           iFam === -1 ? "" : String(raw[r][iFam] || "").trim(),
@@ -2775,6 +3248,127 @@ function leaverTest_(roster) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// WORKFORCE CHANGE (user request 2026-08-07) — the capacity that joined and
+// left, per ISO week.
+//
+// WHY THIS EXISTS. Every other number on this dashboard describes the people
+// who are here now. A departure removes someone from the population entirely
+// (readRosterPeople_ drops inactive rows) and their capacity silently leaves
+// the denominators with them, so the utilization rate holds steady while the
+// team's actual ability to deliver falls. The queue is growing ~75 items a
+// week and nothing on the page could say whether that is demand arriving or
+// supply leaving. This is the supply side, stated once, in hours.
+//
+// WHAT IT IS NOT. It is not a performance measure and it is not a list. Only
+// counts and hours are published — never who left. Turnover is a fact about a
+// team's capacity; naming the people inside it turns a planning number into a
+// notice board, and this view is read by the whole company.
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A person's typical weekly scheduled capacity over a set of weeks.
+ *
+ * MEDIAN of the non-zero weeks, not the last week and not the mean. The final
+ * week before a departure and the first week after a hire are nearly always
+ * partial — notice period, handover, onboarding — and reading either as "the
+ * capacity this person carried" would understate every departure and every
+ * arrival. Zero weeks are dropped rather than averaged in for the same reason:
+ * a zero is "not scheduled", which is what a leaver's last fortnight looks
+ * like, not a measurement of what they were worth.
+ *
+ * @returns {?number} hours per week, or null when the person has no scheduled
+ *   capacity anywhere in the window — an unknown, never a zero.
+ */
+function typicalWeeklyCap_(byIso, isos) {
+  if (!byIso) return null;
+  var vals = (isos || []).map(function (iso) { return byIso[iso]; })
+    .filter(function (h) { return typeof h === "number" && !isNaN(h) && h > 0; });
+  return vals.length ? medianOf_(vals) : null;
+}
+
+/** The up-to-`n` weeks of `weeks` that sit before (dir<0) or from (dir>0) `iso`. */
+function weeksAround_(weeks, iso, dir, n) {
+  var i = weeks.indexOf(iso);
+  if (i === -1) return [];
+  return dir < 0 ? weeks.slice(Math.max(0, i - n), i) : weeks.slice(i, i + n);
+}
+
+var WORKFORCE_CAP_LOOKBACK_ = 8;   // weeks of capacity behind a joiner/leaver
+
+/**
+ * Joiners and leavers per ISO week, with the scheduled capacity each carried.
+ *
+ * Additive per week, like every other bucket here, so the client can aggregate
+ * over whatever period the header picker is on without the server knowing which
+ * one that is.
+ *
+ * Scope is the SAME Services delivery population as every other card — the
+ * class/department gates (`inScope`, hoisted in readRosterPeople_) and the
+ * job-family tracking mandate. A departure from Sales is not a delivery
+ * capacity loss, and counting it here would make this number disagree with the
+ * roster beside it.
+ *
+ * ATTRITION IS ONE-SIDED, same rule as leaverTest_/filterActiveNames_: a person
+ * counts as gone only when the roster PROVES it (an inactive row and no active
+ * row anywhere). A boomerang rehire is therefore never a departure. Someone who
+ * joined AND left inside the window is counted on both sides — both happened,
+ * and the net correctly reads zero.
+ *
+ * @param {Object} roster readRosterPeople_ output
+ * @param {Object} capByName readCapacitySheet_().byName
+ * @param {Array<string>} weeks window.allWeeks, oldest first
+ * @returns {Array<Object>} one row per ISO week that had any movement
+ */
+function workforceChangeBuckets_(roster, capByName, weeks) {
+  var out = {}, act = (roster && roster.activeAll) || {},
+      inact = (roster && roster.inactiveAll) || {};
+  function row(iso) {
+    if (!out[iso]) out[iso] = { iso: iso, joiners: 0, leavers: 0,
+                                hoursGained: 0, hoursLost: 0,
+                                // People whose movement is known but whose
+                                // capacity is not. Counted separately rather
+                                // than as 0 hours: "we lost someone and cannot
+                                // say how much" is a different statement from
+                                // "we lost nobody", and folding the first into
+                                // the second is how a real loss disappears.
+                                joinersNoCap: 0, leaversNoCap: 0 };
+    return out[iso];
+  }
+  var inWindow = {};
+  (weeks || []).forEach(function (w) { inWindow[w] = 1; });
+
+  ((roster && roster.attrib) || []).forEach(function (p) {
+    if (!p.inScope) return;
+    if (dhTracksTime_(p.jobFamily) === false) return;
+    var key = normDH_(p.name), cap = capByName ? capByName[key] : null;
+
+    if (p.hireDate && !isNaN(p.hireDate.getTime())) {
+      var hIso = weekKeyFromDate_(p.hireDate);
+      if (inWindow[hIso]) {
+        var r = row(hIso), gained = typicalWeeklyCap_(
+          cap, weeksAround_(weeks, hIso, 1, WORKFORCE_CAP_LOOKBACK_));
+        r.joiners++;
+        if (gained === null) r.joinersNoCap++; else r.hoursGained += gained;
+      }
+    }
+    // Proven-gone only. An inactive row for someone who also has an active row
+    // is a rehire, and a termination date with no inactive status is a planned
+    // future exit the roster has not applied yet — neither is attrition today.
+    var gone = inact[key] && !act[key];
+    if (gone && p.termDate && !isNaN(p.termDate.getTime())) {
+      var tIso = weekKeyFromDate_(p.termDate);
+      if (inWindow[tIso]) {
+        var r2 = row(tIso), lost = typicalWeeklyCap_(
+          cap, weeksAround_(weeks, tIso, -1, WORKFORCE_CAP_LOOKBACK_));
+        r2.leavers++;
+        if (lost === null) r2.leaversNoCap++; else r2.hoursLost += lost;
+      }
+    }
+  });
+  return Object.keys(out).sort().map(function (k) { return out[k]; });
+}
+
 /**
  * Capacity Tempo grid → { normName: { iso: hours } }.
  * Sheet shape (TempoCapacityTime.js): header row carries "YYYY.WN" labels;
@@ -2844,6 +3438,22 @@ function readTempoGrid_(sheetName) {
     var iTeam = colIdx_(hdRow, ["Team"]);
     var iKey = colIdx_(hdRow, ["Key"]);
     var iPm = colIdx_(hdRow, ["PM"]); // per-project lead (both Tempo exports)
+    // ── ISSUE-LEVEL TRACE (read from 2026-08-10, Workforce Health) ────────────
+    // Exported all along and never read here — the same shape as the Components
+    // discovery: TempoTrackedTime.js has written "Issue", "Epic Key" and
+    // "Parent Key" since the sheet was created, and this reader took only
+    // User/Team/Key/PM. Without them tracked time is project-grained, and the
+    // shadow split (spec §5.3) cannot ask the one question it exists to ask:
+    // does this hour roll up to an epic anybody committed to?
+    //
+    // "Key" stays the PROJECT key — every existing consumer joins on it, and
+    // repurposing it would silently redefine the team/PM/region vocabularies.
+    // These three are ADDITIVE and default to "" so an older export (or the
+    // Planned sheet, which has "Issue" but no epic columns) degrades to
+    // "not measured" rather than to a false "no epic".
+    var iIssue = colIdx_(hdRow, ["Issue"]);
+    var iEpicK = colIdx_(hdRow, ["Epic Key"]);
+    var iParentK = colIdx_(hdRow, ["Parent Key"]);
     // Week labels: the row ABOVE the field headers when it carries ISO labels
     // (two-row stacked export), else the field-header row itself (legacy).
     var wkRow = (hr > 0 && raw[hr - 1].some(function (cell) { return /^\d{4}\.W\d{1,2}$/.test(String(cell).trim()); }))
@@ -2866,6 +3476,18 @@ function readTempoGrid_(sheetName) {
                   teamCell: iTeam === -1 ? "" : String(raw[r][iTeam] || "").trim(),
                   key: iKey === -1 ? "" : String(raw[r][iKey] || "").trim().toUpperCase(),
                   pm: iPm === -1 ? "" : String(raw[r][iPm] || "").trim(),
+                  // Issue-level trace. Uppercased to match readJiraRaw_'s keys —
+                  // the two exporters do not agree on casing and Jira keys are
+                  // case-insensitive, so one canonical form is the only way the
+                  // epic index can join. hasIssueCol distinguishes "this export
+                  // has no Issue column" from "this row has no issue": the first
+                  // is a coverage gap, the second is a project-level row, and
+                  // collapsing them would report unmeasured work as unlinked work.
+                  issue: iIssue === -1 ? "" : String(raw[r][iIssue] || "").trim().toUpperCase(),
+                  epicKey: iEpicK === -1 ? "" : String(raw[r][iEpicK] || "").trim().toUpperCase(),
+                  parentKey: iParentK === -1 ? "" : String(raw[r][iParentK] || "").trim().toUpperCase(),
+                  hasIssueCol: iIssue !== -1,
+                  hasEpicCol: iEpicK !== -1 || iParentK !== -1,
                   weekHours: weekHours });
     }
     return { rows: rows, weekIsos: weekCols.map(function (w) { return w.iso; }) };
@@ -2892,6 +3514,1249 @@ function dhLevelTrack_(jobTitle) {
     dhLevelTrack_ parses the full number, so "I10" reads as level I10, not I1. */
 function dhIsIntern_(jobTitle) {
   return dhLevelTrack_(jobTitle).level === "I1";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WORKFORCE HEALTH — CLASSIFICATION LAYER
+// (Workforce Health Implementation Spec v1.1, 2026.W32, owner Workforce Planning)
+//
+// THE CLAIM THIS EXISTS TO SERVE: capacity is not fungible. A single blended
+// availability percentage averages together people who cannot do each other's
+// work, and this dashboard has exactly that disease — JF007 (Managed Services &
+// Support) and JF009 (Service Delivery) sit in ONE population and report ONE
+// utilisation, ONE planned-coverage and ONE weeks-to-clear. Support capacity is
+// contracted and recurring; it is never drawn from the project backlog. Blending
+// it makes the org look far more available than it is and mathematically
+// guarantees you cannot see the pool that is actually out of room.
+//
+// WHY THE JOB CODE AND NOT THE TITLE TEXT: a job title carries four independent
+// facts, and only the first four tokens are governed by the job architecture:
+//
+//     09.I4.3  -  Senior Engineer I,  Service Delivery
+//     │  │ │ │     └── stem ──────┘   └── label ────┘
+//     │  │ │ └── VARIANT   sub-track inside the family   ← THE KEY
+//     │  │ └──── LEVEL     seniority                     ← level band
+//     │  └────── TRACK     I = individual, M = management ← the mgmt override
+//     └───────── FAMILY    job family                     ← scopes everything
+//
+// The discipline STRING cannot be the key, for three reasons measured on the
+// live 215-row catalogue (spec §4.0):
+//   1. It SPLITS.     "09|Service Delivery" is 36 people — 21 are .3 engineers
+//                     and 15 are .1 consultants. Two pools, not interchangeable.
+//   2. It COLLIDES.   "Delivery" appears in family 07 (delivery consultants,
+//                     CONSUMER) and family 15 (SVP Delivery, GOVERNOR).
+//   3. It FRAGMENTS.  Family 07 uses three strings — Customer Support (64),
+//                     Support (2), Managed Services (1) — for what variant .1
+//                     captures as one sub-track.
+// And it is free text: an HRIS rename silently breaks the join. The variant
+// digit does not move when someone retitles a discipline.
+//
+// The v1.0 draft of this spec DID key on discipline and put all 36 of
+// "09|Service Delivery" into PS-ENGINEER. Five IC Senior Consultants on 09.1
+// belong in PS-CONSULT: PS-ENGINEER was overstated by roughly a fifth, which
+// moves its cover and headroom materially. dhStemWarning (below) is the
+// cross-check that catches that class of error.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Job-code parser. TOLERANT BY DESIGN — the separator is optional and trailing
+ * parentheticals are stripped, because a strict parser silently drops real rows:
+ * this repo's own CompDash fixtures carry "03.I2.1 Data Analyst" (no dash) and
+ * "07.m4.1" (lowercase track), and the live catalogue carries one row with a
+ * trailing "(556)". A dropped row is an UNCLASSIFIED person, which reads on the
+ * dashboard as a governance failure rather than as the parser bug it is.
+ *
+ * Case-insensitive on the track letter. The spec's own regex is not, and
+ * CompDash has a passing test pinning "07.m4.1" → M4 — so a case-sensitive
+ * parser here would disagree with the level splitter already shipping beside it.
+ *
+ * @param {string} raw full Job Title cell
+ * @returns {{ok:boolean, reason?:string, raw:string, family?:string, track?:string,
+ *             level?:number, variant?:string, subTrack?:string, stem?:string,
+ *             stemBase?:string, discipline?:string}}
+ */
+function dhParseTitle_(raw) {
+  var s = String(raw == null ? "" : raw);
+  var m = /^\s*(\d{2})\.([IM])(\d{1,2})\.(\d)\s*(?:-\s*)?(.*)$/i.exec(s);
+  if (!m) return { ok: false, reason: "does not match FF.Tn.v pattern", raw: s };
+
+  var family = m[1], track = m[2].toUpperCase(), level = Number(m[3]), variant = m[4];
+  var clean = String(m[5] || "")
+    .replace(/\(\d+\)\s*$/, "")     // trailing "(556)" style suffixes
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // lastIndexOf, not indexOf: "Senior Engineer I, Service Delivery" splits at
+  // the LAST comma, so a stem that itself contains a comma keeps its own text.
+  var comma = clean.lastIndexOf(",");
+  var stem = (comma === -1 ? clean : clean.slice(0, comma)).trim();
+  var discipline = (comma === -1 ? clean : clean.slice(comma + 1)).trim();
+
+  return {
+    ok: true, raw: s,
+    family: family, track: track, level: level, variant: variant,
+    subTrack: family + "." + variant,                   // ← the classification key
+    stem: stem,                                          // "Senior Engineer I"
+    stemBase: stem.replace(/\s+(I{1,3})$/, "").trim(),   // "Senior Engineer"
+    discipline: discipline,                              // display label only
+  };
+}
+
+/**
+ * family.variant → [backlogRole, deploymentPool, displayLabel].
+ * The label is documentation: the UI shows it, the engine never reads it.
+ */
+var DH_SUB_TRACK_ = {
+  "07.1": ["SUSTAINER", "MS-SUPPORT",  "Customer Support & Managed Services"],
+  "07.2": ["CONSUMER",  "PS-CONSULT",  "Delivery Consulting"],
+  "08.2": ["CONSUMER",  "TRAINING",    "Learning Solutions"],
+  "09.1": ["CONSUMER",  "PS-CONSULT",  "Consulting (technical & service delivery)"],
+  "09.3": ["CONSUMER",  "PS-ENGINEER", "Service Delivery Engineering"],
+  "18.1": ["CREATOR",   "ARCH",        "Solution Architecture"],
+};
+
+/**
+ * Fallback for families where the variant digit is NOT a sub-track boundary.
+ * Every pool here is NONE, so the precision lost by falling back to free text
+ * costs nothing — none of these people absorb backlog.
+ */
+var DH_BY_DISCIPLINE_ = {
+  "15|Project Management":  ["GOVERNOR", "PMO"],
+  "15|Resource Planning":   ["GOVERNOR", "NONE"],
+  "15|Revenue Operations":  ["GOVERNOR", "NONE"],
+  "15|Operations":          ["GOVERNOR", "NONE"],
+  "15|Customer Operations": ["GOVERNOR", "NONE"],
+  "15|Delivery":            ["GOVERNOR", "NONE"],
+  "04|Account Management":     ["CREATOR", "NONE"],
+  "04|Customer Solutions":     ["CREATOR", "NONE"],
+  "04|Partner Practice Owner": ["CREATOR", "NONE"],
+};
+
+/** Families with no relationship to delivery backlog, whatever the discipline says. */
+var DH_ENABLER_FAMILIES_ = { "01": 1, "03": 1, "13": 1, "14": 1, "16": 1, "17": 1 };
+
+/** Titles that are enablers regardless of family. */
+var DH_ENABLER_TITLES_ = {
+  "chief executive officer": 1, "chief customer officer": 1, "strategic operations": 1,
+};
+
+/**
+ * M-track inside a delivery family GOVERNS backlog rather than consuming it.
+ *
+ * ⚠ ADOPTING THIS MOVES EVERY PUBLISHED CAPACITY RATE (user decision
+ * 2026-08-10). Before this, a delivery manager's scheduled hours sat in the
+ * pool denominator and read as consultant capacity Sales could theoretically
+ * sell. They now leave the pool entirely. Ships with a DH_SCHEMA_VER_ bump, a
+ * changeLog entry, and `affects` populated so every affected trend line carries
+ * the "✎ definition changed" marker — the step people see is the definition
+ * moving, not delivery moving.
+ */
+var DH_MGMT_GOVERNS_ = { "07": 1, "09": 1, "18": 1 };
+
+/**
+ * Pool → expected stem shape. VALIDATES ONLY, never reclassifies.
+ *
+ * This is the guard that would have caught the v1.0 discipline-keying error
+ * before it shipped: a person landing in PS-ENGINEER whose title stem says
+ * "Consultant" is either a mistyped variant digit or a genuine hybrid role that
+ * needs its own sub-track. Either way a human decides, not this file.
+ */
+var DH_STEM_EXPECT_ = {
+  "PS-ENGINEER": /engineer/i,
+  "PS-CONSULT":  /consultant|associate|intern|specialist/i,
+  "ARCH":        /consultant|architect|director|manager/i,
+};
+
+/**
+ * Level for a crew title that carries no full job code. Reuses the proven
+ * level-token parser (`dhLevelTrack_`, which handles "I3" / "M5" anywhere in a
+ * title), so a contractor hired against a level still lands in the right band
+ * instead of collapsing everyone into UNKNOWN.
+ */
+function dhCrewLevel_(jobTitle) {
+  var lt = dhLevelTrack_(jobTitle);
+  if (!lt.track) return { track: null, level: null };
+  return { track: lt.track === "M" ? "M" : "I",
+           level: parseInt(String(lt.level).replace(/^[IM]/, ""), 10) || null };
+}
+
+/** Level → band. MGMT wins over level: an M-track person is never JUNIOR. */
+function dhBand_(track, level) {
+  if (track === "M") return "MGMT";
+  if (!(level > 0)) return "UNKNOWN";
+  return level <= 2 ? "JUNIOR" : level <= 4 ? "CORE" : "SENIOR";
+}
+
+/**
+ * Classifies one person from their Job Title into the three attributes the
+ * whole model turns on: backlog role, deployment pool, level band.
+ *
+ * The reporting grain is pool × band (`cell`). Not person, not department, not
+ * company — an I3 cannot absorb an I5's epic, and a support engineer cannot
+ * absorb a consulting epic at any level.
+ *
+ * UNCLASSIFIED IS NEVER ZERO BY ACCIDENT. A rising unclassified count means new
+ * job codes were created and nobody told Workforce Planning. That is a real
+ * signal, surfaced on the dashboard even at zero — a field that only appears
+ * when it is broken gets ignored when it breaks.
+ *
+ * CREW ARE CLASSIFIED BY EMPLOYMENT TYPE, NOT BY JOB CODE (user report
+ * 2026-08-10). Contractors carry no job-architecture code, so the parser
+ * correctly failed on all 30 of them and the first live render showed
+ * "30 unclassified" — a governance alarm for a population that was never
+ * missing a rule, only a home. `isCrew` comes off the roster's Contractors tab
+ * and is checked FIRST: a crew member's commercial model is what makes their
+ * capacity non-interchangeable with an FTE consultant's, and that is true
+ * whatever their title happens to say.
+ *
+ * @param {string} jobTitle
+ * @param {boolean} [isCrew] roster Contractors-tab membership
+ * @returns {{role:string, pool:string, band:string, cell:string, subTrack:string|null,
+ *            disciplineLabel:string, level:number|null, track:string|null,
+ *            family:string|null, stemWarning:string|null, classificationError:string|null}}
+ */
+function dhClassify_(jobTitle, isCrew) {
+  var t = dhParseTitle_(jobTitle);
+  if (isCrew) {
+    // A crew title MAY still carry a level token (some contractors are hired
+    // against a level); use it for the band when it is there, and fall back to
+    // the IC level parser for titles that carry "I3" without a full job code.
+    var lvl = t.ok ? { track: t.track, level: t.level } : dhCrewLevel_(jobTitle);
+    return { role: "CONSUMER", pool: "CREW", band: dhBand_(lvl.track, lvl.level),
+             cell: "CREW|" + dhBand_(lvl.track, lvl.level),
+             subTrack: t.ok ? t.subTrack : null,
+             disciplineLabel: "Crew (on demand)",
+             level: lvl.level || null, track: lvl.track || null,
+             family: t.ok ? t.family : null,
+             stemWarning: null, classificationError: null, isCrew: true };
+  }
+  if (!t.ok) return dhUnclassified_(t.reason);
+
+  var role = null, pool = null, label = t.discipline;
+  var discKey = t.family + "|" + t.discipline;
+
+  if (DH_ENABLER_TITLES_[normDH_(t.discipline)] || DH_ENABLER_FAMILIES_[t.family]) {
+    role = "ENABLER"; pool = "NONE";
+  } else if (DH_SUB_TRACK_[t.subTrack]) {
+    role = DH_SUB_TRACK_[t.subTrack][0];
+    pool = DH_SUB_TRACK_[t.subTrack][1];
+    label = DH_SUB_TRACK_[t.subTrack][2];
+  } else if (DH_BY_DISCIPLINE_[discKey]) {
+    role = DH_BY_DISCIPLINE_[discKey][0];
+    pool = DH_BY_DISCIPLINE_[discKey][1];
+  } else {
+    return dhUnclassified_("no rule for " + t.subTrack + " / " + discKey, t);
+  }
+
+  // Management override — applied AFTER the sub-track resolves, so a manager in
+  // a delivery family keeps their family/variant for the audit trail while
+  // leaving the pool their reports sit in.
+  if (t.track === "M" && DH_MGMT_GOVERNS_[t.family]) { role = "GOVERNOR"; pool = "NONE"; }
+
+  // Stem cross-check — a WARNING, never a reclassification (spec §4.3).
+  // IC-only: an M-track title stem is a management noun and would false-positive
+  // against every pool regex.
+  var expect = DH_STEM_EXPECT_[pool];
+  var stemWarning = (expect && t.track === "I" && t.stemBase && !expect.test(t.stemBase))
+    ? 'stem "' + t.stemBase + '" unexpected for pool ' + pool : null;
+
+  var band = dhBand_(t.track, t.level);
+  return { role: role, pool: pool, band: band, cell: pool + "|" + band,
+           subTrack: t.subTrack, disciplineLabel: label,
+           level: t.level, track: t.track, family: t.family,
+           stemWarning: stemWarning, classificationError: null };
+}
+
+/** The one shape an unclassifiable person takes. Never throws, never guesses. */
+function dhUnclassified_(reason, t) {
+  return { role: "UNCLASSIFIED", pool: "NONE", band: "UNKNOWN", cell: "NONE|UNKNOWN",
+           subTrack: (t && t.subTrack) || null,
+           disciplineLabel: (t && t.discipline) || "",
+           level: (t && t.level) || null, track: (t && t.track) || null,
+           family: (t && t.family) || null,
+           stemWarning: null, classificationError: reason };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WORKFORCE HEALTH — POOL CONFIG AND SIGNAL THRESHOLDS (spec v1.1 §5.6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Per-pool operating envelope.
+ *
+ * coverTarget: 0 means the pool is DEMAND-DRIVEN — its work arrives as tickets,
+ * not as a plannable backlog. Cover is meaningless there and must render `n/a`,
+ * never 0: a zero implies "no work left" for a pool that has no backlog BY
+ * DESIGN, which is the single most dangerous false read on this surface.
+ *
+ * These are Workforce Planning's proposed envelopes, NOT ratified operating
+ * targets. Every one carries `target: null` in the registry for the same reason
+ * the queue metrics do — an unratified number on a C-suite surface reads as
+ * agreed the moment it is on screen. Owner for ratification: Services Director.
+ */
+var DH_POOLS_ = {
+  "PS-CONSULT":  { coverTarget: 10, coverFloor: 4, headroomFloor: 0.10, headroomCeil: 0.30, consumes: true },
+  "PS-ENGINEER": { coverTarget: 10, coverFloor: 4, headroomFloor: 0.10, headroomCeil: 0.30, consumes: true },
+  "MS-SUPPORT":  { coverTarget: 0,  coverFloor: 0, headroomFloor: 0.05, headroomCeil: 0.20, consumes: false },
+  "ARCH":        { coverTarget: 6,  coverFloor: 3, headroomFloor: 0.15, headroomCeil: 0.35, consumes: true },
+  "PMO":         { coverTarget: 0,  coverFloor: 0, headroomFloor: 0.10, headroomCeil: 0.25, consumes: false },
+  "TRAINING":    { coverTarget: 8,  coverFloor: 3, headroomFloor: 0.10, headroomCeil: 0.35, consumes: true },
+  // ── CREW — contracted delivery capacity, engaged on demand ────────────────
+  // Added 2026-08-10 after the first live render showed 30 UNCLASSIFIED people
+  // who are in fact crew (user report). They were unclassified because they are
+  // contractors and carry no job-architecture code — the parser was working
+  // correctly and the registry simply had no home for them.
+  //
+  // consumes:false and coverTarget:0 are the load-bearing choices, and they are
+  // NOT a claim that crew do no project work — they plainly do. Cover asks "how
+  // many weeks of backlog does this pool hold at its own weekly capacity", and
+  // that question presumes a FIXED capacity the backlog is measured against.
+  // On-demand capacity is the opposite: it is scaled TO the backlog. Publishing
+  // a cover figure for it would invite the reading that crew are "running out
+  // of work", when the correct reading is that nobody has booked them this week.
+  // Their headroom is also not sellable headroom — unbooked crew is not paid
+  // idle capacity, it is simply capacity not engaged.
+  "CREW":        { coverTarget: 0,  coverFloor: 0, headroomFloor: 0,    headroomCeil: 1,    consumes: false },
+  "NONE":        { coverTarget: 0,  coverFloor: 0, headroomFloor: 0,    headroomCeil: 1,    consumes: false },
+};
+
+/** Signal thresholds. A threshold change that breaks a test is a rollback, not a debate. */
+var DH_WFH_CONFIG_ = {
+  fidelityFloor:         0.80,
+  shadowCeiling:         0.15,
+  estimateCoverageFloor: 0.80,
+  constraintFloor:       0.50,
+  keyPersonThreshold:    3,
+  // Population drift alarm (spec §7, the population trap). Availability is
+  // published against 168 heads, Contribution against 152, the catalogue holds
+  // 215 — three populations, one conversation. A trend drawn across a moving
+  // population measures membership change as if it were performance change.
+  popDriftAlert:         0.05,
+};
+
+/** Pool config lookup that never returns undefined. */
+function dhPoolCfg_(pool) { return DH_POOLS_[pool] || DH_POOLS_.NONE; }
+
+/** Division that yields null (not 0, not NaN) on a zero or absent denominator.
+    null means "not measurable"; 0 means "measured, and it is zero". Collapsing
+    the two is how a dashboard reports confident falsehoods. */
+function dhSafeDiv_(a, b) {
+  var n = Number(a), d = Number(b);
+  if (!isFinite(n) || !isFinite(d) || d === 0) return null;
+  return n / d;
+}
+
+/** Accumulator fetch-or-create, so no pass has to pre-seed its cell map. */
+function dhCell_(map, key, seed) {
+  if (!map[key]) {
+    map[key] = { head: 0, grossHrs: 0, ptoHrs: 0,
+                 committedHrs: 0, matchableCommittedHrs: 0, genericHrs: 0,
+                 trackedTotalHrs: 0, trackedCommittedHrs: 0, trackedShadowHrs: 0,
+                 shadowReasons: { "no-epic": 0, "no-srso": 0, "not-committed": 0 },
+                 unmeasuredHrs: 0 };
+    if (seed) for (var k in seed) map[key][k] = seed[k];
+  }
+  return map[key];
+}
+
+/**
+ * Per-week accumulator: weekly[cellKey][iso].
+ *
+ * WHY WEEKLY AND NOT ONE PERIOD TOTAL. The payload is built once over the deep
+ * window, but the reader drives a week/month/quarter picker. Shipping only a
+ * period total would either freeze this view on one window or force a
+ * round-trip per click. Shipping per-week buckets lets the client fold exactly
+ * the weeks on screen — the same reason the utilization grid ships all weeks.
+ *
+ * Hours only. HEAD IS NOT WEEKLY: a person is one head across a period, not one
+ * per week, so summing a weekly head count would multiply the population by the
+ * window length. Heads are counted from the people list on whichever side is
+ * doing the folding.
+ */
+function dhWeekCell_(weekly, key, iso) {
+  if (!weekly[key]) weekly[key] = {};
+  if (!weekly[key][iso]) {
+    weekly[key][iso] = { grossHrs: 0, ptoHrs: 0, committedHrs: 0, matchableCommittedHrs: 0, genericHrs: 0,
+                         trackedTotalHrs: 0, trackedCommittedHrs: 0,
+                         trackedShadowHrs: 0, unmeasuredHrs: 0,
+                         shadowReasons: { "no-epic": 0, "no-srso": 0, "not-committed": 0 } };
+  }
+  return weekly[key][iso];
+}
+
+/**
+ * Payload trim for the weekly map: round every hour figure to 2dp and drop any
+ * week that carries nothing at all.
+ *
+ * An hour sum accumulated in floating point serialises as 37.400000000000006 —
+ * twenty characters for a figure no surface shows past one decimal. Across
+ * cells × 52 weeks × ten fields that is most of this block's bytes, on a payload
+ * that already has to be gzipped and chunked to fit CacheService's 100 KB
+ * per-value ceiling.
+ *
+ * A dropped week is genuinely absent, not zero: the folds skip missing weeks
+ * anyway (`if (!w) return`), so removing an all-zero bucket cannot change a
+ * single folded total. Both twins are covered by _test_workforceParity_.
+ */
+function dhTrimWeekly_(weekly) {
+  var r2 = function (v) { return Math.round((Number(v) || 0) * 100) / 100; };
+  var out = {};
+  Object.keys(weekly || {}).forEach(function (key) {
+    var weeks = {};
+    Object.keys(weekly[key]).forEach(function (iso) {
+      var w = weekly[key][iso];
+      var sum = w.grossHrs + w.ptoHrs + w.committedHrs + w.genericHrs +
+                w.trackedTotalHrs + w.unmeasuredHrs + w.matchableCommittedHrs;
+      if (sum <= 0.005) return;      // nothing here — the fold would skip it anyway
+      weeks[iso] = {
+        grossHrs: r2(w.grossHrs), ptoHrs: r2(w.ptoHrs),
+        committedHrs: r2(w.committedHrs),
+        matchableCommittedHrs: r2(w.matchableCommittedHrs),
+        genericHrs: r2(w.genericHrs),
+        trackedTotalHrs: r2(w.trackedTotalHrs),
+        trackedCommittedHrs: r2(w.trackedCommittedHrs),
+        trackedShadowHrs: r2(w.trackedShadowHrs),
+        unmeasuredHrs: r2(w.unmeasuredHrs),
+        shadowReasons: { "no-epic": r2(w.shadowReasons["no-epic"]),
+                         "no-srso": r2(w.shadowReasons["no-srso"]),
+                         "not-committed": r2(w.shadowReasons["not-committed"]) },
+      };
+    });
+    if (Object.keys(weeks).length) out[key] = weeks;
+  });
+  return out;
+}
+
+/** Merges b's hour buckets into a (both dhWeekCell_ shaped). */
+function dhAddWeek_(a, b) {
+  a.grossHrs += b.grossHrs; a.ptoHrs += b.ptoHrs;
+  a.committedHrs += b.committedHrs;
+  a.matchableCommittedHrs += (b.matchableCommittedHrs || 0);
+  a.genericHrs += b.genericHrs;
+  a.trackedTotalHrs += b.trackedTotalHrs;
+  a.trackedCommittedHrs += b.trackedCommittedHrs;
+  a.trackedShadowHrs += b.trackedShadowHrs;
+  a.unmeasuredHrs += b.unmeasuredHrs;
+  a.shadowReasons["no-epic"] += b.shadowReasons["no-epic"];
+  a.shadowReasons["no-srso"] += b.shadowReasons["no-srso"];
+  a.shadowReasons["not-committed"] += b.shadowReasons["not-committed"];
+  return a;
+}
+
+/**
+ * Folds weekly buckets down to one accumulator per cell over `isos`, attaching
+ * the head count from `headByCell`.
+ *
+ * ⚠ CLIENT TWIN: Dashboard.html carries a copy so the period picker can
+ * re-slice without a round-trip, and _test_workforceParity_ walks both. Two
+ * copies of one fold drift silently and each looks correct alone — the same
+ * failure mode utilFor_ and metricConfidence_ already have parity tests for.
+ * Change one, change both.
+ */
+function dhFoldWeekly_(weekly, isos, headByCell) {
+  var cells = {};
+  Object.keys(weekly || {}).forEach(function (key) {
+    var acc = null;
+    (isos || []).forEach(function (iso) {
+      var w = weekly[key][iso];
+      if (!w) return;
+      if (!acc) acc = dhCell_(cells, key);
+      dhAddWeek_(acc, w);
+    });
+  });
+  // Heads are attached for EVERY cell that has people, even one with no hours in
+  // the window — a pool staffed but entirely unplanned and unlogged is a real
+  // finding, and dropping it would hide the emptiest cell on the grid.
+  Object.keys(headByCell || {}).forEach(function (key) {
+    dhCell_(cells, key).head = headByCell[key];
+  });
+  return cells;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.1 CAPACITY — what we pay for
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Gross scheduled capacity per pool×band cell over a set of ISO weeks.
+ *
+ * ⚠ PTO IS NOT SUBTRACTED (user decision 2026-08-10, upholding 2026-08-04).
+ * The spec's §5.1 nets PTO and protected time out of capacity to produce a
+ * "capacity truth" ratio. This dashboard cannot: there is no absence feed. The
+ * only available proxy is Tempo-tracked NETSUITE time-off, which measures what
+ * people LOGGED, not when they were away — so subtracting it would make the
+ * teams with the best time-tracking discipline look least available, inverting
+ * the signal exactly where it matters most. Capacity is therefore GROSS
+ * scheduled hours, `capacityTruth` is null (not-measured, never 1.0 — a forced
+ * 1.0 would assert "no capacity is lost before work starts", which is a claim
+ * nobody measured), and ptoHrs is carried alongside for the drill-down so the
+ * hours stay VISIBLE without entering the denominator.
+ *
+ * BENCH IS NOT SUBTRACTED EITHER, and that one is structural rather than a data
+ * gap: bench is the RESULT of capacity minus commitment. Subtracting it would
+ * make headroom always read ≈0, which is precisely the failure mode this whole
+ * model exists to avoid.
+ *
+ * @param {Array<Object>} people model people (classified, with weeks)
+ * @param {Array<string>} isos ISO week keys in the period
+ * @returns {Object} cell key → accumulator
+ */
+function buildCapacity_(people, isos, weekly) {
+  (people || []).forEach(function (p) {
+    // attribOnly stubs carry a pool for display but no capacity by construction.
+    // Filtered on the FLAG, not on an empty weeks map — a real person whose
+    // whole period predates their hire date also has no weeks, and they must
+    // still count as a head in their cell.
+    if (p.attribOnly) return;
+    var key = p.cell || "NONE|UNKNOWN";
+    (isos || []).forEach(function (iso) {
+      var w = p.weeks && p.weeks[iso];
+      if (!w) return;                       // pre-hire week: does not exist for them
+      var c = dhWeekCell_(weekly, key, iso);
+      c.grossHrs += Number(w.cap) || 0;
+      c.ptoHrs += Number(w.trackedOff) || 0;   // carried, never subtracted
+    });
+  });
+  return weekly;
+}
+
+/** Head count per cell. Not weekly — see dhWeekCell_ on why. */
+function dhHeadByCell_(people) {
+  var head = {};
+  (people || []).forEach(function (p) {
+    if (p.attribOnly) return;
+    var key = p.cell || "NONE|UNKNOWN";
+    head[key] = (head[key] || 0) + 1;
+  });
+  return head;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.2 COMMITMENT — what we promised
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Planned (committed) hours per cell.
+ *
+ * DEVIATION FROM THE SPEC, STATED: the spec reads Tempo Plans directly and can
+ * therefore separate USER from GENERIC (placeholder) assignees. This pipeline
+ * reads the Planned Time Tempo EXPORT, which resolves every plan to a named
+ * user before writing a row — so a generic allocation either lands on a person
+ * or never reaches the sheet at all. `genericHrs` is consequently always 0 and
+ * is reported as NOT MEASURED rather than as "no generic allocations", which
+ * would be a confident claim about a thing nobody looked at. Surfacing generic
+ * placeholders needs an exporter change (DATA-BLOCKERS).
+ *
+ * Plan rows for people outside the population are already dropped upstream by
+ * the nameIdx join in assembleModel_, so there is no UNMATCHED bucket to build
+ * here — the unmatched count is reported by that join, once, where it happens.
+ */
+function buildCommitment_(people, isos, weekly) {
+  (people || []).forEach(function (p) {
+    if (p.attribOnly) return;
+    var key = p.cell || "NONE|UNKNOWN";
+    (isos || []).forEach(function (iso) {
+      var w = p.weeks && p.weeks[iso];
+      if (!w) return;
+      dhWeekCell_(weekly, key, iso).committedHrs += Number(w.planned) || 0;
+    });
+  });
+  return weekly;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.3 CONSUMPTION — what actually happened, and the shadow split
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Epic index built from Jira Raw. Two lookups, both needed downstream:
+ *   byKey  — issue key → record   (does this epic carry an SRSO component?)
+ *   epicOf — child key → epic key (roll a worklog up to its programme)
+ *
+ * The chain is walked, not assumed: a sub-task's Parent Key is a Story, whose
+ * own Epic Key is the epic. Walking one hop at a time with a visited guard
+ * means a mis-exported cycle degrades to "no epic" instead of hanging the
+ * rebuild — this runs inside a GAS execution with a hard timeout.
+ */
+function dhEpicIndex_(issues) {
+  var byKey = {}, parentOf = {};
+  (issues || []).forEach(function (it) {
+    var k = String(it.key || "").trim().toUpperCase();
+    if (!k) return;
+    byKey[k] = it;
+    // Epic Key is the direct link; Parent Key catches the sub-task → story hop.
+    var up = it.epicKey || it.parentKey || "";
+    if (up && up !== k) parentOf[k] = up;
+  });
+  return {
+    byKey: byKey,
+    /** Walks up to the containing epic. Returns "" when there is none. */
+    epicFor: function (key) {
+      var k = String(key || "").trim().toUpperCase();
+      if (!k) return "";
+      var seen = {}, hops = 0;
+      while (k && !seen[k] && hops++ < 8) {
+        seen[k] = 1;
+        var rec = byKey[k];
+        if (rec && rec.isEpic) return k;
+        var up = parentOf[k];
+        if (!up) return "";
+        k = up;
+      }
+      return "";
+    },
+  };
+}
+
+/**
+ * Epics that somebody was actually PLANNED onto, from the Planned Time export.
+ *
+ * COVERAGE IS THE POINT HERE. The Planned sheet carries an `Issue` column that
+ * is populated only for ISSUE-level plans; a PROJECT-level plan has no issue by
+ * nature and therefore names no epic. So this set is a LOWER BOUND on what was
+ * committed, and `planIssueCoverage` reports how much of the planned volume
+ * could be resolved to an epic at all. Without that ratio on screen, every
+ * project-level plan in the company would read as `not-committed` shadow work
+ * and route a real Resource Manager to a queue with nothing in it.
+ *
+ * COMMITMENT IS PER POOL, NOT GLOBAL. The spec is precise about this: a worklog
+ * is committed consumption only if it rolls up to an epic that THE PERSON'S POOL
+ * was committed to. A global epic set would silently absolve every pool the
+ * moment any one pool was planned onto an epic — an engineer picking up a
+ * consulting epic nobody staffed them on would read as planned work, which is
+ * exactly the staffing decision `not-committed` exists to surface.
+ *
+ * @returns {{byPool:Object, set:Object, hrsWithIssue:number, hrsTotal:number,
+ *            coverage:number|null}}
+ */
+function dhCommittedEpics_(plannedRows, epicIdx, isos, resolveName, peopleByName, weekly) {
+  var byPool = {}, set = {}, hrsWithIssue = 0, hrsTotal = 0;
+  var inWin = {};
+  (isos || []).forEach(function (i) { inWin[i] = 1; });
+  (plannedRows || []).forEach(function (row) {
+    if (isTimeOffKey_(row.key)) return;          // time off plans no project work
+    var hrs = 0;
+    for (var iso in row.weekHours) if (inWin[iso]) hrs += Number(row.weekHours[iso]) || 0;
+    if (hrs <= 0) return;
+    hrsTotal += hrs;
+    var ep = row.issue ? epicIdx.epicFor(row.issue) : "";
+    // ── THE MATCHABLE DENOMINATOR (2026-08-10) ──────────────────────────────
+    // Recorded per cell per week, because it is what fidelity must divide by.
+    // Fidelity asks "of what we planned, how much got logged to those epics" —
+    // and a PROJECT-level plan names no issue, so it can never be matched no
+    // matter how well the work went. Dividing by ALL planned hours therefore
+    // caps fidelity at the pool's plan-issue coverage and reports a pool that
+    // plans at project level as one that delivers nothing.
+    //
+    // This was not hypothetical: the first live render showed PS-ENGINEER at
+    // 1% fidelity, which is not a delivery signal at all — it is the shape of
+    // that pool's planning. Dividing by the matchable hours asks a question the
+    // data can actually answer.
+    if (weekly && ep) {
+      var dnM = resolveName ? resolveName(row.user) : null;
+      var pM = dnM && peopleByName ? peopleByName[dnM] : null;
+      if (pM && !pM.attribOnly) {
+        var keyM = pM.cell || "NONE|UNKNOWN";
+        for (var isoM in row.weekHours) {
+          if (!inWin[isoM]) continue;
+          var hM = Number(row.weekHours[isoM]) || 0;
+          if (hM > 0) dhWeekCell_(weekly, keyM, isoM).matchableCommittedHrs += hM;
+        }
+      }
+    }
+    if (!ep) return;
+    hrsWithIssue += hrs;
+    set[ep] = 1;
+    // Which pool was committed. A plan for someone outside the population still
+    // counts toward coverage above — it was a real plan — but it commits no pool
+    // here, because no pool of ours was staffed by it.
+    var dn = resolveName ? resolveName(row.user) : null;
+    var p = dn && peopleByName ? peopleByName[dn] : null;
+    if (!p || !p.pool) return;
+    if (!byPool[p.pool]) byPool[p.pool] = {};
+    byPool[p.pool][ep] = 1;
+  });
+  return { byPool: byPool, set: set, hrsWithIssue: hrsWithIssue, hrsTotal: hrsTotal,
+           coverage: dhSafeDiv_(hrsWithIssue, hrsTotal) };
+}
+
+/**
+ * Tracked hours per cell, split into committed work and SHADOW work.
+ *
+ * A worklog counts as COMMITTED only if it rolls up to an epic that is bound to
+ * a sales order AND that somebody was planned onto. Everything else is shadow —
+ * real demand that planning cannot see. The three shadow reasons have three
+ * different owners, which is why they are never summed into one number:
+ *
+ *   no-epic        worklog on an issue with no epic parent    → Project Manager
+ *   no-srso        epic exists, carries no SRSO component     → PM + Finance
+ *   not-committed  real committed work, nobody planned them   → Resource Manager
+ *
+ * MEASURABILITY IS SEPARATED FROM THE VERDICT. If the export has no Epic Key
+ * column, or Jira Raw has no Components column, those hours land in
+ * `unmeasuredHrs` — NOT in shadow. Collapsing "we did not look" into "there is
+ * no epic" would report a ~100% shadow ratio on an older export and send the
+ * whole delivery org chasing a reporting artefact. Same tristate discipline the
+ * SRSO and reopened columns already use.
+ *
+ * Time-off (NETSUITE) hours are excluded from both sides: they are not project
+ * work, and counting them as shadow would make PTO look like invisible demand.
+ */
+function buildConsumption_(trackedRows, resolveName, peopleByName, epicIdx, committed, isos, weekly) {
+  var inWin = {};
+  (isos || []).forEach(function (i) { inWin[i] = 1; });
+
+  (trackedRows || []).forEach(function (row) {
+    var dn = resolveName(row.user);
+    if (!dn) return;                                  // outside the population
+    var p = peopleByName[dn];
+    if (!p || p.attribOnly) return;
+    if (isTimeOffKey_(row.key)) return;               // time off is not project work
+
+    // The VERDICT is a property of the row (which epic, bound or not, committed
+    // or not) and does not vary by week — so it is decided ONCE here, then the
+    // row's hours are posted to whichever weeks they were logged in. Deciding
+    // per week would re-walk the epic chain for every week of every row.
+    var key = p.cell || "NONE|UNKNOWN";
+    var bucket;                                       // which field the hours land in
+    var reason = null;
+    if (!row.hasEpicCol && !row.hasIssueCol) {
+      bucket = "unmeasuredHrs";                       // this export cannot answer
+    } else {
+      var epicKey = row.epicKey ? epicIdx.epicFor(row.epicKey)
+                  : row.parentKey ? epicIdx.epicFor(row.parentKey)
+                  : row.issue ? epicIdx.epicFor(row.issue) : "";
+      var epic = epicKey ? epicIdx.byKey[epicKey] : null;
+      if (!epicKey) {
+        bucket = "trackedShadowHrs"; reason = "no-epic";
+      } else if (epic && (epic.srsoComponent === null || epic.srsoComponent === undefined)) {
+        // TRISTATE: null = the Components column was absent, so nobody looked.
+        // Those hours are unmeasured, not unbound.
+        bucket = "unmeasuredHrs";
+      } else if (!epic || !epic.srsoComponent) {
+        bucket = "trackedShadowHrs"; reason = "no-srso";
+      } else if (!committed.byPool[p.pool] || !committed.byPool[p.pool][epicKey]) {
+        // Per POOL, not globally — see dhCommittedEpics_. An engineer working a
+        // consulting epic nobody staffed them on is a staffing decision to
+        // surface, not planned work to absolve.
+        bucket = "trackedShadowHrs"; reason = "not-committed";
+      } else {
+        bucket = "trackedCommittedHrs";
+      }
+    }
+
+    for (var iso in row.weekHours) {
+      if (!inWin[iso]) continue;
+      var hrs = Number(row.weekHours[iso]) || 0;
+      if (hrs <= 0) continue;
+      var c = dhWeekCell_(weekly, key, iso);
+      c.trackedTotalHrs += hrs;
+      c[bucket] += hrs;
+      if (reason) c.shadowReasons[reason] += hrs;
+    }
+  });
+  return weekly;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4.6 requiredPool — which pool can actually absorb this epic
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pool that has historically worked each epic — the dominant logger of hours
+ * over the trailing window. This is resolution step 3, and in this deployment it
+ * is the FIRST step that can fire: there is no `requiredPool` custom field in
+ * Jira (step 1) and no `allocationType` field in the export (step 2), so both
+ * are noted as upstream asks rather than coded against fields that do not exist.
+ *
+ * @returns {Object} epicKey → { pool, hrs, poolHrs }
+ */
+function dhDominantPoolByEpic_(trackedRows, resolveName, peopleByName, epicIdx, isos) {
+  var byEpic = {};
+  var inWin = {};
+  (isos || []).forEach(function (i) { inWin[i] = 1; });
+  (trackedRows || []).forEach(function (row) {
+    if (isTimeOffKey_(row.key)) return;
+    var dn = resolveName(row.user);
+    if (!dn) return;
+    var p = peopleByName[dn];
+    if (!p || !p.pool || p.pool === "NONE") return;   // governors route nothing
+    var epicKey = row.epicKey ? epicIdx.epicFor(row.epicKey)
+                : row.parentKey ? epicIdx.epicFor(row.parentKey)
+                : row.issue ? epicIdx.epicFor(row.issue) : "";
+    if (!epicKey) return;
+    var hrs = 0;
+    for (var iso in row.weekHours) if (inWin[iso]) hrs += Number(row.weekHours[iso]) || 0;
+    if (hrs <= 0) return;
+    if (!byEpic[epicKey]) byEpic[epicKey] = {};
+    byEpic[epicKey][p.pool] = (byEpic[epicKey][p.pool] || 0) + hrs;
+  });
+  var out = {};
+  Object.keys(byEpic).forEach(function (ek) {
+    var best = null, bestHrs = 0, total = 0;
+    Object.keys(byEpic[ek]).forEach(function (pool) {
+      var h = byEpic[ek][pool];
+      total += h;
+      // Deterministic tie-break by pool name — a tie that flipped between
+      // rebuilds would move backlog between pools with no data change, and the
+      // trend would show a reallocation nobody made.
+      if (h > bestHrs || (h === bestHrs && best !== null && pool < best)) { best = pool; bestHrs = h; }
+    });
+    if (best) out[ek] = { pool: best, hrs: bestHrs, poolHrs: total };
+  });
+  return out;
+}
+
+/**
+ * Resolves the pool that must absorb an epic. First hit wins (spec §4.6).
+ *
+ * UNROUTED IS NOT NOISE AND IS NEVER SILENTLY DISTRIBUTED. It is work no pool
+ * can plan — the direct analogue of the Delivery Manager coverage gap — so it
+ * gets its own bar rather than being spread across the pools that happen to
+ * exist. Spreading it would make every pool's cover look worse by an amount
+ * nobody chose, and would hide the routing gap entirely.
+ */
+function dhRequiredPool_(epic, dominant, projectDefaults) {
+  if (epic && epic.requiredPool) return epic.requiredPool;          // step 1 — field absent today
+  if (epic && epic.allocationType && DH_ALLOCATION_TO_POOL_[epic.allocationType])
+    return DH_ALLOCATION_TO_POOL_[epic.allocationType];             // step 2 — field absent today
+  var key = String((epic && epic.key) || "").trim().toUpperCase();
+  var h = dominant[key];
+  if (h) return h.pool;                                             // step 3 — measured history
+  var proj = key.split("-")[0];
+  if (projectDefaults && projectDefaults[proj]) return projectDefaults[proj];  // step 4
+  return "UNROUTED";                                                // step 5 — counted, shown
+}
+
+/** allocationType → pool. Empty until the Jira custom field exists (DATA-BLOCKERS). */
+var DH_ALLOCATION_TO_POOL_ = {};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.4 BACKLOG — remaining obligation per pool
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Open backlog hours per required pool, with the estimate grossing-up.
+ *
+ * DEVIATION, STATED: the spec reads Jira's `timeestimate` (remaining). This
+ * export carries only `Original Estimate (sec)` and `Time Spent (sec)`, so
+ * remaining is derived as max(0, original − spent). That is a PROXY: on an epic
+ * that overran, remaining reads 0 when real work is left, so the raw figure is
+ * a lower bound twice over. The card says so.
+ *
+ * The grossing-up matters more than it looks. Estimate coverage sits around 78%
+ * company-wide, so publishing raw remaining hours understates the real
+ * obligation by roughly a fifth. Both numbers ship, and the raw one is labelled
+ * a lower bound rather than quietly replaced.
+ */
+function buildBacklog_(epics, dominant, projectDefaults) {
+  var byPool = {};
+  (epics || []).forEach(function (e) {
+    if (e.statusCategory === "Done" || e.resolved) return;   // open backlog only
+    var pool = dhRequiredPool_(e, dominant, projectDefaults);
+    if (!byPool[pool]) byPool[pool] = { backlogHrs: 0, epicCount: 0, unestimatedEpics: 0 };
+    var b = byPool[pool];
+    var est = Number(e.estSec) || 0;
+    var spent = Number(e.spentSec) || 0;
+    b.backlogHrs += Math.max(0, est - spent) / 3600;
+    b.epicCount++;
+    if (!est) b.unestimatedEpics++;
+  });
+  Object.keys(byPool).forEach(function (pool) {
+    var b = byPool[pool];
+    b.estimateCoverage = b.epicCount ? 1 - b.unestimatedEpics / b.epicCount : null;
+    // Gross up for the work we know exists but nobody estimated. At zero
+    // coverage there is nothing to scale FROM, so the adjusted figure is the raw
+    // one and the card reports coverage 0 rather than inventing a multiplier.
+    b.backlogAdjHrs = (b.estimateCoverage && b.estimateCoverage > 0)
+      ? b.backlogHrs / b.estimateCoverage
+      : b.backlogHrs;
+  });
+  return byPool;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.5 RECONCILE — the three quantities meet, and the gaps become the signal
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * One row per pool×band cell.
+ *
+ *   CAPACITY  − COMMITMENT  = sellable headroom  → true availability, for Sales
+ *   COMMITMENT − CONSUMPTION = execution gap     → allocated, not delivered
+ *   CONSUMPTION with no epic = shadow work       → demand nobody planned
+ *
+ * The health signal lives in the DISAGREEMENT between the three, which is why
+ * none of them is published alone.
+ *
+ * @param {number} weeksInPeriod real week count — NOT the spec's 4.33 constant.
+ *   This dashboard's period picker spans weeks, months and quarters, so a fixed
+ *   weeks-per-period would misstate cover by up to 3× on a quarterly view. Cover
+ *   is weeks of work, so the denominator must be the weeks actually selected.
+ */
+function reconcileWorkforce_(folded, backlog, weeksInPeriod) {
+  var cells = Object.keys(folded || {}).sort().map(function (key) {
+    var parts = key.split("|");
+    var pool = parts[0], band = parts[1];
+    var cap = folded[key], com = cap, con = cap;   // one folded accumulator per cell
+    var bl = backlog[pool] || null;
+    var cfg = dhPoolCfg_(pool);
+
+    var deployable = cap.grossHrs;   // gross — see buildCapacity_ on why
+    var weekly = weeksInPeriod > 0 ? deployable / weeksInPeriod : 0;
+    var shadowDen = con.trackedTotalHrs - con.unmeasuredHrs;
+
+    return {
+      pool: pool, band: band, cell: key, head: cap.head, cfg: cfg,
+      grossHrs: cap.grossHrs, deployableHrs: deployable,
+      ptoHrs: cap.ptoHrs,
+      // NOT MEASURED, deliberately null — no absence feed exists. A forced 1.0
+      // would assert that no paid capacity is lost before work starts.
+      capacityTruth: null,
+      committedHrs: com.committedHrs,
+      // Planned hours that name an issue and so CAN be matched to an epic. The
+      // fidelity denominator — see dhCommittedEpics_ on why the full committed
+      // figure is the wrong one.
+      matchableCommittedHrs: com.matchableCommittedHrs,
+      planMatchable: dhSafeDiv_(com.matchableCommittedHrs, com.committedHrs),
+      // Always 0 in this deployment; the export resolves every plan to a named
+      // user. Reported as not-measured by the renderer, never as "none".
+      genericHrs: com.genericHrs,
+      headroomHrs: deployable - com.committedHrs,
+      headroomPct: dhSafeDiv_(deployable - com.committedHrs, deployable),
+      trackedTotalHrs: con.trackedTotalHrs,
+      trackedCommittedHrs: con.trackedCommittedHrs,
+      trackedShadowHrs: con.trackedShadowHrs,
+      unmeasuredHrs: con.unmeasuredHrs,
+      // Gap measured on the MATCHABLE basis, so it is the same population the
+      // fidelity ratio describes. A gap against all planned hours would include
+      // plans that could never be matched and would always look enormous.
+      executionGapHrs: com.matchableCommittedHrs - con.trackedCommittedHrs,
+      // FIDELITY IS NULL WHEN NOTHING WAS MEASURABLE, and the denominator is the
+      // MATCHABLE planned hours (see dhCommittedEpics_). Two separate ways this
+      // number can be unmeasurable rather than bad:
+      //   · every logged hour in the cell was unclassifiable (no Epic Key or no
+      //     Components column) — trackedCommitted is 0 for want of a
+      //     measurement, not for want of delivery;
+      //   · the cell's plans are all project-level, so nothing can be matched at
+      //     all. This is what produced the 1% PS-ENGINEER reading on the first
+      //     live render — the shape of that pool's planning, not its delivery.
+      // A cell that logged NOTHING against plans that COULD have matched is
+      // different: that 0 is a measurement, and it stands.
+      commitmentFidelity: (con.trackedTotalHrs > 0 && shadowDen <= 0)
+        ? null
+        : dhSafeDiv_(con.trackedCommittedHrs, com.matchableCommittedHrs),
+      shadowReasons: con.shadowReasons,
+      // Denominator EXCLUDES unmeasured hours: a ratio over hours nobody could
+      // classify would read as shadow that isn't there.
+      shadowRatio: dhSafeDiv_(con.trackedShadowHrs, shadowDen),
+      estimateCoverage: bl ? bl.estimateCoverage : null,
+      backlogHrs: bl ? bl.backlogHrs : null,
+      backlogAdjHrs: bl ? bl.backlogAdjHrs : null,
+      // Cover is meaningless for a demand-driven pool — null, never 0.
+      coverWeeks: (cfg.coverTarget > 0 && bl) ? dhSafeDiv_(bl.backlogAdjHrs, weekly) : null,
+    };
+  });
+
+  // Constraint index = this pool's cover against the portfolio median. Below
+  // 0.5 means everyone else's plan queues behind this pool.
+  var covers = cells.map(function (c) { return c.coverWeeks; })
+                    .filter(function (v) { return v !== null && isFinite(v); });
+  var medianCover = covers.length ? medianOf_(covers) : null;
+  cells.forEach(function (c) {
+    c.constraintIndex = (c.coverWeeks === null || medianCover === null || medianCover === 0)
+      ? null : c.coverWeeks / medianCover;
+    c.actionState = dhActionState_(c);
+    // "SMALL CELL", not the spec's "KEY-PERSON": it is a statement about the
+    // SAMPLE — every figure on the row turns on one person's week — not a
+    // judgement that the team is a risk (user decision 2026-08-10).
+    c.structuralRisk = c.head > 0 && c.head <= DH_WFH_CONFIG_.keyPersonThreshold ? "SMALL CELL" : "";
+    c.read = dhWorkforceRead_(c);
+  });
+  return { cells: cells, medianCover: medianCover };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5.6 SIGNALS AND ACTION STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The state of a cell, as a DESCRIPTION of where it sits — not a verdict on it.
+ *
+ * ⚠ THIS IS DELIBERATELY NOT THE SPEC'S VOCABULARY (user decision 2026-08-10).
+ * The source spec names these INTERVENE / SELL / HIRE / REASSESS / EXECUTE.
+ * Those are instructions, and three of them are alarms. On a business that is
+ * delivering week over week and carrying a healthy backlog, an INTERVENE chip
+ * is simply wrong: it asserts a problem from a signal that has ordinary
+ * explanations, and a dashboard that cries wolf on a good week gets ignored on
+ * a bad one.
+ *
+ * So the states say WHERE THE CELL SITS and let the reader draw the conclusion:
+ *
+ *   STEADY         inside its own envelope
+ *   HEADROOM       room to take on more
+ *   AT CAPACITY    little room left against a deep backlog
+ *   REVIEW         thin backlog and little room — worth a look, not an alarm
+ *   RECONCILE      plan and logged time disagree, or work is landing outside
+ *                  the planned epics. A measurement gap first, a delivery
+ *                  question only after somebody checks.
+ *   DEMAND-DRIVEN  no plannable backlog by design
+ *
+ * A null signal never triggers a state: "not measured" is not "breached". The
+ * spec's own safeDiv returns 0 on a zero denominator, which would put RECONCILE
+ * on every pool that simply has no plan. dhSafeDiv_ returns null and this chain
+ * skips it.
+ */
+function dhActionState_(c) {
+  var fidelityGap = c.commitmentFidelity !== null && c.commitmentFidelity < DH_WFH_CONFIG_.fidelityFloor;
+  var shadowGap = c.shadowRatio !== null && c.shadowRatio > DH_WFH_CONFIG_.shadowCeiling;
+  if (fidelityGap || shadowGap) return "RECONCILE";
+  if (c.coverWeeks === null) return "DEMAND-DRIVEN";
+  if (c.headroomPct === null) return "NOT MEASURED";
+  var cfg = c.cfg;
+  if (c.coverWeeks < cfg.coverFloor && c.headroomPct > cfg.headroomCeil) return "HEADROOM";
+  if (c.coverWeeks >= cfg.coverTarget && c.headroomPct < cfg.headroomFloor) return "AT CAPACITY";
+  if (c.coverWeeks < cfg.coverFloor && c.headroomPct < cfg.headroomFloor) return "REVIEW";
+  return "STEADY";
+}
+
+/** Largest shadow reason by hours, for the Read sentence. */
+function dhTopShadowReason_(reasons) {
+  var best = null, bestHrs = 0;
+  Object.keys(reasons || {}).forEach(function (k) {
+    if (reasons[k] > bestHrs) { best = k; bestHrs = reasons[k]; }
+  });
+  return best;
+}
+
+/** Owner of each shadow reason — three reasons, three different desks. */
+var DH_SHADOW_OWNER_ = {
+  "no-epic": "Project Manager",
+  "no-srso": "Project Manager + Finance",
+  "not-committed": "Resource Manager",
+};
+
+/**
+ * The most notable OBSERVATION about a cell, in one sentence.
+ *
+ * ⚠ OBSERVATIONS, NOT DIAGNOSES (user decision 2026-08-10). The source spec's
+ * sentences read as verdicts — *"Allocations are ahead of reality — find the
+ * blocker before adding work"* — and that is a claim about CAUSE that this data
+ * cannot support. A planned-versus-logged gap has several ordinary
+ * explanations before it has an alarming one:
+ *
+ *   · plans are coarse-grained and worklogs are not, so they never tie exactly;
+ *   · logging lags the work by days, so a period boundary splits them;
+ *   · the window can include planned weeks that have not happened yet;
+ *   · only issue-level plans resolve to an epic at all, so the committed set is
+ *     a lower bound by construction (see dhCommittedEpics_).
+ *
+ * On an organisation delivering steadily week over week, a confident
+ * "allocations are ahead of reality" is simply wrong — and a surface that
+ * raises a false alarm on a good week is ignored on a bad one.
+ *
+ * So each sentence states WHAT WAS MEASURED, against WHAT DENOMINATOR, and —
+ * where the number is easy to misread — what it does NOT mean. The reader draws
+ * the conclusion; that is the whole point of showing them the number.
+ *
+ * Structural risk is deliberately NOT in this chain — a small pool must never
+ * crowd out a reconciliation signal. It renders in its own column instead.
+ */
+function dhWorkforceRead_(c) {
+  var pct = function (v) { return Math.round(v * 100) + "%"; };
+  var hrs = function (v) { return Math.round(v).toLocaleString() + "h"; };
+  if (c.commitmentFidelity !== null && c.commitmentFidelity < DH_WFH_CONFIG_.fidelityFloor)
+    return hrs(c.matchableCommittedHrs) + " planned at issue level, " +
+           hrs(c.trackedCommittedHrs) + " logged against those epics (" +
+           pct(c.commitmentFidelity) + "). " +
+           "Plans and worklogs are different grains and rarely tie exactly — read this as a " +
+           "reconciliation signal, not as work that did not happen.";
+  if (c.shadowRatio !== null && c.shadowRatio > DH_WFH_CONFIG_.shadowCeiling) {
+    var top = dhTopShadowReason_(c.shadowReasons);
+    return pct(c.shadowRatio) + " of classifiable hours here are on work outside the planned, " +
+           "sales-order-bound epics" +
+           (top ? " — mostly " + top + ", which sits with the " + DH_SHADOW_OWNER_[top] : "") +
+           ". Delivered work, just not traceable to a plan yet.";
+  }
+  if (c.coverWeeks !== null && c.estimateCoverage !== null &&
+      c.estimateCoverage < DH_WFH_CONFIG_.estimateCoverageFloor)
+    return pct(c.estimateCoverage) + " of this pool's open epics carry an estimate, so its " +
+           "backlog figure is a lower bound rather than a measurement.";
+  if (c.constraintIndex !== null && c.constraintIndex < DH_WFH_CONFIG_.constraintFloor)
+    return "Cover is " + (c.constraintIndex < 1 ? "well below" : "around") +
+           " the portfolio median for pools that carry backlog — the tightest pool of the set.";
+  if (c.head > 0 && c.head <= DH_WFH_CONFIG_.keyPersonThreshold)
+    return c.head + (c.head === 1 ? " person" : " people") + " in this cell, so every number on " +
+           "this row moves on one individual's week.";
+  return "Nothing notable — the measures sit inside this pool's own range.";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4.4 DISCIPLINE SECTION — how humans navigate the same cells
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The engine groups by pool; PEOPLE navigate by discipline. This is a
+ * PRESENTATION layer over the same cells, never a second source of truth — it
+ * re-buckets the already-classified population and cannot disagree with the
+ * pool grid, because it never recomputes anything.
+ *
+ * Sorted consumers-first, then by headcount: the order leadership should read in.
+ */
+var DH_ROLE_ORDER_ = { CONSUMER: 0, CREATOR: 1, GOVERNOR: 2, SUSTAINER: 3, ENABLER: 4, UNCLASSIFIED: 5 };
+
+function disciplineSection_(people) {
+  var rows = {};
+  (people || []).forEach(function (p) {
+    if (p.attribOnly) return;
+    var key = (p.pool || "NONE") + "|" + (p.disciplineLabel || "—");
+    if (!rows[key]) rows[key] = { pool: p.pool || "NONE", discipline: p.disciplineLabel || "—",
+                                  role: p.backlogRole || "UNCLASSIFIED", subTrack: p.subTrack || null,
+                                  head: 0, bands: {} };
+    var r = rows[key];
+    r.head++;
+    r.bands[p.band] = (r.bands[p.band] || 0) + 1;
+  });
+  return Object.keys(rows).map(function (k) { return rows[k]; }).sort(function (a, b) {
+    var ao = DH_ROLE_ORDER_[a.role], bo = DH_ROLE_ORDER_[b.role];
+    if (ao !== bo) return (ao === undefined ? 9 : ao) - (bo === undefined ? 9 : bo);
+    return b.head - a.head;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WORKFORCE HEALTH — TOP-LEVEL ASSEMBLY
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Runs all six passes and returns the payload the Workforce Health view renders.
+ *
+ * Pure: every reader output is injected. Same input, same output, no I/O.
+ *
+ * SCOPE IS PINNED AND ASSERTED, not assumed (spec §7, the population trap).
+ * Availability is published against 168 heads, Contribution against 152, and
+ * the job catalogue holds 215 — three populations in one conversation. This
+ * dashboard's population is narrower still (Class Professional Services +
+ * Department Services + the tracking-mandate allowlist), so the banner states
+ * the count and the pools that are OUT of scope by construction. Without that,
+ * every trend drawn here measures membership change as if it were performance.
+ */
+function buildWorkforceHealth_(people, trackedRows, plannedRows, jira, resolveName, isos, prevPop) {
+  var byName = {};
+  (people || []).forEach(function (p) { byName[p.name] = p; });
+  var weeksInPeriod = (isos || []).length || 1;
+
+  var epicIdx = dhEpicIndex_((jira && jira.issues) || []);
+  // ONE weekly map, written by every pass. They accumulate different fields of
+  // the same per-cell-per-week bucket, so a cell that exists in only one of them
+  // (capacity but no plan, plan but no logged time) still appears with the
+  // others at zero rather than being dropped by a key mismatch.
+  //
+  // Declared BEFORE dhCommittedEpics_ because that pass also writes to it: the
+  // matchable-planned-hours denominator is a per-cell-per-week figure and has to
+  // fold with the period picker like everything else.
+  var weekly = {};
+  var committed = dhCommittedEpics_(plannedRows, epicIdx, isos, resolveName, byName, weekly);
+  var dominant = dhDominantPoolByEpic_(trackedRows, resolveName, byName, epicIdx, isos);
+
+  buildCapacity_(people, isos, weekly);
+  buildCommitment_(people, isos, weekly);
+  buildConsumption_(trackedRows, resolveName, byName, epicIdx, committed, isos, weekly);
+  var headByCell = dhHeadByCell_(people);
+  var backlog = buildBacklog_((jira && jira.epics) || [], dominant, {});
+  var rec = reconcileWorkforce_(dhFoldWeekly_(weekly, isos, headByCell), backlog, weeksInPeriod);
+
+  // ── Scope facts. Reported even at zero, always (spec §6.3). ────────────────
+  var inPop = (people || []).filter(function (p) { return !p.attribOnly; });
+  var unclassified = inPop.filter(function (p) { return p.backlogRole === "UNCLASSIFIED"; });
+  var stemWarnings = inPop.filter(function (p) { return !!p.stemWarning; });
+  var consumers = inPop.filter(function (p) { return p.backlogRole === "CONSUMER"; });
+
+  // Pools the classification knows about but this population cannot contain,
+  // because the tracking-mandate allowlist excludes their families entirely.
+  // Named explicitly so "PS-CONSULT, PS-ENGINEER, MS-SUPPORT" does not read as
+  // the whole company's pool structure.
+  var present = {};
+  inPop.forEach(function (p) { present[p.pool] = 1; });
+  var absentPools = Object.keys(DH_POOLS_).filter(function (pool) {
+    return pool !== "NONE" && !present[pool];
+  });
+
+  // Population drift alarm. A trend line that moves because the population
+  // moved is measuring membership, not performance.
+  var drift = null;
+  if (prevPop > 0) {
+    var delta = (inPop.length - prevPop) / prevPop;
+    drift = { prev: prevPop, now: inPop.length, pct: delta,
+              alert: Math.abs(delta) > DH_WFH_CONFIG_.popDriftAlert };
+  }
+
+  // ── Consumers-only summary: the honest backlog-cover denominator ───────────
+  // "32% available" is a rumour. "32% available (of 63 consumers)" is a fact.
+  var consumerCells = rec.cells.filter(function (c) { return dhPoolCfg_(c.pool).consumes; });
+  var sum = function (f) {
+    return consumerCells.reduce(function (a, c) { return a + (Number(f(c)) || 0); }, 0);
+  };
+  var consGross = sum(function (c) { return c.grossHrs; });
+  var consCommitted = sum(function (c) { return c.committedHrs; });
+  var consumersOnly = {
+    head: consumerCells.reduce(function (a, c) { return a + c.head; }, 0),
+    grossHrs: consGross, committedHrs: consCommitted,
+    headroomHrs: consGross - consCommitted,
+    headroomPct: dhSafeDiv_(consGross - consCommitted, consGross),
+    // The denominator, shipped WITH the number so no surface can drop it.
+    denominatorLabel: "of " + consumers.length + " backlog consumers",
+  };
+
+  return {
+    // Per-cell-per-week hours, so the client can fold exactly the weeks the
+    // period picker has on screen (dhFoldWeekly_ + reconcileWorkforce_ both have
+    // client twins with a parity test). `cells` below is the DEEP-WINDOW fold,
+    // kept for anything that wants the whole history without re-folding.
+    //
+    // TRIMMED before it ships. This is cells × 52 weeks × ten figures on a
+    // payload already large enough to need gzipping and chunking, and the raw
+    // numbers are floating-point hour sums that serialise as things like
+    // 37.400000000000006 — twenty characters to express two decimal places
+    // nobody displays. Rounding and dropping all-zero weeks costs no accuracy
+    // any surface can see and takes a large bite out of the JSON.
+    weekly: dhTrimWeekly_(weekly),
+    headByCell: headByCell,
+    cells: rec.cells,
+    medianCover: rec.medianCover,
+    disciplines: disciplineSection_(people),
+    backlogByPool: backlog,
+    consumersOnly: consumersOnly,
+    scope: {
+      population: inPop.length,
+      consumers: consumers.length,
+      unclassified: unclassified.length,
+      unclassifiedReasons: unclassified.slice(0, 12).map(function (p) {
+        return { jobTitle: p.jobTitle, reason: p.classificationError };
+      }),
+      stemWarnings: stemWarnings.length,
+      stemWarningDetail: stemWarnings.slice(0, 12).map(function (p) {
+        return { jobTitle: p.jobTitle, pool: p.pool, warning: p.stemWarning };
+      }),
+      absentPools: absentPools,
+      weeksInPeriod: weeksInPeriod,
+      drift: drift,
+    },
+    coverage: {
+      // How much planned volume could be resolved to an epic at all. Without
+      // this, project-level plans read as `not-committed` shadow.
+      planIssueCoverage: committed.coverage,
+      plannedHrsTotal: committed.hrsTotal,
+      plannedHrsWithIssue: committed.hrsWithIssue,
+      committedEpics: Object.keys(committed.set).length,
+      routedEpics: Object.keys(dominant).length,
+      unroutedHrs: backlog.UNROUTED ? backlog.UNROUTED.backlogAdjHrs : 0,
+      unroutedEpics: backlog.UNROUTED ? backlog.UNROUTED.epicCount : 0,
+      // Never measured in this deployment — stated, not defaulted to zero.
+      genericPlansMeasured: false,
+      capacityTruthMeasured: false,
+    },
+  };
 }
 
 /** True when a Tempo Key is a NETSUITE/time-off row. */
@@ -2938,6 +4803,38 @@ function readNsBillable_() {
 
 /** Status names that mean the item is no longer open work (Jira Backlog.js convention). */
 var DH_CLOSED_STATUS_ = /done|closed|resolved|complete|cancel|abandon|reject|won'?t|duplicate|deploy/i;
+
+/**
+ * The sales-order token, character-for-character the rule "Jira Backlog.js"
+ * applies to Fix Versions when it writes the Billing Type column
+ * (`/\bSRSO\b|SRSO-/i`).
+ *
+ * Deliberately the SAME expression rather than a tidier one: this reader exists
+ * to compare the COMPONENT field against that exporter verdict, and a token rule
+ * that differed even slightly would produce mismatches that are artefacts of two
+ * regexes rather than evidence about how PMs bind their work. It matches both
+ * bare "SRSO-016559" and the client-prefixed "CLVT02 SRSO-016559" form.
+ */
+var DH_SRSO_TOKEN_ = /\bSRSO\b|SRSO-/i;
+
+/**
+ * The Components cell → tristate "is this bound to a sales order by component".
+ *
+ * A one-line function with its own name because the ONE thing that can go wrong
+ * here is invisible at the call site: collapsing an ABSENT column into `false`.
+ * That reads as "we looked and found no runbook binding" on every row of an
+ * older export, which would let the gaps row report a confident finding built
+ * on a column nobody read. Extracted so a test can reach it — `readJiraRaw_`
+ * opens a spreadsheet and cannot be exercised from node.
+ *
+ * @param {boolean} hasCol did colIdx_ find a Components column
+ * @param {*} cell the raw cell value
+ * @returns {?boolean} null = nobody looked · true/false = looked
+ */
+function dhSrsoComponent_(hasCol, cell) {
+  if (!hasCol) return null;
+  return DH_SRSO_TOKEN_.test(String(cell == null ? "" : cell));
+}
 
 /**
  * The Metrics Dictionary's "Client Commitment" label, matched loosely because
@@ -3057,6 +4954,19 @@ function readJiraRaw_() {
     var iEpicKey = colIdx_(h, ["Epic Key"]);
     var iParentKey = colIdx_(h, ["Parent Key"]);
     var iBilling = colIdx_(h, ["Billing Type"]);
+    // ── COMPONENTS (read from 2026-08-07) ─────────────────────────────────────
+    // Exported since the beginning as column 21 and never read here, which
+    // matters because of a mismatch between the documented process and this
+    // pipeline: the services runbook (HOWTO — Customer Projects in Jira, BL02
+    // step B2.6) tells the PM to bind delivery work to the money by creating a
+    // Jira COMPONENT named for the sales order — "SRSO-0xxxxx", NetSuite URL in
+    // the description — while "Jira Backlog.js" derives Billing Type from FIX
+    // VERSIONS alone (`fixVersion ~ "SRSO*"`). An engagement bound exactly as
+    // the runbook instructs, with no SRSO fix version, therefore exports as
+    // "Untagged" — delivered work that by our own reckoning cannot be
+    // recognised against a milestone. Reading this column is what turns that
+    // from a suspicion into a count.
+    var iComp = colIdx_(h, ["Components"]);
     var iStart = colIdx_(h, ["Start Date"]);
     if (iKey === -1) return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false };
     // ── EXPORT FRESHNESS STAMP ────────────────────────────────────────────────
@@ -3104,6 +5014,10 @@ function readJiraRaw_() {
       byKey[key] = r;
     }
     var issues = [], epics = [], openIssues = [], keyRegion = {}, regionRaw = {}, typeRaw = {};
+    // Epic KEY → epic summary, filled as the rows stream past. Resolved into the
+    // open-backlog rows after the loop, because a ticket can be read before its
+    // own epic's row appears (the export is not ordered parent-first).
+    var epicNames = {};
     Object.keys(byKey).forEach(function (key) {
       var r = byKey[key];
       // Region vocabulary is normalised HERE, at ingestion (§4.3) — the rest of
@@ -3133,6 +5047,11 @@ function readJiraRaw_() {
       var statCat = iStatCat === -1 ? "" : String(raw[r][iStatCat] || "").trim();
       var reopenCell = iReopen === -1 ? "" : String(raw[r][iReopen] || "").trim();
       var status = iStatus === -1 ? "" : String(raw[r][iStatus] || "").trim();
+      // Read ONCE and reused: the drill-down list needs it, and so does the epic
+      // NAME index below — an epic's summary is the only human-readable thing
+      // that says what a ticket belongs to (manager request 2026-08-10).
+      var summaryTxt = iSummary === -1 ? "" : String(raw[r][iSummary] || "").trim();
+      if (isEpic) epicNames[key] = summaryTxt;
       var rec = {
         // key/type/status reach the record for the by-type hygiene matrix: key so
         // a gap cell can hand over the actual work queue, type so it can group,
@@ -3176,10 +5095,26 @@ function readJiraRaw_() {
         linked: isEpic || !!(
           (iEpicKey !== -1 && String(raw[r][iEpicKey] || "").trim()) ||
           (iParentKey !== -1 && String(raw[r][iParentKey] || "").trim())),
+        // ── THE KEYS THEMSELVES (retained 2026-08-10, Workforce Health) ────────
+        // Both columns were read above and immediately collapsed into the
+        // `linked` BOOLEAN — the values were discarded. The shadow split needs
+        // the actual key to roll a worklog up to its epic (spec §5.3), and
+        // requiredPool needs it to find the pool that has historically worked an
+        // epic (§4.6). Uppercased on read so the epic index and the Tempo side
+        // join on one canonical form; Jira keys are case-insensitive but the two
+        // exports do not agree on casing.
+        epicKey: iEpicKey === -1 ? "" : String(raw[r][iEpicKey] || "").trim().toUpperCase(),
+        parentKey: iParentKey === -1 ? "" : String(raw[r][iParentKey] || "").trim().toUpperCase(),
         // TRISTATE like `reopened`: "" = the column is absent, so nobody looked.
         // Never collapse an absent column into "Untagged" — that would invent a
         // commercial gap on every row of an older export.
         billing: iBilling === -1 ? "" : String(raw[r][iBilling] || "").trim(),
+        // TRISTATE, same rule as `billing` and `reopened`: null = the Components
+        // column is absent from this export, so nobody looked. false = we looked
+        // and there is no SRSO component. Collapsing the first into the second
+        // would report "the runbook binding is unused" on every row of an older
+        // export — a confident finding built on a column that wasn't there.
+        srsoComponent: dhSrsoComponent_(iComp !== -1, raw[r][iComp]),
         start: iStart === -1 ? null : parseDhDate_(raw[r][iStart]),
         updated: iUpdated === -1 ? null : parseDhDate_(raw[r][iUpdated]),
       };
@@ -3196,13 +5131,32 @@ function readJiraRaw_() {
           !DH_CLOSED_STATUS_.test(status) && !isEpic) {
         openIssues.push({
           key: key,
-          summary: iSummary === -1 ? "" : String(raw[r][iSummary] || "").trim(),
+          summary: summaryTxt,
+          // What this ticket BELONGS TO (manager request 2026-08-10: "epic name
+          // along with the ticket so they get a quick view on data relation").
+          // Epic Key is the direct link; Parent Key catches sub-task → story →
+          // epic. Both are kept raw here — the NAME is resolved after the loop,
+          // once every epic row has been seen.
+          epicKey: rec.epicKey || rec.parentKey || "",
           assignee: assignee, status: status,
           priority: iPriority === -1 ? "" : String(raw[r][iPriority] || "").trim(),
           due: rec.due,
           remHrs: Math.max(0, rec.estSec - rec.spentSec) / 3600,
+          // Rule 2 resolved HERE, where the status CATEGORY is still in scope —
+          // these records only carry the status NAME, and a name-based re-derive
+          // downstream would silently diverge from dueExpected_ the first time a
+          // project adds a workflow step. `ignored` = unstarted and undated: the
+          // ticket the team asked us to stop putting in front of people.
+          ignored: !dueExpected_(rec, true),
         });
       }
+    });
+    // Epic NAMES, resolved now that every row has been seen. A key with no name is
+    // an epic outside this export's window: the key still ships (it is a real
+    // relation a manager can paste into Jira) and the name renders as blank rather
+    // than as "no epic", which would be a different and wrong statement.
+    openIssues.forEach(function (o) {
+      o.epicName = o.epicKey ? (epicNames[o.epicKey] || "") : "";
     });
     return { issues: issues, epics: epics, openIssues: openIssues, keyRegion: keyRegion,
              regionRaw: regionRaw, typeRaw: typeRaw, exportedAt: exportedAt, available: true };
@@ -3414,31 +5368,108 @@ function readFlowSnapshots_() {
 
 /**
  * Groups open Jira issues by roster person (name-alias join). Items sorted by
- * remaining estimate DESC then due ASC, capped at BACKLOG_MAX_ITEMS per person —
- * count/estHrs totals always cover ALL of the person's open issues.
- * @returns {Object} display name → { count, remHrs, items:[] }
+ * remaining estimate DESC then due ASC, capped at BACKLOG_MAX_ITEMS_ALL per person.
+ * The client opens on BACKLOG_MAX_ITEMS (8) and expands to the rest in place, so
+ * the cap here is the payload's, not the view's (2026-08-10).
+ *
+ * ── UNSTARTED, UNDATED WORK IS NOT LISTED (user report 2026-08-10) ───────────
+ * *"I still see tickets in the status To Do with no due date in each rocketeer.
+ * We should not have them shown in the list."* Rule 2 stopped those tickets
+ * counting against anyone's due-date percentage, but they were still printed in
+ * the per-person drill-down with a red em-dash in the Due column — which is the
+ * same accusation the rate had just stopped making, one surface over.
+ *
+ * They leave `items` entirely. They are NOT deleted from the person's load:
+ * `count` and `remHrs` still describe every open ticket, because a rule about
+ * what we GRADE must never quietly shrink what somebody is carrying. The two
+ * populations are reported apart — `listed`/`ignoredN`/`ignoredHrs` — so the
+ * drill-down can say "8 of 43 listed, 20 undated To Do not shown" rather than
+ * leaving a reader to wonder why the list is shorter than the count.
+ *
+ * @returns {Object} display name →
+ *   { count, remHrs, listed, ignoredN, ignoredHrs, items:[] }
+ *   count/remHrs = the WHOLE open backlog · listed = what the list can show
  */
 function backlogByPerson_(openIssues, nameIdx) {
   var by = {};
   (openIssues || []).forEach(function (it) {
     var dn = resolveName_(nameIdx, it.assignee);
     if (!dn) return; // not in population
-    if (!by[dn]) by[dn] = { count: 0, remHrs: 0, items: [] };
-    by[dn].count++;
-    by[dn].remHrs += it.remHrs;
-    by[dn].items.push({ key: it.key, summary: it.summary, status: it.status,
-                        priority: it.priority, remHrs: it.remHrs,
-                        due: it.due ? weekKeyFromDate_(it.due) : "" });
+    if (!by[dn]) by[dn] = { count: 0, remHrs: 0, listed: 0, ignoredN: 0, ignoredHrs: 0, items: [] };
+    var b = by[dn];
+    b.count++;
+    b.remHrs += it.remHrs;
+    // `ignored` is decided in readJiraRaw_ off the status CATEGORY — never
+    // re-derived here from the status name.
+    if (it.ignored) { b.ignoredN++; b.ignoredHrs += it.remHrs; return; }
+    b.listed++;
+    b.items.push({ key: it.key, summary: it.summary, status: it.status,
+                   priority: it.priority, remHrs: it.remHrs,
+                   // The engagement this ticket belongs to. Key AND name: the key
+                   // is what a manager pastes into Jira, the name is what makes
+                   // the row readable without opening anything.
+                   epicKey: it.epicKey || "", epicName: it.epicName || "",
+                   due: it.due ? weekKeyFromDate_(it.due) : "" });
   });
   Object.keys(by).forEach(function (dn) {
     by[dn].items.sort(function (a, b) {
       if (b.remHrs !== a.remHrs) return b.remHrs - a.remHrs;
       return (a.due || "9999").localeCompare(b.due || "9999");
     });
-    by[dn].items = by[dn].items.slice(0, CONFIG_DH.BACKLOG_MAX_ITEMS);
+    by[dn].items = by[dn].items.slice(0, CONFIG_DH.BACKLOG_MAX_ITEMS_ALL);
     by[dn].remHrs = Math.round(by[dn].remHrs * 10) / 10;
+    by[dn].ignoredHrs = Math.round(by[dn].ignoredHrs * 10) / 10;
   });
   return by;
+}
+
+/**
+ * Adds `epicsN` — open epics attributed to each person — to the backlog map.
+ *
+ * ── WHY (user report 2026-08-10: "n = 79 but the drill-down shows 1 ticket") ──
+ * The roster's `n` and its drill-down have always described different
+ * populations, and nothing on screen said so:
+ *
+ *   n            = every open issue attributed to the person, EPICS INCLUDED
+ *                  (personHygieneBuckets_ — an open epic with no estimate is the
+ *                  single biggest lever the hygiene matrix exists to expose).
+ *   the list      = openIssues, which EXCLUDES epics by design (they roll up
+ *                  their children, so listing both double-counts the load) and,
+ *                  since v34, excludes unstarted undated tickets by rule.
+ *
+ * So a person can legitimately read "79" beside a list of one, and the reader is
+ * left assuming the dashboard lost 78 tickets. Counting the epics here lets the
+ * drill-down close the arithmetic exactly:
+ *
+ *     n = listed + ignoredN + epicsN
+ *
+ * A number that cannot be reconciled is a number nobody trusts twice, and this
+ * one had three different exclusions stacked behind it with no way to see any.
+ *
+ * People who own ONLY open epics have no `backlogByPerson_` entry at all, so the
+ * row is created here rather than assumed to exist — otherwise the very people
+ * this explains best (delivery managers holding epics) keep the unexplained gap.
+ *
+ * @param {Object} map     backlogByPerson_ output, MUTATED in place
+ * @param {Array} issues   readJiraRaw_ `issues` (every row, epics included)
+ * @param {Object} nameIdx name index for the roster join
+ */
+function addOpenEpicCounts_(map, issues, nameIdx) {
+  (issues || []).forEach(function (it) {
+    if (!it.isEpic) return;
+    if (!typeHygOpen_(it)) return;          // same "open" rule as every other surface
+    var dn = resolveName_(nameIdx, it.assignee);
+    if (!dn) return;
+    if (!map[dn]) {
+      map[dn] = { count: 0, remHrs: 0, listed: 0, ignoredN: 0, ignoredHrs: 0, epicsN: 0, items: [] };
+    }
+    map[dn].epicsN = (map[dn].epicsN || 0) + 1;
+  });
+  // Zero is a MEASUREMENT here, not an absence: the drill-down's reconciliation
+  // line adds these up, and an undefined would make it read NaN.
+  Object.keys(map).forEach(function (dn) {
+    if (map[dn].epicsN === undefined) map[dn].epicsN = 0;
+  });
 }
 
 // ── MODEL ASSEMBLY (pure — all reader outputs injected) ──────
@@ -3485,6 +5516,16 @@ function assembleModel_(inputs, win) {
   // read (user decision 2026-08-04): tracked NETSUITE/time-off hours are real
   // tracked time and classify as NON-BILLABLE by rule (no customer project to
   // charge); planned time-off rows plan no project work, so they are dropped.
+  // Window membership as a HASH, not a 56-element array scan.
+  // `eachTempoRow_` below runs once per Tempo row per week-with-hours, over both
+  // the tracked and the planned grid — issue-grained, so tens of thousands of
+  // rows on a 52-week window. An `indexOf` there is a linear scan of allWeeks
+  // inside the innermost loop, i.e. rows × weeks × 56 string compares for a
+  // membership test that is O(1) with an object. Pure hot-path waste: same
+  // answer, same order, no behaviour change.
+  var inWindow = {};
+  win.allWeeks.forEach(function (iso) { inWindow[iso] = 1; });
+
   function eachTempoRow_(row, kind) {
     var dn = resolveName_(nameIdx, row.user);
     if (!dn) return; // not in population — excluded per spec §7
@@ -3497,7 +5538,7 @@ function assembleModel_(inputs, win) {
     // NETSUITE time-off rows — those carry no project).
     if (row.pm && !timeOff && acc.pms.indexOf(row.pm) === -1) acc.pms.push(row.pm);
     Object.keys(row.weekHours).forEach(function (iso) {
-      if (win.allWeeks.indexOf(iso) === -1) return;
+      if (!inWindow[iso]) return;
       if (!acc.weeks[iso]) acc.weeks[iso] = { planned: 0, tracked: 0, trackedOff: 0 };
       var h = row.weekHours[iso];
       if (kind === "planned") {
@@ -3535,6 +5576,10 @@ function assembleModel_(inputs, win) {
   // Assemble people records
   var capMap = inputs.capacity.byName || {};
   var backlogMap = backlogByPerson_(inputs.jira.openIssues, nameIdx);
+  // Open EPICS per person, counted but never listed — the third and last piece of
+  // the roster's `n`. See addOpenEpicCounts_ for why the drill-down has to be able
+  // to account for every one of the issues that column claims.
+  addOpenEpicCounts_(backlogMap, inputs.jira.issues, nameIdx);
   var teamSet = {}, famSet = {}, pmSet = {};
   var people = displayNames.slice().sort(function (a, b) {
     return a.localeCompare(b);
@@ -3613,9 +5658,17 @@ function assembleModel_(inputs, win) {
                      // reconciliation flag — never used in any rate.
                      nsBillRaw: ns.billable, nsNonBillRaw: ns.nonBillable };
     });
+    // WORKFORCE HEALTH (spec v1.1 §4): pool / band / backlog role, derived from
+    // the job code alone. Attached per person so every downstream surface — the
+    // pool grid, the shadow split, requiredPool's history lookup — reads ONE
+    // classification rather than each re-deriving its own from the title.
+    var cls = dhClassify_(p.jobTitle, p.isCrew === true);
     return { name: dn, region: reg.region, regionSource: reg.source,
              teams: acc.teams.slice().sort(), pms: acc.pms.slice().sort(), isCrew: p.isCrew,
              jobTitle: p.jobTitle || "",
+             pool: cls.pool, band: cls.band, backlogRole: cls.role, cell: cls.cell,
+             subTrack: cls.subTrack, disciplineLabel: cls.disciplineLabel,
+             stemWarning: cls.stemWarning, classificationError: cls.classificationError,
              onLeave: p.onLeave === true, leaveStatus: p.leaveStatus || "",
              // Manager = M career track in the title level token, parsed the
              // same way CompDash splits managers from ICs (dhLevelTrack_).
@@ -3762,9 +5815,18 @@ function assembleModel_(inputs, win) {
     var rec = attribByNorm[normDH_(dn)];
     if (!rec) return;                         // unknown name — cannot stub it
     var reg = assignPersonRegion_({}, rec.rosterBucket);
+    var scls = dhClassify_(rec.jobTitle || "", rec.isCrew === true);
     people.push({ name: dn, region: reg.region, regionSource: reg.source,
                   teams: [], pms: [], isCrew: rec.isCrew === true,
                   jobTitle: rec.jobTitle || "",
+                  // Classified for DISPLAY only. These stubs are outside the
+                  // capacity population by construction (weeks: {}, attribOnly),
+                  // and buildCapacity_ filters on attribOnly rather than trusting
+                  // an empty weeks map — so a stub can label itself PS-CONSULT on
+                  // a drill-down without ever entering a pool denominator.
+                  pool: scls.pool, band: scls.band, backlogRole: scls.role, cell: scls.cell,
+                  subTrack: scls.subTrack, disciplineLabel: scls.disciplineLabel,
+                  stemWarning: scls.stemWarning, classificationError: scls.classificationError,
                   onLeave: false, leaveStatus: "",
                   isManager: dhLevelTrack_(rec.jobTitle || "").track === "M",
                   isIntern: dhIsIntern_(rec.jobTitle || ""),
@@ -3780,6 +5842,14 @@ function assembleModel_(inputs, win) {
       gridWeeks: win.gridWeeks, trendWeeks: win.trendWeeks, headlineIso: win.headlineIso,
       periods: buildPeriods_(win),
       generatedAt: new Date().toISOString(),
+      // Roster drill-down: what the row opens with, and what the payload carries
+      // behind the ▾ Show all. Shipped rather than re-typed on the client so one
+      // config edit moves both the view and the honest "N of M" line with it.
+      backlogItemsShown: CONFIG_DH.BACKLOG_MAX_ITEMS,
+      backlogItemCap: CONFIG_DH.BACKLOG_MAX_ITEMS_ALL,
+      // Jira site for every deep link the client builds. Trailing slash trimmed
+      // once here rather than defended against in four renderers.
+      jiraBase: dhJiraBase_(),
       // ── TWO DIFFERENT CLOCKS, DELIBERATELY BOTH SHIPPED ──
       // generatedAt = when this model was assembled. The cache warmer resets it
       // every CACHE_WARM_EVERY_MIN, so it is ALWAYS fresh and therefore says
@@ -3897,6 +5967,32 @@ function assembleModel_(inputs, win) {
     personHygiene: personHyg,
     // 🌊 Backlog health — snapshot, person-keyed, no iso (see the section header).
     backlogHealth: backlogHealth,
+    // 🚩 Epics with no due date — ORG scope, issue keys only, 100% target by team
+    // agreement. Deliberately built off the SAME leaver-scoped feed as every other
+    // hygiene surface so its counts reconcile with the 🧬 matrix's epic rows, but
+    // WITHOUT the person join or the unstarted-undated carve.
+    epicDueAudit: inputs.jira.available
+      ? epicDueAudit_(jiraScoped)
+      : { rows: [], n: 0, missing: 0, keyCap: EPIC_DUE_MAX_KEYS_ },
+    // Joiners/leavers and the capacity they carried, per ISO week. The one
+    // number here that describes people who are NOT in `people` — by the time
+    // a leaver is in this bucket the roster has already dropped them, which is
+    // exactly why their capacity had to be counted somewhere.
+    workforceWeeks: workforceChangeBuckets_(inputs.roster, inputs.capacity.byName,
+                                            win.allWeeks),
+    // ── WORKFORCE HEALTH (spec v1.1, 2026-08-10) ─────────────────────────────
+    // Computed over the DEEP window (win.allWeeks) rather than one period, so
+    // the client can re-slice by the period picker without a round-trip — the
+    // same reason the weekly grid ships all weeks. The client re-runs the pure
+    // reconcile over its own selection; this payload carries the deep baseline
+    // and every scope fact the banner has to state.
+    //
+    // `people` is passed AFTER the attribution stubs are appended, so the
+    // population filter (attribOnly) is the one that decides who holds capacity,
+    // not an accident of ordering.
+    workforce: buildWorkforceHealth_(people, inputs.tracked.rows, inputs.planned.rows,
+                                     jiraScoped, resolveName_.bind(null, nameIdx),
+                                     win.allWeeks, null),
   };
 }
 
@@ -4040,22 +6136,164 @@ function assembleModel_(inputs, win) {
 //      row from before the columns existed, 0 on a measured-but-empty row. A
 //      cached v26 model has neither field, so a later chart reading them would
 //      render every point as undefined rather than null — must miss cleanly.
-var DH_SCHEMA_VER_ = 27;
+// v28: WORKFORCE CHANGE (user request 2026-08-07) — model.workforceWeeks carries
+//      joiners/leavers and the scheduled capacity each carried, per ISO week.
+//      roster.attrib rows gain termDate/active/inScope; the termination DATE was
+//      previously read and discarded (only its truthiness reached
+//      dhRosterRowActive_), so a cached v27 model cannot place a departure in a
+//      period at all — it must miss cleanly rather than render an empty card
+//      that reads as "nobody left".
+// v29: hygiene rows gain srsoAny/srsoSeen/srsoCompOnly/srsoMeasurable, and Jira
+//      records gain `srsoComponent` — the Components column (exported since the
+//      beginning, never read) tested for the sales-order token. Measures the gap
+//      between the documented binding (runbook B2.6: a COMPONENT named for the
+//      SRSO) and the one this pipeline reads (Billing Type, derived from FIX
+//      VERSIONS). A cached v28 row has none of these fields, so the gaps row
+//      would compute 0 of 0 and render "solved" — it must miss cleanly.
+// v30: WORKFORCE HEALTH. `people[]` rows gain pool / band / backlogRole / cell /
+//      subTrack / disciplineLabel / stemWarning / classificationError, Jira
+//      records gain epicKey + parentKey (the VALUES — both columns were read
+//      before and collapsed into the `linked` boolean), Tempo tracked rows gain
+//      issue / epicKey / parentKey / hasIssueCol / hasEpicCol, and the payload
+//      gains the whole `workforce` block (cells, disciplines, backlogByPool,
+//      consumersOnly, scope, coverage).
+//      A cached v29 model has NONE of it, and the failure would not be a blank
+//      panel: every person would read pool `undefined`, collapsing the entire
+//      population into one cell and reproducing the exact blended figure this
+//      release exists to retire — a wrong number that looks like a right one.
+//      It must miss cleanly.
+// v31: Workforce Health, first-render corrections (2026-08-10).
+//      · `people[]` may now carry pool "CREW" — 30 contractors were landing in
+//        UNCLASSIFIED because they hold no job-architecture code (user report).
+//      · weekly buckets and cells gain `matchableCommittedHrs` (+ `planMatchable`
+//        on cells): the fidelity denominator is now the planned hours that NAME
+//        AN ISSUE, not all planned hours. A v30 entry has neither, and the fold
+//        would read `undefined` — arithmetic on it yields NaN, which §8 forbids
+//        reaching render. The folds coalesce defensively as well, but the schema
+//        miss is what keeps the two layers honest.
+// v32: ACTIONS-TAB COMPLIANCE FEEDBACK (managers, 2026-08-10). Three changes,
+//      one payload:
+//      · typeHygiene and personHygiene rows gain `dueN` — the due-date column now
+//        grades STARTED work only on the open half (dueExpected_), exactly as
+//        `timeN`/`loggedN` did for logged time in v24. A cached v31 row has no
+//        dueN; the client's `denomFallbackN` would silently fall back to n and go
+//        on grading the To Do half, i.e. keep publishing the number the feedback
+//        asked us to stop publishing. Must miss cleanly.
+//      · backlogHealth's overdue total and its three ageing bands are now
+//        week-grained (dhOverdue_ / dhWeekStart_): a due date inside the CURRENT
+//        ISO week is in compliance and appears in no queue. `futureDated` is its
+//        exact complement, and the boundary ships as `backlogHealth.weekStart`.
+//        The counts MOVE DOWN on deploy — this is a definition change, not a
+//        delivery improvement, and the panel says so.
+//      · backlogByPerson_ carries up to BACKLOG_MAX_ITEMS_ALL items per person
+//        (was 8) so the roster's ▾ Show all needs no round-trip; meta gains
+//        backlogItemsShown / backlogItemCap.
+// v33: THE THREE RULES, FINAL FORM + THE EPIC FLAG (managers, 2026-08-10, same
+//      review). Two changes:
+//      · `dueExpected_` REVISED. v32 excluded every unstarted ticket from the
+//        due-date ratio; rule 3 says anything carrying a date is tracked whatever
+//        its status, so the excluded set is now the INTERSECTION — unstarted AND
+//        undated. `dueN` therefore counts "started, or dated", and a dated To Do
+//        ticket is a hit. A v32 cache entry carries the narrower denominator, so
+//        both the share and the queue behind it would be wrong (and unexplainably
+//        so, since the copy would describe the new rule). Must miss cleanly.
+//      · NEW `epicDueAudit` — open epics with no due date, per epic type, with
+//        the offending keys. ORG scope: no person join, unassigned epics included,
+//        and NOT subject to the carve above, because an undated To Do epic is
+//        precisely what the team agreed must not exist. A cached v32 model has no
+//        such field and the panel would report "no epics" — a clean 100% on an
+//        audit nobody ran, which is the worst of the three possible wrong answers.
+// v34: THE RULE REACHES THE LIST (user report 2026-08-10 — "I still see tickets
+//      in the status To Do with no due date in each rocketeer"). Rule 2 had
+//      changed what we GRADE but not what we SHOW: those tickets were still
+//      printed in every person's drill-down with a red em-dash in the Due column,
+//      which is the same accusation the rate had just stopped making. openIssues
+//      rows gain `ignored` (decided off the status CATEGORY in readJiraRaw_, never
+//      re-derived from the status NAME downstream), and `people[].backlog` gains
+//      `listed` / `ignoredN` / `ignoredHrs` beside the UNCHANGED `count` /
+//      `remHrs` — the load is not reduced, only the list. A cached v33 payload has
+//      no `listed`, so the row would print "8 of 63" over a list that can only
+//      ever reach 43, and would list the ignored tickets again. Must miss cleanly.
+// v35: `people[].backlog` gains `epicsN` (user report 2026-08-10 — "n = 79 but
+//      the drill-down shows 1 ticket! where do the rest go?"). Three exclusions
+//      stood between that column and its own list — epics, ignored tickets, and
+//      the display cap — with nothing on screen naming any of them, so the only
+//      available reading was that the dashboard had lost the difference. The
+//      drill-down now closes it exactly: n = listed + ignoredN + epicsN. A cached
+//      v34 payload has no epicsN, and the breakdown would come up short by the
+//      person's epics — an arithmetic explanation that does not add up is worse
+//      than no explanation, because it looks like a second bug. Must miss cleanly.
+// v36: backlog `items` gain `epicKey` / `epicName` — what each ticket BELONGS TO
+//      (manager request 2026-08-10: "epic name along with the ticket so they get
+//      a quick view on data relation"). Sourced from Epic Key, falling back to
+//      Parent Key, with the name resolved from the epic rows in the same export.
+//      A cached v35 payload has neither field, and the new column would render
+//      "— not linked" on every row: an assertion that the work cannot reach an
+//      engagement, made about tickets that may well be linked. A false red on
+//      every line is worse than a blank column. Must miss cleanly.
+// v37: `meta.jiraBase` — the Jira site every deep link is built from
+//      (`DH_JIRA_BASE` Script Property, else CONFIG_DH.JIRA_BASE_URL). Every key
+//      on the roster, the epic audit and the backlog-health queues is now a link,
+//      and multi-key links are `key in (…)` JQL over exactly the keys on screen.
+//      A cached v36 payload has no jiraBase: the client renders keys as PLAIN
+//      TEXT there rather than guessing a host — a link to /browse/KEY on the Apps
+//      Script origin is a 404 that reads as "the dashboard is broken". The bump
+//      is what makes the links appear at all rather than after a TTL.
+var DH_SCHEMA_VER_ = 37;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
+/**
+ * Full compute, with a per-stage timing breakdown.
+ *
+ * WHY THE TIMINGS ARE HERE. A cold rebuild was reported at 4+ minutes and
+ * nothing recorded where that time went — the warmer logged one total and the
+ * payload carried nothing, so every conversation about it was guesswork. Each
+ * reader is now timed, the breakdown goes to the execution log AND rides on the
+ * payload as `meta.buildMs`, so the next warmer run answers the question
+ * instead of raising it.
+ *
+ * The expensive ones are expected to be the two Tempo grids and Jira Raw: all
+ * three are `getDataRange().getValues()` over issue-grained sheets spanning 52
+ * weeks, which is where a GAS script spends its time. If the breakdown shows
+ * otherwise, believe it over that expectation.
+ */
 function buildDeliveryModel_() {
+  var t = {}, mark = function (k, fn) {
+    var s = Date.now(), out = fn();
+    t[k] = Date.now() - s;
+    return out;
+  };
   var win = buildDhWindow_(new Date());
-  return assembleModel_({
-    roster: readRosterPeople_(),
-    capacity: readCapacitySheet_(),
-    tracked: readTempoGrid_(CONFIG_DH.TRACKED_SHEET),
-    planned: readTempoGrid_(CONFIG_DH.PLANNED_SHEET),
-    ns: readNsBillable_(),
-    jira: readJiraRaw_(),
-    bugs: readJiraBugs_(),
-    flowSnaps: readFlowSnapshots_(),
-    arrivals: readArrivals_(),
-  }, win);
+  var inputs = {
+    roster:    mark("roster",    readRosterPeople_),
+    capacity:  mark("capacity",  readCapacitySheet_),
+    tracked:   mark("tracked",   function () { return readTempoGrid_(CONFIG_DH.TRACKED_SHEET); }),
+    planned:   mark("planned",   function () { return readTempoGrid_(CONFIG_DH.PLANNED_SHEET); }),
+    ns:        mark("ns",        readNsBillable_),
+    jira:      mark("jira",      readJiraRaw_),
+    bugs:      mark("bugs",      readJiraBugs_),
+    flowSnaps: mark("flowSnaps", readFlowSnapshots_),
+    arrivals:  mark("arrivals",  readArrivals_),
+  };
+  var model = mark("assemble", function () { return assembleModel_(inputs, win); });
+
+  // Row counts alongside the millisecond costs: 40s on a reader is a different
+  // problem at 2,000 rows than at 200,000, and the fix is different too.
+  t.rows = { tracked: (inputs.tracked.rows || []).length,
+             planned: (inputs.planned.rows || []).length,
+             jira: (inputs.jira.issues || []).length,
+             ns: (inputs.ns.rows || []).length };
+  t.total = Object.keys(t).reduce(function (a, k) {
+    return a + (typeof t[k] === "number" ? t[k] : 0);
+  }, 0);
+  Logger.log("⏱ buildDeliveryModel_ " + t.total + "ms — " +
+    Object.keys(t).filter(function (k) { return typeof t[k] === "number" && k !== "total"; })
+      .sort(function (a, b) { return t[b] - t[a]; })
+      .map(function (k) { return k + " " + t[k] + "ms"; }).join(" · ") +
+    " · rows tracked=" + t.rows.tracked + " planned=" + t.rows.planned +
+    " jira=" + t.rows.jira + " ns=" + t.rows.ns);
+  if (model && model.meta) model.meta.buildMs = t;
+  return model;
 }
 
 // ── ENTRY POINT + DATA ENDPOINT ──────────────────────────────
@@ -4098,12 +6336,57 @@ function getDeliveryData(forceRefresh) {
       } catch (e) { Logger.log("⚠️ getDeliveryData: bad cache entry — recomputing"); }
     }
   }
-  var model = buildDeliveryModel_();
-  if (!model.error) cachePutLarge_(cache, key, JSON.stringify(model), CONFIG_DH.CACHE_TTL_SEC);
-  model.viewerRole = access.role;
-  model.viewerEmail = access.email;
-  return model;
+  // ── THUNDERING-HERD GUARD ───────────────────────────────────────────────────
+  // A cold rebuild takes minutes. Without a lock, every user who opens the page
+  // in that window starts their OWN full rebuild: five people at 09:00 on a
+  // Monday means five concurrent passes over the same large sheets, each one
+  // slower than a single pass would have been because they contend for the same
+  // quota and the same Sheets backend. The wait gets worse the more people are
+  // waiting — exactly backwards.
+  //
+  // So the first caller computes and the rest queue on the lock, then re-read
+  // the cache the winner just wrote and return in milliseconds.
+  //
+  // waitLock, not tryLock: a caller that gave up immediately would fall through
+  // and start the very rebuild this exists to prevent. The timeout is generous
+  // because it must exceed a realistic cold build; if it is exceeded we compute
+  // anyway rather than fail, because a slow page beats a broken one.
+  var lock = LockService.getScriptLock();
+  var haveLock = false;
+  try { haveLock = lock.tryLock(DH_BUILD_LOCK_MS_); } catch (e) { haveLock = false; }
+  try {
+    if (haveLock && !forceRefresh) {
+      // Somebody may have finished building while we queued. Re-read before
+      // spending minutes reproducing their work.
+      var second = cacheGetLarge_(cache, key);
+      if (second) {
+        try {
+          var fresh = JSON.parse(second);
+          if (fresh.schemaVer === DH_SCHEMA_VER_) {
+            Logger.log("ℹ️ getDeliveryData: another request built it while we waited — serving that");
+            fresh.viewerRole = access.role;
+            fresh.viewerEmail = access.email;
+            return fresh;
+          }
+        } catch (e) { /* fall through and rebuild */ }
+      }
+    }
+    var model = buildDeliveryModel_();
+    if (!model.error) cachePutLarge_(cache, key, JSON.stringify(model), CONFIG_DH.CACHE_TTL_SEC);
+    model.viewerRole = access.role;
+    model.viewerEmail = access.email;
+    return model;
+  } finally {
+    if (haveLock) { try { lock.releaseLock(); } catch (e) { /* released by timeout */ } }
+  }
 }
+
+/**
+ * How long a queued request waits for the in-flight rebuild before giving up
+ * and building its own. Must exceed a realistic cold build — a timeout shorter
+ * than the thing it is waiting for turns the guard into pure added latency.
+ */
+var DH_BUILD_LOCK_MS_ = 300000;   // 5 min
 
 // ── CACHE WARMER ─────────────────────────────────────────────
 
@@ -4506,16 +6789,104 @@ function _test_backlogGrouping_() {
   assert_(m.remHrs === 14, "remaining hours totalled");
   assert_(m.items[0].key === "ACME-1", "sorted by remaining estimate desc");
   assert_(m.items[0].due === "2026.W33", "due date as ISO week label");
+  // What the ticket BELONGS TO travels with it (2026-08-10). Blank rather than a
+  // guess when the export carried no link: the drill-down paints "not linked" red,
+  // so an invented value here would be a false accusation on a real ticket.
+  assert_("epicKey" in m.items[0] && "epicName" in m.items[0],
+          "every listed item carries its epic key and name, even when empty");
   assert_(!by["Nobody Here"], "non-roster assignee dropped");
-  // Cap: totals cover ALL issues even when the item list is truncated
+  // Cap: totals cover ALL issues even when the item list is truncated.
+  // Since v32 the PAYLOAD cap is BACKLOG_MAX_ITEMS_ALL (the client opens on
+  // BACKLOG_MAX_ITEMS and expands to the rest in place), so 12 items now ship
+  // whole — that is the point of the change, and the cap is tested below at its
+  // real boundary rather than at the view's.
   var many = [];
   for (var i = 0; i < 12; i++) {
     many.push({ key: "K-" + i, summary: "s", assignee: "Maria Alvarez",
                 status: "To Do", priority: "", due: null, remHrs: 1 });
   }
-  var capped = backlogByPerson_(many, idx)["Maria Alvarez"];
-  assert_(capped.items.length === CONFIG_DH.BACKLOG_MAX_ITEMS && capped.count === 12,
-          "items capped, totals uncapped");
+  var carried = backlogByPerson_(many, idx)["Maria Alvarez"];
+  assert_(carried.items.length === 12 && carried.count === 12,
+          "12 items are all carried — the ▾ Show all expand needs no round-trip");
+  assert_(CONFIG_DH.BACKLOG_MAX_ITEMS_ALL > CONFIG_DH.BACKLOG_MAX_ITEMS,
+          "the payload must carry MORE than the row opens with, or Show all shows nothing new");
+  var over = [];
+  for (var j = 0; j < CONFIG_DH.BACKLOG_MAX_ITEMS_ALL + 5; j++) {
+    over.push({ key: "O-" + j, summary: "s", assignee: "Maria Alvarez",
+                status: "To Do", priority: "", due: null, remHrs: 1 });
+  }
+  var capped = backlogByPerson_(over, idx)["Maria Alvarez"];
+  assert_(capped.items.length === CONFIG_DH.BACKLOG_MAX_ITEMS_ALL &&
+          capped.count === CONFIG_DH.BACKLOG_MAX_ITEMS_ALL + 5,
+          "items capped at the payload cap, totals still uncapped");
+
+  // ── UNSTARTED + UNDATED WORK IS NOT LISTED (user report 2026-08-10) ─────────
+  // "I still see tickets in the status To Do with no due date in each rocketeer."
+  // The rule had reached the RATE but not the LIST, so the same tickets were
+  // still being shown per person with a red em-dash in the Due column.
+  var mixed = backlogByPerson_([
+    { key: "L-1", summary: "started, dated", assignee: "Maria Alvarez", status: "In Progress",
+      priority: "", due: new Date(2026, 7, 20), remHrs: 5, ignored: false },
+    { key: "L-2", summary: "To Do but dated", assignee: "Maria Alvarez", status: "To Do",
+      priority: "", due: new Date(2026, 7, 21), remHrs: 3, ignored: false },
+    { key: "L-3", summary: "started, undated", assignee: "Maria Alvarez", status: "In Progress",
+      priority: "", due: null, remHrs: 2, ignored: false },
+    { key: "X-1", summary: "To Do, undated", assignee: "Maria Alvarez", status: "To Do",
+      priority: "", due: null, remHrs: 4, ignored: true },
+    { key: "X-2", summary: "To Do, undated", assignee: "Maria Alvarez", status: "To Do",
+      priority: "", due: null, remHrs: 6, ignored: true },
+  ], idx)["Maria Alvarez"];
+  assert_(mixed.items.map(function (i) { return i.key; }).sort().join() === "L-1,L-2,L-3",
+          "only the three listable tickets reach the list — got " +
+          mixed.items.map(function (i) { return i.key; }).join());
+  assert_(mixed.listed === 3 && mixed.ignoredN === 2,
+          "the two populations are counted APART, so the drill-down can state both");
+  // The load is NOT reduced. A rule about what we GRADE must never quietly shrink
+  // what somebody is carrying — that would be a second wrong number replacing the
+  // first, and this one would flatter us.
+  assert_(mixed.count === 5 && mixed.remHrs === 20,
+          "count and remaining hours still cover the WHOLE open backlog, ignored included");
+  assert_(mixed.ignoredHrs === 10, "…and the ignored hours are reported on their own");
+  // Rule 3 lives on the far side of this too: a To Do ticket WITH a date is
+  // listed like any other. If this ever flips, the list quietly stops showing
+  // committed work nobody has started — the exact opposite of the intent.
+  assert_(mixed.items.some(function (i) { return i.key === "L-2"; }),
+          "a DATED To Do ticket is still listed — rule 3 applies to the list as well as the rate");
+
+  // ── n MUST RECONCILE (user report 2026-08-10: "n = 79, drill-down shows 1") ──
+  // The roster's n counts open EPICS as well, and the list never does. Unless the
+  // three counters add up, the only available reading of the difference is that
+  // the dashboard lost the tickets.
+  var withEpics = { "Maria Alvarez": mixed };
+  addOpenEpicCounts_(withEpics, [
+    { key: "E-1", isEpic: true, assignee: "Maria Alvarez", status: "In Progress", resolved: null },
+    { key: "E-2", isEpic: true, assignee: "Maria Alvarez", status: "To Do", resolved: null },
+    { key: "E-3", isEpic: true, assignee: "Maria Alvarez", status: "Done",
+      resolved: new Date(2026, 7, 1) },                       // resolved → not open
+    { key: "E-4", isEpic: true, assignee: "Nobody Here", status: "To Do", resolved: null },
+    { key: "S-9", isEpic: false, assignee: "Maria Alvarez", status: "To Do", resolved: null },
+  ], idx);
+  assert_(withEpics["Maria Alvarez"].epicsN === 2,
+          "open epics attributed to the person are counted — resolved ones and other people's are not");
+  var b = withEpics["Maria Alvarez"];
+  assert_(b.listed + b.ignoredN + b.epicsN === b.count + b.epicsN,
+          "listed + ignored accounts for every non-epic open ticket…");
+  assert_(b.listed === 3 && b.ignoredN === 2 && b.epicsN === 2,
+          "…so the drill-down can print 3 listed · 2 ignored · 2 epics and have it add up");
+  // Somebody who owns ONLY epics gets a row created for them. Those are the people
+  // the explanation is FOR — a delivery manager holding six epics and nothing else
+  // was reading "n = 6" against an empty list.
+  var epicOnly = {};
+  addOpenEpicCounts_(epicOnly, [
+    { key: "E-9", isEpic: true, assignee: "Maria Alvarez", status: "In Progress", resolved: null },
+  ], idx);
+  assert_(epicOnly["Maria Alvarez"] && epicOnly["Maria Alvarez"].epicsN === 1 &&
+          epicOnly["Maria Alvarez"].items.length === 0,
+          "a person with only open epics still gets a backlog record, so the row can explain itself");
+  // Zero is a measurement: an undefined here would render the breakdown as NaN.
+  var noEpics = { "Maria Alvarez": { count: 1, remHrs: 1, listed: 1, ignoredN: 0, ignoredHrs: 0, items: [] } };
+  addOpenEpicCounts_(noEpics, [], idx);
+  assert_(noEpics["Maria Alvarez"].epicsN === 0, "no epics reads 0, never undefined");
   Logger.log("✅ _test_backlogGrouping_ passed");
 }
 
@@ -5747,11 +8118,38 @@ function _test_typeHygieneBuckets_() {
           "…and never enters the work queue — a To Do ticket has nothing to log against yet");
   assert_(rGolive.timeN === rGolive.n && rEpic.timeN === rEpic.n,
           "RESOLVED work is always expected to carry its cost — timeN === n, unchanged by this rule");
-  // Every other column keeps dividing by n: the carve-out is time-specific, and
-  // a shared helper applied one field too wide would silently stop counting due
-  // dates on the backlog — the matrix's single most actionable column.
-  assert_(oStory.n === 1 && oStory.due === 1 && find_(t.open, "(blank)").keys.due.join() === "A-7",
-          "due/est/assignee still measure the WHOLE open population, started or not");
+  // ── THE THREE RULES ON THE DUE-DATE DENOMINATOR (managers' 2026-08-10) ──────
+  // Rule 2 drops unstarted UNDATED work. Rule 3 keeps anything dated, whatever
+  // its status — so the excluded set is the intersection, and A-5 (a To Do Story
+  // WITH a date) is a HIT rather than a dropped row. Pinned on the denominator,
+  // because a numerator-only reading of either rule looks identical on a healthy
+  // fixture and ships the wrong queue.
+  assert_(oStory.n === 1 && oStory.dueN === 1 && oStory.due === 1,
+          "rule 3: a To Do ticket that CARRIES a date is tracked and counts as a hit");
+  assert_(!oStory.keys.due, "…and contributes nothing to the missing-date queue");
+  assert_(!find_(t.open, "(blank)").keys.due,
+          "rule 2: an undated To Do ticket is not a due-date gap (this key WAS 'A-7' before v32)");
+  assert_(find_(t.open, "(blank)").dueN === 0,
+          "…and is out of the denominator entirely, not scored as a miss");
+  assert_(openEpic.dueN === 1 && openEpic.due === 0 && openEpic.keys.due.join() === "A-4",
+          "an OPEN, STARTED ticket with no due date IS a gap — counted and queued");
+  assert_(rGolive.dueN === rGolive.n && rEpic.dueN === rEpic.n,
+          "RESOLVED work is always expected to carry a due date — dueN === n, unchanged by this rule");
+  // The ratio can never exceed 100%, which is what rule 3 buys: every hit is also
+  // in the denominator. The v32 form (hits excluded, misses counted) could not
+  // break this either, but the opposite slip — counting the hit and not the row —
+  // is the classic one, so pin it on a fixture designed to trip it.
+  var dated = typeHygieneBuckets_({ issues: [
+    it_({ key: "T-1", status: "To Do", due: W, assignee: "Maria Alvarez" }),
+    it_({ key: "T-2", status: "To Do", due: W, assignee: "Maria Alvarez" }) ] },
+    resolve, "dictionary").open[0];
+  assert_(dated.due === 2 && dated.dueN === 2 && dated.due <= dated.dueN,
+          "a fully-dated To Do backlog reads 100%, never above it");
+  // The carve is DUE-and-TIME-specific. Estimate and assignee still divide by n:
+  // an unestimated To Do ticket is the matrix's biggest lever, and unstarted work
+  // is exactly when an estimate is worth having.
+  assert_(oStory.est === 0 && oStory.keys.est.join() === "A-5",
+          "estimate/assignee still measure the WHOLE open population, started or not");
 
   // A To Do ticket that DOES carry a worklog scores in neither half. It is a
   // status-hygiene gap (work started, board never moved) with a different owner;
@@ -5777,7 +8175,10 @@ function _test_typeHygieneBuckets_() {
 
   // ── Key cap is enforced AND reported ──
   var many = [];
-  for (var i = 0; i < TYPE_HYG_MAX_KEYS_ + 25; i++) many.push(it_({ key: "M-" + i, status: "To Do" }));
+  // STARTED (the it_ default), because since v32 an unstarted ticket contributes
+  // no due-date key at all — a To Do fixture here would test the cap against an
+  // empty list and pass for the wrong reason.
+  for (var i = 0; i < TYPE_HYG_MAX_KEYS_ + 25; i++) many.push(it_({ key: "M-" + i }));
   var capped = find_(typeHygieneBuckets_({ issues: many }, resolve, "dictionary").open, "Story");
   assert_(capped.n === TYPE_HYG_MAX_KEYS_ + 25, "the COUNT covers every record");
   assert_(capped.keys.due.length === TYPE_HYG_MAX_KEYS_, "the key LIST is capped");
@@ -5830,6 +8231,192 @@ function _test_typeHygieneBuckets_() {
   Logger.log("✅ _test_backlogHealthUnassigned_ passed");
 })();
 
+/**
+ * OVERDUE IS WEEK-GRAINED (managers' feedback 2026-08-10).
+ *
+ * The regression this pins is a timestamp comparison that flagged a ticket due
+ * EARLIER THIS WEEK while the committed week was still running. It is invisible
+ * on a fixture whose dates are months old, which is why every case here sits
+ * within a few days of the boundary — and why `now` is a fixed Wednesday rather
+ * than a real clock.
+ */
+(function _test_backlogOverdueWeekGrain_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_backlogOverdueWeekGrain_: " + m); }
+  var resolve = function () { return "Maria Alvarez"; };
+  // Wednesday 2026-08-12, 15:00 — ISO week 2026.W33, which starts Monday the 10th.
+  var now = new Date(2026, 7, 12, 15, 0);
+  assert_(dhWeekStart_(now).getTime() === new Date(2026, 7, 10).getTime(),
+          "the boundary is Monday 00:00 of the current ISO week");
+  assert_(dhWeekStart_(new Date(2026, 7, 10, 0, 30)).getTime() === new Date(2026, 7, 10).getTime(),
+          "Monday itself resolves to its own midnight, not the week before");
+  assert_(dhWeekStart_(new Date(2026, 7, 16, 23, 0)).getTime() === new Date(2026, 7, 10).getTime(),
+          "Sunday belongs to the week that STARTED on Monday — JS day 0 is not day 1");
+
+  function due_(key, d) {
+    return { key: key, assignee: "Maria Alvarez", status: "In Progress",
+             statusCategory: "In Progress", due: d, updated: now };
+  }
+  var jira = { issues: [
+    due_("MON",  new Date(2026, 7, 10)),   // earlier THIS week — was flagged before v32
+    due_("WED",  new Date(2026, 7, 12)),   // today
+    due_("FRI",  new Date(2026, 7, 14)),   // later this week
+    due_("LAST", new Date(2026, 7, 7)),    // last Friday → 5 days late  → band ≤7
+    due_("OLD",  new Date(2026, 6, 27)),   // 16 days late               → band 8–30
+    due_("ANCIENT", new Date(2026, 4, 1)), // ~100 days late             → band >30
+  ] };
+  var b = backlogHealthBuckets_(jira, resolve, now).buckets[0];
+
+  assert_(b.overdue === 3, "only the three whose committed WEEK has ended are late, got " + b.overdue);
+  assert_(b.futureDated === 3,
+          "MON/WED/FRI are live commitments — a date inside the current week is in compliance");
+  assert_(b.keys.overdue.indexOf("MON") === -1 && b.keys.overdue.indexOf("WED") === -1,
+          "…and they are absent from the work QUEUE too, not merely from the count");
+  assert_(b.keys.overdue.join() === "LAST,OLD,ANCIENT", "the queue holds exactly the late three");
+
+  // The partition invariant: `dated` splits exactly into futureDated + overdue.
+  // If the two rules ever drift, a ticket appears twice or vanishes — and both
+  // failures read as a plausible number rather than as a bug.
+  assert_(b.dated === b.futureDated + b.overdue,
+          "dated === futureDated + overdue, always — the good row is the complement of the bad one");
+
+  // Bands: gated on the same rule, then aged. LAST is 5 days past due but its week
+  // has ended, so it belongs in ≤7 — the gate must not swallow it either.
+  assert_(b.overdue7 === 1 && b.overdue30 === 1 && b.overdueOver30 === 1,
+          "each band holds one: LAST (5d) / OLD (~6w) / ANCIENT (>30d)");
+  assert_(b.overdue7 + b.overdue30 + b.overdueOver30 === b.overdue,
+          "the three bands PARTITION the overdue total — no gap, no double count");
+
+  // Same fixture, read on the Monday the boundary moves: LAST is now inside the
+  // current week and stops being late, which is the whole point of the rule.
+  var mon = backlogHealthBuckets_(jira, resolve, new Date(2026, 7, 10, 9, 0)).buckets[0];
+  assert_(mon.overdue === 3 && mon.keys.overdue.indexOf("LAST") !== -1,
+          "on Monday the 10th, last Friday's date is in the week that just ended — still late");
+  var prevWeek = backlogHealthBuckets_(jira, resolve, new Date(2026, 7, 7, 9, 0)).buckets[0];
+  assert_(prevWeek.overdue === 2 && prevWeek.keys.overdue.indexOf("LAST") === -1,
+          "read DURING that Friday's own week, it is a live commitment — 2 late, not 3");
+
+  // An item with no due date is in none of these rows: it is the `undated` queue's,
+  // and counting it here would double-report one record as two different problems.
+  var noDue = backlogHealthBuckets_({ issues: [
+    { key: "N-1", assignee: "Maria Alvarez", status: "In Progress",
+      statusCategory: "In Progress", due: null, updated: now } ] }, resolve, now).buckets[0];
+  assert_(noDue.overdue === 0 && noDue.futureDated === 0 && noDue.undated === 1,
+          "no due date is an 'undated' finding, never a late one");
+
+  // ── THE UNDATED QUEUE HOLDS STARTED WORK ONLY (user report 2026-08-10) ──────
+  // The queue was sending people after tickets the RATE had already stopped
+  // counting. Now the unstarted ones are tallied apart, as context rather than as
+  // a queue — and the three counters must still partition the population, or the
+  // panel's own reconciliation goes quiet about records nobody can see.
+  var split = backlogHealthBuckets_({ issues: [
+    { key: "U-1", assignee: "Maria Alvarez", status: "In Progress",
+      statusCategory: "In Progress", due: null, updated: now },          // started, undated → QUEUE
+    { key: "U-2", assignee: "Maria Alvarez", status: "To Do",
+      statusCategory: "To Do", due: null, updated: now },                // unstarted, undated → ignored
+    { key: "U-3", assignee: "Maria Alvarez", status: "To Do",
+      statusCategory: "To Do", due: null, updated: now },                // …and another
+    { key: "U-4", assignee: "Maria Alvarez", status: "To Do",
+      statusCategory: "To Do", due: new Date(2026, 7, 20), updated: now }, // unstarted but DATED → dated
+  ] }, resolve, now).buckets[0];
+  assert_(split.undated === 1 && split.keys.undated.join() === "U-1",
+          "only the STARTED undated ticket is a due-date gap with a queue behind it");
+  assert_(split.undatedIgnored === 2,
+          "the two unstarted undated tickets are counted apart, not lost");
+  assert_(!split.keys.undatedIgnored,
+          "…and carry NO key list: nobody is meant to go and work them, and a key list invites it");
+  assert_(split.dated === 1,
+          "rule 3 again: an unstarted ticket that HAS a date is dated like any other");
+  assert_(split.dated + split.undated + split.undatedIgnored === split.n,
+          "the three still PARTITION the open population — no record is in two of them or in none");
+
+  // The boundary ships, so the panel can state which Monday it judged against.
+  assert_(backlogHealthBuckets_(jira, resolve, now).weekStart === new Date(2026, 7, 10).toISOString(),
+          "the payload carries the week boundary it measured against");
+  Logger.log("✅ _test_backlogOverdueWeekGrain_ passed");
+})();
+
+/**
+ * 🚩 EPICS WITHOUT A DUE DATE (team agreement 2026-08-10).
+ *
+ * The audit's whole value is that it CANNOT be flattered, so this suite is mostly
+ * about what it refuses to exclude: unassigned epics, epics whose assignee is off
+ * the roster, and — the one that matters most — epics sitting in To Do, which the
+ * fill columns now deliberately skip.
+ */
+(function _test_epicDueAudit_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_epicDueAudit_: " + m); }
+  var W = new Date(2026, 6, 28);
+  function ep(o) {
+    return Object.assign({ key: "K", isEpic: true, typeLabel: "Epic", status: "In Progress",
+                           statusCategory: "In Progress", due: null, resolved: null,
+                           assignee: "Maria Alvarez" }, o);
+  }
+  var a = epicDueAudit_({ issues: [
+    ep({ key: "E-1" }),                                   // open Epic, no date → FLAG
+    ep({ key: "E-2", due: W }),                           // dated → fine
+    // To Do with no date. The 🧬 matrix and the roster skip this row by rule
+    // (dueExpected_); the audit MUST NOT — it is the case the agreement is about.
+    ep({ key: "E-3", status: "To Do", statusCategory: "To Do" }),
+    // No assignee at all. An epic is a container; "nobody owns it" is not a reason
+    // to stop asking for its end date.
+    ep({ key: "E-4", assignee: "⚠️ UNASSIGNED" }),
+    // Assignee who does not join the roster — same argument.
+    ep({ key: "E-5", assignee: "Random Contractor" }),
+    // A different epic TYPE — must get its own row, not be pooled.
+    ep({ key: "G-1", typeLabel: "Go-live epic" }),
+    ep({ key: "G-2", typeLabel: "Go-live epic", due: W }),
+    // NOT epics → invisible to this audit however undated they are.
+    ep({ key: "S-1", isEpic: false, typeLabel: "Story" }),
+    ep({ key: "T-1", isEpic: false, typeLabel: "Task", status: "To Do", statusCategory: "To Do" }),
+    // RESOLVED epic with no date → out: a date added now moves no future number.
+    ep({ key: "R-1", resolved: W, status: "Done" }),
+    // Closed-ish with no resolution date → in NEITHER population, same rule as
+    // every other surface here (typeHygOpen_).
+    ep({ key: "C-1", status: "Closed" }),
+  ] });
+
+  assert_(a.n === 7 && a.missing === 5,
+          "7 open epics, 5 with no date, got " + a.n + "/" + a.missing);
+  var epicRow = a.rows.filter(function (r) { return r.type === "Epic"; })[0];
+  var goRow = a.rows.filter(function (r) { return r.type === "Go-live epic"; })[0];
+  assert_(epicRow && goRow, "each epic TYPE gets its own row — pooling them hides where to go");
+  assert_(epicRow.keys.join() === "E-1,E-3,E-4,E-5",
+          "the queue names the offending keys, To Do and unassigned INCLUDED — got " +
+          epicRow.keys.join());
+  assert_(goRow.n === 2 && goRow.missing === 1 && goRow.keys.join() === "G-1",
+          "the second type counts independently");
+  assert_(a.rows[0].type === "Epic",
+          "rows sort most-missing first — that ordering IS the audit's work order");
+  assert_(!a.rows.some(function (r) { return /Story|Task/.test(r.type); }),
+          "non-epics never appear, however undated");
+  assert_(a.rows.every(function (r) { return r.keys.indexOf("R-1") === -1 && r.keys.indexOf("C-1") === -1; }),
+          "resolved and closed-without-a-date epics are out of the audit");
+
+  // The intersection with dueExpected_ — stated as an assertion because it is the
+  // single most confusing thing about this release: the SAME To Do epic is skipped
+  // by the fill columns and flagged by the audit, on purpose.
+  assert_(dueExpected_(ep({ status: "To Do", statusCategory: "To Do" }), true) === false &&
+          epicRow.keys.indexOf("E-3") !== -1,
+          "an undated To Do epic is OUT of the graded fill columns and IN the audit — " +
+          "if these two ever agree, one of the two rules has been lost");
+
+  // A clean org reports zero, not an absent panel: "we checked and found none" and
+  // "we did not check" must never render the same.
+  var clean = epicDueAudit_({ issues: [ep({ key: "OK-1", due: W })] });
+  assert_(clean.n === 1 && clean.missing === 0 && clean.rows.length === 1,
+          "a fully-dated epic set still emits its row, with missing 0");
+  assert_(epicDueAudit_({ issues: [] }).rows.length === 0, "an empty feed emits no rows");
+
+  // Cap is enforced AND flagged, same contract as every other key list here.
+  var many = [];
+  for (var i = 0; i < EPIC_DUE_MAX_KEYS_ + 10; i++) many.push(ep({ key: "M-" + i }));
+  var capped = epicDueAudit_({ issues: many }).rows[0];
+  assert_(capped.missing === EPIC_DUE_MAX_KEYS_ + 10, "the COUNT covers every offender");
+  assert_(capped.keys.length === EPIC_DUE_MAX_KEYS_ && capped.capped === true,
+          "…the key LIST is capped and says so");
+  Logger.log("✅ _test_epicDueAudit_ passed");
+})();
+
 function _test_personHygieneBuckets_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_personHygieneBuckets_: " + m); }
   var resolve = function (raw) {
@@ -5868,7 +8455,8 @@ function _test_personHygieneBuckets_() {
   assert_(mOpen && mOpen.n === 1 && mOpen.due === 0 && mOpen.est === 1 && mOpen.logged === 0,
           "Maria open bucket counts");
   var kOpen = ph.open.filter(function (b) { return b.person === "Ken Lim"; })[0];
-  assert_(kOpen && kOpen.n === 1 && kOpen.due === 1 && kOpen.est === 0,
+  // Ken's open epic is To Do WITH a due date → rule 3: tracked, and a hit.
+  assert_(kOpen && kOpen.n === 1 && kOpen.due === 1 && kOpen.dueN === 1 && kOpen.est === 0,
           "open epic counted for Ken (closed-no-resolution excluded)");
   assert_(ph.open.length === 2, "exactly two open persons — unattributed excluded");
 
@@ -5887,8 +8475,9 @@ function _test_personHygieneBuckets_() {
   function sum_(rows, k) { return rows.reduce(function (s, r) { return s + (r[k] || 0); }, 0); }
   assert_(sum_(th.open, "n") === 4, "matrix open population = 4 (incl. unattributed + sentinel)");
   assert_(sum_(ph.open, "n") === 2, "roster open population = 2 (attributed only)");
-  // Only Maria's open Task carries estSec>0; nothing open carries spentSec>0;
-  // only Ken's open Epic carries a due date. Both passes agree on each.
+  // Only Maria's open Task carries estSec>0; nothing open carries spentSec>0; the
+  // one open due date belongs to Ken's UNSTARTED epic, which rule 3 keeps — so
+  // both passes must count it, and must agree.
   assert_(sum_(th.open, "est") === 1 && sum_(ph.open, "est") === 1, "est predicate parity");
   assert_(sum_(th.open, "time") === 0 && sum_(ph.open, "logged") === 0, "logged predicate parity");
   assert_(sum_(th.open, "due") === 1 && sum_(ph.open, "due") === 1, "due predicate parity");
@@ -5906,6 +8495,26 @@ function _test_personHygieneBuckets_() {
   // two surfaces must agree on the population as well as on each record.
   assert_(sum_(th.open, "timeN") === 1 && sum_(ph.open, "loggedN") === 1,
           "matrix and roster measure the logged ratio over the SAME started population");
+
+  // ── DUE DENOMINATOR = STARTED WORK ONLY (managers' feedback 2026-08-10) ──────
+  // Same three checks as the logged rule above, because this is the same mistake
+  // one column over: a person was being graded on dates for work they had not
+  // begun, which is a queue nobody can act on.
+  assert_(mOpen.dueN === 1 && mOpen.due === 0,
+          "Maria's STARTED open task with no due date IS a due-date gap");
+  assert_(kOpen.dueN === 1 && kOpen.due === 1,
+          "rule 3: Ken's unstarted epic CARRIES a date, so it is tracked and it is a hit");
+  assert_(mRes[0].dueN === mRes[0].n,
+          "resolved: On-Time is exactly the date question — dueN === n");
+  assert_(sum_(th.open, "dueN") === 2 && sum_(ph.open, "dueN") === 2,
+          "matrix and roster measure the due-date ratio over the SAME 'started or dated' population");
+  // THE TWO RULES ARE DIFFERENT SHAPES, and this is the assertion that says so.
+  // Logged excludes every unstarted ticket; Due keeps the dated ones. Ken's epic
+  // is the record that separates them, so a refactor that "unifies" the two
+  // predicates fails here rather than silently reverting rule 3.
+  assert_(kOpen.loggedN === 0 && kOpen.dueN === 1,
+          "an unstarted DATED ticket is outside the logged ratio but inside the due one — " +
+          "timeExpected_ and dueExpected_ must not be collapsed into one predicate");
 
   // A To Do ticket carrying a worklog is excluded from BOTH halves. Left in the
   // numerator alone it would score 1/0 and render over 100% on a drifted board.
@@ -5960,6 +8569,223 @@ function _test_leaverTest_() {
           "an all-active roster excludes nobody");
   assert_(leaverTest_({})("Anyone") === false, "a rosterless call is safe");
   Logger.log("✅ _test_leaverTest_ passed");
+}
+
+/**
+ * Workforce change (user request 2026-08-07).
+ *
+ * The failures that matter here are all ways of UNDER-reporting a loss, which
+ * is the direction that flatters us: a boomerang counted as attrition, a
+ * departure whose capacity is unknown quietly counted as zero hours, a leaver's
+ * partial final weeks read as their capacity, and an out-of-scope departure
+ * (Sales, non-tracking family) inflating a delivery number.
+ */
+function _test_workforceChange_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_workforceChange_: " + m); }
+  var weeks = ["2026.W26", "2026.W27", "2026.W28", "2026.W29", "2026.W30", "2026.W31"];
+  function d(s) { return new Date(s + "T00:00:00Z"); }
+  // 2026.W29 = Mon 2026-07-13 … Sun 2026-07-19 (ISO).
+  var roster = {
+    attrib: [
+      // Left in W29 after four full 40h weeks — a clean 40h/wk loss.
+      { name: "Gone Person", inScope: true, jobFamily: "Service Delivery",
+        hireDate: null, termDate: d("2026-07-15") },
+      // Joined in W29.
+      { name: "New Joiner", inScope: true, jobFamily: "Service Delivery",
+        hireDate: d("2026-07-14"), termDate: null },
+      // Rehire: both rows exist, so NOT a departure however plain the term date.
+      { name: "Boomer Ang", inScope: true, jobFamily: "Service Delivery",
+        hireDate: null, termDate: d("2026-07-15") },
+      // Out of the delivery population — a Sales departure is not delivery capacity.
+      { name: "Sales Sam", inScope: false, jobFamily: "Service Delivery",
+        hireDate: null, termDate: d("2026-07-15") },
+      // In scope by class/dept but a non-tracking family — same carve-out the
+      // live population applies, or this number describes a different team.
+      { name: "Ops Olive", inScope: true, jobFamily: "Operations",
+        hireDate: null, termDate: d("2026-07-15") },
+      // Left in W29 with no capacity row anywhere — a KNOWN loss of an UNKNOWN size.
+      { name: "Ghost Grey", inScope: true, jobFamily: "Service Delivery",
+        hireDate: null, termDate: d("2026-07-15") },
+    ],
+    activeAll: { "new joiner": 1, "boomer ang": 1 },
+    inactiveAll: { "gone person": 1, "boomer ang": 1, "sales sam": 1,
+                   "ops olive": 1, "ghost grey": 1 },
+  };
+  var cap = {
+    // Note W28: the last week before leaving is a 6h stub (handover). The median
+    // of the non-zero weeks must ignore it, or every departure under-reports.
+    "gone person": { "2026.W25": 40, "2026.W26": 40, "2026.W27": 40, "2026.W28": 6 },
+    "new joiner":  { "2026.W29": 8, "2026.W30": 40, "2026.W31": 40 },
+    "boomer ang":  { "2026.W27": 40, "2026.W28": 40 },
+    "sales sam":   { "2026.W27": 40, "2026.W28": 40 },
+    "ops olive":   { "2026.W27": 40, "2026.W28": 40 },
+  };
+  var rows = workforceChangeBuckets_(roster, cap, weeks);
+  assert_(rows.length === 1 && rows[0].iso === "2026.W29",
+          "only weeks with movement produce a row, and the movement lands in the week of the date");
+  var w = rows[0];
+  assert_(w.leavers === 2, "2 in-scope departures (Gone Person + Ghost Grey), got " + w.leavers);
+  assert_(w.joiners === 1, "1 joiner, got " + w.joiners);
+  // 40, not 6 and not the mean of {40,40,6}=28.7.
+  assert_(w.hoursLost === 40,
+          "the leaver's capacity is the MEDIAN of their non-zero weeks — a 6h handover week " +
+          "must not be read as what they were carrying; got " + w.hoursLost);
+  assert_(w.hoursGained === 40,
+          "…and the joiner's is the median of their scheduled weeks, not their 8h first week; got " +
+          w.hoursGained);
+  // The one that would otherwise vanish: counted as a person, never as 0 hours.
+  assert_(w.leaversNoCap === 1,
+          "a departure with no capacity data is counted and flagged, never folded in as 0 hours");
+  assert_(w.joinersNoCap === 0, "…and the joiner's capacity WAS known");
+
+  // ── The four exclusions, each on its own ──
+  function loneRows(name) {
+    return workforceChangeBuckets_({
+      attrib: roster.attrib.filter(function (p) { return p.name === name; }),
+      activeAll: roster.activeAll, inactiveAll: roster.inactiveAll,
+    }, cap, weeks);
+  }
+  assert_(loneRows("Boomer Ang").length === 0,
+          "a rehire is never a departure — an active row anywhere wins");
+  assert_(loneRows("Sales Sam").length === 0, "an out-of-population departure is not counted");
+  assert_(loneRows("Ops Olive").length === 0,
+          "a non-tracking job family is carved out here exactly as it is from the population");
+
+  // A termination date with no inactive row = a future exit the roster has not
+  // applied. Counting it would report a loss that has not happened.
+  var planned = workforceChangeBuckets_({
+    attrib: [{ name: "Notice Given", inScope: true, jobFamily: "Service Delivery",
+               hireDate: null, termDate: d("2026-07-15") }],
+    activeAll: { "notice given": 1 }, inactiveAll: {},
+  }, { "notice given": { "2026.W27": 40, "2026.W28": 40 } }, weeks);
+  assert_(planned.length === 0,
+          "a termination date on someone the roster still lists as active is not attrition yet");
+
+  // Movement outside the window is not this period's news.
+  var outside = workforceChangeBuckets_({
+    attrib: [{ name: "Gone Person", inScope: true, jobFamily: "Service Delivery",
+               hireDate: null, termDate: d("2025-01-15") }],
+    activeAll: {}, inactiveAll: { "gone person": 1 },
+  }, cap, weeks);
+  assert_(outside.length === 0, "a departure before the window does not enter it");
+
+  // Joined AND left inside the window: both are true, and the net is zero.
+  var churn = workforceChangeBuckets_({
+    attrib: [{ name: "Brief Visit", inScope: true, jobFamily: "Service Delivery",
+               hireDate: d("2026-06-23"), termDate: d("2026-07-15") }],
+    activeAll: {}, inactiveAll: { "brief visit": 1 },
+  }, { "brief visit": { "2026.W27": 40, "2026.W28": 40 } }, weeks);
+  assert_(churn.length === 2, "a joiner who also left is counted in BOTH weeks");
+  assert_(churn.reduce(function (a, r) { return a + r.joiners + r.leavers; }, 0) === 2,
+          "…once on each side, so the net correctly reads zero people");
+
+  // Empty/malformed inputs are a quiet no-op, never a crash on a dashboard load.
+  assert_(workforceChangeBuckets_({}, {}, weeks).length === 0, "a rosterless call is safe");
+  assert_(workforceChangeBuckets_(roster, null, weeks).length === 1,
+          "no capacity sheet at all still counts the PEOPLE — the movement is known even " +
+          "when its size is not");
+  assert_(workforceChangeBuckets_(roster, null, weeks)[0].hoursLost === 0 &&
+          workforceChangeBuckets_(roster, null, weeks)[0].leaversNoCap === 2,
+          "…and every one of them lands in the unknown-capacity count, not in the hours");
+
+  // typicalWeeklyCap_ in isolation — the rule the two branches above share.
+  assert_(typicalWeeklyCap_({ a: 40, b: 0, c: 40 }, ["a", "b", "c"]) === 40,
+          "zero weeks are dropped, not averaged in");
+  assert_(typicalWeeklyCap_({ a: 0, b: 0 }, ["a", "b"]) === null,
+          "no scheduled hours at all is UNKNOWN, never 0");
+  assert_(typicalWeeklyCap_(null, ["a"]) === null, "a person with no capacity row is unknown");
+  Logger.log("✅ _test_workforceChange_ passed");
+}
+
+/**
+ * SRSO binding — component (what the runbook tells PMs to do) vs fix version
+ * (what the exporter's Billing Type reads).
+ *
+ * The failure that matters: reporting a mismatch that is really an artefact of
+ * OUR two regexes, or reporting "no mismatch" on an export whose Components
+ * column isn't there at all. Either one sends someone to argue with a PM about
+ * a process they followed correctly.
+ */
+function _test_srsoBinding_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_srsoBinding_: " + m); }
+  // The token rule must stay identical to the exporter's, or every mismatch is
+  // suspect. Both forms the exporter documents must match.
+  assert_(DH_SRSO_TOKEN_.test("SRSO-016559"), "bare sales-order form matches");
+  assert_(DH_SRSO_TOKEN_.test("CLVT02 SRSO-016559"), "client-prefixed form matches");
+  assert_(DH_SRSO_TOKEN_.test("srso-1"), "case-insensitive, like the exporter's rule");
+  assert_(!DH_SRSO_TOKEN_.test("Platform"), "an ordinary component name does not");
+  assert_(!DH_SRSO_TOKEN_.test("MYSRSOTHING"), "…nor a word that merely contains the letters");
+
+  // ── THE TRISTATE, AT THE READER ──────────────────────────────────────────
+  // Tested here rather than only through hygieneBuckets_ because this is where
+  // it can actually be got wrong: readJiraRaw_ opens a spreadsheet and cannot
+  // run from node, so a bug that collapses an absent column into `false` was
+  // invisible to a consumer test built on hand-made records. (Confirmed by
+  // deliberately introducing that collapse — the consumer suite stayed green,
+  // and this block goes red.)
+  assert_(dhSrsoComponent_(false, "SRSO-016559") === null,
+          "NO Components column = nobody looked, whatever happens to be in the cell");
+  assert_(dhSrsoComponent_(false, "") === null, "…null, never false");
+  assert_(dhSrsoComponent_(true, "SRSO-016559") === true, "column present + token = bound");
+  assert_(dhSrsoComponent_(true, "Platform, Backend") === false,
+          "column present + no token = looked, and it is not bound");
+  assert_(dhSrsoComponent_(true, "") === false, "an empty cell in a present column IS a measurement");
+  assert_(dhSrsoComponent_(true, null) === false, "…and so is a null cell — no crash, no null verdict");
+  assert_(dhSrsoComponent_(true, "Platform, CLVT02 SRSO-016559") === true,
+          "one bound component among several still binds the issue");
+
+  function iss(o) {
+    return { resolved: new Date("2026-07-15T00:00:00Z"), assignee: "Ana Perez",
+             isEpic: false, isClientCommitment: true, billing: o.billing,
+             srsoComponent: o.comp, due: null, region: "AMER", team: "T" };
+  }
+  var rows = hygieneBuckets_({ issues: [
+    // Bound by fix version — the exporter saw it. No mismatch.
+    iss({ billing: "Billable (SRSO)", comp: true }),
+    iss({ billing: "Billable (SRSO)", comp: false }),
+    // THE FINDING: bound by component exactly as the runbook says, read as
+    // untagged because no SRSO fix version exists.
+    iss({ billing: "Untagged", comp: true }),
+    iss({ billing: "Internal", comp: true }),
+    // Bound by neither — not a mismatch, just unbound work.
+    iss({ billing: "Untagged", comp: false }),
+  ] }, function () { return "Ana Perez"; }, "all");
+  assert_(rows.length === 1, "one resolution week");
+  var w = rows[0];
+  assert_(w.srsoMeasurable === 5, "every row with a readable Components column is measurable");
+  assert_(w.srsoSeen === 2, "two are visible to the Billing Type reader");
+  assert_(w.srsoAny === 4, "four are bound by ONE route or the other");
+  assert_(w.srsoCompOnly === 2,
+          "two are bound the runbook way and invisible to the reader — got " + w.srsoCompOnly);
+  // "Internal" counts as a miss as surely as "Untagged": both mean the Billing
+  // Type reader did not see a sales order, and only the reason differs.
+  assert_(w.srsoAny - w.srsoSeen === w.srsoCompOnly,
+          "the arithmetic closes — every bound-but-unseen row is a component-only row");
+
+  // ── ABSENT COLUMN ≠ NOTHING FOUND. An older export must not report a clean
+  // bill of health for a field nobody read.
+  var older = hygieneBuckets_({ issues: [
+    iss({ billing: "Untagged", comp: null }),
+    iss({ billing: "Billable (SRSO)", comp: null }),
+  ] }, function () { return "Ana Perez"; }, "all");
+  assert_(older.length === 1, "the week still exists — the other gaps are still counted");
+  assert_(older[0].srsoMeasurable === 0,
+          "…but NOTHING is measurable for SRSO binding, so the row reads 'not measured'");
+  assert_(older[0].srsoCompOnly === 0 && older[0].srsoAny === 0,
+          "…and no mismatch is claimed on evidence that does not exist");
+
+  // Scope independence: the binding question is about ALL delivered work, not
+  // the epic/milestone slice On-Time measures. Same issues under the narrowest
+  // scope must produce the SAME srso counts.
+  var narrow = hygieneBuckets_({ issues: [
+    iss({ billing: "Untagged", comp: true }),
+  ] }, function () { return "Ana Perez"; }, "epic");
+  assert_(narrow[0].srsoCompOnly === 1,
+          "a non-epic issue still counts toward SRSO binding under the epic scope — the " +
+          "component is set once for the whole project, not per issue type");
+  assert_(narrow[0].res === 0,
+          "…while the On-Time population correctly excludes it, proving the two are independent");
+  Logger.log("✅ _test_srsoBinding_ passed");
 }
 
 /** Jira Region vocabulary normalisation (§4.3) + the Unassigned bucket (§4.2). */
@@ -6495,9 +9321,19 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 27,
-          "payload schema is v27 (queue model + snapshot unassigned columns) — " +
+  assert_(m.schemaVer === 37,
+          "payload schema is v37 (meta.jiraBase — every key is a Jira deep link) — " +
           "literal check, independent of DH_SCHEMA_VER_");
+  // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
+  // v29 model read as v30 would give every person pool `undefined`, collapse the
+  // population into one cell, and reproduce the exact blended figure this
+  // release retires — a wrong number wearing a right number's clothes.
+  assert_(m.workforce && m.workforce.scope && m.workforce.cells,
+          "the workforce block ships with the payload");
+  assert_(typeof m.workforce.scope.unclassified === "number",
+          "…and states its unclassified count even at zero");
+  assert_(m.people.every(function (p) { return typeof p.pool === "string"; }),
+          "every person carries a pool — never undefined, which would silently re-blend them");
 
   Logger.log("✅ _test_modelAssembly_ passed");
 }
@@ -6601,5 +9437,547 @@ function _test_levelTrack_() {
   assert_(dhIsIntern_("07.M1.1 - Team Lead") === false, "M1 is a manager level, not an intern");
   assert_(dhIsIntern_("") === false && dhIsIntern_(null) === false, "blank/null → not intern");
   Logger.log("✅ _test_levelTrack_ passed");
+}
+
+/**
+ * WORKFORCE HEALTH — classification (spec v1.1 §4).
+ * The parser cases are the ones that silently DROP people if a strict regex
+ * ships, and the sub-track cases are the ones the v1.0 discipline-keyed model
+ * got wrong.
+ */
+function _test_classification_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_classification_: " + m); }
+
+  // ── Parser tolerance: every one of these is a real shape in this company's data
+  var t = dhParseTitle_("09.I4.3 - Senior Engineer I, Service Delivery");
+  assert_(t.ok && t.family === "09" && t.track === "I" && t.level === 4 && t.variant === "3",
+          "canonical four-token code decomposes");
+  assert_(t.subTrack === "09.3", "subTrack is family.variant");
+  assert_(t.stem === "Senior Engineer I" && t.stemBase === "Senior Engineer",
+          "stem keeps its roman numeral, stemBase strips it");
+  assert_(t.discipline === "Service Delivery", "discipline is the text after the LAST comma");
+
+  // No dash separator — CompDash carries "03.I2.1 Data Analyst" in its own fixtures.
+  t = dhParseTitle_("09.I2.1 Associate Consultant");
+  assert_(t.ok && t.subTrack === "09.1", "missing dash separator still parses");
+  // Lowercase track letter — CompDash has a passing test pinning "07.m4.1" → M4.
+  t = dhParseTitle_("07.m4.1 - Manager, Customer Support");
+  assert_(t.ok && t.track === "M" && t.level === 4, "lowercase track letter parses and normalises");
+  // Trailing parenthetical — one row in the live 215 carries "(556)".
+  t = dhParseTitle_("09.I3.1 - Consultant, Technical Consulting (556)");
+  assert_(t.ok && t.discipline === "Technical Consulting", "trailing (nnn) stripped before the split");
+  // Stem containing its own comma splits at the LAST comma, not the first.
+  t = dhParseTitle_("18.I5.1 - Director, Solutions, Solution Architecture");
+  assert_(t.discipline === "Solution Architecture" && t.stem === "Director, Solutions",
+          "lastIndexOf keeps a comma-bearing stem intact");
+  // No comma at all: the whole tail is both stem and label, never a crash.
+  t = dhParseTitle_("09.I3.1 - Consultant");
+  assert_(t.ok && t.stem === "Consultant" && t.discipline === "Consultant",
+          "no comma → tail serves as both stem and label");
+  assert_(dhParseTitle_("Senior Engineer").ok === false, "free-text title does not parse");
+  assert_(dhParseTitle_("").ok === false && dhParseTitle_(null).ok === false, "blank/null do not parse");
+  assert_(dhParseTitle_("09.I4").ok === false, "three-token code (no variant) does not parse");
+
+  // ── THE v1.0 CORRECTION: 09|Service Delivery is TWO pools, not one ──────────
+  // Keying on the discipline string sent all 36 of these to PS-ENGINEER.
+  var eng = dhClassify_("09.I4.3 - Senior Engineer I, Service Delivery");
+  var con = dhClassify_("09.I5.1 - Senior Consultant, Service Delivery");
+  assert_(eng.pool === "PS-ENGINEER", "09.3 is engineering");
+  assert_(con.pool === "PS-CONSULT", "09.1 is consulting — SAME discipline string, different pool");
+  assert_(eng.disciplineLabel !== con.disciplineLabel,
+          "and they carry different display labels, so the UI cannot merge them back");
+
+  // ── Sub-tracks ──
+  assert_(dhClassify_("07.I3.1 - Support Engineer, Customer Support").pool === "MS-SUPPORT",
+          "07.1 is support — the pool that must never blend with consulting");
+  assert_(dhClassify_("07.I3.1 - Support Engineer, Customer Support").role === "SUSTAINER",
+          "support SUSTAINS; it does not consume project backlog");
+  assert_(dhClassify_("07.I3.2 - Consultant, Delivery").pool === "PS-CONSULT",
+          "07.2 is delivery consulting — same family as support, different pool");
+  assert_(dhClassify_("08.I3.2 - Trainer, Learning Solutions").pool === "TRAINING", "08.2 is training");
+  assert_(dhClassify_("18.I5.1 - Architect, Solution Architecture").pool === "ARCH", "18.1 is architecture");
+  assert_(dhClassify_("18.I5.1 - Architect, Solution Architecture").role === "CREATOR",
+          "architects CREATE backlog rather than consume it");
+
+  // ── Level bands ──
+  assert_(dhClassify_("09.I1.1 - Associate Consultant, Professional Services").band === "JUNIOR", "I1 → JUNIOR");
+  assert_(dhClassify_("09.I2.1 - Associate Consultant, Professional Services").band === "JUNIOR", "I2 → JUNIOR");
+  assert_(dhClassify_("09.I3.1 - Consultant, Professional Services").band === "CORE", "I3 → CORE");
+  assert_(dhClassify_("09.I4.3 - Engineer, Service Delivery").band === "CORE", "I4 → CORE");
+  assert_(dhClassify_("09.I5.1 - Senior Consultant, Professional Services").band === "SENIOR", "I5 → SENIOR");
+  assert_(dhClassify_("09.I10.1 - Principal Consultant, Professional Services").band === "SENIOR",
+          "I10 → SENIOR, not JUNIOR — the full number is parsed");
+
+  // ── MGMT_GOVERNS: the override that moves every published capacity rate ─────
+  var mgr = dhClassify_("09.M5.3 - Manager, Service Delivery");
+  assert_(mgr.role === "GOVERNOR" && mgr.pool === "NONE",
+          "M-track in a delivery family governs; it leaves the pool");
+  assert_(mgr.band === "MGMT", "…and lands in the MGMT band, never a level band");
+  assert_(mgr.subTrack === "09.3", "…while keeping its sub-track for the audit trail");
+  assert_(dhClassify_("07.M4.1 - Manager, Customer Support").pool === "NONE", "same for family 07");
+  assert_(dhClassify_("18.M5.1 - Director, Solution Architecture").pool === "NONE", "same for family 18");
+  // A manager OUTSIDE the governing families keeps their mapped pool.
+  assert_(dhClassify_("15.M5.1 - Manager, Project Management").pool === "PMO",
+          "PMO managers stay in PMO — family 15 is not in MGMT_GOVERNS");
+
+  // ── Enablers ──
+  assert_(dhClassify_("13.I4.1 - Analyst, Finance").role === "ENABLER", "family 13 is an enabler whatever the discipline");
+  assert_(dhClassify_("16.I3.1 - Partner, People").pool === "NONE", "enablers hold no pool");
+  assert_(dhClassify_("15.I5.1 - Officer, Chief Executive Officer").role === "ENABLER",
+          "an enabler TITLE overrides its family");
+
+  // ── Discipline fallback for families where variant is not a boundary ────────
+  assert_(dhClassify_("15.I4.1 - Manager, Project Management").pool === "PMO", "15|Project Management → PMO");
+  assert_(dhClassify_("15.I4.9 - Manager, Project Management").pool === "PMO",
+          "…and the variant digit is irrelevant there, by design");
+  assert_(dhClassify_("15.I5.1 - Director, Delivery").role === "GOVERNOR",
+          "15|Delivery GOVERNS — the same word that means CONSUMER in family 07");
+  assert_(dhClassify_("04.I4.1 - Manager, Account Management").role === "CREATOR", "04 disciplines create demand");
+
+  // ── CREW: classified by employment type, not by job code ──────────────────
+  // The first live render reported 30 UNCLASSIFIED people. They were crew, who
+  // hold no job-architecture code — the parser was right and the registry had
+  // no home for them. A governance alarm for a known, ordinary population.
+  var crew = dhClassify_("Senior Developer", true);
+  assert_(crew.pool === "CREW" && crew.role === "CONSUMER",
+          "a contractor with a free-text title is CREW, not UNCLASSIFIED");
+  assert_(!crew.classificationError, "…and raises no classification error");
+  assert_(crew.disciplineLabel === "Crew (on demand)", "…and says what they are on the grid");
+  assert_(dhPoolCfg_("CREW").consumes === false && dhPoolCfg_("CREW").coverTarget === 0,
+          "CREW is demand-driven: capacity is scaled TO the work, so cover would mislead");
+  assert_(dhClassify_("Senior Developer", true).band === "UNKNOWN",
+          "no level token in a crew title → UNKNOWN band, not a guessed one");
+  assert_(dhClassify_("I4 Contract Engineer", true).band === "CORE",
+          "…but a crew title that DOES carry a level uses it");
+  assert_(dhClassify_("09.I3.1 - Consultant, Professional Services", true).pool === "CREW",
+          "employment type wins over the job code — a crew member's commercial model " +
+          "is what makes their capacity non-interchangeable with an FTE's");
+  assert_(dhClassify_("09.I3.1 - Consultant, Professional Services", false).pool === "PS-CONSULT",
+          "…and the identical title on an FTE still classifies normally");
+  assert_(dhClassify_("", true).pool === "CREW" && dhClassify_(null, true).pool === "CREW",
+          "a blank crew title still lands in CREW rather than falling through");
+
+  // ── Unclassified is a signal, not an error ──
+  var u = dhClassify_("Consultant");
+  assert_(u.role === "UNCLASSIFIED" && u.pool === "NONE" && u.band === "UNKNOWN",
+          "unparseable title → UNCLASSIFIED, never a guessed pool");
+  assert_(u.cell === "NONE|UNKNOWN" && !!u.classificationError, "…with a cell and a stated reason");
+  var u2 = dhClassify_("99.I3.1 - Widget Wrangler, Widgetry");
+  assert_(u2.role === "UNCLASSIFIED" && /no rule for 99\.1/.test(u2.classificationError),
+          "a NEW job family is unclassified with a reason naming the missing rule");
+  assert_(u2.family === "99" && u2.level === 3,
+          "…and keeps what DID parse, so the fix is one registry row away");
+
+  // ── Stem cross-check: warns, never reclassifies ──
+  var odd = dhClassify_("09.I4.3 - Senior Consultant, Service Delivery");
+  assert_(odd.pool === "PS-ENGINEER", "the variant digit still decides the pool");
+  assert_(!!odd.stemWarning, "…but a 'Consultant' stem in PS-ENGINEER raises a warning");
+  assert_(!dhClassify_("09.I4.3 - Senior Engineer I, Service Delivery").stemWarning,
+          "a matching stem raises nothing");
+  assert_(!dhClassify_("09.M5.3 - Manager, Service Delivery").stemWarning,
+          "M-track is never stem-checked — management nouns match no pool regex");
+  assert_(!dhClassify_("07.I3.1 - Support Engineer, Customer Support").stemWarning,
+          "MS-SUPPORT has no stem expectation, so it never warns");
+
+  Logger.log("✅ _test_classification_ passed");
+}
+
+/**
+ * WORKFORCE HEALTH — the computation pipeline (spec v1.1 §5) plus the §8
+ * validation invariants. Every assertion here is a failure mode the spec names:
+ * pooled support, cover on a demand-driven pool, shadow measured on an export
+ * that cannot measure it, NaN reaching render.
+ */
+function _test_workforceHealth_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_workforceHealth_: " + m); }
+  var ISOS = ["2026.W30", "2026.W31"];
+
+  function wk(cap, planned, tracked, off) {
+    return { cap: cap, avail: cap, planned: planned, tracked: tracked,
+             trackedOff: off || 0, availCov: cap, capCov: cap, trackedCov: tracked,
+             billable: 0, nonBillable: 0, nsCov: true, capEst: false };
+  }
+  function person(name, title, weeks) {
+    var c = dhClassify_(title);
+    return { name: name, jobTitle: title, pool: c.pool, band: c.band,
+             backlogRole: c.role, cell: c.cell, subTrack: c.subTrack,
+             disciplineLabel: c.disciplineLabel, stemWarning: c.stemWarning,
+             classificationError: c.classificationError, weeks: weeks || {} };
+  }
+
+  // A consultant, an engineer, a support person, a delivery manager.
+  var people = [
+    person("Cora Consult", "09.I3.1 - Consultant, Professional Services",
+           { "2026.W30": wk(40, 30, 32), "2026.W31": wk(40, 30, 30) }),
+    person("Ewan Engineer", "09.I4.3 - Engineer, Service Delivery",
+           { "2026.W30": wk(40, 36, 20), "2026.W31": wk(40, 36, 20) }),
+    person("Sam Support", "07.I3.1 - Support Engineer, Customer Support",
+           { "2026.W30": wk(40, 38, 38), "2026.W31": wk(40, 38, 38) }),
+    person("Mia Manager", "09.M5.3 - Manager, Service Delivery",
+           { "2026.W30": wk(40, 10, 10), "2026.W31": wk(40, 10, 10) }),
+  ];
+
+  // ── THE CENTRAL CLAIM: support must not blend with consulting ──────────────
+  assert_(people[0].pool === "PS-CONSULT" && people[2].pool === "MS-SUPPORT",
+          "consultant and support person land in DIFFERENT pools");
+  assert_(people[3].pool === "NONE",
+          "the delivery manager GOVERNS — they leave the pool denominator entirely");
+
+  var heads = dhHeadByCell_(people);
+  var cap = dhFoldWeekly_(buildCapacity_(people, ISOS, {}), ISOS, heads);
+  assert_(cap["PS-CONSULT|CORE"].head === 1 && cap["PS-CONSULT|CORE"].grossHrs === 80,
+          "capacity accrues to the pool×band cell");
+  assert_(cap["MS-SUPPORT|CORE"].grossHrs === 80, "support capacity is its OWN cell, not pooled");
+  assert_(!cap["PS-ENGINEER|MGMT"], "the manager contributes to no delivery pool cell");
+  assert_(cap["NONE|MGMT"].head === 1, "…they are counted, in NONE|MGMT — never dropped");
+
+  // Folding a SUBSET of weeks halves the hours but never the head count — a
+  // person is one head across a period, not one per week.
+  var oneWk = dhFoldWeekly_(buildCapacity_(people, ISOS, {}), ["2026.W30"], heads);
+  assert_(oneWk["PS-CONSULT|CORE"].grossHrs === 40, "folding one week takes one week's hours");
+  assert_(oneWk["PS-CONSULT|CORE"].head === 1, "…and the head count does not multiply by weeks");
+
+  // PTO is carried but never subtracted (user decision 2026-08-10).
+  var withPto = [person("P", "09.I3.1 - Consultant, Professional Services",
+                        { "2026.W30": wk(40, 20, 30, 8) })];
+  var capPto = dhFoldWeekly_(buildCapacity_(withPto, ISOS, {}), ISOS, dhHeadByCell_(withPto));
+  assert_(capPto["PS-CONSULT|CORE"].grossHrs === 40, "gross capacity ignores tracked time off");
+  assert_(capPto["PS-CONSULT|CORE"].ptoHrs === 8, "…but the hours are carried for the drill-down");
+
+  // ── Jira side: one bound epic, one unbound, one with no Components column ───
+  var epics = [
+    { key: "DEL-1", isEpic: true, srsoComponent: true, estSec: 360000, spentSec: 0,
+      statusCategory: "In Progress", resolved: null, epicKey: "", parentKey: "" },
+    { key: "DEL-2", isEpic: true, srsoComponent: false, estSec: 180000, spentSec: 0,
+      statusCategory: "In Progress", resolved: null, epicKey: "", parentKey: "" },
+    { key: "DEL-3", isEpic: true, srsoComponent: null, estSec: 0, spentSec: 0,
+      statusCategory: "In Progress", resolved: null, epicKey: "", parentKey: "" },
+    // DEL-4 / DEL-5: nobody has ever logged to these, so no pool has a history
+    // claim on them. They are the UNROUTED case — work no pool can plan.
+    { key: "DEL-4", isEpic: true, srsoComponent: true, estSec: 180000, spentSec: 0,
+      statusCategory: "In Progress", resolved: null, epicKey: "", parentKey: "" },
+    { key: "DEL-5", isEpic: true, srsoComponent: true, estSec: 0, spentSec: 0,
+      statusCategory: "In Progress", resolved: null, epicKey: "", parentKey: "" },
+  ];
+  var stories = [
+    { key: "DEL-10", isEpic: false, epicKey: "DEL-1", parentKey: "", srsoComponent: true },
+    { key: "DEL-20", isEpic: false, epicKey: "DEL-2", parentKey: "", srsoComponent: false },
+    { key: "DEL-30", isEpic: false, epicKey: "DEL-3", parentKey: "", srsoComponent: null },
+    { key: "DEL-40", isEpic: false, epicKey: "", parentKey: "DEL-10", srsoComponent: true },
+    { key: "DEL-99", isEpic: false, epicKey: "", parentKey: "", srsoComponent: true },
+  ];
+  var jira = { issues: epics.concat(stories), epics: epics };
+  var idx = dhEpicIndex_(jira.issues);
+  assert_(idx.epicFor("DEL-10") === "DEL-1", "a story resolves to its epic");
+  assert_(idx.epicFor("DEL-40") === "DEL-1", "a sub-task walks story → epic");
+  assert_(idx.epicFor("DEL-99") === "", "an orphan resolves to no epic");
+  assert_(idx.epicFor("DEL-1") === "DEL-1", "an epic is its own epic");
+  assert_(idx.epicFor("") === "" && idx.epicFor(null) === "", "blank input never throws");
+  // A cycle must degrade, not hang — this runs inside a GAS execution timeout.
+  var cyc = dhEpicIndex_([{ key: "A", isEpic: false, epicKey: "B" },
+                          { key: "B", isEpic: false, epicKey: "A" }]);
+  assert_(cyc.epicFor("A") === "", "a mis-exported parent cycle returns no epic instead of hanging");
+
+  var resolve = function (n) { return n; };
+  function trow(user, issue, epicKey, hrs, key) {
+    var w = {}; w["2026.W30"] = hrs;
+    return { user: user, key: key || "DEL", issue: issue, epicKey: epicKey, parentKey: "",
+             hasIssueCol: true, hasEpicCol: true, weekHours: w };
+  }
+  var planned = [trow("Cora Consult", "DEL-10", "DEL-1", 30)];
+  var byName = {}; people.forEach(function (p) { byName[p.name] = p; });
+  // The weekly map is shared by every pass, and dhCommittedEpics_ is one of
+  // them — it writes the matchable-planned-hours denominator per cell per week.
+  var allWeekly = {};
+  var committed = dhCommittedEpics_(planned, idx, ISOS, resolve, byName, allWeekly);
+  assert_(committed.set["DEL-1"] === 1, "an issue-level plan commits its epic");
+  assert_(committed.coverage === 1, "…and plan-issue coverage is 100% when every plan names an issue");
+
+  // A project-level plan names no issue — coverage must fall, NOT be assumed.
+  var mixedPlans = planned.concat([trow("Cora Consult", "", "", 10)]);
+  var mixedCommitted = dhCommittedEpics_(mixedPlans, idx, ISOS, resolve, byName);
+  assert_(Math.abs(mixedCommitted.coverage - 0.75) < 1e-9,
+          "a project-level plan lowers plan-issue coverage rather than reading as uncommitted");
+  assert_(committed.byPool["PS-CONSULT"]["DEL-1"] === 1,
+          "the plan commits the PLANNED person's pool");
+  assert_(!committed.byPool["PS-ENGINEER"],
+          "…and only that pool — commitment is never global");
+
+  var tracked = [
+    trow("Cora Consult", "DEL-10", "DEL-1", 20),   // committed
+    trow("Cora Consult", "DEL-20", "DEL-2", 6),    // no-srso
+    trow("Cora Consult", "DEL-99", "", 4),         // no-epic
+    trow("Ewan Engineer", "DEL-10", "DEL-1", 10),  // committed epic, but HE was not planned on it
+    trow("Sam Support", "DEL-30", "DEL-3", 12),    // Components column absent → unmeasured
+  ];
+  var conWeekly = buildConsumption_(tracked, resolve, byName, idx, committed, ISOS, {});
+  var con = dhFoldWeekly_(conWeekly, ISOS, {});
+  var cc = con["PS-CONSULT|CORE"];
+  assert_(cc.trackedCommittedHrs === 20, "hours on a bound, planned epic are committed");
+  assert_(cc.shadowReasons["no-srso"] === 6, "an epic with no SRSO component is no-srso shadow");
+  assert_(cc.shadowReasons["no-epic"] === 4, "an orphan issue is no-epic shadow");
+  assert_(cc.trackedShadowHrs === 10, "shadow is the sum of its reasons");
+  var ec = con["PS-ENGINEER|CORE"];
+  assert_(ec.shadowReasons["not-committed"] === 10,
+          "a bound epic nobody planned this person onto is not-committed shadow");
+  var sc = con["MS-SUPPORT|CORE"];
+  assert_(sc.unmeasuredHrs === 12 && sc.trackedShadowHrs === 0,
+          "an ABSENT Components column is unmeasured, NEVER shadow — the trap that reads ~100%");
+
+  // §8: tracked splits exactly, on every cell.
+  Object.keys(con).forEach(function (k) {
+    var c = con[k];
+    assert_(Math.abs(c.trackedCommittedHrs + c.trackedShadowHrs + c.unmeasuredHrs
+                     - c.trackedTotalHrs) < 1e-9, "tracked splits exactly for " + k);
+  });
+
+  // Time off never enters the shadow denominator.
+  var offRow = trow("Cora Consult", "", "", 8, "NETSUITE-PTO");
+  var conOff = buildConsumption_([offRow], resolve, byName, idx, committed, ISOS, {});
+  assert_(!conOff["PS-CONSULT|CORE"], "a NETSUITE time-off row contributes no consumption at all");
+
+  // ── requiredPool and UNROUTED ──────────────────────────────────────────────
+  var dom = dhDominantPoolByEpic_(tracked, resolve, byName, idx, ISOS);
+  assert_(dom["DEL-1"].pool === "PS-CONSULT",
+          "the epic routes to the pool that logged the most hours (20 vs 10)");
+  assert_(dom["DEL-3"].pool === "MS-SUPPORT", "…and support's epic routes to support");
+  assert_(!dom["DEL-4"], "an epic nobody has logged to has no history claim");
+  var backlog = buildBacklog_(epics, dom, {});
+  // DEL-1 (100h) + DEL-2 (50h) both route to PS-CONSULT on measured history.
+  assert_(backlog["PS-CONSULT"].backlogHrs === 150, "history routes both worked epics to PS-CONSULT");
+  assert_(backlog["MS-SUPPORT"].epicCount === 1, "support's backlog is its own, never pooled");
+  assert_(!!backlog["UNROUTED"], "epics nobody has worked land in UNROUTED");
+  assert_(backlog["UNROUTED"].epicCount === 2, "…both of them, counted, never distributed");
+  // Estimate grossing-up: UNROUTED holds DEL-4 (estimated 50h) and DEL-5 (not).
+  assert_(backlog["UNROUTED"].backlogHrs === 50, "raw remaining is the lower bound");
+  assert_(backlog["UNROUTED"].estimateCoverage === 0.5, "estimate coverage is measured per pool");
+  assert_(Math.abs(backlog["UNROUTED"].backlogAdjHrs - 100) < 1e-9,
+          "50h raw at 50% estimate coverage grosses up to 100h — publishing raw understates by half");
+  // Remaining is derived as original − spent; an overrun cannot go negative.
+  var overrun = buildBacklog_([{ key: "X-1", isEpic: true, estSec: 3600, spentSec: 999999,
+                                 statusCategory: "In Progress", resolved: null }], {}, {});
+  assert_(overrun["UNROUTED"].backlogHrs === 0, "an overrun epic reports 0 remaining, never negative");
+  var resolvedEpic = [{ key: "DEL-9", isEpic: true, srsoComponent: true, estSec: 3600,
+                        spentSec: 0, statusCategory: "Done", resolved: "2026-01-01" }];
+  assert_(Object.keys(buildBacklog_(resolvedEpic, {}, {})).length === 0,
+          "a resolved epic is not open backlog");
+
+  // ── Reconcile ──────────────────────────────────────────────────────────────
+  // Fold every pass through ONE weekly map, exactly as the assembler does.
+  // dhCommittedEpics_ already wrote its matchable hours into allWeekly above.
+  buildCapacity_(people, ISOS, allWeekly);
+  buildCommitment_(people, ISOS, allWeekly);
+  buildConsumption_(tracked, resolve, byName, idx, committed, ISOS, allWeekly);
+  var rec = reconcileWorkforce_(dhFoldWeekly_(allWeekly, ISOS, heads), backlog, 2);
+  var byCell = {};
+  rec.cells.forEach(function (c) { byCell[c.cell] = c; });
+
+  var consult = byCell["PS-CONSULT|CORE"];
+  assert_(consult.committedHrs === 60 && consult.grossHrs === 80, "commitment and capacity meet");
+  assert_(Math.abs(consult.headroomHrs - 20) < 1e-9, "headroom = capacity − commitment");
+  assert_(Math.abs(consult.headroomPct - 0.25) < 1e-9, "…as a share of ALL planned hours");
+  // ── The MATCHABLE denominator ─────────────────────────────────────────────
+  // Headroom uses every planned hour (all of them consume capacity). Fidelity
+  // uses only the hours that name an issue and can therefore be matched.
+  assert_(Math.abs(consult.matchableCommittedHrs - 30) < 1e-9,
+          "only the issue-level plan hours are matchable");
+  assert_(Math.abs(consult.executionGapHrs - 10) < 1e-9,
+          "execution gap is matchable − delivered, not all-planned − delivered");
+  assert_(Math.abs(consult.commitmentFidelity - 20 / 30) < 1e-9,
+          "fidelity divides by the matchable hours, so a project-level plan cannot deflate it");
+  assert_(consult.capacityTruth === null,
+          "capacity truth is NOT MEASURED (null), never a forced 1.0 — there is no absence feed");
+  assert_(consult.coverWeeks !== null, "a consuming pool reports cover");
+
+  var support = byCell["MS-SUPPORT|CORE"];
+  assert_(support.coverWeeks === null,
+          "a DEMAND-DRIVEN pool reports null cover — n/a, never 0 (the most dangerous false read)");
+  assert_(support.constraintIndex === null, "…and no constraint index either");
+  assert_(support.commitmentFidelity === null,
+          "every one of its tracked hours was UNMEASURABLE, so fidelity is null — " +
+          "a raw 0% would flag a plan-vs-logged gap at a team that may have delivered everything");
+  assert_(support.actionState === "DEMAND-DRIVEN",
+          "…and its own descriptive state, not a false RECONCILE");
+  // A cell whose plans COULD have matched but logged nothing against them is a
+  // different case: that zero IS a measurement and still surfaces to reconcile.
+  var silent = reconcileWorkforce_(
+    { "PS-CONSULT|CORE": dhCell_({}, "a", { head: 1, grossHrs: 40, committedHrs: 40,
+                                            matchableCommittedHrs: 40 }) },
+    {}, 1);
+  assert_(silent.cells[0].commitmentFidelity === 0,
+          "a matchable plan with zero hours logged against it is 0% fidelity, not null");
+  assert_(silent.cells[0].actionState === "RECONCILE", "…and that does surface as RECONCILE");
+
+  // ── THE ARTEFACT THIS DENOMINATOR EXISTS TO KILL ──────────────────────────
+  // A pool that plans entirely at PROJECT level names no issue, so nothing can
+  // ever be matched. Under the old all-planned denominator this read ~0%
+  // fidelity and painted RECONCILE — that was the shape of the pool's planning
+  // being reported as a delivery failure. It is now null: not measurable.
+  var projectPlanned = reconcileWorkforce_(
+    { "PS-ENGINEER|CORE": dhCell_({}, "b", { head: 8, grossHrs: 320, committedHrs: 300,
+                                             matchableCommittedHrs: 0,
+                                             trackedTotalHrs: 280, trackedShadowHrs: 280 }) },
+    {}, 1);
+  assert_(projectPlanned.cells[0].commitmentFidelity === null,
+          "a pool whose plans are all project-level reports NULL fidelity, not 0% — " +
+          "there is nothing it could have been matched against");
+  assert_(projectPlanned.cells[0].planMatchable === 0,
+          "…and planMatchable states WHY, so the n/a is explainable rather than mysterious");
+  assert_(projectPlanned.cells[0].headroomHrs === 20,
+          "…while headroom still counts every planned hour — all of them consume capacity");
+
+  // §8: no NaN reaches render, on any cell, on any numeric field.
+  rec.cells.forEach(function (c) {
+    Object.keys(c).forEach(function (k) {
+      var v = c[k];
+      assert_(typeof v !== "number" || isFinite(v), "no NaN/Infinity in " + c.cell + "." + k);
+    });
+  });
+
+  // §8: pool totals equal headcount.
+  var totalHead = rec.cells.reduce(function (a, c) { return a + c.head; }, 0);
+  assert_(totalHead === people.length, "every person is in exactly one cell");
+
+  // §8: deployable ≤ gross.
+  rec.cells.forEach(function (c) {
+    assert_(c.deployableHrs <= c.grossHrs + 1e-9, "deployable never exceeds gross for " + c.cell);
+  });
+
+  // ── State: DESCRIPTIVE, never directive (user decision 2026-08-10) ─────────
+  // The spec's INTERVENE / SELL / HIRE / REASSESS / EXECUTE are instructions,
+  // and three of them are alarms. These say where the cell SITS.
+  assert_(dhActionState_({ commitmentFidelity: 0.5, shadowRatio: 0, coverWeeks: 8,
+                           headroomPct: 0.2, cfg: DH_POOLS_["PS-CONSULT"] }) === "RECONCILE",
+          "a plan-vs-logged gap outranks the capacity 2x2 — it is what to check first");
+  assert_(dhActionState_({ commitmentFidelity: 1, shadowRatio: 0.4, coverWeeks: 8,
+                           headroomPct: 0.2, cfg: DH_POOLS_["PS-CONSULT"] }) === "RECONCILE",
+          "work landing outside the planned epics does too");
+  assert_(dhActionState_({ commitmentFidelity: 1, shadowRatio: 0, coverWeeks: 2,
+                           headroomPct: 0.5, cfg: DH_POOLS_["PS-CONSULT"] }) === "HEADROOM",
+          "thin backlog + real room = HEADROOM — a description, not an instruction to sell");
+  assert_(dhActionState_({ commitmentFidelity: 1, shadowRatio: 0, coverWeeks: 12,
+                           headroomPct: 0.02, cfg: DH_POOLS_["PS-CONSULT"] }) === "AT CAPACITY",
+          "deep backlog + no room = AT CAPACITY — not an instruction to hire");
+  assert_(dhActionState_({ commitmentFidelity: 1, shadowRatio: 0, coverWeeks: 2,
+                           headroomPct: 0.02, cfg: DH_POOLS_["PS-CONSULT"] }) === "REVIEW",
+          "thin backlog + no room = REVIEW");
+  assert_(dhActionState_({ commitmentFidelity: 1, shadowRatio: 0, coverWeeks: 7,
+                           headroomPct: 0.2, cfg: DH_POOLS_["PS-CONSULT"] }) === "STEADY",
+          "inside its own envelope = STEADY");
+  // A NULL signal must never fire a state. safeDiv-returns-0 would put
+  // RECONCILE on every pool that simply has no plan.
+  assert_(dhActionState_({ commitmentFidelity: null, shadowRatio: null, coverWeeks: 7,
+                           headroomPct: 0.2, cfg: DH_POOLS_["PS-CONSULT"] }) === "STEADY",
+          "an UNMEASURED signal is not a BREACHED signal");
+
+  // ── The Read reports, it does not diagnose ────────────────────────────────
+  // Pinned because the regression is invisible: a sentence that reads well and
+  // asserts a cause the data cannot support looks exactly like a good one.
+  var gapRead = dhWorkforceRead_({ commitmentFidelity: 0.5, committedHrs: 1600, matchableCommittedHrs: 1399,
+    trackedCommittedHrs: 700, executionGapHrs: 699, shadowRatio: 0, shadowReasons: {},
+    coverWeeks: null, estimateCoverage: null, constraintIndex: null, head: 20 });
+  assert_(/1,399h planned at issue level/.test(gapRead) && /700h logged/.test(gapRead),
+          "the plan-vs-logged Read states BOTH sides, so the gap can be judged");
+  assert_(!/ahead of reality|not delivered|find the blocker|blocker/i.test(gapRead),
+          "…and asserts no cause: plans and worklogs are different grains, and a gap has " +
+          "ordinary explanations before it has an alarming one");
+  assert_(/reconciliation signal/.test(gapRead), "…it is named as a signal, explicitly");
+  var outsideRead = dhWorkforceRead_({ commitmentFidelity: 1, shadowRatio: 0.4,
+    shadowReasons: { "no-epic": 1, "no-srso": 9 }, coverWeeks: null,
+    estimateCoverage: null, constraintIndex: null, head: 40 });
+  assert_(/Delivered work/.test(outsideRead),
+          "work outside the plan is stated as DELIVERED work with a paper-trail gap");
+  assert_(!/invisible|cannot see/i.test(outsideRead), "…not as demand nobody can see");
+  var smallRead = dhWorkforceRead_({ commitmentFidelity: 1, shadowRatio: 0,
+    coverWeeks: null, estimateCoverage: null, constraintIndex: null, head: 2 });
+  assert_(/2 people in this cell/.test(smallRead) && !/risk|succession/i.test(smallRead),
+          "a small cell is described as a small SAMPLE, not labelled a risk");
+
+  // dhSafeDiv_ is the reason that holds.
+  assert_(dhSafeDiv_(5, 0) === null, "zero denominator → null, not 0");
+  assert_(dhSafeDiv_(0, 5) === 0, "a real zero is still zero");
+
+  // ── Read: severity order, structural risk NOT in the chain ─────────────────
+  assert_(/planned at issue level/.test(dhWorkforceRead_({ commitmentFidelity: 0.5, committedHrs: 100, matchableCommittedHrs: 100,
+    trackedCommittedHrs: 40, executionGapHrs: 60,
+    shadowRatio: 0.9, shadowReasons: {}, coverWeeks: null, estimateCoverage: null,
+    constraintIndex: null, head: 1 })), "the plan-vs-logged line outranks the outside-plan one");
+  var shadowRead = dhWorkforceRead_({ commitmentFidelity: 1, shadowRatio: 0.5,
+    shadowReasons: { "no-epic": 1, "no-srso": 9 }, coverWeeks: null,
+    estimateCoverage: null, constraintIndex: null, head: 40 });
+  assert_(/no-srso/.test(shadowRead) && /Finance/.test(shadowRead),
+          "the outside-plan Read names the top reason AND whose desk it sits on");
+  assert_(/every number on this row moves on one individual/.test(
+    dhWorkforceRead_({ commitmentFidelity: 1, shadowRatio: 0, coverWeeks: null,
+      estimateCoverage: null, constraintIndex: null, head: 2 })),
+          "a small cell is described as a small sample, not graded as a risk");
+  assert_(/Nothing notable/.test(dhWorkforceRead_({ commitmentFidelity: 1, shadowRatio: 0,
+    coverWeeks: null, estimateCoverage: null, constraintIndex: null, head: 40 })),
+          "an unremarkable pool says so plainly — no manufactured finding");
+
+  // ── Assembly, scope facts, and the consumers-only denominator ──────────────
+  var wf = buildWorkforceHealth_(people, tracked, planned, jira, resolve, ISOS, 4);
+  assert_(wf.scope.population === 4, "scope states the population");
+  // TWO consumers, not three: support SUSTAINS contracted work, it does not
+  // consume project backlog. This gap between "population" and "consumers" is
+  // the entire §1.1 claim, in one assertion.
+  assert_(wf.scope.consumers === 2, "…and the consumer count separately — support is NOT a consumer");
+  assert_(wf.scope.unclassified === 0, "unclassified is reported even at zero");
+  assert_(wf.scope.absentPools.indexOf("PMO") !== -1,
+          "pools this population cannot contain are named, not silently missing");
+  assert_(/of 2 backlog consumers/.test(wf.consumersOnly.denominatorLabel),
+          "the consumers-only figure ships WITH its denominator");
+  assert_(wf.consumersOnly.head === 2, "consumers-only counts consuming pools only");
+  // The blended reading this replaces would have divided across all four heads.
+  assert_(wf.consumersOnly.head < wf.scope.population,
+          "the honest denominator is SMALLER than the population — that gap is the whole point");
+  assert_(wf.coverage.capacityTruthMeasured === false && wf.coverage.genericPlansMeasured === false,
+          "the two things this deployment cannot measure say so, rather than defaulting to 0");
+  assert_(wf.disciplines.length > 0 && wf.disciplines[0].role === "CONSUMER",
+          "the discipline section reads consumers-first");
+  var discHead = wf.disciplines.reduce(function (a, r) { return a + r.head; }, 0);
+  assert_(discHead === 4, "discipline labels roll up to the whole population — no second truth");
+
+  // Population drift alarm.
+  assert_(wf.scope.drift.alert === false, "a stable population raises no drift alarm");
+  var drifted = buildWorkforceHealth_(people, tracked, planned, jira, resolve, ISOS, 10);
+  assert_(drifted.scope.drift.alert === true,
+          "a >5% population move raises the alarm — membership change is not performance change");
+
+  // An unclassified person is visible and holds no pool.
+  var mystery = people.concat([person("Xavier Unknown", "Consultant", {})]);
+  var wfx = buildWorkforceHealth_(mystery, [], [], jira, resolve, ISOS, null);
+  assert_(wfx.scope.unclassified === 1, "a new job code surfaces as unclassified");
+  assert_(wfx.scope.unclassifiedReasons[0].reason, "…with a stated reason, not a silent drop");
+  assert_(wfx.scope.drift === null, "no prior population → no drift claim, rather than a false one");
+
+  // Empty inputs never throw and never invent numbers.
+  var wfEmpty = buildWorkforceHealth_([], [], [], { issues: [], epics: [] }, resolve, ISOS, null);
+  assert_(wfEmpty.cells.length === 0 && wfEmpty.scope.population === 0, "an empty population is clean");
+  assert_(wfEmpty.consumersOnly.headroomPct === null, "…and reports null headroom, never 0%");
+
+  // ── Payload trim: smaller bytes, identical folded totals ───────────────────
+  var rawWeekly = {};
+  buildCapacity_(people, ISOS, rawWeekly);
+  buildCommitment_(people, ISOS, rawWeekly);
+  buildConsumption_(tracked, resolve, byName, idx, committed, ISOS, rawWeekly);
+  // An all-zero bucket: dhWeekCell_ seeds every field at 0 and we add nothing.
+  dhWeekCell_(rawWeekly, "EMPTY|CORE", "2026.W30");
+  var trimmed = dhTrimWeekly_(rawWeekly);
+  assert_(!trimmed["EMPTY|CORE"], "a cell whose every week is all-zero drops out of the payload");
+  var foldRaw = dhFoldWeekly_(rawWeekly, ISOS, heads);
+  var foldTrim = dhFoldWeekly_(trimmed, ISOS, heads);
+  ["PS-CONSULT|CORE", "PS-ENGINEER|CORE", "MS-SUPPORT|CORE"].forEach(function (k) {
+    ["grossHrs", "committedHrs", "trackedTotalHrs", "trackedCommittedHrs",
+     "trackedShadowHrs", "unmeasuredHrs"].forEach(function (f) {
+      assert_(Math.abs(foldRaw[k][f] - foldTrim[k][f]) < 0.02,
+              "trimming does not move " + k + "." + f + " — " +
+              foldRaw[k][f] + " vs " + foldTrim[k][f]);
+    });
+  });
+  assert_(JSON.stringify(trimmed).length < JSON.stringify(rawWeekly).length,
+          "…and it is genuinely smaller on the wire");
+
+  Logger.log("✅ _test_workforceHealth_ passed");
 }
 

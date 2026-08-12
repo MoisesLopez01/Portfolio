@@ -147,6 +147,7 @@ enforced inside `switchView_()`, not just by hiding a tab.
 |---|---|---|
 | 📊 **Executive** | "Are we on target, and where aren't we?" | Tiered KPI strip — 4 hero cards + 5 compact flow tiles — → one **comparison chart** (Region/Team/PM/Job family, now including Lead Time and Throughput chips) → **people-signals pulse** (margin-gated, counts only) → **data-trust strip** (org-wide). The 30-second read. |
 | 🎯 **Actions** | "Who and what needs action?" | **Signals roster** (every person, job-title tag, Due/Estimate/Logged/Hours RAG columns, drill-downs) → 🧬 **field-fill matrix** (by issue type) → **gaps queue**. Admin + viewer only. |
+| 🧭 **Workforce** | "Which pool is out of room, and which has room to sell?" | **Scope banner** → **pool grid** (one row per pool × band, with an action state and a Read sentence) → **consumers-only summary** → **shadow breakdown by reason** → **unrouted backlog** → **discipline section**. Admin + viewer only. Added 2026-08-10. |
 | 🔒 **Access** | — | Admin only. |
 
 The filter row sits **above** the tabs and scopes every view — there are no per-chart filters.
@@ -174,6 +175,138 @@ job is answered by something on Executive or Actions:
   moved onto **Actions** unchanged (see "Actions tab: 🧬 field-fill matrix and gaps queue" below).
   Its org-wide fill-vs-gate headline survives as the Executive **data-trust strip** instead of a
   fifth tab (see "Data-trust strip" below).
+
+## Workforce Health — capacity is not fungible (2026-08-10)
+
+Spec: `docs/superpowers/specs/2026-08-10-dh-workforce-health-design.md`.
+Business source: *Workforce Health — Implementation Spec v1.1* (Workforce Planning, 2026.W32).
+
+**The problem this fixes.** Every capacity figure this dashboard published — utilisation, planned
+coverage, weeks-to-clear, recoverable hours — was computed as **one number** across a population
+that mixes JF007 *Managed Services & Support* with JF009 *Service Delivery*. Managed Services
+capacity is contracted and recurring; it is never drawn from the project backlog. Blending the two
+made the org read as substantially more available than it is **and mathematically guaranteed that
+the pool actually out of room could not be seen** — it was always averaged against the pool that
+was fine.
+
+**The reporting grain is `pool × band`.** Not person, not department, not company. A support
+engineer cannot absorb a consulting epic at any level, and an I3 cannot absorb an I5's epic.
+
+### Classification keys on the job code, never on the title text
+
+```
+09.I4.3  -  Senior Engineer I,  Service Delivery
+│  │ │ │                        └── label ────┘  ← display only
+│  │ │ └── VARIANT  ← THE KEY (with family)
+│  │ └──── LEVEL    ← level band
+│  └────── TRACK    ← the management override
+└───────── FAMILY
+```
+
+`dhParseTitle_` → `dhClassify_` resolve every person to a **backlog role**, a **deployment pool**
+and a **level band**. The registries (`DH_SUB_TRACK_`, `DH_BY_DISCIPLINE_`, `DH_ENABLER_FAMILIES_`,
+`DH_MGMT_GOVERNS_`) are the only thing to edit when a job code appears or an org changes.
+
+**Bands** are `JUNIOR` (I1–I2) · `CORE` (I3–I4) · `SENIOR` (I5+) · `MGMT` (M-track) · `UNKNOWN`
+(no level token). These labels are **this model's, not the company's ladder** — the job architecture
+speaks in level tokens — so the grid prints the level range beside every band. The band is in the
+grain because an I3 cannot absorb an I5's epic: it is a capability boundary, not a status label.
+
+**Crew are classified by employment type, not job code** (2026-08-10). Contractors hold no
+job-architecture code, so the parser correctly fails on them; `isCrew` is checked first and they
+land in the `CREW` pool. `CREW` is demand-driven — capacity is scaled *to* the work rather than held
+against it, so cover renders `n/a` and unbooked crew is not counted as sellable headroom.
+
+Three reasons the *discipline string* cannot be the key, all measured on the live catalogue: it
+**splits** (`09|Service Delivery` is 21 `.3` engineers plus 15 `.1` consultants — two pools that
+cannot substitute), it **collides** (`Delivery` means CONSUMER in family 07 and GOVERNOR in family
+15), and it **fragments** (family 07 spends three strings on what `.1` captures as one sub-track).
+It is also free text, so an HRIS rename would silently break the join.
+
+The parser is **deliberately tolerant** — optional separator, case-insensitive track letter,
+trailing parentheticals stripped. A strict regex drops real rows, and a dropped row surfaces as an
+UNCLASSIFIED person, which reads as a governance failure rather than the parser bug it is.
+`dhStemWarning` cross-checks the title stem against the pool and **warns without reclassifying**.
+
+### Nothing new had to be exported
+
+Three columns were already being written and simply never read: `Issue`, `Epic Key` and
+`Parent Key` on Tempo Tracked Time, and the *values* of `Epic Key` / `Parent Key` on Jira Raw
+(previously collapsed into the `linked` boolean and discarded). Reading them is what makes the
+shadow split and historical pool-routing possible. Same shape as the SRSO Components discovery.
+
+### Two decisions that deviate, on purpose
+
+- **PTO is not subtracted and `capacityTruth` is not measured.** There is no absence feed; the only
+  proxy is Tempo-tracked time off, which measures what people *logged*, not when they were away —
+  so subtracting it would make the best-tracking teams look least available. Capacity is gross
+  scheduled hours and `capacityTruth` renders **null**, never a forced 100%.
+- **Managers left the pools** (`DH_MGMT_GOVERNS_`, families 07/09/18). They govern backlog rather
+  than consume it. **This moved every published capacity rate** — registry `4.0`, schema v31, and
+  every affected trend line carries the `✎ definition changed` marker at 2026-08-10.
+
+### Who has the hours — the pool grid drill-down (2026-08-10)
+
+Asked for directly: *"show capacity by role level so I can see exactly **who** has available hours,
+not just the total available hours."* Clicking any band row expands a person list —
+name + job title, **capacity**, **planned**, **available** (capacity − planned) for the selected
+period, most-available first. `wfCellPeopleRow_()` / `wfPersonHours_()` in `Dashboard.html`.
+
+- **Client-side, no payload change and no round-trip.** The rows come from the same person-week
+  grain the roster's Plan column uses (`planFor1_`), and membership is an exact match on the cell's
+  own `pool|band` key — the same key the payload uses, so a person can never appear under a band
+  they are not in.
+- **Planned hours are capped at each person's own capacity.** A 60h plan on a 40h week is an
+  over-plan, not extra hours to sell.
+- **No capacity scheduled renders "—", never "0h available".** Nobody is free for work in a week
+  they are not scheduled to work.
+- **🌱 ramping and 🏖 on-leave people are listed with their hours but held out of the sellable
+  subtotal** — the same carve the recoverable-hours pulse applies. Hiding them would make a team
+  look smaller than it is; counting their spare capacity as sellable would send Sales after hours
+  that are not there. The panel says so, because it is why the subtotal can be smaller than the
+  cell's headroom.
+- The cell row above stays the authority for the totals; the subtotal is printed so the two can be
+  compared rather than assumed equal.
+
+### Rules the view enforces
+
+- **Never a single blended availability number.** The consumers-only figure is the honest one and
+  it always ships with its denominator — *"32% available (of 63 consumers)"* is a fact,
+  *"32% available"* is a rumour. The panel refuses a company-wide equivalent explicitly.
+- **`null` renders `n/a`, never `0`.** For a demand-driven pool a zero would read as "no work
+  left" for something that has no backlog *by design*.
+- **Unclassified and unrouted counts render at zero.** A field that only appears when it is broken
+  gets ignored when it breaks.
+- **Measurability is separated from the verdict.** Hours nobody could classify are `unmeasured`,
+  not shadow, and leave the shadow denominator entirely — otherwise an export missing a column
+  reads as ~100% shadow and sends the delivery org chasing an artefact. The same rule makes
+  `commitmentFidelity` null rather than 0% when nothing in a cell was classifiable.
+- **Signals, not verdicts** (user decision 2026-08-10). The source spec's states are
+  *instructions* — INTERVENE / SELL / HIRE / REASSESS / EXECUTE — and three of them are alarms.
+  On a business delivering week over week with a healthy backlog, an INTERVENE chip is simply
+  wrong: it asserts a problem from a signal with ordinary explanations, and a surface that cries
+  wolf on a good week is ignored on a bad one. The states here describe **where a cell sits** —
+  `STEADY` · `HEADROOM` · `AT CAPACITY` · `REVIEW` · `RECONCILE` · `DEMAND-DRIVEN` — and the Read
+  sentence states **what was measured against what denominator**, never a cause. Nothing on this
+  tab is painted red; amber means "worth a look". Red stays on the Executive cards, which have
+  ratified targets to fail against.
+- Concretely: a plan-versus-logged gap is reported as *"1,399h planned, 700h logged against planned
+  epics (50%) — plans and worklogs are different grains and rarely tie exactly"*, not as
+  *"allocations are ahead of reality — find the blocker"*. Plans are coarser than worklogs,
+  logging lags, the window can include planned future weeks, and only issue-level plans resolve to
+  an epic at all. `render-smoke.js` pins the absence of the alarm vocabulary, because the
+  regression is invisible on review — a confident sentence reads like a good one.
+- **A null signal never fires a state.** The source spec's own `safeDiv` returns 0 on a zero
+  denominator, which would put `RECONCILE` on every pool that simply has no plan.
+
+### Client/server twins
+
+The payload ships **per-cell-per-week** buckets (`workforce.weekly`) so the period picker re-slices
+without a round-trip. `dhFoldWeekly_`/`reconcileWorkforce_`/`dhActionState_`/`dhWorkforceRead_` have
+client copies (`wfFold_`/`wfReconcile_`/`wfActionState_`/`wfRead_`); `_test_workforceParity_` walks
+both over seven window shapes and asserts the config tables are identical. The two fields that must
+never diverge are the **state chip** and the **Read** — a split there means the grid says HEADROOM
+while the payload says RECONCILE.
 
 ## Scope tags: PERIOD / SNAP / ORG
 
@@ -344,17 +477,55 @@ survives as the `N h recoverable` clause on the Executive people-signals pulse.
 One row per person in the filtered population — the roster that replaced the retired People grid.
 `renderRoster_()` / `ROSTER_COLS_` in `Dashboard.html`, graded by `gradeSignal_()` off
 `personSignalRows_()`, backed server-side by `personHygieneBuckets_()` (schema v22; `loggedN` added
-in v24).
+in v24, `dueN` in v32).
 
 | Column | What it shows | Scope tag |
 |---|---|---|
 | Person | name + job-title tag (grade code stripped for reading, full roster string in the tooltip/CSV — inherited from the retired headroom table, user 2026-08-05), click to expand the drill-down row | — |
-| n | issue count behind this row's signals | — |
-| Due date | % of this person's issues carrying a due date, RAG-graded against the On-Time metric's own coverage gate | `SNAP` (Open) / `PERIOD` (Resolved) |
+| **Open issues** (Resolved view: **Resolved**) | issue count behind this row's signals — the **widest** population on the row, epics included. Was a bare `n` until 2026-08-10; a letter with no noun is what let readers conclude the dashboard had lost the difference between it and the drill-down. Not a grade. | — |
+| Due date | % carrying a due date, RAG-graded against the On-Time metric's own coverage gate. **Denominator is STARTED work only** (`dueN`, schema v32) — see below | `SNAP` (Open) / `PERIOD` (Resolved) |
 | Estimate | % carrying an original estimate, graded against the Forecast gate | same |
 | Logged | % carrying logged time, graded against the Forecast gate. **Denominator is STARTED work only** (`loggedN`) — see below | same |
 | Hours | billable-share mini-bar (billable / non-billable / idle) for the analysis period, most-billable first | `PERIOD` always — worklogs are period-shaped even when Due/Estimate/Logged are reading a snapshot |
 
+- **The count column is NAMED, and it RECONCILES WITH ITS OWN DRILL-DOWN** (schema v35, user
+  reports 2026-08-10: *"n = 79 but when you expand we show only 1 ticket in progress — where do the
+  rest go?"* and *"we need to properly name or explain what N column means"*).
+  The header now reads **Open issues** (or **Resolved** on the other population), the lead paragraph
+  says it is a count and not a grade, and the CSV ships it as `Issues (all incl. epics)` with its
+  three parts beside it — a spreadsheet has no tooltip to rescue a bare letter. Three exclusions stood
+  between that column and its list, and nothing on screen named any of them, so the only available
+  reading was that the dashboard had lost 78 tickets. The drill-down now closes the arithmetic:
+
+  ```
+  n  =  listed  +  ignoredN            +  epicsN
+        (shown)   (unstarted, undated)   (epics — they roll up their children)
+  ```
+
+  · **`n` is deliberately the widest population**: every open issue attributed to the person,
+  **epics included**, because an open epic with no estimate is the single biggest lever the hygiene
+  matrix exists to expose. The list excludes epics by design — listing an epic *and* its children
+  double-counts the load.
+  · Every cell beside `n` divides by something **narrower** (`dueN`, `loggedN`, `billN`), which the
+  column's own tooltip now says. Three different denominators on one row is legitimate and was
+  completely invisible.
+  · The breakdown prints **only when the numbers disagree** — a reconciliation on a row that
+  already reconciles is noise. Clauses that are zero are left out entirely.
+  · **Collapsed** (`<details class="reconBox">`, v36): the summary line carries the arithmetic
+  (*"12 open items behind Open issues — 2 listed · 7 ignored · 3 epics"*) and the reasoning sits
+  behind the disclosure. It is also **width-capped at 96ch** — an uncapped sentence in a `colspan`
+  cell sets the whole roster table's width, and a roster you have to scroll sideways is unreadable.
+- **The drill-down says what each ticket BELONGS TO** (schema v36, manager request 2026-08-10:
+  *"epic name along with the ticket assigned so they get a quick view on data relation"*). A
+  **Belongs to** column carries the epic **name** (readable at a glance) with its **key** beside it
+  (pasteable into Jira), sourced from `Epic Key` and falling back to `Parent Key` — the same either-
+  link rule the Epic link column grades on. Three states, deliberately distinct: the epic's name;
+  the **key alone** when that epic is outside the exported window (still a real relation — never
+  claim there is no epic); and a red **"— not linked"** when there is neither, because those hours
+  cannot reach an engagement and so cannot inform the next quote.
+  · It also states the **clock**: on Open the list is a snapshot that follows filters but not the
+  period picker; on Resolved the cells cover the selected period while the list below is still
+  today's open backlog. That mismatch was the second half of the question.
 - **Logged time is only expected on work that has STARTED** (schema v24, 2026-08-06). Time is
   logged as work is done, so a ticket nobody has picked up is expected to carry no worklog. On the
   Open population the Logged column divides by the records whose Jira **status category is
@@ -371,6 +542,117 @@ in v24).
   · The counterpart gap is **not** measured here: 57 To Do tickets do carry logged time, which is a
   status-hygiene problem (work started, board never moved) with a different owner. Those are
   excluded from both halves rather than scored as logging credit.
+- **The three due-date rules** (schema v33, managers' feedback 2026-08-10). Stated by the team as
+  three rules, which reduce to one exclusion in `dueExpected_`:
+  1. *A due date inside the current week is compliant* — see the overdue caveat above
+     (`dhOverdue_`), not this predicate.
+  2. *A To Do ticket with no due date is ignored entirely* — not delayed, not missing. It is not a
+     commitment yet, and a date guessed onto work nobody has picked up is what makes dates
+     meaningless later.
+  3. *Anything that HAS a due date is tracked, whatever its status.* A date is a commitment the
+     moment somebody sets one, and a commitment nobody is working is the case most worth seeing.
+
+  So the only rows outside the ratio are the **unstarted AND undated** ones. On the Open population
+  the Due date column divides by `dueN` (roster and 🧬 matrix alike) — "started, or carrying a
+  date" — so the column reads *of the work that is either underway or committed to a date, how much
+  carries a date*. A dated To Do ticket is a **hit**, which is also what keeps the ratio ≤ 100%.
+  Resolved work is unchanged (`dueN === n`): On-Time Delivery *is* the due-date question, so a
+  resolved item with no date is that metric's own coverage gap.
+  · **This is deliberately NOT the shape of the logged-time rule above**, which drops every
+  unstarted ticket including the ones carrying worklogs. Logged time on a To Do ticket is a
+  status-hygiene problem with a different owner; a due date on a To Do ticket is a real commitment
+  on real work. `_test_personHygieneBuckets_` pins the one record that separates them, so a
+  refactor that "unifies" the two predicates fails a test instead of silently reverting rule 3.
+  · **The rule reaches the LIST as well as the RATE** (schema v34, user report the same day: *"I
+  still see tickets in the status To Do with no due date in each rocketeer"*). Those tickets left
+  the percentages in v33 but were still printed in every person's drill-down with a red em-dash in
+  the Due column — the same accusation the rate had just stopped making, one surface over. They now
+  leave `items` entirely (`ignored`, decided in `readJiraRaw_` off the status **category**, never
+  re-derived downstream from the status name). **The load is not reduced**: `count` and `remHrs`
+  still cover every open ticket, with `listed` / `ignoredN` / `ignoredHrs` reported beside them, so
+  a shorter list can never read as a smaller backlog. A person whose whole backlog is ignored says
+  so explicitly rather than reading as "nothing attributed".
+  · **Backlog health's `undated` queue follows the same rule** (v34). It now counts **started**
+  work with no date; unstarted undated tickets are tallied as `undatedIgnored` and reported as a
+  third excluded population in the panel's opening sentence — the same idiom as `unassigned` and
+  `unattributed`, and for the same reason. It gets **no row and no key list**: nobody is meant to
+  go and work them, and a key list is an invitation to. The three counters still partition the
+  population (`dated + undated + undatedIgnored = n`), which is pinned by a test.
+  · **Epics are exempt from rule 2** by team agreement and are audited separately — see the 🚩
+  panel below. An undated To Do epic is skipped by the graded fill columns and flagged by the
+  audit, on purpose; `_test_epicDueAudit_` asserts that the two surfaces disagree about exactly
+  that record.
+  · The Estimate column still divides by n, deliberately: an unestimated To Do ticket is the
+  matrix's single biggest lever, and unstarted work is exactly when an estimate is worth having.
+  · Because two of the columns no longer reconcile against the `n` beside them, the open roster
+  prints that fact above the table rather than only in a tooltip — this table is usually read as a
+  PNG, where hover does not exist.
+
+## Jira deep links (schema v37, 2026-08-10)
+
+Every key the dashboard shows is now a link, and every key list offers one link that opens the whole
+queue. `jiraIssueUrl_` / `jiraKeysUrl_` / `jiraLink_` / `jiraOpenAll_` in `Dashboard.html`; the site
+comes from `meta.jiraBase` (`DH_JIRA_BASE` Script Property → `CONFIG_DH.JIRA_BASE_URL`).
+
+| Surface | Link |
+|---|---|
+| 👥 roster drill-down | each ticket key → `/browse/KEY`; the epic name → its epic; **↗ Open these N in Jira** over the listed keys |
+| 🚩 epic audit | each offending epic key, plus **↗ Open all in Jira** per epic type |
+| 🌊 backlog health | **↗ open** on every queue row (stale, unestimated, overdue bands…) |
+
+Four rules, each of which is a bug if broken:
+
+- **The site is CONFIG, never a literal in the renderer.** A second instance or a sandbox is a
+  Script Property away, and a hardcoded host sends a manager to the wrong Jira with nothing on
+  screen to say so. Trailing slashes are trimmed server-side, once.
+- **Multi-key links use `key in (…)`, never `assignee = "Name"`.** Jira Cloud has not resolved
+  assignees by display name since the GDPR change — it wants an accountId, which this pipeline does
+  not carry. An assignee query would fail for some names and quietly return the wrong person's board
+  for others. Keys are exact, already on screen, and provably the same records the dashboard showed.
+- **`target="_blank" rel="noopener"` is required, not cosmetic.** The page runs inside the Apps
+  Script sandbox iframe, which swallows same-tab navigation.
+- **URLs are capped** at `JIRA_LINK_MAX_KEYS_` (80) and say so when they clip — a 300-key queue
+  builds a ~4 KB URL that some proxies drop, and a link that silently fails to open is worse than a
+  link that admits its limit.
+
+**No site configured → plain text, never a broken link.** A pre-v37 payload has no `jiraBase`, and
+the renderers fall back to unlinked keys rather than emitting `/browse/KEY` against the Apps Script
+origin (a 404 that reads as "the dashboard is broken").
+
+> **Why not `=HYPERLINK()` in the Jira Raw sheet?** It was the other candidate. Three reasons the
+> dashboard won: `writeRawSheet_` rewrites the tab on every run, so a hand-added formula column is
+> wiped weekly; a per-row `setFormula` loop would add minutes to an export that already runs long
+> (formulas belong in the `setValues` array if that column is ever wanted); and the sheet is not
+> where anyone reads these numbers. The dashboard already holds every key, so links there cost no
+> export change and no payload growth. The sheet column remains a reasonable *addition* for people
+> who read the raw tab directly — it is not a substitute.
+
+## 🚩 Epics without a due date (Actions tab)
+
+`epicDueAudit_()` in `Code.js` → `renderEpicDue_()` in `Dashboard.html`. Schema v33.
+
+**The team agreed every epic carries a due date, "even if it is just the project end date"**
+(2026-08-10). That makes it the only field rule here with a **ratified 100% target**, and the reason
+it is a flag rather than another graded column: an 80% coverage gate would declare success while a
+fifth of the engagements have no committed end. Owner: Gon + the PMs.
+
+- **Open epics only, whatever their status.** A To Do epic with no date is exactly what this audits,
+  so it is **not** subject to the rule-2 carve the roster and matrix columns apply. Resolved epics
+  are out — a date added now moves no future number.
+- **ORG scope: no person filter, no roster join, unassigned epics included.** An epic is a
+  container; "nobody is assigned" is not a reason to stop asking for its end date, and a surface
+  keyed on people cannot see those epics at all. The panel carries the `ORG` tag so a filtered
+  reading is impossible.
+- **One row per epic type** (Epic / Kick-off epic / Go-live epic), most-missing first — that
+  ordering *is* the work order, and it matters here: measured 2026-08-04, Go-live epics carried due
+  dates 100% of the time against 46% for Kick-off, which the pooled number hid completely.
+- **Names nothing but issue keys.** Same rule as the gaps queue: a standing list of people against
+  failures is a blame board; an epic key is a thing to open. ⬇ CSV exports one row per offending
+  epic, because this list gets worked outside the dashboard.
+- **Three distinct states, and they must never render alike**: *missing* (red, with the keys),
+  *zero missing* (an explicit green all-clear — a check that disappears when it succeeds is one
+  nobody trusts when it fires), and *absent from the payload* ("not in this payload", never a clean
+  100% on an audit nobody ran). A capped key list says so while the count stays complete.
 - **Shared population with the 🧬 matrix.** The roster and the by-type matrix both follow
   `STATE.typePop` (Open backlog / Resolved), so a reader comparing "who" against "which issue type"
   is comparing the same slice of work, never two independently filtered ones.
@@ -497,11 +779,11 @@ reader to skim past the fields that do vary. So it is **hidden, not deleted**:
 
 | File | Role |
 |---|---|
-| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. 35 `_test_*` unit tests. |
+| `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. Also carries the **Workforce Health** layer: the job-code classifier (`dhParseTitle_`/`dhClassify_` + the `DH_SUB_TRACK_` registries) and the six-pass pool × band pipeline (`buildCapacity_`, `buildCommitment_`, `buildConsumption_`, `buildBacklog_`, `dhFoldWeekly_`, `reconcileWorkforce_`). 48 `_test_*` unit tests (the count in this line was stale at 35 before 2026-08-10; `grep -c "^function _test_" Code.js` is the source of truth, not this number). |
 | `Security.js` | Email allowlist (admin / viewer / open-access) — `SEC_DH`, `checkDeliveryAccess()`, `getDeliveryAccessSettings()`, `saveDeliveryAccessSettings()`, `buildAccessDeniedPage_()`. Inherited from the demand dashboard's `Security.js` (itself inherited from `PS Security.js`). |
-| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Three tabs from the `VIEWS` array (Executive / Actions / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + roster CSV export. |
-| `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the three cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`, `_test_sampleFloorParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_`+`medianOf_` / `sampleFloorClient_` against the server's — two implementations of one publish/withhold rule are only safe if they are provably identical, not merely eyeballed. Not pasted into the GAS project. |
-| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` prints the exact count on every run (836 the last time this line was updated; **the command's own output is the source of truth, this number is not** — it only ever GROWS, because a check pinned to retired markup gets rewritten against its replacement, never deleted). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue, the 🧬 matrix or the signals pulse — plus cascading option lists (never silently dropping an active selection), the operating-rate maths including its weekly fallback on the Quarter view, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, the reconstructed-vs-measured inventory-history sparkline on the hero band, the re-homed colour key, and the three-tab consolidation invariants (exactly `exec,actions,access`, no live render into a retired pane). Not pasted into the GAS project. |
+| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Four tabs from the `VIEWS` array (Executive / Actions / Workforce / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + roster CSV export. |
+| `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the four cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`, `_test_sampleFloorParity_`, `_test_workforceParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_`+`medianOf_` / `sampleFloorClient_` / `wfFold_`+`wfReconcile_` against the server's — two implementations of one publish/withhold rule are only safe if they are provably identical, not merely eyeballed. The workforce walk additionally pins the **action state** and the **Read**, because a divergence there means the grid shows HEADROOM while the payload says RECONCILE and nobody can tell which is real. Not pasted into the GAS project. |
+| `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` prints the exact count on every run (1,094 the last time this line was updated; **the command's own output is the source of truth, this number is not** — it only ever GROWS, because a check pinned to retired markup gets rewritten against its replacement, never deleted). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue, the 🧬 matrix or the signals pulse — plus cascading option lists (never silently dropping an active selection), the operating-rate maths including its weekly fallback on the Quarter view, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, the reconstructed-vs-measured inventory-history sparkline on the hero band, the re-homed colour key, the tab-set invariants (exactly `exec,actions,workforce,access`, no live render into a retired pane), and the 🧭 Workforce panels — that both pools appear separately, that a demand-driven pool renders `n/a` rather than `0`, that the consumers-only figure carries its denominator, that shadow splits into three owned reasons, and that a pre-v31 payload asks for a refresh instead of rendering a silently blended grid. Not pasted into the GAS project. |
 
 ## Data sources
 
@@ -721,6 +1003,85 @@ metrics drop issues whose assignee doesn't join the roster, so coverage measured
 flatter itself by excluding the very records that are the problem.
 
 ### Metric caveats (read before quoting a number)
+
+- **"Overdue" means the committed WEEK has ended, not that a timestamp has passed** (schema v32,
+  managers' feedback 2026-08-10). `dhOverdue_` compares the due date against `dhWeekStart_(now)` —
+  Monday 00:00 of the current ISO week — so a ticket due Monday and read on Wednesday is a **live
+  commitment**, not a miss. Every reporting surface here is weekly (`YYYY.WN` labels, weekly
+  exports, a weekly managers' review), and the old timestamp rule also meant the same ticket could
+  read on-time at 9am and overdue at 10am with nobody having touched it, because the cache warmer
+  rebuilds the model on a 30-minute trigger.
+  · `futureDated` ("Dated, due this week or later") is the exact complement of `overdue`, so
+  `dated === futureDated + overdue` always holds — pinned by `_test_backlogOverdueWeekGrain_`.
+  · The three ageing bands are gated on the same predicate **before** being aged in days, or "≤7
+  days" would re-admit the current week's dates and the bands would stop summing to the total.
+  · **The overdue counts drop when this deploys.** That is a definition change, not a delivery
+  improvement, and the panel's own wording says which Monday it judged against
+  (`backlogHealth.weekStart`).
+  · `shouldHaveStarted` still uses a timestamp, deliberately left alone: it is a start-date signal,
+  not a commitment-date one, and nobody has asked for it to move.
+
+- **Workforce Change is capacity, not delivered work — and it is the only number here that
+  describes people who are gone.** Added 2026-08-07 (schema v28). Every other figure on this
+  dashboard describes the people who are here now: `readRosterPeople_` drops inactive rows, so a
+  departure takes that person's capacity out of the denominators along with them and the utilization
+  rate holds steady while the team's actual ability to deliver falls. This card is the supply side —
+  scheduled capacity gained from joiners minus scheduled capacity lost to leavers, in hours per week,
+  set against the queue growth printed beside it.
+
+  Read it with four things in mind:
+  - **It measures what we can no longer staff, not what stopped being delivered.** A leaver's final
+    weeks are usually low-tracking (notice period, handover), so a delivered-hours reading would
+    understate every departure. Capacity was the deliberate choice (user decision 2026-08-07).
+  - **"Typical" capacity is the median of that person's non-zero scheduled weeks** in the 8 weeks
+    after joining or before leaving — never the last week, which is nearly always partial.
+  - **A movement whose capacity is unknown is counted as a person, never as 0 hours,** and the card
+    says how many. This is the one failure direction that flatters us: an unknown silently worth zero
+    reports a smaller loss than actually happened.
+  - **Counts and hours only — who joined or left is never published.** Turnover is a fact about a
+    team's capacity; naming the people inside it turns a planning number into a notice board, and
+    this view is read company-wide.
+
+  Attrition is one-sided, as everywhere else here: a person counts as gone only when the roster
+  proves it (an inactive row and no active row anywhere), so a boomerang rehire is never a departure
+  and a termination date on someone still listed active is a future exit, not a loss yet. Ramp-up is
+  stated beside the gain rather than discounted from it — the discount would be a guess. No target,
+  and none is meaningful: net zero is not automatically good.
+- **Two SRSO bindings exist and they disagree — and if the gaps row is red, the fix is ours.**
+  Added 2026-08-07 (schema v29). The services runbook (*HOWTO — Customer Projects in Jira*, BL02
+  step B2.6) instructs the PM to bind delivery work to the money by creating a Jira **Component**
+  named for the sales order — `SRSO-0xxxxx`, NetSuite URL in the description. `Jira Backlog.js`
+  derives its `Billing Type` column from **Fix Versions** alone (`fixVersion ~ "SRSO*"`). An
+  engagement bound exactly as the runbook instructs, with no SRSO fix version, therefore exports as
+  `Untagged` — which by this dashboard's own reckoning is delivered work that cannot be recognised
+  against a milestone.
+
+  The Components column has been exported since the beginning (column 21) and was never read. It is
+  now, and the gaps queue carries **"Sales-order binding our billing reader can see"**: the share of
+  sales-order-bound delivered work that `Billing Type` actually sees. Both sides use the *same* SRSO
+  token rule (`DH_SRSO_TOKEN_`, character-for-character the exporter's), so a mismatch is evidence
+  about the **field**, never about two regexes disagreeing.
+
+  Read the row's three blank states as three different findings, not one:
+  - **Components column absent** → we did not look. Renders "not connected"; never a clean 100%.
+  - **Column present, nothing bound either way** → we looked, and no delivered work in the window is
+    tied to a sales order at all. That is itself the finding, and it deliberately does *not* borrow
+    the wording above, which would send someone hunting for a column that is present.
+  - **Otherwise** → the ratio, and the count of component-only items.
+
+  **If this row is red, do not start a campaign to make PMs tag differently** — they followed the
+  documented process. The fix is a reader change in the exporter. The row's own note says so, and a
+  render-smoke check pins that wording, because an owner routed to the wrong team is worse than no
+  owner at all.
+- **"N named assignees match no roster row" is NOT attrition.** The gaps-queue row measures names
+  that join no roster record under any alias — contractor/vendor accounts, automation accounts,
+  display names spelled differently from the roster. Former employees are removed from the whole feed
+  before that row is counted (and held out of the attribution index besides), and their count is
+  reported separately on the same view. One attrition case can still hide there: a leaver whose Jira
+  display name never matched their roster row, which the attrition test cannot see either, because it
+  resolves names through the same index that is failing. The row's note said "leavers" until
+  2026-08-07 and was read as exactly the opposite of the policy — see the render-smoke section that
+  pins the wording.
 
 - **On-Time scope is a policy switch — `CONFIG_DH.ONTIME_SCOPE`.** Before 2026-08-03 the rate mixed
   every resolved issue type together, which is the one reading nobody wants: an epic's Due Date is a
@@ -1058,7 +1419,8 @@ Cache key: `dh_v<DH_CACHE_VER>` — `DH_CACHE_VER` is a Script Property (default
 keys, so versioning is how a model-shape change takes effect immediately). Run it manually from
 the GAS editor after any change to the model's shape.
 
-Second, independent guard: every payload is stamped with `DH_SCHEMA_VER_` (**currently 9**) and
+Second, independent guard: every payload is stamped with `DH_SCHEMA_VER_` (**currently 37** — the
+constant in `Code.js` is the source of truth, not this line) and
 `getDeliveryData()` treats a cached model with a different stamp as a clean miss. **Bump
 `DH_SCHEMA_VER_` on any payload-shape change** — a new/renamed field, a re-keyed bucket — so a
 deploy can never serve a stale-shaped entry even if nobody remembers to bust the cache.
@@ -1187,6 +1549,22 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 9. After any model-shape change: run `bustDeliveryCache_()` then ↻ Refresh.
    **This deploy is a schema v7 → v9 change — `bustDeliveryCache_()` is REQUIRED**, not optional.
    A v7 entry carries no `nWithin`, so the Forecast tile would read 0% instead of suppressing.
+
+   **2026-08-10 — Workforce Health, schema v29 → v31. Same requirement, sharper failure mode.**
+   Both files (`Code.js` + `Dashboard.html`), then `bustDeliveryCache_()`. No exporter change and
+   no export re-run. A cached v29/v30 model read as v31 gives every person `pool: undefined`, which
+   collapses the whole population into a single cell and **silently reproduces the exact blended
+   availability figure this release exists to retire** — a wrong number wearing a right number's
+   clothes, not a blank panel. `getDeliveryData` treats a differing `schemaVer` as a clean miss,
+   which is what makes the bust sufficient; running it is what makes it take effect immediately for
+   everyone rather than at TTL expiry.
+
+   **Expect per-pool capacity figures to drop.** Two definition changes ship together — support is
+   no longer blended with consulting, and delivery managers have left the pool denominators. That
+   is the intended outcome, recorded at registry `4.0`, and the pool grid carries a footnote
+   explaining it on screen. The four KPI cards, the signals roster and the queue hero must **not**
+   move: Workforce Health is an additional read of the same hours, not a redefinition of the
+   existing metrics.
 10. On first load every tile shows its number clean (no confidence chip, no below-gate caveat —
     user 2026-08-05); the Data trust strip beneath grades each feed against its gate. Open the
     **Actions** tab, review each gap's coverage against its gate on the gaps queue, and take that
@@ -1313,6 +1691,30 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] Click a roster name → a drill-down row expands with the hours line and (Open population) the
       person's open backlog items by remaining hours. Click again to collapse; multiple rows can be
       open at once.
+- [ ] Expanding a roster row **accounts for every issue in `n`**: "N open items behind the n column:
+      X listed · Y unstarted with no due date (ignored by rule) · Z epics (roll up)". The three add
+      up to `n` exactly. Nothing is printed when the list already shows everything.
+- [ ] No **To Do ticket with no due date** appears in any person's drill-down list. If a person has
+      some, the row says how many are not listed ("ignored by rule, not a gap") and the hours line
+      still counts them. A person whose entire backlog is those tickets says exactly that, never
+      "no open backlog items attributed".
+- [ ] The drill-down opens on **8 items** (`meta.backlogItemsShown`) and, when the person has more,
+      offers **▾ Show all N** — an in-place re-render, no round-trip, because the payload carries up
+      to `BACKLOG_MAX_ITEMS_ALL` (60). ▴ Show top 8 goes back, and **collapsing the person resets it**
+      so reopening is always the short read. Beyond 60 the line says the payload carries the 60
+      largest while the counts and hours cover all of them.
+- [ ] Open roster: the **Due date** and **Logged** cells divide by less than the `n` column beside
+      them, and the paragraph above the table says why. **Logged** = started work only; **Due date**
+      = started *or already dated*. A person whose entire backlog is undated To Do shows
+      **grey/ungraded** on both, never 0% — while a dated To Do ticket counts as a hit.
+- [ ] 🚩 **Epics without a due date** (Actions, below backlog health): red count + share, one row
+      per epic type, the offending **keys** listed (never names), `ORG` tag, ⬇ CSV. With nothing
+      missing it shows a green **all-clear**, not an empty panel; on a pre-v33 payload it says
+      "not in this payload" rather than reporting a clean 100%.
+- [ ] 🧭 Pool grid: clicking a band row expands **who** holds the hours (capacity / planned /
+      available per person, most-available first) with a **sellable subtotal** that excludes 🌱 and
+      🏖 people. An unscheduled person reads "—", not 0h. Clicking again collapses it and the names
+      leave the grid.
 - [ ] Roster **Hours** column: a billable/non-billable/idle mini-bar per person; ramping/on-leave
       people sort last regardless of sort direction and carry **no idle segment** in their bar.
 - [ ] The signals roster and the 🧬 matrix **share the Open/Resolved population toggle** — switching
