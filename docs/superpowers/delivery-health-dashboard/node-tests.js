@@ -215,6 +215,60 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   Logger.log("✅ _test_sampleFloorParity_ passed (" + checked + " id×n combinations)");
 })();
 
+// ── DUE-BAND / OVERDUE PARITY ────────────────────────────────
+// dueBand_ lives in Dashboard.html and paints a cell red; dhOverdue_ lives in
+// Code.js and drives the overdue counts, the three ageing bands and the
+// futureDated complement. They are the SAME CLAIM. If they disagree, a manager
+// sees a red cell the panel above it does not count, or the reverse — and each
+// looks perfectly correct read on its own. Same trap as _test_clientParity_.
+(function _test_dueBandParity_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_dueBandParity_: " + m); }
+  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  // Same extraction pattern as _test_clientParity_: collect the named sources
+  // and build ONE scope from them. eval() inside a forEach would declare each
+  // function in the callback's scope, where nothing below can see it.
+  var src = ["isoCmp_", "dueBand_"].map(function (fn) {
+    var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
+    if (!m) throw new Error("❌ _test_dueBandParity_: could not extract " + fn + " from Dashboard.html");
+    return m[0];
+  }).join("\n");
+  var C = new Function(src + "\nreturn { isoCmp_: isoCmp_, dueBand_: dueBand_ };")();
+  var dueBand_ = C.dueBand_;
+
+  // Monday of a known week, so both sides are anchored on the same calendar.
+  // 2026-08-11 is a Tuesday in 2026.W33.
+  var now = new Date(2026, 7, 11);
+  var nowIso = weekKeyFromDate_(now);
+  assert_(nowIso === "2026.W33", "fixture anchor is 2026.W33, got " + nowIso);
+
+  // Sweep a year either side of the anchor, one date per week, and require the
+  // client band and the server predicate to agree on every one.
+  var checked = 0;
+  for (var off = -60; off <= 60; off++) {
+    var d = new Date(2026, 7, 11);
+    d.setDate(d.getDate() + off * 7);
+    var iso = weekKeyFromDate_(d);
+    var serverLate = dhOverdue_({ due: d }, now);
+    var clientBand = dueBand_(iso, nowIso, true);
+    assert_(serverLate === (clientBand === "sigBad"),
+            "week " + iso + ": dhOverdue_=" + serverLate + " but band=" + clientBand);
+    checked++;
+  }
+
+  // The current week is amber on the client and NOT overdue on the server —
+  // the managers' 2026-08-10 rule, asserted from both sides at once.
+  assert_(dueBand_(nowIso, nowIso, true) === "sigWarn", "current week is amber, never red");
+  assert_(dhOverdue_({ due: now }, now) === false, "…and the server agrees it is not late");
+
+  // Undated is per-surface (spec §4.3) and that is deliberate.
+  assert_(dueBand_("", nowIso, true) === "sigBad",
+          "undated in a started-work-only list stays the red it is today");
+  assert_(dueBand_("", nowIso, false) === "",
+          "undated where unstarted work can appear is ungraded, not an accusation");
+
+  Logger.log("✅ _test_dueBandParity_ passed (" + checked + " week comparisons)");
+})();
+
 // ── WORKFORCE HEALTH CLIENT/SERVER PARITY ────────────────────
 // The fold and the reconcile exist twice: the server builds the payload, the
 // client re-slices it when the period picker or a filter moves. Same failure
