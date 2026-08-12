@@ -2575,29 +2575,45 @@ function pmOwnedWork_(jira, byProject, today) {
   var monthY = now.getFullYear(), monthM = now.getMonth();
   var weekStart = dhWeekStart_(now);
   var idx = byProject || {};
+  var all = (jira && jira.issues) || [];
   var map = {};
+
+  // Key → issue, for the parent chain walk below.
+  var byKey = {};
+  all.forEach(function (it) { if (it && it.key) byKey[String(it.key).toUpperCase()] = it; });
 
   function rowFor(pm) {
     if (!map[pm]) {
       map[pm] = { pm: pm, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
-                  readyDen: 0, readyN: 0, items: [] };
+                  readyDen: 0, readyN: 0, ignoredN: 0, epics: [], orphanChildren: [] };
     }
     return map[pm];
   }
 
-  // In window = undated (always) OR overdue (before this week's Monday) OR due
-  // inside the current calendar month.
+  // In window = overdue (before this week's Monday) OR due inside the current
+  // calendar month. Undated is NOT in the window — an undated item has no month,
+  // and the epic-scope rule below is what decides whether it is shown.
   function inWindow(it) {
-    if (!dhHasDue_(it)) return true;
+    if (!dhHasDue_(it)) return false;
     if (it.due < weekStart) return true;
     return it.due.getFullYear() === monthY && it.due.getMonth() === monthM;
   }
 
-  ((jira && jira.issues) || []).forEach(function (it) {
-    if (!typeHygOpen_(it)) return;                 // open work only — same predicate
-    var pm = idx[dhProjectOf_(it.key)] || DH_NO_PM_;
-    var r = rowFor(pm);
+  // UNSTARTED AND UNDATED = not a commitment yet. The managers' rule (2026-08-10,
+  // the same one `undatedIgnored` encodes) — queueing these produced a list
+  // nobody could work, which is exactly what the first cut of this tab did.
+  // COUNTED, never listed: a silent drop and a considered exclusion look
+  // identical on screen, and only one of them is honest.
+  function ignorable(it) { return !dhHasDue_(it) && !dhStarted_(it); }
 
+  all.forEach(function (it) {
+    if (!typeHygOpen_(it)) return;                 // open work only — same predicate
+    var r = rowFor(idx[dhProjectOf_(it.key)] || DH_NO_PM_);
+
+    // ── The two bars. UNFILTERED and UNWINDOWED, always (spec §5.2). ──────────
+    // Not even the ignorable() carve applies here: an epic with no date and no
+    // start is precisely what the Owns bar exists to report, and dropping it
+    // from the denominator would pin the bar at 100%.
     if (it.isEpic) {
       r.epicN++;
       if (dhHasDue_(it)) r.epicDated++;
@@ -2607,18 +2623,64 @@ function pmOwnedWork_(jira, byProject, today) {
       r.readyDen++;
       if (dhBacklogReady_(it, now)) r.readyN++;
     }
+    if (ignorable(it)) r.ignoredN++;
+  });
 
-    if (inWindow(it)) {
-      r.items.push({
-        key: it.key, summary: it.summary || "", isEpic: !!it.isEpic,
-        status: it.status || "",
-        due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
-        overdue: dhOverdue_(it, now),
-      });
-    }
+  // ── The epic list: WIP (any date) or in the window ────────────────────────
+  // Two rules composed, not one replacing the other. "In progress or carrying a
+  // due date" is the focus rule; the month window is what keeps a dated epic
+  // six months out from crowding the page. An epic that is neither started nor
+  // dated satisfies neither and is counted only — it is still named in the
+  // Owns bar's 🚩 key list, so the fix stays one click away.
+  var epicOf = {};
+  all.forEach(function (it) {
+    if (!it.isEpic || !typeHygOpen_(it)) return;
+    if (!(dhStarted_(it) || inWindow(it))) return;
+    var pm = idx[dhProjectOf_(it.key)] || DH_NO_PM_;
+    var e = { key: it.key, name: it.summary || "", status: it.status || "",
+              started: dhStarted_(it),
+              due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
+              overdue: dhOverdue_(it, now), _dueDate: dhHasDue_(it) ? it.due : null,
+              children: [], within: 0, over: 0, noDate: 0, ignoredN: 0 };
+    epicOf[String(it.key).toUpperCase()] = e;
+    rowFor(pm).epics.push(e);
+  });
+
+  // ── Children, attached to the epic they roll up to ───────────────────────
+  all.forEach(function (it) {
+    if (it.isEpic || !typeHygOpen_(it)) return;
+    var epicKey = dhEpicOfChain_(it, byKey);
+    var e = epicKey ? epicOf[epicKey] : null;
+    if (!e) return;                                // no epic, or epic not listed
+    if (ignorable(it)) { e.ignoredN++; return; }   // To Do with no date — counted only
+    var verdict = dhChildVerdict_(it, e._dueDate);
+    if (verdict.v === "within") e.within++;
+    else if (verdict.v === "over") e.over++;
+    else if (verdict.v === "nodate") e.noDate++;
+    e.children.push({
+      key: it.key, summary: it.summary || "", status: it.status || "",
+      due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
+      verdict: verdict.v, overByWeeks: verdict.weeks,
+    });
   });
 
   var rows = Object.keys(map).map(function (k) { return map[k]; });
+  rows.forEach(function (r) {
+    // Worst first inside a PM: epics missing a date, then those with children
+    // past the epic's own deadline, then the rest.
+    r.epics.sort(function (a, b) {
+      return (!a.due) - (!b.due) === 0
+        ? (b.over - a.over) || a.key.localeCompare(b.key)
+        : (a.due ? 1 : -1);
+    });
+    r.epics.forEach(function (e) {
+      delete e._dueDate;                           // internal, never shipped
+      e.children.sort(function (a, b) {
+        var rank = { over: 0, nodate: 1, ungraded: 2, within: 3 };
+        return (rank[a.verdict] - rank[b.verdict]) || a.key.localeCompare(b.key);
+      });
+    });
+  });
   rows.sort(function (a, b) {
     // (No PM) sorts LAST whatever its size: it is a coverage gap with a name,
     // not a person, and ranking it among PMs invites reading it as one.
@@ -2628,6 +2690,63 @@ function pmOwnedWork_(jira, byProject, today) {
     return (bm - am) || (b.epicN - a.epicN) || a.pm.localeCompare(b.pm);
   });
   return { rows: rows, keyCap: EPIC_DUE_MAX_KEYS_ };
+}
+
+/**
+ * The epic a non-epic issue rolls up to, walking the parent chain.
+ *
+ * WHY A CHAIN AND NOT `epicKey || parentKey`. A sub-task's parent is very often
+ * a STORY, not an epic — the 2026-08-05 audit found roughly 1,023 delivered
+ * sub-tasks in exactly that shape. A one-level fallback resolves those to the
+ * story's key, which is not an epic, so they attach to nothing and silently
+ * vanish from the epic they actually belong to. Walking up finds the epic.
+ *
+ * Depth-guarded and cycle-guarded: Jira does not forbid a parent loop, and an
+ * unguarded walk over a loop hangs the whole model build.
+ *
+ * @returns {string} UPPERCASE epic key, or "" when the chain reaches nothing
+ */
+function dhEpicOfChain_(it, byKey) {
+  var seen = {};
+  var cur = it;
+  for (var hop = 0; cur && hop < 6; hop++) {
+    var ek = String(cur.epicKey || "").toUpperCase();
+    if (ek) return ek;
+    var pk = String(cur.parentKey || "").toUpperCase();
+    if (!pk || seen[pk]) return "";
+    seen[pk] = 1;
+    var parent = byKey[pk];
+    // The parent is itself an epic — the sub-task hangs directly off it.
+    if (parent && parent.isEpic) return pk;
+    cur = parent;
+  }
+  return "";
+}
+
+/**
+ * Is a child within its epic's committed deadline, past it, or ungradeable?
+ *
+ * WEEK-GRAINED, via dhWeekStart_ on both sides — the same boundary dhOverdue_
+ * uses, so "late" means one thing everywhere. Comparing raw dates would make a
+ * child due Friday "over" an epic due Monday of the same week, which is not a
+ * slip by any rule this dashboard applies.
+ *
+ *   within   → the child lands on or before the epic's week
+ *   over     → the child is committed past the epic it belongs to. This is the
+ *              finding: the epic cannot land on its date if its own work is
+ *              scheduled after it.
+ *   nodate   → started, but carries no date of its own. It cannot be within or
+ *              over a deadline it never committed to, and started work with no
+ *              date is a gap in its own right — never quietly counted as within.
+ *   ungraded → the EPIC has no due date, so there is nothing to measure against.
+ *              The epic itself is the flag.
+ */
+function dhChildVerdict_(child, epicDue) {
+  if (!epicDue) return { v: "ungraded", weeks: null };
+  if (!dhHasDue_(child)) return { v: "nodate", weeks: null };
+  var c = dhWeekStart_(child.due), e = dhWeekStart_(epicDue);
+  if (c <= e) return { v: "within", weeks: null };
+  return { v: "over", weeks: Math.round((c - e) / (7 * 86400000)) };
 }
 
 /**
@@ -6449,7 +6568,10 @@ function assembleModel_(inputs, win) {
 //      is what makes the links appear at all rather than after a TTL.
 // 38 — `pmOwned` (🗓 PM tab, spec 2026-08-11). A v37 entry has no pmOwned, so
 //      the tab would render empty against a stale model rather than rebuild.
-var DH_SCHEMA_VER_ = 38;
+// 39 — pmOwned restructured epic-first (user feedback 2026-08-11): rows carry
+//      `epics` (each with its own `children`) instead of a flat `items` list,
+//      plus `ignoredN`. A v38 entry has `items` and would render no epics.
+var DH_SCHEMA_VER_ = 39;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8707,18 +8829,25 @@ function _test_pmAttribution_() {
              linked: o.linked === undefined ? true : o.linked,
              start: o.start === undefined ? new Date(2026, 6, 1) : o.start,
              updated: o.updated || new Date(2026, 7, 10),
+             epicKey: o.epicKey || "", parentKey: o.parentKey || "",
              typeLabel: o.isEpic ? "Epic" : "Task", summary: o.key };
   }
   var pmIdx = { GTT: "Dana Reyes", ACME: "Sam Ortiz" };
   var work = pmOwnedWork_({ issues: [
     // Dana's epics: 2 dated, 1 undated → bar 1 = 2/3
-    iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 7, 20) }),
-    iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 9, 15) }),  // OCT — out of window
-    iss({ key: "GTT-3", isEpic: true, due: null }),
-    // Dana's non-epics
-    iss({ key: "GTT-10", due: new Date(2026, 5, 10) }),               // JUN — overdue carry-in
-    iss({ key: "GTT-11", due: new Date(2026, 7, 12) }),               // AUG
-    iss({ key: "GTT-12", due: null, estSec: 0, linked: false }),      // undated, not ready
+    iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 7, 20) }),  // AUG — in window
+    iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 9, 15),     // OCT — out of window
+          status: "To Do", cat: "To Do" }),                           //   …and not started
+    iss({ key: "GTT-3", isEpic: true, due: null,                      // undated AND unstarted
+          status: "To Do", cat: "To Do" }),
+    // Children of GTT-1 (epic due 2026.W34)
+    iss({ key: "GTT-10", due: new Date(2026, 7, 17), epicKey: "GTT-1" }),  // W34 — within
+    iss({ key: "GTT-11", due: new Date(2026, 8, 10), epicKey: "GTT-1" }),  // W37 — OVER
+    iss({ key: "GTT-12", due: null, epicKey: "GTT-1" }),                   // started, no date
+    iss({ key: "GTT-13", due: null, epicKey: "GTT-1",                      // To Do, no date
+          status: "To Do", cat: "To Do" }),
+    // A SUB-TASK whose parent is a STORY, not the epic — the chain case.
+    iss({ key: "GTT-14", due: new Date(2026, 7, 18), parentKey: "GTT-10" }),
     // Sam's project
     iss({ key: "ACME-1", isEpic: true, due: new Date(2026, 7, 5) }),
     // A project with no PM row at all
@@ -8734,28 +8863,46 @@ function _test_pmAttribution_() {
           "bar 1 counts ALL open epics Dana owns — 2 of 3 dated");
   assert_(dana.epicMissingKeys.indexOf("GTT-3") !== -1, "the undated epic is named");
 
-  // THE TRAP (spec §5.2). GTT-2 is due in OCTOBER, outside the AUG window. If the
-  // window ever reaches the bar, epicN drops to 2 and every PM reports 100% —
-  // a bar that can never report the gap it exists to report.
+  // THE TRAP (spec §5.2). GTT-2 is out of window and GTT-3 is unstarted+undated;
+  // if either carve ever reaches the bar, the denominator shrinks and every PM
+  // drifts toward 100% — a bar that cannot report the gap it exists to report.
   assert_(dana.epicN === 3,
-          "bar 1 is UNWINDOWED — an out-of-window epic stays in the denominator");
-  assert_(dana.readyDen === 3,
-          "bar 2 denominator is all open non-epics Dana owns, also unwindowed");
+          "bar 1 is UNWINDOWED and un-carved — every open epic stays in the denominator");
+  assert_(dana.readyDen === 5,
+          "bar 2 denominator is all open non-epics, including the ignored ones");
 
-  // The window scopes the ITEM LISTS: overdue carry-in kept, later months
-  // dropped, undated always present.
-  var keys = dana.items.map(function (i) { return i.key; });
-  assert_(keys.indexOf("GTT-10") !== -1, "JUN overdue carry-in is KEPT in the list");
-  assert_(keys.indexOf("GTT-11") !== -1, "due this month is kept");
-  assert_(keys.indexOf("GTT-3") !== -1, "undated is ALWAYS shown — it has no month");
-  assert_(keys.indexOf("GTT-12") !== -1, "…including undated non-epics");
-  assert_(keys.indexOf("GTT-2") === -1, "an OCT due date is out of window and dropped");
+  // ── The epic LIST: WIP or in-window, and nothing else ────────────────────
+  var listed = dana.epics.map(function (e) { return e.key; });
+  assert_(listed.indexOf("GTT-1") !== -1, "a dated, in-window epic is listed");
+  assert_(listed.indexOf("GTT-2") === -1,
+          "a To Do epic due in OCTOBER is neither started nor in window — not listed");
+  assert_(listed.indexOf("GTT-3") === -1,
+          "an unstarted, undated epic is not listed — but IS still in the bar and 🚩 list");
+  assert_(dana.epicMissingKeys.indexOf("GTT-3") !== -1,
+          "…so the fix for it is still one click away, which is what makes hiding it fair");
 
-  // Item due dates travel as WEEK keys, so the client bands them with the same
-  // vocabulary the People drill-down uses.
-  var jun = dana.items.filter(function (i) { return i.key === "GTT-10"; })[0];
-  assert_(/^\d{4}\.W\d{1,2}$/.test(jun.due), "item due dates are week keys, not Dates");
-  assert_(jun.overdue === true, "…and carry the server's own overdue verdict");
+  // ── Children graded against the EPIC's deadline ──────────────────────────
+  var e1 = dana.epics.filter(function (e) { return e.key === "GTT-1"; })[0];
+  var ck = {};
+  e1.children.forEach(function (c) { ck[c.key] = c; });
+  assert_(ck["GTT-10"].verdict === "within", "a child due inside the epic's week is within");
+  assert_(ck["GTT-11"].verdict === "over", "a child due after the epic is OVER");
+  assert_(ck["GTT-11"].overByWeeks === 3, "…and says by how many weeks");
+  assert_(ck["GTT-12"].verdict === "nodate",
+          "a STARTED child with no date of its own is ungraded and counted, never 'within'");
+  assert_(!ck["GTT-13"],
+          "a To Do child with no due date is NOT listed — not a commitment yet (2026-08-10)");
+  assert_(e1.ignoredN === 1, "…it is COUNTED instead, so the exclusion is visible");
+  assert_(e1.within === 2 && e1.over === 1 && e1.noDate === 1,
+          "the epic row tallies its children: 2 within (incl. the sub-task), 1 over, 1 no-date");
+
+  // The chain walk: GTT-14's parent is GTT-10, a STORY, whose epic is GTT-1.
+  assert_(ck["GTT-14"] && ck["GTT-14"].verdict === "within",
+          "a sub-task parented to a STORY still reaches the epic — the chain walk");
+
+  // Over-deadline children sort first: that is the finding on the row.
+  assert_(e1.children[0].verdict === "over", "children sort worst-first");
+  assert_(!("_dueDate" in e1), "the internal epic Date is not shipped");
 
   // (No PM) is a named coverage gap, not an empty state, and sorts last.
   var orphan = byPm["(No PM)"];
@@ -8765,6 +8912,25 @@ function _test_pmAttribution_() {
 
   // Worst-first among real PMs, by undated epic count.
   assert_(work.rows[0].pm === "Dana Reyes", "sorted worst-first by undated epics");
+
+  // An epic with NO due date but WIP is listed (it is in progress), and its
+  // children cannot be graded against a deadline that does not exist.
+  var wip = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-5", isEpic: true, due: null }),                   // WIP, undated
+    iss({ key: "GTT-50", due: new Date(2026, 7, 20), epicKey: "GTT-5" }),
+  ] }, pmIdx, today);
+  var e5 = wip.rows[0].epics.filter(function (e) { return e.key === "GTT-5"; })[0];
+  assert_(e5, "a WIP epic with no due date IS listed — it is in progress");
+  assert_(e5.children[0].verdict === "ungraded",
+          "its children are ungraded — there is no deadline to be within or over");
+
+  // Cycle guard: a parent loop must not hang the model build.
+  var loop = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-6", isEpic: true, due: new Date(2026, 7, 20) }),
+    iss({ key: "GTT-60", parentKey: "GTT-61" }),
+    iss({ key: "GTT-61", parentKey: "GTT-60" }),
+  ] }, pmIdx, today);
+  assert_(loop.rows.length === 1, "a parent cycle resolves to no epic instead of hanging");
 
   // Closed work is out entirely — the same typeHygOpen_ predicate every other
   // hygiene surface uses, so the counts reconcile with the 🚩 audit.
@@ -9681,8 +9847,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 38,
-          "payload schema is v38 (pmOwned — the 🗓 PM tab's two bars and item lists) — " +
+  assert_(m.schemaVer === 39,
+          "payload schema is v39 (pmOwned is epic-first: rows carry epics[].children) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
   // v29 model read as v30 would give every person pool `undefined`, collapse the
@@ -9699,8 +9865,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 38,
-          "schema is 38 — a v37 entry has no pmOwned and would render an empty tab");
+  assert_(m.schemaVer === 39,
+          "schema is 39 — a v38 entry carries pmOwned.items, not epics, and the tab " +
+          "would render no epics at all");
   Logger.log("✅ _test_modelAssembly_ passed");
 }
 

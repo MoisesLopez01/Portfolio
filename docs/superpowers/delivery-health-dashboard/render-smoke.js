@@ -180,7 +180,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // because the single-digit-week case is the whole reason it exists.
              " isoCmp_: isoCmp_, dueBand_: dueBand_," +
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
-             " renderPm_: renderPm_," +
+             " renderPm_: renderPm_, pmEpicHtml_: pmEpicHtml_," +
+             " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
@@ -6206,28 +6207,54 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     rows: [
       { pm: "Dana Reyes", epicN: 12, epicDated: 9,
         epicMissingKeys: ["GTT-41", "GTT-88", "GTT-91"], epicCapped: false,
-        readyDen: 40, readyN: 25,
-        items: [
-          { key: "GTT-41", summary: "Undated epic", isEpic: true,
-            status: "In Progress", due: "", overdue: false },
-          { key: "GTT-9", summary: "Overdue task", isEpic: false,
-            status: "In Progress", due: "2026.W9", overdue: true },
-          { key: "GTT-31", summary: "Due now", isEpic: false,
-            status: "In Progress", due: "2026.W31", overdue: false },
+        readyDen: 40, readyN: 25, ignoredN: 7,
+        epics: [
+          { key: "GTT-7", name: "Migration", status: "In Progress", started: true,
+            due: "2026.W31", overdue: false, within: 1, over: 1, noDate: 1, ignoredN: 2,
+            children: [
+              { key: "GTT-72", summary: "Cutover", status: "In Progress",
+                due: "2026.W34", verdict: "over", overByWeeks: 3 },
+              { key: "GTT-73", summary: "Docs", status: "In Progress",
+                due: "", verdict: "nodate", overByWeeks: null },
+              { key: "GTT-71", summary: "Schema", status: "In Progress",
+                due: "2026.W30", verdict: "within", overByWeeks: null },
+            ] },
+          { key: "GTT-41", name: "Rollout", status: "In Progress", started: true,
+            due: "", overdue: false, within: 0, over: 0, noDate: 0, ignoredN: 0,
+            children: [] },
         ] },
       { pm: "(No PM)", epicN: 4, epicDated: 0, epicMissingKeys: ["ORPH-1"],
-        epicCapped: false, readyDen: 2, readyN: 1, items: [] },
+        epicCapped: false, readyDen: 2, readyN: 1, ignoredN: 0, epics: [] },
     ],
   };
   C.setModel(pmModel);
   C.getModel().viewerRole = "admin";
   C.setState("view", "pm");
+  C.STATE.pmOpen = {}; C.STATE.pmEpicOpen = {};
   C.renderAll_();
   var h = els.pmPanel.innerHTML;
 
+  // ── COLLAPSED BY DEFAULT ────────────────────────────────────────────────
+  // The whole point of the rework: the page opens short and you drill in.
   assert_(/Dana Reyes/.test(h), "a PM row renders");
+  assert_(/▸/.test(h), "…collapsed, with an affordance saying it opens");
+  assert_(!/GTT-72/.test(h), "a collapsed PM shows NO child rows");
+  assert_(!/Migration/.test(h), "…and not even its epic list");
+  assert_(/9\/12 epics dated/.test(h),
+          "the collapsed line still carries the number worth scanning");
+  assert_(/🚩 3/.test(h), "…and the undated-epic count, so you know whether to expand");
+  assert_(/1 past the epic date/.test(h),
+          "…and the count of children committed past their epic");
+
+  // ── EXPAND THE PM ───────────────────────────────────────────────────────
+  C.togglePmOpen_("Dana Reyes");
+  h = els.pmPanel.innerHTML;
+  assert_(/▾/.test(h), "expanding flips the affordance");
   assert_(/9<\/b> of 12|9 of 12/.test(h), "bar 1 shows epic due-date fill as 9 of 12");
-  assert_(/GTT-41/.test(h), "the undated epic keys are named — the fix is one click away");
+  assert_(/GTT-7/.test(h) && /Migration/.test(h), "the epic list appears");
+  assert_(!/GTT-72/.test(h), "…but its children stay collapsed until asked for");
+  assert_(/1 past the epic date/.test(h) && /1 with no date/.test(h) && /1 within/.test(h),
+          "each epic line pre-states its child tally, so you know what expanding buys");
 
   // The two bars must never be averaged. 75% and 62.5% blend to ~69%; if that
   // number appears, someone combined the PM's field with the team's hygiene.
@@ -6235,23 +6262,46 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/75%/.test(h) && /62%|63%/.test(h), "…both are shown, separately");
   assert_(/hygiene|context|not this PM's grade/i.test(h),
           "bar 2 is labelled as team context, not the PM's grade");
+  assert_(/GTT-41/.test(h), "the undated epic keys are named — the fix is one click away");
+  // An epic with no due date says so where it sits, not just in the 🚩 list.
+  assert_(/🚩 no due date/.test(h),
+          "an undated epic is flagged on its own row — nothing under it can be graded");
+
+  // ── EXPAND AN EPIC ──────────────────────────────────────────────────────
+  C.togglePmEpic_("GTT-7");
+  h = els.pmPanel.innerHTML;
+  assert_(/GTT-72/.test(h), "expanding an epic reveals its children");
+  assert_(/over by 3w/.test(h),
+          "a child committed past its epic says so, and by how much — the finding");
+  assert_(/no date of its own/.test(h),
+          "a started child with no date is called out, never counted as 'within'");
+  assert_(/within/.test(h), "…and the healthy ones are named too");
+  // Worst-first: the over-deadline child leads.
+  assert_(h.indexOf("GTT-72") < h.indexOf("GTT-71"),
+          "children sort worst-first — over the epic date leads");
+
+  // ── THE NOISE THE USER REPORTED IS COUNTED, NOT SILENTLY DROPPED ────────
+  assert_(/7<\/b> To Do ticket/.test(h),
+          "unstarted undated tickets are COUNTED at the top — a silent drop and a " +
+          "considered exclusion look identical otherwise");
+  assert_(/not a commitment yet/i.test(h), "…with the managers' rule named as the reason");
+  assert_(/2 To Do ticket/.test(h),
+          "…and again per epic, where the reader is actually working");
 
   // (No PM) is a named coverage gap and sorts last.
   assert_(/\(No PM\)/.test(h), "(No PM) renders as a named bucket, not an empty state");
   // Anchor on the ROW HEADINGS, not a bare substring: "(No PM)" is also named in
   // the intro paragraph above the rows, so indexOf would compare against the
   // explanation rather than the row and pass whatever the sort did.
-  var heads = (h.match(/<h4>[^<]*<\/h4>/g) || []).map(function (s) {
-    return s.replace(/<\/?h4>/g, "");
-  });
+  var heads = (h.match(/<h4 class="pmHead"[^>]*>[\s\S]*?<\/h4>/g) || []);
   assert_(heads.length === 2, "one heading per PM row, got " + heads.length);
-  assert_(heads[heads.length - 1] === "(No PM)",
+  assert_(/\(No PM\)/.test(heads[heads.length - 1]),
           "(No PM) sorts LAST among the rows — a hygiene bucket, not a PM");
 
   // Bands apply here too, but undated is GREY — this list contains unstarted
   // work, unlike the People drill-down. The exact inversion of dueCellHtml_.
-  assert_(/class="sigBad"[^>]*>2026\.W9</.test(h), "an overdue item still paints red");
   assert_(/class="sigWarn"[^>]*>2026\.W31</.test(h), "the current week paints amber");
+  assert_(/class="sigGood"[^>]*>2026\.W34</.test(h), "a later week paints green");
   assert_(!/class="sigBad"[^>]*>—</.test(h),
           "undated on the PM tab is NOT red — unstarted work is not a broken commitment");
 
@@ -6259,9 +6309,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/changed PM/i.test(h),
           "a superseded PM handover is reported, not swallowed");
 
-  // The window is NAMED, and the bars say they are not subject to it.
-  assert_(/overdue or due this month/i.test(h), "the item window is named on the page");
+  // The scope rule is NAMED, and the bars say they are not subject to it.
+  assert_(/in progress or due this month/i.test(h), "the epic scope rule is named on the page");
   assert_(/not windowed/i.test(h), "…and the bars say they are not subject to it");
+
+  // An apostrophe in a PM name must not break the inline onclick.
+  assert_(C.jsArg_("Sam O'Neil") === "'Sam O\\'Neil'",
+          "jsArg_ escapes quotes — an apostrophe would otherwise kill the click handler");
 
   // Absent ≠ clean, the same rule renderEpicDue_ follows.
   var noPm = fresh(model({}));

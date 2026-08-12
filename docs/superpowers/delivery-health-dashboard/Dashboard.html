@@ -513,6 +513,15 @@ tr.detail td.dback{padding:8px 16px 12px}
 .pmRow:first-of-type{border-top:0}
 .pmRow h4{margin:0 0 4px;font-size:calc(13.5px*var(--scale));
           font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
+/* Both collapse levels are click targets, so both have to LOOK like one —
+   a row that responds to a click without inviting it is a feature nobody finds. */
+.pmHead,.pmEpicHead{cursor:pointer;user-select:none}
+.pmHead:hover,.pmEpicHead:hover{background:var(--surface-2)}
+/* The epic level is indented so the hierarchy is legible without a tree line:
+   PM ▸ epic ▸ children, each step in from the last. */
+.pmEpic{margin:2px 0 2px 14px;border-left:2px solid var(--border);padding-left:8px}
+.pmEpicHead{padding:3px 4px;font-size:calc(12px*var(--scale))}
+.pmEpic .gwrap{margin:4px 0 8px 14px}
 
 /* 🌊 Backlog health — two facing lists. Grid rather than flex so the two tables
    share a column width regardless of label length: a healthy column that is
@@ -756,6 +765,13 @@ var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "
               // Separate from openDetail so the second level cannot survive a
               // collapse — see toggleRosterDetail_.
               openDetailAll: {},
+              // 🗓 PM tab, two independent levels of collapse (user feedback
+              // 2026-08-11). Separate maps rather than one nested object so the
+              // epic level cannot outlive its PM: collapsing a PM leaves its
+              // epic keys in pmEpicOpen, and re-opening the PM restores exactly
+              // the epics that reader had open — which is the behaviour people
+              // expect from a drill-down they are working through.
+              pmOpen: {}, pmEpicOpen: {},
               view: "exec", flag: "", metric: "onTime", compare: "region", compareAll: false,
               // rosterSort/rosterDesc: 👥 signals roster sort (spec §5.2). Default
               // is biggest opportunity first — most-red overall, then most
@@ -2511,6 +2527,14 @@ function roundEndBar_(x, y, w, h, r) {
 function trunc_(s, n) {
   s = String(s == null ? "" : s);
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+/** A string safe to drop into an inline onclick="fn(…)" — HTML-escaped, then
+    single-quotes backslash-escaped, then quoted. The roster inlines this same
+    pair of steps at two call sites; a PM name or a Jira key with an apostrophe
+    would otherwise terminate the handler and silently break the click. */
+function jsArg_(s) {
+  return "'" + esc_(String(s == null ? "" : s)).replace(/'/g, "\\'") + "'";
 }
 
 /**
@@ -6974,39 +6998,44 @@ function renderPm_() {
     return;
   }
   var nowIso = currentIso_();
+  var totalIgnored = 0;
   var rows = d.rows.map(function (r) {
+    totalIgnored += r.ignoredN || 0;
     var missing = r.epicN - r.epicDated;
     var ownPct = r.epicN ? Math.round(r.epicDated / r.epicN * 100) : null;
     var readyPct = r.readyDen ? Math.round(r.readyN / r.readyDen * 100) : null;
     var ownCls = missing === 0 ? "sigGood" : "sigBad";
-    var items = (r.items || []).map(function (it) {
-      // undatedIsGap = FALSE here: this list contains UNSTARTED work, which is
-      // not a commitment yet. The People drill-down passes true because
-      // openIssues has already dropped unstarted-undated. Spec §4.3 — the
-      // inconsistency IS the decision, not a bug to tidy away.
-      var due = it.due
-        ? '<span class="' + dueBand_(it.due, nowIso, false) + '">' + esc_(it.due) + "</span>"
-        : '<span class="cellSub" title="No due date — not a commitment yet.">—</span>';
-      return "<tr><td>" + esc_(it.key) + "</td><td>" + esc_(it.summary) +
-             "</td><td>" + esc_(it.status) + "</td><td>" + due + "</td></tr>";
-    }).join("");
+    var open = !!STATE.pmOpen[r.pm];
+    var epics = r.epics || [];
+    // Roll the epic tallies up to the PM's collapsed line. A reader deciding
+    // whether to expand needs to know whether there is anything in there.
+    var over = 0;
+    epics.forEach(function (e) { over += e.over || 0; });
+
+    var body = open
+      ? '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
+          '<b class="' + ownCls + '">' + r.epicDated + "</b> of " + r.epicN +
+          (ownPct === null ? "" : " (" + ownPct + "%)") +
+          " · the team's bar is 100%" +
+          (missing ? " — " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
+        "</p>" +
+        '<p class="cellSub"><b>In project — task readiness:</b> ' +
+          (readyPct === null ? "no open tasks" : readyPct + "% of " + r.readyDen) +
+          " <span class=\"cellSub\">(dated, estimated, linked and fresh — <b>team " +
+          "hygiene, shown as context, not this PM's grade</b>)</span></p>" +
+        (epics.length
+          ? epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("")
+          : '<div class="emptyState">No epics in progress or due this month.</div>')
+      : "";
+
     return '<div class="pmRow">' +
-      "<h4>" + esc_(r.pm) + "</h4>" +
-      '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
-        '<b class="' + ownCls + '">' + r.epicDated + "</b> of " + r.epicN +
-        (ownPct === null ? "" : " (" + ownPct + "%)") +
-        " · the team's bar is 100%" +
-        (missing ? " — " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
-      "</p>" +
-      '<p class="cellSub"><b>In project — task readiness:</b> ' +
-        (readyPct === null ? "no open tasks"
-                           : readyPct + "% of " + r.readyDen) +
-        " <span class=\"cellSub\">(dated, estimated, linked and fresh — <b>team " +
-        "hygiene, shown as context, not this PM's grade</b>)</span></p>" +
-      (items ? '<div class="gwrap"><table class="hyg"><thead><tr><th>Key</th>' +
-               "<th>Summary</th><th>Status</th><th>Due</th></tr></thead><tbody>" +
-               items + "</tbody></table></div>" : "") +
-      "</div>";
+      '<h4 class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
+        (open ? "▾ " : "▸ ") + esc_(r.pm) +
+        ' <span class="cellSub">' + r.epicDated + "/" + r.epicN + " epics dated" +
+        (missing ? ' · <span class="sigBad">🚩 ' + missing + "</span>" : "") +
+        (over ? ' · <span class="sigBad">' + over + " past the epic date</span>" : "") +
+        "</span></h4>" + body +
+    "</div>";
   }).join("");
 
   el.innerHTML =
@@ -7022,12 +7051,94 @@ function renderPm_() {
           " changed PM inside the export window; the most recent owner is shown."
         : "") +
     "</p>" +
-    '<p class="cellSub">The lists below cover work <b>overdue or due this month</b>, ' +
-      "plus everything undated — an undated item has no month, so it cannot be " +
-      "windowed at all. <b>The bars are not windowed</b>: they measure every open " +
-      "item the PM owns, because a denominator of only dated epics could never " +
-      "report a missing date.</p>" +
+    '<p class="cellSub"><b>Epics shown are those in progress or due this month</b> ' +
+      "(including anything already overdue). An epic that is neither started nor dated " +
+      "is not listed — it is not work in flight — but it still counts in the Owns bar " +
+      "and is named in its 🚩 list, so nothing is hidden from the number." +
+      (totalIgnored
+        ? " <b>" + totalIgnored + "</b> To Do ticket" + (totalIgnored === 1 ? "" : "s") +
+          " with no due date " + (totalIgnored === 1 ? "is" : "are") + " counted but not " +
+          "listed — not a commitment yet (managers' rule, 2026-08-10)."
+        : "") +
+      " <b>The bars are not windowed</b>: they measure every open item the PM owns, " +
+      "because a denominator of only dated epics could never report a missing date.</p>" +
     rows;
+}
+
+/**
+ * One epic inside a PM row: a collapsed summary line, expanding to its children
+ * graded against THIS epic's deadline.
+ */
+function pmEpicHtml_(e, nowIso) {
+  var open = !!STATE.pmEpicOpen[e.key];
+  var kids = e.children || [];
+  // The word "due" belongs to the dated case only — without this an undated epic
+  // read "· due 🚩 no due date", which is the kind of thing tests pass straight
+  // through and a reader trips over immediately.
+  var dueCell = e.due
+    ? '<span class="cellSub">· due </span><span class="' +
+      dueBand_(e.due, nowIso, false) + '">' + esc_(e.due) + "</span>"
+    : '<span class="cellSub">· </span><span class="sigBad" title="This epic carries no ' +
+      'due date, so nothing under it can be graded against a deadline. It is named in ' +
+      'the 🚩 list above.">🚩 no due date</span>';
+  // The counts a reader needs BEFORE deciding to expand. "over" leads because it
+  // is the finding: an epic cannot land on its date if its own work is
+  // scheduled past it.
+  var tally = [];
+  if (e.over) tally.push('<span class="sigBad">' + e.over + " past the epic date</span>");
+  if (e.noDate) tally.push('<span class="sigWarn">' + e.noDate + " with no date</span>");
+  if (e.within) tally.push('<span class="sigGood">' + e.within + " within</span>");
+  if (!tally.length) tally.push('<span class="cellSub">no children listed</span>');
+
+  var table = open && kids.length
+    ? '<div class="gwrap"><table class="hyg"><thead><tr><th>Key</th><th>Summary</th>' +
+      "<th>Status</th><th>Due</th><th>vs epic</th></tr></thead><tbody>" +
+      kids.map(function (c) {
+        // undatedIsGap = FALSE: this list can contain unstarted work, which is
+        // not a commitment yet. The People drill-down passes true because
+        // openIssues has already dropped unstarted-undated. Spec §4.3 — the
+        // inconsistency IS the decision, not a bug to tidy away.
+        var due = c.due
+          ? '<span class="' + dueBand_(c.due, nowIso, false) + '">' + esc_(c.due) + "</span>"
+          : '<span class="cellSub">—</span>';
+        var v = c.verdict === "over"
+              ? '<span class="sigBad">over by ' + c.overByWeeks + "w</span>"
+              : c.verdict === "within" ? '<span class="sigGood">within</span>'
+              : c.verdict === "nodate"
+                ? '<span class="sigWarn" title="Started, but carries no date of its own — ' +
+                  'it cannot be within or over a deadline it never committed to.">no date of ' +
+                  "its own</span>"
+                : '<span class="cellSub" title="The epic has no due date, so there is ' +
+                  'nothing to measure against.">ungraded</span>';
+        return "<tr><td>" + esc_(c.key) + "</td><td>" + esc_(c.summary) + "</td><td>" +
+               esc_(c.status) + "</td><td>" + due + "</td><td>" + v + "</td></tr>";
+      }).join("") + "</tbody></table>" +
+      (e.ignoredN
+        ? '<div class="cellSub">' + e.ignoredN + " To Do ticket" +
+          (e.ignoredN === 1 ? "" : "s") + " with no due date under this epic " +
+          (e.ignoredN === 1 ? "is" : "are") + " not listed — not a commitment yet.</div>"
+        : "") +
+      "</div>"
+    : "";
+
+  return '<div class="pmEpic">' +
+    '<div class="pmEpicHead" onclick="togglePmEpic_(' + jsArg_(e.key) + ')">' +
+      (kids.length ? (open ? "▾ " : "▸ ") : "&nbsp;&nbsp;") +
+      "<b>" + esc_(e.key) + "</b> " + esc_(trunc_(e.name, 48)) +
+      ' <span class="cellSub">· ' + esc_(e.status) + "</span> " + dueCell +
+      ' <span class="cellSub">· ' + tally.join(" · ") + "</span>" +
+    "</div>" + table +
+  "</div>";
+}
+
+function togglePmOpen_(pm) {
+  STATE.pmOpen[pm] = !STATE.pmOpen[pm];
+  renderPm_();
+}
+
+function togglePmEpic_(key) {
+  STATE.pmEpicOpen[key] = !STATE.pmEpicOpen[key];
+  renderPm_();
 }
 
 function renderEpicDue_() {

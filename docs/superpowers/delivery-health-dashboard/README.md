@@ -1004,6 +1004,22 @@ flatter itself by excluding the very records that are the problem.
 
 ### Metric caveats (read before quoting a number)
 
+- **🗓 PM tab shows epics in progress or due this month — not everything open** (schema v39, user
+  feedback 2026-08-11). The list is epic-first: **PM ▸ epic ▸ children**, each level collapsed until
+  you open it. An epic that is neither started nor dated is **not listed** — it is not work in
+  flight — but it still counts in the Owns bar and is named in that bar's 🚩 key list, so it is
+  never hidden from the number.
+- **Unstarted tickets with no due date are counted, never listed.** The managers' 2026-08-10 rule:
+  a To Do ticket with no date is not a commitment yet, and queuing them produces a list nobody can
+  work. The count is stated at the top of the tab and again on each epic, because a silent drop and
+  a considered exclusion look identical on screen.
+- **Children are graded against their EPIC's deadline, not their own.** *within* = lands on or
+  before the epic's week · *over* = committed past the epic it belongs to, with the gap in weeks ·
+  *no date of its own* = started but uncommitted, which is a gap in its own right and is **never**
+  counted as within · *ungraded* = the epic has no due date, so there is nothing to measure
+  against. Sub-tasks reach their epic through the **parent chain** (sub-task → story → epic), not a
+  single-level `epicKey` lookup — roughly 1,023 sub-tasks parent to a story rather than an epic, and
+  a one-level lookup loses all of them.
 - **🗓 PM tab — attribution is by PROJECT, not by assignee** (schema v38, 2026-08-11). A ticket
   belongs to the PM of its Jira project, taken from the Tempo PM field: `GTT-605 → GTT → that
   project's PM`. It does **not** matter who the ticket is assigned to, which is deliberate —
@@ -1636,6 +1652,25 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 >   cross-fade, no stagger, no count-up) — this is the accessibility escape hatch, not optional.
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
+
+> ### 🗓 PM tab — epic-first rework (2026-08-11) — schema v38 → v39
+>
+> Follows the first cut straight away on user feedback; if you have not deployed v38 yet, deploy
+> this instead — it supersedes it. `Code.js` + `Dashboard.html`, then **`bustDeliveryCache_()`**
+> (a v38 entry carries `pmOwned.items`, not `epics`, so the tab would list no epics at all).
+>
+> What changed and why:
+> 1. **The tab was full of To Do tickets with no due date.** They are not commitments yet by the
+>    managers' 2026-08-10 rule, and the first cut showed them because I made undated items *always*
+>    visible. Now counted and stated, never listed.
+> 2. **Three-level collapse** — PM ▸ epic ▸ children — matching the Actions tab's drill-down, so the
+>    page opens short. The collapsed lines carry the numbers worth scanning (epics dated, 🚩 count,
+>    children past the epic date) so you know whether expanding is worth it.
+> 3. **Epic-first scope:** in progress **or** due this month, including anything already overdue.
+> 4. **Children graded against their epic's deadline**, resolved through the parent chain.
+>
+> Live smoke: expand a PM, then an epic — children show `within` / `over by Nw` / `no date of its
+> own`. An epic with no due date shows 🚩 on its own row and its children read `ungraded`.
 
 > ### 🗓 PM tab + due-date bands (2026-08-11) — schema v37 → v38
 >

@@ -65,7 +65,7 @@ hand — `Jira Raw`, `Jira Bugs` and `Jira Arrivals` are fully rewritten each ru
 **Watch for:** it has **no automated tests**. Syntax is checked, behaviour is not. Every change to it
 is verified by reading and by the next export's output.
 
-### 3.2 `Code.js` — the server (schema v38)
+### 3.2 `Code.js` — the server (schema v39)
 
 Reads all nine sheets, joins them to the roster, computes every metric, caches the result.
 
@@ -79,11 +79,12 @@ code appears. Nothing else changes: the engine does not model the org chart, so 
 just re-points pools.
 
 **Watch for:** results are cached (~65 min TTL) and a warmer rebuilds them every 30 minutes, so the
-dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v38 must be
+dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v39 must be
 deployed with a `bustDeliveryCache_()`** — and every schema bump before it for its own reason: a
-cached v37 model has no `pmOwned`, so the 🗓 PM tab renders its empty state; a cached v29/v30 read
-as v31 gave every person no pool, collapsing the population into one cell and silently reproducing
-the blended figure the Workforce tab exists to retire.
+cached v38 model carries `pmOwned.items` instead of `epics`, so the 🗓 PM tab lists no epics at all;
+a v37 model has no `pmOwned` and the tab renders its empty state; a cached v29/v30 read as v31 gave
+every person no pool, collapsing the population into one cell and silently reproducing the blended
+figure the Workforce tab exists to retire.
 
 ### 3.3 `Dashboard.html` — the client
 
@@ -95,7 +96,7 @@ button, so a forbidden id typed by hand still lands on Executive.
 | 📊 **Executive** | *Are we on target, and where aren't we?* | everyone with access |
 | 🎯 **Actions** | *Who and what needs action?* | admin + viewer |
 | 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
-| 🗓 **PM** | *Which PMs have epics with no committed date?* | admin + viewer |
+| 🗓 **PM** | *Which epics are in flight, and is their own work scheduled past them?* | admin + viewer |
 | 🔒 **Access** | — | admin only |
 
 **The Executive tab is the "newspaper"** — eight bands, most important first:
@@ -122,7 +123,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,127 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,147 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -156,6 +157,19 @@ Local Node test runners. **Not** pasted into the GAS project.
 | **Region / Team breakdowns** | the Jira fields are still largely unpopulated; the dashboard substitutes person-region from tracked hours. Real numbers, but *"by region"* does not yet mean what the Metrics Dictionary says |
 
 ### 🗓 PM-owned work (added 2026-08-11)
+
+**Shape:** PM ▸ epic ▸ children, each level collapsed until opened. The epic list is scoped to work
+in flight — **in progress or due this month** (overdue included). An epic that is neither started
+nor dated is counted in the bar and named in its 🚩 list, but not listed as work to do.
+
+**Unstarted tickets with no due date are counted, never listed** — the managers' 2026-08-10 rule.
+The count appears at the top of the tab and on each epic, so an exclusion never looks like an
+absence.
+
+**Children are graded against their epic's deadline**, not their own: *within* · *over by N weeks* ·
+*no date of its own* (started but uncommitted — never silently counted as within) · *ungraded* (the
+epic has no date to measure against). Sub-tasks reach their epic through the parent chain, because
+most parent to a story rather than directly to an epic.
 
 Two claims per PM, deliberately never combined into one score.
 
