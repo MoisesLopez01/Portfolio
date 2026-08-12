@@ -20,6 +20,10 @@
 const SEC_CD = {
   PROP_ADMINS:  "CD_DASH_ADMINS",
   PROP_VIEWERS: "CD_DASH_VIEWERS",
+  // Viewers additionally allowed to see RESTRICTED profiles (CEO / chiefs /
+  // directors — CONFIG_CD.RESTRICTED). Admins always see them; everyone else
+  // gets those rows stripped SERVER-SIDE before the payload leaves.
+  PROP_EXECVIEW: "CD_DASH_EXECVIEW",
 
   BOOTSTRAP_ADMIN: "moises.lopez@servicerocket.com",
 
@@ -29,41 +33,54 @@ const SEC_CD = {
   DEFAULT_VIEWERS: [
     // "exec@servicerocket.com",              // sample — leadership pilot viewer
   ],
+  DEFAULT_EXECVIEW: [
+    // "ceo@servicerocket.com",               // sample — sees restricted profiles
+  ],
 };
 
 // ── PRIVATE ──────────────────────────────────────────────────
 
 function _readAccessListsCD_() {
   const p = PropertiesService.getScriptProperties();
-  const runtimeAdmins = (p.getProperty(SEC_CD.PROP_ADMINS) || "")
-    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  const runtimeViewers = (p.getProperty(SEC_CD.PROP_VIEWERS) || "")
+  const parse = key => (p.getProperty(key) || "")
     .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
 
   const admins = [...new Set([
     SEC_CD.BOOTSTRAP_ADMIN.toLowerCase(),
     ...SEC_CD.DEFAULT_ADMINS.map(e => e.trim().toLowerCase()).filter(Boolean),
-    ...runtimeAdmins,
+    ...parse(SEC_CD.PROP_ADMINS),
   ])];
   const viewers = [...new Set([
     ...SEC_CD.DEFAULT_VIEWERS.map(e => e.trim().toLowerCase()).filter(Boolean),
-    ...runtimeViewers,
+    ...parse(SEC_CD.PROP_VIEWERS),
   ])];
-  return { admins, viewers };
+  const execView = [...new Set([
+    ...SEC_CD.DEFAULT_EXECVIEW.map(e => e.trim().toLowerCase()).filter(Boolean),
+    ...parse(SEC_CD.PROP_EXECVIEW),
+  ])];
+  return { admins, viewers, execView };
 }
 
 // ── PUBLIC ───────────────────────────────────────────────────
 
 /**
- * Access status for the current session user.
- * @returns {{allowed: boolean, role: ('admin'|'viewer'|'denied'), email: string}}
+ * Access status for the current session user. `canSeeRestricted` gates the
+ * restricted-profile cohort (CEO/chiefs/directors): admins always, viewers
+ * only when granted on the exec-view list. Enforced server-side in
+ * getCompReportData — never a client-only hide.
+ * @returns {{allowed: boolean, role: ('admin'|'viewer'|'denied'), email: string,
+ *   canSeeRestricted: boolean}}
  */
 function checkDashboardAccess() {
   const email = (Session.getActiveUser().getEmail() || "").toLowerCase().trim();
-  const { admins, viewers } = _readAccessListsCD_();
-  if (admins.includes(email))  return { allowed: true, role: "admin",  email };
-  if (viewers.includes(email)) return { allowed: true, role: "viewer", email };
-  return { allowed: false, role: "denied", email };
+  const { admins, viewers, execView } = _readAccessListsCD_();
+  if (admins.includes(email)) {
+    return { allowed: true, role: "admin", email, canSeeRestricted: true };
+  }
+  if (viewers.includes(email)) {
+    return { allowed: true, role: "viewer", email, canSeeRestricted: execView.includes(email) };
+  }
+  return { allowed: false, role: "denied", email, canSeeRestricted: false };
 }
 
 /**
@@ -74,10 +91,11 @@ function checkDashboardAccess() {
 function getAccessSettings() {
   const access = checkDashboardAccess();
   if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
-  const { admins, viewers } = _readAccessListsCD_();
+  const { admins, viewers, execView } = _readAccessListsCD_();
   return {
     admins: admins.filter(e => e !== SEC_CD.BOOTSTRAP_ADMIN.toLowerCase()),
     viewers,
+    execView,
     bootstrapAdmin: SEC_CD.BOOTSTRAP_ADMIN,
     callerEmail: access.email,
   };
@@ -98,7 +116,7 @@ function saveAccessSettings(settings) {
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const clean = list => (Array.isArray(list) ? list : [])
     .map(e => String(e).trim().toLowerCase()).filter(Boolean);
-  const bad = clean(settings.admins).concat(clean(settings.viewers))
+  const bad = clean(settings.admins).concat(clean(settings.viewers), clean(settings.execView))
     .filter(e => !EMAIL_RE.test(e));
   if (bad.length) throw new Error("Not saved — invalid email(s): " + bad.join(", "));
 
@@ -112,6 +130,9 @@ function saveAccessSettings(settings) {
   if (Array.isArray(settings.viewers)) {
     p.setProperty(SEC_CD.PROP_VIEWERS, clean(settings.viewers).join(","));
   }
+  if (Array.isArray(settings.execView)) {
+    p.setProperty(SEC_CD.PROP_EXECVIEW, clean(settings.execView).join(","));
+  }
   const after = _readAccessListsCD_();
   const diff = (b, a) =>
     "+[" + a.filter(e => !b.includes(e)).join(", ") + "] " +
@@ -119,7 +140,8 @@ function saveAccessSettings(settings) {
   bustCompCache_(); // defined in Code.js
   Logger.log("✅ Access lists saved by " + access.email +
     " — admins " + diff(before.admins, after.admins) +
-    " · viewers " + diff(before.viewers, after.viewers));
+    " · viewers " + diff(before.viewers, after.viewers) +
+    " · exec-view " + diff(before.execView, after.execView));
   return getAccessSettings();
 }
 

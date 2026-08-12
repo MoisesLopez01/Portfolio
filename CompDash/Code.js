@@ -68,7 +68,15 @@ const CONFIG_CD = {
     recogMinRating: 4.5,       // "excellent performer" floor — latest completed-quarter rating
     recogMaxTtm: 0.05,         // excellent rating + TTM TCC growth below 5% = recognition risk
     riskFactorMin: 2,          // retention flag needs ≥ N concurrent factors
+    invisibleMinScore: 0.75,   // Check L: contribution evidence score ≥ this…
+    invisibleWeakSi: 4,        // …while windowed SI is below this (or absent) = verify, don't assume
   },
+
+  // ── V4: contribution snapshot (PROCESS §7.4 — frozen quarterly evidence) ──
+  // Written by exportContributionSnapshot() in the PS Contribution Report
+  // project; lives in the contribution data file next to the SI ratings tab.
+  // Absent tab degrades gracefully (evidence blocks simply don't render).
+  CONTRIB_SNAP_TAB: "Contribution Snapshot", // CD_CONTRIB_SNAP_TAB override; SS via CD_CONTRIB_SNAP_SS_ID
 
   // ── V3: RAG thresholds & benchmarks ─────────────────────────────────────
   // Research-seeded 2026-07-27 (Mercer US Turnover Survey 2025; SHRM
@@ -121,6 +129,27 @@ const CONFIG_CD = {
     { term: "RAG", def: "Red / Amber(yellow) / Green status coding. Every threshold is configuration, shown with its source in the table below." },
   ],
 
+  // ── V4: restricted profiles (top records — CEO / chiefs / VPs / directors) ──
+  // Matching people are stripped SERVER-SIDE from the payload for anyone
+  // without exec-view access (Security.js CD_DASH_EXECVIEW; admins always see
+  // them). Extra employee numbers via the CD_RESTRICTED_EXTRA property
+  // (comma-separated) — for profiles the patterns can't describe.
+  RESTRICTED: {
+    TITLE_RE: /\b(chief|ceo|cfo|coo|cto|president|vice president|vp|director)\b/i,
+    MIN_M_LEVEL: 9, // M9/M10 restricted regardless of title wording
+  },
+
+  // ── V4: employment type (optional roster column) ──────────────────────────
+  // EOR (Employer of Record) is a REGULAR employee in every engine — explicit
+  // rule. Part-time / interns are "not comparable": kept in headcount and
+  // attrition, excluded from anchor evidence, ratio scoring, equity lenses and
+  // market suggestions — a part-timer must never wear a red band earned
+  // against full-time peers. Column absent → everyone regular.
+  EMP_TYPE_COL: "Employment Type",
+  EMP_TYPE_RE: /employ(ment|ee)?\s*type|worker\s*type/i,
+  PART_TIME_RE: /part[\s-]?time/i,
+  INTERN_RE: /intern/i,
+
   // RD reasons that reset in-role (profile) tenure. Internal Transfer counts:
   // it changes job title/responsibilities even when the salary doesn't move.
   PROMO_RE: /promot|title change|role change|internal transfer/i,
@@ -157,6 +186,71 @@ function levelRank_(level) {
   const m = String(level || "").match(/^([IM])(\d+)$/);
   if (!m) return 999;
   return (m[1] === "I" ? 0 : 100) + parseInt(m[2], 10);
+}
+
+/**
+ * Employment-type classification. EOR / Employee of Record / full-time /
+ * blank / unknown → "regular" (the deliberate default); part-time and intern
+ * are the only non-comparable classes.
+ * @returns {("regular"|"part-time"|"intern")}
+ */
+function classifyEmpType_(raw, cfg) {
+  const s = String(raw || "");
+  if (cfg.PART_TIME_RE.test(s)) return "part-time";
+  if (cfg.INTERN_RE.test(s)) return "intern";
+  return "regular";
+}
+
+/**
+ * Is this roster record a restricted (top) profile? Title pattern, M-level
+ * floor, or an explicit employee-number grant (extraSet from
+ * CD_RESTRICTED_EXTRA).
+ */
+function isRestrictedEmp_(rec, cfg, extraSet) {
+  if (extraSet && extraSet.has(String(rec.empNo))) return true;
+  if (cfg.RESTRICTED.TITLE_RE.test(String(rec.jobTitle || ""))) return true;
+  const m = String(rec.level || "").match(/^M(\d+)$/);
+  return !!(m && parseInt(m[1], 10) >= cfg.RESTRICTED.MIN_M_LEVEL);
+}
+
+/**
+ * Removes restricted profiles from every name-carrying collection of an
+ * assembled payload, IN PLACE. Aggregates, anchors and verdicts stay
+ * full-population (they carry counts, never names). The restrictedEmpNos
+ * list itself is deleted — a stripped payload must not enumerate who was
+ * hidden. meta.restricted.hidden lets the UI say the view is deliberately
+ * partial without saying who.
+ * @param {Object} payload parsed getCompReportData payload
+ * @returns {Object} the same payload, stripped
+ */
+function stripRestrictedPayload_(payload) {
+  const nos = new Set((payload.restrictedEmpNos || []).map(String));
+  delete payload.restrictedEmpNos;
+  const setHidden = n => {
+    payload.meta.restricted = Object.assign({}, payload.meta.restricted, { hidden: n });
+  };
+  if (!nos.size) {
+    setHidden(0);
+    return payload;
+  }
+  const keep = r => !nos.has(String(r.empNo));
+  const hiddenActive = (payload.employees || []).filter(e => !keep(e)).length;
+  payload.employees = (payload.employees || []).filter(keep);
+  payload.people = (payload.people || []).filter(keep);
+  payload.qtaInterim = (payload.qtaInterim || []).filter(keep);
+  if (payload.attrition && payload.attrition.detail) {
+    payload.attrition.detail = payload.attrition.detail.filter(keep);
+  }
+  (payload.compaGroups || []).forEach(g => { g.members = (g.members || []).filter(keep); });
+  if (payload.equity) {
+    payload.equity.outliers = (payload.equity.outliers || []).filter(keep);
+    payload.equity.tenure = (payload.equity.tenure || []).filter(keep);
+  }
+  if (payload.history) {
+    nos.forEach(no => { delete payload.history[no]; });
+  }
+  setHidden(hiddenActive);
+  return payload;
 }
 
 function asNum_(v) {
@@ -605,7 +699,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: band === "green" ? "Within the healthy band (≤ " + pctV_(R.attritionTotal.green) + ")."
         : band === "yellow" ? "In the watch band (" + pctV_(R.attritionTotal.green) + "–" + pctV_(R.attritionTotal.yellow) + ")."
         : "Above the at-risk line (> " + pctV_(R.attritionTotal.yellow) + ").",
-      action: band === "red" ? "Review retention hotspots in the Managers view and department concentration this quarter." : "",
+      action: band === "red" ? "Review the manager hotspots and department concentration in the Attrition view this quarter." : "",
     }, cur.avgHeadcount, cur.total, cfg));
   }
 
@@ -656,17 +750,21 @@ function buildVerdicts_(model, cfg) {
     });
   }
 
-  // 6 — manager hotspots (counts only — names live in the Managers table)
+  // 6 — teams that may need manager support (counts only — identities live in
+  // the Attrition view's manager-hotspots table, never at exec level: a
+  // scoreboard changes how managers behave toward the tool. Framed as Develops
+  // Rocketeers / Empower Others — support, not surveillance — which keeps Talk
+  // Straight possible in the skip-level conversations.)
   if (model.managers && model.managers.available && model.managers.rows.length) {
     const hot = model.managers.rows.filter(r =>
       r.attritionRate != null && r.attritionRate > R.attritionTotal.yellow).length;
     push({
-      id: "mgr-hotspots", view: "managers",
+      id: "mgr-hotspots", view: "attrition",
       severity: hot > 0 ? "RISK" : "FACT",
-      fact: hot + " of " + model.managers.rows.length + " managers (3+ reports) carry team attrition above " + pctV_(R.attritionTotal.yellow) + ".",
-      soWhat: hot > 0 ? "Exits cluster under specific managers — a manager-quality signal distinct from department-wide pressure."
+      fact: hot + " of " + model.managers.rows.length + " teams (managers with 3+ reports) show attrition above " + pctV_(R.attritionTotal.yellow) + " — the manager may need support.",
+      soWhat: hot > 0 ? "Exits cluster in specific teams — a signal to support those managers, distinct from department-wide pressure."
         : "No team's attrition stands out beyond the at-risk line.",
-      action: hot > 0 ? "Schedule skip-levels for the flagged teams this quarter (table below, worst first)." : "",
+      action: hot > 0 ? "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Attrition view's manager hotspots, not in decks)." : "",
     });
   }
 
@@ -676,7 +774,7 @@ function buildVerdicts_(model, cfg) {
     const s = model.managers.spanOfControl;
     const wide = s.ratio > R.spanWide, narrow = s.ratio < R.spanNarrow;
     push({
-      id: "span", view: "managers",
+      id: "span", view: "attrition",
       severity: wide ? "RISK" : "NOTE",
       fact: "Span of control 1:" + s.ratio + " (" + s.managers + " managers · " + s.ics + " ICs) vs 1:" + s.target + " target.",
       soWhat: wide ? "Managers are stretched beyond the knowledge-work norm (6–8) — coaching capacity suffers."
@@ -758,6 +856,17 @@ function buildVerdicts_(model, cfg) {
         : "No core-level Rocketeer stacks multiple comp risk factors.",
       action: risky > 0 ? "Work the retention cohort table (Risk Signals view) with the HRBP, worst-stacked first." : "",
     });
+
+    const invisible = sig.filter(e => e.signals.invisibleContributor).length;
+    if (invisible > 0) {
+      push({
+        id: "invisible-contrib", view: "signals", severity: "NOTE",
+        fact: invisible + " Rocketeer" + (invisible === 1 ? "" : "s") + " show strong contribution evidence (score ≥ " +
+          S.invisibleMinScore + ") but weak or missing performance ratings.",
+        soWhat: "Absence of a rating is not evidence of absence of contribution (Check K spirit) — these may be invisible contributors.",
+        action: "Ask the manager to confirm the work and whether it maps to a GTT-35 pillar before the cycle closes.",
+      });
+    }
   }
 
   // 10 — trends & drivers (dominant exit reasons → driver classification)
@@ -837,9 +946,14 @@ function buildVerdicts_(model, cfg) {
 
 function buildCompaGroups_(activeRecords, benchMap, cfg) {
   const min = (cfg && cfg.SMALL_GROUP_MIN) || CONFIG_CD.SMALL_GROUP_MIN;
+  // Part-time / interns (comparable === false) never serve as anchor evidence
+  // — not in title-peer medians, not in level cohorts — and never receive a
+  // ratio. They still appear in the group listing with a discreet
+  // nonComparable flag (V4 employment-type rule).
+  const isComparable = r => r.comparable !== false;
   const cohorts = new Map(); // "keyLocation||level" → tcc[]
   activeRecords.forEach(r => {
-    if (!(r.tcc > 0) || !r.level || r.level === "—") return;
+    if (!isComparable(r) || !(r.tcc > 0) || !r.level || r.level === "—") return;
     const k = (r.keyLocation || "—") + "||" + r.level;
     if (!cohorts.has(k)) cohorts.set(k, []);
     cohorts.get(k).push(r.tcc);
@@ -849,14 +963,16 @@ function buildCompaGroups_(activeRecords, benchMap, cfg) {
     const key = (r.keyLocation || "—") + "||" + (r.jobTitle || "—");
     if (!map.has(key)) {
       map.set(key, { keyLocation: r.keyLocation || "—", jobTitle: r.jobTitle || "—",
-                     level: r.level, currency: r.currency || "", members: [], missingTcc: 0 });
+                     level: r.level, currency: r.currency || "", members: [], extras: [],
+                     missingTcc: 0 });
     }
     const g = map.get(key);
+    if (!isComparable(r)) { g.extras.push(r); return; }
     if (r.tcc == null || r.tcc <= 0) { g.missingTcc++; return; }
     g.members.push(r);
   });
   return [...map.values()].map(g => {
-    const count = g.members.length;
+    const count = g.members.length; // anchor basis: comparable members with TCC
     let anchor = null, anchorTier = "none";
     if (count >= min) {
       anchor = median_(g.members.map(r => r.tcc));
@@ -883,6 +999,12 @@ function buildCompaGroups_(activeRecords, benchMap, cfg) {
           ratio: anchor > 0 ? Math.round(r.tcc / anchor * 1000) / 1000 : null,
           noPeers: count === 1,
         }))
+        .concat(g.extras.map(r => ({
+          empNo: r.empNo, name: r.name, level: r.level, currency: r.currency,
+          tcc: r.tcc, tccUsd: r.tccUsd,
+          ratio: null, noPeers: false,
+          nonComparable: true, employmentType: r.employmentType,
+        })))
         .sort((a, b) => (a.ratio == null) - (b.ratio == null) || a.ratio - b.ratio),
     };
   }).sort((a, b) =>
@@ -1027,6 +1149,10 @@ function buildSignalsForEmp_(v, cfg) {
   // ttm null (history < 1y) never fires — a new hire hasn't missed a raise.
   const recognitionRisk = v.windowLatest != null && v.windowLatest >= S.recogMinRating &&
     v.ttmGrowthPct != null && v.ttmGrowthPct < S.recogMaxTtm;
+  // Check L spirit: strong contribution evidence + weak/absent rating visibility
+  // = verify with the manager. A verification trigger — never a comp risk factor.
+  const invisibleContributor = v.contribScore != null && v.contribScore >= S.invisibleMinScore &&
+    (v.perfAvg == null || v.perfAvg < S.invisibleWeakSi);
   const riskFactors = [];
   if (v.ratio != null && v.ratio < cfg.COMPA_TARGET_MIN) riskFactors.push("below internal anchor");
   if (v.marketRatio != null && v.marketRatio < cfg.MARKET_LOW) riskFactors.push("below market");
@@ -1035,10 +1161,29 @@ function buildSignalsForEmp_(v, cfg) {
   if (recognitionRisk) riskFactors.push("recognition risk");
   return {
     everPromoted: !!v.everPromoted,
-    promoStale, earlyCareer, coreLevel, recognitionRisk,
+    promoStale, earlyCareer, coreLevel, recognitionRisk, invisibleContributor,
     retentionRisk: coreLevel && riskFactors.length >= S.riskFactorMin,
     riskFactors,
   };
+}
+
+/**
+ * Latest-quarter contribution snapshot per employee from parsed sheet rows.
+ * Fixed-width quarter labels ("FY26Q4") sort correctly as strings, so the
+ * lexicographic max is the most recent snapshot.
+ * @param {Array<Object>} rows {empNo, quarter, ...evidence fields}
+ * @returns {{byEmp: Object, quarter: (string|null), count: number}}
+ */
+function buildContribByEmp_(rows) {
+  const byEmp = {};
+  let latestQ = null;
+  (rows || []).forEach(r => {
+    if (!r || !r.empNo || !r.quarter) return;
+    const cur = byEmp[r.empNo];
+    if (!cur || String(r.quarter) > String(cur.quarter)) byEmp[r.empNo] = r;
+    if (!latestQ || String(r.quarter) > latestQ) latestQ = String(r.quarter);
+  });
+  return { byEmp, quarter: latestQ, count: Object.keys(byEmp).length };
 }
 
 // ── Priority Score ──────────────────────────────────────────────────────────
@@ -1125,6 +1270,10 @@ function ttmGrowth_(events, currentTcc, asOf) {
 function buildEquity_(activeRecords, cfg, asOf) {
   const groups = new Map();
   activeRecords.forEach(r => {
+    // Non-comparable employment types (part-time/intern) sit outside the
+    // equity lenses entirely — comparing them to full-time medians would
+    // manufacture false flags (V4 rule).
+    if (r.comparable === false) return;
     if (r.tcc == null || r.tcc <= 0) return;
     const key = (r.keyLocation || "—") + "||" + (r.level || "—");
     if (!groups.has(key)) groups.set(key, { keyLocation: r.keyLocation || "—", level: r.level || "—", members: [] });
@@ -1230,6 +1379,9 @@ function ssIds_() {
     histTab:    p.getProperty("CD_HIST_TAB")        || CONFIG_CD.HIST_TAB,
     ratingsTab: p.getProperty("CD_RATINGS_TAB")     || CONFIG_CD.RATINGS_TAB,
     benchTab:   p.getProperty("CD_BENCH_TAB")       || CONFIG_CD.BENCH_TAB,
+    // Contribution snapshot defaults into the same file as the ratings tab.
+    contribSnap:    p.getProperty("CD_CONTRIB_SNAP_SS_ID") || p.getProperty("CD_RATINGS_SS_ID") || CONFIG_CD.RATINGS_SS_ID,
+    contribSnapTab: p.getProperty("CD_CONTRIB_SNAP_TAB")   || CONFIG_CD.CONTRIB_SNAP_TAB,
   };
 }
 
@@ -1378,7 +1530,8 @@ function readRosterCD_() {
     termCat: col("Termination Category"), keyLoc: col("Key Location"),
     gender: col("Gender"), // optional — being added to the roster
     tccUsd: col(CONFIG_CD.TCC_USD_COL, /tcc.*usd/i), // optional — column position shifts, resolved by header
-    supervisor: col("Supervisor"), // optional — powers the Managers view; absent column degrades gracefully
+    supervisor: col("Supervisor"), // optional — powers the Attrition manager hotspots; absent column degrades gracefully
+    empType: col(CONFIG_CD.EMP_TYPE_COL, CONFIG_CD.EMP_TYPE_RE), // optional — part-time/EOR rules; absent → everyone regular
   };
   const required = { empNo: c.empNo, name: c.name, title: c.title, keyLoc: c.keyLoc };
   Object.keys(required).forEach(k => {
@@ -1387,6 +1540,7 @@ function readRosterCD_() {
   const genderAvailable = c.gender !== -1;
   const tccUsdAvailable = c.tccUsd !== -1;
   const supervisorAvailable = c.supervisor !== -1;
+  const empTypeAvailable = c.empType !== -1;
   const records = [];
   rows.forEach(row => {
     const name = String(row[c.name] || "").trim();
@@ -1414,14 +1568,19 @@ function readRosterCD_() {
       termRegretted: c.termRegret !== -1 ? String(row[c.termRegret] || "").trim() : "",
       gender: genderAvailable ? (String(row[c.gender] || "").trim() || null) : null,
       supervisor: c.supervisor !== -1 ? String(row[c.supervisor] || "").trim() : "",
+      employmentType: empTypeAvailable
+        ? classifyEmpType_(row[c.empType], CONFIG_CD) : "regular", // EOR → regular by rule
       tcc: c.tcc !== -1 ? asNum_(row[c.tcc]) : null,
       tccUsd: c.tccUsd !== -1 ? asNum_(row[c.tccUsd]) : null, // read directly off the roster row
     });
   });
+  // comparable = may serve as peer-anchor evidence and be ratio-scored.
+  records.forEach(r => { r.comparable = r.employmentType === "regular"; });
   log_("readRosterCD_: " + records.length + " records, gender " + (genderAvailable ? "available" : "pending") +
        ", TCC USD " + (tccUsdAvailable ? "available" : "pending") +
-       ", supervisor " + (supervisorAvailable ? "available" : "MISSING"));
-  return { records, genderAvailable, tccUsdAvailable, supervisorAvailable };
+       ", supervisor " + (supervisorAvailable ? "available" : "MISSING") +
+       ", employment type " + (empTypeAvailable ? "available" : "absent (all regular)"));
+  return { records, genderAvailable, tccUsdAvailable, supervisorAvailable, empTypeAvailable };
 }
 
 /**
@@ -1530,6 +1689,62 @@ function readBenchmarks_() {
   return { map, count };
 }
 
+/**
+ * Reads the quarterly Contribution Snapshot (written by the PS project's
+ * exportContributionSnapshot). Optional columns tolerated — the tab may be
+ * absent entirely (caller degrades gracefully via meta.sources.contribution).
+ * @returns {{byEmp: Object, quarter: (string|null), count: number}}
+ */
+function readContribSnapshot_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.contribSnap, ids.contribSnapTab);
+  const c = {
+    quarter: colIdx_(headers, "Quarter"),
+    empNo:   colIdx_(headers, "Employee Number"),
+    team:    colIdx_(headers, "Team"),
+    score:   colIdx_(headers, "Contribution Score"),
+    goal:    colIdx_(headers, "Goal Compliant"),
+    goalsN:  colIdx_(headers, "Goals Total"),
+    pto:     colIdx_(headers, "PTO Compliance"),
+    tracked: colIdx_(headers, "Tracked Hrs"),
+    planned: colIdx_(headers, "Planned Hrs"),
+    cover:   colIdx_(headers, "Tracked Coverage"),
+    kudosR:  colIdx_(headers, "Kudos Received"),
+    kudosG:  colIdx_(headers, "Kudos Given"),
+    rcr:     colIdx_(headers, "RCR"),
+    si:      colIdx_(headers, "SI"),
+  };
+  if (c.quarter === -1 || c.empNo === -1) {
+    Logger.log("❌ readContribSnapshot_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Contribution Snapshot tab: required columns missing (see execution log).");
+  }
+  const val = (row, i) => i !== -1 ? asNum_(row[i]) : null;
+  const parsed = rows.map(row => {
+    const empNo = String(row[c.empNo] || "").trim();
+    const quarter = String(row[c.quarter] || "").trim();
+    if (!empNo || !quarter) return null;
+    const goalRaw = c.goal !== -1 ? String(row[c.goal] || "").trim() : "";
+    return {
+      empNo, quarter,
+      team: c.team !== -1 ? String(row[c.team] || "").trim() : "",
+      score: val(row, c.score),
+      goalCompliant: goalRaw ? /^y(es)?$/i.test(goalRaw) : null,
+      goalsTotal: val(row, c.goalsN),
+      ptoCompliance: val(row, c.pto),
+      trackedHrs: val(row, c.tracked),
+      plannedHrs: val(row, c.planned),
+      trackedCoverage: val(row, c.cover),
+      kudosReceived: val(row, c.kudosR),
+      kudosGiven: val(row, c.kudosG),
+      rcr: val(row, c.rcr), // Services only — null never renders as zero
+      si: val(row, c.si),
+    };
+  }).filter(Boolean);
+  const out = buildContribByEmp_(parsed);
+  log_("readContribSnapshot_: " + out.count + " employees, latest quarter " + out.quarter);
+  return out;
+}
+
 // ── Assembly + web app ──────────────────────────────────────────────────────
 
 /**
@@ -1557,6 +1772,10 @@ function getCompReportData(force) {
       obj.meta.fromCache = true;
       obj.meta.role = access.role;   // never serve the cached builder's identity
       obj.meta.email = access.email;
+      // Cache holds the FULL payload once; restricted profiles are stripped
+      // per serve — the gate is this server function, never the client.
+      if (!access.canSeeRestricted) stripRestrictedPayload_(obj);
+      else delete obj.restrictedEmpNos;
       return JSON.stringify(obj);
     }
   }
@@ -1565,13 +1784,15 @@ function getCompReportData(force) {
   const ctx = fiscalContextCD_();
   const sources = { roster: "ok", history: "ok", ratings: "ok", benchmarks: "ok" };
 
-  let records = [], genderAvailable = false, tccUsdAvailable = false, supervisorAvailable = false;
+  let records = [], genderAvailable = false, tccUsdAvailable = false,
+      supervisorAvailable = false, empTypeAvailable = false;
   try {
     const r = readRosterCD_();
     records = r.records;
     genderAvailable = r.genderAvailable;
     tccUsdAvailable = r.tccUsdAvailable;
     supervisorAvailable = r.supervisorAvailable;
+    empTypeAvailable = r.empTypeAvailable;
   } catch (e) {
     sources.roster = "error: " + e.message;
     Logger.log("❌ readRosterCD_: " + e.message);
@@ -1585,6 +1806,11 @@ function getCompReportData(force) {
   let bench = { map: {}, count: 0 };
   try { bench = readBenchmarks_(); }
   catch (e) { sources.benchmarks = "error: " + e.message; Logger.log("⚠️ readBenchmarks_: " + e.message); }
+  // Optional until the first quarterly export runs — "pending" is normal.
+  let contrib = { byEmp: {}, quarter: null, count: 0 };
+  sources.contribution = "ok";
+  try { contrib = readContribSnapshot_(); }
+  catch (e) { sources.contribution = "pending: " + e.message; log_("readContribSnapshot_: " + e.message); }
 
   const active = records.filter(r => r.active);
 
@@ -1608,6 +1834,7 @@ function getCompReportData(force) {
   const employees = active.map(r => {
     const a = anchorByEmp[r.empNo] || { ratio: null, anchor: null, anchorTier: "none" };
     const perf = perfByEmp[r.empNo] || null;
+    const comparable = r.comparable !== false;
     const b = lookupBench_(bench.map, r.keyLocation, r.jobTitle, r.currency);
     if (b.mismatch) currencyMismatch++;
     if (b.row) matchedBench++;
@@ -1617,12 +1844,15 @@ function getCompReportData(force) {
     const profileYears = profileTenureYears_(histByEmp[r.empNo], r.hireDate, ctx.asOf, CONFIG_CD.PROMO_RE);
     const everPromoted = (histByEmp[r.empNo] || []).some(e =>
       e && e.date instanceof Date && !isNaN(e.date) && CONFIG_CD.PROMO_RE.test(String(e.reason || "")));
-    const marketRatio = (row && row.mean > 0 && r.tcc > 0)
+    // Non-comparable (part-time/intern) → no market read: the benchmark row
+    // is a full-time figure, so a ratio against it would be false signal.
+    const marketRatio = (comparable && row && row.mean > 0 && r.tcc > 0)
       ? Math.round(r.tcc / row.mean * 1000) / 1000 : null;
     const ttmGrowthPct = ttmGrowth_(histByEmp[r.empNo], r.tcc, ctx.asOf);
     return {
       empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
       dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
+      employmentType: r.employmentType || "regular",
       tcc: r.tcc, tccUsd: r.tccUsd, hireDate: isoDate_(r.hireDate), gender: r.gender,
       ratio: a.ratio, anchor: a.anchor, anchorTier: a.anchorTier,
       p25: row ? row.p25 : null,
@@ -1630,17 +1860,22 @@ function getCompReportData(force) {
       p75: row ? row.p75 : null,
       benchSource: row ? row.source : "",
       marketRatio,
-      suggestion: marketSuggestion_(r.tcc, row ? row.p25 : null, row ? row.mean : null),
+      suggestion: comparable
+        ? marketSuggestion_(r.tcc, row ? row.p25 : null, row ? row.mean : null)
+        : { status: "not-comparable", pctToP25: null, pctToP50: null },
       perfAvg: perf ? perf.avg : null, perfLatest: perf ? perf.latest : null,
       perfWindowLatest: perf ? perf.windowLatest : null,
       perfCount: perf ? perf.count : 0,
       perfTotalCount: perf ? perf.totalCount : 0,
       tenureCompanyYears: companyYears, tenureProfileYears: profileYears,
       ttmGrowthPct,
+      contrib: contrib.byEmp[r.empNo] || null,
       signals: buildSignalsForEmp_({
         level: r.level, ratio: a.ratio, marketRatio, ttmGrowthPct,
         profileYears, everPromoted,
         windowLatest: perf ? perf.windowLatest : null,
+        contribScore: contrib.byEmp[r.empNo] ? contrib.byEmp[r.empNo].score : null,
+        perfAvg: perf ? perf.avg : null,
       }, cfgV4),
       priority: priorityScore_({
         perfAvg: perf ? perf.avg : null, perfCount: perf ? perf.count : 0,
@@ -1660,6 +1895,14 @@ function getCompReportData(force) {
                            ratings: perf ? perf.history : [] };
     }
   });
+
+  // ── V4: restricted profiles — computed over ALL records (a terminated
+  // chief is just as restricted in the attrition detail as an active one).
+  const extraRestricted = new Set((props_().getProperty("CD_RESTRICTED_EXTRA") || "")
+    .split(",").map(s => s.trim()).filter(Boolean));
+  const restrictedEmpNos = records
+    .filter(r => isRestrictedEmp_(r, CONFIG_CD, extraRestricted))
+    .map(r => String(r.empNo)).filter(Boolean);
 
   // ── V3 blocks — all full-population, deterministic, cached with the payload ──
   const ragCfg = ragCfg_();
@@ -1687,6 +1930,13 @@ function getCompReportData(force) {
       fiscalMonthIdx: fiscalMonthIdx_(ctx.asOf, ctx.fyStartCalYear),
       fyStartCalYear: ctx.fyStartCalYear, asOf: isoDate_(ctx.asOf),
       sources, genderAvailable, tccUsdAvailable,
+      employmentTypeAvailable: empTypeAvailable,
+      employmentCounts: {
+        partTime: active.filter(r => r.employmentType === "part-time").length,
+        intern: active.filter(r => r.employmentType === "intern").length,
+      },
+      // hidden is overwritten by stripRestrictedPayload_ for non-exec viewers.
+      restricted: { hidden: 0, minMLevel: CONFIG_CD.RESTRICTED.MIN_M_LEVEL },
       activeCount: active.length,
       ratingsCount: ratings.count,
       benchCoverage: { rows: bench.count, matchedEmployees: matchedBench, currencyMismatch },
@@ -1715,12 +1965,15 @@ function getCompReportData(force) {
         earlyCareerLevels: sigCfg.earlyCareerLabel, coreLevels: sigCfg.coreLevelLabel,
         recogMinRating: sigCfg.recogMinRating, recogMaxTtm: sigCfg.recogMaxTtm,
         riskFactorMin: sigCfg.riskFactorMin,
+        invisibleMinScore: sigCfg.invisibleMinScore, invisibleWeakSi: sigCfg.invisibleWeakSi,
       },
+      contribution: { quarter: contrib.quarter, matched: contrib.count },
       benchmarks: { sources: CONFIG_CD.BENCH_SOURCES },
       glossary: CONFIG_CD.GLOSSARY,
     },
     employees,
     people: records.map(personLite_),
+    restrictedEmpNos, // deleted by stripRestrictedPayload_ before a non-exec serve
     attrition,
     managers,
     verdicts,
@@ -1733,7 +1986,13 @@ function getCompReportData(force) {
   const json = JSON.stringify(payload);
   cachePutLarge_(cache, key, json, CONFIG_CD.CACHE_TTL_SEC);
   Logger.log("✅ getCompReportData: built in " + Math.round((Date.now() - t0) / 1000) + "s — " +
-             json.length + " chars, " + active.length + " active");
+             json.length + " chars, " + active.length + " active, " +
+             restrictedEmpNos.length + " restricted profile(s)");
+  if (!access.canSeeRestricted) {
+    return JSON.stringify(stripRestrictedPayload_(JSON.parse(json)));
+  }
+  // Exec/admin serve keeps restrictedEmpNos — they see those profiles anyway,
+  // and skipping a re-stringify keeps the fresh-build path fast.
   return json;
 }
 
@@ -1752,6 +2011,72 @@ function doGet() {
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 
+// ── Overview action queue — per-viewer state ────────────────────────────────
+// The Overview's action queue persists open/acked/snoozed/done + owner PER
+// VIEWER in UserProperties (each user's store is private to them and this
+// script). Shared cross-team state (one queue for WFP/REX/Finance) would need
+// a sheet- or ScriptProperties-backed store — deliberate backlog item, not an
+// oversight. Keys are verdict ids, so state survives payload rebuilds.
+
+const CD_ACTIONS_PROP = "CD_OVERVIEW_ACTIONS_V1";
+const CD_ACTION_STATES = ["open", "acked", "snoozed", "done"];
+
+/**
+ * Validates a client patch for one action row. Pure — Node-tested.
+ * Unknown states and extra keys are dropped; owner is trimmed and capped.
+ * @param {{state?: string, owner?: string}} patch
+ * @returns {{state?: string, owner?: string}}
+ */
+function sanitizeActionPatch_(patch) {
+  const p = (patch && typeof patch === "object") ? patch : {};
+  const out = {};
+  if (CD_ACTION_STATES.indexOf(p.state) !== -1) out.state = p.state;
+  if (typeof p.owner === "string") out.owner = p.owner.trim().slice(0, 80);
+  return out;
+}
+
+/**
+ * The caller's saved action-queue state, as a JSON string (same marshalling
+ * rule as the report payload). Map of verdictId → {state, owner, by, at}.
+ * Admin-only: the 📌 Action Queue tab is an admin working surface — viewers
+ * never see it, and hiding the tab is not the enforcement.
+ * @returns {string}
+ */
+function getOverviewActions() {
+  const access = checkDashboardAccess();
+  if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+  return PropertiesService.getUserProperties().getProperty(CD_ACTIONS_PROP) || "{}";
+}
+
+/**
+ * Merges one sanitized patch into the caller's action state and stamps
+ * "by whom, when" — the stamp is what tells a stale queue from a live one.
+ * Prunes oldest entries beyond 40 (UserProperties value cap is 9 KB).
+ * Admin-only, matching getOverviewActions — the queue is an admin surface.
+ * @param {string} id Verdict id the state attaches to.
+ * @param {{state?: string, owner?: string}} patch
+ * @returns {string} The full updated map, JSON.
+ */
+function saveOverviewAction(id, patch) {
+  const access = checkDashboardAccess();
+  if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+  id = String(id || "").slice(0, 60);
+  if (!id) throw new Error("Missing action id");
+  const clean = sanitizeActionPatch_(patch);
+  const up = PropertiesService.getUserProperties();
+  let map = {};
+  try { map = JSON.parse(up.getProperty(CD_ACTIONS_PROP) || "{}") || {}; } catch (e) { map = {}; }
+  map[id] = Object.assign({}, map[id], clean,
+    { by: access.email, at: new Date().toISOString() });
+  const ids = Object.keys(map);
+  if (ids.length > 40) {
+    ids.sort((a, b) => String((map[a] || {}).at || "").localeCompare(String((map[b] || {}).at || "")))
+      .slice(0, ids.length - 40).forEach(k => { delete map[k]; });
+  }
+  up.setProperty(CD_ACTIONS_PROP, JSON.stringify(map));
+  return JSON.stringify(map);
+}
+
 // ── Diagnostics — run from the GAS editor ───────────────────────────────────
 function debugCompPipeline() {
   const r = readRosterCD_();
@@ -1766,8 +2091,16 @@ function debugCompPipeline() {
   Logger.log("TCC USD column: " + (r.tccUsdAvailable ? "FOUND" : "NOT FOUND") + " — " +
              usdHits + "/" + active.length + " active have a value");
   const supHits = active.filter(x => x.supervisor).length;
-  Logger.log("Supervisor column: " + (r.supervisorAvailable ? "FOUND" : "NOT FOUND — Managers view will show its unavailable notice") +
+  Logger.log("Supervisor column: " + (r.supervisorAvailable ? "FOUND" : "NOT FOUND — manager hotspots (Attrition) will show the unavailable notice") +
              " — " + supHits + "/" + active.length + " active have a value");
+  Logger.log("Employment type column: " + (r.empTypeAvailable ? "FOUND" : "NOT FOUND (everyone regular)") +
+             " — part-time " + active.filter(x => x.employmentType === "part-time").length +
+             " · intern " + active.filter(x => x.employmentType === "intern").length);
+  const extraDbg = new Set((PropertiesService.getScriptProperties().getProperty("CD_RESTRICTED_EXTRA") || "")
+    .split(",").map(s => s.trim()).filter(Boolean));
+  const restrDbg = r.records.filter(x => isRestrictedEmp_(x, CONFIG_CD, extraDbg));
+  Logger.log("Restricted profiles: " + restrDbg.length + " (" +
+             restrDbg.filter(x => x.active).length + " active) — stripped for non-exec viewers");
   let hist = {};
   try { hist = readCompHistory_(); }
   catch (e) { Logger.log("⚠️ readCompHistory_ (debug): " + e.message); }
@@ -1834,4 +2167,12 @@ function debugCompPipeline() {
   });
   Logger.log("Signals (ratio/market factors excluded in this debug pass): promo-stale " + staleN +
     " · recognition-risk " + recogN + " · core retention (partial factors) " + coreRiskN);
+  try {
+    const snap = readContribSnapshot_();
+    const joined = active.filter(x => snap.byEmp[x.empNo]).length;
+    Logger.log("Contribution snapshot: " + snap.count + " rows (latest " + snap.quarter + "), " +
+      joined + "/" + active.length + " active joined");
+  } catch (e) {
+    Logger.log("Contribution snapshot: PENDING — " + e.message);
+  }
 }

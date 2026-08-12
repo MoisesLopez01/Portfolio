@@ -620,6 +620,8 @@ function mkV3(over) {
   check("verdicts: mgr-hotspots counts only, no manager names",
     /2/.test(byId["mgr-hotspots"].fact) && byId["mgr-hotspots"].fact.indexOf("A") !== 0 &&
     !/\bB\b/.test(byId["mgr-hotspots"].fact));
+  check("verdicts: manager verdicts deep-link to the Attrition view (managers tab retired)",
+    byId["mgr-hotspots"].view === "attrition" && byId["span"].view === "attrition");
   // JS stringifies the numeric ratio 4.0 as "4" — accept either rendering.
   // 4.0 sits exactly ON spanNarrow, so it is not flagged narrow and not RISK.
   check("verdicts: span states ratio, managers, ICs and target",
@@ -766,4 +768,169 @@ function mkV3(over) {
     return clean.find(v => v.id === "promo-stale").severity === "FACT" &&
            clean.find(v => v.id === "retention-core").severity === "FACT";
   })());
+})();
+
+// ── V4: employment type (part-time / EOR rules) ─────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  check("empType: EOR and Employee of Record are REGULAR by rule",
+    classifyEmpType_("EOR", cfg) === "regular" &&
+    classifyEmpType_("Employer of Record", cfg) === "regular");
+  check("empType: part-time variants classify",
+    classifyEmpType_("Part-Time", cfg) === "part-time" &&
+    classifyEmpType_("part time", cfg) === "part-time" &&
+    classifyEmpType_("PartTime", cfg) === "part-time");
+  check("empType: intern classifies", classifyEmpType_("Intern (Summer)", cfg) === "intern");
+  check("empType: blank / full-time / unknown default regular",
+    classifyEmpType_("", cfg) === "regular" && classifyEmpType_(null, cfg) === "regular" &&
+    classifyEmpType_("Full-Time Regular", cfg) === "regular");
+
+  // Part-timers never feed anchors and never get a ratio.
+  const mk = (empNo, tcc, comparable, empType) => ({
+    empNo, name: "P" + empNo, keyLocation: "MX", jobTitle: "04.I3.1 Consultant",
+    level: "I3", currency: "MXN", tcc, tccUsd: null,
+    comparable, employmentType: empType || (comparable ? "regular" : "part-time"),
+  });
+  const groups = buildCompaGroups_([
+    mk("1", 100, true), mk("2", 120, true), mk("3", 140, true),
+    mk("4", 60, false), // part-time — would drag the median down if counted
+  ], {}, CONFIG_CD);
+  const g = groups[0];
+  check("compa: part-time excluded from the anchor median", g.anchor === 120 && g.count === 3);
+  check("compa: part-time member listed, ratio null, flagged nonComparable", (function () {
+    const pt = g.members.find(m => m.empNo === "4");
+    return pt && pt.ratio === null && pt.nonComparable === true && pt.employmentType === "part-time";
+  })());
+  check("compa: comparable members still scored", g.members.find(m => m.empNo === "1").ratio != null);
+
+  // Level cohorts skip part-timers too (small group falling back to a cohort).
+  const cohortGroups = buildCompaGroups_([
+    mk("1", 100, true), mk("2", 120, true), mk("3", 140, true),
+    Object.assign(mk("9", 50, false), { jobTitle: "04.I3.9 Solo Role" }),
+    Object.assign(mk("10", 130, true), { jobTitle: "04.I3.9 Solo Role" }),
+  ], {}, CONFIG_CD);
+  const solo = cohortGroups.find(x => /Solo/.test(x.jobTitle));
+  // Cohort MX||I3 = comparable TCCs {100,120,140,130} → median 125. The
+  // part-time 50 would have dragged it to 120 if it were (wrongly) counted.
+  check("compa: level-cohort fallback median ignores part-time TCC",
+    solo.anchorTier === "level" && solo.anchor === 125);
+
+  // Equity lenses skip non-comparable rows entirely.
+  const eqCfg = { EQUITY_GAP_PCT: 10, EQUITY_OUTLIER_PCT: 25, TENURE_YEARS_MIN: 3, TENURE_BELOW_PCT: 15 };
+  const eq = buildEquity_([
+    mk("1", 100, true), mk("2", 110, true), mk("3", 105, true),
+    Object.assign(mk("4", 40, false), { hireDate: new Date(2018, 0, 1) }), // would be an outlier if counted
+  ], eqCfg, new Date(2026, 6, 1));
+  check("equity: part-time never flags as an outlier", eq.outliers.length === 0 && eq.tenure.length === 0);
+})();
+
+// ── V4: restricted profiles ─────────────────────────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  const mk = (empNo, title) => ({ empNo, jobTitle: title, level: parseLevel_(title).level });
+  check("restricted: CEO / chief / director / VP titles match",
+    isRestrictedEmp_(mk("1", "01.M10.1 Chief Executive Officer"), cfg) &&
+    isRestrictedEmp_(mk("2", "02.M8.1 Director of Operations"), cfg) &&
+    isRestrictedEmp_(mk("3", "03.M8.2 VP Engineering"), cfg));
+  check("restricted: M-level floor catches wording the regex misses",
+    isRestrictedEmp_(mk("4", "05.M9.1 Head of Everything"), cfg) &&
+    !isRestrictedEmp_(mk("5", "05.M8.1 Head of Everything"), cfg));
+  check("restricted: rank-and-file titles never match",
+    !isRestrictedEmp_(mk("6", "04.I3.1 Consultant"), cfg) &&
+    !isRestrictedEmp_(mk("7", "04.M5.1 Delivery Manager"), cfg));
+  check("restricted: explicit extra employee number wins",
+    isRestrictedEmp_(mk("8", "04.I3.1 Consultant"), cfg, new Set(["8"])));
+
+  const payload = {
+    meta: { restricted: { hidden: 0, minMLevel: 9 } },
+    restrictedEmpNos: ["100"],
+    employees: [{ empNo: "100", name: "Big Boss" }, { empNo: "2", name: "IC" }],
+    people: [{ empNo: "100" }, { empNo: "2" }],
+    qtaInterim: [{ empNo: "100" }, { empNo: "2" }],
+    attrition: { detail: [{ empNo: "100" }, { empNo: "3" }] },
+    compaGroups: [{ members: [{ empNo: "100" }, { empNo: "2" }] }],
+    equity: { outliers: [{ empNo: "100" }], tenure: [{ empNo: "2" }] },
+    history: { "100": { events: [] }, "2": { events: [] } },
+  };
+  const stripped = stripRestrictedPayload_(JSON.parse(JSON.stringify(payload)));
+  check("strip: restricted removed from every name-carrying collection",
+    stripped.employees.length === 1 && stripped.people.length === 1 &&
+    stripped.qtaInterim.length === 1 && stripped.attrition.detail.length === 1 &&
+    stripped.compaGroups[0].members.length === 1 &&
+    stripped.equity.outliers.length === 0 && stripped.equity.tenure.length === 1 &&
+    !stripped.history["100"] && !!stripped.history["2"]);
+  check("strip: the empNo list itself is deleted and hidden count is set",
+    stripped.restrictedEmpNos === undefined && stripped.meta.restricted.hidden === 1 &&
+    stripped.meta.restricted.minMLevel === 9);
+  check("strip: empty restricted list is a no-op with hidden 0", (function () {
+    const p = { meta: { restricted: { hidden: 0 } }, restrictedEmpNos: [],
+                employees: [{ empNo: "1" }] };
+    const s = stripRestrictedPayload_(p);
+    return s.employees.length === 1 && s.meta.restricted.hidden === 0;
+  })());
+})();
+
+// ── V4: contribution snapshot join + invisible contributor (Check L) ────────
+(function () {
+  const cfg = CONFIG_CD;
+  const out = buildContribByEmp_([
+    { empNo: "1", quarter: "FY26Q3", score: 0.6 },
+    { empNo: "1", quarter: "FY26Q4", score: 0.9 },
+    { empNo: "2", quarter: "FY26Q4", score: 0.5 },
+    { empNo: "",  quarter: "FY26Q4", score: 1 },   // no empNo → dropped
+    { empNo: "3", quarter: "",       score: 1 },   // no quarter → dropped
+  ]);
+  check("contrib: latest quarter wins per employee",
+    out.byEmp["1"].score === 0.9 && out.byEmp["1"].quarter === "FY26Q4");
+  check("contrib: latest quarter label + count reported",
+    out.quarter === "FY26Q4" && out.count === 2);
+  check("contrib: rows without empNo/quarter dropped", !out.byEmp[""] && !out.byEmp["3"]);
+
+  const base = { level: "I5", ratio: 1.0, marketRatio: 1.0, ttmGrowthPct: 0.08,
+                 profileYears: 1, everPromoted: true, windowLatest: 4 };
+  const mk = o => buildSignalsForEmp_(Object.assign({}, base, o), cfg);
+  check("invisible: high evidence + weak SI fires",
+    mk({ contribScore: 0.8, perfAvg: 3.2 }).invisibleContributor);
+  check("invisible: high evidence + UNRATED fires (no-rating ≠ no contribution)",
+    mk({ contribScore: 0.8, perfAvg: null }).invisibleContributor);
+  check("invisible: strong SI never fires — the rating already sees them",
+    !mk({ contribScore: 0.9, perfAvg: 4.5 }).invisibleContributor);
+  check("invisible: no snapshot data never fires",
+    !mk({ contribScore: null, perfAvg: null }).invisibleContributor);
+  check("invisible: below-threshold evidence never fires",
+    !mk({ contribScore: 0.5, perfAvg: 3 }).invisibleContributor);
+  check("invisible: a verification trigger, never a retention factor",
+    mk({ level: "I3", contribScore: 0.8, perfAvg: null }).riskFactors.indexOf("invisible") === -1);
+
+  const sigE = o => ({ signals: Object.assign({ everPromoted: true, promoStale: false,
+    earlyCareer: false, coreLevel: false, recognitionRisk: false, retentionRisk: false,
+    invisibleContributor: false, riskFactors: [] }, o) });
+  const vs = buildVerdicts_({ fyLabel: "FY27",
+    employees: [sigE({ invisibleContributor: true }), sigE({})] }, CONFIG_CD);
+  const inv = vs.find(v => v.id === "invisible-contrib");
+  check("verdicts: invisible-contrib counts and prescribes manager verification",
+    inv && /^1 Rocketeer/.test(inv.fact) && /manager/i.test(inv.action));
+  check("verdicts: no invisible flags → no verdict at all",
+    !buildVerdicts_({ fyLabel: "FY27", employees: [sigE({})] }, CONFIG_CD)
+      .find(v => v.id === "invisible-contrib"));
+})();
+
+// ── V5: Overview action queue — patch sanitizer (pure) ──────────────────────
+(function () {
+  check("actions: valid state + owner pass through",
+    JSON.stringify(sanitizeActionPatch_({ state: "acked", owner: "  WFP team  " })) ===
+    JSON.stringify({ state: "acked", owner: "WFP team" }));
+  check("actions: unknown state dropped, owner kept",
+    JSON.stringify(sanitizeActionPatch_({ state: "hacked", owner: "x" })) ===
+    JSON.stringify({ owner: "x" }));
+  check("actions: extra keys never survive",
+    !("evil" in sanitizeActionPatch_({ evil: 1, state: "done" })) &&
+    sanitizeActionPatch_({ evil: 1, state: "done" }).state === "done");
+  check("actions: owner capped at 80 chars",
+    sanitizeActionPatch_({ owner: new Array(120).join("a") }).owner.length === 80);
+  check("actions: non-object / null patch → empty",
+    JSON.stringify(sanitizeActionPatch_(null)) === "{}" &&
+    JSON.stringify(sanitizeActionPatch_("open")) === "{}");
+  check("actions: every persisted state is on the allowlist",
+    JSON.stringify(CD_ACTION_STATES) === JSON.stringify(["open", "acked", "snoozed", "done"]));
 })();

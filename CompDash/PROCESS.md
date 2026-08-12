@@ -140,3 +140,127 @@ peer band (Month view, no filters); financial line under the chart; RAG dots on 
 Breakdown rate column; Data Reference glossary + threshold table with sources.
 Known degradations by design: no Supervisor values → Managers tab notice; <6 actual
 FY months → no forecast; missing TCC USD rows → financial coverage note.
+
+---
+
+## V4 deploy (2026-07-28 / 2026.W31 — comp decision-maker upgrade)
+
+Spec: `docs/superpowers/specs/2026-07-28-compdash-v4-decision-maker-design.md`
+
+**What V4 adds** — 🚨 Risk Signals view (promotion staleness ≥3y with early-career
+lens, recognition risk = top quarter + <5% TTM growth, I3–I4 retention cohort with
+factor chips, 👻 invisible contributors per Check L); SI evidence window = last 4
+COMPLETED quarters (Priority Score consumes it); restricted profiles (CEO/chiefs/
+VPs/directors, M9+) stripped server-side for anyone off the exec-view list;
+part-time/EOR population rules (EOR = regular; part-time/intern never anchor,
+never scored, muted PT chips); ☀️/🌙 light-dark theme toggle on COMPANY_COLORS;
+Data Reference rebuilt as sectioned cards + accordion. §7's dilemma is resolved
+by the **Contribution Snapshot** join (frozen quarterly evidence, §7.4's
+recommendation) — evidence block in the drawer, verification flag on Risk Signals.
+
+1. Paste `Code.js` + `ViewDash.html` + `Security.js` into the CompDash GAS project.
+2. Paste `Contribution Snapshot Export.js` into the **PS Contribution Report**
+   project; run `exportContributionSnapshot()` once as the owner at QTA cycle open
+   (or install `setupSnapshotTrigger()`). Until the first export the CompDash tab
+   reads "pending" — by design.
+3. Run `debugCompPipeline()` — new log lines: Employment type column, Restricted
+   profiles count, SI window quarters, Signals counts, Contribution snapshot join.
+4. Run `bustCompCache_()` — **required** (payload adds signals/contrib/restricted/
+   employmentType + meta.signalsCfg/contribution/restricted).
+5. Publish a **new deployment version**.
+6. Optional Script Properties: `CD_SIGNALS_CFG` (JSON numeric overrides, e.g.
+   `{"promoStaleYears":2.5,"recogMaxTtm":0.04}`), `CD_RESTRICTED_EXTRA` (comma
+   emp numbers), `CD_CONTRIB_SNAP_SS_ID` / `CD_CONTRIB_SNAP_TAB`.
+7. Exec-view grants: 🔒 Access Control → third textarea (or `CD_DASH_EXECVIEW`).
+   Admins always see restricted profiles; every other viewer gets them stripped
+   server-side with a "N leadership profiles not shown" subtitle note.
+
+V4 spot-checks: 🚨 tab renders all four cards; exec strip shows retention/recognition
+chips; a viewer NOT on exec-view sees no CEO row anywhere (ranking, compa groups,
+QTA, attrition detail, drill); part-timer shows PT chip and no red band; ☀️ toggle
+persists across reload; Data Reference nav chips scroll to sections.
+Tests: `node tests/run_tests.js` (240) + the render smoke harness
+(`node tests/render_smoke.js` — executes every renderer against a synthetic
+payload with a stub DOM; now checked in, no longer scratchpad-only).
+
+## Overview V5 — decision-surface rework (2026.W31)
+
+The Overview tab was split from "reporting surface with action verbs" into
+facts + a real work queue:
+
+- **Facts card** — max 3 clickable past-tense sentences (leads with voluntary
+  vs peer band), fy-caveat surfaced, plus a per-browser "changed since
+  2026.WNN" strip (localStorage `cd_ov_snap`, baseline rolls per ISO week).
+- **🎯 Action queue** — every verdict with an `action` becomes a row: severity
+  glyph, deep link, evidence sub-line, owner input, deterministic due week
+  (RISK → asOf+2 ISO weeks; else fiscal-quarter close, always `2026.WNN · dates`),
+  and per-viewer open/acked/snoozed/done state with a "by whom, when" stamp.
+  Persistence: `getOverviewActions` / `saveOverviewAction` in Code.js →
+  **UserProperties** (`CD_OVERVIEW_ACTIONS_V1`). Per-viewer BY DESIGN; a shared
+  WFP/REX/Finance queue would need a sheet-backed store (backlog).
+- **Small-denominator rule** — n < 10 → count is primary, rate is caption, no
+  trend arrows. Attrition KPI compares YTD vs `previousFYSamePeriod`, never
+  partial-vs-full year.
+- **KPI cards** — one question each, target-band strip + marker + one-line
+  verdict; zero states recede (`✓ 0`, dimmed); Contribution card shows the
+  snapshot matched count (link-line fallback until the first export).
+- **Terminations chart** — grouped month BARS (current FY solid Orbe `--cta`,
+  prior FY outlined ghost, counts labeled, explicit zero ticks). The yellow
+  spark line is gone; `svgSpark` removed.
+- **Provenance footer** — as-of + ISO week, payload timestamp, cache state,
+  per-source status, exclusion-rules tooltip.
+- **A11y** — `ragDot` now emits shape glyphs (✓ / ! / ✕) so RAG never encodes
+  by color alone; SVG label floor raised to 12px.
+- **Manager framing** — `mgr-hotspots` verdict reworded to "teams where the
+  manager may need support"; identities stay in the Managers view, never at
+  exec level (Develops Rocketeers / Empower Others framing).
+
+**Deploy:** paste `Code.js` + `ViewDash.html`. Run `bustCompCache_()` —
+**required** (verdict wording is baked into the cached payload). New deployment
+version required (new server RPCs `getOverviewActions`/`saveOverviewAction`).
+
+**Spot-checks:** facts card shows ≤3 sentences and no chips row; queue rows
+persist state across reload (per user); attrition KPI reads "N exits" while
+FY exits < 10; termination bars show ghost + labels; provenance line renders;
+snooze resurfaces the row the following ISO week.
+
+**Known limits:** per-card "delta vs prior quarter" isn't in the payload — the
+changed-since strip covers movement (per browser) until a server-side snapshot
+of prior-quarter medians exists. Views deep-link internally via `switchTab` +
+`setFilter`; there are no URL-level filter params.
+
+## V5.1 — Overview simplification + tab restructure (2026.W31)
+
+Two structural moves, superseding parts of V3/V5 above:
+
+- **Overview is read-only again.** The interactive 🎯 Action queue is gone from
+  Overview; in its place a **🚦 Signals** card renders the server verdicts as
+  the original judgment groups — ⚠️ Concerns (RISK) / 📝 Notes (NOTE) /
+  ✨ Highlights (FACT) — each row deep-linking to its view. Facts card, KPI
+  band cards, termination bars and provenance are unchanged.
+- **📌 Action Queue is now its own ADMIN-ONLY tab** (second in the tab bar).
+  Same rows, owners, due ISO weeks and per-viewer open/acked/snoozed/done state
+  as before. Enforcement is layered: viewers never get the tab (`VIEWS` roles),
+  `switchTab` bounces a forced id to Overview, and **`getOverviewActions` /
+  `saveOverviewAction` now throw for non-admins server-side** — viewers no
+  longer even fetch queue state on load.
+- **👤 Managers tab retired — Attrition owns it.** The full manager league
+  table outgrew a tab of its own; the decision question is "which teams are
+  outliers". A **Manager hotspots** card at the bottom of 📉 Attrition lists
+  only teams above the attrition yellow line (same rule as the `mgr-hotspots`
+  verdict, pooled small-teams row included when it qualifies); everyone else
+  is a count ("N teams within threshold not listed"), plus the span-of-control
+  line. The `mgr-hotspots` and `span` verdicts moved `view: "managers"` →
+  `"attrition"` so their deep links land correctly.
+
+**Deploy:** paste `Code.js` + `ViewDash.html`. Run `bustCompCache_()` —
+**required** (verdict `view` targets and wording are baked into the cached
+payload; a stale payload would deep-link to the retired managers tab).
+Publish a **new deployment version** (server RPC behavior changed).
+
+**Spot-checks:** as a viewer — no 📌 tab, no Action queue anywhere, Overview
+shows the Signals card, Attrition ends with Manager hotspots showing outliers
+only; as an admin — 📌 tab holds the queue with saved state intact (states
+carry over: same UserProperties key); clicking the mgr-hotspots signal on
+Overview lands on Attrition.
+Tests: `node tests/run_tests.js` (241) + `node tests/render_smoke.js`.

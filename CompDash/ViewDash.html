@@ -10,16 +10,39 @@
       --orbe-blue:   #058CDC; /* accent / CTAs */
       --ivory:       #DCCDBE; /* neutral surfaces / muted labels */
       --june:        #FF9B87; /* highlight accents (banners, emphasis) */
-      /* Semantic theme derived from COMPANY_COLORS */
+      /* Semantic theme derived from COMPANY_COLORS — DARK (default).
+         Every renderer styles against these names only; the light theme below
+         re-binds the same names, so no renderer knows which theme is active. */
       --bg: var(--void-blue);
       --panel: #16224E; --panel-2: #1C2B5E; --border: #2C3D78;
       --text: var(--light-cream); --muted: var(--ivory); --chip: #202F66;
       --cta: var(--orbe-blue);    /* interactive: buttons, links, active states */
+      --cta-text: var(--void-blue); /* text on a CTA-filled control */
       /* Status colors — data semantics, deliberately NOT brand colors */
       --accent: #35c26e;  /* green — good / at target */
       --warn:   #e8b93c;  /* yellow — attention */
       --bad:    #e05252;  /* red — priority read */
       --above:  #9d7bff;  /* violet — above median (ceiling watch) */
+      --banner-bg: #3B2833; --banner-border: var(--june); --banner-text: #FFD8CC;
+      --banner-err-bg: #3a2020; --banner-err-text: #f2b8b8;
+      --overlay: rgba(13,21,55,.85);
+      --shadow: rgba(0,0,0,.4);
+    }
+    /* LIGHT theme — same COMPANY_COLORS family, inverted roles: cream page,
+       white panels, void-blue type. Status colors are re-tuned darker so the
+       chips keep AA contrast on white. Applied via data-theme on <html>,
+       persisted in localStorage (cd_theme). */
+    :root[data-theme="light"] {
+      --bg: var(--light-cream);
+      --panel: #FFFFFF; --panel-2: #F4EDE4; --border: #E3D8CB;
+      --text: var(--void-blue); --muted: #6E6455; --chip: #F3EBE1;
+      --cta: #0277C0;             /* orbe-blue deepened for white surfaces */
+      --cta-text: #FFFFFF;
+      --accent: #1B8F4E; --warn: #A87708; --bad: #C13A3A; --above: #7A5AE0;
+      --banner-bg: #FFEFE9; --banner-border: var(--june); --banner-text: #8A3B2A;
+      --banner-err-bg: #FBE4E4; --banner-err-text: #A03030;
+      --overlay: rgba(255,250,245,.88);
+      --shadow: rgba(15,25,65,.18);
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
@@ -31,7 +54,7 @@
     button:hover { border-color: var(--cta); }
     .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
     .seg button { border: 0; border-radius: 0; background: transparent; }
-    .seg button.on { background: var(--cta); color: var(--void-blue); font-weight: 600; }
+    .seg button.on { background: var(--cta); color: var(--cta-text); font-weight: 600; }
     nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
     nav button.on { background: var(--panel-2); border-color: var(--cta); font-weight: 600; }
     #stickyBar { position: sticky; top: 0; z-index: 20; background: var(--bg); }
@@ -57,9 +80,9 @@
       padding-right: max(18px, calc((100% - var(--page-max)) / 2));
     }
 
-    /* Tables scroll INSIDE their own box. Without this the 6-column Managers
-       table and the 8-column termination detail push the whole document
-       sideways on a narrow window — the page itself must never scroll
+    /* Tables scroll INSIDE their own box. Without this the 6-column manager
+       hotspots table and the 8-column termination detail push the whole
+       document sideways on a narrow window — the page itself must never scroll
        horizontally. min-width keeps columns legible rather than crushed. */
     .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .scroll-x > table { min-width: 620px; }
@@ -78,8 +101,8 @@
       .drill { width: 100vw; }
     }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-    .banner { background: #3B2833; border: 1px solid var(--june); color: #FFD8CC; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
-    .banner.err { background: #3a2020; border-color: var(--bad); color: #f2b8b8; }
+    .banner { background: var(--banner-bg); border: 1px solid var(--banner-border); color: var(--banner-text); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .banner.err { background: var(--banner-err-bg); border-color: var(--bad); color: var(--banner-err-text); }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
     th { color: var(--muted); font-weight: 600; font-size: 12px; }
@@ -100,18 +123,65 @@
     .menu { position: absolute; top: 52px; left: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; z-index: 30; display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
     .menu button { text-align: left; border: none; background: transparent; }
     .menu button:hover { background: var(--chip); }
-    .drill { position: fixed; top: 0; right: 0; width: min(560px, 96vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); z-index: 40; padding: 18px; overflow-y: auto; box-shadow: -12px 0 30px rgba(0,0,0,.4); }
+    .drill { position: fixed; top: 0; right: 0; width: min(560px, 96vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); z-index: 40; padding: 18px; overflow-y: auto; box-shadow: -12px 0 30px var(--shadow); }
     /* !important so this beats the higher-specificity #loading { display:flex }
        — without it the loading overlay can never be hidden. */
     .hidden { display: none !important; }
-    #loading { position: fixed; inset: 0; background: rgba(13,21,55,.85); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
+    #loading { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
     select, textarea { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
     details { margin-top: 8px; }
     summary { cursor: pointer; color: var(--muted); }
     h2 { font-size: 15px; margin: 0 0 10px; }
     h3 { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
     a { color: var(--cta); }
-    svg text { fill: var(--muted); font-size: 10px; }
+    /* 12px floor — chart labels get screenshotted into decks; 10px on navy
+       fell below the dashboard's own sub-label minimum. */
+    svg text { fill: var(--muted); font-size: 12px; }
+    /* 📊 Data Reference — modern sectioned layout */
+    .ref-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; position: sticky; top: 0; }
+    .ref-nav button { border-radius: 999px; font-size: 12px; padding: 5px 12px; }
+    .ref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .ref-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .ref-card h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .ref-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+    .dot.ok { background: var(--accent); } .dot.err { background: var(--bad); } .dot.pend { background: var(--warn); }
+    details.ref-acc { margin: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+    details.ref-acc + details.ref-acc { margin-top: 8px; }
+    details.ref-acc summary { padding: 10px 14px; font-weight: 600; font-size: 13px; color: var(--text); list-style: none; }
+    details.ref-acc summary::before { content: "▸ "; color: var(--muted); }
+    details.ref-acc[open] summary::before { content: "▾ "; }
+    details.ref-acc .ref-body { padding: 0 14px 12px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+    /* 🏠 Overview + 📌 Action Queue — facts / signals / queue rows / KPI band bars */
+    .factlink { cursor: pointer; }
+    .factlink:hover { color: var(--cta); text-decoration: underline; }
+    .aq-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+              padding: 9px 2px; border-bottom: 1px solid var(--border); }
+    .aq-row:last-child { border-bottom: 0; }
+    .aq-main { flex: 1 1 320px; min-width: 240px; }
+    .aq-act { cursor: pointer; font-weight: 600; }
+    .aq-act:hover { color: var(--cta); text-decoration: underline; }
+    .aq-ev { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .aq-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    .aq-owner { background: var(--chip); color: var(--text); border: 1px solid var(--border);
+                border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12px; width: 110px; }
+    .aq-st { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .aq-st button { border: 0; border-radius: 0; background: transparent; padding: 2px 8px; font-size: 11.5px; }
+    .aq-st button.on { background: var(--cta); color: var(--cta-text); font-weight: 600; }
+    .aq-row.done { opacity: .55; }
+    .aq-row.done .aq-act { text-decoration: line-through; font-weight: 400; }
+    .aq-row.snoozed { opacity: .6; }
+    .bandbar { position: relative; display: flex; height: 8px; border-radius: 4px;
+               overflow: visible; margin: 8px 0 4px; }
+    .bandbar i { display: block; height: 100%; opacity: .4; }
+    .bandbar i:first-child { border-radius: 4px 0 0 4px; }
+    .bandbar i:last-child { border-radius: 0 4px 4px 0; }
+    .bandbar .mk { position: absolute; top: -4px; width: 2px; height: 16px;
+                   background: var(--text); border-radius: 1px; }
+    .kpi.zero { opacity: .68; }
+    .kpi.zero .kpi-v { font-size: 20px; color: var(--accent); }
+    .kpi-verdict { font-size: 11.5px; margin-top: 2px; }
+    .prov { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -127,6 +197,7 @@
       <button data-cur="LOCAL" class="on">Local</button>
       <button data-cur="USD">USD</button>
     </div>
+    <button id="themeBtn" title="Toggle light / dark theme">☀️</button>
     <button id="refreshBtn" title="Bypass cache for a live read">⟳ Refresh</button>
   </div>
 </header>
@@ -153,10 +224,14 @@ const USER_EMAIL = "<?= userEmail ?>";
 // Single source of truth for navigation — same pattern as PS Dashboard.
 const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
+  // Admin-only working surface — viewers get read-only signals on Overview;
+  // the actionable queue (owners, states, due weeks) is for people who can act.
+  { id: "actions",   label: "📌 Action Queue",        roles: ["admin"] },
   { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
   { id: "signals",   label: "🚨 Risk Signals",        roles: ["admin", "viewer"] },
+  // Managers folded INTO Attrition (2026.W31): the full manager list outgrew
+  // its own tab — only outlier teams render there now (see mgrHotspotsHtml).
   { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
-  { id: "managers",  label: "👤 Managers",            roles: ["admin", "viewer"] },
   { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
   { id: "market",    label: "🌍 Market Gap",          roles: ["admin", "viewer"] },
   { id: "equity",    label: "🧭 Pay Equity",          roles: ["admin", "viewer"] },
@@ -172,6 +247,10 @@ const STATE = {
   filters: { loc: "", level: "", dept: "", q: "" },
   rankSort: { key: "score", dir: -1 },
   sigEarly: false,
+  // Per-viewer action-queue state (open/acked/snoozed/done), persisted in
+  // UserProperties via getOverviewActions/saveOverviewAction — per viewer BY
+  // DESIGN: shared cross-team state would need a sheet-backed store (backlog).
+  actions: {}, actionsLoaded: false,
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -243,11 +322,14 @@ function ragBandC(value, bands) {
   if (value == null || !bands) return null;
   return value <= bands.green ? "green" : value <= bands.yellow ? "yellow" : "red";
 }
-// Colored status dot + value. band null → plain value.
+// Colored status glyph + value. band null → plain value. The glyph SHAPE
+// changes with the band (✓/!/✕), so the read survives colorblindness and
+// grayscale printing — status is never encoded by color alone.
 function ragDot(band, text) {
   const col = band === "green" ? "var(--accent)" : band === "yellow" ? "var(--warn)" :
               band === "red" ? "var(--bad)" : "var(--muted)";
-  return '<span style="color:' + col + '">●</span> ' + text;
+  const glyph = band === "green" ? "✓" : band === "yellow" ? "!" : band === "red" ? "✕" : "•";
+  return '<span style="color:' + col + ';font-weight:700">' + glyph + '</span> ' + text;
 }
 // Trend arrow vs a prior-basis value (±0.5pp dead zone). Direction only —
 // the RAG dot carries the judgment. Empty string when either basis is missing.
@@ -290,6 +372,36 @@ function median(nums) {
   if (!a.length) return null;
   const m = Math.floor(a.length / 2);
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+// ── ISO weeks (org standard: "2026.W32", always paired with calendar dates) ──
+function isoWeekParts(iso, plusWeeks) {
+  const d = new Date(iso + "T00:00:00Z");
+  if (plusWeeks) d.setUTCDate(d.getUTCDate() + plusWeeks * 7);
+  const t = new Date(d);
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // ISO Thursday
+  const jan4 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+  const mon = new Date(d);
+  mon.setUTCDate(mon.getUTCDate() - ((mon.getUTCDay() + 6) % 7));
+  const sun = new Date(mon);
+  sun.setUTCDate(sun.getUTCDate() + 6);
+  return { label: t.getUTCFullYear() + ".W" + (week < 10 ? "0" + week : week), mon, sun };
+}
+function isoWeekLabel(iso, plusWeeks) { return isoWeekParts(iso, plusWeeks).label; }
+// "2026.W32 · Aug 3–9" — a week number is never shown without its dates.
+function isoWeekFull(iso, plusWeeks) {
+  const p = isoWeekParts(iso, plusWeeks);
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const range = M[p.mon.getUTCMonth()] + " " + p.mon.getUTCDate() + "–" +
+    (p.mon.getUTCMonth() === p.sun.getUTCMonth() ? "" : M[p.sun.getUTCMonth()] + " ") + p.sun.getUTCDate();
+  return p.label + " · " + range;
+}
+// Same calendar day one year earlier (Feb 29 clamps to Feb 28) — used for
+// like-for-like "previous FY same period" attrition when filters are active.
+function prevYearIso(iso) {
+  const y = parseInt(iso.slice(0, 4), 10) - 1;
+  const md = iso.slice(4) === "-02-29" ? "-02-28" : iso.slice(4);
+  return y + md;
 }
 function sourceBanner(key, label) {
   const s = STATE.data.meta.sources[key];
@@ -345,13 +457,47 @@ function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h, opts) {
     '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
     fc + ticks + yTicks + '</svg>';
 }
-function svgSpark(series, w, h, color) {
-  const max = Math.max.apply(null, series.concat([1]));
-  const step = w / Math.max(1, series.length - 1);
-  const pts = series.map((v, i) =>
-    (i * step).toFixed(1) + "," + (h - v / max * (h - 4) - 2).toFixed(1)).join(" ");
-  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '">' +
-         '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2"/></svg>';
+// FY terminations as month BARS — counts are discrete events, so bars, not a
+// line (a line interpolates between months where nothing happened). Prior FY
+// renders as outlined ghost bars beside the current-FY solid bars; the data
+// series is Orbe (--cta), never the warn yellow — status colors stay reserved
+// for judgment, not decoration.
+function termBarsSvg(prevM, curM, labels, uptoIdx, w, h) {
+  const P = 30, n = labels.length;
+  const prevV = prevM.map(m => m.terms), curV = curM.map(m => m.terms);
+  const maxY = Math.max.apply(null, prevV.concat(curV, [1]));
+  const gw = (w - P - 8) / n;
+  const bw = Math.max(6, Math.min(24, gw * 0.32));
+  const y0 = h - 24;
+  const y = v => y0 - v / maxY * (h - 52);
+  const parts = [];
+  parts.push('<line x1="' + P + '" y1="' + y0 + '" x2="' + (w - 4) + '" y2="' + y0 + '" stroke="var(--border)"/>');
+  parts.push('<text x="2" y="' + (y(maxY) + 4).toFixed(1) + '">' + maxY + '</text>');
+  parts.push('<text x="2" y="' + (y0 + 4) + '">0</text>');
+  for (let i = 0; i < n; i++) {
+    const cx = P + i * gw + gw / 2;
+    if (prevV[i] > 0) {
+      parts.push('<rect x="' + (cx - bw - 1).toFixed(1) + '" y="' + y(prevV[i]).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + (y0 - y(prevV[i])).toFixed(1) +
+        '" rx="2" fill="none" stroke="var(--muted)" stroke-width="1.2" opacity="0.7">' +
+        '<title>previous FY ' + esc(labels[i]) + ': ' + prevV[i] + '</title></rect>');
+    }
+    if (i <= uptoIdx) {
+      if (curV[i] > 0) {
+        parts.push('<rect x="' + (cx + 1).toFixed(1) + '" y="' + y(curV[i]).toFixed(1) +
+          '" width="' + bw.toFixed(1) + '" height="' + (y0 - y(curV[i])).toFixed(1) + '" rx="2" fill="var(--cta)"/>');
+        parts.push('<text x="' + (cx + 1 + bw / 2).toFixed(1) + '" y="' + (y(curV[i]) - 4).toFixed(1) +
+          '" text-anchor="middle" style="fill:var(--text)">' + curV[i] + '</text>');
+      } else {
+        // Explicit zero tick — "no bar" must read as measured-zero, not missing data.
+        parts.push('<rect x="' + (cx + 1).toFixed(1) + '" y="' + (y0 - 2) +
+          '" width="' + bw.toFixed(1) + '" height="2" fill="var(--cta)" opacity="0.5"/>');
+      }
+    }
+    parts.push('<text x="' + cx.toFixed(1) + '" y="' + (h - 6) + '" text-anchor="middle">' + esc(labels[i]) + '</text>');
+  }
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h +
+    '" preserveAspectRatio="xMidYMid meet" style="max-width:100%">' + parts.join("") + '</svg>';
 }
 
 // MIRROR of fyAttritionFromPeople_ in Code.js — parity-tested there; keep in sync.
@@ -466,9 +612,9 @@ function render() {
  *
  * Done here rather than in the twelve renderers that build table markup: one
  * pass cannot forget a table, and any table added later is covered for free.
- * Without it a wide table (Managers is 6 columns, the termination detail 8)
- * pushes the whole document sideways — the page itself must never scroll
- * horizontally, only the table inside its card.
+ * Without it a wide table (manager hotspots is 6 columns, the termination
+ * detail 8) pushes the whole document sideways — the page itself must never
+ * scroll horizontally, only the table inside its card.
  *
  * @param {HTMLElement} el Container just re-rendered.
  */
@@ -494,6 +640,26 @@ function loadData(force) {
     .withFailureHandler(onLoadError)
     .getCompReportData(!!force);
 }
+// ── action-queue state (per viewer, UserProperties) ─────────
+function loadActions() {
+  google.script.run
+    .withSuccessHandler(s => {
+      try { STATE.actions = JSON.parse(s) || {}; } catch (e) { STATE.actions = {}; }
+      STATE.actionsLoaded = true;
+      if (STATE.tab === "actions" && STATE.data) render();
+    })
+    .withFailureHandler(() => { STATE.actionsLoaded = true; })
+    .getOverviewActions();
+}
+function saveAction(id, patch) {
+  // Optimistic: reflect immediately, then persist; on rejection resync truth.
+  STATE.actions[id] = Object.assign({}, STATE.actions[id] || {}, patch,
+    { by: USER_EMAIL, at: new Date().toISOString() });
+  render();
+  google.script.run
+    .withFailureHandler(() => loadActions())
+    .saveOverviewAction(id, patch);
+}
 function onData(raw) {
   // Server returns one JSON STRING (marshalling a large nested object through
   // google.script.run is minutes-slow); parse here. Object tolerated for safety.
@@ -503,13 +669,17 @@ function onData(raw) {
   }
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
   STATE.data = d;
+  const hidden = (d.meta.restricted && d.meta.restricted.hidden) || 0;
   document.getElementById("subTitle").textContent =
     d.meta.fyLabel + " " + d.meta.qLabel + " · " + d.meta.activeCount + " active Rocketeers · " +
-    (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE;
+    (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE +
+    (hidden > 0 ? " · " + hidden + " leadership profile" + (hidden === 1 ? "" : "s") + " not shown" : "");
   document.getElementById("loading").classList.add("hidden");
   populateFilters();
   syncFilterBar();
   render();
+  // Queue state is admin-only (server enforces too) — viewers never fetch it.
+  if (!STATE.actionsLoaded && USER_ROLE === "admin") loadActions();
 }
 function onLoadError(err) {
   document.getElementById("loading").classList.add("hidden");
@@ -518,56 +688,199 @@ function onLoadError(err) {
 }
 
 // ── tab renderers ───────────────────────────────────────────
-// Exec TL;DR strip — verdict paragraph + click-through RAG chips. Always
-// FULL-population (verdicts are server facts); a suffix notes active filters.
-// Paragraph order is fixed so it always reads like an executive summary.
-const STRIP_ORDER = ["headcount", "attr-total", "attr-vol", "regretted", "concentration",
-                     "compa-below", "retention-core", "mgr-hotspots", "equity", "fy-caveat"];
-function execStripHtml(d) {
+// 🏠 Overview = facts (2–3 past-tense sentences, no imperatives) + a READ-ONLY
+// signals card (Concerns / Notes / Highlights) + KPI cards with target bands +
+// FY-vs-FY termination bars + provenance. Facts and signals derive from server
+// verdicts (always full-population). The actionable queue moved to the
+// admin-only 📌 Action Queue tab (renderActions) — viewers see judgments here,
+// never a workflow they can't act on.
+function ovViewLabel(id) {
+  const v = VIEWS.find(x => x.id === id);
+  return v ? v.label.replace(/^[^\s]+\s/, "") : id; // strip the emoji prefix
+}
+// Small-denominator rule: under the floor the COUNT is the primary display and
+// the rate is a caption — "2 of 2 regretted", never "100.0% ▲". Trend arrows
+// are suppressed too: direction on a two-person base is decoration, not signal.
+function smallN(denom, floor) { return denom == null || denom < (floor == null ? 10 : floor); }
+
+function ovFactsHtml(d) {
   const byId = {};
   (d.verdicts || []).forEach(v => { byId[v.id] = v; });
-  const sentences = STRIP_ORDER.map(id => byId[id]).filter(Boolean)
-    .map(v => v.fact + (v.action ? " — " + v.action : ""));
-  if (!sentences.length) return "";
+  // Lead with the most defensible number (voluntary vs the peer band), then
+  // the FY total with its SAME-PERIOD comparison, then headcount. Hard cap: 3
+  // sentences — anything longer is a report, not an overview.
+  const picks = ["attr-vol", "attr-total", "headcount"].map(id => byId[id]).filter(Boolean);
+  if (!picks.length) return "";
+  const caveat = byId["fy-caveat"];
+  const sentence = v => '<span class="factlink" onclick="switchTab(\'' + esc(v.view) +
+    '\')" title="Open ' + esc(ovViewLabel(v.view)) + '">' + esc(v.fact) + '</span>';
+  return '<div class="card"><h2>' + esc(d.meta.fyLabel) + ' so far' +
+    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') + '</h2>' +
+    '<p style="margin:0">' + picks.map(sentence).join(" ") + '</p>' +
+    (caveat ? '<div class="sub" style="margin-top:6px">⚠ ' + esc(caveat.fact) + ' ' + esc(caveat.soWhat) + '</div>' : '') +
+    ovChangedSinceHtml(d) + '</div>';
+}
 
-  const rag = d.meta.ragCfg || {};
-  const cur = d.attrition.currentFY, prevSp = d.attrition.previousFYSamePeriod;
-  const volRate = cur.avgHeadcount > 0 ? cur.vol / cur.avgHeadcount : null;
-  const regShare = cur.vol > 0 ? cur.regretted / cur.vol : null;
-  const prevVolRate = (prevSp && prevSp.avgHeadcount > 0) ? prevSp.vol / prevSp.avgHeadcount : null;
-  const prevRegShare = (prevSp && prevSp.vol > 0) ? prevSp.regretted / prevSp.vol : null;
-  const below = d.employees.filter(e => e.ratio != null && e.ratio < (d.meta.compaBands || {}).low).length;
-  const eq = d.equity;
+// "What moved" — the question a returning viewer actually has. Compares the
+// full-population headline numbers against the snapshot taken on this
+// viewer's last visit in an EARLIER ISO week (localStorage, per browser).
+function ovSnapshotVals(d) {
+  const cur = d.attrition.currentFY, eq = d.equity, rag = d.meta.ragCfg || {};
   const eqFlags = (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0) +
     eq.outliers.length + eq.tenure.length;
-  const chips = [
-    { t: "Headcount " + d.meta.activeCount, band: null, tab: "overview" },
-    { t: "Attrition " + pctFmt(cur.rate) + trendArrow(cur.rate, prevSp ? prevSp.rate : null),
-      band: ragBandC(cur.rate, rag.attritionTotal), tab: "attrition" },
-    { t: "Voluntary " + pctFmt(volRate) + trendArrow(volRate, prevVolRate),
-      band: ragBandC(volRate, rag.attritionVol), tab: "attrition" },
-    { t: "Regretted " + pctFmt(regShare) + trendArrow(regShare, prevRegShare),
-      band: ragBandC(regShare, rag.regrettedShare), tab: "attrition" },
-    { t: below + " below anchor", band: below > 0 ? "red" : "green", tab: "compa" },
-    { t: eqFlags + " equity flags", band: eqFlags > 0 ? "yellow" : "green", tab: "equity" },
-  ];
-  const risky = d.employees.filter(e => e.signals && e.signals.retentionRisk).length;
-  const recogN = d.employees.filter(e => e.signals && e.signals.recognitionRisk).length;
-  chips.push({ t: risky + " retention risks", band: risky > 0 ? "red" : "green", tab: "signals" });
-  chips.push({ t: recogN + " recognition risks", band: recogN > 0 ? "yellow" : "green", tab: "signals" });
-  if (d.managers && d.managers.available) {
-    const hot = d.managers.rows.filter(r =>
-      r.attritionRate != null && r.attritionRate > (rag.attritionTotal || {}).yellow).length;
-    chips.push({ t: hot + " mgr hotspots", band: hot > 0 ? "red" : "green", tab: "managers" });
-  }
-  return '<div class="card">' +
-    '<h2>' + esc(d.meta.fyLabel) + ' in one paragraph' +
-    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') + '</h2>' +
-    '<p style="margin:0 0 10px">' + sentences.map(esc).join(" ") + '</p>' +
-    '<div>' + chips.map(c =>
-      '<span class="chip" style="cursor:pointer" onclick="switchTab(\'' + c.tab + '\')">' +
-      ragDot(c.band, esc(c.t)) + '</span>').join("") + '</div></div>';
+  return {
+    "Attrition":         { v: cur.rate, fmt: "pct" },
+    "Voluntary rate":    { v: cur.avgHeadcount > 0 ? cur.vol / cur.avgHeadcount : null, fmt: "pct" },
+    "Regretted exits":   { v: cur.regretted, fmt: "int" },
+    "Below anchor":      { v: d.employees.filter(e => e.ratio != null && e.ratio < (d.meta.compaBands || {}).low).length, fmt: "int" },
+    "Equity flags":      { v: eqFlags, fmt: "int" },
+    "Reviews overdue":   { v: d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length, fmt: "int" },
+    "Retention risks":   { v: d.employees.filter(e => e.signals && e.signals.retentionRisk).length, fmt: "int" },
+    "Recognition risks": { v: d.employees.filter(e => e.signals && e.signals.recognitionRisk).length, fmt: "int" },
+    "Teams needing manager support": { v: (d.managers && d.managers.available)
+      ? d.managers.rows.filter(r => r.attritionRate != null && r.attritionRate > (rag.attritionTotal || {}).yellow).length
+      : null, fmt: "int" },
+  };
 }
+function ovChangedSinceHtml(d) {
+  const cw = isoWeekLabel(d.meta.asOf);
+  const vals = ovSnapshotVals(d);
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem("cd_ov_snap") || "null"); } catch (e) { stored = null; }
+  let line = "";
+  if (stored && stored.week && stored.week !== cw && stored.vals) {
+    const fmt = (m, x) => x == null ? "—" : m === "pct" ? (x * 100).toFixed(1) + "%" : String(x);
+    const moved = Object.keys(vals).filter(k => {
+      const o = stored.vals[k], n = vals[k];
+      return o && o.v != null && n.v != null && fmt(n.fmt, o.v) !== fmt(n.fmt, n.v);
+    }).map(k => k + " " + fmt(vals[k].fmt, stored.vals[k].v) + " → " + fmt(vals[k].fmt, vals[k].v));
+    line = moved.length
+      ? "Changed since " + stored.week + ": " + moved.join(" · ")
+      : "No headline movement since " + stored.week + ".";
+  }
+  // Baseline updates only when the week rolls over, so mid-week reloads keep
+  // comparing against last week rather than against five minutes ago.
+  if (!stored || stored.week !== cw) {
+    try { localStorage.setItem("cd_ov_snap", JSON.stringify({ week: cw, vals })); } catch (e) { /* sandbox */ }
+  }
+  return line ? '<div class="sub" style="margin-top:6px">🗓 ' + esc(line) + '</div>' : "";
+}
+
+// Deterministic default target: RISK rows come due two ISO weeks out; NOTE
+// rows anchor to the fiscal-quarter close — "before the cycle closes" rendered
+// as a real week + dates, not a vibe.
+function fiscalQuarterEndIso(iso) {
+  const y = +iso.slice(0, 4), m = +iso.slice(5, 7);
+  const e = m >= 7 && m <= 9 ? [y, "09", 30] : m >= 10 ? [y, "12", 31]
+    : m <= 3 ? [y, "03", 31] : [y, "06", 30];
+  return e[0] + "-" + e[1] + "-" + e[2];
+}
+function ovDueFor(v, d) {
+  return v.severity === "RISK" ? isoWeekFull(d.meta.asOf, 2)
+                               : isoWeekFull(fiscalQuarterEndIso(d.meta.asOf), 0);
+}
+// Read-only signals for the Overview — the original design: server verdicts
+// grouped by severity into Concerns (RISK) / Notes (NOTE) / Highlights (FACT).
+// No state, no owners — the workflow lives in the admin-only 📌 Action Queue.
+// Skips the ids the facts card already narrates, so nothing reads twice.
+function ovSignalsHtml(d) {
+  const skip = { "attr-vol": 1, "attr-total": 1, "headcount": 1, "fy-caveat": 1 };
+  const rows = (d.verdicts || []).filter(v => !skip[v.id]);
+  if (!rows.length) return "";
+  const groups = [["RISK", "⚠️ Concerns"], ["NOTE", "📝 Notes"], ["FACT", "✨ Highlights"]];
+  const body = groups.map(g => {
+    const vs = rows.filter(v => v.severity === g[0]);
+    if (!vs.length) return "";
+    return '<h3>' + g[1] + ' <span class="chip">' + vs.length + '</span></h3>' +
+      vs.map(v => '<div class="factlink" onclick="switchTab(\'' + esc(v.view) +
+        '\')" title="Open ' + esc(ovViewLabel(v.view)) + '">' + verdictHtml(v) + '</div>').join("");
+  }).join("");
+  return '<div class="card"><h2>🚦 Signals' +
+    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') +
+    '</h2>' + body + '</div>';
+}
+
+function ovQueueHtml(d) {
+  const rows = (d.verdicts || []).filter(v => v.action);
+  if (!rows.length) {
+    return '<div class="card"><h2>📌 Action queue</h2>' +
+      '<p class="sub">✓ Nothing needs an owner right now — every signal reads healthy at current thresholds.</p></div>';
+  }
+  const cw = isoWeekLabel(d.meta.asOf);
+  const stOf = v => {
+    const st = STATE.actions[v.id] || {};
+    let state = ["acked", "snoozed", "done"].indexOf(st.state) !== -1 ? st.state : "open";
+    // A snooze holds only for the ISO week it was clicked — then it resurfaces.
+    if (state === "snoozed" && st.at && isoWeekLabel(String(st.at).slice(0, 10)) !== cw) state = "open";
+    return Object.assign({}, st, { state });
+  };
+  const order = { open: 0, acked: 1, snoozed: 2, done: 3 };
+  const sevOrder = { RISK: 0, NOTE: 1, FACT: 2 };
+  const sorted = rows.map(v => ({ v, st: stOf(v) })).sort((a, b) =>
+    order[a.st.state] - order[b.st.state] || sevOrder[a.v.severity] - sevOrder[b.v.severity]);
+  const open = sorted.filter(r => r.st.state === "open").length;
+  const sevGlyph = s => s === "RISK" ? '<span style="color:var(--bad);font-weight:700">✕</span>'
+    : s === "NOTE" ? '<span style="color:var(--warn);font-weight:700">!</span>'
+    : '<span style="color:var(--accent);font-weight:700">✓</span>';
+  const stamp = st => st.state !== "open" && st.at
+    ? '<span class="sub">' + esc(st.state) + ' by ' + esc(String(st.by || "").split("@")[0]) +
+      ' · ' + esc(String(st.at).slice(0, 10)) + '</span>' : "";
+  const btns = (v, st) => '<span class="aq-st">' + ["open", "acked", "snoozed", "done"].map(s =>
+    '<button class="' + (st.state === s ? "on" : "") + '" onclick="saveAction(\'' + esc(v.id) +
+    '\',{state:\'' + s + '\'})">' + { open: "Open", acked: "Ack", snoozed: "Snooze", done: "Done" }[s] +
+    '</button>').join("") + '</span>';
+  const body = sorted.map(r => {
+    const v = r.v, st = r.st;
+    if (st.state === "snoozed") {
+      return '<div class="aq-row snoozed"><div class="aq-main sub">😴 Snoozed until ' +
+        esc(isoWeekFull(d.meta.asOf, 1)) + ' — ' + esc(v.action) + '</div>' +
+        '<div class="aq-meta">' + btns(v, st) + stamp(st) + '</div></div>';
+    }
+    return '<div class="aq-row' + (st.state === "done" ? " done" : "") + '">' +
+      '<div class="aq-main">' + sevGlyph(v.severity) + ' ' +
+        '<span class="aq-act" onclick="switchTab(\'' + esc(v.view) + '\')" title="Open ' +
+          esc(ovViewLabel(v.view)) + '">' + esc(v.action) + ' ↗</span>' +
+        '<div class="aq-ev">' + esc(v.fact) + (v.caveat ? ' ⚠ ' + esc(v.caveat) : '') + '</div></div>' +
+      '<div class="aq-meta">' +
+        '<input class="aq-owner" placeholder="owner" value="' + esc(st.owner || "") +
+          '" onchange="saveAction(\'' + esc(v.id) + '\',{owner:this.value})">' +
+        '<span>due ' + esc(ovDueFor(v, d)) + '</span>' + btns(v, st) + stamp(st) +
+      '</div></div>';
+  }).join("");
+  return '<div class="card"><h2>📌 Action queue <span class="chip">' + open + ' open</span> ' +
+    '<span class="sub">status &amp; owner are per-viewer' +
+    (STATE.actionsLoaded ? '' : ' · loading saved state…') + '</span></h2>' + body + '</div>';
+}
+
+// Target-band strip for a KPI card: colored zones + a marker at the value.
+// segs = [{to, color}] covering lo..hi in order.
+function bandBarHtml(segs, val, lo, hi) {
+  const pct = x => Math.max(0, Math.min(100, (x - lo) / (hi - lo) * 100));
+  let prev = lo, html = '<div class="bandbar">';
+  segs.forEach(s => {
+    const to = Math.min(s.to, hi);
+    html += '<i style="width:' + (pct(to) - pct(prev)).toFixed(1) + '%;background:' + s.color + '"></i>';
+    prev = to;
+  });
+  if (val != null) html += '<span class="mk" style="left:' + pct(val).toFixed(1) + '%"></span>';
+  return html + '</div>';
+}
+
+function ovProvenanceHtml(d) {
+  const m = d.meta, s = m.sources || {};
+  const src = k => /^ok$/.test(String(s[k])) ? "✓" : /error/i.test(String(s[k])) ? "✕" : "…";
+  const excl = "Population rules: crew/contractors excluded everywhere · part-time & interns stay in " +
+    "headcount/attrition but are excluded from peer anchors, equity lenses and market reads · " +
+    "restricted profiles (M" + ((m.restricted || {}).minMLevel || 9) + "+) stripped server-side for " +
+    "non-exec viewers · contribution evidence is PTO-adjusted and frozen at QTA cycle open.";
+  return '<div class="prov">As of ' + esc(m.asOf) + ' (' + esc(isoWeekLabel(m.asOf)) + ') · payload ' +
+    esc(String(m.generatedAt).replace("T", " ").slice(0, 16)) + ' UTC · ' +
+    (m.fromCache ? 'cached — ⟳ Refresh for a live read' : 'live') +
+    ' · Sources: Roster ' + src("roster") + ' · Comp history ' + src("history") +
+    ' · Ratings ' + src("ratings") + ' · Benchmarks ' + src("benchmarks") +
+    ' · <span title="' + esc(excl) + '" style="cursor:help;text-decoration:underline dotted">exclusion rules ⓘ</span></div>';
+}
+
 function renderOverview(el) {
   const d = STATE.data, act = filtersActive();
   const emps = d.employees.filter(visibleEmp);
@@ -578,8 +891,14 @@ function renderOverview(el) {
   const prev = act
     ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
     : d.attrition.previousFY;
+  // SAME PERIOD last FY — never partial-year vs full-year in one breath.
+  const prevSp = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, prevYearIso(d.meta.asOf),
+        d.meta.prevFyLabel + " same period")
+    : d.attrition.previousFYSamePeriod;
   const eq = d.equity;
   const f = STATE.filters;
+  const rag = d.meta.ragCfg || {};
   const empIndex = {};
   d.employees.forEach(e => { empIndex[e.empNo] = e; });
   const flagVisible = r => { const e = empIndex[r.empNo]; return e ? visibleEmp(e) : false; };
@@ -592,29 +911,95 @@ function renderOverview(el) {
   const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0 && flagVisible(r)).length;
   const suffix = act ? " · filtered" : "";
 
+  const b = d.meta.compaBands || { low: 0.8, target: 0.95, high: 1.1 };
+  const aB = rag.attritionTotal || { green: 0.11, yellow: 0.14 };
+  const mLow = d.meta.marketLow || 0.9;
+  const attrBand = ragBandC(cur.rate, rag.attritionTotal);
+  const attrTiny = smallN(cur.total); // count-primary under 10 exits
+  const attrHi = Math.max(aB.yellow * 1.6, (cur.rate || 0) * 1.15,
+    prevSp && prevSp.rate != null ? prevSp.rate * 1.15 : 0);
+
   const cards = [
-    { q: "Is my team healthy? Are people staying?", v: pctFmt(cur.rate),
-      s: d.meta.fyLabel + " attrition · " + prev.label + " " + pctFmt(prev.rate) + suffix, tab: "attrition" },
-    { q: "Are Rocketeers paid fairly vs peers?", v: medRatio != null ? medRatio.toFixed(2) : "—",
-      s: "median Internal Position (vs peer median)" + suffix, tab: "compa" },
-    { q: "Is our band still competitive in the market?", v: medMkt != null ? medMkt.toFixed(2) : "Pending",
-      s: mkt.length ? "median vs market · " + mkt.length + " benchmarked" + suffix : "benchmark compilation in progress", tab: "market" },
-    { q: "Is anyone being paid inequitably?", v: String(flags),
-      s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix, tab: "equity" },
-    { q: "Who is coming up for review this quarter?", v: String(overdue),
-      s: "Next Review dates overdue" + suffix, tab: "qta" },
-    { q: "Whose contribution warrants recognition?", v: "→",
-      s: "open the Contribution Report", tab: "contrib" },
+    { q: "Are people staying?", tab: "attrition",
+      v: attrTiny ? cur.total + " exit" + (cur.total === 1 ? "" : "s") : pctFmt(cur.rate),
+      s: attrTiny
+        ? d.meta.fyLabel + " YTD (" + pctFmt(cur.rate) + " of ~" + Math.round(cur.avgHeadcount) + ")" +
+          (prevSp ? " · " + prevSp.label + " " + prevSp.total + " exits" : "") + suffix
+        : d.meta.fyLabel + " YTD" + (prevSp ? " · " + prevSp.label + " " + pctFmt(prevSp.rate) : "") + suffix,
+      band: bandBarHtml([{ to: aB.green, color: "var(--accent)" }, { to: aB.yellow, color: "var(--warn)" },
+                         { to: attrHi, color: "var(--bad)" }], cur.rate, 0, attrHi),
+      verdict: ragDot(attrBand,
+        attrBand === "green" ? "within the healthy band (≤ " + pctFmt(aB.green, 0) + ")"
+        : attrBand === "yellow" ? "watch band (" + pctFmt(aB.green, 0) + "–" + pctFmt(aB.yellow, 0) + ")"
+        : "above the at-risk line (> " + pctFmt(aB.yellow, 0) + ")") +
+        (!attrTiny && prevSp ? trendArrow(cur.rate, prevSp.rate) : "") },
+    { q: "Are Rocketeers paid fairly vs peers?", tab: "compa",
+      v: medRatio != null ? medRatio.toFixed(2) : "—",
+      s: "median Internal Position vs peer anchor" + suffix,
+      band: bandBarHtml([{ to: b.low, color: "var(--bad)" }, { to: b.target, color: "var(--warn)" },
+                         { to: b.high, color: "var(--accent)" }, { to: 1.3, color: "var(--above)" }],
+                        medRatio, 0.6, 1.3),
+      verdict: medRatio == null ? "" : medRatio > b.high
+        ? '<span style="color:var(--above);font-weight:700">▲</span> above the band (ceiling watch)'
+        : ragDot(ratioClass(medRatio),
+            medRatio < b.low ? "below the red line " + b.low.toFixed(2)
+            : medRatio < b.target ? "under the " + b.target.toFixed(2) + " target"
+            : "at the anchor (target " + b.target.toFixed(2) + "–" + b.high.toFixed(2) + ")") },
+    { q: "Is our pay still competitive in the market?", tab: "market",
+      v: medMkt != null ? medMkt.toFixed(2) : "Pending",
+      s: mkt.length ? "median vs market mean · " + mkt.length + " benchmarked" + suffix
+                    : "benchmark compilation in progress",
+      band: medMkt != null
+        ? bandBarHtml([{ to: mLow, color: "var(--bad)" }, { to: 1.3, color: "var(--accent)" }], medMkt, 0.6, 1.3) : "",
+      verdict: medMkt == null ? "" : ragDot(medMkt < mLow ? "red" : "green",
+        medMkt < mLow ? "below the " + mLow.toFixed(2) + " competitiveness floor"
+                      : "at/above the " + mLow.toFixed(2) + " floor") },
+    { q: "Is anyone paid inequitably?", tab: "equity",
+      v: String(flags), zero: flags === 0,
+      s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix,
+      verdict: flags > 0 ? ragDot("yellow", "each flag needs a rationale or a fix")
+                         : ragDot("green", "no open flags at current thresholds") },
+    { q: "Who is overdue for review?", tab: "qta",
+      v: String(overdue), zero: overdue === 0,
+      s: "Next Review dates overdue" + suffix,
+      verdict: overdue > 0 ? ragDot("red", "longest-waiting first in QTA Status")
+                           : ragDot("green", "nobody waiting past their date") },
   ];
+  // Contribution earns a KPI slot only once it has a number; before the first
+  // snapshot it renders as a link line, not an arrow masquerading as a metric.
+  const co = d.meta.contribution || {};
+  if (co.quarter) {
+    cards.push({ q: "Is contribution evidence in for the cycle?", tab: "contrib",
+      v: String(co.matched), s: co.quarter + " snapshot · Rocketeers with frozen evidence",
+      verdict: ragDot("green", "open the Contribution Report for detail ↗") });
+  }
+  const contribLine = co.quarter ? "" :
+    '<div class="sub" style="margin:-6px 0 14px">🚀 Contribution evidence: snapshot pending — ' +
+    '<span class="factlink" onclick="switchTab(\'contrib\')">open the Contribution Report ↗</span></div>';
+
+  const cardHtml = c =>
+    '<div class="kpi' + (c.zero ? " zero" : "") + '" onclick="switchTab(\'' + c.tab + '\')">' +
+    '<div class="kpi-q">' + esc(c.q) + '</div>' +
+    '<div class="kpi-v">' + (c.zero ? "✓ 0" : esc(c.v)) + '</div>' +
+    (c.band || "") +
+    '<div class="kpi-s">' + esc(c.s) + '</div>' +
+    (c.verdict ? '<div class="kpi-verdict">' + c.verdict + '</div>' : "") + '</div>';
+
+  const chartCard = (cur.total === 0 && prev.total === 0)
+    ? '<div class="card"><h2>Terminations</h2><p class="sub">No terminations recorded in ' +
+      esc(cur.label) + ' or ' + esc(prev.label) + '.</p></div>'
+    : '<div class="card"><h2>' + esc(cur.label) + ' terminations by fiscal month' + esc(suffix) + '</h2>' +
+      termBarsSvg(prev.monthly, cur.monthly, d.meta.monthLabels, d.meta.fiscalMonthIdx, chartWidth(720), 170) +
+      '<div class="sub">Solid bars = ' + esc(cur.label) + ' to date · outlined bars = ' + esc(prev.label) +
+      ' same month · counts labeled on the ' + esc(cur.label) + ' bars</div></div>';
+
   el.innerHTML =
-    execStripHtml(d) +
-    '<div class="kpi-grid">' + cards.map(c =>
-      '<div class="kpi" onclick="switchTab(\'' + c.tab + '\')">' +
-      '<div class="kpi-q">' + esc(c.q) + '</div><div class="kpi-v">' + esc(c.v) + '</div>' +
-      '<div class="kpi-s">' + esc(c.s) + '</div></div>').join("") + '</div>' +
-    '<div class="card"><h2>' + esc(cur.label) + ' terminations by fiscal month' + esc(suffix) + '</h2>' +
-    svgSpark(cur.monthly.map(m => m.terms), chartWidth(640), 60, "var(--warn)") +
-    '<div class="sub">' + esc(d.meta.monthLabels[0]) + ' → ' + esc(d.meta.monthLabels[11]) + '</div></div>';
+    ovFactsHtml(d) +
+    ovSignalsHtml(d) +
+    '<div class="kpi-grid">' + cards.map(cardHtml).join("") + '</div>' +
+    contribLine +
+    chartCard +
+    ovProvenanceHtml(d);
 }
 function renderAttrition(el) {
   const d = STATE.data, a = d.attrition, act = filtersActive();
@@ -648,7 +1033,8 @@ function renderAttrition(el) {
   const volRate = fullCur.avgHeadcount > 0 ? fullCur.vol / fullCur.avgHeadcount : null;
   const fi = a.financialImpact;
   const vs = verdictsFor("attrition");
-  const vOrder = ["concentration", "attr-total", "attr-vol", "regretted", "trends-drivers", "forecast", "financial"];
+  const vOrder = ["concentration", "attr-total", "attr-vol", "regretted", "mgr-hotspots", "span",
+                  "trends-drivers", "forecast", "financial"];
   const vSorted = vOrder.map(id => vs.find(v => v.id === id)).filter(Boolean);
   const filteredNote = act
     ? '<div class="sub" style="margin-bottom:8px">Verdicts, forecast and financial impact are company-wide facts — the chart and tables below reflect your filters.</div>' : '';
@@ -698,25 +1084,37 @@ function renderAttrition(el) {
     detail.map(t =>
       '<tr><td>' + esc(t.termDate) + '</td><td>' + esc(t.name) + '</td><td>' + esc(t.dept) + '</td><td>' + esc(t.level) +
       '</td><td>' + esc(t.keyLocation) + '</td><td>' + esc(t.cls) + '</td><td>' + (t.regretted ? "⚠️ yes" : "no") +
-      '</td><td>' + esc(t.reason) + '</td></tr>').join("") + '</table></details></div>';
+      '</td><td>' + esc(t.reason) + '</td></tr>').join("") + '</table></details></div>' +
+    mgrHotspotsHtml(d);
 }
 function setAttrGran(g) { STATE.attrGran = g; render(); }
 function setAttrDim(k) { STATE.attrDim = k; render(); }
-// Manager rows are read-only on purpose: employees[] doesn't carry supervisor,
-// so a row click can't scope the other views to a team (roadmap backlog item).
+// 👤 Manager hotspots — lives INSIDE Attrition (2026.W31): the full manager
+// list outgrew its own tab, and the decision question is "which teams are the
+// outliers", not "what is every manager's rate". Only teams above the yellow
+// attrition line render (same rule as the mgr-hotspots verdict); the healthy
+// majority is a COUNT, never a list — no silent truncation, no scoreboard.
+// Rows stay read-only on purpose: employees[] doesn't carry supervisor, so a
+// row click can't scope the other views to a team (roadmap backlog item).
 // Department filter and name search apply; Location/Level don't — a manager's
 // team spans both, so a sub-note says so when those filters are active.
-function renderManagers(el) {
-  const d = STATE.data, m = d.managers;
+function mgrHotspotsHtml(d) {
+  const m = d.managers;
+  const head = '<div class="card"><h2>👤 Manager hotspots';
   if (!m || !m.available) {
-    el.innerHTML = '<div class="banner">👤 <b>Manager data unavailable</b> — the roster extract has no Supervisor values. The view activates automatically when the column lands.</div>';
-    return;
+    return head + '</h2><p class="sub">Manager data unavailable — the roster extract has no Supervisor values. This section activates automatically when the column lands.</p></div>';
   }
   const rag = d.meta.ragCfg || {};
+  const yellow = (rag.attritionTotal || {}).yellow;
+  const isHot = r => r && r.attritionRate != null && yellow != null && r.attritionRate > yellow;
   const f = STATE.filters;
-  const rows = m.rows.filter(r =>
+  const hotAll = m.rows.filter(isHot);
+  const hot = hotAll.filter(r =>
     (!f.dept || r.dept === f.dept) &&
     (!f.q || normName(r.name).indexOf(normName(f.q)) !== -1));
+  const pooledHot = isHot(m.pooledSmallTeams) ? m.pooledSmallTeams : null;
+  const within = m.rows.length - hotAll.length;
+  const span = m.spanOfControl;
   const ignored = (f.loc || f.level)
     ? '<div class="sub" style="margin-bottom:8px">Location/Level filters don&#39;t apply to manager rows (teams span both).</div>' : '';
   const tr = (r, pooled) =>
@@ -726,19 +1124,35 @@ function renderManagers(el) {
     '<td>' + ragDot(ragBandC(r.attritionRate, rag.attritionTotal), pctFmt(r.attritionRate)) +
     (r.teamSize < (rag.floorHeads || 10) ? ' <span class="chip yellow" title="Small team — rate is noisy">⚠</span>' : '') +
     '</td><td>' + esc(r.dept) + '</td></tr>';
-  const span = m.spanOfControl;
+  return head + ' <span class="chip ' + (hotAll.length ? 'red' : 'green') + '">' + hotAll.length + '</span>' +
+    ' <span class="sub">(' + esc(d.meta.fyLabel) + ' · teams above ' + pctFmt(yellow, 0) +
+    ' attrition · managers with ' + (rag.mgrMinReports || 3) + '+ reports · worst first)</span></h2>' +
+    ignored +
+    (hot.length || pooledHot
+      ? '<table><tr><th>Manager</th><th>Team size</th><th>FY exits</th><th>Voluntary</th><th>Team attrition</th><th>Department</th></tr>' +
+        hot.map(r => tr(r, false)).join("") +
+        (pooledHot ? tr(pooledHot, true) : "") + '</table>'
+      : '<p class="sub">' + (hotAll.length
+          ? 'No hotspot teams match the current filters (' + hotAll.length + ' company-wide).'
+          : '✓ No team sits above the at-risk line at current thresholds.') + '</p>') +
+    '<div class="sub" style="margin-top:8px">' + within + ' team' + (within === 1 ? '' : 's') +
+    ' within threshold not listed — this section surfaces outliers for a support conversation, not a league table.' +
+    (span ? ' · Span of control: <b>1:' + span.ratio + '</b> (' + span.managers + ' managers · ' +
+      span.ics + ' ICs) vs 1:' + span.target + ' target.' : '') + '</div></div>';
+}
+
+// 📌 Action Queue — admin-only tab: every server verdict carrying an action,
+// with per-viewer state (open/acked/snoozed/done + owner + due ISO week).
+// Moved off Overview (2026.W31): viewers read signals there; the workflow
+// lives here for the people who can assign owners and act. switchTab gates
+// the tab and the getOverviewActions/saveOverviewAction RPCs are admin-only
+// server-side — hiding the button is never the enforcement.
+function renderActions(el) {
+  const d = STATE.data;
   el.innerHTML =
-    verdictsFor("managers").map(verdictHtml).join("") + ignored +
-    '<div class="card"><h2>👤 Team attrition by manager <span class="sub">(' + esc(d.meta.fyLabel) +
-    ' · managers with ' + (rag.mgrMinReports || 3) + '+ reports · worst first)</span></h2>' +
-    '<table><tr><th>Manager</th><th>Team size</th><th>FY exits</th><th>Voluntary</th><th>Team attrition</th><th>Department</th></tr>' +
-    rows.map(r => tr(r, false)).join("") +
-    (m.pooledSmallTeams ? tr(m.pooledSmallTeams, true) : "") +
-    '</table>' +
-    (rows.length ? "" : '<p class="sub">No manager rows match the current filters.</p>') +
-    (span ? '<div class="sub" style="margin-top:8px">Span of control: <b>1:' + span.ratio + '</b> (' +
-      span.managers + ' managers · ' + span.ics + ' ICs) vs 1:' + span.target + ' target.</div>' : '') +
-    '</div>';
+    '<div class="banner">📌 <b>Action queue</b> — every signal that needs an owner, drawn from the same server verdicts as the Overview. Admin-only; status and owner are saved per viewer.</div>' +
+    ovQueueHtml(d) +
+    ovProvenanceHtml(d);
 }
 const TIER_LABEL = {
   title: "median · title peers", market: "market mean",
@@ -793,7 +1207,8 @@ function renderRanking(el) {
       const p = e.priority || {};
       const mrCls = e.marketRatio == null ? "" : e.marketRatio < marketLow ? "red" : "green";
       return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-        '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + '</div></td>' +
+        '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) +
+        (e.employmentType && e.employmentType !== "regular" ? ' · ' + esc(e.employmentType) : '') + '</div></td>' +
         '<td><span class="chip ' + ratioClass(e.ratio) + '">' + (e.ratio != null ? e.ratio.toFixed(2) : "—") + '</span></td>' +
         '<td>' + (e.marketRatio != null ? '<span class="chip ' + mrCls + '">' + e.marketRatio.toFixed(2) + '</span>' : '<span class="sub">—</span>') + '</td>' +
         '<td>' + (e.perfAvg != null ? e.perfAvg.toFixed(2) + '<span class="sub"> ×' + e.perfCount + '</span>' : "—") + '</td>' +
@@ -891,7 +1306,35 @@ function renderSignals(el) {
           '<td>' + posChip(e) + '</td></tr>'
         ).join("") + '</table>'
       : '<p class="sub">Nobody matches the staleness rule' + (STATE.sigEarly ? ' in the early-career band' : '') + '.</p>') +
-    '<div class="sub" style="margin-top:6px">The in-role clock resets at a promotion, title change, or internal transfer; it falls back to the hire date for Rocketeers never promoted.</div></div>';
+    '<div class="sub" style="margin-top:6px">The in-role clock resets at a promotion, title change, or internal transfer; it falls back to the hire date for Rocketeers never promoted.</div></div>' +
+    invisibleCardHtml(emps, sc);
+}
+
+// Check L spirit — strong contribution evidence + weak/absent ratings.
+// Renders only once a Contribution Snapshot quarter exists.
+function invisibleCardHtml(emps, sc) {
+  const d = STATE.data;
+  const cq = (d.meta.contribution || {}).quarter;
+  if (!cq) return '';
+  const rows = emps.filter(e => e.signals.invisibleContributor)
+    .sort((a, b) => ((b.contrib || {}).score || 0) - ((a.contrib || {}).score || 0));
+  return '<div class="card"><h2>👻 Possible invisible contributors <span class="chip yellow">' + rows.length + '</span>' +
+    ' <span class="sub">(' + esc(cq) + ' snapshot: contribution score ≥ ' + (sc.invisibleMinScore || 0.75) +
+    ' with SI below ' + (sc.invisibleWeakSi || 4) + ' or unrated — verify, don&#39;t assume)</span></h2>' +
+    (rows.length
+      ? '<table><tr><th>Name</th><th>Contribution</th><th>Goals</th><th>Coverage</th><th>SI (window)</th><th>Kudos</th></tr>' +
+        rows.map(e => {
+          const c = e.contrib || {};
+          return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+            '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
+            '<td><span class="chip green">' + (c.score != null ? c.score.toFixed(2) : '—') + '</span></td>' +
+            '<td>' + (c.goalCompliant == null ? '—' : c.goalCompliant ? '✓ compliant' : '✗') + '</td>' +
+            '<td>' + (c.trackedCoverage != null ? pctFmt(c.trackedCoverage, 0) : '—') + '</td>' +
+            '<td>' + (e.perfAvg != null ? e.perfAvg.toFixed(2) : '<span class="chip yellow">unrated</span>') + '</td>' +
+            '<td>' + ((c.kudosReceived || 0) + '↓ ' + (c.kudosGiven || 0) + '↑') + '</td></tr>';
+        }).join("") + '</table>'
+      : '<p class="sub">No one currently pairs strong contribution evidence with a weak or missing rating.</p>') +
+    '<div class="sub" style="margin-top:6px">Absence of a rating is not evidence of absence of contribution (Check K spirit). Kudos counts carry a program-under-use caveat — low kudos signals the program, not the person.</div></div>';
 }
 
 function renderCompa(el) {
@@ -927,7 +1370,9 @@ function renderCompa(el) {
         '<td>' + esc(m.name) + '</td><td>' + esc(m.level) + '</td>' +
         '<td>' + fmtMoney(m.tcc, m.tccUsd, m.currency) + '</td>' +
         '<td><div class="bar"><i style="width:' + Math.min(100, Math.round((m.ratio || 0) * 100)) + '%;background:' + ratioBarColor(cls) + '"></i></div></td>' +
-        '<td>' + (m.ratio != null ? '<span class="chip ' + cls + '">' + m.ratio.toFixed(2) + '</span>' : '<span class="chip">insufficient peers</span>') +
+        '<td>' + (m.ratio != null ? '<span class="chip ' + cls + '">' + m.ratio.toFixed(2) + '</span>'
+          : m.nonComparable ? '<span class="chip" title="Part-time/intern — excluded from peer anchors by design">PT · not comparable</span>'
+          : '<span class="chip">insufficient peers</span>') +
         (m.noPeers ? '<span class="chip">no peers</span>' : '') + '</td></tr>';
     }).join("") + '</table></div>').join("");
   if (!groups.length) html += '<div class="card sub">No groups match the current filters.</div>';
@@ -980,6 +1425,10 @@ function suggestionChip(e) {
   }
   if (s.status === "at-market") {
     return { badge: '<span class="chip green">at/above mean</span>', text: "market competitive" };
+  }
+  if (s.status === "not-comparable") {
+    // Deliberately muted — a part-timer must never wear a red market badge.
+    return { badge: '<span class="chip">PT</span>', text: "part-time — market rates not comparable" };
   }
   return { badge: '<span class="chip">pending</span>', text: "—" };
 }
@@ -1071,7 +1520,12 @@ function renderContrib(el) {
 }
 
 // Threshold numbers interpolate from meta (compaBands / equityCfg = CONFIG_CD echoes),
-// so tuning CONFIG_CD updates this prose automatically.
+// so tuning CONFIG_CD updates this prose automatically. V4 layout: sectioned
+// cards with a sticky chip nav — content unchanged, structure modernized.
+function refJump(id) {
+  const t = document.getElementById(id);
+  if (t) t.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 function renderReference(el) {
   const m = STATE.data.meta;
   const b = m.compaBands || { low: 0.8, target: 0.95, high: 1.1 };
@@ -1079,31 +1533,75 @@ function renderReference(el) {
   const p = m.priorityCfg || { weights: { perf: 57, tenure: 29, compaGap: 14 },
                                caps: { companyYears: 10, profileYears: 5, gapPct: 0.25 }, ratingMax: 5 };
   const cov = m.benchCoverage || { rows: 0, matchedEmployees: 0, currencyMismatch: 0 };
+  const sc = m.signalsCfg || {};
+  const dot = s => /^ok$/.test(String(s)) ? '<span class="dot ok"></span>'
+    : /error/i.test(String(s)) ? '<span class="dot err"></span>' : '<span class="dot pend"></span>';
+
+  const sources = [
+    { name: "Roster, attrition, TCC", status: m.sources.roster,
+      desc: "Roster file — active + terminated rows; crew/contractors excluded everywhere." },
+    { name: "USD conversion", status: m.tccUsdAvailable ? "ok" : "pending",
+      desc: '"TCC USD" column in the roster tab (position may shift; resolved by header name, not a separate tab).' +
+        (m.tccUsdAvailable ? "" : " Column not found — the USD toggle shows local-only.") },
+    { name: "Comp history + QTA interim", status: m.sources.history,
+      desc: 'Compensation Report — "RD" tab, joined by Employee Number.' },
+    { name: "Performance ratings", status: m.sources.ratings || "—",
+      desc: '"Small Improvements RD" tab (contribution data file), joined by Employee Number — ' +
+        (m.ratingsCount || 0) + " rating rows." },
+    { name: "Market benchmarks", status: m.sources.benchmarks || "—",
+      desc: 'Benchmarking file — "Compilation" tab, joined by normalized Location + Job Title, LOCAL currency; the compilation grows over time.' },
+    { name: "Employment type", status: m.employmentTypeAvailable ? "ok" : "pending",
+      desc: m.employmentTypeAvailable
+        ? "Roster Employment Type column — " + ((m.employmentCounts || {}).partTime || 0) + " part-time, " +
+          ((m.employmentCounts || {}).intern || 0) + " intern active."
+        : "Employment Type column not found — everyone currently reads as regular." },
+    { name: "Contribution snapshot", status: (m.contribution && m.contribution.quarter) ? "ok" : (m.sources.contribution || "pending"),
+      desc: (m.contribution && m.contribution.quarter)
+        ? '"Contribution Snapshot" tab — ' + m.contribution.matched + " Rocketeers frozen at " + m.contribution.quarter +
+          " cycle open (goals, PTO compliance, tracked coverage, RCR, kudos)."
+        : 'Quarterly evidence frozen by exportContributionSnapshot() in the PS project — runs at QTA cycle open; pending until the first export.' },
+  ];
+
+  const formulas = [
+    ["⚖️ Internal Position", 'TCC ÷ anchor, ACTIVE peers, local currency. Anchor tiers: (1) median of Key Location + Job Title peers when the group has ≥ ' + q.smallGroupMin + ' members; (2) the external <b>market mean</b> for that Location + Job Title (N-of-1 rule — external parity replaces internal equity for unique roles); (3) median of the Key Location + Level cohort (≥ ' + q.smallGroupMin + '); else "insufficient peers". Anchors always derive from the FULL active population — the universal filters never recompute them. Bands: red &lt; ' + b.low.toFixed(2) + ', yellow &lt; ' + b.target.toFixed(2) + ', green ≤ ' + b.high.toFixed(2) + ', violet above (ceiling watch).'],
+    ["🎯 Priority Score", 'Weighted 0–100: performance (avg rating ÷ ' + p.ratingMax + ' over the last ' + (sc.perfWindowQuarters || 4) + ' completed quarters) × ' + p.weights.perf + '% + tenure (50/50 company capped ' + p.caps.companyYears + 'y / in-role capped ' + p.caps.profileYears + 'y) × ' + p.weights.tenure + '% + compa gap (below-anchor %, full credit at ' + Math.round(p.caps.gapPct * 100) + '%) × ' + p.weights.compaGap + '%. Missing components redistribute their weight (° = partial). Shown on the 🎯 Priority Ranking tab, which carries a full component legend. Mastery banding is a planned future component.'],
+    ["🌍 vs Market", 'TCC ÷ benchmark <b>Mean</b> (a mean, not P50) for the same Location + Job Title, local currency only — currency-mismatched rows are skipped and counted. Below ' + (m.marketLow || 0.9).toFixed(2) + ' renders red (priority read). Coverage: ' + cov.matchedEmployees + ' matched / ' + cov.rows + ' rows' + (cov.currencyMismatch ? ' / ' + cov.currencyMismatch + ' currency mismatches' : '') + '.'],
+    ["🕰 Tenure & growth", 'Company = years since Hire Date. In-role = years since the latest promotion, title-change, or internal-transfer comp event (falls back to Hire Date) — an Internal Transfer changes responsibilities even when pay doesn&#39;t move, so it resets the in-role clock. TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger). TCC AGR is the system-generated rate recorded in the RD tab ("TAG" field), shown as recorded. Annualized = (current ÷ previous)^(1 ÷ years) − 1 (RRI) between consecutive comp events; the first event (usually New Hire) is the baseline and gets no rate.'],
+    ["📉 Attrition rate", 'FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.'],
+    ["🧭 Pay Equity lenses", 'Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.'],
+    ["📋 QTA interim", 'Latest "Next Review" per Rocketeer from RD events, sorted overdue-first.'],
+    ["🚨 Risk Signals", 'Performance evidence window = last ' + (sc.perfWindowQuarters || 4) + ' completed fiscal quarters (' + esc((sc.windowFqs || []).join(", ")) + '). Promotion staleness ≥ ' + (sc.promoStaleYears || 3) + ' years in role (early-career lens ' + esc(sc.earlyCareerLevels || "I1–I3") + '). Recognition risk = latest completed-quarter rating ≥ ' + (sc.recogMinRating || 4.5) + ' with TTM TCC growth under ' + Math.round((sc.recogMaxTtm || 0.05) * 100) + '%. Retention cohort = levels ' + esc(sc.coreLevels || "I3–I4") + ' stacking ≥ ' + (sc.riskFactorMin || 2) + ' factors. Invisible contributor = contribution evidence score ≥ ' + (sc.invisibleMinScore || 0.75) + ' with windowed SI below ' + (sc.invisibleWeakSi || 4) + ' or unrated. Overridable via CD_SIGNALS_CFG. These flags surface people for a human conversation — they never re-score anyone.'],
+    ["🚀 Contribution snapshot", 'Quarterly frozen evidence per Rocketeer (goal compliance, PTO compliance, tracked coverage, kudos, RCR for Services) exported from the PS Contribution Report at QTA cycle open. The evidence score is the mean of available components — NOT the Top Rocketeers weekly score — and exists so the invisible-contributor check has a deterministic input until GTT-35 standardizes contribution points. Frozen on purpose: QTA evidence must not move mid-review.'],
+    ["👥 Population rules", 'EOR (Employer of Record) Rocketeers are regular employees in every engine. Part-time / intern Rocketeers stay in headcount, attrition and QTA but are excluded from peer anchors, ratio scoring, equity lenses and market reads — not comparable to full-time peers. Restricted profiles (CEO / chiefs / directors, M' + ((m.restricted || {}).minMLevel || 9) + '+) are stripped server-side for anyone without exec view' + (((m.restricted || {}).hidden || 0) > 0 ? ' — ' + m.restricted.hidden + ' hidden in this session' : '') + '.'],
+    ["💱 Currency & filters", 'Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available. Universal filters recompute every view for the filtered population, EXCEPT anchors and equity group medians (always full-population facts).'],
+  ];
+
+  const nav = [["refSources", "Sources"], ["refFormulas", "Formulas & rules"],
+               ["refGlossary", "Glossary"], ["refThresholds", "Thresholds & provenance"]];
+
   el.innerHTML =
-    '<div class="card"><h2>📊 Data Reference</h2>' +
-    '<h3>Sources</h3><table><tr><th>Module</th><th>Source</th><th>Status</th></tr>' +
-    '<tr><td>Roster, attrition, TCC</td><td>Roster file — active + terminated rows; crew/contractors excluded everywhere in V1</td><td>' + esc(m.sources.roster) + '</td></tr>' +
-    '<tr><td>USD conversion</td><td>&quot;TCC USD&quot; column in the roster tab (position may shift; resolved by header name, not a separate tab)</td><td>' + (m.tccUsdAvailable ? "ok" : "column not found — USD toggle shows local-only") + '</td></tr>' +
-    '<tr><td>Comp history + QTA interim</td><td>Compensation Report — &quot;RD&quot; tab, joined by Employee Number</td><td>' + esc(m.sources.history) + '</td></tr>' +
-    '<tr><td>Performance ratings</td><td>&quot;Small Improvements RD&quot; tab (contribution data file), joined by Employee Number — ' + (m.ratingsCount || 0) + ' rating rows</td><td>' + esc(m.sources.ratings || "—") + '</td></tr>' +
-    '<tr><td>Market benchmarks</td><td>Benchmarking file — &quot;Compilation&quot; tab, joined by normalized Location + Job Title, LOCAL currency; compilation grows over time</td><td>' + esc(m.sources.benchmarks || "—") + '</td></tr></table>' +
-    '<h3>Formulas</h3><table>' +
-    '<tr><td><b>Internal Position</b></td><td>TCC ÷ anchor, ACTIVE peers, local currency. Anchor tiers: (1) median of Key Location + Job Title peers when the group has ≥ ' + q.smallGroupMin + ' members; (2) the external <b>market mean</b> for that Location + Job Title (N-of-1 rule — external parity replaces internal equity for unique roles); (3) median of the Key Location + Level cohort (≥ ' + q.smallGroupMin + '); else &quot;insufficient peers&quot;. Anchors always derive from the FULL active population — the universal filters never recompute them. Bands: red &lt; ' + b.low.toFixed(2) + ', yellow &lt; ' + b.target.toFixed(2) + ', green ≤ ' + b.high.toFixed(2) + ', violet above (ceiling watch).</td></tr>' +
-    '<tr><td><b>Priority Score</b></td><td>Weighted 0–100: performance (avg rating ÷ ' + p.ratingMax + ') × ' + p.weights.perf + '% + tenure (50/50 company capped ' + p.caps.companyYears + 'y / in-role capped ' + p.caps.profileYears + 'y) × ' + p.weights.tenure + '% + compa gap (below-anchor %, full credit at ' + Math.round(p.caps.gapPct * 100) + '%) × ' + p.weights.compaGap + '%. Missing components redistribute their weight (° = partial). Shown on the 🎯 Priority Ranking tab, which carries a full component legend. Mastery banding is a planned future component.</td></tr>' +
-    '<tr><td><b>vs Market</b></td><td>TCC ÷ benchmark <b>Mean</b> (a mean, not P50) for the same Location + Job Title, local currency only — currency-mismatched rows are skipped and counted. Below ' + (m.marketLow || 0.9).toFixed(2) + ' renders red (priority read). Coverage: ' + cov.matchedEmployees + ' matched / ' + cov.rows + ' rows' + (cov.currencyMismatch ? ' / ' + cov.currencyMismatch + ' currency mismatches' : '') + '.</td></tr>' +
-    '<tr><td><b>Tenure</b></td><td>Company = years since Hire Date. In-role = years since the latest promotion, title-change, or internal-transfer comp event (falls back to Hire Date) — an Internal Transfer changes responsibilities even when pay doesn&#39;t move, so it resets the in-role clock. TTM growth = TCC now ÷ TCC in effect 12 months ago − 1 (null when history is younger).</td></tr>' +
-    '<tr><td><b>Attrition rate</b></td><td>FY terminations ÷ mean(headcount at FY start, headcount at FY end — or today for the running FY). Voluntary/involuntary from Termination Category. Fiscal year starts July 1.</td></tr>' +
-    '<tr><td><b>TCC AGR / Growth</b></td><td>TCC AGR is the system-generated rate recorded in the Compensation Report RD tab (&quot;TAG&quot; field), shown as recorded (e.g. 1.27%). Annualized = (current ÷ previous)^(1 ÷ years) − 1 (RRI) between consecutive comp events. The first event (usually New Hire) is the baseline and gets no rate.</td></tr>' +
-    '<tr><td><b>Pay Equity lenses</b></td><td>Within Key Location + level groups: gender median gap ≥ ' + q.gapPct + '% flags the group (needs ≥2 members per gender); individuals ≥ ' + q.outlierPct + '% below group median flag as outliers; ≥ ' + q.tenureYearsMin + 'y tenure AND ≥ ' + q.tenureBelowPct + '% below median flags the tenure lens.</td></tr>' +
-    '<tr><td><b>QTA interim</b></td><td>Latest &quot;Next Review&quot; per Rocketeer from RD events, sorted overdue-first.</td></tr></table>' +
-    '<h3>Currency</h3><p class="sub">Within-group math always runs in local currency. The Local | USD toggle changes display only; cross-location aggregates (Overview) use USD where available. Universal filters recompute every view for the filtered population, EXCEPT anchors and equity group medians (always full-population facts).</p>' +
-    '<h3>Freshness</h3><p class="sub">Payload generated ' + esc(m.generatedAt) +
-    (m.fromCache ? " — served from cache (⟳ Refresh forces a live read)." : " — live read.") +
-    ' Cache TTL 65 minutes.</p>' +
-    '<h3>Glossary</h3><table><tr><th>Term</th><th>Meaning</th></tr>' +
+    '<div class="ref-nav">' + nav.map(n =>
+      '<button onclick="refJump(\'' + n[0] + '\')">' + esc(n[1]) + '</button>').join("") +
+    '<span class="sub" style="margin-left:auto;align-self:center">Payload ' + esc(m.generatedAt) +
+    (m.fromCache ? ' · cached (⟳ Refresh = live read)' : ' · live') + ' · TTL 65 min</span></div>' +
+
+    '<div class="card" id="refSources"><h2>🗂 Sources</h2><div class="ref-grid">' +
+    sources.map(s =>
+      '<div class="ref-card"><h4>' + dot(s.status) + esc(s.name) + '</h4><p>' + s.desc +
+      (/error/i.test(String(s.status)) ? '<br><b style="color:var(--bad)">' + esc(s.status) + '</b>' : '') +
+      '</p></div>').join("") + '</div></div>' +
+
+    '<div class="card" id="refFormulas"><h2>🧮 Formulas &amp; rules</h2>' +
+    formulas.map((f, i) =>
+      '<details class="ref-acc"' + (i === 0 ? " open" : "") + '><summary>' + f[0] + '</summary>' +
+      '<div class="ref-body">' + f[1] + '</div></details>').join("") + '</div>' +
+
+    '<div class="card" id="refGlossary"><h2>📖 Glossary</h2><div class="ref-grid">' +
     (m.glossary || []).map(g =>
-      '<tr><td><b>' + esc(g.term) + '</b></td><td>' + esc(g.def) + '</td></tr>').join("") + '</table>' +
-    '<h3>RAG thresholds &amp; benchmark provenance</h3>' +
+      '<div class="ref-card"><h4>' + esc(g.term) + '</h4><p>' + esc(g.def) + '</p></div>').join("") +
+    '</div></div>' +
+
+    '<div class="card" id="refThresholds"><h2>🎚 RAG thresholds &amp; benchmark provenance</h2>' +
     (function () {
       const r = m.ragCfg || {};
       const row = (label, bands, note) => bands
@@ -1152,6 +1650,9 @@ function renderAccessForm(el, s) {
     '<textarea id="accAdmins" rows="4" style="width:100%">' + esc(s.admins.join("\n")) + '</textarea>' +
     '<h3>Viewers (full dashboard, read-only settings)</h3>' +
     '<textarea id="accViewers" rows="6" style="width:100%">' + esc(s.viewers.join("\n")) + '</textarea>' +
+    '<h3>Exec view — may see restricted profiles (CEO / chiefs / directors)</h3>' +
+    '<p class="sub">Admins always see restricted profiles. A viewer listed here sees them too; every other viewer gets those records stripped server-side. Patterns live in CONFIG_CD.RESTRICTED (+ CD_RESTRICTED_EXTRA employee numbers).</p>' +
+    '<textarea id="accExecView" rows="3" style="width:100%">' + esc((s.execView || []).join("\n")) + '</textarea>' +
     '<p><button onclick="saveAccess()">Save access lists</button> <span id="accMsg" class="sub"></span></p></div>';
 }
 function saveAccess() {
@@ -1160,13 +1661,13 @@ function saveAccess() {
   google.script.run
     .withSuccessHandler(() => { document.getElementById("accMsg").textContent = "✅ saved — cache version bumped"; })
     .withFailureHandler(e => { document.getElementById("accMsg").textContent = "❌ " + ((e && e.message) || e); })
-    .saveAccessSettings({ admins: split("accAdmins"), viewers: split("accViewers") });
+    .saveAccessSettings({ admins: split("accAdmins"), viewers: split("accViewers"),
+                          execView: split("accExecView") });
 }
 
 const RENDERERS = {
-  overview: renderOverview, ranking: renderRanking, signals: renderSignals,
-  attrition: renderAttrition,
-  managers: renderManagers,
+  overview: renderOverview, actions: renderActions, ranking: renderRanking,
+  signals: renderSignals, attrition: renderAttrition,
   compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
   contrib: renderContrib, reference: renderReference, access: renderAccess,
 };
@@ -1188,6 +1689,9 @@ function openDrill(empNo) {
     '<h2>' + esc(emp.name) + '</h2>' +
     '<div class="sub">' + esc(emp.jobTitle) + ' · ' + esc(emp.keyLocation) + ' · ' + esc(emp.dept) + '</div>' +
     '<div style="margin:10px 0">' +
+    (emp.employmentType && emp.employmentType !== "regular"
+      ? '<span class="chip" title="Excluded from peer anchors, equity lenses and market reads — not comparable to full-time peers">' +
+        esc(emp.employmentType) + '</span>' : '') +
     '<span class="chip">TCC ' + fmtMoney(emp.tcc, emp.tccUsd, emp.currency) + '</span>' +
     (emp.ratio != null
       ? '<span class="chip ' + ratioClass(emp.ratio) + '" title="anchor: ' + esc(TIER_LABEL[emp.anchorTier] || "") + '">position ' + emp.ratio.toFixed(2) + '</span>' : '') +
@@ -1211,8 +1715,23 @@ function openDrill(empNo) {
     if (s.promoStale) body += '<span class="chip yellow">🪜 ' +
       (s.everPromoted ? 'no promotion in ' + (emp.tenureProfileYears != null ? emp.tenureProfileYears + 'y' : '3y+') : 'never promoted') + '</span>';
     if (s.earlyCareer) body += '<span class="chip">🌱 early career</span>';
+    if (s.invisibleContributor) body += '<span class="chip yellow" title="Strong contribution evidence, weak/absent rating — verify with the manager">👻 possible invisible contributor</span>';
   }
   body += '</div>';
+  if (emp.contrib) {
+    const c = emp.contrib;
+    body += '<h3>Contribution — ' + esc(c.quarter) + ' snapshot (frozen evidence)</h3><div>' +
+      (c.score != null ? '<span class="chip green">evidence score ' + c.score.toFixed(2) + '</span>' : '') +
+      (c.goalCompliant != null ? '<span class="chip ' + (c.goalCompliant ? 'green' : 'red') + '">goals ' +
+        (c.goalCompliant ? 'compliant' : 'not compliant') + (c.goalsTotal != null ? ' · ' + c.goalsTotal + ' goals' : '') + '</span>' : '') +
+      (c.ptoCompliance != null ? '<span class="chip">PTO compliance ' + pctFmt(c.ptoCompliance, 0) + '</span>' : '') +
+      (c.trackedCoverage != null ? '<span class="chip">tracked ' + (c.trackedHrs != null ? Math.round(c.trackedHrs) + 'h' : '') +
+        ' · ' + pctFmt(c.trackedCoverage, 0) + ' of planned</span>' : '') +
+      (c.rcr != null ? '<span class="chip">RCR ' + c.rcr.toFixed(2) + '</span>' : '') +
+      ((c.kudosReceived || c.kudosGiven) ? '<span class="chip" title="Low kudos signals program under-use, not low contribution">kudos ' +
+        (c.kudosReceived || 0) + '↓ ' + (c.kudosGiven || 0) + '↑</span>' : '') +
+      '</div><div class="sub" style="margin-top:4px">Read from the quarterly Contribution Snapshot — frozen at cycle open so QTA evidence never moves mid-review. RCR applies to Services only; blank never means zero.</div>';
+  }
   if (!g || !g.events.length) {
     body += '<div class="banner">No comp history found in the Compensation Report (RD) for this Rocketeer.</div>';
   } else {
@@ -1274,6 +1793,25 @@ function waterfallSvg(events, w, h) {
 function closeDrill() { document.getElementById("drill").classList.add("hidden"); }
 
 // ── wiring ──────────────────────────────────────────────────
+// Theme: dark is the default; "light" re-binds the same semantic variables so
+// no renderer knows which theme is active. Persisted per browser. SVGs inherit
+// because every chart color is a var(--…) reference, never a literal.
+function applyTheme(t) {
+  if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+  else document.documentElement.removeAttribute("data-theme");
+  const b = document.getElementById("themeBtn");
+  b.textContent = t === "light" ? "🌙" : "☀️";
+  b.title = t === "light" ? "Switch to dark theme" : "Switch to light theme";
+  try { localStorage.setItem("cd_theme", t); } catch (e) { /* sandboxed iframe — theme just won't persist */ }
+}
+document.getElementById("themeBtn").onclick = () =>
+  applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+(function () {
+  let saved = "dark";
+  try { saved = localStorage.getItem("cd_theme") || "dark"; } catch (e) { /* default dark */ }
+  applyTheme(saved);
+})();
+
 document.getElementById("menuBtn").onclick = () =>
   document.getElementById("menuPanel").classList.toggle("hidden");
 document.getElementById("refreshBtn").onclick = () => loadData(true);
