@@ -2522,6 +2522,114 @@ function pmByProject_(rows) {
   return { byProject: byProject, superseded: superseded };
 }
 
+/** The sentinel for work whose project has no PM in the Tempo export. Matches
+    the client's UNTAGGED_.pm exactly — one string, or the bucket the server
+    builds and the bucket the client filters on are two different things. */
+var DH_NO_PM_ = "(No PM)";
+
+/**
+ * The `ready` signal, reused rather than redefined. BACKLOG_SIGNALS_ already
+ * holds the org's definition — dated AND estimated AND linked AND fresh — and it
+ * is described there as "the share of the backlog that is actually plannable".
+ * Reading it out of that table is what stops the PM tab and the backlog panel
+ * from drifting into two meanings of one word.
+ */
+function dhBacklogReady_(it, now) {
+  for (var i = 0; i < BACKLOG_SIGNALS_.length; i++) {
+    if (BACKLOG_SIGNALS_[i].k === "ready") return !!BACKLOG_SIGNALS_[i].test(it, now);
+  }
+  return false;
+}
+
+/**
+ * PM-owned work: two bars per PM plus a month-windowed item list.
+ *
+ * TWO BARS, NEVER AVERAGED (spec §5.2):
+ *   OWNS       epicDated / epicN     — open epics carrying a due date. The PM's
+ *                                      own field, graded against the 100% bar.
+ *   IN PROJECT readyN / readyDen     — the `ready` share over open non-epics,
+ *                                      using the EXISTING BACKLOG_SIGNALS_
+ *                                      definition. Team hygiene, shown as
+ *                                      context.
+ * A blended score would grade a PM on fields other people fill, and could not
+ * say which half is the problem.
+ *
+ * NEITHER BAR IS WINDOWED, and that is load-bearing. An undated epic has no date
+ * and so cannot fall inside a date window; windowing bar 1 would leave a
+ * denominator of only dated epics and pin every PM at 100% — a bar that can
+ * never report the very gap it exists to report. Bar 2 inherits the same trap
+ * through `ready`, which has `dated` as a conjunct. The window scopes `items`.
+ *
+ * WINDOW (spec §5.3): overdue carry-in + due in the current calendar month.
+ * A strict month filter would let a commitment escape by ageing out of its own
+ * window — the longer something slips, the less visible it becomes.
+ * Undated items are ALWAYS included: they have no month, and they are the point.
+ *
+ * @param {Object} jira        readJiraRaw_ output (use the leaver-scoped feed)
+ * @param {Object} byProject   pmByProject_(…).byProject
+ * @param {Date}   today       injectable for tests
+ * @returns {{rows:Array, keyCap:number}}
+ */
+function pmOwnedWork_(jira, byProject, today) {
+  var now = today || new Date();
+  var monthY = now.getFullYear(), monthM = now.getMonth();
+  var weekStart = dhWeekStart_(now);
+  var idx = byProject || {};
+  var map = {};
+
+  function rowFor(pm) {
+    if (!map[pm]) {
+      map[pm] = { pm: pm, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
+                  readyDen: 0, readyN: 0, items: [] };
+    }
+    return map[pm];
+  }
+
+  // In window = undated (always) OR overdue (before this week's Monday) OR due
+  // inside the current calendar month.
+  function inWindow(it) {
+    if (!dhHasDue_(it)) return true;
+    if (it.due < weekStart) return true;
+    return it.due.getFullYear() === monthY && it.due.getMonth() === monthM;
+  }
+
+  ((jira && jira.issues) || []).forEach(function (it) {
+    if (!typeHygOpen_(it)) return;                 // open work only — same predicate
+    var pm = idx[dhProjectOf_(it.key)] || DH_NO_PM_;
+    var r = rowFor(pm);
+
+    if (it.isEpic) {
+      r.epicN++;
+      if (dhHasDue_(it)) r.epicDated++;
+      else if (r.epicMissingKeys.length < EPIC_DUE_MAX_KEYS_) r.epicMissingKeys.push(it.key);
+      else r.epicCapped = true;
+    } else {
+      r.readyDen++;
+      if (dhBacklogReady_(it, now)) r.readyN++;
+    }
+
+    if (inWindow(it)) {
+      r.items.push({
+        key: it.key, summary: it.summary || "", isEpic: !!it.isEpic,
+        status: it.status || "",
+        due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
+        overdue: dhOverdue_(it, now),
+      });
+    }
+  });
+
+  var rows = Object.keys(map).map(function (k) { return map[k]; });
+  rows.sort(function (a, b) {
+    // (No PM) sorts LAST whatever its size: it is a coverage gap with a name,
+    // not a person, and ranking it among PMs invites reading it as one.
+    var an = a.pm === DH_NO_PM_, bn = b.pm === DH_NO_PM_;
+    if (an !== bn) return an ? 1 : -1;
+    var am = a.epicN - a.epicDated, bm = b.epicN - b.epicDated;
+    return (bm - am) || (b.epicN - a.epicN) || a.pm.localeCompare(b.pm);
+  });
+  return { rows: rows, keyCap: EPIC_DUE_MAX_KEYS_ };
+}
+
 /**
  * The signal roster. ONE table, so a predicate can never drift between the count
  * and the queue behind it, and adding a signal is one entry rather than edits in
@@ -8574,6 +8682,82 @@ function _test_pmAttribution_() {
   ];
   assert_(pmByProject_(noHours).byProject.GTT === "Real Owner",
           "a zero-hours row cannot take ownership from a row with hours");
+
+  // ── pmOwnedWork_ ──
+  var today = new Date(2026, 7, 11);           // 2026.W33, AUG 2026
+  function iss(o) {
+    return { key: o.key, isEpic: !!o.isEpic, due: o.due || null,
+             status: o.status || "In Progress", statusCategory: o.cat || "In Progress",
+             estSec: o.estSec === undefined ? 3600 : o.estSec,
+             linked: o.linked === undefined ? true : o.linked,
+             start: o.start === undefined ? new Date(2026, 6, 1) : o.start,
+             updated: o.updated || new Date(2026, 7, 10),
+             typeLabel: o.isEpic ? "Epic" : "Task", summary: o.key };
+  }
+  var pmIdx = { GTT: "Dana Reyes", ACME: "Sam Ortiz" };
+  var work = pmOwnedWork_({ issues: [
+    // Dana's epics: 2 dated, 1 undated → bar 1 = 2/3
+    iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 7, 20) }),
+    iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 9, 15) }),  // OCT — out of window
+    iss({ key: "GTT-3", isEpic: true, due: null }),
+    // Dana's non-epics
+    iss({ key: "GTT-10", due: new Date(2026, 5, 10) }),               // JUN — overdue carry-in
+    iss({ key: "GTT-11", due: new Date(2026, 7, 12) }),               // AUG
+    iss({ key: "GTT-12", due: null, estSec: 0, linked: false }),      // undated, not ready
+    // Sam's project
+    iss({ key: "ACME-1", isEpic: true, due: new Date(2026, 7, 5) }),
+    // A project with no PM row at all
+    iss({ key: "ORPH-1", isEpic: true, due: null }),
+  ] }, pmIdx, today);
+
+  var byPm = {};
+  work.rows.forEach(function (r) { byPm[r.pm] = r; });
+
+  var dana = byPm["Dana Reyes"];
+  assert_(dana, "Dana has a row");
+  assert_(dana.epicN === 3 && dana.epicDated === 2,
+          "bar 1 counts ALL open epics Dana owns — 2 of 3 dated");
+  assert_(dana.epicMissingKeys.indexOf("GTT-3") !== -1, "the undated epic is named");
+
+  // THE TRAP (spec §5.2). GTT-2 is due in OCTOBER, outside the AUG window. If the
+  // window ever reaches the bar, epicN drops to 2 and every PM reports 100% —
+  // a bar that can never report the gap it exists to report.
+  assert_(dana.epicN === 3,
+          "bar 1 is UNWINDOWED — an out-of-window epic stays in the denominator");
+  assert_(dana.readyDen === 3,
+          "bar 2 denominator is all open non-epics Dana owns, also unwindowed");
+
+  // The window scopes the ITEM LISTS: overdue carry-in kept, later months
+  // dropped, undated always present.
+  var keys = dana.items.map(function (i) { return i.key; });
+  assert_(keys.indexOf("GTT-10") !== -1, "JUN overdue carry-in is KEPT in the list");
+  assert_(keys.indexOf("GTT-11") !== -1, "due this month is kept");
+  assert_(keys.indexOf("GTT-3") !== -1, "undated is ALWAYS shown — it has no month");
+  assert_(keys.indexOf("GTT-12") !== -1, "…including undated non-epics");
+  assert_(keys.indexOf("GTT-2") === -1, "an OCT due date is out of window and dropped");
+
+  // Item due dates travel as WEEK keys, so the client bands them with the same
+  // vocabulary the People drill-down uses.
+  var jun = dana.items.filter(function (i) { return i.key === "GTT-10"; })[0];
+  assert_(/^\d{4}\.W\d{1,2}$/.test(jun.due), "item due dates are week keys, not Dates");
+  assert_(jun.overdue === true, "…and carry the server's own overdue verdict");
+
+  // (No PM) is a named coverage gap, not an empty state, and sorts last.
+  var orphan = byPm["(No PM)"];
+  assert_(orphan && orphan.epicN === 1, "a project absent from Tempo lands in (No PM)");
+  assert_(work.rows[work.rows.length - 1].pm === "(No PM)",
+          "(No PM) sorts LAST regardless of size — it is a hygiene bucket, not a PM");
+
+  // Worst-first among real PMs, by undated epic count.
+  assert_(work.rows[0].pm === "Dana Reyes", "sorted worst-first by undated epics");
+
+  // Closed work is out entirely — the same typeHygOpen_ predicate every other
+  // hygiene surface uses, so the counts reconcile with the 🚩 audit.
+  var closed = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-9", isEpic: true, due: null, status: "Done" }),
+  ] }, pmIdx, today);
+  assert_(closed.rows.length === 0,
+          "a resolved epic's missing date is not actionable and is not counted");
 
   Logger.log("✅ _test_pmAttribution_ passed");
 }
