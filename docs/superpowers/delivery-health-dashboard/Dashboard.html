@@ -1939,7 +1939,10 @@ document.getElementById("btnRefresh").onclick = function () { loadData(true); };
 // the default view in one click — every filter and lens (population FTE, role
 // All, focus Plan, period Monthly), all dropdowns, search, and every expanded
 // column/detail row. No leftover state, period included (Monthly IS the default).
-document.getElementById("btnReset").onclick = function () {
+// A NAMED function, not only a click handler: panels that hide rows because of a
+// filter offer "clear filters" inline, and they must run the same reset the ⟲
+// button does rather than a second, drifting copy of it.
+function resetFilters_() {
   STATE.period = MODEL && MODEL.meta.periods ? "month" : "week"; // stale-cache guard parity with loadData
   STATE.pop = "fte"; STATE.role = "all"; STATE.focus = "plan";
   STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
@@ -1947,10 +1950,12 @@ document.getElementById("btnReset").onclick = function () {
   STATE.sigFilter = "";   // …including the roster's signal chip
   STATE.periodIdx = null; // …including the analysis-period picker
   buildPeriodChips_();    // reflect the reset in the picker's selection
-  document.getElementById("personSearch").value = "";
+  var srch = document.getElementById("personSearch");
+  if (srch) srch.value = "";
   buildFilters_();   // rebuilds every dropdown from the now-unfiltered population
   renderAll_();
-};
+}
+document.getElementById("btnReset").onclick = resetFilters_;
 // A dropdown change re-cascades the OTHER dropdowns before re-rendering — that
 // is what makes a Region pick collapse the Team/PM/Family lists.
 function onFilterChange_(dim, value) {
@@ -7079,8 +7084,35 @@ function renderPm_() {
   }
   var nowIso = currentIso_();
   var totalIgnored = 0;
-  var body = d.rows.map(function (r) {
+  // ── The universal filters, applied at epic grain ────────────────────────
+  // Scoped by the people DOING the work (see pmEpicPasses_). Counted as we go,
+  // because a filter that hides work without saying how much is indistinguishable
+  // from a feed that never had it.
+  var filtering = pmFiltersActive_();
+  var hidden = 0, hiddenUnowned = 0;
+  var visRows = d.rows.map(function (r) {
     totalIgnored += r.ignoredN || 0;
+    if (!filtering) return r;
+    var keep = [];
+    (r.epics || []).forEach(function (e) {
+      if (pmEpicPasses_(e)) { keep.push(e); return; }
+      hidden++;
+      if (!(e.owners || []).length) hiddenUnowned++;
+    });
+    // A shallow copy: STATE.pmOpen keys off r.pm, and the bars/gap counts are
+    // the PM's own standing record, so only the epic LIST narrows. See the note
+    // rendered under the heading.
+    var c = {};
+    for (var k in r) c[k] = r[k];
+    c.epics = keep;
+    return c;
+  }).filter(function (r) {
+    // A PM whose every epic fell outside the slice leaves the page — but their
+    // epics are in the `hidden` count, so the page still accounts for them.
+    return !filtering || (r.epics && r.epics.length);
+  });
+
+  var body = visRows.map(function (r) {
     return pmGroupRowHtml_(r, d) +
       (STATE.pmOpen[r.pm] ? pmEpicRowsHtml_(r, nowIso) : "");
   }).join("");
@@ -7103,8 +7135,29 @@ function renderPm_() {
              "</colgroup><thead>" + head +
              "</thead><tbody>" + body + "</tbody></table></div>";
 
+  // What the filter hid, stated where the filter's effect is read. The unowned
+  // share is called out separately: those epics are not "outside this slice",
+  // they are attributable to NO slice, and they are exactly the work this tab
+  // exists to surface.
+  var filterNote = filtering
+    ? '<p class="cellSub pmFilterNote">' +
+      (hidden
+        ? "<b>⚠ " + hidden + " epic" + (hidden === 1 ? "" : "s") + " hidden by the current " +
+          "filter</b> — no child is assigned to anyone in this slice." +
+          (hiddenUnowned
+            ? " <b>" + hiddenUnowned + "</b> of them " + (hiddenUnowned === 1 ? "has" : "have") +
+              " no roster-assigned child at all, so no filter can ever select " +
+              (hiddenUnowned === 1 ? "it" : "them") + "."
+            : "") +
+          ' <a href="#" onclick="resetFilters_();return false">Clear filters</a> to see ' +
+          "everything."
+        : "Filters are active and nothing was hidden — every epic has a child in this slice.") +
+      "</p>"
+    : "";
+
   el.innerHTML =
-    "<h3>🗓 PM-owned work" + scopeTag_("org") + "</h3>" +
+    "<h3>🗓 PM-owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
+    filterNote +
     '<p class="cellSub">An epic belongs to its <b>Jira assignee</b> — the ticket states ' +
       "who owns it. Where an epic has no assignee, it falls back to the <b>Tempo project " +
       "lead</b>, which is an inference from who logs hours where; each row says which " +
@@ -7150,9 +7203,16 @@ var PM_OPPS_ = [
   { k: "oppNoDue", icon: "🚩", cls: "sigBad",
     one: "epic with no due date", many: "epics with no due date",
     tip: "An epic with no committed end. It can never appear in On-Time Delivery, and nothing under it can be graded against a deadline." },
-  { k: "oppChildOver", icon: "⏱", cls: "sigBad",
-    one: "child committed past its epic's date", many: "children committed past their epic's date",
-    tip: "The epic cannot land on its date if its own work is scheduled after it. Either the children move or the epic's date does." },
+  // Declared BEFORE the at-risk row so that on equal counts the tie-break (which
+  // is declaration order) falls toward the worse state. Counted per EPIC: one
+  // badly-planned epic is one decision a PM makes, not nine problems.
+  { k: "oppEpicsBreached", icon: "✖", cls: "sigBad",
+    one: "epic past its date with work still beyond it",
+    many: "epics past their date with work still beyond them",
+    tip: "The epic's committed week has already passed and work under it is still scheduled after that date. The commitment is missed — this is a recovery conversation." },
+  { k: "oppEpicsAtRisk", icon: "⚠", cls: "sigWarn",
+    one: "epic cannot land as planned", many: "epics cannot land as planned",
+    tip: "Work under these epics is planned to finish after the epic's own date, but that date has NOT passed yet. Nothing has failed and both levers are still available — move the children, or move the epic. This is the actionable one." },
   { k: "oppNoChildren", icon: "🔗", cls: "sigWarn",
     one: "epic with nothing linked to it", many: "epics with nothing linked to them",
     tip: "No ticket of any status rolls up to this epic, so its delivered hours cannot be attributed to an engagement — and it cannot be quoted from later." },
@@ -7225,6 +7285,41 @@ var PM_COLS_ = {
     the page and buried the rest of the row. */
 var PM_KEYS_SHOWN_ = 8;
 
+/**
+ * Does this epic belong to the slice the header filters select?
+ *
+ * The filters are universal in this project, but their vocabulary is a PERSON
+ * (region, team, job family, population, search) and this tab's unit is an EPIC
+ * whose owner — the PM — is not on the roster at all. So an epic is scoped by
+ * the people DOING it: `owners` is the set of roster names its children are
+ * assigned to, and the epic is in scope when any one of them passes.
+ *
+ * An epic with NO owners is unattributable, not passing: nobody on the roster is
+ * assigned to any of its children. Those are counted and named on the page
+ * rather than silently dropped, because they include exactly the unassigned work
+ * this tab exists to surface — a filter that quietly swallows it would be worse
+ * than no filter at all.
+ */
+function pmEpicPasses_(e) {
+  if (!MODEL._pByName) {
+    MODEL._pByName = {};
+    MODEL.people.forEach(function (p) { MODEL._pByName[p.name] = p; });
+  }
+  var owners = e.owners || [];
+  for (var i = 0; i < owners.length; i++) {
+    var person = MODEL._pByName[owners[i]];
+    if (person && passesFilters_(person)) return true;
+  }
+  return false;
+}
+
+/** True when any header filter is narrowing the view. Used to decide whether the
+    tab is showing everything (no note needed) or a slice (say what it hid). */
+function pmFiltersActive_() {
+  return !!(STATE.region || STATE.team || STATE.pm || STATE.family || STATE.search ||
+            STATE.pop !== "fte" || STATE.role !== "all");
+}
+
 /** The PM's own row: a full-width group header carrying the two bars, the
     attribution split and the ranked gap line. Clicking it opens the group. */
 function pmGroupRowHtml_(r, d) {
@@ -7285,7 +7380,8 @@ function pmEpicHtml_(e, nowIso) {
   // week. "over" leads because it is the finding — an epic cannot land on its
   // date if its own work is scheduled past it.
   var tally = [];
-  if (e.over) tally.push('<span class="sigBad">' + e.over + " over</span>");
+  if (e.breached) tally.push('<span class="sigBad">' + e.breached + " breached</span>");
+  if (e.atRisk) tally.push('<span class="sigWarn">' + e.atRisk + " at risk</span>");
   if (e.noDate) tally.push('<span class="sigWarn">' + e.noDate + " undated</span>");
   if (e.within) tally.push('<span class="sigGood">' + e.within + " within</span>");
   // "none in window" only when children exist SOMEWHERE and none reached this
@@ -7298,6 +7394,19 @@ function pmEpicHtml_(e, nowIso) {
 
   // The `gaps` cell: problems that are properties of the EPIC, not its children.
   var gaps = [];
+  // The epic-level verdict LEADS, because it is the sentence a PM acts on. The
+  // tally beside it counts tickets; this says what the epic itself cannot do.
+  // Mutually exclusive by construction — the split is decided by the epic's own
+  // week, so all its children fall on the same side.
+  if (e.breached) {
+    gaps.push('<span class="sigBad" title="This epic\'s committed week has passed and work ' +
+      'under it is still scheduled beyond that date. Recovery, not re-planning.">' +
+      "✖ past its date, work still beyond</span>");
+  } else if (e.atRisk) {
+    gaps.push('<span class="sigWarn" title="Work under this epic is planned to finish after ' +
+      'the epic\'s own date. Its date has NOT passed yet — moving the children or moving the ' +
+      'epic both still work. This is the one to act on.">⚠ cannot land as planned</span>');
+  }
   if (!e.childrenAll) {
     gaps.push('<span class="sigWarn" title="No ticket of any status rolls up to this ' +
       'epic, so its hours cannot be attributed to an engagement.">&#128279; nothing linked</span>');
@@ -7338,9 +7447,20 @@ function pmEpicHtml_(e, nowIso) {
     var due = c.due
       ? '<span class="' + dueBand_(c.due, nowIso, false) + '">' + esc_(c.due) + "</span>"
       : '<span class="cellSub">&mdash;</span>';
-    var v = c.verdict === "over"
-          ? '<span class="sigBad">over by ' + c.overByWeeks + "w</span>"
-          : c.verdict === "within" ? '<span class="sigGood">within</span>'
+    // BREACHED and AT RISK are the same geometry and completely different
+    // conversations, so they never share a mark. Amber says "there is still time
+    // to move something"; red says "the date has already gone".
+    var v = c.verdict === "breached"
+          ? '<span class="sigBad" title="Planned to finish after the epic it belongs to, ' +
+            'and the epic\'s own week has already passed. The commitment is missed — this ' +
+            'is a recovery conversation, not a re-plan.">✖ ' + c.overByWeeks +
+            "w past · epic overdue</span>"
+          : c.verdict === "atRisk"
+            ? '<span class="sigWarn" title="Planned to finish AFTER the epic it belongs to. ' +
+              'The epic\'s date has not passed yet, so nothing has failed — but the plan as ' +
+              'written cannot land. Move the child, or move the epic.">⚠ ' + c.overByWeeks +
+              "w past epic</span>"
+          : c.verdict === "within" ? '<span class="sigGood">✔ within</span>'
           : c.verdict === "nodate"
             ? '<span class="sigWarn" title="Started, but carries no date of its own - it ' +
               'cannot be within or over a deadline it never committed to.">no date</span>'
@@ -7361,7 +7481,8 @@ function pmEpicHtml_(e, nowIso) {
   var openAll = open && kids.length && jiraBase_()
     ? '<tr class="pmKid"><td colspan="' + span + '"><span class="cellSub">' +
       jiraOpenAll_(kids.map(function (c) { return c.key; }),
-                   "Open these " + kids.length + " in Jira").replace(/^ /, "") +
+                   kids.length === 1 ? "Open this one in Jira"
+                                     : "Open these " + kids.length + " in Jira").replace(/^ /, "") +
       "</span></td></tr>"
     : "";
 

@@ -65,7 +65,7 @@ hand — `Jira Raw`, `Jira Bugs` and `Jira Arrivals` are fully rewritten each ru
 **Watch for:** it has **no automated tests**. Syntax is checked, behaviour is not. Every change to it
 is verified by reading and by the next export's output.
 
-### 3.2 `Code.js` — the server (schema v40)
+### 3.2 `Code.js` — the server (schema v41)
 
 Reads all nine sheets, joins them to the roster, computes every metric, caches the result.
 
@@ -79,9 +79,11 @@ code appears. Nothing else changes: the engine does not model the org chart, so 
 just re-points pools.
 
 **Watch for:** results are cached (~65 min TTL) and a warmer rebuilds them every 30 minutes, so the
-dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v40 must be
+dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v41 must be
 deployed with a `bustDeliveryCache_()`** — and every schema bump before it for its own reason: a
-cached v39 model attributes every epic by the project lead and carries no opportunity counts, so the
+cached v40 model has no at-risk/breached verdicts and no `epics[].owners`, so the PM verdict cell
+renders blank and the universal filters cannot reach that tab; a
+v39 model attributes every epic by the project lead and carries no opportunity counts, so the
 🗓 PM tab is **wrong rather than merely empty**; a v38 model carries `pmOwned.items` instead of
 `epics` and lists no epics at all; a v37 model has no `pmOwned`; a cached v29/v30 read as v31 gave
 every person no pool, collapsing the population into one cell and silently reproducing the blended
@@ -127,7 +129,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,173 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,201 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -176,10 +178,23 @@ counted in the bar and named in its 🚩 list, but not listed as work to do.
 The count appears at the top of the tab and on each epic, so an exclusion never looks like an
 absence.
 
-**Children are graded against their epic's deadline**, not their own: *within* · *over by N weeks* ·
-*no date of its own* (started but uncommitted — never silently counted as within) · *ungraded* (the
-epic has no date to measure against). Sub-tasks reach their epic through the parent chain, because
-most parent to a story rather than directly to an epic.
+**Children are graded against their epic's deadline**, not their own: *within* · **⚠ at risk** ·
+**✖ breached** · *no date of its own* (started but uncommitted — never silently counted as within) ·
+*ungraded* (the epic has no date to measure against). Sub-tasks reach their epic through the parent
+chain, because most parent to a story rather than directly to an epic.
+
+**At risk vs breached is a question of WHEN, not by how much.** The anchor is the *epic's* own
+committed week: still ahead → the plan cannot land but both levers are open (move the child, move
+the epic), which is the actionable state; already passed → the commitment is missed and the
+conversation is recovery. Because the split is decided by the epic's week, all of one epic's
+children fall on the same side — which is what makes the epic-level verdict (*cannot land as
+planned* / *past its date, work still beyond*) mean one thing.
+
+**The universal filters scope this tab by the people DOING the work** — `epics[].owners`, the roster
+names an epic's children are assigned to — because the epic's own owner, the PM, is not on the
+roster. Epics the filter hides are **counted and stated**, and the unattributable ones (no
+roster-assigned child at all) are named apart: no filter can ever select them, and they are exactly
+the unowned work this tab exists to surface. **Read that note before concluding a slice is clean.**
 
 Two claims per PM, deliberately never combined into one score.
 

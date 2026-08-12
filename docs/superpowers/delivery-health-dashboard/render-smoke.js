@@ -183,6 +183,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
              " renderPm_: renderPm_, pmEpicHtml_: pmEpicHtml_," +
              " pmOppHtml_: pmOppHtml_, pmViaHtml_: pmViaHtml_, PM_OPPS_: PM_OPPS_," +
+             " pmEpicPasses_: pmEpicPasses_, pmFiltersActive_: pmFiltersActive_," +
+             " resetFilters_: resetFilters_," +
              " PM_COLS_: PM_COLS_, pmGroupRowHtml_: pmGroupRowHtml_," +
              " pmKeyLink_: pmKeyLink_," +
              " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
@@ -6254,29 +6256,44 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
         epicCapped: false,
         readyDen: 40, readyN: 25, ignoredN: 7,
         viaAssignee: 10, viaProject: 2,
-        oppNoDue: 3, oppChildOver: 4, oppNoChildren: 1, oppStale: 0,
+        oppNoDue: 3, oppEpicsAtRisk: 4, oppEpicsBreached: 1, oppNoChildren: 1, oppStale: 0,
         epics: [
+          // Epic due THIS week (the fixture's "now") — its date has not passed,
+          // so a child beyond it is AT RISK: still fixable.
           { key: "GTT-7", name: "Migration", status: "In Progress", started: true,
-            due: "2026.W31", overdue: false, within: 1, over: 1, noDate: 1, ignoredN: 2,
+            due: "2026.W31", overdue: false, within: 1, atRisk: 1, breached: 0,
+            noDate: 1, ignoredN: 2,
             assignee: "Dana Reyes", via: "assignee", childrenAll: 5,
-            stale: false, staleDays: 2,
+            stale: false, staleDays: 2, owners: ["Ana Perez"],
             children: [
               { key: "GTT-72", summary: "Cutover", status: "In Progress",
-                due: "2026.W34", verdict: "over", overByWeeks: 3 },
+                due: "2026.W34", verdict: "atRisk", overByWeeks: 3 },
               { key: "GTT-73", summary: "Docs", status: "In Progress",
                 due: "", verdict: "nodate", overByWeeks: null },
               { key: "GTT-71", summary: "Schema", status: "In Progress",
                 due: "2026.W30", verdict: "within", overByWeeks: null },
             ] },
+          // Epic whose week has PASSED with work still beyond it — BREACHED.
+          // Both states must render in one pass or the contrast is untested.
+          { key: "GTT-8", name: "Legacy cutover", status: "In Progress", started: true,
+            due: "2026.W28", overdue: true, within: 0, atRisk: 0, breached: 1,
+            noDate: 0, ignoredN: 0,
+            assignee: "Dana Reyes", via: "assignee", childrenAll: 1,
+            stale: false, staleDays: 3, owners: ["Ben Ortiz"],
+            children: [
+              { key: "GTT-81", summary: "Backfill", status: "In Progress",
+                due: "2026.W34", verdict: "breached", overByWeeks: 6 },
+            ] },
           { key: "GTT-41", name: "Rollout", status: "In Progress", started: true,
-            due: "", overdue: false, within: 0, over: 0, noDate: 0, ignoredN: 0,
+            due: "", overdue: false, within: 0, atRisk: 0, breached: 0, noDate: 0, ignoredN: 0,
             assignee: "", via: "project", childrenAll: 0, stale: true, staleDays: 61,
-            children: [] },
+            owners: [], children: [] },
         ] },
       { pm: "(No PM)", epicN: 4, epicDated: 0, epicMissingKeys: ["ORPH-1"],
         epicCapped: false, readyDen: 2, readyN: 1, ignoredN: 0,
         viaAssignee: 0, viaProject: 0,
-        oppNoDue: 4, oppChildOver: 0, oppNoChildren: 0, oppStale: 0, epics: [] },
+        oppNoDue: 4, oppEpicsAtRisk: 0, oppEpicsBreached: 0,
+        oppNoChildren: 0, oppStale: 0, epics: [] },
     ],
   };
   C.setModel(pmModel);
@@ -6300,8 +6317,12 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // ── AREAS OF OPPORTUNITY, VISIBLE WITHOUT EXPANDING ─────────────────────
   assert_(/epics with no due date/.test(h) && /🚩/.test(h),
           "the ranked gap line shows undated epics while still collapsed");
-  assert_(/children committed past their epic/.test(h),
-          "…children scheduled past the epic they belong to");
+  assert_(/epics cannot land as planned/.test(h),
+          "…epics whose own work is planned past them, counted PER EPIC not per ticket");
+  assert_(/epic past its date with work still beyond it/.test(h),
+          "…and the already-missed ones counted apart from the fixable ones");
+  assert_(!/5 epic/.test(h),
+          "the two states are never summed — 4 at risk and 1 breached are not '5'");
   assert_(/epic with nothing linked to it/.test(h),
           "…and epics nothing rolls up to, singular when there is one");
   // Ranked by SIZE: 4 children-over outranks 3 undated epics.
@@ -6317,8 +6338,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/▾/.test(h), "expanding flips the affordance");
   assert_(/GTT-7/.test(h) && /Migration/.test(h), "the epic rows appear");
   assert_(!/GTT-72/.test(h), "…but their children stay collapsed until asked for");
-  assert_(/1 over/.test(h) && /1 undated/.test(h) && /1 within/.test(h),
+  assert_(/1 at risk/.test(h) && /1 undated/.test(h) && /1 within/.test(h),
           "the 'Against epic date' cell pre-states each epic's child tally");
+  assert_(/1 breached/.test(h), "…and the breached epic states its own");
   // Attribution is stated, so a PM can challenge a row rather than trust it.
   assert_(/10<\/b> by Jira assignee/.test(h), "the row says how many epics came from the assignee");
   assert_(/2<\/b> by Tempo project lead/.test(h), "…and how many are an inference");
@@ -6382,10 +6404,24 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 
   // ── EXPAND AN EPIC ──────────────────────────────────────────────────────
   C.togglePmEpic_("GTT-7");
+  C.togglePmEpic_("GTT-8");   // the breached epic — both states in one render
   h = els.pmPanel.innerHTML;
   assert_(/GTT-72/.test(h), "expanding an epic reveals its children");
-  assert_(/over by 3w/.test(h),
-          "a child committed past its epic says so, and by how much — the finding");
+  // ── AT RISK vs BREACHED: same geometry, different conversation ──────────
+  // The whole point of the split: a future, fixable inconsistency must NOT wear
+  // the same red as a date that has already gone, or the red stops being read.
+  assert_(/sigWarn[^>]*>⚠ 3w past epic/.test(h),
+          "a child past an epic whose date is still ahead reads AMBER — still fixable");
+  assert_(/sigBad[^>]*>✖ 6w past · epic overdue/.test(h),
+          "…and one past an epic whose date has gone reads RED");
+  assert_(!/sigBad[^>]*>⚠ 3w past epic/.test(h),
+          "the at-risk child is NOT painted with the breach class — different classes, " +
+          "not merely different words");
+  // The epic-level verdict is the sentence a PM acts on.
+  assert_(/⚠ cannot land as planned/.test(h),
+          "the at-risk epic says what IT cannot do, not just what its children are");
+  assert_(/✖ past its date, work still beyond/.test(h),
+          "…and the breached epic says its date has already gone");
   assert_(/no date of its own/.test(h),
           "a started child with no date is called out, never counted as 'within'");
   assert_(/within/.test(h), "…and the healthy ones are named too");
@@ -6450,6 +6486,38 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setModel(pmModel);
   C.renderPm_();
   h = els.pmPanel.innerHTML;
+
+  // ── THE UNIVERSAL FILTERS REACH THIS TAB ────────────────────────────────
+  // Filters speak PERSON; this tab's unit is an EPIC whose owner is not on the
+  // roster. An epic is scoped by the people DOING it (epics[].owners).
+  assert_(C.pmFiltersActive_() === false, "no filter set → the tab is org scope");
+  assert_(/ORG/.test(h), "…and says so with the ORG tag");
+
+  C.setState("search", "ana");          // matches Ana Perez, who works on GTT-7
+  assert_(C.pmFiltersActive_() === true, "a search counts as an active filter");
+  C.renderPm_();
+  var hF = els.pmPanel.innerHTML;
+  assert_(/GTT-7\b/.test(hF), "an epic whose worker is in the slice stays");
+  assert_(!/GTT-81/.test(hF),
+          "…and one worked only by someone outside it goes");
+  assert_(/hidden by the current filter/.test(hF),
+          "what the filter hid is STATED — a filter that hides work silently is " +
+          "indistinguishable from a feed that never had it");
+  assert_(/no roster-assigned child at all/.test(hF),
+          "…and the unattributable epics are named apart: no filter can ever select them, " +
+          "and they are exactly the unowned work this tab exists to surface");
+  assert_(/Clear filters/.test(hF), "…with the way back offered inline");
+  assert_(!/ORG/.test(hF), "a filtered tab must not still claim ORG scope");
+
+  // The predicate itself, directly.
+  assert_(C.pmEpicPasses_({ owners: ["Ana Perez"] }) === true, "an owner in the slice passes");
+  assert_(C.pmEpicPasses_({ owners: [] }) === false,
+          "an epic with no roster owner is unattributable — never silently passing");
+  assert_(C.pmEpicPasses_({ owners: ["Nobody Here"] }) === false,
+          "an owner who is not on the roster does not pass");
+
+  C.resetFilters_();
+  assert_(C.pmFiltersActive_() === false, "resetFilters_ clears them — one reset, not two copies");
 
   // An apostrophe in a PM name must not break the inline onclick.
   assert_(C.jsArg_("Sam O'Neil") === "'Sam O\\'Neil'",

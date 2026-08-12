@@ -2611,9 +2611,12 @@ function dhBacklogReady_(it, now) {
  * @param {Object} jira        readJiraRaw_ output (use the leaver-scoped feed)
  * @param {Object} byProject   pmByProject_(…).byProject
  * @param {Date}   today       injectable for tests
+ * @param {Function=} resolvePerson  Jira assignee → roster display name, or null.
+ *        Feeds `epics[].owners`, which is how the universal filters reach a tab
+ *        whose unit is an epic rather than a person.
  * @returns {{rows:Array, keyCap:number}}
  */
-function pmOwnedWork_(jira, byProject, today) {
+function pmOwnedWork_(jira, byProject, today, resolvePerson) {
   var now = today || new Date();
   var monthY = now.getFullYear(), monthM = now.getMonth();
   var weekStart = dhWeekStart_(now);
@@ -2670,7 +2673,8 @@ function pmOwnedWork_(jira, byProject, today) {
       map[k] = { pm: who.name, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
                  readyDen: 0, readyN: 0, ignoredN: 0, epics: [],
                  viaAssignee: 0, viaProject: 0,
-                 oppNoDue: 0, oppChildOver: 0, oppNoChildren: 0, oppStale: 0 };
+                 oppNoDue: 0, oppEpicsAtRisk: 0, oppEpicsBreached: 0,
+                 oppNoChildren: 0, oppStale: 0 };
     }
     if (who.name !== DH_NO_PM_ && map[k].pm.indexOf(",") !== -1 && who.name.indexOf(",") === -1) {
       map[k].pm = who.name;
@@ -2744,7 +2748,13 @@ function pmOwnedWork_(jira, byProject, today) {
               // delivered is linked, not empty. Only an epic nothing rolls up to
               // is the gap — its hours can never reach an engagement.
               childrenAll: childCountAll[ek] || 0,
-              children: [], within: 0, over: 0, noDate: 0, ignoredN: 0 };
+              // `owners` = the roster people assigned to this epic's children.
+              // It is what lets the universal filters reach a tab whose unit is
+              // an epic: an epic belongs to whichever slices its WORKERS belong
+              // to. Empty means unattributable — no child resolves to anyone on
+              // the roster — which the client must state rather than hide.
+              owners: [],
+              children: [], within: 0, atRisk: 0, breached: 0, noDate: 0, ignoredN: 0 };
     epicOf[ek] = e;
     rowFor(who).epics.push(e);
   });
@@ -2755,10 +2765,19 @@ function pmOwnedWork_(jira, byProject, today) {
     var epicKey = dhEpicOfChain_(it, byKey);
     var e = epicKey ? epicOf[epicKey] : null;
     if (!e) return;                                // no epic, or epic not listed
+    // Who is actually working on this epic. Recorded even for the ignorable
+    // children below, because a To Do ticket with no date is still evidence of
+    // which slice the epic belongs to — dropping it here would make an epic
+    // vanish from a filtered view for a reason that has nothing to do with the
+    // filter.
+    var owner = resolvePerson ? resolvePerson(it.assignee) : null;
+    if (owner && e.owners.indexOf(owner) === -1) e.owners.push(owner);
+
     if (ignorable(it)) { e.ignoredN++; return; }   // To Do with no date — counted only
-    var verdict = dhChildVerdict_(it, e._dueDate);
+    var verdict = dhChildVerdict_(it, e._dueDate, now);
     if (verdict.v === "within") e.within++;
-    else if (verdict.v === "over") e.over++;
+    else if (verdict.v === "atRisk") e.atRisk++;
+    else if (verdict.v === "breached") e.breached++;
     else if (verdict.v === "nodate") e.noDate++;
     e.children.push({
       key: it.key, summary: it.summary || "", status: it.status || "",
@@ -2775,9 +2794,13 @@ function pmOwnedWork_(jira, byProject, today) {
     // a child past its epic is a plan that cannot land, an epic nothing rolls up
     // to cannot reach an engagement, and a stale epic may not be real work at
     // all. Derived from what is already computed — no new definitions.
+    // Counted per EPIC, not per child: one badly-planned epic is ONE decision a
+    // PM makes, not nine problems. Nine sub-tasks past their epic is a single
+    // conversation about that epic's date.
     r.oppNoDue = r.epicN - r.epicDated;
     r.epics.forEach(function (e) {
-      r.oppChildOver += e.over;
+      if (e.atRisk) r.oppEpicsAtRisk++;
+      if (e.breached) r.oppEpicsBreached++;
       if (!e.childrenAll) r.oppNoChildren++;
       if (e.stale) r.oppStale++;
     });
@@ -2786,13 +2809,13 @@ function pmOwnedWork_(jira, byProject, today) {
     // past the epic's own deadline, then the rest.
     r.epics.sort(function (a, b) {
       return (!a.due) - (!b.due) === 0
-        ? (b.over - a.over) || a.key.localeCompare(b.key)
+        ? (b.breached - a.breached) || (b.atRisk - a.atRisk) || a.key.localeCompare(b.key)
         : (a.due ? 1 : -1);
     });
     r.epics.forEach(function (e) {
       delete e._dueDate;                           // internal, never shipped
       e.children.sort(function (a, b) {
-        var rank = { over: 0, nodate: 1, ungraded: 2, within: 3 };
+        var rank = { breached: 0, atRisk: 1, nodate: 2, ungraded: 3, within: 4 };
         return (rank[a.verdict] - rank[b.verdict]) || a.key.localeCompare(b.key);
       });
     });
@@ -2857,12 +2880,28 @@ function dhEpicOfChain_(it, byKey) {
  *   ungraded → the EPIC has no due date, so there is nothing to measure against.
  *              The epic itself is the flag.
  */
-function dhChildVerdict_(child, epicDue) {
+function dhChildVerdict_(child, epicDue, now) {
   if (!epicDue) return { v: "ungraded", weeks: null };
   if (!dhHasDue_(child)) return { v: "nodate", weeks: null };
   var c = dhWeekStart_(child.due), e = dhWeekStart_(epicDue);
   if (c <= e) return { v: "within", weeks: null };
-  return { v: "over", weeks: Math.round((c - e) / (7 * 86400000)) };
+  var weeks = Math.round((c - e) / (7 * 86400000));
+  // ── AT RISK vs BREACHED ──
+  // Same geometry, two different conversations, and the difference is WHEN.
+  // Anchored on the EPIC's week because that is the commitment being protected:
+  // while it has not passed, moving the child or moving the epic are both real
+  // options, and this is a planning inconsistency caught early. Once it has
+  // passed, the commitment is already missed and the conversation is recovery.
+  //
+  // Reported as one red before this split, so an epic due in October with a
+  // child due a week later looked exactly like one whose date went by in July
+  // (user 2026-08-11). A red that fires on future, fixable work is a red people
+  // learn to skip.
+  //
+  // The child's OWN lateness is deliberately not the anchor — the Due column
+  // beside this one already bands it, and reusing dhOverdue_ here keeps "late"
+  // meaning exactly one thing across the whole app.
+  return { v: dhOverdue_({ due: epicDue }, now) ? "breached" : "atRisk", weeks: weeks };
 }
 
 /**
@@ -6413,7 +6452,10 @@ function assembleModel_(inputs, win) {
       ? (function () {
           var pmIdx = pmByProject_((inputs.tracked.rows || [])
                         .concat(inputs.planned.rows || []));
-          var w = pmOwnedWork_(jiraScoped, pmIdx.byProject, win.today || new Date());
+          // resolvePerson feeds epics[].owners — the roster people working on
+          // each epic, which is what lets the universal filters reach this tab.
+          var w = pmOwnedWork_(jiraScoped, pmIdx.byProject, win.today || new Date(),
+                               resolvePerson);
           return { rows: w.rows, keyCap: w.keyCap, supersededPms: pmIdx.superseded };
         })()
       : { rows: [], keyCap: EPIC_DUE_MAX_KEYS_, supersededPms: 0 },
@@ -6692,7 +6734,13 @@ function assembleModel_(inputs, win) {
 //      assignee/via/stale/staleDays/childrenAll. A v39 entry attributes every
 //      epic by project lead and shows no gap line — the numbers would be wrong,
 //      not merely missing, which is the case a schema bump exists for.
-var DH_SCHEMA_VER_ = 40;
+// 41 — child verdicts split `over` into `atRisk` / `breached` (a plan that can
+//      still be fixed vs a date already missed), rows carry oppEpicsAtRisk /
+//      oppEpicsBreached instead of oppChildOver, and epics carry `owners` so the
+//      universal filters can reach a tab whose unit is an epic. A v40 entry has
+//      none of these: the verdict cell renders blank and the gap line silently
+//      loses a row.
+var DH_SCHEMA_VER_ = 41;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -9008,22 +9056,25 @@ function _test_pmAttribution_() {
   var ck = {};
   e1.children.forEach(function (c) { ck[c.key] = c; });
   assert_(ck["GTT-10"].verdict === "within", "a child due inside the epic's week is within");
-  assert_(ck["GTT-11"].verdict === "over", "a child due after the epic is OVER");
+  // GTT-1 is due 2026-08-20 (W34) — still ahead of the W33 anchor — so a child
+  // beyond it is a plan that can still be fixed, not a failure.
+  assert_(ck["GTT-11"].verdict === "atRisk",
+          "a child past an epic whose date has NOT passed is at risk, not breached");
   assert_(ck["GTT-11"].overByWeeks === 3, "…and says by how many weeks");
   assert_(ck["GTT-12"].verdict === "nodate",
           "a STARTED child with no date of its own is ungraded and counted, never 'within'");
   assert_(!ck["GTT-13"],
           "a To Do child with no due date is NOT listed — not a commitment yet (2026-08-10)");
   assert_(e1.ignoredN === 1, "…it is COUNTED instead, so the exclusion is visible");
-  assert_(e1.within === 2 && e1.over === 1 && e1.noDate === 1,
-          "the epic row tallies its children: 2 within (incl. the sub-task), 1 over, 1 no-date");
+  assert_(e1.within === 2 && e1.atRisk === 1 && e1.breached === 0 && e1.noDate === 1,
+          "the epic row tallies its children: 2 within (incl. the sub-task), 1 at risk, 1 no-date");
 
   // The chain walk: GTT-14's parent is GTT-10, a STORY, whose epic is GTT-1.
   assert_(ck["GTT-14"] && ck["GTT-14"].verdict === "within",
           "a sub-task parented to a STORY still reaches the epic — the chain walk");
 
   // Over-deadline children sort first: that is the finding on the row.
-  assert_(e1.children[0].verdict === "over", "children sort worst-first");
+  assert_(e1.children[0].verdict === "atRisk", "children sort worst-first");
   assert_(!("_dueDate" in e1), "the internal epic Date is not shipped");
 
   // (No PM) is a named coverage gap, not an empty state, and sorts last.
@@ -9126,7 +9177,8 @@ function _test_pmAttribution_() {
   ] }, pmIdx, today);
   var o = opp.rows[0];
   assert_(o.oppNoDue === 1, "opportunity: epics with no due date");
-  assert_(o.oppChildOver === 1, "opportunity: children committed past their epic's date");
+  assert_(o.oppEpicsAtRisk === 1,
+          "opportunity: counted per EPIC — one badly-planned epic is ONE decision, not N tickets");
   assert_(o.oppNoChildren === 2,
           "opportunity: epics nothing rolls up to — their hours cannot reach an engagement");
   assert_(o.oppStale === 1, "opportunity: epics untouched beyond the backlog's staleness bar");
@@ -9139,6 +9191,85 @@ function _test_pmAttribution_() {
   ] }, pmIdx, today);
   assert_(linked.rows[0].oppNoChildren === 0,
           "an epic whose only child is DELIVERED is linked, not empty");
+
+  // ── AT RISK vs BREACHED (user 2026-08-11) ────────────────────────────────
+  // The distinction is WHEN, not by how much. Anchor: today = 2026.W33.
+  // The user's own example: epic Oct 9 (W41), child Oct 16 (W42) — both two
+  // months out. Nothing has failed; the plan simply cannot land as written.
+  var future = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-500", isEpic: true, due: new Date(2026, 9, 9), assignee: "Rita Chen" }),
+    iss({ key: "GTT-501", due: new Date(2026, 9, 16), epicKey: "GTT-500" }),
+  ] }, pmIdx, today);
+  var eF = future.rows[0].epics[0];
+  assert_(eF.children[0].verdict === "atRisk",
+          "epic Oct 9 + child Oct 16, today August: AT RISK — a plan to fix, not a miss");
+  assert_(eF.children[0].overByWeeks === 1, "…1 week past, and it says so");
+  assert_(eF.atRisk === 1 && eF.breached === 0, "the epic tallies it as at risk");
+  assert_(future.rows[0].oppEpicsAtRisk === 1 && future.rows[0].oppEpicsBreached === 0,
+          "…and the PM's gap line offers the fixable one");
+
+  // Same geometry, epic's week already gone → the commitment is already missed.
+  var past = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-600", isEpic: true, due: new Date(2026, 6, 10), assignee: "Rita Chen" }),
+    iss({ key: "GTT-601", due: new Date(2026, 9, 16), epicKey: "GTT-600" }),
+  ] }, pmIdx, today);
+  var eP = past.rows[0].epics[0];
+  assert_(eP.children[0].verdict === "breached",
+          "epic Jul 10 + child Oct 16: BREACHED — the epic's date has already passed");
+  assert_(eP.breached === 1 && eP.atRisk === 0, "the epic tallies it as breached");
+  assert_(past.rows[0].oppEpicsBreached === 1 && past.rows[0].oppEpicsAtRisk === 0,
+          "…and it lands in the breached count, not the fixable one");
+
+  // THE INVARIANT the epic-level verdict rests on: the split is decided by the
+  // EPIC's week, so every child of one epic falls on the same side. An epic can
+  // never be both at risk and breached — if it could, "cannot land as planned"
+  // would have no single meaning.
+  var many = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-700", isEpic: true, due: new Date(2026, 9, 9), assignee: "Rita Chen" }),
+    iss({ key: "GTT-701", due: new Date(2026, 9, 16), epicKey: "GTT-700" }),
+    iss({ key: "GTT-702", due: new Date(2026, 10, 20), epicKey: "GTT-700" }),
+    iss({ key: "GTT-703", due: new Date(2026, 9, 1), epicKey: "GTT-700" }),
+  ] }, pmIdx, today);
+  var eM = many.rows[0].epics[0];
+  assert_(eM.atRisk === 2 && eM.breached === 0 && eM.within === 1,
+          "two children past a future epic are BOTH at risk; the earlier one is within");
+  assert_(!(eM.atRisk > 0 && eM.breached > 0),
+          "an epic is never both at risk and breached — the invariant the verdict rests on");
+  assert_(many.rows[0].oppEpicsAtRisk === 1,
+          "…and two offending children still count as ONE epic to fix");
+
+  // An epic with no date cannot put its children at risk — there is no
+  // commitment to be past.
+  var undatedEpic = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-800", isEpic: true, due: null, assignee: "Rita Chen" }),
+    iss({ key: "GTT-801", due: new Date(2026, 9, 16), epicKey: "GTT-800" }),
+  ] }, pmIdx, today);
+  assert_(undatedEpic.rows[0].epics[0].children[0].verdict === "ungraded",
+          "an undated epic yields ungraded children, never atRisk");
+  assert_(undatedEpic.rows[0].oppEpicsAtRisk === 0,
+          "…and contributes nothing to the at-risk count");
+
+  // ── epics[].owners — how the universal filters reach this tab ────────────
+  var withOwners = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-900", isEpic: true, due: new Date(2026, 9, 9), assignee: "Rita Chen" }),
+    iss({ key: "GTT-901", due: new Date(2026, 9, 1), epicKey: "GTT-900", assignee: "Ana Perez" }),
+    // A To Do child with no date is ignored by the managers' rule, but it is
+    // still evidence of WHO works on this epic — dropping its owner would make
+    // the epic vanish from a filtered view for a reason unrelated to the filter.
+    iss({ key: "GTT-902", epicKey: "GTT-900", assignee: "Bo Ng",
+          due: null, status: "To Do", cat: "To Do" }),
+  ] }, pmIdx, today, function (raw) { return raw || null; });
+  var eO = withOwners.rows[0].epics[0];
+  assert_(eO.owners.indexOf("Ana Perez") !== -1, "an epic records who works on it");
+  assert_(eO.owners.indexOf("Bo Ng") !== -1,
+          "…including the owner of a child the rules ignore for grading");
+  assert_(eO.owners.length === 2, "…deduped, and only real resolutions");
+  var noOwners = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-910", isEpic: true, due: new Date(2026, 9, 9), assignee: "Rita Chen" }),
+  ] }, pmIdx, today, function () { return null; });
+  assert_(noOwners.rows[0].epics[0].owners.length === 0,
+          "an epic nobody on the roster works on is UNATTRIBUTABLE — the client must " +
+          "say so rather than silently hide it");
 
   // Closed work is out entirely — the same typeHygOpen_ predicate every other
   // hygiene surface uses, so the counts reconcile with the 🚩 audit.
@@ -10055,8 +10186,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 40,
-          "payload schema is v40 (pmOwned is assignee-first and carries opportunity counts) — " +
+  assert_(m.schemaVer === 41,
+          "payload schema is v41 (child verdicts split at-risk/breached; epics carry owners) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
   // v29 model read as v30 would give every person pool `undefined`, collapse the
@@ -10073,10 +10204,10 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 40,
-          "schema is 40 — a v39 entry attributes every epic by project lead and has no " +
-          "opportunity counts, so the tab would be WRONG rather than merely empty");
-  assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppNoDue === "number",
+  assert_(m.schemaVer === 41,
+          "schema is 41 — a v40 entry has no atRisk/breached and no epic owners, so the " +
+          "verdict cell renders blank and the filters cannot reach the tab");
+  assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppEpicsAtRisk === "number",
           "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");
 }

@@ -1013,8 +1013,13 @@ flatter itself by excluding the very records that are the problem.
   a To Do ticket with no date is not a commitment yet, and queuing them produces a list nobody can
   work. The count is stated at the top of the tab and again on each epic, because a silent drop and
   a considered exclusion look identical on screen.
+- **A child past its epic is *at risk* or *breached*, never one red.** The split is on whether the
+  **epic's** week has passed: still ahead → ⚠ at risk (the plan cannot land, but both levers are
+  open); already gone → ✖ breached (recovery). A red that fires on future, fixable work is a red
+  people learn to skip.
 - **Children are graded against their EPIC's deadline, not their own.** *within* = lands on or
-  before the epic's week · *over* = committed past the epic it belongs to, with the gap in weeks ·
+  before the epic's week · *at risk / breached* = committed past the epic it belongs to, with the
+  gap in weeks ·
   *no date of its own* = started but uncommitted, which is a gap in its own right and is **never**
   counted as within · *ungraded* = the epic has no due date, so there is nothing to measure
   against. Sub-tasks reach their epic through the **parent chain** (sub-task → story → epic), not a
@@ -1659,6 +1664,36 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 >   cross-fade, no stagger, no count-up) — this is the accessibility escape hatch, not optional.
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
+
+> ### 🗓 PM tab — at-risk vs breached, and the filters reach it (2026-08-11) — schema v40 → v41
+>
+> `Code.js` + `Dashboard.html`, then **`bustDeliveryCache_()`**. A v40 entry has no
+> `atRisk`/`breached` and no `epics[].owners`, so the verdict cell renders blank and the filters
+> cannot scope the tab.
+>
+> 1. **"Against epic date" no longer paints one red.** A child scheduled past its epic used to read
+>    `over by 3w` whether the epic's date was in October or last July. Now split on whether the
+>    **epic's own week has passed**:
+>    - **⚠ at risk** — epic's date still ahead. Nothing has failed; the plan simply cannot land as
+>      written, and both levers (move the child, move the epic) are still available. **This is the
+>      actionable one.**
+>    - **✖ breached** — the epic's date has gone and work is still scheduled beyond it. Recovery.
+>    The epic's week is the anchor because it is the commitment being protected; the child's own
+>    lateness is already banded in the Due column beside it. Reuses `dhOverdue_`, so *late* keeps
+>    meaning one thing.
+>    *Invariant:* the split is decided by the epic's week, so all its children fall on the same
+>    side — an epic is never both.
+> 2. **The epic row states its own verdict** — `⚠ cannot land as planned` / `✖ past its date, work
+>    still beyond` — because that sentence, not the ticket tally, is what a PM acts on.
+> 3. **Opportunity counts are per EPIC**, split into `oppEpicsAtRisk` / `oppEpicsBreached` and never
+>    summed: one badly-planned epic is one decision, not nine problems.
+> 4. **The universal filters now scope this tab.** Filters speak *person*; this tab's unit is an
+>    *epic* whose owner isn't on the roster — so an epic is scoped by the people **doing** it
+>    (`epics[].owners`, the roster names its children are assigned to). What the filter hides is
+>    **counted and stated**, with the unattributable epics named apart: they have no roster-assigned
+>    child at all, no filter can ever select them, and they are exactly the unowned work the tab
+>    exists to surface. `resetFilters_` was extracted from the ⟲ button so the inline "Clear
+>    filters" link runs the same reset rather than a second drifting copy.
 
 > ### 🗓 PM tab — three fixes from the first screenshot (2026-08-11)
 >
