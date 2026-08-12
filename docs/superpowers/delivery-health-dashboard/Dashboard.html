@@ -332,6 +332,28 @@ table.hyg.tmx tr:nth-child(even) .tmiss{background:var(--surface-2)}
 /* Same width cap on the detail row's own prose, for the same reason. */
 tr.detailRow>td{white-space:normal}
 tr.detailRow>td>.cellSub{max-width:96ch}
+/* The drill-down nests its own table inside this cell. It must never be able to
+   push the cell wider than the column span it sits in — an over-wide nested
+   table drags the parent cell out past the table's right edge and paints over
+   whatever is beside it. Scroll the inner table instead of growing the outer. */
+tr.detailRow>td>.cellSub table.hyg{width:100%;table-layout:fixed}
+tr.detailRow>td>.cellSub table.hyg td{overflow-wrap:anywhere}
+/* ── "How to read this" ──
+   The methodology is load-bearing and stays on the page, but folded: as running
+   prose above the table it was five dense lines nobody read, which is the same
+   as not stating it at all. */
+details.howto{margin:6px 0 8px}
+details.howto>summary{cursor:pointer;font-size:calc(11.5px*var(--scale));
+  color:var(--muted);user-select:none}
+details.howto>summary:hover{color:var(--text)}
+.howtoBody{max-width:96ch;font-size:calc(11.5px*var(--scale));color:var(--muted);
+  border-left:2px solid var(--border);padding:2px 0 2px 10px;margin-top:6px}
+.howtoBody p{margin:4px 0}
+.howtoBody ul{margin:4px 0 4px 16px;padding:0}
+.howtoBody li{margin:3px 0;line-height:1.5}
+/* The hours legend stays visible and on one line — it is read off a PNG, where
+   a wrapped legend reads as two unrelated rows of swatches. */
+.legendRow{max-width:none}
 table.hyg.tmx.rosterTbl thead th{position:sticky;top:0;z-index:6;
   background:var(--surface);box-shadow:inset 0 -1px 0 var(--border)}
 /* The corner cell is sticky on BOTH axes — it must outrank the body's sticky
@@ -5733,6 +5755,24 @@ function sigCellHtml_(g) {
 /** Every active person in the current population, RAG-graded on the same
     fields and gates as the 🧬 matrix. Population + sort both follow shared
     STATE, so the Open/Resolved chips on the matrix drive this table too. */
+/**
+ * The roster columns actually on screen, in order.
+ *
+ * ONE list, because three places need the same answer: the header, each row, and
+ * the drill-down cell's colspan. They were computed separately, and the
+ * drill-down used `Object.keys(ROSTER_COLS_).length` — the count of ALL columns,
+ * including the conditional Plan column that `when()` hides. A colspan wider
+ * than the table makes the browser extend that cell PAST the right edge, which
+ * is what pushed the drill-down's Due column out of the table and over the row
+ * beneath it (user screenshot 2026-08-11).
+ */
+function rosterColKeys_() {
+  return Object.keys(ROSTER_COLS_).filter(function (k) {
+    var c = ROSTER_COLS_[k];
+    return !c.when || c.when();
+  });
+}
+
 function renderRoster_() {
   var el = document.getElementById("rosterPanel");
   // SCROLL PRESERVATION. Every toggle rebuilds the panel's innerHTML, which
@@ -5776,10 +5816,7 @@ function renderRoster_() {
   // without its cell shifts every value one column left, which is the quiet
   // kind of wrong that gets screenshotted.
   var showPlan = !!(ROSTER_COLS_.plan.when && ROSTER_COLS_.plan.when());
-  var head_ = "<tr>" + Object.keys(ROSTER_COLS_).filter(function (k) {
-    var c = ROSTER_COLS_[k];
-    return !c.when || c.when();
-  }).map(function (k) {
+  var head_ = "<tr>" + rosterColKeys_().map(function (k) {
     var c = ROSTER_COLS_[k];
     // Progress follows the population like the signal columns (SNAP on the open
     // backlog, PERIOD on resolved) — it is computed from the same buckets. Hours
@@ -5841,35 +5878,46 @@ function renderRoster_() {
   }).join("");
 
   el.innerHTML =
-    '<h3>👥 People signals — every active person in this slice</h3>' +
+    "<h3>👥 People signals — every active person in this slice</h3>" +
     '<p class="cellSub">' + (open ? "Open backlog — fix these and next period moves. "
-                                   : "Resolved in " + esc_(head.label) + ". ") +
+                                  : "Resolved in " + esc_(head.label) + ". ") +
     "Each cell: the share of the person's issues carrying that field, graded against " +
     "the field's own gate — the same gates as the 🧬 matrix below. Grey = fewer than " + signalMinN_() +
     " issues (not graded). Click a header to sort; default is biggest opportunity first.</p>" +
-    // The two columns that do NOT divide by n have to say so where the table is
-    // read, not only in a hover tip: a reader comparing this cell against the n
-    // beside it will otherwise conclude the percentage is wrong.
-    // The column names and the denominators they do NOT share. Stated on the page
-    // rather than in tooltips only: this table is usually read as a PNG, where
-    // hover does not exist, and the mismatch between the count and the percentages
-    // beside it is the single thing readers have got wrong about this panel.
+    // ── The methodology, FOLDED ──
+    // Every rule below is load-bearing (the managers ratified them 2026-08-10) and
+    // none of it is deleted — but as five lines of running prose above the table it
+    // was a wall nobody read, which is the same as not stating it. Collapsed into
+    // labelled one-line rules: the summary says what is inside, so a reader who
+    // needs the denominators can find them in one click, and a reader who does not
+    // gets to the table immediately.
+    //
+    // It stays OPEN on the resolved view's absence: there is no methodology block
+    // there, so nothing to fold.
     (open
-      ? '<p class="cellSub"><b>Open issues</b> is a count, not a grade: every open ticket ' +
-        "attributed to this person, <b>epics included</b>, as a snapshot that follows the filters " +
-        "but not the period picker. Expand a row to see it broken down — what is listed, what is " +
-        "ignored by rule, and how many are epics. " +
-        "<b>Due date</b> and <b>Logged</b> deliberately divide by less than that count " +
-        "(managers' feedback 2026-08-10). <b>Logged</b> is measured over work " +
-        "that has STARTED — status category In Progress — because a ticket nobody has picked up is " +
-        "expected to carry no worklog. <b>Due date</b> is measured over work that has started " +
-        "<i>or already carries a date</i>: an undated To&nbsp;Do ticket is ignored entirely — not " +
-        "delayed, not missing — while <b>anything with a date is tracked whatever its status</b>. " +
-        "Epics are the exception to that first rule and are audited separately in 🚩 below: every " +
-        "epic is expected to carry a date, To&nbsp;Do included.</p>"
+      ? '<details class="howto"><summary>How these columns are counted — denominators, ' +
+        "and the two rules that differ from the count beside them</summary>" +
+        '<div class="howtoBody">' +
+        "<p><b>Open issues</b> is a count, not a grade: every open ticket attributed to this " +
+        "person, <b>epics included</b>, as a snapshot that follows the filters but not the " +
+        "period picker. Expand a row to see it broken down — what is listed, what is ignored " +
+        "by rule, and how many are epics.</p>" +
+        "<p><b>Due date</b> and <b>Logged</b> deliberately divide by less than that count " +
+        "(managers' feedback 2026-08-10):</p>" +
+        "<ul>" +
+        "<li><b>Logged</b> — measured over work that has <b>started</b> (status category " +
+        "In&nbsp;Progress). A ticket nobody has picked up is expected to carry no worklog.</li>" +
+        "<li><b>Due date</b> — measured over work that has started <i>or already carries a " +
+        "date</i>. An undated To&nbsp;Do ticket is ignored entirely — not delayed, not " +
+        "missing — while <b>anything with a date is tracked whatever its status</b>.</li>" +
+        "<li><b>Epics</b> are the exception to that rule and are audited separately in 🚩 " +
+        "below: every epic is expected to carry a date, To&nbsp;Do included.</li>" +
+        "</ul></div></details>"
       : "") +
     // The Plan column only exists on an open window, so it has to introduce
     // itself when it appears rather than sit there as an unexplained new column.
+    // Kept VISIBLE rather than folded: a column that appears and disappears needs
+    // its explanation next to it the moment it shows up.
     (showPlan
       ? '<p class="cellSub"><b>Plan ' + esc_(head.label) + "</b>: hours planned in Tempo " +
         "against scheduled capacity for the selected window — the column to sort by when " +
@@ -5881,7 +5929,9 @@ function renderRoster_() {
     // The Hours bar is four colours now, and colour must never be the only
     // channel that carries a meaning (tooltips are hover-only — they do not
     // exist on a PNG of this table, which is how it usually gets read).
-    '<p class="cellSub">Hours: ' +
+    // NOT folded, for that reason: a legend behind a click is a legend that is
+    // absent from the screenshot the table is read as.
+    '<p class="cellSub legendRow">Hours: ' +
     '<span class="lgd"><i style="background:var(--seg-bill)"></i>billable</span>' +
     '<span class="lgd"><i style="background:var(--seg-nonbill)"></i>non-billable work</span>' +
     '<span class="lgd"><i style="background:var(--seg-off)"></i>time off</span>' +
@@ -7886,7 +7936,10 @@ function rosterDetailRow_(p, head) {
     : '<div class="cellSub">' + ((ignored || epicsN)
         ? "Nothing to list here — see the breakdown below."
         : "No open backlog items attributed to this person.") + "</div>";
-  return '<tr class="detailRow"><td colspan="' + Object.keys(ROSTER_COLS_).length + '"><div class="cellSub">' +
+  // rosterColKeys_(), never Object.keys(ROSTER_COLS_): the Plan column is
+  // conditional, and a colspan wider than the table extends this cell past the
+  // table's right edge instead of spanning it.
+  return '<tr class="detailRow"><td colspan="' + rosterColKeys_().length + '"><div class="cellSub">' +
     hours + "</div>" + list + recon + "</td></tr>";
 }
 /** Scope tag chip — states which clock a column follows. The full version

@@ -141,6 +141,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " oppRows_: oppRows_, metricSeries_: metricSeries_, metricChips_: metricChips_, renderCompare_: renderCompare_," +
              " renderPulse_: renderPulse_, openRoster_: openRoster_, rosterCsvLines_: rosterCsvLines_," +
              " renderRoster_: renderRoster_, setRosterSort_: setRosterSort_, ROSTER_COLS_: ROSTER_COLS_," +
+             " rosterColKeys_: rosterColKeys_," +
              " hoursCellHtml_: hoursCellHtml_, rosterDetailRow_: rosterDetailRow_, toggleRosterDetail_: toggleRosterDetail_," +
              " toggleRosterDetailAll_: toggleRosterDetailAll_, backlogItemsShown_: backlogItemsShown_," +
              " aggWeeks_: aggWeeks_, personStateBadges_: personStateBadges_," +
@@ -2671,8 +2672,43 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.toggleRosterDetail_("Ben Ortiz");
   var openHtml = els.rosterPanel.innerHTML;
   assert_(openHtml.indexOf("detailRow") !== -1, "toggling the ▸ opens the drill-down row");
-  assert_(openHtml.indexOf('colspan="' + Object.keys(C.ROSTER_COLS_).length + '"') !== -1,
-          "the detail row's colspan matches the live column count, not a hardcoded 7");
+  // The colspan must match the columns actually RENDERED, not every column
+  // defined. This assertion used to compare against Object.keys(ROSTER_COLS_)
+  // — the total, including the conditional Plan column that when() hides — so
+  // it guarded against a hardcoded 7 while locking in the real defect: a colspan
+  // wider than the table extends the cell PAST the right edge, which is what
+  // pushed the drill-down's Due column out over the row beneath it.
+  var visibleCols = C.rosterColKeys_().length;
+  // Count the OUTER table's headers only — the drill-down nests its own table,
+  // whose <th>s would otherwise be counted as roster columns.
+  var outerHead = openHtml.split("detailRow")[0];
+  var headerCols = (outerHead.match(/<th\b/g) || []).length;
+  assert_(headerCols === visibleCols,
+          "header cell count == visible column count (" + headerCols + " vs " + visibleCols + ")");
+  assert_(openHtml.indexOf('colspan="' + visibleCols + '"') !== -1,
+          "the detail row's colspan matches the RENDERED column count");
+  assert_(visibleCols < Object.keys(C.ROSTER_COLS_).length,
+          "…and this fixture hides a conditional column, so the two counts genuinely differ — " +
+          "otherwise the assertion above proves nothing");
+
+  // ── The methodology is FOLDED, not deleted ──────────────────────────────
+  // Every rule in here was ratified by the managers (2026-08-10). Folding it is
+  // a presentation choice; losing it would silently change what the table means.
+  assert_(/<details class="howto">/.test(openHtml),
+          "the denominator methodology is folded into a How-to-read block");
+  assert_(/anything with a date is tracked whatever its status/.test(openHtml),
+          "…and the managers' dated-work rule is still on the page");
+  assert_(/undated To&nbsp;Do ticket is ignored entirely/.test(openHtml),
+          "…as is the undated-To-Do carve");
+  assert_(/every epic is expected to carry a date/.test(openHtml),
+          "…and the epic exception");
+  assert_(/status category/i.test(openHtml), "…and the started-work basis for Logged");
+  // The hours legend is NOT folded: this table is read as a PNG, where hover
+  // does not exist and a legend behind a click is a legend that is absent.
+  var legend = openHtml.split('<details class="howto">')[0] +
+               openHtml.split("</details>").slice(1).join("</details>");
+  assert_(/billable/.test(legend) && /time off/.test(legend) && /idle/.test(legend),
+          "the hours legend stays OUTSIDE the fold — colour is never the only channel");
   assert_(openHtml.indexOf("Tracked 20") !== -1 && openHtml.indexOf("of 40h scheduled") !== -1,
           "the drill-down states the period's hours line");
   assert_(openHtml.indexOf("billable 16h") !== -1 && openHtml.indexOf("non-billable work 4h") !== -1,
