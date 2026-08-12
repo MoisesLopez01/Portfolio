@@ -6169,6 +6169,19 @@ function assembleModel_(inputs, win) {
     epicDueAudit: inputs.jira.available
       ? epicDueAudit_(jiraScoped)
       : { rows: [], n: 0, missing: 0, keyCap: EPIC_DUE_MAX_KEYS_ },
+    // 🗓 PM-owned work — attributed by PROJECT, so it needs no PM on the roster
+    // (PMs are structurally absent from the delivery population by design; see
+    // the PM ATTRIBUTION header). Built off the SAME leaver-scoped feed as
+    // epicDueAudit_ so the two reconcile: a manager reading 🚩 on Actions and
+    // this tab must never see two different counts of the same epics.
+    pmOwned: inputs.jira.available
+      ? (function () {
+          var pmIdx = pmByProject_((inputs.tracked.rows || [])
+                        .concat(inputs.planned.rows || []));
+          var w = pmOwnedWork_(jiraScoped, pmIdx.byProject, win.today || new Date());
+          return { rows: w.rows, keyCap: w.keyCap, supersededPms: pmIdx.superseded };
+        })()
+      : { rows: [], keyCap: EPIC_DUE_MAX_KEYS_, supersededPms: 0 },
     // Joiners/leavers and the capacity they carried, per ISO week. The one
     // number here that describes people who are NOT in `people` — by the time
     // a leaver is in this bucket the roster has already dropped them, which is
@@ -6434,7 +6447,9 @@ function assembleModel_(inputs, win) {
 //      TEXT there rather than guessing a host — a link to /browse/KEY on the Apps
 //      Script origin is a 404 that reads as "the dashboard is broken". The bump
 //      is what makes the links appear at all rather than after a TTL.
-var DH_SCHEMA_VER_ = 37;
+// 38 — `pmOwned` (🗓 PM tab, spec 2026-08-11). A v37 entry has no pmOwned, so
+//      the tab would render empty against a stale model rather than rebuild.
+var DH_SCHEMA_VER_ = 38;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -9666,8 +9681,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 37,
-          "payload schema is v37 (meta.jiraBase — every key is a Jira deep link) — " +
+  assert_(m.schemaVer === 38,
+          "payload schema is v38 (pmOwned — the 🗓 PM tab's two bars and item lists) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
   // v29 model read as v30 would give every person pool `undefined`, collapse the
@@ -9680,6 +9695,12 @@ function _test_modelAssembly_() {
   assert_(m.people.every(function (p) { return typeof p.pool === "string"; }),
           "every person carries a pool — never undefined, which would silently re-blend them");
 
+  assert_(m.pmOwned && Array.isArray(m.pmOwned.rows),
+          "the model ships pmOwned.rows");
+  assert_(typeof m.pmOwned.supersededPms === "number",
+          "…and the count of superseded PM handovers, so an overwrite is never silent");
+  assert_(m.schemaVer === 38,
+          "schema is 38 — a v37 entry has no pmOwned and would render an empty tab");
   Logger.log("✅ _test_modelAssembly_ passed");
 }
 
