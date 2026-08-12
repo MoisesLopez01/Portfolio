@@ -182,6 +182,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
              " renderPm_: renderPm_, pmEpicHtml_: pmEpicHtml_," +
              " pmOppHtml_: pmOppHtml_, pmViaHtml_: pmViaHtml_, PM_OPPS_: PM_OPPS_," +
+             " PM_COLS_: PM_COLS_, pmGroupRowHtml_: pmGroupRowHtml_," +
              " pmKeyLink_: pmKeyLink_," +
              " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
@@ -3905,8 +3906,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   });
 
   assert_(C.VIEWS.length === 5, "exactly five views (🗓 PM joined 2026-08-11)");
-  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,workforce,pm,access",
-          "view ids are exec/actions/workforce/pm/access in order — 🔒 Access stays last");
+  // 🗓 PM sits NEXT TO ACTIONS (user 2026-08-11): both answer "what needs
+  // action", at different grains. 🔒 Access stays last.
+  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,pm,workforce,access",
+          "view ids are exec/actions/pm/workforce/access in order — PM beside Actions");
   assert_(!els.viewFlow || els.viewFlow.innerHTML === "", "no live viewFlow pane");
   assert_(!els.viewPeople || els.viewPeople.innerHTML === "", "no live viewPeople pane");
   assert_(!els.viewHygiene || els.viewHygiene.innerHTML === "", "no live viewHygiene pane");
@@ -6249,8 +6252,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/▸/.test(h), "…collapsed, with an affordance saying it opens");
   assert_(!/GTT-72/.test(h), "a collapsed PM shows NO child rows");
   assert_(!/Migration/.test(h), "…and not even its epic list");
-  assert_(/9\/12 epics dated/.test(h),
-          "the collapsed line still carries the number worth scanning");
+  assert_(/9<\/b>\/12 epics dated/.test(h),
+          "the collapsed group row still carries the number worth scanning");
+  assert_(/In project 63% of 40 ready/.test(h),
+          "…and the second bar beside it, still labelled and still not averaged with the first");
 
   // ── AREAS OF OPPORTUNITY, VISIBLE WITHOUT EXPANDING ─────────────────────
   assert_(/epics with no due date/.test(h) && /🚩/.test(h),
@@ -6270,18 +6275,29 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.togglePmOpen_("Dana Reyes");
   h = els.pmPanel.innerHTML;
   assert_(/▾/.test(h), "expanding flips the affordance");
-  assert_(/9<\/b> of 12|9 of 12/.test(h), "bar 1 shows epic due-date fill as 9 of 12");
-  assert_(/GTT-7/.test(h) && /Migration/.test(h), "the epic list appears");
-  assert_(!/GTT-72/.test(h), "…but its children stay collapsed until asked for");
-  assert_(/1 past the epic date/.test(h) && /1 with no date/.test(h) && /1 within/.test(h),
-          "each epic line pre-states its child tally, so you know what expanding buys");
+  assert_(/GTT-7/.test(h) && /Migration/.test(h), "the epic rows appear");
+  assert_(!/GTT-72/.test(h), "…but their children stay collapsed until asked for");
+  assert_(/1 over/.test(h) && /1 undated/.test(h) && /1 within/.test(h),
+          "the 'Against epic date' cell pre-states each epic's child tally");
   // Attribution is stated, so a PM can challenge a row rather than trust it.
   assert_(/10<\/b> by Jira assignee/.test(h), "the row says how many epics came from the assignee");
   assert_(/2<\/b> by Tempo project lead/.test(h), "…and how many are an inference");
-  assert_(/👤 Dana Reyes/.test(h), "an epic names its Jira assignee — the evidence for its row");
-  // Epic-level gaps repeat where the reader can act on the specific epic.
-  assert_(/🔗 nothing linked/.test(h), "an epic nothing rolls up to says so on its own line");
-  assert_(/🕒 61d untouched/.test(h), "…and a stale epic says how long it has been sitting");
+  // The Assignee column is the evidence each row is attributed on.
+  assert_(/<td>Dana Reyes<\/td>/.test(h),
+          "an epic names its Jira assignee in the Assignee column");
+  assert_(/via project<\/span>/.test(h),
+          "…and an epic with no assignee says which rule placed it instead of showing blank");
+  // Epic-level gaps sit in the Gaps column, where the reader can act on the
+  // specific epic rather than hunting for which one the PM line meant.
+  assert_(/nothing linked/.test(h), "an epic nothing rolls up to says so on its own row");
+  assert_(/61d/.test(h), "…and a stale epic says how long it has been sitting");
+  // Every column defined once, header and cells from the same registry.
+  assert_(/<th[^>]*>Against epic date<\/th>/.test(h), "the table header is built from PM_COLS_");
+  assert_(Object.keys(C.PM_COLS_).length === 6, "six defined columns");
+  var headCells = (h.match(/<th\b/g) || []).length;
+  assert_(headCells === 6,
+          "exactly one header cell per column — a header without its cell shifts every " +
+          "value one column left, which is the quiet kind of wrong that gets screenshotted");
 
   // A PM with no gaps at all says so — silence would read as "not measured".
   var clean = { pm: "Clean PM", epicN: 3, epicDated: 3, epicMissingKeys: [], epicCapped: false,
@@ -6297,9 +6313,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/hygiene|context|not this PM's grade/i.test(h),
           "bar 2 is labelled as team context, not the PM's grade");
   assert_(/GTT-41/.test(h), "the undated epic keys are named — the fix is one click away");
-  // An epic with no due date says so where it sits, not just in the 🚩 list.
-  assert_(/🚩 no due date/.test(h),
-          "an undated epic is flagged on its own row — nothing under it can be graded");
+  // An epic with no due date says so in its OWN Due cell, not only in the 🚩 key
+  // list on the group row above — that is what lets a reader act on the epic.
+  assert_(/sigBad[^>]*>&#128681; none<\/span>/.test(h),
+          "an undated epic is flagged in its Due cell — nothing under it can be graded");
 
   // ── EXPAND AN EPIC ──────────────────────────────────────────────────────
   C.togglePmEpic_("GTT-7");
@@ -6319,16 +6336,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "unstarted undated tickets are COUNTED at the top — a silent drop and a " +
           "considered exclusion look identical otherwise");
   assert_(/not a commitment yet/i.test(h), "…with the managers' rule named as the reason");
-  assert_(/2 To Do ticket/.test(h),
-          "…and again per epic, where the reader is actually working");
+  assert_(/2 To Do undated/.test(h),
+          "…and again in the epic's Gaps cell, where the reader is actually working");
 
   // (No PM) is a named coverage gap and sorts last.
   assert_(/\(No PM\)/.test(h), "(No PM) renders as a named bucket, not an empty state");
   // Anchor on the ROW HEADINGS, not a bare substring: "(No PM)" is also named in
   // the intro paragraph above the rows, so indexOf would compare against the
   // explanation rather than the row and pass whatever the sort did.
-  var heads = (h.match(/<h4 class="pmHead"[^>]*>[\s\S]*?<\/h4>/g) || []);
-  assert_(heads.length === 2, "one heading per PM row, got " + heads.length);
+  var heads = (h.match(/<div class="pmHead"[\s\S]*?<\/div>/g) || []);
+  assert_(heads.length === 2, "one group row per PM, got " + heads.length);
   assert_(/\(No PM\)/.test(heads[heads.length - 1]),
           "(No PM) sorts LAST among the rows — a hygiene bucket, not a PM");
 

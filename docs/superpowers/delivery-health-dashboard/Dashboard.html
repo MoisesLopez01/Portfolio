@@ -509,24 +509,33 @@ tr.detail td.dback{padding:8px 16px 12px}
 /* 🗓 PM tab — one block per PM. The rule between rows is what keeps the two
    bars visually attached to their own PM; without it the "in project" line
    reads as though it belongs to the PM below. */
-.pmRow{padding:10px 0;border-top:1px solid var(--border)}
-.pmRow:first-of-type{border-top:0}
-.pmRow h4{margin:0 0 4px;font-size:calc(13.5px*var(--scale));
-          font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
-/* Both collapse levels are click targets, so both have to LOOK like one —
-   a row that responds to a click without inviting it is a feature nobody finds. */
-.pmHead,.pmEpicHead{cursor:pointer;user-select:none}
-.pmHead:hover,.pmEpicHead:hover{background:var(--surface-2)}
-/* The epic level is indented so the hierarchy is legible without a tree line:
-   PM ▸ epic ▸ children, each step in from the last. */
-/* The opportunity line sits between the PM heading and the drill-down, and is
-   visible whether or not the row is expanded — it is the answer to "what should
-   this PM fix first", which should not require a click. */
-.pmOpp{margin:2px 0 6px 18px}
-.pmOpp>div{line-height:1.5}
-.pmEpic{margin:2px 0 2px 14px;border-left:2px solid var(--border);padding-left:8px}
-.pmEpicHead{padding:3px 4px;font-size:calc(12px*var(--scale))}
-.pmEpic .gwrap{margin:4px 0 8px 14px}
+/* ── 🗓 PM table ──
+   ONE table, three row levels. The levels are told apart by weight, background
+   and indent rather than by nested tables, so every column line runs unbroken
+   down the page — which is what makes a table scannable, and is exactly what a
+   nested table destroys. */
+.pmGroup>td{background:var(--surface-2);padding:8px 8px 6px}
+/* Both collapse levels are click targets, so both have to LOOK like one — a row
+   that responds to a click without inviting it is a feature nobody finds. */
+.pmHead{cursor:pointer;user-select:none;font-size:calc(13px*var(--scale));
+        font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
+.pmEpicRow{cursor:pointer}
+.pmEpicRow:hover>td,.pmGroup:hover>td{background:var(--border)}
+/* The opportunity line sits inside the PM group row and is visible whether or
+   not the group is expanded — it answers "what should this PM fix first", which
+   should not require a click. */
+.pmOpp{margin:3px 0 0 14px}
+.pmOpp>div{line-height:1.45}
+.pmVia{margin:4px 0 0 14px}
+/* Children sit under their epic, one indent in. The tick is a tree line without
+   a tree: it reads as "belongs to the row above" at a glance. */
+.pmKid>td{background:var(--surface);font-size:calc(11.5px*var(--scale))}
+.pmKidTick{color:var(--muted);padding-left:10px}
+.pmTwist{display:inline-block;width:calc(10px*var(--scale));color:var(--muted)}
+.pmEmpty>td{padding:6px 10px}
+/* The Gaps column carries several chips; it wraps rather than forcing the whole
+   table wider than its panel. */
+.pmTable td:nth-child(5){white-space:normal}
 
 /* 🌊 Backlog health — two facing lists. Grid rather than flex so the two tables
    share a column width regardless of label length: a healthy column that is
@@ -817,18 +826,20 @@ var VIEWS = [
   // banner over them framed the whole tab wrong.
   { id: "actions", label: "🎯 Actions",   pane: "viewActions", roles: ["admin", "viewer"],
     hint: "Who and what needs action: the compliance signals roster, field fill by issue type and the gaps queue." },
+  // 🗓 PM — the epics a PM OWNS, attributed by Jira assignee then project lead
+  // (spec 2026-08-11). Sits NEXT TO ACTIONS (user 2026-08-11) because it answers
+  // the same question at a different grain: Actions is "who needs action", this
+  // is "which committed work needs action". Distinct from the "Worked with PM"
+  // filter above the tabs, which selects PEOPLE who worked for a PM.
+  // 🧭 was already taken by Workforce, hence 🗓 — this tab is about dated
+  // commitments, so the calendar reads correctly anyway.
+  { id: "pm", label: "🗓 PM", pane: "viewPm", roles: ["admin", "viewer"],
+    hint: "Epics in flight per PM: due-date fill against the team's 100% bar, and whether their own children are scheduled past them." },
   // 🧭 Workforce — capacity read by DEPLOYMENT POOL, never blended. Gated to
   // admin + viewer like Actions: the grid carries per-pool capacity, headroom
   // and backlog cover, which is the same margin tier as the utilization detail.
   { id: "workforce", label: "🧭 Workforce", pane: "viewWorkforce", roles: ["admin", "viewer"],
     hint: "Capacity by pool and level band: headroom, plan-vs-logged, work outside the plan and backlog cover — signals, not verdicts, because capacity is not fungible." },
-  // 🗓 PM — the tickets a PM OWNS, attributed by PROJECT (spec 2026-08-11).
-  // Distinct from the "Worked with PM" filter above the tabs, which selects
-  // PEOPLE who worked for a PM. Same role tier as Actions and Workforce.
-  // 🧭 was already taken by Workforce, hence 🗓 — this tab is about dated
-  // commitments, so the calendar reads correctly anyway.
-  { id: "pm", label: "🗓 PM", pane: "viewPm", roles: ["admin", "viewer"],
-    hint: "Epic due-date fill per PM against the team's 100% bar, with the backlog readiness of their projects alongside it — two claims, never averaged." },
   { id: "access",  label: "🔒 Access",    pane: "viewAccess",  roles: ["admin"],
     hint: "Manage who can open this dashboard." },
 ];
@@ -7004,39 +7015,19 @@ function renderPm_() {
   }
   var nowIso = currentIso_();
   var totalIgnored = 0;
-  var rows = d.rows.map(function (r) {
+  var body = d.rows.map(function (r) {
     totalIgnored += r.ignoredN || 0;
-    var missing = r.epicN - r.epicDated;
-    var ownPct = r.epicN ? Math.round(r.epicDated / r.epicN * 100) : null;
-    var readyPct = r.readyDen ? Math.round(r.readyN / r.readyDen * 100) : null;
-    var ownCls = missing === 0 ? "sigGood" : "sigBad";
-    var open = !!STATE.pmOpen[r.pm];
-    var epics = r.epics || [];
-
-    var body = open
-      ? '<p class="cellSub">' + pmViaHtml_(r) + "</p>" +
-        '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
-          '<b class="' + ownCls + '">' + r.epicDated + "</b> of " + r.epicN +
-          (ownPct === null ? "" : " (" + ownPct + "%)") +
-          " · the team's bar is 100%" +
-          (missing ? " — " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
-        "</p>" +
-        '<p class="cellSub"><b>In project — task readiness:</b> ' +
-          (readyPct === null ? "no open tasks" : readyPct + "% of " + r.readyDen) +
-          " <span class=\"cellSub\">(dated, estimated, linked and fresh — <b>team " +
-          "hygiene, shown as context, not this PM's grade</b>)</span></p>" +
-        (epics.length
-          ? epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("")
-          : '<div class="emptyState">No epics in progress or due this month.</div>')
-      : "";
-
-    return '<div class="pmRow">' +
-      '<h4 class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
-        (open ? "▾ " : "▸ ") + esc_(r.pm) +
-        ' <span class="cellSub">' + r.epicDated + "/" + r.epicN + " epics dated</span>" +
-      "</h4>" + pmOppHtml_(r) + body +
-    "</div>";
+    return pmGroupRowHtml_(r, d) +
+      (STATE.pmOpen[r.pm] ? pmEpicRowsHtml_(r, nowIso) : "");
   }).join("");
+
+  var head = "<tr>" + Object.keys(PM_COLS_).map(function (k) {
+    var c = PM_COLS_[k];
+    return '<th class="' + (c.num ? "tnum" : "tname") + '"' +
+      (c.tip ? ' title="' + esc_(c.tip) + '"' : "") + ">" + esc_(c.label) + "</th>";
+  }).join("") + "</tr>";
+  var rows = '<div class="gwrap"><table class="hyg tmx pmTable"><thead>' + head +
+             "</thead><tbody>" + body + "</tbody></table></div>";
 
   el.innerHTML =
     "<h3>🗓 PM-owned work" + scopeTag_("org") + "</h3>" +
@@ -7128,100 +7119,171 @@ function pmViaHtml_(r) {
 }
 
 /**
- * One epic inside a PM row: a collapsed summary line, expanding to its children
- * graded against THIS epic's deadline.
+ * The 🗓 PM table's columns — ONE definition driving the header and every row,
+ * so a header can never drift from the cell beneath it (the failure that shifts
+ * every value one column left and gets screenshotted).
+ *
+ * The table's unit is the EPIC. PM rows are full-width group headers, children
+ * are detail rows under their epic — the same shape the Actions roster uses, so
+ * a reader who can navigate one can navigate the other.
+ *
+ * `vs` carries a different reading per row level, on purpose: for an epic it is
+ * the tally of its children, for a child it is that child's own verdict. Same
+ * axis — "how does this sit against the epic's date" — at two grains.
+ */
+var PM_COLS_ = {
+  work:   { label: "Epic / ticket",
+            tip: "Epics in progress or due this month, with their children underneath. Click a row to expand it; click a key to open it in Jira." },
+  status: { label: "Status" },
+  due:    { label: "Due", num: true,
+            tip: "The committed week. Red once that week has ended, amber during it — the current week is still in compliance (managers' rule, 2026-08-10)." },
+  vs:     { label: "Against epic date", num: true,
+            tip: "For an epic: how its children sit against its own committed week. For a child: whether it lands inside that week, past it, or carries no date of its own." },
+  gaps:   { label: "Gaps",
+            tip: "Countable problems on this row. Never summed into a score — each one is a different conversation." },
+  owner:  { label: "Assignee",
+            tip: "The Jira assignee an epic is attributed on. Blank where the row fell back to the Tempo project lead." },
+};
+
+/** The PM's own row: a full-width group header carrying the two bars, the
+    attribution split and the ranked gap line. Clicking it opens the group. */
+function pmGroupRowHtml_(r, d) {
+  var open = !!STATE.pmOpen[r.pm];
+  var missing = r.epicN - r.epicDated;
+  var ownPct = r.epicN ? Math.round(r.epicDated / r.epicN * 100) : null;
+  var readyPct = r.readyDen ? Math.round(r.readyN / r.readyDen * 100) : null;
+  var ownCls = missing === 0 ? "sigGood" : "sigBad";
+  var span = Object.keys(PM_COLS_).length;
+  return '<tr class="pmGroup"><td colspan="' + span + '">' +
+    '<div class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
+      "<b>" + (open ? "▾ " : "▸ ") + esc_(r.pm) + "</b>" +
+      // The two bars stay side by side and stay LABELLED. They are never
+      // averaged: one is the PM's own field, the other is their team's hygiene.
+      ' <span class="cellSub">· Owns <b class="' + ownCls + '">' + r.epicDated +
+        "</b>/" + r.epicN + " epics dated" +
+        (ownPct === null ? "" : " (" + ownPct + "%)") + " · bar 100%</span>" +
+      ' <span class="cellSub">· In project ' +
+        (readyPct === null ? "no open tasks" : readyPct + "% of " + r.readyDen + " ready") +
+        " <span title=\"Dated, estimated, linked and fresh. Team hygiene, shown as " +
+        "context — not this PM's grade.\">ⓘ</span></span>" +
+    "</div>" +
+    pmOppHtml_(r) +
+    (open
+      ? '<div class="cellSub pmVia">' + pmViaHtml_(r) +
+        (missing ? " · 🚩 " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
+        "</div>"
+      : "") +
+  "</td></tr>";
+}
+
+/** Every epic row for one PM, each optionally followed by its children. */
+function pmEpicRowsHtml_(r, nowIso) {
+  var epics = r.epics || [];
+  if (!epics.length) {
+    return '<tr class="pmEmpty"><td colspan="' + Object.keys(PM_COLS_).length + '">' +
+      '<span class="cellSub">No epics in progress or due this month.</span></td></tr>';
+  }
+  return epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("");
+}
+
+/**
+ * One epic as a table row, plus its children as rows beneath when expanded.
  */
 function pmEpicHtml_(e, nowIso) {
   var open = !!STATE.pmEpicOpen[e.key];
   var kids = e.children || [];
-  // The word "due" belongs to the dated case only — without this an undated epic
-  // read "· due 🚩 no due date", which is the kind of thing tests pass straight
-  // through and a reader trips over immediately.
+  var span = Object.keys(PM_COLS_).length;
+
   var dueCell = e.due
-    ? '<span class="cellSub">· due </span><span class="' +
-      dueBand_(e.due, nowIso, false) + '">' + esc_(e.due) + "</span>"
-    : '<span class="cellSub">· </span><span class="sigBad" title="This epic carries no ' +
-      'due date, so nothing under it can be graded against a deadline. It is named in ' +
-      'the 🚩 list above.">🚩 no due date</span>';
-  // The counts a reader needs BEFORE deciding to expand. "over" leads because it
-  // is the finding: an epic cannot land on its date if its own work is
-  // scheduled past it.
+    ? '<span class="' + dueBand_(e.due, nowIso, false) + '">' + esc_(e.due) + "</span>"
+    : '<span class="sigBad" title="This epic carries no due date, so nothing under it ' +
+      'can be graded against a deadline.">&#128681; none</span>';
+
+  // The `vs` cell for an EPIC: how its children sit against its own committed
+  // week. "over" leads because it is the finding — an epic cannot land on its
+  // date if its own work is scheduled past it.
   var tally = [];
-  if (e.over) tally.push('<span class="sigBad">' + e.over + " past the epic date</span>");
-  if (e.noDate) tally.push('<span class="sigWarn">' + e.noDate + " with no date</span>");
+  if (e.over) tally.push('<span class="sigBad">' + e.over + " over</span>");
+  if (e.noDate) tally.push('<span class="sigWarn">' + e.noDate + " undated</span>");
   if (e.within) tally.push('<span class="sigGood">' + e.within + " within</span>");
-  // "no children listed" only when there ARE children somewhere and none of them
-  // reached this list. When nothing rolls up to the epic at all, the 🔗 gap below
-  // says it precisely — printing both read as two findings about one fact.
-  if (!tally.length && e.childrenAll) {
-    tally.push('<span class="cellSub">no children in this window</span>');
+  // "none in window" only when children exist SOMEWHERE and none reached this
+  // window. When nothing rolls up to the epic at all the link gap says it
+  // precisely, and printing both would read as two findings about one fact.
+  if (!tally.length) {
+    tally.push('<span class="cellSub">' + (e.childrenAll ? "none in window" : "&mdash;") +
+      "</span>");
   }
-  // The two gaps that are properties of the EPIC rather than of its children.
-  // They appear in the PM's ranked line above; repeating them here is what lets
-  // a reader act on the specific epic instead of hunting for which one it was.
+
+  // The `gaps` cell: problems that are properties of the EPIC, not its children.
+  var gaps = [];
   if (!e.childrenAll) {
-    tally.push('<span class="sigWarn" title="No ticket of any status rolls up to this ' +
-      'epic, so its hours cannot be attributed to an engagement.">🔗 nothing linked</span>');
+    gaps.push('<span class="sigWarn" title="No ticket of any status rolls up to this ' +
+      'epic, so its hours cannot be attributed to an engagement.">&#128279; nothing linked</span>');
   }
   if (e.stale) {
-    tally.push('<span class="sigWarn" title="Untouched for longer than the backlog\'s ' +
-      'staleness bar — it may be blocked, or it may not be real work.">🕒 ' +
-      (e.staleDays ? e.staleDays + "d untouched" : "stale") + "</span>");
+    gaps.push('<span class="sigWarn" title="Untouched for longer than the backlog\'s ' +
+      'staleness bar - it may be blocked, or it may not be real work.">&#128338; ' +
+      (e.staleDays ? e.staleDays + "d" : "stale") + "</span>");
   }
-  if (e.assignee) {
-    tally.push('<span class="cellSub" title="This epic\'s Jira assignee — the direct ' +
-      'evidence this row is attributed on.">👤 ' + esc_(e.assignee) + "</span>");
+  if (e.ignoredN) {
+    gaps.push('<span class="cellSub" title="To Do tickets under this epic carrying no due ' +
+      'date. Counted, not listed - not a commitment yet (managers\' rule, 2026-08-10).">' +
+      e.ignoredN + " To Do undated</span>");
   }
 
-  var table = open && kids.length
-    ? '<div class="gwrap"><table class="hyg"><thead><tr><th>Key</th><th>Summary</th>' +
-      "<th>Status</th><th>Due</th><th>vs epic</th></tr></thead><tbody>" +
-      kids.map(function (c) {
-        // undatedIsGap = FALSE: this list can contain unstarted work, which is
-        // not a commitment yet. The People drill-down passes true because
-        // openIssues has already dropped unstarted-undated. Spec §4.3 — the
-        // inconsistency IS the decision, not a bug to tidy away.
-        var due = c.due
-          ? '<span class="' + dueBand_(c.due, nowIso, false) + '">' + esc_(c.due) + "</span>"
-          : '<span class="cellSub">—</span>';
-        var v = c.verdict === "over"
-              ? '<span class="sigBad">over by ' + c.overByWeeks + "w</span>"
-              : c.verdict === "within" ? '<span class="sigGood">within</span>'
-              : c.verdict === "nodate"
-                ? '<span class="sigWarn" title="Started, but carries no date of its own — ' +
-                  'it cannot be within or over a deadline it never committed to.">no date of ' +
-                  "its own</span>"
-                : '<span class="cellSub" title="The epic has no due date, so there is ' +
-                  'nothing to measure against.">ungraded</span>';
-        return "<tr><td>" + pmKeyLink_(c.key) + "</td><td>" + esc_(c.summary) + "</td><td>" +
-               esc_(c.status) + "</td><td>" + due + "</td><td>" + v + "</td></tr>";
-      }).join("") + "</tbody></table>" +
-      // One click to work the whole list in Jira, over exactly the keys shown —
-      // the same affordance the People drill-down carries.
-      (jiraBase_()
-        ? '<div class="cellSub">' +
-          jiraOpenAll_(kids.map(function (c) { return c.key; }),
-                       "Open these " + kids.length + " in Jira").replace(/^ /, "") + "</div>"
-        : "") +
-      (e.ignoredN
-        ? '<div class="cellSub">' + e.ignoredN + " To Do ticket" +
-          (e.ignoredN === 1 ? "" : "s") + " with no due date under this epic " +
-          (e.ignoredN === 1 ? "is" : "are") + " not listed — not a commitment yet.</div>"
-        : "") +
-      "</div>"
+  var epicRow =
+    '<tr class="pmEpicRow" onclick="togglePmEpic_(' + jsArg_(e.key) + ')">' +
+      '<td class="tname">' +
+        '<span class="pmTwist">' + (kids.length ? (open ? "▾" : "▸") : "") + "</span> " +
+        "<b>" + pmKeyLink_(e.key) + "</b> " +
+        '<span class="cellSub">' + esc_(trunc_(e.name, 44)) + "</span></td>" +
+      "<td>" + esc_(e.status) + "</td>" +
+      '<td class="tnum">' + dueCell + "</td>" +
+      '<td class="tnum">' + tally.join(" · ") + "</td>" +
+      "<td>" + (gaps.length ? gaps.join(" · ") : '<span class="cellSub">&mdash;</span>') +
+      "</td>" +
+      "<td>" + (e.assignee
+        ? esc_(e.assignee)
+        : '<span class="cellSub" title="No Jira assignee - this row was attributed by the ' +
+          'Tempo project lead instead.">&mdash; via project</span>') + "</td>" +
+    "</tr>";
+
+  var kidRows = open ? kids.map(function (c) {
+    // undatedIsGap = FALSE: this list can contain unstarted work, which is not a
+    // commitment yet. The People drill-down passes true because openIssues has
+    // already dropped unstarted-undated. Spec 4.3 - the inconsistency IS the
+    // decision, not a bug to tidy away.
+    var due = c.due
+      ? '<span class="' + dueBand_(c.due, nowIso, false) + '">' + esc_(c.due) + "</span>"
+      : '<span class="cellSub">&mdash;</span>';
+    var v = c.verdict === "over"
+          ? '<span class="sigBad">over by ' + c.overByWeeks + "w</span>"
+          : c.verdict === "within" ? '<span class="sigGood">within</span>'
+          : c.verdict === "nodate"
+            ? '<span class="sigWarn" title="Started, but carries no date of its own - it ' +
+              'cannot be within or over a deadline it never committed to.">no date</span>'
+            : '<span class="cellSub" title="The epic has no due date, so there is nothing ' +
+              'to measure against.">ungraded</span>';
+    return '<tr class="pmKid">' +
+      '<td class="tname"><span class="pmKidTick">↳</span> ' + pmKeyLink_(c.key) + " " +
+        '<span class="cellSub">' + esc_(trunc_(c.summary, 40)) + "</span></td>" +
+      "<td>" + esc_(c.status) + "</td>" +
+      '<td class="tnum">' + due + "</td>" +
+      '<td class="tnum">' + v + "</td>" +
+      '<td colspan="2"></td>' +
+    "</tr>";
+  }).join("") : "";
+
+  // One click to work the whole list in Jira, over exactly the keys shown - the
+  // same affordance the People drill-down carries.
+  var openAll = open && kids.length && jiraBase_()
+    ? '<tr class="pmKid"><td colspan="' + span + '"><span class="cellSub">' +
+      jiraOpenAll_(kids.map(function (c) { return c.key; }),
+                   "Open these " + kids.length + " in Jira").replace(/^ /, "") +
+      "</span></td></tr>"
     : "";
 
-  return '<div class="pmEpic">' +
-    '<div class="pmEpicHead" onclick="togglePmEpic_(' + jsArg_(e.key) + ')">' +
-      (kids.length ? (open ? "▾ " : "▸ ") : "&nbsp;&nbsp;") +
-      // The key is the thing you paste into Jira, so it is the link. stopPropagation
-      // because the whole header row is a collapse toggle — without it, clicking
-      // through to Jira ALSO expands or collapses the epic behind the new tab.
-      "<b>" + pmKeyLink_(e.key) + "</b> " + esc_(trunc_(e.name, 48)) +
-      ' <span class="cellSub">· ' + esc_(e.status) + "</span> " + dueCell +
-      ' <span class="cellSub">· ' + tally.join(" · ") + "</span>" +
-    "</div>" + table +
-  "</div>";
+  return epicRow + kidRows + openAll;
 }
 
 /**

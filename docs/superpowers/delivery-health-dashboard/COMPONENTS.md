@@ -96,9 +96,12 @@ button, so a forbidden id typed by hand still lands on Executive.
 |---|---|---|
 | 📊 **Executive** | *Are we on target, and where aren't we?* | everyone with access |
 | 🎯 **Actions** | *Who and what needs action?* | admin + viewer |
-| 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
 | 🗓 **PM** | *Which epics are in flight, and is their own work scheduled past them?* | admin + viewer |
+| 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
 | 🔒 **Access** | — | admin only |
+
+🗓 PM sits beside 🎯 Actions on purpose: they answer the same question at different grains — *who*
+needs action, and *which committed work* needs action.
 
 **The Executive tab is the "newspaper"** — eight bands, most important first:
 
@@ -124,7 +127,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,163 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,167 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -159,9 +162,15 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 ### 🗓 PM-owned work (added 2026-08-11)
 
-**Shape:** PM ▸ epic ▸ children, each level collapsed until opened. The epic list is scoped to work
-in flight — **in progress or due this month** (overdue included). An epic that is neither started
-nor dated is counted in the bar and named in its 🚩 list, but not listed as work to do.
+**Shape:** one table, six defined columns — *Epic / ticket · Status · Due · Against epic date ·
+Gaps · Assignee* — driven by a single `PM_COLS_` registry so a header can never drift from the cell
+below it. Three row levels live in that one table: PM group rows span the full width, epic rows fill
+the columns, children sit one indent in behind a `↳`. Nested tables were deliberately avoided — they
+break the column lines, which is the thing that makes a table scannable.
+
+PM ▸ epic ▸ children, each level collapsed until opened. The epic list is scoped to work in flight —
+**in progress or due this month** (overdue included). An epic that is neither started nor dated is
+counted in the bar and named in its 🚩 list, but not listed as work to do.
 
 **Unstarted tickets with no due date are counted, never listed** — the managers' 2026-08-10 rule.
 The count appears at the top of the tab and on each epic, so an exclusion never looks like an

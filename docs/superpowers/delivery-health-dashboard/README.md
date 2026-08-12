@@ -1657,6 +1657,25 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
 
+> ### 🗓 PM tab — moved beside Actions, rebuilt as a table (2026-08-11) — `Dashboard.html` only
+>
+> **No schema change and no cache action** — presentation only, on top of the v40 payload.
+>
+> 1. **Tab order is now Executive · Actions · 🗓 PM · Workforce · Access.** PM sits beside Actions
+>    because they answer the same question at different grains: Actions is *who* needs action, PM is
+>    *which committed work* needs action.
+> 2. **One table with six defined columns** — Epic / ticket · Status · Due · Against epic date ·
+>    Gaps · Assignee — driven by a single `PM_COLS_` registry so the header can never drift from the
+>    cells beneath it. Three row levels in **one** table rather than nested tables: PM group rows
+>    span the full width, epic rows fill the columns, child rows sit one indent in. Every column line
+>    runs unbroken down the page, which is what makes a table scannable and what a nested table
+>    destroys.
+> 3. `Against epic date` reads at two grains on the same axis: for an epic, the tally of its
+>    children (`1 over · 1 undated · 1 within`); for a child, its own verdict (`over by 3w`).
+>
+> Live smoke: the header shows six columns; a PM group row carries both bars and the ranked gaps;
+> expanding an epic inserts `↳` child rows that stay inside the same columns.
+
 > ### 🗓 PM tab — assignee-first + opportunity line (2026-08-11) — schema v39 → v40
 >
 > Supersedes both earlier PM-tab deploys. `Code.js` + `Dashboard.html`, then
