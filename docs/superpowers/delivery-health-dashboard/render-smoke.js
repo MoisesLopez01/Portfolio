@@ -180,6 +180,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // because the single-digit-week case is the whole reason it exists.
              " isoCmp_: isoCmp_, dueBand_: dueBand_," +
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
+             " renderPm_: renderPm_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
@@ -931,9 +932,9 @@ assert_(els.viewActions.style.display === "" && els.viewExec.style.display === "
 assert_(/\bpaneIn\b/.test(els.viewActions.className), "the shown pane carries paneIn");
 assert_(!/\bpaneIn\b/.test(els.viewExec.className), "a hidden pane does not carry paneIn");
 // 🌊 Flow retired 2026-08-05 (§4.1); People + Data Hygiene retired 2026-08-05
-// (Task 3, §5). 🧭 Workforce joined 2026-08-10 — four tabs: Executive, Actions,
-// Workforce, Access.
-assert_(els.tabBar.children.length === 4, "an admin sees all four tabs");
+// (Task 3, §5). 🧭 Workforce joined 2026-08-10 and 🗓 PM 2026-08-11 — five tabs:
+// Executive, Actions, Workforce, PM, Access.
+assert_(els.tabBar.children.length === 5, "an admin sees all five tabs");
 C.switchView_("exec");
 assert_(els.viewExec.style.display === "" && els.viewActions.style.display === "none",
         "and switching back hides the other");
@@ -942,7 +943,8 @@ assert_(/\bpaneIn\b/.test(els.viewExec.className) && !/\bpaneIn\b/.test(els.view
 var mdlV = fresh(histModel({}));
 mdlV.viewerRole = "viewer";
 C.switchView_("exec");
-assert_(els.tabBar.children.length === 3, "a viewer does not get the Access tab");
+// Viewer sees Executive, Actions, Workforce and PM — everything but 🔒 Access.
+assert_(els.tabBar.children.length === 4, "a viewer does not get the Access tab");
 C.switchView_("access");
 assert_(C.STATE.view === "exec",
         "and asking for it by id lands on the default view — the gate is in the router, not the tab bar");
@@ -3899,9 +3901,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     C.renderAll_();
   });
 
-  assert_(C.VIEWS.length === 4, "exactly four views");
-  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,workforce,access",
-          "view ids are exec/actions/workforce/access in order");
+  assert_(C.VIEWS.length === 5, "exactly five views (🗓 PM joined 2026-08-11)");
+  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,workforce,pm,access",
+          "view ids are exec/actions/workforce/pm/access in order — 🔒 Access stays last");
   assert_(!els.viewFlow || els.viewFlow.innerHTML === "", "no live viewFlow pane");
   assert_(!els.viewPeople || els.viewPeople.innerHTML === "", "no live viewPeople pane");
   assert_(!els.viewHygiene || els.viewHygiene.innerHTML === "", "no live viewHygiene pane");
@@ -6190,6 +6192,91 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and only the LABEL moved — the state key and behaviour are unchanged");
   assert_(/id="pmSel"[^>]*title="Worked with PM/.test(dashSrc),
           "…including the tooltip, which is where the caveat lives");
+})();
+
+// ── 🗓 PM tab (spec 2026-08-11 §5) ──────────────────────────────────────────
+(function pmTabChecks() {
+  var pmModel = fresh(model({}));
+  resetFilters();
+  pmModel.meta.gridWeeks = ["2026.W30", "2026.W31"].map(function (iso, i) {
+    return { iso: iso, status: i === 1 ? "now" : "done" };
+  });
+  pmModel.pmOwned = {
+    keyCap: 200, supersededPms: 1,
+    rows: [
+      { pm: "Dana Reyes", epicN: 12, epicDated: 9,
+        epicMissingKeys: ["GTT-41", "GTT-88", "GTT-91"], epicCapped: false,
+        readyDen: 40, readyN: 25,
+        items: [
+          { key: "GTT-41", summary: "Undated epic", isEpic: true,
+            status: "In Progress", due: "", overdue: false },
+          { key: "GTT-9", summary: "Overdue task", isEpic: false,
+            status: "In Progress", due: "2026.W9", overdue: true },
+          { key: "GTT-31", summary: "Due now", isEpic: false,
+            status: "In Progress", due: "2026.W31", overdue: false },
+        ] },
+      { pm: "(No PM)", epicN: 4, epicDated: 0, epicMissingKeys: ["ORPH-1"],
+        epicCapped: false, readyDen: 2, readyN: 1, items: [] },
+    ],
+  };
+  C.setModel(pmModel);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "pm");
+  C.renderAll_();
+  var h = els.pmPanel.innerHTML;
+
+  assert_(/Dana Reyes/.test(h), "a PM row renders");
+  assert_(/9<\/b> of 12|9 of 12/.test(h), "bar 1 shows epic due-date fill as 9 of 12");
+  assert_(/GTT-41/.test(h), "the undated epic keys are named — the fix is one click away");
+
+  // The two bars must never be averaged. 75% and 62.5% blend to ~69%; if that
+  // number appears, someone combined the PM's field with the team's hygiene.
+  assert_(!/69%/.test(h), "the two bars are NEVER averaged into one number");
+  assert_(/75%/.test(h) && /62%|63%/.test(h), "…both are shown, separately");
+  assert_(/hygiene|context|not this PM's grade/i.test(h),
+          "bar 2 is labelled as team context, not the PM's grade");
+
+  // (No PM) is a named coverage gap and sorts last.
+  assert_(/\(No PM\)/.test(h), "(No PM) renders as a named bucket, not an empty state");
+  // Anchor on the ROW HEADINGS, not a bare substring: "(No PM)" is also named in
+  // the intro paragraph above the rows, so indexOf would compare against the
+  // explanation rather than the row and pass whatever the sort did.
+  var heads = (h.match(/<h4>[^<]*<\/h4>/g) || []).map(function (s) {
+    return s.replace(/<\/?h4>/g, "");
+  });
+  assert_(heads.length === 2, "one heading per PM row, got " + heads.length);
+  assert_(heads[heads.length - 1] === "(No PM)",
+          "(No PM) sorts LAST among the rows — a hygiene bucket, not a PM");
+
+  // Bands apply here too, but undated is GREY — this list contains unstarted
+  // work, unlike the People drill-down. The exact inversion of dueCellHtml_.
+  assert_(/class="sigBad"[^>]*>2026\.W9</.test(h), "an overdue item still paints red");
+  assert_(/class="sigWarn"[^>]*>2026\.W31</.test(h), "the current week paints amber");
+  assert_(!/class="sigBad"[^>]*>—</.test(h),
+          "undated on the PM tab is NOT red — unstarted work is not a broken commitment");
+
+  // A handover that resolved silently is indistinguishable from a data error.
+  assert_(/changed PM/i.test(h),
+          "a superseded PM handover is reported, not swallowed");
+
+  // The window is NAMED, and the bars say they are not subject to it.
+  assert_(/overdue or due this month/i.test(h), "the item window is named on the page");
+  assert_(/not windowed/i.test(h), "…and the bars say they are not subject to it");
+
+  // Absent ≠ clean, the same rule renderEpicDue_ follows.
+  var noPm = fresh(model({}));
+  noPm.pmOwned = null;
+  C.setModel(noPm);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "pm");
+  C.renderAll_();
+  assert_(/Refresh|Not in this payload/i.test(els.pmPanel.innerHTML),
+          "a payload built before this tab existed says so — absent is not a pass");
+
+  // Role gate is enforced INSIDE switchView_, not just by hiding the button.
+  C.getModel().viewerRole = "denied";
+  C.switchView_("pm");
+  assert_(C.STATE.view !== "pm", "a role without access cannot reach the PM view by id");
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");

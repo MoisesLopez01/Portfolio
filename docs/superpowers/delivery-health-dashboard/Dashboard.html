@@ -506,6 +506,14 @@ tr.detail td.dback{padding:8px 16px 12px}
 .emptyState{padding:26px 16px;text-align:center;color:var(--muted);
             font-size:calc(12.5px*var(--scale))}
 
+/* 🗓 PM tab — one block per PM. The rule between rows is what keeps the two
+   bars visually attached to their own PM; without it the "in project" line
+   reads as though it belongs to the PM below. */
+.pmRow{padding:10px 0;border-top:1px solid var(--border)}
+.pmRow:first-of-type{border-top:0}
+.pmRow h4{margin:0 0 4px;font-size:calc(13.5px*var(--scale));
+          font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
+
 /* 🌊 Backlog health — two facing lists. Grid rather than flex so the two tables
    share a column width regardless of label length: a healthy column that is
    narrower than its neighbour reads as the less important one, which is the
@@ -715,6 +723,11 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div class="panel" id="wfDisciplinePanel"></div>
   </div>
 
+  <!-- 🗓 PM-owned work — one row per PM, two bars that are never averaged. -->
+  <div id="viewPm" class="viewPane" style="display:none">
+    <div class="panel" id="pmPanel"></div>
+  </div>
+
   <!-- Access Control — admin only, gated in switchView_ as well as in the tab bar. -->
   <div id="viewAccess" class="viewPane panel" style="display:none"></div>
 </div>
@@ -788,6 +801,13 @@ var VIEWS = [
   // and backlog cover, which is the same margin tier as the utilization detail.
   { id: "workforce", label: "🧭 Workforce", pane: "viewWorkforce", roles: ["admin", "viewer"],
     hint: "Capacity by pool and level band: headroom, plan-vs-logged, work outside the plan and backlog cover — signals, not verdicts, because capacity is not fungible." },
+  // 🗓 PM — the tickets a PM OWNS, attributed by PROJECT (spec 2026-08-11).
+  // Distinct from the "Worked with PM" filter above the tabs, which selects
+  // PEOPLE who worked for a PM. Same role tier as Actions and Workforce.
+  // 🧭 was already taken by Workforce, hence 🗓 — this tab is about dated
+  // commitments, so the calendar reads correctly anyway.
+  { id: "pm", label: "🗓 PM", pane: "viewPm", roles: ["admin", "viewer"],
+    hint: "Epic due-date fill per PM against the team's 100% bar, with the backlog readiness of their projects alongside it — two claims, never averaged." },
   { id: "access",  label: "🔒 Access",    pane: "viewAccess",  roles: ["admin"],
     hint: "Manage who can open this dashboard." },
 ];
@@ -1803,6 +1823,7 @@ function renderAll_() {
     case "exec":    renderMasthead_(); renderBacklogBand_(); renderTrust_(); renderFlow_(); renderPulse_(); renderCompare_(); renderShelf_(); renderTrustDetail_(); break;
     case "actions": renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
     case "workforce": renderWfScope_(); renderWfGrid_(); renderWfConsumers_(); renderWfShadow_(); renderWfUnrouted_(); renderWfDisciplines_(); break;
+    case "pm":      renderPm_(); break;
     case "access":  renderAccess_(); break;
   }
 }
@@ -6928,6 +6949,87 @@ function renderBacklogHealth_() {
 //     only the project end date.
 //   · Keys, never names. Same rule as the gaps queue — a standing list of people
 //     against failures reads as a blame board; an epic key is a thing to open.
+/**
+ * 🗓 PM-owned work. Two bars per PM, never averaged (spec §5.2): the epic
+ * due-date fill the PM OWNS, and the backlog readiness their project CONTAINS.
+ *
+ * Work reaches a PM through its PROJECT, not through an assignee — which is why
+ * this tab can exist at all while PMs remain structurally absent from the
+ * delivery population (see Code.js, PM ATTRIBUTION).
+ */
+function renderPm_() {
+  var el = document.getElementById("pmPanel");
+  if (!el) return;
+  var d = MODEL.pmOwned;
+  // Absent ≠ clean — same rule as renderEpicDue_. A payload built before this
+  // tab existed must say it did not look, or an empty tab reads as "no gaps".
+  if (!d || !d.rows) {
+    el.innerHTML = "<h3>🗓 PM-owned work</h3><div class=\"emptyState\">" +
+      "Not in this payload — ↻ Refresh to rebuild on the current schema.</div>";
+    return;
+  }
+  if (!d.rows.length) {
+    el.innerHTML = "<h3>🗓 PM-owned work</h3><div class=\"emptyState\">" +
+      "No open work in the current export.</div>";
+    return;
+  }
+  var nowIso = currentIso_();
+  var rows = d.rows.map(function (r) {
+    var missing = r.epicN - r.epicDated;
+    var ownPct = r.epicN ? Math.round(r.epicDated / r.epicN * 100) : null;
+    var readyPct = r.readyDen ? Math.round(r.readyN / r.readyDen * 100) : null;
+    var ownCls = missing === 0 ? "sigGood" : "sigBad";
+    var items = (r.items || []).map(function (it) {
+      // undatedIsGap = FALSE here: this list contains UNSTARTED work, which is
+      // not a commitment yet. The People drill-down passes true because
+      // openIssues has already dropped unstarted-undated. Spec §4.3 — the
+      // inconsistency IS the decision, not a bug to tidy away.
+      var due = it.due
+        ? '<span class="' + dueBand_(it.due, nowIso, false) + '">' + esc_(it.due) + "</span>"
+        : '<span class="cellSub" title="No due date — not a commitment yet.">—</span>';
+      return "<tr><td>" + esc_(it.key) + "</td><td>" + esc_(it.summary) +
+             "</td><td>" + esc_(it.status) + "</td><td>" + due + "</td></tr>";
+    }).join("");
+    return '<div class="pmRow">' +
+      "<h4>" + esc_(r.pm) + "</h4>" +
+      '<p class="cellSub"><b>Owns — epic due dates:</b> ' +
+        '<b class="' + ownCls + '">' + r.epicDated + "</b> of " + r.epicN +
+        (ownPct === null ? "" : " (" + ownPct + "%)") +
+        " · the team's bar is 100%" +
+        (missing ? " — " + keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap) : "") +
+      "</p>" +
+      '<p class="cellSub"><b>In project — task readiness:</b> ' +
+        (readyPct === null ? "no open tasks"
+                           : readyPct + "% of " + r.readyDen) +
+        " <span class=\"cellSub\">(dated, estimated, linked and fresh — <b>team " +
+        "hygiene, shown as context, not this PM's grade</b>)</span></p>" +
+      (items ? '<div class="gwrap"><table class="hyg"><thead><tr><th>Key</th>' +
+               "<th>Summary</th><th>Status</th><th>Due</th></tr></thead><tbody>" +
+               items + "</tbody></table></div>" : "") +
+      "</div>";
+  }).join("");
+
+  el.innerHTML =
+    "<h3>🗓 PM-owned work" + scopeTag_("org") + "</h3>" +
+    '<p class="cellSub">Work is attributed to a PM by its <b>project</b>, from the ' +
+      "Tempo PM field — not by who it is assigned to. A project with no hours in the " +
+      "Tempo export has no PM, and its work is listed under <b>(No PM)</b>: a coverage " +
+      "gap with a name, not an empty state. The two bars are <b>never averaged</b> — " +
+      "the first is the PM's own field, the second is what their project contains." +
+      (d.supersededPms
+        ? " <b>" + d.supersededPms + "</b> project" +
+          (d.supersededPms === 1 ? " has" : "s have") +
+          " changed PM inside the export window; the most recent owner is shown."
+        : "") +
+    "</p>" +
+    '<p class="cellSub">The lists below cover work <b>overdue or due this month</b>, ' +
+      "plus everything undated — an undated item has no month, so it cannot be " +
+      "windowed at all. <b>The bars are not windowed</b>: they measure every open " +
+      "item the PM owns, because a denominator of only dated epics could never " +
+      "report a missing date.</p>" +
+    rows;
+}
+
 function renderEpicDue_() {
   var el = document.getElementById("epicDuePanel");
   if (!el) return;
