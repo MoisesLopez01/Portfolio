@@ -2435,6 +2435,32 @@ function dhOverdue_(it, now) {
   return !!it.due && it.due < dhWeekStart_(now);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PM ATTRIBUTION (spec 2026-08-11)
+//
+// A ticket reaches a PM through its PROJECT, never through a person. That is
+// not a convenience — it is what makes this view possible at all. PMs are
+// structurally absent from the delivery population: DH_BY_DISCIPLINE_ maps
+// "15|Project Management" to GOVERNOR/PMO, family 15 is not a TRACKING_FAMILY,
+// and a live assertion REQUIRES PMO to appear in wf.scope.absentPools. A
+// person-grained approach would have to weaken that assertion or invent a
+// second roster; a project-grained one needs neither.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Project key for a Jira issue key. "GTT-605" → "GTT".
+ *
+ * Strips only the FINAL "-<digits>". Not split("-")[0], which would truncate any
+ * project key containing a hyphen at its first one and silently merge unrelated
+ * projects into a single PM's bucket. A key that does not end in -N is returned
+ * unchanged: an unfamiliar shape must land in a visible bucket of its own rather
+ * than collapse to "".
+ */
+function dhProjectOf_(key) {
+  var s = String(key == null ? "" : key).trim().toUpperCase();
+  return s.replace(/-\d+$/, "");
+}
+
 /**
  * The signal roster. ONE table, so a predicate can never drift between the count
  * and the queue behind it, and adding a signal is one entry rather than edits in
@@ -8416,6 +8442,23 @@ function _test_typeHygieneBuckets_() {
           "…the key LIST is capped and says so");
   Logger.log("✅ _test_epicDueAudit_ passed");
 })();
+
+// ── PM ATTRIBUTION (spec 2026-08-11) ─────────────────────────
+function _test_pmAttribution_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_pmAttribution_: " + m); }
+
+  // ── dhProjectOf_ ──
+  assert_(dhProjectOf_("GTT-605") === "GTT", "plain key");
+  assert_(dhProjectOf_("gtt-605") === "GTT", "lowercased key is canonicalised");
+  assert_(dhProjectOf_("ABC123-7") === "ABC123", "digits inside a project key survive");
+  assert_(dhProjectOf_("GTT-605-2") === "GTT-605", "only the FINAL -N is stripped");
+  assert_(dhProjectOf_("") === "", "empty in, empty out");
+  assert_(dhProjectOf_(null) === "", "null does not throw");
+  assert_(dhProjectOf_("NOTAKEY") === "NOTAKEY",
+          "a key with no -N degrades to itself rather than to a blank bucket");
+
+  Logger.log("✅ _test_pmAttribution_ passed");
+}
 
 function _test_personHygieneBuckets_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_personHygieneBuckets_: " + m); }
