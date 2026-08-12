@@ -75,17 +75,45 @@ was committed to has ended.
 
 `it.due` already ships as a week key (`"2026.W33"`) from `weekKeyFromDate_`
 (`Code.js:5412`), and the current week already ships inside `meta.gridWeeks` as
-the entry with `status === "now"` (`Code.js:1102`). The band is therefore a
-string comparison against a value already in the payload.
+the entry with `status === "now"` (`Code.js:1102`). Both values are already in
+the payload, so nothing new is sent.
 
 > `meta.headlineIso` is the **last completed** week (`shift(-1)`,
 > `Code.js:1106`) and is the wrong anchor — using it would paint the current
 > week red.
 
-New client helper `dueBand_(dueIso, nowIso)` returns `"bad" | "warn" | "good" |
-null`. Applied at `Dashboard.html:7363`, where `it.due` currently renders raw.
-Colours reuse the existing validated chart tokens `--c-bad` / `--c-warn` /
-`--c-good` — no new palette.
+**The comparison MUST be numeric, not lexicographic.** `isoWeekNum_`
+(`Code.js:1062`) returns an unpadded integer, so `weekKeyFromDate_` emits
+`"2026.W9"` — not `"2026.W09"`. Under a string compare `"2026.W9" > "2026.W10"`,
+so **weeks 1–9 of every year would rank as later than weeks 10–53** and genuinely
+overdue work would paint green for the first nine weeks of each year. A bug that
+is invisible in August and wrong every February is the worst kind this dashboard
+can ship.
+
+`isoWeekBefore_` (`Code.js:1337`) already parses `^(\d{4})\.W(\d{1,2})$` into
+year and week integers for exactly this reason. The client comparator follows
+that precedent:
+
+```js
+/** -1 | 0 | 1 comparing two "YYYY.WN" keys; null when either is unparseable.
+    NUMERIC on purpose — week keys are not zero-padded (see spec §4.2). */
+function isoCmp_(a, b) {
+  var pa = /^(\d{4})\.W(\d{1,2})$/.exec(String(a || ""));
+  var pb = /^(\d{4})\.W(\d{1,2})$/.exec(String(b || ""));
+  if (!pa || !pb) return null;
+  var ya = +pa[1], yb = +pb[1];
+  if (ya !== yb) return ya < yb ? -1 : 1;
+  var wa = +pa[2], wb = +pb[2];
+  return wa === wb ? 0 : (wa < wb ? -1 : 1);
+}
+```
+
+New client helper `dueBand_(dueIso, nowIso, undatedIsGap)` builds on it and
+returns a class name directly — `"sigBad" | "sigWarn" | "sigGood" | ""` — because
+`.sigGood/.sigWarn/.sigBad` are already bound to `--c-good/--c-warn/--c-bad`
+(`Dashboard.html:305`). Applied at `Dashboard.html:7363`, inside
+`rosterDetailRow_`, where `it.due` currently renders raw. **No new palette and no
+new CSS.**
 
 ### 4.3 Undated is per-surface, and that is deliberate
 
@@ -280,6 +308,9 @@ already parsed.
   if a later change let the window reach the denominators.
 - **`_test_dueBandParity_`** — `dueBand_` red agrees with `dhOverdue_` across a
   swept set of due/now week pairs, including year boundaries (§4.4).
+- **`isoCmp_` single-digit weeks (§4.2).** `isoCmp_("2026.W9", "2026.W10") === -1`
+  — the assertion a lexicographic implementation fails. Swept across W1–W53 so a
+  regression cannot hide in the part of the year nobody tests in August.
 
 **`render-smoke.js`**
 
