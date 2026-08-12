@@ -7110,9 +7110,16 @@ function pmEpicHtml_(e, nowIso) {
                   "its own</span>"
                 : '<span class="cellSub" title="The epic has no due date, so there is ' +
                   'nothing to measure against.">ungraded</span>';
-        return "<tr><td>" + esc_(c.key) + "</td><td>" + esc_(c.summary) + "</td><td>" +
+        return "<tr><td>" + pmKeyLink_(c.key) + "</td><td>" + esc_(c.summary) + "</td><td>" +
                esc_(c.status) + "</td><td>" + due + "</td><td>" + v + "</td></tr>";
       }).join("") + "</tbody></table>" +
+      // One click to work the whole list in Jira, over exactly the keys shown —
+      // the same affordance the People drill-down carries.
+      (jiraBase_()
+        ? '<div class="cellSub">' +
+          jiraOpenAll_(kids.map(function (c) { return c.key; }),
+                       "Open these " + kids.length + " in Jira").replace(/^ /, "") + "</div>"
+        : "") +
       (e.ignoredN
         ? '<div class="cellSub">' + e.ignoredN + " To Do ticket" +
           (e.ignoredN === 1 ? "" : "s") + " with no due date under this epic " +
@@ -7124,11 +7131,30 @@ function pmEpicHtml_(e, nowIso) {
   return '<div class="pmEpic">' +
     '<div class="pmEpicHead" onclick="togglePmEpic_(' + jsArg_(e.key) + ')">' +
       (kids.length ? (open ? "▾ " : "▸ ") : "&nbsp;&nbsp;") +
-      "<b>" + esc_(e.key) + "</b> " + esc_(trunc_(e.name, 48)) +
+      // The key is the thing you paste into Jira, so it is the link. stopPropagation
+      // because the whole header row is a collapse toggle — without it, clicking
+      // through to Jira ALSO expands or collapses the epic behind the new tab.
+      "<b>" + pmKeyLink_(e.key) + "</b> " + esc_(trunc_(e.name, 48)) +
       ' <span class="cellSub">· ' + esc_(e.status) + "</span> " + dueCell +
       ' <span class="cellSub">· ' + tally.join(" · ") + "</span>" +
     "</div>" + table +
   "</div>";
+}
+
+/**
+ * A Jira key as a link, safe inside a row that is itself a click target.
+ *
+ * `stopPropagation` is the whole point: both collapse levels are click handlers
+ * on the row, so without it opening a ticket in a new tab ALSO toggles the row
+ * you just left — you come back to a panel that has silently rearranged itself.
+ * Degrades to plain escaped text when no Jira site is configured, rather than
+ * rendering an anchor to "/browse/KEY" that goes nowhere.
+ */
+function pmKeyLink_(key) {
+  if (!jiraBase_()) return esc_(key);
+  return '<a href="' + esc_(jiraIssueUrl_(key)) + '" target="_blank" rel="noopener" ' +
+    'onclick="event.stopPropagation()" title="Open ' + esc_(key) + ' in Jira">' +
+    esc_(key) + "</a>";
 }
 
 function togglePmOpen_(pm) {

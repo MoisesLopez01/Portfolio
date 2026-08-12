@@ -6313,6 +6313,31 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/in progress or due this month/i.test(h), "the epic scope rule is named on the page");
   assert_(/not windowed/i.test(h), "…and the bars say they are not subject to it");
 
+  // ── EVERY KEY IS A JIRA LINK ────────────────────────────────────────────
+  assert_(/<a href="[^"]*\/browse\/GTT-7"/.test(h), "the epic key links to Jira");
+  assert_(/<a href="[^"]*\/browse\/GTT-72"/.test(h), "…and so does every child key");
+  // Both rows are collapse toggles. Without stopPropagation, opening a ticket
+  // also toggles the row behind it and the panel rearranges while you are away.
+  assert_(/\/browse\/GTT-7"[^>]*onclick="event\.stopPropagation\(\)"/.test(h),
+          "the epic link stops the click reaching the collapse handler underneath");
+  assert_(/\/browse\/GTT-72"[^>]*onclick="event\.stopPropagation\(\)"/.test(h),
+          "…and so does the child link");
+  assert_(/Open these 3 in Jira/.test(h),
+          "an epic's children can be opened as one Jira list, like the People drill-down");
+
+  // No site configured → plain text, never an anchor to a dead "/browse/KEY".
+  var noBase = pmModel.meta.jiraBase;
+  pmModel.meta.jiraBase = "";
+  C.setModel(pmModel);
+  C.renderPm_();
+  var hNo = els.pmPanel.innerHTML;
+  assert_(!/<a href=/.test(hNo), "with no Jira site configured, keys render as plain text");
+  assert_(/GTT-72/.test(hNo), "…but the keys themselves are still shown");
+  pmModel.meta.jiraBase = noBase;
+  C.setModel(pmModel);
+  C.renderPm_();
+  h = els.pmPanel.innerHTML;
+
   // An apostrophe in a PM name must not break the inline onclick.
   assert_(C.jsArg_("Sam O'Neil") === "'Sam O\\'Neil'",
           "jsArg_ escapes quotes — an apostrophe would otherwise kill the click handler");
