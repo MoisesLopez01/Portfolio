@@ -152,25 +152,9 @@
     details.ref-acc summary::before { content: "▸ "; color: var(--muted); }
     details.ref-acc[open] summary::before { content: "▾ "; }
     details.ref-acc .ref-body { padding: 0 14px 12px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
-    /* 🏠 Overview + 📌 Action Queue — facts / signals / queue rows / KPI band bars */
+    /* 🏠 Overview — facts / signals / KPI band bars */
     .factlink { cursor: pointer; }
     .factlink:hover { color: var(--cta); text-decoration: underline; }
-    .aq-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
-              padding: 9px 2px; border-bottom: 1px solid var(--border); }
-    .aq-row:last-child { border-bottom: 0; }
-    .aq-main { flex: 1 1 320px; min-width: 240px; }
-    .aq-act { cursor: pointer; font-weight: 600; }
-    .aq-act:hover { color: var(--cta); text-decoration: underline; }
-    .aq-ev { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .aq-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
-    .aq-owner { background: var(--chip); color: var(--text); border: 1px solid var(--border);
-                border-radius: 6px; padding: 2px 6px; font: inherit; font-size: 12px; width: 110px; }
-    .aq-st { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-    .aq-st button { border: 0; border-radius: 0; background: transparent; padding: 2px 8px; font-size: 11.5px; }
-    .aq-st button.on { background: var(--cta); color: var(--cta-text); font-weight: 600; }
-    .aq-row.done { opacity: .55; }
-    .aq-row.done .aq-act { text-decoration: line-through; font-weight: 400; }
-    .aq-row.snoozed { opacity: .6; }
     .bandbar { position: relative; display: flex; height: 8px; border-radius: 4px;
                overflow: visible; margin: 8px 0 4px; }
     .bandbar i { display: block; height: 100%; opacity: .4; }
@@ -227,9 +211,6 @@ const SCHEMA = 46;
 // Single source of truth for navigation — same pattern as PS Dashboard.
 const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
-  // Admin-only working surface — viewers get read-only signals on Overview;
-  // the actionable queue (owners, states, due weeks) is for people who can act.
-  { id: "actions",   label: "📌 Action Queue",        roles: ["admin"] },
   { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
   { id: "signals",   label: "🚨 Risk Signals",        roles: ["admin", "viewer"] },
   // Managers folded INTO Attrition (2026.W31): the full manager list outgrew
@@ -250,10 +231,6 @@ const STATE = {
   filters: { loc: "", level: "", dept: "", q: "" },
   rankSort: { key: "score", dir: -1 },
   sigEarly: false,
-  // Per-viewer action-queue state (open/acked/snoozed/done), persisted in
-  // UserProperties via getOverviewActions/saveOverviewAction — per viewer BY
-  // DESIGN: shared cross-team state would need a sheet-backed store (backlog).
-  actions: {}, actionsLoaded: false,
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -643,26 +620,6 @@ function loadData(force) {
     .withFailureHandler(onLoadError)
     .getCompReportData(!!force);
 }
-// ── action-queue state (per viewer, UserProperties) ─────────
-function loadActions() {
-  google.script.run
-    .withSuccessHandler(s => {
-      try { STATE.actions = JSON.parse(s) || {}; } catch (e) { STATE.actions = {}; }
-      STATE.actionsLoaded = true;
-      if (STATE.tab === "actions" && STATE.data) render();
-    })
-    .withFailureHandler(() => { STATE.actionsLoaded = true; })
-    .getOverviewActions();
-}
-function saveAction(id, patch) {
-  // Optimistic: reflect immediately, then persist; on rejection resync truth.
-  STATE.actions[id] = Object.assign({}, STATE.actions[id] || {}, patch,
-    { by: USER_EMAIL, at: new Date().toISOString() });
-  render();
-  google.script.run
-    .withFailureHandler(() => loadActions())
-    .saveOverviewAction(id, patch);
-}
 function onData(raw) {
   // Server returns one JSON STRING (marshalling a large nested object through
   // google.script.run is minutes-slow); parse here. Object tolerated for safety.
@@ -687,8 +644,6 @@ function onData(raw) {
   populateFilters();
   syncFilterBar();
   render();
-  // Queue state is admin-only (server enforces too) — viewers never fetch it.
-  if (!STATE.actionsLoaded && USER_ROLE === "admin") loadActions();
 }
 function onLoadError(err) {
   document.getElementById("loading").classList.add("hidden");
@@ -700,9 +655,8 @@ function onLoadError(err) {
 // 🏠 Overview = facts (2–3 past-tense sentences, no imperatives) + a READ-ONLY
 // signals card (Concerns / Notes / Highlights) + KPI cards with target bands +
 // FY-vs-FY termination bars + provenance. Facts and signals derive from server
-// verdicts (always full-population). The actionable queue moved to the
-// admin-only 📌 Action Queue tab (renderActions) — viewers see judgments here,
-// never a workflow they can't act on.
+// verdicts (always full-population). There is no actionable queue — the
+// Action Queue surface was removed (per-viewer state, no shared ownership).
 function ovViewLabel(id) {
   const v = VIEWS.find(x => x.id === id);
   return v ? v.label.replace(/^[^\s]+\s/, "") : id; // strip the emoji prefix
@@ -775,22 +729,19 @@ function ovChangedSinceHtml(d) {
   return line ? '<div class="sub" style="margin-top:6px">🗓 ' + esc(line) + '</div>' : "";
 }
 
-// Deterministic default target: RISK rows come due two ISO weeks out; NOTE
-// rows anchor to the fiscal-quarter close — "before the cycle closes" rendered
-// as a real week + dates, not a vibe.
+// Fiscal-quarter close date for a given ISO date, as YYYY-MM-DD (FY starts
+// July 1). Used wherever a "before the cycle closes" deadline needs a real
+// date rather than a vibe.
 function fiscalQuarterEndIso(iso) {
   const y = +iso.slice(0, 4), m = +iso.slice(5, 7);
   const e = m >= 7 && m <= 9 ? [y, "09", 30] : m >= 10 ? [y, "12", 31]
     : m <= 3 ? [y, "03", 31] : [y, "06", 30];
   return e[0] + "-" + e[1] + "-" + e[2];
 }
-function ovDueFor(v, d) {
-  return v.severity === "RISK" ? isoWeekFull(d.meta.asOf, 2)
-                               : isoWeekFull(fiscalQuarterEndIso(d.meta.asOf), 0);
-}
+
 // Read-only signals for the Overview — the original design: server verdicts
 // grouped by severity into Concerns (RISK) / Notes (NOTE) / Highlights (FACT).
-// No state, no owners — the workflow lives in the admin-only 📌 Action Queue.
+// No state, no owners — there is no action-queue workflow anywhere.
 // Skips the ids the facts card already narrates, so nothing reads twice.
 function ovSignalsHtml(d) {
   const skip = { "attr-vol": 1, "attr-total": 1, "headcount": 1, "fy-caveat": 1 };
@@ -807,58 +758,6 @@ function ovSignalsHtml(d) {
   return '<div class="card"><h2>🚦 Signals' +
     (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') +
     '</h2>' + body + '</div>';
-}
-
-function ovQueueHtml(d) {
-  const rows = (d.verdicts || []).filter(v => v.action);
-  if (!rows.length) {
-    return '<div class="card"><h2>📌 Action queue</h2>' +
-      '<p class="sub">✓ Nothing needs an owner right now — every signal reads healthy at current thresholds.</p></div>';
-  }
-  const cw = isoWeekLabel(d.meta.asOf);
-  const stOf = v => {
-    const st = STATE.actions[v.id] || {};
-    let state = ["acked", "snoozed", "done"].indexOf(st.state) !== -1 ? st.state : "open";
-    // A snooze holds only for the ISO week it was clicked — then it resurfaces.
-    if (state === "snoozed" && st.at && isoWeekLabel(String(st.at).slice(0, 10)) !== cw) state = "open";
-    return Object.assign({}, st, { state });
-  };
-  const order = { open: 0, acked: 1, snoozed: 2, done: 3 };
-  const sevOrder = { RISK: 0, NOTE: 1, FACT: 2 };
-  const sorted = rows.map(v => ({ v, st: stOf(v) })).sort((a, b) =>
-    order[a.st.state] - order[b.st.state] || sevOrder[a.v.severity] - sevOrder[b.v.severity]);
-  const open = sorted.filter(r => r.st.state === "open").length;
-  const sevGlyph = s => s === "RISK" ? '<span style="color:var(--bad);font-weight:700">✕</span>'
-    : s === "NOTE" ? '<span style="color:var(--warn);font-weight:700">!</span>'
-    : '<span style="color:var(--accent);font-weight:700">✓</span>';
-  const stamp = st => st.state !== "open" && st.at
-    ? '<span class="sub">' + esc(st.state) + ' by ' + esc(String(st.by || "").split("@")[0]) +
-      ' · ' + esc(String(st.at).slice(0, 10)) + '</span>' : "";
-  const btns = (v, st) => '<span class="aq-st">' + ["open", "acked", "snoozed", "done"].map(s =>
-    '<button class="' + (st.state === s ? "on" : "") + '" onclick="saveAction(\'' + esc(v.id) +
-    '\',{state:\'' + s + '\'})">' + { open: "Open", acked: "Ack", snoozed: "Snooze", done: "Done" }[s] +
-    '</button>').join("") + '</span>';
-  const body = sorted.map(r => {
-    const v = r.v, st = r.st;
-    if (st.state === "snoozed") {
-      return '<div class="aq-row snoozed"><div class="aq-main sub">😴 Snoozed until ' +
-        esc(isoWeekFull(d.meta.asOf, 1)) + ' — ' + esc(v.action) + '</div>' +
-        '<div class="aq-meta">' + btns(v, st) + stamp(st) + '</div></div>';
-    }
-    return '<div class="aq-row' + (st.state === "done" ? " done" : "") + '">' +
-      '<div class="aq-main">' + sevGlyph(v.severity) + ' ' +
-        '<span class="aq-act" onclick="switchTab(\'' + esc(v.view) + '\')" title="Open ' +
-          esc(ovViewLabel(v.view)) + '">' + esc(v.action) + ' ↗</span>' +
-        '<div class="aq-ev">' + esc(v.fact) + (v.caveat ? ' ⚠ ' + esc(v.caveat) : '') + '</div></div>' +
-      '<div class="aq-meta">' +
-        '<input class="aq-owner" placeholder="owner" value="' + esc(st.owner || "") +
-          '" onchange="saveAction(\'' + esc(v.id) + '\',{owner:this.value})">' +
-        '<span>due ' + esc(ovDueFor(v, d)) + '</span>' + btns(v, st) + stamp(st) +
-      '</div></div>';
-  }).join("");
-  return '<div class="card"><h2>📌 Action queue <span class="chip">' + open + ' open</span> ' +
-    '<span class="sub">status &amp; owner are per-viewer' +
-    (STATE.actionsLoaded ? '' : ' · loading saved state…') + '</span></h2>' + body + '</div>';
 }
 
 // Target-band strip for a KPI card: colored zones + a marker at the value.
@@ -1150,19 +1049,6 @@ function mgrHotspotsHtml(d) {
       span.ics + ' ICs) vs 1:' + span.target + ' target.' : '') + '</div></div>';
 }
 
-// 📌 Action Queue — admin-only tab: every server verdict carrying an action,
-// with per-viewer state (open/acked/snoozed/done + owner + due ISO week).
-// Moved off Overview (2026.W31): viewers read signals there; the workflow
-// lives here for the people who can assign owners and act. switchTab gates
-// the tab and the getOverviewActions/saveOverviewAction RPCs are admin-only
-// server-side — hiding the button is never the enforcement.
-function renderActions(el) {
-  const d = STATE.data;
-  el.innerHTML =
-    '<div class="banner">📌 <b>Action queue</b> — every signal that needs an owner, drawn from the same server verdicts as the Overview. Admin-only; status and owner are saved per viewer.</div>' +
-    ovQueueHtml(d) +
-    ovProvenanceHtml(d);
-}
 const TIER_LABEL = {
   title: "median · title peers", market: "market mean",
   level: "median · level cohort", none: "insufficient peers",
@@ -1675,7 +1561,7 @@ function saveAccess() {
 }
 
 const RENDERERS = {
-  overview: renderOverview, actions: renderActions, ranking: renderRanking,
+  overview: renderOverview, ranking: renderRanking,
   signals: renderSignals, attrition: renderAttrition,
   compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
   contrib: renderContrib, reference: renderReference, access: renderAccess,

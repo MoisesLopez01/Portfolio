@@ -915,26 +915,6 @@ function mkV3(over) {
       .find(v => v.id === "invisible-contrib"));
 })();
 
-// ── V5: Overview action queue — patch sanitizer (pure) ──────────────────────
-(function () {
-  check("actions: valid state + owner pass through",
-    JSON.stringify(sanitizeActionPatch_({ state: "acked", owner: "  WFP team  " })) ===
-    JSON.stringify({ state: "acked", owner: "WFP team" }));
-  check("actions: unknown state dropped, owner kept",
-    JSON.stringify(sanitizeActionPatch_({ state: "hacked", owner: "x" })) ===
-    JSON.stringify({ owner: "x" }));
-  check("actions: extra keys never survive",
-    !("evil" in sanitizeActionPatch_({ evil: 1, state: "done" })) &&
-    sanitizeActionPatch_({ evil: 1, state: "done" }).state === "done");
-  check("actions: owner capped at 80 chars",
-    sanitizeActionPatch_({ owner: new Array(120).join("a") }).owner.length === 80);
-  check("actions: non-object / null patch → empty",
-    JSON.stringify(sanitizeActionPatch_(null)) === "{}" &&
-    JSON.stringify(sanitizeActionPatch_("open")) === "{}");
-  check("actions: every persisted state is on the allowlist",
-    JSON.stringify(CD_ACTION_STATES) === JSON.stringify(["open", "acked", "snoozed", "done"]));
-})();
-
 // ── BUILD_ mismatch guard ───────────────────────────────────────────────────
 check("build: all five files agree at rest", buildMismatch_() === null);
 

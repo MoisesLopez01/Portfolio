@@ -30,8 +30,7 @@ global.localStorage = {
   setItem: (k, v) => { store[k] = String(v); },
 };
 const chain = { withSuccessHandler: () => chain, withFailureHandler: () => chain,
-  getCompReportData() {}, getAccessSettings() {}, saveAccessSettings() {},
-  getOverviewActions() {}, saveOverviewAction() {} };
+  getCompReportData() {}, getAccessSettings() {}, saveAccessSettings() {} };
 global.google = { script: { run: chain } };
 
 let fails = 0;
@@ -152,8 +151,6 @@ eval(js + "\n;global.__X = { STATE, VIEWS, RENDERERS, renderOverview, isoWeekLab
 const { STATE, VIEWS, RENDERERS, renderOverview, isoWeekLabel, isoWeekFull,
         prevYearIso, fiscalQuarterEndIso } = global.__X;
 STATE.data = D;
-STATE.actions = { "compa-below": { state: "done", owner: "WFP", by: "x@sr.com", at: "2026-07-28T10:00:00Z" } };
-STATE.actionsLoaded = true;
 
 const pane = el();
 Object.keys(RENDERERS).forEach(id => {
@@ -173,6 +170,7 @@ check("facts: fy-caveat surfaces", /rest on 3 exits/.test(H));
 check("signals: read-only groups render (Concerns + Notes)",
   /Concerns/.test(H) && /Notes/.test(H) && /factlink/.test(H));
 check("signals: NO action queue on Overview", !/Action queue/.test(H));
+check("actions: route fully removed", !VIEWS.find(v => v.id === "actions") && !RENDERERS.actions);
 check("small-n: attrition card is count-primary (3 exits)", /3 exits<\/div>/.test(H));
 check("small-n: no trend arrow on the tiny attrition base", !/▲|▼/.test(H.split("Are people staying?")[1].split("kpi-q")[0] || ""));
 check("cards: band bar + marker present", /bandbar/.test(H) && /class="mk"/.test(H));
@@ -186,15 +184,6 @@ check("provenance: as-of + sources + exclusion rules", /As of 2026-07-29/.test(H
 check("chips row gone: no 'in one paragraph' strip", !/in one paragraph/.test(H));
 check("a11y: no color-only status — glyphs present", /font-weight:700">[✓!✕]/.test(H));
 
-// 📌 Action Queue view (admin-only) — the workflow that used to sit on Overview
-const aq = el();
-RENDERERS.actions(aq);
-const AQ = aq.innerHTML;
-check("queue: rows exist with due ISO week + dates", /Action queue/.test(AQ) && /due 2026\.W\d\d · /.test(AQ));
-check("queue: done row stamped by user", /done by x/.test(AQ));
-check("queue: owner input persisted value", /value="WFP"/.test(AQ));
-check("queue: tab is admin-only in VIEWS",
-  VIEWS.find(v => v.id === "actions").roles.join() === "admin");
 check("managers: standalone tab removed", !VIEWS.find(v => v.id === "managers") && !RENDERERS.managers);
 
 // 📉 Attrition owns manager hotspots — outliers only, healthy teams as a count
