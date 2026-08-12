@@ -1004,6 +1004,29 @@ flatter itself by excluding the very records that are the problem.
 
 ### Metric caveats (read before quoting a number)
 
+- **🗓 PM tab — attribution is by PROJECT, not by assignee** (schema v38, 2026-08-11). A ticket
+  belongs to the PM of its Jira project, taken from the Tempo PM field: `GTT-605 → GTT → that
+  project's PM`. It does **not** matter who the ticket is assigned to, which is deliberate —
+  unassigned tickets are exactly where due-date gaps hide. A project with no hours in the Tempo
+  export has no PM row, and its work lands in **(No PM)**: a coverage gap with a name, not a
+  tidy-up. Where a project changed PM inside the export window the **most recent** owner is shown
+  and the count of such handovers is stated on the tab.
+- **The two PM bars are different claims and must not be combined.** *Owns* (epic due-date fill) is
+  the PM's own field, graded against the team's 100% bar. *In project* (task readiness) is what
+  their project contains, filled by other people. Averaging them grades a PM on fields they do not
+  control and cannot say which half is the problem.
+- **Neither PM bar is windowed by the month filter, and that is load-bearing.** An undated epic has
+  no date and so cannot fall inside a date window — windowing the *Owns* bar would leave a
+  denominator of only dated epics and pin every PM at 100%, i.e. a bar that can never report the
+  gap it exists to report. The month window scopes the **item lists** only.
+- **"Worked with PM" (the filter) ≠ "🗓 PM" (the tab).** The filter above the tabs selects PEOPLE
+  who logged or planned hours on a PM's projects; the tab reports the TICKETS a PM owns. They are
+  named apart on purpose — the filter row stays visible while the tab is open.
+- **Due-date bands are week-grained, and undated is coloured per surface.** 🔴 red = the committed
+  week has ended · 🟠 amber = due this week (compliant) · 🟢 green = later. Undated reads **red** in
+  the People drill-down, where `openIssues` has already dropped unstarted work so anything undated
+  is a started commitment with no date — and **grey** on the 🗓 PM tab, which does show unstarted
+  work. That inconsistency is the decision, not a bug.
 - **"Overdue" means the committed WEEK has ended, not that a timestamp has passed** (schema v32,
   managers' feedback 2026-08-10). `dhOverdue_` compares the due date against `dhWeekStart_(now)` —
   Monday 00:00 of the current ISO week — so a ticket due Monday and read on Wednesday is a **live
@@ -1613,6 +1636,36 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 >   cross-fade, no stagger, no count-up) — this is the accessibility escape hatch, not optional.
 > - The compact flow tier's stagger looks right next to the hero tier — it shares the same `.tile`
 >   reveal by design, so it should stagger in lock-step with the hero cards, not as a separate wave.
+
+> ### 🗓 PM tab + due-date bands (2026-08-11) — schema v37 → v38
+>
+> **Two independent units. F1 ships alone; F2 does not** — `renderPm_` calls `dueBand_` and
+> `currentIso_`, both added by F1, so deploy F1 first or the tab throws on first render.
+>
+> **F1 — due-date urgency bands.** `Dashboard.html` only. **No schema bump, no cache action.**
+> The People drill-down's Due cell gains a band: 🔴 red before this week, 🟠 amber this week,
+> 🟢 green later. Week precision, because the managers' 2026-08-10 rule is that the current week
+> is compliant. Undated stays **red** there — that table is fed by `openIssues`, which already
+> drops unstarted-undated, so an undated row is started work with no committed date.
+>
+> **F2 — 🗓 PM tab.** `Code.js` + `Dashboard.html`, then **`bustDeliveryCache_()` — REQUIRED.**
+> A cached v37 model has no `pmOwned` and the tab renders its "Not in this payload" empty state
+> until the entry expires.
+>
+> No exporter change and **no export re-run**: every column read here is already exported and
+> already parsed (`readTempoGrid_` has carried the project key beside the PM since the reader was
+> written).
+>
+> Live smoke:
+> 1. 🗓 PM tab appears for admin **and** viewer, and is the 4th of 5 tabs (🔒 Access stays last).
+> 2. Each PM row shows **two** bars and **no** blended percentage. If you see one number per PM,
+>    something averaged the PM's own field with their team's hygiene — that is a defect.
+> 3. Check the size of the **(No PM)** bucket. If it dominates, that is a finding about Tempo
+>    project coverage to take upstream — **not** a reason to change the attribution.
+> 4. The filter above the tabs now reads **"Worked with PM: all"**. Confirm it still filters
+>    PEOPLE (the tiles and roster move) — only its label changed.
+> 5. Open a People row: due dates are banded, and a week like `2026.W9` reads **red**, not green.
+> 6. Post the GTT-605 dated status comment.
 
 > ### ⚠️ Logged-time carve-out deploy (2026-08-06) — schema v23 → v24
 >

@@ -65,7 +65,7 @@ hand — `Jira Raw`, `Jira Bugs` and `Jira Arrivals` are fully rewritten each ru
 **Watch for:** it has **no automated tests**. Syntax is checked, behaviour is not. Every change to it
 is verified by reading and by the next export's output.
 
-### 3.2 `Code.js` — the server (schema v31)
+### 3.2 `Code.js` — the server (schema v38)
 
 Reads all nine sheets, joins them to the roster, computes every metric, caches the result.
 
@@ -79,20 +79,23 @@ code appears. Nothing else changes: the engine does not model the org chart, so 
 just re-points pools.
 
 **Watch for:** results are cached (~65 min TTL) and a warmer rebuilds them every 30 minutes, so the
-dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v31 must be
-deployed with a `bustDeliveryCache_()`** — a cached v29/v30 model read as v31 gives every person no
-pool, which collapses the population into one cell and silently reproduces the blended figure the
-Workforce tab exists to retire.
+dashboard can lag the sheets. The **↻ Refresh** button bypasses cache. **Schema v38 must be
+deployed with a `bustDeliveryCache_()`** — and every schema bump before it for its own reason: a
+cached v37 model has no `pmOwned`, so the 🗓 PM tab renders its empty state; a cached v29/v30 read
+as v31 gave every person no pool, collapsing the population into one cell and silently reproducing
+the blended figure the Workforce tab exists to retire.
 
 ### 3.3 `Dashboard.html` — the client
 
-Four tabs, gated by role.
+Five tabs, gated by role — the gate is enforced **inside `switchView_`**, not just by hiding a
+button, so a forbidden id typed by hand still lands on Executive.
 
 | Tab | Answers | Who sees it |
 |---|---|---|
 | 📊 **Executive** | *Are we on target, and where aren't we?* | everyone with access |
 | 🎯 **Actions** | *Who and what needs action?* | admin + viewer |
 | 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
+| 🗓 **PM** | *Which PMs have epics with no committed date?* | admin + viewer |
 | 🔒 **Access** | — | admin only |
 
 **The Executive tab is the "newspaper"** — eight bands, most important first:
@@ -119,7 +122,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **865 checks** rendering the client against synthetic models
+- `node render-smoke.js` — **1,127 checks** rendering the client against synthetic models
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -151,6 +154,29 @@ Local Node test runners. **Not** pasted into the GAS project.
 | **Forecast accuracy** | rests on roughly **one** measurable epic. A mean over one thing is not a mean. It shelves itself |
 | **Quality / rework** | there is **no capture path** for rework. Zero flagged items means nobody is recording it, not that nothing was reworked |
 | **Region / Team breakdowns** | the Jira fields are still largely unpopulated; the dashboard substitutes person-region from tracked hours. Real numbers, but *"by region"* does not yet mean what the Metrics Dictionary says |
+
+### 🗓 PM-owned work (added 2026-08-11)
+
+Two claims per PM, deliberately never combined into one score.
+
+| Bar | How far to trust it |
+|---|---|
+| **Owns — epic due-date fill** | Quotable. A count over open epics with no join and no estimate, graded against a bar the team itself set at **100%** — "every epic carries a date, even if it is only the project end date". The only caveat is the attribution below |
+| **In project — task readiness** | Context, not a verdict on the PM. It reuses `BACKLOG_SIGNALS_.ready` (dated **and** estimated **and** linked **and** fresh) and inherits every caveat that signal carries. These fields are filled by assignees, not by the PM |
+
+**The attribution is the thing to check first.** Work reaches a PM through its **project**
+(`GTT-605 → GTT → that project's PM`, from the Tempo PM field), never through an assignee. That is
+what lets this tab exist at all: PMs are structurally absent from this dashboard's population —
+family 15 is not a tracking family and a live assertion *requires* `PMO` to be in `absentPools` — so
+a person-grained approach would have needed a second roster. It also means unassigned tickets are
+covered, which matters because that is where due-date gaps hide.
+
+**Read the `(No PM)` bucket before quoting any per-PM number.** A project with no hours in the Tempo
+export has no PM, and everything in it lands there. A large bucket is a finding about Tempo project
+coverage, not a rounding error.
+
+**Nothing here rolls into a published delivery rate.** PMs are a separate population on their own
+bar, by design.
 
 ### Numbers with no agreed target
 
