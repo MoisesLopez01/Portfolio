@@ -7269,6 +7269,38 @@ function dueBand_(dueIso, nowIso, undatedIsGap) {
   return c < 0 ? "sigBad" : (c === 0 ? "sigWarn" : "sigGood");
 }
 
+/** The CURRENT ISO week, from the payload the model already ships.
+    NOT meta.headlineIso — that is the LAST COMPLETED week (Code.js:1106), and
+    using it would paint everything due this week red. */
+function currentIso_() {
+  var gw = (MODEL && MODEL.meta && MODEL.meta.gridWeeks) || [];
+  for (var i = 0; i < gw.length; i++) if (gw[i] && gw[i].status === "now") return gw[i].iso;
+  return "";
+}
+
+/**
+ * The Due cell for the People drill-down.
+ *
+ * `undatedIsGap` is TRUE here and that is not an oversight: this table is fed by
+ * openIssues, which already excludes unstarted-undated tickets by the managers'
+ * 2026-08-10 rule — so anything undated reaching this cell is STARTED work with
+ * no committed date, which BACKLOG_SIGNALS_.undated grades "bad" and which has
+ * rendered red since before the bands existed. Grey here would silently
+ * downgrade a live signal. The 🗓 PM tab, which DOES show unstarted work, passes
+ * false. See spec 2026-08-11 §4.3.
+ */
+function dueCellHtml_(dueIso) {
+  if (!dueIso) {
+    return '<span class="sigBad" title="Started work with no due date — it can ' +
+           'never appear in On-Time Delivery.">—</span>';
+  }
+  var cls = dueBand_(dueIso, currentIso_(), true);
+  var tip = cls === "sigBad" ? "Overdue — the committed week has ended."
+          : cls === "sigWarn" ? "Due this week — still a live commitment."
+          : cls === "sigGood" ? "Due in a later week." : "";
+  return '<span class="' + cls + '" title="' + esc_(tip) + '">' + esc_(dueIso) + "</span>";
+}
+
 /** ▸ row: the person's open backlog items (backlogByPerson_ payload, already
     on p.backlog) + the period's hours line — the People grid's per-person
     detail, reattached where the signal is (spec §5.2). */
@@ -7410,7 +7442,7 @@ function rosterDetailRow_(p, head) {
         return "<tr><td>" + keyCell + "</td><td>" + esc_(it.summary) + "</td><td>" +
           epic + "</td><td>" +
           esc_(it.status) + '</td><td class="tnum">' + r1_(it.remHrs) + "</td><td>" +
-          (it.due || '<span class="sigBad">—</span>') + "</td></tr>";
+          dueCellHtml_(it.due) + "</td></tr>";
       }).join("") + "</table>" +
       // One click to work the whole list in Jira, over exactly the keys shown.
       (jiraBase_()

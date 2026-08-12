@@ -179,6 +179,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // Due-date urgency bands (spec 2026-08-11 §4). isoCmp_ is exposed
              // because the single-digit-week case is the whole reason it exists.
              " isoCmp_: isoCmp_, dueBand_: dueBand_," +
+             " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
@@ -6127,6 +6128,56 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     }
   }
   assert_(swept === 53 * 53, "isoCmp_: swept every W1–W53 pair (" + swept + ")");
+
+  // ── The cell itself ───────────────────────────────────────────────────────
+  // Three things this fixture has to get right, each of which silently produces
+  // an empty panel rather than a failed assertion:
+  //   1. gridWeeks must be {iso,status} objects with one marked "now" — that is
+  //      what currentIso_ reads. The BASE model ships plain STRINGS, so a
+  //      fixture built on model({}) alone grades nothing.
+  //   2. personHygiene must exist, or renderRoster_ short-circuits to
+  //      "Not in this payload".
+  //   3. view/filters must be reset — the workforce block above leaves
+  //      STATE.view = "workforce", and renderRoster_ never runs.
+  var bandModel = fresh(model({}));
+  resetFilters();
+  C.setState("view", "actions");
+  C.STATE.period = "week";
+  C.setState("periodIdx", null);
+  bandModel.personHygiene = { open: [], resolved: [] };
+  bandModel.meta.gridWeeks = ["2026.W30", "2026.W31"].map(function (iso, i) {
+    return { iso: iso, status: i === 1 ? "now" : "done" };
+  });
+  bandModel.people.forEach(function (p) {
+    if (p.name !== "Ben Ortiz") return;
+    p.backlog = { count: 3, remHrs: 12, listed: 3, ignoredN: 0, ignoredHrs: 0, items: [
+      // W9 vs the W31 anchor: the single-digit-week trap, at the cell.
+      { key: "GTT-1", summary: "Overdue one", status: "In Progress", priority: "High",
+        remHrs: 4, due: "2026.W9" },
+      { key: "GTT-2", summary: "Due this week", status: "In Progress", priority: "High",
+        remHrs: 4, due: "2026.W31" },
+      { key: "GTT-3", summary: "Future", status: "In Progress", priority: "Low",
+        remHrs: 4, due: "2026.W40" },
+      { key: "GTT-4", summary: "No date", status: "In Progress", priority: "Low",
+        remHrs: 0, due: "" },
+    ] };
+  });
+  C.setModel(bandModel);
+  C.STATE.openDetail = {};
+  C.toggleRosterDetail_("Ben Ortiz");
+  var rowHtml = els.rosterPanel.innerHTML;
+
+  assert_(/class="sigBad"[^>]*>2026\.W9</.test(rowHtml),
+          "a due week before the current week paints red");
+  assert_(!/class="sigGood"[^>]*>2026\.W9</.test(rowHtml),
+          "W9 must NOT read as future — the single-digit-week trap, at the cell");
+  assert_(/class="sigWarn"[^>]*>2026\.W31</.test(rowHtml),
+          "a due week that IS the current week paints amber, not red");
+  assert_(/class="sigGood"[^>]*>2026\.W40</.test(rowHtml),
+          "a later due week paints green");
+  assert_(/class="sigBad"[^>]*>—</.test(rowHtml),
+          "undated STARTED work keeps the red it had before this change");
+  C.toggleRosterDetail_("Ben Ortiz");   // close — teardown
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");
