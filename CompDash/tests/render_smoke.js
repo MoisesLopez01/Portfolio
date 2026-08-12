@@ -61,6 +61,7 @@ const emp = (n, o) => Object.assign({
 const D = {
   ok: true,
   meta: {
+    schema: 46,
     generatedAt: "2026-07-29T04:00:00.000Z", role: "admin", email: "x@sr.com", fromCache: true,
     fyLabel: "FY27", prevFyLabel: "FY26", qLabel: "Q1", monthLabels: months,
     fiscalMonthIdx: 0, fyStartCalYear: 2026, asOf: "2026-07-29",

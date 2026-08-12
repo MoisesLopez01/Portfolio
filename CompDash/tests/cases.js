@@ -934,3 +934,30 @@ function mkV3(over) {
   check("actions: every persisted state is on the allowlist",
     JSON.stringify(CD_ACTION_STATES) === JSON.stringify(["open", "acked", "snoozed", "done"]));
 })();
+
+// ── BUILD_ mismatch guard ───────────────────────────────────────────────────
+check("build: all five files agree at rest", buildMismatch_() === null);
+
+check("build: a stale file is named", (function () {
+  const real = BUILD_.position;
+  BUILD_.position = real - 1;
+  const out = buildMismatch_();
+  BUILD_.position = real;
+  return out && out.length === 1 && out[0] === "position";
+})());
+
+check("build: several stale files are all named", (function () {
+  const p = BUILD_.position, w = BUILD_.workforce;
+  BUILD_.position = 0; BUILD_.workforce = 0;
+  const out = buildMismatch_();
+  BUILD_.position = p; BUILD_.workforce = w;
+  return out && out.length === 2;
+})());
+
+check("build: a missing stamp counts as stale", (function () {
+  const real = BUILD_.narrative;
+  delete BUILD_.narrative;
+  const out = buildMismatch_();
+  BUILD_.narrative = real;
+  return out && out.indexOf("narrative") !== -1;
+})());

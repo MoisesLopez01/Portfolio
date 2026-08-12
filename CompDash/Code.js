@@ -162,6 +162,24 @@ const CONFIG_CD = {
   DEBUG: false,
 };
 
+// ── Build stamps ────────────────────────────────────────────────────────────
+// Nine files are pasted into the GAS editor by hand. Bump the number in EVERY
+// server file on every release; doGet refuses to serve when they disagree, so a
+// half-finished paste fails loudly instead of reporting stale numbers.
+var BUILD_ = BUILD_ || {};
+BUILD_.code = 46;
+
+/**
+ * @returns {(string[]|null)} names of files whose stamp differs from Code.js,
+ *   or null when every file agrees. A missing stamp counts as stale.
+ */
+function buildMismatch_() {
+  const want = BUILD_.code;
+  const stale = ["position", "workforce", "narrative", "security"]
+    .filter(k => BUILD_[k] !== want);
+  return stale.length ? stale : null;
+}
+
 // ============================================================
 // PURE LOGIC — no GAS APIs below this line until the GAS LAYER marker
 // ============================================================
@@ -899,6 +917,9 @@ function getCompReportData(force) {
   const payload = {
     ok: true,
     meta: {
+      // Compared against SCHEMA in ViewDash.html — catches a stale client paste,
+      // which the server-side BUILD_ guard cannot see.
+      schema: BUILD_.code,
       generatedAt: new Date().toISOString(),
       role: access.role, email: access.email, fromCache: false,
       fyLabel: ctx.fyLabel, prevFyLabel: ctx.prevFyLabel, qLabel: ctx.qLabel,
@@ -972,12 +993,36 @@ function getCompReportData(force) {
   return json;
 }
 
+/**
+ * Inlines another HTML file into the ViewDash template.
+ * Used as <?!= include('Styles') ?>. Include order is load-bearing — see the
+ * comment in ViewDash.html.
+ * @param {string} name file name without the .html extension
+ * @returns {string} the file's raw content
+ */
+function include(name) {
+  return HtmlService.createHtmlOutputFromFile(name).getContent();
+}
+
 function doGet() {
   const access = checkDashboardAccess();
   if (!access.allowed) {
     Logger.log("⚠️ doGet denied: " + access.email);
     return HtmlService.createHtmlOutput(deniedPageHtml_(access.email))
       .setTitle("Access restricted");
+  }
+  // A partial paste must never render — stale engine files would report wrong
+  // numbers with no visible symptom (PROCESS.md §"No build badge").
+  const stale = buildMismatch_();
+  if (stale) {
+    Logger.log("❌ doGet blocked: build mismatch — stale " + stale.join(", "));
+    return HtmlService.createHtmlOutput(
+      '<div style="font:14px system-ui;padding:32px;max-width:560px">' +
+      '<h2>⚠️ Incomplete deployment</h2>' +
+      '<p>These files are stale and must be re-pasted, then a new deployment ' +
+      'version published:</p><ul><li><b>' +
+      stale.map(s => s.charAt(0).toUpperCase() + s.slice(1) + ".js").join("</b></li><li><b>") +
+      '</b></li></ul></div>').setTitle("Incomplete deployment");
   }
   const t = HtmlService.createTemplateFromFile("ViewDash");
   t.userRole = access.role;

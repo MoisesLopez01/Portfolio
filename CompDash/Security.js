@@ -17,6 +17,9 @@
 //         Viewer — full dashboard, read-only settings.
 // ============================================================
 
+var BUILD_ = BUILD_ || {};
+BUILD_.security = 46;
+
 const SEC_CD = {
   PROP_ADMINS:  "CD_DASH_ADMINS",
   PROP_VIEWERS: "CD_DASH_VIEWERS",

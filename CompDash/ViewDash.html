@@ -220,6 +220,9 @@
 "use strict";
 const USER_ROLE  = "<?= userRole ?>";
 const USER_EMAIL = "<?= userEmail ?>";
+// Bump in lockstep with BUILD_.code in Code.js. A mismatch means the server and
+// this file came from different pastes — the numbers on screen may be stale.
+const SCHEMA = 46;
 
 // Single source of truth for navigation — same pattern as PS Dashboard.
 const VIEWS = [
@@ -669,6 +672,12 @@ function onData(raw) {
   }
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
   STATE.data = d;
+  if (d.meta && d.meta.schema !== SCHEMA) {
+    document.getElementById("pane").insertAdjacentHTML("beforebegin",
+      '<div class="banner err">⚠️ <b>Incomplete deployment</b> — ViewDash.html is ' +
+      'from a different release than the server (client ' + SCHEMA + ', server ' +
+      d.meta.schema + '). Re-paste all nine files and publish a new version.</div>');
+  }
   const hidden = (d.meta.restricted && d.meta.restricted.hidden) || 0;
   document.getElementById("subTitle").textContent =
     d.meta.fyLabel + " " + d.meta.qLabel + " · " + d.meta.activeCount + " active Rocketeers · " +
