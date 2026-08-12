@@ -604,7 +604,7 @@ select option:disabled{color:var(--muted);font-style:italic}
       <span class="flbl">Region</span><div class="chips seg" id="regionChips"></div>
     </div>
     <select id="teamSel" title="Team filter — universal: scopes the KPI tiles and the grid."><option value="">All teams</option></select>
-    <select id="pmSel" title="Project Manager — universal: scopes the KPI tiles and the grid. Shows people with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams."><option value="">All PMs</option></select>
+    <select id="pmSel" title="Worked with PM — universal: scopes the KPI tiles and the grid. Selects PEOPLE with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams. NOT the same as the 🗓 PM tab, which reports the TICKETS a PM owns — this control sits above the tabs and stays visible there, so the two are deliberately named apart."><option value="">Worked with PM: all</option></select>
     <select id="famSel" title="Job-family filter — universal: scopes the KPI tiles and the grid. Options cover the tracking-mandated population (JF007 Managed Services &amp; Support, JF009 Service Delivery, uncatalogued/crew); non-tracking families are not in this dashboard at all."><option value="">All job families</option></select>
     <input type="search" id="personSearch" placeholder="Find person…">
     <span id="filterWarn" class="cellSub" style="color:var(--amber)"></span>
@@ -1513,7 +1513,10 @@ function buildFilters_() {
     rc.appendChild(b);
   });
   fillSelect_("teamSel", "team", "All teams");
-  fillSelect_("pmSel", "pm", "All PMs");
+  // "Worked with PM", not "PM": this control selects PEOPLE who worked FOR a PM,
+  // while the 🗓 PM tab reports the TICKETS a PM owns. The filter row sits above
+  // the tabs, so both are on screen together and one word cannot mean both.
+  fillSelect_("pmSel", "pm", "Worked with PM: all");
   // Tempo stamps whoever led a project at the time, so the raw PM list keeps
   // former employees indefinitely. Say how many were removed — a list that
   // quietly shrinks between deploys is its own small mystery.

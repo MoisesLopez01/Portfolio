@@ -6178,6 +6178,18 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/class="sigBad"[^>]*>—</.test(rowHtml),
           "undated STARTED work keeps the red it had before this change");
   C.toggleRosterDetail_("Ben Ortiz");   // close — teardown
+
+  // ── The two meanings of "PM" must never both read as "PM" on one screen ────
+  // The filter row sits ABOVE the tabs, so this control is visible while the
+  // 🗓 PM tab is open. It selects PEOPLE who worked FOR a PM; the tab reports
+  // the TICKETS a PM OWNS.
+  var dashSrc = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  assert_(/Worked with PM/.test(dashSrc),
+          "the people-membership filter is labelled 'Worked with PM', not 'PM'");
+  assert_(/STATE\.pm/.test(dashSrc),
+          "…and only the LABEL moved — the state key and behaviour are unchanged");
+  assert_(/id="pmSel"[^>]*title="Worked with PM/.test(dashSrc),
+          "…including the tooltip, which is where the caveat lives");
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");
