@@ -176,6 +176,9 @@ check("actions: route fully removed", !VIEWS.find(v => v.id === "actions") && !R
     !VIEWS.find(v => v.id === id) && !RENDERERS[id]);
 });
 check("routes: exactly six survive", VIEWS.length === 6);
+check("overview: no rendered onclick deep-links to a dead tab id",
+  !["contrib", "market", "equity", "ranking", "signals"].some(id =>
+    H.indexOf("switchTab('" + id + "')") !== -1));
 check("small-n: attrition card is count-primary (3 exits)", /3 exits<\/div>/.test(H));
 check("small-n: no trend arrow on the tiny attrition base", !/▲|▼/.test(H.split("Are people staying?")[1].split("kpi-q")[0] || ""));
 check("cards: band bar + marker present", /bandbar/.test(H) && /class="mk"/.test(H));

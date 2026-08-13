@@ -846,7 +846,7 @@ function renderOverview(el) {
             medRatio < b.low ? "below the red line " + b.low.toFixed(2)
             : medRatio < b.target ? "under the " + b.target.toFixed(2) + " target"
             : "at the anchor (target " + b.target.toFixed(2) + "–" + b.high.toFixed(2) + ")") },
-    { q: "Is our pay still competitive in the market?", tab: "market",
+    { q: "Is our pay still competitive in the market?", tab: "compa",
       v: medMkt != null ? medMkt.toFixed(2) : "Pending",
       s: mkt.length ? "median vs market mean · " + mkt.length + " benchmarked" + suffix
                     : "benchmark compilation in progress",
@@ -855,7 +855,7 @@ function renderOverview(el) {
       verdict: medMkt == null ? "" : ragDot(medMkt < mLow ? "red" : "green",
         medMkt < mLow ? "below the " + mLow.toFixed(2) + " competitiveness floor"
                       : "at/above the " + mLow.toFixed(2) + " floor") },
-    { q: "Is anyone paid inequitably?", tab: "equity",
+    { q: "Is anyone paid inequitably?", tab: "compa",
       v: String(flags), zero: flags === 0,
       s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix,
       verdict: flags > 0 ? ragDot("yellow", "each flag needs a rationale or a fix")
@@ -870,13 +870,13 @@ function renderOverview(el) {
   // snapshot it renders as a link line, not an arrow masquerading as a metric.
   const co = d.meta.contribution || {};
   if (co.quarter) {
-    cards.push({ q: "Is contribution evidence in for the cycle?", tab: "contrib",
+    cards.push({ q: "Is contribution evidence in for the cycle?", tab: "compa",
       v: String(co.matched), s: co.quarter + " snapshot · Rocketeers with frozen evidence",
-      verdict: ragDot("green", "open the Contribution Report for detail ↗") });
+      verdict: ragDot("green", "see " + ovViewLabel("compa") + " for detail") });
   }
   const contribLine = co.quarter ? "" :
     '<div class="sub" style="margin:-6px 0 14px">🚀 Contribution evidence: snapshot pending — ' +
-    '<span class="factlink" onclick="switchTab(\'contrib\')">open the Contribution Report ↗</span></div>';
+    '<span class="factlink" onclick="switchTab(\'compa\')">see ' + esc(ovViewLabel("compa")) + '</span></div>';
 
   const cardHtml = c =>
     '<div class="kpi' + (c.zero ? " zero" : "") + '" onclick="switchTab(\'' + c.tab + '\')">' +
