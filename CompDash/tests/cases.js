@@ -971,3 +971,24 @@ check("verdicts: no verdict targets a deleted view", (function () {
   const out = buildVerdicts_(VERDICT_MODEL_, VERDICT_CFG_);
   return out.length > 0 && out.every(v => DEAD.indexOf(v.view) === -1);
 })());
+
+// ── THRESHOLDS ──────────────────────────────────────────────────────────────
+check("thresholds: internal bands carry value and source",
+  CONFIG_CD.THRESHOLDS.internal.low === 0.80 &&
+  CONFIG_CD.THRESHOLDS.internal.target === 0.95 &&
+  CONFIG_CD.THRESHOLDS.internal.high === 1.10 &&
+  typeof CONFIG_CD.THRESHOLDS.internal.source === "string");
+
+check("thresholds: market floor carries value and source",
+  CONFIG_CD.THRESHOLDS.market.low === 0.90 &&
+  typeof CONFIG_CD.THRESHOLDS.market.source === "string");
+
+check("thresholds: small-group minimum lives here too",
+  CONFIG_CD.THRESHOLDS.smallGroupMin === 3);
+
+check("thresholds: legacy keys still resolve to the same numbers",
+  CONFIG_CD.COMPA_LOW_MIN === CONFIG_CD.THRESHOLDS.internal.low &&
+  CONFIG_CD.COMPA_TARGET_MIN === CONFIG_CD.THRESHOLDS.internal.target &&
+  CONFIG_CD.COMPA_HIGH_MAX === CONFIG_CD.THRESHOLDS.internal.high &&
+  CONFIG_CD.MARKET_LOW === CONFIG_CD.THRESHOLDS.market.low &&
+  CONFIG_CD.SMALL_GROUP_MIN === CONFIG_CD.THRESHOLDS.smallGroupMin);

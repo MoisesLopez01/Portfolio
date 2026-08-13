@@ -30,14 +30,29 @@ const CONFIG_CD = {
   EQUITY_OUTLIER_PCT: 25, // individual % below group median that flags an outlier
   TENURE_YEARS_MIN:    3, // tenure lens: minimum years of service
   TENURE_BELOW_PCT:   15, // tenure lens: % below group median that flags
-  SMALL_GROUP_MIN:     3, // compa groups smaller than this get a smallGroup flag
 
+  // ── Signal thresholds — single source of truth ───────────────────────────
+  // Echoed wholesale into meta.thresholds so every chip can render its own
+  // rule, threshold and source. The flat COMPA_*/MARKET_LOW/SMALL_GROUP_MIN
+  // keys below are ALIASES kept for the existing consumers; P1 migrates them
+  // and deletes the aliases. Change a number HERE only.
+  THRESHOLDS: {
+    internal: {
+      low: 0.80, target: 0.95, high: 1.10,
+      rule: "TCC ÷ the median TCC of active peers sharing Key Location + Job Title",
+      source: "Roster TCC · internal peer anchor",
+    },
+    market: {
+      low: 0.90,
+      rule: "TCC ÷ the external benchmark mean for Location + Job Title",
+      source: "Benchmarking → Compilation tab",
+    },
+    smallGroupMin: 3,
+  },
+  // compa groups smaller than this get a smallGroup flag; see THRESHOLDS above.
   // Internal Position color bands V2 — median anchor means ratios can exceed 1.0.
   // Shipped to the client via meta.compaBands so ratioClass() and the Data
-  // Reference prose can never drift from these.
-  COMPA_LOW_MIN:    0.80, // ≥ this renders yellow; below is red
-  COMPA_TARGET_MIN: 0.95, // ≥ this renders green ("at target", 95–100% guideline)
-  COMPA_HIGH_MAX:   1.10, // > this renders the violet "above median" chip
+  // Reference prose can never drift from these. See THRESHOLDS above.
 
   // Small Improvements performance ratings
   RATINGS_SS_ID: "1_V-i2BHvk6RFOdksYSpyW_hrPVJ-pIyAWSN5timy5fw", // CD_RATINGS_SS_ID override
@@ -47,7 +62,7 @@ const CONFIG_CD = {
   // External market benchmarks (compilation grows over time — missing rows are normal)
   BENCH_SS_ID: "1juJwP9RLCYoaz3-ONYR8HvaHG9fp5a5AIEMCuouNlx0",   // CD_BENCH_SS_ID override
   BENCH_TAB:   "Compilation",                                    // CD_BENCH_TAB override
-  MARKET_LOW:  0.90,    // vs-market ratio below this = priority read (red chip)
+  // vs-market ratio below this = priority read (red chip); see THRESHOLDS above.
 
   // Priority Score — mastery band descoped; 40/30/20/10 renormalized to sum 100.
   PRIORITY_W:    { perf: 57, tenure: 29, compaGap: 14 },
@@ -161,6 +176,14 @@ const CONFIG_CD = {
 
   DEBUG: false,
 };
+
+// Aliases — every current consumer still reads these flat keys. Assigned from
+// THRESHOLDS so the two can never drift. P1 migrates consumers and deletes these.
+CONFIG_CD.COMPA_LOW_MIN    = CONFIG_CD.THRESHOLDS.internal.low;
+CONFIG_CD.COMPA_TARGET_MIN = CONFIG_CD.THRESHOLDS.internal.target;
+CONFIG_CD.COMPA_HIGH_MAX   = CONFIG_CD.THRESHOLDS.internal.high;
+CONFIG_CD.MARKET_LOW       = CONFIG_CD.THRESHOLDS.market.low;
+CONFIG_CD.SMALL_GROUP_MIN  = CONFIG_CD.THRESHOLDS.smallGroupMin;
 
 // ── Build stamps ────────────────────────────────────────────────────────────
 // Nine files are pasted into the GAS editor by hand. Bump the number in EVERY
@@ -943,6 +966,8 @@ function getCompReportData(force) {
       compaBands: { low: CONFIG_CD.COMPA_LOW_MIN, target: CONFIG_CD.COMPA_TARGET_MIN,
                     high: CONFIG_CD.COMPA_HIGH_MAX },
       marketLow: CONFIG_CD.MARKET_LOW,
+      // Whole-object echo — P1's hover UI reads rule/source from here.
+      thresholds: CONFIG_CD.THRESHOLDS,
       priorityCfg: { weights: CONFIG_CD.PRIORITY_W, caps: CONFIG_CD.PRIORITY_CAPS,
                      ratingMax: CONFIG_CD.RATING_MAX },
       equityCfg: {
