@@ -343,6 +343,65 @@ and everything else in the folder stay local.
 - Theme: `--royal`, Roboto/Roboto Condensed, 8px cards, SVG tab icons,
   freshness chip.
 
+### Current signal inventory (as computed, 2026.W33 / BUILD_ 46)
+
+The single reference for every signal the dashboard computes today, verified
+against the code. Where an earlier section (V4's Risk Signals prose, §5)
+disagrees, this table wins. Every threshold is configuration — `CD_SIGNALS_CFG`
+overrides the numeric keys, and the values echo to the client via
+`meta.signalsCfg` / `meta.thresholds` / `meta.priorityCfg`; the UI never
+hardcodes them.
+
+**Ratio bands** (`CONFIG_CD.THRESHOLDS`, echoed as `meta.thresholds`;
+flat `COMPA_*`/`MARKET_LOW`/`SMALL_GROUP_MIN` keys are aliases):
+
+| Band | Rule | Source |
+|---|---|---|
+| Internal red / yellow / green / violet | ratio < **0.80** / < **0.95** / ≤ **1.10** / above | TCC ÷ peer anchor (Roster TCC · internal peer anchor) |
+| Market low (red) | market ratio < **0.90** | TCC ÷ benchmark **mean** (Benchmarking → Compilation; the payload field is named `p50` but always holds the mean — label it "mean", never "P50") |
+| Small group | cohort < **3** comparable members | falls through the anchor tiers (§3) |
+
+**Per-person decision signals** (`buildSignalsForEmp_`, Position.js — surface
+today as drill-panel chips + the Overview 🚦 Signals card; staged to become the
+Risk column in P1):
+
+| Signal | Fires when | Config keys |
+|---|---|---|
+| `promoStale` | in-role years ≥ **3** (promotions/transfers reset via `PROMO_RE`); "never promoted" variant when no promo event exists | `promoStaleYears` |
+| `earlyCareer` | level matches **I1–I3** | `earlyCareerRe`/`earlyCareerLabel` (change together) |
+| `coreLevel` | level matches **I3–I4** — the comp-driven flight-risk cohort | `coreLevelRe`/`coreLevelLabel` |
+| `recognitionRisk` | latest completed-quarter SI ≥ **4.5** AND TTM TCC growth < **5%**; TTM null (history < 1y) never fires — a new hire hasn't missed a raise | `recogMinRating`, `recogMaxTtm` |
+| `invisibleContributor` | contribution snapshot score ≥ **0.75** AND (windowed SI avg absent or < **4**) — Check L spirit: a **verification trigger** for the manager, never a comp risk factor | `invisibleMinScore`, `invisibleWeakSi` |
+| `riskFactors[]` | any of: **below internal anchor** (ratio < 0.95) · **below market** (market ratio < 0.90) · **promotion stale** · **recognition risk** | — |
+| `retentionRisk` | `coreLevel` AND ≥ **2** concurrent risk factors | `riskFactorMin` |
+
+SI evidence window: last **4 completed** fiscal quarters (`perfWindowQuarters`).
+
+**Priority Score** (`priorityScore_` — in the payload per person, no UI consumer
+until P1's Priority column): weights **perf 57 / tenure 29 / compa-gap 14**;
+perf = SI avg ÷ 5; tenure = 50% company years (cap 10) + 50% in-role years
+(cap 5); gap = distance below anchor ÷ 25% cap. A missing component drops out
+and its weight redistributes (`partial` + `missing` ride to the UI) — no
+component ever fakes a zero.
+
+**Market suggestion** (`marketSuggestion_`): `pending` (no benchmark) ·
+`below-p25` · `below-p50` (below the mean) · `at-market`; non-comparable
+(part-time/intern) people get `not-comparable` and **no market ratio at all** —
+the benchmark row is a full-time figure.
+
+**Verdict engine** (`buildVerdicts_`, Narrative.js — 17 verdicts; severities:
+RISK / NOTE / FACT, rate-banded ones derive severity from their RAG band):
+
+| View | Verdicts |
+|---|---|
+| `overview` | `headcount` (FACT) · `equity` (NOTE when flags > 0, else FACT) · `fy-caveat` (NOTE) |
+| `attrition` | `attr-total`, `attr-vol`, `regretted`, `forecast` (banded) · `concentration` (RISK at share ≥ threshold, else NOTE) · `mgr-hotspots` (RISK when any team is hot, else FACT) · `span` (RISK when wide, else NOTE) · `trends-drivers`, `financial` (NOTE) |
+| `compa` | `compa-below` (RISK when anyone is red, else FACT) · `retention-core` (RISK when the cohort has flagged people, else FACT) · `promo-stale`, `recognition-risk` (NOTE when firing, else FACT) · `invisible-contrib` (NOTE) |
+
+No verdict targets any other view (P0 invariant, test-pinned). Post-P0 the
+signals have **no dedicated tab** — they live in the drill panel, the Overview
+Signals card, and these verdicts, until P1 promotes them to table columns.
+
 ### Rollback
 
 `git revert` the P0 range, `clasp push` again, bust the cache, publish a
