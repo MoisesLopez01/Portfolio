@@ -308,9 +308,12 @@ version skew is now a visible error page, not a silently wrong number.
 ### Deploy via clasp
 
 As of this release, `CompDash/` is clasp-bound to script ID
-`1WLo6UF00dx9cutnUfo7EJlSK8BCJgpPRF6ZrJHIgkKf_L4xfMO3Blrws` — hand-pasting files
-into the GAS editor is no longer the deploy path (the BUILD_ contract above
-still protects any future hand-paste, e.g. a one-off hotfix).
+`1WLo6UF00dx9cutnUfo7EJlSK8BCJgpPRF6ZrJHIgkKf_L4xfMO3Blrws` (`.clasp.json` +
+`appsscript.json` checked in) — hand-pasting files into the GAS editor is no
+longer the deploy path (the BUILD_ contract above still protects any future
+hand-paste, e.g. a one-off hotfix). `.claspignore` is an **allowlist**: only
+the nine app files plus `appsscript.json` ever push; `tests/`, `PROCESS.md`
+and everything else in the folder stay local.
 
 - [ ] `clasp push` from `CompDash/` — all nine files land atomically:
       `Code.js`, `Position.js` *(new in P0)*, `Workforce.js` *(new in P0)*,
@@ -318,8 +321,12 @@ still protects any future hand-paste, e.g. a one-off hotfix).
       `Views.html` *(new in P0)*, `Admin.html` *(new in P0)*, `ViewDash.html`
 - [ ] Run `bustCompCache_()` in the GAS editor — **required**, the payload gains `meta.thresholds`
 - [ ] Publish a **new deployment version** — pushing files alone keeps serving old code
-- [ ] Load the dashboard and confirm the header build badge, six nav entries
-      (three tabs + three menu items), and the freshness chip
+- [ ] Load the dashboard and confirm: it renders (no "⚠️ Incomplete deployment"
+      block page — that page appearing means a stale file, named on the page,
+      needs re-pushing); the three tabs read **Executive Pulse**,
+      **Compensation Position**, **Workforce & Attrition**; the ☰ menu holds
+      the three items **QTA Status**, **Data Reference**, **Access Control**;
+      and the freshness chip reads "As of `<ISO week>` · cached" or "· live"
 
 ### What changed
 
