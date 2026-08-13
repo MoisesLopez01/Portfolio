@@ -1,0 +1,165 @@
+  <style>
+    :root {
+      /* COMPANY_COLORS — brand palette (see frontend standard) */
+      --void-blue:   #0F1941; /* primary background (dark) */
+      --light-cream: #FFFAF5; /* primary text on dark */
+      --orbe-blue:   #058CDC; /* accent / CTAs */
+      --ivory:       #DCCDBE; /* neutral surfaces / muted labels */
+      --june:        #FF9B87; /* highlight accents (banners, emphasis) */
+      /* Semantic theme derived from COMPANY_COLORS — DARK (default).
+         Every renderer styles against these names only; the light theme below
+         re-binds the same names, so no renderer knows which theme is active. */
+      --bg: var(--void-blue);
+      --panel: #16224E; --panel-2: #1C2B5E; --border: #2C3D78;
+      --text: var(--light-cream); --muted: var(--ivory); --chip: #202F66;
+      --cta: var(--orbe-blue);    /* interactive: buttons, links, active states */
+      --cta-text: var(--void-blue); /* text on a CTA-filled control */
+      /* Status colors — data semantics, deliberately NOT brand colors */
+      --accent: #35c26e;  /* green — good / at target */
+      --warn:   #e8b93c;  /* yellow — attention */
+      --bad:    #e05252;  /* red — priority read */
+      --above:  #9d7bff;  /* violet — above median (ceiling watch) */
+      --banner-bg: #3B2833; --banner-border: var(--june); --banner-text: #FFD8CC;
+      --banner-err-bg: #3a2020; --banner-err-text: #f2b8b8;
+      --overlay: rgba(13,21,55,.85);
+      --shadow: rgba(0,0,0,.4);
+    }
+    /* LIGHT theme — same COMPANY_COLORS family, inverted roles: cream page,
+       white panels, void-blue type. Status colors are re-tuned darker so the
+       chips keep AA contrast on white. Applied via data-theme on <html>,
+       persisted in localStorage (cd_theme). */
+    :root[data-theme="light"] {
+      --bg: var(--light-cream);
+      --panel: #FFFFFF; --panel-2: #F4EDE4; --border: #E3D8CB;
+      --text: var(--void-blue); --muted: #6E6455; --chip: #F3EBE1;
+      --cta: #0277C0;             /* orbe-blue deepened for white surfaces */
+      --cta-text: #FFFFFF;
+      --accent: #1B8F4E; --warn: #A87708; --bad: #C13A3A; --above: #7A5AE0;
+      --banner-bg: #FFEFE9; --banner-border: var(--june); --banner-text: #8A3B2A;
+      --banner-err-bg: #FBE4E4; --banner-err-text: #A03030;
+      --overlay: rgba(255,250,245,.88);
+      --shadow: rgba(15,25,65,.18);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
+    header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    header h1 { font-size: 17px; margin: 0; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .hdr-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+    button { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+    button:hover { border-color: var(--cta); }
+    .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .seg button { border: 0; border-radius: 0; background: transparent; }
+    .seg button.on { background: var(--cta); color: var(--cta-text); font-weight: 600; }
+    nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
+    nav button.on { background: var(--panel-2); border-color: var(--cta); font-weight: 600; }
+    #stickyBar { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+    .filterbar { display: flex; gap: 8px; padding: 8px 18px 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
+    .filterbar input[type=search] { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 190px; }
+    .chip.violet { border-color: var(--above); color: var(--above); }
+    /* Layout width. 1280px letterboxed an ultrawide into roughly a third of the
+       glass, so the page now grows with the viewport in tiers up to --page-max
+       instead of stopping at a laptop width. The tiers are widths, not device
+       guesses: each one is the point where the content genuinely earns more
+       room (wider tables, more KPI columns per row). */
+    :root { --page-max: 1280px; }
+    @media (min-width: 1600px) { :root { --page-max: 1500px; } }
+    @media (min-width: 1920px) { :root { --page-max: 1760px; } }
+    @media (min-width: 2560px) { :root { --page-max: 2200px; } }
+    main { padding: 16px 18px 60px; max-width: var(--page-max); margin: 0 auto; }
+    /* The sticky bars stay FULL-BLEED — their panel background and bottom rule
+       should span the glass — but their contents line up with main's measure, so
+       a filter never drifts away from the column it filters. Padding rather than
+       max-width is what keeps the background full width. */
+    header, nav, .filterbar {
+      padding-left:  max(18px, calc((100% - var(--page-max)) / 2));
+      padding-right: max(18px, calc((100% - var(--page-max)) / 2));
+    }
+
+    /* Tables scroll INSIDE their own box. Without this the 6-column manager
+       hotspots table and the 8-column termination detail push the whole
+       document sideways on a narrow window — the page itself must never scroll
+       horizontally. min-width keeps columns legible rather than crushed. */
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .scroll-x > table { min-width: 620px; }
+    .scroll-x > table.wide { min-width: 860px; }
+
+    @media (max-width: 820px) {
+      main { padding: 12px 12px 60px; }
+      header, nav, .filterbar { padding-left: 12px; padding-right: 12px; }
+      /* A search box with a 190px floor plus four selects overflowed the row;
+         let them share the line instead. */
+      .filterbar input[type=search], .filterbar select { min-width: 0; flex: 1 1 140px; }
+      .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .kpi-v { font-size: 22px; }
+      .kpi-q { min-height: 0; }
+      h1 { font-size: 16px; }
+      .drill { width: 100vw; }
+    }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .banner { background: var(--banner-bg); border: 1px solid var(--banner-border); color: var(--banner-text); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .banner.err { background: var(--banner-err-bg); border-color: var(--bad); color: var(--banner-err-text); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; }
+    tr.click { cursor: pointer; }
+    tr.click:hover td { background: var(--panel-2); }
+    .chip { display: inline-block; background: var(--chip); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; margin: 0 6px 6px 0; }
+    .chip.green { border-color: var(--accent); color: var(--accent); }
+    .chip.yellow { border-color: var(--warn); color: var(--warn); }
+    .chip.red { border-color: var(--bad); color: var(--bad); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; }
+    .kpi:hover { border-color: var(--cta); }
+    .kpi-q { color: var(--muted); font-size: 12px; min-height: 30px; }
+    .kpi-v { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
+    .kpi-s { color: var(--muted); font-size: 11px; }
+    .bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; }
+    .bar > i { display: block; height: 100%; }
+    .menu { position: absolute; top: 52px; left: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; z-index: 30; display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+    .menu button { text-align: left; border: none; background: transparent; }
+    .menu button:hover { background: var(--chip); }
+    .drill { position: fixed; top: 0; right: 0; width: min(560px, 96vw); height: 100vh; background: var(--panel); border-left: 1px solid var(--border); z-index: 40; padding: 18px; overflow-y: auto; box-shadow: -12px 0 30px var(--shadow); }
+    /* !important so this beats the higher-specificity #loading { display:flex }
+       — without it the loading overlay can never be hidden. */
+    .hidden { display: none !important; }
+    #loading { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 15px; color: var(--muted); }
+    select, textarea { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; }
+    details { margin-top: 8px; }
+    summary { cursor: pointer; color: var(--muted); }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+    h3 { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    a { color: var(--cta); }
+    /* 12px floor — chart labels get screenshotted into decks; 10px on navy
+       fell below the dashboard's own sub-label minimum. */
+    svg text { fill: var(--muted); font-size: 12px; }
+    /* 📊 Data Reference — modern sectioned layout */
+    .ref-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; position: sticky; top: 0; }
+    .ref-nav button { border-radius: 999px; font-size: 12px; padding: 5px 12px; }
+    .ref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .ref-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .ref-card h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .ref-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+    .dot.ok { background: var(--accent); } .dot.err { background: var(--bad); } .dot.pend { background: var(--warn); }
+    details.ref-acc { margin: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
+    details.ref-acc + details.ref-acc { margin-top: 8px; }
+    details.ref-acc summary { padding: 10px 14px; font-weight: 600; font-size: 13px; color: var(--text); list-style: none; }
+    details.ref-acc summary::before { content: "▸ "; color: var(--muted); }
+    details.ref-acc[open] summary::before { content: "▾ "; }
+    details.ref-acc .ref-body { padding: 0 14px 12px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+    /* 🏠 Overview — facts / signals / KPI band bars */
+    .factlink { cursor: pointer; }
+    .factlink:hover { color: var(--cta); text-decoration: underline; }
+    .bandbar { position: relative; display: flex; height: 8px; border-radius: 4px;
+               overflow: visible; margin: 8px 0 4px; }
+    .bandbar i { display: block; height: 100%; opacity: .4; }
+    .bandbar i:first-child { border-radius: 4px 0 0 4px; }
+    .bandbar i:last-child { border-radius: 0 4px 4px 0; }
+    .bandbar .mk { position: absolute; top: -4px; width: 2px; height: 16px;
+                   background: var(--text); border-radius: 1px; }
+    .kpi.zero { opacity: .68; }
+    .kpi.zero .kpi-v { font-size: 20px; color: var(--accent); }
+    .kpi-verdict { font-size: 11.5px; margin-top: 2px; }
+    .prov { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  </style>

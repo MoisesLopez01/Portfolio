@@ -2,8 +2,21 @@
 // payload with a stub DOM. Catches "renderer throws on real-ish data" bugs the
 // parse check can't. Run: node render_smoke.js
 const fs = require("fs"), path = require("path");
-const html = fs.readFileSync(path.join(__dirname, "..", "ViewDash.html"), "utf8");
-const js = html.match(/<script>([\s\S]*)<\/script>/)[1].replace(/<\?[=!]?[\s\S]*?\?>/g, "admin");
+
+// Client JS now spans several files. Read each one's <script> block and join in
+// LOAD ORDER — Views/Admin define the renderers, ViewDash's RENDERERS const
+// references them by name at evaluation time, so it must come last.
+// filter(Boolean) drops missing-file placeholders BEFORE joining — a leading
+// empty entry would push ViewDash's "use strict" off position 0, silently
+// downgrading the eval to sloppy mode (function decls then leak into this
+// module's scope and collide with the const-destructure below).
+const CLIENT_FILES = ["Views.html", "Admin.html", "ViewDash.html"];
+const js = CLIENT_FILES.map(f => {
+  const p = path.join(__dirname, "..", f);
+  if (!fs.existsSync(p)) return "";                    // not split out yet
+  const m = fs.readFileSync(p, "utf8").match(/<script>([\s\S]*?)<\/script>/);
+  return m ? m[1] : "";
+}).filter(Boolean).join("\n;\n").replace(/<\?[=!]?[\s\S]*?\?>/g, "admin");
 
 // ── DOM / environment stubs ─────────────────────────────────────────────────
 function el() {
