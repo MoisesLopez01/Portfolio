@@ -1,8 +1,14 @@
 # Rocketeer Global Comp Health Report — Process Documentation & Review
 
-**File pair:** `CompDash/Code.js` (GAS backend) + `CompDash/ViewDash.html` (SPA) + `CompDash/Security.js` (access)
-**Status:** V2 code complete; this document supports the review ahead of the next deployment.
-**Prepared:** 2026-07-23 (2026.W30)
+**Files (as of P0, 2026.W33):** `CompDash/Code.js` + `Position.js` + `Workforce.js`
++ `Narrative.js` (GAS backend) + `Security.js` (access) + `ViewDash.html` +
+`Styles.html` + `Views.html` + `Admin.html` (SPA) — nine files; see the P0
+section at the end of this document for the split and the deploy mechanics.
+**Status:** P0 (3-tab rebuild foundation) code complete. This document is a
+running log: sections 1–8 are the original V2 review, V3/V4/V5/V5.1 below are
+dated deltas, and P0 (bottom) is the current state — where an earlier section
+describes a view, file or RPC that P0 removed, the P0 section wins.
+**Prepared:** 2026-07-23 (2026.W30) · **P0 update:** 2026-08-12 (2026.W33)
 **Review focus:** end-to-end process transparency, plus one open dilemma — *high contributors whose work is invisible to the current scoring inputs* (§7).
 
 ---
@@ -21,7 +27,7 @@ It is a **decision-support tool for the QTA (Quarterly Talent Adjustment) proces
 | Roster | `Data` tab (+ `TCC USD` column, header-resolved) | Employee Number | population, TCC local + USD, location/level/title, hire & term dates, gender (when present) |
 | Compensation history | `RD` tab (Compensation Report) | Employee Number | growth events, promotion detection, profile tenure, TTM growth |
 | Performance ratings | `Small Improvements RD` | Employee Number | perf component of Priority Score |
-| Market benchmarks | `Compilation` | normalized Location + Job Title | Market Gap view; anchor tier 2 |
+| Market benchmarks | `Compilation` | normalized Location + Job Title | Compensation Position view (market lens — folded in from a separate Market Gap tab in P0); anchor tier 2 |
 
 All spreadsheet IDs are `CONFIG_CD` fallbacks, overridable via `CD_*` Script Properties. Crew/contractors are excluded at read (`CREW_RE`); Rocketeers on maternity/parental leave **stay in** comp metrics (deliberately narrower inactive regex than PS Security).
 
@@ -36,7 +42,7 @@ Every comparison is **within one Key Location** — never across currencies (the
 
 Ratio bands (client renders from `meta.compaBands`, never hard-coded): red < 0.80 ≤ yellow < 0.95 ≤ green ≤ 1.10 < violet.
 
-## 4. Priority Score (the ranking view)
+## 4. Priority Score (ranking engine)
 
 `priorityScore_` weights three components, renormalized over whatever data exists per person (`partial` + `missing` flags carried to the UI):
 
@@ -48,18 +54,29 @@ Ratio bands (client renders from `meta.compaBands`, never hard-coded): red < 0.8
 
 A high score = *look at this person first in the cycle*. **Note for §7: contribution signals (goals, tracked time, RCR, kudos) are not inputs today** — performance here means Small Improvements ratings only.
 
+**P0 note:** the dedicated Priority Ranking tab is deleted. `priorityScore_`
+still runs per person and rides in the payload — it feeds nothing in the UI yet
+and is staged to become a Priority column in P1. Do not delete the function.
+
 ## 5. Other engines
 
-- **Pay Equity** — three lenses inside location+level groups (same currency by construction): gender median gap ≥ 10%, individual outliers ≥ 25% below group median, long-tenure (≥ 3y) sitting ≥ 15% below median. Groups < 3 suppressed; names only in expandable detail rows.
-- **Attrition** — per-FY blocks (hires/exits/rates) with month granularity and dimension slicing; client mirrors of the FY functions are byte-identical to the server's (change both together).
-- **QTA Status** — review readiness / overdue tracking for the cycle.
-- **Views**: Overview · Priority Ranking · Attrition · Internal Position · Market Gap · Pay Equity · QTA Status · Contribution (pointer to the PS Contribution Dashboard) · ☰ Data Reference · ☰ Access Control (admin).
+- **Pay Equity** — three lenses inside location+level groups (same currency by construction): gender median gap ≥ 10%, individual outliers ≥ 25% below group median, long-tenure (≥ 3y) sitting ≥ 15% below median. Groups < 3 suppressed; names only in expandable detail rows. Folded into the Compensation Position tab in P0 — no longer a standalone view; same thresholds, same engine (`buildEquity_`).
+- **Attrition** — per-FY blocks (hires/exits/rates) with month granularity and dimension slicing; client mirrors of the FY functions are byte-identical to the server's (change both together). Since V5.1, also carries the Manager hotspots card (outlier teams only — see the V5.1 notes below).
+- **QTA Status** — review readiness / overdue tracking for the cycle; lives in the ☰ menu, not the tab bar.
+- **Views** (P0, `VIEWS` in `ViewDash.html` — 6 entries): **Executive Pulse**
+  (`overview`) · **Compensation Position** (`compa` — absorbs what were separate
+  Internal Position, Market Gap and Pay Equity tabs) · **Workforce & Attrition**
+  (`attrition` — also absorbed Managers in V5.1) as the three tab-bar entries;
+  ☰ **QTA Status** (`qta`) · ☰ **Data Reference** (`reference`) · ☰ **Access
+  Control** (`access`, admin) as the three ☰-menu entries. Priority Ranking and
+  the standalone Contribution pointer tab are deleted; Contribution now
+  surfaces as an Overview KPI card once a quarterly snapshot exists.
 
 ## 6. Known limitations & planned enhancements (from the 2026.W30 Workforce Report review)
 
 1. **Level-cohort anchors can cross job families.** A one-of-a-kind title (e.g. an Executive Assistant, `15.I5.2`) falls back to the location+level cohort — consultants, engineers, PMs mixed together. Planned: family-aware cohorts (location + level + family when ≥ 3), "level (cross-family)" tier labeling, and a config exclusion list so heterogeneous families (JF015 Operations) never serve as anchor evidence. *(P1, target 2026.W31)*
 2. **Anchor coverage is a headline, not a footnote.** The share of actives with no resolvable anchor and the count of suppressed groups should lead the position/equity views.
-3. **No build badge.** The deployed version must be visible in the header (`meta.build`) — the Workforce Report burned three debugging rounds on silent stale deployments.
+3. ~~No build badge.~~ **Resolved in P0**, with something stronger than a visible number: every server file carries `BUILD_.<name>`, and `doGet` refuses to render at all when any two disagree, naming the stale file(s) — see the P0 section's BUILD_ contract at the end of this document. A version skew is now a blocked page, not a header number a viewer could miss.
 4. **FY27-to-date attrition reads low next to closed years.** Planned: same-period twin comparison (closed FY truncated to equal elapsed span). *(P2)*
 
 ## 7. THE REVIEW DILEMMA — invisible high contributors
@@ -112,7 +129,12 @@ Principle first, consistent with our leadership behaviors: the mechanism must **
 ## 8. Operational notes
 
 - **Cache**: single payload `cd_v<CD_CACHE_VER>_all`, gzip-chunked, 65-min TTL; `bustCompCache_()` bumps the version — required after every deploy.
-- **Deploy**: paste `Code.js` + `ViewDash.html` + `Security.js`, run `bustCompCache_()`, publish a **new deployment version** (updating files without a new version keeps serving old code).
+- **Deploy** (P0, 2026.W33): `clasp push` from `CompDash/` — all nine files
+  (`Code.js`, `Position.js`, `Workforce.js`, `Narrative.js`, `Security.js`,
+  `Styles.html`, `Views.html`, `Admin.html`, `ViewDash.html`) land atomically —
+  then `bustCompCache_()`, then publish a **new deployment version** (pushing
+  files without a new version keeps serving old code). Full checklist and the
+  BUILD_ contract: see the P0 section at the end of this document.
 - **Access**: email allowlists (admin/viewer) in `Security.js` + Script Properties; role echoed per request, never cached.
 
 *Sources: CompDash code (this repo); HowTo — Compensation Audit Guiding Principles (WFP, v7); GTT-35 The 360° Contribution Framework; Contribution — Definitions (ABCT); Contribution Satellites W17–W25; WFP FY27 Process Improvement Roadmap.*
@@ -264,3 +286,58 @@ only; as an admin — 📌 tab holds the queue with saved state intact (states
 carry over: same UserProperties key); clicking the mgr-hotspots signal on
 Overview lands on Attrition.
 Tests: `node tests/run_tests.js` (241) + `node tests/render_smoke.js`.
+
+**Superseded by P0 (below):** the 📌 Action Queue tab, its `getOverviewActions` /
+`saveOverviewAction` RPCs, and the `CD_OVERVIEW_ACTIONS_V1` UserProperties store
+described in this section and in V5 above are deleted entirely in P0 — no
+successor RPC, no migration path. See the P0 section's "What changed" for the
+full list of P0 deletions.
+
+## P0 deploy (2026.W33 — 3-tab rebuild foundation)
+
+Spec: `docs/superpowers/specs/2026-08-11-comp-health-rebuild-design.md`
+Plan: `docs/superpowers/plans/2026-08-11-comp-health-p0-foundation.md`
+
+### The BUILD_ contract — read this before deploying
+
+Every server file carries `BUILD_.<name>`. `doGet` compares all five and refuses
+to render when they disagree, naming the stale files. **Bump the number in every
+server file on every release, even files you did not otherwise change.** A
+version skew is now a visible error page, not a silently wrong number.
+
+### Deploy via clasp
+
+As of this release, `CompDash/` is clasp-bound to script ID
+`1WLo6UF00dx9cutnUfo7EJlSK8BCJgpPRF6ZrJHIgkKf_L4xfMO3Blrws` — hand-pasting files
+into the GAS editor is no longer the deploy path (the BUILD_ contract above
+still protects any future hand-paste, e.g. a one-off hotfix).
+
+- [ ] `clasp push` from `CompDash/` — all nine files land atomically:
+      `Code.js`, `Position.js` *(new in P0)*, `Workforce.js` *(new in P0)*,
+      `Narrative.js` *(new in P0)*, `Security.js`, `Styles.html` *(new in P0)*,
+      `Views.html` *(new in P0)*, `Admin.html` *(new in P0)*, `ViewDash.html`
+- [ ] Run `bustCompCache_()` in the GAS editor — **required**, the payload gains `meta.thresholds`
+- [ ] Publish a **new deployment version** — pushing files alone keeps serving old code
+- [ ] Load the dashboard and confirm the header build badge, six nav entries
+      (three tabs + three menu items), and the freshness chip
+
+### What changed
+
+- `Code.js` split into four server files; `ViewDash.html` into four client files.
+- Deleted: Action Queue (server RPCs, route, per-viewer state), Pay Equity,
+  Contribution, Risk Signals, Market Gap and Priority Ranking routes.
+- **Engines kept:** `buildEquity_`, `buildSignalsForEmp_`, `buildContribByEmp_`
+  and `priorityScore_` all survive — they feed an Overview KPI today and become
+  the Risk and Priority columns in P1. Do not delete them.
+- Five verdicts retargeted off deleted views (`equity` → `overview`, the four
+  `signals` verdicts → `compa`).
+- `CONFIG_CD.THRESHOLDS` added and echoed as `meta.thresholds`; the flat
+  `COMPA_*` / `MARKET_LOW` / `SMALL_GROUP_MIN` keys are now aliases.
+- Theme: `--royal`, Roboto/Roboto Condensed, 8px cards, SVG tab icons,
+  freshness chip.
+
+### Rollback
+
+`git revert` the P0 range, `clasp push` again, bust the cache, publish a
+version. There is no data migration and no schema change to unwind — the
+per-viewer action-queue `UserProperties` keys are simply abandoned.
