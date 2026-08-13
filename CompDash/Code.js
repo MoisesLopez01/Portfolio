@@ -94,6 +94,43 @@ const CONFIG_CD = {
   // Absent tab degrades gracefully (evidence blocks simply don't render).
   CONTRIB_SNAP_TAB: "Contribution Snapshot", // CD_CONTRIB_SNAP_TAB override; SS via CD_CONTRIB_SNAP_SS_ID
 
+  // ── P2: decision-engine thresholds (spec 2026-08-12) ─────────────────────
+  // Numeric keys overridable via the CD_P2_CFG Script Property (JSON, groups
+  // shallow-merged, numbers and number-arrays only — regexes stay code).
+  // Everything echoes to the client via meta.p2.cfg; the UI never hardcodes.
+  P2: {
+    REMOTE: {
+      competitiveMin: 1.0,  // ≥ this vs remote-pull mean = COMPETITIVE
+      stableMin: 0.85,      // ≥ this (and < competitiveMin) = STABLE/NORMAL; below = RISK
+      streakMinCount: 3,    // high-performer gate: at least N window ratings…
+      streakMinRating: 4,   // …all ≥ this (last up-to-4 completed reviews)
+    },
+    ACCEL: {
+      offsetsMonths: [6, 15, 21, 30, 36], // 6·9·6·9·6 cadence from trackStart
+      siGate: 4,            // every streak rating must be ≥ this
+      streakMinCount: 3,    // ratings needed in the window for readyNow
+      overdueDays: 60,      // checkpoint passed > this without an RD event = overdue
+      trackLevelRe: /^I[34]$/,   // opt-in band — display twin below, change together
+      trackLevelLabel: "I3–I4",
+    },
+    RETENTION: {
+      windowQuarters: 4,    // rolling window (4 completed quarters ≈ trailing year)
+      baselineMult: 1.5,    // market mark: ≥ this × company baseline…
+      consecQuarters: 2,    // …for this many consecutive quarter-end windows
+      minExits: 4,          // fewer exits than this can never exceed "watch"
+    },
+    GROWTH: {
+      replaceFactor: 0.75,  // rehire exposure = this × TCC USD of flagged people
+      gapTarget: 0.95,      // retain cost = gap to this × internal anchor
+      // Adjustment ChangeTypes in RD "TCC Change Reason" — promo wins first
+      // (classifyGrowthEvent_). VERIFY against live reasons via debugCompPipeline.
+      adjustRe: /salary adjust|market adjust|merit|comp(ensation)? adjust|salary increase|annual increase/i,
+      adjustLabel: "salary/market/merit adjustments",
+    },
+  },
+  REMOTE_BENCH_TAB: "Remote",             // CD_REMOTE_BENCH_TAB override (bench SS)
+  ACCEL_TRACK_TAB: "Acceleration Track",  // CD_ACCEL_TRACK_TAB override (comp-hist SS by default)
+
   // ── V3: RAG thresholds & benchmarks ─────────────────────────────────────
   // Research-seeded 2026-07-27 (Mercer US Turnover Survey 2025; SHRM
   // Benchmarking 2025; SPI PS Maturity Benchmark 2025/2026; Umbrex regretted-
@@ -191,7 +228,7 @@ CONFIG_CD.SMALL_GROUP_MIN  = CONFIG_CD.THRESHOLDS.smallGroupMin;
 // server file on every release; doGet refuses to serve when they disagree, so a
 // half-finished paste fails loudly instead of reporting stale numbers.
 var BUILD_ = BUILD_ || {};
-BUILD_.code = 46;
+BUILD_.code = 48;
 
 /**
  * @returns {(string[]|null)} names of files whose stamp differs from Code.js,
@@ -199,7 +236,8 @@ BUILD_.code = 46;
  */
 function buildMismatch_() {
   const want = BUILD_.code;
-  const stale = ["position", "workforce", "narrative", "security"]
+  const stale = ["position", "workforce", "narrative", "security",
+                 "remotepull", "acceleration", "retention", "growth"]
     .filter(k => BUILD_[k] !== want);
   return stale.length ? stale : null;
 }
@@ -444,6 +482,35 @@ function signalsCfg_() {
     });
   } catch (e) {
     Logger.log("⚠️ signalsCfg_: CD_SIGNALS_CFG is not valid JSON — using defaults: " + e.message);
+  }
+  return base;
+}
+
+/**
+ * CONFIG_CD.P2 with CD_P2_CFG Script Property overrides (JSON: top-level
+ * groups REMOTE/ACCEL/RETENTION/GROWTH shallow-merged; numbers and arrays of
+ * numbers only — regexes stay code). Invalid JSON logs and falls back.
+ */
+function p2Cfg_() {
+  const base = JSON.parse(JSON.stringify(CONFIG_CD.P2, (k, v) =>
+    v instanceof RegExp ? undefined : v));
+  // JSON round-trip drops the regexes — restore them from code.
+  base.ACCEL.trackLevelRe = CONFIG_CD.P2.ACCEL.trackLevelRe;
+  base.GROWTH.adjustRe = CONFIG_CD.P2.GROWTH.adjustRe;
+  const raw = props_().getProperty("CD_P2_CFG");
+  if (!raw) return base;
+  try {
+    const o = JSON.parse(raw);
+    Object.keys(o).forEach(g => {
+      if (!base[g] || typeof o[g] !== "object") return;
+      Object.keys(o[g]).forEach(k => {
+        const v = o[g][k];
+        const numArr = Array.isArray(v) && v.every(x => typeof x === "number" && isFinite(x));
+        if ((typeof v === "number" && isFinite(v)) || numArr) base[g][k] = v;
+      });
+    });
+  } catch (e) {
+    Logger.log("⚠️ p2Cfg_: CD_P2_CFG is not valid JSON — using defaults: " + e.message);
   }
   return base;
 }

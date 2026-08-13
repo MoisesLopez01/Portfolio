@@ -7,7 +7,7 @@
 // ============================================================
 
 var BUILD_ = BUILD_ || {};
-BUILD_.narrative = 46;
+BUILD_.narrative = 48;
 
 // ── Verdict engine (V3) ─────────────────────────────────────────────────────
 // Rule-based, deterministic callouts: every verdict states fact → so-what →

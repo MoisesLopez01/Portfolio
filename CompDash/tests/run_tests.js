@@ -8,7 +8,8 @@ const root = path.join(__dirname, "..");
 // Every server file, concatenated into ONE eval string. Top-level const/let
 // created by eval are scoped to that eval call, so a second eval could not see
 // CONFIG_CD. Code.js goes first because it declares it. Do not split this.
-const SERVER_FILES = ["Code.js", "Position.js", "Workforce.js", "Narrative.js", "Security.js"];
+const SERVER_FILES = ["Code.js", "Position.js", "Workforce.js", "Narrative.js", "Security.js",
+                      "RemotePull.js", "Acceleration.js", "Retention.js", "GrowthEvents.js"];
 const src = SERVER_FILES
   .map(f => "\n// ===== " + f + " =====\n" + fs.readFileSync(path.join(root, f), "utf8"))
   .join("\n");

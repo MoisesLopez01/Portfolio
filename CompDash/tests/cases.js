@@ -992,3 +992,35 @@ check("thresholds: legacy keys still resolve to the same numbers",
   CONFIG_CD.COMPA_HIGH_MAX === CONFIG_CD.THRESHOLDS.internal.high &&
   CONFIG_CD.MARKET_LOW === CONFIG_CD.THRESHOLDS.market.low &&
   CONFIG_CD.SMALL_GROUP_MIN === CONFIG_CD.THRESHOLDS.smallGroupMin);
+
+// ============================================================
+// P2a — Task 1: scaffolding (CONFIG_CD.P2, new BUILD_ stamps)
+// ============================================================
+check("p2 cfg: remote thresholds", CONFIG_CD.P2.REMOTE.competitiveMin === 1.0 &&
+  CONFIG_CD.P2.REMOTE.stableMin === 0.85 && CONFIG_CD.P2.REMOTE.streakMinRating === 4 &&
+  CONFIG_CD.P2.REMOTE.streakMinCount === 3);
+check("p2 cfg: acceleration cadence 6·15·21·30·36",
+  JSON.stringify(CONFIG_CD.P2.ACCEL.offsetsMonths) === JSON.stringify([6, 15, 21, 30, 36]) &&
+  CONFIG_CD.P2.ACCEL.siGate === 4 && CONFIG_CD.P2.ACCEL.overdueDays === 60 &&
+  CONFIG_CD.P2.ACCEL.trackLevelRe.test("I3") && CONFIG_CD.P2.ACCEL.trackLevelRe.test("I4") &&
+  !CONFIG_CD.P2.ACCEL.trackLevelRe.test("I2") && CONFIG_CD.P2.ACCEL.trackLevelLabel === "I3–I4");
+check("p2 cfg: retention dual-gate numbers", CONFIG_CD.P2.RETENTION.windowQuarters === 4 &&
+  CONFIG_CD.P2.RETENTION.baselineMult === 1.5 && CONFIG_CD.P2.RETENTION.consecQuarters === 2 &&
+  CONFIG_CD.P2.RETENTION.minExits === 4);
+check("p2 cfg: growth economics", CONFIG_CD.P2.GROWTH.replaceFactor === 0.75 &&
+  CONFIG_CD.P2.GROWTH.gapTarget === 0.95 &&
+  CONFIG_CD.P2.GROWTH.adjustRe.test("Salary Adjustment") &&
+  !CONFIG_CD.P2.GROWTH.adjustRe.test("New Hire") &&
+  typeof CONFIG_CD.P2.GROWTH.adjustLabel === "string");
+
+check("build: the four P2 engine files carry stamps", (function () {
+  return ["remotepull", "acceleration", "retention", "growth"]
+    .every(k => typeof BUILD_[k] === "number");
+})());
+check("build: a stale P2 engine blocks doGet", (function () {
+  const real = BUILD_.retention;
+  BUILD_.retention = real - 1;
+  const out = buildMismatch_();
+  BUILD_.retention = real;
+  return out && out.indexOf("retention") !== -1;
+})());
