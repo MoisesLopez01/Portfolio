@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompDash — Decision Mock v5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0F1941; --orbe:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5;
+  --royal:#2864E6; --june:#FF9B87; --slate:#64748B;
+  --card:#FFFFFF; --border:#E9DFD4;
+  --red:#A24A38; --yellow:#8A6A12; --green:#0E7C5B; --violet:#6B4FA3;
+  --redbg:#F9EEEA; --yelbg:#FBF4DF; --grnbg:#EDF7F2; --viobg:#F1ECF9;
+  --maxw:1280px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--cream);color:var(--void);font-family:'Roboto',sans-serif;font-size:14px;line-height:18px}
+h1,h2,h3{font-family:'Roboto Condensed',sans-serif}
+header{background:linear-gradient(105deg,var(--void) 0%,#16255f 55%,var(--orbe) 130%);color:var(--cream);padding:16px 28px 12px}
+.hrow{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;max-width:var(--maxw);margin:0 auto}
+h1{font-size:28px;line-height:30px}
+.fresh{font-size:12px;background:rgba(255,250,245,.12);border:1px solid rgba(255,250,245,.28);border-radius:99px;padding:4px 11px}
+.fresh b{color:#fff}
+main{max-width:var(--maxw);margin:0 auto;padding:12px 28px 40px}
+/* responsive scaffolding: wide content scrolls in its own container, never compresses */
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.scrollx table{min-width:560px}
+.scrollx .matrix{min-width:540px}
+.scrollx .stepper{min-width:580px}
+.scrollx svg{min-width:640px;display:block}
+/* ultra-wide: let the canvas grow instead of pinning to 1280 */
+@media(min-width:1600px){:root{--maxw:1540px}}
+@media(min-width:2000px){:root{--maxw:1800px}}
+@media(min-width:2560px){:root{--maxw:2080px}}
+.tabbar{display:flex;gap:6px;border-bottom:2px solid var(--ivory);margin:4px 0 14px;align-items:flex-end}
+.tab{border:none;background:transparent;font:700 15px 'Roboto Condensed',sans-serif;letter-spacing:.4px;color:var(--slate);padding:11px 16px 9px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab.active{color:var(--void);border-color:var(--orbe)}
+.menu-btn{margin-left:auto;border:1px solid var(--ivory);background:var(--card);border-radius:8px;padding:7px 12px;font:700 14px 'Roboto Condensed',sans-serif;cursor:pointer;color:var(--void)}
+.hidden{display:none}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:15px;margin-bottom:12px}
+.panel h3{font-size:19px;line-height:23px}
+.panel .sub{font-size:12px;color:var(--slate);margin:2px 0 10px}
+.note{font-size:11px;color:var(--slate);margin-top:8px}
+/* decision strip */
+.dstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(228px,1fr));gap:12px;margin-bottom:12px}
+.dcard{background:var(--void);color:var(--cream);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden}
+.dcard.alt{background:var(--card);color:var(--void);border:1px solid var(--border)}
+.dcard .q{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#9FB6D9}
+.dcard.alt .q{color:var(--slate)}
+.dcard .money{font:700 33px/37px 'Roboto Condensed',sans-serif;margin-top:3px}
+.dcard .so{font-size:12px;line-height:16px;margin-top:5px;color:#CFE0F5}
+.dcard.alt .so{color:var(--slate)}
+.dcard .so b{color:#fff}
+.dcard.alt .so b{color:var(--void)}
+.dcard .edge{position:absolute;left:0;top:0;bottom:0;width:4px}
+.edge.r{background:var(--june)}.edge.y{background:#E5D194}.edge.g{background:#7CC7A5}.edge.b{background:var(--orbe)}
+/* signal matrix */
+.matrix{display:grid;grid-template-columns:130px repeat(4,1fr);gap:4px;font-size:12px}
+.matrix .h{font:700 12px 'Roboto Condensed',sans-serif;letter-spacing:.4px;text-transform:uppercase;color:var(--slate);padding:6px 4px;align-self:end}
+.matrix .rl{font-weight:500;padding:10px 6px 10px 0}
+.cell{border-radius:6px;padding:8px;min-height:52px;cursor:pointer;border:1px solid transparent}
+.cell:hover{border-color:var(--void)}
+.cell .g{font-weight:700;font-size:13px}
+.cell .d{font-size:10px;line-height:13px;margin-top:2px;opacity:.85}
+.c0{background:#F4EFE8;color:var(--slate)}.c1{background:var(--grnbg);color:var(--green)}
+.c2{background:var(--yelbg);color:var(--yellow)}.c3{background:var(--redbg);color:var(--red)}
+/* calls */
+.calls{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.call{border:1px solid var(--border);border-left:4px solid var(--june);border-radius:8px;background:var(--card);padding:13px 15px}
+.call.y{border-left-color:#E5D194}.call.b{border-left-color:var(--orbe)}
+.call .head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.call h4{font-family:'Roboto Condensed',sans-serif;font-size:16px;line-height:19px}
+.due{font-size:11px;color:var(--slate);white-space:nowrap}
+.due b{color:var(--void)}
+.call .facts{font-size:12px;line-height:17px;margin:7px 0;color:#333e63}
+.call .facts b{color:var(--void)}
+.call .space{font-size:12px;background:#FBF7F1;border:1px dashed var(--ivory);border-radius:6px;padding:7px 9px;margin-top:4px}
+.call .space b{font-family:'Roboto Condensed';letter-spacing:.3px}
+.own{font-size:11px;color:var(--slate);margin-top:7px}
+/* chips */
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:99px;padding:2px 9px;font-size:11px;font-weight:500;border:1px solid;white-space:nowrap}
+.chip.red{background:var(--redbg);border-color:#E3B7AA;color:var(--red)}
+.chip.yellow{background:var(--yelbg);border-color:#E5D194;color:var(--yellow)}
+.chip.green{background:var(--grnbg);border-color:#BFE3D3;color:var(--green)}
+.chip.violet{background:var(--viobg);border-color:#CBBBE6;color:var(--violet)}
+.chip.mute{background:var(--cream);border-color:var(--ivory);color:var(--slate)}
+.chip.ghost{background:#F4F8FF;border-color:#B9CDF3;color:var(--royal)}
+.tier{display:inline-block;background:var(--void);color:var(--cream);border-radius:4px;font-size:10px;padding:1px 6px;letter-spacing:.3px}
+.tier.x{background:var(--slate)}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12px;line-height:15px}
+th{font-family:'Roboto Condensed',sans-serif;font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--slate);text-align:left;padding:8px 9px;border-bottom:2px solid var(--ivory)}
+td{padding:8px 9px;border-bottom:1px solid #F2EAE0;vertical-align:middle}
+td.num,th.num{text-align:right}
+tr.trig td{background:#FFF6F2}
+.slope{font-weight:700}
+.slope.up{color:var(--red)}.slope.dn{color:var(--green)}.slope.fl{color:var(--slate)}
+.evidence{font-size:11px;color:var(--slate);margin-top:3px;line-height:15px}
+.covhead{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;background:#FBF7F1;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px}
+.covhead b{font:700 21px/23px 'Roboto Condensed',sans-serif}
+.grid2{display:grid;grid-template-columns:1.25fr 1fr;gap:12px}
+@media(max-width:920px){.grid2{grid-template-columns:1fr}.matrix{grid-template-columns:110px repeat(4,1fr)}}
+/* phone */
+@media(max-width:640px){
+  header{padding:12px 16px 10px}
+  h1{font-size:21px;line-height:24px}
+  main{padding:10px 14px 32px}
+  .tabbar{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+  .tab{padding:10px 11px 8px;white-space:nowrap;flex:0 0 auto}
+  .menu-btn{white-space:nowrap;flex:0 0 auto}
+  .dstrip{grid-template-columns:1fr}
+  .calls{grid-template-columns:1fr}
+  .hbar{grid-template-columns:104px 1fr 34px}
+  .covhead{gap:8px 14px;font-size:12px}
+  .covhead span[style]{margin-left:0!important}
+  .clhead{gap:8px 14px}
+  .panel{padding:12px}
+}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--slate);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.prov{font-size:11px;color:var(--slate);border-top:1px solid var(--border);margin-top:10px;padding-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+.guardrail{margin-top:14px;background:var(--void);color:var(--cream);border-radius:8px;padding:13px 16px;font-size:12px;line-height:17px}
+.guardrail b{font-family:'Roboto Condensed',sans-serif;font-size:14px;display:block;margin-bottom:2px}
+/* profile drawer + cadence stepper */
+.drawer{border:1px solid var(--royal);border-radius:8px;background:linear-gradient(180deg,#F4F8FF,#FFF 55%);padding:13px;margin-top:10px}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:9px;margin-top:8px}
+.dbox{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px}
+.dbox .l{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--slate)}
+.dbox .v{font:700 15px/19px 'Roboto Condensed',sans-serif}
+.caveat{font-size:11px;color:var(--yellow)}
+.stepper{position:relative;margin:18px 6px 6px;height:64px}
+.stepper .rail{position:absolute;left:0;right:0;top:14px;height:4px;background:var(--ivory);border-radius:2px}
+.stepper .fill{position:absolute;left:0;top:14px;height:4px;background:var(--orbe);border-radius:2px}
+.step{position:absolute;top:6px;transform:translateX(-50%);text-align:center;width:90px}
+.step .knot{width:20px;height:20px;border-radius:50%;margin:0 auto;border:3px solid var(--card);box-shadow:0 0 0 1px var(--ivory);background:var(--ivory);font:700 10px/14px 'Roboto',sans-serif;color:var(--void)}
+.step.done .knot{background:var(--green);box-shadow:0 0 0 1px var(--green);color:#fff}
+.step.now .knot{background:var(--june);box-shadow:0 0 0 2px var(--june);color:var(--void)}
+.step .cap{font-size:10px;line-height:12px;color:var(--slate);margin-top:5px}
+.step .cap b{color:var(--void);display:block;font-size:10.5px}
+.filterrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px}
+.pill{border:1px solid var(--orbe);background:#EDF6FD;color:#0B5A8C;border-radius:99px;padding:4px 12px;font-weight:500;cursor:pointer}
+.pill.off{border-color:var(--ivory);background:var(--cream);color:var(--slate)}
+.mini{display:flex;gap:3px;align-items:flex-end;height:26px}
+.mini i{display:block;width:9px;background:var(--orbe);border-radius:2px 2px 0 0}
+.mini i.hot{background:var(--june)}
+.hbar{display:grid;grid-template-columns:150px 1fr 40px;gap:8px;align-items:center;margin:5px 0;font-size:12px}
+.hbar .bar{height:12px;border-radius:4px;background:var(--orbe)}
+.hbar .v{text-align:right;font-weight:500}
+svg text{font:500 10px 'Roboto',sans-serif;fill:var(--slate)}
+/* ===== People Signals: location clusters ===== */
+.cluster{border:1px solid var(--border);border-radius:8px;background:var(--card);margin-bottom:12px;overflow:hidden}
+.clhead{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--void);color:var(--cream);padding:11px 15px}
+.clhead h3{font-size:18px;line-height:20px;color:var(--cream)}
+.clhead .m{font-size:12px;color:#BFD7F2}
+.clhead .m b{color:#fff}
+.sigmix{display:flex;height:12px;border-radius:6px;overflow:hidden;min-width:150px;flex:0 0 150px}
+.sigmix i{display:block;height:100%}
+.sx-r{background:var(--june)}.sx-n{background:#E5D194}.sx-s{background:#9CCFF0}.sx-c{background:#7CC7A5}
+.clbody{padding:0 15px 12px}
+.jt{font:700 13px 'Roboto Condensed',sans-serif;letter-spacing:.4px;color:var(--slate);text-transform:uppercase;padding:12px 0 4px;border-bottom:1px solid var(--ivory)}
+.dual{font-size:11px;line-height:14px;white-space:nowrap}
+.dual b{font-size:13px}
+.dual .loc{color:var(--slate)}
+.sig{display:inline-flex;align-items:center;gap:5px;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.3px;border:1px solid;white-space:nowrap}
+.sig.risknow{background:var(--red);border-color:var(--red);color:#fff}
+.sig.risk{background:var(--redbg);border-color:#E3B7AA;color:var(--red)}
+.sig.normal{background:var(--yelbg);border-color:#E5D194;color:var(--yellow)}
+.sig.stable{background:#EDF6FD;border-color:#9CCFF0;color:#0B5A8C}
+.sig.comp{background:var(--grnbg);border-color:#BFE3D3;color:var(--green)}
+.perf{font-size:11px;white-space:nowrap}
+.perf b{color:var(--green)}
+:focus-visible{outline:3px solid var(--royal);outline-offset:2px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <div style="display:flex;gap:12px;align-items:center">
+      <h1>Comp Health — CompDash</h1>
+      <span class="fresh">As of <b>2026.W33</b> · cached · sample data</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="tabbar">
+    <button class="tab active" id="tab-brief" onclick="show('brief')">Executive Brief</button>
+    <button class="tab" id="tab-compa" onclick="show('compa')">Compensation Position</button>
+    <button class="tab" id="tab-attrition" onclick="show('attrition')">Retention Analytics</button>
+    <button class="tab" id="tab-people" onclick="show('people')">People Signals</button>
+    <button class="menu-btn">☰ Menu</button>
+  </div>
+
+  <!-- ================= EXECUTIVE BRIEF ================= -->
+  <section id="pane-brief">
+    <div class="dstrip">
+      <div class="dcard"><span class="edge r"></span>
+        <div class="q">Attrition cost — FY27 to date</div>
+        <div class="money">$186K</div>
+        <div class="so">7 exits × est. replacement at 0.75× TCC · <b>$142K</b> in one cohort</div>
+      </div>
+      <div class="dcard"><span class="edge y"></span>
+        <div class="q">Retain vs rehire</div>
+        <div class="money">$0.18 : $1</div>
+        <div class="so">Closing every flagged gap costs <b>18¢ per $1</b> of the replacement cost now at risk ($38K vs $214K exposed-to-exit)</div>
+      </div>
+      <div class="dcard alt"><span class="edge b"></span>
+        <div class="q">Growth events — FY27 pace</div>
+        <div class="money">14 / 100</div>
+        <div class="so">Promotions + adjustments per 100 Rocketeers, annualized · FY26 finished at <b>19/100</b> — pace is behind the promise</div>
+      </div>
+      <div class="dcard alt"><span class="edge g"></span>
+        <div class="q">Since 2026.W32</div>
+        <div class="money">+1 / −1</div>
+        <div class="so">New: KL Engineering watch · Resolved: Sydney Sales after 2 clean quarters</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>Signal map — location × department</h3>
+        <div class="sub">Color depth = lenses in agreement (▲ attrition · ⌖ internal · ↓ market). One lens is a watch, never a call.</div>
+        <div class="scrollx"><div class="matrix">
+          <div class="h"></div><div class="h">Cust. Support</div><div class="h">Prof. Services</div><div class="h">Engineering</div><div class="h">Sales</div>
+          <div class="rl">Santiago</div>
+          <div class="cell c3" onclick="show('attrition')"><div class="g">✕ 3 signals</div><div class="d">▲ · ⌖ 0.89 · ↓ 0.86</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c0"><div class="g">—</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="rl">Manila</div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c2" onclick="show('attrition')"><div class="g">! 1 signal</div><div class="d">▲ tenure drift</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c0"><div class="g">—</div></div>
+          <div class="rl">Kuala Lumpur</div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c2" onclick="show('attrition')"><div class="g">! watch</div><div class="d">3 exits (n&lt;5)</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="rl">Sydney</div>
+          <div class="cell c0"><div class="g">—</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c1"><div class="g">✓</div></div>
+          <div class="cell c1"><div class="g">✓ resolved</div></div>
+        </div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Growth commitment — Grow the Tree, Share the Fruit</h3>
+        <div class="sub">Promotions + salary adjustments as effort counts per cohort — the measurable side of the Rocketeer Promise ("the opportunity to thrive, regardless of location"). Rate = growth events per 100 Rocketeers, FY27 annualized vs FY26 actual.</div>
+        <div class="scrollx"><table>
+          <tr><th>Cohort</th><th class="num">Promo</th><th class="num">Adj.</th><th class="num">FY27 /100</th><th class="num">FY26 /100</th><th>Read</th></tr>
+          <tr><td><b>Santiago · CS</b></td><td class="num">0</td><td class="num">1</td><td class="num"><b>6</b></td><td class="num">16</td><td><span class="chip red">✕ growth stalled where attrition burns</span></td></tr>
+          <tr><td><b>Manila · PS</b></td><td class="num">1</td><td class="num">2</td><td class="num">13</td><td class="num">21</td><td><span class="chip yellow">! below own pace</span></td></tr>
+          <tr><td><b>KL · Eng</b></td><td class="num">2</td><td class="num">3</td><td class="num">19</td><td class="num">18</td><td><span class="chip green">✓ on promise</span></td></tr>
+          <tr><td><b>Sydney · Sales</b></td><td class="num">1</td><td class="num">2</td><td class="num">17</td><td class="num">15</td><td><span class="chip green">✓ on promise</span></td></tr>
+        </table></div>
+        <div class="note">The Santiago line is the brief's sharpest fact: the cohort with the worst attrition also received the fewest growth events — the promise gap and the exit cluster are the same story.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Open decisions this cycle</h3>
+      <div class="sub">Decision spaces, not recommendations — facts, money on both sides, owner, due week.</div>
+      <div class="calls">
+        <div class="call">
+          <div class="head"><h4>Santiago CS — retain at 18¢ or rehire at $1?</h4><span class="due">due <b>2026.W35</b></span></div>
+          <div class="facts">Three lenses agree. $142K already spent replacing; <b>$21K/yr</b> closes remaining flagged gaps vs <b>$118K</b> replacement exposure if the trend holds one more quarter. Growth events: 6/100 vs FY26's 16.</div>
+          <div class="space"><b>Decision space:</b> targeted adjustments (3 candidates) · retention focus group (triggered) · accept churn and budget replacement.</div>
+          <div class="own">Owner: Services exec + WFP</div>
+        </div>
+        <div class="call y">
+          <div class="head"><h4>Manila PS — growth problem, not a pay problem</h4><span class="due">due <b>2026.W36</b></span></div>
+          <div class="facts">Market healthy (0.98); exit tenure halved; leavers cite career growth. 2 of the cohort's I3s are <b>overdue on the acceleration cadence</b> (see Position tab) — the data points at cadence discipline, not budget.</div>
+          <div class="space"><b>Decision space:</b> catch up the overdue cadence reviews · mentorship pairing (GTT-35) · focus group triggered.</div>
+          <div class="own">Owner: PS leadership + People</div>
+        </div>
+        <div class="call b">
+          <div class="head"><h4>Acceleration cohort — 5 Rocketeers ready for review now</h4><span class="due">due <b>2026.W34</b></span></div>
+          <div class="facts">5 I3–I4s carry an SI streak of 3+ ratings ≥ 4 and have hit their cadence checkpoint. Total cost if all five adjust at guideline: <b>$16K/yr</b> — cheaper than losing one of them.</div>
+          <div class="space"><b>Decision space:</b> WFP schedules the five reviews this week; managers bring the evidence packs.</div>
+          <div class="own">Owner: WFP orchestrates · managers decide per Guiding Principles</div>
+        </div>
+      </div>
+      <div class="prov">
+        <span>As of <b>2026.W33</b></span>
+        <span>Assumptions ⓘ replacement = 0.75× TCC · gap-close target = 0.95× anchor · growth rate = (promotions + adjustments) ÷ headcount × 100, annualized · USD, estimates</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COMPENSATION POSITION ================= -->
+  <section id="pane-compa" class="hidden">
+    <div class="covhead">
+      <span><b>87%</b> anchored</span>
+      <span><b>18</b> Rocketeers on the acceleration track (I3–I4)</span>
+      <span><b>5</b> ready for review now</span>
+      <span><b>3</b> overdue a cadence checkpoint</span>
+      <span style="margin-left:auto"><b>$38K/yr</b> total gap-to-0.95</span>
+    </div>
+
+    <div class="panel">
+      <h3>Acceleration program — I3 → I5 in 36 months</h3>
+      <div class="sub">High performers earn a salary review on the <b>6·9·6·9·6 cadence</b>: five checkpoints at months 6, 15, 21, 30, 36 from track start, each gated on the performance metric (SI ≥ 4 in the review window). Group view first — cohorts by level and location — then the single-profile view below for individual follow-up.</div>
+      <div class="filterrow">
+        <span style="color:var(--slate)">Focus:</span>
+        <span class="pill">IC only</span><span class="pill">I3–I4</span><span class="pill off">All levels</span>
+        <span class="note" style="margin:0">· I3/I4 is the maturity-risk band — the company's next I5s or its next regrettable exits</span>
+      </div>
+      <div class="scrollx"><table>
+        <tr><th>Group</th><th class="num">On track</th><th class="num">Ready now (SI streak ≥ 3 × 4+)</th><th class="num">Overdue checkpoint</th><th class="num">Median vs market</th><th>Group read</th></tr>
+        <tr>
+          <td><b>I3 · Santiago</b> (CS + PS)</td><td class="num">6</td><td class="num" style="color:var(--green);font-weight:700">2</td><td class="num" style="color:var(--red);font-weight:700">1</td><td class="num">0.88</td>
+          <td><span class="chip red">retention-critical — below market AND ready performers waiting</span></td></tr>
+        <tr>
+          <td><b>I3 · Manila</b> (PS)</td><td class="num">5</td><td class="num" style="color:var(--green);font-weight:700">1</td><td class="num" style="color:var(--red);font-weight:700">2</td><td class="num">0.98</td>
+          <td><span class="chip yellow">cadence discipline — reviews slipped, market fine</span></td></tr>
+        <tr>
+          <td><b>I4 · KL</b> (Eng)</td><td class="num">4</td><td class="num" style="color:var(--green);font-weight:700">2</td><td class="num">0</td><td class="num">1.02</td>
+          <td><span class="chip green">✓ maturing on schedule toward I5</span></td></tr>
+        <tr>
+          <td><b>I4 · Sydney</b> (Sales)</td><td class="num">3</td><td class="num">0</td><td class="num">0</td><td class="num">1.05</td>
+          <td><span class="chip green">✓ on cadence</span></td></tr>
+      </table></div>
+      <div class="note">"Ready now" = last 3–4 SI reviews all ≥ 4 <b>and</b> the cadence checkpoint has arrived. The signal goes to the manager and WFP for follow-up — it schedules a review, it never auto-grants one (Guiding Principles Check01 still governs the outcome).</div>
+    </div>
+
+    <div class="panel">
+      <h3>Single profile — acceleration view (36-month path + market competitiveness)</h3>
+      <div class="sub">Individual analysis focuses on exactly two questions: is the person moving on the I3→I5 path, and does their pay hold against the market while they do.</div>
+      <div class="drawer">
+        <h4>R-0977 · IC3 · Customer Support · Santiago
+          <span class="chip green" style="margin-left:6px">✔ ready for review — checkpoint 3 reached, SI streak 4·4·5</span>
+        </h4>
+        <div class="scrollx"><div class="stepper" aria-label="Acceleration cadence: five checkpoints across 36 months">
+          <div class="rail"></div><div class="fill" style="width:56%"></div>
+          <div class="step done" style="left:8%"><div class="knot">6</div><div class="cap"><b>Cycle 1 · m6</b>adj. +4% · SI 4.2</div></div>
+          <div class="step done" style="left:31%"><div class="knot">15</div><div class="cap"><b>Cycle 2 · m15</b>adj. +5% · SI 4.4</div></div>
+          <div class="step now" style="left:53%"><div class="knot">21</div><div class="cap"><b>Cycle 3 · m21</b>due 2026.W34</div></div>
+          <div class="step" style="left:76%"><div class="knot">30</div><div class="cap"><b>Cycle 4 · m30</b>ETA 2027.W22</div></div>
+          <div class="step" style="left:96%"><div class="knot">36</div><div class="cap"><b>Cycle 5 · m36</b>I5 gate · 2027.W48</div></div>
+        </div></div>
+        <div class="dgrid">
+          <div class="dbox"><div class="l">Months on track</div><div class="v">21 of 36</div></div>
+          <div class="dbox"><div class="l">SI streak</div><div class="v">4 · 4 · 5</div></div>
+          <div class="dbox"><div class="l">vs market mean</div><div class="v">0.90</div><div class="caveat">leavers exited at median 0.87</div></div>
+          <div class="dbox"><div class="l">vs internal anchor</div><div class="v">0.90</div></div>
+          <div class="dbox"><div class="l">TCC growth on track</div><div class="v">+9.2%</div></div>
+          <div class="dbox"><div class="l">Guideline path to I5</div><div class="v">+6–8% / cycle</div></div>
+        </div>
+        <div class="evidence">Follow-up signal → manager + WFP: cycle-3 review due 2026.W34 with a clean gate (SI ≥ 4 across the window). Context, not verdict: this profile sits in the retention-critical Santiago group and inside the leavers' compa range — the review conversation is also a retention conversation.</div>
+      </div>
+      <div class="note">The stepper renders only when a 36-month acceleration track applies (I3–I4 with an opted-in start date); everyone else keeps the standard drawer. Track start, cadence offsets (6·9·6·9·6) and the SI ≥ 4 gate live in Config.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Cohort position — internal + market (unchanged lenses)</h3>
+      <div class="scrollx"><table>
+        <tr><th>Cohort</th><th>Anchor</th><th class="num">n</th><th class="num">Internal</th><th class="num">Market</th><th class="num">Gap to 0.95</th><th>Signals</th></tr>
+        <tr><td><b>Santiago · Support Engineer</b></td><td><span class="tier">T1</span></td><td class="num">14</td>
+          <td class="num"><span class="chip yellow">! 0.89</span></td><td class="num"><span class="chip red">✕ 0.86</span></td>
+          <td class="num"><b>$21K/yr</b></td><td><span class="chip red">▲ attrition</span> <span class="chip green">2 ready</span> <span class="chip ghost">👻 1 Check L</span></td></tr>
+        <tr><td><b>KL · Executive Assistant</b></td><td><span class="tier x">T3</span></td><td class="num">5</td>
+          <td class="num"><span class="chip yellow">! 0.93</span></td><td class="num"><span class="chip mute">no bench row</span></td>
+          <td class="num">$6K/yr</td><td><span class="chip mute">T3 — weaker evidence</span></td></tr>
+        <tr><td><b>Manila · Consultant</b></td><td><span class="tier">T2</span></td><td class="num">9</td>
+          <td class="num"><span class="chip green">✓ 0.99</span></td><td class="num"><span class="chip green">✓ 0.98</span></td>
+          <td class="num">—</td><td><span class="chip yellow">2 cadence-overdue</span></td></tr>
+        <tr><td><b>Sydney · Account Executive</b></td><td><span class="tier">T1</span></td><td class="num">7</td>
+          <td class="num"><span class="chip violet">◆ 1.12</span></td><td class="num"><span class="chip green">✓ 1.05</span></td>
+          <td class="num">—</td><td><span class="chip green">✓ clear</span></td></tr>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ================= RETENTION ANALYTICS ================= -->
+  <section id="pane-attrition" class="hidden">
+    <div class="panel">
+      <h3>Cohort trend engine — with the false-alarm gate</h3>
+      <div class="sub">A trigger needs BOTH marks: the <b>market threshold</b> (≥ 1.5× company baseline, 2 consecutive quarters, ≥ 4 exits) <b>and</b> the <b>internal historical mark</b> (above the cohort's own FY25 + FY26 rates). Elevated-but-normal-for-this-cohort → noted, watched, never alarmed.</div>
+      <div class="scrollx"><table>
+        <tr><th>Cohort</th><th class="num">Rolling rate</th><th class="num">× baseline</th><th class="num">FY25</th><th class="num">FY26</th><th>Historical check</th><th>Verdict</th></tr>
+        <tr class="trig">
+          <td><b>Santiago · Customer Support</b></td><td class="num"><b>31%</b></td><td class="num"><b>2.6×</b></td><td class="num">14%</td><td class="num">18%</td>
+          <td><span class="slope up">▲ above both FYs</span></td>
+          <td><span class="chip red">● CONFIRMED — focus group 2026.W34</span></td></tr>
+        <tr class="trig">
+          <td><b>Manila · Professional Services</b></td><td class="num">18%</td><td class="num">1.5×</td><td class="num">9%</td><td class="num">12%</td>
+          <td><span class="slope up">▲ above both FYs</span></td>
+          <td><span class="chip red">● CONFIRMED — focus group 2026.W35</span></td></tr>
+        <tr>
+          <td><b>Sydney · Sales</b></td><td class="num">16%</td><td class="num">1.3×</td><td class="num">17%</td><td class="num">19%</td>
+          <td><span class="slope fl">— within own 2-FY norm</span></td>
+          <td><span class="chip yellow">noted, not alarmed — Sales runs structurally hotter; watching vs its own mark</span></td></tr>
+        <tr>
+          <td><b>KL · Engineering</b></td><td class="num">3 exits</td><td class="num">—</td><td class="num">6%</td><td class="num">5%</td>
+          <td><span class="slope up">▲ above norm, n small</span></td>
+          <td><span class="chip yellow">watch — needs 1 more exit or a comp signal</span></td></tr>
+      </table></div>
+      <div class="note">The Sydney row is the gate earning its keep: 1.3× baseline would look alarming on a market threshold alone, but the cohort's own FY25–FY26 history says this is its normal operating range — a false alarm disarmed, still on the watchlist.</div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h3>Where is the opportunity — manager, level, or tenure?</h3>
+        <div class="sub">Confirmed exits decomposed by dimension. The dimension that separates hardest from its peers is where the retention effort pays.</div>
+        <b style="font-family:'Roboto Condensed';font-size:13px">By level</b>
+        <div class="hbar"><span>I3</span><div class="bar hot" style="width:78%;background:var(--june)"></div><span class="v">7</span></div>
+        <div class="hbar"><span>I2</span><div class="bar" style="width:44%"></div><span class="v">4</span></div>
+        <div class="hbar"><span>I4</span><div class="bar" style="width:22%"></div><span class="v">2</span></div>
+        <div class="hbar"><span>M-track</span><div class="bar" style="width:11%;background:var(--ivory)"></div><span class="v">1</span></div>
+        <b style="font-family:'Roboto Condensed';font-size:13px;display:block;margin-top:8px">By tenure</b>
+        <div class="hbar"><span>1–3y</span><div class="bar" style="width:78%;background:var(--june)"></div><span class="v">9</span></div>
+        <div class="hbar"><span>&lt;1y</span><div class="bar" style="width:26%"></div><span class="v">3</span></div>
+        <div class="hbar"><span>3y+</span><div class="bar" style="width:17%"></div><span class="v">2</span></div>
+        <b style="font-family:'Roboto Condensed';font-size:13px;display:block;margin-top:8px">By manager</b>
+        <div class="hbar"><span>Pod B (Santiago)</span><div class="bar" style="width:56%;background:var(--june)"></div><span class="v">5</span></div>
+        <div class="hbar"><span>All other teams</span><div class="bar" style="width:60%"></div><span class="v">9</span></div>
+        <div class="evidence" style="margin-top:8px"><b>Read:</b> the exit center of gravity is <b>I3 · 1–3y tenure</b> — exactly the acceleration band. One team concentrates (Pod B, framed as "may need support", identities stay at the Managers level). The retention opportunity and the acceleration program are the same population.</div>
+      </div>
+
+      <div class="panel">
+        <h3>Focus group queue</h3>
+        <div class="sub">Triggered cohorts, layered evidence, driver-specific questions.</div>
+        <div class="scrollx"><table>
+          <tr><th>Cohort</th><th>Driver</th><th>Convene</th></tr>
+          <tr><td><b>Santiago CS</b></td><td>Comp perception — leavers' compa 0.87 vs stayers' 0.93</td><td><b>2026.W34</b></td></tr>
+          <tr><td><b>Manila PS</b></td><td>Growth path — 2 I3s cadence-overdue, exits cite career growth</td><td><b>2026.W35</b></td></tr>
+        </table></div>
+        <div style="margin-top:8px"><b style="font-family:'Roboto Condensed';font-size:13px">Santiago — exit tenure profile</b>
+          <div class="mini" aria-label="Exit tenure distribution"><i style="height:8px"></i><i class="hot" style="height:24px"></i><i class="hot" style="height:20px"></i><i style="height:8px"></i><i style="height:4px"></i></div>
+          <div class="legend"><span>&lt;1y</span><span>1–2y</span><span>2–3y</span><span>3–5y</span><span>5y+</span></div>
+        </div>
+        <div class="evidence" style="margin-top:8px">Composition: 8–10 current IC2–IC3 + 2 recent transfers · facilitator outside the reporting line · findings feed QTA by <b>2026.W36</b>. Focus groups hear people — the data only frames the questions.</div>
+        <div class="note">Individual layer (org-scoped, factors not scores) unchanged from v3 — members of triggered cohorts with tenure, compa position, and follow-up chips.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PEOPLE SIGNALS (individual + group) ================= -->
+  <section id="pane-people" class="hidden">
+    <div class="panel">
+      <h3>How the person-level signal is decided</h3>
+      <div class="sub">Four states, one hierarchy: <b>the market that can actually poach the person governs the signal.</b> Internal percentile is context only — small groups and mixed titles misclassify people, so an internal-only gap can never raise more than NORMAL. And for remote-servable roles, "market" means the <b>remote-pull benchmark</b> (what US/global remote employers pay for that role in that country), not the local in-country market — local can flatter while the aggressive market is already recruiting.</div>
+      <div class="scrollx"><table>
+        <tr><th>Signal</th><th>Rule</th><th>What it triggers</th></tr>
+        <tr><td><span class="sig comp">◆ COMPETITIVE</span></td><td>≥ 1.0× remote-pull benchmark</td><td>Nothing — pay is a moat; protect via growth, not money</td></tr>
+        <tr><td><span class="sig stable">✓ STABLE</span></td><td>0.85–1.0× remote-pull, no compounding factor</td><td>Standard QTA cadence</td></tr>
+        <tr><td><span class="sig normal">! NORMAL</span></td><td>Below internal group median but ≥ 0.85× remote-pull</td><td>Note in cycle · verify the anchor (possible group misclassification) — internal-only, never escalates alone</td></tr>
+        <tr><td><span class="sig risk">✕ RISK</span></td><td>&lt; 0.85× remote-pull benchmark</td><td>QTA review queued this cycle</td></tr>
+        <tr><td><span class="sig risknow">🔥 RISK · IMMEDIATE</span></td><td>RISK <b>and</b> high performer (SI streak ≥ 4, or on acceleration track)</td><td><b>Manager + WFP follow-up this week</b> — high performers get poached first; the queue does not apply to them</td></tr>
+      </table></div>
+      <div class="note">Remote-pull benchmarks: Benchmarking Engine v9 remote-remuneration set (US-employer LATAM/APAC remote offers), refreshed quarterly. Where no remote set exists for a role, the signal falls back to local market and says so.</div>
+    </div>
+
+    <!-- ===== CLUSTER: EL SALVADOR ===== -->
+    <div class="cluster">
+      <div class="clhead">
+        <h3>El Salvador · San Salvador</h3>
+        <span class="m"><b>6</b> Rocketeers · median <b>0.71×</b> remote-pull · <b>1.7×</b> local</span>
+        <div class="sigmix" role="img" aria-label="Signal mix: 2 risk, 1 normal, 2 stable, 1 competitive"><i class="sx-r" style="width:33%"></i><i class="sx-n" style="width:17%"></i><i class="sx-s" style="width:33%"></i><i class="sx-c" style="width:17%"></i></div>
+        <span class="m">Cluster read: <b>locally generous, remotely exposed</b> — the whole cluster beats the local market while trailing the market that recruits here</span>
+      </div>
+      <div class="clbody">
+        <div class="jt">Data Analyst</div>
+        <div class="scrollx"><table>
+          <tr><th>Rocketeer</th><th>Level</th><th class="num">TCC USD</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>
+          <tr>
+            <td><b>R-2044</b></td><td>I3</td><td class="num">$39.0K</td>
+            <td class="dual"><b>1.86</b> <span class="loc">local P50 $21K</span></td>
+            <td class="dual"><b style="color:var(--red)">0.67</b> <span class="loc">remote mean $58K</span></td>
+            <td class="perf"><b>SI 4.7 · 4.5 · 4.6</b> · acceleration track m18</td>
+            <td><span class="sig risknow">🔥 RISK · IMMEDIATE</span><div class="evidence">US remote offers for this exact profile run ~$50–70K; locally she looks overpaid, which is exactly the illusion. Follow-up owner: manager + WFP, this week.</div></td></tr>
+          <tr>
+            <td><b>R-2051</b></td><td>I2</td><td class="num">$28.5K</td>
+            <td class="dual"><b>1.55</b> <span class="loc">local P50 $18K</span></td>
+            <td class="dual"><b style="color:var(--red)">0.78</b> <span class="loc">remote mean $36K</span></td>
+            <td class="perf">SI 3.6 · 3.8</td>
+            <td><span class="sig risk">✕ RISK</span><div class="evidence">Queued to QTA this cycle — same exposure, standard lane (perf gate not met for immediate).</div></td></tr>
+        </table></div>
+        <div class="jt">Finance Ops Specialist</div>
+        <div class="scrollx"><table>
+          <tr><th>Rocketeer</th><th>Level</th><th class="num">TCC USD</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>
+          <tr>
+            <td><b>R-2039</b></td><td>I3</td><td class="num">$34.2K</td>
+            <td class="dual"><b>1.71</b> <span class="loc">local P50 $20K</span></td>
+            <td class="dual"><b>0.92</b> <span class="loc">remote mean $37K</span></td>
+            <td class="perf">SI 4.1 · 4.0</td>
+            <td><span class="sig stable">✓ STABLE</span></td></tr>
+          <tr>
+            <td><b>R-2060</b></td><td>I2</td><td class="num">$24.0K</td>
+            <td class="dual"><b>1.33</b> <span class="loc">local P50 $18K</span></td>
+            <td class="dual"><b>0.89</b> <span class="loc">remote mean $27K</span></td>
+            <td class="perf">SI 3.9</td>
+            <td><span class="sig normal">! NORMAL</span><div class="evidence">Below the internal group median, but ≥ 0.85 remote-pull. Group of 2 shares a T3 anchor — verify the anchor before reading the internal gap as real.</div></td></tr>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ===== CLUSTER: CHILE ===== -->
+    <div class="cluster">
+      <div class="clhead">
+        <h3>Chile · Santiago</h3>
+        <span class="m"><b>25</b> Rocketeers · median <b>0.81×</b> remote-pull · <b>1.4×</b> local</span>
+        <div class="sigmix" role="img" aria-label="Signal mix: 8 risk, 5 normal, 9 stable, 3 competitive"><i class="sx-r" style="width:32%"></i><i class="sx-n" style="width:20%"></i><i class="sx-s" style="width:36%"></i><i class="sx-c" style="width:12%"></i></div>
+        <span class="m">Cluster read: <b>largest remote-pull exposure in the company</b> — and it overlaps the confirmed attrition trigger</span>
+      </div>
+      <div class="clbody">
+        <div class="jt">Support Engineer</div>
+        <div class="scrollx"><table>
+          <tr><th>Rocketeer</th><th>Level</th><th class="num">TCC USD</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>
+          <tr>
+            <td><b>R-0977</b></td><td>I3</td><td class="num">$42.1K</td>
+            <td class="dual"><b>1.31</b> <span class="loc">local P50 $32K</span></td>
+            <td class="dual"><b style="color:var(--red)">0.79</b> <span class="loc">remote mean $53K</span></td>
+            <td class="perf"><b>SI 4 · 4 · 5</b> · ready for cycle-3 review</td>
+            <td><span class="sig risknow">🔥 RISK · IMMEDIATE</span><div class="evidence">Ready-for-review + risk = the cycle-3 conversation (due 2026.W34) is a retention conversation. Leavers here exited at 0.87 remote-pull.</div></td></tr>
+          <tr>
+            <td><b>R-1042</b></td><td>I2</td><td class="num">$29.4K</td>
+            <td class="dual"><b>1.22</b> <span class="loc">local P50 $24K</span></td>
+            <td class="dual"><b style="color:var(--red)">0.76</b> <span class="loc">remote mean $39K</span></td>
+            <td class="perf">SI 3.4 · <span class="chip ghost">👻 Check L pending</span></td>
+            <td><span class="sig risk">✕ RISK</span><div class="evidence">Standard lane today — but if Check L verification confirms high contribution, this escalates to IMMEDIATE. The verification just became urgent.</div></td></tr>
+          <tr>
+            <td><b>R-1216</b></td><td>I2</td><td class="num">$31.0K</td>
+            <td class="dual"><b>1.29</b> <span class="loc"></span></td>
+            <td class="dual"><b>0.88</b> <span class="loc">remote mean $35K</span></td>
+            <td class="perf">SI 3.8</td>
+            <td><span class="sig stable">✓ STABLE</span></td></tr>
+        </table></div>
+        <div class="jt">Consultant</div>
+        <div class="scrollx"><table>
+          <tr><th>Rocketeer</th><th>Level</th><th class="num">TCC USD</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>
+          <tr>
+            <td><b>R-1310</b></td><td>I4</td><td class="num">$68.0K</td>
+            <td class="dual"><b>1.36</b> <span class="loc">local P50 $50K</span></td>
+            <td class="dual"><b style="color:var(--red)">0.80</b> <span class="loc">remote mean $85K</span></td>
+            <td class="perf"><b>SI 4.5 · 4.2 · 4.4</b> · I4→I5 track m28</td>
+            <td><span class="sig risknow">🔥 RISK · IMMEDIATE</span><div class="evidence">An I4 two checkpoints from I5 is the most expensive person to lose — replacement plus the maturity investment already made.</div></td></tr>
+          <tr>
+            <td><b>R-1287</b></td><td>I3</td><td class="num">$55.2K</td>
+            <td class="dual"><b>1.25</b> <span class="loc"></span></td>
+            <td class="dual"><b>0.94</b> <span class="loc">remote mean $59K</span></td>
+            <td class="perf">SI 4.0</td>
+            <td><span class="sig stable">✓ STABLE</span></td></tr>
+          <tr>
+            <td><b>R-1299</b></td><td>I3</td><td class="num">$61.5K</td>
+            <td class="dual"><b>1.40</b> <span class="loc"></span></td>
+            <td class="dual"><b>1.04</b> <span class="loc">remote mean $59K</span></td>
+            <td class="perf">SI 4.3</td>
+            <td><span class="sig comp">◆ COMPETITIVE</span></td></tr>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ===== CLUSTER: MALAYSIA ===== -->
+    <div class="cluster">
+      <div class="clhead">
+        <h3>Malaysia · Kuala Lumpur</h3>
+        <span class="m"><b>18</b> Rocketeers · median <b>0.96×</b> remote-pull · <b>1.2×</b> local</span>
+        <div class="sigmix" role="img" aria-label="Signal mix: 1 risk, 3 normal, 9 stable, 5 competitive"><i class="sx-r" style="width:6%"></i><i class="sx-n" style="width:16%"></i><i class="sx-s" style="width:50%"></i><i class="sx-c" style="width:28%"></i></div>
+        <span class="m">Cluster read: <b>holding against the aggressive market</b> — remote-pull gap mostly closed here</span>
+      </div>
+      <div class="clbody">
+        <div class="jt">Software Engineer</div>
+        <div class="scrollx"><table>
+          <tr><th>Rocketeer</th><th>Level</th><th class="num">TCC USD</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>
+          <tr>
+            <td><b>R-1301</b></td><td>I4</td><td class="num">$58.7K</td>
+            <td class="dual"><b>1.18</b> <span class="loc">local P50 $50K</span></td>
+            <td class="dual"><b>1.01</b> <span class="loc">remote mean $58K</span></td>
+            <td class="perf">SI 4.2 · 4.4</td>
+            <td><span class="sig comp">◆ COMPETITIVE</span></td></tr>
+          <tr>
+            <td><b>R-1355</b></td><td>I3</td><td class="num">$41.0K</td>
+            <td class="dual"><b>1.11</b> <span class="loc"></span></td>
+            <td class="dual"><b>0.91</b> <span class="loc">remote mean $45K</span></td>
+            <td class="perf">SI 3.7</td>
+            <td><span class="sig normal">! NORMAL</span><div class="evidence">Sits below the group median driven by two senior hires — the internal gap is composition, not underpayment. Anchor verified T1.</div></td></tr>
+        </table></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Why two markets, in one picture</h3>
+      <div class="sub">The El Salvador Data Analyst, both lenses on one scale. Every remote-servable Rocketeer has this picture — the signal reads the right-hand gap.</div>
+      <div class="scrollx"><svg viewBox="0 0 660 110" width="100%" height="110" role="img" aria-label="Local vs remote-pull benchmark comparison">
+        <line x1="40" y1="78" x2="630" y2="78" stroke="#DCCDBE"/>
+        <rect x="40" y="60" width="130" height="18" fill="#DCCDBE" opacity=".6"/><text x="44" y="55">Local P50 $21K</text>
+        <rect x="40" y="60" width="245" height="18" fill="#058CDC"/><text x="200" y="55" style="font-weight:700;fill:#0F1941">TCC $39K</text>
+        <rect x="40" y="60" width="365" height="18" fill="none" stroke="#A24A38" stroke-width="2" stroke-dasharray="5 3"/><text x="300" y="99" style="fill:#A24A38;font-weight:700">Remote-pull mean $58K — the market that recruits her</text>
+        <text x="416" y="55" style="fill:#A24A38">gap $19K (0.67×)</text>
+      </svg></div>
+      <div class="note">1.86× the local market and still 0.67× the market that sends the LinkedIn messages. Reading only the local lens is how a company loses its best people while believing it pays generously.</div>
+    </div>
+  </section>
+
+  <div class="guardrail">
+    <b>Signals propose focus. Decisions follow the Guiding Principles and the QTA cycle.</b>
+    Acceleration reviews are scheduled by signal, granted by Check01 · triggers need market AND historical marks · person-level signals are governed by the market that can poach, never by internal percentile alone · high performers on risk skip the queue · money figures are estimates with stated assumptions · growth-event pace is how "Grow the Tree, Share the Fruit" gets audited, not just promised. Mock v5 · 2026.W33 · sample data.
+  </div>
+</main>
+
+<script>
+function show(k){
+  ['brief','compa','attrition','people'].forEach(function(t){
+    document.getElementById('pane-'+t).classList.toggle('hidden', t!==k);
+    document.getElementById('tab-'+t).classList.toggle('active', t===k);
+  });
+}
+</script>
+</body>
+</html>
