@@ -166,7 +166,7 @@ function buildVerdicts_(model, cfg) {
     const flaggedGender = eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0;
     const n = flaggedGender + eq.outliers.length + eq.tenure.length;
     push({
-      id: "equity", view: "equity",
+      id: "equity", view: "overview",
       severity: n > 0 ? "NOTE" : "FACT",
       fact: n + " equity flag" + (n === 1 ? "" : "s") + " open (" +
         (eq.genderAvailable ? flaggedGender + " gender-gap groups, " : "gender lens pending, ") +
@@ -184,7 +184,7 @@ function buildVerdicts_(model, cfg) {
     const stale = sig.filter(e => e.signals.promoStale);
     const staleEarly = stale.filter(e => e.signals.earlyCareer).length;
     push({
-      id: "promo-stale", view: "signals",
+      id: "promo-stale", view: "compa",
       severity: staleEarly > 0 ? "NOTE" : "FACT",
       fact: stale.length + " active Rocketeer" + (stale.length === 1 ? "" : "s") + " have gone " +
         S.promoStaleYears + "+ years without a promotion (" + staleEarly + " early-career, levels " +
@@ -197,7 +197,7 @@ function buildVerdicts_(model, cfg) {
 
     const recog = sig.filter(e => e.signals.recognitionRisk).length;
     push({
-      id: "recognition-risk", view: "signals",
+      id: "recognition-risk", view: "compa",
       severity: recog > 0 ? "NOTE" : "FACT",
       fact: recog + " top performer" + (recog === 1 ? "" : "s") + " (latest completed quarter ≥ " +
         S.recogMinRating + ") received under " + Math.round(S.recogMaxTtm * 100) + "% TCC growth in the trailing 12 months.",
@@ -210,7 +210,7 @@ function buildVerdicts_(model, cfg) {
     const core = sig.filter(e => e.signals.coreLevel);
     const risky = core.filter(e => e.signals.retentionRisk).length;
     push({
-      id: "retention-core", view: "signals",
+      id: "retention-core", view: "compa",
       severity: risky > 0 ? "RISK" : "FACT",
       fact: risky + " of " + core.length + " core-level Rocketeers (" + S.coreLevelLabel + ") carry " +
         S.riskFactorMin + "+ concurrent comp risk factors.",
@@ -223,7 +223,7 @@ function buildVerdicts_(model, cfg) {
     const invisible = sig.filter(e => e.signals.invisibleContributor).length;
     if (invisible > 0) {
       push({
-        id: "invisible-contrib", view: "signals", severity: "NOTE",
+        id: "invisible-contrib", view: "compa", severity: "NOTE",
         fact: invisible + " Rocketeer" + (invisible === 1 ? "" : "s") + " show strong contribution evidence (score ≥ " +
           S.invisibleMinScore + ") but weak or missing performance ratings.",
         soWhat: "Absence of a rating is not evidence of absence of contribution (Check K spirit) — these may be invisible contributors.",

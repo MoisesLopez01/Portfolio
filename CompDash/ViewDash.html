@@ -211,16 +211,11 @@ const SCHEMA = 46;
 // Single source of truth for navigation — same pattern as PS Dashboard.
 const VIEWS = [
   { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
-  { id: "ranking",   label: "🎯 Priority Ranking",    roles: ["admin", "viewer"] },
-  { id: "signals",   label: "🚨 Risk Signals",        roles: ["admin", "viewer"] },
   // Managers folded INTO Attrition (2026.W31): the full manager list outgrew
   // its own tab — only outlier teams render there now (see mgrHotspotsHtml).
   { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
   { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
-  { id: "market",    label: "🌍 Market Gap",          roles: ["admin", "viewer"] },
-  { id: "equity",    label: "🧭 Pay Equity",          roles: ["admin", "viewer"] },
   { id: "qta",       label: "📋 QTA Status",          roles: ["admin", "viewer"] },
-  { id: "contrib",   label: "🚀 Contribution",        roles: ["admin", "viewer"] },
   { id: "reference", label: "📊 Data Reference",      roles: ["admin", "viewer"], menu: true },
   { id: "access",    label: "🔒 Access Control",      roles: ["admin"],           menu: true },
 ];
@@ -229,8 +224,6 @@ const STATE = {
   data: null, tab: "overview", currency: "LOCAL",
   attrGran: "month", attrDim: "department",
   filters: { loc: "", level: "", dept: "", q: "" },
-  rankSort: { key: "score", dir: -1 },
-  sigEarly: false,
 };
 
 // ── helpers ─────────────────────────────────────────────────
@@ -1053,185 +1046,6 @@ const TIER_LABEL = {
   title: "median · title peers", market: "market mean",
   level: "median · level cohort", none: "insufficient peers",
 };
-function rankVal(e, key) {
-  const dir = STATE.rankSort.dir;
-  const nullSink = dir < 0 ? -Infinity : Infinity;
-  if (key === "score") return e.priority && e.priority.score != null ? e.priority.score : nullSink;
-  if (key === "ratio") return e.ratio != null ? e.ratio : nullSink;
-  if (key === "marketRatio") return e.marketRatio != null ? e.marketRatio : nullSink;
-  if (key === "perfAvg") return e.perfAvg != null ? e.perfAvg : nullSink;
-  if (key === "tenure") return e.tenureCompanyYears != null ? e.tenureCompanyYears : nullSink;
-  if (key === "ttm") return e.ttmGrowthPct != null ? e.ttmGrowthPct : nullSink;
-  return normName(e.name);
-}
-function sortRank(key) {
-  const s = STATE.rankSort;
-  s.dir = (s.key === key) ? -s.dir : (key === "name" ? 1 : -1);
-  s.key = key;
-  render();
-}
-function renderRanking(el) {
-  const d = STATE.data, s = STATE.rankSort;
-  const emps = d.employees.filter(visibleEmp);
-  const marketLow = d.meta.marketLow || 0.9;
-  const pc = d.meta.priorityCfg || { weights: { perf: 57, tenure: 29, compaGap: 14 },
-                                     caps: { companyYears: 10, profileYears: 5, gapPct: 0.25 }, ratingMax: 5 };
-
-  const th = (key, label, tip) => '<th style="cursor:pointer" title="' + esc(tip) +
-    '" onclick="sortRank(\'' + key + '\')">' +
-    label + (s.key === key ? (s.dir < 0 ? " ▼" : " ▲") : "") + '</th>';
-  const ranked = emps.slice().sort((a, b) => {
-    const va = rankVal(a, s.key), vb = rankVal(b, s.key);
-    return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
-  });
-
-  el.innerHTML =
-    sourceBanner("ratings", "Performance ratings") +
-    '<div class="banner">🎯 <b>Priority ranking</b> — a config-weighted 0–100 composite answering &quot;who should we prioritize for a comp adjustment&quot;: strong performers with real tenure who currently sit below their peer anchor rank highest. Click a column header to sort; click a row for the full drill. Hover any header for what the column means.</div>' +
-    '<div class="card"><h2>🎯 Priority ranking <span class="sub">(click a column to sort)</span></h2>' +
-    '<table><tr>' +
-      th("name", "Name", "Rocketeer — Key Location · level shown under the name") +
-      th("ratio", "Position", "Internal Position: TCC ÷ peer anchor (title median; market mean for one-of-a-kind roles; level cohort as fallback). 1.00 = at the anchor.") +
-      th("marketRatio", "vs Market", "TCC ÷ external benchmark Mean for the same Location + Job Title (local currency). Red below " + marketLow.toFixed(2) + " = priority read. — means no benchmark row yet.") +
-      th("perfAvg", "Avg rating", "Average Small Improvements rating (1–" + pc.ratingMax + ") over the last " +
-        ((d.meta.signalsCfg || {}).perfWindowQuarters || 4) + " COMPLETED fiscal quarters; ×N = ratings in that window.") +
-      th("tenure", "Tenure C/P", "Company years / in-role years. The in-role clock resets at a promotion, title change, or internal transfer (responsibilities change even when pay doesn't).") +
-      th("ttm", "TTM growth", "Trailing-12-month TCC growth: TCC now vs the TCC in effect 12 months ago. — when history is younger than a year.") +
-      th("score", "Score", "The weighted composite (see how it's built below). ° = partial: a component was missing and its weight was redistributed.") + '</tr>' +
-    ranked.map(e => {
-      const p = e.priority || {};
-      const mrCls = e.marketRatio == null ? "" : e.marketRatio < marketLow ? "red" : "green";
-      return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-        '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) +
-        (e.employmentType && e.employmentType !== "regular" ? ' · ' + esc(e.employmentType) : '') + '</div></td>' +
-        '<td><span class="chip ' + ratioClass(e.ratio) + '">' + (e.ratio != null ? e.ratio.toFixed(2) : "—") + '</span></td>' +
-        '<td>' + (e.marketRatio != null ? '<span class="chip ' + mrCls + '">' + e.marketRatio.toFixed(2) + '</span>' : '<span class="sub">—</span>') + '</td>' +
-        '<td>' + (e.perfAvg != null ? e.perfAvg.toFixed(2) + '<span class="sub"> ×' + e.perfCount + '</span>' : "—") + '</td>' +
-        '<td>' + (e.tenureCompanyYears != null ? e.tenureCompanyYears + 'y / ' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : "—") : "—") + '</td>' +
-        '<td>' + pctFmt(e.ttmGrowthPct) + '</td>' +
-        '<td>' + (p.score != null
-          ? '<b>' + p.score + '</b>' + (p.partial ? ' <span class="sub" title="missing: ' + esc((p.missing || []).join(", ")) + '">°</span>' : '')
-          : "—") + '</td></tr>';
-    }).join("") + '</table></div>' +
-    '<div class="card"><h2>How the score is built</h2>' +
-    '<table>' +
-    '<tr><th>Component</th><th>Weight</th><th>What it measures</th></tr>' +
-    '<tr><td><b>Performance</b></td><td>' + pc.weights.perf + '%</td><td>Average Small Improvements rating ÷ ' + pc.ratingMax + ' over the last ' + ((d.meta.signalsCfg || {}).perfWindowQuarters || 4) + ' completed quarters. A 5.0 average = full credit.</td></tr>' +
-    '<tr><td><b>Tenure</b></td><td>' + pc.weights.tenure + '%</td><td>50/50 blend of company tenure (full credit at ' + pc.caps.companyYears + 'y) and in-role tenure (full credit at ' + pc.caps.profileYears + 'y). In-role resets at promotion / title change / internal transfer.</td></tr>' +
-    '<tr><td><b>Compa gap</b></td><td>' + pc.weights.compaGap + '%</td><td>How far TCC sits BELOW the peer anchor — full credit at ' + Math.round(pc.caps.gapPct * 100) + '% below. At or above the anchor scores 0 (no gap to close).</td></tr>' +
-    '</table>' +
-    '<div class="sub" style="margin-top:8px">Missing data never fakes a zero: if a component is unavailable (e.g. no ratings yet), it drops out and its weight is redistributed across the rest — the score is then marked partial (°). Weights and caps are configuration (CONFIG_CD), echoed live from the server, so this page can never drift from the actual math.</div></div>';
-}
-// 🚨 Risk Signals (V4) — deterministic decision signals for the comp cycle.
-// Principle (PROCESS §7): these tables surface people for a human conversation;
-// they never re-score anyone. Thresholds echo from meta.signalsCfg.
-function setSigEarly(v) { STATE.sigEarly = v; render(); }
-function renderSignals(el) {
-  const d = STATE.data;
-  const sc = d.meta.signalsCfg || { perfWindowQuarters: 4, windowFqs: [], promoStaleYears: 3,
-    earlyCareerLevels: "I1–I3", coreLevels: "I3–I4", recogMinRating: 4.5, recogMaxTtm: 0.05, riskFactorMin: 2 };
-  const emps = d.employees.filter(e => visibleEmp(e) && e.signals);
-  const posChip = e => e.ratio != null
-    ? '<span class="chip ' + ratioClass(e.ratio) + '">' + e.ratio.toFixed(2) + '</span>' : '<span class="sub">—</span>';
-  const mktChip = e => e.marketRatio != null
-    ? '<span class="chip ' + (e.marketRatio < (d.meta.marketLow || 0.9) ? "red" : "green") + '">' +
-      e.marketRatio.toFixed(2) + '</span>' : '<span class="sub">—</span>';
-
-  const cohort = emps.filter(e => e.signals.retentionRisk)
-    .sort((a, b) => b.signals.riskFactors.length - a.signals.riskFactors.length ||
-                    (a.ratio || 99) - (b.ratio || 99) || a.name.localeCompare(b.name));
-  const recog = emps.filter(e => e.signals.recognitionRisk)
-    .sort((a, b) => (a.ttmGrowthPct || 0) - (b.ttmGrowthPct || 0));
-  const staleAll = emps.filter(e => e.signals.promoStale);
-  const stale = (STATE.sigEarly ? staleAll.filter(e => e.signals.earlyCareer) : staleAll)
-    .sort((a, b) => (b.tenureProfileYears || 0) - (a.tenureProfileYears || 0));
-
-  el.innerHTML =
-    verdictsFor("signals").map(verdictHtml).join("") +
-    '<div class="banner">🚨 <b>Risk Signals</b> — deterministic flags that surface Rocketeers for a comp conversation; ' +
-    'nothing here re-scores anyone. Performance evidence uses the last ' + sc.perfWindowQuarters +
-    ' completed quarters (' + esc((sc.windowFqs || []).join(", ")) + ').</div>' +
-
-    '<div class="card"><h2>🔥 Core-level retention cohort <span class="chip red">' + cohort.length + '</span>' +
-    ' <span class="sub">(levels ' + esc(sc.coreLevels) + ' stacking ' + sc.riskFactorMin + '+ comp risk factors)</span></h2>' +
-    (cohort.length
-      ? '<table><tr><th>Name</th><th>Position</th><th>vs Market</th><th>TTM growth</th><th>In role</th><th>Risk factors</th></tr>' +
-        cohort.map(e =>
-          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
-          '<td>' + posChip(e) + '</td><td>' + mktChip(e) + '</td>' +
-          '<td>' + pctFmt(e.ttmGrowthPct) + '</td>' +
-          '<td>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</td>' +
-          '<td>' + e.signals.riskFactors.map(f => '<span class="chip red">' + esc(f) + '</span>').join("") + '</td></tr>'
-        ).join("") + '</table>'
-      : '<p class="sub">No core-level Rocketeer stacks ' + sc.riskFactorMin + '+ factors at current thresholds.</p>') +
-    '</div>' +
-
-    '<div class="card"><h2>⭐ Recognition risk <span class="chip yellow">' + recog.length + '</span>' +
-    ' <span class="sub">(latest completed quarter ≥ ' + sc.recogMinRating + ' · TTM TCC growth under ' +
-    Math.round(sc.recogMaxTtm * 100) + '%)</span></h2>' +
-    (recog.length
-      ? '<table><tr><th>Name</th><th>Latest rating</th><th>TTM growth</th><th>Position</th><th>vs Market</th><th>In role</th></tr>' +
-        recog.map(e =>
-          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
-          '<td><span class="chip green">' + esc(e.perfWindowLatest) + '</span></td>' +
-          '<td><b>' + pctFmt(e.ttmGrowthPct) + '</b></td>' +
-          '<td>' + posChip(e) + '</td><td>' + mktChip(e) + '</td>' +
-          '<td>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</td></tr>'
-        ).join("") + '</table>'
-      : '<p class="sub">Every recent top performer saw TCC movement of ' + Math.round(sc.recogMaxTtm * 100) + '%+ — no dissatisfaction signal.</p>') +
-    '<div class="sub" style="margin-top:6px">An excellent quarter answered with a flat trailing increase is a leading indicator of regretted exits — worth a stay conversation before the next cycle.</div></div>' +
-
-    '<div class="card"><h2>🪜 Promotion staleness <span class="chip yellow">' + stale.length + '</span>' +
-    ' <span class="sub">(' + sc.promoStaleYears + '+ years in role)</span></h2>' +
-    '<div class="seg" style="margin-bottom:10px">' +
-      '<button onclick="setSigEarly(false)" class="' + (!STATE.sigEarly ? "on" : "") + '">All (' + staleAll.length + ')</button>' +
-      '<button onclick="setSigEarly(true)" class="' + (STATE.sigEarly ? "on" : "") + '">Early career ' +
-        esc(sc.earlyCareerLevels) + ' (' + staleAll.filter(e => e.signals.earlyCareer).length + ')</button></div>' +
-    (stale.length
-      ? '<table><tr><th>Name</th><th>Level</th><th>In role</th><th>Company</th><th>Promotion history</th><th>Position</th></tr>' +
-        stale.map(e =>
-          '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-          '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.dept) + '</div></td>' +
-          '<td>' + esc(e.level) + (e.signals.earlyCareer ? ' <span class="chip yellow">🌱 early career</span>' : '') + '</td>' +
-          '<td><b>' + (e.tenureProfileYears != null ? e.tenureProfileYears + 'y' : '—') + '</b></td>' +
-          '<td>' + (e.tenureCompanyYears != null ? e.tenureCompanyYears + 'y' : '—') + '</td>' +
-          '<td>' + (e.signals.everPromoted ? 'promoted before' : '<span class="chip">never promoted</span>') + '</td>' +
-          '<td>' + posChip(e) + '</td></tr>'
-        ).join("") + '</table>'
-      : '<p class="sub">Nobody matches the staleness rule' + (STATE.sigEarly ? ' in the early-career band' : '') + '.</p>') +
-    '<div class="sub" style="margin-top:6px">The in-role clock resets at a promotion, title change, or internal transfer; it falls back to the hire date for Rocketeers never promoted.</div></div>' +
-    invisibleCardHtml(emps, sc);
-}
-
-// Check L spirit — strong contribution evidence + weak/absent ratings.
-// Renders only once a Contribution Snapshot quarter exists.
-function invisibleCardHtml(emps, sc) {
-  const d = STATE.data;
-  const cq = (d.meta.contribution || {}).quarter;
-  if (!cq) return '';
-  const rows = emps.filter(e => e.signals.invisibleContributor)
-    .sort((a, b) => ((b.contrib || {}).score || 0) - ((a.contrib || {}).score || 0));
-  return '<div class="card"><h2>👻 Possible invisible contributors <span class="chip yellow">' + rows.length + '</span>' +
-    ' <span class="sub">(' + esc(cq) + ' snapshot: contribution score ≥ ' + (sc.invisibleMinScore || 0.75) +
-    ' with SI below ' + (sc.invisibleWeakSi || 4) + ' or unrated — verify, don&#39;t assume)</span></h2>' +
-    (rows.length
-      ? '<table><tr><th>Name</th><th>Contribution</th><th>Goals</th><th>Coverage</th><th>SI (window)</th><th>Kudos</th></tr>' +
-        rows.map(e => {
-          const c = e.contrib || {};
-          return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-            '<td>' + esc(e.name) + '<div class="sub">' + esc(e.keyLocation) + ' · ' + esc(e.level) + ' · ' + esc(e.dept) + '</div></td>' +
-            '<td><span class="chip green">' + (c.score != null ? c.score.toFixed(2) : '—') + '</span></td>' +
-            '<td>' + (c.goalCompliant == null ? '—' : c.goalCompliant ? '✓ compliant' : '✗') + '</td>' +
-            '<td>' + (c.trackedCoverage != null ? pctFmt(c.trackedCoverage, 0) : '—') + '</td>' +
-            '<td>' + (e.perfAvg != null ? e.perfAvg.toFixed(2) : '<span class="chip yellow">unrated</span>') + '</td>' +
-            '<td>' + ((c.kudosReceived || 0) + '↓ ' + (c.kudosGiven || 0) + '↑') + '</td></tr>';
-        }).join("") + '</table>'
-      : '<p class="sub">No one currently pairs strong contribution evidence with a weak or missing rating.</p>') +
-    '<div class="sub" style="margin-top:6px">Absence of a rating is not evidence of absence of contribution (Check K spirit). Kudos counts carry a program-under-use caveat — low kudos signals the program, not the person.</div></div>';
-}
-
 function renderCompa(el) {
   const d = STATE.data;
 
@@ -1273,114 +1087,6 @@ function renderCompa(el) {
   if (!groups.length) html += '<div class="card sub">No groups match the current filters.</div>';
   el.innerHTML = html;
 }
-function renderMarket(el) {
-  const d = STATE.data, cov = d.meta.benchCoverage || { rows: 0, matchedEmployees: 0, currencyMismatch: 0 };
-  const emps = d.employees.filter(visibleEmp);
-  const byLoc = new Map();
-  emps.forEach(e => {
-    const k = e.keyLocation || "—";
-    if (!byLoc.has(k)) byLoc.set(k, []);
-    byLoc.get(k).push(e);
-  });
-  let html =
-    '<div class="banner">🌍 <b>Market data: ' + cov.matchedEmployees + ' of ' + d.meta.activeCount +
-    ' active Rocketeers matched</b> (' + cov.rows + ' benchmark rows — compilation in progress)' +
-    (cov.currencyMismatch ? ' · ⚠️ ' + cov.currencyMismatch + ' row(s) skipped for currency mismatch' : '') +
-    '. Values are LOCAL currency; the midpoint column is a <b>mean</b>, not P50.</div>' +
-    sourceBanner("benchmarks", "Benchmark data");
-  [...byLoc.keys()].sort().forEach(loc => {
-    const rows = byLoc.get(loc).slice().sort((a, b) => (b.tcc || 0) - (a.tcc || 0));
-    html += '<div class="card"><h2>' + esc(loc) + ' <span class="sub">(' + rows.length + ' active)</span></h2>' +
-      '<table><tr><th>Emp #</th><th>Name</th><th>Job Title</th><th>TCC</th><th>P25</th><th>Mean (midpoint)</th><th>P75</th><th>vs market</th><th>Suggestion</th></tr>' +
-      rows.map(e => {
-        const s = suggestionChip(e);
-        const tip = e.benchSource ? ' title="' + esc(e.benchSource) + '"' : '';
-        return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
-          '<td>' + esc(e.empNo) + '</td><td>' + esc(e.name) + '</td><td>' + esc(e.jobTitle) + '</td>' +
-          '<td>' + fmtMoney(e.tcc, e.tccUsd, e.currency) + '</td>' +
-          '<td' + tip + '>' + (e.p25 != null ? Math.round(e.p25).toLocaleString() : "—") + '</td>' +
-          '<td' + tip + '>' + (e.p50 != null ? Math.round(e.p50).toLocaleString() : "—") + '</td>' +
-          '<td' + tip + '>' + (e.p75 != null ? Math.round(e.p75).toLocaleString() : "—") + '</td>' +
-          '<td>' + s.badge + '</td><td>' + s.text + '</td></tr>';
-      }).join("") + '</table></div>';
-  });
-  el.innerHTML = html;
-}
-
-// Renders the SERVER-computed suggestion (marketSuggestion_ in Code.js) — no client math.
-function suggestionChip(e) {
-  const s = e.suggestion || { status: "pending" };
-  if (s.status === "below-p25") {
-    return { badge: '<span class="chip red">below P25</span>',
-             text: "+" + pctFmt(s.pctToP25, 0) + " to reach P25 · +" + pctFmt(s.pctToP50, 0) + " to mean" };
-  }
-  if (s.status === "below-p50") {
-    return { badge: '<span class="chip yellow">below mean</span>',
-             text: "+" + pctFmt(s.pctToP50, 0) + " to reach the mean" };
-  }
-  if (s.status === "at-market") {
-    return { badge: '<span class="chip green">at/above mean</span>', text: "market competitive" };
-  }
-  if (s.status === "not-comparable") {
-    // Deliberately muted — a part-timer must never wear a red market badge.
-    return { badge: '<span class="chip">PT</span>', text: "part-time — market rates not comparable" };
-  }
-  return { badge: '<span class="chip">pending</span>', text: "—" };
-}
-
-function renderEquity(el) {
-  const eq = STATE.data.equity;
-  const empIndex = {};
-  STATE.data.employees.forEach(e => { empIndex[e.empNo] = e; });
-  const act = filtersActive();
-  const flagVisible = r => !act || (empIndex[r.empNo] ? visibleEmp(empIndex[r.empNo]) : false);
-  const f = STATE.filters;
-  const groupVisible = g => (!f.loc || g.keyLocation === f.loc) && (!f.level || g.level === f.level);
-  // Filters only hide/show rows below — group STATS (medians, gap %) are server
-  // facts about the full group and are never recomputed on the client.
-  const genderRows = eq.gender.filter(groupVisible);
-  const outlierRows = eq.outliers.filter(flagVisible);
-  const tenureRows = eq.tenure.filter(flagVisible);
-  let html = "";
-  if (!eq.genderAvailable) {
-    html += '<div class="banner">🧭 <b>Gender data pending</b> — the Gender column hasn&#39;t landed in the roster yet; the gender lens activates automatically when it does.</div>';
-  }
-  html += '<div class="card"><h2>Gender pay gap by location + level</h2>';
-  if (genderRows.length) {
-    html += '<table><tr><th>Location</th><th>Level</th><th>Group</th><th>Medians (local)</th><th>Gap</th><th></th></tr>' +
-      genderRows.map(g =>
-        '<tr><td>' + esc(g.keyLocation) + '</td><td>' + esc(g.level) + '</td>' +
-        '<td>' + Object.keys(g.counts).map(k => esc(k) + ": " + g.counts[k]).join(" · ") + '</td>' +
-        '<td>' + Object.keys(g.medians).map(k => esc(k) + " " + Math.round(g.medians[k]).toLocaleString()).join(" · ") + '</td>' +
-        '<td>' + g.gapPct + '%</td>' +
-        '<td>' + (g.flagged ? '<span class="chip red">flagged</span>' : '<span class="chip green">ok</span>') + '</td></tr>'
-      ).join("") + '</table>';
-  } else {
-    html += '<p class="sub">No location+level groups with ≥2 members per gender yet.</p>';
-  }
-  html += '</div>' +
-    '<div class="card"><h2>Outliers far below group median <span class="chip red">' + outlierRows.length + '</span></h2>' +
-    flagTable(outlierRows, false) + '</div>' +
-    '<div class="card"><h2>Long tenure, low position <span class="chip yellow">' + tenureRows.length + '</span></h2>' +
-    flagTable(tenureRows, true) + '</div>';
-  el.innerHTML = html;
-}
-
-// Group stats above carry counts only; names live inside this expandable table.
-function flagTable(rows, withTenure) {
-  if (!rows.length) return '<p class="sub">No flags at current thresholds.</p>';
-  return '<details><summary>' + rows.length + ' flag' + (rows.length === 1 ? "" : "s") + ' — names inside</summary>' +
-    '<table><tr><th>Name</th><th>Location</th><th>Level</th>' + (withTenure ? '<th>Tenure</th>' : '') +
-    '<th>TCC (local)</th><th>Group median</th><th>% below</th></tr>' +
-    rows.map(r =>
-      '<tr class="click" onclick="openDrill(\'' + esc(r.empNo) + '\')">' +
-      '<td>' + esc(r.name) + '</td><td>' + esc(r.keyLocation) + '</td><td>' + esc(r.level) + '</td>' +
-      (withTenure ? '<td>' + r.tenureYears + 'y</td>' : '') +
-      '<td>' + Math.round(r.tcc).toLocaleString() + '</td>' +
-      '<td>' + Math.round(r.groupMedian).toLocaleString() + '</td>' +
-      '<td><span class="chip red">' + r.pctBelow + '%</span></td></tr>').join("") +
-    '</table></details>';
-}
 function renderQta(el) {
   const d = STATE.data;
   const rows = d.qtaInterim.filter(r => !filtersActive() || visibleEmp(r));
@@ -1400,18 +1106,6 @@ function renderQta(el) {
         '<td>' + esc(r.level) + '</td><td>' + esc(r.nextReview || "—") + '</td><td>' + st + '</td>' +
         '<td>' + esc(r.lastEventReason) + (r.lastEventDate ? " · " + esc(r.lastEventDate) : "") + '</td></tr>';
     }).join("") + '</table></div>';
-}
-
-function renderContrib(el) {
-  const url = STATE.data.meta.contribUrl;
-  el.innerHTML =
-    '<div class="card" style="max-width:560px;margin:40px auto;text-align:center">' +
-    '<h2>🚀 Contribution data lives in the Contribution Report</h2>' +
-    '<p class="sub">Comp decisions need contribution context — goals, tracked time, kudos, and recognition signals are already curated there. This report links out instead of duplicating that work.</p>' +
-    (url
-      ? '<p><a href="' + esc(url) + '" target="_blank"><button>Open the Contribution Report ↗</button></a></p>'
-      : '<div class="banner">Link not configured — an admin should set the <b>CD_CONTRIB_URL</b> Script Property to the Contribution Report web-app URL.</div>') +
-    '</div>';
 }
 
 // Threshold numbers interpolate from meta (compaBands / equityCfg = CONFIG_CD echoes),
@@ -1561,10 +1255,9 @@ function saveAccess() {
 }
 
 const RENDERERS = {
-  overview: renderOverview, ranking: renderRanking,
-  signals: renderSignals, attrition: renderAttrition,
-  compa: renderCompa, market: renderMarket, equity: renderEquity, qta: renderQta,
-  contrib: renderContrib, reference: renderReference, access: renderAccess,
+  overview: renderOverview, attrition: renderAttrition,
+  compa: renderCompa, qta: renderQta,
+  reference: renderReference, access: renderAccess,
 };
 
 // ── employee drill panel — shared by Internal Position, Market Gap, Pay Equity, QTA ──

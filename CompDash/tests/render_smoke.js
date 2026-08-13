@@ -171,6 +171,11 @@ check("signals: read-only groups render (Concerns + Notes)",
   /Concerns/.test(H) && /Notes/.test(H) && /factlink/.test(H));
 check("signals: NO action queue on Overview", !/Action queue/.test(H));
 check("actions: route fully removed", !VIEWS.find(v => v.id === "actions") && !RENDERERS.actions);
+["ranking", "signals", "market", "equity", "contrib"].forEach(id => {
+  check("route '" + id + "' fully removed",
+    !VIEWS.find(v => v.id === id) && !RENDERERS[id]);
+});
+check("routes: exactly six survive", VIEWS.length === 6);
 check("small-n: attrition card is count-primary (3 exits)", /3 exits<\/div>/.test(H));
 check("small-n: no trend arrow on the tiny attrition base", !/▲|▼/.test(H.split("Are people staying?")[1].split("kpi-q")[0] || ""));
 check("cards: band bar + marker present", /bandbar/.test(H) && /class="mk"/.test(H));

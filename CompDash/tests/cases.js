@@ -569,14 +569,21 @@ function mkV3(over) {
     attr.previousFYSamePeriod && attr.previousFYSamePeriod.rate != null);
 })();
 
-// ── V3 Task 6: buildVerdicts_ ───────────────────────────────
-(function () {
-  const cfg = CONFIG_CD;
+// ── Verdict retarget fixtures (Task 7) ──────────────────────────────────────
+// Shared by the V3 Task 6 checks below AND by the "no verdict targets a
+// deleted view" check further down (find them, reuse them — do not invent a
+// second fixture, or it will drift from this one). The extra signals-bearing
+// employee at the end of VERDICT_MODEL_.employees exists solely so every
+// signals-gated verdict (promo-stale, recognition-risk, retention-core,
+// invisible-contrib) actually fires alongside equity — otherwise the retarget
+// test could pass without ever exercising most of the retargeted verdicts.
+const VERDICT_CFG_ = CONFIG_CD;
+const VERDICT_MODEL_ = (function () {
   const mkFY = (terms, vol, regretted, hc) => ({
     monthly: [], quarterly: [], total: terms, vol, invol: terms - vol,
     regretted, avgHeadcount: hc, rate: hc > 0 ? terms / hc : null, label: "FY27",
   });
-  const model = {
+  return {
     fyLabel: "FY27", prevFyLabel: "FY26", activeCount: 200, hcFyStart: 205,
     attrition: {
       currentFY: mkFY(40, 30, 15, 200),          // 20% total → red; 15% vol → yellow; 50% regretted → red
@@ -601,9 +608,23 @@ function mkV3(over) {
       { name: "B", teamSize: 9, exitsFY: 3, voluntaryExits: 2, attritionRate: 0.31, dept: "Sales" },
       { name: "C", teamSize: 7, exitsFY: 1, voluntaryExits: 1, attritionRate: 0.14, dept: "Services" },
     ], pooledSmallTeams: null, spanOfControl: { managers: 40, ics: 160, ratio: 4.0, target: 6 } },
-    employees: [{ ratio: 0.75 }, { ratio: 0.9 }, { ratio: 1.0 }, { ratio: null }],
+    employees: [
+      { ratio: 0.75 }, { ratio: 0.9 }, { ratio: 1.0 }, { ratio: null },
+      { signals: { everPromoted: true, promoStale: false, earlyCareer: false, coreLevel: false,
+                   recognitionRisk: false, retentionRisk: false, invisibleContributor: true, riskFactors: [] } },
+    ],
     equity: { genderAvailable: true, gender: [{ flagged: true }, { flagged: false }], outliers: [{}, {}], tenure: [{}] },
   };
+})();
+
+// ── V3 Task 6: buildVerdicts_ ───────────────────────────────
+(function () {
+  const cfg = VERDICT_CFG_;
+  const model = VERDICT_MODEL_;
+  const mkFY = (terms, vol, regretted, hc) => ({
+    monthly: [], quarterly: [], total: terms, vol, invol: terms - vol,
+    regretted, avgHeadcount: hc, rate: hc > 0 ? terms / hc : null, label: "FY27",
+  });
   const vs = buildVerdicts_(model, cfg);
   const byId = {};
   vs.forEach(v => { byId[v.id] = v; });
@@ -940,4 +961,13 @@ check("build: a missing stamp counts as stale", (function () {
   const out = buildMismatch_();
   BUILD_.narrative = real;
   return out && out.indexOf("narrative") !== -1;
+})());
+
+// ── Verdict deep-links must point at a surviving view ───────────────────────
+// P0 deletes ranking/signals/equity/market/contrib. getVerdictsFor(view) filters
+// on v.view, so a verdict aimed at a deleted view is unreachable, not merely ugly.
+check("verdicts: no verdict targets a deleted view", (function () {
+  const DEAD = ["ranking", "signals", "equity", "market", "contrib", "actions"];
+  const out = buildVerdicts_(VERDICT_MODEL_, VERDICT_CFG_);
+  return out.length > 0 && out.every(v => DEAD.indexOf(v.view) === -1);
 })());
