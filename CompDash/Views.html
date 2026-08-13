@@ -1,0 +1,473 @@
+<script>
+"use strict";
+// Tab renderers. Included BEFORE ViewDash.html's own script block, because the
+// RENDERERS const there references these functions by name at evaluation time
+// and function declarations hoist only within their own <script> element.
+function ratioBarColor(cls) {
+  return cls === "green" ? "var(--accent)" : cls === "yellow" ? "var(--warn)" :
+         cls === "violet" ? "var(--above)" : "var(--bad)";
+}
+// Trend arrow vs a prior-basis value (±0.5pp dead zone). Direction only —
+// the RAG dot carries the judgment. Empty string when either basis is missing.
+function trendArrow(cur, prev) {
+  if (cur == null || prev == null) return "";
+  const d = cur - prev;
+  return Math.abs(d) < 0.005 ? " →" : d > 0 ? " ▲" : " ▼";
+}
+// Same calendar day one year earlier (Feb 29 clamps to Feb 28) — used for
+// like-for-like "previous FY same period" attrition when filters are active.
+function prevYearIso(iso) {
+  const y = parseInt(iso.slice(0, 4), 10) - 1;
+  const md = iso.slice(4) === "-02-29" ? "-02-28" : iso.slice(4);
+  return y + md;
+}
+// Previous FY as a shadow area, current FY as a trend line cut at the current
+// fiscal month (uptoIdx). V3: optional dashed forecast extension and a subtle
+// peer-band zone (annual voluntary rate mapped to monthly-equivalent counts:
+// rate × avgHeadcount ÷ 12 — like-for-like with the monthly series).
+function attritionChart(prevSeries, curSeries, labels, uptoIdx, w, h, opts) {
+  opts = opts || {};
+  const P = 26, n = labels.length;
+  const prevV = prevSeries.map(m => m.terms);
+  const curV = curSeries.map(m => m.terms);
+  const fcV = (opts.forecastMonths || []).map(m => m.terms);
+  const maxY = Math.max.apply(null, prevV.concat(curV, fcV, [1]));
+  const x = i => P + i * ((w - P - 6) / Math.max(1, n - 1));
+  const y = v => h - 18 - v / maxY * (h - 30);
+  const area = prevV.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ") +
+    " " + x(n - 1).toFixed(1) + "," + y(0).toFixed(1) + " " + x(0).toFixed(1) + "," + y(0).toFixed(1);
+  const cut = Math.max(0, Math.min(uptoIdx, n - 1));
+  const line = curV.slice(0, cut + 1).map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+  let band = "";
+  if (opts.bandLo != null && opts.bandHi != null) {
+    band = '<rect x="' + P + '" y="' + y(opts.bandHi).toFixed(1) + '" width="' + (w - P - 6) +
+      '" height="' + Math.max(1, y(opts.bandLo) - y(opts.bandHi)).toFixed(1) +
+      '" fill="var(--cta)" opacity="0.12"/>';
+  }
+  let fc = "";
+  if (opts.forecastMonths && opts.forecastMonths.length && cut < n - 1) {
+    const pts = [x(cut).toFixed(1) + "," + y(curV[cut]).toFixed(1)]
+      .concat(opts.forecastMonths.filter(m => m.forecast && m.idx < n).map(m =>
+        x(m.idx).toFixed(1) + "," + y(m.terms).toFixed(1)));
+    fc = '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--accent)" ' +
+      'stroke-width="2" stroke-dasharray="5,4" opacity="0.8"/>';
+  }
+  const ticks = labels.map((L, i) =>
+    (n <= 4 || i % 3 === 0 || i === n - 1)
+      ? '<text x="' + x(i).toFixed(1) + '" y="' + (h - 4) + '" text-anchor="middle">' + esc(L) + '</text>'
+      : "").join("");
+  const yTicks = [0, Math.ceil(maxY / 2), maxY].map(v =>
+    '<text x="2" y="' + (y(v) + 3).toFixed(1) + '">' + v + '</text>').join("");
+  // preserveAspectRatio="xMidYMid meet" rather than "none": non-uniform scaling
+  // stretched the drawing horizontally as the container widened, which showed up
+  // as uneven forecast dashes and horizontally smeared axis labels on a wide
+  // screen. "meet" scales both axes together, so type and dash patterns keep
+  // their shape; the chart simply centres in a wider card.
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h +
+    '" preserveAspectRatio="xMidYMid meet" style="max-width:100%">' +
+    band +
+    '<polygon points="' + area + '" fill="var(--chip)" opacity="0.75"/>' +
+    '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' +
+    fc + ticks + yTicks + '</svg>';
+}
+// FY terminations as month BARS — counts are discrete events, so bars, not a
+// line (a line interpolates between months where nothing happened). Prior FY
+// renders as outlined ghost bars beside the current-FY solid bars; the data
+// series is Orbe (--cta), never the warn yellow — status colors stay reserved
+// for judgment, not decoration.
+function termBarsSvg(prevM, curM, labels, uptoIdx, w, h) {
+  const P = 30, n = labels.length;
+  const prevV = prevM.map(m => m.terms), curV = curM.map(m => m.terms);
+  const maxY = Math.max.apply(null, prevV.concat(curV, [1]));
+  const gw = (w - P - 8) / n;
+  const bw = Math.max(6, Math.min(24, gw * 0.32));
+  const y0 = h - 24;
+  const y = v => y0 - v / maxY * (h - 52);
+  const parts = [];
+  parts.push('<line x1="' + P + '" y1="' + y0 + '" x2="' + (w - 4) + '" y2="' + y0 + '" stroke="var(--border)"/>');
+  parts.push('<text x="2" y="' + (y(maxY) + 4).toFixed(1) + '">' + maxY + '</text>');
+  parts.push('<text x="2" y="' + (y0 + 4) + '">0</text>');
+  for (let i = 0; i < n; i++) {
+    const cx = P + i * gw + gw / 2;
+    if (prevV[i] > 0) {
+      parts.push('<rect x="' + (cx - bw - 1).toFixed(1) + '" y="' + y(prevV[i]).toFixed(1) +
+        '" width="' + bw.toFixed(1) + '" height="' + (y0 - y(prevV[i])).toFixed(1) +
+        '" rx="2" fill="none" stroke="var(--muted)" stroke-width="1.2" opacity="0.7">' +
+        '<title>previous FY ' + esc(labels[i]) + ': ' + prevV[i] + '</title></rect>');
+    }
+    if (i <= uptoIdx) {
+      if (curV[i] > 0) {
+        parts.push('<rect x="' + (cx + 1).toFixed(1) + '" y="' + y(curV[i]).toFixed(1) +
+          '" width="' + bw.toFixed(1) + '" height="' + (y0 - y(curV[i])).toFixed(1) + '" rx="2" fill="var(--cta)"/>');
+        parts.push('<text x="' + (cx + 1 + bw / 2).toFixed(1) + '" y="' + (y(curV[i]) - 4).toFixed(1) +
+          '" text-anchor="middle" style="fill:var(--text)">' + curV[i] + '</text>');
+      } else {
+        // Explicit zero tick — "no bar" must read as measured-zero, not missing data.
+        parts.push('<rect x="' + (cx + 1).toFixed(1) + '" y="' + (y0 - 2) +
+          '" width="' + bw.toFixed(1) + '" height="2" fill="var(--cta)" opacity="0.5"/>');
+      }
+    }
+    parts.push('<text x="' + cx.toFixed(1) + '" y="' + (h - 6) + '" text-anchor="middle">' + esc(labels[i]) + '</text>');
+  }
+  return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + " " + h +
+    '" preserveAspectRatio="xMidYMid meet" style="max-width:100%">' + parts.join("") + '</svg>';
+}
+// MIRROR of levelRank_ in Code.js.
+function levelRankC(level) {
+  const m = String(level || "").match(/^([IM])(\d+)$/);
+  if (!m) return 999;
+  return (m[1] === "I" ? 0 : 100) + parseInt(m[2], 10);
+}
+// Small-denominator rule: under the floor the COUNT is the primary display and
+// the rate is a caption — "2 of 2 regretted", never "100.0% ▲". Trend arrows
+// are suppressed too: direction on a two-person base is decoration, not signal.
+function smallN(denom, floor) { return denom == null || denom < (floor == null ? 10 : floor); }
+
+function ovFactsHtml(d) {
+  const byId = {};
+  (d.verdicts || []).forEach(v => { byId[v.id] = v; });
+  // Lead with the most defensible number (voluntary vs the peer band), then
+  // the FY total with its SAME-PERIOD comparison, then headcount. Hard cap: 3
+  // sentences — anything longer is a report, not an overview.
+  const picks = ["attr-vol", "attr-total", "headcount"].map(id => byId[id]).filter(Boolean);
+  if (!picks.length) return "";
+  const caveat = byId["fy-caveat"];
+  const sentence = v => '<span class="factlink" onclick="switchTab(\'' + esc(v.view) +
+    '\')" title="Open ' + esc(ovViewLabel(v.view)) + '">' + esc(v.fact) + '</span>';
+  return '<div class="card"><h2>' + esc(d.meta.fyLabel) + ' so far' +
+    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') + '</h2>' +
+    '<p style="margin:0">' + picks.map(sentence).join(" ") + '</p>' +
+    (caveat ? '<div class="sub" style="margin-top:6px">⚠ ' + esc(caveat.fact) + ' ' + esc(caveat.soWhat) + '</div>' : '') +
+    ovChangedSinceHtml(d) + '</div>';
+}
+// "What moved" — the question a returning viewer actually has. Compares the
+// full-population headline numbers against the snapshot taken on this
+// viewer's last visit in an EARLIER ISO week (localStorage, per browser).
+function ovSnapshotVals(d) {
+  const cur = d.attrition.currentFY, eq = d.equity, rag = d.meta.ragCfg || {};
+  const eqFlags = (eq.genderAvailable ? eq.gender.filter(g => g.flagged).length : 0) +
+    eq.outliers.length + eq.tenure.length;
+  return {
+    "Attrition":         { v: cur.rate, fmt: "pct" },
+    "Voluntary rate":    { v: cur.avgHeadcount > 0 ? cur.vol / cur.avgHeadcount : null, fmt: "pct" },
+    "Regretted exits":   { v: cur.regretted, fmt: "int" },
+    "Below anchor":      { v: d.employees.filter(e => e.ratio != null && e.ratio < (d.meta.compaBands || {}).low).length, fmt: "int" },
+    "Equity flags":      { v: eqFlags, fmt: "int" },
+    "Reviews overdue":   { v: d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0).length, fmt: "int" },
+    "Retention risks":   { v: d.employees.filter(e => e.signals && e.signals.retentionRisk).length, fmt: "int" },
+    "Recognition risks": { v: d.employees.filter(e => e.signals && e.signals.recognitionRisk).length, fmt: "int" },
+    "Teams needing manager support": { v: (d.managers && d.managers.available)
+      ? d.managers.rows.filter(r => r.attritionRate != null && r.attritionRate > (rag.attritionTotal || {}).yellow).length
+      : null, fmt: "int" },
+  };
+}
+function ovChangedSinceHtml(d) {
+  const cw = isoWeekLabel(d.meta.asOf);
+  const vals = ovSnapshotVals(d);
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem("cd_ov_snap") || "null"); } catch (e) { stored = null; }
+  let line = "";
+  if (stored && stored.week && stored.week !== cw && stored.vals) {
+    const fmt = (m, x) => x == null ? "—" : m === "pct" ? (x * 100).toFixed(1) + "%" : String(x);
+    const moved = Object.keys(vals).filter(k => {
+      const o = stored.vals[k], n = vals[k];
+      return o && o.v != null && n.v != null && fmt(n.fmt, o.v) !== fmt(n.fmt, n.v);
+    }).map(k => k + " " + fmt(vals[k].fmt, stored.vals[k].v) + " → " + fmt(vals[k].fmt, vals[k].v));
+    line = moved.length
+      ? "Changed since " + stored.week + ": " + moved.join(" · ")
+      : "No headline movement since " + stored.week + ".";
+  }
+  // Baseline updates only when the week rolls over, so mid-week reloads keep
+  // comparing against last week rather than against five minutes ago.
+  if (!stored || stored.week !== cw) {
+    try { localStorage.setItem("cd_ov_snap", JSON.stringify({ week: cw, vals })); } catch (e) { /* sandbox */ }
+  }
+  return line ? '<div class="sub" style="margin-top:6px">🗓 ' + esc(line) + '</div>' : "";
+}
+// Read-only signals for the Overview — the original design: server verdicts
+// grouped by severity into Concerns (RISK) / Notes (NOTE) / Highlights (FACT).
+// No state, no owners — there is no action-queue workflow anywhere.
+// Skips the ids the facts card already narrates, so nothing reads twice.
+function ovSignalsHtml(d) {
+  const skip = { "attr-vol": 1, "attr-total": 1, "headcount": 1, "fy-caveat": 1 };
+  const rows = (d.verdicts || []).filter(v => !skip[v.id]);
+  if (!rows.length) return "";
+  const groups = [["RISK", "⚠️ Concerns"], ["NOTE", "📝 Notes"], ["FACT", "✨ Highlights"]];
+  const body = groups.map(g => {
+    const vs = rows.filter(v => v.severity === g[0]);
+    if (!vs.length) return "";
+    return '<h3>' + g[1] + ' <span class="chip">' + vs.length + '</span></h3>' +
+      vs.map(v => '<div class="factlink" onclick="switchTab(\'' + esc(v.view) +
+        '\')" title="Open ' + esc(ovViewLabel(v.view)) + '">' + verdictHtml(v) + '</div>').join("");
+  }).join("");
+  return '<div class="card"><h2>🚦 Signals' +
+    (filtersActive() ? ' <span class="sub">(company-wide — filters don&#39;t apply here)</span>' : '') +
+    '</h2>' + body + '</div>';
+}
+function ovProvenanceHtml(d) {
+  const m = d.meta, s = m.sources || {};
+  const src = k => /^ok$/.test(String(s[k])) ? "✓" : /error/i.test(String(s[k])) ? "✕" : "…";
+  const excl = "Population rules: crew/contractors excluded everywhere · part-time & interns stay in " +
+    "headcount/attrition but are excluded from peer anchors, equity lenses and market reads · " +
+    "restricted profiles (M" + ((m.restricted || {}).minMLevel || 9) + "+) stripped server-side for " +
+    "non-exec viewers · contribution evidence is PTO-adjusted and frozen at QTA cycle open.";
+  return '<div class="prov">As of ' + esc(m.asOf) + ' (' + esc(isoWeekLabel(m.asOf)) + ') · payload ' +
+    esc(String(m.generatedAt).replace("T", " ").slice(0, 16)) + ' UTC · ' +
+    (m.fromCache ? 'cached — ⟳ Refresh for a live read' : 'live') +
+    ' · Sources: Roster ' + src("roster") + ' · Comp history ' + src("history") +
+    ' · Ratings ' + src("ratings") + ' · Benchmarks ' + src("benchmarks") +
+    ' · <span title="' + esc(excl) + '" style="cursor:help;text-decoration:underline dotted">exclusion rules ⓘ</span></div>';
+}
+function renderOverview(el) {
+  const d = STATE.data, act = filtersActive();
+  const emps = d.employees.filter(visibleEmp);
+  const people = act ? d.people.filter(visibleEmp) : d.people;
+  const cur = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, d.meta.fyLabel)
+    : d.attrition.currentFY;
+  const prev = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
+    : d.attrition.previousFY;
+  // SAME PERIOD last FY — never partial-year vs full-year in one breath.
+  const prevSp = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, prevYearIso(d.meta.asOf),
+        d.meta.prevFyLabel + " same period")
+    : d.attrition.previousFYSamePeriod;
+  const eq = d.equity;
+  const f = STATE.filters;
+  const rag = d.meta.ragCfg || {};
+  const empIndex = {};
+  d.employees.forEach(e => { empIndex[e.empNo] = e; });
+  const flagVisible = r => { const e = empIndex[r.empNo]; return e ? visibleEmp(e) : false; };
+
+  const medRatio = median(emps.filter(e => e.ratio != null).map(e => e.ratio));
+  const mkt = emps.filter(e => e.marketRatio != null).map(e => e.marketRatio);
+  const medMkt = median(mkt);
+  const flags = eq.outliers.filter(flagVisible).length + eq.tenure.filter(flagVisible).length +
+    (eq.genderAvailable ? eq.gender.filter(g => g.flagged && (!f.loc || g.keyLocation === f.loc) && (!f.level || g.level === f.level)).length : 0);
+  const overdue = d.qtaInterim.filter(r => r.daysOverdue != null && r.daysOverdue > 0 && flagVisible(r)).length;
+  const suffix = act ? " · filtered" : "";
+
+  const b = d.meta.compaBands || { low: 0.8, target: 0.95, high: 1.1 };
+  const aB = rag.attritionTotal || { green: 0.11, yellow: 0.14 };
+  const mLow = d.meta.marketLow || 0.9;
+  const attrBand = ragBandC(cur.rate, rag.attritionTotal);
+  const attrTiny = smallN(cur.total); // count-primary under 10 exits
+  const attrHi = Math.max(aB.yellow * 1.6, (cur.rate || 0) * 1.15,
+    prevSp && prevSp.rate != null ? prevSp.rate * 1.15 : 0);
+
+  const cards = [
+    { q: "Are people staying?", tab: "attrition",
+      v: attrTiny ? cur.total + " exit" + (cur.total === 1 ? "" : "s") : pctFmt(cur.rate),
+      s: attrTiny
+        ? d.meta.fyLabel + " YTD (" + pctFmt(cur.rate) + " of ~" + Math.round(cur.avgHeadcount) + ")" +
+          (prevSp ? " · " + prevSp.label + " " + prevSp.total + " exits" : "") + suffix
+        : d.meta.fyLabel + " YTD" + (prevSp ? " · " + prevSp.label + " " + pctFmt(prevSp.rate) : "") + suffix,
+      band: bandBarHtml([{ to: aB.green, color: "var(--accent)" }, { to: aB.yellow, color: "var(--warn)" },
+                         { to: attrHi, color: "var(--bad)" }], cur.rate, 0, attrHi),
+      verdict: ragDot(attrBand,
+        attrBand === "green" ? "within the healthy band (≤ " + pctFmt(aB.green, 0) + ")"
+        : attrBand === "yellow" ? "watch band (" + pctFmt(aB.green, 0) + "–" + pctFmt(aB.yellow, 0) + ")"
+        : "above the at-risk line (> " + pctFmt(aB.yellow, 0) + ")") +
+        (!attrTiny && prevSp ? trendArrow(cur.rate, prevSp.rate) : "") },
+    { q: "Are Rocketeers paid fairly vs peers?", tab: "compa",
+      v: medRatio != null ? medRatio.toFixed(2) : "—",
+      s: "median Internal Position vs peer anchor" + suffix,
+      band: bandBarHtml([{ to: b.low, color: "var(--bad)" }, { to: b.target, color: "var(--warn)" },
+                         { to: b.high, color: "var(--accent)" }, { to: 1.3, color: "var(--above)" }],
+                        medRatio, 0.6, 1.3),
+      verdict: medRatio == null ? "" : medRatio > b.high
+        ? '<span style="color:var(--above);font-weight:700">▲</span> above the band (ceiling watch)'
+        : ragDot(ratioClass(medRatio),
+            medRatio < b.low ? "below the red line " + b.low.toFixed(2)
+            : medRatio < b.target ? "under the " + b.target.toFixed(2) + " target"
+            : "at the anchor (target " + b.target.toFixed(2) + "–" + b.high.toFixed(2) + ")") },
+    { q: "Is our pay still competitive in the market?", tab: "compa",
+      v: medMkt != null ? medMkt.toFixed(2) : "Pending",
+      s: mkt.length ? "median vs market mean · " + mkt.length + " benchmarked" + suffix
+                    : "benchmark compilation in progress",
+      band: medMkt != null
+        ? bandBarHtml([{ to: mLow, color: "var(--bad)" }, { to: 1.3, color: "var(--accent)" }], medMkt, 0.6, 1.3) : "",
+      verdict: medMkt == null ? "" : ragDot(medMkt < mLow ? "red" : "green",
+        medMkt < mLow ? "below the " + mLow.toFixed(2) + " competitiveness floor"
+                      : "at/above the " + mLow.toFixed(2) + " floor") },
+    { q: "Is anyone paid inequitably?", tab: "compa",
+      v: String(flags), zero: flags === 0,
+      s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix,
+      verdict: flags > 0 ? ragDot("yellow", "each flag needs a rationale or a fix")
+                         : ragDot("green", "no open flags at current thresholds") },
+    { q: "Who is overdue for review?", tab: "qta",
+      v: String(overdue), zero: overdue === 0,
+      s: "Next Review dates overdue" + suffix,
+      verdict: overdue > 0 ? ragDot("red", "longest-waiting first in QTA Status")
+                           : ragDot("green", "nobody waiting past their date") },
+  ];
+  // Contribution earns a KPI slot only once it has a number; before the first
+  // snapshot it renders as a link line, not an arrow masquerading as a metric.
+  const co = d.meta.contribution || {};
+  if (co.quarter) {
+    cards.push({ q: "Is contribution evidence in for the cycle?", tab: "compa",
+      v: String(co.matched), s: co.quarter + " snapshot · Rocketeers with frozen evidence",
+      verdict: ragDot("green", "see " + ovViewLabel("compa") + " for detail") });
+  }
+  const contribLine = co.quarter ? "" :
+    '<div class="sub" style="margin:-6px 0 14px">🚀 Contribution evidence: snapshot pending — ' +
+    '<span class="factlink" onclick="switchTab(\'compa\')">see ' + esc(ovViewLabel("compa")) + '</span></div>';
+
+  const cardHtml = c =>
+    '<div class="kpi' + (c.zero ? " zero" : "") + '" onclick="switchTab(\'' + c.tab + '\')">' +
+    '<div class="kpi-q">' + esc(c.q) + '</div>' +
+    '<div class="kpi-v">' + (c.zero ? "✓ 0" : esc(c.v)) + '</div>' +
+    (c.band || "") +
+    '<div class="kpi-s">' + esc(c.s) + '</div>' +
+    (c.verdict ? '<div class="kpi-verdict">' + c.verdict + '</div>' : "") + '</div>';
+
+  const chartCard = (cur.total === 0 && prev.total === 0)
+    ? '<div class="card"><h2>Terminations</h2><p class="sub">No terminations recorded in ' +
+      esc(cur.label) + ' or ' + esc(prev.label) + '.</p></div>'
+    : '<div class="card"><h2>' + esc(cur.label) + ' terminations by fiscal month' + esc(suffix) + '</h2>' +
+      termBarsSvg(prev.monthly, cur.monthly, d.meta.monthLabels, d.meta.fiscalMonthIdx, chartWidth(720), 170) +
+      '<div class="sub">Solid bars = ' + esc(cur.label) + ' to date · outlined bars = ' + esc(prev.label) +
+      ' same month · counts labeled on the ' + esc(cur.label) + ' bars</div></div>';
+
+  el.innerHTML =
+    ovFactsHtml(d) +
+    ovSignalsHtml(d) +
+    '<div class="kpi-grid">' + cards.map(cardHtml).join("") + '</div>' +
+    contribLine +
+    chartCard +
+    ovProvenanceHtml(d);
+}
+// All verdicts for a view, in payload order.
+function verdictsFor(view) {
+  return ((STATE.data && STATE.data.verdicts) || []).filter(v => v.view === view);
+}
+function renderAttrition(el) {
+  const d = STATE.data, a = d.attrition, act = filtersActive();
+  const dimField = { department: "dept", level: "level", keyLocation: "keyLocation" };
+  const people = act ? d.people.filter(visibleEmp) : null;
+  const cur = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, d.meta.fyLabel)
+    : a.currentFY;
+  const prev = act
+    ? fyAttritionFromPeople_(people, d.meta.fyStartCalYear - 1, null, d.meta.prevFyLabel)
+    : a.previousFY;
+  const isM = STATE.attrGran === "month";
+  const labels = isM ? d.meta.monthLabels : ["Q1", "Q2", "Q3", "Q4"];
+  const upto = isM ? d.meta.fiscalMonthIdx : Math.floor(d.meta.fiscalMonthIdx / 3);
+  const dim = STATE.attrDim;
+  const dimLabel = { department: "Department", level: "Level", keyLocation: "Key Location" };
+  let slices = act
+    ? sliceAttritionFromPeople_(people, d.meta.fyStartCalYear, d.meta.asOf, p => p[dimField[dim]])
+    : (a.slices[dim] || []);
+  if (dim === "level") slices = slices.slice().sort((x, y) => levelRankC(x.key) - levelRankC(y.key));
+  const detail = a.detail.filter(t => !act || visibleEmp(t));
+
+  const rag = d.meta.ragCfg || {};
+  const fullCur = a.currentFY; // verdicts/forecast/impact are full-population blocks
+  const band = rag.peerVolBand || null;
+  const chartOpts = (isM && !act) ? {
+    forecastMonths: (a.forecast && a.forecast.months) || [],
+    bandLo: band && fullCur.avgHeadcount > 0 ? band.low * fullCur.avgHeadcount / 12 : null,
+    bandHi: band && fullCur.avgHeadcount > 0 ? band.high * fullCur.avgHeadcount / 12 : null,
+  } : {};
+  const volRate = fullCur.avgHeadcount > 0 ? fullCur.vol / fullCur.avgHeadcount : null;
+  const fi = a.financialImpact;
+  const vs = verdictsFor("attrition");
+  const vOrder = ["concentration", "attr-total", "attr-vol", "regretted", "mgr-hotspots", "span",
+                  "trends-drivers", "forecast", "financial"];
+  const vSorted = vOrder.map(id => vs.find(v => v.id === id)).filter(Boolean);
+  const filteredNote = act
+    ? '<div class="sub" style="margin-bottom:8px">Verdicts, forecast and financial impact are company-wide facts — the chart and tables below reflect your filters.</div>' : '';
+
+  el.innerHTML =
+    sourceBanner("roster", "Roster data") +
+    vSorted.map(verdictHtml).join("") + filteredNote +
+    '<div class="card"><h2>' + esc(cur.label) + ' vs ' + esc(prev.label) + ' terminations</h2>' +
+    '<div class="seg" style="margin-bottom:10px">' +
+      '<button onclick="setAttrGran(\'month\')" class="' + (isM ? "on" : "") + '">Month</button>' +
+      '<button onclick="setAttrGran(\'quarter\')" class="' + (!isM ? "on" : "") + '">Quarter</button></div>' +
+    attritionChart(isM ? prev.monthly : prev.quarterly, isM ? cur.monthly : cur.quarterly,
+                   labels, upto, chartWidth(720), 190, chartOpts) +
+    '<div class="sub">Shadow area = ' + esc(prev.label) + ' · line = ' + esc(cur.label) + ' to date' +
+    (chartOpts.forecastMonths && chartOpts.forecastMonths.length ? ' · dashed = full-year projection' : '') +
+    (chartOpts.bandLo != null ? ' · shaded zone = peer voluntary band ' + pctFmt(band.low, 0) + '–' + pctFmt(band.high, 0) + ' (monthly equivalent)' : '') + '</div>' +
+    '<div style="margin-top:10px">' +
+      '<span class="chip">' + cur.total + ' terminations ' + esc(cur.label) + '</span>' +
+      '<span class="chip green">' + cur.vol + ' voluntary</span>' +
+      '<span class="chip yellow">' + cur.invol + ' involuntary</span>' +
+      '<span class="chip">' + ragDot(ragBandC(cur.vol ? cur.regretted / cur.vol : null, rag.regrettedShare),
+        (cur.vol ? Math.round(cur.regretted / cur.vol * 100) : 0) + '% of voluntary regretted') + '</span>' +
+      '<span class="chip">' + ragDot(ragBandC(cur.rate, rag.attritionTotal),
+        'total ' + pctFmt(cur.rate) + ' vs healthy ≤ ' + pctFmt((rag.attritionTotal || {}).green, 0)) + '</span>' +
+      '<span class="chip">' + ragDot(ragBandC(volRate, rag.attritionVol),
+        'voluntary ' + pctFmt(volRate) + ' vs peers ' + (band ? pctFmt(band.low, 0) + '–' + pctFmt(band.high, 0) : '—')) + '</span>' +
+    '</div>' +
+    (fi && fi.coverage.total > 0
+      ? '<div class="sub" style="margin-top:8px">💰 ' + esc(fullCur.label) + ' exits released ~$' +
+        fi.annualPayrollReleasedUsd.toLocaleString() + ' of FY payroll (regretted ~$' +
+        fi.regrettedPortionUsd.toLocaleString() + ') · method: leaver TCC USD ÷ 12 × months remaining · based on ' +
+        fi.coverage.counted + ' of ' + fi.coverage.total + ' leavers</div>' : '') +
+    '</div>' +
+    '<div class="card"><h2>Breakdown</h2>' +
+    '<select onchange="setAttrDim(this.value)">' +
+      Object.keys(dimLabel).map(k =>
+        '<option value="' + k + '"' + (k === dim ? " selected" : "") + '>By ' + dimLabel[k] + '</option>').join("") +
+    '</select>' +
+    '<table><tr><th>' + esc(dimLabel[dim]) + '</th><th>Headcount</th><th>Terms</th><th>Voluntary</th><th>Involuntary</th><th>Rate</th></tr>' +
+    slices.map(s =>
+      '<tr><td>' + esc(s.key) + '</td><td>' + s.headcount + '</td><td>' + s.terms + '</td><td>' + s.vol +
+      '</td><td>' + s.invol + '</td><td>' + ragDot(ragBandC(s.rate, rag.attritionTotal), pctFmt(s.rate)) +
+      (s.headcount < (rag.floorHeads || 10) ? ' <span class="chip yellow" title="Small group — rate is noisy">⚠</span>' : '') +
+      '</td></tr>').join("") + '</table>' +
+    '<details><summary>Termination detail — ' + detail.length + ' rows (names inside)</summary>' +
+    '<table><tr><th>Date</th><th>Name</th><th>Dept</th><th>Level</th><th>Location</th><th>Type</th><th>Regretted</th><th>Reason</th></tr>' +
+    detail.map(t =>
+      '<tr><td>' + esc(t.termDate) + '</td><td>' + esc(t.name) + '</td><td>' + esc(t.dept) + '</td><td>' + esc(t.level) +
+      '</td><td>' + esc(t.keyLocation) + '</td><td>' + esc(t.cls) + '</td><td>' + (t.regretted ? "⚠️ yes" : "no") +
+      '</td><td>' + esc(t.reason) + '</td></tr>').join("") + '</table></details></div>' +
+    mgrHotspotsHtml(d);
+}
+function setAttrDim(k) { STATE.attrDim = k; render(); }
+function renderCompa(el) {
+  const d = STATE.data;
+
+  let html =
+    '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>';
+
+  const f = STATE.filters;
+  const empIndex = {};
+  d.employees.forEach(e => { empIndex[e.empNo] = e; });
+  const groups = d.compaGroups
+    .filter(g => !f.loc || g.keyLocation === f.loc)
+    .map(g => Object.assign({}, g, { members: g.members.filter(m => {
+      const e = empIndex[m.empNo] ||
+        { name: m.name, level: m.level, keyLocation: g.keyLocation, dept: "" };
+      return visibleEmp(e);
+    }) }))
+    .filter(g => g.members.length);
+
+  html += groups.map(g =>
+    '<div class="card"><h2>' + esc(g.keyLocation) + ' · ' + esc(g.jobTitle) +
+    ' <span class="sub">(' + g.count + ' member' + (g.count === 1 ? "" : "s") + ')</span>' +
+    ' <span class="chip ' + (g.anchorTier === "market" ? "violet" : "") + '">' + TIER_LABEL[g.anchorTier] + '</span>' +
+    (g.smallGroup ? ' <span class="chip yellow">small group</span>' : '') +
+    (g.missingTcc ? ' <span class="chip">' + g.missingTcc + ' missing TCC</span>' : '') + '</h2>' +
+    (g.anchor != null
+      ? '<div class="sub" style="margin-bottom:8px">Anchor: ' + fmtMoney(g.anchor, null, g.currency) + '</div>' : '') +
+    '<table><tr><th>Name</th><th>Level</th><th>TCC</th><th style="min-width:170px">Position</th><th>Ratio</th></tr>' +
+    g.members.map(m => {
+      const cls = ratioClass(m.ratio);
+      return '<tr class="click" onclick="openDrill(\'' + esc(m.empNo) + '\')">' +
+        '<td>' + esc(m.name) + '</td><td>' + esc(m.level) + '</td>' +
+        '<td>' + fmtMoney(m.tcc, m.tccUsd, m.currency) + '</td>' +
+        '<td><div class="bar"><i style="width:' + Math.min(100, Math.round((m.ratio || 0) * 100)) + '%;background:' + ratioBarColor(cls) + '"></i></div></td>' +
+        '<td>' + (m.ratio != null ? '<span class="chip ' + cls + '">' + m.ratio.toFixed(2) + '</span>'
+          : m.nonComparable ? '<span class="chip" title="Part-time/intern — excluded from peer anchors by design">PT · not comparable</span>'
+          : '<span class="chip">insufficient peers</span>') +
+        (m.noPeers ? '<span class="chip">no peers</span>' : '') + '</td></tr>';
+    }).join("") + '</table></div>').join("");
+  if (!groups.length) html += '<div class="card sub">No groups match the current filters.</div>';
+  el.innerHTML = html;
+}
+</script>
