@@ -272,7 +272,7 @@ function renderOverview(el) {
         (!attrTiny && prevSp ? trendArrow(cur.rate, prevSp.rate) : "") },
     { q: "Are Rocketeers paid fairly vs peers?", tab: "compa",
       v: medRatio != null ? medRatio.toFixed(2) : "—",
-      s: "median Internal Position vs peer anchor" + suffix,
+      s: "median Compensation Position vs peer anchor" + suffix,
       band: bandBarHtml([{ to: b.low, color: "var(--bad)" }, { to: b.target, color: "var(--warn)" },
                          { to: b.high, color: "var(--accent)" }, { to: 1.3, color: "var(--above)" }],
                         medRatio, 0.6, 1.3),
@@ -296,10 +296,16 @@ function renderOverview(el) {
       s: (eq.genderAvailable ? "equity flags to review" : "equity flags (gender lens pending)") + suffix,
       verdict: flags > 0 ? ragDot("yellow", "each flag needs a rationale or a fix")
                          : ragDot("green", "no open flags at current thresholds") },
-    { q: "Who is overdue for review?", tab: "qta",
+    // QTA is a ☰ menu view (menu:true, no tab-bar slot). switchTab('qta') would
+    // render it, but VIEWS.filter(x => !x.menu) never highlights a button for
+    // it, so the click would leave all three tabs unlit with no visible way
+    // back (final review Finding 4, 2026-08-12). Stays on Overview until
+    // closable menu tabs exist (the PS Dashboard pattern) — open QTA Status
+    // from ☰ to see who's overdue.
+    { q: "Who is overdue for review?", tab: "overview",
       v: String(overdue), zero: overdue === 0,
       s: "Next Review dates overdue" + suffix,
-      verdict: overdue > 0 ? ragDot("red", "longest-waiting first in QTA Status")
+      verdict: overdue > 0 ? ragDot("red", "longest-waiting first — open QTA Status from ☰")
                            : ragDot("green", "nobody waiting past their date") },
   ];
   // Contribution earns a KPI slot only once it has a number; before the first
@@ -433,7 +439,7 @@ function renderCompa(el) {
   const d = STATE.data;
 
   let html =
-    '<div class="banner">⚖️ <b>Internal Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>';
+    '<div class="banner">⚖️ <b>Compensation Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>';
 
   const f = STATE.filters;
   const empIndex = {};

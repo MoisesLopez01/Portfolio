@@ -135,8 +135,8 @@ const D = {
     { id: "attr-total", view: "attrition", severity: "NOTE", fact: "FY27 total attrition 1.4% (FY26 same period 1.9%).", soWhat: "Watch.", action: "", caveat: "Small sample (3 exits) — too few to read as a trend." },
     { id: "attr-vol", view: "attrition", severity: "FACT", fact: "FY27 voluntary attrition 0.9% vs professional-services peers 11.0%–15.0%.", soWhat: "Below the peer band.", action: "", caveat: "" },
     { id: "regretted", view: "attrition", severity: "NOTE", fact: "100.0% of FY27 voluntary exits were regretted (2 of 2).", soWhat: "…", action: "Run an exit-driver review with the HRBP; prioritize stay-interviews.", caveat: "Small sample (2 exits) — too few to read as a trend." },
-    { id: "mgr-hotspots", view: "attrition", severity: "RISK", fact: "1 of 2 teams (managers with 3+ reports) show attrition above 14.0% — the manager may need support.", soWhat: "…", action: "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Attrition view's manager hotspots, not in decks).", caveat: "" },
-    { id: "compa-below", view: "compa", severity: "RISK", fact: "1 Rocketeer sits below 0.80 of their peer anchor.", soWhat: "…", action: "Review the flagged cases with the HRBP before the next comp cycle closes (Internal Position view, red chips).", caveat: "" },
+    { id: "mgr-hotspots", view: "attrition", severity: "RISK", fact: "1 of 2 teams (managers with 3+ reports) show attrition above 14.0% — the manager may need support.", soWhat: "…", action: "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Workforce & Attrition view's manager hotspots, not in decks).", caveat: "" },
+    { id: "compa-below", view: "compa", severity: "RISK", fact: "1 Rocketeer sits below 0.80 of their peer anchor.", soWhat: "…", action: "Review the flagged cases with the HRBP before the next comp cycle closes (Compensation Position view, red chips).", caveat: "" },
     { id: "fy-caveat", view: "overview", severity: "NOTE", fact: "FY27 figures rest on 3 exits so far.", soWhat: "Too few to read.", action: "", caveat: "" },
   ],
   compaGroups: [{ keyLocation: "Malaysia", jobTitle: "Engineer", count: 2, anchorTier: "title",
@@ -192,6 +192,24 @@ check("routes: exactly six survive", VIEWS.length === 6);
 check("overview: no rendered onclick deep-links to a dead tab id",
   !["contrib", "market", "equity", "ranking", "signals"].some(id =>
     H.indexOf("switchTab('" + id + "')") !== -1));
+
+// contribLine (Views.html:313) only renders when meta.contribution.quarter is
+// unset — the fixture above always sets it, so the dead-tab check never
+// exercised that branch (final review Minor 4, 2026-08-12). Second pass with
+// the quarter cleared, then restored so the rest of this file sees the
+// original fixture.
+{
+  const savedQuarter = D.meta.contribution.quarter;
+  D.meta.contribution.quarter = null;
+  const ovPending = el();
+  renderOverview(ovPending);
+  const HP = ovPending.innerHTML;
+  check("overview (pending quarter): contribLine renders", /Contribution evidence: snapshot pending/.test(HP));
+  check("overview (pending quarter): no rendered onclick deep-links to a dead tab id",
+    !["contrib", "market", "equity", "ranking", "signals"].some(id =>
+      HP.indexOf("switchTab('" + id + "')") !== -1));
+  D.meta.contribution.quarter = savedQuarter;
+}
 check("small-n: attrition card is count-primary (3 exits)", /3 exits<\/div>/.test(H));
 check("small-n: no trend arrow on the tiny attrition base", !/▲|▼/.test(H.split("Are people staying?")[1].split("kpi-q")[0] || ""));
 check("cards: band bar + marker present", /bandbar/.test(H) && /class="mk"/.test(H));

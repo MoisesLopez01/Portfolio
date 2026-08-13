@@ -641,7 +641,7 @@ const VERDICT_MODEL_ = (function () {
   check("verdicts: mgr-hotspots counts only, no manager names",
     /2/.test(byId["mgr-hotspots"].fact) && byId["mgr-hotspots"].fact.indexOf("A") !== 0 &&
     !/\bB\b/.test(byId["mgr-hotspots"].fact));
-  check("verdicts: manager verdicts deep-link to the Attrition view (managers tab retired)",
+  check("verdicts: manager verdicts deep-link to the Workforce & Attrition view (managers tab retired)",
     byId["mgr-hotspots"].view === "attrition" && byId["span"].view === "attrition");
   // JS stringifies the numeric ratio 4.0 as "4" — accept either rendering.
   // 4.0 sits exactly ON spanNarrow, so it is not flagged narrow and not RISK.

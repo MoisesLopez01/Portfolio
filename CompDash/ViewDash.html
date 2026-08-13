@@ -357,11 +357,14 @@ function onData(raw) {
   }
   if (!d || !d.ok) { onLoadError(new Error((d && d.error) || "Unknown load failure")); return; }
   STATE.data = d;
-  if (d.meta && d.meta.schema !== SCHEMA) {
+  // Fixed id + existence check: #pane is only re-innerHTML'd by render(), so a
+  // banner inserted beforebegin sits outside it and survives every re-render —
+  // without the guard, each ⟳ Refresh while skewed would stack another copy.
+  if (d.meta && d.meta.schema !== SCHEMA && !document.getElementById("schemaBanner")) {
     document.getElementById("pane").insertAdjacentHTML("beforebegin",
-      '<div class="banner err">⚠️ <b>Incomplete deployment</b> — ViewDash.html is ' +
+      '<div id="schemaBanner" class="banner err">⚠️ <b>Incomplete deployment</b> — ViewDash.html is ' +
       'from a different release than the server (client ' + SCHEMA + ', server ' +
-      d.meta.schema + '). Re-paste all nine files and publish a new version.</div>');
+      d.meta.schema + '). Re-push via clasp (hand-paste still possible) and publish a new version.</div>');
   }
   const hidden = (d.meta.restricted && d.meta.restricted.hidden) || 0;
   document.getElementById("subTitle").textContent =
@@ -480,7 +483,7 @@ const RENDERERS = {
   reference: renderReference, access: renderAccess,
 };
 
-// ── employee drill panel — shared by Internal Position, Market Gap, Pay Equity, QTA ──
+// ── employee drill panel — shared by the Compensation Position table and QTA Status ──
 function openDrill(empNo) {
   const d = STATE.data;
   const emp = d.employees.find(e => e.empNo === empNo);

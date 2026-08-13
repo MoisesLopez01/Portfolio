@@ -209,8 +209,10 @@ function buildPerfForEmp_(rows, windowFqs) {
 }
 
 // ── Decision signals (V4) ───────────────────────────────────────────────────
-// Deterministic per-employee flags for the 🚨 Risk Signals view. Every flag is
-// explainable: retentionRisk carries the exact factors that fired. Thresholds
+// Deterministic per-employee flags surfaced via the Compensation Position
+// table's drill panel (folded from the standalone Risk Signals view in P0).
+// Every flag is explainable: retentionRisk carries the exact factors that
+// fired. Thresholds
 // come from cfg.SIGNALS (CD_SIGNALS_CFG-overridable) and echo via
 // meta.signalsCfg — the UI never hardcodes them.
 

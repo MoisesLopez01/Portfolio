@@ -69,8 +69,9 @@ const CONFIG_CD = {
   PRIORITY_CAPS: { companyYears: 10, profileYears: 5, gapPct: 0.25 },
 
   // ── V4: decision signals (2026.W31 exec ask) ─────────────────────────────
-  // Deterministic per-employee flags feeding the 🚨 Risk Signals view. They
-  // surface people for a human conversation — never an automatic re-score.
+  // Deterministic per-employee flags surfaced via the Compensation Position
+  // table's drill panel (folded from the standalone Risk Signals view in P0).
+  // They surface people for a human conversation — never an automatic re-score.
   // Numeric keys overridable via the CD_SIGNALS_CFG Script Property (JSON,
   // shallow-merged); the regexes stay code (they define cohorts, not tuning).
   SIGNALS: {
@@ -135,7 +136,7 @@ const CONFIG_CD = {
     { term: "M-level (M4–M10)", def: "Management career track from the same title token (e.g. 04.M5.2)." },
     { term: "JF codes (JF001…)", def: "Job Catalog family codes (e.g. JF004 = Sales & Success). Not displayed in this dashboard; listed here because sibling reports use them." },
     { term: "TCC", def: "Total Cash Compensation — base plus variable target, local currency unless the USD toggle is on." },
-    { term: "Internal Position (compa-ratio)", def: "TCC ÷ peer anchor. 1.00 = at the anchor; bands are shown in the threshold table below." },
+    { term: "Compensation Position (compa-ratio)", def: "TCC ÷ peer anchor. 1.00 = at the anchor; bands are shown in the threshold table below." },
     { term: "Anchor tiers", def: "Where the peer anchor comes from: title-peer median (≥3 peers) → external market mean (one-of-a-kind roles) → location level-cohort median → none." },
     { term: "Voluntary / involuntary", def: "From the roster Termination Category. Voluntary = the Rocketeer chose to leave." },
     { term: "Regretted exit", def: "A leaver the company would have preferred to keep (roster Termination Regretted flag). Reported as a share of voluntary exits." },
@@ -789,6 +790,10 @@ function getCompReportData(force) {
       obj.meta.fromCache = true;
       obj.meta.role = access.role;   // never serve the cached builder's identity
       obj.meta.email = access.email;
+      // Cached payloads may predate the current release — the guard in doGet
+      // compares CODE versions, not cache vintages, so re-stamp schema from
+      // the running BUILD_.code rather than trusting whatever the cache froze.
+      obj.meta.schema = BUILD_.code;
       // Cache holds the FULL payload once; restricted profiles are stripped
       // per serve — the gate is this server function, never the client.
       if (!access.canSeeRestricted) stripRestrictedPayload_(obj);
@@ -1044,7 +1049,7 @@ function doGet() {
     return HtmlService.createHtmlOutput(
       '<div style="font:14px system-ui;padding:32px;max-width:560px">' +
       '<h2>⚠️ Incomplete deployment</h2>' +
-      '<p>These files are stale and must be re-pasted, then a new deployment ' +
+      '<p>These files are stale and must be re-pushed via clasp (hand-paste still possible), then a new deployment ' +
       'version published:</p><ul><li><b>' +
       stale.map(s => s.charAt(0).toUpperCase() + s.slice(1) + ".js").join("</b></li><li><b>") +
       '</b></li></ul></div>').setTitle("Incomplete deployment");

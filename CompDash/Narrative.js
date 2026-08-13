@@ -62,7 +62,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: band === "green" ? "Within the healthy band (≤ " + pctV_(R.attritionTotal.green) + ")."
         : band === "yellow" ? "In the watch band (" + pctV_(R.attritionTotal.green) + "–" + pctV_(R.attritionTotal.yellow) + ")."
         : "Above the at-risk line (> " + pctV_(R.attritionTotal.yellow) + ").",
-      action: band === "red" ? "Review the manager hotspots and department concentration in the Attrition view this quarter." : "",
+      action: band === "red" ? "Review the manager hotspots and department concentration in the Workforce & Attrition view this quarter." : "",
     }, cur.avgHeadcount, cur.total, cfg));
   }
 
@@ -79,7 +79,7 @@ function buildVerdicts_(model, cfg) {
         : volRate < R.peerVolBand.low
           ? "Below the peer band — voluntary churn is not the current problem."
           : "Inside the peer band.",
-      action: volRate > R.peerVolBand.high ? "Pair with the Market Gap view to check pay competitiveness in exit-heavy locations." : "",
+      action: volRate > R.peerVolBand.high ? "Pair with the Compensation Position table to check pay competitiveness in exit-heavy locations." : "",
     }, cur.avgHeadcount, cur.vol, cfg));
   }
 
@@ -114,7 +114,7 @@ function buildVerdicts_(model, cfg) {
   }
 
   // 6 — teams that may need manager support (counts only — identities live in
-  // the Attrition view's manager-hotspots table, never at exec level: a
+  // the Workforce & Attrition view's manager-hotspots table, never at exec level: a
   // scoreboard changes how managers behave toward the tool. Framed as Develops
   // Rocketeers / Empower Others — support, not surveillance — which keeps Talk
   // Straight possible in the skip-level conversations.)
@@ -127,7 +127,7 @@ function buildVerdicts_(model, cfg) {
       fact: hot + " of " + model.managers.rows.length + " teams (managers with 3+ reports) show attrition above " + pctV_(R.attritionTotal.yellow) + " — the manager may need support.",
       soWhat: hot > 0 ? "Exits cluster in specific teams — a signal to support those managers, distinct from department-wide pressure."
         : "No team's attrition stands out beyond the at-risk line.",
-      action: hot > 0 ? "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Attrition view's manager hotspots, not in decks)." : "",
+      action: hot > 0 ? "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Workforce & Attrition view's manager hotspots, not in decks)." : "",
     });
   }
 
@@ -156,7 +156,7 @@ function buildVerdicts_(model, cfg) {
       fact: low + " Rocketeer" + (low === 1 ? " sits" : "s sit") + " below " + cfg.COMPA_LOW_MIN.toFixed(2) + " of their peer anchor.",
       soWhat: low > 0 ? "Pay positions this far below internal peers are retention and equity exposure."
         : "Nobody sits below the red internal-position band.",
-      action: low > 0 ? "Review the flagged cases with the HRBP before the next comp cycle closes (Internal Position view, red chips)." : "",
+      action: low > 0 ? "Review the flagged cases with the HRBP before the next comp cycle closes (Compensation Position view, red chips)." : "",
     });
   }
 
@@ -173,11 +173,12 @@ function buildVerdicts_(model, cfg) {
         eq.outliers.length + " outliers, " + eq.tenure.length + " tenure).",
       soWhat: n > 0 ? "Each flag is a case to explain or correct — unexplained flags become audit findings."
         : "No equity flags at current thresholds.",
-      action: n > 0 ? "Work the flag list in the Pay Equity view; document the rationale where the position is justified." : "",
+      action: n > 0 ? "Work the flag list from the Executive Pulse equity rollup; document the rationale where the position is justified." : "",
     });
   }
 
-  // 9b — decision signals (V4): counts only, detail lives on 🚨 Risk Signals.
+  // 9b — decision signals (V4): counts only, detail lives in the Compensation
+  // Position table's drill panel.
   if (model.employees && model.employees.length && cfg.SIGNALS) {
     const S = cfg.SIGNALS;
     const sig = model.employees.filter(e => e.signals);
@@ -192,7 +193,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: staleEarly > 0
         ? "Early-career people stall fastest — a stale profile at I2/I3 is a growth-path signal, not just a comp one."
         : "No early-career profiles are promotion-stale.",
-      action: staleEarly > 0 ? "Review the early-career rows on the Risk Signals view before the next promotion cycle." : "",
+      action: staleEarly > 0 ? "Review the early-career rows in the Compensation Position table before the next promotion cycle." : "",
     });
 
     const recog = sig.filter(e => e.signals.recognitionRisk).length;
@@ -204,7 +205,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: recog > 0
         ? "Excellent quarters answered with flat pay reads as non-recognition — a leading indicator of regretted exits."
         : "Every recent top performer saw meaningful TCC movement.",
-      action: recog > 0 ? "Cross-check these names against Market Gap before the next QTA cycle closes." : "",
+      action: recog > 0 ? "Cross-check these names against the Compensation Position table before the next QTA cycle closes." : "",
     });
 
     const core = sig.filter(e => e.signals.coreLevel);
@@ -217,7 +218,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: risky > 0
         ? "Core mature employees are the costliest cohort to lose to compensation — factors are listed per person."
         : "No core-level Rocketeer stacks multiple comp risk factors.",
-      action: risky > 0 ? "Work the retention cohort table (Risk Signals view) with the HRBP, worst-stacked first." : "",
+      action: risky > 0 ? "Work the retention cohort rows in the Compensation Position table with the HRBP, worst-stacked first." : "",
     });
 
     const invisible = sig.filter(e => e.signals.invisibleContributor).length;
@@ -254,7 +255,7 @@ function buildVerdicts_(model, cfg) {
       fact: "Top " + fy + " exit reasons: " + top.map(r => r + " (" + counts[r] + ")").join(", ") + ".",
       soWhat: "The dominant reason (" + domDriver + ") " + READ[domDriver] + ".",
       action: domDriver === "labor-market/comp"
-        ? "Cross-check exit-heavy groups against Market Gap before concluding it is only the market." : "",
+        ? "Cross-check exit-heavy groups against the Compensation Position table before concluding it is only the market." : "",
     });
   }
 

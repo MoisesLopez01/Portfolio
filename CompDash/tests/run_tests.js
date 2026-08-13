@@ -1,7 +1,4 @@
 // Node test runner for CompDash pure logic.
-// Code.js + cases.js are eval'd TOGETHER in one call: top-level `const`/`let`
-// bindings created by eval are scoped to that eval call, so a second eval
-// could not see CONFIG_CD or the functions. Do not split this into two evals.
 const fs = require("fs");
 const path = require("path");
 
