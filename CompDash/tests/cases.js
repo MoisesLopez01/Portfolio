@@ -1132,3 +1132,78 @@ check("build: a stale P2 engine blocks doGet", (function () {
     groups[0].readyNow === 1 && groups[0].overdue === 1);
   check("accelGroups: median governing ratio", approx(groups[0].medianMarketRatio, 0.88));
 })();
+
+// ── P2a Task 4: Retention ───────────────────────────────────
+(function () {
+  check("quarterRange: FY26Q4 = Apr–Jun 2026", (function () {
+    const r = quarterRangeCD_("FY26Q4");
+    return isoDate_(r.start) === "2026-04-01" && isoDate_(r.end) === "2026-06-30";
+  })());
+  check("quarterRange: FY27Q1 = Jul–Sep 2026", (function () {
+    const r = quarterRangeCD_("FY27Q1");
+    return isoDate_(r.start) === "2026-07-01" && isoDate_(r.end) === "2026-09-30";
+  })());
+  check("quarterRange: garbage → null", quarterRangeCD_("nope") === null);
+
+  // asOf 2027-02-10 → FY27 Q3 → current rolling window = FY26Q3..FY27Q2
+  // (Jan–Dec 2026), previous window = FY26Q2..FY27Q1 (Oct 2025 – Sep 2026).
+  // Deliberately NOT a Q1 asOf: at fiscal-year start the rolling window
+  // coincides exactly with the prior FY, so the historical mark (strictly
+  // above own FY26) is definitionally unreachable — see the engine docstring.
+  const ctx = fiscalContextCD_(new Date(2027, 1, 10));
+  const hot = [];      // Santiago Services: 5 exits in-window, quiet FY25
+  for (let i = 0; i < 10; i++) hot.push(mkEmp({ keyLocation: "Chile", dept: "Services",
+    hireDate: new Date(2022, 0, 1) }));
+  for (let i = 0; i < 5; i++) hot.push(mkEmp({ keyLocation: "Chile", dept: "Services",
+    active: false, hireDate: new Date(2023, 0, 1),
+    termDate: new Date(2026, 2 + i, 10), termCategory: "Voluntary",
+    termReason: "Another job - better offer" }));
+  // Sydney Sales: elevated but within its own history (2 FY25 exits on tiny team)
+  const sales = [];
+  for (let i = 0; i < 6; i++) sales.push(mkEmp({ keyLocation: "Australia", dept: "Sales",
+    hireDate: new Date(2021, 0, 1) }));
+  for (let i = 0; i < 4; i++) sales.push(mkEmp({ keyLocation: "Australia", dept: "Sales",
+    active: false, hireDate: new Date(2022, 0, 1),
+    termDate: new Date(2026, 1 + i, 5), termCategory: "Voluntary" }));
+  for (let i = 0; i < 4; i++) sales.push(mkEmp({ keyLocation: "Australia", dept: "Sales",
+    active: false, hireDate: new Date(2021, 0, 1),
+    termDate: new Date(2024, 8 + i, 5), termCategory: "Voluntary" })); // FY25 exits
+  // Quiet ballast so the company baseline stays low
+  const calm = [];
+  for (let i = 0; i < 80; i++) calm.push(mkEmp({ keyLocation: "Malaysia", dept: "Engineering",
+    hireDate: new Date(2020, 0, 1) }));
+
+  const out = buildRetention_(hot.concat(sales, calm), ctx, CONFIG_CD, function () { return null; });
+  const santiago = out.cohorts.find(c => c.keyLocation === "Chile" && c.dept === "Services");
+  const sydney = out.cohorts.find(c => c.keyLocation === "Australia" && c.dept === "Sales");
+
+  check("retention: baseline carries a rate", out.baseline.rate > 0);
+  check("retention: hot cohort fires both marks → confirmed",
+    santiago && santiago.marketMark === true && santiago.historicalMark === true &&
+    santiago.verdict === "confirmed");
+  check("retention: within-own-history cohort → never confirmed",
+    sydney && sydney.historicalMark === false && sydney.verdict !== "confirmed");
+  check("retention: confirmed cohort gets an evidence pack",
+    out.evidence.length >= 1 && out.evidence.some(e => e.cohortKey === santiago.key));
+
+  const ev = out.evidence.find(e => e.cohortKey === santiago.key);
+  check("retention evidence: driver classified from REASON_CLASS",
+    ev.driver === "labor-market/comp");
+  check("retention evidence: tenure distribution sums to the window exits",
+    ev.tenureDist.reduce((t, b) => t + b.n, 0) === 5); // all 5 exits (Mar–Jul 2026) inside Jan–Dec 2026
+  check("retention evidence: people list = active cohort members",
+    ev.people.length === 10 && ev.people.every(p => p.empNo && p.name));
+
+  // n-exits ceiling: 3 exits on a hot small cohort can never exceed watch
+  const small = [];
+  for (let i = 0; i < 5; i++) small.push(mkEmp({ keyLocation: "Peru", dept: "Design",
+    hireDate: new Date(2021, 0, 1) }));
+  for (let i = 0; i < 3; i++) small.push(mkEmp({ keyLocation: "Peru", dept: "Design",
+    active: false, hireDate: new Date(2022, 0, 1),
+    termDate: new Date(2026, 3 + i, 2), termCategory: "Voluntary" }));
+  // Rebuild calm ballast against the same ctx so baselines stay comparable.
+  const out2 = buildRetention_(small.concat(calm), ctx, CONFIG_CD, function () { return null; });
+  const peru = out2.cohorts.find(c => c.keyLocation === "Peru");
+  check("retention: < minExits caps at watch",
+    peru && peru.verdict !== "confirmed" && peru.verdict !== "noted");
+})();
