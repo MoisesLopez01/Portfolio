@@ -407,3 +407,53 @@ Signals card, and these verdicts, until P1 promotes them to table columns.
 `git revert` the P0 range, `clasp push` again, bust the cache, publish a
 version. There is no data migration and no schema change to unwind — the
 per-viewer action-queue `UserProperties` keys are simply abandoned.
+
+## P2a deploy (2026.W33 — decision engines, BUILD_ 48)
+
+Spec: `docs/superpowers/specs/2026-08-12-compdash-p2-decision-views-design.md`
+Plan: `docs/superpowers/plans/2026-08-12-compdash-p2a-engines.md`
+
+**What P2a adds** — four new PURE server engines, payload-only (zero UI change;
+P2b builds the views): `RemotePull.js` (person signal governed by the
+remote-pull benchmark — COMPETITIVE / STABLE / NORMAL / RISK / RISK_IMMEDIATE;
+NORMAL never escalates alone; local-only fallback is labeled), `Acceleration.js`
+(6·9·6·9·6 cadence per opted-in I3/I4 — readyNow schedules a review, Check01
+governs the outcome), `Retention.js` (rolling 4-quarter cohort rates with the
+dual false-alarm gate: market mark AND the cohort's own FY25/FY26 history;
+< 4 exits caps at watch — note: during a fiscal Q1 the rolling window equals
+the just-closed FY, so "confirmed" cannot fire until the new FY's Q1
+completes; hot cohorts read "noted" that quarter), `GrowthEvents.js`
+(promotions + adjustments per 100 per cohort, FY27 annualized vs FY26 actual,
+retain-vs-rehire economics). The clasp allowlist now pushes **thirteen files**
+(the nine P0 files + the four P2 engines); `buildMismatch_` checks eight
+stamps against `BUILD_.code`.
+
+New payload: `employees[].p2` (remote + accel per person), `payload.p2`
+(accelGroups / retention / growth), `meta.p2` (config echo + source coverage).
+`stripRestrictedPayload_` also filters `p2.retention.evidence[].people`.
+Contribution compliance (goals/kudos/PTO snapshot) stays EVIDENCE, never an
+escalation factor — owner decision 2026-08-12, §7.3 principle.
+
+New data sources (both optional — "pending" until populated):
+- **Remote** tab in the Benchmarking file: `Country | Job Title |
+  Remote Mean USD | 25th Percentile USD | 75th Percentile USD | Source Version`
+  (CD_REMOTE_BENCH_TAB override). Owner: Benchmarking Engine v9 (PEOPLE-39480).
+- **Acceleration Track** tab in the comp-history file: `Employee Number |
+  Track Start` (CD_ACCEL_TRACK_SS_ID / CD_ACCEL_TRACK_TAB overrides). One-time
+  backfill of current I3/I4 opt-ins required.
+- Threshold overrides: `CD_P2_CFG` Script Property (JSON groups
+  REMOTE/ACCEL/RETENTION/GROWTH, numbers and number-arrays only).
+
+Deploy checklist:
+1. `clasp push` from `CompDash/` — thirteen files land atomically.
+2. Run `debugCompPipeline()` — new lines: Remote benchmarks, Acceleration
+   track, Growth events unmatched-reasons list (tune `P2.GROWTH.adjustRe` if
+   real adjustment ChangeTypes appear there).
+3. Run `bustCompCache_()` — **required** (payload adds p2 blocks).
+4. Publish a **new deployment version**.
+5. Confirm the dashboard renders identically (P2a is payload-only) and the
+   freshness chip works; `meta.p2.remoteBench.available` /
+   `meta.p2.accelTrack.available` read false until the tabs exist — by design.
+
+Tests: `node tests/run_tests.js` (308) + `node tests/parse_html.js` +
+`node tests/render_smoke.js`.

@@ -1207,3 +1207,69 @@ check("build: a stale P2 engine blocks doGet", (function () {
   check("retention: < minExits caps at watch",
     peru && peru.verdict !== "confirmed" && peru.verdict !== "noted");
 })();
+
+// ── P2a Task 5: GrowthEvents ────────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  check("growth classify: promotion wins over adjustment wording",
+    classifyGrowthEvent_("Promotion with salary adjustment", cfg) === "promo");
+  check("growth classify: salary adjustment", classifyGrowthEvent_("Salary Adjustment", cfg) === "adjust");
+  check("growth classify: merit increase", classifyGrowthEvent_("Merit", cfg) === "adjust");
+  check("growth classify: new hire is neither", classifyGrowthEvent_("New Hire", cfg) === null);
+
+  // asOf 2026-08-12 → FY27 elapsed = 2 fiscal months (Jul, Aug).
+  const ctx = fiscalContextCD_(new Date(2026, 7, 12));
+  const recs = [];
+  for (let i = 0; i < 10; i++) recs.push(mkEmp({ keyLocation: "Chile", dept: "Services",
+    hireDate: new Date(2020, 0, 1) }));
+  const hist = {};
+  // 1 promo + 1 adjustment inside FY27-to-date; 3 adjustments in FY26.
+  hist[recs[0].empNo] = [{ date: new Date(2026, 6, 15), reason: "Promotion", tcc: 1 }];
+  hist[recs[1].empNo] = [{ date: new Date(2026, 7, 1), reason: "Salary Adjustment", tcc: 1 },
+                         { date: new Date(2025, 9, 1), reason: "Salary Adjustment", tcc: 1 }];
+  hist[recs[2].empNo] = [{ date: new Date(2026, 0, 10), reason: "Merit", tcc: 1 },
+                         { date: new Date(2025, 7, 10), reason: "Market Adjustment", tcc: 1 }];
+  const g = buildGrowthEvents_(recs, hist, ctx, cfg);
+  const row = g.rows.find(r => r.keyLocation === "Chile");
+  check("growth: FY counts split promo vs adjustment", row.promoFY === 1 && row.adjFY === 1);
+  // (1+1) events / 2 months × 12 = 12/yr ÷ 10 heads × 100 = 120
+  check("growth: FY27 pace annualized per 100", row.per100Cur === 120);
+  // FY26: 3 adjustments ÷ 10 heads × 100 = 30
+  check("growth: FY26 actual per 100", row.per100Prev === 30);
+  check("growth: elapsed months echoed", g.elapsedMonths === 2);
+  check("growth: company rollup present", g.company && g.company.per100Cur === 120);
+
+  const rvr = retainVsRehire_([
+    { signal: "RISK",           tcc: 100000, tccUsd: 40000, anchor: 120000 },
+    { signal: "RISK_IMMEDIATE", tcc: 100000, tccUsd: 39000, anchor: 125000 },
+    { signal: "STABLE",         tcc: 100000, tccUsd: 50000, anchor: 100000 },
+    { signal: "RISK",           tcc: 90000,  tccUsd: null,  anchor: 100000 }, // no USD → coverage
+  ], cfg);
+  check("retainVsRehire: only RISK/RISK_IMMEDIATE count", rvr.flagged === 3);
+  // rehire = 0.75×(40000+39000) = 59250
+  check("retainVsRehire: rehire exposure", rvr.rehireExposureUsd === 59250);
+  // gaps: (0.95×120000−100000)=14000 → USD 14000×0.4=5600; (0.95×125000−100000)=18750 → ×0.39=7312.5
+  check("retainVsRehire: retain cost in USD via per-person FX", rvr.retainCostUsd === 12913);
+  check("retainVsRehire: coverage counts the USD-less person",
+    rvr.coverage.counted === 2 && rvr.coverage.total === 3);
+  check("retainVsRehire: cents per dollar", rvr.centsPerDollar === 22);
+})();
+
+// ── P2a Task 7: restricted stripping covers p2 evidence people ──
+(function () {
+  const payload = {
+    meta: {},
+    restrictedEmpNos: ["E9"],
+    employees: [{ empNo: "E1" }, { empNo: "E9" }],
+    people: [], qtaInterim: [], compaGroups: [],
+    p2: {
+      retention: { evidence: [{ cohortKey: "x", people: [{ empNo: "E1" }, { empNo: "E9" }] }] },
+      accelGroups: [], growth: {},
+    },
+  };
+  const out = stripRestrictedPayload_(payload);
+  check("strip: p2 retention evidence people filtered",
+    out.p2.retention.evidence[0].people.length === 1 &&
+    out.p2.retention.evidence[0].people[0].empNo === "E1");
+  check("strip: employees still filtered alongside p2", out.employees.length === 1);
+})();

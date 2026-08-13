@@ -326,6 +326,11 @@ function stripRestrictedPayload_(payload) {
     payload.equity.outliers = (payload.equity.outliers || []).filter(keep);
     payload.equity.tenure = (payload.equity.tenure || []).filter(keep);
   }
+  if (payload.p2 && payload.p2.retention && payload.p2.retention.evidence) {
+    payload.p2.retention.evidence.forEach(ev => {
+      ev.people = (ev.people || []).filter(keep);
+    });
+  }
   if (payload.history) {
     nos.forEach(no => { delete payload.history[no]; });
   }
@@ -438,6 +443,10 @@ function ssIds_() {
     // Contribution snapshot defaults into the same file as the ratings tab.
     contribSnap:    p.getProperty("CD_CONTRIB_SNAP_SS_ID") || p.getProperty("CD_RATINGS_SS_ID") || CONFIG_CD.RATINGS_SS_ID,
     contribSnapTab: p.getProperty("CD_CONTRIB_SNAP_TAB")   || CONFIG_CD.CONTRIB_SNAP_TAB,
+    remoteBenchTab: p.getProperty("CD_REMOTE_BENCH_TAB") || CONFIG_CD.REMOTE_BENCH_TAB,
+    // Acceleration track defaults into the comp-history file (next to RD).
+    accelTrack:    p.getProperty("CD_ACCEL_TRACK_SS_ID") || p.getProperty("CD_COMP_HIST_SS_ID") || CONFIG_CD.COMP_HIST_SS_ID,
+    accelTrackTab: p.getProperty("CD_ACCEL_TRACK_TAB")   || CONFIG_CD.ACCEL_TRACK_TAB,
   };
 }
 
@@ -830,6 +839,73 @@ function readContribSnapshot_() {
   return out;
 }
 
+/**
+ * Remote-pull benchmark rows (Benchmarking Engine v9 remote-remuneration set).
+ * Keyed by benchKey_(Country, Job Title) — Country joins the roster's Key
+ * Location. USD by definition. Absent tab degrades per-role to local-only
+ * (meta.sources.remoteBench = "pending").
+ * @returns {{map: Object, count: number}}
+ */
+function readRemoteBench_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.bench, ids.remoteBenchTab);
+  const iCountry = colIdx_(headers, "Country", /country|location/i);
+  const iTitle   = colIdx_(headers, "Job Title");
+  const iMean    = colIdx_(headers, "Remote Mean USD", /remote.*mean|mean.*usd/i);
+  const iP25     = colIdx_(headers, "25th Percentile USD", /25th/i);
+  const iP75     = colIdx_(headers, "75th Percentile USD", /75th/i);
+  const iVer     = colIdx_(headers, "Source Version", /source|version/i);
+  if (iCountry === -1 || iTitle === -1 || iMean === -1) {
+    Logger.log("❌ readRemoteBench_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Remote benchmark tab: required columns missing (see execution log).");
+  }
+  const map = {};
+  let count = 0;
+  rows.forEach(row => {
+    const country = String(row[iCountry] || "").trim();
+    const title = String(row[iTitle] || "").trim();
+    const mean = asNum_(row[iMean]);
+    if (!country || !title || !(mean > 0)) return;
+    map[benchKey_(country, title)] = {
+      meanUsd: mean,
+      p25Usd: iP25 !== -1 ? asNum_(row[iP25]) : null,
+      p75Usd: iP75 !== -1 ? asNum_(row[iP75]) : null,
+      sourceVersion: iVer !== -1 ? String(row[iVer] || "").trim() : "",
+    };
+    count++;
+  });
+  log_("readRemoteBench_: " + count + " remote benchmark rows");
+  return { map, count };
+}
+
+/**
+ * Acceleration-track opt-ins: Employee Number → track start date. Lives in a
+ * small "Acceleration Track" tab (comp-history file by default) so WFP can
+ * maintain opt-ins without touching the roster. Absent tab = program pending.
+ * @returns {{byEmp: Object<string,{trackStart: Date}>, count: number}}
+ */
+function readAccelTrack_() {
+  const ids = ssIds_();
+  const { headers, rows } = fetchTab_(ids.accelTrack, ids.accelTrackTab);
+  const iEmp   = colIdx_(headers, "Employee Number");
+  const iStart = colIdx_(headers, "Track Start", /track.*start|start.*date/i);
+  if (iEmp === -1 || iStart === -1) {
+    Logger.log("❌ readAccelTrack_: required columns missing — headers: " + headers.join(" | "));
+    throw new Error("Acceleration Track tab: required columns missing (see execution log).");
+  }
+  const byEmp = {};
+  let count = 0;
+  rows.forEach(row => {
+    const emp = String(row[iEmp] || "").trim();
+    const start = asDate_(row[iStart]);
+    if (!emp || !start) return;
+    byEmp[emp] = { trackStart: start };
+    count++;
+  });
+  log_("readAccelTrack_: " + count + " opt-ins");
+  return { byEmp, count };
+}
+
 // ── Assembly + web app ──────────────────────────────────────────────────────
 
 /**
@@ -901,11 +977,22 @@ function getCompReportData(force) {
   try { contrib = readContribSnapshot_(); }
   catch (e) { sources.contribution = "pending: " + e.message; log_("readContribSnapshot_: " + e.message); }
 
+  // ── P2 sources (both optional until populated — "pending" is normal) ──────
+  let remoteBench = { map: {}, count: 0 };
+  sources.remoteBench = "ok";
+  try { remoteBench = readRemoteBench_(); }
+  catch (e) { sources.remoteBench = "pending: " + e.message; log_("readRemoteBench_: " + e.message); }
+  let accelTrack = { byEmp: {}, count: 0 };
+  sources.accelTrack = "ok";
+  try { accelTrack = readAccelTrack_(); }
+  catch (e) { sources.accelTrack = "pending: " + e.message; log_("readAccelTrack_: " + e.message); }
+  const p2cfg = p2Cfg_();
+
   const active = records.filter(r => r.active);
 
   // SI evidence window: the last N completed fiscal quarters (V4 rule).
   const sigCfg = signalsCfg_(); // regexes included; numeric keys may be overridden
-  const cfgV4 = Object.assign({}, CONFIG_CD, { SIGNALS: sigCfg });
+  const cfgV4 = Object.assign({}, CONFIG_CD, { SIGNALS: sigCfg, P2: p2cfg });
   const windowFqs = lastCompletedQuarters_(ctx, sigCfg.perfWindowQuarters);
 
   const perfByEmp = {};
@@ -938,6 +1025,22 @@ function getCompReportData(force) {
     const marketRatio = (comparable && row && row.mean > 0 && r.tcc > 0)
       ? Math.round(r.tcc / row.mean * 1000) / 1000 : null;
     const ttmGrowthPct = ttmGrowth_(histByEmp[r.empNo], r.tcc, ctx.asOf);
+    // P2: acceleration state (opted-in I3/I4 only) + remote-pull person signal.
+    const accel = (accelTrack.byEmp[r.empNo] && p2cfg.ACCEL.trackLevelRe.test(r.level))
+      ? buildAccelForEmp_({
+          trackStart: accelTrack.byEmp[r.empNo].trackStart, asOf: ctx.asOf,
+          siHistory: perf ? perf.history : [], windowFqs,
+          reviewDates: (histByEmp[r.empNo] || [])
+            .map(e => e.date).filter(d => d instanceof Date && !isNaN(d)),
+        }, cfgV4)
+      : null;
+    const remoteRow = remoteBench.map[benchKey_(r.keyLocation, r.jobTitle)] || null;
+    const remote = buildRemotePullForEmp_({
+      tccUsd: r.tccUsd, remoteRow, localMarketRatio: marketRatio,
+      internalRatio: a.ratio, comparable,
+      siStreakOk: siStreakOk_(perf ? perf.history : [], windowFqs, p2cfg.REMOTE),
+      onAccelTrack: !!accel,
+    }, cfgV4);
     return {
       empNo: r.empNo, name: r.name, jobTitle: r.jobTitle, level: r.level, track: r.track,
       dept: r.dept, keyLocation: r.keyLocation, currency: r.currency,
@@ -970,6 +1073,7 @@ function getCompReportData(force) {
         perfAvg: perf ? perf.avg : null, perfCount: perf ? perf.count : 0,
         companyYears, profileYears, ratio: a.ratio,
       }, CONFIG_CD),
+      p2: { remote, accel },
     };
   });
 
@@ -1008,6 +1112,34 @@ function getCompReportData(force) {
     activeCount: active.length, hcFyStart: headcountOn_(records, ctx.fyStart),
     attrition, managers, employees, equity,
   }, cfgV3);
+
+  // ── P2 cohort blocks ───────────────────────────────────────────────────────
+  // Governing ratio per roster record: remote-pull first (tccUsd), internal
+  // anchor ratio as context fallback — used by retention leaver/stayer medians.
+  const ratioOfP2 = rec => {
+    const rr = remoteBench.map[benchKey_(rec.keyLocation, rec.jobTitle)];
+    if (rr && rr.meanUsd > 0 && rec.tccUsd > 0) {
+      return Math.round(rec.tccUsd / rr.meanUsd * 1000) / 1000;
+    }
+    const a2 = anchorByEmp[rec.empNo];
+    return a2 && a2.ratio != null ? a2.ratio : null;
+  };
+  const growth = buildGrowthEvents_(records, histByEmp, ctx, cfgV4);
+  growth.retainVsRehire = retainVsRehire_(employees.map(e => ({
+    signal: e.p2.remote.signal, tcc: e.tcc, tccUsd: e.tccUsd, anchor: e.anchor,
+  })), cfgV4);
+  const p2Block = {
+    accelGroups: buildAccelGroups_(employees
+      .filter(e => e.p2.accel)
+      .map(e => ({
+        level: e.level, keyLocation: e.keyLocation,
+        governingRatio: e.p2.remote.remotePullRatio != null
+          ? e.p2.remote.remotePullRatio : e.p2.remote.localRatio,
+        accel: e.p2.accel,
+      }))),
+    retention: buildRetention_(records, ctx, cfgV4, ratioOfP2),
+    growth,
+  };
 
   const payload = {
     ok: true,
@@ -1062,6 +1194,27 @@ function getCompReportData(force) {
         invisibleMinScore: sigCfg.invisibleMinScore, invisibleWeakSi: sigCfg.invisibleWeakSi,
       },
       contribution: { quarter: contrib.quarter, matched: contrib.count },
+      p2: {
+        cfg: {
+          remote: { competitiveMin: p2cfg.REMOTE.competitiveMin, stableMin: p2cfg.REMOTE.stableMin,
+                    streakMinCount: p2cfg.REMOTE.streakMinCount, streakMinRating: p2cfg.REMOTE.streakMinRating },
+          accel: { offsetsMonths: p2cfg.ACCEL.offsetsMonths, siGate: p2cfg.ACCEL.siGate,
+                   streakMinCount: p2cfg.ACCEL.streakMinCount, overdueDays: p2cfg.ACCEL.overdueDays,
+                   levels: p2cfg.ACCEL.trackLevelLabel }, // regex's display twin
+          retention: { windowQuarters: p2cfg.RETENTION.windowQuarters,
+                       baselineMult: p2cfg.RETENTION.baselineMult,
+                       consecQuarters: p2cfg.RETENTION.consecQuarters,
+                       minExits: p2cfg.RETENTION.minExits },
+          growth: { replaceFactor: p2cfg.GROWTH.replaceFactor, gapTarget: p2cfg.GROWTH.gapTarget,
+                    adjustLabel: p2cfg.GROWTH.adjustLabel }, // regex's display twin
+        },
+        remoteBench: { rows: remoteBench.count,
+                       matched: employees.filter(e => e.p2.remote.benchScope === "remote").length,
+                       available: sources.remoteBench === "ok" },
+        accelTrack: { optIns: accelTrack.count,
+                      onTrack: employees.filter(e => e.p2.accel).length,
+                      available: sources.accelTrack === "ok" },
+      },
       benchmarks: { sources: CONFIG_CD.BENCH_SOURCES },
       glossary: CONFIG_CD.GLOSSARY,
     },
@@ -1075,6 +1228,7 @@ function getCompReportData(force) {
     equity,
     qtaInterim: buildQtaInterim_(active, histByEmp, ctx.asOf),
     history,
+    p2: p2Block,
   };
 
   const json = JSON.stringify(payload);
@@ -1227,4 +1381,27 @@ function debugCompPipeline() {
   } catch (e) {
     Logger.log("Contribution snapshot: PENDING — " + e.message);
   }
+  try {
+    const rb = readRemoteBench_();
+    let rbHits = 0;
+    active.forEach(x => { if (rb.map[benchKey_(x.keyLocation, x.jobTitle)]) rbHits++; });
+    Logger.log("Remote benchmarks: " + rb.count + " rows, " + rbHits + "/" + active.length +
+      " active matched (unmatched roles fall back to local-only)");
+  } catch (e) { Logger.log("Remote benchmarks: PENDING — " + e.message); }
+  try {
+    const at = readAccelTrack_();
+    const eligible = active.filter(x => CONFIG_CD.P2.ACCEL.trackLevelRe.test(x.level));
+    const opted = eligible.filter(x => at.byEmp[x.empNo]).length;
+    Logger.log("Acceleration track: " + at.count + " opt-ins, " + opted + "/" + eligible.length +
+      " eligible I3–I4 opted in");
+  } catch (e) { Logger.log("Acceleration track: PENDING — " + e.message); }
+  // Growth-event vocabulary check — unmatched RD reasons the regexes don't classify.
+  const unmatched = new Map();
+  Object.keys(hist).forEach(emp => hist[emp].forEach(e => {
+    const s = String(e.reason || "").trim();
+    if (!s || /new hire/i.test(s)) return;
+    if (classifyGrowthEvent_(s, CONFIG_CD) == null) unmatched.set(s, (unmatched.get(s) || 0) + 1);
+  }));
+  Logger.log("Growth events — unmatched RD reasons (tune P2.GROWTH.adjustRe if any should count): " +
+    ([...unmatched.entries()].map(([k, n]) => k + " ×" + n).join(" | ") || "none"));
 }
