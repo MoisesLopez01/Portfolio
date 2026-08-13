@@ -1024,3 +1024,55 @@ check("build: a stale P2 engine blocks doGet", (function () {
   BUILD_.retention = real;
   return out && out.indexOf("retention") !== -1;
 })());
+
+// ── P2a Task 2: RemotePull ──────────────────────────────────
+(function () {
+  const R = CONFIG_CD.P2.REMOTE;
+  const W = ["FY26Q1", "FY26Q2", "FY26Q3", "FY26Q4"];
+  const h = rates => rates.map((r, i) => ({ fq: W[i], rate: r }));
+
+  check("siStreak: 3 window ratings all ≥ 4 → ok",
+    siStreakOk_(h([4, 4, 5]), W, R) === true);
+  check("siStreak: one rating below the gate kills it",
+    siStreakOk_(h([4, 3.5, 5]), W, R) === false);
+  check("siStreak: fewer than streakMinCount → false",
+    siStreakOk_(h([5, 5]), W, R) === false);
+  check("siStreak: only the last 4 window ratings judged (old 2 ignored)",
+    siStreakOk_([{ fq: "FY25Q3", rate: 2 }, { fq: "FY25Q4", rate: 2 }]
+      .concat(h([4, 4, 4, 5])), ["FY25Q3", "FY25Q4"].concat(W), R) === true);
+  check("siStreak: ratings outside the window never count",
+    siStreakOk_([{ fq: "FY24Q1", rate: 5 }, { fq: "FY24Q2", rate: 5 },
+                 { fq: "FY24Q3", rate: 5 }], W, R) === false);
+  check("siStreak: empty history → false", siStreakOk_([], W, R) === false);
+
+  const cfg = CONFIG_CD;
+  const base = { tccUsd: 39000, remoteRow: { meanUsd: 58000 }, localMarketRatio: 1.86,
+                 internalRatio: 1.02, comparable: true, siStreakOk: false, onAccelTrack: false };
+  const mk = over => buildRemotePullForEmp_(Object.assign({}, base, over), cfg);
+
+  const risk = mk({});
+  check("remotePull: ratio on tccUsd only", approx(risk.remotePullRatio, 0.672, 0.001));
+  check("remotePull: < 0.85 without perf gate → RISK",
+    risk.signal === "RISK" && risk.benchScope === "remote");
+  check("remotePull: RISK + SI streak → RISK_IMMEDIATE",
+    mk({ siStreakOk: true }).signal === "RISK_IMMEDIATE");
+  check("remotePull: RISK + acceleration track → RISK_IMMEDIATE",
+    mk({ onAccelTrack: true }).signal === "RISK_IMMEDIATE");
+  check("remotePull: ≥ 1.0 → COMPETITIVE even for a high performer",
+    mk({ tccUsd: 60000, siStreakOk: true }).signal === "COMPETITIVE");
+  check("remotePull: 0.85–1.0 at/above internal median → STABLE",
+    mk({ tccUsd: 53000 }).signal === "STABLE");
+  check("remotePull: 0.85–1.0 below internal median → NORMAL, never escalates",
+    mk({ tccUsd: 53000, internalRatio: 0.91, siStreakOk: true }).signal === "NORMAL");
+  const localOnly = mk({ remoteRow: null, localMarketRatio: 0.80 });
+  check("remotePull: no remote row → local fallback, labeled",
+    localOnly.benchScope === "local-only" && localOnly.signal === "RISK" &&
+    localOnly.remotePullRatio === null);
+  const none = mk({ remoteRow: null, localMarketRatio: null });
+  check("remotePull: no benchmark at all → pending, scope none",
+    none.signal === "pending" && none.benchScope === "none");
+  check("remotePull: part-time/intern never gets a market signal",
+    mk({ comparable: false }).signal === "not-comparable");
+  check("remotePull: missing tccUsd degrades to local scope",
+    mk({ tccUsd: null }).benchScope === "local-only");
+})();
