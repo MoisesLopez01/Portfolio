@@ -6,6 +6,7 @@
       --orbe-blue:   #058CDC; /* accent / CTAs */
       --ivory:       #DCCDBE; /* neutral surfaces / muted labels */
       --june:        #FF9B87; /* highlight accents (banners, emphasis) */
+      --royal:       #2864E6; /* selection, active indicators, cross-filter state */
       /* Semantic theme derived from COMPANY_COLORS — DARK (default).
          Every renderer styles against these names only; the light theme below
          re-binds the same names, so no renderer knows which theme is active. */
@@ -19,6 +20,8 @@
       --warn:   #e8b93c;  /* yellow — attention */
       --bad:    #e05252;  /* red — priority read */
       --above:  #9d7bff;  /* violet — above median (ceiling watch) */
+      --select: var(--royal);
+      --select-bg: rgba(40,100,230,.15);
       --banner-bg: #3B2833; --banner-border: var(--june); --banner-text: #FFD8CC;
       --banner-err-bg: #3a2020; --banner-err-text: #f2b8b8;
       --overlay: rgba(13,21,55,.85);
@@ -35,13 +38,23 @@
       --cta: #0277C0;             /* orbe-blue deepened for white surfaces */
       --cta-text: #FFFFFF;
       --accent: #1B8F4E; --warn: #A87708; --bad: #C13A3A; --above: #7A5AE0;
+      --select: #1E4FBF;  /* royal deepened for white surfaces */
+      --select-bg: rgba(30,79,191,.10);
       --banner-bg: #FFEFE9; --banner-border: var(--june); --banner-text: #8A3B2A;
       --banner-err-bg: #FBE4E4; --banner-err-text: #A03030;
       --overlay: rgba(255,250,245,.88);
       --shadow: rgba(15,25,65,.18);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
+    /* Roboto via a stylesheet <link> in ViewDash.html — CSS only, no script
+       execution, which is why fonts are acceptable here where a charting CDN
+       was not. System stack stays as the fallback if the link fails. */
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 14px/1.5 Roboto, system-ui, "Segoe UI", Arial, sans-serif; }
+    h1, h2, h3, .kpi-v {
+      font-family: "Roboto Condensed", Roboto, system-ui, "Segoe UI", Arial, sans-serif;
+      letter-spacing: .01em;
+    }
     header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
     header h1 { font-size: 17px; margin: 0; }
     .sub { color: var(--muted); font-size: 12px; }
@@ -52,7 +65,7 @@
     .seg button { border: 0; border-radius: 0; background: transparent; }
     .seg button.on { background: var(--cta); color: var(--cta-text); font-weight: 600; }
     nav { display: flex; gap: 6px; padding: 10px 18px 0; flex-wrap: wrap; }
-    nav button.on { background: var(--panel-2); border-color: var(--cta); font-weight: 600; }
+    nav button.on { background: var(--select-bg); border-color: var(--select); font-weight: 600; }
     #stickyBar { position: sticky; top: 0; z-index: 20; background: var(--bg); }
     .filterbar { display: flex; gap: 8px; padding: 8px 18px 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); }
     .filterbar input[type=search] { background: var(--chip); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 190px; }
@@ -96,10 +109,12 @@
       h1 { font-size: 16px; }
       .drill { width: 100vw; }
     }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-    .banner { background: var(--banner-bg); border: 1px solid var(--banner-border); color: var(--banner-text); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px;
+            transition: border-color .15s ease, box-shadow .15s ease; }
+    .card:hover { box-shadow: 0 2px 10px var(--shadow); }
+    .banner { background: var(--banner-bg); border: 1px solid var(--banner-border); color: var(--banner-text); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
     .banner.err { background: var(--banner-err-bg); border-color: var(--bad); color: var(--banner-err-text); }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.4; }
     th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
     th { color: var(--muted); font-weight: 600; font-size: 12px; }
     tr.click { cursor: pointer; }
@@ -109,13 +124,19 @@
     .chip.yellow { border-color: var(--warn); color: var(--warn); }
     .chip.red { border-color: var(--bad); color: var(--bad); }
     .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px; }
-    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; }
-    .kpi:hover { border-color: var(--cta); }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; cursor: pointer;
+           transition: border-color .15s ease, box-shadow .15s ease; }
+    .kpi:hover { border-color: var(--cta); box-shadow: 0 2px 10px var(--shadow); }
     .kpi-q { color: var(--muted); font-size: 12px; min-height: 30px; }
     .kpi-v { font-size: 26px; font-weight: 700; margin: 4px 0 2px; }
     .kpi-s { color: var(--muted); font-size: 11px; }
     .bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; }
     .bar > i { display: block; height: 100%; }
+    .fresh { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+             color: var(--muted); border: 1px solid var(--border); border-radius: 999px;
+             padding: 3px 10px; }
+    .fresh b { color: var(--text); font-weight: 600; }
+    .tico { width: 15px; height: 15px; vertical-align: -3px; margin-right: 6px; fill: currentColor; }
     .menu { position: absolute; top: 52px; left: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; z-index: 30; display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
     .menu button { text-align: left; border: none; background: transparent; }
     .menu button:hover { background: var(--chip); }

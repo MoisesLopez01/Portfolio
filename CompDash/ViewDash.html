@@ -2,15 +2,27 @@
 <html>
 <head>
   <base target="_top">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@600;700&display=swap">
   <?!= include('Styles') ?>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 24 24"><path d="M3 12l9-8 9 8v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-attrition" viewBox="0 0 24 24"><path d="M3 5h2v12h14v2H3zm5 9V9h3v5zm5 0V6h3v8z"/></symbol>
+  <symbol id="i-compa" viewBox="0 0 24 24"><path d="M11 3h2v3h6v2h-2.2l3.2 6a4 4 0 0 1-8 0l3.2-6H13v11h4v2H7v-2h4V8H7.8L11 14a4 4 0 0 1-8 0l3.2-6H4V6h7z"/></symbol>
+  <symbol id="i-qta" viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zm8 1.5V8h4.5zM8 12h8v2H8zm0 4h8v2H8z"/></symbol>
+  <symbol id="i-reference" viewBox="0 0 24 24"><path d="M4 4h7v16H4zm9 0h7v16h-7zm2 3h3v2h-3zm0 4h3v2h-3z"/></symbol>
+  <symbol id="i-access" viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 1 5 5v2h2v13H5V9h2V7a5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3v2h6V7a3 3 0 0 0-3-3m0 9a2 2 0 0 0-1 3.7V18h2v-1.3A2 2 0 0 0 12 13"/></symbol>
+</svg>
 <div id="stickyBar">
 <header>
   <button id="menuBtn" title="Menu">☰</button>
   <div>
     <h1>Rocketeer Global Comp Health Report</h1>
     <div class="sub" id="subTitle">loading…</div>
+    <span class="fresh" id="freshChip" hidden></span>
   </div>
   <div class="hdr-right">
     <div class="seg" id="curToggle">
@@ -50,15 +62,18 @@ const USER_EMAIL = "<?= userEmail ?>";
 const SCHEMA = 46;
 
 // Single source of truth for navigation — same pattern as PS Dashboard.
+// Order is the spec's narrative order (Executive Pulse → Compensation
+// Position → Workforce & Attrition); QTA, Data Reference and Access Control
+// live in the ☰ menu (`menu: true`). Managers folded INTO Attrition
+// (2026.W31): the full manager list outgrew its own tab — only outlier teams
+// render there now (see mgrHotspotsHtml).
 const VIEWS = [
-  { id: "overview",  label: "🏠 Overview",           roles: ["admin", "viewer"] },
-  // Managers folded INTO Attrition (2026.W31): the full manager list outgrew
-  // its own tab — only outlier teams render there now (see mgrHotspotsHtml).
-  { id: "attrition", label: "📉 Attrition",           roles: ["admin", "viewer"] },
-  { id: "compa",     label: "⚖️ Internal Position",   roles: ["admin", "viewer"] },
-  { id: "qta",       label: "📋 QTA Status",          roles: ["admin", "viewer"] },
-  { id: "reference", label: "📊 Data Reference",      roles: ["admin", "viewer"], menu: true },
-  { id: "access",    label: "🔒 Access Control",      roles: ["admin"],           menu: true },
+  { id: "overview",  icon: "i-overview",  label: "Executive Pulse",       roles: ["admin", "viewer"] },
+  { id: "compa",     icon: "i-compa",     label: "Compensation Position", roles: ["admin", "viewer"] },
+  { id: "attrition", icon: "i-attrition", label: "Workforce & Attrition", roles: ["admin", "viewer"] },
+  { id: "qta",       icon: "i-qta",       label: "QTA Status",            roles: ["admin", "viewer"], menu: true },
+  { id: "reference", icon: "i-reference", label: "Data Reference",        roles: ["admin", "viewer"], menu: true },
+  { id: "access",    icon: "i-access",    label: "Access Control",        roles: ["admin"],           menu: true },
 ];
 
 const STATE = {
@@ -267,7 +282,7 @@ function buildNav() {
   bar.innerHTML = "";
   VIEWS.filter(v => !v.menu && v.roles.includes(USER_ROLE)).forEach(v => {
     const b = document.createElement("button");
-    b.textContent = v.label;
+    b.innerHTML = '<svg class="tico"><use href="#' + v.icon + '"></use></svg>' + esc(v.label);
     b.id = "tab_" + v.id;
     b.onclick = () => switchTab(v.id);
     bar.appendChild(b);
@@ -276,7 +291,7 @@ function buildNav() {
   menu.innerHTML = "";
   VIEWS.filter(v => v.menu && v.roles.includes(USER_ROLE)).forEach(v => {
     const b = document.createElement("button");
-    b.textContent = v.label;
+    b.innerHTML = '<svg class="tico"><use href="#' + v.icon + '"></use></svg>' + esc(v.label);
     b.onclick = () => { menu.classList.add("hidden"); switchTab(v.id); };
     menu.appendChild(b);
   });
@@ -353,6 +368,10 @@ function onData(raw) {
     d.meta.fyLabel + " " + d.meta.qLabel + " · " + d.meta.activeCount + " active Rocketeers · " +
     (d.meta.fromCache ? "cached" : "live") + " · " + USER_ROLE +
     (hidden > 0 ? " · " + hidden + " leadership profile" + (hidden === 1 ? "" : "s") + " not shown" : "");
+  const fc = document.getElementById("freshChip");
+  fc.innerHTML = 'As of <b>' + esc(isoWeekLabel(d.meta.asOf)) + '</b> · ' +
+                 (d.meta.fromCache ? 'cached' : 'live');
+  fc.hidden = false;
   document.getElementById("loading").classList.add("hidden");
   populateFilters();
   syncFilterBar();
@@ -372,7 +391,7 @@ function onLoadError(err) {
 // Action Queue surface was removed (per-viewer state, no shared ownership).
 function ovViewLabel(id) {
   const v = VIEWS.find(x => x.id === id);
-  return v ? v.label.replace(/^[^\s]+\s/, "") : id; // strip the emoji prefix
+  return v ? v.label : id; // labels carry no emoji prefix since Task 11 (SVG tab icons)
 }
 // Fiscal-quarter close date for a given ISO date, as YYYY-MM-DD (FY starts
 // July 1). Used wherever a "before the cycle closes" deadline needs a real
