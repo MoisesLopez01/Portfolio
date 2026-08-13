@@ -337,11 +337,16 @@ function renderOverview(el) {
       ' same month · counts labeled on the ' + esc(cur.label) + ' bars</div></div>';
 
   el.innerHTML =
+    briefStripHtml(d) +
     ovFactsHtml(d) +
+    signalMapHtml(d) +
+    growthCommitHtml(d) +
+    decisionCallsHtml(d) +
     ovSignalsHtml(d) +
     '<div class="kpi-grid">' + cards.map(cardHtml).join("") + '</div>' +
     contribLine +
     chartCard +
+    (d.p2 ? guardrailHtml(d) : "") +
     ovProvenanceHtml(d);
 }
 // All verdicts for a view, in payload order.
@@ -388,6 +393,8 @@ function renderAttrition(el) {
 
   el.innerHTML =
     sourceBanner("roster", "Roster data") +
+    retentionTrendHtml(d) +
+    retentionEvidenceHtml(d) +
     vSorted.map(verdictHtml).join("") + filteredNote +
     '<div class="card"><h2>' + esc(cur.label) + ' vs ' + esc(prev.label) + ' terminations</h2>' +
     '<div class="seg" style="margin-bottom:10px">' +
@@ -439,6 +446,8 @@ function renderCompa(el) {
   const d = STATE.data;
 
   let html =
+    compaCovheadHtml(d) +
+    accelGroupsHtml(d) +
     '<div class="banner">⚖️ <b>Compensation Position (vs peer median)</b> — TCC ÷ the median TCC of ACTIVE peers with the same Key Location + Job Title, local currency. Small groups fall back to the <b>market mean</b> (external benchmark) or the location&#39;s level cohort — see the badge on each group. 1.00 = the anchor; ratios above 1.00 are expected.</div>';
 
   const f = STATE.filters;
@@ -475,5 +484,441 @@ function renderCompa(el) {
     }).join("") + '</table></div>').join("");
   if (!groups.length) html += '<div class="card sub">No groups match the current filters.</div>';
   el.innerHTML = html;
+}
+
+// ══ P2b decision layer (spec 2026-08-12; mock v5 is the design reference) ══
+// Every section guards on d.p2 — a cached pre-P2 payload simply renders the
+// P0 surfaces until the cache rolls over. All thresholds read from meta.p2.cfg.
+function usdK(v) {
+  if (v == null) return "—";
+  const a = Math.abs(v);
+  return "$" + (a >= 1e6 ? (v / 1e6).toFixed(1) + "M" : a >= 1000 ? Math.round(v / 1000) + "K" : String(Math.round(v)));
+}
+function p2cfg(group) {
+  const m = STATE.data && STATE.data.meta.p2;
+  return (m && m.cfg && m.cfg[group]) || {};
+}
+// Governing market ratio for one employee row: remote-pull first, local fallback.
+function govRatio(e) {
+  const r = e.p2 && e.p2.remote;
+  if (!r) return null;
+  return r.remotePullRatio != null ? r.remotePullRatio : r.localRatio;
+}
+function sigChipHtml(sig) {
+  const M = { RISK_IMMEDIATE: ["risknow", "🔥 RISK · IMMEDIATE"], RISK: ["risk", "✕ RISK"],
+    NORMAL: ["normal", "! NORMAL"], STABLE: ["stable", "✓ STABLE"],
+    COMPETITIVE: ["comp", "◆ COMPETITIVE"], pending: ["mute", "pending"],
+    "not-comparable": ["mute", "not comparable"] };
+  const m = M[sig] || ["mute", esc(sig)];
+  return '<span class="sig ' + m[0] + '">' + m[1] + '</span>';
+}
+function guardrailHtml(d) {
+  return '<div class="guardrail"><b>Signals propose focus. Decisions follow the Guiding Principles and the QTA cycle.</b>' +
+    'Acceleration reviews are scheduled by signal, granted by Check01 · retention triggers need the market AND the historical mark · ' +
+    'person-level signals are governed by the market that can poach, never by internal percentile alone · high performers on risk skip the queue · ' +
+    'money figures are estimates with stated assumptions.</div>';
+}
+// Decision strip — four cards, money on both sides where the payload has it.
+function briefStripHtml(d) {
+  if (!d.p2) return "";
+  const fi = d.attrition.financialImpact || { annualPayrollReleasedUsd: null, regrettedPortionUsd: null, coverage: { counted: 0, total: 0 } };
+  const cur = d.attrition.currentFY;
+  const rvr = (d.p2.growth || {}).retainVsRehire || null;
+  const gco = (d.p2.growth || {}).company || null;
+  const ag = d.p2.accelGroups || [];
+  const sum = k => ag.reduce((t, g) => t + (g[k] || 0), 0);
+  const accelAvail = ((d.meta.p2 || {}).accelTrack || {}).available !== false;
+  const ratio = rvr && rvr.centsPerDollar != null
+    ? (rvr.centsPerDollar < 100 ? "$0." + String(rvr.centsPerDollar).padStart(2, "0") : "$" + (rvr.centsPerDollar / 100).toFixed(2)) + " : $1"
+    : "—";
+  const cards = [
+    { e: "r", q: "Payroll released by exits — " + d.meta.fyLabel + " to date",
+      v: usdK(fi.annualPayrollReleasedUsd),
+      so: cur.total + " exit" + (cur.total === 1 ? "" : "s") + " · regretted portion <b>" + usdK(fi.regrettedPortionUsd) +
+          "</b> · costed " + fi.coverage.counted + " of " + fi.coverage.total + " leavers" },
+    { e: "y", q: "Retain vs rehire",
+      v: ratio,
+      so: rvr && rvr.flagged
+        ? "closing every flagged gap ≈ <b>" + usdK(rvr.retainCostUsd) + "/yr</b> vs <b>" + usdK(rvr.rehireExposureUsd) +
+          "</b> replacement exposure · " + rvr.flagged + " Rocketeers flagged"
+        : "no Rocketeers currently flagged at RISK" },
+    { e: "b", q: "Growth events — " + d.meta.fyLabel + " pace",
+      v: gco && gco.per100Cur != null ? gco.per100Cur + " / 100" : "—",
+      so: gco ? "promotions + adjustments per 100 Rocketeers, annualized · " + d.meta.prevFyLabel +
+          " finished at <b>" + (gco.per100Prev != null ? gco.per100Prev + "/100" : "—") + "</b>" : "" },
+    { e: "g", q: "Acceleration cohort (" + (p2cfg("accel").levels || "I3–I4") + ")",
+      v: sum("readyNow") + " ready",
+      so: "<b>" + sum("onTrack") + "</b> on track · <b>" + sum("overdue") + "</b> overdue a checkpoint" +
+          (accelAvail ? "" : " · opt-in tab pending — counts activate when Track Start dates land") },
+  ];
+  return '<div class="dstrip">' + cards.map(c =>
+    '<div class="dcard"><span class="edge ' + c.e + '"></span><div class="q">' + esc(c.q) +
+    '</div><div class="money">' + esc(c.v) + '</div><div class="so">' + c.so + '</div></div>').join("") + '</div>';
+}
+// Signal map — location × department; color depth = lenses in agreement.
+function signalMapHtml(d) {
+  if (!d.p2 || !d.p2.retention) return "";
+  const bands = d.meta.compaBands || { target: 0.95 };
+  const mLow = d.meta.marketLow || 0.9;
+  const topKeys = (keyFn, n) => {
+    const c = new Map();
+    d.employees.forEach(e => { const k = keyFn(e); if (k) c.set(k, (c.get(k) || 0) + 1); });
+    return [...c.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(x => x[0]);
+  };
+  const locs = topKeys(e => e.keyLocation, 6), depts = topKeys(e => e.dept, 4);
+  if (!locs.length || !depts.length) return "";
+  const byLD = new Map();
+  d.employees.forEach(e => {
+    const k = e.keyLocation + "||" + e.dept;
+    if (!byLD.has(k)) byLD.set(k, []);
+    byLD.get(k).push(e);
+  });
+  const retenBy = {};
+  (d.p2.retention.cohorts || []).forEach(c => { retenBy[c.key] = c; });
+  const rows = locs.map(loc =>
+    '<tr><td><b>' + esc(loc) + '</b></td>' + depts.map(dept => {
+      const emps = byLD.get(loc + "||" + dept) || [];
+      if (!emps.length) return '<td><span class="cell c0">—</span></td>';
+      const lenses = [];
+      const c = retenBy[loc + "||" + dept];
+      if (c && c.verdict === "confirmed") lenses.push("▲ attrition confirmed");
+      else if (c && (c.verdict === "noted" || c.verdict === "watch")) lenses.push("▲ " + c.verdict);
+      const medInt = median(emps.filter(e => e.ratio != null).map(e => e.ratio));
+      if (medInt != null && medInt < bands.target) lenses.push("⌖ " + medInt.toFixed(2));
+      const medGov = median(emps.map(govRatio).filter(v => v != null));
+      if (medGov != null && medGov < mLow) lenses.push("↓ " + medGov.toFixed(2));
+      const hot = lenses.length >= 2 || (c && c.verdict === "confirmed");
+      const cls = !lenses.length ? "c1" : hot ? "c3" : "c2";
+      const glyph = !lenses.length ? "✓" : (hot ? "✕ " : "! ") + lenses.length + " signal" + (lenses.length === 1 ? "" : "s");
+      return '<td><span class="cell ' + cls + '" style="cursor:pointer" onclick="switchTab(\'attrition\')">' + glyph +
+        (lenses.length ? '<span class="d">' + esc(lenses.join(" · ")) + '</span>' : '') + '</span></td>';
+    }).join("") + '</tr>').join("");
+  const truncated = [...new Set(d.employees.map(e => e.keyLocation))].filter(Boolean).length - locs.length;
+  return '<div class="card"><h2>Signal map — location × department</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Color depth = lenses in agreement (▲ attrition · ⌖ internal position · ↓ market). One lens is a watch, never a call. Cells open Retention Analytics.</div>' +
+    '<table><tr><th></th>' + depts.map(x => '<th>' + esc(x) + '</th>').join("") + '</tr>' + rows + '</table>' +
+    (truncated > 0 ? '<div class="sub" style="margin-top:6px">' + truncated + ' smaller location' + (truncated === 1 ? '' : 's') + ' not shown — largest by headcount listed.</div>' : '') +
+    '</div>';
+}
+// Growth commitment — "Grow the Tree, Share the Fruit", audited.
+function growthCommitHtml(d) {
+  if (!d.p2 || !d.p2.growth) return "";
+  const g = d.p2.growth;
+  const retenBy = {};
+  ((d.p2.retention || {}).cohorts || []).forEach(c => { retenBy[c.key] = c; });
+  const rows = (g.rows || []).filter(r => r.headcount >= 3);
+  const shown = rows.slice(0, 10);
+  const readChip = r => {
+    const c = retenBy[r.key];
+    const behind = r.per100Cur != null && r.per100Prev != null && r.per100Cur < r.per100Prev;
+    if (c && c.verdict === "confirmed" && behind) return '<span class="chip red">✕ growth stalled where attrition burns</span>';
+    if (behind) return '<span class="chip yellow">! below own pace</span>';
+    return '<span class="chip green">✓ on promise</span>';
+  };
+  return '<div class="card"><h2>Growth commitment — Grow the Tree, Share the Fruit</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Promotions + salary adjustments per 100 Rocketeers per cohort — ' +
+    esc(d.meta.fyLabel) + ' annualized from ' + g.elapsedMonths + ' elapsed month' + (g.elapsedMonths === 1 ? '' : 's') +
+    ' vs ' + esc(d.meta.prevFyLabel) + ' actual.</div>' +
+    '<table><tr><th>Cohort</th><th>Promo</th><th>Adj.</th><th>' + esc(d.meta.fyLabel) + ' /100</th><th>' +
+    esc(d.meta.prevFyLabel) + ' /100</th><th>Read</th></tr>' +
+    shown.map(r =>
+      '<tr><td><b>' + esc(r.keyLocation) + ' · ' + esc(r.dept) + '</b></td><td>' + r.promoFY + '</td><td>' + r.adjFY +
+      '</td><td><b>' + (r.per100Cur != null ? r.per100Cur : "—") + '</b></td><td>' +
+      (r.per100Prev != null ? r.per100Prev : "—") + '</td><td>' + readChip(r) + '</td></tr>').join("") +
+    (g.company ? '<tr><td><b>Company</b></td><td>' + g.company.promoFY + '</td><td>' + g.company.adjFY +
+      '</td><td><b>' + (g.company.per100Cur != null ? g.company.per100Cur : "—") + '</b></td><td>' +
+      (g.company.per100Prev != null ? g.company.per100Prev : "—") + '</td><td></td></tr>' : '') + '</table>' +
+    (rows.length > shown.length ? '<div class="sub" style="margin-top:6px">' + (rows.length - shown.length) + ' more cohort(s) not listed — worst pace first.</div>' : '') +
+    '</div>';
+}
+// Open decisions — decision spaces, not recommendations.
+function decisionCallsHtml(d) {
+  if (!d.p2) return "";
+  const calls = [];
+  const evBy = {};
+  ((d.p2.retention || {}).evidence || []).forEach(ev => { evBy[ev.cohortKey] = ev; });
+  ((d.p2.retention || {}).cohorts || []).filter(c => c.verdict === "confirmed").slice(0, 3).forEach((c, i) => {
+    const ev = evBy[c.key];
+    calls.push({ cls: i === 0 ? "" : "y",
+      title: c.keyLocation + " · " + c.dept + " — retain, or budget the replacement?",
+      due: isoWeekLabel(d.meta.asOf, 2),
+      facts: "Rolling rate <b>" + pctFmt(c.rate4q) + "</b>" + (c.xBaseline != null ? " (" + c.xBaseline + "× baseline)" : "") +
+        ", above its own FY25 " + pctFmt(c.fy25Rate) + " and FY26 " + pctFmt(c.fy26Rate) + "." +
+        (ev && ev.driver ? " Driver: <b>" + esc(ev.driver) + "</b>." : "") +
+        (ev && ev.leaversMedianRatio != null && ev.stayersMedianRatio != null
+          ? " Leavers sat at <b>" + ev.leaversMedianRatio.toFixed(2) + "</b> vs stayers <b>" + ev.stayersMedianRatio.toFixed(2) + "</b>." : ""),
+      space: "targeted adjustments · retention focus group (triggered) · accept churn and budget replacement.",
+      own: "Cohort leadership + WFP" });
+  });
+  const ag = d.p2.accelGroups || [];
+  const ready = ag.reduce((t, g) => t + (g.readyNow || 0), 0);
+  if (ready > 0) {
+    calls.push({ cls: "b",
+      title: "Acceleration cohort — " + ready + " Rocketeer" + (ready === 1 ? "" : "s") + " ready for review now",
+      due: isoWeekLabel(d.meta.asOf, 1),
+      facts: "Cadence checkpoint reached with the SI streak gate held (see Compensation Position for the group table and the drill for each path).",
+      space: "WFP schedules the reviews this week; managers bring the evidence packs (contribution snapshot included).",
+      own: "WFP orchestrates · managers decide per Guiding Principles Check01" });
+  }
+  if (!calls.length) return "";
+  const gcfg = p2cfg("growth");
+  return '<div class="card"><h2>Open decisions this cycle</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Decision spaces, not recommendations — facts, money on both sides, owner, due week.</div>' +
+    '<div class="calls">' + calls.map(c =>
+      '<div class="call ' + c.cls + '"><div class="head"><h4>' + esc(c.title) + '</h4><span class="due">due <b>' + esc(c.due) + '</b></span></div>' +
+      '<div class="facts">' + c.facts + '</div>' +
+      '<div class="space"><b>Decision space:</b> ' + esc(c.space) + '</div>' +
+      '<div class="own">Owner: ' + esc(c.own) + '</div></div>').join("") + '</div>' +
+    '<div class="prov">Assumptions ⓘ replacement = ' + ((gcfg.replaceFactor != null ? gcfg.replaceFactor : 0.75)) +
+    '× TCC USD · gap-close target = ' + ((gcfg.gapTarget != null ? gcfg.gapTarget : 0.95)) +
+    '× internal anchor · growth rate = (promotions + adjustments) ÷ headcount × 100, annualized · USD, estimates</div></div>';
+}
+// Retention trend table — the dual false-alarm gate, verdict per cohort.
+function retentionTrendHtml(d) {
+  if (!d.p2 || !d.p2.retention) return "";
+  const R = d.p2.retention;
+  const cfgR = p2cfg("retention");
+  const minExits = cfgR.minExits != null ? cfgR.minExits : 4;
+  const rows = (R.cohorts || []).filter(c => c.verdict !== "ok").slice(0, 12);
+  const okCount = (R.cohorts || []).length - rows.length;
+  const rateCell = c => c.exits4q < minExits
+    ? '<b>' + c.exits4q + ' exit' + (c.exits4q === 1 ? '' : 's') + '</b> <span class="sub">(' + pctFmt(c.rate4q) + ')</span>'
+    : '<b>' + pctFmt(c.rate4q) + '</b>';
+  const verdictChip = c =>
+    c.verdict === "confirmed" ? '<span class="chip red">● CONFIRMED — focus group ' + esc(isoWeekLabel(d.meta.asOf, 2)) + '</span>' :
+    c.verdict === "noted" ? '<span class="chip yellow">noted, not alarmed — within its own 2-FY norm</span>' :
+    '<span class="chip yellow">watch — ' + (c.exits4q < minExits ? 'n &lt; ' + minExits : 'needs a second hot quarter') + '</span>';
+  return '<div class="card"><h2>Cohort trend engine — with the false-alarm gate</h2>' +
+    '<div class="sub" style="margin-bottom:8px">A trigger needs BOTH marks: the <b>market threshold</b> (≥ ' +
+    (cfgR.baselineMult != null ? cfgR.baselineMult : 1.5) + '× company baseline, ' + (cfgR.consecQuarters != null ? cfgR.consecQuarters : 2) +
+    ' consecutive quarters, ≥ ' + minExits + ' exits) <b>and</b> the <b>historical mark</b> (above the cohort&#39;s own FY25 + FY26 rates). ' +
+    'Elevated-but-normal-for-this-cohort → noted, watched, never alarmed. Rolling window: ' + esc((R.windowFqs || []).join(" ")) +
+    ' · company baseline ' + pctFmt((R.baseline || {}).rate) + '.</div>' +
+    (rows.length
+      ? '<table><tr><th>Cohort</th><th>Rolling rate</th><th>× baseline</th><th>FY25</th><th>FY26</th><th>Historical check</th><th>Verdict</th></tr>' +
+        rows.map(c =>
+          '<tr' + (c.verdict === "confirmed" ? ' class="trig"' : '') + '><td><b>' + esc(c.keyLocation) + ' · ' + esc(c.dept) + '</b></td>' +
+          '<td>' + rateCell(c) + '</td><td>' + (c.xBaseline != null ? c.xBaseline + '×' : '—') + '</td>' +
+          '<td>' + pctFmt(c.fy25Rate) + '</td><td>' + pctFmt(c.fy26Rate) + '</td>' +
+          '<td>' + (c.historicalMark ? '<span style="color:var(--bad);font-weight:700">▲ above both FYs</span>' : '<span class="sub">— within own norm</span>') + '</td>' +
+          '<td>' + verdictChip(c) + '</td></tr>').join("") + '</table>'
+      : '<p class="sub">✓ No cohort is elevated against the company baseline right now.</p>') +
+    (okCount > 0 ? '<div class="sub" style="margin-top:6px">' + okCount + ' cohort' + (okCount === 1 ? '' : 's') + ' within normal range not listed.</div>' : '') +
+    '</div>';
+}
+// Focus-group queue + opportunity decomposition (confirmed cohorts only).
+function retentionEvidenceHtml(d) {
+  const evs = ((d.p2 || {}).retention || {}).evidence || [];
+  if (!evs.length) return "";
+  const hbar = (label, n, max, hot) =>
+    '<div class="hbar"><span>' + esc(label) + '</span><div class="hb' + (hot ? ' hot' : '') +
+    '" style="width:' + Math.max(4, Math.round(n / Math.max(1, max) * 100)) + '%"></div><span class="v">' + n + '</span></div>';
+  const agg = (key) => {
+    const m = new Map();
+    evs.forEach(ev => (ev[key] || []).forEach(r => m.set(r.key, (m.get(r.key) || 0) + r.n)));
+    return [...m.entries()].map(([key, n]) => ({ key, n })).sort((a, b) => b.n - a.n);
+  };
+  const byLevel = agg("byLevel"), byMgr = agg("byManager");
+  const tenure = evs[0].tenureDist.map((b, i) => ({
+    label: b.label, n: evs.reduce((t, ev) => t + ((ev.tenureDist[i] || {}).n || 0), 0) }));
+  const maxL = Math.max.apply(null, byLevel.map(x => x.n).concat([1]));
+  const maxT = Math.max.apply(null, tenure.map(x => x.n).concat([1]));
+  const decomp =
+    '<div class="card"><h2>Where is the opportunity — level, tenure, or team?</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Exits from confirmed cohorts decomposed by dimension. The dimension that separates hardest from its peers is where the retention effort pays.</div>' +
+    '<h3>By level</h3>' + byLevel.slice(0, 5).map((x, i) => hbar(x.key, x.n, maxL, i === 0)).join("") +
+    '<h3>By tenure</h3>' + tenure.map((x, i) => hbar(x.label, x.n, maxT, x.n === maxT)).join("") +
+    (byMgr.length ? '<h3>By team</h3>' + byMgr.slice(0, 3).map((x, i) =>
+      hbar(x.key, x.n, Math.max(byMgr[0].n, 1), i === 0)).join("") +
+      '<div class="sub" style="margin-top:6px">Team concentration is framed as "may need support" — identities stay at this level, never in decks.</div>' : '') +
+    '</div>';
+  const queue =
+    '<div class="card"><h2>Focus group queue</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Triggered cohorts, layered evidence, driver-specific questions. Focus groups hear people — the data only frames the questions.</div>' +
+    '<table><tr><th>Cohort</th><th>Driver</th><th>Leavers vs stayers</th><th>Convene</th></tr>' +
+    evs.map((ev, i) => {
+      const parts = String(ev.cohortKey).split("||");
+      return '<tr><td><b>' + esc(parts[0]) + ' · ' + esc(parts[1] || "") + '</b></td>' +
+        '<td>' + esc(ev.driver || "mixed") + '</td>' +
+        '<td>' + (ev.leaversMedianRatio != null && ev.stayersMedianRatio != null
+          ? ev.leaversMedianRatio.toFixed(2) + ' vs ' + ev.stayersMedianRatio.toFixed(2) : '—') + '</td>' +
+        '<td><b>' + esc(isoWeekLabel(d.meta.asOf, 2 + i)) + '</b></td></tr>';
+    }).join("") + '</table>' +
+    '<div class="sub" style="margin-top:8px">Composition: current members of the cohort + recent transfers · facilitator outside the reporting line · findings feed QTA.</div></div>';
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 12px">' + decomp + queue + '</div>';
+}
+// Compensation Position — coverage header + acceleration group table.
+function compaCovheadHtml(d) {
+  if (!d.p2) return "";
+  const comparable = d.employees.filter(e => e.employmentType === "regular");
+  const anchored = comparable.filter(e => e.ratio != null).length;
+  const pct = comparable.length ? Math.round(anchored / comparable.length * 100) : 0;
+  const ag = d.p2.accelGroups || [];
+  const sum = k => ag.reduce((t, g) => t + (g[k] || 0), 0);
+  const rvr = ((d.p2.growth || {}).retainVsRehire) || null;
+  const gcfg = p2cfg("growth");
+  return '<div class="covhead"><span><b>' + pct + '%</b> anchored</span>' +
+    '<span><b>' + sum("onTrack") + '</b> on the acceleration track (' + esc(p2cfg("accel").levels || "I3–I4") + ')</span>' +
+    '<span><b style="color:var(--accent)">' + sum("readyNow") + '</b> ready for review now</span>' +
+    '<span><b style="color:var(--bad)">' + sum("overdue") + '</b> overdue a checkpoint</span>' +
+    (rvr && rvr.flagged ? '<span style="margin-left:auto"><b>' + usdK(rvr.retainCostUsd) + '/yr</b> total gap-to-' +
+      (gcfg.gapTarget != null ? gcfg.gapTarget : 0.95) + ' (flagged)</span>' : '') + '</div>';
+}
+function accelGroupsHtml(d) {
+  if (!d.p2) return "";
+  const ag = d.p2.accelGroups || [];
+  const avail = ((d.meta.p2 || {}).accelTrack || {}).available !== false;
+  const cfgA = p2cfg("accel");
+  const head = '<div class="card"><h2>Acceleration program — ' + esc(cfgA.levels || "I3–I4") + ' toward the next level</h2>';
+  if (!ag.length) {
+    return head + '<p class="sub">' + (avail
+      ? 'No opted-in Rocketeers in the current payload.'
+      : 'The opt-in tab ("Acceleration Track": Employee Number | Track Start) is not populated yet — this table activates when the first opt-in lands.') + '</p></div>';
+  }
+  const readChip = g => {
+    if (g.medianMarketRatio != null && g.medianMarketRatio < 0.95 && g.readyNow > 0)
+      return '<span class="chip red">retention-critical — below market AND ready performers waiting</span>';
+    if (g.overdue > 0) return '<span class="chip yellow">cadence discipline — reviews slipped</span>';
+    return '<span class="chip green">✓ maturing on schedule</span>';
+  };
+  return head +
+    '<div class="sub" style="margin-bottom:8px">High performers earn a salary review on the <b>' +
+    esc((cfgA.offsetsMonths || [6, 15, 21, 30, 36]).join("·")) + ' month cadence</b>, each checkpoint gated on SI ≥ ' +
+    (cfgA.siGate != null ? cfgA.siGate : 4) + ' in the review window. The signal schedules a review — Check01 governs the outcome.</div>' +
+    '<table><tr><th>Group</th><th>On track</th><th>Ready now</th><th>Overdue checkpoint</th><th>Median vs market</th><th>Group read</th></tr>' +
+    ag.map(g =>
+      '<tr><td><b>' + esc(g.level) + ' · ' + esc(g.keyLocation) + '</b></td><td>' + g.onTrack + '</td>' +
+      '<td style="color:var(--accent);font-weight:700">' + g.readyNow + '</td>' +
+      '<td style="color:' + (g.overdue > 0 ? 'var(--bad)' : 'inherit') + ';font-weight:700">' + g.overdue + '</td>' +
+      '<td>' + (g.medianMarketRatio != null ? g.medianMarketRatio.toFixed(2) : '—') + '</td>' +
+      '<td>' + readChip(g) + '</td></tr>').join("") + '</table>' +
+    '<div class="sub" style="margin-top:6px">"Ready now" = the cadence checkpoint has arrived AND the SI streak holds. Open a Rocketeer&#39;s drill (cohort tables below) for their 36-month path.</div></div>';
+}
+// Acceleration stepper — rendered inside the drill panel.
+function accelStepperHtml(a) {
+  const offsets = (p2cfg("accel").offsetsMonths || [6, 15, 21, 30, 36]);
+  const maxM = offsets[offsets.length - 1] || 36;
+  const pos = mo => 6 + mo / maxM * 88;
+  const steps = a.checkpoints.map(c =>
+    '<div class="step ' + (c.status === "done" ? "done" : (c.status === "due" || c.status === "overdue") ? "now" : "") +
+    '" style="left:' + pos(c.monthOffset).toFixed(1) + '%"><div class="knot">' + c.monthOffset + '</div>' +
+    '<div class="cap"><b>Cycle ' + c.idx + ' · m' + c.monthOffset + '</b>' +
+    (c.status === "done" ? "reviewed" : c.status === "overdue" ? "overdue · was due " + esc(c.due)
+      : c.status === "due" ? "due now · " + esc(c.due) : "ETA " + esc(c.due)) + '</div></div>').join("");
+  return '<h3>Acceleration cadence — month ' + a.monthsOnTrack + ' of ' + maxM +
+    (a.readyNow ? ' <span class="chip green">✔ ready for review — checkpoint reached, SI streak holds</span>' : '') +
+    (a.overdue ? ' <span class="chip red">checkpoint overdue</span>' : '') + '</h3>' +
+    '<div class="stepbox"><div class="stepper"><div class="rail"></div>' +
+    '<div class="fill" style="width:' + pos(Math.min(Math.max(a.monthsOnTrack, 0), maxM)).toFixed(1) + '%"></div>' +
+    steps + '</div></div>' +
+    '<div class="sub">The signal schedules a review; Guiding Principles Check01 governs the outcome.</div>';
+}
+// 🌍 People Signals — location clusters → job-title groups → individual rows.
+function renderPeople(el) {
+  const d = STATE.data;
+  const cfgR = p2cfg("remote");
+  const stableMin = cfgR.stableMin != null ? cfgR.stableMin : 0.85;
+  const compMin = cfgR.competitiveMin != null ? cfgR.competitiveMin : 1.0;
+  const all = d.employees.filter(e => e.p2 && e.p2.remote);
+  if (!all.length) {
+    el.innerHTML = '<div class="banner">People Signals needs the P2 payload — press ⟳ Refresh for a live read (a cached pre-P2 payload carries no person signals).</div>';
+    return;
+  }
+  const emps = all.filter(visibleEmp);
+  const rb = (d.meta.p2 || {}).remoteBench || {};
+  const rules =
+    '<div class="card"><h2>How the person-level signal is decided</h2>' +
+    '<div class="sub" style="margin-bottom:8px">Four states, one hierarchy: <b>the market that can actually poach the person governs the signal.</b> ' +
+    'Internal percentile is context only — an internal-only gap can never raise more than NORMAL. For remote-servable roles, "market" means the ' +
+    '<b>remote-pull benchmark</b> (what remote employers pay for that role in that country), not the local in-country market.</div>' +
+    '<table><tr><th>Signal</th><th>Rule</th><th>What it triggers</th></tr>' +
+    '<tr><td>' + sigChipHtml("COMPETITIVE") + '</td><td>≥ ' + compMin.toFixed(2) + '× remote-pull benchmark</td><td>Nothing — pay is a moat; protect via growth, not money</td></tr>' +
+    '<tr><td>' + sigChipHtml("STABLE") + '</td><td>' + stableMin.toFixed(2) + '–' + compMin.toFixed(2) + '× remote-pull</td><td>Standard QTA cadence</td></tr>' +
+    '<tr><td>' + sigChipHtml("NORMAL") + '</td><td>Below the internal group median but ≥ ' + stableMin.toFixed(2) + '× remote-pull</td><td>Note in cycle · verify the anchor — internal-only, never escalates alone</td></tr>' +
+    '<tr><td>' + sigChipHtml("RISK") + '</td><td>&lt; ' + stableMin.toFixed(2) + '× remote-pull benchmark</td><td>QTA review queued this cycle</td></tr>' +
+    '<tr><td>' + sigChipHtml("RISK_IMMEDIATE") + '</td><td>RISK <b>and</b> high performer (SI streak ≥ ' + (cfgR.streakMinRating != null ? cfgR.streakMinRating : 4) +
+    ' × ' + (cfgR.streakMinCount != null ? cfgR.streakMinCount : 3) + '+, or on the acceleration track)</td><td><b>Manager + WFP follow-up this week</b> — high performers get poached first; the queue does not apply</td></tr>' +
+    '</table>' +
+    '<div class="sub" style="margin-top:8px">' + (rb.available === false || !rb.rows
+      ? '⚠ Remote benchmark set pending — every role currently reads the local market, labeled local-only.'
+      : rb.rows + ' remote benchmark rows · ' + rb.matched + ' Rocketeers on the remote lens; the rest fall back to local-only, labeled.') + '</div></div>';
+  if (!emps.length) {
+    el.innerHTML = rules + '<div class="card sub">No Rocketeers match the current filters.</div>';
+    return;
+  }
+  // clusters: risk share first, then size
+  const byLoc = new Map();
+  emps.forEach(e => {
+    const k = e.keyLocation || "—";
+    if (!byLoc.has(k)) byLoc.set(k, []);
+    byLoc.get(k).push(e);
+  });
+  const riskShare = arr => arr.filter(e => /^RISK/.test(e.p2.remote.signal)).length / arr.length;
+  const clusters = [...byLoc.entries()].sort((a, b) =>
+    riskShare(b[1]) - riskShare(a[1]) || b[1].length - a[1].length);
+  const perfCell = e => {
+    const hp = e.p2.remote.highPerformer;
+    const parts = [];
+    if (e.perfAvg != null) parts.push((hp ? '<b>' : '') + 'SI ' + e.perfAvg.toFixed(1) + (hp ? '</b>' : ''));
+    if (e.p2.accel) parts.push('acceleration m' + e.p2.accel.monthsOnTrack + (e.p2.accel.readyNow ? ' · <b>ready</b>' : ''));
+    if (e.signals && e.signals.invisibleContributor) parts.push('<span class="chip yellow" style="margin:0" title="Strong contribution evidence, weak/absent rating — verify with the manager">👻 Check L</span>');
+    return parts.join(' · ') || '—';
+  };
+  const evLine = e => {
+    const r = e.p2.remote;
+    if (r.signal === "RISK_IMMEDIATE") return '<div class="evline">High performer on a risk gap — manager + WFP follow-up this week; the queue does not apply.</div>';
+    if (r.signal === "RISK" && e.signals && e.signals.invisibleContributor) return '<div class="evline">Check L verification pending — confirmed high contribution would make this IMMEDIATE. The verification just became urgent.</div>';
+    if (r.signal === "NORMAL") return '<div class="evline">Below the internal group median but market-safe — verify the anchor before reading the internal gap as real.</div>';
+    return '';
+  };
+  const ratioTd = (v, red) => v == null ? '<span class="sub">—</span>'
+    : '<span class="dual"><b' + (red ? ' style="color:var(--bad)"' : '') + '>' + v.toFixed(2) + '</b></span>';
+  const clusterHtml = ([loc, arr]) => {
+    const counts = { r: 0, n: 0, s: 0, c: 0 };
+    arr.forEach(e => {
+      const s = e.p2.remote.signal;
+      if (/^RISK/.test(s)) counts.r++;
+      else if (s === "NORMAL") counts.n++;
+      else if (s === "STABLE") counts.s++;
+      else if (s === "COMPETITIVE") counts.c++;
+    });
+    const mixTotal = counts.r + counts.n + counts.s + counts.c;
+    const mix = mixTotal
+      ? '<span class="sigmix" role="img" aria-label="Signal mix: ' + counts.r + ' risk, ' + counts.n + ' normal, ' + counts.s + ' stable, ' + counts.c + ' competitive">' +
+        ["r", "n", "s", "c"].map(k => counts[k]
+          ? '<i class="sx-' + k + '" style="width:' + (counts[k] / mixTotal * 100).toFixed(0) + '%"></i>' : '').join("") + '</span>'
+      : '';
+    const medRemote = median(arr.map(e => e.p2.remote.remotePullRatio).filter(v => v != null));
+    const medLocal = median(arr.map(e => e.p2.remote.localRatio).filter(v => v != null));
+    const read = (medRemote != null && medRemote < stableMin && medLocal != null && medLocal >= 1.1)
+      ? 'locally generous, remotely exposed — beats the local market while trailing the market that recruits here'
+      : (medRemote != null && medRemote >= 0.95) ? 'holding against the aggressive market'
+      : (medRemote == null) ? 'no remote lens yet — local-only reads' : '';
+    const byTitle = new Map();
+    arr.forEach(e => {
+      const t = e.jobTitle || "—";
+      if (!byTitle.has(t)) byTitle.set(t, []);
+      byTitle.get(t).push(e);
+    });
+    return '<div class="card"><div class="clhead"><h2>' + esc(loc) + '</h2>' +
+      '<span class="m"><b>' + arr.length + '</b> Rocketeers' +
+      (medRemote != null ? ' · median <b>' + medRemote.toFixed(2) + '×</b> remote-pull' : '') +
+      (medLocal != null ? ' · <b>' + medLocal.toFixed(2) + '×</b> local' : '') + '</span>' + mix +
+      (read ? '<span class="m">Cluster read: <b>' + esc(read) + '</b></span>' : '') + '</div>' +
+      [...byTitle.entries()].map(([title, rows]) =>
+        '<div class="jt">' + esc(title) + '</div>' +
+        '<table><tr><th>Rocketeer</th><th>Level</th><th>TCC</th><th>vs local mkt</th><th>vs remote-pull</th><th>Performance</th><th>Signal</th></tr>' +
+        rows.slice().sort((a, b) => (govRatio(a) || 9) - (govRatio(b) || 9)).map(e => {
+          const r = e.p2.remote;
+          return '<tr class="click" onclick="openDrill(\'' + esc(e.empNo) + '\')">' +
+            '<td><b>' + esc(e.name) + '</b></td><td>' + esc(e.level) + '</td>' +
+            '<td>' + fmtMoney(e.tcc, e.tccUsd, e.currency) + '</td>' +
+            '<td>' + ratioTd(r.localRatio, false) + (r.benchScope === "local-only" ? ' <span class="sub" title="No remote benchmark for this role — the signal reads this local lens">governing</span>' : '') + '</td>' +
+            '<td>' + ratioTd(r.remotePullRatio, r.remotePullRatio != null && r.remotePullRatio < stableMin) + '</td>' +
+            '<td class="dual" style="white-space:normal">' + perfCell(e) + '</td>' +
+            '<td>' + sigChipHtml(r.signal) + evLine(e) + '</td></tr>';
+        }).join("") + '</table>').join("") + '</div>';
+  };
+  el.innerHTML = rules + clusters.map(clusterHtml).join("") + guardrailHtml(d);
 }
 </script>

@@ -457,3 +457,35 @@ Deploy checklist:
 
 Tests: `node tests/run_tests.js` (308) + `node tests/parse_html.js` +
 `node tests/render_smoke.js`.
+
+## P2b deploy (2026.W33 — decision views, BUILD_ 49)
+
+Spec: `docs/superpowers/specs/2026-08-12-compdash-p2-decision-views-design.md`
+Design reference: `mocks/compdash-decision-mock-v5.html` (information architecture
+and signal vocabulary — never pixel identity; everything is mapped onto the
+semantic theme tokens so dark/light both work).
+
+**What P2b changes (client + verdict strings only — engines untouched):**
+- Tab bar is now FOUR views: **Executive Brief** (`overview` — decision strip ·
+  signal map location×department · growth commitment table · open-decision
+  cards · then the P0 facts/signals/KPIs/chart), **Compensation Position**
+  (`compa` — coverage header + acceleration group table above the P0 cohort
+  tables), **Retention Analytics** (`attrition` — dual-gate trend table +
+  opportunity decomposition + focus-group queue above the P0 chart/breakdown/
+  hotspots), **People Signals** (`people`, NEW — signal-rule explainer, location
+  clusters → job-title groups → person rows with dual market ratios; ratios
+  only in market columns, never currency).
+- Drill panel gains the remote-pull signal chips and the 36-month acceleration
+  stepper (opted-in I3/I4 only).
+- Every P2 section guards on `payload.p2` — a cached pre-P2 payload renders the
+  P0 surfaces untouched. People Signals shows a refresh banner instead.
+- `Narrative.js` verdict strings renamed to the new view labels (cache bust
+  required for the wording to update).
+
+Deploy checklist: `clasp push` → `bustCompCache_()` (**required** — verdict
+wording + p2 blocks are baked into the cached payload) → publish a **new
+deployment version** → spot-check all four tabs in BOTH themes and on a phone
+width; screenshots are the acceptance step (tests are blind to layout).
+
+Tests: `node tests/run_tests.js` (308) + `node tests/parse_html.js` +
+`node tests/render_smoke.js` (P2b checks included).

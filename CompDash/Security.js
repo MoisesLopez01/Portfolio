@@ -18,7 +18,7 @@
 // ============================================================
 
 var BUILD_ = BUILD_ || {};
-BUILD_.security = 48;
+BUILD_.security = 49;
 
 const SEC_CD = {
   PROP_ADMINS:  "CD_DASH_ADMINS",

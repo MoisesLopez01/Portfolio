@@ -7,7 +7,7 @@
 // ============================================================
 
 var BUILD_ = BUILD_ || {};
-BUILD_.workforce = 48;
+BUILD_.workforce = 49;
 
 // ── Attrition engine ────────────────────────────────────────────────────────
 // FY-framed per the spec: previous FY renders as a shadow area, current FY as

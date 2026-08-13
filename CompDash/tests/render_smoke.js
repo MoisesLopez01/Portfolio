@@ -69,6 +69,8 @@ const emp = (n, o) => Object.assign({
   tenureCompanyYears: 3.2, tenureProfileYears: 1.4, ttmGrowthPct: 0.06,
   contrib: null, signals: Object.assign({}, signals0),
   priority: { score: 61, partial: false, missing: [], components: { perf: .8, tenure: .4, compaGap: .1 } },
+  p2: { remote: { localRatio: 1.31, remotePullRatio: 0.95, benchScope: "remote",
+                  signal: "STABLE", highPerformer: false }, accel: null },
 }, o || {});
 const D = {
   ok: true,
@@ -96,6 +98,16 @@ const D = {
       promoStaleYears: 3, earlyCareerLevels: "I1–I3", coreLevels: "I3–I4",
       recogMinRating: 4.5, recogMaxTtm: 0.05, riskFactorMin: 2, invisibleMinScore: 0.75, invisibleWeakSi: 4 },
     contribution: { quarter: "FY26Q4", matched: 210 },
+    p2: {
+      cfg: {
+        remote: { competitiveMin: 1.0, stableMin: 0.85, streakMinCount: 3, streakMinRating: 4 },
+        accel: { offsetsMonths: [6, 15, 21, 30, 36], siGate: 4, streakMinCount: 3, overdueDays: 60, levels: "I3–I4" },
+        retention: { windowQuarters: 4, baselineMult: 1.5, consecQuarters: 2, minExits: 4 },
+        growth: { replaceFactor: 0.75, gapTarget: 0.95, adjustLabel: "salary/market/merit adjustments" },
+      },
+      remoteBench: { rows: 12, matched: 4, available: true },
+      accelTrack: { optIns: 2, onTrack: 2, available: true },
+    },
     benchmarks: { sources: ["Mercer 2025"] }, glossary: [{ term: "TCC", def: "Total cash comp" }],
   },
   employees: [
@@ -104,6 +116,19 @@ const D = {
     emp(4, { signals: Object.assign({}, signals0, { recognitionRisk: true }) }),
     emp(5, { contrib: { quarter: "FY26Q4", score: 0.82, goalCompliant: true, goalsTotal: 8,
       ptoCompliance: 0.9, trackedCoverage: 0.85, trackedHrs: 400, rcr: 1.1, kudosReceived: 2, kudosGiven: 1 } }),
+    emp(6, { level: "I3", keyLocation: "Chile", dept: "Services", jobTitle: "Support Engineer",
+      p2: { remote: { localRatio: 1.31, remotePullRatio: 0.79, benchScope: "remote",
+                      signal: "RISK_IMMEDIATE", highPerformer: true },
+            accel: { monthsOnTrack: 21, readyNow: true, overdue: false, siStreakOk: true,
+              checkpoints: [
+                { idx: 1, monthOffset: 6, due: "2025-05-12", status: "done" },
+                { idx: 2, monthOffset: 15, due: "2026-02-12", status: "done" },
+                { idx: 3, monthOffset: 21, due: "2026-08-12", status: "due" },
+                { idx: 4, monthOffset: 30, due: "2027-05-12", status: "future" },
+                { idx: 5, monthOffset: 36, due: "2027-11-12", status: "future" }] } } }),
+    emp(7, { level: "I2", keyLocation: "Chile", dept: "Services", jobTitle: "Support Engineer",
+      p2: { remote: { localRatio: null, remotePullRatio: null, benchScope: "local-only",
+                      signal: "pending", highPerformer: false }, accel: null } }),
   ],
   people: [
     { name: "Person 1", dept: "Services", level: "I4", keyLocation: "Malaysia",
@@ -152,6 +177,36 @@ const D = {
   qtaInterim: [{ empNo: "E1", name: "Person 1", dept: "Services", keyLocation: "Malaysia",
     level: "I4", nextReview: "2026-06-01", daysOverdue: 58, lastEventReason: "Merit",
     lastEventDate: "2025-06-01" }],
+  p2: {
+    accelGroups: [{ level: "I3", keyLocation: "Chile", onTrack: 2, readyNow: 1, overdue: 1, medianMarketRatio: 0.88 }],
+    retention: {
+      baseline: { exits: 9, rate: 0.09 },
+      windowFqs: ["FY26Q3", "FY26Q4", "FY27Q1", "FY27Q2"],
+      cohorts: [
+        { key: "Chile||Services", keyLocation: "Chile", dept: "Services", headcount: 12, exits4q: 5,
+          rate4q: 0.4, xBaseline: 2.6, fy25Rate: 0.14, fy26Rate: 0.18,
+          marketMark: true, historicalMark: true, verdict: "confirmed" },
+        { key: "Australia||Sales", keyLocation: "Australia", dept: "Sales", headcount: 6, exits4q: 4,
+          rate4q: 0.16, xBaseline: 1.3, fy25Rate: 0.17, fy26Rate: 0.19,
+          marketMark: false, historicalMark: false, verdict: "noted" }],
+      evidence: [{ cohortKey: "Chile||Services", driver: "labor-market/comp",
+        drivers: { "labor-market/comp": 4, other: 1 },
+        tenureDist: [{ label: "<1y", n: 1 }, { label: "1–2y", n: 2 }, { label: "2–3y", n: 1 },
+                     { label: "3–5y", n: 1 }, { label: "5y+", n: 0 }],
+        leaversMedianRatio: 0.87, stayersMedianRatio: 0.93,
+        byLevel: [{ key: "I3", n: 3 }, { key: "I2", n: 2 }],
+        byManager: [{ key: "Pod B", n: 3 }, { key: "—", n: 2 }],
+        people: [{ empNo: "E6", name: "Person 6", level: "I3", tenureYears: 3.2 }] }],
+    },
+    growth: {
+      rows: [{ key: "Chile||Services", keyLocation: "Chile", dept: "Services", headcount: 12,
+        promoFY: 0, adjFY: 1, promoPrevFY: 1, adjPrevFY: 1, per100Cur: 6, per100Prev: 16 }],
+      company: { promoFY: 2, adjFY: 3, per100Cur: 14, per100Prev: 19 },
+      elapsedMonths: 2,
+      retainVsRehire: { flagged: 3, retainCostUsd: 38000, rehireExposureUsd: 214000,
+        centsPerDollar: 18, coverage: { counted: 3, total: 3 } },
+    },
+  },
   history: { E1: { events: [{ date: "2023-01-01", reason: "New Hire", tcc: 90000, deltaAbs: null,
     tag: null, annualized: null }], overallAnnualized: 0.05,
     ratings: [{ fq: "FY26Q4", rate: 4, explanation: "solid" }] } },
@@ -160,7 +215,7 @@ const D = {
 // ── run ─────────────────────────────────────────────────────────────────────
 // const/let inside eval don't escape to module scope — export what we need.
 eval(js + "\n;global.__X = { STATE, VIEWS, RENDERERS, renderOverview, isoWeekLabel, " +
-  "isoWeekFull, prevYearIso, fiscalQuarterEndIso };");
+  "isoWeekFull, prevYearIso, fiscalQuarterEndIso, openDrill };");
 const { STATE, VIEWS, RENDERERS, renderOverview, isoWeekLabel, isoWeekFull,
         prevYearIso, fiscalQuarterEndIso } = global.__X;
 STATE.data = D;
@@ -188,7 +243,9 @@ check("actions: route fully removed", !VIEWS.find(v => v.id === "actions") && !R
   check("route '" + id + "' fully removed",
     !VIEWS.find(v => v.id === id) && !RENDERERS[id]);
 });
-check("routes: exactly six survive", VIEWS.length === 6);
+check("routes: exactly seven survive (P2b adds People Signals)", VIEWS.length === 7);
+check("routes: people tab present for viewers",
+  (VIEWS.find(v => v.id === "people") || {}).roles.includes("viewer"));
 check("overview: no rendered onclick deep-links to a dead tab id",
   !["contrib", "market", "equity", "ranking", "signals"].some(id =>
     H.indexOf("switchTab('" + id + "')") !== -1));
@@ -235,6 +292,53 @@ check("attrition: healthy teams summarized, never listed",
   /1 team within threshold not listed/.test(AT));
 check("attrition: span of control line carried over", /Span of control/.test(AT));
 check("attrition: manager verdicts render here", /manager may need support/.test(AT));
+
+// ── P2b: Executive Brief decision layer ─────────────────────────────────────
+check("brief: decision strip renders with retain-vs-rehire", /dstrip/.test(H) && /Retain vs rehire/.test(H) && /\$0\.18 : \$1/.test(H));
+check("brief: signal map renders with lens glyphs", /Signal map/.test(H) && /▲ attrition confirmed/.test(H));
+check("brief: growth commitment table renders", /Grow the Tree/.test(H) && /✕ growth stalled where attrition burns/.test(H));
+check("brief: decision cards carry owner + due ISO week", /Decision space/.test(H) && /due <b>20\d\d\.W/.test(H) && /WFP/.test(H));
+check("brief: guardrail footer present", /Signals propose focus/.test(H));
+check("brief: money uses stated assumptions line", /replacement = 0\.75/.test(H));
+
+// ── P2b: Retention Analytics layer ──────────────────────────────────────────
+check("retention: trend table with dual gate renders",
+  /false-alarm gate/.test(AT) && /● CONFIRMED/.test(AT) && /noted, not alarmed/.test(AT));
+check("retention: historical check column renders", /above both FYs/.test(AT) && /within own norm/.test(AT));
+check("retention: decomposition + focus queue render", /Where is the opportunity/.test(AT) && /Focus group queue/.test(AT));
+check("retention: leavers-vs-stayers ratios are ratios, not currency", /0\.87 vs 0\.93/.test(AT));
+
+// ── P2b: Compensation Position layer ────────────────────────────────────────
+const cp = el();
+RENDERERS.compa(cp);
+const CP = cp.innerHTML;
+check("compa: coverage header renders", /anchored/.test(CP) && /ready for review now/.test(CP));
+check("compa: acceleration group table renders",
+  /Acceleration program/.test(CP) && /retention-critical/.test(CP) && /Check01 governs/.test(CP));
+
+// ── P2b: People Signals view ────────────────────────────────────────────────
+const pp = el();
+RENDERERS.people(pp);
+const PP = pp.innerHTML;
+check("people: rules table renders all five states",
+  /COMPETITIVE/.test(PP) && /RISK · IMMEDIATE/.test(PP) && /never escalates alone/.test(PP));
+check("people: location clusters render with signal mix", /sigmix/.test(PP) && /Cluster read/.test(PP));
+check("people: job-title groups + person rows render",
+  /Support Engineer/.test(PP) && /Person 6/.test(PP) && /openDrill/.test(PP));
+check("people: market columns carry ratios, never currency amounts",
+  /0\.79/.test(PP) && !/vs remote-pull[^<]*\$/.test(PP));
+check("people: RISK_IMMEDIATE evidence line renders", /manager \+ WFP follow-up this week/.test(PP));
+check("people: guardrail footer present", /Signals propose focus/.test(PP));
+
+// ── P2b: drill panel stepper + remote chips ─────────────────────────────────
+{
+  global.__X.openDrill("E6");
+  const DR = (els.drill || {}).innerHTML || "";
+  check("drill: acceleration stepper renders for the opted-in I3",
+    /Acceleration cadence — month 21 of 36/.test(DR) && /Cycle 3/.test(DR) && /Check01 governs/.test(DR));
+  check("drill: remote-pull signal + ratio chips render",
+    /RISK · IMMEDIATE/.test(DR) && /vs remote-pull 0\.79/.test(DR));
+}
 
 // changed-since strip: seed an older week, re-render, expect movement line
 store = {};

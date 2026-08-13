@@ -228,7 +228,7 @@ CONFIG_CD.SMALL_GROUP_MIN  = CONFIG_CD.THRESHOLDS.smallGroupMin;
 // server file on every release; doGet refuses to serve when they disagree, so a
 // half-finished paste fails loudly instead of reporting stale numbers.
 var BUILD_ = BUILD_ || {};
-BUILD_.code = 48;
+BUILD_.code = 49;
 
 /**
  * @returns {(string[]|null)} names of files whose stamp differs from Code.js,

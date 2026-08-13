@@ -7,7 +7,7 @@
 // ============================================================
 
 var BUILD_ = BUILD_ || {};
-BUILD_.remotepull = 48;
+BUILD_.remotepull = 49;
 
 // ── SI streak (high-performer gate) ─────────────────────────────────────────
 // "SI streak ≥ 4 across the last 3–4 completed reviews": take the ratings that

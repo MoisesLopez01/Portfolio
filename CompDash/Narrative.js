@@ -7,7 +7,7 @@
 // ============================================================
 
 var BUILD_ = BUILD_ || {};
-BUILD_.narrative = 48;
+BUILD_.narrative = 49;
 
 // ── Verdict engine (V3) ─────────────────────────────────────────────────────
 // Rule-based, deterministic callouts: every verdict states fact → so-what →
@@ -62,7 +62,7 @@ function buildVerdicts_(model, cfg) {
       soWhat: band === "green" ? "Within the healthy band (≤ " + pctV_(R.attritionTotal.green) + ")."
         : band === "yellow" ? "In the watch band (" + pctV_(R.attritionTotal.green) + "–" + pctV_(R.attritionTotal.yellow) + ")."
         : "Above the at-risk line (> " + pctV_(R.attritionTotal.yellow) + ").",
-      action: band === "red" ? "Review the manager hotspots and department concentration in the Workforce & Attrition view this quarter." : "",
+      action: band === "red" ? "Review the manager hotspots and department concentration in the Retention Analytics view this quarter." : "",
     }, cur.avgHeadcount, cur.total, cfg));
   }
 
@@ -114,7 +114,7 @@ function buildVerdicts_(model, cfg) {
   }
 
   // 6 — teams that may need manager support (counts only — identities live in
-  // the Workforce & Attrition view's manager-hotspots table, never at exec level: a
+  // the Retention Analytics view's manager-hotspots table, never at exec level: a
   // scoreboard changes how managers behave toward the tool. Framed as Develops
   // Rocketeers / Empower Others — support, not surveillance — which keeps Talk
   // Straight possible in the skip-level conversations.)
@@ -127,7 +127,7 @@ function buildVerdicts_(model, cfg) {
       fact: hot + " of " + model.managers.rows.length + " teams (managers with 3+ reports) show attrition above " + pctV_(R.attritionTotal.yellow) + " — the manager may need support.",
       soWhat: hot > 0 ? "Exits cluster in specific teams — a signal to support those managers, distinct from department-wide pressure."
         : "No team's attrition stands out beyond the at-risk line.",
-      action: hot > 0 ? "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Workforce & Attrition view's manager hotspots, not in decks)." : "",
+      action: hot > 0 ? "Offer skip-level support conversations for the flagged teams this quarter (identities stay in the Retention Analytics view's manager hotspots, not in decks)." : "",
     });
   }
 
@@ -173,7 +173,7 @@ function buildVerdicts_(model, cfg) {
         eq.outliers.length + " outliers, " + eq.tenure.length + " tenure).",
       soWhat: n > 0 ? "Each flag is a case to explain or correct — unexplained flags become audit findings."
         : "No equity flags at current thresholds.",
-      action: n > 0 ? "Work the flag list from the Executive Pulse equity rollup; document the rationale where the position is justified." : "",
+      action: n > 0 ? "Work the flag list from the Executive Brief equity rollup; document the rationale where the position is justified." : "",
     });
   }
 
