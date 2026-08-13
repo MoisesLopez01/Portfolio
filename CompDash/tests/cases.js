@@ -1076,3 +1076,59 @@ check("build: a stale P2 engine blocks doGet", (function () {
   check("remotePull: missing tccUsd degrades to local scope",
     mk({ tccUsd: null }).benchScope === "local-only");
 })();
+
+// ── P2a Task 3: Acceleration ────────────────────────────────
+(function () {
+  const cfg = CONFIG_CD;
+  const W = ["FY26Q1", "FY26Q2", "FY26Q3", "FY26Q4"];
+  const streak = [{ fq: "FY26Q2", rate: 4 }, { fq: "FY26Q3", rate: 4 }, { fq: "FY26Q4", rate: 5 }];
+  const weak   = [{ fq: "FY26Q2", rate: 4 }, { fq: "FY26Q3", rate: 3 }, { fq: "FY26Q4", rate: 5 }];
+
+  check("addMonthsCD_: plain add", isoDate_(addMonthsCD_(new Date(2025, 0, 15), 6)) === "2025-07-15");
+  check("addMonthsCD_: year rollover", isoDate_(addMonthsCD_(new Date(2025, 10, 1), 15)) === "2027-02-01");
+
+  // trackStart 2024-11-12, asOf 2026-08-12 → month 21: cp1 (m6) + cp2 (m15)
+  // reviewed (RD events after each), cp3 (m21) due 2026-08-12 exactly.
+  const mk = over => buildAccelForEmp_(Object.assign({
+    trackStart: new Date(2024, 10, 12), asOf: new Date(2026, 7, 12),
+    siHistory: streak, windowFqs: W,
+    reviewDates: [new Date(2025, 5, 20), new Date(2026, 2, 1)],
+  }, over || {}), cfg);
+
+  const a = mk({});
+  check("accel: five checkpoints", a.checkpoints.length === 5);
+  check("accel: cp1/cp2 done (RD events after their due dates)",
+    a.checkpoints[0].status === "done" && a.checkpoints[1].status === "done");
+  check("accel: cp3 due today, cp4/cp5 future",
+    a.checkpoints[2].status === "due" &&
+    a.checkpoints[3].status === "future" && a.checkpoints[4].status === "future");
+  check("accel: months on track = 21", a.monthsOnTrack === 21);
+  check("accel: due checkpoint + streak = readyNow", a.readyNow === true && a.overdue === false);
+  check("accel: weak streak → not ready", mk({ siHistory: weak }).readyNow === false);
+
+  // cp3 due 2026-08-12; asOf 2026-11-01 = 81 days past, no event since → overdue
+  const late = mk({ asOf: new Date(2026, 10, 1) });
+  check("accel: checkpoint > 60 days past without a review = overdue",
+    late.checkpoints[2].status === "overdue" && late.overdue === true);
+  check("accel: overdue + streak still reads readyNow (review must be scheduled)",
+    late.readyNow === true);
+  // An RD event AFTER the checkpoint clears it even late
+  const caught = mk({ asOf: new Date(2026, 10, 1),
+    reviewDates: [new Date(2025, 5, 20), new Date(2026, 2, 1), new Date(2026, 9, 10)] });
+  check("accel: late review event clears the overdue checkpoint",
+    caught.checkpoints[2].status === "done" && caught.overdue === false);
+
+  check("accel: no trackStart → null", buildAccelForEmp_({
+    trackStart: null, asOf: new Date(2026, 7, 12), siHistory: [], windowFqs: W, reviewDates: [],
+  }, cfg) === null);
+
+  const groups = buildAccelGroups_([
+    { level: "I3", keyLocation: "Chile", governingRatio: 0.79, accel: { readyNow: true,  overdue: false } },
+    { level: "I3", keyLocation: "Chile", governingRatio: 0.97, accel: { readyNow: false, overdue: true } },
+    { level: "I4", keyLocation: "Malaysia", governingRatio: 1.02, accel: { readyNow: false, overdue: false } },
+  ]);
+  check("accelGroups: grouped by level × location with counts",
+    groups.length === 2 && groups[0].level === "I3" && groups[0].onTrack === 2 &&
+    groups[0].readyNow === 1 && groups[0].overdue === 1);
+  check("accelGroups: median governing ratio", approx(groups[0].medianMarketRatio, 0.88));
+})();
