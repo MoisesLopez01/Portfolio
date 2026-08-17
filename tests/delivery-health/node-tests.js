@@ -30,7 +30,7 @@ FakeCache.prototype.getAll = function (names) {
   return out;
 };
 
-eval(fs.readFileSync(path.join(__dirname, "Code.js"), "utf8"));
+eval(fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Code.js"), "utf8"));
 
 _test_dhWindow_();
 _test_nameJoin_();
@@ -63,7 +63,7 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
 // server on the same people, including the coverage-matched billable denominator.
 (function _test_clientParity_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_clientParity_: " + m); }
-  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   // Pull the named functions only — evaluating the whole block would run the
   // page's bootstrap (google.script.run, DOM wiring).
   var want = ["aggWeeks_", "unclassifiedH_", "nsRawTot_", "nsShare_", "utilFor_"];
@@ -128,7 +128,7 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
 // exact defect FR-2.2 exists to prevent.
 (function _test_confidenceParity_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_confidenceParity_: " + m); }
-  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   var want = ["metricConfidence_", "medianOf_"];
   var src = want.map(function (fn) {
     var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
@@ -176,7 +176,7 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
 // one the step-by-step recipe named.)
 (function _test_sampleFloorParity_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_sampleFloorParity_: " + m); }
-  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   var want = ["reg_", "sampleFloorClient_"];
   var src = want.map(function (fn) {
     var m = html.match(new RegExp("\\nfunction " + fn + "\\s*\\([\\s\\S]*?\\n\\}", ""));
@@ -224,7 +224,7 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
 // looks perfectly correct read on its own. Same trap as _test_clientParity_.
 (function _test_dueBandParity_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_dueBandParity_: " + m); }
-  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   // Same extraction pattern as _test_clientParity_: collect the named sources
   // and build ONE scope from them. eval() inside a forEach would declare each
   // function in the callback's scope, where nothing below can see it.
@@ -280,7 +280,7 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
 // the real answer.
 (function _test_workforceParity_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_workforceParity_: " + m); }
-  var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   var want = ["wfCfg_", "wfDiv_", "wfEmptyCell_", "wfFold_", "wfActionState_",
               "wfTopReason_", "wfRead_", "wfReconcile_"];
   var src = want.map(function (fn) {

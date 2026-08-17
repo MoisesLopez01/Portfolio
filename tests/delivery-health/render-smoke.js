@@ -37,6 +37,30 @@ El.prototype.querySelectorAll = function () { return []; };
 // node isn't there yet (first render) — that is the branch this stub exercises.
 El.prototype.querySelector = function () { return null; };
 El.prototype.addEventListener = function () {};
+// setAttribute/getAttribute: buildTabs_ stamps role/aria-selected on every tab
+// and the theme toggle reads data-theme off <html>. A stub without them throws
+// during navigation, which is not a thing a DOM shim should be able to do.
+El.prototype.setAttribute = function (k, v) { (this._attrs || (this._attrs = {}))[k] = String(v); };
+El.prototype.getAttribute = function (k) { return (this._attrs || {})[k] === undefined ? null : this._attrs[k]; };
+// classList: the sidebar collapse toggles a class on <body>. Minimal but real —
+// add/remove/toggle/contains over a set, so a test can assert the collapsed
+// state rather than only that the call didn't throw.
+Object.defineProperty(El.prototype, "classList", {
+  get: function () {
+    var el = this;
+    if (!el._cls) el._cls = {};
+    return {
+      add: function (c) { el._cls[c] = 1; },
+      remove: function (c) { delete el._cls[c]; },
+      contains: function (c) { return !!el._cls[c]; },
+      toggle: function (c, on) {
+        var want = on === undefined ? !el._cls[c] : !!on;
+        if (want) el._cls[c] = 1; else delete el._cls[c];
+        return want;
+      },
+    };
+  },
+});
 El.prototype.getBoundingClientRect = function () { return { width: 900, height: 600 }; };
 El.prototype.getElementsByClassName = function () { return []; };
 // Assigning innerHTML wipes an element's children in a real DOM. The stub has to
@@ -92,7 +116,7 @@ var runStub = new Proxy({}, { get: function () { return function () { return run
 global.google = { script: { run: runStub, host: { close: function () {} } } };
 
 // ── Load the client ─────────────────────────────────────────
-var html = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+var html = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
 var m = html.match(/<script>([\s\S]*)<\/script>/);
 if (!m) throw new Error("❌ render-smoke: could not find the inline <script> block");
 var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function () { return MODEL; }," +
@@ -169,7 +193,23 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " capRows_: capRows_, gridCellHtml_: gridCellHtml_, setMetric_: setMetric_," +
              " activeMetric_: activeMetric_, flowOpenFor_: flowOpenFor_," +
              // §7/§8 THE SHELF + TRUST DETAIL (Task 16, spec 2026-08-06 §7/§8).
-             " renderShelf_: renderShelf_, renderTrustDetail_: renderTrustDetail_," +
+             " renderTrustDetail_: renderTrustDetail_," +
+             // ── Redesign 2026-08-17: the three-tier Executive rebuild ──
+             // renderShelf_ is GONE (the "Not measured this week" panel was
+             // deleted); shelfRows_ above survives because the masthead still
+             // counts it. The comparison panel is behind SHOW_COMPARE_PANEL_ —
+             // set/getComparePanel_ let its existing coverage keep running
+             // against the real renderer while the default stays off.
+             " canSeeSuper_: canSeeSuper_, backlogHeroTilesHtml_: backlogHeroTilesHtml_," +
+             // Retained-but-unrendered: the Workforce-change card was deleted
+             // from the Executive tab, and its builder deliberately kept. Kept
+             // code that nothing exercises is code that rots, so its coverage
+             // moves onto the builder rather than lapsing with the card.
+             " workforceTileHtml_: workforceTileHtml_, workforceFor_: workforceFor_," +
+             " smartLegendHtml_: smartLegendHtml_, unownedNoteHtml_: unownedNoteHtml_," +
+             " toggleNav_: toggleNav_, setNavCollapsed_: setNavCollapsed_, buildTabs_: buildTabs_," +
+             " setComparePanel_: function (v) { SHOW_COMPARE_PANEL_ = v; }," +
+             " getComparePanel_: function () { return SHOW_COMPARE_PANEL_; }," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
              " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
              // 🌊 Backlog health (blocking fix D3) — the unassigned/unattributed
@@ -192,6 +232,57 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
 var C = eval(m[1] + bridge);
+
+/**
+ * Every KPI tile renderFlow_ produces, across the two containers the
+ * three-tier redesign (2026-08-17) split them into: Tier 1 (#tier1Tiles —
+ * On-Time · Forecast · Quality · Throughput · Bug Count, then Inventory · Net
+ * flow · Weeks to clear) followed by Tier 2's flow-detail strip
+ * (#flowSecondary — Cleared · Arrived · Lead Time).
+ *
+ * Concatenated in DOM order, so checks that slice between two tile labels keep
+ * reading the same span they always did. Every assertion that used to read
+ * `flowHtml_()` reads this instead — the band was split across two
+ * elements, not reduced, and the coverage should not shrink with the layout.
+ */
+function flowHtml_() {
+  return document.getElementById("tier1Tiles").innerHTML +
+         document.getElementById("flowSecondary").innerHTML;
+}
+
+/**
+ * ONE tile's own markup, found by its label.
+ *
+ * Replaces the "split between this label and the next one" idiom several
+ * checks used. That idiom encoded the tile ORDER into every assertion about a
+ * tile's CONTENT, so the three-tier redesign (2026-08-17) — which reordered the
+ * band without changing a single tile — broke checks that were not about
+ * ordering at all, and silently widened others to swallow their neighbours.
+ *
+ * Splitting on the tile boundary instead means a check about Bug Count reads
+ * Bug Count, whatever sits beside it. Order is still pinned, deliberately and
+ * separately, by the tier checks further down.
+ *
+ * @param {string} h  rendered HTML containing one or more .tile blocks
+ * @param {string} label  the tile's .lbl text, e.g. "Bug Count"
+ * @returns {string} that tile's markup, or "" when no tile carries the label
+ */
+function tileSeg_(h, label) {
+  var parts = h.split('<div class="tile');
+  for (var i = 1; i < parts.length; i++) {
+    if (parts[i].indexOf('<div class="lbl">' + label) !== -1) return parts[i];
+  }
+  return "";
+}
+
+// ── COMPARISON PANEL: ON for the suite, OFF in production ────────────────────
+// The redesign (2026-08-17) hid "Billable Utilization by Region" behind
+// SHOW_COMPARE_PANEL_ = false, to be switched back on in a later phase. Its
+// renderer is untouched, so its coverage must not lapse in the meantime — a
+// panel that comes back after months of unexercised code is a panel that comes
+// back broken. The suite therefore runs renderCompare_ with the flag ON, and a
+// dedicated block below asserts the SHIPPED default is off and renders nothing.
+C.setComparePanel_(true);
 
 // ── Synthetic model ─────────────────────────────────────────
 // Two complete weeks so the trend has ≥2 periods (the "high confidence" bar).
@@ -416,7 +507,7 @@ function tiles(mdl) {
   fresh(mdl);
   C.renderFlow_();
   C.renderPulse_();
-  return els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+  return flowHtml_() + els.pulsePanel.innerHTML;
 }
 /** Just the three outcome cards (On-Time/Forecast/Quality) — excludes the
     OTHER flow-band tiles (Cleared/Arrived/Lead Time/Throughput/Bug Count),
@@ -528,7 +619,7 @@ C.setModel(staleModel);
 staleModel._stale = true;
 delete staleModel._pByName; delete staleModel._nsLive;
 C.renderFlow_(); C.renderPulse_();
-var stale = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+var stale = flowHtml_() + els.pulsePanel.innerHTML;
 assert_(/trend suppressed — data stale/.test(stale), "stale model suppresses the sparkline");
 assert_(!/vs prior/.test(stale), "stale model prints no period-over-period delta");
 assert_(/pts (above|below) target/.test(stale),
@@ -1317,7 +1408,7 @@ function asRole(role) {
   var mdl = fresh(model({ otCov: 0.95, fcCov: 0.92 }));
   mdl.viewerRole = role;
   C.renderFlow_(); C.renderPulse_();
-  return els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+  return flowHtml_() + els.pulsePanel.innerHTML;
 }
 var asAdmin = asRole("admin");
 var asViewer = asRole("viewer");
@@ -1474,17 +1565,17 @@ fresh(pMod);
 C.renderAll_();
 assert_(/Last complete week · 2026\.W31/.test(els.scopeChip.innerHTML),
         "no selection → the scope chip frames the latest complete period");
-var latestOt28 = els.flowTiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+var latestOt28 = flowHtml_().split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
 assert_(/class="big[^"]*">90%/.test(latestOt28),
         "latest window (W31) reads 90% on time — 43 of 48");
 C.setState("periodIdx", 0);
 C.renderAll_();
 assert_(/Selected week · 2026\.W30/.test(els.scopeChip.innerHTML),
         "picker selection re-frames the scope chip as 'Selected'");
-var selOt28 = els.flowTiles.innerHTML.split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
+var selOt28 = flowHtml_().split("On-Time Delivery")[1].split("Forecast Accuracy")[0];
 assert_(/class="big[^"]*">100%/.test(selOt28),
         "…and the numbers re-base with it (W30 fixture = 100% on time)");
-assert_(!/unattributed \(export window\)/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
+assert_(!/unattributed \(export window\)/.test(flowHtml_() + els.pulsePanel.innerHTML),
         "no unattributed count on the cards (user 2026-08-05 — the trust strip carries the roster join)");
 C.setState("periodIdx", null);
 C.renderAll_();
@@ -1530,13 +1621,13 @@ C.setState("pop", "fte"); C.setState("region", ""); C.setState("role", "all");
 C.buildFilters_();
 var fteRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
 C.renderAll_();
-var fteTiles = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+var fteTiles = flowHtml_() + els.pulsePanel.innerHTML;
 els.popChips.children[1].onclick();   // click the Crew chip
 var crewRegions = els.regionChips.children.map(function (c) { return c.textContent; }).join("|");
 assert_(/AMER 2/.test(fteRegions), "FTE lens: two FTEs count in AMER");
 assert_(/AMER 1/.test(crewRegions), "Crew chip click re-cascades the region counts (Cara only)");
 assert_(fteRegions !== crewRegions, "the filter row follows the population lens");
-assert_(els.flowTiles.innerHTML + els.pulsePanel.innerHTML !== fteTiles, "…and the tiles re-base in the same click");
+assert_(flowHtml_() + els.pulsePanel.innerHTML !== fteTiles, "…and the tiles re-base in the same click");
 els.roleChips.children[1].onclick();  // IC — must not throw, must rebuild the row
 assert_(C.STATE.role === "ic" && C.STATE.pop === "crew", "role chip routes through the same rebuild");
 C.setState("role", "all"); C.setState("pop", "fte");
@@ -1863,7 +1954,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // words survive (✔ ▲ ✖ still differ) but a bar cannot — colour is all it has.
   // The bars must use the palette-validated chart tokens. Found by screenshotting
   // dark mode, not by a test; this pins it so it cannot come back.
-  var css = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var css = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   var tbarCss = css.slice(css.indexOf(".tbar{"), css.indexOf(".tbar i.n{"));
   assert_(/\.tbar i\.a\{background:var\(--c-warn\)\}/.test(tbarCss) &&
           /\.tbar i\.r\{background:var\(--c-bad\)\}/.test(tbarCss),
@@ -2170,7 +2261,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the toggle lives on the <tr>, so the whole row is the control");
   assert_(!/<span class="rosterName"[^>]*onclick/.test(roster),
           "…and no longer on the name span alone");
-  assert_(/tr\.rosterRow\{cursor:pointer\}/.test(fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8")),
+  assert_(/tr\.rosterRow\{cursor:pointer\}/.test(fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8")),
           "…with the pointer cursor on the row to match");
 
   // SCROLL PRESERVATION (user 2026-08-06). Every toggle rebuilds innerHTML,
@@ -2181,7 +2272,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // was written for. Pinned at source, because the stub DOM has no layout and
   // therefore cannot scroll: the read must happen BEFORE the innerHTML
   // assignment and the write AFTER it, or it preserves nothing.
-  var rsrc = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var rsrc = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   var rfn = rsrc.slice(rsrc.indexOf("function renderRoster_()"));
   rfn = rfn.slice(0, rfn.indexOf("\n}\n"));
   var iRead = rfn.indexOf("wrapWas.scrollTop"), iSet = rfn.indexOf("el.innerHTML ="),
@@ -2196,7 +2287,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/▾ Ana Perez/.test(els.rosterPanel.innerHTML), "an open row's caret points down");
   C.toggleRosterDetail_("Ana Perez");
   assert_(/▸ Ana Perez/.test(els.rosterPanel.innerHTML), "…and back to ▸ when closed");
-  var rcss = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var rcss = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   assert_(/\.rosterWrap\{max-height:[^}]*overflow:auto\}/.test(rcss),
           "the wrapper is capped and scrolls — a sticky top needs a scrollport that actually scrolls");
   assert_(/table\.hyg\.tmx\.rosterTbl thead th\{position:sticky;top:0/.test(rcss),
@@ -2353,7 +2444,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the bar tooltip names non-billable WORK and time off separately (12h nonBillable = 4 + 8)");
   assert_(!/non-billable 12h/.test(h),
           "the undivided 12h non-billable figure — the one that gets someone asked to explain a holiday — is gone");
-  var segCss = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var segCss = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   assert_(/--seg-off:/.test(segCss.split('[data-theme="dark"]')[0]) &&
           /--seg-off:/.test(segCss.split('[data-theme="dark"]')[1]),
           "the time-off segment has a token in BOTH themes — a segment defined in one theme only is invisible in the other");
@@ -3262,7 +3353,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("period", "week");
   C.setState("periodIdx", null);
   C.renderAll_();
-  var h = els["flowTiles"].innerHTML;
+  var h = flowHtml_();
 
   assert_(h.indexOf("Lead Time") !== -1 && h.indexOf("7d") !== -1,
           "lead-time median of [4,10] renders 7d");
@@ -3313,7 +3404,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   M.meta.flowSnapshots = [];
   C.setModel(M);
   C.renderAll_();
-  var h2 = els["flowTiles"].innerHTML;
+  var h2 = flowHtml_();
   assert_(h2.indexOf("export predates Jira Backlog.js v3.9.0") !== -1,
           "absent feeds name the exporter version, not an error");
 })();
@@ -3489,6 +3580,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
+  C.renderTrust_();
   var trust = document.getElementById("trustPanel").innerHTML;
   // Task 13 re-head: "Can we publish these numbers?" replaces "🔍 Data trust",
   // with the sub-line stating what the strip is actually answering. Mechanics
@@ -3518,13 +3610,19 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/96%/.test(trust), "roster-join percentage renders above its gate");
   assert_(/var\(--c-warn\)/.test(trust), "the below-gate logged tile is graded amber, not red or green-only");
   assert_(/Blocks: Forecast Accuracy/.test(trust), "each tile's tooltip states what it blocks (shared gapsRows_ note)");
-  assert_(/the full queue.*🎯 Actions/.test(trust) || /Actions tab/.test(trust),
-          "the footer points readers at the Actions tab for the full queue");
+  // The strip now LIVES on Actions (redesign 2026-08-17), so its footer points
+  // DOWN the same tab rather than across to another one — pointing a reader at
+  // the tab they are already on is the drift this check exists to catch.
+  assert_(/full queue.*further down this tab/.test(trust),
+          "the footer points readers further down this tab for the full queue");
+  assert_(!/Actions tab/.test(trust),
+          "…and no longer sends them to a tab they are already reading");
 
   // Not margin-gated (brief note): a guest sees the same strip, unlike the
   // pulse panel directly above it which disappears for that role.
   C.getModel().viewerRole = "guest";
   C.renderAll_();
+  C.renderTrust_();
   var trustGuest = document.getElementById("trustPanel").innerHTML;
   assert_(trustGuest.split("trustItem").length - 1 === 4,
           "a guest still sees all four trust tiles — this strip is not margin-gated");
@@ -3538,9 +3636,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // pass even if the underlying VALUES had quietly started reading filtered
   // data (hygieneFor_/hygienePeopleFor_ scoped by a filter argument they
   // don't currently take).
+  C.renderTrust_();
   var trustBefore = document.getElementById("trustPanel").innerHTML;
   C.setState("region", "AMER");
   C.renderAll_();
+  C.renderTrust_();
   var trustAfterRegion = document.getElementById("trustPanel").innerHTML;
   assert_(trustBefore === trustAfterRegion,
           "the trust strip is BYTE-IDENTICAL before/after STATE.region — it deliberately ignores every filter");
@@ -3566,6 +3666,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   mdl.hygieneBuckets.forEach(function (b) { b.resAttr = b.resAssigned; });
   C.setModel(mdl);
   C.renderAll_();
+  C.renderTrust_();
   var trust = document.getElementById("trustPanel").innerHTML;
   assert_(trust.indexOf("Roster join") === -1,
           "a roster join at 100% leaves the data-trust strip");
@@ -3616,6 +3717,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   mdl.hygieneBuckets.forEach(function (b) { b.resAttr = b.resAssigned - 2; });
   C.setModel(mdl);
   C.renderAll_();
+  C.renderTrust_();
   assert_(document.getElementById("trustPanel").innerHTML.indexOf("Roster join") !== -1,
           "a regression puts the trust tile back with no deploy and no code change");
   var h2 = C.hygieneFor_(["2026.W31"]), pp2 = C.hygienePeopleFor_(["2026.W31"]);
@@ -3733,6 +3835,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();
+  C.renderTrust_();
   assert_(document.getElementById("trustPanel").innerHTML.indexOf("Sales-order binding") === -1,
           "the SRSO row stays out of the Can-we-publish strip");
   C.setModel(mdl);
@@ -3757,6 +3860,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
+  C.renderTrust_();
   var trustNull = document.getElementById("trustPanel").innerHTML;
   var segs = trustNull.split('class="trustItem"');
   assert_(segs.length - 1 === 4, "still exactly four tiles when one key nulls out");
@@ -3827,7 +3931,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // count across a whole panel — #pulsePanel also carries its OWN independent
   // scope tag on the "People signals" heading, which an aggregate count would
   // conflate with the Utilisation tile's own tag.
-  var ft = els.flowTiles.innerHTML;
+  var ft = flowHtml_();
   var otSeg = ft.split('<div class="lbl">On-Time Delivery')[1].split('<div class="lbl">Forecast')[0];
   var fcSeg = ft.split('<div class="lbl">Forecast Accuracy')[1].split('<div class="lbl">Quality')[0];
   var qualSeg = ft.split('<div class="lbl">Quality')[1].split('<div class="lbl">Throughput')[0];
@@ -3853,12 +3957,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(ft.indexOf(">SNAP<") === -1,
           "…and NO SNAP tags anywhere in the flow tier — Backlog/WIP (the old SNAP tiles) are retired");
   // Placement pin: the tag rides with the RIGHT tile, not just anywhere in the
-  // markup — slice the strip between consecutive tile labels and check each.
-  var clearedSegPS = ft.split('<div class="lbl">Cleared')[1].split('<div class="lbl">Arrived')[0];
-  var arrivedSeg = ft.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
-  var leadSeg = ft.split('<div class="lbl">Lead Time')[1].split('<div class="lbl">On-Time')[0];
-  var throughputSeg = ft.split('<div class="lbl">Throughput')[1].split('<div class="lbl">Bug Count')[0];
-  var bugSeg = ft.split('<div class="lbl">Bug Count')[1];
+  // markup. Sliced per TILE (tileSeg_), not between neighbouring labels — the
+  // tiles now sit in two tiers and their order is not this check's subject.
+  var clearedSegPS = tileSeg_(ft, "Cleared");
+  var arrivedSeg = tileSeg_(ft, "Arrived");
+  var leadSeg = tileSeg_(ft, "Lead Time");
+  var throughputSeg = tileSeg_(ft, "Throughput");
+  var bugSeg = tileSeg_(ft, "Bug Count");
   assert_(clearedSegPS.indexOf(">PERIOD<") !== -1, "Cleared tile tags PERIOD");
   assert_(arrivedSeg.indexOf(">ORG<") !== -1, "Arrived tile tags ORG");
   assert_(leadSeg.indexOf(">PERIOD<") !== -1, "Lead Time tile tags PERIOD");
@@ -3874,7 +3979,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   M.meta.bugsAvailable = false;
   C.setModel(M);
   C.renderAll_();
-  var ftNoBugs = els.flowTiles.innerHTML;
+  var ftNoBugs = flowHtml_();
   var bugSegAbsent = ftNoBugs.split("Bug Count")[1];
   assert_(bugSegAbsent.indexOf(">PERIOD<") !== -1,
           "Bug Count's unavailable placeholder still carries PERIOD, not a bare label");
@@ -3905,7 +4010,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
-  var tilesHtml = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+  var tilesHtml = flowHtml_() + els.pulsePanel.innerHTML;
   assert_(/class="big/.test(tilesHtml), "motion layer on: hero tiles still carry .big values");
   assert_(!/NaN/.test(tilesHtml), "…and no count-up NaN leaked into a tile (rAF never ran under the stub)");
 
@@ -3917,7 +4022,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/\bloaded\b/.test(document.body.className),
           "a renderAll_ pass after the class has settled to loaded leaves it there — " +
           "renderAll_/renderFlow_/renderPulse_ never touch body.className themselves");
-  assert_(/class="big/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
+  assert_(/class="big/.test(flowHtml_() + els.pulsePanel.innerHTML),
           "…and tiles still render real values, not a count-up left mid-flight from a prior render");
 
   fresh(model({}));
@@ -4071,7 +4176,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // unrelated to this test), the Utilisation floor card into #pulsePanel.
   // Scoped to just the outcome tiles + capacity tile so those OTHER flow
   // tiles' unrelated "vs prior" text can't leak a false failure below.
-  var nowOutcome = els.flowTiles.innerHTML.split('<div class="lbl">On-Time Delivery')[1]
+  var nowOutcome = flowHtml_().split('<div class="lbl">On-Time Delivery')[1]
     .split('<div class="lbl">Throughput')[0];
   var nowT = '<div class="lbl">On-Time Delivery' + nowOutcome + els.pulsePanel.innerHTML;
   assert_(/◐ in progress/.test(nowT), "every card wears the in-progress marker");
@@ -4095,7 +4200,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(Aplan.phase === "plan" && Aplan.head.key === PLAN1, "the planning week resolves as phase 'plan'");
   assert_(Aplan.hi === done.length - 1, "…and still anchors its history on the last complete period");
   C.renderFlow_(); C.renderPulse_();
-  var planT = els.flowTiles.innerHTML + els.pulsePanel.innerHTML;
+  var planT = flowHtml_() + els.pulsePanel.innerHTML;
   assert_(/has not happened yet/.test(planT),
           "outcome cards say the window has not happened");
   var otCard = planT.split("On-Time Delivery")[1].split("Forecast")[0];
@@ -4174,6 +4279,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "recoverable hours are suppressed on a forward window — they measure hours already delivered");
   assert_(/planned <b>/.test(els.pulsePanel.innerHTML),
           "…and the pulse states planned coverage in their place");
+  C.renderTrust_();
   assert_(/last complete period/.test(els.trustPanel.innerHTML),
           "the data-trust strip states the period it fell back to rather than reading 0%");
 
@@ -4413,10 +4519,18 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 // were deleted?" — see the per-check notes.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
+  // The band's three hero cards (Inventory · Net flow · Weeks to clear) moved
+  // to Tier 1 in the redesign (2026-08-17) — same numbers, same builder
+  // (backlogHeroTilesHtml_), drawn in a different container. renderFlow_ is
+  // what paints them now, so it runs here too and its output leads the string:
+  // these checks are about the FIGURES and their scope tags, and splitting the
+  // hero away from the band it belongs to would have quietly deleted that
+  // coverage rather than moving it.
   function band(mdl) {
     fresh(mdl);
+    C.renderFlow_();
     C.renderBacklogBand_();
-    return els.backlogBand.innerHTML;
+    return document.getElementById("tier1Tiles").innerHTML + els.backlogBand.innerHTML;
   }
   // The band now carries TWO <svg> elements — the Inventory tile's history
   // sparkline (Task 17) renders first (it's inside the hero .tiles div, above
@@ -4488,23 +4602,28 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/nobody/i.test(h1Head),
           "the band heading imputes no neglect — got: " + h1Head);
   assert_(/Backlog/.test(h1Head), "…and it is still named Backlog — got: " + h1Head);
-  // Three segments since 2026-08-07: hero triplet, the workforce-change row, then
-  // the assigned sub-row. Anchored on the row captions so a later insertion moves
-  // the boundaries rather than silently reassigning a tile to the wrong segment.
-  var heroSeg = h1.split("The team behind the queue")[0];
-  var wfSeg = (h1.split("The team behind the queue")[1] || "").split("Assigned inventory")[0];
+  // Two segments since the redesign (2026-08-17): the hero triplet (now in
+  // Tier 1) and the assigned sub-row (still in the band). The workforce-change
+  // row between them was deleted. Anchored on the sub-row's caption so a later
+  // insertion moves the boundary rather than silently reassigning a tile.
+  var heroSeg = h1.split("Assigned inventory")[0];
   var subSeg = h1.split("Assigned inventory")[1] || "";
   assert_(heroSeg.indexOf(">ORG<") !== -1, "the hero triplet carries the ORG scope tag");
-  assert_(heroSeg.indexOf(">SNAP<") === -1, "…and never SNAP, on the hero side");
   assert_(subSeg.indexOf(">SNAP<") !== -1, "the assigned sub-row carries the SNAP scope tag");
-  assert_((heroSeg.match(/>ORG</g) || []).length === 3, "all three hero slots carry their own ORG tag (not one shared banner)");
-  // Workforce change is ORG too, and for a reason worth pinning: a person who
-  // has left has no Region/Team/PM row to filter on, so a SNAP or filtered tag
-  // here would promise scoping the number cannot honour.
-  assert_((wfSeg.match(/>ORG</g) || []).length === 1,
-          "the workforce-change row carries its own ORG tag");
-  assert_(wfSeg.indexOf(">SNAP<") === -1, "…and never SNAP");
+  // Exactly three ORG tags across the whole string: Inventory, Net flow and
+  // Weeks to clear, each with its own (not one shared banner). The Tier-1
+  // outcome cards beside them are all PERIOD, and the workforce card that used
+  // to add a fourth ORG is gone — so this count is also the check that it
+  // stayed gone.
+  assert_((h1.match(/>ORG</g) || []).length === 3,
+          "all three hero slots carry their own ORG tag, and nothing else in Tier 1 or the band does");
   assert_((h1.match(/>SNAP</g) || []).length === 2, "both sub-row slots carry their own SNAP tag");
+  // The Workforce-change card is DELETED from the Executive read (redesign
+  // 2026-08-17), not merely moved further down the band.
+  assert_(h1.indexOf("Workforce change") === -1,
+          "the Workforce-change card is gone from the Executive tab entirely");
+  assert_(h1.indexOf("The team behind the queue") === -1,
+          "…and so is the caption that introduced it");
 
   // ── 2. Hero inventory = assigned + unassigned; sub-row = assigned alone;
   // the two are NEVER the same number. Catches: the sub-row accidentally
@@ -4622,13 +4741,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // proving the hero is genuinely ORG (unfiltered), not merely tagged ORG
   // while actually reading filtered data. Catches: a filter accidentally
   // reaching the hero's numbers, or the sub-row NOT reacting to the filter at all.
+  // The hero is read straight from its builder now (redesign 2026-08-17) — it
+  // renders into Tier 1, and reading it through backlogHeroTilesHtml_ isolates
+  // the three cards from the outcome cards that legitimately DO filter.
   fresh(baseFixture());
   C.renderBacklogBand_();
-  var heroBefore = els.backlogBand.innerHTML.split("Assigned inventory")[0];
+  var heroBefore = C.backlogHeroTilesHtml_();
   C.setState("region", "EMEA");
   C.renderBacklogBand_();
   var afterHtml = els.backlogBand.innerHTML;
-  var heroAfter = afterHtml.split("Assigned inventory")[0];
+  var heroAfter = C.backlogHeroTilesHtml_();
   var subAfter = afterHtml.split("Assigned inventory")[1] || "";
   assert_(heroBefore === heroAfter,
           "the hero triplet's markup is BYTE-IDENTICAL before and after STATE.region — it never reads filters");
@@ -4648,15 +4770,20 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var mPhase = baseFixture();
   fresh(mPhase);
   C.renderBacklogBand_();
-  var beforePeriod = els.backlogBand.innerHTML;
+  var beforePeriod = els.backlogBand.innerHTML + C.backlogHeroTilesHtml_();
   // Pick an EARLIER period on the picker — if the band secretly depended on
   // it, the trailing-weeks totals would move; they must not.
   C.setState("periodIdx", 0);
   C.renderBacklogBand_();
-  var afterPeriod = els.backlogBand.innerHTML;
+  var afterPeriod = els.backlogBand.innerHTML + C.backlogHeroTilesHtml_();
+  // Both halves are checked: the band itself AND the three hero cards that now
+  // render a tier above it. The hero moving containers must not quietly move
+  // it onto the picker's basis — that is exactly the wiring this catches, and
+  // it would otherwise have escaped the check along with the tiles.
   assert_(beforePeriod === afterPeriod,
-          "the backlog band is BYTE-IDENTICAL when the period picker moves — it is fixed to its " +
-          "own trailing-weeks basis (D3), the same way the masthead and netFlowPerWeek_ already are");
+          "the backlog band AND its Tier-1 hero cards are BYTE-IDENTICAL when the period picker " +
+          "moves — both are fixed to the trailing-weeks basis (D3), the same way the masthead " +
+          "and netFlowPerWeek_ already are");
   C.setState("periodIdx", null);
 
   // ── 8. The unowned ruler segment is drillable ONLY when unassigned rows
@@ -4749,11 +4876,19 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // The supply side of the queue. Three states that must stay distinguishable,
   // because collapsing any pair of them is how a real loss disappears:
   // unknown (payload predates it) / a measured zero / a measured movement.
+  //
+  // The CARD was removed from the Executive tab (redesign 2026-08-17) and its
+  // builder kept, so these checks now read workforceTileHtml_ directly instead
+  // of slicing it out of the band. Every rule below is unchanged — this is the
+  // measure's contract, and it has to still hold on the day the card is
+  // restored. That it no longer RENDERS on Executive is asserted separately,
+  // in check 1 above.
   function wfBand(wf, extra) {
     var m = baseFixture();
     if (wf !== undefined) m.workforceWeeks = wf;
     Object.keys(extra || {}).forEach(function (k) { m[k] = extra[k]; });
-    return band(m).split("The team behind the queue")[1].split("Assigned inventory")[0];
+    fresh(m);
+    return C.workforceTileHtml_();
   }
   var HEAD = "2026.W31";   // baseFixture's analysis head
 
@@ -4829,31 +4964,65 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
-// TASK 16B — EXECUTIVE BAND ORDER (spec 2026-08-06, retirement + resequence)
-// #viewExec must render, top to bottom: masthead, backlogBand, trustPanel
-// (moved up from last), the flow band (#flowTiles), the capacity band
-// (#pulsePanel), comparePanel, shelfPanel, trustDetail. Checked on the raw
-// markup — the actual DOM order a reader scrolls through — so a later edit
-// that reorders the panels fails loudly instead of merely reordering render
-// calls that still happen to land in the right containers.
+// EXECUTIVE TIER ORDER (redesign 2026-08-17)
+//
+// #viewExec renders three tiers, top to bottom:
+//   TIER 1  #tier1Tiles      the eight protagonist KPIs, then #flowKey
+//   TIER 2  #masthead → #backlogBand → #flowSecondary → #pulsePanel →
+//           #comparePanel (hidden by flag, element retained)
+//   TIER 3  #trustDetail     super-admin only
+//
+// Checked on the raw markup — the actual DOM order a reader scrolls through —
+// so a later edit that reorders the panels fails loudly instead of merely
+// reordering render calls that still land in the right containers.
+//
+// The ORDER IS THE FEATURE here, not incidental structure: the whole point of
+// the redesign is that an executive reaches a verdict before meeting a caveat.
+// A change that puts context above the KPIs, or floats the super-admin panel
+// up the page, has undone it whether or not anything still renders.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
-  var order = ["masthead", "backlogBand", "trustPanel", "flowTiles", "pulsePanel",
-               "comparePanel", "shelfPanel", "trustDetail"];
+  var order = ["tier1Tiles", "flowKey", "masthead", "backlogBand", "flowSecondary",
+               "pulsePanel", "comparePanel", "trustDetail"];
   var idxs = order.map(function (id) { return html.indexOf('id="' + id + '"'); });
   idxs.forEach(function (i, k) {
     assert_(i !== -1, "#" + order[k] + " exists in the markup");
   });
   for (var i = 1; i < idxs.length; i++) {
     assert_(idxs[i - 1] < idxs[i],
-            "#" + order[i - 1] + " precedes #" + order[i] + " in DOM order (Task 16B band order) — " +
+            "#" + order[i - 1] + " precedes #" + order[i] + " in DOM order (Executive tier order) — " +
             "got indices " + idxs[i - 1] + " then " + idxs[i]);
   }
-  // Retirement is real, not merely unreferenced: #tiles/#tileColorKey are
-  // absent from the MARKUP itself (checked earlier too; repeated here beside
-  // the order check since both guard the same restructure).
+  // Retirement is real, not merely unreferenced: the retired containers are
+  // absent from the MARKUP itself.
   assert_(html.indexOf('id="tiles"') === -1 && html.indexOf('id="tileColorKey"') === -1,
           "#tiles and #tileColorKey are absent from the markup — retirement is structural, not incidental");
+  assert_(html.indexOf('id="flowTiles"') === -1,
+          "#flowTiles is gone — the flow band was split into #tier1Tiles and #flowSecondary");
+  assert_(html.indexOf('id="shelfPanel"') === -1,
+          "#shelfPanel is gone — 'Not measured this week' was deleted, not merely unrendered");
+
+  // ── The three tiers are declared as SECTIONS, each with its own heading ──
+  // A run of unlabelled panels leaves the hierarchy to be inferred; the tiers
+  // are a statement about priority, so they are marked in the markup.
+  assert_(/class="tier tier1"/.test(html) && /class="tier tier2"/.test(html) &&
+          /class="tier tier3"/.test(html),
+          "all three tiers are declared as sections in the markup");
+  assert_(html.indexOf('class="tier tier1"') < html.indexOf('class="tier tier2"') &&
+          html.indexOf('class="tier tier2"') < html.indexOf('class="tier tier3"'),
+          "…and they appear in priority order: tier1, then tier2, then tier3");
+
+  // ── The data-quality strip moved to Actions, and moved ENTIRELY ──
+  // Present twice would be worse than not moving it: two copies of a gate
+  // reading, free to disagree about which period they measured.
+  var trustIdx = html.indexOf('id="trustPanel"');
+  assert_(trustIdx !== -1, "#trustPanel still exists — it moved tabs, it was not deleted");
+  assert_(html.indexOf('id="trustPanel"', trustIdx + 1) === -1,
+          "…and exists exactly once, not copied onto both tabs");
+  assert_(trustIdx > html.indexOf('id="viewActions"'),
+          "…and it sits inside the Actions pane, after #viewActions opens");
+  assert_(trustIdx < html.indexOf('id="rosterPanel"'),
+          "…first on that tab, above the signals roster");
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4904,7 +5073,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(M1);
   C.setState("view", "exec");
   C.renderAll_();
-  var flowHtml = els.flowTiles.innerHTML;
+  var flowHtml = flowHtml_();
   // Order in #flowTiles is now Cleared, Arrived, Lead Time, On-Time, Forecast,
   // Quality/Rework, Throughput, Bug Count (Task 16B resequence per spec §3/§4:
   // Arrived comes BEFORE Lead Time, and On-Time/Forecast/Quality — moved from
@@ -4930,10 +5099,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // real, different behaviour, not decoration. Both fixture people are AMER in
   // the default `model()` shape, so filtering to a region with nobody in it
   // (EMEA) empties the PERIOD tiles' coverage but must leave Arrived untouched.
-  var arrBefore = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var arrBefore = flowHtml_().split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   C.setState("region", "EMEA");
   C.renderAll_();
-  var arrAfter = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var arrAfter = flowHtml_().split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   assert_(arrBefore === arrAfter, "Arrived (ORG) is byte-identical under a region filter that empties everyone else");
   C.setState("region", "");
   C.renderAll_();
@@ -4958,7 +5127,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var M2 = flowFixture({ arrivalsAvailable: false, arrivalWeeks: [] });
   fresh(M2);
   C.renderAll_();
-  var arrOff = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var arrOff = flowHtml_().split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   assert_(/not measured/.test(arrOff), "Arrived states 'not measured' when the arrivals feed is unavailable");
   assert_(/class="big">—<\/div>/.test(arrOff), "…and the hero renders the em-dash placeholder, no numeric value");
   assert_(!/class="big">[0-9]/.test(arrOff), "…confirmed: no digit ever lands in the hero slot");
@@ -4975,7 +5144,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var M2b = flowFixture({ arrivalWeeks: [] });   // available: true (default), but zero rows
   fresh(M2b);
   C.renderAll_();
-  var arrGap = els.flowTiles.innerHTML.split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
+  var arrGap = flowHtml_().split('<div class="lbl">Arrived')[1].split('<div class="lbl">Lead Time')[0];
   assert_(/class="big">—<\/div>/.test(arrGap),
     "no arrivalWeeks row for the head period → hero renders '—', never a measured '0'");
   assert_(!/class="big">0/.test(arrGap), "…specifically: no '0' in the hero slot (the exact conflation this fix targets)");
@@ -5006,13 +5175,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setModel(mGuest);
   C.setState("view", "exec");
   C.renderAll_();
-  assert_(!/Billable Utilization|Capacity Utilization/.test(els.flowTiles.innerHTML + els.pulsePanel.innerHTML),
+  assert_(!/Billable Utilization|Capacity Utilization/.test(flowHtml_() + els.pulsePanel.innerHTML),
           "a non-margin role sees NO utilisation label anywhere in the executive pane");
   assert_(els.pulsePanel.innerHTML === "",
           "…and the capacity band's OWN panel — the Utilisation tile included, now that it lives here — is emptied entirely");
   assert_(els.pulsePanel.style.display === "none",
           "…display:none, not merely emptied — no ghost kicker/heading left in the DOM");
-  assert_(!/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML + els.flowTiles.innerHTML),
+  assert_(!/CAPACITY — what we have to throw at it/.test(els.pulsePanel.innerHTML + flowHtml_()),
           "the kicker text itself is nowhere in the DOM for this role — not hidden, ABSENT");
 
   var mAdmin = fresh(model({}));
@@ -5064,7 +5233,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.renderAll_();
   assert_(C.analysisHead_().phase === "plan", "sanity: the picker selection resolves as phase 'plan'");
   var planCapacity = els.pulsePanel.innerHTML;
-  var planOutcome = els.flowTiles.innerHTML;
+  var planOutcome = flowHtml_();
   assert_(/Planned Coverage/.test(planCapacity),
           "capacity slot becomes Planned Coverage on a planning window, now rendered inside #pulsePanel");
   assert_(/has not happened yet/.test(planOutcome),
@@ -5503,7 +5672,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/needs 5/.test(reason4) && /coverage gate/.test(reason4),
           "…and that one entry names BOTH the floor shortfall and the gate shortfall — got: " + reason4);
 
-  // ── 5. NO owner name anywhere in the rendered shelf HTML (D9) ───────────
+  // ── 5. NO owner name reaches the shelf (D9) ────────────────────────────
+  // The shelf PANEL was deleted in the redesign (2026-08-17); shelfRows_ lives
+  // on, because the masthead still counts its entries into the "N shelved"
+  // evidence chip. So the rule is checked where it now bites: on the row
+  // objects themselves, and on everything the Executive tab actually prints.
   var m5 = model({});
   m5.meta.registry.metrics.cycleTime = {
     id: "cycleTime", name: "Cycle Time", coverageGate: 0, status: "absent",
@@ -5511,12 +5684,24 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     deviations: [],
   };
   fresh(m5);
+  C.getModel().viewerSuper = true;
   C.setState("view", "exec");
   C.renderAll_();
-  var shelfHtml = els.shelfPanel.innerHTML;
-  assert_(/Cycle Time/.test(shelfHtml), "sanity: the shelf actually rendered the metric");
-  assert_(!/Delivery leadership/.test(shelfHtml) && !/Services Director/.test(shelfHtml),
-          "no owner/paramOwner name appears anywhere in the shelf HTML");
+  var shelfRows5 = C.shelfRows_();
+  assert_(shelfRows5.some(function (r) { return /Cycle Time/.test(r.name); }),
+          "sanity: shelfRows_ still picks the metric up");
+  var shelfJson = JSON.stringify(shelfRows5);
+  assert_(!/Delivery leadership/.test(shelfJson) && !/Services Director/.test(shelfJson),
+          "no owner/paramOwner name is carried on a shelf row — the object has nothing to leak");
+  // …and nothing on the Executive tab prints one either.
+  var exec5 = els.masthead.innerHTML + flowHtml_() + els.backlogBand.innerHTML +
+              els.pulsePanel.innerHTML + els.trustDetail.innerHTML;
+  assert_(!/Delivery leadership/.test(exec5) && !/Services Director/.test(exec5),
+          "…and no owner name appears anywhere on the rendered Executive tab");
+  // The count still reaches the reader — deleting the panel must not have
+  // deleted the signal that something is unmeasurable.
+  assert_(/shelved/.test(els.masthead.innerHTML),
+          "the masthead still reports the shelved count — the panel went, the signal did not");
 
   // ── 6. Trust detail is a COLLAPSED <details> ────────────────────────────
   var detailHtml0 = els.trustDetail.innerHTML;
@@ -5530,6 +5715,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   mA.meta.clearRateMedian = 100;
   mA.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [14, 14] }];
   fresh(mA);
+  // Tier 3 is super-admin only (redesign 2026-08-17) — the fixture has to be
+  // one, or the panel is (correctly) absent and every check below reads "".
+  C.getModel().viewerSuper = true;
   C.renderAll_();
   var detailA = els.trustDetail.innerHTML;
   assert_(/400 items/.test(detailA) && /100\/wk/.test(detailA) && /2\.0 weeks/.test(detailA),
@@ -5550,6 +5738,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   mB.meta.clearRateMedian = 300;
   mB.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [14, 14] }];
   fresh(mB);
+  // Tier 3 is super-admin only (redesign 2026-08-17) — the fixture has to be
+  // one, or the panel is (correctly) absent and every check below reads "".
+  C.getModel().viewerSuper = true;
   C.renderAll_();
   var detailB = els.trustDetail.innerHTML;
   assert_(/600 items/.test(detailB) && /300\/wk/.test(detailB),
@@ -5559,7 +5750,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "exactly) because it is computed, not the same cached sentence — got: " + detailB);
 
   // ── 8. No hardcoded editorial anywhere in either rendered panel ─────────
-  var everyExecHtml = els.shelfPanel.innerHTML + els.trustDetail.innerHTML +
+  var everyExecHtml = els.masthead.innerHTML + els.trustDetail.innerHTML +
+                       C.renderTrust_();
                        els.pulsePanel.innerHTML + els.trustPanel.innerHTML;
   assert_(!/not credible/i.test(everyExecHtml), "'not credible' appears nowhere");
   assert_(!/1 person on leave/i.test(everyExecHtml), "'1 person on leave' appears nowhere");
@@ -5715,7 +5907,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(mdl);
   C.renderEpicDue_();
   var h = els.epicDuePanel.innerHTML;
-  assert_(/🚩 Epics without a due date/.test(h), "the flag panel renders on Actions");
+  // Heading emoji were stripped in the redesign (2026-08-17) — the panel is
+  // identified by its NAME now, which is what a reader actually reads.
+  assert_(/<h3[^>]*>Epics without a due date/.test(h), "the epic-due panel renders on Actions");
   assert_(/>ORG</.test(h),
           "…tagged ORG — no person filter applies, so a reader must not take it as filtered");
   assert_(/7 of 20 open epics \(35%\) carry no due date/.test(h),
@@ -5803,7 +5997,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 // card (margin-top:auto only reaches the bottom edge from the last position).
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
-  var src = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var src = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   assert_(/\.tile\{[^}]*display:flex[^}]*flex-direction:column/.test(src),
           "the tile is a flex column — margin-top:auto has no meaning in a block box");
   assert_(/\.tile>\.spark,\.tile>\.sparkWrap\{margin-top:auto/.test(src),
@@ -5819,16 +6013,23 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(histModel({}));
   C.setState("view", "exec");
   C.renderAll_();
-  var tiles = (els.flowTiles.innerHTML + els.backlogBand.innerHTML).split('<div class="tile');
+  // Each container is split SEPARATELY (redesign 2026-08-17). Concatenating
+  // them first made the last tile of one container run into the next
+  // container's heading, so the final tile in every container was graded on
+  // its neighbour's markup rather than its own.
   var withSpark = 0;
-  tiles.forEach(function (t) {
-    if (t.indexOf('class="chart spark"') === -1) return;
-    withSpark++;
-    var after = t.slice(t.lastIndexOf("</svg>") + 6);
-    // Only closing divs may follow the chart — any text line after it would sit
-    // BELOW the pinned chart and break the baseline it was pinned to establish.
-    assert_(/^(<\/div>)*$/.test(after.trim()),
-            "the mini chart is the last content in its card — got trailing: " + after.slice(0, 80));
+  [document.getElementById("tier1Tiles").innerHTML,
+   document.getElementById("flowSecondary").innerHTML,
+   els.backlogBand.innerHTML].forEach(function (src2) {
+    src2.split('<div class="tile').forEach(function (t) {
+      if (t.indexOf('class="chart spark"') === -1) return;
+      withSpark++;
+      var after = t.slice(t.lastIndexOf("</svg>") + 6);
+      // Only closing divs may follow the chart — any text line after it would
+      // sit BELOW the pinned chart and break the baseline it establishes.
+      assert_(/^(<\/div>)*$/.test(after.trim()),
+              "the mini chart is the last content in its card — got trailing: " + after.slice(0, 80));
+    });
   });
   assert_(withSpark >= 2,
           "the positive case: the Executive view really does render mini charts in tiles (" +
@@ -6229,7 +6430,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // The filter row sits ABOVE the tabs, so this control is visible while the
   // 🗓 PM tab is open. It selects PEOPLE who worked FOR a PM; the tab reports
   // the TICKETS a PM OWNS.
-  var dashSrc = fs.readFileSync(path.join(__dirname, "Dashboard.html"), "utf8");
+  var dashSrc = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   assert_(/Worked with PM/.test(dashSrc),
           "the people-membership filter is labelled 'Worked with PM', not 'PM'");
   assert_(/STATE\.pm/.test(dashSrc),
@@ -6537,6 +6738,218 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "denied";
   C.switchView_("pm");
   assert_(C.STATE.view !== "pm", "a role without access cannot reach the PM view by id");
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// EXECUTIVE UI/UX REDESIGN (2026-08-17)
+//
+// Sidebar navigation, emoji-free chrome, and the three-tier Executive
+// hierarchy. Every rule here is a LAYOUT rule, which is exactly the class of
+// rule that ships broken: it lives in string concatenation and container ids,
+// where nothing else in the suite is looking.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  var src = fs.readFileSync(path.join(__dirname, "..", "..",
+                                      "delivery-health-dashboard", "Dashboard.html"), "utf8");
+
+  // ── 1. THE RAIL ─────────────────────────────────────────────────────────
+  // #tabBar moved INTO the sidebar. It is still the one place tabs are built
+  // from VIEWS, so this is a relocation, not a second navigation control.
+  var navIdx = src.indexOf('class="sidenav"');
+  var barIdx = src.indexOf('id="tabBar"');
+  var navEnd = src.indexOf("</nav>");
+  assert_(navIdx !== -1, "the left sidebar exists in the markup");
+  assert_(barIdx > navIdx && barIdx < navEnd, "…and #tabBar lives inside it, not above the panes");
+  assert_(src.indexOf('id="tabBar"', barIdx + 1) === -1,
+          "…exactly once — navigation is not duplicated between a rail and a strip");
+  assert_(barIdx < src.indexOf('id="app"'),
+          "the rail precedes the app content, so tab order reaches navigation first");
+  // The rail is dark in BOTH themes: its tokens are defined once on :root and
+  // never redefined in the dark block. A rail that inverted with the page
+  // would read as another panel in light mode — the problem it replaced.
+  var darkBlock = src.slice(src.indexOf('[data-theme="dark"]'),
+                            src.indexOf('[data-theme="dark"]') + 2000);
+  assert_(/--nav-bg:/.test(src), "the rail has its own colour tokens");
+  assert_(!/--nav-bg:/.test(darkBlock),
+          "…and they are NOT redefined for dark — the rail is chrome, dark in both themes");
+  // Body padding is driven by the SAME token as the rail's width, so a
+  // collapse can never leave the content overlapping or floating.
+  assert_(/body\{[^}]*padding-left:calc\(var\(--navw\)/.test(src.replace(/\n\s*/g, "")),
+          "the page's left padding is derived from --navw, not a second hardcoded width");
+  assert_(/body\.navCollapsed\{--navw:/.test(src),
+          "collapsing retunes that one token rather than restyling each element");
+
+  // ── 2. NO EMOJI IN THE CHROME ───────────────────────────────────────────
+  // Tab labels and section headings only. Inline data glyphs (ramping, on
+  // leave, intern, the RAG marks) are load-bearing and deliberately untouched
+  // — status is never colour alone (FR-4.4), and stripping them would take
+  // information out of a monochrome board pack.
+  var EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+  C.VIEWS.forEach(function (v) {
+    assert_(!EMOJI.test(v.label), "the '" + v.label + "' tab label carries no emoji");
+    assert_(v.dot && !EMOJI.test(v.dot),
+            "…and its rail mark is a geometric glyph, not an emoji — got: " + v.dot);
+  });
+  // Matches headings WITH attributes too (`<h4 style="…">`). The first pass of
+  // this check only matched bare tags and let three attributed headings keep
+  // their emoji — the exact blind spot a "strip the emoji" edit produces, since
+  // a grep written from the same assumption misses the same lines.
+  var heads = src.match(/<h[1-4][^>]*>[^<]{0,80}|<summary[^>]*>[^<]{0,80}/g) || [];
+  heads.forEach(function (h) {
+    assert_(!EMOJI.test(h), "no section heading carries an emoji — got: " + h);
+  });
+  assert_(heads.length > 20, "…and there were real headings to check (" + heads.length + ")");
+
+  // Tabs render the label as its accessible name, with the mark hidden from
+  // assistive tech — otherwise a screen reader announces the decoration.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.buildTabs_();
+  var firstTab = els.tabBar.children[0];
+  assert_(/aria-hidden="true"/.test(firstTab.innerHTML), "the rail mark is aria-hidden");
+  assert_(/class="tabLbl">Executive</.test(firstTab.innerHTML),
+          "…and the label is the tab's readable text");
+  assert_(firstTab.getAttribute("aria-selected") === "true",
+          "the active tab reports its selected state");
+
+  // ── 3. COLLAPSE ─────────────────────────────────────────────────────────
+  C.setNavCollapsed_(false);
+  assert_(document.body.classList.contains("navCollapsed") === false, "the rail starts expanded");
+  C.toggleNav_();
+  assert_(document.body.classList.contains("navCollapsed") === true, "…toggles to collapsed");
+  C.toggleNav_();
+  assert_(document.body.classList.contains("navCollapsed") === false, "…and back again");
+
+  // ── 4. TIER 1 IS EXACTLY THE EIGHT PROTAGONIST KPIs, IN ORDER ───────────
+  // The whole redesign is this list and this sequence. Both are pinned: a card
+  // that drifts in, out, or up the order has changed what the org is run on.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+  var t1 = document.getElementById("tier1Tiles").innerHTML;
+  var WANT = ["On-Time Delivery", "Forecast Accuracy", "Quality / Rework", "Throughput",
+              "Bug Count", "Inventory", "Net flow", "Weeks to clear"];
+  var seenAt = WANT.map(function (lbl) { return t1.indexOf('<div class="lbl">' + lbl); });
+  WANT.forEach(function (lbl, i) {
+    assert_(seenAt[i] !== -1, "Tier 1 carries the '" + lbl + "' card");
+  });
+  for (var i = 1; i < seenAt.length; i++) {
+    assert_(seenAt[i - 1] < seenAt[i],
+            "Tier 1 order: '" + WANT[i - 1] + "' precedes '" + WANT[i] + "'");
+  }
+  assert_((t1.match(/<div class="tile/g) || []).length === WANT.length,
+          "Tier 1 holds exactly " + WANT.length + " cards — no extras crept into the top row");
+  assert_(/class="tiles tier1"/.test(src),
+          "…and the grid is marked tier1, which is what makes those cards the largest on the page");
+
+  // The three demoted reads are in Tier 2, and are NOT in Tier 1.
+  var t2 = document.getElementById("flowSecondary").innerHTML;
+  ["Cleared", "Arrived", "Lead Time"].forEach(function (lbl) {
+    assert_(t2.indexOf('<div class="lbl">' + lbl) !== -1,
+            "'" + lbl + "' renders in the Tier-2 flow-detail strip");
+    assert_(t1.indexOf('<div class="lbl">' + lbl) === -1,
+            "…and never in Tier 1 — got it in the protagonist row");
+  });
+
+  // ── 5. WHAT LEFT THE EXECUTIVE TAB ──────────────────────────────────────
+  var execAll = els.masthead.innerHTML + t1 + t2 + els.backlogBand.innerHTML +
+                els.pulsePanel.innerHTML + els.comparePanel.innerHTML;
+  assert_(execAll.indexOf("Workforce change") === -1,
+          "the Workforce-change card is gone from the Executive tab");
+  assert_(execAll.indexOf("Not measured this week") === -1,
+          "'Not measured this week' is gone from the Executive tab");
+  assert_(execAll.indexOf("Can we publish these numbers?") === -1,
+          "the data-quality strip no longer renders on the Executive tab");
+  // …and it renders on Actions instead. Moved, not lost — the gates still
+  // have to be readable by whoever works the queue.
+  C.setState("view", "actions");
+  C.renderAll_();
+  assert_(/Can we publish these numbers\?/.test(els.trustPanel.innerHTML),
+          "…it renders on the Actions tab instead — moved, not dropped");
+  C.setState("view", "exec");
+  C.renderAll_();
+
+  // ── 6. THE COMPARISON PANEL IS OFF BY DEFAULT, AND EMPTY WHEN OFF ───────
+  // Hidden AND cleared: an element merely display:none'd still carries its
+  // markup into a PNG export and a find-in-page.
+  C.setComparePanel_(false);
+  C.renderAll_();
+  assert_(els.comparePanel.innerHTML === "",
+          "with the flag off the comparison panel renders nothing at all");
+  assert_(els.comparePanel.style.display === "none", "…and is hidden");
+  // The code is intact — one flag brings the whole section back.
+  C.setComparePanel_(true);
+  C.renderAll_();
+  assert_(/by Region/.test(els.comparePanel.innerHTML),
+          "…and flipping the flag restores it, unchanged and unrebuilt");
+  assert_(els.comparePanel.style.display === "", "…visible again");
+  assert_(/var SHOW_COMPARE_PANEL_ = false;/.test(src),
+          "the SHIPPED default is off — the suite runs it on, production does not");
+
+  // ── 7. TIER 3 IS SUPER-ADMIN ONLY ───────────────────────────────────────
+  // Removed from the DOM, never dimmed — a collapsed <details> a reader can
+  // still expand is not a gate.
+  C.getModel().viewerRole = "admin";
+  C.getModel().viewerSuper = false;
+  C.renderAll_();
+  assert_(els.trustDetail.innerHTML === "",
+          "a plain admin gets NO trust-detail markup — removed, not merely collapsed");
+  assert_(els.trustDetail.style.display === "none", "…and the panel is hidden");
+  C.getModel().viewerSuper = true;
+  C.renderAll_();
+  assert_(/Data trust detail/.test(els.trustDetail.innerHTML), "a super-admin sees it");
+  // An older payload has no such field. Undefined must resolve to "no".
+  delete C.getModel().viewerSuper;
+  assert_(C.canSeeSuper_() === false,
+          "a payload predating the field is not a super-admin — undefined is not a pass");
+  C.getModel().viewerSuper = true;
+
+  // ── 8. THE SMART LEGEND DEFINES EVERY SEGMENT IT DRAWS ──────────────────
+  // A swatch strip says the segments differ; the legend has to say what puts
+  // an item in each, which is the question actually asked in the room.
+  var leg = C.smartLegendHtml_();
+  ["In progress", "Queued", "Unowned"].forEach(function (seg) {
+    assert_(leg.indexOf("<b>" + seg + "</b>") !== -1, "the legend names the '" + seg + "' segment");
+  });
+  assert_(/assignee AND a Jira status in the In Progress category/.test(leg),
+          "…and states In progress' actual criterion, not just its colour");
+  assert_(/still To Do/.test(leg), "…Queued's criterion");
+  assert_(/no assignee/.test(leg), "…and Unowned's");
+  assert_((leg.match(/legSwatch/g) || []).length === 3, "one swatch per segment, no more");
+  assert_(els.backlogBand.innerHTML.indexOf("legSwatch") !== -1,
+          "the legend renders in the band, under the bar it explains");
+
+  // ── 9. THE UNOWNED NOTE IS DATA-GATED ───────────────────────────────────
+  // Reassurance printed against a queue with no unowned work is a caption with
+  // no subject, and standing text nobody can clear stops being read.
+  var mUn = model({});
+  mUn.queue = { assigned: { items: 100, wipN: 60, todoN: 40, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+                unassigned: { items: 500, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } };
+  fresh(mUn);
+  C.renderMasthead_();
+  assert_(/Note on unassigned work/.test(els.masthead.innerHTML),
+          "with unowned work on the books, the note renders");
+  assert_(/planned pipeline for upcoming sprints/.test(els.masthead.innerHTML),
+          "…and says what that work actually is");
+  assert_(/500 items/.test(els.masthead.innerHTML),
+          "…against the measured count, not a hardcoded figure");
+  mUn.queue.unassigned.items = 0;
+  C.setModel(mUn);
+  C.renderMasthead_();
+  assert_(!/Note on unassigned work/.test(els.masthead.innerHTML),
+          "a queue with nothing unowned gets no note — the sentence leaves with its subject");
+  mUn.queue.unassigned.items = null;
+  C.setModel(mUn);
+  C.renderMasthead_();
+  assert_(!/Note on unassigned work/.test(els.masthead.innerHTML),
+          "…and an UNMEASURED unowned count is not a reason to reassure anybody either");
+
+  // Teardown.
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
 })();
 
 console.log("✅ render-smoke: " + checks + " checks passed");

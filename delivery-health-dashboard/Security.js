@@ -137,6 +137,27 @@ function dhMarginTier_(role) {
 }
 
 /**
+ * Is this email the SUPER-ADMIN — the tier above admin?
+ *
+ * Only the bootstrap admin qualifies. Deliberately NOT a list: this gates
+ * build-integrity detail (the Executive tab's Tier-3 data-trust panel — Little's
+ * Law, reconciliation counts, registry deviations), which is for whoever
+ * maintains the pipeline, not for everyone who can manage the access list. A
+ * runtime-editable list would let an admin grant it to themselves, which is the
+ * distinction this tier exists to make.
+ *
+ * Client-side twin: canSeeSuper_() in Dashboard.html reads the `viewerSuper`
+ * boolean this produces — change one, change both.
+ *
+ * @param {string} email session email, any case
+ * @returns {boolean}
+ */
+function dhSuperAdmin_(email) {
+  return String(email || "").toLowerCase().trim() ===
+         SEC_DH.BOOTSTRAP_ADMIN.toLowerCase().trim();
+}
+
+/**
  * Returns the current access lists for the admin settings UI.
  * Admin-only — throws if the caller is not an admin.
  */

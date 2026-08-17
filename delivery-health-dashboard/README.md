@@ -33,7 +33,7 @@ gaps queue). A metric below its gate is still published (accepted deviation from
 Services Director, reversible with `CONFIG_DH.SUPPRESS_BELOW_GATE`); the compact flow tiles keep
 their chips. See [Data confidence](#data-confidence-and-suppression).
 
-Spec: [`docs/superpowers/specs/2026-07-31-delivery-health-dashboard-design.md`](../specs/2026-07-31-delivery-health-dashboard-design.md).
+Spec: [`delivery-health-dashboard/docs/specs/2026-07-31-delivery-health-dashboard-design.md`](../specs/2026-07-31-delivery-health-dashboard-design.md).
 
 ## Dictionary conformance (2026-08-03)
 
@@ -178,7 +178,7 @@ job is answered by something on Executive or Actions:
 
 ## Workforce Health — capacity is not fungible (2026-08-10)
 
-Spec: `docs/superpowers/specs/2026-08-10-dh-workforce-health-design.md`.
+Spec: `delivery-health-dashboard/docs/specs/2026-08-10-dh-workforce-health-design.md`.
 Business source: *Workforce Health — Implementation Spec v1.1* (Workforce Planning, 2026.W32).
 
 **The problem this fixes.** Every capacity figure this dashboard published — utilisation, planned
@@ -1314,7 +1314,7 @@ population label is unreadable out of context.
 > vocabulary — it logs which types the substring rule sweeps up and whether a `Milestone` type
 > exists at all (DATA-BLOCKERS #5).
 
-Spec: `docs/superpowers/specs/2026-08-04-hygiene-by-issue-type-design.md`.
+Spec: `delivery-health-dashboard/docs/specs/2026-08-04-hygiene-by-issue-type-design.md`.
 
 ## Region lens
 

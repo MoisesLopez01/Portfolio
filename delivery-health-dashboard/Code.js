@@ -5,7 +5,7 @@
 //              Roster by spreadsheet ID, builds one person×week +
 //              Jira-bucket model, serves Dashboard.html.
 // ACCESS:      Email allowlist — see Security.js (checkDeliveryAccess()).
-// SPEC:        docs/superpowers/specs/2026-07-31-delivery-health-dashboard-design.md
+// SPEC:        delivery-health-dashboard/docs/specs/2026-07-31-delivery-health-dashboard-design.md
 // ============================================================
 
 var CONFIG_DH = {
@@ -6830,6 +6830,11 @@ function getDeliveryData(forceRefresh) {
         if (cached.schemaVer === DH_SCHEMA_VER_) {
           cached.viewerRole = access.role;
           cached.viewerEmail = access.email;
+          // Super-admin tier (redesign 2026-08-17). Resolved per REQUEST, never
+          // cached: the payload is shared across viewers, so a cached true
+          // would hand the Tier-3 trust panel to the next reader. Same reason
+          // viewerRole/viewerEmail are stamped here rather than built in.
+          cached.viewerSuper = dhSuperAdmin_(access.email);
           return cached;
         }
         Logger.log("ℹ️ getDeliveryData: cache schema v" + cached.schemaVer +
@@ -6867,6 +6872,7 @@ function getDeliveryData(forceRefresh) {
             Logger.log("ℹ️ getDeliveryData: another request built it while we waited — serving that");
             fresh.viewerRole = access.role;
             fresh.viewerEmail = access.email;
+            fresh.viewerSuper = dhSuperAdmin_(access.email);
             return fresh;
           }
         } catch (e) { /* fall through and rebuild */ }
@@ -6876,6 +6882,7 @@ function getDeliveryData(forceRefresh) {
     if (!model.error) cachePutLarge_(cache, key, JSON.stringify(model), CONFIG_DH.CACHE_TTL_SEC);
     model.viewerRole = access.role;
     model.viewerEmail = access.email;
+    model.viewerSuper = dhSuperAdmin_(access.email);
     return model;
   } finally {
     if (haveLock) { try { lock.releaseLock(); } catch (e) { /* released by timeout */ } }

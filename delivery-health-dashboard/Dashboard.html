@@ -38,6 +38,14 @@
      is a hue step away from the cool slate of real non-billable work, which is
      the distinction being drawn. */
   --seg-bill:#0F1941; --seg-nonbill:#64748B; --seg-idle:#E7DDD2; --seg-off:#C08B5C;
+  /* ── Left sidebar (redesign 2026-08-17) ──
+     The rail is DARK IN BOTH THEMES and therefore owns its own token set rather
+     than reusing --surface/--text. Navigation is chrome: if it inverted with the
+     page it would read as a sixth panel in light mode, which is the horizontal
+     tab strip's problem all over again. Only the accent (--orbe) is shared. */
+  --navw:212px;
+  --nav-bg:#0B1230; --nav-text:#FFFAF5; --nav-muted:#98A6C8;
+  --nav-border:#1B2551; --nav-hover:#151E45; --nav-active:#1E2A5E;
 }
 [data-theme="dark"]{
   --bg:#090F26; --surface:#141C3D; --surface-2:#0F1733;
@@ -54,6 +62,13 @@
   --c-good:#34D399; --c-warn:#FBBF24; --c-bad:#FB7185;
   --c-series:#38BDF8; --c-ref:#94A3B8; --c-target:#7BA4FF;
   --grid:#1E295A; --plot:#141C3D;
+  /* The rail's BACKGROUND is deliberately not redefined here — it is chrome and
+     stays dark in both themes. Its EDGE is, because in dark mode the rail and
+     the page are both near-black and the light-mode border disappears against
+     them: the rail lost its outline entirely and read as page background with
+     text floating on it. Brightening only the border keeps the "one dark rail,
+     accents move" rule while restoring the separation the eye needs. */
+  --nav-border:#2B3A78;
   /* Billable takes the series blue so a filled bar reads as filled; non-billable
      stays a cool grey a clear step away from it; idle is a near-surface navy so
      empty capacity reads as absence rather than as another kind of work. */
@@ -69,7 +84,20 @@
 @media(min-width:2560px){:root{--scale:1.4}}
 @media(min-width:3440px){:root{--scale:1.5}}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Roboto','Franklin Gothic Book',-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:calc(16px*var(--scale))}
+body{font-family:'Roboto','Franklin Gothic Book',-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);padding:calc(16px*var(--scale));
+     padding-left:calc(var(--navw) + 16px*var(--scale))}
+/* Collapse toggle. The class sits on <body>, so the rail (a child) inherits the
+   narrowed --navw and the body's own left padding follows it in the same rule —
+   one token drives both, and they can never drift out of step. */
+body.navCollapsed{--navw:56px}
+/* Narrow screens force the icon rail regardless of the user's toggle: a 212px
+   rail on a phone is a third of the viewport. The toggle still works — it just
+   has nothing left to collapse until there is room for labels again. */
+@media(max-width:900px){
+  body{--navw:56px}
+  .navName,.tabLbl,.navToggleLbl{display:none}
+  .tab,.navToggle,.navBrand{justify-content:center;padding-left:0;padding-right:0}
+}
 /* Identity Lockdown typography: headings + hero numbers in the condensed face */
 h1,h2,h3,.title,.tile .big{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif}
 /* Sticky filter bar: KPIs scroll away, Region/Team/Family/search stay pinned
@@ -116,8 +144,51 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .chip{font-variant-numeric:tabular-nums}
 #regionChips .chip{min-width:calc(78px*var(--scale));text-align:center}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:16px}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-       padding:14px;box-shadow:var(--shadow)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+       padding:16px;box-shadow:var(--shadow)}
+/* ── EXECUTIVE TIERS (redesign 2026-08-17) ────────────────────────────────────
+   The Executive tab is a three-tier hierarchy — the protagonist KPIs, then the
+   context that explains them, then background/housekeeping. The tiers are
+   SEMANTIC, not decorative: a card's tier is a statement about how much of an
+   executive's attention it has earned, so each one is a labelled section rather
+   than an unmarked run of panels a reader has to infer a hierarchy from. */
+.tier{margin-bottom:calc(22px*var(--scale))}
+.tierHead{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;
+  font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+  font-size:calc(12px*var(--scale));font-weight:700;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--muted)}
+.tierHead .tierNote{font-family:'Roboto',sans-serif;font-size:calc(11px*var(--scale));
+  font-weight:400;text-transform:none;letter-spacing:0}
+/* Tier 1 cards are the largest and most visually distinct things on the page:
+   a wider grid track, a bigger hero figure, more padding and a deeper shadow.
+   Everything below them is deliberately quieter. */
+.tiles.tier1{grid-template-columns:repeat(auto-fit,minmax(calc(228px*var(--scale)),1fr));
+  gap:calc(12px*var(--scale))}
+.tiles.tier1>.tile{padding:16px 18px;border-radius:14px;
+  box-shadow:0 1px 2px rgba(15,25,65,.05),0 10px 28px rgba(15,25,65,.09)}
+[data-theme="dark"] .tiles.tier1>.tile{box-shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4)}
+.tiles.tier1>.tile .big{font-size:calc(34px*var(--scale));line-height:1.05}
+.tiles.tier1>.tile .lbl{font-size:calc(10.5px*var(--scale));font-weight:700}
+/* Tier 3 sits back: no shadow, a quieter ground — present for the people who
+   need it, never competing with the two tiers above. */
+.tier3 .panel{box-shadow:none;background:var(--surface-2)}
+/* Contextual callout — a reassurance or caveat attached to the number directly
+   above it. Left rule rather than a coloured fill: it must read as an aside on
+   the same surface, not as an alert. */
+.ctxNote{border-left:3px solid var(--orbe);border-radius:0 8px 8px 0;
+  background:var(--surface-2);padding:10px 12px;margin-top:10px;
+  font-size:calc(11.5px*var(--scale));color:var(--muted);line-height:1.5;max-width:96ch}
+.ctxNote b{color:var(--text)}
+/* Smart legend — the criteria behind each backlog segment, stated rather than
+   left to a tooltip. A swatch alone says "these are different"; the reader also
+   needs to know WHAT puts an item in each one before arguing about the split. */
+.smartLegend{display:grid;grid-template-columns:repeat(auto-fit,minmax(calc(210px*var(--scale)),1fr));
+  gap:8px calc(16px*var(--scale));margin-top:8px}
+.legItem{display:flex;gap:8px;align-items:flex-start;font-size:calc(11px*var(--scale));
+  color:var(--muted);line-height:1.45}
+.legSwatch{flex:0 0 12px;width:12px;height:12px;border-radius:3px;margin-top:2px;
+  border:1px solid var(--border)}
+.legItem b{color:var(--text);font-size:calc(11.5px*var(--scale))}
 .loading{padding:60px;text-align:center;color:var(--muted)}
 /* Cold-start progress. The wait is real and can run into minutes, so the panel
    has to hold attention honestly rather than repeat one static sentence: a
@@ -473,15 +544,53 @@ tr.detail td.dback{padding:8px 16px 12px}
    One view per question. Everything used to stack into a single scroll — KPI
    cards, roster grid, drill-downs — which is exactly the "mixed signals" a
    manager has to untangle before reading anything. The tab bar is generated
-   from the VIEWS array, so a view's label, pane and role gate are declared once. */
-.tabs{display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--border);
-      margin:0 0 14px;flex-wrap:wrap}
-.tab{background:transparent;border:1px solid transparent;border-bottom:none;
-     border-radius:8px 8px 0 0;padding:7px 14px;cursor:pointer;color:var(--muted);
-     font-size:calc(12.5px*var(--scale));font-weight:600;position:relative;top:1px}
-.tab:hover{color:var(--text);background:var(--surface-2)}
-.tab.on{background:var(--surface);border-color:var(--border);color:var(--text);
-        box-shadow:inset 0 2px 0 var(--orbe)}
+   from the VIEWS array, so a view's label, pane and role gate are declared once.
+
+   ── LEFT SIDEBAR (redesign 2026-08-17) ──
+   The tabs used to be a horizontal strip that ate a full row of vertical space
+   directly above the data, on every view. Moved into a fixed dark rail on the
+   left: navigation is now a persistent, low-contrast surround rather than a
+   competing band inside the reading column, and the whole page height goes to
+   the analytics. Dark on purpose — the rail must read as chrome, not as another
+   panel, so it stays dark in BOTH themes and only its accents move. */
+.sidenav{position:fixed;left:0;top:0;bottom:0;width:var(--navw);z-index:200;
+  background:var(--nav-bg);color:var(--nav-text);display:flex;flex-direction:column;
+  border-right:1px solid var(--nav-border);transition:width .16s cubic-bezier(.4,0,.2,1);
+  overflow:hidden;box-shadow:1px 0 0 rgba(255,255,255,.04)}
+.navBrand{display:flex;align-items:center;gap:9px;padding:16px 14px 14px;
+  border-bottom:1px solid var(--nav-border);min-height:56px}
+.navMark{width:26px;height:26px;flex:0 0 26px;border-radius:7px;background:var(--orbe);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
+  font-size:13px;font-family:'Roboto Condensed',sans-serif;letter-spacing:.02em}
+.navName{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+  font-size:calc(14px*var(--scale));font-weight:700;letter-spacing:.01em;white-space:nowrap}
+/* Vertical rail: tabs stack as full-width rows. */
+.tabs{display:flex;flex-direction:column;gap:2px;padding:12px 8px;flex:1;overflow-y:auto}
+.tab{background:transparent;border:none;border-radius:8px;padding:9px 11px;cursor:pointer;
+  color:var(--nav-muted);font-size:calc(12.5px*var(--scale));font-weight:600;
+  text-align:left;width:100%;display:flex;align-items:center;gap:10px;
+  white-space:nowrap;position:relative;font-family:inherit}
+.tab:hover{color:var(--nav-text);background:var(--nav-hover)}
+/* Active state is SUBTLE by instruction: a quiet fill plus a left accent rule,
+   never a saturated block — the sidebar must not steal focus from the data. */
+.tab.on{background:var(--nav-active);color:#fff}
+.tab.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;
+  border-radius:0 3px 3px 0;background:var(--orbe)}
+/* Each row carries a small geometric mark, NOT an emoji (redesign 2026-08-17:
+   the interface is a strict enterprise data tool). The glyph is decorative —
+   the label is the accessible name — so it is aria-hidden in the markup. */
+.tabDot{flex:0 0 16px;width:16px;text-align:center;font-size:13px;opacity:.85}
+.navFoot{padding:8px;border-top:1px solid var(--nav-border)}
+.navToggle{width:100%;background:transparent;border:1px solid var(--nav-border);
+  border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--nav-muted);
+  font-size:calc(11px*var(--scale));font-weight:600;font-family:inherit;
+  display:flex;align-items:center;gap:10px;white-space:nowrap}
+.navToggle:hover{color:var(--nav-text);background:var(--nav-hover)}
+/* Collapsed rail: icons only. Labels are removed from the flow rather than
+   hidden with opacity, so the 56px rail has no horizontal scroll. */
+.navCollapsed .navName,.navCollapsed .tabLbl,.navCollapsed .navToggleLbl{display:none}
+.navCollapsed .tab,.navCollapsed .navToggle{justify-content:center;padding-left:0;padding-right:0}
+.navCollapsed .navBrand{justify-content:center;padding-left:0;padding-right:0}
 
 /* ── CHARTS ──
    Inline SVG, no library. A CDN chart lib is one blocked request away from an
@@ -645,14 +754,32 @@ select option:disabled{color:var(--muted);font-style:italic}
 </style>
 </head>
 <body>
+<!-- ── LEFT SIDEBAR NAVIGATION (redesign 2026-08-17) ──────────────────────────
+     The tab strip that used to sit above the panes, moved into a fixed dark
+     rail. Still generated from VIEWS into #tabBar — one declaration site for a
+     view's label, pane and role gate — so this is a relocation of the same
+     control, not a second copy of navigation that could drift from the first. -->
+<nav class="sidenav" id="sidenav" aria-label="Dashboard sections">
+  <div class="navBrand">
+    <span class="navMark" aria-hidden="true">DH</span>
+    <span class="navName">Delivery Health</span>
+  </div>
+  <div class="tabs" id="tabBar" role="tablist"></div>
+  <div class="navFoot">
+    <button class="navToggle" id="btnNav" title="Collapse the sidebar to icons" aria-expanded="true">
+      <span class="tabDot" aria-hidden="true">‹‹</span><span class="navToggleLbl">Collapse</span>
+    </button>
+  </div>
+</nav>
+
 <div class="hdr">
   <div class="hrow">
     <h1>Delivery Health</h1>
     <span class="sub" id="asOf"></span>
     <span style="flex:1"></span>
-    <button class="btn" id="btnReset" title="Back to the default view — clears every filter, the person search, and all expanded rows">⟲ Reset</button>
-    <button class="btn" id="btnRefresh" title="Bypass the cache and reload live data">↻ Refresh</button>
-    <button class="btn" id="btnTheme" title="Switch between light and dark theme">🌙 Dark</button>
+    <button class="btn" id="btnReset" title="Back to the default view — clears every filter, the person search, and all expanded rows">Reset</button>
+    <button class="btn" id="btnRefresh" title="Bypass the cache and reload live data">Refresh</button>
+    <button class="btn" id="btnTheme" title="Switch between light and dark theme">Dark</button>
   </div>
   <div class="hrow">
     <div class="fgroup" id="periodGroup" title="Aggregation period — months are calendar, quarters are fiscal (FY starts Jul 1, named for its end year)">
@@ -681,59 +808,87 @@ select option:disabled{color:var(--muted);font-style:italic}
 <div id="loading" class="loading">Loading delivery health…</div>
 
 <div id="app" style="display:none">
-  <!-- Tab bar — generated from VIEWS in JS, so a view is declared in one place. -->
-  <div class="tabs" id="tabBar"></div>
-
   <!-- Live scope chip: states exactly WHAT slice is on screen. Above the panes,
        because the filter row scopes every view (never per-chart filters). -->
   <div class="sub" id="scopeChip" style="margin:-6px 0 12px;color:var(--muted);font-size:11px;cursor:help"
     title="Every filter is universal — it scopes the KPI cards, the charts and the grid together. On-Time and Forecast issues join to people via the Jira Assignee, so population/role/PM/family/search apply to them too; items without a roster assignee are excluded (count in the card tooltip). Team and PM rates are membership-based, so slices don't sum to All; a PM slice shows the whole week of everyone on that PM's projects."></div>
 
-  <!-- ── EXECUTIVE — the four cards and one comparison. The 30-second read. ── -->
+  <!-- ── EXECUTIVE — a three-tier hierarchy (redesign 2026-08-17) ─────────────
+       TIER 1 the protagonist KPIs, TIER 2 the context that explains them,
+       TIER 3 background. The ordering is the whole point of the tab: an
+       executive should reach a verdict before meeting a single caveat, so the
+       delivery-outcome numbers land first and everything that qualifies them
+       — the narrative, the backlog shape, capacity — sits underneath.
+
+       Moved OFF this tab in the same pass: the "Can we publish these numbers?"
+       data-quality strip (now first on Actions, where the queue that fixes each
+       gap already lives) and the Billable-Utilization comparison (hidden behind
+       SHOW_COMPARE_PANEL_, code intact). Deleted: "Not measured this week" and
+       the Workforce-change card. -->
   <div id="viewExec" class="viewPane">
-    <!-- §1 THE MASTHEAD (spec 2026-08-06) — the lede. Always first: a reader
-         gets the verdict in one sentence before a single chart. -->
-    <div class="panel" id="masthead" style="margin-bottom:14px"></div>
-    <!-- §2 BACKLOG BAND (spec 2026-08-06) — the page's hero: ORG triplet,
-         filterable assigned sub-row, queue ruler. -->
-    <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
-    <!-- §4.4 DATA TRUST (Task 16B, spec 2026-08-06) — moved up from last: "can
-         we publish these numbers?" belongs before the numbers, not after them. -->
-    <div class="panel" id="trustPanel" style="margin-bottom:14px"></div>
-    <!-- FLOW BAND (Task 16B) — Cleared · Arrived · Lead Time (p85 companion) ·
-         On-Time · Forecast · Quality/Rework, plus Throughput and Bug Count.
-         On-Time/Forecast/Quality used to be the standalone #tiles strip
-         (retired Task 16B — see report); they are delivery-outcome measures,
-         so they join the other flow reads rather than getting their own band
-         (spec §3 omits Forecast/Quality from any band — resolved as a spec
-         gap, not an instruction to drop them). -->
-    <div style="text-align:right"><button class="iconbtn" onclick="savePng_('flowTiles','flow')" title="Save the flow cards as a PNG image">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button></div>
-    <div class="tiles tilesCompact" id="flowTiles"></div>
-    <!-- COLOUR KEY (Task 17 — regression fix). Retiring #tileColorKey with the
-         old #tiles strip (Task 16B) removed the legend with no successor —
-         readers learn colours from a legend, not a tooltip, and every swatch
-         here is an inert caption, never a filter. Populated by renderFlow_. -->
-    <div class="cellSub" id="flowKey" style="margin:2px 0 12px"></div>
-    <!-- CAPACITY BAND (Task 16B) — Utilisation/Planned Coverage tile (moved
-         from the old #tiles strip) sits above the recoverable-hours/people-
-         signals row #pulsePanel already renders; both share the SAME margin
-         gate, so the whole band is omitted from the DOM together for a
-         non-margin role rather than each half being gated separately. -->
-    <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
-    <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
-    <!-- §7 THE SHELF (spec 2026-08-06) — "not measured this week", data-driven. -->
-    <div class="panel" id="shelfPanel" style="margin-bottom:14px"></div>
-    <!-- §8 DATA TRUST DETAIL (spec 2026-08-06) — collapsed <details>, computed. -->
-    <div class="panel" id="trustDetail"></div>
+
+    <!-- ══ TIER 1 · PROTAGONIST KPIs ══════════════════════════════════════════
+         Eight cards, one grid: the delivery-outcome measures (On-Time,
+         Forecast, Quality/Rework, Throughput, Bug Count) followed by the queue
+         reads (Inventory, Net Flow, Weeks to Clear). They are built by two
+         different renderers from two different feeds but they answer ONE
+         question — "are we delivering?" — so they share one container rather
+         than being split across bands the way they used to be. -->
+    <section class="tier tier1">
+      <div class="tierHead">Delivery health
+        <span class="tierNote">the eight numbers this org is run on</span>
+        <span style="flex:1"></span>
+        <button class="iconbtn" onclick="savePng_('tier1Tiles','kpis')" title="Save the KPI cards as a PNG image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
+      </div>
+      <div class="tiles tier1" id="tier1Tiles"></div>
+      <!-- COLOUR KEY — readers learn colours from a legend, not a tooltip, and
+           every swatch here is an inert caption, never a filter. -->
+      <div class="cellSub" id="flowKey" style="margin:2px 0 0"></div>
+    </section>
+
+    <!-- ══ TIER 2 · CONTEXT AND THE BACKLOG STORY ═════════════════════════════
+         Once the KPIs are digested: the written verdict, then the backlog's
+         shape, then the quieter flow reads, then capacity. -->
+    <section class="tier tier2">
+      <div class="tierHead">Context
+        <span class="tierNote">what is behind those numbers</span>
+      </div>
+      <!-- §1 THE MASTHEAD — the lede, now carrying the executive summary
+           sentence AND the standing note on what unassigned work actually is. -->
+      <div class="panel" id="masthead" style="margin-bottom:14px"></div>
+      <!-- §2 BACKLOG BAND — the horizontal backlog bar, its smart legend, and
+           the filterable assigned sub-row. -->
+      <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
+      <!-- SECONDARY FLOW READS — Cleared · Arrived · Lead Time. Real measures,
+           but not ones an executive opens the page for, so they sit here in the
+           compact tier rather than competing with the eight above. -->
+      <div class="panel" id="flowSecondary" style="margin-bottom:14px"></div>
+      <!-- CAPACITY BAND — Utilisation/Planned Coverage plus the people-signals
+           pulse; both share the SAME margin gate, so the whole band is omitted
+           from the DOM together for a non-margin role. -->
+      <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
+      <!-- Billable Utilization by Region — HIDDEN for this phase
+           (SHOW_COMPARE_PANEL_ = false). The element and renderCompare_ stay
+           intact so the section comes back by flipping one flag. -->
+      <div class="panel" id="comparePanel" style="margin-bottom:14px;display:none"></div>
+    </section>
+
+    <!-- ══ TIER 3 · BACKGROUND ════════════════════════════════════════════════
+         Super-admin only (canSeeSuper_ / MODEL.viewerSuper). Provenance
+         detail — Little's Law, reconciliation counts, registry deviations —
+         is a build-integrity read, not an executive one. -->
+    <section class="tier tier3">
+      <div class="panel" id="trustDetail"></div>
+    </section>
   </div>
 
-  <!-- ── 🎯 ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
+  <!-- ── ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
        Admin + viewer only (inherits the old Headroom gate). Reading order:
-       people signals roster → 🧬 by-type matrix → gaps queue. The standalone
-       "Where the headroom is" table was retired 2026-08-05: the roster covers
-       the same people with the same exclusions, and its recoverable-hours
-       figure lives on in the Executive pulse. ── -->
+       data-quality gates → people signals roster → by-type matrix → gaps queue.
+       The standalone "Where the headroom is" table was retired 2026-08-05: the
+       roster covers the same people with the same exclusions, and its
+       recoverable-hours figure lives on in the Executive pulse. ── -->
   <div id="viewActions" class="viewPane" style="display:none">
     <div style="text-align:right;margin-bottom:6px">
       <button class="iconbtn" onclick="saveCsv_()" title="Download the signals roster (one row per person: signal values, offending counts, hours split) as CSV">
@@ -741,6 +896,12 @@ select option:disabled{color:var(--muted);font-style:italic}
       <button class="iconbtn" onclick="savePng_('viewActions','actions')" title="Save this view as a PNG image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
     </div>
+    <!-- DATA TRUST — "can we publish these numbers?" (moved off Executive,
+         redesign 2026-08-17). It belongs FIRST here rather than anywhere on the
+         executive read: every gate below its bar is a queue with an owner, and
+         the gaps queue that works those items is on this same tab a few panels
+         down. An executive needs the verdict; an operator needs the gate. -->
+    <div class="panel" id="trustPanel" style="margin-bottom:14px"></div>
     <div class="panel" id="rosterPanel"></div>
     <!-- 🌊 Backlog health (2026-08-06). Sits between the roster and the 🧬 matrix
          on purpose: the roster says WHO, this says WHAT STATE the work they carry
@@ -854,29 +1015,32 @@ var PERIOD_LABELS = { week: "Week", month: "Month", quarter: "Quarter" };
  * executive looking for "are we on target" waded through a 200-row roster.
  * One view answers one question.
  */
+// LABELS CARRY NO EMOJI (redesign 2026-08-17). The dashboard is a strict
+// enterprise data tool, and a picture-glyph in a nav label is decoration that
+// also reads aloud as one to a screen reader. Each entry keeps a `dot` — a
+// small geometric mark drawn beside the label, aria-hidden in buildTabs_, so
+// the rail still has a scannable left column when it is collapsed to icons.
 var VIEWS = [
-  { id: "exec",    label: "📊 Executive", pane: "viewExec",    roles: null,
-    hint: "The KPI strip, one comparison, the people-signals pulse and the data-trust strip — the 30-second read." },
+  { id: "exec",    label: "Executive", dot: "◆", pane: "viewExec",    roles: null,
+    hint: "The protagonist KPIs, the backlog story and the people-signals pulse — the 30-second read." },
   // "Actions", not "Accountability" (review 2026-08-05): the matrix and gaps
   // queue are about fields and requirements, not people — a people-blame
   // banner over them framed the whole tab wrong.
-  { id: "actions", label: "🎯 Actions",   pane: "viewActions", roles: ["admin", "viewer"],
-    hint: "Who and what needs action: the compliance signals roster, field fill by issue type and the gaps queue." },
-  // 🗓 PM — the epics a PM OWNS, attributed by Jira assignee then project lead
+  { id: "actions", label: "Actions", dot: "▲", pane: "viewActions", roles: ["admin", "viewer"],
+    hint: "Who and what needs action: the data-quality gates, the compliance signals roster, field fill by issue type and the gaps queue." },
+  // PM — the epics a PM OWNS, attributed by Jira assignee then project lead
   // (spec 2026-08-11). Sits NEXT TO ACTIONS (user 2026-08-11) because it answers
   // the same question at a different grain: Actions is "who needs action", this
   // is "which committed work needs action". Distinct from the "Worked with PM"
   // filter above the tabs, which selects PEOPLE who worked for a PM.
-  // 🧭 was already taken by Workforce, hence 🗓 — this tab is about dated
-  // commitments, so the calendar reads correctly anyway.
-  { id: "pm", label: "🗓 PM", pane: "viewPm", roles: ["admin", "viewer"],
+  { id: "pm", label: "PM", dot: "■", pane: "viewPm", roles: ["admin", "viewer"],
     hint: "Epics in flight per PM: due-date fill against the team's 100% bar, and whether their own children are scheduled past them." },
-  // 🧭 Workforce — capacity read by DEPLOYMENT POOL, never blended. Gated to
+  // Workforce — capacity read by DEPLOYMENT POOL, never blended. Gated to
   // admin + viewer like Actions: the grid carries per-pool capacity, headroom
   // and backlog cover, which is the same margin tier as the utilization detail.
-  { id: "workforce", label: "🧭 Workforce", pane: "viewWorkforce", roles: ["admin", "viewer"],
+  { id: "workforce", label: "Workforce", dot: "●", pane: "viewWorkforce", roles: ["admin", "viewer"],
     hint: "Capacity by pool and level band: headroom, plan-vs-logged, work outside the plan and backlog cover — signals, not verdicts, because capacity is not fungible." },
-  { id: "access",  label: "🔒 Access",    pane: "viewAccess",  roles: ["admin"],
+  { id: "access",  label: "Access", dot: "◇", pane: "viewAccess",  roles: ["admin"],
     hint: "Manage who can open this dashboard." },
 ];
 
@@ -909,6 +1073,25 @@ function canSeeMargin_() {
   return r === "admin" || r === "viewer";
 }
 
+/**
+ * ── SUPER-ADMIN TIER ──
+ * A tier ABOVE admin, for build-integrity surfaces (the Tier-3 data-trust
+ * detail). Only the bootstrap admin qualifies — the one account that cannot be
+ * removed through the Access UI.
+ *
+ * The DECISION is the server's: Security.js resolves the session email against
+ * SEC_DH.BOOTSTRAP_ADMIN and ships a boolean. The client never sees the
+ * bootstrap address and never compares emails itself, so the rule cannot be
+ * inspected or spoofed from the page. Server-side twin: dhSuperAdmin_().
+ *
+ * Strict === true: a payload built before this field existed leaves it
+ * undefined, and an undefined must resolve to "not a super-admin" rather than
+ * to a truthy accident.
+ */
+function canSeeSuper_() {
+  return !!(MODEL && MODEL.viewerSuper === true);
+}
+
 /** A view the current viewer is allowed to open. */
 function viewAllowed_(v) {
   return !v.roles || v.roles.indexOf((MODEL && MODEL.viewerRole) || "") !== -1;
@@ -921,11 +1104,47 @@ function buildTabs_() {
     if (!viewAllowed_(v)) return;
     var b = document.createElement("button");
     b.className = "tab" + (STATE.view === v.id ? " on" : "");
-    b.textContent = v.label;
+    // innerHTML, not textContent: the row is a decorative mark plus a label
+    // that the collapsed rail hides. The mark is aria-hidden and the label
+    // carries the accessible name, so a screen reader reads "Executive", never
+    // "black diamond Executive" — and the name survives the collapse, because
+    // .tabLbl is hidden with display:none rather than removed from the DOM.
+    b.innerHTML = '<span class="tabDot" aria-hidden="true">' + (v.dot || "•") + "</span>" +
+      '<span class="tabLbl">' + esc_(v.label) + "</span>";
     b.title = v.hint;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", STATE.view === v.id ? "true" : "false");
     b.onclick = function () { switchView_(v.id); };
     bar.appendChild(b);
   });
+}
+
+/**
+ * Sidebar collapse. Persisted in localStorage so the choice survives a reload —
+ * a rail that silently re-expands on every refresh is a setting the user has to
+ * make again every time, which is the same as not having one.
+ *
+ * Guarded: HtmlService sandboxes can throw on localStorage access, and the
+ * render-smoke DOM stub has no classList — neither is a reason for navigation
+ * to fail, so both degrade to "expanded, not persisted".
+ */
+var NAV_KEY_ = "dhNavCollapsed";
+function setNavCollapsed_(on) {
+  var b = document.body;
+  if (b && b.classList) b.classList.toggle("navCollapsed", !!on);
+  var btn = document.getElementById("btnNav");
+  if (btn) {
+    btn.title = on ? "Expand the sidebar" : "Collapse the sidebar to icons";
+    btn.setAttribute("aria-expanded", on ? "false" : "true");
+    btn.innerHTML = '<span class="tabDot" aria-hidden="true">' + (on ? "››" : "‹‹") + "</span>" +
+      '<span class="navToggleLbl">Collapse</span>';
+  }
+  try { localStorage.setItem(NAV_KEY_, on ? "1" : "0"); } catch (e) { /* sandboxed */ }
+}
+function toggleNav_() {
+  var b = document.body;
+  var on = !(b && b.classList && b.classList.contains("navCollapsed"));
+  setNavCollapsed_(on);
 }
 
 /**
@@ -1888,8 +2107,15 @@ function renderAll_() {
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
-    case "exec":    renderMasthead_(); renderBacklogBand_(); renderTrust_(); renderFlow_(); renderPulse_(); renderCompare_(); renderShelf_(); renderTrustDetail_(); break;
-    case "actions": renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
+    // Executive tier order (redesign 2026-08-17). renderFlow_ writes BOTH the
+    // Tier-1 grid (#tier1Tiles — the outcome cards plus the backlog hero
+    // triplet) and the Tier-2 secondary strip, so it runs before the panels
+    // that sit under it. renderCompare_ is behind SHOW_COMPARE_PANEL_ and
+    // renderTrustDetail_ behind canSeeSuper_(); both gate themselves, so the
+    // dispatch stays a plain list rather than growing conditionals here.
+    case "exec":    renderFlow_(); renderMasthead_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); break;
+    // renderTrust_ moved here with its panel (redesign 2026-08-17).
+    case "actions": renderTrust_(); renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
     case "workforce": renderWfScope_(); renderWfGrid_(); renderWfConsumers_(); renderWfShadow_(); renderWfUnrouted_(); renderWfDisciplines_(); break;
     case "pm":      renderPm_(); break;
     case "access":  renderAccess_(); break;
@@ -1968,12 +2194,23 @@ document.getElementById("pmSel").onchange = function () { onFilterChange_("pm", 
 document.getElementById("famSel").onchange = function () { onFilterChange_("family", this.value); };
 document.getElementById("personSearch").oninput = function () { onFilterChange_("search", this.value); };
 // Theme button says what it DOES (the mode you'd switch to), not a cryptic glyph.
+// Word only, no emoji (redesign 2026-08-17) — same rule as the nav labels.
 document.getElementById("btnTheme").onclick = function () {
   var root = document.documentElement;
   var toDark = root.getAttribute("data-theme") !== "dark";
   root.setAttribute("data-theme", toDark ? "dark" : "");
-  this.textContent = toDark ? "☀️ Light" : "🌙 Dark";
+  this.textContent = toDark ? "Light" : "Dark";
 };
+// Sidebar collapse (redesign 2026-08-17). Restored from localStorage at wiring
+// time rather than on data load: navigation must settle before the first paint,
+// and it does not depend on MODEL — a cold start that takes minutes should not
+// show an expanded rail to someone who collapsed it.
+document.getElementById("btnNav").onclick = toggleNav_;
+(function () {
+  var saved = null;
+  try { saved = localStorage.getItem(NAV_KEY_); } catch (e) { /* sandboxed */ }
+  if (saved === "1") setNavCollapsed_(true);
+})();
 
 /** Utilization rollup over a period's weeks (mirrors server utilRollup_).
     Scopes on passesFilters_ — ALL filters are universal (user decision
@@ -3350,12 +3587,17 @@ function weeksToClearStr_(total, rate) {
 }
 
 /**
- * §2 BACKLOG BAND renderer — hero triplet (ORG), assigned sub-row (SNAP),
- * queue ruler. See the section banner above for the two-tier rationale.
+ * ── TIER 1's three queue cards: Inventory · Net flow · Weeks to clear ────────
+ * Split out of renderBacklogBand_ (redesign 2026-08-17) so the protagonist grid
+ * can hold all eight KPIs in ONE container. They are computed here, beside the
+ * band that explains them, rather than duplicated in renderFlow_ — the tier a
+ * card is DRAWN in is a layout decision; where its number comes from is not.
+ *
+ * ORG-scoped by definition: the hero is the whole queue and ignores every
+ * filter, which is why the band below it states that in prose.
+ * @returns {string} three .tile blocks, ready to concatenate into #tier1Tiles
  */
-function renderBacklogBand_() {
-  var el = document.getElementById("backlogBand");
-  if (!el) return;
+function backlogHeroTilesHtml_() {
   var q = MODEL.queue || { assigned: {}, unassigned: {} };
   var asg = q.assigned || {};
   var unAsg = q.unassigned || {};
@@ -3376,8 +3618,7 @@ function renderBacklogBand_() {
   var invCtx = total === null
     ? fallbackNote
     : nfDh_(asgItems) + " assigned + " + nfDh_(unItems) + " unowned";
-  var heroHtml =
-    backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
+  return backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
       inventoryHistoryTrendHtml_()) +
     backlogTileHtml_("Net flow",
       netFlow === null ? "—" : (netFlow > 0 ? "+" : "") + nfDh_(Math.round(netFlow)) + "/wk",
@@ -3393,6 +3634,27 @@ function renderBacklogBand_() {
         ? "clearing rate is 0/wk this window — the queue isn't draining, so this has no ceiling"
         : "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only",
       "org");
+}
+
+/**
+ * ── §2 BACKLOG BAND (Tier 2) ─────────────────────────────────────────────────
+ * The backlog STORY, now that its three hero numbers have moved up to Tier 1:
+ * the horizontal bar, the smart legend that defines each of its segments, and
+ * the filterable assigned sub-row.
+ *
+ * The Workforce-change card was deleted from this band in the same pass
+ * (redesign 2026-08-17) to keep the executive read tight — workforceFor_ and
+ * workforceTileHtml_ below are retained and unreferenced on purpose, so the
+ * card can be restored without rebuilding the measure.
+ */
+function renderBacklogBand_() {
+  var el = document.getElementById("backlogBand");
+  if (!el) return;
+  var q = MODEL.queue || { assigned: {}, unassigned: {} };
+  var asg = q.assigned || {};
+  var unAsg = q.unassigned || {};
+  var rate = MODEL.meta.clearRateMedian;
+  var unItems = (unAsg.items === null || unAsg.items === undefined) ? null : unAsg.items;
 
   var open = flowOpenFor_();
   var asgInv = open.wipN + open.todoN;
@@ -3421,48 +3683,61 @@ function renderBacklogBand_() {
     // designed output of generic allocation, not abandonment — and framed depth
     // as debt when it is cover: too LITTLE backlog is the failure mode that
     // starves the P&L. Naming it for what it is leaves both directions of the
-    // read open. (Spec 2026-08-10-dh-backlog-truth-design.md §A2/D4; the
-    // matching re-grade of dir:"down" and the ruler's own "nobody has picked
-    // up" tooltip are W33 work and are NOT done here.)
-    "<h3>📥 Backlog — the work we're holding, and how long it covers us</h3>" +
+    // read open. (Spec 2026-08-10-dh-backlog-truth-design.md §A2/D4.)
+    "<h3>Backlog — the work we're holding, and how long it covers us</h3>" +
     // No literal figures here (Task 16B CRITICAL fix, review of Tasks 12–14):
     // this sentence used to quote "4.9w"/"11.0w" — illustrative numbers
-    // copied from the spec, wired to nothing, sitting directly above the
-    // tiles that compute those exact figures live. It states the SHAPE of
-    // the band instead; the tiles beside it already carry the numbers, and
-    // a smoke check (render-smoke.js) asserts no bare "N.Nw"/"Nw" literal
-    // ever appears in this prose again.
+    // copied from the spec, wired to nothing. It states the SHAPE of the band
+    // instead; the cards already carry the numbers, and a smoke check
+    // (render-smoke.js) asserts no bare "N.Nw"/"Nw" literal appears here again.
     //
-    // Two sentences of it, wrapped across the full page width, cost more
-    // vertical space than the tiles they introduce. The full text is intact in
-    // the tooltip (.why) — the visible line keeps the one distinction a reader
-    // MUST have before comparing the two rows: they are different populations
-    // on purpose.
-    '<p class="cellSub"><span class="why" title="The hero below is the WHOLE queue, ' +
-    "ignoring every filter; the sub-row beneath applies your active filters to the assigned-only " +
-    "slice of that same queue — the two read different numbers on purpose. No target rule " +
-    'anywhere in this band (D11) — both are graded against the operating band instead.">' +
-    "Hero = the whole queue, unfiltered · sub-row = your filters on the assigned slice · " +
-    "no targets here, only the operating band ⓘ</span></p>" +
-    '<div class="tiles">' + heroHtml + '</div>' +
-    // THE SUPPLY SIDE, directly under the queue it explains (2026-08-07). Every
-    // other number on this page describes the people who are here now; a
-    // departure removes someone from the population and takes their capacity out
-    // of the denominators with them, so utilization holds steady while the team's
-    // ability to deliver falls. Placed here, not in the Capacity band, because
-    // "the queue is growing" and "the team got smaller" are one sentence — and
-    // because the Capacity band is margin-gated while this was asked for as an
-    // everyone card.
-    '<p class="cellSub" style="margin-top:6px"><span class="why" title="Capacity that joined ' +
-    "and left in this period. Counts and hours only; who moved is not published. Org-wide like " +
-    "the two tiles above: a person who has left has no Region or Team row to filter on.\">" +
-    "The team behind the queue — capacity that joined and left ⓘ</span></p>" +
-    '<div class="tiles tilesCompact">' + workforceTileHtml_() + '</div>' +
-    '<p class="cellSub" style="margin-top:6px"><span class="why" title="Assigned — the work ' +
+    // The hero triplet it used to introduce now sits in Tier 1 above (redesign
+    // 2026-08-17), so the sentence names where those numbers went — otherwise
+    // "hero vs sub-row" points at something no longer on this panel.
+    '<p class="cellSub"><span class="why" title="The three queue cards at the top of this page ' +
+    "are the WHOLE queue, ignoring every filter; the sub-row below applies your active filters to " +
+    "the assigned-only slice of that same queue — the two read different numbers on purpose. No " +
+    'target rule anywhere in this band (D11) — both are graded against the operating band instead.">' +
+    "Queue cards above = the whole queue, unfiltered · sub-row below = your filters on the " +
+    "assigned slice · no targets here, only the operating band ⓘ</span></p>" +
+    // THE BAR, then the legend that defines it, then the assigned sub-row.
+    // Ordering matters: a reader meets the shape, learns what each segment
+    // MEANS, and only then compares it against the filtered slice.
+    '<div style="margin-top:8px">' + ruler + "</div>" +
+    smartLegendHtml_() +
+    '<p class="cellSub" style="margin-top:12px"><span class="why" title="Assigned — the work ' +
     "that has an owner. Follows Region / Team / PM / Family like every other filterable " +
     'surface.">Assigned — the work that has an owner, and follows every filter ⓘ</span></p>' +
-    '<div class="tiles tilesCompact">' + subHtml + '</div>' +
-    '<div style="margin-top:6px">' + ruler + '</div>';
+    '<div class="tiles tilesCompact">' + subHtml + "</div>";
+}
+
+/**
+ * ── SMART LEGEND (redesign 2026-08-17) ───────────────────────────────────────
+ * States the CRITERIA behind each segment of the backlog bar, not just its
+ * colour. A swatch strip says "these three are different"; it does not say what
+ * puts an item in one rather than another — and that is the first thing asked
+ * in the room whenever the unowned share is challenged.
+ *
+ * The definitions are the ones the code actually applies: flowOpenFor_ splits
+ * assigned open work by Jira status category (In Progress vs To Do), and the
+ * unowned count is the server's unassigned-inventory measure. Written here once
+ * and read by nobody else — if the buckets change, this is the text that has to
+ * change with them.
+ */
+function smartLegendHtml_() {
+  var items = [
+    { fill: "var(--seg-bill)", name: "In progress",
+      def: "Has an assignee AND a Jira status in the In Progress category — someone is working it now." },
+    { fill: "var(--ivory)", name: "Queued",
+      def: "Has an assignee but its status is still To Do — accepted and owned, not yet started." },
+    { fill: "var(--c-bad)", name: "Unowned",
+      def: "Open with no assignee. Generic pipeline created ahead of allocation — planned work waiting " +
+           "to be picked up, not work that was dropped." },
+  ];
+  return '<div class="smartLegend">' + items.map(function (i) {
+    return '<div class="legItem"><span class="legSwatch" style="background:' + i.fill +
+      '"></span><span><b>' + esc_(i.name) + "</b> — " + esc_(i.def) + "</span></div>";
+  }).join("") + "</div>";
 }
 
 /**
@@ -3785,7 +4060,32 @@ function renderMasthead_() {
           : '<span class="dUp">all gates clear</span>') +
         (shelvedN ? " · " + shelvedN + " shelved" : "") +
       "</div>" +
-    "</div>";
+    "</div>" +
+    unownedNoteHtml_();
+}
+
+/**
+ * ── STANDING NOTE ON UNOWNED WORK (redesign 2026-08-17) ──────────────────────
+ * The verdict above can lead with the unowned share of the queue, and read cold
+ * that number sounds like neglect. It is not: unassigned items are generic
+ * pipeline created ahead of allocation — the designed output of how work is
+ * planned here, and cover for the weeks ahead rather than a deficit.
+ *
+ * DATA-GATED, not a permanent banner. It renders only when there actually are
+ * unowned items to explain: a reassurance printed against a queue that has none
+ * is a caption with no subject, and standing text nobody can make disappear
+ * stops being read at all. Same discipline as every other note on this page —
+ * if the condition clears, the sentence leaves with it.
+ */
+function unownedNoteHtml_() {
+  var un = (MODEL.queue || {}).unassigned || {};
+  var unItems = (un.items === null || un.items === undefined) ? null : un.items;
+  if (unItems === null || unItems <= 0) return "";
+  return '<div class="ctxNote"><b>Note on unassigned work.</b> These ' + nfDh_(unItems) +
+    " items are planned pipeline for upcoming sprints, not work that has been dropped. " +
+    "Generic allocation creates them ahead of the people who will pick them up, so a healthy " +
+    "queue of ready work is what this depth represents — cover for the weeks ahead rather than " +
+    "a deficit. The read to watch is the direction it moves, not its size on any one day.</div>";
 }
 
 /**
@@ -4044,16 +4344,26 @@ function flowTileHtml_(m, headline, opts) {
 }
 
 /**
- * FLOW BAND (Task 16B, spec 2026-08-06 §3/§4 gap resolution): Cleared ·
- * Arrived · Lead Time (p85 companion) · On-Time · Forecast · Quality/Rework,
- * plus Throughput and Bug Count. On-Time/Forecast/Quality moved here from
- * the retired #tiles strip — they are delivery-outcome measures, and the
- * design's §3 band table has no home for Forecast/Quality at all (an
- * omission, not an instruction to drop them; both fall to the shelf when
- * below their sample floor, same as any other metric).
+ * FLOW METRICS — now split across two tiers (redesign 2026-08-17).
+ *
+ *   TIER 1 (#tier1Tiles)   On-Time · Forecast · Quality/Rework · Throughput ·
+ *                          Bug Count, then the three queue cards from
+ *                          backlogHeroTilesHtml_() — Inventory · Net flow ·
+ *                          Weeks to clear. Eight protagonist KPIs, one grid.
+ *   TIER 2 (#flowSecondary) Cleared · Arrived · Lead Time. Real measures that
+ *                          nobody opens this page for; they explain the eight
+ *                          above rather than competing with them.
+ *
+ * ONE function still builds both, deliberately. Every one of these tiles shares
+ * the same period resolution, the same trend window, the same planning-window
+ * fallback and the same registry lookups; splitting the renderer in two would
+ * mean two copies of that setup, free to drift, so a tile could end up graded
+ * against a different period than the card beside it. The tier is decided at
+ * the end, by which string a tile is appended to.
  */
 function renderFlow_() {
-  var el = document.getElementById("flowTiles");
+  var el = document.getElementById("tier1Tiles");
+  var secEl = document.getElementById("flowSecondary");
   // COLOUR KEY (Task 17 — regression fix, see task-16b-report.md's deleted-
   // check accounting). Set unconditionally, before either exit branch below,
   // so it explains the RAG colouring on this band for every viewer who can
@@ -4065,7 +4375,21 @@ function renderFlow_() {
   if (flowKeyEl) flowKeyEl.innerHTML = ragKeyHtml_(
     "the metric's own agreed target, printed on its card",
     "Rework Rate reverses the scale — lower is better, same three colours. Utilisation and " +
-    "Planned Coverage (Capacity band below) and the comparison bars follow the same rule.");
+    "Planned Coverage (Capacity panel below) follow the same rule.");
+  /** Writes both tiers. One exit point, so no branch can leave the secondary
+      strip holding the previous render's HTML — including the Jira-unavailable
+      early return, which legitimately has nothing to put in it. */
+  function paint_(pri, sec) {
+    el.innerHTML = pri;
+    if (!secEl) return;
+    secEl.innerHTML = sec
+      ? "<h3>Flow detail</h3>" +
+        '<p class="cellSub">How work arrives, clears and how long it takes — the movement behind ' +
+        "the delivery numbers above.</p>" +
+        '<div class="tiles tilesCompact" style="margin:8px 0 0">' + sec + "</div>"
+      : "";
+    secEl.style.display = sec ? "" : "none";
+  }
   var reg = ((MODEL.meta.registry || {}).metrics) || {};
   var A = analysisHead_();
   var done = A.done, hi = A.hi, phase = A.phase;
@@ -4082,11 +4406,15 @@ function renderFlow_() {
   var outHeadlineLabel = outcomeHeadlineLabel_(phase, outHead);
 
   if (!MODEL.meta.jiraAvailable) {
-    el.innerHTML = '<div class="tile ph"><div class="lbl">🌊 Flow</div>' +
+    // The queue cards do NOT come from Jira Raw, so they still publish here —
+    // dropping them with the Jira tiles would have blanked three measures over
+    // a feed they never read.
+    paint_('<div class="tile ph"><div class="lbl">Flow</div>' +
       '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>' +
       tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel }) +
       (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel })) +
-      qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase);
+      qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase) +
+      backlogHeroTilesHtml_(), "");
     return;
   }
 
@@ -4095,7 +4423,11 @@ function renderFlow_() {
   // count work that finished, and a week that has not happened has none.
   var head = planning ? (done[hi] || { isos: [], label: "—" })
                       : (A.head.isos.length ? A.head : (done[hi] || { isos: [], label: "—" }));
+  // `html` = Tier 1 (the protagonist cards), `sec` = Tier 2's flow-detail
+  // strip. Which accumulator a tile appends to is the ONLY thing that decides
+  // its tier — see the header comment.
   var html = "";
+  var sec = "";
 
   // 1 · Cleared — count of issues resolved in the period, assigned/filterable
   // (Task 16B review finding: the spec names Cleared as a dedicated items
@@ -4110,7 +4442,7 @@ function renderFlow_() {
     var series = trendPer.map(function (p) {
       return bucketsFor_(MODEL.throughputBuckets || [], p.isos).nAll;
     });
-    html += flowTileHtml_(m, b.nAll, {
+    sec += flowTileHtml_(m, b.nAll, {
       scope: "period",
       conf: null,   // a count over rows that exist — a coverage chip would be noise, same as Arrived/Bug Count
       trend: series, trendLabels: labels,
@@ -4132,7 +4464,7 @@ function renderFlow_() {
   (function () {
     var m = reg.arrived || { unit: "items", coverageGate: 0, name: "Arrived" };
     if (!MODEL.meta.arrivalsAvailable) {
-      html += flowTileHtml_(m, null,
+      sec += flowTileHtml_(m, null,
         { scope: "org", unavailable: "not measured — the Jira Arrivals tab isn't in this export yet" });
       return;
     }
@@ -4154,7 +4486,7 @@ function renderFlow_() {
     var created = sumOver(head.isos, "created");
     var resolvedCt = sumOver(head.isos, "resolved");
     var createdUnassigned = sumOver(head.isos, "createdUnassigned");
-    html += flowTileHtml_(m, created, {
+    sec += flowTileHtml_(m, created, {
       scope: "org",
       conf: null,
       trend: series, trendLabels: labels,
@@ -4183,7 +4515,7 @@ function renderFlow_() {
     var periodsWithData = series.filter(function (v) { return v !== null; }).length;
     var conf = metricConfidence_(m.coverageGate || 0,
       b.nAll > 0 ? b.n / b.nAll : null, periodsWithData);
-    html += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
+    sec += flowTileHtml_(m, b.days.length ? flowMedian_(b.days) : null, {
       scope: "period",
       conf: b.nAll > 0 ? conf : null,
       trend: series, trendLabels: labels,
@@ -4378,7 +4710,12 @@ function renderFlow_() {
     });
   })();
 
-  el.innerHTML = html;
+  // The three queue cards close Tier 1 (redesign 2026-08-17). They come LAST in
+  // the grid because the five above are outcomes — how we performed — and these
+  // three are the standing position: what we are holding, which way it is
+  // moving, and how long it covers us. Outcome before position is the reading
+  // order an executive already uses.
+  paint_(html + backlogHeroTilesHtml_(), sec);
 }
 
 /** "N issues not attributable to a roster person" note, or "" when clean. */
@@ -4899,9 +5236,27 @@ function gridCellHtml_(o) {
 
 /** Click-through from a bar to the matching filter (toggles off if re-clicked). */
 
+/**
+ * ── FEATURE FLAG: the metric-comparison panel ────────────────────────────────
+ * "Billable Utilization by Region" and its bar chart are hidden for this phase
+ * (redesign 2026-08-17). Financial detail is out of scope for the executive
+ * read right now, and the panel's default lens IS billable utilization.
+ *
+ * A FLAG, not a deletion: the instruction was to keep the code intact so the
+ * section can be switched back on later. renderCompare_ below is untouched and
+ * still fully exercised by the test suite — flip this to true and the panel
+ * returns exactly as it was, with no reconstruction.
+ */
+var SHOW_COMPARE_PANEL_ = false;
+
 function renderCompare_() {
   var panel = document.getElementById("comparePanel");
   if (!panel) return;
+  // Gate FIRST, and clear the panel on the way out: a stale comparison left in
+  // the DOM would still be found by a PNG export or a find-in-page even with
+  // the element hidden.
+  if (!SHOW_COMPARE_PANEL_) { panel.innerHTML = ""; panel.style.display = "none"; return; }
+  panel.style.display = "";
   var m = activeMetric_();
   var A = analysisHead_();
   var done = A.done, head = A.head;
@@ -5196,7 +5551,7 @@ function renderPulse_() {
     "</div>";
   el.innerHTML = capacityHtml +
     '<div class="kicker">CAPACITY — what we have to throw at it</div>' +
-    '<h3>👥 People signals ' + scopeTag_(STATE.typePop === "resolved" ? "period" : "snap") + "</h3>" +
+    '<h3>People signals ' + scopeTag_(STATE.typePop === "resolved" ? "period" : "snap") + "</h3>" +
     // EVERY COUNT IS ITS OWN DEEP LINK (user 2026-08-06). The pulse already
     // says "3 need action"; clicking that number now lands on exactly those 3
     // instead of on the whole roster with the reader left to re-find them.
@@ -5227,21 +5582,21 @@ function renderPulse_() {
  * Count-up animation (Motion, spec §7) — runs ONCE per page load, only where
  * rAF exists (the render-smoke DOM stub has none — the whole feature is
  * invisible to it by design) and never under prefers-reduced-motion. Moved
- * here from the retired renderTiles_ (Task 16B) and generalised to scan BOTH
- * bands that now carry KPI tiles with a live count-up: the Flow band
- * (On-Time/Forecast/Quality/Cleared/Arrived/Lead Time/Throughput/Bug Count)
- * and the Capacity band's own Utilisation/Planned-Coverage tile. One shared
- * flag, not one per band, because the spec says "once per page load" — not
- * once per band. Both #flowTiles and #pulsePanel rewrite their innerHTML on
- * every render (renderFlow_/renderPulse_ above), so a count-up mid-flight
- * from a prior render can never corrupt a later one — the nodes it was
- * mutating are simply gone.
+ * here from the retired renderTiles_ (Task 16B) and generalised to scan every
+ * container that carries KPI tiles with a live count-up: Tier 1 (#tier1Tiles —
+ * On-Time/Forecast/Quality/Throughput/Bug Count plus the three queue cards),
+ * Tier 2's flow-detail strip (#flowSecondary — Cleared/Arrived/Lead Time) and
+ * the Capacity panel's Utilisation/Planned-Coverage tile. One shared flag, not
+ * one per container, because the spec says "once per page load" — not once per
+ * band. All three rewrite their innerHTML on every render, so a count-up
+ * mid-flight from a prior render can never corrupt a later one — the nodes it
+ * was mutating are simply gone.
  */
 function countUpTiles_() {
   if (countedUp_ || !window.requestAnimationFrame ||
       window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   countedUp_ = true;
-  ["flowTiles", "pulsePanel"].forEach(function (id) {
+  ["tier1Tiles", "flowSecondary", "pulsePanel"].forEach(function (id) {
     var bigs = document.getElementById(id).getElementsByClassName("big");
     Array.prototype.forEach.call(bigs, function (el) {
       var m = /^(\d+)(.*)$/.exec(el.textContent || "");
@@ -5311,37 +5666,24 @@ function renderTrust_() {
         '<div class="cellSub">' + esc_(g.detail || "") + "</div></div>";
     }).join("") + "</div>" +
     '<div class="cellSub">Gate = the coverage each published metric needs. The full queue — every gap, ' +
-    "its owner requirement and committed week — lives on the 🎯 Actions tab." +
+    "its owner requirement and committed week — is further down this tab." +
     (fellBack ? " Measured over <b>" + esc_(head.label) + "</b>, the last complete period: " +
       "field fill is counted on work that has been resolved, so a planning window has none." : "") +
     "</div>";
 }
 
-/**
- * ── §7 THE SHELF renderer ────────────────────────────────────────────────────
- * Dashed-border list, one row per shelfRows_() entry. NO owner column (D9) —
- * the object shelfRows_ returns doesn't even carry one to accidentally print.
+/*
+ * ── §7 THE SHELF — RETIRED (redesign 2026-08-17) ─────────────────────────────
+ * The "Not measured this week" panel and its renderShelf_ are deleted: a list
+ * of metrics that are absent is housekeeping, and it sat on the tab with the
+ * least room for it.
+ *
+ * shelfRows_() SURVIVES and is still called. The masthead reads its length for
+ * the "N shelved" evidence chip, so the fact that something is unmeasurable is
+ * still stated on the executive read — just as a count next to the verdict
+ * rather than as a panel of its own. Deleting the row builder with the panel
+ * would have removed the signal, not just the real estate.
  */
-function renderShelf_() {
-  var el = document.getElementById("shelfPanel");
-  if (!el) return;
-  var rows = shelfRows_();
-  if (!rows.length) {
-    el.innerHTML = '<h3>📭 Not measured this week ' + scopeTag_("org") + "</h3>" +
-      '<div class="emptyState">Nothing on the shelf — every registered metric is publishing.</div>';
-    return;
-  }
-  el.innerHTML = '<h3>📭 Not measured this week ' + scopeTag_("org") + "</h3>" +
-    '<p class="cellSub">Built from the registry, the sample floor and feed availability — not a ' +
-    "hand-written list, so a metric that quietly drops to a couple of samples cannot keep sitting " +
-    "on a card looking authoritative.</p>" +
-    '<ul style="list-style:none;padding:0;margin:0">' +
-    rows.map(function (r) {
-      return '<li style="border:1px dashed var(--border);border-radius:8px;padding:8px 10px;' +
-        'margin-bottom:6px"><b>' + esc_(r.name) + "</b> — " + esc_(r.why.join("; ")) +
-        '<div class="cellSub">Clears when: ' + esc_(r.clears) + "</div></li>";
-    }).join("") + "</ul>";
-}
 
 /**
  * Little's Law (L = λW) sanity check on the queue: does the measured open
@@ -5399,14 +5741,26 @@ function registryDeviationsHtml_() {
 }
 
 /**
- * ── §8 DATA TRUST DETAIL ─────────────────────────────────────────────────────
+ * ── §8 DATA TRUST DETAIL (Tier 3) ────────────────────────────────────────────
  * Collapsed <details> — computed, not prose. Little's Law check, the
  * people-signals reconciliation, and every registry deviation, all read off
  * the model at render time.
+ *
+ * SUPER-ADMIN ONLY (redesign 2026-08-17). This is build-integrity evidence —
+ * whether the model's own arithmetic hangs together, and which published
+ * numbers knowingly deviate from the Metrics Dictionary. Useful to whoever
+ * maintains the pipeline; on an executive's screen it is an invitation to
+ * relitigate every figure above it from a panel that was never meant to be
+ * read that way.
+ *
+ * REMOVED FROM THE DOM, never dimmed — the same doctrine the margin tier
+ * follows. A collapsed <details> a reader can still expand is not a gate.
  */
 function renderTrustDetail_() {
   var el = document.getElementById("trustDetail");
   if (!el) return;
+  if (!canSeeSuper_()) { el.innerHTML = ""; el.style.display = "none"; return; }
+  el.style.display = "";
   var A = analysisHead_();
   var ll = littlesLawCheck_();
   var llText = (ll.predicted === null || ll.rate === null)
@@ -5794,7 +6148,7 @@ function renderRoster_() {
   ROSTER_PHASE_ = A.phase;   // drives the conditional Plan column (see ROSTER_COLS_)
   var rows = personSignalRows_(head.isos);
   if (rows === null) {
-    el.innerHTML = '<h3>👥 People signals</h3><div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
+    el.innerHTML = '<h3>People signals</h3><div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
     return;
   }
   var open = STATE.typePop !== "resolved";
@@ -5883,7 +6237,7 @@ function renderRoster_() {
   }).join("");
 
   el.innerHTML =
-    "<h3>👥 People signals — every active person in this slice</h3>" +
+    "<h3>People signals — every active person in this slice</h3>" +
     '<p class="cellSub">' + (open ? "Open backlog — fix these and next period moves. "
                                   : "Resolved in " + esc_(head.label) + ". ") +
     "Each cell: the share of the person's issues carrying that field, graded against " +
@@ -6558,7 +6912,7 @@ function wfStale_(el, title) {
  */
 function renderWfScope_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfScopePanel", "🧭 Scope"); return; }
+  if (!w) { wfStale_("wfScopePanel", "Scope"); return; }
   var s = w.scope || {};
   var cov = w.coverage || {};
   var filtered = w.people.length;
@@ -6605,7 +6959,7 @@ function renderWfScope_() {
 
   document.getElementById("wfScopePanel").innerHTML =
     '<div class="kicker">WORKFORCE HEALTH — capacity is not fungible</div>' +
-    "<h3>🧭 Scope" + (w.periodLabel ? ' <span class="cellSub">· ' + esc_(w.periodLabel) + "</span>" : "") + "</h3>" +
+    "<h3>Scope" + (w.periodLabel ? ' <span class="cellSub">· ' + esc_(w.periodLabel) + "</span>" : "") + "</h3>" +
     '<div style="margin:4px 0">' + bits.join(" · ") + "</div>" +
     drift + absent + unclassDetail + stemDetail +
     '<div class="cellSub" style="margin-top:6px">' +
@@ -6625,10 +6979,10 @@ function renderWfScope_() {
  */
 function renderWfGrid_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfGridPanel", "🧭 Pool grid"); return; }
+  if (!w) { wfStale_("wfGridPanel", "Pool grid"); return; }
   if (!w.cells.length) {
     document.getElementById("wfGridPanel").innerHTML =
-      "<h3>🧭 Pool grid</h3><div class='emptyState'>Nobody in scope under the active filters.</div>";
+      "<h3>Pool grid</h3><div class='emptyState'>Nobody in scope under the active filters.</div>";
     return;
   }
   var byPool = {};
@@ -6692,7 +7046,7 @@ function renderWfGrid_() {
 
   document.getElementById("wfGridPanel").innerHTML =
     '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h3 style="flex:1;margin:0">🧭 Pool grid' + scopeTag_("period") + "</h3>" +
+      '<h3 style="flex:1;margin:0">Pool grid' + scopeTag_("period") + "</h3>" +
     "</div>" +
     '<div class="tableWrap"><table class="hyg tmx wfGrid"><thead><tr>' +
       '<th class="tname">Pool / Band</th>' +
@@ -6740,7 +7094,7 @@ function renderWfGrid_() {
  */
 function renderWfConsumers_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfConsumersPanel", "🎯 The one honest number"); return; }
+  if (!w) { wfStale_("wfConsumersPanel", "The one honest number"); return; }
   var cons = w.cells.filter(function (c) { return c.cfg.consumes; });
   var head = cons.reduce(function (a, c) { return a + c.head; }, 0);
   var gross = cons.reduce(function (a, c) { return a + c.grossHrs; }, 0);
@@ -6750,7 +7104,7 @@ function renderWfConsumers_() {
   var nonHead = nonCons.reduce(function (a, c) { return a + c.head; }, 0);
 
   document.getElementById("wfConsumersPanel").innerHTML =
-    "<h3>🎯 The one honest number" + scopeTag_("period") + "</h3>" +
+    "<h3>The one honest number" + scopeTag_("period") + "</h3>" +
     (head === 0
       ? "<div class='emptyState'>No backlog-consuming pools in this slice.</div>"
       : '<div class="big" style="font-size:2rem">' + wfPct_(pct) + "</div>" +
@@ -6776,7 +7130,7 @@ function renderWfConsumers_() {
  */
 function renderWfShadow_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfShadowPanel", "👻 Shadow work"); return; }
+  if (!w) { wfStale_("wfShadowPanel", "Shadow work"); return; }
   var tot = { "no-epic": 0, "no-srso": 0, "not-committed": 0 };
   var shadow = 0, tracked = 0, unmeasured = 0;
   w.cells.forEach(function (c) {
@@ -6800,7 +7154,7 @@ function renderWfShadow_() {
   }).join("");
 
   document.getElementById("wfShadowPanel").innerHTML =
-    "<h3>🔎 Work outside the plan" + scopeTag_("period") + "</h3>" +
+    "<h3>Work outside the plan" + scopeTag_("period") + "</h3>" +
     '<p class="cellSub">' + wfHrs_(shadow) + " of " + wfHrs_(den) + " classifiable tracked hours (<b>" +
       wfPct_(ratio) + "</b>) do not trace to a planned, sales-order-bound epic. " +
       "<b>This is delivered work</b> — the gap is in the paper trail, not the delivery. " +
@@ -6835,7 +7189,7 @@ function renderWfShadow_() {
  */
 function renderWfUnrouted_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfUnroutedPanel", "🧩 Unrouted backlog"); return; }
+  if (!w) { wfStale_("wfUnroutedPanel", "Unrouted backlog"); return; }
   var bl = w.backlogByPool || {};
   var cov = w.coverage || {};
   var pools = Object.keys(bl).sort(function (a, b) {
@@ -6858,7 +7212,7 @@ function renderWfUnrouted_() {
   }).join("");
 
   document.getElementById("wfUnroutedPanel").innerHTML =
-    "<h3>🧩 Backlog by required pool" + scopeTag_("snap") + "</h3>" +
+    "<h3>Backlog by required pool" + scopeTag_("snap") + "</h3>" +
     '<p class="cellSub">Which pool can actually absorb each epic. Routing is <b>historical, not ' +
       "declared</b>: there is no <code>requiredPool</code> field in Jira, so an epic routes to " +
       "whichever pool has logged the most hours to it. An epic nobody has touched cannot be routed " +
@@ -6893,7 +7247,7 @@ function renderWfUnrouted_() {
  */
 function renderWfDisciplines_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfDisciplinePanel", "🗂 By discipline"); return; }
+  if (!w) { wfStale_("wfDisciplinePanel", "By discipline"); return; }
   // Rebuilt from the FILTERED people so it agrees with the grid, rather than
   // replaying the payload's unfiltered version beside a filtered table.
   var rows = {};
@@ -6913,7 +7267,7 @@ function renderWfDisciplines_() {
   });
   if (!list.length) {
     document.getElementById("wfDisciplinePanel").innerHTML =
-      "<h3>🗂 By discipline</h3><div class='emptyState'>Nobody in scope.</div>";
+      "<h3>By discipline</h3><div class='emptyState'>Nobody in scope.</div>";
     return;
   }
   var body = list.map(function (r) {
@@ -6928,7 +7282,7 @@ function renderWfDisciplines_() {
   }).join("");
 
   document.getElementById("wfDisciplinePanel").innerHTML =
-    "<h3>🗂 By discipline</h3>" +
+    "<h3>By discipline</h3>" +
     '<p class="cellSub">How people describe themselves, mapped onto the pools the maths uses. ' +
       "The <b>sub-track</b> (job family + variant digit) is what actually decides the pool — the " +
       "discipline label is free text and is display only. That distinction is load-bearing: one " +
@@ -6983,12 +7337,12 @@ function renderBacklogHealth_() {
   if (!el) return;
   var t = backlogHealthFor_();
   if (t === null) {
-    el.innerHTML = '<h3>🌊 Backlog health</h3><div class="emptyState">' +
+    el.innerHTML = '<h3>Backlog health</h3><div class="emptyState">' +
       'Not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
     return;
   }
   if (!t.n) {
-    el.innerHTML = '<h3>🌊 Backlog health' + scopeTag_("snap") + '</h3>' +
+    el.innerHTML = '<h3>Backlog health' + scopeTag_("snap") + '</h3>' +
       '<div class="emptyState">No open work under the active filters.</div>';
     return;
   }
@@ -7000,7 +7354,7 @@ function renderBacklogHealth_() {
                 '<th class="tnum">Share</th><th class="tnum">Queue</th></tr>';
   el.innerHTML =
     '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h3 style="flex:1;margin:0">🌊 Backlog health' + scopeTag_("snap") + '</h3>' +
+      '<h3 style="flex:1;margin:0">Backlog health' + scopeTag_("snap") + '</h3>' +
       '<button class="iconbtn" onclick="saveBacklogCsv_()" title="Download every backlog-health signal with its item counts as CSV">CSV</button>' +
     "</div>" +
     '<p class="cellSub">' + t.n + " open item" + (t.n === 1 ? "" : "s") +
@@ -7029,9 +7383,9 @@ function renderBacklogHealth_() {
         " <b>not counted as a missing due date</b> — not a commitment yet (rule, 2026-08-10)." : "") +
       "</p>" +
     '<div class="bhCols">' +
-      '<div><h4 style="margin:0 0 6px">✅ Ready to be worked</h4>' +
+      '<div><h4 style="margin:0 0 6px">Ready to be worked</h4>' +
         '<table class="hyg tmx"><thead>' + headRow + "</thead><tbody>" + col("good") + "</tbody></table></div>" +
-      '<div><h4 style="margin:0 0 6px">⚠️ Needs action <span class="cellSub">— fix these and next period moves</span></h4>' +
+      '<div><h4 style="margin:0 0 6px">Needs action <span class="cellSub">— fix these and next period moves</span></h4>' +
         '<table class="hyg tmx"><thead>' + headRow + "</thead><tbody>" + col("bad") + "</tbody></table></div>" +
     "</div>" +
     '<div class="cellSub" style="margin-top:6px">' +
@@ -7073,12 +7427,12 @@ function renderPm_() {
   // Absent ≠ clean — same rule as renderEpicDue_. A payload built before this
   // tab existed must say it did not look, or an empty tab reads as "no gaps".
   if (!d || !d.rows) {
-    el.innerHTML = "<h3>🗓 PM-owned work</h3><div class=\"emptyState\">" +
+    el.innerHTML = "<h3>PM-owned work</h3><div class=\"emptyState\">" +
       "Not in this payload — ↻ Refresh to rebuild on the current schema.</div>";
     return;
   }
   if (!d.rows.length) {
-    el.innerHTML = "<h3>🗓 PM-owned work</h3><div class=\"emptyState\">" +
+    el.innerHTML = "<h3>PM-owned work</h3><div class=\"emptyState\">" +
       "No open work in the current export.</div>";
     return;
   }
@@ -7156,7 +7510,7 @@ function renderPm_() {
     : "";
 
   el.innerHTML =
-    "<h3>🗓 PM-owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
+    "<h3>PM-owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
     '<p class="cellSub">An epic belongs to its <b>Jira assignee</b> — the ticket states ' +
       "who owns it. Where an epic has no assignee, it falls back to the <b>Tempo project " +
@@ -7522,11 +7876,11 @@ function renderEpicDue_() {
   // Absent ≠ clean. A payload built before this audit existed must say it did not
   // look, or "0 epics missing a date" reads as a pass on an audit nobody ran.
   if (!a) {
-    el.innerHTML = '<h3>🚩 Epics without a due date</h3><div class="emptyState">' +
+    el.innerHTML = '<h3>Epics without a due date</h3><div class="emptyState">' +
       "Not in this payload — ↻ Refresh to rebuild on the current schema.</div>";
     return;
   }
-  var head = '<h3 style="margin:0">🚩 Epics without a due date' + scopeTag_("org") + "</h3>";
+  var head = '<h3 style="margin:0">Epics without a due date' + scopeTag_("org") + "</h3>";
   if (!a.n) {
     el.innerHTML = head + '<div class="emptyState">No open epics in the current export.</div>';
     return;
@@ -8217,7 +8571,7 @@ function gateEditorHtml_() {
           (ov ? "" : " disabled") + ' title="put the agreed registry value back">Restore</button></td></tr>';
     }).join("");
 
-  return '<details class="gedit"><summary>⚙ Coverage gates (admin)</summary>' +
+  return '<details class="gedit"><summary>Coverage gates (admin)</summary>' +
     '<p class="cellSub">The attribution a metric needs before it is treated as reliable. ' +
     "Raising a gate makes the dashboard stricter; lowering one makes a weak number look " +
     "settled — the agreed value stays on screen so the difference is never invisible. " +
@@ -8486,7 +8840,7 @@ function renderHygPanel_() {
     // Gaps queue SECOND (spec §5.4): whether each metric can publish at all —
     // the metric owner's view, one level up from "which type".
     '<div style="margin-top:14px">' +
-    '<h4>🧪 Gaps queue</h4>' +
+    '<h4>Gaps queue</h4>' +
     // Coverage-colour key (user request 2026-08-04). "Its gate, never 100%"
     // is the caption's whole job: a 90% gate met at 91% is green, and a reader
     // grading rows against 100% would escalate rows that are already done.
@@ -8974,7 +9328,7 @@ function typeMatrixHtml_(isos, winLabel) {
   if (!th) {
     // Pre-v17 cached payload. Say so — an empty matrix reads as "no gaps",
     // which is the exact opposite of what an absent payload means.
-    return '<div class="profPanel"><h4>🧬 Field fill by issue type</h4>' +
+    return '<div class="profPanel"><h4>Field fill by issue type</h4>' +
       '<div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the ' +
       "current schema.</div></div>";
   }
@@ -9001,7 +9355,7 @@ function typeMatrixHtml_(isos, winLabel) {
       (total === 1 ? "" : "s") + ". This is where the cards' numbers come from.";
 
   if (!rows.length) {
-    return '<div class="profPanel" id="typeMatrix"><h4>🧬 Field fill by issue type</h4>' +
+    return '<div class="profPanel" id="typeMatrix"><h4>Field fill by issue type</h4>' +
       '<div class="chips seg" style="margin-bottom:8px">' + chips + "</div>" +
       '<div class="emptyState">' + (open ? "No open work in the feed."
         : "No work resolved in " + esc_(winLabel) + ".") + "</div></div>";
@@ -9057,7 +9411,7 @@ function typeMatrixHtml_(isos, winLabel) {
     // The population chips ride inside the shot — a matrix with no population
     // label is unreadable out of context, since Open and Resolved look alike.
     '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h4 style="flex:1;margin:0">🧬 Field fill by issue type</h4>' +
+      '<h4 style="flex:1;margin:0">Field fill by issue type</h4>' +
       '<button class="iconbtn" onclick="savePng_(\'typeMatrix\',\'field-fill-by-type\')"' +
         ' title="Save this table as a PNG image">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -9107,7 +9461,7 @@ function renderAccess_() {
   google.script.run.withSuccessHandler(function (s) {
     panel.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
-      "<h3 style=\"flex:1\">🔒 Access Control</h3></div>" +
+      "<h3 style=\"flex:1\">Access Control</h3></div>" +
       '<p class="cellSub">Bootstrap admin: ' + esc_(s.bootstrapAdmin) + " (not removable)</p>" +
       '<div class="blbl">ADMINS (comma-separated)</div>' +
       '<input id="accAdmins" style="width:100%" value="' + esc_(s.admins.join(", ")) + '">' +
