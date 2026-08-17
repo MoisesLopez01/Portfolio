@@ -3493,6 +3493,31 @@ function dhOnLeave_(status) {
 }
 
 /**
+ * Bench detector on roster Employee Status — crew between engagements.
+ *
+ * A benched contractor is ACTIVE on the roster and NOT contracted to deliver.
+ * They stay in the population (a resourcing lead needs to see the bench) but
+ * leave every figure that divides by capacity, because their hours are not
+ * sellable. See the spec for why "on the bench" is treated as unavailable
+ * despite the usual reading of the phrase — it is a commercial statement, not
+ * a scheduling one, and it is the user's explicit instruction (2026-08-17).
+ *
+ * NOT folded into dhOnLeave_ despite the identical carve. Leave is an absence
+ * with a return date and an HR owner; bench is a commercial gap with a
+ * resourcing owner. Merged, the two could not be told apart again without
+ * re-reading the roster — and the 🏖 badge would paint a holiday marker on a
+ * contractor who wants to be working.
+ *
+ * \b word boundaries: the token is short enough to appear inside an unrelated
+ * free-text status, and a false positive here deletes a real person's capacity.
+ */
+var DH_BENCH_RE_ = /\bbench\b/i;
+function dhOnBench_(status) {
+  var s = String(status || "");
+  return dhRosterRowActive_(s, "") && DH_BENCH_RE_.test(s);
+}
+
+/**
  * Population: active Class=Professional Services / Department=Services from
  * Data + Contractors Data (crew: the Class gate is skipped — their Class is
  * "Contractors"; Department must still be Services).

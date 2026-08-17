@@ -438,4 +438,52 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   Logger.log("✅ _test_workforceParity_ passed (" + checked + " cell comparisons)");
 })();
 
+// ── CREW EMPLOYMENT STATUS (spec 2026-08-17) ────────────────────────────────
+// The seven roster values, each asserted for the population verdict it must
+// produce. The four already-correct exclusions are pinned here too: they hold
+// today by substring match against DH_TERMINATED_, and a future edit that
+// loosens any token would empty the roster silently.
+(function _test_crewStatus_() {
+  var checked = 0;
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_crewStatus_: " + m); checked++; }
+
+  // [status, expected active, expected onBench]
+  [["Terminated",                       false, false],
+   ["Terminated - Mobility Relocation", false, false],
+   ["Job Offer Accepted",               false, false],
+   ["Crew - Offboarded",                false, false],
+   ["Actively Employed",                true,  false],
+   ["Crew - Deployed",                  true,  false],
+   ["Crew - On the Bench",              true,  true]].forEach(function (row) {
+    var status = row[0], wantActive = row[1], wantBench = row[2];
+    assert_(dhRosterRowActive_(status, "") === wantActive,
+            '"' + status + '" active should be ' + wantActive);
+    assert_(dhOnBench_(status) === wantBench,
+            '"' + status + '" onBench should be ' + wantBench);
+  });
+
+  // ── The two near-misses, named individually ──────────────────────────────
+  // Both survive by accident of substring. Loosening `inactive` to `activ`, or
+  // adding a `ploy`/`deploy` token, silently empties the population — and an
+  // empty population renders as a dashboard with no problems.
+  assert_(dhRosterRowActive_("Actively Employed", "") === true,
+          "'Actively Employed' must not match the `inactive` token");
+  assert_(dhRosterRowActive_("Crew - Deployed", "") === true,
+          "'Crew - Deployed' must not match any terminated token");
+
+  // A terminated row can never acquire a bench flag on its way out: dhOnBench_
+  // gates on dhRosterRowActive_ first, exactly as dhOnLeave_ does.
+  assert_(dhOnBench_("Crew - On the Bench") === true, "an active bench row flags");
+  assert_(dhRosterRowActive_("Crew - On the Bench", "2026-06-30") === false,
+          "a bench row WITH a termination date is not active");
+
+  // Bench is not leave. Separable in the payload, because they have different
+  // owners and different fixes.
+  assert_(dhOnLeave_("Crew - On the Bench") === false, "bench does not read as leave");
+  assert_(dhOnBench_("Maternity Leave") === false, "leave does not read as bench");
+  assert_(dhOnBench_("") === false, "a blank status is neither");
+
+  Logger.log("✅ _test_crewStatus_ passed (" + checked + " status assertions)");
+})();
+
 console.log("✅ node-tests: all suites passed");
