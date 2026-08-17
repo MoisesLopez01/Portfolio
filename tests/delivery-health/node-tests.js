@@ -483,6 +483,18 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   assert_(dhOnBench_("Maternity Leave") === false, "leave does not read as bench");
   assert_(dhOnBench_("") === false, "a blank status is neither");
 
+  // The flag must survive onto the person record, and a stub must carry it as
+  // an explicit false — never undefined. Downstream carves test `=== true`,
+  // but the exclusion COUNT on the capacity tile is truthiness-based, and an
+  // undefined there would read as "not benched" only by luck.
+  var built = dhBuildPersonFlags_("Crew - On the Bench");
+  assert_(built.onBench === true, "a benched status builds onBench true");
+  assert_(built.onLeave === false, "…and onLeave stays false");
+  assert_(built.benchStatus === "Crew - On the Bench", "…and the raw status is carried for the tooltip");
+  var plain = dhBuildPersonFlags_("Actively Employed");
+  assert_(plain.onBench === false, "an active status builds onBench false, not undefined");
+  assert_(plain.benchStatus === "", "…and carries no bench status string");
+
   Logger.log("✅ _test_crewStatus_ passed (" + checked + " status assertions)");
 })();
 

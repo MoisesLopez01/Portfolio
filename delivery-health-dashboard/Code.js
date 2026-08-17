@@ -3518,6 +3518,24 @@ function dhOnBench_(status) {
 }
 
 /**
+ * The leave/bench flag pair for one roster Employee Status, built once.
+ *
+ * Extracted so the roster read and the tests agree by construction rather than
+ * by two copies of the same three expressions — the roster row previously
+ * called dhOnLeave_ twice on the same string to derive the flag and its label.
+ */
+function dhBuildPersonFlags_(status) {
+  var onLeave = dhOnLeave_(status);
+  var onBench = dhOnBench_(status);
+  return {
+    onLeave: onLeave,
+    leaveStatus: onLeave ? String(status).trim() : "",
+    onBench: onBench,
+    benchStatus: onBench ? String(status).trim() : "",
+  };
+}
+
+/**
  * Population: active Class=Professional Services / Department=Services from
  * Data + Contractors Data (crew: the Class gate is skipped — their Class is
  * "Contractors"; Department must still be Services).
@@ -3644,12 +3662,15 @@ function readRosterPeople_() {
           iFam === -1 ? "" : String(raw[r][iFam] || "").trim(),
           iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim());
         seen[normDH_(name)] = 1;
+        var flags_ = dhBuildPersonFlags_(status);
         out.push({ name: name, keyLocation: loc,
                    rosterBucket: regionBucketFromLocation_(loc), isCrew: src.crew,
                    jobFamily: fam, tracks: dhTracksTime_(fam),
                    jobTitle: iTitle === -1 ? "" : String(raw[r][iTitle] || "").trim(),
-                   onLeave: dhOnLeave_(status),
-                   leaveStatus: dhOnLeave_(status) ? String(status).trim() : "",
+                   onLeave: flags_.onLeave,
+                   leaveStatus: flags_.leaveStatus,
+                   onBench: flags_.onBench,
+                   benchStatus: flags_.benchStatus,
                    hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
       }
     });
@@ -6140,6 +6161,10 @@ function assembleModel_(inputs, win) {
              subTrack: cls.subTrack, disciplineLabel: cls.disciplineLabel,
              stemWarning: cls.stemWarning, classificationError: cls.classificationError,
              onLeave: p.onLeave === true, leaveStatus: p.leaveStatus || "",
+             // Crew between engagements (spec 2026-08-17). Explicit === true so
+             // an older roster read that never set the field cannot arrive as
+             // undefined and be treated as a third state downstream.
+             onBench: p.onBench === true, benchStatus: p.benchStatus || "",
              // Manager = M career track in the title level token, parsed the
              // same way CompDash splits managers from ICs (dhLevelTrack_).
              isManager: dhLevelTrack_(p.jobTitle).track === "M",
@@ -6295,6 +6320,10 @@ function assembleModel_(inputs, win) {
                   subTrack: scls.subTrack, disciplineLabel: scls.disciplineLabel,
                   stemWarning: scls.stemWarning, classificationError: scls.classificationError,
                   onLeave: false, leaveStatus: "",
+                  // A stub is an attribution shell, never a live roster row —
+                  // it carries no capacity to carve, so both flags are false by
+                  // construction rather than by lookup.
+                  onBench: false, benchStatus: "",
                   isManager: dhLevelTrack_(rec.jobTitle || "").track === "M",
                   isIntern: dhIsIntern_(rec.jobTitle || ""),
                   jobFamily: rec.jobFamily || "", tracks: false,
