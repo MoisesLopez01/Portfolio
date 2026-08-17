@@ -1422,10 +1422,12 @@ function clampToCapacity_(hours, capacity) {
  * People with no tracking mandate (p.tracks === false) are EXCLUDED unless
  * includeNonTracking — holding JF008/JF015/JF018 to a tracked-based rate
  * punishes a scope decision, not performance (demand-dashboard parity).
- * People on long leave (p.onLeave — roster Employee Status) are ALWAYS
- * excluded, no include flag: their capacity rows may still carry avail > 0
- * (Tempo schedules lag HR), which would drag the rate down for an employment
- * status, not a performance signal.
+ * People on long leave (p.onLeave) and benched crew (p.onBench) are ALWAYS
+ * excluded, no include flag. Both carry capacity rows with avail > 0 that
+ * nobody can sell — Tempo schedules lag HR for leave, and a benched contractor
+ * is scheduled against a contract they are not currently working. Counting
+ * either drags the rate down for an employment status, not a performance
+ * signal. They are separate flags because they have separate owners.
  * Billable % divides by availCov — the availability of NS-CLASSIFIED person-weeks
  * only — not by total avail. Mixing them would put unclassifiable weeks in the
  * denominator with a forced-zero numerator, understating the rate by however much
@@ -1436,6 +1438,10 @@ function utilRollup_(people, iso, region, team, includeNonTracking) {
   var s = { avail: 0, availCov: 0, cap: 0, capCov: 0, billable: 0, tracked: 0, planned: 0 };
   people.forEach(function (p) {
     if (p.onLeave === true) return;
+    // Crew between engagements — same carve as leave, different reason: their
+    // scheduled hours are not sellable, so counting them reports capacity we
+    // cannot offer (spec 2026-08-17).
+    if (p.onBench === true) return;
     // Interns (I1) never move a rate — in training, not delivery capacity
     // (user decision 2026-08-04). Unlike onLeave, their grid hours stay shown.
     if (p.isIntern === true) return;

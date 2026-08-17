@@ -2409,6 +2409,7 @@ function utilFor_(isos) {
     // Long leave (maternity/paternity/parental/sabbatical) never moves the
     // rate: Tempo capacity can lag HR, so their avail would read as idle time.
     if (p.onLeave) return;
+    if (p.onBench) return;   // crew between engagements — hours are not sellable
     // Interns (I1) never move a rate — in training, not delivery capacity
     // (user decision 2026-08-04). Their grid hours stay visible, unlike leave.
     if (p.isIntern) return;
@@ -2463,7 +2464,7 @@ function utilFor_(isos) {
 function planFor_(isos) {
   var s = { planned: 0, cap: 0, people: 0, none: 0, thin: 0 };
   MODEL.people.forEach(function (p) {
-    if (p.onLeave || p.isIntern || p.attribOnly) return;
+    if (p.onLeave || p.onBench || p.isIntern || p.attribOnly) return;
     if (!passesFilters_(p)) return;
     var one = planFor1_(p, isos);
     // No capacity in the window = not expected to be planned into it (pre-hire
@@ -5992,6 +5993,11 @@ function oppRows_(head, norm) {
   var live = nsLive_();
   return filteredPeople_().map(function (p) {
     if (p.onLeave) return null;
+    // A benched person's idle hours are not an opportunity to recover — there is
+    // no engagement to recover them into. Same reasoning as the on-leave carve
+    // above, and the same reasoning that keeps ramping new hires out of the
+    // pulse total.
+    if (p.onBench) return null;
     if (p.isIntern) return null;
     var w = aggWeeks_(p, head.isos);
     if (!w) return null;                       // pre-hire: the period predates them
@@ -6490,7 +6496,7 @@ var ROSTER_COLS_ = {
   // direction — their idle capacity is not a recoverable signal to rank on.
   hours:  { label: "Hours",  sort: function (a, b) {
     function share(r) {
-      if (r.p.newHire === true || r.p.onLeave === true) return null;   // ineligible → last
+      if (r.p.newHire === true || r.p.onLeave === true || r.p.onBench === true) return null;   // ineligible → last
       var w = aggWeeks_(r.p, ROSTER_ISOS_);
       return w && w.tracked > 0 ? w.billable / w.tracked : null;
     }

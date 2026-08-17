@@ -548,6 +548,26 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   assert_((dhHeadByCell_([stub])["CREW|UNKNOWN"] || 0) === 0,
           "attribOnly stubs stay out, unchanged by this carve");
 
+  // The OTHER capacity pipeline. utilRollup_ already drops on-leave; bench
+  // joins it there for the same reason and by the same mechanism.
+  function utilPerson(name, onBench) {
+    return { name: name, region: "AMER", teams: [], tracks: true, onBench: onBench,
+             onLeave: false, isIntern: false,
+             weeks: { "2026.W30": { avail: 40, availCov: 40, billable: 30, tracked: 35, planned: 20 } } };
+  }
+  var uRoll = utilRollup_([utilPerson("Deployed Dana", false), utilPerson("Bench Bruno", true)],
+                          "2026.W30", null, null, false);
+  assert_(uRoll.avail === 40,
+          "utilRollup_ counts the deployed person's availability only — got " + uRoll.avail);
+  assert_(uRoll.billable === 30,
+          "…and their billable hours only — got " + uRoll.billable);
+  // Guard against over-carving: the flag must not be read as truthy-by-absence.
+  // A person with no onBench field at all is NOT benched.
+  var legacy = utilPerson("Legacy Payload", false);
+  delete legacy.onBench;
+  assert_(utilRollup_([legacy], "2026.W30", null, null, false).avail === 40,
+          "a person record with no onBench field still counts — absence is not bench");
+
   Logger.log("✅ _test_benchCapacityCarve_ passed (" + checked + " assertions)");
 })();
 
