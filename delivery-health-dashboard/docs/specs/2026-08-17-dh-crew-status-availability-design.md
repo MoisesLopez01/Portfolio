@@ -241,9 +241,17 @@ as a workforce category and remove the only prompt to fix it.
 
 ## Deploy
 
-1. `DH_SCHEMA_VER_` **42 → 43** — `p.onBench` is a new payload field.
-2. `bustDeliveryCache_()` — a cached v42 model serves bench crew as available capacity, which is
-   precisely the bug being fixed. The schema bump alone is not enough; the cache must be busted.
+1. **`DH_SCHEMA_VER_` is ALREADY 43 — do not expect to bump it.** Corrected 2026-08-17 during
+   implementation: a concurrent change (`b57e027`, the PM Owns-bar undated-epic carve) bumped
+   42 → 43 earlier the same day, before the `onBench` work landed. Both changes therefore ship
+   under one version, and the v43 changelog comment in `Code.js` names both.
+2. ⚠️ **`bustDeliveryCache_()` is consequently the ONLY cache protection this change has, and it
+   is MANDATORY.** Normally the version bump strands stale entries automatically and the bust is
+   belt-and-braces. Here the version did not move for this change, so a warm v43 entry built
+   before `onBench` existed would pass the version check, serve people with
+   `onBench === undefined`, make every `=== true` carve read false, and return benched crew to
+   the availability denominator — the exact bug this spec exists to fix, silently.
+   If you are unsure whether a v43 payload was ever served, bust the cache anyway; it is free.
 3. Paste `Code.js` and `Dashboard.html` into the GAS project.
 4. **Expect the availability figure to fall.** That is the fix landing, not a regression. Note
    the before/after so the size of the correction is on the record.

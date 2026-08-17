@@ -979,6 +979,6 @@ git commit -m "fix(delivery-health): bench presentation fixes found by screensho
 Not a task — a handoff checklist for whoever ships this.
 
 1. Paste `Code.js` and `Dashboard.html` into the GAS project. **`node-tests.js` and `render-smoke.js` must never be pasted in** — they use `require` and fail on their first line in Apps Script.
-2. Run `bustDeliveryCache_()` in the GAS editor. The schema bump alone is not sufficient — a warm cache entry must be stranded explicitly.
+2. ⚠️ **Run `bustDeliveryCache_()` in the GAS editor. This is the ONLY cache protection this change has.** `DH_SCHEMA_VER_` was already 43 before the `onBench` work started — `b57e027` bumped it the same day for an unrelated change — so Task 8 pinned the contract rather than moving the version. A warm v43 entry built before `onBench` existed would pass the version check and serve `onBench === undefined`, which every `=== true` carve reads as "not benched".
 3. Reload the dashboard and **expect Availability Rate to fall.** That is the fix landing, not a regression.
 4. Record the before/after availability figure in the GTT-605 status comment, so the size of the correction is on the record and nobody later "restores" it.
