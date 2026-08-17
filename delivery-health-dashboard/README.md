@@ -118,7 +118,9 @@ tickets are the worst-tagged population on the site, so the open half's `assigne
 debt becoming visible, not tagging getting worse — the fix for a falling number here is tagging the
 newly-visible tickets, not reverting the export.
 
-**Roster join stays retired at 100%, and must.** `attr` — the roster-join check retired from the
+**Roster join stays retired at 100%, and must.** *(Historical — this check was DELETED outright on
+2026-08-17; see "…and then the roster-join check was DELETED" below. The reasoning below is why it
+survived this release, not a description of the code today.)* `attr` — the roster-join check retired from the
 gaps queue, the data-trust strip and the 🧬 matrix earlier the same day (see "A solved check
 retires itself" below) — gained its **own** denominator, `attrN`, in this release: it is measured
 only over records that *have* an assignee, so an absent assignee is "nothing to grade," never a
@@ -165,14 +167,15 @@ job is answered by something on Executive or Actions:
   Its two declared-absent placeholders (Cycle Time, Flow Efficiency — the changelog feed isn't
   exported, `FETCH_CHANGELOG` off) no longer render at all; the registry keeps their record for when
   that feed exists.
-- 👥 **People** tab → the triage grid, stacked workload bars, per-person accordions, the attention
-  strip and the Focus lens are retired as UI (the underlying `STATE.flag` filter predicate survives
-  with no UI entry point — pinned in `render-smoke.js`). Their question — *who needs me this week* —
+- 👥 **People** tab → the triage grid, stacked workload bars, per-person accordions and the attention
+  strip are retired as UI (the underlying `STATE.flag` filter predicate survives with no UI entry
+  point — pinned in `render-smoke.js`). The **Focus lens** outlived the grid it drove as a chip strip
+  that changed nothing but its own highlight, and was **deleted on 2026-08-17**. Their question — *who needs me this week* —
   is answered instead by the Actions **signals roster**: one row per person, RAG-coded on
   Due/Estimate/Logged fill plus a billable-share Hours column, expandable into a drill-down row that
   carries the same per-person numbers the old workload bars drew (see "Signals roster" below).
-- 🧪 **Data Hygiene** tab → its gaps table, the 🧬 by-type matrix and the ⚙ Coverage gates editor all
-  moved onto **Actions** unchanged (see "Actions tab: 🧬 field-fill matrix and gaps queue" below).
+- 🧪 **Data Hygiene** tab → its gaps table and the ⚙ Coverage gates editor moved onto **Actions**
+  unchanged; the 🧬 by-type matrix moved with them and was removed on 2026-08-17.
   Its org-wide fill-vs-gate headline survives as the Executive **data-trust strip** instead of a
   fifth tab (see "Data-trust strip" below).
 
@@ -653,9 +656,10 @@ fifth of the engagements have no committed end. Owner: Gon + the PMs.
   *zero missing* (an explicit green all-clear — a check that disappears when it succeeds is one
   nobody trusts when it fires), and *absent from the payload* ("not in this payload", never a clean
   100% on an audit nobody ran). A capped key list says so while the count stays complete.
-- **Shared population with the 🧬 matrix.** The roster and the by-type matrix both follow
-  `STATE.typePop` (Open backlog / Resolved), so a reader comparing "who" against "which issue type"
-  is comparing the same slice of work, never two independently filtered ones.
+- **Population toggle: Open backlog / Resolved (`STATE.typePop`).** The chips sit on the roster
+  itself since 2026-08-17 — they used to live on the 🧬 by-type matrix, which the roster followed,
+  and deleting that matrix without moving them would have stranded this table on Open with no
+  control anywhere in the client.
 - **Small-n guard — `SIGNAL_MIN_N = 4` (`meta.signalMinN`, `signalMinN_()`).** A person with fewer
   than that many issues is shown but never graded red or green: a grey `●` dot, percentage still
   shown, footnoted "ungraded (small n)". One missing due date on one ticket must never render the
@@ -707,6 +711,12 @@ People grid** on 2026-08-05. The underlying filter predicate (`STATE.flag`, `tog
 exists and is still exercised by `render-smoke.js` — the mechanism stays live so it can't silently
 rot — but nothing in the current UI calls it; there is no attention-strip button left to click.
 
+**The Focus chips themselves were deleted on 2026-08-17.** Keeping a dead predicate that no UI calls
+is defensible: it costs nothing on screen and a test keeps it honest. Keeping a visible three-chip
+control that reads nothing is not — it teaches the reader that filters on this page do not work,
+which is expensive in a way the dead predicate is not. `STATE.focus`, `FOCUS_LABELS`, `setFocus_`
+and `buildFocusChips_` are gone; the scope chip lost its Focus term with them.
+
 Comparison-chart bars keep the rule they were the deliberate exception to under the retired design:
 they **report, they don't filter** — clicking one does nothing; scope changes only via the header
 filters. Two ways to change scope meant the same question could get two answers depending on which
@@ -739,10 +749,11 @@ role added later can't accidentally expose per-person status on the page every a
 
 ## Data-trust strip (Executive tab, org-wide)
 
-Four fill-vs-gate tiles — Estimate coverage, Due-date fill, Logged fill, Roster join — picked **by
-key** from the same `gapsRows_()` definitions that back the Actions gaps queue, so the strip and the
-queue can never describe one gap two different ways. A check measuring **100%** retires from both
-(see below), so the strip may render fewer than four tiles. Tagged `ORG`: deliberately unfiltered and
+**Three** fill-vs-gate tiles — Estimate coverage, Due-date fill, Logged fill — picked **by key**
+from the same `gapsRows_()` definitions that back the Actions gaps queue, so the strip and the
+queue can never describe one gap two different ways. (A fourth, **Roster join**, was removed on
+2026-08-17 — see below.) A check measuring **100%** retires from both (see below), so the strip
+may render fewer than three tiles. Tagged `ORG`: deliberately unfiltered and
 period-independent, because a well-tagged slice does not make the whole feed publishable, and this
 strip's whole job is the org-wide health check the six-tab design's Data Hygiene tab used to own on
 its own screen. Each tile states its value against its own gate and colours red/amber/green off that
@@ -761,19 +772,27 @@ reader to skim past the fields that do vary. So it is **hidden, not deleted**:
 |---|---|
 | 🧪 Gaps queue | row drops out (`gapRetired_`), and a `✔ Solved and retired from the queue: …` line names it (`gapsSolvedHtml_`) |
 | 🔍 Data-trust strip | tile disappears — it is picked by key from the same filtered list |
-| 🧬 Field-fill matrix | the `→ roster` column is removed (`typeFieldRetired_` / `typeFieldsShown_`) and a footnote names it |
 
-- **The measurement never stops.** `Code.js` still counts `attr` (per issue type) and
-  `resAttr` (per week) on every rebuild. Only the rendering is conditional.
-- **It comes back on its own** — no deploy, no code change — the moment **one** record fails, in all
-  three places. Same data-driven idiom as `typeColUniform_` directly above it in `Dashboard.html`.
-- **Why hidden rather than deleted.** The roster join is this dashboard's historically dominant data
-  loss: 173 of 351 records (49%) on the 2026-08-04 profile. If it regressed with the instrument
-  deleted, it would surface as four quietly wrong cards, not as a missing column.
+- **The measurement never stops.** Only the rendering is conditional.
+- **It comes back on its own** — no deploy, no code change — the moment **one** record fails.
 - **A `null` value is not a solved check.** An unconnected feed (Reopen events / CSAT) has nothing
   measured, so it never retires.
-- To delete the check outright instead, drop `retireWhenFull` from the `attr` entries in
-  `TYPE_FIELDS_` and `gapsRowsAll_()` along with the field itself — but then nothing is watching.
+- The one row still using this rule is the **SRSO binding** check.
+
+#### …and then the roster-join check was DELETED (2026-08-17)
+
+Retirement is a holding pattern, not an ending, and this is the one check that came out the other
+side. After a fortnight pinned at 100% the decision was to remove it outright, together with the
+🧬 matrix, as part of clearing the per-parameter compliance summaries off the Actions tab.
+
+**Keep the distinction straight when the next check hits 100%:** the default is still to *hide* it.
+Deleting this one was a judgement about *this* check — the loss it watched (173 of 351 records,
+49%, on the 2026-08-04 profile) was fixed **at source** by the whole-roster attribution change,
+not merely papered over — and not a change to the rule.
+
+If the name index regresses now, it surfaces on the gaps queue's *"Resolved work carries a Jira
+assignee"* row and in each card's own `meta.jiraUnattributed` count, both unchanged. Restoring the
+check means restoring `resAttr` and its row from git; it is not behind a flag.
 
 ## Files
 
@@ -781,7 +800,7 @@ reader to skim past the fields that do vary. So it is **hidden, not deleted**:
 |---|---|
 | `Code.js` | GAS server — `doGet()` (access-gated) serves the HTML; `getDeliveryData(forceRefresh)` reads Capacity/Tracked/Planned/NS Billable/PH/Jira Raw + Roster by spreadsheet ID, builds the person × week + Jira-bucket model, returns JSON. `buildDeliveryModel_()` is the full compute, shared by the cache-first endpoint and the `warmDeliveryCache()` 30-min trigger (`setupDeliveryCacheWarmer()` installs it). `probeDeliverySources()` and `auditJiraFillRates()` are one-time post-deploy diagnostics. `METRIC_REGISTRY_` is the canonical definition store every tile renders from. Also carries the **Workforce Health** layer: the job-code classifier (`dhParseTitle_`/`dhClassify_` + the `DH_SUB_TRACK_` registries) and the six-pass pool × band pipeline (`buildCapacity_`, `buildCommitment_`, `buildConsumption_`, `buildBacklog_`, `dhFoldWeekly_`, `reconcileWorkforce_`). 48 `_test_*` unit tests (the count in this line was stale at 35 before 2026-08-10; `grep -c "^function _test_" Code.js` is the source of truth, not this number). |
 | `Security.js` | Email allowlist (admin / viewer / open-access) — `SEC_DH`, `checkDeliveryAccess()`, `getDeliveryAccessSettings()`, `saveDeliveryAccessSettings()`, `buildAccessDeniedPage_()`. Inherited from the demand dashboard's `Security.js` (itself inherited from `PS Security.js`). |
-| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Four tabs from the `VIEWS` array (Executive / Actions / Workforce / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), the signals roster (`personSignalRows_`, `ROSTER_COLS_`) and the by-type matrix. Per-panel ⬇ Save PNG + roster CSV export. |
+| `Dashboard.html` | Client — loads cache-first via `google.script.run.getDeliveryData(false)`; ↻ Refresh forces a live read. Four tabs from the `VIEWS` array (Executive / Actions / Workforce / Access — see Navigation below). Holds the inline-SVG chart kit (`hbarChart_`, `sparkHtml_`), the cascading-filter engine (`passesFilters_(p, skipDim)`, `optionsFor_`), the operating-rate model (`standardRate_`, `stdFor_`), the metric accessor table (`METRICS_`), the recoverable-hours walk (`oppRows_`), and the signals roster (`personSignalRows_`, `ROSTER_COLS_`). Per-panel ⬇ Save PNG + roster CSV export. |
 | `node-tests.js` | Local Node runner for the pure `_test_` functions in `Code.js` (stubs `Logger`/`Utilities`/cache) — `node node-tests.js`. Also holds the four cross-layer parity suites (`_test_clientParity_`, `_test_confidenceParity_`, `_test_sampleFloorParity_`, `_test_workforceParity_`) that diff the client's copies of `utilFor_` / `metricConfidence_`+`medianOf_` / `sampleFloorClient_` / `wfFold_`+`wfReconcile_` against the server's — two implementations of one publish/withhold rule are only safe if they are provably identical, not merely eyeballed. The workforce walk additionally pins the **action state** and the **Read**, because a divergence there means the grid shows HEADROOM while the payload says RECONCILE and nobody can tell which is real. Not pasted into the GAS project. |
 | `render-smoke.js` | Renders `Dashboard.html`'s client code against synthetic models and asserts on the HTML — `node render-smoke.js` prints the exact count on every run (1,094 the last time this line was updated; **the command's own output is the source of truth, this number is not** — it only ever GROWS, because a check pinned to retired markup gets rewritten against its replacement, never deleted). Covers the rules that live in string concatenation and no unit test can reach: the gate policy both ways, stale models print no delta, an empty period isn't shown as a coverage failure, no individual appears in the gaps queue, the 🧬 matrix or the signals pulse — plus cascading option lists (never silently dropping an active selection), the operating-rate maths including its weekly fallback on the Quarter view, chart labelling and gap handling, tab routing and its role gate, the recoverable-hours exclusions (`oppRows_`), the signals roster's small-n guard and job-title tag, the reconstructed-vs-measured inventory-history sparkline on the hero band, the re-homed colour key, the tab-set invariants (exactly `exec,actions,workforce,access`, no live render into a retired pane), and the 🧭 Workforce panels — that both pools appear separately, that a demand-driven pool renders `n/a` rather than `0`, that the consumers-only figure carries its denominator, that shadow splits into three owned reasons, and that a pre-v31 payload asks for a refresh instead of rendering a silently blended grid. Not pasted into the GAS project. |
 
@@ -942,21 +961,26 @@ sparkline plus a vs-target and vs-prior read, so a second, larger telling of the
 weight rather than a second answer. `lineChart_`, `valuesTable_`, `stdSentence_`, `defChangeNote_`
 and their CSS went with it.
 
-## Actions tab: 🧬 field-fill matrix and gaps queue
+## Actions tab: the gaps queue
 
 The attribution counts that used to sit on the cards as grey caveat text, then had their own
 six-tab-era 🧪 Data Hygiene tab, now live on the **Actions** tab, below the signals roster
-(`renderHygPanel_()` → `#hygPanel`): the 🧬 **field fill by issue type** matrix (`typeMatrixHtml_`,
-reading order deliberately matrix-first — which type to go fix), the 🧪 **gaps queue** below it (a
-table of every gap with its coverage, gate and what it blocks, with a **"Coverage colour —"** legend
-so a reader learns the grading from the key, not a tooltip), and the ⚙ **Coverage gates** editor for
-admins. The Executive **data-trust strip** carries this panel's org-wide headline forward onto the
-30-second read (see "Data-trust strip" above) so the fill-vs-gate
-question no longer needs a fourth/fifth tab of its own to be seen at all.
+(`renderHygPanel_()` → `#hygPanel`): the 🧪 **gaps queue** (a table of every gap with its coverage,
+gate and what it blocks, with a **"Coverage colour —"** legend so a reader learns the grading from
+the key, not a tooltip), and the ⚙ **Coverage gates** editor for admins. The **data-trust strip**
+above carries this panel's org-wide headline, so the fill-vs-gate question no longer needs a tab of
+its own to be seen at all.
+
+The 🧬 **field fill by issue type** matrix rendered above the queue until 2026-08-17, when it was
+removed along with the Roster join check. **The two panels answered different questions and only one
+of them survived on purpose:** the matrix said *which issue type has the missing fields*, the queue
+says *whether each metric can be published at all*. The first question is now answered per person on
+the 👥 signals roster, which names somebody who can act; the second has no per-person equivalent and
+stays here.
 
 > The 🔬 Data Profile funnels, the 📄 Brief and the 🧪 WHAT-IF simulation were removed 2026-08-05
-> (user decision): the gaps table and the 🧬 by-type matrix carry the what-to-improve story on
-> their own.
+> (user decision): the gaps table carries the what-to-improve story on its own. (It shared that
+> job with the 🧬 by-type matrix until 2026-08-17.)
 
 The **"% of delivery work fully attributed" KPI tile was deleted** (user decision 2026-08-04): the
 composite — pinned by the org-wide-empty Region field (PR-01) — mostly restated its own binding
@@ -1179,9 +1203,16 @@ flatter itself by excluding the very records that are the problem.
   baselined fields (PR-02, PR-03) do not exist yet — both gaps are recorded in the registry's
   `deviations` and surfaced on the tiles' ⓘ.
 - **Blank region ≠ "Other".** Jira `Region` values are normalised at ingestion (`mapRegionToDh_`) to
-  AMER / EMEA / SEA / ANZ / **Global** / **Other** / **Unassigned** (issue tokens — the filter chips
-  are the geographic four plus Other). `Other` is a value we haven't
-  mapped — extend `JIRA_REGION_TO_DH_`. `Unassigned` is a tagging gap (PR-01), counted and trended
+  AMER / EMEA / SEA / ANZ / **Global** / **Other** / **Unassigned** (issue tokens). `Other` is a value
+  we haven't mapped — extend `JIRA_REGION_TO_DH_`.
+  **The filter chips are the geographic four only, since 2026-08-17** (user: *"delete Other, we have
+  everyone in an assigned region already"*). The chip is not hard-coded away, it is **data-driven**
+  (`dhRegionChips_`): "Other" reappears by itself the moment one person resolves to it. That matters
+  because the chip is what makes a person *reachable* — every region filter matches on `p.region`, so
+  a bucket with no chip is counted in every org-wide total and selectable by no filter. Deleting the
+  chip outright would have made those people invisible in exactly the view someone would use to find
+  them. Its return is also the alarm worth having: it means `LOCATION_REGION_MAP` has met a country it
+  does not know, which is a one-line fix. `Unassigned` is a tagging gap (PR-01), counted and trended
   on the Actions tab's gaps queue rather than folded into a real region's total. About **two thirds is
   still Unassigned** over the 52-week window (worse on recent and open work — see the correction
   above), and person region continues to resolve from the roster for anyone with no tagged
@@ -1253,68 +1284,33 @@ itself *Capacity Utilization (tracked)*; the signals roster still renders. `Jira
 and Forecast Accuracy show "Jira data unavailable"; Utilization and the roster are unaffected.
 Roster unreadable is the one **fatal** error (population and Region can't be derived without it).
 
-### 🧬 Field fill by issue type (all roles)
+### 🧬 Field fill by issue type — REMOVED 2026-08-17
 
-The gaps table says *how much* is missing. This says **which issue type to go and fix**, which
-is a different question with a different reader — the gaps table belongs to whoever owns the
-metric, this belongs to whoever owns the tickets. Hence all-roles.
+The by-type matrix and the **Roster join** check are gone (user decision, schema 42). Both
+summarised compliance *per evaluated parameter*; the 👥 signals roster reads the same parameters
+**per rocketeer**, and a person can be asked to fix their tickets where an issue type cannot.
 
-**Two populations, one toggle, and Open is the default.** A due date added to an open ticket
-moves next period's number; one added to a closed ticket is archaeology.
+What went: `typeHygiene` from the payload · `typeHygieneBuckets_` / `TYPE_HYG_FIELDS_` /
+`TYPE_HYG_MAX_KEYS_` on the server · `hygieneBuckets[].resAttr` · the gaps queue's *"…and that
+assignee resolves to a roster person"* row · the data-trust strip's **Roster join** tile (leaving
+three) · ~180 render-smoke assertions, replaced by a regression guard that fails if any of it
+comes back.
 
-| Population | What it answers | Period picker |
-|---|---|---|
-| **Open backlog** (default) | where to spend effort now | ignored — a backlog is a snapshot, not a time series |
-| **Resolved** | why today's cards read the way they do | follows it, like every other surface |
+What stayed, deliberately: the shared work-state predicates (`typeHygOpen_`, `dhStarted_`,
+`dueExpected_`, `timeExpected_`, `dhHasDue_`) — five other surfaces read them, and re-deriving
+"open" per surface is how two panels on one tab come to disagree about the same ticket;
+`typeFieldGate_`, which the roster uses to resolve a gate from the metric registry; and the
+Open ↔ Resolved population toggle, whose chips **moved onto the roster** — the matrix was the
+only place they lived, so deleting it without moving them would have stranded the roster on
+Open with no way back.
 
-Rows are ordered by **recoverable impact** — records missing the field, counted only where that
-field gates a published metric for that type. Not by worst percentage: 270 missing due dates on
-Sub-tasks score **zero**, because under the dictionary On-Time scope a Sub-task's due date gates
-nothing, while 4 missing on Go-live epics are the whole On-Time gap. Non-gating cells render `—`
-rather than red for the same reason — grading them sends someone to fix records that move no
-number.
+The join itself is unchanged and still gates every card. What stopped is the published
+*measurement* of it, which had read 100% since the 2026-08-04 attribution fix. A name-index
+regression now shows up on the gaps queue's *"Resolved work carries a Jira assignee"* row and in
+each card's own `meta.jiraUnattributed` count. Restoring the matrix means restoring the builder
+from git — it is not behind a flag.
 
-Two rules that keep the table honest:
-
-- **`gatesOnTime` comes from `onTimeInScope_`**, the same predicate the metric uses, never a
-  second copy. Change `ONTIME_SCOPE` and this table re-marks itself.
-- **A column identical across every type is shown ungraded**, footnoted as one org-wide field
-  gap. Region and Team are blank everywhere (PR-01), so grading them painted two red cells on
-  every row and drowned the real findings. This is computed from the data (`typeColUniform_`),
-  not hardcoded — the day Region starts varying by type it grades itself again with no code
-  change.
-
-Layout rules, all of them load-bearing:
-
-- **Every column right of the type name is right-aligned, header included.** The first cut left
-  headers default-left over right-aligned values, which put each label over the gap between two
-  columns instead of over its own data — it looked misaligned because it was.
-- **Each cell carries a fill bar** under the percentage. Nine columns of bare numbers have to be
-  read digit by digit; the bars make a row's shape readable at a glance. Same labelled-bar idiom
-  as the gaps table.
-- **The bars use the chart tokens (`--c-good`/`--c-warn`/`--c-bad`), never the text ones.** In
-  dark mode `--warn` and `--amber` are the same hex — survivable for words, where `✔ ▲ ✖` still
-  separate them, and fatal for a bar, where colour is the only channel. Pinned by a render-smoke
-  assertion on the CSS itself.
-- The type column is **sticky**, so a horizontal scroll never leaves a row of numbers with
-  nothing naming it, and epic-family rows carry an **`EPIC` tag** — being pooled into the
-  epic-grain metrics is the finding, so it is on the row, not just in a tooltip.
-
-Failing issue keys still travel in the payload (`keys` per field per type, capped at
-`TYPE_HYG_MAX_KEYS_` = 500 with `keysCapped` flagged) and back the per-cell miss tooltips.
-The CSV export was removed 2026-08-04 at the user's request; `⬇ PNG` saves the table for a deck,
-with the population chips inside the capture — Open and Resolved look alike, so a matrix with no
-population label is unreadable out of context.
-
-> **Why this table exists at all.** `readJiraRaw_` sets `isEpic` with a substring match on
-> `"epic"`, so **`Kick-off epic` and `Go-live epic` already sit inside the On-Time dictionary
-> scope and the Forecast denominator**, pooled invisibly with plain `Epic`. Every epic-grain
-> number the dashboard publishes is an average across three semantically different work objects,
-> and until this table nothing said so. Run `probeDeliverySources()` to see the real type
-> vocabulary — it logs which types the substring rule sweeps up and whether a `Milestone` type
-> exists at all (DATA-BLOCKERS #5).
-
-Spec: `delivery-health-dashboard/docs/specs/2026-08-04-hygiene-by-issue-type-design.md`.
+Spec (historical): `delivery-health-dashboard/docs/specs/2026-08-04-hygiene-by-issue-type-design.md`.
 
 ## Region lens
 
@@ -1487,7 +1483,8 @@ deploy can never serve a stale-shaped entry even if nobody remembers to bust the
 | 14 | **No-absenteeism model (2026-08-04).** `weeks[]` lose `pto` / `hol` (`avail === cap`, gross); tracked NETSUITE/time-off hours count IN `tracked` and classify directly as non-billable (`trackedOff` added); planned time-off rows dropped; `meta.ptoSource` gone. A cached v13 model still nets absence out of the denominator, so it must miss cleanly |
 | 16 | **Export freshness (2026-08-04).** `meta.dataAsOf` = `{ jira, jiraAgeH, jiraStale, jiraUnknown }` + `meta.jiraExportStaleH`, read from the Jira Raw `"Generated:"` footer. Also stops the two export footer rows being ingested as pseudo-issues. A cached v15 model has no `dataAsOf`, so the header would report "unknown" on an export that has a perfectly good stamp |
 | 18 | **Attrition excluded from every rate (2026-08-04).** A former employee's issues are filtered out before any bucket is built; adds `meta.leaverExcluded`. **Supersedes v13**, which counted that work so it would stop reading as "unattributed". Every issue-based number moves, so a cached v17 model must miss cleanly |
-| 17 | **Field fill by issue type (2026-08-04).** `typeHygiene = { resolved[], open[], keyCap }` — per-type field fill over both populations, with the failing issue keys per gap. Needs `type` / `typeLabel` / `key` / `status` on the ingested record, which v16 never carried. A cached v16 model renders the matrix empty, and **an empty matrix reads as "no gaps"** — the exact opposite of the truth — so it must miss cleanly |
+| 17 | **Field fill by issue type (2026-08-04).** `typeHygiene = { resolved[], open[], keyCap }` — per-type field fill over both populations, with the failing issue keys per gap. Needs `type` / `typeLabel` / `key` / `status` on the ingested record, which v16 never carried. A cached v16 model renders the matrix empty, and **an empty matrix reads as "no gaps"** — the exact opposite of the truth — so it must miss cleanly. **Retired at 42.** |
+| 42 | **Removals (2026-08-17).** `typeHygiene` leaves the payload with the 🧬 matrix, and `hygieneBuckets[].resAttr` leaves with the Roster join check. The safe direction for once — a v41 entry simply carries two fields nothing reads — but worth busting anyway: `typeHygiene` carried up to 500 issue keys *per field per type*, and there is no reason to keep paying for that in every cached chunk for a whole TTL after the deploy |
 | 19 | **APAC retired (reviewer feedback 2026-08-05).** Region vocabulary is now AMER/EMEA/SEA/ANZ/Global/Other: `RR05 South East Asia` and `RR08 Asia` map to SEA (APAC is a superset of ANZ+SEA, so an APAC chip and an ANZ chip contradicted each other), and the Malaysia/Singapore/Philippines roster locations follow. `assignPersonRegion_` also stops letting Global/Other hours vote, so Global-heavy rocketeers keep a geographic home ("ANZ has no members"). A cached v18 model carries APAC people/buckets and an APAC chip, so it must miss cleanly |
 | 20 | **Global chip removed (user report 2026-08-05: "Global shows 0 for the whole data").** Region chips filter PEOPLE — every metric bucket is keyed by person — and once Global/Other stopped voting in `assignPersonRegion_` (v19) no person can ever be "Global", so the chip was structurally pinned at 0. `meta.regions` drops it; `Global` remains an ISSUE token for hygiene fill counts. A cached v19 model still ships the dead chip |
 | 21 | **🌊 Flow metrics.** Adds `leadTimeBuckets` / `throughputBuckets` / `flowOpenBuckets` / `bugWeekly` + `meta.flowSnapshots` / `bugsAvailable` / `flowSnapshotsAvailable`. A cached older model has none of these; the (then-live) Flow tab would render every tile as absent, so it forces one clean rebuild |
@@ -1571,6 +1568,74 @@ is a **separate** condition and renders alongside the data age rather than repla
 fail independently, and one hiding the other is how a reader ends up trusting a stale number.
 
 ## Deploy
+
+> ### 🗓 Project Managers — the To Do carve, plus two filter deletions (2026-08-17) — schema v42 → v43
+>
+> `Code.js` + `Dashboard.html`, then **`bustDeliveryCache_()` — REQUIRED, and this one is the
+> dangerous direction.** A v42 entry carries the OLD, wider `epicN`, so every PM's Owns bar reads
+> **lower** than the new rule says it should — a stale model quietly accusing named people of missing
+> commitments they were just excused from — and it has no `epicBacklogN`, so the "N in backlog, not
+> graded" note renders as nothing and the exclusion the bar now depends on is invisible.
+>
+> No exporter change and no export re-run.
+>
+> 1. **Undated To Do epics no longer count against a PM.** *"Project managers cannot be punished for
+>    Epics available with no due date if they have the status TO DO, since it is part of the assigned
+>    backlog."* An epic that is neither started nor dated leaves the **Owns** denominator; it joins
+>    the bar the moment somebody starts it **or** dates it. A **started** epic with no date still
+>    fails the bar — that is the case the bar exists for.
+>    The carve is narrow on purpose: a **dated** To Do epic stays in, because a date is a commitment
+>    whatever the status column says (the managers' 2026-08-10 rule, unchanged).
+> 2. **The exclusion is counted, never silent.** `epicBacklogN` prints beside the bar as
+>    *"N in backlog, not graded"*, the keys are listed under **○ In backlog** when a row is opened,
+>    and a PM whose every epic is undated backlog reads **"no committed epics"** rather than a clean
+>    100% over an empty denominator.
+> 3. **⚠ The 🚩 audit on Actions will now show a HIGHER number than this tab, on purpose.** It is an
+>    org-wide ticket queue with nobody's name on it and takes no carve. The PM tab states the
+>    difference on screen so the two are not read as a contradiction. If you would rather the audit
+>    took the same carve, that is a one-line change in `epicDueAudit_` — but it changes a rule the
+>    managers ratified at 100% on 2026-08-10, so it is a decision, not a tidy-up.
+> 4. **The tab is now "Project Managers".** The `id` is still `pm`, so bookmarks and deep links are
+>    unaffected. The **"Worked with PM"** filter above the tabs keeps its name — it selects *people*
+>    who worked for a PM, which is a different thing, and the two are deliberately named apart.
+> 5. **The "Focus" filter is gone.** Plan / Billable / Non-bill drove the People grid, which was
+>    removed on 2026-08-05; from then until now the chips changed nothing but their own highlight.
+> 6. **The "Other" region chip is gone** — data-driven, not hard-coded: it returns by itself if any
+>    person ever resolves to it, which is the signal that `LOCATION_REGION_MAP` has met a new country.
+>
+> **Live smoke:** open a PM with backlog epics → the bar states *"N in backlog, not graded"* and the
+> opened row lists them under **○ In backlog**; the 🚩 line now reads *"Started, with no due date"*.
+> Check the region chips are the geographic four. Check the scope chip no longer carries a Focus term.
+> Post the GTT-605 dated status comment.
+
+> ### 🧹 Removals — the 🧬 matrix and the Roster join check (2026-08-17) — schema v41 → v42
+>
+> `Code.js` + `Dashboard.html` (Security.js unchanged), then **`bustDeliveryCache_()`**.
+>
+> **This is the one deploy in this file where a stale cache is not dangerous** — a v41 entry simply
+> carries two fields (`typeHygiene`, `hygieneBuckets[].resAttr`) that nothing reads any more, so
+> nothing renders wrong while it expires. Bust it anyway: `typeHygiene` carried up to 500 issue keys
+> *per field per type*, and there is no reason to keep paying for that in every cached chunk.
+>
+> No exporter change and **no export re-run**.
+>
+> **Live smoke — what must be GONE:**
+> 1. 🎯 Actions → no "Field fill by issue type" table. The **Gaps queue** below where it sat is
+>    unchanged, legend and all.
+> 2. Gaps queue → no *"…and that assignee resolves to a roster person"* row. The row above it,
+>    *"Resolved work carries a Jira assignee"*, **must still be there** — that is the Jira-discipline
+>    half of the 2026-08-03 split and it was not removed.
+> 3. Data-trust strip → **three** tiles (Estimate coverage · Due-date fill · Logged fill). No
+>    "Roster join", and no blank fourth slot where it was.
+>
+> **What must still WORK:**
+> 4. 👥 Signals roster → the **Open backlog / Resolved** chips now sit on the roster itself. Click
+>    both. If they are missing, `STATE.typePop` has no control anywhere in the client and the roster
+>    is stuck on Open — that is the one way this deploy can fail silently.
+> 5. The four KPI cards, the 🚩 epic audit, 🌊 Backlog health and the 🗓 PM tab must not move at all.
+>    Every one of them reads the shared predicates (`typeHygOpen_` and friends) that were kept
+>    precisely so this deletion could not reach them.
+> 6. Post the GTT-605 dated status comment.
 1. script.google.com → New project (separate from all existing dashboards).
 2. Add **exactly three** files: `Code` (Code.js), `Security` (Security.js), HTML file named
    `Dashboard` (Dashboard.html — name must match doGet).
@@ -1918,8 +1983,8 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
       `● N on track · ● N watch · ● N need action`, plus an ungraded count when small-n applies. No
       individual is ever named on it. Clicking it opens Actions with the roster pre-sorted by
       opportunity.
-- [ ] Executive **data-trust strip**: four tiles (Estimate / Due-date / Logged coverage, Roster join),
-      each tagged `ORG`, each graded against its own gate. Changing any filter or the period picker
+- [ ] **Data-trust strip**: **three** tiles (Estimate / Due-date / Logged coverage) — no fourth
+      "Roster join" tile, removed 2026-08-17 — each tagged `ORG`, each graded against its own gate. Changing any filter or the period picker
       does **not** move this strip — it is deliberately whole-population.
 - [ ] Toggle 🌙 Dark: hero tiles, the compact flow tier, comparison bars and every roster RAG cell
       stay readable — no red/amber pair collapses to the same hex in dark mode.
@@ -1963,9 +2028,9 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 - [ ] There is **no "Delivery work fully attributed" KPI tile** (deleted 2026-08-04) — the
       gaps table below it carries the per-component good-of-total read.
 - [ ] There is **no 🔬 Data Profile panel, no 📄 Brief and no 🧪 WHAT-IF button** anywhere on Actions
-      (removed 2026-08-05) — only the signals roster, the 🧬 by-type matrix, the gaps queue and the
-      ⚙ Coverage gates editor.
-- [ ] The Actions gaps queue and 🧬 matrix **name the window they cover** and follow the header period
+      (removed 2026-08-05) — only the signals roster, the gaps queue and the
+      ⚙ Coverage gates editor. No 🧬 by-type matrix: removed 2026-08-17.
+- [ ] The Actions gaps queue **names the window it covers** and follows the header period
       picker. Switching the header Week/Month/Quarter chips re-renders them — the toggle must never
       look inert while Actions is open.
 - [ ] Kill the NS feed (or filter to a period it doesn't cover): the third tile relabels to

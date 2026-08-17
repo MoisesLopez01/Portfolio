@@ -265,8 +265,8 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "4.0",
-  updated: "2026-08-05",  // 2026.W32
+  version: "4.1",
+  updated: "2026-08-17",  // 2026.W34
 
   metrics: {
     onTime: {
@@ -856,6 +856,16 @@ var METRIC_REGISTRY_ = {
     // with the trade stated. The blended prior reading is kept on screen as the
     // pool grid's own footnote so the "why did this drop" answer is on the page
     // rather than in a meeting — the dual read without the dual phase.
+    // REMOVAL entry. Two surfaces leave the product and one check stops being
+    // published; NO metric in `metrics` is redefined and no computed value
+    // moves, so `affects` is empty and no trend line gets a `✎ definition
+    // changed` marker. This entry is the dated note instead — a reader who
+    // comes looking for the 🧬 matrix in three months needs to find out here
+    // that it was retired on purpose, not assume it broke.
+    { version: "4.1", date: "2026-08-17", author: "Alex López",
+      affects: [],
+      change: "The 🧬 field-fill-by-issue-type matrix and the roster-join check are REMOVED (user decision 2026-08-17): both summarised compliance per evaluated parameter, and the 👥 signals roster already reads the same parameters per rocketeer — which names somebody who can act, where a per-type or org-wide percentage names nobody. Gone: `typeHygiene` from the payload, `typeHygieneBuckets_` / `TYPE_HYG_FIELDS_` / `TYPE_HYG_MAX_KEYS_` from the server, `hygieneBuckets[].resAttr`, the gaps queue's '…and that assignee resolves to a roster person' row, and the data-trust strip's 'Roster join' tile. Kept: `typeHygOpen_` / `dhStarted_` / `dueExpected_` / `timeExpected_` / `dhHasDue_`, which five other surfaces read, and `typeFieldGate_`, which the roster uses to resolve a gate from this registry. The join itself is UNCHANGED and still gates every card — what stopped is the published measurement of it, which had read 100% since the 2026-08-04 attribution fix. Reversal is not a config flag: restoring it means restoring the builder from git.",
+      rationale: "A check nobody can fail is a row people learn to scroll past, and next to it the checks that CAN fail lose urgency. The roster-join figure had also been retired from all three of its surfaces since 3.2 on exactly that reasoning — this makes the retirement permanent rather than data-driven. The trade accepted: if the name index ever regresses, no surface will announce it. What catches that instead is the gaps queue's 'Resolved work carries a Jira assignee' row plus each card's own unattributed count in `meta.jiraUnattributed`, which are unchanged." },
     { version: "4.0", date: "2026-08-10", author: "Alex López",
       affects: ["util", "poolHeadroom", "commitmentFidelity", "shadowWork", "poolCover", "poolConstraint"],
       change: "Capacity is reported per DEPLOYMENT POOL × LEVEL BAND, never as one blended availability figure. People classify from their job code (family.variant sub-track) into a backlog role, a pool and a level band; M-track people in delivery families become GOVERNORS and leave the pool denominators. Five new metrics ship: Sellable Headroom, Commitment Fidelity, Shadow Work, Cover by Pool, Constraint Index.",
@@ -1329,6 +1339,42 @@ function assignPersonRegion_(hoursByRegion, rosterBucket) {
   });
   if (best !== null && bestH > 0) return { region: best, source: "jira" };
   return { region: rosterBucket || CONFIG_DH.PERSON_REGION_DEFAULT, source: "roster" };
+}
+
+/** The geographic regions people are actually assigned to, in reading order. */
+var DH_GEO_REGIONS_ = ["AMER", "EMEA", "SEA", "ANZ"];
+
+/**
+ * The region chip list shipped as `meta.regions`.
+ *
+ * The four geographic regions always, plus REGION_FALLBACK ("Other") ONLY when
+ * at least one person in the population actually carries it.
+ *
+ * WHY IT IS COMPUTED RATHER THAN LISTED. The user's instruction on 2026-08-17
+ * was "delete Other, we have everyone in an assigned region already", and today
+ * that is true. But the chip is what makes a person REACHABLE: every region
+ * filter matches on `p.region`, so a person sitting in a bucket with no chip is
+ * counted in every org-wide total and selectable by no filter — invisible in
+ * exactly the view somebody would use to go and find them, with nothing on
+ * screen to say a slice is incomplete. That is the silent-subset failure the
+ * comparison charts were rebuilt for, and it would arrive the day somebody is
+ * hired into a country LOCATION_REGION_MAP has never seen.
+ *
+ * So: gone while the statement holds, back by itself the moment it stops
+ * holding. Same data-driven idiom as the gaps queue's retire-at-100% rule, and
+ * for the same reason — the honest version of "delete it" is "stop rendering it
+ * while it is empty", not "make the people underneath it unreachable".
+ *
+ * Its reappearance is also the alarm worth having: it means the roster carries a
+ * real location the map does not know yet, which is a one-line CONFIG_DH fix.
+ *
+ * @param {Array<Object>} people population + attribution stubs
+ * @returns {string[]} chip list for meta.regions
+ */
+function dhRegionChips_(people) {
+  var fallback = CONFIG_DH.REGION_FALLBACK;
+  var used = (people || []).some(function (p) { return p && p.region === fallback; });
+  return used ? DH_GEO_REGIONS_.concat([fallback]) : DH_GEO_REGIONS_.slice();
 }
 
 // ── NEW-HIRE HANDLING (user decision 2026-07-31) ─────────────
@@ -1882,15 +1928,19 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
   var map = {};
   function row(iso) {
     if (!map[iso]) map[iso] = { iso: iso, res: 0, resDue: 0,
-                                // resAssigned vs resAttr: SEPARATE PROBLEMS with
-                                // separate owners. Measured 2025.W32-33 sample:
-                                // 94% of resolved issues carry a Jira assignee,
-                                // but only ~54% of those resolve to a roster
-                                // person. Reporting one number ("unattributed")
-                                // sent a name-matching problem to the Jira admin
-                                // queue, where it sat because there was nothing
-                                // for them to fix.
-                                resAssigned: 0, resAttr: 0,
+                                // resAssigned = the Jira discipline gap: an issue
+                                // closed with nobody on it. Its former companion
+                                // resAttr — "…and that assignee resolves to a
+                                // roster person" — was RETIRED 2026-08-17 (user
+                                // decision): it had measured 100% since the
+                                // 2026-08-04 attribution fix, and a check nobody
+                                // can fail is a row people learn to scroll past.
+                                // The join itself is unchanged and still gates
+                                // every card; what is gone is the published
+                                // measurement of it. `hasPerson` below survives
+                                // because the resReady/resFull composites are
+                                // still defined against it.
+                                resAssigned: 0,
                                 resRegion: 0, resTeam: 0, resReady: 0, resFull: 0,
                                 epics: 0, epicsEst: 0, epicsTime: 0,
                                 // ── SRSO binding (2026-08-07) ────────────────
@@ -1940,7 +1990,6 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
       if (hasAssignee) r.resAssigned++;
       var hasRegion = !!it.region && it.region !== DH_REGION_UNASSIGNED_;
       if (hasDue) r.resDue++;
-      if (hasPerson) r.resAttr++;
       if (hasRegion) r.resRegion++;
       if (it.team) r.resTeam++;
       // TWO composites, on purpose.
@@ -1983,38 +2032,20 @@ function hygieneBuckets_(jira, resolvePerson, scope) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// FIELD FILL BY ISSUE TYPE (spec 2026-08-04-hygiene-by-issue-type-design.md)
+// SHARED WORK-STATE PREDICATES
 //
-// hygieneBuckets_ answers "how much is missing". This answers "WHERE DO I GO
-// AND FIX IT", which is a different question with a different owner: the gaps
-// table is read by whoever owns the metric, this is read by whoever owns the
-// tickets.
+// One definition each of "open", "started", "expected to carry a date" and
+// "expected to carry a worklog", read by every surface that has to decide
+// whether a record is answerable: the signals roster, backlog health, the
+// epic due-date audit, the PM tab and the gaps queue.
 //
-// Two populations, because they answer different questions:
-//   resolved — explains the numbers on the cards today. Diagnostic. Bucketed by
-//              resolution week so the period picker drives it like every other
-//              surface.
-//   open     — the current and future backlog. ACTIONABLE: a due date added to
-//              an open ticket moves next quarter's On-Time rate; one added to a
-//              closed ticket is archaeology. Carries NO ISO week — a backlog is
-//              a snapshot, not a time series, and bucketing it by created /
-//              updated / due would invent a history it does not have.
-//
-// WHY IT MATTERS THAT THIS SPLITS BY TYPE: `isEpic` is a substring match on
-// "epic", so Kick-off epic and Go-live epic already sit inside the On-Time
-// dictionary scope and the Forecast denominator, pooled with plain Epic. Every
-// epic-grain number the dashboard publishes is an average across three
-// semantically different work objects, and nothing on screen says so.
+// They were written for the 🧬 by-type matrix (spec
+// 2026-08-04-hygiene-by-issue-type-design.md), which was REMOVED 2026-08-17 —
+// its per-parameter summary is now read per person on the signals roster
+// instead. The predicates stayed, because five other surfaces had already
+// adopted them and re-deriving "open" per surface is exactly how two panels
+// on one tab come to disagree about the same ticket.
 // ══════════════════════════════════════════════════════════════════════════
-
-/** Failing keys carried per field per type. Enough to BE the work queue; capped
-    so one badly-tagged type can't dominate the payload. The cap is reported
-    (keysCapped) rather than silently truncating — a clipped list read as
-    complete is how "we fixed them all" becomes wrong. */
-var TYPE_HYG_MAX_KEYS_ = 500;
-
-/** The seven fields the matrix grades, in display order. */
-var TYPE_HYG_FIELDS_ = ["due", "assigned", "attr", "est", "time", "region", "team"];
 
 /**
  * Is this record open work? Unresolved AND not sitting in a closed-ish status.
@@ -2136,133 +2167,19 @@ function dhHasDue_(it) {
 }
 
 /**
- * Per-issue-type field fill, over the resolved and open populations.
- *
- * @param {Object} jira      readJiraRaw_ output
- * @param {Function} resolvePerson  Jira assignee → roster display name, or null
- * @param {string=} scope    ONTIME_SCOPE reading (test hook); defaults to config
- * @returns {{resolved:Array, open:Array, keyCap:number}}
- */
-function typeHygieneBuckets_(jira, resolvePerson, scope) {
-  var sc = scope || CONFIG_DH.ONTIME_SCOPE || "dictionary";
-  var res = {}, open = {};
-
-  function row(map, k, type, isEpic, inOnTimeScope) {
-    if (!map[k]) {
-      map[k] = { iso: "", type: type, isEpic: !!isEpic,
-                 // Whether THIS type's due date actually gates the published
-                 // On-Time rate. Derived from onTimeInScope_ — the same
-                 // predicate the metric uses, never a second copy of the rule.
-                 // Without it the matrix invites a Sub-task due-date campaign
-                 // that moves no number.
-                 gatesOnTime: !!inOnTimeScope,
-                 // Estimates only gate Forecast at epic grain.
-                 gatesForecast: !!isEpic,
-                 n: 0, due: 0, assigned: 0, attr: 0, est: 0, time: 0, region: 0, team: 0,
-                 // `timeN` is a SEPARATE denominator for the `time` column, not a
-                 // typo for n — see timeExpected_. Every other field is expected on
-                 // every record in the row, so they divide by n; logged time is only
-                 // expected once work has started. Same tristate shape as billN on
-                 // the person roster: measure what you can grade, grade what you
-                 // measured. On the resolved half timeN === n by construction.
-                 timeN: 0,
-                 // `dueN` — the same idiom for the due-date column (2026-08-10,
-                 // managers' feedback; see dueExpected_). On the OPEN half an
-                 // unstarted ticket is outside the commitment question, so it
-                 // counts in neither side of this ratio. On the resolved half
-                 // dueN === n by construction.
-                 dueN: 0,
-                 // `attrN` — attr's OWN denominator, exactly like timeN below.
-                 // A record with no assignee has no assignee to fail to join: it
-                 // belongs in neither half. Dividing attr by n instead scores an
-                 // ABSENT assignee as a FAILED roster join, which is a different
-                 // fact and one the `assigned` column already reports. That
-                 // conflation is harmless only while unassigned rows are absent
-                 // from Jira Raw; once they are exported it drops a solved,
-                 // retired check to ~44% and puts a false failure on three
-                 // surfaces at once (spec §4.6, D12).
-                 attrN: 0,
-                 keys: {}, keysCapped: {} };
-    }
-    return map[k];
-  }
-
-  function tally(r, it, isOpen) {
-    r.n++;
-    // "⚠️ UNASSIGNED" is the exporter's sentinel for an empty Jira assignee, so
-    // an unassigned issue is NOT an empty string here — treating it as a name
-    // would score the gap as filled.
-    var rawA = String(it.assignee || "").trim();
-    var hasAssignee = !!rawA && !/unassigned/i.test(rawA);
-    var est = Number(it.estSec) || 0;
-    var got = {
-      due:      dhHasDue_(it),
-      assigned: hasAssignee,
-      attr:     !!(resolvePerson && resolvePerson(it.assignee || "")),
-      est:      est > 0,
-      time:     (Number(it.spentSec) || 0) > 0,
-      region:   !!it.region && it.region !== DH_REGION_UNASSIGNED_,
-      team:     !!it.team,
-    };
-    // Not-yet-started open work is outside the logged-time question entirely:
-    // neither numerator nor denominator, and no key in the queue. Scoring it as
-    // a hit instead would be worse than the bug it replaces — it would report an
-    // untouched backlog as perfectly tracked.
-    var wantTime = timeExpected_(it, isOpen);
-    if (wantTime) r.timeN++;
-    // Due-date carve on the open half — see dueExpected_ and the three rules it
-    // quotes. Only the UNSTARTED AND UNDATED rows leave the ratio; a To Do ticket
-    // that carries a date is tracked like any other (rule 3).
-    var wantDue = dueExpected_(it, isOpen);
-    if (wantDue) r.dueN++;
-    // attr is only ANSWERABLE where an assignee exists — same tristate shape as
-    // timeN above: measure what you can grade, grade what you measured.
-    if (hasAssignee) r.attrN++;
-    TYPE_HYG_FIELDS_.forEach(function (f) {
-      if (f === "time" && !wantTime) return;
-      if (f === "due" && !wantDue) return;
-      if (f === "attr" && !hasAssignee) return;
-      if (got[f]) { r[f]++; return; }
-      // MISSING records are what we collect — the queue, not the healthy ones.
-      if (!r.keys[f]) r.keys[f] = [];
-      if (r.keys[f].length < TYPE_HYG_MAX_KEYS_) r.keys[f].push(it.key);
-      else r.keysCapped[f] = true;
-    });
-  }
-
-  (jira.issues || []).forEach(function (it) {
-    var type = it.typeLabel || "(blank)";
-    var inScope = onTimeInScope_(it, sc);
-    if (it.resolved && !isNaN(it.resolved.getTime())) {
-      // Resolved work is bucketed by WEEK as well as type, so the matrix follows
-      // the period picker. Key on both or two weeks of one type collapse.
-      var iso = weekKeyFromDate_(it.resolved);
-      var r = row(res, iso + "" + type, type, it.isEpic, inScope);
-      r.iso = iso;
-      tally(r, it, false);
-    } else if (typeHygOpen_(it)) {
-      tally(row(open, type, type, it.isEpic, inScope), it, true);
-    }
-    // Everything else — closed without a resolution date — is deliberately in
-    // NEITHER population. It is not open work anyone can fix, and it is not
-    // resolved work any metric measures.
-  });
-
-  function out(map) {
-    return Object.keys(map).sort().map(function (k) { return map[k]; });
-  }
-  return { resolved: out(res), open: out(open), keyCap: TYPE_HYG_MAX_KEYS_ };
-}
-
-/**
- * Per-PERSON field fill over the same populations as the by-type matrix —
- * the data behind the Actions roster (spec 2026-08-05 §6). Predicates are
- * IDENTICAL to typeHygieneBuckets_ (due present · estSec>0 · spentSec>0) so
- * the roster and the matrix can never disagree about the same record.
- * Epics are counted (open epics missing estimates are the matrix's biggest
- * lever, and the person who owns the epic owns the gap).
- * Unattributed issues carry no person and are deliberately absent — they are
- * the matrix's problem to expose, not a roster row.
+ * Per-PERSON field fill over the resolved and open populations — the data
+ * behind the Actions roster (spec 2026-08-05 §6), and since 2026-08-17 the
+ * ONLY per-parameter compliance read the dashboard publishes: the 🧬 by-type
+ * matrix that used to sit beside it was removed, because the same parameters
+ * read per rocketeer name someone who can act on them.
+ * Predicates are the shared ones above (due present · estSec>0 · spentSec>0),
+ * so the roster can never disagree with backlog health or the 🚩 epic audit
+ * about the same record.
+ * Epics are counted (an open epic missing an estimate is the biggest single
+ * lever here, and the person who owns the epic owns the gap).
+ * Unattributed issues carry no person and are deliberately absent: a row with
+ * no name on it is not a roster row. They stay visible as the gaps queue's
+ * "Resolved work carries a Jira assignee" line.
  *
  * @param {Object} jira            readJiraRaw_ output (leaver-scoped)
  * @param {Function} resolvePerson raw assignee → roster display name, or null
@@ -2386,8 +2303,10 @@ function personHygieneBuckets_(jira, resolvePerson) {
 // ══════════════════════════════════════════════════════════════════════════
 
 /** Failing keys carried per signal — enough to BE the work queue. Capped and the
-    cap REPORTED, same contract as TYPE_HYG_MAX_KEYS_: a clipped list read as
-    complete is how "we fixed them all" becomes wrong. */
+    cap REPORTED, never silently truncated: a clipped list read as complete is how
+    "we fixed them all" becomes wrong. (The 🧬 matrix's TYPE_HYG_MAX_KEYS_ held the
+    same contract until that surface was removed on 2026-08-17; EPIC_DUE_MAX_KEYS_
+    still does.) */
 var BACKLOG_MAX_KEYS_ = 300;
 
 /** Days without an update before open work stops counting as live load. */
@@ -2588,8 +2507,14 @@ function dhBacklogReady_(it, now) {
  * PM-owned work: two bars per PM plus a month-windowed item list.
  *
  * TWO BARS, NEVER AVERAGED (spec §5.2):
- *   OWNS       epicDated / epicN     — open epics carrying a due date. The PM's
- *                                      own field, graded against the 100% bar.
+ *   OWNS       epicDated / epicN     — open epics carrying a due date, over the
+ *                                      epics that are COMMITMENTS: started, or
+ *                                      dated, or both. Undated To Do epics are
+ *                                      assigned backlog and sit outside this
+ *                                      denominator (user 2026-08-17), counted in
+ *                                      `epicBacklogN` and named in
+ *                                      `epicBacklogKeys`. The PM's own field,
+ *                                      graded against the 100% bar.
  *   IN PROJECT readyN / readyDen     — the `ready` share over open non-epics,
  *                                      using the EXISTING BACKLOG_SIGNALS_
  *                                      definition. Team hygiene, shown as
@@ -2602,6 +2527,14 @@ function dhBacklogReady_(it, now) {
  * denominator of only dated epics and pin every PM at 100% — a bar that can
  * never report the very gap it exists to report. Bar 2 inherits the same trap
  * through `ready`, which has `dated` as a conjunct. The window scopes `items`.
+ *
+ * ⚠ The 2026-08-17 backlog carve is NOT that trap returning, and the difference
+ * is worth being precise about because they look alike. Windowing would have
+ * removed undated epics because they have no date to match — an artefact of the
+ * filter. The carve removes undated epics that ALSO have not been started, on
+ * the ground that nobody has committed to them yet — a statement about the work.
+ * A STARTED epic with no date stays in the denominator and still fails the bar,
+ * which is the case the bar exists for: work under way with no committed end.
  *
  * WINDOW (spec §5.3): overdue carry-in + due in the current calendar month.
  * A strict month filter would let a commitment escape by ageing out of its own
@@ -2671,6 +2604,10 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
     var k = who.name === DH_NO_PM_ ? DH_NO_PM_ : dhPmKey_(who.name);
     if (!map[k]) {
       map[k] = { pm: who.name, epicN: 0, epicDated: 0, epicMissingKeys: [], epicCapped: false,
+                 // Undated AND unstarted epics — assigned backlog, carved out of
+                 // the Owns bar on 2026-08-17 but counted and nameable, never
+                 // silently dropped.
+                 epicBacklogN: 0, epicBacklogKeys: [],
                  readyDen: 0, readyN: 0, ignoredN: 0, epics: [],
                  viaAssignee: 0, viaProject: 0,
                  oppNoDue: 0, oppEpicsAtRisk: 0, oppEpicsBreached: 0,
@@ -2708,14 +2645,44 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
     }
 
     // ── The two bars. UNFILTERED and UNWINDOWED, always (spec §5.2). ──────────
-    // Not even the ignorable() carve applies here: an epic with no date and no
-    // start is precisely what the Owns bar exists to report, and dropping it
-    // from the denominator would pin the bar at 100%.
+    //
+    // ⚠ THE ignorable() CARVE NOW APPLIES TO BAR 1 (user decision 2026-08-17),
+    // REVERSING the 2026-08-10 rule recorded below it. The instruction:
+    // "Project managers cannot be punished for Epics available with no due date
+    // if they have the status TO DO, since it is part of the assigned backlog."
+    //
+    // An epic sitting in To Do with no date is work that has been PUT somewhere,
+    // not work that has been PROMISED. Grading a PM on it treats the backlog
+    // itself as a failure, and the fix it implies — put a date on everything in
+    // the backlog — manufactures commitments nobody has made, which then arrive
+    // as On-Time misses. The epic becomes the PM's the moment either thing is
+    // true: somebody starts it, or somebody dates it.
+    //
+    // The previous reasoning (kept, because it is still the risk): dropping
+    // these from the denominator can pin the bar at 100% for a PM whose whole
+    // portfolio is undated backlog. Two things stop that reading:
+    //   · they are COUNTED, in `epicBacklogN`, and named in `epicBacklogKeys` —
+    //     the client states the exclusion beside the bar, so a 100% is never
+    //     presented as "nothing to fix here";
+    //   · when the carve takes EVERY epic, `epicN` is 0 and the bar renders as
+    //     "no committed epics" rather than as a clean 100%.
+    // A silent drop and a considered exclusion look identical on screen, and
+    // only one of them is honest — the same rule the item list already follows.
+    //
+    // The ORG-scope 🚩 audit on Actions deliberately does NOT take this carve:
+    // it names tickets, attributes nothing to anybody, and the managers ratified
+    // it at 100% on 2026-08-10. So the two counts CAN now differ, and both
+    // surfaces say why — see epicDueAudit_'s header.
     if (it.isEpic) {
-      r.epicN++;
-      if (dhHasDue_(it)) r.epicDated++;
-      else if (r.epicMissingKeys.length < EPIC_DUE_MAX_KEYS_) r.epicMissingKeys.push(it.key);
-      else r.epicCapped = true;
+      if (ignorable(it)) {
+        r.epicBacklogN++;
+        if (r.epicBacklogKeys.length < EPIC_DUE_MAX_KEYS_) r.epicBacklogKeys.push(it.key);
+      } else {
+        r.epicN++;
+        if (dhHasDue_(it)) r.epicDated++;
+        else if (r.epicMissingKeys.length < EPIC_DUE_MAX_KEYS_) r.epicMissingKeys.push(it.key);
+        else r.epicCapped = true;
+      }
     } else {
       r.readyDen++;
       if (dhBacklogReady_(it, now)) r.readyN++;
@@ -3093,6 +3060,15 @@ function backlogHealthBuckets_(jira, resolvePerson, now) {
 //     rather than a filter on the matrix rows.
 //   · Epics are containers, so the assignee is often nobody. A surface keyed on
 //     people cannot see them at all.
+//
+// ⚠ THIS AUDIT AND THE PROJECT MANAGERS TAB NO LONGER RECONCILE, ON PURPOSE
+// (2026-08-17). This panel counts EVERY open epic with no due date, including
+// the undated To Do ones; the PM tab carves those out of its Owns bar, because
+// grading a named person on unstarted backlog is a different act from listing a
+// ticket nobody is accused of owning. So this number is the larger of the two,
+// and the gap between them is exactly `sum(epicBacklogN)`. Both surfaces say so
+// on screen — a reader who finds two counts of "the same" epics must be able to
+// tell which question each one answers, or they will assume one is broken.
 //
 // ORG SCOPE, deliberately: no person filter, no roster join, unassigned epics
 // included. This is an audit of tickets, and an epic that resolves to no
@@ -6201,9 +6177,6 @@ function assembleModel_(inputs, win) {
     ? forecastBuckets_(jiraScoped.epics, resolvePerson) : { buckets: [], unattributed: 0 };
   var hygiene = inputs.jira.available
     ? hygieneBuckets_(jiraScoped, resolvePerson) : [];
-  var typeHyg = inputs.jira.available
-    ? typeHygieneBuckets_(jiraScoped, resolvePerson)
-    : { resolved: [], open: [], keyCap: TYPE_HYG_MAX_KEYS_ };
   var rework = inputs.jira.available
     ? reworkBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
   // 🌊 Flow metrics (spec 2026-08-05) — same person-attribution join (and the
@@ -6357,7 +6330,17 @@ function assembleModel_(inputs, win) {
       // 0 across the entire dataset. "Global" survives as a mapped ISSUE token
       // (JIRA_REGION_TO_DH_) so RR07 work counts as tagged in Data Hygiene and
       // rolls up under its assignee's geographic region everywhere else.
-      regions: ["AMER", "EMEA", "SEA", "ANZ", "Other"],
+      //
+      // "Other" left the list on 2026-08-17 (user: "we have everyone in an
+      // assigned region already"), but it is DATA-DRIVEN, not deleted — see
+      // dhRegionChips_. Hard-coding the four geographic regions would have been
+      // the same class of bug this dashboard keeps finding: the chip is what
+      // makes a person reachable, so dropping it while anyone still resolves to
+      // "Other" would make those people unselectable by any filter — present in
+      // every total, absent from every slice, and nothing on screen saying so.
+      // The chip therefore returns by itself the moment one person lands there,
+      // which is also the signal that LOCATION_REGION_MAP has met a new country.
+      regions: dhRegionChips_(people),
       teams: Object.keys(teamSet).sort(),
       pms: activePms.kept.sort(),
       // Count only — the tooltip says how many former employees were removed
@@ -6428,11 +6411,11 @@ function assembleModel_(inputs, win) {
     inventoryHistory: inventoryWalkback_(totalItems, arrWeeks, CONFIG_DH.WALKBACK_MAX_WEEKS),
     bugWeekly: bugWeekly_(inputs.bugs.bugs),
     hygieneBuckets: hygiene,
-    // Field fill per issue type, resolved + open. The gaps table says how much
-    // is missing; this says which type to go and fix.
-    typeHygiene: typeHyg,
-    // Per-person field fill — the Actions roster (spec 2026-08-05). Same
-    // predicates as typeHygiene, person grain, unattributed absent by design.
+    // Per-person field fill — the Actions roster (spec 2026-08-05), and since
+    // schema 42 the only per-parameter compliance read shipped. Its by-type
+    // twin (`typeHygiene`) was removed with the 🧬 matrix on 2026-08-17: the
+    // same parameters read per rocketeer, and a summary nobody could act on
+    // was costing a payload section on every rebuild.
     personHygiene: personHyg,
     // 🌊 Backlog health — snapshot, person-keyed, no iso (see the section header).
     backlogHealth: backlogHealth,
@@ -6740,7 +6723,30 @@ function assembleModel_(inputs, win) {
 //      universal filters can reach a tab whose unit is an epic. A v40 entry has
 //      none of these: the verdict cell renders blank and the gap line silently
 //      loses a row.
-var DH_SCHEMA_VER_ = 41;
+// 42 — REMOVALS, not additions (user decision 2026-08-17). `typeHygiene` leaves
+//      the payload with the 🧬 field-fill-by-issue-type matrix, and the roster
+//      -join check (`hygieneBuckets[].resAttr`, the gaps queue's "…and that
+//      assignee resolves to a roster person" row, and the data-trust strip's
+//      "Roster join" tile) leaves with the metric. Both were per-parameter
+//      summaries of compliance; the same parameters are read PER PERSON on the
+//      signals roster, which names somebody who can act.
+//      A v41 entry is harmless in the other direction — the client simply stops
+//      reading two fields it no longer renders — but the bump is still correct
+//      and still worth busting: the payload gets materially smaller (typeHygiene
+//      carried up to 500 issue keys per field per type) and there is no reason
+//      to keep paying for it in the cache for a whole TTL after the deploy.
+// 43 — PM rows carry `epicBacklogN` / `epicBacklogKeys`, and `epicN` narrows to
+//      epics that are COMMITMENTS (started, or dated, or both). Undated To Do
+//      epics are assigned backlog and leave the Owns bar (user 2026-08-17:
+//      "Project managers cannot be punished for Epics available with no due date
+//      if they have the status TO DO").
+//      A v42 entry is the dangerous kind: `epicN` still carries the OLD, wider
+//      denominator, so every PM's Owns bar reads LOWER than the rule now says it
+//      should — a stale model quietly accusing named people of missing
+//      commitments they were just excused from. It also has no `epicBacklogN`,
+//      so the "N in backlog, not graded" note renders as nothing and the
+//      exclusion the bar depends on is invisible. Bust the cache.
+var DH_SCHEMA_VER_ = 43;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -7154,6 +7160,38 @@ function _test_personRegion_() {
   var go = assignPersonRegion_({ "Global": 100, "Other": 30 }, "ANZ");
   assert_(go.region === "ANZ" && go.source === "roster", "only non-geo hours → roster fallback");
   Logger.log("✅ _test_personRegion_ passed");
+}
+
+/**
+ * The region chip list is DATA-DRIVEN, not a literal (user 2026-08-17: "delete
+ * Other, we have everyone in an assigned region already").
+ *
+ * The failure this guards is the reason it was not simply deleted: the chip is
+ * what makes a person reachable by the region filter, so a population that still
+ * contains an "Other" person with no "Other" chip is a silent subset — in every
+ * org-wide total, in no slice, with nothing on screen saying so.
+ */
+function _test_regionChips_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_regionChips_: " + m); }
+  var geo = [{ name: "A", region: "AMER" }, { name: "B", region: "EMEA" },
+             { name: "C", region: "SEA" }, { name: "D", region: "ANZ" }];
+  assert_(dhRegionChips_(geo).join(",") === "AMER,EMEA,SEA,ANZ",
+          "everyone assigned → the geographic four, no Other chip");
+  assert_(dhRegionChips_([]).indexOf(CONFIG_DH.REGION_FALLBACK) === -1,
+          "an empty population does not invent an Other chip");
+  // …and it comes back BY ITSELF. No deploy, no code change — the same
+  // data-driven idiom the gaps queue's retire-at-100% rule uses.
+  var withOther = geo.concat([{ name: "E", region: CONFIG_DH.REGION_FALLBACK }]);
+  assert_(dhRegionChips_(withOther).indexOf(CONFIG_DH.REGION_FALLBACK) !== -1,
+          "one unmapped person brings the Other chip back, so nobody is unreachable");
+  assert_(dhRegionChips_(withOther).length === 5 &&
+          dhRegionChips_(withOther)[4] === CONFIG_DH.REGION_FALLBACK,
+          "…appended last, after the geographic four");
+  // The four are the ORDER, not a set: a reader scanning the chip strip should
+  // find them in the same place every time.
+  assert_(dhRegionChips_(geo)[0] === "AMER" && dhRegionChips_(geo)[3] === "ANZ",
+          "reading order is stable and does not follow the population");
+  Logger.log("✅ _test_regionChips_ passed");
 }
 
 function _test_overflowClamp_() {
@@ -8400,53 +8438,6 @@ function _test_gateOverrides_() {
   Logger.log("✅ _test_gateOverrides_ passed");
 }
 
-/**
- * attr (roster join) must divide by records that HAVE an assignee, not by every
- * record. An unassigned issue has no assignee to fail to join — that gap is what
- * the `assigned` column measures. Scoring it as a join failure is how adding
- * unassigned rows to the feed (Jira Backlog.js v3.11.0) would un-retire a solved
- * check and report ~44% where the truth is 100%.
- */
-function _test_attrDenominator_() {
-  function assert_(c, m) { if (!c) throw new Error("❌ _test_attrDenominator_: " + m); }
-  var who = function (raw) {
-    var n = String(raw || "").toLowerCase().trim();
-    return n === "maria" ? "Maria" : null;   // "ghost" and the sentinel resolve to nobody
-  };
-  var issues = [
-    // open, assigned, resolves → attrN 1, attr 1
-    { key: "A-1", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
-      statusCategory: "To Do", assignee: "maria", estSec: 3600, spentSec: 0, due: new Date() },
-    // open, UNASSIGNED sentinel → in NEITHER half of attr
-    { key: "A-2", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
-      statusCategory: "To Do", assignee: "⚠️ UNASSIGNED", estSec: 0, spentSec: 0, due: null },
-    // open, assigned but does NOT resolve → attrN 1, attr 0 (a real join failure)
-    { key: "A-3", typeLabel: "Story", type: "story", isEpic: false, status: "Open",
-      statusCategory: "To Do", assignee: "ghost", estSec: 0, spentSec: 0, due: null },
-  ];
-  var r = typeHygieneBuckets_({ issues: issues }, who, "delivery");
-  var row = r.open[0];
-  assert_(row, "one open row for the Story type");
-  assert_(row.n === 3, "n counts every record — got " + row.n);
-  assert_(row.attrN === 2, "attrN counts only records WITH an assignee — got " + row.attrN);
-  assert_(row.attr === 1, "attr counts records whose assignee resolves — got " + row.attr);
-  assert_(row.assigned === 2, "assigned counts records with an assignee (A-1 maria + A-3 ghost, but not A-2 UNASSIGNED) — got " + row.assigned);
-
-  // The regression this exists to prevent: an all-unassigned population must not
-  // read as 0% roster join. attrN 0 means "nothing to grade", never "all failed".
-  var allBlank = typeHygieneBuckets_({ issues: [issues[1]] }, who, "delivery");
-  assert_(allBlank.open[0].attrN === 0, "all-unassigned → attrN 0");
-  assert_(allBlank.open[0].attr === 0, "all-unassigned → attr 0 (over a 0 denominator)");
-
-  // And a missing key in the queue: an unassigned record is not an attr miss, so
-  // it must not appear in the attr work queue.
-  assert_(!(row.keys.attr || []).length || (row.keys.attr || []).indexOf("A-2") === -1,
-          "the unassigned record must not be queued as an attr gap");
-  assert_((row.keys.attr || []).indexOf("A-3") !== -1,
-          "the genuine join failure IS queued as an attr gap");
-  Logger.log("✅ _test_attrDenominator_ passed");
-}
-
 /** Confidence gate + suppression (FR-2.1/2.2/2.6). */
 function _test_confidence_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_confidence_: " + m); }
@@ -8509,193 +8500,6 @@ function _test_parseExportStamp_() {
   assert_(parseExportStamp_("Generated: 8/4/2026 03:00") === null,
           "the 'Generated:' label is the CALLER's to strip");
   Logger.log("✅ _test_parseExportStamp_ passed");
-}
-
-/**
- * Field fill per issue type, resolved + open.
- *
- * The failure this suite guards: a matrix that quietly measures the wrong
- * population reads as "your data is fine". So it pins the population split,
- * the epic substring rule that silently pools three types, the fact that the
- * failing-KEY lists hold what is MISSING, and the cap being reported.
- */
-function _test_typeHygieneBuckets_() {
-  function assert_(c, m) { if (!c) throw new Error("❌ _test_typeHygieneBuckets_: " + m); }
-  var W = new Date(2026, 6, 28);   // a Tuesday — resolution week 2026.W31
-  function it_(o) {
-    return Object.assign({ key: "K", typeLabel: "Story", type: "story", status: "In Progress",
-                           isEpic: false, isMilestone: false, isClientCommitment: false,
-                           due: null, resolved: null, estSec: 0, spentSec: 0,
-                           region: "", team: "", assignee: "" }, o);
-  }
-  var resolve = function (n) { return /maria/i.test(n) ? "Maria Alvarez" : null; };
-
-  var jira = { issues: [
-    // Resolved, fully attributed Go-live epic.
-    it_({ key: "A-1", typeLabel: "Go-live epic", type: "go-live epic", isEpic: true,
-          resolved: W, due: W, estSec: 3600, spentSec: 1800,
-          region: "AMER", team: "Atlas", assignee: "Maria Alvarez" }),
-    // Resolved Go-live epic missing due date + estimate.
-    it_({ key: "A-2", typeLabel: "Go-live epic", type: "go-live epic", isEpic: true,
-          resolved: W, assignee: "Maria Alvarez" }),
-    // Resolved plain Epic, assignee present but NOT on the roster.
-    it_({ key: "A-3", typeLabel: "Epic", type: "epic", isEpic: true,
-          resolved: W, due: W, assignee: "Random Dev" }),
-    // OPEN epic with no estimate — the record the whole feature exists to expose.
-    it_({ key: "A-4", typeLabel: "Go-live epic", type: "go-live epic", isEpic: true,
-          status: "In Progress", assignee: "Maria Alvarez" }),
-    // Open Story.
-    it_({ key: "A-5", status: "To Do", assignee: "Maria Alvarez", due: W }),
-    // Closed-ish status but NO resolution date — belongs to NEITHER population.
-    it_({ key: "A-6", status: "Done" }),
-    // Blank type.
-    it_({ key: "A-7", typeLabel: "(blank)", type: "", status: "To Do" }),
-  ] };
-
-  var t = typeHygieneBuckets_(jira, resolve, "dictionary");
-  function find_(rows, type) {
-    return rows.filter(function (r) { return r.type === type; })[0];
-  }
-
-  // ── Populations ──
-  var openTypes = t.open.map(function (r) { return r.type; }).sort();
-  assert_(openTypes.join("|") === "(blank)|Go-live epic|Story",
-          "open population = unresolved and not closed-ish, got " + openTypes.join("|"));
-  assert_(!t.open.some(function (r) { return r.keys && (r.keys.due || []).indexOf("A-6") !== -1; }),
-          "a closed status with no resolution date is in NEITHER population");
-  assert_(t.resolved.reduce(function (s, r) { return s + r.n; }, 0) === 3, "3 resolved records");
-  assert_(t.open.reduce(function (s, r) { return s + r.n; }, 0) === 3, "3 open records");
-
-  // ── The divergence from openIssues that makes this feature work ──
-  var openEpic = find_(t.open, "Go-live epic");
-  assert_(openEpic && openEpic.n === 1,
-          "OPEN EPICS ARE INCLUDED — openIssues excludes them, this must not");
-  assert_(openEpic.est === 0 && openEpic.keys.est.join() === "A-4",
-          "the open epic's missing estimate is captured as a key");
-
-  // ── Resolved rows carry their week; open rows must not invent one ──
-  assert_(t.resolved.every(function (r) { return r.iso === "2026.W31"; }),
-          "resolved rows bucket by resolution week");
-  assert_(t.open.every(function (r) { return r.iso === ""; }),
-          "open rows carry NO iso — a backlog is a snapshot, not a time series");
-
-  // ── Types stay separate, and the epic rule is visible ──
-  var rGolive = find_(t.resolved, "Go-live epic"), rEpic = find_(t.resolved, "Epic");
-  assert_(rGolive.n === 2 && rEpic.n === 1, "Go-live epic and Epic are SEPARATE rows");
-  assert_(rGolive.isEpic === true && rEpic.isEpic === true,
-          "both count as epics — the substring rule pools them for the metrics");
-  assert_(rGolive.gatesOnTime === true && rGolive.gatesForecast === true,
-          "an epic-family type gates both epic-grain metrics");
-  var oStory = find_(t.open, "Story");
-  assert_(oStory.gatesOnTime === false,
-          "a Story gates NO published On-Time rate under dictionary scope — must be marked, " +
-          "or the matrix drives a campaign that moves no number");
-  assert_(oStory.gatesForecast === false, "…and no Forecast either (epic grain only)");
-  // The scope predicate is SHARED, not copied: flip the scope, flip the flag.
-  assert_(find_(typeHygieneBuckets_(jira, resolve, "all").open, "Story").gatesOnTime === true,
-          "gatesOnTime follows onTimeInScope_, it is not a second copy of the rule");
-  assert_(find_(typeHygieneBuckets_(jira, resolve, "delivery").resolved, "Epic").gatesOnTime === false,
-          "…and under 'delivery' scope an Epic gates nothing");
-
-  // ── Fill counts + the KEY lists hold what is MISSING ──
-  assert_(rGolive.due === 1 && rGolive.keys.due.join() === "A-2",
-          "the failing key list holds the record MISSING the field, not the healthy one");
-  assert_(rGolive.est === 1 && rGolive.time === 1, "estimate/logged-time counted independently");
-  assert_(rEpic.assigned === 1 && rEpic.attr === 0,
-          "'has an assignee' and 'that assignee joins the roster' are SEPARATE gaps");
-  assert_(rEpic.keys.attr.join() === "A-3", "the roster-join failure names its issue");
-  assert_(rGolive.region === 1 && rGolive.team === 1, "region/team fill counted");
-  assert_(find_(t.open, "(blank)").n === 1, "a blank type gets its own row, never dropped");
-
-  // The "⚠️ UNASSIGNED" sentinel must not read as a filled assignee.
-  var sent = typeHygieneBuckets_({ issues: [
-    it_({ key: "S-1", status: "To Do", assignee: "⚠️ UNASSIGNED" }) ] }, resolve, "dictionary");
-  assert_(find_(sent.open, "Story").assigned === 0,
-          "the exporter's UNASSIGNED sentinel is a GAP, not a name");
-
-  // ── LOGGED TIME IS EXPECTED ONLY ON STARTED WORK (user report 2026-08-06) ──
-  // The regression this pins: `time` divided by n, so 782 of 1,116 flagged rows
-  // on the live backlog were tickets nobody had started. Every assertion here is
-  // about the DENOMINATOR — a numerator-only fix would have looked identical on
-  // a healthy fixture and still shipped the unworkable queue.
-  assert_(openEpic.timeN === 1 && openEpic.time === 0 && openEpic.keys.time.join() === "A-4",
-          "an OPEN, STARTED ticket with no worklog IS a logging gap — counted and queued");
-  assert_(oStory.timeN === 0 && oStory.time === 0,
-          "an OPEN, NOT-STARTED ticket is in NEITHER half of the logged ratio");
-  assert_(!oStory.keys.time,
-          "…and never enters the work queue — a To Do ticket has nothing to log against yet");
-  assert_(rGolive.timeN === rGolive.n && rEpic.timeN === rEpic.n,
-          "RESOLVED work is always expected to carry its cost — timeN === n, unchanged by this rule");
-  // ── THE THREE RULES ON THE DUE-DATE DENOMINATOR (managers' 2026-08-10) ──────
-  // Rule 2 drops unstarted UNDATED work. Rule 3 keeps anything dated, whatever
-  // its status — so the excluded set is the intersection, and A-5 (a To Do Story
-  // WITH a date) is a HIT rather than a dropped row. Pinned on the denominator,
-  // because a numerator-only reading of either rule looks identical on a healthy
-  // fixture and ships the wrong queue.
-  assert_(oStory.n === 1 && oStory.dueN === 1 && oStory.due === 1,
-          "rule 3: a To Do ticket that CARRIES a date is tracked and counts as a hit");
-  assert_(!oStory.keys.due, "…and contributes nothing to the missing-date queue");
-  assert_(!find_(t.open, "(blank)").keys.due,
-          "rule 2: an undated To Do ticket is not a due-date gap (this key WAS 'A-7' before v32)");
-  assert_(find_(t.open, "(blank)").dueN === 0,
-          "…and is out of the denominator entirely, not scored as a miss");
-  assert_(openEpic.dueN === 1 && openEpic.due === 0 && openEpic.keys.due.join() === "A-4",
-          "an OPEN, STARTED ticket with no due date IS a gap — counted and queued");
-  assert_(rGolive.dueN === rGolive.n && rEpic.dueN === rEpic.n,
-          "RESOLVED work is always expected to carry a due date — dueN === n, unchanged by this rule");
-  // The ratio can never exceed 100%, which is what rule 3 buys: every hit is also
-  // in the denominator. The v32 form (hits excluded, misses counted) could not
-  // break this either, but the opposite slip — counting the hit and not the row —
-  // is the classic one, so pin it on a fixture designed to trip it.
-  var dated = typeHygieneBuckets_({ issues: [
-    it_({ key: "T-1", status: "To Do", due: W, assignee: "Maria Alvarez" }),
-    it_({ key: "T-2", status: "To Do", due: W, assignee: "Maria Alvarez" }) ] },
-    resolve, "dictionary").open[0];
-  assert_(dated.due === 2 && dated.dueN === 2 && dated.due <= dated.dueN,
-          "a fully-dated To Do backlog reads 100%, never above it");
-  // The carve is DUE-and-TIME-specific. Estimate and assignee still divide by n:
-  // an unestimated To Do ticket is the matrix's biggest lever, and unstarted work
-  // is exactly when an estimate is worth having.
-  assert_(oStory.est === 0 && oStory.keys.est.join() === "A-5",
-          "estimate/assignee still measure the WHOLE open population, started or not");
-
-  // A To Do ticket that DOES carry a worklog scores in neither half. It is a
-  // status-hygiene gap (work started, board never moved) with a different owner;
-  // counting it as credit would let a drifted board read as good tracking.
-  var drift = find_(typeHygieneBuckets_({ issues: [
-    it_({ key: "D-1", status: "To Do", spentSec: 3600, assignee: "Maria Alvarez" }) ] },
-    resolve, "dictionary").open, "Story");
-  assert_(drift.timeN === 0 && drift.time === 0,
-          "logged time on an unstarted ticket is neither credit nor gap");
-
-  // Status CATEGORY is authoritative — the live In Progress category holds
-  // Blocked/Review/Ready too, and all of them are work somebody has picked up.
-  var blocked = find_(typeHygieneBuckets_({ issues: [
-    it_({ key: "B-1", status: "Blocked", statusCategory: "In Progress" }) ] },
-    resolve, "dictionary").open, "Story");
-  assert_(blocked.timeN === 1 && blocked.keys.time.join() === "B-1",
-          "Blocked/Review/Ready sit in the In Progress CATEGORY — started work, time expected");
-  var groomed = find_(typeHygieneBuckets_({ issues: [
-    it_({ key: "G-1", status: "Ready for Dev", statusCategory: "To Do" }) ] },
-    resolve, "dictionary").open, "Story");
-  assert_(groomed.timeN === 0,
-          "an unrecognised status name in the To Do CATEGORY is still unstarted");
-
-  // ── Key cap is enforced AND reported ──
-  var many = [];
-  // STARTED (the it_ default), because since v32 an unstarted ticket contributes
-  // no due-date key at all — a To Do fixture here would test the cap against an
-  // empty list and pass for the wrong reason.
-  for (var i = 0; i < TYPE_HYG_MAX_KEYS_ + 25; i++) many.push(it_({ key: "M-" + i }));
-  var capped = find_(typeHygieneBuckets_({ issues: many }, resolve, "dictionary").open, "Story");
-  assert_(capped.n === TYPE_HYG_MAX_KEYS_ + 25, "the COUNT covers every record");
-  assert_(capped.keys.due.length === TYPE_HYG_MAX_KEYS_, "the key LIST is capped");
-  assert_(capped.keysCapped.due === true,
-          "…and the cap is flagged — a clipped list read as complete is how 'all fixed' goes wrong");
-
-  assert_(typeHygieneBuckets_({ issues: [] }, resolve, "dictionary").open.length === 0,
-          "empty feed → no rows");
-  Logger.log("✅ _test_typeHygieneBuckets_ passed");
 }
 
 /**
@@ -9011,10 +8815,12 @@ function _test_pmAttribution_() {
   }
   var pmIdx = { GTT: "Dana Reyes", ACME: "Sam Ortiz" };
   var work = pmOwnedWork_({ issues: [
-    // Dana's epics: 2 dated, 1 undated → bar 1 = 2/3
+    // Dana's epics under the 2026-08-17 rule: GTT-1 and GTT-2 are GRADED (both
+    // dated) → bar 1 = 2/2; GTT-3 is undated AND unstarted, so it is backlog,
+    // not a commitment, and leaves the bar into epicBacklogN.
     iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 7, 20) }),  // AUG — in window
     iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 9, 15),     // OCT — out of window
-          status: "To Do", cat: "To Do" }),                           //   …and not started
+          status: "To Do", cat: "To Do" }),                           //   …unstarted but DATED
     iss({ key: "GTT-3", isEpic: true, due: null,                      // undated AND unstarted
           status: "To Do", cat: "To Do" }),
     // Children of GTT-1 (epic due 2026.W34)
@@ -9036,15 +8842,30 @@ function _test_pmAttribution_() {
 
   var dana = byPm["Dana Reyes"];
   assert_(dana, "Dana has a row");
-  assert_(dana.epicN === 3 && dana.epicDated === 2,
-          "bar 1 counts ALL open epics Dana owns — 2 of 3 dated");
-  assert_(dana.epicMissingKeys.indexOf("GTT-3") !== -1, "the undated epic is named");
+  // ── BAR 1 UNDER THE 2026-08-17 RULE ──────────────────────────────────────
+  // "Project managers cannot be punished for Epics available with no due date
+  // if they have the status TO DO, since it is part of the assigned backlog."
+  // An epic becomes the PM's commitment when somebody STARTS it or DATES it.
+  assert_(dana.epicN === 2 && dana.epicDated === 2,
+          "bar 1 grades only COMMITTED epics — started or dated — and both of Dana's are dated");
+  assert_(dana.epicMissingKeys.length === 0,
+          "…so an undated backlog epic is not named as a missing due date");
 
-  // THE TRAP (spec §5.2). GTT-2 is out of window and GTT-3 is unstarted+undated;
-  // if either carve ever reaches the bar, the denominator shrinks and every PM
-  // drifts toward 100% — a bar that cannot report the gap it exists to report.
-  assert_(dana.epicN === 3,
-          "bar 1 is UNWINDOWED and un-carved — every open epic stays in the denominator");
+  // THE EXCLUSION IS COUNTED, NEVER SILENT. This is what keeps a 100% bar
+  // honest: a PM whose whole portfolio is undated backlog reads 0 committed
+  // epics plus a named backlog count, not a clean 100% with nothing to fix.
+  assert_(dana.epicBacklogN === 1, "the carved epic is COUNTED in epicBacklogN, not dropped");
+  assert_(dana.epicBacklogKeys.indexOf("GTT-3") !== -1, "…and named, so the exclusion is auditable");
+
+  // THE TRAP, restated for the new rule (spec §5.2). The carve is narrow: ONLY
+  // undated-and-unstarted leaves. GTT-2 is out of window and sitting in To Do,
+  // but it is DATED — that is a commitment somebody made, and if the window
+  // carve ever reached this bar the denominator would shrink and every PM would
+  // drift toward 100%.
+  assert_(dana.epicN === 2,
+          "bar 1 is still UNWINDOWED — a dated To Do epic due in October stays in the denominator");
+  assert_(dana.epicBacklogN === 1,
+          "…and only the undated+unstarted one is carved, never the merely out-of-window one");
   assert_(dana.readyDen === 5,
           "bar 2 denominator is all open non-epics, including the ignored ones");
 
@@ -9054,9 +8875,13 @@ function _test_pmAttribution_() {
   assert_(listed.indexOf("GTT-2") === -1,
           "a To Do epic due in OCTOBER is neither started nor in window — not listed");
   assert_(listed.indexOf("GTT-3") === -1,
-          "an unstarted, undated epic is not listed — but IS still in the bar and 🚩 list");
-  assert_(dana.epicMissingKeys.indexOf("GTT-3") !== -1,
-          "…so the fix for it is still one click away, which is what makes hiding it fair");
+          "an unstarted, undated epic is not listed — it is backlog, not a commitment");
+  // It leaves the bar too under the 2026-08-17 rule, so what makes hiding it
+  // fair is no longer epicMissingKeys — it is being counted and NAMED as
+  // carried backlog, plus the ORG-scope 🚩 audit on Actions, which takes no
+  // carve at all and still names the ticket.
+  assert_(dana.epicBacklogKeys.indexOf("GTT-3") !== -1,
+          "…so it is still named, as carried backlog rather than as a missed due date");
 
   // ── Children graded against the EPIC's deadline ──────────────────────────
   var e1 = dana.epics.filter(function (e) { return e.key === "GTT-1"; })[0];
@@ -9338,21 +9163,30 @@ function _test_personHygieneBuckets_() {
   assert_(mRes[0].n === 2 && mRes[0].due === 1 && mRes[0].est === 1 && mRes[0].logged === 1,
           "resolved counts: 2 issues, one filled");
 
-  // PREDICATE PARITY with the matrix: the same fixture through
-  // typeHygieneBuckets_ must count the same fills — the roster and the matrix
-  // must never disagree about the same record. The matrix counts EVERY row
-  // (attributed or not): its open population is the roster's 2 PLUS the
-  // unattributed one and the ⚠️ UNASSIGNED sentinel = 4.
-  var th = typeHygieneBuckets_(jira, resolve, "all");
+  // PREDICATE PARITY. Until 2026-08-17 this compared the roster against
+  // typeHygieneBuckets_, a second implementation of the same rules. That
+  // implementation was deleted with the 🧬 matrix, so the parity is now against
+  // the SHARED PREDICATES themselves — which is what it was always really for:
+  // typeHygOpen_ / dhHasDue_ / dueExpected_ / timeExpected_ are read by the
+  // roster, backlog health, the 🚩 epic audit and the PM tab, so a drift here
+  // is four surfaces disagreeing about one ticket.
   function sum_(rows, k) { return rows.reduce(function (s, r) { return s + (r[k] || 0); }, 0); }
-  assert_(sum_(th.open, "n") === 4, "matrix open population = 4 (incl. unattributed + sentinel)");
+  var openAttributed = jira.issues.filter(function (it) {
+    return typeHygOpen_(it) && !!resolve(it.assignee);
+  });
+  function pred_(fn) {
+    return openAttributed.filter(function (it) { return fn(it, true); }).length;
+  }
+  // The roster is the attributed subset: 2 of the 4 open records, with the
+  // unattributed one and the ⚠️ UNASSIGNED sentinel correctly absent.
   assert_(sum_(ph.open, "n") === 2, "roster open population = 2 (attributed only)");
+  assert_(openAttributed.length === 2, "…and the shared open predicate selects the same 2");
   // Only Maria's open Task carries estSec>0; nothing open carries spentSec>0; the
-  // one open due date belongs to Ken's UNSTARTED epic, which rule 3 keeps — so
-  // both passes must count it, and must agree.
-  assert_(sum_(th.open, "est") === 1 && sum_(ph.open, "est") === 1, "est predicate parity");
-  assert_(sum_(th.open, "time") === 0 && sum_(ph.open, "logged") === 0, "logged predicate parity");
-  assert_(sum_(th.open, "due") === 1 && sum_(ph.open, "due") === 1, "due predicate parity");
+  // one open due date belongs to Ken's UNSTARTED epic, which rule 3 keeps.
+  assert_(sum_(ph.open, "est") === 1, "est predicate parity");
+  assert_(sum_(ph.open, "logged") === 0, "logged predicate parity");
+  assert_(sum_(ph.open, "due") === openAttributed.filter(function (it) { return dhHasDue_(it); }).length,
+          "due parity: the roster counts exactly the open records dhHasDue_ accepts");
 
   // ── LOGGED DENOMINATOR = STARTED WORK ONLY (user report 2026-08-06) ────────
   // Maria's open Task is In Progress → in the ratio. Ken's open Epic is To Do →
@@ -9363,10 +9197,11 @@ function _test_personHygieneBuckets_() {
           "Ken's unstarted open epic is NOT — an unbegun ticket cannot be a logging failure");
   assert_(mRes[0].loggedN === mRes[0].n,
           "resolved: every record is expected to carry its cost — loggedN === n");
-  // DENOMINATOR PARITY with the matrix, tested like the numerators above: the
-  // two surfaces must agree on the population as well as on each record.
-  assert_(sum_(th.open, "timeN") === 1 && sum_(ph.open, "loggedN") === 1,
-          "matrix and roster measure the logged ratio over the SAME started population");
+  // DENOMINATOR PARITY, tested like the numerators above: the roster must
+  // measure over exactly the population the shared predicate defines, not over
+  // a count that happens to match today.
+  assert_(sum_(ph.open, "loggedN") === pred_(timeExpected_) && pred_(timeExpected_) === 1,
+          "the roster measures the logged ratio over exactly timeExpected_'s population");
 
   // ── DUE DENOMINATOR = STARTED WORK ONLY (managers' feedback 2026-08-10) ──────
   // Same three checks as the logged rule above, because this is the same mistake
@@ -9378,8 +9213,8 @@ function _test_personHygieneBuckets_() {
           "rule 3: Ken's unstarted epic CARRIES a date, so it is tracked and it is a hit");
   assert_(mRes[0].dueN === mRes[0].n,
           "resolved: On-Time is exactly the date question — dueN === n");
-  assert_(sum_(th.open, "dueN") === 2 && sum_(ph.open, "dueN") === 2,
-          "matrix and roster measure the due-date ratio over the SAME 'started or dated' population");
+  assert_(sum_(ph.open, "dueN") === pred_(dueExpected_) && pred_(dueExpected_) === 2,
+          "the roster measures the due-date ratio over exactly dueExpected_'s 'started or dated' population");
   // THE TWO RULES ARE DIFFERENT SHAPES, and this is the assertion that says so.
   // Logged excludes every unstarted ticket; Due keeps the dated ones. Ken's epic
   // is the record that separates them, so a refactor that "unifies" the two
@@ -9732,7 +9567,6 @@ function _test_hygieneBuckets_() {
   var h = rows[0];
   assert_(h.res === 4, "4 resolved delivery issues in scope (epics and unresolved excluded)");
   assert_(h.resDue === 3, "3 carry a due date");
-  assert_(h.resAttr === 3, "3 join the roster");
   assert_(h.resRegion === 3, "3 carry a mapped region");
   assert_(h.resTeam === 1, "1 carries a team");
   assert_(h.resFull === 1, "fully attributed = due AND roster assignee AND region");
@@ -9744,7 +9578,10 @@ function _test_hygieneBuckets_() {
   // This is why hygiene reads the raw feed instead of the metric buckets: the
   // non-roster issue is invisible to onTimeBuckets_, so coverage measured there
   // would flatter itself by dropping the very records that are the problem.
-  assert_(h.res > h.resAttr, "unattributed issues stay in the hygiene denominator");
+  // Asserted through resReady since the published roster-join count (resAttr)
+  // was removed 2026-08-17 — the DENOMINATOR behaviour it guarded is the part
+  // that mattered, and it still holds.
+  assert_(h.res > h.resReady, "unattributed issues stay in the hygiene denominator");
   assert_(h.epics === 3, "epics counted separately, whatever the on-time scope");
   assert_(h.epicsEst === 2 && h.epicsTime === 1, "estimate fill vs measurable epics");
   // Scope switch moves the delivery counts but never the epic ones.
@@ -9949,7 +9786,7 @@ function _test_modelAssembly_() {
           m.forecastBuckets[0].person === "Maria Alvarez", "forecast buckets person-attributed");
   // Hygiene reads the RAW feed, so it sees the non-roster issue the tiles drop.
   var hyg = m.hygieneBuckets.filter(function (h) { return h.iso === "2026.W31"; })[0];
-  assert_(hyg && hyg.res === 2 && hyg.resDue === 2 && hyg.resAttr === 1,
+  assert_(hyg && hyg.res === 2 && hyg.resDue === 2 && hyg.resReady === 1,
           "hygiene counts both resolved issues, only one of them attributed");
   assert_(hyg.resRegion === 0 && hyg.resFull === 0,
           "no issue-level region in the fixture → nothing fully attributed");
@@ -10020,7 +9857,9 @@ function _test_modelAssembly_() {
   assert_(m6.meta.jiraUnattributed.onTime === 1,
           "Random Dev is still the only unattributed issue");
   var hyg6 = m6.hygieneBuckets.filter(function (h) { return h.iso === "2026.W31"; })[0];
-  assert_(hyg6.res === 3 && hyg6.resAttr === 2, "hygiene resAttr counts the contractor join");
+  // The contractor join itself is proven by the onTimeBuckets_ assertion above;
+  // this one only pins that hygiene still reads the whole raw feed.
+  assert_(hyg6.res === 3, "hygiene counts all three resolved issues from the raw feed");
   assert_(m6.people.length === 4 && m6.people[3].name === "Carlos Crew",
           "stubs appended after the alphabetical population");
   assert_(m6.meta.families.join("|") === "Service Delivery|Uncatalogued",
@@ -10193,9 +10032,18 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 41,
-          "payload schema is v41 (child verdicts split at-risk/breached; epics carry owners) — " +
+  assert_(m.schemaVer === 43,
+          "payload schema is v43 (PM Owns bar excludes undated To Do epics) — " +
           "literal check, independent of DH_SCHEMA_VER_");
+  // The REMOVAL is asserted, not just the version. A deletion that silently
+  // half-happened — the builder gone but the key still written, or the reverse —
+  // is exactly what a version number alone cannot catch.
+  assert_(m.typeHygiene === undefined,
+          "typeHygiene left the payload with the 🧬 matrix (user decision 2026-08-17)");
+  assert_(m.hygieneBuckets.every(function (h) { return h.resAttr === undefined; }),
+          "…and resAttr left the hygiene buckets with the Roster join metric");
+  assert_(m.personHygiene && Array.isArray(m.personHygiene.open),
+          "…while the PER-PERSON read that replaces both is still shipped");
   // The workforce block must be PRESENT and SHAPED, not merely truthy: a cached
   // v29 model read as v30 would give every person pool `undefined`, collapse the
   // population into one cell, and reproduce the exact blended figure this
@@ -10211,9 +10059,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 41,
-          "schema is 41 — a v40 entry has no atRisk/breached and no epic owners, so the " +
-          "verdict cell renders blank and the filters cannot reach the tab");
+  assert_(m.schemaVer === 43,
+          "schema is 43 — a v42 entry carries the OLD, wider epicN, so every PM's Owns bar " +
+          "would read lower than the To Do carve says it should");
   assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppEpicsAtRisk === "number",
           "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");

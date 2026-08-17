@@ -108,6 +108,15 @@ h1,h2,h3,.title,.tile .big{font-family:'Roboto Condensed','Franklin Gothic Mediu
      position:sticky;top:0;z-index:100;background:var(--bg);
      padding:calc(8px*var(--scale)) 0;border-bottom:1px solid var(--border)}
 .hrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* The advanced-filter drawer. `display:flex` on .hrow beats the UA's
+   [hidden]{display:none}, so the collapsed state has to be declared here or the
+   drawer never actually closes. Indented and rule-led so an open drawer reads
+   as a continuation of the bar above rather than a second, competing bar. */
+.hrow.fadv[hidden]{display:none}
+.hrow.fadv{padding-left:10px;border-left:2px solid var(--border)}
+/* The count of active hidden filters, worn by the toggle. Coloured, because it
+   is the one thing on the bar that says "a scope you cannot see is applied". */
+#btnAdvFilters .advN{color:var(--amber);font-weight:800}
 /* Labeled segmented control per filter group — a group reads as ONE control:
    tiny uppercase name + joined pills sharing a border. */
 .fgroup{display:flex;align-items:center;gap:7px}
@@ -189,6 +198,12 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .legSwatch{flex:0 0 12px;width:12px;height:12px;border-radius:3px;margin-top:2px;
   border:1px solid var(--border)}
 .legItem b{color:var(--text);font-size:calc(11.5px*var(--scale))}
+/* Drill-through row — the chart's exit. Set apart with a top rule and a tinted
+   ground so it reads as "do something" rather than as one more caption under a
+   chart already carrying three of them. */
+.drillRow{margin-top:12px;padding:12px;border-top:1px solid var(--border);
+  border-radius:0 0 10px 10px;background:var(--surface-2)}
+.drillRow .btn{font-weight:600}
 .loading{padding:60px;text-align:center;color:var(--muted)}
 /* Cold-start progress. The wait is real and can run into minutes, so the panel
    has to hold attention honestly rather than repeat one static sentence: a
@@ -234,6 +249,49 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .tile .big{font-size:calc(26px*var(--scale));font-weight:800;margin:2px 0}
 .tile .big.g{color:var(--pos)} .tile .big.a{color:var(--amber)} .tile .big.r{color:var(--warn)}
 .tile .cmp{font-size:calc(11px*var(--scale));color:var(--muted)}
+/* VARIANCE ACCENT (review item #2, 2026-08-17). A card missing its target wears
+   a coloured left edge plus a barely-there wash, so a row of cards can be
+   scanned for trouble before any number is read.
+
+   An EDGE, not a filled background: a tinted card competes with its own hero
+   number for contrast, and the hero is already coloured against the same
+   target. The wash is deliberately at the threshold of visible — enough to
+   group the card as "this one", not enough to restate the verdict a third time.
+
+   Two levels, not one. Amber (.vNear) is half the weight of red (.vMiss)
+   because "approaching the bar" and "through the bar" are different
+   conversations; one shared alarm colour for both is what the per-metric RAG
+   was introduced to fix. Never colour alone — the hero glyph and the delta
+   sentence carry the same verdict in text, so this survives a photocopy and a
+   colour-vision difference by not being the only signal.
+
+   Mixed into var(--surface), never into `transparent`: the base .tile rule
+   paints the card surface, and a translucent wash would replace it rather than
+   sit on it — the card would lose its own ground and pick up whatever the tier
+   behind it happens to be, which differs between light and dark.
+
+   The edge is a ::before BAR, not an inset box-shadow. The first attempt used
+   `box-shadow:inset 3px 0 0` and rendered on nothing in Tier 1, because
+   `.tiles.tier1>.tile` (specificity 0,3,1) sets the card's elevation shadow and
+   outranks `.tile.vMiss` (0,2,0) — the property was simply replaced. A
+   pseudo-element does not compete with the shadow at all, so the accent and the
+   elevation can both be true. Caught by screenshot; a markup assertion cannot
+   see a property it lost a cascade fight over.
+
+   Inset 8px top and bottom rather than running the full height: at the card's
+   12–14px corner radius a full-height 3px bar pokes out past the rounded
+   corner, and rounding the bar to match would need it to know which radius its
+   tier uses. A floating marker sidesteps that and reads as deliberate. */
+.tile.vMiss,.tile.vNear{position:relative}
+.tile.vMiss::before,.tile.vNear::before{content:"";position:absolute;left:0;top:8px;bottom:8px;
+  width:3px;border-radius:0 3px 3px 0}
+.tile.vMiss::before{background:var(--warn)}
+.tile.vNear::before{background:var(--amber)}
+.tile.vMiss{background:color-mix(in srgb,var(--warn) 4%,var(--surface))}
+.tile.vNear{background:color-mix(in srgb,var(--amber) 3%,var(--surface))}
+/* The target rule's own label. Quieter than the axis dates it shares a class
+   with: it names a reference, and a reference that shouts is a second series. */
+.chart .tgtlabel{opacity:.75;font-weight:600}
 /* Hero row = the number and the bar it is graded against, side by side.
    The target used to be restated inside the delta sentence on every card
    ("▼ 44 pts vs target ≥85%") — redundant beside a number already coloured
@@ -314,12 +372,18 @@ table.hyg td{padding:8px;border-bottom:1px solid var(--border);vertical-align:to
 table.hyg td.hnum{white-space:nowrap;font-weight:700;min-width:150px}
 table.hyg td.hnum.g{color:var(--pos)} table.hyg td.hnum.a{color:var(--amber)}
 table.hyg td.hnum.r{color:var(--warn)}
-/* ── 🧬 by-type matrix ──
-   Nine columns of numbers, so the layout rules are stricter than the gaps table:
-   EVERY column right of the type name is right-aligned, header included. The
-   first cut left the headers default-left over right-aligned values, which put
-   each label over the gap between two columns instead of over its own data —
-   the table looked misaligned because it was. */
+/* ── .tmx — the DENSE NUMERIC TABLE layout ──
+   Written for the 🧬 by-type matrix (removed 2026-08-17) and INHERITED by the
+   surfaces that outlived it: the 👥 signals roster (.rosterTbl below), the
+   comparison grid and the workforce pool grid. Kept under the same class name
+   deliberately — three tables share one layout contract, and forking it per
+   table is how two of them quietly stop matching.
+   The rule that matters: EVERY column right of the name column is right-aligned,
+   header included. The first cut left headers default-left over right-aligned
+   values, which put each label over the gap between two columns instead of over
+   its own data — the table looked misaligned because it was.
+   The matrix's own cell decoration (.tcell / .tbar / .tmiss / .tepic) went with
+   it; nothing emits those classes any more. */
 table.hyg.tmx{table-layout:fixed}
 table.hyg.tmx td,table.hyg.tmx th{padding:7px 10px;white-space:nowrap;
                                   border-bottom:1px solid var(--border)}
@@ -337,41 +401,11 @@ table.hyg.tmx tr:nth-child(even) td.tname{background:var(--surface-2)}
 /* Theme-neutral hover: a translucent grey reads on both the cream and the navy
    surface, so no second token is needed and neither theme can be forgotten. */
 table.hyg.tmx tr:hover td{background:rgba(127,127,127,.12)}
-table.hyg.tmx td.tcell .tval{font-weight:700;font-variant-numeric:tabular-nums}
-/* .n = "gates nothing published for this type" — muted, never a RAG colour. A
-   grey em-dash must not compete with a real verdict for attention. */
-table.hyg.tmx td.tcell.n .tval{color:var(--muted);font-weight:400}
-table.hyg.tmx td.tcell.g .tval{color:var(--pos)}
-table.hyg.tmx td.tcell.a .tval{color:var(--amber)}
-table.hyg.tmx td.tcell.r .tval{color:var(--warn)}
-/* Fill bar per cell. Nine columns of bare percentages have to be read digit by
-   digit; the bars give the row a shape you can take in at a glance. Same idiom
-   as the gaps table and the funnels — this view is built on labelled bars. */
-/* Bars use the CHART tokens, not the text ones. In dark mode --warn and --amber
-   are literally the same hex, which is survivable for words (the ✔ ▲ ✖ marks
-   still separate them) but fatal for a bar, where colour is the only channel
-   there is. --c-good/--c-warn/--c-bad are the palette-validated set that stays
-   distinguishable in both themes — the same reason the charts use them. */
-.tbar{height:3px;border-radius:2px;background:var(--border);margin-top:4px;overflow:hidden}
-.tbar i{display:block;height:100%;border-radius:2px;background:var(--muted)}
-.tbar i.g{background:var(--c-good)} .tbar i.a{background:var(--c-warn)}
-.tbar i.r{background:var(--c-bad)}
-.tbar i.n{background:var(--muted);opacity:.4}
-/* The miss count rides inside the cell but must read as secondary to the % —
-   it is the size of the job, not the verdict on it. */
-.tmiss{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
-       background:var(--surface);border:1px solid var(--border);
-       color:var(--muted);font-weight:700;font-size:calc(9.5px*var(--scale));
-       font-variant-numeric:tabular-nums}
-table.hyg.tmx tr:nth-child(even) .tmiss{background:var(--surface-2)}
-/* "epic" tag on the type name — states that this row is pooled into the
-   epic-grain metrics, which is the finding the whole table exists to expose. */
-.tepic{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
-       background:var(--royal);color:#fff;font-size:calc(8.5px*var(--scale));
-       font-weight:700;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}
-/* 👥 Signals roster (spec §5.2) — same RAG dot idiom as the fill bars above,
-   but per-cell rather than per-column: a dot alone is never the whole story,
-   so sigCellHtml_ always prints the % text right beside it (FR-4.4). */
+/* 👥 Signals roster (spec §5.2) — RAG per CELL rather than per column, and a
+   dot alone is never the whole story: sigCellHtml_ always prints the % text
+   right beside it (FR-4.4). Uses the CHART tokens, not the text ones — in dark
+   mode --warn and --amber are literally the same hex, survivable for words the
+   ✔ ▲ ✖ marks already separate, fatal where colour is the only channel. */
 .sigDot{font-size:12px}
 .sigGood{color:var(--c-good)} .sigWarn{color:var(--c-warn)} .sigBad{color:var(--c-bad)}
 .sigSmall{color:var(--muted)}
@@ -781,27 +815,52 @@ select option:disabled{color:var(--muted);font-style:italic}
     <button class="btn" id="btnRefresh" title="Bypass the cache and reload live data">Refresh</button>
     <button class="btn" id="btnTheme" title="Switch between light and dark theme">Dark</button>
   </div>
+  <!-- ══ FILTER BAR · PROGRESSIVE DISCLOSURE (review item #1, 2026-08-17) ═════
+       Nine controls in one row read as a cockpit: every one of them is a
+       decision, presented at equal weight, before the reader has seen a single
+       number. The row now carries only the three dimensions an executive
+       actually re-cuts by — WHEN, WHERE, WHO (period, region, team) — plus the
+       person search. Population, Role, PM and Job family move into the
+       drawer below.
+
+       The rule that makes this safe: a hidden filter is never a silent one.
+       The toggle counts how many drawer filters are off their default, and
+       renderAdvToggle_ FORCES the drawer open whenever that count is non-zero.
+       A number scoped by a control the reader cannot see is the one outcome
+       worse than a crowded filter bar. -->
   <div class="hrow">
     <div class="fgroup" id="periodGroup" title="Aggregation period — months are calendar, quarters are fiscal (FY starts Jul 1, named for its end year)">
       <span class="flbl">Period</span><div class="chips seg" id="periodChips"></div>
     </div>
+    <div class="fgroup" title="Region — universal: scopes the KPI tiles and the grid.">
+      <span class="flbl">Region</span><div class="chips seg" id="regionChips"></div>
+    </div>
+    <select id="teamSel" title="Team filter — universal: scopes the KPI tiles and the grid."><option value="">All teams</option></select>
+    <input type="search" id="personSearch" placeholder="Find person…">
+    <button class="btn" id="btnAdvFilters" aria-expanded="false" aria-controls="advFilters"
+            title="Population, Role, PM and Job family. Kept out of the default view to leave three dimensions in the bar; opens automatically whenever any of them is set, so a filter can never be applied out of sight.">More filters</button>
+    <span id="filterWarn" class="cellSub" style="color:var(--amber)"></span>
+  </div>
+  <div class="hrow fadv" id="advFilters" hidden>
     <div class="fgroup" title="Population — FTEs are the primary focus (default); Crew shows contractors only; All combines them. Universal: scopes the KPI tiles and the grid.">
       <span class="flbl">People</span><div class="chips seg" id="popChips"></div>
     </div>
     <div class="fgroup" title="Role — split managers (M-level job codes) from individual contributors. Managers often plan without tracking much, which drags delivery rates; the IC view removes that effect. Universal: scopes the KPI tiles and the grid.">
       <span class="flbl">Role</span><div class="chips seg" id="roleChips"></div>
     </div>
-    <div class="fgroup" title="Value focus — what the grid cells show and how people are ranked. Plan = planned hours, alphabetical. Billable = tracked hours falling on the billable side of the NetSuite split, most first. Non-bill = the non-billable side — real project work plus any time off tracked in Tempo (time off cannot be charged to a customer project, so it is non-billable by rule). Both are Tempo tracked hours apportioned by the NetSuite billable mix, so they always sum to tracked.">
-      <span class="flbl">Focus</span><div class="chips seg" id="focusChips"></div>
-    </div>
-    <div class="fgroup" title="Region — universal: scopes the KPI tiles and the grid.">
-      <span class="flbl">Region</span><div class="chips seg" id="regionChips"></div>
-    </div>
-    <select id="teamSel" title="Team filter — universal: scopes the KPI tiles and the grid."><option value="">All teams</option></select>
-    <select id="pmSel" title="Worked with PM — universal: scopes the KPI tiles and the grid. Selects PEOPLE with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams. NOT the same as the 🗓 PM tab, which reports the TICKETS a PM owns — this control sits above the tabs and stays visible there, so the two are deliberately named apart."><option value="">Worked with PM: all</option></select>
+    <!-- The "Focus" group (Plan / Billable / Non-bill) was DELETED 2026-08-17.
+         It was a control that moved nothing: the People grid it used to drive was
+         removed on 2026-08-05, and from then on STATE.focus was read by its own
+         chips and by the scope-chip label — and by nothing else. A filter that
+         only changes its own highlight teaches the reader that filters here do
+         not work. Same finding, same fix as the Headroom tab's metric buttons.
+
+         ⚠ Its closing </div> was left behind by that deletion and closed
+         #advFilters six lines early, so PM and Job family sat OUTSIDE the
+         drawer — permanently visible, never hidden by the toggle — and .hdr
+         closed a level early with them. Removed 2026-08-17. -->
+    <select id="pmSel" title="Worked with PM — universal: scopes the KPI tiles and the grid. Selects PEOPLE with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams. NOT the same as the Project Managers tab, which reports the TICKETS a PM owns — this control sits above the tabs and stays visible there, so the two are deliberately named apart."><option value="">Worked with PM: all</option></select>
     <select id="famSel" title="Job-family filter — universal: scopes the KPI tiles and the grid. Options cover the tracking-mandated population (JF007 Managed Services &amp; Support, JF009 Service Delivery, uncatalogued/crew); non-tracking families are not in this dashboard at all."><option value="">All job families</option></select>
-    <input type="search" id="personSearch" placeholder="Find person…">
-    <span id="filterWarn" class="cellSub" style="color:var(--amber)"></span>
   </div>
 </div>
 
@@ -821,22 +880,32 @@ select option:disabled{color:var(--muted);font-style:italic}
        — the narrative, the backlog shape, capacity — sits underneath.
 
        Moved OFF this tab in the same pass: the "Can we publish these numbers?"
-       data-quality strip (now first on Actions, where the queue that fixes each
-       gap already lives) and the Billable-Utilization comparison (hidden behind
-       SHOW_COMPARE_PANEL_, code intact). Deleted: "Not measured this week" and
-       the Workforce-change card. -->
+       data-quality strip, now first on Actions, where the queue that fixes each
+       gap already lives. Deleted: "Not measured this week" and the
+       Workforce-change card.
+
+       The breakdown panel STAYS and ships on. It spent a phase behind a
+       SHOW_COMPARE_PANEL_ flag, which was a mistake worth recording: the panel
+       charts whichever metric is selected and defaults to On-Time Delivery, so
+       switching it off to suppress a financial metric removed the org's only
+       breakdown of on-time performance along with it. The financial lens is
+       withheld at liveMetrics_ (SHOW_UTILIZATION_) instead — the metric goes,
+       the breakdown stays. The flag itself is gone. -->
   <div id="viewExec" class="viewPane">
 
     <!-- ══ TIER 1 · PROTAGONIST KPIs ══════════════════════════════════════════
-         Eight cards, one grid: the delivery-outcome measures (On-Time,
-         Forecast, Quality/Rework, Throughput, Bug Count) followed by the queue
-         reads (Inventory, Net Flow, Weeks to Clear). They are built by two
-         different renderers from two different feeds but they answer ONE
-         question — "are we delivering?" — so they share one container rather
-         than being split across bands the way they used to be. -->
+         The delivery-OUTCOME measures only: On-Time, Forecast, Availability
+         (both margin-gated) and Quality/Rework. They answer ONE question —
+         "are we delivering what we promised?" — and nothing shares the grid
+         with them.
+
+         Demoted out of this tier 2026-08-17 (user instruction): Throughput and
+         Bug Count (volume and defect arrivals) and the three queue reads
+         (Inventory, Net Flow, Weeks to Clear). All five now open #flowSecondary
+         below the backlog band, which is the panel whose prose explains them. -->
     <section class="tier tier1">
       <div class="tierHead">Delivery health
-        <span class="tierNote">the eight numbers this org is run on</span>
+        <span class="tierNote">the outcome numbers this org is run on</span>
         <span style="flex:1"></span>
         <button class="iconbtn" onclick="savePng_('tier1Tiles','kpis')" title="Save the KPI cards as a PNG image">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
@@ -860,32 +929,50 @@ select option:disabled{color:var(--muted);font-style:italic}
       <!-- §2 BACKLOG BAND — the horizontal backlog bar, its smart legend, and
            the filterable assigned sub-row. -->
       <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
-      <!-- SECONDARY FLOW READS — Cleared · Arrived · Lead Time. Real measures,
-           but not ones an executive opens the page for, so they sit here in the
-           compact tier rather than competing with the eight above. -->
+      <!-- SECONDARY VOLUME / QUEUE / FLOW READS — Throughput · Bug Count ·
+           Inventory · Net flow · Weeks to clear, then Cleared · Arrived · Lead
+           Time. Real measures, but not the ones an executive opens the page
+           for, so they sit here in the compact tier rather than competing with
+           the outcome KPIs. Position is deliberate: this panel follows the
+           backlog band, so the three queue cards land under the prose that
+           defines them (user instruction 2026-08-17). -->
       <div class="panel" id="flowSecondary" style="margin-bottom:14px"></div>
-      <!-- CAPACITY BAND — Utilisation/Planned Coverage plus the people-signals
-           pulse; both share the SAME margin gate, so the whole band is omitted
-           from the DOM together for a non-margin role. -->
+      <!-- CAPACITY BAND — Planned Coverage (forward windows) plus the
+           people-signals pulse; both share the SAME margin gate, so the whole
+           band is omitted from the DOM together for a non-margin role. The
+           Utilisation card is switched off — see SHOW_UTILIZATION_. -->
       <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
-      <!-- Billable Utilization by Region — HIDDEN for this phase
-           (SHOW_COMPARE_PANEL_ = false). The element and renderCompare_ stay
-           intact so the section comes back by flipping one flag. -->
-      <div class="panel" id="comparePanel" style="margin-bottom:14px;display:none"></div>
     </section>
 
-    <!-- ══ TIER 3 · BACKGROUND ════════════════════════════════════════════════
-         Super-admin only (canSeeSuper_ / MODEL.viewerSuper). Provenance
-         detail — Little's Law, reconciliation counts, registry deviations —
-         is a build-integrity read, not an executive one. -->
+    <!-- ══ TIER 3 · DRILL-DOWN ════════════════════════════════════════════════
+         Where a reader stops reading and starts acting (user 2026-08-17).
+         Tier 3 is LAST in reading order, not least important — an executive
+         reaches a verdict in Tier 1, understands it in Tier 2, and comes here
+         to find out which slice of the org it belongs to and who can move it.
+
+         The breakdown chart answers "where isn't it working", broken down by
+         Region / Level / Team / PM / Job family, and hands off to the two tabs
+         that can act on the answer: Workforce for who has the hours, Actions
+         for the work itself. Visible to EVERY role — this is the CEO's route
+         into the detail, not a maintenance surface. -->
     <section class="tier tier3">
+      <div class="tierHead">Drill-down
+        <span class="tierNote">where it is working, and who can act</span>
+      </div>
+      <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
+      <!-- DATA TRUST DETAIL — super-admin only (canSeeSuper_ / MODEL.viewerSuper),
+           gated inside this tier rather than gating the tier itself. Provenance
+           detail — Little's Law, reconciliation counts, registry deviations —
+           is a build-integrity read, not an executive one. -->
       <div class="panel" id="trustDetail"></div>
     </section>
   </div>
 
   <!-- ── ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
        Admin + viewer only (inherits the old Headroom gate). Reading order:
-       data-quality gates → people signals roster → by-type matrix → gaps queue.
+       data-quality gates → people signals roster → gaps queue. (The 🧬 by-type
+       matrix sat between the last two until 2026-08-17; per-parameter
+       compliance is read per PERSON on the roster now.)
        The standalone "Where the headroom is" table was retired 2026-08-05: the
        roster covers the same people with the same exclusions, and its
        recoverable-hours figure lives on in the Executive pulse. ── -->
@@ -966,7 +1053,7 @@ var countedUp_ = false;
 // flag:    triage filter driven by clicking the attention legend ("" = off).
 // metric:  which metric the Trends view charts.
 // compare: which dimension the Executive comparison chart breaks down by.
-var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
+var STATE = { period: "month", pop: "fte", role: "all", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
               // wfOpenCell: which 🧭 pool × band cells have their person list open
               // ("who has available hours", Billy 2026-08-10). Keyed by the cell's
               // own `pool|band` id, the same key the payload uses.
@@ -984,6 +1071,9 @@ var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "
               // expect from a drill-down they are working through.
               pmOpen: {}, pmEpicOpen: {},
               view: "exec", flag: "", metric: "onTime", compare: "region", compareAll: false,
+              // level: set only by drilling the Tier-3 breakdown chart — there is no
+              // header control for it, so the scope chip is where a reader sees it.
+              level: "",
               // rosterSort/rosterDesc: 👥 signals roster sort (spec §5.2). Default
               // is biggest opportunity first — most-red overall, then most
               // offending records — because the Executive pulse deep-links here
@@ -994,9 +1084,12 @@ var STATE = { period: "month", pop: "fte", role: "all", focus: "plan", region: "
               // count on the Executive pulse, which is the whole point — the
               // pulse says "3 need action" and the click lands on those 3.
               sigFilter: "",
-              // typePop: which population the 🧬 by-type matrix shows. OPEN is the
-              // default because it is the half anyone can act on — fixing a
-              // resolved ticket's due date changes history, not the next report.
+              // typePop: which population the 👥 signals roster shows. Named for
+              // the 🧬 by-type matrix that used to own the toggle (removed
+              // 2026-08-17); the roster inherited the chips and is now its only
+              // consumer. OPEN is the default because it is the half anyone can
+              // act on — fixing a resolved ticket's due date changes history,
+              // not the next report.
               typePop: "open",
               // periodIdx: WHICH complete period the analysis surfaces render —
               // an index into donePeriods_(), or null for the latest (user
@@ -1027,13 +1120,20 @@ var VIEWS = [
   // queue are about fields and requirements, not people — a people-blame
   // banner over them framed the whole tab wrong.
   { id: "actions", label: "Actions", dot: "▲", pane: "viewActions", roles: ["admin", "viewer"],
-    hint: "Who and what needs action: the data-quality gates, the compliance signals roster, field fill by issue type and the gaps queue." },
-  // PM — the epics a PM OWNS, attributed by Jira assignee then project lead
-  // (spec 2026-08-11). Sits NEXT TO ACTIONS (user 2026-08-11) because it answers
-  // the same question at a different grain: Actions is "who needs action", this
-  // is "which committed work needs action". Distinct from the "Worked with PM"
-  // filter above the tabs, which selects PEOPLE who worked for a PM.
-  { id: "pm", label: "PM", dot: "■", pane: "viewPm", roles: ["admin", "viewer"],
+    hint: "Who and what needs action: the data-quality gates, the compliance signals roster and the gaps queue." },
+  // Project Managers — the epics a PM OWNS, attributed by Jira assignee then
+  // project lead (spec 2026-08-11). Sits NEXT TO ACTIONS (user 2026-08-11)
+  // because it answers the same question at a different grain: Actions is "who
+  // needs action", this is "which committed work needs action". Distinct from
+  // the "Worked with PM" filter above the tabs, which selects PEOPLE who worked
+  // for a PM.
+  //
+  // Spelled out in full from 2026-08-17 (user): "PM" beside "Actions" and
+  // "Workforce" read as an abbreviation of something, and the one group whose
+  // work this tab is about is the one group that should not have to decode its
+  // own tab. `id` stays "pm" — it is the STATE key, the pane suffix and what a
+  // bookmarked deep link carries.
+  { id: "pm", label: "Project Managers", dot: "■", pane: "viewPm", roles: ["admin", "viewer"],
     hint: "Epics in flight per PM: due-date fill against the team's 100% bar, and whether their own children are scheduled past them." },
   // Workforce — capacity read by DEPLOYMENT POOL, never blended. Gated to
   // admin + viewer like Actions: the grid carries per-pool capacity, headroom
@@ -1181,11 +1281,10 @@ function switchView_(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 var POP_LABELS = { fte: "FTE", crew: "Crew", all: "All" };
-// focus: the value lens for the (Task 5) signals roster — "plan" (default,
-// alphabetical) | "billable" | "nonbill" (both rank most-hours-first). The
-// People grid that used to read this was removed in Task 3 (2026-08-05);
-// the chip strip and STATE.focus stay for the roster that replaces it.
-var FOCUS_LABELS = { plan: "Plan", billable: "Billable", nonbill: "Non-bill" };
+// `focus` (Plan / Billable / Non-bill) lived here as the People grid's value
+// lens. The grid went on 2026-08-05 and the lens was kept "for the roster that
+// replaces it" — but the roster never read it, so for twelve days the chips
+// changed nothing but their own highlight. Deleted 2026-08-17.
 
 /** Population lens — one of the universal filters (they ALL scope the
     utilization tiles and the grid together, via passesFilters_). */
@@ -1556,30 +1655,6 @@ function buildPopChips_() {
   });
 }
 
-/** Set the value-focus lens (header chip strip). The People grid's own
-    clickable bar legend — the lens's other entry point — was removed with
-    the grid (Task 3, 2026-08-05); STATE.focus and this setter stay for the
-    roster that replaces it (Task 5). */
-function setFocus_(k) {
-  if (STATE.focus === k) return;
-  STATE.focus = k;
-  buildFocusChips_();
-  renderScope_();
-  renderAll_();
-}
-
-function buildFocusChips_() {
-  var fc = document.getElementById("focusChips");
-  fc.innerHTML = "";
-  ["plan", "billable", "nonbill"].forEach(function (k) {
-    var b = document.createElement("span");
-    b.className = "chip" + ((STATE.focus === k) ? " on" : "");
-    b.textContent = FOCUS_LABELS[k];
-    b.onclick = function () { setFocus_(k); };
-    fc.appendChild(b);
-  });
-}
-
 /** Person's family label for the filter (blank roster family → Uncatalogued). */
 function famName_(p) { return p.jobFamily || "Uncatalogued"; }
 
@@ -1628,7 +1703,11 @@ function jobTitleDisp_(t) {
  * "who has no PM?" is a question worth being able to ask, and because the bars
  * must add up to the population or the chart is lying by omission.
  */
-var UNTAGGED_ = { team: "(No team)", pm: "(No PM)" };
+// `level` joins the untagged sentinels so an unclassified job code sorts and
+// styles like every other gap rather than reading as a real seniority band —
+// and so it is never hidden: a rising unclassified count means new job codes
+// were created and nobody told Workforce Planning.
+var UNTAGGED_ = { team: "(No team)", pm: "(No PM)", level: "(Unclassified)" };
 
 /** True when a value is one of the untagged sentinels (styled + sorted apart). */
 function isUntagged_(val) {
@@ -1653,7 +1732,36 @@ var FILTER_DIMS = {
             all: function () { return MODEL.meta.pms || []; } },
   family: { label: "job family", vals: function (p) { return [famName_(p)]; },
             all: function () { return MODEL.meta.families || []; } },
+  // LEVEL BAND (user 2026-08-17): the grain the Workforce tab already reports
+  // capacity on, so "On-Time by level" and "who is available at that level"
+  // describe the same cohort rather than two similar-sounding ones. The band
+  // is the server's own classification (dhBand_ — MGMT / SENIOR / CORE /
+  // JUNIOR / UNKNOWN), never re-derived from the job title here: a second
+  // parse of the same string is a second answer waiting to happen.
+  //
+  // all() is read off the POPULATION rather than meta, because there is no
+  // meta.bands — and it is ordered seniority-first, not alphabetically, so the
+  // chart's category gutter reads as a ladder.
+  level:  { label: "level",
+            vals: function (p) { return [levelName_(p)]; },
+            all: function () {
+              var seen = {};
+              (MODEL.people || []).forEach(function (p) {
+                if (!p.attribOnly) seen[levelName_(p)] = 1;
+              });
+              return LEVEL_ORDER_.filter(function (b) { return seen[b]; });
+            } },
 };
+
+/** Seniority order for the level band, most senior first. */
+var LEVEL_ORDER_ = ["MGMT", "SENIOR", "CORE", "JUNIOR", UNTAGGED_.level];
+
+/** A person's level band, with the server's UNKNOWN folded into the house
+    untagged bucket so it sorts and reads like every other untagged value. */
+function levelName_(p) {
+  var b = p.band || "";
+  return (!b || b === "UNKNOWN") ? UNTAGGED_.level : b;
+}
 
 /**
  * Does this person carry `val` on dimension `dim`?
@@ -1696,6 +1804,7 @@ function passesFilters_(p, skip) {
   if (skip !== "team" && STATE.team && !dimMatch_(p, "team", STATE.team)) return false;
   if (skip !== "pm" && STATE.pm && !dimMatch_(p, "pm", STATE.pm)) return false;
   if (skip !== "family" && STATE.family && !dimMatch_(p, "family", STATE.family)) return false;
+  if (skip !== "level" && STATE.level && !dimMatch_(p, "level", STATE.level)) return false;
   if (skip !== "flag" && STATE.flag && !hasFlag_(p, STATE.flag)) return false;
   if (STATE.search && p.name.toLowerCase().indexOf(STATE.search.toLowerCase()) === -1) return false;
   return true;
@@ -1800,7 +1909,6 @@ function buildFilters_() {
   buildPeriodChips_();
   buildPopChips_();
   buildRoleChips_();
-  buildFocusChips_();
   var rc = document.getElementById("regionChips");
   var ro = optionsFor_("region");
   rc.innerHTML = "";
@@ -1835,6 +1943,10 @@ function buildFilters_() {
       " the roster shows as no longer active.";
   }
   fillSelect_("famSel", "family", "All job families");
+  // Last, so it sees the state every control above just settled on (review
+  // item #1). buildFilters_ runs after EVERY filter change, which is exactly
+  // the cadence the drawer's badge and its forced-open rule need.
+  renderAdvToggle_();
   renderFilterWarn_();
 }
 
@@ -1869,6 +1981,75 @@ function clearFilter_(dim) {
   STATE[dim] = "";
   buildFilters_();
   renderAll_();
+}
+
+/**
+ * ── ADVANCED FILTER DRAWER (review item #1, 2026-08-17) ──────────────────────
+ * The five dimensions that moved out of the default filter bar, each paired
+ * with the value that means "not filtering".
+ *
+ * Defaults are declared HERE and read by resetFilters_'s sibling logic rather
+ * than being re-typed: "off its default" is the only definition of an active
+ * filter this drawer has, and two copies of it would drift into a badge that
+ * says 0 while a filter is applied — which is precisely the failure the drawer
+ * introduces if it is done carelessly.
+ */
+// `focus` is NOT in this list: its control was deleted 2026-08-17 (see the
+// markup comment). Leaving the entry behind would have been worse than the
+// control it described — advActive_ would count a filter with no widget, and
+// renderAdvToggle_'s "never hide an active filter" rule would force the drawer
+// permanently open on a scope the reader can neither see nor clear.
+var ADV_FILTERS_ = [
+  { dim: "pop",    off: "fte",  label: "People" },
+  { dim: "role",   off: "all",  label: "Role" },
+  { dim: "pm",     off: "",     label: "Worked with PM" },
+  { dim: "family", off: "",     label: "Job family" },
+];
+
+/** The drawer filters currently off their default, as {dim,label,value}. */
+function advActive_() {
+  return ADV_FILTERS_.filter(function (f) {
+    return (STATE[f.dim] || f.off) !== f.off;
+  });
+}
+
+/**
+ * Paints the toggle and enforces the drawer's one hard rule: an ACTIVE filter
+ * is never hidden.
+ *
+ * `STATE.advOpen` is the reader's preference, but it only decides the CLOSED
+ * case — the moment any drawer filter is off its default, the drawer opens and
+ * stays open regardless. Collapsing a control that is currently scoping every
+ * number on the page would make the dashboard quietly disagree with itself, and
+ * the reader would have no visible reason why. The badge is the belt to that
+ * brace: it names the count even in the instant before the open lands.
+ */
+function renderAdvToggle_() {
+  var btn = document.getElementById("btnAdvFilters");
+  var box = document.getElementById("advFilters");
+  if (!btn || !box) return;
+  var on = advActive_();
+  var open = STATE.advOpen || on.length > 0;
+  box.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  btn.innerHTML = (open ? "Fewer filters" : "More filters") +
+    (on.length ? ' <span class="advN">· ' + on.length + " on</span>" : "");
+  // The tooltip NAMES them. A count tells a reader that something is applied;
+  // only the names tell them what to expect the numbers to mean.
+  btn.title = on.length
+    ? "Applied: " + on.map(function (f) { return f.label + " = " + STATE[f.dim]; }).join(" · ") +
+      ". These scope every KPI and the grid. The drawer stays open while any of " +
+      "them is set — a filter is never applied out of sight."
+    : "Population, Role, Focus, PM and Job family. Kept out of the default view to " +
+      "leave three dimensions in the bar; opens automatically whenever any of them " +
+      "is set, so a filter can never be applied out of sight.";
+}
+
+function toggleAdvFilters_() {
+  // Only the OPEN preference is the reader's to set; renderAdvToggle_ still
+  // overrides a close while a drawer filter is active.
+  STATE.advOpen = !(STATE.advOpen || advActive_().length > 0);
+  renderAdvToggle_();
 }
 
 // ── PERIODS (Week / Month / fiscal Quarter toggle) ───────────
@@ -2110,9 +2291,9 @@ function renderAll_() {
     // Executive tier order (redesign 2026-08-17). renderFlow_ writes BOTH the
     // Tier-1 grid (#tier1Tiles — the outcome cards plus the backlog hero
     // triplet) and the Tier-2 secondary strip, so it runs before the panels
-    // that sit under it. renderCompare_ is behind SHOW_COMPARE_PANEL_ and
-    // renderTrustDetail_ behind canSeeSuper_(); both gate themselves, so the
-    // dispatch stays a plain list rather than growing conditionals here.
+    // that sit under it. renderCompare_ now paints Tier 3's drill-down chart;
+    // renderTrustDetail_ gates itself behind canSeeSuper_(), so the dispatch
+    // stays a plain list rather than growing conditionals here.
     case "exec":    renderFlow_(); renderMasthead_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); break;
     // renderTrust_ moved here with its panel (redesign 2026-08-17).
     case "actions": renderTrust_(); renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
@@ -2125,10 +2306,11 @@ function renderAll_() {
 /** Live scope chip: states exactly what slice is on screen — replaces the old
     explanatory footnote (fine print lives in the chip's tooltip). */
 function renderScope_() {
-  var parts = [POP_LABELS[STATE.pop], FOCUS_LABELS[STATE.focus],
+  var parts = [POP_LABELS[STATE.pop],
     STATE.region || "All regions", STATE.team || "All teams"];
   if (STATE.pm) parts.push("PM: " + STATE.pm);
   if (STATE.family) parts.push(STATE.family);
+  if (STATE.level) parts.push("Level: " + STATE.level);
   if (STATE.flag) parts.push(FLAG_LABELS[STATE.flag].icon + " " + FLAG_LABELS[STATE.flag].label);
   if (STATE.search) parts.push("“" + STATE.search + "”");
   // The period is stated HERE and nowhere else. It used to repeat in all four
@@ -2170,11 +2352,14 @@ document.getElementById("btnRefresh").onclick = function () { loadData(true); };
 // button does rather than a second, drifting copy of it.
 function resetFilters_() {
   STATE.period = MODEL && MODEL.meta.periods ? "month" : "week"; // stale-cache guard parity with loadData
-  STATE.pop = "fte"; STATE.role = "all"; STATE.focus = "plan";
+  STATE.pop = "fte"; STATE.role = "all";
   STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
+  STATE.level = "";        // …including the level band, set by drilling the breakdown chart
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {}; STATE.openDetailAll = {};
   STATE.sigFilter = "";   // …including the roster's signal chip
   STATE.periodIdx = null; // …including the analysis-period picker
+  STATE.advOpen = false;  // …and the advanced drawer collapses, since Reset
+                          //    just returned every filter inside it to default
   buildPeriodChips_();    // reflect the reset in the picker's selection
   var srch = document.getElementById("personSearch");
   if (srch) srch.value = "";
@@ -2182,6 +2367,7 @@ function resetFilters_() {
   renderAll_();
 }
 document.getElementById("btnReset").onclick = resetFilters_;
+document.getElementById("btnAdvFilters").onclick = toggleAdvFilters_;
 // A dropdown change re-cascades the OTHER dropdowns before re-rendering — that
 // is what makes a Region pick collapse the Team/PM/Family lists.
 function onFilterChange_(dim, value) {
@@ -2524,10 +2710,74 @@ function metricConfidence_(gate, coverage, periods) {
 
 
 /** Registry entry for a metric, with an empty-object fallback so a stale cache
-    (pre-v8 payload, no meta.registry) degrades to "no gate" instead of throwing. */
+    (pre-v8 payload, no meta.registry) degrades to "no gate" instead of throwing.
+
+    Safe for DECORATION — caveats, tooltips, axis prose, chip labels — where a
+    missing entry costs a sentence. NOT safe for anything that decides whether a
+    number publishes: for that, use regRequired_ below, which makes the absence
+    visible instead of defaulting it away. */
 function reg_(id) {
   var r = MODEL.meta.registry;
   return (r && r.metrics && r.metrics[id]) || {};
+}
+
+/**
+ * ── THE REGISTRY IS THE SPINE (2026-08-17, review item #6) ───────────────────
+ * The registry entry for a metric, or NULL when the server does not define one.
+ *
+ * Every card used to carry its own literal fallback — `reg.throughput || { unit:
+ * "hrs", coverageGate: 0.6, name: "Throughput" }` — and reg_() returns `{}` on a
+ * miss, so an undefined coverageGate reached metricConfidence_ as `Number(undefined)
+ * || 0`, which is its "ungated, publish at high confidence" branch. Between the
+ * two, a metric the server had never heard of rendered as a fully-formed,
+ * confidently-published card with a hand-typed name and a hand-typed gate. That
+ * is the phantom-alignment failure exactly: two definitions of one KPI, and the
+ * silent one wins whenever the loud one is missing.
+ *
+ * The literals happened to agree with METRIC_REGISTRY_ on the day they were
+ * written, which is exactly why this was worth removing rather than auditing:
+ * nothing on the page could ever have shown you WHICH of the two numbers graded
+ * the card in front of you, so the day they stopped agreeing would have been
+ * silent.
+ *
+ * So: no local defaults anywhere on the publish path. A miss returns null, the
+ * caller renders registryMissingTile_, and the gap is a thing you can see and
+ * fix rather than a thing that reads as a measurement. This is the same
+ * absent-≠-zero rule the queue cards already apply to data, applied to the
+ * METADATA — an absent gate is not a gate of zero.
+ *
+ * @param {string} id  registry key, e.g. "throughput"
+ * @returns {?Object} the entry, or null when the registry does not define it
+ */
+function regRequired_(id) {
+  var r = MODEL.meta.registry;
+  var m = r && r.metrics && r.metrics[id];
+  return m || null;
+}
+
+/**
+ * The card a metric gets when the registry does not define it.
+ *
+ * Deliberately spartan and deliberately ID-LABELLED: a friendly display name
+ * here would be one more local literal, which is the thing being removed. The
+ * id is what the client asked the registry for, so the id is the honest label —
+ * and it is also the string somebody needs in order to go add the entry.
+ *
+ * Renders in the `ph` placeholder shell, the house convention for "this is not a
+ * measurement", so it can never be read as a zero or mistaken for a real card on
+ * a projector.
+ *
+ * @param {string} id     the registry key that missed
+ * @param {string} scope  scope tag to carry — the tile's position is known even
+ *                        when its definition is not
+ */
+function registryMissingTile_(id, scope) {
+  var v = (MODEL.meta.registry || {}).version;
+  return '<div class="tile ph"><div class="lbl">' + esc_(id) + scopeTag_(scope) + "</div>" +
+    '<div class="big">—</div>' +
+    '<div class="cmp">ungraded — the metric registry' + (v ? " (v" + esc_(v) + ")" : "") +
+    " does not define this metric, so there is no agreed name, unit, coverage gate " +
+    "or target to publish it against</div></div>";
 }
 
 /**
@@ -2860,6 +3110,19 @@ function sparkHtml_(vals, opts) {
   var W = 240, H = 54, L = 2, R = 30, T = 12, B = 13;
   var pw = W - L - R, ph = H - T - B;
   var std = opts.std && opts.std.ok ? opts.std : null;
+  // ── TARGET LINE (review item #2, 2026-08-17) ─────────────────────────────
+  // `target` is the same {green, amber, invert} object the card's hero is
+  // coloured against — passed through, never re-derived, so the line and the
+  // colour can never disagree about where the bar is.
+  //
+  // Reading trend-to-goal used to mean reading the delta sentence: the chart
+  // showed the SHAPE of the series and the text showed its distance from
+  // target, and the reader joined them. One horizontal rule does that join.
+  //
+  // Drawn at `green` only — the committed target. Amber is a warning band, not
+  // a goal, and a second rule would turn the reference into a ladder that
+  // competes with the series for attention.
+  var tgt = (opts.target && typeof opts.target.green === "number") ? opts.target : null;
   var dom = opts.domain || pctDomain_(vals, std ? [std.lo, std.hi] : []);
   // CONTAINMENT GUARD. A domain that does not contain its own data does not
   // clip the line — `.chart` is overflow:visible, so the polyline is drawn at
@@ -2874,6 +3137,15 @@ function sparkHtml_(vals, opts) {
     if (v < dom.lo) dom.lo = v;
     if (v > dom.hi) dom.hi = v;
   });
+  // The target joins the containment guard above for the same reason the data
+  // does: a reference line drawn outside the frame is drawn at whatever
+  // coordinate the maths produces, and `.chart` is overflow:visible. A target
+  // the series never approaches must widen the axis, not escape it — and a
+  // target line clipped to the frame edge would read as "we are nearly there".
+  if (tgt) {
+    if (tgt.green < dom.lo) dom.lo = tgt.green;
+    if (tgt.green > dom.hi) dom.hi = tgt.green;
+  }
   var span = dom.hi - dom.lo || 1;
   function y(v) { return T + ph - (v - dom.lo) / span * ph; }
   function x(i) { return vals.length === 1 ? L + pw / 2 : L + (i / (vals.length - 1)) * pw; }
@@ -2886,6 +3158,33 @@ function sparkHtml_(vals, opts) {
       Math.max(1, y(std.lo) - y(std.hi)) + '" fill="var(--c-ref)" opacity="0.13"><title>' +
       "operating rate " + Math.round(std.lo) + "–" + Math.round(std.hi) +
       "% — where this metric normally sits</title></rect>";
+  }
+  // The target rule, drawn UNDER the series (before the polyline) so the data
+  // is never obscured by its own reference. Dashed and muted for the same
+  // reason: it is the bar, not a measurement, and a solid second line at full
+  // weight reads as a second series.
+  if (tgt) {
+    var ty = y(tgt.green);
+    var dir = tgt.invert ? "at or below" : "at or above";
+    // The label shares the right-hand gutter with the endpoint value, and a
+    // metric sitting ON its target puts the two at the same height — which
+    // rendered as "90%t", the value label with the word "target" printed
+    // through it (caught by screenshot, 2026-08-17). When they are within a
+    // line's height of each other the label drops below the rule instead.
+    // Neither is droppable: the value is the answer and the rule is the bar.
+    var lastY = null;
+    for (var li = vals.length - 1; li >= 0; li--) {
+      var lv = vals[li];
+      if (lv !== null && lv !== undefined && !isNaN(lv)) { lastY = y(lv); break; }
+    }
+    var ly = (lastY !== null && Math.abs(ty - lastY) < 11) ? ty + 9 : ty - 3;
+    s += '<line class="tgtline" x1="' + L + '" y1="' + ty + '" x2="' + (L + pw) + '" y2="' + ty +
+      '" stroke="var(--c-ref)" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.75"><title>' +
+      esc_("target — " + dir + " " + fmt(tgt.green) + ". The series is on target wherever it sits " +
+           (tgt.invert ? "below" : "above") + " this line.") + "</title></line>" +
+      // Labelled on the axis edge, not floating: an unlabelled rule is a line
+      // whose meaning has to be guessed, and the guess is usually "average".
+      '<text class="axis tgtlabel" x="' + (L + pw + 2) + '" y="' + ly + '">target</text>';
   }
   var run = [], last = null, lastI = -1;
   // Basis-of-the-line: dashed + muted whenever ANY point behind the line is
@@ -3178,7 +3477,19 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
         : "This window is still running. Nothing here is compared to the period before it: " +
           "a part-period against a whole one is a length difference, not a change.")) + '">' +
     (phase === "plan" ? "planning" : "◐ in progress") + "</span>";
-  return '<div class="tile' + (phase === "done" ? "" : " tPhase") +
+  // ── VARIANCE ACCENT (review item #2, 2026-08-17) ─────────────────────────
+  // A card that is missing its target wears a coloured edge, so the row can be
+  // scanned for trouble without reading a single number. Derived from `rag`,
+  // never computed a second time — the edge, the hero colour and the target
+  // line on the chart are three renderings of ONE verdict.
+  //
+  // Amber is included and deliberately quieter than red: "approaching" and
+  // "missed" are different conversations, and giving them the same edge would
+  // make the row read as uniformly on fire — the exact failure the per-metric
+  // RAG replaced a shared orange to fix. A floor carries no accent at all,
+  // consistent with carrying no colour: `rag` is already "" in that case.
+  var accent = rag === "r" ? " vMiss" : rag === "a" ? " vNear" : "";
+  return '<div class="tile' + (phase === "done" ? "" : " tPhase") + accent +
     '"><div class="lbl">' + label + scopeTag_(opts.scope || "period") + '</div>' +
     // No chip → no wrapper: an empty .heroRow would close two divs in a row and
     // change the markup shape for every target-less tile.
@@ -3189,8 +3500,13 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
     (noteLine ? '<div class="cmp">' + noteLine + '</div>' : "") +
     (stdLine ? '<div class="cmp">' + stdLine + '</div>' : "") +
     '<div class="cmp">' + context + '</div>' +
+    // The sparkline is handed the SAME target object the hero is coloured
+    // against (review item #2) — one source, so the rule on the chart and the
+    // colour on the number can never disagree. A floor gets no line for the
+    // same reason it gets no RAG colour: there is no verdict to draw.
     (MODEL._stale ? '<div class="cmp stalenote" title="the model has not been rebuilt inside the stated refresh cadence — trend comparisons are suppressed until it refreshes">trend suppressed — data stale</div>'
-                  : sparkHtml_(trendVals, { labels: opts.trendLabels, std: std })) + '</div>';
+                  : sparkHtml_(trendVals, { labels: opts.trendLabels, std: std,
+                                            target: floor ? null : t })) + '</div>';
 }
 
 /** True when the NS billable feed is actually delivering data — nsAvailable
@@ -3587,11 +3903,14 @@ function weeksToClearStr_(total, rate) {
 }
 
 /**
- * ── TIER 1's three queue cards: Inventory · Net flow · Weeks to clear ────────
- * Split out of renderBacklogBand_ (redesign 2026-08-17) so the protagonist grid
- * can hold all eight KPIs in ONE container. They are computed here, beside the
- * band that explains them, rather than duplicated in renderFlow_ — the tier a
- * card is DRAWN in is a layout decision; where its number comes from is not.
+ * ── TIER 2's three queue cards: Inventory · Net flow · Weeks to clear ────────
+ * Split out of renderBacklogBand_ (redesign 2026-08-17) so a single container
+ * could hold the whole card grid. Demoted with Throughput and Bug Count to the
+ * #flowSecondary strip later the same day (user instruction) — that strip sits
+ * directly below the backlog band, so the cards now render immediately under
+ * the prose that defines them. They are still computed here, beside that band,
+ * rather than duplicated in renderFlow_ — the tier a card is DRAWN in is a
+ * layout decision; where its number comes from is not.
  *
  * ORG-scoped by definition: the hero is the whole queue and ignores every
  * filter, which is why the band below it states that in prose.
@@ -3638,9 +3957,9 @@ function backlogHeroTilesHtml_() {
 
 /**
  * ── §2 BACKLOG BAND (Tier 2) ─────────────────────────────────────────────────
- * The backlog STORY, now that its three hero numbers have moved up to Tier 1:
- * the horizontal bar, the smart legend that defines each of its segments, and
- * the filterable assigned sub-row.
+ * The backlog STORY, now that its three hero numbers render in the secondary
+ * strip immediately below this panel: the horizontal bar, the smart legend that
+ * defines each of its segments, and the filterable assigned sub-row.
  *
  * The Workforce-change card was deleted from this band in the same pass
  * (redesign 2026-08-17) to keep the executive read tight — workforceFor_ and
@@ -3691,14 +4010,16 @@ function renderBacklogBand_() {
     // instead; the cards already carry the numbers, and a smoke check
     // (render-smoke.js) asserts no bare "N.Nw"/"Nw" literal appears here again.
     //
-    // The hero triplet it used to introduce now sits in Tier 1 above (redesign
-    // 2026-08-17), so the sentence names where those numbers went — otherwise
-    // "hero vs sub-row" points at something no longer on this panel.
-    '<p class="cellSub"><span class="why" title="The three queue cards at the top of this page ' +
-    "are the WHOLE queue, ignoring every filter; the sub-row below applies your active filters to " +
-    "the assigned-only slice of that same queue — the two read different numbers on purpose. No " +
-    'target rule anywhere in this band (D11) — both are graded against the operating band instead.">' +
-    "Queue cards above = the whole queue, unfiltered · sub-row below = your filters on the " +
+    // The hero triplet it used to introduce now sits in the secondary strip
+    // directly BELOW this panel (user instruction 2026-08-17), so the sentence
+    // names where those numbers went — otherwise "hero vs sub-row" points at
+    // something no longer on this panel.
+    '<p class="cellSub"><span class="why" title="The three queue cards in the strip below this ' +
+    "panel are the WHOLE queue, ignoring every filter; the sub-row inside this band applies your " +
+    "active filters to the assigned-only slice of that same queue — the two read different numbers " +
+    "on purpose. No target rule anywhere in this band (D11) — both are graded against the " +
+    'operating band instead.">' +
+    "Queue cards below = the whole queue, unfiltered · sub-row in this band = your filters on the " +
     "assigned slice · no targets here, only the operating band ⓘ</span></p>" +
     // THE BAR, then the legend that defines it, then the assigned sub-row.
     // Ordering matters: a reader meets the shape, learns what each segment
@@ -4116,7 +4437,67 @@ function outcomeHeadlineLabel_(phase, head) {
  * non-margin role, so the card shares the capacity band's one gate instead of
  * carrying a second one that could disagree with it.
  */
+/**
+ * ── AVAILABILITY RATE — Tier 1, immediately after Forecast Accuracy ──────────
+ *
+ * The question it answers: how many hours do we have free for direct delivery
+ * of the backlog? Utilization answered the inverse — how much is spoken for —
+ * which is a report, not a decision. Free hours are something a leader can
+ * assign, which is why this card replaced it (user 2026-08-17).
+ *
+ * The RATE headlines because the card is named for it and because the Workforce
+ * tab headlines the same percentage — the two must agree at a glance. The HOURS
+ * sit directly beneath it in bold, because hours are the unit anybody actually
+ * reassigns, and "what amount of hours" was the ask.
+ *
+ * NO TARGET, therefore no RAG colour (D11). Nobody has agreed an availability
+ * bar: too little is a delivery risk and too much is unsold capacity, so a
+ * one-sided verdict would be wrong in one of those directions at all times.
+ *
+ * Margin-tier, like the utilization card it replaces: it publishes scheduled
+ * capacity hours, and the Metrics Dictionary limits that to directs and above.
+ * The gate lives in renderFlow_ with the Forecast card's, not here.
+ */
+function availabilityTileHtml_() {
+  var a = wfAvailability_();
+  if (!a) {
+    return tileHtml_("Availability Rate", null, "", [], {
+      unavailable: "arrives after the next refresh — this payload predates workforce health" });
+  }
+  if (a.head === 0) {
+    return tileHtml_("Availability Rate", null, "", [], {
+      unavailable: "no backlog-consuming pools in this slice — support, PMO and crew " +
+        "capacity is real but is not drawn from the project backlog" });
+  }
+  if (a.pct === null) {
+    return tileHtml_("Availability Rate", null, "", [], {
+      unavailable: "no scheduled capacity on record for these " + a.head + " people this period" });
+  }
+  // The deep link is the point of the card: a leader who sees free hours wants
+  // the names behind them, and those live on Workforce.
+  return tileHtml_("Availability Rate", a.pct * 100,
+    "<b>" + wfHrs_(a.freeHrs) + " free</b> of " + wfHrs_(a.gross) + " scheduled · " +
+    a.head + " backlog consumer" + (a.head === 1 ? "" : "s") +
+    ' · <span class="pulseLink" onclick="switchView_(\'workforce\')" ' +
+    'title="Open the Workforce tab to see who holds these hours, by pool and level band.">' +
+    "who is available →</span>",
+    [], {
+      detail: ["Free hours as a share of scheduled hours, across backlog-consuming pools only " +
+               "(consulting, engineering, architecture, training). Support, PMO and crew are " +
+               "excluded — their capacity is real but cannot take backlog work.",
+               "No target has been agreed: too little availability is a delivery risk and too " +
+               "much is unsold capacity, so this card carries no verdict colour.",
+               a.nonHead ? a.nonHead + " " + (a.nonHead === 1 ? "person" : "people") +
+                 " in demand-driven and governing pools are excluded from both sides" : ""],
+    });
+}
+
 function capacityTileHtml_() {
+  // Utilization switched off (user 2026-08-17) — see SHOW_UTILIZATION_. The
+  // whole builder below is retained and reachable by one flag; on a PLANNING
+  // window this card is Planned Coverage rather than Utilisation, and that is
+  // a plan-completeness read, not a utilization one, so it survives the gate.
+  if (!SHOW_UTILIZATION_ && !planningPhase_()) return "";
   var A = analysisHead_();
   var done = A.done, hi = A.hi, head = A.head, phase = A.phase;
   var planning = phase === "plan";
@@ -4168,7 +4549,12 @@ function capacityTileHtml_() {
   var utilTrendShown = utilSeries.slice(Math.max(0, hi - 5), hi + 1);
 
   function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
-  var regU = reg_("util");
+  // Registry first (review item #6). Only the LIVE branch grades against
+  // regU.coverageGate — the tracked-only branch passes a literal 0 on purpose,
+  // because it is a different metric with no gate rather than a metric whose
+  // gate went missing. That distinction is the whole point of the rule.
+  var regU = regRequired_("util");
+  if (!regU) return registryMissingTile_("util", "period");
   var utilCovTrend = trendPer.map(function (p) {
     var s = utilFor_(p.isos);
     return s.tracked > 0 ? s.trackedCov / s.tracked * 100 : null;
@@ -4344,15 +4730,21 @@ function flowTileHtml_(m, headline, opts) {
 }
 
 /**
- * FLOW METRICS — now split across two tiers (redesign 2026-08-17).
+ * FLOW METRICS — now split across two tiers (redesign 2026-08-17, demotion pass
+ * 2026-08-17b).
  *
- *   TIER 1 (#tier1Tiles)   On-Time · Forecast · Quality/Rework · Throughput ·
- *                          Bug Count, then the three queue cards from
- *                          backlogHeroTilesHtml_() — Inventory · Net flow ·
- *                          Weeks to clear. Eight protagonist KPIs, one grid.
- *   TIER 2 (#flowSecondary) Cleared · Arrived · Lead Time. Real measures that
- *                          nobody opens this page for; they explain the eight
- *                          above rather than competing with them.
+ *   TIER 1 (#tier1Tiles)   On-Time · Forecast · Availability · Quality/Rework.
+ *                          The outcome KPIs only — did we meet what we
+ *                          promised, and what capacity is left to meet the next
+ *                          one. Nothing else competes with them.
+ *   TIER 2 (#flowSecondary) Throughput · Bug Count, then the three queue cards
+ *                          from backlogHeroTilesHtml_() — Inventory · Net flow ·
+ *                          Weeks to clear — then Cleared · Arrived · Lead Time.
+ *                          Sits directly BELOW the backlog band in the DOM, so
+ *                          the queue reads land under the band whose prose
+ *                          explains them (user instruction 2026-08-17): they are
+ *                          volume and position, not outcome, and an executive
+ *                          reaches them after the verdict, not before it.
  *
  * ONE function still builds both, deliberately. Every one of these tiles shares
  * the same period resolution, the same trend window, the same planning-window
@@ -4374,8 +4766,15 @@ function renderFlow_() {
   var flowKeyEl = document.getElementById("flowKey");
   if (flowKeyEl) flowKeyEl.innerHTML = ragKeyHtml_(
     "the metric's own agreed target, printed on its card",
-    "Rework Rate reverses the scale — lower is better, same three colours. Utilisation and " +
-    "Planned Coverage (Capacity panel below) follow the same rule.");
+    // Names only what is ON SCREEN. This sentence used to send the reader to
+    // "Utilisation and Planned Coverage (Capacity panel below)" — Utilisation
+    // is switched off (SHOW_UTILIZATION_) and Planned Coverage only exists on a
+    // forward window, so on a completed one the key pointed at a panel that was
+    // not there. A legend that cites a missing surface teaches the reader to
+    // distrust the legend.
+    "Rework Rate reverses the scale — lower is better, same three colours. Availability Rate " +
+    "carries no colour at all: no target has been agreed, because too little availability is a " +
+    "delivery risk and too much is unsold capacity.");
   /** Writes both tiers. One exit point, so no branch can leave the secondary
       strip holding the previous render's HTML — including the Jira-unavailable
       early return, which legitimately has nothing to put in it. */
@@ -4383,14 +4782,17 @@ function renderFlow_() {
     el.innerHTML = pri;
     if (!secEl) return;
     secEl.innerHTML = sec
-      ? "<h3>Flow detail</h3>" +
-        '<p class="cellSub">How work arrives, clears and how long it takes — the movement behind ' +
-        "the delivery numbers above.</p>" +
+      ? "<h3>Volume, queue and flow — the numbers behind the verdict</h3>" +
+        '<p class="cellSub">How much we shipped, what the queue is holding and how long it covers ' +
+        "us, then how work arrives, clears and how long it takes. These size and explain the " +
+        "outcome KPIs at the top of the page; they are not graded in their place.</p>" +
         '<div class="tiles tilesCompact" style="margin:8px 0 0">' + sec + "</div>"
       : "";
     secEl.style.display = sec ? "" : "none";
   }
-  var reg = ((MODEL.meta.registry || {}).metrics) || {};
+  // No local `reg` map any more (review item #6, 2026-08-17): every tile below
+  // looks its own entry up through regRequired_, which returns null on a miss
+  // instead of handing back an empty object that reads as "ungated".
   var A = analysisHead_();
   var done = A.done, hi = A.hi, phase = A.phase;
   var planning = phase === "plan";
@@ -4406,15 +4808,15 @@ function renderFlow_() {
   var outHeadlineLabel = outcomeHeadlineLabel_(phase, outHead);
 
   if (!MODEL.meta.jiraAvailable) {
-    // The queue cards do NOT come from Jira Raw, so they still publish here —
-    // dropping them with the Jira tiles would have blanked three measures over
-    // a feed they never read.
+    // The queue cards do NOT come from Jira Raw, so they still publish — in the
+    // secondary tier now, same as on a healthy render. Dropping them with the
+    // Jira tiles would have blanked three measures over a feed they never read.
     paint_('<div class="tile ph"><div class="lbl">Flow</div>' +
       '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>' +
       tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel }) +
       (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel })) +
-      qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase) +
-      backlogHeroTilesHtml_(), "");
+      qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase),
+      backlogHeroTilesHtml_());
     return;
   }
 
@@ -4423,11 +4825,17 @@ function renderFlow_() {
   // count work that finished, and a week that has not happened has none.
   var head = planning ? (done[hi] || { isos: [], label: "—" })
                       : (A.head.isos.length ? A.head : (done[hi] || { isos: [], label: "—" }));
-  // `html` = Tier 1 (the protagonist cards), `sec` = Tier 2's flow-detail
-  // strip. Which accumulator a tile appends to is the ONLY thing that decides
-  // its tier — see the header comment.
+  // `html` = Tier 1 (the outcome cards). Tier 2's strip is built from TWO
+  // accumulators only because the tiles are computed in a different order than
+  // they are read: `secLead` holds the five demoted cards (Throughput · Bug
+  // Count · Inventory · Net flow · Weeks to clear) that must open the strip,
+  // `sec` holds Cleared · Arrived · Lead Time, which are computed first below.
+  // They are concatenated secLead + sec at paint time. Which accumulator a tile
+  // appends to is the ONLY thing that decides its tier and position — see the
+  // header comment.
   var html = "";
   var sec = "";
+  var secLead = "";
 
   // 1 · Cleared — count of issues resolved in the period, assigned/filterable
   // (Task 16B review finding: the spec names Cleared as a dedicated items
@@ -4437,7 +4845,8 @@ function renderFlow_() {
   // not a second pass. Throughput is KEPT alongside it (not redundant): one
   // answers "how many", the other "how much effort" — see task-16b-report.md.
   (function () {
-    var m = reg.cleared || { unit: "items", coverageGate: 0, name: "Cleared" };
+    var m = regRequired_("cleared");
+    if (!m) { sec += registryMissingTile_("cleared", "period"); return; }
     var b = bucketsFor_(MODEL.throughputBuckets || [], head.isos);
     var series = trendPer.map(function (p) {
       return bucketsFor_(MODEL.throughputBuckets || [], p.isos).nAll;
@@ -4462,7 +4871,8 @@ function renderFlow_() {
   // than "is the whole queue growing". target: null (flowTileHtml_ already
   // treats that neutrally, same grammar as every other flow tile).
   (function () {
-    var m = reg.arrived || { unit: "items", coverageGate: 0, name: "Arrived" };
+    var m = regRequired_("arrived");
+    if (!m) { sec += registryMissingTile_("arrived", "org"); return; }
     if (!MODEL.meta.arrivalsAvailable) {
       sec += flowTileHtml_(m, null,
         { scope: "org", unavailable: "not measured — the Jira Arrivals tab isn't in this export yet" });
@@ -4506,7 +4916,8 @@ function renderFlow_() {
   // 3 · Lead Time — median days, p85 companion (raw day values travel per
   // bucket; the client medians whatever the filters select).
   (function () {
-    var m = reg.leadTime || { unit: "days", coverageGate: 0.9, name: "Lead Time" };
+    var m = regRequired_("leadTime");
+    if (!m) { sec += registryMissingTile_("leadTime", "period"); return; }
     var series = trendPer.map(function (p) {
       var b = bucketsFor_(MODEL.leadTimeBuckets || [], p.isos);
       return b.days.length ? flowMedian_(b.days) : null;
@@ -4541,6 +4952,13 @@ function renderFlow_() {
   // swap and the stdFor_ operating-rate read all survive the move unchanged
   // — verified by name in task-16b-report.md.
   (function () {
+    // Registry first (review item #6). This card is GATED — regOt.coverageGate
+    // is what gatedTile_ grades against — and an empty-object miss made that
+    // gate `undefined`, which metricConfidence_ reads as 0 and therefore as
+    // "ungated, publish at high confidence". The headline KPI of the page must
+    // never publish itself by accident.
+    var regOt = regRequired_("onTime");
+    if (!regOt) { html += registryMissingTile_("onTime", "period"); return; }
     var ot = bucketsFor_(MODEL.onTimeBuckets, outHead.isos);
     var otSeries = done.map(function (p) {
       var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
@@ -4564,7 +4982,6 @@ function renderFlow_() {
       ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n);
     var otDetail = regCaveats_("onTime");
     function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
-    var regOt = reg_("onTime");
     var otCovTrend = trendPer.map(function (p) {
       var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
       return b.nAll > 0 ? b.n / b.nAll * 100 : null;
@@ -4590,6 +5007,10 @@ function renderFlow_() {
   // html string entirely for a non-margin role, never dimmed — verified in
   // task-16b-report.md.
   if (margin) (function () {
+    // Registry first (review item #6) — same reasoning as On-Time above; this
+    // card is gated too, and its ⓘ tooltip quotes the registry's own formula.
+    var regFc = regRequired_("forecast");
+    if (!regFc) { html += registryMissingTile_("forecast", "period"); return; }
     var fc = bucketsFor_(MODEL.forecastBuckets, outHead.isos);
     var fcSeries = done.map(function (p) {
       var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
@@ -4599,7 +5020,7 @@ function renderFlow_() {
     var band = Math.round((MODEL.meta.forecastBand || 0.10) * 100);
     var fcHeadline = forecastAccuracyPct_(fc.absVars);
     var fcDetail = [];
-    var fcCmp = '<span title="' + esc_(reg_("forecast").formula || "") +
+    var fcCmp = '<span title="' + esc_(regFc.formula || "") +
       ' Floored at zero per epic, so one runaway engagement cannot drag a good period negative.">' +
       "mean accuracy over " + fc.n + " measurable epic" + (fc.n === 1 ? "" : "s") + " ⓘ</span>" +
       smallN_(fc.n);
@@ -4625,7 +5046,6 @@ function renderFlow_() {
     }
     fcDetail = fcDetail.concat(regCaveats_("forecast"));
     function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
-    var regFc = reg_("forecast");
     var fcCovTrend = trendPer.map(function (p) {
       var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
       return b.nAll > 0 ? b.n / b.nAll * 100 : null;
@@ -4646,14 +5066,29 @@ function renderFlow_() {
           }, outHeadlineLabel, fcCovTrend, labels);
   })();
 
+  // 5b · Availability Rate — hours free for direct delivery of the backlog
+  // (user 2026-08-17). Sits immediately after Forecast by instruction, and the
+  // position reads correctly: On-Time and Forecast say whether we are meeting
+  // commitments, and this says what capacity is left to meet the next ones.
+  //
+  // Margin-gated with Forecast above it — it publishes scheduled capacity
+  // hours, the same disclosure the Metrics Dictionary limits to directs and
+  // above. It does NOT fall back to a completed period on a planning window:
+  // availability is a forward question, and the current window's own answer is
+  // the one worth having.
+  if (margin) html += availabilityTileHtml_();
+
   // 6 · Quality / Rework — outcome tile, moved from #tiles. qualityTile_
   // itself is unchanged (already its own function); only its caller moved.
   html += planning ? notYetTile_("Quality / Rework", outHead, outHeadlineLabel)
                    : qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase);
 
-  // 7 · Throughput — Σ estimate-hours delivered.
+  // 7 · Throughput — Σ estimate-hours delivered. TIER 2 (demoted 2026-08-17b):
+  // hours shipped is volume, not an outcome — it says how much moved, never
+  // whether what moved was what we promised. It opens the secondary strip.
   (function () {
-    var m = reg.throughput || { unit: "hrs", coverageGate: 0.6, name: "Throughput" };
+    var m = regRequired_("throughput");
+    if (!m) { secLead += registryMissingTile_("throughput", "period"); return; }
     var series = trendPer.map(function (p) {
       var b = bucketsFor_(MODEL.throughputBuckets || [], p.isos);
       return b.nAll > 0 ? b.estHrs : null;
@@ -4662,7 +5097,7 @@ function renderFlow_() {
     var conf = metricConfidence_(m.coverageGate || 0,
       b.nAll > 0 ? b.nEst / b.nAll : null,
       series.filter(function (v) { return v !== null; }).length);
-    html += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
+    secLead += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
       scope: "period",
       conf: b.nAll > 0 ? conf : null,
       trend: series, trendLabels: labels,
@@ -4678,10 +5113,13 @@ function renderFlow_() {
 
   // 8 · Bug Count — POPULATION-WIDE (registry deviation: bugs are routinely
   // unassigned at creation, so a roster join would silently drop most of them).
+  // TIER 2 (demoted 2026-08-17b): defect arrivals are an input to the queue,
+  // and Quality/Rework above already carries the outcome read on quality.
   (function () {
-    var m = reg.bugCount || { unit: "bugs", coverageGate: 0, name: "Bug Count" };
+    var m = regRequired_("bugCount");
+    if (!m) { secLead += registryMissingTile_("bugCount", "period"); return; }
     if (!MODEL.meta.bugsAvailable) {
-      html += flowTileHtml_(m, null,
+      secLead += flowTileHtml_(m, null,
         { scope: "period", unavailable: "export predates Jira Backlog.js v3.9.0 — no Jira Bugs tab yet" });
       return;
     }
@@ -4695,7 +5133,7 @@ function renderFlow_() {
     var series = trendPer.map(function (p) { return sumOver(p.isos, "nCreated"); });
     var created = sumOver(head.isos, "nCreated");
     var resolved = sumOver(head.isos, "nResolved");
-    html += flowTileHtml_(m, created, {
+    secLead += flowTileHtml_(m, created, {
       scope: "period",
       conf: null,
       trend: series, trendLabels: labels,
@@ -4710,12 +5148,12 @@ function renderFlow_() {
     });
   })();
 
-  // The three queue cards close Tier 1 (redesign 2026-08-17). They come LAST in
-  // the grid because the five above are outcomes — how we performed — and these
-  // three are the standing position: what we are holding, which way it is
-  // moving, and how long it covers us. Outcome before position is the reading
-  // order an executive already uses.
-  paint_(html + backlogHeroTilesHtml_(), sec);
+  // The three queue cards follow Throughput and Bug Count in the SECONDARY tier
+  // (user instruction 2026-08-17): outcome before position is still the reading
+  // order, but the position cards now sit under the backlog band that defines
+  // them rather than in the protagonist grid. secLead before sec keeps the
+  // strip in the order it is read, not the order it was computed.
+  paint_(html, secLead + backlogHeroTilesHtml_() + sec);
 }
 
 /** "N issues not attributable to a roster person" note, or "" when clean. */
@@ -4739,7 +5177,12 @@ function unattribNote_(key) {
  * on the card is the difference between a floor and a measurement.
  */
 function qualityTile_(done, trendPer, trendLabels, headlineLabel, head, hi, phase) {
-  var reg = reg_("quality");
+  // Registry first (review item #6): the target below falls back to reg.target,
+  // and reg_ handing back {} on a miss would have quietly produced a rework rate
+  // with no target and no invert flag — a LOWER-IS-BETTER metric graded as if
+  // higher were better is worse than not drawing it.
+  var reg = regRequired_("quality");
+  if (!reg) return registryMissingTile_("quality", "period");
   var tg = (MODEL.meta.targets || {}).quality ||
            (reg.target ? { green: reg.target.green, amber: reg.target.amber } : null);
   if (tg) tg = { green: tg.green, amber: tg.amber, invert: reg.invertTarget !== false };
@@ -5043,6 +5486,25 @@ var METRICS_ = {
     scope tags. Deliberate narrowing of spec §4.2, flagged at review. */
 var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality", "leadTime", "throughput",
                      "clearedPerHead", "queueCover", "planCov"];
+/**
+ * ── FEATURE FLAG: Utilization ────────────────────────────────────────────────
+ * Utilization is switched OFF across the whole dashboard (user 2026-08-17).
+ * Availability Rate replaces it as the capacity read an executive acts on:
+ * "how much of the team is spoken for" answers a different question from "how
+ * many hours are free for the backlog", and only the second one is a decision.
+ *
+ * ONE gate, in liveMetrics_ below, because every surface that could show the
+ * metric already routes through it — the comparison chart's metric chips, the
+ * §6 grid columns (gridMetrics_ filters liveMetrics_) and activeMetric_'s
+ * fallback. The KPI card is switched off separately in capacityTileHtml_, the
+ * only place it is built. Flip this to true and every one of them returns.
+ *
+ * NOT removed: the util SERIES. renderPulse_ still reads its operating norm to
+ * price recoverable hours, and that figure is not the utilization KPI — it is
+ * hours a manager can reassign, which is exactly what this change is about.
+ */
+var SHOW_UTILIZATION_ = false;
+
 function liveMetrics_() {
   // A PLANNING window and a completed one are disjoint metric sets, not a
   // superset and a subset: everything except planCov needs work that already
@@ -5052,6 +5514,7 @@ function liveMetrics_() {
   var planning = planningPhase_();
   return METRIC_ORDER_.filter(function (k) {
     if (!METRICS_[k]) return false;
+    if (!SHOW_UTILIZATION_ && k === "util") return false;
     if (MARGIN_METRICS_[k] && !canSeeMargin_()) return false;
     if (planning !== (k === "planCov")) return false;
     return METRICS_[k].available();
@@ -5155,7 +5618,8 @@ function metricChips_() {
   }).join("");
 }
 
-var COMPARE_LABELS = { region: "Region", team: "Team", pm: "PM", family: "Job family" };
+var COMPARE_LABELS = { region: "Region", level: "Level", team: "Team", pm: "PM",
+                       family: "Job family" };
 // Prose forms, declared rather than derived. `.toLowerCase()` on the chip label
 // produced "4 pms measurable" and a naive + "s" would produce "job familys" —
 // small, but this text sits under an executive chart.
@@ -5164,6 +5628,7 @@ var COMPARE_NOUN = {
   team:   { one: "team",   many: "teams" },
   pm:     { one: "PM",     many: "PMs" },
   family: { one: "job family", many: "job families" },
+  level:  { one: "level band", many: "level bands" },
 };
 function cmpNoun_(dim, n) {
   var w = COMPARE_NOUN[dim] || { one: dim, many: dim + "s" };
@@ -5237,25 +5702,20 @@ function gridCellHtml_(o) {
 /** Click-through from a bar to the matching filter (toggles off if re-clicked). */
 
 /**
- * ── FEATURE FLAG: the metric-comparison panel ────────────────────────────────
- * "Billable Utilization by Region" and its bar chart are hidden for this phase
- * (redesign 2026-08-17). Financial detail is out of scope for the executive
- * read right now, and the panel's default lens IS billable utilization.
+ * ── THE BREAKDOWN CHART (Tier 3 drill-down) ──────────────────────────────────
+ * Restored 2026-08-17 after a phase hidden behind SHOW_COMPARE_PANEL_. It was
+ * hidden as "Billable Utilization by Region" — but the panel was never a
+ * utilization panel: it charts whichever metric is selected, and its default
+ * has always been On-Time Delivery. Hiding it to suppress a financial metric
+ * removed the org's only breakdown of on-time performance along with it.
  *
- * A FLAG, not a deletion: the instruction was to keep the code intact so the
- * section can be switched back on later. renderCompare_ below is untouched and
- * still fully exercised by the test suite — flip this to true and the panel
- * returns exactly as it was, with no reconstruction.
+ * With Utilization now switched off at liveMetrics_ (SHOW_UTILIZATION_), the
+ * financial lens is gone from the chip strip while the breakdown itself stays —
+ * which is what was actually wanted both times.
  */
-var SHOW_COMPARE_PANEL_ = false;
-
 function renderCompare_() {
   var panel = document.getElementById("comparePanel");
   if (!panel) return;
-  // Gate FIRST, and clear the panel on the way out: a stale comparison left in
-  // the DOM would still be found by a PNG export or a find-in-page even with
-  // the element hidden.
-  if (!SHOW_COMPARE_PANEL_) { panel.innerHTML = ""; panel.style.display = "none"; return; }
   panel.style.display = "";
   var m = activeMetric_();
   var A = analysisHead_();
@@ -5446,7 +5906,66 @@ function renderCompare_() {
           "quietly omits them describes a smaller org than the one you have. " +
           "Closing that tag gap is a Data Hygiene item. "
         : "") +
-      "The shaded band is the operating range, the vertical rule is the target.</div>";
+      "The shaded band is the operating range, the vertical rule is the target.</div>" +
+    drillRowHtml_(rows);
+}
+
+/**
+ * ── DRILL-THROUGH (user 2026-08-17) ──────────────────────────────────────────
+ * The chart's whole purpose is to end in an action, so the two destinations are
+ * BUTTONS, not an invisible click target on a bar. A CEO should not have to
+ * discover that a bar is clickable, and a bar that silently re-filters the page
+ * is the kind of affordance that gets clicked once by accident and never again.
+ *
+ * The categories are offered explicitly: pick a bar's category, then choose
+ * which question you are asking about it —
+ *   Workforce → who has free hours in that slice (Availability Rate's cohort)
+ *   Actions   → the work itself: gates, signals roster, gaps queue
+ *
+ * Both carry the CURRENT slice across by setting the dimension's own filter, so
+ * the destination tab opens already narrowed. The filters are universal, so
+ * nothing special happens on arrival — the tab simply obeys the filter the way
+ * it obeys every other one.
+ */
+function drillRowHtml_(rows) {
+  var dim = STATE.compare;
+  var active = STATE[dim] || "";
+  var opts = (rows || []).filter(function (r) { return r.n > 0; });
+  if (!opts.length) return "";
+  var noun = cmpNoun_(dim, 1);
+  var chips = opts.slice(0, 12).map(function (r) {
+    return '<span class="chip' + (active === r.key ? " on" : "") + '" onclick="drillPick_(' +
+      jsArg_(dim) + "," + jsArg_(r.key) + ')" title="' +
+      esc_("Narrow every view to " + r.label + ", then open Workforce or Actions below.") +
+      '">' + esc_(r.label) + "</span>";
+  }).join("");
+  return '<div class="drillRow">' +
+    '<div class="cellSub"><b>Act on this.</b> Pick a ' + esc_(noun) +
+      " to narrow the whole dashboard, then choose where to go. " +
+      (active ? "Currently narrowed to <b>" + esc_(active) + "</b>."
+              : "Nothing selected — the buttons open the full population.") + "</div>" +
+    '<div class="chips" style="margin:6px 0 8px">' + chips +
+      (active ? '<span class="chip" onclick="drillPick_(' + jsArg_(dim) + ',\'\')" ' +
+        'title="Clear this narrowing">✕ clear</span>' : "") + "</div>" +
+    '<div class="chips">' +
+      '<button class="btn" onclick="switchView_(\'workforce\')" title="' +
+        esc_("Who has hours free for the backlog in this slice — capacity by pool and level " +
+             "band, and the names behind the Availability Rate card.") +
+        '">Who is available →</button>' +
+      '<button class="btn" onclick="switchView_(\'actions\')" title="' +
+        esc_("What needs action in this slice — the data-quality gates, the compliance signals " +
+             "roster and the gaps queue behind the on-time delivery numbers.") +
+        '">What needs action →</button>' +
+    "</div></div>";
+}
+
+/** Set (or clear) the compare dimension's own universal filter, then re-render
+    in place. Deliberately does NOT change tab: the reader narrows first and
+    chooses the destination second, so one mis-click never navigates away. */
+function drillPick_(dim, val) {
+  STATE[dim] = (STATE[dim] === val) ? "" : val;
+  buildFilters_();   // keep the header dropdowns in step with the drill
+  renderAll_();
 }
 
 /**
@@ -5510,7 +6029,11 @@ function renderPulse_() {
   // gate below — Utilisation/Planned Coverage rendered unconditionally
   // whenever margin is visible before this merge, and a pre-v22 payload with
   // no people signals must not silently drop it too.
-  var capacityHtml = '<div class="tiles">' + capacityTileHtml_() + '</div>';
+  // Empty when Utilisation is switched off on a completed window — an empty
+  // .tiles grid still reserves its own margin, so the wrapper goes too rather
+  // than leaving a blank band above the people signals.
+  var capTile = capacityTileHtml_();
+  var capacityHtml = capTile ? '<div class="tiles">' + capTile + "</div>" : "";
   var s = signalSummary_(head.isos);
   if (!s.available) {
     el.innerHTML = capacityHtml + '<div class="cellSub">People signals arrive after the next refresh (new payload).</div>';
@@ -5643,12 +6166,13 @@ function renderTrust_() {
   var h = hygieneFor_(head.isos), pp = hygienePeopleFor_(head.isos);
   var byKey = {};
   gapsRows_(h, pp).forEach(function (g) { if (g.key) byKey[g.key] = g; });
-  // "attr" drops out of this strip on its own once the roster join is clean:
-  // gapsRows_ retires a 100% row, so byKey has no entry and the tile renders as
-  // "". Listed here deliberately — the strip reinstates it the moment the gap
-  // comes back, with no edit.
-  var order = ["est", "due", "logged", "attr"];
-  var titles = { est: "Estimate coverage", due: "Due-date fill", logged: "Logged fill", attr: "Roster join" };
+  // "attr" — the Roster join tile — was REMOVED 2026-08-17 (user decision). It
+  // had been retiring itself at 100% since 2026-08-06 and had not been visible
+  // since; a per-parameter summary the reader cannot act on now lives per person
+  // on the signals roster below. The three that remain are the three that still
+  // gate a published metric.
+  var order = ["est", "due", "logged"];
+  var titles = { est: "Estimate coverage", due: "Due-date fill", logged: "Logged fill" };
   el.innerHTML = '<h3>Can we publish these numbers? ' + scopeTag_("org") + "</h3>" +
     '<p class="cellSub">Each metric needs its gate met before it goes on a slide.</p>' +
     '<div class="trustRow">' + order.map(function (k) {
@@ -6238,10 +6762,25 @@ function renderRoster_() {
 
   el.innerHTML =
     "<h3>People signals — every active person in this slice</h3>" +
+    // POPULATION TOGGLE — moved here 2026-08-17. It used to live on the 🧬
+    // by-type matrix and this table simply followed it; deleting that matrix
+    // would have stranded the roster on Open with no way back, because
+    // STATE.typePop had exactly one control in the whole client. It belongs on
+    // the surface that reads it anyway: this is now the only view the toggle
+    // moves.
+    '<div class="chips seg" style="margin-bottom:8px">' +
+      '<span class="chip' + (open ? " on" : "") + '" onclick="setTypePop_(\'open\')"' +
+        ' title="Unresolved work, as at the last export. THIS is the actionable half — a due date ' +
+        'added here moves next period\'s number.">Open backlog</span>' +
+      '<span class="chip' + (open ? "" : " on") + '" onclick="setTypePop_(\'resolved\')"' +
+        ' title="Work resolved in the selected window. Explains the numbers on the cards today; ' +
+        'fixing these records changes history, not the next report.">Resolved · ' +
+        esc_(head.label) + "</span></div>" +
     '<p class="cellSub">' + (open ? "Open backlog — fix these and next period moves. "
                                   : "Resolved in " + esc_(head.label) + ". ") +
     "Each cell: the share of the person's issues carrying that field, graded against " +
-    "the field's own gate — the same gates as the 🧬 matrix below. Grey = fewer than " + signalMinN_() +
+    "the field's own gate — read from the metric registry, so an admin gate override " +
+    "reaches this table like it reaches the tiles. Grey = fewer than " + signalMinN_() +
     " issues (not graded). Click a header to sort; default is biggest opportunity first.</p>" +
     // ── The methodology, FOLDED ──
     // Every rule below is load-bearing (the managers ratified them 2026-08-10) and
@@ -7092,16 +7631,49 @@ function renderWfGrid_() {
  * ships without its denominator. "32% available" is a rumour; "32% available
  * (of 63 backlog consumers)" is a fact.
  */
-function renderWfConsumers_() {
+/**
+ * ── AVAILABILITY: hours free for direct delivery of the backlog ──────────────
+ *
+ * THE definition, computed once and read by two surfaces: the Executive tab's
+ * Availability Rate KPI and this tab's "one honest number" panel. They used to
+ * be one panel and one absence; now that the figure headlines the executive
+ * read, a second copy of the arithmetic would be a number that can disagree
+ * with itself across two tabs, which is worse than not publishing it.
+ *
+ * CONSUMERS ONLY. Support, PMO and crew capacity is real but is not drawn from
+ * the project backlog, so counting it here would answer "how much capacity
+ * exists" when the question asked is "how much can take backlog work". That
+ * carve is the whole reason the Workforce tab calls it the honest number.
+ *
+ * Gross, not deployable, as the denominator — deliberately the same basis the
+ * panel has always published, so the KPI cannot read differently from the tab
+ * it deep-links into.
+ *
+ * @returns {?Object} null when the payload predates workforce health;
+ *   {head, gross, committed, freeHrs, pct, nonHead} otherwise. head === 0 is a
+ *   REAL answer ("no consuming pools in this slice"), not an absence.
+ */
+function wfAvailability_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfConsumersPanel", "The one honest number"); return; }
+  if (!w) return null;
   var cons = w.cells.filter(function (c) { return c.cfg.consumes; });
-  var head = cons.reduce(function (a, c) { return a + c.head; }, 0);
   var gross = cons.reduce(function (a, c) { return a + c.grossHrs; }, 0);
   var committed = cons.reduce(function (a, c) { return a + c.committedHrs; }, 0);
-  var pct = wfDiv_(gross - committed, gross);
-  var nonCons = w.cells.filter(function (c) { return !c.cfg.consumes; });
-  var nonHead = nonCons.reduce(function (a, c) { return a + c.head; }, 0);
+  return {
+    head: cons.reduce(function (a, c) { return a + c.head; }, 0),
+    gross: gross,
+    committed: committed,
+    freeHrs: gross - committed,
+    pct: wfDiv_(gross - committed, gross),
+    nonHead: w.cells.filter(function (c) { return !c.cfg.consumes; })
+                    .reduce(function (a, c) { return a + c.head; }, 0),
+  };
+}
+
+function renderWfConsumers_() {
+  var a = wfAvailability_();
+  if (!a) { wfStale_("wfConsumersPanel", "The one honest number"); return; }
+  var head = a.head, gross = a.gross, pct = a.pct, nonHead = a.nonHead;
 
   document.getElementById("wfConsumersPanel").innerHTML =
     "<h3>The one honest number" + scopeTag_("period") + "</h3>" +
@@ -7109,8 +7681,11 @@ function renderWfConsumers_() {
       ? "<div class='emptyState'>No backlog-consuming pools in this slice.</div>"
       : '<div class="big" style="font-size:2rem">' + wfPct_(pct) + "</div>" +
         '<div class="cellSub">sellable headroom <b>of ' + head + " backlog consumer" +
-          (head === 1 ? "" : "s") + "</b> — " + wfHrs_(gross - committed) + " free of " +
+          (head === 1 ? "" : "s") + "</b> — " + wfHrs_(a.freeHrs) + " free of " +
           wfHrs_(gross) + " scheduled</div>" +
+        '<div class="cellSub" style="margin-top:6px">This is the same figure the ' +
+          "Executive tab publishes as <b>Availability Rate</b> — one definition, two " +
+          "surfaces, so the two tabs cannot disagree.</div>" +
         '<div class="cellSub" style="margin-top:6px">' +
           "This is the figure to quote when somebody asks how available the team is. It excludes " +
           nonHead + " " + (nonHead === 1 ? "person" : "people") + " in demand-driven and governing " +
@@ -7427,17 +8002,21 @@ function renderPm_() {
   // Absent ≠ clean — same rule as renderEpicDue_. A payload built before this
   // tab existed must say it did not look, or an empty tab reads as "no gaps".
   if (!d || !d.rows) {
-    el.innerHTML = "<h3>PM-owned work</h3><div class=\"emptyState\">" +
+    el.innerHTML = "<h3>Project Managers — owned work</h3><div class=\"emptyState\">" +
       "Not in this payload — ↻ Refresh to rebuild on the current schema.</div>";
     return;
   }
   if (!d.rows.length) {
-    el.innerHTML = "<h3>PM-owned work</h3><div class=\"emptyState\">" +
+    el.innerHTML = "<h3>Project Managers — owned work</h3><div class=\"emptyState\">" +
       "No open work in the current export.</div>";
     return;
   }
   var nowIso = currentIso_();
   var totalIgnored = 0;
+  // Epics carved out of the Owns bar as assigned backlog (To Do, no date).
+  // Summed in the same pass as totalIgnored so the sentence below always
+  // describes the slice on screen.
+  var totalBacklogEpics = 0;
   // ── The universal filters, applied at epic grain ────────────────────────
   // Scoped by the people DOING the work (see pmEpicPasses_). Counted as we go,
   // because a filter that hides work without saying how much is indistinguishable
@@ -7446,6 +8025,7 @@ function renderPm_() {
   var hidden = 0, hiddenUnowned = 0;
   var visRows = d.rows.map(function (r) {
     totalIgnored += r.ignoredN || 0;
+    totalBacklogEpics += r.epicBacklogN || 0;
     if (!filtering) return r;
     var keep = [];
     (r.epics || []).forEach(function (e) {
@@ -7510,7 +8090,7 @@ function renderPm_() {
     : "";
 
   el.innerHTML =
-    "<h3>PM-owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
+    "<h3>Project Managers — owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
     '<p class="cellSub">An epic belongs to its <b>Jira assignee</b> — the ticket states ' +
       "who owns it. Where an epic has no assignee, it falls back to the <b>Tempo project " +
@@ -7527,8 +8107,16 @@ function renderPm_() {
     "</p>" +
     '<p class="cellSub"><b>Epics shown are those in progress or due this month</b> ' +
       "(including anything already overdue). An epic that is neither started nor dated " +
-      "is not listed — it is not work in flight — but it still counts in the Owns bar " +
-      "and is named in its 🚩 list, so nothing is hidden from the number." +
+      "is not listed — it is not work in flight — and since 2026-08-17 it is not graded " +
+      "either: an undated epic sitting in <b>To Do</b> is <b>assigned backlog</b>, not a " +
+      "commitment this PM has missed. Those epics leave the Owns bar, are counted beside " +
+      "it, and are named under <b>○ In backlog</b> when a row is opened, so the exclusion " +
+      "is visible rather than inferred. An epic joins the bar as soon as somebody starts " +
+      "it or dates it." +
+      (totalBacklogEpics
+        ? " <b>" + totalBacklogEpics + "</b> epic" + (totalBacklogEpics === 1 ? "" : "s") +
+          " " + (totalBacklogEpics === 1 ? "is" : "are") + " in that state right now."
+        : "") +
       (totalIgnored
         ? " <b>" + totalIgnored + "</b> To Do ticket" + (totalIgnored === 1 ? "" : "s") +
           " with no due date " + (totalIgnored === 1 ? "is" : "are") + " counted but not " +
@@ -7536,6 +8124,18 @@ function renderPm_() {
         : "") +
       " <b>The bars are not windowed</b>: they measure every open item the PM owns, " +
       "because a denominator of only dated epics could never report a missing date.</p>" +
+    // The 🚩 audit on Actions counts EVERY undated open epic, including the To Do
+    // ones this tab now excludes. Two different counts of what a reader will call
+    // "the same epics" is how a dashboard gets distrusted, so the difference is
+    // stated here rather than discovered over there.
+    (totalBacklogEpics
+      ? '<p class="cellSub">⚠ This is why the <b>🚩 Epics without a due date</b> audit on ' +
+        "<b>Actions</b> shows a higher number: it is an org-wide ticket queue with nobody's " +
+        "name on it, so it still counts the " + totalBacklogEpics + " backlog epic" +
+        (totalBacklogEpics === 1 ? "" : "s") + " above. Both numbers are right — they answer " +
+        "different questions: <i>what needs dating</i> versus <i>what has this PM committed " +
+        "to</i>.</p>"
+      : "") +
     rows;
 }
 
@@ -7555,8 +8155,8 @@ function renderPm_() {
  */
 var PM_OPPS_ = [
   { k: "oppNoDue", icon: "🚩", cls: "sigBad",
-    one: "epic with no due date", many: "epics with no due date",
-    tip: "An epic with no committed end. It can never appear in On-Time Delivery, and nothing under it can be graded against a deadline." },
+    one: "started epic with no due date", many: "started epics with no due date",
+    tip: "Work has begun on this epic and it still has no committed end. It can never appear in On-Time Delivery, and nothing under it can be graded against a deadline. Epics still sitting in To Do are NOT counted here (2026-08-17) — an untouched, undated epic is assigned backlog, not a missed commitment." },
   // Declared BEFORE the at-risk row so that on equal counts the tie-break (which
   // is declaration order) falls toward the worse state. Counted per EPIC: one
   // badly-planned epic is one decision a PM makes, not nine problems.
@@ -7683,14 +8283,33 @@ function pmGroupRowHtml_(r, d) {
   var readyPct = r.readyDen ? Math.round(r.readyN / r.readyDen * 100) : null;
   var ownCls = missing === 0 ? "sigGood" : "sigBad";
   var span = Object.keys(PM_COLS_).length;
+  // Undated To Do epics are assigned backlog, not this PM's missed commitments
+  // (user 2026-08-17), so they sit outside the bar above. Stated on the SAME
+  // LINE as the bar, never only in a tooltip: a denominator that quietly got
+  // smaller is how a bar comes to read better than the work behind it.
+  var backlogN = r.epicBacklogN || 0;
+  var backlogNote = backlogN
+    ? ' <span class="cellSub" title="Epics sitting in To Do with no due date. Assigned backlog, ' +
+      'not a commitment yet — nobody has started them and nobody has promised a date. They ' +
+      'join the bar the moment either changes. Counted here so the bar can never read as ' +
+      '&quot;nothing to fix&quot; while they exist.">· ' + backlogN +
+      " in backlog, not graded ⓘ</span>"
+    : "";
   return '<tr class="pmGroup"><td colspan="' + span + '">' +
     '<div class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
       "<b>" + (open ? "▾ " : "▸ ") + esc_(r.pm) + "</b>" +
       // The two bars stay side by side and stay LABELLED. They are never
       // averaged: one is the PM's own field, the other is their team's hygiene.
-      ' <span class="cellSub">· Owns <b class="' + ownCls + '">' + r.epicDated +
-        "</b>/" + r.epicN + " epics dated" +
-        (ownPct === null ? "" : " (" + ownPct + "%)") + " · bar 100%</span>" +
+      // A PM whose every epic is undated backlog has NO denominator here, and
+      // says so rather than rendering a clean 100% over nothing.
+      (r.epicN
+        ? ' <span class="cellSub">· Owns <b class="' + ownCls + '">' + r.epicDated +
+          "</b>/" + r.epicN + " epics dated" +
+          (ownPct === null ? "" : " (" + ownPct + "%)") + " · bar 100%</span>"
+        : ' <span class="cellSub">· Owns <span title="Every epic attributed to this PM is ' +
+          'unstarted and undated — assigned backlog, which this bar does not grade. There is ' +
+          'nothing committed to measure yet.">no committed epics</span></span>') +
+      backlogNote +
       ' <span class="cellSub">· In project ' +
         (readyPct === null ? "no open tasks" : readyPct + "% of " + r.readyDen + " ready") +
         " <span title=\"Dated, estimated, linked and fresh. Team hygiene, shown as " +
@@ -7700,8 +8319,15 @@ function pmGroupRowHtml_(r, d) {
     (open
       ? '<div class="cellSub pmVia">' + pmViaHtml_(r) + "</div>" +
         (missing
-          ? '<div class="cellSub pmVia">🚩 Undated epics: ' +
+          ? '<div class="cellSub pmVia">🚩 Started, with no due date: ' +
             keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap, PM_KEYS_SHOWN_) + "</div>"
+          : "") +
+        // The carved-out set is nameable too, under a heading that says what it
+        // is. These are not a queue to fix — they are the backlog this PM is
+        // carrying — but a reader who wants to date one can still find it.
+        (backlogN
+          ? '<div class="cellSub pmVia">○ In backlog (To Do, no date — not graded): ' +
+            keyListHtml_(r.epicBacklogKeys || [], false, d.keyCap, PM_KEYS_SHOWN_) + "</div>"
           : "")
       : "") +
   "</td></tr>";
@@ -8480,7 +9106,7 @@ function leaverNoteHtml_() {
 
 /** Sums the server's per-week attribution counts over a set of ISO weeks. */
 function hygieneFor_(isos) {
-  var s = { res: 0, resDue: 0, resAssigned: 0, resAttr: 0, resRegion: 0, resTeam: 0,
+  var s = { res: 0, resDue: 0, resAssigned: 0, resRegion: 0, resTeam: 0,
             resReady: 0, resFull: 0, epics: 0, epicsEst: 0, epicsTime: 0,
             // SRSO binding (v29). Absent on a cached v28 row, which sums to 0
             // and is exactly what `srsoMeasurable === 0` is read as: not
@@ -8616,13 +9242,16 @@ function saveGates_() {
     .saveGateOverrides(payload);
 }
 
-/** The gap definitions, extracted so the gaps queue and the Executive
-    data-trust strip render from ONE list (spec §4.4/§5.4). `key` marks the
-    four the strip shows. */
+/** The gap definitions, extracted so the gaps queue and the data-trust strip
+    render from ONE list (spec §4.4/§5.4). `key` marks the ones the strip shows —
+    three since 2026-08-17, when the Roster join tile was removed with its row. */
 /** A row measured at 100% is not a gap. `retireWhenFull` opts a row into being
-    hidden while that holds — see the block above typeFieldRetired_ for why the
-    rule is data-driven rather than a deletion. A null value (nothing measured,
-    or a feed that is not connected) is NOT solved and always stays. */
+    hidden while that holds: data-driven, so the row returns by itself the moment
+    a record fails, with no deploy. A null value (nothing measured, or a feed
+    that is not connected) is NOT solved and always stays.
+    ⚠ Retiring is not deleting. The roster-join row WAS deleted on 2026-08-17
+    after a fortnight retired at 100% — that one is gone from the code, not
+    hidden, and restoring it means restoring the builder from git. */
 function gapRetired_(g) {
   return !!g.retireWhenFull && g.value !== null && g.value >= 1;
 }
@@ -8665,48 +9294,23 @@ function gapsRowsAll_(h, pp) {
       note: "Measured against the mutable Jira Due Date — a baselined committed date does not exist yet. " +
             "Under the Metrics Dictionary scope this counts epics and milestones, which carry due dates far " +
             "less often than the Stories and Tasks the previous scope measured." },
-    // SPLIT IN TWO (2026-08-03). Reported as one number, ~46% \"unattributed\"
-    // read as a Jira hygiene failure and was routed to the Jira admin queue,
-    // where there was nothing to fix: the assignee is nearly always THERE, it
-    // just doesn't match a roster name. Two gaps, two owners, two fixes.
+    // This row is the SURVIVOR of a 2026-08-03 split. Reported as one number,
+    // ~46% "unattributed" read as a Jira hygiene failure and was routed to the
+    // Jira admin queue, where there was nothing to fix: the assignee is nearly
+    // always THERE, it just didn't match a roster name. The split separated the
+    // two owners — "carries an assignee" (Jira discipline, here) from "…and that
+    // assignee resolves to a roster person" (OUR name index).
+    //
+    // The second half was fixed on 2026-08-04, retired itself at 100% from
+    // 2026-08-06, and was DELETED on 2026-08-17 with the rest of the
+    // per-parameter compliance summaries. What still catches a name-index
+    // regression is this row plus each card's own unattributed count
+    // (`meta.jiraUnattributed`) — neither of which changed.
     { name: "Resolved work carries a Jira assignee",
       value: h.res > 0 ? h.resAssigned / h.res : null, gate: 0.95,
       detail: (h.res - h.resAssigned) + " of " + h.res + " have no assignee at all",
       blocks: "all four delivery cards",
       note: "This one is a Jira discipline gap — an issue closed with nobody on it." },
-    // RETIRES ITSELF AT 100% (user decision 2026-08-06 — "we have solved all
-    // discrepancies"). Same rule and same reasoning as the 🧬 matrix's
-    // retireWhenFull column: off screen while it is clean, back the moment one
-    // record fails, and measured on every rebuild either way. This row is the
-    // dashboard's only view of a loss that was 49% of all records two days ago,
-    // so it is hidden, never deleted.
-    // ⚠ THE NOTE ON THIS ROW USED TO SAY "leavers" AND THAT WAS WRONG — it
-    // survived from before the 2026-08-04 attrition decision and contradicted
-    // the policy that had already removed them. A director read "N named
-    // assignees do not match the roster" next to it and concluded the residue
-    // was attrition records (user, 2026-08-07). It cannot be: a proven former
-    // employee is removed TWICE before this row is counted — their issues never
-    // enter the leaver-scoped feed hygieneBuckets_ reads, and they are held out
-    // of attribIdx as belt-and-braces. The row now says so on its face and
-    // prints the attrition count beside it, because a reader who has to scroll
-    // back to the 👥 line to learn that is a reader who guesses instead.
-    { key: "attr", name: "…and that assignee resolves to a roster person", retireWhenFull: true,
-      value: h.resAssigned > 0 ? h.resAttr / h.resAssigned : null, gate: 0.95,
-      // Plain text only — hygieneRow_ runs `detail` through esc_(), so markup
-      // here would render as literal tags.
-      detail: (h.resAssigned - h.resAttr) + " of " + h.resAssigned +
-              " named assignees match no roster row — these are NOT former employees" +
-              (leaverIssues_() ? "; attrition is excluded separately (" + leaverIssues_() + " issues)" : ""),
-      blocks: "all four delivery cards",
-      note: "Attrition is NOT what this counts. Former employees are identified from the roster and " +
-            "dropped from the whole feed before this row is measured, so no leaver the roster can " +
-            "recognise is in this number. What is left is a name the roster has never seen under any " +
-            "alias: a contractor or vendor account, an automation account, or a display name spelled " +
-            "differently from the roster (nickname, married name, given-name order). One attrition case " +
-            "CAN hide here — a former employee whose Jira display name never matched their roster row — " +
-            "because the attrition test resolves names through the same index that is failing. " +
-            "Fixed in the name index, not by Jira admin. Unmatched items are excluded from every card " +
-            "under every filter." },
     { name: "Region tagged on delivery work",
       value: h.res > 0 ? h.resRegion / h.res : null, gate: 1.00,
       detail: (h.res - h.resRegion) + " of " + h.res + " land in Unassigned",
@@ -8835,11 +9439,14 @@ function renderHygPanel_() {
     '<p class="cellSub">Whole-population view — the dashboard filters deliberately do not apply. ' +
     "A well-tagged region does not make the feed publishable.</p>" + nav +
     leaverNoteHtml_() +
-    // 🧬 matrix FIRST (spec §5.3): which issue TYPE to go fix — its own <h4>.
-    typeMatrixHtml_(isos, winLabel) +
-    // Gaps queue SECOND (spec §5.4): whether each metric can publish at all —
-    // the metric owner's view, one level up from "which type".
-    '<div style="margin-top:14px">' +
+    // The 🧬 by-type matrix used to render FIRST here (spec §5.3, "which issue
+    // TYPE to go fix"). Removed 2026-08-17: it summarised compliance per
+    // evaluated parameter, which the 👥 signals roster above already does per
+    // person — and a person can be asked to fix their tickets, where an issue
+    // type cannot. What is left on this panel is the gaps queue, which answers
+    // a genuinely different question: not "who is missing fields" but "can this
+    // metric be published at all".
+    '<div>' +
     '<h4>Gaps queue</h4>' +
     // Coverage-colour key (user request 2026-08-04). "Its gate, never 100%"
     // is the caption's whole job: a 90% gate met at 91% is green, and a reader
@@ -8863,62 +9470,12 @@ function renderHygPanel_() {
     "</div>";
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// 🧬 FIELD FILL BY ISSUE TYPE (spec 2026-08-04-hygiene-by-issue-type-design.md)
-//
-// The gaps table above says HOW MUCH is missing, org-wide, pooled. This says
-// WHICH TYPE to go and fix — a different question with a different reader: the
-// gaps table belongs to whoever owns the metric, this belongs to whoever owns
-// the tickets. Hence all-roles by design: fixing a ticket's fields is a task
-// for anyone who touches that issue type, not a privileged action.
-//
-// Two populations behind one toggle, and OPEN is the default: a due date added
-// to an open ticket moves next quarter's number, one added to a closed ticket
-// is archaeology. Resolved explains today's cards; open is the work queue.
-// ══════════════════════════════════════════════════════════════════════════
-
-/** Column set, in display order. `gate` is null where the registry has no gate
-    for that field — those cells report fill without grading it. */
-var TYPE_FIELDS_ = [
-  // `denom: "dueN"` — the managers' three rules (2026-08-10, Code.js dueExpected_).
-  // Note this is NOT the same shape as `time` below: logged time drops every
-  // unstarted ticket, while the due date drops only the unstarted AND UNDATED ones,
-  // because a date somebody has set is a commitment whatever the status column says.
-  { k: "due",      label: "Due date",   gateOf: "onTime", denom: "dueN",
-    feeds: "On-Time",  needs: "gatesOnTime",
-    note: "On the open backlog, measured over work that has STARTED (status category In Progress) or already carries a date. An undated To Do ticket is ignored — not delayed, not missing; a dated one is tracked whatever its status. Resolved work is always expected to carry a date. Epics are audited separately at 100% (🚩 panel above)." },
-  { k: "assigned", label: "Assignee",   gate: 0.95,
-    feeds: "all four cards", needs: null },
-  // `denom: "attrN"` — graded over records that HAVE an assignee only. Without
-  // it, an unassigned record reads as a roster-join failure, which un-retires
-  // this column the moment unassigned work enters the export (spec §4.6, D12).
-  { k: "attr",     label: "→ roster",   gate: 0.95, denom: "attrN",
-    feeds: "all four cards", needs: null, retireWhenFull: true },
-  { k: "est",      label: "Estimate",   gateOf: "forecast",
-    feeds: "Forecast", needs: "gatesForecast" },
-  // `denom` — the Logged column grades over STARTED work only (Code.js
-  // timeExpected_). On the open backlog a To Do ticket is outside the question:
-  // time is logged as work is done, so an untouched ticket carrying no worklog
-  // is the process working. Dividing by n instead put 782 unstartable rows in a
-  // 1,116-row queue and reported 23% where the started population reads 45%.
-  { k: "time",     label: "Logged",     gateOf: "forecast", denom: "timeN",
-    feeds: "Forecast", needs: "gatesForecast",
-    note: "Measured over work that has STARTED (status category In Progress) plus all resolved work. Unstarted tickets are excluded from both halves — not counted as gaps." },
-  // Region and Team READ near-0% until the exporter's multi-select fix ("Jira
-  // Backlog.js" v3.7.0, 2026-08-04) — the field was populated, the export was
-  // dropping it. They are still footnoted, because a uniform column reads as one
-  // field gap with one owner rather than as seven separate per-type failures, and
-  // the uniformity test below is computed from the data either way.
-  // The prereq ID is named; the PERSON is not. Same rule as the gaps table and
-  // the suppressed tiles (2026-08-03): accountability lives in the requirements
-  // doc, because a standing table of names against failures in a widely-read
-  // view reads as a blame board rather than a work queue.
-  { k: "region",   label: "Region",     gate: 1.00, feeds: "Region compare", needs: null, pr01: true },
-  { k: "team",     label: "Team",       gate: 1.00, feeds: "Team compare",   needs: null, pr01: true },
-];
-
-/** Gate for a field, from the registry when it owns one. Never re-typed here —
-    an admin gate override has to reach this table like it reaches the tiles. */
+/** Gate for a signal field, from the metric registry when the field names one
+    (`gateOf`), else the field's own literal gate, else null = ungraded. Never
+    re-typed at the call site — an admin gate override has to reach the roster
+    the same way it reaches the tiles.
+    Named `typeField…` because it was written for the 🧬 by-type matrix (removed
+    2026-08-17); the 👥 roster was its second caller and is now its only one. */
 function typeFieldGate_(f) {
   if (f.gateOf) {
     var m = (MODEL.meta.registry || {}).metrics || {};
@@ -8928,12 +9485,15 @@ function typeFieldGate_(f) {
 }
 
 // ── 👥 PEOPLE SIGNALS (Actions roster, spec 2026-08-05 §5.2) ─────────────────
-// Person grain. The three METRIC-GATING fields (due / est / logged) share their
-// predicates and gates with the 🧬 matrix — one truth, so the two surfaces can
-// never disagree about a record. From 2026-08-06 the roster carries three MORE
-// fields that the matrix does not: they are per-person commercial obligations,
-// not per-type field fill, and the block below says why they are graded here and
-// why they stay out of both `overall` and the matrix's impact sort.
+// Person grain, and since 2026-08-17 the ONLY per-parameter compliance read in
+// the product: the 🧬 by-type matrix that used to sit beside it was removed
+// because a summary per issue type names nobody who can fix a ticket, while
+// this one names a person. The three METRIC-GATING fields (due / est / logged)
+// read the server's shared predicates and resolve their gates from the metric
+// registry, so this table cannot drift from backlog health, the 🚩 epic audit
+// or the gaps queue about the same record. Three MORE fields (2026-08-06) are
+// per-person commercial obligations; the block below says why they are graded
+// here and why they stay out of `overall`.
 
 // ── WHY THREE MORE FIELDS, AND WHY THEY ARE GRADED (2026-08-06) ──────────────
 // The first three fields gate a PUBLISHED metric, which is what earns them a
@@ -9126,335 +9686,12 @@ function signalSummary_(isos) {
   return out;
 }
 
-/** Does this field gate a PUBLISHED metric for this row's type? A Story's due
-    date does not, under dictionary scope — grading it red would send someone to
-    fix records that move no number. */
-function typeFieldLive_(f, row) {
-  if (!f.needs) return true;
-  return row[f.needs] === true;
-}
+/** Open ↔ Resolved population toggle for the 👥 signals roster.
+    It drove two surfaces until 2026-08-17; the 🧬 matrix that carried its chips
+    is gone, and the chips moved onto the roster itself. renderHygPanel_ is still
+    called because the gaps queue's caption names the same window. */
+function setTypePop_(v) { STATE.typePop = v; renderRoster_(); renderHygPanel_(); }
 
-/**
- * Is this column IDENTICAL across every type? Then it carries no per-type
- * information — which is the only thing this table exists to show.
- *
- * Region and Team read uniformly low (they were blank org-wide before the
- * v3.7.0 exporter fix), so grading them paints two red cells on every single
- * row and the genuine per-type findings drown in them.
- * A uniform column is one org-wide gap with one owner, and it is rendered as
- * one: muted, with the real percentage still on screen and the severity carried
- * by the footnote instead of by colour.
- *
- * Computed from the DATA, not hardcoded, so the day PR-01 lands and Region
- * starts varying by type, this column starts grading itself again with no code
- * change — and if it varies from the first row, it was never muted at all.
- */
-// ── RETIRING A SOLVED FIELD (user decision 2026-08-06) ───────────────────────
-// "we do not need 'assignee resolves to a roster person' as metric, we have
-// solved all discrepancies so always 100%."
-//
-// A column reading 100% on every row teaches nothing. It costs width on three
-// surfaces and trains the reader to skim past the columns that DO vary, which
-// is the same failure the uniform-column muting above exists to prevent.
-//
-// So the field retires — but, exactly like typeColUniform_, the rule is
-// COMPUTED FROM THE DATA rather than deleted from the code, and for a sharper
-// reason here. The roster join is this dashboard's historically dominant data
-// loss: it was silently dropping 173 of 351 records (49%) as recently as the
-// 2026-08-04 profile. Deleting the only instrument that can see it, on the
-// strength of it being fixed today, is precisely how it comes back unnoticed —
-// and it would come back as four wrong cards, not as a missing column.
-//
-// Hidden while it is clean, back on screen the moment one record fails. Neither
-// direction needs a deploy, and the measurement never stops running: Code.js
-// still counts `attr` / `resAttr` on every pass.
-//
-// To delete it outright instead, drop `retireWhenFull` and the field entry —
-// but then nothing is watching.
-function typeFieldRetired_(f, rows) {
-  if (!f.retireWhenFull || !rows.length) return false;
-  return rows.every(function (r) {
-    var n = typeFieldN_(f, r);
-    return n === 0 || (r[f.k] || 0) >= n;
-  });
-}
-
-/** The columns actually rendered for this population. Aggregation and the
-    impact sort still walk the FULL list — a retired field contributes 0 misses
-    by definition, so nothing downstream needs to know it is off screen. */
-function typeFieldsShown_(rows) {
-  return TYPE_FIELDS_.filter(function (f) { return !typeFieldRetired_(f, rows); });
-}
-
-function typeColUniform_(f, rows) {
-  if (!f.pr01 || rows.length < 2) return false;
-  var first = null;
-  return rows.every(function (r) {
-    var pct = r.n > 0 ? Math.round((r[f.k] || 0) / r.n * 100) : null;
-    if (first === null) { first = pct; return true; }
-    return pct === first;
-  });
-}
-
-/** Rows for the active population, summed over the window (resolved) or taken
-    whole (open — a backlog has no history to walk). */
-function typeHygRows_(isos) {
-  var th = MODEL.typeHygiene || { resolved: [], open: [] };
-  if (STATE.typePop === "resolved") {
-    var by = {};
-    (th.resolved || []).forEach(function (r) {
-      if (isos.indexOf(r.iso) === -1) return;
-      var t = by[r.type];
-      if (!t) {
-        t = by[r.type] = { type: r.type, isEpic: r.isEpic, gatesOnTime: r.gatesOnTime,
-                           gatesForecast: r.gatesForecast, n: 0,
-                           keys: {}, keysCapped: {} };
-        TYPE_FIELDS_.forEach(function (f) {
-          t[f.k] = 0;
-          // A per-field denominator has to be summed across the window like the
-          // numerator it divides, or a multi-week selection grades one week's
-          // hits against another week's population.
-          if (f.denom) t[f.denom] = 0;
-        });
-      }
-      t.n += r.n;
-      TYPE_FIELDS_.forEach(function (f) {
-        t[f.k] += r[f.k] || 0;
-        // undefined on a pre-v24 cached row — fall back to that row's n so the
-        // rollup stays the honest old denominator instead of collapsing to 0.
-        if (f.denom) t[f.denom] += (r[f.denom] === undefined ? r.n : r[f.denom]) || 0;
-        var ks = (r.keys || {})[f.k];
-        if (ks && ks.length) t.keys[f.k] = (t.keys[f.k] || []).concat(ks);
-        if ((r.keysCapped || {})[f.k]) t.keysCapped[f.k] = true;
-      });
-    });
-    return Object.keys(by).map(function (k) { return by[k]; });
-  }
-  return (th.open || []).slice();
-}
-
-/**
- * Recoverable impact: records missing the field, counted ONLY where that field
- * gates a published metric for that type.
- *
- * This is the sort key, and it is the whole reason the table is useful. Sorting
- * by worst percentage puts a 21%-filled Sub-task column on top, where fixing all
- * of it moves nothing; sorting alphabetically buries the four Go-live epics whose
- * missing due dates are the entire On-Time gap.
- *
- * Region and Team (pr01) are excluded even now that Region VARIES by type
- * (v3.7.0 exporter fix, 2026-08-04). Tried counting them here and reverted:
- * they gate no PUBLISHED metric — they are rollup dimensions — so 300 sub-tasks
- * missing a region would outrank the 12 Go-live epics whose missing due dates
- * are the entire On-Time gap, which is the precise failure this sort exists to
- * prevent. Their per-type gaps are not hidden: the columns un-mute and show
- * graded fill % plus miss counts as soon as they stop being uniform.
- */
-function typeImpact_(row) {
-  return TYPE_FIELDS_.reduce(function (t, f) {
-    if (f.pr01 || !typeFieldLive_(f, row)) return t;
-    // Per-field denominator, so "fixable" counts only records the field is
-    // actually expected on. Counting unstarted tickets here would sort the
-    // matrix by backlog size rather than by recoverable gaps.
-    return t + Math.max(0, typeFieldN_(f, row) - (row[f.k] || 0));
-  }, 0);
-}
-
-// One toggle drives two surfaces (spec §5.4, Task 5): the 🧬 matrix's own
-// Open/Resolved chips stay INSIDE typeMatrixHtml_ (its PNG capture deliberately
-// includes them — comment above), but the 👥 roster reads the same STATE.typePop,
-// so flipping the chip has to re-render both rather than leaving the roster
-// showing the population the header no longer names.
-function setTypePop_(v) { STATE.typePop = v; renderHygPanel_(); renderRoster_(); }
-
-/** The rows this field is measured over. `denom` names a per-field denominator
-    (time → timeN) for a field that is not expected on every record in the row;
-    everything else divides by n. Falls back to n on a pre-v24 payload so an old
-    cached model reads as it always did rather than as a division by zero. */
-function typeFieldN_(f, row) {
-  if (!f.denom) return row.n;
-  return row[f.denom] === undefined ? row.n : row[f.denom];
-}
-
-/** One cell: fill %, grade against the field's own gate, and the miss count. */
-function typeCellHtml_(f, row, uniform) {
-  var n = typeFieldN_(f, row);
-  var have = row[f.k] || 0, miss = Math.max(0, n - have);
-  var pct = n > 0 ? Math.round(have / n * 100) : null;
-  var live = typeFieldLive_(f, row) && !uniform;
-  var gate = typeFieldGate_(f);
-  var rag, mark;
-  if (!live || pct === null || gate === null) {
-    // Informational, not a gap. "—" is doing real work here: it separates
-    // "this is fine" from "this does not apply to this type".
-    rag = "n"; mark = "—";
-  } else {
-    var g = Math.round(gate * 100);
-    rag = pct >= g ? "g" : (pct >= g - 10 ? "a" : "r");
-    mark = { g: "✔", a: "▲", r: "✖" }[rag];
-  }
-  var why = (f.note ? " " + f.note : "") + (live
-    // n === 0 on a scoped field means nothing in this row is even in the
-    // question (a type with no started work). Saying "gates no metric" there
-    // would be a different, wrong answer.
-    ? (n === 0 ? ". Nothing in this row is in scope for this field yet."
-               : ". This gates " + f.feeds + " — fixing these moves the number.")
-    : (uniform
-        // Two different reasons a cell isn't graded, and conflating them would
-        // send the reader to the wrong fix: one is "not your problem", the
-        // other is "everyone's problem, and not a per-type one".
-        ? ". Identical across every issue type, so this is one org-wide field " +
-          "gap (PR-01), not something to fix type by type."
-        : ". Gates no published metric for this type today."));
-  var missHtml = miss > 0
-    ? ' <span class="tmiss"' + (live ? "" : ' style="opacity:.55"') +
-      ' title="' + esc_(miss + " " + row.type + (miss === 1 ? " record is" : " records are") +
-        " missing " + f.label.toLowerCase() + why) + '">' + miss + "</span>"
-    : "";
-  // A fill bar under every cell. Nine columns of bare percentages force the
-  // reader to compare numbers digit by digit; the bars make a row's shape
-  // readable at a glance, and this view's established idiom is labelled bars
-  // (the funnels and the gaps table) rather than bare figures.
-  var bar = pct === null ? "" :
-    '<div class="tbar"><i class="' + rag + '" style="width:' + Math.max(0, Math.min(100, pct)) +
-    '%"></i></div>';
-  return '<td class="tnum tcell ' + rag + '">' +
-    '<div class="tval">' + mark + " " + (pct === null ? "—" : pct + "%") + missHtml + "</div>" +
-    bar + "</td>";
-}
-
-function typeMatrixHtml_(isos, winLabel) {
-  var th = MODEL.typeHygiene;
-  if (!th) {
-    // Pre-v17 cached payload. Say so — an empty matrix reads as "no gaps",
-    // which is the exact opposite of what an absent payload means.
-    return '<div class="profPanel"><h4>Field fill by issue type</h4>' +
-      '<div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the ' +
-      "current schema.</div></div>";
-  }
-  var open = STATE.typePop !== "resolved";
-  var rows = typeHygRows_(isos);
-  rows.sort(function (a, b) { return typeImpact_(b) - typeImpact_(a) || b.n - a.n; });
-  var total = rows.reduce(function (t, r) { return t + r.n; }, 0);
-
-  var chips =
-    '<span class="chip' + (open ? " on" : "") + '" onclick="setTypePop_(\'open\')"' +
-      ' title="Unresolved work, as at the last export. THIS is the actionable half — a due date ' +
-      'added here moves next period\'s number.">Open backlog</span>' +
-    '<span class="chip' + (open ? "" : " on") + '" onclick="setTypePop_(\'resolved\')"' +
-      ' title="Work resolved in the selected window. Explains the numbers on the cards today; ' +
-      'fixing these records changes history, not the next report.">Resolved · ' + esc_(winLabel) + "</span>";
-
-  var lead = open
-    ? "Snapshot at the last export — <b>" + total + "</b> open issue" + (total === 1 ? "" : "s") +
-      ". Fix these and the next period's numbers move. " +
-      '<span title="A backlog has no history to walk: an open issue has no date that would make ' +
-      'a time series honest, so this half ignores the period picker by design.">Not affected by ' +
-      "the period picker ⓘ</span>"
-    : "Resolved in <b>" + esc_(winLabel) + "</b> — <b>" + total + "</b> issue" +
-      (total === 1 ? "" : "s") + ". This is where the cards' numbers come from.";
-
-  if (!rows.length) {
-    return '<div class="profPanel" id="typeMatrix"><h4>Field fill by issue type</h4>' +
-      '<div class="chips seg" style="margin-bottom:8px">' + chips + "</div>" +
-      '<div class="emptyState">' + (open ? "No open work in the feed."
-        : "No work resolved in " + esc_(winLabel) + ".") + "</div></div>";
-  }
-
-  // Computed once over the whole table, not per row — "is this column constant?"
-  // is a question about the column.
-  var uniform = {};
-  TYPE_FIELDS_.forEach(function (f) { uniform[f.k] = typeColUniform_(f, rows); });
-  var anyUniform = TYPE_FIELDS_.some(function (f) { return uniform[f.k]; });
-  // Fields at 100% across the whole population retire from the table entirely
-  // (typeFieldRetired_). Distinct from muting: a uniform column still carries a
-  // real gap everyone owns, a retired one has nothing left to show.
-  var shown = typeFieldsShown_(rows);
-  var retired = TYPE_FIELDS_.filter(function (f) { return shown.indexOf(f) === -1; });
-
-  // Every column right of the type name is numeric, so its HEADER is
-  // right-aligned to sit over its own values. Left-aligned headers over
-  // right-aligned numbers is what made the first cut unreadable: each label
-  // pointed at the gap between two columns rather than at its data.
-  var head = '<tr><th class="tname">Issue type</th><th class="tnum">n</th>' +
-    shown.map(function (f) {
-      return '<th class="tnum" title="' + esc_(f.label + " — feeds " + f.feeds +
-        (f.note ? ". " + f.note : "") +
-        (uniform[f.k] ? ". Identical for every issue type here, so it is shown ungraded: " +
-          "one org-wide field gap (PR-01), not a per-type one."
-          : f.pr01 ? ". Region and Team come from Jira custom fields — tagging is owned " +
-            "upstream, but the gaps ARE counted per type here."
-          : "")) + '">' +
-        esc_(f.label) + (uniform[f.k] ? " *" : "") + "</th>";
-    }).join("") + "</tr>";
-
-  var body = rows.map(function (r) {
-    var impact = typeImpact_(r);
-    return "<tr>" +
-      '<td class="tname"><b>' + esc_(r.type) + "</b>" +
-      (r.isEpic ? ' <span class="tepic" title="Counted as an epic by the export\'s substring ' +
-        'rule, so this type is already inside the On-Time dictionary scope and the Forecast ' +
-        'denominator — pooled with every other epic type.">epic</span>' : "") +
-      // Shortened from a full sentence per row: repeated six times it was noise,
-      // and the explanation belongs in one tooltip rather than in every row.
-      (impact > 0 ? '<div class="cellSub" title="Records missing a field that gates a published ' +
-        'metric for this issue type. Fixing these moves a number; the other gaps on this row do ' +
-        'not.">' + impact + " fixable</div>" : "") + "</td>" +
-      '<td class="tnum tn">' + r.n + "</td>" +
-      shown.map(function (f) { return typeCellHtml_(f, r, uniform[f.k]); }).join("") +
-      "</tr>";
-  }).join("");
-
-  return '<div class="profPanel" id="typeMatrix">' +
-    // Title row carries the PNG button, so a screenshot of this table lands in a
-    // deck at full width instead of being cropped out of a whole-page capture.
-    // The population chips ride inside the shot — a matrix with no population
-    // label is unreadable out of context, since Open and Resolved look alike.
-    '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h4 style="flex:1;margin:0">Field fill by issue type</h4>' +
-      '<button class="iconbtn" onclick="savePng_(\'typeMatrix\',\'field-fill-by-type\')"' +
-        ' title="Save this table as a PNG image">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-        'stroke-linecap="round" stroke-linejoin="round">' +
-      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
-      '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-      "PNG</button></div>" +
-    '<div class="chips seg" style="margin:8px 0">' + chips + "</div>" +
-    '<p class="cellSub">' + lead + "</p>" +
-    '<div class="cellSub" style="margin:8px 0 4px">Each cell is graded against ' +
-      "<b>that field's own gate</b>: " +
-      keySwatch_("var(--pos)", "✔ at or above") + " · " +
-      keySwatch_("var(--amber)", "▲ under 10 pts below") + " · " +
-      keySwatch_("var(--warn)", "✖ 10+ pts below") + " · " +
-      '<b>—</b> = gates no published metric for this type today ' +
-      '<span title="Under the current On-Time scope only epic-grain work carries a due-date ' +
-      'obligation, and estimates only matter at epic grain. Grading a Sub-task red for a missing ' +
-      'due date would send someone to fix records that move no number.">ⓘ</span>. ' +
-      "The small number after each percentage is the record count missing that field.</div>" +
-    '<div class="gwrap"><table class="hyg tmx">' + head + body + "</table></div>" +
-    '<div class="cellSub" style="margin-top:6px">' +
-      (anyUniform ? "* This column reads the same for every issue type, so it is shown " +
-        "ungraded — it is <b>one org-wide field gap</b> tracked under PR-01, not something " +
-        "to chase type by type. It starts grading itself again the moment it varies. " : "") +
-      // Named, not silently dropped. A column that vanishes with no explanation
-      // is indistinguishable from one that was never built, and the reader needs
-      // to know the check is still running before they stop looking for it.
-      (retired.length ? "<b>" + retired.map(function (f) { return esc_(f.label); }).join(", ") +
-        "</b> " + (retired.length === 1 ? "is" : "are") + " at <b>100%</b> across this " +
-        "population and " + (retired.length === 1 ? "has" : "have") + " been retired from the " +
-        'table <span title="Still measured on every rebuild — the column returns on its own, ' +
-        'with no deploy, the moment a single record fails. Nothing here is switched off.">ⓘ</span>. ' : "") +
-      "Rows are ordered by fixable gaps on metric-gating fields, not by worst percentage: " +
-      "four missing due dates on epics outrank four hundred on sub-tasks." +
-      '</div>' +
-    "</div>";
-}
-
-/** Legacy entry point — the suppressed KPI cards link to the hygiene queue by
-    name, so it stays as a thin alias over the router rather than a second path. */
-
-/** Access Control is a role-gated VIEW; switchView_ enforces the gate, so this
-    is only the pane's renderer. */
 function renderAccess_() {
   var panel = document.getElementById("viewAccess");
   panel.innerHTML = "Loading access settings…";

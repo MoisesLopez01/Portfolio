@@ -65,11 +65,11 @@ hand — `Jira Raw`, `Jira Bugs` and `Jira Arrivals` are fully rewritten each ru
 **Watch for:** it has **no automated tests**. Syntax is checked, behaviour is not. Every change to it
 is verified by reading and by the next export's output.
 
-### 3.2 `Code.js` — the server (schema v41)
+### 3.2 `Code.js` — the server (schema v43)
 
 Reads all nine sheets, joins them to the roster, computes every metric, caches the result.
 
-**Best use:** treat it as the single source of metric definitions. `METRIC_REGISTRY_` (v4.0, 23
+**Best use:** treat it as the single source of metric definitions. `METRIC_REGISTRY_` (v4.1, 24
 metrics) defines every number's name, formula, target, coverage gate, sample floor and known
 deviations. If two people compute a metric differently, the registry is the tiebreaker.
 
@@ -129,7 +129,8 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 - `node node-tests.js` — the server's pure functions, plus cross-layer parity suites that prove the
   client's copies of shared rules match the server's
-- `node render-smoke.js` — **1,201 checks** rendering the client against synthetic models
+- `node render-smoke.js` — rendering the client against synthetic models (the check count moves
+  with every release; the suite prints it)
 
 **Best use:** run both before any deploy. They are the only mechanical safety net this app has.
 
@@ -200,7 +201,7 @@ Two claims per PM, deliberately never combined into one score.
 
 | Bar | How far to trust it |
 |---|---|
-| **Owns — epic due-date fill** | Quotable. A count over open epics with no join and no estimate, graded against a bar the team itself set at **100%** — "every epic carries a date, even if it is only the project end date". The only caveat is the attribution below |
+| **Owns — epic due-date fill** | Quotable. A count over open epics with no join and no estimate, graded against a bar the team itself set at **100%** — "every epic carries a date, even if it is only the project end date". **Read the denominator first (2026-08-17):** epics still sitting in To Do with no date are *assigned backlog*, not commitments, and are excluded — counted beside the bar as "N in backlog, not graded" and listed under ○ In backlog. A **started** epic with no date still counts against the PM. The other caveat is the attribution below |
 | **In project — task readiness** | Context, not a verdict on the PM. It reuses `BACKLOG_SIGNALS_.ready` (dated **and** estimated **and** linked **and** fresh) and inherits every caveat that signal carries. These fields are filled by assignees, not by the PM |
 
 **The attribution is the thing to check first.** An epic belongs to its **Jira assignee** — the
@@ -355,12 +356,13 @@ leaving a masthead that says nothing is wrong. It fails quietly, not loudly.
 
 **Spot-check has two halves. A number in the wrong half is a stop.**
 
-*Must **not** move:* the four KPI cards · the signals roster · Roster join (100%, retired) · the
-per-person backlog drill-down.
+*Must **not** move:* the four KPI cards · the signals roster · the per-person backlog drill-down.
+(Roster join was retired at 100% and then deleted outright on 2026-08-17 — it is not a check to
+re-verify, it is gone.)
 
-*Must move:* the queue hero (≈3,279 / ~11w vs ≈1,440 / ~4.9w assigned) · the 🧬 matrix's **open half**
-fill rates (down) · Backlog health's unassigned count (up to ~1,839) · the unowned ruler segment
-becomes clickable.
+*Must move:* the queue hero (≈3,279 / ~11w vs ≈1,440 / ~4.9w assigned) · Backlog health's
+unassigned count (up to ~1,839) · the unowned ruler segment becomes clickable. (The 🧬 matrix's
+open-half fill rates were the fourth item here until that matrix was removed on 2026-08-17.)
 
 **The gaps queue will NOT move** — it computes over resolved work only. Expecting it to move would
 make you fail a correct deploy.
