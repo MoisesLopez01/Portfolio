@@ -142,8 +142,11 @@ alone.
 
 ### The display sites
 
-These do not change any denominator. They make the carve legible, so a reader can tell a benched
-person from a person with genuinely nothing to do:
+These do not change any denominator. ⚠️ **Since the population gate above, none of them render
+on the live path** — a benched person is never a row, so the badge and the hours cell are
+retained as belt-and-braces and as the natural home if bench is ever made visible again.
+Their unit tests still pass, which is precisely the trap this spec ran into once already:
+*a passing test proves the code, never the visibility.*
 
 | Site | Change |
 |---|---|
@@ -159,11 +162,29 @@ benched person's data-quality flags are still real and still someone's to fix.
 The server-side capacity exclusion is the load-bearing one. Everything else divides by that
 denominator, so a client-only carve would leave the rates wrong while the badges looked right.
 
-**A benched person is NOT removed from the population.** They keep their roster row, their
-Workforce drill-down row, and their signals. What they leave is every figure that divides by
-capacity. This is the second half of the requirement — *"show the right signals, since there are
-others that are not working right now"*: the bench is visible as a fact, not as zeros dragging a
-rate down.
+**REVISED 2026-08-17 — a benched person IS removed from the view.** The first design kept them
+as rows with a ⏸ badge. The user's rule is *"show active working only"*: benched crew are not
+listed on any surface — no pool row, no roster row, no Actions signals row.
+
+The bench survives as a **stated fact** rather than a set of rows: the Workforce Scope panel
+prints `N on the bench (not shown)`. That is now the ONLY place it appears, which raises the
+stakes on that line — if it goes quiet the bench becomes invisible rather than merely unlisted.
+
+Why removal is right rather than merely requested: a benched contractor cannot act on a signal
+about an engagement they are off, so a red row against their estimate fill grades somebody for
+work they are not doing. That is the same objection the user raised about naming flagged people
+org-wide.
+
+⚠️ **THE GATE IS IN `filteredPeople_`, NOT `passesFilters_`, AND THAT IS LOAD-BEARING.**
+`bucketsFor_` calls `passesFilters_` directly to attribute Jira buckets, so gating there would
+drop work a benched person **already delivered** out of On-Time, Forecast and Quality. Delivered
+is delivered; being benched later does not un-deliver it. A test pins this by asserting a benched
+person still *passes* `passesFilters_`.
+
+⚠️ Consequence: every population COUNT computed outside `filteredPeople_` must repeat the gate.
+`optionsFor_` counts `MODEL.people` directly, and missing it produced a Region chip reading
+"AMER 5" beside a Scope line reading "3 people in scope" — a filter bar arguing with the page it
+filters. Caught by screenshot, not by tests.
 
 ### The exclusion is stated, never silent
 
