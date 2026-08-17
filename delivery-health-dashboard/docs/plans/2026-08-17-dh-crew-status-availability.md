@@ -205,20 +205,9 @@ function dhBuildPersonFlags_(status) {
 }
 ```
 
-**3b.** In `Code.js:3626`, replace these two lines inside the `out.push({...})` in `readRosterPeople_`:
+**3b.** In `readRosterPeople_` (`Code.js`, the `out.push({...})` call that carries `onLeave` — was line ~3626, shifts to ~3683 once Task 1's function is above it; find it by content, not line number).
 
-```js
-                   onLeave: dhOnLeave_(status),
-                   leaveStatus: dhOnLeave_(status) ? String(status).trim() : "",
-```
-
-with:
-
-```js
-                   flags: dhBuildPersonFlags_(status),
-```
-
-…and update the object spread below it. Since Apps Script has no object spread, assign after construction instead. Replace the whole `out.push({ ... });` call with:
+Replace the WHOLE `out.push({ ... });` call — do not edit its fields in place — with this. Apps Script has no object spread, so the flags are built into a local first:
 
 ```js
         var flags_ = dhBuildPersonFlags_(status);
@@ -232,6 +221,8 @@ with:
                    benchStatus: flags_.benchStatus,
                    hireDate: iHire === -1 ? null : parseDhDate_(raw[r][iHire]) });
 ```
+
+The only change is that the two `dhOnLeave_(status)` expressions become four fields read off `flags_`. All eight other fields — `name`, `keyLocation`, `rosterBucket`, `isCrew`, `jobFamily`, `tracks`, `jobTitle`, `hireDate` — must survive unchanged; dropping one silently strips it from every person on the roster, and no existing test would catch it.
 
 **3c.** In `Code.js:6117`, in the model person emit, replace:
 
