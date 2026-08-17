@@ -495,6 +495,13 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   assert_(plain.onBench === false, "an active status builds onBench false, not undefined");
   assert_(plain.benchStatus === "", "…and carries no bench status string");
 
+  // The payload gained a field, so the cached-model contract changed. Without
+  // the bump a warm v42 entry serves people with onBench === undefined, every
+  // `=== true` carve reads false, and benched crew silently return to the
+  // availability denominator — the exact bug this change exists to fix.
+  assert_(DH_SCHEMA_VER_ >= 43,
+          "DH_SCHEMA_VER_ must be bumped past 42 — onBench is a new payload field");
+
   Logger.log("✅ _test_crewStatus_ passed (" + checked + " status assertions)");
 })();
 

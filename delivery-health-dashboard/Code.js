@@ -6818,6 +6818,13 @@ function assembleModel_(inputs, win) {
 //      commitments they were just excused from. It also has no `epicBacklogN`,
 //      so the "N in backlog, not graded" note renders as nothing and the
 //      exclusion the bar depends on is invisible. Bust the cache.
+//      v43 ALSO carries `onBench` / `benchStatus` on every person (crew status
+//      spec 2026-08-17). The two changes landed the same day and ship in the
+//      same deploy, so they share a version rather than burning two: no v43
+//      payload was ever served without onBench. Both halves matter for the same
+//      reason — a v42 entry has people with onBench === undefined, every
+//      `=== true` carve reads false, and benched crew return to the availability
+//      denominator, which is the bug the carve exists to fix.
 var DH_SCHEMA_VER_ = 43;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
