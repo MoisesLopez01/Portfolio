@@ -2,7 +2,10 @@
 
 **Date:** written 2026-08-17 (2026.W34) ·
 **App:** Delivery Health Dashboard (`delivery-health-dashboard/`) ·
-**Status:** **DESIGN APPROVED, NOT BUILT.** Schema 42 → 43, `bustDeliveryCache_()` required.
+**Status:** **PARTIALLY BUILT (2026-08-17).** The capacity fix is complete and committed —
+Tasks 1-4 + 8 (`095808e`, `ca7b52c`, `5a75279`, `17922c5`, `c520887`). Tasks 5-7 (client
+display) and 9 (screenshots) are PAUSED: a concurrent session holds `Dashboard.html`.
+Schema is already 43 — see Deploy, `bustDeliveryCache_()` is the only cache guard.
 
 **Business source of truth:** the crew Employee Status vocabulary as stated by the user
 (2026-08-17) and reproduced verbatim in §2. Where this page and the roster's actual status
@@ -113,8 +116,6 @@ excluded from every availability figure."*
 
 ### Where it carves
 
-`onBench` mirrors `onLeave` at the capacity and availability sites, and **nowhere else**:
-
 There are **two independent capacity pipelines**, and they do not agree about on-leave today.
 Corrected 2026-08-17 after reading both; the first draft of this spec asserted a parity that
 does not exist.
@@ -138,10 +139,18 @@ Utilization but their hours still reach the Workforce cells and therefore Availa
 is a separate defect with a separate owner; folding it into this change would make the
 availability movement on deploy impossible to attribute to either cause. Raised, recorded, left
 alone.
-| `oppRows_` | returns null for a benched person |
-| Hours cell (`Dashboard.html:2499`) | renders `on the bench`, never `0h` |
-| Roster hours sort (`6521`) | ineligible, sorts last with new hires and on-leave |
-| Roster detail eligibility (`8678`, `8703`) | ineligible, labelled `on the bench` |
+
+### The display sites
+
+These do not change any denominator. They make the carve legible, so a reader can tell a benched
+person from a person with genuinely nothing to do:
+
+| Site | Change |
+|---|---|
+| `oppRows_` (`Dashboard.html`) | returns null — idle bench hours are not recoverable, there is no engagement to recover them into |
+| Hours cell (`planCellHtml_`) | renders `on the bench`, never `0h` — nobody is "0h available" in a week they are not contracted for |
+| Roster hours sort | ineligible, sorts last alongside new hires and on-leave |
+| Roster detail eligibility | ineligible, labelled `on the bench` |
 | `personStateBadges_` | adds ⏸ |
 
 Not carved: `personExceptions_` (`6377`). That is a triage-flag site, not a capacity one — a
