@@ -4499,6 +4499,13 @@ function buildCapacity_(people, isos, weekly) {
     // whole period predates their hire date also has no weeks, and they must
     // still count as a head in their cell.
     if (p.attribOnly) return;
+    // Benched crew are active people with scheduled hours and no engagement to
+    // spend them on (spec 2026-08-17). Their capacity must not reach the cell:
+    // wfAvailability_ folds these hours into "who can take this work", and a
+    // bench in the denominator answers that question wrong in the optimistic
+    // direction. They keep their roster row and their drill-down row — what
+    // they leave is every figure that divides by capacity.
+    if (p.onBench === true) return;
     var key = p.cell || "NONE|UNKNOWN";
     (isos || []).forEach(function (iso) {
       var w = p.weeks && p.weeks[iso];
@@ -4516,6 +4523,7 @@ function dhHeadByCell_(people) {
   var head = {};
   (people || []).forEach(function (p) {
     if (p.attribOnly) return;
+    if (p.onBench === true) return;   // no capacity in the cell ⇒ not a head in it
     var key = p.cell || "NONE|UNKNOWN";
     head[key] = (head[key] || 0) + 1;
   });
@@ -4545,6 +4553,10 @@ function dhHeadByCell_(people) {
 function buildCommitment_(people, isos, weekly) {
   (people || []).forEach(function (p) {
     if (p.attribOnly) return;
+    // Follows the capacity carve above: a person outside the denominator must
+    // not sit in the numerator, or commitment fidelity exceeds 100% on any
+    // benched cell.
+    if (p.onBench === true) return;
     var key = p.cell || "NONE|UNKNOWN";
     (isos || []).forEach(function (iso) {
       var w = p.weeks && p.weeks[iso];

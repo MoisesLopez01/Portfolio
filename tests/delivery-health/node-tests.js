@@ -498,4 +498,57 @@ _test_bugFeed_(); _test_arrivalParse_(); _test_clearRateMedian_(); _test_unassig
   Logger.log("✅ _test_crewStatus_ passed (" + checked + " status assertions)");
 })();
 
+// ── BENCH LEAVES THE WORKFORCE DENOMINATOR (spec 2026-08-17) ────────────────
+// buildCapacity_ and dhHeadByCell_ are the pair wfAvailability_ folds, so this
+// is where "available to support" is actually decided. A client-only carve
+// would leave the rate wrong while every badge looked right.
+(function _test_benchCapacityCarve_() {
+  var checked = 0;
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_benchCapacityCarve_: " + m); checked++; }
+
+  var ISOS = ["2026.W30", "2026.W31"];
+  function person(name, onBench) {
+    return { name: name, cell: "CREW|UNKNOWN", onBench: onBench, attribOnly: false,
+             weeks: { "2026.W30": { cap: 40, planned: 10, trackedOff: 0 },
+                      "2026.W31": { cap: 40, planned: 10, trackedOff: 0 } } };
+  }
+  var people = [person("Deployed Dana", false), person("Bench Bruno", true)];
+
+  var weekly = buildCapacity_(people, ISOS, {});
+  var cell = weekly["CREW|UNKNOWN"];
+  assert_(cell["2026.W30"].grossHrs === 40,
+          "only the deployed person's 40h reaches the cell — got " + cell["2026.W30"].grossHrs);
+  assert_(cell["2026.W31"].grossHrs === 40, "…in every iso of the period");
+
+  var heads = dhHeadByCell_(people);
+  assert_(heads["CREW|UNKNOWN"] === 1,
+          "headcount counts the deployed person only — got " + heads["CREW|UNKNOWN"]);
+
+  // Committed hours follow capacity: a benched person has no capacity in the
+  // denominator, so their plan must not sit in the numerator either. Leaving it
+  // would push commitment fidelity above 100% on any benched cell.
+  var withCommit = buildCommitment_(people, ISOS, buildCapacity_(people, ISOS, {}));
+  assert_(withCommit["CREW|UNKNOWN"]["2026.W30"].committedHrs === 10,
+          "committed hours exclude the benched person too — got " +
+          withCommit["CREW|UNKNOWN"]["2026.W30"].committedHrs);
+
+  // An all-benched cell disappears from the fold rather than reporting 0h for
+  // people who exist: zero capacity and no capacity are different claims.
+  var allBench = [person("Bench One", true), person("Bench Two", true)];
+  var emptyWeekly = buildCapacity_(allBench, ISOS, {});
+  assert_(!emptyWeekly["CREW|UNKNOWN"] ||
+          emptyWeekly["CREW|UNKNOWN"]["2026.W30"].grossHrs === 0,
+          "a fully benched cell contributes no hours");
+  assert_((dhHeadByCell_(allBench)["CREW|UNKNOWN"] || 0) === 0,
+          "…and no heads");
+
+  // attribOnly still wins — a stub was never capacity to begin with.
+  var stub = person("Stub Sam", false);
+  stub.attribOnly = true;
+  assert_((dhHeadByCell_([stub])["CREW|UNKNOWN"] || 0) === 0,
+          "attribOnly stubs stay out, unchanged by this carve");
+
+  Logger.log("✅ _test_benchCapacityCarve_ passed (" + checked + " assertions)");
+})();
+
 console.log("✅ node-tests: all suites passed");
