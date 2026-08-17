@@ -115,12 +115,29 @@ excluded from every availability figure."*
 
 `onBench` mirrors `onLeave` at the capacity and availability sites, and **nowhere else**:
 
-| Site | Change |
-|---|---|
-| `Code.js:1425` capacity fold | bench hours excluded, at the same point on-leave hours are |
-| `wfSellable_` (`Dashboard.html:7395`) | `p.newHire !== true && p.onLeave !== true && p.onBench !== true` |
-| Availability Rate (`wfAvailability_`) | excluded from both halves |
-| Recoverable-hours pulse | excluded |
+There are **two independent capacity pipelines**, and they do not agree about on-leave today.
+Corrected 2026-08-17 after reading both; the first draft of this spec asserted a parity that
+does not exist.
+
+| Site | Pipeline | On-leave today | Change |
+|---|---|---|---|
+| `utilRollup_` (`Code.js:1435`) | Utilization | **excluded** | exclude bench alongside it |
+| `utilFor_` (`Dashboard.html:2460`) | Utilization (client twin) | **excluded** | exclude bench alongside it |
+| `planFor_` (`Dashboard.html:2459`) | Planned coverage | **excluded** | exclude bench alongside it |
+| `buildCapacity_` (`Code.js:4449`) | Workforce cells → **Availability Rate** | *not* excluded | **exclude bench** |
+| `dhHeadByCell_` (`Code.js:4469`) | Workforce headcount | *not* excluded | **exclude bench** |
+| `wfSellable_` (`Dashboard.html:7395`) | drill-down subtotal | excluded | add `p.onBench !== true` |
+| Recoverable-hours pulse | Utilization | excluded | exclude bench alongside it |
+
+`buildCapacity_` / `dhHeadByCell_` are the load-bearing pair for this spec: `wfAvailability_`
+derives entirely from the folded cells, so **Availability Rate — the metric that answers "who can
+take this work" — is fixed there or not at all.**
+
+**Pre-existing asymmetry, deliberately NOT fixed here.** On-leave people are excluded from
+Utilization but their hours still reach the Workforce cells and therefore Availability Rate. That
+is a separate defect with a separate owner; folding it into this change would make the
+availability movement on deploy impossible to attribute to either cause. Raised, recorded, left
+alone.
 | `oppRows_` | returns null for a benched person |
 | Hours cell (`Dashboard.html:2499`) | renders `on the bench`, never `0h` |
 | Roster hours sort (`6521`) | ineligible, sorts last with new hires and on-leave |
