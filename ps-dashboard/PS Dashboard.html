@@ -3413,8 +3413,10 @@ function savePerfSnapshot_(normName, btn) {
   var btns = el.querySelectorAll('.pr-drill-actions');
   setTimeout(function() {
     btns.forEach(function(b) { b.style.visibility = 'hidden'; });
+    el.classList.add('pr-print');
     html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
       .then(function(canvas) {
+        el.classList.remove('pr-print');
         btns.forEach(function(b) { b.style.visibility = ''; });
         if (done) done();
         var a = document.createElement('a');
@@ -3423,6 +3425,7 @@ function savePerfSnapshot_(normName, btn) {
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       })
       .catch(function() {
+        el.classList.remove('pr-print');
         btns.forEach(function(b) { b.style.visibility = ''; });
         if (done) done();
       });
