@@ -1096,11 +1096,17 @@ body { font-size: calc(15px * var(--scale)); }
 .emp-table th { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
 .emp-table td { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
 
-/* Widescreen: one more notch + wider grid columns */
-@media (min-width: 1440px) {
-  body { font-size: 16px; }
-  .perf-grid { grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); }
-  .kpi-grid  { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+/* Scale-driven chrome — width, spacing and grids grow with the --scale ladder.
+   Guarded at ≥1024px: the phone/tablet blocks above (768/640/480) touch these
+   same selectors and MUST keep winning on small screens. Supersedes the old
+   min-width:1440px notch (body 16px + hand-tuned 310px/240px grid columns). */
+@media (min-width: 1024px) {
+  main { max-width: calc(1600px * var(--scale)); padding: calc(20px * var(--scale)) calc(24px * var(--scale)); }
+  .header { padding: calc(14px * var(--scale)) calc(24px * var(--scale)); }
+  .nav-menu-btn { width: calc(38px * var(--scale)); height: calc(38px * var(--scale)); }
+  .kpi-grid  { grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--scale)), 1fr)); }
+  .perf-grid { grid-template-columns: repeat(auto-fill, minmax(calc(280px * var(--scale)), 1fr)); }
+  .kpi-value { font-size: calc(28px * var(--scale)); }
 }
 
 /* Tablet — keep headings readable */
