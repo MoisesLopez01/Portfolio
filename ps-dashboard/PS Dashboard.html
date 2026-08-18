@@ -3313,51 +3313,93 @@ function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
   renderPerfRecordTab_();
 }
-// Grouped tracked-vs-planned hours chart (spec v2 §5) — inline SVG, no chart
+// Tracked-vs-planned hours chart (spec v2 §5, v3 §E) — inline SVG, no chart
 // library: no canvas lifecycle to manage and html2canvas captures it cleanly.
+// ≤15 buckets → grouped bars with value labels; >15 (weekly views) → two-series
+// line chart with hover titles and every-kth x labels. Fluid width fills the
+// drill grid column (viewBox scales, capped at 2× natural size).
 function perfHrsChartSvg_(buckets, per) {
   var vals = per.map(function(a) { return { t: a ? a.trackedHrs : null, p: a ? a.plannedHrs : null }; });
   var max = 1;
   vals.forEach(function(v) { max = Math.max(max, v.t || 0, v.p || 0); });
-  var CH = 54, TOP = 10, LBL = 18, bw = 10, gap2 = 2, group = bw * 2 + gap2 + 10;
-  var W = vals.length * group, H = CH + TOP + LBL;
-  var parts = [];
-  vals.forEach(function(v, i) {
-    var x0 = i * group, yBase = TOP + CH;
-    var hp = v.p ? Math.max(2, Math.round(v.p / max * CH)) : 0;
-    var ht = v.t ? Math.max(2, Math.round(v.t / max * CH)) : 0;
-    if (hp) parts.push('<rect x="' + x0 + '" y="' + (yBase - hp) + '" width="' + bw + '" height="' + hp + '" fill="none" stroke="#7E97B8" stroke-width="1.5"/>');
-    if (ht) parts.push('<rect x="' + (x0 + bw + gap2) + '" y="' + (yBase - ht) + '" width="' + bw + '" height="' + ht + '" fill="#058CDC"/>');
-    var lab = (v.t !== null && v.t !== undefined ? Math.round(v.t) : '—') + '/' +
-              (v.p !== null && v.p !== undefined ? Math.round(v.p) : '—');
-    parts.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + lab + '</text>');
-    parts.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
-  });
-  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+  var n = vals.length, step = perfTickStep_(n, 10);
+  var CH = 54, TOP = 10, LBL = 18, H = CH + TOP + LBL;
+  function tipFor(i) {
+    var v = vals[i];
+    return esc(String(buckets[i].label)) + ' — tracked ' + (v.t == null ? '—' : Math.round(v.t) + 'h') +
+           ' / planned ' + (v.p == null ? '—' : Math.round(v.p) + 'h');
+  }
+  var parts = [], W, legend;
+  if (n <= 15) {
+    var bw = 10, gap2 = 2, group = bw * 2 + gap2 + 10;
+    W = n * group;
+    vals.forEach(function(v, i) {
+      var x0 = i * group, yBase = TOP + CH;
+      var hp = v.p ? Math.max(2, Math.round(v.p / max * CH)) : 0;
+      var ht = v.t ? Math.max(2, Math.round(v.t / max * CH)) : 0;
+      var g = ['<g><title>' + tipFor(i) + '</title>'];
+      if (hp) g.push('<rect x="' + x0 + '" y="' + (yBase - hp) + '" width="' + bw + '" height="' + hp + '" fill="none" stroke="#7E97B8" stroke-width="1.5"/>');
+      if (ht) g.push('<rect x="' + (x0 + bw + gap2) + '" y="' + (yBase - ht) + '" width="' + bw + '" height="' + ht + '" fill="#058CDC"/>');
+      var lab = (v.t !== null && v.t !== undefined ? Math.round(v.t) : '—') + '/' +
+                (v.p !== null && v.p !== undefined ? Math.round(v.p) : '—');
+      g.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + lab + '</text>');
+      g.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+      parts.push(g.join('') + '</g>');
+    });
+    legend = '▮ tracked · ▯ planned — hours per period, labels above bars (tracked/planned)';
+  } else {
+    var PW = 14;
+    W = n * PW;
+    function lineSegs(field, style) {
+      var segs = [], cur = [];
+      vals.forEach(function(v, i) {
+        var val = v[field];
+        if (val === null || val === undefined) { if (cur.length > 1) segs.push(cur); cur = []; return; }
+        cur.push((i * PW + PW / 2) + ',' + (TOP + CH - Math.round(val / max * CH)));
+      });
+      if (cur.length > 1) segs.push(cur);
+      return segs.map(function(s) { return '<polyline points="' + s.join(' ') + '" fill="none" ' + style + '/>'; }).join('');
+    }
+    parts.push(lineSegs('p', 'stroke="#7E97B8" stroke-width="1.5" stroke-dasharray="4,3"'));
+    parts.push(lineSegs('t', 'stroke="#058CDC" stroke-width="2"'));
+    vals.forEach(function(v, i) {
+      parts.push('<rect x="' + (i * PW) + '" y="0" width="' + PW + '" height="' + H + '" fill="transparent"><title>' + tipFor(i) + '</title></rect>');
+      if (i % step === 0) parts.push('<text x="' + (i * PW + PW / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+    });
+    legend = '— tracked · ┄ planned — hover a week for exact hours';
+  }
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;max-width:' + (W * 2) + 'px;height:auto">' +
     '<line x1="0" y1="' + (TOP + CH + 1) + '" x2="' + W + '" y2="' + (TOP + CH + 1) + '" stroke="#CBD5E1"/>' +
     parts.join('') + '</svg>' +
-    '<div class="pr-sub">▮ tracked · ▯ planned — hours per period, labels above bars (tracked/planned)</div>';
+    '<div class="pr-sub">' + legend + '</div>';
 }
 
 // Goals compliance bars: x/y compliant weeks per bucket, coloured by share.
+// Bars at every n (share is discrete); >maxTicks the x/value labels skip to
+// every k-th bucket and each bar carries a hover title (spec v3 §E).
 function perfGoalsChartSvg_(buckets, per) {
   var CH = 40, TOP = 10, LBL = 18, bw = 16, gapg = 8;
-  var W = per.length * (bw + gapg), H = CH + TOP + LBL;
+  var n = per.length, step = perfTickStep_(n, 10);
+  var W = n * (bw + gapg), H = CH + TOP + LBL;
   var parts = [];
   per.forEach(function(a, i) {
     var x = i * (bw + gapg), yBase = TOP + CH;
+    var tip = esc(String(buckets[i].label)) + ' — ' +
+      (a && a.goalsWeeks ? a.goalsCompliant + '/' + a.goalsWeeks + ' weeks compliant' : 'no goals data');
+    var g = ['<g><title>' + tip + '</title>'];
     if (a && a.goalsWeeks) {
       var frac = a.goalsCompliant / a.goalsWeeks;
       var h = Math.max(2, Math.round(frac * CH));
       var col = frac >= 0.8 ? '#00875A' : frac >= 0.4 ? '#FF991F' : '#DE350B';
-      parts.push('<rect x="' + x + '" y="' + (yBase - h) + '" width="' + bw + '" height="' + h + '" fill="' + col + '"/>');
-      parts.push('<text x="' + (x + bw / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + a.goalsCompliant + '/' + a.goalsWeeks + '</text>');
+      g.push('<rect x="' + x + '" y="' + (yBase - h) + '" width="' + bw + '" height="' + h + '" fill="' + col + '"/>');
+      if (i % step === 0) g.push('<text x="' + (x + bw / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + a.goalsCompliant + '/' + a.goalsWeeks + '</text>');
     } else {
-      parts.push('<text x="' + (x + bw / 2) + '" y="' + (yBase - 4) + '" font-size="7" fill="#94A3B8" text-anchor="middle">—</text>');
+      g.push('<text x="' + (x + bw / 2) + '" y="' + (yBase - 4) + '" font-size="7" fill="#94A3B8" text-anchor="middle">—</text>');
     }
-    parts.push('<text x="' + (x + bw / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+    if (i % step === 0) g.push('<text x="' + (x + bw / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+    parts.push(g.join('') + '</g>');
   });
-  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;max-width:' + (W * 2) + 'px;height:auto">' +
     '<line x1="0" y1="' + (TOP + CH + 1) + '" x2="' + W + '" y2="' + (TOP + CH + 1) + '" stroke="#CBD5E1"/>' +
     parts.join('') + '</svg>';
 }
