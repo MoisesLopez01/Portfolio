@@ -148,7 +148,7 @@ enforced inside `switchView_()`, not just by hiding a tab.
 | Tab | Answers | Contents |
 |---|---|---|
 | 📊 **Executive** | "Are we on target, and where aren't we?" | Tiered KPI strip — 4 hero cards + 5 compact flow tiles — → one **comparison chart** (Region/Team/PM/Job family, now including Lead Time and Throughput chips) → **people-signals pulse** (margin-gated, counts only) → **data-trust strip** (org-wide). The 30-second read. |
-| 🎯 **Actions** | "Who and what needs action?" | **Signals roster** (every person, job-title tag, Due/Estimate/Logged/Hours RAG columns, drill-downs) → 🧬 **field-fill matrix** (by issue type) → **gaps queue**. Admin + viewer only. |
+| 🎯 **Actions** | "Who and what needs action?" | **Data-trust strip** (three gates + any untiled failures, named) → **Signals roster** (every person, job-title tag, Due/Estimate/Logged/Hours RAG columns, drill-downs) → 🌊 **Backlog health** → 🚩 **Epics without a due date** → ⚙ **Coverage gates** (admin). Admin + viewer only. The 🧬 field-fill matrix and the gaps queue were both deleted on 2026-08-17. |
 | 🧭 **Workforce** | "Which pool is out of room, and which has room to sell?" | **Scope banner** → **pool grid** (one row per pool × band, with an action state and a Read sentence) → **consumers-only summary** → **shadow breakdown by reason** → **unrouted backlog** → **discipline section**. Admin + viewer only. Added 2026-08-10. |
 | 🔒 **Access** | — | Admin only. |
 
@@ -174,8 +174,10 @@ job is answered by something on Executive or Actions:
   is answered instead by the Actions **signals roster**: one row per person, RAG-coded on
   Due/Estimate/Logged fill plus a billable-share Hours column, expandable into a drill-down row that
   carries the same per-person numbers the old workload bars drew (see "Signals roster" below).
-- 🧪 **Data Hygiene** tab → its gaps table and the ⚙ Coverage gates editor moved onto **Actions**
-  unchanged; the 🧬 by-type matrix moved with them and was removed on 2026-08-17.
+- 🧪 **Data Hygiene** tab → the ⚙ Coverage gates editor moved onto **Actions** and is the only part
+  of that tab still rendering. Its gaps table and the 🧬 by-type matrix moved with it and were both
+  deleted on 2026-08-17; the org-wide fill-vs-gate headline they carried survives as the
+  **data-trust strip** at the top of Actions.
   Its org-wide fill-vs-gate headline survives as the Executive **data-trust strip** instead of a
   fifth tab (see "Data-trust strip" below).
 
@@ -757,7 +759,7 @@ may render fewer than three tiles. Tagged `ORG`: deliberately unfiltered and
 period-independent, because a well-tagged slice does not make the whole feed publishable, and this
 strip's whole job is the org-wide health check the six-tab design's Data Hygiene tab used to own on
 its own screen. Each tile states its value against its own gate and colours red/amber/green off that
-comparison, never against 100%; its footnote directs to the Actions tab's gaps queue for the full
+comparison, never against 100%. (Until 2026-08-17 its footnote directed to the Actions tab's gaps queue for the full
 list.
 
 ### A solved check retires itself (2026-08-06)
@@ -770,8 +772,7 @@ reader to skim past the fields that do vary. So it is **hidden, not deleted**:
 
 | Surface | Behaviour when the check is at 100% |
 |---|---|
-| 🧪 Gaps queue | row drops out (`gapRetired_`), and a `✔ Solved and retired from the queue: …` line names it (`gapsSolvedHtml_`) |
-| 🔍 Data-trust strip | tile disappears — it is picked by key from the same filtered list |
+| 🔍 Data-trust strip | the tile disappears (it is picked by key from the same filtered list) and the check is named on the strip's `✔ Passing at 100%, not shown` line — `gapsRetired_`, which moved there when the queue was deleted on 2026-08-17 |
 
 - **The measurement never stops.** Only the rendering is conditional.
 - **It comes back on its own** — no deploy, no code change — the moment **one** record fails.
@@ -911,7 +912,9 @@ the whole population isn't — which is why the gate runs client-side as well as
 
 ## Coverage gates are admin-editable
 
-Admins get a **⚙ Coverage gates** panel on the **Actions** tab, below the gaps queue. "How much
+Admins get a **⚙ Coverage gates** panel at the bottom of the **Actions** tab. (It sat below the
+gaps queue until that table was deleted on 2026-08-17; it is now the panel's only content besides
+the leaver-exclusion note, and the panel renders nothing at all for a viewer.) "How much
 attribution is enough" is a
 Services-Director judgement revisited at fiscal period close, and keeping it in code meant it could
 only move in a deploy window rather than in the review where the decision is made.
@@ -961,52 +964,60 @@ sparkline plus a vs-target and vs-prior read, so a second, larger telling of the
 weight rather than a second answer. `lineChart_`, `valuesTable_`, `stdSentence_`, `defChangeNote_`
 and their CSS went with it.
 
-## Actions tab: the gaps queue
+## Actions tab: the gaps queue — DELETED 2026-08-17
 
-The attribution counts that used to sit on the cards as grey caveat text, then had their own
-six-tab-era 🧪 Data Hygiene tab, now live on the **Actions** tab, below the signals roster
-(`renderHygPanel_()` → `#hygPanel`): the 🧪 **gaps queue** (a table of every gap with its coverage,
-gate and what it blocks, with a **"Coverage colour —"** legend so a reader learns the grading from
-the key, not a tooltip), and the ⚙ **Coverage gates** editor for admins. The **data-trust strip**
-above carries this panel's org-wide headline, so the fill-vs-gate question no longer needs a tab of
-its own to be seen at all.
+The **gaps queue** was a ~10-row table on the Actions tab, below the signals roster
+(`renderHygPanel_()` → `#hygPanel`). Each row named one gap, its coverage, its gate and what it
+blocked, under the caption *"Whole-population view — the dashboard filters deliberately do not
+apply. A well-tagged region does not make the feed publishable."* It was **deleted on 2026-08-17**
+(user), along with that caption, the coverage-colour key, the window banner and the
+`✔ Solved and retired` line.
 
-The 🧬 **field fill by issue type** matrix rendered above the queue until 2026-08-17, when it was
-removed along with the Roster join check. **The two panels answered different questions and only one
-of them survived on purpose:** the matrix said *which issue type has the missing fields*, the queue
-says *whether each metric can be published at all*. The first question is now answered per person on
-the 👥 signals roster, which names somebody who can act; the second has no per-person equivalent and
-stays here.
+**What survived, and where it went.** The three gaps that gate a published metric — estimate
+coverage, due-date fill, logged fill — were already on the **data-trust strip** at the top of the
+same tab, which reads from the same `gapsRows_()` definitions. Nothing was lost there.
 
-> The 🔬 Data Profile funnels, the 📄 Brief and the 🧪 WHAT-IF simulation were removed 2026-08-05
-> (user decision): the gaps table carries the what-to-improve story on its own. (It shared that
-> job with the 🧬 by-type matrix until 2026-08-17.)
+**What did not survive intact, stated plainly.** The queue's other rows had no tile: region tagging,
+team tagging, the billable classification, the capacity source, the SRSO binding, reopen/CSAT and
+the engagement key. Their **coverage figures, gates and explanatory notes are no longer rendered
+anywhere.** Their *names* are, because the Executive masthead still counts them — *"N of M evidence
+gates are below their bar"* — and a verdict that counts what nothing can name is a dead end for the
+reader. `renderTrust_` therefore prints one line beneath the tiles:
+
+> ⚠ **Also below bar, with no tile above:** Region tagged on delivery work · Team tagged on delivery
+> work · …
+
+with each name carrying its old note and *blocks* text in the tooltip, and a second line naming any
+check passing at 100%. That is a pointer, not the table returning: if you need the coverage numbers
+themselves, they are still on `gapsRows_()` and one `console.log` away.
+
+**The definitions stay.** `gapsRows_` / `gapsRowsAll_` / `gapRetired_` / `gapsRetired_` are read by
+the trust strip, the masthead's gates finding and the shelf. Deleting a view must never delete the
+model behind it — only `hygieneRow_` (the row renderer) and `gapsSolvedHtml_` (the retired line)
+went, because both drew the deleted table and nothing else.
+
+**What is left on `#hygPanel`:** the ⚙ **Coverage gates** editor (admin-only) and the
+leaver-exclusion note. The panel now renders **nothing at all** — `display:none`, not an empty
+bordered card — for a role with neither, and it **no longer states a window**, because neither the
+gate editor nor the leaver note follows the period picker. A period label over content that does not
+move with the period is a lie that costs nothing to tell and everything to discover.
+
+**No Owner column, and no Prereq / Target-week columns** (user decisions 2026-08-03 and
+2026-08-04). That rule outlived the table it was written for and still governs the strip:
+accountability and scheduling live in the requirements doc, and a standing table of names against
+failures in a widely-read view reads as a blame board rather than a work queue. The registry still
+records `owner` and `paramOwner` per metric — it just isn't rendered.
+
+> The 🔬 Data Profile funnels, the 📄 Brief and the 🧪 WHAT-IF simulation were removed 2026-08-05,
+> the 🧬 by-type matrix and the Roster join check on 2026-08-17, and the gaps queue with them. The
+> Actions tab is now four panels: data trust, signals roster, backlog health, epics without a due
+> date — plus the gates editor for admins.
 
 The **"% of delivery work fully attributed" KPI tile was deleted** (user decision 2026-08-04): the
 composite — pinned by the org-wide-empty Region field (PR-01) — mostly restated its own binding
-constraint, and the gaps table below remains the per-component read.
-
-Deliberately **unfiltered** — hygiene is a whole-population question, and a well-tagged region slice
-doesn't make the feed publishable. Every below-gate tile links straight into it.
-
-**No Owner column** (user decision 2026-08-03) **and no Prereq / Target-week columns** (user
-decision 2026-08-04). Accountability and scheduling are tracked in the requirements doc. A standing
-table of names against failures in a widely-read view reads as a blame board rather than a work
-queue, and that is not what gets Jira tagging fixed. The registry still records `owner` and
-`paramOwner` per metric — it just isn't rendered onto a card.
-
-**Which window it covers.** The **last complete period** of whatever unit the header's
-Week / Month / Quarter chips are set to — never an in-flight period, which would read as a hygiene
-collapse when it's really a period that hasn't finished. The view states its window in the header
-strip and again in the footnote, and **◀ ▶ walk the history** one period at a time. **Σ All history**
-sums every complete period in the export window (52 weeks) for the whole-picture number. Switching
-the header unit resets the position to the latest period, because "3 back" means a different window
-in weeks than in quarters.
-
-**Two composites, on purpose.** The headline (`resFull`) is the strict definition — due date **and**
-roster assignee **and** region. It also shows `resReady` — due date **and** roster assignee, region
-excluded — as *"Excluding region: N% are measurable today"*. The strict number keeps the target
-honest; the second is the bar today's published metrics actually clear.
+constraint. Its two composites (`resFull` = due **and** roster assignee **and** region; `resReady` =
+the same without region) are still summed on the server and shipped, but nothing has rendered them
+since; they are the next candidates for removal if the payload is ever trimmed.
 
 > **⚠️ Correction, 2026-08-04.** This section used to say the Region field was "unpopulated
 > org-wide", pinning `resFull` at 0%. **That was wrong.** Jira's `Resource region`
@@ -1363,6 +1374,112 @@ leadership — no manager org-tree scoping:
 Enforced **server-side** in both `doGet()` (denied users get a minimal "access restricted" page)
 and `getDeliveryData()` (returns an error model) — defense in depth, never client-only.
 
+### 👁 Confidential view — blur names (2026-08-17)
+
+An eye in the header **blurs every person's name and job title**. Nothing else changes: every KPI,
+chart, tab and number stays exactly where it was. The dashboard is built to be shown — in an
+all-hands, on a call, over a shoulder — and the thing that cannot be shown is not the delivery
+rate, it is which named person is behind the red cell.
+
+Blurred today: the 👥 signals roster (name **and** job title), the 🧭 Workforce cell
+drill-down (same pair), the PM name on each 🗓 Project Managers group row, and the epic
+assignee beside it.
+
+**The first cut of this got it backwards**, and the mistake is recorded in the code because it is an
+easy one to make again: it hid the margin metrics and every role-gated tab, which removed the
+analysis and kept the names. That is the opposite trade. A presenter needs the numbers on screen —
+they are what the meeting is about — and needs the individuals off it.
+
+**It is presentation only.** It does not read or change a role, does not gate a view, and removes
+nothing from the payload. `canSeeMargin_` and `canSeeSuper_` are untouched and keep reading role
+alone, because they are the client twins of `dhMarginTier_` / `dhSuperAdmin_` in `Security.js`. This
+switch is a lens over what is *drawn*; those are the gate over what is *sent*. A render-smoke check
+pins that turning it on removes no tab and no metric.
+
+**What it cannot do, stated on screen.** The names are still in the DOM, in the page source and in a
+CSV export — anyone with devtools can read them. That is the correct scope: the threat it answers
+is a projector, not an attacker with the page open. The banner says so rather than implying a
+protection it does not provide.
+
+Two details that are easy to get wrong and are both pinned by tests:
+
+- **The blur must not reflow the page.** It keeps the glyphs and blurs them, so column widths,
+  truncation and row heights are identical either way — a mode that reflowed would make the
+  presenter lose their place mid-sentence. `user-select:none` rides along, because a blurred name is
+  still selectable text and a stray drag would paste it into the chat being shared.
+- **A `title` tooltip is not covered by a CSS blur.** The roster truncates job titles to fit a
+  column, so the full string lives in a hover — and hovering a row is exactly what a presenter does
+  while talking over it. `piiTitleAttr_` therefore returns the attribute normally and an empty
+  string while blurred: the affordance survives outside the mode instead of being paid for every day
+  to cover an occasional need.
+
+**Carets, badges and state markers stay legible.** They are controls and states (▸ expand,
+🎓 intern, 🌱 new hire), not personal detail — blurring them would leave a row nobody
+can tell is expandable.
+
+**Persisted, and deliberately loud about it.** It survives a reload, because presenting is a session
+rather than a click. `confLoad_` applies the body class **at boot**, not on the first toggle —
+without that, a reload with the mode saved restores the flag and leaves the names legible, which is
+the one moment the feature exists for. The button reads `Names blurred` in amber and the Executive
+tab carries a banner while it is on, because a page that silently blurs half its roster on Monday
+morning is a support ticket.
+
+**Offered only to a viewer who reaches a tab that names anybody** (`confEligible_`) — a guest gets
+no eye, since an eye that blurs nothing is a promise the page cannot keep.
+
+### The panel, rebuilt as a list (2026-08-17)
+
+It was two text inputs holding comma-separated addresses, with the bootstrap admin mentioned in a
+sentence above them. Three things were wrong with that, and only one was that it looked bad:
+
+- **A joined string is not a list.** You could not count it, scan it, or remove one person without
+  editing text — and a stray comma silently created an entry nobody noticed until somebody could
+  not get in.
+- **"Who has access" was split across a sentence and two strings**, so nothing on screen answered
+  the one question the page exists for.
+- **Open access had exactly the weight of everything else** — a checkbox, beside two inputs.
+
+Now every person with access is a **row**, the bootstrap admin included: he holds access, and a list
+claiming to be everyone who does has to contain him. His row carries `🔒 owner` and no Remove,
+because the server would put him back on the next check anyway.
+
+**The one type move:** every address ends in the same domain, so the domain is noise repeated on
+every row while the local part is the only thing identifying anybody. Rows render the local part at
+full weight and `@domain` dimmed — the list reads as names without a character being hidden, and the
+full address stays in the row's `title`.
+
+**Nothing round-trips until Save.** Adding four people and removing one is one decision with one
+write, not five that can half-apply. The working copy diffs against the payload the server sent, so
+the page states what is about to happen — *"Pending: +1 viewer, open access ON"* — and Save is
+**disabled** until there is something to do. Saving re-baselines in place; it does not re-fetch.
+
+**Validation happens in the order a person would ask it:** is it an address at all, is it already
+somewhere (and the refusal names where — *"already a viewer"*), and is it one of ours. A foreign
+domain is a **warning, not a refusal** — contractors and partners are real, and a rule that silently
+blocked them would send an admin to edit Script Properties by hand, which is the thing this page
+exists to replace. The email check is deliberately looser than an RFC pattern: the server's
+allowlist decides what *works*, and being stricter than the mail system would reject real addresses.
+
+**Removing your own account asks first**, and says what will happen rather than "are you sure?" —
+it is the one action here that can lock the person doing it out of this page.
+
+**Open access is the only control that gets colour, and only when it is on.** It is also the only
+one that lets in people who are on no list, so the block states the real consequence — guests get in
+without being listed, and utilization, forecast variance and the Actions / Project Managers /
+Workforce tabs are not theirs to see — rather than the old label, "(demo only)".
+
+`accessPanelHtml_(state)` is a pure function of the working copy, extracted so the panel is testable
+without a `google.script.run` round-trip the DOM stub never resolves — the same reason
+`rosterCsvLines_` is a builder rather than part of the download path. 46 render-smoke checks cover
+it, including that no comma-joined string survives anywhere in the markup: a revert to
+`admins.join(", ")` would otherwise pass every other assertion, since all the addresses would still
+be on the page.
+
+**The server contract is unchanged** — same `getDeliveryAccessSettings()` /
+`saveDeliveryAccessSettings({admins, viewers, openAccess})`, so `Security.js` needed no edit and
+Script Properties keep their existing comma-separated storage format. This is a client-only change:
+`Dashboard.html`, no schema bump, no cache action.
+
 ## Export window (why the period views have the depth they do)
 
 Every period view is capped by the export behind it, so the four exporters and this
@@ -1568,6 +1685,102 @@ is a **separate** condition and renders alongside the data age rather than repla
 fail independently, and one hiding the other is how a reader ends up trusting a stale number.
 
 ## Deploy
+
+> ### 👁 Confidential view — blur names (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action, `Security.js` unchanged.**
+>
+> **Live smoke, as an admin:**
+> 1. The header carries an eye reading **Blur names**. Click it → it turns amber and reads
+>    **Names blurred**, and the Executive tab shows a banner.
+> 2. Open 👥 Actions: names and job titles are illegible; the caret, the 🎓/🌱
+>    badges and **every number in the row** are unchanged. Column widths must not move when you
+>    toggle — if the table reflows, the blur has become a redaction.
+> 3. Hover a blurred job title → **no tooltip**. Toggle off, hover again → the full title is back.
+> 4. Check 🗓 Project Managers and 🧭 Workforce: PM names, epic assignees and the pool
+>    drill-down names are blurred too.
+> 5. **Nothing disappears.** Every tab an admin had is still there and every metric still charts.
+>    If a tab or a KPI vanishes, that is the first cut of this feature coming back — revert it.
+> 6. Reload with it on → it comes back on, blurred **from the first paint**, with the banner saying
+>    why.
+
+> ### 🔒 Access panel rebuilt as a list (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action, and `Security.js` is
+> unchanged** — same RPCs, same comma-separated Script Properties storage. Client only.
+>
+> **Live smoke (admin account, 🔒 Access tab):**
+> 1. Every person is a row. The bootstrap admin is IN the Admins list with `🔒 owner` and no
+>    Remove; your own row is tagged `you`.
+> 2. The card headers count people — Admins includes the owner, Viewers does not.
+> 3. Add a malformed address → refused inline, not saved. Add one that is already listed →
+>    refused with WHERE it already is. Add one on another domain → accepted, with an amber warning.
+> 4. Save is **disabled** until you change something, then reads the change set
+>    (`Pending: +1 viewer`). Save, and it returns to "No changes to save" without a reload.
+> 5. Toggle Open access → the block turns amber and states what a guest can actually see. Toggle
+>    it back before you leave the page.
+> 6. Remove your own row → it asks first, and says you will lose this page after saving.
+>
+> ⚠ **Check it as a VIEWER too**: the tab is admin-gated in `VIEWS` and the RPC throws for anyone
+> else, so a viewer should never reach this panel at all.
+
+> ### 📉 Drill-down narrowed to the rates with agreed bars (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no `bustDeliveryCache_()`** — two constants
+> changed, nothing about the payload moved.
+>
+> **Out of the Drill-down (Tier 3), from BOTH halves — the metric chips and the grid columns under
+> the chart:** Lead Time · Throughput · Cleared per Person · Assigned wks to clear.
+>
+> **In:** On-Time Delivery · Forecast Accuracy · Quality / Rework. (Billable Utilization stays in the
+> list and stays switched off behind `SHOW_UTILIZATION_`; Planned Coverage is the planning-window
+> member and still swaps in on a forward window.)
+>
+> **Why these four went.** None of them has a ratified target — they were graded against the
+> operating band instead — and a bar chart of a target-less metric invites a comparison the numbers
+> cannot settle: *"EMEA clears fewer per person than AMER"* moves with team size, work mix and
+> ticket granularity, none of which is visible on the bar.
+>
+> **Lead Time and Throughput keep their compact tiles in Tier 2** — they left the drill-down, not the
+> dashboard. **Cleared per Person and Assigned wks to clear now render nowhere.** Their `METRICS_`
+> accessors deliberately survive: `shelfRows_` walks the *server* registry, which still defines both,
+> and calls `metricSampleN_` / `metricCoverageNow_`, which look the id up in `METRICS_`. Delete the
+> entries and the shelf silently loses its sample-size read for metrics it still lists.
+>
+> **⚠ One rendering path lost its live subject.** Every surviving grid metric has a ratified target,
+> so `gridCellHtml_`'s *"no reference"* branch (no target **and** no publishable norm) is no longer
+> reachable from the UI. It is still tested directly, but if the last target-less metric ever leaves
+> the registry too, delete the branch rather than leaving a path nothing can enter.
+>
+> **Live smoke:** open Executive → Drill-down. The metric chips read On-Time Delivery · Forecast
+> Accuracy · Quality / Rework, and the table beneath the chart has the same columns — the two halves
+> agreed on nothing before this change and must agree now. Lead Time and Throughput still have tiles
+> in Tier 2. Post the GTT-605 dated status comment.
+
+> ### 🧹 Gaps queue deleted (2026-08-17) — `Dashboard.html` only, NO schema change
+>
+> Paste `Dashboard.html` and deploy. **No `bustDeliveryCache_()` and no schema bump** — this is
+> presentation only: `gapsRows_()` still computes exactly as before, and the trust strip, the
+> masthead's gates finding and the shelf all read it unchanged. Nothing about the payload moved.
+>
+> **What must be GONE:** the *"Whole-population view — the dashboard filters deliberately do not
+> apply"* caption and the table under it, its Gap / Coverage / Gate / Blocks header, the
+> coverage-colour key, the window banner above it, and the `✔ Solved and retired from the queue`
+> line.
+>
+> **What must still WORK — and this is the half worth checking:**
+> 1. Data-trust strip → its three tiles are unchanged, and a new line beneath them reads
+>    **⚠ Also below bar, with no tile above: …** naming the checks that lost their only home
+>    (region tagging, team tagging, the billable classification, capacity source, SRSO binding,
+>    reopen/CSAT, engagement key). If that line is missing while the Executive masthead says *"N of M
+>    evidence gates are below their bar"*, the masthead is counting things nothing on the dashboard
+>    can name — stop and fix that before showing anyone.
+> 2. The strip's footer no longer points *"further down this tab"* at a queue that isn't there.
+> 3. ⚙ **Coverage gates** still opens for an admin, at the bottom of Actions. For a **viewer** the
+>    whole panel is now absent (`display:none`), not an empty bordered card.
+> 4. Nothing on the panel claims a period any more. Change the header period picker — the gates
+>    panel must not move, because nothing on it follows a window.
+> 5. Post the GTT-605 dated status comment.
 
 > ### 🗓 Project Managers — the To Do carve, plus two filter deletions (2026-08-17) — schema v42 → v43
 >

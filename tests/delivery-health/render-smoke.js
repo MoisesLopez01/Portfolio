@@ -99,7 +99,21 @@ global.document = {
   addEventListener: function () {},
 };
 global.window = { scrollTo: function () {}, matchMedia: function () { return { matches: false, addEventListener: function () {} }; },
-                  addEventListener: function () {}, localStorage: { getItem: function () { return null; }, setItem: function () {} } };
+                  addEventListener: function () {},
+                  // A REAL in-memory store, not an inert pair of no-ops. The
+                  // client persists two settings through it (the sidebar
+                  // collapse and the confidential switch), and a stub whose
+                  // setItem throws the value away cannot exercise either
+                  // RESTORE path — which is where the interesting bug lives:
+                  // reading a saved value back and acting on it at boot.
+                  localStorage: (function () {
+                    var m = {};
+                    return {
+                      getItem: function (k) { return k in m ? m[k] : null; },
+                      setItem: function (k, v) { m[k] = String(v); },
+                      removeItem: function (k) { delete m[k]; },
+                    };
+                  })() };
 global.localStorage = global.window.localStorage;
 global.navigator = { userAgent: "node" };
 global.setTimeout = function () { return 0; };
@@ -126,6 +140,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // renderFlow_) and the Capacity band (Utilisation/Planned Coverage,
              // via capacityTileHtml_/renderPulse_). See task-16b-report.md.
              " capacityTileHtml_: capacityTileHtml_, outcomeHeadlineLabel_: outcomeHeadlineLabel_," +
+             " planCellHtml_: planCellHtml_," +
              // tileHtml_ / regRequired_ / registryMissingTile_ (2026-08-17): the
              // target-rule and registry-spine blocks build single cards directly
              // rather than through a whole render, so a check about one card's
@@ -140,7 +155,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // A solved check retires itself from the surfaces that remain
              // (2026-08-06). The matrix's column-level twin of that rule
              // (typeFieldRetired_ / typeFieldsShown_) was removed with it.
-             " gapsRetired_: gapsRetired_, gapsSolvedHtml_: gapsSolvedHtml_, gapRetired_: gapRetired_," +
+             " gapsRetired_: gapsRetired_, gapRetired_: gapRetired_," +
              " hygieneFor_: hygieneFor_, hygienePeopleFor_: hygienePeopleFor_," +
              // 🌊 Flow view (spec 2026-08-05) — render-smoke is the only place
              // its grammar, absence and degradation rules can be pinned down.
@@ -226,7 +241,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " setUtilization_: function (v) { SHOW_UTILIZATION_ = v; }," +
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
              " wfAvailability_: wfAvailability_, availabilityTileHtml_: availabilityTileHtml_," +
-             " drillRowHtml_: drillRowHtml_, drillPick_: drillPick_, levelName_: levelName_," +
+             " drillActionsHtml_: drillActionsHtml_, drillPickHtml_: drillPickHtml_, drillPick_: drillPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
              " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
@@ -248,6 +263,20 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
              " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_," +
+             // renderWfScope_ (2026-08-17): the bench count moved onto Scope
+             // because it is the panel that renders at the shipped defaults.
+             " renderWfScope_: renderWfScope_," +
+             // 👁 Confidential view: a presentation switch over the role gates.
+             " confHidden_: confHidden_, setConfidential_: setConfidential_," +
+             " confEligible_: confEligible_, piiHtml_: piiHtml_, confLoad_: confLoad_," +
+             " canSeeSuper_: canSeeSuper_, confBtnHtml_: confBtnHtml_," +
+             " confBannerHtml_: confBannerHtml_, viewAllowed_: viewAllowed_," +
+             // Access control: the panel is a pure function of its working state,
+             // so it can be tested without a google.script.run round-trip.
+             " accessPanelHtml_: accessPanelHtml_, accPending_: accPending_," +
+             " accParts_: accParts_, accIsEmail_: accIsEmail_, accWhere_: accWhere_," +
+             " accRowHtml_: accRowHtml_," +
+             " wfBandLabel_: wfBandLabel_, WF_BAND_ORDER_: WF_BAND_ORDER_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
 var C = eval(m[1] + bridge);
 
@@ -288,8 +317,15 @@ function flowHtml_() {
  */
 function tileSeg_(h, label) {
   var parts = h.split('<div class="tile');
+  // The label div carries ATTRIBUTES on some branches — tileHtml_'s
+  // "unavailable" shell renders `<div class="lbl" title="…">`. Matching the
+  // bare `<div class="lbl">` silently returned "" for exactly those tiles, so a
+  // check on an EMPTY card passed against an empty string (2026-08-17).
+  // Labels here are plain literals ("Forecast Accuracy", "Quality / Rework") —
+  // no regex metacharacters, so no escaping is needed or wanted.
+  var re = new RegExp('<div class="lbl"[^>]*>' + label);
   for (var i = 1; i < parts.length; i++) {
-    if (parts[i].indexOf('<div class="lbl">' + label) !== -1) return parts[i];
+    if (re.test(parts[i])) return parts[i];
   }
   return "";
 }
@@ -674,24 +710,24 @@ assert_(/pts (above|below) target/.test(stale),
         "target gap survives staleness — it isn't a comparison across refreshes");
 assert_(/class="tgt"/.test(stale), "…as does the target chip beside the hero");
 
-// ── 5. Data Hygiene view ────────────────────────────────────
+// ── 5. THE GAPS QUEUE IS DELETED (user 2026-08-17) ──────────
+// The ~10-row table and its "Whole-population view" caption are gone. This is a
+// deletion guard, not a rendering test: what is asserted is that the table does
+// not come back, that the panel it lived on still carries the two things that
+// were inside it, and that the information the table uniquely held did not
+// simply vanish with it.
 C.setModel(model({}));
 C.renderHygPanel_();
 var hyg = els.hygPanel.innerHTML;
-// The "Delivery work fully attributed" KPI tile was DELETED (user decision
-// 2026-08-04) — the gaps table below carries the per-component read.
-assert_(!/Delivery work fully attributed/.test(hyg), "hygiene KPI tile deleted (user 2026-08-04)");
-assert_(/Region tagged on delivery work/.test(hyg), "region gap listed");
-// Prereq + Target-week columns removed (user decision 2026-08-04), same rule
-// as the Owner column (2026-08-03): accountability and scheduling live in the
-// requirements doc, not in a widely-read table.
-assert_(!/<th>Prereq<\/th>/.test(hyg) && !/<th>Target week<\/th>/.test(hyg),
-        "no Prereq / Target-week columns in the hygiene table");
-assert_(!/<th>Owner<\/th>/.test(hyg), "no Owner column in the hygiene table");
-assert_(!/Gon/.test(hyg) && !/Tempo admin/.test(hyg), "no owner names rendered in the gap rows");
-assert_(/not connected/.test(hyg), "feeds that don't exist say so instead of showing 0%");
-assert_(/✖|▲|✔/.test(hyg), "status readable without colour (FR-4.4)");
-assert_(!/Ana Perez/.test(hyg), "no named individual in the hygiene view (P6)");
+assert_(!/Whole-population view/.test(hyg), "the queue's caption is gone");
+assert_(!/Region tagged on delivery work/.test(hyg), "…and so are its gap rows");
+assert_(!/<th>Gap<\/th>/.test(hyg) && !/<th>Blocks<\/th>/.test(hyg),
+        "…and the table header with them");
+assert_(!/Coverage colour/.test(hyg), "…and the colour key that only the table needed");
+// The definitions SURVIVE — three other surfaces read them, and deleting a view
+// must never delete the model behind it.
+assert_(C.gapsRows_(C.hygieneFor_(WEEKS), C.hygienePeopleFor_(WEEKS)).length > 0,
+        "gapsRows_ still returns definitions for the trust strip, masthead and shelf");
 
 // ── 5c. Admin coverage-gate editor ──────────────────────────
 // Gates are a Services-Director judgement revisited at period close; keeping
@@ -722,22 +758,20 @@ assert_(!/Coverage gates \(admin\)/.test(els.hygPanel.innerHTML),
 C.setModel(model({}));
 C.renderHygPanel_();
 
-// ── 5b. The view must SAY which window it covers — and the window is the
-// GLOBAL analysis-period picker (2026-08-04: universal filters; the view's
-// own ◀ ▶ / Σ stepper is gone).
-assert_(/Every figure above covers/.test(hyg), "the view states its own window");
-assert_(/2026\.W31/.test(hyg), "window label names the period (weekly framing here)");
+// ── 5b. The window banner went with the queue, and MUST have ────────────────
+// It named the window the field-fill figures covered. What is left on this panel
+// — the gate editor and the leaver note — follows no window, and a period label
+// over content that does not move with the period is a lie that costs nothing to
+// tell and everything to discover.
+assert_(!/Every figure above covers/.test(hyg), "no window footer over windowless content");
+assert_(!/window follows the header period picker/.test(hyg), "…and no window banner");
 assert_(!/setHygIdx_/.test(hyg), "no per-view stepper — the header picker is the one control");
-assert_(!/Σ All history/.test(hyg), "no per-view whole-window rollup either");
-assert_(/window follows the header period picker/.test(hyg),
-        "says exactly which control owns the window");
-
-// The GLOBAL picker re-bases this view exactly like the tiles.
 C.setState("periodIdx", 0);
 C.renderHygPanel_();
-var older = els.hygPanel.innerHTML;
-assert_(/2026\.W30/.test(older), "picking the earlier period re-bases the hygiene window");
+assert_(els.hygPanel.innerHTML === hyg,
+        "the panel is now period-INDEPENDENT: changing the picker changes nothing on it");
 C.setState("periodIdx", null);
+C.renderHygPanel_();
 
 // ── 6. Empty scope is not the same as bad data ──────────────
 var empty = model({});
@@ -747,7 +781,35 @@ assert_(/On-Time Delivery/.test(none), "empty buckets still render a card");
 assert_(!/Not yet measurable/.test(none),
         "nothing in scope is NOT a coverage failure — a quiet week must not read as bad data");
 assert_(/no resolved delivery items in this period/.test(none), "the empty card says why it's empty");
-assert_(/no epics closed in this period/.test(none), "forecast empty state names its own unit");
+// THE EMPTY STATE NAMES THE REAL CAUSE (2026-08-17). It used to read "no epics
+// closed in this period under the active filters", which was wrong twice:
+// epics may have closed and been dropped for having no resolvable owner, and
+// blaming the filters sends the reader to clear controls that were never the
+// cause. The two states are now distinguished by the count the server already
+// shipped and the card ignored.
+// This fixture carries jiraUnattributed.forecast = 1, so it is the DROPPED branch.
+var fcNone = tileSeg_(none, "Forecast Accuracy");
+assert_(fcNone !== "", "sanity: the forecast card is findable in the empty strip");
+assert_(/could be attributed to a person/.test(fcNone),
+        "forecast empty state names attribution, not filters, when epics were dropped");
+assert_(/1 closed epic was dropped/.test(fcNone),
+        "…and states how many, from the count the server already ships");
+assert_(!/under the active filters/.test(fcNone),
+        "…and no longer blames the filters for a structural absence");
+
+// The OTHER branch: nothing closed at all, nothing dropped. It must not claim
+// an attribution problem that did not happen.
+var noneClean = model({});
+noneClean.onTimeBuckets = []; noneClean.forecastBuckets = [];
+noneClean.meta.jiraUnattributed = { onTime: 0, forecast: 0 };
+var nc = tileSeg_(tiles(noneClean), "Forecast Accuracy");
+assert_(/no epics closed in this window/.test(nc),
+        "with nothing dropped, the card says simply that no epics closed");
+assert_(/smaller population/.test(nc),
+        "…and explains that closed epics are a thinner population than the other cards, which " +
+        "is why this card empties on short windows when the others do not");
+assert_(!/could be attributed to a person/.test(nc),
+        "…and never invents an attribution failure that did not occur");
 
 // ── 7. PNG filename stamps the period SHOWN, not the model's ISO week ──
 // A July-2026 board-pack card was saving as "…-2026.W31.png" — a figure filed
@@ -1547,20 +1609,32 @@ C.switchView_("exec");
 // into one "unattributed" figure is the regression to prevent, and it would
 // look exactly like a simplification.
 // ══════════════════════════════════════════════════════════════════════════
+// Asserted against the DEFINITIONS, not a rendered table: the gaps queue was
+// deleted on 2026-08-17, but gapsRows_ still feeds the trust strip, the
+// masthead's gates finding and the shelf, so the split is still load-bearing —
+// it just no longer has a table of its own to be read in.
 C.setModel(model({}));
-C.renderHygPanel_();
-var hyg2 = els.hygPanel.innerHTML;
-assert_(/Resolved work carries a Jira assignee/.test(hyg2), "gap 1: does the issue have an assignee at all");
-assert_(!/and that assignee resolves to a roster person/.test(hyg2),
+var gaps2 = C.gapsRows_(C.hygieneFor_(["2026.W31"]), C.hygienePeopleFor_(["2026.W31"]));
+var gapNames2 = gaps2.map(function (g) { return g.name; }).join(" | ");
+var gapText2 = gaps2.map(function (g) {
+  return [g.name, g.detail || "", g.note || "", g.blocks || ""].join(" ");
+}).join(" | ");
+assert_(/Resolved work carries a Jira assignee/.test(gapNames2),
+        "gap 1: does the issue have an assignee at all");
+assert_(!/and that assignee resolves to a roster person/.test(gapNames2),
         "gap 2 (the roster join) is deleted, not merely retired — user decision 2026-08-17");
-assert_(/94%/.test(hyg2), "…47 of 50 carry an assignee");
-assert_(!/unattributed/i.test(hyg2),
+var assignedGap = gaps2.filter(function (g) {
+  return /Resolved work carries a Jira assignee/.test(g.name);
+})[0];
+assert_(assignedGap && Math.round(assignedGap.value * 100) === 94, "…47 of 50 carry an assignee");
+assert_(!/unattributed/i.test(gapText2),
         "…and the surviving row never reverts to the pooled 'unattributed' wording that " +
         "sent a name-matching problem to the Jira admin queue");
 // The due-date row must name the population it measures, not say "delivery work"
 // when the scope is epics.
-assert_(/Due date on the work On-Time measures/.test(hyg2), "the due-date row names its own population");
-assert_(!/Due date on resolved delivery work/.test(hyg2),
+assert_(/Due date on the work On-Time measures/.test(gapNames2),
+        "the due-date row names its own population");
+assert_(!/Due date on resolved delivery work/.test(gapNames2),
         "…and no longer says 'delivery work' while measuring epics");
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1789,9 +1863,18 @@ assert_(ok.indexOf('title="09.P3.Consultant"') !== -1,
         "…with the full roster string (grade code included) in the tooltip");
 
 fresh(model({}));
-C.renderHygPanel_();
-assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.hygPanel.innerHTML),
-        "the hygiene table says coverage colours grade against the gate, not 100%");
+// The queue's colour key went with the table (2026-08-17). The RULE it stated —
+// grade each check against ITS OWN gate, never against 100% — now has to hold on
+// the trust strip, which is the surface that still paints these figures. A 90%
+// gate met at 91% is green; a reader grading against 100% escalates rows that
+// are already done.
+C.getModel().viewerRole = "admin";
+C.renderTrust_();
+var trustKey = document.getElementById("trustPanel").innerHTML;
+assert_(/Gate = the coverage each published metric needs/.test(trustKey),
+        "the trust strip states that the bar is the gate, not 100%");
+assert_(/\/ 80</.test(trustKey) || /\/ 70</.test(trustKey),
+        "…and every tile prints the gate it is measured against, beside the value");
 
 // Task 17 (Item 1): "no individual is named in the gaps queue" — the pulse
 // and masthead already carry this guard elsewhere in this file; the gaps
@@ -1803,10 +1886,17 @@ assert_(/graded against its <b>own gate<\/b>, never against 100%/.test(els.hygPa
 // that threads a person into the queue (a "worst offender" drill-down, say)
 // trips it rather than shipping silently.
 var hygFixture = fresh(model({}));
+C.getModel().viewerRole = "admin";
 C.renderHygPanel_();
-var hygHtml = els.hygPanel.innerHTML;
+C.renderTrust_();
+var noNameHtml = els.hygPanel.innerHTML + document.getElementById("trustPanel").innerHTML;
+var gapDefs = C.gapsRows_(C.hygieneFor_(WEEKS), C.hygienePeopleFor_(WEEKS))
+  .map(function (g) { return [g.name, g.detail || "", g.note || ""].join(" "); }).join(" | ");
 hygFixture.people.forEach(function (p) {
-  assert_(hygHtml.indexOf(p.name) === -1, "the gaps queue/🧬 matrix must not name " + p.name);
+  assert_(noNameHtml.indexOf(p.name) === -1,
+          "the gates surfaces must not name " + p.name);
+  assert_(gapDefs.indexOf(p.name) === -1,
+          "…and neither may the gap definitions behind them (" + p.name + ")");
 });
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1942,11 +2032,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/Field fill by issue type/.test(gone), "the by-type matrix is gone from Actions");
   assert_(!/id="typeMatrix"/.test(gone), "…including its PNG capture target");
   assert_(!/resolves to a roster person/.test(gone), "the roster-join gap row is gone");
-  // The panel still does its remaining job. Asserted positively, so "everything
-  // is missing" can never pass as "the right things are missing".
-  assert_(/Gaps queue/.test(gone), "…and the gaps queue it shared a panel with survives");
-  assert_(/Resolved work carries a Jira assignee/.test(gone),
+  // The gaps queue that shared this panel was itself deleted on 2026-08-17, so
+  // the "still does its remaining job" check moved to the DEFINITIONS and to the
+  // trust strip — asserted positively, so "everything is missing" can never pass
+  // as "the right things are missing".
+  var liveGaps = C.gapsRows_(C.hygieneFor_(WEEKS), C.hygienePeopleFor_(WEEKS));
+  assert_(liveGaps.length > 0, "…and the gap DEFINITIONS survive the queue that drew them");
+  assert_(liveGaps.some(function (g) { return /Resolved work carries a Jira assignee/.test(g.name); }),
           "…including the Jira-discipline half of the 2026-08-03 split, which was NOT removed");
+  assert_(!liveGaps.some(function (g) { return g.key === "attr"; }),
+          "…while the roster-join definition is gone from the list entirely");
   // The trust strip drops to three tiles and must not render an empty fourth.
   C.renderTrust_();
   var strip = els.trustPanel.innerHTML;
@@ -2226,10 +2321,15 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/el\.querySelector \?/.test(rfn),
           "…guarded, so the first render (no scroller in the DOM yet) cannot throw");
   // The caret has to state the row's own state now that the whole row toggles.
+  // The caret sits OUTSIDE the .pii wrapper on purpose: it is a control
+  // affordance, and blurring it would leave a row nobody can tell is expandable.
+  // Asserted against the real markup rather than loosened to a bare substring.
   C.toggleRosterDetail_("Ana Perez");
-  assert_(/▾ Ana Perez/.test(els.rosterPanel.innerHTML), "an open row's caret points down");
+  assert_(/▾ <span class="pii">Ana Perez<\/span>/.test(els.rosterPanel.innerHTML),
+          "an open row's caret points down, and stays outside the blur wrapper");
   C.toggleRosterDetail_("Ana Perez");
-  assert_(/▸ Ana Perez/.test(els.rosterPanel.innerHTML), "…and back to ▸ when closed");
+  assert_(/▸ <span class="pii">Ana Perez<\/span>/.test(els.rosterPanel.innerHTML),
+          "…and back to ▸ when closed");
   var rcss = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
   assert_(/\.rosterWrap\{max-height:[^}]*overflow:auto\}/.test(rcss),
           "the wrapper is capped and scrolls — a sticky top needs a scrollport that actually scrolls");
@@ -2404,7 +2504,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // ── 2. Interns: shown, marked, never graded ──
   assert_(h.indexOf("Iris Intern") !== -1,
           "the intern appears on the roster at all (she was filtered out entirely before)");
-  assert_(/Iris Intern<\/span><span class="stateBadge" title="Intern/.test(h),
+  // Two closing spans now: the name sits inside .pii (blurred by the
+  // confidential switch) inside .rosterName. The badge still follows it
+  // immediately — it is a state marker, not personal detail, so it stays legible.
+  assert_(/Iris Intern<\/span><\/span><span class="stateBadge" title="Intern/.test(h),
           "…marked 🎓 right on the name, which is what the Utilization card already promised");
   var irisRow = h.slice(h.lastIndexOf("<tr", h.indexOf("Iris Intern")),
                         h.indexOf("</tr>", h.indexOf("Iris Intern")));
@@ -2432,7 +2535,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(sum.small === 0, "…and not pooled into the small-n bucket either — that is a sample fact, this is a policy");
 
   // ── 3. New hires + the pre-evaluation window ──
-  assert_(/Nate New<\/span><span class="stateBadge" title="New hire — joined 2026-06-15/.test(h),
+  assert_(/Nate New<\/span><\/span><span class="stateBadge" title="New hire — joined 2026-06-15/.test(h),
           "a ramping new hire is marked 🌱 with the date they joined");
   var nateRow = h.slice(h.lastIndexOf("<tr", h.indexOf("Nate New")), h.indexOf("</tr>", h.indexOf("Nate New")));
   assert_(nateRow.indexOf("sigBad") !== -1,
@@ -3352,166 +3455,80 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "absent feeds name the exporter version, not an error");
 })();
 
-// ── TASK 10 — COMPARISON CHIPS GAIN THE FLOW METRICS ────────────────────────
-// Lead Time and Throughput join METRICS_/METRIC_ORDER_ so the Executive
-// comparison chart (and its shared metric chips) can chart them by Region/
-// Team/PM/Family — riding the SAME renderCompare_/hbarChart_/scopedMetric_
-// mechanism every other metric already uses, per scopedMetric_'s one-
-// accessor rule. Backlog/WIP/Bug Count are deliberately excluded (comment on
-// METRIC_ORDER_) — no test for them here, there is nothing to render.
+// ── THE DRILL-DOWN'S METRIC SET IS NARROWED (user 2026-08-17) ───────────────
+// Lead Time, Throughput, Cleared per Person and Assigned wks to clear left the
+// Drill-down — both halves of it, the metric chips AND the grid columns under
+// the chart. The block this replaces was written when Lead Time and Throughput
+// were ADDED (Task 10) and pinned them charting; what is pinned now is that
+// they do not, that the accessors they still need are untouched, and that
+// selecting a removed metric cannot strand the panel.
 (function () {
   var M = fresh(model({}));
   var W = WEEKS[WEEKS.length - 1];             // latest complete week
-  // Single-region fixture (both fixture people are AMER) — one bar is enough
-  // to pin label/unit/colour grammar without the noise of a second category.
-  // median([10,15]) = 12.5 → the exact "12.5d" the task brief's self-review
-  // asks for; estHrs 412 → "412h" likewise.
-  M.leadTimeBuckets = [{ iso: W, person: "Ana Perez", n: 2, nAll: 2, days: [10, 15] }];
+  M.leadTimeBuckets = [{ iso: W, person: "Ana Perez", days: [10, 15], nRes: 2 }];
   M.throughputBuckets = [{ iso: W, person: "Ana Perez", nAll: 3, nEst: 2, estHrs: 412 }];
-  M.meta.registry.metrics.leadTime = { id: "leadTime", name: "Lead Time", unit: "days",
-    target: null, coverageGate: 0.9,
-    definition: "Median calendar days from Created to Resolution Date." };
-  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
-    target: null, coverageGate: 0.6,
-    definition: "Sum of Original Estimate hours delivered in the period." };
   C.setModel(M);
-  C.switchView_("exec");
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
   C.STATE.compare = "region";
+  C.renderAll_();
 
-  // RED (brief Step 2, literal): before METRICS_/METRIC_ORDER_ carried the two
-  // flow entries, activeMetric_ found "leadTime" absent from liveMetrics_() and
-  // fell back to onTime — the panel rendered "On-Time Delivery", never "Lead
-  // Time", and this assertion failed. It now passes because METRIC_ORDER_
-  // includes "leadTime" and METRICS_.leadTime.available() is jiraAvailable.
+  // ── Gone from BOTH halves of the drill-down ──────────────────────────────
+  var REMOVED = ["leadTime", "throughput", "clearedPerHead", "queueCover"];
+  REMOVED.forEach(function (id) {
+    assert_(C.METRIC_ORDER_.indexOf(id) === -1, id + " is out of the drill-down chip list");
+    assert_(C.GRID_METRIC_IDS_.indexOf(id) === -1, id + " is out of the drill-down grid columns");
+    assert_(C.liveMetrics_().indexOf(id) === -1, id + " cannot be selected as the charted metric");
+    assert_(C.gridMetrics_().indexOf(id) === -1, id + " draws no grid column");
+  });
+  // Asserted on the rendered chips too, not only on the arrays: the label is
+  // what a reader actually sees, and a chip could be built from a second list.
+  var chipsHtml = C.metricChips_();
+  assert_(chipsHtml.indexOf("Lead Time") === -1 && chipsHtml.indexOf("Throughput") === -1,
+          "…and neither label renders as a chip");
+  assert_(chipsHtml.indexOf("Cleared per Person") === -1 &&
+          chipsHtml.indexOf("Assigned wks to clear") === -1,
+          "…nor do the other two");
+
+  // ── What SURVIVES, asserted positively ───────────────────────────────────
+  // "Everything is missing" must never pass as "the right things are missing".
+  assert_(chipsHtml.indexOf("On-Time Delivery") !== -1, "On-Time still charts");
+  assert_(chipsHtml.indexOf("Forecast Accuracy") !== -1, "Forecast still charts");
+  assert_(chipsHtml.indexOf("Quality / Rework") !== -1, "Quality / Rework still charts");
+  assert_(C.gridMetrics_().indexOf("quality") !== -1,
+          "…and Quality is a grid column now, so the chips and the table below them agree");
+
+  // ── Selecting a removed metric cannot strand the panel ───────────────────
+  // STATE.metric survives in a bookmark and in this session's own state, so a
+  // reader who had Lead Time selected before the deploy must land somewhere
+  // real rather than on an empty chart.
   C.setState("metric", "leadTime");
+  var m = C.activeMetric_();
+  assert_(C.STATE.metric !== "leadTime", "a stale metric selection is re-pointed, not honoured");
+  assert_(m && typeof m.label === "function", "…to a live metric, so the panel still renders");
   C.renderAll_();
-  assert_(document.getElementById("comparePanel").innerHTML.indexOf("Lead Time") !== -1,
-          "flow metric charts in the comparison");
+  assert_(document.getElementById("comparePanel").innerHTML.indexOf("Lead Time") === -1,
+          "…and the chart does not draw the removed metric anyway");
 
-  // ── Lead Time: unit label, axis prose, neutral colour, no fabricated % ──
-  var cmpLead = els.comparePanel.innerHTML;
-  assert_(cmpLead.indexOf("median days created") !== -1,
-          "axis states the metric's own prose (m.axis()), not a percent caption");
-  assert_(cmpLead.indexOf("Median calendar days from Created") !== -1,
-          "the ⓘ tooltip carries the registry definition — chips/axis share reg_()");
-  assert_(cmpLead.indexOf("12.5d") !== -1,
-          "the bar value label is unit-formatted via fmtFlowVal_, not '12%'");
-  assert_(!/>25%</.test(cmpLead) && !/>50%</.test(cmpLead) && !/>100%</.test(cmpLead),
-          "grid ticks do not fall back to the 0/25/50/75/100% percent axis for a unit metric");
-  assert_(!/target \d/.test(cmpLead),
-          "targetKey: null → no target line/label — nothing to draw a verdict against");
-  assert_(cmpLead.indexOf('fill="var(--c-series)"') !== -1,
-          "the bar renders the NEUTRAL series colour");
-  assert_(cmpLead.indexOf('fill="var(--c-good)"') === -1 &&
-          cmpLead.indexOf('fill="var(--c-warn)"') === -1 &&
-          cmpLead.indexOf('fill="var(--c-bad)"') === -1,
-          "…and never a RAG colour — Lead Time is lower-is-better but has no target to grade against");
-  assert_(cmpLead.indexOf("•") !== -1, "the neutral glyph (•) marks the value, not a RAG check/triangle/cross");
-
-  // ── Throughput: same grammar, different unit ────────────────────────────
-  C.setState("metric", "throughput");
-  C.renderAll_();
-  var cmpThr = els.comparePanel.innerHTML;
-  assert_(cmpThr.indexOf("Throughput") !== -1, "throughput also charts in the comparison");
-  assert_(cmpThr.indexOf("412h") !== -1, "…formatted in hours, not '412%' or a bare number");
-  assert_(!/>25%</.test(cmpThr) && !/>50%</.test(cmpThr),
-          "…and the same percent-axis fallback stays absent for throughput");
-
-  // ── Reviewer regression pin: throughputBuckets_ (Code.js) never populates a
-  // `.n` field — only nAll/nEst/estHrs — so coverage()/n() reading `b.n` read
-  // undefined, and bucketsFor_'s `out.n += b.n` (no ||0 fallback at the time)
-  // turned the accumulator NaN. metricConfidence_ treats NaN as no-data
-  // (level: "none", publish: false), so the operating band/verdict silently
-  // never drew — headline value was unaffected, which is why the first pass
-  // of this test suite missed it. Assert directly against METRICS_ so a
-  // future change can't reintroduce `.n` without this failing loudly.
+  // ── The ACCESSORS stay, because Tier 2's compact tiles still read them ────
+  // This is the half of the old block that still applies: the tiles were never
+  // the thing being removed, and deleting the accessors with the chips would
+  // have taken Lead Time and Throughput off the dashboard entirely.
   var thrCov = C.METRICS_.throughput.coverage([W]);
   assert_(typeof thrCov === "number" && isFinite(thrCov),
           "throughput coverage is a real finite number, never NaN (fixture nEst 2 / nAll 3)");
-  assert_(Math.abs(thrCov - 2 / 3) < 1e-9,
-          "…and equals nEst/nAll exactly — same formula renderFlow_'s throughput tile uses");
+  assert_(Math.abs(thrCov - 2 / 3) < 1e-9, "…and equals nEst/nAll exactly");
   assert_(C.METRICS_.throughput.n([W]) === 2,
-          "n() reports nEst (the estimated-and-thus-measurable count), not the nonexistent `.n` field");
-
-  // ── Existing four metrics render byte-identically (unit is undefined for
-  //    them, so hbarChart_'s new branch must be a no-op on their path) ──────
-  // withUtilization_ because util is excluded from liveMetrics_ while the card
-  // is switched off, so the compare panel would have no util series to draw.
-  // Same wrapper as every other block that tests that path (added 2026-08-17).
-  var cmpUtil = withUtilization_(function () {
-    C.setState("metric", "util");
-    C.renderAll_();
-    return els.comparePanel.innerHTML;
-  });
-  assert_(/>25%</.test(cmpUtil) && />50%</.test(cmpUtil) && />100%</.test(cmpUtil),
-          "a percent metric (Utilization) still draws the 0/25/50/75/100% grid — untouched by the unit branch");
-  assert_(cmpUtil.indexOf("Billable Utilization") !== -1 || cmpUtil.indexOf("Capacity Utilization") !== -1,
-          "…and still renders its own label, not a flow metric's");
-
-  // ── The chip order matches METRIC_ORDER_, flow metrics appended last ────
-  assert_(C.METRIC_ORDER_.join(",") ===
-          "onTime,forecast,util,quality,leadTime,throughput,clearedPerHead,queueCover,planCov",
-          "METRIC_ORDER_ appends the two joinable flow metrics, then the two Task 15 grid " +
-          "columns, then the forward-window metric");
-  assert_(C.liveMetrics_().indexOf("leadTime") !== -1 && C.liveMetrics_().indexOf("throughput") !== -1,
-          "both are live metrics under a Jira-available fixture");
-  // planCov is the FORWARD-window metric and must never be offered on a
-  // complete one — a plan for a week that has closed is not an action.
-  assert_(C.liveMetrics_().indexOf("planCov") === -1,
-          "Planned Coverage is not a metric on a complete window");
-
-  // ── oppRows_ is hardcoded to utilization and never reads STATE.metric —
-  // selecting a flow metric elsewhere on the page must not make the pulse's
-  // recoverable-hours walk compute nonsense from a days/hrs value as if it
-  // were a percent rate. Pinned at data level (the headroom table that used
-  // to render this is retired, 2026-08-05).
-  C.setState("metric", "leadTime");
-  var flowDone = C.donePeriods_();
-  var flowRows = C.oppRows_(flowDone[flowDone.length - 1], 75);
-  assert_(flowRows.length > 0 && flowRows.every(function (r) {
-            return r.rate >= 0 && r.rate <= 100;
-          }),
-          "oppRows_ still computes a % utilization rate, unaffected by STATE.metric");
+          "n() reports nEst (the measurable count), not the nonexistent `.n` field");
+  assert_(C.METRICS_.leadTime.value([W]) === 12.5,
+          "lead time still computes its median (10,15 → 12.5) for the Tier 2 tile");
+  // The tiles themselves must still draw. If this fails, the removal reached
+  // further than the drill-down and two metrics left the product silently.
+  var flow = flowHtml_();
+  assert_(flow.indexOf("Lead Time") !== -1, "Lead Time still has its compact tile in Tier 2");
+  assert_(flow.indexOf("Throughput") !== -1, "…and so does Throughput");
 
   // Teardown (sibling discipline): restore the standard fixture and state.
-  C.setState("metric", "onTime");
-  C.STATE.compare = "region";
-  fresh(model({}));
-  C.switchView_("exec");
-  C.renderAll_();
-})();
-
-// ── TASK 10 FOLLOW-UP — throughput's operating band actually DRAWS with real
-// coverage (reviewer finding) ───────────────────────────────────────────────
-// The unit-level coverage()/n() assertion above pins the number; this pins
-// the end of the chain it feeds — with >= STD_MIN_PERIODS (5) of real,
-// non-NaN coverage, metricConfidence_ must not return level:"none", so
-// applyGatePolicy_ publishes and stdFor_ draws the shaded operating-range
-// rect. Before the fix, coverage was NaN every period → conf.level stayed
-// "none" → the band was silently absent with no error anywhere.
-(function () {
-  var M = histModel({});
-  // A flat 40h/week series, comfortably under the [0,100] std clamp
-  // (standardRate_ clips hi at 100 — a separate, pre-existing quirk for any
-  // metric whose values run past 100, out of scope for this fix) so the band
-  // itself is unambiguous rather than degenerate.
-  M.throughputBuckets = HIST.map(function (iso) {
-    return { iso: iso, person: "Ana Perez", nAll: 3, nEst: 2, estHrs: 40 };
-  });
-  M.meta.registry.metrics.throughput = { id: "throughput", name: "Throughput", unit: "hrs",
-    target: null, coverageGate: 0.6 };
-  fresh(M);
-  C.STATE.compare = "region";
-  C.setState("metric", "throughput");
-  C.renderAll_();
-  var cmp = els.comparePanel.innerHTML;
-  assert_(cmp.indexOf('fill="var(--c-ref)"') !== -1,
-          "with >= STD_MIN_PERIODS of real (non-NaN) coverage, throughput's operating-range " +
-          "band DRAWS — before the fix this was silently absent (NaN coverage → conf.level 'none')");
-  assert_(cmp.indexOf("normal operating range") !== -1 || cmp.indexOf("below the normal operating range") !== -1,
-          "…and the verdict line's operating-range language is present, not silently dropped");
-
-  // Teardown.
   C.setState("metric", "onTime");
   C.STATE.compare = "region";
   fresh(model({}));
@@ -3560,13 +3577,21 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/64%/.test(trust), "logged-fill percentage renders below its gate");
   assert_(/var\(--c-warn\)/.test(trust), "the below-gate logged tile is graded amber, not red or green-only");
   assert_(/Blocks: Forecast Accuracy/.test(trust), "each tile's tooltip states what it blocks (shared gapsRows_ note)");
-  // The strip now LIVES on Actions (redesign 2026-08-17), so its footer points
-  // DOWN the same tab rather than across to another one — pointing a reader at
-  // the tab they are already on is the drift this check exists to catch.
-  assert_(/full queue.*further down this tab/.test(trust),
-          "the footer points readers further down this tab for the full queue");
+  // The footer used to point DOWN this tab to the full gaps queue. That queue was
+  // deleted on 2026-08-17, so the pointer had to go with it: a signpost to a
+  // panel that is not there is worse than no signpost, and it is exactly the
+  // drift this check was written to catch — only in the other direction.
+  assert_(!/further down this tab/.test(trust),
+          "the footer no longer points at the deleted gaps queue");
   assert_(!/Actions tab/.test(trust),
-          "…and no longer sends them to a tab they are already reading");
+          "…and does not send a reader to a tab they are already reading either");
+  // What replaced the pointer: the checks with no tile are NAMED here, because
+  // the Executive masthead still counts them ("N of M evidence gates below bar")
+  // and a number nothing on the dashboard can name is a dead end.
+  assert_(/Also below bar, with no tile above/.test(trust),
+          "the untiled failing checks are named on the strip itself");
+  assert_(/Region tagged on delivery work|Team tagged on delivery work/.test(trust),
+          "…by name, so the masthead's count stays answerable");
 
   // Not margin-gated (brief note): a guest sees the same strip, unlike the
   // pulse panel directly above it which disappears for that role.
@@ -3626,8 +3651,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and its row is gone from the gaps queue");
   assert_(!C.gapsRetired_(h1, pp1).some(function (g) { return g.key === "attr"; }),
           "…and it is not merely retired: a deleted check must not report itself as hidden-but-measured");
-  assert_(!/roster person/.test(C.gapsSolvedHtml_(h1, pp1)),
-          "…so the 'Solved and retired' line no longer names it either");
+  // The "Solved and retired" line moved onto the trust strip when the gaps queue
+  // was deleted (2026-08-17); gapsSolvedHtml_ went with the queue.
+  C.renderTrust_();
+  assert_(!/roster person/.test(document.getElementById("trustPanel").innerHTML),
+          "…so the retired-checks line on the trust strip does not name it either");
   // The RULE still holds for the checks that use it. A null value is never
   // 'solved' — an unconnected feed must not retire itself.
   assert_(C.gapRetired_({ retireWhenFull: true, value: null }) === false,
@@ -4150,8 +4178,12 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.setState("periodIdx", all.length - 1);
   C.setState("view", "actions");
   C.renderAll_();
-  assert_(/planning window selected/.test(els.hygPanel.innerHTML),
-          "the gaps view falls back to the last complete period and names the reason");
+  // The gaps queue had its own planning-window fallback banner; both went on
+  // 2026-08-17. The panel that remains (gate editor + leaver note) follows no
+  // window at all, so it must make no claim about one — the trust strip below
+  // still carries the real fallback statement, asserted a few lines down.
+  assert_(!/planning window selected/.test(els.hygPanel.innerHTML),
+          "the gates panel makes no window claim, having no windowed content left");
   C.setState("view", "exec");
   C.renderAll_();
   assert_(!/recoverable/.test(els.pulsePanel.innerHTML),
@@ -4426,11 +4458,17 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
    * is ORG), and the tag COUNTS below are the assertions with teeth.
    */
   function heroTriplet_(sec) {
-    var a = sec.indexOf('<div class="lbl">Inventory');
-    if (a === -1) return "";
-    var rest = sec.slice(a);
-    var b = rest.indexOf('<div class="lbl">Cleared');
-    return b === -1 ? rest : rest.slice(0, b);
+    // Collected BY NAME, not by slicing a contiguous run. The flow strip is
+    // clustered since 2026-08-17 — Net flow sits in Flow while Inventory and
+    // Weeks to clear sit in Runway — so the three queue cards are no longer
+    // adjacent. A positional slice silently returned the wrong span the moment
+    // that grouping landed, which is exactly the coupling tileSeg_ exists to
+    // remove.
+    return ["Inventory", "Net flow", "Weeks to clear"]
+      .map(function (lbl) { return tileSeg_(sec, lbl); })
+      .filter(Boolean)
+      .map(function (seg) { return '<div class="tile' + seg; })
+      .join("");
   }
   // The band now carries TWO <svg> elements — the Inventory tile's history
   // sparkline (Task 17) renders first (it's inside the hero .tiles div, above
@@ -4865,33 +4903,52 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
-// EXECUTIVE TIER ORDER (redesign 2026-08-17)
+// EXECUTIVE SMART SPLIT (2026-08-17)
 //
-// #viewExec renders three tiers, top to bottom:
-//   TIER 1  #tier1Tiles      the eight protagonist KPIs, then #flowKey
-//   TIER 2  #masthead → #backlogBand → #flowSecondary → #pulsePanel →
-//           #comparePanel (hidden by flag, element retained)
-//   TIER 3  #trustDetail     super-admin only
+// #viewExec is TWO in-page sub-tabs, and which half a panel sits in is the
+// whole feature — not incidental structure:
 //
-// Checked on the raw markup — the actual DOM order a reader scrolls through —
-// so a later edit that reorders the panels fails loudly instead of merely
-// reordering render calls that still land in the right containers.
+//   HEALTH & ACTIONS  #tier1Tiles → #comparePanel
+//       The 10-second read, then the route to act. NOTHING between them: no
+//       prose block, no colour key, no chart restating the table.
+//   BACKLOG & FLOW    #masthead → #backlogBand → #flowSecondary → #flowKey
+//                     → #pulsePanel → #trustDetail
+//       The pipeline read, and everything reference-shaped that used to sit
+//       between an executive and their actions.
 //
-// The ORDER IS THE FEATURE here, not incidental structure: the whole point of
-// the redesign is that an executive reaches a verdict before meeting a caveat.
-// A change that puts context above the KPIs, or floats the super-admin panel
-// up the page, has undone it whether or not anything still renders.
+// Checked on the raw markup — the DOM order a reader scrolls through — so an
+// edit that drops a panel back between the KPIs and the drill-down, or floats
+// the super-admin panel up the page, fails loudly.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
-  var order = ["tier1Tiles", "flowKey", "masthead", "backlogBand", "flowSecondary",
-               "pulsePanel", "comparePanel", "trustDetail"];
+  var iHealth = html.indexOf('id="execHealth"');
+  var iFlowPane = html.indexOf('id="execFlow"');
+  assert_(iHealth !== -1 && iFlowPane !== -1, "both sub-tab panes exist in the markup");
+  assert_(iHealth < iFlowPane, "Health & Actions is declared first — it is the default view");
+  assert_(html.indexOf('id="execTabs"') !== -1 && html.indexOf('id="execTabs"') < iHealth,
+          "the sub-tab strip precedes both panes");
+
+  function paneOf(id) {
+    var i = html.indexOf('id="' + id + '"');
+    assert_(i !== -1, "#" + id + " exists in the markup");
+    return i < iFlowPane ? "health" : "flow";
+  }
+  // Health & Actions holds ONLY the KPIs and the drill-down. Anything else on
+  // it is something an executive has to scroll past to reach an action.
+  assert_(paneOf("tier1Tiles") === "health", "#tier1Tiles is on Health & Actions");
+  assert_(paneOf("comparePanel") === "health", "#comparePanel is on Health & Actions");
+  assert_(html.indexOf('id="tier1Tiles"') < html.indexOf('id="comparePanel"'),
+          "…and the drill-down sits directly BELOW the KPI cards, not below a chart");
+  ["masthead", "backlogBand", "flowSecondary", "flowKey", "pulsePanel", "trustDetail"]
+    .forEach(function (id) {
+      assert_(paneOf(id) === "flow", "#" + id + " moved to Backlog & Flow");
+    });
+  // Reading order inside Backlog & Flow.
+  var order = ["masthead", "backlogBand", "flowSecondary", "flowKey", "pulsePanel", "trustDetail"];
   var idxs = order.map(function (id) { return html.indexOf('id="' + id + '"'); });
-  idxs.forEach(function (i, k) {
-    assert_(i !== -1, "#" + order[k] + " exists in the markup");
-  });
   for (var i = 1; i < idxs.length; i++) {
     assert_(idxs[i - 1] < idxs[i],
-            "#" + order[i - 1] + " precedes #" + order[i] + " in DOM order (Executive tier order) — " +
+            "#" + order[i - 1] + " precedes #" + order[i] + " on Backlog & Flow — " +
             "got indices " + idxs[i - 1] + " then " + idxs[i]);
   }
   // Retirement is real, not merely unreferenced: the retired containers are
@@ -4908,10 +4965,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // are a statement about priority, so they are marked in the markup.
   assert_(/class="tier tier1"/.test(html) && /class="tier tier2"/.test(html) &&
           /class="tier tier3"/.test(html),
-          "all three tiers are declared as sections in the markup");
-  assert_(html.indexOf('class="tier tier1"') < html.indexOf('class="tier tier2"') &&
-          html.indexOf('class="tier tier2"') < html.indexOf('class="tier tier3"'),
-          "…and they appear in priority order: tier1, then tier2, then tier3");
+          "the tier sections are still declared in the markup");
 
   // ── The data-quality strip moved to Actions, and moved ENTIRELY ──
   // Present twice would be worse than not moving it: two copies of a gate
@@ -5270,16 +5324,27 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "grid column headers are keyboard-reachable (role=button, tabindex=0)");
   assert_(/onclick="setMetric_\('onTime'\)"/.test(html),
           "…and clicking the onTime column header sets STATE.metric via setMetric_");
-  // Worst-first (Team 0, 40%, furthest below the 85% target) survives the
-  // cap in the grid; best (Team 14, 82%, closest to target) is cut — from
-  // BOTH the grid and the chart below it, proving they share one ranking
-  // rather than two independently-computed lists that could disagree.
+  // Worst-first (Team 0, 40%, furthest below the 85% target) survives the cap;
+  // best (Team 14, 82%, closest to target) is cut. capRows_ ranks by DISTANCE
+  // BELOW REFERENCE, never by list position — that is the rule under test, and
+  // it is now the grid's alone: the bullet chart it used to share the selection
+  // with was removed on 2026-08-17 (it restated this same table).
   assert_(gridSeg.indexOf(">Team 0 <") !== -1, "Team 0 (worst) survives the grid's cap");
   assert_(gridSeg.indexOf(">Team 14 <") === -1, "Team 14 (best) is cut from the grid");
-  var chartSeg = html.split("<svg")[1] ? "<svg" + html.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
-  assert_(chartSeg.indexOf(">Team 0<") !== -1, "…Team 0 also survives in the bullet chart");
-  assert_(chartSeg.indexOf(">Team 14<") === -1,
-          "…while Team 14 is cut from the chart too — the grid and the chart share ONE selection");
+  // THE CHART IS GONE, and its absence is asserted rather than assumed —
+  // otherwise a future edit could put a redundant full-width chart back and
+  // nothing would object.
+  assert_(html.indexOf('class="chart hbar"') === -1,
+          "the comparison panel draws no bar chart — the grid already carries every value");
+  // Expanding must reach the rows the cap hid, or the cap is a silent truncation.
+  C.setState("compareAll", true);
+  C.renderCompare_();
+  var expanded = els.comparePanel.innerHTML;
+  assert_(expanded.indexOf(">Team 14 <") !== -1,
+          "…and 'Show all' reveals the rows the cap held back");
+  assert_(/Show top /.test(expanded), "…with a way back to the shortlist");
+  C.setState("compareAll", false);
+  C.renderCompare_();
 
   C.STATE.compare = "region";
   C.setState("metric", "onTime");
@@ -5325,114 +5390,64 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the SMALLER group (ANZ: 8 people, 12 items) outperforms the LARGER one (AMER: 63 " +
           "people, 61 items) on a per-head basis — the smaller group is not automatically worse");
 
-  // Render the grid itself and pull each region's row.
-  C.STATE.compare = "region";
-  C.setState("metric", "clearedPerHead");
-  C.switchView_("exec");
-  C.renderAll_();
-  var cmp1 = els.comparePanel.innerHTML;
-  function gridRow_(html, label) {
-    var i = html.indexOf(">" + label + ' <span class="cellSub">(');
-    return i === -1 ? "" : html.slice(i).split("</tr>")[0];
-  }
-  // The row has ONE cell per gridMetrics_() column (onTime/forecast/util/
-  // clearedPerHead/queueCover here) — onTime/forecast/util are all null for
-  // this fixture (no onTimeBuckets/forecastBuckets), so a whole-ROW text
-  // check would also match THEIR "no measurable data"/neutral markup. Every
-  // clearedPerHead-specific assertion below is scoped to clearedPerHead's
-  // OWN cell for exactly that reason.
-  function cellFor_(rowHtml, id) {
-    var ids = C.gridMetrics_(), idx = ids.indexOf(id);
-    if (idx === -1) return "";
-    var parts = rowHtml.split('<td class="tnum gridCell"');
-    return parts[idx + 1] ? '<td class="tnum gridCell"' + parts[idx + 1].split("</td>")[0] + "</td>" : "";
-  }
-  var amerRow = gridRow_(cmp1, "AMER");
-  var anzRow = gridRow_(cmp1, "ANZ");
-  assert_(amerRow && anzRow, "both regions render a grid row — got: " + cmp1);
-  var anzCph = cellFor_(anzRow, "clearedPerHead");
-  var amerCph = cellFor_(amerRow, "clearedPerHead");
-  assert_(anzCph && amerCph, "clearedPerHead's own column cell is present in both rows");
-
-  // ── 1b. RENDERED TEXT, not the raw value (blocking fix — the brief's own
-  // note: earlier checks in this fixture asserted amerPerHead/anzPerHead as
-  // raw numbers, which is why the quantisation bug could survive them even
-  // though the fixture is otherwise exactly what exposes it). AMER 61/63 =
-  // 0.968… must NOT print as the bare integer "1" — Math.round (the old
-  // behaviour) AND Math.round(v*10)/10 read back through naive string concat
-  // (1.0 + "" === "1" in JS) both regenerate it; toFixed(1) is required. ANZ
-  // 12/8 = 1.5 must print its real decimal too. Together this is the whole
-  // point: a 1.55x gap must read as 1.0 vs 1.5, never as 1 vs 2 (a fabricated
-  // 2x). Neither tooltip carries any other digit that could produce a false
-  // pass/fail on the bare-\b1\b/\b2\b checks (verified against the literal
-  // copy in gridCellHtml_ — the small-n tooltip's only digit is "10", which
-  // \b1\b does not match).
+  // ── The CELL rules, tested on gridCellHtml_ directly ─────────────────────
+  // Until 2026-08-17 these were read off clearedPerHead's own column in the
+  // rendered grid. That column is gone — the metric left the Drill-down — but
+  // the three rules it was the fixture FOR are properties of gridCellHtml_ and
+  // still govern every column that remains, so they are asserted against the
+  // function instead of against a column that no longer exists.
+  //
+  // ⚠ One thing genuinely lost with the column: every surviving grid metric has
+  // a ratified target, so the `no reference` branch below now has NO live
+  // metric exercising it on screen. It is still reachable (any metric with a
+  // null targetKey lands there) and still tested here, but if the last
+  // target-less metric ever leaves the registry too, delete the branch rather
+  // than leaving a path nothing can enter.
+  var cphUnit = "items";
+  // 1 · QUANTISATION. AMER 61/63 = 0.968… must print "1.0", never a bare "1":
+  // Math.round (the old behaviour) and Math.round(v*10)/10 read back through
+  // naive concat (1.0 + "" === "1") both regenerate the bug. ANZ 12/8 = 1.5
+  // must keep its decimal too — a 1.55x gap must read 1.0 vs 1.5, never 1 vs 2.
+  var amerCph = C.gridCellHtml_({ value: 61 / 63, unit: cphUnit, n: 63, target: null, std: null });
+  var anzCph = C.gridCellHtml_({ value: 12 / 8, unit: cphUnit, n: 8, target: null, std: null });
   assert_(amerCph.indexOf("1.0") !== -1,
-    "AMER's clearedPerHead cell renders the decimal '1.0' (61/63 ≈ 0.968), not a bare rounded integer — got: " + amerCph);
+    "AMER's per-head cell renders the decimal '1.0' (61/63 ≈ 0.968), not a bare rounded integer — got: " + amerCph);
   assert_(!/\b1\b/.test(amerCph.replace("1.0", "")),
     "…no lingering bare '1' once the decimal token itself is accounted for");
   assert_(!/\b2\b/.test(amerCph), "…and AMER's value never rounds up to 2 either");
   assert_(anzCph.indexOf("1.5") !== -1,
-    "ANZ's clearedPerHead cell renders the decimal '1.5' (12/8) — got: " + anzCph);
+    "ANZ's per-head cell renders the decimal '1.5' (12/8) — got: " + anzCph);
   assert_(!/\b2\b/.test(anzCph), "…never rounds up to the fabricated '2' the old Math.round produced");
-  assert_(!/\b1\b/.test(anzCph.replace("1.5", "")),
-    "…no lingering bare '1' either, once the decimal token is accounted for");
 
-  // ── 2. Sub-10 (ANZ, 8 people) renders its VALUE and a grey dot, never a
-  // RAG colour class. Mutation this catches: hiding the small-group cell
-  // fails the "value present" half; still colouring it fails the "no RAG"
-  // half — a helper that only ever returns "none" for both cases would pass
-  // one check and not the other, which is why both are asserted separately.
-  assert_(/ungraded \(small n\)/.test(anzCph), "ANZ's (8 people) clearedPerHead cell is ungraded (small n)");
+  // 2 · Sub-10 keeps its VALUE and loses ONLY the colour. Hiding the cell fails
+  // the "value present" half; colouring it fails the "no RAG" half — a helper
+  // that returned "none" for both would pass one and not the other.
+  assert_(/ungraded \(small n\)/.test(anzCph), "an 8-person group's cell is ungraded (small n)");
   assert_(!/sigGood|sigWarn|sigBad/.test(anzCph), "…and it carries NO RAG colour class");
   assert_(!/No measurable data/.test(anzCph),
           "…it is NOT the null/no-data branch — it has a real, printed value");
-  // AMER (63 people) is NOT small-n — proving the rule keys off headcount,
-  // not off which metric column it happens to be looking at.
-  assert_(!/ungraded \(small n\)/.test(amerCph), "AMER's (63 people) clearedPerHead cell is not ungraded");
+  assert_(!/ungraded \(small n\)/.test(amerCph),
+          "a 63-person group is not ungraded — the rule keys off headcount, not off the metric");
 
-  // ── 3/4. clearedPerHead has NO target (D11). This fixture's default WEEKS
-  // (2 periods) is under STD_MIN_PERIODS too, so the org-wide norm is also
-  // unpublishable — the compound case brief item 4 asks for: no target AND
-  // no norm. Mutation this catches: colouring AMER's cell here (e.g. by
-  // falling back to a different metric's target) fails the first; printing
-  // the value with no explanation fails the second.
-  assert_(!/sigGood|sigWarn|sigBad/.test(amerCph), "AMER's clearedPerHead cell carries no RAG colour");
+  // 3 · No target AND no publishable norm: no colour, and the cell SAYS it has
+  // no reference rather than printing a bare number that looks graded.
+  assert_(!/sigGood|sigWarn|sigBad/.test(amerCph), "a target-less cell carries no RAG colour");
   assert_(/no reference/.test(amerCph),
-          "…and states explicitly that it has no reference — never a bare, uncoloured number " +
-          "that looks graded");
+          "…and states explicitly that it has no reference");
+  // …and when a norm DOES publish, the same cell defers to the band instead of
+  // claiming no reference at all. This is the positive half of the same rule.
+  var withBand = C.gridCellHtml_({ value: 61 / 63, unit: cphUnit, n: 63, target: null,
+                                   std: { ok: true, lo: 0.8, hi: 1.4 } });
+  assert_(!/no reference/.test(withBand), "with a published norm the cell stops saying 'no reference'");
+  assert_(/operating band/.test(withBand), "…and points at the band it is graded against");
 
-  // ── 5. The mandatory coverage sentence survives the grid's addition ──────
-  assert_(/all 71<\/b> people represented/.test(cmp1),
-          "the coverage sentence still states all 71 (63+8) people represented");
-
-  // ── 3, negative half — with only 2 periods the BULLET CHART draws no band
-  // either (checked against the fixture ALREADY rendered above, cmp1) ──────
-  var svgNeg = cmp1.split("<svg")[1] ? "<svg" + cmp1.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
-  assert_(svgNeg.indexOf('fill="var(--c-ref)"') === -1,
-          "…and with an unpublishable norm (<5 periods), the bullet chart draws NO band either");
-  assert_(!/stroke="var\(--c-target\)"/.test(svgNeg),
-          "…nor a target line — clearedPerHead's targetKey is null everywhere it charts");
-
-  // ── 3, POSITIVE half — with ≥5 periods of real history the operating band
-  // DOES shade on the bullet chart, checked against the chart's OWN SVG, not
-  // a caption. Without this positive case, every "no target" assertion above
-  // is negative and would pass even if the band mechanism were deleted.
-  var mBand = histModel({});
-  mBand.throughputBuckets = HIST.map(function (iso) {
-    return { iso: iso, person: "Ana Perez", nAll: 40, nEst: 30, estHrs: 200 };
-  });
-  fresh(mBand);
-  C.STATE.compare = "region";
-  C.setState("metric", "clearedPerHead");
-  C.switchView_("exec");
-  C.renderAll_();
-  var cmpBand = els.comparePanel.innerHTML;
-  var svgPos = cmpBand.split("<svg")[1] ? "<svg" + cmpBand.split("<svg")[1].split("</svg>")[0] + "</svg>" : "";
-  assert_(svgPos, "the bullet chart rendered for clearedPerHead with a 5+ period fixture");
-  assert_(!/stroke="var\(--c-target\)"/.test(svgPos), "…still no target-coloured reference line (D11)");
-  assert_(svgPos.indexOf('fill="var(--c-ref)"') !== -1,
-          "…and the operating band NOW shades, now that the 5+ point norm publishes");
+  // ── 4. The coverage sentence is NOT re-asserted here ─────────────────────
+  // It used to be, on this 71-person fixture, because clearedPerHead was the
+  // metric being charted and it had a value for both regions. No surviving
+  // drill-down metric has buckets in this fixture, so the chart renders its
+  // empty state and there is no sentence to read. Rather than invent bucket
+  // data to keep a line alive, the rule stays pinned where it already is — on
+  // two populated fixtures earlier in this file ("all N people represented").
 
   C.setState("metric", "onTime");
   C.STATE.compare = "region";
@@ -5450,41 +5465,25 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 // the ~1,839 unassigned issues the hero's ~11w actually does. Mutation this
 // catches: reverting label()/axis()/detail() back to the reg_() reads
 // reintroduces "Weeks to Clear" and "unassigned open" on this surface.
+// Asserted on the ACCESSOR since 2026-08-17: queueCover left the Drill-down, so
+// there is no panel to read the strings off any more. The rule is unchanged and
+// still worth pinning — the entry survives because the shelf reads it, and a
+// future reader restoring it to a chart must not also restore the collision.
 (function () {
   fresh(model({}));
-  C.STATE.compare = "region";
-  C.setState("metric", "queueCover");
-  C.switchView_("exec");
-  C.renderAll_();
-  var html = els.comparePanel.innerHTML;
-  assert_(html.indexOf("Assigned wks to clear") !== -1,
-    "queueCover's header/chart title reads 'Assigned wks to clear', not the hero's 'Weeks to Clear'");
-  assert_(html.indexOf("Weeks to Clear") === -1,
-    "…and the hero's own metric name never leaks onto this surface");
-  assert_(html.indexOf("median assigned weekly clearing rate") !== -1,
-    "the visible axis caption states the ASSIGNED-ONLY formula");
-  assert_(html.indexOf("unassigned open") === -1,
+  var qc = C.METRICS_.queueCover;
+  assert_(qc.label() === "Assigned wks to clear",
+    "queueCover's own label reads 'Assigned wks to clear', not the hero's 'Weeks to Clear'");
+  assert_(qc.label().indexOf("Weeks to Clear") === -1,
+    "…and the hero's own metric name never leaks onto this metric");
+  assert_(qc.axis().indexOf("median assigned weekly clearing rate") !== -1,
+    "the axis caption states the ASSIGNED-ONLY formula");
+  var qcText = [qc.label(), qc.axis(), qc.detail()].join(" | ");
+  assert_(qcText.indexOf("unassigned") === -1,
     "…and the registry's whole-population formula ('assigned open + unassigned open') never " +
-    "prints on this panel at all — not in the caption, not in its hover-detail title");
-  // The hover-DETAIL title on the SAME span (renderCompare_'s `m.detail ?
-  // m.detail() : reg_(m.id).formula` fallback) must ALSO read the
-  // assigned-only string, not reg_("queueCover").formula. Extracted by its
-  // own unique `<span class="sub" title="` marker (the only element in this
-  // panel combining that class with a title attribute) so a match on some
-  // OTHER span elsewhere on the page can't produce a false pass.
-  var marker = '<span class="sub" title="';
-  var i = html.indexOf(marker);
-  var titleTxt = i === -1 ? "" : html.slice(i + marker.length).split('">')[0];
-  assert_(titleTxt.indexOf("assigned weekly clearing rate") !== -1,
-    "the header ⓘ's hover-detail title states the assigned-only formula — got: " + titleTxt);
-  assert_(titleTxt.indexOf("unassigned") === -1,
-    "…and never the registry's unassigned-inclusive wording, even in the hover-only text — got: " + titleTxt);
-
-  C.setState("metric", "onTime");
-  C.STATE.compare = "region";
-  fresh(model({}));
-  C.switchView_("exec");
-  C.renderAll_();
+    "reaches any of this metric's own strings — label, axis or hover detail");
+  assert_(qc.detail().indexOf("assigned weekly clearing rate") !== -1,
+    "the hover-detail states the assigned-only formula rather than falling back to reg_()");
 })();
 
 // ── fmtGridVal_ "weeks" branch, RENDERED (blocking fix D4, the queueCover
@@ -5504,15 +5503,15 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(mdl);
   assert_(C.assignedClearRate_() === 1, "fixture's assigned clear rate is exactly 1 (median of 7 weeks at nAll=1)");
   assert_(C.METRICS_.queueCover.value() === 5, "queueCover's raw value is exactly 5 (open 5 ÷ rate 1) — the case that discriminates suffix/decimal from digits");
-  C.STATE.compare = "region";
-  C.setState("metric", "queueCover");
-  C.switchView_("exec");
-  C.renderAll_();
-  var html = els.comparePanel.innerHTML;
-  var gridSeg = html.split("gridTable")[1] ? html.split("gridTable")[1].split("</table>")[0] : "";
-  assert_(gridSeg.indexOf("5.0w") !== -1,
-    "queueCover's grid cell renders '5.0w' (one decimal + the weeks suffix) — got: " + gridSeg);
-  assert_(!/>5</.test(gridSeg) && !/ 5 /.test(gridSeg.replace("5.0w", "")),
+  // Rendered through gridCellHtml_ directly since 2026-08-17: queueCover is no
+  // longer a grid column, but the "weeks" formatter branch it was the fixture
+  // for still serves any metric carrying unit:"weeks", and the bug it guards
+  // (a bare "5" where "5.0w" is required) is in the formatter, not the column.
+  var wkCell = C.gridCellHtml_({ value: C.METRICS_.queueCover.value(), unit: "weeks",
+                                 n: 63, target: null, std: null });
+  assert_(wkCell.indexOf("5.0w") !== -1,
+    "a weeks-unit grid cell renders '5.0w' (one decimal + the weeks suffix) — got: " + wkCell);
+  assert_(!/>5</.test(wkCell) && !/ 5 /.test(wkCell.replace("5.0w", "")),
     "…and never the bare unlabelled '5' the old Math.round(v) formatter produced");
 
   C.setState("metric", "onTime");
@@ -6453,8 +6452,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/10<\/b> by Jira assignee/.test(h), "the row says how many epics came from the assignee");
   assert_(/2<\/b> by Tempo project lead/.test(h), "…and how many are an inference");
   // The Assignee column is the evidence each row is attributed on.
-  assert_(/<td>Dana Reyes<\/td>/.test(h),
-          "an epic names its Jira assignee in the Assignee column");
+  // Wrapped in .pii since 2026-08-17 — an assignee is a person, so it blurs
+  // with the roster names rather than staying legible beside them.
+  assert_(/<td><span class="pii">Dana Reyes<\/span><\/td>/.test(h),
+          "an epic names its Jira assignee in the Assignee column, blurrable");
   assert_(/via project<\/span>/.test(h),
           "…and an epic with no assignee says which rule placed it instead of showing blank");
   // Epic-level gaps sit in the Gaps column, where the reader can act on the
@@ -6758,22 +6759,38 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/class="tiles tier1"/.test(src),
           "…and the grid is marked tier1, which is what makes those cards the largest on the page");
 
-  // The demoted reads are in Tier 2, in the order they are read, and are NOT
-  // in Tier 1. The five that moved lead the strip; the three quiet flow reads
-  // that were already there follow them.
+  // The demoted reads live in the Backlog & Flow strip, CLUSTERED by the
+  // question each answers (2026-08-17). Membership in the right cluster is the
+  // assertion now, not a flat left-to-right order: eight cards in one row read
+  // as a wall, and which group a card belongs to is the thing a later edit
+  // could get wrong.
   var t2 = document.getElementById("flowSecondary").innerHTML;
-  var WANT2 = ["Throughput", "Bug Count", "Inventory", "Net flow", "Weeks to clear",
-               "Cleared", "Arrived", "Lead Time"];
-  var seen2 = WANT2.map(function (lbl) { return t2.indexOf('<div class="lbl">' + lbl); });
-  WANT2.forEach(function (lbl, i) {
-    assert_(seen2[i] !== -1, "'" + lbl + "' renders in the Tier-2 strip");
-    assert_(t1.indexOf('<div class="lbl">' + lbl) === -1,
-            "…and never in Tier 1 — got '" + lbl + "' in the protagonist row");
+  var CLUSTERS = [
+    { head: "Flow", want: ["Throughput", "Cleared", "Arrived", "Lead Time", "Net flow"] },
+    { head: "Runway", want: ["Inventory", "Weeks to clear"] },
+    { head: "Quality", want: ["Bug Count"] },
+  ];
+  // Slice the strip into its clusters, in DOM order, so a card can be checked
+  // against the heading it actually sits under rather than merely co-occurring
+  // with it somewhere in the same string.
+  var segs = t2.split('<div class="cluster">').slice(1);
+  assert_(segs.length === CLUSTERS.length,
+          "the flow strip renders exactly " + CLUSTERS.length + " clusters — got " + segs.length);
+  CLUSTERS.forEach(function (c, ci) {
+    var seg = segs[ci];
+    assert_(seg.indexOf('clusterHead">' + c.head) !== -1,
+            "cluster " + (ci + 1) + " is headed '" + c.head + "'");
+    c.want.forEach(function (lbl) {
+      assert_(seg.indexOf('<div class="lbl">' + lbl) !== -1,
+              "'" + lbl + "' sits under the '" + c.head + "' heading");
+      assert_(t1.indexOf('<div class="lbl">' + lbl) === -1,
+              "…and never in Tier 1 — got '" + lbl + "' in the protagonist row");
+    });
   });
-  for (var j = 1; j < seen2.length; j++) {
-    assert_(seen2[j - 1] < seen2[j],
-            "Tier 2 order: '" + WANT2[j - 1] + "' precedes '" + WANT2[j] + "'");
-  }
+  // Every card is accounted for: no tile is silently dropped by the grouping.
+  assert_((t2.match(/<div class="lbl">/g) || []).length ===
+          CLUSTERS.reduce(function (a, c) { return a + c.want.length; }, 0),
+          "every demoted card lands in exactly one cluster — none lost in the regrouping");
   // Position, not just membership: the queue cards only read correctly under
   // the band whose prose defines them, so #flowSecondary must follow
   // #backlogBand in the DOM (pinned again by the section-order check below).
@@ -6842,13 +6859,22 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // A swatch strip says the segments differ; the legend has to say what puts
   // an item in each, which is the question actually asked in the room.
   var leg = C.smartLegendHtml_();
-  ["In progress", "Queued", "Unowned"].forEach(function (seg) {
+  // AGILE NOMENCLATURE (2026-08-17): the segments are named for the STATE the
+  // work is in, not for what it lacks. "Unowned" was factually right and read
+  // as neglect on the biggest segment, when pipeline created ahead of
+  // allocation is what a healthy runway looks like.
+  ["Active", "Planned", "Runway"].forEach(function (seg) {
     assert_(leg.indexOf("<b>" + seg + "</b>") !== -1, "the legend names the '" + seg + "' segment");
   });
+  assert_(!/<b>Unowned<\/b>/.test(leg), "…and no longer labels a segment 'Unowned'");
+  // THE CRITERIA SURVIVE THE RENAME. Renaming without saying what puts work in
+  // each bucket would be the dishonest version of this change — the reader
+  // would lose the ability to challenge the split.
   assert_(/assignee AND a Jira status in the In Progress category/.test(leg),
-          "…and states In progress' actual criterion, not just its colour");
-  assert_(/still To Do/.test(leg), "…Queued's criterion");
-  assert_(/no assignee/.test(leg), "…and Unowned's");
+          "…and Active still states its actual criterion, not just its colour");
+  assert_(/still To Do/.test(leg), "…Planned's criterion");
+  assert_(/no assignee/.test(leg), "…and Runway's");
+  assert_(/future sprints/i.test(leg), "…with Runway named as future sprints, not as a deficit");
   assert_((leg.match(/legSwatch/g) || []).length === 3, "one swatch per segment, no more");
   assert_(els.backlogBand.innerHTML.indexOf("legSwatch") !== -1,
           "the legend renders in the band, under the bar it explains");
@@ -7193,6 +7219,775 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // Teardown.
   fresh(model({}));
   C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// BENCHED CREW ARE VISIBLE, AND OUT OF EVERY CAPACITY FIGURE
+// (spec 2026-08-17)
+//
+// The point of this feature is a person who STAYS on screen while leaving the
+// denominators. So the checks come in pairs: still rendered, still not counted.
+// A test that only asserted the carve would pass on a change that deleted them.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  var benched = person("Bruno Bench", { region: "AMER" });
+  benched.onBench = true;
+  benched.benchStatus = "Crew - On the Bench";
+  var active = person("Dana Deployed", { region: "AMER" });
+
+  // ── 1. The badge says what they are, and it is not the leave badge ───────
+  var badges = C.personStateBadges_(benched);
+  assert_(/⏸/.test(badges), "a benched person carries the ⏸ badge");
+  assert_(!/🏖/.test(badges), "…and NOT the on-leave badge — bench is not leave");
+  assert_(/between engagements/i.test(badges),
+          "…and the tooltip says what bench means, not just that it is set");
+  assert_(!/⏸/.test(C.personStateBadges_(active)), "an active person carries no bench badge");
+
+  // ── 2. The hours cell reads a state, never a zero ────────────────────────
+  // Nobody is "0h available" in a week they are not contracted for. Same rule
+  // the on-leave cell already follows.
+  var cell = C.planCellHtml_(benched, ["2026.W31"]);
+  assert_(/on the bench/.test(cell), "the hours cell reads 'on the bench'");
+  assert_(!/>0%|>0h/.test(cell), "…and never renders a zero for them");
+
+  // ── 3. Out of the sellable subtotal ──────────────────────────────────────
+  assert_(C.wfSellable_(benched) === false, "a benched person is not sellable capacity");
+  assert_(C.wfSellable_(active) === true, "…while an active one is");
+
+  // ── 4. Bench and leave stay separable ────────────────────────────────────
+  // Merged flags would be a one-way door: you cannot recover which was which.
+  var leaver = person("Lena Leave", { region: "AMER" });
+  leaver.onLeave = true;
+  assert_(C.wfSellable_(leaver) === false, "on-leave is still carved, unchanged");
+  assert_(/🏖/.test(C.personStateBadges_(leaver)) && !/⏸/.test(C.personStateBadges_(leaver)),
+          "an on-leave person carries 🏖 and not ⏸");
+
+  // ── 5. The bench count is stated where it can actually be SEEN ───────────
+  // Moved off the capacity tile (user 2026-08-17). That card opens with
+  // `if (!SHOW_UTILIZATION_ && !planningPhase_()) return ""` and
+  // SHOW_UTILIZATION_ ships false, so the count rendered only on a planning
+  // window. The old test passed regardless because it forced the card on with
+  // withUtilization_() — a green check over a surface nobody sees.
+  //
+  // These checks deliberately do NOT wrap anything in withUtilization_: the
+  // whole point is that Scope renders at the shipped defaults.
+  var mBench = model({});
+  mBench.people = [person("Dana Deployed", { region: "AMER" }),
+                   person("Derek Deployed", { region: "AMER" }),
+                   person("Dita Deployed", { region: "AMER" }),
+                   person("Bruno Bench", { region: "AMER" }),
+                   person("Bianca Bench", { region: "AMER" })];
+  mBench.people[3].onBench = true;
+  mBench.people[4].onBench = true;
+  // The signals roster needs hygiene buckets or personSignalRows_ returns null,
+  // and an assertion that "no benched person has a row" would pass vacuously
+  // against an empty roster. Give all five a bucket, including the benched two,
+  // so their absence downstream is the GATE doing its job rather than an
+  // absence of data.
+  mBench.personHygiene = {
+    open: mBench.people.map(function (p) {
+      return { person: p.name, n: 10, due: 8, dueN: 10, est: 7, logged: 6, loggedN: 10,
+               link: 9, start: 5, bill: 8, billN: 10, estSec: 0, spentSec: 0, wip: 0 };
+    }),
+    resolved: [],
+  };
+  fresh(mBench);
+
+  // ── The population gate: benched crew are not rows ANYWHERE ──────────────
+  // "Show active working only" (user 2026-08-17). Asserted on the population
+  // itself rather than per surface, because every people surface derives from
+  // it — one gate, so no tab can drift back into listing them.
+  var names = C.filteredPeople_().map(function (p) { return p.name; });
+  assert_(names.length === 3, "the population is the 3 deployed people, not 5 — got " + names.length);
+  assert_(names.indexOf("Bruno Bench") === -1 && names.indexOf("Bianca Bench") === -1,
+          "…and neither benched person is in it");
+  // The Actions signals roster is the one that matters most: a red row against
+  // somebody who is not working is the "finger on him/her" failure.
+  var sig = C.personSignalRows_([]) || [];
+  assert_(sig.filter(function (r) { return /Bench/.test(r.p.name); }).length === 0,
+          "benched crew carry no row on the Actions signals roster");
+  assert_(sig.length === 3, "…and the roster is the working population — got " + sig.length);
+
+  // ── But the bench is still STATED, or it is merely hidden ────────────────
+  C.renderWfScope_();
+  var scope = els.wfScopePanel.innerHTML;
+  assert_(/<b>2<\/b> on the bench/.test(scope),
+          "the Scope panel names how many people are benched");
+  assert_(/not shown/.test(scope),
+          "…and says they are not listed, so an absent row is explained rather than noticed");
+  assert_(/<b>3<\/b> people in scope/.test(scope),
+          "…while the headcount counts only the working population");
+  assert_(/not contracted to deliver right now/.test(scope),
+          "…and the tooltip says what bench means, so the number is not a bare label");
+
+  // Counted from MODEL.people, not from the filtered population — reading the
+  // latter would print nothing at all now that the gate empties it.
+  assert_(!/<b>0<\/b> on the bench/.test(scope),
+          "the count is not read off the gated population, which would always be zero");
+
+  // ── The filter chips must agree with the page they filter ────────────────
+  // Caught by screenshot: Scope read "3 people in scope" beside a Region chip
+  // reading "AMER 5". A chip that promises five rows and delivers three is a
+  // filter bar arguing with its own result. optionsFor_ counts MODEL.people
+  // directly, so the bench gate has to be repeated there — it cannot live in
+  // passesFilters_ without dropping delivered work from the KPI buckets.
+  var opts = C.optionsFor_("region");
+  assert_(opts.counts.AMER === 3,
+          "the Region chip counts the working population (3), not the roster (5) — got " +
+          opts.counts.AMER);
+
+  // It renders at the SHIPPED defaults — the failure the move exists to fix.
+  assert_(C.getUtilization_() === false,
+          "guard: the suite is reading Scope with utilization OFF, as production ships it");
+
+  // ── ⚠️ THE REGRESSION GUARD: delivered is delivered ──────────────────────
+  // The gate is in filteredPeople_, NOT passesFilters_, because bucketsFor_
+  // attributes Jira buckets through the latter. If the gate ever moves, work a
+  // benched person completed BEFORE going on the bench silently drops out of
+  // On-Time, Forecast and Quality — a published rate changing because of
+  // somebody's current employment status.
+  assert_(C.passesFilters_(mBench.people[3]) === true,
+          "a benched person still PASSES passesFilters_ — the gate must not sit there");
+  var bench2 = mBench.people[4];
+  assert_(C.passesFilters_(bench2) === true, "…same for the second one");
+
+  // With nobody benched the phrase leaves with its subject — a standing
+  // "0 on the bench" teaches readers to skip the line on the day it is not zero.
+  var mClean = model({});
+  mClean.people = [person("Dana Deployed", { region: "AMER" })];
+  fresh(mClean);
+  C.renderWfScope_();
+  assert_(!/on the bench/.test(els.wfScopePanel.innerHTML),
+          "no benched people, no bench phrase");
+
+  // …and it is GONE from the capacity tile, so the fact is stated once.
+  fresh(mBench);
+  assert_(!/on the bench/.test(withUtilization_(function () { return C.capacityTileHtml_(); })),
+          "the capacity tile no longer carries the count — it moved, it was not duplicated");
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACCESS CONTROL — the list replaces two comma-separated text inputs
+// (user 2026-08-17: "it has a separated by comma option that looks nasty").
+//
+// Tested through accessPanelHtml_, which is a pure function of the working
+// state, because the panel itself only ever renders behind a
+// google.script.run round-trip the DOM stub never resolves.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  function st_(over) {
+    var base = {
+      admins: ["gonzalo.riquelme@servicerocket.com", "william.mock@servicerocket.com"],
+      viewers: ["director@servicerocket.com"],
+      openAccess: false,
+      bootstrapAdmin: "moises.lopez@servicerocket.com",
+      callerEmail: "gonzalo.riquelme@servicerocket.com",
+      orig: { admins: ["gonzalo.riquelme@servicerocket.com", "william.mock@servicerocket.com"],
+              viewers: ["director@servicerocket.com"], openAccess: false },
+    };
+    Object.keys(over || {}).forEach(function (k) { base[k] = over[k]; });
+    return base;
+  }
+
+  var html = C.accessPanelHtml_(st_());
+
+  // ── 1. It is a LIST, not a joined string ────────────────────────────────
+  // The regression this guards is a revert to `admins.join(", ")` in a text
+  // input — which is what the page did until now, and which no other assertion
+  // here would notice because the addresses would all still be present.
+  assert_(!/value="[^"]*,\s/.test(html),
+          "no comma-joined address string survives anywhere in the markup");
+  assert_(!/id="accAdmins"/.test(html) && !/id="accViewers"/.test(html),
+          "the two comma-separated inputs are gone");
+  assert_((html.match(/class="accRow /g) || []).length === 4,
+          "one row per person: 2 admins + 1 viewer + the owner = 4");
+
+  // ── 2. The owner is IN the list, and cannot be removed from it ──────────
+  // He used to be a sentence above the inputs. A page that claims to list
+  // everyone with access, while one person with access is mentioned elsewhere,
+  // answers its own question wrongly.
+  assert_(html.indexOf("moises.lopez") !== -1, "the bootstrap admin appears as a row");
+  assert_(/🔒 owner/.test(html), "…tagged as the owner");
+  // Rows extracted by their own delimiter, never by splitting on the address:
+  // the address appears TWICE in a row (title attribute and name span), so a
+  // naive split returns the sliver between the two and any assertion on it
+  // passes or fails for the wrong reason.
+  function rowFor_(h, who) {
+    var rows = h.split('<div class="accRow ').slice(1);
+    for (var i = 0; i < rows.length; i++) if (rows[i].indexOf(who) !== -1) return rows[i];
+    return "";
+  }
+  var ownerRow = rowFor_(html, "moises.lopez");
+  assert_(ownerRow.indexOf("accRemove_") === -1,
+          "…with NO remove control — the server would put it back on the next check");
+  // Everyone else has one, or the list is read-only by accident.
+  assert_((html.match(/accRemove_\(/g) || []).length === 3,
+          "the other three rows each carry a remove control");
+
+  // ── 3. The domain is dimmed, not hidden ────────────────────────────────
+  // Every address ends in the same domain, so the domain is the noise and the
+  // local part is the signal. Dimming must never become truncating: the full
+  // address has to remain on the page and in the row's title.
+  assert_(/<span class="accName">gonzalo\.riquelme<\/span>/.test(html),
+          "the local part renders as the name");
+  assert_(/<span class="accDomain">@servicerocket\.com<\/span>/.test(html),
+          "…and the domain renders beside it, dimmed but present");
+  assert_(html.indexOf('title="gonzalo.riquelme@servicerocket.com"') !== -1,
+          "…with the whole address in the row title, so nothing is actually lost");
+
+  // ── 4. The signed-in admin is marked ───────────────────────────────────
+  var gonRow = rowFor_(html, "gonzalo.riquelme");
+  assert_(/>you</.test(gonRow), "the caller's own row is marked 'you'");
+
+  // ── 5. Counts are per card and include the owner ───────────────────────
+  assert_(/<b>Admins<\/b><span class="accCount">3<\/span>/.test(html),
+          "the admin count is 3 — two listed plus the owner, who is an admin");
+  assert_(/<b>Viewers<\/b><span class="accCount">1<\/span>/.test(html),
+          "…and the viewer count is its own list only");
+
+  // ── 6. Save states what it will do, and is inert until there is one ────
+  assert_(/No changes to save/.test(html), "an untouched page says there is nothing to save");
+  assert_(/id="accSave"[^>]*disabled/.test(html), "…and Save is disabled");
+  var dirty = st_({ viewers: ["director@servicerocket.com", "new.person@servicerocket.com"],
+                    openAccess: true });
+  var dirtyHtml = C.accessPanelHtml_(dirty);
+  assert_(!/id="accSave"[^>]*disabled/.test(dirtyHtml), "an edited page enables Save");
+  assert_(/Pending:/.test(dirtyHtml), "…and says what is pending");
+  assert_(C.accPending_(dirty) === "+1 viewer, open access ON",
+          "the pending line names the actual change set — got: " + C.accPending_(dirty));
+  var removed = st_({ admins: ["gonzalo.riquelme@servicerocket.com"] });
+  assert_(C.accPending_(removed) === "−1 admin", "a removal reads as a removal, not as an add");
+
+  // ── 7. Open access is the one control that gets colour, and only when armed
+  assert_(!/class="accOpen on"/.test(html), "the open-access block is neutral while off");
+  assert_(/Only the people listed above/.test(html), "…and states the safe consequence");
+  assert_(/class="accOpen on"/.test(dirtyHtml), "…and is highlighted when on");
+  assert_(/Anyone with the link/.test(dirtyHtml), "…stating the real consequence, not a label");
+  assert_(/utilization and forecast variance stay hidden/.test(dirtyHtml),
+          "…including the guest tier's actual limits, so 'demo only' is not the whole warning");
+
+  // ── 8. Empty states invite the action rather than reporting a void ──────
+  var empty = C.accessPanelHtml_(st_({ viewers: [],
+    orig: { admins: ["gonzalo.riquelme@servicerocket.com", "william.mock@servicerocket.com"],
+            viewers: [], openAccess: false } }));
+  assert_(/No viewers yet\. Add an email/.test(empty),
+          "an empty viewer list says what to do about it");
+
+  // ── 9. Validation helpers, at the boundary they actually guard ──────────
+  assert_(C.accIsEmail_("a@b.co") === true, "a plain address passes");
+  assert_(C.accIsEmail_("not-an-email") === false, "a bare word does not");
+  assert_(C.accIsEmail_("a@b") === false, "…nor a domain with no dot");
+  assert_(C.accIsEmail_(" spaced @b.co") === false, "…nor one with a space in it");
+  var s9 = st_();
+  assert_(C.accWhere_(s9, "MOISES.LOPEZ@servicerocket.com") === "the owner",
+          "duplicate detection is case-insensitive and names WHERE the address already is");
+  assert_(C.accWhere_(s9, "director@servicerocket.com") === "a viewer", "…across the other list too");
+  assert_(C.accWhere_(s9, "nobody@servicerocket.com") === "", "…and says nothing about a new address");
+
+  // ── 10. A malformed entry already in Script Properties still renders ────
+  // The old free-text field could save anything; this page must show what is
+  // stored rather than dropping it into an empty row nobody can remove.
+  var junk = C.accessPanelHtml_(st_({ viewers: ["not-an-email"],
+    orig: { admins: ["gonzalo.riquelme@servicerocket.com", "william.mock@servicerocket.com"],
+            viewers: ["not-an-email"], openAccess: false } }));
+  assert_(junk.indexOf("not-an-email") !== -1, "a stored malformed entry is still shown");
+  assert_(junk.indexOf("accRemove_") !== -1, "…and can be removed");
+
+  // ── 11. Addresses are escaped ──────────────────────────────────────────
+  var xss = C.accRowHtml_('<img src=x onerror=alert(1)>@evil.com', "viewer", {});
+  assert_(xss.indexOf("<img") === -1, "an address is escaped before it reaches innerHTML");
+  assert_(xss.indexOf("&lt;img") !== -1, "…as escaped text, not dropped");
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// "UNKNOWN" MEANS TWO DIFFERENT THINGS, SO IT GETS TWO DIFFERENT LABELS
+// (spec 2026-08-17)
+//
+// For an FTE, an unparseable level is a data-quality gap somebody should close.
+// For crew it is the designed state — they are hired against a contract, not a
+// level. One word for both taught the reader to ignore it.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  assert_(C.wfBandLabel_("CREW", "UNKNOWN") === "Crewmembers",
+          "an unlevelled CREW band reads as Crewmembers");
+  assert_(C.wfBandLabel_("PS-CONSULT", "UNKNOWN") === "UNKNOWN",
+          "…while an unlevelled FTE band still reads UNKNOWN — there it is a real gap");
+  assert_(C.wfBandLabel_("CREW", "CORE") === "CORE",
+          "a crew member WITH a parseable level keeps their band");
+  assert_(C.wfBandLabel_("CREW", "SENIOR") === "SENIOR", "…at every level");
+
+  // The KEY is untouched. Sorting, p.cell, the level filter and every bucket
+  // join still operate on "UNKNOWN" — this is a label, not a rename.
+  assert_(C.WF_BAND_ORDER_.indexOf("UNKNOWN") !== -1,
+          "the band ORDER still keys on UNKNOWN — the rename is display-only");
+  assert_(C.WF_BAND_ORDER_.indexOf("Crewmembers") === -1,
+          "…and the display word never leaks into the key vocabulary");
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// FORECAST ATTRIBUTION IS DISCLOSED (2026-08-17)
+//
+// The card computed two facts and printed neither: how many of its epics were
+// attributed by INFERENCE (through their children, because epics are containers
+// and are routinely unassigned), and how many closed epics were dropped for
+// resolving to nobody. Both now appear, because a mean over a silently selected
+// subset is the failure Bug Count already carries a registry deviation for.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  function fcDetail_(mut) {
+    var m = model({});
+    mut(m);
+    fresh(m);
+    C.getModel().viewerRole = "admin";
+    C.setState("view", "exec");
+    C.setState("periodIdx", null);
+    C.renderAll_();
+    return tileSeg_(flowHtml_(), "Forecast Accuracy");
+  }
+
+  // ── 1. Inference is NAMED, with its share ────────────────────────────────
+  var inferred = fcDetail_(function (m) {
+    m.forecastBuckets = m.forecastBuckets.map(function (b) {
+      return Object.assign({}, b, { nViaChildren: 3 });
+    });
+  });
+  assert_(/3 of \d+ epics reached their owner through the people working their children/.test(inferred),
+          "the card states how many epics were attributed through their children");
+  assert_(/only who it is filed under is inferred|variance is unchanged/i.test(inferred),
+          "…and says the VARIANCE is unaffected — only the filing is inferred");
+
+  // ── 2. No inference, no claim ────────────────────────────────────────────
+  var direct = fcDetail_(function (m) {
+    m.forecastBuckets = m.forecastBuckets.map(function (b) {
+      return Object.assign({}, b, { nViaChildren: 0 });
+    });
+  });
+  assert_(!/reached their owner through/.test(direct),
+          "a card whose epics were all directly assigned claims no inference");
+
+  // ── 3. Dropped epics are disclosed on the card, not just counted ─────────
+  // The server has always shipped meta.jiraUnattributed.forecast; until now
+  // nothing rendered it, so a reader had no way to know the denominator was
+  // incomplete. Throughput and Lead Time have always shown their equivalent.
+  var dropped = fcDetail_(function (m) {
+    m.meta.jiraUnattributed = { onTime: 0, forecast: 7 };
+    m.forecastBuckets = m.forecastBuckets.map(function (b) {
+      return Object.assign({}, b, { nViaChildren: 0 });
+    });
+  });
+  assert_(/7 issues excluded/.test(dropped),
+          "the card prints the unattributed count the server ships");
+  var clean = fcDetail_(function (m) { m.meta.jiraUnattributed = { onTime: 0, forecast: 0 }; });
+  assert_(!/issues excluded/.test(clean),
+          "…and says nothing when nothing was dropped");
+
+  // ── 4. The aggregation is ADDITIVE across the window ─────────────────────
+  // A month must state the share of the whole month, not of its last week.
+  var mAdd = model({});
+  mAdd.forecastBuckets = mAdd.forecastBuckets.map(function (b) {
+    return Object.assign({}, b, { nViaChildren: 2 });
+  });
+  fresh(mAdd);
+  var wk = C.bucketsFor_(C.getModel().forecastBuckets, ["2026.W31"]);
+  var both = C.bucketsFor_(C.getModel().forecastBuckets, ["2026.W30", "2026.W31"]);
+  assert_(wk.nViaChildren === 2 && both.nViaChildren === 4,
+          "nViaChildren sums over the window like every other bucket counter — got " +
+          wk.nViaChildren + " and " + both.nViaChildren);
+  // A payload built before the field existed must read 0, never undefined/NaN.
+  var older = C.bucketsFor_([{ iso: "2026.W31", person: "Ana Perez", n: 4, nAll: 5, absVars: [0.1] }],
+                            ["2026.W31"]);
+  assert_(older.nViaChildren === 0,
+          "a pre-2026-08-17 cache entry carries no such field and must aggregate to 0, not NaN");
+
+  // Teardown.
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// THE SMART SPLIT — sub-tab routing (2026-08-17)
+//
+// Both halves are RENDERED on every pass and only their visibility toggles.
+// renderFlow_ writes into containers on both, so rendering "only the visible
+// half" would leave the hidden one holding a previous filter's numbers — and a
+// hidden pane with stale figures is exactly what a PNG export or a
+// find-in-page picks up.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.setState("execTab", "health");
+  C.renderAll_();
+
+  var health = document.getElementById("execHealth");
+  var flow = document.getElementById("execFlow");
+  assert_(health.hidden === false && flow.hidden === true,
+          "Health & Actions is the default half on screen");
+  assert_(els.execTabs.children.length === 2, "both sub-tabs render in the strip");
+  assert_(els.execTabs.children[0].getAttribute("aria-selected") === "true",
+          "…and the active one reports its selected state");
+
+  // BOTH halves carry live content even while one is hidden.
+  assert_(document.getElementById("tier1Tiles").innerHTML !== "", "the KPI grid is painted");
+  assert_(document.getElementById("flowSecondary").innerHTML !== "",
+          "…and so is the hidden half's flow strip — hidden is not unrendered");
+
+  C.setExecTab_("flow");
+  assert_(health.hidden === true && flow.hidden === false, "switching shows Backlog & Flow");
+  assert_(els.execTabs.children[1].getAttribute("aria-selected") === "true",
+          "…and the strip follows the selection");
+  C.setExecTab_("health");
+  assert_(health.hidden === false, "…and back again");
+
+  // A filter change must reach the hidden half too, or returning to it shows
+  // the previous slice's numbers with no sign that they are stale.
+  // Probed on the masthead, which is people-scoped and therefore MOVES under a
+  // region filter. The flow strip beside it is deliberately ORG-scoped, so it
+  // is identical before and after by design — asserting on that would have
+  // pinned the wrong thing and passed for the wrong reason.
+  var beforeHead = els.masthead.innerHTML;
+  // EMEA, not AMER: the base fixture's people are ALL AMER, so filtering to
+  // AMER selects everybody and the panel is legitimately byte-identical — a
+  // check that would have passed for the wrong reason.
+  C.setState("region", "EMEA");
+  C.renderAll_();
+  assert_(document.getElementById("execFlow").hidden === true,
+          "sanity: the flow half is still the hidden one");
+  assert_(beforeHead !== els.masthead.innerHTML,
+          "the HIDDEN half re-renders on a filter change — it can never hold a stale slice");
+  C.setState("region", "");
+  C.renderAll_();
+
+  // ── Health & Actions carries nothing between the numbers and the actions ──
+  var healthHtml = document.getElementById("tier1Tiles").innerHTML +
+                   els.comparePanel.innerHTML;
+  assert_(healthHtml.indexOf("Colour key") === -1,
+          "the colour key is off Health & Actions — it is reference material");
+  assert_(healthHtml.indexOf('class="chart hbar"') === -1,
+          "…and so is the bar chart that restated the drill-down table");
+  // The two destinations ride in the section HEADER, above the table, so a
+  // director never scrolls past evidence to reach the action.
+  var cmp = els.comparePanel.innerHTML;
+  var headEnd = cmp.indexOf("</div>", cmp.indexOf("chartHead"));
+  assert_(cmp.indexOf("Who is available") !== -1 && cmp.indexOf("What needs action") !== -1,
+          "both destinations render");
+  assert_(cmp.indexOf("Who is available") < cmp.indexOf("gridTable"),
+          "…ABOVE the table, not under it");
+
+  // ── The three pipeline figures are COMPUTED, never literals ──────────────
+  var mStat = model({});
+  mStat.queue = { assigned: { items: 400, wipN: 250, todoN: 150, todoHrs: 0, unattributed: 0, uncategorized: 0 },
+                  unassigned: { items: 600, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } };
+  mStat.meta.clearRateMedian = 100;
+  fresh(mStat);
+  C.renderMasthead_();
+  var stat = els.masthead.innerHTML;
+  assert_(/100\/wk/.test(stat), "delivery pace prints the measured clearing rate");
+  assert_(/10\.0w/.test(stat), "total runway = 1,000 items ÷ 100/wk = 10.0w, computed not typed");
+  assert_(/600 items/.test(stat) && /60% of the queue/.test(stat),
+          "groomed pipeline states the unassigned count and its share");
+  // Move the model; every figure must move with it.
+  mStat.meta.clearRateMedian = 200;
+  C.setModel(mStat);
+  C.renderMasthead_();
+  var stat2 = els.masthead.innerHTML;
+  assert_(/200\/wk/.test(stat2) && /5\.0w/.test(stat2),
+          "…and all three follow the model rather than a cached sentence");
+  // An unmeasured rate is not a zero.
+  mStat.meta.clearRateMedian = null;
+  C.setModel(mStat);
+  C.renderMasthead_();
+  assert_(/more week/.test(els.masthead.innerHTML),
+          "with no clearing rate the pace says what it needs, never 0/wk");
+
+  // Teardown.
+  fresh(model({}));
+  C.setState("execTab", "health");
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// 👁 CONFIDENTIAL VIEW — blurs PEOPLE, keeps every number
+//
+// The first cut of this hid the margin metrics and every role-gated tab, which
+// removed the analysis and left the names. §1 and §2 pin the corrected trade in
+// both directions: the people go, the numbers and the navigation stay.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  function as_(role, superAdmin) {
+    var m = fresh(model({}));
+    m.viewerRole = role;
+    m.viewerSuper = !!superAdmin;
+    C.setModel(m);
+    C.setState("view", "exec");
+    return m;
+  }
+
+  // ── 1. IT TAKES NOTHING AWAY BUT NAMES ──────────────────────────────────
+  // Every tab an admin could open before must still open, and every metric they
+  // could chart must still chart. This is the assertion that would have caught
+  // the first cut on the day it shipped.
+  as_("admin", true);
+  C.setConfidential_(false);
+  var tabsShown = C.VIEWS.filter(C.viewAllowed_).map(function (v) { return v.id; }).join(",");
+  var metricsShown = C.liveMetrics_().join(",");
+  C.setConfidential_(true);
+  assert_(C.VIEWS.filter(C.viewAllowed_).map(function (v) { return v.id; }).join(",") === tabsShown,
+          "blurring names removes NO tab — got " +
+          C.VIEWS.filter(C.viewAllowed_).map(function (v) { return v.id; }).join(","));
+  assert_(C.liveMetrics_().join(",") === metricsShown, "…and no metric leaves the drill-down");
+  assert_(C.canSeeMargin_() === true, "…and the margin tier is untouched: it is a role, not a view state");
+  assert_(C.canSeeSuper_() === true, "…as is the super tier");
+
+  // ── 2. The people DO go ─────────────────────────────────────────────────
+  // Asserted on the rendered roster, because the point is what a person in the
+  // room can read, not what a helper returns.
+  // §1 left the mode ON. Reset before rendering, or the tooltip assertion below
+  // reads a stripped attribute and fails for the wrong reason.
+  C.setConfidential_(false);
+  var m2 = fresh(model({}));
+  m2.viewerRole = "admin";
+  m2.personHygiene = { open: [{ person: "Ana Perez", n: 10, due: 10, est: 10, logged: 10 }],
+                       resolved: [] };
+  C.setModel(m2);
+  C.STATE.typePop = "open";
+  C.renderRoster_();
+  var roster = els.rosterPanel.innerHTML;
+  assert_(/class="pii"/.test(roster), "the roster wraps the person's name for blurring");
+  assert_(roster.indexOf("Ana Perez") !== -1,
+          "…and the name is still IN the markup — this is a blur, not a redaction, so layout " +
+          "and column widths cannot move when the mode flips");
+  // The job title travels with the name: a title is as identifying as a name on
+  // a roster of 70 people, and blurring one without the other is theatre.
+  assert_(/class="pii">[^<]*Consultant/.test(roster),
+          "the job title is blurred too — got: " + (roster.match(/class="pii">[^<]*/g) || []).join(" | "));
+  // The tooltip carrying the FULL job title survives OUTSIDE the mode — the
+  // column truncates, so hover is how you read the rest — and is stripped while
+  // blurred, because a native tooltip is not covered by a CSS blur and hovering
+  // a row is exactly what a presenter does while talking over it.
+  assert_(/title="09\.P3\.Consultant"/.test(roster),
+          "the full job title is in a hover tooltip while names are shown");
+  C.setConfidential_(true);
+  C.renderRoster_();
+  assert_(!/title="09\.P3\.Consultant"/.test(els.rosterPanel.innerHTML),
+          "…and that tooltip is gone once names are blurred, since no blur can reach it");
+  C.setConfidential_(false);
+  C.renderRoster_();
+
+  // ── 3. The switch is a lens, not a gate ─────────────────────────────────
+  // It must not read or change a role. A guest gets no eye because they reach
+  // no tab that names anybody; that is the only role question it asks.
+  as_("guest", false);
+  assert_(C.confEligible_() === false, "a guest is offered no blur control");
+  as_("viewer", false);
+  assert_(C.confEligible_() === true, "a viewer sees the roster, so it is offered");
+  as_("admin", true);
+  assert_(C.confEligible_() === true, "…as does an admin");
+
+  // ── 4. The state is stated, in words, in both places ────────────────────
+  as_("admin", true);
+  C.setConfidential_(false);
+  var off = C.confBtnHtml_();
+  assert_(/Blur names/.test(off), "off: the button says what it will do");
+  assert_(/aria-pressed="false"/.test(off), "…and reports its state");
+  assert_(C.confBannerHtml_() === "", "…with no banner while nothing is blurred");
+  C.setConfidential_(true);
+  var on = C.confBtnHtml_();
+  assert_(/Names blurred/.test(on), "on: the button states the MODE");
+  assert_(/aria-pressed="true"/.test(on), "…and reports it");
+  assert_(/class="btn confBtn on"/.test(on), "…and carries the armed style");
+  var banner = C.confBannerHtml_();
+  assert_(/Names and job titles are blurred/.test(banner), "on: the Executive tab carries a banner");
+  assert_(/Every KPI, chart and tab is unchanged/.test(banner),
+          "…which says what is NOT affected, so nobody goes looking for a missing number");
+  assert_(/not a security control/.test(banner),
+          "…and refuses to overclaim: the names are still in the page source");
+  assert_(/setConfidential_\(false\)/.test(banner), "…with a way back out of it");
+
+  // ── 5. A RESTORED session blurs from the first paint ────────────────────
+  // confLoad_ runs at boot and must apply the body class itself. Without this,
+  // a reload with the mode saved restores the flag and leaves the names legible
+  // until somebody toggles — the one moment the feature exists for, and the one
+  // nobody would think to check by hand.
+  var applied = null;
+  var realBody = document.body;
+  document.body = { className: "", classList: {
+    add: function (c) { applied = "add:" + c; },
+    remove: function (c) { applied = "remove:" + c; } } };
+  try {
+    localStorage.setItem("dhConfidential", "1");
+    C.confLoad_();
+    assert_(applied === "add:confOn",
+            "a saved confidential session applies the blur class at load, not on first toggle");
+    localStorage.setItem("dhConfidential", "0");
+    C.confLoad_();
+    assert_(applied === "remove:confOn", "…and a saved OFF state clears it");
+  } finally {
+    document.body = realBody;
+  }
+
+  // ── 6. piiHtml_ escapes its own input ───────────────────────────────────
+  // It is the escape boundary — every call site hands it a RAW roster string.
+  var eviljs = C.piiHtml_('<img src=x onerror=alert(1)>');
+  assert_(eviljs.indexOf("<img") === -1, "a name is escaped inside the blur wrapper");
+  assert_(eviljs.indexOf("&lt;img") !== -1, "…as escaped text, not dropped");
+  assert_(/^<span class="pii">/.test(eviljs), "…and carries the class the blur keys off");
+
+  // Teardown: the switch is persisted, so leaving it on would scope every
+  // block after this one.
+  C.setConfidential_(false);
+  as_("admin", true);
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// DRILL-DOWN: IN-CELL BARS, CLICK-TO-FILTER, AVAILABILITY (2026-08-17)
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  C.renderAll_();
+
+  // ── 1. AVAILABILITY IS NOT A BREAKDOWN — AND THIS IS WHY ────────────────
+  // Asked for as a fourth drill-down toggle (2026-08-17). It was built, then
+  // WITHDRAWN on evidence: workforce capacity ships pre-aggregated per
+  // pool × band (wfFold_ sums weekly[cell][iso]; headByCell only sets the head
+  // count), so scoping to a region changes WHO is counted but not the HOURS.
+  // Every row would print the identical org figure — a number repeated four
+  // times, not a comparison.
+  //
+  // The check below is the LOAD-BEARING one: it proves the constraint still
+  // holds. If the server ever ships capacity at a finer grain this FAILS, and
+  // whoever sees it should reconsider adding the column — which is exactly the
+  // conversation a silent absence would never start.
+  var av = C.wfAvailability_();
+  assert_(av !== null, "sanity: the fixture publishes an org availability figure");
+  var nm1 = {}; nm1[C.getModel().people[0].name] = 1;
+  var scopedAv = C.scopedMetric_(C.METRICS_.avail, [], nm1);
+  var wholeAv = C.METRICS_.avail.value([]);
+  assert_(scopedAv === wholeAv,
+          "availability does NOT scope to a subset — capacity is published per pool × band, " +
+          "which is why it is not a drill-down column. If this ever fails the payload grain " +
+          "changed and the column becomes possible.");
+  assert_(C.liveMetrics_().indexOf("avail") === -1, "…so it is not offered as a breakdown lens");
+  assert_(C.GRID_METRIC_IDS_.indexOf("avail") === -1, "…nor as a grid column");
+  // The card still publishes it, and still routes to the tab that CAN break it
+  // down — by pool and level band, the grain capacity is actually measured at.
+  var t1a = document.getElementById("tier1Tiles").innerHTML;
+  assert_(t1a.indexOf("Availability Rate") !== -1, "the Availability CARD still publishes");
+  assert_(/switchView_/.test(tileSeg_(t1a, "Availability Rate")),
+          "…and deep-links to Workforce, where capacity IS reported per pool × band");
+  assert_(Math.abs(wholeAv - av.pct * 100) < 1e-9,
+          "one definition — the metric reads wfAvailability_ itself");
+
+  // ── 2. IN-CELL MICRO-BARS ───────────────────────────────────────────────
+  C.renderCompare_();
+  cmp = els.comparePanel.innerHTML;
+  assert_((cmp.match(/class="cellBar"/g) || []).length > 0, "graded cells carry a micro-bar");
+  assert_(/class="cellBar" aria-hidden="true"/.test(cmp),
+          "…which is aria-hidden — the number beside it is the accessible value");
+  // The bar takes the RAG the glyph already states, never its own verdict.
+  var good = C.gridCellHtml_({ value: 95, n: 20, target: { green: 85, amber: 70 }, unit: null });
+  var bad = C.gridCellHtml_({ value: 40, n: 20, target: { green: 85, amber: 70 }, unit: null });
+  assert_(/--c-good/.test(good) && /--c-bad/.test(bad),
+          "the bar's colour follows the cell's own RAG");
+  assert_(/width:95\.0%/.test(good), "a percentage bar runs against 0–100, not a rescaled column max");
+  // Ungraded cells keep a NEUTRAL bar — colour is a verdict, and a small-n row
+  // has none. This is the check that stops the bar becoming a back door for
+  // grading a population the cell itself refuses to grade.
+  var small = C.gridCellHtml_({ value: 40, n: 3, target: { green: 85, amber: 70 }, unit: null });
+  assert_(/--c-ref/.test(small) && !/--c-bad/.test(small),
+          "a small-n cell's bar is neutral — the colour ban survives the new visual");
+  assert_(/ungraded \(small n\)/.test(small), "…and it still says so in words");
+  // A unit metric with no column max draws NO bar rather than inventing a
+  // denominator to scale against.
+  var noMax = C.gridCellHtml_({ value: 12, n: 20, target: null, unit: "days" });
+  assert_(!/cellBar/.test(noMax), "a unit metric with no column max draws no bar");
+  var withMax = C.gridCellHtml_({ value: 12, n: 20, target: null, unit: "days", max: 24 });
+  assert_(/width:50\.0%/.test(withMax), "…and sizes against the column max when given one");
+
+  // ── 3. CLICK-TO-FILTER FROM THE KPI CARDS ───────────────────────────────
+  C.setState("metric", "onTime");
+  C.renderAll_();
+  var t1 = document.getElementById("tier1Tiles").innerHTML;
+  // THREE, not four: Availability has no breakdown to select (block 1), and a
+  // card that highlights itself while changing nothing below is worse than one
+  // that never invited the click.
+  assert_((t1.match(/tileDrill/g) || []).length === 3,
+          "the three cards with a real breakdown are drill controls");
+  assert_(!/tileDrill/.test(tileSeg_(t1, "Availability Rate")),
+          "…and Availability is not one of them — it routes to Workforce instead");
+  assert_(/role="button"/.test(t1) && /tabindex="0"/.test(t1),
+          "…keyboard-reachable, not mouse-only");
+  assert_((t1.match(/aria-pressed="true"/g) || []).length === 1,
+          "exactly one card reports itself selected");
+  assert_((t1.match(/tileSel/g) || []).length === 1, "…and exactly one is highlighted");
+  // Clicking re-points the grid.
+  C.setMetric_("quality");
+  assert_(C.STATE.metric === "quality", "clicking a card selects its metric");
+  C.renderAll_();
+  var t1b = document.getElementById("tier1Tiles").innerHTML;
+  assert_(/aria-pressed="true"/.test(tileSeg_(t1b, "Quality / Rework")),
+          "…and the clicked card is the selected one");
+  assert_(!/aria-pressed="true"/.test(tileSeg_(t1b, "On-Time Delivery")),
+          "…while the previously selected card is released");
+
+  // ── 4. OFFENDER ROWS ────────────────────────────────────────────────────
+  // Rows below the ACTIVE metric's target are marked, never reordered — the
+  // ranking is capRows_'s job, and two things moving at once reads as a jump.
+  (function () {
+    var m = model({});
+    m.people = [person("A1", { region: "AMER" }), person("E1", { region: "EMEA" })];
+    for (var i = 2; i <= 12; i++) m.people.push(person("A" + i, { region: "AMER" }));
+    for (var j = 2; j <= 12; j++) m.people.push(person("E" + j, { region: "EMEA" }));
+    var W = WEEKS[WEEKS.length - 1];
+    m.onTimeBuckets = m.people.map(function (p) {
+      var onTime = p.region === "AMER" ? 4 : 19;   // AMER 20%, EMEA 95%
+      return { iso: W, person: p.name, n: 20, onTime: onTime, nAll: 20 };
+    });
+    fresh(m);
+    C.setState("metric", "onTime");
+    C.STATE.compare = "region";
+    C.renderCompare_();
+    var h = els.comparePanel.innerHTML;
+    var amerRow = h.split("AMER")[0];
+    assert_(/rowOffender/.test(h), "a region below the target is marked as an offender");
+    assert_((h.match(/rowOffender/g) || []).length === 1,
+            "…only the failing one — EMEA at 95% is not marked");
+    assert_(/offMark/.test(h), "…with a glyph, so the mark is not colour alone (FR-4.4)");
+  })();
+
+  // ── 5. THE DEEP LINK NAMES THE SLICE IT CARRIES ─────────────────────────
+  fresh(model({}));
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  C.drillPick_("region", "AMER");
+  var d = els.comparePanel.innerHTML;
+  assert_(/Who is available →[^<]*AMER/.test(d),
+          "the Workforce deep link names the slice on the BUTTON, not only in its tooltip");
+  assert_(/What needs action →[^<]*AMER/.test(d), "…and so does the Actions one");
+  assert_(C.STATE.region === "AMER",
+          "the filter really is applied, so the destination tab opens narrowed");
+  // On a delivery lens the Actions route leads, and neither is dressed primary.
+  assert_(d.indexOf("What needs action") < d.indexOf("Who is available"),
+          "on a delivery lens the Actions route leads");
+  assert_(!/btnPrimary/.test(d), "…and neither is dressed as primary");
+
+  // Teardown.
+  C.drillPick_("region", "");
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
+  fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();
 })();

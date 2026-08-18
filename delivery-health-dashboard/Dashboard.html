@@ -201,6 +201,58 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 /* Drill-through row — the chart's exit. Set apart with a top rule and a tinted
    ground so it reads as "do something" rather than as one more caption under a
    chart already carrying three of them. */
+/* In-page sub-tabs (2026-08-17). Underline tabs, not pills: the rail already
+   owns the "which place am I in" job, and a second set of filled chips would
+   compete with it. These say "which lens", which is a lighter promise. */
+.subtabs{display:flex;gap:calc(4px*var(--scale));align-items:flex-end;
+  border-bottom:1px solid var(--border);margin:0 0 calc(18px*var(--scale))}
+.subtab{background:transparent;border:none;border-bottom:2px solid transparent;
+  padding:9px 14px 8px;cursor:pointer;color:var(--muted);font-family:inherit;
+  font-size:calc(13px*var(--scale));font-weight:600;white-space:nowrap;
+  margin-bottom:-1px}
+.subtab:hover{color:var(--text)}
+.subtab.on{color:var(--text);border-bottom-color:var(--orbe)}
+.subtab .stCount{font-weight:400;color:var(--muted);font-size:calc(11px*var(--scale))}
+/* Three scannable figures replacing a paragraph. Big number, small label, no
+   card chrome — they are a sentence read left to right, not four more tiles. */
+.statRow{display:flex;flex-wrap:wrap;gap:calc(28px*var(--scale));margin-bottom:10px}
+.statCell .statVal{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+  font-size:calc(30px*var(--scale));font-weight:800;line-height:1.05;
+  font-variant-numeric:tabular-nums}
+.statCell .statLbl{font-size:calc(10px*var(--scale));color:var(--muted);font-weight:700;
+  text-transform:uppercase;letter-spacing:.07em;margin-top:2px}
+.statCell .statSub{font-size:calc(11px*var(--scale));color:var(--muted);margin-top:2px}
+/* Flow clusters — a labelled group per question, so eight cards read as three
+   answers instead of one wall. */
+.cluster{margin-top:12px}
+.cluster:first-of-type{margin-top:0}
+.clusterHead{font-size:calc(10.5px*var(--scale));font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px}
+/* In-cell micro-bar. Sits BEHIND the number at low opacity: the cell is still a
+   table cell that reads as text, with a length cue underneath it. Absolutely
+   positioned so it never affects row height or column width — a bar that
+   reflowed the table would cost the space it was added to save. */
+.gridCell{position:relative;isolation:isolate}
+.gridCell .cellBar{position:absolute;left:0;top:50%;transform:translateY(-50%);
+  height:calc(100% - 8px);border-radius:3px;opacity:.16;z-index:-1;pointer-events:none}
+[data-theme="dark"] .gridCell .cellBar{opacity:.28}
+/* Offender row — a left rule, not a fill: a tinted row would fight the in-cell
+   bars for the same surface and make a table of eight rows look like an alert. */
+/* A clickable KPI card. The affordance is deliberately quiet — cursor, a hover
+   lift and a selected outline. A button-styled KPI card would read as an action
+   ("do this") when it is a lens ("show me this"). */
+/* The primary of the two destinations — used only when the selected metric
+   makes one of them the obvious next step, never both at once. */
+.btnPrimary{border-color:var(--orbe);color:var(--orbe);font-weight:700}
+.tileDrill{cursor:pointer}
+.tileDrill:hover{border-color:var(--orbe)}
+.tileDrill:focus-visible{outline:2px solid var(--orbe);outline-offset:2px}
+.tileSel{border-color:var(--orbe);box-shadow:0 0 0 1px var(--orbe) inset,
+  0 1px 2px rgba(15,25,65,.05),0 10px 28px rgba(15,25,65,.09)}
+.rowOffender>td:first-child{box-shadow:inset 3px 0 0 var(--c-bad)}
+.rowOffender>td{background:color-mix(in srgb, var(--c-bad) 5%, transparent)}
+.offMark{color:var(--c-bad);font-weight:700;margin-right:4px}
+.drillActions{flex:0 0 auto;gap:8px}
 .drillRow{margin-top:12px;padding:12px;border-top:1px solid var(--border);
   border-radius:0 0 10px 10px;background:var(--surface-2)}
 .drillRow .btn{font-weight:600}
@@ -355,11 +407,119 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
    read it). */
 .profPanel { border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin: 10px 0; }
 .profPanel h4 { margin: 0 0 4px; font-size: calc(17px*var(--scale)); }
-/* ── Data Hygiene view ── */
-.hnav{display:flex;align-items:center;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
-.hnav .btn[disabled]{opacity:.35;cursor:default}
-.hnav .hper{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
-            font-size:calc(14px*var(--scale));font-weight:700;min-width:120px;text-align:center}
+/* ── 👁 Confidential view ────────────────────────────────────────────────────
+   The control is a header button like Reset/Refresh, not a special object: it
+   is a mode you turn on and off, and dressing it up would suggest it does
+   something to the DATA rather than to what is on screen. It earns colour only
+   when it is ON, so an armed state and a safe one cannot be confused at a
+   glance across a room — which is the exact situation it exists for. */
+.confBtn{display:inline-flex;align-items:center;gap:6px}
+.confBtn svg{width:calc(13px*var(--scale));height:calc(13px*var(--scale));flex:none}
+.confBtn.on{border-color:var(--amber);color:var(--amber);
+            background:color-mix(in srgb,var(--amber) 10%,var(--surface))}
+.confBtn:focus-visible{outline:2px solid var(--royal);outline-offset:2px}
+.confBanner{border:1px solid var(--amber);border-radius:12px;padding:10px 14px;margin-bottom:14px;
+            background:color-mix(in srgb,var(--amber) 7%,var(--surface));
+            font-size:calc(11.5px*var(--scale));line-height:1.55}
+.confBanner a{color:var(--royal);font-weight:700}
+/* THE BLUR ITSELF. Applied from a single class on <body>, so turning the mode
+   on costs one class change and cannot drift out of step with what is drawn.
+   `user-select:none` because a blurred name is still selectable text, and a
+   presenter who drags across the roster would otherwise paste it into the chat
+   they are sharing. The layout does not move: blurring keeps the glyphs, so
+   column widths, truncation and row heights are identical either way — a mode
+   that reflowed the page would make the presenter lose their place.
+   A radius under ~4px leaves longer names guessable at full-screen, which is
+   the one thing this must not do. */
+.pii{transition:filter .12s}
+body.confOn .pii{filter:blur(5px);user-select:none;cursor:default}
+/* The roster name is a link-ish target; without this the pointer still invites
+   a click on something nobody can read. */
+body.confOn .rosterName{cursor:default}
+@media (prefers-reduced-motion:reduce){ .pii{transition:none} }
+/* ── ACCESS CONTROL (admin) ──────────────────────────────────────────────────
+   THE LIST IS THE MODEL. This page used to be two text inputs holding
+   comma-separated addresses, with the bootstrap admin mentioned in a sentence
+   above them. Three things were wrong with that, and only one of them was that
+   it looked bad:
+     · a joined string is not a list — you cannot count it, scan it, or remove
+       one person from it without editing text, and a stray comma silently
+       creates an entry nobody notices until somebody cannot get in;
+     · "who has access" was split across a sentence and two strings, so no
+       single thing on screen answered the only question the page exists for;
+     · open access — the one control that lets in people who are on no list at
+       all — was a checkbox with exactly the weight of everything else.
+   Every person with access is now a ROW, the bootstrap admin included.
+
+   No new colour tokens: the rails reuse --royal (admin) and --slate (viewer),
+   and --amber is spent in exactly one place, on open access. */
+.accHead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+.accHead h3{flex:1;margin:0}
+.accGrid{display:grid;gap:14px;margin:12px 0}
+@media (min-width:900px){ .accGrid.two{grid-template-columns:1fr 1fr} }
+.accCard{border:1px solid var(--border);border-radius:12px;background:var(--surface-2);overflow:hidden}
+.accCardHead{display:flex;align-items:baseline;gap:8px;padding:10px 14px;
+             border-bottom:1px solid var(--border);background:var(--surface)}
+.accCardHead b{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+               font-size:calc(12px*var(--scale));text-transform:uppercase;letter-spacing:.06em}
+.accCount{font-variant-numeric:tabular-nums;font-weight:700;color:var(--muted)}
+.accWhat{flex:1;text-align:right;color:var(--muted);font-size:calc(10.5px*var(--scale))}
+.accRow{display:flex;align-items:center;gap:10px;padding:8px 14px;
+        border-bottom:1px solid var(--border);border-left:3px solid transparent}
+.accRow:last-of-type{border-bottom:none}
+.accRow.isAdmin{border-left-color:var(--royal)}
+.accRow.isViewer{border-left-color:var(--slate)}
+.accRow:hover{background:var(--surface)}
+/* THE ONE TYPE MOVE, and it is derived from the content rather than from taste:
+   every address on this list ends in the same domain, so the domain is noise
+   repeated on every row while the local part is the only thing identifying
+   anybody. Dimming it turns a column of addresses into a column of names
+   without hiding a character of it. */
+.accWho{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        font-size:calc(12px*var(--scale))}
+.accName{font-weight:700}
+.accDomain{color:var(--muted)}
+.accTag{font-size:calc(9px*var(--scale));text-transform:uppercase;letter-spacing:.05em;
+        border:1px solid var(--border);border-radius:999px;padding:1px 8px;
+        color:var(--muted);background:var(--surface);white-space:nowrap}
+.accRm{background:transparent;border:1px solid transparent;border-radius:8px;color:var(--muted);
+       cursor:pointer;font:inherit;font-size:calc(11px*var(--scale));padding:2px 8px}
+.accRm:hover{color:var(--warn);border-color:var(--border);background:var(--surface)}
+.accRm:focus-visible{outline:2px solid var(--royal);outline-offset:2px}
+.accAdd{display:flex;gap:8px;padding:10px 14px;background:var(--surface);
+        border-top:1px solid var(--border)}
+.accAdd input{flex:1;min-width:0;font:inherit;font-size:calc(12px*var(--scale));padding:6px 10px;
+              border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+.accAdd input:focus-visible{outline:2px solid var(--royal);outline-offset:1px}
+.accSay{padding:0 14px 10px;font-size:calc(11px*var(--scale));color:var(--muted);background:var(--surface)}
+.accSay.bad{color:var(--warn)}
+.accSay.warn{color:var(--amber)}
+.accEmpty{padding:16px 14px;color:var(--muted);font-size:calc(11.5px*var(--scale))}
+/* Open access is the only control here that grants access to people who are on
+   no list, so it is the only one that gets colour — and it only gets it when
+   it is ON, because an armed switch and a safe one must not look alike. */
+.accOpen{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface-2)}
+.accOpen.on{border-color:var(--amber);background:color-mix(in srgb,var(--amber) 7%,var(--surface))}
+.accSwitch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;
+           font-size:calc(12px*var(--scale))}
+.accSwitch input{position:absolute;opacity:0;width:0;height:0}
+.accTrack{width:38px;height:22px;border-radius:999px;background:var(--border);
+          position:relative;transition:background .15s;flex:none}
+.accTrack::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+                 background:var(--surface);box-shadow:0 1px 2px rgba(15,25,65,.25);transition:transform .15s}
+.accSwitch input:checked + .accTrack{background:var(--amber)}
+.accSwitch input:checked + .accTrack::after{transform:translateX(16px)}
+.accSwitch input:focus-visible + .accTrack{outline:2px solid var(--royal);outline-offset:2px}
+.accBar{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.accPending{flex:1;font-size:calc(11.5px*var(--scale));color:var(--muted)}
+.accPending b{color:var(--text)}
+.btn[disabled]{opacity:.45;cursor:default}
+.btn[disabled]:hover{filter:none}
+@media (prefers-reduced-motion:reduce){ .accTrack,.accTrack::after{transition:none} }
+/* ── Tables shared by the gates editor and the epic-due key list ──
+   .hnav / .hper (the deleted gaps queue window banner) and td.hnum / .hbar (its
+   coverage cell and fill bar) went with that table on 2026-08-17. table.hyg
+   itself stays: the gate editor and the epic-due list both use it. */
 .gedit{margin-top:14px;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
 .gedit summary{cursor:pointer;font-weight:700;font-size:calc(12px*var(--scale))}
 .gedit input[type=number]{font:inherit;padding:3px 6px;border:1px solid var(--border);
@@ -369,9 +529,6 @@ table.hyg th{text-align:left;color:var(--muted);font-weight:700;text-transform:u
              font-size:calc(9px*var(--scale));letter-spacing:.05em;padding:6px 8px;
              border-bottom:1px solid var(--border);white-space:nowrap}
 table.hyg td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
-table.hyg td.hnum{white-space:nowrap;font-weight:700;min-width:150px}
-table.hyg td.hnum.g{color:var(--pos)} table.hyg td.hnum.a{color:var(--amber)}
-table.hyg td.hnum.r{color:var(--warn)}
 /* ── .tmx — the DENSE NUMERIC TABLE layout ──
    Written for the 🧬 by-type matrix (removed 2026-08-17) and INHERITED by the
    surfaces that outlived it: the 👥 signals roster (.rosterTbl below), the
@@ -480,9 +637,6 @@ table.hyg.tmx.rosterTbl thead th.tname{left:0;z-index:7}
 .trustVal{font-weight:700;font-size:calc(18px*var(--scale))}
 .trustBar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:4px 0}
 .trustBar i{display:block;height:100%}
-.hbar{height:5px;border-radius:3px;background:var(--border);margin:4px 0 2px;overflow:hidden}
-.hbar i{display:block;height:100%;border-radius:3px}
-.hbar i.g{background:var(--pos)} .hbar i.a{background:var(--amber)} .hbar i.r{background:var(--warn)}
 .dUp{color:var(--pos);font-weight:700} .dDown{color:var(--warn);font-weight:700}
 .lgd{font-size:calc(9px*var(--scale));color:var(--muted);margin-right:10px;white-space:nowrap}
 .lgd i{display:inline-block;width:10px;height:8px;border-radius:2px;margin-right:3px}
@@ -811,6 +965,10 @@ select option:disabled{color:var(--muted);font-style:italic}
     <h1>Delivery Health</h1>
     <span class="sub" id="asOf"></span>
     <span style="flex:1"></span>
+    <!-- 👁 Confidential view. Rendered by renderConfBtn_ only for a viewer who
+         actually HAS confidential content — an eye that removes nothing would
+         advertise hidden data that is not there. -->
+    <span id="confSlot"></span>
     <button class="btn" id="btnReset" title="Back to the default view — clears every filter, the person search, and all expanded rows">Reset</button>
     <button class="btn" id="btnRefresh" title="Bypass the cache and reload live data">Refresh</button>
     <button class="btn" id="btnTheme" title="Switch between light and dark theme">Dark</button>
@@ -891,81 +1049,78 @@ select option:disabled{color:var(--muted);font-style:italic}
        breakdown of on-time performance along with it. The financial lens is
        withheld at liveMetrics_ (SHOW_UTILIZATION_) instead — the metric goes,
        the breakdown stays. The flag itself is gone. -->
+  <!-- ══ EXECUTIVE — a SMART SPLIT across two in-page sub-tabs (2026-08-17) ══
+       One endlessly-scrolling page served two audiences badly. A director
+       wanting "are we on target, and who do I call" had to scroll past the
+       backlog story to reach the actions; an auditor wanting the pipeline had
+       to wade through KPI cards to reach the queue.
+
+       So the pane splits, and the split follows the QUESTION being asked:
+         HEALTH & ACTIONS  are we on target, where isn't it, who can act
+         BACKLOG & FLOW    is the pipeline healthy, and how far does it cover
+
+       In-page sub-tabs rather than two sidebar entries: both halves answer to
+       the same global filters and the same period, and a reader moving between
+       them is changing lens, not location. Splitting them in the rail would say
+       they are different places and invite the filters to drift apart. -->
   <div id="viewExec" class="viewPane">
+    <div class="subtabs" id="execTabs" role="tablist" aria-label="Executive views"></div>
 
-    <!-- ══ TIER 1 · PROTAGONIST KPIs ══════════════════════════════════════════
-         The delivery-OUTCOME measures only: On-Time, Forecast, Availability
-         (both margin-gated) and Quality/Rework. They answer ONE question —
-         "are we delivering what we promised?" — and nothing shares the grid
-         with them.
+    <!-- ══ SUB-TAB 1 · HEALTH & ACTIONS ═══════════════════════════════════════
+         The 10-second read, then the route to act. Nothing between the numbers
+         and the drill-down: no prose block, no colour key, no chart restating
+         a table. Everything removed from here is still in Backlog & Flow. -->
+    <div id="execHealth">
+      <section class="tier tier1">
+        <div class="tierHead">Delivery health
+          <span class="tierNote">the outcome numbers this org is run on</span>
+          <span style="flex:1"></span>
+          <button class="iconbtn" onclick="savePng_('tier1Tiles','kpis')" title="Save the KPI cards as a PNG image">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
+        </div>
+        <div class="tiles tier1" id="tier1Tiles"></div>
+      </section>
 
-         Demoted out of this tier 2026-08-17 (user instruction): Throughput and
-         Bug Count (volume and defect arrivals) and the three queue reads
-         (Inventory, Net Flow, Weeks to Clear). All five now open #flowSecondary
-         below the backlog band, which is the panel whose prose explains them. -->
-    <section class="tier tier1">
-      <div class="tierHead">Delivery health
-        <span class="tierNote">the outcome numbers this org is run on</span>
-        <span style="flex:1"></span>
-        <button class="iconbtn" onclick="savePng_('tier1Tiles','kpis')" title="Save the KPI cards as a PNG image">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
-      </div>
-      <div class="tiles tier1" id="tier1Tiles"></div>
-      <!-- COLOUR KEY — readers learn colours from a legend, not a tooltip, and
-           every swatch here is an inert caption, never a filter. -->
-      <div class="cellSub" id="flowKey" style="margin:2px 0 0"></div>
-    </section>
+      <!-- THE DRILL-DOWN, PULLED UP to sit directly under the KPIs. Its own
+           actions ride in its header (renderCompare_ → drillActionsHtml_), so a
+           director never scrolls to find them. -->
+      <section class="tier tier3">
+        <div class="panel" id="comparePanel"></div>
+      </section>
+    </div>
 
-    <!-- ══ TIER 2 · CONTEXT AND THE BACKLOG STORY ═════════════════════════════
-         Once the KPIs are digested: the written verdict, then the backlog's
-         shape, then the quieter flow reads, then capacity. -->
-    <section class="tier tier2">
-      <div class="tierHead">Context
-        <span class="tierNote">what is behind those numbers</span>
-      </div>
-      <!-- §1 THE MASTHEAD — the lede, now carrying the executive summary
-           sentence AND the standing note on what unassigned work actually is. -->
-      <div class="panel" id="masthead" style="margin-bottom:14px"></div>
-      <!-- §2 BACKLOG BAND — the horizontal backlog bar, its smart legend, and
-           the filterable assigned sub-row. -->
-      <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
-      <!-- SECONDARY VOLUME / QUEUE / FLOW READS — Throughput · Bug Count ·
-           Inventory · Net flow · Weeks to clear, then Cleared · Arrived · Lead
-           Time. Real measures, but not the ones an executive opens the page
-           for, so they sit here in the compact tier rather than competing with
-           the outcome KPIs. Position is deliberate: this panel follows the
-           backlog band, so the three queue cards land under the prose that
-           defines them (user instruction 2026-08-17). -->
-      <div class="panel" id="flowSecondary" style="margin-bottom:14px"></div>
-      <!-- CAPACITY BAND — Planned Coverage (forward windows) plus the
-           people-signals pulse; both share the SAME margin gate, so the whole
-           band is omitted from the DOM together for a non-margin role. The
-           Utilisation card is switched off — see SHOW_UTILIZATION_. -->
-      <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
-    </section>
-
-    <!-- ══ TIER 3 · DRILL-DOWN ════════════════════════════════════════════════
-         Where a reader stops reading and starts acting (user 2026-08-17).
-         Tier 3 is LAST in reading order, not least important — an executive
-         reaches a verdict in Tier 1, understands it in Tier 2, and comes here
-         to find out which slice of the org it belongs to and who can move it.
-
-         The breakdown chart answers "where isn't it working", broken down by
-         Region / Level / Team / PM / Job family, and hands off to the two tabs
-         that can act on the answer: Workforce for who has the hours, Actions
-         for the work itself. Visible to EVERY role — this is the CEO's route
-         into the detail, not a maintenance surface. -->
-    <section class="tier tier3">
-      <div class="tierHead">Drill-down
-        <span class="tierNote">where it is working, and who can act</span>
-      </div>
-      <div class="panel" id="comparePanel" style="margin-bottom:14px"></div>
-      <!-- DATA TRUST DETAIL — super-admin only (canSeeSuper_ / MODEL.viewerSuper),
-           gated inside this tier rather than gating the tier itself. Provenance
-           detail — Little's Law, reconciliation counts, registry deviations —
-           is a build-integrity read, not an executive one. -->
-      <div class="panel" id="trustDetail"></div>
-    </section>
+    <!-- ══ SUB-TAB 2 · BACKLOG & FLOW ═════════════════════════════════════════
+         The pipeline read: pace, runway and groomed depth as three scannable
+         figures, then the queue shape, then the flow cards, then capacity. -->
+    <div id="execFlow" hidden>
+      <section class="tier tier2">
+        <div class="tierHead">Pipeline
+          <span class="tierNote">how fast we clear, how far it covers, how much is groomed</span>
+        </div>
+        <!-- §1 THE MASTHEAD — three stat callouts first, the ranked verdict and
+             the standing note on unassigned work beneath them. -->
+        <div class="panel" id="masthead" style="margin-bottom:14px"></div>
+        <!-- §2 BACKLOG BAND — the Active / Planned / Runway bar and its legend. -->
+        <div class="panel" id="backlogBand" style="margin-bottom:14px"></div>
+        <!-- FLOW CARDS, clustered by the question they answer. -->
+        <div class="panel" id="flowSecondary" style="margin-bottom:14px"></div>
+        <!-- COLOUR KEY — moved off Health & Actions (2026-08-17). It explains
+             the RAG grading, which is reference material: useful once, then
+             noise on the view an executive reads daily. Every card still
+             carries its own ✔/▲/✖ glyph and value label, so status never rested
+             on this legend for accessibility (FR-4.4). -->
+        <div class="cellSub" id="flowKey" style="margin:2px 0 14px"></div>
+        <!-- CAPACITY BAND — Planned Coverage (forward windows) plus the
+             people-signals pulse; both share the SAME margin gate, so the whole
+             band is omitted from the DOM together for a non-margin role. -->
+        <div class="panel" id="pulsePanel" style="margin-bottom:14px"></div>
+      </section>
+      <!-- DATA TRUST DETAIL — super-admin only (canSeeSuper_ / MODEL.viewerSuper).
+           Provenance detail is a build-integrity read, not an executive one. -->
+      <section class="tier tier3">
+        <div class="panel" id="trustDetail"></div>
+      </section>
+    </div>
   </div>
 
   <!-- ── ACTIONS — everything person- and field-level (spec 2026-08-05 §5).
@@ -1071,6 +1226,10 @@ var STATE = { period: "month", pop: "fte", role: "all", region: "", team: "", pm
               // expect from a drill-down they are working through.
               pmOpen: {}, pmEpicOpen: {},
               view: "exec", flag: "", metric: "onTime", compare: "region", compareAll: false,
+              // Which half of the Executive pane is on screen. Health first: it is
+              // the 10-second read, and the pipeline is what you open when that
+              // read raises a question.
+              execTab: "health",
               // level: set only by drilling the Tier-3 breakdown chart — there is no
               // header control for it, so the scope chip is where a reader sees it.
               level: "",
@@ -1167,7 +1326,10 @@ function viewDef_(id) {
 // utilization does — a coverage percentage is a capacity disclosure read a
 // different way, and the Dictionary's audience rule is about the data, not the
 // arithmetic on top of it.
-var MARGIN_METRICS_ = { util: 1, forecast: 1, planCov: 1 };
+// avail is margin-tier like util — it publishes the same scheduled-capacity
+// hours. Kept here even though it is not currently a selectable metric, so it
+// arrives gated the day it becomes one.
+var MARGIN_METRICS_ = { util: 1, forecast: 1, planCov: 1, avail: 1 };
 function canSeeMargin_() {
   var r = (MODEL && MODEL.viewerRole) || "";
   return r === "admin" || r === "viewer";
@@ -1192,9 +1354,210 @@ function canSeeSuper_() {
   return !!(MODEL && MODEL.viewerSuper === true);
 }
 
-/** A view the current viewer is allowed to open. */
+/**
+ * ── 👁 CONFIDENTIAL VIEW ─────────────────────────────────────────────────────
+ *
+ * It BLURS PEOPLE. Names and job titles go illegible; every KPI, chart, tab and
+ * number stays exactly where it was. The dashboard is built to be shown — in an
+ * all-hands, on a call, over a shoulder — and the thing that cannot be shown is
+ * not the delivery rate, it is which named person is behind the red cell.
+ *
+ * ⚠ THE FIRST CUT OF THIS GOT IT BACKWARDS and the mistake is worth recording,
+ * because it is an easy one to make again: it hid the margin metrics and every
+ * role-gated tab, which removed the analysis and kept the names. That is the
+ * opposite trade. A presenter needs the numbers on screen — they are what the
+ * meeting is about — and needs the individuals off it.
+ *
+ * SO THIS TOUCHES PRESENTATION ONLY. It does not read or change roles, it does
+ * not gate a view, and it removes nothing from the payload. `canSeeMargin_` and
+ * `canSeeSuper_` are untouched by it and keep reading role alone, because they
+ * are the client twins of dhMarginTier_ / dhSuperAdmin_ in Security.js. This
+ * switch is a lens over what is drawn; those are the gate over what is sent.
+ *
+ * WHAT IT CANNOT DO, stated plainly: the names are still in the DOM, in the
+ * page source and in a CSV export. Anyone with devtools can read them. That is
+ * the correct scope — the threat this answers is a projector and a screen
+ * share, not an attacker with the page open. It is a courtesy to the people on
+ * the roster, not a security control, and the banner says so rather than
+ * implying a protection it does not provide.
+ *
+ * PERSISTED, and deliberately LOUD about it. It survives a reload because
+ * presenting is a session, not a click; but a page that silently blurs half its
+ * roster on Monday morning is a support ticket, so the header states the mode in
+ * words beside the icon and the Executive tab carries a banner while it is on.
+ */
+var CONF_KEY_ = "dhConfidential";
+var CONF_HIDDEN_ = false;
+
+/** localStorage, guarded: HtmlService sandboxes can throw on access and the
+    render-smoke stub is minimal. Neither is a reason to fail — both degrade to
+    "not hidden, not persisted", which is the safe direction for a control whose
+    ON state removes content. */
+function confLoad_() {
+  try { CONF_HIDDEN_ = localStorage.getItem(CONF_KEY_) === "1"; }
+  catch (e) { CONF_HIDDEN_ = false; }
+  // ⚠ The class MUST be applied here too, not only in setConfidential_. Without
+  // it a reload with the mode saved restores the flag and leaves the names
+  // legible until somebody toggles — which is the one moment this feature is
+  // supposed to cover and the one nobody would think to test by hand.
+  confApplyClass_();
+  return CONF_HIDDEN_;
+}
+
+/** Mirrors the flag onto <body>, which is what the blur selector keys off.
+    Guarded: the render-smoke DOM stub has no classList, and an HtmlService
+    sandbox can hand back an odd body — neither is a reason to fail. */
+function confApplyClass_() {
+  try {
+    var b = document.body;
+    if (!b) return;
+    if (b.classList) b.classList[CONF_HIDDEN_ ? "add" : "remove"]("confOn");
+    else b.className = String(b.className || "").replace(/ ?confOn/, "") +
+                       (CONF_HIDDEN_ ? " confOn" : "");
+  } catch (e) { /* no body in the harness */ }
+}
+function confHidden_() { return CONF_HIDDEN_ === true; }
+
+/** Does this viewer ever see a person's name? A guest reaches no tab that
+    names anybody, so the control is not offered to them — an eye that blurs
+    nothing is a promise the page cannot keep. */
+function confEligible_() { return canSeeMargin_(); }
+
+/** Wraps a person's name or job title so the confidential switch can blur it.
+    ⚠ ESCAPES ITS OWN INPUT: every call site passes a RAW roster string, so this
+    is the escape boundary — a second esc_ outside would double-encode, and none
+    would put sheet-derived text straight into innerHTML.
+    @param {string} txt the name or title, unescaped
+    @param {string=} cls extra classes for the span */
+function piiHtml_(txt, cls) {
+  return '<span class="pii' + (cls ? " " + cls : "") + '">' + esc_(txt) + "</span>";
+}
+
+/** A ` title="…"` attribute carrying personal detail — EMPTY while names are
+    blurred, because a CSS blur cannot reach a native tooltip and hovering a row
+    is exactly what a presenter does while talking over it. Outside the mode the
+    tooltip is restored in full: the roster truncates job titles to fit a column,
+    and losing the hover permanently to protect a mode that is occasionally on
+    would be paying every day for an occasional need.
+    @param {string} txt raw text; escaped here, as piiHtml_ escapes its own. */
+function piiTitleAttr_(txt) {
+  return confHidden_() || !txt ? "" : ' title="' + esc_(txt) + '"';
+}
+
+function setConfidential_(on) {
+  CONF_HIDDEN_ = !!on;
+  try { localStorage.setItem(CONF_KEY_, CONF_HIDDEN_ ? "1" : "0"); } catch (e) { /* not persisted */ }
+  // A class on <body>, not a re-render of every panel: the blur is a CSS state
+  // over markup that is already correct, so toggling costs one class change and
+  // cannot get out of step with what is on screen. Shared with confLoad_ so a
+  // restored session and a click take the same path.
+  confApplyClass_();
+  renderConfBtn_();
+  renderAll_();
+}
+
+function toggleConfidential_() { setConfidential_(!confHidden_()); }
+
+/** The header control. Two icons, because an eye and a struck-through eye are
+    the one pair every reader already knows, and the label says which way round
+    it is so the icon never has to be decoded alone. */
+function confBtnHtml_() {
+  var on = confHidden_();
+  var eye = on
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>' +
+      '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>' +
+      '<path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+      '<circle cx="12" cy="12" r="3"/></svg>';
+  return '<button class="btn confBtn' + (on ? " on" : "") + '" id="btnConf" ' +
+    'aria-pressed="' + (on ? "true" : "false") + '" ' +
+    'title="' + esc_(on
+      ? "Names and job titles are blurred. Every number, chart and tab is unchanged. " +
+        "Click to show the names again."
+      : "Blur names and job titles before you share your screen. Every number, chart and tab " +
+        "stays exactly as it is — only the people are anonymised.") +
+    '">' + eye + "<span>" + (on ? "Names blurred" : "Blur names") + "</span></button>";
+}
+
+/** Paints the control in place, or removes it for a viewer with nothing to hide. */
+function renderConfBtn_() {
+  var slot = document.getElementById("confSlot");
+  if (!slot) return;
+  slot.innerHTML = confEligible_() ? confBtnHtml_() : "";
+  var b = document.getElementById("btnConf");
+  if (b) b.onclick = toggleConfidential_;
+}
+
+/** The banner on the Executive tab while the mode is on. The header control
+    says the mode; this says what it COST, so a reader who wonders where the
+    utilization card went is answered on the page rather than by a colleague. */
+function confBannerHtml_() {
+  if (!confHidden_()) return "";
+  return '<div class="confBanner">👁 <b>Names and job titles are blurred.</b> ' +
+    "Every KPI, chart and tab is unchanged — only the people are anonymised. " +
+    '<a href="#" onclick="setConfidential_(false);return false">Show names</a> ' +
+    "when you have finished presenting. " +
+    '<span class="cellSub">This is a courtesy for screen-sharing, not a security control: ' +
+    "the names are still in the page source and in any CSV you export.</span></div>";
+}
+
+/** A view the current viewer is allowed to open.
+    ROLE ONLY. The confidential switch deliberately does NOT reach this: it
+    anonymises people, it does not remove analysis. Hiding whole tabs was the
+    first cut of that feature and it was wrong — see the note on confHidden_. */
 function viewAllowed_(v) {
   return !v.roles || v.roles.indexOf((MODEL && MODEL.viewerRole) || "") !== -1;
+}
+
+/**
+ * ── EXECUTIVE SUB-TABS (2026-08-17) ─────────────────────────────────────────
+ * Declared once, like VIEWS, so the strip, the router and the pane toggling all
+ * read one list. `pane` is the wrapper each half lives in.
+ */
+var EXEC_TABS_ = [
+  { id: "health", label: "Health & Actions", pane: "execHealth",
+    hint: "The four outcome numbers and the breakdown that says where they are coming from — plus the two routes to act on it." },
+  { id: "flow", label: "Backlog & Flow", pane: "execFlow",
+    hint: "The pipeline: clearing pace, how many weeks it covers, how much is groomed, and the flow behind those figures." },
+];
+
+/**
+ * Paints the sub-tab strip and shows the selected half.
+ *
+ * BOTH halves are rendered on every pass and only their visibility toggles.
+ * renderFlow_ writes into containers on both of them in one call, so rendering
+ * "only the visible half" would mean either splitting that renderer or leaving
+ * one pane holding a previous filter's numbers — and a hidden pane with stale
+ * figures is what a PNG export or a find-in-page would pick up.
+ */
+function renderExecTabs_() {
+  var bar = document.getElementById("execTabs");
+  if (!bar) return;
+  bar.innerHTML = "";
+  EXEC_TABS_.forEach(function (t) {
+    var b = document.createElement("button");
+    b.className = "subtab" + (STATE.execTab === t.id ? " on" : "");
+    b.textContent = t.label;
+    b.title = t.hint;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", STATE.execTab === t.id ? "true" : "false");
+    b.onclick = function () { setExecTab_(t.id); };
+    bar.appendChild(b);
+  });
+  EXEC_TABS_.forEach(function (t) {
+    var el = document.getElementById(t.pane);
+    if (el) el.hidden = (t.id !== STATE.execTab);
+  });
+}
+
+function setExecTab_(id) {
+  STATE.execTab = id;
+  renderExecTabs_();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function buildTabs_() {
@@ -1816,7 +2179,27 @@ function passesFilters_(p, skip) {
     and the person CSV never see them. Their BUCKETS still count everywhere:
     bucketsFor_ runs passesFilters_ directly, on purpose. */
 function filteredPeople_() {
-  return MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p); });
+  return MODEL.people.filter(function (p) {
+    // ── BENCH LEAVES THE VIEW (user decision 2026-08-17) ───────────────────
+    // Crew between engagements are not shown as rows on any surface: not the
+    // pool grid, not the People roster, not the Actions signals roster. The
+    // earlier design kept them visible with a ⏸ badge; the user's rule is
+    // "show active working only".
+    //
+    // The bench is still a stated FACT — the Workforce Scope panel prints
+    // "N on the bench (not shown)" — it just stops being a set of rows. That
+    // matters most on Actions: grading somebody's estimate fill on work they
+    // are not doing is the "finger on him/her" failure, and a benched
+    // contractor cannot act on a signal about an engagement they are off.
+    //
+    // ⚠️ THE GATE LIVES HERE, NOT IN passesFilters_, AND THAT IS LOAD-BEARING.
+    // bucketsFor_ calls passesFilters_ directly to attribute Jira buckets, so
+    // gating there would drop work a benched person ALREADY DELIVERED out of
+    // On-Time, Forecast and Quality. Delivered is delivered; being benched
+    // later does not un-deliver it. This gate scopes the PEOPLE surfaces only.
+    if (p.onBench) return false;
+    return !p.attribOnly && passesFilters_(p);
+  });
 }
 
 /** True when the person EXISTED during the period. Pre-hire weeks are never
@@ -1843,6 +2226,14 @@ function optionsFor_(dim) {
   (d.all() || []).forEach(function (v) { counts[v] = 0; });
   MODEL.people.forEach(function (p) {
     if (p.attribOnly) return; // identity stubs must not inflate headcounts
+    // Benched crew are out of the population (filteredPeople_), so they must be
+    // out of these counts too — a chip reading "AMER 5" that yields three rows
+    // when clicked is a filter bar disagreeing with the page it filters. Caught
+    // by screenshot 2026-08-17: Scope said "3 people in scope" beside a chip
+    // saying 5. The gate cannot live in passesFilters_ (it would drop delivered
+    // work from the KPI buckets — see filteredPeople_), so every population
+    // COUNT has to carry it explicitly.
+    if (p.onBench) return;
     if (!passesFilters_(p, dim)) return;
     d.vals(p).forEach(function (v) {
       if (v === undefined || v === null || v === "") return;
@@ -2285,6 +2676,10 @@ function nsShare_(w) {
  * header controls (the bug the old always-render-everything code had).
  */
 function renderAll_() {
+  // The confidential control is painted on every render, not once at boot: it
+  // reads MODEL (canSeeMargin_/canSeeSuper_), which does not exist until the
+  // first payload lands.
+  renderConfBtn_();
   renderScope_();
   renderFilterWarn_();
   switch (STATE.view) {
@@ -2294,7 +2689,7 @@ function renderAll_() {
     // that sit under it. renderCompare_ now paints Tier 3's drill-down chart;
     // renderTrustDetail_ gates itself behind canSeeSuper_(), so the dispatch
     // stays a plain list rather than growing conditionals here.
-    case "exec":    renderFlow_(); renderMasthead_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); break;
+    case "exec":    renderFlow_(); renderMasthead_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); renderExecTabs_(); break;
     // renderTrust_ moved here with its panel (redesign 2026-08-17).
     case "actions": renderTrust_(); renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
     case "workforce": renderWfScope_(); renderWfGrid_(); renderWfConsumers_(); renderWfShadow_(); renderWfUnrouted_(); renderWfDisciplines_(); break;
@@ -2396,6 +2791,12 @@ document.getElementById("btnNav").onclick = toggleNav_;
   var saved = null;
   try { saved = localStorage.getItem(NAV_KEY_); } catch (e) { /* sandboxed */ }
   if (saved === "1") setNavCollapsed_(true);
+  // The confidential switch is restored at the same point and for the same
+  // reason: it must be settled BEFORE the first paint, or a cold start would
+  // show confidential content to somebody who left the page hidden. The button
+  // itself is drawn later by renderAll_, which needs MODEL to know whether this
+  // viewer has anything to hide.
+  confLoad_();
 })();
 
 /** Utilization rollup over a period's weeks (mirrors server utilRollup_).
@@ -2505,6 +2906,7 @@ function planFor1_(p, isos) {
  */
 function planCellHtml_(p, isos) {
   if (p.onLeave) return '<td class="tnum"><span class="cellSub">on leave</span></td>';
+  if (p.onBench) return '<td class="tnum"><span class="cellSub">on the bench</span></td>';
   if (p.isIntern) return '<td class="tnum"><span class="cellSub">🎓</span></td>';
   var s = planFor1_(p, isos);
   if (s.cap <= 0) return '<td class="tnum">—</td>';
@@ -2530,6 +2932,11 @@ function bucketsFor_(buckets, isos) {
   }
   var out = { n: 0, onTime: 0, nWithin: 0, nAll: 0, nNoTime: 0,
               nMissOver: 0, nMissUnder: 0, absVars: [],
+              // How many of the forecast epics reached this person through
+              // their CHILDREN rather than their own assignee (2026-08-17).
+              // Additive like every other counter, so a month states the share
+              // of the whole month rather than of its last week.
+              nViaChildren: 0,
               // Quality / Rework counters (schema v10). Absent on the other
               // bucket kinds, so they simply stay zero there.
               nDelivered: 0, nRework: 0, nLinked: 0, nReopened: 0, nReopenCov: 0,
@@ -2554,6 +2961,7 @@ function bucketsFor_(buckets, isos) {
     // Forecast-only fields (schema v8) — absent on an older bucket, so default
     // to 0/[]: the variance line just won't render rather than reading NaN.
     out.nNoTime += (b.nNoTime || 0);
+    out.nViaChildren += (b.nViaChildren || 0);   // absent on a pre-2026-08-17 cache → 0
     out.nWithin += (b.nWithin || 0);
     out.nMissOver += (b.nMissOver || 0); out.nMissUnder += (b.nMissUnder || 0);
     out.nDelivered += (b.nDelivered || 0); out.nRework += (b.nRework || 0);
@@ -3490,8 +3898,30 @@ function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   // RAG replaced a shared orange to fix. A floor carries no accent at all,
   // consistent with carrying no colour: `rag` is already "" in that case.
   var accent = rag === "r" ? " vMiss" : rag === "a" ? " vNear" : "";
+  // ── CLICK-TO-FILTER (user 2026-08-17) ──
+  // A KPI card whose metric is also a drill-down column becomes the control for
+  // that column: clicking it selects the metric below, which re-ranks the table
+  // and marks the rows dragging it down. The card is not a link and does not
+  // navigate — it changes the lens on the section directly beneath it, which is
+  // why the whole page does not move under the reader.
+  //
+  // Keyboard-reachable and announced: role=button, tabindex=0 and an Enter/Space
+  // handler, or the feature exists for mouse users only. aria-pressed carries
+  // the selected state, because "which card am I filtered by" is exactly what a
+  // screen-reader user cannot see from the highlight.
+  var drillId = opts.drillMetric || "";
+  var isSel = drillId && STATE.metric === drillId;
+  var clickAttrs = drillId
+    ? ' role="button" tabindex="0" aria-pressed="' + (isSel ? "true" : "false") + '"' +
+      ' onclick="setMetric_(' + jsArg_(drillId) + ')"' +
+      ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
+      'setMetric_(' + jsArg_(drillId) + ');}"' +
+      ' title="' + esc_("Break this metric down below — the table re-ranks by it and marks " +
+                        "the rows pulling it down.") + '"'
+    : "";
   return '<div class="tile' + (phase === "done" ? "" : " tPhase") + accent +
-    '"><div class="lbl">' + label + scopeTag_(opts.scope || "period") + '</div>' +
+    (drillId ? " tileDrill" : "") + (isSel ? " tileSel" : "") + '"' + clickAttrs +
+    '><div class="lbl">' + label + scopeTag_(opts.scope || "period") + '</div>' +
     // No chip → no wrapper: an empty .heroRow would close two divs in a row and
     // change the markup shape for every target-less tile.
     (tgtChip || phaseChip
@@ -3765,7 +4195,7 @@ function queueRulerSvg_(o) {
   var pw = W - L - R;
   function x(wk) { return L + Math.max(0, Math.min(domainMax, wk)) / domainMax * pw; }
   var s = '<svg class="chart backlogRuler" viewBox="0 0 ' + W + ' ' + H +
-    '" role="img" aria-label="queue depth in weeks, three segments: in progress, queued, unowned">' +
+    '" role="img" aria-label="queue depth in weeks, three segments: active, planned, runway">' +
     '<defs><pattern id="unownedHatch" width="6" height="6" patternTransform="rotate(45)" ' +
     'patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--ivory)"/>' +
     '<line x1="0" y1="0" x2="0" y2="6" stroke="var(--c-bad)" stroke-width="2"/></pattern></defs>';
@@ -3788,21 +4218,21 @@ function queueRulerSvg_(o) {
         '" text-anchor="middle">' + text + "</text>" : "";
   }
   s += '<rect x="' + x0 + '" y="' + barY + '" width="' + Math.max(0, x1 - x0) + '" height="' + barH +
-    '" fill="var(--seg-bill)"><title>In progress (assigned WIP) — ' + nfDh_(o.wipN) + ' items, ' +
+    '" fill="var(--seg-bill)"><title>Active — in progress (assigned WIP) — ' + nfDh_(o.wipN) + ' items, ' +
     n1Dh_(wipW) + 'w</title></rect>' + segLabel(x0, x1, nfDh_(o.wipN));
   s += '<rect x="' + x1 + '" y="' + barY + '" width="' + Math.max(0, x2 - x1) + '" height="' + barH +
-    '" fill="var(--ivory)"><title>Queued (assigned To Do) — ' + nfDh_(o.todoN) + ' items, ' +
+    '" fill="var(--ivory)"><title>Planned — queued (assigned To Do) — ' + nfDh_(o.todoN) + ' items, ' +
     n1Dh_(todoW) + 'w</title></rect>' + segLabel(x1, x2, nfDh_(o.todoN));
   if (hasUnowned && o.unItems > 0) {
     var drillable = !!o.onDrill;
     s += '<rect x="' + x2 + '" y="' + barY + '" width="' + Math.max(0, x3 - x2) + '" height="' + barH +
       '" fill="url(#unownedHatch)"' + (drillable ? ' style="cursor:pointer" onclick="' + o.onDrill + '"' : "") +
-      '><title>Unowned — ' + nfDh_(o.unItems) + ' items nobody has picked up, ' + n1Dh_(unW) + "w" +
+      '><title>Runway — backlog with no assignee yet: ' + nfDh_(o.unItems) + ' items of future sprints, ' + n1Dh_(unW) + "w" +
       (drillable ? " — click to open" : "") + '</title></rect>' + segLabel(x2, x3, nfDh_(o.unItems));
   }
   s += "</svg>";
-  var caption = '<div class="cellSub" style="margin-top:2px">In progress ' + nfDh_(o.wipN) +
-    " · Queued " + nfDh_(o.todoN) + " · Unowned " +
+  var caption = '<div class="cellSub" style="margin-top:2px">Active ' + nfDh_(o.wipN) +
+    " · Planned " + nfDh_(o.todoN) + " · Runway " +
     (hasUnowned ? nfDh_(o.unItems) : "not measured this refresh") +
     " · scaled in weeks at " + nfDh_(Math.round(rate)) + "/wk.</div>";
   return s + caption;
@@ -3917,7 +4347,7 @@ function weeksToClearStr_(total, rate) {
  * filter, which is why the band below it states that in prose.
  * @returns {string} three .tile blocks, ready to concatenate into #tier1Tiles
  */
-function backlogHeroTilesHtml_() {
+function backlogHeroParts_() {
   var q = MODEL.queue || { assigned: {}, unassigned: {} };
   var asg = q.assigned || {};
   var unAsg = q.unassigned || {};
@@ -3938,14 +4368,15 @@ function backlogHeroTilesHtml_() {
   var invCtx = total === null
     ? fallbackNote
     : nfDh_(asgItems) + " assigned + " + nfDh_(unItems) + " unowned";
-  return backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
-      inventoryHistoryTrendHtml_()) +
-    backlogTileHtml_("Net flow",
+  return {
+    inventory: backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
+      inventoryHistoryTrendHtml_()),
+    netFlow: backlogTileHtml_("Net flow",
       netFlow === null ? "—" : (netFlow > 0 ? "+" : "") + nfDh_(Math.round(netFlow)) + "/wk",
       netFlow === null ? "needs an 8-week arrivals history"
         : (netFlow > 0.0001 ? "growing" : netFlow < -0.0001 ? "draining" : "flat") + " · 8-week basis",
-      "org") +
-    backlogTileHtml_("Weeks to clear",
+      "org"),
+    weeksToClear: backlogTileHtml_("Weeks to clear",
       weeksToClearStr_(heroTotal, rate) || "—",
       (rate === null || rate === undefined)
         ? "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") +
@@ -3953,7 +4384,21 @@ function backlogHeroTilesHtml_() {
         : rate === 0
         ? "clearing rate is 0/wk this window — the queue isn't draining, so this has no ceiling"
         : "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only",
-      "org");
+      "org"),
+  };
+}
+
+/**
+ * The three queue cards as ONE string, in their original order.
+ *
+ * Kept as a wrapper over backlogHeroParts_ (2026-08-17) because the clustered
+ * flow strip needs Net flow filed under Flow and the other two under Runway,
+ * while the Jira-unavailable path still wants all three together. One builder,
+ * two shapes — rather than a second copy of the arithmetic that could drift.
+ */
+function backlogHeroTilesHtml_() {
+  var h = backlogHeroParts_();
+  return h.inventory + h.netFlow + h.weeksToClear;
 }
 
 /**
@@ -4047,14 +4492,26 @@ function renderBacklogBand_() {
  * change with them.
  */
 function smartLegendHtml_() {
+  // AGILE NOMENCLATURE (user 2026-08-17). The segments are named for the state
+  // the work is in, not for what it lacks. "Unowned" described a real fact — no
+  // assignee — but as a LABEL on the biggest segment it read as a backlog full
+  // of neglect, when generic pipeline created ahead of allocation is exactly
+  // what a healthy runway looks like.
+  //
+  // THE CRITERIA ARE UNCHANGED AND STILL STATED. Renaming a segment without
+  // saying what puts work in it would be the dishonest version of this change:
+  // the reader would lose the ability to challenge the split. Each definition
+  // below still names the assignee and status test the code actually applies.
   var items = [
-    { fill: "var(--seg-bill)", name: "In progress",
-      def: "Has an assignee AND a Jira status in the In Progress category — someone is working it now." },
-    { fill: "var(--ivory)", name: "Queued",
-      def: "Has an assignee but its status is still To Do — accepted and owned, not yet started." },
-    { fill: "var(--c-bad)", name: "Unowned",
-      def: "Open with no assignee. Generic pipeline created ahead of allocation — planned work waiting " +
-           "to be picked up, not work that was dropped." },
+    { fill: "var(--seg-bill)", name: "Active",
+      def: "In progress — has an assignee AND a Jira status in the In Progress category. " +
+           "Someone is working it now." },
+    { fill: "var(--ivory)", name: "Planned",
+      def: "Queued — has an assignee but its status is still To Do. Accepted and owned, " +
+           "not yet started." },
+    { fill: "var(--c-bad)", name: "Runway",
+      def: "Backlog — open with no assignee. Generic pipeline created ahead of allocation: " +
+           "future sprints waiting to be picked up, not work that was dropped." },
   ];
   return '<div class="smartLegend">' + items.map(function (i) {
     return '<div class="legItem"><span class="legSwatch" style="background:' + i.fill +
@@ -4354,6 +4811,58 @@ function verdictFindings_() {
  * (spec D3), the same way the backlog band and the gates band both ignore
  * the picker on purpose.
  */
+/**
+ * ── THE PIPELINE IN THREE FIGURES (2026-08-17) ───────────────────────────────
+ *   Delivery pace     how many items we clear in a week
+ *   Total runway      how many weeks the whole queue covers at that pace
+ *   Groomed pipeline  how much of it is ready and waiting to be picked up
+ *
+ * Every one is COMPUTED from the same sources the backlog band reads — no
+ * literal ever appears here. A hand-typed "190 items/wk" would be right for one
+ * week and quietly wrong for every week after it, which is the exact failure
+ * the band's own prose was stripped of illustrative figures to avoid.
+ *
+ * ORG-scoped and unfiltered, like the queue cards: this is the whole pipeline,
+ * and a Region slice of "how long does the backlog cover us" answers a question
+ * nobody asked. Each figure says so, and says when it cannot be measured
+ * instead of printing a zero that reads as a measured one.
+ */
+function pipelineStatsHtml_() {
+  var q = MODEL.queue || {};
+  var asg = q.assigned || {}, un = q.unassigned || {};
+  var unItems = (un.items === null || un.items === undefined) ? null : un.items;
+  var total = unItems === null ? (asg.items || 0) : (asg.items || 0) + unItems;
+  var rate = MODEL.meta.clearRateMedian;
+  var gap = orgClearRateGap_();
+
+  function cell(val, label, sub) {
+    return '<div class="statCell"><div class="statVal">' + val + "</div>" +
+      '<div class="statLbl">' + esc_(label) + "</div>" +
+      '<div class="statSub">' + sub + "</div></div>";
+  }
+  var paceVal = (rate === null || rate === undefined) ? "—" : nfDh_(Math.round(rate)) + "/wk";
+  var paceSub = (rate === null || rate === undefined)
+    ? "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") + " of clearing history"
+    : "items cleared per week, median of the trailing weeks";
+  var runway = weeksToClearStr_(total, rate);
+  var runwaySub = (rate === null || rate === undefined)
+    ? "no clearing rate yet, so the queue cannot be scaled in weeks"
+    : rate === 0
+    ? "nothing is clearing this window, so the queue has no ceiling"
+    : "at the pace on the left, across " + nfDh_(total) + " items";
+  var groomedVal = unItems === null ? "—" : nfDh_(unItems) + " items";
+  var groomedSub = unItems === null
+    ? "not available this refresh"
+    : (total > 0 ? Math.round(unItems / total * 100) + "% of the queue — " : "") +
+      "ready and waiting to be picked up";
+
+  return '<div class="statRow">' +
+    cell(paceVal, "Delivery pace", paceSub) +
+    cell(runway || "—", "Total runway", runwaySub) +
+    cell(groomedVal, "Groomed pipeline", groomedSub) +
+    "</div>";
+}
+
 function renderMasthead_() {
   var el = document.getElementById("masthead");
   if (!el) return;
@@ -4370,6 +4879,16 @@ function renderMasthead_() {
   }).length;
   var shelvedN = (shelfRows_() || []).length;
   el.innerHTML =
+    // The confidential banner sits ABOVE the figures while the mode is on: a
+    // reader looking for a number that is not there must meet the reason before
+    // they meet the gap.
+    confBannerHtml_() +
+    // THREE FIGURES FIRST (2026-08-17). This panel used to open with a
+    // paragraph, and a paragraph is read by nobody scanning for a number. The
+    // same facts the prose carried are now the first thing on the tab, one
+    // figure each; the ranked verdict keeps its place underneath, where it
+    // explains rather than announces.
+    pipelineStatsHtml_() +
     '<div class="mastRow">' +
       '<div class="mastLede">' +
         '<div class="cellSub">' + esc_(head.label) + " · last complete week" + scopeTag_("period") + "</div>" +
@@ -4483,6 +5002,9 @@ function availabilityTileHtml_() {
     'title="Open the Workforce tab to see who holds these hours, by pool and level band.">' +
     "who is available →</span>",
     [], {
+      // The card IS the drill control for its own metric, like the other three
+      // in this tier: clicking it points the breakdown chart below at
+      // Availability Rate rather than making the reader find it in a chip strip.
       detail: ["Free hours as a share of scheduled hours, across backlog-consuming pools only " +
                "(consulting, engineering, architecture, training). Support, PMO and crew are " +
                "excluded — their capacity is real but cannot take backlog work.",
@@ -4529,6 +5051,17 @@ function capacityTileHtml_() {
     utilCmp += ' · <span title="on maternity/parental/long leave (roster Employee Status) — capacity and hours excluded from this rate">' +
       onLeaveN + " on leave excluded</span>";
   }
+  // Crew between engagements are ALSO excluded from this rate (planFor_ /
+  // utilFor_ carve them), but the count is stated on the Workforce Scope panel
+  // rather than here (user decision 2026-08-17). This card returns "" unless
+  // SHOW_UTILIZATION_ is on or the window is a planning one, so a bench count
+  // living here was invisible almost always. Scope always renders.
+  //
+  // ⚠️ The trade-off, recorded rather than hidden: on a PLANNING window this
+  // card does render, as Planned Coverage, and it now names two of its three
+  // exclusions. If that asymmetry ever bites, restore the block here — the
+  // count is cheap to compute twice, and both surfaces stating it is more
+  // honest than either one going quiet.
   var internN = MODEL.people.filter(function (p) {
     return p.isIntern && !p.attribOnly && passesFilters_(p);
   }).length;
@@ -4754,6 +5287,28 @@ function flowTileHtml_(m, headline, opts) {
  * against a different period than the card beside it. The tier is decided at
  * the end, by which string a tile is appended to.
  */
+/**
+ * What the Forecast card says when it has nothing to measure.
+ *
+ * The old text — "no epics closed in this period under the active filters" —
+ * was wrong twice over. Epics may well have closed; they can be absent from the
+ * buckets because no roster person could be resolved for them, which is a
+ * PIPELINE fact, not a filter one. And blaming "the active filters" sends the
+ * reader to clear filters that were never the cause.
+ *
+ * So the message distinguishes the two states, using the count the server
+ * already ships and the card already ignored.
+ */
+function fcEmptyMsg_() {
+  var dropped = (MODEL.meta.jiraUnattributed || {}).forecast || 0;
+  return dropped > 0
+    ? "no epics in this window could be attributed to a person — " + dropped +
+      " closed epic" + (dropped === 1 ? " was" : "s were") + " dropped across the export window " +
+      "because neither the epic nor its children name anyone on the roster"
+    : "no epics closed in this window — forecast is measured on closed epics, which is a much " +
+      "smaller population than the other cards, so short windows are often empty";
+}
+
 function renderFlow_() {
   var el = document.getElementById("tier1Tiles");
   var secEl = document.getElementById("flowSecondary");
@@ -4779,17 +5334,37 @@ function renderFlow_() {
   /** Writes both tiers. One exit point, so no branch can leave the secondary
       strip holding the previous render's HTML — including the Jira-unavailable
       early return, which legitimately has nothing to put in it. */
-  function paint_(pri, sec) {
+  /**
+   * Writes Tier 1 and the CLUSTERED flow strip (2026-08-17).
+   *
+   * Eight cards in one grid read as a wall, and a reader after "how far does
+   * the queue cover us" had to know which of the eight answered it. They are
+   * grouped by the QUESTION instead:
+   *   Flow    how work moves — arrives, clears, how long it takes, net direction
+   *   Runway  how much we are holding, and how long it covers us
+   *   Quality what came back
+   * An empty cluster is omitted entirely rather than printing a heading over a
+   * blank row — the same rule the tiles themselves follow for absent feeds.
+   */
+  function paint_(pri, clusters) {
     el.innerHTML = pri;
     if (!secEl) return;
-    secEl.innerHTML = sec
+    var groups = [
+      { title: "Flow — how work moves", html: clusters.flow },
+      { title: "Runway — what we hold, and how long it covers us", html: clusters.runway },
+      { title: "Quality — what came back", html: clusters.quality },
+    ].filter(function (g) { return !!g.html; });
+    secEl.innerHTML = groups.length
       ? "<h3>Volume, queue and flow — the numbers behind the verdict</h3>" +
         '<p class="cellSub">How much we shipped, what the queue is holding and how long it covers ' +
         "us, then how work arrives, clears and how long it takes. These size and explain the " +
-        "outcome KPIs at the top of the page; they are not graded in their place.</p>" +
-        '<div class="tiles tilesCompact" style="margin:8px 0 0">' + sec + "</div>"
+        "outcome KPIs on Health &amp; Actions; they are not graded in their place.</p>" +
+        groups.map(function (g) {
+          return '<div class="cluster"><div class="clusterHead">' + esc_(g.title) + "</div>" +
+            '<div class="tiles tilesCompact" style="margin:0">' + g.html + "</div></div>";
+        }).join("")
       : "";
-    secEl.style.display = sec ? "" : "none";
+    secEl.style.display = groups.length ? "" : "none";
   }
   // No local `reg` map any more (review item #6, 2026-08-17): every tile below
   // looks its own entry up through regRequired_, which returns null on a miss
@@ -4817,7 +5392,9 @@ function renderFlow_() {
       tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel }) +
       (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel })) +
       qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase),
-      backlogHeroTilesHtml_());
+      // The queue cards do not come from Jira Raw, so they still publish — in
+      // the Runway cluster, where they belong whatever the Jira feed is doing.
+      { runway: backlogHeroTilesHtml_() });
     return;
   }
 
@@ -4836,7 +5413,8 @@ function renderFlow_() {
   // header comment.
   var html = "";
   var sec = "";
-  var secLead = "";
+  var secThroughput = "";   // → Flow cluster
+  var secQuality = "";      // → Quality cluster
 
   // 1 · Cleared — count of issues resolved in the period, assigned/filterable
   // (Task 16B review finding: the spec names Cleared as a dedicated items
@@ -4997,7 +5575,7 @@ function renderFlow_() {
           (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
           function () {
             return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
-                             { headlineLabel: outHeadlineLabel, target: tg.onTime,
+                             { drillMetric: "onTime", headlineLabel: outHeadlineLabel, target: tg.onTime,
                                std: otStd, trendLabels: labels, phase: phase,
                                detail: otDetail });
           }, outHeadlineLabel, otCovTrend, labels);
@@ -5045,6 +5623,17 @@ function renderFlow_() {
         "% over-run — over-runs burn margin, under-runs mean capacity was held that could have " +
         "been sold. Opposite conversations.");
     }
+    // ATTRIBUTION, DISCLOSED (2026-08-17). Two facts this card computed and
+    // then never printed. Without them a reader sees a confident mean over a
+    // silently selected subset — the failure Bug Count carries a registry
+    // deviation for, and Forecast is MORE exposed to it because epics are
+    // containers and are unassigned more often than bugs are.
+    if (fc.nViaChildren > 0) {
+      fcDetail.push(fc.nViaChildren + " of " + fc.nAll + " epics reached their owner through the " +
+        "people working their children, not their own assignee — epics are containers and are " +
+        "often unassigned. The variance is unchanged; only who it is filed under is inferred.");
+    }
+    fcDetail.push(unattribNote_("forecast"));
     fcDetail = fcDetail.concat(regCaveats_("forecast"));
     function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
     var fcCovTrend = trendPer.map(function (p) {
@@ -5057,11 +5646,11 @@ function renderFlow_() {
     html += planning
       ? notYetTile_("Forecast Accuracy", outHead, outHeadlineLabel)
       : gatedTile_("Forecast Accuracy", fcConf, regFc,
-          "no epics closed in this period under the active filters",
+          fcEmptyMsg_(),
           (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
-                             { headlineLabel: outHeadlineLabel, target: tg.forecast,
+                             { drillMetric: "forecast", headlineLabel: outHeadlineLabel, target: tg.forecast,
                                std: fcStd, trendLabels: labels, phase: phase,
                                detail: fcDetail });
           }, outHeadlineLabel, fcCovTrend, labels);
@@ -5089,7 +5678,7 @@ function renderFlow_() {
   // whether what moved was what we promised. It opens the secondary strip.
   (function () {
     var m = regRequired_("throughput");
-    if (!m) { secLead += registryMissingTile_("throughput", "period"); return; }
+    if (!m) { secThroughput += registryMissingTile_("throughput", "period"); return; }
     var series = trendPer.map(function (p) {
       var b = bucketsFor_(MODEL.throughputBuckets || [], p.isos);
       return b.nAll > 0 ? b.estHrs : null;
@@ -5098,7 +5687,7 @@ function renderFlow_() {
     var conf = metricConfidence_(m.coverageGate || 0,
       b.nAll > 0 ? b.nEst / b.nAll : null,
       series.filter(function (v) { return v !== null; }).length);
-    secLead += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
+    secThroughput += flowTileHtml_(m, b.nAll > 0 ? b.estHrs : null, {
       scope: "period",
       conf: b.nAll > 0 ? conf : null,
       trend: series, trendLabels: labels,
@@ -5118,9 +5707,9 @@ function renderFlow_() {
   // and Quality/Rework above already carries the outcome read on quality.
   (function () {
     var m = regRequired_("bugCount");
-    if (!m) { secLead += registryMissingTile_("bugCount", "period"); return; }
+    if (!m) { secQuality += registryMissingTile_("bugCount", "period"); return; }
     if (!MODEL.meta.bugsAvailable) {
-      secLead += flowTileHtml_(m, null,
+      secQuality += flowTileHtml_(m, null,
         { scope: "period", unavailable: "export predates Jira Backlog.js v3.9.0 — no Jira Bugs tab yet" });
       return;
     }
@@ -5134,7 +5723,7 @@ function renderFlow_() {
     var series = trendPer.map(function (p) { return sumOver(p.isos, "nCreated"); });
     var created = sumOver(head.isos, "nCreated");
     var resolved = sumOver(head.isos, "nResolved");
-    secLead += flowTileHtml_(m, created, {
+    secQuality += flowTileHtml_(m, created, {
       scope: "period",
       conf: null,
       trend: series, trendLabels: labels,
@@ -5154,7 +5743,15 @@ function renderFlow_() {
   // order, but the position cards now sit under the backlog band that defines
   // them rather than in the protagonist grid. secLead before sec keeps the
   // strip in the order it is read, not the order it was computed.
-  paint_(html, secLead + backlogHeroTilesHtml_() + sec);
+  // Which cluster a card lands in is decided HERE and nowhere else, so the
+  // grouping is one readable line rather than a flag threaded through every
+  // tile builder above.
+  var hero = backlogHeroParts_();
+  paint_(html, {
+    flow: secThroughput + sec + hero.netFlow,
+    runway: hero.inventory + hero.weeksToClear,
+    quality: secQuality,
+  });
 }
 
 /** "N issues not attributable to a roster person" note, or "" when clean. */
@@ -5256,7 +5853,7 @@ function qualityTile_(done, trendPer, trendLabels, headlineLabel, head, hi, phas
     Math.round((1 - coverage) * 100) + "% of the rework definition is unmeasured",
     function () {
       return tileHtml_("Quality / Rework", pct, cmp, trend,
-                       { headlineLabel: headlineLabel, target: tg, phase: phase,
+                       { drillMetric: "quality", headlineLabel: headlineLabel, target: tg, phase: phase,
                          floor: isFloor, detail: qDetail,
                          floorWhy: "Reopen detection is one of the two signals in this metric and " +
                            "the export did not fetch it (CONFIGJ.FETCH_CHANGELOG is off), so the " +
@@ -5315,6 +5912,49 @@ var METRICS_ = {
       return b.nAll > 0 ? b.n / b.nAll : null;
     },
     n: function (isos) { return bucketsFor_(MODEL.onTimeBuckets, isos).n; },
+  },
+  /**
+   * AVAILABILITY RATE as a comparable metric (user 2026-08-17).
+   *
+   * Reads wfAvailability_ — THE definition, shared with the Tier-1 card and the
+   * Workforce tab's "one honest number", so a region's availability in this
+   * grid and on the tab the button deep-links to cannot disagree.
+   *
+   * IT SCOPES FOR FREE. workforceHealthFor_ recounts heads from
+   * filteredPeople_, which honours SCOPE_NAMES_ — the set scopedMetric_ pins
+   * while a row is computed. So one row per region falls out of the existing
+   * machinery rather than needing a second, per-category capacity reader.
+   *
+   * ⚠ It ignores the `isos` argument, unlike every other metric here, because
+   * workforceHealthFor_ resolves its own window from analysisHead_(). That is
+   * the SAME window the grid passes, so the values agree — but a future caller
+   * asking for a different period would silently get the head one, and this
+   * comment is the warning.
+   *
+   * targetKey null: no availability target has been agreed, and none should be
+   * invented — too little is a delivery risk, too much is unsold capacity, so a
+   * one-sided verdict is wrong in one direction at all times. The cells grade
+   * against the operating band instead (D11).
+   */
+  avail: {
+    id: "avail", targetKey: null,
+    label: function () { return "Availability Rate"; },
+    axis: function () { return "free hours ÷ scheduled hours, backlog-consuming pools only"; },
+    available: function () { return !!(MODEL && MODEL.workforce && MODEL.workforce.weekly); },
+    value: function () {
+      var a = wfAvailability_();
+      return (a && a.pct !== null && a.pct !== undefined) ? a.pct * 100 : null;
+    },
+    // A ratio over HOURS, not over a count of records — there is no coverage
+    // notion to gate on, the same position util's own entry takes.
+    coverage: function () { return null; },
+    n: function () { var a = wfAvailability_(); return a ? a.head : 0; },
+    detail: function () {
+      return "Free hours as a share of scheduled hours across backlog-consuming pools only " +
+        "(consulting, engineering, architecture, training). Support, PMO and crew are excluded — " +
+        "their capacity is real but cannot take backlog work. Same definition as the Availability " +
+        "Rate card and the Workforce tab.";
+    },
   },
   quality: {
     id: "quality", targetKey: "quality",
@@ -5398,6 +6038,13 @@ var METRICS_ = {
   // than a literal string — the registry is the one place the "no target,
   // norm-graded only" language already lives (both metrics' `deviations`).
   clearedPerHead: {
+    // ⚠ NOT RENDERED ANYWHERE since 2026-08-17, when it left the Drill-down's
+    // chips and grid columns. The accessor stays because the SHELF and the
+    // masthead read it: shelfRows_ walks the SERVER registry, which still
+    // defines this metric, and calls metricSampleN_ / metricCoverageNow_ —
+    // both of which look the id up in METRICS_. Delete this entry and the
+    // shelf silently loses its sample-size read for a metric it still lists.
+    // If the metric is ever dropped from the registry too, this goes with it.
     id: "clearedPerHead", targetKey: null, unit: "items",
     label: function () { return reg_("clearedPerHead").name || "Cleared per Person"; },
     axis: function () {
@@ -5426,6 +6073,13 @@ var METRICS_ = {
     n: function (isos) { return bucketsFor_(MODEL.throughputBuckets || [], isos).nAll; },
   },
   queueCover: {
+    // ⚠ NOT RENDERED ANYWHERE since 2026-08-17, when it left the Drill-down's
+    // chips and grid columns. The accessor stays because the SHELF and the
+    // masthead read it: shelfRows_ walks the SERVER registry, which still
+    // defines this metric, and calls metricSampleN_ / metricCoverageNow_ —
+    // both of which look the id up in METRICS_. Delete this entry and the
+    // shelf silently loses its sample-size read for a metric it still lists.
+    // If the metric is ever dropped from the registry too, this goes with it.
     id: "queueCover", targetKey: null, unit: "weeks",
     // NOT reg_("queueCover") (blocking fix): the server registry entry of
     // that name describes the HERO's whole-population formula — "(assigned
@@ -5479,14 +6133,54 @@ var METRICS_ = {
   },
 };
 
-/** Metric ids the current payload can actually chart — in the SAME order as
-    the KPI cards (On-Time, Forecast, Utilization, Quality; user 2026-08-04),
-    with the two joinable 🌊 Flow metrics appended (Task 10, 2026-08-05).
-    Backlog/WIP (snapshot — no period grain) and Bug Count (population-wide —
-    no person join to dimension by) are NOT comparable metrics; see the tile
-    scope tags. Deliberate narrowing of spec §4.2, flagged at review. */
-var METRIC_ORDER_ = ["onTime", "forecast", "util", "quality", "leadTime", "throughput",
-                     "clearedPerHead", "queueCover", "planCov"];
+/** Metric ids the Drill-down (Tier 3) can chart — in the SAME order as the KPI
+    cards (On-Time, Forecast, Utilization, Quality; user 2026-08-04).
+
+    NARROWED 2026-08-17 (user): Lead Time, Throughput, Cleared per Person and
+    Assigned wks to clear are OUT. The drill-down asks "where isn't it working",
+    and a reader answers that against the rates the org has agreed a bar for.
+    The four removed ones have no ratified target between them — they were
+    graded against the operating band instead — so a bar chart of them invites a
+    comparison ("EMEA clears fewer per person than AMER") that the numbers
+    cannot settle: team size, work mix and ticket granularity all move them, and
+    none of that is visible on the bar.
+
+    Lead Time and Throughput keep their own compact tiles in Tier 2, where they
+    read as trends rather than as a league table. Cleared per Person and
+    Assigned wks to clear now render NOWHERE — deliberately; see the note on
+    their METRICS_ entries.
+
+    Backlog/WIP (snapshot — no period grain) and Bug Count (population-wide — no
+    person join to dimension by) were never here; see the tile scope tags.
+    `util` stays in the list and is gated off by SHOW_UTILIZATION_ below, so
+    flipping that one flag restores it everywhere at once. `planCov` is the
+    planning-window member: liveMetrics_ swaps the whole set for it on a forward
+    window, so removing it would leave the drill-down empty there. */
+// ⚠ `avail` is NOT here. It cannot be broken down by region/team/PM with the
+// current payload: workforce capacity ships pre-aggregated per pool × band
+// (wfFold_ sums weekly[cell][iso]), and headByCell only sets the head count —
+// so scoping to a subset changes WHO is counted but not the HOURS. Every row
+// would print the same org figure, which is not a breakdown, it is a number
+// repeated four times. The Availability card deep-links to Workforce instead,
+// where capacity IS reported per pool × band. See the note above
+// GRID_METRIC_IDS_ for what would have to change server-side.
+// "available rate" joined on 2026-08-17, completing the set the user named for
+// this panel: On-Time, Forecast, available rate, Quality/Rework. It reads
+// wfAvailability_ — the SAME function behind the Availability Rate card and
+// the Workforce tab — so a bar here cannot disagree with the card above it.
+// ⚠ `avail` is deliberately ABSENT. Availability cannot be broken down by
+// region/team/PM with the current payload: workforce capacity ships
+// pre-aggregated per pool × band (wfFold_ sums weekly[cell][iso]) and
+// headByCell only sets the head count — so scoping changes WHO is counted,
+// never the HOURS. Every row would print the same org figure. Pro-rating the
+// cell total by head share was considered and rejected: it assumes everyone
+// in a cell carries identical capacity, and "capacity is not fungible" is the
+// doctrine the Workforce tab exists to enforce. The Availability card
+// deep-links to Workforce instead, where capacity IS reported at that grain.
+// To make it a real column the server must emit capacity per person, or per
+// cell × region. A render-smoke check pins the constraint and fails the day
+// it lifts.
+var METRIC_ORDER_ = ["onTime", "forecast", "quality", "util", "planCov"];
 /**
  * ── FEATURE FLAG: Utilization ────────────────────────────────────────────────
  * Utilization is switched OFF across the whole dashboard (user 2026-08-17).
@@ -5523,19 +6217,33 @@ function liveMetrics_() {
 }
 
 /**
- * The five columns of the §6 comparison grid (spec 2026-08-06): the four
- * classic rates people already read the bullet chart on, plus the two D11
- * additions. Deliberately narrower than METRIC_ORDER_ — Lead Time and
- * Throughput stay reachable as bullet-chart-only metric chips (they already
- * had their own compact tiles in §4, Task 10) rather than doubling up as
- * grid columns too.
+ * The columns of the grid that sits under the Drill-down's bullet chart.
  *
- * Filtered through liveMetrics_() so the grid inherits its planning-phase
+ * Now the SAME set as METRIC_ORDER_ (2026-08-17). It used to be deliberately
+ * different — it carried Cleared per Person and Assigned wks to clear while the
+ * chips carried Lead Time and Throughput — which meant the two halves of one
+ * panel offered two different answers to "which metrics can I break down here",
+ * and a reader who looked at the chips first was told the wrong thing about the
+ * table directly beneath them.
+ *
+ * Kept as its own constant rather than collapsed into METRIC_ORDER_: the grid
+ * and the chart have diverged before for real reasons, and a second list is a
+ * cheaper way to diverge again than unpicking a shared one. If they are still
+ * identical the next time this file is opened, collapse them.
+ *
+ * Filtered through liveMetrics_() so the grid inherits the planning-phase
  * collapse for free: on a forward window liveMetrics_() already returns only
  * "planCov", so gridMetrics_() does too and the grid re-points itself with no
  * separate switch to keep in sync.
  */
-var GRID_METRIC_IDS_ = ["onTime", "forecast", "util", "clearedPerHead", "queueCover", "planCov"];
+// TO MAKE AVAILABILITY A REAL COLUMN, the server would have to emit workforce
+// capacity at a grain the client can re-aggregate — per person, or per
+// cell × region — rather than per pool × band alone. Pro-rating the cell total
+// by head share was considered and rejected: it assumes every person in a
+// cell carries identical capacity, and "capacity is not fungible" is the
+// doctrine the Workforce tab exists to enforce. An estimate wearing a graded
+// cell is worse than an absent column.
+var GRID_METRIC_IDS_ = ["onTime", "forecast", "quality", "util", "planCov"];
 function gridMetrics_() {
   return liveMetrics_().filter(function (id) { return GRID_METRIC_IDS_.indexOf(id) !== -1; });
 }
@@ -5663,6 +6371,43 @@ function setCompare_(dim) {
  * this metric at all (D11) > graded against a target.
  * @param {{value:?number, n:number, target:?Object, std:?Object, unit:?string}} o
  */
+/**
+ * ── IN-CELL MICRO-BARS (user 2026-08-17) ────────────────────────────────────
+ * A length behind the number, so a director reads a whole column's shape in one
+ * pass instead of comparing eight percentages digit by digit.
+ *
+ * IT IS A BACKGROUND, NOT A CHART. The bar carries no axis, no label and no
+ * hit target — the number in front of it is still the value, and every grading
+ * cue (the ✔/▲/✖ glyph, the grey small-n dot, the "no reference" caption) is
+ * unchanged. That is what keeps it safe under FR-4.4: strip the colour and the
+ * cell still says everything it said before.
+ *
+ * DOMAIN. A percentage runs 0–100 always — a bar that rescaled to the column
+ * max would make 88% and 92% look like a chasm. Unit metrics (days, hours) have
+ * no natural ceiling, so those size against the column's own max, which the
+ * caller passes; without one they draw no bar at all rather than inventing a
+ * denominator.
+ *
+ * @param {number} v     the value
+ * @param {?string} unit metric unit, or null for a percentage
+ * @param {?number} max  column max, required only for unit metrics
+ * @param {string} colour CSS colour for the fill
+ */
+function cellBarHtml_(v, unit, max, colour) {
+  var pct;
+  if (unit) {
+    if (!max || !(max > 0)) return "";
+    pct = v / max * 100;
+  } else {
+    pct = v;
+  }
+  pct = Math.max(0, Math.min(100, pct));
+  // aria-hidden: the number beside it is the accessible value. A screen reader
+  // announcing "37 percent" twice per cell is noise, not information.
+  return '<i class="cellBar" aria-hidden="true" style="width:' + pct.toFixed(1) +
+    "%;background:" + colour + '"></i>';
+}
+
 function gridCellHtml_(o) {
   var lbl = o.unit ? function (v) { return fmtGridVal_(v, o.unit); } : function (v) { return Math.round(v) + "%"; };
   if (o.value === null || o.value === undefined) {
@@ -5676,6 +6421,7 @@ function gridCellHtml_(o) {
     return '<td class="tnum gridCell" title="Fewer than 10 people — the value is real, it is ' +
       'just never graded. A region moves on one person, and a red badge on six people reads ' +
       'as a systemic failure that is not there.">' +
+      cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") +
       '<span class="sigDot sigSmall">●</span> ' + txt +
       ' <span class="cellSub">ungraded (small n)</span></td>';
   }
@@ -5688,15 +6434,20 @@ function gridCellHtml_(o) {
     if (o.std && o.std.ok) {
       return '<td class="tnum gridCell" title="No target has been agreed for this metric. ' +
         'Graded against the operating band (' + lbl(o.std.lo) + '–' + lbl(o.std.hi) +
-        ') on the chart below.">' + txt + "</td>";
+        ').">' + cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") + txt + "</td>";
     }
     return '<td class="tnum gridCell" title="No target has been agreed, and there is not yet ' +
-      'enough history for an operating norm either.">' + txt +
+      'enough history for an operating norm either.">' +
+      cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") + txt +
       ' <span class="cellSub">no reference</span></td>';
   }
   var rag = ragOf_(o.value, o.target);
   var cls = { g: "sigGood", a: "sigWarn", r: "sigBad" }[rag] || "";
-  return '<td class="tnum gridCell"><span class="sigDot ' + cls + '">' + RAG_MARK[rag] +
+  // The bar takes the RAG the glyph ALREADY states — read from the same rag,
+  // never recomputed, so the colour and the mark cannot drift apart.
+  var fill = { g: "var(--c-good)", a: "var(--c-warn)", r: "var(--c-bad)" }[rag] || "var(--c-ref)";
+  return '<td class="tnum gridCell">' + cellBarHtml_(o.value, o.unit, o.max, fill) +
+    '<span class="sigDot ' + cls + '">' + RAG_MARK[rag] +
     "</span> " + txt + "</td>";
 }
 
@@ -5800,6 +6551,19 @@ function renderCompare_() {
     gridStds[id] = metricSeries_(mm, done).std;
   });
   var gridSel = capRows_(rows, !!STATE.compareAll);
+  // Per-column max, for the micro-bars on UNIT metrics only (days, hours) —
+  // percentages always draw against 0–100. Computed from the rows actually
+  // DRAWN, so the longest visible bar fills its cell rather than being scaled
+  // by a row the cap removed.
+  var gridMax = {};
+  gridIds.forEach(function (id) {
+    var mx = 0;
+    gridSel.rows.forEach(function (r) {
+      var v = r.cells[id];
+      if (v !== null && v !== undefined && v > mx) mx = v;
+    });
+    gridMax[id] = mx;
+  });
   var gridHtml = "";
   if (gridIds.length) {
     gridHtml = '<div class="gwrap" style="margin:8px 0"><table class="hyg gridTable">' +
@@ -5810,17 +6574,51 @@ function renderCompare_() {
           'onclick="setMetric_(\'' + id + '\')" ' +
           'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
           'setMetric_(\'' + id + '\');}" style="cursor:pointer" title="' +
-          esc_("Chart " + mm.label() + " in the bullet chart below.") + '">' +
+          esc_("Rank the rows by " + mm.label() + ", and make it the selected metric.") + '">' +
           esc_(mm.label()) + (STATE.metric === id ? " ▾" : "") + "</th>";
       }).join("") + "</tr></thead><tbody>" +
       gridSel.rows.map(function (r) {
-        return "<tr><td class=\"tname\">" + esc_(r.label) +
+        // OFFENDER ROWS (2026-08-17). A row is marked when it is below the
+        // ACTIVE metric's target — the metric the reader selected, or the KPI
+        // card they clicked to get here. Marked, never reordered: the ranking
+        // is capRows_'s job and having two things move at once would make the
+        // table feel like it jumped. Graded rows only — a small-n row keeps its
+        // ungraded status here exactly as it does in its cells.
+        var av = r.cells[STATE.metric];
+        var atg = gridTargets[STATE.metric];
+        var offender = atg && av !== null && av !== undefined && r.n >= 10 &&
+                       ragOf_(av, atg) === "r";
+        return "<tr" + (offender ? ' class="rowOffender"' : "") + "><td class=\"tname\">" +
+          (offender ? '<span class="offMark" title="Below the ' +
+            esc_(METRICS_[STATE.metric].label()) + ' target — one of the rows pulling ' +
+            'the selected metric down.">▸</span>' : "") + esc_(r.label) +
           ' <span class="cellSub">(' + r.n + ")</span></td>" +
           gridIds.map(function (id) {
             return gridCellHtml_({ value: r.cells[id], n: r.n, target: gridTargets[id],
-                                   std: gridStds[id], unit: METRICS_[id].unit });
+                                   std: gridStds[id], unit: METRICS_[id].unit,
+                                   max: gridMax[id] });
           }).join("") + "</tr>";
-      }).join("") + "</tbody></table></div>";
+      }).join("") + "</tbody></table></div>" +
+      // THE ROW CAP NEEDS ITS OWN ESCAPE HATCH (2026-08-17). This affordance
+      // used to live on the bar chart; the chart went, the cap did not, and a
+      // 15-team org would have silently shown 12 with no way to see the rest.
+      // Removing a redundant view must not remove a capability with it.
+      (gridSel.hidden > 0 || STATE.compareAll
+        ? '<div class="cellSub" style="margin:-2px 0 6px">' +
+          '<button class="btn" onclick="toggleCompareAll_()" title="' +
+          esc_(STATE.compareAll
+            ? "Show only the rows furthest below their reference."
+            : "Show every " + cmpNoun_(STATE.compare, 2) + " in this slice, not just the " +
+              "ones furthest below their reference.") + '">' +
+          (STATE.compareAll ? "Show top " + HBAR_MAX_ROWS_
+                            : "Show all " + (gridSel.rows.length + gridSel.hidden)) +
+          "</button>" +
+          (gridSel.hiddenNoData > 0 && !STATE.compareAll
+            ? ' <span title="Hidden because nothing measurable landed in them this period, not ' +
+              'because they scored badly.">' + gridSel.hiddenNoData +
+              " with no measurable data</span>" : "") +
+          "</div>"
+        : "");
   }
 
   // ── Population accounting (user-reported 2026-08-03) ──
@@ -5872,10 +6670,16 @@ function renderCompare_() {
           (inScope - shown) + " missing") + "</span>";
 
   panel.innerHTML =
+    // Title, period, THEN THE TWO ACTIONS on the same line — the section's
+    // point is reachable without scrolling. The dimension chips drop to their
+    // own row below: five of them plus two buttons on one line wrapped into a
+    // muddle on anything narrower than a desktop.
     '<div class="chartHead"><h3>' + esc_(m.label()) + " by " +
       esc_(COMPARE_LABELS[STATE.compare]) + scopeTag_("period") + "</h3>" +
       '<span class="sub">' + esc_(head.label) + " · last complete " + unit + "</span>" +
-      '<span style="flex:1"></span><span class="chips seg">' + chips + "</span></div>" +
+      '<span style="flex:1"></span>' + drillActionsHtml_() + "</div>" +
+    '<div class="chartHead" style="margin-bottom:6px"><span class="sub">Break down by</span>' +
+      '<span class="chips seg">' + chips + "</span></div>" +
     '<div class="chartHead" style="margin-bottom:6px"><span class="sub">Metric</span>' +
       '<span class="chips seg">' + mchips + "</span>" +
       // The hover-detail defaults to the SERVER registry's formula (a fuller
@@ -5891,12 +6695,20 @@ function renderCompare_() {
       esc_(m.axis()) + " ⓘ</span></div>" +
     gridHtml +
     '<div class="verdict">' + verdict + "</div>" +
-    hbarChart_({ rows: rows, target: target, std: std, title: m.label(), unit: m.unit,
-                 expanded: !!STATE.compareAll, onExpand: "toggleCompareAll_()" }) +
+    // THE BAR CHART IS GONE (2026-08-17). It restated the table directly above
+    // it — the same categories, the same values, the same ranking — and did so
+    // at full page width, which meant a director scrolled past a bar drawn at
+    // 0% to reach the buttons that let them act on it. The grid already grades
+    // every cell against that metric's own target and operating band, and a
+    // number in a table is not harder to read than a bar; it is only less tall.
+    //
+    // hbarChart_ itself is UNTOUCHED and still tested. The chart is a candidate
+    // to return on a wide-screen layout where it costs nothing, which is a
+    // different decision from "this comparison should be a picture".
     '<div class="cellSub" style="margin-top:6px">' +
-      "The number left of each bar is its headcount. " +
+      "The number beside each row is its headcount. " +
       (overlaps
-        ? "Membership overlaps, so the bars sum to more than the headcount — " +
+        ? "Membership overlaps, so the rows sum to more than the headcount — " +
           "someone on two teams appears in both. "
         : "") +
       (untaggedRow
@@ -5907,8 +6719,8 @@ function renderCompare_() {
           "quietly omits them describes a smaller org than the one you have. " +
           "Closing that tag gap is a Data Hygiene item. "
         : "") +
-      "The shaded band is the operating range, the vertical rule is the target.</div>" +
-    drillRowHtml_(rows);
+      "Each cell is graded against its own metric's target and operating band.</div>" +
+    drillPickHtml_(rows);
 }
 
 /**
@@ -5928,7 +6740,53 @@ function renderCompare_() {
  * nothing special happens on arrival — the tab simply obeys the filter the way
  * it obeys every other one.
  */
-function drillRowHtml_(rows) {
+/**
+ * ── THE TWO DESTINATIONS, IN THE SECTION HEADER (2026-08-17) ─────────────────
+ * These used to sit at the BOTTOM of the panel, under a full-width bar chart.
+ * A director therefore had to scroll past a picture of the problem to reach the
+ * two buttons that do something about it — which is the wrong way round: the
+ * action is the point of the section, and the evidence is what supports it.
+ *
+ * They ride in the header instead, on the same line as the title, so they are
+ * on screen the moment the section is. They carry whatever narrowing is active,
+ * because the filters are universal — the destination tab simply obeys the same
+ * filter every other surface does.
+ */
+function drillActionsHtml_() {
+  var dim = STATE.compare;
+  var active = STATE[dim] || "";
+  var A = analysisHead_();
+  var period = A.all.length ? A.head.label : "";
+  // THE SCOPE IS ON THE BUTTON, not only in its tooltip (user 2026-08-17). A
+  // deep link that silently carries a filter is indistinguishable from one that
+  // drops it, and the reader finds out only after arriving. Naming the slice
+  // here means the promise is made before the click, not discovered after it.
+  var slice = active ? " · " + esc_(active) : "";
+  var scopeWords = (active ? active : "the full population") +
+    (period ? ", " + period : "");
+  // When the reader is looking at AVAILABILITY, "who is available" stops being
+  // one of two equal options and becomes the obvious next step — so it leads.
+  var availFirst = STATE.metric === "avail";
+  var wf = '<button class="btn' + (availFirst ? " btnPrimary" : "") +
+    '" onclick="switchView_(\'workforce\')" title="' +
+    esc_("Open Workforce for " + scopeWords + " — capacity by pool and level band, and the " +
+         "names behind the Availability Rate. Every filter on this page travels with you, so " +
+         "the tab opens already narrowed.") +
+    '">Who is available →' + slice + "</button>";
+  var act = '<button class="btn" onclick="switchView_(\'actions\')" title="' +
+    esc_("Open Actions for " + scopeWords + " — the data-quality gates, the compliance signals " +
+         "roster and the gaps queue behind these delivery numbers. The same filters travel.") +
+    '">What needs action →' + slice + "</button>";
+  return '<span class="chips drillActions">' + (availFirst ? wf + act : act + wf) + "</span>";
+}
+
+
+/**
+ * The category picker, which stays UNDER the table it narrows — it is a control
+ * over the rows above it, and lifting it into the header would separate it from
+ * the thing it acts on. Only the destinations moved.
+ */
+function drillPickHtml_(rows) {
   var dim = STATE.compare;
   var active = STATE[dim] || "";
   var opts = (rows || []).filter(function (r) { return r.n > 0; });
@@ -5937,27 +6795,18 @@ function drillRowHtml_(rows) {
   var chips = opts.slice(0, 12).map(function (r) {
     return '<span class="chip' + (active === r.key ? " on" : "") + '" onclick="drillPick_(' +
       jsArg_(dim) + "," + jsArg_(r.key) + ')" title="' +
-      esc_("Narrow every view to " + r.label + ", then open Workforce or Actions below.") +
+      esc_("Narrow every view to " + r.label + ", then use the buttons in this section's header.") +
       '">' + esc_(r.label) + "</span>";
   }).join("");
   return '<div class="drillRow">' +
-    '<div class="cellSub"><b>Act on this.</b> Pick a ' + esc_(noun) +
-      " to narrow the whole dashboard, then choose where to go. " +
+    '<div class="cellSub"><b>Narrow it.</b> Pick a ' + esc_(noun) +
+      " to scope the whole dashboard, then use the buttons above. " +
       (active ? "Currently narrowed to <b>" + esc_(active) + "</b>."
               : "Nothing selected — the buttons open the full population.") + "</div>" +
-    '<div class="chips" style="margin:6px 0 8px">' + chips +
-      (active ? '<span class="chip" onclick="drillPick_(' + jsArg_(dim) + ',\'\')" ' +
+    '<div class="chips" style="margin:6px 0 0">' + chips +
+      (active ? '<span class="chip" onclick="drillPick_(' + jsArg_(dim) + ',' + jsArg_('') + ')" ' +
         'title="Clear this narrowing">✕ clear</span>' : "") + "</div>" +
-    '<div class="chips">' +
-      '<button class="btn" onclick="switchView_(\'workforce\')" title="' +
-        esc_("Who has hours free for the backlog in this slice — capacity by pool and level " +
-             "band, and the names behind the Availability Rate card.") +
-        '">Who is available →</button>' +
-      '<button class="btn" onclick="switchView_(\'actions\')" title="' +
-        esc_("What needs action in this slice — the data-quality gates, the compliance signals " +
-             "roster and the gaps queue behind the on-time delivery numbers.") +
-        '">What needs action →</button>' +
-    "</div></div>";
+    "</div>";
 }
 
 /** Set (or clear) the compare dimension's own universal filter, then re-render
@@ -6195,8 +7044,43 @@ function renderTrust_() {
         '<div class="trustBar"><i style="width:' + (pct || 0) + "%;background:" + col + '"></i></div>' +
         '<div class="cellSub">' + esc_(g.detail || "") + "</div></div>";
     }).join("") + "</div>" +
-    '<div class="cellSub">Gate = the coverage each published metric needs. The full queue — every gap, ' +
-    "its owner requirement and committed week — is further down this tab." +
+    // ── THE CHECKS WITH NO TILE ────────────────────────────────────────────
+    // The gaps queue was deleted 2026-08-17. Three of its ~10 rows had a tile
+    // above and lost nothing; the rest — region tagging, team tagging, the
+    // billable classification, capacity source, the SRSO binding, reopen/CSAT,
+    // the engagement key — had no tile and would now be named NOWHERE, while the
+    // Executive masthead goes on counting them ("N of M evidence gates are below
+    // their bar"). A verdict that counts what nothing can name is worse than no
+    // verdict: the reader is told there is a problem and given no way to find it.
+    //
+    // So they are named here, in one line, without their coverage figures or
+    // their notes. That is deliberately less than the queue carried — this is a
+    // pointer, not the table returning — and it is what keeps the masthead's
+    // number answerable.
+    (function () {
+      var untiled = gapsRows_(h, pp).filter(function (g) {
+        return !g.key && g.gate !== null && (g.value === null || g.value < g.gate);
+      });
+      if (!untiled.length) return "";
+      return '<div class="cellSub" style="margin-top:8px">⚠ <b>Also below bar, with no tile ' +
+        'above:</b> ' + untiled.map(function (g) {
+          // The name only. A feed that is not connected says so, because "0%"
+          // and "never measured" are different problems with different owners.
+          return '<span title="' + esc_((g.note || "") + " Blocks: " + g.blocks) + '">' +
+            esc_(g.name) + (g.value === null ? " (not connected)" : "") + "</span>";
+        }).join(" · ") + "</div>";
+    })() +
+    // Retired-at-100% checks stay named for the same reason they always were: a
+    // check that vanishes without a word reads as a check somebody removed.
+    (function () {
+      var done = gapsRetired_(h, pp);
+      if (!done.length) return "";
+      return '<div class="cellSub" style="margin-top:6px">✔ <b>Passing at 100%, not shown:</b> ' +
+        done.map(function (g) { return esc_(g.name.replace(/^…and\s+/, "")); }).join("; ") +
+        ' <span title="Still measured on every rebuild. Each returns on its own, with no deploy, ' +
+        'the moment one record fails.">Still measured ⓘ</span></div>';
+    })() +
+    '<div class="cellSub" style="margin-top:6px">Gate = the coverage each published metric needs.' +
     (fellBack ? " Measured over <b>" + esc_(head.label) + "</b>, the last complete period: " +
       "field fill is counted on work that has been resolved, so a planning window has none." : "") +
     "</div>";
@@ -6751,9 +7635,9 @@ function renderRoster_() {
     return '<tr class="rosterRow" onclick="toggleRosterDetail_(\'' + nameArg + '\')">' +
       '<td class="tname"><span class="rosterName">' +
         (STATE.openDetail[r.p.name] ? "▾ " : "▸ ") +
-        esc_(r.p.name) + "</span>" + personStateBadges_(r.p) +
-        (r.p.jobTitle ? '<div class="cellSub" title="' + esc_(r.p.jobTitle) + '">' +
-          esc_(trunc_(jobTitleDisp_(r.p.jobTitle), 26)) + "</div>" : "") + "</td>" +
+        piiHtml_(r.p.name) + "</span>" + personStateBadges_(r.p) +
+        (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
+          piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 26)) + "</div>" : "") + "</td>" +
       '<td class="tnum">' + r.n + "</td>" +
       sigCellHtml_(r.sig.due) + sigCellHtml_(r.sig.est) + sigCellHtml_(r.sig.logged) +
       sigCellHtml_(r.sig.link) + sigCellHtml_(r.sig.bill) + sigCellHtml_(r.sig.start) +
@@ -7114,6 +7998,23 @@ var WF_BAND_DESC_ = {
   "MGMT":    { range: "M",     why: "Management track, any level." },
   "UNKNOWN": { range: "—",     why: "No level token in the job title — common for crew, who are hired against a contract rather than a level." },
 };
+/**
+ * Band label for the pool grid.
+ *
+ * "UNKNOWN" is a real data-quality signal for an FTE — a job title the
+ * classifier could not read, which is a gap somebody should close. For CREW it
+ * is the designed state: they are hired against a contract, not a level, which
+ * WF_BAND_DESC_.UNKNOWN has said in its tooltip since the band was added. One
+ * word for both conditions taught readers to skip it in the case where it
+ * mattered.
+ *
+ * DISPLAY ONLY. The band KEY stays "UNKNOWN" everywhere — WF_BAND_ORDER_
+ * sorting, p.cell, dimMatch_(p, "level", …) and every bucket join. Renaming the
+ * key would silently repartition the grid.
+ */
+function wfBandLabel_(pool, band) {
+  return (pool === "CREW" && band === "UNKNOWN") ? "Crewmembers" : band;
+}
 var WF_CONFIG_ = { fidelityFloor: 0.80, shadowCeiling: 0.15, estimateCoverageFloor: 0.80,
                    constraintFloor: 0.50, keyPersonThreshold: 3, popDriftAlert: 0.05 };
 var WF_SHADOW_OWNER_ = { "no-epic": "Project Manager", "no-srso": "Project Manager + Finance",
@@ -7366,11 +8267,15 @@ function wfPersonHours_(p, isos) {
   return { cap: s.cap, planned: s.planned, avail: Math.max(0, s.cap - s.planned) };
 }
 
-/** Is this person's spare capacity sellable? Ramping new hires and people on long
-    leave are shown WITH their hours — hiding them would make a team look smaller
-    than it is — but they stay out of the sellable subtotal, the same carve the
-    recoverable-hours pulse and the roster's Hours sort already apply. */
-function wfSellable_(p) { return p.newHire !== true && p.onLeave !== true; }
+/** Is this person's spare capacity sellable? Ramping new hires, people on long
+    leave and benched crew are shown WITH their hours — hiding them would make a
+    team look smaller than it is — but they stay out of the sellable subtotal,
+    the same carve the recoverable-hours pulse and the roster's Hours sort
+    already apply. Bench is listed separately from leave on purpose: the two
+    have different owners and different fixes. */
+function wfSellable_(p) {
+  return p.newHire !== true && p.onLeave !== true && p.onBench !== true;
+}
 
 function toggleWfCell_(key) {
   STATE.wfOpenCell[key] = !STATE.wfOpenCell[key];
@@ -7405,9 +8310,9 @@ function wfCellPeopleRow_(c, people, isos) {
       : sell ? "<b>" + wfHrs_(r.h.avail) + "</b>"
              : '<span class="cellSub">' + wfHrs_(r.h.avail) + "</span>";
     return "<tr>" +
-      '<td class="tname" style="padding-left:28px">' + esc_(r.p.name) + personStateBadges_(r.p) +
-        (r.p.jobTitle ? '<div class="cellSub" title="' + esc_(r.p.jobTitle) + '">' +
-          esc_(trunc_(jobTitleDisp_(r.p.jobTitle), 30)) + "</div>" : "") + "</td>" +
+      '<td class="tname" style="padding-left:28px">' + piiHtml_(r.p.name) + personStateBadges_(r.p) +
+        (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
+          piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 30)) + "</div>" : "") + "</td>" +
       '<td class="tnum">' + (r.h.cap > 0 ? wfHrs_(r.h.cap) : '<span class="cellSub">—</span>') + "</td>" +
       '<td class="tnum">' + wfHrs_(r.h.planned) + "</td>" +
       '<td class="tnum">' + availCell + "</td>" +
@@ -7467,6 +8372,43 @@ function renderWfScope_() {
   bits.push("<b>" + filtered + "</b> " + (filtered === 1 ? "person" : "people") + " in scope" +
     (filtered !== whole ? ' <span class="cellSub">(of ' + whole + " before filters)</span>" : ""));
   bits.push("<b>" + (s.consumers || 0) + "</b> consume project backlog");
+  // ── BENCH (spec 2026-08-17, moved here from the capacity tile) ────────────
+  // This count first sat on the Utilization card, beside the on-leave and
+  // intern exclusions. That card opens with
+  // `if (!SHOW_UTILIZATION_ && !planningPhase_()) return ""`, and
+  // SHOW_UTILIZATION_ ships false — so the line rendered only on a planning
+  // window and was invisible the rest of the time. Its render-smoke test
+  // passed throughout because it forces the card on via withUtilization_(),
+  // which is exactly how a correct implementation ends up on a dark surface
+  // without anyone noticing.
+  //
+  // Scope always renders, and it is the panel a resourcing lead reads first,
+  // so the fact now sits next to the headcount it qualifies: these people are
+  // IN the population and OUT of every availability figure.
+  //
+  // ⚠️ Counted from MODEL.people, NOT from w.people. Since 2026-08-17
+  // filteredPeople_ removes benched crew from the population entirely, so
+  // w.people no longer contains a single one of them — reading it here would
+  // print "0 on the bench" for every org that has a bench, which is worse
+  // than printing nothing. passesFilters_ is applied so the count still moves
+  // with the Region/Team/PM filters like every other number on this line.
+  //
+  // This is now the ONLY place the bench is stated. The rows are gone, so if
+  // this line goes quiet the bench becomes invisible rather than merely
+  // unlisted. Omitted at zero — a standing "0 on the bench" teaches readers to
+  // skip the line on the day it is not zero. Deliberately unstyled: bench is a
+  // state, not a defect, and this surface paints no verdicts.
+  var benchedN = MODEL.people.filter(function (p) {
+    return p.onBench && !p.attribOnly && passesFilters_(p);
+  }).length;
+  if (benchedN) {
+    bits.push('<span title="Crew between engagements (roster Employee Status) — not contracted ' +
+      'to deliver right now. They are NOT listed on any tab: no pool row, no roster row, no ' +
+      'signals row, because nobody should be graded on work they are not doing. Their hours are ' +
+      'out of every availability and capacity figure. Work they delivered BEFORE going on the ' +
+      'bench still counts toward On-Time and Forecast.">' +
+      "<b>" + benchedN + "</b> on the bench <span class=\"cellSub\">(not shown)</span></span>");
+  }
   // Zero is a REPORTED value here, not an omission.
   bits.push('<span class="' + (s.unclassified ? "vr" : "") + '"><b>' + (s.unclassified || 0) +
     "</b> unclassified</span>");
@@ -7560,7 +8502,7 @@ function renderWfGrid_() {
         '<td class="tname" style="padding-left:16px" title="' + esc_(bd.why) +
           ' · Click to see WHO holds these hours.">' +
           (open ? "▾ " : "▸ ") +
-          esc_(c.band) + (bd.range && bd.range !== "—"
+          esc_(wfBandLabel_(c.pool, c.band)) + (bd.range && bd.range !== "—"
             ? ' <span class="cellSub">' + esc_(bd.range) + "</span>" : "") + "</td>" +
         '<td class="tnum ' + (c.structuralRisk ? "va" : "") + '">' + c.head + "</td>" +
         '<td class="tnum">' + wfHrs_(c.grossHrs) + "</td>" +
@@ -8303,7 +9245,7 @@ function pmGroupRowHtml_(r, d) {
     : "";
   return '<tr class="pmGroup"><td colspan="' + span + '">' +
     '<div class="pmHead" onclick="togglePmOpen_(' + jsArg_(r.pm) + ')">' +
-      "<b>" + (open ? "▾ " : "▸ ") + esc_(r.pm) + "</b>" +
+      "<b>" + (open ? "▾ " : "▸ ") + piiHtml_(r.pm) + "</b>" +
       // The two bars stay side by side and stay LABELLED. They are never
       // averaged: one is the PM's own field, the other is their team's hygiene.
       // A PM whose every epic is undated backlog has NO denominator here, and
@@ -8420,7 +9362,7 @@ function pmEpicHtml_(e, nowIso) {
       "<td>" + (gaps.length ? gaps.join(" · ") : '<span class="cellSub">&mdash;</span>') +
       "</td>" +
       "<td>" + (e.assignee
-        ? esc_(e.assignee)
+        ? piiHtml_(e.assignee)
         : '<span class="cellSub" title="No Jira assignee - this row was attributed by the ' +
           'Tempo project lead instead.">&mdash; via project</span>') + "</td>" +
     "</tr>";
@@ -8653,7 +9595,7 @@ function hoursCellHtml_(p, isos) {
   // anyone still arriving, away, or training — the same three exclusions the
   // recoverable-hours figure uses (oppRows_), so the bar and the headline can
   // never disagree about who is accountable for empty capacity.
-  var ineligible = p.newHire === true || p.onLeave === true || p.isIntern === true;
+  var ineligible = p.newHire === true || p.onLeave === true || p.onBench === true || p.isIntern === true;
   var idle = Math.max(0, w.avail - w.tracked);
   // TIME OFF IS A SUBSET OF NON-BILLABLE, not a fourth bucket beside it: the
   // server folds tracked NETSUITE/time-off hours into nonBillable by rule
@@ -8678,7 +9620,7 @@ function hoursCellHtml_(p, isos) {
     (ineligible ? "" : seg(idle, "segIdle", "idle")) +
     "</div>" +
     (ineligible ? '<span class="cellSub" title="Ramping new hire / intern / on leave — idle capacity is the explanation here, not a coaching signal (same exclusion as the recoverable-hours figure).">' +
-      (p.onLeave ? "on leave" : p.isIntern ? "in training" : "ramping") + "</span>" : "");
+      (p.onLeave ? "on leave" : p.onBench ? "on the bench" : p.isIntern ? "in training" : "ramping") + "</span>" : "");
 }
 
 /**
@@ -8706,6 +9648,13 @@ function personStateBadges_(p) {
   if (p.onLeave === true) {
     out += '<span class="stateBadge" title="' + esc_(p.leaveStatus || "On long leave") +
       ' — capacity and hours are excluded from every published rate.">🏖</span>';
+  }
+  if (p.onBench === true) {
+    out += '<span class="stateBadge" title="' +
+      esc_(p.benchStatus || "Crew - On the Bench") +
+      ' — crew between engagements, not contracted to deliver right now. Hours are ' +
+      'excluded from every availability figure; the person stays on the roster because ' +
+      'a bench is something to act on, not something to hide.">⏸</span>';
   }
   return out;
 }
@@ -9142,27 +10091,6 @@ function hygienePeopleFor_(isos) {
   return s;
 }
 
-/** One gap row: coloured against its gate, never against 100% — a 90% gate met
-    at 91% is green, and pretending otherwise trains people to ignore the view.
-
-    No Owner column (user decision 2026-08-03) and no Prereq / Target-week
-    columns either (user decision 2026-08-04) — accountability and scheduling
-    live in the requirements doc; this table is the work queue: what's
-    missing, how much, and what it blocks. */
-function hygieneRow_(g) {
-  var pct = g.value === null ? null : Math.round(g.value * 100);
-  var gate = Math.round(g.gate * 100);
-  var rag = pct === null ? "r" : (pct >= gate ? "g" : (pct >= gate - 10 ? "a" : "r"));
-  var mark = { g: "✔", a: "▲", r: "✖" }[rag];  // FR-4.4: readable without colour
-  return "<tr><td>" + esc_(g.name) +
-    (g.note ? '<div class="cellSub">' + esc_(g.note) + "</div>" : "") + "</td>" +
-    '<td class="hnum ' + rag + '">' + mark + " " + (pct === null ? "not connected" : pct + "%") +
-      '<div class="hbar"><i class="' + rag + '" style="width:' + (pct === null ? 0 : pct) + '%"></i></div>' +
-      (g.detail ? '<div class="cellSub">' + esc_(g.detail) + "</div>" : "") + "</td>" +
-    "<td>" + gate + "%</td>" +
-    "<td>" + esc_(g.blocks) + "</td></tr>";
-}
-
 /** Complete periods of the ACTIVE period type, oldest first. */
 // The view's own ◀ ▶ / Σ stepper (hygPeriods_/setHygIdx_) was removed
 // 2026-08-04: the header's analysis-period picker is universal, so one
@@ -9260,18 +10188,6 @@ function saveGates_() {
     hidden, and restoring it means restoring the builder from git. */
 function gapRetired_(g) {
   return !!g.retireWhenFull && g.value !== null && g.value >= 1;
-}
-
-/** One line under the queue naming every check that is passing at 100% and has
-    therefore left the table. Renders nothing when none have. */
-function gapsSolvedHtml_(h, pp) {
-  var done = gapsRetired_(h, pp);
-  if (!done.length) return "";
-  return '<div class="cellSub" style="margin-top:8px">✔ <b>Solved and retired from the queue:</b> ' +
-    done.map(function (g) { return esc_(g.name.replace(/^…and\s+/, "")); }).join("; ") +
-    ' — 100% across this window. <span title="Still measured on every rebuild. Each of these ' +
-    'returns to the queue on its own, with no deploy, the moment one record fails.">' +
-    "Still measured ⓘ</span></div>";
 }
 
 /** Live gaps — what the queue and the trust strip render. */
@@ -9397,83 +10313,50 @@ function gapsRowsAll_(h, pp) {
 }
 
 /**
- * The Actions tab's field/requirements half (spec §5.3/§5.4): the 🧬 by-type
- * matrix FIRST (which issue type to go fix), the gaps queue SECOND (whether a
- * metric can publish at all). Both are deliberately whole-population — the
- * dashboard filters never apply here, which is why the scope chip stays off
- * for this half and the caption below says so explicitly instead.
+ * What is left of the Actions tab's field/requirements half.
+ *
+ * THE GAPS QUEUE WAS DELETED 2026-08-17 (user), together with its
+ * whole-population caption. It was a ~10-row table stating each gap's coverage,
+ * its gate, and what it blocks.
+ *
+ * What replaced its job, and what did not:
+ *   · The three gates that decide whether a published metric may be quoted —
+ *     estimate coverage, due-date fill, logged fill — are on the DATA-TRUST
+ *     STRIP at the top of this tab, which reads from the same gapsRows_()
+ *     definitions. Nothing was lost there.
+ *   · The gaps with no strip tile (region tagging, team tagging, the billable
+ *     classification, capacity source, the SRSO binding, reopen/CSAT, the
+ *     engagement key) are no longer NAMED anywhere on screen. Their count still
+ *     reaches the Executive masthead — "N of M evidence gates are below their
+ *     bar" — so renderTrust_ now names the failing ones in one line beneath the
+ *     tiles. A verdict that counts things nothing can name is the failure this
+ *     avoids; it is a sentence, not the table coming back.
+ *
+ * `gapsRows_` / `gapsRowsAll_` therefore STAY: they are the shared definition
+ * list behind the trust strip, the masthead's gates finding and the shelf. Only
+ * the table that drew them is gone.
+ *
+ * This panel now carries the two things that were sitting inside it and belong
+ * to nothing else: the ⚙ coverage-gate editor (admin-only) and the leaver
+ * exclusion note. It renders NOTHING at all for a viewer with no exclusions to
+ * state, rather than an empty bordered box.
  */
 function renderHygPanel_() {
   var panel = document.getElementById("hygPanel");
-  var A = analysisHead_();
-  var done = A.done;
-  var unit = PERIOD_LABELS[STATE.period].toLowerCase();
-  // Window = the GLOBAL analysis-period picker (user decision 2026-08-04: the
-  // main filters are universal — one selection drives every surface, so this
-  // view's own date stepper is gone).
-  //
-  // A PLANNING window falls back to the last complete period and says so
-  // (2026-08-06). Field fill is counted over work that has been RESOLVED, so a
-  // week that has not happened has a zero denominator everywhere — and this
-  // view rendering 0% across the board would be read as the feed collapsing,
-  // which is the exact misreading the complete-periods-only rule was written
-  // to prevent. The IN-FLIGHT window is allowed through: a partly-filled month
-  // is a real, actionable fill rate, and it is the one a manager can still
-  // improve before the month closes.
-  var head = A.phase === "plan" ? (done[done.length - 1] || { label: "—", isos: [] }) : A.head;
-  var fellBack = A.phase === "plan";
-  var isos = head.isos;
-  var winLabel = head.label;
-  var h = hygieneFor_(isos), pp = hygienePeopleFor_(isos);
-
-  // Window banner. The header's Week/Month/Quarter chips choose the UNIT and
-  // the period picker beside them chooses the WINDOW — one selection drives
-  // this view like every other surface (the view's own stepper is gone).
-  var nav =
-    '<div class="hnav"><span class="hper">' + esc_(winLabel) +
-    (A.phase === "now" ? " ◐" : "") + "</span>" +
-    '<span class="cellSub" title="One selection drives every view: the header chips choose the unit, the period picker chooses the window.">' +
-      (fellBack
-        ? "planning window selected — field fill needs resolved work, so this is the last complete " + unit
-        : A.phase === "now"
-        ? "the current " + unit + " so far — fill can still be improved before it closes"
-        : "window follows the header period picker") + "</span></div>";
-
-  var gaps = gapsRows_(h, pp);
-
-  panel.innerHTML =
-    '<p class="cellSub">Whole-population view — the dashboard filters deliberately do not apply. ' +
-    "A well-tagged region does not make the feed publishable.</p>" + nav +
-    leaverNoteHtml_() +
-    // The 🧬 by-type matrix used to render FIRST here (spec §5.3, "which issue
-    // TYPE to go fix"). Removed 2026-08-17: it summarised compliance per
-    // evaluated parameter, which the 👥 signals roster above already does per
-    // person — and a person can be asked to fix their tickets, where an issue
-    // type cannot. What is left on this panel is the gaps queue, which answers
-    // a genuinely different question: not "who is missing fields" but "can this
-    // metric be published at all".
-    '<div>' +
-    '<h4>Gaps queue</h4>' +
-    // Coverage-colour key (user request 2026-08-04). "Its gate, never 100%"
-    // is the caption's whole job: a 90% gate met at 91% is green, and a reader
-    // grading rows against 100% would escalate rows that are already done.
-    '<div class="cellSub" style="margin:10px 0 4px">Coverage colour — each row is graded against its <b>own gate</b>, never against 100%: ' +
-    keySwatch_("var(--pos)", "✔ green = at or above the gate") + " · " +
-    keySwatch_("var(--amber)", "▲ amber = under 10 pts below it") + " · " +
-    keySwatch_("var(--warn)", "✖ red = 10+ pts below, or the feed is not connected") + "</div>" +
-    '<div class="gwrap"><table class="hyg"><tr><th>Gap</th><th>Coverage</th><th>Gate</th>' +
-    "<th>Blocks</th></tr>" +
-    gaps.map(hygieneRow_).join("") + "</table></div>" +
-    gapsSolvedHtml_(h, pp) +
-    gateEditorHtml_() +
-    '<p class="cellSub">Every figure above covers <b>' + esc_(winLabel) + "</b>" +
-      " — pick another period in the header to walk the history. " +
-      "Gates come from the metric registry (v" +
-      esc_((MODEL.meta.registry || {}).version || "—") + "). " +
-      (MODEL.meta.suppressBelowGate === true
-        ? "A metric more than 10 points below its gate is suppressed rather than published (FR-2.2)."
-        : "A metric below its gate is published with a low-confidence chip rather than suppressed.") + "</p>" +
-    "</div>";
+  // No window banner and no period read here any more. Both belonged to the
+  // queue's field-fill figures; the gate editor is a settings surface and the
+  // leaver note is a scoping fact, and neither follows the period picker. A
+  // window label over content that does not follow a window is worse than none.
+  var body = leaverNoteHtml_() + gateEditorHtml_();
+  if (!body) {
+    // Nothing to show this role. Collapse the panel rather than leaving an empty
+    // card, which reads as a surface that failed to load.
+    panel.innerHTML = "";
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "";
+  panel.innerHTML = body;
 }
 
 /** Gate for a signal field, from the metric registry when the field names one
@@ -9698,35 +10581,269 @@ function signalSummary_(isos) {
     called because the gaps queue's caption names the same window. */
 function setTypePop_(v) { STATE.typePop = v; renderRoster_(); renderHygPanel_(); }
 
+// ══════════════════════════════════════════════════════════════════════════
+// ACCESS CONTROL (admin only)
+//
+// The working copy lives here between load and save. Nothing round-trips until
+// Save is pressed, so adding four people and removing one is ONE decision with
+// one confirmation, not five separate writes that can half-apply.
+//
+// `orig` is the snapshot the server sent. Every dirty check diffs against it,
+// which is what lets the page state what is about to happen rather than just
+// offering a button that is always available.
+// ══════════════════════════════════════════════════════════════════════════
+var ACCESS_ = null;
+var ACCESS_SAY_ = { admin: null, viewer: null };   // per-list inline message
+
+/** Splits an address into the part that identifies a person and the part that
+    repeats on every row. Falls back to treating the whole string as the name,
+    so a malformed entry already in Script Properties still renders readably
+    instead of disappearing into an empty span. */
+function accParts_(email) {
+  var at = String(email == null ? "" : email).lastIndexOf("@");
+  return at === -1 ? { name: String(email == null ? "" : email), domain: "" }
+                   : { name: String(email).slice(0, at), domain: String(email).slice(at) };
+}
+
+/** Shape check only — deliberately not an RFC-complete pattern. The server's
+    allowlist is the authority on whether an address WORKS; this exists to catch
+    the typo before it is saved, and being stricter than the mail system would
+    reject addresses that are perfectly real. */
+function accIsEmail_(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim()); }
+
+/** The org's own domain, LEARNED from the bootstrap admin rather than declared.
+    A hardcoded "@servicerocket.com" here would be a second place to edit the
+    day the company changes domain, and the one place that would be forgotten. */
+function accOrgDomain_() {
+  return ACCESS_ ? accParts_(ACCESS_.bootstrapAdmin).domain.toLowerCase() : "";
+}
+
+/** Where this address already sits, or "" — so a duplicate can be refused with
+    the reason rather than with a bare "already exists". */
+function accWhere_(st, email) {
+  var e = String(email || "").trim().toLowerCase();
+  if (!e) return "";
+  if (String(st.bootstrapAdmin || "").toLowerCase() === e) return "the owner";
+  if (st.admins.some(function (a) { return a.toLowerCase() === e; })) return "an admin";
+  if (st.viewers.some(function (v) { return v.toLowerCase() === e; })) return "a viewer";
+  return "";
+}
+
+/** One person's row. `locked` is the bootstrap admin: shown IN the list, because
+    he has access and the list claims to be everyone who does, but with no remove
+    control because the server would ignore it. */
+function accRowHtml_(email, role, opts) {
+  var o = opts || {};
+  var p = accParts_(email);
+  return '<div class="accRow ' + (role === "admin" ? "isAdmin" : "isViewer") + '">' +
+    '<span class="accWho" title="' + esc_(email) + '">' +
+      '<span class="accName">' + esc_(p.name) + "</span>" +
+      '<span class="accDomain">' + esc_(p.domain) + "</span></span>" +
+    (o.locked ? '<span class="accTag" title="Set in Security.js and always an admin. ' +
+                'Removing it here would do nothing — the server puts it back on every check.">' +
+                "🔒 owner</span>" : "") +
+    (o.you ? '<span class="accTag" title="This is the account you are signed in as.">you</span>' : "") +
+    (o.locked ? ""
+              : '<button class="accRm" onclick="accRemove_(' + jsArg_(role) + "," + jsArg_(email) +
+                ')" title="' + esc_("Remove " + email + " from this list") +
+                '" aria-label="' + esc_("Remove " + email) + '">Remove</button>') +
+    "</div>";
+}
+
+/** One role's card: header, rows, add field, and whatever the last add attempt
+    had to say about itself. */
+function accCardHtml_(st, role) {
+  var isAdmin = role === "admin";
+  var list = isAdmin ? st.admins : st.viewers;
+  var locked = isAdmin && st.bootstrapAdmin ? 1 : 0;
+  var me = String(st.callerEmail || "").toLowerCase();
+  var rows = (isAdmin && st.bootstrapAdmin
+                ? accRowHtml_(st.bootstrapAdmin, "admin", { locked: true,
+                    you: String(st.bootstrapAdmin).toLowerCase() === me })
+                : "") +
+    list.map(function (e) {
+      return accRowHtml_(e, role, { you: String(e).toLowerCase() === me });
+    }).join("");
+  var say = ACCESS_SAY_[role];
+  return '<div class="accCard">' +
+    '<div class="accCardHead"><b>' + (isAdmin ? "Admins" : "Viewers") + "</b>" +
+      '<span class="accCount">' + (list.length + locked) + "</span>" +
+      '<span class="accWhat">' + (isAdmin ? "Full dashboard, plus this page"
+                                          : "Full dashboard, read-only") + "</span></div>" +
+    (rows || '<div class="accEmpty">' +
+      (isAdmin ? "No admins beyond the owner. Add an email to let someone else manage this list."
+               : "No viewers yet. Add an email to give someone read-only access.") + "</div>") +
+    '<div class="accAdd">' +
+      '<input id="accIn_' + role + '" type="email" autocomplete="off" spellcheck="false" ' +
+        'placeholder="name@company.com" aria-label="' +
+        (isAdmin ? "Add an admin" : "Add a viewer") + '" ' +
+        "onkeydown=\"if(event.key==='Enter'){event.preventDefault();accAdd_(" + jsArg_(role) + ")}\">" +
+      '<button class="btn" onclick="accAdd_(' + jsArg_(role) + ')">Add</button></div>' +
+    (say ? '<div class="accSay ' + esc_(say.kind) + '">' + esc_(say.text) + "</div>" : "") +
+    "</div>";
+}
+
+/** What Save is about to do, in words. A security page should never offer a
+    button whose effect the reader has to reconstruct from memory of what they
+    clicked. Returns "" when nothing changed, which is also what disables Save. */
+function accPending_(st) {
+  var o = st.orig, bits = [];
+  function diff(now, was, noun) {
+    var added = now.filter(function (e) { return was.indexOf(e) === -1; }).length;
+    var gone = was.filter(function (e) { return now.indexOf(e) === -1; }).length;
+    if (added) bits.push("+" + added + " " + noun + (added === 1 ? "" : "s"));
+    if (gone) bits.push("−" + gone + " " + noun + (gone === 1 ? "" : "s"));
+  }
+  diff(st.admins, o.admins, "admin");
+  diff(st.viewers, o.viewers, "viewer");
+  if (st.openAccess !== o.openAccess) bits.push("open access " + (st.openAccess ? "ON" : "off"));
+  return bits.join(", ");
+}
+
+/**
+ * The whole panel, as a pure function of the working state.
+ *
+ * Extracted from renderAccess_ so it can be tested without a google.script.run
+ * round-trip — the same reason rosterCsvLines_ is a builder rather than part of
+ * the download path. renderAccess_ fetches; this decides what the fetch means.
+ */
+function accessPanelHtml_(st) {
+  var pending = accPending_(st);
+  var total = st.admins.length + st.viewers.length + (st.bootstrapAdmin ? 1 : 0);
+  return '<div class="accHead"><h3>Access control</h3>' +
+      '<span class="cellSub">' + total + " " + (total === 1 ? "person" : "people") +
+      " can open this dashboard</span></div>" +
+    '<p class="cellSub">Changes apply when you save. Everyone here signs in with their ' +
+      "own account — there is no shared link and no password.</p>" +
+    '<div class="accGrid two">' + accCardHtml_(st, "admin") + accCardHtml_(st, "viewer") + "</div>" +
+    '<div class="accOpen' + (st.openAccess ? " on" : "") + '">' +
+      '<label class="accSwitch"><input type="checkbox" id="accOpenSw"' +
+        (st.openAccess ? " checked" : "") + ' onchange="accToggleOpen_(this.checked)">' +
+        '<span class="accTrack"></span><span>Open access</span></label>' +
+      '<div class="cellSub" style="margin-top:8px">' +
+        (st.openAccess
+          ? "<b>Anyone with the link can open this dashboard</b>, without being on either list. " +
+            "They come in as a guest: utilization and forecast variance stay hidden, and the " +
+            "Actions, Project Managers and Workforce tabs do not appear. Turn this off after the " +
+            "demo."
+          : "Only the people listed above can open this dashboard. Turn this on for an all-hands " +
+            "or a demo, and off again afterwards.") + "</div></div>" +
+    '<div class="accBar">' +
+      '<span class="accPending">' +
+        (pending ? "Pending: <b>" + esc_(pending) + "</b>"
+                 : "No changes to save.") + "</span>" +
+      '<span id="accMsg" class="cellSub"></span>' +
+      '<button class="btn" id="accSave" onclick="saveAccess_()"' +
+        (pending ? "" : " disabled") + ">Save changes</button></div>";
+}
+
 function renderAccess_() {
   var panel = document.getElementById("viewAccess");
-  panel.innerHTML = "Loading access settings…";
+  panel.innerHTML = '<div class="cellSub">Loading access settings…</div>';
   google.script.run.withSuccessHandler(function (s) {
-    panel.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
-      "<h3 style=\"flex:1\">Access Control</h3></div>" +
-      '<p class="cellSub">Bootstrap admin: ' + esc_(s.bootstrapAdmin) + " (not removable)</p>" +
-      '<div class="blbl">ADMINS (comma-separated)</div>' +
-      '<input id="accAdmins" style="width:100%" value="' + esc_(s.admins.join(", ")) + '">' +
-      '<div class="blbl">VIEWERS (directs and above — comma-separated)</div>' +
-      '<input id="accViewers" style="width:100%" value="' + esc_(s.viewers.join(", ")) + '">' +
-      '<label style="display:block;margin:10px 0"><input type="checkbox" id="accOpen"' +
-        (s.openAccess ? " checked" : "") + "> Open access (demo only)</label>" +
-      '<button class="btn" onclick="saveAccess_()">Save</button> <span id="accMsg"></span>';
-  }).withFailureHandler(function (e) { panel.innerHTML = "⚠️ " + esc_(e.message); })
-    .getDeliveryAccessSettings();
+    ACCESS_ = {
+      admins: (s.admins || []).slice(),
+      viewers: (s.viewers || []).slice(),
+      openAccess: !!s.openAccess,
+      bootstrapAdmin: s.bootstrapAdmin || "",
+      callerEmail: s.callerEmail || "",
+      // The snapshot every dirty check diffs against.
+      orig: { admins: (s.admins || []).slice(), viewers: (s.viewers || []).slice(),
+              openAccess: !!s.openAccess },
+    };
+    ACCESS_SAY_ = { admin: null, viewer: null };
+    accPaint_();
+  }).withFailureHandler(function (e) {
+    panel.innerHTML = '<div class="emptyState">⚠️ ' + esc_(e.message) + "</div>";
+  }).getDeliveryAccessSettings();
+}
+
+/** Repaint from the working copy. Kept separate from renderAccess_ so an edit
+    never re-fetches — a round-trip on every keystroke would also mean the
+    server's copy silently overwriting edits in progress. */
+function accPaint_() {
+  if (!ACCESS_) return;
+  document.getElementById("viewAccess").innerHTML = accessPanelHtml_(ACCESS_);
+}
+
+/** Add one address to a list, validating in the order a person would: is it an
+    address at all, is it already somewhere, and is it one of ours. */
+function accAdd_(role) {
+  if (!ACCESS_) return;
+  var input = document.getElementById("accIn_" + role);
+  var raw = String(input && input.value || "").trim();
+  ACCESS_SAY_[role] = null;
+  if (!raw) { accPaint_(); return; }
+  if (!accIsEmail_(raw)) {
+    ACCESS_SAY_[role] = { kind: "bad", text: "“" + raw + "” is not an email address." };
+    accPaint_(); return;
+  }
+  var already = accWhere_(ACCESS_, raw);
+  if (already) {
+    ACCESS_SAY_[role] = { kind: "bad", text: raw + " is already " + already + "." };
+    accPaint_(); return;
+  }
+  var org = accOrgDomain_();
+  var mine = accParts_(raw).domain.toLowerCase();
+  (role === "admin" ? ACCESS_.admins : ACCESS_.viewers).push(raw);
+  // A foreign domain is a WARNING, not a refusal. Contractors and partners are
+  // real, and a rule that silently blocks them would send someone to edit
+  // Script Properties by hand — which is the thing this page exists to replace.
+  if (org && mine && mine !== org) {
+    ACCESS_SAY_[role] = { kind: "warn", text: "Added. " + mine + " is outside " + org +
+      " — check that is intended before saving." };
+  }
+  if (input) input.value = "";
+  accPaint_();
+}
+
+/** Remove one address. Removing YOURSELF is the one action here that can lock
+    the person doing it out of this page, so it asks first — and says exactly
+    what will happen rather than "are you sure?". */
+function accRemove_(role, email) {
+  if (!ACCESS_) return;
+  var me = String(ACCESS_.callerEmail || "").toLowerCase();
+  if (String(email).toLowerCase() === me &&
+      typeof confirm === "function" &&
+      !confirm("Remove your own account?\n\nAfter you save, you will lose access to this page " +
+               "and only another admin can put you back.")) return;
+  ACCESS_SAY_[role] = null;
+  var key = role === "admin" ? "admins" : "viewers";
+  ACCESS_[key] = ACCESS_[key].filter(function (e) { return e !== email; });
+  accPaint_();
+}
+
+function accToggleOpen_(on) {
+  if (!ACCESS_) return;
+  ACCESS_.openAccess = !!on;
+  accPaint_();
 }
 
 function saveAccess_() {
+  if (!ACCESS_) return;
+  var btn = document.getElementById("accSave");
   var msg = document.getElementById("accMsg");
-  msg.textContent = "Saving…";
-  google.script.run.withSuccessHandler(function () { msg.textContent = "✅ Saved"; })
-    .withFailureHandler(function (e) { msg.textContent = "⚠️ " + e.message; })
-    .saveDeliveryAccessSettings({
-      admins: document.getElementById("accAdmins").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
-      viewers: document.getElementById("accViewers").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
-      openAccess: document.getElementById("accOpen").checked,
-    });
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = "Saving…";
+  google.script.run.withSuccessHandler(function () {
+    // The saved state becomes the new baseline, so the page immediately reads
+    // "No changes to save" rather than continuing to offer a save that would
+    // now be a no-op.
+    ACCESS_.orig = { admins: ACCESS_.admins.slice(), viewers: ACCESS_.viewers.slice(),
+                     openAccess: ACCESS_.openAccess };
+    accPaint_();
+    var m2 = document.getElementById("accMsg");
+    if (m2) m2.textContent = "✅ Saved";
+  }).withFailureHandler(function (e) {
+    var m2 = document.getElementById("accMsg");
+    if (m2) m2.textContent = "⚠️ " + e.message;
+    var b2 = document.getElementById("accSave");
+    if (b2) b2.disabled = false;
+  }).saveDeliveryAccessSettings({
+    admins: ACCESS_.admins.slice(),
+    viewers: ACCESS_.viewers.slice(),
+    openAccess: ACCESS_.openAccess,
+  });
 }
 
 /** One CSV field, quoted only when it needs to be (comma, quote or newline).

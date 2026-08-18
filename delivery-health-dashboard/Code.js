@@ -265,7 +265,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "4.1",
+  version: "4.2",
   updated: "2026-08-17",  // 2026.W34
 
   metrics: {
@@ -318,6 +318,7 @@ var METRIC_REGISTRY_ = {
         "Accuracy is FLOORED AT ZERO. The raw Dictionary expression goes negative past a 2× over-run (1 − 2.0 = −100%), which is not a share of anything; the floor keeps the mean interpretable.",
         "Epics carrying an estimate but zero logged time are a time-tracking failure, not a forecasting one: counted toward coverage only, never scored. The raw formula would score them 0% accuracy, reporting a worklog gap as a forecasting miss.",
         "Time Spent comes from Jira, not Tempo. Where a team logs to Tempo but not to the Jira issue, the two diverge.",
+        "ATTRIBUTION IS PARTLY INFERRED (2026-08-17). An epic whose own assignee does not resolve to a roster person is attributed to the roster person carrying most of its children, ties broken alphabetically. Epics are containers and are routinely unassigned, so the previous assignee-only rule discarded most of the population before counting — the metric went blank at week grain and in a part-finished month on an EMPTY sample rather than on a measured one. The variance figures are unchanged; only WHO each epic is filed under is inferred, which matters when the number is sliced by region, level, team or PM. Each card states how many of its epics were attributed this way, and epics that still resolve to nobody remain counted in meta.jiraUnattributed.forecast.",
       ],
     },
 
@@ -862,6 +863,10 @@ var METRIC_REGISTRY_ = {
     // changed` marker. This entry is the dated note instead — a reader who
     // comes looking for the 🧬 matrix in three months needs to find out here
     // that it was retired on purpose, not assume it broke.
+    { version: "4.2", date: "2026-08-17", author: "Alex López",
+      affects: ["forecast"],
+      change: "Forecast Accuracy attributes an epic to the roster person carrying most of its CHILDREN when the epic's own assignee does not resolve. Before this, such epics were dropped entirely; epics are containers and are routinely unassigned, so the published mean was taken over a small, silently selected subset and the card went blank at week grain and in a part-finished month. New: `epicChildOwners_`, a 4th `childOwners` argument on `forecastBuckets_`, and `nViaChildren` on each bucket (aggregated client-side) so the card can state how much of the number rests on the inference. The empty state now distinguishes 'no epics closed' from 'epics closed but nobody could be resolved' instead of blaming the active filters, and the card finally prints `meta.jiraUnattributed.forecast`, which the server has always shipped and the client never rendered.",
+      rationale: "A metric that empties on an unmeasured population looks identical to one that empties on a measured zero, and only the second is information. NOT the project-lead fallback the PM tab uses: PMs are structurally absent from the delivery population (family 15 is not a TRACKING_FAMILY and a live assertion requires PMO in wf.scope.absentPools), so resolving a lead to a roster person returns null by construction and that fallback would have recovered nothing while appearing to fix it. Children are on the roster and logged the hours the variance is measured from. The trade accepted: attribution for these epics is an INFERENCE, so a region or level slice can move an epic between rows where the assignee-only rule would simply have hidden it — which is why this entry carries affects:['forecast'] and the trend line gets a definition-changed marker." },
     { version: "4.1", date: "2026-08-17", author: "Alex López",
       affects: [],
       change: "The 🧬 field-fill-by-issue-type matrix and the roster-join check are REMOVED (user decision 2026-08-17): both summarised compliance per evaluated parameter, and the 👥 signals roster already reads the same parameters per rocketeer — which names somebody who can act, where a per-type or org-wide percentage names nobody. Gone: `typeHygiene` from the payload, `typeHygieneBuckets_` / `TYPE_HYG_FIELDS_` / `TYPE_HYG_MAX_KEYS_` from the server, `hygieneBuckets[].resAttr`, the gaps queue's '…and that assignee resolves to a roster person' row, and the data-trust strip's 'Roster join' tile. Kept: `typeHygOpen_` / `dhStarted_` / `dueExpected_` / `timeExpected_` / `dhHasDue_`, which five other surfaces read, and `typeFieldGate_`, which the roster uses to resolve a gate from this registry. The join itself is UNCHANGED and still gates every card — what stopped is the published measurement of it, which had read 100% since the 2026-08-04 attribution fix. Reversal is not a config flag: restoring it means restoring the builder from git.",
@@ -1878,18 +1883,89 @@ function onTimeBuckets_(issues, resolvePerson, scope) {
  * @param {Function} resolvePerson Jira assignee → roster display name, or null
  * @param {number=} band tolerance, default CONFIG_DH.FORECAST_BAND (test hook)
  */
-function forecastBuckets_(epics, resolvePerson, band) {
+/**
+ * EPIC KEY → the roster person carrying most of that epic's children.
+ *
+ * WHY THIS EXISTS (user decision 2026-08-17). Forecast Accuracy dropped every
+ * epic whose ASSIGNEE did not resolve to a roster person, and epics are
+ * containers — "the assignee is often nobody" (see the PM ATTRIBUTION header).
+ * The metric therefore went blank at week grain and in a part-finished month,
+ * not because forecasting was unmeasured but because most of the population had
+ * been discarded before counting. Same silent-subset failure Bug Count already
+ * carries a registry deviation for.
+ *
+ * WHY NOT THE PROJECT LEAD, which is what the PM tab falls back to: PMs are
+ * structurally absent from the delivery population (family 15 is not a
+ * TRACKING_FAMILY, and a live assertion REQUIRES PMO in wf.scope.absentPools),
+ * so resolvePerson(lead) is null by construction and that fallback recovers
+ * exactly nothing. The PM tab gets away with it because it is PROJECT-grained
+ * and needs no roster join; these buckets are person-grained and do.
+ *
+ * The children ARE delivery people on the roster — they logged the hours the
+ * variance is measured from. Attributing the epic to them keeps the per-person
+ * join, which is what lets the universal filters and the Tier-3 breakdown chart
+ * reach this metric at all.
+ *
+ * TIE-BREAK IS DETERMINISTIC, and it has to be: an epic must land in the same
+ * bucket on every rebuild, or one week reports two numbers to two readers.
+ * Most children wins; ties go to the alphabetically first name. That last part
+ * is arbitrary, and it is stated rather than hidden — a tie means the epic was
+ * genuinely shared, and no rule recovers a single owner from that.
+ *
+ * @param {Object} jira readJiraRaw_ output (issues include epics)
+ * @param {Function} resolvePerson Jira assignee → roster display name, or null
+ * @returns {Object} EPIC KEY (upper-case) → roster display name
+ */
+function epicChildOwners_(jira, resolvePerson) {
+  var all = (jira && jira.issues) || [];
+  var byKey = {};
+  all.forEach(function (it) { if (it && it.key) byKey[String(it.key).toUpperCase()] = it; });
+  var tally = {};                                   // epic key → { person: childCount }
+  all.forEach(function (it) {
+    if (!it || it.isEpic) return;
+    var ek = dhEpicOfChain_(it, byKey);
+    if (!ek) return;
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!person) return;
+    if (!tally[ek]) tally[ek] = {};
+    tally[ek][person] = (tally[ek][person] || 0) + 1;
+  });
+  var out = {};
+  Object.keys(tally).forEach(function (ek) {
+    var best = null, bestN = 0;
+    // Sorted first, then a STRICT > — so the alphabetically first name wins a
+    // tie and the result never depends on object key order.
+    Object.keys(tally[ek]).sort().forEach(function (nm) {
+      if (tally[ek][nm] > bestN) { best = nm; bestN = tally[ek][nm]; }
+    });
+    if (best) out[ek] = best;
+  });
+  return out;
+}
+
+function forecastBuckets_(epics, resolvePerson, band, childOwners) {
   var map = {}, unattributed = 0;
   var bnd = band === undefined ? (CONFIG_DH.FORECAST_BAND || 0.10) : band;
+  var kids = childOwners || {};
   epics.forEach(function (ep) {
     if (!ep.resolved || isNaN(ep.resolved.getTime())) return;
+    // Direct evidence first — the epic's own assignee — and only then the
+    // inference from its children. Order matters: an epic that names an owner
+    // is not a case for guessing. The source is counted per bucket so the card
+    // can say how much of the number rests on the inference.
     var person = resolvePerson ? resolvePerson(ep.assignee || "") : null;
+    var viaChildren = false;
+    if (!person) {
+      person = kids[String(ep.key || "").toUpperCase()] || null;
+      viaChildren = !!person;
+    }
     if (!person) { unattributed++; return; }
     var iso = weekKeyFromDate_(ep.resolved);
     var k = iso + "" + person;
     if (!map[k]) map[k] = { iso: iso, person: person, n: 0, nWithin: 0, nAll: 0,
-                            nNoTime: 0, absVars: [],
+                            nNoTime: 0, absVars: [], nViaChildren: 0,
                             nMissOver: 0, nMissUnder: 0 };
+    if (viaChildren) map[k].nViaChildren++;
     map[k].nAll++; // every resolved epic — coverage denominator for the tile
     var est = Number(ep.estSec) || 0;
     if (est <= 0) return; // unestimated — counted in coverage only
@@ -6241,8 +6317,14 @@ function assembleModel_(inputs, win) {
 
   var onTime = inputs.jira.available
     ? onTimeBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+  // Epic → child-owner index, built from the SAME leaver-scoped feed the
+  // buckets read, so an epic and its children can never be scoped
+  // differently. Cheap: one pass over issues, reused for every epic.
+  var epicKids = inputs.jira.available
+    ? epicChildOwners_(jiraScoped, resolvePerson) : {};
   var forecast = inputs.jira.available
-    ? forecastBuckets_(jiraScoped.epics, resolvePerson) : { buckets: [], unattributed: 0 };
+    ? forecastBuckets_(jiraScoped.epics, resolvePerson, undefined, epicKids)
+    : { buckets: [], unattributed: 0 };
   var hygiene = inputs.jira.available
     ? hygieneBuckets_(jiraScoped, resolvePerson) : [];
   var rework = inputs.jira.available
@@ -7610,6 +7692,65 @@ function _test_forecastAccuracy_() {
   ];
   var r = forecastBuckets_(epics, resolve);
   assert_(r.buckets.length === 1, "one person bucket");
+
+  // ── CHILD-OWNER FALLBACK (2026-08-17) ────────────────────────────────────
+  // The defect: an epic whose assignee does not resolve was dropped outright,
+  // and epics are containers that are routinely unassigned. Week-grain and
+  // part-finished-month windows therefore went blank on an EMPTY population,
+  // while the card said "no epics closed under the active filters" — blaming a
+  // filter for a pipeline fact. Epics now fall back to the roster person
+  // carrying most of their children.
+  (function () {
+    var res2 = function (raw) { return (raw === "Ana" || raw === "Bo") ? raw : null; };
+    var jira = { issues: [
+      { key: "GTT-1", isEpic: true, assignee: "" },                    // unassigned epic
+      { key: "GTT-10", epicKey: "GTT-1", assignee: "Ana" },
+      { key: "GTT-11", epicKey: "GTT-1", assignee: "Ana" },
+      { key: "GTT-12", epicKey: "GTT-1", assignee: "Bo" },             // Ana 2, Bo 1 → Ana
+      { key: "GTT-2", isEpic: true, assignee: "" },                    // children off-roster
+      { key: "GTT-20", epicKey: "GTT-2", assignee: "Ghost" },
+      { key: "GTT-3", isEpic: true, assignee: "" },                    // TIE: Ana 1, Bo 1
+      { key: "GTT-30", epicKey: "GTT-3", assignee: "Bo" },
+      { key: "GTT-31", epicKey: "GTT-3", assignee: "Ana" },
+    ] };
+    var kids = epicChildOwners_(jira, res2);
+    assert_(kids["GTT-1"] === "Ana", "the epic goes to whoever carries most of its children");
+    assert_(!("GTT-2" in kids), "children who are not on the roster resolve nobody — no invented owner");
+    assert_(kids["GTT-3"] === "Ana",
+            "a TIE resolves alphabetically — deterministic, so two rebuilds cannot disagree");
+
+    var eps = [
+      { key: "GTT-1", estSec: 100, spentSec: 100, resolved: new Date(2026, 6, 29), assignee: "" },
+      { key: "GTT-2", estSec: 100, spentSec: 100, resolved: new Date(2026, 6, 29), assignee: "" },
+      { key: "GTT-9", estSec: 100, spentSec: 100, resolved: new Date(2026, 6, 29), assignee: "Bo" },
+    ];
+    // BEFORE: no fallback. Only the directly-assigned epic survives.
+    var before = forecastBuckets_(eps, res2);
+    assert_(before.buckets.length === 1 && before.unattributed === 2,
+            "without the fallback, two of three closed epics are discarded");
+
+    // AFTER: GTT-1 reaches Ana through her children; GTT-2 still cannot be
+    // attributed and is still COUNTED as unattributed rather than vanishing.
+    var after = forecastBuckets_(eps, res2, undefined, kids);
+    var byPerson = {};
+    after.buckets.forEach(function (b) { byPerson[b.person] = b; });
+    assert_(byPerson.Ana && byPerson.Ana.nAll === 1, "the unassigned epic now lands on Ana");
+    assert_(byPerson.Ana.nViaChildren === 1, "…and the bucket records that it was INFERRED");
+    assert_(byPerson.Bo && byPerson.Bo.nAll === 1 && byPerson.Bo.nViaChildren === 0,
+            "a directly-assigned epic is unchanged and never marked inferred");
+    assert_(after.unattributed === 1,
+            "an epic nobody can be resolved for is still counted, not silently dropped");
+
+    // DIRECT EVIDENCE WINS. If the epic names an owner, the children must not
+    // override it — otherwise a busy child assignee would quietly capture epics
+    // their PM had already assigned to somebody else.
+    var owned = forecastBuckets_(
+      [{ key: "GTT-1", estSec: 100, spentSec: 100, resolved: new Date(2026, 6, 29), assignee: "Bo" }],
+      res2, undefined, kids);
+    assert_(owned.buckets[0].person === "Bo" && owned.buckets[0].nViaChildren === 0,
+            "the epic's own assignee beats the child inference");
+  })();
+
   var b = r.buckets[0];
   assert_(b.person === "Ana" && b.iso === "2026.W31" && b.n === 4, "4 measurable resolved epics for Ana");
   assert_(b.nAll === 6, "coverage: unestimated + zero-worklog epics count in nAll only");

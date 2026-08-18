@@ -97,7 +97,7 @@ button, so a forbidden id typed by hand still lands on Executive.
 | Tab | Answers | Who sees it |
 |---|---|---|
 | 📊 **Executive** | *Are we on target, and where aren't we?* | everyone with access |
-| 🎯 **Actions** | *Who and what needs action?* | admin + viewer |
+| 🎯 **Actions** | *Who and what needs action?* — data trust, signals roster, backlog health, undated epics, and the ⚙ gates editor for admins | admin + viewer |
 | 🗓 **PM** | *Which epics are in flight, and is their own work scheduled past them?* | admin + viewer |
 | 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
 | 🔒 **Access** | — | admin only |
