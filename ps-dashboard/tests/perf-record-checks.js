@@ -239,5 +239,30 @@ ck('print mode removed',          (html.match(/classList\.remove\('pr-print'\)/g
 ck('print mode CSS clamps width', /\.pr-drill\.pr-print \{ max-width: 820px/.test(html));
 ck('RCR monthly join wired',      html.indexOf('perfRcrMonthKey_(') >= 0 && /agg\.rcr = /.test(html));
 
+// ── v4: perfDeltaTxt_ ────────────────────────────────────────────────────────
+ck('delta pct +6%',   typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('goals', 0.80, 0.86) === '+6%');
+ck('delta pct −12%',  typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('tracked', 0.92, 0.80) === '-12%');
+ck('delta score −3',  typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('score', 86, 83) === '-3');
+ck('delta rcr +0.2',  typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('rcr', 2.0, 2.2) === '+0.2');
+ck('delta zero → ""', typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('score', 80, 80) === '');
+ck('delta categorical → ""', typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('kudos', 1, 2) === '');
+ck('delta null → ""', typeof perfDeltaTxt_ === 'function' && perfDeltaTxt_('score', null, 80) === '');
+
+// ── v4: static assertions ────────────────────────────────────────────────────
+ck('workspace flex + min-width 0', /\.pr-workspace > \.pr-scroll \{ flex: 1 1 auto; min-width: 0; \}/.test(html));
+ck('panel width clamp',            html.indexOf('clamp(600px, 40vw, 900px)') >= 0);
+ck('container query drawer',       html.indexOf('@container drawer (min-width: 760px)') >= 0);
+ck('chart area fill removed',      !/path d="' \+ area/.test(html));
+ck('chart target line support',    /opts\.target != null/.test(html));
+ck('panel is a dialog',            /role="dialog"/.test(html));
+ck('aria-sort present',            /aria-sort="/.test(html));
+ck('th scope col',                 html.indexOf('<th scope="col"') >= 0);
+ck('row delegation (no inline row onclick)', !/tr class="pr-row[^>]*onclick/.test(html));
+ck('kudos wears June',             /pr-star\s*\{\s*color:\s*var\(--june\)/.test(html));
+ck('print sheet present',          html.indexOf('@media print') >= 0);
+ck('localStorage guarded',         /try \{ localStorage/.test(html));
+ck('reduced motion respected',     /prefers-reduced-motion: reduce\) \{ \.pr-panel/.test(html));
+ck('scroll gutter stable',         html.indexOf('scrollbar-gutter: stable') >= 0);
+
 console.log((fail ? '❌ ' : '✅ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
