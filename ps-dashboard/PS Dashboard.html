@@ -762,12 +762,28 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-drill { background: #FAFBFC; border: 1px solid var(--border); border-radius: 10px;
   padding: 12px 14px; margin: 4px 0 8px; font-size: 11.5px; white-space: normal; overflow-x: auto; }
 .pr-drill-actions { float: right; display: flex; gap: 6px; }
-.pr-block { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+/* Severity-flow grid (spec v3 §C): blocks keep the red→info sort, flowing
+   row-major — worst signal is always top-left. min-width:0 + overflow-x lets a
+   wide SVG scroll inside its cell instead of blowing up the grid. */
+.pr-drill-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 18px; margin-top: 10px; }
+@media (max-width: 900px) { .pr-drill-grid { grid-template-columns: 1fr; } }
+.pr-block { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; overflow-x: auto; }
+/* Per-week PTO heatmap (spec v3 §D): green Good / red At Risk / gray no data. */
+.pr-heatwrap { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 4px; }
+.pr-heat { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+.pr-heat.g { background: #00875A; } .pr-heat.r { background: #DE350B; } .pr-heat.m { background: #C1C7D0; }
+.pr-heat.cur { opacity: .35; }
+/* Print mode (spec v3 §F): applied only during html2canvas capture — clamps the
+   card and pins 2 columns so the PNG is compact regardless of live viewport. */
+.pr-drill.pr-print { max-width: 820px; }
+.pr-drill.pr-print .pr-drill-grid { grid-template-columns: repeat(2, 1fr); }
 .pr-block.info h4 { color: var(--muted); }
 .pr-drill h4 { margin: 10px 0 4px; font-size: 11px; }
 .pr-drill table { border-collapse: collapse; }
 .pr-drill td, .pr-drill th { padding: 2px 12px 2px 0; font-size: 11px; text-align: left; border: none; }
 body.dark-mode .pr-drill { background: #1E2A4A; }
+body.dark-mode .pr-block { border-color: #2B3A78; }
+body.dark-mode .pr-heat.m { background: #44506E; }
 body.dark-mode .pr-dot.m { background: #44506E; }
 body.dark-mode .pr-kpi { background: #16214A; }
 body.dark-mode .pr-kpi b { color: #FFFAF5; }
@@ -3407,15 +3423,27 @@ function perfDrillHtml_(emp, row, model) {
     }
   }
   if (cellByCol.pto && !cellByCol.pto.notEval) {
-    block('pto', 'PTO health', '<table><tr>' +
-      buckets.map(function(b) { return '<th>' + esc(b.label) + (b.containsCurrent ? ' ⏳' : '') + '</th>'; }).join('') +
-      '</tr><tr>' +
-      per.map(function(a) {
-        var v = a ? a.pto : null;
-        return '<td>' + (v === null || v === undefined ? '—' : v >= 1 ? 'Good' : '<b style="color:#DE350B">At Risk</b>') +
-          (a && a.ptoGoodShare !== null && a.ptoGoodShare !== undefined
-            ? ' <span class="pr-sub">' + Math.round(a.ptoGoodShare * 100) + '% wks</span>' : '') + '</td>';
-      }).join('') + '</tr></table>');
+    // Per-WEEK strip (spec v3 §D): a red week stays visible inside a green
+    // quarter — the bucket dot already follows the latest week (lastNonNull).
+    var ptoWeeks = [];
+    (DATA.q4Weeks || []).forEach(function(w) {
+      if (w.isFuture) return;
+      var wd = emp.weeks && emp.weeks[w.label];
+      var ph = wd && wd.ptoHealth ? wd.ptoHealth : null;
+      ptoWeeks.push({ label: w.label, cur: w.label === DATA.meta.currentWeekLabel,
+                      status: ph ? ph.status : null, reason: ph && ph.reason ? ph.reason : '' });
+    });
+    var evald = ptoWeeks.filter(function(p) { return !p.cur && p.status; });
+    var good  = evald.filter(function(p) { return p.status === 'Good'; }).length;
+    var strip = ptoWeeks.map(function(p) {
+      var cls = p.status === 'Good' ? 'g' : p.status ? 'r' : 'm';
+      var tip = p.label + ' — ' + (p.status || 'no data') + (p.reason ? ' · ' + p.reason : '');
+      return '<span class="pr-heat ' + cls + (p.cur ? ' cur' : '') + '" title="' + esc(tip) + '"></span>';
+    }).join('');
+    block('pto', 'PTO health',
+      '<p>' + (evald.length ? 'Good ' + good + ' of ' + evald.length + ' evaluated weeks (' +
+               Math.round(good / evald.length * 100) + '%)' : 'No evaluated weeks.') + '</p>' +
+      '<div class="pr-heatwrap">' + strip + '</div>');
   }
   if (cellByCol.rcr && (!cellByCol.rcr.notEval || cellByCol.rcr.val !== null)) {
     block('rcr', 'RCR', '<p>' + (cellByCol.rcr.val === null ? 'No rating.'
@@ -3462,7 +3490,7 @@ function perfDrillHtml_(emp, row, model) {
     (row.tenure ? ' · ' + row.tenure + ' tenure' : '') +
     (emp.supervisor ? ' · sup: ' + esc(emp.supervisor) : '') + '</span> ' + chipsHtml +
     '<div class="pr-reading">' + esc(row.reading) + '</div>' +
-    blocks.map(function(b) { return b.html; }).join('') +
+    '<div class="pr-drill-grid">' + blocks.map(function(b) { return b.html; }).join('') + '</div>' +
     '</div>';
 }
 // CSV of the current filtered+sorted view (spec §7) — one row per rocketeer,
