@@ -3224,7 +3224,44 @@ function perfDrillHtml_(emp, row, model) {
 
   return h + '</div>';
 }
-function exportPerfCsv_() {}
+// CSV of the current filtered+sorted view (spec §7) — one row per rocketeer,
+// per-metric signal + value + the reading note. WFP focus-group workflow.
+function exportPerfCsv_() {
+  if (!DATA) return;
+  var rows  = perfSortRows_(perfRowModels_(getFilteredEmployees()));
+  var shown = STATE.prFlaggedOnly ? rows.filter(function(r) { return r.flagged; }) : rows;
+  var cols  = perfCols_();
+  var SIGW  = { g: 'Green', y: 'Yellow', r: 'Red', m: 'n/a' };
+  function valW(cell) {
+    var v = cell.val;
+    if (v === null || v === undefined) return '';
+    if (cell.col.id === 'score') return String(v);
+    if (cell.col.id === 'rcr')   return String(Math.round(v * 10) / 10);
+    if (cell.col.id === 'si')    return String(Math.round(v));
+    if (cell.col.id === 'kudos') return 'recv ' + v.recv + ' / gave ' + v.gave;
+    if (cell.col.id === 'pto')   return v >= 1 ? 'Good' : 'At Risk';
+    return Math.round(v * 100) + '%';
+  }
+  var header = ['Rocketeer', 'Cohort', 'Job Title', 'Location', 'Supervisor', 'Flags (R/Y)'];
+  cols.forEach(function(c) { header.push(c.label + ' signal', c.label + ' value', c.label + ' trend'); });
+  header.push('Reading');
+  var out = [header];
+  shown.forEach(function(r) {
+    var line = [r.emp.name, perfCohort_(r.emp) === 'mgr' ? 'Manager' : 'IC',
+      r.emp.jobTitle || '', r.emp.keyLocation || '', r.emp.supervisor || '',
+      r.reds + '/' + r.yellows];
+    r.cells.forEach(function(cell) { line.push(SIGW[cell.sig], valW(cell), cell.trend || ''); });
+    line.push(r.reading);
+    out.push(line);
+  });
+  var blob = new Blob(['\uFEFF' + perfCsvEncode_(out)], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'performance-record-' + STATE.prGranularity + '-' +
+    ((DATA.meta && DATA.meta.currentWeekLabel) || 'export') + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
 
 // ── HELPERS ───────────────────────────────────────────────
 var _numFmt = new Intl.NumberFormat('en-US');
