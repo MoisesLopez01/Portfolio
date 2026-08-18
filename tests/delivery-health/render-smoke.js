@@ -165,7 +165,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // 2026-08-17. setTypePop_ survives: the Open/Resolved toggle moved
              // onto the 👥 roster, which was the matrix's only co-consumer.
              " setTypePop_: setTypePop_," +
-             " personSignalRows_: personSignalRows_, signalSummary_: signalSummary_, SIGNAL_FIELDS_: SIGNAL_FIELDS_," +
+             " personSignalRows_: personSignalRows_, signalSummary_: signalSummary_, SIGNAL_FIELDS_: SIGNAL_FIELDS_, methodPanelHtml_: methodPanelHtml_, openMethod_: openMethod_, closeMethod_: closeMethod_, keyGridHtml_: keyGridHtml_," +
              " metricConfidence_: metricConfidence_, pngPeriodStamp_: pngPeriodStamp_," +
              // Navigation, cascading filters, operating rate, charts and the two
              // new views — all client-only, so render-smoke is the only place
@@ -240,8 +240,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // its own hidden phase.
              " setUtilization_: function (v) { SHOW_UTILIZATION_ = v; }," +
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
-             " wfAvailability_: wfAvailability_, availabilityTileHtml_: availabilityTileHtml_," +
-             " drillActionsHtml_: drillActionsHtml_, drillPickHtml_: drillPickHtml_, drillPick_: drillPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
+             " wfAvailability_: wfAvailability_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_," +
+             " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
              " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
@@ -255,7 +255,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " isoCmp_: isoCmp_, dueBand_: dueBand_," +
              " dueCellHtml_: dueCellHtml_, currentIso_: currentIso_," +
              " renderPm_: renderPm_, pmEpicHtml_: pmEpicHtml_," +
-             " pmOppHtml_: pmOppHtml_, pmViaHtml_: pmViaHtml_, PM_OPPS_: PM_OPPS_," +
+             " pmOppHtml_: pmOppHtml_, pmViaHtml_: pmViaHtml_, PM_OPPS_: PM_OPPS_, pmPillOpen_: pmPillOpen_," +
              " pmEpicPasses_: pmEpicPasses_, pmFiltersActive_: pmFiltersActive_," +
              " resetFilters_: resetFilters_," +
              " PM_COLS_: PM_COLS_, pmGroupRowHtml_: pmGroupRowHtml_," +
@@ -277,7 +277,11 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " accParts_: accParts_, accIsEmail_: accIsEmail_, accWhere_: accWhere_," +
              " accRowHtml_: accRowHtml_," +
              " wfBandLabel_: wfBandLabel_, WF_BAND_ORDER_: WF_BAND_ORDER_," +
-             " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_ })";
+             " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_," +
+             // Workforce tab cleanup (2026-08-17): the drawer's content and the
+             // in-cell reconcile flag are both pure builders.
+             " wfMethodHtml_: wfMethodHtml_, wfReadTarget_: wfReadTarget_, wfFlagHtml_: wfFlagHtml_," +
+             " wfRead_: wfRead_ })";
 var C = eval(m[1] + bridge);
 
 /**
@@ -491,6 +495,8 @@ function model(o) {
                weeksInPeriod: 2, drift: null },
       coverage: { planIssueCoverage: 0.6, plannedHrsTotal: 100, plannedHrsWithIssue: 60,
                   committedEpics: 5, routedEpics: 6, unroutedHrs: 50, unroutedEpics: 2,
+                  // schema 44: the keys the Workforce alert's Jira button links on.
+                  unroutedKeys: ["GTT-900", "GTT-901"], unroutedCapped: false,
                   genericPlansMeasured: false, capacityTruthMeasured: false },
     },
     // Queue halves, never summed here (Task 11, spec §1/§4.2) — 0, not null:
@@ -1807,38 +1813,22 @@ C.buildFilters_(); C.renderAll_();
 assert_(html.indexOf('id="tiles"') === -1, "#tiles is absent from the markup (Task 16B retirement) — not merely emptied");
 assert_(html.indexOf('id="tileColorKey"') === -1, "#tileColorKey is absent from the markup (Task 16B retirement)");
 
-// Task 17 — REGRESSION FIX: #tileColorKey's legend shipped with no successor
-// (task-16b-report.md's deleted-check accounting flagged this explicitly).
-// Re-homed as #flowKey, populated by renderFlow_ from the SAME ragKeyHtml_
-// the old legend used (dead code with zero call sites until this fix — the
-// per-card RAG colouring survived the retirement; only its EXPLANATION did
-// not). Rewriting the three checks this section used to carry, against the
-// new home. Checked on RENDERED output (not raw markup) — the positive case,
-// since "the element exists" alone would pass even if renderFlow_ never
-// wrote to it.
+// THE COLOUR KEY IS DELETED OUTRIGHT (director feedback 2026-08-17). It had
+// already left Health & Actions; on Backlog & Flow it explained RAG grading
+// beside mostly ungraded volume metrics — reference material standing where a
+// director scans for numbers. #flowKey is gone from the MARKUP, not merely
+// emptied, and no rendered Executive surface prints a key. Status never
+// rested on the legend: every graded card carries its own ✔/▲/✖ glyph and
+// value label (FR-4.4). ragKeyHtml_ went with its last caller.
+assert_(html.indexOf('id="flowKey"') === -1,
+        "#flowKey is absent from the markup — the colour key's retirement is structural");
 fresh(model({}));
 C.getModel().viewerRole = "admin";
 C.setState("view", "exec");
 C.renderAll_();
-var flowKeyHtml = els.flowKey.innerHTML;
-assert_(/Colour key/.test(flowKeyHtml), "the colour key has a live successor — #flowKey renders it");
-assert_(/own agreed target/.test(flowKeyHtml), "…names what the colour is judged against");
-assert_(/Rework Rate reverses the scale/.test(flowKeyHtml),
-        "…and keeps the inversion callout — Rework Rate colours by 'lower is better'");
-assert_(/no colour = no verdict/.test(flowKeyHtml), "…and the no-target/no-data case is explained too");
-// Inert, never a filter: no onclick anywhere in the key markup.
-assert_(!/onclick=/.test(flowKeyHtml), "the key is a caption — clicking a swatch does nothing");
-// Set unconditionally at the top of renderFlow_, so a non-margin role
-// (canSeeMargin_() false — "guest") who still sees On-Time/Forecast/Quality
-// in #flowTiles still gets the same explanation; the key is not gated behind
-// canSeeMargin_() the way the Capacity band's own tile is.
-fresh(model({}));
-C.getModel().viewerRole = "guest";
-C.setState("view", "exec");
-C.renderAll_();
-assert_(!C.canSeeMargin_ || C.canSeeMargin_() === false, "sanity: guest really is a non-margin role");
-assert_(/Colour key/.test(els.flowKey.innerHTML),
-        "the colour key renders for a non-margin role too — On-Time/Forecast/Quality are visible to them");
+assert_(!/Colour key/.test(flowHtml_() + els.masthead.innerHTML + els.backlogBand.innerHTML +
+                           els.pulsePanel.innerHTML),
+        "no rendered Executive surface prints a colour key");
 fresh(model({}));
 C.getModel().viewerRole = "admin";
 C.setState("view", "exec");
@@ -2280,18 +2270,44 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // let a reader conclude the dashboard had lost the difference.
   assert_(/>Open issues</.test(roster),
           "the count column is named on the Open view, not left as 'n'");
-  assert_(/<b>Open issues<\/b> is a count, not a grade/.test(roster),
-          "…and the lead paragraph says what it counts and that it is not graded");
-  assert_(/epics included/.test(roster),
+  // METHODOLOGY: MOSTLY BEHIND A LINK, ONE RULE STILL ON THE PAGE (2026-08-17).
+  // The wall of denominators moved into the "How these are counted" panel. The
+  // managers' 2026-08-10 requirement was that these rules be READABLE IN A PNG,
+  // because that is how this table circulates — and neither a tooltip nor a
+  // modal survives a screenshot. So the rule that caused a real misreading (Due
+  // and Logged divide by LESS than the count beside them) stays in the markup,
+  // and the rest is one click away.
+  assert_(/divide by less than the <b>Open issues<\/b> count beside them/.test(roster),
+          "the PNG-critical rule stays ON the page: Due and Logged do not reconcile against " +
+          "the count beside them, and a reader with only a screenshot still learns it");
+  assert_(/anything carrying a date is tracked whatever its status/.test(roster),
+          "…together with the half of that rule a manager asked for by name");
+  assert_(/linkBtn[^>]*onclick="openMethod_\(\)"/.test(roster),
+          "…and the full methodology is reachable from the section header");
+  // The wall itself is GONE from the default view — that was the point.
+  assert_(!/<details class="howto">/.test(roster),
+          "the old collapsed methodology block no longer opens the panel");
+  // …but nothing was lost: the detail lives in the panel, built from the same
+  // field list the columns render from, so the two cannot drift.
+  var method = C.methodPanelHtml_();
+  assert_(/<b>Open issues<\/b> is a count, not a grade/.test(method),
+          "the panel says what the count counts, and that it is not graded");
+  assert_(/epics included/.test(method),
           "…including the epics, which is the part no reader could have guessed");
-  assert_(/deliberately divide by less than that count/.test(roster),
-          "the open roster states that Due and Logged do not reconcile against it, on purpose");
-  assert_(/<i>or already carries a date<\/i>/.test(roster),
-          "…and states rule 3 for the Due column: a dated ticket is tracked whatever its status");
-  assert_(/anything with a date is tracked whatever its status/.test(roster),
-          "…in words, not only in the tooltip");
-  assert_(/audited separately in 🚩 below/.test(roster),
-          "…and points at the epic audit, so the epic exception is not folklore");
+  assert_(/anything with a date is tracked whatever its status<\/b>/.test(method),
+          "…and carries the full Due-date rule");
+  // The panel HTML-escapes each rule, so compare against the unescaped text
+  // rather than the raw string ("Time Spent > 0" ships as "&gt;").
+  var methodPlain = method.replace(/&gt;/g, ">").replace(/&lt;/g, "<")
+                          .replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+                          .replace(/&amp;/g, "&");
+  C.SIGNAL_FIELDS_.forEach(function (f) {
+    assert_(methodPlain.indexOf(f.rule || f.tip) !== -1,
+            "the panel lists the full rule for '" + f.label + "' — built from SIGNAL_FIELDS_, " +
+            "never re-typed, so a column and its rulebook entry cannot disagree");
+  });
+  assert_(/audited separately below/.test(methodPlain),
+          "…and the panel points at the epic audit, so the epic exception is not folklore");
 
   // WHOLE-ROW CLICK (user 2026-08-06): a row that only reacts on the name reads
   // as broken — you aim at the number you want explained and nothing happens.
@@ -2374,7 +2390,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var hSnap = els.rosterPanel.innerHTML;
   var anaIdx = hSnap.indexOf("Ana Perez");
   var anaRow = hSnap.slice(hSnap.lastIndexOf("<tr", anaIdx), hSnap.indexOf("</tr>", anaIdx));
-  var anaOverallCell = anaRow.slice(anaRow.lastIndexOf("<td"));
+  // Overall is the SECOND cell since 2026-08-17 (next to the name), not the last.
+  var anaCells = anaRow.split("<td");
+  var anaOverallCell = "<td" + (anaCells[2] || "");
   assert_(anaOverallCell.indexOf("sigBad") !== -1,
           "sanity: Ana's Overall cell is the graded (bad) one under test");
   assert_(anaOverallCell.indexOf("%") === -1,
@@ -2830,18 +2848,27 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and this fixture hides a conditional column, so the two counts genuinely differ — " +
           "otherwise the assertion above proves nothing");
 
-  // ── The methodology is FOLDED, not deleted ──────────────────────────────
-  // Every rule in here was ratified by the managers (2026-08-10). Folding it is
-  // a presentation choice; losing it would silently change what the table means.
-  assert_(/<details class="howto">/.test(openHtml),
-          "the denominator methodology is folded into a How-to-read block");
-  assert_(/anything with a date is tracked whatever its status/.test(openHtml),
-          "…and the managers' dated-work rule is still on the page");
-  assert_(/undated To&nbsp;Do ticket is ignored entirely/.test(openHtml),
+  // ── The methodology MOVED, and nothing in it was lost ──────────────────
+  // Every rule here was ratified by the managers (2026-08-10). Moving it behind
+  // a link is a presentation choice; losing it would silently change what the
+  // table means. So: the wall is gone from the panel, the full text is in the
+  // "How these are counted" dialog, and the one rule that has to survive a
+  // SCREENSHOT stays in the markup.
+  assert_(!/<details class="howto">/.test(openHtml),
+          "the old folded methodology block is gone from the default view");
+  assert_(/divide by less than the <b>Open issues<\/b> count beside them/.test(openHtml),
+          "…the PNG-critical rule stays on the page");
+  var mPanel = C.methodPanelHtml_()
+    .replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  assert_(/anything with a date is tracked whatever its status/.test(mPanel),
+          "…and the managers' dated-work rule is in the panel");
+  // Whitespace-agnostic: the panel uses a real non-breaking space, the old block
+  // used the &nbsp; entity, and the RULE is what matters, not the byte.
+  assert_(/undated To.Do ticket is ignored entirely/.test(mPanel),
           "…as is the undated-To-Do carve");
-  assert_(/every epic is expected to carry a date/.test(openHtml),
+  assert_(/every epic is expected to carry a date/.test(mPanel),
           "…and the epic exception");
-  assert_(/status category/i.test(openHtml), "…and the started-work basis for Logged");
+  assert_(/status category|STARTED/i.test(mPanel), "…and the started-work basis for Logged");
   // The hours legend is NOT folded: this table is read as a PNG, where hover
   // does not exist and a legend behind a click is a legend that is absent.
   var legend = openHtml.split('<details class="howto">')[0] +
@@ -3421,9 +3448,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // duplication this task exists to remove.
   assert_(h.indexOf("Work In Progress") === -1 && h.indexOf("Backlog (Inventory)") === -1,
           "flow tier renders NO Backlog/WIP tiles (Task 16B retirement)");
-  var heroSub = els.backlogBand.innerHTML.split("Assigned inventory")[1] || "";
+  var heroSub = document.getElementById("flowSecondary").innerHTML
+                  .split("Assigned inventory")[1] || "";
   assert_(/3 in progress/.test(heroSub) && /5 queued/.test(heroSub),
-          "…the SAME wipN(3)/todoN(5) figures publish exactly once, on the hero band's assigned sub-row");
+          "…the SAME wipN(3)/todoN(5) figures publish exactly once, on the Runway cluster's assigned card");
   // No-target grammar: the UNIT-BEARING flow tiles (Cleared/Arrived/Lead
   // Time/Throughput/Bug Count) carry NO RAG verdict and NO vs-target line —
   // scoped to exclude On-Time/Forecast/Quality, which now share #flowTiles
@@ -3855,8 +3883,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // carries ZERO SNAP tags; Arrived alone tags ORG, everything else PERIOD.
   assert_(ft.indexOf(">ORG<") !== -1 && ft.indexOf(">PERIOD<") !== -1,
           "flow tier: Arrived tags ORG, the rest (Cleared/Lead Time/Throughput/Bug Count/outcome tiles) tag PERIOD");
-  assert_(ft.indexOf(">SNAP<") === -1,
-          "…and NO SNAP tags anywhere in the flow tier — Backlog/WIP (the old SNAP tiles) are retired");
+  // The Runway cluster's Assigned pair (moved beside their ORG twins,
+  // director feedback 2026-08-17) are the ONLY SNAP tags in the tier — the
+  // retired Backlog/WIP tiles must not creep back in behind them.
+  assert_((ft.match(/>SNAP</g) || []).length === 2,
+          "…and exactly two SNAP tags in the flow tier — the Runway cluster's Assigned pair, nothing else");
+  assert_(tileSeg_(ft, "Assigned inventory").indexOf(">SNAP<") !== -1,
+          "…riding on the Assigned cards themselves");
   // Placement pin: the tag rides with the RIGHT tile, not just anywhere in the
   // markup. Sliced per TILE (tileSeg_), not between neighbouring labels — the
   // tiles now sit in two tiers and their order is not this check's subject.
@@ -4213,11 +4246,17 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 // deleted?" — see the per-check notes.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
-  /** Renders the masthead against a fresh model and returns its HTML. */
+  /** Renders the masthead against a fresh model and returns its HTML PLUS the
+      verdict engine's own text. The ranked verdict no longer renders on the
+      page (director feedback 2026-08-17 — the stat callouts carry the story),
+      but verdictFindings_'s thresholds are doctrine and every check below
+      still has to hold, so the engine's output is appended for the wording
+      assertions while the masthead assertions keep reading the real render. */
   function masthead(mdl) {
     fresh(mdl);
     C.renderMasthead_();
-    return els.masthead.innerHTML;
+    return els.masthead.innerHTML + " ⟂ " +
+           C.verdictFindings_().map(function (f) { return f.text; }).join(" ");
   }
   /** One synthetic Jira Arrivals week. */
   function aw(iso, created, resolved) {
@@ -4416,6 +4455,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(!/Ana Perez/.test(h8) && !/Ben Ortiz/.test(h8),
           "no person from MODEL.people appears anywhere in the masthead HTML");
 
+  // ── 9. THE VERDICT PARAGRAPH AND THE NOTE ARE OFF THE PAGE (2026-08-17) ──
+  // The stat callouts carry the same facts one figure each; the paragraph
+  // under three big numbers restated them, and the beige note block trained
+  // the reader to skip the top of the tab. The note's text survives as the ⓘ
+  // beside Groomed pipeline (asserted where the fixture has unowned items).
+  var mast9 = els.masthead.innerHTML;
+  assert_(!/mastVerdict/.test(mast9), "no verdict paragraph renders on the masthead");
+  assert_(!/ctxNote/.test(mast9) && !/Note on unassigned work/.test(mast9),
+          "…and the beige unassigned-work block is gone with it");
+
   // Teardown.
   C.setState("region", "");
   fresh(model({}));
@@ -4443,8 +4492,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     fresh(mdl);
     C.renderFlow_();
     C.renderBacklogBand_();
-    return heroTriplet_(document.getElementById("flowSecondary").innerHTML) +
-           els.backlogBand.innerHTML;
+    // The assigned pair renders in the Runway cluster since the director pass
+    // (2026-08-17); it is cut from the strip and appended after the band so
+    // every split-on-"Assigned inventory" idiom below keeps its boundary.
+    var strip = document.getElementById("flowSecondary").innerHTML;
+    return heroTriplet_(strip) + els.backlogBand.innerHTML +
+           ["Assigned inventory", "Assigned weeks to clear"]
+             .map(function (lbl) { return tileSeg_(strip, lbl); })
+             .filter(Boolean)
+             .map(function (seg) { return '<div class="tile' + seg; })
+             .join("");
   }
   /**
    * The three queue cards as renderFlow_ actually PAINTED them, cut out of the
@@ -4684,13 +4741,17 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // renders into Tier 1, and reading it through backlogHeroTilesHtml_ isolates
   // the three cards from the outcome cards that legitimately DO filter.
   fresh(baseFixture());
+  C.renderFlow_();
   C.renderBacklogBand_();
   var heroBefore = C.backlogHeroTilesHtml_();
   C.setState("region", "EMEA");
+  C.renderFlow_();
   C.renderBacklogBand_();
-  var afterHtml = els.backlogBand.innerHTML;
   var heroAfter = C.backlogHeroTilesHtml_();
-  var subAfter = afterHtml.split("Assigned inventory")[1] || "";
+  // The assigned pair lives in the Runway cluster now (director feedback
+  // 2026-08-17) — read it from the strip renderFlow_ painted under the filter.
+  var subAfter = document.getElementById("flowSecondary").innerHTML
+                   .split("Assigned inventory")[1] || "";
   assert_(heroBefore === heroAfter,
           "the hero triplet's markup is BYTE-IDENTICAL before and after STATE.region — it never reads filters");
   assert_(/3,279 items/.test(heroAfter), "…still the full 3,279-item ORG total under the EMEA filter");
@@ -4939,12 +5000,15 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(paneOf("comparePanel") === "health", "#comparePanel is on Health & Actions");
   assert_(html.indexOf('id="tier1Tiles"') < html.indexOf('id="comparePanel"'),
           "…and the drill-down sits directly BELOW the KPI cards, not below a chart");
-  ["masthead", "backlogBand", "flowSecondary", "flowKey", "pulsePanel", "trustDetail"]
+  ["masthead", "pulsePanel", "backlogBand", "flowSecondary", "trustDetail"]
     .forEach(function (id) {
       assert_(paneOf(id) === "flow", "#" + id + " moved to Backlog & Flow");
     });
-  // Reading order inside Backlog & Flow.
-  var order = ["masthead", "backlogBand", "flowSecondary", "flowKey", "pulsePanel", "trustDetail"];
+  // Reading order inside Backlog & Flow. The pulse sits directly under the
+  // masthead's stat callouts (director feedback 2026-08-17): recoverable hours
+  // are the most actionable figure on the tab and must not live below the
+  // fold. #flowKey is deleted, so it is absent from this list on purpose.
+  var order = ["masthead", "pulsePanel", "backlogBand", "flowSecondary", "trustDetail"];
   var idxs = order.map(function (id) { return html.indexOf('id="' + id + '"'); });
   for (var i = 1; i < idxs.length; i++) {
     assert_(idxs[i - 1] < idxs[i],
@@ -5397,12 +5461,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // still govern every column that remains, so they are asserted against the
   // function instead of against a column that no longer exists.
   //
-  // ⚠ One thing genuinely lost with the column: every surviving grid metric has
-  // a ratified target, so the `no reference` branch below now has NO live
-  // metric exercising it on screen. It is still reachable (any metric with a
-  // null targetKey lands there) and still tested here, but if the last
-  // target-less metric ever leaves the registry too, delete the branch rather
-  // than leaving a path nothing can enter.
+  // The no-target branch below regained a live subject on 2026-08-17: the
+  // Availability Rate column (targetKey null) joined the grid, so its cells
+  // land there on every render — deliberately, with no target agreed for it.
   var cphUnit = "items";
   // 1 · QUANTISATION. AMER 61/63 = 0.968… must print "1.0", never a bare "1":
   // Math.round (the old behaviour) and Math.round(v*10)/10 read back through
@@ -5419,27 +5480,81 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     "ANZ's per-head cell renders the decimal '1.5' (12/8) — got: " + anzCph);
   assert_(!/\b2\b/.test(anzCph), "…never rounds up to the fabricated '2' the old Math.round produced");
 
-  // 2 · Sub-10 keeps its VALUE and loses ONLY the colour. Hiding the cell fails
-  // the "value present" half; colouring it fails the "no RAG" half — a helper
-  // that returned "none" for both would pass one and not the other.
-  assert_(/ungraded \(small n\)/.test(anzCph), "an 8-person group's cell is ungraded (small n)");
-  assert_(!/sigGood|sigWarn|sigBad/.test(anzCph), "…and it carries NO RAG colour class");
-  assert_(!/No measurable data/.test(anzCph),
-          "…it is NOT the null/no-data branch — it has a real, printed value");
-  assert_(!/ungraded \(small n\)/.test(amerCph),
-          "a 63-person group is not ungraded — the rule keys off headcount, not off the metric");
+  // 2 · SMALL GROUPS ARE GRADED LIKE EVERY OTHER (user decision 2026-08-17).
+  // The rule this replaces greyed any category under 10 people and labelled it
+  // "ungraded (small n)" — which greyed the cell failing hardest and left the
+  // reader to judge severity from fine print. The volume question that caveat
+  // was really asking is now answered by the counts instead (§2b).
+  assert_(!/ungraded \(small n\)/.test(anzCph),
+          "an 8-person group is no longer labelled ungraded");
+  assert_(!/ungraded \(small n\)/.test(amerCph), "…nor is a 63-person one");
+  assert_(!/sigSmall/.test(anzCph), "…and the grey small-n dot is gone with it");
+  // Graded EXACTLY like a large group against the same target. Both directions
+  // asserted: a 6-person group below target must be red, and one above it must
+  // be green — a helper that simply always returned "red" would pass one alone.
+  var tgt = { green: 85, amber: 70 };
+  var tinyBad = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6, sampleNoun: "items" });
+  var tinyGood = C.gridCellHtml_({ value: 95, n: 6, target: tgt, sampleN: 6, sampleNoun: "items" });
+  var bigBad = C.gridCellHtml_({ value: 50, n: 60, target: tgt, sampleN: 100, sampleNoun: "items" });
+  assert_(/sigBad/.test(tinyBad),
+          "a 6-person group at 50% against an 85% target is RED, exactly as a large one would be");
+  assert_(/sigGood/.test(tinyGood), "…and green when it clears the target");
+  assert_(/sigBad/.test(bigBad), "…the large group is graded the same way, by the same rule");
 
-  // 3 · No target AND no publishable norm: no colour, and the cell SAYS it has
-  // no reference rather than printing a bare number that looks graded.
+  // 2b · THE COUNTS REPLACE THE CAVEAT. 50% is a different fact at 1-of-2 than
+  // at 50-of-100, and that difference is what decides whether the row is worth
+  // a click. Printed, not warned about.
+  var oneOfTwo = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 2, sampleNoun: "items" });
+  assert_(/\(1\/2 items\)/.test(oneOfTwo),
+          "the cell states the absolute counts beside the rate — got: " + oneOfTwo);
+  assert_(/\(3\/6 items\)/.test(
+            C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6, sampleNoun: "items" })),
+          "…derived from the metric's own denominator, so 50% of 6 reads 3/6");
+  assert_(/\(50\/100 items\)/.test(bigBad), "…and 50% of 100 reads 50/100");
+  // The numerator comes from the UNROUNDED value: 61/63 is 96.8%, and rounding
+  // the displayed 97% back out would print 61 as 61 by luck but 62 at other
+  // ratios. Asserted on a ratio where the two disagree.
+  assert_(/\(2\/3 items\)/.test(
+            C.gridCellHtml_({ value: 200 / 3, n: 20, target: tgt, sampleN: 3, sampleNoun: "items" })),
+          "66.67% of 3 is 2 — the numerator is derived before rounding, not after");
+  // A metric whose n() is HOURS carries no noun and prints no fraction: a
+  // "(1400/2000 items)" under utilization would be a unit nobody measured.
+  assert_(!/\(\d+\/\d+/.test(C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 2000 })),
+          "a metric with no sampleNoun prints the rate alone");
+  assert_(!/\(\d+\/\d+ items\)/.test(anzCph),
+          "…as does a unit metric, whose value is not a share of anything");
+  assert_(!/No measurable data/.test(anzCph),
+          "…and none of this is the null/no-data branch — these cells have real values");
+
+  // 3 · No target AND no publishable norm: no colour — and the "no reference"
+  // CAPTION IS GONE (user 2026-08-17). It forced the reader to guess what the
+  // system meant, on every row of a target-less column; the fact moved into the
+  // cell's tooltip, and the absent RAG glyph already reads as "not graded".
   assert_(!/sigGood|sigWarn|sigBad/.test(amerCph), "a target-less cell carries no RAG colour");
-  assert_(/no reference/.test(amerCph),
-          "…and states explicitly that it has no reference");
-  // …and when a norm DOES publish, the same cell defers to the band instead of
-  // claiming no reference at all. This is the positive half of the same rule.
+  assert_(!/no reference/.test(amerCph),
+          "…the 'no reference' caption no longer clutters the cell");
+  assert_(/No organizational target/.test(amerCph),
+          "…and the reason lives in the tooltip instead");
+  // …and when a norm DOES publish, the same cell defers to the band instead.
+  // This is the positive half of the same rule.
   var withBand = C.gridCellHtml_({ value: 61 / 63, unit: cphUnit, n: 63, target: null,
                                    std: { ok: true, lo: 0.8, hi: 1.4 } });
-  assert_(!/no reference/.test(withBand), "with a published norm the cell stops saying 'no reference'");
+  assert_(!/no reference|No organizational target/.test(withBand),
+          "with a published norm the cell stops claiming it has no reference");
   assert_(/operating band/.test(withBand), "…and points at the band it is graded against");
+
+  // 3b · OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17). Availability
+  // goes below zero when planned hours exceed scheduled capacity. "-25%
+  // available" is a data artefact a director cannot act on; the cell clamps to
+  // 0%, raises a red pill, and keeps the raw magnitude in the tooltip.
+  var overCell = C.gridCellHtml_({ value: -25, n: 10, target: null, std: null, unit: null });
+  assert_(/pillOver/.test(overCell) && /Over-allocated/.test(overCell),
+          "a negative rate renders the red Over-allocated pill — got: " + overCell);
+  assert_(overCell.indexOf("0%") !== -1, "…with the value clamped to 0%");
+  assert_(overCell.indexOf("-25") === -1, "…and the negative number itself is never printed");
+  assert_(/by 25%/.test(overCell), "…while the tooltip keeps the overrun's magnitude");
+  assert_(!/sigGood|sigWarn|sigBad/.test(overCell),
+          "…and no RAG glyph — the pill is the verdict, stated in words");
 
   // ── 4. The coverage sentence is NOT re-asserted here ─────────────────────
   // It used to be, on this 71-person fixture, because clearedPerHead was the
@@ -5822,9 +5937,24 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the headline states both numbers and the share — got: " + h);
   assert_(/even if it is only the project end date/.test(h),
           "…and quotes the agreement, so the 100% bar is not mistaken for an invented target");
-  assert_(/GTT-11<\/a> · <a/.test(h),
-          "the offending KEYS are listed AND each is a link — this list is the work queue, and " +
-          "copying keys into a Jira search by hand was the actual cost of using it");
+  // The keys are a WORKED QUEUE, and at 230 of them a single wrapping run was
+  // unreadable and stretched the table (user 2026-08-17). They now collapse to a
+  // count and expand into a grid — still links, still all of them.
+  assert_(/<details class="keyBox"><summary>View \d+ keys?<\/summary>/.test(h),
+          "the key queue is collapsed behind its own count, not dumped into the row");
+  assert_(/class="keyGrid"/.test(h), "…and expands into a column grid rather than one long run");
+  assert_(/class="keyCell">(<a[^>]*>)?GTT-/.test(h),
+          "every key is still a cell in that grid, and still a link when a Jira site is configured");
+  assert_(/onclick="copyKeys_\(this\)"/.test(h) && /data-keys="[^"]*GTT-/.test(h),
+          "…with Copy all keys, which is how the list actually leaves the page — into Slack " +
+          "or a Jira bulk edit");
+  // Sorted, so a PM hunting one key scans instead of reading, and two rebuilds
+  // put the same key in the same place.
+  var payload = (h.match(/data-keys="([^"]*)"/) || [])[1] || "";
+  var got = payload.split(" ").filter(Boolean);
+  var wanted = got.slice().sort(function (a, b) { return a.localeCompare(b); });
+  assert_(got.length > 1 && got.join(" ") === wanted.join(" "),
+          "the copied list is alphabetical — got: " + payload);
   assert_(/↗ Open all in Jira/.test(h),
           "…with one link that opens the whole row at once");
   var auditJql = decodeURIComponent((/href="[^"]*jql=([^"]+)"/.exec(h) || [])[1] || "");
@@ -6061,7 +6191,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var cons = els.wfConsumersPanel.innerHTML;
   var shadow = els.wfShadowPanel.innerHTML;
   var unrouted = els.wfUnroutedPanel.innerHTML;
-  var disc = els.wfDisciplinePanel.innerHTML;
+  var alert = els.wfAlertPanel.innerHTML;
 
   // 1 · Scope banner leads, and reports zero counts rather than hiding them.
   assert_(/in scope/.test(scope), "the scope banner states the population");
@@ -6146,7 +6276,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // with a healthy backlog. These pins exist because the regression is
   // invisible on review: a sentence that reads well and asserts a cause the
   // data cannot support looks exactly like a good one.
-  var wfAll = scope + grid + cons + shadow + unrouted + disc;
+  var wfAll = scope + grid + cons + shadow + unrouted + alert;
   ["INTERVENE", "REASSESS", "HIRE / REALLOCATE", "KEY-PERSON"].forEach(function (word) {
     assert_(wfAll.indexOf(word) === -1,
             "the directive/alarm word '" + word + "' does not appear anywhere on this tab");
@@ -6155,7 +6285,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "no sentence asserts a CAUSE the data cannot support");
   assert_(/STEADY|HEADROOM|DEMAND-DRIVEN|AT CAPACITY|RECONCILE|REVIEW/.test(grid),
           "…and the states are descriptive instead");
-  assert_(/signals, not verdicts/.test(grid),
+  // Case-insensitive: the phrase is the rule, its capitalisation is not. It
+  // reads as a sentence-case caption beside the colour key since 2026-08-17,
+  // having previously been mid-paragraph.
+  assert_(/signals, not verdicts/i.test(grid),
           "the grid says out loud that these are signals, so nobody reads a chip as a judgement");
   // No red anywhere on this surface. Red is the vocabulary of failure and it is
   // spent on the KPI cards, which have ratified targets to fail against.
@@ -6183,8 +6316,15 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   });
   assert_(/Project Manager/.test(shadow) && /Finance/.test(shadow) && /Resource Manager/.test(shadow),
           "…and routes each to a different owner");
-  assert_(/not a pie of one problem|not<\/b> a pie/.test(shadow),
-          "the panel says the rows are separate queues, not slices of one");
+  // The "separate queues, not a pie" explanation was the paragraph the user
+  // named for removal (2026-08-17). The RULE is unchanged and still stated —
+  // in the methodology drawer — so it is asserted there, and asserted ABSENT
+  // here, which is the whole point of moving it.
+  assert_(!/not a pie/i.test(shadow), "the pie-chart paragraph is off the panel");
+  // Matched on the fragment that no tag interrupts: the drawer renders
+  // "Rows are <b>not</b> a pie of one problem".
+  assert_(/a pie of one problem/.test(C.wfMethodHtml_()),
+          "…and the rule it carried is stated in the methodology drawer instead");
   assert_(/upper bound/.test(shadow),
           "not-committed is caveated by plan-issue coverage rather than presented as exact");
 
@@ -6193,10 +6333,98 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/never distributed/.test(unrouted), "…and the panel says it is never spread across pools");
   assert_(/lower bound/.test(unrouted), "raw remaining is labelled a lower bound beside the adjusted figure");
 
-  // 6 · Discipline section rolls up to the same population.
-  assert_(/Consulting/.test(disc), "the discipline section lists disciplines");
-  assert_(/09\.1/.test(disc), "…with the sub-track that actually decides the pool");
-  assert_(/display only/.test(disc), "…and states that the label itself is not the key");
+  // 6 · THE TAB IS CLEANED UP (user 2026-08-17). Five changes, each asserted
+  // on the thing a reader would notice rather than on the code that does it.
+
+  // 6a · The headline figure is renamed and comes FIRST.
+  assert_(/Sellable headroom/.test(cons), "the availability panel is titled 'Sellable headroom'");
+  assert_(!/one honest number/i.test(wfAll),
+          "…and no panel claims to be the only honest number on the dashboard");
+  // NOT "Net Availability": nothing is netted out — there is no absence feed —
+  // so a "net" label would claim more than the number can support.
+  assert_(!/Net Availability/i.test(wfAll), "…and does not claim to be net of anything");
+  var htmlSrc = fs.readFileSync(path.join(__dirname, "..", "..",
+                  "delivery-health-dashboard", "Dashboard.html"), "utf8");
+  var pane = htmlSrc.split('id="viewWorkforce"')[1].split("</div>\n  </div>")[0];
+  assert_(pane.indexOf('id="wfConsumersPanel"') < pane.indexOf('id="wfGridPanel"'),
+          "…and it sits ABOVE the pool grid, not halfway down the tab");
+
+  // 6b · Unrouted work is an ALERT with a way to act, not a table row.
+  assert_(/Action required/.test(alert), "unrouted backlog is raised to an action card");
+  assert_(/Route \d+ epics? ↗/.test(alert), "…with a button that routes to the Jira queue");
+  assert_(/browse|jql/i.test(alert), "…pointing at a real Jira URL");
+  // It must vanish when there is nothing to route: a permanent "0 unrouted"
+  // banner is how an alert becomes furniture nobody sees.
+  var quiet = wfModel();
+  quiet.workforce.coverage.unroutedEpics = 0;
+  quiet.workforce.coverage.unroutedHrs = 0;
+  fresh(quiet);
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
+  assert_(els.wfAlertPanel.innerHTML === "", "…and renders nothing at all when nothing is unrouted");
+  fresh(wfModel());
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
+
+  // 6c · The walls of text are behind one control, not on the canvas.
+  assert_(/toggleWfMethod_/.test(grid), "the grid offers a link into the methodology drawer");
+  assert_(!/not a pie/i.test(wfAll), "the 'not a pie chart' paragraph is off the canvas");
+  // The drill-down INVITATION stays (one line) — it is an affordance, and a
+  // reader cannot discover the drill-down from a bare row. What left is the
+  // four-sentence explanation of how to read a row.
+  assert_(!/most notable measurement on that row/.test(wfAll),
+          "…as is the how-to-read-a-row instruction");
+  // …and it is genuinely still available, not deleted.
+  var method = C.wfMethodHtml_();
+  assert_(/a pie of one problem/.test(method), "…both now live in the drawer");
+  assert_(/Click any band row/.test(method), "…including the drill-down instruction");
+  assert_(/Gross, not deployable/.test(method),
+          "…and the denominator caveat that qualifies the headline figure");
+  // The colour key STAYS on the canvas: a legend one click away is a legend
+  // nobody reads, and the cells cannot be decoded without it.
+  assert_(/inside its own range/.test(grid), "the colour key stays beside the table it decodes");
+
+  // 6d · The discipline mapping table is gone from the executive flow.
+  assert_(!/By discipline/.test(wfAll), "the job-code-to-pool mapping table is off this tab");
+
+  // 6e · The grid stays strictly tabular: no sentence rows between data rows.
+  assert_(!/wfReadRow/.test(grid),
+          "no full-width Read row breaks the column lines between data rows");
+  // The state keeps a home — a COLUMN, which is scannable down the page in a
+  // way a sentence row never was.
+  assert_(/<th[^>]*>State<\/th>/.test(grid), "the action state gets its own column");
+  assert_(/wfChip/.test(grid), "…and every row still carries its state chip");
+
+  // The ⚠ itself is tested at unit level: the fixture's cells are all healthy,
+  // so asserting on the rendered grid would pin "no flag" and pass for the
+  // wrong reason. Each branch is driven explicitly instead.
+  var flagCases = [
+    ["fidelity", { commitmentFidelity: 0.4, shadowRatio: null, coverWeeks: null,
+                   estimateCoverage: null, constraintIndex: null, head: 20 }],
+    ["shadow", { commitmentFidelity: null, shadowRatio: 0.9, coverWeeks: null,
+                 estimateCoverage: null, constraintIndex: null, head: 20 }],
+    ["cover", { commitmentFidelity: null, shadowRatio: null, coverWeeks: 4,
+                estimateCoverage: 0.2, constraintIndex: null, head: 20 }],
+    ["constraint", { commitmentFidelity: null, shadowRatio: null, coverWeeks: null,
+                     estimateCoverage: null, constraintIndex: 0.1, head: 20 }],
+  ];
+  flagCases.forEach(function (pair) {
+    var col = pair[0], cell = pair[1];
+    cell.shadowReasons = {}; cell.matchableCommittedHrs = 103; cell.trackedCommittedHrs = 40;
+    assert_(C.wfReadTarget_(cell) === col,
+            "a cell failing on " + col + " points its flag at the " + col + " column");
+    cell.actionState = "RECONCILE"; cell.read = C.wfRead_(cell);
+    var flag = C.wfFlagHtml_(cell, col);
+    assert_(/class="wfFlag"/.test(flag), "…and renders a ⚠ there");
+    assert_(flag.indexOf("RECONCILE") !== -1,
+            "…whose tooltip still names the action state the old chip carried");
+    assert_(C.wfFlagHtml_(cell, col === "shadow" ? "fidelity" : "shadow") === "",
+            "…and no other column carries it, so one row never shows two flags");
+  });
+  // A healthy cell carries none at all.
+  assert_(C.wfReadTarget_({ commitmentFidelity: 0.99, shadowRatio: 0.01, coverWeeks: 8,
+                            estimateCoverage: 0.99, constraintIndex: 0.9, head: 20 }) === null,
+          "a cell with nothing notable carries no flag");
 
   // ── A payload that predates the feature misses CLEANLY ─────────────────────
   // Never a silently blended grid: with no workforce block, every person would
@@ -6249,6 +6477,49 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…with the stated reason, so the fix is one registry row away");
   assert_(/Workforce Planning has not been told/.test(els.wfScopePanel.innerHTML),
           "…and names it as a governance signal rather than a bug");
+})();
+
+// ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ────────────────
+// Planned hours past scheduled capacity drive (gross − committed)/gross below
+// zero. Every surface publishing the rate translates that the same way: clamp
+// to 0%, raise the red Over-allocated pill, state the overrun in hours. The
+// drill grid's own cell rule is unit-tested beside gridCellHtml_'s other rules;
+// this suite covers the two org-level surfaces.
+(function () {
+  var m = model({});
+  Object.keys(m.workforce.weekly["PS-CONSULT|CORE"]).forEach(function (iso) {
+    var w = m.workforce.weekly["PS-CONSULT|CORE"][iso];
+    w.committedHrs = w.grossHrs + 40;      // booked 40h past capacity, weekly
+  });
+  // The per-person fold (the drill grid's pipeline) goes negative the same way.
+  m.people.forEach(function (p) {
+    Object.keys(p.weeks || {}).forEach(function (iso) {
+      p.weeks[iso].planned = (p.weeks[iso].cap || 0) + 20;
+    });
+  });
+  fresh(m);
+  assert_(C.wfAvailability_().pct < 0,
+          "fixture: the org fold is genuinely negative — the pill translates, never hides");
+
+  // 1 · The Availability Rate card.
+  var tile = C.availabilityTileHtml_();
+  assert_(/pillOver/.test(tile) && /Over-allocated/.test(tile),
+          "the Availability card raises the red pill instead of a negative rate");
+  assert_(/\b0%/.test(tile), "…with the headline clamped to 0%");
+  assert_(!/-\d+%/.test(tile), "…and no negative percentage anywhere on the card");
+  assert_(/planned beyond/.test(tile),
+          "…the overrun stated in hours — the unit a leader can actually reassign");
+
+  // 2 · The Workforce tab's "one honest number" — same figure, same translation.
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "workforce");
+  C.renderAll_();
+  var cons = els.wfConsumersPanel.innerHTML;
+  assert_(/pillOver/.test(cons) && /Over-allocated/.test(cons),
+          "the Workforce headline raises the same pill");
+  assert_(/\b0%/.test(cons), "…clamped to 0% like the card — one figure, two surfaces");
+  assert_(!/-\d+%/.test(cons), "…and never a minus sign on the rate");
+  assert_(/planned beyond/.test(cons), "…with the overrun in hours here too");
 })();
 
 // ── Due-date urgency bands (spec 2026-08-11 §4) ─────────────────────────────
@@ -6421,23 +6692,43 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/In project 63% of 40 ready/.test(h),
           "…and the second bar beside it, still labelled and still not averaged with the first");
 
-  // ── AREAS OF OPPORTUNITY, VISIBLE WITHOUT EXPANDING ─────────────────────
-  assert_(/epics with no due date/.test(h) && /🚩/.test(h),
-          "the ranked gap line shows undated epics while still collapsed");
-  assert_(/epics cannot land as planned/.test(h),
-          "…epics whose own work is planned past them, counted PER EPIC not per ticket");
-  assert_(/epic past its date with work still beyond it/.test(h),
+  // ── METHODOLOGY COLLAPSED (director feedback 2026-08-17) ────────────────
+  // The 8-line attribution/windowing paragraph is off the open page: one
+  // summary line, expandable. Every sentence stays in the DOM, which is also
+  // what keeps the wording assertions further down honest.
+  assert_(/<details class="pmMethod"><summary>/.test(h),
+          "the methodology lives in a collapsed panel, not open-page prose");
+  assert_(!/<details class="pmMethod" open/.test(h), "…closed by default");
+  assert_(/How PM ownership is calculated/.test(h),
+          "…labelled for the question it answers");
+
+  // ── GAP PILLS, VISIBLE WITHOUT EXPANDING (director feedback 2026-08-17) ──
+  // Horizontal colour-coded pills, not a vertical text log: a director scans
+  // DOWN the PM list and sees who carries the most red without reading prose.
+  assert_(/pmPill/.test(h), "the gap line renders as pills");
+  assert_(/🚩 <b>3<\/b> no due date/.test(h),
+          "undated epics show as a counted pill while still collapsed");
+  assert_(/⚠ <b>4<\/b> at risk/.test(h),
+          "…epics that cannot land as planned, counted PER EPIC not per ticket");
+  assert_(/✖ <b>1<\/b> past due date/.test(h),
           "…and the already-missed ones counted apart from the fixable ones");
-  assert_(!/5 epic/.test(h),
+  assert_(!/<b>5<\/b>/.test(h.split("(No PM)")[0]),
           "the two states are never summed — 4 at risk and 1 breached are not '5'");
-  assert_(/epic with nothing linked to it/.test(h),
-          "…and epics nothing rolls up to, singular when there is one");
-  // Ranked by SIZE: 4 children-over outranks 3 undated epics.
-  assert_(h.indexOf("children committed past") < h.indexOf("epics with no due date"),
-          "gaps rank biggest-first, not in declaration order");
-  assert_(!/untouched for 30/.test(h.split("(No PM)")[0]),
-          "a gap with a zero count is NOT rendered — noise on the healthy rows is " +
+  assert_(/🔗 <b>1<\/b> unlinked/.test(h), "…and epics nothing rolls up to get a pill too");
+  // Ranked by SIZE: 4 at risk outranks 3 undated. Anchored on the pill markup —
+  // the collapsed methodology panel above the table also mentions due dates.
+  assert_(h.indexOf("</b> at risk") < h.indexOf("</b> no due date"),
+          "pills rank biggest-first, not in declaration order");
+  assert_(!/untouched 30d/.test(h.split("(No PM)")[0]),
+          "a gap with a zero count gets NO pill — noise on the healthy rows is " +
           "what teaches people to skip the line on the rows that matter");
+  // Every pill ACTS. The no-due pill opens its keys in Jira — the payload names
+  // them; the counts-only signals route to the PM's epic list instead, because
+  // their counts cover the FULL epic set and a key link could not match them.
+  assert_(/<a class="pmPill sigBad" href="[^"]*jql=/.test(h),
+          "the no-due pill is a direct Jira exit");
+  assert_(/pmPill sigWarn[^>]*pmPillOpen_/.test(h),
+          "a counts-only pill opens the PM's epic list");
 
   // ── EXPAND THE PM ───────────────────────────────────────────────────────
   C.togglePmOpen_("Dana Reyes");
@@ -6448,9 +6739,17 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/1 at risk/.test(h) && /1 undated/.test(h) && /1 within/.test(h),
           "the 'Against epic date' cell pre-states each epic's child tally");
   assert_(/1 breached/.test(h), "…and the breached epic states its own");
-  // Attribution is stated, so a PM can challenge a row rather than trust it.
-  assert_(/10<\/b> by Jira assignee/.test(h), "the row says how many epics came from the assignee");
-  assert_(/2<\/b> by Tempo project lead/.test(h), "…and how many are an inference");
+  // Attribution moved off the page into the ⓘ beside Owns (director feedback
+  // 2026-08-17): a director needs WHO owns the work; HOW the system worked it
+  // out is a dispute detail, one hover away instead of a row of jargon.
+  assert_(!/Attributed:/.test(h), "the attribution breakdown is no longer open-page text");
+  assert_(/10 by Jira assignee/.test(h), "…but the split survives in the ⓘ tooltip");
+  assert_(/2 by Tempo project lead/.test(h), "…and still names the inference count");
+
+  // A pill click OPENS the row it points at and never closes it — idempotent.
+  C.pmPillOpen_("Dana Reyes");
+  assert_(C.STATE.pmOpen["Dana Reyes"] === true,
+          "a counts-only pill click keeps the PM open — it never toggles the evidence away");
   // The Assignee column is the evidence each row is attributed on.
   // Wrapped in .pii since 2026-08-17 — an assignee is a person, so it blurs
   // with the roster names rather than staying legible beside them.
@@ -6767,7 +7066,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var t2 = document.getElementById("flowSecondary").innerHTML;
   var CLUSTERS = [
     { head: "Flow", want: ["Throughput", "Cleared", "Arrived", "Lead Time", "Net flow"] },
-    { head: "Runway", want: ["Inventory", "Weeks to clear"] },
+    { head: "Runway", want: ["Inventory", "Assigned inventory",
+                             "Weeks to clear", "Assigned weeks to clear"] },
     { head: "Quality", want: ["Bug Count"] },
   ];
   // Slice the strip into its clusters, in DOM order, so a card can be checked
@@ -6787,6 +7087,12 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
               "…and never in Tier 1 — got '" + lbl + "' in the protagonist row");
     });
   });
+  // Assigned beside its ORG twin (director feedback 2026-08-17): the pair
+  // used to float between the backlog bar and this strip, in no family at all.
+  var runwaySeg = segs[1];
+  assert_(runwaySeg.indexOf('lbl">Inventory') < runwaySeg.indexOf('lbl">Assigned inventory') &&
+          runwaySeg.indexOf('lbl">Weeks to clear') < runwaySeg.indexOf('lbl">Assigned weeks to clear'),
+          "each Assigned card sits directly beside its ORG twin in the Runway cluster");
   // Every card is accounted for: no tile is silently dropped by the grouping.
   assert_((t2.match(/<div class="lbl">/g) || []).length ===
           CLUSTERS.reduce(function (a, c) { return a + c.want.length; }, 0),
@@ -6879,29 +7185,32 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(els.backlogBand.innerHTML.indexOf("legSwatch") !== -1,
           "the legend renders in the band, under the bar it explains");
 
-  // ── 9. THE UNOWNED NOTE IS DATA-GATED ───────────────────────────────────
-  // Reassurance printed against a queue with no unowned work is a caption with
-  // no subject, and standing text nobody can clear stops being read.
+  // ── 9. THE UNOWNED NOTE IS A DATA-GATED TOOLTIP (director pass 2026-08-17) ──
+  // The beige block is gone; the same sentence rides the ⓘ beside the Groomed
+  // pipeline callout — the figure it explains. Still data-gated: reassurance
+  // printed against a queue with no unowned work is a caption with no subject.
   var mUn = model({});
   mUn.queue = { assigned: { items: 100, wipN: 60, todoN: 40, todoHrs: 0, unattributed: 0, uncategorized: 0 },
                 unassigned: { items: 500, wipN: 0, todoN: 0, todoHrs: 0, uncategorized: 0 } };
   fresh(mUn);
   C.renderMasthead_();
-  assert_(/Note on unassigned work/.test(els.masthead.innerHTML),
-          "with unowned work on the books, the note renders");
-  assert_(/planned pipeline for upcoming sprints/.test(els.masthead.innerHTML),
-          "…and says what that work actually is");
-  assert_(/500 items/.test(els.masthead.innerHTML),
+  var mastUn = els.masthead.innerHTML;
+  assert_(!/Note on unassigned work/.test(mastUn) && !/ctxNote/.test(mastUn),
+          "the beige note block never renders — it left the page with the verdict paragraph");
+  var groomedSeg = mastUn.split("Groomed pipeline")[1] || "";
+  assert_(/planned pipeline for upcoming sprints/.test(groomedSeg),
+          "…the sentence survives as the ⓘ tooltip on the Groomed pipeline callout");
+  assert_(/500 items/.test(groomedSeg),
           "…against the measured count, not a hardcoded figure");
   mUn.queue.unassigned.items = 0;
   C.setModel(mUn);
   C.renderMasthead_();
-  assert_(!/Note on unassigned work/.test(els.masthead.innerHTML),
+  assert_(!/planned pipeline for upcoming sprints/.test(els.masthead.innerHTML),
           "a queue with nothing unowned gets no note — the sentence leaves with its subject");
   mUn.queue.unassigned.items = null;
   C.setModel(mUn);
   C.renderMasthead_();
-  assert_(!/Note on unassigned work/.test(els.masthead.innerHTML),
+  assert_(!/planned pipeline for upcoming sprints/.test(els.masthead.innerHTML),
           "…and an UNMEASURED unowned count is not a reason to reassure anybody either");
 
   // Teardown.
@@ -7858,37 +8167,72 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.compare = "region";
   C.renderAll_();
 
-  // ── 1. AVAILABILITY IS NOT A BREAKDOWN — AND THIS IS WHY ────────────────
-  // Asked for as a fourth drill-down toggle (2026-08-17). It was built, then
-  // WITHDRAWN on evidence: workforce capacity ships pre-aggregated per
-  // pool × band (wfFold_ sums weekly[cell][iso]; headByCell only sets the head
-  // count), so scoping to a region changes WHO is counted but not the HOURS.
-  // Every row would print the identical org figure — a number repeated four
-  // times, not a comparison.
-  //
-  // The check below is the LOAD-BEARING one: it proves the constraint still
-  // holds. If the server ever ships capacity at a finer grain this FAILS, and
-  // whoever sees it should reconsider adding the column — which is exactly the
-  // conversation a silent absence would never start.
-  var av = C.wfAvailability_();
-  assert_(av !== null, "sanity: the fixture publishes an org availability figure");
-  var nm1 = {}; nm1[C.getModel().people[0].name] = 1;
-  var scopedAv = C.scopedMetric_(C.METRICS_.avail, [], nm1);
-  var wholeAv = C.METRICS_.avail.value([]);
-  assert_(scopedAv === wholeAv,
-          "availability does NOT scope to a subset — capacity is published per pool × band, " +
-          "which is why it is not a drill-down column. If this ever fails the payload grain " +
-          "changed and the column becomes possible.");
-  assert_(C.liveMetrics_().indexOf("avail") === -1, "…so it is not offered as a breakdown lens");
-  assert_(C.GRID_METRIC_IDS_.indexOf("avail") === -1, "…nor as a grid column");
-  // The card still publishes it, and still routes to the tab that CAN break it
-  // down — by pool and level band, the grain capacity is actually measured at.
+  // ── 1. AVAILABILITY RATE BREAKS DOWN, AND DOES SO HONESTLY ──────────────
+  // Asked for as a fourth column (2026-08-17). It was withdrawn once on
+  // evidence — wfAvailability_ reads the server's per-CELL fold, which cannot
+  // scope, so every row printed the same org figure — and then delivered by
+  // folding the SAME measure from the per-person weeks the payload already
+  // carries. availabilityFor_ uses w.cap and w.planned: the very fields
+  // buildCapacity_ and buildCommitment_ sum server-side.
+  assert_(C.liveMetrics_().indexOf("avail") !== -1, "Availability Rate is offered as a lens");
+  assert_(C.GRID_METRIC_IDS_.indexOf("avail") !== -1, "…and as a drill-down column");
+  assert_(els.comparePanel.innerHTML.indexOf("Availability Rate") !== -1,
+          "…and renders as a column header");
+
+  // THE CHECK THE WHOLE FEATURE RESTS ON: it must actually scope. A column that
+  // repeats one org number down every row is not a breakdown, and that is
+  // precisely what the first attempt produced.
+  (function () {
+    var m = model({});
+    m.people = [
+      person("A pair", { region: "AMER" }), person("A two", { region: "AMER" }),
+      person("E solo", { region: "EMEA" }),
+    ];
+    // AMER: 80 cap, 20 planned → 75% free. EMEA: 40 cap, 36 planned → 10% free.
+    var W = WEEKS[WEEKS.length - 1];
+    m.people.forEach(function (p) {
+      p.pool = "PS-CONSULT"; p.cell = "PS-CONSULT|CORE"; p.band = "CORE";
+      p.weeks = {}; p.weeks[W] = { cap: 40, avail: 40, planned: p.region === "AMER" ? 10 : 36,
+                                   effPlanned: 0, tracked: 0, trackedOff: 0, billable: 0,
+                                   nonBillable: 0, availCov: 40, capCov: 40, trackedCov: 0 };
+    });
+    fresh(m);
+    var isos = [W];
+    var all = C.availabilityFor_(isos);
+    assert_(all.gross === 120 && all.committed === 56,
+            "the fold sums w.cap and w.planned — the same fields the server folds");
+    var amer = {}; amer["A pair"] = 1; amer["A two"] = 1;
+    var emea = {}; emea["E solo"] = 1;
+    var vA = C.scopedMetric_(C.METRICS_.avail, isos, amer);
+    var vE = C.scopedMetric_(C.METRICS_.avail, isos, emea);
+    assert_(Math.abs(vA - 75) < 1e-9, "AMER folds to 75% free — got " + vA);
+    assert_(Math.abs(vE - 10) < 1e-9, "EMEA folds to 10% free — got " + vE);
+    assert_(vA !== vE,
+            "…so the column genuinely BREAKS DOWN. This is the check that failed on the " +
+            "first attempt, when every row printed the same org figure.");
+
+    // The carves match the server's, or the column disagrees with the card.
+    m.people[2].onBench = true;
+    C.setModel(m);
+    var noBench = C.availabilityFor_(isos);
+    // Benched crew are already out via filteredPeople_'s population gate, so
+    // this passes whether or not the fold repeats the carve. Kept because the
+    // NUMBER is what matters to the reader, and it must be 80 by either route.
+    assert_(noBench.gross === 80, "benched crew are not in the fold, by either gate");
+    m.people[2].onBench = false;
+    m.people[2].pool = "PMO"; m.people[2].cell = "PMO|CORE";
+    C.setModel(m);
+    assert_(C.availabilityFor_(isos).gross === 80,
+            "…and a non-consuming pool is excluded, as the consumers-only rule requires");
+  })();
+
+  // The card still routes to Workforce, which is where the per-pool detail is.
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
   var t1a = document.getElementById("tier1Tiles").innerHTML;
-  assert_(t1a.indexOf("Availability Rate") !== -1, "the Availability CARD still publishes");
   assert_(/switchView_/.test(tileSeg_(t1a, "Availability Rate")),
-          "…and deep-links to Workforce, where capacity IS reported per pool × band");
-  assert_(Math.abs(wholeAv - av.pct * 100) < 1e-9,
-          "one definition — the metric reads wfAvailability_ itself");
+          "the Availability card still deep-links to Workforce");
 
   // ── 2. IN-CELL MICRO-BARS ───────────────────────────────────────────────
   C.renderCompare_();
@@ -7905,10 +8249,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // Ungraded cells keep a NEUTRAL bar — colour is a verdict, and a small-n row
   // has none. This is the check that stops the bar becoming a back door for
   // grading a population the cell itself refuses to grade.
-  var small = C.gridCellHtml_({ value: 40, n: 3, target: { green: 85, amber: 70 }, unit: null });
-  assert_(/--c-ref/.test(small) && !/--c-bad/.test(small),
-          "a small-n cell's bar is neutral — the colour ban survives the new visual");
-  assert_(/ungraded \(small n\)/.test(small), "…and it still says so in words");
+  // A cell with NO agreed target carries no verdict, so its bar must not imply
+  // one. (The old small-n ungraded branch was removed on 2026-08-17 when small
+  // groups began grading like everyone else — this is where the colour ban
+  // still lives.)
+  var noTgt = C.gridCellHtml_({ value: 40, n: 20, target: null, unit: null });
+  assert_(/--c-ref/.test(noTgt) && !/--c-bad|--c-good|--c-warn/.test(noTgt),
+          "a target-less cell's bar is neutral — colour is a verdict, and there is none");
   // A unit metric with no column max draws NO bar rather than inventing a
   // denominator to scale against.
   var noMax = C.gridCellHtml_({ value: 12, n: 20, target: null, unit: "days" });
@@ -7923,10 +8270,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // THREE, not four: Availability has no breakdown to select (block 1), and a
   // card that highlights itself while changing nothing below is worse than one
   // that never invited the click.
-  assert_((t1.match(/tileDrill/g) || []).length === 3,
-          "the three cards with a real breakdown are drill controls");
-  assert_(!/tileDrill/.test(tileSeg_(t1, "Availability Rate")),
-          "…and Availability is not one of them — it routes to Workforce instead");
+  assert_((t1.match(/tileDrill/g) || []).length === 4,
+          "all four Tier-1 cards are drill controls — every KPI has a breakdown below");
+  assert_(/tileDrill/.test(tileSeg_(t1, "Availability Rate")),
+          "…including Availability, now that it genuinely breaks down"); 
   assert_(/role="button"/.test(t1) && /tabindex="0"/.test(t1),
           "…keyboard-reachable, not mouse-only");
   assert_((t1.match(/aria-pressed="true"/g) || []).length === 1,
@@ -7965,6 +8312,33 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     assert_((h.match(/rowOffender/g) || []).length === 1,
             "…only the failing one — EMEA at 95% is not marked");
     assert_(/offMark/.test(h), "…with a glyph, so the mark is not colour alone (FR-4.4)");
+
+    // ── ROWS ARE CONTROLS (user 2026-08-17) ──────────────────────────────
+    // Clicking a row selects its category: active state on the row, the
+    // dimension's universal filter set, and the drill buttons inheriting the
+    // slice. Toggle semantics: a second click clears it.
+    assert_(/drillRowPick_\(/.test(h), "grid rows carry the row-click handler");
+    assert_(!/rowActive/.test(h), "no row is active before a click");
+    // Rows rank by value, best first: EMEA (95%) is index 0, AMER (20%) is 1.
+    C.drillRowPick_(1);
+    var h2 = els.comparePanel.innerHTML;
+    assert_(C.STATE.region === "AMER",
+            "clicking a row sets the dimension's own universal filter");
+    assert_((h2.match(/rowActive/g) || []).length === 1, "…exactly one row highlights");
+    assert_(/rowOffender rowActive/.test(h2),
+            "…and it is AMER — the offender row — that carries the active state");
+    assert_((h2.match(/aria-pressed="true"/g) || []).length === 1,
+            "…announced via aria-pressed, never colour alone");
+    assert_(/Who is available →[^<]*AMER/.test(h2),
+            "…and the Workforce button inherits the slice from the clicked row");
+    assert_(/95%/.test(h2),
+            "…while the unselected row keeps its value — selecting AMER must not " +
+            "blank EMEA or reshuffle the ranking under the click");
+    C.drillRowPick_(1);
+    assert_(C.STATE.region === "",
+            "clicking the active row again clears the selection");
+    assert_(!/rowActive/.test(els.comparePanel.innerHTML),
+            "…and the highlight goes with it");
   })();
 
   // ── 5. THE DEEP LINK NAMES THE SLICE IT CARRIES ─────────────────────────
@@ -7987,6 +8361,63 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.drillPick_("region", "");
   C.setState("metric", "onTime");
   C.STATE.compare = "region";
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// ROSTER COLUMN ORDER — HEADER AND CELLS MOVE TOGETHER (2026-08-17)
+//
+// ROSTER_COLS_ key order drives the HEADER. The row cells are written out by
+// hand in renderRoster_. Nothing in the code forces the two to agree, and when
+// they disagree every value shifts one column left under a header that still
+// reads correctly — a table that is wrong in a way a screenshot preserves and
+// a reader cannot detect. Overall was moved from last to second; this is the
+// check that the cells came with it.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  // The roster needs a personHygiene payload — the base fixture has none and
+  // renders its "not in this payload" state, which has no header to check.
+  var mR = model({});
+  mR.personHygiene = {
+    open: [{ person: "Ana Perez", n: 10, due: 3, est: 10, logged: 9 },
+           { person: "Ben Ortiz", n: 12, due: 12, est: 12, logged: 12 }],
+    resolved: [],
+  };
+  mR.meta.signalMinN = 4;
+  fresh(mR);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "actions");
+  C.setState("typePop", "open");
+  C.renderAll_();
+  var h = els.rosterPanel.innerHTML;
+  var headRow = h.slice(h.indexOf("<tr>"), h.indexOf("</tr>"));
+  var headers = (headRow.match(/<th[^>]*>[\s\S]*?<\/th>/g) || []).map(function (t) {
+    return t.replace(/<[^>]*>/g, "").replace(/[▾▴]/g, "").trim();
+  });
+  assert_(headers.length > 4, "sanity: the roster rendered a header row");
+  assert_(/^Person/.test(headers[0]), "column 1 is the person");
+  assert_(/^Overall/.test(headers[1]),
+          "column 2 is Overall — the verdict sits beside the name, not eight columns away");
+
+  // The CELL in position 2 must be the overall grade, not the issue count.
+  // Body rows carry attributes, so anchor on </thead> and take everything up to
+  // the first row close rather than matching a bare "<tr>".
+  var afterHead = h.slice(h.indexOf("</thead>"));
+  var firstRow = afterHead.slice(0, afterHead.indexOf("</tr>"));
+  var cells = firstRow.split("<td").slice(1);
+  assert_(cells.length === headers.length,
+          "every header has exactly one cell — got " + cells.length + " cells for " +
+          headers.length + " headers");
+  assert_(/sigDot/.test(cells[1]),
+          "cell 2 carries the overall grade dot — header and cells moved together");
+  assert_(!/sigDot/.test(cells[0]), "…and cell 1 is still the name, not a grade");
+  // The count that used to be second must now be third, or the cells shifted
+  // without the header.
+  assert_(/^Open issues|^Resolved|^Issues/.test(headers[2]),
+          "column 3 is the issue count, which Overall displaced");
+
   fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();

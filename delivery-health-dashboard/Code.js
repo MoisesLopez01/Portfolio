@@ -4939,13 +4939,20 @@ function buildBacklog_(epics, dominant, projectDefaults) {
   (epics || []).forEach(function (e) {
     if (e.statusCategory === "Done" || e.resolved) return;   // open backlog only
     var pool = dhRequiredPool_(e, dominant, projectDefaults);
-    if (!byPool[pool]) byPool[pool] = { backlogHrs: 0, epicCount: 0, unestimatedEpics: 0 };
+    if (!byPool[pool]) byPool[pool] = { backlogHrs: 0, epicCount: 0, unestimatedEpics: 0, keys: [] };
     var b = byPool[pool];
     var est = Number(e.estSec) || 0;
     var spent = Number(e.spentSec) || 0;
     b.backlogHrs += Math.max(0, est - spent) / 3600;
     b.epicCount++;
     if (!est) b.unestimatedEpics++;
+    // KEYS, capped. The Workforce tab's unrouted alert links straight into the
+    // Jira queue holding these epics, and a link needs the tickets by name.
+    // Capped at the same bar as every other key list here: one pathological
+    // pool must not dominate a payload that is gzipped, chunked and cached, and
+    // the CLIENT states when the list it opens is shorter than the count above
+    // it. `epicCount` always covers all of them.
+    if (e.key && b.keys.length < EPIC_DUE_MAX_KEYS_) b.keys.push(e.key);
   });
   Object.keys(byPool).forEach(function (pool) {
     var b = byPool[pool];
@@ -5337,6 +5344,11 @@ function buildWorkforceHealth_(people, trackedRows, plannedRows, jira, resolveNa
       routedEpics: Object.keys(dominant).length,
       unroutedHrs: backlog.UNROUTED ? backlog.UNROUTED.backlogAdjHrs : 0,
       unroutedEpics: backlog.UNROUTED ? backlog.UNROUTED.epicCount : 0,
+      // The tickets themselves, so the alert's button opens a real Jira search
+      // rather than a tab the reader then has to build a query in.
+      unroutedKeys: backlog.UNROUTED ? (backlog.UNROUTED.keys || []) : [],
+      unroutedCapped: !!(backlog.UNROUTED &&
+                         backlog.UNROUTED.epicCount > (backlog.UNROUTED.keys || []).length),
       // Never measured in this deployment — stated, not defaulted to zero.
       genericPlansMeasured: false,
       capacityTruthMeasured: false,
@@ -6907,7 +6919,14 @@ function assembleModel_(inputs, win) {
 //      reason — a v42 entry has people with onBench === undefined, every
 //      `=== true` carve reads false, and benched crew return to the availability
 //      denominator, which is the bug the carve exists to fix.
-var DH_SCHEMA_VER_ = 43;
+// 44 — `workforce.coverage` gains `unroutedKeys` / `unroutedCapped`, so the
+//      Workforce tab's unrouted ALERT can link into the Jira queue holding those
+//      epics instead of naming a number nobody can act on. A v43 entry has the
+//      counts but no keys: the alert still renders and still states the size,
+//      and the button is simply absent — the one case where the degraded state
+//      is honest rather than wrong, which is why this bump is a courtesy and
+//      not a correctness fix.
+var DH_SCHEMA_VER_ = 44;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -10252,8 +10271,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 43,
-          "payload schema is v43 (PM Owns bar excludes undated To Do epics) — " +
+  assert_(m.schemaVer === 44,
+          "payload schema is v44 (unrouted epic keys for the Workforce alert) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10279,9 +10298,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 43,
-          "schema is 43 — a v42 entry carries the OLD, wider epicN, so every PM's Owns bar " +
-          "would read lower than the To Do carve says it should");
+  assert_(m.schemaVer === 44,
+          "schema is 44 — v43 added the PM To Do carve (a v42 entry reads every Owns bar low) " +
+          "and v44 adds the unrouted epic keys the Workforce alert links on");
   assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppEpicsAtRisk === "number",
           "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");

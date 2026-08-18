@@ -1686,6 +1686,153 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 
 ## Deploy
 
+> ### ⚡ Backlog & Flow as a command center (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action** — presentation and
+> layout only. Director feedback, four items:
+>
+> **1 · The verdict paragraph and the beige note are gone.** The masthead now carries only the
+> three stat callouts (Delivery pace · Total runway · Groomed pipeline) plus the scope/gates
+> line. The "We are holding N items…" ranked-verdict paragraph restated the callouts; deleted.
+> The "Note on unassigned work" block survives as a **data-gated ⓘ tooltip beside Groomed
+> pipeline** — the figure it explains — same sentence, no beige block. `verdictFindings_` (the
+> ranked-verdict engine) survives fully tested but renders nowhere: its thresholds are doctrine
+> and a later surface (digest email, Slack post) can pick it up without rebuilding it.
+>
+> **2 · The Assigned pair joined the Runway family.** ASSIGNED INVENTORY and ASSIGNED WEEKS TO
+> CLEAR left their floating spot under the backlog bar and now render in the **Runway cluster,
+> each beside its ORG twin**: Inventory · Assigned inventory · Weeks to clear · Assigned weeks
+> to clear. The scope tags (ORG vs SNAP) say which pair follows the filters; the backlog band's
+> ⓘ line explains the two-denominator design. Builder: `assignedRunwayParts_()`.
+>
+> **3 · Recoverable hours lead the tab.** The People-signals band moved up to sit **directly
+> under the stat callouts**, and when a finished window prices recoverable capacity, the panel
+> opens with an amber alert — **⚡ 307h recoverable this week → open the roster** — clickable
+> (and keyboard-reachable) straight to the roster, biggest opportunity first. Same gates as
+> before: finished windows only, and a measured 0h stays a quiet inline mention, never a banner.
+>
+> **4 · The colour key is deleted.** `#flowKey` is out of the markup and `ragKeyHtml_` went with
+> its last caller. This tab is mostly ungraded volume metrics; every graded card carries its own
+> ✔/▲/✖ glyph and value label (FR-4.4), so status never rested on the legend.
+>
+> **Live smoke:** Executive → Backlog & Flow. Reading order: three big figures → amber
+> recoverable alert → backlog bar → clustered cards. No paragraph under the callouts, no beige
+> note (hover ⓘ on Groomed pipeline instead), Assigned cards sit inside Runway beside their ORG
+> twins, and no colour-key text anywhere on the tab.
+
+> ### 🗓 PM tab decluttered — pills, ⓘ methodology, sharper tooltips (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action** — presentation and
+> client-side interaction only. Director feedback, five items:
+>
+> **1 · The 8-line methodology paragraph is off the page.** The attribution/windowing prose under
+> the heading now lives in a collapsed `<details class="pmMethod">` labelled **ⓘ How PM ownership
+> is calculated** — one quiet line, expandable, state survives re-renders (same decision as the
+> key grid). Every sentence is unchanged inside it, including the backlog-carve and the
+> "why Actions shows a higher 🚩 number" reconciliation.
+>
+> **2 · Signal pills, not a text log.** Each PM's gaps render as horizontal colour-coded pills
+> (`.pmPill`): `🚩 8 no due date` `✖ 2 past due date` `⚠ 4 at risk` `🔗 7 unlinked`
+> `🕒 3 untouched 30d+`, biggest first, zero-count signals absent, `✔ No open gaps` in green when
+> clean. A director scans down the PM list and sees who carries the most red.
+>
+> **3 · Attribution jargon behind ⓘ.** "Attributed: N by Jira assignee · M by Tempo project lead"
+> is no longer a row — the split lives in a ⓘ tooltip beside each PM's **Owns** figure, for the
+> moment a PM disputes a row.
+>
+> **4 · Tooltips punched up.** The no-due tooltip is now *"Work started without a deadline. This
+> bypasses On-Time Delivery tracking and requires immediate scoping."* — same treatment on the
+> at-risk / breached / stale / unlinked tips at both PM and epic/child grain.
+>
+> **5 · Every pill acts.** The no-due pill opens its keys directly in the Jira issue navigator
+> (the payload names them). The counts-only pills open the PM's epic list — their counts cover the
+> PM's FULL epic set, wider than the month window drawn below, so a key link could not match the
+> pill's own number; routing to the on-screen evidence is the honest click. "Open all/these in
+> Jira" links are unchanged.
+>
+> **Live smoke:** open 🗓 Project Managers. One collapsed ⓘ line under the heading, no wall of
+> text. Pills under each PM name; hovering ⓘ beside Owns shows the attribution split; clicking a
+> red no-due pill lands in Jira on exactly those epics; clicking an amber pill opens that PM's
+> epic list. No row anywhere reads "Attributed:".
+
+> ### 🖱 Drill-down rows are controls + no more "no reference" + Over-allocated (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action** — presentation and
+> client-side interaction only.
+>
+> **1 · Rows select.** Clicking a drill-down row (or pressing Enter/Space on it — rows are
+> `role="button"` and keyboard-reachable) sets that category's own universal filter, exactly as
+> `drillPick_` always did for the deleted chips. The row highlights (`.rowActive`, blue left bar +
+> tint, `aria-pressed`), and the **Who is available →** / **What needs action →** buttons in the
+> header inherit the slice by name before they are clicked. Clicking the active row again clears
+> it. Row keys travel by index through `DRILL_ROW_KEYS_`, never inlined into the onclick, so a
+> category name with a quote in it cannot break the handler.
+>
+> **The bug this surfaced (fixed here):** `renderCompare_` claimed the compare dimension's own
+> filter was "switched off while the bars are built" — true for row MEMBERSHIP (`passesFilters_`'s
+> skip argument) but not for the metric accessors inside `scopedMetric_`, which apply the raw
+> filters. Selecting AMER therefore blanked every other row's values and reshuffled the ranking
+> under the click. The filter is now **parked** for the duration of the fold (rows AND the
+> per-column operating bands, restored in a `finally`), so selecting a row narrows the page while
+> the table keeps showing the whole comparison.
+>
+> **2 · "no reference" is gone.** The caption on target-less cells (live again since the
+> Availability column joined the grid — it has no ratified target) forced the reader to guess what
+> the system meant. The cell now prints the raw value with its neutral grey bar alone; the fact
+> moved into the tooltip: *"No organizational target has been set for this metric…"*. The absent
+> RAG glyph already reads as "not graded" in the scan.
+>
+> **3 · Over-allocated, never a negative rate.** Availability = (scheduled − planned) ÷ scheduled,
+> and planned CAN exceed scheduled — the fold does not cap. A negative percentage is a burnout
+> signal wearing a math costume, so every surface publishing the rate now translates it the same
+> way: value clamps to **0%**, a red **`Over-allocated`** pill appears, and the overrun is stated
+> in hours (the unit a leader can reassign) — on the drill-down cell (tooltip carries the
+> magnitude), the Availability Rate card, and the Workforce tab's "one honest number".
+>
+> **Live smoke:** Executive → Drill-down. Click the ANZ row: it highlights, the header buttons
+> read "… → · ANZ", EMEA's cells keep their values, and clicking **Who is available →** opens
+> Workforce already narrowed to ANZ. No cell anywhere reads "no reference". If any slice is booked
+> past capacity, its availability shows `0% Over-allocated` in red, never a minus sign.
+
+> ### 📊 Drill-down cells: graded at every size, with the counts (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action.**
+>
+> **The rule that changed.** A drill-down cell for a category under 10 people used to render
+> `● 50% ungraded (small n)` — grey, uncoloured, with a caveat. That greyed the cell failing
+> hardest, broke the scan, and left the reader to judge severity from fine print on the row least
+> likely to get that effort. **Small groups are now graded exactly like large ones**: if ANZ is at
+> 50% against an 85% target it is red, the same as AMER.
+>
+> **The caveat is answered, not repeated.** The question it was really asking — is this 50 of 100 or
+> 1 of 2 — is now printed:
+>
+> | Before | After |
+> |---|---|
+> | `● 50% ungraded (small n)` | `✖ 50% (1/2 items)` |
+> | `● 50% ungraded (small n)` | `✖ 50% (3/6 items)` |
+>
+> The counts come from the metric's OWN denominator, scoped to the same population as the rate
+> (`scopedMetricN_`), so the fraction and the percentage can never describe different sets. The
+> numerator is derived from the **unrounded** value, so 66.67% of 3 prints 2/3 rather than the 2 a
+> rounded 67% would give back at other ratios.
+>
+> **Only where the count is a count.** `onTime` → items, `forecast` → epics, `quality` → items.
+> Utilization and Planned Coverage measure HOURS, so they carry no noun and print the rate alone —
+> `(1400/2000 items)` under a utilization cell would be a unit nobody measured.
+>
+> **The row mark follows the cell.** The ▸ offender mark on a row name no longer requires 10+ people
+> either; a red cell beside an unmarked row was the two halves of one table disagreeing.
+>
+> **Live smoke:** Executive → Drill-down, compare by Region or Team. Every cell carries a RAG glyph
+> and its counts; no cell reads "ungraded (small n)" and no grey ● remains. A small region below
+> target must be RED, and one above target GREEN — if everything small went red, the grading is
+> ignoring the target rather than applying it.
+>
+> ⚠ This changes **only** the drill-down grid. The KPI tiles keep their own `⚠ small sample` note
+> (`smallN_`, under 15 records) and the signals roster keeps `SIGNAL_MIN_N` — those are different
+> surfaces with different questions, and neither was in scope.
+
 > ### 👁 Confidential view — blur names (2026-08-17) — `Dashboard.html` only
 >
 > Paste `Dashboard.html` and deploy. **No schema bump, no cache action, `Security.js` unchanged.**
