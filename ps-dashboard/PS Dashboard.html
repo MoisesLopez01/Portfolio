@@ -2959,10 +2959,179 @@ function renderAll() {
   if (RENDERERS[STATE.activeTab]) RENDERERS[STATE.activeTab]();
 }
 
-// Stub — replaced by the full renderer in the Performance Record build (Task 5).
+// ── Performance Record: renderer ─────────────────────────────────────────────
+// Builds one reusable row model per employee (render + CSV share it), then
+// renders the grid. Row click toggles the evidence panel (Task 6).
+
+function perfRowModels_(emps) {
+  var model = perfModel_();
+  var cols  = perfCols_();
+  return emps.map(function(emp) {
+    var per   = model.byEmp[emp.normName] || [];
+    var gray  = perfGrayCols_(emp);
+    var coh   = perfCohort_(emp);
+    var cells = cols.map(function(c) {
+      var isGray  = !!gray[c.id];
+      var lastVal = isGray ? null : perfColVal_(per[model.lastIdx], c.id);
+      var prevVal = isGray || model.prevIdx === null ? null : perfColVal_(per[model.prevIdx], c.id);
+      var sig     = isGray ? 'm' : perfSignalFor_(c.id, lastVal, coh);
+      return {
+        col: c, gray: isGray, sig: sig,
+        trend: perfTrend_(c.id, prevVal, lastVal),
+        val: lastVal,
+        buckets: per.map(function(agg, i) {
+          var v = isGray ? null : perfColVal_(agg, c.id);
+          return { val: v, sig: isGray ? 'm' : perfSignalFor_(c.id, v, coh),
+                   prog: !!model.buckets[i].containsCurrent };
+        }),
+      };
+    });
+    var reds    = cells.filter(function(x) { return x.sig === 'r'; }).length;
+    var yellows = cells.filter(function(x) { return x.sig === 'y'; }).length;
+    return {
+      emp: emp, cells: cells, reds: reds, yellows: yellows,
+      flagged: reds + yellows > 0,
+      reading: perfReadingNote_(cells.map(function(x) {
+        return { id: x.col.id, label: x.col.label, sig: x.sig, trend: x.trend };
+      })),
+    };
+  });
+}
+
+function perfSortRows_(rows) {
+  var s   = STATE.prSort;
+  var dir = s.dir === 'asc' ? 1 : -1;
+  var sev = { r: 3, y: 2, g: 1, m: 0 };
+  var cols = perfCols_();
+  var colIdx = -1;
+  cols.forEach(function(c, i) { if (c.id === s.key) colIdx = i; });
+  rows.sort(function(a, b) {
+    if (s.key === 'name') return dir * a.emp.name.localeCompare(b.emp.name);
+    if (s.key === 'flags' || colIdx === -1) {
+      var fa = a.reds * 100 + a.yellows, fb = b.reds * 100 + b.yellows;
+      return fa !== fb ? dir * (fa - fb) : a.emp.name.localeCompare(b.emp.name);
+    }
+    var ca = a.cells[colIdx], cb = b.cells[colIdx];
+    if (sev[ca.sig] !== sev[cb.sig]) return dir * (sev[ca.sig] - sev[cb.sig]);
+    var va = typeof ca.val === 'number' ? ca.val : Infinity;   // worst value first inside a colour
+    var vb = typeof cb.val === 'number' ? cb.val : Infinity;
+    return va !== vb ? -dir * (va - vb) : a.emp.name.localeCompare(b.emp.name);
+  });
+  return rows;
+}
+
+function prSortBy(key) {
+  var s = STATE.prSort;
+  if (s.key === key) s.dir = s.dir === 'desc' ? 'asc' : 'desc';
+  else STATE.prSort = { key: key, dir: 'desc' };
+  renderPerfRecordTab_();
+}
+
+// Bar height source per metric: norms/shares are 0–1; score 0–100; kudos counts.
+function perfBarPct_(colId, v) {
+  if (v === null || v === undefined) return 0;
+  if (colId === 'score') return Math.max(8, Math.min(100, v));
+  if (colId === 'kudos') return Math.max(8, Math.min(100, ((v.recv || 0) + (v.gave || 0)) / 4 * 100));
+  return Math.max(8, Math.min(100, v * 100));
+}
+
+function perfBarsHtml_(cell, dense) {
+  return '<span class="pr-mb' + (dense ? ' dense' : '') + '">' + cell.buckets.map(function(b) {
+    var pct = b.val === null || b.val === undefined ? 0 : perfBarPct_(cell.col.id, b.val);
+    var cls = (b.sig !== 'g' ? b.sig : '') + (b.prog ? ' prog' : '');
+    return '<i class="' + cls.trim() + '" style="height:' + (pct || 8) + '%" ' +
+           (b.val === null ? 'title="no data"' : '') + '></i>';
+  }).join('') + '</span>';
+}
+
+function perfCellHtml_(cell, dense) {
+  var dot   = '<span class="pr-dot ' + cell.sig + '"></span>';
+  var trend = cell.trend ? '<span class="pr-trend">' + cell.trend + '</span>' : '';
+  if (cell.col.id === 'score') return dot + (cell.val === null ? '—' : cell.val) + ' ' + trend;
+  if (cell.col.id === 'rcr')   return dot + (cell.val === null ? '—' : (Math.round(cell.val * 10) / 10)) + ' ' + trend;
+  if (cell.col.id === 'si')    return dot + (cell.val === null ? '—' : Math.round(cell.val)) + ' ' + trend;
+  if (!cell.col.bars)          return dot + trend;
+  return dot + trend + perfBarsHtml_(cell, dense);
+}
+
 function renderPerfRecordTab_(filteredOpt) {
-  var el = document.getElementById('prBody');
-  if (el) el.innerHTML = '<p class="pr-note">Performance Record — renderer not built yet.</p>';
+  if (!DATA) return;
+  var body = document.getElementById('prBody');
+  if (!body) return;
+
+  // Controls
+  var granCtl = document.getElementById('prGranCtl');
+  if (granCtl) {
+    granCtl.innerHTML = [['week', 'Weekly'], ['month', 'Monthly'], ['quarter', 'Quarterly']]
+      .map(function(o) {
+        return '<button class="' + (STATE.prGranularity === o[0] ? 'on' : '') + '" ' +
+          'onclick="STATE.prGranularity=\'' + o[0] + '\';renderPerfRecordTab_()">' + o[1] + '</button>';
+      }).join('');
+  }
+  var chip = document.getElementById('prFlaggedChip');
+  if (chip) chip.classList.toggle('on', STATE.prFlaggedOnly);
+
+  var emps = (filteredOpt || getFilteredEmployees());
+  var rows = perfSortRows_(perfRowModels_(emps));
+  var shown = STATE.prFlaggedOnly ? rows.filter(function(r) { return r.flagged; }) : rows;
+
+  var model = perfModel_();
+  var dense = STATE.prGranularity === 'week';
+  var cols  = perfCols_();
+
+  // Subtitle: name the window explicitly so a screenshot is self-describing.
+  var qBuckets = periodBucketsForEmp_('quarter');
+  var sub = document.getElementById('prSub');
+  if (sub) sub.textContent =
+    qBuckets.map(function(b) { return periodDisplayLabel_(b); }).join(' · ') +
+    ' — ' + shown.length + ' of ' + rows.length + ' rocketeers' +
+    (STATE.prFlaggedOnly ? ' (flagged only)' : '') +
+    ' · dot = last closed ' + STATE.prGranularity;
+
+  function th(key, label) {
+    var on = STATE.prSort.key === key;
+    return '<th class="' + (on ? 'on' : '') + '" onclick="prSortBy(\'' + key + '\')">' +
+      label + (on ? (STATE.prSort.dir === 'desc' ? ' ▾' : ' ▴') : '') + '</th>';
+  }
+
+  var html = '<table class="pr-table"><thead><tr>' +
+    th('name', 'Rocketeer') + th('flags', '⚑') +
+    cols.map(function(c) { return th(c.id, c.label); }).join('') +
+    '<th>Reading</th></tr></thead><tbody>';
+
+  shown.forEach(function(r) {
+    var e = r.emp;
+    var parsed  = typeof parseJobCode === 'function' ? parseJobCode(e.jobTitle) : {};
+    var badges  = (e.isRampUp ? ' 🌱' : '') + (onLeave_(e) ? ' 🏖' : '');
+    var subLine = [parsed.family, parsed.level, e.keyLocation, e.supervisor]
+      .filter(Boolean).join(' · ');
+    var open = STATE.prExpanded === e.normName;
+    html += '<tr class="pr-row" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
+      '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + badges + '</span>' +
+        '<br><span class="pr-sub">' + esc(subLine) + '</span></td>' +
+      '<td>' + (r.reds ? '<span class="pr-dot r"></span>' + r.reds : '') +
+               (r.yellows ? ' <span class="pr-dot y"></span>' + r.yellows : '') +
+               (!r.reds && !r.yellows ? '—' : '') + '</td>' +
+      r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, dense) + '</td>'; }).join('') +
+      '<td class="pr-reading">' + esc(r.reading) + '</td></tr>';
+    if (open) {
+      html += '<tr><td colspan="' + (cols.length + 3) + '">' + perfDrillHtml_(e, r, model) + '</td></tr>';
+    }
+  });
+
+  html += '</tbody></table>';
+  if (!shown.length) html = '<p class="pr-note">No rocketeers match the current filters' +
+    (STATE.prFlaggedOnly ? ' and the Flagged-only chip' : '') + '.</p>';
+  body.innerHTML = html;
+}
+
+// Temporary — replaced with the evidence panel in the next build step (Task 6).
+function togglePerfDrill_(normName) {
+  STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
+  renderPerfRecordTab_();
+}
+function perfDrillHtml_(emp, row, model) {
+  return '<div class="pr-drill">Evidence panel — built in the next step.</div>';
 }
 function exportPerfCsv_() {}
 
