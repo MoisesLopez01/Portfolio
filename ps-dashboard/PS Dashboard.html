@@ -3402,6 +3402,86 @@ function perfCsvEncode_(rows) {
 }
 // ⟦PERF-ENGINE-END⟧ ───────────────────────────────────────────────────────────
 
+// ── Performance Record: model builder (DATA/STATE-aware glue) ────────────────
+// Buckets the 3-quarter window at the tab's granularity and aggregates each
+// employee's weekly computeRkScore rows per bucket. Memoized per payload +
+// granularity — sorting/filtering/expanding never recomputes.
+var _perfModelMemo = { key: null, model: null };
+
+function perfBucketsFor_(gran) {
+  if (gran === 'week') {
+    // Weekly = each past continuity week is its own bucket.
+    return (DATA.q4Weeks || []).filter(function(w) { return !w.isFuture; }).map(function(w) {
+      return { key: w.label, label: w.label, weekLabels: [w.label],
+               containsCurrent: w.label === DATA.meta.currentWeekLabel };
+    });
+  }
+  return periodBucketsForEmp_(gran);
+}
+
+function perfModel_() {
+  var gran = STATE.prGranularity;
+  var memoKey = gran + '|' + STATE.activeTeam + '|' + ((DATA.meta && DATA.meta.generatedAt) || '');
+  if (_perfModelMemo.key === memoKey) return _perfModelMemo.model;
+  var buckets = perfBucketsFor_(gran);
+  // Dot/trend read the last two CLOSED buckets (spec §5) — precompute indices.
+  var closedIdx = [];
+  buckets.forEach(function(b, i) { if (!b.containsCurrent) closedIdx.push(i); });
+  var model = {
+    buckets:  buckets,
+    lastIdx:  closedIdx.length ? closedIdx[closedIdx.length - 1] : (buckets.length ? buckets.length - 1 : 0),
+    prevIdx:  closedIdx.length > 1 ? closedIdx[closedIdx.length - 2] : null,
+    byEmp:    {},
+  };
+  (DATA.employees || []).forEach(function(emp) {
+    model.byEmp[emp.normName] = buckets.map(function(b) {
+      return perfBucketAgg_(b.weekLabels
+        .filter(function(l) { return emp.weeks && emp.weeks[l]; })
+        .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }));
+    });
+  });
+  _perfModelMemo = { key: memoKey, model: model };
+  return model;
+}
+
+// Manager cohort = existing rule (Job Catalog track M OR has reports) — the
+// payload ships it as e.isManager.
+function perfCohort_(emp) { return emp.isManager ? 'mgr' : 'ic'; }
+
+// Column registry — filtered by the team gate at render time. Score is always first.
+var PERF_COLS = [
+  { id: 'score',   label: 'Score',   bars: false },
+  { id: 'goals',   label: 'Goals',   bars: true  },
+  { id: 'tracked', label: 'Tracked', bars: true  },
+  { id: 'planned', label: 'Planned', bars: true  },
+  { id: 'rcr',     label: 'RCR',     bars: false },
+  { id: 'kudos',   label: 'Kudos',   bars: true  },
+  { id: 'pto',     label: 'PTO',     bars: true  },
+  { id: 'si',      label: 'SI',      bars: false },
+];
+function perfCols_() {
+  return PERF_COLS.filter(function(c) { return c.id === 'score' || hasMetric_(c.id); });
+}
+
+// Per-employee metric exclusions (existing policy): on-leave → everything gray;
+// ramp-up → Goals/Kudos/RCR/SI gray; non-tracking families → Tracked/Planned/RCR
+// gray (RCR joined the carve 2026-08-05); crew → Goals/PTO/SI gray.
+function perfGrayCols_(emp) {
+  var gray = {};
+  function g(ids) { ids.forEach(function(id) { gray[id] = true; }); }
+  if (onLeave_(emp)) { g(['score', 'goals', 'tracked', 'planned', 'rcr', 'kudos', 'pto', 'si']); return gray; }
+  if (emp.isRampUp)      g(['goals', 'kudos', 'rcr', 'si']);
+  if (!tracksTime_(emp)) g(['tracked', 'planned', 'rcr']);
+  if (isCrewEmp(emp))    g(['goals', 'pto', 'si']);
+  return gray;
+}
+
+// Extracts the col's bucket value from a perfBucketAgg_ result.
+function perfColVal_(agg, colId) {
+  if (!agg) return null;
+  return agg[colId] === undefined ? null : agg[colId];
+}
+
 function computeRkScore(emp, weekLabel) {
   var wd = emp.weeks && emp.weeks[weekLabel];
   if (!wd) return null;
