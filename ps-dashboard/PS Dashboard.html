@@ -3125,7 +3125,7 @@ function renderPerfRecordTab_(filteredOpt) {
   body.innerHTML = html;
 }
 
-// Temporary — replaced with the evidence panel in the next build step (Task 6).
+// One evidence row open at a time (mirrors Overview's STATE.expanded convention).
 function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
   renderPerfRecordTab_();
