@@ -1209,8 +1209,10 @@ select option:disabled{color:var(--muted);font-style:italic}
              on in the ⓘ beside Groomed pipeline. -->
         <div class="panel" id="masthead" style="margin-bottom:14px"></div>
         <!-- CAPACITY BAND — pulled up directly under the stat callouts
-             (director feedback 2026-08-17): recoverable hours are the most
-             actionable figure on this tab and must not sit below the fold.
+             (director feedback 2026-08-17): the idle-hours signal is the most
+             actionable read on this tab and must not sit below the fold —
+             stated as hours LEFT on the table in the named finished week,
+             never as hours still recoverable from it.
              Planned Coverage (forward windows) plus the people-signals pulse;
              both share the SAME margin gate, so the whole band is omitted from
              the DOM together for a non-margin role. -->
@@ -7064,7 +7066,42 @@ function drillRowPick_(i) {
  * should act on. Fed the roster's headline period; the roster itself carries
  * the per-person detail (the standalone headroom table was retired 2026-08-05).
  */
-function oppRows_(head, norm) {
+/**
+ * ── PER-BAND OPERATING RATES (user 2026-08-17) ───────────────────────────────
+ * One blended norm priced everyone against a median dominated by consultants,
+ * so a manager's ordinary meeting, coaching and 1:1 load (POL - Time Logging;
+ * Manager Playbook) read as recoverable idle hours. The RevOps utilization
+ * reference measures net utilization as ALL logged hours over net capacity —
+ * the achieved rate already carries each role's structural overhead, but only
+ * when it is measured per role. So the norm is computed PER LEVEL BAND
+ * (MGMT / SENIOR / CORE / JUNIOR) — the same "never blended" doctrine the
+ * Workforce tab enforces for capacity — and every person is priced against
+ * their own band's achieved median.
+ *
+ * A band without a publishable norm of its own (thin history) is EXCLUDED and
+ * disclosed, never guessed at: falling back to the blended norm would
+ * re-import the bug for exactly the band most unlike the blend.
+ */
+function bandNorms_(done) {
+  var members = {};
+  filteredPeople_().forEach(function (p) {
+    var band = levelName_(p);
+    (members[band] = members[band] || {})[p.name] = 1;
+  });
+  var norms = {};
+  Object.keys(members).forEach(function (band) {
+    SCOPE_NAMES_ = members[band];
+    try {
+      var std = metricSeries_(METRICS_.util, done).std;
+      norms[band] = (std && std.ok) ? std.baseline : null;
+    } finally {
+      SCOPE_NAMES_ = null;
+    }
+  });
+  return norms;
+}
+
+function oppRows_(head, norms) {
   var live = nsLive_();
   return filteredPeople_().map(function (p) {
     if (p.onLeave) return null;
@@ -7080,10 +7117,18 @@ function oppRows_(head, norm) {
     if (den <= 0) return null;                 // no capacity, or nothing NS classified
     var num = live ? w.billable : w.tracked;
     var rate = num / den * 100;
+    // The norm is the person's OWN band's achieved rate (bandNorms_), never a
+    // blend — a manager is priced against how managers actually run.
+    var bn = norms ? norms[levelName_(p)] : null;
+    if (bn === undefined) bn = null;
     // Hours, not points: the unit a manager can actually move.
-    var opp = norm === null ? 0 : Math.max(0, den * (norm / 100) - num);
+    var opp = bn === null ? 0 : Math.max(0, den * (bn / 100) - num);
     return { name: p.name, rate: rate, opp: opp, den: den, num: num, p: p,
-             ramping: p.newHire === true };
+             ramping: p.newHire === true,
+             // Band norm unpublishable → this row is not PRICED. The pulse
+             // states how many people that leaves out rather than pricing them
+             // against a blend that misdescribes their role.
+             unpriced: bn === null, band: levelName_(p) };
   }).filter(Boolean);
 }
 
@@ -7130,10 +7175,16 @@ function renderPulse_() {
   // reports the hours not yet worked as hours to recover. In a forward week that
   // is the whole week, for everybody — a headline number that is pure artefact.
   // What the same window CAN say is how much of it is planned, so it says that.
-  var ser = metricSeries_(METRICS_.util, done);
-  var norm = (A.phase === "done" && ser.std && ser.std.ok) ? ser.std.baseline : null;
-  var opp = 0;
-  if (norm !== null) oppRows_(head, norm).forEach(function (r) {
+  // Per-band norms (user 2026-08-17): a blended, consultant-dominated median
+  // priced a manager's meeting and coaching load as idle hours. Each person is
+  // priced against their OWN band's achieved operating rate; bands without a
+  // publishable rate are excluded and counted, never guessed at.
+  var norms = A.phase === "done" ? bandNorms_(done) : null;
+  var priced = false;
+  if (norms) Object.keys(norms).forEach(function (b) { if (norms[b] !== null) priced = true; });
+  var opp = 0, unpricedN = 0;
+  if (priced) oppRows_(head, norms).forEach(function (r) {
+    if (r.unpriced) { unpricedN++; return; }
     if (!r.ramping && r.opp > 0.5) opp += r.opp;
   });
   var pl = A.phase === "done" ? null : planFor_(head.isos);
@@ -7153,18 +7204,33 @@ function renderPulse_() {
       ? "<b>" + acct + "</b> of " + pop + " people accounted for"
       : '<b class="vr">' + acct + " of " + pop + "</b> people accounted for — " + (pop - acct) + " missing") +
     "</div>";
-  // RECOVERABLE HOURS LEAD (director feedback 2026-08-17): hours sitting on
-  // the table are the most actionable figure on this tab, so they open the
-  // panel as an alert instead of trailing the counts row. Same gate as before
-  // — only on a finished window (norm), and only when there is something to
-  // recover; a 0h banner would be furniture. The 0h case keeps its quiet
-  // inline mention below, because a measured zero is still a measurement.
-  var recoverAlert = (norm !== null && opp >= 1)
+  // IDLE-HOURS LEAD (director feedback 2026-08-17; wording fixed same day):
+  // the figure is priced on the last COMPLETE week — the only window the norm
+  // publishes for — and hours in a finished week are GONE. The first cut said
+  // "recoverable this week", which promised an action that no longer exists.
+  // It now says what it is: hours left on the table in the NAMED week, with
+  // the roster as the act-now route — the same people are idling in the week
+  // that can still be steered. Same gate as before — finished windows only,
+  // and only when there is something to report; a 0h banner would be
+  // furniture. The 0h case keeps its quiet inline mention below, because a
+  // measured zero is still a measurement.
+  // The unit word rides the period picker: "before this week repeats it" on a
+  // MONTH window mislabelled the grain twice over (user 2026-08-17).
+  var pulseUnit = PERIOD_LABELS[STATE.period].toLowerCase();
+  var recoverAlert = (priced && opp >= 1)
     ? '<div class="pulseAlert" onclick="openRoster_()" role="button" tabindex="0" ' +
       'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openRoster_();}" ' +
-      'title="Idle capacity priced against the cohort operating rate, summed across this slice for ' +
-      esc_(head.label) + '. Click to open the roster, biggest opportunity first.">' +
-      '⚡ <b>' + Math.round(opp) + "h</b> recoverable this week → open the roster</div>"
+      'title="Idle capacity in ' + esc_(head.label) + ', the last complete ' + pulseUnit +
+      ' in scope — priced against each level band\'s OWN achieved operating rate, so a ' +
+      'manager\'s ordinary meeting, coaching and 1:1 load sits inside the MGMT band\'s rate ' +
+      'and is never counted as idle. Interns, ramping new hires, leave and bench are excluded.' +
+      (unpricedN ? " " + unpricedN + (unpricedN === 1 ? " person sits" : " people sit") +
+        " in a band without enough history to price — left out, not guessed at." : "") +
+      ' Those hours are gone — they cannot be recovered — but the same people are idling now: ' +
+      'click to open the roster, biggest gap first, while the current ' + pulseUnit +
+      ' can still be steered.">' +
+      '⚡ <b>' + Math.round(opp) + "h</b> left on the table in " + esc_(head.label) +
+      " → open the roster before this " + pulseUnit + " repeats it</div>"
     : "";
   el.innerHTML = capacityHtml +
     '<div class="kicker">CAPACITY — what we have to throw at it</div>' +
@@ -7185,7 +7251,7 @@ function renderPulse_() {
     (s.learn ? " · " + pulseLink_("learn", "🎓 " + s.learn + " in training",
       "Interns (level I1) — on the roster so they can see every signal and learn the " +
       "standard, deliberately never graded and never counted red.") : "") +
-    (norm !== null && opp < 1 ? " · <b>0h</b> recoverable" : "") +
+    (priced && opp < 1 ? " · <b>0h</b> left on the table in " + esc_(head.label) : "") +
     (pl && pl.people
       ? ' · <span title="Planned hours against scheduled capacity for ' + esc_(head.label) +
         ". Recoverable hours are not shown for an unfinished window — they measure " +
@@ -9250,44 +9316,94 @@ function toggleWfMethod_(open) {
   }
 }
 
+/** Mirrors BACKLOG_STALE_DAYS_ on the server — the bar the alert's copy names.
+    Stated once here rather than typed into a sentence, so the number in the
+    heading cannot drift from the number the split was computed with. */
+var BACKLOG_STALE_DAYS_CLIENT_ = 30;
+
 function renderWfAlert_() {
   var el = document.getElementById("wfAlertPanel");
   if (!el) return;
   var w = workforceHealthFor_();
   var cov = (w && w.coverage) || {};
-  var epics = cov.unroutedEpics || 0;
-  if (!w || !epics) { el.innerHTML = ""; el.style.display = "none"; return; }
+  var b = cov.unroutedBuckets || null;
+  // ── ONLY THE STALE BUCKET IS AN ALERT (user finding 2026-08-17) ────────────
+  // The first cut of this card called all 538 unrouted epics "action required".
+  // A live epic proved that wrong: every child Done, 22h45m logged, and still
+  // in the count — because the routing signal is a 52-week Tempo export and its
+  // hours had aged out of it. Three states, three different answers:
+  //   hasHours — somebody DID work on it; the logger is outside the pools we
+  //              count, or their hours predate the export. Our gap, not a queue.
+  //   fresh    — untouched and recent. Newly sold work sits here NORMALLY.
+  //   stale    — untouched for longer than the backlog's own staleness bar.
+  //              This is the only one anybody can act on, so it is the only one
+  //              that raises an alert.
+  var stale = b ? b.stale : null;
+  var staleN = stale ? stale.n : 0;
+  if (!w || !staleN) { el.innerHTML = ""; el.style.display = "none"; return; }
   el.style.display = "";
-  var keys = cov.unroutedKeys || [];
-  // The button only appears when we can actually name the tickets. A "route
-  // these" that opened an empty search would be worse than no button.
-  var btn = keys.length
+  // ── TWO CAPS, AND THE BUTTON MUST NAME THE ONE IT OBEYS ──────────────────
+  // The payload ships at most EPIC_DUE_MAX_KEYS_ (200) keys; a URL carries at
+  // most JIRA_LINK_MAX_KEYS_ (80) before browsers truncate it. The first cut of
+  // this button counted the PAYLOAD array and opened the URL one, so it promised
+  // 200 epics and opened 80 (user, 2026-08-17).
+  //
+  // The label is derived from the keys the link ACTUALLY carries, so the promise
+  // and the destination cannot drift apart again. The headline count stays above
+  // it: the reader needs both numbers, and needs to know which is which.
+  var keys = (stale.keys || []);
+  var linkKeys = keys.slice(0, JIRA_LINK_MAX_KEYS_);
+  var shownN = linkKeys.length;
+  var btn = shownN
     ? '<a class="btn wfAlertBtn" target="_blank" rel="noopener" href="' +
-        esc_(jiraKeysUrl_(keys)) + '" title="' +
-        esc_("Opens these " + keys.length + " epics in Jira" +
-             (cov.unroutedCapped ? " (the first " + keys.length + " of " + epics + ")" : "") +
-             ". Give each one a pool by logging to it, or set its owning team.") +
-        '">Route ' + keys.length + " epic" + (keys.length === 1 ? "" : "s") + " ↗</a>"
+        esc_(jiraKeysUrl_(linkKeys)) + '" title="' +
+        esc_("Opens " + shownN + " of the " + staleN + " in Jira" +
+             (staleN > shownN
+               ? ". A URL carrying every key would be too long for some browsers, so this is the " +
+                 "first " + shownN + " by due date — work them, refresh, and the next batch arrives."
+               : ".") +
+             " Each needs a pool: either somebody starts logging to it, or it is closed.") +
+        '">Review ' +
+        (staleN > shownN ? shownN + " of " + nfDh_(staleN)
+                         : shownN + " epic" + (shownN === 1 ? "" : "s")) + " ↗</a>"
     : "";
+  // The other two states are stated BESIDE the alert, not hidden: their size is
+  // exactly what stops a reader treating the headline count as the queue.
+  var others = [];
+  if (b.hasHours && b.hasHours.n)
+    others.push("<b>" + nfDh_(b.hasHours.n) + "</b> have hours logged by someone outside the " +
+                "counted pools, or before the 52-week export window — our routing gap, not a queue");
+  if (b.fresh && b.fresh.n)
+    others.push("<b>" + nfDh_(b.fresh.n) + "</b> are untouched but recent — newly sold work sits " +
+                "here as its normal state");
   el.innerHTML =
     '<div class="panel wfAlert">' +
       '<div class="wfAlertRow">' +
         '<div class="wfAlertBody">' +
-          '<div class="wfAlertHead">⚠ Action required · unrouted backlog</div>' +
-          '<div class="wfAlertBig">' + nfDh_(epics) + " epic" + (epics === 1 ? "" : "s") +
-            ' <span class="cellSub">· ' + wfHrs_(cov.unroutedHrs) + " of work</span></div>" +
-          '<div class="cellSub">No pool can absorb these yet: nobody has logged time to them, so ' +
-            "there is nothing to route them by. Until they are routed they sit outside every " +
-            "pool's cover figure — the backlog below is understated by exactly this much." +
-            (cov.unroutedCapped
-              ? " The button opens the first " + (cov.unroutedKeys || []).length + "; the count above is all of them."
+          '<div class="wfAlertHead">⚠ Needs a decision · unrouted for over ' +
+            BACKLOG_STALE_DAYS_CLIENT_ + ' days</div>' +
+          '<div class="wfAlertBig">' + nfDh_(staleN) + " epic" + (staleN === 1 ? "" : "s") +
+            ' <span class="cellSub">· ' + wfHrs_(stale.hrs) + " of work</span></div>" +
+          '<div class="cellSub">Nobody has logged time to these and nothing has moved on them for ' +
+            "months, so no pool can absorb them and no pool is planning them. Each one needs " +
+            "somebody to start it or close it." +
+            (staleN > shownN
+              ? " The button opens the first <b>" + shownN + "</b> of these — a Jira URL cannot " +
+                "carry more — ordered by due date, so the most overdue come first." +
+                (staleN > keys.length
+                  ? " (This payload carries " + keys.length + " of the " + nfDh_(staleN) +
+                    " keys; the count above is all of them.)"
+                  : "")
               : "") +
           "</div>" +
+          (others.length
+            ? '<div class="cellSub" style="margin-top:6px">Also unrouted, and <b>not</b> an alert: ' +
+              others.join("; ") + ".</div>"
+            : "") +
         "</div>" + btn +
       "</div>" +
     "</div>";
 }
-
 function renderWfUnrouted_() {
   var w = workforceHealthFor_();
   if (!w) { wfStale_("wfUnroutedPanel", "Unrouted backlog"); return; }
@@ -9319,8 +9435,15 @@ function renderWfUnrouted_() {
       "whichever pool has logged the most hours to it. An epic nobody has touched cannot be routed " +
       "at all and lands in <b>UNROUTED</b>." +
       (cov.unroutedEpics
-        ? " The <b>Action required</b> card at the top of this tab carries the size of that queue " +
-          "and the link to work it."
+        ? " <b>Unrouted is not one thing.</b> " +
+          (cov.unroutedBuckets
+            ? nfDh_((cov.unroutedBuckets.stale || {}).n || 0) + " have sat untouched for months " +
+              "(the card at the top of this tab), " +
+              nfDh_((cov.unroutedBuckets.hasHours || {}).n || 0) + " have hours we cannot count " +
+              "toward a pool, and " +
+              nfDh_((cov.unroutedBuckets.fresh || {}).n || 0) + " are newly sold work nobody has " +
+              "started yet, which is normal."
+            : "This payload predates the split, so the three states are pooled into one count.")
         : " Nothing is currently unrouted.") +
       "</p>" +
     '<div class="tableWrap"><table class="hyg tmx"><thead><tr>' +
@@ -9329,6 +9452,17 @@ function renderWfUnrouted_() {
       "<th class='tnum' title='Share of this pool&apos;s open epics carrying an original estimate.'>Est. coverage</th>" +
       "<th class='tnum' title='Raw remaining grossed up by estimate coverage — what the obligation is once the unestimated work is accounted for.'>Adjusted</th>" +
       "<th class='tnum'>Share</th></tr></thead><tbody>" + rows + "</tbody></table></div>" +
+    // The carve is STATED where the number it changed is drawn. An open epic
+    // whose every child is finished used to sit in these hours; a figure that
+    // silently got smaller is indistinguishable from a broken feed.
+    (cov.deliveredEpics
+      ? '<div class="cellSub" style="margin-top:6px">✂ <b>' + nfDh_(cov.deliveredEpics) +
+        " open epic" + (cov.deliveredEpics === 1 ? " whose" : "s whose") + " every known child is " +
+        "already finished (" + wfHrs_(cov.deliveredHrs) + ") " +
+        (cov.deliveredEpics === 1 ? "is" : "are") + " <b>excluded</b> from every figure above — " +
+        "the work is delivered and the epic is simply still open. Epics whose children are not in " +
+        "the export are never carved: unknown is not the same as finished.</div>"
+      : "") +
     '<div class="cellSub" style="margin-top:6px">' +
       "<b>Raw is a lower bound; adjusted is the number to plan against.</b> Below full estimate " +
       "coverage the raw figure understates the real obligation by roughly the coverage shortfall — " +

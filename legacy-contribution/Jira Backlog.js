@@ -6,8 +6,49 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.12.1
+  // VERSION:     3.14.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.14.0 (Jira's own category decides, not our name pattern):
+  //   · v3.13.0 excluded sandboxes by KEY PATTERN. Checking the live site
+  //     (2026-08-17) showed Jira already answers this: projects carry a
+  //     projectCategory, and one of them is "Internal" — described in Jira as
+  //     "For internal or test projects". Every reported sandbox carries it.
+  //   · The pattern MISSED AUTOT ("AUTO02 (Testing)", category Internal), whose
+  //     key does not start with TEST. The category catches it, and needs no edit
+  //     when somebody creates the next one.
+  //   · Order: CUSTOMER_PROJECT_MAP (rescue) → category → key pattern (for
+  //     anything not yet categorised) → name-suspicion REPORT.
+  //   · The name is never a reason to exclude: ADT02 is "COE-63 Advantest" and
+  //     ISUATTEST is real COE work. TSBA ("Test Space - by Alfie") IS a sandbox
+  //     but sits in the COE category, and no code rule can tell it from a client
+  //     — so logProjectScope_ reports it for a human to recategorise.
+  //   · FAILS OPEN, LOUDLY. If /project/search fails the run falls back to the
+  //     pattern alone and logs it. Failing closed would empty the export on a
+  //     transient 500, and an empty Jira Raw reads downstream as "the business
+  //     delivered nothing this week".
+  //   · Cost: one paged GET per run, cached for the run.
+  //
+  // CHANGES v3.13.0 (non-delivery projects stop being exported):
+  //   · ROOT CAUSE: getSpaceForIssue_ ended in `return clientName || projKey`,
+  //     so a project nobody had mapped resolved to ITSELF rather than to null —
+  //     and every caller filters on `!== null`. This file is documented as
+  //     exporting services work; it was in fact exporting every project on the
+  //     site except TEMPLATE and a disabled R&D.
+  //   · SYMPTOM (user, 2026-08-17): 57 epics from TEST2 / TEST3 / TEST3ZED /
+  //     TEST5 / TESTEIG01 sitting in the Delivery Health open backlog and its
+  //     unrouted alert. They can never route — nobody logs services time to a
+  //     sandbox — so they sat there permanently inflating the queue.
+  //   · FIX: CONFIGJ.EXCLUDE_PROJECT_RE, applied inside getSpaceForIssue_ so it
+  //     reaches EVERY fetch (open, done, created) rather than one JQL. Projects
+  //     named in CUSTOMER_PROJECT_MAP are checked first and always survive.
+  //   · VISIBILITY: logProjectScope_ reports what was dropped AND every project
+  //     exported as customer work that is NOT in CUSTOMER_PROJECT_MAP — the list
+  //     needed to replace this denylist with a proper allowlist.
+  //   ⚠ DOWNSTREAM: the open-backlog COUNT AND WEEKS-TO-CLEAR WILL FALL. The
+  //     3,279 / 11.0w figures measured 2026-08-06 include this noise, and were
+  //     themselves a correction of an assignee-scoped 4.9w — brief the movement
+  //     rather than letting a third number appear unexplained.
+  //
   // CHANGES v3.12.1 (the narrow fetch, made correct and self-reporting):
   //   · FIX — /rest/api/3/search/jql takes `expand` as a comma-separated
   //     STRING; the legacy /rest/api/3/search POST took an ARRAY. v3.12.0
@@ -413,6 +454,55 @@
       "MSTLY": "Mostly",
       // add more as needed
     },
+
+    // ── NON-DELIVERY PROJECTS (v3.13.0, user report 2026-08-17) ─────────────
+    // Project keys that are not client or COE delivery work: sandboxes, test
+    // projects, demos, training instances.
+    //
+    // WHY THIS EXISTS. getSpaceForIssue_ ends in `return clientName || projKey`,
+    // so an unmapped project resolves to ITSELF rather than to null — and every
+    // caller filters on `!== null`. The effect was that this exporter, which is
+    // documented as exporting services work, exported EVERY project on the site
+    // except TEMPLATE and a disabled R&D. 57 TEST* epics were sitting in the
+    // dashboard's open backlog and its unrouted alert.
+    //
+    // A PATTERN, not a list, because the list is the thing that goes stale: the
+    // next sandbox somebody creates is TEST6 and nobody will remember this file.
+    // Real projects that happen to match can be rescued via CUSTOMER_PROJECT_MAP
+    // or SPACES, both of which are checked FIRST.
+    //
+    // ⚠ This is a DENYLIST, and a denylist is the weaker design. The right shape
+    // is an allowlist — only SPACES plus known client projects — but
+    // CUSTOMER_PROJECT_MAP holds three entries against a real client list that
+    // is plainly longer, so inverting it today would delete most genuine work.
+    // `logUnmappedProjects_` exists to build that list; see the note there.
+    // PRIMARY SIGNAL: Jira's own project category. The site already classifies
+    // projects, and "Internal" is described in Jira as "For internal or test
+    // projects" — an admin-maintained list that updates itself when somebody
+    // creates the next sandbox. Verified against the live site 2026-08-17:
+    // TEST2/TEST3/TEST3ZED/TEST5/TESTEIG01/TESTACLAW/AUTOT all carry it.
+    // The version this run stamps into every export footer. A version that
+     // lives only in the header comment cannot travel with the data, so a
+     // dashboard reading a three-week-old sheet has no way to know which rules
+     // produced it. Bump this with the header comment — they are one fact.
+     VERSION: "3.14.0",
+
+    NON_DELIVERY_CATEGORIES: ["Internal"],
+
+    // BACKSTOP: a key pattern, for projects created before anyone set a
+    // category. Kept because the two rules miss different things — category
+    // catches AUTOT ("AUTO02 (Testing)"), whose key this pattern does not, and
+    // the pattern covers a brand-new project nobody has categorised yet.
+    //
+    // ⚠ NEITHER catches TSBA ("Test Space - by Alfie"), which is a real test
+    // project sitting in the COE category. No code rule can know that — it is a
+    // Jira data error, so logProjectScope_ REPORTS it rather than guessing.
+    EXCLUDE_PROJECT_RE: /^(TEST|SANDBOX|DEMO|TRAINING|PLAYGROUND|SCRATCH)/i,
+
+    // Names that read like a sandbox. Used ONLY to flag disagreements with the
+    // category for a human to resolve — never to exclude, because "Advantest"
+    // and "ISUATTEST" are real client work whose names contain "test".
+    SUSPECT_PROJECT_NAME_RE: /(^|[^a-z])(test|sandbox|demo|training|playground|scratch)([^a-z]|$)/i,
 
     // Issue types considered "execution work"
     EXEC_ISSUE_TYPES: ['Epic', '"Kick-off epic"', '"Go-live epic"', 'Story', 'Task', '"Sub-task"'],
@@ -1373,7 +1463,9 @@
       return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
     });
     Logger.log("   Open issues fetched: " + all.length + " → " + open.length +
-               " in scope" + (staleWeeks ? " (updated within " + staleWeeks + " weeks)" : ""));
+               " in scope" + (staleWeeks ? " (updated within " + staleWeeks + " weeks)" : "") +
+               " · " + (all.length - open.length) + " dropped as out-of-scope or noise");
+    logProjectScope_();
     return open;
   }
 
@@ -1514,6 +1606,126 @@
    * Note this function never excluded "projects outside COE/R&D/Customer" —
    * unmatched projects have always fallen through to the last branch.
    */
+  /**
+   * key → { category, name } for every project on the site, fetched once per run.
+   * null until loaded; {} means "the fetch failed" — see projectCategoryOf_.
+   */
+  var JB_PROJECT_META_ = null;
+
+  /**
+   * Loads the project key → category map from Jira.
+   *
+   * ONE extra paged call per run. Issue-search results carry `project` but not
+   * reliably `projectCategory`, so the map is fetched separately rather than
+   * hoped for on every row.
+   *
+   * ⚠ FAILURE IS LOUD AND FAILS OPEN, DELIBERATELY. If this call fails the
+   * exporter falls back to the key pattern alone and says so. Failing CLOSED
+   * — excluding everything whose category we could not read — would empty the
+   * export on a transient 500, and an empty Jira Raw reads downstream as "the
+   * business delivered nothing this week", which is far worse than re-admitting
+   * a handful of sandboxes for one run.
+   */
+  function loadProjectMeta_() {
+    if (JB_PROJECT_META_ !== null) return JB_PROJECT_META_;
+    var map = {};
+    var startAt = 0, page = 50, guard = 0;
+    try {
+      while (guard++ < 60) {
+        var url = CONFIGJ.JIRA_BASE_URL + "/rest/api/3/project/search"
+                + "?maxResults=" + page + "&startAt=" + startAt;
+        var resp = UrlFetchApp.fetch(url, {
+          method: "get", headers: buildHeaders_(), muteHttpExceptions: true,
+        });
+        if (resp.getResponseCode() !== 200) {
+          Logger.log("⚠️ Project category fetch failed: HTTP " + resp.getResponseCode()
+            + " — falling back to the key pattern alone. Sandboxes whose KEY does not match "
+            + "EXCLUDE_PROJECT_RE will be exported this run.");
+          JB_PROJECT_META_ = {};
+          return JB_PROJECT_META_;
+        }
+        var parsed = jb_tryParseJson_(resp, "Jira /project/search");
+        if (!parsed.ok) { JB_PROJECT_META_ = {}; return JB_PROJECT_META_; }
+        var data = parsed.data || {};
+        (data.values || []).forEach(function (p) {
+          map[String(p.key || "").toUpperCase()] = {
+            category: (p.projectCategory && p.projectCategory.name) || "",
+            name: p.name || "",
+          };
+        });
+        if (data.isLast || !(data.values || []).length) break;
+        startAt += page;
+      }
+    } catch (e) {
+      Logger.log("⚠️ Project category fetch threw: " + e.message
+        + " — falling back to the key pattern alone.");
+      JB_PROJECT_META_ = {};
+      return JB_PROJECT_META_;
+    }
+    Logger.log("🗂️ Project categories loaded: " + Object.keys(map).length + " projects.");
+    JB_PROJECT_META_ = map;
+    return JB_PROJECT_META_;
+  }
+
+  /** Category for a project key, or "" when unknown. */
+  function projectCategoryOf_(projKey) {
+    var meta = loadProjectMeta_()[projKey];
+    return meta ? meta.category : "";
+  }
+
+  /**
+   * Project keys dropped as non-delivery, and how many rows each dropped.
+   * Reported at the end of a run: an exclusion nobody can see is indisting-
+   * uishable from a feed that quietly lost rows.
+   */
+  var JB_EXCLUDED_PROJECTS_ = {};
+
+  /** Every project key that reached the fallback — i.e. is being treated as a
+      client project WITHOUT being named in CUSTOMER_PROJECT_MAP. This is the
+      list somebody needs in order to replace the denylist above with a proper
+      allowlist, and it costs one object to collect. */
+  var JB_UNMAPPED_PROJECTS_ = {};
+
+  /** Excluded by the KEY PATTERN only — i.e. Jira has no category saying so.
+      Each one is a project an admin should categorise, after which the pattern
+      becomes redundant for it. */
+  var JB_PATTERN_ONLY_ = {};
+
+  /** Projects whose NAME reads like a sandbox but whose category says delivery
+      work. Never excluded — reported, because only a human can tell
+      "Advantest" from "Test Space - by Alfie". */
+  var JB_SUSPECT_PROJECTS_ = {};
+
+  /** Logs both, at the end of a run. */
+  function logProjectScope_() {
+    var ex = Object.keys(JB_EXCLUDED_PROJECTS_).sort();
+    if (ex.length) {
+      Logger.log("🚫 Excluded " + ex.length + " non-delivery project(s): " +
+        ex.map(function (k) { return k + " (" + JB_EXCLUDED_PROJECTS_[k] + ")"; }).join(", "));
+    }
+    var po = Object.keys(JB_PATTERN_ONLY_).sort();
+    if (po.length) {
+      Logger.log("ℹ️ " + po.length + " project(s) excluded by KEY PATTERN with no Jira category "
+        + "to back it: " + po.join(", ") + " — set their category to \"Internal\" in Jira and the "
+        + "pattern becomes redundant for them.");
+    }
+    var sus = Object.keys(JB_SUSPECT_PROJECTS_).sort();
+    if (sus.length) {
+      Logger.log("❓ " + sus.length + " project(s) NAMED like a sandbox but categorised as delivery "
+        + "work, so they ARE being exported: "
+        + sus.map(function (k) { return k + " = " + JB_SUSPECT_PROJECTS_[k]; }).join("; ")
+        + " — review each: a real client (Advantest, ISUATTEST) is correct here, a genuine test "
+        + "project is a miscategorisation to fix in Jira.");
+    }
+    var un = Object.keys(JB_UNMAPPED_PROJECTS_).sort();
+    if (un.length) {
+      Logger.log("ℹ️ " + un.length + " project(s) exported as customer work but NOT in " +
+        "CUSTOMER_PROJECT_MAP: " +
+        un.map(function (k) { return k + " (" + JB_UNMAPPED_PROJECTS_[k] + ")"; }).join(", ") +
+        " — review these: anything here that is not a client is noise in the dashboard.");
+    }
+  }
+
   function getSpaceForIssue_(issue) {
     var f = issue.fields || {};
     var projKey  = (dig_(f, "project.key")  || "").toUpperCase();
@@ -1525,6 +1737,36 @@
     var projName = normalizeName_(dig_(f, "project.name") || "");
 
     if (!projKey && !projName) return "Customer";
+
+    // ── NON-DELIVERY WORK LEAVES HERE (v3.13.0/v3.14.0) ────────────────────
+    // Two rules, in order of authority. A project named in CUSTOMER_PROJECT_MAP
+    // is exempt from both — that is the documented rescue hatch for a real
+    // client whose key happens to look like a sandbox.
+    if (!(CONFIGJ.CUSTOMER_PROJECT_MAP && CONFIGJ.CUSTOMER_PROJECT_MAP[projKey])) {
+      // 1 · Jira's own category. Authoritative and self-maintaining: the admin
+      //     who creates the next sandbox categorises it and this needs no edit.
+      var cat = projectCategoryOf_(projKey);
+      if (cat && (CONFIGJ.NON_DELIVERY_CATEGORIES || []).indexOf(cat) !== -1) {
+        JB_EXCLUDED_PROJECTS_[projKey] = (JB_EXCLUDED_PROJECTS_[projKey] || 0) + 1;
+        return null;
+      }
+      // 2 · The key pattern, for anything not yet categorised.
+      if (CONFIGJ.EXCLUDE_PROJECT_RE && CONFIGJ.EXCLUDE_PROJECT_RE.test(projKey)) {
+        JB_EXCLUDED_PROJECTS_[projKey] = (JB_EXCLUDED_PROJECTS_[projKey] || 0) + 1;
+        JB_PATTERN_ONLY_[projKey] = (JB_PATTERN_ONLY_[projKey] || 0) + 1;
+        return null;
+      }
+      // 3 · Neither fired, but the NAME reads like a sandbox. Not excluded —
+      //     "Advantest" and "ISUATTEST" are real client work — but reported, so
+      //     a genuine miscategorisation like TSBA ("Test Space - by Alfie",
+      //     sitting in COE) gets fixed in Jira instead of patched in code.
+      var pName = (JB_PROJECT_META_ && JB_PROJECT_META_[projKey] &&
+                   JB_PROJECT_META_[projKey].name) || "";
+      if (pName && CONFIGJ.SUSPECT_PROJECT_NAME_RE &&
+          CONFIGJ.SUSPECT_PROJECT_NAME_RE.test(pName)) {
+        JB_SUSPECT_PROJECTS_[projKey] = pName + " [" + (cat || "no category") + "]";
+      }
+    }
 
     for (var i = 0; i < CONFIGJ.SPACES.length; i++) {
       var space = CONFIGJ.SPACES[i];
@@ -1546,6 +1788,11 @@
     // column differentiates customers instead of one "Customer" blob; unmapped
     // ones fall back to their project key for the same reason (v3.4.0).
     var clientName = CONFIGJ.CUSTOMER_PROJECT_MAP && CONFIGJ.CUSTOMER_PROJECT_MAP[projKey];
+    if (!clientName && projKey) {
+      // Exported, but on the fallback path — nobody has confirmed this is a
+      // client. Counted so the run can say so out loud.
+      JB_UNMAPPED_PROJECTS_[projKey] = (JB_UNMAPPED_PROJECTS_[projKey] || 0) + 1;
+    }
     return clientName || projKey || "Other";
   }
 
@@ -2231,6 +2478,13 @@
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
     sheet.getRange(foot + 1, 1)
       .setValue("Total rows: " + (rows.length - 1))
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    // WHICH RULES produced this sheet. "Generated:" says WHEN, and a sheet can
+    // be an hour old and still built by an exporter that predates the sandbox
+    // exclusion — fresh and wrong at the same time. The dashboard reads this
+    // and says so rather than presenting the numbers as current.
+    sheet.getRange(foot + 2, 1)
+      .setValue("Exporter: " + CONFIGJ.VERSION)
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
 
     Logger.log("✅ Raw sheet: " + (rows.length - 1) + " data rows written.");

@@ -4858,14 +4858,16 @@ function buildConsumption_(trackedRows, resolveName, peopleByName, epicIdx, comm
  */
 function dhDominantPoolByEpic_(trackedRows, resolveName, peopleByName, epicIdx, isos) {
   var byEpic = {};
+  // TOUCHED — every epic ANY visible worklog reaches, before the roster and
+  // pool filters below. Kept separately because "nobody worked on this" and
+  // "nobody whose pool we count worked on this" are different findings with
+  // different fixes, and reporting them as one is what put a finished epic in
+  // the unrouted alert (user, 2026-08-17).
+  var touched = {};
   var inWin = {};
   (isos || []).forEach(function (i) { inWin[i] = 1; });
   (trackedRows || []).forEach(function (row) {
     if (isTimeOffKey_(row.key)) return;
-    var dn = resolveName(row.user);
-    if (!dn) return;
-    var p = peopleByName[dn];
-    if (!p || !p.pool || p.pool === "NONE") return;   // governors route nothing
     var epicKey = row.epicKey ? epicIdx.epicFor(row.epicKey)
                 : row.parentKey ? epicIdx.epicFor(row.parentKey)
                 : row.issue ? epicIdx.epicFor(row.issue) : "";
@@ -4873,10 +4875,19 @@ function dhDominantPoolByEpic_(trackedRows, resolveName, peopleByName, epicIdx, 
     var hrs = 0;
     for (var iso in row.weekHours) if (inWin[iso]) hrs += Number(row.weekHours[iso]) || 0;
     if (hrs <= 0) return;
+    touched[epicKey] = (touched[epicKey] || 0) + hrs;
+    var dn = resolveName(row.user);
+    if (!dn) return;
+    var p = peopleByName[dn];
+    if (!p || !p.pool || p.pool === "NONE") return;   // governors route nothing
     if (!byEpic[epicKey]) byEpic[epicKey] = {};
     byEpic[epicKey][p.pool] = (byEpic[epicKey][p.pool] || 0) + hrs;
   });
   var out = {};
+  // NON-ENUMERABLE on purpose: this map is keyed by epic and callers look keys
+  // up directly, so a stray enumerable field would eventually be iterated as if
+  // it were an epic. Object.defineProperty is available in Apps Script's V8.
+  Object.defineProperty(out, "__touched", { value: touched, enumerable: false });
   Object.keys(byEpic).forEach(function (ek) {
     var best = null, bestHrs = 0, total = 0;
     Object.keys(byEpic[ek]).forEach(function (pool) {
@@ -4934,10 +4945,66 @@ var DH_ALLOCATION_TO_POOL_ = {};
  * obligation by roughly a fifth. Both numbers ship, and the raw one is labelled
  * a lower bound rather than quietly replaced.
  */
-function buildBacklog_(epics, dominant, projectDefaults) {
+/**
+ * Children per epic, and how many of them are finished.
+ *
+ * Feeds the "already delivered" carve in buildBacklog_. Built from the SAME
+ * `typeHygOpen_` predicate every other surface uses, so "finished" means one
+ * thing across the app.
+ *
+ * ⚠ ONLY COUNTS CHILDREN THE EXPORT CARRIES. A child resolved long ago may sit
+ * outside the exporter's resolved window and simply not be here, which is why
+ * the caller requires n > 0 before trusting `allDone`: an epic with no KNOWN
+ * children is "we cannot tell", never "everything is finished". Getting that
+ * backwards would delete real backlog from the figure.
+ */
+function dhEpicChildStatus_(issues, epicIdx) {
+  var out = {};
+  (issues || []).forEach(function (it) {
+    if (!it || it.isEpic) return;
+    var ek = epicIdx.epicFor(it.key);
+    if (!ek) return;
+    if (!out[ek]) out[ek] = { n: 0, done: 0 };
+    out[ek].n++;
+    if (!typeHygOpen_(it)) out[ek].done++;
+  });
+  return out;
+}
+
+/**
+ * @param {Object=} childStatus  dhEpicChildStatus_ output — enables the
+ *   delivered carve. Absent (older callers, tests) = carve off.
+ * @param {Date=} now  for the stale split.
+ */
+function buildBacklog_(epics, dominant, projectDefaults, childStatus, now) {
   var byPool = {};
+  var delivered = { n: 0, hrs: 0, keys: [] };
+  var touched = (dominant && dominant.__touched) || {};
+  var today = now || new Date();
+  // The three states an unrouted epic can be in. They look identical in a total
+  // and have three different answers, which is why the alert splits them.
+  var un = { hasHours: { n: 0, hrs: 0, keys: [] },
+             stale: { n: 0, hrs: 0, keys: [] },
+             fresh: { n: 0, hrs: 0, keys: [] } };
   (epics || []).forEach(function (e) {
     if (e.statusCategory === "Done" || e.resolved) return;   // open backlog only
+    var key0 = String(e.key || "").trim().toUpperCase();
+    // ── ALREADY DELIVERED (user decision 2026-08-17) ────────────────────────
+    // An OPEN epic whose every known child is finished is not backlog: the work
+    // is done and the epic is simply still open. Counting it inflated the
+    // obligation with hours nobody owes — 78,392h of "unrouted work" that was
+    // substantially already delivered.
+    //
+    // Requires n > 0: no known children means the export cannot see them, which
+    // is "unknown", not "finished". Carved out and COUNTED, never silently
+    // dropped — delivered.hrs is published beside the backlog it left.
+    var cs = childStatus && key0 ? childStatus[key0] : null;
+    if (cs && cs.n > 0 && cs.done === cs.n) {
+      delivered.n++;
+      delivered.hrs += Math.max(0, (Number(e.estSec) || 0) - (Number(e.spentSec) || 0)) / 3600;
+      if (delivered.keys.length < EPIC_DUE_MAX_KEYS_) delivered.keys.push(e.key);
+      return;
+    }
     var pool = dhRequiredPool_(e, dominant, projectDefaults);
     if (!byPool[pool]) byPool[pool] = { backlogHrs: 0, epicCount: 0, unestimatedEpics: 0, keys: [] };
     var b = byPool[pool];
@@ -4953,7 +5020,28 @@ function buildBacklog_(epics, dominant, projectDefaults) {
     // the CLIENT states when the list it opens is shorter than the count above
     // it. `epicCount` always covers all of them.
     if (e.key && b.keys.length < EPIC_DUE_MAX_KEYS_) b.keys.push(e.key);
+    // ── WHY is this one unrouted? Three answers, three different actions. ────
+    if (pool === "UNROUTED") {
+      var remHrs = Math.max(0, (Number(e.estSec) || 0) - (Number(e.spentSec) || 0)) / 3600;
+      // hasHours: somebody DID work on it — the hours just belong to a person or
+      // a pool this routing cannot count (a governor, PMO, someone off the
+      // roster). Nothing to chase in Jira; the gap is ours.
+      // stale / fresh: genuinely untouched. Only the stale half is a queue —
+      // newly sold work sits unrouted as its normal state.
+      var bucket = touched[key0] ? un.hasHours
+                 : (e.updated && bhDays_(e.updated, today) > BACKLOG_STALE_DAYS_) ? un.stale
+                 : un.fresh;
+      bucket.n++;
+      bucket.hrs += remHrs;
+      if (bucket.keys.length < EPIC_DUE_MAX_KEYS_) bucket.keys.push(e.key);
+    }
   });
+  if (byPool.UNROUTED) byPool.UNROUTED.buckets = un;
+  // NON-ENUMERABLE: this object is a map of POOLS and both the assembler and the
+  // client iterate it to draw one row per pool. An enumerable "__delivered"
+  // would render as a pool called __delivered — the exact class of bug the
+  // non-enumerable marker above avoids.
+  Object.defineProperty(byPool, "__delivered", { value: delivered, enumerable: false });
   Object.keys(byPool).forEach(function (pool) {
     var b = byPool[pool];
     b.estimateCoverage = b.epicCount ? 1 - b.unestimatedEpics / b.epicCount : null;
@@ -5255,7 +5343,9 @@ function buildWorkforceHealth_(people, trackedRows, plannedRows, jira, resolveNa
   buildCommitment_(people, isos, weekly);
   buildConsumption_(trackedRows, resolveName, byName, epicIdx, committed, isos, weekly);
   var headByCell = dhHeadByCell_(people);
-  var backlog = buildBacklog_((jira && jira.epics) || [], dominant, {});
+  var backlog = buildBacklog_((jira && jira.epics) || [], dominant, {},
+                              dhEpicChildStatus_((jira && jira.issues) || [], epicIdx),
+                              new Date());
   var rec = reconcileWorkforce_(dhFoldWeekly_(weekly, isos, headByCell), backlog, weeksInPeriod);
 
   // ── Scope facts. Reported even at zero, always (spec §6.3). ────────────────
@@ -5347,6 +5437,12 @@ function buildWorkforceHealth_(people, trackedRows, plannedRows, jira, resolveNa
       // The tickets themselves, so the alert's button opens a real Jira search
       // rather than a tab the reader then has to build a query in.
       unroutedKeys: backlog.UNROUTED ? (backlog.UNROUTED.keys || []) : [],
+      // The three states, so the tab can stop calling all of them "action
+      // required" — and the delivered carve, stated rather than silently netted.
+      unroutedBuckets: backlog.UNROUTED ? (backlog.UNROUTED.buckets || null) : null,
+      deliveredEpics: (backlog.__delivered || {}).n || 0,
+      deliveredHrs: (backlog.__delivered || {}).hrs || 0,
+      deliveredKeys: (backlog.__delivered || {}).keys || [],
       unroutedCapped: !!(backlog.UNROUTED &&
                          backlog.UNROUTED.epicCount > (backlog.UNROUTED.keys || []).length),
       // Never measured in this deployment — stated, not defaulted to zero.
@@ -6926,7 +7022,16 @@ function assembleModel_(inputs, win) {
 //      and the button is simply absent — the one case where the degraded state
 //      is honest rather than wrong, which is why this bump is a courtesy and
 //      not a correctness fix.
-var DH_SCHEMA_VER_ = 44;
+// 45 — the unrouted backlog is SPLIT and the delivered carve lands.
+//      `coverage.unroutedBuckets` = {hasHours, stale, fresh}, and
+//      `deliveredEpics/Hrs/Keys` count open epics whose every known child is
+//      finished — those now leave the backlog hours entirely.
+//      A v44 entry has neither: the alert falls back to one undifferentiated
+//      count (its old, overstated framing) and the backlog figure keeps the
+//      delivered work in it. Both are the PREVIOUS behaviour rather than a
+//      broken one, so this misses safely — but the number moves materially on
+//      deploy, which is the thing to brief before anyone sees it.
+var DH_SCHEMA_VER_ = 45;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -10271,8 +10376,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 44,
-          "payload schema is v44 (unrouted epic keys for the Workforce alert) — " +
+  assert_(m.schemaVer === 45,
+          "payload schema is v45 (unrouted split + the delivered carve) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10298,9 +10403,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 44,
-          "schema is 44 — v43 added the PM To Do carve (a v42 entry reads every Owns bar low) " +
-          "and v44 adds the unrouted epic keys the Workforce alert links on");
+  assert_(m.schemaVer === 45,
+          "schema is 45 — v44 added the unrouted epic keys, v45 splits unrouted into its three " +
+          "states and carves already-delivered epics out of the backlog hours");
   assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppEpicsAtRisk === "number",
           "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");
@@ -10729,6 +10834,78 @@ function _test_workforceHealth_() {
                         spentSec: 0, statusCategory: "Done", resolved: "2026-01-01" }];
   assert_(Object.keys(buildBacklog_(resolvedEpic, {}, {})).length === 0,
           "a resolved epic is not open backlog");
+
+  // ── ALREADY-DELIVERED CARVE + THE UNROUTED SPLIT (user 2026-08-17) ─────────
+  // Triggered by a live finding: an OPEN epic with every child Done and 22h45m
+  // logged was sitting in the unrouted alert as if nobody had touched it.
+  var idxD = dhEpicIndex_([
+    { key: "D-1", isEpic: true },                                   // all children done
+    { key: "D-1a", isEpic: false, epicKey: "D-1", resolved: new Date(2026, 0, 1), status: "Done" },
+    { key: "D-1b", isEpic: false, epicKey: "D-1", resolved: new Date(2026, 0, 2), status: "Done" },
+    { key: "D-2", isEpic: true },                                   // one child still open
+    { key: "D-2a", isEpic: false, epicKey: "D-2", resolved: new Date(2026, 0, 1), status: "Done" },
+    { key: "D-2b", isEpic: false, epicKey: "D-2", status: "In Progress" },
+    { key: "D-3", isEpic: true },                                   // no children in the export
+  ]);
+  var childStat = dhEpicChildStatus_([
+    { key: "D-1a", isEpic: false, epicKey: "D-1", resolved: new Date(2026, 0, 1), status: "Done" },
+    { key: "D-1b", isEpic: false, epicKey: "D-1", resolved: new Date(2026, 0, 2), status: "Done" },
+    { key: "D-2a", isEpic: false, epicKey: "D-2", resolved: new Date(2026, 0, 1), status: "Done" },
+    { key: "D-2b", isEpic: false, epicKey: "D-2", status: "In Progress" },
+  ], idxD);
+  assert_(childStat["D-1"].n === 2 && childStat["D-1"].done === 2, "D-1: both children finished");
+  assert_(childStat["D-2"].n === 2 && childStat["D-2"].done === 1, "D-2: one child still open");
+  assert_(childStat["D-3"] === undefined, "D-3: no children the export can see");
+
+  var openEpic = function (k, extra) {
+    var e = { key: k, isEpic: true, estSec: 3600 * 10, spentSec: 0,
+              statusCategory: "In Progress", resolved: null };
+    Object.keys(extra || {}).forEach(function (f) { e[f] = extra[f]; });
+    return e;
+  };
+  var NOW = new Date(2026, 7, 17);
+  var bl = buildBacklog_([openEpic("D-1"), openEpic("D-2"), openEpic("D-3")],
+                         {}, {}, childStat, NOW);
+  // 1 · The delivered epic LEAVES the backlog hours, and is counted saying so.
+  assert_(bl.__delivered.n === 1 && bl.__delivered.keys.join() === "D-1",
+          "an open epic whose every known child is finished is carved out and NAMED");
+  assert_(Math.abs(bl.__delivered.hrs - 10) < 1e-9, "…with the hours it took with it");
+  assert_((bl.UNROUTED.keys || []).indexOf("D-1") === -1,
+          "…and it is not in the backlog at all — not merely relabelled");
+  // 2 · An epic with one child still open STAYS. This is the assertion that
+  // stops the carve eating real work.
+  assert_((bl.UNROUTED.keys || []).indexOf("D-2") !== -1,
+          "an epic with ANY open child stays in the backlog");
+  // 3 · No known children means UNKNOWN, never "finished". Getting this
+  // backwards would silently delete every epic whose children aged out of the
+  // export window.
+  assert_((bl.UNROUTED.keys || []).indexOf("D-3") !== -1,
+          "an epic with no children in the export stays — 'cannot tell' is not 'done'");
+
+  // ── The three unrouted states ──────────────────────────────────────────────
+  var dom = {};
+  Object.defineProperty(dom, "__touched", { value: { "U-HRS": 12 }, enumerable: false });
+  var old_ = new Date(2026, 4, 1);      // ~3.5 months before NOW
+  var recent = new Date(2026, 7, 15);   // two days before NOW
+  var split = buildBacklog_([
+    openEpic("U-HRS", { updated: recent }),   // touched by an uncounted logger
+    openEpic("U-OLD", { updated: old_ }),     // untouched and stale
+    openEpic("U-NEW", { updated: recent }),   // untouched and fresh
+  ], dom, {}, {}, NOW);
+  var b3 = split.UNROUTED.buckets;
+  assert_(b3.hasHours.n === 1 && b3.hasHours.keys.join() === "U-HRS",
+          "an epic somebody DID work on is 'has hours', not 'nobody touched it' — the live finding");
+  assert_(b3.stale.n === 1 && b3.stale.keys.join() === "U-OLD",
+          "an untouched epic past the staleness bar is a real queue");
+  assert_(b3.fresh.n === 1 && b3.fresh.keys.join() === "U-NEW",
+          "…and a recently-updated untouched epic is newly sold work, not a failure");
+  assert_(b3.hasHours.n + b3.stale.n + b3.fresh.n === split.UNROUTED.epicCount,
+          "the three buckets PARTITION unrouted — every epic lands in exactly one");
+  // The hours partition too, or the alert's three figures cannot be read
+  // against the headline.
+  assert_(Math.abs((b3.hasHours.hrs + b3.stale.hrs + b3.fresh.hrs) -
+                   split.UNROUTED.backlogHrs) < 1e-9,
+          "…and so do the hours");
 
   // ── Reconcile ──────────────────────────────────────────────────────────────
   // Fold every pass through ONE weekly map, exactly as the assembler does.

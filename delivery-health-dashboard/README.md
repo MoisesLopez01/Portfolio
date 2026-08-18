@@ -1686,6 +1686,162 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 
 ## Deploy
 
+> ### 🧮 Idle hours priced per level band, never blended (2026-08-17) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action.**
+>
+> **The complaint (user):** "307h left on the table" was mostly meetings, breaks, coaching, and
+> intern time — managers carry more consulting/meeting/coaching load than tracked work.
+>
+> **What the sources say** (Rovo, 2026-08-17): the RevOps reference *Delivery Utilization: How We
+> Measure It* defines net utilization as **all logged hours ÷ net capacity** and shows FTE ran
+> ~85% across FY26 — the achieved rate already carries structural overhead. *POL - Time Logging*
+> classes meetings, 1:1s, coaching, admin and ramp-up as loggable internal time; the *Manager
+> Playbook* makes coaching and calendar load part of the manager's job. The Metrics Dictionary
+> reads utilization "to find where the system is getting in a Rocketeer's way, not to rank
+> individuals."
+>
+> **The fix:** the idle-hours figure is now priced against **each level band's OWN achieved
+> operating rate** (`bandNorms_`: MGMT / SENIOR / CORE / JUNIOR, scoped series per band) — the
+> same "never blended" doctrine the Workforce tab applies to capacity. A manager's ordinary
+> meeting/coaching load sits inside the MGMT band's rate instead of being priced as idle against
+> a consultant-dominated median. Bands without a publishable rate of their own are **excluded and
+> disclosed** ("N people sit in a band without enough history to price — left out, not guessed
+> at"), never priced against the blend. Interns (the ~50% helpers), ramping new hires, leave and
+> bench stay excluded as before. Also fixed: the alert's grain word follows the period picker —
+> "before this **month** repeats it" on a month window, not "week" under a "Jul 2026" label.
+>
+> **Live smoke:** hover the ⚡ alert — the tooltip states the per-band method and any unpriced
+> count. The figure should drop versus the blended version wherever managers were being priced.
+
+> ### 🚨 Non-delivery projects were being exported (2026-08-17) — `Jira Backlog.js` v3.14.0
+>
+> **v3.14.0 supersedes the v3.13.0 note below — read this one.** Rovo was asked what Jira already
+> knows, and it knows more than our pattern did: projects carry a **`projectCategory`**, and one of
+> them is **"Internal"**, described in Jira as *"For internal or test projects"*. Every reported
+> sandbox carries it — `TEST2`, `TEST3`, `TEST3ZED`, `TEST5`, `TESTEIG01`, `TESTACLAW`, **`AUTOT`**.
+>
+> **The key pattern missed `AUTOT`** ("AUTO02 (Testing)") — its key does not start with TEST. The
+> category catches it, and needs no edit when the next sandbox appears.
+>
+> Resolution order in `getSpaceForIssue_`:
+>
+> | Step | Rule | Effect |
+> |---|---|---|
+> | 1 | `CUSTOMER_PROJECT_MAP` | rescue — a named client always survives |
+> | 2 | `projectCategory` in `NON_DELIVERY_CATEGORIES` | **excluded** (authoritative, self-maintaining) |
+> | 3 | `EXCLUDE_PROJECT_RE` on the key | excluded — backstop for the uncategorised |
+> | 4 | name looks like a sandbox but category says otherwise | **reported, never excluded** |
+>
+> **Step 4 is the important one.** A name is never a reason to drop work: `ADT02` is "COE-63
+> Advant**est**" and `ISUATTEST` is real COE delivery. But **`TSBA` = "Test Space - by Alfie" is a
+> genuine sandbox sitting in the COE category** — no code rule can tell it from a client, so the run
+> logs it for a human to recategorise in Jira. **That one is still being exported until somebody
+> fixes its category.**
+>
+> **Fails open, loudly.** If `/rest/api/3/project/search` fails, the run falls back to the key
+> pattern alone and says so. Failing closed would empty the export on a transient 500, and an empty
+> `Jira Raw` reads downstream as "the business delivered nothing this week" — far worse than
+> re-admitting a few sandboxes for one run. Cost: one paged GET per run, cached for the run.
+>
+> **Verified** against the live category data for 15 projects (all 7 sandboxes excluded; Adobe, ANZ
+> Bank, NVIDIA, Advantest, ISUATTEST and an uncategorised new client all kept) with a local harness,
+> since this exporter has no test suite.
+>
+> **Read the three new log lines after the run:**
+> - `🚫 Excluded N non-delivery project(s)` — what went.
+> - `ℹ N project(s) excluded by KEY PATTERN with no Jira category to back it` — ask an admin to set
+>   their category, after which the pattern is redundant for them.
+> - `❓ N project(s) NAMED like a sandbox but categorised as delivery work` — the `TSBA` list.
+>
+> ### 📜 Superseded: v3.13.0 (pattern-only)
+>
+> **EXPORTER CHANGE. Deploy it FIRST, re-run the export, then the dashboard.** Nothing in
+> `Code.js` / `Dashboard.html` changes for this.
+>
+> **What was wrong.** This exporter is documented as exporting services work. It was exporting
+> **every project on the Jira site** except `TEMPLATE`, a disabled R&D, and noise statuses.
+> `getSpaceForIssue_` ends in `return clientName || projKey` — an unmapped project resolves to
+> *itself*, never to `null`, and every caller filters on `!== null`. So a sandbox passed the scope
+> filter as if it were a client.
+>
+> Reported live: **57 epics** across `TEST2`, `TEST3`, `TEST3ZED`, `TEST5`, `TESTEIG01` sitting in
+> the open backlog and the unrouted alert. They can never route — nobody logs services time to a
+> sandbox — so they sat there permanently, inflating the queue and the unrouted count.
+>
+> **The fix.** `CONFIGJ.EXCLUDE_PROJECT_RE` (`^(TEST|SANDBOX|DEMO|TRAINING|PLAYGROUND|SCRATCH)`),
+> applied inside `getSpaceForIssue_` so it reaches **every** fetch — open, done and created — rather
+> than one JQL. Anything named in `CUSTOMER_PROJECT_MAP` is checked first and always survives.
+>
+> A pattern rather than a list, because the list is what goes stale: the next sandbox is `TEST6` and
+> nobody will remember this file.
+>
+> **⚠ THE OPEN BACKLOG AND WEEKS-TO-CLEAR WILL FALL AGAIN.** This is now the *third* movement in
+> that number — 4.9w (assignee-scoped) → 11.0w (2026-08-06, assignee clause dropped) → lower again
+> once the sandboxes leave. The 3,279 / 11.0w figures in this README include the noise. Brief it, or
+> a third unexplained number destroys confidence in all of them.
+>
+> **Run the export and read the log.** Two new lines:
+> - `🚫 Excluded N non-delivery project(s): TEST2 (33), TEST5 (14)…` — what was dropped, so the
+>   exclusion is never silent.
+> - `ℹ N project(s) exported as customer work but NOT in CUSTOMER_PROJECT_MAP: …` — **read this
+>   one.** It names every project still riding the fallback path. A local check already flags `GTT`
+>   and `SRSO`, which are internal tracking projects, not clients — GTT is where this dashboard's own
+>   status tickets live.
+>
+> **The real fix is an allowlist**, which this is not. `CUSTOMER_PROJECT_MAP` holds three entries
+> against a client list that is plainly longer, so inverting the rule today would delete most genuine
+> work. That second log line exists to build the real list; once it is complete, invert
+> `getSpaceForIssue_` and delete the denylist.
+>
+> ⚠ **This exporter has no automated tests** — it never has. The resolver was verified against the
+> 57 reported keys plus COE / NVIDIA / Cultivate / Mostly / RND with a local harness before shipping,
+> but the first real run is the first real test.
+
+> ### ✂ Unrouted split + the delivered carve (2026-08-17) — schema v44 → v45
+>
+> `Code.js` + `Dashboard.html`, then **`bustDeliveryCache_()`**.
+>
+> **⚠ THE BACKLOG NUMBER DROPS, ON PURPOSE. Brief it before anyone sees it.**
+>
+> **What prompted this.** A live epic with **every child Done and 22h45m logged** was sitting in the
+> unrouted alert as though nobody had touched it. Not a display bug — it exposed two real defects:
+>
+> 1. **A grain mismatch.** `buildBacklog_` takes every open epic with **no window at all**, but the
+>    only routing signal is a **52-week** Tempo export (`EXPORT_HISTORY_WEEKS`; `TempoTrackedTime.js`
+>    queries Tempo *"in this range only"*). An epic whose work finished over a year ago can never be
+>    routed — its hours are not in the file. Jira shows them because Jira counts forever.
+> 2. **Finished work counted as backlog.** An OPEN epic whose children are all Done is not an
+>    obligation. It was inflating both the hours and the unrouted count.
+>
+> **Three changes:**
+>
+> - **Unrouted splits into three states**, because they have three different answers:
+>
+>   | State | Meaning | Action |
+>   |---|---|---|
+>   | `stale` | untouched for over 30 days | **the only one that raises an alert** |
+>   | `hasHours` | somebody DID work on it — logger outside the counted pools, or hours predate the export window | our routing gap, not a queue |
+>   | `fresh` | untouched and recent | newly sold work — normal, no action |
+>
+>   The three **partition** unrouted, in both count and hours (asserted server-side).
+> - **The alert covers `stale` only**, is headed *"Needs a decision"* rather than *"Action
+>   required"*, and its button links **only the stale keys**. The other two states are stated beside
+>   it, so the headline is never read as the queue.
+> - **Already-delivered epics leave the backlog** (`deliveredEpics/Hrs/Keys`). Carved only when an
+>   epic has **≥ 1 known child and all of them are finished** — an epic whose children are not in
+>   the export is *unknown*, never *done*, or the carve would silently delete real work as children
+>   age out of the resolved window.
+>
+> **Live smoke:** Workforce → the top card reads *"Needs a decision · unrouted for over 30 days"*
+> with a **Review N epics ↗** button, and names the other two states beneath it. The backlog table
+> states how many delivered epics were excluded and their hours. Compare the headline backlog figure
+> against the last deploy — it should be **lower**, by roughly the delivered hours the table names.
+>
+> **Still open upstream** (DATA-BLOCKERS #7): none of this fixes routing itself. While there is no
+> `requiredPool` field, an epic only reveals its pool once somebody logs to it — the wrong way round
+> for planning. The split makes the size of that gap visible; it does not close it.
+
 > ### ⚡ Backlog & Flow as a command center (2026-08-17) — `Dashboard.html` only
 >
 > Paste `Dashboard.html` and deploy. **No schema bump, no cache action** — presentation and
@@ -1705,11 +1861,14 @@ fail independently, and one hiding the other is how a reader ends up trusting a 
 > to clear. The scope tags (ORG vs SNAP) say which pair follows the filters; the backlog band's
 > ⓘ line explains the two-denominator design. Builder: `assignedRunwayParts_()`.
 >
-> **3 · Recoverable hours lead the tab.** The People-signals band moved up to sit **directly
-> under the stat callouts**, and when a finished window prices recoverable capacity, the panel
-> opens with an amber alert — **⚡ 307h recoverable this week → open the roster** — clickable
-> (and keyboard-reachable) straight to the roster, biggest opportunity first. Same gates as
-> before: finished windows only, and a measured 0h stays a quiet inline mention, never a banner.
+> **3 · Idle hours lead the tab.** The People-signals band moved up to sit **directly under
+> the stat callouts**, and when a finished window prices idle capacity, the panel opens with an
+> amber alert — **⚡ 307h left on the table in 2026.W33 → open the roster before this week
+> repeats it** — clickable (and keyboard-reachable) straight to the roster, biggest gap first.
+> ⚠ Wording fixed same day (user): the figure is priced on the last COMPLETE week, whose hours
+> are gone — the alert names that week and never claims they are "recoverable this week".
+> Same gates as before: finished windows only, and a measured 0h stays a quiet inline mention,
+> never a banner.
 >
 > **4 · The colour key is deleted.** `#flowKey` is out of the markup and `ragKeyHtml_` went with
 > its last caller. This tab is mostly ungraded volume metrics; every graded card carries its own

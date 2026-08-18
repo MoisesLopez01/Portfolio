@@ -74,7 +74,8 @@
       "mcp__claude_ai_Atlassian_Rovo_RAN__searchJiraIssuesUsingJql",
       "mcp__claude_ai_Google_Drive__get_file_metadata",
       "mcp__claude_ai_Google_Drive__read_file_content",
-      "mcp__claude_ai_Atlassian_Rovo__addCommentToJiraIssue"
+      "mcp__claude_ai_Atlassian_Rovo__addCommentToJiraIssue",
+      "mcp__claude_ai_Atlassian_Rovo__addWorklogToJiraIssue"
     ],
     "deny": [
       "Read(//c/Users/moise/.ssh/**)",

@@ -240,7 +240,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // its own hidden phase.
              " setUtilization_: function (v) { SHOW_UTILIZATION_ = v; }," +
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
-             " wfAvailability_: wfAvailability_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_," +
+             " wfAvailability_: wfAvailability_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_, bandNorms_: bandNorms_," +
              " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
@@ -281,6 +281,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // Workforce tab cleanup (2026-08-17): the drawer's content and the
              // in-cell reconcile flag are both pure builders.
              " wfMethodHtml_: wfMethodHtml_, wfReadTarget_: wfReadTarget_, wfFlagHtml_: wfFlagHtml_," +
+             " JIRA_LINK_MAX_KEYS_: JIRA_LINK_MAX_KEYS_," +
              " wfRead_: wfRead_ })";
 var C = eval(m[1] + bridge);
 
@@ -494,9 +495,17 @@ function model(o) {
                stemWarnings: 0, stemWarningDetail: [], absentPools: ["ARCH", "PMO", "TRAINING"],
                weeksInPeriod: 2, drift: null },
       coverage: { planIssueCoverage: 0.6, plannedHrsTotal: 100, plannedHrsWithIssue: 60,
-                  committedEpics: 5, routedEpics: 6, unroutedHrs: 50, unroutedEpics: 2,
+                  committedEpics: 5, routedEpics: 6, unroutedHrs: 90, unroutedEpics: 4,
                   // schema 44: the keys the Workforce alert's Jira button links on.
                   unroutedKeys: ["GTT-900", "GTT-901"], unroutedCapped: false,
+                  // schema 45: unrouted is three states, and the delivered carve.
+                  unroutedBuckets: {
+                    stale:    { n: 1, hrs: 30, keys: ["GTT-900"] },
+                    hasHours: { n: 1, hrs: 20, keys: ["GTT-901"] },
+                    fresh:    { n: 2, hrs: 40, keys: ["GTT-902", "GTT-903"] },
+                  },
+                  deliveredEpics: 3, deliveredHrs: 120,
+                  deliveredKeys: ["GTT-800", "GTT-801", "GTT-802"],
                   genericPlansMeasured: false, capacityTruthMeasured: false },
     },
     // Queue halves, never summed here (Task 11, spec §1/§4.2) — 0, not null:
@@ -1193,11 +1202,14 @@ var done13 = C.donePeriods_();
 var head13 = done13[done13.length - 1];
 var ser13 = C.metricSeries_(C.METRICS_.util, done13);
 assert_(ser13.std && ser13.std.ok, "sanity: the history fixture establishes an operating rate");
-var norm13 = ser13.std.baseline;
+// Norms are PER LEVEL BAND since 2026-08-17 (user: a blended median priced a
+// manager's meeting/coaching load as idle). This fixture is all one band, so
+// its band norm equals the old blend and every prior expectation holds.
+var norm13 = C.bandNorms_(done13);
 var rows13 = C.oppRows_(head13, norm13);
 var cleo = rows13.filter(function (r) { return r.name === "Cleo Diaz"; })[0];
 assert_(!!cleo && cleo.opp > 0,
-        "the chronically-low person carries recoverable hours against the cohort operating rate");
+        "the chronically-low person carries recoverable hours against their band's operating rate");
 assert_(rows13.every(function (r) { return r.opp >= 0; }),
         "opportunity is floored at zero — someone above the norm is carrying it, not owed a negative");
 
@@ -3187,12 +3199,59 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var headP = doneP[doneP.length - 1];
   var serP = C.metricSeries_(C.METRICS_.util, doneP);
   assert_(serP.std && serP.std.ok, "sanity: the pulse fixture establishes an operating rate");
+  // Same walk the pulse does: per-band norms, unpriced and ramping excluded.
   var expOpp = 0;
-  C.oppRows_(headP, serP.std.baseline).forEach(function (r) {
-    if (!r.ramping && r.opp > 0.5) expOpp += r.opp;
+  C.oppRows_(headP, C.bandNorms_(doneP)).forEach(function (r) {
+    if (!r.unpriced && !r.ramping && r.opp > 0.5) expOpp += r.opp;
   });
-  var pulseBig = /<b>([0-9]+)h<\/b> recoverable/.exec(pulse);
-  assert_(pulseBig, "pulse published its own recoverable-hours figure");
+  // WORDING (user fix 2026-08-17): the figure is priced on the last COMPLETE
+  // week, whose hours are gone — so the alert says "left on the table in
+  // <week>", never "recoverable this week", which promised an action that no
+  // longer exists. The measured week is NAMED on the alert.
+  var pulseBig = /<b>([0-9]+)h<\/b> left on the table in \d{4}\.W\d+/.exec(pulse);
+  assert_(pulseBig, "pulse published its idle-hours figure, tied to the named finished week");
+  assert_(!/recoverable this week/.test(pulse),
+          "…and never claims those hours are still recoverable — a finished week's hours are gone");
+  // ── PER-BAND PRICING (user 2026-08-17): the manager case ────────────────
+  // A manager runs at a structurally lower tracked rate (meetings, coaching,
+  // 1:1s — POL Time Logging / Manager Playbook). Priced against the blended,
+  // consultant-dominated median that read as idle hours; priced against the
+  // MGMT band's own achieved rate it reads as what it is — how managers run.
+  (function () {
+    var proto = mdl.people[0];
+    var mgr = Object.assign({}, proto, { name: "Mia Manager", band: "MGMT",
+      cell: "PS-CONSULT|MGMT", newHire: false, onLeave: false, isIntern: false });
+    mgr.weeks = {};
+    Object.keys(proto.weeks || {}).forEach(function (iso) {
+      // A steady low-tracked profile: 15h of 40h every week, so the MGMT
+      // band's median IS this rate and the manager's own gap prices to zero.
+      mgr.weeks[iso] = Object.assign({}, proto.weeks[iso],
+        { tracked: 15, trackedCov: 15, billable: 12, nonBillable: 3,
+          nsBillRaw: 12, nsNonBillRaw: 3 });
+    });
+    mdl.people.push(mgr);
+    C.setModel(mdl);
+    C.renderAll_();
+    var doneM = C.donePeriods_();
+    var headM = doneM[doneM.length - 1];
+    var normsM = C.bandNorms_(doneM);
+    assert_(normsM.MGMT !== null && normsM.MGMT !== undefined,
+            "the MGMT band publishes its own operating rate");
+    var coreBand = Object.keys(normsM).filter(function (b) { return b !== "MGMT"; })[0];
+    assert_(normsM[coreBand] !== null && normsM[coreBand] > normsM.MGMT,
+            "…and it is LOWER than the delivery band's — the blend this replaces");
+    var mgrRow = C.oppRows_(headM, normsM)
+      .filter(function (r) { return r.name === "Mia Manager"; })[0];
+    assert_(!!mgrRow && mgrRow.opp <= 0.5,
+            "a manager at their band's own steady rate carries no priced opportunity");
+    var blend = C.metricSeries_(C.METRICS_.util, doneM).std.baseline;
+    assert_(Math.max(0, mgrRow.den * (blend / 100) - mgrRow.num) > 0.5,
+            "…where the blended norm would have priced their meetings and coaching " +
+            "as idle hours — the bug this fixes");
+    mdl.people.pop();
+    C.setModel(mdl);
+    C.renderAll_();
+  })();
   assert_(pulseBig[1] === String(Math.round(expOpp)),
           "pulse recoverable hours (" + pulseBig[1] + "h) equals the oppRows_ walk (" +
           Math.round(expOpp) + "h)");
@@ -4219,8 +4278,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the gates panel makes no window claim, having no windowed content left");
   C.setState("view", "exec");
   C.renderAll_();
-  assert_(!/recoverable/.test(els.pulsePanel.innerHTML),
-          "recoverable hours are suppressed on a forward window — they measure hours already delivered");
+  assert_(!/left on the table/.test(els.pulsePanel.innerHTML) &&
+          !/recoverable/.test(els.pulsePanel.innerHTML),
+          "the idle-hours figure is suppressed on a forward window — it measures hours already delivered");
   assert_(/planned <b>/.test(els.pulsePanel.innerHTML),
           "…and the pulse states planned coverage in their place");
   C.renderTrust_();
@@ -6349,22 +6409,83 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(pane.indexOf('id="wfConsumersPanel"') < pane.indexOf('id="wfGridPanel"'),
           "…and it sits ABOVE the pool grid, not halfway down the tab");
 
-  // 6b · Unrouted work is an ALERT with a way to act, not a table row.
-  assert_(/Action required/.test(alert), "unrouted backlog is raised to an action card");
-  assert_(/Route \d+ epics? ↗/.test(alert), "…with a button that routes to the Jira queue");
+  // 6b · Unrouted work is an ALERT — but ONLY the part of it anybody can act on.
+  // The live finding this corrects: an epic with every child Done and 22h45m
+  // logged was in the alert as if untouched, because its hours predate the
+  // 52-week Tempo export the routing signal is built from.
+  assert_(/Needs a decision/.test(alert), "the stale bucket is raised to an action card");
+  assert_(!/Action required/.test(alert),
+          "…and no longer calls the whole unrouted count 'action required'");
+  assert_(/Review \d+ epics? ↗/.test(alert), "…with a button into the Jira queue for those epics");
   assert_(/browse|jql/i.test(alert), "…pointing at a real Jira URL");
-  // It must vanish when there is nothing to route: a permanent "0 unrouted"
-  // banner is how an alert becomes furniture nobody sees.
-  var quiet = wfModel();
-  quiet.workforce.coverage.unroutedEpics = 0;
-  quiet.workforce.coverage.unroutedHrs = 0;
-  fresh(quiet);
+  // The button must link the STALE keys, never the whole unrouted list — that
+  // was the bug: sending a manager to tickets whose honest next step is nothing.
+  assert_(/GTT-900/.test(alert) && !/GTT-901/.test(alert),
+          "…scoped to the stale epics alone, not every unrouted one");
+
+  // 6b-i · THE BUTTON MUST PROMISE WHAT THE URL DELIVERS (user 2026-08-17).
+  // It read "Review 200 epics" and opened 80: the label counted the PAYLOAD
+  // array (capped at EPIC_DUE_MAX_KEYS_) while jiraKeysUrl_ silently truncated
+  // to JIRA_LINK_MAX_KEYS_. Two caps, one of them invisible.
+  var manyKeys = [];
+  for (var mk = 1; mk <= 200; mk++) manyKeys.push("GTT-" + (2000 + mk));
+  var big = wfModel();
+  big.workforce.coverage.unroutedBuckets.stale = { n: 270, hrs: 11519, keys: manyKeys };
+  fresh(big);
   C.getModel().viewerRole = "admin";
   C.renderAll_();
-  assert_(els.wfAlertPanel.innerHTML === "", "…and renders nothing at all when nothing is unrouted");
+  var bigAlert = els.wfAlertPanel.innerHTML;
+  var cap = C.JIRA_LINK_MAX_KEYS_;
+  assert_(typeof cap === "number" && cap > 0, "sanity: the link cap is a real number");
+  // The label states the number the LINK carries, against the true total.
+  assert_(bigAlert.indexOf("Review " + cap + " of 270") !== -1,
+          "the button promises exactly what the URL opens, out of the real total — got: " +
+          (bigAlert.match(/Review[^<]*/) || ["(no label)"])[0]);
+  assert_(!/Review 200/.test(bigAlert),
+          "…never the payload's key count, which is a different and larger cap");
+  // And the href really does carry that many keys, not more.
+  var href = (bigAlert.match(/href="([^"]*)"/) || [])[1] || "";
+  var inUrl = (decodeURIComponent(href).match(/GTT-2\d{3}/g) || []).length;
+  assert_(inUrl === cap,
+          "the URL carries exactly " + cap + " keys — got " + inUrl);
+  // The body says which cap bit, and that the headline is still the whole set.
+  assert_(/opens the first <b>80<\/b>/.test(bigAlert), "the body names the link cap");
+  assert_(/the count above is all of them/.test(bigAlert),
+          "…and says the headline count is the full population");
   fresh(wfModel());
   C.getModel().viewerRole = "admin";
   C.renderAll_();
+  // The other two states are STATED beside it, so the headline is never read
+  // as the queue.
+  assert_(/not<\/b> an alert|not an alert/.test(alert), "the non-actionable states are named");
+  assert_(/outside the counted pools|52-week/.test(alert),
+          "…including the one whose hours we simply cannot see");
+  assert_(/newly sold work/.test(alert), "…and the one that is normal");
+  // It vanishes when nothing is STALE — even while other unrouted work exists.
+  // A permanent banner is how an alert becomes furniture.
+  var quiet = wfModel();
+  quiet.workforce.coverage.unroutedBuckets.stale = { n: 0, hrs: 0, keys: [] };
+  fresh(quiet);
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
+  assert_(els.wfAlertPanel.innerHTML === "",
+          "…and renders nothing when nothing is stale, even with unrouted work on the books");
+  fresh(wfModel());
+  C.getModel().viewerRole = "admin";
+  C.renderAll_();
+
+  // 6b-ii · The DELIVERED CARVE is stated where the number it changed is drawn.
+  // An open epic whose every child is finished is not backlog — but a figure
+  // that quietly got smaller is indistinguishable from a broken feed.
+  var unroutedNow = els.wfUnroutedPanel.innerHTML;
+  assert_(/excluded/.test(unroutedNow), "the delivered carve is stated on the backlog table");
+  assert_(/3 open epics whose/.test(unroutedNow), "…with the count it removed");
+  assert_(/unknown is not the same as finished/.test(unroutedNow),
+          "…and the rule that stops it eating epics whose children the export cannot see");
+  // The three states are named on the table too, so a reader who scrolls past
+  // the card still learns the headline is not one queue.
+  assert_(/Unrouted is not one thing/.test(unroutedNow),
+          "the routing table refuses to present unrouted as a single number");
 
   // 6c · The walls of text are behind one control, not on the canvas.
   assert_(/toggleWfMethod_/.test(grid), "the grid offers a link into the methodology drawer");
