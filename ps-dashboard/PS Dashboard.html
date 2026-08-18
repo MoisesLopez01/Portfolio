@@ -751,14 +751,40 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
    also scrolls horizontally — the thead sticks to this container's top edge
    while rows scroll under it in both axes. */
 .pr-scroll { overflow: auto; max-height: calc(100vh - 240px); }
-/* Slide-in detail panel — no backdrop on purpose: the grid stays interactive. */
-.pr-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(620px, 96vw);
+/* Detail panel (spec v4 P4): PUSH, don't overlay — a flex sibling of the table
+   pane, so opening it compresses the table instead of covering the selected row
+   and the Score/RCR columns a manager compares against. min-width:0 on the
+   table pane is load-bearing: without it the flex child refuses to shrink and
+   the panel gets pushed off-screen. Below 1280px there is no room to push, so
+   the panel falls back to a fixed overlay and the page scroll-locks. */
+.pr-workspace { display: flex; align-items: flex-start; }
+.pr-workspace > .pr-scroll { flex: 1 1 auto; min-width: 0; }
+html { scrollbar-gutter: stable; }
+body.pr-locked { overflow: hidden; }
+.pr-panel { flex: 0 0 var(--pr-panel-w, clamp(600px, 40vw, 900px));
+  width: var(--pr-panel-w, clamp(600px, 40vw, 900px));
+  position: sticky; top: 70px; max-height: calc(100vh - 240px);
   background: var(--card-bg); border-left: 1px solid var(--border);
-  box-shadow: -10px 0 28px rgba(0,0,0,.22); z-index: 70; overflow-y: auto;
-  padding: 14px 16px; animation: prPanelIn .18s ease-out; }
+  overflow-y: auto; padding: 14px 16px 14px 20px; animation: prPanelIn .18s ease-out;
+  container-type: inline-size; container-name: drawer; }
+@media (max-width: 1280px) {
+  .pr-panel { position: fixed; inset: 0 0 0 auto; width: min(92vw, 720px); max-height: none;
+    height: 100vh; z-index: 70; box-shadow: -10px 0 28px rgba(0,0,0,.22); }
+}
+@media (prefers-reduced-motion: reduce) { .pr-panel { animation: none; } }
 @keyframes prPanelIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Drag-to-resize handle on the panel's left edge (sticky is a containing block,
+   so the absolute strip tracks the panel). Width persists via prStore_. */
+.pr-drag { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; }
+.pr-drag:hover { background: var(--orbe); opacity: .35; }
 .pr-panel .pr-drill { border: none; background: transparent; padding: 0; margin: 0; overflow-x: visible; }
+/* One column by default; two when the (user-resizable) drawer itself is wide
+   enough — container query, not media query, so a dragged width reflows. */
 .pr-panel .pr-drill-grid { grid-template-columns: 1fr; }
+@container drawer (min-width: 760px) {
+  .pr-panel .pr-drill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pr-panel .pr-block.span2 { grid-column: 1 / -1; }
+}
 .pr-table tr.pr-row.sel td { background: #EEF4FF; }
 body.dark-mode .pr-panel { background: #101c44; border-color: #2B3A78; }
 body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
@@ -2029,12 +2055,15 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
-      <div id="prBody" class="pr-scroll"></div>
+      <div class="pr-workspace">
+        <div id="prBody" class="pr-scroll"></div>
+        <aside id="prPanel" class="pr-panel" role="dialog" aria-modal="false"
+               aria-labelledby="prPanelTitle" tabindex="-1" style="display:none"></aside>
+      </div>
     </div>
     <!-- Slide-in detail panel (side-panel wave): fixed right, the grid stays
          visible and clickable behind it — walk the list person to person. -->
-    <div id="prPanel" class="pr-panel" style="display:none"></div>
-  </div>
+    </div>
 
   <!-- SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) -->
   <div id="tabWeights" class="tab-pane">
@@ -3373,9 +3402,19 @@ function togglePerfDrill_(normName) {
 }
 function closePerfPanel_() {
   if (STATE.prExpanded === null) return;
+  var last = STATE.prExpanded;
   STATE.prExpanded = null;
   renderPerfRecordTab_();
   renderPerfPanel_();
+  // Focus returns to the originating row's name button (spec v4 P6).
+  var rows = document.querySelectorAll('#prBody tr.pr-row');
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].getAttribute('data-norm') === last) {
+      var btn = rows[i].querySelector('.pr-namebtn');
+      if (btn) btn.focus(); else rows[i].scrollIntoView({ block: 'nearest' });
+      break;
+    }
+  }
 }
 // Granularity is ONE state shared by grid and panel — every switch re-renders
 // both, whether it came from the page header or the panel's own W/M/Q control.
@@ -3384,19 +3423,70 @@ function prSetGran_(g) {
   renderPerfRecordTab_();
   renderPerfPanel_();
 }
+// Panel width persistence — localStorage throws in some GAS-iframe privacy
+// modes, so every access is guarded with an in-memory fallback.
+var _prMem = {};
+function prStore_(k, v) {
+  if (v === undefined) {
+    try { return localStorage.getItem(k); } catch (e) { return _prMem[k] || null; }
+  }
+  try { localStorage.setItem(k, v); } catch (e) {}
+  _prMem[k] = v;
+}
+// One-time wiring: drag-to-resize via --pr-panel-w (clamped 480–1100px),
+// double-click on the handle resets to the CSS clamp default.
+var _prPanelWired = false;
+function prWirePanel_(p) {
+  if (_prPanelWired) return;
+  _prPanelWired = true;
+  var saved = parseInt(prStore_('ps_pr_panel_w'), 10);
+  if (saved) document.documentElement.style.setProperty('--pr-panel-w', Math.min(1100, Math.max(480, saved)) + 'px');
+  p.addEventListener('pointerdown', function(ev) {
+    if (!ev.target.closest('.pr-drag')) return;
+    ev.preventDefault();
+    var startX = ev.clientX, startW = p.getBoundingClientRect().width;
+    function move(e2) {
+      var w = Math.min(1100, Math.max(480, Math.round(startW + (startX - e2.clientX))));
+      document.documentElement.style.setProperty('--pr-panel-w', w + 'px');
+    }
+    function up() {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      prStore_('ps_pr_panel_w', String(Math.round(p.getBoundingClientRect().width)));
+    }
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  });
+  p.addEventListener('dblclick', function(ev) {
+    if (!ev.target.closest('.pr-drag')) return;
+    document.documentElement.style.setProperty('--pr-panel-w', '');
+    prStore_('ps_pr_panel_w', '');
+  });
+}
 function renderPerfPanel_() {
   var p = document.getElementById('prPanel');
   if (!p) return;
   var norm = STATE.prExpanded;
   if (!norm || STATE.activeTab !== 'perfrecord' || !DATA) {
-    p.style.display = 'none'; p.innerHTML = ''; return;
+    p.style.display = 'none'; p.innerHTML = '';
+    document.body.classList.remove('pr-locked');
+    return;
   }
   var emp = (DATA.employees || []).find(function(e) { return e.normName === norm; });
-  if (!emp) { p.style.display = 'none'; p.innerHTML = ''; return; }
+  if (!emp) { p.style.display = 'none'; p.innerHTML = ''; document.body.classList.remove('pr-locked'); return; }
+  var wasOpenFor = p.dataset.openFor || '';
   var row = perfRowModels_([emp])[0];
-  p.innerHTML = perfDrillHtml_(emp, row, perfModel_());
+  p.innerHTML = '<div class="pr-drag" title="Drag to resize · double-click to reset"></div>' +
+                perfDrillHtml_(emp, row, perfModel_());
   p.style.display = '';
-  p.scrollTop = 0;
+  // Overlay mode is modal (the table is covered); push mode is not — the table
+  // beside the panel stays legitimately interactive (spec v4 P6).
+  var overlay = window.matchMedia('(max-width: 1280px)').matches;
+  p.setAttribute('aria-modal', overlay ? 'true' : 'false');
+  document.body.classList.toggle('pr-locked', overlay);
+  prWirePanel_(p);
+  if (wasOpenFor !== norm) { p.scrollTop = 0; p.focus(); }
+  p.dataset.openFor = norm;
 }
 // Esc closes the panel from anywhere on the tab.
 document.addEventListener('keydown', function(ev) {
