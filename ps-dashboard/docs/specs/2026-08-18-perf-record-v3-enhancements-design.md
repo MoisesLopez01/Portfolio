@@ -183,6 +183,28 @@ Both charts: the `<svg>` element gets
   alongside the existing button-visibility restore.
 - The whole-grid PNG (`exportPerfGridPNG_`) is unchanged.
 
+## G. RCR — per-month values (user amendment 2026-08-18)
+
+Today every RCR bucket repeats the payload's single current value
+(`computeRkScore` reads `emp.rcr.value`), so the monthly view shows a flat
+line even though `meta.rcrByEmployee[norm][monthName]` carries the full
+monthly history (already used by the Trends drill's "RCR — monthly" chart).
+
+- New pure engine helper `perfRcrMonthKey_(name)`: RCR sheet header
+  `"Jul 25"` → month-bucket key `"2025-07"`; unparseable → `null`. Unit-checked.
+- `perfModel_` (glue, outside the engine): after aggregating each employee's
+  buckets, override `agg.rcr` per bucket from the monthly history — collect the
+  bucket's distinct `pMonthKey(weekLabel)`s, take the LAST month with data
+  (state at bucket close, matching `lastNonNull`); employees with no monthly
+  history keep the existing current-value fallback.
+- Effect: monthly buckets show their own RCR; quarterly shows quarter-close
+  RCR; the dot/trend arrows become real month-over-month movement.
+- Drill RCR block: "RCR — monthly" with the current value line plus the
+  existing `detChartSVG_` line chart over the employee's monthly points
+  (same reuse as the Overview drill) when ≥2 points exist.
+- `computeRkScore` and the score weighting are NOT touched — RCR in the score
+  keeps the current-value semantics.
+
 ## Error handling
 
 - `perfFlagTip_` / `perfTickStep_` are total functions over their inputs (empty
