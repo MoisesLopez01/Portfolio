@@ -116,6 +116,50 @@ const noteFlagged = perfReadingNote_([
 ck('flagged note lists worst-first', noteFlagged.indexOf('support: goals, tracked') === 0);
 ck('flagged note counts declines',   noteFlagged.indexOf('2 declining') !== -1);
 
+// ── v2 engine additions (spec 2026-08-18 performance-record-v2) ─────────────
+// perfQuarterRank_
+ck('qrank FY27Q1 > FY26Q4', perfQuarterRank_('FY27Q1') > perfQuarterRank_('FY26Q4'));
+ck('qrank bad → -1',        perfQuarterRank_('nope') === -1);
+
+// perfTenureLabel_(hireMs, nowMs) — deterministic via fixed nowMs
+const NOW = Date.UTC(2026, 7, 18); // 2026-08-18
+ck('tenure null → empty',   perfTenureLabel_(null, NOW) === '');
+ck('tenure 3y 2m',          perfTenureLabel_(Date.UTC(2023, 5, 10), NOW) === '3y 2m');
+ck('tenure 8m',             perfTenureLabel_(Date.UTC(2025, 11, 12), NOW) === '8m');
+ck('tenure <1m → weeks',    perfTenureLabel_(Date.UTC(2026, 7, 1), NOW) === '2w');
+ck('tenure future → empty', perfTenureLabel_(Date.UTC(2027, 0, 1), NOW) === '');
+
+// perfSiRecords_(histMap, currentQ): last 2 closed rated + current (idle when unrated)
+const rec1 = perfSiRecords_({ 'FY26Q2': 5, 'FY26Q3': 3, 'FY26Q4': 4 }, 'FY27Q1');
+ck('si: 2 closed + idle current = 3 entries', rec1.length === 3);
+ck('si: keeps the LAST 2 closed, oldest first',
+   rec1[0].q === 'FY26Q3' && rec1[0].v === 3 && rec1[1].q === 'FY26Q4' && rec1[1].v === 4);
+ck('si: unrated current = idle, never a placeholder',
+   rec1[2].q === 'FY27Q1' && rec1[2].v === null && rec1[2].current === true);
+const rec2 = perfSiRecords_({ 'FY26Q4': 4, 'FY27Q1': 5 }, 'FY27Q1');
+ck('si: rated current kept as current', rec2[rec2.length - 1].v === 5 && rec2[rec2.length - 1].current === true);
+ck('si: single closed record → 2 entries', rec2.length === 2);
+const rec3 = perfSiRecords_(null, 'FY27Q1');
+ck('si: no history → lone idle current', rec3.length === 1 && rec3[0].v === null && rec3[0].current === true);
+ck('si dot value = latest CLOSED rated', perfSiLatestClosed_(rec1) === 4);
+ck('si dot value: nothing rated → null', perfSiLatestClosed_(rec3) === null);
+
+// perfBurnout_(ptoVal, trackedVal): PTO At-Risk AND tracked at/above target
+ck('burnout: pto 0 + tracked 1.0 → true',  perfBurnout_(0, 1.0) === true);
+ck('burnout: pto 0 + tracked .95 → false', perfBurnout_(0, 0.95) === false);
+ck('burnout: pto Good + tracked 1.2 → false', perfBurnout_(1, 1.2) === false);
+ck('burnout: null tracked → false',        perfBurnout_(0, null) === false);
+
+// perfThresholdTip_(metricId, cohort, val)
+ck('tip tracked IC', perfThresholdTip_('tracked', 'ic', 0.62) ===
+   'Tracked 62% of target — IC bar: green ≥85% · yellow ≥55% · below is red');
+ck('tip tracked MGR says never red', perfThresholdTip_('tracked', 'mgr', 0.3).indexOf('never red') !== -1);
+ck('tip score', perfThresholdTip_('score', 'ic', 18) ===
+   'Score 18 — target: green ≥75 · yellow ≥50 · below is red');
+ck('tip kudos never red', perfThresholdTip_('kudos', 'ic', { recv: 1, gave: 0 }).indexOf('never red') !== -1);
+ck('tip pto', perfThresholdTip_('pto', 'ic', 0) === 'PTO At Risk — Good = green · At Risk = red');
+ck('tip no data', perfThresholdTip_('tracked', 'ic', null) === 'Tracked — no data');
+
 // ── perfCsvEncode_ ───────────────────────────────────────────────────────────
 ck('csv quotes commas',  perfCsvEncode_([['a,b', 'c']]) === '"a,b",c');
 ck('csv escapes quotes', perfCsvEncode_([['say "hi"']]) === '"say ""hi"""');

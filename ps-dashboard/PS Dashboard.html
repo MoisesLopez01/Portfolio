@@ -3705,6 +3705,88 @@ function perfReadingNote_(signals) {
     (declining ? ' · ' + declining + ' declining' : '');
 }
 
+// Fiscal-quarter ordering: "FY27Q1" → 27*4+1. Unparseable labels rank -1.
+function perfQuarterRank_(q) {
+  var m = /FY(\d+)Q(\d)/i.exec(q || '');
+  return m ? (parseInt(m[1], 10) * 4 + parseInt(m[2], 10)) : -1;
+}
+
+// Tenure label from epoch-ms pair: "3y 2m" / "8m" / "2w". Empty when unknown
+// or not yet started. nowMs is a parameter so tests stay deterministic.
+function perfTenureLabel_(hireMs, nowMs) {
+  if (!hireMs || !nowMs || hireMs > nowMs) return '';
+  var h = new Date(hireMs), n = new Date(nowMs);
+  var months = (n.getUTCFullYear() - h.getUTCFullYear()) * 12 + (n.getUTCMonth() - h.getUTCMonth());
+  if (n.getUTCDate() < h.getUTCDate()) months--;
+  if (months >= 12) return Math.floor(months / 12) + 'y ' + (months % 12) + 'm';
+  if (months >= 1)  return months + 'm';
+  return Math.max(1, Math.floor((nowMs - hireMs) / 604800000)) + 'w';
+}
+
+// SI record selection (spec v2 §2): the LAST 2 closed rated quarters, oldest
+// first, plus the current quarter — idle (v null) when unrated, NEVER a
+// placeholder and never a penalty. histMap = { "FY26Q4": 4, ... } or null.
+function perfSiRecords_(histMap, currentQ) {
+  var curRank = perfQuarterRank_(currentQ);
+  var m = histMap || {};
+  var closed = [];
+  for (var q in m) {
+    var r = perfQuarterRank_(q);
+    if (r !== -1 && r < curRank && m[q] !== null && m[q] !== undefined) {
+      closed.push({ q: q, v: m[q], rank: r });
+    }
+  }
+  closed.sort(function(a, b) { return a.rank - b.rank; });
+  var out = closed.slice(-2).map(function(x) { return { q: x.q, v: x.v, current: false }; });
+  out.push({ q: currentQ, v: (m[currentQ] !== undefined && m[currentQ] !== null) ? m[currentQ] : null, current: true });
+  return out;
+}
+
+// The SI signal dot reads the latest CLOSED rated record; a rated current
+// quarter only counts when no closed record exists at all.
+function perfSiLatestClosed_(records) {
+  for (var i = records.length - 1; i >= 0; i--) {
+    if (!records[i].current && records[i].v !== null) return records[i].v;
+  }
+  for (var j = records.length - 1; j >= 0; j--) {
+    if (records[j].v !== null) return records[j].v;
+  }
+  return null;
+}
+
+// Burnout heuristic (spec v2 §3, choice A): PTO At-Risk while tracking at or
+// above target in the same closed bucket.
+function perfBurnout_(ptoVal, trackedVal) {
+  return ptoVal === 0 && trackedVal !== null && trackedVal !== undefined && trackedVal >= 1;
+}
+
+// Signal tooltip: the value AND the bar it is judged against, so a red dot
+// explains itself ("why is 18 bad?") without a legend.
+function perfThresholdTip_(metricId, cohort, val) {
+  var LABELS = { score: 'Score', goals: 'Goals', tracked: 'Tracked', planned: 'Planned',
+                 rcr: 'RCR', kudos: 'Kudos', pto: 'PTO', si: 'SI' };
+  var name = LABELS[metricId] || metricId;
+  if (metricId === 'kudos') {
+    var k = val || { recv: 0, gave: 0 };
+    return 'Kudos received ' + (k.recv || 0) + ' · gave ' + (k.gave || 0) +
+      ' — both sides = green · one side = yellow · never red';
+  }
+  if (val === null || val === undefined || (typeof val === 'number' && isNaN(val))) return name + ' — no data';
+  if (metricId === 'pto') return 'PTO ' + (val >= 1 ? 'Good' : 'At Risk') + ' — Good = green · At Risk = red';
+  var bars = PERF_BARS[metricId];
+  if (!bars) return name;
+  var b = cohort === 'mgr' ? bars.mgr : bars.ic;
+  var isPct = metricId === 'goals' || metricId === 'tracked' || metricId === 'planned';
+  function f(x) { return isPct ? Math.round(x * 100) + '%' : String(x); }
+  var vTxt = isPct ? Math.round(val * 100) + '%'
+           : String(metricId === 'rcr' ? Math.round(val * 10) / 10 : Math.round(val));
+  var barName = (metricId === 'score' || metricId === 'rcr' || metricId === 'si') ? 'target'
+              : (cohort === 'mgr' ? 'manager bar' : 'IC bar');
+  var head = name + ' ' + vTxt + (metricId === 'tracked' ? ' of target' : '');
+  if (b.y === -Infinity) return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · below is yellow · never red';
+  return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · yellow ≥' + f(b.y) + ' · below is red';
+}
+
 // CSV encoder (RFC 4180): quotes fields containing commas/quotes/newlines.
 function perfCsvEncode_(rows) {
   return rows.map(function(row) {
