@@ -3491,8 +3491,16 @@ function perfDrillHtml_(emp, row, model) {
       '<div class="pr-heatwrap">' + strip + '</div>');
   }
   if (cellByCol.rcr && (!cellByCol.rcr.notEval || cellByCol.rcr.val !== null)) {
-    block('rcr', 'RCR', '<p>' + (cellByCol.rcr.val === null ? 'No rating.'
-      : 'Current ' + (Math.round(cellByCol.rcr.val * 10) / 10) + ' — target 2.5.') + '</p>');
+    // v3 §G: the monthly record exists (meta.rcrByEmployee) — chart it, reusing
+    // the Overview drill's detChartSVG_.
+    var rcrMap    = ((DATA.meta && DATA.meta.rcrByEmployee) || {})[emp.normName] || {};
+    var rcrMonths = ((DATA.meta && DATA.meta.rcrHistory) || []).map(function(h) { return h.month; });
+    var rPts = rcrMonths.map(function(m) {
+      return rcrMap[m] !== undefined ? { label: m, v: rcrMap[m] } : null;
+    }).filter(Boolean);
+    block('rcr', 'RCR — monthly', '<p>' + (cellByCol.rcr.val === null ? 'No rating.'
+      : 'Latest ' + (Math.round(cellByCol.rcr.val * 10) / 10) + ' — target 2.5.') + '</p>' +
+      (rPts.length > 1 ? detChartSVG_(rPts, '#058CDC', function(v) { return v.toFixed(2); }) : ''));
   }
   if (cellByCol.si && (!cellByCol.si.notEval || cellByCol.si.val !== null)) {
     var recs = (cellByCol.si.siRecords || []).map(function(r) {
@@ -4179,12 +4187,33 @@ function perfModel_() {
     prevIdx:  closedIdx.length > 1 ? closedIdx[closedIdx.length - 2] : null,
     byEmp:    {},
   };
+  // v3 §G: per-month RCR — meta.rcrByEmployee carries the monthly history, so a
+  // bucket shows ITS month's value (last month with data inside the bucket =
+  // state at bucket close). No monthly history → keep the current-value fallback.
+  var rcrHist = (DATA.meta && DATA.meta.rcrByEmployee) || {};
   (DATA.employees || []).forEach(function(emp) {
-    model.byEmp[emp.normName] = buckets.map(function(b) {
+    var aggs = buckets.map(function(b) {
       return perfBucketAgg_(b.weekLabels
         .filter(function(l) { return emp.weeks && emp.weeks[l]; })
         .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }), graceLabels);
     });
+    var empRcr = rcrHist[emp.normName];
+    if (empRcr) {
+      var byKey = {};
+      Object.keys(empRcr).forEach(function(nm) {
+        var k = perfRcrMonthKey_(nm);
+        if (k) byKey[k] = empRcr[nm];
+      });
+      aggs.forEach(function(agg, i) {
+        var v = null;
+        buckets[i].weekLabels.forEach(function(l) {
+          var k = pMonthKey(l);
+          if (k && byKey[k] !== undefined) v = byKey[k];   // last month wins
+        });
+        if (v !== null) agg.rcr = v;
+      });
+    }
+    model.byEmp[emp.normName] = aggs;
   });
   _perfModelMemo = { key: memoKey, model: model };
   return model;
