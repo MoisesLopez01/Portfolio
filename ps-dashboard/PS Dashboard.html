@@ -173,14 +173,14 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
              line-height: 1.35; }
 .kpi-icon  { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .kpi-icon svg { width: 18px; height: 18px; }
-.kpi-filtered-note { grid-column: 1 / -1; font-size: 10px; color: var(--slate); text-align: right;
+.kpi-filtered-note { font-size: 10px; color: var(--slate); text-align: right;
                       font-style: italic; padding: 2px 0; }
 .kpi-card-alert { border-left: 3px solid #B71C1C !important; }
 .kpi-pts-gap    { display:inline-block; font-size:10px; font-weight:700; color:#B71C1C;
                   background:#FEF2F2; border-radius:4px; padding:1px 6px; margin-top:4px; }
 .kpi-pts-above  { display:inline-block; font-size:10px; font-weight:700; color:#166534;
                   background:#F0FDF4; border-radius:4px; padding:1px 6px; margin-top:4px; }
-.kpi-team-note  { grid-column: 1 / -1; font-size: 10px; color: var(--muted); text-align: right;
+.kpi-team-note  { font-size: 10px; color: var(--muted); text-align: right;
                   padding: 2px 0; font-weight: 600; letter-spacing: .04em; }
 .kpi-context-banner { display: flex; align-items: center; gap: 8px;
                       font-size: 11px; color: var(--slate); font-weight: 500; line-height: 1.5;
@@ -744,9 +744,15 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-seg button { border: none; background: transparent; color: var(--slate); font-size: 11px; font-weight: 700;
   padding: 4px 10px; cursor: pointer; }
 .pr-seg button.on { background: var(--void); color: #fff; }
+/* Bounded scroll region: the ONLY way sticky headers work inside a table that
+   also scrolls horizontally — the thead sticks to this container's top edge
+   while rows scroll under it in both axes. */
+.pr-scroll { overflow: auto; max-height: calc(100vh - 240px); }
 .pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--slate); padding: 6px 8px; border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap; }
+  color: var(--slate); padding: 6px 8px; border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap;
+  position: sticky; top: 0; z-index: 5; background: var(--th-bg); }
+body.dark-mode .pr-table th { background: #16214A; }
 .pr-table th.on { color: var(--void); }
 .pr-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .pr-table tr.pr-row { cursor: pointer; }
@@ -1996,7 +2002,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
-      <div id="prBody" style="overflow-x:auto"></div>
+      <div id="prBody" class="pr-scroll"></div>
     </div>
   </div>
 
@@ -3173,6 +3179,21 @@ function perfCellHtml_(cell, cohort, dense) {
   return '<span' + tipAttr + '>' + core + '</span>';
 }
 
+// Column-header explanations (side-panel wave): what each metric evaluates and
+// how the signal is judged — a manager should never need the legend.
+var PERF_COL_HELP = {
+  name:    'Who and what: full job title, family·level, location, supervisor, tenure. Click a row to open the detail panel.',
+  flags:   'Count of red / yellow signals across this rocketeer\'s evaluated metrics. 🔥 = burnout risk (PTO At-Risk while tracking at or above target).',
+  score:   'Weighted Leading Behaviours score (0–100) built from the metrics on this row using the team/family scoring weights. Green ≥75, yellow ≥50.',
+  goals:   'Quarterly goals compliance — 8+ goals with active self-comments, checked weekly. The value is the share of weeks compliant in the period. Green ≥80%.',
+  tracked: 'Tempo logged hours vs 90% of their plan (PTO-adjusted). ICs: green ≥85%, yellow ≥55%. Managers have their own bar (green ≥50%) and are never red — coaching time never reaches Tempo.',
+  planned: 'Forward capacity planned in Tempo vs the PTO-adjusted 40h week. ICs: green ≥85%. Managers: green ≥70%, yellow ≥40%.',
+  rcr:     'Revenue Contribution Ratio — monthly revenue-weighted contribution vs cost. Target 2.5; green ≥2.0, yellow ≥1.25.',
+  kudos:   'Peer recognition in the period — giving AND receiving = green, one side = yellow, none = gray. Never red: absence of kudos is not a performance miss.',
+  pto:     'PTO planning health — Good (recovery plan in place) = green, At Risk = red. The dot follows the latest weekly snapshot.',
+  si:      'Small Improvements manager rating (1–5), quarterly. Shows the last 2 records plus the current quarter when rated; an unrated current quarter sits idle and is never penalized or back-filled.',
+};
+
 // KPI focus cards (spec v3 §A): counts always come from the UNFOCUSED row set,
 // so a card never shrinks to its own filter. Clicking toggles STATE.prFocus.
 var PERF_FOCUS = {
@@ -3262,8 +3283,9 @@ function renderPerfRecordTab_(filteredOpt) {
     ' · dot = last closed ' + STATE.prGranularity;
 
   function th(key, label) {
-    var on = STATE.prSort.key === key;
-    return '<th class="' + (on ? 'on' : '') + '" onclick="prSortBy(\'' + key + '\')">' +
+    var on  = STATE.prSort.key === key;
+    var tip = (PERF_COL_HELP[key] || '') + ' Click to sort.';
+    return '<th class="' + (on ? 'on' : '') + '" title="' + esc(tip) + '" onclick="prSortBy(\'' + key + '\')">' +
       label + (on ? (STATE.prSort.dir === 'desc' ? ' ▾' : ' ▴') : '') + '</th>';
   }
 
