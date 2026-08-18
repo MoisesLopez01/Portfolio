@@ -9154,6 +9154,79 @@ function availabilityFor_(isos) {
            pct: gross > 0 ? (gross - committed) / gross : null };
 }
 
+/**
+ * ── SELLABLE HEADROOM, SPLIT BY LEVEL BAND ─────────────────────────────
+ *
+ * THE QUESTION THIS EXISTS TO ANSWER (user, 2026-08-18): "is that 19% from
+ * people who have available time and CAN CONSUME BACKLOG based on role AND
+ * LEVEL logic?"
+ *
+ * The honest answer was half a yes, and the panel could not say so:
+ *   · ROLE — yes. The population is `backlogRole === "CONSUMER"`, so support,
+ *     PMO, sales, crew and M-track delivery managers are already out.
+ *   · LEVEL — NO. The headline sums gross and committed across every consumer
+ *     cell and divides ONCE, so a junior's free hour and a principal's free
+ *     hour are interchangeable in it. Backlog routes by POOL only
+ *     (`backlog[pool]`), never by band, so nothing downstream re-imposes the
+ *     distinction either.
+ *
+ * That matters because the two are not substitutes. ServiceRocket's own
+ * Availability definition (Confluence, "ServiceRocket Definitions" v5) lists
+ * "wrong-fit assignment — person scheduled, hours full, mismatched capability
+ * generates scope creep and write-downs" as failure mode one, and says plainly:
+ * "free up the smartest people; don't have seniors stuck on work juniors can
+ * do". A single blended percentage cannot show either condition.
+ *
+ * So the split is REPORTED rather than folded into the headline. The headline
+ * stays exactly as it was — it is published on two surfaces and changing its
+ * arithmetic here would break the one-definition guarantee — and the bands sit
+ * underneath it, where a reader asking "which people?" finds the answer.
+ *
+ * @returns {Array<Object>} band rows, richest band first — not WF_BAND_ORDER_,
+ *   because the reading question here is "where IS the free time", and sorting
+ *   by seniority buries the answer under whichever band happens to be junior.
+ */
+function wfHeadroomByBand_() {
+  var w = workforceHealthFor_();
+  if (!w) return [];
+  var by = {};
+  w.cells.forEach(function (c) {
+    if (!c.cfg.consumes) return;
+    var b = by[c.band] || (by[c.band] = { band: c.band, head: 0, gross: 0, committed: 0 });
+    b.head += c.head; b.gross += c.grossHrs; b.committed += c.committedHrs;
+  });
+  return Object.keys(by).map(function (k) {
+    var b = by[k];
+    b.freeHrs = b.gross - b.committed;
+    b.pct = wfDiv_(b.freeHrs, b.gross);
+    return b;
+  }).sort(function (a, b) { return b.freeHrs - a.freeHrs; });
+}
+
+/**
+ * The band split as rows. Hours lead, percentage follows.
+ *
+ * A band with three people can post a spectacular percentage on nine free
+ * hours, and a percentage sorted first would rank it above a band with 600h
+ * genuinely on the table. What Sales can sell is HOURS; the rate is context for
+ * them, so the hours are the number and the rate is the qualifier.
+ */
+function wfBandRowsHtml_(rows) {
+  if (!rows.length) return "";
+  return '<table class="tbl" style="margin-top:10px"><thead><tr>' +
+      "<th>Level band</th><th class='num'>People</th><th class='num'>Free</th>" +
+      "<th class='num'>Of scheduled</th><th class='num'>Rate</th>" +
+    "</tr></thead><tbody>" +
+    rows.map(function (b) {
+      return "<tr><td>" + esc_(wfBandLabel_("", b.band)) + "</td>" +
+        '<td class="num">' + b.head + "</td>" +
+        '<td class="num">' + (b.freeHrs < 0 ? "−" + wfHrs_(-b.freeHrs) : wfHrs_(b.freeHrs)) + "</td>" +
+        '<td class="num">' + wfHrs_(b.gross) + "</td>" +
+        '<td class="num">' + (b.pct !== null && b.pct < 0 ? "over" : wfPct_(b.pct)) + "</td></tr>";
+    }).join("") +
+    "</tbody></table>";
+}
+
 function renderWfConsumers_() {
   var a = wfAvailability_();
   if (!a) { wfStale_("wfConsumersPanel", "Sellable headroom"); return; }
@@ -9197,6 +9270,27 @@ function renderWfConsumers_() {
           "<b>There is deliberately no company-wide equivalent</b> — averaging pools that cannot " +
           "substitute for each other produces a number that is always wrong in the same reassuring " +
           "direction." +
+        "</div>" +
+        // ── WHAT THE GATE IS, AND WHAT IT IS NOT ────────────────────────
+        // Stated where the number is read, not in a methodology drawer. A
+        // reader quoting 19% to a sales meeting needs to know in that moment
+        // that it is role-gated and level-blind — by the time they have opened
+        // a tooltip they have already said the number out loud.
+        '<div class="cellSub" style="margin-top:8px">' +
+          "<b>Role gates this number; level does not.</b> Everyone counted holds a " +
+          "backlog-consuming role — delivery consulting, service engineering, architecture and " +
+          "learning solutions. Within that group the hours are summed and divided once, so a " +
+          "junior's free hour and a principal's free hour weigh the same, and the backlog these " +
+          "hours are measured against is routed by pool rather than by level. " +
+          "The split below is there because those hours are not substitutes." +
+        "</div>" +
+        wfBandRowsHtml_(wfHeadroomByBand_()) +
+        '<div class="cellSub" style="margin-top:6px">' +
+          "Read it as a staffing question, not a total: free hours concentrated in one band mean " +
+          "the backlog can only be absorbed if it is work that band can take. Company guidance is " +
+          "explicit that seniors idle on junior work and juniors run at full utilization are both " +
+          "failures, so a healthy read here is headroom spread across bands rather than pooled in " +
+          "one." +
         "</div>");
 }
 

@@ -1730,6 +1730,58 @@ model + new export is the one combination that misses **unsafely**.
 
 ## Deploy
 
+> ### ⚠ Long leave leaves the capacity pipeline (2026-08-18) — both dashboard files, **numbers move**
+>
+> Paste `Code.js` + `Dashboard.html` → deploy → run `bustDeliveryCache_()` (schema **47**).
+>
+> **Availability Rate and Sellable Headroom FALL on this deploy**, along with commitment
+> fidelity, cover and the constraint index. Brief it before anyone sees the step. The registry
+> entry (4.3) populates `affects`, so every touched trend line carries the "✎ definition
+> changed" marker — the step people see is the definition moving, not delivery moving.
+>
+> **The defect.** `buildCapacity_`, `dhHeadByCell_` and `buildCommitment_` carved `p.onBench`
+> but never `p.onLeave`. `utilRollup_` — which powers Executive utilization — has excluded
+> `onLeave` since the feature shipped, on the stated reasoning that *"Tempo schedules lag HR
+> for leave"*. This pipeline simply never consulted the flag. A person on sabbatical or
+> parental leave therefore contributed full gross scheduled hours and almost no plan, so very
+> nearly their entire schedule landed in **sellable headroom**: the dashboard was offering
+> Sales the availability of people who are not at work, while the panel caption promised the
+> two tabs could not disagree.
+>
+> **Not the same thing as the PTO deviation, which stands.** PTO is unmeasured because there
+> is no absence feed and the only proxy (Tempo NETSUITE time-off) would penalise the teams
+> with the best time-tracking discipline. Long leave is a roster STATUS already parsed into
+> `p.onLeave` / `p.leaveStatus` and already trusted on the other surface — an omission, not a
+> judgement. Heads carve with hours deliberately: a head left in a cell whose hours are gone
+> makes every per-head figure divide by the wrong number of people.
+>
+> **Also in this deploy — the level question, answered on the panel.** "Is that 19% from people
+> who can consume backlog based on role *and level* logic?" (user, 2026-08-18). Role: yes.
+> Level: no — the headline sums gross and committed across every consumer cell and divides
+> once, and backlog routes by `backlog[pool]`, never by band. The panel now says
+> **"Role gates this number; level does not"** and renders `wfHeadroomByBand_()` underneath:
+> headroom per level band, sorted by free HOURS (a three-person band posting 80% on 9h must
+> not outrank a band with 600h on the table), each band dividing by its own scheduled hours.
+> The headline arithmetic is untouched — it is published on two surfaces and `wfAvailability_`
+> stays the single definition.
+>
+> Why the split rather than a smarter headline: ServiceRocket's own Availability definition
+> (Confluence, *ServiceRocket Definitions* v5) heads its criteria **"Effectiveness, Not
+> Occupancy"**, lists *wrong-fit assignment* as failure mode one, and says plainly *"free up the
+> smartest people; don't have seniors stuck on work juniors can do"* and *"junior staff at 95%
+> utilization is a system failure"*. A single blended percentage cannot show either condition.
+> The same page's playbook reads **high availability + high backlog → skill/capability
+> mismatch** — which is the pair this dashboard already displays.
+>
+> **Known and deliberately NOT changed:** `utilRollup_` also excludes interns (`p.isIntern`);
+> this pipeline does not. Aligning them would move the published number again, and whether an
+> intern's free hours are sellable is a business call — the same definition argues juniors need
+> protective slack rather than exclusion. Left as-is, stated here so it is a decision and not
+> an oversight.
+>
+> Tests: `node-tests` all suites (`_test_leaveCarve_` pins all three builders plus parity with
+> `utilRollup_`); `render-smoke` **1679 checks**.
+
 > ### 🏷 The export stamps its own version, and the dashboard reads it (2026-08-17) — `Jira Backlog.js` **+** both dashboard files
 >
 > **Order matters, and it is not the usual "exporter first".** Deploy the dashboard files and

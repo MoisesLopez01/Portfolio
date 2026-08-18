@@ -273,7 +273,7 @@ var CONFIG_DH = {
  * Shipped to the client as meta.registry.
  */
 var METRIC_REGISTRY_ = {
-  version: "4.2",
+  version: "4.3",
   updated: "2026-08-17",  // 2026.W34
 
   metrics: {
@@ -871,6 +871,10 @@ var METRIC_REGISTRY_ = {
     // changed` marker. This entry is the dated note instead — a reader who
     // comes looking for the 🧬 matrix in three months needs to find out here
     // that it was retired on purpose, not assume it broke.
+    { version: "4.3", date: "2026-08-18", author: "Alex López",
+      affects: ["util", "poolHeadroom", "commitmentFidelity", "poolCover", "poolConstraint"],
+      change: "People on LONG LEAVE leave the capacity pipeline. `buildCapacity_`, `dhHeadByCell_` and `buildCommitment_` now carve `p.onLeave` exactly as they already carved `p.onBench`. Before this, a person on sabbatical or parental leave contributed gross scheduled hours and almost no plan, so very nearly their entire schedule landed in SELLABLE HEADROOM — the dashboard was offering Sales the availability of people who are not at work. `utilRollup_` has excluded onLeave since the feature shipped, on the stated reasoning that 'Tempo schedules lag HR for leave'; this pipeline simply never consulted the flag, so the two surfaces disagreed about who is at work. Availability Rate and Sellable Headroom fall on deploy by whatever those people were carrying.",
+      rationale: "DISTINCT FROM THE PTO DEVIATION, which stands. PTO is unmeasured because there is no absence feed and the only proxy (Tempo NETSUITE time-off) would penalise the teams with the best time-tracking discipline. Long leave is a roster STATUS that is already read, already parsed into `p.onLeave`/`p.leaveStatus`, and already trusted on the other surface — it was an omission, not a judgement. Heads carve with hours deliberately: leaving a head in a cell whose hours are gone makes every per-head figure divide by the wrong number of people. The affected people keep their roster row and their drill-down row; what they leave is every figure that divides by capacity. Surfaced by the user asking whether the published 19% represents people who can actually take backlog work (2026-08-18)." },
     { version: "4.2", date: "2026-08-17", author: "Alex López",
       affects: ["forecast"],
       change: "Forecast Accuracy attributes an epic to the roster person carrying most of its CHILDREN when the epic's own assignee does not resolve. Before this, such epics were dropped entirely; epics are containers and are routinely unassigned, so the published mean was taken over a small, silently selected subset and the card went blank at week grain and in a part-finished month. New: `epicChildOwners_`, a 4th `childOwners` argument on `forecastBuckets_`, and `nViaChildren` on each bucket (aggregated client-side) so the card can state how much of the number rests on the inference. The empty state now distinguishes 'no epics closed' from 'epics closed but nobody could be resolved' instead of blaming the active filters, and the card finally prints `meta.jiraUnattributed.forecast`, which the server has always shipped and the client never rendered.",
@@ -4598,6 +4602,20 @@ function dhFoldWeekly_(weekly, isos, headByCell) {
  * make headroom always read ≈0, which is precisely the failure mode this whole
  * model exists to avoid.
  *
+ * ⚠ LONG LEAVE IS SUBTRACTED (2026-08-18), and it is the one carve that was
+ * MISSING rather than declined. utilRollup_ has excluded `onLeave` since the
+ * feature shipped — "Tempo schedules lag HR for leave", so the scheduled hours
+ * of somebody on sabbatical or parental leave are an artefact of the schedule,
+ * not capacity anyone can use. This pipeline did not, and the asymmetry ran the
+ * wrong way: a person on leave carries gross hours and almost no plan, so very
+ * nearly their whole schedule landed in SELLABLE HEADROOM. The dashboard was
+ * offering Sales the availability of people who are not at work.
+ *
+ * This is distinct from PTO above. PTO is unmeasured (no absence feed, and the
+ * only proxy would punish good time-tracking); long leave is a roster STATUS
+ * that is already read, already trusted on the other surface, and simply was
+ * not consulted here.
+ *
  * @param {Array<Object>} people model people (classified, with weeks)
  * @param {Array<string>} isos ISO week keys in the period
  * @returns {Object} cell key → accumulator
@@ -4609,6 +4627,11 @@ function buildCapacity_(people, isos, weekly) {
     // whole period predates their hire date also has no weeks, and they must
     // still count as a head in their cell.
     if (p.attribOnly) return;
+    // On long leave: scheduled by Tempo, unavailable in fact. Same carve as
+    // utilRollup_, and listed first because it is the larger error — see the
+    // header. A person on leave keeps their roster row and their drill-down
+    // row; what they leave is every figure that divides by capacity.
+    if (p.onLeave === true) return;
     // Benched crew are active people with scheduled hours and no engagement to
     // spend them on (spec 2026-08-17). Their capacity must not reach the cell:
     // wfAvailability_ folds these hours into "who can take this work", and a
@@ -4633,6 +4656,10 @@ function dhHeadByCell_(people) {
   var head = {};
   (people || []).forEach(function (p) {
     if (p.attribOnly) return;
+    // Both carves must match buildCapacity_ exactly, or a cell reports heads
+    // whose hours are not in it and the per-head figures divide by the wrong
+    // number of people.
+    if (p.onLeave === true) return;
     if (p.onBench === true) return;   // no capacity in the cell ⇒ not a head in it
     var key = p.cell || "NONE|UNKNOWN";
     head[key] = (head[key] || 0) + 1;
@@ -4665,7 +4692,10 @@ function buildCommitment_(people, isos, weekly) {
     if (p.attribOnly) return;
     // Follows the capacity carve above: a person outside the denominator must
     // not sit in the numerator, or commitment fidelity exceeds 100% on any
-    // benched cell.
+    // benched cell. Leave carves the same way and for the same arithmetic
+    // reason — a plan booked against somebody now on leave is not commitment
+    // against capacity this model counts.
+    if (p.onLeave === true) return;
     if (p.onBench === true) return;
     var key = p.cell || "NONE|UNKNOWN";
     (isos || []).forEach(function (iso) {
@@ -7103,7 +7133,14 @@ function assembleModel_(inputs, win) {
 //      "Exporter:" line means blank, blank compares as older than the 3.14.0
 //      floor, and the header says the backlog figures are overstated instead of
 //      presenting a fresh-looking date as proof they are current.
-var DH_SCHEMA_VER_ = 46;
+// 47 — long leave leaves the capacity pipeline (registry 4.3). Availability
+//      Rate, Sellable Headroom, commitment fidelity, cover and the constraint
+//      index all FALL on deploy, by whatever the people on leave were carrying.
+//      A v46 entry is not broken, it is the overstated read — which is exactly
+//      why it must not be served alongside the new one: two tabs open on two
+//      cache entries would disagree about how available the team is, and the
+//      caption on one of them promises they cannot.
+var DH_SCHEMA_VER_ = 47;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8885,6 +8922,77 @@ function _test_confidence_() {
  * strictly worse than showing nothing — so every rejection path is pinned here,
  * and M/D vs D/M is asserted explicitly rather than left to `new Date`.
  */
+/**
+ * Long leave leaves capacity, commitment AND heads — all three, together.
+ *
+ * The failure this pins is not "leave is counted"; it is the ASYMMETRY. Carve
+ * the hours but keep the head and every per-head figure divides by people whose
+ * hours are gone. Carve capacity but keep commitment and a cell can report more
+ * planned than it has capacity for. The three builders are one decision.
+ */
+function _test_leaveCarve_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_leaveCarve_: " + m); }
+  var isos = ["2026.W30"];
+  function person(name, flags) {
+    var p = { name: name, cell: "PS-CONSULT|CORE",
+              weeks: { "2026.W30": { cap: 40, planned: 30, trackedOff: 0 } } };
+    Object.keys(flags || {}).forEach(function (k) { p[k] = flags[k]; });
+    return p;
+  }
+
+  var working = person("At Work", {});
+  var onLeave = person("On Leave", { onLeave: true });
+  var onBench = person("On Bench", { onBench: true });
+
+  // Baseline: one working person, alone.
+  var solo = {};
+  buildCapacity_([working], isos, solo);
+  buildCommitment_([working], isos, solo);
+  var soloCell = solo["PS-CONSULT|CORE"]["2026.W30"];
+  assert_(soloCell.grossHrs === 40 && soloCell.committedHrs === 30,
+    "baseline: a working person contributes capacity and commitment");
+
+  // Adding somebody on leave must change NOTHING. Before 2026-08-18 this added
+  // 40 gross and 30 committed — and because a person on real long leave carries
+  // no plan at all, in production it added 40 gross against ~0 plan, i.e. it
+  // fed almost pure "sellable headroom" for somebody who is not at work.
+  var withLeave = {};
+  buildCapacity_([working, onLeave], isos, withLeave);
+  buildCommitment_([working, onLeave], isos, withLeave);
+  var lc = withLeave["PS-CONSULT|CORE"]["2026.W30"];
+  assert_(lc.grossHrs === 40,
+    "a person on long leave adds NO gross capacity — got " + lc.grossHrs);
+  assert_(lc.committedHrs === 30, "…and no commitment either — got " + lc.committedHrs);
+
+  // Heads carve WITH the hours, or the per-head figures divide by the wrong n.
+  var head = dhHeadByCell_([working, onLeave, onBench]);
+  assert_(head["PS-CONSULT|CORE"] === 1,
+    "leave and bench leave the HEAD COUNT too, or a cell reports people whose hours it does " +
+    "not hold — got " + head["PS-CONSULT|CORE"]);
+
+  // PARITY WITH THE OTHER SURFACE is the actual point: utilRollup_ has always
+  // excluded onLeave, so before this fix the Executive tab and the Workforce tab
+  // disagreed about who is at work while a caption promised they could not.
+  var rolled = utilRollup_([{ name: "At Work", region: "AMER", teams: [], tracks: true,
+                              weeks: { "2026.W30": { avail: 40, planned: 30 } } },
+                            { name: "On Leave", region: "AMER", teams: [], tracks: true, onLeave: true,
+                              weeks: { "2026.W30": { avail: 40, planned: 30 } } }],
+                           "2026.W30", null, null);
+  assert_(rolled.avail === 40,
+    "utilRollup_ still excludes onLeave — this is the rule the capacity pipeline was aligned TO, " +
+    "so if this assertion ever fails the two surfaces have diverged again");
+
+  // The carve is on the FLAG, never on an empty plan. A person at work with no
+  // plan is the entire point of a headroom metric and must stay in.
+  var idle = {};
+  buildCapacity_([person("Idle", {})], isos, idle);
+  buildCommitment_([{ name: "Idle", cell: "PS-CONSULT|CORE",
+                      weeks: { "2026.W30": { cap: 40, planned: 0, trackedOff: 0 } } }], isos, idle);
+  var ic = idle["PS-CONSULT|CORE"]["2026.W30"];
+  assert_(ic.grossHrs === 40 && ic.committedHrs === 0,
+    "somebody at work with nothing planned is FULL headroom, not a carve — that is the signal");
+}
+
 function _test_exporterVersion_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_exporterVersion_: " + m); }
 
@@ -10491,8 +10599,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 46,
-          "payload schema is v46 (the exporter version travels with the data) — " +
+  assert_(m.schemaVer === 47,
+          "payload schema is v47 (long leave leaves the capacity pipeline) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10518,8 +10626,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 46,
-          "schema is 46 — v45 split unrouted into its three states and carved delivered epics out " +
+  assert_(m.schemaVer === 47,
+          "schema is 47 — v46 shipped the exporter handshake; v47 carves onLeave out of capacity, " +
+          "commitment and heads, so every capacity-derived rate moves. v45 split unrouted into its three states and carved delivered epics out " +
           "of the backlog hours; v46 widens the footer guard and ships meta.jiraExporter, so a v45 " +
           "model must not be served a v3.14.0 export");
   assert_(m.meta.jiraExporter && typeof m.meta.jiraExporter.stale === "boolean" &&

@@ -240,7 +240,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              // its own hidden phase.
              " setUtilization_: function (v) { SHOW_UTILIZATION_ = v; }," +
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
-             " wfAvailability_: wfAvailability_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_, bandNorms_: bandNorms_," +
+             " wfAvailability_: wfAvailability_, wfHeadroomByBand_: wfHeadroomByBand_, wfBandRowsHtml_: wfBandRowsHtml_, renderWfConsumers_: renderWfConsumers_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_, bandNorms_: bandNorms_," +
              " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
@@ -6653,6 +6653,100 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…with the stated reason, so the fix is one registry row away");
   assert_(/Workforce Planning has not been told/.test(els.wfScopePanel.innerHTML),
           "…and names it as a governance signal rather than a bug");
+})();
+
+// ── SELLABLE HEADROOM ANSWERS THE LEVEL QUESTION (user 2026-08-18) ────────
+// "Is that 19% from people who can consume backlog based on role AND level
+// logic?" Role: yes. Level: no — the headline blends every band. The panel now
+// says which of the two it is and splits the hours so the question is
+// answerable, because a blended rate cannot show seniors idle on junior work
+// (ServiceRocket Definitions v5, Availability failure mode 1).
+(function () {
+  var m = model({});
+  // Two consumer bands with deliberately OPPOSITE shapes: seniors sitting on
+  // most of the free hours while juniors are fully booked is exactly the
+  // condition the blended headline hides. PMO is present and non-consuming, so
+  // the carve is exercised rather than assumed.
+  //
+  // The heads come from `people[].cell` (workforceHealthFor_ drops any cell with
+  // no filtered people in it), so the fixture has to set BOTH sides or the
+  // bands render empty and every assertion below passes vacuously.
+  var W = WEEKS[WEEKS.length - 1];
+  var CELLS = { "PS-CONSULT|JUNIOR": 4, "PS-CONSULT|SENIOR": 3, "PMO|CORE": 5 };
+  m.people = [];
+  Object.keys(CELLS).forEach(function (cell) {
+    for (var i = 0; i < CELLS[cell]; i++) {
+      var p = person(cell + " #" + i, { region: "AMER" });
+      p.cell = cell; p.pool = cell.split("|")[0]; p.band = cell.split("|")[1];
+      p.weeks = {};
+      m.people.push(p);
+    }
+  });
+  // The cell accumulator carries ten-odd fields (shadow reasons, tracked
+  // splits, PTO) that wfFold_ adds without guarding. Hand-rolling two of them
+  // makes the fold throw, so a REAL cell is cloned and only the two figures
+  // under test are overridden — the fixture then stays valid when the
+  // accumulator gains a field.
+  var tmplKey = Object.keys(m.workforce.weekly)[0];
+  var tmpl = m.workforce.weekly[tmplKey][Object.keys(m.workforce.weekly[tmplKey])[0]];
+  function cellWith(gross, committed) {
+    var c = JSON.parse(JSON.stringify(tmpl));
+    c.grossHrs = gross; c.committedHrs = committed;
+    return c;
+  }
+  m.workforce.weekly = {};
+  m.workforce.weekly["PS-CONSULT|JUNIOR"] = {};
+  m.workforce.weekly["PS-CONSULT|SENIOR"] = {};
+  m.workforce.weekly["PMO|CORE"] = {};
+  m.workforce.weekly["PS-CONSULT|JUNIOR"][W] = cellWith(100, 95);
+  m.workforce.weekly["PS-CONSULT|SENIOR"][W] = cellWith(100, 20);
+  m.workforce.weekly["PMO|CORE"][W] = cellWith(200, 10);
+  fresh(m);
+
+  var bands = C.wfHeadroomByBand_();
+  var keys = bands.map(function (b) { return b.band; });
+  assert_(keys.indexOf("CORE") === -1,
+    "the split inherits the CONSUMER carve — PMO capacity is real but is not drawn from the " +
+    "project backlog, and re-admitting it here would contradict the headline directly above it");
+  assert_(bands.length === 2, "both consumer bands are reported — got " + bands.length);
+
+  // Richest band first: the reading question is "where IS the free time", and
+  // seniority order buries the answer under whichever band happens to be junior.
+  assert_(bands[0].band === "SENIOR",
+    "bands sort by FREE HOURS, not by seniority — got " + bands[0].band + " first");
+  assert_(bands[0].freeHrs === 80 && bands[1].freeHrs === 5,
+    "free hours are per band, not a share of the blended total");
+  assert_(Math.abs(bands[0].pct - 0.80) < 1e-9 && Math.abs(bands[1].pct - 0.05) < 1e-9,
+    "each band divides by ITS OWN scheduled hours — a band rate against the org denominator " +
+    "would be a share, and would read as availability");
+
+  // THE POINT OF THE WHOLE SPLIT: the blended headline is 42.5% here, and no
+  // band is anywhere near it. A reader quoting 42.5% to a staffing decision is
+  // describing a team that does not exist.
+  var blended = C.wfAvailability_().pct;
+  assert_(blended > bands[1].pct && blended < bands[0].pct,
+    "fixture: the blended rate sits between the bands and matches neither — which is the " +
+    "condition the split exists to expose");
+
+  var rows = C.wfBandRowsHtml_(bands);
+  assert_(/SENIOR/.test(rows) && /JUNIOR/.test(rows), "both bands render");
+  assert_(rows.indexOf("SENIOR") < rows.indexOf("JUNIOR"), "…in free-hours order");
+  assert_(/>3</.test(rows) && /># of people/.test(rows) === false,
+    "the head count rides with the hours, so a spectacular rate on three people is visibly that");
+
+  // An empty split must render nothing rather than an empty table shell — the
+  // panel above it is still a complete answer without this section.
+  assert_(C.wfBandRowsHtml_([]) === "", "no consumer bands → no table, not an empty one");
+
+  C.getModel().viewerRole = "admin";
+  C.renderWfConsumers_();
+  var panel = els.wfConsumersPanel.innerHTML;
+  assert_(/Role gates this number; level does not/.test(panel),
+    "the panel states the gate PLAINLY, next to the number — by the time a reader opens a " +
+    "tooltip they have already quoted the figure out loud");
+  assert_(/Level band/.test(panel), "…and the split is rendered into the panel, not just computed");
+  assert_(/cannot disagree/.test(panel),
+    "…without dropping the one-definition guarantee the two surfaces still hold");
 })();
 
 // ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ────────────────
