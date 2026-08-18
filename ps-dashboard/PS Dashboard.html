@@ -694,6 +694,44 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 .cf-panel-warning .cf-panel-hdr { background: #FFFAE6; color: #FF8B00; }
 .cf-panel-warning .cf-panel-list li::before { color: #FF991F; }
 
+/* ── 📈 Performance Record tab ── */
+.pr-note { font-size: 11px; color: var(--slate); margin: 2px 0 10px; }
+.pr-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.pr-seg button { border: none; background: transparent; color: var(--slate); font-size: 11px; font-weight: 700;
+  padding: 4px 10px; cursor: pointer; }
+.pr-seg button.on { background: var(--void); color: #fff; }
+.pr-chip { font-size: 11px; font-weight: 700; border: 1px solid var(--border); border-radius: 14px;
+  padding: 3px 10px; cursor: pointer; user-select: none; color: var(--slate); }
+.pr-chip.on { background: #E3FCEF; color: #006644; border-color: #00875A; }
+.pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--slate); padding: 6px 8px; border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap; }
+.pr-table th.on { color: var(--void); }
+.pr-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+.pr-table tr.pr-row { cursor: pointer; }
+.pr-table tr.pr-row:hover td { background: rgba(0,0,0,.03); }
+.pr-name { font-weight: 700; color: var(--void); }
+.pr-sub { font-size: 10px; color: var(--slate); }
+.pr-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+.pr-dot.g { background: #00875A; } .pr-dot.y { background: #FF991F; }
+.pr-dot.r { background: #DE350B; } .pr-dot.m { background: #C1C7D0; }
+.pr-trend { font-size: 10px; color: var(--slate); margin-right: 3px; }
+.pr-mb { display: inline-flex; align-items: flex-end; gap: 1px; height: 22px; }
+.pr-mb i { display: inline-block; width: 5px; min-height: 2px; border-radius: 1px 1px 0 0; background: #00875A; }
+.pr-mb.dense i { width: 3px; }
+.pr-mb i.y { background: #FF991F; } .pr-mb i.r { background: #DE350B; } .pr-mb i.m { background: #C1C7D0; }
+.pr-mb i.prog { opacity: .35; }
+.pr-reading { font-size: 11px; color: var(--slate); font-style: italic; white-space: normal; min-width: 160px; }
+.pr-drill { background: #FAFBFC; border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; margin: 4px 0 8px; font-size: 11.5px; white-space: normal; }
+.pr-drill h4 { margin: 10px 0 4px; font-size: 11px; }
+.pr-drill table { border-collapse: collapse; }
+.pr-drill td, .pr-drill th { padding: 2px 12px 2px 0; font-size: 11px; text-align: left; border: none; }
+body.dark-mode .pr-drill { background: #1E2A4A; }
+body.dark-mode .pr-dot.m, body.dark-mode .pr-mb i.m { background: #44506E; }
+body.dark-mode .pr-table tr.pr-row:hover td { background: rgba(255,255,255,.05); }
+body.dark-mode .pr-chip.on { background: #0d3320; color: #6EE7B7; }
+
 /* ── Scoring matrix editor — theme-aware ── */
 .mx-lvl-ic { background: #F0FAF9; }
 .mx-lvl-mg { background: #F4F4FD; }
@@ -1372,6 +1410,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">LEADING BEHAVIOURS</button>
     <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')">Trends</button>
     <button class="tab-btn"        id="tabBtnExecBrief"   onclick="switchTab('execbrief')">📋 Team Executive Brief</button>
+    <button class="tab-btn"        id="tabBtnPerfRecord"  onclick="switchTab('perfrecord')">📈 Performance Record</button>
   </div>
 
   <!-- OVERVIEW TAB -->
@@ -1864,6 +1903,27 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
   </div>
 
+  <!-- PERFORMANCE RECORD TAB (admin + manager — spec 2026-08-18) -->
+  <div id="tabPerfRecord" class="tab-pane">
+    <div class="section-card">
+      <div class="section-head" style="flex-wrap:wrap;gap:12px">
+        <div style="flex:1;min-width:220px">
+          <h2>Performance Record</h2>
+          <p class="section-sub" id="prSub"></p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
+          <div class="pr-seg" id="prGranCtl"></div>
+          <span class="pr-chip" id="prFlaggedChip"
+                onclick="STATE.prFlaggedOnly=!STATE.prFlaggedOnly;renderPerfRecordTab_()">⚑ Flagged only</span>
+          <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()">⬇ CSV</button>
+        </div>
+      </div>
+      <div class="pr-note">Signals are reading aids, not verdicts — colours and notes surface the data; the manager judges.
+        Dot = last closed period (↗ → ↘ vs the one before) · faded bars are in progress · gray = no data / not evaluated.</div>
+      <div id="prBody" style="overflow-x:auto"></div>
+    </div>
+  </div>
+
   <!-- SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) -->
   <div id="tabWeights" class="tab-pane">
     <div class="section-card">
@@ -2051,6 +2111,10 @@ var STATE = {
   selectedPeriod:    null,     // selected bucket key ('2026-06' / 'FY26Q4') or week label; null = default (last closed)
   activeTeam:        "services", // org team currently displayed (TEAMS registry key)
   teamData:          {},         // teamKey → payload — client-side cache per team
+  prGranularity: "quarter",   // Performance Record: 'week' | 'month' | 'quarter'
+  prFlaggedOnly: false,       // Performance Record: show only rows with ≥1 red/yellow dot
+  prSort:        { key: "flags", dir: "desc" },  // 'flags' | 'name' | a metric col id
+  prExpanded:    null,        // normName of the row whose evidence panel is open
 };
 
 // ── VIEWS — single source of truth for navigation ─────────
@@ -2062,6 +2126,7 @@ var VIEWS = [
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
   { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["admin", "viewer", "manager"] },
+  { id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: ["admin", "manager"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
   { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["admin"] },
   { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["admin"] },
@@ -2875,11 +2940,19 @@ function renderAll() {
     rocketeers: function() { renderTopRocketeers(filtered); },
     trends:     function() { renderTrendsTab(); },
     execbrief:  function() { renderExecBriefTab_(); },
+    perfrecord: function() { renderPerfRecordTab_(filtered); },
     weights:    function() { renderWeightsTab_(); },
     access:     function() { renderAccessTab_(); },
   };
   if (RENDERERS[STATE.activeTab]) RENDERERS[STATE.activeTab]();
 }
+
+// Stub — replaced by the full renderer in the Performance Record build (Task 5).
+function renderPerfRecordTab_(filteredOpt) {
+  var el = document.getElementById('prBody');
+  if (el) el.innerHTML = '<p class="pr-note">Performance Record — renderer not built yet.</p>';
+}
+function exportPerfCsv_() {}
 
 // ── HELPERS ───────────────────────────────────────────────
 var _numFmt = new Intl.NumberFormat('en-US');
