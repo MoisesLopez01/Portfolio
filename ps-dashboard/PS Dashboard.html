@@ -719,13 +719,20 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 
 /* ── 📈 Performance Record tab ── */
 .pr-info { cursor: help; font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
-.pr-brief { font-size: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
-.pr-bchip { display: inline-block; border-radius: 10px; padding: 1px 8px; font-weight: 700; cursor: pointer; }
-.pr-bchip.r { background: #FFEBE6; color: #BF2600; }
-.pr-bchip.y { background: #FFFAE6; color: #B65C00; }
-.pr-bchip.b { background: #EEF4FF; color: #0D3B8C; cursor: help; }
-.pr-bchip.n { background: #F1F5F9; color: #64748b; cursor: help; }
+/* KPI focus cards (spec v3 §A) — the row IS the filter UI: click to focus, click
+   again (or Total) to clear. Red accent is reserved for Critical. */
+.pr-kpis { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.pr-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-width: 92px; padding: 8px 12px; background: var(--card-bg); border: 1px solid var(--border);
+  border-left-width: 3px; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
+.pr-kpi b { font-size: 18px; font-weight: 900; color: var(--void); line-height: 1; }
+.pr-kpi span { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); }
+.pr-kpi.on { outline: 2px solid var(--orbe); outline-offset: 1px; }
+.pr-kpi.c-t { border-left-color: var(--void); }
+.pr-kpi.c-r { border-left-color: #DE350B; }
+.pr-kpi.c-y { border-left-color: #FF991F; }
+.pr-kpi.c-b { border-left-color: #0D3B8C; }
+.pr-kpi.c-n { border-left-color: #94A3B8; }
 .pr-xchip { display: inline-block; font-size: 9px; font-weight: 700; color: #64748b; background: #F1F5F9;
   border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; margin: 2px 4px 0 0; cursor: help; }
 .pr-siq { font-size: 10px; color: var(--slate); background: var(--surface); border: 1px solid var(--border);
@@ -737,9 +744,6 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-seg button { border: none; background: transparent; color: var(--slate); font-size: 11px; font-weight: 700;
   padding: 4px 10px; cursor: pointer; }
 .pr-seg button.on { background: var(--void); color: #fff; }
-.pr-chip { font-size: 11px; font-weight: 700; border: 1px solid var(--border); border-radius: 14px;
-  padding: 3px 10px; cursor: pointer; user-select: none; color: var(--slate); }
-.pr-chip.on { background: #E3FCEF; color: #006644; border-color: #00875A; }
 .pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--slate); padding: 6px 8px; border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap; }
@@ -765,11 +769,11 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-drill td, .pr-drill th { padding: 2px 12px 2px 0; font-size: 11px; text-align: left; border: none; }
 body.dark-mode .pr-drill { background: #1E2A4A; }
 body.dark-mode .pr-dot.m { background: #44506E; }
-body.dark-mode .pr-brief { background: #16214A; }
-body.dark-mode .pr-bchip.n, body.dark-mode .pr-xchip { background: #1E2A4A; color: #94A3B8; }
+body.dark-mode .pr-kpi { background: #16214A; }
+body.dark-mode .pr-kpi b { color: #FFFAF5; }
+body.dark-mode .pr-xchip { background: #1E2A4A; color: #94A3B8; }
 body.dark-mode .pr-siq { background: #16214A; }
 body.dark-mode .pr-table tr.pr-row:hover td { background: rgba(255,255,255,.05); }
-body.dark-mode .pr-chip.on { background: #0d3320; color: #6EE7B7; }
 
 /* ── Scoring matrix editor — theme-aware ── */
 .mx-lvl-ic { background: #F0FAF9; }
@@ -1967,8 +1971,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
           <div class="pr-seg" id="prGranCtl"></div>
-          <span class="pr-chip" id="prFlaggedChip"
-                onclick="STATE.prFlaggedOnly=!STATE.prFlaggedOnly;renderPerfRecordTab_()">⚑ Flagged only</span>
           <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()" title="Download CSV — current filtered view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
@@ -2169,8 +2171,8 @@ var STATE = {
   activeTeam:        "services", // org team currently displayed (TEAMS registry key)
   teamData:          {},         // teamKey → payload — client-side cache per team
   prGranularity: "quarter",   // Performance Record: 'week' | 'month' | 'quarter'
-  prFlaggedOnly: false,       // Performance Record: show only rows with ≥1 red/yellow dot
-  prSort:        { key: "flags", dir: "desc" },  // 'flags' | 'name' | a metric col id
+  prFocus:       null,        // Performance Record: KPI-card focus — 'critical'|'watch'|'burnout'|'exceptions'|null
+  prSort:        { key: "score", dir: "desc" },  // top performers first; any header click re-sorts
   prExpanded:    null,        // normName of the row whose evidence panel is open
 };
 
@@ -3154,20 +3156,31 @@ function perfCellHtml_(cell, cohort, dense) {
   return '<span' + tipAttr + '>' + core + '</span>';
 }
 
-// Manager's Brief (spec v2 §3): counts only, never names — triage before rows.
-// Critical/watch chips focus the list; burnout and exceptions explain themselves
-// in tooltips and are found via their columns.
-function perfBriefHtml_(rows) {
-  var crit  = rows.filter(function(r) { return r.reds > 0; }).length;
-  var watch = rows.filter(function(r) { return r.reds === 0 && r.yellows > 0; }).length;
-  var burn  = rows.filter(function(r) { return r.burnout; }).length;
-  var exc   = rows.filter(function(r) { return r.hasException; }).length;
-  var focus = "STATE.prFlaggedOnly=true;STATE.prSort={key:'flags',dir:'desc'};renderPerfRecordTab_()";
-  return '<div class="pr-brief"><b>' + rows.length + '</b> rocketeer' + (rows.length !== 1 ? 's' : '') + ' · ' +
-    '<span class="pr-bchip r" onclick="' + focus + '" title="At least one red signal — click to focus the list">' + crit + ' critical</span> ' +
-    '<span class="pr-bchip y" onclick="' + focus + '" title="Yellow signals only — click to focus the list">' + watch + ' watch</span> ' +
-    '<span class="pr-bchip b" title="PTO At-Risk while tracking at or above target in the last closed period — marked 🔥 on their rows">' + burn + ' burnout risk</span> ' +
-    '<span class="pr-bchip n" title="Carrying an exception (no time mandate, ramp-up, crew, on leave) — some metrics shown but not evaluated">' + exc + ' not fully evaluated</span></div>';
+// KPI focus cards (spec v3 §A): counts always come from the UNFOCUSED row set,
+// so a card never shrinks to its own filter. Clicking toggles STATE.prFocus.
+var PERF_FOCUS = {
+  critical:   { label: 'critical',            f: function(r) { return r.reds > 0; } },
+  watch:      { label: 'watch',               f: function(r) { return r.reds === 0 && r.yellows > 0; } },
+  burnout:    { label: 'burnout risk',        f: function(r) { return r.burnout; } },
+  exceptions: { label: 'not fully evaluated', f: function(r) { return r.hasException; } },
+};
+function prFocusSet(k) {
+  STATE.prFocus = (!k || STATE.prFocus === k) ? null : k;
+  renderPerfRecordTab_();
+}
+function perfKpisHtml_(rows) {
+  var CARDS = [
+    { k: '',           n: rows.length,                                  lbl: 'Total',               cls: 'c-t', tip: 'All rocketeers in the current filters — click to clear the focus' },
+    { k: 'critical',   n: rows.filter(PERF_FOCUS.critical.f).length,    lbl: 'Critical',            cls: 'c-r', tip: 'At least one red signal — click to focus the list' },
+    { k: 'watch',      n: rows.filter(PERF_FOCUS.watch.f).length,       lbl: 'Watch',               cls: 'c-y', tip: 'Yellow signals only, no reds — click to focus the list' },
+    { k: 'burnout',    n: rows.filter(PERF_FOCUS.burnout.f).length,     lbl: 'Burnout risk',        cls: 'c-b', tip: 'PTO At-Risk while tracking at or above target in the last closed period — click to focus' },
+    { k: 'exceptions', n: rows.filter(PERF_FOCUS.exceptions.f).length,  lbl: 'Not fully evaluated', cls: 'c-n', tip: 'Carrying an exception (no time mandate, ramp-up, crew, on leave) — some metrics shown but not evaluated — click to focus' },
+  ];
+  return '<div class="pr-kpis">' + CARDS.map(function(c) {
+    var on = c.k && STATE.prFocus === c.k;
+    return '<button class="pr-kpi ' + c.cls + (on ? ' on' : '') + '" title="' + esc(c.tip) + '"' +
+      ' onclick="prFocusSet(\'' + c.k + '\')"><b>' + c.n + '</b><span>' + esc(c.lbl) + '</span></button>';
+  }).join('') + '</div>';
 }
 
 // Whole-grid PNG for HR records — html2canvas is already loaded for saveSummaryPNG.
@@ -3213,12 +3226,10 @@ function renderPerfRecordTab_(filteredOpt) {
           'onclick="STATE.prGranularity=\'' + o[0] + '\';renderPerfRecordTab_()">' + o[1] + '</button>';
       }).join('');
   }
-  var chip = document.getElementById('prFlaggedChip');
-  if (chip) chip.classList.toggle('on', STATE.prFlaggedOnly);
-
   var emps = (filteredOpt || getFilteredEmployees());
   var rows = perfSortRows_(perfRowModels_(emps));
-  var shown = STATE.prFlaggedOnly ? rows.filter(function(r) { return r.flagged; }) : rows;
+  var focus = STATE.prFocus && PERF_FOCUS[STATE.prFocus] ? PERF_FOCUS[STATE.prFocus] : null;
+  var shown = focus ? rows.filter(focus.f) : rows;
 
   var model = perfModel_();
   var dense = STATE.prGranularity === 'week';
@@ -3230,7 +3241,7 @@ function renderPerfRecordTab_(filteredOpt) {
   if (sub) sub.textContent =
     qBuckets.map(function(b) { return periodDisplayLabel_(b); }).join(' · ') +
     ' — ' + shown.length + ' of ' + rows.length + ' rocketeers' +
-    (STATE.prFlaggedOnly ? ' (flagged only)' : '') +
+    (focus ? ' (' + focus.label + ' focus)' : '') +
     ' · dot = last closed ' + STATE.prGranularity;
 
   function th(key, label) {
@@ -3239,7 +3250,7 @@ function renderPerfRecordTab_(filteredOpt) {
       label + (on ? (STATE.prSort.dir === 'desc' ? ' ▾' : ' ▴') : '') + '</th>';
   }
 
-  var html = perfBriefHtml_(rows) +
+  var html = perfKpisHtml_(rows) +
     '<table class="pr-table"><thead><tr>' +
     th('name', 'Rocketeer') + th('flags', '⚑') +
     cols.map(function(c) { return th(c.id, c.label); }).join('') +
@@ -3275,9 +3286,9 @@ function renderPerfRecordTab_(filteredOpt) {
   });
 
   html += '</tbody></table>';
-  if (!shown.length) html = perfBriefHtml_(rows) +
+  if (!shown.length) html = perfKpisHtml_(rows) +
     '<p class="pr-sub" style="margin-top:8px">No rocketeers match the current filters' +
-    (STATE.prFlaggedOnly ? ' and the Flagged-only chip' : '') + '.</p>';
+    (focus ? ' and the ' + focus.label + ' focus' : '') + '.</p>';
   body.innerHTML = html;
 }
 
@@ -3459,7 +3470,8 @@ function perfDrillHtml_(emp, row, model) {
 function exportPerfCsv_() {
   if (!DATA) return;
   var rows  = perfSortRows_(perfRowModels_(getFilteredEmployees()));
-  var shown = STATE.prFlaggedOnly ? rows.filter(function(r) { return r.flagged; }) : rows;
+  var focus = STATE.prFocus && PERF_FOCUS[STATE.prFocus] ? PERF_FOCUS[STATE.prFocus] : null;
+  var shown = focus ? rows.filter(focus.f) : rows;
   var cols  = perfCols_();
   var SIGW  = { g: 'Green', y: 'Yellow', r: 'Red', m: 'n/a', n: 'not evaluated' };
   function valW(cell) {
@@ -3493,7 +3505,7 @@ function exportPerfCsv_() {
   var blob = new Blob(['\uFEFF' + perfCsvEncode_(out)], { type: 'text/csv;charset=utf-8' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'performance-record-' + STATE.prGranularity + '-' +
+  a.download = 'performance-record-' + STATE.prGranularity + (focus ? '-' + STATE.prFocus : '') + '-' +
     ((DATA.meta && DATA.meta.currentWeekLabel) || 'export') + '.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
