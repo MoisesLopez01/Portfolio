@@ -1120,7 +1120,12 @@ body { font-size: calc(15px * var(--scale)); }
   main { max-width: calc(1600px * var(--scale)); padding: calc(20px * var(--scale)) calc(24px * var(--scale)); }
   .header { padding: calc(14px * var(--scale)) calc(24px * var(--scale)); }
   .nav-menu-btn { width: calc(38px * var(--scale)); height: calc(38px * var(--scale)); }
-  .kpi-grid  { grid-template-columns: repeat(auto-fill, minmax(calc(220px * var(--scale)), 1fr)); }
+  /* KPI min stays UNSCALED and auto-FIT (not fill): extra width must become
+     more columns first, then the cards stretch to close the row — so a full
+     KPI set holds ONE row on wide screens instead of orphaning the last card
+     (2026-08-18 screenshot feedback). auto-fit collapses only fully empty
+     columns, so multi-row layouts on narrower screens are unchanged. */
+  .kpi-grid  { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .perf-grid { grid-template-columns: repeat(auto-fill, minmax(calc(280px * var(--scale)), 1fr)); }
   .kpi-value { font-size: calc(28px * var(--scale)); }
 }

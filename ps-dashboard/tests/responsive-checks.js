@@ -33,7 +33,10 @@ ck('h1 scaled', html.includes('.header-title h1 { font-size: calc(18px * var(--s
 // ── large-screen chrome guarded at ≥1024 so phone blocks keep winning ────────
 ck('scale chrome block guarded', html.includes('@media (min-width: 1024px) {'));
 ck('main max-width scaled', html.includes('max-width: calc(1600px * var(--scale))'));
-ck('kpi grid scaled',  html.includes('minmax(calc(220px * var(--scale)), 1fr)'));
+// KPI min is deliberately UNSCALED + auto-fit: width gain becomes more columns,
+// spare tracks collapse, and a full KPI set holds one row on wide screens.
+ck('kpi grid single-row on wide', html.includes('repeat(auto-fit, minmax(220px, 1fr))'));
+ck('kpi grid min not scaled', !html.includes('minmax(calc(220px * var(--scale))'));
 ck('perf grid scaled', html.includes('minmax(calc(280px * var(--scale)), 1fr)'));
 ck('kpi-value scaled', html.includes('.kpi-value { font-size: calc(28px * var(--scale)); }'));
 ck('phone kpi-value override intact', html.includes('.kpi-value { font-size: 24px; }'));
