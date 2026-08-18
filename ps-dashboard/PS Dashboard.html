@@ -1033,7 +1033,7 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
    touching the original declarations above.
    ─────────────────────────────────────────────────────────── */
 
-body { font-size: 15px; }
+body { font-size: calc(15px * var(--scale)); }
 
 /* 11px tier — was 8–9px */
 .wow-badge,
@@ -1042,7 +1042,7 @@ body { font-size: 15px; }
 .cf-panel-hdr, .fb-group label, .fb-search label,
 .wc-plan-lbl, .wc-delta, .kudos-pill, .pto-pill, .gpill,
 .metrics-table tr.quarterly-divider span,
-.ws-label { font-size: 11px; }
+.ws-label { font-size: calc(11px * var(--scale)); }
 
 /* 12px tier — was 10px */
 .header-title p,
@@ -1056,7 +1056,7 @@ body { font-size: 15px; }
 .radar-axis-text .ra-desc, .radar-tbl th,
 .dr-metric-name, .dr-metric-src, .dr-tbl th,
 .role-badge, .sec-badge, .sec-field-label,
-.weight-strip-leg-item, .dr-section-title { font-size: 12px; }
+.weight-strip-leg-item, .dr-section-title { font-size: calc(12px * var(--scale)); }
 
 /* 13px tier — was 11px */
 .week-badge, .section-sub, .copy-btn, .fb-reset,
@@ -1065,7 +1065,7 @@ body { font-size: 15px; }
 .settings-note, .sec-hint,
 .sec-toggle-info .sec-toggle-desc, .sec-bootstrap-note,
 .radar-tbl, .team-brief-copy-btn, .team-brief-gemini-btn,
-.weight-desc, .perf-toggle-btn { font-size: 13px; }
+.weight-desc, .perf-toggle-btn { font-size: calc(13px * var(--scale)); }
 
 /* 14px tier — was 12px */
 .emp-table td, .metrics-table th, .metrics-table td,
@@ -1074,27 +1074,27 @@ body { font-size: 15px; }
 .dr-note, .settings-btn, .weight-pct, .weight-total-label,
 .sec-sub, .sec-user-chip, .sec-textarea,
 .top-rk-table td, .det-strip, .team-brief-narrative,
-.weight-warning, .sec-toggle-info .sec-toggle-title { font-size: 14px; }
+.weight-warning, .sec-toggle-info .sec-toggle-title { font-size: calc(14px * var(--scale)); }
 
 /* 15px tier — was 13px */
 .section-head h2, .dr-p, .dr-rule-title, .weight-label,
-.wc-hrs, .settings-intro, .perf-name { font-size: 15px; }
+.wc-hrs, .settings-intro, .perf-name { font-size: calc(15px * var(--scale)); }
 
 /* Header & chrome */
-.header-title h1 { font-size: 18px; }
-.header-btn { font-size: 13px; }
-.tab-btn { font-size: 13px; padding: 10px 18px; }
-.perf-header-bar h2 { font-size: 15px; }
-.team-brief-head h3 { font-size: 14px; }
-.perf-week-pill { font-size: 13px; }
-.kpi-card { padding: 20px; }
+.header-title h1 { font-size: calc(18px * var(--scale)); }
+.header-btn { font-size: calc(13px * var(--scale)); }
+.tab-btn { font-size: calc(13px * var(--scale)); padding: calc(10px * var(--scale)) calc(18px * var(--scale)); }
+.perf-header-bar h2 { font-size: calc(15px * var(--scale)); }
+.team-brief-head h3 { font-size: calc(14px * var(--scale)); }
+.perf-week-pill { font-size: calc(13px * var(--scale)); }
+.kpi-card { padding: calc(20px * var(--scale)); }
 
 /* Filter controls — taller to fit larger type */
-.fb-group select, .fb-search-wrap input, .fb-reset { height: 36px; }
+.fb-group select, .fb-search-wrap input, .fb-reset { height: calc(36px * var(--scale)); }
 
 /* Employee table — breathing room for 14px text */
-.emp-table th { padding: 11px 16px; }
-.emp-table td { padding: 11px 16px; }
+.emp-table th { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
+.emp-table td { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
 
 /* Widescreen: one more notch + wider grid columns */
 @media (min-width: 1440px) {
