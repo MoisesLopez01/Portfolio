@@ -1965,8 +1965,12 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <div class="pr-seg" id="prGranCtl"></div>
           <span class="pr-chip" id="prFlaggedChip"
                 onclick="STATE.prFlaggedOnly=!STATE.prFlaggedOnly;renderPerfRecordTab_()">⚑ Flagged only</span>
-          <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()">⬇ CSV</button>
-          <button class="copy-btn" id="prPngBtn" onclick="exportPerfGridPNG_()">📷 PNG</button>
+          <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()" title="Download CSV — current filtered view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="copy-btn" id="prPngBtn" onclick="exportPerfGridPNG_()" title="Save the grid as PNG">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </button>
         </div>
       </div>
       <div id="prBody" style="overflow-x:auto"></div>
@@ -3163,16 +3167,32 @@ function perfBriefHtml_(rows) {
 }
 
 // Whole-grid PNG for HR records — html2canvas is already loaded for saveSummaryPNG.
+// Capture of a full grid takes seconds and blocks the main thread in bursts, so
+// the button flips to a busy state FIRST (one paint frame via setTimeout) —
+// otherwise the click looks ignored and gets retried.
+function perfBtnBusy_(btn) {
+  if (!btn || btn.disabled) return null;
+  var orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳';
+  return function() { btn.disabled = false; btn.innerHTML = orig; };
+}
 function exportPerfGridPNG_() {
   var el = document.getElementById('prBody');
   if (!el || typeof html2canvas === 'undefined') return;
-  html2canvas(el, { scale: 2, backgroundColor: document.body.classList.contains('dark-mode') ? '#0F1941' : '#ffffff', useCORS: true, logging: false })
-    .then(function(canvas) {
-      var a = document.createElement('a');
-      a.href = canvas.toDataURL('image/png');
-      a.download = 'performance-record-' + STATE.prGranularity + '-' + ((DATA.meta && DATA.meta.currentWeekLabel) || 'grid') + '.png';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    });
+  var done = perfBtnBusy_(document.getElementById('prPngBtn'));
+  if (!done) return; // already capturing — ignore the double-click
+  setTimeout(function() {
+    html2canvas(el, { scale: 2, backgroundColor: document.body.classList.contains('dark-mode') ? '#0F1941' : '#ffffff', useCORS: true, logging: false })
+      .then(function(canvas) {
+        done();
+        var a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'performance-record-' + STATE.prGranularity + '-' + ((DATA.meta && DATA.meta.currentWeekLabel) || 'grid') + '.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      })
+      .catch(function() { done(); });
+  }, 50);
 }
 
 function renderPerfRecordTab_(filteredOpt) {
@@ -3313,20 +3333,27 @@ function perfGoalsChartSvg_(buckets, per) {
 
 // Per-card PNG snapshot (spec v2 §5) — hides the action buttons during capture,
 // mirroring captureCardPNG.
-function savePerfSnapshot_(normName) {
+function savePerfSnapshot_(normName, btn) {
   var el = document.getElementById('prDrillCard');
   if (!el || typeof html2canvas === 'undefined') return;
+  var done = perfBtnBusy_(btn);
   var btns = el.querySelectorAll('.pr-drill-actions');
-  btns.forEach(function(b) { b.style.visibility = 'hidden'; });
-  html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
-    .then(function(canvas) {
-      btns.forEach(function(b) { b.style.visibility = ''; });
-      var a = document.createElement('a');
-      a.href = canvas.toDataURL('image/png');
-      a.download = 'perf-record-' + normName.replace(/\s+/g, '-') + '-' + STATE.prGranularity + '.png';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    })
-    .catch(function() { btns.forEach(function(b) { b.style.visibility = ''; }); });
+  setTimeout(function() {
+    btns.forEach(function(b) { b.style.visibility = 'hidden'; });
+    html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+      .then(function(canvas) {
+        btns.forEach(function(b) { b.style.visibility = ''; });
+        if (done) done();
+        var a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'perf-record-' + normName.replace(/\s+/g, '-') + '-' + STATE.prGranularity + '.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      })
+      .catch(function() {
+        btns.forEach(function(b) { b.style.visibility = ''; });
+        if (done) done();
+      });
+  }, 50);
 }
 
 // Evidence panel v2 (spec v2 §5): blocks ordered red → yellow → green →
@@ -3413,7 +3440,7 @@ function perfDrillHtml_(emp, row, model) {
   }).join('');
   return '<div class="pr-drill" id="prDrillCard">' +
     '<div class="pr-drill-actions">' +
-      '<button class="copy-btn" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\')">📸 Save Snapshot</button>' +
+      '<button class="copy-btn" title="Save this card as PNG" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📸</button>' +
       '<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</button>' +
     '</div>' +
     '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
