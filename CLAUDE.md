@@ -28,7 +28,9 @@ renderer dispatch, role hiding (`applyRoleToNav_()`), and the ☰ menu all deriv
 Spec: `ps-dashboard/docs/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
 
 - **Tab bar** (always visible): Overview, Team Radar, Leading Behaviours, Trends —
-  plus 📋 Team Executive Brief for admins only.
+  plus 📋 Team Executive Brief (admin/viewer/manager) and 📈 Performance Record
+  (admin/manager only — per-rocketeer R/Y/G signal grid over 2 closed quarters + QTD;
+  spec `ps-dashboard/docs/specs/2026-08-18-performance-record-tab-design.md`).
 - **☰ menu** (top-left in header): 📊 Data Reference (everyone), ⚖️ Scoring Weights and
   🔒 Access Control (admins only). Selecting one opens an IDE-style closable temp tab
   (`STATE.openMenuTabs`); closing it returns to `STATE.lastRegularTab`.
