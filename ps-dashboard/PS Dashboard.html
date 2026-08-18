@@ -3274,7 +3274,7 @@ function renderPerfRecordTab_(filteredOpt) {
       '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + '</span>' +
         '<br><span class="pr-sub">' + esc(subLine) + '</span>' +
         (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
-      '<td>' + (r.reds ? '<span class="pr-dot r"></span>' + r.reds : '') +
+      '<td title="' + esc(perfFlagTip_(r.cells)) + '">' + (r.reds ? '<span class="pr-dot r"></span>' + r.reds : '') +
                (r.yellows ? ' <span class="pr-dot y"></span>' + r.yellows : '') +
                (!r.reds && !r.yellows ? '—' : '') +
                (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') + '</td>' +
@@ -3934,6 +3934,38 @@ function perfReadingNote_(signals) {
   }
   return 'support: ' + flagged.map(function(s) { return s.label.toLowerCase(); }).join(', ') +
     (declining ? ' · ' + declining + ' declining' : '');
+}
+
+// ⚑-column tooltip (spec v3 §B): names the flagged metrics so the count
+// explains itself. Not-evaluated cells never appear — they carry no signal.
+function perfFlagTip_(cells) {
+  var reds = [], yels = [];
+  cells.forEach(function(c) {
+    if (c.notEval) return;
+    if (c.sig === 'r') reds.push(c.col.label);
+    else if (c.sig === 'y') yels.push(c.col.label);
+  });
+  if (!reds.length && !yels.length) return '';
+  var parts = [];
+  if (reds.length) parts.push('Red: ' + reds.join(', '));
+  if (yels.length) parts.push('Yellow: ' + yels.join(', '));
+  return parts.join(' · ') + ' — hover each signal for its value vs target';
+}
+
+// X-axis label skip (spec v3 §E): label every k-th bucket so ~30-week views
+// stay legible. n ≤ maxTicks labels everything.
+function perfTickStep_(n, maxTicks) {
+  return n <= maxTicks ? 1 : Math.ceil(n / maxTicks);
+}
+
+// RCR sheet month header → month-bucket key (spec v3 §G): "Jul 25" → "2025-07".
+// Lets monthly buckets pick THEIR month's RCR instead of today's value repeated.
+function perfRcrMonthKey_(name) {
+  var MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  var m = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+(\d{2})$/i.exec(String(name || '').trim());
+  if (!m) return null;
+  var mm = MON[m[1].toLowerCase()];
+  return (2000 + parseInt(m[2], 10)) + '-' + (mm < 10 ? '0' : '') + mm;
 }
 
 // Fiscal-quarter ordering: "FY27Q1" → 27*4+1. Unparseable labels rank -1.
