@@ -49,15 +49,23 @@ Focus state machine: new `STATE.prFocus` ∈
 `null | 'critical' | 'watch' | 'burnout' | 'exceptions'`.
 - Clicking a card sets the focus; clicking the active card or **Total** clears it.
 - Active card gets a `.on` ring; the subtitle appends the focus name.
-- Filter composition in `renderPerfRecordTab_`:
-  `shown = rows → prFocus predicate → prFlaggedOnly` (AND). The ⚑ chip is kept —
-  the CSV export references it and it covers "critical ∪ watch" in one toggle.
 - Card counts are computed from `rows` (pre-focus), so cards never shrink to
   their own filter.
 - The old chips' `onclick` focus hack (both chips forcing flagged-only) is
   superseded and removed.
-- `exportPerfCsv_`'s shown-rows logic gains the same prFocus filter so the CSV
-  matches the visible table; the CSV filename/notes mention the focus when set.
+- `exportPerfCsv_` applies the same prFocus filter so the CSV matches the
+  visible table; the CSV notes mention the focus when set.
+
+### ⚑ Flagged-only is REMOVED (user amendment 2026-08-18)
+
+Managers decide from the colour signals; a binary flagged filter adds nothing.
+- Delete the header chip (`#prFlaggedChip`), `STATE.prFlaggedOnly`, and every
+  reference (chip toggle, shown-rows filter, subtitle suffix, empty-state note,
+  CSV note). KPI cards are the only focus mechanism.
+- **Default sort becomes top performers**: `STATE.prSort` initialises to
+  `{ key: 'score', dir: 'desc' }`. Any column header click re-sorts as today.
+- The ⚑ flag-count COLUMN stays — it feeds the KPI-card counts, remains a sort
+  target, and gains the §B tooltip.
 
 ## B. Flag-column tooltips
 
@@ -70,6 +78,32 @@ new **pure engine function** `perfFlagTip_(cells)`:
   appear (they carry no signal).
 - Lives inside the ⟦PERF-ENGINE⟧ sentinels (it touches no DATA/STATE/DOM) and is
   unit-checked in `perf-record-checks.js`.
+
+## B2. Goals grace period (user amendment 2026-08-18)
+
+Weekly `goalsDetail.compliant` snapshots don't know about the goals grace
+window (`CONFIG_PS.GOALS_GRACE_DAYS = 21`), so the first ~3 weeks of every
+quarter can show unfair red goals bars while people are still (re)writing goals.
+
+Rule: **a grace week counts only when compliant** — grace never penalizes,
+never withholds credit:
+- Grace weeks = the first 3 `weekLabels` of every quarter bucket
+  (data-driven from `periodBucketsForEmp_('quarter')`, mirroring the 21-day
+  backend constant; frontend constant `PERF_GOALS_GRACE_WEEKS = 3` with a
+  comment pointing at `CONFIG_PS.GOALS_GRACE_DAYS`).
+- `perfBucketAgg_(weekRows, graceLabels)` gains an optional Set/map param
+  (stays sentinel-pure — the caller passes it in): a week in `graceLabels`
+  with `goalsHasData && !goalsOk` is treated as **no goals data** for the
+  bucket's `goals` / `goalsWeeks` / `goalsCompliant`. Compliant grace weeks
+  count normally.
+- `perfModel_` builds the grace-label set once per model and threads it through.
+- Effects cascade for free: weekly grid bars render gray (no data) instead of
+  red during grace; monthly/quarterly ratios exclude non-compliant grace
+  weeks; the drill goals chart inherits the same numbers.
+- `perfThresholdTip_`'s goals text gains "· quarter-start grace weeks count
+  only when compliant".
+- **`computeRkScore` is NOT touched** — it feeds Top Rocketeers scoring;
+  grace handling here is a Performance Record display rule only.
 
 ## C. Expanded profile → severity-flow grid
 
@@ -87,19 +121,32 @@ new **pure engine function** `perfFlagTip_(cells)`:
   the grid. Dark-mode: block background follows the existing `.pr-drill` dark
   override; border uses the dark border token.
 
-## D. PTO block → compliance line + heatmap strip
+## D. PTO block → compliance line + per-WEEK heatmap strip
 
-Replaces the per-bucket Good/At-Risk `<table>` inside the PTO block:
+User amendment 2026-08-18 clarified the PTO model — two parts are VERIFIED,
+already correct, and must not be re-built:
+- **100h threshold**: the backend flags At Risk only above
+  `CONFIG_PS.PTO_BALANCE_THRESHOLD = 100` hours (below → automatically Good).
+  No change.
+- **Latest week wins**: `perfBucketAgg_` already sets the bucket signal from
+  the last known week (`pto: lastNonNull('ptoNorm')` — "state at bucket close,
+  not the share"), so a compliant latest week turns the whole quarter's dot
+  green. No change.
 
-- Summary line: `Good X of Y evaluated periods (Z%)` — Y counts buckets with a
-  non-null PTO value, X those with `pto >= 1`. In-progress buckets are excluded
-  from X/Y (never judge an open bucket).
-- Heatmap strip: one `<span class="pr-heat ...">` square per bucket
-  (~12×12px, 2px gap, inline-flex row that wraps):
-  - `.g` green = Good, `.r` red = At Risk, `.m` gray = no data,
-  - in-progress bucket gets `opacity:.35` (matches the faded-bars convention),
-  - each square carries `title="<bucket label> — Good/At Risk/no data"`, plus
-    the existing `ptoGoodShare` percentage when present.
+What changes — the drill block replaces the per-bucket Good/At-Risk `<table>`:
+
+- Summary line: `Good X of Y evaluated weeks (Z%)` over the record — counts
+  weeks with a PTO snapshot (`emp.weeks[label].ptoHealth`), X those with
+  `status === "Good"`. The current week is excluded (never judge an open week).
+- Heatmap strip: one `<span class="pr-heat ...">` square **per WEEK across the
+  full record** — NOT per bucket — so a spotted out-of-compliance week stays
+  visible even when the quarter-level signal is green (~12×12px, 2px gap,
+  inline-flex row that wraps):
+  - `.g` green = Good, `.r` red = At Risk, `.m` gray = no snapshot,
+  - the current week gets `opacity:.35` (faded in-progress convention),
+  - each square carries `title="<week label> — Good/At Risk/no data"`, plus the
+    backend's `ptoHealth.reason` string when present (e.g. "12mo 85%
+    taken/planned · past 6mo 60%").
 
 ## E. SVG chart upgrades
 
@@ -148,12 +195,15 @@ Both charts: the `<svg>` element gets
 ## Testing
 
 1. `perf-record-checks.js`: new checks for `perfFlagTip_` (red+yellow mix, only
-   reds, empty, notEval exclusion) and `perfTickStep_` (n≤max → 1, 26→3, 34→4,
-   0→1); sentinel purity re-verified automatically (helpers use no DATA/STATE/
-   document/window).
+   reds, empty, notEval exclusion), `perfTickStep_` (n≤max → 1, 26→3, 34→4,
+   0→1), and `perfBucketAgg_` grace behaviour (non-compliant grace week
+   excluded from goalsWeeks; compliant grace week counted; no graceLabels param
+   → behaviour unchanged); sentinel purity re-verified automatically (helpers
+   use no DATA/STATE/document/window).
 2. Static assertions (same file, outside the eval'd engine block): `.pr-kpis`
    markup present, `pr-print` class added AND removed in `savePerfSnapshot_`,
-   `.pr-drill-grid` CSS present with a ≤900px collapse.
+   `.pr-drill-grid` CSS present with a ≤900px collapse, `prFlaggedOnly` and
+   `prFlaggedChip` fully absent, `prSort` initialises to score/desc.
 3. `responsive-checks.js` + `fiscal-window-checks.js` stay green.
 4. Manual QA: weekly view at ~30 buckets shows a legible line chart in the
    drill; KPI cards filter and un-filter; PTO strip hover titles; snapshot PNG
