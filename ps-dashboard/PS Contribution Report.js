@@ -3425,6 +3425,9 @@ function buildEmployeeRows_(roster, weeks, rcr, si, pto, kudos, tracked, planned
       team:        profile.team || null,
       isRampUp:    profile.isRampUp || false,
       isCrewMember: profile.isCrewMember || false,
+      // Epoch ms (JSON-safe) — drives the Performance Record tenure label. Crew
+      // rows and legacy cached payloads may lack it; the client renders nothing.
+      hireDate:    profile.hireDate ? profile.hireDate.getTime() : null,
       // Time-mandate flags — the client mirrors the server carve-out with these
       // (absent on a stale cached payload, which reads as tracking-eligible).
       tracksTime:  profile.tracksTime !== false,
