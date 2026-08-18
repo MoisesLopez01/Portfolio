@@ -1684,7 +1684,76 @@ The NFR-7 model-staleness warning (>48h since rebuild, which also suppresses tre
 is a **separate** condition and renders alongside the data age rather than replacing it — the two
 fail independently, and one hiding the other is how a reader ends up trusting a stale number.
 
+### … and a third signal, which is not a clock (2026-08-17)
+
+Both clocks answer **when**. Neither can answer **under which rules** — and once the sandbox
+exclusion shipped in `Jira Backlog.js` v3.14.0, that became a state a reader can be wrong about
+while every clock on screen reads green:
+
+> The export ran five hours ago. It was written by the *previous* exporter, so it still contains
+> `TEST2`, `TEST5`, `AUTOT` and friends. The open backlog, the weeks-to-clear figure and the
+> unrouted-epics alert are all inflated — and the header says "Data as of 5h ago".
+
+So the exporter stamps a third footer row, `Exporter: 3.14.0`, on **both** the `Jira Raw` and
+`Jira Bugs` tabs, and the dashboard reads it:
+
+| Field | What it is |
+|---|---|
+| `CONFIGJ.VERSION` (exporter) | the version this run stamps into every footer — bump it with the header comment, they are one fact |
+| `meta.jiraExporter.version` | what the sheet says built it; `""` when the export predates stamping |
+| `meta.jiraExporter.min` | `CONFIG_DH.JIRA_EXPORTER_MIN` — the floor the published figures assume |
+| `meta.jiraExporter.stale` | version **below** that floor |
+
+Four decisions worth keeping:
+
+- **Blank counts as OLD, not unknown.** No `Exporter:` line means the export predates stamping,
+  which is precisely the case the floor is looking for. This is the opposite of the `Generated:`
+  rule above (absent ≠ stale), deliberately: there, absence tells you nothing about age; here,
+  absence *is* the age. `dhVersionLt_("", "3.14.0") === true`.
+- **Versions compare numerically, per segment.** A string compare puts `3.9.0` *after* `3.14.0`
+  and would clear a stale export as current — the exact failure this check exists to catch,
+  passed off as a pass. Pinned in `_test_exporterVersion_`.
+- **It is silent when current.** A version number in the header every day is noise, and noise in
+  the freshness strip is what teaches people to skip the real alarm. Only `stale` renders.
+- **The warning names the consequence, and bounds it.** Not "3.11.0 < 3.14.0" — which numbers are
+  overstated (backlog, weeks-to-clear, unrouted), what fixes it (re-run the export), and what is
+  **unaffected** (delivery, quality, utilization — none of them read the backlog). A warning that
+  does not say what is still trustworthy invalidates the whole screen.
+
+⚠ **The footer guard widened with it, and that is why schema 46 is a hard bump.** `readJiraRaw_`
+used to skip footer rows by an allowlist — `/^(GENERATED|TOTAL ROWS):/`. A **v45 model reading a
+v3.14.0 export** would take the new footer row as an issue keyed `EXPORTER: 3.14.0`: one phantom
+epic, unassigned and undated, landing in exactly the unrouted queue this release set out to clean.
+The guard is now `/^[A-Z][A-Z ]*:/` — a real Jira key is `PROJ-123` and can never contain a colon,
+so the generic rule is both safer and needs no edit the next time a footer line is added. Old
+model + new export is the one combination that misses **unsafely**.
+
 ## Deploy
+
+> ### 🏷 The export stamps its own version, and the dashboard reads it (2026-08-17) — `Jira Backlog.js` **+** both dashboard files
+>
+> **Order matters, and it is not the usual "exporter first".** Deploy the dashboard files and
+> bust the cache **before** the export re-run — see the footer-guard note above. If the export
+> runs first and someone loads a warm v45 entry, they get a phantom `EXPORTER: 3.14.0` epic in
+> the unrouted queue.
+>
+> 1. Paste `Code.js` + `Dashboard.html` → deploy → run `bustDeliveryCache_()` (schema **46**).
+> 2. Paste `Jira Backlog.js` (v3.14.0) → re-run the export.
+> 3. Reload. The header should show **no** exporter line. If it reads *"⚠ built by an older
+>    exporter"*, step 2 did not take — check the exporter's execution log.
+>
+> **Between step 1 and step 2 the header will warn**, correctly: at that moment the sheet really
+> was built by the old exporter and the backlog figures really are inflated. That window is the
+> feature working, not a regression.
+>
+> **What moves on this deploy** (brief it before anyone sees it): the sandbox exclusion removes
+> `TEST2` / `TEST3` / `TEST3ZED` / `TEST5` / `TESTEIG01` / `TESTACLAW` / `AUTOT` from every Jira
+> figure. `TSBA` ("Test Space - by Alfie") is a genuine test project miscategorised as **COE** in
+> Jira — no code rule can know that, so `logProjectScope_` reports it and it stays in the export
+> until an admin recategorises it as **Internal**.
+>
+> Tests: `node-tests` all suites; `render-smoke` **1666 checks**.
+
 
 > ### 🧮 Idle hours priced per level band, never blended (2026-08-17) — `Dashboard.html` only
 >

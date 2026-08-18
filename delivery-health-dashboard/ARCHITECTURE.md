@@ -4,14 +4,19 @@
 is named, the pressure that created it is stated, and its connections in and out are traced. It is
 written to be argued with — §12 lists the specific questions we want answered.
 
-**Prepared:** 2026-08-17 (2026.W34) · **Code state:** schema v42, `METRIC_REGISTRY_` v4.1
-(24 metrics), full server suite green · **Deployment state:** not deployed.
+**Prepared:** 2026-08-17 (2026.W34) · **Updated:** same day, end of the director pass ·
+**Code state:** schema v46, `METRIC_REGISTRY_` v4.2 (24 metrics), exporter `Jira Backlog.js`
+v3.14.0, render-smoke 1,666 checks + node-tests green (commits `250a1ee` · `a3e127e` · `a238ba7`
+on `dash-loop/20260803`) · **Deployment state:** not deployed.
 
-> ⚠ **`Dashboard.html` is being edited as this is written** (2026-08-17, +463/−134 uncommitted): a
-> visual pass adding a collapsible nav, backlog hero tiles and a smart legend, and replacing the
-> emoji tab labels with geometric dots. Nothing structural below changes — same five views, same
-> role gates, same payload contract — but **a reviewer should pull the current file rather than
-> trust a line number**, and the anchors in §13 are as of this writing.
+> The visual pass this document originally flagged as in-flight has **landed**, followed by a
+> same-day director pass: the Executive tab split into two sub-tabs (§8.3), the drill-down's rows
+> became controls, the PM tab's signals became pills, idle hours are priced per level band rather
+> than a blended median, and the exporter stopped exporting non-delivery projects and now stamps
+> its version into the export it writes (§5). Same five views, same role gates; the payload
+> contract moved v42 → v46, each bump documented beside `DH_SCHEMA_VER_` in `Code.js`. **§14
+> checks this document's business claims against the Confluence record** — read it before
+> quoting a target.
 
 **Related documents, so this one does not repeat them:**
 
@@ -152,6 +157,23 @@ That last row is the interesting one architecturally. Three of the four tabs are
 each run and are therefore idempotent; `Flow Snapshots` is append-only and a hand-edit corrupts
 history permanently. The system has one irreversible store, and it is a spreadsheet tab — flagged in
 §11.
+
+**Scope (v3.13.0–v3.14.0, 2026-08-17).** The exporter no longer exports every project on the
+site. Jira's own project category is the authoritative rule — the "Internal" category is excluded,
+which removes the sandboxes (verified live: 436 open exec-type items, far more than the 57 TEST*
+epics that surfaced the bug) — with a key-pattern backstop for projects nobody has categorised
+yet; `CUSTOMER_PROJECT_MAP` and `SPACES` are checked first and always survive. It is still a
+denylist, and the run log names every project riding the unmapped fallback so the eventual
+allowlist can be built from evidence rather than memory. Known residual (live audit, 2026-08-17):
+the `SLS` "Sales & Success" project is uncategorised, misses the pattern, and still exports —
+its categorisation in Jira is owed, no code change required.
+
+**Version handshake (v3.14.0 / schema v46).** The export stamps `Exporter: <version>` into each
+tab's footer beside `Generated:`; the server reads it back as `meta.jiraExporter` and compares
+against `CONFIG_DH.JIRA_EXPORTER_MIN`. An export built by an older exporter — or carrying no
+stamp — makes the dashboard say its backlog figures are inflated instead of presenting them as
+current, which turns the "exports first, dashboard second" deploy rule from a runbook line into
+something the screen enforces.
 
 The export depth (52 weeks) is a **shared dial** across all four exporters and this app's
 `WEEKS_PAST_DEEP`. The constraint chain is worth stating because it is not obvious: 52 weeks of one
@@ -540,23 +562,35 @@ Expansion state is scoped deliberately — collapsing a PM leaves its epic keys 
 re-opening restores exactly the epics that reader had open, which is what people expect from a
 drill-down they are working through.
 
-### 8.3 The Executive tab — a newspaper, in eight bands
+### 8.3 The Executive tab — two sub-tabs (the eight-band newspaper, split)
 
-Order is the design. Most important first, evidence before the numbers it qualifies:
+The single eight-band page survived until 2026-08-17, when a director pass split it into two
+in-page sub-tabs (`EXEC_TABS_`) — both obeying the same global filters and period, so moving
+between them is a change of lens, not of place. Order within each is still the design: most
+important first, evidence before the numbers it qualifies.
+
+**HEALTH & ACTIONS — the 10-second read, then the route to act.** Nothing between them.
 
 | # | Band | What it answers |
 |---|---|---|
-| 1 | Masthead | the one-sentence verdict, assembled from ranked findings — the line you quote |
-| 2 | Backlog band | total queue, net flow, weeks-to-clear, three-segment ruler |
-| 3 | Evidence gates | *can we publish these numbers?* — read **before** quoting anything above. Three tiles, plus a line naming any failing check with no tile of its own (the gaps queue that used to carry those in full was deleted 2026-08-17) |
-| 4 | Flow band | Cleared · Arrived · Lead time · On-Time (+ Forecast, Quality when measurable) |
-| 5 | Capacity band | recoverable hours · utilization · people signals |
-| 6 | Comparison grid | metric × Region/Team/PM/Job-family; click a column for a bullet chart |
-| 7 | Shelf | *"not measured this period"*, and why — so silence is never mistaken for success |
-| 8 | Trust detail | collapsed reconciliation notes, for when a number is challenged |
+| 1 | Tier-1 KPI cards | On-Time · Forecast · **Availability Rate** · Quality/Rework — the four outcome cards; each is a drill control that re-points the grid below |
+| 2 | Drill-down grid | metric × Region/Team/PM/Family/Level. **Rows are controls**: clicking one selects the category, narrows every universal filter, and the header's two action buttons ("Who is available →", "What needs action →") carry the named slice to Workforce or Actions. Cells grade against each metric's own target/operating band; over-allocation renders as a red `Over-allocated` pill, never a negative rate |
 
-Band 7 is the one that does not exist on most dashboards and is the most important. A metric that
-cannot be computed **leaves a visible hole with a reason attached** rather than disappearing.
+**BACKLOG & FLOW — the pipeline read.**
+
+| # | Band | What it answers |
+|---|---|---|
+| 1 | Masthead | three stat callouts — Delivery pace · Total runway · Groomed pipeline. The ranked-verdict paragraph and the standing unassigned-work note **left the page** (director feedback): the callouts carry the same facts, the note rides a data-gated ⓘ on the Groomed pipeline figure, and `verdictFindings_` survives fully tested but unrendered |
+| 2 | People-signals pulse | leads with the idle-hours alert — *"Nh left on the table in \<week\> → open the roster before this \<unit\> repeats it"* — priced against **each level band's own operating rate**, never a blended median (a manager's meeting/coaching load sits inside the MGMT band's rate); finished windows only, exclusions disclosed |
+| 3 | Backlog band | the Active / Planned / Runway ruler and the criteria legend behind each segment |
+| 4 | Flow strip | clustered by question — **Flow** (Throughput · Cleared · Arrived · Lead Time · Net flow) · **Runway** (Inventory and Weeks-to-clear, each ORG card beside its filtered ASSIGNED twin) · **Quality** (Bug Count) |
+| 5 | Trust detail | collapsed reconciliation notes, super-admin only |
+
+Two former bands are gone as *surfaces* without losing their *signals*: the shelf panel was
+deleted but `shelfRows_` still feeds the masthead's "N shelved" count, so silence is still never
+mistaken for success; and the colour key was deleted because the strip is mostly ungraded volume
+metrics and every graded card carries its own ✔/▲/✖ glyph (FR-4.4). The evidence gates moved to
+the Actions tab, first panel, where the people who fix them work.
 
 ### 8.4 Client twins — the seam, and the contract that holds it
 
@@ -756,3 +790,54 @@ symbol name if a number does not land.
 6. `tests/delivery-health/render-smoke.js` 1–95 — the harness, and what it can and cannot see.
 7. `docs/brainstorming/dash-loop/DATA-BLOCKERS.md` — what the numbers are waiting on, and who owns
    each gap.
+
+---
+
+## 14 · Business alignment — checked against the company record (2026-08-17)
+
+Pulled via Rovo the day of this update: *Delivery Health Dashboard: Metrics Dictionary* (the
+founding definition), *FY27 Delivery Strategy: Goals Cascade*, *Delivery Utilization: How We
+Measure It* (the RevOps board reference), *POL - Time Logging*, the *ABC Resourcing KPI
+Measurement Model*, the ABCT weekly posts, and the 2026.08 Company All-Hands.
+
+**Aligned:**
+
+- The four-metric frame (On-Time · Capacity · Forecast · Quality, tiered by Region/Team) is the
+  Dictionary's, and "margin-adjacent detail stays limited to directs and above" is enforced here
+  by `canSeeMargin_` — the Forecast and capacity surfaces are absent from a non-margin payload,
+  not hidden.
+- Forecast Accuracy's primary formula (mean of per-epic accuracy) matches the Dictionary; the
+  ±10% band share and median variance are declared companions in the registry, not replacements.
+- The idle-hours pricing follows the RevOps doctrine that the achieved rate already carries each
+  role's structural overhead — measured per level band, per §8.3.
+- The 2026.08 All-Hands names **availability** among the planned dashboard measures — business
+  air-cover for the Utilization → Availability Rate swap on Tier 1.
+
+**Discrepancies a reviewer should know about (none of them silent in the product):**
+
+1. **The numeric targets are not ratified anywhere findable.** The 85/70 (On-Time) and 80/60
+   (Forecast) bars exist only in `CONFIG_DH.TARGETS`; the Dictionary defines behaviours, not
+   numbers, and no Confluence page states these thresholds. The cards print "FY27 target ≥85%" —
+   the word *target* currently claims more agreement than the record shows. Owner action: ratify
+   the numbers on the Dictionary page, or soften the chip wording.
+2. **Utilization's denominator differs from the board's.** The Dictionary (and this app) divide
+   by GROSS scheduled capacity — "no absenteeism modelled" (decision 2026-08-04) — while the
+   RevOps board method divides by NET capacity (minus PTO and holidays) and reports FY26 at
+   ~85–88%. The same org measured both ways reads several points apart; the dashboard's
+   utilization must never be set against the board series without naming the basis. Utilization
+   is currently switched off on screen (`SHOW_UTILIZATION_`), which contains the risk without
+   retiring it — the series still prices the idle-hours pulse.
+3. **The Dictionary has drifted behind the product** in two places: it still says
+   "Capacity/Utilization" where Tier 1 ships Availability Rate (the All-Hands wording is ahead of
+   it), and its Region example still lists APAC, which this org retired for SEA (2026-08-05).
+   Both are one-line edits on that page, not product errors.
+4. **Hygiene runs one bar where the business runs two.** The ABCT weekly posts grade assignee
+   coverage against 90% and due-date coverage against 80%; `CONFIG_DH` carries a single hygiene
+   target of 90/75. Same direction, different bars — reconcile, or state the difference where
+   the gate renders.
+5. **CSAT, the Dictionary's declared companion to Quality/Rework, still has no feed.** The tile
+   renders "data pending", which is the honest state — but the companion has been pending since
+   the Dictionary was written, and Quality currently grades on rework alone.
+6. **Cadence exceeds the mandate.** The Dictionary asks for a monthly pull ahead of the MBR; the
+   product refreshes against daily exports with a 30-minute cache. Exceeding is fine — but an
+   MBR should quote the last complete week's figures, not the live cache mid-week.

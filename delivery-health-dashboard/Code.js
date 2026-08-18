@@ -7087,7 +7087,23 @@ function assembleModel_(inputs, win) {
 //      delivered work in it. Both are the PREVIOUS behaviour rather than a
 //      broken one, so this misses safely — but the number moves materially on
 //      deploy, which is the thing to brief before anyone sees it.
-var DH_SCHEMA_VER_ = 45;
+// 46 — the export's own VERSION travels with the data.
+//      `meta.jiraExporter` = {version, min, stale}, read from the new
+//      "Exporter:" footer line that Jira Backlog.js v3.14.0 writes, and the
+//      footer guard in readJiraRaw_ widens from an allowlist of two labels to
+//      any "LABEL:" in column A.
+//      ⚠ THE GUARD IS WHY THIS IS A HARD BUMP, not a courtesy. A v45 model
+//      reading a v3.14.0 export would take the new footer row as an issue keyed
+//      "EXPORTER: 3.14.0" — one phantom epic in the backlog, unassigned and
+//      undated, i.e. it would land in exactly the unrouted queue this release
+//      set out to clean. Old model + new export is the ONE combination that
+//      misses unsafely, so the cache must not serve a v45 entry once the
+//      exporter is deployed.
+//      A v46 model reading an OLD export is fine and is the point: no
+//      "Exporter:" line means blank, blank compares as older than the 3.14.0
+//      floor, and the header says the backlog figures are overstated instead of
+//      presenting a fresh-looking date as proof they are current.
+var DH_SCHEMA_VER_ = 46;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8869,6 +8885,49 @@ function _test_confidence_() {
  * strictly worse than showing nothing — so every rejection path is pinned here,
  * and M/D vs D/M is asserted explicitly rather than left to `new Date`.
  */
+function _test_exporterVersion_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_exporterVersion_: " + m); }
+
+  // ── dhVersionLt_ ─────────────────────────────────────────────
+  // SEGMENT-WISE AND NUMERIC. A string compare puts "3.9.0" AFTER "3.14.0" and
+  // would clear a stale export as current — the exact failure this check exists
+  // to catch, passed off as a pass.
+  assert_(dhVersionLt_("3.9.0", "3.14.0") === true,
+    "3.9.0 is OLDER than 3.14.0 — compared numerically per segment, not lexicographically");
+  assert_(dhVersionLt_("3.14.0", "3.14.0") === false, "equal is not older — the floor is a minimum");
+  assert_(dhVersionLt_("3.20.1", "3.14.0") === false, "a newer exporter clears the floor");
+  assert_(dhVersionLt_("4.0.0", "3.14.0") === false, "a major bump clears it");
+  assert_(dhVersionLt_("3.14", "3.14.0") === false, "a short version pads with zeros, not with failure");
+  assert_(dhVersionLt_("", "3.14.0") === true,
+    "BLANK COUNTS AS OLDER: no stamp means the export predates stamping, which is exactly the " +
+    "case the floor looks for. Silence must never read as compliance.");
+  assert_(dhVersionLt_("unknown", "3.14.0") === true, "an unparseable version counts as older too");
+
+  // ── Footer parse ────────────────────────────────────────────
+  var vre = /^\s*Exporter:\s*([0-9]+(?:\.[0-9]+)*)\s*$/i;
+  assert_(vre.exec("Exporter: 3.14.0")[1] === "3.14.0", "the footer version is read");
+  assert_(vre.exec("  exporter:   3.14.0  ")[1] === "3.14.0", "case and padding tolerated");
+  assert_(vre.exec("Generated: 8/17/2026 03:00") === null, "the date footer is not mistaken for a version");
+  assert_(vre.exec("Exporter: v3.14.0") === null,
+    "a 'v' prefix is REJECTED rather than half-parsed — blank reads as 'old' and warns, " +
+    "where a mangled parse could compare as newer and clear the floor silently");
+
+  // ── The footer guard ───────────────────────────────────────
+  // This is the one that bites. The guard used to be an ALLOWLIST of the two
+  // known labels, so the moment the exporter added an "Exporter:" line that row
+  // became a pseudo-issue keyed "EXPORTER: 3.14.0" — counted in the backlog,
+  // unassigned, undated, untraceable back to a footer.
+  var footer = /^[A-Z][A-Z ]*:/;
+  ["GENERATED: 8/17/2026 03:00", "TOTAL ROWS: 4821", "EXPORTER: 3.14.0"].forEach(function (k) {
+    assert_(footer.test(k) === true, "footer row not rejected: " + k);
+  });
+  // A real Jira key can never contain a colon, which is what makes the generic
+  // rule safe — and why it needs no edit the next time a footer line is added.
+  ["SRSO-1234", "AUTOT-9", "COE-63", "A-1"].forEach(function (k) {
+    assert_(footer.test(k) === false, "real issue key wrongly treated as footer: " + k);
+  });
+}
+
 function _test_parseExportStamp_() {
   function assert_(c, m) { if (!c) throw new Error("❌ _test_parseExportStamp_: " + m); }
   // The exact shape Jira Backlog.js fmtDateTime_ writes: M/D/YYYY HH:MM, 24h,
@@ -10432,8 +10491,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 45,
-          "payload schema is v45 (unrouted split + the delivered carve) — " +
+  assert_(m.schemaVer === 46,
+          "payload schema is v46 (the exporter version travels with the data) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10459,9 +10518,14 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 45,
-          "schema is 45 — v44 added the unrouted epic keys, v45 splits unrouted into its three " +
-          "states and carves already-delivered epics out of the backlog hours");
+  assert_(m.schemaVer === 46,
+          "schema is 46 — v45 split unrouted into its three states and carved delivered epics out " +
+          "of the backlog hours; v46 widens the footer guard and ships meta.jiraExporter, so a v45 " +
+          "model must not be served a v3.14.0 export");
+  assert_(m.meta.jiraExporter && typeof m.meta.jiraExporter.stale === "boolean" &&
+          m.meta.jiraExporter.min === CONFIG_DH.JIRA_EXPORTER_MIN,
+          "…and the model states which exporter RULES built the data, beside the two clocks that " +
+          "only state when — a fresh export from an old exporter still carries sandboxes");
   assert_(!m.pmOwned.rows.length || typeof m.pmOwned.rows[0].oppEpicsAtRisk === "number",
           "…and any row carries the opportunity counts the gap line is built from");
   Logger.log("✅ _test_modelAssembly_ passed");

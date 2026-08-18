@@ -39,7 +39,7 @@ _test_nsWeekBucketing_();
 _test_regionMap_(); _test_personRegion_(); _test_regionChips_(); _test_overflowClamp_();
 _test_utilizationRollup_(); _test_onTimeRate_(); _test_forecastAccuracy_(); _test_reworkRate_();
 _test_registry_(); _test_flowRegistry_(); _test_confidence_(); _test_regionVocab_(); _test_hygieneBuckets_();
-_test_parseExportStamp_(); _test_personHygieneBuckets_(); _test_leaverTest_(); _test_workforceChange_(); _test_srsoBinding_();
+_test_parseExportStamp_(); _test_exporterVersion_(); _test_personHygieneBuckets_(); _test_leaverTest_(); _test_workforceChange_(); _test_srsoBinding_();
 _test_activeNameFilter_(); _test_gateOverrides_();
 _test_pmAttribution_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
