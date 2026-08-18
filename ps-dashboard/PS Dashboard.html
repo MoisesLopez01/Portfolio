@@ -748,6 +748,17 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
    also scrolls horizontally — the thead sticks to this container's top edge
    while rows scroll under it in both axes. */
 .pr-scroll { overflow: auto; max-height: calc(100vh - 240px); }
+/* Slide-in detail panel — no backdrop on purpose: the grid stays interactive. */
+.pr-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(620px, 96vw);
+  background: var(--card-bg); border-left: 1px solid var(--border);
+  box-shadow: -10px 0 28px rgba(0,0,0,.22); z-index: 70; overflow-y: auto;
+  padding: 14px 16px; animation: prPanelIn .18s ease-out; }
+@keyframes prPanelIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pr-panel .pr-drill { border: none; background: transparent; padding: 0; margin: 0; overflow-x: visible; }
+.pr-panel .pr-drill-grid { grid-template-columns: 1fr; }
+.pr-table tr.pr-row.sel td { background: #EEF4FF; }
+body.dark-mode .pr-panel { background: #101c44; border-color: #2B3A78; }
+body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
 .pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--slate); padding: 6px 8px; border-bottom: 2px solid var(--border); cursor: pointer; white-space: nowrap;
@@ -2004,6 +2015,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       </div>
       <div id="prBody" class="pr-scroll"></div>
     </div>
+    <!-- Slide-in detail panel (side-panel wave): fixed right, the grid stays
+         visible and clickable behind it — walk the list person to person. -->
+    <div id="prPanel" class="pr-panel" style="display:none"></div>
   </div>
 
   <!-- SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) -->
@@ -2990,6 +3004,9 @@ function switchTab(tab) {
   });
 
   if (DATA) renderAll();
+  // The Performance Record panel is position:fixed — hide it when its tab isn't
+  // active (renderPerfPanel_ guards on activeTab internally).
+  if (typeof renderPerfPanel_ === 'function') renderPerfPanel_();
 }
 
 // ── RENDER ORCHESTRATION ─────────────────────────────────
@@ -3311,7 +3328,7 @@ function renderPerfRecordTab_(filteredOpt) {
     var chipsHtml = r.chips.map(function(c) {
       return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
     }).join('');
-    html += '<tr class="pr-row" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
+    html += '<tr class="pr-row' + (open ? ' sel' : '') + '" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
       '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + '</span>' +
         '<br><span class="pr-sub">' + esc(subLine) + '</span>' +
         (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
@@ -3321,9 +3338,6 @@ function renderPerfRecordTab_(filteredOpt) {
                (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') + '</td>' +
       r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join('') +
       '</tr>';
-    if (open) {
-      html += '<tr><td colspan="' + (cols.length + 2) + '">' + perfDrillHtml_(e, r, model) + '</td></tr>';
-    }
   });
 
   html += '</tbody></table>';
@@ -3333,11 +3347,37 @@ function renderPerfRecordTab_(filteredOpt) {
   body.innerHTML = html;
 }
 
-// One evidence row open at a time (mirrors Overview's STATE.expanded convention).
+// Row click drives the slide-in panel (side-panel wave): one person at a time,
+// clicking the open person's row (or ✕/Esc) closes, clicking another switches.
 function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
-  renderPerfRecordTab_();
+  renderPerfRecordTab_();   // refresh the selected-row highlight
+  renderPerfPanel_();
 }
+function closePerfPanel_() {
+  if (STATE.prExpanded === null) return;
+  STATE.prExpanded = null;
+  renderPerfRecordTab_();
+  renderPerfPanel_();
+}
+function renderPerfPanel_() {
+  var p = document.getElementById('prPanel');
+  if (!p) return;
+  var norm = STATE.prExpanded;
+  if (!norm || STATE.activeTab !== 'perfrecord' || !DATA) {
+    p.style.display = 'none'; p.innerHTML = ''; return;
+  }
+  var emp = (DATA.employees || []).find(function(e) { return e.normName === norm; });
+  if (!emp) { p.style.display = 'none'; p.innerHTML = ''; return; }
+  var row = perfRowModels_([emp])[0];
+  p.innerHTML = perfDrillHtml_(emp, row, perfModel_());
+  p.style.display = '';
+  p.scrollTop = 0;
+}
+// Esc closes the panel from anywhere on the tab.
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape' && STATE.prExpanded && STATE.activeTab === 'perfrecord') closePerfPanel_();
+});
 // Tracked-vs-planned hours chart (spec v2 §5, v3 §E) — inline SVG, no chart
 // library: no canvas lifecycle to manage and html2canvas captures it cleanly.
 // ≤15 buckets → grouped bars with value labels; >15 (weekly views) → two-series
@@ -3563,6 +3603,7 @@ function perfDrillHtml_(emp, row, model) {
     '<div class="pr-drill-actions">' +
       '<button class="copy-btn" title="Save this card as PNG" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📸</button>' +
       '<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</button>' +
+      '<button class="copy-btn" title="Close (Esc)" onclick="event.stopPropagation();closePerfPanel_()">✕</button>' +
     '</div>' +
     '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
     (row.tenure ? ' · ' + row.tenure + ' tenure' : '') +
