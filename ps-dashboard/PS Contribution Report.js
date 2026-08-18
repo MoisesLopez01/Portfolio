@@ -59,9 +59,10 @@ var CONFIG_PS = {
 
   WEEKS_PAST:        5,
   WEEKS_FUTURE:      2,
-  TRACKED_HIST_WEEKS: 27,  // extra completed weeks before W-2 in trackedHistory — sized so the
-                           // window always spans two full fiscal quarters (26 weeks + boundary
-                           // slack) for the Month/Quarter period views.
+  TRACKED_HIST_WEEKS: 41,  // extra completed weeks before W-2 in trackedHistory — sized so the
+                           // window always spans THREE full fiscal quarters (39 weeks + boundary
+                           // slack): the Performance Record tab reads tracked/planned/kudos for
+                           // 2 closed quarters + QTD (spec 2026-08-18 §3).
 
   // Ramp-up exclusion: employees hired within this many months are excluded from
   // RCR, SI, Goals, and Kudos team metrics (but still included in Tracked/Planned/PTO).
@@ -1480,18 +1481,16 @@ function buildCurrentQWeeks_PS_(ctx) {
 // One-release alias — remove after all callers have been updated.
 function buildQ4Weeks_PS_() { return buildCurrentQWeeks_PS_(computeFiscalContext_()); }
 
-// Returns every week in the PREVIOUS quarter (oldest-first), bounded by its own
-// start/end so it never overlaps buildCurrentQWeeks_PS_'s output. Called on every
-// report run to build the two-quarter continuity window — goals evaluated against
-// the prior quarter's own goal set.
-function buildPrevQWeeks_PS_(ctx) {
+// Returns every week between the given ISO bounds inclusive (oldest-first).
+// Shared by the prev / prev2 quarter builders so the two can never drift.
+function buildWeeksRange_PS_(startIsoYear, startIsoWeek, endIsoYear, endIsoWeek) {
   var today    = new Date();
   var curW     = isoWeekNum_PS_(today);
   var curY     = isoWeekYear_PS_(today);
   var todayMon = mondayOfIsoWeek_PS_(curY, curW);
   var weeks    = [];
-  var w = ctx.prevQStartIsoWeek, y = ctx.prevQStartIsoYear;
-  while (y < ctx.prevQEndIsoYear || (y === ctx.prevQEndIsoYear && w <= ctx.prevQEndIsoWeek)) {
+  var w = startIsoWeek, y = startIsoYear;
+  while (y < endIsoYear || (y === endIsoYear && w <= endIsoWeek)) {
     var entryMon = mondayOfIsoWeek_PS_(y, w);
     var off      = Math.round((entryMon - todayMon) / 86400000) / 7;
     weeks.push(makeWeekEntry_PS_(y, w, off));
@@ -1499,6 +1498,20 @@ function buildPrevQWeeks_PS_(ctx) {
     if (w > weeksInYear_PS_(y)) { w = 1; y++; }
   }
   return weeks;
+}
+
+// Returns every week in the PREVIOUS quarter (oldest-first), bounded by its own
+// start/end so it never overlaps buildCurrentQWeeks_PS_'s output.
+function buildPrevQWeeks_PS_(ctx) {
+  return buildWeeksRange_PS_(ctx.prevQStartIsoYear, ctx.prevQStartIsoWeek,
+                             ctx.prevQEndIsoYear,   ctx.prevQEndIsoWeek);
+}
+
+// Returns every week in the quarter BEFORE the previous one (oldest-first) —
+// third leg of the Performance Record window (spec 2026-08-18 §3).
+function buildPrev2QWeeks_PS_(ctx) {
+  return buildWeeksRange_PS_(ctx.prev2QStartIsoYear, ctx.prev2QStartIsoWeek,
+                             ctx.prev2QEndIsoYear,   ctx.prev2QEndIsoWeek);
 }
 
 // Derives all fiscal-year and quarter constants from a reference date (defaults to today).
@@ -1558,6 +1571,21 @@ function computeFiscalContext_(referenceDate) {
   var prevQEndIsoWeek   = isoWeekNum_PS_(prevQEndDate);
   var prevQEndIsoYear   = isoWeekYear_PS_(prevQEndDate);
 
+  // Prev-prev quarter (spec 2026-08-18 §3: the Performance Record window is two
+  // completed quarters + QTD). Derived the same way prev is: start = 3 months
+  // before prev start; end = the day before prev starts.
+  var p2StartM = pqStartM - 3, p2StartY = pqStartY;
+  if (p2StartM < 1) { p2StartM += 12; p2StartY--; }
+  var p2qNum = pqNum - 1, prev2FyLabel = prevFyLabel;
+  if (p2qNum < 1) { p2qNum = 4; prev2FyLabel = "FY" + String(parseInt(prevFyLabel.slice(2), 10) - 1); }
+  var prev2GoalsQuarter  = prev2FyLabel + "Q" + p2qNum;                    // "FY26Q3"
+  var prev2QStartDate    = new Date(p2StartY, p2StartM - 1, 1);
+  var prev2QStartIsoWeek = isoWeekNum_PS_(prev2QStartDate);
+  var prev2QStartIsoYear = isoWeekYear_PS_(prev2QStartDate);
+  var prev2QEndDate      = new Date(pqStartY, pqStartM - 1, 0);            // day before prev starts
+  var prev2QEndIsoWeek   = isoWeekNum_PS_(prev2QEndDate);
+  var prev2QEndIsoYear   = isoWeekYear_PS_(prev2QEndDate);
+
   // SI column: always points to last completed quarter (one behind current)
   var siQuarterCol = CONFIG_PS.SI_COL_OVERRIDE ||
     ("Small Improvements Manager Rating " + prevGoalsQuarter);
@@ -1579,6 +1607,9 @@ function computeFiscalContext_(referenceDate) {
     prevGoalsQuarter: prevGoalsQuarter,
     prevQStartIsoWeek: prevQStartIsoWeek, prevQStartIsoYear: prevQStartIsoYear,
     prevQEndIsoWeek: prevQEndIsoWeek, prevQEndIsoYear: prevQEndIsoYear,
+    prev2GoalsQuarter: prev2GoalsQuarter,
+    prev2QStartIsoWeek: prev2QStartIsoWeek, prev2QStartIsoYear: prev2QStartIsoYear,
+    prev2QEndIsoWeek: prev2QEndIsoWeek, prev2QEndIsoYear: prev2QEndIsoYear,
   };
 }
 
@@ -3993,6 +4024,7 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
   // first current-quarter week can share the same ISO week label — dedupe, keeping the
   // current-quarter copy so it wins the same way goalsAll's merge does below.
   const prevQWeeks = buildPrevQWeeks_PS_(ctx);
+  const prev2QWeeks = buildPrev2QWeeks_PS_(ctx);
   const prevCtx = {
     goalsQuarter:  ctx.prevGoalsQuarter,
     qStartIsoYear: ctx.prevQStartIsoYear,
@@ -4004,8 +4036,25 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
     quarterClosed: true,
   };
   const goalsPrevResult = readGoalsEngagement_(active, prevQWeeks, [], prevCtx, ptoProfiles, empNumToNorm);
+  // Third goals run: the prev-prev quarter, evaluated against its own goal set,
+  // closed-quarter override on. If the Goals sheet no longer carries that
+  // quarter's rows this returns empty weeks and the client renders gray
+  // ("no goals data") — degradation, not breakage.
+  const prev2Ctx = {
+    goalsQuarter:  ctx.prev2GoalsQuarter,
+    qStartIsoYear: ctx.prev2QStartIsoYear,
+    qStartIsoWeek: ctx.prev2QStartIsoWeek,
+    inGracePeriod: false,
+    quarterClosed: true,
+  };
+  const goalsPrev2Result = readGoalsEngagement_(active, prev2QWeeks, [], prev2Ctx, ptoProfiles, empNumToNorm);
   const currentQLabels  = new Set(currentQWeeks.map(w => w.label));
-  const continuityQWeeks = prevQWeeks.filter(w => !currentQLabels.has(w.label)).concat(currentQWeeks);
+  // Three-quarter continuity window (prev2 → prev → current), deduped by label
+  // with the most-current copy winning — same rule the two-quarter window used.
+  const prevQLabels = new Set(prevQWeeks.map(w => w.label));
+  const continuityQWeeks = prev2QWeeks.filter(w => !prevQLabels.has(w.label) && !currentQLabels.has(w.label))
+    .concat(prevQWeeks.filter(w => !currentQLabels.has(w.label)))
+    .concat(currentQWeeks);
 
   // Goals-only grace period (CONFIG_PS.GOALS_GRACE_DAYS): freeze the outgoing quarter's
   // final week as the carried-forward snapshot. Only the snapshot behavior is gated on
@@ -4039,7 +4088,8 @@ function computePSReport_(access, roster, managerScopeName, weeks, weights, team
   const plannedAll = hasM("planned") ? readPlannedTimeByWeek_(roster, extWeeks) : {};
   // Goals: pass extPastWeeks so _weeklyCommenters is populated in this single read.
   const goalsCurrentResult = readGoalsEngagement_(active, currentQWeeks, extPastWeeks, ctx, ptoProfiles, empNumToNorm);
-  const goalsAll = mergeGoalsResults_(goalsPrevResult, goalsCurrentResult);
+  const goalsAll = mergeGoalsResults_(
+    mergeGoalsResults_(goalsPrev2Result, goalsPrevResult), goalsCurrentResult);
 
   // During the grace period, any displayed week inside the grace window shows, PER
   // EMPLOYEE, the outgoing quarter's frozen final-week snapshot for rocketeers who haven't
