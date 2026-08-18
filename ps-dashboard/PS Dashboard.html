@@ -718,7 +718,21 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 
 /* ── 📈 Performance Record tab ── */
-.pr-note { font-size: 11px; color: var(--slate); margin: 2px 0 10px; }
+.pr-info { cursor: help; font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+.pr-brief { font-size: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.pr-bchip { display: inline-block; border-radius: 10px; padding: 1px 8px; font-weight: 700; cursor: pointer; }
+.pr-bchip.r { background: #FFEBE6; color: #BF2600; }
+.pr-bchip.y { background: #FFFAE6; color: #B65C00; }
+.pr-bchip.b { background: #EEF4FF; color: #0D3B8C; cursor: help; }
+.pr-bchip.n { background: #F1F5F9; color: #64748b; cursor: help; }
+.pr-xchip { display: inline-block; font-size: 9px; font-weight: 700; color: #64748b; background: #F1F5F9;
+  border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; margin: 2px 4px 0 0; cursor: help; }
+.pr-siq { font-size: 10px; color: var(--slate); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0 4px; margin-right: 2px; white-space: nowrap; }
+.pr-siq.cur { opacity: .75; font-style: italic; }
+.pr-siq b { color: var(--text); }
+.pr-svg { vertical-align: middle; }
 .pr-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .pr-seg button { border: none; background: transparent; color: var(--slate); font-size: 11px; font-weight: 700;
   padding: 4px 10px; cursor: pointer; }
@@ -739,19 +753,21 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-dot.g { background: #00875A; } .pr-dot.y { background: #FF991F; }
 .pr-dot.r { background: #DE350B; } .pr-dot.m { background: #C1C7D0; }
 .pr-trend { font-size: 10px; color: var(--slate); margin-right: 3px; }
-.pr-mb { display: inline-flex; align-items: flex-end; gap: 1px; height: 22px; }
-.pr-mb i { display: inline-block; width: 5px; min-height: 2px; border-radius: 1px 1px 0 0; background: #00875A; }
-.pr-mb.dense i { width: 3px; }
-.pr-mb i.y { background: #FF991F; } .pr-mb i.r { background: #DE350B; } .pr-mb i.m { background: #C1C7D0; }
-.pr-mb i.prog { opacity: .35; }
-.pr-reading { font-size: 11px; color: var(--slate); font-style: italic; white-space: normal; min-width: 160px; }
+.pr-dot.n { background: #7E97B8; }
+.pr-reading { font-size: 11px; color: var(--slate); font-style: italic; white-space: normal; }
 .pr-drill { background: #FAFBFC; border: 1px solid var(--border); border-radius: 10px;
-  padding: 12px 14px; margin: 4px 0 8px; font-size: 11.5px; white-space: normal; }
+  padding: 12px 14px; margin: 4px 0 8px; font-size: 11.5px; white-space: normal; overflow-x: auto; }
+.pr-drill-actions { float: right; display: flex; gap: 6px; }
+.pr-block { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.pr-block.info h4 { color: var(--muted); }
 .pr-drill h4 { margin: 10px 0 4px; font-size: 11px; }
 .pr-drill table { border-collapse: collapse; }
 .pr-drill td, .pr-drill th { padding: 2px 12px 2px 0; font-size: 11px; text-align: left; border: none; }
 body.dark-mode .pr-drill { background: #1E2A4A; }
-body.dark-mode .pr-dot.m, body.dark-mode .pr-mb i.m { background: #44506E; }
+body.dark-mode .pr-dot.m { background: #44506E; }
+body.dark-mode .pr-brief { background: #16214A; }
+body.dark-mode .pr-bchip.n, body.dark-mode .pr-xchip { background: #1E2A4A; color: #94A3B8; }
+body.dark-mode .pr-siq { background: #16214A; }
 body.dark-mode .pr-table tr.pr-row:hover td { background: rgba(255,255,255,.05); }
 body.dark-mode .pr-chip.on { background: #0d3320; color: #6EE7B7; }
 
@@ -1937,7 +1953,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <div class="section-card">
       <div class="section-head" style="flex-wrap:wrap;gap:12px">
         <div style="flex:1;min-width:220px">
-          <h2>Performance Record</h2>
+          <h2>Performance Record <span class="pr-info" title="Signals are reading aids, not verdicts — colours surface the data; the manager judges. Dot = last closed period (↗ → ↘ vs the one before) · faded bars are in progress · dashed line = green target · gray = no data · slate = shown, not evaluated (exception). Hover any signal for its value and target.">ⓘ</span></h2>
           <p class="section-sub" id="prSub"></p>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
@@ -1945,10 +1961,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <span class="pr-chip" id="prFlaggedChip"
                 onclick="STATE.prFlaggedOnly=!STATE.prFlaggedOnly;renderPerfRecordTab_()">⚑ Flagged only</span>
           <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()">⬇ CSV</button>
+          <button class="copy-btn" id="prPngBtn" onclick="exportPerfGridPNG_()">📷 PNG</button>
         </div>
       </div>
-      <div class="pr-note">Signals are reading aids, not verdicts — colours and notes surface the data; the manager judges.
-        Dot = last closed period (↗ → ↘ vs the one before) · faded bars are in progress · gray = no data / not evaluated.</div>
       <div id="prBody" style="overflow-x:auto"></div>
     </div>
   </div>
@@ -2983,32 +2998,53 @@ function renderAll() {
 function perfRowModels_(emps) {
   var model = perfModel_();
   var cols  = perfCols_();
+  var nowMs = Date.now();
+  var curQ  = (DATA.meta && (DATA.meta.goalsQuarter ||
+              (DATA.meta.fiscalContext && DATA.meta.fiscalContext.goalsQuarter))) || '';
+  var siMap = (DATA.meta && DATA.meta.siByEmployee) || {};
   return emps.map(function(emp) {
-    var per   = model.byEmp[emp.normName] || [];
-    var gray  = perfGrayCols_(emp);
-    var coh   = perfCohort_(emp);
+    var per = model.byEmp[emp.normName] || [];
+    var exc = perfExceptions_(emp);
+    var coh = perfCohort_(emp);
+    var siRecords = perfSiRecords_(siMap[emp.normName] || null, curQ);
     var cells = cols.map(function(c) {
-      var isGray  = !!gray[c.id];
-      var lastVal = isGray ? null : perfColVal_(per[model.lastIdx], c.id);
-      var prevVal = isGray || model.prevIdx === null ? null : perfColVal_(per[model.prevIdx], c.id);
-      var sig     = isGray ? 'm' : perfSignalFor_(c.id, lastVal, coh);
+      var ne      = !!exc.notEval[c.id];
+      var lastVal = c.id === 'si' ? perfSiLatestClosed_(siRecords) : perfColVal_(per[model.lastIdx], c.id);
+      var prevVal = model.prevIdx === null ? null : perfColVal_(per[model.prevIdx], c.id);
+      var sig     = ne ? 'n' : perfSignalFor_(c.id, lastVal, coh);
+      var tip     = ne ? c.label + ' — shown when data exists, not evaluated (exception)'
+                       : perfThresholdTip_(c.id, coh, lastVal);
+      if (c.id === 'si' && !ne && siRecords.length && siRecords[siRecords.length - 1].v === null) {
+        tip += ' · current quarter not yet rated — idle, no penalty';
+      }
       return {
-        col: c, gray: isGray, sig: sig,
-        trend: perfTrend_(c.id, prevVal, lastVal),
+        col: c, notEval: ne, sig: sig, tip: tip,
+        trend: (ne || c.id === 'si') ? '' : perfTrend_(c.id, prevVal, lastVal),
         val: lastVal,
+        siRecords: c.id === 'si' ? siRecords : null,
         buckets: per.map(function(agg, i) {
-          var v = isGray ? null : perfColVal_(agg, c.id);
-          return { val: v, sig: isGray ? 'm' : perfSignalFor_(c.id, v, coh),
+          var v = perfColVal_(agg, c.id);
+          var hasV = v !== null && v !== undefined;
+          return { val: v,
+                   sig: ne ? (hasV ? 'n' : 'm') : perfSignalFor_(c.id, v, coh),
                    prog: !!model.buckets[i].containsCurrent };
         }),
       };
     });
     var reds    = cells.filter(function(x) { return x.sig === 'r'; }).length;
     var yellows = cells.filter(function(x) { return x.sig === 'y'; }).length;
+    var burnout = !exc.notEval.pto && !exc.notEval.tracked &&
+                  hasMetric_('pto') && hasMetric_('tracked') &&
+                  perfBurnout_(perfColVal_(per[model.lastIdx], 'pto'),
+                               perfColVal_(per[model.lastIdx], 'tracked'));
     return {
-      emp: emp, cells: cells, reds: reds, yellows: yellows,
+      emp: emp, cells: cells, coh: coh, reds: reds, yellows: yellows,
       flagged: reds + yellows > 0,
-      reading: perfReadingNote_(cells.map(function(x) {
+      burnout: burnout,
+      tenure: perfTenureLabel_(emp.hireDate || null, nowMs),
+      chips: exc.chips,
+      hasException: exc.chips.length > 0,
+      reading: perfReadingNote_(cells.filter(function(x) { return !x.notEval; }).map(function(x) {
         return { id: x.col.id, label: x.col.label, sig: x.sig, trend: x.trend };
       })),
     };
@@ -3018,7 +3054,7 @@ function perfRowModels_(emps) {
 function perfSortRows_(rows) {
   var s   = STATE.prSort;
   var dir = s.dir === 'asc' ? 1 : -1;
-  var sev = { r: 3, y: 2, g: 1, m: 0 };
+  var sev = { r: 3, y: 2, g: 1, m: 0, n: 0 };
   var cols = perfCols_();
   var colIdx = -1;
   cols.forEach(function(c, i) { if (c.id === s.key) colIdx = i; });
@@ -3044,31 +3080,94 @@ function prSortBy(key) {
   renderPerfRecordTab_();
 }
 
-// Bar height source per metric: norms/shares are 0–1; score 0–100; kudos counts.
-function perfBarPct_(colId, v) {
-  if (v === null || v === undefined) return 0;
-  if (colId === 'score') return Math.max(8, Math.min(100, v));
-  if (colId === 'kudos') return Math.max(8, Math.min(100, ((v.recv || 0) + (v.gave || 0)) / 4 * 100));
-  return Math.max(8, Math.min(100, v * 100));
+// Green-threshold tick position (fraction of chart height) for bar metrics.
+function perfTargetFrac_(colId, cohort) {
+  var bars = PERF_BARS[colId];
+  if (!bars) return null;
+  var g = (cohort === 'mgr' ? bars.mgr : bars.ic).g;
+  if (colId === 'score') return g / 100;
+  if (colId === 'goals' || colId === 'tracked' || colId === 'planned') return Math.min(1, g);
+  return null;
 }
 
-function perfBarsHtml_(cell, dense) {
-  return '<span class="pr-mb' + (dense ? ' dense' : '') + '">' + cell.buckets.map(function(b) {
-    var pct = b.val === null || b.val === undefined ? 0 : perfBarPct_(cell.col.id, b.val);
-    var cls = (b.sig !== 'g' ? b.sig : '') + (b.prog ? ' prog' : '');
-    return '<i class="' + cls.trim() + '" style="height:' + (pct || 8) + '%" ' +
-           (b.val === null ? 'title="no data"' : '') + '></i>';
-  }).join('') + '</span>';
+// SVG micro chart (spec v2 §4): baseline, per-bucket RAG bars on a shared
+// 0–100% scale, dashed tick at the cohort's green threshold, kudos capped and
+// labeled ×4 so count bars are never misread against norm bars.
+function perfBarsSvg_(cell, cohort, dense) {
+  var CH = 28, BASE = 29, bw = dense ? 3 : 6, gap = 1;
+  var n = cell.buckets.length;
+  if (!n) return '';
+  var W = n * (bw + gap) - gap + 1;
+  var COLORS = { g: '#00875A', y: '#FF991F', r: '#DE350B', m: '#C1C7D0', n: '#7E97B8' };
+  var parts = [];
+  cell.buckets.forEach(function(b, i) {
+    var v = b.val, id = cell.col.id;
+    var hasV = v !== null && v !== undefined;
+    var frac = !hasV ? 0
+      : id === 'kudos' ? Math.min(1, ((v.recv || 0) + (v.gave || 0)) / 4)
+      : id === 'score' ? Math.min(1, v / 100)
+      : Math.min(1, v);
+    var h = hasV ? Math.max(2, Math.round(frac * CH)) : 1;
+    parts.push('<rect x="' + (i * (bw + gap)) + '" y="' + (BASE - h) + '" width="' + bw + '" height="' + h +
+      '" fill="' + (COLORS[b.sig] || COLORS.m) + '"' + (b.prog ? ' opacity=".35"' : '') + '/>');
+  });
+  var tf = perfTargetFrac_(cell.col.id, cohort);
+  var ty = tf !== null ? (BASE - Math.round(tf * CH)) : 0;
+  return '<svg class="pr-svg" width="' + W + '" height="30" viewBox="0 0 ' + W + ' 30" aria-hidden="true">' +
+    '<line x1="0" y1="' + BASE + '" x2="' + W + '" y2="' + BASE + '" stroke="#CBD5E1" stroke-width="1"/>' +
+    parts.join('') +
+    (tf !== null ? '<line x1="0" y1="' + ty + '" x2="' + W + '" y2="' + ty +
+      '" stroke="#64748b" stroke-width="1" stroke-dasharray="2,2" opacity=".7"/>' : '') +
+    (cell.col.id === 'kudos' ? '<text x="' + W + '" y="6" font-size="6" fill="#94A3B8" text-anchor="end">×4</text>' : '') +
+    '</svg>';
 }
 
-function perfCellHtml_(cell, dense) {
-  var dot   = '<span class="pr-dot ' + cell.sig + '"></span>';
+function perfCellHtml_(cell, cohort, dense) {
+  var tipAttr = ' title="' + esc(cell.tip || '') + '"';
+  var dot = '<span class="pr-dot ' + cell.sig + '"></span>';
+  if (cell.col.id === 'si') {
+    var chips = (cell.siRecords || []).map(function(r) {
+      return '<span class="pr-siq' + (r.current ? ' cur' : '') + '">' + esc(String(r.q).replace(/^FY/, '')) +
+        ' <b>' + (r.v === null ? '—' : Math.round(r.v)) + '</b></span>';
+    }).join('');
+    return '<span' + tipAttr + '>' + dot + chips + '</span>';
+  }
   var trend = cell.trend ? '<span class="pr-trend">' + cell.trend + '</span>' : '';
-  if (cell.col.id === 'score') return dot + (cell.val === null ? '—' : cell.val) + ' ' + trend;
-  if (cell.col.id === 'rcr')   return dot + (cell.val === null ? '—' : (Math.round(cell.val * 10) / 10)) + ' ' + trend;
-  if (cell.col.id === 'si')    return dot + (cell.val === null ? '—' : Math.round(cell.val)) + ' ' + trend;
-  if (!cell.col.bars)          return dot + trend;
-  return dot + trend + perfBarsHtml_(cell, dense);
+  var core;
+  if (cell.col.id === 'score')    core = dot + (cell.val === null ? '—' : Math.round(cell.val)) + ' ' + trend;
+  else if (cell.col.id === 'rcr') core = dot + (cell.val === null ? '—' : Math.round(cell.val * 10) / 10) + ' ' + trend;
+  else if (!cell.col.bars)        core = dot + trend;
+  else                            core = dot + trend + perfBarsSvg_(cell, cohort, dense);
+  return '<span' + tipAttr + '>' + core + '</span>';
+}
+
+// Manager's Brief (spec v2 §3): counts only, never names — triage before rows.
+// Critical/watch chips focus the list; burnout and exceptions explain themselves
+// in tooltips and are found via their columns.
+function perfBriefHtml_(rows) {
+  var crit  = rows.filter(function(r) { return r.reds > 0; }).length;
+  var watch = rows.filter(function(r) { return r.reds === 0 && r.yellows > 0; }).length;
+  var burn  = rows.filter(function(r) { return r.burnout; }).length;
+  var exc   = rows.filter(function(r) { return r.hasException; }).length;
+  var focus = "STATE.prFlaggedOnly=true;STATE.prSort={key:'flags',dir:'desc'};renderPerfRecordTab_()";
+  return '<div class="pr-brief"><b>' + rows.length + '</b> rocketeer' + (rows.length !== 1 ? 's' : '') + ' · ' +
+    '<span class="pr-bchip r" onclick="' + focus + '" title="At least one red signal — click to focus the list">' + crit + ' critical</span> ' +
+    '<span class="pr-bchip y" onclick="' + focus + '" title="Yellow signals only — click to focus the list">' + watch + ' watch</span> ' +
+    '<span class="pr-bchip b" title="PTO At-Risk while tracking at or above target in the last closed period — marked 🔥 on their rows">' + burn + ' burnout risk</span> ' +
+    '<span class="pr-bchip n" title="Carrying an exception (no time mandate, ramp-up, crew, on leave) — some metrics shown but not evaluated">' + exc + ' not fully evaluated</span></div>';
+}
+
+// Whole-grid PNG for HR records — html2canvas is already loaded for saveSummaryPNG.
+function exportPerfGridPNG_() {
+  var el = document.getElementById('prBody');
+  if (!el || typeof html2canvas === 'undefined') return;
+  html2canvas(el, { scale: 2, backgroundColor: document.body.classList.contains('dark-mode') ? '#0F1941' : '#ffffff', useCORS: true, logging: false })
+    .then(function(canvas) {
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'performance-record-' + STATE.prGranularity + '-' + ((DATA.meta && DATA.meta.currentWeekLabel) || 'grid') + '.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    });
 }
 
 function renderPerfRecordTab_(filteredOpt) {
@@ -3111,33 +3210,44 @@ function renderPerfRecordTab_(filteredOpt) {
       label + (on ? (STATE.prSort.dir === 'desc' ? ' ▾' : ' ▴') : '') + '</th>';
   }
 
-  var html = '<table class="pr-table"><thead><tr>' +
+  var html = perfBriefHtml_(rows) +
+    '<table class="pr-table"><thead><tr>' +
     th('name', 'Rocketeer') + th('flags', '⚑') +
     cols.map(function(c) { return th(c.id, c.label); }).join('') +
-    '<th>Reading</th></tr></thead><tbody>';
+    '</tr></thead><tbody>';
 
   shown.forEach(function(r) {
     var e = r.emp;
-    var parsed  = typeof parseJobCode === 'function' ? parseJobCode(e.jobTitle) : {};
-    var badges  = (e.isRampUp ? ' 🌱' : '') + (onLeave_(e) ? ' 🏖' : '');
-    var subLine = [parsed.family, parsed.level, e.keyLocation, e.supervisor]
-      .filter(Boolean).join(' · ');
+    var parsed = typeof parseJobCode === 'function' ? parseJobCode(e.jobTitle) : {};
     var open = STATE.prExpanded === e.normName;
+    // Identity line (spec v2 §1): full title · code·level · location · sup · tenure.
+    var subLine = [
+      e.jobTitle || '',
+      [parsed.family, parsed.level].filter(Boolean).join('·'),
+      e.keyLocation, e.supervisor,
+      r.tenure ? r.tenure + ' tenure' : ''
+    ].filter(Boolean).join(' · ');
+    var chipsHtml = r.chips.map(function(c) {
+      return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
+    }).join('');
     html += '<tr class="pr-row" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
-      '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + badges + '</span>' +
-        '<br><span class="pr-sub">' + esc(subLine) + '</span></td>' +
+      '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + '</span>' +
+        '<br><span class="pr-sub">' + esc(subLine) + '</span>' +
+        (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
       '<td>' + (r.reds ? '<span class="pr-dot r"></span>' + r.reds : '') +
                (r.yellows ? ' <span class="pr-dot y"></span>' + r.yellows : '') +
-               (!r.reds && !r.yellows ? '—' : '') + '</td>' +
-      r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, dense) + '</td>'; }).join('') +
-      '<td class="pr-reading">' + esc(r.reading) + '</td></tr>';
+               (!r.reds && !r.yellows ? '—' : '') +
+               (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') + '</td>' +
+      r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join('') +
+      '</tr>';
     if (open) {
-      html += '<tr><td colspan="' + (cols.length + 3) + '">' + perfDrillHtml_(e, r, model) + '</td></tr>';
+      html += '<tr><td colspan="' + (cols.length + 2) + '">' + perfDrillHtml_(e, r, model) + '</td></tr>';
     }
   });
 
   html += '</tbody></table>';
-  if (!shown.length) html = '<p class="pr-note">No rocketeers match the current filters' +
+  if (!shown.length) html = perfBriefHtml_(rows) +
+    '<p class="pr-sub" style="margin-top:8px">No rocketeers match the current filters' +
     (STATE.prFlaggedOnly ? ' and the Flagged-only chip' : '') + '.</p>';
   body.innerHTML = html;
 }
@@ -3147,85 +3257,133 @@ function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
   renderPerfRecordTab_();
 }
-// Evidence panel (spec §8): per-metric real values per bucket at the current
-// granularity, kudos entries with givers, link into the Overview profile.
+// Grouped tracked-vs-planned hours chart (spec v2 §5) — inline SVG, no chart
+// library: no canvas lifecycle to manage and html2canvas captures it cleanly.
+function perfHrsChartSvg_(buckets, per) {
+  var vals = per.map(function(a) { return { t: a ? a.trackedHrs : null, p: a ? a.plannedHrs : null }; });
+  var max = 1;
+  vals.forEach(function(v) { max = Math.max(max, v.t || 0, v.p || 0); });
+  var CH = 54, TOP = 10, LBL = 18, bw = 10, gap2 = 2, group = bw * 2 + gap2 + 10;
+  var W = vals.length * group, H = CH + TOP + LBL;
+  var parts = [];
+  vals.forEach(function(v, i) {
+    var x0 = i * group, yBase = TOP + CH;
+    var hp = v.p ? Math.max(2, Math.round(v.p / max * CH)) : 0;
+    var ht = v.t ? Math.max(2, Math.round(v.t / max * CH)) : 0;
+    if (hp) parts.push('<rect x="' + x0 + '" y="' + (yBase - hp) + '" width="' + bw + '" height="' + hp + '" fill="none" stroke="#7E97B8" stroke-width="1.5"/>');
+    if (ht) parts.push('<rect x="' + (x0 + bw + gap2) + '" y="' + (yBase - ht) + '" width="' + bw + '" height="' + ht + '" fill="#058CDC"/>');
+    var lab = (v.t !== null && v.t !== undefined ? Math.round(v.t) : '—') + '/' +
+              (v.p !== null && v.p !== undefined ? Math.round(v.p) : '—');
+    parts.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + lab + '</text>');
+    parts.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+  });
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+    '<line x1="0" y1="' + (TOP + CH + 1) + '" x2="' + W + '" y2="' + (TOP + CH + 1) + '" stroke="#CBD5E1"/>' +
+    parts.join('') + '</svg>' +
+    '<div class="pr-sub">▮ tracked · ▯ planned — hours per period, labels above bars (tracked/planned)</div>';
+}
+
+// Goals compliance bars: x/y compliant weeks per bucket, coloured by share.
+function perfGoalsChartSvg_(buckets, per) {
+  var CH = 40, TOP = 10, LBL = 18, bw = 16, gapg = 8;
+  var W = per.length * (bw + gapg), H = CH + TOP + LBL;
+  var parts = [];
+  per.forEach(function(a, i) {
+    var x = i * (bw + gapg), yBase = TOP + CH;
+    if (a && a.goalsWeeks) {
+      var frac = a.goalsCompliant / a.goalsWeeks;
+      var h = Math.max(2, Math.round(frac * CH));
+      var col = frac >= 0.8 ? '#00875A' : frac >= 0.4 ? '#FF991F' : '#DE350B';
+      parts.push('<rect x="' + x + '" y="' + (yBase - h) + '" width="' + bw + '" height="' + h + '" fill="' + col + '"/>');
+      parts.push('<text x="' + (x + bw / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + a.goalsCompliant + '/' + a.goalsWeeks + '</text>');
+    } else {
+      parts.push('<text x="' + (x + bw / 2) + '" y="' + (yBase - 4) + '" font-size="7" fill="#94A3B8" text-anchor="middle">—</text>');
+    }
+    parts.push('<text x="' + (x + bw / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+  });
+  return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+    '<line x1="0" y1="' + (TOP + CH + 1) + '" x2="' + W + '" y2="' + (TOP + CH + 1) + '" stroke="#CBD5E1"/>' +
+    parts.join('') + '</svg>';
+}
+
+// Per-card PNG snapshot (spec v2 §5) — hides the action buttons during capture,
+// mirroring captureCardPNG.
+function savePerfSnapshot_(normName) {
+  var el = document.getElementById('prDrillCard');
+  if (!el || typeof html2canvas === 'undefined') return;
+  var btns = el.querySelectorAll('.pr-drill-actions');
+  btns.forEach(function(b) { b.style.visibility = 'hidden'; });
+  html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+    .then(function(canvas) {
+      btns.forEach(function(b) { b.style.visibility = ''; });
+      var a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'perf-record-' + normName.replace(/\s+/g, '-') + '-' + STATE.prGranularity + '.png';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    })
+    .catch(function() { btns.forEach(function(b) { b.style.visibility = ''; }); });
+}
+
+// Evidence panel v2 (spec v2 §5): blocks ordered red → yellow → green →
+// informational (kudos neutral, never red iconography; exceptions shown but
+// marked); charts instead of text tables; per-card snapshot.
 function perfDrillHtml_(emp, row, model) {
   var buckets = model.buckets;
   var per     = model.byEmp[emp.normName] || [];
-  var gray    = perfGrayCols_(emp);
-  function hdrCells() {
-    return buckets.map(function(b) {
-      return '<th>' + esc(b.label) + (b.containsCurrent ? ' ⏳' : '') + '</th>';
-    }).join('');
-  }
-  function evRow(label, fn) {
-    return '<tr><td class="pr-sub">' + label + '</td>' +
-      per.map(function(agg) { return '<td>' + fn(agg) + '</td>'; }).join('') + '</tr>';
-  }
-  function fmtH(v)  { return v === null || v === undefined ? '—' : Math.round(v) + 'h'; }
-  function pct(v)   { return v === null || v === undefined ? '—' : Math.round(v * 100) + '%'; }
-
   var cellByCol = {};
   row.cells.forEach(function(c) { cellByCol[c.col.id] = c; });
-  function blockTitle(colId, label, noteText) {
-    var c = cellByCol[colId];
-    return '<h4><span class="pr-dot ' + (c ? c.sig : 'm') + '"></span>' + label +
-      (c && c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') +
-      (noteText ? ' — <span class="pr-sub">' + esc(noteText) + '</span>' : '') + '</h4>';
+  var SEV = { r: 3, y: 2, g: 1, m: 0, n: 0 };
+
+  var blocks = [];
+  function block(id, title, bodyHtml) {
+    var c = cellByCol[id];
+    if (!c) return;
+    var info = c.notEval || c.sig === 'm' || id === 'kudos';
+    blocks.push({ sev: info ? 0 : (SEV[c.sig] || 0), html:
+      '<div class="pr-block' + (info ? ' info' : '') + '">' +
+      '<h4><span class="pr-dot ' + c.sig + '"></span>' + title +
+      (c.notEval ? ' <span class="pr-sub">(shown, not evaluated)</span>' : '') +
+      (c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') + '</h4>' +
+      bodyHtml + '</div>' });
   }
 
-  var h = '<div class="pr-drill">' +
-    '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
-    (emp.supervisor ? ' · sup: ' + esc(emp.supervisor) : '') + '</span>' +
-    ' &nbsp;<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' +
-    emp.normName.replace(/'/g, "\\'") + '\')">Open full profile in Overview →</button>';
-
-  if (hasMetric_('tracked') && !gray.tracked) {
-    var tCur = per[model.lastIdx] || {};
-    h += blockTitle('tracked', 'Tracked time',
-      tCur.tracked === null || tCur.tracked === undefined ? 'no data in last closed period'
-        : pct(tCur.tracked) + ' of plan-based target in ' + (buckets[model.lastIdx] ? buckets[model.lastIdx].label : ''));
-    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
-      evRow('Tracked / planned hrs', function(a) { return fmtH(a.trackedHrs) + ' / ' + fmtH(a.plannedHrs); }) +
-      '</table>';
+  if (cellByCol.tracked) {
+    var anyHrs = per.some(function(a) { return a && (a.trackedHrs || a.plannedHrs); });
+    if (!cellByCol.tracked.notEval || anyHrs) {
+      block('tracked', 'Tracked vs planned hours', perfHrsChartSvg_(buckets, per));
+    }
   }
-  if (hasMetric_('goals') && !gray.goals) {
-    var gCur = per[model.lastIdx] || {};
-    h += blockTitle('goals', 'Goals',
-      gCur.goalsWeeks ? 'compliant ' + gCur.goalsCompliant + ' of ' + gCur.goalsWeeks + ' weeks' : 'no goals data');
-    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
-      evRow('Weeks compliant', function(a) {
-        return a.goalsWeeks ? a.goalsCompliant + '/' + a.goalsWeeks : '—';
-      }) + '</table>';
+  if (cellByCol.goals) {
+    var anyG = per.some(function(a) { return a && a.goalsWeeks; });
+    if (!cellByCol.goals.notEval || anyG) {
+      block('goals', 'Goals — weeks compliant', perfGoalsChartSvg_(buckets, per));
+    }
   }
-  if (hasMetric_('planned') && !gray.planned) {
-    h += blockTitle('planned', 'Tempo plans', null);
-    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
-      evRow('Planned hrs · weeks planned', function(a) {
-        return fmtH(a.plannedHrs) + ' · ' + (a.weeks ? a.plannedWeeks + '/' + a.weeks + ' wks' : '—');
-      }) + '</table>';
+  if (cellByCol.pto && !cellByCol.pto.notEval) {
+    block('pto', 'PTO health', '<table><tr>' +
+      buckets.map(function(b) { return '<th>' + esc(b.label) + (b.containsCurrent ? ' ⏳' : '') + '</th>'; }).join('') +
+      '</tr><tr>' +
+      per.map(function(a) {
+        var v = a ? a.pto : null;
+        return '<td>' + (v === null || v === undefined ? '—' : v >= 1 ? 'Good' : '<b style="color:#DE350B">At Risk</b>') +
+          (a && a.ptoGoodShare !== null && a.ptoGoodShare !== undefined
+            ? ' <span class="pr-sub">' + Math.round(a.ptoGoodShare * 100) + '% wks</span>' : '') + '</td>';
+      }).join('') + '</tr></table>');
   }
-  if (hasMetric_('pto') && !gray.pto) {
-    h += blockTitle('pto', 'PTO health', null);
-    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
-      evRow('Status at close · weeks Good', function(a) {
-        var st = a.pto === null ? '—' : (a.pto >= 1 ? 'Good' : 'At Risk');
-        return st + (a.ptoGoodShare !== null && a.ptoGoodShare !== undefined ? ' · ' + pct(a.ptoGoodShare) : '');
-      }) + '</table>';
+  if (cellByCol.rcr && (!cellByCol.rcr.notEval || cellByCol.rcr.val !== null)) {
+    block('rcr', 'RCR', '<p>' + (cellByCol.rcr.val === null ? 'No rating.'
+      : 'Current ' + (Math.round(cellByCol.rcr.val * 10) / 10) + ' — target 2.5.') + '</p>');
   }
-  if (hasMetric_('rcr') && !gray.rcr) {
-    var rc = cellByCol.rcr;
-    h += blockTitle('rcr', 'RCR', rc && rc.val !== null ? 'current ' + (Math.round(rc.val * 10) / 10) + ' (target 2.5)' : 'no rating');
+  if (cellByCol.si && (!cellByCol.si.notEval || cellByCol.si.val !== null)) {
+    var recs = (cellByCol.si.siRecords || []).map(function(r) {
+      return '<span class="pr-siq' + (r.current ? ' cur' : '') + '">' + esc(r.q) +
+        ' <b>' + (r.v === null ? '— not yet rated' : Math.round(r.v) + '/5') + '</b></span>';
+    }).join(' ');
+    block('si', 'Small Improvements record', '<p>' + (recs || 'No records.') + '</p>' +
+      ((cellByCol.si.siRecords || []).some(function(r) { return r.current && r.v === null; })
+        ? '<p class="pr-sub">Current quarter not yet rated — idle, never penalized and never back-filled.</p>' : ''));
   }
-  if (hasMetric_('si') && !gray.si) {
-    var sc = cellByCol.si;
-    h += blockTitle('si', 'SI rating', sc && sc.val !== null ? 'last quarter ' + Math.round(sc.val) + ' / 5' : 'no rating');
-  }
-  if (hasMetric_('kudos') && !gray.kudos) {
-    var kAgg = per[model.lastIdx] || { kudos: { recv: 0, gave: 0 } };
-    h += blockTitle('kudos', 'Kudos',
-      'received ' + (kAgg.kudos ? kAgg.kudos.recv : 0) + ' · gave ' + (kAgg.kudos ? kAgg.kudos.gave : 0) +
-      ' in last closed period — never red');
+  if (cellByCol.kudos) {
     var entries = [];
     (DATA.q4Weeks || []).forEach(function(w) {
       var wd = emp.weeks && emp.weeks[w.label];
@@ -3235,11 +3393,30 @@ function perfDrillHtml_(emp, row, model) {
           (en.orgValues ? ' · ' + esc(en.orgValues) : '') + '</td></tr>');
       });
     });
-    h += entries.length ? '<table>' + entries.join('') + '</table>'
-                        : '<p class="pr-sub">No kudos received in the window.</p>';
+    var kAgg = per[model.lastIdx] || {};
+    block('kudos', 'Kudos — informational (never red)',
+      '<p class="pr-sub">Last closed period: received ' + ((kAgg.kudos && kAgg.kudos.recv) || 0) +
+      ' · gave ' + ((kAgg.kudos && kAgg.kudos.gave) || 0) + '</p>' +
+      (entries.length ? '<table>' + entries.join('') + '</table>'
+                      : '<p class="pr-sub">No kudos received in the record.</p>'));
   }
 
-  return h + '</div>';
+  blocks.sort(function(a, b) { return b.sev - a.sev; });
+
+  var chipsHtml = row.chips.map(function(c) {
+    return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
+  }).join('');
+  return '<div class="pr-drill" id="prDrillCard">' +
+    '<div class="pr-drill-actions">' +
+      '<button class="copy-btn" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\')">📸 Save Snapshot</button>' +
+      '<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</button>' +
+    '</div>' +
+    '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
+    (row.tenure ? ' · ' + row.tenure + ' tenure' : '') +
+    (emp.supervisor ? ' · sup: ' + esc(emp.supervisor) : '') + '</span> ' + chipsHtml +
+    '<div class="pr-reading">' + esc(row.reading) + '</div>' +
+    blocks.map(function(b) { return b.html; }).join('') +
+    '</div>';
 }
 // CSV of the current filtered+sorted view (spec §7) — one row per rocketeer,
 // per-metric signal + value + the reading note. WFP focus-group workflow.
@@ -3248,24 +3425,30 @@ function exportPerfCsv_() {
   var rows  = perfSortRows_(perfRowModels_(getFilteredEmployees()));
   var shown = STATE.prFlaggedOnly ? rows.filter(function(r) { return r.flagged; }) : rows;
   var cols  = perfCols_();
-  var SIGW  = { g: 'Green', y: 'Yellow', r: 'Red', m: 'n/a' };
+  var SIGW  = { g: 'Green', y: 'Yellow', r: 'Red', m: 'n/a', n: 'not evaluated' };
   function valW(cell) {
+    if (cell.col.id === 'si' && cell.siRecords) {
+      return cell.siRecords.map(function(rec) {
+        return rec.q + ' ' + (rec.v === null ? '—' : Math.round(rec.v));
+      }).join(' · ');
+    }
     var v = cell.val;
     if (v === null || v === undefined) return '';
-    if (cell.col.id === 'score') return String(v);
+    if (cell.col.id === 'score') return String(Math.round(v));
     if (cell.col.id === 'rcr')   return String(Math.round(v * 10) / 10);
-    if (cell.col.id === 'si')    return String(Math.round(v));
     if (cell.col.id === 'kudos') return 'recv ' + v.recv + ' / gave ' + v.gave;
     if (cell.col.id === 'pto')   return v >= 1 ? 'Good' : 'At Risk';
     return Math.round(v * 100) + '%';
   }
-  var header = ['Rocketeer', 'Cohort', 'Job Title', 'Location', 'Supervisor', 'Flags (R/Y)'];
+  var header = ['Rocketeer', 'Cohort', 'Job Title', 'Tenure', 'Location', 'Supervisor', 'Exceptions', 'Burnout Risk', 'Flags (R/Y)'];
   cols.forEach(function(c) { header.push(c.label + ' signal', c.label + ' value', c.label + ' trend'); });
   header.push('Reading');
   var out = [header];
   shown.forEach(function(r) {
-    var line = [r.emp.name, perfCohort_(r.emp) === 'mgr' ? 'Manager' : 'IC',
-      r.emp.jobTitle || '', r.emp.keyLocation || '', r.emp.supervisor || '',
+    var line = [r.emp.name, r.coh === 'mgr' ? 'Manager' : 'IC',
+      r.emp.jobTitle || '', r.tenure || '', r.emp.keyLocation || '', r.emp.supervisor || '',
+      r.chips.map(function(c) { return c.t; }).join('; '),
+      r.burnout ? 'yes' : '',
       r.reds + '/' + r.yellows];
     r.cells.forEach(function(cell) { line.push(SIGW[cell.sig], valW(cell), cell.trend || ''); });
     line.push(r.reading);
@@ -3859,17 +4042,36 @@ function perfCols_() {
   return PERF_COLS.filter(function(c) { return c.id === 'score' || hasMetric_(c.id); });
 }
 
-// Per-employee metric exclusions (existing policy): on-leave → everything gray;
-// ramp-up → Goals/Kudos/RCR/SI gray; non-tracking families → Tracked/Planned/RCR
-// gray (RCR joined the carve 2026-08-05); crew → Goals/PTO/SI gray.
-function perfGrayCols_(emp) {
-  var gray = {};
-  function g(ids) { ids.forEach(function(id) { gray[id] = true; }); }
-  if (onLeave_(emp)) { g(['score', 'goals', 'tracked', 'planned', 'rcr', 'kudos', 'pto', 'si']); return gray; }
-  if (emp.isRampUp)      g(['goals', 'kudos', 'rcr', 'si']);
-  if (!tracksTime_(emp)) g(['tracked', 'planned', 'rcr']);
-  if (isCrewEmp(emp))    g(['goals', 'pto', 'si']);
-  return gray;
+// Per-employee exceptions (spec v2 §1) — derived from the existing carve flags,
+// never a separate config, so JF018-style families work the moment the
+// allowlist says so. A carved metric is SHOWN when its data exists but is NOT
+// evaluated: neutral slate rendering, no signal dot, excluded from flag counts
+// and the Manager's Brief. Existing policy: on-leave → everything; ramp-up →
+// Goals/Kudos/RCR/SI; non-tracking families → Tracked/Planned/RCR (RCR joined
+// the carve 2026-08-05); crew → Goals/PTO/SI.
+function perfExceptions_(emp) {
+  var notEval = {}, chips = [];
+  function ne(ids) { ids.forEach(function(id) { notEval[id] = true; }); }
+  if (onLeave_(emp)) {
+    ne(['score', 'goals', 'tracked', 'planned', 'rcr', 'kudos', 'pto', 'si']);
+    chips.push({ t: '🏖 on leave', tip: 'On extended leave — outside every evaluated population.' });
+    return { notEval: notEval, chips: chips };
+  }
+  if (emp.isRampUp) {
+    ne(['goals', 'kudos', 'rcr', 'si']);
+    chips.push({ t: '🌱 ramp-up', tip: 'Ramp-up (first 3 months) — Goals, Kudos, RCR and SI are shown when present but not evaluated.' });
+  }
+  if (!tracksTime_(emp)) {
+    var fam = typeof parseJobCode === 'function' ? (parseJobCode(emp.jobTitle || '').family || '') : '';
+    ne(['tracked', 'planned', 'rcr']);
+    chips.push({ t: (fam ? fam + ' · ' : '') + 'no time mandate',
+                 tip: 'Job family outside the time-tracking mandate — logged and planned hours are shown when present but not evaluated: no signal, no flag.' });
+  }
+  if (isCrewEmp(emp)) {
+    ne(['goals', 'pto', 'si']);
+    chips.push({ t: 'crew', tip: 'Crew/contractor — evaluated on Tracked, RCR and Kudos only.' });
+  }
+  return { notEval: notEval, chips: chips };
 }
 
 // Extracts the col's bucket value from a perfBucketAgg_ result.
