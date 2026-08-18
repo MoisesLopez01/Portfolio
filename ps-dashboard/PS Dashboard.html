@@ -182,10 +182,10 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
                   background:#F0FDF4; border-radius:4px; padding:1px 6px; margin-top:4px; }
 .kpi-team-note  { grid-column: 1 / -1; font-size: 10px; color: var(--muted); text-align: right;
                   padding: 2px 0; font-weight: 600; letter-spacing: .04em; }
-.kpi-context-banner { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+.kpi-context-banner { display: flex; align-items: center; gap: 8px;
                       font-size: 11px; color: var(--slate); font-weight: 500; line-height: 1.5;
                       background: var(--surface); border-left: 3px solid var(--orbe);
-                      border-radius: 6px; padding: 8px 12px; margin-bottom: 2px; }
+                      border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
 .kpi-context-banner svg { flex-shrink: 0; width: 14px; height: 14px; stroke: var(--orbe); }
 
 /* WoW badges */
@@ -1467,6 +1467,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <div id="tabOverview" class="tab-pane">
 
     <!-- KPI CARDS -->
+    <!-- Banner lives OUTSIDE the grid: as a grid child it spanned 1/-1 across
+         auto-fit's empty ghost tracks, which blocked their collapse and kept
+         the KPI cards squeezed on wide screens. -->
+    <div id="kpiBanner"></div>
     <div class="kpi-grid" id="kpiGrid"></div>
 
     <!-- TEAM SUMMARY TABLE -->
@@ -6218,7 +6222,12 @@ function renderKPIs(m, filtered, filtering) {
         'Weekly KPIs compare the last 2 completed weeks — <strong>' + esc(w2Short) + '</strong> (baseline) → <strong>' + esc(w1Short) + '</strong> (latest). ' +
         'RCR and Small Improvements are quarterly metrics fixed at the last closed period.' +
         '</div>';
-  document.getElementById("kpiGrid").innerHTML = kpiBanner + html;
+  // Banner renders BESIDE the grid, never inside it — a full-span grid child
+  // occupies auto-fit's ghost tracks and stops them collapsing (the KPI cards
+  // then can't widen into the free space on ultra-wide screens).
+  var bannerEl = document.getElementById("kpiBanner");
+  if (bannerEl) bannerEl.innerHTML = kpiBanner;
+  document.getElementById("kpiGrid").innerHTML = (bannerEl ? '' : kpiBanner) + html;
 }
 
 // ── TEAM TABLE ────────────────────────────────────────────
