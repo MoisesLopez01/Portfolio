@@ -2013,6 +2013,61 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var legacy = C.dataAsOfView_(meta_({}), false, built);
   assert_(legacy.html === "" && legacy.warn === false,
     "a payload with no dataAsOf renders nothing and does not throw");
+
+  // ── THE THIRD SIGNAL: WHICH RULES BUILT THE EXPORT (2026-08-17) ─────────
+  // The state neither clock can express: an export written an hour ago by an
+  // exporter that predates the sandbox exclusion. Both clocks read green and
+  // the backlog numbers are still inflated.
+  var freshDates = { jira: "2026-08-17T03:00:00.000Z", jiraAgeH: 5,
+                     jiraStale: false, jiraUnknown: false };
+
+  var oldExp = C.dataAsOfView_(meta_({
+    dataAsOf: freshDates,
+    jiraExporter: { version: "3.11.0", min: "3.14.0", stale: true },
+  }), false, built);
+  assert_(oldExp.warn === true,
+    "a 5h-old export built by an OLD exporter still warns — fresh and wrong at once");
+  assert_(/older exporter/.test(oldExp.html), "…and the strip says which kind of problem it is");
+  assert_(/Data as of/.test(oldExp.html),
+    "…without swallowing the date: three signals, three lines, they fail independently");
+  assert_(/sandbox/.test(oldExp.title) && /overstated/.test(oldExp.title),
+    "the tooltip names the CONSEQUENCE (inflated backlog), not just a version mismatch");
+  assert_(/re-run the export/.test(oldExp.title), "…and the fix");
+  assert_(/unaffected/.test(oldExp.title),
+    "…and BOUNDS the damage — delivery/quality/utilization do not read from the backlog, " +
+    "and a warning that does not say what is still trustworthy invalidates the whole screen");
+
+  // Current exporter: silent. A version number printed every day is noise, and
+  // noise in the freshness strip is what teaches people to skip the real alarm.
+  var curExp = C.dataAsOfView_(meta_({
+    dataAsOf: freshDates,
+    jiraExporter: { version: "3.14.0", min: "3.14.0", stale: false },
+  }), false, built);
+  assert_(!/exporter/i.test(curExp.html) && curExp.warn === false,
+    "an up-to-date exporter prints nothing — the expected case is not news");
+
+  // A NEWER exporter than the minimum is also silent: the floor is a minimum,
+  // not an equality check, or every exporter bump would false-alarm until
+  // somebody remembered to raise JIRA_EXPORTER_MIN.
+  assert_(!/exporter/i.test(C.dataAsOfView_(meta_({
+    dataAsOf: freshDates,
+    jiraExporter: { version: "3.20.0", min: "3.14.0", stale: false },
+  }), false, built).html), "a NEWER exporter than the floor is silent too");
+
+  // An export from before stamping began carries no version. It still warns —
+  // blank means "older than the release that started stamping" — but the wording
+  // must not print "v" against an empty string.
+  var noVer = C.dataAsOfView_(meta_({
+    dataAsOf: freshDates,
+    jiraExporter: { version: "", min: "3.14.0", stale: true },
+  }), false, built);
+  assert_(noVer.warn === true, "an unstamped export warns — absent means old here, not unknown");
+  assert_(/before stamping began/.test(noVer.title) && !/v,/.test(noVer.title),
+    "…and says so in words rather than printing an empty version");
+
+  // Old payloads have no jiraExporter key at all. Silence, not a crash.
+  assert_(C.dataAsOfView_(meta_({ dataAsOf: freshDates }), false, built).warn === false,
+    "a payload predating the exporter stamp neither warns nor throws");
 })();
 
 // ── 🧬 BY-TYPE MATRIX + ROSTER JOIN: REMOVED (user decision 2026-08-17) ──────

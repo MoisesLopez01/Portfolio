@@ -2524,14 +2524,17 @@
     styleHeader_(sheet.getRange(1, 1, 1, BUGS_HEADERS.length));
     sheet.setFrozenRows(1);
 
-    // Same "Generated:" footer convention as Jira Raw, so the dashboard's
-    // staleness parse works identically on this tab.
+    // Same "Generated:" / "Exporter:" footer convention as Jira Raw, so the
+    // dashboard's staleness and version parse work identically on this tab.
     var foot = rows.length + 2;
     sheet.getRange(foot, 1)
       .setValue("Generated: " + fmtDateTime_(new Date()))
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
     sheet.getRange(foot + 1, 1)
       .setValue("Total rows: " + (rows.length - 1))
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    sheet.getRange(foot + 2, 1)
+      .setValue("Exporter: " + CONFIGJ.VERSION)
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
 
     Logger.log("✅ Jira Bugs: " + (rows.length - 1) + " rows written.");

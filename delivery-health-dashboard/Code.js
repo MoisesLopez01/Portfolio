@@ -239,6 +239,14 @@ var CONFIG_DH = {
   // banner amber every single day between 03:00 and the next run.
   // Owner: whoever owns the Jira Backlog.js trigger cadence — change both together.
   JIRA_EXPORT_STALE_H: 30,
+
+  // ── Minimum exporter the published figures assume ────────────────────────
+  // v3.14.0 is where "Jira Backlog.js" stopped exporting Internal-category
+  // projects. Below it, Jira Raw still carries sandboxes (TEST2, TEST5, …),
+  // so the open backlog, weeks-to-clear and the unrouted alert are all
+  // inflated. The dashboard says so rather than presenting them as current.
+  // Raise this whenever an exporter change moves a published number.
+  JIRA_EXPORTER_MIN: "3.14.0",
 };
 
 /**
@@ -3471,6 +3479,26 @@ function dhJiraBase_() {
   return String(p || CONFIG_DH.JIRA_BASE_URL || "").trim().replace(/\/+$/, "");
 }
 
+/**
+ * Is dotted version `a` OLDER than `b`? Blank/unparseable `a` counts as older,
+ * which is the safe direction: an export that carries no version predates
+ * stamping, and the whole point of the check is to notice that.
+ *
+ * Compares numerically per segment ("3.9.0" < "3.14.0"), because a string
+ * compare puts "3.9.0" AFTER "3.14.0" and would clear a stale export.
+ */
+function dhVersionLt_(a, b) {
+  var pa = String(a || "").trim().split(".");
+  var pb = String(b || "").trim().split(".");
+  if (!String(a || "").trim()) return true;
+  for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+    var na = Number(pa[i] || 0), nb = Number(pb[i] || 0);
+    if (isNaN(na)) return true;          // unparseable → treat as older
+    if (na !== nb) return na < nb;
+  }
+  return false;
+}
+
 /** Case-insensitive header index lookup; -1 when absent. */
 function colIdx_(headers, names) {
   var low = headers.map(function (h) { return normDH_(h); });
@@ -5674,12 +5702,23 @@ function readJiraRaw_() {
     //
     // Read from column A regardless of where the Key column sits, because the
     // exporter writes the footer to A1-relative position, not to the Key column.
-    var exportedAt = null;
+    var exportedAt = null, exporterVersion = "";
     for (var fr = raw.length - 1; fr >= 1 && fr > raw.length - 12; fr--) {
-      var m = /^\s*Generated:\s*(.+?)\s*$/i.exec(String(raw[fr][0] || ""));
-      if (!m) continue;
-      exportedAt = parseExportStamp_(m[1]);
-      break;
+      var cellA = String(raw[fr][0] || "");
+      if (!exportedAt) {
+        var m = /^\s*Generated:\s*(.+?)\s*$/i.exec(cellA);
+        if (m) { exportedAt = parseExportStamp_(m[1]); continue; }
+      }
+      // WHICH RULES built this sheet (Jira Backlog.js v3.14.0+). "Generated:"
+      // says WHEN, and a sheet can be an hour old and still built by an exporter
+      // that predates the sandbox exclusion — fresh and wrong at once. Blank
+      // means the export predates stamping, which is itself the answer; it is
+      // never guessed at.
+      if (!exporterVersion) {
+        var v = /^\s*Exporter:\s*([0-9]+(?:\.[0-9]+)*)\s*$/i.exec(cellA);
+        if (v) exporterVersion = v[1];
+      }
+      if (exportedAt && exporterVersion) break;
     }
     var byKey = {};
     for (var r = 1; r < raw.length; r++) {
@@ -5690,7 +5729,12 @@ function readJiraRaw_() {
       // "GENERATED: …" / "TOTAL ROWS: …". They carried no resolution date and no
       // assignee, so they never reached a metric bucket, but they did inflate
       // j.issues.length and would land in any by-type tally as a blank type.
-      if (/^(GENERATED|TOTAL ROWS):/.test(key)) continue;
+      // GENERIC, not a list of known labels. It was /^(GENERATED|TOTAL ROWS):/
+      // — an allowlist, so the moment the exporter added an "Exporter:" line
+      // that row became a pseudo-issue keyed "EXPORTER: 3.14.0". A real Jira key
+      // is PROJ-123 and can never contain a colon, so "a label colon in column A
+      // means footer" is both safer and needs no edit next time a line is added.
+      if (/^[A-Z][A-Z ]*:/.test(key)) continue;
       // Jira Raw carries one row per issue PER WEEK BUCKET, and Jira Backlog.js
       // rewrites the whole tab (clearContents + setValues) on every export — so
       // duplicate rows for a key all come from the same API fetch and differ
@@ -5852,7 +5896,8 @@ function readJiraRaw_() {
       o.epicName = o.epicKey ? (epicNames[o.epicKey] || "") : "";
     });
     return { issues: issues, epics: epics, openIssues: openIssues, keyRegion: keyRegion,
-             regionRaw: regionRaw, typeRaw: typeRaw, exportedAt: exportedAt, available: true };
+             regionRaw: regionRaw, typeRaw: typeRaw, exportedAt: exportedAt,
+             exporterVersion: exporterVersion, available: true };
   } catch (e) {
     return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false, error: e.message };
   }
@@ -6582,6 +6627,17 @@ function assembleModel_(inputs, win) {
                  jiraUnknown: false };
       })(),
       jiraExportStaleH: CONFIG_DH.JIRA_EXPORT_STALE_H,
+      // A THIRD signal beside the two clocks: which RULES produced the data.
+      // generatedAt says when the model was built, dataAsOf when the export ran,
+      // and this says what the export knew. An export from before v3.14.0 still
+      // carries sandbox projects, so a fresh-looking date is not sufficient to
+      // trust the backlog figures.
+      jiraExporter: {
+        version: inputs.jira.exporterVersion || "",
+        min: CONFIG_DH.JIRA_EXPORTER_MIN,
+        stale: !!(inputs.jira.available &&
+                  dhVersionLt_(inputs.jira.exporterVersion, CONFIG_DH.JIRA_EXPORTER_MIN)),
+      },
       thresholds: { green: CONFIG_DH.TINT_GREEN, amber: CONFIG_DH.TINT_AMBER },
       targets: CONFIG_DH.TARGETS,
       signalMinN: CONFIG_DH.SIGNAL_MIN_N,

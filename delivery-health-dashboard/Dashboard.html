@@ -1818,6 +1818,12 @@ function esc_(s) {
  *   · meta.generatedAt   — when this model was assembled. The warmer resets it
  *     every 30 min, so it is always fresh and always uninformative.
  *
+ * And one thing that is NOT a clock at all:
+ *   · meta.jiraExporter — which RULES the export was built under. An export can
+ *     be an hour old and still carry sandbox projects, because the exporter that
+ *     wrote it predates the exclusion. Fresh and wrong at the same time is a
+ *     state neither clock can show, so it gets its own line.
+ *
  * AGE COMES FROM THE SERVER (`jiraAgeH`), never from a browser-clock diff: two
  * people in one review would otherwise read different staleness verdicts off the
  * same payload because one laptop's clock drifts. The wall-clock time IS
@@ -1865,6 +1871,28 @@ function dataAsOfView_(meta, modelStale, builtAt) {
       "the data cannot be stated. Run probeDeliverySources for the diagnosis. Not a " +
       "staleness warning — the data may be current; we just cannot prove it.");
   }
+  // ── WHICH RULES BUILT THE DATA ───────────────────────────────────────────
+  // Only ever shown when the export is BEHIND the minimum — an up-to-date
+  // exporter is the expected case and needs no line, and a version number on
+  // screen every day is noise that teaches people to skip the whole strip.
+  //
+  // It names the CONSEQUENCE, not the version mismatch. "3.11.0 < 3.14.0" tells
+  // a reader nothing they can act on; "the backlog counts include sandbox
+  // projects" tells them which numbers to distrust and that re-running the
+  // export fixes it.
+  var xp = meta.jiraExporter || {};
+  if (xp.stale) {
+    warn = true;
+    parts.push("⚠ built by an older exporter");
+    tips.push("The Jira export was written by Jira Backlog.js " +
+      (xp.version ? "v" + xp.version : "a version before stamping began") +
+      ", older than the v" + xp.min + " these figures assume. That exporter still " +
+      "exported sandbox and test projects, so the open backlog, weeks-to-clear and " +
+      "the unrouted-epics alert are all overstated. Deploy the current " +
+      "Jira Backlog.js and re-run the export — the delivery, quality and " +
+      "utilization metrics are unaffected.");
+  }
+
   // The model-rebuild warning is a SEPARATE condition (NFR-7) and keeps its own
   // consequence: trend comparisons are suppressed while it holds. Shown alongside
   // the data age rather than instead of it — they fail independently.
