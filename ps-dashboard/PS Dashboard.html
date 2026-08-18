@@ -777,6 +777,7 @@ body.dark-mode .pr-table th { background: #16214A; }
 .pr-dot.g { background: #00875A; } .pr-dot.y { background: #FF991F; }
 .pr-dot.r { background: #DE350B; } .pr-dot.m { background: #C1C7D0; }
 .pr-trend { font-size: 10px; color: var(--slate); margin-right: 3px; }
+.pr-delta { font-size: 10px; color: var(--slate); font-weight: 700; }
 .pr-dot.n { background: #7E97B8; }
 .pr-reading { font-size: 11px; color: var(--slate); font-style: italic; white-space: normal; }
 .pr-drill { background: #FAFBFC; border: 1px solid var(--border); border-radius: 10px;
@@ -3090,6 +3091,7 @@ function perfRowModels_(emps) {
       return {
         col: c, notEval: ne, sig: sig, tip: tip,
         trend: (ne || c.id === 'si') ? '' : perfTrend_(c.id, prevVal, lastVal),
+        delta: (ne || c.id === 'si') ? '' : perfDeltaTxt_(c.id, prevVal, lastVal),
         val: lastVal,
         siRecords: c.id === 'si' ? siRecords : null,
         buckets: per.map(function(agg, i) {
@@ -3424,13 +3426,16 @@ function perfHrsChartSvg_(buckets, per) {
       var x0 = i * group, yBase = TOP + CH;
       var hp = v.p ? Math.max(2, Math.round(v.p / max * CH)) : 0;
       var ht = v.t ? Math.max(2, Math.round(v.t / max * CH)) : 0;
-      var g = ['<g><title>' + tipFor(i) + '</title>'];
+      // In-progress bucket renders faded with an hourglass — a mid-period value
+      // must never read as a closed result (spec v4 P2).
+      var prog = !!buckets[i].containsCurrent;
+      var g = ['<g' + (prog ? ' opacity=".45"' : '') + '><title>' + tipFor(i) + (prog ? ' (in progress)' : '') + '</title>'];
       if (hp) g.push('<rect x="' + x0 + '" y="' + (yBase - hp) + '" width="' + bw + '" height="' + hp + '" fill="none" stroke="#7E97B8" stroke-width="1.5"/>');
       if (ht) g.push('<rect x="' + (x0 + bw + gap2) + '" y="' + (yBase - ht) + '" width="' + bw + '" height="' + ht + '" fill="#058CDC"/>');
       var lab = (v.t !== null && v.t !== undefined ? Math.round(v.t) : '—') + '/' +
                 (v.p !== null && v.p !== undefined ? Math.round(v.p) : '—');
       g.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (TOP - 2) + '" font-size="7" fill="#64748b" text-anchor="middle">' + lab + '</text>');
-      g.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + '</text>');
+      g.push('<text x="' + (x0 + bw + gap2 / 2) + '" y="' + (H - 6) + '" font-size="7" fill="#94A3B8" text-anchor="middle">' + esc(String(buckets[i].label).replace(/^20/, '')) + (prog ? ' ⏳' : '') + '</text>');
       parts.push(g.join('') + '</g>');
     });
     legend = '▮ tracked · ▯ planned — hours per period, labels above bars (tracked/planned)';
@@ -3538,7 +3543,7 @@ function perfDrillHtml_(emp, row, model) {
       '<div class="pr-block' + (info ? ' info' : '') + '">' +
       '<h4><span class="pr-dot ' + c.sig + '"></span>' + title +
       (c.notEval ? ' <span class="pr-sub">(shown, not evaluated)</span>' : '') +
-      (c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') + '</h4>' +
+      (c.trend ? ' <span class="pr-trend">' + c.trend + (c.delta ? ' <span class="pr-delta">' + c.delta + '</span>' : '') + '</span>' : '') + '</h4>' +
       bodyHtml + '</div>' });
   }
 
@@ -3607,7 +3612,7 @@ function perfDrillHtml_(emp, row, model) {
   if (gran === 'quarter') {
     var scorePts = buckets.map(function(b, i) {
       return per[i] && per[i].score !== null && per[i].score !== undefined
-        ? { label: b.label, v: per[i].score } : null;
+        ? { label: b.label, v: per[i].score, partial: !!b.containsCurrent } : null;
     }).filter(Boolean);
     var kpib = row.cells.filter(function(c) { return c.col.id !== 'score'; }).map(function(c) {
       var val = c.col.id === 'kudos' ? (c.val ? (c.val.recv + '/' + c.val.gave) : '—')
@@ -3621,7 +3626,8 @@ function perfDrillHtml_(emp, row, model) {
     }).join('');
     blocks.push({ sev: 3.5, html: '<div class="pr-block">' +
       '<h4><span class="pr-dot ' + (cellByCol.score ? cellByCol.score.sig : 'm') + '"></span>Score — quarterly trend</h4>' +
-      (scorePts.length > 1 ? detChartSVG_(scorePts, '#058CDC', function(v) { return String(Math.round(v)); })
+      (scorePts.length > 1 ? detChartSVG_(scorePts, '#058CDC', function(v) { return String(Math.round(v)); },
+          { target: PERF_BARS.score[row.coh === 'mgr' ? 'mgr' : 'ic'].g, targetLabel: 'green' })
         : '<p class="pr-sub">Score ' + (cellByCol.score && cellByCol.score.val !== null ? Math.round(cellByCol.score.val) : '—') + ' — not enough closed quarters for a trend line yet.</p>') +
       '<div class="pr-kpibs">' + kpib + '</div></div>' });
   }
@@ -3688,12 +3694,15 @@ function perfDrillHtml_(emp, row, model) {
     // the Overview drill's detChartSVG_.
     var rcrMap    = ((DATA.meta && DATA.meta.rcrByEmployee) || {})[emp.normName] || {};
     var rcrMonths = ((DATA.meta && DATA.meta.rcrHistory) || []).map(function(h) { return h.month; });
+    var curMonthKey = pMonthKey(DATA.meta.currentWeekLabel);
     var rPts = rcrMonths.map(function(m) {
-      return rcrMap[m] !== undefined ? { label: m, v: rcrMap[m] } : null;
+      return rcrMap[m] !== undefined
+        ? { label: m, v: rcrMap[m], partial: perfRcrMonthKey_(m) === curMonthKey } : null;
     }).filter(Boolean);
     block('rcr', 'RCR — monthly', '<p>' + (cellByCol.rcr.val === null ? 'No rating.'
-      : 'Latest ' + (Math.round(cellByCol.rcr.val * 10) / 10) + ' — target 2.5.') + '</p>' +
-      (rPts.length > 1 ? detChartSVG_(rPts, '#058CDC', function(v) { return v.toFixed(2); }) : ''));
+      : 'Latest ' + (Math.round(cellByCol.rcr.val * 10) / 10) + ' — green ≥' + PERF_BARS.rcr.ic.g + ' · scale caps at 2.5.') + '</p>' +
+      (rPts.length > 1 ? detChartSVG_(rPts, '#058CDC', function(v) { return v.toFixed(2); },
+          { target: PERF_BARS.rcr.ic.g, targetLabel: 'green' }) : ''));
   }
   if (cellByCol.si && (!cellByCol.si.notEval || cellByCol.si.val !== null)) {
     var recs = (cellByCol.si.siRecords || []).map(function(r) {
@@ -4257,6 +4266,21 @@ function perfRcrMonthKey_(name) {
   if (!m) return null;
   var mm = MON[m[1].toLowerCase()];
   return (2000 + parseInt(m[2], 10)) + '-' + (mm < 10 ? '0' : '') + mm;
+}
+
+// Signed delta for trend arrows (spec v4 P3) — same closed prev/last pair that
+// feeds the arrow, so glyph and magnitude can never disagree. Categorical
+// metrics and zero-change return '' (the arrow alone says "flat").
+function perfDeltaTxt_(colId, prev, curr) {
+  if (colId === 'kudos' || colId === 'pto' || colId === 'si') return '';
+  if (prev === null || prev === undefined || curr === null || curr === undefined) return '';
+  if (typeof prev !== 'number' || typeof curr !== 'number' || isNaN(prev) || isNaN(curr)) return '';
+  var isPct = colId === 'goals' || colId === 'tracked' || colId === 'planned';
+  var d = isPct ? Math.round((curr - prev) * 100)
+        : colId === 'rcr' ? Math.round((curr - prev) * 10) / 10
+        : Math.round(curr - prev);
+  if (!d) return '';
+  return (d > 0 ? '+' : '-') + Math.abs(d) + (isPct ? '%' : '');
 }
 
 // Fiscal-quarter ordering: "FY27Q1" → 27*4+1. Unparseable labels rank -1.
@@ -11359,32 +11383,49 @@ function execTrendCard_(label, pts, color, fmt, opts) {
 }
 
 // Expanded trend chart for the detail drawer — one labelled point per period
-// (value above the marker, period label below). pts = [{label, v}] ascending in time.
-// fmt formats each value (e.g. 2 decimals for RCR, 1 for SI).
-function detChartSVG_(pts, color, fmt) {
+// (value above the marker, period label below). pts = [{label, v, partial}]
+// ascending in time; fmt formats each value. opts (optional):
+//   target      — dashed reference line at this value (position is read, not computed)
+//   targetLabel — its caption (default 'target')
+// Partial (in-progress) points render hollow with a dashed lead-in segment and
+// a "· partial" label — provisional data never reads as a closed result
+// (spec v4 P2). No area fill: a few points of line are a trend, not a volume.
+function detChartSVG_(pts, color, fmt, opts) {
+  opts = opts || {};
   pts = (pts || []).filter(function(p) { return p.v != null && !isNaN(p.v); });
   if (!pts.length) return '<div style="font-size:11px;color:var(--muted);padding:6px 0">No history available</div>';
   var n = pts.length;
   var W = Math.max(300, n * 64), H = 132;
-  var padL = 10, padR = 10, padTop = 24, padBot = 26;
+  var padL = 26, padR = 26, padTop = 24, padBot = 26;
   var vals = pts.map(function(p) { return p.v; });
   var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  if (opts.target != null) { lo = Math.min(lo, opts.target); hi = Math.max(hi, opts.target); }
   if (hi === lo) { hi = hi + 1; lo = Math.max(0, lo - 1); }
   function px(i) { return padL + (n > 1 ? i / (n - 1) : 0.5) * (W - padL - padR); }
   function py(v) { return padTop + (1 - (v - lo) / (hi - lo)) * (H - padTop - padBot); }
-  var line = pts.map(function(p, i) { return (i === 0 ? 'M' : 'L') + px(i).toFixed(1) + ' ' + py(p.v).toFixed(1); }).join(' ');
-  var area = 'M' + px(0).toFixed(1) + ' ' + (H - padBot) + ' ' +
-    pts.map(function(p, i) { return 'L' + px(i).toFixed(1) + ' ' + py(p.v).toFixed(1); }).join(' ') +
-    ' L' + px(n - 1).toFixed(1) + ' ' + (H - padBot) + ' Z';
   var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W + 'px;height:auto;display:block" role="img" aria-label="trend chart">';
   svg += '<line x1="' + padL + '" y1="' + (H - padBot) + '" x2="' + (W - padR) + '" y2="' + (H - padBot) + '" style="stroke:var(--border)" stroke-width="1"/>';
-  svg += '<path d="' + area + '" fill="' + color + '" opacity="0.08"/>';
-  svg += '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  if (opts.target != null) {
+    var tly = py(opts.target);
+    svg += '<line x1="' + padL + '" y1="' + tly.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + tly.toFixed(1) +
+      '" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3" opacity=".6"/>';
+    svg += '<text x="' + (W - padR) + '" y="' + (tly - 4).toFixed(1) + '" font-size="8" text-anchor="end" style="fill:var(--muted)">' +
+      esc(opts.targetLabel || 'target') + ' ' + esc(fmt(opts.target)) + '</text>';
+  }
+  // Per-segment lines so a segment INTO a partial point can dash independently.
+  for (var i = 1; i < n; i++) {
+    var dash = (pts[i].partial || pts[i - 1].partial) ? ' stroke-dasharray="4,3"' : '';
+    svg += '<line x1="' + px(i - 1).toFixed(1) + '" y1="' + py(pts[i - 1].v).toFixed(1) +
+      '" x2="' + px(i).toFixed(1) + '" y2="' + py(pts[i].v).toFixed(1) +
+      '" stroke="' + color + '" stroke-width="2" stroke-linecap="round"' + dash + '/>';
+  }
   pts.forEach(function(p, i) {
     var x = px(i).toFixed(1), y = py(p.v);
-    svg += '<circle cx="' + x + '" cy="' + y.toFixed(1) + '" r="3" fill="' + color + '"/>';
-    svg += '<text x="' + x + '" y="' + (y - 8).toFixed(1) + '" font-size="10" font-weight="700" text-anchor="middle" style="fill:var(--text)">' + esc(fmt(p.v)) + '</text>';
-    svg += '<text x="' + x + '" y="' + (H - padBot + 14) + '" font-size="9" text-anchor="middle" style="fill:var(--muted)">' + esc(p.label) + '</text>';
+    svg += p.partial
+      ? '<circle cx="' + x + '" cy="' + y.toFixed(1) + '" r="3.5" fill="var(--card-bg)" stroke="' + color + '" stroke-width="2"/>'
+      : '<circle cx="' + x + '" cy="' + y.toFixed(1) + '" r="3" fill="' + color + '"/>';
+    svg += '<text x="' + x + '" y="' + (y - 8).toFixed(1) + '" font-size="10" font-weight="700" text-anchor="middle" style="fill:var(--' + (p.partial ? 'muted' : 'text') + ')">' + esc(fmt(p.v)) + '</text>';
+    svg += '<text x="' + x + '" y="' + (H - padBot + 14) + '" font-size="9" text-anchor="middle" style="fill:var(--muted)">' + esc(p.label) + (p.partial ? ' · partial' : '') + '</text>';
   });
   svg += '</svg>';
   return svg;
