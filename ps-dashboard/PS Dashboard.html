@@ -3270,7 +3270,8 @@ function renderPerfRecordTab_(filteredOpt) {
   var shown = focus ? rows.filter(focus.f) : rows;
 
   var model = perfModel_();
-  var dense = STATE.prGranularity === 'week';
+  // Weekly is scoped to 9 buckets now — dense bars are never needed.
+  var dense = false;
   var cols  = perfCols_();
 
   // Subtitle: name the window explicitly so a screenshot is self-describing.
@@ -3280,7 +3281,8 @@ function renderPerfRecordTab_(filteredOpt) {
     qBuckets.map(function(b) { return periodDisplayLabel_(b); }).join(' · ') +
     ' — ' + shown.length + ' of ' + rows.length + ' rocketeers' +
     (focus ? ' (' + focus.label + ' focus)' : '') +
-    ' · dot = last closed ' + STATE.prGranularity;
+    ' · dot = last closed ' + STATE.prGranularity +
+    (STATE.prGranularity === 'week' ? ' · showing last 8 closed weeks + current' : '');
 
   function th(key, label) {
     var on  = STATE.prSort.key === key;
@@ -4198,8 +4200,11 @@ var _perfModelMemo = { key: null, model: null };
 
 function perfBucketsFor_(gran) {
   if (gran === 'week') {
-    // Weekly = each past continuity week is its own bucket.
-    return (DATA.q4Weeks || []).filter(function(w) { return !w.isFuture; }).map(function(w) {
+    // Weekly = high-detail view of the LAST 8 closed weeks + the current one
+    // (side-panel wave: a year of weekly bars is noise, not detail). The
+    // current week is the last non-future entry, so slice(-9) = 8 closed + it.
+    // Monthly/Quarterly still cover the full 3-quarter window.
+    return (DATA.q4Weeks || []).filter(function(w) { return !w.isFuture; }).slice(-9).map(function(w) {
       return { key: w.label, label: w.label, weekLabels: [w.label],
                containsCurrent: w.label === DATA.meta.currentWeekLabel };
     });
