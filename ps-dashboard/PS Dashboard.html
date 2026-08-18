@@ -3130,8 +3130,99 @@ function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
   renderPerfRecordTab_();
 }
+// Evidence panel (spec §8): per-metric real values per bucket at the current
+// granularity, kudos entries with givers, link into the Overview profile.
 function perfDrillHtml_(emp, row, model) {
-  return '<div class="pr-drill">Evidence panel — built in the next step.</div>';
+  var buckets = model.buckets;
+  var per     = model.byEmp[emp.normName] || [];
+  var gray    = perfGrayCols_(emp);
+  function hdrCells() {
+    return buckets.map(function(b) {
+      return '<th>' + esc(b.label) + (b.containsCurrent ? ' ⏳' : '') + '</th>';
+    }).join('');
+  }
+  function evRow(label, fn) {
+    return '<tr><td class="pr-sub">' + label + '</td>' +
+      per.map(function(agg) { return '<td>' + fn(agg) + '</td>'; }).join('') + '</tr>';
+  }
+  function fmtH(v)  { return v === null || v === undefined ? '—' : Math.round(v) + 'h'; }
+  function pct(v)   { return v === null || v === undefined ? '—' : Math.round(v * 100) + '%'; }
+
+  var cellByCol = {};
+  row.cells.forEach(function(c) { cellByCol[c.col.id] = c; });
+  function blockTitle(colId, label, noteText) {
+    var c = cellByCol[colId];
+    return '<h4><span class="pr-dot ' + (c ? c.sig : 'm') + '"></span>' + label +
+      (c && c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') +
+      (noteText ? ' — <span class="pr-sub">' + esc(noteText) + '</span>' : '') + '</h4>';
+  }
+
+  var h = '<div class="pr-drill">' +
+    '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
+    (emp.supervisor ? ' · sup: ' + esc(emp.supervisor) : '') + '</span>' +
+    ' &nbsp;<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' +
+    emp.normName.replace(/'/g, "\\'") + '\')">Open full profile in Overview →</button>';
+
+  if (hasMetric_('tracked') && !gray.tracked) {
+    var tCur = per[model.lastIdx] || {};
+    h += blockTitle('tracked', 'Tracked time',
+      tCur.tracked === null || tCur.tracked === undefined ? 'no data in last closed period'
+        : pct(tCur.tracked) + ' of plan-based target in ' + (buckets[model.lastIdx] ? buckets[model.lastIdx].label : ''));
+    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
+      evRow('Tracked / planned hrs', function(a) { return fmtH(a.trackedHrs) + ' / ' + fmtH(a.plannedHrs); }) +
+      '</table>';
+  }
+  if (hasMetric_('goals') && !gray.goals) {
+    var gCur = per[model.lastIdx] || {};
+    h += blockTitle('goals', 'Goals',
+      gCur.goalsWeeks ? 'compliant ' + gCur.goalsCompliant + ' of ' + gCur.goalsWeeks + ' weeks' : 'no goals data');
+    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
+      evRow('Weeks compliant', function(a) {
+        return a.goalsWeeks ? a.goalsCompliant + '/' + a.goalsWeeks : '—';
+      }) + '</table>';
+  }
+  if (hasMetric_('planned') && !gray.planned) {
+    h += blockTitle('planned', 'Tempo plans', null);
+    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
+      evRow('Planned hrs · weeks planned', function(a) {
+        return fmtH(a.plannedHrs) + ' · ' + (a.weeks ? a.plannedWeeks + '/' + a.weeks + ' wks' : '—');
+      }) + '</table>';
+  }
+  if (hasMetric_('pto') && !gray.pto) {
+    h += blockTitle('pto', 'PTO health', null);
+    h += '<table><tr><th></th>' + hdrCells() + '</tr>' +
+      evRow('Status at close · weeks Good', function(a) {
+        var st = a.pto === null ? '—' : (a.pto >= 1 ? 'Good' : 'At Risk');
+        return st + (a.ptoGoodShare !== null && a.ptoGoodShare !== undefined ? ' · ' + pct(a.ptoGoodShare) : '');
+      }) + '</table>';
+  }
+  if (hasMetric_('rcr') && !gray.rcr) {
+    var rc = cellByCol.rcr;
+    h += blockTitle('rcr', 'RCR', rc && rc.val !== null ? 'current ' + (Math.round(rc.val * 10) / 10) + ' (target 2.5)' : 'no rating');
+  }
+  if (hasMetric_('si') && !gray.si) {
+    var sc = cellByCol.si;
+    h += blockTitle('si', 'SI rating', sc && sc.val !== null ? 'last quarter ' + Math.round(sc.val) + ' / 5' : 'no rating');
+  }
+  if (hasMetric_('kudos') && !gray.kudos) {
+    var kAgg = per[model.lastIdx] || { kudos: { recv: 0, gave: 0 } };
+    h += blockTitle('kudos', 'Kudos',
+      'received ' + (kAgg.kudos ? kAgg.kudos.recv : 0) + ' · gave ' + (kAgg.kudos ? kAgg.kudos.gave : 0) +
+      ' in last closed period — never red');
+    var entries = [];
+    (DATA.q4Weeks || []).forEach(function(w) {
+      var wd = emp.weeks && emp.weeks[w.label];
+      if (!wd || !wd.kudos || !wd.kudos.entries) return;
+      wd.kudos.entries.forEach(function(en) {
+        entries.push('<tr><td class="pr-sub">' + esc(w.label) + '</td><td>★ from ' + esc(en.giver || '—') +
+          (en.orgValues ? ' · ' + esc(en.orgValues) : '') + '</td></tr>');
+      });
+    });
+    h += entries.length ? '<table>' + entries.join('') + '</table>'
+                        : '<p class="pr-sub">No kudos received in the window.</p>';
+  }
+
+  return h + '</div>';
 }
 function exportPerfCsv_() {}
 
