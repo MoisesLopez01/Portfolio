@@ -9,7 +9,7 @@
 //              body ASSUMPTION lines removed, build badge in the header,
 //              "investigation trigger" wording out of section 4
 // ENVIRONMENT: Google Apps Script
-// SPEC:        docs/superpowers/specs/2026-07-22-workforce-comp-report-design.md
+// SPEC:        WorkforceReport/docs/specs/2026-07-22-workforce-comp-report-design.md
 //
 // Layout: PURE LOGIC first (no GAS APIs — Node-testable via tests/),
 //         GAS LAYER second (SpreadsheetApp/CacheService/HtmlService).

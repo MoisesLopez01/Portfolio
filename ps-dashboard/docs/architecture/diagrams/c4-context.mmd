@@ -1,0 +1,18 @@
+C4Context
+  title System Context - PS Weekly Contribution Report
+
+  Person(rocketeer, "PS Rocketeer", "Professional Services team member tracking their own performance.")
+  Person(manager, "PS Manager", "Supervises PS members and reviews team performance.")
+  Person(admin, "Dashboard Admin", "Manages settings and has full visibility across all PS data.")
+
+  System(report, "PS Weekly Contribution Report", "Consolidated weekly reporting dashboard for Professional Services metrics (RCR, SI, PTO, Kudos, Time).")
+
+  System_Ext(sheets, "Google Sheets", "Source of truth for Roster, Goals, PTO, Tracked/Planned Time, and RCR data.")
+  System_Ext(gemini, "Gemini API", "Generates AI-driven narrative insights based on report data.")
+
+  Rel(rocketeer, report, "Views personal contribution data")
+  Rel(manager, report, "Views team performance and individual reports")
+  Rel(admin, report, "Manages dashboard settings and views all data")
+
+  Rel(report, sheets, "Reads and writes data from", "Google Spreadsheet Service")
+  Rel(report, gemini, "Requests narrative insights", "HTTPS/REST")

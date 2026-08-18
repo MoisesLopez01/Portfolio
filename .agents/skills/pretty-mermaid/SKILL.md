@@ -381,7 +381,7 @@ node scripts/batch.mjs \
 
 node scripts/render.mjs \
   --input architecture.mmd \
-  --output docs/architecture.svg \
+  --output ps-dashboard/docs/architecture.svg \
   --theme github-dark \
   --transparent
 ```

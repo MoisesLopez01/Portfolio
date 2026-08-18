@@ -23,7 +23,7 @@ const SEC_WR = {
   BOOTSTRAP_ADMIN: "moises.lopez@servicerocket.com",
 
   DEFAULT_ADMINS: [
-    // "courtney.sutliff@servicerocket.com",  // sample — WFP
+    "courtney.sutliff@servicerocket.com",     // WFP
   ],
   DEFAULT_VIEWERS: [
     // "exec@servicerocket.com",              // sample — board viewer at share time
@@ -94,6 +94,13 @@ function getReportAccessSettings() {
 function saveReportAccessSettings(settings) {
   const access = checkReportAccess();
   if (access.role !== "admin") throw new Error("Unauthorized: admin access required.");
+  if (!settings || typeof settings !== "object") {
+    // Running this from the GAS editor toolbar passes no arguments — fail with
+    // directions instead of a cryptic TypeError on settings.admins.
+    throw new Error("No settings passed — this function is called by the 🔒 Access page in the web app. " +
+      "To grant access from the editor, add the email to DEFAULT_ADMINS or DEFAULT_VIEWERS at the top of Security.js, " +
+      "or run grantAccessFromEditorWR() after editing its constants.");
+  }
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const clean = list => (Array.isArray(list) ? list : [])
     .map(e => String(e).trim().toLowerCase()).filter(Boolean);
@@ -120,6 +127,42 @@ function saveReportAccessSettings(settings) {
     " — admins " + diff(before.admins, after.admins) +
     " · viewers " + diff(before.viewers, after.viewers));
   return getReportAccessSettings();
+}
+
+/**
+ * Editor-only convenience: grant access without the web UI.
+ * Edit the two arrays below, run this function from the GAS editor, then
+ * restore them to empty. Appends to the runtime Script Properties lists
+ * (never removes anyone). Alternative: hardcode in DEFAULT_ADMINS/VIEWERS.
+ */
+function grantAccessFromEditorWR() {
+  const GRANT_ADMINS  = [];  // e.g. ["courtney.sutliff@servicerocket.com"]
+  const GRANT_VIEWERS = [];  // e.g. ["board.member@example.com"]
+
+  if (!GRANT_ADMINS.length && !GRANT_VIEWERS.length) {
+    throw new Error("Nothing to grant — add email(s) to GRANT_ADMINS / GRANT_VIEWERS inside this function, run it, then clear them again.");
+  }
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const clean = list => list.map(e => String(e).trim().toLowerCase()).filter(Boolean);
+  const bad = clean(GRANT_ADMINS).concat(clean(GRANT_VIEWERS)).filter(e => !EMAIL_RE.test(e));
+  if (bad.length) throw new Error("Not saved — invalid email(s): " + bad.join(", "));
+
+  const before = _readAccessListsWR_();
+  const p = PropertiesService.getScriptProperties();
+  if (GRANT_ADMINS.length) {
+    p.setProperty(SEC_WR.PROP_ADMINS,
+      [...new Set([...before.admins, ...clean(GRANT_ADMINS)])]
+        .filter(e => e !== SEC_WR.BOOTSTRAP_ADMIN.toLowerCase())
+        .join(","));
+  }
+  if (GRANT_VIEWERS.length) {
+    p.setProperty(SEC_WR.PROP_VIEWERS,
+      [...new Set([...before.viewers, ...clean(GRANT_VIEWERS)])].join(","));
+  }
+  bustReportCache_(); // defined in Code.js
+  const after = _readAccessListsWR_();
+  Logger.log("✅ Granted from editor — admins: [" + after.admins.join(", ") +
+    "] · viewers: [" + after.viewers.join(", ") + "]");
 }
 
 /** Branded denied page — reveals nothing about the data or the allowlist. */

@@ -13,9 +13,9 @@ It reads from multiple Google Sheets, assembles a 5-week rolling view of PS team
 
 | File | Role |
 |---|---|
-| `PS Contribution Report.js` | Main GAS script — data readers, assembly, `doGet`, `getPSReportData` |
-| `PS Dashboard.html` | Frontend SPA served by GAS `HtmlService` |
-| `PS Security.js` | Email-based access control — `checkDashboardAccess()`, role management |
+| `ps-dashboard/PS Contribution Report.js` | Main GAS script — data readers, assembly, `doGet`, `getPSReportData` |
+| `ps-dashboard/PS Dashboard.html` | Frontend SPA served by GAS `HtmlService` |
+| `ps-dashboard/PS Security.js` | Email-based access control — `checkDashboardAccess()`, role management |
 | `PS Settings` sheet (runtime) | Stores scoring weights, read by `readWeightSettings_()` |
 
 ---
@@ -25,7 +25,7 @@ It reads from multiple Google Sheets, assembles a 5-week rolling view of PS team
 Navigation is driven by the `VIEWS` array — single source of truth for every view's
 button/pane ids, label, location, and role allow-list. `switchTab()`, `renderAll()`'s
 renderer dispatch, role hiding (`applyRoleToNav_()`), and the ☰ menu all derive from it.
-Spec: `docs/superpowers/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
+Spec: `ps-dashboard/docs/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
 
 - **Tab bar** (always visible): Overview, Team Radar, Leading Behaviours, Trends —
   plus 📋 Team Executive Brief for admins only.
@@ -48,7 +48,7 @@ SEC_.BOOTSTRAP_ADMIN = "moises.lopez@servicerocket.com"
 Always Admin. Cannot be removed via the Settings UI. Do not change.
 
 ### 2. Default admins / viewers / delegates — code-level, always active
-Defined in `SEC_.DEFAULT_ADMINS`, `SEC_.DEFAULT_VIEWERS`, `SEC_.DEFAULT_DELEGATES` in `PS Security.js`.
+Defined in `SEC_.DEFAULT_ADMINS`, `SEC_.DEFAULT_VIEWERS`, `SEC_.DEFAULT_DELEGATES` in `ps-dashboard/PS Security.js`.
 These survive a Script Properties reset. Edit this file to add permanent stakeholders.
 
 - **Admin**: full dashboard + can manage the access list.
@@ -120,7 +120,7 @@ PropertiesService.getScriptProperties().setProperties({
 
 All quarter/FY constants (goals quarter label, quarter start/end ISO weeks, SI column
 header, RCR month columns, grace-period flags) are derived from today's date by
-`computeFiscalContext_()` in `PS Contribution Report.js` (FY starts July 1) and shipped
+`computeFiscalContext_()` in `ps-dashboard/PS Contribution Report.js` (FY starts July 1) and shipped
 to the frontend as `meta.fiscalContext` / `meta.goalsQuarter` / `meta.siQuarter`.
 The frontend's header subtitle and every Data Reference quarter mention are filled at
 load by `updateQuarterLabels_()` via `.drGoalsQ` / `.drSiQ` / `.drQEnd` / `.drQ1Week`
@@ -153,7 +153,7 @@ FTE vs crew toggle in the UI.
 
 - Private helpers: trailing underscore (`readPSRoster_`, `findCol_PS_`, `log_`)
 - Config object: `CONFIG_PS` (all caps prefix, single source of truth)
-- Security constants: `SEC_` object in `PS Security.js`
+- Security constants: `SEC_` object in `ps-dashboard/PS Security.js`
 - Week labels: `YYYY.WN` format (e.g. `2026.W20`) — never `W20` alone in data keys
 
 ---
@@ -166,36 +166,14 @@ Configurable per deployment via ⚖️ Scoring Weights (☰ menu, admin only) �
 
 ### Team-aligned scoring matrix (2026-07-09)
 
-Scoring groups follow the org team toggle (`TEAMS_` in `PS Teams.js`): **team gates,
-family tunes**. Spec: `docs/superpowers/specs/2026-07-09-team-aligned-scoring-design.md`.
+Scoring groups follow the org team toggle (`TEAMS_` in `ps-dashboard/PS Teams.js`): **team gates,
+family tunes**. **Hard invariant**: every resolution path in `weightsForEmployee_` ends in
+a mask to `team.metrics` (`maskToTeamMetrics_`) — R&D / Sales members can never carry
+tracked/planned/RCR weight, even from hand-edited sheet rows.
 
-- **Sheet of record**: `PS Scoring Matrix`, schema `Team | Family | Metric | I1–I8,
-  M4–M10 | ALL`. Blocks exist per **(team, family)** pair where the family has active
-  members in that team — a family spanning two teams has independent blocks. The `ALL`
-  column is a block-wide value on any family (a level cell beats it); `Family = ALL`
-  is the per-team uncatalogued catch-all. A legacy (pre-Team-column) sheet is mapped
-  on read by `migrateLegacyMatrix_`; the first save rewrites the new schema, and saves
-  **merge** over stored blocks so unrendered (team, family) pairs survive.
-- **Resolution** (`weightsForEmployee_`), branching on the catalog lookup:
-  catalogued title → `matrix[team][family][level]` → family `ALL` cell →
-  `blockFillBase_(team, family, base)`; uncatalogued title → team catch-all
-  (`ALL`/`ALL`) → `blockFillBase_`; both paths end in a **hard mask** to
-  `team.metrics` (`maskToTeamMetrics_`) — R&D / Sales members can never carry
-  tracked/planned/RCR weight, even from hand-edited sheet rows.
-- **Fill defaults** (`blockFillBase_`): Services natives (JF007/8/9/018), JF004-in-
-  Services, and catch-alls inherit the flat base; embedded ops families under Services
-  inherit `RND_DEFAULT_W_` (Goals 40/Kudos 20/SI 20/PTO 20 — never re-enables
-  tracked/planned/RCR); R&D → `RND_DEFAULT_W_`; Sales → `SALES_DEFAULT_W_` (own
-  constant, same seed values, extended in the HubSpot phase).
-- **Per-employee weights on the client**: unchanged — `emp.scoreWeights` attaches only
-  when the resolved weights differ from the flat base (reference check); base-inherit
-  Services natives follow live weight previews via `SCORE_W`.
-- **Editor**: ☰ → ⚖️ Scoring Weights → matrix section renders three team separators
-  (Services / R&D / Sales & Success) with family blocks placed by active membership
-  (`getScoringConfig().sections`) plus a per-team "Uncatalogued titles" catch-all.
-  `saveScoringMatrix()` validates metrics against the team's set and busts the cache.
-- Tests: `_test_weightsResolver()` and `_test_matrixMigration()` — GAS editor or Node
-  (eval both PS files with a stubbed `Logger`).
+Full mechanics (sheet schema, resolution order, `blockFillBase_` defaults, editor, tests)
+live in the `ps-scoring-matrix` skill — `.claude/skills/ps-scoring-matrix/SKILL.md`.
+Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-design.md`.
 
 Scoring caps:
 - `SCORE_TRACKED_RATIO = 0.9` — tracked/planned threshold for full credit

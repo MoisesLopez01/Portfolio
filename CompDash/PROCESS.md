@@ -143,8 +143,8 @@ Principle first, consistent with our leadership behaviors: the mechanism must **
 
 ## V3 deploy (2026-07-27 — exec feedback absorption)
 
-Spec: `docs/superpowers/specs/2026-07-27-compdash-v3-exec-feedback-design.md`
-Plan: `docs/superpowers/plans/2026-07-27-compdash-v3-exec-feedback.md`
+Spec: `CompDash/docs/specs/2026-07-27-compdash-v3-exec-feedback-design.md`
+Plan: `CompDash/docs/plans/2026-07-27-compdash-v3-exec-feedback.md`
 
 1. Paste `Code.js` + `ViewDash.html` into the GAS project (Security.js unchanged).
 2. Run `debugCompPipeline()` — confirm the new log lines: Supervisor column FOUND,
@@ -167,7 +167,7 @@ FY months → no forecast; missing TCC USD rows → financial coverage note.
 
 ## V4 deploy (2026-07-28 / 2026.W31 — comp decision-maker upgrade)
 
-Spec: `docs/superpowers/specs/2026-07-28-compdash-v4-decision-maker-design.md`
+Spec: `CompDash/docs/specs/2026-07-28-compdash-v4-decision-maker-design.md`
 
 **What V4 adds** — 🚨 Risk Signals view (promotion staleness ≥3y with early-career
 lens, recognition risk = top quarter + <5% TTM growth, I3–I4 retention cohort with
@@ -295,8 +295,8 @@ full list of P0 deletions.
 
 ## P0 deploy (2026.W33 — 3-tab rebuild foundation)
 
-Spec: `docs/superpowers/specs/2026-08-11-comp-health-rebuild-design.md`
-Plan: `docs/superpowers/plans/2026-08-11-comp-health-p0-foundation.md`
+Spec: `CompDash/docs/specs/2026-08-11-comp-health-rebuild-design.md`
+Plan: `CompDash/docs/plans/2026-08-11-comp-health-p0-foundation.md`
 
 ### The BUILD_ contract — read this before deploying
 
@@ -410,8 +410,8 @@ per-viewer action-queue `UserProperties` keys are simply abandoned.
 
 ## P2a deploy (2026.W33 — decision engines, BUILD_ 48)
 
-Spec: `docs/superpowers/specs/2026-08-12-compdash-p2-decision-views-design.md`
-Plan: `docs/superpowers/plans/2026-08-12-compdash-p2a-engines.md`
+Spec: `CompDash/docs/specs/2026-08-12-compdash-p2-decision-views-design.md`
+Plan: `CompDash/docs/plans/2026-08-12-compdash-p2a-engines.md`
 
 **What P2a adds** — four new PURE server engines, payload-only (zero UI change;
 P2b builds the views): `RemotePull.js` (person signal governed by the
@@ -460,7 +460,7 @@ Tests: `node tests/run_tests.js` (308) + `node tests/parse_html.js` +
 
 ## P2b deploy (2026.W33 — decision views, BUILD_ 49)
 
-Spec: `docs/superpowers/specs/2026-08-12-compdash-p2-decision-views-design.md`
+Spec: `CompDash/docs/specs/2026-08-12-compdash-p2-decision-views-design.md`
 Design reference: `mocks/compdash-decision-mock-v5.html` (information architecture
 and signal vocabulary — never pixel identity; everything is mapped onto the
 semantic theme tokens so dark/light both work).

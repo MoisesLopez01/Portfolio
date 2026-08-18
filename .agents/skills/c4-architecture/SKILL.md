@@ -271,7 +271,7 @@ C4Container
 
 ## Output Location
 
-Write architecture documentation to `docs/architecture/` with naming convention:
+Write architecture documentation to `ps-dashboard/docs/architecture/` with naming convention:
 - `c4-context.md` - System context diagram
 - `c4-containers.md` - Container diagram
 - `c4-components-{feature}.md` - Component diagrams per feature

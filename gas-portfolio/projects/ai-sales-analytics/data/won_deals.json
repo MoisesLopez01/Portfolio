@@ -1,0 +1,1882 @@
+[
+  {
+    "account": "Pioneer Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Analytics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Analytics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Analytics",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Delta Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Logistics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Foods",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Foods",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Media",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Media",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Summit Labs",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Summit Labs",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Media",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Analytics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Analytics",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Labs",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Labs",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Analytics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Freight",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Freight",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Freight",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Freight",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Analytics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Analytics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Analytics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Freight",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Freight",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Freight",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Foods",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Foods",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Delta Media",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Media",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Delta Media",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Energy",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Energy",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Energy",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Retail",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Retail",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Energy",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Labs",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Labs",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Health",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Health",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Energy",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Energy",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Systems",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Systems",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Systems",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Systems",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Delta Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Delta Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Delta Financial",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Summit Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Summit Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Summit Systems",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Energy",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Logistics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Logistics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Systems",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Energy",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Energy",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Summit Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Summit Robotics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Summit Robotics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Logistics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Logistics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Health",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Health",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Health",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Retail",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Retail",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Energy",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Energy",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Foods",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Systems",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Delta Robotics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Delta Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Robotics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Summit Logistics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Summit Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Summit Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Media",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Media",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Media",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Robotics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Financial",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Financial",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Analytics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Analytics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Freight",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Freight",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Freight",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Energy",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Logistics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Systems",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Logistics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Logistics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Systems",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Systems",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Financial",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Financial",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Financial",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Financial",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Logistics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Labs",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Labs",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Foods",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Foods",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Foods",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Retail",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Retail",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Ridge Foods",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Robotics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Robotics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Robotics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Analytics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Analytics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Analytics",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Robotics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Robotics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Robotics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Media",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Media",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Freight",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Freight",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Summit Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Summit Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Summit Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Summit Retail",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Summit Retail",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Media",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Media",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Robotics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Robotics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Systems",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Systems",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Logistics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Media",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Media",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Media",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Labs",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Labs",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Energy",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Logistics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Labs",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Labs",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Labs",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Health",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Freight",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Freight",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Freight",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Freight",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Energy",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Labs",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Labs",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Financial",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Financial",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Analytics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Analytics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Analytics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Analytics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Logistics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Logistics",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Summit Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Summit Health",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Summit Health",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Summit Health",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Media",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Media",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Media",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Systems",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Systems",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Systems",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Systems",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Delta Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Delta Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Robotics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Robotics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Delta Systems",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Systems",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Labs",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Lumen Labs",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Retail",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Health",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Health",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Health",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Robotics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Robotics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Robotics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Foods",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cedar Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Summit Freight",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Summit Freight",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Summit Freight",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Logistics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Logistics",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Logistics",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Logistics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Logistics",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Foods",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Foods",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Financial",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Foods",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Foods",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Cobalt Foods",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Energy",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Atlas Energy",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Media",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Media",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Media",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Media",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Delta Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Delta Health",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Delta Health",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Delta Health",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Robotics",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Robotics",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Robotics",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Onyx Robotics",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Labs",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Labs",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Labs",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Labs",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Labs",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Labs",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Health",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Health",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Health",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Health",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Health",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Vertex Health",
+    "product": "Mobile",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Freight",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Freight",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Freight",
+    "product": "Security",
+    "is_won": true
+  },
+  {
+    "account": "Beacon Freight",
+    "product": "Compliance",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Retail",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Retail",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Retail",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Northwind Retail",
+    "product": "Integrations",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Energy",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Energy",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Financial",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Financial",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Meridian Financial",
+    "product": "Support",
+    "is_won": true
+  },
+  {
+    "account": "Harbor Foods",
+    "product": "Analytics",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Health",
+    "product": "Platform",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Health",
+    "product": "Automation",
+    "is_won": true
+  },
+  {
+    "account": "Pioneer Health",
+    "product": "Integrations",
+    "is_won": true
+  }
+]

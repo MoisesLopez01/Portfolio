@@ -126,7 +126,7 @@ C4Dynamic
 
 ## Output Location
 
-Architecture documentation is written to `docs/architecture/` with this naming convention:
+Architecture documentation is written to `ps-dashboard/docs/architecture/` with this naming convention:
 
 - `c4-context.md` - System context diagram
 - `c4-containers.md` - Container diagram

@@ -4,7 +4,7 @@
 //              Data readers, metric engines, doGet, getCompReportData.
 // VERSION:     1.2.0
 // ENVIRONMENT: Google Apps Script
-// SPEC:        docs/superpowers/specs/2026-07-21-comp-health-dashboard-design.md
+// SPEC:        CompDash/docs/specs/2026-07-21-comp-health-dashboard-design.md
 // V3 (2026-07-27): managers, verdicts, forecast, financial impact, RAG config —
 //              spec 2026-07-27-compdash-v3-exec-feedback-design.md
 //

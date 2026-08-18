@@ -5,3 +5,6 @@ package-lock.json
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+
+# Brainstorming visual-companion session files
+.superpowers/
