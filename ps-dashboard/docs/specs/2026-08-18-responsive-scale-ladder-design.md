@@ -57,7 +57,14 @@ centralizes the visible type tiers. Every tier there becomes `calc(Npx * var(--s
 
 - `main { max-width: calc(1600px * var(--scale)); }` — identical at laptop (scale 1);
   ~2048px at 1920, ~2240px at 2560, ~2400px at 3440.
-- `.kpi-grid` minmax → `calc(220px * var(--scale))`.
+- `.kpi-grid` → `repeat(auto-fit, minmax(220px, 1fr))` — min deliberately
+  **unscaled** and `auto-fit`, not `auto-fill`. **Amendment 2026-08-18** (QA
+  screenshot): scaling the min grew it as fast as the container, so the track
+  count never increased and the last KPI card orphaned onto a second row. An
+  unscaled min converts gained width into more columns; `auto-fit` collapses the
+  spare empty columns so a full KPI set stretches into ONE row on wide screens.
+  Multi-row layouts on narrower screens are unchanged (auto-fit collapses only
+  fully empty columns).
 - `.perf-grid` minmax → `calc(280px * var(--scale))` (its base), widened by the ladder
   instead of the old hand-tuned 310px notch.
 - The existing `@media (min-width: 1440px)` typography block (body 16px + `.perf-grid` /
