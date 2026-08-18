@@ -744,6 +744,9 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-seg button { border: none; background: transparent; color: var(--slate); font-size: 11px; font-weight: 700;
   padding: 4px 10px; cursor: pointer; }
 .pr-seg button.on { background: var(--void); color: #fff; }
+.pr-seg-sm { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; align-self: center; }
+.pr-seg-sm button { border: none; background: transparent; color: var(--slate); font-size: 10px; font-weight: 700; padding: 4px 8px; cursor: pointer; }
+.pr-seg-sm button.on { background: var(--void); color: #fff; }
 /* Bounded scroll region: the ONLY way sticky headers work inside a table that
    also scrolls horizontally — the thead sticks to this container's top edge
    while rows scroll under it in both axes. */
@@ -3290,7 +3293,7 @@ function renderPerfRecordTab_(filteredOpt) {
     granCtl.innerHTML = [['week', 'Weekly'], ['month', 'Monthly'], ['quarter', 'Quarterly']]
       .map(function(o) {
         return '<button class="' + (STATE.prGranularity === o[0] ? 'on' : '') + '" ' +
-          'onclick="STATE.prGranularity=\'' + o[0] + '\';renderPerfRecordTab_()">' + o[1] + '</button>';
+          'onclick="prSetGran_(\'' + o[0] + '\')">' + o[1] + '</button>';
       }).join('');
   }
   var emps = (filteredOpt || getFilteredEmployees());
@@ -3322,7 +3325,7 @@ function renderPerfRecordTab_(filteredOpt) {
 
   var html = perfKpisHtml_(rows) +
     '<table class="pr-table"><thead><tr>' +
-    th('name', 'Rocketeer') + th('flags', '⚑') +
+    th('name', 'Rocketeer') +
     cols.map(function(c) { return th(c.id, c.label); }).join('') +
     '</tr></thead><tbody>';
 
@@ -3340,14 +3343,14 @@ function renderPerfRecordTab_(filteredOpt) {
     var chipsHtml = r.chips.map(function(c) {
       return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
     }).join('');
-    html += '<tr class="pr-row' + (open ? ' sel' : '') + '" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
+    // ⚑ count column removed (user 2026-08-18 — "guide by the score"): the flag
+    // summary lives on as the row/name tooltip, 🔥 moves beside the name, and the
+    // KPI cards keep the aggregate counts.
+    html += '<tr class="pr-row' + (open ? ' sel' : '') + '" title="' + esc(perfFlagTip_(r.cells)) + '" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
       '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + '</span>' +
+        (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') +
         '<br><span class="pr-sub">' + esc(subLine) + '</span>' +
         (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
-      '<td title="' + esc(perfFlagTip_(r.cells)) + '">' + (r.reds ? '<span class="pr-dot r"></span>' + r.reds : '') +
-               (r.yellows ? ' <span class="pr-dot y"></span>' + r.yellows : '') +
-               (!r.reds && !r.yellows ? '—' : '') +
-               (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') + '</td>' +
       r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join('') +
       '</tr>';
   });
@@ -3369,6 +3372,13 @@ function togglePerfDrill_(normName) {
 function closePerfPanel_() {
   if (STATE.prExpanded === null) return;
   STATE.prExpanded = null;
+  renderPerfRecordTab_();
+  renderPerfPanel_();
+}
+// Granularity is ONE state shared by grid and panel — every switch re-renders
+// both, whether it came from the page header or the panel's own W/M/Q control.
+function prSetGran_(g) {
+  STATE.prGranularity = g;
   renderPerfRecordTab_();
   renderPerfPanel_();
 }
@@ -3723,6 +3733,12 @@ function perfDrillHtml_(emp, row, model) {
   }).join('');
   return '<div class="pr-drill" id="prDrillCard">' +
     '<div class="pr-drill-actions">' +
+      '<span class="pr-seg pr-seg-sm">' + [['week', 'W'], ['month', 'M'], ['quarter', 'Q']].map(function(o) {
+        return '<button class="' + (STATE.prGranularity === o[0] ? 'on' : '') + '" title="' +
+          (o[0] === 'week' ? 'Weekly — last 8 closed weeks + current, week-by-week detail'
+           : o[0] === 'month' ? 'Monthly — pacing view' : 'Quarterly — macro trend + KPI blocks') + '"' +
+          ' onclick="event.stopPropagation();prSetGran_(\'' + o[0] + '\')">' + o[1] + '</button>';
+      }).join('') + '</span>' +
       '<button class="copy-btn" title="Save this card as PNG" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📸</button>' +
       '<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</button>' +
       '<button class="copy-btn" title="Close (Esc)" onclick="event.stopPropagation();closePerfPanel_()">✕</button>' +
