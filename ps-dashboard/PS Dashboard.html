@@ -3878,7 +3878,10 @@ function perfWeekIsEmpty_(rk) {
 
 // Aggregates one bucket of weekly computeRkScore rows into per-metric values.
 // weekRows: [{ label, rk }] — rk may be null (no week data at all).
-function perfBucketAgg_(weekRows) {
+// graceLabels (optional): { weekLabel: true } — quarter-start grace weeks (spec
+// v3 §B2). A non-compliant grace week is treated as NO goals data (grace never
+// penalizes); a compliant one counts normally (grace never withholds credit).
+function perfBucketAgg_(weekRows, graceLabels) {
   var rows = weekRows.filter(function(r) { return r.rk && !perfWeekIsEmpty_(r.rk); });
   function avg(field) {
     var v = rows.map(function(r) { return r.rk[field]; })
@@ -3897,7 +3900,10 @@ function perfBucketAgg_(weekRows) {
     }
     return null;
   }
-  var goalsRows = rows.filter(function(r) { return r.rk.goalsHasData; });
+  var goalsRows = rows.filter(function(r) {
+    if (!r.rk.goalsHasData) return false;
+    return !(graceLabels && graceLabels[r.label] && !r.rk.goalsOk);
+  });
   var goalsCompliant = goalsRows.filter(function(r) { return r.rk.goalsOk; }).length;
   return {
     weeks:          rows.length,
@@ -4046,8 +4052,9 @@ function perfThresholdTip_(metricId, cohort, val) {
   var barName = (metricId === 'score' || metricId === 'rcr' || metricId === 'si') ? 'target'
               : (cohort === 'mgr' ? 'manager bar' : 'IC bar');
   var head = name + ' ' + vTxt + (metricId === 'tracked' ? ' of target' : '');
-  if (b.y === -Infinity) return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · below is yellow · never red';
-  return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · yellow ≥' + f(b.y) + ' · below is red';
+  var graceNote = metricId === 'goals' ? ' · quarter-start grace weeks count only when compliant' : '';
+  if (b.y === -Infinity) return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · below is yellow · never red' + graceNote;
+  return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · yellow ≥' + f(b.y) + ' · below is red' + graceNote;
 }
 
 // CSV encoder (RFC 4180): quotes fields containing commas/quotes/newlines.
@@ -4083,6 +4090,13 @@ function perfModel_() {
   var memoKey = gran + '|' + STATE.activeTeam + '|' + ((DATA.meta && DATA.meta.generatedAt) || '');
   if (_perfModelMemo.key === memoKey) return _perfModelMemo.model;
   var buckets = perfBucketsFor_(gran);
+  // Grace weeks = first N weeks of every quarter bucket (spec v3 §B2) — mirrors
+  // the backend's CONFIG_PS.GOALS_GRACE_DAYS (21 days ≈ 3 ISO weeks).
+  var PERF_GOALS_GRACE_WEEKS = 3;
+  var graceLabels = {};
+  periodBucketsForEmp_('quarter').forEach(function(qb) {
+    (qb.weekLabels || []).slice(0, PERF_GOALS_GRACE_WEEKS).forEach(function(l) { graceLabels[l] = true; });
+  });
   // Dot/trend read the last two CLOSED buckets (spec §5) — precompute indices.
   var closedIdx = [];
   buckets.forEach(function(b, i) { if (!b.containsCurrent) closedIdx.push(i); });
@@ -4096,7 +4110,7 @@ function perfModel_() {
     model.byEmp[emp.normName] = buckets.map(function(b) {
       return perfBucketAgg_(b.weekLabels
         .filter(function(l) { return emp.weeks && emp.weeks[l]; })
-        .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }));
+        .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }), graceLabels);
     });
   });
   _perfModelMemo = { key: memoKey, model: model };
