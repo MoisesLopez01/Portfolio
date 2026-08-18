@@ -44,7 +44,18 @@
   --input-bg:  #fff;
   --hover-row: #FAFBFF;
   --th-bg:     #F8FAFC;
+
+  /* Fluid type/space scale — the typography-lift tiers and the ≥1024px chrome
+     block multiply this token, so laptops and ultrawide screens get visibly
+     bigger text and controls instead of a fixed column floating in margin. */
+  --scale: 1;
 }
+@media(max-width:420px){:root{--scale:.94}}
+@media(min-width:1024px){:root{--scale:1.08}}
+@media(min-width:1440px){:root{--scale:1.16}}
+@media(min-width:1920px){:root{--scale:1.28}}
+@media(min-width:2560px){:root{--scale:1.4}}
+@media(min-width:3440px){:root{--scale:1.5}}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
        background: var(--surface); color: var(--text); font-size: 14px; }
