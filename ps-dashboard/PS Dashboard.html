@@ -1492,6 +1492,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
          the KPI cards squeezed on wide screens. -->
     <div id="kpiBanner"></div>
     <div class="kpi-grid" id="kpiGrid"></div>
+    <div id="kpiNotes"></div>
 
     <!-- TEAM SUMMARY TABLE -->
     <div class="section-card" id="summarySectionCard">
@@ -4138,6 +4139,24 @@ function perfThresholdTip_(metricId, cohort, val) {
   return head + ' — ' + barName + ': green ≥' + f(b.g) + ' · yellow ≥' + f(b.y) + ' · below is red' + graceNote;
 }
 
+// Exception report (side-panel wave): per-metric week stats become actionable
+// lines — the manager reads the misses instead of scanning rows of green.
+// entries: [{ label, total, ok, missWord, missed: ['2026.W08', …] }]. Metrics
+// with nothing missed (or nothing evaluated) produce no line; `cap` bounds how
+// many misses are named, the rest fold into "+n more".
+function perfExceptionReport_(entries, cap) {
+  cap = cap || 4;
+  var lines = [];
+  (entries || []).forEach(function(e) {
+    if (!e || !e.total) return;
+    if (e.ok >= e.total) return;
+    var named = (e.missed || []).slice(0, cap).join(', ');
+    var extra = (e.missed || []).length > cap ? ' +' + ((e.missed || []).length - cap) + ' more' : '';
+    lines.push(e.label + ': ' + e.ok + ' of ' + e.total + ' weeks — ' + e.missWord + ' ' + named + extra);
+  });
+  return lines;
+}
+
 // CSV encoder (RFC 4180): quotes fields containing commas/quotes/newlines.
 function perfCsvEncode_(rows) {
   return rows.map(function(row) {
@@ -6357,13 +6376,15 @@ function renderKPIs(m, filtered, filtering) {
     : ("Team: " + DATA.headcount + " total" +
        (m.rampUpCount > 0 ? " · " + m.activeCount + " active · " + m.rampUpCount + " in ramp-up" : ""));
   teamCtx += timeScopeNote_(filtered, " · ");
-  html += '<div class="kpi-team-note">' + esc(teamCtx) + '</div>';
-
+  // Notes render BELOW the grid, never inside it — same ghost-track rule as the
+  // banner: a full-span (1/-1) grid child occupies auto-fit's empty tracks and
+  // stops them collapsing, so the KPI cards can't widen on ultra-wide screens.
+  var notes = '<div class="kpi-team-note">' + esc(teamCtx) + '</div>';
   if (isCrewMode) {
-    html += '<p class="kpi-filtered-note">Crew view · RCR shows avg of individual values (not SUM(RC)/SUM(TCC))' +
+    notes += '<p class="kpi-filtered-note">Crew view · RCR shows avg of individual values (not SUM(RC)/SUM(TCC))' +
       (filtering ? ' · filtered subset' : '') + '</p>';
   } else if (filtering) {
-    html += '<p class="kpi-filtered-note">Filtered view · RCR shows avg of individual values · tracking-mandated rocketeers only</p>';
+    notes += '<p class="kpi-filtered-note">Filtered view · RCR shows avg of individual values · tracking-mandated rocketeers only</p>';
   }
 
   // Education banner — explains what the weekly KPIs compare
@@ -6387,7 +6408,9 @@ function renderKPIs(m, filtered, filtering) {
   // then can't widen into the free space on ultra-wide screens).
   var bannerEl = document.getElementById("kpiBanner");
   if (bannerEl) bannerEl.innerHTML = kpiBanner;
-  document.getElementById("kpiGrid").innerHTML = (bannerEl ? '' : kpiBanner) + html;
+  var notesEl = document.getElementById("kpiNotes");
+  if (notesEl) notesEl.innerHTML = notes;
+  document.getElementById("kpiGrid").innerHTML = (bannerEl ? '' : kpiBanner) + html + (notesEl ? '' : notes);
 }
 
 // ── TEAM TABLE ────────────────────────────────────────────

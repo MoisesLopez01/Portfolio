@@ -160,6 +160,21 @@ ck('tip kudos never red', perfThresholdTip_('kudos', 'ic', { recv: 1, gave: 0 })
 ck('tip pto', perfThresholdTip_('pto', 'ic', 0) === 'PTO At Risk — Good = green · At Risk = red');
 ck('tip no data', perfThresholdTip_('tracked', 'ic', null) === 'Tracked — no data');
 
+// ── v3.1: exception report (spec 2026-08-18 side-panel wave) ─────────────────
+const exLines = perfExceptionReport_([
+  { label: 'Goals',   total: 34, ok: 33, missWord: 'missed',    missed: ['2026.W08'] },
+  { label: 'Tracked', total: 33, ok: 27, missWord: 'below bar', missed: ['2026.W20', '2026.W21', '2026.W22', '2026.W23', '2026.W24', '2026.W25'] },
+  { label: 'PTO',     total: 33, ok: 33, missWord: 'At Risk',   missed: [] },
+], 4);
+ck('exception: 2 lines (all-ok metric skipped)', exLines.length === 2);
+ck('exception: goals line exact',
+   exLines[0] === 'Goals: 33 of 34 weeks — missed 2026.W08');
+ck('exception: cap at 4 named +2 more',
+   exLines[1] === 'Tracked: 27 of 33 weeks — below bar 2026.W20, 2026.W21, 2026.W22, 2026.W23 +2 more');
+ck('exception: empty entries → []', perfExceptionReport_([], 4).length === 0);
+ck('exception: zero-total entry skipped',
+   perfExceptionReport_([{ label: 'Goals', total: 0, ok: 0, missWord: 'missed', missed: [] }], 4).length === 0);
+
 // ── perfCsvEncode_ ───────────────────────────────────────────────────────────
 ck('csv quotes commas',  perfCsvEncode_([['a,b', 'c']]) === '"a,b",c');
 ck('csv escapes quotes', perfCsvEncode_([['say "hi"']]) === '"say ""hi"""');
