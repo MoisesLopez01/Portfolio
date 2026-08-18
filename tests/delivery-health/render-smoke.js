@@ -2464,8 +2464,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "sanity: Ana's Overall cell is the graded (bad) one under test");
   assert_(anaOverallCell.indexOf("%") === -1,
           "the Overall cell of a graded row contains no % character — no fabricated 0%");
-  assert_(anaOverallCell.indexOf("missing") !== -1,
-          "…but still states its miss count, which IS real");
+  // ── No miss count on Overall either (user 2026-08-18) ─────────────────────
+  // This cell USED to print "· N missing", where N summed the per-field misses
+  // — one ticket missing two fields counted twice, so managers read "67
+  // missing" as 67 tickets. The verdict dot stays; the count survives in the
+  // sort and the CSV, and the per-field cells keep printing theirs, where the
+  // column header supplies the noun.
+  assert_(anaOverallCell.indexOf("missing") === -1,
+          "the Overall cell prints the dot only — its summed miss count read as a ticket total");
+  assert_(anaRow.indexOf("missing") !== -1,
+          "…while the per-field cells still state their own real miss counts");
 
   // The click guard in setRosterSort_ only protects CLICKS. STATE.rosterSort
   // can still be set directly — a test, or a future deep-link reader — to a

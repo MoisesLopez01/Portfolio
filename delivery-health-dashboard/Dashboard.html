@@ -8061,7 +8061,12 @@ function renderRoster_() {
           piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 26)) + "</div>" : "") + "</td>" +
       // Cell order must match ROSTER_COLS_ key order EXACTLY. Overall moved to
       // second position (2026-08-17) in both places at once; plan remains last.
-      sigCellHtml_({ cls: r.overall, pct: null, miss: r.miss }) +
+      // miss: 0 ON PURPOSE (user 2026-08-18). r.miss sums the per-field misses,
+      // so one ticket missing two fields counts twice — managers read "67
+      // missing" as 67 tickets. The sum still drives the opportunity sort and
+      // the CSV; it is only no longer printed without a noun. The per-field
+      // cells keep their own counts, where the column header is the noun.
+      sigCellHtml_({ cls: r.overall, pct: null, miss: 0 }) +
       '<td class="tnum">' + r.n + "</td>" +
       sigCellHtml_(r.sig.due) + sigCellHtml_(r.sig.est) + sigCellHtml_(r.sig.logged) +
       sigCellHtml_(r.sig.link) + sigCellHtml_(r.sig.bill) + sigCellHtml_(r.sig.start) +
