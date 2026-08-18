@@ -6030,15 +6030,15 @@ function renderCorrelationCharts(filtered) {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         scales: {
-          x: { ticks: { font: { size: 9 }, color: ct.tick, maxRotation: 45 }, grid: { color: ct.grid } },
+          x: { ticks: { font: { size: csz_(9) }, color: ct.tick, maxRotation: 45 }, grid: { color: ct.grid } },
           y: { min: 0, max: 100,
-            ticks: { font: { size: 9 }, color: ct.tick, callback: function(v) { return v + "%"; }, stepSize: 25 },
+            ticks: { font: { size: csz_(9) }, color: ct.tick, callback: function(v) { return v + "%"; }, stepSize: 25 },
             grid: { color: ct.grid },
-            title: { display: true, text: "% of FTE team", font: { size: 9 }, color: ct.legendText }
+            title: { display: true, text: "% of FTE team", font: { size: csz_(9) }, color: ct.legendText }
           }
         },
         plugins: {
-          legend: { position: "top", align: "end", labels: { font: { size: 10 }, color: ct.legendText, boxWidth: 14, padding: 8 } },
+          legend: { position: "top", align: "end", labels: { font: { size: csz_(10) }, color: ct.legendText, boxWidth: 14, padding: 8 } },
           tooltip: {
             backgroundColor: "#0F1941", titleColor: "#fff", bodyColor: "#94a3b8", padding: 8,
             callbacks: {
@@ -7963,11 +7963,11 @@ function buildRadarChart(canvasId, groups, activeAxes, refDataset) {
       scales: {
         r: {
           min: 0, max: 100,
-          ticks: { stepSize: 25, font: { size: 10 }, color: ct.tick, backdropColor: "transparent" },
+          ticks: { stepSize: 25, font: { size: csz_(10) }, color: ct.tick, backdropColor: "transparent" },
           grid:        { color: ct.grid },
           angleLines:  { color: ct.grid },
           pointLabels: {
-            font: { size: 11, weight: "700" },
+            font: { size: csz_(11), weight: "700" },
             color: function(ctx3) {
               var ax = activeAxes[ctx3.index];
               if (ax && ax.id === 'goals' && visible[0]) {
@@ -7982,7 +7982,7 @@ function buildRadarChart(canvasId, groups, activeAxes, refDataset) {
       plugins: {
         legend: {
           position: "bottom",
-          labels: { font: { size: 11 }, padding: 14, usePointStyle: true, pointStyle: "circle", color: ct.legendText },
+          labels: { font: { size: csz_(11) }, padding: 14, usePointStyle: true, pointStyle: "circle", color: ct.legendText },
         },
         tooltip: {
           callbacks: {
@@ -9564,13 +9564,13 @@ function renderGoalsStanding(filtered) {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 30 } },
       scales: {
-        x: { ticks: { font: { size: 10 }, color: ct.tick }, grid: { display: false } },
+        x: { ticks: { font: { size: csz_(10) }, color: ct.tick }, grid: { display: false } },
         y: {
           min: 0,
           suggestedMax: Math.max(TARGET_PACE + 2, maxVal + 1.5),
-          ticks: { font: { size: 10 }, color: ct.tick, stepSize: 2 },
+          ticks: { font: { size: csz_(10) }, color: ct.tick, stepSize: 2 },
           grid: { color: ct.grid },
-          title: { display: true, text: "avg comments / person / week", font: { size: 10 }, color: ct.legendText }
+          title: { display: true, text: "avg comments / person / week", font: { size: csz_(10) }, color: ct.legendText }
         }
       },
       plugins: {
@@ -9594,7 +9594,7 @@ function renderGoalsStanding(filtered) {
             var hc = computeWeekHeadcount_(h);
             return v.toFixed(1) + (hc > 0 ? " (" + hc + ")" : "");
           },
-          font: { size: 12, weight: "700" },
+          font: { size: csz_(12), weight: "700" },
           color: function(ctx) {
             var c = ctx.dataset.backgroundColor[ctx.dataIndex] || "#64748b";
             return c.replace(/[\d.]+\)$/, "1)"); // full opacity for label
@@ -9981,15 +9981,15 @@ function renderPTOTrend(filtered) {
         responsive: true, maintainAspectRatio: false,
         layout: { padding: { top: 46 } },
         scales: {
-          x: { stacked: true, ticks: { font: { size: 10 }, color: ct.tick, maxRotation: 45 }, grid: { display: false } },
+          x: { stacked: true, ticks: { font: { size: csz_(10) }, color: ct.tick, maxRotation: 45 }, grid: { display: false } },
           y: { stacked: true, min: 0,
-            ticks: { font: { size: 10 }, color: ct.tick, stepSize: 1, precision: 0 },
+            ticks: { font: { size: csz_(10) }, color: ct.tick, stepSize: 1, precision: 0 },
             grid: { color: ct.grid },
-            title: { display: true, text: "headcount", font: { size: 10 }, color: ct.legendText }
+            title: { display: true, text: "headcount", font: { size: csz_(10) }, color: ct.legendText }
           }
         },
         plugins: {
-          legend: { position: "top", align: "end", labels: { font: { size: 11 }, color: ct.legendText, boxWidth: 14, padding: 12 } },
+          legend: { position: "top", align: "end", labels: { font: { size: csz_(11) }, color: ct.legendText, boxWidth: 14, padding: 12 } },
           tooltip: {
             backgroundColor: "#0F1941", titleColor: "#fff", bodyColor: "#94a3b8", padding: 10,
             callbacks: {
@@ -10013,7 +10013,7 @@ function renderPTOTrend(filtered) {
               return pct + "\n" + d.good + " ✓  " + d.atRisk + " ⚠";
             },
             anchor: "end", align: "top", offset: 4,
-            font: { size: 10, weight: "700" }, color: "#fff",
+            font: { size: csz_(10), weight: "700" }, color: "#fff",
             backgroundColor: function(ctx) {
               var d = weekData[ctx.dataIndex];
               if (!d || d.pct === null) return "#64748b";
@@ -10299,23 +10299,23 @@ function renderPlannedVsTracked(filtered) {
       interaction: { intersect: false, mode: "index" },
       scales: {
         x: {
-          ticks: { font: { size: 10 }, color: ct.tick, maxRotation: 0 },
+          ticks: { font: { size: csz_(10) }, color: ct.tick, maxRotation: 0 },
           grid: { display: false }
         },
         y: {
           beginAtZero: true,
           ticks: {
-            font: { size: 10 }, color: ct.tick,
+            font: { size: csz_(10) }, color: ct.tick,
             callback: function(v) { return v.toLocaleString(); }
           },
           grid: { color: ct.grid },
-          title: { display: true, text: "hrs", font: { size: 10 }, color: ct.tick }
+          title: { display: true, text: "hrs", font: { size: csz_(10) }, color: ct.tick }
         }
       },
       plugins: {
         legend: {
           position: "top", align: "end",
-          labels: { font: { size: 11 }, color: ct.legendText, boxWidth: 14, padding: 12 }
+          labels: { font: { size: csz_(11) }, color: ct.legendText, boxWidth: 14, padding: 12 }
         },
         tooltip: {
           backgroundColor: "#0F1941", titleColor: "#fff", bodyColor: "#94a3b8", padding: 10,
@@ -10339,7 +10339,7 @@ function renderPlannedVsTracked(filtered) {
           formatter: function(v, c) { return ratioData[c.dataIndex] + "%" + (fullHist[c.dataIndex].isCurrentWeek ? "*" : ""); },
           anchor: "end", align: "top", offset: 2,
           color: function(c) { return fidColor_(ratioData[c.dataIndex]); },
-          font: { size: 9, weight: "700" }
+          font: { size: csz_(9), weight: "700" }
         }
       }
     }
@@ -10495,11 +10495,11 @@ function renderTrendsTab() {
           responsive: true, maintainAspectRatio: false,
           layout: { padding: { top: 30 } },
           scales: {
-            x: { ticks: { font: { size: 11 }, color: ct.tick }, grid: { display: false } },
+            x: { ticks: { font: { size: csz_(11) }, color: ct.tick }, grid: { display: false } },
             y: { min: 0,
-              ticks: { font: { size: 10 }, color: ct.tick },
+              ticks: { font: { size: csz_(10) }, color: ct.tick },
               grid: { color: ct.grid },
-              title: { display: true, text: "RCR", font: { size: 10 }, color: ct.legendText }
+              title: { display: true, text: "RCR", font: { size: csz_(10) }, color: ct.legendText }
             }
           },
           plugins: {
@@ -10518,7 +10518,7 @@ function renderTrendsTab() {
             datalabels: {
               anchor: "end", align: "top",
               formatter: function(v) { return v.toFixed(2); },
-              font: { size: 13, weight: "700" },
+              font: { size: csz_(13), weight: "700" },
               color: ct.dataLabel,
               padding: { top: 6, bottom: 0, left: 2, right: 2 },
               clamp: false,
@@ -10871,6 +10871,18 @@ function _chartTheme() {
     dataLabel:  dark ? '#FFFAF5' : '#0F1941',
     legendText: dark ? '#94A3B8' : '#64748b',
   };
+}
+
+/**
+ * Chart font size scaled by the CSS --scale ladder. Sizes bind at chart build
+ * time; charts rebuild on tab switch / renderAll, so crossing a breakpoint
+ * mid-session updates on the next render (deliberate — no resize plumbing).
+ * Falls back to 1 when the variable is missing (stripped-CSS contexts:
+ * html2canvas export clone, tests).
+ */
+function csz_(n) {
+  var s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--scale')) || 1;
+  return Math.round(n * s);
 }
 
 function toggleDarkMode() {
