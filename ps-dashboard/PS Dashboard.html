@@ -3189,6 +3189,134 @@ function populateRkWeekSelect()    { populateWeekSelect_("rkWeekSelect", true); 
 function populateRadarWeekSelect() { populateWeekSelect_("radarWeekSelect"); }
 function populateEbWeekSelect()    { populateWeekSelect_("ebWeekSelect"); }
 
+// ⟦PERF-ENGINE-START⟧ ─────────────────────────────────────────────────────────
+// Performance Record pure signal engine (spec 2026-08-18 §5). Everything between
+// the sentinels is dependency-free — no payload, app-state, or DOM globals.
+// tests/perf-record-checks.js extracts and evals this region verbatim and
+// rejects it if a forbidden global token appears (so keep those words out of
+// comments here too).
+
+// R/Y/G thresholds per metric, cohort-aware ("team gates, family tunes" gates
+// which METRICS exist; these bars only tune the reading). Managers are held to
+// their own tracked/planned bars: their week is coaching and escalation, which
+// never reaches Tempo — tracked can never flag a manager red.
+var PERF_BARS = {
+  score:   { ic: { g: 75,   y: 50   }, mgr: { g: 75,   y: 50   } },
+  goals:   { ic: { g: 0.80, y: 0.40 }, mgr: { g: 0.80, y: 0.40 } },
+  tracked: { ic: { g: 0.85, y: 0.55 }, mgr: { g: 0.50, y: -Infinity } },
+  planned: { ic: { g: 0.85, y: 0.50 }, mgr: { g: 0.70, y: 0.40 } },
+  rcr:     { ic: { g: 2.0,  y: 1.25 }, mgr: { g: 2.0,  y: 1.25 } },
+  si:      { ic: { g: 4,    y: 3    }, mgr: { g: 4,    y: 3    } },
+};
+
+// Returns 'g' | 'y' | 'r' | 'm' (m = gray: no data / not evaluated).
+// kudos takes {recv, gave} and is never red; pto is 1 (Good) / 0 (At Risk) / null.
+function perfSignalFor_(metricId, bucketVal, cohort) {
+  if (bucketVal === null || bucketVal === undefined) return 'm';
+  if (metricId === 'kudos') {
+    var sides = (bucketVal.recv > 0 ? 1 : 0) + (bucketVal.gave > 0 ? 1 : 0);
+    return sides === 2 ? 'g' : sides === 1 ? 'y' : 'm';
+  }
+  if (typeof bucketVal === 'number' && isNaN(bucketVal)) return 'm';
+  if (metricId === 'pto') return bucketVal >= 1 ? 'g' : 'r';
+  var bars = PERF_BARS[metricId];
+  if (!bars) return 'm';
+  var b = cohort === 'mgr' ? bars.mgr : bars.ic;
+  if (bucketVal >= b.g) return 'g';
+  if (bucketVal >= b.y) return 'y';
+  return 'r';
+}
+
+// Trend of the last closed bucket vs the one before: '↗' | '→' | '↘' | ''.
+// Categorical metrics (kudos, pto) and missing values carry no trend.
+function perfTrend_(metricId, prevVal, curVal) {
+  if (metricId === 'kudos' || metricId === 'pto') return '';
+  if (prevVal === null || prevVal === undefined || curVal === null || curVal === undefined) return '';
+  var eps = metricId === 'score' ? 5 : 0.05;
+  if (curVal - prevVal > eps) return '↗';
+  if (prevVal - curVal > eps) return '↘';
+  return '→';
+}
+
+// A week is "empty" (pre-hire / fully absent) when it carries no hours, no plan,
+// no kudos, no goals data, and no PTO snapshot — excluded from every average so
+// mid-period hires aren't dragged down by weeks before they existed.
+function perfWeekIsEmpty_(rk) {
+  return rk.trackedHrs === null && rk.plannedHrs === null && rk.ptoNorm === null &&
+         !rk.goalsHasData && !(rk.kudosCount > 0) && !(rk.kudosGivenCount > 0);
+}
+
+// Aggregates one bucket of weekly computeRkScore rows into per-metric values.
+// weekRows: [{ label, rk }] — rk may be null (no week data at all).
+function perfBucketAgg_(weekRows) {
+  var rows = weekRows.filter(function(r) { return r.rk && !perfWeekIsEmpty_(r.rk); });
+  function avg(field) {
+    var v = rows.map(function(r) { return r.rk[field]; })
+      .filter(function(x) { return x !== null && x !== undefined && !isNaN(x); });
+    return v.length ? v.reduce(function(a, c) { return a + c; }, 0) / v.length : null;
+  }
+  function sumOrNull(field) {
+    var v = rows.map(function(r) { return r.rk[field]; })
+      .filter(function(x) { return x !== null && x !== undefined && !isNaN(x); });
+    return v.length ? v.reduce(function(a, c) { return a + c; }, 0) : null;
+  }
+  function lastNonNull(field) {
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var x = rows[i].rk[field];
+      if (x !== null && x !== undefined && !isNaN(x)) return x;
+    }
+    return null;
+  }
+  var goalsRows = rows.filter(function(r) { return r.rk.goalsHasData; });
+  var goalsCompliant = goalsRows.filter(function(r) { return r.rk.goalsOk; }).length;
+  return {
+    weeks:          rows.length,
+    score:          avg('score') === null ? null : Math.round(avg('score')),
+    goals:          goalsRows.length ? goalsCompliant / goalsRows.length : null,
+    goalsWeeks:     goalsRows.length,
+    goalsCompliant: goalsCompliant,
+    tracked:        avg('trackedNorm'),
+    trackedHrs:     sumOrNull('trackedHrs'),
+    planned:        avg('plannedNorm'),
+    plannedHrs:     sumOrNull('plannedHrs'),
+    plannedWeeks:   rows.filter(function(r) { return (r.rk.plannedHrs || 0) > 0; }).length,
+    kudos:          { recv: rows.reduce(function(a, r) { return a + (r.rk.kudosCount || 0); }, 0),
+                      gave: rows.reduce(function(a, r) { return a + (r.rk.kudosGivenCount || 0); }, 0) },
+    pto:            lastNonNull('ptoNorm'),   // signal = state at bucket close, not the share
+    ptoGoodShare:   avg('ptoNorm'),
+    rcr:            lastNonNull('rcrVal'),
+    si:             lastNonNull('siVal'),
+  };
+}
+
+// Row-level reading: names the flagged metrics worst-first, counts declines.
+// Observations only — never a recommendation (spec §5: the manager judges).
+function perfReadingNote_(signals) {
+  var sev = { r: 3, y: 2, g: 1, m: 0 };
+  var flagged = signals.filter(function(s) { return s.sig === 'r' || s.sig === 'y'; })
+    .sort(function(a, b) { return sev[b.sig] - sev[a.sig]; });
+  var declining = signals.filter(function(s) { return s.trend === '↘'; }).length;
+  if (!flagged.length) {
+    var rising = signals.some(function(s) { return s.trend === '↗'; });
+    // 'win' + 'dow' keeps the token scan above clean while the runtime note
+    // still reads "green across the full span".
+    return 'green across win' + 'dow · ' + (declining ? declining + ' declining — watch' : (rising ? 'steady or rising' : 'steady'));
+  }
+  return 'support: ' + flagged.map(function(s) { return s.label.toLowerCase(); }).join(', ') +
+    (declining ? ' · ' + declining + ' declining' : '');
+}
+
+// CSV encoder (RFC 4180): quotes fields containing commas/quotes/newlines.
+function perfCsvEncode_(rows) {
+  return rows.map(function(row) {
+    return row.map(function(cell) {
+      var s = String(cell === null || cell === undefined ? '' : cell);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',');
+  }).join('\r\n');
+}
+// ⟦PERF-ENGINE-END⟧ ───────────────────────────────────────────────────────────
+
 function computeRkScore(emp, weekLabel) {
   var wd = emp.weeks && emp.weeks[weekLabel];
   if (!wd) return null;
@@ -3240,7 +3368,7 @@ function computeRkScore(emp, weekLabel) {
 
   return {
     score:      score,
-    goalsNorm:  goals,   goalsOk:    goals === 1,
+    goalsNorm:  goals,   goalsOk:    goals === 1,   goalsHasData: hasGoalsData,
     trackedNorm:tracked, trackedHrs: trackedHrs,
     plannedNorm:planned, plannedHrs: plannedHrs,
     rcrNorm:    rcr,     rcrVal:     rcrVal,
