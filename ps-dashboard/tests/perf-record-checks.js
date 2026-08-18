@@ -165,5 +165,64 @@ ck('csv quotes commas',  perfCsvEncode_([['a,b', 'c']]) === '"a,b",c');
 ck('csv escapes quotes', perfCsvEncode_([['say "hi"']]) === '"say ""hi"""');
 ck('csv joins rows with CRLF', perfCsvEncode_([['a'], ['b']]) === 'a\r\nb');
 
+// ── v3: perfFlagTip_ ─────────────────────────────────────────────────────────
+function mkCell(label, sig, notEval) { return { col: { id: label.toLowerCase(), label: label }, sig: sig, notEval: !!notEval }; }
+ck('flagTip red+yellow mix', typeof perfFlagTip_ === 'function' &&
+   perfFlagTip_([mkCell('Tracked','r'), mkCell('Goals','r'), mkCell('PTO','y')]) ===
+   'Red: Tracked, Goals · Yellow: PTO — hover each signal for its value vs target');
+ck('flagTip reds only', typeof perfFlagTip_ === 'function' &&
+   perfFlagTip_([mkCell('Tracked','r'), mkCell('Goals','g')]) ===
+   'Red: Tracked — hover each signal for its value vs target');
+ck('flagTip empty when clean', typeof perfFlagTip_ === 'function' &&
+   perfFlagTip_([mkCell('Goals','g'), mkCell('PTO','m')]) === '');
+ck('flagTip skips notEval', typeof perfFlagTip_ === 'function' &&
+   perfFlagTip_([mkCell('Tracked','r', true), mkCell('PTO','y')]) ===
+   'Yellow: PTO — hover each signal for its value vs target');
+
+// ── v3: perfTickStep_ ────────────────────────────────────────────────────────
+ck('tickStep n<=max → 1', typeof perfTickStep_ === 'function' && perfTickStep_(8, 10) === 1);
+ck('tickStep 26 → 3',     typeof perfTickStep_ === 'function' && perfTickStep_(26, 10) === 3);
+ck('tickStep 34 → 4',     typeof perfTickStep_ === 'function' && perfTickStep_(34, 10) === 4);
+ck('tickStep 0 → 1',      typeof perfTickStep_ === 'function' && perfTickStep_(0, 10) === 1);
+
+// ── v3: perfBucketAgg_ goals grace ───────────────────────────────────────────
+function mkGoalsRk(ok) {
+  return { score: 50, trackedHrs: null, plannedHrs: null, ptoNorm: null,
+           goalsHasData: true, goalsOk: ok, goalsNorm: ok ? 1 : 0,
+           kudosCount: 0, kudosGivenCount: 0, trackedNorm: 0, plannedNorm: 0,
+           rcrVal: null, siVal: null };
+}
+var graceRows = [ { label: '2026.W1', rk: mkGoalsRk(false) },
+                  { label: '2026.W2', rk: mkGoalsRk(true)  },
+                  { label: '2026.W5', rk: mkGoalsRk(false) } ];
+var gAgg = perfBucketAgg_(graceRows, { '2026.W1': true, '2026.W2': true });
+ck('grace non-compliant week excluded', gAgg.goalsWeeks === 2);
+ck('grace compliant week counted',      gAgg.goalsCompliant === 1);
+ck('post-grace red still counts',       gAgg.goals === 0.5);
+var gAggNone = perfBucketAgg_(graceRows);
+ck('no graceLabels → unchanged',        gAggNone.goalsWeeks === 3 && gAggNone.goalsCompliant === 1);
+
+// ── v3: perfRcrMonthKey_ ─────────────────────────────────────────────────────
+ck('rcrMonthKey Jul 25 → 2025-07', typeof perfRcrMonthKey_ === 'function' && perfRcrMonthKey_('Jul 25') === '2025-07');
+ck('rcrMonthKey Dec 26 → 2026-12', typeof perfRcrMonthKey_ === 'function' && perfRcrMonthKey_('Dec 26') === '2026-12');
+ck('rcrMonthKey case/space tolerant', typeof perfRcrMonthKey_ === 'function' && perfRcrMonthKey_('  jan 27 ') === '2027-01');
+ck('rcrMonthKey junk → null', typeof perfRcrMonthKey_ === 'function' && perfRcrMonthKey_('Total FY26') === null);
+
+// ── v3: goals grace tooltip ──────────────────────────────────────────────────
+ck('goals tip mentions grace', /grace weeks count only when compliant/.test(perfThresholdTip_('goals', 'ic', 0.5)));
+
+// ── v3: static markup/state assertions (whole file, not the engine eval) ─────
+ck('prFlaggedOnly fully removed', !/prFlaggedOnly/.test(html));
+ck('prFlaggedChip fully removed', !/prFlaggedChip/.test(html));
+ck('default sort = score desc',   /prSort:\s*\{ key: "score", dir: "desc" \}/.test(html));
+ck('KPI card row present',        html.indexOf('class="pr-kpis"') >= 0);
+ck('drill grid CSS present',      html.indexOf('.pr-drill-grid { display: grid; grid-template-columns: repeat(2, 1fr)') >= 0);
+ck('drill grid collapses ≤900',   /@media \(max-width: 900px\) \{ \.pr-drill-grid \{ grid-template-columns: 1fr; \} \}/.test(html));
+ck('PTO heat squares present',    html.indexOf('class="pr-heat ') >= 0);
+ck('print mode added',            html.indexOf("classList.add('pr-print')") >= 0);
+ck('print mode removed',          (html.match(/classList\.remove\('pr-print'\)/g) || []).length >= 2);
+ck('print mode CSS clamps width', /\.pr-drill\.pr-print \{ max-width: 820px/.test(html));
+ck('RCR monthly join wired',      html.indexOf('perfRcrMonthKey_(') >= 0 && /agg\.rcr = /.test(html));
+
 console.log((fail ? '❌ ' : '✅ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
