@@ -795,6 +795,18 @@ body.dark-mode .pr-table th { background: #16214A; }
 .pr-drill.pr-print { max-width: 820px; }
 .pr-drill.pr-print .pr-drill-grid { grid-template-columns: repeat(2, 1fr); }
 .pr-block.info h4 { color: var(--muted); }
+/* Exception report list + quarterly KPI blocks + kudos feed (side-panel wave) */
+.pr-exlist { margin: 4px 0 0 16px; padding: 0; font-size: 11.5px; line-height: 1.7; }
+.pr-kpibs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pr-kpib { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+  display: flex; flex-direction: column; align-items: flex-start; min-width: 84px; }
+.pr-kpib b { font-size: 17px; color: var(--void); white-space: nowrap; }
+.pr-kpib span:last-child { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.pr-feed { max-height: 280px; overflow-y: auto; margin-top: 4px; }
+.pr-feed-item { padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 11.5px; white-space: normal; }
+.pr-feed-item:last-child { border-bottom: none; }
+body.dark-mode .pr-kpib { border-color: #2B3A78; }
+body.dark-mode .pr-kpib b { color: #FFFAF5; }
 .pr-drill h4 { margin: 10px 0 4px; font-size: 11px; }
 .pr-drill table { border-collapse: collapse; }
 .pr-drill td, .pr-drill th { padding: 2px 12px 2px 0; font-size: 11px; text-align: left; border: none; }
@@ -3520,13 +3532,119 @@ function perfDrillHtml_(emp, row, model) {
       bodyHtml + '</div>' });
   }
 
-  if (cellByCol.tracked) {
+  var gran = STATE.prGranularity;
+
+  // ── Exception report (always first, sev 4): the misses across the FULL
+  // closed window, named — the manager never scans a wall of green. Evaluated
+  // metrics only; carved metrics never generate exceptions.
+  var closedWks = (DATA.q4Weeks || []).filter(function(w) {
+    return !w.isFuture && w.label !== DATA.meta.currentWeekLabel;
+  });
+  function weekStats(evalFn) {
+    var total = 0, ok = 0, missed = [];
+    closedWks.forEach(function(w) {
+      var wd = emp.weeks && emp.weeks[w.label];
+      if (!wd) return;
+      var v = evalFn(wd, w.label);
+      if (v === null) return;
+      total++;
+      if (v) ok++; else missed.push(w.label);
+    });
+    return { total: total, ok: ok, missed: missed };
+  }
+  var exEntries = [];
+  if (cellByCol.goals && !cellByCol.goals.notEval) {
+    var gs = weekStats(function(wd) {
+      return wd.goalsDetail && wd.goalsDetail.compliant !== undefined ? !!wd.goalsDetail.compliant : null;
+    });
+    exEntries.push({ label: 'Goals', total: gs.total, ok: gs.ok, missWord: 'missed', missed: gs.missed });
+  }
+  if (cellByCol.tracked && !cellByCol.tracked.notEval) {
+    var tBar = PERF_BARS.tracked[row.coh === 'mgr' ? 'mgr' : 'ic'].g;
+    var ts = weekStats(function(wd, l) {
+      var rkw = computeRkScore(emp, l);
+      if (!rkw || perfWeekIsEmpty_(rkw)) return null;
+      return rkw.trackedNorm >= tBar;
+    });
+    exEntries.push({ label: 'Tracked', total: ts.total, ok: ts.ok, missWord: 'below bar', missed: ts.missed });
+  }
+  if (cellByCol.planned && !cellByCol.planned.notEval) {
+    var ps = weekStats(function(wd, l) {
+      var rkw = computeRkScore(emp, l);
+      if (!rkw || perfWeekIsEmpty_(rkw)) return null;
+      return (rkw.plannedHrs || 0) > 0;
+    });
+    exEntries.push({ label: 'Planned', total: ps.total, ok: ps.ok, missWord: 'no plan', missed: ps.missed });
+  }
+  if (cellByCol.pto && !cellByCol.pto.notEval) {
+    var pS = weekStats(function(wd) {
+      return wd.ptoHealth && wd.ptoHealth.status ? wd.ptoHealth.status === 'Good' : null;
+    });
+    exEntries.push({ label: 'PTO', total: pS.total, ok: pS.ok, missWord: 'At Risk', missed: pS.missed });
+  }
+  var exLines = perfExceptionReport_(exEntries, 4);
+  blocks.push({ sev: 4, html:
+    '<div class="pr-block' + (exLines.length ? '' : ' info') + '">' +
+    '<h4><span class="pr-dot ' + (exLines.length ? 'y' : 'g') + '"></span>Exception report — ' +
+    closedWks.length + ' closed weeks</h4>' +
+    (exLines.length
+      ? '<ul class="pr-exlist">' + exLines.map(function(l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>'
+      : '<p class="pr-sub">No exceptions — every evaluated week at bar across the window.</p>') +
+    '</div>' });
+
+  // ── Quarterly = macro view (sev 3.5): Score trend line + large KPI blocks;
+  // the detailed pacing charts belong to the Monthly/Weekly views.
+  if (gran === 'quarter') {
+    var scorePts = buckets.map(function(b, i) {
+      return per[i] && per[i].score !== null && per[i].score !== undefined
+        ? { label: b.label, v: per[i].score } : null;
+    }).filter(Boolean);
+    var kpib = row.cells.filter(function(c) { return c.col.id !== 'score'; }).map(function(c) {
+      var val = c.col.id === 'kudos' ? (c.val ? (c.val.recv + '/' + c.val.gave) : '—')
+              : c.col.id === 'pto' ? (c.val === null ? '—' : c.val >= 1 ? 'Good' : 'At Risk')
+              : c.val === null || c.val === undefined ? '—'
+              : (c.col.id === 'goals' || c.col.id === 'tracked' || c.col.id === 'planned') ? Math.round(c.val * 100) + '%'
+              : c.col.id === 'rcr' ? String(Math.round(c.val * 10) / 10)
+              : String(Math.round(c.val));
+      return '<div class="pr-kpib" title="' + esc(c.tip || '') + '"><b><span class="pr-dot ' + c.sig + '"></span>' + val +
+        (c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') + '</b><span>' + esc(c.col.label) + '</span></div>';
+    }).join('');
+    blocks.push({ sev: 3.5, html: '<div class="pr-block">' +
+      '<h4><span class="pr-dot ' + (cellByCol.score ? cellByCol.score.sig : 'm') + '"></span>Score — quarterly trend</h4>' +
+      (scorePts.length > 1 ? detChartSVG_(scorePts, '#058CDC', function(v) { return String(Math.round(v)); })
+        : '<p class="pr-sub">Score ' + (cellByCol.score && cellByCol.score.val !== null ? Math.round(cellByCol.score.val) : '—') + ' — not enough closed quarters for a trend line yet.</p>') +
+      '<div class="pr-kpibs">' + kpib + '</div></div>' });
+  }
+
+  // ── Weekly = high-detail view (sev 3.6): one actionable line per week.
+  if (gran === 'week') {
+    var wkRows = buckets.map(function(b, i) {
+      var a = per[i] || {};
+      var bits = [];
+      if (cellByCol.goals && !cellByCol.goals.notEval && a.goalsWeeks) {
+        bits.push(a.goalsCompliant ? 'goals ✓' : '<b style="color:#DE350B">missed goals</b>');
+      }
+      if (cellByCol.tracked && !cellByCol.tracked.notEval) {
+        bits.push('tracked ' + (a.trackedHrs === null || a.trackedHrs === undefined ? '—' : Math.round(a.trackedHrs) + 'h') +
+          (a.plannedHrs !== null && a.plannedHrs !== undefined ? ' of ' + Math.round(a.plannedHrs) + 'h plan' : ''));
+      }
+      if (cellByCol.pto && !cellByCol.pto.notEval && a.pto !== null && a.pto !== undefined) {
+        bits.push(a.pto >= 1 ? 'PTO ok' : '<b style="color:#DE350B">PTO At Risk</b>');
+      }
+      if (a.kudos && (a.kudos.recv || a.kudos.gave)) bits.push('★ recv ' + a.kudos.recv + ' · gave ' + a.kudos.gave);
+      return '<tr' + (b.containsCurrent ? ' style="opacity:.55"' : '') + '><td class="pr-sub">' + esc(b.label) +
+        (b.containsCurrent ? ' ⏳' : '') + '</td><td>' + (bits.join(' · ') || '<span class="pr-sub">no data</span>') + '</td></tr>';
+    }).join('');
+    blocks.push({ sev: 3.6, html: '<div class="pr-block"><h4>Week by week — last 8 closed + current</h4><table>' + wkRows + '</table></div>' });
+  }
+
+  if (gran !== 'quarter' && cellByCol.tracked) {
     var anyHrs = per.some(function(a) { return a && (a.trackedHrs || a.plannedHrs); });
     if (!cellByCol.tracked.notEval || anyHrs) {
-      block('tracked', 'Tracked vs planned hours', perfHrsChartSvg_(buckets, per));
+      block('tracked', 'Tracked vs planned hours' + (gran === 'month' ? ' — pacing' : ''), perfHrsChartSvg_(buckets, per));
     }
   }
-  if (cellByCol.goals) {
+  if (gran !== 'quarter' && cellByCol.goals) {
     var anyG = per.some(function(a) { return a && a.goalsWeeks; });
     if (!cellByCol.goals.notEval || anyG) {
       block('goals', 'Goals — weeks compliant', perfGoalsChartSvg_(buckets, per));
@@ -3577,21 +3695,25 @@ function perfDrillHtml_(emp, row, model) {
         ? '<p class="pr-sub">Current quarter not yet rated — idle, never penalized and never back-filled.</p>' : ''));
   }
   if (cellByCol.kudos) {
-    var entries = [];
+    // Vertical feed, newest first — full text wraps instead of clipping
+    // (side-panel wave: the table cells truncated giver + values mid-word).
+    var feed = [];
     (DATA.q4Weeks || []).forEach(function(w) {
       var wd = emp.weeks && emp.weeks[w.label];
       if (!wd || !wd.kudos || !wd.kudos.entries) return;
       wd.kudos.entries.forEach(function(en) {
-        entries.push('<tr><td class="pr-sub">' + esc(w.label) + '</td><td>★ from ' + esc(en.giver || '—') +
-          (en.orgValues ? ' · ' + esc(en.orgValues) : '') + '</td></tr>');
+        feed.push('<div class="pr-feed-item"><span class="pr-sub">' + esc(w.label) + '</span> ★ from <b>' +
+          esc(en.giver || '—') + '</b>' +
+          (en.orgValues ? '<br><span class="pr-sub">' + esc(en.orgValues) + '</span>' : '') + '</div>');
       });
     });
+    feed.reverse();
     var kAgg = per[model.lastIdx] || {};
     block('kudos', 'Kudos — informational (never red)',
       '<p class="pr-sub">Last closed period: received ' + ((kAgg.kudos && kAgg.kudos.recv) || 0) +
-      ' · gave ' + ((kAgg.kudos && kAgg.kudos.gave) || 0) + '</p>' +
-      (entries.length ? '<table>' + entries.join('') + '</table>'
-                      : '<p class="pr-sub">No kudos received in the record.</p>'));
+      ' · gave ' + ((kAgg.kudos && kAgg.kudos.gave) || 0) + ' · ' + feed.length + ' in the record</p>' +
+      (feed.length ? '<div class="pr-feed">' + feed.join('') + '</div>'
+                   : '<p class="pr-sub">No kudos received in the record.</p>'));
   }
 
   blocks.sort(function(a, b) { return b.sev - a.sev; });
