@@ -694,6 +694,18 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 .cf-panel-warning .cf-panel-hdr { background: #FFFAE6; color: #FF8B00; }
 .cf-panel-warning .cf-panel-list li::before { color: #FF991F; }
 
+/* ── Collapsed kudos detail inside the Highlights panel ── */
+.tb-kudos-detail { margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.tb-kudos-detail summary {
+  cursor: pointer; font-size: 11px; font-weight: 700; color: #006644;
+  list-style: none; user-select: none;
+}
+.tb-kudos-detail summary::before { content: '▸ '; }
+.tb-kudos-detail[open] summary::before { content: '▾ '; }
+.tb-kudos-detail summary::-webkit-details-marker { display: none; }
+.tb-kudos-detail ul { margin-top: 6px; }
+body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
+
 /* ── 📈 Performance Record tab ── */
 .pr-note { font-size: 11px; color: var(--slate); margin: 2px 0 10px; }
 .pr-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -3470,6 +3482,10 @@ window._teamBriefStore = null;
 // meta.team.metrics gate, so a row matches what toggling to that team shows.
 function generateTeamBrief(weekLabel, prevWeekLabel, data) {
   var facts = [], highlights = [], notes = [], concerns = [];
+  // Per-post kudos lines live in their own channel, NOT in highlights: rendered
+  // collapsed (dashboard <details>, Confluence expand) so 100+ posts never bury
+  // the rest of the brief. The Kudos summary line stays in highlights.
+  var kudosDetail = [];
   var D = data || DATA;
   if (!D) return { facts: ['Data loading…'], highlights: [], notes: [], concerns: [] };
 
@@ -3919,7 +3935,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel, data) {
     addI(facts, 'kudos', '**Kudos:** ' + kudosCell.value + ' given this week' + kWowStr);
     if (kudosCell.value > 0) {
       // Count headline goes to Notes on a down week, Highlights otherwise.
-      // The per-post recognition detail (below) always goes to Highlights.
+      // The per-post recognition detail (below) goes to the collapsed kudosDetail channel.
       if (kWow !== null && kWow >= 0) {
         addI(highlights, 'kudos', '**Kudos:** ' + kudosCell.value + ' given' + (kWow > 0 ? ', up ' + kWow + ' from last week' : ', matching last week') + ' — recognition momentum sustained (Think Team)');
       } else if (kWow !== null && kWow < 0) {
@@ -3953,7 +3969,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel, data) {
         for (var i = 0; i < post.recipients.length; i++) stars += '★';
         var line = '**Kudos for ' + post.recipients.join(', ') + '** ' + stars + ' — given by ' + (post.giver || '—');
         if (post.orgValues) line += ' · ' + post.orgValues;
-        addI(highlights, 'kudos', line);
+        kudosDetail.push(line);
       });
     } else {
       if (kudosPrev !== null && kudosPrev === 0) {
@@ -4119,7 +4135,7 @@ function generateTeamBrief(weekLabel, prevWeekLabel, data) {
   if (!notes.length)      addI(notes, 'other', 'No watch items this week — all metrics within expected range');
   if (!concerns.length)   addI(concerns, 'other', 'No critical concerns — maintain current trajectory across all dimensions');
 
-  return { facts: orderI(facts), highlights: orderI(highlights), notes: orderI(notes), concerns: orderI(concerns), trends: trends };
+  return { facts: orderI(facts), highlights: orderI(highlights), notes: orderI(notes), concerns: orderI(concerns), trends: trends, kudosDetail: kudosDetail };
 }
 
 // Period-mode Exec Brief (spec 2026-07-07 §4): same Facts/Highlights/Notes/Concerns/
@@ -4376,6 +4392,7 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
     notes:         brief.notes,
     concerns:      brief.concerns,
     trends:        brief.trends || [],
+    kudosDetail:   brief.kudosDetail || [],
     narrative:     null,
   };
 
@@ -4387,6 +4404,17 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
   function makeItems(arr) {
     return arr.map(function(t) { return '<li>' + fmtBriefHTML(t) + '</li>'; }).join('');
   }
+
+  // Per-post kudos detail renders collapsed under the Highlights list — 100+
+  // recognition posts stay one click away instead of burying the brief.
+  var kudosDetail = brief.kudosDetail || [];
+  var kudosDetailHTML = kudosDetail.length
+    ? '<details class="tb-kudos-detail">' +
+        '<summary>🏅 Recognition detail — ' + kudosDetail.length + ' kudos post' + (kudosDetail.length !== 1 ? 's' : '') +
+        ' (' + (kudosDetail.join('').match(/★/g) || []).length + ' kudos)</summary>' +
+        '<ul class="cf-panel-list">' + makeItems(kudosDetail) + '</ul>' +
+      '</details>'
+    : '';
 
   return (
     '<div class="team-brief">' +
@@ -4422,7 +4450,7 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
 
         '<div class="cf-panel cf-panel-success">' +
           '<div class="cf-panel-hdr">' + ICO_SUCCESS + '<span>Highlights</span></div>' +
-          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbHighlightsList">' + makeItems(brief.highlights) + '</ul></div>' +
+          '<div class="cf-panel-body"><ul class="cf-panel-list" id="tbHighlightsList">' + makeItems(brief.highlights) + '</ul>' + kudosDetailHTML + '</div>' +
         '</div>' +
 
         '<div class="cf-panel cf-panel-note">' +
@@ -4581,7 +4609,11 @@ function copyTeamBrief() {
     store.notes.map(function(n) { return '  • ' + stripBriefMarks(n); }).join('\n') + '\n\n' +
     'CONCERNS\n' +
     store.concerns.map(function(c) { return '  • ' + stripBriefMarks(c); }).join('\n') +
-    (store.narrative ? '\n\n' + store.narrative : '');
+    (store.narrative ? '\n\n' + store.narrative : '') +
+    (store.kudosDetail && store.kudosDetail.length
+      ? '\n\nKUDOS DETAIL — ' + store.kudosDetail.length + ' posts (collapsed in the published brief)\n' +
+        store.kudosDetail.map(function(k) { return '  • ' + stripBriefMarks(k); }).join('\n')
+      : '');
 
   var flash = function() {
     if (btn) { var o = btn.textContent; btn.textContent = '✓ Copied!'; setTimeout(function() { btn.textContent = o; }, 2000); }
@@ -4743,6 +4775,9 @@ function triggerConfluencePublish() {
       highlights: store.highlights || [],
       notes:      store.notes      || [],
       concerns:   store.concerns   || [],
+      // Per-post recognition lines — the publisher folds these into a collapsed
+      // Confluence expand under the Highlights panel.
+      kudosDetail: store.kudosDetail || [],
     };
 
     google.script.run

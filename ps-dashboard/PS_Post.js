@@ -167,10 +167,15 @@ function buildBlogSections_(weekLabel) {
       highlights: [],
       notes:      [],
       concerns:   [],
+      kudosDetail: [],
     };
   }
 
   const facts = [], highlights = [], notes = [], concerns = [];
+  // Per-post kudos lines live in their own channel, NOT in highlights: the
+  // publisher renders them inside a collapsed Confluence expand so 100+
+  // recognition posts never bury the brief. The Kudos summary stays in highlights.
+  const kudosDetail = [];
   const weeks     = report.weeks          || [];
   const meta      = report.meta           || {};
   const history   = report.trackedHistory || [];
@@ -567,7 +572,7 @@ function buildBlogSections_(weekLabel) {
         for (let si = 0; si < post.recipients.length; si++) stars += '★';
         let line = '**Kudos for ' + post.recipients.join(', ') + '** ' + stars + ' — given by ' + (post.giver || '—');
         if (post.orgValues) line += ' · ' + post.orgValues;
-        addI(highlights, 'kudos', line);
+        kudosDetail.push(line);
       });
     } else {
       if (kudosPrev !== null && kudosPrev === 0) {
@@ -664,7 +669,7 @@ function buildBlogSections_(weekLabel) {
   if (!notes.length)      addI(notes, 'other', 'No watch items this week — all metrics within expected range');
   if (!concerns.length)   addI(concerns, 'other', 'No critical concerns — maintain current trajectory across all dimensions');
 
-  return { weekLabel: weekLabel, facts: orderI(facts), highlights: orderI(highlights), notes: orderI(notes), concerns: orderI(concerns) };
+  return { weekLabel: weekLabel, facts: orderI(facts), highlights: orderI(highlights), notes: orderI(notes), concerns: orderI(concerns), kudosDetail: kudosDetail };
 }
 
 
@@ -700,6 +705,8 @@ function buildBlogSections_(weekLabel) {
  *   highlights:    (string[]|undefined),
  *   notes:         (string[]|undefined),
  *   concerns:      (string[]|undefined),
+ *   kudosDetail:   (string[]|undefined),  per-post kudos lines — rendered as a collapsed expand under Highlights
+
  *   blogPostId:    (string|undefined)   force a specific post (testing); usually omitted
  * }} payload
  * @returns {{ ok: boolean, created?: boolean, url?: string, title?: string,
@@ -1153,11 +1160,16 @@ function updateContributionSection_(doc, payload) {
     if (areaKey) {
       foundPanelTypes[panelType] = true;
 
-      // Skip the existing body nodes for this area (until the next structural node)
+      // Skip the existing body nodes for this area (until the next structural node).
+      // expand is deliberately NOT structural, so last week's kudos expand is
+      // swallowed and replaced here along with the bullet list.
       let j = i + 1;
       while (j < bounds.end && !isStructuralNode_(content[j])) j++;
 
       rebuilt.push(buildBulletList_(payload[areaKey]));
+      if (areaKey === 'highlights' && Array.isArray(payload.kudosDetail) && payload.kudosDetail.length) {
+        rebuilt.push(buildKudosExpand_(payload.kudosDetail));
+      }
       areasUpdated.push(areaKey);
       i = j;
       continue;
@@ -1279,6 +1291,26 @@ function buildBulletList_(items) {
         content: [{ type: 'paragraph', content: briefInlineNodes_(text) }],
       };
     }),
+  };
+}
+
+/**
+ * Builds a collapsed ADF expand holding the per-post kudos recognition lines.
+ * Rendered right under the Highlights bullet list: readers see one titled,
+ * closed expand instead of 100+ bullets, and open it only when they want the
+ * full recognition roll.
+ * @param {string[]} items Kudos detail bullet strings ("**Kudos for …** ★ — given by …").
+ * @returns {Object} An ADF expand node.
+ */
+function buildKudosExpand_(items) {
+  const stars = items.join('').split('★').length - 1;
+  return {
+    type: 'expand',
+    attrs: {
+      title: '🏅 Recognition detail — ' + items.length + ' kudos post' + (items.length !== 1 ? 's' : '') +
+             ' · ' + stars + ' kudos (click to expand)',
+    },
+    content: [buildBulletList_(items)],
   };
 }
 
