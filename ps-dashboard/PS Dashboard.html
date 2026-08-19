@@ -815,6 +815,9 @@ body.dark-mode .pr-table th { background: #16214A; }
 .pr-trend { font-size: 10px; color: var(--slate); margin-right: 3px; }
 .pr-delta { font-size: 10px; color: var(--slate); font-weight: 700; }
 .pr-namebtn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+.pr-band td { background: var(--surface); color: var(--muted); font-size: 10px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; }
+body.dark-mode .pr-band td { background: #16214A; }
 .pr-title { font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif;
   font-size: 16px; color: var(--void); margin: 4px 0 2px; display: inline-block; }
 .pr-link { font-size: 11px; margin-left: 8px; white-space: nowrap; }
@@ -3219,7 +3222,9 @@ function perfTargetFrac_(colId, cohort) {
 // 0–100% scale, dashed tick at the cohort's green threshold, kudos capped and
 // labeled ×4 so count bars are never misread against norm bars.
 function perfBarsSvg_(cell, cohort, dense) {
-  var CH = 28, BASE = 29, bw = dense ? 3 : 6, gap = 1;
+  // 6px bars regardless of density (spec v4 P8): weekly is 9 buckets now, so a
+  // legible bar costs nothing — 3px bars were texture, not data.
+  var CH = 28, BASE = 29, bw = 6, gap = 1;
   var n = cell.buckets.length;
   if (!n) return '';
   var W = n * (bw + gap) - gap + 1;
@@ -3377,6 +3382,7 @@ function renderPerfRecordTab_(filteredOpt) {
     ' — ' + shown.length + ' of ' + rows.length + ' rocketeers' +
     (focus ? ' (' + focus.label + ' focus)' : '') +
     ' · dot = last closed ' + STATE.prGranularity +
+    ' · gray ring = no data yet · slate ring = shown, not evaluated' +
     (STATE.prGranularity === 'week' ? ' · showing last 8 closed weeks + current' : '');
 
   function th(key, label) {
@@ -3395,8 +3401,25 @@ function renderPerfRecordTab_(filteredOpt) {
     cols.map(function(c) { return th(c.id, c.label); }).join('') +
     '</tr></thead><tbody>';
 
+  // Score banding (spec v4 P8): 86 vs 85 is not a real difference — when sorted
+  // by score, label the signal bands so the compressed range reads as a range.
+  var banding = STATE.prSort.key === 'score';
+  var prevBand = null;
+  function scoreBand(r) {
+    var sc = r.cells.length && r.cells[0].col.id === 'score' ? r.cells[0].val : null;
+    if (sc === null || sc === undefined) return 'No score yet';
+    return sc >= 75 ? 'Green band · score ≥75' : sc >= 50 ? 'Watch band · score 50–74' : 'Support band · score <50';
+  }
+
   shown.forEach(function(r) {
     var e = r.emp;
+    if (banding) {
+      var band = scoreBand(r);
+      if (band !== prevBand) {
+        html += '<tr class="pr-band"><td colspan="' + (cols.length + 1) + '">' + band + '</td></tr>';
+        prevBand = band;
+      }
+    }
     var parsed = typeof parseJobCode === 'function' ? parseJobCode(e.jobTitle) : {};
     var open = STATE.prExpanded === e.normName;
     // Identity line (spec v2 §1): full title · code·level · location · sup · tenure.
