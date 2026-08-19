@@ -964,6 +964,20 @@ tr.detail td.dback{padding:8px 16px 12px}
    letting the page scroll sideways. */
 .tableWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table.wfGrid{min-width:760px}
+/* Per-rocketeer stacked capacity bar (2026-08-18): planned fills first,
+   available follows, the row ends in the person's own availability rate.
+   Labels render inside a segment only when it is wide enough to hold them —
+   the tooltip always carries the full sentence. Held-back people (🏖 🌱 bench)
+   draw muted and rate-free: real hours, no room to sell. */
+.wfBarWrap{display:flex;align-items:center;gap:8px;min-width:220px}
+.wfBar{display:flex;flex:0 0 auto;height:16px;border-radius:4px;overflow:hidden;
+       background:color-mix(in srgb,var(--muted) 14%,transparent)}
+.wfBarPlan,.wfBarAvail{font-size:11px;line-height:16px;text-align:center;
+                       white-space:nowrap;overflow:hidden;color:#fff}
+.wfBarPlan{background:var(--c-ref)}
+.wfBarAvail{background:var(--c-good)}
+.wfBarHeld .wfBarPlan,.wfBarHeld .wfBarAvail{opacity:.45}
+.wfBarRate{font-variant-numeric:tabular-nums}
 /* Pool header row — a band across the table, so the eye groups by pool before
    it reads any band. Tinted, not bold-only: at 11px bold alone does not
    separate a header row from a data row. */
@@ -8825,6 +8839,40 @@ function wfSellable_(p) {
   return p.newHire !== true && p.onLeave !== true && p.onBench !== true;
 }
 
+/**
+ * ── THE PERSON'S WEEK AS ONE BAR (user 2026-08-18) ──────────────────────────
+ * Planned fills first, available follows, the row ends in the person's own
+ * availability rate — the same three numbers the columns held, readable in one
+ * glance. Bar length is the person's capacity against the LONGEST capacity in
+ * the list, so hours compare across people (a 20h week half-planned must not
+ * look like a 40h week half-planned). Non-sellable rows (🏖 🌱 bench) draw
+ * muted and verdict-free: the hours are real, the room to sell is not.
+ * Segment labels render only when the segment is wide enough to hold them —
+ * the tooltip always carries the full sentence, so nothing is lost, only
+ * unsquashed.
+ */
+function wfPersonBarHtml_(h, sell, maxCap) {
+  if (h.cap <= 0) return '<span class="cellSub">—</span>';
+  var w = maxCap > 0 ? Math.max(6, Math.round(h.cap / maxCap * 100)) : 100;
+  var planPct = Math.min(100, Math.round(h.planned / h.cap * 100));
+  var availPct = Math.max(0, 100 - planPct);
+  var rate = Math.round(h.avail / h.cap * 100);
+  var tip = r1_(h.planned) + "h planned + " + r1_(h.avail) + "h available of " +
+    r1_(h.cap) + "h scheduled capacity" +
+    (sell ? " — " + rate + "% of their week is open."
+          : " — spare hours here are not sellable.");
+  return '<span class="wfBarWrap' + (sell ? "" : " wfBarHeld") + '" title="' + esc_(tip) + '">' +
+    '<span class="wfBar" style="width:' + w + '%">' +
+      (h.planned > 0 ? '<span class="wfBarPlan" style="width:' + planPct + '%">' +
+        (planPct >= 18 ? r1_(h.planned) + "h" : "") + "</span>" : "") +
+      (h.avail > 0 ? '<span class="wfBarAvail" style="width:' + availPct + '%">' +
+        (availPct >= 18 ? r1_(h.avail) + "h" : "") + "</span>" : "") +
+    "</span>" +
+    (sell ? ' <b class="wfBarRate">' + rate + "%</b>"
+          : ' <span class="cellSub">' + r1_(h.avail) + "h</span>") +
+  "</span>";
+}
+
 function toggleWfCell_(key) {
   STATE.wfOpenCell[key] = !STATE.wfOpenCell[key];
   renderWfGrid_();
@@ -8850,6 +8898,12 @@ function wfCellPeopleRow_(c, people, isos) {
     else a.held++;
     return a;
   }, { cap: 0, planned: 0, avail: 0, n: 0, held: 0 });
+  // ── STACKED BAR FORMAT (user 2026-08-18) ──────────────────────────────────
+  // The three plain number columns became one bar + the Available column:
+  // planned fills first, available follows, the row ends in the person's own
+  // availability rate. Same numbers, one glance. Bar lengths scale to the
+  // longest capacity IN THIS LIST, so hours compare across the people shown.
+  var maxCap = mine.reduce(function (mx, r) { return Math.max(mx, r.h.cap); }, 0);
   var body = mine.map(function (r) {
     var sell = wfSellable_(r.p);
     // No capacity scheduled at all is "—", never 0h available: nobody is free for
@@ -8861,25 +8915,23 @@ function wfCellPeopleRow_(c, people, isos) {
       '<td class="tname" style="padding-left:28px">' + piiHtml_(r.p.name) + personStateBadges_(r.p) +
         (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
           piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 30)) + "</div>" : "") + "</td>" +
-      '<td class="tnum">' + (r.h.cap > 0 ? wfHrs_(r.h.cap) : '<span class="cellSub">—</span>') + "</td>" +
-      '<td class="tnum">' + wfHrs_(r.h.planned) + "</td>" +
-      '<td class="tnum">' + availCell + "</td>" +
-      '<td colspan="6"></td></tr>';
+      '<td style="width:100%">' + wfPersonBarHtml_(r.h, sell, maxCap) + "</td>" +
+      '<td class="tnum">' + availCell + "</td></tr>";
   }).join("");
+  // ⚠ The INNER table renders 3 columns, so every colspan inside it is ≤ 3;
+  // only the OUTER wrapper row spans the pool grid's 11.
   return '<tr class="wfReadRow"><td colspan="11" style="padding:0">' +
-    '<table class="hyg tmx" style="width:100%"><thead><tr>' +
+    '<table class="hyg" style="width:100%"><thead><tr>' +
       '<th class="tname" style="padding-left:28px">Person</th>' +
-      '<th class="tnum">Capacity</th><th class="tnum">Planned</th>' +
+      '<th title="Scheduled capacity for this period as one bar: planned hours fill first, available hours follow, and the figure at the end is that person\'s own availability rate (available ÷ capacity).">Week — planned, then available</th>' +
       '<th class="tnum" title="Capacity minus planned hours for this period — the hours not yet promised to anything.">Available</th>' +
-      '<th colspan="6"></th>' +
     "</tr></thead><tbody>" + body +
     '<tr><td class="tname" style="padding-left:28px"><b>Sellable subtotal</b> ' +
       '<span class="cellSub">(' + sums.n + (sums.n === 1 ? " person" : " people") +
       (sums.held ? ", " + sums.held + " held back" : "") + ")</span></td>" +
-      '<td class="tnum"><b>' + wfHrs_(sums.cap) + "</b></td>" +
-      '<td class="tnum"><b>' + wfHrs_(sums.planned) + "</b></td>" +
-      '<td class="tnum"><b>' + wfHrs_(sums.avail) + "</b></td>" +
-      '<td colspan="6"></td></tr>' +
+      '<td><span class="cellSub">' + wfHrs_(sums.planned) + " planned + " +
+        wfHrs_(sums.avail) + " available of " + wfHrs_(sums.cap) + " capacity</span></td>" +
+      '<td class="tnum"><b>' + wfHrs_(sums.avail) + "</b></td></tr>" +
     "</tbody></table>" +
     '<div class="cellSub" style="padding:6px 8px 8px 28px">' +
       "Same weeks as the row above, read per person. 🌱 ramping and 🏖 on-leave people are " +

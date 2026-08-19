@@ -281,6 +281,8 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " accRowHtml_: accRowHtml_," +
              " wfBandLabel_: wfBandLabel_, WF_BAND_ORDER_: WF_BAND_ORDER_," +
              " wfPersonHours_: wfPersonHours_, wfSellable_: wfSellable_," +
+             // Per-rocketeer stacked bar (2026-08-18): the person row's format.
+             " wfPersonBarHtml_: wfPersonBarHtml_," +
              // Workforce tab cleanup (2026-08-17): the drawer's content and the
              // in-cell reconcile flag are both pure builders.
              " wfMethodHtml_: wfMethodHtml_, wfReadTarget_: wfReadTarget_, wfFlagHtml_: wfFlagHtml_," +
@@ -6664,6 +6666,52 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…with the stated reason, so the fix is one registry row away");
   assert_(/Workforce Planning has not been told/.test(els.wfScopePanel.innerHTML),
           "…and names it as a governance signal rather than a bug");
+})();
+
+// ── PER-ROCKETEER STACKED BAR (user 2026-08-18) ────────────────────────────
+// "We already show capacity, planned and available — change the FORMAT":
+// planned fills first, available follows, and the row ends in the person's own
+// availability rate. The hours stay printed (colour never carries the value
+// alone), the tooltip keeps the full sentence, and non-sellable people draw
+// muted with no rate verdict — their hours are real, the room to sell is not.
+(function () {
+  // ── The pure builder, all four shapes ─────────────────────────────────────
+  var sell = C.wfPersonBarHtml_({ cap: 40, planned: 24, avail: 16 }, true, 40);
+  assert_(sell.indexOf("wfBarPlan") !== -1 && sell.indexOf("wfBarAvail") !== -1,
+          "a sellable bar draws both segments — planned first, available after");
+  assert_(sell.indexOf("24h") !== -1 && sell.indexOf("16h") !== -1,
+          "…with the hours printed, never colour-only");
+  assert_(/wfBarRate">40%/.test(sell),
+          "…and ends in the individual availability rate (avail ÷ cap)");
+  assert_(/planned/.test(sell) && /available/.test(sell) && /capacity/.test(sell),
+          "…while the tooltip keeps the full three-number sentence");
+  // Bar length ∝ capacity against the longest in the list: a 20h week
+  // half-planned must not look like a 40h week half-planned.
+  var half = C.wfPersonBarHtml_({ cap: 20, planned: 10, avail: 10 }, true, 40);
+  assert_(/width:50%/.test(half), "bar length scales to the list's largest capacity");
+  var held = C.wfPersonBarHtml_({ cap: 40, planned: 24, avail: 16 }, false, 40);
+  assert_(held.indexOf("wfBarHeld") !== -1, "a non-sellable bar is muted");
+  assert_(held.indexOf("wfBarRate") === -1,
+          "…and carries no rate verdict — spare hours here are not room to sell");
+  var none = C.wfPersonBarHtml_({ cap: 0, planned: 0, avail: 0 }, true, 40);
+  assert_(none.indexOf("wfBarPlan") === -1 && none.indexOf("—") !== -1,
+          "zero capacity keeps the '—' rule — no bar, no rate, nothing owed");
+
+  // ── And the drill-down actually renders it ────────────────────────────────
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "workforce");
+  C.setState("wfOpenCell", { "PS-CONSULT|CORE": true });
+  C.renderWfGrid_();
+  var openedBar = els.wfGridPanel.innerHTML;
+  assert_(/wfBarWrap/.test(openedBar),
+          "the opened cell's person rows carry the stacked bar");
+  assert_(/Sellable subtotal/.test(openedBar) && /left out of the sellable subtotal/.test(openedBar),
+          "…and the subtotal row plus its held-back caveat survived the reformat");
+  C.setState("wfOpenCell", {});
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.renderAll_();
 })();
 
 // ── SELLABLE HEADROOM ANSWERS THE LEVEL QUESTION (user 2026-08-18) ────────
