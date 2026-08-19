@@ -242,6 +242,9 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
              " wfAvailability_: wfAvailability_, wfHeadroomByBand_: wfHeadroomByBand_, wfBandRowsHtml_: wfBandRowsHtml_, renderWfConsumers_: renderWfConsumers_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_, bandNorms_: bandNorms_," +
              " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
+             // One-click drill-through (2026-08-18): cells navigate to the
+             // metric's own tab with the slice + landing state applied.
+             " drillGo_: drillGo_, DRILL_DEST_: DRILL_DEST_, wfExpandAvailCells_: wfExpandAvailCells_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
              " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
@@ -8641,6 +8644,128 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.compare = "region";
   fresh(model({}));
   C.setState("view", "exec");
+  C.renderAll_();
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// ONE-CLICK DRILL-THROUGH — CELLS NAVIGATE (user 2026-08-18)
+//
+// A value cell in the drill grid answers "where isn't it working"; clicking it
+// must go to WHO — slice + metric + destination tab in one step. The metric
+// names the tab: availability is a Workforce question, everything else is an
+// Actions one. The row click and the two header buttons keep their 2026-08-17
+// semantics untouched — this is the see-it-click-it path beside them.
+// ══════════════════════════════════════════════════════════════════════════
+(function () {
+  // ── 1. The destination map: the metric names the tab ────────────────────
+  assert_(C.DRILL_DEST_.avail === "workforce", "avail lands on Workforce");
+  ["onTime", "forecast", "quality", "planCov"].forEach(function (id) {
+    assert_(C.DRILL_DEST_[id] === "actions", id + " lands on Actions");
+  });
+
+  // ── 2. A cell is a control only when told to be ──────────────────────────
+  var tgt = { green: 85, amber: 70 };
+  var hot = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6,
+                              sampleNoun: "items", go: { row: 2, id: "forecast" } });
+  assert_(hot.indexOf("drillGo_(2,'forecast')") !== -1, "a go cell carries drillGo_");
+  assert_(hot.indexOf("stopPropagation") !== -1,
+          "…and stops the click from ALSO toggling the row selection underneath it");
+  assert_(/role="button"/.test(hot) && /tabindex="0"/.test(hot),
+          "…keyboard-reachable, not mouse-only");
+  assert_(/gridCell go/.test(hot), "…and wears the hover-affordance class");
+  assert_(/open Actions/.test(hot) && /needs action/.test(hot),
+          "the tooltip makes the promise BEFORE the click — destination and narrowing named");
+  var hotAvail = C.gridCellHtml_({ value: 50, n: 6, target: null, std: null,
+                                   go: { row: 0, id: "avail" } });
+  assert_(/open Workforce/.test(hotAvail), "…and an availability cell promises Workforce");
+  var cold = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6, sampleNoun: "items" });
+  assert_(cold.indexOf("drillGo_") === -1, "no go option → no handler, no affordance class");
+  var inert = C.gridCellHtml_({ value: null, go: { row: 2, id: "forecast" } });
+  assert_(inert.indexOf("drillGo_") === -1,
+          "a '—' cell is click-inert even with go — nobody is behind an unmeasured number");
+
+  // ── 3. Behaviour: delivery cells land on Actions, narrowed ──────────────
+  // Same shape as the offender fixture above: AMER 20% on-time, EMEA 95%,
+  // so rows rank EMEA (0), AMER (1) and the offender row is the one clicked.
+  var m = model({});
+  m.people = [];
+  for (var i = 1; i <= 12; i++) m.people.push(person("A" + i, { region: "AMER" }));
+  for (var j = 1; j <= 12; j++) m.people.push(person("E" + j, { region: "EMEA" }));
+  var W = WEEKS[WEEKS.length - 1];
+  m.onTimeBuckets = m.people.map(function (p) {
+    var onTime = p.region === "AMER" ? 4 : 19;
+    return { iso: W, person: p.name, n: 20, onTime: onTime, nAll: 20 };
+  });
+  fresh(m);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.setState("metric", "onTime");
+  C.setState("sigFilter", "");
+  C.STATE.compare = "region";
+  C.renderCompare_();
+  var h = els.comparePanel.innerHTML;
+  assert_(/drillGo_\(/.test(h), "the rendered grid's value cells carry the cell-click handler");
+  // The NAME cell stays row-select — a click on the label must not navigate.
+  var rIdx = h.indexOf(">AMER");
+  var row = h.slice(h.lastIndexOf("<tr", rIdx), h.indexOf("</tr>", rIdx) + 5);
+  var nameCell = row.slice(row.indexOf("<td"), row.indexOf("</td>") + 5);
+  assert_(nameCell.indexOf("drillGo_") === -1,
+          "the name cell is row-select, not navigation — two affordances, two targets");
+  assert_(/Click a cell/.test(h), "the footer how-to teaches the cell click");
+
+  C.drillGo_(1, "onTime");
+  assert_(C.STATE.view === "actions", "a delivery cell lands on Actions");
+  assert_(C.STATE.region === "AMER", "…with the clicked row's slice applied");
+  assert_(C.STATE.metric === "onTime", "…and the clicked metric selected");
+  assert_(C.STATE.sigFilter === "bad",
+          "…narrowed to the Need-action chip — 'the ones missing action', pre-set");
+
+  // planCov: Actions WITHOUT the chip — its acting surface is the roster's own
+  // Plan column, and pre-narrowing to red would hide the unplanned-but-clean.
+  C.setState("sigFilter", "");
+  C.switchView_("exec");
+  C.renderCompare_();
+  C.drillGo_(1, "planCov");
+  assert_(C.STATE.view === "actions" && C.STATE.sigFilter === "",
+          "a Planned-Coverage cell lands on Actions with NO chip pre-set");
+
+  // ── 4. Availability lands on Workforce with the cells already open ──────
+  var m2 = model({});
+  m2.people = [
+    person("Free One", { region: "AMER",
+      weeks: { "2026.W30": week({ planned: 10, effPlanned: 10 }),
+               "2026.W31": week({ planned: 10, effPlanned: 10 }) } }),
+    person("Free Two", { region: "AMER",
+      weeks: { "2026.W30": week({ planned: 10, effPlanned: 10 }),
+               "2026.W31": week({ planned: 10, effPlanned: 10 }) } }),
+    // Fully planned AND out of the clicked slice — their SENIOR cell must
+    // stay shut either way.
+    person("Busy Solo", { region: "EMEA", band: "SENIOR", cell: "PS-CONSULT|SENIOR" }),
+  ];
+  fresh(m2);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.setState("metric", "onTime");
+  C.setState("wfOpenCell", {});
+  C.STATE.compare = "region";
+  C.renderCompare_();
+  // Rows rank by value: AMER (75% free) is index 0, EMEA (0% free) index 1.
+  C.drillGo_(0, "avail");
+  assert_(C.STATE.view === "workforce", "an availability cell lands on Workforce");
+  assert_(C.STATE.region === "AMER", "…with the slice applied");
+  assert_(C.STATE.wfOpenCell["PS-CONSULT|CORE"] === true,
+          "…and the pool × band cells holding free sellable hours arrive OPEN — " +
+          "the names are on screen without hunting for the ▸ toggles");
+  assert_(!C.STATE.wfOpenCell["PS-CONSULT|SENIOR"],
+          "…while a cell with nothing free in the slice stays closed");
+
+  // Teardown.
+  C.setState("wfOpenCell", {});
+  C.setState("sigFilter", "");
+  fresh(model({}));
+  C.setState("view", "exec");
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";
   C.renderAll_();
 })();
 

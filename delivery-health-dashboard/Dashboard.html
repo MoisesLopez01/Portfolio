@@ -247,6 +247,11 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 .tileDrill{cursor:pointer}
 .tileDrill:hover{border-color:var(--orbe)}
 .tileDrill:focus-visible{outline:2px solid var(--orbe);outline-offset:2px}
+/* One-click drill-through cells (2026-08-18): the pointer + hover ring say
+   "this navigates" before the tooltip does — no invisible click targets. */
+.gridCell.go{cursor:pointer}
+.gridCell.go:hover{box-shadow:inset 0 0 0 1px var(--orbe)}
+.gridCell.go:focus-visible{outline:2px solid var(--orbe);outline-offset:-2px}
 .tileSel{border-color:var(--orbe);box-shadow:0 0 0 1px var(--orbe) inset,
   0 1px 2px rgba(15,25,65,.05),0 10px 28px rgba(15,25,65,.09)}
 .rowOffender>td:first-child{box-shadow:inset 3px 0 0 var(--c-bad)}
@@ -6606,7 +6611,30 @@ function sampleFracHtml_(o) {
 function gridCellHtml_(o) {
   var lbl = o.unit ? function (v) { return fmtGridVal_(v, o.unit); } : function (v) { return Math.round(v) + "%"; };
   if (o.value === null || o.value === undefined) {
+    // Click-inert ON PURPOSE, even when o.go is set: there is nobody behind a
+    // number that was never measured, and a dead-end navigation teaches the
+    // reader the live cells aren't worth clicking either.
     return '<td class="tnum gridCell" title="No measurable data in this slice.">—</td>';
+  }
+  // ── ONE-CLICK DRILL-THROUGH (user 2026-08-18) ─────────────────────────────
+  // o.go = {row, id} marks this cell as a navigation control: click = slice +
+  // metric + destination tab in one step (drillGo_). Built once here so every
+  // value-carrying branch below wears the same affordance — pointer class,
+  // keyboard reach, and a tooltip that makes the promise BEFORE the click.
+  var go = o.go || null;
+  var goCls = go ? " go" : "";
+  var goTip = "", goAttr = "";
+  if (go) {
+    var gm = METRICS_[go.id];
+    var gDest = DRILL_DEST_[go.id] === "workforce" ? "Workforce" : "Actions";
+    goTip = " Click: open " + gDest + " for this row's people on " +
+      (gm ? gm.label() : go.id) +
+      (gDest === "Actions" && go.id !== "planCov"
+        ? ", narrowed to who needs action." : ".");
+    goAttr = ' role="button" tabindex="0" onclick="event.stopPropagation();' +
+      "drillGo_(" + go.row + ",'" + go.id + "')\" " +
+      'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
+      "event.stopPropagation();drillGo_(" + go.row + ",'" + go.id + "')}\"";
   }
   // ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ───────────────
   // Availability goes below zero when planned hours exceed scheduled capacity.
@@ -6615,9 +6643,10 @@ function gridCellHtml_(o) {
   // The value clamps to 0% and the overrun becomes a red pill, with the raw
   // magnitude kept in the tooltip so nothing is hidden, only translated.
   if (!o.unit && o.value < 0) {
-    return '<td class="tnum gridCell" title="Planned hours exceed scheduled capacity by ' +
+    return '<td class="tnum gridCell' + goCls + '"' + goAttr +
+      ' title="Planned hours exceed scheduled capacity by ' +
       Math.round(-o.value) + '% of it — this group is booked past 100%. Shown as 0% ' +
-      'available because a group cannot be less than empty-handed.">0% ' +
+      'available because a group cannot be less than empty-handed.' + esc_(goTip) + '">0% ' +
       '<span class="pillOver">Over-allocated</span></td>';
   }
   var txt = lbl(o.value) + sampleFracHtml_(o);
@@ -6643,17 +6672,20 @@ function gridCellHtml_(o) {
     // does NOT publish either, the cell says so explicitly, so it can never be
     // mistaken for a plain number that simply wasn't coloured.
     if (o.std && o.std.ok) {
-      return '<td class="tnum gridCell" title="No target has been agreed for this metric. ' +
+      return '<td class="tnum gridCell' + goCls + '"' + goAttr +
+        ' title="No target has been agreed for this metric. ' +
         'Graded against the operating band (' + lbl(o.std.lo) + '–' + lbl(o.std.hi) +
-        ').">' + cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") + txt + "</td>";
+        ').' + esc_(goTip) + '">' +
+        cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") + txt + "</td>";
     }
     // THE "no reference" CAPTION IS GONE (user 2026-08-17). It made the reader
     // guess what the system meant, on every row of a target-less column. The
     // fact it carried lives in the tooltip instead — the neutral grey bar and
     // the absent RAG glyph already say "not graded" to anyone scanning.
-    return '<td class="tnum gridCell" title="No organizational target has been set for this ' +
+    return '<td class="tnum gridCell' + goCls + '"' + goAttr +
+      ' title="No organizational target has been set for this ' +
       'metric, and there is not yet enough history for an operating norm — the value is ' +
-      'shown ungraded.">' +
+      'shown ungraded.' + esc_(goTip) + '">' +
       cellBarHtml_(o.value, o.unit, o.max, "var(--c-ref)") + txt + "</td>";
   }
   var rag = ragOf_(o.value, o.target);
@@ -6661,7 +6693,9 @@ function gridCellHtml_(o) {
   // The bar takes the RAG the glyph ALREADY states — read from the same rag,
   // never recomputed, so the colour and the mark cannot drift apart.
   var fill = { g: "var(--c-good)", a: "var(--c-warn)", r: "var(--c-bad)" }[rag] || "var(--c-ref)";
-  return '<td class="tnum gridCell">' + cellBarHtml_(o.value, o.unit, o.max, fill) +
+  return '<td class="tnum gridCell' + goCls + '"' + goAttr +
+    (goTip ? ' title="' + esc_(goTip.trim()) + '"' : "") + ">" +
+    cellBarHtml_(o.value, o.unit, o.max, fill) +
     '<span class="sigDot ' + cls + '">' + RAG_MARK[rag] +
     "</span> " + txt + "</td>";
 }
@@ -6852,7 +6886,11 @@ function renderCompare_() {
                                    std: gridStds[id], unit: METRICS_[id].unit,
                                    max: gridMax[id],
                                    sampleN: (r.cellN || {})[id],
-                                   sampleNoun: METRICS_[id].sampleNoun });
+                                   sampleNoun: METRICS_[id].sampleNoun,
+                                   // One-click drill-through (2026-08-18): the
+                                   // cell navigates to this metric's own tab
+                                   // with this row's slice applied.
+                                   go: { row: i, id: id } });
           }).join("") + "</tr>";
       }).join("") + "</tbody></table></div>" +
       // THE ROW CAP NEEDS ITS OWN ESCAPE HATCH (2026-08-17). This affordance
@@ -6977,7 +7015,9 @@ function renderCompare_() {
         : "") +
       "Each cell is graded against its own metric's target and operating band. " +
       "Click a column header to rank by it. Click a row to select it — the " +
-      "buttons above carry that slice to Workforce or Actions.</div>";
+      "buttons above carry that slice to Workforce or Actions. " +
+      "Click a cell to jump straight to the people behind it — Workforce for " +
+      "availability, Actions for the rest.</div>";
 }
 
 /**
@@ -7050,6 +7090,49 @@ function drillActionsHtml_() {
  * scope those chips used to set is set by the top bar, which every other surface
  * on the page already obeys.
  */
+
+/**
+ * ── ONE-CLICK DRILL-THROUGH (user 2026-08-18) ────────────────────────────────
+ * A value cell in the drill grid answers "where isn't it working"; clicking it
+ * goes to WHO. The metric names the destination: availability is a Workforce
+ * question, everything else is an Actions one. The two header buttons stay —
+ * they are the select-first path; this is the see-it-click-it path. util is
+ * mapped so the day SHOW_UTILIZATION_ flips back on, its cells navigate too.
+ */
+var DRILL_DEST_ = { avail: "workforce", onTime: "actions", forecast: "actions",
+                    quality: "actions", planCov: "actions", util: "workforce" };
+
+/** Cell click on the drill grid: set the slice, set the metric, land on the
+    metric's own tab. SETS the filter (never toggles) — arriving somewhere with
+    the filter you clicked half-cleared is worse than a no-op. */
+function drillGo_(i, metricId) {
+  var key = DRILL_ROW_KEYS_[i];
+  var dest = DRILL_DEST_[metricId];
+  if (key === undefined || !dest) return;
+  STATE[STATE.compare] = key;
+  STATE.metric = metricId;
+  // Landing state per destination: the Need-action chip narrows the roster to
+  // the people with a red field — except planCov, whose acting surface is the
+  // roster's own Plan column, where pre-narrowing to red would hide the
+  // unplanned-but-otherwise-clean people the click is looking for.
+  if (dest === "actions") STATE.sigFilter = metricId === "planCov" ? "" : "bad";
+  if (metricId === "avail") wfExpandAvailCells_();
+  buildFilters_();
+  switchView_(dest);
+}
+
+/** Open every pool × band cell holding someone with sellable free hours, so an
+    availability drill lands with the names already on screen — no ▸ hunting.
+    Runs AFTER the slice filter is set, so only the clicked slice's cells open. */
+function wfExpandAvailCells_() {
+  var isos = analysisHead_().head.isos;
+  filteredPeople_().forEach(function (p) {
+    if (!wfSellable_(p)) return;
+    if (!wfCfg_(p.pool).consumes) return;
+    var h = wfPersonHours_(p, isos);
+    if (h.avail > 0) STATE.wfOpenCell[p.cell || "NONE|UNKNOWN"] = true;
+  });
+}
 
 /** Set (or clear) the compare dimension's own universal filter, then re-render
     in place. Deliberately does NOT change tab: the reader narrows first and
