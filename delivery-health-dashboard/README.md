@@ -254,8 +254,11 @@ shadow split and historical pool-routing possible. Same shape as the SRSO Compon
 
 Asked for directly: *"show capacity by role level so I can see exactly **who** has available hours,
 not just the total available hours."* Clicking any band row expands a person list —
-name + job title, **capacity**, **planned**, **available** (capacity − planned) for the selected
-period, most-available first. `wfCellPeopleRow_()` / `wfPersonHours_()` in `Dashboard.html`.
+name + job title, then the person's period as a **stacked bar** (planned hours fill first,
+available hours follow, the row ends in their own availability rate; reformat 2026-08-18,
+`wfPersonBarHtml_()`), plus an Available column — most-available first.
+`wfCellPeopleRow_()` / `wfPersonHours_()` in `Dashboard.html`. An Availability cell click on the
+Executive drill grid lands here with the free cells already expanded (`wfExpandAvailCells_()`).
 
 - **Client-side, no payload change and no round-trip.** The rows come from the same person-week
   grain the roster's Plan column uses (`planFor1_`), and membership is an exact match on the cell's
@@ -1729,6 +1732,37 @@ so the generic rule is both safer and needs no edit the next time a footer line 
 model + new export is the one combination that misses **unsafely**.
 
 ## Deploy
+
+> ### 🖱 Cells navigate + dot-only Overall + stacked person bars (2026-08-18) — `Dashboard.html` only
+>
+> Paste `Dashboard.html` and deploy. **No schema bump, no cache action** — presentation and
+> client-side interaction only.
+> Spec: `docs/specs/2026-08-18-dh-drill-through-and-overall-fix-design.md`.
+>
+> **One-click drill-through.** Every value cell in the Executive drill grid is now a control:
+> click = the row's slice + the clicked metric + the metric's own tab, in one step (`drillGo_`,
+> `DRILL_DEST_`). Availability lands on **Workforce** with the pool × band cells holding free
+> sellable hours already expanded (`wfExpandAvailCells_`); On-Time / Forecast / Quality land on
+> **Actions** with the signals roster's **Need action** chip pre-set; Planned Coverage lands on
+> Actions with no chip — its acting surface is the roster's own Plan column. A "—" cell stays
+> click-inert. The row click and the two header buttons keep their 2026-08-17 semantics.
+>
+> **Overall column is dot-only.** Its "· N missing" summed per-field misses — one ticket missing
+> two fields counted twice — so managers read "67 missing" as 67 tickets. The sum still drives
+> the opportunity sort and the CSV; the per-field cells keep their own counts, where the column
+> header supplies the noun.
+>
+> **Per-rocketeer stacked bar.** The Workforce drill-down's Capacity/Planned columns became one
+> bar per person: planned fills first, available follows, the row ends in that person's own
+> availability rate (`wfPersonBarHtml_`). Bar length scales to the longest capacity in the list,
+> so hours compare across people. Held-back rows (🏖 🌱 bench) draw muted with no rate; zero
+> capacity keeps the "—" rule. The Available column and sellable subtotal still reconcile.
+>
+> **Live smoke:** Executive → Drill-down, hover any value cell (pointer + ring + tooltip naming
+> the destination), click EMEA × Forecast Accuracy → Actions opens on EMEA's Need-action people.
+> Back on Executive, click a region's Availability Rate → Workforce opens with that region's
+> cells expanded and a two-tone bar + rate per person. Actions → signals roster: the Overall
+> column shows dots only.
 
 > ### ⚠ Long leave leaves the capacity pipeline (2026-08-18) — both dashboard files, **numbers move**
 >

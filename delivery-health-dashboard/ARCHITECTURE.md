@@ -574,7 +574,7 @@ important first, evidence before the numbers it qualifies.
 | # | Band | What it answers |
 |---|---|---|
 | 1 | Tier-1 KPI cards | On-Time · Forecast · **Availability Rate** · Quality/Rework — the four outcome cards; each is a drill control that re-points the grid below |
-| 2 | Drill-down grid | metric × Region/Team/PM/Family/Level. **Rows are controls**: clicking one selects the category, narrows every universal filter, and the header's two action buttons ("Who is available →", "What needs action →") carry the named slice to Workforce or Actions. Cells grade against each metric's own target/operating band; over-allocation renders as a red `Over-allocated` pill, never a negative rate |
+| 2 | Drill-down grid | metric × Region/Team/PM/Family/Level. **Rows are controls**: clicking one selects the category, narrows every universal filter, and the header's two action buttons ("Who is available →", "What needs action →") carry the named slice to Workforce or Actions. **Cells navigate** (2026-08-18, `drillGo_`/`DRILL_DEST_`): one click = slice + metric + the metric's own tab — Availability → Workforce with the free pool × band cells pre-expanded, On-Time/Forecast/Quality → Actions with the Need-action chip pre-set, Planned Coverage → Actions with no chip; "—" cells stay inert. Cells grade against each metric's own target/operating band; over-allocation renders as a red `Over-allocated` pill, never a negative rate |
 
 **BACKLOG & FLOW — the pipeline read.**
 
