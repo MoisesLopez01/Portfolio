@@ -1758,6 +1758,16 @@ model + new export is the one combination that misses **unsafely**.
 > so hours compare across people. Held-back rows (🏖 🌱 bench) draw muted with no rate; zero
 > capacity keeps the "—" rule. The Available column and sellable subtotal still reconcile.
 >
+> **Sellable headroom, modern view.** Same bar language at the org and band zoom levels: the
+> headline is now a hero row — the rate beside one full-width two-tone capacity bar (committed
+> fills first, free follows, segments labelled in hours) — and the Level-band table became
+> aligned bar rows (`wfBandRowsHtml_` rewrite): bar length ∝ each band's own scheduled hours
+> against the largest band, free hours bold first, rate as the qualifier, head count riding
+> along, Over-allocated pill instead of a minus-rate. Four paragraphs of prose compressed to
+> two lines; every load-bearing fact survives on screen — the one-definition guarantee, the
+> "of N backlog consumers" denominator, the role-gates/level-blind statement, and the refusal
+> of a company-wide blend.
+>
 > **Live smoke:** Executive → Drill-down, hover any value cell (pointer + ring + tooltip naming
 > the destination), click EMEA × Forecast Accuracy → Actions opens on EMEA's Need-action people.
 > Back on Executive, click a region's Availability Rate → Workforce opens with that region's

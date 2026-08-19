@@ -6787,15 +6787,34 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     "fixture: the blended rate sits between the bands and matches neither — which is the " +
     "condition the split exists to expose");
 
+  // ── The band split as BAR ROWS (modern view, user 2026-08-18) ────────────
+  // Same stacked-bar language as the per-rocketeer rows: committed fills
+  // first, free follows, the free HOURS lead and the rate qualifies them. Bar
+  // length ∝ each band's own scheduled hours against the largest band, so a
+  // three-person band posting a spectacular rate is visibly small.
   var rows = C.wfBandRowsHtml_(bands);
   assert_(/SENIOR/.test(rows) && /JUNIOR/.test(rows), "both bands render");
   assert_(rows.indexOf("SENIOR") < rows.indexOf("JUNIOR"), "…in free-hours order");
   assert_(/>3</.test(rows) && /># of people/.test(rows) === false,
     "the head count rides with the hours, so a spectacular rate on three people is visibly that");
+  assert_(/wfBarPlan/.test(rows) && /wfBarAvail/.test(rows),
+    "band rows speak the tab's stacked-bar language — committed, then free");
+  assert_(/>80h</.test(rows),
+    "…with the free HOURS as the lead figure (what Sales can sell is hours)");
+  assert_(/80%/.test(rows) && /5%/.test(rows),
+    "…and each band's own rate as the qualifier, never the org denominator");
 
-  // An empty split must render nothing rather than an empty table shell — the
+  // A band planned past its schedule wears the pill, never a minus-rate —
+  // the same translation every other surface applies.
+  var overRow = C.wfBandRowsHtml_([{ band: "CORE", head: 2, gross: 100,
+                                     committed: 120, freeHrs: -20, pct: -0.2 }]);
+  assert_(/pillOver/.test(overRow) && /Over-allocated/.test(overRow),
+    "an over-planned band raises the pill");
+  assert_(!/-\d+%/.test(overRow), "…and never prints a negative rate");
+
+  // An empty split must render nothing rather than an empty shell — the
   // panel above it is still a complete answer without this section.
-  assert_(C.wfBandRowsHtml_([]) === "", "no consumer bands → no table, not an empty one");
+  assert_(C.wfBandRowsHtml_([]) === "", "no consumer bands → no rows, not an empty shell");
 
   C.getModel().viewerRole = "admin";
   C.renderWfConsumers_();
@@ -6806,6 +6825,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/Level band/.test(panel), "…and the split is rendered into the panel, not just computed");
   assert_(/cannot disagree/.test(panel),
     "…without dropping the one-definition guarantee the two surfaces still hold");
+  // ── The hero (modern view, 2026-08-18): rate + one org-level capacity bar ──
+  assert_(/wfHero/.test(panel),
+    "the headline is a hero row — the rate beside one org-level capacity bar");
+  assert_(/committed/.test(panel) && /free/.test(panel),
+    "…whose segments are labelled in hours words, not colour alone");
+  assert_(/of 7 backlog consumers/.test(panel),
+    "…and the denominator still rides with the figure");
 })();
 
 // ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ────────────────

@@ -978,6 +978,27 @@ table.wfGrid{min-width:760px}
 .wfBarAvail{background:var(--c-good)}
 .wfBarHeld .wfBarPlan,.wfBarHeld .wfBarAvail{opacity:.45}
 .wfBarRate{font-variant-numeric:tabular-nums}
+/* Sellable headroom, modern view (2026-08-18): the same bar at three zoom
+   levels. Hero — the org rate beside one full-width capacity bar; band rows —
+   a three-column grid (label | bar | hours), so the bars share one left edge
+   and read as a single chart rather than a list of sentences. */
+.wfHero{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:6px 0 2px}
+.wfHeroRate{flex:0 0 auto}
+.wfHeroBarBox{flex:1;min-width:260px}
+.wfBarLg .wfBar{height:24px;border-radius:5px}
+.wfBarLg .wfBarPlan,.wfBarLg .wfBarAvail{font-size:12px;line-height:24px}
+.wfBandCap{margin-top:14px;font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
+           font-size:calc(11px*var(--scale));text-transform:uppercase;letter-spacing:.06em;
+           color:var(--muted);font-weight:700}
+.wfBandRows{display:grid;grid-template-columns:minmax(120px,auto) 1fr auto;
+            gap:8px 14px;align-items:center;margin-top:8px}
+.wfBandLbl{white-space:nowrap}
+.wfBandBar{min-width:160px}
+.wfBandVal{white-space:nowrap;font-variant-numeric:tabular-nums}
+@media (max-width:700px){
+  .wfBandRows{grid-template-columns:1fr auto}
+  .wfBandBar{grid-column:1 / -1}
+}
 /* Pool header row — a band across the table, so the eye groups by pool before
    it reads any band. Tinted, not bold-only: at 11px bold alone does not
    separate a header row from a data row. */
@@ -9344,27 +9365,52 @@ function wfHeadroomByBand_() {
 }
 
 /**
- * The band split as rows. Hours lead, percentage follows.
+ * The band split as BAR ROWS (modern view, user 2026-08-18). Hours lead,
+ * percentage follows — unchanged doctrine, new clothes: the same stacked-bar
+ * language the per-rocketeer drill-down speaks, so the tab reads as one system
+ * at three zoom levels (org hero → band → person).
  *
  * A band with three people can post a spectacular percentage on nine free
  * hours, and a percentage sorted first would rank it above a band with 600h
  * genuinely on the table. What Sales can sell is HOURS; the rate is context for
- * them, so the hours are the number and the rate is the qualifier.
+ * them, so the free hours are the bold figure and the rate is the qualifier.
+ * Bar length ∝ each band's own scheduled hours against the largest band —
+ * which is what makes the three-person band VISIBLY small.
+ *
+ * A band planned past its schedule wears the Over-allocated pill, never a
+ * minus-rate — the same translation every other surface applies.
  */
 function wfBandRowsHtml_(rows) {
   if (!rows.length) return "";
-  return '<table class="tbl" style="margin-top:10px"><thead><tr>' +
-      "<th>Level band</th><th class='num'>People</th><th class='num'>Free</th>" +
-      "<th class='num'>Of scheduled</th><th class='num'>Rate</th>" +
-    "</tr></thead><tbody>" +
-    rows.map(function (b) {
-      return "<tr><td>" + esc_(wfBandLabel_("", b.band)) + "</td>" +
-        '<td class="num">' + b.head + "</td>" +
-        '<td class="num">' + (b.freeHrs < 0 ? "−" + wfHrs_(-b.freeHrs) : wfHrs_(b.freeHrs)) + "</td>" +
-        '<td class="num">' + wfHrs_(b.gross) + "</td>" +
-        '<td class="num">' + (b.pct !== null && b.pct < 0 ? "over" : wfPct_(b.pct)) + "</td></tr>";
-    }).join("") +
-    "</tbody></table>";
+  var maxGross = rows.reduce(function (mx, b) { return Math.max(mx, b.gross); }, 0);
+  var body = rows.map(function (b) {
+    var over = b.freeHrs < 0;
+    var w = maxGross > 0 ? Math.max(6, Math.round(b.gross / maxGross * 100)) : 100;
+    var comPct = b.gross > 0 ? Math.min(100, Math.round(b.committed / b.gross * 100)) : 0;
+    var freePct = Math.max(0, 100 - comPct);
+    var tip = wfHrs_(b.committed) + " committed" +
+      (over ? " — " + wfHrs_(-b.freeHrs) + " planned beyond the " + wfHrs_(b.gross) + " scheduled."
+            : " + " + wfHrs_(b.freeHrs) + " free of " + wfHrs_(b.gross) + " scheduled — " +
+              wfPct_(b.pct) + " of this band's own hours.");
+    return '<div class="wfBandLbl">' + esc_(wfBandLabel_("", b.band)) +
+        ' <span class="cellSub"><span>' + b.head + "</span> " +
+        (b.head === 1 ? "person" : "people") + "</span></div>" +
+      '<div class="wfBandBar" title="' + esc_(tip) + '">' +
+        '<span class="wfBar" style="width:' + w + '%">' +
+          (b.committed > 0 ? '<span class="wfBarPlan" style="width:' + comPct + '%">' +
+            (comPct >= 22 ? wfHrs_(b.committed) : "") + "</span>" : "") +
+          (!over && b.freeHrs > 0 ? '<span class="wfBarAvail" style="width:' + freePct + '%">' +
+            (freePct >= 22 ? wfHrs_(b.freeHrs) : "") + "</span>" : "") +
+        "</span></div>" +
+      '<div class="wfBandVal">' +
+        (over
+          ? '<span class="pillOver">Over-allocated</span> <span class="cellSub">' +
+            wfHrs_(-b.freeHrs) + " beyond scheduled</span>"
+          : "<b>" + wfHrs_(b.freeHrs) + "</b> free <span class='cellSub'>· " +
+            wfPct_(b.pct) + " of their " + wfHrs_(b.gross) + "</span>") +
+      "</div>";
+  }).join("");
+  return '<div class="wfBandRows">' + body + "</div>";
 }
 
 function renderWfConsumers_() {
@@ -9388,49 +9434,72 @@ function renderWfConsumers_() {
     "<h3>Sellable headroom" + scopeTag_("period") + "</h3>" +
     (head === 0
       ? "<div class='emptyState'>No backlog-consuming pools in this slice.</div>"
-      // Same clamp as the Availability Rate card (user 2026-08-17): the two
-      // surfaces publish one figure and must translate a negative one the same
-      // way — 0% shown, the overrun named in hours, never a minus sign.
-      : '<div class="big" style="font-size:2rem">' +
-          (pct !== null && pct < 0
-            ? '0% <span class="pillOver">Over-allocated</span>' : wfPct_(pct)) + "</div>" +
-        '<div class="cellSub">sellable headroom <b>of ' + head + " backlog consumer" +
-          (head === 1 ? "" : "s") + "</b> — " +
-          (pct !== null && pct < 0
-            ? wfHrs_(-a.freeHrs) + " planned beyond the "
-            : wfHrs_(a.freeHrs) + " free of ") +
-          wfHrs_(gross) + " scheduled</div>" +
-        '<div class="cellSub" style="margin-top:6px">This is the same figure the ' +
-          "Executive tab publishes as <b>Availability Rate</b> — one definition, two " +
-          "surfaces, so the two tabs cannot disagree.</div>" +
-        '<div class="cellSub" style="margin-top:6px">' +
-          "This is the figure to quote when somebody asks how available the team is. It excludes " +
+      // ── MODERN VIEW (user 2026-08-18): hero rate + one org capacity bar ──
+      // The rate keeps its clamp (same translation as the Availability Rate
+      // card: 0% shown, the overrun in hours, never a minus sign), and the
+      // number's anatomy moves from three paragraphs into one two-tone bar —
+      // committed fills first, free follows, labelled in hours words. Same
+      // stacked-bar language as the band rows below and the per-person
+      // drill-down: one system, three zoom levels.
+      : (function () {
+          var over = pct !== null && pct < 0;
+          var comPct = gross > 0 ? Math.min(100, Math.round(a.committed / gross * 100)) : 0;
+          var freePct = Math.max(0, 100 - comPct);
+          var heroBar =
+            '<span class="wfBarWrap wfBarLg" style="width:100%" title="' +
+              esc_(wfHrs_(a.committed) + " committed" +
+                (over ? " — " + wfHrs_(-a.freeHrs) + " planned beyond the " + wfHrs_(gross) +
+                        " scheduled."
+                      : " + " + wfHrs_(a.freeHrs) + " free of " + wfHrs_(gross) +
+                        " scheduled.")) + '">' +
+              '<span class="wfBar" style="width:100%">' +
+                (a.committed > 0 ? '<span class="wfBarPlan" style="width:' + comPct + '%">' +
+                  (comPct >= 16 ? wfHrs_(a.committed) + " committed" : "") + "</span>" : "") +
+                (!over && a.freeHrs > 0 ? '<span class="wfBarAvail" style="width:' + freePct + '%">' +
+                  (freePct >= 16 ? wfHrs_(a.freeHrs) + " free" : "") + "</span>" : "") +
+              "</span></span>";
+          return '<div class="wfHero">' +
+            '<div class="wfHeroRate"><div class="big" style="font-size:2rem">' +
+              (over ? '0% <span class="pillOver">Over-allocated</span>' : wfPct_(pct)) +
+              "</div>" +
+              '<div class="cellSub">sellable headroom</div></div>' +
+            '<div class="wfHeroBarBox">' + heroBar +
+              '<div class="cellSub" style="margin-top:4px">' +
+                (over ? wfHrs_(-a.freeHrs) + " planned beyond the "
+                      : "<b>" + wfHrs_(a.freeHrs) + "</b> free of ") +
+                wfHrs_(gross) + " scheduled <b>of " + head + " backlog consumer" +
+                (head === 1 ? "" : "s") + "</b></div>" +
+            "</div></div>";
+        })() +
+        // Context, compressed to two lines (2026-08-18). Everything load-
+        // bearing survives: the one-definition guarantee, the quotability, the
+        // exclusion with its headcount, and the refusal of a company-wide blend.
+        '<div class="cellSub" style="margin-top:8px">' +
+          "One definition, two surfaces — this is the figure the Executive tab publishes as " +
+          "<b>Availability Rate</b>, so the two tabs cannot disagree, and it is the number to " +
+          "quote when somebody asks how available the team is. It excludes " +
           nonHead + " " + (nonHead === 1 ? "person" : "people") + " in demand-driven and governing " +
-          "pools, whose capacity is real but is not drawn from the project backlog. " +
-          "<b>There is deliberately no company-wide equivalent</b> — averaging pools that cannot " +
-          "substitute for each other produces a number that is always wrong in the same reassuring " +
-          "direction." +
+          "pools — real capacity that is not drawn from the project backlog — and there is " +
+          "deliberately <b>no company-wide equivalent</b>: averaging pools that cannot substitute " +
+          "for each other is always wrong in the same reassuring direction." +
         "</div>" +
         // ── WHAT THE GATE IS, AND WHAT IT IS NOT ────────────────────────
         // Stated where the number is read, not in a methodology drawer. A
         // reader quoting 19% to a sales meeting needs to know in that moment
         // that it is role-gated and level-blind — by the time they have opened
         // a tooltip they have already said the number out loud.
-        '<div class="cellSub" style="margin-top:8px">' +
+        '<div class="cellSub" style="margin-top:6px">' +
           "<b>Role gates this number; level does not.</b> Everyone counted holds a " +
-          "backlog-consuming role — delivery consulting, service engineering, architecture and " +
-          "learning solutions. Within that group the hours are summed and divided once, so a " +
-          "junior's free hour and a principal's free hour weigh the same, and the backlog these " +
-          "hours are measured against is routed by pool rather than by level. " +
-          "The split below is there because those hours are not substitutes." +
+          "backlog-consuming role, but the hours are summed and divided once — a junior's free " +
+          "hour and a principal's weigh the same. The split below exists because those hours " +
+          "are not substitutes." +
         "</div>" +
+        '<div class="wfBandCap">Where the free time sits — by <b>Level band</b></div>' +
         wfBandRowsHtml_(wfHeadroomByBand_()) +
         '<div class="cellSub" style="margin-top:6px">' +
-          "Read it as a staffing question, not a total: free hours concentrated in one band mean " +
-          "the backlog can only be absorbed if it is work that band can take. Company guidance is " +
-          "explicit that seniors idle on junior work and juniors run at full utilization are both " +
-          "failures, so a healthy read here is headroom spread across bands rather than pooled in " +
-          "one." +
+          "Read it as a staffing question, not a total: free hours pooled in one band absorb " +
+          "backlog only if the work fits that band — seniors idle on junior work and juniors at " +
+          "full stretch are both failures, so healthy is headroom spread across bands." +
         "</div>");
 }
 
