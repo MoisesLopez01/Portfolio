@@ -60,5 +60,10 @@ ck('multiselect btn rides the scaled height rule',
 ck('multiselect in the 14px type tier', html.includes('.fb-multi-btn, .fb-multi-opt,'));
 ck('single-open multiselect panels', /querySelectorAll\('\.fb-multi-panel'\)\.forEach\(function\(p\) \{\s*\n?\s*if \(p !== panel\)/.test(html));
 
+// ── Performance Record rides the type scale (2026-08-18 user feedback) ──
+ck('pr-table type scaled', html.includes('.pr-table td { font-size: calc(13px * var(--scale)); }'));
+ck('pr drill type scaled', html.includes('.pr-drill { font-size: calc(13px * var(--scale)); }'));
+ck('pr KPI value scaled',  html.includes('.pr-kpi b { font-size: calc(20px * var(--scale)); }'));
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

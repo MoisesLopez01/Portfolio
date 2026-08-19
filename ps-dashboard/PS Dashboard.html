@@ -1236,6 +1236,40 @@ body { font-size: calc(15px * var(--scale)); }
 .emp-table th { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
 .emp-table td { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
 
+/* ── Performance Record type scale ─────────────────────────
+   The pr-* styles were born at fixed 9–12px and never joined the lift, so the
+   tab read a full tier smaller than the rest of the dashboard (user feedback
+   2026-08-18). One notch up at base, multiplied by --scale like everything
+   else. Late in the cascade on purpose — these win over the originals. */
+.pr-info { font-size: calc(13px * var(--scale)); }
+.pr-table { font-size: calc(13px * var(--scale)); }
+.pr-table th { font-size: calc(12px * var(--scale)); }
+.pr-table td { font-size: calc(13px * var(--scale)); }
+.pr-name { font-size: calc(14px * var(--scale)); }
+.pr-sub { font-size: calc(11px * var(--scale)); }
+.pr-trend, .pr-delta { font-size: calc(11px * var(--scale)); }
+.pr-siq { font-size: calc(11px * var(--scale)); }
+.pr-xchip { font-size: calc(10px * var(--scale)); }
+.pr-band td { font-size: calc(10px * var(--scale)); }
+.pr-reading { font-size: calc(12px * var(--scale)); }
+.pr-drill { font-size: calc(13px * var(--scale)); }
+.pr-drill h4 { font-size: calc(13px * var(--scale)); }
+.pr-drill td, .pr-drill th { font-size: calc(12px * var(--scale)); }
+.pr-exlist { font-size: calc(13px * var(--scale)); }
+.pr-feed-item { font-size: calc(13px * var(--scale)); }
+.pr-title { font-size: calc(18px * var(--scale)); }
+.pr-link { font-size: calc(12px * var(--scale)); }
+.pr-kpi b { font-size: calc(20px * var(--scale)); }
+.pr-kpi span { font-size: calc(11px * var(--scale)); }
+.pr-kpib b { font-size: calc(18px * var(--scale)); }
+.pr-kpib > span { font-size: calc(12px * var(--scale)); }
+.pr-kpib-ref { font-size: calc(11px * var(--scale)); }
+.pr-kpigroup-lbl { font-size: calc(12px * var(--scale)); }
+.pr-seg button { font-size: calc(12px * var(--scale)); }
+.pr-seg-sm button { font-size: calc(11px * var(--scale)); }
+.pr-dot { width: calc(10px * var(--scale)); height: calc(10px * var(--scale)); }
+.pr-heat { width: calc(12px * var(--scale)); height: calc(12px * var(--scale)); }
+
 /* Scale-driven chrome — width, spacing and grids grow with the --scale ladder.
    Guarded at ≥1024px: the phone/tablet blocks above (768/640/480) touch these
    same selectors and MUST keep winning on small screens. Supersedes the old
