@@ -54,5 +54,11 @@ ck('csz_ falls back to 1', (function () {
   return i >= 0 && html.slice(i, i + 400).includes('|| 1;');
 })());
 
+// ── filter-bar consistency (2026-08-18 screenshot fix) ──
+ck('multiselect btn rides the scaled height rule',
+   /\.fb-group select, \.fb-search-wrap input, \.fb-reset, \.fb-multi-btn \{ height: calc\(36px \* var\(--scale\)\); \}/.test(html));
+ck('multiselect in the 14px type tier', html.includes('.fb-multi-btn, .fb-multi-opt,'));
+ck('single-open multiselect panels', /querySelectorAll\('\.fb-multi-panel'\)\.forEach\(function\(p\) \{\s*\n?\s*if \(p !== panel\)/.test(html));
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

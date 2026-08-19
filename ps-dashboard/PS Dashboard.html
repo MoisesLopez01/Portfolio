@@ -518,14 +518,18 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
   position: absolute; top: calc(100% + 4px); left: 0;
   background: #fff; border: 1px solid var(--border);
   border-radius: 8px; z-index: 200;
-  min-width: 220px; max-height: 260px; overflow-y: auto;
+  min-width: 220px; max-height: 320px; overflow-y: auto;
   box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 4px 0;
 }
+/* Job titles are long — give their panel room so text stops wrapping into a
+   cramped ribbon under its own checkbox. */
+#fbJobTitlePanel { min-width: 360px; max-width: 480px; }
 .fb-multi-opt {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: flex-start; gap: 8px;
   padding: 6px 12px; font-size: 12px; cursor: pointer;
-  color: var(--text);
+  color: var(--text); line-height: 1.35;
 }
+.fb-multi-opt input[type=checkbox] { margin-top: 2px; }
 .fb-multi-opt:hover { background: var(--surface); }
 .fb-multi-opt input[type=checkbox] { flex-shrink: 0; accent-color: var(--orbe); }
 
@@ -1204,7 +1208,7 @@ body { font-size: calc(15px * var(--scale)); }
 
 /* 14px tier — was 12px */
 .emp-table td, .metrics-table th, .metrics-table td,
-.fb-group select, .fb-search-wrap input,
+.fb-group select, .fb-search-wrap input, .fb-multi-btn, .fb-multi-opt,
 .cf-panel-list li, .dr-metric-desc, .dr-rule-desc,
 .dr-note, .settings-btn, .weight-pct, .weight-total-label,
 .sec-sub, .sec-user-chip, .sec-textarea,
@@ -1224,8 +1228,9 @@ body { font-size: calc(15px * var(--scale)); }
 .perf-week-pill { font-size: calc(13px * var(--scale)); }
 .kpi-card { padding: calc(20px * var(--scale)); }
 
-/* Filter controls — taller to fit larger type */
-.fb-group select, .fb-search-wrap input, .fb-reset { height: calc(36px * var(--scale)); }
+/* Filter controls — taller to fit larger type. .fb-multi-btn rides the same
+   rules as the native selects so the two control generations read as ONE bar. */
+.fb-group select, .fb-search-wrap input, .fb-reset, .fb-multi-btn { height: calc(36px * var(--scale)); }
 
 /* Employee table — breathing room for 14px text */
 .emp-table th { padding: calc(11px * var(--scale)) calc(16px * var(--scale)); }
@@ -2746,7 +2751,10 @@ var _loadSeq = 0;
     if (menuWrap && !menuWrap.contains(e.target)) toggleNavMenu(true);
   });
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') toggleNavMenu(true);
+    if (e.key === 'Escape') {
+      toggleNavMenu(true);
+      document.querySelectorAll('.fb-multi-panel').forEach(function(p) { p.style.display = 'none'; });
+    }
   });
 })();
 
@@ -7576,9 +7584,7 @@ function updateJobTitleBtn() {
 }
 
 function toggleJobTitleDropdown(e) {
-  e.stopPropagation();
-  var panel = document.getElementById("fbJobTitlePanel");
-  if (panel) panel.style.display = panel.style.display === "none" ? "" : "none";
+  toggleMsPanel(e, "fbJobTitlePanel");
 }
 
 // Parse "07.I3.1 - Engineer, Customer Support" → { family: "07", level: "I3" }
@@ -7693,8 +7699,14 @@ function updateLvBtn() {
 }
 
 function toggleMsPanel(e, panelId) {
+  // stopPropagation keeps the document outside-click handler from instantly
+  // closing the panel we just opened — so this function must close the OTHER
+  // panels itself, or all three can stack open at once (2026-08-18 screenshot).
   e.stopPropagation();
   var panel = document.getElementById(panelId);
+  document.querySelectorAll('.fb-multi-panel').forEach(function(p) {
+    if (p !== panel) p.style.display = 'none';
+  });
   if (panel) panel.style.display = panel.style.display === "none" ? "" : "none";
 }
 
