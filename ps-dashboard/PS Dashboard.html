@@ -3350,6 +3350,11 @@ function exportPerfGridPNG_() {
   }, 50);
 }
 
+// Per-row cell markup cache (spec v4 P9): sparkline SVGs build once per model
+// (payload + team + granularity), not once per render — sorting, filtering and
+// focus changes become lookups (~1,000 SVG builds saved per render at 180 rows).
+var _prCellsCache = { key: null, map: {} };
+
 function renderPerfRecordTab_(filteredOpt) {
   if (!DATA) return;
   var body = document.getElementById('prBody');
@@ -3373,6 +3378,7 @@ function renderPerfRecordTab_(filteredOpt) {
   // Weekly is scoped to 9 buckets now — dense bars are never needed.
   var dense = false;
   var cols  = perfCols_();
+  if (_prCellsCache.key !== _perfModelMemo.key) _prCellsCache = { key: _perfModelMemo.key, map: {} };
 
   // Subtitle: name the window explicitly so a screenshot is self-describing.
   var qBuckets = periodBucketsForEmp_('quarter');
@@ -3447,7 +3453,8 @@ function renderPerfRecordTab_(filteredOpt) {
         (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') +
         '<br><span class="pr-sub">' + subLine + '</span>' +
         (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
-      r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join('') +
+      (_prCellsCache.map[e.normName] || (_prCellsCache.map[e.normName] =
+        r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join(''))) +
       '</tr>';
   });
 
