@@ -827,11 +827,20 @@ body.dark-mode .pr-table th { background: #16214A; }
 .pr-block.info h4 { color: var(--muted); }
 /* Exception report list + quarterly KPI blocks + kudos feed (side-panel wave) */
 .pr-exlist { margin: 4px 0 0 16px; padding: 0; font-size: 11.5px; line-height: 1.7; }
-.pr-kpibs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+/* Chip row (spec v4 P5): two labelled groups — Compliance vs Contribution.
+   auto-fit grid so the row never strands two orphan chips on a second line;
+   sentence-case 12px labels (no ALL-CAPS micro-type); every chip carries its
+   reference line so a green 88% reads as a pass, not a guess. */
+.pr-kpigroup { margin-top: 10px; }
+.pr-kpigroup-lbl { font-size: 12px; line-height: 14px; color: var(--slate); font-weight: 600; }
+.pr-kpibs { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-top: 4px; }
 .pr-kpib { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
-  display: flex; flex-direction: column; align-items: flex-start; min-width: 84px; }
+  display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .pr-kpib b { font-size: 17px; color: var(--void); white-space: nowrap; }
-.pr-kpib span:last-child { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.pr-kpib > span { font-size: 12px; line-height: 14px; color: var(--muted); }
+.pr-kpib-ref { font-size: 10px; color: var(--muted); font-style: normal; margin-top: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .pr-feed { max-height: 280px; overflow-y: auto; margin-top: 4px; }
 .pr-feed-item { padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 11.5px; white-space: normal; }
 .pr-feed-item:last-child { border-bottom: none; }
@@ -3223,6 +3232,14 @@ function perfBarsSvg_(cell, cohort, dense) {
     '</svg>';
 }
 
+// Status dot with an accessible label (spec v4 P6) — colour is never the only
+// cue: shape cues live in CSS (.pr-dot.y square, .r diamond, .m/.n rings).
+var PR_DOT_LBL = { g: 'green — at bar', y: 'yellow — watch', r: 'red — below bar',
+                   m: 'gray — no data', n: 'slate — shown, not evaluated' };
+function prDot_(sig) {
+  return '<span class="pr-dot ' + sig + '" role="img" aria-label="' + (PR_DOT_LBL[sig] || sig) + '"></span>';
+}
+
 function perfCellHtml_(cell, cohort, dense) {
   var tipAttr = ' title="' + esc(cell.tip || '') + '"';
   var dot = '<span class="pr-dot ' + cell.sig + '"></span>';
@@ -3704,22 +3721,47 @@ function perfDrillHtml_(emp, row, model) {
       return per[i] && per[i].score !== null && per[i].score !== undefined
         ? { label: b.label, v: per[i].score, partial: !!b.containsCurrent } : null;
     }).filter(Boolean);
-    var kpib = row.cells.filter(function(c) { return c.col.id !== 'score'; }).map(function(c) {
+    // Chip row spec (v4 P5): two labelled groups answering different questions —
+    // Compliance (did they do what's asked) vs Contribution (what did it produce).
+    var chipBars = function(id) { var b = PERF_BARS[id]; return b ? (row.coh === 'mgr' ? b.mgr : b.ic) : null; };
+    var CHIP_REF = {
+      goals:   function() { return 'target ≥' + Math.round(chipBars('goals').g * 100) + '%'; },
+      tracked: function() { return 'target ≥' + Math.round(chipBars('tracked').g * 100) + '%'; },
+      planned: function() { return 'target ≥' + Math.round(chipBars('planned').g * 100) + '%'; },
+      pto:     function() { return 'Good = has a plan'; },
+      rcr:     function() { return 'green ≥' + chipBars('rcr').g; },
+      kudos:   function() { return 'give & receive'; },
+      si:      function() { return 'target ' + chipBars('si').g + '/5'; },
+    };
+    function chipHtml(c) {
       var val = c.col.id === 'kudos' ? (c.val ? (c.val.recv + '/' + c.val.gave) : '—')
               : c.col.id === 'pto' ? (c.val === null ? '—' : c.val >= 1 ? 'Good' : 'At Risk')
               : c.val === null || c.val === undefined ? '—'
               : (c.col.id === 'goals' || c.col.id === 'tracked' || c.col.id === 'planned') ? Math.round(c.val * 100) + '%'
               : c.col.id === 'rcr' ? String(Math.round(c.val * 10) / 10)
               : String(Math.round(c.val));
-      return '<div class="pr-kpib" title="' + esc(c.tip || '') + '"><b><span class="pr-dot ' + c.sig + '"></span>' + val +
-        (c.trend ? ' <span class="pr-trend">' + c.trend + '</span>' : '') + '</b><span>' + esc(c.col.label) + '</span></div>';
-    }).join('');
+      var ref = CHIP_REF[c.col.id] ? CHIP_REF[c.col.id]() : '';
+      var trendTxt = c.trend === '↗' ? 'rising' : c.trend === '↘' ? 'declining' : 'flat';
+      return '<div class="pr-kpib" title="' + esc(c.tip || '') + '"><b>' + prDot_(c.sig) + val +
+        (c.trend ? ' <span class="pr-trend" aria-hidden="true">' + c.trend +
+          (c.delta ? ' <span class="pr-delta">' + c.delta + '</span>' : '') + '</span>' +
+          '<span class="sr-only">' + trendTxt + (c.delta ? ', ' + c.delta : '') + '</span>' : '') +
+        '</b><span>' + esc(c.col.label) + '</span>' +
+        (ref ? '<i class="pr-kpib-ref">' + esc(ref) + '</i>' : '') + '</div>';
+    }
+    function chipGroup(name, ids) {
+      var chips = row.cells.filter(function(c) { return ids.indexOf(c.col.id) !== -1; }).map(chipHtml).join('');
+      return chips ? '<div class="pr-kpigroup"><span class="pr-kpigroup-lbl">' + name + '</span>' +
+        '<div class="pr-kpibs">' + chips + '</div></div>' : '';
+    }
+    var kpib = chipGroup('Compliance', ['goals', 'tracked', 'planned', 'pto']) +
+               chipGroup('Contribution', ['rcr', 'kudos', 'si']);
     blocks.push({ sev: 3.5, html: '<div class="pr-block">' +
       '<h4><span class="pr-dot ' + (cellByCol.score ? cellByCol.score.sig : 'm') + '"></span>Score — quarterly trend</h4>' +
       (scorePts.length > 1 ? detChartSVG_(scorePts, '#058CDC', function(v) { return String(Math.round(v)); },
           { target: PERF_BARS.score[row.coh === 'mgr' ? 'mgr' : 'ic'].g, targetLabel: 'green' })
         : '<p class="pr-sub">Score ' + (cellByCol.score && cellByCol.score.val !== null ? Math.round(cellByCol.score.val) : '—') + ' — not enough closed quarters for a trend line yet.</p>') +
-      '<div class="pr-kpibs">' + kpib + '</div></div>' });
+      kpib + '</div>' });
   }
 
   // ── Weekly = high-detail view (sev 3.6): one actionable line per week.
