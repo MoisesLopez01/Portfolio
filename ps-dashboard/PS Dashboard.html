@@ -790,6 +790,19 @@ body.pr-locked { overflow: hidden; }
   .pr-panel .pr-drill-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pr-panel .pr-block.span2 { grid-column: 1 / -1; }
 }
+/* Kudos wears June (Identity Lockdown: June is reserved for celebratory alerts
+   and Kudos) — the one module with a designated brand colour uses it. */
+.pr-star { color: var(--june); }
+/* Print (spec v4 P10): the open card becomes the page — promotion packets end
+   up printed whether we design for it or not. */
+@media print {
+  .header, .filter-bar, .tab-nav, .pr-workspace > .pr-scroll,
+  .pr-drill-actions, .pr-drag { display: none !important; }
+  .pr-panel { position: static !important; width: 100% !important; max-width: none;
+    max-height: none !important; border: none; box-shadow: none; animation: none; }
+  .pr-feed { max-height: none !important; overflow: visible !important; }
+  .pr-panel .pr-drill-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .pr-table tr.pr-row.sel td { background: #EEF4FF; }
 body.dark-mode .pr-panel { background: #101c44; border-color: #2B3A78; }
 body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
@@ -3305,6 +3318,7 @@ var PERF_FOCUS = {
 function prFocusSet(k) {
   STATE.prFocus = (!k || STATE.prFocus === k) ? null : k;
   renderPerfRecordTab_();
+  if (typeof prSyncUrl_ === 'function') prSyncUrl_();
 }
 function perfKpisHtml_(rows) {
   var CARDS = [
@@ -3487,6 +3501,7 @@ function togglePerfDrill_(normName) {
   STATE.prExpanded = STATE.prExpanded === normName ? null : normName;
   renderPerfRecordTab_();   // refresh the selected-row highlight
   renderPerfPanel_();
+  prSyncUrl_();
 }
 function closePerfPanel_() {
   if (STATE.prExpanded === null) return;
@@ -3503,6 +3518,7 @@ function closePerfPanel_() {
       break;
     }
   }
+  prSyncUrl_();
 }
 // Granularity is ONE state shared by grid and panel — every switch re-renders
 // both, whether it came from the page header or the panel's own W/M/Q control.
@@ -3510,7 +3526,33 @@ function prSetGran_(g) {
   STATE.prGranularity = g;
   renderPerfRecordTab_();
   renderPerfPanel_();
+  prSyncUrl_();
 }
+// Shareable state (spec v4 P10): the app lives in a GAS iframe, so state rides
+// google.script.history hash params — a manager can paste a specific card into
+// a calibration thread. No-ops cleanly outside the GAS host (local preview).
+function prSyncUrl_() {
+  try {
+    if (typeof google === 'undefined' || !google.script || !google.script.history) return;
+    google.script.history.replace(null, {
+      gran: STATE.prGranularity,
+      emp: STATE.prExpanded || '',
+      focus: STATE.prFocus || ''
+    }, '');
+  } catch (e) {}
+}
+function prRestoreUrl_() {
+  try {
+    if (typeof google === 'undefined' || !google.script || !google.script.url) return;
+    google.script.url.getLocation(function(loc) {
+      var p = (loc && loc.parameter) || {};
+      if (p.gran === 'week' || p.gran === 'month' || p.gran === 'quarter') STATE.prGranularity = p.gran;
+      if (p.emp) STATE.prExpanded = p.emp;
+      if (p.focus && PERF_FOCUS[p.focus]) STATE.prFocus = p.focus;
+    });
+  } catch (e) {}
+}
+prRestoreUrl_();
 // Panel width persistence — localStorage throws in some GAS-iframe privacy
 // modes, so every access is guarded with an in-memory fallback.
 var _prMem = {};
@@ -3850,7 +3892,7 @@ function perfDrillHtml_(emp, row, model) {
       if (cellByCol.pto && !cellByCol.pto.notEval && a.pto !== null && a.pto !== undefined) {
         bits.push(a.pto >= 1 ? 'PTO ok' : '<b style="color:#DE350B">PTO At Risk</b>');
       }
-      if (a.kudos && (a.kudos.recv || a.kudos.gave)) bits.push('★ recv ' + a.kudos.recv + ' · gave ' + a.kudos.gave);
+      if (a.kudos && (a.kudos.recv || a.kudos.gave)) bits.push('<span class="pr-star">★</span> recv ' + a.kudos.recv + ' · gave ' + a.kudos.gave);
       return '<tr' + (b.containsCurrent ? ' style="opacity:.55"' : '') + '><td class="pr-sub">' + esc(b.label) +
         (b.containsCurrent ? ' ⏳' : '') + '</td><td>' + (bits.join(' · ') || '<span class="pr-sub">no data</span>') + '</td></tr>';
     }).join('');
@@ -3924,7 +3966,7 @@ function perfDrillHtml_(emp, row, model) {
       var wd = emp.weeks && emp.weeks[w.label];
       if (!wd || !wd.kudos || !wd.kudos.entries) return;
       wd.kudos.entries.forEach(function(en) {
-        feed.push('<div class="pr-feed-item"><span class="pr-sub">' + esc(w.label) + '</span> ★ from <b>' +
+        feed.push('<div class="pr-feed-item"><span class="pr-sub">' + esc(w.label) + '</span> <span class="pr-star">★</span> from <b>' +
           esc(en.giver || '—') + '</b>' +
           (en.orgValues ? '<br><span class="pr-sub">' + esc(en.orgValues) + '</span>' : '') + '</div>');
       });
