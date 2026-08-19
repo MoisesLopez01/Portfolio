@@ -30,6 +30,11 @@
   --text:    #1E293B;
   --muted:   #94A3B8;
 
+  /* Semantic status tokens — an explicit, documented extension: the brand
+     palette has no success/danger colours, so signals get their own tokens,
+     kept clearly separate from brand tokens (spec v4 P10). */
+  --st-good: #00875A; --st-warn: #FF991F; --st-bad: #DE350B;
+
   --rcr-critical-bg: #FDECEA; --rcr-critical-fg: #B71C1C;
   --rcr-watch-bg:    #FFF8E1; --rcr-watch-fg:    #7B4800;
   --rcr-healthy-bg:  #F1F8F4; --rcr-healthy-fg:  #1B5E20;
@@ -800,11 +805,21 @@ body.dark-mode .pr-table th { background: #16214A; }
 .pr-name { font-weight: 700; color: var(--void); }
 .pr-sub { font-size: 10px; color: var(--slate); }
 .pr-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
-.pr-dot.g { background: #00875A; } .pr-dot.y { background: #FF991F; }
-.pr-dot.r { background: #DE350B; } .pr-dot.m { background: #C1C7D0; }
+/* Signal dots — semantic status tokens + non-colour shape cues (spec v4 P6):
+   circle = green, square = yellow, diamond = red, ring = no data / not evaluated. */
+.pr-dot.g { background: var(--st-good); }
+.pr-dot.y { background: var(--st-warn); border-radius: 3px; }
+.pr-dot.r { background: var(--st-bad); border-radius: 2px; transform: rotate(45deg); }
+.pr-dot.m { background: transparent; border: 2px solid #C1C7D0; box-sizing: border-box; }
+.pr-dot.n { background: transparent; border: 2px solid #7E97B8; box-sizing: border-box; }
 .pr-trend { font-size: 10px; color: var(--slate); margin-right: 3px; }
 .pr-delta { font-size: 10px; color: var(--slate); font-weight: 700; }
-.pr-dot.n { background: #7E97B8; }
+.pr-namebtn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+.pr-title { font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif;
+  font-size: 16px; color: var(--void); margin: 4px 0 2px; display: inline-block; }
+.pr-link { font-size: 11px; margin-left: 8px; white-space: nowrap; }
+.pr-seg button:focus-visible, .pr-namebtn:focus-visible, .pr-kpi:focus-visible,
+.copy-btn:focus-visible { outline: 2px solid var(--orbe); outline-offset: 2px; }
 .pr-reading { font-size: 11px; color: var(--slate); font-style: italic; white-space: normal; }
 .pr-drill { background: #FAFBFC; border: 1px solid var(--border); border-radius: 10px;
   padding: 12px 14px; margin: 4px 0 8px; font-size: 11.5px; white-space: normal; overflow-x: auto; }
@@ -852,7 +867,7 @@ body.dark-mode .pr-kpib b { color: #FFFAF5; }
 body.dark-mode .pr-drill { background: #1E2A4A; }
 body.dark-mode .pr-block { border-color: #2B3A78; }
 body.dark-mode .pr-heat.m { background: #44506E; }
-body.dark-mode .pr-dot.m { background: #44506E; }
+body.dark-mode .pr-dot.m { border-color: #44506E; }
 body.dark-mode .pr-kpi { background: #16214A; }
 body.dark-mode .pr-kpi b { color: #FFFAF5; }
 body.dark-mode .pr-xchip { background: #1E2A4A; color: #94A3B8; }
@@ -3366,8 +3381,11 @@ function renderPerfRecordTab_(filteredOpt) {
 
   function th(key, label) {
     var on  = STATE.prSort.key === key;
-    var tip = (PERF_COL_HELP[key] || '') + ' Click to sort.';
-    return '<th class="' + (on ? 'on' : '') + '" title="' + esc(tip) + '" onclick="prSortBy(\'' + key + '\')">' +
+    var tip = (PERF_COL_HELP[key] || '') +
+      (key === 'score' ? ' Differences under 3 points are within measurement noise.' : '') +
+      ' Click to sort.';
+    return '<th scope="col"' + (on ? ' class="on" aria-sort="' + (STATE.prSort.dir === 'desc' ? 'descending' : 'ascending') + '"' : '') +
+      ' title="' + esc(tip) + '" onclick="prSortBy(\'' + key + '\')">' +
       label + (on ? (STATE.prSort.dir === 'desc' ? ' ▾' : ' ▴') : '') + '</th>';
   }
 
@@ -3382,22 +3400,29 @@ function renderPerfRecordTab_(filteredOpt) {
     var parsed = typeof parseJobCode === 'function' ? parseJobCode(e.jobTitle) : {};
     var open = STATE.prExpanded === e.normName;
     // Identity line (spec v2 §1): full title · code·level · location · sup · tenure.
+    // The raw job code gets an <abbr> so "07.I4.1" explains itself (spec v4 P6).
+    var codeTok = [parsed.family, parsed.level].filter(Boolean).join('·');
     var subLine = [
-      e.jobTitle || '',
-      [parsed.family, parsed.level].filter(Boolean).join('·'),
-      e.keyLocation, e.supervisor,
-      r.tenure ? r.tenure + ' tenure' : ''
+      esc(e.jobTitle || ''),
+      codeTok ? '<abbr title="Job code — family ' + esc(parsed.family || '') +
+        (parsed.level ? ', level ' + esc(parsed.level) : '') + '">' + esc(codeTok) + '</abbr>' : '',
+      esc(e.keyLocation || ''), esc(e.supervisor || ''),
+      r.tenure ? esc(r.tenure) + ' tenure' : ''
     ].filter(Boolean).join(' · ');
     var chipsHtml = r.chips.map(function(c) {
       return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
     }).join('');
     // ⚑ count column removed (user 2026-08-18 — "guide by the score"): the flag
     // summary lives on as the row/name tooltip, 🔥 moves beside the name, and the
-    // KPI cards keep the aggregate counts.
-    html += '<tr class="pr-row' + (open ? ' sel' : '') + '" title="' + esc(perfFlagTip_(r.cells)) + '" onclick="togglePerfDrill_(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
-      '<td>' + (open ? '▾ ' : '▸ ') + '<span class="pr-name">' + esc(e.name) + '</span>' +
+    // KPI cards keep the aggregate counts. Rows carry data-norm for the single
+    // delegated click listener (spec v4 P6/P9) — the name is a real <button> so
+    // Enter/Space work and focus is native.
+    html += '<tr class="pr-row' + (open ? ' sel' : '') + '" data-norm="' + esc(e.normName) + '" title="' + esc(perfFlagTip_(r.cells)) + '">' +
+      '<td>' + (open ? '▾ ' : '▸ ') +
+        '<button class="pr-namebtn" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+          '<span class="pr-name">' + esc(e.name) + '</span></button>' +
         (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') +
-        '<br><span class="pr-sub">' + esc(subLine) + '</span>' +
+        '<br><span class="pr-sub">' + subLine + '</span>' +
         (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
       r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join('') +
       '</tr>';
@@ -3408,6 +3433,22 @@ function renderPerfRecordTab_(filteredOpt) {
     '<p class="pr-sub" style="margin-top:8px">No rocketeers match the current filters' +
     (focus ? ' and the ' + focus.label + ' focus' : '') + '.</p>';
   body.innerHTML = html;
+  prWireRows_();
+}
+
+// ONE delegated click listener on the table container (spec v4 P6/P9) — rows
+// carry data-norm; the listener survives every innerHTML re-render, replacing
+// ~180 inline per-row handlers.
+var _prRowsWired = false;
+function prWireRows_() {
+  if (_prRowsWired) return;
+  var body = document.getElementById('prBody');
+  if (!body) return;
+  _prRowsWired = true;
+  body.addEventListener('click', function(ev) {
+    var tr = ev.target.closest('tr.pr-row');
+    if (tr && tr.getAttribute('data-norm')) togglePerfDrill_(tr.getAttribute('data-norm'));
+  });
 }
 
 // Row click drives the slide-in panel (side-panel wave): one person at a time,
@@ -3648,7 +3689,7 @@ function perfDrillHtml_(emp, row, model) {
     var info = c.notEval || c.sig === 'm' || id === 'kudos';
     blocks.push({ sev: info ? 0 : (SEV[c.sig] || 0), html:
       '<div class="pr-block' + (info ? ' info' : '') + '">' +
-      '<h4><span class="pr-dot ' + c.sig + '"></span>' + title +
+      '<h4>' + prDot_(c.sig) + title +
       (c.notEval ? ' <span class="pr-sub">(shown, not evaluated)</span>' : '') +
       (c.trend ? ' <span class="pr-trend">' + c.trend + (c.delta ? ' <span class="pr-delta">' + c.delta + '</span>' : '') + '</span>' : '') + '</h4>' +
       bodyHtml + '</div>' });
@@ -3707,7 +3748,7 @@ function perfDrillHtml_(emp, row, model) {
   var exLines = perfExceptionReport_(exEntries, 4);
   blocks.push({ sev: 4, html:
     '<div class="pr-block' + (exLines.length ? '' : ' info') + '">' +
-    '<h4><span class="pr-dot ' + (exLines.length ? 'y' : 'g') + '"></span>Exception report — ' +
+    '<h4>' + prDot_(exLines.length ? 'y' : 'g') + 'Exception report — ' +
     closedWks.length + ' closed weeks</h4>' +
     (exLines.length
       ? '<ul class="pr-exlist">' + exLines.map(function(l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>'
@@ -3757,7 +3798,7 @@ function perfDrillHtml_(emp, row, model) {
     var kpib = chipGroup('Compliance', ['goals', 'tracked', 'planned', 'pto']) +
                chipGroup('Contribution', ['rcr', 'kudos', 'si']);
     blocks.push({ sev: 3.5, html: '<div class="pr-block">' +
-      '<h4><span class="pr-dot ' + (cellByCol.score ? cellByCol.score.sig : 'm') + '"></span>Score — quarterly trend</h4>' +
+      '<h4>' + prDot_(cellByCol.score ? cellByCol.score.sig : 'm') + 'Score — quarterly trend</h4>' +
       (scorePts.length > 1 ? detChartSVG_(scorePts, '#058CDC', function(v) { return String(Math.round(v)); },
           { target: PERF_BARS.score[row.coh === 'mgr' ? 'mgr' : 'ic'].g, targetLabel: 'green' })
         : '<p class="pr-sub">Score ' + (cellByCol.score && cellByCol.score.val !== null ? Math.round(cellByCol.score.val) : '—') + ' — not enough closed quarters for a trend line yet.</p>') +
@@ -3880,16 +3921,53 @@ function perfDrillHtml_(emp, row, model) {
            : o[0] === 'month' ? 'Monthly — pacing view' : 'Quarterly — macro trend + KPI blocks') + '"' +
           ' onclick="event.stopPropagation();prSetGran_(\'' + o[0] + '\')">' + o[1] + '</button>';
       }).join('') + '</span>' +
-      '<button class="copy-btn" title="Save this card as PNG" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📸</button>' +
-      '<button class="copy-btn" onclick="event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</button>' +
-      '<button class="copy-btn" title="Close (Esc)" onclick="event.stopPropagation();closePerfPanel_()">✕</button>' +
+      '<button class="copy-btn" aria-label="Export card as image" title="Export card as image" onclick="event.stopPropagation();savePerfSnapshot_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📸</button>' +
+      '<button class="copy-btn" aria-label="Copy summary as plain text" title="Copy summary — searchable plain text for Confluence" onclick="event.stopPropagation();copyPerfSummary_(\'' + emp.normName.replace(/'/g, "\\'") + '\', this)">📋</button>' +
+      '<button class="copy-btn" aria-label="Close panel" title="Close (Esc)" onclick="event.stopPropagation();closePerfPanel_()">✕</button>' +
     '</div>' +
-    '<b>' + esc(emp.name) + '</b> <span class="pr-sub">' + esc(emp.jobTitle || '') +
+    // Name is the primary element (h2, condensed face); the navigate-away action
+    // is demoted to a text link (spec v4 P6).
+    '<h2 id="prPanelTitle" class="pr-title">' + esc(emp.name) + '</h2>' +
+    '<a class="pr-link" href="#" onclick="event.preventDefault();event.stopPropagation();viewRocketeerDetails(\'' + emp.normName.replace(/'/g, "\\'") + '\')">Open in Overview →</a>' +
+    '<br><span class="pr-sub">' + esc(emp.jobTitle || '') +
     (row.tenure ? ' · ' + row.tenure + ' tenure' : '') +
     (emp.supervisor ? ' · sup: ' + esc(emp.supervisor) : '') + '</span> ' + chipsHtml +
     '<div class="pr-reading">' + esc(row.reading) + '</div>' +
     '<div class="pr-drill-grid">' + blocks.map(function(b) { return b.html; }).join('') + '</div>' +
     '</div>';
+}
+// Plain-text summary for promotion packets (spec v4 P6) — a PNG isn't
+// searchable in Confluence; this is.
+function copyPerfSummary_(norm, btn) {
+  if (!DATA) return;
+  var emp = (DATA.employees || []).find(function(e) { return e.normName === norm; });
+  if (!emp) return;
+  var row = perfRowModels_([emp])[0];
+  var SIGW = { g: 'green', y: 'yellow', r: 'red', m: 'no data', n: 'not evaluated' };
+  var lines = [
+    emp.name + ' — ' + (emp.jobTitle || '') + (row.tenure ? ' · ' + row.tenure + ' tenure' : ''),
+    'Reading: ' + row.reading,
+  ];
+  row.cells.forEach(function(c) {
+    var v = c.col.id === 'kudos' ? (c.val ? 'recv ' + c.val.recv + ' / gave ' + c.val.gave : '—')
+          : c.col.id === 'pto' ? (c.val === null ? '—' : c.val >= 1 ? 'Good' : 'At Risk')
+          : c.val === null || c.val === undefined ? '—'
+          : (c.col.id === 'goals' || c.col.id === 'tracked' || c.col.id === 'planned') ? Math.round(c.val * 100) + '%'
+          : c.col.id === 'rcr' ? String(Math.round(c.val * 10) / 10)
+          : String(Math.round(c.val));
+    lines.push(c.col.label + ': ' + v + ' (' + SIGW[c.sig] + (c.delta ? ', ' + c.delta : '') + ')');
+  });
+  var txt = lines.join('\n');
+  function flash() { if (btn) { var o = btn.innerHTML; btn.innerHTML = '✓'; setTimeout(function() { btn.innerHTML = o; }, 1200); } }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(flash).catch(function() { prCopyFallback_(txt); flash(); });
+  } else { prCopyFallback_(txt); flash(); }
+}
+function prCopyFallback_(txt) {
+  var ta = document.createElement('textarea');
+  ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
 }
 // CSV of the current filtered+sorted view (spec §7) — one row per rocketeer,
 // per-metric signal + value + the reading note. WFP focus-group workflow.
