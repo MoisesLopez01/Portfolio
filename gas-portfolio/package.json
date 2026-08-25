@@ -1,12 +1,12 @@
 {
-  "name": "alex-lopez-portfolio-netlify",
-  "version": "1.0.0",
+  "name": "alex-lopez-portfolio",
+  "version": "1.1.0",
   "private": true,
-  "description": "Netlify deployment of the Alex López portfolio + Donna AI assistant.",
+  "description": "Alex López portfolio + Donna AI assistant — static build with serverless functions (Vercel or Netlify).",
   "scripts": {
     "build": "node build-static.js"
   },
   "dependencies": {
-    "@planetscale/database": "^1.19.0"
+    "postgres": "^3.4.0"
   }
 }

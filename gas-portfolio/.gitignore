@@ -5,6 +5,7 @@
 # Build output / local artifacts
 dist/
 .netlify/
+.vercel/
 *.db
 warehouse.db
 

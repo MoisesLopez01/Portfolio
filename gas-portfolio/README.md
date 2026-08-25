@@ -29,8 +29,9 @@ python -m pytest tests/ -q
 
 ## Site
 
-The landing page (`index.html`) is a single-page portfolio served via Netlify; the
-project data lives in `Code.js`. See `README-NETLIFY.md` for deployment.
+The landing page (`index.html`) is a single-page portfolio served as a static
+build with serverless functions; the project data lives in `Code.js`.
+See `README-VERCEL.md` (Vercel) or `README-NETLIFY.md` (Netlify) for deployment.
 
 ## License
 

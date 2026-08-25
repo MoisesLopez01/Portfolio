@@ -1,7 +1,7 @@
 // Security helpers for the public RPC endpoint:
 //   - originAllowed(): blocks cross-site browser abuse without breaking
 //     same-origin calls (which may omit the Origin header).
-//   - clientIp(): best-effort visitor IP from Netlify headers.
+//   - clientIp(): best-effort visitor IP from host headers (Netlify or Vercel).
 //   - rateLimit(): DB-backed per-IP sliding window so one visitor can't drain
 //     the Groq quota. Fails OPEN if the DB is unavailable (availability over
 //     strictness for a portfolio site).
@@ -19,7 +19,8 @@ function originAllowed(headers) {
 
 function clientIp(headers) {
   return (
-    headers["x-nf-client-connection-ip"] ||
+    headers["x-nf-client-connection-ip"] || // Netlify
+    headers["x-real-ip"] ||                 // Vercel
     (headers["x-forwarded-for"] || "").split(",")[0].trim() ||
     "unknown"
   );
