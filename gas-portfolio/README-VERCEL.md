@@ -35,10 +35,13 @@ Vercel Function  api/rpc.js  →  netlify/functions/rpc.js   ← all secrets liv
 
 ### 1. Supabase (PostgreSQL database) — free tier
 1. Create a project at <https://supabase.com> (sign up with GitHub is fastest).
-2. In your project, go **Settings → Database → Connection string**.
-3. Copy the **Postgres** connection string (the long `postgres://` URL).
-4. Run [`schema.sql`](./schema.sql) against it: go to **SQL Editor** in Supabase, paste the
-   schema code, and execute it. (Alternatively, use `psql` CLI if you prefer.)
+2. Click **Connect** (top bar of the project) and copy the **Transaction pooler**
+   connection string — it looks like
+   `postgres://postgres.xxxx:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:6543/postgres`.
+   Replace `[YOUR-PASSWORD]` with your database password. **Use the pooler string
+   (port 6543), not the direct connection** — serverless hosts need the pooler.
+3. Create the tables: go to **SQL Editor** in Supabase, paste the contents of
+   [`schema.sql`](./schema.sql), and Run.
 
 ### 2. Resend (lead emails — free tier includes 100/day)
 1. Get an API key at <https://resend.com/api-keys>.

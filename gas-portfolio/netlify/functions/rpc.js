@@ -43,7 +43,7 @@ function json(statusCode, payload) {
 // ── settings + logging (DB-backed, replaces Script Properties / Sheets) ───────
 async function getSetting(key, fallback) {
   try {
-    var r = await execute("SELECT v FROM settings WHERE k = ?", [key]);
+    var r = await execute("SELECT v FROM settings WHERE k = $1", [key]);
     return r.rows && r.rows[0] ? r.rows[0].v : fallback;
   } catch (e) {
     return fallback;
@@ -51,7 +51,7 @@ async function getSetting(key, fallback) {
 }
 async function setSetting(key, value) {
   await execute(
-    "INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+    "INSERT INTO settings (k, v) VALUES ($1, $2) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v",
     [key, String(value)]
   );
 }
@@ -62,7 +62,7 @@ async function logChatEvent(sessionId, type, role, message, model, tokens) {
   try {
     if (!(await loggingEnabled())) return;
     await execute(
-      "INSERT INTO chat_events (session, type, role, message, model, tokens) VALUES (?,?,?,?,?,?)",
+      "INSERT INTO chat_events (session, type, role, message, model, tokens) VALUES ($1,$2,$3,$4,$5,$6)",
       [
         sessionId || "anon",
         type || "chat",
@@ -254,13 +254,13 @@ async function saveProject(args) {
   var p = args[0] || {};
   if (!p.id) throw new Error("Project id required.");
   await execute(
-    "INSERT INTO projects (id, data) VALUES (?, ?) ON DUPLICATE KEY UPDATE data = VALUES(data)",
+    "INSERT INTO projects (id, data) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data",
     [String(p.id), JSON.stringify(p)]
   );
   return { success: true };
 }
 async function deleteProject(args) {
-  await execute("DELETE FROM projects WHERE id = ?", [String(args[0])]);
+  await execute("DELETE FROM projects WHERE id = $1", [String(args[0])]);
   return { success: true };
 }
 

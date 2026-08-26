@@ -35,18 +35,17 @@ function clientIp(headers) {
 async function rateLimit(ip, max, windowS) {
   max = max || Number(process.env.RATE_LIMIT_MAX || 20);
   windowS = windowS || Number(process.env.RATE_LIMIT_WINDOW_S || 60);
-  // windowS is a trusted config integer, not user input. MySQL prepared
-  // statements don't reliably accept a placeholder inside INTERVAL, so we
-  // inline it after coercing to a safe integer.
+  // windowS is a trusted config integer, not user input — coerced to a safe
+  // integer and inlined into the INTERVAL literal.
   var win = Math.max(1, Math.min(3600, Math.floor(windowS)));
   try {
-    await execute("INSERT INTO rate_hits (ip) VALUES (?)", [ip]);
+    await execute("INSERT INTO rate_hits (ip) VALUES ($1)", [ip]);
     var res = await execute(
-      "SELECT COUNT(*) AS n FROM rate_hits WHERE ip = ? AND ts > (NOW() - INTERVAL " + win + " SECOND)",
+      "SELECT COUNT(*) AS n FROM rate_hits WHERE ip = $1 AND ts > (NOW() - INTERVAL '" + win + " seconds')",
       [ip]
     );
     // Opportunistic cleanup of rows older than the window (keeps the table small).
-    await execute("DELETE FROM rate_hits WHERE ts < (NOW() - INTERVAL " + win + " SECOND)");
+    await execute("DELETE FROM rate_hits WHERE ts < (NOW() - INTERVAL '" + win + " seconds')");
     var n = res.rows && res.rows[0] ? Number(res.rows[0].n) : 0;
     return n <= max;
   } catch (err) {
