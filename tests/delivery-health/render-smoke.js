@@ -6791,10 +6791,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // Every column defined once, header and cells from the same registry.
   assert_(/<th[^>]*>Against epic date<\/th>/.test(h), "the table header is built from PM_COLS_");
   assert_(Object.keys(C.PM_COLS_).length === 6, "six defined columns");
-  // Scoped to the PM table itself — the Needs-action queue above it (2026-08-28)
-  // carries its own three-column header.
+  // Scoped to the PM table's OWN thead — each expanded PM's Needs-action
+  // queue (2026-08-28) nests its own three-column table inside the tbody.
   var pmTableHtml = h.slice(h.indexOf('<table class="hyg pmTable">'));
-  var headCells = (pmTableHtml.match(/<th\b/g) || []).length;
+  var headCells = (pmTableHtml.split("</thead>")[0].match(/<th\b/g) || []).length;
   assert_(headCells === 6,
           "exactly one header cell per column — a header without its cell shifts every " +
           "value one column left, which is the quiet kind of wrong that gets screenshotted");
@@ -8563,7 +8563,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(C.weeksPastDue_("2025.W52") === 31, "…and a prior-year key crosses the year boundary correctly (2025.W52 → 2026.W31 = 31 weeks)");
   assert_(C.weeksPastDue_("garbage") === null, "an unparseable key is null — unknown must never rank as overdue");
 
-  // ── 1b. The Needs-action queue renders over the PM tab's own epics ───────
+  // ── 1b. The Needs-action queue renders PER PM, inside the collapsible ────
+  // section (user correction 2026-08-28): each PM meets only their own areas
+  // of opportunity, and a clean PM meets none at all.
   var mPm = fresh(model({}));
   resetFilters();
   mPm.meta.gridWeeks = ["2026.W30", "2026.W31"].map(function (iso, i) {
@@ -8575,19 +8577,30 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
       assignee: "", via: "assignee", childrenAll: 1, stale: false, staleDays: 0,
       owners: [], children: [] }, o);
   }
+  function pmRow(name, epics, opps) {
+    return Object.assign({ pm: name, epicN: epics.length, epicDated: epics.length,
+      epicMissingKeys: [], epicCapped: false, epicBacklogN: 0, epicBacklogKeys: [],
+      readyDen: 10, readyN: 5, ignoredN: 0, viaAssignee: epics.length, viaProject: 0,
+      oppNoDue: 0, oppEpicsAtRisk: 0, oppEpicsBreached: 0, oppNoChildren: 0, oppStale: 0,
+      epics: epics }, opps || {});
+  }
   mPm.pmOwned = { keyCap: 200, supersededPms: 0, rows: [
-    { pm: "Dana Reyes", epicN: 6, epicDated: 5, epicMissingKeys: ["E-NODUE"], epicCapped: false,
-      epicBacklogN: 0, epicBacklogKeys: [],
-      readyDen: 10, readyN: 5, ignoredN: 0, viaAssignee: 6, viaProject: 0,
-      oppNoDue: 1, oppEpicsAtRisk: 0, oppEpicsBreached: 0, oppNoChildren: 1, oppStale: 0,
-      epics: [
-        epic({ key: "E-NODUE", due: "" }),                      // started, undated
-        epic({ key: "E-OLD", due: "2026.W20", overdue: true }), // 11 weeks past → >30 days
-        epic({ key: "E-MID", due: "2026.W28", overdue: true }), // 3 weeks past → 8–30 days
-        epic({ key: "E-JUST", due: "2026.W30", overdue: true }),// 1 week past → ≤7 days
-        epic({ key: "E-UNLINKED", due: "2026.W40", childrenAll: 0 }), // future but unlinked
-        epic({ key: "E-CLEAN", due: "2026.W40" }),
-      ] },
+    pmRow("Dana Reyes", [
+      epic({ key: "E-NODUE", due: "" }),                      // started, undated
+      epic({ key: "E-OLD", due: "2026.W20", overdue: true }), // 11 weeks past → >30 days
+      epic({ key: "E-MID", due: "2026.W28", overdue: true }), // 3 weeks past → 8–30 days
+      epic({ key: "E-JUST", due: "2026.W30", overdue: true }),// 1 week past → ≤7 days
+      epic({ key: "E-UNLINKED", due: "2026.W40", childrenAll: 0 }), // future but unlinked
+      epic({ key: "E-CLEAN", due: "2026.W40" }),
+    ], { epicDated: 5, epicMissingKeys: ["E-NODUE"], oppNoDue: 1, oppNoChildren: 1 }),
+    // A second PM whose only gap is one overdue epic — the focus check: Dana's
+    // keys must never reach Kai's table, and vice versa.
+    pmRow("Kai Osei", [
+      epic({ key: "K-LATE", due: "2026.W28", overdue: true }),
+      epic({ key: "K-CLEAN", due: "2026.W40" }),
+    ]),
+    // A fully clean PM — no table at all, the ✔ pill already says so.
+    pmRow("Noa Clean", [ epic({ key: "N-CLEAN", due: "2026.W40" }) ]),
   ] };
   C.setModel(mPm);
   C.getModel().viewerRole = "admin";
@@ -8595,14 +8608,22 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.pmOpen = {}; C.STATE.pmEpicOpen = {};
   C.renderAll_();
   var pmH = els.pmPanel.innerHTML;
-  assert_(/Needs action <span class="cellSub">— fix these and next period moves<\/span>/.test(pmH),
-          "the PM tab opens with the Needs-action queue, named like the Actions tab's");
-  assert_(pmH.indexOf("Needs action") < pmH.indexOf("Project Managers — owned work"),
-          "…ABOVE the per-PM detail, so the actionable read comes first");
-  // One row per signal, each with the right count.
+  assert_(!/Needs action/.test(pmH),
+          "with every PM collapsed, NO needs-action table renders — it lives inside the sections");
+
+  C.togglePmOpen_("Dana Reyes");
+  pmH = els.pmPanel.innerHTML;
+  assert_(/Needs action /.test(pmH) && /fix these and next period moves/.test(pmH),
+          "expanding a PM with gaps reveals THEIR needs-action queue, named like the Actions tab's");
+  assert_((pmH.match(/fix these and next period moves/g) || []).length === 1,
+          "…exactly one table — the other PMs' sections are still collapsed");
+  assert_(pmH.indexOf("Needs action") < pmH.indexOf("E-NODUE</a>") ||
+          pmH.indexOf("Needs action") < pmH.indexOf(">E-NODUE<"),
+          "…rendered inside the group section, above the epic detail");
+  // One row per LIVE signal, each with the right count over Dana's epics only.
   function needsRow(label) {
     var i = pmH.indexOf(">" + label + "</span></td>");
-    assert_(i !== -1, "the '" + label + "' row renders");
+    assert_(i !== -1, "the '" + label + "' row renders for the open PM");
     return pmH.slice(i, pmH.indexOf("</tr>", i));
   }
   assert_(/"tnum">1</.test(needsRow("No due date")), "No due date counts the started-undated epic");
@@ -8610,30 +8631,37 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/"tnum">1</.test(needsRow("Overdue 8–30 days")), "the 8–30 day band counts the 3-weeks-past epic");
   assert_(/"tnum">1</.test(needsRow("Overdue ≤7 days")), "≤7 days counts the just-ended committed week");
   assert_(/"tnum">1</.test(needsRow("Not linked to a parent")), "unlinked counts the epic nothing rolls up to");
-  // Every populated row is a ONE-CLICK Jira queue over exactly its keys.
+  // Every row is a ONE-CLICK Jira queue over exactly that PM's keys.
   var oldRow = needsRow("Overdue &gt;30 days");
   var oldHref = (oldRow.match(/href="([^"]*)"/) || [])[1] || "";
   assert_(/jql=/.test(oldHref) && /E-OLD/.test(decodeURIComponent(oldHref)),
           "the >30d row links a JQL queue carrying its own key");
-  assert_(!/E-MID|E-JUST|E-CLEAN/.test(decodeURIComponent(oldHref)),
-          "…and ONLY its own — a queue that opens someone else's tickets is not actionable");
-  var unlRow = needsRow("Not linked to a parent");
-  assert_(/E-UNLINKED/.test(decodeURIComponent((unlRow.match(/href="([^"]*)"/) || ["", ""])[1])),
-          "the unlinked row links its key too");
-  // A clean signal prints an em dash, never vanishes — a signal that
-  // disappears when clean reads as a signal nobody measured.
-  mPm.pmOwned.rows[0].epics = [epic({ key: "E-CLEAN", due: "2026.W40" })];
-  C.setModel(mPm);
-  C.renderAll_();
-  var pmClean = els.pmPanel.innerHTML;
-  assert_(/Needs action/.test(pmClean), "the queue still renders when everything is clean");
-  var cleanRow = pmClean.slice(pmClean.indexOf(">No due date</span></td>"));
-  cleanRow = cleanRow.slice(0, cleanRow.indexOf("</tr>"));
-  assert_(/"tnum">—</.test(cleanRow), "…with a clean row printing —, not disappearing");
-  // The queue follows the FILTERED epic set — the same slice the table under
-  // it draws — so the two can never disagree.
-  assert_(/over the <b>1 epic<\/b> listed below/.test(pmClean),
-          "the queue names the epic population it was counted over");
+  assert_(!/E-MID|E-JUST|E-CLEAN|K-LATE/.test(decodeURIComponent(oldHref)),
+          "…and ONLY its own — never another band's epics, never another PM's");
+
+  // FOCUS: Kai's section shows only Kai's one live signal; Dana's keys are
+  // absent, and so are the rows with nothing in them.
+  C.togglePmOpen_("Dana Reyes");   // close Dana
+  C.togglePmOpen_("Kai Osei");
+  pmH = els.pmPanel.innerHTML;
+  var kaiTable = pmH.slice(pmH.indexOf("Needs action"));
+  kaiTable = kaiTable.slice(0, kaiTable.indexOf("</table>"));
+  assert_(/Overdue 8–30 days/.test(kaiTable) && /K-LATE/.test(decodeURIComponent(kaiTable)),
+          "Kai's queue carries Kai's overdue epic");
+  assert_(!/E-OLD|E-NODUE/.test(kaiTable),
+          "…and none of Dana's — each PM meets only their own areas of opportunity");
+  assert_(!/No due date|Not linked to a parent/.test(kaiTable),
+          "…with clean signals omitted entirely — the section is a work queue, not a scorecard");
+
+  // A CLEAN PM gets no table at all: the ✔ pill on the row already says so.
+  C.togglePmOpen_("Kai Osei");     // close Kai
+  C.togglePmOpen_("Noa Clean");
+  pmH = els.pmPanel.innerHTML;
+  assert_(!/Needs action/.test(pmH),
+          "a PM with no open gaps expands to NO needs-action table — nothing to focus on");
+  assert_(/No open gaps/.test(pmH),
+          "…while the ✔ pill still states the clean verdict on their row");
+  C.togglePmOpen_("Noa Clean");
 
   // ── 2. The roster's ⚑ overdue flag on Backlog of the week ────────────────
   var mOv = fresh(model({}));

@@ -1989,10 +1989,12 @@ model + new export is the one combination that misses **unsafely**.
 > most available first, ramping/on-leave people last with no figure. CSV: "Idle h" → "Available h",
 > plus an "Overdue (open backlog)" column.
 >
-> **3 · The PM tab opens with its own actionable queue.** A **"Needs action — fix these and next
-> period moves"** table (`pmNeedsActionHtml_`) sits above the per-PM detail: No due date · Overdue
-> >30d · Overdue 8–30d · Overdue ≤7d · Not linked to a parent — each row a one-click Jira queue
-> over exactly the epics the current filters show.
+> **3 · Each PM carries their own actionable queue.** A **"Needs action — fix these and next
+> period moves"** table (`pmNeedsActionHtml_`) renders **inside each PM's collapsible section**
+> (user correction, same day — a tab-level rollup made every PM read everyone's problems): No due
+> date · Overdue >30d · Overdue 8–30d · Overdue ≤7d · Not linked to a parent — each row a
+> one-click Jira queue over **that PM's** filtered epics. Only signals with items render, and a
+> clean PM gets no table at all — the ✔ pill on their row is the standing verdict.
 >
 > **4 · The Workforce pool grid is simplified to five columns** — Person/cell · Head · Capacity ·
 > Committed · Available. Plan-vs-logged, Outside plan, Cover, Relative cover, State and Cell size

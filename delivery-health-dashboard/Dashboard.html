@@ -9848,9 +9848,9 @@ function renderPm_() {
     : "";
 
   el.innerHTML =
-    // 🎯 The actionable queue FIRST (user 2026-08-28): the signals a PM can
-    // link and action in Jira today, then the per-PM detail that explains them.
-    pmNeedsActionHtml_(visRows, filtering) +
+    // 🎯 The Needs-action queue renders PER PM, inside each collapsible
+    // section (user correction 2026-08-28) — see pmGroupRowHtml_. A tab-level
+    // rollup made every PM read everyone's problems.
     "<h3>Project Managers — owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
     // ── METHODOLOGY OFF THE PAGE (director feedback 2026-08-17) ─────────────
@@ -10056,12 +10056,12 @@ function weeksPastDue_(dueKey) {
 }
 
 /**
- * ── 🎯 NEEDS ACTION — the PM tab's own actionable queue (user 2026-08-28) ────
+ * ── 🎯 NEEDS ACTION — each PM's own actionable queue (user 2026-08-28) ───────
  * The same reading the Actions tab's "Needs action — fix these and next period
- * moves" table gives the org, rebuilt at the PM tab's grain: the EPICS on this
- * page, bucketed into the signals a PM can act on today, each row a one-click
- * Jira queue. Counted over the epics the current filters show, so the table
- * always describes the page under it.
+ * moves" table gives the org, rebuilt PER PM: it renders INSIDE the PM's
+ * collapsible section (user correction, same day — a tab-level rollup made
+ * every PM read everyone's problems), counted over THAT PM's epics as the
+ * current filters show them, each row a one-click Jira queue.
  *
  * The overdue bands translate the managers' weekly rule into days the way the
  * Actions panel does: a committed week must have ENDED to count. One week past
@@ -10085,33 +10085,38 @@ var PM_NEEDS_ = [
     match: function (e) { return !e.childrenAll; } },
 ];
 
-/** The Needs-action table over the epics actually on this page (post-filter).
-    Rows with nothing to fix are still printed at "—": a signal that vanishes
-    when it is clean reads as a signal nobody measured. */
-function pmNeedsActionHtml_(visRows, filtering) {
-  var epics = [];
-  visRows.forEach(function (r) { (r.epics || []).forEach(function (e) { epics.push(e); }); });
-  var body = PM_NEEDS_.map(function (s) {
-    var hit = epics.filter(s.match);
-    var keys = hit.map(function (e) { return e.key; });
+/**
+ * ONE PM's Needs-action table, over their filtered epics.
+ *
+ * Focused on purpose (user 2026-08-28): only the signals that HAVE items
+ * render, and a PM with nothing to fix gets no table at all — the ✔ pill on
+ * their row already says they are clean, and this section exists so each PM
+ * meets only their own areas of opportunity. That is a deliberate exception to
+ * the house "a clean signal prints —, never vanishes" rule: the always-visible
+ * gap pills on the PM row are the standing measurement; this table is the
+ * work queue behind them.
+ */
+function pmNeedsActionHtml_(epics) {
+  var live = PM_NEEDS_.map(function (s) {
+    var hit = (epics || []).filter(s.match);
+    return { s: s, keys: hit.map(function (e) { return e.key; }) };
+  }).filter(function (row) { return row.keys.length > 0; });
+  if (!live.length) return "";
+  var body = live.map(function (row) {
+    var s = row.s, keys = row.keys;
     return "<tr>" +
       '<td class="tname"><span class="sigDot ' + s.sev + '">●</span> ' +
         '<span title="' + esc_(s.tip) + '" style="cursor:help">' + esc_(s.label.replace(/^● /, "")) + "</span></td>" +
-      '<td class="tnum">' + (hit.length || "—") + "</td>" +
-      '<td class="tnum">' + (keys.length
-        ? '<span class="cellSub" style="cursor:help" title="' +
+      '<td class="tnum">' + keys.length + "</td>" +
+      '<td class="tnum"><span class="cellSub" style="cursor:help" title="' +
           esc_(keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … (" + keys.length + " total)" : "")) + '">' +
-          keys.length + " keys ⓘ</span>" + jiraOpenAll_(keys, "open")
-        : "") + "</td></tr>";
+          keys.length + " keys ⓘ</span>" + jiraOpenAll_(keys, "open") + "</td></tr>";
   }).join("");
-  // A plain block, not a nested .panel — #pmPanel is already the card.
-  return '<div class="pmNeeds" style="margin-bottom:16px">' +
-    '<h3 style="margin:0 0 4px">Needs action <span class="cellSub">— fix these and next period moves</span>' +
-      (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
-    '<p class="cellSub">Every row is a queue over the <b>' + epics.length + " epic" +
-      (epics.length === 1 ? "" : "s") + "</b> listed below — link and action it in Jira with one " +
-      "click. Rows overlap on purpose (one epic can be overdue AND unlinked); read each as its " +
-      "own queue, never as a slice of a pie.</p>" +
+  return '<div class="pmNeeds" style="margin:8px 0 10px">' +
+    '<div class="cellSub" style="font-weight:700;margin-bottom:4px">Needs action ' +
+      '<span class="cellSub" style="font-weight:400">— fix these and next period moves. ' +
+      "Rows overlap on purpose (one epic can be overdue AND unlinked); each is its own " +
+      "one-click Jira queue over this PM's epics below.</span></div>" +
     '<table class="hyg tmx"><thead><tr><th class="tname">Signal</th>' +
       '<th class="tnum">Epics</th><th class="tnum">Queue</th></tr></thead>' +
     "<tbody>" + body + "</tbody></table></div>";
@@ -10198,7 +10203,12 @@ function pmGroupRowHtml_(r, d) {
     "</div>" +
     pmOppHtml_(r) +
     (open
-      ? (missing
+      ? // 🎯 THIS PM's Needs-action queue (user 2026-08-28): inside the
+        // collapsible section so each PM meets only their own areas of
+        // opportunity — nothing renders when they are clean, the ✔ pill
+        // above already says so.
+        pmNeedsActionHtml_(r.epics) +
+        (missing
           ? '<div class="cellSub pmVia">🚩 Started, with no due date: ' +
             keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap, PM_KEYS_SHOWN_) + "</div>"
           : "") +
