@@ -6694,7 +6694,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
             assignee: "", via: "project", childrenAll: 0, stale: true, staleDays: 61,
             owners: [], children: [] },
         ] },
-      { pm: "(No PM)", epicN: 4, epicDated: 0, epicMissingKeys: ["ORPH-1"],
+      { pm: "(No PM)", epicN: 12, epicDated: 0,
+        // Twelve missing keys with NO listed epic behind them — the shape the
+        // 🚩 key list still owns since the Needs-action card took the listed
+        // half (dedup, 2026-08-28): undated epics the window/filters cannot
+        // show, still nameable from the unwindowed bar.
+        epicMissingKeys: ["ORPH-1", "ORPH-2", "ORPH-3", "ORPH-4", "ORPH-5", "ORPH-6",
+                          "ORPH-7", "ORPH-8", "ORPH-9", "ORPH-10", "ORPH-11", "ORPH-12"],
         epicCapped: false, readyDen: 2, readyN: 1, ignoredN: 0,
         viaAssignee: 0, viaProject: 0,
         oppNoDue: 4, oppEpicsAtRisk: 0, oppEpicsBreached: 0,
@@ -6788,38 +6794,60 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // specific epic rather than hunting for which one the PM line meant.
   assert_(/nothing linked/.test(h), "an epic nothing rolls up to says so on its own row");
   assert_(/61d/.test(h), "…and a stale epic says how long it has been sitting");
-  // Every column defined once, header and cells from the same registry.
-  assert_(/<th[^>]*>Against epic date<\/th>/.test(h), "the table header is built from PM_COLS_");
+  // Every column defined once, header row and cells from the same registry.
+  // The table-level <thead> is GONE (user 2026-08-28, screenshot): with every
+  // PM collapsed it floated over full-width group rows it did not describe.
+  // Each EXPANDED section opens with its own pmColsRow header instead.
+  assert_(h.indexOf("<table class=" + String.fromCharCode(34) + "hyg pmTable" + String.fromCharCode(34) + "><colgroup>") !== -1 &&
+          !/pmTable"><colgroup>[^]*?<thead>/.test(h.split("</colgroup>")[0] + "</colgroup>" +
+            (h.split("</colgroup>")[1] || "").slice(0, 40)),
+          "the PM table itself carries NO table-level thead any more");
+  var colsRow = h.slice(h.indexOf('<tr class="pmColsRow">'));
+  colsRow = colsRow.slice(0, colsRow.indexOf("</tr>"));
+  assert_(colsRow.length > 0, "an expanded section opens with its own column-header row");
+  assert_(/>Against epic date</.test(colsRow), "…built from PM_COLS_, labels intact");
   assert_(Object.keys(C.PM_COLS_).length === 6, "six defined columns");
-  // Scoped to the PM table's OWN thead — each expanded PM's Needs-action
-  // queue (2026-08-28) nests its own three-column table inside the tbody.
-  var pmTableHtml = h.slice(h.indexOf('<table class="hyg pmTable">'));
-  var headCells = (pmTableHtml.split("</thead>")[0].match(/<th\b/g) || []).length;
+  var headCells = (colsRow.match(/<td/g) || []).length;
   assert_(headCells === 6,
           "exactly one header cell per column — a header without its cell shifts every " +
           "value one column left, which is the quiet kind of wrong that gets screenshotted");
+  assert_(/title="Countable problems on this row/.test(colsRow),
+          "…and the header cells keep their PM_COLS_ tooltips");
 
   // ── LAYOUT: the widths are DECLARED, not inferred ───────────────────────
   // .tmx sizes columns from the first row, and this table's first row is a
   // full-width group header — so without an explicit colgroup every nowrap cell
   // overflowed onto its neighbour and Gaps painted on top of Due.
-  var colTags = (h.match(/<col style="width:[^"]+">/g) || []);
+  // Scoped to the PM table's OWN colgroup — the Needs-action card (2026-08-28)
+  // nests a 3-col colgroup of its own inside the tbody.
+  var pmColGroup = h.split('<table class="hyg pmTable"><colgroup>')[1].split("</colgroup>")[0];
+  var colTags = (pmColGroup.match(/<col style="width:[^"]+">/g) || []);
   assert_(colTags.length === 6, "one <col> per column, got " + colTags.length);
   assert_(!/class="hyg tmx pmTable"/.test(h),
           "the PM table does NOT inherit .tmx — that style is a nowrap numeric matrix");
 
-  // ── THE KEY LIST IS BOUNDED ─────────────────────────────────────────────
-  // 12 undated keys, PM_KEYS_SHOWN_ of them drawn, the rest behind a count and
-  // still all reachable through "Open all in Jira".
-  assert_(/\+ 4 more/.test(h),
+  // ── THE 🚩 LIST YIELDS TO THE CARD, AND STAYS BOUNDED WHERE IT RENDERS ──
+  // Dana's undated epic (GTT-41) is LISTED, so her card carries the No-due
+  // queue and the 🚩 key list stays off her section (dedup, 2026-08-28:
+  // the two printed the same tickets twice — user screenshot).
+  assert_(!/Started, with no due date/.test(h),
+          "the 🚩 key list yields when the Needs-action card carries the No-due queue");
+  // (No PM) has twelve missing keys and NO listed epic behind them — the card
+  // cannot carry that signal, so the 🚩 list still renders there, bounded:
+  // PM_KEYS_SHOWN_ drawn, the rest behind a count, all reachable in one click.
+  C.togglePmOpen_("(No PM)");
+  var hOrph = els.pmPanel.innerHTML;
+  assert_(/Started, with no due date/.test(hOrph),
+          "…and still renders where the card cannot carry the signal");
+  assert_(/\+ 4 more/.test(hOrph),
           "only PM_KEYS_SHOWN_ keys are drawn; the remainder is a count, not 134 links");
-  // Anchor on the LINK TEXT, not the raw key: every key still appears inside the
-  // "Open all in Jira" JQL href, which is the point of that affordance.
-  assert_(/>GTT-41<\/a>/.test(h), "the first keys are drawn as links");
-  assert_(!/>GTT-100<\/a>/.test(h),
+  assert_(/>ORPH-1<\/a>/.test(hOrph), "the first keys are drawn as links");
+  assert_(!/>ORPH-12<\/a>/.test(hOrph),
           "…and the overflow is not painted, though it stays inside the Open-all query");
-  assert_(/Open all in Jira/.test(h),
+  assert_(/Open all in Jira/.test(hOrph),
           "…and every key is still reachable in one click — bounded drawing, not lost data");
+  C.togglePmOpen_("(No PM)");   // close — the checks below read Dana's section
+  h = els.pmPanel.innerHTML;
 
   // A PM with no gaps at all says so — silence would read as "not measured".
   var clean = { pm: "Clean PM", epicN: 3, epicDated: 3, epicMissingKeys: [], epicCapped: false,
@@ -8658,7 +8686,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   pmH = els.pmPanel.innerHTML;
   var kaiTable = pmH.slice(pmH.indexOf("Needs action"));
   kaiTable = kaiTable.slice(0, kaiTable.indexOf("</table>"));
-  assert_(/Overdue 8–30 days/.test(kaiTable) && /K-LATE/.test(decodeURIComponent(kaiTable)),
+  // Raw-string check: the card now carries % literals (colgroup widths), so
+  // decodeURIComponent over the whole slice throws; the key is literal in JQL.
+  assert_(/Overdue 8–30 days/.test(kaiTable) && /K-LATE/.test(kaiTable),
           "Kai's queue carries Kai's overdue epic");
   assert_(!/E-OLD|E-NODUE/.test(kaiTable),
           "…and none of Dana's — each PM meets only their own areas of opportunity");

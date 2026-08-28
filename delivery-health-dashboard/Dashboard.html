@@ -932,17 +932,6 @@ tr.detail td.dback{padding:8px 16px 12px}
 .pmPill.sigGood{color:var(--c-good);background:color-mix(in srgb,var(--c-good) 10%,transparent);
                 border-color:color-mix(in srgb,var(--c-good) 35%,transparent);cursor:default}
 .pmVia{margin:4px 0 0 14px}
-/* 🎯 Needs-action rows (user 2026-08-28): the PM working their own section
-   gets ONE CLICK PER SIGNAL — the whole row is the control and the button
-   says what happens, styled to read as the row's obvious action. */
-.pmNeeds{margin-left:14px}
-.pmNeeds table{max-width:640px}
-.pmNeedRow{cursor:pointer}
-.pmNeedRow:hover td{background:color-mix(in srgb,var(--orbe) 6%,transparent)}
-.pmFixBtn{display:inline-block;padding:2px 10px;border-radius:8px;white-space:nowrap;
-          font-size:calc(11px*var(--scale));font-weight:700;text-decoration:none;
-          color:#fff;background:var(--orbe);border:1px solid var(--orbe)}
-.pmFixBtn:hover{filter:brightness(1.08)}
 /* Methodology, collapsed: one quiet line where eight lines of prose stood. */
 .pmMethod{margin:2px 0 10px}
 .pmMethod>summary{cursor:pointer;user-select:none;color:var(--muted);
@@ -980,6 +969,36 @@ tr.detail td.dback{padding:8px 16px 12px}
    keeps the row height honest instead of letting one long chip set the width of
    a column every other row then has to live with. */
 .pmTable td:nth-child(4) span,.pmTable td:nth-child(5) span{display:inline-block}
+/* The two rules below sit AFTER the .pmTable block on purpose: they style rows
+   and a nested table INSIDE it, and at equal specificity the later rule wins —
+   above the block they lost white-space/alignment to .pmTable's own cells. */
+/* 🎯 Needs-action card (user 2026-08-28): the PM working their own section
+   gets ONE CLICK PER SIGNAL — the whole row is the control and the button
+   says what happens. A SELF-CONTAINED card, not a bare table: inside the
+   beige group row a bare .tmx table sized its columns from nothing and let
+   the row's background bleed through (user screenshot, same day). */
+.pmNeeds{margin:10px 0 10px 14px;max-width:640px;background:var(--surface);
+         border:1px solid var(--border);border-radius:10px;padding:10px 12px 6px}
+.pmNeedsHead{font-size:calc(11.5px*var(--scale));font-weight:700;margin-bottom:6px}
+.pmNeedsTbl{table-layout:fixed}
+.pmNeedsTbl td,.pmNeedsTbl th{background:var(--surface)}
+.pmNeedsTbl .tnum{text-align:right;white-space:nowrap}
+.pmNeedsTbl td.tname{white-space:normal}
+.pmNeedsTbl tbody tr:last-child td{border-bottom:none}
+.pmNeedRow{cursor:pointer}
+.pmNeedRow:hover td{background:color-mix(in srgb,var(--orbe) 8%,var(--surface))}
+.pmFixBtn{display:inline-block;padding:2px 10px;border-radius:8px;white-space:nowrap;
+          font-size:calc(11px*var(--scale));font-weight:700;text-decoration:none;
+          color:#fff;background:var(--orbe);border:1px solid var(--orbe)}
+.pmFixBtn:hover{filter:brightness(1.08)}
+/* Per-section column headers (user 2026-08-28): each expanded PM's epic list
+   opens with its own labels — the table-level thead they replace floated over
+   collapsed group rows it did not describe. Styled exactly as table.hyg th so
+   the two reads are indistinguishable; td-based, see pmColsHeadRow_. */
+.pmTable .pmColsRow td{color:var(--muted);font-weight:700;text-transform:uppercase;
+              font-size:calc(9px*var(--scale));letter-spacing:.05em;
+              padding:10px 8px 5px;border-bottom:1px solid var(--border);
+              white-space:nowrap;vertical-align:bottom}
 
 /* 🌊 Backlog health — two facing lists. Grid rather than flex so the two tables
    share a column width regardless of label length: a healthy column that is
@@ -2627,6 +2646,14 @@ document.addEventListener("click", function (ev) {
   if (!STATE.msOpen) return;
   var t = ev.target;
   if (t && t.closest && t.closest(".ms")) return;   // inside a control — leave it
+  // ⚠ A DETACHED target is an INSIDE click (fix 2026-08-29). msToggle_ / msSet_ /
+  // msClear_ rebuild the control's innerHTML synchronously, mid-dispatch — so by
+  // the time this listener runs, the clicked button/checkbox has no parent and
+  // closest(".ms") finds nothing. Reading that as "outside" closed every panel
+  // in the same tick it opened: the filters looked dead. Only the control's own
+  // handlers can detach the target mid-click, so detached ⇒ inside, never out.
+  if (t && document.documentElement && document.documentElement.contains &&
+      !document.documentElement.contains(t)) return;
   STATE.msOpen = "";
   buildFilters_();
 });
@@ -9826,17 +9853,18 @@ function renderPm_() {
   // so the algorithm had nothing to size from and every nowrap cell overflowed
   // into its neighbour (user 2026-08-11: the Gaps column painted on top of Due).
   // Widths are declared once, beside the labels they belong to.
+  //
+  // NO TABLE-LEVEL <thead> (user 2026-08-28, screenshot): those labels
+  // describe the EPIC rows, but with every PM collapsed the table shows only
+  // full-width group rows — a header floating over nothing, and metres away
+  // from the epic list it actually names once a PM low on the page expands.
+  // Each expanded section now opens with its OWN header row instead
+  // (pmColsHeadRow_, first thing in pmEpicRowsHtml_).
   var cols = Object.keys(PM_COLS_).map(function (k) {
     return '<col style="width:' + PM_COLS_[k].w + '">';
   }).join("");
-  var head = "<tr>" + Object.keys(PM_COLS_).map(function (k) {
-    var c = PM_COLS_[k];
-    return '<th class="' + (c.num ? "tnum" : "tname") + '"' +
-      (c.tip ? ' title="' + esc_(c.tip) + '"' : "") + ">" + esc_(c.label) + "</th>";
-  }).join("") + "</tr>";
   var rows = '<div class="gwrap"><table class="hyg pmTable"><colgroup>' + cols +
-             "</colgroup><thead>" + head +
-             "</thead><tbody>" + body + "</tbody></table></div>";
+             "</colgroup><tbody>" + body + "</tbody></table></div>";
 
   // What the filter hid, stated where the filter's effect is read. The unowned
   // share is called out separately: those epics are not "outside this slice",
@@ -10139,12 +10167,18 @@ function pmNeedsActionHtml_(epics) {
       '<td class="tnum">' + keys.length + "</td>" +
       '<td class="tnum">' + btn + "</td></tr>";
   }).join("");
-  return '<div class="pmNeeds" style="margin:8px 0 10px">' +
-    '<div class="cellSub" style="font-weight:700;margin-bottom:4px">Needs action ' +
-      '<span class="cellSub" style="font-weight:400">— fix these and next period moves. ' +
-      "One click per signal opens your queue in Jira; rows overlap on purpose " +
-      "(one epic can be overdue AND unlinked).</span></div>" +
-    '<table class="hyg tmx"><thead><tr><th class="tname">Signal</th>' +
+  // Its own bounded card (user 2026-08-28, screenshot): as a bare .tmx table
+  // inside the beige group row it inherited fixed-layout columns sized by
+  // nothing and let the row's background bleed through — three columns
+  // painting at three unrelated widths. The card carries its own surface,
+  // border and colgroup, so the queue reads as one self-contained control.
+  return '<div class="pmNeeds">' +
+    '<div class="pmNeedsHead">Needs action ' +
+      '<span class="cellSub">— fix these and next period moves. One click per signal opens ' +
+      "your queue in Jira; rows overlap on purpose (one epic can be overdue AND unlinked).</span></div>" +
+    '<table class="hyg pmNeedsTbl">' +
+      '<colgroup><col style="width:52%"><col style="width:14%"><col style="width:34%"></colgroup>' +
+      '<thead><tr><th class="tname">Signal</th>' +
       '<th class="tnum">Epics</th><th class="tnum">Action</th></tr></thead>' +
     "<tbody>" + body + "</tbody></table></div>";
 }
@@ -10243,7 +10277,12 @@ function pmGroupRowHtml_(r, d) {
         // opportunity — nothing renders when they are clean, the ✔ pill
         // above already says so.
         pmNeedsActionHtml_(r.epics) +
-        (missing
+        // The 🚩 key list yields to the card's own "No due date" queue (user
+        // 2026-08-28, screenshot: the two printed the same tickets twice).
+        // It still renders when the card CANNOT carry the signal — filters
+        // can hide undated epics from the list while the unwindowed bar
+        // still counts them, and that gap must stay nameable.
+        (missing && !(r.epics || []).some(PM_NEEDS_[0].match)
           ? '<div class="cellSub pmVia">🚩 Started, with no due date: ' +
             keyListHtml_(r.epicMissingKeys, r.epicCapped, d.keyCap, PM_KEYS_SHOWN_) + "</div>"
           : "") +
@@ -10258,14 +10297,33 @@ function pmGroupRowHtml_(r, d) {
   "</td></tr>";
 }
 
-/** Every epic row for one PM, each optionally followed by its children. */
+/**
+ * The column-header row each EXPANDED section opens with (user 2026-08-28,
+ * screenshot: the epic rows started with no headers in sight — the table-level
+ * thead was metres above, floating over collapsed group rows it did not
+ * describe). Rendered per section so every PM's list is self-contained; built
+ * from PM_COLS_ like the old thead was, so the labels cannot drift from the
+ * cells. <td>s styled as headers, not <th>s — a <th> inside <tbody> is legal
+ * but screen readers announce it as data-table structure it is not.
+ */
+function pmColsHeadRow_() {
+  return '<tr class="pmColsRow">' + Object.keys(PM_COLS_).map(function (k) {
+    var c = PM_COLS_[k];
+    return '<td class="' + (c.num ? "tnum" : "tname") + '"' +
+      (c.tip ? ' title="' + esc_(c.tip) + '"' : "") + ">" + esc_(c.label) + "</td>";
+  }).join("") + "</tr>";
+}
+
+/** Every epic row for one PM, headed by the column labels, each epic
+    optionally followed by its children. */
 function pmEpicRowsHtml_(r, nowIso) {
   var epics = r.epics || [];
   if (!epics.length) {
     return '<tr class="pmEmpty"><td colspan="' + Object.keys(PM_COLS_).length + '">' +
       '<span class="cellSub">No epics in progress or due this month.</span></td></tr>';
   }
-  return epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("");
+  return pmColsHeadRow_() +
+    epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("");
 }
 
 /**

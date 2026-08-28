@@ -1996,7 +1996,11 @@ model + new export is the one combination that misses **unsafely**.
 > one-click Jira queue over **that PM's** filtered epics — the WHOLE ROW is the click and the
 > action is a plain-words **Fix in Jira ↗** button (the tab is worked by the PM themselves,
 > not only reviewed by their manager). Only signals with items render, and a clean PM gets no
-> table at all — the ✔ pill on their row is the standing verdict.
+> table at all — the ✔ pill on their row is the standing verdict. The queue is a bounded card
+> (own surface + colgroup — a bare .tmx table bled the group row's background), each expanded
+> section opens with its own column-header row (`pmColsHeadRow_` — the table-level thead is
+> gone: it floated over collapsed group rows it did not describe), and the 🚩 undated key list
+> yields to the card's No-due row instead of printing the same tickets twice.
 >
 > **4 · The Workforce pool grid is simplified to five columns** — Person/cell · Head · Capacity ·
 > Committed · Available. Plan-vs-logged, Outside plan, Cover, Relative cover, State and Cell size
