@@ -8624,20 +8624,32 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   function needsRow(label) {
     var i = pmH.indexOf(">" + label + "</span></td>");
     assert_(i !== -1, "the '" + label + "' row renders for the open PM");
-    return pmH.slice(i, pmH.indexOf("</tr>", i));
+    // From the row's own <tr, so the row-level onclick/title are in the slice.
+    return pmH.slice(pmH.lastIndexOf("<tr", i), pmH.indexOf("</tr>", i));
   }
   assert_(/"tnum">1</.test(needsRow("No due date")), "No due date counts the started-undated epic");
   assert_(/"tnum">1</.test(needsRow("Overdue &gt;30 days")), "Overdue >30 days counts the 11-weeks-past epic");
   assert_(/"tnum">1</.test(needsRow("Overdue 8–30 days")), "the 8–30 day band counts the 3-weeks-past epic");
   assert_(/"tnum">1</.test(needsRow("Overdue ≤7 days")), "≤7 days counts the just-ended committed week");
   assert_(/"tnum">1</.test(needsRow("Not linked to a parent")), "unlinked counts the epic nothing rolls up to");
-  // Every row is a ONE-CLICK Jira queue over exactly that PM's keys.
+  // Every row is a ONE-CLICK Jira queue over exactly that PM's keys — the
+  // whole row is the control and the button says what happens (user
+  // 2026-08-28: the person working this section is the PM, not a manager
+  // hunting a small "↗ open" link).
   var oldRow = needsRow("Overdue &gt;30 days");
   var oldHref = (oldRow.match(/href="([^"]*)"/) || [])[1] || "";
   assert_(/jql=/.test(oldHref) && /E-OLD/.test(decodeURIComponent(oldHref)),
           "the >30d row links a JQL queue carrying its own key");
   assert_(!/E-MID|E-JUST|E-CLEAN|K-LATE/.test(decodeURIComponent(oldHref)),
           "…and ONLY its own — never another band's epics, never another PM's");
+  assert_(/class="pmFixBtn"[^>]*>Fix in Jira ↗/.test(oldRow),
+          "the action is a plain-words BUTTON — 'Fix in Jira ↗', not a bare key count");
+  assert_(/target="_blank" rel="noopener"/.test(oldRow),
+          "…opening in a new tab, required inside the Apps Script sandbox iframe");
+  assert_(/<tr class="pmNeedRow" onclick="pmNeedGo_\(this\)"/.test(oldRow),
+          "…and the WHOLE ROW is the click target, not just the button");
+  assert_(/onclick="event\.stopPropagation\(\)"/.test(oldRow),
+          "…with the anchor stopping propagation so a direct button click stays single");
 
   // FOCUS: Kai's section shows only Kai's one live signal; Dana's keys are
   // absent, and so are the rows with nothing in them.

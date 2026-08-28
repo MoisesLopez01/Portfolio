@@ -932,6 +932,17 @@ tr.detail td.dback{padding:8px 16px 12px}
 .pmPill.sigGood{color:var(--c-good);background:color-mix(in srgb,var(--c-good) 10%,transparent);
                 border-color:color-mix(in srgb,var(--c-good) 35%,transparent);cursor:default}
 .pmVia{margin:4px 0 0 14px}
+/* 🎯 Needs-action rows (user 2026-08-28): the PM working their own section
+   gets ONE CLICK PER SIGNAL — the whole row is the control and the button
+   says what happens, styled to read as the row's obvious action. */
+.pmNeeds{margin-left:14px}
+.pmNeeds table{max-width:640px}
+.pmNeedRow{cursor:pointer}
+.pmNeedRow:hover td{background:color-mix(in srgb,var(--orbe) 6%,transparent)}
+.pmFixBtn{display:inline-block;padding:2px 10px;border-radius:8px;white-space:nowrap;
+          font-size:calc(11px*var(--scale));font-weight:700;text-decoration:none;
+          color:#fff;background:var(--orbe);border:1px solid var(--orbe)}
+.pmFixBtn:hover{filter:brightness(1.08)}
 /* Methodology, collapsed: one quiet line where eight lines of prose stood. */
 .pmMethod{margin:2px 0 10px}
 .pmMethod>summary{cursor:pointer;user-select:none;color:var(--muted);
@@ -10104,22 +10115,46 @@ function pmNeedsActionHtml_(epics) {
   if (!live.length) return "";
   var body = live.map(function (row) {
     var s = row.s, keys = row.keys;
-    return "<tr>" +
+    var url = jiraKeysUrl_(keys);
+    var capped = keys.length > JIRA_LINK_MAX_KEYS_;
+    // ONE CLICK PER SIGNAL (user 2026-08-28): the PM working their own row
+    // should not have to aim at a small "↗ open" — the WHOLE ROW opens the
+    // queue, and the button says what happens in plain words. The key list
+    // rides the button's tooltip for whoever wants to see before clicking.
+    var btnTip = (capped
+      ? "Opens the first " + JIRA_LINK_MAX_KEYS_ + " of " + keys.length
+      : "Opens " + (keys.length === 1 ? "this epic" : "these " + keys.length)) +
+      " in the Jira issue navigator, sorted by due date: " +
+      keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", …" : "");
+    var btn = url
+      ? '<a class="pmFixBtn" href="' + esc_(url) + '" target="_blank" rel="noopener" ' +
+        'onclick="event.stopPropagation()" title="' + esc_(btnTip) + '">Fix in Jira ↗' +
+        (capped ? ' <span class="cellSub">(first ' + JIRA_LINK_MAX_KEYS_ + ")</span>" : "") + "</a>"
+      : '<span class="cellSub" title="No Jira site is configured (meta.jiraBase), so the queue cannot deep-link.">no Jira link</span>';
+    return '<tr class="pmNeedRow"' +
+      (url ? ' onclick="pmNeedGo_(this)" title="' + esc_("Open " + keys.length +
+        (keys.length === 1 ? " epic" : " epics") + " in Jira — the whole row is the button.") + '"' : "") + ">" +
       '<td class="tname"><span class="sigDot ' + s.sev + '">●</span> ' +
-        '<span title="' + esc_(s.tip) + '" style="cursor:help">' + esc_(s.label.replace(/^● /, "")) + "</span></td>" +
+        '<span title="' + esc_(s.tip) + '">' + esc_(s.label.replace(/^● /, "")) + "</span></td>" +
       '<td class="tnum">' + keys.length + "</td>" +
-      '<td class="tnum"><span class="cellSub" style="cursor:help" title="' +
-          esc_(keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … (" + keys.length + " total)" : "")) + '">' +
-          keys.length + " keys ⓘ</span>" + jiraOpenAll_(keys, "open") + "</td></tr>";
+      '<td class="tnum">' + btn + "</td></tr>";
   }).join("");
   return '<div class="pmNeeds" style="margin:8px 0 10px">' +
     '<div class="cellSub" style="font-weight:700;margin-bottom:4px">Needs action ' +
       '<span class="cellSub" style="font-weight:400">— fix these and next period moves. ' +
-      "Rows overlap on purpose (one epic can be overdue AND unlinked); each is its own " +
-      "one-click Jira queue over this PM's epics below.</span></div>" +
+      "One click per signal opens your queue in Jira; rows overlap on purpose " +
+      "(one epic can be overdue AND unlinked).</span></div>" +
     '<table class="hyg tmx"><thead><tr><th class="tname">Signal</th>' +
-      '<th class="tnum">Epics</th><th class="tnum">Queue</th></tr></thead>' +
+      '<th class="tnum">Epics</th><th class="tnum">Action</th></tr></thead>' +
     "<tbody>" + body + "</tbody></table></div>";
+}
+
+/** Whole-row click → the row's own Fix-in-Jira anchor. A row that only reacts
+    on a small link reads as broken to the person aiming at the signal name;
+    stopPropagation on the anchor itself keeps a direct button click single. */
+function pmNeedGo_(tr) {
+  var a = tr && tr.querySelector && tr.querySelector("a.pmFixBtn");
+  if (a) a.click();
 }
 
 /**
