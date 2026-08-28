@@ -97,7 +97,7 @@ button, so a forbidden id typed by hand still lands on Executive.
 | Tab | Answers | Who sees it |
 |---|---|---|
 | 📊 **Executive** | *Are we on target, and where aren't we?* | everyone with access |
-| 🎯 **Actions** | *Who and what needs action?* — data trust, signals roster, backlog health, undated epics, and the ⚙ gates editor for admins | admin + viewer |
+| 🎯 **Actions** | *Who and what needs action?* — signals roster, backlog health, undated epics, and the ⚙ gates editor for admins (the *"Can we publish these numbers?"* data-trust strip was removed 2026-08-28 — the roster grades the same gates per person) | admin + viewer |
 | 🗓 **PM** | *Which epics are in flight, and is their own work scheduled past them?* | admin + viewer |
 | 🧭 **Workforce** | *Which pool is out of room, and which has room to sell?* | admin + viewer |
 | 🔒 **Access** | — | admin only |
@@ -105,18 +105,23 @@ button, so a forbidden id typed by hand still lands on Executive.
 🗓 PM sits beside 🎯 Actions on purpose: they answer the same question at different grains — *who*
 needs action, and *which committed work* needs action.
 
-**The Executive tab is the "newspaper"** — eight bands, most important first:
+**The Executive tab is the "newspaper"**, split since 2026-08-17 into two in-page sub-tabs that
+obey the same global filters and period — a change of lens, not of place:
 
-| # | Band | What it tells you | Best use |
-|---|---|---|---|
-| 1 | Masthead | one-sentence verdict, assembled from ranked findings | the line you quote in a meeting |
-| 2 | Backlog band | total queue, net flow, weeks-to-clear + a three-segment ruler | the headline: how deep is the queue |
-| 3 | Evidence gates | *"Can we publish these numbers?"* | check **before** quoting anything above |
-| 4 | Flow band | Cleared · Arrived · Lead time · On-Time (+ Forecast, Quality when measurable) | are we keeping up |
-| 5 | Capacity band | recoverable hours · utilisation · people signals | what you can throw at it |
-| 6 | Comparison grid | metric × Region/Team/PM/Job-family, click a column for a bullet chart | where the problem is concentrated |
-| 7 | Shelf | *"Not measured this period"* + why | so silence is never mistaken for success |
-| 8 | Trust detail | collapsed reconciliation notes | when a number is challenged |
+| Sub-tab | # | Band | What it tells you | Best use |
+|---|---|---|---|---|
+| Health & Actions | 1 | Tier-1 KPI cards | On-Time · Forecast · Availability Rate · Quality/Rework | the 10-second read |
+| Health & Actions | 2 | Drill-down grid | metric × Region/Team/PM/Job-family — rows and cells are controls that carry the slice to Workforce or Actions | where the problem is concentrated, and the route to act |
+| Backlog & Flow | 1 | People-signals pulse | idle-hours alert, priced per level band | what you can throw at it |
+| Backlog & Flow | 2 | Backlog band | the Active / Planned / Runway ruler + criteria legend — counts only | the headline: how deep is the queue |
+| Backlog & Flow | 3 | Flow strip | **Flow** (Throughput · Cleared · Arrived · Lead Time) · **Quality** (Bug Count) | are we keeping up |
+| Backlog & Flow | 4 | Trust detail | collapsed reconciliation notes, super-admin only | when a number is challenged |
+
+Removed 2026-08-28 (user decision: misleading runway read): the pipeline masthead
+(Delivery pace · Total runway · Groomed pipeline + the week/headcount lede) and the Runway KPI
+cluster (Inventory · Net flow · Weeks to clear and their Assigned twins) — a whole-queue runway
+figure reads as a delivery forecast nobody made. No weeks-to-clear or runway arithmetic is
+published anywhere on the tab now; the backlog bar carries counts only.
 
 ### 3.4 `Security.js`
 
@@ -142,8 +147,8 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 | Metric | Why it's solid |
 |---|---|
-| **Inventory** (total open items) | a count, no join, no estimate |
-| **Arrived / Cleared / Net flow** | counts over dates, org-wide, no assignee join |
+| **Inventory** (total open items) | a count, no join, no estimate — no longer rendered as a card (removed 2026-08-28 with the Runway cluster); the backlog bar carries the counts |
+| **Arrived / Cleared** | counts over dates, org-wide, no assignee join (**Net flow**'s card was removed 2026-08-28 with the Runway cluster) |
 | **Lead time** | measured from real created/resolved dates |
 | **Utilisation** | hours ÷ scheduled capacity, both measured |
 
@@ -151,7 +156,7 @@ Local Node test runners. **Not** pasted into the GAS project.
 
 | Metric | Caveat |
 |---|---|
-| **Weeks to clear** | inventory ÷ **median** of the last 8 weeks' clearing. Robust to one holiday week, but it assumes the future looks like the recent past |
+| **Weeks to clear** | inventory ÷ **median** of the last 8 weeks' clearing. Robust to one holiday week, but it assumes the future looks like the recent past. **Not published on any surface since 2026-08-28** (user decision: a whole-queue runway figure reads as a delivery forecast) — the definition stays here because the clearing-rate median still gates the ruler |
 | **On-Time delivery** | measured against the Jira **Due Date, which anyone can move after the fact**. A re-baselined milestone reads as on time |
 | **Cleared per person** | normalises for team size — the honest comparison — but small groups still swing on one person, so any group under 10 people is shown ungraded |
 
@@ -240,7 +245,9 @@ bar, by design.
 **Weeks-to-clear, net flow and cleared-per-person deliberately have no target line.** Nobody has
 signed a "≤4 weeks" bar, and an unratified target on a C-suite page reads as agreed the moment it
 appears. They are graded against what the organisation *demonstrably does* (its operating band)
-instead. Agreeing real targets is an open decision for the Services Director.
+instead. Agreeing real targets is an open decision for the Services Director. (Weeks-to-clear and
+net flow stopped rendering altogether on 2026-08-28 — see §3.3 — so only cleared-per-person still
+puts this rule on screen.)
 
 The five **Workforce Health** metrics below ship the same way, for the same reason: the pool
 envelopes in `DH_POOLS_` are Workforce Planning's *proposal*, not ratified operating targets.
@@ -350,9 +357,11 @@ block of work was the part nobody had picked up.
 6. New deployment version
 7. Spot-check (below)
 
-**Why step 3 matters:** if that tab is short, the clearing-rate median refuses to publish and the
-entire headline — weeks-to-clear, the ruler, both verdict findings, the history — silently disappears,
-leaving a masthead that says nothing is wrong. It fails quietly, not loudly.
+**Why step 3 matters:** if that tab is short, the clearing-rate median refuses to publish and
+everything downstream of it — the ruler, both verdict findings, the history — silently disappears,
+leaving a page that says nothing is wrong. It fails quietly, not loudly. (The weeks-to-clear cards
+themselves left the page on 2026-08-28 with the rest of the runway arithmetic, but the median still
+gates the ruler.)
 
 **Spot-check has two halves. A number in the wrong half is a stop.**
 
@@ -360,9 +369,11 @@ leaving a masthead that says nothing is wrong. It fails quietly, not loudly.
 (Roster join was retired at 100% and then deleted outright on 2026-08-17 — it is not a check to
 re-verify, it is gone.)
 
-*Must move:* the queue hero (≈3,279 / ~11w vs ≈1,440 / ~4.9w assigned) · Backlog health's
-unassigned count (up to ~1,839) · the unowned ruler segment becomes clickable. (The 🧬 matrix's
-open-half fill rates were the fourth item here until that matrix was removed on 2026-08-17.)
+*Must move:* the backlog bar's segment counts (the queue hero cards that used to carry ≈3,279 /
+~11w vs ≈1,440 / ~4.9w assigned were removed 2026-08-28 with the runway arithmetic) · Backlog
+health's unassigned count (up to ~1,839) · the unowned ruler segment becomes clickable. (The 🧬
+matrix's open-half fill rates were the fourth item here until that matrix was removed on
+2026-08-17.)
 
 **The gaps queue will NOT move** — it computes over resolved work only. Expecting it to move would
 make you fail a correct deploy.
@@ -442,8 +453,9 @@ hold; the exact figures will not.
 
 ## 8. Best use, in one line each
 
-- **Weekly:** run the export, open the Executive tab, read the masthead sentence, check the evidence
-  gates before quoting anything.
+- **Weekly:** run the export, open the Executive tab, read the KPI cards and the backlog band, then
+  scan the Actions signals roster for red before quoting anything (the masthead sentence and the
+  evidence-gate strip are gone — 2026-08-17 and 2026-08-28 respectively).
 - **In a review:** use the comparison grid to find where a problem concentrates, then the Actions tab
   to find who can act on it.
 - **When challenged:** open the trust detail and the shelf — they exist to show what is *not* measured.

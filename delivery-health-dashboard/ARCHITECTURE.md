@@ -553,6 +553,12 @@ filters (region, team, PM, family, role, population), focus, active metric, comp
 roster sort, signal filter, expansion sets (`pmOpen`, `pmEpicOpen`), and the by-type population
 toggle. Every render is a pure function of `(MODEL, STATE)`.
 
+Team, PM and Job family are **multiselect** since 2026-08-28: `STATE.team` / `STATE.pm` /
+`STATE.family` hold **arrays** — empty means no filter, several values are the **union** (any one
+membership keeps the person in, `dimMatchAny_`). `fillMulti_` renders each control as a button plus
+a checkbox panel (replacing the single-value `fillSelect_`); panels are single-open (`STATE.msOpen`)
+and Esc closes. Region stays a single chip.
+
 That is what makes client-side re-slicing possible, and it is why the payload is built over the
 **deep** window rather than one period: changing period, filter or comparison re-folds existing
 buckets instead of asking the server for anything. On an app whose cold build is measured in
@@ -580,17 +586,28 @@ important first, evidence before the numbers it qualifies.
 
 | # | Band | What it answers |
 |---|---|---|
-| 1 | Masthead | three stat callouts — Delivery pace · Total runway · Groomed pipeline. The ranked-verdict paragraph and the standing unassigned-work note **left the page** (director feedback): the callouts carry the same facts, the note rides a data-gated ⓘ on the Groomed pipeline figure, and `verdictFindings_` survives fully tested but unrendered |
-| 2 | People-signals pulse | leads with the idle-hours alert — *"Nh left on the table in \<week\> → open the roster before this \<unit\> repeats it"* — priced against **each level band's own operating rate**, never a blended median (a manager's meeting/coaching load sits inside the MGMT band's rate); finished windows only, exclusions disclosed |
-| 3 | Backlog band | the Active / Planned / Runway ruler and the criteria legend behind each segment |
-| 4 | Flow strip | clustered by question — **Flow** (Throughput · Cleared · Arrived · Lead Time · Net flow) · **Runway** (Inventory and Weeks-to-clear, each ORG card beside its filtered ASSIGNED twin) · **Quality** (Bug Count) |
-| 5 | Trust detail | collapsed reconciliation notes, super-admin only |
+| 1 | People-signals pulse | **opens the tab** — leads with the idle-hours alert — *"Nh left on the table in \<week\> → open the roster before this \<unit\> repeats it"* — priced against **each level band's own operating rate**, never a blended median (a manager's meeting/coaching load sits inside the MGMT band's rate); finished windows only, exclusions disclosed |
+| 2 | Backlog band | the Active / Planned / Runway ruler and the criteria legend behind each segment — counts only, **no runway arithmetic**; opens with the confidential banner when that mode is on |
+| 3 | Flow strip | clustered by question — **Flow** (Throughput · Cleared · Arrived · Lead Time) · **Quality** (Bug Count) |
+| 4 | Trust detail | collapsed reconciliation notes, super-admin only |
+
+The **pipeline masthead** (the Delivery pace · Total runway · Groomed pipeline stat callouts plus
+the week/headcount lede) and the whole **Runway cluster** (Inventory · Net flow · Weeks to clear
+and their Assigned twins, `backlogHeroParts_` / `assignedRunwayParts_`) were **removed 2026-08-28
+(user decision: misleading runway read)** — a whole-queue runway figure reads as a delivery
+forecast, and pace over a queue that is mostly unowned pipeline is not a promise anyone made.
+`verdictFindings_` (the ranked-verdict engine the masthead once introduced) survives fully tested
+but unrendered, exactly as before; the confidential banner the masthead carried now opens the
+backlog band.
 
 Two former bands are gone as *surfaces* without losing their *signals*: the shelf panel was
-deleted but `shelfRows_` still feeds the masthead's "N shelved" count, so silence is still never
-mistaken for success; and the colour key was deleted because the strip is mostly ungraded volume
-metrics and every graded card carries its own ✔/▲/✖ glyph (FR-4.4). The evidence gates moved to
-the Actions tab, first panel, where the people who fix them work.
+deleted but `shelfRows_` still feeds `verdictFindings_`'s "not measurable this period" finding, so
+silence is still never mistaken for success; and the colour key was deleted because the strip is
+mostly ungraded volume metrics and every graded card carries its own ✔/▲/✖ glyph (FR-4.4). The
+evidence gates moved to the Actions tab, first panel, on 2026-08-17 — and the strip itself
+(*"Can we publish these numbers?"*, `renderTrust_`) was **removed 2026-08-28 (user decision)**:
+the signals roster grades the same gates per person, and the super-admin trust detail here remains
+the provenance surface.
 
 ### 8.4 Client twins — the seam, and the contract that holds it
 
@@ -626,7 +643,7 @@ silently disagree with the header's picker and nothing on screen said so.
 |---|---|
 | `PERIOD` | the Week/Month/Quarter picker **and** every filter |
 | `SNAP` | every filter, but **ignores** the period picker — backlog and WIP are inventories, not time series |
-| `ORG` | ignores filters **and** the picker — the data-trust strip is a pipeline health check, not a filtered read |
+| `ORG` | ignores filters **and** the picker — an org-wide read (the backlog bar, the super-admin trust detail) is a pipeline health check, not a filtered read |
 
 Placement is asserted tile-by-tile in `render-smoke.js`, not just "somewhere in the strip".
 
@@ -636,8 +653,8 @@ These live in string concatenation, which is exactly where a unit test cannot re
 the opposite of what was decided — hence §9.
 
 - **A below-gate metric is still gated** even though the cards stopped narrating coverage (the
-  ◆/◈/◇ chip and the caveat line were removed as noise; coverage now reads on the data-trust strip
-  and ownership on Actions).
+  ◆/◈/◇ chip and the caveat line were removed as noise; since the data-trust strip's removal on
+  2026-08-28, coverage reads per person on the Actions signals roster).
 - **An empty period must not read as bad data.**
 - **A stale model must not print a delta.**
 - **Ungraded is grey and `—`, never 0%** — a person whose whole backlog is unstarted, or a group

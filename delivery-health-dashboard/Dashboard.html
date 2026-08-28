@@ -147,6 +147,26 @@ select,input[type=search]{background:var(--surface);border:1px solid var(--borde
 #teamSel,#pmSel{width:calc(150px*var(--scale))}
 #famSel{width:calc(175px*var(--scale))}
 #personSearch{width:calc(140px*var(--scale))}
+/* ── MULTISELECT FILTERS (2026-08-28) ─────────────────────────────────────────
+   Team / PM / Job family: a button that reads like the old select, a checkbox
+   panel under it. position:relative + absolute panel so opening one never
+   reflows the filter row — the same no-reflow contract the fixed widths keep. */
+.ms{position:relative;display:inline-block}
+.msBtn{width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:calc(12px*var(--scale));color:var(--text);
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msBtn.on{border-color:var(--orbe);box-shadow:0 0 0 1px var(--orbe) inset}
+.msBtn .msCaret{float:right;color:var(--muted)}
+.msPanel{position:absolute;top:calc(100% + 4px);left:0;z-index:60;min-width:100%;
+  max-width:320px;max-height:300px;overflow:auto;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:6px}
+.msPanel .msHead{padding:4px 8px 6px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.msRow{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;
+  font-size:calc(12px*var(--scale));cursor:pointer;white-space:nowrap}
+.msRow:hover{background:var(--bg)}
+.msRow input{margin:0}
+.msRow.msOff{color:var(--muted);cursor:default}
+.msDeadHead{padding:6px 8px 2px;color:var(--muted);font-size:calc(10px*var(--scale))}
 #periodPick{width:calc(150px*var(--scale))}
 /* Chips: tabular figures + a width floor so a live count changing from 140 to
    7 doesn't change the chip's size (the Region strip re-counts on every click). */
@@ -1139,7 +1159,12 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div class="fgroup" title="Region — universal: scopes the KPI tiles and the grid.">
       <span class="flbl">Region</span><div class="chips seg" id="regionChips"></div>
     </div>
-    <select id="teamSel" title="Team filter — universal: scopes the KPI tiles and the grid."><option value="">All teams</option></select>
+    <!-- Team / PM / Job family are MULTISELECTS (user 2026-08-28): pick any
+         combination and the slice is the union — comfortable filtering beats a
+         single-value dropdown that forces one slice at a time. Rendered by
+         fillMulti_ into these containers; the ids survive from the old selects
+         so deep links and tests keep their addresses. -->
+    <div class="ms" id="teamSel" title="Team filter — universal: scopes the KPI tiles and the grid. Pick several teams to see their union."></div>
     <input type="search" id="personSearch" placeholder="Find person…">
     <button class="btn" id="btnAdvFilters" aria-expanded="false" aria-controls="advFilters"
             title="Population, Role, PM and Job family. Kept out of the default view to leave three dimensions in the bar; opens automatically whenever any of them is set, so a filter can never be applied out of sight.">More filters</button>
@@ -1163,8 +1188,8 @@ select option:disabled{color:var(--muted);font-style:italic}
          #advFilters six lines early, so PM and Job family sat OUTSIDE the
          drawer — permanently visible, never hidden by the toggle — and .hdr
          closed a level early with them. Removed 2026-08-17. -->
-    <select id="pmSel" title="Worked with PM — universal: scopes the KPI tiles and the grid. Selects PEOPLE with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams. NOT the same as the Project Managers tab, which reports the TICKETS a PM owns — this control sits above the tabs and stays visible there, so the two are deliberately named apart."><option value="">Worked with PM: all</option></select>
-    <select id="famSel" title="Job-family filter — universal: scopes the KPI tiles and the grid. Options cover the tracking-mandated population (JF007 Managed Services &amp; Support, JF009 Service Delivery, uncatalogued/crew); non-tracking families are not in this dashboard at all."><option value="">All job families</option></select>
+    <div class="ms" id="pmSel" title="Worked with PM — universal: scopes the KPI tiles and the grid. Selects PEOPLE with planned or tracked hours on any project this PM leads (Tempo PM field); membership-based like Teams, and multiselect — several PMs give the union. NOT the same as the Project Managers tab, which reports the TICKETS a PM owns — this control sits above the tabs and stays visible there, so the two are deliberately named apart."></div>
+    <div class="ms" id="famSel" title="Job-family filter — universal: scopes the KPI tiles and the grid. Multiselect — several families give the union. Options cover the tracking-mandated population (JF007 Managed Services &amp; Support, JF009 Service Delivery, uncatalogued/crew); non-tracking families are not in this dashboard at all."></div>
   </div>
 </div>
 
@@ -1236,23 +1261,24 @@ select option:disabled{color:var(--muted);font-style:italic}
     </div>
 
     <!-- ══ SUB-TAB 2 · BACKLOG & FLOW ═════════════════════════════════════════
-         The pipeline read: pace, runway and groomed depth as three scannable
-         figures, then the queue shape, then the flow cards, then capacity. -->
+         The queue shape, then the flow cards, then capacity.
+
+         THE PIPELINE MASTHEAD IS GONE (user decision 2026-08-28): the three
+         stat callouts (Delivery pace · Total runway · Groomed pipeline) and the
+         week/headcount lede were removed as MISLEADING — a whole-queue runway
+         figure reads as a forecast, and pace over a queue that is mostly
+         unowned pipeline is not a delivery promise. The Runway KPI cards
+         (Inventory · Net flow · Weeks to clear and their Assigned twins) left
+         in the same pass, for the same reason. -->
     <div id="execFlow" hidden>
       <section class="tier tier2">
-        <div class="tierHead">Pipeline
-          <span class="tierNote">how fast we clear, how far it covers, how much is groomed</span>
+        <div class="tierHead">Backlog &amp; Flow
+          <span class="tierNote">the queue shape, and how work arrives and clears</span>
         </div>
-        <!-- §1 THE MASTHEAD — the three stat callouts. The ranked verdict and
-             the unassigned-work note came OFF the page (director feedback
-             2026-08-17): the callouts carry the same story, and the note lives
-             on in the ⓘ beside Groomed pipeline. -->
-        <div class="panel" id="masthead" style="margin-bottom:14px"></div>
-        <!-- CAPACITY BAND — pulled up directly under the stat callouts
-             (director feedback 2026-08-17): the idle-hours signal is the most
-             actionable read on this tab and must not sit below the fold —
-             stated as hours LEFT on the table in the named finished week,
-             never as hours still recoverable from it.
+        <!-- CAPACITY BAND — the idle-hours signal is the most actionable read
+             on this tab and must not sit below the fold — stated as hours LEFT
+             on the table in the named finished week, never as hours still
+             recoverable from it.
              Planned Coverage (forward windows) plus the people-signals pulse;
              both share the SAME margin gate, so the whole band is omitted from
              the DOM together for a non-margin role. -->
@@ -1288,12 +1314,10 @@ select option:disabled{color:var(--muted);font-style:italic}
       <button class="iconbtn" onclick="savePng_('viewActions','actions')" title="Save this view as a PNG image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PNG</button>
     </div>
-    <!-- DATA TRUST — "can we publish these numbers?" (moved off Executive,
-         redesign 2026-08-17). It belongs FIRST here rather than anywhere on the
-         executive read: every gate below its bar is a queue with an owner, and
-         the gaps queue that works those items is on this same tab a few panels
-         down. An executive needs the verdict; an operator needs the gate. -->
-    <div class="panel" id="trustPanel" style="margin-bottom:14px"></div>
+    <!-- The "Can we publish these numbers?" data-trust strip was REMOVED
+         2026-08-28 (user decision): the signals roster below grades the same
+         gates per person, and the super-admin trust detail on Backlog & Flow
+         remains the provenance surface. -->
     <div class="panel" id="rosterPanel"></div>
     <!-- 🌊 Backlog health (2026-08-06). Sits between the roster and the 🧬 matrix
          on purpose: the roster says WHO, this says WHAT STATE the work they carry
@@ -1385,7 +1409,12 @@ var countedUp_ = false;
 // flag:    triage filter driven by clicking the attention legend ("" = off).
 // metric:  which metric the Trends view charts.
 // compare: which dimension the Executive comparison chart breaks down by.
-var STATE = { period: "month", pop: "fte", role: "all", region: "", team: "", pm: "", family: "", search: "", expandedWeeks: {}, openDetail: {},
+// team / pm / family are ARRAYS since 2026-08-28 (multiselect, user request):
+// empty = no filter, several values = the union. Region stays a single chip.
+var STATE = { period: "month", pop: "fte", role: "all", region: "", team: [], pm: [], family: [], search: "", expandedWeeks: {}, openDetail: {},
+              // msOpen: which multiselect panel is open ("" = none) — single-open
+              // like the PS dashboard's filter panels; Esc and outside clicks close.
+              msOpen: "",
               // wfOpenCell: which 🧭 pool × band cells have their person list open
               // ("who has available hours", Billy 2026-08-10). Keyed by the cell's
               // own `pool|band` id, the same key the payload uses.
@@ -1699,7 +1728,7 @@ var EXEC_TABS_ = [
   { id: "health", label: "Health & Actions", pane: "execHealth",
     hint: "The four outcome numbers and the breakdown that says where they are coming from — plus the two routes to act on it." },
   { id: "flow", label: "Backlog & Flow", pane: "execFlow",
-    hint: "The pipeline: clearing pace, how many weeks it covers, how much is groomed, and the flow behind those figures." },
+    hint: "The queue shape — active, planned and runway — and the flow figures behind the outcome KPIs." },
 ];
 
 /**
@@ -1944,6 +1973,17 @@ function dataAsOfView_(meta, modelStale, builtAt) {
       ", so trend comparisons are suppressed until it refreshes.");
   }
   (meta.sources || []).forEach(function (s) { tips.push(s.system + " → " + s.feeds); });
+  // ── STANDING CADENCE NOTE (user request 2026-08-28) ────────────────────────
+  // The two feeds refresh on different clocks and readers kept asking which:
+  // the Jira backlog export runs HOURLY (runJiraEpicTrackerLight), the Tempo
+  // hours exports run DAILY. Rides the freshness line whenever one renders —
+  // the stamps say when, this says how often. A pre-v16 payload with no
+  // dataAsOf still renders NOTHING: a cadence claim over data whose age cannot
+  // be stated would be the exact overstatement this strip exists to prevent.
+  if (d.jira || d.jiraUnknown) parts.push('<span title="The Jira backlog export refreshes hourly ' +
+    "(a nightly full pass rebuilds history); the Tempo planned/tracked hours " +
+    'exports refresh daily. The stamps on this line say when each last ran.">' +
+    "backlog updates hourly · Tempo hours daily</span>");
   return { html: parts.join(' <span style="opacity:.5">·</span> '),
            warn: warn, title: tips.join("\n\n") };
 }
@@ -2343,6 +2383,30 @@ function dimMatch_(p, dim, val) {
   return FILTER_DIMS[dim].vals(p).indexOf(val) !== -1;
 }
 
+// ── MULTISELECT DIMENSIONS (user 2026-08-28) ────────────────────────────────
+// Team, PM and Job family hold ARRAYS in STATE; several values are a UNION.
+var MS_DIMS_ = { team: "All teams", pm: "Worked with PM: all", family: "All job families" };
+
+/** Is this multiselect dimension narrowing anything? (Defensive on shape: a
+    stale string from an old deep link counts as one selection, not a crash.) */
+function msActive_(dim) {
+  var v = STATE[dim];
+  return Array.isArray(v) ? v.length > 0 : !!v;
+}
+
+/** The selected values of a multiselect dim, always as an array. */
+function msVals_(dim) {
+  var v = STATE[dim];
+  return Array.isArray(v) ? v : (v ? [v] : []);
+}
+
+/** ANY-of membership across the selected values — the union read. */
+function dimMatchAny_(p, dim, vals) {
+  var list = Array.isArray(vals) ? vals : (vals ? [vals] : []);
+  for (var i = 0; i < list.length; i++) if (dimMatch_(p, dim, list[i])) return true;
+  return false;
+}
+
 /**
  * THE filter predicate — every filter is universal (user decision 2026-07-31):
  * population, role, region, team, PM, job family, triage flag and person search
@@ -2369,9 +2433,11 @@ function passesFilters_(p, skip) {
   // Routed through dimMatch_ so the filter, the option counts and the chart rows
   // share one membership definition — including the untagged buckets.
   if (skip !== "region" && STATE.region && !dimMatch_(p, "region", STATE.region)) return false;
-  if (skip !== "team" && STATE.team && !dimMatch_(p, "team", STATE.team)) return false;
-  if (skip !== "pm" && STATE.pm && !dimMatch_(p, "pm", STATE.pm)) return false;
-  if (skip !== "family" && STATE.family && !dimMatch_(p, "family", STATE.family)) return false;
+  // Team / PM / family are multiselects (2026-08-28): several values are a
+  // UNION — any one membership keeps the person in.
+  if (skip !== "team" && msActive_("team") && !dimMatchAny_(p, "team", STATE.team)) return false;
+  if (skip !== "pm" && msActive_("pm") && !dimMatchAny_(p, "pm", STATE.pm)) return false;
+  if (skip !== "family" && msActive_("family") && !dimMatchAny_(p, "family", STATE.family)) return false;
   if (skip !== "level" && STATE.level && !dimMatch_(p, "level", STATE.level)) return false;
   if (skip !== "flag" && STATE.flag && !hasFlag_(p, STATE.flag)) return false;
   if (STATE.search && p.name.toLowerCase().indexOf(STATE.search.toLowerCase()) === -1) return false;
@@ -2427,7 +2493,7 @@ function existsIn_(p, isos) {
  * dimension — in-scope ones first (by count, then name), out-of-scope after.
  */
 function optionsFor_(dim) {
-  var d = FILTER_DIMS[dim], counts = {};
+  var d = FILTER_DIMS[dim], counts = {}, people = 0;
   (d.all() || []).forEach(function (v) { counts[v] = 0; });
   MODEL.people.forEach(function (p) {
     if (p.attribOnly) return; // identity stubs must not inflate headcounts
@@ -2440,6 +2506,10 @@ function optionsFor_(dim) {
     // COUNT has to carry it explicitly.
     if (p.onBench) return;
     if (!passesFilters_(p, dim)) return;
+    // Distinct people behind the counts. Team and PM are MULTI-VALUED, so the
+    // per-option counts sum past this number — see fillSelect_, which says so
+    // rather than leaving a reader to discover it by adding the dropdown up.
+    people++;
     d.vals(p).forEach(function (v) {
       if (v === undefined || v === null || v === "") return;
       counts[v] = (counts[v] || 0) + 1;
@@ -2455,51 +2525,100 @@ function optionsFor_(dim) {
     return (ua - ub) || (counts[b] - counts[a]) || a.localeCompare(b);
   });
   dead.sort(function (a, b) { return a.localeCompare(b); });
-  return { counts: counts, live: live, dead: dead };
+  return { counts: counts, live: live, dead: dead, people: people };
 }
 
-/** Populate one <select> from its cascaded options. */
-function fillSelect_(id, dim, allLabel) {
-  var sel = document.getElementById(id);
+/**
+ * Populate one MULTISELECT control from its cascaded options (user 2026-08-28;
+ * replaces the single-value fillSelect_). A button states the selection; the
+ * panel under it is checkboxes, so several teams / PMs / families can be
+ * combined into one union slice. Panels are single-open (STATE.msOpen), Esc
+ * and outside clicks close them — the PS dashboard's filter-panel contract.
+ *
+ * The cascade rules survive intact: counts follow the OTHER active filters,
+ * out-of-scope values stay visible but inert, and a selected value the cascade
+ * emptied stays listed and checked so it can be cleared from the same control
+ * (rule 1 — never lose a selection).
+ */
+function fillMulti_(id, dim, allLabel) {
+  var box = document.getElementById(id);
+  if (!box) return;
   var o = optionsFor_(dim);
   var total = 0;
   o.live.forEach(function (v) { total += o.counts[v]; });
-  sel.innerHTML = "";
-  var head = document.createElement("option");
-  head.value = ""; head.textContent = allLabel;
-  sel.appendChild(head);
-  o.live.forEach(function (v) {
-    var op = document.createElement("option");
-    op.value = v; op.textContent = v + " (" + o.counts[v] + ")";
-    sel.appendChild(op);
-  });
-  // Out-of-scope values stay visible but unselectable, plus the active value if
-  // the rest of the filter set has emptied it (rule 1 — never lose a selection).
-  var rest = o.dead.slice();
-  if (STATE[dim] && o.live.indexOf(STATE[dim]) === -1 && rest.indexOf(STATE[dim]) === -1) {
-    rest.unshift(STATE[dim]);
+  var sel = msVals_(dim);
+  var listed = o.live.slice();
+  sel.forEach(function (v) { if (listed.indexOf(v) === -1) listed.push(v); });
+  var dead = o.dead.filter(function (v) { return listed.indexOf(v) === -1; });
+  var open = STATE.msOpen === dim;
+  // The button carries the DISTINCT headcount on "all" — on a multi-valued
+  // dimension the options sum past it, and seeing both is the disclosure.
+  var btnLabel = !sel.length ? allLabel + " (" + o.people + ")"
+    : sel.length === 1 ? sel[0]
+    : sel.length + " selected";
+  var rows = listed.map(function (v) {
+    var on = sel.indexOf(v) !== -1;
+    return '<label class="msRow"><input type="checkbox"' + (on ? " checked" : "") +
+      ' onchange="msSet_(' + jsArg_(dim) + "," + jsArg_(v) + ',this.checked)"> ' +
+      "<span>" + esc_(v) + ' <span class="cellSub">(' + (o.counts[v] || 0) + ")</span></span></label>";
+  }).join("");
+  var deadRows = dead.length
+    ? '<div class="msDeadHead">— none in this slice —</div>' +
+      dead.map(function (v) {
+        return '<div class="msRow msOff">' + esc_(v) + ' <span class="cellSub">(0)</span></div>';
+      }).join("")
+    : "";
+  box.innerHTML =
+    '<button class="msBtn' + (sel.length ? " on" : "") + '" onclick="msToggle_(' + jsArg_(dim) +
+      ')" aria-haspopup="listbox" aria-expanded="' + (open ? "true" : "false") + '">' +
+      esc_(btnLabel) + ' <span class="msCaret">▾</span></button>' +
+    '<div class="msPanel"' + (open ? "" : " hidden") + ' role="listbox" aria-label="' +
+      esc_(allLabel) + '">' +
+      '<div class="msHead"><a href="#" onclick="msClear_(' + jsArg_(dim) + ');return false">' +
+        esc_(allLabel) + " (" + o.people + ")</a></div>" +
+      rows + deadRows +
+    "</div>";
+  if (sel.length > 1) {
+    box.title = sel.length + " selected — the union: anyone in ANY of " +
+      sel.join(", ") + ". Memberships overlap, so the union is at most the sum of the parts.";
   }
-  if (rest.length) {
-    var grp = document.createElement("optgroup");
-    grp.label = "— none in this slice —";
-    rest.forEach(function (v) {
-      var op = document.createElement("option");
-      op.value = v; op.textContent = v + " (0)";
-      // The current selection must remain selectable so it can be cleared from
-      // the same control; the others are disabled.
-      if (v !== STATE[dim]) op.disabled = true;
-      grp.appendChild(op);
-    });
-    sel.appendChild(grp);
-  }
-  sel.value = STATE[dim] || "";
-  sel.title = FILTER_DIMS[dim].label.charAt(0).toUpperCase() + FILTER_DIMS[dim].label.slice(1) +
-    " — universal: scopes the cards, the charts and the grid together. Options and " +
-    "counts follow the other active filters, so this list only ever offers combinations " +
-    "that select someone. Values with nobody in the current slice are greyed out rather " +
-    "than removed. " + o.live.length + " of " + (o.live.length + o.dead.length) +
-    " values are in scope (" + total + " memberships).";
 }
+
+/** Open/close one multiselect panel — single-open, like the PS dashboard. */
+function msToggle_(dim) {
+  STATE.msOpen = STATE.msOpen === dim ? "" : dim;
+  buildFilters_();
+}
+
+/** (Un)tick one value. The panel STAYS OPEN — combining values is the point. */
+function msSet_(dim, val, on) {
+  var cur = msVals_(dim).slice();
+  var i = cur.indexOf(val);
+  if (on && i === -1) cur.push(val);
+  if (!on && i !== -1) cur.splice(i, 1);
+  STATE[dim] = cur;
+  buildFilters_();
+  renderAll_();
+}
+
+function msClear_(dim) {
+  STATE[dim] = [];
+  buildFilters_();
+  renderAll_();
+}
+
+// Esc and outside clicks close whichever panel is open. Guarded feature-checks:
+// the render-smoke DOM stub has no closest(), and these handlers never fire there.
+document.addEventListener("keydown", function (ev) {
+  if (ev.key === "Escape" && STATE.msOpen) { STATE.msOpen = ""; buildFilters_(); }
+});
+document.addEventListener("click", function (ev) {
+  if (!STATE.msOpen) return;
+  var t = ev.target;
+  if (t && t.closest && t.closest(".ms")) return;   // inside a control — leave it
+  STATE.msOpen = "";
+  buildFilters_();
+});
 
 function buildFilters_() {
   buildPeriodChips_();
@@ -2523,11 +2642,11 @@ function buildFilters_() {
     if (!empty) b.onclick = function () { STATE.region = r; buildFilters_(); renderAll_(); };
     rc.appendChild(b);
   });
-  fillSelect_("teamSel", "team", "All teams");
+  fillMulti_("teamSel", "team", "All teams");
   // "Worked with PM", not "PM": this control selects PEOPLE who worked FOR a PM,
   // while the 🗓 PM tab reports the TICKETS a PM owns. The filter row sits above
   // the tabs, so both are on screen together and one word cannot mean both.
-  fillSelect_("pmSel", "pm", "Worked with PM: all");
+  fillMulti_("pmSel", "pm", "Worked with PM: all");
   // Tempo stamps whoever led a project at the time, so the raw PM list keeps
   // former employees indefinitely. Say how many were removed — a list that
   // quietly shrinks between deploys is its own small mystery.
@@ -2538,7 +2657,7 @@ function buildFilters_() {
       " Excludes " + pmDrop + " former employee" + (pmDrop === 1 ? "" : "s") +
       " the roster shows as no longer active.";
   }
-  fillSelect_("famSel", "family", "All job families");
+  fillMulti_("famSel", "family", "All job families");
   // Last, so it sees the state every control above just settled on (review
   // item #1). buildFilters_ runs after EVERY filter change, which is exactly
   // the cadence the drawer's badge and its forced-open rule need.
@@ -2560,7 +2679,8 @@ function renderFilterWarn_() {
   // resolve in declaration order, so the suggestion is stable across renders.
   var culprit = null;
   ["region", "team", "pm", "family", "flag"].forEach(function (dim) {
-    if (!STATE[dim]) return;
+    // Multiselect dims hold arrays — "active" means a non-empty selection.
+    if (MS_DIMS_[dim] ? !msActive_(dim) : !STATE[dim]) return;
     var n = MODEL.people.filter(function (p) { return !p.attribOnly && passesFilters_(p, dim); }).length;
     if (n > 0 && (!culprit || n > culprit.n)) culprit = { dim: dim, n: n };
   });
@@ -2574,7 +2694,7 @@ function renderFilterWarn_() {
 }
 
 function clearFilter_(dim) {
-  STATE[dim] = "";
+  STATE[dim] = MS_DIMS_[dim] ? [] : "";
   buildFilters_();
   renderAll_();
 }
@@ -2602,9 +2722,11 @@ var ADV_FILTERS_ = [
   { dim: "family", off: "",     label: "Job family" },
 ];
 
-/** The drawer filters currently off their default, as {dim,label,value}. */
+/** The drawer filters currently off their default, as {dim,label,value}.
+    PM and family are multiselect arrays — off means an empty selection. */
 function advActive_() {
   return ADV_FILTERS_.filter(function (f) {
+    if (MS_DIMS_[f.dim]) return msActive_(f.dim);
     return (STATE[f.dim] || f.off) !== f.off;
   });
 }
@@ -2633,7 +2755,9 @@ function renderAdvToggle_() {
   // The tooltip NAMES them. A count tells a reader that something is applied;
   // only the names tell them what to expect the numbers to mean.
   btn.title = on.length
-    ? "Applied: " + on.map(function (f) { return f.label + " = " + STATE[f.dim]; }).join(" · ") +
+    ? "Applied: " + on.map(function (f) {
+        return f.label + " = " + (MS_DIMS_[f.dim] ? msVals_(f.dim).join(" + ") : STATE[f.dim]);
+      }).join(" · ") +
       ". These scope every KPI and the grid. The drawer stays open while any of " +
       "them is set — a filter is never applied out of sight."
     : "Population, Role, Focus, PM and Job family. Kept out of the default view to " +
@@ -2894,9 +3018,14 @@ function renderAll_() {
     // that sit under it. renderCompare_ now paints Tier 3's drill-down chart;
     // renderTrustDetail_ gates itself behind canSeeSuper_(), so the dispatch
     // stays a plain list rather than growing conditionals here.
-    case "exec":    renderFlow_(); renderMasthead_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); renderExecTabs_(); break;
-    // renderTrust_ moved here with its panel (redesign 2026-08-17).
-    case "actions": renderTrust_(); renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
+    // renderMasthead_ left this list 2026-08-28 with its panel (user decision —
+    // the pipeline pace/runway/groomed callouts were misleading); the
+    // confidential banner it carried now opens the backlog band instead.
+    case "exec":    renderFlow_(); renderBacklogBand_(); renderPulse_(); renderCompare_(); renderTrustDetail_(); renderExecTabs_(); break;
+    // renderTrust_ ("Can we publish these numbers?") left this list 2026-08-28
+    // (user decision) — the super-admin trust detail on Backlog & Flow remains
+    // the provenance surface.
+    case "actions": renderRoster_(); renderBacklogHealth_(); renderEpicDue_(); renderHygPanel_(); break;
     // renderWfDisciplines_ was removed 2026-08-17 (job-code-to-pool mapping is
     // configuration, not delivery health). renderWfAlert_ takes its place in the
     // list, at the top of the tab rather than the bottom.
@@ -2910,9 +3039,10 @@ function renderAll_() {
     explanatory footnote (fine print lives in the chip's tooltip). */
 function renderScope_() {
   var parts = [POP_LABELS[STATE.pop],
-    STATE.region || "All regions", STATE.team || "All teams"];
-  if (STATE.pm) parts.push("PM: " + STATE.pm);
-  if (STATE.family) parts.push(STATE.family);
+    STATE.region || "All regions",
+    msActive_("team") ? msVals_("team").join(" + ") : "All teams"];
+  if (msActive_("pm")) parts.push("PM: " + msVals_("pm").join(" + "));
+  if (msActive_("family")) parts.push(msVals_("family").join(" + "));
   if (STATE.level) parts.push("Level: " + STATE.level);
   if (STATE.flag) parts.push(FLAG_LABELS[STATE.flag].icon + " " + FLAG_LABELS[STATE.flag].label);
   if (STATE.search) parts.push("“" + STATE.search + "”");
@@ -2956,7 +3086,8 @@ document.getElementById("btnRefresh").onclick = function () { loadData(true); };
 function resetFilters_() {
   STATE.period = MODEL && MODEL.meta.periods ? "month" : "week"; // stale-cache guard parity with loadData
   STATE.pop = "fte"; STATE.role = "all";
-  STATE.region = ""; STATE.team = ""; STATE.pm = ""; STATE.family = ""; STATE.search = "";
+  STATE.region = ""; STATE.team = []; STATE.pm = []; STATE.family = []; STATE.search = "";
+  STATE.msOpen = "";      // …and any open multiselect panel closes with them
   STATE.level = "";        // …including the level band, set by drilling the breakdown chart
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {}; STATE.openDetailAll = {};
   STATE.sigFilter = "";   // …including the roster's signal chip
@@ -2978,9 +3109,8 @@ function onFilterChange_(dim, value) {
   buildFilters_();
   renderAll_();
 }
-document.getElementById("teamSel").onchange = function () { onFilterChange_("team", this.value); };
-document.getElementById("pmSel").onchange = function () { onFilterChange_("pm", this.value); };
-document.getElementById("famSel").onchange = function () { onFilterChange_("family", this.value); };
+// Team / PM / family are multiselects (2026-08-28): their change handlers are
+// inline in fillMulti_'s checkboxes, so no onchange wiring here any more.
 document.getElementById("personSearch").oninput = function () { onFilterChange_("search", this.value); };
 // Theme button says what it DOES (the mode you'd switch to), not a cryptic glyph.
 // Word only, no emoji (redesign 2026-08-17) — same rule as the nav labels.
@@ -4252,14 +4382,36 @@ function coverSeries_() {
 }
 
 /**
+ * MODEL.arrivalWeeks with the IN-FLIGHT week removed — the exact series
+ * clearRateMedian_ builds server-side (`closedArrWeeks`, Code.js).
+ *
+ * Since Jira Backlog.js v3.15.0 the arrivals tab carries the current week, so
+ * that the picker's "current week" has Jira numbers behind it. Every TRAILING-
+ * WINDOW consumer here must still drop it: an eight-week window whose newest
+ * entry is a two-day week is seven weeks of history plus a fraction, and both
+ * consumers below document themselves as using "the same window the server
+ * does". This is the one place that decision is made, so they cannot drift.
+ *
+ * Status comes from meta.gridWeeks — the same lookup trailingCompleteWeeks_
+ * uses — so "which week is in flight" has one answer on this page.
+ */
+function completeArrivalWeeks_() {
+  var st = {};
+  (MODEL.meta.gridWeeks || []).forEach(function (wk) { if (wk && wk.iso) st[wk.iso] = wk.status; });
+  return (MODEL.arrivalWeeks || []).filter(function (w) {
+    return w && (st[w.iso] || "done") === "done";
+  });
+}
+
+/**
  * Average (created − resolved) per week over the TRAILING meta.clearRateWeeks
- * of MODEL.arrivalWeeks (oldest first) — the same window clearRateMedian_
+ * of COMPLETE arrival weeks (oldest first) — the same window clearRateMedian_
  * uses server-side (spec D3/D4), so the verdict and the rate it is judged
  * against can never describe different spans of history. A week the arrivals
  * tab could not parse is skipped, never treated as zero flow.
  */
 function netFlowPerWeek_() {
-  var weeks = MODEL.arrivalWeeks || [];
+  var weeks = completeArrivalWeeks_();
   var win = MODEL.meta.clearRateWeeks || 8;
   var trailing = weeks.slice(Math.max(0, weeks.length - win));
   var sum = 0, cnt = 0;
@@ -4319,7 +4471,7 @@ function trailingCompleteWeeks_(n) {
  * @returns {{n:number, minN:number, need:number}}
  */
 function orgClearRateGap_() {
-  var weeks = MODEL.arrivalWeeks || [];
+  var weeks = completeArrivalWeeks_();   // in-flight week excluded — see the helper
   var win = MODEL.meta.clearRateWeeks || 8;
   var trailing = weeks.slice(Math.max(0, weeks.length - win));
   var n = trailing.filter(function (w) { return w && typeof w.resolved === "number"; }).length;
@@ -4531,73 +4683,14 @@ function weeksToClearStr_(total, rate) {
   return n1Dh_(total / rate) + "w";
 }
 
-/**
- * ── TIER 2's three queue cards: Inventory · Net flow · Weeks to clear ────────
- * Split out of renderBacklogBand_ (redesign 2026-08-17) so a single container
- * could hold the whole card grid. Demoted with Throughput and Bug Count to the
- * #flowSecondary strip later the same day (user instruction) — that strip sits
- * directly below the backlog band, so the cards now render immediately under
- * the prose that defines them. They are still computed here, beside that band,
- * rather than duplicated in renderFlow_ — the tier a card is DRAWN in is a
- * layout decision; where its number comes from is not.
- *
- * ORG-scoped by definition: the hero is the whole queue and ignores every
- * filter, which is why the band below it states that in prose.
- * @returns {string} three .tile blocks, ready to concatenate into #tier1Tiles
- */
-function backlogHeroParts_() {
-  var q = MODEL.queue || { assigned: {}, unassigned: {} };
-  var asg = q.assigned || {};
-  var unAsg = q.unassigned || {};
-  var rate = MODEL.meta.clearRateMedian;
-  var unItems = (unAsg.items === null || unAsg.items === undefined) ? null : unAsg.items;
-  var asgItems = asg.items || 0;
-  // Null unassigned must NEVER become 0 (D-null-guard): falling back to
-  // assigned-only is a stated choice, not a silent coercion.
-  var total = unItems === null ? null : asgItems + unItems;
-  var heroTotal = total === null ? asgItems : total;
-  var fallbackNote = unItems === null
-    ? "assigned only — the unassigned count isn't available this refresh, so this is a floor, not the whole queue"
-    : "";
-
-  var netFlow = netFlowPerWeek_();
-  var gap = orgClearRateGap_();
-
-  var invCtx = total === null
-    ? fallbackNote
-    : nfDh_(asgItems) + " assigned + " + nfDh_(unItems) + " unowned";
-  return {
-    inventory: backlogTileHtml_("Inventory", nfDh_(heroTotal) + " items", invCtx, "org",
-      inventoryHistoryTrendHtml_()),
-    netFlow: backlogTileHtml_("Net flow",
-      netFlow === null ? "—" : (netFlow > 0 ? "+" : "") + nfDh_(Math.round(netFlow)) + "/wk",
-      netFlow === null ? "needs an 8-week arrivals history"
-        : (netFlow > 0.0001 ? "growing" : netFlow < -0.0001 ? "draining" : "flat") + " · 8-week basis",
-      "org"),
-    weeksToClear: backlogTileHtml_("Weeks to clear",
-      weeksToClearStr_(heroTotal, rate) || "—",
-      (rate === null || rate === undefined)
-        ? "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") +
-          " of clearing history (" + gap.n + " of " + gap.minN + " so far)"
-        : rate === 0
-        ? "clearing rate is 0/wk this window — the queue isn't draining, so this has no ceiling"
-        : "at " + nfDh_(Math.round(rate)) + "/wk clearing rate — no target (D11), graded against the operating band only",
-      "org"),
-  };
-}
-
-/**
- * The three queue cards as ONE string, in their original order.
- *
- * Kept as a wrapper over backlogHeroParts_ (2026-08-17) because the clustered
- * flow strip needs Net flow filed under Flow and the other two under Runway,
- * while the Jira-unavailable path still wants all three together. One builder,
- * two shapes — rather than a second copy of the arithmetic that could drift.
- */
-function backlogHeroTilesHtml_() {
-  var h = backlogHeroParts_();
-  return h.inventory + h.netFlow + h.weeksToClear;
-}
+// ── THE QUEUE CARDS ARE GONE (user decision 2026-08-28) ──────────────────────
+// backlogHeroParts_ / backlogHeroTilesHtml_ (Inventory · Net flow · Weeks to
+// clear) and assignedRunwayParts_ (the Assigned twins) were DELETED with the
+// Runway cluster: a whole-queue weeks-to-clear figure reads as a delivery
+// forecast, and the unowned majority of that queue is planned pipeline, not
+// commitments — the arithmetic was judged misleading. weeksToClearStr_ and the
+// clearing-rate helpers survive below: the backlog band's ruler and the
+// operating-band grading still read them.
 
 /**
  * ── §2 BACKLOG BAND (Tier 2) ─────────────────────────────────────────────────
@@ -4626,65 +4719,32 @@ function renderBacklogBand_() {
   });
 
   el.innerHTML =
+    // The confidential banner opens the tab while the mode is on (it rode the
+    // masthead until that panel left the page, 2026-08-28): a reader looking
+    // for a name that is not there must meet the reason before the gap.
+    confBannerHtml_() +
     // Title, 2026-08-07. "the queue nobody has finished" imputed neglect to a
     // state the delivery process CREATES ON PURPOSE — unassigned work is the
     // designed output of generic allocation, not abandonment — and framed depth
     // as debt when it is cover: too LITTLE backlog is the failure mode that
     // starves the P&L. Naming it for what it is leaves both directions of the
     // read open. (Spec 2026-08-10-dh-backlog-truth-design.md §A2/D4.)
-    "<h3>Backlog — the work we're holding, and how long it covers us</h3>" +
-    // No literal figures here (Task 16B CRITICAL fix, review of Tasks 12–14):
-    // this sentence used to quote "4.9w"/"11.0w" — illustrative numbers
-    // copied from the spec, wired to nothing. It states the SHAPE of the band
-    // instead; the cards already carry the numbers, and a smoke check
-    // (render-smoke.js) asserts no bare "N.Nw"/"Nw" literal appears here again.
-    //
-    // The hero triplet it used to introduce now sits in the secondary strip
-    // directly BELOW this panel (user instruction 2026-08-17), so the sentence
-    // names where those numbers went — otherwise "hero vs sub-row" points at
-    // something no longer on this panel.
-    '<p class="cellSub"><span class="why" title="In the Runway cluster below, the ORG pair ' +
-    "(Inventory · Weeks to clear) is the WHOLE queue and ignores every filter; the Assigned pair " +
-    "beside it applies your active filters to the assigned-only slice of that same queue — the " +
-    "two read different numbers on purpose, and each card's scope tag says which it is. No " +
-    'target rule anywhere here (D11) — graded against the operating band instead.">' +
-    "Runway cards below: ORG pair = the whole queue, unfiltered · Assigned pair = your filters " +
-    "on the assigned slice · no targets here, only the operating band ⓘ</span></p>" +
+    "<h3>Backlog — the work we're holding</h3>" +
+    // No literal figures here (Task 16B CRITICAL fix, review of Tasks 12–14),
+    // and since 2026-08-28 no runway arithmetic either: the sentence states the
+    // SHAPE of the band and the bar carries the counts.
+    '<p class="cellSub"><span class="why" title="This bar is the WHOLE queue and ignores every ' +
+    "filter — the unfiltered picture of what the org is holding. No weeks-to-clear or runway " +
+    'figure is published on it (removed 2026-08-28): scaling a queue that is mostly planned ' +
+    'pipeline into weeks reads as a delivery forecast nobody made.">' +
+    "The whole queue, unfiltered — counts only, no runway arithmetic ⓘ</span></p>" +
     // THE BAR, then the legend that defines it, then the assigned sub-row.
     // Ordering matters: a reader meets the shape, learns what each segment
     // MEANS, and only then compares it against the filtered slice.
     '<div style="margin-top:8px">' + ruler + "</div>" +
     smartLegendHtml_();
-    // The assigned sub-row moved into the Runway cluster (director feedback
-    // 2026-08-17) — see assignedRunwayParts_, which pairs each Assigned card
-    // beside its ORG twin so the two denominators sit side by side.
-}
-
-/**
- * The ASSIGNED pair — inventory and weeks-to-clear over the filtered,
- * assigned-only slice (flowOpenFor_ + assignedClearRate_, never the ORG
- * scalars). Rendered in the Runway cluster interleaved with the ORG pair
- * (director feedback 2026-08-17): "Assigned vs Total, side by side" is the
- * comparison a director actually makes, and a pair of cards floating between
- * the backlog bar and the flow strip belonged to no family at all.
- * SNAP-tagged: these follow every filter, unlike the ORG pair beside them.
- */
-function assignedRunwayParts_() {
-  var open = flowOpenFor_();
-  var asgInv = open.wipN + open.todoN;
-  var asgRate = assignedClearRate_();
-  return {
-    inventory: backlogTileHtml_("Assigned inventory", nfDh_(asgInv) + " items",
-      nfDh_(open.wipN) + " in progress · " + nfDh_(open.todoN) + " queued", "snap"),
-    weeksToClear: backlogTileHtml_("Assigned weeks to clear",
-      weeksToClearStr_(asgInv, asgRate) || "—",
-      (asgRate === null || asgRate === undefined)
-        ? "needs a longer assigned clearing history under this filter"
-        : asgRate === 0
-        ? "assigned clearing rate is 0/wk this window — filtered, never the ORG rate"
-        : "at " + nfDh_(Math.round(asgRate)) + "/wk assigned clearing rate — filtered, never the ORG rate",
-      "snap"),
-  };
+    // The assigned sub-row and the Runway cards it fed are gone (2026-08-28):
+    // the bar and its legend are the whole read now.
 }
 
 /**
@@ -5008,139 +5068,15 @@ function verdictFindings_() {
   return out;
 }
 
-/**
- * §1 THE MASTHEAD renderer. Grammar: week label · "last complete week" ·
- * filtered headcount · the findings joined into prose · an evidence chip
- * carrying the failing-gate and shelved counts.
- *
- * Headcount is the FILTERED population, matching the scope chip directly
- * above the panes — the one number in this band that is not ORG (spec §1).
- * The label is always the last COMPLETE week regardless of the period
- * picker: the queue/flow findings are fixed to an 8-week trailing basis
- * (spec D3), the same way the backlog band and the gates band both ignore
- * the picker on purpose.
- */
-/**
- * ── THE PIPELINE IN THREE FIGURES (2026-08-17) ───────────────────────────────
- *   Delivery pace     how many items we clear in a week
- *   Total runway      how many weeks the whole queue covers at that pace
- *   Groomed pipeline  how much of it is ready and waiting to be picked up
- *
- * Every one is COMPUTED from the same sources the backlog band reads — no
- * literal ever appears here. A hand-typed "190 items/wk" would be right for one
- * week and quietly wrong for every week after it, which is the exact failure
- * the band's own prose was stripped of illustrative figures to avoid.
- *
- * ORG-scoped and unfiltered, like the queue cards: this is the whole pipeline,
- * and a Region slice of "how long does the backlog cover us" answers a question
- * nobody asked. Each figure says so, and says when it cannot be measured
- * instead of printing a zero that reads as a measured one.
- */
-function pipelineStatsHtml_() {
-  var q = MODEL.queue || {};
-  var asg = q.assigned || {}, un = q.unassigned || {};
-  var unItems = (un.items === null || un.items === undefined) ? null : un.items;
-  var total = unItems === null ? (asg.items || 0) : (asg.items || 0) + unItems;
-  var rate = MODEL.meta.clearRateMedian;
-  var gap = orgClearRateGap_();
-
-  function cell(val, label, sub, tip) {
-    return '<div class="statCell"><div class="statVal">' + val + "</div>" +
-      '<div class="statLbl">' + esc_(label) +
-      (tip ? ' <span class="why" title="' + esc_(tip) + '">ⓘ</span>' : "") + "</div>" +
-      '<div class="statSub">' + sub + "</div></div>";
-  }
-  var paceVal = (rate === null || rate === undefined) ? "—" : nfDh_(Math.round(rate)) + "/wk";
-  var paceSub = (rate === null || rate === undefined)
-    ? "needs " + gap.need + " more week" + (gap.need === 1 ? "" : "s") + " of clearing history"
-    : "items cleared per week, median of the trailing weeks";
-  var runway = weeksToClearStr_(total, rate);
-  var runwaySub = (rate === null || rate === undefined)
-    ? "no clearing rate yet, so the queue cannot be scaled in weeks"
-    : rate === 0
-    ? "nothing is clearing this window, so the queue has no ceiling"
-    : "at the pace on the left, across " + nfDh_(total) + " items";
-  var groomedVal = unItems === null ? "—" : nfDh_(unItems) + " items";
-  var groomedSub = unItems === null
-    ? "not available this refresh"
-    : (total > 0 ? Math.round(unItems / total * 100) + "% of the queue — " : "") +
-      "ready and waiting to be picked up";
-
-  // The standing "Note on unassigned work" left the page (director feedback
-  // 2026-08-17) and rides here as the ⓘ on the figure it explains — data-gated
-  // exactly as the old block was: no unowned items, no note.
-  return '<div class="statRow">' +
-    cell(paceVal, "Delivery pace", paceSub) +
-    cell(runway || "—", "Total runway", runwaySub) +
-    cell(groomedVal, "Groomed pipeline", groomedSub, unownedNoteHtml_()) +
-    "</div>";
-}
-
-function renderMasthead_() {
-  var el = document.getElementById("masthead");
-  if (!el) return;
-  var A = analysisHead_();
-  var head = A.done[A.done.length - 1] || { label: "—", isos: [] };
-  var n = filteredPeople_().length;
-  var gapsAll = gapsRows_(hygieneFor_(head.isos), hygienePeopleFor_(head.isos)) || [];
-  var failingN = gapsAll.filter(function (g) {
-    return g.value !== null && g.gate !== null && g.value < g.gate;
-  }).length;
-  var shelvedN = (shelfRows_() || []).length;
-  el.innerHTML =
-    // The confidential banner sits ABOVE the figures while the mode is on: a
-    // reader looking for a number that is not there must meet the reason before
-    // they meet the gap.
-    confBannerHtml_() +
-    // THREE FIGURES FIRST (2026-08-17). This panel used to open with a
-    // paragraph, and a paragraph is read by nobody scanning for a number. The
-    // same facts the prose carried are now the first thing on the tab, one
-    // figure each; the ranked verdict keeps its place underneath, where it
-    // explains rather than announces.
-    pipelineStatsHtml_() +
-    '<div class="mastRow">' +
-      '<div class="mastLede">' +
-        '<div class="cellSub">' + esc_(head.label) + " · last complete week" + scopeTag_("period") + "</div>" +
-        '<div class="mastHead"><b>' + n + "</b> " + (n === 1 ? "person" : "people") + " in scope</div>" +
-      "</div>" +
-      '<div class="mastEvidence" title="Gates below their bar, and metrics that could not be measured at all this period — check these before trusting anything above.">' +
-        (failingN
-          ? '<span class="dDown">' + failingN + " gate" + (failingN === 1 ? "" : "s") + " below bar</span>"
-          : '<span class="dUp">all gates clear</span>') +
-        (shelvedN ? " · " + shelvedN + " shelved" : "") +
-      "</div>" +
-    "</div>";
-    // THE RANKED VERDICT AND THE UNASSIGNED NOTE ARE OFF THE PAGE (director
-    // feedback 2026-08-17). The stat callouts above carry the same facts, one
-    // figure each; a paragraph under three big numbers restated them and
-    // trained the reader to skip the top of the tab. verdictFindings_ survives
-    // fully tested — the engine's thresholds are doctrine, and a later surface
-    // (an email digest, a Slack post) can pick it up without rebuilding it.
-    // The note rides the ⓘ on Groomed pipeline (pipelineStatsHtml_).
-}
-
-/**
- * ── STANDING NOTE ON UNOWNED WORK (redesign 2026-08-17) ──────────────────────
- * The verdict above can lead with the unowned share of the queue, and read cold
- * that number sounds like neglect. It is not: unassigned items are generic
- * pipeline created ahead of allocation — the designed output of how work is
- * planned here, and cover for the weeks ahead rather than a deficit.
- *
- * DATA-GATED, not a permanent caption: no unowned items, no note. Since the
- * director pass (2026-08-17) it is TOOLTIP TEXT, not a beige block — it rides
- * the ⓘ beside the Groomed pipeline callout, the figure it explains, instead
- * of standing under the masthead where nobody scanning for a number read it.
- */
-function unownedNoteHtml_() {
-  var un = (MODEL.queue || {}).unassigned || {};
-  var unItems = (un.items === null || un.items === undefined) ? null : un.items;
-  if (unItems === null || unItems <= 0) return "";
-  return "These " + nfDh_(unItems) +
-    " items are planned pipeline for upcoming sprints, not work that has been dropped. " +
-    "Generic allocation creates them ahead of the people who will pick them up, so a healthy " +
-    "queue of ready work is what this depth represents — cover for the weeks ahead rather than " +
-    "a deficit. The read to watch is the direction it moves, not its size on any one day.";
-}
+// ── THE PIPELINE MASTHEAD IS GONE (user decision 2026-08-28) ─────────────────
+// pipelineStatsHtml_ (Delivery pace · Total runway · Groomed pipeline),
+// renderMasthead_ (week lede, headcount, evidence chip) and unownedNoteHtml_
+// were DELETED, not parked: a whole-queue runway figure reads as a delivery
+// forecast, and pace over a queue that is mostly unowned pipeline is not a
+// promise anyone made — the callouts were judged misleading for the room they
+// were built for. The verdict engine (verdictFindings_) they once introduced
+// survives, fully tested and unrendered, exactly as before. The confidential
+// banner the masthead carried moved to the top of renderBacklogBand_.
 
 /**
  * Explicit period framing shared by every outcome tile — On-Time, Forecast,
@@ -5556,9 +5492,14 @@ function renderFlow_() {
   function paint_(pri, clusters) {
     el.innerHTML = pri;
     if (!secEl) return;
+    // The RUNWAY cluster (Inventory · Assigned inventory · Weeks to clear ·
+    // Assigned weeks to clear) and the Net flow card were REMOVED 2026-08-28
+    // (user decision): a runway scaled over a queue that is mostly unowned
+    // pipeline reads as a delivery forecast, which is exactly the misleading
+    // read this tab exists to prevent. The backlog band above still carries the
+    // queue SHAPE; what left is the weeks-arithmetic on top of it.
     var groups = [
       { title: "Flow — how work moves", html: clusters.flow },
-      { title: "Runway — what we hold, and how long it covers us", html: clusters.runway },
       { title: "Quality — what came back", html: clusters.quality },
     ].filter(function (g) { return !!g.html; });
     secEl.innerHTML = groups.length
@@ -5591,17 +5532,15 @@ function renderFlow_() {
   var outHeadlineLabel = outcomeHeadlineLabel_(phase, outHead);
 
   if (!MODEL.meta.jiraAvailable) {
-    // The queue cards do NOT come from Jira Raw, so they still publish — in the
-    // secondary tier now, same as on a healthy render. Dropping them with the
-    // Jira tiles would have blanked three measures over a feed they never read.
+    // The Runway queue cards used to still publish on this path (they never
+    // read Jira Raw); they left the page 2026-08-28 with the rest of the
+    // runway arithmetic, so this render is the outcome placeholders alone.
     paint_('<div class="tile ph"><div class="lbl">Flow</div>' +
       '<div class="big">—</div><div class="cmp">Jira data unavailable — the Jira Raw tab could not be read</div></div>' +
       tileHtml_("On-Time Delivery", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel }) +
       (!margin ? "" : tileHtml_("Forecast Accuracy", null, "", [], { unavailable: "Jira data unavailable", headlineLabel: outHeadlineLabel })) +
       qualityTile_(done, trendPer, labels, outHeadlineLabel, outHead, hi, phase),
-      // The queue cards do not come from Jira Raw, so they still publish — in
-      // the Runway cluster, where they belong whatever the Jira feed is doing.
-      { runway: backlogHeroTilesHtml_() });
+      {});
     return;
   }
 
@@ -5945,23 +5884,12 @@ function renderFlow_() {
     });
   })();
 
-  // The three queue cards follow Throughput and Bug Count in the SECONDARY tier
-  // (user instruction 2026-08-17): outcome before position is still the reading
-  // order, but the position cards now sit under the backlog band that defines
-  // them rather than in the protagonist grid. secLead before sec keeps the
-  // strip in the order it is read, not the order it was computed.
   // Which cluster a card lands in is decided HERE and nowhere else, so the
   // grouping is one readable line rather than a flag threaded through every
-  // tile builder above.
-  var hero = backlogHeroParts_();
-  // Runway pairs each ORG card with its ASSIGNED twin (director feedback
-  // 2026-08-17): Inventory beside Assigned inventory, Weeks to clear beside
-  // Assigned weeks to clear — the side-by-side comparison the two floating
-  // cards under the backlog bar never offered.
-  var asg = assignedRunwayParts_();
+  // tile builder above. The Runway cluster and Net flow left 2026-08-28 — see
+  // the note in paint_.
   paint_(html, {
-    flow: secThroughput + sec + hero.netFlow,
-    runway: hero.inventory + asg.inventory + hero.weeksToClear + asg.weeksToClear,
+    flow: secThroughput + sec,
     quality: secQuality,
   });
 }
@@ -7144,7 +7072,9 @@ function drillGo_(i, metricId) {
   var key = DRILL_ROW_KEYS_[i];
   var dest = DRILL_DEST_[metricId];
   if (key === undefined || !dest) return;
-  STATE[STATE.compare] = key;
+  // Multiselect dims (team/pm/family, 2026-08-28) hold ARRAYS — a drill sets
+  // a one-value selection, which the control renders as that value's name.
+  STATE[STATE.compare] = MS_DIMS_[STATE.compare] ? [key] : key;
   STATE.metric = metricId;
   // Landing state per destination: the Need-action chip narrows the roster to
   // the people with a red field — except planCov, whose acting surface is the
@@ -7173,7 +7103,14 @@ function wfExpandAvailCells_() {
     in place. Deliberately does NOT change tab: the reader narrows first and
     chooses the destination second, so one mis-click never navigates away. */
 function drillPick_(dim, val) {
-  STATE[dim] = (STATE[dim] === val) ? "" : val;
+  if (MS_DIMS_[dim]) {
+    // Multiselect dims: a drill toggles a ONE-value selection — clicking the
+    // row already selected clears it, same contract as the string dims.
+    var cur = msVals_(dim);
+    STATE[dim] = (cur.length === 1 && cur[0] === val) ? [] : [val];
+  } else {
+    STATE[dim] = (STATE[dim] === val) ? "" : val;
+  }
   buildFilters_();   // keep the header dropdowns in step with the drill
   renderAll_();
 }
@@ -7458,85 +7395,13 @@ function openRoster_(sig) {
   switchView_("actions");
 }
 
-/** Data-trust strip (spec §4.4): four fill-vs-gate tiles picked BY KEY from
-    gapsRows_ — one list of definitions for the queue and the strip.
-    Deliberately org-wide + unfiltered like the old Hygiene view (ORG tag). */
-function renderTrust_() {
-  var el = document.getElementById("trustPanel");
-  var A = analysisHead_();
-  // Field fill is measured over work RESOLVED in the window, so a forward week
-  // has nothing to grade. The strip falls back to the last COMPLETE period and
-  // says which one — a data-trust panel reading 0% because the week has not
-  // happened would be read as a collapse in data quality.
-  var head = A.phase === "plan" ? (A.done[A.done.length - 1] || { label: "—", isos: [] }) : A.head;
-  var fellBack = A.phase === "plan";
-  var h = hygieneFor_(head.isos), pp = hygienePeopleFor_(head.isos);
-  var byKey = {};
-  gapsRows_(h, pp).forEach(function (g) { if (g.key) byKey[g.key] = g; });
-  // "attr" — the Roster join tile — was REMOVED 2026-08-17 (user decision). It
-  // had been retiring itself at 100% since 2026-08-06 and had not been visible
-  // since; a per-parameter summary the reader cannot act on now lives per person
-  // on the signals roster below. The three that remain are the three that still
-  // gate a published metric.
-  var order = ["est", "due", "logged"];
-  var titles = { est: "Estimate coverage", due: "Due-date fill", logged: "Logged fill" };
-  el.innerHTML = '<h3>Can we publish these numbers? ' + scopeTag_("org") + "</h3>" +
-    '<p class="cellSub">Each metric needs its gate met before it goes on a slide.</p>' +
-    '<div class="trustRow">' + order.map(function (k) {
-      var g = byKey[k];
-      if (!g) return "";
-      var pct = g.value === null ? null : Math.round(g.value * 100);
-      var col = pct === null ? "var(--muted)"
-        : g.value >= g.gate ? "var(--c-good)"
-        : g.value >= g.gate - 0.10 ? "var(--c-warn)" : "var(--c-bad)";
-      return '<div class="trustItem" title="' + esc_((g.note || "") + " Blocks: " + g.blocks) + '">' +
-        '<div class="cellSub">' + esc_(titles[k]) + "</div>" +
-        '<div class="trustVal" style="color:' + col + '">' + (pct === null ? "—" : pct + "%") +
-        ' <span class="cellSub">/ ' + Math.round(g.gate * 100) + "</span></div>" +
-        '<div class="trustBar"><i style="width:' + (pct || 0) + "%;background:" + col + '"></i></div>' +
-        '<div class="cellSub">' + esc_(g.detail || "") + "</div></div>";
-    }).join("") + "</div>" +
-    // ── THE CHECKS WITH NO TILE ────────────────────────────────────────────
-    // The gaps queue was deleted 2026-08-17. Three of its ~10 rows had a tile
-    // above and lost nothing; the rest — region tagging, team tagging, the
-    // billable classification, capacity source, the SRSO binding, reopen/CSAT,
-    // the engagement key — had no tile and would now be named NOWHERE, while the
-    // Executive masthead goes on counting them ("N of M evidence gates are below
-    // their bar"). A verdict that counts what nothing can name is worse than no
-    // verdict: the reader is told there is a problem and given no way to find it.
-    //
-    // So they are named here, in one line, without their coverage figures or
-    // their notes. That is deliberately less than the queue carried — this is a
-    // pointer, not the table returning — and it is what keeps the masthead's
-    // number answerable.
-    (function () {
-      var untiled = gapsRows_(h, pp).filter(function (g) {
-        return !g.key && g.gate !== null && (g.value === null || g.value < g.gate);
-      });
-      if (!untiled.length) return "";
-      return '<div class="cellSub" style="margin-top:8px">⚠ <b>Also below bar, with no tile ' +
-        'above:</b> ' + untiled.map(function (g) {
-          // The name only. A feed that is not connected says so, because "0%"
-          // and "never measured" are different problems with different owners.
-          return '<span title="' + esc_((g.note || "") + " Blocks: " + g.blocks) + '">' +
-            esc_(g.name) + (g.value === null ? " (not connected)" : "") + "</span>";
-        }).join(" · ") + "</div>";
-    })() +
-    // Retired-at-100% checks stay named for the same reason they always were: a
-    // check that vanishes without a word reads as a check somebody removed.
-    (function () {
-      var done = gapsRetired_(h, pp);
-      if (!done.length) return "";
-      return '<div class="cellSub" style="margin-top:6px">✔ <b>Passing at 100%, not shown:</b> ' +
-        done.map(function (g) { return esc_(g.name.replace(/^…and\s+/, "")); }).join("; ") +
-        ' <span title="Still measured on every rebuild. Each returns on its own, with no deploy, ' +
-        'the moment one record fails.">Still measured ⓘ</span></div>';
-    })() +
-    '<div class="cellSub" style="margin-top:6px">Gate = the coverage each published metric needs.' +
-    (fellBack ? " Measured over <b>" + esc_(head.label) + "</b>, the last complete period: " +
-      "field fill is counted on work that has been resolved, so a planning window has none." : "") +
-    "</div>";
-}
+// ── THE DATA-TRUST STRIP IS GONE (user decision 2026-08-28) ────────────────────
+// renderTrust_ ("Can we publish these numbers?" — the est/due/logged gate
+// tiles and the untiled/retired check lines) was DELETED from Actions: the
+// per-person signals roster below carries the same gates per record, and the
+// super-admin trust detail on Backlog & Flow remains the provenance surface.
+// gapsRows_/gapsRetired_/hygieneFor_ survive — renderTrustDetail_ and the
+// gaps machinery still read them.
 
 /*
  * ── §7 THE SHELF — RETIRED (redesign 2026-08-17) ─────────────────────────────
@@ -7814,63 +7679,51 @@ var ROSTER_ISOS_ = null;
 var ROSTER_PHASE_ = "done";
 var ROSTER_COLS_ = {
   person: { label: "Person", sort: function (a, b) { return a.p.name.localeCompare(b.p.name); } },
-  // OVERALL SITS SECOND, next to the name (user 2026-08-17). It was last of
-  // eleven columns — the person's single health verdict, parked at the far right
-  // edge where a manager had to track across eight numbers to reach it. A reader
-  // scans a roster top-to-bottom down the left margin; putting the verdict there
-  // means "who needs a conversation this week" is answered by one vertical pass,
-  // and the per-field columns become the explanation you read AFTER choosing a
-  // row rather than the thing you have to survive to find one.
+  // OVERALL IS OFF THE TABLE (user decision 2026-08-28): a synthetic
+  // worst-of-columns verdict beside the columns it summarises read as noise once
+  // the per-field cells were trimmed to the actionable five. The GRADE survives
+  // — r.overall still drives the Executive pulse, the Need action / Watch chips
+  // and this default sort — it just no longer paints a cell. `when: false` hides
+  // the header; renderRoster_ writes no cell for it, so the two stay aligned.
   //
   // ⚠ ROSTER_COLS_ key order drives the HEADER only. The row cells are written
   // out by hand in renderRoster_ and must be moved with it — a header without
   // its cell shifts every value one column left, which is the quiet kind of
   // wrong that gets screenshotted. A render check pins the two orders together.
-  opp:    { label: "Overall", sort: function (a, b) {
+  opp:    { label: "Overall", when: function () { return false; },
+    sort: function (a, b) {
     return (ROSTER_RANK_[a.overall] - ROSTER_RANK_[b.overall]) || (b.miss - a.miss);
   } },
-  // "n" told the reader nothing, and it is the one column on this row that is NOT
-  // a grade — it is the widest population here, epics included, while every cell
-  // beside it divides by something narrower. A reader comparing "89% · 2 missing"
-  // against "79" concluded the dashboard had lost 77 tickets (user 2026-08-10),
-  // which is a reasonable thing to conclude from a letter with no noun.
-  // The name follows the population toggle, because the same number means two
-  // different things on the two views.
+  // "Backlog of the week" (renamed from "Open issues", user 2026-08-28): the
+  // open half is the work this person is carrying RIGHT NOW under the status
+  // and due-date rules — the actionable backlog — and the cell flags how much
+  // of it is already overdue. Still a count, never a grade: it is the widest
+  // population on the row, epics included, while every cell beside it divides
+  // by something narrower. The name follows the population toggle, because the
+  // same number means two different things on the two views.
   n:      { label: "Issues",
-            labelOf: function (open) { return open ? "Open issues" : "Resolved"; },
+            labelOf: function (open) { return open ? "Backlog of the week" : "Resolved"; },
             sort: function (a, b) { return b.n - a.n; } },
   due:    { label: "Due date", sig: "due" },
   est:    { label: "Estimate", sig: "est" },
   logged: { label: "Logged",   sig: "logged" },
-  // Commercial-readiness signals (2026-08-06) — see SIGNAL_FIELDS_ for why these
-  // three are graded despite gating no published metric.
+  // Epic link stays (2026-08-28): unlinked hours cannot reach an engagement.
+  // Billable tag, Start date and Progress left the table the same day (user
+  // decision) — SIGNAL_FIELDS_ still computes them for the CSV and the
+  // methodology, they just no longer paint columns.
   link:   { label: "Epic link",    sig: "link" },
-  bill:   { label: "Billable tag", sig: "bill" },
-  start:  { label: "Start date",   sig: "start" },
-  // Progress: how far through the load, not whether its fields are filled. Sorts
-  // LEAST-progressed first when descending is off, because the row that needs a
-  // conversation is the one carrying 60 estimated hours with 2 logged.
-  prog:   { label: "Progress", sort: function (a, b) {
-    function frac(r) {
-      var t = r.t || {};
-      return (t.estSec > 0) ? t.spentSec / t.estSec : null;   // unestimated → last
-    }
-    var fa = frac(a), fb = frac(b);
-    if (fa === null && fb === null) return 0;
-    if (fa === null) return 1;
-    if (fb === null) return -1;
-    return fa - fb;
-  } },
-  // Hours: billable share, most first. Ramping new hires and on-leave people
-  // (same exclusion as the recoverable-hours pulse) sort last regardless of
-  // direction — their idle capacity is not a recoverable signal to rank on.
-  hours:  { label: "Hours",  sort: function (a, b) {
-    function share(r) {
-      if (r.p.newHire === true || r.p.onLeave === true || r.p.onBench === true) return null;   // ineligible → last
+  // Available: the hours NOT yet spoken for — the signal a manager can assign
+  // against (user 2026-08-28; replaces the billable-share Hours bar). Most
+  // available first. Ramping new hires and on-leave people (same exclusion as
+  // the recoverable-hours pulse) sort last regardless of direction — their
+  // idle capacity is not assignable room.
+  hours:  { label: "Available",  sort: function (a, b) {
+    function availH(r) {
+      if (r.p.newHire === true || r.p.onLeave === true || r.p.onBench === true || r.p.isIntern === true) return null;   // ineligible → last
       var w = aggWeeks_(r.p, ROSTER_ISOS_);
-      return w && w.tracked > 0 ? w.billable / w.tracked : null;
+      return w && w.avail > 0 ? Math.max(0, w.avail - w.tracked) : null;
     }
-    var sa = share(a), sb = share(b);
+    var sa = availH(a), sb = availH(b);
     return (sb === null ? -1 : sb) - (sa === null ? -1 : sa);
   } },
   // PLAN — only on an unfinished window (user request 2026-08-06: "confirm
@@ -8042,7 +7895,12 @@ function rosterColKeys_() {
  * never drift — which is exactly what a second hand-written copy would do.
  */
 function methodPanelHtml_() {
-  var rules = SIGNAL_FIELDS_.map(function (f) {
+  // Only the fields that still paint a column (2026-08-28): Billable tag and
+  // Start date are computed and exported but no longer on the table, and a
+  // rulebook entry for an absent column reads as a bug.
+  var SHOWN_ = ["due", "est", "logged", "link"];
+  var rules = SIGNAL_FIELDS_.filter(function (f) { return SHOWN_.indexOf(f.k) !== -1; })
+    .map(function (f) {
     return "<li><b>" + esc_(f.label) + "</b> — " + esc_(f.rule || f.tip) + "</li>";
   }).join("");
   return '<div class="methodOverlay" id="methodModal" hidden onclick="closeMethod_(event)">' +
@@ -8050,26 +7908,27 @@ function methodPanelHtml_() {
       '<div class="methodHead"><b>How these columns are counted</b>' +
         '<button class="btn" onclick="closeMethod_()" title="Close">Close</button></div>' +
       '<div class="methodBody">' +
-        "<p><b>Open issues</b> is a count, not a grade: every open ticket attributed to this " +
-        "person, <b>epics included</b>, as a snapshot that follows the filters but not the " +
-        "period picker. Expand a row to see it broken down.</p>" +
+        "<p><b>Backlog of the week</b> is a count, not a grade: every open ticket attributed " +
+        "to this person, <b>epics included</b>, as a snapshot that follows the filters but not " +
+        "the period picker. Items past their committed week are flagged ⚑ overdue in the " +
+        "cell. Expand a row to see it broken down.</p>" +
         "<p><b>Due date</b> and <b>Logged</b> deliberately divide by less than that count " +
         "(managers' feedback 2026-08-10). An undated To Do ticket is ignored entirely — " +
         "not delayed, not missing — while <b>anything with a date is tracked whatever its " +
         "status</b>. Epics are the exception and are audited separately below: every epic is " +
         "expected to carry a date, To Do included.</p>" +
-        "<p><b>Overall</b> is the worst grade across the columns that gate a published metric. " +
-        "The three commercial-readiness columns are graded but never move it.</p>" +
+        "<p>The <b>Overall</b> column left the table (2026-08-28), but the grade behind it " +
+        "still drives the Need action / Watch chips above and the default sort: worst grade " +
+        "across the columns that gate a published metric.</p>" +
         "<p>Each cell is the share of that person's issues carrying the field, graded against " +
         "<b>the field's own gate</b> — read from the metric registry, so an admin gate " +
         "override reaches this table exactly as it reaches the KPI cards. Grey means fewer " +
         "than " + signalMinN_() + " issues: shown, never graded. Click any header to sort; " +
         "the default is biggest opportunity first.</p>" +
-        "<p><b>Hours</b> — time off is tracked in Tempo and sits INSIDE non-billable by " +
-        "rule, so it is drawn apart on the bar: a high non-billable figure that is really a " +
-        "holiday is not a delivery signal. Interns are shown and never graded; ramping new " +
-        "hires and people on leave are shown with their hours but held out of the sellable " +
-        "subtotal.</p>" +
+        "<p><b>Available</b> — scheduled capacity minus tracked time for the period: the " +
+        "hours a manager could still assign work against. Interns are shown and never " +
+        "graded; ramping new hires and people on leave show their context instead of a " +
+        "figure — their spare capacity is not assignable room.</p>" +
         "<ul>" + rules + "</ul>" +
       "</div></div></div>";
 }
@@ -8133,7 +7992,7 @@ function renderRoster_() {
     // Progress follows the population like the signal columns (SNAP on the open
     // backlog, PERIOD on resolved) — it is computed from the same buckets. Hours
     // is always PERIOD: worklogs are period-shaped, a backlog snapshot has none.
-    var tag = (c.sig || k === "opp" || k === "n" || k === "prog") ? " " + scopeTag
+    var tag = (c.sig || k === "n") ? " " + scopeTag
             : (k === "hours" || k === "plan") ? " " + scopeTag_("period") : "";
     return '<th class="' + (k === "person" ? "tname" : "tnum") + '" onclick="setRosterSort_(\'' + k + '\')" style="cursor:pointer"' +
       (c.sig ? ' title="' + esc_(sigFieldByKey_(c.sig).tip) + '"'
@@ -8142,21 +8001,23 @@ function renderRoster_() {
              // row — epics included, ignored tickets included — and every cell
              // beside it divides by something narrower.
              : k === "n" ? ' title="' + esc_(open
-                 ? "Every OPEN issue attributed to this person, epics included — a snapshot that " +
-                   "follows the filters but not the period picker. It is deliberately wider than " +
-                   "the list in the drill-down, which excludes epics (they roll up their children) " +
-                   "and unstarted tickets with no due date (ignored by rule). Expand the row for " +
-                   "the full breakdown. The Due date and Logged cells divide by narrower " +
-                   "populations again — see their own tooltips."
+                 ? "The backlog this person is carrying right now: every OPEN issue attributed to " +
+                   "them, epics included — a snapshot that follows the filters but not the period " +
+                   "picker. Items already past their committed week are flagged red in the cell. " +
+                   "It is deliberately wider than the list in the drill-down, which excludes epics " +
+                   "(they roll up their children) and unstarted tickets with no due date (ignored " +
+                   "by rule). Expand the row for the full breakdown."
                  : "Issues RESOLVED by this person in the selected period, epics included. The " +
                    "drill-down below shows today's open backlog instead, which follows no period.") + '"'
              : k === "plan" ? ' title="' + esc_("Hours planned in Tempo against scheduled " +
                  "capacity for this window, capped per week. Shown only while the window is " +
                  "still open, because a plan you can no longer change is history, not an " +
                  "action. Sorts least-covered first.") + '"'
-             : k === "prog" ? ' title="' + esc_(open
-                 ? "Hours logged against hours estimated on this person's OPEN work — how far through the load they are, not whether its fields are filled. Over 100% means the estimate is spent and the ticket is still open."
-                 : "Hours logged against hours estimated on work RESOLVED in this period — what it took against what was quoted.") + '"'
+             : k === "hours" ? ' title="' + esc_("Scheduled hours not yet used in this period " +
+                 "— capacity minus tracked time. This is the assignable signal: if someone has " +
+                 "available time, a manager can decide to route more work to them. Ramping new " +
+                 "hires, interns and people on leave show their context instead — their spare " +
+                 "capacity is not assignable room.") + '"'
              : "") + ">" +
       esc_(c.labelOf ? c.labelOf(open) : c.label) + tag +
       (STATE.rosterSort === k ? (STATE.rosterDesc ? " ▾" : " ▴") : "") + "</th>";
@@ -8177,19 +8038,14 @@ function renderRoster_() {
         piiHtml_(r.p.name) + "</span>" + personStateBadges_(r.p) +
         (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
           piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 26)) + "</div>" : "") + "</td>" +
-      // Cell order must match ROSTER_COLS_ key order EXACTLY. Overall moved to
-      // second position (2026-08-17) in both places at once; plan remains last.
-      // miss: 0 ON PURPOSE (user 2026-08-18). r.miss sums the per-field misses,
-      // so one ticket missing two fields counts twice — managers read "67
-      // missing" as 67 tickets. The sum still drives the opportunity sort and
-      // the CSV; it is only no longer printed without a noun. The per-field
-      // cells keep their own counts, where the column header is the noun.
-      sigCellHtml_({ cls: r.overall, pct: null, miss: 0 }) +
-      '<td class="tnum">' + r.n + "</td>" +
+      // Cell order must match ROSTER_COLS_ key order EXACTLY. The Overall,
+      // Billable tag, Start date and Progress cells left the row 2026-08-28
+      // with their headers (user decision); r.overall still drives the chips,
+      // the pulse and the default sort — it just paints no cell.
+      backlogCellHtml_(r, open) +
       sigCellHtml_(r.sig.due) + sigCellHtml_(r.sig.est) + sigCellHtml_(r.sig.logged) +
-      sigCellHtml_(r.sig.link) + sigCellHtml_(r.sig.bill) + sigCellHtml_(r.sig.start) +
-      '<td class="tnum">' + progCellHtml_(r, open) + "</td>" +
-      '<td class="tnum">' + hoursCellHtml_(r.p, head.isos) + "</td>" +
+      sigCellHtml_(r.sig.link) +
+      '<td class="tnum">' + availCellHtml_(r.p, head.isos) + "</td>" +
       (showPlan ? planCellHtml_(r.p, head.isos) : "") +
       "</tr>" + rosterDetailRow_(r.p, head);
   }).join("");
@@ -8246,8 +8102,9 @@ function renderRoster_() {
     // reference and is one click away.
     (open
       ? '<p class="cellSub"><b>Due date</b> and <b>Logged</b> divide by less than the ' +
-        "<b>Open issues</b> count beside them: an undated To Do ticket is ignored by rule, " +
-        "while anything carrying a date is tracked whatever its status.</p>"
+        "<b>Backlog of the week</b> count beside them: an undated To Do ticket is ignored by rule, " +
+        "while anything carrying a date is tracked whatever its status. " +
+        '<span class="sigBad">⚑ overdue</span> flags work whose committed week has ended.</p>'
       : "") +
     // The Plan column only exists on an open window, so it has to introduce
     // itself when it appears rather than sit there as an unexplained new column.
@@ -8261,20 +8118,14 @@ function renderRoster_() {
         '<span class="sigDot sigGood">●</span> covered. It disappears once the window closes: ' +
         "a plan you can no longer change is history, not an action.</p>"
       : "") +
-    // The Hours bar is four colours now, and colour must never be the only
-    // channel that carries a meaning (tooltips are hover-only — they do not
-    // exist on a PNG of this table, which is how it usually gets read).
-    // NOT folded, for that reason: a legend behind a click is a legend that is
-    // absent from the screenshot the table is read as.
-    '<p class="cellSub legendRow">Hours: ' +
-    '<span class="lgd"><i style="background:var(--seg-bill)"></i>billable</span>' +
-    '<span class="lgd"><i style="background:var(--seg-nonbill)"></i>non-billable work</span>' +
-    '<span class="lgd"><i style="background:var(--seg-off)"></i>time off</span>' +
-    '<span class="lgd"><i style="background:var(--seg-idle)"></i>idle</span>' +
-    // The SWATCHES stay — they key marks that ARE on screen, and a legend behind
-    // a click is absent from the screenshot this table is read as. The two
-    // sentences that EXPLAINED the rule moved into the panel (2026-08-17): why
-    // time off is drawn apart is reference; the colour of the bar is not.
+    // The four-colour Hours bar left with its column (2026-08-28) — the
+    // Available cell is a single figure, so the swatch legend it needed is
+    // gone too. What stays is the sentence that makes the column actionable
+    // and the state badges that ARE still on screen (a legend behind a click
+    // is absent from the screenshot this table is read as).
+    '<p class="cellSub legendRow"><b>Available</b> = scheduled capacity not yet used this ' +
+    "period — room a manager can decide to assign more work against. The signal is " +
+    "provided here; the routing decision stays with the manager." +
     ' · <span class="lgd">🎓 intern</span>' +
     '<span class="lgd">🌱 ramping</span>' +
     '<span class="lgd">🏖 on leave</span></p>' +
@@ -8303,53 +8154,50 @@ function renderRoster_() {
   if (wrapNow) { wrapNow.scrollTop = scrollTop; wrapNow.scrollLeft = scrollLeft; }
 }
 
-/**
- * How far through the load this person is — logged hours against estimated
- * hours, over the population the roster is showing.
- *
- * This is the question the field-fill columns cannot answer (user 2026-08-06:
- * "we can even know the amount of progress they have in all their in-progress
- * work"). "14 of 18 issues carry logged time" says nothing about whether the
- * work is nearly done or barely started.
- *
- * Read differently by population, and the header's scope tag says which:
- *   OPEN     — burn so far on work still in flight. Over 100% is the useful
- *              signal: the estimate is spent and the ticket is still open.
- *   RESOLVED — consumption on finished work: what it actually took against what
- *              was quoted. The same arithmetic, a retrospective question.
- *
- * Estimated hours are the DENOMINATOR, so a person carrying unestimated work
- * gets "—" rather than a fabricated ratio: the gap is the Estimate column's to
- * report, not this one's. Showing the two hour figures beside the percentage is
- * deliberate — 90% of 2h and 90% of 200h are not the same conversation.
- */
-function progCellHtml_(r, open) {
-  var t = r.t || {};
-  var estH = (Number(t.estSec) || 0) / 3600, spentH = (Number(t.spentSec) || 0) / 3600;
-  if (!(estH > 0)) {
-    // No estimate anywhere in the slice: say why it is blank rather than print a
-    // zero. Logged hours with no estimate is still worth stating — it is spend
-    // with no baseline, which is exactly the pricing gap the Estimate column grades.
-    return spentH > 0
-      ? '<span class="cellSub" title="' + r1_(spentH) +
-        'h logged against no estimate at all — spend with no baseline to compare it to. ' +
-        'The Estimate column owns this gap.">' + r1_(spentH) + "h · no est</span>"
-      : "—";
+// progCellHtml_ (logged-vs-estimated burn) left the roster 2026-08-28 with its
+// Progress column (user decision) — the same two figures still ship in the CSV
+// and in the drill-down's hours line.
+
+/** Per-person backlog-health bucket, keyed once per load. Null for a person
+    the backlog feed has no row for — which renders as a plain count, never as
+    a clean "0 overdue" claim about work nobody measured. */
+function bhBucketOf_(name) {
+  var bh = MODEL.backlogHealth;
+  if (!bh || !bh.buckets) return null;
+  if (!MODEL._bhByPerson) {
+    MODEL._bhByPerson = {};
+    bh.buckets.forEach(function (b) { if (b.person) MODEL._bhByPerson[b.person] = b; });
   }
-  var pct = Math.round(spentH / estH * 100);
-  // Over-burn is flagged, never coloured green-to-red on a scale: an estimate
-  // exceeded on OPEN work is a live overrun, the same number on RESOLVED work is
-  // a closed one. Only the open reading gets a warning class.
-  var cls = (open && pct > 100) ? "dDown" : "";
-  var tip = open
-    ? r1_(spentH) + "h logged against " + r1_(estH) + "h estimated across " + t.n +
-      " open item" + (t.n === 1 ? "" : "s") + " (" + t.wip + " in progress). " +
-      (pct > 100 ? "Past estimate and still open — a live overrun."
-                 : "Burn so far on work still in flight.")
-    : r1_(spentH) + "h logged against " + r1_(estH) + "h estimated across " + t.n +
-      " resolved item" + (t.n === 1 ? "" : "s") + ". What the work took against what was quoted.";
-  return '<span class="' + cls + '" title="' + esc_(tip) + '">' + pct + "%</span>" +
-    ' <span class="cellSub">· ' + r1_(spentH) + "/" + r1_(estH) + "h</span>";
+  return MODEL._bhByPerson[name] || null;
+}
+
+/**
+ * The "Backlog of the week" cell (renamed from Open issues, user 2026-08-28):
+ * the open count, with the OVERDUE share flagged red beside it — work whose
+ * committed week has already ended is the part of the backlog that cannot wait
+ * for the weekly review. Counts come from the same per-person backlog-health
+ * buckets the 🌊 panel reads, so the two surfaces can never disagree; the flag
+ * deep-links the keys into Jira where the payload carries them.
+ * Resolved view: a plain count — history has no overdue queue to work.
+ */
+function backlogCellHtml_(r, open) {
+  var base = '<td class="tnum">' + r.n;
+  if (!open || !r.n) return base + "</td>";
+  var b = bhBucketOf_(r.p.name);
+  var ov = b ? (b.overdue || 0) : 0;
+  if (!ov) return base + "</td>";
+  var keys = (b.keys && b.keys.overdue) || [];
+  var flag = '<span class="sigBad" title="' + ov + " of " + r.n +
+    " open items are past their committed week (measured against the model build " +
+    'time). The committed week must have ENDED to count — the current week is ' +
+    'still in compliance.">⚑ ' + ov + " overdue</span>";
+  if (keys.length && jiraBase_()) {
+    flag = '<a class="sigBad" href="' + esc_(jiraKeysUrl_(keys)) +
+      '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' +
+      ov + " of " + r.n + " open items are past their committed week. Click to open " +
+      (ov === 1 ? "it" : "them") + ' in Jira.">⚑ ' + ov + " overdue</a>";
+  }
+  return base + ' <span class="cellSub">·</span> ' + flag + "</td>";
 }
 
 // ── 🌊 BACKLOG HEALTH PANEL (2026-08-06) ─────────────────────────────────────
@@ -8894,14 +8742,22 @@ function wfPersonBarHtml_(h, sell, maxCap) {
   "</span>";
 }
 
+/** OPEN BY DEFAULT (user decision 2026-08-28): the list of names with their
+    available time is the tab's deliverable, not a drill-down. STATE.wfOpenCell
+    therefore stores the EXCEPTIONS — `false` means a reader collapsed the row.
+    Undefined = open, which also means a fresh load shows every employee. */
+function wfCellOpen_(key) {
+  return STATE.wfOpenCell[key] !== false;
+}
+
 function toggleWfCell_(key) {
-  STATE.wfOpenCell[key] = !STATE.wfOpenCell[key];
+  STATE.wfOpenCell[key] = !wfCellOpen_(key);
   renderWfGrid_();
 }
 
 /** The people behind one pool × band cell, most-available first. */
 function wfCellPeopleRow_(c, people, isos) {
-  if (!STATE.wfOpenCell[c.cell]) return "";
+  if (!wfCellOpen_(c.cell)) return "";
   var mine = people.filter(function (p) { return (p.cell || "NONE|UNKNOWN") === c.cell; })
     .map(function (p) { return { p: p, h: wfPersonHours_(p, isos) }; })
     .sort(function (a, b) {
@@ -8911,7 +8767,7 @@ function wfCellPeopleRow_(c, people, isos) {
       return (sb - sa) || (b.h.avail - a.h.avail) || a.p.name.localeCompare(b.p.name);
     });
   if (!mine.length) {
-    return '<tr class="wfReadRow"><td></td><td colspan="10"><span class="cellSub">' +
+    return '<tr class="wfReadRow"><td></td><td colspan="4"><span class="cellSub">' +
       "No people in this cell under the active filters.</span></td></tr>";
   }
   var sums = mine.reduce(function (a, r) {
@@ -8940,8 +8796,8 @@ function wfCellPeopleRow_(c, people, isos) {
       '<td class="tnum">' + availCell + "</td></tr>";
   }).join("");
   // ⚠ The INNER table renders 3 columns, so every colspan inside it is ≤ 3;
-  // only the OUTER wrapper row spans the pool grid's 11.
-  return '<tr class="wfReadRow"><td colspan="11" style="padding:0">' +
+  // only the OUTER wrapper row spans the pool grid's 5 (simplified 2026-08-28).
+  return '<tr class="wfReadRow"><td colspan="5" style="padding:0">' +
     '<table class="hyg" style="width:100%"><thead><tr>' +
       '<th class="tname" style="padding-left:28px">Person</th>' +
       '<th title="Scheduled capacity for this period as one bar: planned hours fill first, available hours follow, and the figure at the end is that person\'s own availability rate (available ÷ capacity).">Week — planned, then available</th>' +
@@ -9098,13 +8954,25 @@ function renderWfGrid_() {
   var pools = WF_POOL_ORDER_.filter(function (p) { return byPool[p]; })
     .concat(Object.keys(byPool).filter(function (p) { return WF_POOL_ORDER_.indexOf(p) === -1; }).sort());
 
+  // ── SIMPLIFIED GRID (user decision 2026-08-28) ─────────────────────────────
+  // The eleven-column diagnostic table became FIVE columns: Head · Capacity ·
+  // Committed · Available. Plan-vs-logged, Outside plan, Cover, Relative cover,
+  // State and Cell size left the canvas — the working question this tab answers
+  // is "who is available, at which level, for how many hours", and the audit
+  // columns buried it. Every removed measure still ships in the CSV
+  // (saveWorkforceCsv_) and the reconciliation machinery behind them is
+  // untouched, so nothing stopped being measured — it stopped being furniture.
+  //
+  // The people rows are OPEN BY DEFAULT for the same reason: the list of names
+  // with their available time IS the deliverable, not a drill-down.
+  var WF_GRID_COLS_ = 5;
   var rows = pools.map(function (pool) {
     var cells = byPool[pool].slice().sort(function (a, b) {
       return WF_BAND_ORDER_.indexOf(a.band) - WF_BAND_ORDER_.indexOf(b.band);
     });
     var head = cells.reduce(function (a, c) { return a + c.head; }, 0);
     var cfg = wfCfg_(pool);
-    var hdr = '<tr class="wfPoolHdr"><td colspan="11"><b>' + esc_(pool) + "</b> " +
+    var hdr = '<tr class="wfPoolHdr"><td colspan="' + WF_GRID_COLS_ + '"><b>' + esc_(pool) + "</b> " +
       '<span class="cellSub">' + head + (head === 1 ? " person" : " people") + " · " +
       esc_(WF_POOL_DESC_[pool] || (cfg.consumes ? "draws on project backlog"
         : "demand-driven — no plannable backlog by design")) +
@@ -9115,100 +8983,55 @@ function renderWfGrid_() {
       // guess where their own level lands, and two people read it differently.
       var bd = WF_BAND_DESC_[c.band] || { range: "", why: "" };
       var cellArg = esc_(c.cell).replace(/'/g, "\\'");
-      var open = !!STATE.wfOpenCell[c.cell];
+      var open = wfCellOpen_(c.cell);
+      var availHrs = c.headroomHrs !== undefined && c.headroomHrs !== null
+        ? c.headroomHrs : (c.grossHrs - c.committedHrs);
       return '<tr class="rosterRow" onclick="toggleWfCell_(\'' + cellArg + '\')">' +
         // The caret states the row's own state, and the whole row is the control —
-        // same contract as the signals roster, where aiming at the number you want
-        // explained and having nothing happen read as broken.
-        '<td class="tname" style="padding-left:16px" title="' + esc_(bd.why) +
-          ' · Click to see WHO holds these hours.">' +
+        // same contract as the signals roster. The row's most notable read (c.read)
+        // rides as the title, so the deleted State column's sentence is one hover away.
+        '<td class="tname" style="padding-left:16px" title="' + esc_(bd.why +
+          (c.read ? " · " + c.read : "")) + '">' +
           (open ? "▾ " : "▸ ") +
           esc_(wfBandLabel_(c.pool, c.band)) + (bd.range && bd.range !== "—"
             ? ' <span class="cellSub">' + esc_(bd.range) + "</span>" : "") + "</td>" +
-        '<td class="tnum ' + (c.structuralRisk ? "va" : "") + '">' + c.head + "</td>" +
+        '<td class="tnum">' + c.head + "</td>" +
         '<td class="tnum">' + wfHrs_(c.grossHrs) + "</td>" +
         '<td class="tnum">' + wfHrs_(c.committedHrs) + "</td>" +
-        '<td class="tnum ' + wfRag_(c.headroomPct, cfg.headroomFloor, cfg.headroomCeil) + '">' +
-          wfPct_(c.headroomPct) + "</td>" +
-        '<td class="tnum ' + wfRag_(c.commitmentFidelity, WF_CONFIG_.fidelityFloor, null) + '">' +
-          wfFlagHtml_(c, "fidelity") +
-          wfPct_(c.commitmentFidelity) + "</td>" +
-        '<td class="tnum ' + wfRag_(c.shadowRatio, null, WF_CONFIG_.shadowCeiling, true) + '">' +
-          wfFlagHtml_(c, "shadow") +
-          wfPct_(c.shadowRatio) + "</td>" +
-        '<td class="tnum ' + (c.coverWeeks === null ? "" :
-            wfRag_(c.coverWeeks, cfg.coverFloor, cfg.coverTarget)) + '">' +
-          (c.coverWeeks === null ? "n/a" : wfNum_(c.coverWeeks)) + "</td>" +
-        '<td class="tnum ' + wfRag_(c.constraintIndex, WF_CONFIG_.constraintFloor, null) + '">' +
-          wfFlagHtml_(c, "constraint") +
-          (c.constraintIndex === null ? "n/a" : wfNum_(c.constraintIndex, 2)) + "</td>" +
-        '<td><span class="wfChip ' + (WF_STATE_CLASS_[c.actionState] || "wfsNeutral") + '" title="' +
-          esc_(c.read) + '">' + esc_(c.actionState) + "</span></td>" +
-        "<td>" + (c.structuralRisk
-          ? '<span class="wfChip wfsNeutral" title="At or below ' + WF_CONFIG_.keyPersonThreshold +
-            ' people, so every figure on this row moves on one individual\'s week. Stated as context, not as a problem — and kept in its own column so it never crowds out the row\'s Read.">SMALL CELL</span>'
-          : "") + "</td>" +
+        // Available leads with HOURS — the unit anyone actually assigns — and
+        // carries the rate as the qualifier. Negative = planned past schedule,
+        // stated as the Over-allocated pill every other surface uses.
+        '<td class="tnum">' + (availHrs < 0
+          ? '<span class="pillOver" title="' + esc_(wfHrs_(-availHrs) +
+            " planned beyond the " + wfHrs_(c.grossHrs) + " scheduled.") + '">Over-allocated</span>'
+          : "<b>" + wfHrs_(availHrs) + "</b>" +
+            (c.headroomPct === null ? "" : ' <span class="cellSub">· ' + wfPct_(c.headroomPct) + "</span>")) +
+        "</td>" +
         "</tr>" +
-        // The Read used to render as a FULL-WIDTH ROW between every pair of data
-        // rows: a chip, then a sentence, breaking the column lines the table
-        // exists for. Forty rows of that is a table nobody can scan vertically.
-        // The sentence now rides as a ⚠ on the one cell it is about — see
-        // wfReadTarget_ — so the grid stays strictly tabular.
         wfCellPeopleRow_(c, w.people, w.isos);
     }).join("");
   }).join("");
 
   document.getElementById("wfGridPanel").innerHTML =
     '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h3 style="flex:1;margin:0">Pool grid' + scopeTag_("period") + "</h3>" +
+      '<h3 style="flex:1;margin:0">Who is available — by pool and level' + scopeTag_("period") + "</h3>" +
     "</div>" +
     '<div class="tableWrap"><table class="hyg tmx wfGrid"><thead><tr>' +
       '<th class="tname">Pool / Band</th>' +
-      '<th class="tnum" title="People in this cell after the active filters. Red at or below ' +
-        WF_CONFIG_.keyPersonThreshold + '.">Head</th>' +
+      '<th class="tnum" title="People in this cell after the active filters.">Head</th>' +
       '<th class="tnum" title="Gross scheduled capacity from Tempo — each country\'s own working calendar, never a flat 40h. Nothing is netted out for absence: there is no absence feed, so capacity is always gross.">Capacity</th>' +
       '<th class="tnum" title="Planned hours — what this cell is already promised to.">Committed</th>' +
-      '<th class="tnum" title="Capacity minus commitment: the hours not yet promised to anything in this pool. Amber at either edge — little room, or a lot of unplanned room. Neither is automatically a problem.">Headroom</th>' +
-      '<th class="tnum" title="Logged hours on planned epics ÷ planned hours THAT NAME AN ISSUE. Project-level plans name no issue and so can never be matched — they are excluded from the denominator rather than counted as a miss. Plans and worklogs are different grains and rarely tie exactly, so treat a gap as something to reconcile rather than as work that did not happen. n/a means nothing in this cell could be matched or classified at all.">Plan vs logged</th>' +
-      '<th class="tnum" title="Share of classifiable hours on work outside the planned, sales-order-bound epics. Delivered work that is not yet traceable to a plan. Hours nobody could classify are excluded from the denominator, never counted here.">Outside plan</th>' +
-      '<th class="tnum" title="Weeks of remaining backlog at this pool\'s own weekly capacity. n/a for demand-driven pools — their work arrives as tickets, so a 0 would falsely read as \'no work left\'.">Cover</th>' +
-      '<th class="tnum" title="This pool\'s cover against the portfolio median. Relative only — it says which pool is tightest, never whether the portfolio is healthy.">Relative cover</th>' +
-      // The action state used to ride on a full-width sentence row between every
-      // pair of data rows. It is a one-word verdict and belongs in a COLUMN —
-      // scannable down the page, and the table keeps its lines.
-      '<th title="Where this cell sits, in one word. The sentence behind it — the most notable measurement on the row, with its denominator — is on the ⚠ beside the figure it describes.">State</th>' +
-      "<th>Cell size</th>" +
+      '<th class="tnum" title="Capacity minus commitment: the hours not yet promised to anything in this band — the assignable room. Hours lead; the share of the band\'s own capacity follows.">Available</th>' +
     "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
-    // The instruction paragraph that used to sit here moved into the
-    // methodology drawer (user 2026-08-17). What stays is the colour key, which
-    // is a legend rather than prose: a reader cannot decode the cells without
-    // it, and a legend one click away is a legend nobody reads.
-    // ONE LINE, not the paragraph that was here. The drill-down is the answer to
-    // "who has the hours" and a reader cannot discover it from a bare row, so
-    // the invitation stays on the canvas; the four sentences explaining HOW to
-    // read a row went to the drawer.
     '<div class="cellSub" style="margin-top:8px">' +
-      "<b>Click any band row to see who holds the hours.</b> " +
-      // Kept on the canvas, not in the drawer: the State column puts a one-word
-      // chip on every row, and a chip reads as a judgement unless something says
-      // it is not one. Four words is a caption; the paragraph it came from is in
-      // the drawer.
-      "<b>Signals, not verdicts.</b> " +
-      keySwatch_("var(--pos)", "inside its own range") + " · " +
-      keySwatch_("var(--amber)", "worth a look") + " · " +
-      "<b>n/a</b> = not measurable, never zero. " +
+      "<b>Every band lists its people by default — collapse a row by clicking it.</b> " +
+      "<b>Signals, not verdicts:</b> available time is room a manager can decide to assign " +
+      "against, never an automatic instruction. <b>n/a</b> = not measurable, never zero. " +
+      "The audit measures this grid used to carry (plan-vs-logged, outside plan, cover, state) " +
+      "still ship in the ⬇ CSV. " +
       '<span class="wfWhy" onclick="toggleWfMethod_(true)" role="button" tabindex="0" ' +
         "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWfMethod_(true)}\" " +
         'title="How these figures are built, and how to read a row.">How this is measured</span>' +
-    "</div>" +
-    '<div class="cellSub" style="margin-top:6px">' +
-      "<b>What changed, and why the numbers dropped.</b> This grid replaces a single blended " +
-      "availability figure that averaged support and consulting capacity together. Support capacity is " +
-      "contracted and recurring — it is never drawn from the project backlog — so blending it made the " +
-      "org read as substantially more available than it is, and guaranteed the pool actually out of room " +
-      "could not be seen. Delivery managers also left the pool denominators in the same release: they " +
-      "govern backlog rather than consume it. Both are definition changes, dated in the metrics " +
-      "changelog, and every affected trend line carries the ✎ marker at 2026-08-10." +
     "</div>";
 }
 
@@ -10025,6 +9848,9 @@ function renderPm_() {
     : "";
 
   el.innerHTML =
+    // 🎯 The actionable queue FIRST (user 2026-08-28): the signals a PM can
+    // link and action in Jira today, then the per-PM detail that explains them.
+    pmNeedsActionHtml_(visRows, filtering) +
     "<h3>Project Managers — owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
     // ── METHODOLOGY OFF THE PAGE (director feedback 2026-08-17) ─────────────
@@ -10208,6 +10034,89 @@ var PM_COLS_ = {
     the page and buried the rest of the row. */
 var PM_KEYS_SHOWN_ = 8;
 
+/** Monday of a "YYYY.WN" ISO week key, as a UTC ms timestamp — or null on an
+    unparseable key (an unknown shape must never silently rank as "earlier",
+    the isoCmp_ rule). Jan 4 is always in ISO week 1. */
+function weekKeyMonday_(key) {
+  var m = /^(\d{4})\.W(\d{1,2})$/.exec(String(key || ""));
+  if (!m) return null;
+  var jan4 = Date.UTC(+m[1], 0, 4);
+  var dow = new Date(jan4).getUTCDay() || 7;             // Mon=1 … Sun=7
+  return jan4 - (dow - 1) * 864e5 + (+m[2] - 1) * 7 * 864e5;
+}
+
+/** Whole weeks the CURRENT ISO week sits past a due week key. 0 = due this
+    week or later (still compliant); 1 = the committed week just ended; null =
+    either key unparseable. Week precision on purpose — the managers' rule
+    (2026-08-10) is weekly, and the PM payload carries week keys, not dates. */
+function weeksPastDue_(dueKey) {
+  var d = weekKeyMonday_(dueKey), n = weekKeyMonday_(currentIso_());
+  if (d === null || n === null) return null;
+  return Math.max(0, Math.round((n - d) / (7 * 864e5)));
+}
+
+/**
+ * ── 🎯 NEEDS ACTION — the PM tab's own actionable queue (user 2026-08-28) ────
+ * The same reading the Actions tab's "Needs action — fix these and next period
+ * moves" table gives the org, rebuilt at the PM tab's grain: the EPICS on this
+ * page, bucketed into the signals a PM can act on today, each row a one-click
+ * Jira queue. Counted over the epics the current filters show, so the table
+ * always describes the page under it.
+ *
+ * The overdue bands translate the managers' weekly rule into days the way the
+ * Actions panel does: a committed week must have ENDED to count. One week past
+ * ≈ ≤7 days; two to four weeks ≈ 8–30 days; five or more ≈ >30 days.
+ */
+var PM_NEEDS_ = [
+  { k: "noDue", label: "No due date", sev: "sigBad",
+    tip: "Started work carrying no deadline — it bypasses On-Time Delivery tracking and needs immediate scoping. (To Do epics with no date are assigned backlog, not counted here.)",
+    match: function (e) { return !e.due; } },
+  { k: "over30", label: "● Overdue >30 days", sev: "sigBad",
+    tip: "The committed week ended more than a month ago. Not a slip — an abandoned commitment; close it, or re-date it with a reason.",
+    match: function (e) { var w = e.due ? weeksPastDue_(e.due) : null; return w !== null && w >= 5; } },
+  { k: "over8", label: "● Overdue 8–30 days", sev: "sigBad",
+    tip: "Past due by one to four weeks: recoverable with a re-plan. Counts only epics whose committed week has ended.",
+    match: function (e) { var w = e.due ? weeksPastDue_(e.due) : null; return w !== null && w >= 2 && w <= 4; } },
+  { k: "over7", label: "● Overdue ≤7 days", sev: "sigBad",
+    tip: "The committed week has just ended. Usually a due date that needs moving, not work that needs rescuing — the current week is still in compliance.",
+    match: function (e) { return e.due && weeksPastDue_(e.due) === 1; } },
+  { k: "unlinked", label: "● Not linked to a parent", sev: "sigWarn",
+    tip: "No ticket of any status rolls up to this epic, so its hours can never reach an engagement — or inform the next quote.",
+    match: function (e) { return !e.childrenAll; } },
+];
+
+/** The Needs-action table over the epics actually on this page (post-filter).
+    Rows with nothing to fix are still printed at "—": a signal that vanishes
+    when it is clean reads as a signal nobody measured. */
+function pmNeedsActionHtml_(visRows, filtering) {
+  var epics = [];
+  visRows.forEach(function (r) { (r.epics || []).forEach(function (e) { epics.push(e); }); });
+  var body = PM_NEEDS_.map(function (s) {
+    var hit = epics.filter(s.match);
+    var keys = hit.map(function (e) { return e.key; });
+    return "<tr>" +
+      '<td class="tname"><span class="sigDot ' + s.sev + '">●</span> ' +
+        '<span title="' + esc_(s.tip) + '" style="cursor:help">' + esc_(s.label.replace(/^● /, "")) + "</span></td>" +
+      '<td class="tnum">' + (hit.length || "—") + "</td>" +
+      '<td class="tnum">' + (keys.length
+        ? '<span class="cellSub" style="cursor:help" title="' +
+          esc_(keys.slice(0, 40).join(", ") + (keys.length > 40 ? ", … (" + keys.length + " total)" : "")) + '">' +
+          keys.length + " keys ⓘ</span>" + jiraOpenAll_(keys, "open")
+        : "") + "</td></tr>";
+  }).join("");
+  // A plain block, not a nested .panel — #pmPanel is already the card.
+  return '<div class="pmNeeds" style="margin-bottom:16px">' +
+    '<h3 style="margin:0 0 4px">Needs action <span class="cellSub">— fix these and next period moves</span>' +
+      (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
+    '<p class="cellSub">Every row is a queue over the <b>' + epics.length + " epic" +
+      (epics.length === 1 ? "" : "s") + "</b> listed below — link and action it in Jira with one " +
+      "click. Rows overlap on purpose (one epic can be overdue AND unlinked); read each as its " +
+      "own queue, never as a slice of a pie.</p>" +
+    '<table class="hyg tmx"><thead><tr><th class="tname">Signal</th>' +
+      '<th class="tnum">Epics</th><th class="tnum">Queue</th></tr></thead>' +
+    "<tbody>" + body + "</tbody></table></div>";
+}
+
 /**
  * Does this epic belong to the slice the header filters select?
  *
@@ -10239,8 +10148,8 @@ function pmEpicPasses_(e) {
 /** True when any header filter is narrowing the view. Used to decide whether the
     tab is showing everything (no note needed) or a slice (say what it hid). */
 function pmFiltersActive_() {
-  return !!(STATE.region || STATE.team || STATE.pm || STATE.family || STATE.search ||
-            STATE.pop !== "fte" || STATE.role !== "all");
+  return !!(STATE.region || msActive_("team") || msActive_("pm") || msActive_("family") ||
+            STATE.search || STATE.pop !== "fte" || STATE.role !== "all");
 }
 
 /** The PM's own row: a full-width group header carrying the two bars, the
@@ -10692,7 +10601,18 @@ function sigFieldByKey_(k) {
  * 2026-08-05 #2): ramping new hires and on-leave people get no idle segment —
  * their "idle" is the explanation, not a recoverable signal — and sort last.
  */
-function hoursCellHtml_(p, isos) {
+/**
+ * The AVAILABLE cell (user 2026-08-28; replaces the billable-share Hours bar).
+ * Scheduled capacity not yet used in the period — the hours a manager can
+ * actually route more work against. The signal is provided; the decision to
+ * assign stays the manager's, which is why this is a figure, not a verdict.
+ *
+ * Ineligible people (ramping, intern, on leave, benched) show their context
+ * instead of a number — the same three exclusions the recoverable-hours pulse
+ * applies, so this column and that headline can never disagree about whose
+ * empty capacity is assignable room.
+ */
+function availCellHtml_(p, isos) {
   var w = aggWeeks_(p, isos);
   // No weeks at all + a hire date = the period predates them. "—" reads as
   // "delivered nothing"; 🌱 says why there is nothing to read (the retired
@@ -10703,36 +10623,18 @@ function hoursCellHtml_(p, isos) {
       esc_(p.hired) + "</span>";
   }
   if (!w || !(w.avail > 0)) return "—";
-  // Idle capacity is a coaching signal for a settled IC and an EXPLANATION for
-  // anyone still arriving, away, or training — the same three exclusions the
-  // recoverable-hours figure uses (oppRows_), so the bar and the headline can
-  // never disagree about who is accountable for empty capacity.
   var ineligible = p.newHire === true || p.onLeave === true || p.onBench === true || p.isIntern === true;
-  var idle = Math.max(0, w.avail - w.tracked);
-  // TIME OFF IS A SUBSET OF NON-BILLABLE, not a fourth bucket beside it: the
-  // server folds tracked NETSUITE/time-off hours into nonBillable by rule
-  // (Code.js — "time off cannot be charged to a customer"). Splitting it here is
-  // presentation only, so the invariant billable+nonBillable+unclassified ===
-  // tracked still holds and no rate moves. min() guards a stale pre-v15 payload
-  // where trackedOff could arrive without having been folded in.
-  var off = Math.min(Math.max(0, w.trackedOff || 0), w.nonBillable);
-  var nbWork = Math.max(0, w.nonBillable - off);
-  var total = Math.max(w.avail, w.tracked, 1);
-  function seg(h, cls, label) {
-    if (!(h > 0)) return "";
-    return '<i class="' + cls + '" style="width:' + Math.round(h / total * 100) + '%" title="' +
-      label + " " + r1_(h) + 'h"></i>';
+  if (ineligible) {
+    return '<span class="cellSub" title="Ramping new hire / intern / on leave — spare capacity here is the explanation, not assignable room (same exclusion as the recoverable-hours figure).">' +
+      (p.onLeave ? "on leave" : p.onBench ? "on the bench" : p.isIntern ? "in training" : "ramping") + "</span>";
   }
-  return '<div class="hbarMini" title="billable ' + r1_(w.billable) + "h · non-billable work " +
-    r1_(nbWork) + "h" + (off > 0 ? " · time off " + r1_(off) + "h" : "") +
-    " · idle " + r1_(idle) + 'h of ' + r1_(w.avail) + 'h scheduled">' +
-    seg(w.billable, "segBill", "billable") +
-    seg(nbWork, "segNonbill", "non-billable work") +
-    seg(off, "segOff", "time off (tracked)") +
-    (ineligible ? "" : seg(idle, "segIdle", "idle")) +
-    "</div>" +
-    (ineligible ? '<span class="cellSub" title="Ramping new hire / intern / on leave — idle capacity is the explanation here, not a coaching signal (same exclusion as the recoverable-hours figure).">' +
-      (p.onLeave ? "on leave" : p.onBench ? "on the bench" : p.isIntern ? "in training" : "ramping") + "</span>" : "");
+  var avail = Math.max(0, w.avail - w.tracked);
+  var tip = r1_(w.tracked) + "h used of " + r1_(w.avail) + "h scheduled this period — " +
+    r1_(avail) + "h still available. Capacity a manager can decide to assign against; " +
+    "the dashboard provides the signal, the routing decision stays human.";
+  return (avail > 0 ? "<b>" : '<span class="cellSub">') + r1_(avail) + "h" +
+    (avail > 0 ? "</b>" : "</span>") +
+    ' <span class="cellSub" title="' + esc_(tip) + '">of ' + r1_(w.avail) + "h</span>";
 }
 
 /**
@@ -12014,10 +11916,14 @@ function rosterCsvLines_() {
   // The spreadsheet is what gets mailed to the person being asked to fix a gap,
   // and a bare "n" there was the same unexplained number as on screen — with no
   // tooltip to rescue it and no drill-down to expand.
-  var lines = ["Person,Job title,Region,Issues (all incl. epics)," +
+  // "Idle h" became "Available h" (2026-08-28) with the on-screen column: same
+  // number, named for what it is used for — assignable room. "Overdue (open
+  // backlog)" ships beside the count it flags on screen; blank on a payload
+  // with no backlog-health feed, never a fabricated 0.
+  var lines = ["Person,Job title,Region,Issues (all incl. epics),Overdue (open backlog)," +
                "Listed,Ignored (unstarted no due date),Epics," + sigHead +
                ",Overall,Est h,Logged h,Progress %,In progress," +
-               "Billable h,Non-billable work h,Time off h,Idle h,Planned h,Capacity h,State"];
+               "Billable h,Non-billable work h,Time off h,Available h,Planned h,Capacity h,State"];
   rows.forEach(function (r) {
     var w = aggWeeks_(r.p, head.isos) || { billable: 0, nonBillable: 0, trackedOff: 0, tracked: 0, avail: 0 };
     var inel = r.p.newHire === true || r.p.onLeave === true || r.p.isIntern === true;
@@ -12030,7 +11936,9 @@ function rosterCsvLines_() {
     // them — a fabricated 0 in a saved workbook outlives every caveat on screen.
     var bl = r.p.backlog || {};
     var blank_ = function (v) { return v === undefined || v === null ? "" : v; };
+    var bhb = bhBucketOf_(r.p.name);
     lines.push([csvCell_(r.p.name), csvCell_(r.p.jobTitle), csvCell_(r.p.region), r.n,
+                bhb === null ? "" : (bhb.overdue || 0),
                 blank_(bl.listed), blank_(bl.ignoredN), blank_(bl.epicsN)]
       .concat(SIGNAL_FIELDS_.map(function (f) { return pc(r.sig[f.k]) + "," + r.sig[f.k].miss; }))
       .concat([r.overall,

@@ -120,22 +120,34 @@ var CONFIG_DH = {
   // ── Window ──
   WEEKS_PAST_GRID:   2,   // completed weeks shown in the weekly grid
   WEEKS_PAST_TREND:  6,   // completed weeks in the WEEKLY tile trend
-  // Full history depth. Raised 30 → 52 on 2026-08-03 together with the
-  // exporters' shared EXPORT_HISTORY_WEEKS dial: at 30 weeks the Monthly view
-  // had its 6 complete months but the QUARTERLY view spanned only ONE complete
-  // fiscal quarter, so its tiles showed a single data point — no trend line and
-  // no "vs prior" delta (renderTiles_ counts only periods that are done and not
-  // partial). Worst-case complete periods by depth, measured (see _test_periods_):
-  //     30 wk → 1 quarter,  6 months
-  //     52 wk → 3 quarters, 11 months   ← here
-  //     65 wk → 4 quarters, 14 months   (cliff for a full-year / YoY compare)
-  // Stopped at 52 rather than 65 deliberately: 52 weeks of one person's
-  // worklogs still fits inside Tempo's single 500-result page, so the exports
-  // stay at one request per person. 65 tips typical users onto a second page,
-  // doubling request count and with it the transient-500 exposure.
-  // ⚠ This must never exceed what the exports carry, or the deep weeks come
-  // back empty and read as zero activity. Exports first, dashboard second.
-  WEEKS_PAST_DEEP:   52,
+  // ── FULL HISTORY DEPTH — COUNTED IN QUARTERS (user decision 2026-08-24) ────
+  // Was a flat WEEKS_PAST_DEEP = 52. The week count was always a proxy for
+  // "enough quarters", and a leaky one: a rolling window never lands on a
+  // quarter boundary, so its OLDEST quarter is always truncated — it drops out
+  // of every trend (renderTiles_ counts only periods that are done AND not
+  // partial) while still costing a full quarter of export. That is why 52 weeks
+  // bought 3 complete quarters rather than 4, and why the relationship was
+  // empirical instead of stated.
+  //
+  // Counting in quarters makes it exact. DEEP_QUARTERS = 2 means the window
+  // holds exactly 2 complete fiscal quarters plus the one in progress, in any
+  // week of the year (asserted across all 52 in the exporter's window tests).
+  // The span floats — 28 to 39 weeks — because quarters differ in length; that
+  // is the point, not a defect.
+  //
+  // ⚠️ THE TRADE, TAKEN KNOWINGLY. At 2 the Quarterly view holds exactly 2
+  // complete quarters, so its QoQ trend is two points rather than a trend line.
+  // The vs-prior delta still works, and the Monthly view still clears its
+  // 6-complete-months bar. DEEP_QUARTERS = 3 restores the old 3-quarter trend
+  // at 41–52 weeks if that proves too thin — it is a one-line change here and
+  // in CONFIGJ.RAW_HISTORY_QUARTERS, which must move with it.
+  //
+  // ⚠️ MUST MATCH CONFIGJ.RAW_HISTORY_QUARTERS in Jira Backlog.js. If the
+  // dashboard's window reaches further back than the export does, those weeks
+  // come back empty and read as ZERO DELIVERY rather than as absent data — the
+  // same failure the missing in-flight week caused, one boundary over.
+  // Dashboard first or together; never the export alone.
+  DEEP_QUARTERS:     2,
   WEEKS_FUTURE:      3,
 
   // ── Capacity fallbacks (used only when Capacity Tempo has no cell) ──
@@ -233,20 +245,34 @@ var CONFIG_DH = {
 
   // ── Export freshness ──
   // Hours after which the Jira Raw export is called stale on the header stamp.
-  // The exporter runs on a daily ~03:00 trigger, so a healthy stamp is under 24h
-  // old and anything past 30 means a run was MISSED, not merely that it is
-  // afternoon. Set deliberately above 24: warning at 24h sharp would paint the
-  // banner amber every single day between 03:00 and the next run.
+  //
+  // The exporter runs HOURLY (Jira Backlog.js, setJiraExportTriggerHourly,
+  // 2026-08-24), so a healthy stamp is under an hour old. 3 means two runs in a
+  // row were MISSED — enough slack for one slow export and one skipped-for-
+  // overlap run, which are both normal, while still catching a real outage the
+  // same morning it starts.
+  //
+  // ⚠️ This was 30 under the old weekly/daily cadence and had to come down with
+  // it. A 30-hour bar against an hourly trigger is not a lenient warning, it is
+  // no warning at all: the banner would stay green through 29 consecutive failed
+  // runs, and a dashboard confidently serving day-old delivery numbers is worse
+  // than one admitting it is stale — the whole point of the current-week work
+  // (2026-08-24) was that the screen must not imply data it does not have.
   // Owner: whoever owns the Jira Backlog.js trigger cadence — change both together.
-  JIRA_EXPORT_STALE_H: 30,
+  JIRA_EXPORT_STALE_H: 3,
 
   // ── Minimum exporter the published figures assume ────────────────────────
-  // v3.14.0 is where "Jira Backlog.js" stopped exporting Internal-category
-  // projects. Below it, Jira Raw still carries sandboxes (TEST2, TEST5, …),
-  // so the open backlog, weeks-to-clear and the unrouted alert are all
-  // inflated. The dashboard says so rather than presenting them as current.
+  // v3.15.0 is where "Jira Backlog.js" started exporting the IN-FLIGHT WEEK.
+  // Below it, no window the exporter builds contains the current week at all,
+  // so selecting "current week" in the period picker returns empty records for
+  // every Jira-derived number — which reads as an idle team rather than as a
+  // missing export (user report 2026-08-24). v3.15.0 also fixed the Arrivals
+  // fetches' inclusive date bound, which had been dropping every issue filed on
+  // a Sunday, so created/resolved counts move on every historical week too.
+  // (v3.14.0 is where it stopped exporting Internal-category projects; below
+  // THAT, Jira Raw still carries sandboxes and the queue is inflated.)
   // Raise this whenever an exporter change moves a published number.
-  JIRA_EXPORTER_MIN: "3.14.0",
+  JIRA_EXPORTER_MIN: "3.15.0",
 };
 
 /**
@@ -1099,8 +1125,28 @@ function isoWeekYear_(date) {
   return d.getUTCFullYear();
 }
 
+/**
+ * 52 or 53 — how many ISO weeks a year has. Dec 28 is always in the last one.
+ *
+ * ⚠️ THE DATE MUST BE BUILT LOCAL, NOT UTC (bug found 2026-08-24 by the
+ * exporter/dashboard window-parity check). This used to be
+ * `new Date(Date.UTC(year, 11, 28))`, and isoWeekNum_ reads its argument with
+ * LOCAL getters — so in any behind-UTC timezone the UTC midnight of Dec 28 is
+ * Dec 27 locally, isoWeekNum_ saw the second-to-last week, and a 53-week year
+ * reported 52. Measured at UTC−6: weeksInYear_(2026) returned 52 for a year
+ * that has 53 weeks.
+ *
+ * What that broke: `shift()` in buildDhWindow_ wraps on this number, so a
+ * window spanning a 53-week year silently lost W53 and renumbered everything
+ * behind it — the deep window came back 26 weeks instead of 39, and the
+ * dashboard and the export stopped describing the same history. Nothing errored.
+ *
+ * Same UTC-midnight trap dhCellDateLocal_ documents for sheet cells, in the one
+ * place it was still being constructed rather than parsed. `new Date(y, 11, 28)`
+ * is local midnight on Dec 28 in every zone, which is what isoWeekNum_ expects.
+ */
 function weeksInYear_(year) {
-  return isoWeekNum_(new Date(Date.UTC(year, 11, 28)));
+  return isoWeekNum_(new Date(year, 11, 28));
 }
 
 /** "YYYY.WN" label for any Date (used to bucket NS daily rows + Jira dates). */
@@ -1128,9 +1174,47 @@ function buildDhWindow_(today) {
   for (var off = -CONFIG_DH.WEEKS_PAST_GRID; off <= CONFIG_DH.WEEKS_FUTURE; off++) {
     gridWeeks.push({ iso: shift(off), status: off < 0 ? "done" : (off === 0 ? "now" : "plan") });
   }
-  for (var a = -CONFIG_DH.WEEKS_PAST_DEEP; a <= CONFIG_DH.WEEKS_FUTURE; a++) allWeeks.push(shift(a));
+  // Depth in WEEKS, derived from the depth in QUARTERS — see CONFIG_DH.DEEP_QUARTERS.
+  var deep = deepWeeksFor_(shift);
+  for (var a = -deep; a <= CONFIG_DH.WEEKS_FUTURE; a++) allWeeks.push(shift(a));
   return { gridWeeks: gridWeeks, trendWeeks: trendWeeks, allWeeks: allWeeks,
-           headlineIso: shift(-1), today: today };
+           deepWeeks: deep, headlineIso: shift(-1), today: today };
+}
+
+/**
+ * Completed weeks back to the start of the CONFIG_DH.DEEP_QUARTERS-th prior
+ * fiscal quarter — the depth that makes the window quarter-ALIGNED.
+ *
+ * Built on periodInfoForIso_ rather than on its own copy of the FY arithmetic,
+ * deliberately: that function is what every period label, status and partial
+ * flag on this dashboard is computed from, so deriving the window from it means
+ * the window edge and the period boundaries cannot disagree about where a
+ * quarter starts. A second implementation here would be a second opinion, and
+ * the two would eventually differ by a week straddling 30 June.
+ *
+ * The exporter (Jira Backlog.js jb_completedWeeksForQuarters_) must produce the
+ * SAME answer for the same date. It cannot share this code — separate Apps
+ * Script projects — so both are tested against fixed anchors instead.
+ *
+ * @param {function(number):string} shift offset → "YYYY.WN", from buildDhWindow_
+ * @returns {number} completed weeks; the in-flight week is not counted
+ */
+function deepWeeksFor_(shift) {
+  var cur = periodInfoForIso_(shift(0)).quarter;
+  var seen = {}, seenN = 0, n = 0;
+  var want = CONFIG_DH.DEEP_QUARTERS;
+  for (var i = 1; i <= 400; i++) {
+    var q = periodInfoForIso_(shift(-i)).quarter;
+    if (q !== cur && !seen[q]) {
+      // The week that would BEGIN one quarter too far. Stop without counting
+      // it: including it is exactly what leaves the oldest quarter partial.
+      if (seenN === want) break;
+      seen[q] = 1;
+      seenN++;
+    }
+    n = i;
+  }
+  return n;
 }
 
 // ── PERIOD CALENDAR (Week / Month / fiscal Quarter — FY starts Jul 1,
@@ -3247,6 +3331,46 @@ function clearRateMedian_(series, weeks) {
 }
 
 /**
+ * Arrival weeks with the IN-FLIGHT week dropped — what clearRateMedian_ is
+ * allowed to see.
+ *
+ * ── WHY (user report 2026-08-24) ─────────────────────────────────────────────
+ * Selecting "current week" in the period picker returned empty records for every
+ * Jira-derived number, because Jira Backlog.js built its windows from COMPLETED
+ * weeks only and the current one had never been exported. v3.15.0 fixed that:
+ * the arrivals tab, and Jira Raw with it, now carry the week in progress.
+ *
+ * Which makes this filter necessary in the same breath. The trailing median is
+ * an OPERATING RATE — "how much does this org clear in a week" — and a Tuesday
+ * morning is not a week. Left in, the newest point would be a fraction of a
+ * week's clearing, dragging the median down by however far into the week the
+ * reader happens to be. weeks-to-clear divides the queue by that median, so the
+ * headline would deteriorate every Monday and recover every Friday, describing
+ * the clock rather than the delivery.
+ *
+ * The in-flight week is NOT removed from the payload — `arrivalWeeks` ships
+ * whole, and inventoryWalkback_ needs the partial week precisely because it
+ * walks back from a queue measured NOW. Only the RATE refuses it.
+ *
+ * `win` is the authority on which week is in flight, not a flag from the sheet:
+ * a partial-week marker written by an export describes when the export ran.
+ *
+ * @param {Array<{iso:string}>} arrWeeks arrivals rows, any order
+ * @param {Object} win buildDhWindow_ output
+ * @returns {Array} the same rows minus the in-flight week (input order kept)
+ */
+function closedArrivalWeeks_(arrWeeks, win) {
+  var rows = arrWeeks || [];
+  var nowIso = null;
+  ((win && win.gridWeeks) || []).forEach(function (g) { if (g.status === "now") nowIso = g.iso; });
+  if (!nowIso) return rows;
+  var nowKey = isoSortKey_(nowIso);
+  // Strictly BEFORE the in-flight week: anything at or after it is either the
+  // partial week itself or a future-dated row, and neither is operating history.
+  return rows.filter(function (w) { return w && isoSortKey_(w.iso) < nowKey; });
+}
+
+/**
  * Reconstructs a weekly open-inventory series by walking deltas BACKWARDS from
  * the measured present:
  *
@@ -3998,18 +4122,40 @@ function readCapacitySheet_() {
     if (iUser === -1) iUser = 1; // TempoCapacityTime.js: User is column B
     var weekCols = [];
     headers.forEach(function (hh, i) { if (/^\d{4}\.W\d{1,2}$/.test(hh)) weekCols.push({ col: i, iso: hh }); });
-    var byName = {};
-    for (var r2 = hRow + 1; r2 < raw.length; r2++) {
+
+    // ── TEAM COLUMN (2026-08-24) ────────────────────────────────────────────
+    // `headers` above is the ISO-LABEL row, whose fixed columns are blank — so
+    // "Team" can never be found in it. The human header ("Account ID · User ·
+    // Team") is the row BELOW, which is also why the data loop has always
+    // started one row too high and harmlessly parsed the header as a person.
+    //
+    // Team is read from the capacity tab rather than the Tracked/Planned tabs
+    // ON PURPOSE. Capacity carries one row per person in a Tempo team whether
+    // or not they logged a minute, so squad membership stops depending on
+    // having a worklog — which is what put non-tracking job families and
+    // long-leave rocketeers in "(No team)" while Tempo knew their squad all
+    // along. Absent column (pre-upgrade sheet) = absent feature, never an
+    // error: teamsByName stays empty and the row-derived teams still apply.
+    var nameHdr = (raw[hRow + 1] || []).map(function (c) { return String(c).trim(); });
+    var iTeam = colIdx_(nameHdr, ["Team"]);
+    var dataStart = (String(nameHdr[iUser] || "") === "User") ? hRow + 2 : hRow + 1;
+
+    var byName = {}, teamsByName = {};
+    for (var r2 = dataStart; r2 < raw.length; r2++) {
       var user = String(raw[r2][iUser] || "").trim();
       if (!user || /^total/i.test(user)) continue;
       var key = normDH_(user);
       if (!byName[key]) byName[key] = {};
+      if (iTeam !== -1) {
+        var cell = String(raw[r2][iTeam] || "").trim();
+        if (cell) teamsByName[key] = cell;
+      }
       weekCols.forEach(function (wc) {
         var v = raw[r2][wc.col];
         if (v !== "" && v !== null && !isNaN(Number(v))) byName[key][wc.iso] = Number(v);
       });
     }
-    return { byName: byName };
+    return { byName: byName, teamsByName: teamsByName, teamColumn: iTeam !== -1 };
   } catch (e) {
     return { byName: {}, error: "Capacity read failed: " + e.message };
   }
@@ -6279,6 +6425,33 @@ function assembleModel_(inputs, win) {
     byPerson[p.name] = { roster: p, teams: [], pms: [], weeks: {}, regionHours: {} };
   });
 
+  // ── SQUAD MEMBERSHIP IS SEEDED FROM CAPACITY, NOT FROM WORKLOGS ──────────
+  // Before this, `acc.teams` was filled ONLY inside eachTempoRow_ — so a person
+  // reached the Team filter only if the export carried a Tempo row for them.
+  // Anyone with no rows in the whole 52-week window fell into "(No team)":
+  // non-tracking job families (who never log Tempo time by policy), rocketeers
+  // on long leave, and brand-new hires. The dashboard reported them as untagged
+  // when Tempo knew their squad the entire time — a data-hygiene bucket
+  // manufacturing its own contents.
+  //
+  // Capacity carries one row per person in a Tempo team regardless of logged
+  // time (TempoCapacityTime.js builds it straight off fetchAllTeamMembers_), so
+  // it is the row-independent source this needs. Row-derived teams still union
+  // in below: capacity is the floor, never a ceiling.
+  var capTeams = (inputs.capacity && inputs.capacity.teamsByName) || {};
+  var seededTeams = 0;
+  population.forEach(function (p) {
+    var cell = capTeams[normDH_(p.name)];
+    if (!cell) return;
+    var acc = byPerson[p.name];
+    splitTeams_(cell).forEach(function (t) {
+      if (acc.teams.indexOf(t) === -1) { acc.teams.push(t); seededTeams++; }
+    });
+  });
+  Logger.log("ℹ️ team seed: " + seededTeams + " membership(s) from Capacity Tempo"
+       + (inputs.capacity && inputs.capacity.teamColumn
+          ? "" : " — ⚠️ no Team column found, re-run TempoCapacityTime export"));
+
   // Tempo tracked/planned rows → per-person weekly sums, team collection,
   // region-tagged hours (tracked keys × Jira Region). NO absence signal is
   // read (user decision 2026-08-04): tracked NETSUITE/time-off hours are real
@@ -6553,7 +6726,26 @@ function assembleModel_(inputs, win) {
   // review 2026-08-06; see isoSortKey_'s comment for why this corrupts both
   // consumers below silently rather than erroring).
   arrWeeks = arrWeeks.slice().sort(function (a, b) { return isoSortKey_(a.iso) - isoSortKey_(b.iso); });
-  var resolvedSeries = arrWeeks.map(function (w) { return w.resolved; });
+
+  // ── THE IN-FLIGHT WEEK IS DATA, BUT IT IS NOT AN OPERATING RATE ───────────
+  // Jira Backlog.js v3.15.0 (2026-08-24) started exporting the CURRENT week, so
+  // "current week" in the period picker finally has Jira numbers behind it
+  // instead of rendering empty. That same row must not reach clearRateMedian_:
+  // a Tuesday-morning week resolves a fraction of a week's work, and dropping
+  // that into the trailing median pulls the org's clear rate down by however far
+  // into the week we happen to be — a norm that moves with the clock, not with
+  // delivery. The median is what weeks-to-clear divides by, so the queue would
+  // read as deteriorating every Monday and recovering every Friday.
+  //
+  // Decided HERE rather than trusted from a column in the sheet: the server
+  // knows what today is, and a partial-week flag written by an export that ran
+  // at some other moment is a fact about the export, not about the week.
+  //
+  // inventoryWalkback_ deliberately KEEPS the partial week. It walks backwards
+  // from `totalItems`, a measurement of the queue AS OF NOW, so the first step
+  // back needs exactly the created/resolved that have happened SO FAR this week.
+  // Feeding it a full week there would be the error.
+  var resolvedSeries = closedArrivalWeeks_(arrWeeks, win).map(function (w) { return w.resolved; });
   var clearRate = clearRateMedian_(resolvedSeries, CONFIG_DH.CLEAR_RATE_WEEKS);
   var totalItems = (queue.unassigned.items === null)
     ? null
@@ -7140,7 +7332,12 @@ function assembleModel_(inputs, win) {
 //      why it must not be served alongside the new one: two tabs open on two
 //      cache entries would disagree about how available the team is, and the
 //      caption on one of them promises they cannot.
-var DH_SCHEMA_VER_ = 47;
+// 48 (2026-08-24): person.teams is now seeded from the Capacity Tempo "Team"
+// column, so squad membership no longer requires a worklog row. The payload
+// shape is unchanged but the MEANING of "(No team)" is — it stops absorbing
+// non-tracking families and long-leave rocketeers — so cached v47 models must
+// not be served alongside it.
+var DH_SCHEMA_VER_ = 48;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -7467,13 +7664,43 @@ function _test_dhWindow_() {
   // Derived from CONFIG_DH, not hardcoded: the depth is a tuning dial that
   // moves with the exporters' window, and a literal here just breaks the suite
   // every time it changes instead of testing anything.
-  var expDeep = CONFIG_DH.WEEKS_PAST_DEEP + 1 + CONFIG_DH.WEEKS_FUTURE;
+  var expDeep = w.deepWeeks + 1 + CONFIG_DH.WEEKS_FUTURE;
   assert_(w.allWeeks.length === expDeep,
-          "allWeeks spans deep history→future (" + CONFIG_DH.WEEKS_PAST_DEEP + "+1+" +
+          "allWeeks spans deep history→future (" + w.deepWeeks + "+1+" +
           CONFIG_DH.WEEKS_FUTURE + " = " + expDeep + "), got " + w.allWeeks.length);
   assert_(w.allWeeks[w.allWeeks.length - 1] === "2026.W34", "allWeeks ends at the future horizon");
-  assert_(w.allWeeks.indexOf("2026.W31") === CONFIG_DH.WEEKS_PAST_DEEP,
-          "the current week sits exactly WEEKS_PAST_DEEP into allWeeks");
+  assert_(w.allWeeks.indexOf("2026.W31") === w.deepWeeks,
+          "the current week sits exactly deepWeeks into allWeeks");
+
+  // ── THE DEPTH IS QUARTER-ALIGNED (2026-08-24) ─────────────────────────────
+  // The window now reaches back to a quarter BOUNDARY, not a week count. The
+  // property that matters is not the number — it is that the week just outside
+  // the window belongs to a different quarter than the window's first week. If
+  // it did not, the oldest quarter would be truncated, drop out of every trend,
+  // and the whole point of counting in quarters would be lost while still
+  // paying for the weeks.
+  var firstQ = periodInfoForIso_(w.allWeeks[0]).quarter;
+  var beforeQ = periodInfoForIso_(adjacentIso_(w.allWeeks[0], -1)).quarter;
+  assert_(firstQ !== beforeQ,
+          "the window starts ON a quarter boundary — first week is " + firstQ +
+          ", the week before it must not be (got " + beforeQ + ")");
+  var qsInWindow = {};
+  w.allWeeks.forEach(function (iso) { qsInWindow[periodInfoForIso_(iso).quarter] = 1; });
+  var curQ = periodInfoForIso_(w.allWeeks[w.allWeeks.length - 1 - CONFIG_DH.WEEKS_FUTURE]).quarter;
+  var olderQs = Object.keys(qsInWindow).filter(function (q) { return q !== curQ; });
+  assert_(olderQs.length === CONFIG_DH.DEEP_QUARTERS,
+          "exactly DEEP_QUARTERS (" + CONFIG_DH.DEEP_QUARTERS + ") quarters behind the " +
+          "in-flight one — got " + olderQs.length + " (" + olderQs.join(",") + ")");
+  // The STRUCTURAL floor. Two fiscal quarters are never fewer than 24 ISO weeks,
+  // so anything under that means the quarter walk miscounted rather than that it
+  // landed on a short quarter. Deliberately NOT asserted against
+  // WALKBACK_MAX_WEEKS (26): measured over 10 years the span is 25–39 weeks, and
+  // the one 25-week anchor per decade is harmless because inventoryWalkback_
+  // slices `weeks.slice(-cap)` — the 26-week horizon is a CAP, not a minimum, so
+  // a shorter window simply draws a shorter series.
+  assert_(w.deepWeeks >= 12 * CONFIG_DH.DEEP_QUARTERS,
+          "the window spans at least " + (12 * CONFIG_DH.DEEP_QUARTERS) + " weeks (" +
+          CONFIG_DH.DEEP_QUARTERS + " quarters × 12) — got " + w.deepWeeks);
   // Year boundary: 2026-01-01 is Thursday of ISO 2026.W1 → past weeks wrap into 2025
   var y = buildDhWindow_(new Date(2026, 0, 1));
   assert_(y.trendWeeks[0].indexOf("2025.") === 0, "trend wraps into prior ISO year");
@@ -8361,6 +8588,41 @@ function _test_clearRateMedian_() {
   assert_(clearRateMedian_(halfGaps, 8) === null,
           "8 weeks with 4 gaps → null (4 usable < 5), not a median over the survivors — got " +
           clearRateMedian_(halfGaps, 8));
+
+  // ── THE IN-FLIGHT WEEK NEVER FEEDS THE RATE (2026-08-24) ─────────────────
+  // Jira Backlog.js v3.15.0 started exporting the week in progress so the
+  // period picker's "current week" stops coming back empty. That same row must
+  // not reach the median: a Tuesday-morning week clears a fraction of a week's
+  // work, and letting it in makes the operating rate a function of what day it
+  // is. closedArrivalWeeks_ is the one gate — asserted here on the shape the
+  // sheet actually produces, ROWS not bare numbers.
+  var win = buildDhWindow_(new Date(2026, 6, 31));   // in flight: 2026.W31
+  var arr = [
+    { iso: "2026.W25", created: 300, resolved: 260 },
+    { iso: "2026.W26", created: 300, resolved: 290 },
+    { iso: "2026.W27", created: 300, resolved: 310 },
+    { iso: "2026.W28", created: 300, resolved: 295 },
+    { iso: "2026.W29", created: 300, resolved: 305 },
+    { iso: "2026.W30", created: 300, resolved: 300 },
+    { iso: "2026.W31", created: 40,  resolved: 22 },  // two days in
+  ];
+  var closed = closedArrivalWeeks_(arr, win);
+  assert_(closed.length === 6, "the in-flight week is dropped — got " + closed.length + " of 7");
+  assert_(closed[closed.length - 1].iso === "2026.W30",
+          "the newest surviving week is the last COMPLETE one — got " + closed[closed.length - 1].iso);
+  var withPartial = clearRateMedian_(arr.map(function (w) { return w.resolved; }), 8);
+  var withoutPartial = clearRateMedian_(closed.map(function (w) { return w.resolved; }), 8);
+  assert_(withoutPartial === 297.5,
+          "rate over complete weeks only — got " + withoutPartial);
+  assert_(withPartial < withoutPartial,
+          "sanity: the unfiltered series IS dragged down by the partial week (" +
+          withPartial + " vs " + withoutPartial + ") — that is the bug this gate prevents");
+
+  // A window with no in-flight week (every grid week closed) must pass rows
+  // through untouched rather than silently dropping the newest one.
+  assert_(closedArrivalWeeks_(arr, { gridWeeks: [] }).length === 7,
+          "no 'now' week in the window → nothing dropped");
+  assert_(closedArrivalWeeks_(null, win).length === 0, "null input → empty, never a throw");
   Logger.log("✅ _test_clearRateMedian_ passed");
 }
 
@@ -10202,7 +10464,14 @@ function _test_modelAssembly_() {
       { name: "Zoe Ops", keyLocation: "Malaysia", rosterBucket: "SEA", isCrew: false,
         jobFamily: "Operations", tracks: false },   // non-tracking family — dropped entirely
     ] },
-    capacity: { byName: { "maria alvarez": { "2026.W31": 40, "2026.W30": 40 } } }, // Tom missing → fallback
+    capacity: {
+      byName: { "maria alvarez": { "2026.W31": 40, "2026.W30": 40 } }, // Tom missing → fallback
+      // Tom has NO tracked and NO planned rows (he is on long leave), so before
+      // v48 he reached the Team filter as "(No team)" no matter what Tempo knew.
+      // Capacity is the row-independent source that fixes exactly that.
+      teamsByName: { "tom baker": "Team C | Team A" },
+      teamColumn: true,
+    },
     tracked: { rows: [
       { user: "Maria Alvarez", teamCell: "Team A | Team B", key: "ACME-1", pm: "Pat Manager",
         weekHours: { "2026.W30": 20, "2026.W31": 8 } },
@@ -10234,9 +10503,13 @@ function _test_modelAssembly_() {
                  assignee: "Maria Alvarez" } ],
       openIssues: [ { key: "ACME-7", summary: "Open work", assignee: "Alvarez, Maria",
                       status: "In Progress", priority: "High", due: null, remHrs: 5 } ],
-      // The export's own "Generated:" footer, parsed by readJiraRaw_. Fixed 7h
-      // back so the freshness assertions below don't drift with wall-clock time.
-      exportedAt: new Date(Date.now() - 7 * 3600 * 1000).toISOString() },
+      // The export's own "Generated:" footer, parsed by readJiraRaw_. Aged
+      // relative to the THRESHOLD, not to a fixed number of hours: this used to
+      // be a hardcoded 7h, chosen because it sat under a 30h bar, and it had to
+      // be rewritten the moment the exporter went hourly and the bar dropped to
+      // 3h (2026-08-24). Half the threshold is fresh by construction at any
+      // cadence, so the cadence can move again without editing the fixture.
+      exportedAt: new Date(Date.now() - (CONFIG_DH.JIRA_EXPORT_STALE_H / 2) * 3600 * 1000).toISOString() },
     // 🌊 Flow feeds absent in this fixture (export predates Jira Backlog.js
     // v3.9.0) — assembleModel_ must read inputs.bugs/inputs.flowSnaps
     // unconditionally (readJiraBugs_/readFlowSnapshots_ always return this
@@ -10254,9 +10527,23 @@ function _test_modelAssembly_() {
   // model whose generatedAt is minutes old can still sit on a week-old export.
   var da = m.meta.dataAsOf;
   assert_(da && da.jira === inputs.jira.exportedAt, "the export stamp reaches the payload verbatim");
-  assert_(Math.abs(da.jiraAgeH - 7) < 0.2, "age computed server-side, in hours");
-  assert_(da.jiraStale === false, "7h is inside the " + CONFIG_DH.JIRA_EXPORT_STALE_H + "h window");
+  var freshH = CONFIG_DH.JIRA_EXPORT_STALE_H / 2;
+  assert_(Math.abs(da.jiraAgeH - freshH) < 0.2, "age computed server-side, in hours");
+  assert_(da.jiraStale === false,
+          freshH + "h is inside the " + CONFIG_DH.JIRA_EXPORT_STALE_H + "h window");
   assert_(da.jiraUnknown === false, "a parsed stamp is not 'unknown'");
+  // BOTH SIDES OF THE BAR. The fresh case alone passes just as happily when the
+  // threshold is absurd for the cadence — a 30h bar against an hourly export
+  // stayed green through 29 failed runs and no assertion here noticed. An age
+  // past the bar must flip the flag, whatever the bar currently is.
+  var staleIn = Object.assign({}, inputs, { jira: Object.assign({}, inputs.jira, {
+    exportedAt: new Date(Date.now() - (CONFIG_DH.JIRA_EXPORT_STALE_H * 2) * 3600 * 1000).toISOString(),
+  }) });
+  var staleDa = assembleModel_(staleIn, win).meta.dataAsOf;
+  assert_(staleDa.jiraStale === true,
+          "an export twice the threshold old (" + (CONFIG_DH.JIRA_EXPORT_STALE_H * 2) +
+          "h) reads as STALE — got " + staleDa.jiraStale);
+  assert_(staleDa.jiraUnknown === false, "…and as stale, not as unknown: the stamp parsed fine");
   assert_(m.meta.jiraExportStaleH === CONFIG_DH.JIRA_EXPORT_STALE_H,
           "the staleness threshold ships so the client never re-types it");
   assert_(m.meta.generatedAt !== da.jira, "the two clocks are distinct fields, not aliases");
@@ -10327,6 +10614,15 @@ function _test_modelAssembly_() {
   assert_(t31.cap === 38 && t31.capEst === true, "ANZ fallback capacity flagged estimated");
   assert_(tom.region === "ANZ" && tom.regionSource === "roster", "no tracked → roster fallback");
   assert_(tom.backlog === null, "no open issues → null backlog");
+  // ── v48: squad membership without a worklog row ─────────────────────────
+  // The whole point of the capacity seed. Tom contributes no Tempo row at all,
+  // so every one of these would have been false in v47.
+  assert_(tom.teams.join("|") === "Team A|Team C",
+          "capacity seeds teams for a person with no Tempo rows (sorted, like every people record)");
+  assert_(m.meta.teams.indexOf("Team C") !== -1,
+          "…and a capacity-only team reaches meta.teams, so the filter can offer it");
+  assert_(m.meta.teams.filter(function (t) { return t === "Team A"; }).length === 1,
+          "…while a team seeded AND row-derived is not duplicated in the option list");
   // New hire: pre-hire weeks removed from the model entirely, 🌱 flag carried
   var nina = m.people[1];
   assert_(nina.name === "Nina New" && nina.newHire === true && nina.hired === "2026-07-15",
@@ -10599,8 +10895,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 47,
-          "payload schema is v47 (long leave leaves the capacity pipeline) — " +
+  assert_(m.schemaVer === 48,
+          "payload schema is v48 (squad membership seeded from Capacity Tempo) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10626,8 +10922,10 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 47,
-          "schema is 47 — v46 shipped the exporter handshake; v47 carves onLeave out of capacity, " +
+  assert_(m.schemaVer === 48,
+          "schema is 48 — v48 seeds squad membership from the Capacity Tempo Team column, so " +
+          "\"(No team)\" stops absorbing everyone who logs no Tempo time; " +
+          "v46 shipped the exporter handshake; v47 carves onLeave out of capacity," +
           "commitment and heads, so every capacity-derived rate moves. v45 split unrouted into its three states and carved delivered epics out " +
           "of the backlog hours; v46 widens the footer guard and ships meta.jiraExporter, so a v45 " +
           "model must not be served a v3.14.0 export");
@@ -10655,7 +10953,7 @@ function _test_periods_() {
   var iOct = periodInfoForIso_("2026.W41"); // Thu 2026-10-08
   assert_(iOct.quarter === "FY27Q2", "Oct → FY27 Q2");
 
-  // Window EXTENT is derived from CONFIG_DH.WEEKS_PAST_DEEP, so assert the
+  // Window EXTENT is derived from CONFIG_DH.DEEP_QUARTERS, so assert the
   // relationship rather than a literal count — the depth is a tuning dial that
   // moves with the exporters' window.
   var months = per.month;
@@ -10665,10 +10963,10 @@ function _test_periods_() {
           "months span exactly the window, oldest → newest");
   assert_(months.length >= 8, "window covers at least 8 months, got " + months.length);
 
-  // THE REQUIREMENT that drove WEEKS_PAST_DEEP 30 → 52 (2026-08-03): the tile
-  // trends only use periods that are done AND not partial, so a window has to
-  // contain enough COMPLETE periods or a view renders a single data point with
-  // no trend line and no "vs prior" delta. At 30 weeks the quarterly view had
+  // THE REQUIREMENT that drove the depth up on 2026-08-03: the tile trends only
+  // use periods that are done AND not partial, so a window has to contain
+  // enough COMPLETE periods or a view renders a single data point with no trend
+  // line and no "vs prior" delta. At 30 rolling weeks the quarterly view had
   // exactly one, which is what this guards against.
   var completeMonths = months.filter(function (p) { return p.status === "done" && !p.partial; });
   assert_(completeMonths.length >= 6,
@@ -10694,20 +10992,30 @@ function _test_periods_() {
   assert_(quarters.filter(function (q) { return q.key === "FY26Q4"; })[0].status === "done",
           "FY26Q4 (Apr–Jun 2026) is a completed quarter");
 
-  // The quarterly counterpart of the monthly guard above — this is the exact
-  // assertion that fails at WEEKS_PAST_DEEP = 30 (one complete quarter only).
-  // Measured worst case (running in the LAST week of a quarter, which is when
-  // the window's oldest quarter is most truncated):
-  //   30 weeks → 1 complete quarter   (no trend at all — the bug this fixes)
-  //   52 weeks → 3 complete quarters  ← current setting
-  //   65 weeks → 4 complete quarters  (the cliff for a full-year / YoY compare)
-  // The window's OLDEST quarter is always partial, so the count is never
-  // simply floor(weeks / 13).
+  // ── THE QUARTERLY FLOOR — NOW AN EQUALITY, AND A SMALLER ONE ──────────────
+  // History: this asserted >= 3, because under a ROLLING week window the count
+  // was empirical. 30 weeks gave 1 complete quarter (the 2026-08-03 bug — a
+  // single data point, no trend), 52 gave 3, 65 gave 4; the oldest quarter was
+  // always partial, so it was never simply floor(weeks / 13).
+  //
+  // ⚠️ THE WINDOW IS NOW QUARTER-ALIGNED AND SET TO 2 (user decision
+  // 2026-08-24, taken with the trade stated). Alignment means the oldest
+  // quarter is COMPLETE rather than truncated, so the count is exactly
+  // DEEP_QUARTERS — an equality, not a floor, and that is what is asserted.
+  //
+  // What was given up, deliberately: at 2 the Quarterly view trends two points
+  // rather than three. The vs-prior delta is unaffected. Raising
+  // CONFIG_DH.DEEP_QUARTERS to 3 (and CONFIGJ.RAW_HISTORY_QUARTERS with it)
+  // restores the old trend at 41–52 weeks. This assertion moves with the dial
+  // rather than pinning a number, so that change needs no edit here.
   var completeQuarters = quarters.filter(function (q) { return q.status === "done" && !q.partial; });
-  assert_(completeQuarters.length >= 3,
-          "Quarterly view needs >= 3 complete fiscal quarters for a trend, got " +
-          completeQuarters.length + " — raise CONFIG_DH.WEEKS_PAST_DEEP (and the " +
-          "exporters' EXPORT_HISTORY_WEEKS with it; 65 buys the 4th quarter)");
+  assert_(completeQuarters.length === CONFIG_DH.DEEP_QUARTERS,
+          "a quarter-aligned window holds EXACTLY DEEP_QUARTERS (" + CONFIG_DH.DEEP_QUARTERS +
+          ") complete fiscal quarters — got " + completeQuarters.length +
+          ". Fewer means the oldest quarter came back partial, i.e. the window " +
+          "stopped landing on a boundary; more means the depth and the dial disagree.");
+  assert_(CONFIG_DH.DEEP_QUARTERS >= 2,
+          "…and never fewer than 2, or the Quarterly view has nothing to compare against");
   completeQuarters.forEach(function (q) {
     assert_(q.isos.length >= 12, q.key + " complete quarter holds >= 12 weeks, got " + q.isos.length);
   });
