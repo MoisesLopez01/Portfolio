@@ -244,7 +244,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              // One-click drill-through (2026-08-18): cells navigate to the
              // metric's own tab with the slice + landing state applied.
-             " drillGo_: drillGo_, DRILL_DEST_: DRILL_DEST_, wfExpandAvailCells_: wfExpandAvailCells_," +
+             " drillGo_: drillGo_, DRILL_DEST_: DRILL_DEST_," +
              " LEVEL_ORDER_: LEVEL_ORDER_, liveMetrics_: liveMetrics_, COMPARE_LABELS: COMPARE_LABELS," +
              " metricSampleN_: metricSampleN_, sampleFloorClient_: sampleFloorClient_," +
              " metricFeedDown_: metricFeedDown_, shelfClears_: shelfClears_," +
@@ -265,7 +265,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " pmKeyLink_: pmKeyLink_," +
              " togglePmOpen_: togglePmOpen_, togglePmEpic_: togglePmEpic_, jsArg_: jsArg_," +
              // 🧭 Workforce — the grid and its "who has the hours" drill-down.
-             " renderWfGrid_: renderWfGrid_, toggleWfCell_: toggleWfCell_, wfCellOpen_: wfCellOpen_," +
+             " renderWfGrid_: renderWfGrid_," +
              // renderWfScope_ (2026-08-17): the bench count moved onto Scope
              // because it is the panel that renders at the shipped defaults.
              " renderWfScope_: renderWfScope_," +
@@ -5979,64 +5979,50 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/ARCH/.test(scope) && /not in this population/i.test(scope),
           "pools this population cannot contain are NAMED, so the pool list does not read as the whole company");
 
-  // 2 · Pool grid — both pools present, never merged.
-  assert_(/PS-CONSULT/.test(grid) && /MS-SUPPORT/.test(grid),
-          "both pools appear in the grid");
-  assert_(grid.indexOf("PS-CONSULT") < grid.indexOf("MS-SUPPORT"),
-          "…consumers first — the reading order leadership should follow");
-  assert_(/never drawn from the project backlog/.test(grid),
-          "the demand-driven pool says why it has no backlog, rather than showing an empty one");
-  // Pool codes are this model's vocabulary, not the company's — each group
-  // header has to say what it means or the reader is decoding an abbreviation.
-  assert_(/Consulting — draws on the project backlog/.test(grid),
-          "every pool header explains what the pool IS");
-  // Band labels carry their level range: "CORE" is a bucket this model invented
-  // over the I1..I5+ ladder, and without the range two readers disagree on it.
-  assert_(/CORE/.test(grid) && /I3–I4/.test(grid),
-          "band labels carry the job-code level range they cover");
-  // ── SIMPLIFIED GRID (user decision 2026-08-28): five columns, no verdict
-  // chips. The audit columns and the State chip left the canvas; the CSV keeps
-  // every measure, and the row's most notable read rides the band label's
-  // title attribute.
-  assert_(/<th[^>]*>Head<\/th>/.test(grid) && /<th[^>]*>Capacity<\/th>/.test(grid) &&
-          /<th[^>]*>Committed<\/th>/.test(grid) && /<th[^>]*>Available<\/th>/.test(grid),
-          "the grid carries exactly the working columns: Head, Capacity, Committed, Available");
-  assert_(!/<th[^>]*>State<\/th>/.test(grid) && !/<th[^>]*>Cover<\/th>/.test(grid) &&
+  // 2 · WHO IS AVAILABLE — one flat list (user 2026-08-28, second pass: the
+  // pool × band scaffolding repeated headers/subtotals/footnotes per cell and
+  // buried the names). Every person passing the filters is a ROW, ranked
+  // most-available first; pool and level are a TAG on the row.
+  assert_(/Who is available/.test(grid), "the panel is named for the question it answers");
+  assert_(/Ana Perez/.test(grid) && /Ben Ortiz/.test(grid) && /Sara Support/.test(grid),
+          "EVERY person in the slice is listed from the first paint — no drill, no toggle");
+  assert_(!/wfPoolHdr/.test(grid) && !/Sellable subtotal/.test(grid),
+          "the pool header rows and per-cell subtotals are gone — the repetition WAS the noise");
+  assert_((grid.match(/Same weeks as the row above/g) || []).length === 0,
+          "…and the per-cell footnote paragraph with them");
+  assert_(!/toggleWfCell_/.test(grid), "no cell toggles remain — there is no cell to open");
+  // The columns are the working four; the summary arithmetic lives on the
+  // Sellable headroom card and in the CSV.
+  assert_(/<th[^>]*>Person<\/th>/.test(grid) && />Pool · level</.test(grid) &&
+          /Week — planned, then available/.test(grid) && /<th[^>]*[^>]>Available<\/th>/.test(grid),
+          "the list carries exactly: Person · Pool · level · the week bar · Available");
+  assert_(!/<th[^>]*>Head<\/th>/.test(grid) && !/<th[^>]*>State<\/th>/.test(grid) &&
           !/Plan vs logged/.test(grid) && !/Outside plan/.test(grid) &&
           !/Relative cover/.test(grid) && !/Cell size/.test(grid),
-          "…and none of the retired audit columns");
-  assert_(!/wfChip/.test(grid), "no verdict chip renders on the simplified grid");
+          "…and none of the retired aggregate/audit columns");
+  assert_(!/wfChip/.test(grid), "no verdict chip renders on the list");
   assert_(/still ship in the ⬇ CSV/.test(grid),
-          "…and the grid says where the removed measures still live (the CSV)");
-  // Capacity truth is not measured here — it must not print as a confident 100%.
-  assert_(!/capacityTruth/.test(grid), "no raw field names leak into the rendered grid");
-
-  // ── WHO HAS THE HOURS (Billy, 2026-08-10) ─────────────────────────────────
-  // "…so I can see exactly WHO has available hours, not just the total." The grid
-  // answers how much; these assertions pin that it also answers whose, and that
-  // the two levels stay honest about each other.
-  // OPEN BY DEFAULT (user decision 2026-08-28): the list of names with their
-  // available time IS the deliverable — every employee in scope is on the tab
-  // from the first paint, not behind a click.
-  assert_(/Every band lists its people by default/.test(grid),
-          "the grid states the open-by-default contract in its caption");
-  assert_(/toggleWfCell_\('PS-CONSULT\|/.test(grid),
-          "each band row is still the control, keyed by its own pool|band id");
-  assert_(/Ana Perez/.test(grid) && /Sara Support/.test(grid),
-          "…and the fresh grid already names everyone — all employees, no drill required");
-  var opened = grid;
-  assert_(/▾/.test(opened), "an open cell's caret points down");
-  assert_(/Ana Perez|Ben Ortiz/.test(opened), "the people in that cell are named");
-  var consultBlock = opened.split("MS-SUPPORT")[0];
-  assert_(!/Sara Support/.test(consultBlock),
-          "…and ONLY that cell's people — a support engineer must not appear under a consulting band");
-  assert_(/>Available</.test(opened) && /Sellable subtotal/.test(opened),
-          "the drill-down states available hours per person and subtotals them");
-  assert_(/left out of the sellable subtotal/.test(opened),
-          "…saying that ramping and on-leave capacity is not room to sell, so the subtotal " +
-          "can legitimately be smaller than the cell's headroom");
-  assert_(/Same weeks as the row above/.test(opened),
-          "…and that these rows are the same period read at person grain");
+          "…and the panel says where the pool × band measures still live (the CSV)");
+  assert_(!/capacityTruth/.test(grid), "no raw field names leak into the rendered list");
+  // Pool and level survive as a TAG per row — capacity is not fungible, so
+  // "can this person do the work" rides every row instead of structuring the page.
+  assert_(/wfPoolTag/.test(grid) && /PS-CONSULT · CORE/.test(grid),
+          "each row tags its pool and band");
+  assert_(/I3–I4/.test(grid), "…with the level range the band covers");
+  assert_(/Consulting — draws on the project backlog/.test(grid),
+          "…and the pool's meaning one hover away, not decoded from an abbreviation");
+  assert_(/never drawn from the project backlog/.test(grid),
+          "…including why a non-consuming pool's spare hours are not sellable");
+  // ONE headline instead of a subtotal per cell: how many can take work, for
+  // how many hours — the figure the director opens this tab for.
+  assert_(/people in this slice/.test(grid) && /ready to assign/.test(grid),
+          "one headline states who can take work and the hours ready to assign");
+  assert_(/routing decision is yours/.test(grid),
+          "…and that the decision stays with the reader — signal, not instruction");
+  // Sort: most available first among sellable people; held-back people sink.
+  var iAna = grid.indexOf("Ana Perez"), iBen = grid.indexOf("Ben Ortiz");
+  var rowsOrder = C.getModel().people.map(function (p) { return p.name; });
+  assert_(iAna !== -1 && iBen !== -1, "sanity: both fixture consultants render");
 
   // A person with no scheduled capacity in the window reads "—", never "0h
   // available": nobody is free for work in a week they are not scheduled to work.
@@ -6045,23 +6031,28 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   fresh(noCap);
   C.getModel().viewerRole = "admin";
   C.setState("view", "workforce");
-  C.setState("wfOpenCell", { "PS-CONSULT|CORE": true });
   C.renderWfGrid_();
   var zeroCap = els.wfGridPanel.innerHTML;
   assert_(/Ana Perez/.test(zeroCap) && /—/.test(zeroCap),
           "an unscheduled person is listed with an em-dash, not as 0h available");
 
-  C.setState("wfOpenCell", {});
+  // A held-back person is LISTED but never counted: give Ben leave and the
+  // headline's ready figure must drop him while his row stays.
+  var held = wfModel();
+  held.people.forEach(function (p) { if (p.name === "Ben Ortiz") p.onLeave = true; });
+  fresh(held);
+  C.getModel().viewerRole = "admin";
+  C.renderWfGrid_();
+  var heldGrid = els.wfGridPanel.innerHTML;
+  assert_(/Ben Ortiz/.test(heldGrid), "an on-leave person stays LISTED — hiding them shrinks the team");
+  assert_(/held back/.test(heldGrid) && /never counted available/.test(heldGrid),
+          "…while the headline and footnote say their spare hours are not room to sell");
+  assert_(/🏖/.test(heldGrid), "…with the state badge on their name");
+
   fresh(wfModel());
   C.getModel().viewerRole = "admin";
   C.setState("view", "workforce");
   C.renderAll_();
-  C.toggleWfCell_("PS-CONSULT|CORE");   // default is OPEN — the first toggle closes
-  grid = els.wfGridPanel.innerHTML;
-  assert_(/▸/.test(grid) && !/Ana Perez/.test(grid),
-          "a reader can still COLLAPSE a cell — the caret flips back and its names leave the grid");
-  C.setState("wfOpenCell", {});
-  C.renderWfGrid_();
   grid = els.wfGridPanel.innerHTML;
 
   // ── SIGNALS, NOT VERDICTS (user decision 2026-08-10) ───────────────────────
@@ -6239,13 +6230,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // …and it is genuinely still available, not deleted.
   var method = C.wfMethodHtml_();
   assert_(/a pie of one problem/.test(method), "…both now live in the drawer");
-  assert_(/Click any band row/.test(method), "…including the drill-down instruction");
+  assert_(/Every person in the slice is a row/.test(method),
+          "…including the reading guide for the flat availability list (the band-row " +
+          "drill-down instruction left with the cells, 2026-08-28)");
+  assert_(!/Click any band row/.test(method),
+          "…and no drawer text points at a band row that no longer exists");
   assert_(/Gross, not deployable/.test(method),
           "…and the denominator caveat that qualifies the headline figure");
-  // The colour key went with the RAG cells (2026-08-28): a grid of plain
-  // hours needs no legend, and n/a is still explained in place.
-  assert_(/n\/a<\/b> = not measurable, never zero/.test(grid) || /n\/a/.test(grid),
-          "the n/a rule stays beside the table it qualifies");
+  // The colour key went with the RAG cells (2026-08-28): a list of plain hours
+  // needs no legend; the not-scheduled rule is stated where "—" renders.
+  assert_(/—/.test(grid), "the em-dash convention is on the list itself");
 
   // 6d · The discipline mapping table is gone from the executive flow.
   assert_(!/By discipline/.test(wfAll), "the job-code-to-pool mapping table is off this tab");
@@ -6369,18 +6363,19 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(none.indexOf("wfBarPlan") === -1 && none.indexOf("—") !== -1,
           "zero capacity keeps the '—' rule — no bar, no rate, nothing owed");
 
-  // ── And the drill-down actually renders it ────────────────────────────────
+  // ── And the flat availability list actually renders it ───────────────────
+  // (The pool × band drill-down is gone, 2026-08-28 second pass — every person
+  // row on the list carries the bar; the per-cell subtotal became the one
+  // headline, asserted in the workforce block above.)
   fresh(model({}));
   C.getModel().viewerRole = "admin";
   C.setState("view", "workforce");
-  C.setState("wfOpenCell", { "PS-CONSULT|CORE": true });
   C.renderWfGrid_();
   var openedBar = els.wfGridPanel.innerHTML;
   assert_(/wfBarWrap/.test(openedBar),
-          "the opened cell's person rows carry the stacked bar");
-  assert_(/Sellable subtotal/.test(openedBar) && /left out of the sellable subtotal/.test(openedBar),
-          "…and the subtotal row plus its held-back caveat survived the reformat");
-  C.setState("wfOpenCell", {});
+          "the list's person rows carry the stacked bar");
+  assert_(/never counted available/.test(openedBar),
+          "…and the held-back caveat survived the reformat, stated once");
   fresh(model({}));
   C.setState("view", "exec");
   C.renderAll_();
@@ -8494,11 +8489,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.drillGo_(0, "avail");
   assert_(C.STATE.view === "workforce", "an availability cell lands on Workforce");
   assert_(C.STATE.region === "AMER", "…with the slice applied");
-  assert_(C.STATE.wfOpenCell["PS-CONSULT|CORE"] === true,
-          "…and the pool × band cells holding free sellable hours arrive OPEN — " +
-          "the names are on screen without hunting for the ▸ toggles");
-  assert_(!C.STATE.wfOpenCell["PS-CONSULT|SENIOR"],
-          "…while a cell with nothing free in the slice stays closed");
+  // The pre-expand step is GONE (2026-08-28 second pass): the Workforce list is
+  // flat, so the drill lands with every name already on screen.
+  C.renderAll_();
+  assert_(/Free One/.test(els.wfGridPanel.innerHTML),
+          "…and the names are on screen immediately — the flat list needs no pre-opened cells");
+  assert_(Object.keys(C.STATE.wfOpenCell).length === 0,
+          "…with no cell state left for a control that no longer exists");
 
   // Teardown.
   C.setState("wfOpenCell", {});

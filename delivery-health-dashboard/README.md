@@ -2002,11 +2002,13 @@ model + new export is the one combination that misses **unsafely**.
 > gone: it floated over collapsed group rows it did not describe), and the 🚩 undated key list
 > yields to the card's No-due row instead of printing the same tickets twice.
 >
-> **4 · The Workforce pool grid is simplified to five columns** — Person/cell · Head · Capacity ·
-> Committed · Available. Plan-vs-logged, Outside plan, Cover, Relative cover, State and Cell size
-> left the canvas, and **people rows are open by default** (`STATE.wfOpenCell` now stores the
-> collapsed exceptions): the list of names with their available time is the tab's deliverable,
-> not a drill-down.
+> **4 · The Workforce grid became ONE FLAT AVAILABILITY LIST** (second pass, same day — the
+> pool × band scaffolding repeated headers/subtotals/footnotes per cell and buried the names):
+> every person passing the filters is a row, ranked most-available first — Person · Pool·level
+> tag · the planned/available week bar · Available hours — with ONE headline ("N of M people
+> have hours available — Xh ready to assign") and ONE footnote. The pool × band aggregates and
+> audit measures live on the Sellable headroom card and in the ⬇ CSV; wfCellOpen_/toggleWfCell_/
+> wfCellPeopleRow_/wfExpandAvailCells_ are deleted (`STATE.wfOpenCell` survives inert).
 >
 > **5 · Team / PM / Job family filters are multiselect.** `STATE.team`/`pm`/`family` are arrays,
 > several values are a union (`dimMatchAny_`); `fillMulti_` replaces `fillSelect_` with a button +

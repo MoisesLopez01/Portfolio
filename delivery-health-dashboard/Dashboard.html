@@ -1014,6 +1014,15 @@ tr.detail td.dback{padding:8px 16px 12px}
    letting the page scroll sideways. */
 .tableWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table.wfGrid{min-width:760px}
+/* The flat availability list (user 2026-08-28): one row per person, ranked
+   most-available first — pool/level demoted to a tag so no section scaffolding
+   repeats between the reader and the names. */
+table.wfList{min-width:680px}
+.wfList td{vertical-align:middle;padding:7px 8px}
+.wfList .tnum{text-align:right;white-space:nowrap}
+.wfPoolTag{display:inline-block;font-size:calc(10px*var(--scale));color:var(--muted);
+           border:1px solid var(--border);border-radius:999px;padding:1px 8px;
+           white-space:nowrap;cursor:help;background:var(--surface)}
 /* Per-rocketeer stacked capacity bar (2026-08-18): planned fills first,
    available follows, the row ends in the person's own availability rate.
    Labels render inside a segment only when it is wide enough to hold them —
@@ -7119,23 +7128,14 @@ function drillGo_(i, metricId) {
   // roster's own Plan column, where pre-narrowing to red would hide the
   // unplanned-but-otherwise-clean people the click is looking for.
   if (dest === "actions") STATE.sigFilter = metricId === "planCov" ? "" : "bad";
-  if (metricId === "avail") wfExpandAvailCells_();
+  // (The avail drill used to pre-open pool × band cells; the Workforce list
+  // is flat since 2026-08-28 — everyone is already on screen.)
   buildFilters_();
   switchView_(dest);
 }
 
-/** Open every pool × band cell holding someone with sellable free hours, so an
-    availability drill lands with the names already on screen — no ▸ hunting.
-    Runs AFTER the slice filter is set, so only the clicked slice's cells open. */
-function wfExpandAvailCells_() {
-  var isos = analysisHead_().head.isos;
-  filteredPeople_().forEach(function (p) {
-    if (!wfSellable_(p)) return;
-    if (!wfCfg_(p.pool).consumes) return;
-    var h = wfPersonHours_(p, isos);
-    if (h.avail > 0) STATE.wfOpenCell[p.cell || "NONE|UNKNOWN"] = true;
-  });
-}
+/* wfExpandAvailCells_ was deleted 2026-08-28 with the pool × band drill-down
+   — the flat Workforce list already shows every name. */
 
 /** Set (or clear) the compare dimension's own universal filter, then re-render
     in place. Deliberately does NOT change tab: the reader narrows first and
@@ -8780,82 +8780,11 @@ function wfPersonBarHtml_(h, sell, maxCap) {
   "</span>";
 }
 
-/** OPEN BY DEFAULT (user decision 2026-08-28): the list of names with their
-    available time is the tab's deliverable, not a drill-down. STATE.wfOpenCell
-    therefore stores the EXCEPTIONS — `false` means a reader collapsed the row.
-    Undefined = open, which also means a fresh load shows every employee. */
-function wfCellOpen_(key) {
-  return STATE.wfOpenCell[key] !== false;
-}
-
-function toggleWfCell_(key) {
-  STATE.wfOpenCell[key] = !wfCellOpen_(key);
-  renderWfGrid_();
-}
-
-/** The people behind one pool × band cell, most-available first. */
-function wfCellPeopleRow_(c, people, isos) {
-  if (!wfCellOpen_(c.cell)) return "";
-  var mine = people.filter(function (p) { return (p.cell || "NONE|UNKNOWN") === c.cell; })
-    .map(function (p) { return { p: p, h: wfPersonHours_(p, isos) }; })
-    .sort(function (a, b) {
-      // Sellable first, then most available. An on-leave person at the top of a
-      // "who is free" list is exactly the wrong answer.
-      var sa = wfSellable_(a.p) ? 1 : 0, sb = wfSellable_(b.p) ? 1 : 0;
-      return (sb - sa) || (b.h.avail - a.h.avail) || a.p.name.localeCompare(b.p.name);
-    });
-  if (!mine.length) {
-    return '<tr class="wfReadRow"><td></td><td colspan="4"><span class="cellSub">' +
-      "No people in this cell under the active filters.</span></td></tr>";
-  }
-  var sums = mine.reduce(function (a, r) {
-    if (wfSellable_(r.p)) { a.cap += r.h.cap; a.planned += r.h.planned; a.avail += r.h.avail; a.n++; }
-    else a.held++;
-    return a;
-  }, { cap: 0, planned: 0, avail: 0, n: 0, held: 0 });
-  // ── STACKED BAR FORMAT (user 2026-08-18) ──────────────────────────────────
-  // The three plain number columns became one bar + the Available column:
-  // planned fills first, available follows, the row ends in the person's own
-  // availability rate. Same numbers, one glance. Bar lengths scale to the
-  // longest capacity IN THIS LIST, so hours compare across the people shown.
-  var maxCap = mine.reduce(function (mx, r) { return Math.max(mx, r.h.cap); }, 0);
-  var body = mine.map(function (r) {
-    var sell = wfSellable_(r.p);
-    // No capacity scheduled at all is "—", never 0h available: nobody is free for
-    // work in a week they are not scheduled to work.
-    var availCell = r.h.cap <= 0 ? '<span class="cellSub">—</span>'
-      : sell ? "<b>" + wfHrs_(r.h.avail) + "</b>"
-             : '<span class="cellSub">' + wfHrs_(r.h.avail) + "</span>";
-    return "<tr>" +
-      '<td class="tname" style="padding-left:28px">' + piiHtml_(r.p.name) + personStateBadges_(r.p) +
-        (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
-          piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 30)) + "</div>" : "") + "</td>" +
-      '<td style="width:100%">' + wfPersonBarHtml_(r.h, sell, maxCap) + "</td>" +
-      '<td class="tnum">' + availCell + "</td></tr>";
-  }).join("");
-  // ⚠ The INNER table renders 3 columns, so every colspan inside it is ≤ 3;
-  // only the OUTER wrapper row spans the pool grid's 5 (simplified 2026-08-28).
-  return '<tr class="wfReadRow"><td colspan="5" style="padding:0">' +
-    '<table class="hyg" style="width:100%"><thead><tr>' +
-      '<th class="tname" style="padding-left:28px">Person</th>' +
-      '<th title="Scheduled capacity for this period as one bar: planned hours fill first, available hours follow, and the figure at the end is that person\'s own availability rate (available ÷ capacity).">Week — planned, then available</th>' +
-      '<th class="tnum" title="Capacity minus planned hours for this period — the hours not yet promised to anything.">Available</th>' +
-    "</tr></thead><tbody>" + body +
-    '<tr><td class="tname" style="padding-left:28px"><b>Sellable subtotal</b> ' +
-      '<span class="cellSub">(' + sums.n + (sums.n === 1 ? " person" : " people") +
-      (sums.held ? ", " + sums.held + " held back" : "") + ")</span></td>" +
-      '<td><span class="cellSub">' + wfHrs_(sums.planned) + " planned + " +
-        wfHrs_(sums.avail) + " available of " + wfHrs_(sums.cap) + " capacity</span></td>" +
-      '<td class="tnum"><b>' + wfHrs_(sums.avail) + "</b></td></tr>" +
-    "</tbody></table>" +
-    '<div class="cellSub" style="padding:6px 8px 8px 28px">' +
-      "Same weeks as the row above, read per person. 🌱 ramping and 🏖 on-leave people are " +
-      "listed with their hours but <b>left out of the sellable subtotal</b> — their spare " +
-      "capacity is not room to sell — which is why this subtotal can be smaller than the " +
-      "cell's headroom. Planned hours are capped at each person's own capacity, so an " +
-      "over-plan never reads as extra hours." +
-    "</div></td></tr>";
-}
+// ── THE POOL × BAND DRILL-DOWN IS GONE (user decision 2026-08-28, second pass) ─
+// wfCellOpen_/toggleWfCell_/wfCellPeopleRow_ were DELETED with the grouped
+// grid: the flat availability list IS the people view now, so there is no
+// cell to open. STATE.wfOpenCell survives as an inert key (old deep links
+// and resets touch it); the per-person row format lives on in renderWfGrid_.
 
 /** The one message shown when the payload predates this feature. */
 function wfStale_(el, title) {
@@ -8973,100 +8902,104 @@ function renderWfScope_() {
 }
 
 /**
- * 2 · POOL GRID — the main table.
+ * 2 · WHO IS AVAILABLE — one flat list (user 2026-08-28, screenshot).
  *
- * Grouped by pool with a header row per pool, consumers first. The Read column
- * is a full sentence and wraps: it is the only place a reader is told what the
- * numbers on that row actually mean together.
+ * The pool × band grid — pool header rows, band summary rows, a nested table
+ * per cell with its own header, subtotal and footnote — repeated the same
+ * scaffolding for every cell, and the director's question ("who can take work
+ * right now, for how many hours?") was buried under it. This is that question
+ * answered directly: EVERY person passing the filters, one row each, ranked
+ * most-available first, pool and level demoted to a tag on the row. The reader
+ * ranks nothing and decodes nothing — they read down until they run out of
+ * hours, and decide themselves who to ask.
+ *
+ * The pool × band AGGREGATES did not vanish: the Sellable headroom card above
+ * splits the same hours by band, and saveWorkforceCsv_ still exports the full
+ * cell grid with every audit measure. What left this panel is the repetition.
  */
 function renderWfGrid_() {
   var w = workforceHealthFor_();
-  if (!w) { wfStale_("wfGridPanel", "Pool grid"); return; }
-  if (!w.cells.length) {
+  if (!w) { wfStale_("wfGridPanel", "Who is available"); return; }
+  var rows = (w.people || []).map(function (p) {
+    return { p: p, h: wfPersonHours_(p, w.isos), sell: wfSellable_(p) };
+  });
+  if (!rows.length) {
     document.getElementById("wfGridPanel").innerHTML =
-      "<h3>Pool grid</h3><div class='emptyState'>Nobody in scope under the active filters.</div>";
+      "<h3>Who is available</h3><div class='emptyState'>Nobody in scope under the active filters.</div>";
     return;
   }
-  var byPool = {};
-  w.cells.forEach(function (c) { (byPool[c.pool] = byPool[c.pool] || []).push(c); });
-  var pools = WF_POOL_ORDER_.filter(function (p) { return byPool[p]; })
-    .concat(Object.keys(byPool).filter(function (p) { return WF_POOL_ORDER_.indexOf(p) === -1; }).sort());
+  // Sellable first, then most available — an on-leave person at the top of a
+  // "who is free" list is exactly the wrong answer (the wfCellPeopleRow_ rule,
+  // now applied to the whole slice at once).
+  rows.sort(function (a, b) {
+    return ((b.sell ? 1 : 0) - (a.sell ? 1 : 0)) ||
+           (b.h.avail - a.h.avail) || a.p.name.localeCompare(b.p.name);
+  });
+  var maxCap = rows.reduce(function (mx, r) { return Math.max(mx, r.h.cap); }, 0);
+  var sums = rows.reduce(function (a, r) {
+    if (r.sell) { a.cap += r.h.cap; a.planned += r.h.planned; a.avail += r.h.avail; a.n++; }
+    else a.held++;
+    return a;
+  }, { cap: 0, planned: 0, avail: 0, n: 0, held: 0 });
+  var readyN = rows.filter(function (r) { return r.sell && r.h.avail > 0; }).length;
 
-  // ── SIMPLIFIED GRID (user decision 2026-08-28) ─────────────────────────────
-  // The eleven-column diagnostic table became FIVE columns: Head · Capacity ·
-  // Committed · Available. Plan-vs-logged, Outside plan, Cover, Relative cover,
-  // State and Cell size left the canvas — the working question this tab answers
-  // is "who is available, at which level, for how many hours", and the audit
-  // columns buried it. Every removed measure still ships in the CSV
-  // (saveWorkforceCsv_) and the reconciliation machinery behind them is
-  // untouched, so nothing stopped being measured — it stopped being furniture.
-  //
-  // The people rows are OPEN BY DEFAULT for the same reason: the list of names
-  // with their available time IS the deliverable, not a drill-down.
-  var WF_GRID_COLS_ = 5;
-  var rows = pools.map(function (pool) {
-    var cells = byPool[pool].slice().sort(function (a, b) {
-      return WF_BAND_ORDER_.indexOf(a.band) - WF_BAND_ORDER_.indexOf(b.band);
-    });
-    var head = cells.reduce(function (a, c) { return a + c.head; }, 0);
-    var cfg = wfCfg_(pool);
-    var hdr = '<tr class="wfPoolHdr"><td colspan="' + WF_GRID_COLS_ + '"><b>' + esc_(pool) + "</b> " +
-      '<span class="cellSub">' + head + (head === 1 ? " person" : " people") + " · " +
-      esc_(WF_POOL_DESC_[pool] || (cfg.consumes ? "draws on project backlog"
-        : "demand-driven — no plannable backlog by design")) +
-      "</span></td></tr>";
-    return hdr + cells.map(function (c) {
-      // The band label carries its LEVEL RANGE. "CORE" is this model's word,
-      // not the company's ladder — without "I3–I4" beside it a reader has to
-      // guess where their own level lands, and two people read it differently.
-      var bd = WF_BAND_DESC_[c.band] || { range: "", why: "" };
-      var cellArg = esc_(c.cell).replace(/'/g, "\\'");
-      var open = wfCellOpen_(c.cell);
-      var availHrs = c.headroomHrs !== undefined && c.headroomHrs !== null
-        ? c.headroomHrs : (c.grossHrs - c.committedHrs);
-      return '<tr class="rosterRow" onclick="toggleWfCell_(\'' + cellArg + '\')">' +
-        // The caret states the row's own state, and the whole row is the control —
-        // same contract as the signals roster. The row's most notable read (c.read)
-        // rides as the title, so the deleted State column's sentence is one hover away.
-        '<td class="tname" style="padding-left:16px" title="' + esc_(bd.why +
-          (c.read ? " · " + c.read : "")) + '">' +
-          (open ? "▾ " : "▸ ") +
-          esc_(wfBandLabel_(c.pool, c.band)) + (bd.range && bd.range !== "—"
-            ? ' <span class="cellSub">' + esc_(bd.range) + "</span>" : "") + "</td>" +
-        '<td class="tnum">' + c.head + "</td>" +
-        '<td class="tnum">' + wfHrs_(c.grossHrs) + "</td>" +
-        '<td class="tnum">' + wfHrs_(c.committedHrs) + "</td>" +
-        // Available leads with HOURS — the unit anyone actually assigns — and
-        // carries the rate as the qualifier. Negative = planned past schedule,
-        // stated as the Over-allocated pill every other surface uses.
-        '<td class="tnum">' + (availHrs < 0
-          ? '<span class="pillOver" title="' + esc_(wfHrs_(-availHrs) +
-            " planned beyond the " + wfHrs_(c.grossHrs) + " scheduled.") + '">Over-allocated</span>'
-          : "<b>" + wfHrs_(availHrs) + "</b>" +
-            (c.headroomPct === null ? "" : ' <span class="cellSub">· ' + wfPct_(c.headroomPct) + "</span>")) +
-        "</td>" +
-        "</tr>" +
-        wfCellPeopleRow_(c, w.people, w.isos);
-    }).join("");
+  var body = rows.map(function (r) {
+    var sell = r.sell;
+    // No capacity scheduled at all is "—", never 0h available: nobody is free
+    // for work in a week they are not scheduled to work.
+    var availCell = r.h.cap <= 0 ? '<span class="cellSub">—</span>'
+      : sell ? "<b>" + wfHrs_(r.h.avail) + "</b>"
+             : '<span class="cellSub">' + wfHrs_(r.h.avail) + "</span>";
+    // Pool + level as a TAG, not a section: the answer to "can this person do
+    // the work" rides the row instead of structuring the page. Tooltip carries
+    // the pool's meaning and the band's level range.
+    var pool = r.p.pool || "NONE";
+    var bd = WF_BAND_DESC_[r.p.band] || { range: "", why: "" };
+    var consumes = wfCfg_(pool).consumes;
+    var tag = '<span class="wfPoolTag" title="' +
+      esc_((WF_POOL_DESC_[pool] || pool) + (bd.why ? " · " + bd.why : "") +
+           (consumes ? "" : " · This pool is never drawn from the project backlog — spare hours here are not sellable delivery capacity.")) + '">' +
+      esc_(pool) + " · " + esc_(wfBandLabel_(pool, r.p.band || "UNKNOWN")) +
+      (bd.range && bd.range !== "—" ? ' <span class="cellSub">' + esc_(bd.range) + "</span>" : "") +
+      "</span>";
+    return "<tr>" +
+      '<td class="tname">' + piiHtml_(r.p.name) + personStateBadges_(r.p) +
+        (r.p.jobTitle ? '<div class="cellSub"' + piiTitleAttr_(r.p.jobTitle) + '>' +
+          piiHtml_(trunc_(jobTitleDisp_(r.p.jobTitle), 30)) + "</div>" : "") + "</td>" +
+      "<td>" + tag + "</td>" +
+      "<td>" + wfPersonBarHtml_(r.h, sell, maxCap) + "</td>" +
+      '<td class="tnum">' + availCell + "</td></tr>";
   }).join("");
 
   document.getElementById("wfGridPanel").innerHTML =
-    '<div style="display:flex;align-items:center;gap:10px">' +
-      '<h3 style="flex:1;margin:0">Who is available — by pool and level' + scopeTag_("period") + "</h3>" +
-    "</div>" +
-    '<div class="tableWrap"><table class="hyg tmx wfGrid"><thead><tr>' +
-      '<th class="tname">Pool / Band</th>' +
-      '<th class="tnum" title="People in this cell after the active filters.">Head</th>' +
-      '<th class="tnum" title="Gross scheduled capacity from Tempo — each country\'s own working calendar, never a flat 40h. Nothing is netted out for absence: there is no absence feed, so capacity is always gross.">Capacity</th>' +
-      '<th class="tnum" title="Planned hours — what this cell is already promised to.">Committed</th>' +
-      '<th class="tnum" title="Capacity minus commitment: the hours not yet promised to anything in this band — the assignable room. Hours lead; the share of the band\'s own capacity follows.">Available</th>' +
-    "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+    '<h3 style="margin:0 0 4px">Who is available' + scopeTag_("period") + "</h3>" +
+    // ONE headline instead of a subtotal per cell: the figure the director
+    // came for, with its carve stated once.
+    '<p class="cellSub"><b>' + readyN + "</b> of " + rows.length +
+      (rows.length === 1 ? " person" : " people") + " in this slice " +
+      (readyN === 1 ? "has" : "have") + " hours available — <b>" + wfHrs_(sums.avail) +
+      "</b> ready to assign of " + wfHrs_(sums.cap) + " scheduled" +
+      (sums.held ? " (" + sums.held + " held back — 🌱/🏖/⏸, listed below, never counted)" : "") +
+      ". Most available first; the routing decision is yours. The Sellable headroom card " +
+      "above splits the same hours by level.</p>" +
+    '<div class="tableWrap"><table class="hyg wfList">' +
+      '<colgroup><col style="width:24%"><col style="width:19%"><col style="width:43%"><col style="width:14%"></colgroup>' +
+      "<thead><tr>" +
+      '<th class="tname">Person</th>' +
+      '<th title="Deployment pool and level band — capacity is not fungible, so who can do WHICH work rides every row. Hover a tag for what the pool means and which job levels the band covers.">Pool · level</th>' +
+      '<th title="Scheduled capacity for this period as one bar: planned hours fill first, available hours follow, and the figure at the end is that person\'s own availability rate (available ÷ capacity).">Week — planned, then available</th>' +
+      '<th class="tnum" title="Capacity minus planned hours for this period — the hours not yet promised to anything.">Available</th>' +
+    "</tr></thead><tbody>" + body + "</tbody></table></div>" +
+    // ONE footnote instead of one per cell (user 2026-08-28: the repetition
+    // was the noise). Everything it says was said before — once each now.
     '<div class="cellSub" style="margin-top:8px">' +
-      "<b>Every band lists its people by default — collapse a row by clicking it.</b> " +
-      "<b>Signals, not verdicts:</b> available time is room a manager can decide to assign " +
-      "against, never an automatic instruction. <b>n/a</b> = not measurable, never zero. " +
-      "The audit measures this grid used to carry (plan-vs-logged, outside plan, cover, state) " +
-      "still ship in the ⬇ CSV. " +
+      "🌱 ramping, 🏖 on leave and ⏸ benched people are listed with their hours but " +
+      "<b>never counted available</b> — their spare capacity is not room to sell. Planned hours " +
+      "are capped at each person's own capacity, so an over-plan never reads as extra hours. " +
+      "Pools that are never drawn from the project backlog (support, PMO, crew) are tagged so " +
+      "their free hours are read as what they are. <b>Signals, not verdicts</b> — available " +
+      "time is room a manager can decide to assign against, never an automatic instruction. " +
+      "The pool × band audit measures still ship in the ⬇ CSV. " +
       '<span class="wfWhy" onclick="toggleWfMethod_(true)" role="button" tabindex="0" ' +
         "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWfMethod_(true)}\" " +
         'title="How these figures are built, and how to read a row.">How this is measured</span>' +
@@ -9463,11 +9396,12 @@ function wfMethodHtml_() {
     "substitute for each other produces a number that is always wrong in the same reassuring " +
     "direction. The same figure is published on the Executive tab as <b>Availability Rate</b> — one " +
     "definition, two surfaces, so the two tabs cannot disagree.</p>" +
-    "<h4>Reading the pool grid</h4>" +
-    "<p><b>Click any band row to see who holds the hours</b> — person, capacity, planned and " +
-    "available for this period, most-available first. A cell's headroom says how much room there " +
-    "is; only the names say whether it is one person with a free fortnight or eight people with an " +
-    "afternoon each.</p>" +
+    "<h4>Reading the availability list</h4>" +
+    "<p><b>Every person in the slice is a row</b> — capacity, planned and available for this " +
+    "period, most-available first, with their pool and level as a tag on the row. An aggregate " +
+    "says how much room there is; only the names say whether it is one person with a free " +
+    "fortnight or eight people with an afternoon each — which is why the list leads and the " +
+    "pool × band aggregates live on the Sellable headroom card and in the CSV.</p>" +
     "<p><b>These are signals, not verdicts.</b> Nothing here is painted red and no row tells anyone " +
     "what to do: the numbers are shown so a reader can decide what they mean. A ⚠ beside a figure " +
     "carries the most notable measurement on that row, with the denominator it was taken against, " +
