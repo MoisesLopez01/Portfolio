@@ -2009,6 +2009,12 @@ model + new export is the one combination that misses **unsafely**.
 > have hours available — Xh ready to assign") and ONE footnote. The pool × band aggregates and
 > audit measures live on the Sellable headroom card and in the ⬇ CSV; wfCellOpen_/toggleWfCell_/
 > wfCellPeopleRow_/wfExpandAvailCells_ are deleted (`STATE.wfOpenCell` survives inert).
+> **Third pass, same day: availability covers the WHOLE department.** The consumers-only carve
+> (wfAvailability_/availabilityFor_/wfHeadroomByBand_ filtering to backlog-consuming pools —
+> the "62 people" read) is retired by user rule: everyone in Services counts as available. The
+> consumers-vs-support split survives as CONTEXT (consHead/consFree on wfAvailability_, stated
+> on the panel and the Exec card), and the by-level split the user asked to keep reads over the
+> same whole-department population.
 >
 > **5 · Team / PM / Job family filters are multiselect.** `STATE.team`/`pm`/`family` are arrays,
 > several values are a union (`dimMatchAny_`); `fillMulti_` replaces `fillSelect_` with a button +

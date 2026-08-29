@@ -6096,11 +6096,17 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/govern backlog rather than consume it/.test(methodEarly),
           "…including the manager change that moved every capacity rate");
 
-  // 3 · The one honest number ships WITH its denominator.
-  assert_(/of 2 backlog consumers/.test(cons),
-          "the consumers-only figure states its denominator — '32% available' alone is a rumour");
-  assert_(/no company-wide equivalent/.test(cons),
-          "…and refuses a blended company number explicitly, rather than just omitting it");
+  // 3 · The headline ships WITH its denominator — and since 2026-08-28 (user
+  // rule: "we have all in the department as available") that denominator is
+  // the WHOLE department, not the backlog-consumers subset.
+  assert_(/of 3 people — the whole department/.test(cons),
+          "the headline states its whole-department denominator — '32% available' alone is a rumour");
+  assert_(!/backlog consumer/.test(cons.split("Everyone in the department")[0]),
+          "…and no consumers-only denominator gates the figure any more");
+  assert_(/Everyone in the department counts/.test(cons),
+          "…the rule is stated on the panel");
+  assert_(/pools are not substitutes/.test(cons),
+          "…with the consumers-vs-support split kept as CONTEXT, because pools still differ");
 
   // 4 · Shadow split by reason, each with its owner — never one number.
   ["no-epic", "no-srso", "not-committed"].forEach(function (r) {
@@ -6431,28 +6437,30 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 
   var bands = C.wfHeadroomByBand_();
   var keys = bands.map(function (b) { return b.band; });
-  assert_(keys.indexOf("CORE") === -1,
-    "the split inherits the CONSUMER carve — PMO capacity is real but is not drawn from the " +
-    "project backlog, and re-admitting it here would contradict the headline directly above it");
-  assert_(bands.length === 2, "both consumer bands are reported — got " + bands.length);
+  // WHOLE DEPARTMENT since 2026-08-28 (user rule): the PMO band is IN the
+  // split now, same population as the headline it sits under.
+  assert_(keys.indexOf("CORE") !== -1,
+    "the split covers the whole department — PMO's band is reported, not carved out");
+  assert_(bands.length === 3, "all three bands are reported — got " + bands.length);
 
   // Richest band first: the reading question is "where IS the free time", and
   // seniority order buries the answer under whichever band happens to be junior.
-  assert_(bands[0].band === "SENIOR",
-    "bands sort by FREE HOURS, not by seniority — got " + bands[0].band + " first");
-  assert_(bands[0].freeHrs === 80 && bands[1].freeHrs === 5,
+  assert_(bands[0].band === "CORE" && bands[1].band === "SENIOR",
+    "bands sort by FREE HOURS, not by seniority — got " + keys.join(","));
+  assert_(bands[0].freeHrs === 190 && bands[1].freeHrs === 80 && bands[2].freeHrs === 5,
     "free hours are per band, not a share of the blended total");
-  assert_(Math.abs(bands[0].pct - 0.80) < 1e-9 && Math.abs(bands[1].pct - 0.05) < 1e-9,
+  assert_(Math.abs(bands[0].pct - 0.95) < 1e-9 && Math.abs(bands[2].pct - 0.05) < 1e-9,
     "each band divides by ITS OWN scheduled hours — a band rate against the org denominator " +
     "would be a share, and would read as availability");
 
-  // THE POINT OF THE WHOLE SPLIT: the blended headline is 42.5% here, and no
-  // band is anywhere near it. A reader quoting 42.5% to a staffing decision is
+  // THE POINT OF THE WHOLE SPLIT: the blended headline is 68.75% here, and no
+  // band matches it. A reader quoting the blend to a staffing decision is
   // describing a team that does not exist.
   var blended = C.wfAvailability_().pct;
-  assert_(blended > bands[1].pct && blended < bands[0].pct,
-    "fixture: the blended rate sits between the bands and matches neither — which is the " +
-    "condition the split exists to expose");
+  assert_(Math.abs(blended - 0.6875) < 1e-9,
+    "fixture: the headline blends the whole department (275 of 400)");
+  assert_(blended > bands[2].pct && blended < bands[0].pct,
+    "…and sits between the bands, matching none — the condition the split exists to expose");
 
   // ── The band split as BAR ROWS (modern view, user 2026-08-18) ────────────
   // Same stacked-bar language as the per-rocketeer rows: committed fills
@@ -6466,9 +6474,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     "the head count rides with the hours, so a spectacular rate on three people is visibly that");
   assert_(/wfBarPlan/.test(rows) && /wfBarAvail/.test(rows),
     "band rows speak the tab's stacked-bar language — committed, then free");
-  assert_(/>80h</.test(rows),
+  assert_(/>190h</.test(rows) && />80h</.test(rows),
     "…with the free HOURS as the lead figure (what Sales can sell is hours)");
-  assert_(/80%/.test(rows) && /5%/.test(rows),
+  assert_(/95%/.test(rows) && /5%/.test(rows),
     "…and each band's own rate as the qualifier, never the org denominator");
 
   // A band planned past its schedule wears the pill, never a minus-rate —
@@ -6481,14 +6489,14 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 
   // An empty split must render nothing rather than an empty shell — the
   // panel above it is still a complete answer without this section.
-  assert_(C.wfBandRowsHtml_([]) === "", "no consumer bands → no rows, not an empty shell");
+  assert_(C.wfBandRowsHtml_([]) === "", "no bands → no rows, not an empty shell");
 
   C.getModel().viewerRole = "admin";
   C.renderWfConsumers_();
   var panel = els.wfConsumersPanel.innerHTML;
-  assert_(/Role gates this number; level does not/.test(panel),
-    "the panel states the gate PLAINLY, next to the number — by the time a reader opens a " +
-    "tooltip they have already quoted the figure out loud");
+  assert_(/Nothing is carved out of this number/.test(panel),
+    "the panel states the whole-department rule PLAINLY, next to the number — by the time a " +
+    "reader opens a tooltip they have already quoted the figure out loud");
   assert_(/Level band/.test(panel), "…and the split is rendered into the panel, not just computed");
   assert_(/cannot disagree/.test(panel),
     "…without dropping the one-definition guarantee the two surfaces still hold");
@@ -6497,8 +6505,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     "the headline is a hero row — the rate beside one org-level capacity bar");
   assert_(/committed/.test(panel) && /free/.test(panel),
     "…whose segments are labelled in hours words, not colour alone");
-  assert_(/of 7 backlog consumers/.test(panel),
-    "…and the denominator still rides with the figure");
+  assert_(/of 12 people — the whole department/.test(panel),
+    "…and the whole-department denominator rides with the figure (7 consumers + 5 PMO)");
+  assert_(/85h/.test(panel) && /190h/.test(panel),
+    "…with the consumers-vs-support split of the free hours stated as context");
 })();
 
 // ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ────────────────
@@ -8239,8 +8249,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     m.people[2].onBench = false;
     m.people[2].pool = "PMO"; m.people[2].cell = "PMO|CORE";
     C.setModel(m);
-    assert_(C.availabilityFor_(isos).gross === 80,
-            "…and a non-consuming pool is excluded, as the consumers-only rule requires");
+    // WHOLE DEPARTMENT since 2026-08-28 (user rule) — the consumers-only carve
+    // is retired, so a PMO person's hours stay IN the fold.
+    assert_(C.availabilityFor_(isos).gross === 120,
+            "…and a non-consuming pool is INCLUDED — everyone in the department counts as available");
   })();
 
   // The card still routes to Workforce, which is where the per-pool detail is.

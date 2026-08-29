@@ -5182,8 +5182,7 @@ function availabilityTileHtml_() {
   }
   if (a.head === 0) {
     return tileHtml_("Availability Rate", null, "", [], {
-      unavailable: "no backlog-consuming pools in this slice — support, PMO and crew " +
-        "capacity is real but is not drawn from the project backlog" });
+      unavailable: "nobody in this slice this period" });
   }
   if (a.pct === null) {
     return tileHtml_("Availability Rate", null, "", [], {
@@ -5202,7 +5201,7 @@ function availabilityTileHtml_() {
       ? '<span class="pillOver">Over-allocated</span> <b>' + wfHrs_(-a.freeHrs) +
         " planned beyond</b> the " + wfHrs_(a.gross) + " scheduled · "
       : "<b>" + wfHrs_(a.freeHrs) + " free</b> of " + wfHrs_(a.gross) + " scheduled · ") +
-    a.head + " backlog consumer" + (a.head === 1 ? "" : "s") +
+    a.head + " " + (a.head === 1 ? "person" : "people") + " — the whole department" +
     ' · <span class="pulseLink" onclick="switchView_(\'workforce\')" ' +
     'title="Open the Workforce tab to see who holds these hours, by pool and level band.">' +
     "who is available →</span>",
@@ -5211,13 +5210,15 @@ function availabilityTileHtml_() {
       // in this tier: clicking it points the breakdown chart below at
       // Availability Rate rather than making the reader find it in a chip strip.
       drillMetric: "avail",
-      detail: ["Free hours as a share of scheduled hours, across backlog-consuming pools only " +
-               "(consulting, engineering, architecture, training). Support, PMO and crew are " +
-               "excluded — their capacity is real but cannot take backlog work.",
+      detail: ["Free hours as a share of scheduled hours across the WHOLE department " +
+               "(user rule 2026-08-28: everyone in Services counts as available). The old " +
+               "consumers-only carve is retired; which pools the hours sit in is context, " +
+               "tagged per person on the Workforce tab.",
                "No target has been agreed: too little availability is a delivery risk and too " +
                "much is unsold capacity, so this card carries no verdict colour.",
-               a.nonHead ? a.nonHead + " " + (a.nonHead === 1 ? "person" : "people") +
-                 " in demand-driven and governing pools are excluded from both sides" : ""],
+               a.nonHead ? a.nonHead + " of them sit in demand-driven and governing pools " +
+                 "(support, PMO, crew) — included, with " + wfHrs_(a.freeHrs - a.consFree) +
+                 " of the free hours" : ""],
     });
 }
 
@@ -9007,48 +9008,58 @@ function renderWfGrid_() {
 }
 
 /**
- * 3 · CONSUMERS-ONLY SUMMARY.
+ * 3 · SELLABLE HEADROOM — whole-department summary.
  *
- * If leadership asks for one number, this is the honest one — and it never
- * ships without its denominator. "32% available" is a rumour; "32% available
- * (of 63 backlog consumers)" is a fact.
+ * If leadership asks for one number, this is it — and it never ships without
+ * its denominator. "32% available" is a rumour; "32% available (of 84 people)"
+ * is a fact.
  */
 /**
- * ── AVAILABILITY: hours free for direct delivery of the backlog ──────────────
+ * ── AVAILABILITY: hours free across the whole department ────────────────────
  *
  * THE definition, computed once and read by two surfaces: the Executive tab's
- * Availability Rate KPI and this tab's "Sellable headroom" panel. They used to
- * be one panel and one absence; now that the figure headlines the executive
- * read, a second copy of the arithmetic would be a number that can disagree
- * with itself across two tabs, which is worse than not publishing it.
+ * Availability Rate KPI and this tab's "Sellable headroom" panel. A second
+ * copy of the arithmetic would be a number that can disagree with itself
+ * across two tabs, which is worse than not publishing it.
  *
- * CONSUMERS ONLY. Support, PMO and crew capacity is real but is not drawn from
- * the project backlog, so counting it here would answer "how much capacity
- * exists" when the question asked is "how much can take backlog work". That
- * carve is the whole reason the Workforce tab calls it the honest number.
+ * WHOLE DEPARTMENT (user decision 2026-08-28, superseding the consumers-only
+ * carve of 2026-08-10): everyone in Services counts as available — "we have
+ * all in the department as available". The old carve limited the figure to the
+ * ~backlog-consuming pools and read as a 62-person team to anyone asking who
+ * could help. The consumers-vs-support SPLIT is still computed and REPORTED
+ * as context (consHead/consFree/consGross below): which pools the free hours
+ * sit in still matters to what they can absorb, it just no longer gates the
+ * headline.
  *
  * Gross, not deployable, as the denominator — deliberately the same basis the
  * panel has always published, so the KPI cannot read differently from the tab
  * it deep-links into.
  *
  * @returns {?Object} null when the payload predates workforce health;
- *   {head, gross, committed, freeHrs, pct, nonHead} otherwise. head === 0 is a
- *   REAL answer ("no consuming pools in this slice"), not an absence.
+ *   {head, gross, committed, freeHrs, pct, consHead, consGross, consFree,
+ *   nonHead} otherwise. head === 0 is a REAL answer ("nobody in this slice"),
+ *   not an absence.
  */
 function wfAvailability_() {
   var w = workforceHealthFor_();
   if (!w) return null;
-  var cons = w.cells.filter(function (c) { return c.cfg.consumes; });
-  var gross = cons.reduce(function (a, c) { return a + c.grossHrs; }, 0);
-  var committed = cons.reduce(function (a, c) { return a + c.committedHrs; }, 0);
+  var gross = 0, committed = 0, head = 0;
+  var consHead = 0, consGross = 0, consFree = 0;
+  w.cells.forEach(function (c) {
+    gross += c.grossHrs; committed += c.committedHrs; head += c.head;
+    if (c.cfg.consumes) {
+      consHead += c.head; consGross += c.grossHrs;
+      consFree += c.grossHrs - c.committedHrs;
+    }
+  });
   return {
-    head: cons.reduce(function (a, c) { return a + c.head; }, 0),
+    head: head,
     gross: gross,
     committed: committed,
     freeHrs: gross - committed,
     pct: wfDiv_(gross - committed, gross),
-    nonHead: w.cells.filter(function (c) { return !c.cfg.consumes; })
-                    .reduce(function (a, c) { return a + c.head; }, 0),
+    consHead: consHead, consGross: consGross, consFree: consFree,
+    nonHead: head - consHead,
   };
 }
 
@@ -9068,11 +9079,11 @@ function wfAvailability_() {
  * cells from these very fields:
  *     buildCapacity_    grossHrs     += w.cap        ← same field
  *     buildCommitment_  committedHrs += w.planned    ← same field
- * with the same two carves (attribOnly stubs and benched crew skipped) and the
- * same consuming-pool filter. An unfiltered fold here therefore equals the
- * server's own workforce.consumersOnly by construction — and a parity check
- * asserts exactly that, because "by construction" stops being true the day
- * somebody edits one side.
+ * with the same two carves (attribOnly stubs and benched crew skipped).
+ * WHOLE DEPARTMENT since 2026-08-28 (user decision, with wfAvailability_):
+ * the consuming-pool filter is gone from both folds together — the server's
+ * workforce.consumersOnly figure now describes a SUBSET of what this reports,
+ * not its equal, so the old fold-parity claim is retired with the carve.
  *
  * ⚠ w.cap NOT w.avail, and w.planned NOT w.effPlanned. avail nets out time off
  * and effPlanned caps at capacity; the server's capacity pipeline does neither,
@@ -9093,7 +9104,6 @@ function availabilityFor_(isos) {
     // it. Belt-and-braces, and stated as such rather than left looking load-
     // bearing.
     if (p.attribOnly || p.onBench === true) return;
-    if (!wfCfg_(p.pool).consumes) return;
     var seen = false;
     (isos || []).forEach(function (iso) {
       var w = p.weeks && p.weeks[iso];
@@ -9116,11 +9126,11 @@ function availabilityFor_(isos) {
  * people who have available time and CAN CONSUME BACKLOG based on role AND
  * LEVEL logic?"
  *
- * The honest answer was half a yes, and the panel could not say so:
- *   · ROLE — yes. The population is `backlogRole === "CONSUMER"`, so support,
- *     PMO, sales, crew and M-track delivery managers are already out.
- *   · LEVEL — NO. The headline sums gross and committed across every consumer
- *     cell and divides ONCE, so a junior's free hour and a principal's free
+ * (2026-08-28 update: the ROLE half of that answer changed by user rule — the
+ * whole department counts as available now, so nothing gates the population.
+ * The LEVEL half is unchanged and is the reason this split exists:)
+ *   · LEVEL — NO. The headline sums gross and committed across every cell
+ *     and divides ONCE, so a junior's free hour and a principal's free
  *     hour are interchangeable in it. Backlog routes by POOL only
  *     (`backlog[pool]`), never by band, so nothing downstream re-imposes the
  *     distinction either.
@@ -9146,7 +9156,9 @@ function wfHeadroomByBand_() {
   if (!w) return [];
   var by = {};
   w.cells.forEach(function (c) {
-    if (!c.cfg.consumes) return;
+    // Whole department since 2026-08-28 (user decision) — the band split the
+    // user asked to keep ("validate the impact by levels in the sellable room
+    // or sellable rate") now reads over the same population as the headline.
     var b = by[c.band] || (by[c.band] = { band: c.band, head: 0, gross: 0, committed: 0 });
     b.head += c.head; b.gross += c.grossHrs; b.committed += c.committedHrs;
   });
@@ -9227,7 +9239,7 @@ function renderWfConsumers_() {
     // phrase the body copy already used and the thing actually measured.
     "<h3>Sellable headroom" + scopeTag_("period") + "</h3>" +
     (head === 0
-      ? "<div class='emptyState'>No backlog-consuming pools in this slice.</div>"
+      ? "<div class='emptyState'>Nobody in scope under the active filters.</div>"
       // ── MODERN VIEW (user 2026-08-18): hero rate + one org capacity bar ──
       // The rate keeps its clamp (same translation as the Availability Rate
       // card: 0% shown, the overrun in hours, never a minus sign), and the
@@ -9261,21 +9273,23 @@ function renderWfConsumers_() {
               '<div class="cellSub" style="margin-top:4px">' +
                 (over ? wfHrs_(-a.freeHrs) + " planned beyond the "
                       : "<b>" + wfHrs_(a.freeHrs) + "</b> free of ") +
-                wfHrs_(gross) + " scheduled <b>of " + head + " backlog consumer" +
-                (head === 1 ? "" : "s") + "</b></div>" +
+                wfHrs_(gross) + " scheduled <b>of " + head + " " +
+                (head === 1 ? "person" : "people") + " — the whole department</b></div>" +
             "</div></div>";
         })() +
-        // Context, compressed to two lines (2026-08-18). Everything load-
-        // bearing survives: the one-definition guarantee, the quotability, the
-        // exclusion with its headcount, and the refusal of a company-wide blend.
+        // Context, compressed to two lines. The consumers-only carve is retired
+        // (user rule 2026-08-28: the whole department counts as available) —
+        // what survives is the one-definition guarantee, the quotability, and
+        // the pool split stated as CONTEXT with its headcounts, because pools
+        // are still not substitutes even when they all count.
         '<div class="cellSub" style="margin-top:8px">' +
           "One definition, two surfaces — this is the figure the Executive tab publishes as " +
           "<b>Availability Rate</b>, so the two tabs cannot disagree, and it is the number to " +
-          "quote when somebody asks how available the team is. It excludes " +
-          nonHead + " " + (nonHead === 1 ? "person" : "people") + " in demand-driven and governing " +
-          "pools — real capacity that is not drawn from the project backlog — and there is " +
-          "deliberately <b>no company-wide equivalent</b>: averaging pools that cannot substitute " +
-          "for each other is always wrong in the same reassuring direction." +
+          "quote when somebody asks how available the team is. <b>Everyone in the department " +
+          "counts</b>: " + wfHrs_(a.consFree) + " of the free hours sit with the " + a.consHead +
+          " people in backlog-consuming delivery pools, " + wfHrs_(a.freeHrs - a.consFree) +
+          " with the " + nonHead + " in support, PMO and crew — pools are not substitutes, so " +
+          "the list below tags where every free hour lives." +
         "</div>" +
         // ── WHAT THE GATE IS, AND WHAT IT IS NOT ────────────────────────
         // Stated where the number is read, not in a methodology drawer. A
@@ -9283,10 +9297,10 @@ function renderWfConsumers_() {
         // that it is role-gated and level-blind — by the time they have opened
         // a tooltip they have already said the number out loud.
         '<div class="cellSub" style="margin-top:6px">' +
-          "<b>Role gates this number; level does not.</b> Everyone counted holds a " +
-          "backlog-consuming role, but the hours are summed and divided once — a junior's free " +
-          "hour and a principal's weigh the same. The split below exists because those hours " +
-          "are not substitutes." +
+          "<b>Nothing is carved out of this number, and level does not weight it.</b> The hours " +
+          "are summed and divided once — a junior's free hour and a principal's weigh the same. " +
+          "The level split below exists because those hours are not substitutes: it is where the " +
+          "impact of each band on the sellable room and the sellable rate is validated." +
         "</div>" +
         '<div class="wfBandCap">Where the free time sits — by <b>Level band</b></div>' +
         wfBandRowsHtml_(wfHeadroomByBand_()) +
@@ -9384,18 +9398,20 @@ function renderWfShadow_() {
  */
 function wfMethodHtml_() {
   return '<h4>Sellable headroom</h4>' +
-    "<p>Gross scheduled hours minus planned hours, across <b>backlog-consuming pools only</b> — " +
-    "consulting, engineering, architecture, training. Support, PMO and crew are excluded: their " +
-    "capacity is real but is never drawn from the project backlog, so counting it would answer " +
-    "\"how much capacity exists\" when the question asked is \"how much can take backlog work\".</p>" +
+    "<p>Gross scheduled hours minus planned hours, across <b>the whole department</b> (user rule " +
+    "2026-08-28, superseding the consumers-only carve: everyone in Services counts as available). " +
+    "The consumers-vs-support split is still computed and stated as context — support, PMO and " +
+    "crew hours are never drawn from the project backlog, so where the free hours sit changes " +
+    "what they can absorb, without gating the headline.</p>" +
     "<p><b>Gross, not deployable.</b> No absence is netted out — there is no absence feed, and the " +
     "only proxy available (Tempo-tracked time off) measures what people logged rather than when " +
     "they were away, which would make the best-tracking teams look least available. So this is a " +
     "ceiling on availability, not an expectation.</p>" +
-    "<p><b>There is deliberately no company-wide equivalent.</b> Averaging pools that cannot " +
-    "substitute for each other produces a number that is always wrong in the same reassuring " +
-    "direction. The same figure is published on the Executive tab as <b>Availability Rate</b> — one " +
-    "definition, two surfaces, so the two tabs cannot disagree.</p>" +
+    "<p><b>Pools are still not substitutes.</b> The headline counts everyone, and the panel " +
+    "states how the free hours split between delivery pools and support/PMO/crew — a blend read " +
+    "without that split is always wrong in the same reassuring direction. The same figure is " +
+    "published on the Executive tab as <b>Availability Rate</b> — one definition, two surfaces, " +
+    "so the two tabs cannot disagree.</p>" +
     "<h4>Reading the availability list</h4>" +
     "<p><b>Every person in the slice is a row</b> — capacity, planned and available for this " +
     "period, most-available first, with their pool and level as a tag on the row. An aggregate " +
