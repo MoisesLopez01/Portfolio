@@ -122,6 +122,16 @@ function setConfluenceConfig() {
   const BLOG_ID   = ''; // optional override; blank = auto-find/create by week
 
   try {
+    // Editor-only by convention, google.script.run-callable in fact. Step 2
+    // below DELETES the blog-post override when BLOG_ID is blank — which it is
+    // in committed code — so an ungated call is a real state change for anyone
+    // holding the dashboard link.
+    const access = checkDashboardAccess();
+    if (!hasAdminPower_(access)) {
+      Logger.log(`⚠️ [setConfluenceConfig] Blocked for ${access.email} (${access.role}).`);
+      return { ok: false, error: 'Admin access required.' };
+    }
+
     const p = PropertiesService.getScriptProperties();
 
     // Step 1: Save each value only if it was actually filled in (skip placeholders)
@@ -724,9 +734,12 @@ function publishContributionSection(payload) {
       return { ok: false, error: 'No payload. Call from the dashboard, or use runPublishTest()/previewWeeklyTarget() to test from the editor.' };
     }
 
-    // Step 1: Only admins may publish (real gate from PS Security.js)
+    // Step 1: Only admins may publish (real gate from PS Security.js).
+    // hasAdminPower_ covers superadmin AND admin — a bare role !== 'admin' here
+    // locked super admins out of publishing, which is the exact failure the
+    // role-predicate rule in PS Security.js exists to prevent.
     const access = checkDashboardAccess();
-    if (!access || access.role !== 'admin') {
+    if (!access || !hasAdminPower_(access)) {
       Logger.log(`⚠️ [publishContributionSection] Blocked: requires admin access (got role="${access && access.role}").`);
       return { ok: false, error: 'Publish requires admin access.' };
     }
@@ -807,6 +820,13 @@ function previewWeeklyTarget() {
     Logger.log(`🕐 [previewWeeklyTarget] Started at ${new Date().toISOString()}`);
 
     const access    = checkDashboardAccess();
+    // Read-only, but it returns the live Confluence post's contents — and it is
+    // callable via google.script.run by anyone who can load the dashboard.
+    // Same gate as the publish it previews.
+    if (!hasAdminPower_(access)) {
+      Logger.log(`⚠️ [previewWeeklyTarget] Blocked for ${access.email} (${access.role}).`);
+      return { ok: false, error: 'Preview requires admin access.' };
+    }
     const cfg       = getConfluenceConfig_(access && access.email);
     const weekLabel = isoWeekLabel_(new Date());
     const blogPostId = cfg.blogPostId || findBlogPostIdByWeek_(cfg, weekLabel);
@@ -1396,6 +1416,10 @@ function isoWeekLabel_(date) {
  * @returns {Object} The result of publishContributionSection().
  */
 function runPublishTest() {
+  // Publishes a real TEST section to the live Confluence post, so it is gated in
+  // its own right — publishContributionSection would refuse anyway, but relying on
+  // the callee's gate leaves the intent unstated and the log line unhelpful.
+  requireMaintainer_('runPublishTest');
   const result = publishContributionSection({
     // weekLabel omitted -> current ISO week
     facts:      ['TEST — connectivity check, please ignore', 'Second test fact'],

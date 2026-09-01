@@ -120,6 +120,13 @@ const UNATTRIBUTED_LABEL = "⚠️ Unattributed (no human author)";
  * date range and writes a weekly breakdown table to the output sheet.
  */
 function fetchTempoLoggedTime() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoLoggedTime');
+  else Logger.log('⚠️ [fetchTempoLoggedTime] requireMaintainer_ not in this project — running ungated.');
   try {
     Logger.log(`🕐 [fetchTempoLoggedTime] Started at ${new Date().toISOString()}`);
 
@@ -1127,6 +1134,13 @@ function writeLoggedRows_(sheet, rows, weeks) {
  * Run once from the Apps Script editor; check Apps Script > Triggers to confirm.
  */
 function createLoggedDailyTrigger() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('createLoggedDailyTrigger');
+  else Logger.log('⚠️ [createLoggedDailyTrigger] requireMaintainer_ not in this project — running ungated.');
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === "fetchTempoLoggedTime")
     .forEach((t) => ScriptApp.deleteTrigger(t));

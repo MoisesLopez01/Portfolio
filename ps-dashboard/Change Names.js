@@ -133,6 +133,13 @@ function normalizeSheetNames_(sheet, nameMap, nameColumn, firstDataRow) {
 // Entry point — runs across all sheets listed in CONFIGN.SHEETS_TO_NORMALIZE.
 // To add a new sheet: append its name to that array.
 function normalizeAllNames() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('normalizeAllNames');
+  else Logger.log('⚠️ [normalizeAllNames] requireMaintainer_ not in this project — running ungated.');
   const ss      = SpreadsheetApp.getActiveSpreadsheet();
   const nameMap = NAME_MAPST.TEMPO;
   let   total   = 0;
@@ -153,5 +160,12 @@ function normalizeAllNames() {
 
 // Kept for backward compatibility if it's referenced elsewhere.
 function normalizeCapacityNames() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('normalizeCapacityNames');
+  else Logger.log('⚠️ [normalizeCapacityNames] requireMaintainer_ not in this project — running ungated.');
   normalizeAllNames();
 }

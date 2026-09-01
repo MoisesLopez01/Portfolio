@@ -6,8 +6,155 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.14.0
+  // VERSION:     3.19.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.19.0 (the deep window is counted in QUARTERS — user 2026-08-24):
+  //   · RAW_HISTORY_QUARTERS = 2: two complete fiscal quarters plus the one in
+  //     progress, replacing a flat 52 weeks. Span floats 25–39 weeks.
+  //   · ALIGNMENT IS THE POINT, not the smaller number. A rolling week count
+  //     never lands on a quarter boundary, so its oldest quarter was always
+  //     truncated — it dropped out of every trend (which uses complete periods
+  //     only) while still costing a full quarter of fetch. 52 weeks bought 3
+  //     complete quarters rather than 4 for exactly that reason. Counting in
+  //     quarters makes the guarantee exact instead of empirical.
+  //   · ⚠️ CONFIG_DH.DEEP_QUARTERS (delivery-health Code.js) MUST MATCH. If the
+  //     dashboard's window reaches further back than the export does, the
+  //     uncovered weeks render as ZERO DELIVERY, not as absent data. Deploy the
+  //     dashboard first or together — never the export alone.
+  //   · ⚠️ THE FISCAL RULE NOW EXISTS TWICE (jb_fiscalQuarterOfMonday_ here,
+  //     periodInfoForIso_ there). Separate Apps Script projects cannot share a
+  //     module, so tests/ps-dashboard/quarter-window-parity.js evaluates BOTH
+  //     files and asserts they agree on 104 weekly anchors.
+  //   · That parity check immediately found a real, pre-existing bug in the
+  //     DASHBOARD: weeksInYear_ built Dec 28 as `Date.UTC(...)` while
+  //     isoWeekNum_ reads local getters, so in any behind-UTC timezone a
+  //     53-week ISO year reported 52 and the deep window came back 26 weeks
+  //     instead of 39. Fixed there; this file was never affected because its
+  //     walk uses date arithmetic, not week-number wrapping.
+  //   · TRADE TAKEN KNOWINGLY: at 2 quarters the dashboard's Quarterly view
+  //     trends two points instead of three. Raising both dials to 3 restores it
+  //     at 41–52 weeks.
+  //
+  // CHANGES v3.18.0 (an hourly export that stops re-fetching settled history):
+  //   · ⭐ NEW CADENCE — setJiraExportTriggersSplit(): hourly LIGHT + nightly
+  //     FULL. Hour to hour the only things that can change are the in-flight
+  //     week, the last few closed weeks and the open queue; the full run was
+  //     re-fetching 52 weeks 24×/day to discover that.
+  //   · runJiraEpicTrackerLight() re-fetches CONFIGJ.LIGHT_REFRESH_WEEKS (8)
+  //     completed weeks + the in-flight week + the WHOLE open queue, and MERGES
+  //     onto the frozen rows already in Jira Raw / Jira Arrivals. It skips Exec
+  //     Q&A (its WoW compares the last two COMPLETED weeks — a weekly fact).
+  //   · ⚠️ THE NIGHTLY FULL RUN IS NOT OPTIONAL. The light run is deliberately
+  //     allowed to be approximate about frozen history — an issue whose
+  //     resolution date moves out of the refresh window vanishes until a full
+  //     run, a newly in-scope project backfills only from the window forward.
+  //     Those are acceptable BECAUSE the full run repairs them every night.
+  //   · THREE MERGE GUARDS, each for a failure that would be silent:
+  //     1. SCHEMA — the sheet's header must equal RAW_HEADERS exactly or the
+  //        run does a FULL rewrite instead. Stitching rows across a column
+  //        change shifts every value in the frozen region.
+  //     2. DUPLICATES — any frozen row whose Key appears in the fresh data is
+  //        dropped. A reopened issue otherwise sits in the frozen block as
+  //        Done AND in the fresh Open block: counted as delivered and queued.
+  //     3. JUNK — a row is kept only if its Week cell is a real "YYYY.WN",
+  //        which excludes footers, blanks, and the volatile Open / Epic Child
+  //        sentinels (always re-fetched, never frozen).
+  //   · writeArrivals_ takes the same treatment. Without it a light run would
+  //     rewrite that tab from an 8-week population and silently truncate it —
+  //     the dashboard needs 5 weeks for a clear rate and 26 for the walkback.
+  //   · Jira Bugs deliberately keeps the FULL window even in a light run:
+  //     writeBugsSheet_ rewrites its whole tab, and it is 3 pages / ~3s.
+  //   · ❌ REMOVED the Tempo enrichment: four columns (Tempo Logged / Tempo
+  //     Contributors / Epic Tempo Rollup / Epic Tempo Contributors) and the
+  //     ~252-call, 3m11s pass that filled them. NO consumer read any of them —
+  //     verified against delivery-health readJiraRaw_, project-demand
+  //     parseJiraMeta_, and a search for positional reads (none past col 14).
+  //     Hours reach the dashboards from the Tempo EXPORTS. Second deletion from
+  //     the middle of RAW_HEADERS, safe for the same reason as v3.10.0's: every
+  //     consumer resolves columns BY HEADER NAME.
+  //   · Measured cost, from 11m39s at v3.16.0: full run ~6m51s, light run
+  //     ~2min. Hourly light + nightly full ≈ 1 h/day against a 6 h/day quota,
+  //     down from ~4.7 h/day.
+  //
+  // CHANGES v3.17.0 (paying for the hourly cadence — measured on a real run):
+  //   · The 2026-08-24 18:40 run took 11m39s. ×24 = ~4.7 HOURS A DAY against an
+  //     Apps Script quota of 6 h/day (Workspace). That is the constraint hourly
+  //     now lives inside, and it is shared with every other script on the
+  //     account — so the run has to stop paying for things twice.
+  //   · THE DUPLICATE: fetchResolvedInWindow_ over the deep window returned the
+  //     SAME 12,145 issues as the broad Done fetch at the top of the run, from a
+  //     clause-for-clause identical JQL (the extra `resolutiondate < nextMonday`
+  //     excludes nothing — nothing resolves in the future), and both converge on
+  //     the same 9,397 rows after the space and noise filters. 1m37s and ~122
+  //     pages per run, ~39 min and ~2,900 pages a day, to rebuild a list already
+  //     in memory. The arrivals resolved half is now `allIssues`.
+  //   · fetchResolvedInWindow_ is KEPT and marked: it is still correct for a
+  //     resolved window that is not the deep one, where allIssues is the wrong
+  //     population rather than a superset.
+  //   · The CREATED half is NOT deduped the same way. It is a genuinely
+  //     different population (created-in-window vs resolved-in-window), and
+  //     deriving the narrow Exec window from the deep one by filtering dates in
+  //     JS would move the week boundary from Jira's timezone to the script's —
+  //     a few issues either side of every Monday, silently. Jira stays the one
+  //     authority on what week an issue belongs to.
+  //   · The in-flight bucket now LOGS ITS COUNT. After v3.15.0 the only evidence
+  //     in the log that the current week was exported at all was the week count
+  //     going 52 → 53 — proof by inference, which is how the week went missing
+  //     for months in the first place.
+  //
+  // CHANGES v3.16.0 (the export goes HOURLY — user 2026-08-24):
+  //   · v3.15.0 made the current week EXPORTABLE. Hourly is what makes it
+  //     WATCHABLE: a manager checking progress at 4pm sees this morning's
+  //     deliveries rather than a snapshot taken at 03:00.
+  //   · Three things were only safe because runs could not meet. Now they can,
+  //     and all three are fixed here:
+  //     1. runJiraEpicTracker takes a SCRIPT LOCK (tryLock(0) — skip, never
+  //        queue). writeRawSheet_ opens with clearContents(); two runs
+  //        interleaved there leave Jira Raw truncated, and the dashboard reads
+  //        an empty Jira Raw as "the business delivered nothing".
+  //     2. writeFlowSnapshot_ REWRITES the current ISO week's row instead of
+  //        appending. Appending hourly is ~8,700 rows a year in a tab the
+  //        dashboard reads one row per week from. The append-only contract is
+  //        unbroken — it was always about COLUMNS; the reader has deduped rows
+  //        by week since it was written.
+  //     3. setJiraExportTriggerHourly() added; the weekly and daily installers
+  //        stay as the documented ladder back down.
+  //   · PAIRED DASHBOARD CHANGE, required: CONFIG_DH.JIRA_EXPORT_STALE_H 30 → 3.
+  //     A 30-hour staleness bar under an hourly trigger is not lenient, it is
+  //     inert — the banner stays green through 29 consecutive failed runs.
+  //   · JIRA_EXPORTER_MIN stays 3.15.0 on purpose: this version changes
+  //     GUARANTEES, not published numbers, and the floor exists to warn about
+  //     the second.
+  //   · ⚠️ WATCH THE FIRST DAY. If "⏭️ SKIPPED: another execution is still in
+  //     flight" appears every hour, the run no longer fits the interval — step
+  //     down to daily or cut RAW_HISTORY_WEEKS.
+  //
+  // CHANGES v3.15.0 (the in-flight week stops being invisible — user 2026-08-24):
+  //   · SYMPTOM: selecting "current week" in the Delivery Health dashboard
+  //     returned empty records for every Jira-derived metric, while closed weeks
+  //     and forward planning weeks were both fine.
+  //   · ROOT CAUSE: getLastNWeeks_ loops `i = 1..n` back from THIS Monday, so no
+  //     window it has ever built contained the current week. bucketByWeek_ then
+  //     discards anything resolved since Monday (no bucket covers it), and the
+  //     Arrivals tally closed at last Sunday. The dashboard was reading an empty
+  //     export, not an idle team.
+  //   · FIX: getLastNWeeks_ takes { includeCurrent: true } and appends the
+  //     in-flight week (this Monday → NOW, `partial: true`). The DEEP window —
+  //     Jira Raw + Jira Arrivals — takes it. The Exec Q&A narrative window does
+  //     NOT: its WoW compares the last two windows, and a two-day week would
+  //     print a collapse every Tuesday.
+  //   · SECOND BUG, same code path: JQL date-only bounds are MIDNIGHT, so the
+  //     Arrivals fetches' `created <= "<Sunday>"` had been dropping everything
+  //     filed on a Sunday, every week, in both halves of the tally. Both fetchers
+  //     now take an EXCLUSIVE upper bound (`< nextMonday`) — the bound
+  //     `nextMonStr` was already being built and had never had a caller.
+  //   · CADENCE: setJiraExportTriggerDaily() added. Weekly Monday 03:00 writes
+  //     the in-flight bucket exactly once, three hours into the week, so the
+  //     window fix alone would still show Thursday readers an empty Monday.
+  //   · The dashboard keeps the partial week OUT of its resolve-rate norm
+  //     (delivery-health-dashboard Code.js, clearRateMedian_): a two-day week is
+  //     data, but it is not a week's worth of operating rate.
+  //
   // CHANGES v3.14.0 (Jira's own category decides, not our name pattern):
   //   · v3.13.0 excluded sandboxes by KEY PATTERN. Checking the live site
   //     (2026-08-17) showed Jira already answers this: projects carry a
@@ -374,9 +521,51 @@
     // (the window's oldest period is always partial, so usable depth is not
     // weeks/13) — enough for a real Quarterly trend instead of the single data
     // point a 30-week window gave. See the WHY 52 note in TempoPlanExport.js.
+    // ── DEEP WINDOW: COUNTED IN QUARTERS, NOT WEEKS (v3.19.0) ────────────────
+    // 2 complete fiscal quarters + the one in progress (user decision
+    // 2026-08-24). Quarter-ALIGNED, so the oldest quarter is complete rather
+    // than truncated — see jb_completedWeeksForQuarters_ for why that is the
+    // whole point and why the resulting span floats between 28 and 39 weeks.
+    //
+    // ⚠️ THE DASHBOARD'S CONFIG_DH.DEEP_QUARTERS MUST MATCH THIS. If the export
+    // covers fewer quarters than the dashboard's window asks for, the weeks it
+    // does not reach render as ZERO DELIVERY rather than as absent data — the
+    // exact failure the missing in-flight week caused (v3.15.0), one boundary
+    // over. Deploy the dashboard first or together, never the export alone.
+    //
+    // ⚠️ ALSO A DELIBERATE TRADE: at 2 quarters the dashboard's quarterly view
+    // holds exactly 2 complete quarters, so its QoQ trend is two points. The
+    // vs-prior delta still works. 3 would restore a real trend line; the
+    // decision to take 2 was made knowing that.
+    RAW_HISTORY_QUARTERS: 2,
+
     get RAW_HISTORY_WEEKS() {
-      return typeof exportHistoryWeeks_ === "function" ? exportHistoryWeeks_() : 52;
+      var shared = typeof exportHistoryWeeks_ === "function" ? exportHistoryWeeks_() : 52;
+      // The shared EXPORT_HISTORY_WEEKS dial is now a CEILING, not the setting:
+      // the Tempo exports only carry that many week columns, so reaching past it
+      // would ask for quarters no other feed can match. In practice the quarter
+      // span (28–39) sits well under it and this never binds.
+      return Math.min(jb_completedWeeksForQuarters_(this.RAW_HISTORY_QUARTERS), shared);
     },
+
+    // ── LIGHT RUN: how far back an incremental export re-fetches (v3.18.0) ────
+    // The hourly run rebuilds only the last LIGHT_REFRESH_WEEKS of completed
+    // weeks PLUS the in-flight week, and merges them onto the rows already in
+    // Jira Raw. Everything older is frozen — not re-fetched, not re-derived,
+    // not rewritten.
+    //
+    // Why 8 and not 2: a closed week is not immutable. A resolution date gets
+    // corrected, an issue is reopened and re-closed into a different week, a
+    // project is recategorised into scope. Two weeks catches the common case;
+    // eight catches essentially all of it and still costs a sixth of a full run,
+    // because the expensive part is the 52-week fetch, not the last few weeks of
+    // it. Anything a light run misses is repaired by the nightly full run —
+    // which is the real reason this is safe to keep cheap.
+    //
+    // MUST stay ≤ RAW_HISTORY_WEEKS. Raising it costs pages; lowering it below
+    // ~4 starts trusting the daily run to fix things the dashboards will have
+    // shown wrong for up to 24 hours.
+    LIGHT_REFRESH_WEEKS: 8,
 
     // Epic expansion depth (weeks). Children of epics resolved inside this
     // window are added to "Jira Raw" under the "Epic Child" sentinel week.
@@ -485,7 +674,7 @@
      // lives only in the header comment cannot travel with the data, so a
      // dashboard reading a three-week-old sheet has no way to know which rules
      // produced it. Bump this with the header comment — they are one fact.
-     VERSION: "3.14.0",
+     VERSION: "3.19.0",
 
     NON_DELIVERY_CATEGORIES: ["Internal"],
 
@@ -970,6 +1159,82 @@
    * @param {Date} date  Any day inside the target week (typically the Monday).
    * @returns {string} e.g. "2026.W27"
    */
+  /**
+   * The FISCAL quarter an ISO week belongs to, e.g. "FY27Q1".
+   *
+   * FY starts 1 July and is named for the calendar year it ENDS in, so
+   * Jul–Sep 2026 is FY27 Q1. The week is assigned by its THURSDAY — the ISO
+   * majority rule — so a week straddling a quarter boundary lands wherever
+   * four of its five working days are.
+   *
+   * ⚠️ THIS RULE EXISTS TWICE. The delivery-health dashboard computes the same
+   * thing in periodInfoForIso_ (its Code.js), and the two MUST agree or the
+   * export publishes a window whose edges the dashboard draws in a different
+   * place — the oldest quarter would render as partial, drop out of every
+   * trend, and look like missing delivery. Apps Script projects cannot share a
+   * module, so the mitigation is that both are tested against the same fixed
+   * anchors. Change one, change the other.
+   *
+   * @param {Date} monday the Monday that starts the ISO week
+   */
+  function jb_fiscalQuarterOfMonday_(monday) {
+    var thu = new Date(monday.getTime());
+    thu.setDate(thu.getDate() + 3);
+    var y = thu.getFullYear(), mo = thu.getMonth() + 1;
+    var fy = mo >= 7 ? y + 1 : y;
+    var q  = mo >= 7 ? Math.ceil((mo - 6) / 3) : Math.ceil(mo / 3) + 2;
+    return "FY" + String(fy).slice(-2) + "Q" + q;
+  }
+
+  /**
+   * How many COMPLETED weeks reach back to the start of the Nth prior fiscal
+   * quarter — the depth `getLastNWeeks_` needs to produce a QUARTER-ALIGNED
+   * window of N complete quarters plus the one in progress.
+   *
+   * ── WHY ALIGNMENT IS THE POINT (user decision 2026-08-24) ─────────────────
+   * The window used to be a flat 52 weeks, which was always a proxy for "enough
+   * quarters" — and a leaky one. A rolling week count never lands on a quarter
+   * boundary, so its OLDEST quarter is always truncated: it drops out of every
+   * trend (which uses complete periods only) while still occupying the window.
+   * That is why 52 weeks bought 3 complete quarters rather than 4, and why the
+   * relationship was empirical rather than stated.
+   *
+   * Counting in quarters instead makes the guarantee exact: ask for 2 and the
+   * window holds exactly 2 complete quarters, whatever week of the quarter the
+   * run happens in. The span floats (28–39 weeks) because quarters are not the
+   * same length in weeks — that is the point, not a defect.
+   *
+   * @param {number} nQuarters complete quarters to reach back over
+   * @param {Date} [today] injectable for tests
+   * @returns {number} completed weeks (the in-flight week is NOT counted —
+   *   getLastNWeeks_ adds it via { includeCurrent: true })
+   */
+  function jb_completedWeeksForQuarters_(nQuarters, today) {
+    var t = today ? new Date(today.getTime()) : new Date();
+    var thisMonday = new Date(t);
+    thisMonday.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    thisMonday.setHours(0, 0, 0, 0);
+
+    var cur = jb_fiscalQuarterOfMonday_(thisMonday);
+    var seen = {}, seenN = 0, n = 0;
+    var m = new Date(thisMonday);
+    // Walk back a week at a time. Stop at the week that would begin the
+    // (nQuarters+1)th older quarter, WITHOUT counting it — that week belongs to
+    // a quarter we are not covering, and including it is exactly what makes an
+    // oldest quarter partial.
+    for (var i = 1; i <= 400; i++) {
+      m.setDate(m.getDate() - 7);
+      var k = jb_fiscalQuarterOfMonday_(m);
+      if (k !== cur && !seen[k]) {
+        if (seenN === nQuarters) break;
+        seen[k] = 1;
+        seenN++;
+      }
+      n = i;
+    }
+    return n;
+  }
+
   function jb_isoWeekLabel_(date) {
     // UTC throughout so DST shifts can't push a Monday into the prior week.
     var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -988,8 +1253,40 @@
     return isoYear + ".W" + String(week).padStart(2, "0");
   }
 
-  function getLastNWeeks_(n) {
+  /**
+   * The last `n` COMPLETED Mon–Sun weeks, oldest first.
+   *
+   * `opts.includeCurrent` appends the IN-FLIGHT week (this Monday → now) as one
+   * extra, final bucket flagged `partial: true`.
+   *
+   * ── WHY THAT OPTION EXISTS (user report 2026-08-24) ──────────────────────
+   * This helper starts its loop at `i = 1`, i.e. the week BEFORE this Monday, so
+   * the current week has never existed in any window it builds. Every consumer
+   * that buckets through it therefore DROPS work that happened this week:
+   * bucketByWeek_ finds no bucket for an issue resolved on Tuesday and discards
+   * it, and the Arrivals window closed last Sunday. The delivery-health
+   * dashboard offers "current week" in its period picker and renders it as
+   * "Current week so far", but every Jira-derived number in it came back empty —
+   * not because nothing happened, because nothing was ever exported.
+   *
+   * The in-flight week is deliberately OPT-IN rather than the default: the Exec
+   * Q&A narrative compares the last two windows week-on-week, and silently
+   * feeding it a two-day week would print a collapse every Tuesday. So the deep
+   * feeds (Jira Raw, Jira Arrivals — read by dashboards that already have a
+   * "partial period" grammar) take it, and the narrative window does not.
+   *
+   * The partial week's `to` is NOW, not the coming Sunday: it is what has
+   * actually happened, and a bucket bounded by a future Sunday would invite a
+   * reader to compare it against full weeks as if it were one. `sundayStr` and
+   * `nextMonStr` still carry the true week edges for anything that needs them.
+   *
+   * @param {number} n completed weeks to build
+   * @param {{includeCurrent?: boolean}} [opts]
+   * @returns {Array<{label,from,to,fromStr,toStr,nextMonStr,sundayStr,partial}>}
+   */
+  function getLastNWeeks_(n, opts) {
     n = n || CONFIGJ.WEEKS_BACK;
+    const includeCurrent = !!(opts && opts.includeCurrent);
     const today = new Date();
 
     // Find the Monday that started the CURRENT week (Mon–Sun boundary)
@@ -1039,7 +1336,33 @@
         to:         sun,
         fromStr:    toIsoDate_(mon),
         toStr:      toIsoDate_(sun),
-        nextMonStr: toIsoDate_(nextMon) // for exclusive JQL bounds
+        sundayStr:  toIsoDate_(sun),
+        nextMonStr: toIsoDate_(nextMon), // for exclusive JQL bounds
+        partial:    false
+      });
+    }
+
+    // The in-flight week — this Monday 00:00 → NOW. Appended last, so the
+    // window stays chronological and `weeks[0]` (every fetch's anchor) is
+    // unchanged. See the docstring for why this is opt-in.
+    if (includeCurrent) {
+      var curSun = new Date(thisMonday);
+      curSun.setDate(thisMonday.getDate() + 6);
+      curSun.setHours(23, 59, 59, 999);
+
+      var curNextMon = new Date(thisMonday);
+      curNextMon.setDate(thisMonday.getDate() + 7);
+      curNextMon.setHours(0, 0, 0, 0);
+
+      weeks.push({
+        label:      jb_isoWeekLabel_(thisMonday),
+        from:       thisMonday,
+        to:         new Date(),        // as-of NOW, never the coming Sunday
+        fromStr:    toIsoDate_(thisMonday),
+        toStr:      toIsoDate_(new Date()),
+        sundayStr:  toIsoDate_(curSun),
+        nextMonStr: toIsoDate_(curNextMon),
+        partial:    true
       });
     }
     return weeks;
@@ -1508,13 +1831,24 @@
    * Fetches issues CREATED inside a date window (for backlog-health "Added" metric).
    * Includes all statuses — we only care about creation date, not resolution.
    */
-  function fetchCreatedIssues_(fromStr, toStr) {
+  /**
+   * Issues CREATED in [fromStr, beforeStr) — the upper bound is EXCLUSIVE.
+   *
+   * ⚠️ JQL date-only bounds are MIDNIGHT, not end-of-day (Jira: "if a time
+   * component is not specified, midnight will be assumed"). The old inclusive
+   * form — `created <= "<that week's Sunday>"` — therefore matched Sunday
+   * 00:00 and dropped everything filed during Sunday itself, every week, in
+   * both halves of the Arrivals tally. Passing the week's NEXT MONDAY with `<`
+   * is the same window with no missing day (v3.15.0; `nextMonStr` was already
+   * built for exactly this and had no caller).
+   */
+  function fetchCreatedIssues_(fromStr, beforeStr) {
     var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
     var jql = [
       'issuetype in (' + types + ')',
       'project NOT IN (TEMPLATE)',
       'created >= "' + fromStr + '"',
-      'created <= "' + toStr + '"',
+      'created < "' + beforeStr + '"',
       'summary !~ "to delete"'
     ].join(" AND ") + ' ORDER BY created DESC';
     Logger.log("📋 Created-issues JQL: " + jql);
@@ -1543,14 +1877,27 @@
    * that function's comment. Filtering noise independently on each half is how
    * the two populations drifted apart in the first place.
    */
-  function fetchResolvedInWindow_(fromStr, toStr) {
+  /**
+   * ⚠️ NOT CALLED BY runJiraEpicTracker SINCE v3.17.0 — kept deliberately.
+   *
+   * The arrivals tally's resolved half now reuses `allIssues` (the broad Done
+   * fetch), because over the deep window the two queries are clause-for-clause
+   * identical and returned the same 12,145 issues on the 2026-08-24 run. This
+   * function is still the right tool for a resolved window that is NOT the deep
+   * one — a narrow Exec-style net-flow, or a backfill of a single month — where
+   * `allIssues` would be the wrong population rather than a superset. Left here
+   * with its bound semantics intact so that caller does not have to rediscover
+   * the midnight trap documented on fetchCreatedIssues_.
+   */
+  function fetchResolvedInWindow_(fromStr, beforeStr) {
     var types = CONFIGJ.EXEC_ISSUE_TYPES.join(", ");
     var jql = [
       'issuetype in (' + types + ')',
       'project NOT IN (TEMPLATE)',
       CONFIGJ.DONE_JQL,
       'resolutiondate >= "' + fromStr + '"',
-      'resolutiondate <= "' + toStr + '"',
+      // EXCLUSIVE upper bound — same midnight trap as fetchCreatedIssues_.
+      'resolutiondate < "' + beforeStr + '"',
       'summary !~ "to delete"'
     ].join(" AND ") + ' ORDER BY resolutiondate DESC';
     Logger.log("📋 Resolved-in-window JQL: " + jql);
@@ -1931,6 +2278,20 @@
    * @param {Object[]} issues  Jira issue objects (need .id and .key).
    * @returns {Object} issueKey → { totalHrs, contributors: Object<name, hrs> }
    */
+  /**
+   * ⚠️ NOT CALLED SINCE v3.18.0 — kept, but nothing in the export path runs it.
+   *
+   * This was writeRawSheet_'s enrichment pass: ~252 Tempo API calls and 3m11s on
+   * a 12,604-issue run, populating four Jira Raw columns that no consumer ever
+   * read. The columns are gone and so is the call. Kept because it is the only
+   * working example of the Tempo worklog API in this file, and a future
+   * issue-grained hours feed (one with a reader) should start from it rather
+   * than rediscover the batching and the token handling.
+   *
+   * If you wire it back up: it is the single most expensive thing this export
+   * can do, and the run is already near an Apps Script daily quota it shares
+   * with every other script on the account. Fetch for the refresh window only.
+   */
   function fetchTempoWorklogsForIssues_(issues) {
     var tempoToken = PropertiesService.getScriptProperties().getProperty("TEMPO_API_TOKEN");
     if (!tempoToken) {
@@ -2086,6 +2447,7 @@
    * @param {Object[]} issues    all issues headed for Jira Raw (epics + children)
    * @returns {Object} epicKey → { totalHrs: number, contributors: Object<name, hrs> }
    */
+  /** ⚠️ NOT CALLED SINCE v3.18.0 — see fetchTempoWorklogsForIssues_. */
   function rollupTempoToEpics_(tempoMap, issues) {
     var directEpic = {}, parentOf = {}, isEpic = {};
     issues.forEach(function(issue) {
@@ -2153,22 +2515,28 @@
     /* 23 */ "Original Estimate (sec)",
     /* 24 */ "Time Spent (sec)",
     /* 25 */ "Issue Links (count)",
-    /* 26 */ "Tempo Logged (hrs)",
-    /* 27 */ "Tempo Contributors",
-    /* 28 */ "Epic Tempo Rollup (hrs)",
-    /* 29 */ "Epic Tempo Contributors",
-    /* 30 */ "Billing Type", // "Billable (SRSO)" | "Internal" | "Untagged"
-    /* 31 */ "Region",       // CONFIGJ.REGION_FIELD, short form via REGION_VOCAB_
-    /* 32 */ "Team",         // CONFIGJ.TEAM_FIELD (Atlassian Team picker)
+    // ── v3.18.0 REMOVED four Tempo-enrichment columns that used to sit at
+    // 26–29: "Tempo Logged (hrs)", "Tempo Contributors", "Epic Tempo Rollup
+    // (hrs)", "Epic Tempo Contributors". They cost a ~252-call, 3m11s Tempo
+    // pass on EVERY run and no consumer read any of them — verified across
+    // delivery-health readJiraRaw_, project-demand parseJiraMeta_, and a search
+    // for positional reads (none exist past column 14). Hours reach the
+    // dashboards from the Tempo EXPORTS, which are person-grained and are the
+    // source of truth for time; this was an issue-grained second opinion nobody
+    // consulted. Second deletion from the middle after the v3.10.0 one, safe for
+    // the same reason: every consumer resolves Jira Raw BY HEADER NAME.
+    /* 26 */ "Billing Type", // "Billable (SRSO)" | "Internal" | "Untagged"
+    /* 27 */ "Region",       // CONFIGJ.REGION_FIELD, short form via REGION_VOCAB_
+    /* 28 */ "Team",         // CONFIGJ.TEAM_FIELD (Atlassian Team picker)
     // ── Quality / Rework feed (v3.6.0) ──
     // APPEND-ONLY. Every consumer resolves Jira Raw columns BY HEADER NAME
     // (colIdx_ in the delivery-health reader, the same pattern elsewhere), so
     // adding to the end is safe and an older consumer simply doesn't see them.
     // Never insert into the middle — that is what made Region/Team move from
     // 32/33 to 31/32 and broke readers pinned to indices.
-    /* 33 */ "Status Category",  // status.statusCategory.name — authoritative Done
-    /* 34 */ "Rework Link",      // "Yes" when any issue link matches REWORK_LINK_RE
-    /* 35 */ "Reopened",         // "Yes"/"No" from changelog; blank = not measured
+    /* 29 */ "Status Category",  // status.statusCategory.name — authoritative Done
+    /* 30 */ "Rework Link",      // "Yes" when any issue link matches REWORK_LINK_RE
+    /* 31 */ "Reopened",         // "Yes"/"No" from changelog; blank = not measured
     // ── Delivery phase (v3.7.0) ──
     // v3.10.0 (2026-08-06) RETIRED the two candidate attribution columns that
     // used to sit at 36–37 ("Region (Alt)" = customfield_11561, "Tempo Team" =
@@ -2189,7 +2557,7 @@
     // columns 31+ by index — the index-pinned readers stop at 14. This is the one
     // deviation from the APPEND-ONLY rule above, and it is a deletion from the
     // TAIL, not an insertion into the middle.
-    /* 36 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
+    /* 32 */ "Workstream",     // CONFIGJ.WORKSTREAM_FIELD — delivery phase, not a team
     // ── Due-date integrity (v3.12.0) ──
     // APPEND-ONLY, same tristate contract as Reopened (35): "Yes"/"No" when
     // changelog was fetched for this row (the narrow CHANGELOG_WEEKS slice —
@@ -2198,10 +2566,10 @@
     // is editable by anyone at any time — including after the issue shipped —
     // so a re-baselined milestone currently reads as delivered on time with
     // no way to tell. See jbDueDateChangedFlag_.
-    /* 37 */ "Due Date Changed",
+    /* 33 */ "Due Date Changed",
   ];
 
-  function issueToRow_(issue, weekLabel, spaceKey, tempoMap, epicTempoRollup) {
+  function issueToRow_(issue, weekLabel, spaceKey) {
     var f = issue.fields || {};
     var assignee  = f.assignee || {};
     var completed = getCompletedDate_(issue);
@@ -2214,31 +2582,6 @@
     var origEst   = Number(f.timeoriginalestimate || 0);
     var timeSpent = Number(f.timespent || 0);
     var linkCount = (f.issuelinks || []).length;
-
-    // Tempo enrichment — actual logged hours per issue, all authors
-    var tempo = tempoMap ? tempoMap[issue.key] : null;
-    var tempoHrs = tempo ? Math.round(tempo.totalHrs * 10) / 10 : 0;
-    var tempoContribs = tempo
-      ? Object.keys(tempo.contributors)
-          .sort(function(a, b) { return tempo.contributors[b] - tempo.contributors[a]; })
-          .map(function(n) {
-            return n + " (" + (Math.round(tempo.contributors[n] * 10) / 10) + "h)";
-          })
-          .join(", ")
-      : "";
-
-    // Epic-level Tempo rollup — populated on epic rows only (own + child hrs)
-    var typeIsEpic = String(dig_(f, "issuetype.name") || "").toLowerCase().indexOf("epic") !== -1;
-    var epicTempo = (typeIsEpic && epicTempoRollup) ? epicTempoRollup[issue.key] : null;
-    var epicTempoHrs = epicTempo ? Math.round(epicTempo.totalHrs * 10) / 10 : "";
-    var epicTempoContribs = epicTempo
-      ? Object.keys(epicTempo.contributors)
-          .sort(function(a, b) { return epicTempo.contributors[b] - epicTempo.contributors[a]; })
-          .map(function(n) {
-            return n + " (" + (Math.round(epicTempo.contributors[n] * 10) / 10) + "h)";
-          })
-          .join(", ")
-      : "";
 
     // Billing classification from Fix Versions (same SRSO token rule as Exec Q&A)
     var fixNames = (f.fixVersions || []).map(function(v) { return v.name || ""; });
@@ -2288,24 +2631,18 @@
       origEst,
       timeSpent,
       linkCount,
-      // ── Columns 26–27 (Tempo enrichment) ──
-      tempoHrs,
-      tempoContribs,
-      // ── Columns 28–29 (epic rollup, epic rows only) ──
-      epicTempoHrs,
-      epicTempoContribs,
-      // ── Column 30 (billing classification) ──
+      // ── Column 26 (billing classification) ──
       billingType,
-      // ── Columns 31–32 (issue-level region / team) ──
+      // ── Columns 27–28 (issue-level region / team) ──
       regionVal,
       teamVal,
-      // ── Columns 33–35 (quality / rework feed, v3.6.0) ──
+      // ── Columns 29–31 (quality / rework feed, v3.6.0) ──
       dig_(f, "status.statusCategory.name") || "",
       jbHasReworkLink_(f) ? "Yes" : "",
       jbReopenedFlag_(issue),
-      // ── Column 36 (delivery phase, v3.7.0) ──
+      // ── Column 32 (delivery phase, v3.7.0) ──
       workstream,
-      // ── Column 37 (due-date integrity, v3.12.0) ──
+      // ── Column 33 (due-date integrity, v3.12.0) ──
       jbDueDateChangedFlag_(issue),
     ];
   }
@@ -2444,27 +2781,110 @@
     return jbChangelogTruncated_(issue) ? "" : "No";
   }
 
-  function writeRawSheet_(weeklyData) {
+  /**
+   * Writes "Jira Raw".
+   *
+   * @param {Array<{label:string, issues:Array}>} weeklyData week-grouped rows to
+   *   write, in sheet order, plus the "Epic Child" / "Open" sentinel groups.
+   * @param {{refreshLabels?: Object}} [opts] LIGHT-RUN MERGE (v3.18.0). When
+   *   `refreshLabels` is supplied (a set of week labels this run re-fetched),
+   *   rows for OTHER weeks already in the sheet are KEPT AS THEY ARE and
+   *   `weeklyData` is merged over them. Omit it for a full rewrite.
+   *
+   * ── WHY A MERGE MODE EXISTS ────────────────────────────────────────────────
+   * Hourly, the only things that can have changed are the in-flight week, the
+   * last few closed weeks, and the open queue. Re-fetching 52 weeks of settled
+   * history 24 times a day cost ~4.7 h of a 6 h/day Apps Script quota shared
+   * with every other script on the account. The light run fetches
+   * LIGHT_REFRESH_WEEKS + the in-flight week and freezes the rest.
+   *
+   * ── THE THREE THINGS THAT MAKE A MERGE DANGEROUS, AND THE GUARDS ───────────
+   * 1. SCHEMA DRIFT. Frozen rows were written by whatever version last ran. If
+   *    RAW_HEADERS has changed since (v3.18.0 removed four columns), stitching
+   *    old rows onto new ones silently shifts every value in the frozen region.
+   *    So the header must match RAW_HEADERS EXACTLY or this falls back to a full
+   *    rewrite — the sheet repairs itself on the next run instead of rotting.
+   * 2. DUPLICATES. An issue resolved in a frozen week that is reopened, or
+   *    re-resolved into the refresh window, exists in BOTH regions: stale in the
+   *    frozen block saying Done, fresh in the new block saying Open (or Done in
+   *    another week). The dashboard would count it twice — as delivered AND as
+   *    queued. Every frozen row whose Key appears anywhere in the fresh data is
+   *    therefore dropped; fresh always wins.
+   * 3. JUNK ROWS. getDataRange() also returns the footer lines. A row is kept
+   *    only if its Week cell is a real "YYYY.WN" label, which excludes footers,
+   *    blanks, and the "Open" / "Epic Child" sentinels — the sentinels being
+   *    volatile by definition, always re-fetched, never frozen.
+   */
+  function writeRawSheet_(weeklyData, opts) {
     var sheet = jb_getOrCreateSheet_(CONFIGJ.RAW_SHEET);
+    var refreshLabels = opts && opts.refreshLabels;
+    var frozen = [];
+
+    if (refreshLabels) {
+      var existing = sheet.getDataRange().getValues();
+      var hdrOk = existing.length > 1 &&
+                  existing[0].length === RAW_HEADERS.length &&
+                  RAW_HEADERS.every(function (h, i) { return String(existing[0][i]) === h; });
+      if (!hdrOk) {
+        Logger.log("🔁 FULL REWRITE instead of a merge: the sheet's header does not match this " +
+          "exporter's RAW_HEADERS (" + (existing.length ? existing[0].length : 0) + " cols on the " +
+          "sheet vs " + RAW_HEADERS.length + " expected). That is what a schema change looks like, " +
+          "and merging across one would shift every value in the frozen region. The sheet is " +
+          "rebuilt from this run's data; the next light run will merge normally.");
+        refreshLabels = null;
+      } else {
+        // Fresh keys FIRST — a frozen row loses to any fresh row for the same
+        // issue, wherever in the new data that row lives.
+        var freshKeys = {};
+        weeklyData.forEach(function (w) {
+          w.issues.forEach(function (i) { freshKeys[String(i.key).toUpperCase()] = 1; });
+        });
+        var iWeek = 0, iKey = 1;   // guarded by the header check above
+        var droppedStale = 0;
+        for (var r = 1; r < existing.length; r++) {
+          var lbl = String(existing[r][iWeek] || "").trim();
+          if (!/^\d{4}\.W\d{1,2}$/.test(lbl)) continue;   // footer, blank, or sentinel
+          if (refreshLabels[lbl]) continue;                 // this run re-fetched it
+          if (freshKeys[String(existing[r][iKey] || "").toUpperCase()]) { droppedStale++; continue; }
+          frozen.push(existing[r]);
+        }
+        Logger.log("🧊 Merge: " + frozen.length + " frozen rows kept from " +
+          (existing.length - 1) + " on the sheet" +
+          (droppedStale ? ", " + droppedStale + " dropped as superseded (reopened or re-resolved)" : "") +
+          ".");
+      }
+    }
+
     sheet.clearContents();
     sheet.clearFormats();
 
-    // One Tempo batch pass across all weeks — issueToRow_ looks up by issue key
-    var allIssues = [];
-    weeklyData.forEach(function(w) {
-      allIssues = allIssues.concat(w.issues);
-    });
-    Logger.log("⏱️ Fetching Tempo worklogs for " + allIssues.length + " issues...");
-    var tempoMap = fetchTempoWorklogsForIssues_(allIssues);
-    Logger.log("   Tempo worklogs found for " + Object.keys(tempoMap).length + " issues.");
-
-    var epicTempoRollup = rollupTempoToEpics_(tempoMap, allIssues);
-    Logger.log("   Epic Tempo rollup: " + Object.keys(epicTempoRollup).length + " epics with logged hours.");
-
-    var rows = [RAW_HEADERS];
+    // ── THE TEMPO ENRICHMENT PASS IS GONE (v3.18.0) ─────────────────────────
+    // This used to batch-fetch Tempo worklogs for EVERY row — 12,604 issues,
+    // ~252 API calls, 3m11s measured on the 2026-08-24 18:40 run, the single
+    // largest cost in the export — to populate four columns:
+    //   Tempo Logged (hrs) · Tempo Contributors ·
+    //   Epic Tempo Rollup (hrs) · Epic Tempo Contributors
+    //
+    // Nothing read them. Verified across every consumer before removing:
+    //   · delivery-health readJiraRaw_  — 20 columns, all BY HEADER, none of these
+    //   · project-demand parseJiraMeta_ — 10 columns, all BY HEADER, none of these
+    //   · no reader anywhere indexes Jira Raw past column 14 by position
+    // Hours reach the dashboards from the Tempo EXPORTS (Tempo Tracked Time /
+    // Planned Time Tempo), which are the source of truth for time and are
+    // person-grained; this was an issue-grained second opinion nobody consulted.
+    //
+    // Removing four columns from the MIDDLE is a deliberate exception to the
+    // append-only rule at RAW_HEADERS, and it is safe only because of the
+    // by-header rule above. The light run guards it independently: it refuses to
+    // merge unless the sheet's header matches RAW_HEADERS exactly, so the first
+    // run after this change rebuilds the sheet rather than stitching a 38-column
+    // history onto 34-column rows.
+    // Frozen first: they are the older weeks, and the sheet stays chronological
+    // so the contiguity the next merge relies on survives this write.
+    var rows = [RAW_HEADERS].concat(frozen);
     weeklyData.forEach(function(w) {
       w.issues.forEach(function(issue) {
-        rows.push(issueToRow_(issue, w.label, getSpaceForIssue_(issue), tempoMap, epicTempoRollup));
+        rows.push(issueToRow_(issue, w.label, getSpaceForIssue_(issue)));
       });
     });
 
@@ -2487,7 +2907,9 @@
       .setValue("Exporter: " + CONFIGJ.VERSION)
       .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
 
-    Logger.log("✅ Raw sheet: " + (rows.length - 1) + " data rows written.");
+    Logger.log("✅ Raw sheet: " + (rows.length - 1) + " data rows written" +
+      (frozen.length ? " (" + frozen.length + " frozen + " + (rows.length - 1 - frozen.length) +
+                       " refreshed)" : "") + ".");
   }
 
   // APPEND-ONLY, same contract as RAW_HEADERS: consumers resolve columns by
@@ -2666,7 +3088,7 @@
       // dashboard's flowOpenBuckets_, so the two stay reconcilable.
     });
 
-    // Prune BEFORE appending so the tab never grows past the retained window.
+    // Prune BEFORE writing so the tab never grows past the retained window.
     var cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - CONFIGJ.RAW_HISTORY_WEEKS * 7);
     var vals = sheet.getDataRange().getValues();
@@ -2675,15 +3097,52 @@
       if (!isNaN(d.getTime()) && d < cutoff) sheet.deleteRow(r + 1);
     }
 
-    sheet.appendRow([
+    var nowIso = jb_isoWeekLabel_(new Date());
+    var snapRow = [
       fmtDateTime_(new Date()),
-      jb_isoWeekLabel_(new Date()),
+      nowIso,
       wip,
       Math.round(backlogHrs * 10) / 10,
       backlogN,
       unItems,
       Math.round(unHrs * 10) / 10,
-    ]);
+    ];
+
+    // ── ONE ROW PER ISO WEEK, REWRITTEN IN PLACE (2026-08-24, hourly cadence) ──
+    // This used to appendRow() unconditionally, which was right at a weekly
+    // trigger: one run, one row, one measured point per week. Hourly turns that
+    // into 24 rows a day and ~8,700 a year, of which the dashboard reads exactly
+    // one — parseFlowSnapshotRows_ keys byIso and keeps the LAST row for each,
+    // so every intra-week row is fetched, parsed and thrown away.
+    //
+    // So the current week's row is REPLACED rather than added to. The series the
+    // dashboard reconstructs is identical (it was already the last-write-wins
+    // series); what changes is that the tab stays ~52 rows instead of growing
+    // without bound, and getDataRange() stops paying for history nothing reads.
+    //
+    // The APPEND-ONLY CONTRACT IS UNBROKEN — it is about COLUMNS, not rows: new
+    // columns still go on the end and every reader indexes by header name, so
+    // historical rows stay valid. Rows were never the guarantee; the reader has
+    // deduped them by week since it was written.
+    // The ISO column is found BY NAME, never by position — the same rule every
+    // reader of this tab follows. A hand-inserted column would otherwise make
+    // this compare the wrong cell and append a duplicate every hour, which is
+    // precisely the growth it exists to stop. No "ISO Week" header (a sheet
+    // somebody reshaped) → append and leave the tab alone rather than overwrite
+    // a row identified by a guess.
+    var after = sheet.getDataRange().getValues();
+    var isoIdx = (after[0] || []).map(function (h) { return String(h).trim(); }).indexOf("ISO Week");
+    var targetRow = -1;
+    if (isoIdx !== -1) {
+      for (var q = after.length - 1; q >= 1; q--) {
+        if (String(after[q][isoIdx] || "").trim() === nowIso) { targetRow = q + 1; break; }
+      }
+    }
+    if (targetRow === -1) {
+      sheet.appendRow(snapRow);
+    } else {
+      sheet.getRange(targetRow, 1, 1, snapRow.length).setValues([snapRow]);
+    }
     Logger.log("🌊 Flow snapshot: WIP " + wip + ", backlog " +
                (Math.round(backlogHrs * 10) / 10) + "h across " + backlogN + " items, " +
                "unassigned " + unItems + " (" + (Math.round(unHrs * 10) / 10) + "h to-do).");
@@ -2713,7 +3172,21 @@
    * as the previous calendar day, bucketing the row one ISO week early. `k` is
    * already the right string — write it as-is, never re-wrap it in a Date.
    */
-  function writeArrivals_(createdIssues, resolvedIssues) {
+  /**
+   * @param {Array} createdIssues
+   * @param {Array} resolvedIssues
+   * @param {{sinceStr?: string}} [opts] LIGHT-RUN MERGE (v3.18.0): when
+   *   `sinceStr` ("yyyy-mm-dd") is given, the run only counted issues from that
+   *   Monday onward, so weeks BEFORE it are read back off the sheet and kept
+   *   rather than being rewritten as zero. Omit for a full rewrite.
+   *
+   * ⚠️ WITHOUT THAT OPTION A LIGHT RUN WOULD EMPTY THIS TAB. It rewrites every
+   * row from the population it is handed (clearContents below), so handing it 8
+   * weeks of issues would leave an 8-row tab — and the dashboard needs
+   * CLEAR_RATE_MIN_N=5 weeks for a clear rate and 26 for the inventory walkback.
+   * The failure would look exactly like a healthy small export.
+   */
+  function writeArrivals_(createdIssues, resolvedIssues, opts) {
     // "Created Unassigned" is a SNAPSHOT: it counts issues that are still
     // unassigned at export time (current fields.assignee, checked below), NOT
     // issues that had no assignee at the moment they were created. A ticket
@@ -2769,6 +3242,26 @@
       if (isNaN(d.getTime())) return;
       row_(keyOf_(d)).resolved++;
     });
+
+    // ── Merge: weeks older than the refresh window come off the sheet ────────
+    // Read BEFORE clearContents. Keyed by the same "yyyy-mm-dd" Monday string
+    // the fresh rows use, so a week can never appear twice — a fresh row for a
+    // week simply overwrites the frozen one in `byWeek`.
+    if (opts && opts.sinceStr) {
+      var prior = sheet.getDataRange().getValues();
+      var kept = 0;
+      for (var pr = 1; pr < prior.length; pr++) {
+        var wk = String(prior[pr][0] || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(wk)) continue;   // header/footer/junk
+        if (wk >= opts.sinceStr) continue;                 // this run recounted it
+        if (byWeek[wk]) continue;                          // fresh data wins, always
+        byWeek[wk] = { created: Number(prior[pr][1]) || 0,
+                       resolved: Number(prior[pr][2]) || 0,
+                       createdUnassigned: Number(prior[pr][3]) || 0 };
+        kept++;
+      }
+      Logger.log("🧊 Arrivals merge: " + kept + " frozen weeks kept (before " + opts.sinceStr + ").");
+    }
 
     var keys = Object.keys(byWeek).sort();
     var out = [HEADERS];
@@ -3233,22 +3726,93 @@
 
   // ── SECTION: MAIN ENTRY POINT ─────────────────────────────────
 
-  function runJiraEpicTracker() {
+  /**
+   * ⚠️ OVERLAP GUARD — required from the moment this went HOURLY (2026-08-24).
+   *
+   * At a weekly trigger two runs could not meet. At hourly they can: this export
+   * does a 52-week Done fetch, a per-issue Tempo worklog pass and a changelog
+   * slice, and a slow Jira afternoon can push that past the hour. Apps Script
+   * does not serialise trigger executions for you.
+   *
+   * The collision is not a slow run, it is a CORRUPT SHEET. writeRawSheet_ opens
+   * with clearContents() and then writes; two runs interleaved there leave Jira
+   * Raw truncated or empty, and the Delivery Health dashboard reads an empty
+   * Jira Raw as "the business delivered nothing" — the same class of silent,
+   * plausible-looking zero the in-flight-week bug produced, arriving from the
+   * other direction.
+   *
+   * tryLock(0), not a wait: a run that cannot start immediately has nothing to
+   * contribute, because the run already holding the lock is fetching the same
+   * window and will publish it. Waiting would just queue executions behind a
+   * slow one until the quota runs out. Skipping is logged, never silent — a run
+   * that never happened and a run that did nothing must not look alike.
+   */
+  /**
+   * @param {{light?: boolean}} [opts] `light: true` runs the INCREMENTAL export
+   *   (v3.18.0): re-fetch CONFIGJ.LIGHT_REFRESH_WEEKS of completed weeks plus
+   *   the in-flight week, merge onto the frozen history, skip the Exec Q&A
+   *   narrative. Default (no opts) is the full 52-week rewrite.
+   *
+   * Both modes share this one function on purpose. The alternative — a separate
+   * light export beside it — is two pipelines that must agree about scope
+   * filters, noise rules, week labelling and column order forever, and they
+   * would not. What differs between the modes is a WINDOW and two write flags;
+   * everything that decides what a row MEANS is shared by construction.
+   */
+  function runJiraEpicTracker(opts) {
+    var light = !!(opts && opts.light);
+    var mode = light ? "LIGHT" : "FULL";
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(0)) {
+      Logger.log("⏭️ SKIPPED (" + mode + "): another runJiraEpicTracker execution is still in flight. " +
+        "This is the hourly trigger protecting the sheets, not an error — the run " +
+        "already holding the lock covers the same window. If this repeats every hour, " +
+        "the export is taking longer than the interval: check the Jira fetch timings " +
+        "above in the previous execution's log.");
+      return;
+    }
     try {
-      Logger.log("🚀 Exec Contribution Tracker starting…");
+      Logger.log("🚀 Exec Contribution Tracker starting… [" + mode + "]");
 
-      // NARRATIVE window (Exec Q&A).
-      var weeks = getLastNWeeks_(CONFIGJ.WEEKS_BACK);
-      Logger.log("📅 Narrative week windows (" + weeks.length + " weeks):");
-      weeks.forEach(function(w, i) {
-        Logger.log("   Wk " + (i + 1) + ": " + w.fromStr + " → " + w.toStr);
-      });
+      // NARRATIVE window (Exec Q&A) — FULL runs only. The narrative compares the
+      // last two COMPLETED weeks, so it changes once a week; recomputing it
+      // hourly buys nothing and costs a fetch plus a sheet rewrite.
+      var weeks = null;
+      if (!light) {
+        weeks = getLastNWeeks_(CONFIGJ.WEEKS_BACK);
+        Logger.log("📅 Narrative week windows (" + weeks.length + " weeks):");
+        weeks.forEach(function(w, i) {
+          Logger.log("   Wk " + (i + 1) + ": " + w.fromStr + " → " + w.toStr);
+        });
+      }
 
       // DEEP window ("Jira Raw" only) — what the dashboards' Weekly/Monthly/
       // Quarterly period views are limited by. Rolling, so runtime stays flat.
-      var rawWeeks = getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS);
-      Logger.log("📅 Jira Raw deep window: " + rawWeeks.length + " weeks (" +
-                 rawWeeks[0].fromStr + " → " + rawWeeks[rawWeeks.length - 1].toStr + ")");
+      //
+      // includeCurrent (v3.15.0): the last bucket is the IN-FLIGHT week, so work
+      // resolved TODAY reaches Jira Raw instead of falling outside every bucket
+      // and being discarded. Without it the dashboards' "current week" selection
+      // is structurally empty — see getLastNWeeks_'s docstring.
+      // LIGHT narrows this to LIGHT_REFRESH_WEEKS — the whole point of the mode.
+      // Everything the fetch does NOT cover stays on the sheet untouched; see
+      // writeRawSheet_'s merge contract for what makes that safe.
+      var histWeeks = light
+        ? Math.min(CONFIGJ.LIGHT_REFRESH_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS)
+        : CONFIGJ.RAW_HISTORY_WEEKS;
+      var rawWeeks = getLastNWeeks_(histWeeks, { includeCurrent: true });
+      var rawLast = rawWeeks[rawWeeks.length - 1];
+      Logger.log("📅 Jira Raw " + (light ? "REFRESH" : "deep") + " window: " + rawWeeks.length +
+                 " weeks (" + rawWeeks[0].fromStr + " → " + rawLast.toStr +
+                 (rawLast.partial ? ", last week IN PROGRESS (" + rawLast.label + ")" : "") + ")");
+      // The set the merge freezes against — every label this run is authoritative
+      // for. Built from rawWeeks itself so the fetch and the merge can never
+      // disagree about which weeks were refreshed.
+      var refreshLabels = {};
+      rawWeeks.forEach(function (w) { refreshLabels[w.label] = 1; });
+      if (light) {
+        Logger.log("   🧊 Weeks older than " + rawWeeks[0].fromStr +
+                   " are FROZEN — kept from the sheet, not re-fetched.");
+      }
 
       // Broad fetch — all Done issues across all projects (original working
       // approach), anchored at the DEEP window start so ONE query serves both
@@ -3267,8 +3831,12 @@
       // for them (nobody looked), never "No" (which would silently deflate
       // Rework Rate — the exact failure the tristate exists to prevent).
       if (CONFIGJ.FETCH_CHANGELOG) {
+        // Capped at the REFRESH window in light mode: a frozen row keeps the
+        // flags it already has, computed when its week was last fetched in
+        // full. Asking for changelog on weeks this run will not rewrite is
+        // paying for an answer that goes nowhere.
         var changelogWeeks = getLastNWeeks_(
-          Math.min(CONFIGJ.CHANGELOG_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
+          Math.min(CONFIGJ.CHANGELOG_WEEKS, histWeeks));
         var changelogSince = changelogWeeks[0].fromStr;
         Logger.log("🕰️ Fetching changelog for issues resolved since " + changelogSince
           + " (" + CONFIGJ.CHANGELOG_WEEKS + "-week window)...");
@@ -3316,9 +3884,13 @@
           + "Reopened / Due Date Changed will export \"\" for every row.");
       }
 
-      // Active Engagement fetch (Phase 2)
-      var activeWIP = fetchActiveWIP_();
-      Logger.log("🛠️ Active WIP issues fetched: " + activeWIP.length);
+      // Active Engagement fetch (Phase 2) — an Exec Q&A input only, so LIGHT
+      // skips it with the sheet that consumes it.
+      var activeWIP = [];
+      if (!light) {
+        activeWIP = fetchActiveWIP_();
+        Logger.log("🛠️ Active WIP issues fetched: " + activeWIP.length);
+      }
 
       // Epic expansion — fetch every child of the in-scope epics so Jira Raw
       // shows what's inside each epic, not just the epic row. Children that
@@ -3330,7 +3902,7 @@
       // tree), and children of programmes closed months ago add rows no
       // consumer reads.
       var expandWeeks = getLastNWeeks_(
-        Math.min(CONFIGJ.EPIC_EXPAND_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
+        Math.min(CONFIGJ.EPIC_EXPAND_WEEKS, histWeeks));
       var expandFrom = expandWeeks[0].from;
       var epicKeys = allIssues
         .filter(function(i) {
@@ -3379,8 +3951,12 @@
         });
       }
 
-      // Exec Q&A: the narrow window, exactly as before.
-      var weeklyData = bucketByWeek_(weeks, false);
+      // Exec Q&A: the narrow window, exactly as before. `weeks` is null in a
+      // light run (the narrative window is never built there), and bucketing a
+      // null window would throw inside weekList.map — so the whole narrative
+      // bucketing is skipped with the sheet it feeds, not defended against
+      // downstream.
+      var weeklyData = light ? [] : bucketByWeek_(weeks, false);
 
       // Jira Raw: the DEEP window, plus the epic children that fall outside
       // the weekly buckets under the sentinel Week label "Epic Child". Exec Q&A
@@ -3391,6 +3967,23 @@
       Logger.log("📊 Jira Raw: " + rawRowCount + " completed-issue rows across "
         + rawWeeks.length + " weeks" + (epicChildren.length
             ? " + " + epicChildren.length + " epic-child rows" : ""));
+
+      // ── SAY WHAT THE IN-FLIGHT WEEK CONTAINS (v3.17.0) ──────────────────────
+      // The deep window is bucketed quietly (53 per-week lines would bury the
+      // run), so after v3.15.0 the ONLY evidence in the log that the current
+      // week is being exported at all was the week COUNT going 52 → 53. That is
+      // exactly the kind of proof-by-inference that let the week go missing in
+      // the first place. This line states the count directly, so "the current
+      // week is empty because nobody delivered" and "the current week is empty
+      // because the export broke again" stop looking identical from the log.
+      if (rawWeeks[rawWeeks.length - 1].partial) {
+        var flight = rawWeeklyData[rawWeeks.length - 1];
+        Logger.log("   ◐ IN-FLIGHT " + flight.label + ": " + flight.issues.length +
+          " completed so far (" + rawWeeks[rawWeeks.length - 1].fromStr + " → now)." +
+          (flight.issues.length === 0
+            ? " ⚠️ ZERO — expected early Monday, suspicious any later in the week."
+            : ""));
+      }
       if (epicChildren.length > 0) {
         rawWeeklyData = rawWeeklyData.concat([{ label: "Epic Child", issues: epicChildren }]);
       }
@@ -3414,7 +4007,7 @@
       }
 
       Logger.log("📝 Writing 'Jira Raw' sheet...");
-      writeRawSheet_(rawWeeklyData);
+      writeRawSheet_(rawWeeklyData, light ? { refreshLabels: refreshLabels } : null);
       Logger.log("💾 Flushing 'Jira Raw'...");
       SpreadsheetApp.flush();
 
@@ -3423,7 +4016,14 @@
       // A separate tab: Bug is NOT in EXEC_ISSUE_TYPES, and Bug rows in
       // Jira Raw would move every consumer's denominators.
       Logger.log("🐛 Fetching bugs for the flow feed...");
-      var bugs = fetchBugsCreated_(rawWeeks[0].fromStr);
+      // ⚠️ ANCHORED AT THE FULL HISTORY, NOT `rawWeeks[0]`, EVEN IN LIGHT MODE.
+      // writeBugsSheet_ rewrites the whole tab from what it is handed, so an
+      // 8-week fetch here would silently truncate the bug feed to 8 weeks every
+      // hour. It is 3 pages and ~3 seconds — far cheaper than a second merge.
+      var bugWeeks = light
+        ? getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS, { includeCurrent: true })
+        : rawWeeks;
+      var bugs = fetchBugsCreated_(bugWeeks[0].fromStr);
       Logger.log("📝 Writing 'Jira Bugs' sheet...");
       writeBugsSheet_(bugs);
       SpreadsheetApp.flush();
@@ -3435,9 +4035,14 @@
       SpreadsheetApp.flush();
 
       // Exec Q&A — uses all weeks for trend context, but WoW compares last 2.
-      Logger.log("📦 Fetching created issues for Exec window...");
-      var createdIssues = fetchCreatedIssues_(weeks[0].fromStr, weeks[weeks.length-1].toStr);
-      Logger.log("   Created issues fetched: " + createdIssues.length);
+      // FULL only: `weeks` is null in light mode, and this fetch exists solely
+      // to feed writeExecQASheet_, which light mode does not write.
+      var createdIssues = [];
+      if (!light) {
+        Logger.log("📦 Fetching created issues for Exec window...");
+        createdIssues = fetchCreatedIssues_(weeks[0].fromStr, weeks[weeks.length-1].nextMonStr);
+        Logger.log("   Created issues fetched: " + createdIssues.length);
+      }
 
       // Jira Arrivals (v3.11.0) — MUST follow the DEEP window (rawWeeks /
       // RAW_HISTORY_WEEKS), NOT the narrow Exec Q&A window (weeks / WEEKS_BACK
@@ -3448,15 +4053,54 @@
       // hero's weeks-to-clear, the queue ruler, both verdict findings, and the
       // 26-week inventory walkback. Fetched independently of createdIssues/
       // resolvedWindow above (those stay narrow — writeExecQASheet_ needs them).
-      Logger.log("📦 Fetching created/resolved issues for the Arrivals tally (deep window)...");
-      var arrCreated = fetchCreatedIssues_(rawWeeks[0].fromStr, rawWeeks[rawWeeks.length - 1].toStr);
-      var arrResolved = fetchResolvedInWindow_(rawWeeks[0].fromStr, rawWeeks[rawWeeks.length - 1].toStr);
-      writeArrivals_(arrCreated, arrResolved);
+      Logger.log("📦 Fetching created issues for the Arrivals tally (deep window)...");
+      // Upper bound = the deep window's last week's NEXT MONDAY, exclusive, so
+      // the in-flight week is tallied in full up to this instant (v3.15.0). The
+      // dashboard is the one that decides a partial week may not feed a rate —
+      // it knows what today is; the export's job is to stop hiding the week.
+      var arrBefore = rawWeeks[rawWeeks.length - 1].nextMonStr;
+      var arrCreated = fetchCreatedIssues_(rawWeeks[0].fromStr, arrBefore);
 
-      Logger.log("📝 Writing 'Exec Q&A' sheet...");
-      writeExecQASheet_(weeklyData, weeks, createdIssues, activeWIP);
-      Logger.log("💾 Flushing 'Exec Q&A'...");
-      SpreadsheetApp.flush();
+      // ── THE RESOLVED HALF IS `allIssues`, NOT A SECOND FETCH (v3.17.0) ──────
+      // Measured on the 2026-08-24 18:40 run: fetchResolvedInWindow_ over this
+      // same window returned 12,145 issues in 1m37s across ~122 pages — and the
+      // broad Done fetch at the top of this function had returned THE SAME
+      // 12,145 issues, from a clause-for-clause identical JQL:
+      //
+      //   broad     issuetype in (…) AND statusCategory = Done AND project NOT IN
+      //             (TEMPLATE) AND resolutiondate >= "2025-08-25" AND summary !~ …
+      //   arrivals  …identical, plus resolutiondate < "<next Monday>"
+      //
+      // The extra upper bound excludes nothing: nothing resolves in the future.
+      // And the post-filters converge too — fetchJiraIssues_ applies the space
+      // scope AND isNoiseIssue_ (12,145 → 11,735 → 9,397), while the arrivals
+      // path applied the space scope here and isNoiseIssue_ inside
+      // writeArrivals_, reaching the same 9,397. Byte for byte the same list,
+      // fetched twice.
+      //
+      // Harmless at a weekly trigger. At HOURLY it is ~39 minutes of execution
+      // time and ~2,900 Jira pages a day spent re-deriving a list already in
+      // memory — against an Apps Script quota this run is already close to (see
+      // the cadence note in the header).
+      //
+      // Kept as a NAMED variable rather than passing allIssues inline, because
+      // the two halves of "arrived minus cleared" must describe the same
+      // population and that intent should survive someone editing one of them.
+      var arrResolved = allIssues;
+      Logger.log("♻️ Arrivals resolved half = the broad Done fetch (" + arrResolved.length +
+                 " issues) — same JQL, same window, not re-fetched.");
+      writeArrivals_(arrCreated, arrResolved,
+                     light ? { sinceStr: rawWeeks[0].fromStr } : null);
+
+      if (light) {
+        Logger.log("⏭️ Exec Q&A skipped (LIGHT) — its WoW compares the last two COMPLETED " +
+                   "weeks, so it changes once a week. The nightly FULL run writes it.");
+      } else {
+        Logger.log("📝 Writing 'Exec Q&A' sheet...");
+        writeExecQASheet_(weeklyData, weeks, createdIssues, activeWIP);
+        Logger.log("💾 Flushing 'Exec Q&A'...");
+        SpreadsheetApp.flush();
+      }
 
       Logger.log("✅ Done. Check tabs: \"" + CONFIGJ.RAW_SHEET
         + "\", \"" + CONFIGJ.EXEC_SHEET + "\", \"" + CONFIGJ.BUGS_SHEET
@@ -3465,7 +4109,33 @@
     } catch (e) {
       Logger.log("❌ [runJiraEpicTracker] " + e.message);
       throw e;
+    } finally {
+      // finally, not after the try: a throw must release the lock too, or one
+      // failed run blocks every hourly run after it until the lock times out.
+      lock.releaseLock();
     }
+  }
+
+  /**
+   * THE HOURLY ENTRY POINT (v3.18.0). Re-fetches CONFIGJ.LIGHT_REFRESH_WEEKS of
+   * completed weeks plus the week in progress, merges them onto the frozen
+   * history already in Jira Raw / Jira Arrivals, and refreshes everything that
+   * is volatile by nature: the whole open backlog, the epic children, the bug
+   * feed, the flow snapshot.
+   *
+   * What it does NOT do: re-fetch 52 weeks of settled history, write Exec Q&A
+   * (its WoW compares the last two COMPLETED weeks, so it changes once a week).
+   *
+   * ⚠️ THIS IS NOT A REPLACEMENT FOR THE FULL RUN — pair it with a nightly
+   * runJiraEpicTracker(). The light run is deliberately allowed to be slightly
+   * wrong about the frozen region: an issue whose resolution date moves out of
+   * the refresh window disappears until the next full run, a project
+   * recategorised into scope backfills only from the refresh window forward.
+   * Those are acceptable precisely BECAUSE a full run repairs them every night.
+   * Install with setJiraExportTriggersSplit(), which installs both.
+   */
+  function runJiraEpicTrackerLight() {
+    runJiraEpicTracker({ light: true });
   }
 
   // ── SECTION: TEMPORARY DEBUG HELPER ─────────────────────────
@@ -3838,13 +4508,31 @@
     Logger.log("📊 Exec Q&A will compare: Week " + (weeks.length - 1) + " vs Week " + weeks.length);
 
     // Deep window — what the dashboards' Monthly/Quarterly views are capped by.
-    var rawWeeks = getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS);
+    // Built exactly as runJiraEpicTracker builds it, IN-FLIGHT WEEK INCLUDED:
+    // a preview that quietly showed a different window from the run is how the
+    // missing current week went unnoticed for as long as it did.
+    var rawWeeks = getLastNWeeks_(CONFIGJ.RAW_HISTORY_WEEKS, { includeCurrent: true });
+    var rawLast = rawWeeks[rawWeeks.length - 1];
     var expandWeeks = getLastNWeeks_(
       Math.min(CONFIGJ.EPIC_EXPAND_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS));
     Logger.log("📅 Jira Raw deep window: " + rawWeeks.length + " weeks, "
-      + rawWeeks[0].fromStr + " → " + rawWeeks[rawWeeks.length - 1].toStr);
+      + rawWeeks[0].fromStr + " → " + rawLast.toStr);
+    Logger.log("   Last bucket: " + rawLast.label + (rawLast.partial
+      ? " — IN PROGRESS, " + rawLast.fromStr + " → now (closes " + rawLast.sundayStr + ")"
+      : " — complete"));
+    Logger.log("   Arrivals window closes at " + rawLast.nextMonStr + " (exclusive).");
     Logger.log("   Epic expansion window: " + expandWeeks.length + " weeks, from "
       + expandWeeks[0].fromStr);
+
+    // The LIGHT window too — the hourly cadence runs THAT one, so previewing
+    // only the full window would preview the run that happens once a day.
+    var lightWeeks = getLastNWeeks_(
+      Math.min(CONFIGJ.LIGHT_REFRESH_WEEKS, CONFIGJ.RAW_HISTORY_WEEKS), { includeCurrent: true });
+    Logger.log("⚡ LIGHT refresh window: " + lightWeeks.length + " weeks, "
+      + lightWeeks[0].fromStr + " → now. Weeks before " + lightWeeks[0].fromStr
+      + " are FROZEN — kept from the sheet, never re-fetched.");
+    Logger.log("   Labels a light run owns: "
+      + lightWeeks.map(function (w) { return w.label; }).join(", "));
     if (CONFIGJ.START_ISO_WEEK) {
       Logger.log("⚠️ START_ISO_WEEK is set to \"" + CONFIGJ.START_ISO_WEEK
         + "\" — that is a FIXED anchor and grows the narrative window by a week "
@@ -3903,37 +4591,178 @@
   // ============================================================
 
   // ============================================================
-  // ⏰  SCHEDULED EXPORT — weekly time-based trigger (v3.12.0)
+  // ⏰  SCHEDULED EXPORT — HOURLY since 2026-08-24 (was weekly, v3.12.0)
   // ============================================================
-  // Nothing called runJiraEpicTracker() on its own before this: every number
+  // Nothing called runJiraEpicTracker() on its own before v3.12.0: every number
   // downstream was only as fresh as the last manual run, with no signal
-  // anywhere saying how stale that was. Weekly matches the dashboards' own
-  // analysis period, and this export fully REWRITES its tabs on every run
-  // (writeRawSheet_ clearContents()s "Jira Raw" before rewriting it, same for
-  // Jira Bugs / Jira Arrivals), so a weekly cadence is the right balance
-  // between freshness and Jira/Tempo API load — anything tighter re-fetches
-  // the same 52-week window for marginal new signal.
+  // anywhere saying how stale that was.
+  //
+  // ── WHY WEEKLY WAS WRONG, AND WHAT CHANGED THE ANSWER ──────────────────────
+  // The original reasoning below this line was: "this export fully REWRITES its
+  // tabs on every run, so weekly balances freshness against API load — anything
+  // tighter re-fetches the same 52-week window for marginal new signal."
+  //
+  // That was sound while the export could only describe CLOSED weeks. There was
+  // genuinely no new signal between Monday runs, because the newest thing the
+  // window contained was already finished before the run started. v3.15.0 broke
+  // that assumption: the deep window now ends in the week IN PROGRESS, so what a
+  // run adds is no longer marginal — it is everything that has happened since
+  // the last one. Freshness stopped being a nicety and became the difference
+  // between "current week" meaning something and reading as an idle team.
+  //
+  // Cadence ladder, in force order: setJiraExportTriggerHourly() (current),
+  // setJiraExportTriggerDaily(), setJiraExportTrigger() (weekly, legacy). All
+  // three clear every existing trigger first; whichever ran last is in force.
+  //
+  // ⚠️ HOURLY HAS THREE PREREQUISITES, all shipped: the script lock in
+  // runJiraEpicTracker (overlapping runs corrupt Jira Raw mid-clearContents),
+  // the per-ISO-week rewrite in writeFlowSnapshot_ (appending hourly grows an
+  // unbounded tab the dashboard reads one row a week from), and the dashboard's
+  // CONFIG_DH.JIRA_EXPORT_STALE_H at 3 rather than 30. Do not raise the cadence
+  // on another deployment without all three.
   //
   // ⚠️ An installable trigger runs as WHOEVER INSTALLS IT — Apps Script has
-  // no service-account concept. Run setJiraExportTrigger() from an account
-  // that has BOTH a valid Jira API token (setAPI__Jira()) AND edit access to
-  // this spreadsheet, or the weekly run fails silently in the trigger log
-  // with nobody watching it.
+  // no service-account concept. Run the installer from an account that has BOTH
+  // a valid Jira API token (setAPI__Jira()) AND edit access to this
+  // spreadsheet, or every run fails silently in the trigger log with nobody
+  // watching it. At hourly that is 24 silent failures a day, so check the
+  // execution log once after installing rather than assuming.
 
   /**
-   * Installs the weekly Jira export trigger. Idempotent — deletes any
-   * existing trigger on runJiraEpicTracker first, so running this twice (or
-   * again after changing the day/hour below) never leaves two triggers
-   * firing the same export in the same week.
+   * Installs the WEEKLY Jira export trigger. ⚠️ LEGACY — kept as the documented
+   * floor and as a fast way back if hourly proves too expensive, but a weekly
+   * run cannot describe the in-flight week (it writes that bucket once, three
+   * hours into the week). setJiraExportTriggerHourly() is the cadence in force.
+   *
+   * Idempotent — deletes any existing trigger on runJiraEpicTracker first, so
+   * running this twice (or again after changing the day/hour below) never
+   * leaves two triggers firing the same export in the same week.
    */
   function setJiraExportTrigger() {
-    ScriptApp.getProjectTriggers()
-      .filter(function (t) { return t.getHandlerFunction() === "runJiraEpicTracker"; })
-      .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+    clearJiraExportTriggers_();
     ScriptApp.newTrigger("runJiraEpicTracker").timeBased()
       .onWeekDay(ScriptApp.WeekDay.MONDAY)
       .atHour(3)
       .create();
     Logger.log("✅ Weekly Jira export trigger installed — every Monday ~03:00"
       + " (installing account's script timezone).");
+    Logger.log("⚠️ Weekly only ever refreshes CLOSED weeks — the dashboards'"
+      + " \"current week\" will be one Monday-morning snapshot all week. Install"
+      + " setJiraExportTriggerHourly() (or …Daily()) unless you meant to step down.");
+  }
+
+  /**
+   * Installs a DAILY export trigger — the minimum cadence the in-flight week
+   * needs. ⚠️ THIS DEPLOYMENT RUNS HOURLY (2026-08-24); see
+   * setJiraExportTriggerHourly() below, which is the one in force.
+   *
+   * v3.15.0 made the export CAPABLE of describing the current week; a weekly
+   * Monday 03:00 run makes it USELESS at it, because the only time the in-flight
+   * bucket is ever written is three hours after the week began, when it is
+   * legitimately empty. A reader opening "current week" on Thursday sees Monday's
+   * snapshot of a Monday-morning week and concludes the team delivered nothing.
+   * Freshness and truthfulness are the same property here.
+   *
+   * Cost: this export fully REWRITES its tabs each run, so a daily run is the
+   * same work as a weekly one, once a day — one broad Done fetch over the
+   * 52-week window plus the narrow changelog slice.
+   *
+   * Idempotent, and mutually exclusive with the other two installers — all three
+   * clear every existing runJiraEpicTracker trigger first, so whichever you run
+   * last is the cadence in force. Never leaves two firing.
+   */
+  function setJiraExportTriggerDaily() {
+    clearJiraExportTriggers_();
+    ScriptApp.newTrigger("runJiraEpicTracker").timeBased()
+      .everyDays(1)
+      .atHour(3)
+      .create();
+    Logger.log("✅ Daily Jira export trigger installed — every day ~03:00"
+      + " (installing account's script timezone). The in-flight week is now"
+      + " refreshed every morning.");
+  }
+
+  /**
+   * Installs the HOURLY export trigger — the cadence in force since 2026-08-24.
+   *
+   * Hourly makes the current week a live surface rather than a daily snapshot:
+   * a manager checking progress at 4pm sees this morning's deliveries, not
+   * yesterday's. Three things had to change to make it safe, and all three are
+   * in this file — do not raise the cadence anywhere else without them:
+   *
+   *  1. runJiraEpicTracker takes a SCRIPT LOCK. Two overlapping runs would
+   *     interleave writeRawSheet_'s clearContents() with its write and leave
+   *     Jira Raw truncated, which the dashboard reads as zero delivery.
+   *  2. writeFlowSnapshot_ REWRITES the current ISO week's row instead of
+   *     appending. Appending hourly would put ~8,700 rows a year in a tab from
+   *     which the dashboard reads one per week.
+   *  3. The dashboard's CONFIG_DH.JIRA_EXPORT_STALE_H dropped 30 → 3. A 30-hour
+   *     staleness bar under an hourly cadence means the banner stays quiet
+   *     through 29 consecutive failed runs.
+   *
+   * ⚠️ COST IS REAL, unlike the daily step. This is a 52-week Done fetch plus a
+   * per-issue Tempo worklog pass, ~24× a day against Jira and Tempo rate limits
+   * and the account's UrlFetchApp quota. Watch the first day's execution log: if
+   * "SKIPPED: another execution is still in flight" appears every hour, the run
+   * no longer fits the interval and the cadence must come back down (or
+   * RAW_HISTORY_WEEKS must come down with it).
+   */
+  function setJiraExportTriggerHourly() {
+    clearJiraExportTriggers_();
+    ScriptApp.newTrigger("runJiraEpicTracker").timeBased()
+      .everyHours(1)
+      .create();
+    Logger.log("✅ Hourly FULL Jira export trigger installed. The in-flight week now"
+      + " refreshes every hour.");
+    Logger.log("⚠️ This runs the FULL 52-week export 24×/day (~2.7 h of a 6 h/day"
+      + " Apps Script quota shared with every script on this account)."
+      + " setJiraExportTriggersSplit() does the same job for a fraction of it.");
+  }
+
+  /** Removes every trigger on either entry point. Shared by all installers so
+      no two cadences can ever be live at once — the failure that would produce
+      is a light run and a full run racing for the same lock, hourly, forever. */
+  function clearJiraExportTriggers_() {
+    ScriptApp.getProjectTriggers()
+      .filter(function (t) {
+        var f = t.getHandlerFunction();
+        return f === "runJiraEpicTracker" || f === "runJiraEpicTrackerLight";
+      })
+      .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  }
+
+  /**
+   * ⭐ THE RECOMMENDED CADENCE (v3.18.0): hourly LIGHT + nightly FULL.
+   *
+   * Hour to hour the only things that can change are the in-flight week, the
+   * last few closed weeks and the open queue. The full run was re-fetching 52
+   * weeks of settled history 24 times a day to discover that — ~4.7 h against a
+   * 6 h/day Apps Script quota that every other script on this account shares.
+   *
+   * The split keeps the freshness and drops the bill:
+   *   · every hour  runJiraEpicTrackerLight() — 8 weeks + the open queue, merged
+   *   · 03:00 daily runJiraEpicTracker()      — the full 52-week rewrite, which
+   *                                             is also what repairs anything
+   *                                             the light runs got wrong
+   *
+   * The nightly full run is not optional. It is what makes the light run safe to
+   * be approximate about frozen history; without it the approximations
+   * accumulate with nothing to correct them.
+   */
+  function setJiraExportTriggersSplit() {
+    clearJiraExportTriggers_();
+    ScriptApp.newTrigger("runJiraEpicTrackerLight").timeBased()
+      .everyHours(1)
+      .create();
+    ScriptApp.newTrigger("runJiraEpicTracker").timeBased()
+      .everyDays(1)
+      .atHour(3)
+      .create();
+    Logger.log("✅ Split cadence installed:");
+    Logger.log("   · hourly  runJiraEpicTrackerLight() — last "
+      + CONFIGJ.LIGHT_REFRESH_WEEKS + " weeks + the in-flight week + the open queue, merged");
+    Logger.log("   · ~03:00  runJiraEpicTracker() — full "
+      + CONFIGJ.RAW_HISTORY_WEEKS + "-week rewrite, repairs anything the light runs missed");
+    Logger.log("ℹ️ The FIRST light run after a column change rebuilds the sheet instead of"
+      + " merging (header mismatch is detected, logged, and handled) — that is expected once.");
   }

@@ -401,6 +401,15 @@ function writeLastWeekSheet_(data) {
  */
 function runKudosNormalizer() {
   try {
+    // Rewrites the normalised Kudos output sheet, and every non-underscore
+    // global is callable via google.script.run by anyone who can load the
+    // dashboard web app. Gate the write.
+    const access = checkDashboardAccess();
+    if (!hasAdminPower_(access)) {
+      Logger.log(`⚠️ [Kudos] runKudosNormalizer blocked for ${access.email} (${access.role}).`);
+      return { ok: false, error: "Admin access required" };
+    }
+
     Logger.log(`🚀 [${CONFIGKudos.SCRIPT_LABEL}] Started.`);
 
     const data = buildNormalizedRows_();
@@ -431,6 +440,12 @@ function runKudosNormalizer() {
  */
 function diagnoseMappings() {
   try {
+    const access = checkDashboardAccess();
+    if (!hasAdminPower_(access)) {
+      Logger.log(`⚠️ [Kudos] diagnoseMappings blocked for ${access.email} (${access.role}).`);
+      return { ok: false, error: "Admin access required" };
+    }
+
     const ss  = SpreadsheetApp.getActiveSpreadsheet();
     const src = ss.getSheetByName(CONFIGKudos.SOURCE_SHEET);
     if (!src) throw new Error(`Sheet "${CONFIGKudos.SOURCE_SHEET}" not found.`);

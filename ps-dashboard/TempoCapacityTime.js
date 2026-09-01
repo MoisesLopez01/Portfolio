@@ -50,6 +50,13 @@ const CONFIGCap = {
  * Install the Friday trigger once via createCapacityWeeklyTrigger().
  */
 function fetchTempoCapacity() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoCapacity');
+  else Logger.log('⚠️ [fetchTempoCapacity] requireMaintainer_ not in this project — running ungated.');
   try {
     Logger.log(`🕐 [fetchTempoCapacity] Started at ${new Date().toISOString()}`);
 
@@ -64,7 +71,11 @@ function fetchTempoCapacity() {
         `${existing.isoWeeks.length} stored week(s) frozen before ${fromStr}`,
     );
 
-    const workerIds = fetchAllTeamMembers_(tempoToken);
+    // teamInfoById is filled in place: effectiveId → { teams[] }. Collecting it
+    // here is what lets the Team column below exist for EVERY person in a Tempo
+    // team, not only those who happened to log time — see writeCapacitySheet_.
+    const teamInfoById = {};
+    const workerIds = fetchAllTeamMembers_(tempoToken, teamInfoById);
     if (workerIds.length === 0) throw new Error("❌ No workers found in any Tempo Team.");
     const userMap = fetchUserNames_(workerIds, jiraEmail, jiraToken);
 
@@ -72,7 +83,7 @@ function fetchTempoCapacity() {
     const fetched = fetchSchedulesForWindow_(tempoToken, endpoint, workerIds, userMap, fromStr, toStr);
 
     const windowIsoWeeks = buildWeekRanges_(win.from, win.to).map((w) => w.isoLabel);
-    const grid = mergeCapacityGrid_(existing.rows, fetched, windowIsoWeeks);
+    const grid = mergeCapacityGrid_(existing.rows, fetched, windowIsoWeeks, teamInfoById);
     writeCapacitySheet_(grid);
 
     // Name normalization (Change Names.js) — Jira display names → roster
@@ -105,6 +116,13 @@ function fetchTempoCapacity() {
  * current week's final value is what last Friday captured (see spec §3).
  */
 function createCapacityWeeklyTrigger() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('createCapacityWeeklyTrigger');
+  else Logger.log('⚠️ [createCapacityWeeklyTrigger] requireMaintainer_ not in this project — running ungated.');
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === "fetchTempoCapacity")
     .forEach((t) => ScriptApp.deleteTrigger(t));
@@ -129,6 +147,13 @@ function createCapacityWeeklyTrigger() {
  * Public (no trailing underscore) so it appears in the editor's run dropdown.
  */
 function probeCapacityEndpoint() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('probeCapacityEndpoint');
+  else Logger.log('⚠️ [probeCapacityEndpoint] requireMaintainer_ not in this project — running ungated.');
   const { tempoToken } = getCredentials_();
   const workerIds = fetchAllTeamMembers_(tempoToken);
   if (workerIds.length === 0) {
@@ -282,12 +307,27 @@ function scheduleToWeeklyHours_(days) {
  * OUTPUT FLOOR: weeks before CONFIGCap.MIN_ISO_WEEK are dropped entirely
  * (stored or fetched) — the next write permanently trims those columns.
  *
- * @param {Object} existingRows   - accountId → { name, weeks: {iso → hrs} }
+ * ── TEAM IS CURRENT, AND SAYS SO ─────────────────────────────────────────────
+ * `teams` is deliberately NOT frozen the way week columns are. It is a
+ * person-level attribute with ONE value per row, so "current Tempo membership"
+ * is the whole and honest meaning of the cell. That is precisely what the
+ * per-worklog-row Team stamp in TempoTrackedTime/TempoPlanExport cannot claim:
+ * those re-write 52 weeks of history to today's squad and thereby look like
+ * historical fact. One current-membership column is the narrower, truthful
+ * claim — and it is the column the Delivery Health dashboard should join on.
+ *
+ * Stored teams survive when Tempo no longer returns the person (they left a
+ * team, or the fetch dropped them): losing the label would move them into the
+ * dashboard's "(No team)" bucket, which is the exact bug this column exists to
+ * close.
+ *
+ * @param {Object} existingRows   - accountId → { name, teams, weeks: {iso → hrs} }
  * @param {Object} fetched        - accountId → { name, weeks: {iso → hrs} }
  * @param {string[]} windowIsoWeeks - ISO labels covered by this fetch
- * @returns {{ isoWeeks: string[], rows: Array<{accountId, name, weeks}> }}
+ * @param {Object=} teamInfoById  - effectiveId → { teams[] } from fetchAllTeamMembers_
+ * @returns {{ isoWeeks: string[], rows: Array<{accountId, name, teams, weeks}> }}
  */
-function mergeCapacityGrid_(existingRows, fetched, windowIsoWeeks) {
+function mergeCapacityGrid_(existingRows, fetched, windowIsoWeeks, teamInfoById) {
   const windowSet = new Set(windowIsoWeeks);
 
   const isoSet = new Set(windowIsoWeeks);
@@ -319,7 +359,12 @@ function mergeCapacityGrid_(existingRows, fetched, windowIsoWeeks) {
       }
     });
 
-    rows.push({ accountId: id, name: name, weeks: weeks });
+    // Live membership wins; stored label is the fallback so a person Tempo
+    // stopped returning keeps their team rather than dropping to "(No team)".
+    const live = (teamInfoById && teamInfoById[id] && teamInfoById[id].teams) || [];
+    const teams = live.length ? live.join(" | ") : (oldRow && oldRow.teams) || "";
+
+    rows.push({ accountId: id, name: name, teams: teams, weeks: weeks });
   });
 
   rows.sort((a, b) => a.name.localeCompare(b.name));
@@ -392,6 +437,34 @@ function resolveCapacityEndpoint_(tempoToken, probeUserIds, fromStr, toStr) {
  * Non-numeric / blank week cells are skipped (blank = unknown).
  * @returns {{ isoWeeks: string[], rows: Object }} rows: accountId → {name, weeks}
  */
+// Fixed (non-week) leading columns written by writeCapacitySheet_:
+// Account ID · User · Team. The Team column was added 2026-08-24 so the
+// Delivery Health dashboard can join a person to their squad WITHOUT needing a
+// worklog row to carry it (see mergeCapacityGrid_).
+const CAP_FIXED_COLS_ = 3;
+
+/**
+ * How many fixed columns a STORED sheet has.
+ *
+ * ⚠️ THIS IS LOAD-BEARING, AND ITS FAILURE MODE IS SILENT DATA LOSS.
+ * readCapacitySheet_ feeds the freeze half of freeze-and-merge: whatever it
+ * fails to return is not frozen, and the next write permanently trims those
+ * columns. A sheet written before the Team column exists has TWO fixed columns.
+ * Had this stayed hard-coded at the new 3, the first run after deploy would
+ * have read every stored week one column out of place, produced garbage or an
+ * "unrecognized layout" empty, and silently trimmed up to 52 weeks of capacity
+ * history that cannot be re-fetched (Tempo only serves the live window).
+ *
+ * So the count is DETECTED, not assumed, and the old layout is read correctly
+ * one last time — the next write upgrades the sheet in place.
+ *
+ * @param {Array} hdrRow row 2 of the sheet
+ * @returns {number} 3 when the Team column is present, else 2
+ */
+function capFixedCols_(hdrRow) {
+  return String(hdrRow[2] || "").trim() === "Team" ? 3 : 2;
+}
+
 function readCapacitySheet_() {
   const empty = { isoWeeks: [], rows: {} };
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -411,10 +484,19 @@ function readCapacitySheet_() {
     return empty;
   }
 
-  // Week columns: C … last-1 (final column is "Total (hrs)").
+  // Week columns: first non-fixed column … last-1 (final column is "Total (hrs)").
+  // fixedCols is DETECTED so a pre-Team sheet still reads correctly — see
+  // capFixedCols_ for why getting this wrong destroys history.
+  const fixedCols = capFixedCols_(hdrRow);
+  if (fixedCols === 2) {
+    Logger.log(
+      `ℹ️ [readCapacitySheet_] Pre-Team layout detected (2 fixed columns). ` +
+        `Reading it as-is; this write upgrades the sheet to include "Team".`,
+    );
+  }
   const isoWeeks = [];
   const colByIso = {};
-  for (let c = 2; c < hdrRow.length - 1; c++) {
+  for (let c = fixedCols; c < hdrRow.length - 1; c++) {
     const iso = String(isoRow[c] || "").trim();
     if (/^\d{4}\.W\d{2}$/.test(iso)) {
       isoWeeks.push(iso);
@@ -431,7 +513,12 @@ function readCapacitySheet_() {
       const v = values[r][colByIso[iso]];
       if (typeof v === "number") weeks[iso] = v;
     });
-    rows[accountId] = { name: String(values[r][1] || "").trim(), weeks: weeks };
+    rows[accountId] = {
+      name: String(values[r][1] || "").trim(),
+      // "" on a pre-Team sheet — mergeCapacityGrid_ fills it from live Tempo.
+      teams: fixedCols === 3 ? String(values[r][2] || "").trim() : "",
+      weeks: weeks,
+    };
   }
 
   return { isoWeeks: isoWeeks, rows: rows };
@@ -559,10 +646,10 @@ function writeCapacitySheet_(grid) {
   sheet.clear();
 
   const isoWeeks = grid.isoWeeks;
-  const totalCols = 2 + isoWeeks.length + 1;
+  const totalCols = CAP_FIXED_COLS_ + isoWeeks.length + 1;
 
-  const isoRow = ["", ""];
-  const hdrRow = ["Account ID", "User"];
+  const isoRow = ["", "", ""];
+  const hdrRow = ["Account ID", "User", "Team"];
   isoWeeks.forEach((iso) => {
     const monday = mondayOfIsoWeek_(iso);
     const sunday = new Date(monday.getTime());
@@ -583,12 +670,13 @@ function writeCapacitySheet_(grid) {
       hasAny = true;
       return round2_(v);
     });
-    return [row.accountId, row.name].concat(cells, [hasAny ? round2_(total) : ""]);
+    return [row.accountId, row.name, row.teams || ""].concat(
+      cells, [hasAny ? round2_(total) : ""]);
   });
 
   const footer = new Array(totalCols).fill("");
   footer[1] = "TOTAL";
-  for (let c = 2; c < totalCols; c++) {
+  for (let c = CAP_FIXED_COLS_; c < totalCols; c++) {
     let sum = 0;
     let seen = false;
     dataRows.forEach((r) => {
@@ -615,7 +703,7 @@ function writeCapacitySheet_(grid) {
   footRange.setFontWeight("bold").setBackground(CONFIGCap.TOTAL_ROW_BG);
 
   sheet.setFrozenRows(2);
-  sheet.setFrozenColumns(2);
+  sheet.setFrozenColumns(CAP_FIXED_COLS_);
   sheet.hideColumns(1);
   sheet.autoResizeColumns(2, totalCols - 1);
 
@@ -818,10 +906,63 @@ function _test_capacityMerge_() {
   assertEq_(g4.rows[0].weeks, kept, "pre-floor cell values discarded");
 }
 
+/**
+ * The Team column, and the layout guard that keeps it from eating history.
+ *
+ * The guard is the point. readCapacitySheet_ feeds the FREEZE half of
+ * freeze-and-merge, so a misread stored sheet is not a display bug — it is
+ * unrecoverable data loss (Tempo only serves the live window, so trimmed
+ * history cannot be re-fetched).
+ */
+function _test_capacityTeamColumn_() {
+  Logger.log("🧪 _test_capacityTeamColumn_");
+
+  // Layout detection — the pre-Team sheet must still be read as 2 fixed cols.
+  assertEq_(capFixedCols_(["Account ID", "User", "Team", "Jul 20 - Jul 26 2026"]), 3,
+            "new layout detected as 3 fixed columns");
+  assertEq_(capFixedCols_(["Account ID", "User", "Jul 20 - Jul 26 2026"]), 2,
+            "PRE-TEAM layout detected as 2 — misreading this trims stored history");
+  assertEq_(capFixedCols_(["Account ID", "User"]), 2, "degenerate short header → 2, never a throw");
+
+  // Live membership lands in the row.
+  const teamInfo = { "id-ana": { teams: ["Squad One", "Squad Two"] } };
+  const g1 = mergeCapacityGrid_(
+    {}, { "id-ana": { name: "Ana", weeks: { "2026.W30": 40 } } }, ["2026.W30"], teamInfo);
+  assertEq_(g1.rows[0].teams, "Squad One | Squad Two", "live Tempo teams pipe-joined onto the row");
+
+  // Stored label survives when Tempo stops returning the person. Losing it
+  // would drop them into the dashboard's "(No team)" — the exact bug the
+  // column exists to close.
+  const g2 = mergeCapacityGrid_(
+    { "id-ana": { name: "Ana", teams: "Squad One", weeks: { "2026.W30": 40 } } },
+    {}, ["2026.W31"], {});
+  assertEq_(g2.rows[0].teams, "Squad One", "stored team kept when live membership is absent");
+
+  // Live wins over stored when both exist — membership is a CURRENT fact.
+  const g3 = mergeCapacityGrid_(
+    { "id-ana": { name: "Ana", teams: "Old Squad", weeks: {} } },
+    { "id-ana": { name: "Ana", weeks: { "2026.W30": 40 } } },
+    ["2026.W30"], teamInfo);
+  assertEq_(g3.rows[0].teams, "Squad One | Squad Two", "live membership supersedes the stored label");
+
+  // No team anywhere is an empty cell, never the string "undefined".
+  const g4 = mergeCapacityGrid_(
+    {}, { "id-bob": { name: "Bob", weeks: { "2026.W30": 8 } } }, ["2026.W30"], {});
+  assertEq_(g4.rows[0].teams, "", "no membership → empty cell, not \"undefined\"");
+}
+
 /** GAS-editor & Node entry point — grows as tasks add suites. */
 function runCapacityTests() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('runCapacityTests');
+  else Logger.log('⚠️ [runCapacityTests] requireMaintainer_ not in this project — running ungated.');
   _test_capacityWindow_();
   _test_scheduleBucketing_();
   _test_capacityMerge_();
+  _test_capacityTeamColumn_();
   Logger.log("✅ All capacity tests passed");
 }

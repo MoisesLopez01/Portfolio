@@ -277,6 +277,13 @@ const MERGE_MAP = {
  * Edit the values below, run once, then clear them from this function.
  */
 function storeCredentials() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('storeCredentials');
+  else Logger.log('⚠️ [storeCredentials] requireMaintainer_ not in this project — running ungated.');
   const props = PropertiesService.getScriptProperties();
   props.setProperty("TEMPO_API_TOKEN", "PASTE_TEMPO_API_TOKEN_HERE");
   props.setProperty("JIRA_EMAIL", "PASTE_JIRA_EMAIL_HERE");
@@ -295,6 +302,13 @@ function storeCredentials() {
  * or edit + run storeCredentials()).
  */
 function probeTempoAuth() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('probeTempoAuth');
+  else Logger.log('⚠️ [probeTempoAuth] requireMaintainer_ not in this project — running ungated.');
   const raw = PropertiesService.getScriptProperties().getProperty("TEMPO_API_TOKEN");
   if (!raw) {
     Logger.log("❌ TEMPO_API_TOKEN is not set in Script Properties.");
@@ -362,6 +376,13 @@ function getCredentials_() {
  * same window) but pointless.
  */
 function backfillPlanHistory() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('backfillPlanHistory');
+  else Logger.log('⚠️ [backfillPlanHistory] requireMaintainer_ not in this project — running ungated.');
   const weeksBack = CONFIGPlan.RETAIN_HISTORY_WEEKS;
   PLAN_BACKFILL_WEEKS_ = weeksBack;
   try {
@@ -393,6 +414,13 @@ function backfillPlanHistory() {
  * populate history the first time.
  */
 function fetchTempoPlannedTime() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('fetchTempoPlannedTime');
+  else Logger.log('⚠️ [fetchTempoPlannedTime] requireMaintainer_ not in this project — running ungated.');
   try {
     Logger.log(
       `🕐 [fetchTempoPlannedTime] Started at ${new Date().toISOString()}`,
@@ -2485,6 +2513,13 @@ function round2_(n) {
  * Run once from the Apps Script editor; check Apps Script > Triggers to confirm.
  */
 function createWeeklyTrigger() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('createWeeklyTrigger');
+  else Logger.log('⚠️ [createWeeklyTrigger] requireMaintainer_ not in this project — running ungated.');
   ScriptApp.getProjectTriggers()
     .filter((t) => t.getHandlerFunction() === "fetchTempoPlannedTime")
     .forEach((t) => ScriptApp.deleteTrigger(t));

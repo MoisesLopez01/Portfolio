@@ -45,6 +45,13 @@ const CONFIG_SNAP = {
  * blank never means zero.
  */
 function exportContributionSnapshot() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('exportContributionSnapshot');
+  else Logger.log('⚠️ [exportContributionSnapshot] requireMaintainer_ not in this project — running ungated.');
   const ctx = computeFiscalContext_();
   const quarter = ctx.prevGoalsQuarter;                       // e.g. "FY26Q4"
   const labels = buildPrevQWeeks_PS_(ctx).map(w => w.label);  // closed-quarter ISO weeks
@@ -144,6 +151,13 @@ function exportContributionSnapshot() {
  * Install once from the editor as the owner.
  */
 function setupSnapshotTrigger() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('setupSnapshotTrigger');
+  else Logger.log('⚠️ [setupSnapshotTrigger] requireMaintainer_ not in this project — running ungated.');
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === "runSnapshotIfQuarterStart_") ScriptApp.deleteTrigger(t);
   });
