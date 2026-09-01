@@ -55,6 +55,7 @@ const secSlice = [
 const repSlice = [
   extract(report, 'function isoWeekNum_PS_', '\n}'),
   extract(report, 'function isoWeekYear_PS_', '\n}'),
+  extract(report, 'function weeksInYear_PS_', '\n}'),
 ].join('\n');
 const usageSlice = [
   extract(usage, 'const USAGE_LOG_SHEET_', ';'),
@@ -68,7 +69,7 @@ const usageSlice = [
 // eslint-disable-next-line no-eval
 const api = eval('(function(){' + secSlice + '\n' + repSlice + '\n' + usageSlice +
   '\nreturn { SEC_, usageWeekLabel_, usageWeeksInYear_, usageWeekWindow_,' +
-  ' _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_ };})()');
+  ' _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_, weeksInYear_PS_ };})()');
 
 function reset() {
   Object.keys(props).forEach(k => delete props[k]);
@@ -89,6 +90,11 @@ eq('window crosses the year boundary at W52',
    api.usageWeekWindow_('2026.W2', 4), ['2025.W51', '2025.W52', '2026.W1', '2026.W2']);
 eq('weeksInYear 2025', api.usageWeeksInYear_(2025), 52);
 eq('weeksInYear 2026 (long ISO year)', api.usageWeeksInYear_(2026), 53);
+// Regression: weeksInYear_PS_ (report file) must agree with the ISO calendar
+// in EVERY timezone — it used to return 52 for the 53-week year 2026 in
+// negative-UTC-offset zones (Date.UTC construction read via local getters).
+eq('weeksInYear_PS_ handles a 53-week ISO year', api.weeksInYear_PS_(2026), 53);
+eq('weeksInYear_PS_ handles a 52-week ISO year', api.weeksInYear_PS_(2025), 52);
 ck('every window label is well-formed',
    api.usageWeekWindow_('2026.W36', 13).every(w => LABEL_RE.test(w)));
 eq('garbage currentWeek yields an empty window', api.usageWeekWindow_('nonsense', 13), []);

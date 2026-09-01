@@ -219,6 +219,16 @@ function cacheGetLarge_(cache, key) {
 // out the cold compute. Manager-scoped entries still warm on their first load
 // and stay warm for CACHE_TTL_SEC. The Refresh button always bypasses cache.
 function warmReportCache() {
+  // Reachable via google.script.run like every other global. getPSReportData
+  // enforces access on its own, so nothing leaks here — but a forced uncached
+  // rebuild is the most expensive call in the project, and letting any caller
+  // trigger it on demand is a quota tap. Trigger runs have no active user, so an
+  // empty email is the trigger itself and must pass.
+  const access = checkDashboardAccess();
+  if (access.email && !hasAdminPower_(access)) {
+    Logger.log(`⚠️ warmReportCache blocked for ${access.email} (${access.role})`);
+    return { ok: false, error: "Admin access required" };
+  }
   // One call rebuilds EVERY admin-scope team entry: getPSReportData's
   // team-warm loop (with the execution-scoped sheet memo) builds the other
   // teams in the same execution at in-memory cost. Per-team timing arrives
@@ -234,6 +244,15 @@ function warmReportCache() {
 // Replaces any existing warmer trigger, so it is safe to re-run after changing
 // CONFIG_PS.CACHE_WARM_EVERY_MIN.
 function setupCacheWarmer() {
+  // Every non-underscore function in a GAS project is reachable via
+  // google.script.run by anyone who can load the web app, so "run this from the
+  // editor" is a convention, not a control. This one installs a time trigger
+  // owned by the deployment owner — gate it like any other write.
+  const access = checkDashboardAccess();
+  if (!hasAdminPower_(access)) {
+    Logger.log(`⚠️ setupCacheWarmer blocked for ${access.email} (${access.role})`);
+    return { ok: false, error: "Admin access required" };
+  }
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === "warmReportCache")
     .forEach(t => ScriptApp.deleteTrigger(t));
@@ -242,6 +261,7 @@ function setupCacheWarmer() {
     .everyMinutes(CONFIG_PS.CACHE_WARM_EVERY_MIN)
     .create();
   Logger.log(`✅ Cache warmer installed — every ${CONFIG_PS.CACHE_WARM_EVERY_MIN} min, TTL ${CONFIG_PS.CACHE_TTL_SEC}s`);
+  return { ok: true, everyMinutes: CONFIG_PS.CACHE_WARM_EVERY_MIN };
 }
 
 function readWeightSettings_() {
@@ -271,7 +291,7 @@ function saveWeightSettings(weightsObj) {
     // Server-side authorization — hiding the UI button is not enough; this
     // function is callable directly via google.script.run by anyone with the link.
     const access = checkDashboardAccess();
-    if (!access.allowed || access.role !== "admin") return { ok: false, error: "Admin access required" };
+    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, error: "Admin access required" };
 
     const valid = ["goals","tracked","planned","rcr","kudos","si","pto"];
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -828,7 +848,7 @@ function seedScoringMatrix_(famsByTeam) {
 function getScoringConfig() {
   try {
     const access = checkDashboardAccess();
-    if (!access.allowed || access.role !== "admin") return { ok: false, denied: true };
+    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, denied: true };
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let seeded = false;
@@ -914,7 +934,7 @@ function getScoringConfig() {
 function saveScoringMatrix(payload) {
   try {
     const access = checkDashboardAccess();
-    if (!access.allowed || access.role !== "admin") return { ok: false, error: "Admin access required" };
+    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, error: "Admin access required" };
     const incoming = payload && payload.matrix;
     if (!incoming || typeof incoming !== "object") return { ok: false, error: "Invalid payload" };
 
@@ -1369,7 +1389,7 @@ function doGet(e) {
   const access = checkDashboardAccess();
   if (!access.allowed) {
     return HtmlService.createHtmlOutput(buildAccessDeniedPage_(access.email))
-      .setTitle("PS Dashboard — Access Restricted");
+      .setTitle((SEC_.PRODUCT_NAME || "Contribution") + " — Access Restricted");
   }
   return HtmlService.createHtmlOutputFromFile("PS Dashboard")
     .setTitle("PS Weekly Contribution Report")
@@ -1394,7 +1414,11 @@ function isoWeekYear_PS_(date) {
 }
 
 function weeksInYear_PS_(year) {
-  return isoWeekNum_PS_(new Date(Date.UTC(year, 11, 28)));
+  // Local construction on purpose: isoWeekNum_PS_ reads LOCAL getters, so a
+  // Date.UTC-built Dec 28 shifts to Dec 27 in negative-offset zones and
+  // reported 52 for 53-week ISO years (2026). Dec 28 is always in the last
+  // ISO week of its year.
+  return isoWeekNum_PS_(new Date(year, 11, 28));
 }
 
 function mondayOfIsoWeek_PS_(year, week) {
@@ -1830,12 +1854,29 @@ function findIdCol_(hdrs) {
 // DATA READERS
 // ============================================================
 
-function readPSRoster_() {
+// `bridgesOut` (optional) collects the rows this read DROPS — unknown Class,
+// intern title, or an inactive/terminated status — as
+// normName -> { name, supNorm }. They never enter the roster and never reach a
+// payload; they exist so resolveManagerScope_ can walk THROUGH them. Without
+// that bridge a director loses a whole sub-tree the moment one mid-level
+// manager's row is dropped (a termination whose reports have not been
+// re-parented yet is the common case) — silently, with nothing in the log.
+function readPSRoster_(bridgesOut) {
   const ss     = SpreadsheetApp.openById(getExternalSSIds_().roster);
   const roster = new Map();
-  readRosterTab_(ss, CONFIG_PS.SHEET_ROSTER,      roster, false);
-  readRosterTab_(ss, CONFIG_PS.SHEET_CONTRACTORS, roster, true);
+  readRosterTab_(ss, CONFIG_PS.SHEET_ROSTER,      roster, false, bridgesOut);
+  readRosterTab_(ss, CONFIG_PS.SHEET_CONTRACTORS, roster, true,  bridgesOut);
   return roster;
+}
+
+// Records one dropped row's org edge for readPSRoster_'s `bridgesOut` map.
+// A row with no Supervisor value bridges nothing and is skipped — a blank would
+// normalise to "" and match every other blank. First writer wins, so the Data
+// tab stays the sheet of record exactly as it is for kept rows.
+function recordRosterBridge_(bridgesOut, name, supRaw) {
+  if (!bridgesOut || !supRaw) return;
+  const norm = normPS_(name);
+  if (!bridgesOut.has(norm)) bridgesOut.set(norm, { name, supNorm: normPS_(supRaw) });
 }
 
 // Ingests one Roster-spreadsheet tab into `roster` (Map<normName → profile>).
@@ -1846,7 +1887,7 @@ function readPSRoster_() {
 // non-blank Termination/Release Date (2026-07-15: the tab is active-only — a date
 // there means released), and lose to the Data tab on a name collision (Data is
 // the sheet of record for FTEs).
-function readRosterTab_(ss, sheetName, roster, isCrewTab) {
+function readRosterTab_(ss, sheetName, roster, isCrewTab, bridgesOut) {
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     Logger.log(isCrewTab
@@ -1900,6 +1941,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab) {
     const name   = String(row[iName]  || "").trim();
     const cls    = String(iClass  !== -1 ? row[iClass]  : "").trim();
     const status = String(iStatus !== -1 ? row[iStatus] : "").trim().toLowerCase();
+    const supRaw = String(iSup !== -1 ? row[iSup] : "").trim();
     if (!name) return;
     // Company-wide roster: rows from every KNOWN Class participate (Professional
     // Services / Corporate / To be Allocated — see TEAM_KNOWN_CLASSES_ in PS Teams).
@@ -1908,6 +1950,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab) {
     // everyone, so it carries no signal — being in the tab is the crew marker.
     if (!isCrewTab && !classIsKnown_(cls)) {
       unknownClasses.set(cls || "(blank)", (unknownClasses.get(cls || "(blank)") || 0) + 1);
+      recordRosterBridge_(bridgesOut, name, supRaw);
       return;
     }
     const termDate   = iTermDate !== -1 ? String(row[iTermDate] || "").trim() : "";
@@ -1924,7 +1967,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab) {
     const isInactive = !!termDate ||
       (!isCrewTab && status && !onLeave &&
        /terminat|job offer|resign|left|inactive|former|offboard/i.test(status));
-    if (isInactive) return;
+    if (isInactive) { recordRosterBridge_(bridgesOut, name, supRaw); return; }
 
     // Ramp-up: in ramp-up if hired within threshold, unless manual flag overrides
     const hireDate   = iHireDate !== -1 ? parseDate_PS_(row[iHireDate]) : null;
@@ -1936,6 +1979,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab) {
     // exactly like inactive rows above, so no headcount/metric/aggregate ever sees them.
     if (CONFIG_PS.EXCLUDE_INTERNS && CONFIG_PS.INTERN_TITLE_PATTERN.test(jobTitle)) {
       droppedInterns.push(name);
+      recordRosterBridge_(bridgesOut, name, supRaw);
       return;
     }
 
@@ -1959,7 +2003,7 @@ function readRosterTab_(ss, sheetName, roster, isCrewTab) {
       internalId:     String(iInternalId !== -1 ? row[iInternalId] : "").trim(),
       employeeNumber: String(iEmpNum     !== -1 ? row[iEmpNum]     : "").replace(/,/g, "").trim(),
       keyLocation:    String(iLoc        !== -1 ? row[iLoc]        : "").trim() || "Unknown",
-      supervisor:     String(iSup        !== -1 ? row[iSup]        : "").trim() || "Unknown",
+      supervisor:     supRaw || "Unknown",
       jobTitle:       jobTitle,
       cls,
       dept:           String(iDept       !== -1 ? row[iDept]       : "").trim() || "",
@@ -2000,18 +2044,55 @@ function rosterIdMap_(roster, field) {
 }
 
 // BFS over the roster's Supervisor field to build the full org tree under a manager.
-// The manager's own norm name is included so their own row appears in the data.
-function resolveManagerScope_(roster, managerNorm) {
-  const scope = new Set([managerNorm]); // manager sees their own row
+// The anchor is included in the returned Set because it seeds the traversal — the
+// CALLER decides whether the manager keeps their own row. getPSReportData deletes
+// it (a manager's evaluation belongs to their manager); anything else that reuses
+// this must make that call deliberately.
+//
+// `bridges` (optional, from readPSRoster_) is the org edges of the rows the roster
+// read DROPPED — see recordRosterBridge_. The walk can only pass through people it
+// can see, so without them one dropped mid-level manager severs everything beneath
+// them: a director whose sub-manager was terminated (reports not yet re-parented),
+// carries an unknown Class, or holds an intern title would simply stop seeing that
+// half of their org, with no warning anywhere. Bridge nodes are traversal-only —
+// they enter `seen`, never `scope`, so a dropped row still reaches no payload and
+// no aggregate. They widen nothing either: every bridge is a real Supervisor edge
+// from the sheet, so the tree it rebuilds is the tree that actually exists.
+function resolveManagerScope_(roster, managerNorm, bridges) {
+  const scope = new Set([managerNorm]); // traversal seed — see the note above
+  const seen  = new Set([managerNorm]); // scope ∪ off-roster bridge nodes
   const queue = [managerNorm];
+  const walkedThrough = new Map();      // bridge norm → display name, for the log
   while (queue.length > 0) {
     const supNorm = queue.shift();
+    let found = 0;
     roster.forEach((profile, norm) => {
-      if (!scope.has(norm) && normPS_(profile.supervisor) === supNorm) {
+      if (!seen.has(norm) && normPS_(profile.supervisor) === supNorm) {
+        seen.add(norm);
         scope.add(norm);
         queue.push(norm); // recurse — this person may also supervise others
+        found++;
       }
     });
+    if (bridges) {
+      bridges.forEach((edge, norm) => {
+        if (!seen.has(norm) && !roster.has(norm) && edge.supNorm === supNorm) {
+          seen.add(norm);
+          queue.push(norm); // traversal only — a dropped row never joins `scope`
+          found++;
+        }
+      });
+    }
+    // Only a bridge that actually led somewhere is worth a log line.
+    if (found > 0 && bridges && bridges.has(supNorm) && !roster.has(supNorm)) {
+      walkedThrough.set(supNorm, bridges.get(supNorm).name);
+    }
+  }
+  if (walkedThrough.size > 0) {
+    Logger.log(`ℹ️ Org tree "${managerNorm}": walked THROUGH ${walkedThrough.size} dropped roster ` +
+               `row(s) to reach the people under them — ${[...walkedThrough.values()].join(", ")}. ` +
+               `Those rows stay out of the payload; their reports are in scope. Re-parent them in ` +
+               `the Roster sheet, or add their Class to TEAM_KNOWN_CLASSES_, to clear this.`);
   }
   return scope;
 }
@@ -3795,24 +3876,148 @@ function subtractPTOFromPlanned_(plannedAll, ptoUsageByWeek) {
   return out;
 }
 
-// Cache key for one (team × user scope) report entry — admins/viewers share
-// one entry per team; managers get per-email entries (scoped payloads differ).
+// True for the roles that see the WHOLE roster — superadmin, admin, viewer.
+// Everyone else is manager-scoped. Kept as one predicate so the cache key and
+// the scope branch can never disagree about who gets a full-roster payload.
+function seesFullRoster_(access) {
+  return access.role === "superadmin" || access.role === "admin" || access.role === "viewer";
+}
+
+// Cache key for one (team × user scope) report entry — superadmins/admins/viewers
+// share one entry per team; managers get per-email entries (scoped payloads differ).
+//
+// The shared entry is deliberately IMPERSONAL: it is built once (usually by the
+// warmer) and then personalised per caller by applySelfExclusion_ on the way out.
+// Never bake anything caller-specific into it — see the userRole note there.
 function reportCacheKey_(ver, teamKey, access) {
-  return (access.role === "admin" || access.role === "viewer")
+  return seesFullRoster_(access)
     ? "ps_v" + ver + "_" + teamKey + "_admin"
     : "ps_v" + ver + "_" + teamKey + "_" + access.email;
 }
 
-function getPSReportData(bustCache, teamKey) {
+// ── Self-exclusion + per-caller personalisation ──────────────────────────────
+// Applied to EVERY payload on its way out of getPSReportData, cache hit or fresh
+// compute alike. Two jobs, both of which must happen after the cache read:
+//
+//  1. userRole/userEmail are stamped per caller. The full-roster entry is shared
+//     across superadmin, admin and viewer, so the role frozen into it at build
+//     time belongs to whoever built it — usually the warmer. Left alone, a viewer
+//     landing on a superadmin-built entry would be handed userRole:"superadmin"
+//     and with it the 📈 Performance Record tab and the Access Control menu.
+//
+//  2. The caller's own roster row is stripped unless they are a superadmin.
+//     A rocketeer's evaluation belongs on their MANAGER's dashboard, never their
+//     own — so their row leaves employees[], the Top Rocketeers board, the goals
+//     audit and every per-person map keyed by normName. Team aggregates keep
+//     counting them: those are team truth, and one row among many is not a
+//     readable evaluation. Manager scope goes further and drops the anchor before
+//     computing (see resolveManagerScope_'s caller), so a small org tree cannot
+//     be back-solved from its own totals.
+function applySelfExclusion_(payload, access) {
+  if (!payload || payload.ok === false) return payload;
+
+  payload.userRole  = access.role;
+  payload.userEmail = access.email;
+  payload.meta      = payload.meta || {};
+  // 👁 View-as stamp — who is being previewed, and by whom. Per-caller like the
+  // role above: the shared cache entry never carries it.
+  payload.meta.viewAs = access.viewAs || null;
+
+  if (isSuperAdmin_(access)) {
+    payload.meta.selfExcluded = false;
+    payload.meta.selfName     = null;
+    return payload;
+  }
+
+  const selfName = access.selfRosterName || null;
+  payload.meta.selfName = selfName;
+
+  if (!selfName) {
+    // Nothing to strip — and the flag must SAY so. selfExcluded drives the header
+    // badge's "Your own record is not shown here", so claiming true here tells the
+    // caller their row is hidden while it is sitting in Top Rocketeers. The cause is
+    // always the same: their Google account did not match an active roster Email
+    // cell (alias, blank cell, or a row dropped as inactive/intern), so
+    // _resolveSelfRosterName_ returned null. Silent non-enforcement plus a false
+    // assurance is worse than either alone, so it is flagged and logged instead.
+    payload.meta.selfExcluded   = false;
+    payload.meta.selfUnresolved = true;
+    Logger.log(`⚠️ Self-exclusion (${access.role}): ${access.email} did not match an active ` +
+               `roster Email cell — NOTHING was stripped and their own record IS visible to them. ` +
+               `Fix the roster Email cell, or make the omission deliberate by granting super-admin.`);
+    return payload;
+  }
+
+  payload.meta.selfExcluded   = true;
+  payload.meta.selfUnresolved = false;
+
+  const selfNorm = normPS_(selfName);
+  const drop = obj => { if (obj && typeof obj === "object") delete obj[selfNorm]; };
+
+  if (Array.isArray(payload.employees)) {
+    payload.employees = payload.employees.filter(e => e.normName !== selfNorm);
+  }
+  if (payload.topPerformers && Array.isArray(payload.topPerformers.performers)) {
+    payload.topPerformers.performers =
+      payload.topPerformers.performers.filter(p => p.normName !== selfNorm);
+  }
+  if (Array.isArray(payload.goalsAudit)) {
+    payload.goalsAudit = payload.goalsAudit.filter(a => a.normName !== selfNorm);
+  }
+  if (Array.isArray(payload.ptoQ4History)) payload.ptoQ4History.forEach(w => drop(w.byEmp));
+  if (payload.goalsQ4Hist) Object.keys(payload.goalsQ4Hist).forEach(wk => drop(payload.goalsQ4Hist[wk]));
+  drop(payload.meta.rcrByEmployee);
+  drop(payload.meta.siByEmployee);
+
+  Logger.log(`Self-exclusion (${access.role}): removed "${selfName}" from the payload for ${access.email}`);
+  return payload;
+}
+
+function getPSReportData(bustCache, teamKey, viewAs) {
   try {
     const execT0 = Date.now();   // team-warm loop budgets against the ~6-min execution cap
-    const access = checkDashboardAccess();
+    const caller = checkDashboardAccess();
 
-    if (!access.allowed) {
-      return { ok: false, denied: true, email: access.email };
+    if (!caller.allowed) {
+      return { ok: false, denied: true, email: caller.email, accessInfo: accessDeniedInfo_() };
     }
 
-    const team = teamByKey_(teamKey);   // unknown/missing → services (legacy callers unchanged)
+    // ── 👁 View as (super admins only) ──────────────────────────────────────
+    // Swaps in the TARGET's verdict for everything below — team pin, cache key,
+    // org-tree scope, self-exclusion — so the payload is what that person would
+    // truly be served. Throws for any other caller. The real identity still
+    // gated above, and no other endpoint honours the target: the preview is
+    // read-only by construction. See resolveViewAsAccess_ in PS Security.js.
+    const access = resolveViewAsAccess_(caller, viewAs);
+    // Every denial carries who was being previewed, so the frontend can show
+    // "this person would be denied — <reason>" instead of the denied page.
+    const denied_ = extra => Object.assign(
+      { ok: false, denied: true, email: access.email, accessInfo: accessDeniedInfo_(),
+        viewAs: access.viewAs || null }, extra || {});
+
+    if (!access.allowed) return denied_();
+
+    let team = teamByKey_(teamKey);   // unknown/missing → services (legacy callers unchanged)
+
+    // ── Team pin (viewers) ────────────────────────────────────────────────────
+    // A team-scoped role sees ONE org team — their own, derived from their roster
+    // Class. The requested teamKey is OVERRIDDEN here, never merely validated, and
+    // it happens BEFORE the cache key is built for two reasons:
+    //   • a viewer must not be able to widen their own view by asking for another
+    //     team (the request comes from the client and is not trustworthy);
+    //   • viewers share the per-team `_admin` cache entries with admins, so serving
+    //     R&D data under the Services key would poison what every admin then reads.
+    // A viewer with no roster row (an externally granted stakeholder) resolves to
+    // null and keeps the company-wide view — the admin who added them chose that.
+    if (isTeamScoped_(access)) {
+      const pinned = resolveTeamScope_(access);
+      if (pinned) {
+        if (pinned !== team.key) {
+          Logger.log(`Team pin: ${access.email} requested "${team.key}" → serving "${pinned}"`);
+        }
+        team = teamByKey_(pinned);
+      }
+    }
 
     // ── CacheService — gzip-chunked cache per (team × user scope), see cachePutLarge_.
     // TTL = CONFIG_PS.CACHE_TTL_SEC; warmReportCache rewrites the admin entries
@@ -3827,13 +4032,18 @@ function getPSReportData(bustCache, teamKey) {
     if (!bustCache) {
       const _hit = cacheGetLarge_(_sCache, _cacheKey);
       if (_hit) {
-        try { return JSON.parse(_hit); } catch(ce) { /* corrupt entry — fall through to live read */ }
+        // JSON.parse hands back a fresh object every time, so applySelfExclusion_
+        // can mutate it freely — the cached string is untouched and stays shared.
+        try { return applySelfExclusion_(JSON.parse(_hit), access); } catch(ce) { /* corrupt entry — fall through to live read */ }
       }
     }
 
     const weights = readWeightSettings_();
     const weeks   = buildWeekWindow_PS_();
-    const fullRoster = readPSRoster_();
+    // Org edges of the rows readPSRoster_ drops — resolveManagerScope_ walks
+    // through them so a dropped mid-level manager cannot hide their sub-tree.
+    const rosterBridges = new Map();
+    const fullRoster = readPSRoster_(rosterBridges);
 
     // Team tagging needs the Job Catalog (JF004 detection). Read once here and
     // pass through to computePSReport_ (which previously read it itself).
@@ -3874,7 +4084,7 @@ function getPSReportData(bustCache, teamKey) {
     let managerScopeName = null;
     let roster           = fullRoster;
 
-    if (access.role !== "admin" && access.role !== "viewer") {
+    if (!seesFullRoster_(access)) {
       // All manager-role users arrive with delegateScopeName resolved by checkDashboardAccess().
       // Explicit delegates (Settings tab) and auto-detected roster supervisors both use this path.
       if (access.delegateScopeName) {
@@ -3886,18 +4096,47 @@ function getPSReportData(bustCache, teamKey) {
       if (managerNorm) {
         // Guard: confirm the scope anchor exists in the active roster or has direct reports.
         // Catches typo'd delegateScopeNames before they silently produce an empty dashboard.
+        // Bridges count as evidence the anchor exists: a supervisor whose only
+        // direct reports were dropped rows is still a real supervisor, and the
+        // walk may well reach live people below them. Saying "no roster entry
+        // matches" there would be false; if the tree really is empty the next
+        // guard says so accurately.
         const scopeIsValid = fullRoster.has(managerNorm) ||
-          [...fullRoster.values()].some(p => normPS_(p.supervisor) === managerNorm);
+          [...fullRoster.values()].some(p => normPS_(p.supervisor) === managerNorm) ||
+          [...rosterBridges.values()].some(b => b.supNorm === managerNorm);
         if (!scopeIsValid) {
           Logger.log(`⚠️ Access denied — scope "${managerScopeName}" not found in active roster: ${access.email}`);
-          return { ok: false, denied: true, email: access.email };
+          return denied_({
+                   reason: `No roster entry matches "${managerScopeName}". If this is a delegate ` +
+                           `entry, the supervisor name must match the roster spelling exactly.` });
         }
-        const scope = resolveManagerScope_(fullRoster, managerNorm);
+        const scope = resolveManagerScope_(fullRoster, managerNorm, rosterBridges);
+        // The anchor's OWN row leaves the scope: a manager's evaluation is their
+        // manager's business, so it never appears on their own dashboard — and
+        // dropping it before compute (rather than stripping it after) keeps it
+        // out of the org tree's aggregates too, which matters when the tree is
+        // small enough that totals would give the missing row away. A delegate
+        // sees exactly what the supervisor they proxy for sees, so the anchor
+        // goes for them as well.
+        scope.delete(managerNorm);
+        if (scope.size === 0) {
+          // PS Security's roster read and readPSRoster_ do NOT filter identically:
+          // the report additionally drops interns (EXCLUDE_INTERNS) and rows whose
+          // Class is unknown. So a supervisor can clear the access gate — "has ≥1
+          // active direct report" — and still have an empty tree here. Telling them
+          // "Access Restricted" would be a lie: their access is fine, the report
+          // simply covers nobody they manage. Say that instead.
+          Logger.log(`⚠️ Empty scope — "${managerScopeName}" has reports on the roster but none ` +
+                     `inside the report population (interns and unknown-Class rows are excluded): ${access.email}`);
+          return denied_({
+                   reason: "Your team is not covered by this report. Everyone reporting to you is " +
+                           "either an intern or outside the job families this dashboard tracks." });
+        }
         roster = new Map([...fullRoster].filter(([n]) => scope.has(n)));
-        Logger.log(`Manager scope resolved: ${scope.size} employees in org tree of "${managerScopeName}"`);
+        Logger.log(`Manager scope resolved: ${scope.size} employees under "${managerScopeName}" (own row excluded)`);
       } else {
         Logger.log(`Access denied (no roster scope): ${access.email}`);
-        return { ok: false, denied: true, email: access.email };
+        return denied_();
       }
     }
 
@@ -3905,7 +4144,15 @@ function getPSReportData(bustCache, teamKey) {
     // Serve the requested team, or fall back to the caller's first non-empty team
     // (registry order) when the request is empty in their scope — server-side
     // gating, the frontend snaps its toggle to meta.team.
-    const teamsInScope = availableTeams_(roster);
+    // Teams this caller may switch between — drives meta.availableTeams (the
+    // frontend toggle), the team-warm loop and the background prefetch. A pinned
+    // viewer gets exactly one entry, so the toggle offers nothing to widen to and
+    // no execution time is spent warming teams they will never be served.
+    let teamsInScope = availableTeams_(roster);
+    if (isTeamScoped_(access)) {
+      const pinnedList = teamsInScope.filter(t => t.key === team.key);
+      if (pinnedList.length) teamsInScope = pinnedList;
+    }
     let servedTeam = team;
     let teamScoped = teamRoster_(roster, team.key);
     if (teamScoped.size === 0) {
@@ -3917,6 +4164,8 @@ function getPSReportData(bustCache, teamKey) {
     Logger.log(`Team "${servedTeam.key}": ${teamScoped.size} of ${roster.size} in-scope employees`);
 
     const result = computePSReport_(access, teamScoped, managerScopeName, weeks, weights, servedTeam, jobCatalog, teamsInScope);
+    // Cache BEFORE personalising: JSON.stringify runs first, so the stored copy
+    // is the impersonal one every caller can safely be served from.
     cachePutLarge_(_sCache, _cacheKey, JSON.stringify(result), CONFIG_PS.CACHE_TTL_SEC);
 
     // ── Team-warm: build the caller's OTHER teams in this same execution ────
@@ -3946,7 +4195,7 @@ function getPSReportData(bustCache, teamKey) {
       }
     });
 
-    return result;
+    return applySelfExclusion_(result, access);
   } catch(e) {
     Logger.log(`❌ getPSReportData: ${e.message}\n${e.stack}`);
     return { ok: false, error: e.message };
@@ -4327,7 +4576,7 @@ function callGeminiNarrative(prompt) {
     // so a broad/open link can't drive the Gemini quota with arbitrary prompts.
     const access = checkDashboardAccess();
     if (!access.allowed) return { ok: false, error: 'Unauthorized.' };
-    if (access.role !== 'admin') return { ok: false, error: 'Admin access required' };
+    if (!hasAdminPower_(access)) return { ok: false, error: 'Admin access required' };
 
     // Lightweight per-user rate limit: cap calls per rolling window to contain
     // cost/abuse if the link is shared widely. Keyed by email (or "anon" when the
