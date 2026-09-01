@@ -268,6 +268,15 @@ ck('only doGet calls the logger — exactly one call site in the report file',
    !/logDashboardVisit_/.test(extract(report, 'function warmReportCache', '\n}')));
 ck('SEC_.BUILD was bumped for this change', /BUILD:\s*"2026\.W36-usage"/.test(security));
 
+// ── 6. Frontend wiring (source checks) ───────────────────────────────────────
+const html = fs.readFileSync(path.join(dir, 'PS Dashboard.html'), 'utf8');
+ck('VIEWS has a superadmin-only usage entry, hidden under 👁 View as',
+   /id: "usage"[^\n]*roles: \["superadmin"\][^\n]*hideInPreview: true/.test(html));
+ck('the pane exists', /<div id="tabUsage" class="tab-pane">/.test(html));
+ck('RENDERERS dispatches usage → renderUsageTab_', /usage:\s*function\(\) \{ renderUsageTab_\(\); \}/.test(html));
+ck('the tab lazy-loads via getUsageAnalytics', /\.getUsageAnalytics\(\);/.test(html));
+ck('STATE caches the result per session', /usageData:\s*null/.test(html));
+
 console.log(fail === 0
   ? '✅ usage-analytics-checks: ' + pass + ' checks passed'
   : '❌ usage-analytics-checks: ' + fail + ' of ' + (pass + fail) + ' checks FAILED');
