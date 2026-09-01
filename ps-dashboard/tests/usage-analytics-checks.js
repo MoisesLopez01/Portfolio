@@ -122,9 +122,14 @@ const w36 = R.weeks[R.weeks.length - 1];
 eq('13 weeks, oldest first, current last',
    [R.weeks.length, R.weeks[0].week, w36.week], [13, '2026.W24', '2026.W36']);
 eq('uniques: a + d, never blank or denied', w36.uniqueVisitors, 2);
-eq('total loads counts everything incl. denied and blank', w36.totalLoads, 4);
+eq('total loads counts everything incl. denied and blank-email rows', w36.totalLoads, 5);
 eq('denied counted separately', w36.denied, 1);
 eq('byRole counts allowed identified loads only', w36.byRole, { manager: 2, viewer: 1 });
+const RD = api.computeUsageRollup_(
+  [{ ts: '2026-09-01T08:00:00Z', week: '2026.W36', email: '', role: 'denied', allowed: false }],
+  ELIGIBLE, '2026.W36');
+eq('a blank-email denied hit still counts as denied + a load',
+   [RD.weeks[RD.weeks.length - 1].denied, RD.weeks[RD.weeks.length - 1].totalLoads], [1, 1]);
 const pa = R.people.find(p => p.email === 'a@x.com');
 const pb = R.people.find(p => p.email === 'b@x.com');
 eq('a: 2 this week, 3 in last 4 weeks', [pa.visitsThisWeek, pa.visits4Weeks], [2, 3]);

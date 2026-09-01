@@ -64,12 +64,14 @@ function computeUsageRollup_(logRows, eligible, currentWeek) {
     const email = String(r.email || "").toLowerCase().trim();
     const week  = String(r.week || "");
     const agg   = weekAgg[week];
-    if (agg && email) {
+    if (agg) {
       agg.totalLoads++;
       if (!r.allowed) { agg.denied++; return; }
-      agg.uniques[email] = true;
-      const role = String(r.role || "?");
-      agg.byRole[role] = (agg.byRole[role] || 0) + 1;
+      if (email) {
+        agg.uniques[email] = true;
+        const role = String(r.role || "?");
+        agg.byRole[role] = (agg.byRole[role] || 0) + 1;
+      }
     }
     if (!r.allowed || !email) return;
     const p = perEmail[email] ||
