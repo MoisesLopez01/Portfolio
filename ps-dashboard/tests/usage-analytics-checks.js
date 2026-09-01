@@ -276,6 +276,8 @@ ck('the pane exists', /<div id="tabUsage" class="tab-pane">/.test(html));
 ck('RENDERERS dispatches usage → renderUsageTab_', /usage:\s*function\(\) \{ renderUsageTab_\(\); \}/.test(html));
 ck('the tab lazy-loads via getUsageAnalytics', /\.getUsageAnalytics\(\);/.test(html));
 ck('STATE caches the result per session', /usageData:\s*null/.test(html));
+ck('transparency copy appears in BOTH surfaces (footer + Data Reference)',
+   (html.match(/Page visits are logged \(who and when\) to measure adoption/g) || []).length >= 2);
 
 console.log(fail === 0
   ? '✅ usage-analytics-checks: ' + pass + ' checks passed'

@@ -1877,6 +1877,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <div class="dr-section-title">Purpose</div>
           <p class="dr-p">The PS Weekly Contribution Report consolidates key engagement and performance metrics for the Professional Services team across a rolling 5-week window. It is designed to give PS leadership a clear, weekly view of team health — what is being delivered, how goals are progressing, and where individuals may need support.</p>
           <p class="dr-p">Data is refreshed weekly. The dashboard reflects exports as of the last update date shown at the top of the page — it is not a live feed. Most metrics cover the past two completed weeks plus the current week; some, like RCR and SI, are updated on a monthly or quarterly cycle.</p>
+          <p class="dr-p">Page visits are logged (who and when) to measure adoption. Usage analytics are visible to super admins only.</p>
         </div>
 
         <div class="dr-section">
@@ -2300,6 +2301,11 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         <!-- Rendered by renderUsageTab_() after data loads -->
       </div>
     </div>
+  </div>
+
+  <!-- Transparency: the access trace records who opened the page and when. -->
+  <div style="text-align:center;font-size:10.5px;color:var(--muted);padding:10px 0 18px">
+    Page visits are logged (who and when) to measure adoption.
   </div>
 
 </main>
