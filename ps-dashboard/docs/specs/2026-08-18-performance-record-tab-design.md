@@ -24,6 +24,9 @@ the tab only makes the data legible.
 
 - New `VIEWS` entry in `PS Dashboard.html`:
   `{ id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: ["admin", "manager"] }`
+  *(Shipped superadmin-only first; 2026.W36 opened it to every role (`roles: null`) —
+  each sees only what their payload scope allows, own row excluded for everyone but
+  super admins.)*
 - Role gating enforced in `switchTab()` (forbidden id → Overview), buttons hidden by
   `applyRoleToNav_()` — both derive from `VIEWS`, no extra wiring.
 - Managers see only their org tree (existing manager scoping in the payload).

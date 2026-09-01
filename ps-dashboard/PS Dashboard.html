@@ -1136,9 +1136,64 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 
 /* ── ROLE BADGE ── */
 .role-badge { display: inline-flex; align-items: center; gap: 5px; border-radius: 99px; padding: 4px 11px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.role-badge-superadmin { background: #FFF7ED; color: #9A3412; border: 1px solid #FED7AA; }
+.role-badge-orgadmin { background: #ECFEFF; color: #155E75; border: 1px solid #A5F3FC; }
 .role-badge-admin   { background: #EEF4FF; color: #0D3B8C; border: 1px solid #BFDBFE; }
 .role-badge-viewer  { background: #F1F8F4; color: #1B5E20; border: 1px solid #A7F3D0; }
 .role-badge-manager { background: #F5F3FF; color: #5B21B6; border: 1px solid #DDD6FE; }
+/* 👁 View-as: the badge names the PREVIEWED role, so it must not look like a real one */
+.role-badge-viewas  { background: #FFFBEB; color: #92400E; border: 1px dashed #F59E0B; }
+
+/* ── 👁 VIEW AS — banner + picker ── */
+.viewas-banner {
+  display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 24px; font-size: 12px; font-weight: 600; color: #92400E;
+  background: #FFFBEB; border-bottom: 1px solid #FCD34D;
+}
+.viewas-banner.on { display: flex; }
+.viewas-banner strong { font-weight: 800; }
+.viewas-banner .va-role { display: inline-block; border-radius: 99px; padding: 2px 8px; font-size: 10px;
+  font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: #FEF3C7; border: 1px solid #F59E0B; }
+.viewas-banner .va-note { color: #B45309; font-weight: 500; }
+.viewas-banner .va-actions { margin-left: auto; display: flex; gap: 8px; }
+.va-btn { border-radius: 8px; padding: 6px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+  font-family: inherit; border: 1px solid #F59E0B; background: #fff; color: #92400E; }
+.va-btn:hover { background: #FEF3C7; }
+.va-btn-primary { background: #92400E; color: #fff; border-color: #92400E; }
+.va-btn-primary:hover { background: #7C2D12; }
+
+.va-modal { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center;
+  padding: 60px 16px; background: rgba(15,25,65,.45); }
+.va-modal.open { display: flex; }
+.va-dialog { width: 100%; max-width: 640px; max-height: calc(100vh - 100px); display: flex; flex-direction: column;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(15,25,65,.3); overflow: hidden; }
+.va-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.va-head h2 { font-size: 14px; font-weight: 800; color: var(--void); margin: 0; }
+.va-head p  { font-size: 11.5px; color: var(--slate); margin: 2px 0 0; }
+.va-close { margin-left: auto; border: none; background: transparent; font-size: 18px; cursor: pointer; color: var(--slate); }
+.va-close:hover { color: var(--void); }
+.va-search { padding: 10px 18px; border-bottom: 1px solid var(--border); }
+.va-search input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); background: var(--input-bg);
+  color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; }
+.va-list { overflow-y: auto; padding: 6px 8px 10px; }
+.va-group { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  padding: 10px 10px 4px; }
+.va-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px;
+  border: none; background: transparent; border-radius: 8px; cursor: pointer; font-family: inherit; color: var(--text); }
+.va-row:hover { background: var(--hover-row); }
+.va-row.current { outline: 1px dashed #F59E0B; }
+.va-row .va-name { font-size: 13px; font-weight: 700; color: var(--void); }
+.va-row .va-sub  { font-size: 11px; color: var(--slate); }
+.va-row .va-meta { margin-left: auto; text-align: right; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.va-empty { padding: 24px; text-align: center; font-size: 12.5px; color: var(--slate); }
+body.dark-mode .viewas-banner { background: #2A1F0A; border-color: #78350F; color: #FCD34D; }
+body.dark-mode .viewas-banner .va-role { background: #3B2A0D; border-color: #B45309; }
+body.dark-mode .viewas-banner .va-note { color: #FBBF24; }
+body.dark-mode .va-btn { background: #141C3D; color: #FCD34D; border-color: #B45309; }
+body.dark-mode .va-btn:hover { background: #1E295A; }
+body.dark-mode .va-btn-primary { background: #B45309; color: #fff; }
+body.dark-mode .role-badge-viewas { background: #2A1F0A; color: #FCD34D; border-color: #B45309; }
 
 /* ── SECURITY SECTION ── */
 .sec-divider { border: none; border-top: 2px solid var(--border); margin: 20px 0 24px; }
@@ -1150,8 +1205,48 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 @media (max-width: 640px) { .sec-grid { grid-template-columns: 1fr; } }
 .sec-field-label { font-size: 11px; font-weight: 800; color: var(--void); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
 .sec-badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 99px; font-size: 9px; font-weight: 800; letter-spacing: .03em; }
+.sec-badge-super  { background: #FFF7ED; color: #9A3412; }
+.sec-badge-org    { background: #ECFEFF; color: #155E75; }
 .sec-badge-admin  { background: #EEF4FF; color: #0D3B8C; }
+.sec-badge-manager { background: #F5F3FF; color: #5B21B6; }
 .sec-badge-viewer { background: #F1F8F4; color: #1B5E20; }
+/* ── ACCESS CONTROL LIST EDITOR ──
+   Four newline-joined <textarea>s were unreadable past a dozen entries: no count,
+   no search, and removing one address meant hunting it down in a 4-line scroll box.
+   Each list is now a filterable card of removable rows, with a bulk-paste mode
+   kept for mass edits. */
+.acl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 900px) { .acl-grid { grid-template-columns: 1fr; } }
+.acl-card { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 12px; display: flex; flex-direction: column; min-width: 0; }
+.acl-card-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+.acl-title { font-size: 11px; font-weight: 800; color: var(--void); text-transform: uppercase; letter-spacing: .05em; }
+.acl-count { margin-left: auto; font-size: 10px; font-weight: 800; color: var(--muted); background: var(--th-bg); border: 1px solid var(--border); border-radius: 99px; padding: 1px 8px; }
+.acl-sub { font-size: 11px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
+.acl-filter { width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 11px; margin-bottom: 6px; background: var(--input-bg); color: var(--text); outline: none; }
+.acl-filter:focus-visible { border-color: var(--orbe); }
+.acl-list { max-height: 208px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
+.acl-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 10px; border-bottom: 1px solid var(--border); }
+.acl-row:last-child { border-bottom: none; }
+.acl-row:hover { background: var(--surface); }
+.acl-email { flex: 1; min-width: 0; font-family: monospace; font-size: 11.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acl-scope { flex-shrink: 0; max-width: 42%; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acl-del { flex-shrink: 0; border: none; background: none; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 1px 6px; border-radius: 5px; }
+.acl-del:hover { background: #FEE2E2; color: #B71C1C; }
+.acl-pin { flex-shrink: 0; font-size: 10px; color: var(--muted); padding: 1px 6px; }
+.acl-empty { padding: 14px 10px; font-size: 11px; color: var(--muted); text-align: center; }
+.acl-add { display: flex; gap: 6px; margin-top: 7px; }
+.acl-add input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 11.5px; background: var(--input-bg); color: var(--text); outline: none; }
+.acl-add input:focus-visible { border-color: var(--orbe); }
+.acl-btn { border: 1px solid var(--border); background: var(--card-bg); color: var(--text); border-radius: 6px; padding: 5px 11px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.acl-btn:hover { border-color: var(--orbe); }
+.acl-btn-primary { background: var(--orbe); border-color: var(--orbe); color: #fff; }
+.acl-bulk-area { min-height: 150px; }
+.acl-actions { display: flex; gap: 6px; margin-top: 7px; }
+.acl-foot { display: flex; align-items: center; gap: 10px; margin-top: 7px; min-height: 15px; }
+.acl-link { border: none; background: none; padding: 0; font-size: 10.5px; font-weight: 700; color: var(--muted); cursor: pointer; text-decoration: underline; }
+.acl-link:hover { color: var(--orbe); }
+.acl-msg { font-size: 10.5px; font-weight: 700; color: #B45309; margin-left: auto; text-align: right; }
+.acl-card.acl-dimmed { opacity: .5; }
 .sec-textarea { width: 100%; min-height: 90px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: monospace; color: var(--text); background: #fff; resize: vertical; outline: none; transition: border-color .15s; line-height: 1.7; }
 .sec-textarea:focus-visible { border-color: var(--orbe); }
 .sec-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
@@ -1538,6 +1633,24 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     Refresh
   </button>
 </header>
+
+<!-- 👁 VIEW AS — banner (super admins previewing someone else's dashboard) -->
+<div class="viewas-banner" id="viewAsBanner" role="status" aria-live="polite"></div>
+
+<!-- 👁 VIEW AS — target picker -->
+<div class="va-modal" id="viewAsModal" onclick="if (event.target === this) closeViewAsPicker()">
+  <div class="va-dialog" role="dialog" aria-modal="true" aria-labelledby="viewAsTitle">
+    <div class="va-head">
+      <div>
+        <h2 id="viewAsTitle">👁 View dashboard as…</h2>
+        <p>Preview exactly what a manager or director is served — their scope, team pin and own-row exclusion. Read-only.</p>
+      </div>
+      <button class="va-close" onclick="closeViewAsPicker()" aria-label="Close">×</button>
+    </div>
+    <div class="va-search"><input type="text" id="viewAsSearch" placeholder="Search by name, email, title or role…" oninput="renderViewAsList_()" autocomplete="off"></div>
+    <div class="va-list" id="viewAsList"><div class="va-empty">Loading people…</div></div>
+  </div>
+</div>
 
 <!-- FILTER BAR -->
 <div class="filter-bar" id="filterBar">
@@ -2322,6 +2435,8 @@ var STATE = {
   empTableExpanded: false,
   userRole:         null,
   userEmail:        "",
+  realRole:         null,        // the SIGNED-IN user's role — userRole is the previewed one while viewAs is set
+  viewAs:           null,        // 👁 { email, name, role, reason } while a super admin previews someone else's dashboard
   jobTitleFilter:   new Set(),
   jfFilter:         new Set(),
   lvFilter:         new Set(),
@@ -2345,11 +2460,19 @@ var VIEWS = [
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
   { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
-  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["admin", "viewer", "manager"] },
-  { id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: ["admin", "manager"] },
+  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
+  // Performance Record (2026.W36): every role — super/admin see the company, org
+  // admins and managers their own org tree, viewers their pinned team. The grid
+  // reads ONLY the report payload, which the server has already narrowed to the
+  // caller's scope and stripped of their own row (applySelfExclusion_), so the tab
+  // adds no data control of its own: whoever may load the dashboard may read it.
+  { id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: null },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
-  { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["admin"] },
-  { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["admin"] },
+  // hideInPreview: these pages read settings as the REAL caller (getAccessSettings etc.
+  // are never impersonated), so showing them under 👁 View as would misrepresent what
+  // an org admin sees. canSeeView_ hides them while STATE.viewAs is set.
+  { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["superadmin", "admin", "orgadmin"], hideInPreview: true },
+  { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["superadmin", "admin", "orgadmin"], hideInPreview: true },
 ];
 
 function viewById_(id) {
@@ -2357,8 +2480,20 @@ function viewById_(id) {
   return null;
 }
 
+// Role predicates — client mirror of isSuperAdmin_/hasAdminPower_ in PS Security.js.
+// Presentation only: every one of these gates has a server-side twin that is the
+// actual control, so a hand-edited STATE.userRole buys nothing but a broken page.
+function isSuperAdmin_()   { return STATE.userRole === 'superadmin'; }
+function hasAdminPower_()  { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin' || STATE.userRole === 'orgadmin'; }
+// Org admins run their own org but may not hand out the company-wide tiers.
+function canManageAdmins_() { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin'; }
+// The signed-in user's OWN tier, unaffected by 👁 View as. Only a super admin can be
+// handed a payload carrying meta.viewAs, so realRole is server truth, not a client guess.
+function isRealSuperAdmin_() { return STATE.realRole === 'superadmin'; }
+
 function canSeeView_(view) {
   if (!view) return false;
+  if (view.hideInPreview && STATE.viewAs) return false;
   if (!view.roles) return true;
   if (!STATE.userRole) return true; // role not resolved yet — guard applies once payload arrives
   return view.roles.indexOf(STATE.userRole) !== -1;
@@ -2391,6 +2526,16 @@ function renderNavMenu_() {
     html += '<button class="nav-menu-item' + (STATE.activeTab === v.id ? ' active' : '') + '" role="menuitem"' +
             ' onclick="openMenuView(\'' + v.id + '\')">' + v.label + '</button>';
   });
+  // 👁 View as — not a VIEWS entry (it opens a picker, not a pane). Real super admins only.
+  if (isRealSuperAdmin_()) {
+    html += '<div class="nav-menu-divider"></div>' +
+            '<button class="nav-menu-item' + (STATE.viewAs ? ' active' : '') + '" role="menuitem" onclick="toggleNavMenu(true); openViewAsPicker()">' +
+              (STATE.viewAs ? '👁 Viewing as ' + esc(STATE.viewAs.name || STATE.viewAs.email) + ' — change…' : '👁 View dashboard as…') +
+            '</button>';
+    if (STATE.viewAs) {
+      html += '<button class="nav-menu-item" role="menuitem" onclick="toggleNavMenu(true); exitViewAs()">↩ Exit preview</button>';
+    }
+  }
   panel.innerHTML = html;
 }
 
@@ -2432,6 +2577,145 @@ function closeMenuTab(id) {
   if (btn) btn.parentNode.removeChild(btn);
   if (STATE.activeTab === id) switchTab(STATE.lastRegularTab || "overview");
 }
+
+// ── 👁 VIEW AS — super-admin preview of someone else's dashboard ──────────────
+// Server-side impersonation of the REPORT payload only (getPSReportData's third
+// argument, honoured for super admins alone — see resolveViewAsAccess_). Every
+// settings endpoint keeps resolving the real caller, so nothing here can write as
+// the target. Spec: docs/specs/2026-09-01-view-as-impersonation-design.md
+var _viewAsTargets = null;   // listViewAsTargets() result, fetched once per page load
+
+function viewAsEmail_() { return STATE.viewAs ? STATE.viewAs.email : null; }
+
+// Entering or leaving a preview changes the population behind every team, so the
+// per-team client cache and any in-flight prefetch are stale.
+function resetForViewAsSwitch_() {
+  STATE.teamData  = {};
+  _prefetchFailed = {};
+  _prefetchGen++;
+  _prefetchWanted = null;
+  STATE.jobTitleFilter.clear(); STATE.jfFilter.clear(); STATE.lvFilter.clear();
+}
+
+function enterViewAs(email, name) {
+  if (!isRealSuperAdmin_() || !email) return;
+  if (STATE.viewAs && STATE.viewAs.email === email) { closeViewAsPicker(); return; }
+  STATE.viewAs = { email: email, name: name || null, role: null, reason: "" };
+  closeViewAsPicker();
+  resetForViewAsSwitch_();
+  renderViewAsBanner_(null);
+  loadData(false);
+}
+
+function exitViewAs() {
+  if (!STATE.viewAs) return;
+  STATE.viewAs = null;
+  closeViewAsPicker();
+  resetForViewAsSwitch_();
+  renderViewAsBanner_(null);
+  loadData(false);
+}
+
+function renderViewAsBanner_(payload) {
+  var el = document.getElementById("viewAsBanner");
+  if (!el) return;
+  if (!STATE.viewAs) { el.className = "viewas-banner"; el.innerHTML = ""; return; }
+  var who   = STATE.viewAs.name || STATE.viewAs.email;
+  var role  = STATE.viewAs.role;
+  var label = role === "superadmin" ? "Super Admin" : role === "admin" ? "Admin" : role === "orgadmin" ? "Org Admin"
+            : role === "manager" ? "Manager" : role === "viewer" ? "Viewer" : role === "denied" ? "Denied" : "resolving…";
+  var scope = payload && payload.managerScopeName ? "scoped to " + payload.managerScopeName + "'s org" : "";
+  var team  = payload && payload.meta && payload.meta.team && payload.meta.availableTeams && payload.meta.availableTeams.length === 1
+            ? "pinned to " + payload.meta.team.label : "";
+  var self_ = payload && payload.meta && payload.meta.selfExcluded ? "own row hidden" : "";
+  var notes = [scope, team, self_].filter(Boolean).join(" · ");
+  el.innerHTML =
+    "<span>👁</span>" +
+    "<span>Viewing as <strong>" + esc(who) + "</strong>" + (STATE.viewAs.name ? " <span class='va-note'>(" + esc(STATE.viewAs.email) + ")</span>" : "") + "</span>" +
+    "<span class='va-role'>" + esc(label) + "</span>" +
+    (notes ? "<span class='va-note'>" + esc(notes) + "</span>" : "") +
+    "<span class='va-note'>Read-only preview — settings pages are hidden.</span>" +
+    "<span class='va-actions'>" +
+      "<button class='va-btn' onclick='openViewAsPicker()'>Change…</button>" +
+      "<button class='va-btn va-btn-primary' onclick='exitViewAs()'>↩ Exit preview</button>" +
+    "</span>";
+  el.className = "viewas-banner on";
+}
+
+function openViewAsPicker() {
+  if (!isRealSuperAdmin_()) return;
+  var m = document.getElementById("viewAsModal");
+  if (!m) return;
+  m.classList.add("open");
+  var inp = document.getElementById("viewAsSearch");
+  if (inp) { inp.value = ""; setTimeout(function() { inp.focus(); }, 30); }
+  if (_viewAsTargets) { renderViewAsList_(); return; }
+  document.getElementById("viewAsList").innerHTML = "<div class='va-empty'>Loading people…</div>";
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _viewAsTargets = (res && res.targets) || [];
+      renderViewAsList_();
+    })
+    .withFailureHandler(function(e) {
+      document.getElementById("viewAsList").innerHTML =
+        "<div class='va-empty' style='color:#B71C1C'>Could not load the list: " + esc(String(e && e.message || e)) + "</div>";
+    })
+    .listViewAsTargets();
+}
+
+function closeViewAsPicker() {
+  var m = document.getElementById("viewAsModal");
+  if (m) m.classList.remove("open");
+}
+
+function renderViewAsList_() {
+  var list = document.getElementById("viewAsList");
+  if (!list || !_viewAsTargets) return;
+  var q = ((document.getElementById("viewAsSearch") || {}).value || "").toLowerCase().trim();
+  var rows = _viewAsTargets.filter(function(t) {
+    if (!q) return true;
+    return [t.name, t.email, t.jobTitle, t.role, t.scopeName].join(" ").toLowerCase().indexOf(q) !== -1;
+  });
+  if (!rows.length) { list.innerHTML = "<div class='va-empty'>Nobody matches “" + esc(q) + "”.</div>"; return; }
+
+  var GROUPS = [
+    { key: "orgadmin",   label: "Org admins — directors running their own org" },
+    { key: "manager",    label: "Managers — org-tree scope" },
+    { key: "admin",      label: "Admins — whole company" },
+    { key: "viewer",     label: "Viewers — one pinned team" },
+    { key: "superadmin", label: "Super admins" },
+    { key: "denied",     label: "Would be denied" },
+  ];
+  var ROLE_LABEL = { superadmin: "Super Admin", admin: "Admin", orgadmin: "Org Admin", manager: "Manager", viewer: "Viewer", denied: "Denied" };
+  var html = "";
+  GROUPS.forEach(function(g) {
+    var inGroup = rows.filter(function(t) { return t.role === g.key; });
+    if (!inGroup.length) return;
+    html += "<div class='va-group'>" + esc(g.label) + " (" + inGroup.length + ")</div>";
+    inGroup.forEach(function(t) {
+      var cur = STATE.viewAs && STATE.viewAs.email === t.email;
+      var sub = [t.jobTitle, t.email].filter(Boolean).join(" · ");
+      var meta = [
+        ROLE_LABEL[t.role] || t.role,
+        t.directReports ? t.directReports + " direct report" + (t.directReports === 1 ? "" : "s") : "",
+        t.role === "manager" || t.role === "orgadmin" ? (t.scopeName ? "org of " + t.scopeName : "") : "",
+        t.teamPin ? "pinned: " + t.teamPin : "",
+        t.role === "denied" ? t.reason : "",
+      ].filter(Boolean).join("<br>");
+      var attr = function(v) { return esc(v || "").replace(/'/g, "&#39;"); };   // inside a single-quoted JS literal
+      html += "<button class='va-row" + (cur ? " current" : "") + "' onclick=\"enterViewAs('" + attr(t.email) + "','" + attr(t.name) + "')\">" +
+                "<span><div class='va-name'>" + esc(t.name || t.email) + (cur ? " · <span style='color:#B45309'>viewing</span>" : "") + "</div>" +
+                "<div class='va-sub'>" + esc(sub) + "</div></span>" +
+                "<span class='va-meta'>" + meta + "</span>" +
+              "</button>";
+    });
+  });
+  list.innerHTML = html;
+}
+
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") closeViewAsPicker();
+});
 
 // ── QUARTER WINDOW — pre-load fallback only; overwritten from payload.meta.fiscalContext
 // on every data load (see the fc block in the payload handler), so it needs no manual update.
@@ -2766,6 +3050,7 @@ function pdWeekLabels_(h) { return h && h.weekLabels ? h.weekLabels : [h && h.la
 // ── BOOT ─────────────────────────────────────────────────
 var _loadingInFlight = false;
 var _loadSeq = 0;
+var _LOADING_HTML = (document.getElementById("loadingState") || {}).innerHTML || "";
 (function() { loadData(false); })();
 (function() {
   document.getElementById('empTableWrap').addEventListener('click', function(e) {
@@ -2803,7 +3088,11 @@ function loadData(forceRefresh) {
   _prefetchWanted = null;                  // a user-driven load supersedes any wait-on-prefetch
   var seq = ++_loadSeq;
 
-  document.getElementById("loadingState").style.display  = "flex";
+  // A prior denial or error replaced the spinner markup — put it back so a retry
+  // (Refresh, or entering/leaving 👁 View as) shows a loading state, not stale text.
+  var ls = document.getElementById("loadingState");
+  ls.innerHTML = _LOADING_HTML;
+  ls.style.display = "flex";
   document.getElementById("tabNav").classList.remove("visible");
   VIEWS.forEach(function(v) {
     var pane = document.getElementById(v.paneId);
@@ -2812,7 +3101,7 @@ function loadData(forceRefresh) {
   google.script.run
     .withSuccessHandler(function(p) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataLoaded(p, forceRefresh); })
     .withFailureHandler(function(e) { _loadingInFlight = false; if (seq !== _loadSeq) return; onDataError(e);  })
-    .getPSReportData(forceRefresh, STATE.activeTeam);
+    .getPSReportData(forceRefresh, STATE.activeTeam, viewAsEmail_());
 }
 
 // ── BACKGROUND TEAM PREFETCH ──────────────────────────────
@@ -2891,12 +3180,20 @@ function prefetchNext_() {
         prefetchNext_();
       }
     })
-    .getPSReportData(false, reqKey);
+    .getPSReportData(false, reqKey, viewAsEmail_());
 }
 
 function onDataLoaded(payload, wasRefresh) {
   if (!payload) { onDataError("No response from server."); return; }
-  if (payload.denied) { showAccessDenied_(payload.email); return; }
+  if (payload.denied) {
+    // A denial carries who was being previewed (server stamp) so the note can say why.
+    if (payload.viewAs) {
+      STATE.viewAs = { email: payload.viewAs.email, name: payload.viewAs.name || null,
+                       role: payload.viewAs.role, reason: payload.viewAs.reason || "" };
+      renderViewAsBanner_(null);
+    }
+    showAccessDenied_(payload.email, payload.reason, payload.accessInfo); return;
+  }
   if (!payload.ok) { onDataError(payload.error || "Unknown error"); return; }
 
   DATA = payload;
@@ -2950,6 +3247,12 @@ function onDataLoaded(payload, wasRefresh) {
   (DATA.goalsAudit || []).forEach(function(e) { goalsAuditMap[e.normName] = e; });
   STATE.userRole  = payload.userRole  || "viewer";
   STATE.userEmail = payload.userEmail || "";
+  // 👁 Payload is truth for the preview too: meta.viewAs is only ever stamped for a
+  // super admin, so it fixes realRole, and its absence means no preview is running.
+  var va = payload.meta && payload.meta.viewAs;
+  STATE.viewAs   = va ? { email: va.email, name: va.name || null, role: va.role, reason: va.reason || "" } : null;
+  STATE.realRole = va ? "superadmin" : STATE.userRole;
+  renderViewAsBanner_(payload);
 
   // Apply server-stored weights so all users share the same scoring config
   if (payload.weights) SCORE_W = payload.weights;
@@ -2957,14 +3260,27 @@ function onDataLoaded(payload, wasRefresh) {
   // Role badge in header
   var badge = document.getElementById("userRoleBadge");
   if (badge) {
-    var roleLabel = STATE.userRole === "admin" ? "Admin"
-                  : STATE.userRole === "manager" ? "Manager"
+    var roleLabel = STATE.userRole === "superadmin" ? "Super Admin"
+                  : STATE.userRole === "admin"     ? "Admin"
+                  : STATE.userRole === "orgadmin"  ? "Org Admin"
+                  : STATE.userRole === "manager"   ? "Manager"
                   : "Viewer";
     badge.textContent = roleLabel;
-    if (STATE.userRole === "manager" && payload.managerScopeName) {
-      badge.title = "Scoped to: " + payload.managerScopeName + "'s org";
+    // Say WHY the view is narrower than expected, right where the role is named —
+    // "where is my own row?" is otherwise a support ticket, not a discoverable rule.
+    var tips = [];
+    if ((STATE.userRole === "manager" || STATE.userRole === "orgadmin") && payload.managerScopeName) {
+      tips.push("Scoped to " + payload.managerScopeName + "'s org");
     }
-    badge.className   = "role-badge role-badge-" + STATE.userRole;
+    if (DATA.meta && DATA.meta.selfExcluded) {
+      tips.push("Your own record is not shown here — it sits on your manager's dashboard.");
+    }
+    if (STATE.viewAs) {
+      badge.textContent = "👁 Viewing as " + roleLabel;
+      tips.unshift("Previewing " + (STATE.viewAs.name || STATE.viewAs.email) + "'s dashboard");
+    }
+    badge.title = tips.join(" · ");
+    badge.className   = "role-badge role-badge-" + (STATE.viewAs ? "viewas" : STATE.userRole);
     badge.style.display = "";
   }
 
@@ -3023,14 +3339,43 @@ function onDataLoaded(payload, wasRefresh) {
   schedulePrefetch_();   // background-fill the other teams (no-op when all cached)
 }
 
-function showAccessDenied_(email) {
+// A `reason` distinguishes "you may not look at this" from "you may, but it covers
+// nobody you manage" — a supervisor whose only reports are interns clears the access
+// gate and still lands here, and the generic copy would tell them something untrue.
+function showAccessDenied_(email, reason, info) {
   var ls = document.getElementById("loadingState");
   if (!ls) return;
-  ls.innerHTML =
-    "<div style='text-align:center;max-width:380px;padding:20px'>" +
-      "<div style='font-size:36px;margin-bottom:12px'>🔒</div>" +
-      "<p style='font-size:16px;font-weight:800;color:var(--void);margin-bottom:8px'>Access Restricted</p>" +
-      "<p style='font-size:13px;color:var(--slate);line-height:1.65'>This dashboard is available to the PS team only.<br>Contact your manager or the report owner to request access.</p>" +
+  // Wording comes from the server (accessDeniedInfo_) so this screen and the
+  // pre-load page doGet serves can never say different things. The fallbacks only
+  // matter for a payload built before those fields existed.
+  info = info || {};
+  var product  = info.product  || "Contribution";
+  var audience = info.audience || "managers and above";
+  var team     = info.team     || "the report owner";
+  // 👁 In preview the denial belongs to the TARGET: say so, give the internal reason
+  // the target never sees, and keep the way out obvious.
+  var vaNote = STATE.viewAs
+    ? "<div style='max-width:560px;margin:0 auto 18px;padding:10px 14px;border-radius:10px;background:#FFFBEB;border:1px dashed #F59E0B;color:#92400E;font-size:12px;text-align:left'>" +
+        "<strong>👁 Preview:</strong> this is what <strong>" + esc(STATE.viewAs.name || STATE.viewAs.email) + "</strong> would see." +
+        (STATE.viewAs.reason ? "<br><span style='color:#B45309'>Why: " + esc(STATE.viewAs.reason) + "</span>" : "") +
+        "<div style='margin-top:8px'><button class='va-btn va-btn-primary' onclick='exitViewAs()'>↩ Exit preview</button> " +
+        "<button class='va-btn' onclick='openViewAsPicker()'>Pick someone else</button></div>" +
+      "</div>"
+    : "";
+  ls.innerHTML = vaNote +
+    "<div style='text-align:center;max-width:460px;padding:20px'>" +
+      "<div style='font-size:36px;margin-bottom:12px'>" + (reason ? "📭" : "🔒") + "</div>" +
+      "<p style='font-size:16px;font-weight:800;color:var(--void);margin-bottom:10px'>" +
+        (reason ? "Nothing to show yet" : "Access Restricted") + "</p>" +
+      "<p style='font-size:13px;color:var(--slate);line-height:1.7'>" +
+        (reason
+          ? esc(reason) + "<br><br>If that looks wrong, ask the " + esc(team) + " team."
+          : "<strong>" + esc(product) + " Access</strong> is company-wide but limited to " +
+            esc(audience) + ".<br><br>Request access from the <strong>" + esc(team) + "</strong> team.") +
+      "</p>" +
+      (info.link
+        ? "<a href='" + esc(info.link) + "' style='display:inline-block;margin-top:16px;background:var(--void);color:#fff;text-decoration:none;border-radius:8px;padding:9px 20px;font-size:12.5px;font-weight:700'>Request access</a>"
+        : "") +
       (email ? "<div style='margin-top:12px;font-family:monospace;font-size:12px;background:var(--surface);border:1px solid var(--border);padding:5px 12px;border-radius:6px;color:var(--muted)'>" + esc(email) + "</div>" : "") +
     "</div>";
 }
@@ -3445,7 +3790,10 @@ function renderPerfRecordTab_(filteredOpt) {
     (focus ? ' (' + focus.label + ' focus)' : '') +
     ' · dot = last closed ' + STATE.prGranularity +
     ' · gray ring = no data yet · slate ring = shown, not evaluated' +
-    (STATE.prGranularity === 'week' ? ' · showing last 8 closed weeks + current' : '');
+    (STATE.prGranularity === 'week' ? ' · showing last 8 closed weeks + current' : '') +
+    // Say it where the record is read, not only on the role badge: the caller's own
+    // row was removed server-side — this tab evaluates their org, never them.
+    (DATA.meta && DATA.meta.selfExcluded ? ' · your own record is not shown here' : '');
 
   function th(key, label) {
     var on  = STATE.prSort.key === key;
@@ -5868,11 +6216,11 @@ function buildTeamBriefHTML(weekLabel, prevWeekLabel, brief, opts) {
       '<div class="team-brief-head">' +
         '<h3>Team Executive Brief — ' + esc(weekLabel) + '</h3>' +
         '<div class="team-brief-head-actions">' +
-          (STATE.userRole === 'admin'
+          (hasAdminPower_()
             ? '<button class="team-brief-gemini-btn" id="tbGeminiBtn" onclick="triggerTeamGemini()">✨ Enhance with Gemini</button>'
             : '') +
           '<button class="team-brief-copy-btn" onclick="copyTeamBrief()">📋 Copy for Confluence</button>' +
-          (STATE.userRole === 'admin'
+          (hasAdminPower_()
             ? '<button class="team-brief-publish-btn" id="tbPublishBtn" onclick="triggerConfluencePublish()">🚀 Publish to Confluence</button>'
             : '') +
         '</div>' +
@@ -6494,9 +6842,8 @@ function rollupTrajectory_(emps, curLbl, prevLbl, metrics) {
 // Returns the strip's HTML, or '' when hidden (manager role / single team).
 // In Month/Quarter mode returns the one-line weekly note instead of rows.
 function renderExecRollup_(selLabel, prevLabel) {
-  var role  = STATE.userRole;
   var teams = (DATA && DATA.meta && DATA.meta.availableTeams) || [];
-  if ((role !== 'admin' && role !== 'viewer') || teams.length < 2) return '';
+  if ((!hasAdminPower_() && STATE.userRole !== 'viewer') || teams.length < 2) return '';
   if (STATE.periodGranularity !== 'week') {
     return '<div class="eb-rollup-note">Cross-team rollup is weekly — switch to Week view to compare teams.</div>';
   }
@@ -9830,14 +10177,67 @@ function saveMatrixToSheet_() {
     .saveScoringMatrix({ matrix: MATRIX_CFG.matrix });
 }
 
+// ── ACCESS CONTROL LIST EDITOR ────────────────────────────
+// Working state for the four access lists while the tab is open. Nothing here
+// reaches the server until Save Access Settings — the same one-shot contract the
+// old textareas had, so a mis-click is never live.
+var ACL = null;
+
+// One card per list. `pair` marks the delegate list, whose entries are
+// { email, scopeName } rather than a bare string.
+var ACL_LISTS = [
+  { key: 'superAdmins', badge: 'sec-badge-super',   badgeText: 'Super Admin', title: 'Super Admins',
+    sub: 'Full control, including the 📈 Performance Record tab and sight of their own record.' },
+  { key: 'orgAdmins',   badge: 'sec-badge-org',     badgeText: 'Org Admin',   title: 'Org Admins',
+    sub: 'Admin powers, manager scope — their own org tree only, own row excluded. Must be a roster supervisor. Cannot edit the Super/Admin/Org lists.' },
+  { key: 'admins',      badge: 'sec-badge-admin',   badgeText: 'Admin',       title: 'Admins',
+    sub: 'See everything and edit settings. No 📈 Performance Record, and their own record stays hidden.' },
+  { key: 'viewers',     badge: 'sec-badge-viewer',  badgeText: 'Viewer',      title: 'Viewers',
+    sub: 'Read-only. Their own record stays hidden. Leave empty when Open Access is ON.' },
+  { key: 'delegates',   badge: 'sec-badge-manager', badgeText: 'Manager',     title: 'Delegates',
+    sub: 'Scoped to one supervisor’s org tree. Roster supervisors resolve automatically — only add someone here who is NOT the supervisor themselves.',
+    pair: true }
+];
+
+function aclCfg_(key) {
+  for (var i = 0; i < ACL_LISTS.length; i++) if (ACL_LISTS[i].key === key) return ACL_LISTS[i];
+  return null;
+}
+
+// The super-admin list is visible to plain Admins but not editable by them — the
+// server rejects the write regardless; this only avoids offering the action.
+function aclLocked_(key) {
+  if (key === 'superAdmins') return !ACL.canSuper;
+  // The company-wide tiers are the escalation path: an Org Admin who could grant
+  // plain Admin would grant it to themselves. The server rejects the write either
+  // way — this only avoids offering the action.
+  if (key === 'admins' || key === 'orgAdmins') return !ACL.canAdmins;
+  return false;
+}
+
 function populateSecuritySection_(s) {
   var el = document.getElementById("securitySection");
   if (!el) return;
 
-  var adminsVal    = (s.admins  || []).join("\n");
-  var viewersVal   = (s.viewers || []).join("\n");
-  var delegatesVal = (s.delegates || []).map(function(d) { return d.email + ":" + d.scopeName; }).join("\n");
-  var openChecked  = s.openAccess ? "checked" : "";
+  ACL = {
+    superAdmins: (s.superAdmins || []).slice(),
+    orgAdmins:   (s.orgAdmins || []).slice(),
+    admins:      (s.admins  || []).slice(),
+    viewers:     (s.viewers || []).slice(),
+    delegates:   (s.delegates || []).map(function(d) { return { email: d.email, scopeName: d.scopeName }; }),
+    openAccess:  !!s.openAccess,
+    canSuper:    !!s.canManageSuperAdmins,
+    canAdmins:   s.canManageAdmins !== false,
+    canOpen:     !!s.canManageOpenAccess,
+    bootstrapAdmin: (s.bootstrapAdmin || '').toLowerCase(),
+    callerEmail: s.callerEmail || STATE.userEmail || '',
+    callerRole:  s.callerRole  || STATE.userRole  || 'admin',
+    _filter: {},
+    _bulk:   {}
+  };
+
+  var callerLabel = ACL.callerRole === 'superadmin' ? 'Super Admin' : 'Admin';
+  var callerBadge = ACL.callerRole === 'superadmin' ? 'sec-badge-super' : 'sec-badge-admin';
 
   el.innerHTML =
     '<div class="sec-header">🔒 Access Control</div>' +
@@ -9845,55 +10245,294 @@ function populateSecuritySection_(s) {
 
     '<div class="sec-user-chip">' +
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
-      'Signed in as <strong>' + esc(s.callerEmail || STATE.userEmail) + '</strong>' +
-      '&ensp;<span class="sec-badge sec-badge-admin">Admin</span>' +
+      'Signed in as <strong>' + esc(ACL.callerEmail) + '</strong>' +
+      '&ensp;<span class="sec-badge ' + callerBadge + '">' + callerLabel + '</span>' +
     '</div>' +
 
-    '<div class="sec-toggle-row">' +
+    // Open Access is Super Admin only — it is the one switch that drops the email
+    // check for the WHOLE dashboard, a wider grant than any single list entry.
+    // Disabled (not hidden) for a plain Admin so they can still see the current
+    // state and who to ask; the server rejects the field regardless.
+    '<div class="sec-toggle-row' + (ACL.canOpen ? '' : ' acl-dimmed') + '">' +
       '<label class="sec-toggle">' +
-        '<input type="checkbox" id="secOpenAccess" ' + openChecked + ' onchange="secToggleOpenAccess_()">' +
+        '<input type="checkbox" id="secOpenAccess" ' + (ACL.openAccess ? 'checked' : '') +
+          (ACL.canOpen ? ' onchange="secToggleOpenAccess_()"' : ' disabled') + '>' +
         '<div class="sec-toggle-track"></div>' +
         '<div class="sec-toggle-thumb"></div>' +
       '</label>' +
       '<div class="sec-toggle-info">' +
-        '<div class="sec-toggle-title">Open Access</div>' +
-        '<div class="sec-toggle-desc">When ON, anyone in the org with the link can view the dashboard. Settings remain admin-only.</div>' +
+        '<div class="sec-toggle-title">Open Access' +
+          (ACL.canOpen ? '' : ' <span class="sec-badge sec-badge-super">Super Admin only</span>') +
+        '</div>' +
+        '<div class="sec-toggle-desc">When ON, anyone in the org with the link can view the dashboard. Settings remain admin-only.' +
+          (ACL.canOpen ? '' : ' Ask a Super Admin to change this.') +
+        '</div>' +
       '</div>' +
     '</div>' +
 
-    '<div class="sec-grid">' +
-      '<div>' +
-        '<div class="sec-field-label"><span class="sec-badge sec-badge-admin">Admin</span> Admins — can view + edit settings</div>' +
-        '<textarea class="sec-textarea" id="secAdmins" placeholder="One email per line…">' + esc(adminsVal) + '</textarea>' +
-        '<div class="sec-hint">One email per line · Bootstrap admin</div>' +
-      '</div>' +
-      '<div>' +
-        '<div class="sec-field-label"><span class="sec-badge sec-badge-viewer">Viewer</span> Viewers — can view only</div>' +
-        '<textarea class="sec-textarea" id="secViewers" placeholder="One email per line…">' + esc(viewersVal) + '</textarea>' +
-        '<div class="sec-hint">One email per line · Leave empty when Open Access is ON</div>' +
-      '</div>' +
-    '</div>' +
+    '<div class="acl-grid">' + ACL_LISTS.map(aclCardShell_).join('') + '</div>' +
 
-    '<div style="margin-top:16px">' +
-      '<div class="sec-field-label"><span class="sec-badge" style="background:#F5F3FF;color:#5B21B6;border:1px solid #DDD6FE">Manager</span> Delegates — scoped manager access</div>' +
-      '<textarea class="sec-textarea" id="secDelegates" placeholder="peer@company.com:Supervisor Full Name" style="min-height:70px">' + esc(delegatesVal) + '</textarea>' +
-      '<div class="sec-hint">One entry per line · Format: <code>email:Supervisor Full Name</code> · Grants access to that supervisor\'s org tree · Roster supervisors are auto-detected (no entry needed)</div>' +
-    '</div>' +
-
-    '<div class="settings-actions" style="margin-top:16px">' +
+    '<div class="settings-actions">' +
       '<button class="settings-btn settings-btn-primary" id="secSaveBtn" onclick="saveSecuritySettings_()">Save Access Settings</button>' +
       '<span id="secFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
     '</div>' +
     '<div id="secError" style="display:none;margin-top:8px;padding:8px 12px;background:#FEE2E2;border-radius:6px;font-size:12px;color:#B71C1C;font-weight:600"></div>' +
     '<div id="secTimestamp" style="margin-top:6px;font-size:11px;color:var(--muted)"></div>';
+
+  ACL_LISTS.forEach(function(c) { aclRender_(c.key); });
+  secToggleOpenAccess_();
+}
+
+function aclCardShell_(cfg) {
+  return '<div class="acl-card" id="aclCard-' + cfg.key + '">' +
+      '<div class="acl-card-head">' +
+        '<span class="sec-badge ' + cfg.badge + '">' + esc(cfg.badgeText) + '</span>' +
+        '<span class="acl-title">' + esc(cfg.title) + '</span>' +
+        '<span class="acl-count" id="aclCount-' + cfg.key + '">0</span>' +
+      '</div>' +
+      '<div class="acl-sub">' + cfg.sub + '</div>' +
+      '<div id="aclBody-' + cfg.key + '"></div>' +
+    '</div>';
+}
+
+// Renders one card's body — filter box, scrolling rows, add row, footer.
+// Called on every mutation: the whole body is cheap to rebuild, and it keeps the
+// count badge, the filter and the row indices from ever drifting apart.
+function aclRender_(key) {
+  var cfg  = aclCfg_(key);
+  var body = document.getElementById('aclBody-' + key);
+  if (!cfg || !body || !ACL) return;
+
+  var items  = ACL[key] || [];
+  var locked = aclLocked_(key);
+  var pinned = (key === 'superAdmins' && ACL.bootstrapAdmin) ? 1 : 0;
+
+  var count = document.getElementById('aclCount-' + key);
+  if (count) count.textContent = String(items.length + pinned);
+
+  if (ACL._bulk[key]) { body.innerHTML = aclBulkHTML_(cfg, items); return; }
+
+  var q = (ACL._filter[key] || '').toLowerCase();
+  // Carry the real array index through the filter so Remove always targets the
+  // row the user actually clicked, not its position in the filtered view.
+  var rows = items.map(function(it, i) { return { it: it, i: i }; }).filter(function(r) {
+    if (!q) return true;
+    var hay = cfg.pair ? (r.it.email + ' ' + r.it.scopeName) : r.it;
+    return String(hay).toLowerCase().indexOf(q) !== -1;
+  });
+
+  var html = '';
+
+  // The filter only earns its space once the list is long enough to need it.
+  if (items.length > 6) {
+    html += '<input type="text" class="acl-filter" id="aclFilter-' + key + '" placeholder="Filter ' +
+      items.length + ' entries…" value="' + esc(ACL._filter[key] || '') +
+      '" oninput="aclFilter_(\'' + key + '\', this.value)">';
+  }
+
+  html += '<div class="acl-list">';
+
+  // The bootstrap super admin is pinned and un-removable because it lives in
+  // code. Show it anyway, so the list reads as the whole truth rather than as
+  // "everyone except the owner".
+  if (pinned && (!q || ACL.bootstrapAdmin.indexOf(q) !== -1)) {
+    html += '<div class="acl-row">' +
+        '<span class="acl-email" title="Bootstrap super admin — set in PS Security.js">' +
+          esc(ACL.bootstrapAdmin) + '</span>' +
+        '<span class="acl-pin" title="Set in code — cannot be removed here">🔒 built in</span>' +
+      '</div>';
+  }
+
+  if (!rows.length) {
+    html += '<div class="acl-empty">' +
+      (items.length === 0
+        ? (pinned ? 'No additional super admins.' : 'Nobody on this list yet.')
+        : 'No match for &ldquo;' + esc(ACL._filter[key] || '') + '&rdquo;.') +
+      '</div>';
+  } else {
+    rows.forEach(function(r) {
+      var email = cfg.pair ? r.it.email : r.it;
+      html += '<div class="acl-row">' +
+          '<span class="acl-email" title="' + esc(email) + '">' + esc(email) + '</span>' +
+          (cfg.pair
+            ? '<span class="acl-scope" title="Scoped to ' + esc(r.it.scopeName) + '&rsquo;s org tree">&rarr; ' + esc(r.it.scopeName) + '</span>'
+            : '') +
+          (locked
+            ? ''
+            : '<button class="acl-del" title="Remove ' + esc(email) + '" onclick="aclRemove_(\'' + key + '\',' + r.i + ')">&times;</button>') +
+        '</div>';
+    });
+  }
+  html += '</div>';
+
+  if (!locked) {
+    html += '<div class="acl-add">' +
+        '<input type="text" id="aclAdd-' + key + '" placeholder="name@servicerocket.com" ' +
+          'onkeydown="if(event.key===\'Enter\'){event.preventDefault();aclAdd_(\'' + key + '\')}">' +
+        (cfg.pair
+          ? '<input type="text" id="aclAdd2-' + key + '" placeholder="Supervisor full name" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();aclAdd_(\'' + key + '\')}">'
+          : '') +
+        '<button class="acl-btn acl-btn-primary" onclick="aclAdd_(\'' + key + '\')">Add</button>' +
+      '</div>';
+  }
+
+  html += '<div class="acl-foot">' +
+      (locked
+        ? '<span class="acl-link" style="text-decoration:none;cursor:default">Read-only — only a Super Admin can change this list</span>'
+        : '<button class="acl-link" onclick="aclBulkToggle_(\'' + key + '\', true)">⇅ Bulk edit / paste many</button>') +
+      '<span class="acl-msg" id="aclMsg-' + key + '"></span>' +
+    '</div>';
+
+  body.innerHTML = html;
+}
+
+// Bulk mode — the old textarea, kept for pasting or clearing many at once.
+function aclBulkHTML_(cfg, items) {
+  var raw = cfg.pair
+    ? items.map(function(d) { return d.email + ':' + d.scopeName; }).join('\n')
+    : items.join('\n');
+  return '<textarea class="sec-textarea acl-bulk-area" id="aclBulk-' + cfg.key + '" placeholder="' +
+      (cfg.pair ? 'peer@servicerocket.com:Supervisor Full Name' : 'One email per line…') + '">' + esc(raw) + '</textarea>' +
+    '<div class="acl-actions">' +
+      '<button class="acl-btn acl-btn-primary" onclick="aclBulkApply_(\'' + cfg.key + '\')">Apply to list</button>' +
+      '<button class="acl-btn" onclick="aclBulkToggle_(\'' + cfg.key + '\', false)">Cancel</button>' +
+    '</div>' +
+    '<div class="acl-foot"><span class="acl-msg" id="aclMsg-' + cfg.key + '"></span></div>';
+}
+
+function aclBulkToggle_(key, on) {
+  if (on && aclLocked_(key)) return;
+  ACL._bulk[key] = !!on;
+  if (on) ACL._filter[key] = '';
+  aclRender_(key);
+}
+
+function aclBulkApply_(key) {
+  var cfg = aclCfg_(key);
+  var ta  = document.getElementById('aclBulk-' + key);
+  if (!cfg || !ta) return;
+
+  var lines   = ta.value.split(/[\n,]+/).map(function(l) { return l.trim(); }).filter(Boolean);
+  var seen    = {};
+  var out     = [];
+  var skipped = 0;
+
+  lines.forEach(function(line) {
+    if (cfg.pair) {
+      var sep = line.indexOf(':');
+      if (sep === -1) { skipped++; return; }
+      var e = line.slice(0, sep).trim().toLowerCase();
+      var n = line.slice(sep + 1).trim();
+      if (!aclIsEmail_(e) || !n || seen[e]) { skipped++; return; }
+      seen[e] = 1;
+      out.push({ email: e, scopeName: n });
+    } else {
+      var em = line.toLowerCase();
+      if (!aclIsEmail_(em) || seen[em]) { skipped++; return; }
+      seen[em] = 1;
+      out.push(em);
+    }
+  });
+
+  ACL[key] = out;
+  ACL._bulk[key] = false;
+  aclRender_(key);
+  if (skipped) {
+    aclFlash_(key, skipped + ' line' + (skipped !== 1 ? 's' : '') + ' skipped (blank, duplicate or malformed)');
+  }
+}
+
+function aclIsEmail_(v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v); }
+
+function aclFilter_(key, v) {
+  ACL._filter[key] = v;
+  aclRender_(key);
+  // Re-rendering the body blows away focus, and the filter box is the one field
+  // where that would eat the user's next keystroke.
+  var f = document.getElementById('aclFilter-' + key);
+  if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+}
+
+function aclFlash_(key, msg) {
+  var el = document.getElementById('aclMsg-' + key);
+  if (!el) return;
+  el.textContent = msg;
+  setTimeout(function() { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+// Which OTHER list already holds this email. Roles resolve by precedence
+// server-side, so a duplicate is not an error — it is a silently ignored entry,
+// which is worse. Catch it at the point of entry instead.
+function aclFindElsewhere_(key, email) {
+  for (var i = 0; i < ACL_LISTS.length; i++) {
+    var c = ACL_LISTS[i];
+    if (c.key === key) continue;
+    var list = ACL[c.key] || [];
+    var hit  = c.pair
+      ? list.some(function(d) { return d.email === email; })
+      : list.indexOf(email) !== -1;
+    if (hit) return c.title;
+  }
+  if (key !== 'superAdmins' && ACL.bootstrapAdmin === email) return 'Super Admins';
+  return null;
+}
+
+function aclAdd_(key) {
+  if (aclLocked_(key)) return;
+  var cfg = aclCfg_(key);
+  var i1  = document.getElementById('aclAdd-' + key);
+  var email = ((i1 && i1.value) || '').trim().toLowerCase();
+
+  if (!email) { if (i1) i1.focus(); return; }
+  if (!aclIsEmail_(email)) { aclFlash_(key, 'That is not a valid email address.'); return; }
+
+  var mine = ACL[key] || [];
+  var dupeHere = cfg.pair
+    ? mine.some(function(d) { return d.email === email; })
+    : mine.indexOf(email) !== -1;
+  if (dupeHere) { aclFlash_(key, 'Already on this list.'); return; }
+
+  var elsewhere = aclFindElsewhere_(key, email);
+  if (elsewhere) { aclFlash_(key, 'Already on the ' + elsewhere + ' list — remove it there first.'); return; }
+
+  if (cfg.pair) {
+    var i2 = document.getElementById('aclAdd2-' + key);
+    var scopeName = ((i2 && i2.value) || '').trim();
+    if (!scopeName) {
+      aclFlash_(key, 'Add the supervisor’s full name, exactly as it reads on the roster.');
+      if (i2) i2.focus();
+      return;
+    }
+    mine.push({ email: email, scopeName: scopeName });
+    if (i2) i2.value = '';
+  } else {
+    mine.push(email);
+  }
+
+  ACL._filter[key] = '';
+  aclRender_(key);
+  var again = document.getElementById('aclAdd-' + key);
+  if (again) again.focus();
+}
+
+function aclRemove_(key, idx) {
+  if (aclLocked_(key)) return;
+  var mine = ACL[key] || [];
+  if (idx < 0 || idx >= mine.length) return;
+  var gone = mine[idx];
+  mine.splice(idx, 1);
+  aclRender_(key);
+  aclFlash_(key, 'Removed ' + (gone && gone.email ? gone.email : gone) + ' — save to apply');
 }
 
 function secToggleOpenAccess_() {
   var open = document.getElementById("secOpenAccess");
-  var viewersArea = document.getElementById("secViewers");
-  if (!open || !viewersArea) return;
-  viewersArea.style.opacity = open.checked ? "0.45" : "";
-  viewersArea.style.pointerEvents = open.checked ? "none" : "";
+  var card = document.getElementById("aclCard-viewers");
+  if (!open || !card) return;
+  // Viewers are redundant while Open Access is on — dim the card to say so, but
+  // keep it editable so the list survives turning the toggle back off.
+  card.classList.toggle("acl-dimmed", !!open.checked);
 }
 
 function saveSecuritySettings_() {
@@ -9902,20 +10541,30 @@ function saveSecuritySettings_() {
   var errEl = document.getElementById("secError");
   var tsEl  = document.getElementById("secTimestamp");
 
-  var admins     = (document.getElementById("secAdmins")     || {}).value || "";
-  var viewers    = (document.getElementById("secViewers")    || {}).value || "";
-  var delegates  = (document.getElementById("secDelegates")  || {}).value || "";
-  var openAccess = !!(document.getElementById("secOpenAccess") || {}).checked;
+  if (!ACL) return;
 
-  var adminList    = admins.split(/[\n,]+/).map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
-  var viewerList   = viewers.split(/[\n,]+/).map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
-  var delegateList = delegates.split(/\n+/).map(function(line) {
-    var sep = line.indexOf(":");
-    if (sep === -1) return null;
-    var email     = line.slice(0, sep).trim().toLowerCase();
-    var scopeName = line.slice(sep + 1).trim();
-    return (email && scopeName) ? { email: email, scopeName: scopeName } : null;
-  }).filter(Boolean);
+  // A card left in bulk mode holds its edits only in the textarea — commit them
+  // rather than silently saving the pre-edit list.
+  ACL_LISTS.forEach(function(c) { if (ACL._bulk[c.key]) aclBulkApply_(c.key); });
+
+  var payload = {
+    viewers:    ACL.viewers.slice(),
+    delegates:  ACL.delegates.map(function(d) { return { email: d.email, scopeName: d.scopeName }; })
+  };
+  // Same rule as superAdmins below: openAccess is Super Admin only server-side and
+  // is REJECTED rather than ignored, so sending it unconditionally would turn every
+  // ordinary admin save into an authorisation error.
+  if (ACL.canOpen) {
+    payload.openAccess = !!(document.getElementById("secOpenAccess") || {}).checked;
+  }
+  // Only send superAdmins when this caller may actually change it — the server
+  // rejects the field outright for a plain Admin, so posting it unconditionally
+  // would turn every ordinary admin save into an authorisation error.
+  if (ACL.canSuper)  payload.superAdmins = ACL.superAdmins.slice();
+  if (ACL.canAdmins) {
+    payload.orgAdmins = ACL.orgAdmins.slice();
+    payload.admins    = ACL.admins.slice();
+  }
 
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   if (flash) flash.style.display = "none";
@@ -9937,10 +10586,10 @@ function saveSecuritySettings_() {
     })
     .withFailureHandler(function(err) {
       if (btn) { btn.disabled = false; btn.textContent = "Save Access Settings"; }
-      var msg = "Save failed: " + String(err).substring(0, 120);
+      var msg = "Save failed: " + String(err && err.message ? err.message : err).substring(0, 160);
       if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
     })
-    .saveAccessSettings({ admins: adminList, viewers: viewerList, delegates: delegateList, openAccess: openAccess });
+    .saveAccessSettings(payload);
 }
 
 function syncWeightSlider(key) {
@@ -10759,7 +11408,7 @@ function renderSupportList(curLabel, filtered, noActivityList, supOnlyList) {
   window._supportMeta = { curLabel: curLabel, filtered: filtered, noActivityList: noActivityList, supOnlyList: supOnlyList };
   window._supportRows = allRows;
 
-  var isAdmin = STATE.userRole === 'admin';
+  var isAdmin = hasAdminPower_();
 
   if (!isAdmin) {
     var simpleHtml = "";
