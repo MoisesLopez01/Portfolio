@@ -64,11 +64,12 @@ const usageSlice = [
   extract(usage, 'function usageWeekLabel_', '\n}'),
   extract(usage, 'function usageWeeksInYear_', '\n}'),
   extract(usage, 'function usageWeekWindow_', '\n}'),
+  extract(usage, 'function computeUsageRollup_', '\n}'),
 ].join('\n');
 
 // eslint-disable-next-line no-eval
 const api = eval('(function(){' + secSlice + '\n' + repSlice + '\n' + usageSlice +
-  '\nreturn { SEC_, usageWeekLabel_, usageWeeksInYear_, usageWeekWindow_,' +
+  '\nreturn { SEC_, usageWeekLabel_, usageWeeksInYear_, usageWeekWindow_, computeUsageRollup_,' +
   ' _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_, weeksInYear_PS_ };})()');
 
 function reset() {
@@ -99,7 +100,48 @@ ck('every window label is well-formed',
    api.usageWeekWindow_('2026.W36', 13).every(w => LABEL_RE.test(w)));
 eq('garbage currentWeek yields an empty window', api.usageWeekWindow_('nonsense', 13), []);
 
-// (Sections 2–5 are appended by later tasks.)
+// ── 2. Rollup math ───────────────────────────────────────────────────────────
+// Fixture: current week 2026.W36; eligible a + b; c denied; d not eligible;
+// one blank-email row; b's only visit is outside the 13-week window.
+const ELIGIBLE = {
+  'a@x.com': { email: 'a@x.com', name: 'A Person', role: 'manager',    source: 'auto-manager' },
+  'b@x.com': { email: 'b@x.com', name: 'B Person', role: 'superadmin', source: 'list' },
+};
+const ROWS = [
+  { ts: '2026-08-31T08:00:00Z', week: '2026.W36', email: 'a@x.com', role: 'manager',    allowed: true  },
+  { ts: '2026-09-01T09:00:00Z', week: '2026.W36', email: 'a@x.com', role: 'manager',    allowed: true  },
+  { ts: '2026-08-24T09:00:00Z', week: '2026.W35', email: 'a@x.com', role: 'manager',    allowed: true  },
+  { ts: '2026-09-01T10:00:00Z', week: '2026.W36', email: 'c@x.com', role: 'denied',     allowed: false },
+  { ts: '2026-09-01T11:00:00Z', week: '2026.W36', email: '',        role: 'viewer',     allowed: true  },
+  { ts: '2026-09-01T12:00:00Z', week: '2026.W36', email: 'd@x.com', role: 'viewer',     allowed: true  },
+  { ts: '2026-01-05T08:00:00Z', week: '2026.W2',  email: 'b@x.com', role: 'superadmin', allowed: true  },
+];
+const R = api.computeUsageRollup_(ROWS, ELIGIBLE, '2026.W36');
+const w36 = R.weeks[R.weeks.length - 1];
+
+eq('13 weeks, oldest first, current last',
+   [R.weeks.length, R.weeks[0].week, w36.week], [13, '2026.W24', '2026.W36']);
+eq('uniques: a + d, never blank or denied', w36.uniqueVisitors, 2);
+eq('total loads counts everything incl. denied and blank', w36.totalLoads, 4);
+eq('denied counted separately', w36.denied, 1);
+eq('byRole counts allowed identified loads only', w36.byRole, { manager: 2, viewer: 1 });
+const pa = R.people.find(p => p.email === 'a@x.com');
+const pb = R.people.find(p => p.email === 'b@x.com');
+eq('a: 2 this week, 3 in last 4 weeks', [pa.visitsThisWeek, pa.visits4Weeks], [2, 3]);
+eq('a lastSeen is the newest visit', pa.lastSeen, '2026-09-01T09:00:00.000Z');
+eq('b visited outside the window: ever=true, thisWeek=0',
+   [pb.everVisited, pb.visitsThisWeek, pb.visits4Weeks], [true, 0, 0]);
+eq('coverage: 1 of 2 engaged this week', R.coverage, { engagedThisWeek: 1, eligibleTotal: 2, pct: 50 });
+eq('d lands in otherVisitors', R.otherVisitors.map(v => v.email), ['d@x.com']);
+ck('a denied email never becomes a visitor',
+   R.otherVisitors.every(v => v.email !== 'c@x.com') && !R.people.some(p => p.email === 'c@x.com'));
+
+// Empty log = honest day-one picture, not an error.
+const E = api.computeUsageRollup_([], ELIGIBLE, '2026.W36');
+ck('empty log is ok:true', E.ok === true);
+eq('empty log: all weeks zero', E.weeks.every(w => w.totalLoads === 0), true);
+eq('empty log: everyone never-visited', E.people.every(p => !p.everVisited), true);
+eq('empty log coverage 0%', E.coverage.pct, 0);
 
 console.log(fail === 0
   ? '✅ usage-analytics-checks: ' + pass + ' checks passed'
