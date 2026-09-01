@@ -122,3 +122,48 @@ function computeUsageRollup_(logRows, eligible, currentWeek) {
     otherVisitors: otherVisitors,
   };
 }
+
+// The complete potential audience — everyone on the five access lists, plus
+// every active roster supervisor the CURRENT auto-access policy would actually
+// admit (via the same _autoAccessAllows_ the gate uses; the audit must never
+// call someone "expected" whom the door would turn away). List membership wins
+// for the displayed role, mirroring checkDashboardAccess resolution order.
+// @returns {Object} email → { email, name, role, source: 'list'|'auto-manager' }
+function usageEligibleSet_() {
+  const eligible = {};
+  const lists  = _readAccessLists_();
+  const roster = _readRosterForAccess_();
+  const rows   = roster.ok ? roster.rows : [];
+
+  const byEmail = {};
+  rows.forEach(r => { if (r.email && r.active && !byEmail[r.email]) byEmail[r.email] = r; });
+
+  const put = (email, role) => {
+    const e = String(email || "").toLowerCase().trim();
+    if (!e || eligible[e]) return;   // first (highest) tier wins
+    const row = byEmail[e];
+    eligible[e] = { email: e, name: row ? row.name : e, role: role, source: "list" };
+  };
+  lists.superAdmins.forEach(e => put(e, "superadmin"));
+  lists.admins.forEach(e => put(e, "admin"));
+  lists.orgAdmins.forEach(e => put(e, "orgadmin"));
+  lists.viewers.forEach(e => put(e, "viewer"));
+  lists.delegates.forEach(d => put(d.email, "manager"));
+
+  if ((SEC_.MANAGER_AUTO_ACCESS || "any-org") !== "off" && roster.ok) {
+    const reportCounts = {};
+    rows.forEach(r => {
+      if (r.active && r.normSupervisor && r.normSupervisor !== r.normName) {
+        reportCounts[r.normSupervisor] = (reportCounts[r.normSupervisor] || 0) + 1;
+      }
+    });
+    rows.forEach(r => {
+      if (!r.email || !r.active || eligible[r.email]) return;
+      if ((reportCounts[r.normName] || 0) < 1) return;
+      if (r.onLeave && !SEC_.ALLOW_ONLEAVE_MANAGER) return;
+      if (!_autoAccessAllows_(r).ok) return;
+      eligible[r.email] = { email: r.email, name: r.name, role: "manager", source: "auto-manager" };
+    });
+  }
+  return eligible;
+}

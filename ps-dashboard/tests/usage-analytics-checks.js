@@ -65,12 +65,13 @@ const usageSlice = [
   extract(usage, 'function usageWeeksInYear_', '\n}'),
   extract(usage, 'function usageWeekWindow_', '\n}'),
   extract(usage, 'function computeUsageRollup_', '\n}'),
+  extract(usage, 'function usageEligibleSet_', '\n}'),
 ].join('\n');
 
 // eslint-disable-next-line no-eval
 const api = eval('(function(){' + secSlice + '\n' + repSlice + '\n' + usageSlice +
   '\nreturn { SEC_, usageWeekLabel_, usageWeeksInYear_, usageWeekWindow_, computeUsageRollup_,' +
-  ' _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_, weeksInYear_PS_ };})()');
+  ' usageEligibleSet_, _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_, weeksInYear_PS_ };})()');
 
 function reset() {
   Object.keys(props).forEach(k => delete props[k]);
@@ -147,6 +148,61 @@ ck('empty log is ok:true', E.ok === true);
 eq('empty log: all weeks zero', E.weeks.every(w => w.totalLoads === 0), true);
 eq('empty log: everyone never-visited', E.people.every(p => !p.everVisited), true);
 eq('empty log coverage 0%', E.coverage.pct, 0);
+
+// ── 3. Eligible audience ─────────────────────────────────────────────────────
+// Must mirror the real gate: list members + auto-managers the CURRENT policy
+// admits — never someone the policy would turn away at the door.
+function rrow(name, email, sup, extra) {
+  const r = { name, normName: name.toLowerCase(), email,
+              supervisor: sup, normSupervisor: (sup || '').toLowerCase(),
+              cls: 'Professional Services', dept: 'Services', jobTitle: 'x',
+              status: '', active: true, onLeave: false };
+  return Object.assign(r, extra || {});
+}
+reset();
+ROSTER_ROWS = [
+  rrow('Gon Director', 'gon@x.com', ''),
+  rrow('Mgr One',      'm1@x.com',  'Gon Director'),
+  rrow('IC A',         'ica@x.com', 'Mgr One'),
+  rrow('Away Boss',    'away@x.com', '', { onLeave: true, status: 'Maternity Leave' }),
+  rrow('Away Report',  'ar@x.com',  'Away Boss'),
+  rrow('Fin Boss',     'fin@x.com', '', { cls: 'Finance' }),
+  rrow('Fin Report',   'fr@x.com',  'Fin Boss', { cls: 'Finance' }),
+];
+props['PS_DASH_VIEWERS']   = 'guest@x.com';
+props['PS_DASH_DELEGATES'] = 'peer@x.com:Gon Director';   // format: "email:Supervisor Full Name" per line
+let EL = api.usageEligibleSet_();
+ck('supervisors with active reports are eligible as auto-managers',
+   EL['gon@x.com'] && EL['gon@x.com'].source === 'auto-manager' && EL['gon@x.com'].role === 'manager');
+ck('a mid-level manager is eligible too', !!EL['m1@x.com']);
+ck('an IC with no reports is NOT eligible', !EL['ica@x.com']);
+ck('on-leave supervisor withheld (ALLOW_ONLEAVE_MANAGER=false)', !EL['away@x.com']);
+ck('viewer-list member is eligible with role viewer',
+   EL['guest@x.com'] && EL['guest@x.com'].role === 'viewer' && EL['guest@x.com'].source === 'list');
+ck('delegate is eligible with role manager',
+   EL['peer@x.com'] && EL['peer@x.com'].role === 'manager' && EL['peer@x.com'].source === 'list');
+ck('bootstrap super admin is always eligible',
+   EL[api.SEC_.BOOTSTRAP_ADMIN.toLowerCase()] &&
+   EL[api.SEC_.BOOTSTRAP_ADMIN.toLowerCase()].role === 'superadmin');
+ck('any-org mode: a Finance supervisor IS eligible', !!EL['fin@x.com']);
+
+// "classes" mode: the Finance supervisor is now outside the policy scope.
+const saved = api.SEC_.MANAGER_AUTO_ACCESS;
+api.SEC_.MANAGER_AUTO_ACCESS = 'classes';
+EL = api.usageEligibleSet_();
+ck('classes mode: Finance supervisor is NOT expected', !EL['fin@x.com']);
+ck('classes mode: the PS supervisor still is', !!EL['gon@x.com']);
+api.SEC_.MANAGER_AUTO_ACCESS = 'off';
+EL = api.usageEligibleSet_();
+ck('off mode: no auto-managers at all, lists only', !EL['gon@x.com'] && !!EL['guest@x.com']);
+api.SEC_.MANAGER_AUTO_ACCESS = saved;
+
+// A supervisor who is ALSO listed keeps the LIST role (mirrors resolution order).
+props['PS_DASH_SUPER_ADMINS'] = 'gon@x.com';
+EL = api.usageEligibleSet_();
+eq('list tier wins over auto-manager', [EL['gon@x.com'].role, EL['gon@x.com'].source],
+   ['superadmin', 'list']);
+delete props['PS_DASH_SUPER_ADMINS'];
 
 console.log(fail === 0
   ? '✅ usage-analytics-checks: ' + pass + ' checks passed'
