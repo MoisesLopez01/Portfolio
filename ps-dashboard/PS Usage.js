@@ -167,3 +167,73 @@ function usageEligibleSet_() {
   }
   return eligible;
 }
+
+// One log row per doGet hit — allowed AND denied (a denied attempt is demand;
+// the rollup counts it separately, never as engagement). Best-effort BY DESIGN:
+// every failure is logged and swallowed, because a lost log line is acceptable
+// and a slow or broken page load is not. Only doGet calls this — the cache
+// warmer and editor runs go through getPSReportData, so trigger executions
+// (which run as the owner) never pollute the data.
+function logDashboardVisit_(access) {
+  try {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(500)) {
+      Logger.log("⚠️ [PS Usage] visit log skipped — lock busy");
+      return;
+    }
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      let sh = ss.getSheetByName(USAGE_LOG_SHEET_);
+      if (!sh) {
+        sh = ss.insertSheet(USAGE_LOG_SHEET_);
+        sh.appendRow(USAGE_LOG_HEADERS_);
+        sh.setFrozenRows(1);
+      }
+      const now = new Date();
+      sh.appendRow([
+        now,
+        usageWeekLabel_(now),
+        (access && access.email) || "",
+        (access && access.role)  || "denied",
+        !!(access && access.allowed),
+        (access && access.delegateScopeName) || "",
+      ]);
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (e) {
+    Logger.log("⚠️ [PS Usage] visit log failed (page load unaffected): " + e.message);
+  }
+}
+
+// ── PUBLIC ENDPOINT ──────────────────────────────────────────
+// Superadmin only — this is company-wide behavioural data about colleagues.
+// A missing or empty log sheet is NOT an error: the rollup then returns zero
+// weeks and the full eligible set as never-visited, the honest day-one picture.
+function getUsageAnalytics() {
+  const access = checkDashboardAccess();
+  if (!access.allowed || !isSuperAdmin_(access)) {
+    throw new Error("Unauthorized: usage analytics are super-admin only.");
+  }
+  try {
+    const rows = [];
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(USAGE_LOG_SHEET_);
+    if (sh && sh.getLastRow() > 1) {
+      sh.getRange(2, 1, sh.getLastRow() - 1, USAGE_LOG_HEADERS_.length).getValues().forEach(v => {
+        rows.push({
+          ts:      v[0],
+          week:    String(v[1] || ""),
+          email:   String(v[2] || ""),
+          role:    String(v[3] || ""),
+          allowed: v[4] === true || v[4] === "TRUE",
+        });
+      });
+    }
+    const result = computeUsageRollup_(rows, usageEligibleSet_(), usageWeekLabel_(new Date()));
+    result.generatedAt = new Date().toISOString();
+    return result;
+  } catch (e) {
+    Logger.log("❌ [getUsageAnalytics] " + e.message);
+    return { ok: false, error: e.message };
+  }
+}

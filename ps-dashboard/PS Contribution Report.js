@@ -1387,6 +1387,7 @@ function _test_matrixMigration() {
 
 function doGet(e) {
   const access = checkDashboardAccess();
+  logDashboardVisit_(access);   // best-effort access trace — never throws, never blocks
   if (!access.allowed) {
     return HtmlService.createHtmlOutput(buildAccessDeniedPage_(access.email))
       .setTitle((SEC_.PRODUCT_NAME || "Contribution") + " — Access Restricted");

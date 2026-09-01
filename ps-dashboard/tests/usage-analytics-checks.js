@@ -204,6 +204,70 @@ eq('list tier wins over auto-manager', [EL['gon@x.com'].role, EL['gon@x.com'].so
    ['superadmin', 'list']);
 delete props['PS_DASH_SUPER_ADMINS'];
 
+// ── 4. Capture never breaks a page load ─────────────────────────────────────
+// logDashboardVisit_ is evaluated with GAS stubs; a throwing SpreadsheetApp and
+// a busy lock must both be swallowed, and a healthy write must produce one row
+// with a well-formed week label.
+const logSlice = extract(usage, 'function logDashboardVisit_', '\n}');
+// The eval'd body resolves SpreadsheetApp/LockService to these PARAMETERS —
+// pass the stubs explicitly; block-scoped consts at the call site would NOT
+// be visible inside this function's eval.
+function evalLogger(SpreadsheetApp, LockService) {   // eslint-disable-line no-unused-vars
+  // eslint-disable-next-line no-eval
+  return eval('(function(){' + repSlice + '\n' +
+    extract(usage, 'const USAGE_LOG_SHEET_', ';') + '\n' +
+    extract(usage, 'const USAGE_LOG_HEADERS_', ';') + '\n' +
+    'function usageWeekLabel_(d){return isoWeekYear_PS_(d)+".W"+isoWeekNum_PS_(d);}\n' +
+    logSlice + '\nreturn logDashboardVisit_;})()');
+}
+const APPENDED = [];
+const okSheet = { appendRow: r => { APPENDED.push(r); }, setFrozenRows: () => {} };
+const okSS = {
+  getActiveSpreadsheet: () => ({ getSheetByName: () => okSheet, insertSheet: () => okSheet }),
+};
+const badSS   = { getActiveSpreadsheet: () => { throw new Error('boom'); } };
+const okLock   = { getScriptLock: () => ({ tryLock: () => true,  releaseLock: () => {} }) };
+const busyLock = { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) };
+
+{
+  const fn = evalLogger(okSS, okLock);
+  fn({ allowed: true, email: 'a@x.com', role: 'manager', delegateScopeName: 'Gon Director' });
+  fn({ allowed: false, email: 'x@x.com', role: 'denied' });
+  eq('two rows appended', APPENDED.length, 2);
+  eq('allowed row: email/role/allowed/scope', APPENDED[0].slice(2),
+     ['a@x.com', 'manager', true, 'Gon Director']);
+  eq('denied row records the denial', APPENDED[1].slice(2), ['x@x.com', 'denied', false, '']);
+  ck('week cell is well-formed', LABEL_RE.test(APPENDED[0][1]));
+}
+{
+  let threw = false;
+  try { evalLogger(badSS, okLock)({ allowed: true, email: 'a@x.com', role: 'admin' }); }
+  catch (e) { threw = true; }
+  ck('a throwing SpreadsheetApp is swallowed — the page load survives', !threw);
+}
+{
+  const before = APPENDED.length;
+  let threw = false;
+  try { evalLogger(okSS, busyLock)({ allowed: true, email: 'a@x.com', role: 'admin' }); }
+  catch (e) { threw = true; }
+  ck('a busy lock skips the row without throwing', !threw && APPENDED.length === before);
+}
+
+// ── 5. Wiring and gates (source checks) ─────────────────────────────────────
+ck('doGet logs the visit BEFORE the denied branch',
+   /function doGet\([\s\S]{0,200}?logDashboardVisit_\(access\)[\s\S]{0,200}?if \(!access\.allowed\)/.test(report));
+ck('getUsageAnalytics is gated superadmin before any read',
+   /function getUsageAnalytics\(\)[\s\S]{0,300}?checkDashboardAccess\(\)[\s\S]{0,200}?isSuperAdmin_\(access\)[\s\S]*?SpreadsheetApp/.test(usage));
+ck('the gate throws rather than returning quietly',
+   /isSuperAdmin_\(access\)\) \{\s*\n\s*throw new Error/.test(usage));
+ck('logDashboardVisit_ body is one big try/catch',
+   /function logDashboardVisit_\(access\) \{\s*\n\s*try \{/.test(usage) &&
+   / catch \(e\) \{\s*\n\s*Logger\.log\("⚠️ \[PS Usage\]/.test(logSlice));
+ck('only doGet calls the logger — exactly one call site in the report file',
+   (report.match(/logDashboardVisit_\(/g) || []).length === 1 &&
+   !/logDashboardVisit_/.test(extract(report, 'function warmReportCache', '\n}')));
+ck('SEC_.BUILD was bumped for this change', /BUILD:\s*"2026\.W36-usage"/.test(security));
+
 console.log(fail === 0
   ? '✅ usage-analytics-checks: ' + pass + ' checks passed'
   : '❌ usage-analytics-checks: ' + fail + ' of ' + (pass + fail) + ' checks FAILED');
