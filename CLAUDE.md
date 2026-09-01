@@ -9,74 +9,240 @@ It reads from multiple Google Sheets, assembles a 5-week rolling view of PS team
 
 ---
 
-## File map
-
-| File | Role |
-|---|---|
-| `ps-dashboard/PS Contribution Report.js` | Main GAS script — data readers, assembly, `doGet`, `getPSReportData` |
-| `ps-dashboard/PS Dashboard.html` | Frontend SPA served by GAS `HtmlService` |
-| `ps-dashboard/PS Security.js` | Email-based access control — `checkDashboardAccess()`, role management |
-| `PS Settings` sheet (runtime) | Stores scoring weights, read by `readWeightSettings_()` |
-
----
-
 ## Dashboard navigation (PS Dashboard.html)
 
 Navigation is driven by the `VIEWS` array — single source of truth for every view's
-button/pane ids, label, location, and role allow-list. `switchTab()`, `renderAll()`'s
-renderer dispatch, role hiding (`applyRoleToNav_()`), and the ☰ menu all derive from it.
-Spec: `ps-dashboard/docs/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
+button/pane ids, label, location, and role allow-list. Add a view by adding one `VIEWS`
+entry. Full tab/menu inventory, role allow-lists and the ACL card editor's filter-index
+trap live in the `ps-dashboard-navigation` skill.
 
-- **Tab bar** (always visible): Overview, Team Radar, Leading Behaviours, Trends —
-  plus 📋 Team Executive Brief (admin/viewer/manager) and 📈 Performance Record
-  (admin/manager only — per-rocketeer R/Y/G signal grid over 2 closed quarters + QTD;
-  spec `ps-dashboard/docs/specs/2026-08-18-performance-record-tab-design.md`).
-- **☰ menu** (top-left in header): 📊 Data Reference (everyone), ⚖️ Scoring Weights and
-  🔒 Access Control (admins only). Selecting one opens an IDE-style closable temp tab
-  (`STATE.openMenuTabs`); closing it returns to `STATE.lastRegularTab`.
+Two rules stay here, because they must hold whether or not that skill is loaded:
+
 - Role gating is enforced inside `switchTab()` (forbidden id → Overview), not just by
   hiding buttons.
+- Client-side role tests go through `isSuperAdmin_()` / `hasAdminPower_()` — never a
+  bare `STATE.userRole === 'admin'`, which silently locks super admins out.
 
 ---
 
 ## Access control model (PS Security.js)
 
+Five roles, highest first: **superadmin > admin > orgadmin > viewer / manager**.
+
+**Powers and scope are two separate axes.** A role name answers both, but the code
+asks them separately — `hasAdminPower_()` / `canManageAdmins_()` for what someone may
+DO, `seesFullRoster_()` / `isTeamScoped_()` for what they may SEE. Never gate on a
+role string: a bare `role === "admin"` comparison is a bug, and
+`tests/access-tier-checks.js` fails the build if one reappears.
+
+| Role | Sees | Teams | Can change | 📈 Perf Record | Own record |
+|---|---|---|---|---|---|
+| **Super Admin** | everyone | all 3 | everything, incl. the super-admin list | ✅ | ✅ visible |
+| **Admin** | everyone | all 3 | all settings + every access list | ✅ | ❌ hidden |
+| **Org Admin** | **own org tree** | those their reports sit in | all settings + viewers/delegates — **not** the Super/Admin/Org lists | ✅ own tree | ❌ hidden |
+| **Viewer** | everyone in **their own team** | **1 (pinned)** | nothing | ✅ own team | ❌ hidden |
+| **Manager** | own org tree (reports & below) | those their reports sit in | nothing | ✅ own tree | ❌ hidden |
+
+📈 Performance Record (opened to every role in 2026.W36) reads **only the report
+payload**, so its scope and self-exclusion are the server's — there is no separate
+endpoint to gate, and the `VIEWS` entry carries `roles: null`.
+
+### Org Admin — admin powers, manager scope
+
+The tier for a Director who runs the dashboard for their own org without seeing their
+peers’. Anchored on their **own** roster name, so `getPSReportData`'s manager branch
+works unchanged and `scope.delete(managerNorm)` still removes their own row.
+
+Two rules that must not drift:
+- **Barred from the Super / Admin / Org-Admin lists** (`canManageAdmins_`). An
+  org-scoped admin who could grant plain Admin would grant it to themselves. The
+  server *throws* on the attempt rather than ignoring it.
+- **Requires a roster row.** No row → no tree to anchor → **denied**, never widened
+  to the company. Grant a non-supervisor plain Admin instead.
+
+⚠️ **Being on an access list overrides roster auto-resolution.** The order is
+super → admin → org-admin → viewer → delegate → roster supervisor. So adding a
+supervisor to the Admin list silently discards their org scope and hands them the whole
+company; adding one to Viewers pins them to a single team and drops reports outside it.
+`diagnosePSAccess()` prints a **list audit** showing, per listed email, the role it
+resolves to, the people it covers and the teams — with a ⚠️ on any supervisor sitting
+on a company-wide tier. `traceAccess()` is its editor-runnable single-email form (the
+Run dropdown cannot pass arguments; set Script Property `PS_TRACE_EMAIL`).
+
+### Denied-page wording — not a PS-team product
+
+This is **Global Contribution Access**: company-wide, limited to **managers and above**,
+with access requests routed to the **WFP** team. The copy lives in four SEC_ constants
+(PRODUCT_NAME / ACCESS_AUDIENCE / ACCESS_REQUEST_TEAM / ACCESS_REQUEST_LINK), never
+inline — two different surfaces draw it and they must not diverge:
+
+- `buildAccessDeniedPage_` — the standalone page `doGet` serves before any JS runs.
+- `showAccessDenied_` in the frontend — for a denial that arrives from
+  `getPSReportData` after the app has loaded (an empty org tree, say). Fed by
+  `accessDeniedInfo_()`, which every denial return attaches as `accessInfo`.
+
+ACCESS_REQUEST_LINK is intentionally empty — it renders a Request-access button only
+when set. A wrong address on the denied page is worse than none.
+
+### Team pin (viewers) — `resolveTeamScope_`
+
+A Viewer sees **one** org team, derived from their roster **Class** via
+`teamForProfile_` — the same rule the report tags every roster row with, so the pin
+follows a person when they move org and there is nothing to keep in sync. The job
+catalog is read only when Class alone can't separate Sales & Success from R&D.
+
+`getPSReportData` **overrides** the requested `teamKey`, never merely validates it,
+and does so **before the cache key is built**. Both halves matter: the client's
+requested team is untrusted, and viewers share the per-team `_admin` cache entries
+with admins — serving R&D data under the Services key would poison what every admin
+then reads. `meta.availableTeams` is narrowed to the pinned team too, so the toggle
+hides itself (`renderTeamToggle_` needs ≥2) and the team-warm loop skips the rest.
+
+A viewer with **no roster row** (an externally granted stakeholder) resolves to
+`null` and keeps the company-wide view — the admin who added them chose that. It is
+logged.
+
 There are **three layers** of access, applied in order:
 
-### 1. Bootstrap admin — code-level, indestructible
+### 1. Bootstrap super admin — code-level, indestructible
 ```js
 SEC_.BOOTSTRAP_ADMIN = "moises.lopez@servicerocket.com"
 ```
-Always Admin. Cannot be removed via the Settings UI. Do not change.
+Always **Super Admin**. Cannot be removed via the Settings UI. Do not change.
+(The constant keeps its old name; it anchors `superAdmins`, not `admins`.)
 
-### 2. Default admins / viewers / delegates — code-level, always active
-Defined in `SEC_.DEFAULT_ADMINS`, `SEC_.DEFAULT_VIEWERS`, `SEC_.DEFAULT_DELEGATES` in `ps-dashboard/PS Security.js`.
+### 2. Default super admins / admins / viewers / delegates — code-level, always active
+Defined in `SEC_.DEFAULT_SUPER_ADMINS`, `SEC_.DEFAULT_ADMINS`, `SEC_.DEFAULT_VIEWERS`,
+`SEC_.DEFAULT_DELEGATES` in `ps-dashboard/PS Security.js`.
 These survive a Script Properties reset. Edit this file to add permanent stakeholders.
 
-- **Admin**: full dashboard + can manage the access list.
+- **Super Admin**: everything an Admin can do, plus sight of their own record and
+  granting/revoking Super Admin.
+- **Admin**: full dashboard + can manage admins/viewers/delegates and scoring.
 - **Viewer**: read-only dashboard.
 - **Delegate**: manager-scoped — sees only their org tree.
   Format: `{ email: "peer@servicerocket.com", scopeName: "Full Name of Roster Supervisor" }`.
 
-### 3. Runtime access — stored in Script Properties, managed via 🔒 Access Control (☰ menu, admin only)
+An email present on both the super and plain admin lists resolves as superadmin, and
+`_readAccessLists_` de-dupes it out of `admins` so the UI never shows it twice.
+
+### 3. Runtime access — stored in Script Properties, managed via 🔒 Access Control (☰ menu)
 Any Admin can add/remove emails without touching code. Additive on top of defaults.
-Property keys: `PS_DASH_ADMINS`, `PS_DASH_VIEWERS`, `PS_DASH_DELEGATES`.
+Property keys: `PS_DASH_SUPER_ADMINS`, `PS_DASH_ADMINS`, `PS_DASH_VIEWERS`, `PS_DASH_DELEGATES`.
+`PS_DASH_SUPER_ADMINS` is writable by **super admins only** — `saveAccessSettings`
+throws (rather than silently ignoring) when a plain Admin posts that field, so a
+failed escalation is visible in the log.
 
 ### Open access flag
 `SEC_.OPEN_ACCESS_DEFAULT = false` (default). Set to `true` temporarily for demos/all-hands.
 Can also be toggled from the 🔒 Access Control page (☰ menu).
 
-### Role resolution flow (checkDashboardAccess)
-```
-1. email in admins?              → role: "admin"
-2. email in viewers?             → role: "viewer"
-3. email in delegates?           → role: "manager" (scoped to delegateScopeName)
-4. active roster supervisor?     → role: "manager" (scoped to own org tree)
-5. openAccess?                   → role: "viewer"  (fallback — only unidentified users)
-6. else                         → role: "denied"
-```
-Manager checks (3–4) run **before** the Open Access fallback (5) on purpose: turning
-on Open Access must never silently promote a scoped manager into a full-roster viewer.
+### Who can let themselves in — `SEC_.MANAGER_AUTO_ACCESS`
+
+Auto-manager access is the widest door in the model: a roster supervisor gets in by
+**opening the link**, with no approval step and no record beyond the execution log.
+
+| Mode | Who auto-resolves |
+|---|---|
+| `"any-org"` *(default, historical)* | any active roster member with ≥1 active direct report, **in any org** — Finance, R&D, Sales included |
+| `"classes"` | only supervisors whose roster Class **or** Department is in `SEC_.MANAGER_AUTO_ACCESS_SCOPE` (empty list ⇒ nobody, fails closed) |
+| `"off"` | nobody — managers must be added as delegates in 🔒 Access Control |
+
+Explicit lists (super/admin/viewer/delegate) work identically in every mode; the
+switch only governs *auto* resolution. The Google deployment setting
+("Anyone within &lt;domain&gt;") is the only boundary outside this one — it stops the
+public internet, not colleagues.
+
+### Every non-underscore global is a public endpoint
+
+In GAS, **any** function without a trailing underscore is callable via
+`google.script.run` by anyone who can load the web app. "Run this from the editor"
+is a naming convention, not a control — `setupCacheWarmer` (installs triggers),
+`runKudosNormalizer` (rewrites a sheet) and `setConfluenceConfig` (deletes a Script
+Property) were all reachable that way. Every one now calls `checkDashboardAccess()`,
+and `tests/access-tier-checks.js` sweeps all five GAS files to enforce it: adding an
+ungated global fails the build unless it is listed in that test's `UNGATED_OK` map
+with a stated reason.
+
+### Role resolution ordering (checkDashboardAccess)
+Super admin → admin → viewer → delegate → roster supervisor → open-access fallback.
+Manager checks (delegate list, roster supervisor) run **before** the Open Access
+fallback on purpose: turning on Open Access must never silently promote a scoped
+manager into a full-roster viewer. The verdict is memoised per execution
+(`_SEC_ACCESS_MEMO_`); `_secResetMemo_()` clears it after any access-list write.
+
+---
+
+## Org tree completeness — a dropped row must not sever the tree
+
+`resolveManagerScope_` is a BFS over the roster's **Supervisor** field, so it can only
+walk through people who have a row. `readPSRoster_` drops rows for an unknown Class, an
+intern title and an inactive/terminated status — and one dropped **mid-level manager**
+used to take their whole sub-tree off the director's dashboard, silently. The realistic
+trigger is a termination whose reports have not been re-parented yet.
+
+So `readPSRoster_(bridgesOut)` now also returns those dropped rows' org edges
+(`normName → { name, supNorm }`, via `recordRosterBridge_`) and `resolveManagerScope_`
+takes them as a third argument. Two invariants:
+
+- **Bridge nodes are traversal-only.** They join `seen`, never `scope` — a dropped row
+  still reaches no payload, no aggregate, no Top Rocketeers board.
+- **Bridging widens nothing.** Every bridge is a real Supervisor edge from the sheet, so
+  the tree it rebuilds is the tree that actually exists. A bridge whose supervisor is
+  outside the anchor's tree is never reached.
+
+A bridge that actually carried someone logs an ℹ️ line naming the dropped rows, so the
+roster gets fixed rather than the workaround becoming permanent. Covered by §5c-bis of
+`tests/access-tier-checks.js`, which also keeps a check that the **unbridged** walk
+still loses the sub-tree — the fixture has to keep proving what it fixes.
+
+---
+
+## Self-exclusion — nobody but a super admin sees their own record
+
+A rocketeer's evaluation belongs on **their manager's** dashboard, never their own.
+So for every role except superadmin, the signed-in user's roster row is removed from
+the payload: `employees[]`, Top Rocketeers, the goals audit, and every per-person map
+keyed by `normName` (`meta.siByEmployee`, `meta.rcrByEmployee`, `ptoQ4History[].byEmp`,
+`goalsQ4Hist`).
+
+Two enforcement points, deliberately different:
+
+- **Managers** — `getPSReportData` calls `scope.delete(managerNorm)` right after
+  `resolveManagerScope_`, so the anchor is gone *before* compute and never reaches the
+  org tree's aggregates either. (A small org tree's totals would otherwise give the
+  missing row away.) `resolveManagerScope_` still returns the anchor — it seeds the
+  BFS; the caller decides.
+- **Everyone else** — `applySelfExclusion_(payload, access)` strips the row on the way
+  out, after the cache read, keyed off `access.selfRosterName` (resolved once by
+  `checkDashboardAccess`). Team aggregates keep counting them; one row among the whole
+  company is not a readable evaluation.
+
+`applySelfExclusion_` also **re-stamps `userRole` / `userEmail` per caller.** The
+full-roster cache entry is shared across superadmin/admin/viewer, so the role frozen in
+at build time belongs to whoever built it (usually the warmer). Without the re-stamp a
+viewer landing on a superadmin-built entry would be handed `userRole: "superadmin"` —
+and with it the 📈 Performance Record tab. Anything added to the shared entry must stay
+impersonal; personalise here, never in `computePSReport_`.
+
+`meta.selfExcluded` / `meta.selfName` ship to the frontend so the role badge can say
+why a row is missing.
+
+---
+
+## 👁 View as — a super admin previews someone else's dashboard
+
+`getPSReportData(bustCache, teamKey, viewAs)` swaps the caller's verdict for the target's
+via `resolveViewAsAccess_` (PS Security.js) — **super admins only, throws for anyone
+else**. The target is resolved through `_resolveAccessFor_`, so team pin, cache key,
+org-tree scope, self-exclusion and denial reasons come out exactly as for that person's
+own login. **Only the report payload is impersonated**: every settings endpoint still
+resolves the real caller, so the preview can never write as the target. The frontend
+hides Scoring Weights / Access Control while previewing (`hideInPreview` on the `VIEWS`
+entries) because they would read settings as the real caller. `meta.viewAs` is stamped by
+`applySelfExclusion_` (per-caller, never in the shared cache entry); the ☰ entry keys off
+`STATE.realRole` / `isRealSuperAdmin_()`, not the previewed `userRole`. Candidates come
+from `listViewAsTargets()`. Spec: `ps-dashboard/docs/specs/2026-09-01-view-as-impersonation-design.md`.
 
 ---
 
@@ -93,28 +259,6 @@ on Open Access must never silently promote a scoped manager into a full-roster v
 | PTO (Accumulation Cost) | Employee Number |
 
 `normPS_(name)` = `toLowerCase().replace(/\s+/g, " ").trim()` — used everywhere for name matching.
-
----
-
-## Spreadsheet IDs
-
-Three external spreadsheets are referenced. IDs live in `CONFIG_PS` as **fallback defaults**
-and can be overridden via `PropertiesService.getScriptProperties()`:
-
-```
-ROSTER_SS_ID     → getExternalSSIds_().roster
-GOALS_SS_ID      → getExternalSSIds_().goals
-PTO_ACCUM_SS_ID  → getExternalSSIds_().ptoAccum
-```
-
-To override without touching code:
-```js
-PropertiesService.getScriptProperties().setProperties({
-  ROSTER_SS_ID:    '…',
-  GOALS_SS_ID:     '…',
-  PTO_ACCUM_SS_ID: '…',
-});
-```
 
 ---
 
@@ -193,13 +337,6 @@ API key stored in Script Properties as `GEMINI_API_KEY` — sent as `x-goog-api-
 
 ---
 
-## DEBUG logging
-
-Set `CONFIG_PS.DEBUG = true` to enable verbose `log_()` output.
-All `⚠️` and `❌` prefixed calls use `Logger.log` directly and are always on.
-
----
-
 ## Cache
 
 `getPSReportData()` caches its JSON response in `CacheService.getScriptCache()` via
@@ -215,8 +352,25 @@ TTL is `CONFIG_PS.CACHE_TTL_SEC` (65 min).
 Data can therefore lag sheet edits by up to the warm interval — the Refresh button
 (`loadData(true)`) always bypasses cache for a live read.
 
-Cache key: `ps_v<VER>_admin` (for admin/viewer) or `ps_v<VER>_<email>` (for manager-scoped views),
-where `<VER>` is `PS_CACHE_VER` in Script Properties. `saveWeightSettings()` and `saveScoringMatrix()`
+Cache key: `ps_v<VER>_<team>_admin` (superadmin/admin/viewer — see `seesFullRoster_`)
+or `ps_v<VER>_<team>_<email>` (manager-scoped views). The shared entry is stored
+**impersonal** and personalised per caller by `applySelfExclusion_` on read — see
+"Self-exclusion" above before adding anything caller-specific to the payload.
+`<VER>` is `PS_CACHE_VER` in Script Properties. `saveWeightSettings()` and `saveScoringMatrix()`
 call `bustReportCache_()` which bumps `PS_CACHE_VER`, stranding **all** prior-version entries at once
 (admin + every manager scope) — CacheService can't enumerate keys, so versioning is how a save takes
 effect immediately for everyone, not just the saver.
+
+---
+
+## Usage analytics (PS Usage.js)
+
+Every `doGet` hit — allowed and denied — appends one row to the **`PS Access Log`**
+tab of the container spreadsheet via `logDashboardVisit_` (best-effort: try/catch +
+500 ms tryLock; a lost line is fine, a slow page load is not). Only `doGet` logs —
+the warmer calls `getPSReportData`, so trigger runs never pollute the data.
+`getUsageAnalytics()` (superadmin-only, throws) feeds the 📶 Usage Analytics ☰-menu
+tab: 13-ISO-week rollup + the *eligible audience* (list members ∪ auto-managers the
+current `MANAGER_AUTO_ACCESS` policy admits) with who has NOT engaged. The math is
+pure (`computeUsageRollup_`) and covered by `tests/usage-analytics-checks.js`.
+The trace is disclosed in the page footer and Data Reference.
