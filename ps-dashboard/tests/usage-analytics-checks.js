@@ -62,7 +62,6 @@ const usageSlice = [
   extract(usage, 'const USAGE_LOG_HEADERS_', ';'),
   extract(usage, 'const USAGE_WEEKS_', ';'),
   extract(usage, 'function usageWeekLabel_', '\n}'),
-  extract(usage, 'function usageWeeksInYear_', '\n}'),
   extract(usage, 'function usageWeekWindow_', '\n}'),
   extract(usage, 'function computeUsageRollup_', '\n}'),
   extract(usage, 'function usageEligibleSet_', '\n}'),
@@ -70,7 +69,7 @@ const usageSlice = [
 
 // eslint-disable-next-line no-eval
 const api = eval('(function(){' + secSlice + '\n' + repSlice + '\n' + usageSlice +
-  '\nreturn { SEC_, usageWeekLabel_, usageWeeksInYear_, usageWeekWindow_, computeUsageRollup_,' +
+  '\nreturn { SEC_, usageWeekLabel_, usageWeekWindow_, computeUsageRollup_,' +
   ' usageEligibleSet_, _readAccessLists_, _autoAccessAllows_, USAGE_WEEKS_, weeksInYear_PS_ };})()');
 
 function reset() {
@@ -90,8 +89,6 @@ eq('window is USAGE_WEEKS_ long, oldest first, ending at currentWeek',
 // ISO year boundary: 2025 has 52 ISO weeks (Jan 1 2025 = Wednesday).
 eq('window crosses the year boundary at W52',
    api.usageWeekWindow_('2026.W2', 4), ['2025.W51', '2025.W52', '2026.W1', '2026.W2']);
-eq('weeksInYear 2025', api.usageWeeksInYear_(2025), 52);
-eq('weeksInYear 2026 (long ISO year)', api.usageWeeksInYear_(2026), 53);
 // Regression: weeksInYear_PS_ (report file) must agree with the ISO calendar
 // in EVERY timezone — it used to return 52 for the 53-week year 2026 in
 // negative-UTC-offset zones (Date.UTC construction read via local getters).
@@ -168,6 +165,9 @@ ROSTER_ROWS = [
   rrow('Away Report',  'ar@x.com',  'Away Boss'),
   rrow('Fin Boss',     'fin@x.com', '', { cls: 'Finance' }),
   rrow('Fin Report',   'fr@x.com',  'Fin Boss', { cls: 'Finance' }),
+  rrow('Self Boss',    'selfboss@x.com', 'Self Boss'),                 // supervises only themselves
+  rrow('Ghost Boss',   'ghost@x.com',    ''),                          // only report is inactive:
+  rrow('Gone Report',  'gr@x.com',       'Ghost Boss', { active: false, status: 'Terminated' }),
 ];
 props['PS_DASH_VIEWERS']   = 'guest@x.com';
 props['PS_DASH_DELEGATES'] = 'peer@x.com:Gon Director';   // format: "email:Supervisor Full Name" per line
@@ -185,6 +185,9 @@ ck('bootstrap super admin is always eligible',
    EL[api.SEC_.BOOTSTRAP_ADMIN.toLowerCase()] &&
    EL[api.SEC_.BOOTSTRAP_ADMIN.toLowerCase()].role === 'superadmin');
 ck('any-org mode: a Finance supervisor IS eligible', !!EL['fin@x.com']);
+ck('a row whose Supervisor is themselves is NOT eligible (self-supervision guard)',
+   !EL['selfboss@x.com']);
+ck('a supervisor whose ONLY report is inactive is NOT eligible', !EL['ghost@x.com']);
 
 // "classes" mode: the Finance supervisor is now outside the policy scope.
 const saved = api.SEC_.MANAGER_AUTO_ACCESS;
@@ -246,11 +249,24 @@ const busyLock = { getScriptLock: () => ({ tryLock: () => false, releaseLock: ()
   ck('a throwing SpreadsheetApp is swallowed — the page load survives', !threw);
 }
 {
+  // Steady state: sheet exists — a busy PROJECT lock must not cost the row.
   const before = APPENDED.length;
   let threw = false;
   try { evalLogger(okSS, busyLock)({ allowed: true, email: 'a@x.com', role: 'admin' }); }
   catch (e) { threw = true; }
-  ck('a busy lock skips the row without throwing', !threw && APPENDED.length === before);
+  ck('sheet exists: busy lock does NOT drop the row (appendRow is atomic)',
+     !threw && APPENDED.length === before + 1);
+}
+{
+  // First write ever: no sheet yet AND the lock is busy — skip without throwing.
+  const noSheetSS = {
+    getActiveSpreadsheet: () => ({ getSheetByName: () => null, insertSheet: () => okSheet }),
+  };
+  const before = APPENDED.length;
+  let threw = false;
+  try { evalLogger(noSheetSS, busyLock)({ allowed: true, email: 'a@x.com', role: 'admin' }); }
+  catch (e) { threw = true; }
+  ck('no sheet yet + busy lock: row skipped without throwing', !threw && APPENDED.length === before);
 }
 
 // ── 5. Wiring and gates (source checks) ─────────────────────────────────────

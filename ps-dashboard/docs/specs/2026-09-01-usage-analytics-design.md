@@ -63,8 +63,14 @@ attempt is demand — it counts as its own metric, never as engagement).
   - `Role` — the resolved role, or `denied`.
   - `Allowed` — `TRUE`/`FALSE`.
   - `Scope` — `delegateScopeName` for manager-scoped roles, else blank.
-- **Failure mode:** entire body in try/catch; `LockService.getScriptLock()
-  .tryLock(500)` guards the append. Lock miss or any error ⇒ the visit is
+- **Failure mode:** entire body in try/catch. `Sheet.appendRow` is atomic, so
+  the steady-state append never takes the project-wide script lock — only
+  first-write sheet creation does, via a scoped `LockService.getScriptLock()
+  .tryLock(500)` around the create-and-header step (with a re-check of
+  `getSheetByName` under the lock). That keeps the append off the lock that
+  `runJiraEpicTracker` holds for its entire hourly export; a lock around every
+  append used to make every page load during that window wait 500 ms and then
+  drop its row. Lock miss during creation, or any error, ⇒ the visit is
   dropped, a `Logger.log` line records why, and `doGet` proceeds untouched.
   Logging is best-effort **by design**: a lost log line is acceptable, a slow
   or broken page load is not.

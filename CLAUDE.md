@@ -366,8 +366,9 @@ effect immediately for everyone, not just the saver.
 ## Usage analytics (PS Usage.js)
 
 Every `doGet` hit — allowed and denied — appends one row to the **`PS Access Log`**
-tab of the container spreadsheet via `logDashboardVisit_` (best-effort: try/catch +
-500 ms tryLock; a lost line is fine, a slow page load is not). Only `doGet` logs —
+tab of the container spreadsheet via `logDashboardVisit_` (best-effort: try/catch;
+the script lock guards only first-write sheet creation, so the hourly Jira export
+holding it never costs rows; a lost line is fine, a slow page load is not). Only `doGet` logs —
 the warmer calls `getPSReportData`, so trigger runs never pollute the data.
 `getUsageAnalytics()` (superadmin-only, throws) feeds the 📶 Usage Analytics ☰-menu
 tab: 13-ISO-week rollup + the *eligible audience* (list members ∪ auto-managers the

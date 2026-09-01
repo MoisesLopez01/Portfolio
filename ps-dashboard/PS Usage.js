@@ -21,12 +21,6 @@ function usageWeekLabel_(d) {
   return isoWeekYear_PS_(d) + ".W" + isoWeekNum_PS_(d);
 }
 
-// ISO weeks in a year (52 or 53): Dec 31 pinpoints the boundary precisely.
-function usageWeeksInYear_(y) {
-  const d = new Date(Date.UTC(y, 11, 31));
-  return isoWeekYear_PS_(d) === y ? isoWeekNum_PS_(d) : 52;
-}
-
 // The n week labels ending at `currentWeek` ("YYYY.WN"), oldest first. Pure
 // arithmetic — no Date "now" — so the rollup window is Node-testable.
 function usageWeekWindow_(currentWeek, n) {
@@ -37,7 +31,7 @@ function usageWeekWindow_(currentWeek, n) {
   for (let i = 0; i < n; i++) {
     out.unshift(y + ".W" + w);
     w--;
-    if (w < 1) { y--; w = usageWeeksInYear_(y); }
+    if (w < 1) { y--; w = weeksInYear_PS_(y); }
   }
   return out;
 }
@@ -171,36 +165,47 @@ function usageEligibleSet_() {
 // One log row per doGet hit — allowed AND denied (a denied attempt is demand;
 // the rollup counts it separately, never as engagement). Best-effort BY DESIGN:
 // every failure is logged and swallowed, because a lost log line is acceptable
-// and a slow or broken page load is not. Only doGet calls this — the cache
-// warmer and editor runs go through getPSReportData, so trigger executions
-// (which run as the owner) never pollute the data.
+// and a slow or broken page load is not. The script lock is taken only for
+// first-write sheet creation — appendRow is atomic, so steady-state logging
+// never waits on the project-wide lock the hourly Jira export holds for
+// minutes at a time. Only doGet calls this — the cache warmer and editor runs
+// go through getPSReportData, so trigger executions (which run as the owner)
+// never pollute the data.
 function logDashboardVisit_(access) {
   try {
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(500)) {
-      Logger.log("⚠️ [PS Usage] visit log skipped — lock busy");
-      return;
-    }
-    try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      let sh = ss.getSheetByName(USAGE_LOG_SHEET_);
-      if (!sh) {
-        sh = ss.insertSheet(USAGE_LOG_SHEET_);
-        sh.appendRow(USAGE_LOG_HEADERS_);
-        sh.setFrozenRows(1);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName(USAGE_LOG_SHEET_);
+    if (!sh) {
+      // The one race worth a lock: two first-ever visits both creating the
+      // sheet. appendRow itself is atomic, so steady-state logging never
+      // touches the PROJECT-WIDE script lock — the hourly Jira export holds
+      // it for minutes at a time, and a lock here made every page load wait
+      // 500 ms and then drop its row for that whole window.
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(500)) {
+        Logger.log("⚠️ [PS Usage] visit log skipped — lock busy during first-write sheet creation");
+        return;
       }
-      const now = new Date();
-      sh.appendRow([
-        now,
-        usageWeekLabel_(now),
-        (access && access.email) || "",
-        (access && access.role)  || "denied",
-        !!(access && access.allowed),
-        (access && access.delegateScopeName) || "",
-      ]);
-    } finally {
-      lock.releaseLock();
+      try {
+        sh = ss.getSheetByName(USAGE_LOG_SHEET_);   // re-check under the lock
+        if (!sh) {
+          sh = ss.insertSheet(USAGE_LOG_SHEET_);
+          sh.appendRow(USAGE_LOG_HEADERS_);
+          sh.setFrozenRows(1);
+        }
+      } finally {
+        lock.releaseLock();
+      }
     }
+    const now = new Date();
+    sh.appendRow([
+      now,
+      usageWeekLabel_(now),
+      (access && access.email) || "",
+      (access && access.role)  || "denied",
+      !!(access && access.allowed),
+      (access && access.delegateScopeName) || "",
+    ]);
   } catch (e) {
     Logger.log("⚠️ [PS Usage] visit log failed (page load unaffected): " + e.message);
   }
