@@ -120,8 +120,15 @@ Spec: `docs/specs/2026-09-09-dh-items-not-people-and-week-follow-design.md`. Six
   stated on the tab; an older export reads as "not measured", never as clean.
 
 **Deploy order:** exporter first or together — its header change makes the next light run do one full
-rewrite of Jira Raw, then merges resume. Then `Code.js` + `Dashboard.html` and a cache bump (v49
-strands v48 entries: a v48 payload has no `forecastTaskBuckets` and the card would ask for a refresh).
+rewrite of Jira Raw, then merges resume. Then `Code.js` + `Dashboard.html`; the cache read checks the
+schema version itself, so v48 entries are simply misses (a v48 payload has no `forecastTaskBuckets`).
+
+**How this project actually deploys (recorded 2026-09-09).** The clasp binding lives OUTSIDE the
+repo, in `C:/Users/moise/gas-projects/delivery-health` (script
+`1cZZMn8tPSnHkHe6HgTY08yXXNMZ5z7rMMbY-qrkvBUzMwa6tRUJbLISK`): copy `Code.js`, `Dashboard.html` and
+`Security.js` there, `clasp push`, then `clasp deploy -i <live deployment> -d "<note>"`. Shipped as
+@116 "GTT-514 delivery health W37 changes". Statements elsewhere in these docs that there is "no clasp
+binding" predate this.
 
 ## Open-backlog population widened — hygiene numbers move by design (2026-08-06)
 
