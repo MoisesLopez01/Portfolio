@@ -246,7 +246,7 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " setUtilization_: function (v) { SHOW_UTILIZATION_ = v; }," +
              " getUtilization_: function () { return SHOW_UTILIZATION_; }," +
              " wfAvailability_: wfAvailability_, wfHeadroomByBand_: wfHeadroomByBand_, wfBandRowsHtml_: wfBandRowsHtml_, renderWfConsumers_: renderWfConsumers_, availabilityFor_: availabilityFor_, wfCfg_: wfCfg_, availabilityTileHtml_: availabilityTileHtml_, bandNorms_: bandNorms_," +
-             " drillActionsHtml_: drillActionsHtml_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
+             " drillItems_: drillItems_, drillItemsClose_: drillItemsClose_, drillItemsHtml_: drillItemsHtml_, itemVerdict_: itemVerdict_, ITEM_METRICS_: ITEM_METRICS_, drillPick_: drillPick_, drillRowPick_: drillRowPick_, levelName_: levelName_, EXEC_TABS_: EXEC_TABS_, renderExecTabs_: renderExecTabs_, setExecTab_: setExecTab_," +
              // One-click drill-through (2026-08-18): cells navigate to the
              // metric's own tab with the slice + landing state applied.
              " drillGo_: drillGo_, DRILL_DEST_: DRILL_DEST_," +
@@ -440,7 +440,7 @@ function model(o) {
       // same way every other per-test override in this file works.
       arrivalsAvailable: true, clearRateMedian: null, clearRateWeeks: 8,
       capacityError: null,
-      refreshEveryMin: 30,
+      refreshEveryMin: 30, metricItemsWeeks: 13,
       sources: [{ system: "Jira", feeds: "On-Time", tab: "Jira Raw" }],
       // 📋 Change register (2026-09-09) — a small one; the real DH_CHANGES_ is
       // checked shape-wise in node-tests. One of each status, ids out of order
@@ -554,6 +554,22 @@ function model(o) {
                nNoTime: 2, nMissOver: fOver, nMissUnder: fN - fWithin - fOver,
                absVars: [0.05, 0.4, 0.9] };
     }),
+    // The items behind the grid cells (schema 50). Ana's W31: two On-Time-scope
+    // epics (one late), one plain task that is a forecast miss and a rework item.
+    metricItems: [
+      { key: "E-1", summary: "Go live A", type: "Epic", status: "Done", project: "COE (QAN)", person: "Ana Perez", isEpic: true,
+        epicKey: "", epicName: "", due: "2026.W31", dueOn: "2026-07-31", res: "2026.W31", resolvedOn: "2026-07-30",
+        otScope: true, onTime: true, fcIso: "", fc: "", delivered: true, rework: false },
+      { key: "E-2", summary: "Go live B", type: "Epic", status: "Done", project: "COE (QAN)", person: "Ana Perez", isEpic: true,
+        epicKey: "", epicName: "", due: "2026.W30", dueOn: "2026-07-24", res: "2026.W31", resolvedOn: "2026-07-29",
+        otScope: true, onTime: false, fcIso: "", fc: "", delivered: true, rework: false },
+      { key: "T-1", summary: "Migrate", type: "Task", status: "In Progress", project: "COE (ADBE)", person: "Ana Perez", isEpic: false,
+        epicKey: "E-1", epicName: "Go live A", due: "2026.W31", dueOn: "2026-07-31", res: "", resolvedOn: "",
+        otScope: false, onTime: null, fcIso: "2026.W31", fc: "miss", delivered: false, rework: false },
+      { key: "T-2", summary: "Rework me", type: "Task", status: "Done", project: "COE (ADBE)", person: "Ben Ortiz", isEpic: false,
+        epicKey: "", epicName: "", due: "", dueOn: "", res: "2026.W31", resolvedOn: "2026-07-28",
+        otScope: false, onTime: null, fcIso: "", fc: "", delivered: true, rework: true },
+    ],
     // Task-grain schedule buckets (schema 49, registry 4.4) — what the Forecast
     // card reads since 2026-09-09. 11 of 20 graded items kept their committed
     // week (55%); coverage = fcCov of the 20 items resolved that week carried a
@@ -8102,11 +8118,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // The two destinations ride in the section HEADER, above the table, so a
   // director never scrolls past evidence to reach the action.
   var cmp = els.comparePanel.innerHTML;
-  var headEnd = cmp.indexOf("</div>", cmp.indexOf("chartHead"));
-  assert_(cmp.indexOf("Who is available") !== -1 && cmp.indexOf("What needs action") !== -1,
-          "both destinations render");
-  assert_(cmp.indexOf("Who is available") < cmp.indexOf("gridTable"),
-          "…ABOVE the table, not under it");
+  // The two header buttons were REMOVED 2026-09-09 (user): the cells open the
+  // items behind the number in place instead.
+  assert_(cmp.indexOf("Who is available →") === -1 && cmp.indexOf("What needs action →") === -1,
+          "no destination buttons in the breakdown header — the cells open the items instead");
 
   // ── The pipeline callouts are DELETED (2026-08-28) — nothing on either
   // half prints a pace/runway/groomed figure any more.
@@ -8440,8 +8455,6 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
             "…and it is AMER — the offender row — that carries the active state");
     assert_((h2.match(/aria-pressed="true"/g) || []).length === 1,
             "…announced via aria-pressed, never colour alone");
-    assert_(/Who is available →[^<]*AMER/.test(h2),
-            "…and the Workforce button inherits the slice from the clicked row");
     assert_(/95%/.test(h2),
             "…while the unselected row keeps its value — selecting AMER must not " +
             "blank EMEA or reshuffle the ranking under the click");
@@ -8458,15 +8471,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.compare = "region";
   C.drillPick_("region", "AMER");
   var d = els.comparePanel.innerHTML;
-  assert_(/Who is available →[^<]*AMER/.test(d),
-          "the Workforce deep link names the slice on the BUTTON, not only in its tooltip");
-  assert_(/What needs action →[^<]*AMER/.test(d), "…and so does the Actions one");
+  assert_(!/Who is available →/.test(d) && !/What needs action →/.test(d),
+          "no deep-link buttons in the header any more (removed 2026-09-09)");
   assert_(C.STATE.region === "AMER",
-          "the filter really is applied, so the destination tab opens narrowed");
-  // On a delivery lens the Actions route leads, and neither is dressed primary.
-  assert_(d.indexOf("What needs action") < d.indexOf("Who is available"),
-          "on a delivery lens the Actions route leads");
-  assert_(!/btnPrimary/.test(d), "…and neither is dressed as primary");
+          "the filter really is applied, so the tabs open narrowed when the reader goes there");
 
   // Teardown.
   C.drillPick_("region", "");
@@ -8497,21 +8505,25 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var tgt = { green: 85, amber: 70 };
   var hot = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6,
                               sampleNoun: "items", go: { row: 2, id: "forecast" } });
-  assert_(hot.indexOf("drillGo_(2,'forecast')") !== -1, "a go cell carries drillGo_");
+  assert_(hot.indexOf("drillItems_(2,'forecast')") !== -1,
+          "an ITEM metric's go cell opens the items panel (drillItems_) since 2026-09-09");
+  assert_(/list the 6 items behind this number/.test(hot), "…and its tooltip promises the list, with the count");
+  var hotHrs = C.gridCellHtml_({ value: 50, n: 6, target: tgt, go: { row: 2, id: "avail" } });
+  assert_(hotHrs.indexOf("drillGo_(2,'avail')") !== -1, "an HOUR metric's go cell still navigates (drillGo_)");
   assert_(hot.indexOf("stopPropagation") !== -1,
           "…and stops the click from ALSO toggling the row selection underneath it");
   assert_(/role="button"/.test(hot) && /tabindex="0"/.test(hot),
           "…keyboard-reachable, not mouse-only");
   assert_(/gridCell go/.test(hot), "…and wears the hover-affordance class");
-  assert_(/open Actions/.test(hot) && /needs action/.test(hot),
-          "the tooltip makes the promise BEFORE the click — destination and narrowing named");
+  assert_(/did not meet Forecast Accuracy first, with who owns each/.test(hot),
+          "the tooltip makes the promise BEFORE the click — the items, misses first, with owners");
   var hotAvail = C.gridCellHtml_({ value: 50, n: 6, target: null, std: null,
                                    go: { row: 0, id: "avail" } });
   assert_(/open Workforce/.test(hotAvail), "…and an availability cell promises Workforce");
   var cold = C.gridCellHtml_({ value: 50, n: 6, target: tgt, sampleN: 6, sampleNoun: "items" });
   assert_(cold.indexOf("drillGo_") === -1, "no go option → no handler, no affordance class");
   var inert = C.gridCellHtml_({ value: null, go: { row: 2, id: "forecast" } });
-  assert_(inert.indexOf("drillGo_") === -1,
+  assert_(inert.indexOf("drillGo_") === -1 && inert.indexOf("drillItems_") === -1,
           "a '—' cell is click-inert even with go — nobody is behind an unmeasured number");
 
   // ── 3. Behaviour: delivery cells land on Actions, narrowed ──────────────
@@ -8534,12 +8546,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.STATE.compare = "region";
   C.renderCompare_();
   var h = els.comparePanel.innerHTML;
-  assert_(/drillGo_\(/.test(h), "the rendered grid's value cells carry the cell-click handler");
+  assert_(/drillItems_\(/.test(h) && /drillGo_\(/.test(h),
+          "the rendered grid's value cells carry a click handler — items panel for item metrics, navigation for hours");
   // The NAME cell stays row-select — a click on the label must not navigate.
   var rIdx = h.indexOf(">AMER");
   var row = h.slice(h.lastIndexOf("<tr", rIdx), h.indexOf("</tr>", rIdx) + 5);
   var nameCell = row.slice(row.indexOf("<td"), row.indexOf("</td>") + 5);
-  assert_(nameCell.indexOf("drillGo_") === -1,
+  assert_(nameCell.indexOf("drillGo_") === -1 && nameCell.indexOf("drillItems_") === -1,
           "the name cell is row-select, not navigation — two affordances, two targets");
   assert_(/Click a cell/.test(h), "the footer how-to teaches the cell click");
 
@@ -9296,5 +9309,98 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
+})();
+
+// ── H. THE ITEMS BEHIND A CELL (user 2026-09-09) ───────────────────────────
+(function () {
+  var mdl = fresh(model({}));
+  resetFilters();
+  mdl.onTimeBuckets = [{ iso: "2026.W31", person: "Ana Perez", n: 2, onTime: 1, nAll: 2 }];
+  mdl.forecastTaskBuckets = [{ iso: "2026.W31", person: "Ana Perez", nSched: 1, nHit: 0, nMiss: 1, nLate: 0, nPending: 0, nRes: 0, nResDated: 0 }];
+  mdl.reworkBuckets = [{ iso: "2026.W31", person: "Ben Ortiz", nDelivered: 1, nRework: 1, nLinked: 1, nReopened: 0, nReopenCov: 1 },
+                       { iso: "2026.W31", person: "Ana Perez", nDelivered: 2, nRework: 0, nLinked: 0, nReopened: 0, nReopenCov: 2 }];
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.setState("metric", "onTime");
+  C.STATE.compare = "region";                        // both people are AMER → one row
+  C.STATE.drillItems = null;
+  C.renderCompare_();
+  var h = els.comparePanel.innerHTML;
+  assert_(!/drillItems"/.test(h), "no items panel before a cell is clicked");
+  // On-Time cell: 1/2 items → the two epics, the late one first.
+  C.drillItems_(0, "onTime");
+  h = els.comparePanel.innerHTML;
+  assert_(/id="drillItems"/.test(h), "clicking an item cell opens the items panel under the grid");
+  assert_(/AMER · On-Time Delivery · 2026\.W31/.test(h), "the panel names the row, the metric and the window");
+  assert_(/<b>2<\/b> graded items · <b class="sigBad">1<\/b> did not meet On-Time Delivery across <b>1<\/b> person/.test(h),
+          "the summary reproduces the cell — 2 graded, 1 did not meet — and counts the owners to act with");
+  assert_(h.indexOf("Go live B") < h.indexOf("Go live A"), "the late epic sorts FIRST, the on-time one LAST");
+  assert_(/✗ late/.test(h) && /✓ on time/.test(h), "each item carries its verdict");
+  assert_(/COE \(QAN\)/.test(h) && /Space \(Project\)/.test(h), "each item shows its Space (Project)");
+  assert_(!/Rework me/.test(h) && !/Migrate/.test(h), "items outside this metric's population are not listed");
+  assert_(/Open these 2 in Jira/.test(h), "one click works the whole list in Jira");
+  // Forecast cell: the open task is a miss.
+  C.drillItems_(0, "forecast");
+  h = els.comparePanel.innerHTML;
+  assert_(/Forecast Accuracy · 2026\.W31/.test(h) && /Migrate/.test(h) && /✗ still open/.test(h),
+          "the Forecast cell lists the scheduled items with the week verdict");
+  assert_(!/Go live B/.test(h), "…and no On-Time items leak in");
+  // Quality cell: rework first, clean last; Ben's item appears under his name.
+  C.drillItems_(0, "quality");
+  h = els.comparePanel.innerHTML;
+  assert_(h.indexOf("Rework me") < h.indexOf("Go live A") && /✗ rework/.test(h) && /✓ clean/.test(h),
+          "the Quality cell lists delivered items, rework first");
+  assert_(/Ben Ortiz/.test(h), "…naming the owner of the rework item");
+  // Same cell again closes; Reset clears.
+  C.drillItems_(0, "quality");
+  assert_(C.STATE.drillItems === null && !/id="drillItems"/.test(els.comparePanel.innerHTML),
+          "clicking the same cell again closes the panel");
+  C.drillItems_(0, "onTime");
+  document.getElementById("btnReset").onclick();
+  assert_(C.STATE.drillItems === null, "Reset clears the items panel like every other selection");
+  // Pre-v50 payload says so.
+  var old = fresh(model({}));
+  delete old.metricItems;
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec"); C.setState("metric", "onTime"); C.STATE.compare = "region";
+  C.renderCompare_();
+  C.drillItems_(0, "onTime");
+  assert_(/Not in this payload/.test(els.comparePanel.innerHTML), "a payload without metricItems asks for a refresh");
+  C.STATE.drillItems = null;
+  C.setState("typePop", "open");
+  fresh(model({}));
+})();
+
+// ── I. PM TAB GROUPS EPICS BY SPACE (PROJECT) ─────────────────────────────
+(function () {
+  var mdl = fresh(model({}));
+  resetFilters();
+  function ep(key, project) {
+    return { key: key, name: "Epic " + key, status: "In Progress", started: true, due: "2026.W40", overdue: false,
+             within: 0, atRisk: 0, breached: 0, noDate: 0, ignoredN: 0, assignee: "Dana Reyes", via: "assignee",
+             childrenAll: 1, stale: false, staleDays: 1, owners: ["Ana Perez"], pushes: [], project: project, children: [] };
+  }
+  mdl.pmOwned = { keyCap: 200, pushCoverage: { epics: 3, measured: 3 },
+    rows: [{ pm: "Dana Reyes", epicN: 3, epicDated: 3, epicMissingKeys: [], epicCapped: false, epicBacklogN: 0,
+             epicBacklogKeys: [], readyDen: 3, readyN: 3, ignoredN: 0, viaAssignee: 3, viaProject: 0,
+             oppNoDue: 0, oppEpicsAtRisk: 0, oppEpicsBreached: 0, oppNoChildren: 0, oppStale: 0,
+             epics: [ep("QAN-1", "COE (QAN)"), ep("ADBE-7", "COE (ADBE)"), ep("QAN-2", "COE (QAN)"), ep("LEG-1", undefined)] }] };
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "pm");
+  C.STATE.pmOpen = { "Dana Reyes": true }; C.STATE.pmEpicOpen = {};
+  C.renderAll_();
+  var h = els.pmPanel.innerHTML;
+  assert_((h.match(/pmProjRow/g) || []).length === 3, "one group row per Space (Project) — three projects");
+  assert_(/▣ COE \(ADBE\)/.test(h) && /▣ COE \(QAN\)/.test(h) && /▣ LEG/.test(h),
+          "groups are named by the export's Space (Project); an epic without one falls back to its key prefix");
+  assert_(h.indexOf("▣ COE (ADBE)") < h.indexOf("▣ COE (QAN)") && h.indexOf("▣ COE (QAN)") < h.indexOf("▣ LEG"),
+          "projects are ordered by name");
+  assert_(/COE \(QAN\)<\/span> <span class="cellSub">· 2 epics/.test(h), "…each stating how many epics it holds");
+  var qanIdx = h.indexOf("▣ COE (QAN)"), legIdx = h.indexOf("▣ LEG");
+  assert_(h.indexOf("QAN-1") > qanIdx && h.indexOf("QAN-2") > qanIdx && h.indexOf("QAN-1") < legIdx && h.indexOf("QAN-2") < legIdx,
+          "both QAN epics sit under their project's group row");
+  C.STATE.pmOpen = {};
+  C.setState("view", "exec");
+  fresh(model({}));
 })();
 console.log("✅ render-smoke: " + checks + " checks passed");

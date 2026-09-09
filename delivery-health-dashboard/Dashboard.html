@@ -643,6 +643,9 @@ table.hyg.tmx tr:hover td{background:rgba(127,127,127,.12)}
 .sigDot{font-size:12px}
 .sigGood{color:var(--c-good)} .sigWarn{color:var(--c-warn)} .sigBad{color:var(--c-bad)}
 .sigSmall{color:var(--muted)}
+.pmProjRow td{background:var(--surface-2);font-weight:700;border-top:2px solid var(--border)}
+.drillItems{margin:8px 0}
+.drillItems .needRow td{background:color-mix(in srgb,var(--c-bad) 6%,transparent)}
 /* Intern cells: the SAME muted ink as an ungraded small-n cell, deliberately —
    both mean "shown, not judged", and inventing a second grey would suggest a
    second meaning. */
@@ -1294,9 +1297,9 @@ select option:disabled{color:var(--muted);font-style:italic}
         <div class="tiles tier1" id="tier1Tiles"></div>
       </section>
 
-      <!-- THE DRILL-DOWN, PULLED UP to sit directly under the KPIs. Its own
-           actions ride in its header (renderCompare_ → drillActionsHtml_), so a
-           director never scrolls to find them. -->
+      <!-- THE DRILL-DOWN, PULLED UP to sit directly under the KPIs. Its value
+           cells open the items behind each number in place (drillItems_,
+           2026-09-09); the header buttons that used to navigate away are gone. -->
       <section class="tier tier3">
         <div class="panel" id="comparePanel"></div>
       </section>
@@ -3208,6 +3211,7 @@ function resetFilters_() {
   STATE.level = "";        // …including the level band, set by drilling the breakdown chart
   STATE.flag = ""; STATE.expandedWeeks = {}; STATE.openDetail = {}; STATE.openDetailAll = {};
   STATE.sigFilter = "";   // …including the roster's signal chip
+  STATE.drillItems = null; // …and the items panel under the breakdown grid
   STATE.periodIdx = null; // …including the analysis-period picker
   STATE.advOpen = false;  // …and the advanced drawer collapses, since Reset
                           //    just returned every filter inside it to default
@@ -6778,15 +6782,23 @@ function gridCellHtml_(o) {
   var goTip = "", goAttr = "";
   if (go) {
     var gm = METRICS_[go.id];
-    var gDest = DRILL_DEST_[go.id] === "workforce" ? "Workforce" : "Actions";
-    goTip = " Click: open " + gDest + " for this row's people on " +
-      (gm ? gm.label() : go.id) +
-      (gDest === "Actions" && go.id !== "planCov"
-        ? ", narrowed to who needs action." : ".");
+    // ITEM metrics open the list of items behind the number, in place (user
+    // 2026-09-09: "for MGMT 10% (1/10 items) I expect to see those 10 items").
+    // Hour metrics (availability, planned coverage, utilisation) have no items
+    // — they keep navigating to the tab that holds the people.
+    var fn = ITEM_METRICS_[go.id] ? "drillItems_" : "drillGo_";
+    if (fn === "drillItems_") {
+      goTip = " Click: list the " + (o.sampleN !== undefined && o.sampleN !== null ? o.sampleN + " " : "") +
+        "items behind this number — the ones that did not meet " + (gm ? gm.label() : go.id) +
+        " first, with who owns each.";
+    } else {
+      var gDest = DRILL_DEST_[go.id] === "workforce" ? "Workforce" : "Actions";
+      goTip = " Click: open " + gDest + " for this row's people on " + (gm ? gm.label() : go.id) + ".";
+    }
     goAttr = ' role="button" tabindex="0" onclick="event.stopPropagation();' +
-      "drillGo_(" + go.row + ",'" + go.id + "')\" " +
+      fn + "(" + go.row + ",'" + go.id + "')\" " +
       'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
-      "event.stopPropagation();drillGo_(" + go.row + ",'" + go.id + "')}\"";
+      "event.stopPropagation();" + fn + "(" + go.row + ",'" + go.id + "')}\"";
   }
   // ── OVER-ALLOCATION, NEVER A NEGATIVE RATE (user 2026-08-17) ───────────────
   // Availability goes below zero when planned hours exceed scheduled capacity.
@@ -6934,7 +6946,7 @@ function renderCompare_() {
       // turns "50%" into "50% (1/2 items)".
       cellN[id] = scopedMetricN_(METRICS_[id], head.isos, names);
     });
-    return { key: val, label: val, value: v, n: realN, cells: cells, cellN: cellN };
+    return { key: val, label: val, value: v, n: realN, cells: cells, cellN: cellN, names: names };
   }).filter(function (r) { return r.n > 0; })
     .sort(function (a, b) {
       // Nulls last: "no measurable data" is not a low score and must not sit at
@@ -6991,6 +7003,10 @@ function renderCompare_() {
     // Keys travel by INDEX through DRILL_ROW_KEYS_, never inlined into the
     // onclick string, so a team named O'Brien & Co cannot break the handler.
     DRILL_ROW_KEYS_ = gridSel.rows.map(function (r) { return r.key; });
+    // The exact people set each row was computed over (2026-09-09): the items
+    // panel reproduces a cell from the SAME population, never a re-derivation.
+    DRILL_ROW_NAMES_ = gridSel.rows.map(function (r) { return r.names || {}; });
+    DRILL_ROW_LABELS_ = gridSel.rows.map(function (r) { return r.label; });
     var dimSel = STATE[STATE.compare] || "";
     gridHtml = '<div class="gwrap" style="margin:8px 0"><table class="hyg gridTable">' +
       '<thead><tr><th class="tname">' + esc_(COMPARE_LABELS[STATE.compare]) + "</th>" +
@@ -7025,10 +7041,9 @@ function renderCompare_() {
           'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
           'drillRowPick_(' + i + ');}" title="' +
           esc_(isActive
-            ? "Selected. The buttons above carry this slice — click again to clear it."
-            : "Select " + r.label + ": every filter on the page narrows to it, and the " +
-              "“Who is available” and “What needs action” buttons above " +
-              "carry it to their tab.") + '"><td class="tname">' +
+            ? "Selected. Every filter on the page is narrowed to this slice — click again to clear it."
+            : "Select " + r.label + ": every filter on the page narrows to it, so the Actions, " +
+              "Project Managers and Workforce tabs open already narrowed.") + '"><td class="tname">' +
           (offender ? '<span class="offMark" title="Below the ' +
             esc_(METRICS_[STATE.metric].label()) + ' target — one of the rows pulling ' +
             'the selected metric down.">▸</span>' : "") + esc_(r.label) +
@@ -7045,6 +7060,8 @@ function renderCompare_() {
                                    go: { row: i, id: id } });
           }).join("") + "</tr>";
       }).join("") + "</tbody></table></div>" +
+      // ── THE ITEMS BEHIND THE CLICKED CELL (user 2026-09-09) ─────────────
+      drillItemsHtml_() +
       // THE ROW CAP NEEDS ITS OWN ESCAPE HATCH (2026-08-17). This affordance
       // used to live on the bar chart; the chart went, the cap did not, and a
       // 15-team org would have silently shown 12 with no way to see the rest.
@@ -7123,7 +7140,7 @@ function renderCompare_() {
     '<div class="chartHead"><h3>' + esc_(m.label()) + " by " +
       esc_(COMPARE_LABELS[STATE.compare]) + scopeTag_("period") + "</h3>" +
       '<span class="sub">' + esc_(head.label) + " · last complete " + unit + "</span>" +
-      '<span style="flex:1"></span>' + drillActionsHtml_() + "</div>" +
+      '<span style="flex:1"></span>' + "</div>" +
     '<div class="chartHead" style="margin-bottom:6px"><span class="sub">Break down by</span>' +
       '<span class="chips seg">' + chips + "</span></div>" +
     // THE METRIC TOGGLE ROW IS GONE (2026-08-17). It offered a pill per metric
@@ -7168,7 +7185,7 @@ function renderCompare_() {
       "Each cell is graded against its own metric's target and operating band. " +
       "Click a column header to rank by it. Click a row to select it — the " +
       "buttons above carry that slice to Workforce or Actions. " +
-      "Click a cell to jump straight to the people behind it — Workforce for " +
+      "Click a cell to list the items behind its number — the ones that did not meet it first, with who owns each; availability cells open Workforce." +
       "availability, Actions for the rest.</div>";
 }
 
@@ -7189,45 +7206,14 @@ function renderCompare_() {
  * nothing special happens on arrival — the tab simply obeys the filter the way
  * it obeys every other one.
  */
-/**
- * ── THE TWO DESTINATIONS, IN THE SECTION HEADER (2026-08-17) ─────────────────
- * These used to sit at the BOTTOM of the panel, under a full-width bar chart.
- * A director therefore had to scroll past a picture of the problem to reach the
- * two buttons that do something about it — which is the wrong way round: the
- * action is the point of the section, and the evidence is what supports it.
- *
- * They ride in the header instead, on the same line as the title, so they are
- * on screen the moment the section is. They carry whatever narrowing is active,
- * because the filters are universal — the destination tab simply obeys the same
- * filter every other surface does.
+/*
+ * ── "WHAT NEEDS ACTION →" / "WHO IS AVAILABLE →" — REMOVED 2026-09-09 (user) ──
+ * The two header buttons (drillActionsHtml_) carried the selected slice to the
+ * Actions or Workforce tab. They are gone: the value cells now open the ITEMS
+ * behind the number in place (drillItems_), which is what the reader was
+ * navigating away to find. Row selection still narrows every filter on the
+ * page; the tabs are one click away in the tab bar with that narrowing applied.
  */
-function drillActionsHtml_() {
-  var dim = STATE.compare;
-  var active = STATE[dim] || "";
-  var A = analysisHead_();
-  var period = A.all.length ? A.head.label : "";
-  // THE SCOPE IS ON THE BUTTON, not only in its tooltip (user 2026-08-17). A
-  // deep link that silently carries a filter is indistinguishable from one that
-  // drops it, and the reader finds out only after arriving. Naming the slice
-  // here means the promise is made before the click, not discovered after it.
-  var slice = active ? " · " + esc_(active) : "";
-  var scopeWords = (active ? active : "the full population") +
-    (period ? ", " + period : "");
-  // When the reader is looking at AVAILABILITY, "who is available" stops being
-  // one of two equal options and becomes the obvious next step — so it leads.
-  var availFirst = STATE.metric === "avail";
-  var wf = '<button class="btn' + (availFirst ? " btnPrimary" : "") +
-    '" onclick="switchView_(\'workforce\')" title="' +
-    esc_("Open Workforce for " + scopeWords + " — capacity by pool and level band, and the " +
-         "names behind the Availability Rate. Every filter on this page travels with you, so " +
-         "the tab opens already narrowed.") +
-    '">Who is available →' + slice + "</button>";
-  var act = '<button class="btn" onclick="switchView_(\'actions\')" title="' +
-    esc_("Open Actions for " + scopeWords + " — the data-quality gates, the compliance signals " +
-         "roster and the gaps queue behind these delivery numbers. The same filters travel.") +
-    '">What needs action →' + slice + "</button>";
-  return '<span class="chips drillActions">' + (availFirst ? wf + act : act + wf) + "</span>";
-}
 
 
 /*
@@ -7253,6 +7239,147 @@ function drillActionsHtml_() {
  */
 var DRILL_DEST_ = { avail: "workforce", onTime: "actions", forecast: "actions",
                     quality: "actions", planCov: "actions", util: "workforce" };
+
+// ══════════════════════════════════════════════════════════════════════════
+// THE ITEMS BEHIND A CELL (user 2026-09-09)
+//
+// "For MGMT we have 10% on time delivery (1/10 items) — I expect to see those
+// 10 items, showing those that did not meet the criteria first and last the
+// ones that qualified. This will help me get the right items to action and the
+// people that will make the changes in a single shot, on any week considered."
+//
+// The panel reproduces the cell from the same records the buckets were summed
+// from (MODEL.metricItems, schema 50): same people set (the row's, by index),
+// same window (the analysis head), same predicate per metric — so its count
+// equals the cell's. Every item names its owner, project and status, with a
+// one-click "open in Jira" over the whole list.
+// ══════════════════════════════════════════════════════════════════════════
+var ITEM_METRICS_ = { onTime: 1, forecast: 1, quality: 1 };
+var DRILL_ROW_NAMES_ = [], DRILL_ROW_LABELS_ = [];
+
+/** Cell click on an item metric: remember row + metric, re-render in place. A
+    second click on the same cell closes the panel. */
+function drillItems_(i, metricId) {
+  var key = DRILL_ROW_KEYS_[i];
+  if (key === undefined || !ITEM_METRICS_[metricId]) return;
+  var cur = STATE.drillItems;
+  if (cur && cur.key === key && cur.id === metricId) { STATE.drillItems = null; }
+  else STATE.drillItems = { key: key, id: metricId, label: DRILL_ROW_LABELS_[i] || String(key),
+                            names: DRILL_ROW_NAMES_[i] || {}, dim: STATE.compare };
+  renderCompare_();
+}
+function drillItemsClose_() { STATE.drillItems = null; renderCompare_(); }
+
+/** Per-metric read of one item for the window: in the cell's population or not,
+    graded or not, met or not, plus the words for the Result cell. */
+function itemVerdict_(it, metricId, isos) {
+  if (metricId === "onTime") {
+    if (!it.otScope || isos.indexOf(it.res) === -1) return null;
+    if (it.onTime === null) return { graded: false, ok: null, word: "no due date", cls: "cellSub",
+      tip: "Resolved in the window but never dated — counted toward coverage, not graded." };
+    return it.onTime ? { graded: true, ok: true, word: "✓ on time", cls: "sigGood" }
+                     : { graded: true, ok: false, word: "✗ late", cls: "sigBad",
+                         tip: "Resolved after its due calendar day." };
+  }
+  if (metricId === "forecast") {
+    if (!it.fc || isos.indexOf(it.fcIso) === -1) return null;
+    if (it.fc === "hit") return { graded: true, ok: true, word: "✓ in its week", cls: "sigGood" };
+    if (it.fc === "late") return { graded: true, ok: false, word: "✗ finished late", cls: "sigBad",
+      tip: "Finished after the committed week ended." };
+    if (it.fc === "miss") return { graded: true, ok: false, word: "✗ still open", cls: "sigBad",
+      tip: "The committed week ended and the item is not done." };
+    return { graded: false, ok: null, word: "◐ pending", cls: "cellSub",
+      tip: "The committed week has not ended — not graded either way yet." };
+  }
+  if (metricId === "quality") {
+    if (!it.delivered || isos.indexOf(it.res) === -1) return null;
+    return it.rework ? { graded: true, ok: false, word: "✗ rework", cls: "sigBad",
+                         tip: "Reopened, or linked as rework." }
+                     : { graded: true, ok: true, word: "✓ clean", cls: "sigGood" };
+  }
+  return null;
+}
+
+function drillItemsHtml_() {
+  var st = STATE.drillItems;
+  if (!st) return "";
+  var m = METRICS_[st.id];
+  var head = analysisHead_().head;
+  var title = esc_(st.label) + " · " + esc_(m ? m.label() : st.id) + " · " + esc_(head.label);
+  var close = '<button class="btn" onclick="drillItemsClose_()" title="Close this list">✕ Close</button>';
+  if (!MODEL.metricItems) {
+    return '<div class="panel drillItems"><div class="chartHead"><h3>' + title + "</h3>" +
+      '<span style="flex:1"></span>' + close + "</div>" +
+      '<div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div></div>';
+  }
+  if (!MODEL._pByName) {
+    MODEL._pByName = {};
+    MODEL.people.forEach(function (p) { MODEL._pByName[p.name] = p; });
+  }
+  var rows = [];
+  MODEL.metricItems.forEach(function (it) {
+    if (!it.person || !st.names[it.person]) return;
+    var p = MODEL._pByName[it.person];
+    if (!p || p.isIntern) return;                    // same exclusion as the people read
+    var v = itemVerdict_(it, st.id, head.isos);
+    if (!v) return;
+    rows.push({ it: it, v: v });
+  });
+  // Did not meet first, then not graded, then met last (user's order); within a
+  // group by owner, then key — the owner is who makes the change.
+  function rank(v) { return v.ok === false ? 0 : v.graded ? 2 : 1; }
+  rows.sort(function (a, b) {
+    var d = rank(a.v) - rank(b.v);
+    if (d) return d;
+    return a.it.person.localeCompare(b.it.person) || String(a.it.key).localeCompare(String(b.it.key));
+  });
+  var graded = rows.filter(function (r) { return r.v.graded; }).length;
+  var failed = rows.filter(function (r) { return r.v.ok === false; }).length;
+  var owners = {}; rows.forEach(function (r) { if (r.v.ok === false) owners[r.it.person] = 1; });
+  var ownerN = Object.keys(owners).length;
+  var horizon = MODEL.meta.metricItemsWeeks || 13;
+  var body = rows.map(function (r) {
+    var it = r.it, v = r.v;
+    var keyCell = jiraBase_() ? jiraLink_(jiraIssueUrl_(it.key), it.key, "Open " + it.key + " in Jira") : esc_(it.key);
+    var epic = it.isEpic ? '<span class="cellSub">is an epic</span>'
+      : it.epicKey ? '<span class="cellSub" title="' + esc_(it.epicKey + (it.epicName ? " — " + it.epicName : "")) + '">' +
+                     esc_(trunc_(it.epicName || it.epicKey, 28)) + "</span>"
+      : '<span class="cellSub">—</span>';
+    return '<tr class="' + (v.ok === false ? "needRow" : "") + '"><td class="tname">' + piiHtml_(it.person) + "</td>" +
+      "<td>" + keyCell + "</td><td>" + esc_(trunc_(it.summary, 60)) + "</td><td>" + esc_(it.project || "") + "</td>" +
+      "<td>" + epic + "</td><td>" + esc_(it.status || "") + "</td>" +
+      "<td>" + (it.due ? esc_(it.due) : '<span class="cellSub">—</span>') + "</td>" +
+      "<td>" + (it.resolvedOn ? esc_(it.resolvedOn) : '<span class="cellSub">open</span>') + "</td>" +
+      '<td><span class="' + v.cls + '"' + (v.tip ? ' title="' + esc_(v.tip) + '"' : "") + ">" + v.word + "</span></td></tr>";
+  }).join("");
+  var summary = rows.length
+    ? "<b>" + graded + "</b> graded item" + (graded === 1 ? "" : "s") + " · <b class=\"" + (failed ? "sigBad" : "sigGood") +
+      '">' + failed + "</b> did not meet " + esc_(m ? m.label() : st.id) +
+      (ownerN ? " across <b>" + ownerN + "</b> " + (ownerN === 1 ? "person" : "people") : "") +
+      (rows.length > graded ? " · " + (rows.length - graded) + " not graded (listed in the middle)" : "") +
+      " — the ones to act on are first, the ones that met it are last."
+    : "No items behind this cell in " + esc_(head.label) + ".";
+  var horizonNote = (head.isos || []).some(function (iso) {
+    var mon = weekKeyMonday_(iso), nowMon = weekKeyMonday_(currentIso_() || iso);
+    return mon !== null && nowMon !== null && (nowMon - mon) > horizon * 7 * 864e5;
+  }) ? ' <span class="cellSub">The payload carries items for the last ' + horizon +
+       " weeks; part of this window is older, so the list may be shorter than the cell.</span>" : "";
+  return '<div class="panel drillItems" id="drillItems">' +
+    '<div class="chartHead"><h3>' + title + "</h3>" + '<span style="flex:1"></span>' + close + "</div>" +
+    '<p class="cellSub">' + summary + horizonNote + "</p>" +
+    (rows.length
+      ? '<div class="gwrap"><table class="hyg drillItemsTbl"><thead><tr>' +
+        '<th class="tname" title="The Jira assignee, on the roster — the person who makes the change.">Who</th>' +
+        "<th>Key</th><th>Summary</th><th title=\"Space (Project) from Jira.\">Space (Project)</th>" +
+        '<th title="The epic the item belongs to.">Belongs to</th><th>Status</th>' +
+        '<th title="Committed week.">Due</th><th title="Resolution date, or still open.">Resolved</th>' +
+        '<th title="This metric\'s verdict on the item.">Result</th></tr></thead><tbody>' + body + "</tbody></table></div>" +
+        (jiraBase_() ? '<div class="cellSub">' + jiraOpenAll_(rows.map(function (r) { return r.it.key; }),
+                        "Open these " + rows.length + " in Jira").replace(/^ /, "") + "</div>" : "")
+      : "") +
+    "</div>";
+}
+
 
 /** Cell click on the drill grid: set the slice, set the metric, land on the
     metric's own tab. SETS the filter (never toggles) — arriving somewhere with
@@ -10478,8 +10605,26 @@ function pmEpicRowsHtml_(r, nowIso) {
     return '<tr class="pmEmpty"><td colspan="' + Object.keys(PM_COLS_).length + '">' +
       '<span class="cellSub">No epics in progress or due this month.</span></td></tr>';
   }
-  return pmColsHeadRow_() +
-    epics.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("");
+  // GROUPED BY SPACE (PROJECT) (user 2026-09-09: PMs work by Jira project).
+  // One header row per project, epics under it in their existing worst-first
+  // order. The project comes from the export's "Space (Project)" column; a
+  // pre-v50 epic falls back to its key prefix so the grouping never collapses
+  // into one unnamed bucket.
+  var groups = {}, order = [];
+  epics.forEach(function (e) {
+    var pr = e.project || String(e.key || "").split("-")[0] || "(no project)";
+    if (!groups[pr]) { groups[pr] = []; order.push(pr); }
+    groups[pr].push(e);
+  });
+  order.sort(function (a, b) { return a.localeCompare(b); });
+  var span = Object.keys(PM_COLS_).length;
+  return pmColsHeadRow_() + order.map(function (pr) {
+    var list = groups[pr];
+    return '<tr class="pmProjRow"><td colspan="' + span + '" class="tname">' +
+      '<span title="Space (Project) from Jira — the unit a PM works by.">▣ ' + esc_(pr) + "</span>" +
+      ' <span class="cellSub">· ' + list.length + " epic" + (list.length === 1 ? "" : "s") + "</span></td></tr>" +
+      list.map(function (e) { return pmEpicHtml_(e, nowIso); }).join("");
+  }).join("");
 }
 
 /**

@@ -123,6 +123,14 @@ Spec: `docs/specs/2026-09-09-dh-items-not-people-and-week-follow-design.md`. Six
 rewrite of Jira Raw, then merges resume. Then `Code.js` + `Dashboard.html`; the cache read checks the
 schema version itself, so v48 entries are simply misses (a v48 payload has no `forecastTaskBuckets`).
 
+**Same evening, schema v50 (not registered on the Changes tab, by instruction):** the breakdown
+grid's two header buttons ("What needs action →", "Who is available →") are gone; clicking an
+On-Time / Forecast / Quality cell now opens **the items behind that number** in place — the ones that
+did not meet the metric first, the ones that met it last, each with its owner, Space (Project),
+status and a one-click Jira link (`metricItems`, trailing 13 weeks; availability cells still open
+Workforce). The Project Managers tab groups each PM's epics by **Space (Project)**. Every register
+entry was marked Solved after the @116 deploy.
+
 **How this project actually deploys (recorded 2026-09-09).** The clasp binding lives OUTSIDE the
 repo, in `C:/Users/moise/gas-projects/delivery-health` (script
 `1cZZMn8tPSnHkHe6HgTY08yXXNMZ5z7rMMbY-qrkvBUzMwa6tRUJbLISK`): copy `Code.js`, `Dashboard.html` and

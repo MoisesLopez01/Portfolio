@@ -325,67 +325,72 @@ var CONFIG_DH = {
 //   "review" — built and tested, awaiting review / deploy (the tab says which)
 //   "todo"   — agreed, not built; `done` says what is pending and who decides
 //
+// 2026-09-09 (user): the whole 2026.W37 batch was marked SOLVED after the @116
+// deploy, the three follow-ups included — the user closed them as decisions.
+// The 2026-09-09 evening changes (grid cell → items, PM grouping by project,
+// the two header buttons removed) were NOT registered, by instruction.
+//
 // Numbering is by request order and never reused; the register starts at
 // #001 with the 2026.W37 batch (earlier history lives in README.md).
 // Shipped impersonally in meta.changes; the tab is gated to admins in VIEWS.
 // ══════════════════════════════════════════════════════════════════════════
 var DH_CHANGES_ = [
-  { id: 1, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 1, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Calculation change for On-Time Delivery",
     ask: "Evaluate the rate on items, not people.",
     done: "The report now reads the actual items resolved in the selected week or month — including work assigned to nobody on the roster, to contractors, or to people outside the tracking families. Region, Team and PM filters still narrow it; Population, Role and Job family do not, because they describe people. Interns' items stay out, per the rule agreed on 2026-08-04. The card is tagged ITEMS and says how many items a filter could not place.",
     needs: "Deploy of Code.js and Dashboard.html (schema v49) plus a cache bump. The number moves on deploy." },
-  { id: 2, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 2, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Forecast Accuracy measured on the week's schedule, not on closed epics",
     ask: "Forecast accuracy at epic level is not doable — epics take two or three quarters — so measure it on the tasks or milestones scheduled for the week.",
     done: "Forecast Accuracy is now the share of tasks and milestones due in the selected week (or month) that were finished by the end of their committed week. Items whose week has not ended are shown as pending, never counted as misses. Late-but-finished is reported separately from still-open. Epics are excluded. The trend line carries a 'definition changed' marker at 2026-09-09; the old and new series are not comparable.",
     needs: "Same deploy as #001." },
-  { id: 3, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+  { id: 3, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
     title: "The current week or month shows by default",
     ask: "When week or month is selected we need to show the current month or week, so people get what is happening now.",
     done: "With nothing picked, every tab reads the current week, month or quarter so far. The picker's first entry is named '◐ Current week — so far'; a complete period can still be chosen from the Complete list. Current-period numbers carry the ◐ chip and are never compared to the period before.",
     needs: "Same deploy as #001." },
-  { id: 4, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Actions",
+  { id: 4, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Actions",
     title: "The Actions roster follows the selected week",
     ask: "On the current week show the Open backlog; on a past week show Resolved for that week, and each person's row should list the work closed that week.",
     done: "People signals opens on Open backlog for the current week and on 'Resolved · 2026.W36' when a past week is selected (the chips still switch it by hand). Expanding a person on the Resolved view lists every item they closed in that week — items needing action first (no due date, no estimate, no time logged, not linked, or late), each with its status, its epic and a one-click open in Jira. The list is carried for the last 13 weeks; older windows say so. Every person in the filtered Region, Team or PM is listed.",
     needs: "Same deploy as #001." },
-  { id: 5, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Filters",
+  { id: 5, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Filters",
     title: "Reset button moved next to More filters",
     ask: "The reset button should be next to 'More filters'.",
     done: "Reset now sits in the filter row beside More filters and clears every filter, the search, the period selection and all expanded rows. Same button, same behaviour, new place.",
     needs: "Same deploy as #001." },
-  { id: 6, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 6, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "PM signal 'unlinked' renamed 'Without tasks'",
     ask: "Rename the signal called unlinked to 'Without tasks'.",
     done: "The pill, the Needs-action row and the epic row all say 'Without tasks' — an epic with nothing broken down under it. The per-ticket 'Not linked to a parent' signal on the backlog-health panel is a different fact and keeps its name.",
     needs: "Same deploy as #001." },
-  { id: 7, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 7, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "New PM signal: due date pushed during the evaluated week",
     ask: "Add a signal for work pushed during the evaluated week, using the idea from the milestone-slip dashboard.",
     done: "The hourly Jira export (Jira Backlog.js 3.20.0) now records every due-date edit on open epics. The Project Managers tab shows '⏩ N pushed in 2026.W36' per PM for the selected week, a matching Needs-action row, and on each epic by how many days and from which date to which. Coverage is stated: until the new export runs, the tab says pushes are not measured rather than showing anyone as clean.",
     needs: "Deploy the export first (its first hourly run rewrites the Jira Raw sheet once), then the dashboard. Pushes are recorded for epics only — see #010." },
-  { id: 8, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Changes tab",
+  { id: 8, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Changes tab",
     title: "Admin-only Changes tab",
     ask: "A tab for admins that shows, in plain English, each change request and whether it is solved, under review or to do — impactful changes only.",
     done: "This page. Rows are numbered in request order, written as the request and the solution, and grouped by status with To do first. Only changes that move a number, change what a number means, or change what a reader does on a tab are listed.",
     needs: "Same deploy as #001." },
-  { id: 9, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 9, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Open Forecast Accuracy to every role",
     ask: "Raised while redefining Forecast Accuracy: the new definition carries no financial data, so the card could be shown to open-access viewers too.",
     done: "Not changed. The card is still limited to admins and named viewers, as the Metrics Dictionary required for the old estimate-based definition. Decision pending with delivery leadership.",
     needs: "A yes/no from delivery leadership; a one-line change once decided." },
-  { id: 10, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 10, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "Record due-date pushes on tasks, not only epics",
     ask: "Follow-up to #007: the pushed signal covers epics; tasks pushed inside an epic are not yet visible.",
     done: "Not built. It needs the export to fetch change history for every open task, which is a cost decision for the export's owner (the hourly run already pays for history on open epics and recent resolved work).",
     needs: "Owner decision on export cost; then the same column read at task grain." },
-  { id: 11, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 11, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Breakdown charts still attribute by people",
     ask: "Follow-up to #001: the Region / Level / PM breakdown bars under the cards are computed through people, so a bar can differ from the ITEMS card by exactly the items nobody on the roster owns.",
     done: "Not changed, and stated on the card. An item-side breakdown needs Region and Team filled on the Jira issues themselves, which the export still receives blank (Jira field discipline, PR-01).",
     needs: "PR-01 (Region/Team on Jira issues) before this can be built honestly." },
-  { id: 12, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+  { id: 12, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
     title: "Planning windows (next 2 weeks) removed from the period picker",
     ask: "Remove the next-2-weeks planning entries from the filter — we are not actively using them.",
     done: "The picker offers the current period and the complete ones only; the 'Planning · next 2 weeks' group and its planned-coverage grammar no longer appear. The code stays behind one number so the windows can return if planning becomes a weekly practice.",
@@ -3091,6 +3096,9 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
               // carried no changelog for this row — nobody looked, which the
               // tab must state rather than show a clean pill.
               pushes: dhDuePushes_(it),
+              // Space (Project) as the export names it — the PM tab groups a
+              // PM's epics by it (user 2026-09-09: PMs work by Jira project).
+              project: it.project || dhProjectOf_(it.key),
               // `owners` = the roster people assigned to this epic's children.
               // It is what lets the universal filters reach a tab whose unit is
               // an epic: an epic belongs to whichever slices its WORKERS belong
@@ -6138,6 +6146,10 @@ function readJiraRaw_() {
     // date was never edited ([]). parseDuePushLog_ keeps the FACTS; whether an
     // edit is a "push" (a move to a LATER date) is decided where it is read.
     var iPushLog = colIdx_(h, ["Due Push Log"]);
+    // Space (Project) — the Jira project the item lives in, as the export names
+    // it (2026-09-09: the PM tab groups epics by it, and the Overview's item
+    // drill shows it beside every item). Header-resolved like every column.
+    var iSpace = colIdx_(h, ["Space (Project)", "Project"]);
     if (iKey === -1) return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false };
     // ── EXPORT FRESHNESS STAMP ────────────────────────────────────────────────
     // Jira Backlog.js writes two italic footer rows in column A, two rows below
@@ -6307,6 +6319,7 @@ function readJiraRaw_() {
         // drill-down lists what each person closed, and a key alone is not a
         // list anyone can read. Server-side cost only (issues never ship whole).
         summary: summaryTxt,
+        project: iSpace === -1 ? "" : String(raw[r][iSpace] || "").trim(),
         // null = column absent / not fetched for this row · [] = never edited ·
         // [{at, from, to}] = every edit, oldest first. See parseDuePushLog_.
         duePushes: iPushLog === -1 ? null : parseDuePushLog_(raw[r][iPushLog]),
@@ -6763,6 +6776,84 @@ function resolvedByPerson_(issues, nameIdx, now) {
   return by;
 }
 
+/**
+ * THE ITEMS BEHIND A GRID CELL (user 2026-09-09): "for MGMT we have 10% on time
+ * delivery (1/10 items) — I expect to see those 10 items, the ones that did not
+ * meet the criteria first, and the people that will make the changes."
+ *
+ * One flat, person-attributed item list for the trailing RESOLVED_ITEMS_WEEKS,
+ * carrying every verdict the three graded item metrics compute — so the client
+ * can reproduce any cell's count from the SAME records the buckets were summed
+ * from, and list them. Verdicts here mirror the bucket builders exactly:
+ *   onTime   onTimeBuckets_  — otScope (onTimeInScope_), onTime true/false,
+ *                              null = in scope but undated (coverage only)
+ *   fc       forecastTaskBuckets_ — "hit" | "miss" | "late" | "pending" over the
+ *                              DUE week (fcIso), non-epic items only
+ *   rework   reworkBuckets_   — delivered (Done, non-cancelled), rework flag
+ *
+ * Person is the roster name or "" (unattributed) — the grid rows are people
+ * slices, so "" items never appear under a row, exactly as in the people read.
+ * Bounded: an item ships when its resolved week OR its due week is inside the
+ * horizon. ~200 resolved a week → a few thousand records, gzipped with the rest.
+ *
+ * @param {Array} issues readJiraRaw_ records (leaver-scoped)
+ * @param {Function} resolvePerson raw assignee → roster display name, or null
+ * @param {Date=} now
+ */
+function metricItems_(issues, resolvePerson, now) {
+  now = now || new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var cutoff = dhWeekStart_(now);
+  cutoff.setDate(cutoff.getDate() - (CONFIG_DH.RESOLVED_ITEMS_WEEKS || 13) * 7);
+  var sc = CONFIG_DH.ONTIME_SCOPE || "dictionary";
+  var epicNames = {};
+  (issues || []).forEach(function (it) {
+    if (it && it.isEpic && it.key) epicNames[String(it.key).toUpperCase()] = it.summary || "";
+  });
+  function day(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  var out = [];
+  (issues || []).forEach(function (it) {
+    if (!it || !it.key) return;
+    var hasDue = !!(it.due && !isNaN(it.due.getTime()));
+    var resolved = !!(it.resolved && !isNaN(it.resolved.getTime()));
+    var inByRes = resolved && it.resolved >= cutoff;
+    var inByDue = hasDue && !it.isEpic && it.due >= cutoff;
+    if (!inByRes && !inByDue) return;
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    // On-Time (calendar day, Dictionary scope)
+    var otScope = resolved && onTimeInScope_(it, sc);
+    var onTime = null;
+    if (otScope && hasDue) onTime = day(it.resolved) <= day(it.due);
+    // Forecast (week grain, non-epic, keyed by DUE week)
+    var fc = "", fcIso = "";
+    if (hasDue && !it.isEpic) {
+      fcIso = weekKeyFromDate_(it.due);
+      var weekEnd = dhWeekStart_(it.due); weekEnd.setDate(weekEnd.getDate() + 6);
+      var rDay = resolved ? day(it.resolved) : null;
+      if (rDay && rDay <= weekEnd) fc = "hit";
+      else if (weekEnd < today) fc = rDay ? "late" : "miss";
+      else fc = "pending";
+    }
+    // Quality / Rework (delivered only)
+    var delivered = resolved &&
+      !(it.statusCategory && !/^done$/i.test(it.statusCategory)) &&
+      !(it.resolution && CONFIG_DH.NON_DELIVERED_RESOLUTIONS.test(it.resolution));
+    var ek = String(it.epicKey || it.parentKey || "").toUpperCase();
+    out.push({
+      key: it.key, summary: it.summary || "", type: it.typeLabel || it.type || "",
+      status: it.status || "", project: it.project || dhProjectOf_(it.key),
+      person: person || "", isEpic: !!it.isEpic,
+      epicKey: ek, epicName: epicNames[ek] || "",
+      due: hasDue ? weekKeyFromDate_(it.due) : "", dueOn: hasDue ? dhDateStr_(it.due) : "",
+      res: resolved ? weekKeyFromDate_(it.resolved) : "", resolvedOn: resolved ? dhDateStr_(it.resolved) : "",
+      otScope: otScope, onTime: onTime,
+      fcIso: fcIso, fc: fc,
+      delivered: delivered, rework: !!(delivered && (it.reworkLink || it.reopened === true)),
+    });
+  });
+  return out;
+}
+
 // ── MODEL ASSEMBLY (pure — all reader outputs injected) ──────
 
 function assembleModel_(inputs, win) {
@@ -7145,6 +7236,9 @@ function assembleModel_(inputs, win) {
   var resolvedMap = inputs.jira.available
     ? resolvedByPerson_(jiraScoped.issues, nameIdx, win.today || new Date()) : {};
   people.forEach(function (p) { p.resolved = resolvedMap[p.name] || null; });
+  // The items behind every grid cell (2026-09-09) — same feed, same join.
+  var metricItems = inputs.jira.available
+    ? metricItems_(jiraScoped.issues, resolvePerson, win.today || new Date()) : [];
   var backlogHealth = inputs.jira.available
     ? backlogHealthBuckets_(jiraScoped, resolvePerson)
     : { buckets: [], unattributed: 0, keyCap: 0, asOf: null, thresholds: {} };
@@ -7301,6 +7395,7 @@ function assembleModel_(inputs, win) {
       // How far back person.resolved reaches (schema 49) — the roster's ▸ row
       // says so on an older window instead of listing nothing.
       resolvedItemsWeeks: CONFIG_DH.RESOLVED_ITEMS_WEEKS,
+      metricItemsWeeks: CONFIG_DH.RESOLVED_ITEMS_WEEKS,
       // 📋 The change register for the admin-only ✎ Changes tab (2026-09-09).
       // Impersonal by construction (no names), so it is safe in the shared entry.
       changes: DH_CHANGES_,
@@ -7339,6 +7434,9 @@ function assembleModel_(inputs, win) {
     people: people, onTimeBuckets: onTime.buckets, forecastBuckets: forecast.buckets,
     // Task-grain schedule buckets (registry 4.4) — what the Forecast card reads.
     forecastTaskBuckets: forecastTask.buckets,
+    // Every item behind the three graded item metrics, for the grid's cell
+    // drill (schema 50) — trailing RESOLVED_ITEMS_WEEKS.
+    metricItems: metricItems,
     reworkBuckets: rework.buckets,
     leadTimeBuckets: leadTime.buckets,
     throughputBuckets: throughput.buckets,
@@ -7749,7 +7847,11 @@ function assembleModel_(inputs, win) {
 //        RESOLVED_ITEMS_WEEKS) and meta.resolvedItemsWeeks; pmOwned epics carry
 //        `pushes` and the tab carries `pushCoverage` — both read tristate, so an
 //        older export degrades to "not measured", never to "clean".
-var DH_SCHEMA_VER_ = 49;
+// 50 (2026-09-09, evening): NEW `metricItems` (the items behind every grid cell,
+//      trailing RESOLVED_ITEMS_WEEKS) and `project` on each PM epic entry. A v49
+//      entry has neither: the cell drill says "not in this payload" and the PM tab
+//      groups every epic under one unnamed project — degraded, never wrong.
+var DH_SCHEMA_VER_ = 50;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8557,6 +8659,57 @@ function _test_onTimeRate_() {
   var ka = kept.buckets.filter(function (b) { return b.person === "Ana"; })[0];
   assert_(ka.n === 2 && ka.onTime === 2 && ka.nAll === 3, "named people's buckets are unchanged by the option");
   Logger.log("✅ _test_onTimeRate_ passed");
+}
+
+/** The items behind a grid cell (schema 50): verdicts mirror the three bucket
+    builders, horizon by resolved OR due week, project carried, "" person kept. */
+function _test_metricItems_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_metricItems_: " + m); }
+  var roster = { "ana": "Ana" };
+  var resolve = function (raw) { return roster[String(raw).toLowerCase()] || null; };
+  var today = new Date(2026, 8, 9);                       // Wed 2026.W37
+  var issues = [
+    // Epic in Dictionary scope, dated, resolved on its day → onTime true; no fc (epic); delivered.
+    { key: "QAN-1", summary: "Go live", isEpic: true, due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 2),
+      assignee: "Ana", status: "Done", statusCategory: "Done", project: "COE (QAN)", typeLabel: "Epic" },
+    // Task due W36, resolved W37 → onTime false (scope? plain task: NOT in dictionary scope); fc late; delivered; rework link.
+    { key: "QAN-2", summary: "Late task", due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 7),
+      assignee: "ana", status: "Done", statusCategory: "Done", reworkLink: true, epicKey: "QAN-1", project: "COE (QAN)" },
+    // Task due W36, still open → fc miss; not resolved → no onTime, not delivered.
+    { key: "QAN-3", summary: "Open task", due: new Date(2026, 8, 3), resolved: null, assignee: "Ana", status: "In Progress",
+      statusCategory: "In Progress", project: "COE (QAN)" },
+    // Task cancelled → resolved but NOT delivered.
+    { key: "QAN-4", summary: "Cancelled", due: null, resolved: new Date(2026, 8, 4), assignee: "Ana", status: "Done",
+      statusCategory: "Done", resolution: "Won't Do", project: "COE (QAN)" },
+    // Unassigned task resolved this week → person "".
+    { key: "QAN-5", summary: "Nobody's", due: null, resolved: new Date(2026, 8, 8), assignee: "", status: "Done", statusCategory: "Done" },
+    // Too old on both clocks → not carried.
+    { key: "QAN-6", summary: "Old", due: new Date(2026, 1, 3), resolved: new Date(2026, 1, 4), assignee: "Ana", statusCategory: "Done" },
+  ];
+  var items = metricItems_(issues, resolve, today);
+  var by = {}; items.forEach(function (i) { by[i.key] = i; });
+  assert_(items.length === 5 && !by["QAN-6"], "5 items inside the 13-week horizon; the February one is not carried");
+  assert_(by["QAN-1"].otScope === true && by["QAN-1"].onTime === true && by["QAN-1"].fc === "" && by["QAN-1"].delivered === true,
+          "a dated epic resolved on its day: in On-Time scope, on time, no forecast verdict (epics excluded), delivered");
+  assert_(by["QAN-2"].otScope === false && by["QAN-2"].onTime === null,
+          "a plain task is outside the Dictionary On-Time scope, so it carries no on-time verdict");
+  assert_(by["QAN-2"].fcIso === "2026.W36" && by["QAN-2"].fc === "late" && by["QAN-2"].rework === true,
+          "…but it is a forecast LATE (finished after its committed week) and a rework item");
+  assert_(by["QAN-3"].fc === "miss" && by["QAN-3"].delivered === false && by["QAN-3"].res === "",
+          "an open task whose week ended is a forecast MISS and not delivered");
+  assert_(by["QAN-4"].delivered === false && by["QAN-4"].rework === false, "a cancelled resolution is not delivered work");
+  assert_(by["QAN-5"].person === "" && by["QAN-5"].project === "QAN",
+          "an unassigned item keeps person \"\" and falls back to the key prefix for its project");
+  assert_(by["QAN-2"].epicName === "Go live" && by["QAN-2"].project === "COE (QAN)" && by["QAN-2"].resolvedOn === "2026-09-07",
+          "items carry their epic's name, the export's Space (Project) and the resolution day");
+  // The PM entry carries the project too.
+  var work = pmOwnedWork_({ issues: [
+    { key: "QAN-1", isEpic: true, due: new Date(2026, 8, 30), status: "In Progress", statusCategory: "In Progress",
+      estSec: 3600, linked: true, start: new Date(2026, 6, 1), updated: new Date(2026, 8, 8), epicKey: "", parentKey: "",
+      assignee: "", typeLabel: "Epic", summary: "Go live", project: "COE (QAN)", duePushes: null },
+  ] }, { QAN: "Dana Reyes" }, today);
+  assert_(work.rows[0].epics[0].project === "COE (QAN)", "a PM epic entry carries its Space (Project)");
+  Logger.log("✅ _test_metricItems_ passed");
 }
 
 /** 📋 Change register (2026-09-09): every row is complete, numbered once, in
@@ -11508,9 +11661,11 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 49,
-          "payload schema is v49 (items-not-people buckets, task-grain forecast, resolved items) — " +
-          "literal check, independent of DH_SCHEMA_VER_");
+  assert_(m.schemaVer === 50,
+          "payload schema is v50 (metricItems + project on PM epics; v49 = items-not-people buckets, " +
+          "task-grain forecast, resolved items) — literal check, independent of DH_SCHEMA_VER_");
+  assert_(m.metricItems instanceof Array && m.meta.metricItemsWeeks === CONFIG_DH.RESOLVED_ITEMS_WEEKS,
+          "the item feed ships with its horizon stated");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
   // is exactly what a version number alone cannot catch.
@@ -11535,8 +11690,8 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 49,
-          "schema is 49 — v49 keeps unattributed on-time items, ships task-grain forecast buckets and " +
+  assert_(m.schemaVer === 50,
+          "schema is 50 — v50 ships metricItems and project on PM epics; v49 keeps unattributed on-time items, ships task-grain forecast buckets and " +
           "per-person resolved items (2026.W37); v48 seeds squad membership from the Capacity Tempo Team column, so " +
           "\"(No team)\" stops absorbing everyone who logs no Tempo time; " +
           "v46 shipped the exporter handshake; v47 carves onLeave out of capacity," +
