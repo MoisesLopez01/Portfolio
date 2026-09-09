@@ -1174,7 +1174,6 @@ select option:disabled{color:var(--muted);font-style:italic}
          actually HAS confidential content — an eye that removes nothing would
          advertise hidden data that is not there. -->
     <span id="confSlot"></span>
-    <button class="btn" id="btnReset" title="Back to the default view — clears every filter, the person search, and all expanded rows">Reset</button>
     <button class="btn" id="btnRefresh" title="Bypass the cache and reload live data">Refresh</button>
     <button class="btn" id="btnTheme" title="Switch between light and dark theme">Dark</button>
   </div>
@@ -1207,13 +1206,17 @@ select option:disabled{color:var(--muted);font-style:italic}
     <input type="search" id="personSearch" placeholder="Find person…">
     <button class="btn" id="btnAdvFilters" aria-expanded="false" aria-controls="advFilters"
             title="Population, Role, PM and Job family. Kept out of the default view to leave three dimensions in the bar; opens automatically whenever any of them is set, so a filter can never be applied out of sight.">More filters</button>
+    <!-- Reset sits WITH the filters it clears (user 2026-09-09) — it used to
+         live in the title row beside Refresh/Dark, a row about the page, not
+         about the slice. Same id, same handler (resetFilters_). -->
+    <button class="btn" id="btnReset" title="Back to the default view — clears every filter, the person search, the period selection and all expanded rows">Reset</button>
     <span id="filterWarn" class="cellSub" style="color:var(--amber)"></span>
   </div>
   <div class="hrow fadv" id="advFilters" hidden>
-    <div class="fgroup" title="Population — FTEs are the primary focus (default); Crew shows contractors only; All combines them. Universal: scopes the KPI tiles and the grid.">
+    <div class="fgroup" title="Population — FTEs are the primary focus (default); Crew shows contractors only; All combines them. Scopes the capacity tiles, the grid and the roster. On-Time Delivery and Forecast Accuracy count ITEMS, not people, so this lens does not narrow them.">
       <span class="flbl">People</span><div class="chips seg" id="popChips"></div>
     </div>
-    <div class="fgroup" title="Role — split managers (M-level job codes) from individual contributors. Managers often plan without tracking much, which drags delivery rates; the IC view removes that effect. Universal: scopes the KPI tiles and the grid.">
+    <div class="fgroup" title="Role — split managers (M-level job codes) from individual contributors. Managers often plan without tracking much, which drags delivery rates; the IC view removes that effect. Scopes the capacity tiles, the grid and the roster. On-Time Delivery and Forecast Accuracy count ITEMS, not people, so this lens does not narrow them.">
       <span class="flbl">Role</span><div class="chips seg" id="roleChips"></div>
     </div>
     <!-- The "Focus" group (Plan / Billable / Non-bill) was DELETED 2026-08-17.
@@ -1430,6 +1433,9 @@ select option:disabled{color:var(--muted);font-style:italic}
     <div class="panel" id="pmPanel"></div>
   </div>
 
+  <!-- ✎ Changes — admin only, gated in switchView_ like Access. -->
+  <div id="viewChanges" class="viewPane panel" style="display:none"></div>
+
   <!-- Access Control — admin only, gated in switchView_ as well as in the tab bar. -->
   <div id="viewAccess" class="viewPane panel" style="display:none"></div>
 </div>
@@ -1544,6 +1550,11 @@ var VIEWS = [
   // and backlog cover, which is the same margin tier as the utilization detail.
   { id: "workforce", label: "Workforce", dot: "●", pane: "viewWorkforce", roles: ["admin", "viewer"],
     hint: "Capacity by pool and level band: headroom, plan-vs-logged, work outside the plan and backlog cover — signals, not verdicts, because capacity is not fungible." },
+  // ✎ Changes — the change register, admins only (user 2026-09-09): what was
+  // asked, what was done, and whether it is solved, under review or to do.
+  // Sits before Access: it is about the product, Access is about the door.
+  { id: "changes", label: "Changes", dot: "◈", pane: "viewChanges", roles: ["admin"],
+    hint: "Every impactful change request in plain English, with its status — solved, under review or to do." },
   { id: "access",  label: "Access", dot: "◇", pane: "viewAccess",  roles: ["admin"],
     hint: "Manage who can open this dashboard." },
 ];
@@ -2145,6 +2156,7 @@ function loadData(force) {
       // Stale cache from before the period toggle shipped → no meta.periods;
       // fall back to weekly until a refresh/warm rebuilds the model.
       if (!m.meta.periods) STATE.period = "week";
+      syncTypePop_();            // Open on the current week, Resolved on a complete one
       buildFilters_();
       switchView_(STATE.view);   // paints the tab bar, the pane and everything in it
       // Motion (spec §7), ONCE per load: stagger-reveal the tiles, then settle.
@@ -2183,6 +2195,7 @@ function loadData(force) {
 
 function setPeriodIdx_(v) {
   STATE.periodIdx = (v === "" || v === null) ? null : Number(v);
+  syncTypePop_();           // the roster follows the window — see syncTypePop_
   renderAll_();
 }
 
@@ -2221,8 +2234,14 @@ function buildPeriodChips_() {
     "s are graded against target; the current " + unit +
     " is published but never compared to the one before it; a planning week " +
     "measures the plan, not delivery.";
+  // The default entry NAMES what the default is (user 2026-09-09): the current
+  // period so far when the payload has one, the latest complete period
+  // otherwise. The former "In progress" group is gone — it held exactly the
+  // window this entry now is, and one window under two names is a picker that
+  // teaches readers not to trust it.
+  var nowP = DEFAULT_WINDOW_ === "now" ? nowPeriod_() : null;
   var opt0 = document.createElement("option");
-  opt0.value = ""; opt0.textContent = "Latest complete";
+  opt0.value = ""; opt0.textContent = nowP ? "◐ Current " + unit + " — so far" : "Latest complete";
   sel.appendChild(opt0);
   function group_(label, from, to, decorate) {
     if (to < from) return;
@@ -2242,7 +2261,9 @@ function buildPeriodChips_() {
   group_("Planning · next " + (nPlan === 1 ? "week" : nPlan + " weeks"),
          all.length - nPlan, all.length - 1,
          function (p) { return "▸ " + p.label + " — plan"; });
-  if (nowAt >= done.length) {
+  // The in-flight period is opt0 above whenever it is the default — see the
+  // note there. Under the "done" default it keeps its own group, as before.
+  if (!nowP && nowAt >= done.length) {
     group_("In progress", nowAt, nowAt, function (p) { return "◐ " + p.label + " — so far"; });
   }
   group_("Complete", 0, done.length - 1);
@@ -2257,6 +2278,7 @@ function setPeriod_(k) {
   STATE.openDetail = {};
   STATE.openDetailAll = {};
   STATE.periodIdx = null;   // a picked index means a different window per unit — reset to latest
+  syncTypePop_();
   buildPeriodChips_();
   renderAll_();
 }
@@ -2481,6 +2503,29 @@ function passesFilters_(p, skip) {
   if (skip !== "flag" && STATE.flag && !hasFlag_(p, STATE.flag)) return false;
   if (STATE.search && p.name.toLowerCase().indexOf(STATE.search.toLowerCase()) === -1) return false;
   return true;
+}
+
+/**
+ * The WHERE filters only — Region, Team, PM (and the two drill states, level
+ * band and triage flag, plus a comparison bar's SCOPE_NAMES_). This is the
+ * predicate the ITEMS read uses (user 2026-09-09: On-Time and Forecast are
+ * evaluated on items, not people): a filter that says where the work sits
+ * narrows it; a filter that describes people — Population, Role, Job family,
+ * the person search — does not, because an item is an item whoever closed it.
+ */
+function passesWhereFilters_(p) {
+  if (SCOPE_NAMES_ && !SCOPE_NAMES_[p.name]) return false;
+  if (STATE.region && !dimMatch_(p, "region", STATE.region)) return false;
+  if (msActive_("team") && !dimMatchAny_(p, "team", STATE.team)) return false;
+  if (msActive_("pm") && !dimMatchAny_(p, "pm", STATE.pm)) return false;
+  if (STATE.level && !dimMatch_(p, "level", STATE.level)) return false;
+  if (STATE.flag && !hasFlag_(p, STATE.flag)) return false;
+  return true;
+}
+/** True when a WHERE filter is narrowing — the one case in which an item with
+    no roster assignee cannot be placed and has to be left out (and counted). */
+function whereNarrowed_() {
+  return !!(SCOPE_NAMES_ || STATE.region || msActive_("team") || msActive_("pm") || STATE.level || STATE.flag);
 }
 
 /** People passing every active filter. attribOnly stubs (whole-roster issue
@@ -2893,11 +2938,18 @@ function donePeriods_() {
 // today; it never trends itself.
 // ══════════════════════════════════════════════════════════════════════════
 
-/** How many future weeks the picker offers. The server ships
-    CONFIG_DH.WEEKS_FUTURE (3) forward weeks, so two is inside what the payload
-    can honestly answer — offering a week the export never reached would render
-    an empty plan as "nobody has planned anything". */
-var PLAN_WEEKS_AHEAD_ = 2;
+/** How many future weeks the picker offers. ZERO since 2026-09-09 (user:
+    "remove the next-2-weeks planning from the filter, we are not actively using
+    it") — the Planning group no longer renders and the outcome cards never
+    enter their planning grammar. The machinery stays (planWeeks_, planTile_,
+    notYetTile_) behind this one number: set it to 2 to bring the windows back.
+    The server still ships CONFIG_DH.WEEKS_FUTURE (3) forward weeks, so two is
+    the most the payload can honestly answer if it is re-enabled. */
+var PLAN_WEEKS_AHEAD_ = 0;
+function setPlanWeeksAhead_(n) {
+  PLAN_WEEKS_AHEAD_ = Math.max(0, Number(n) || 0);
+  if (MODEL) delete MODEL._planWeeks;       // the memo was built under the old number
+}
 
 /** The share of scheduled capacity below which a forward window counts as
     under-planned. Not a new target: this is the coverage-cliff line
@@ -2954,12 +3006,29 @@ function analysisPeriods_() {
   return all.concat(planWeeks_());
 }
 
-/** Index into analysisPeriods_() of the selected window. Default = the last
-    COMPLETE period, never the in-flight one: forward windows are something a
-    reader opts into, and defaulting into one would make every KPI look like a
-    collapse on the first of the month. */
+/** Index into analysisPeriods_() of the selected window.
+    DEFAULT = THE IN-FLIGHT PERIOD when there is one (user 2026-09-09: "when
+    week or month is selected we need to show the current week or month, so
+    they get what is happening now"). Until then the default was the last
+    COMPLETE period, on the argument that a part-month graded against a
+    full-month target reads as a collapse on the 1st — that risk is carried
+    by the grammar instead: a "now" window is published with its ◐ phase chip
+    and never compared to the period before it. With no in-flight period in
+    the payload the default falls back to the last complete one. */
+// Which window the picker's DEFAULT entry resolves to: "now" (shipped — the
+// in-flight period so far, falling back to the last complete one when the
+// payload has no in-flight period) or "done" (the last complete period, the
+// pre-2026-09-09 behaviour). A named knob rather than a literal so the choice
+// is one place to find, and so the render harness can pin the complete-window
+// grammar without every fixture selecting a window by hand.
+var DEFAULT_WINDOW_ = "now";
+function setDefaultWindow_(v) { DEFAULT_WINDOW_ = v === "done" ? "done" : "now"; }
+
 function headPickIdx_(all, done) {
   if (STATE.periodIdx === null || STATE.periodIdx === undefined) {
+    if (DEFAULT_WINDOW_ === "now") {
+      for (var i = all.length - 1; i >= 0; i--) if (all[i].status === "now") return i;
+    }
     return Math.max(0, done.length - 1);
   }
   return Math.max(0, Math.min(all.length - 1, STATE.periodIdx));
@@ -3078,6 +3147,7 @@ function renderAll_() {
     // list, at the top of the tab rather than the bottom.
     case "workforce": renderWfConsumers_(); renderWfAlert_(); renderWfScope_(); renderWfGrid_(); renderWfShadow_(); renderWfUnrouted_(); break;
     case "pm":      renderPm_(); break;
+    case "changes": renderChanges_(); break;
     case "access":  renderAccess_(); break;
   }
 }
@@ -3141,6 +3211,7 @@ function resetFilters_() {
   STATE.periodIdx = null; // …including the analysis-period picker
   STATE.advOpen = false;  // …and the advanced drawer collapses, since Reset
                           //    just returned every filter inside it to default
+  syncTypePop_();         // …and the roster's Open/Resolved follows the default window
   buildPeriodChips_();    // reflect the reset in the picker's selection
   var srch = document.getElementById("personSearch");
   if (srch) srch.value = "";
@@ -3306,17 +3377,37 @@ function planCellHtml_(p, isos) {
 /**
  * Filter-scoped sums over the person-attributed Jira buckets. Buckets carry
  * the roster person (Assignee join), so EVERY filter — population, role,
- * region, team, PM, family, search — drives On-Time and Forecast exactly like
+ * region, team, PM, family, search — drives the per-person reads exactly like
  * Billable Utilization (user decision 2026-07-31). Buckets whose person fell
  * out of the roster (stale cache, renamed) are skipped.
+ *
+ * opts.items — the ITEMS read (user 2026-09-09, On-Time and Forecast on the
+ * Overview): count work, not people. Three differences from the default:
+ *   · buckets under person "" (no roster assignee — unassigned, a contractor
+ *     outside the roster, a non-tracking family) are COUNTED whenever no WHERE
+ *     filter is narrowing, and counted into `nUnplaced` when one is (they
+ *     cannot be placed in a region or team nobody joined them to);
+ *   · people pass passesWhereFilters_ (Region / Team / PM / drill states), not
+ *     passesFilters_ — Population, Role, Job family and search describe people;
+ *   · interns' items still leave (user decision 2026-08-04 — an intern's
+ *     record must never move a published number; that is about the number,
+ *     not the attribution, so it holds here as well).
  */
-function bucketsFor_(buckets, isos) {
+function bucketsFor_(buckets, isos, opts) {
   if (!MODEL._pByName) {
     MODEL._pByName = {};
     MODEL.people.forEach(function (p) { MODEL._pByName[p.name] = p; });
   }
+  var items = !!(opts && opts.items);
+  var narrowed = items && whereNarrowed_();
   var out = { n: 0, onTime: 0, nWithin: 0, nAll: 0, nNoTime: 0,
               nMissOver: 0, nMissUnder: 0, absVars: [],
+              // ITEMS read (2026-09-09): how many unattributed items were
+              // counted (nUnattributed) or had to be left out because a WHERE
+              // filter is narrowing (nUnplaced) — the card states both.
+              nUnattributed: 0, nUnplaced: 0,
+              // Task-grain forecast (forecastTaskBuckets_, schema 49).
+              nSched: 0, nHit: 0, nMiss: 0, nLate: 0, nPending: 0, nRes: 0, nResDated: 0,
               // How many of the forecast epics reached this person through
               // their CHILDREN rather than their own assignee (2026-08-17).
               // Additive like every other counter, so a month states the share
@@ -3328,14 +3419,25 @@ function bucketsFor_(buckets, isos) {
               // 🌊 Flow (schema v11). days concats like absVars — a median is
               // not additive, so the raw values travel.
               days: [], estHrs: 0, nEst: 0 };
-  buckets.forEach(function (b) {
+  (buckets || []).forEach(function (b) {
     if (isos.indexOf(b.iso) === -1) return;
-    var person = b.person ? MODEL._pByName[b.person] : null;
-    if (!person || !passesFilters_(person)) return;
-    // Intern-assigned issues leave BOTH sides of every issue rate (n and
-    // nAll) — an intern's late milestone or estimate miss must never move a
-    // published number, in either direction (user decision 2026-08-04).
-    if (person.isIntern) return;
+    if (items && !b.person) {
+      // An item nobody on the roster is attached to. Countable as an item;
+      // not placeable under a Region / Team / PM.
+      var size = (b.nAll || b.n || 0) + (b.nSched || 0) + (b.nRes || 0);
+      if (narrowed) { out.nUnplaced += size; return; }
+      out.nUnattributed += size;
+    } else {
+      var person = b.person ? MODEL._pByName[b.person] : null;
+      if (!person) return;
+      if (items ? !passesWhereFilters_(person) : !passesFilters_(person)) return;
+      // Intern-assigned issues leave BOTH sides of every issue rate (n and
+      // nAll) — an intern's late milestone or estimate miss must never move a
+      // published number, in either direction (user decision 2026-08-04). That
+      // rule is about the PUBLISHED number, so it holds for the ITEMS read too:
+      // interns are the one attributed population the items read still skips.
+      if (person.isIntern) return;
+    }
     // ||0: a throughput bucket (Code.js throughputBuckets_) never carries a
     // `.n` field — only nAll/nEst/estHrs — so this was reading undefined and
     // turning the whole accumulator NaN for that metric, which
@@ -3353,6 +3455,9 @@ function bucketsFor_(buckets, isos) {
     out.nLinked += (b.nLinked || 0); out.nReopened += (b.nReopened || 0);
     out.nReopenCov += (b.nReopenCov || 0);
     out.estHrs += (b.estHrs || 0); out.nEst += (b.nEst || 0);
+    out.nSched += (b.nSched || 0); out.nHit += (b.nHit || 0); out.nMiss += (b.nMiss || 0);
+    out.nLate += (b.nLate || 0); out.nPending += (b.nPending || 0);
+    out.nRes += (b.nRes || 0); out.nResDated += (b.nResDated || 0);
     if (b.days && b.days.length) out.days = out.days.concat(b.days);
     // Median is not additive — the per-epic variances have to travel and be
     // re-medianed over whatever this filter selected.
@@ -4052,7 +4157,7 @@ function confChip_(conf, metric) {
  * choice: the alternative is a CEO escalating on a tagging artifact, or writing
  * the tool off for good the first time one is caught.
  */
-function suppressedTileHtml_(label, metric, conf, detail, headlineLabel, covTrend, covLabels) {
+function suppressedTileHtml_(label, metric, conf, detail, headlineLabel, covTrend, covLabels, scope) {
   var pct = conf.coverage === null ? "—" : Math.round(conf.coverage * 100) + "%";
   // The period used to be repeated here for the same reason it was on every
   // published card — now that it is stated once globally above the row, the
@@ -4060,7 +4165,7 @@ function suppressedTileHtml_(label, metric, conf, detail, headlineLabel, covTren
   // still a statement about a window.)
   return '<div class="tile sup"><div class="lbl"' +
     (headlineLabel ? ' title="' + esc_(headlineLabel) + '"' : "") + ">" + label +
-    scopeTag_("period") + '</div>' +
+    scopeTag_(scope || "period") + '</div>' +
     '<div class="supbig" title="' + esc_((metric.definition || "") + " Gate: " +
       Math.round((metric.coverageGate || 0) * 100) + "% of " + (metric.coverageOf || "records") +
       ".") + '">Not yet measurable</div>' +
@@ -4113,12 +4218,15 @@ function applyGatePolicy_(conf) {
  *                        when CONFIG_DH.SUPPRESS_BELOW_GATE is on (FR-2.2)
  *   otherwise          → the metric, with its confidence chip
  */
-function gatedTile_(label, conf, metric, emptyMsg, suppressDetail, publish, headlineLabel, covTrend, covLabels) {
+function gatedTile_(label, conf, metric, emptyMsg, suppressDetail, publish, headlineLabel, covTrend, covLabels, scope) {
+  // `scope` (2026-09-09): the tag the card wears in EVERY state — empty,
+  // suppressed or published — so an ITEMS card cannot read as PERIOD the
+  // moment it has nothing to show.
   if (conf.level === "none") {
-    return tileHtml_(label, null, "", [], { unavailable: emptyMsg, headlineLabel: headlineLabel });
+    return tileHtml_(label, null, "", [], { unavailable: emptyMsg, headlineLabel: headlineLabel, scope: scope });
   }
   if (!conf.publish) {
-    return suppressedTileHtml_(label, metric, conf, suppressDetail, headlineLabel, covTrend, covLabels);
+    return suppressedTileHtml_(label, metric, conf, suppressDetail, headlineLabel, covTrend, covLabels, scope);
   }
   return publish();
 }
@@ -4126,13 +4234,13 @@ function gatedTile_(label, conf, metric, emptyMsg, suppressDetail, publish, head
 function tileHtml_(label, headlinePct, cmpText, trendVals, opts) {
   opts = opts || {};
   if (opts.placeholder) {
-    return '<div class="tile ph"><div class="lbl">' + label + scopeTag_("period") + '</div>' +
+    return '<div class="tile ph"><div class="lbl">' + label + scopeTag_(opts.scope || "period") + '</div>' +
       '<div class="big">—</div><div class="cmp">data pending — reopen/CSAT feed not yet connected</div></div>';
   }
   if (opts.unavailable) {
     return '<div class="tile ph"><div class="lbl"' +
       (opts.headlineLabel ? ' title="' + esc_(opts.headlineLabel) + '"' : "") + ">" + label +
-      scopeTag_("period") + '</div>' +
+      scopeTag_(opts.scope || "period") + '</div>' +
       '<div class="big">—</div><div class="cmp">' + opts.unavailable + '</div></div>';
   }
   var big = headlinePct === null ? "—" : Math.round(headlinePct) + "%";
@@ -4344,9 +4452,9 @@ function smallN_(n) { return n > 0 && n < 15 ? " · ⚠ small sample" : ""; }
  * exists to prevent: a rate computed on an empty set looks exactly like a
  * measured one, and 100% on-time for next week would be quoted.
  */
-function notYetTile_(label, head, headlineLabel) {
+function notYetTile_(label, head, headlineLabel, scope) {
   return tileHtml_(label, null, "", [], {
-    headlineLabel: headlineLabel,
+    headlineLabel: headlineLabel, scope: scope,
     unavailable: esc_(head.label) + " has not happened yet — this measures work that " +
       "has been delivered, so there is nothing to grade until the week closes. " +
       "Planned Coverage is what this window can answer." });
@@ -5506,14 +5614,38 @@ function flowTileHtml_(m, headline, opts) {
  * So the message distinguishes the two states, using the count the server
  * already ships and the card already ignored.
  */
-function fcEmptyMsg_() {
-  var dropped = (MODEL.meta.jiraUnattributed || {}).forecast || 0;
-  return dropped > 0
-    ? "no epics in this window could be attributed to a person — " + dropped +
-      " closed epic" + (dropped === 1 ? " was" : "s were") + " dropped across the export window " +
-      "because neither the epic nor its children name anyone on the roster"
-    : "no epics closed in this window — forecast is measured on closed epics, which is a much " +
-      "smaller population than the other cards, so short windows are often empty";
+function fcEmptyMsg_(fc) {
+  if (fc && fc.nUnplaced > 0) {
+    return "no scheduled items in this window could be placed under the active Region / Team / PM filter — " +
+      fc.nUnplaced + " item" + (fc.nUnplaced === 1 ? "" : "s") + " with no roster assignee " +
+      (fc.nUnplaced === 1 ? "was" : "were") + " left out; clear those filters to count them";
+  }
+  if (fc && fc.nPending > 0) {
+    return fc.nPending + " item" + (fc.nPending === 1 ? " is" : "s are") + " scheduled in this window and none " +
+      "has been graded yet — the committed weeks have not ended";
+  }
+  return "no items were scheduled to finish in this window — nothing carried a due date inside it, " +
+    "so there is no schedule to measure against";
+}
+
+/**
+ * The two ITEMS-read disclosures, for the card's ⓘ detail (2026-09-09):
+ * how many items with no roster assignee were counted, or — when a WHERE filter
+ * is narrowing — how many had to be left out because they could not be placed.
+ * Empty when neither applies, so a clean card carries no noise.
+ */
+function itemsScopeNotes_(b, noun) {
+  var out = [];
+  if (b.nUnattributed > 0) {
+    out.push(b.nUnattributed + " " + noun + " in this window " + (b.nUnattributed === 1 ? "has" : "have") +
+      " no roster assignee (unassigned, a contractor outside the roster, a non-tracking family) — " +
+      "COUNTED: this card measures items, not people.");
+  }
+  if (b.nUnplaced > 0) {
+    out.push(b.nUnplaced + " " + noun + " with no roster assignee could not be placed under the active " +
+      "Region / Team / PM filter and " + (b.nUnplaced === 1 ? "is" : "are") + " left out of this slice.");
+  }
+  return out;
 }
 
 function renderFlow_() {
@@ -5731,10 +5863,13 @@ function renderFlow_() {
     // "ungated, publish at high confidence". The headline KPI of the page must
     // never publish itself by accident.
     var regOt = regRequired_("onTime");
-    if (!regOt) { html += registryMissingTile_("onTime", "period"); return; }
-    var ot = bucketsFor_(MODEL.onTimeBuckets, outHead.isos);
+    if (!regOt) { html += registryMissingTile_("onTime", "items"); return; }
+    // ITEMS, NOT PEOPLE (user 2026-09-09): every resolved item in the window
+    // counts, whoever it is assigned to — see bucketsFor_'s opts.items.
+    var ITEMS_ = { items: true };
+    var ot = bucketsFor_(MODEL.onTimeBuckets, outHead.isos, ITEMS_);
     var otSeries = done.map(function (p) {
-      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
+      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos, ITEMS_);
       return b.n > 0 ? b.onTime / b.n * 100 : null;
     });
     var otTrend = otSeries.slice(Math.max(0, hi - 5), hi + 1);
@@ -5753,17 +5888,17 @@ function renderFlow_() {
     var otSc = OT_SCOPE[MODEL.meta.onTimeScope] || OT_SCOPE.delivery;
     var otCmp = ot.n + " of " + ot.nAll + " " + otSc.word +
       ' <span title="' + esc_(otSc.why) + '">had a due date ⓘ</span>' + smallN_(ot.n);
-    var otDetail = regCaveats_("onTime");
+    var otDetail = itemsScopeNotes_(ot, "resolved items").concat(regCaveats_("onTime"));
     function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
     var otCovTrend = trendPer.map(function (p) {
-      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos);
+      var b = bucketsFor_(MODEL.onTimeBuckets, p.isos, ITEMS_);
       return b.nAll > 0 ? b.n / b.nAll * 100 : null;
     });
     var otConf = applyGatePolicy_(
       metricConfidence_(regOt.coverageGate, ot.nAll > 0 ? ot.n / ot.nAll : null, stable_(otTrend)));
     var otStd = stdFor_(otSeries, otConf);
     html += planning
-      ? notYetTile_("On-Time Delivery", outHead, outHeadlineLabel)
+      ? notYetTile_("On-Time Delivery", outHead, outHeadlineLabel, "items")
       : gatedTile_("On-Time Delivery", otConf, regOt,
           "no resolved delivery items in this period under the active filters",
           (ot.nAll - ot.n) + " of " + ot.nAll + " resolved items have no due date",
@@ -5771,83 +5906,84 @@ function renderFlow_() {
             return tileHtml_("On-Time Delivery", ot.n > 0 ? ot.onTime / ot.n * 100 : null, otCmp, otTrend,
                              { drillMetric: "onTime", headlineLabel: outHeadlineLabel, target: tg.onTime,
                                std: otStd, trendLabels: labels, phase: phase,
-                               detail: otDetail });
-          }, outHeadlineLabel, otCovTrend, labels);
+                               detail: otDetail, scope: "items" });
+          }, outHeadlineLabel, otCovTrend, labels, "items");
   })();
 
-  // 5 · Forecast Accuracy — margin-tier outcome tile, moved from the retired
-  // #tiles strip. canSeeMargin_() gating survives unchanged: omitted from the
-  // html string entirely for a non-margin role, never dimmed — verified in
-  // task-16b-report.md.
+  // 5 · Forecast Accuracy — margin-tier outcome tile. REDEFINED 2026-09-09
+  // (registry 4.4, user decision): the share of tasks and milestones SCHEDULED
+  // in the window that finished by the end of their committed week, read as
+  // ITEMS. The closed-epic estimate-variance read it replaces described
+  // engagements kicked off two or three quarters ago and moved for nobody
+  // inside a quarter — "not doable" as a weekly read. canSeeMargin_() gating
+  // survives unchanged: omitted from the html string entirely for a non-margin
+  // role, never dimmed.
   if (margin) (function () {
-    // Registry first (review item #6) — same reasoning as On-Time above; this
-    // card is gated too, and its ⓘ tooltip quotes the registry's own formula.
     var regFc = regRequired_("forecast");
-    if (!regFc) { html += registryMissingTile_("forecast", "period"); return; }
-    var fc = bucketsFor_(MODEL.forecastBuckets, outHead.isos);
-    var fcSeries = done.map(function (p) {
-      var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
-      return forecastAccuracyPct_(b.absVars);   // Dictionary formula, same as the headline
-    });
+    if (!regFc) { html += registryMissingTile_("forecast", "items"); return; }
+    if (!MODEL.forecastTaskBuckets) {
+      // A pre-v49 payload has the old epic buckets and nothing this card can
+      // read. Say so; never fall back to the epic series under the new label.
+      html += tileHtml_("Forecast Accuracy", null, "", [], {
+        unavailable: "Not in this payload — ↻ Refresh to rebuild on the current schema " +
+                     "(Forecast Accuracy now reads the week's schedule, not closed epics).",
+        headlineLabel: outHeadlineLabel, scope: "items" });
+      return;
+    }
+    var ITEMS_ = { items: true };
+    function pct_(b) { var g = b.nHit + b.nMiss; return g > 0 ? b.nHit / g * 100 : null; }
+    function cov_(b) {
+      // Coverage = the share of the window's FINISHED work that ever carried a
+      // schedule. With nothing finished but something scheduled and missed, the
+      // rate describes the whole schedule — coverage is complete, not absent.
+      return b.nRes > 0 ? b.nResDated / b.nRes : (b.nHit + b.nMiss > 0 ? 1 : null);
+    }
+    var fc = bucketsFor_(MODEL.forecastTaskBuckets, outHead.isos, ITEMS_);
+    var fcSeries = done.map(function (p) { return pct_(bucketsFor_(MODEL.forecastTaskBuckets, p.isos, ITEMS_)); });
     var fcTrend = fcSeries.slice(Math.max(0, hi - 5), hi + 1);
-    var band = Math.round((MODEL.meta.forecastBand || 0.10) * 100);
-    var fcHeadline = forecastAccuracyPct_(fc.absVars);
+    var graded = fc.nHit + fc.nMiss;
+    var fcHeadline = pct_(fc);
+    var fcCmp = fc.nHit + " of " + graded + " scheduled item" + (graded === 1 ? "" : "s") +
+      ' <span title="' + esc_(regFc.formula || "") + ' Week grain: a Tuesday date met on Thursday kept its week.">' +
+      "finished in their committed week ⓘ</span>" + smallN_(graded);
     var fcDetail = [];
-    var fcCmp = '<span title="' + esc_(regFc.formula || "") +
-      ' Floored at zero per epic, so one runaway engagement cannot drag a good period negative.">' +
-      "mean accuracy over " + fc.n + " measurable epic" + (fc.n === 1 ? "" : "s") + " ⓘ</span>" +
-      smallN_(fc.n);
-    fcDetail.push("How often we landed inside the band, as opposed to how close on average: " +
-      fc.nWithin + " of " + fc.n + " inside ±" + band + "%.");
-    if (fc.nAll > fc.n) {
-      fcDetail.push((fc.nAll - fc.n) + " of " + fc.nAll + " closed epics not measurable — no estimate, " +
-        "or an estimate with no logged time at all: nothing to compare, so they count toward coverage " +
-        "only instead of scoring as misses.");
+    if (fc.nPending) {
+      fcDetail.push(fc.nPending + " more scheduled in this window " + (fc.nPending === 1 ? "is" : "are") +
+        " pending — due in a week that has not ended yet, so not graded either way.");
     }
-    var med = medianOf_(fc.absVars);
-    if (med !== null) {
-      fcDetail.push("Median absolute variance " + Math.round(med * 100) + "% — median of " +
-        "|actual − estimate| ÷ estimate across the measurable epics. A median, not a mean: one " +
-        "runaway engagement should not define the team's forecasting.");
+    if (fc.nMiss) {
+      fcDetail.push("Of " + fc.nMiss + " miss" + (fc.nMiss === 1 ? "" : "es") + ", " + fc.nLate +
+        " did finish — just after the committed week; the other " + (fc.nMiss - fc.nLate) +
+        (fc.nMiss - fc.nLate === 1 ? " is" : " are") + " still open.");
     }
-    var misses = fc.nMissOver + fc.nMissUnder;
-    if (misses > 0) {
-      var overShare = Math.round(fc.nMissOver / misses * 100);
-      fcDetail.push("Of " + misses + " miss" + (misses === 1 ? "" : "es") + ", " + overShare +
-        "% over-run — over-runs burn margin, under-runs mean capacity was held that could have " +
-        "been sold. Opposite conversations.");
+    if (fc.nRes > fc.nResDated) {
+      fcDetail.push((fc.nRes - fc.nResDated) + " of " + fc.nRes + " items resolved in this window carried no due " +
+        "date at all — outside any schedule, so this rate describes " +
+        Math.round(fc.nResDated / fc.nRes * 100) + "% of the finished work.");
     }
-    // ATTRIBUTION, DISCLOSED (2026-08-17). Two facts this card computed and
-    // then never printed. Without them a reader sees a confident mean over a
-    // silently selected subset — the failure Bug Count carries a registry
-    // deviation for, and Forecast is MORE exposed to it because epics are
-    // containers and are unassigned more often than bugs are.
-    if (fc.nViaChildren > 0) {
-      fcDetail.push(fc.nViaChildren + " of " + fc.nAll + " epics reached their owner through the " +
-        "people working their children, not their own assignee — epics are containers and are " +
-        "often unassigned. The variance is unchanged; only who it is filed under is inferred.");
-    }
-    fcDetail.push(unattribNote_("forecast"));
+    // No "N issues excluded" line here: on the ITEMS read the unattributed
+    // items are COUNTED, and itemsScopeNotes_ says so (or says how many a WHERE
+    // filter left out). The excluded-count note is for the per-person cards.
+    fcDetail = fcDetail.concat(itemsScopeNotes_(fc, "scheduled or resolved items"));
     fcDetail = fcDetail.concat(regCaveats_("forecast"));
     function stable_(vals) { return vals.filter(function (v) { return v !== null; }).length; }
     var fcCovTrend = trendPer.map(function (p) {
-      var b = bucketsFor_(MODEL.forecastBuckets, p.isos);
-      return b.nAll > 0 ? b.n / b.nAll * 100 : null;
+      var c = cov_(bucketsFor_(MODEL.forecastTaskBuckets, p.isos, ITEMS_));
+      return c === null ? null : c * 100;
     });
-    var fcConf = applyGatePolicy_(
-      metricConfidence_(regFc.coverageGate, fc.nAll > 0 ? fc.n / fc.nAll : null, stable_(fcTrend)));
+    var fcConf = applyGatePolicy_(metricConfidence_(regFc.coverageGate, cov_(fc), stable_(fcTrend)));
     var fcStd = stdFor_(fcSeries, fcConf);
     html += planning
-      ? notYetTile_("Forecast Accuracy", outHead, outHeadlineLabel)
+      ? notYetTile_("Forecast Accuracy", outHead, outHeadlineLabel, "items")
       : gatedTile_("Forecast Accuracy", fcConf, regFc,
-          fcEmptyMsg_(),
-          (fc.nAll - fc.n) + " of " + fc.nAll + " closed epics have no estimate or no logged time",
+          fcEmptyMsg_(fc),
+          (fc.nRes - fc.nResDated) + " of " + fc.nRes + " items resolved in this window have no due date",
           function () {
             return tileHtml_("Forecast Accuracy", fcHeadline, fcCmp, fcTrend,
                              { drillMetric: "forecast", headlineLabel: outHeadlineLabel, target: tg.forecast,
                                std: fcStd, trendLabels: labels, phase: phase,
-                               detail: fcDetail });
-          }, outHeadlineLabel, fcCovTrend, labels);
+                               detail: fcDetail, scope: "items" });
+          }, outHeadlineLabel, fcCovTrend, labels, "items");
   })();
 
   // 5b · Availability Rate — hours free for direct delivery of the backlog
@@ -6167,21 +6303,26 @@ var METRICS_ = {
     n: function (isos) { return bucketsFor_(MODEL.reworkBuckets, isos).nDelivered; },
     sampleNoun: "items",
   },
+  // Task-grain schedule read since registry 4.4 (2026-09-09). Per-person
+  // attribution here (default bucketsFor_) so the comparison bars and the
+  // breakdown slice it by the people who own the scheduled items; the Overview
+  // card itself reads the same buckets as ITEMS.
   forecast: {
     id: "forecast", targetKey: "forecast",
     label: function () { return "Forecast Accuracy"; },
-    axis: function () { return "closed epics inside the ±" +
-      Math.round((MODEL.meta.forecastBand || 0.10) * 100) + "% estimate band"; },
-    available: function () { return !!MODEL.meta.jiraAvailable; },
+    axis: function () { return "scheduled items finished in their committed week"; },
+    available: function () { return !!MODEL.meta.jiraAvailable && !!MODEL.forecastTaskBuckets; },
     value: function (isos) {
-      return forecastAccuracyPct_(bucketsFor_(MODEL.forecastBuckets, isos).absVars);
+      var b = bucketsFor_(MODEL.forecastTaskBuckets || [], isos);
+      var g = b.nHit + b.nMiss;
+      return g > 0 ? b.nHit / g * 100 : null;
     },
     coverage: function (isos) {
-      var b = bucketsFor_(MODEL.forecastBuckets, isos);
-      return b.nAll > 0 ? b.n / b.nAll : null;
+      var b = bucketsFor_(MODEL.forecastTaskBuckets || [], isos);
+      return b.nRes > 0 ? b.nResDated / b.nRes : (b.nHit + b.nMiss > 0 ? 1 : null);
     },
-    n: function (isos) { return bucketsFor_(MODEL.forecastBuckets, isos).n; },
-    sampleNoun: "epics",
+    n: function (isos) { var b = bucketsFor_(MODEL.forecastTaskBuckets || [], isos); return b.nHit + b.nMiss; },
+    sampleNoun: "items",
   },
   // 🌊 Flow additions (Task 10, 2026-08-05): Lead Time and Throughput join the
   // comparison chips. Both are person-joined and period-shaped — the same two
@@ -8046,8 +8187,8 @@ function renderRoster_() {
                    "It is deliberately wider than the list in the drill-down, which excludes epics " +
                    "(they roll up their children) and unstarted tickets with no due date (ignored " +
                    "by rule). Expand the row for the full breakdown."
-                 : "Issues RESOLVED by this person in the selected period, epics included. The " +
-                   "drill-down below shows today's open backlog instead, which follows no period.") + '"'
+                 : "Issues RESOLVED by this person in the selected period, epics included. " +
+                   "Expand the row to list them — misses first.") + '"'
              : k === "plan" ? ' title="' + esc_("Hours planned in Tempo against scheduled " +
                  "capacity for this window, capped per week. Shown only while the window is " +
                  "still open, because a plan you can no longer change is history, not an " +
@@ -9758,6 +9899,10 @@ function renderPm_() {
     return;
   }
   var nowIso = currentIso_();
+  // ⏩ The push window = the analysis window every other tab reads. Set before
+  // any row is built so the pill, the Needs-action row and the epic rows agree.
+  var pmHead = analysisHead_().head;
+  PM_WINDOW_ = { isos: pmHead.isos || [], label: pmHead.label || "" };
   var totalIgnored = 0;
   // Epics carved out of the Owns bar as assigned backlog (To Do, no date).
   // Summed in the same pass as totalIgnored so the sentence below always
@@ -9772,18 +9917,22 @@ function renderPm_() {
   var visRows = d.rows.map(function (r) {
     totalIgnored += r.ignoredN || 0;
     totalBacklogEpics += r.epicBacklogN || 0;
-    if (!filtering) return r;
+    // A shallow copy ALWAYS (was: only when filtering): the ⏩ pushed count is
+    // computed here per render, over the PM's FULL epic list like every other
+    // pill, and must never be written back onto the payload row.
+    var c = {};
+    for (var k in r) c[k] = r[k];
+    c.oppPushed = (r.epics || []).filter(function (e) { return pmPushedInWindow_(e) > 0; }).length;
+    if (!filtering) return c;
     var keep = [];
     (r.epics || []).forEach(function (e) {
       if (pmEpicPasses_(e)) { keep.push(e); return; }
       hidden++;
       if (!(e.owners || []).length) hiddenUnowned++;
     });
-    // A shallow copy: STATE.pmOpen keys off r.pm, and the bars/gap counts are
-    // the PM's own standing record, so only the epic LIST narrows. See the note
-    // rendered under the heading.
-    var c = {};
-    for (var k in r) c[k] = r[k];
+    // STATE.pmOpen keys off r.pm, and the bars/gap counts are the PM's own
+    // standing record, so only the epic LIST narrows. See the note rendered
+    // under the heading.
     c.epics = keep;
     return c;
   }).filter(function (r) {
@@ -9842,6 +9991,7 @@ function renderPm_() {
     // rollup made every PM read everyone's problems.
     "<h3>Project Managers — owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
+    pmPushNote_(d) +
     // ── METHODOLOGY OFF THE PAGE (director feedback 2026-08-17) ─────────────
     // Eight lines of attribution and windowing prose sat between the heading
     // and the first PM, and trained the reader to skip the top of the page.
@@ -9929,8 +10079,22 @@ var PM_OPPS_ = [
     tip: "The committed week has passed with work still scheduled beyond it. Missed — this is a recovery conversation." },
   { k: "oppEpicsAtRisk", icon: "⚠", cls: "sigWarn", short: "at risk",
     tip: "Work is planned to finish after the epic's own date, which has not passed yet. Still fixable: move the children, or move the date." },
-  { k: "oppNoChildren", icon: "🔗", cls: "sigWarn", short: "unlinked",
-    tip: "No ticket rolls up to this epic, so its hours cannot reach an engagement — or a quote." },
+  // "Without tasks" (renamed from "unlinked", user 2026-09-09): the finding is
+  // an epic with nothing under it, and that is what a PM hears in the words.
+  { k: "oppNoChildren", icon: "🔗", cls: "sigWarn", short: "without tasks",
+    tip: "No task of any status rolls up to this epic — nothing has been broken down under it, so its hours cannot reach an engagement or inform a quote." },
+  // ⏩ PUSHED — the one WINDOWED pill (user 2026-09-09, from the jira-1-signal
+  // dashboard's slip engine). Counted client-side over the analysis window
+  // (renderPm_ sets PM_WINDOW_), because the export records every due-date
+  // edit as a fact and the week it belongs to is the reader's choice.
+  { k: "oppPushed", icon: "⏩", cls: "sigWarn", short: "pushed",
+    shortOf: function () { return "pushed in " + pmWindowLabel_(); },
+    tipOf: function () {
+      return "The epic's due date was moved to a LATER date during " + pmWindowLabel_() +
+        " — a live commitment that slipped. Counted per epic; the epic list says by how much. " +
+        "Needs Jira Backlog.js ≥ 3.20.0 (Due Push Log).";
+    },
+    tip: "The epic's due date was moved to a later date during the selected window." },
   { k: "oppStale", icon: "🕒", cls: "sigWarn", short: "untouched 30d+",
     tip: "Untouched for 30+ days. Blocked, or not real work — either way it inflates this PM's load." },
 ];
@@ -9940,15 +10104,17 @@ function pmOppHtml_(r) {
   if (!live.length) {
     // A clean PM says so. A row that renders nothing reads as "not measured",
     // and the whole point of this line is that its absence means something.
-    return '<div class="pmOpp"><span class="pmPill sigGood" title="Every epic dated, ' +
-      'linked, current, and its work inside its date.">✔ No open gaps</span></div>';
+    return '<div class="pmOpp"><span class="pmPill sigGood" title="' + esc_("Every epic dated, " +
+      "with tasks under it, current, its work inside its date, and no due date pushed in " +
+      pmWindowLabel_() + ".") + '">✔ No open gaps</span></div>';
   }
   live.sort(function (a, b) {
     return (r[b.k] - r[a.k]) || (PM_OPPS_.indexOf(a) - PM_OPPS_.indexOf(b));
   });
   return '<div class="pmOpp">' + live.map(function (o) {
     var n = r[o.k];
-    var body = o.icon + ' <b>' + n + "</b> " + o.short;
+    var body = o.icon + ' <b>' + n + "</b> " + (o.shortOf ? o.shortOf() : o.short);
+    var tip = o.tipOf ? o.tipOf() : o.tip;
     // Every pill ACTS (director feedback 2026-08-17). The no-due pill opens its
     // keys in Jira — the payload names them (epicMissingKeys, the same list the
     // 🚩 row draws). The other signals ship as COUNTS over the PM's full epic
@@ -9958,14 +10124,14 @@ function pmOppHtml_(r) {
     if (o.k === "oppNoDue" && jiraBase_() && (r.epicMissingKeys || []).length) {
       return '<a class="pmPill ' + o.cls + '" href="' + esc_(jiraKeysUrl_(r.epicMissingKeys)) +
         '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="' +
-        esc_(o.tip + " Click to open " + (n === 1 ? "it" : "these") + " in Jira.") + '">' +
+        esc_(tip + " Click to open " + (n === 1 ? "it" : "these") + " in Jira.") + '">' +
         body + "</a>";
     }
     return '<span class="pmPill ' + o.cls + '" role="button" tabindex="0" ' +
       'onclick="pmPillOpen_(' + jsArg_(r.pm) + ')" ' +
       'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' +
       'pmPillOpen_(' + jsArg_(r.pm) + ');}" title="' +
-      esc_(o.tip + " Click to open this PM's epic list — every flagged epic is marked on its row.") +
+      esc_(tip + " Click to open this PM's epic list — every flagged epic is marked on its row.") +
       '">' + body + "</span>";
   }).join("") + "</div>";
 }
@@ -10069,10 +10235,50 @@ var PM_NEEDS_ = [
   { k: "over7", label: "● Overdue ≤7 days", sev: "sigBad",
     tip: "The committed week has just ended. Usually a due date that needs moving, not work that needs rescuing — the current week is still in compliance.",
     match: function (e) { return e.due && weeksPastDue_(e.due) === 1; } },
-  { k: "unlinked", label: "● Not linked to a parent", sev: "sigWarn",
-    tip: "No ticket of any status rolls up to this epic, so its hours can never reach an engagement — or inform the next quote.",
+  { k: "unlinked", label: "● Without tasks", sev: "sigWarn",
+    tip: "No task of any status rolls up to this epic — nothing has been broken down under it, so its hours can never reach an engagement or inform the next quote.",
     match: function (e) { return !e.childrenAll; } },
+  // ⏩ Pushed in the analysis window (user 2026-09-09). The label names the
+  // window because the count changes with the picker — the only row here that
+  // does — and a reader must not quote "3 pushed" without the week beside it.
+  { k: "pushed", label: "● Pushed in window", sev: "sigWarn",
+    labelOf: function () { return "● Pushed in " + pmWindowLabel_(); },
+    tip: "The epic's due date was moved to a later date during the selected window while the epic was still open. Each one is a commitment that slipped — the epic row says from when to when.",
+    match: function (e) { return pmPushedInWindow_(e) > 0; } },
 ];
+
+// ── ⏩ PUSH WINDOW — what "pushed in …" means on the PM tab ─────────────────
+// Set once per renderPm_ from analysisHead_(), read by the pill, the
+// Needs-action row and the epic row, so the three can never name different
+// weeks. Module-level like ROSTER_ISOS_: the PM_NEEDS_ matchers take an epic
+// and nothing else.
+var PM_WINDOW_ = { isos: [], label: "" };
+function pmWindowLabel_() { return PM_WINDOW_.label || "the selected window"; }
+/** Pushes (moves to a LATER date) this epic took inside the analysis window.
+    0 for a measured epic with none, AND for an unmeasured one (pushes === null)
+    — the coverage note on the tab is what states the difference. */
+function pmPushedInWindow_(e) {
+  var ps = (e && e.pushes) || [];
+  var n = 0;
+  for (var i = 0; i < ps.length; i++) if (PM_WINDOW_.isos.indexOf(ps[i].wk) !== -1) n++;
+  return n;
+}
+/** The tab's push-coverage line: absent on a pre-v49 payload (nothing to say),
+    a plain statement when the export measured nothing, a count otherwise. */
+function pmPushNote_(d) {
+  var c = d && d.pushCoverage;
+  if (!c || !c.epics) return "";
+  if (!c.measured) {
+    return '<p class="cellSub pmFilterNote">⏩ <b>Due-date pushes are not measured in this export.</b> ' +
+      "The pushed-in-window signal needs Jira Backlog.js ≥ 3.20.0 with its changelog fetch on; " +
+      "until then no PM reads as clean of pushes — the pill is simply absent.</p>";
+  }
+  return c.measured < c.epics
+    ? '<p class="cellSub pmFilterNote">⏩ Pushes in <b>' + esc_(pmWindowLabel_()) + "</b> measured on " +
+      c.measured + " of " + c.epics + " listed epics — an epic untouched for longer than the export's " +
+      "changelog window carries no history, and no history is not a clean record.</p>"
+    : "";
+}
 
 /**
  * ONE PM's Needs-action table, over their filtered epics.
@@ -10113,7 +10319,7 @@ function pmNeedsActionHtml_(epics) {
       (url ? ' onclick="pmNeedGo_(this)" title="' + esc_("Open " + keys.length +
         (keys.length === 1 ? " epic" : " epics") + " in Jira — the whole row is the button.") + '"' : "") + ">" +
       '<td class="tname"><span class="sigDot ' + s.sev + '">●</span> ' +
-        '<span title="' + esc_(s.tip) + '">' + esc_(s.label.replace(/^● /, "")) + "</span></td>" +
+        '<span title="' + esc_(s.tip) + '">' + esc_((s.labelOf ? s.labelOf() : s.label).replace(/^● /, "")) + "</span></td>" +
       '<td class="tnum">' + keys.length + "</td>" +
       '<td class="tnum">' + btn + "</td></tr>";
   }).join("");
@@ -10125,7 +10331,7 @@ function pmNeedsActionHtml_(epics) {
   return '<div class="pmNeeds">' +
     '<div class="pmNeedsHead">Needs action ' +
       '<span class="cellSub">— fix these and next period moves. One click per signal opens ' +
-      "your queue in Jira; rows overlap on purpose (one epic can be overdue AND unlinked).</span></div>" +
+      "your queue in Jira; rows overlap on purpose (one epic can be overdue AND without tasks).</span></div>" +
     '<table class="hyg pmNeedsTbl">' +
       '<colgroup><col style="width:52%"><col style="width:14%"><col style="width:34%"></colgroup>' +
       '<thead><tr><th class="tname">Signal</th>' +
@@ -10320,8 +10526,19 @@ function pmEpicHtml_(e, nowIso) {
       'which has NOT passed yet. Move the children, or move the date.">⚠ cannot land as planned</span>');
   }
   if (!e.childrenAll) {
-    gaps.push('<span class="sigWarn" title="No ticket of any status rolls up to this ' +
-      'epic, so its hours cannot be attributed to an engagement.">&#128279; nothing linked</span>');
+    gaps.push('<span class="sigWarn" title="No task of any status rolls up to this ' +
+      'epic — nothing has been broken down under it, so its hours cannot be attributed to an engagement.">&#128279; without tasks</span>');
+  }
+  // ⏩ Pushed inside the analysis window: from → to and by how far, for the
+  // LATEST push in the window (the row is a sentence, not a log).
+  var pushedN = pmPushedInWindow_(e);
+  if (pushedN) {
+    var inWin = (e.pushes || []).filter(function (p) { return PM_WINDOW_.isos.indexOf(p.wk) !== -1; });
+    var lastP = inWin[inWin.length - 1];
+    gaps.push('<span class="sigWarn" title="' + esc_("Due date moved " + lastP.from + " → " + lastP.to +
+      " on " + lastP.at + (pushedN > 1 ? " (" + pushedN + " pushes in " + pmWindowLabel_() + ")" : "") +
+      ". A commitment moved while live — the conversation is why, and whether the new date is real.") +
+      '">⏩ pushed +' + lastP.days + "d in " + esc_(lastP.wk) + "</span>");
   }
   if (e.stale) {
     gaps.push('<span class="sigWarn" title="Untouched beyond the backlog\'s staleness bar. ' +
@@ -10919,6 +11136,13 @@ function rosterDetailRow_(p, head) {
         : "")
     : (p.hired ? "Joined " + esc_(p.hired) + " — after " + esc_(head.label)
                : "No scheduled capacity in " + esc_(head.label));
+  // RESOLVED view (user 2026-09-09): on a complete window the row lists what
+  // this person CLOSED in it — the population the cells above are graded on —
+  // instead of today's open backlog, which follows no period.
+  if (STATE.typePop === "resolved") {
+    return '<tr class="detailRow"><td colspan="' + rosterColKeys_().length + '"><div class="cellSub">' +
+      hours + "</div>" + resolvedDetailHtml_(p, head) + "</td></tr>";
+  }
   // Two levels of expand (2026-08-10). `carried` is what the payload holds for
   // this person; `items` is what this render shows. The default stays short so the
   // row still reads as an explanation of the cells above it.
@@ -11065,11 +11289,117 @@ function rosterDetailRow_(p, head) {
   return '<tr class="detailRow"><td colspan="' + rosterColKeys_().length + '"><div class="cellSub">' +
     hours + "</div>" + list + recon + "</td></tr>";
 }
+/**
+ * ▸ row, RESOLVED view: the items this person resolved inside the analysis
+ * window (person.resolved, schema 49 — resolvedByPerson_). Misses first, then
+ * the biggest logged effort, so the row explains the red cells above it before
+ * anything else. Says plainly when the payload predates the field, when the
+ * window is older than the horizon the payload carries, and when a week's list
+ * is clipped — a clipped list read as complete is how "we closed them all"
+ * becomes wrong.
+ */
+function resolvedDetailHtml_(p, head) {
+  if (p.resolved === undefined) {
+    return '<div class="cellSub">Resolved items are not in this payload — ↻ Refresh to rebuild on the current schema.</div>';
+  }
+  var weeks = (p.resolved && p.resolved.weeks) || {};
+  var items = [], count = 0, listed = 0, dated = 0, onTime = 0, epics = 0;
+  (head.isos || []).forEach(function (iso) {
+    var w = weeks[iso];
+    if (!w) return;
+    count += w.count || 0; dated += w.dated || 0; onTime += w.onTime || 0; epics += w.epics || 0;
+    listed += (w.listed !== undefined ? w.listed : (w.items || []).length);
+    (w.items || []).forEach(function (it) { items.push(it); });
+  });
+  // Is any part of this window older than the horizon the payload carries?
+  var horizon = MODEL.meta.resolvedItemsWeeks || 13;
+  // "Now" = the in-flight week, else the latest week the payload knows about
+  // (gridWeeks carries {iso,status} objects; a pre-toggle payload carries
+  // bare iso strings — allPeriods_ accepts both, so this does too).
+  var gw = MODEL.meta.gridWeeks || [];
+  var lastGw = gw.length ? gw[gw.length - 1] : null;
+  var nowKey = currentIso_() || (lastGw ? (typeof lastGw === "string" ? lastGw : (lastGw.iso || "")) : "");
+  var nowMon = weekKeyMonday_(nowKey);
+  var beyond = nowMon !== null && (head.isos || []).some(function (iso) {
+    var m = weekKeyMonday_(iso);
+    return m !== null && (nowMon - m) > horizon * 7 * 864e5;
+  });
+  if (!items.length) {
+    return '<div class="cellSub">' + (beyond
+      ? "Resolved items for " + esc_(head.label) + " are beyond the " + horizon +
+        "-week horizon this payload carries — the cells above still count them, the list cannot."
+      : "No resolved items attributed to this person in " + esc_(head.label) + ".") + "</div>";
+  }
+  // Needs-action first (user 2026-09-09: "if the cell says 3/10 we show
+  // everything, sorted by the 3 that need action, with the actual status").
+  // `gaps` is the server's list of reasons, the same fields the cells grade;
+  // late counts as a reason. Most reasons first, then the biggest logged effort.
+  function reasons_(it) { return (it.gaps || (it.onTime === false ? ["late"] : [])).length; }
+  items.sort(function (a, b) {
+    if (reasons_(b) !== reasons_(a)) return reasons_(b) - reasons_(a);
+    if ((b.spentHrs || 0) !== (a.spentHrs || 0)) return (b.spentHrs || 0) - (a.spentHrs || 0);
+    return String(a.key).localeCompare(String(b.key));
+  });
+  var needN = items.filter(function (it) { return reasons_(it) > 0; }).length;
+  var rows = items.map(function (it) {
+    var epicHref = it.epicKey ? jiraIssueUrl_(it.epicKey) : "";
+    var epic = it.isEpic
+      ? '<span class="cellSub" title="This row IS an epic — a milestone this person closed.">— is an epic</span>'
+      : it.epicKey
+        ? (it.epicName
+            ? (jiraBase_()
+                ? jiraLink_(epicHref, trunc_(it.epicName, 34), it.epicKey + " — " + it.epicName)
+                : '<span title="' + esc_(it.epicKey + " — " + it.epicName) + '">' + esc_(trunc_(it.epicName, 34)) + "</span>") +
+              ' <span class="cellSub">' + esc_(it.epicKey) + "</span>"
+            : '<span class="cellSub">' + (jiraBase_() ? jiraLink_(epicHref, it.epicKey, "Open " + it.epicKey + " in Jira") : esc_(it.epicKey)) + "</span>")
+        : '<span class="sigBad" title="No epic or parent — these hours cannot roll up to an engagement.">— not linked</span>';
+    var keyCell = jiraBase_() ? jiraLink_(jiraIssueUrl_(it.key), it.key, "Open " + it.key + " in Jira") : esc_(it.key);
+    var verdict = it.onTime === true
+      ? '<span class="sigGood" title="Resolved on or before its due calendar day.">✓ on time</span>'
+      : it.onTime === false
+        ? '<span class="sigBad" title="Resolved after its due calendar day.">✗ late</span>'
+        : '<span class="cellSub" title="Carried no due date — never a commitment On-Time could grade.">no due date</span>';
+    var gaps = it.gaps || (it.onTime === false ? ["late"] : []);
+    var need = gaps.length
+      ? gaps.map(function (g) {
+          return '<span class="' + (g === "late" ? "sigBad" : "sigWarn") + '">● ' + esc_(g) + "</span>";
+        }).join(" ")
+      : '<span class="sigGood" title="Every graded field present and the date kept.">✓ complete</span>';
+    return '<tr class="' + (gaps.length ? "needRow" : "") + '"><td>' + keyCell + "</td><td>" + esc_(it.summary) +
+      "</td><td>" + epic + "</td><td>" + esc_(it.status || "") + "</td><td>" + need + "</td><td>" +
+      esc_(it.resolvedOn || "") + "</td><td>" +
+      (it.due ? esc_(it.due) : '<span class="cellSub">—</span>') + "</td><td>" + verdict +
+      '</td><td class="tnum">' + r1_(it.spentHrs || 0) + "</td></tr>";
+  }).join("");
+  var summary = "<b>" + count + "</b> resolved in " + esc_(head.label) +
+    ' · <b class="' + (needN ? "sigWarn" : "sigGood") + '">' + needN + "</b> of " + items.length +
+    " listed need action (sorted first)" +
+    (dated ? " · " + dated + " carried a due date, <b>" + onTime + "</b> kept it" : " · none carried a due date") +
+    (epics ? " · " + epics + " epic" + (epics === 1 ? "" : "s") : "");
+  var clip = listed < count
+    ? ' <span class="cellSub">— ' + listed + " of " + count + " listed (needs-action first, then logged hours); the payload carries at most " +
+      (MODEL.meta.backlogMaxItems || 60) + " per week.</span>"
+    : "";
+  return '<div class="cellSub" style="margin:4px 0">' + summary + clip + "</div>" +
+    '<table class="hyg"><tr><th>Key</th><th>Summary</th>' +
+    '<th title="The epic this item belongs to — what the work was FOR.">Belongs to</th>' +
+    '<th title="The Jira status the item resolved in.">Status</th>' +
+    '<th title="Why this item needs action: the same fields the cells above grade (due date, estimate, time logged, epic link), plus late. Items with reasons sort first.">Needs action</th>' +
+    '<th title="Resolution date.">Resolved</th><th title="Committed week (from the Jira Due Date).">Due</th>' +
+    '<th title="On time = resolved on or before the due calendar day — the same rule as the On-Time card.">On time</th>' +
+    '<th class="tnum" title="Time logged on the item (Jira Time Spent).">Logged h</th></tr>' + rows + "</table>" +
+    (jiraBase_()
+      ? '<div class="cellSub">' + jiraOpenAll_(items.map(function (i) { return i.key; }),
+          "Open these " + items.length + " in Jira").replace(/^ /, "") + "</div>"
+      : "");
+}
+
 /** Scope tag chip — states which clock a column follows. The full version
     (threaded through the other tiles) arrives in Task 9; this one is real,
     not a placeholder — its API does not change later. */
 function scopeTag_(kind) {
   var t = { period: ["PERIOD", "Analysis period — follows the period picker and every filter."],
+            items:  ["ITEMS",  "Work items in the analysis period — every resolved or scheduled item, whoever it is assigned to (crew and items with no roster match included; interns' items excepted by the 2026-08-04 rule). Region / Team / PM narrow it through the assignee; Population, Role, Job family and the person search do not."],
             snap:   ["SNAP",   "Snapshot at the last export — follows filters, ignores the period picker."],
             org:    ["ORG",    "Whole org — deliberately ignores filters and the period picker."] }[kind];
   return '<span class="scopeTag" title="' + esc_(t[1]) + '">' + t[0] + "</span>";
@@ -11313,12 +11643,12 @@ function gapsRowsAll_(h, pp) {
     { key: "est", name: "Estimate on closed epics",
       value: h.epics > 0 ? h.epicsEst / h.epics : null, gate: 0.70,
       detail: h.epicsEst + " of " + h.epics + " closed epics estimated",
-      blocks: "Forecast Accuracy",
+      blocks: "the epic estimate-variance series (audit only — the Forecast Accuracy card reads schedules since 2026.W37)",
       note: "The estimate is mutable — one revised mid-flight scores as accurate." },
     { key: "logged", name: "Logged time on estimated epics",
       value: h.epicsEst > 0 ? h.epicsTime / h.epicsEst : null, gate: 0.70,
       detail: (h.epicsEst - h.epicsTime) + " estimated epics carry no worklog at all",
-      blocks: "Forecast Accuracy",
+      blocks: "the epic estimate-variance series (audit only — the Forecast Accuracy card reads schedules since 2026.W37)",
       note: "Counted toward coverage only — a hygiene failure must not score as a forecasting miss." },
     { name: "Billable / non-billable classification on tracked hours",
       value: pp.tracked > 0 ? pp.trackedCov / pp.tracked : null, gate: 0.90,
@@ -11658,6 +11988,79 @@ function signalSummary_(isos) {
     is gone, and the chips moved onto the roster itself. renderHygPanel_ is still
     called because the gaps queue's caption names the same window. */
 function setTypePop_(v) { STATE.typePop = v; renderRoster_(); renderHygPanel_(); }
+
+/**
+ * The roster's population FOLLOWS THE WINDOW (user 2026-09-09): on the current
+ * week "so far" (or a planning week) the actionable half is the OPEN backlog;
+ * on a complete week the question is historical — what did each person
+ * actually resolve in 2026.W36 — so the roster opens on RESOLVED · that week
+ * and its ▸ rows list the work closed. Called wherever the window changes
+ * (period unit, picker, Reset, first load). The chips still override it for
+ * the current window; the next window change re-syncs.
+ */
+function syncTypePop_() {
+  if (!MODEL) return;
+  STATE.typePop = analysisHead_().phase === "done" ? "resolved" : "open";
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ✎ CHANGES (admin only) — the change register, user request 2026-09-09
+//
+// One row per impactful change: "Change #001 — Title", the request as it was
+// made, what the dashboard does about it, and a status. Grouped To do → Under
+// review → Solved, because the open items are what an admin came to check.
+// The register itself lives in Code.js (DH_CHANGES_) and ships in meta.changes;
+// this only arranges it.
+// ══════════════════════════════════════════════════════════════════════════
+var CHANGE_STATUS_ = {
+  todo:   { label: "To do",        cls: "sigSmall", order: 0,
+            tip: "Agreed, not built yet. The row says what is pending and who decides." },
+  review: { label: "Under review", cls: "sigWarn",  order: 1,
+            tip: "Built and tested; awaiting review or deploy. The row says what has to happen for it to go live." },
+  solved: { label: "Solved",       cls: "sigGood",  order: 2,
+            tip: "Live on the deployed dashboard." },
+};
+function changeNo_(id) { var s = String(id); while (s.length < 3) s = "0" + s; return "#" + s; }
+
+function renderChanges_() {
+  var el = document.getElementById("viewChanges");
+  if (!el) return;
+  var list = MODEL && MODEL.meta && MODEL.meta.changes;
+  if (!list) {
+    el.innerHTML = "<h3>Changes</h3><div class=\"emptyState\">Not in this payload — ↻ Refresh to rebuild on the current schema.</div>";
+    return;
+  }
+  var rows = list.slice().sort(function (a, b) {
+    var ao = (CHANGE_STATUS_[a.status] || CHANGE_STATUS_.todo).order,
+        bo = (CHANGE_STATUS_[b.status] || CHANGE_STATUS_.todo).order;
+    if (ao !== bo) return ao - bo;
+    return b.id - a.id;                          // newest request first within a status
+  });
+  var counts = { todo: 0, review: 0, solved: 0 };
+  list.forEach(function (c) { if (counts[c.status] !== undefined) counts[c.status]++; });
+  var body = rows.map(function (c) {
+    var st = CHANGE_STATUS_[c.status] || CHANGE_STATUS_.todo;
+    return '<tr class="changeRow"><td class="tname">' +
+      '<b>Change ' + changeNo_(c.id) + " — " + esc_(c.title) + "</b>" +
+      '<div class="cellSub">' + esc_(c.area) + " · asked " + esc_(c.week) + " (" + esc_(c.requested) + ")</div></td>" +
+      "<td><div><b>Asked:</b> " + esc_(c.ask) + "</div>" +
+      '<div style="margin-top:4px"><b>Solution:</b> ' + esc_(c.done) + "</div>" +
+      (c.needs ? '<div class="cellSub" style="margin-top:4px"><b>Needs:</b> ' + esc_(c.needs) + "</div>" : "") + "</td>" +
+      '<td class="tnum"><span class="pmPill ' + st.cls + '" title="' + esc_(st.tip) + '">' +
+      (c.status === "solved" ? "✔ " : c.status === "review" ? "◐ " : "○ ") + st.label + "</span></td></tr>";
+  }).join("");
+  el.innerHTML =
+    '<div class="chartHead"><h3>Changes — what was asked, and where it stands</h3>' +
+      '<span class="sub">' + counts.todo + " to do · " + counts.review + " under review · " +
+      counts.solved + " solved</span></div>" +
+    '<p class="cellSub">Impactful changes only: a change is listed when it moves a published number, changes what ' +
+      "a number means, or changes what a reader does on a tab. Numbered in request order; the register starts " +
+      "with the 2026.W37 batch — earlier history is in the README.</p>" +
+    '<div class="gwrap"><table class="hyg changesTbl">' +
+      '<colgroup><col style="width:28%"><col style="width:60%"><col style="width:12%"></colgroup>' +
+      '<thead><tr><th class="tname">Change</th><th>Request and solution</th><th class="tnum">Status</th></tr></thead>' +
+      "<tbody>" + body + "</tbody></table></div>";
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // ACCESS CONTROL (admin only)

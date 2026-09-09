@@ -198,6 +198,11 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " toggleFlag_: toggleFlag_, VIEWS: VIEWS, dimMatch_: dimMatch_, dimMatchAny_: dimMatchAny_, msActive_: msActive_, msVals_: msVals_, msSet_: msSet_, msClear_: msClear_, msToggle_: msToggle_, MS_DIMS_: MS_DIMS_, fillMulti_: fillMulti_, UNTAGGED_: UNTAGGED_, cmpNoun_: cmpNoun_, scopedMetric_: scopedMetric_, METRICS_: METRICS_, METRIC_ORDER_: METRIC_ORDER_, canSeeMargin_: canSeeMargin_, liveMetrics_: liveMetrics_," +
              " renderAll_: renderAll_, buildPeriodChips_: buildPeriodChips_," +
              " utilFor_: utilFor_, bucketsFor_: bucketsFor_," +
+             // 2026-09-09 (2026.W37): items-not-people + the window-following roster.
+             " setDefaultWindow_: setDefaultWindow_, syncTypePop_: syncTypePop_, setPeriodIdx_: setPeriodIdx_," +
+             " setPlanWeeksAhead_: setPlanWeeksAhead_," +
+             " resolvedDetailHtml_: resolvedDetailHtml_, pmPushedInWindow_: pmPushedInWindow_, pmPushNote_: pmPushNote_," +
+             " passesWhereFilters_: passesWhereFilters_, whereNarrowed_: whereNarrowed_, itemsScopeNotes_: itemsScopeNotes_," +
              // Header freshness line (2026-08-04): the export stamp vs the model
              // rebuild are two clocks, and only rendering can prove they stay apart.
              " dataAsOfView_: dataAsOfView_," +
@@ -289,6 +294,13 @@ var bridge = "\n;({ setModel: function (x) { MODEL = x; }, getModel: function ()
              " JIRA_LINK_MAX_KEYS_: JIRA_LINK_MAX_KEYS_," +
              " wfRead_: wfRead_ })";
 var C = eval(m[1] + bridge);
+// THE SHIPPED DEFAULT WINDOW MOVED (2026-09-09): the picker's default entry now
+// resolves to the IN-FLIGHT period when the payload has one. Every fixture and
+// pin below this line was written against the complete-window grammar, and
+// that grammar is still what they test — so the harness pins the pre-2026-09-09
+// default here and the dedicated block at the end of this file exercises the
+// "now" default explicitly (and restores this pin when it is done).
+C.setDefaultWindow_("done");
 
 /**
  * Every KPI tile renderFlow_ produces, across the two containers the
@@ -372,6 +384,9 @@ function person(name, o) {
   return Object.assign({ name: name, region: "AMER", teams: ["Team A"], pms: [], jobFamily: "Service Delivery",
                          isCrew: false, isManager: false, onLeave: false, newHire: false,
                          jobTitle: "09.P3.Consultant", backlog: null,
+                         // Resolved work per week (schema 49). null = none in the
+                         // horizon; a fixture that lists items overrides it.
+                         resolved: null,
                          // Workforce Health classification (schema v30). Carried on
                          // every fixture person because the client groups by `cell`
                          // — a person with no pool would fall into NONE|UNKNOWN and
@@ -417,7 +432,7 @@ function model(o) {
       regions: ["AMER", "EMEA", "SEA", "ANZ", "Other"], teams: ["Team A"], pms: [], families: ["Service Delivery"],
       nsAvailable: true, jiraAvailable: true,
       nsCoverage: { personWeeks: 4, covered: 4, classifiedPct: 1, gapHours: 0, unmatchedNames: [] },
-      jiraUnattributed: { onTime: 3, forecast: 1 },
+      jiraUnattributed: { onTime: 3, forecast: 1, forecastTask: 0 },
       onTimeScope: "delivery", forecastBand: 0.10,
       // Queue metrics (Task 11, spec 2026-08-06 §1). Boring/inert defaults on
       // purpose — clearRateMedian: null and empty history mean the masthead's
@@ -427,6 +442,18 @@ function model(o) {
       capacityError: null,
       refreshEveryMin: 30,
       sources: [{ system: "Jira", feeds: "On-Time", tab: "Jira Raw" }],
+      // 📋 Change register (2026-09-09) — a small one; the real DH_CHANGES_ is
+      // checked shape-wise in node-tests. One of each status, ids out of order
+      // on purpose so the grouping/ordering is actually exercised.
+      changes: [
+        { id: 2, status: "solved", week: "2026.W36", requested: "2026-09-02", area: "Overview",
+          title: "Something already live", ask: "Ask two.", done: "Done two.", needs: "Nothing." },
+        { id: 1, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+          title: "Calculation change for On-Time Delivery", ask: "Items not people.",
+          done: "Reads the actual items.", needs: "Deploy." },
+        { id: 3, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+          title: "Pushes on tasks", ask: "Ask three.", done: "Not built.", needs: "Owner decision." },
+      ],
       registry: {
         version: "1.0", updated: "2026-08-03",
         metrics: {
@@ -526,6 +553,14 @@ function model(o) {
       return { iso: iso, person: "Ana Perez", n: fN, nWithin: fWithin, nAll: fAll,
                nNoTime: 2, nMissOver: fOver, nMissUnder: fN - fWithin - fOver,
                absVars: [0.05, 0.4, 0.9] };
+    }),
+    // Task-grain schedule buckets (schema 49, registry 4.4) — what the Forecast
+    // card reads since 2026-09-09. 11 of 20 graded items kept their committed
+    // week (55%); coverage = fcCov of the 20 items resolved that week carried a
+    // due date, so the same knob still drives the gate.
+    forecastTaskBuckets: WEEKS.map(function (iso) {
+      return { iso: iso, person: "Ana Perez", nSched: 20, nHit: 11, nMiss: 9, nLate: 4, nPending: 0,
+               nRes: 20, nResDated: Math.round(20 * (o.fcCov === undefined ? 0.9 : o.fcCov)) };
     }),
     // Quality / Rework (schema v10). 2 of 8 delivered items needed rework = 25%,
     // with the reopen signal measured on all 8.
@@ -638,9 +673,16 @@ assert_(!/vs target/.test(good), "the threshold is not repeated in the delta sen
 assert_(!/<div class="big[^"]*">[^<]*<span class="tgt"/.test(good),
         "target chip is outside .big (count-up rewrites .big's text)");
 assert_(!/Not yet measurable/.test(good), "nothing suppressed when coverage is good");
-assert_(/Median absolute variance/.test(good), "forecast secondary form present (FR-1.4) — moved to the context tooltip in R6, still present");
-assert_(/inside ±10%/.test(good), "forecast headline names the ±10% band");
-assert_(/Of [0-9]+ miss(es)?, [0-9]+% over-run/.test(good), "variance direction on misses (FR-1.6)");
+// Forecast Accuracy reads the SCHEDULE since registry 4.4 (2026-09-09):
+// scheduled items finished in their committed week. The closed-epic estimate
+// variance copy must be gone from the card, not merely renamed.
+assert_(/finished in their committed week/.test(good), "forecast headline is the schedule form (registry 4.4)");
+assert_(/did finish — just after the committed week/.test(good),
+        "the misses split late-but-done from still-open in the context tooltip");
+assert_(!/Median absolute variance/.test(good) && !/inside ±10%/.test(good) && !/over-run/.test(good),
+        "no trace of the retired closed-epic estimate-variance copy on the card");
+assert_(/ITEMS/.test(tileSeg_(good, "On-Time Delivery")) && /ITEMS/.test(tileSeg_(good, "Forecast Accuracy")),
+        "both outcome cards wear the ITEMS scope tag — they count work, not people");
 // The "definition changed" marker is gone from the KPI tiles (user 2026-08-03:
 // "this is not meaningful"). On a single headline number there is no visible
 // step for it to explain; it survives only on the Trends line chart, where the
@@ -660,7 +702,7 @@ assert_(!/below gate — directional only/.test(shown),
 assert_(!/What's missing/.test(shown), "no hygiene-queue link on the cards either");
 var shownFc = shown.split("Forecast Accuracy")[1].split("</div></div>")[0];
 assert_(/class="big/.test(shownFc), "the figure itself is rendered");
-assert_(/inside ±10%/.test(shown), "…with its normal supporting copy intact");
+assert_(/finished in their committed week/.test(shown), "…with its normal supporting copy intact");
 
 // ── 2b. Flipping the policy restores full FR-2.2 suppression ──
 // The whole path stays behind one flag, so the decision is reversible without
@@ -680,7 +722,7 @@ assert_(!/Owner:/.test(bad), "suppressed tile carries no owner line (same rule a
 assert_(!/What's missing/.test(bad),
         "no 'What's missing →' link on a suppressed tile (user 2026-08-05 — the Actions tab is the route)");
 assert_(!/class="big/.test(forecastCard), "suppressed card renders NO hero number");
-assert_(!/Median absolute variance/.test(forecastCard), "suppressed card renders no secondary figure either");
+assert_(!/finished in their committed week/.test(forecastCard), "suppressed card renders no secondary figure either");
 assert_(/45% attributed · gate 70%/.test(bad), "suppressed card states coverage against its gate");
 // Defects found in the 2026.W31 tiles PNG (2026-08-03):
 // a suppressed card carried no period label, so "64% attributed" described an
@@ -795,7 +837,7 @@ C.renderHygPanel_();
 
 // ── 6. Empty scope is not the same as bad data ──────────────
 var empty = model({});
-empty.onTimeBuckets = []; empty.forecastBuckets = [];
+empty.onTimeBuckets = []; empty.forecastBuckets = []; empty.forecastTaskBuckets = [];
 var none = tiles(empty);
 assert_(/On-Time Delivery/.test(none), "empty buckets still render a card");
 assert_(!/Not yet measurable/.test(none),
@@ -810,24 +852,25 @@ assert_(/no resolved delivery items in this period/.test(none), "the empty card 
 // This fixture carries jiraUnattributed.forecast = 1, so it is the DROPPED branch.
 var fcNone = tileSeg_(none, "Forecast Accuracy");
 assert_(fcNone !== "", "sanity: the forecast card is findable in the empty strip");
-assert_(/could be attributed to a person/.test(fcNone),
-        "forecast empty state names attribution, not filters, when epics were dropped");
-assert_(/1 closed epic was dropped/.test(fcNone),
-        "…and states how many, from the count the server already ships");
+// Schedule read (2026-09-09): an empty window means nothing carried a due date
+// inside it — said plainly, never blamed on the filters.
+assert_(/no items were scheduled to finish in this window/.test(fcNone),
+        "forecast empty state says no item was scheduled in the window");
 assert_(!/under the active filters/.test(fcNone),
-        "…and no longer blames the filters for a structural absence");
+        "…and does not blame the filters for a structural absence");
 
 // The OTHER branch: nothing closed at all, nothing dropped. It must not claim
 // an attribution problem that did not happen.
+// The PENDING branch: items ARE scheduled but their weeks have not ended, so
+// nothing is graded yet — that is not "nothing scheduled" and must not read as it.
 var noneClean = model({});
 noneClean.onTimeBuckets = []; noneClean.forecastBuckets = [];
-noneClean.meta.jiraUnattributed = { onTime: 0, forecast: 0 };
+noneClean.forecastTaskBuckets = [{ iso: "2026.W31", person: "Ana Perez", nSched: 3, nHit: 0, nMiss: 0,
+                                   nLate: 0, nPending: 3, nRes: 0, nResDated: 0 }];
+noneClean.meta.jiraUnattributed = { onTime: 0, forecast: 0, forecastTask: 0 };
 var nc = tileSeg_(tiles(noneClean), "Forecast Accuracy");
-assert_(/no epics closed in this window/.test(nc),
-        "with nothing dropped, the card says simply that no epics closed");
-assert_(/smaller population/.test(nc),
-        "…and explains that closed epics are a thinner population than the other cards, which " +
-        "is why this card empties on short windows when the others do not");
+assert_(/3 items are scheduled in this window and none has been graded yet/.test(nc),
+        "with items pending, the card says they are scheduled and ungraded — not that nothing was scheduled");
 assert_(!/could be attributed to a person/.test(nc),
         "…and never invents an attribution failure that did not occur");
 
@@ -903,12 +946,15 @@ function histModel(o) {
   // Jira buckets across the whole window so On-Time also has a history.
   mdl.onTimeBuckets = [];
   mdl.forecastBuckets = [];
+  mdl.forecastTaskBuckets = [];
   HIST.forEach(function (iso, i) {
     mdl.onTimeBuckets.push({ iso: iso, person: "Ana Perez", n: 20,
                              onTime: 16 + (i % 3), nAll: 21 });
     mdl.forecastBuckets.push({ iso: iso, person: "Ana Perez", n: 10, nWithin: 6 + (i % 2),
                                nAll: 11, nNoTime: 1, nMissOver: 2, nMissUnder: 1,
                                absVars: [0.05, 0.2] });
+    mdl.forecastTaskBuckets.push({ iso: iso, person: "Ana Perez", nSched: 10, nHit: 6 + (i % 2),
+                                   nMiss: 4 - (i % 2), nLate: 1, nPending: 0, nRes: 11, nResDated: 10 });
   });
   return mdl;
 }
@@ -1166,9 +1212,9 @@ assert_(els.viewActions.style.display === "" && els.viewExec.style.display === "
 assert_(/\bpaneIn\b/.test(els.viewActions.className), "the shown pane carries paneIn");
 assert_(!/\bpaneIn\b/.test(els.viewExec.className), "a hidden pane does not carry paneIn");
 // 🌊 Flow retired 2026-08-05 (§4.1); People + Data Hygiene retired 2026-08-05
-// (Task 3, §5). 🧭 Workforce joined 2026-08-10 and 🗓 PM 2026-08-11 — five tabs:
-// Executive, Actions, Workforce, PM, Access.
-assert_(els.tabBar.children.length === 5, "an admin sees all five tabs");
+// (Task 3, §5). 🧭 Workforce joined 2026-08-10, 🗓 PM 2026-08-11 and ✎ Changes
+// 2026-09-09 — six tabs: Executive, Actions, PM, Workforce, Changes, Access.
+assert_(els.tabBar.children.length === 6, "an admin sees all six tabs");
 C.switchView_("exec");
 assert_(els.viewExec.style.display === "" && els.viewActions.style.display === "none",
         "and switching back hides the other");
@@ -1314,15 +1360,15 @@ assert_(/class="big[^"]*">60%/.test(withOff),
 assert_(!/pts absence/.test(withOff) && !/PTO\/holiday removed/.test(withOff),
         "no absence framing anywhere on the utilization card");
 
-// ── Forecast: the Dictionary mean, not the band ──
-// The fixture's absVars are [0.05, 0.4, 0.9] → accuracy 0.95, 0.6, 0.1 → 55%.
-assert_(/mean accuracy over/.test(dict), "forecast headline is the mean-accuracy form");
-var fcCard = dict.split("Forecast Accuracy")[1].split("</div></div>")[0];
-assert_(/class="big[^"]*">55%/.test(fcCard),
-        "mean of (1 − |A−E|/E) over 0.05/0.4/0.9 = 55%");
-assert_(/inside ±10%/.test(fcCard),
-        "the ±10% band survives as a companion rather than being deleted");
-assert_(/Median absolute variance/.test(fcCard), "so does the median absolute variance");
+// ── Forecast: the SCHEDULE read (registry 4.4, 2026-09-09) ──
+// The fixture grades 20 scheduled items; 11 kept their committed week → 55%.
+assert_(/finished in their committed week/.test(dict), "forecast headline is the schedule form");
+var fcCard = tileSeg_(dict, "Forecast Accuracy");
+assert_(/class="big[^"]*">55%/.test(fcCard), "11 of 20 graded scheduled items kept their week = 55%");
+assert_(/11 of 20 scheduled items/.test(fcCard), "the count line states hits over graded items");
+assert_(/Of 9 misses, 4 did finish/.test(fcCard), "…and the misses split late-but-done from still-open");
+assert_(/2 of 20 items resolved in this window carried no due date/.test(fcCard),
+        "coverage is stated as the share of finished work that ever had a schedule (fcCov 0.92 → 18 of 20)");
 
 // ── Quality / Rework: built, not a placeholder ──
 assert_(!/data pending — reopen\/CSAT feed not yet connected/.test(dict),
@@ -3886,8 +3932,13 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   var otSeg = ft.split('<div class="lbl">On-Time Delivery')[1].split('<div class="lbl">Forecast')[0];
   var fcSeg = ft.split('<div class="lbl">Forecast Accuracy')[1].split('<div class="lbl">Quality')[0];
   var qualSeg = ft.split('<div class="lbl">Quality')[1].split('<div class="lbl">Throughput')[0];
-  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time hero tile carries PERIOD scope tag");
-  assert_(fcSeg.indexOf(">PERIOD<") !== -1, "Forecast hero tile carries PERIOD scope tag");
+  // ITEMS since 2026-09-09: the two outcome cards count work items in the
+  // period, not people — a distinct tag so the reader knows which filters reach them.
+  assert_(otSeg.indexOf(">ITEMS<") !== -1 && otSeg.indexOf(">PERIOD<") === -1,
+          "On-Time hero tile carries the ITEMS scope tag (items in the period, not people)");
+  // (fcSeg runs to the Quality label and so also holds the Availability Rate
+  // tile, which legitimately wears PERIOD — only the ITEMS presence is pinned.)
+  assert_(fcSeg.indexOf(">ITEMS<") !== -1, "Forecast hero tile carries the ITEMS scope tag");
   assert_(qualSeg.indexOf(">PERIOD<") !== -1, "Quality hero tile carries PERIOD scope tag");
   assert_(otSeg.indexOf(">SNAP<") === -1 && otSeg.indexOf(">ORG<") === -1 &&
           fcSeg.indexOf(">SNAP<") === -1 && fcSeg.indexOf(">ORG<") === -1 &&
@@ -4007,11 +4058,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     C.renderAll_();
   });
 
-  assert_(C.VIEWS.length === 5, "exactly five views (🗓 PM joined 2026-08-11)");
+  assert_(C.VIEWS.length === 6, "exactly six views (🗓 PM joined 2026-08-11, ✎ Changes 2026-09-09)");
   // 🗓 PM sits NEXT TO ACTIONS (user 2026-08-11): both answer "what needs
-  // action", at different grains. 🔒 Access stays last.
-  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,pm,workforce,access",
-          "view ids are exec/actions/pm/workforce/access in order — PM beside Actions");
+  // action", at different grains. ✎ Changes sits before 🔒 Access, which stays last.
+  assert_(C.VIEWS.map(function (v) { return v.id; }).join(",") === "exec,actions,pm,workforce,changes,access",
+          "view ids are exec/actions/pm/workforce/changes/access in order — PM beside Actions, Access last");
   assert_(!els.viewFlow || els.viewFlow.innerHTML === "", "no live viewFlow pane");
   assert_(!els.viewPeople || els.viewPeople.innerHTML === "", "no live viewPeople pane");
   assert_(!els.viewHygiene || els.viewHygiene.innerHTML === "", "no live viewHygiene pane");
@@ -4041,6 +4092,11 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 //     is a length difference wearing an arrow.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
+  // PLANNING WINDOWS ARE OFF IN THE SHIPPED DASHBOARD (user 2026-09-09) —
+  // PLAN_WEEKS_AHEAD_ = 0. The grammar below is still real code behind that
+  // one number, so this block turns it back on for its own duration and the
+  // check after it pins the shipped default.
+  C.setPlanWeeksAhead_(2);
   var PLAN1 = "2026.W32", PLAN2 = "2026.W33";
   /** histModel + two forward weeks carrying capacity and partial plans:
       Ana fully planned, Ben thin (25%), Cleo nothing, Dev fully planned. */
@@ -4259,6 +4315,29 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.getModel().viewerRole = "admin";
   C.setState("view", "exec");
   C.renderAll_();
+  C.setPlanWeeksAhead_(0);
+})();
+
+// ── The SHIPPED default: no planning windows (user 2026-09-09) ─────────────
+(function () {
+  var M = fresh(histModel({}));
+  M.meta.gridWeeks = HIST.map(function (iso, i) {
+    return { iso: iso, status: i < HIST.length - 1 ? "done" : "now" };
+  }).concat([{ iso: "2026.W32", status: "plan" }, { iso: "2026.W33", status: "plan" }]);
+  M.meta.periods.month[1].isos = HIST.slice(4).concat(["2026.W32", "2026.W33"]);
+  M.people.forEach(function (p) { p.weeks["2026.W32"] = week({ planned: 40 }); p.weeks["2026.W33"] = week({ planned: 40 }); });
+  fresh(M);
+  C.STATE.period = "week";
+  assert_(C.planWeeks_().length === 0, "with the shipped default no forward week is offered, even when the payload carries plan weeks with capacity");
+  assert_(C.analysisPeriods_().length === C.donePeriods_().length + 1,
+          "the analysis list is the complete periods plus the in-flight one — nothing after it");
+  C.buildPeriodChips_();
+  var pick = els.periodChips.children.filter(function (c) { return c.tagName === "select"; })[0];
+  var groups = pick.children.filter(function (c) { return c.tagName === "optgroup"; }).map(function (g) { return g.label; });
+  assert_(!groups.some(function (g) { return /^Planning/.test(g); }), "the picker shows no 'Planning · next N weeks' group");
+  assert_(!C.liveMetrics_().length || C.liveMetrics_().indexOf("planCov") === -1,
+          "Planned Coverage is not on offer — there is no planning window for it to describe");
+  fresh(model({}));
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4886,7 +4965,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // Task 16B: On-Time now lives in #flowTiles too (moved from the retired
   // #tiles strip), alongside Arrived/Lead Time/etc. — not a separate element.
   var otSeg = flowHtml.split('<div class="lbl">On-Time Delivery')[1].split('<div class="lbl">Forecast Accuracy')[0];
-  assert_(otSeg.indexOf(">PERIOD<") !== -1, "On-Time keeps its own PERIOD tag, now inside #flowTiles alongside the other flow tiles");
+  assert_(otSeg.indexOf(">ITEMS<") !== -1 && otSeg.indexOf(">ORG<") === -1,
+          "On-Time keeps its own tag — ITEMS since 2026-09-09 — inside #flowTiles alongside the other flow tiles, never Arrived's ORG");
   assert_(/18/.test(arrSeg), "Arrived's headline is the fixture's created count (18)");
 
   // Filter-invariance companion: Arrived (ORG) must not move under a filter
@@ -5002,6 +5082,9 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // A genuine planning week needs a gridWeeks entry with status "plan" AND at
   // least one person carrying capacity/planned hours there (planWeeks_'s own
   // "reach" guard) — same fixture shape as the FORWARD WINDOWS block above.
+  // Planning windows are OFF in the shipped dashboard (2026-09-09); the phase
+  // grammar is still code behind PLAN_WEEKS_AHEAD_, exercised here on purpose.
+  C.setPlanWeeksAhead_(2);
   var PLAN1 = "2026.W32";
   function planFixture() {
     var mdl = histModel({});
@@ -5037,6 +5120,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "the capacity band's own kicker still renders on a planning window — only the Utilisation " +
           "card switches shape, the band itself doesn't disappear");
   C.setState("periodIdx", null);
+  C.setPlanWeeksAhead_(0);
 
   // ── 5. Mid-period floor grammar survives: "at least N%", no RAG colour.
   fresh(histModel({}));
@@ -5449,9 +5533,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   // conflation the design spec warns against) would shelve forecast here.
   var m3 = model({});
   m3.meta.registry.metrics.forecast.sampleFloor = 5;
-  m3.forecastBuckets = [{ iso: W, person: "Ana Perez", n: 6, nWithin: 3, nAll: 60,
-                          nNoTime: 0, nMissOver: 2, nMissUnder: 1,
-                          absVars: [0.1, 0.2, 0.3, 0.1, 0.2, 0.4] }];
+  m3.forecastTaskBuckets = [{ iso: W, person: "Ana Perez", nSched: 6, nHit: 3, nMiss: 3, nLate: 1,
+                              nPending: 0, nRes: 60, nResDated: 6 }];
   fresh(m3);
   assert_(!C.shelfRows_().some(function (r) { return r.id === "forecast"; }),
           "forecast (6 records, above its floor of 5, though only 10% covered) does NOT appear " +
@@ -6752,7 +6835,10 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and the already-missed ones counted apart from the fixable ones");
   assert_(!/<b>5<\/b>/.test(h.split("(No PM)")[0]),
           "the two states are never summed — 4 at risk and 1 breached are not '5'");
-  assert_(/🔗 <b>1<\/b> unlinked/.test(h), "…and epics nothing rolls up to get a pill too");
+  assert_(/🔗 <b>1<\/b> without tasks/.test(h),
+          "…and epics nothing rolls up to get a pill too — 'without tasks' (renamed from 'unlinked', user 2026-09-09)");
+  assert_(!/unlinked/.test(h) && !/Not linked to a parent/.test(h),
+          "the PM tab no longer says 'unlinked' anywhere — the finding is an epic with no tasks under it");
   // Ranked by SIZE: 4 at risk outranks 3 undated. Anchored on the pill markup —
   // the collapsed methodology panel above the table also mentions due dates.
   assert_(h.indexOf("</b> at risk") < h.indexOf("</b> no due date"),
@@ -6797,7 +6883,8 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "…and an epic with no assignee says which rule placed it instead of showing blank");
   // Epic-level gaps sit in the Gaps column, where the reader can act on the
   // specific epic rather than hunting for which one the PM line meant.
-  assert_(/nothing linked/.test(h), "an epic nothing rolls up to says so on its own row");
+  assert_(/without tasks/.test(h) && !/nothing linked/.test(h),
+          "an epic nothing rolls up to says 'without tasks' on its own row (renamed 2026-09-09)");
   assert_(/61d/.test(h), "…and a stale epic says how long it has been sitting");
   // Every column defined once, header row and cells from the same registry.
   // The table-level <thead> is GONE (user 2026-08-28, screenshot): with every
@@ -7875,13 +7962,16 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
 })();
 
 // ══════════════════════════════════════════════════════════════════════════
-// FORECAST ATTRIBUTION IS DISCLOSED (2026-08-17)
+// THE ITEMS READ IS DISCLOSED (2026-09-09; supersedes the 2026-08-17 epic
+// attribution block)
 //
-// The card computed two facts and printed neither: how many of its epics were
-// attributed by INFERENCE (through their children, because epics are containers
-// and are routinely unassigned), and how many closed epics were dropped for
-// resolving to nobody. Both now appear, because a mean over a silently selected
-// subset is the failure Bug Count already carries a registry deviation for.
+// The card counts items whoever they are assigned to. Two facts travel with
+// that: how many of the window's items had no roster assignee and were COUNTED
+// anyway, and — under a Region / Team / PM filter — how many could not be
+// placed and were left out. The old "N issues excluded" note is gone from this
+// card: it described the per-person read, and on the items read it would be
+// false. Parts 4–5 below still pin nViaChildren's additive aggregation on the
+// (server-side, audit-only) epic buckets — bucketsFor_ is shared.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   function fcDetail_(mut) {
@@ -7895,41 +7985,33 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
     return tileSeg_(flowHtml_(), "Forecast Accuracy");
   }
 
-  // ── 1. Inference is NAMED, with its share ────────────────────────────────
-  var inferred = fcDetail_(function (m) {
-    m.forecastBuckets = m.forecastBuckets.map(function (b) {
-      return Object.assign({}, b, { nViaChildren: 3 });
-    });
+  // ── 1. Unattributed items are COUNTED, and the card says so ──────────────
+  var counted = fcDetail_(function (m) {
+    m.forecastTaskBuckets.push({ iso: "2026.W31", person: "", nSched: 3, nHit: 1, nMiss: 2, nLate: 0,
+                                 nPending: 0, nRes: 1, nResDated: 1 });
   });
-  assert_(/3 of \d+ epics reached their owner through the people working their children/.test(inferred),
-          "the card states how many epics were attributed through their children");
-  assert_(/only who it is filed under is inferred|variance is unchanged/i.test(inferred),
-          "…and says the VARIANCE is unaffected — only the filing is inferred");
+  assert_(/4 scheduled or resolved items in this window have no roster assignee/.test(counted) &&
+          /COUNTED: this card measures items, not people/.test(counted),
+          "the card states how many items had no roster assignee and that they were counted");
+  assert_(/12 of 23 scheduled items/.test(counted),
+          "…and the headline count includes them (11+1 hits of 20+3 graded)");
+  assert_(!/issues excluded/.test(counted),
+          "no 'issues excluded' line — on the items read nothing attributable was excluded");
 
-  // ── 2. No inference, no claim ────────────────────────────────────────────
-  var direct = fcDetail_(function (m) {
-    m.forecastBuckets = m.forecastBuckets.map(function (b) {
-      return Object.assign({}, b, { nViaChildren: 0 });
-    });
-  });
-  assert_(!/reached their owner through/.test(direct),
-          "a card whose epics were all directly assigned claims no inference");
+  // ── 2. Nothing unattributed, no claim ────────────────────────────────────
+  var direct = fcDetail_(function (m) { m.meta.jiraUnattributed = { onTime: 0, forecast: 0, forecastTask: 0 }; });
+  assert_(!/no roster assignee/.test(direct), "a card whose items were all attributed claims nothing about it");
 
-  // ── 3. Dropped epics are disclosed on the card, not just counted ─────────
-  // The server has always shipped meta.jiraUnattributed.forecast; until now
-  // nothing rendered it, so a reader had no way to know the denominator was
-  // incomplete. Throughput and Lead Time have always shown their equivalent.
-  var dropped = fcDetail_(function (m) {
-    m.meta.jiraUnattributed = { onTime: 0, forecast: 7 };
-    m.forecastBuckets = m.forecastBuckets.map(function (b) {
-      return Object.assign({}, b, { nViaChildren: 0 });
-    });
+  // ── 3. Under a WHERE filter, the unplaceable items are named, not dropped ─
+  var placed = fcDetail_(function (m) {
+    m.forecastTaskBuckets.push({ iso: "2026.W31", person: "", nSched: 3, nHit: 1, nMiss: 2, nLate: 0,
+                                 nPending: 0, nRes: 1, nResDated: 1 });
+    C.STATE.region = "AMER";                       // Ana is AMER — she stays, "" cannot be placed
   });
-  assert_(/7 issues excluded/.test(dropped),
-          "the card prints the unattributed count the server ships");
-  var clean = fcDetail_(function (m) { m.meta.jiraUnattributed = { onTime: 0, forecast: 0 }; });
-  assert_(!/issues excluded/.test(clean),
-          "…and says nothing when nothing was dropped");
+  assert_(/4 scheduled or resolved items with no roster assignee could not be placed under the active Region \/ Team \/ PM filter/.test(placed),
+          "under a Region filter the card names the items it could not place");
+  assert_(/11 of 20 scheduled items/.test(placed), "…and they are out of the headline while the filter holds");
+  resetFilters();
 
   // ── 4. The aggregation is ADDITIVE across the window ─────────────────────
   // A month must state the share of the whole month, not of its last week.
@@ -8668,7 +8750,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   assert_(/"tnum">1</.test(needsRow("Overdue &gt;30 days")), "Overdue >30 days counts the 11-weeks-past epic");
   assert_(/"tnum">1</.test(needsRow("Overdue 8–30 days")), "the 8–30 day band counts the 3-weeks-past epic");
   assert_(/"tnum">1</.test(needsRow("Overdue ≤7 days")), "≤7 days counts the just-ended committed week");
-  assert_(/"tnum">1</.test(needsRow("Not linked to a parent")), "unlinked counts the epic nothing rolls up to");
+  assert_(/"tnum">1</.test(needsRow("Without tasks")), "'Without tasks' counts the epic nothing rolls up to");
   // Every row is a ONE-CLICK Jira queue over exactly that PM's keys — the
   // whole row is the control and the button says what happens (user
   // 2026-08-28: the person working this section is the PM, not a manager
@@ -8701,7 +8783,7 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
           "Kai's queue carries Kai's overdue epic");
   assert_(!/E-OLD|E-NODUE/.test(kaiTable),
           "…and none of Dana's — each PM meets only their own areas of opportunity");
-  assert_(!/No due date|Not linked to a parent/.test(kaiTable),
+  assert_(!/No due date|Without tasks/.test(kaiTable),
           "…with clean signals omitted entirely — the section is a work queue, not a scorecard");
 
   // A CLEAN PM gets no table at all: the ✔ pill on the row already says so.
@@ -8837,4 +8919,382 @@ assert_(C.oppRows_(internDone[internDone.length - 1], null)
   C.renderAll_();
 })();
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// 2026-09-09 (2026.W37) — ITEMS NOT PEOPLE · THE WINDOW-FOLLOWING ROSTER ·
+// DUE-DATE PUSHES · RESET BESIDE THE FILTERS
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── A. The DEFAULT window is the in-flight period ─────────────────────────
+// User 2026-09-09: "when week or month is selected we need to show the current
+// week or month, so they get what is happening now". The harness pinned the old
+// default above; this block flips the shipped knob on, checks, and restores it.
+(function () {
+  var mdl = fresh(histModel({}));
+  resetFilters();
+  C.STATE.period = "week";
+  C.setState("view", "exec");
+  C.setDefaultWindow_("now");
+  try {
+    var A = C.analysisHead_();
+    assert_(C.STATE.periodIdx === null && A.phase === "now" && A.head.isos[0] === HIST[HIST.length - 1],
+            "with no selection the analysis window is the IN-FLIGHT week, not the last complete one");
+    C.renderAll_();
+    assert_(/Current week so far · 2026\.W/.test(els.scopeChip.innerHTML),
+            "the scope chip frames it as the current week so far");
+    C.buildPeriodChips_();
+    var pick = els.periodChips.children.filter(function (c) { return c.tagName === "select"; })[0];
+    assert_(pick.options[0].value === "" && /^◐ Current week — so far$/.test(pick.options[0].textContent),
+            "the picker's default entry NAMES the current week — not 'Latest complete'");
+    var groups = pick.children.filter(function (c) { return c.tagName === "optgroup"; })
+                     .map(function (g) { return g.label; });
+    assert_(groups.indexOf("In progress") === -1,
+            "no separate 'In progress' group — one window must not appear under two names");
+    assert_(pick.options.length === C.analysisPeriods_().length,
+            "every window is offered exactly once (the default entry IS the in-flight one)");
+    // Month unit: the current month so far.
+    C.STATE.period = "month";
+    assert_(C.analysisHead_().phase === "now" && C.analysisHead_().head.label === "Jul 2026",
+            "the Month unit defaults to the current month so far");
+    C.renderAll_();
+    assert_(/Current month so far · Jul 2026/.test(els.scopeChip.innerHTML), "…and the chip says so");
+    // Explicitly picking a complete period still works, and the roster follows.
+    C.STATE.period = "week";
+    C.setPeriodIdx_(String(C.donePeriods_().length - 1));
+    assert_(C.analysisHead_().phase === "done", "an explicit complete week is honoured");
+    assert_(C.STATE.typePop === "resolved",
+            "…and the roster's population FOLLOWS the window: a complete week opens on Resolved");
+    C.setPeriodIdx_("");
+    assert_(C.analysisHead_().phase === "now" && C.STATE.typePop === "open",
+            "back to the default (current week) and the roster is back on the Open backlog");
+    // A payload with NO in-flight period falls back to the last complete one.
+    var flat = fresh(model({}));
+    C.STATE.period = "week";
+    assert_(C.analysisHead_().phase === "done" && C.analysisHead_().head.label === "2026.W31",
+            "no in-flight period in the payload → the default is the last complete week, as before");
+    C.buildPeriodChips_();
+    var pick2 = els.periodChips.children.filter(function (c) { return c.tagName === "select"; })[0];
+    assert_(pick2.options[0].textContent === "Latest complete",
+            "…and the default entry is labelled 'Latest complete' in that case");
+    void flat; void mdl;
+  } finally {
+    C.setDefaultWindow_("done");
+  }
+  C.setState("periodIdx", null);
+  C.setState("typePop", "open");
+  fresh(model({}));
+})();
+
+// ── B. syncTypePop_ — the rule in isolation, and Reset runs it ────────────
+(function () {
+  fresh(histModel({}));
+  resetFilters();
+  C.STATE.period = "week";
+  C.setDefaultWindow_("now");
+  try {
+    C.setState("periodIdx", null);
+    C.syncTypePop_();
+    assert_(C.STATE.typePop === "open", "in-flight window → Open backlog (the actionable half)");
+    C.setState("periodIdx", 0);
+    C.syncTypePop_();
+    assert_(C.STATE.typePop === "resolved", "complete window → Resolved · that week (the historical half)");
+    // Reset returns to the default window AND re-syncs the roster.
+    C.STATE.typePop = "resolved";
+    document.getElementById("btnReset").onclick();
+    assert_(C.STATE.periodIdx === null && C.STATE.typePop === "open",
+            "Reset lands on the default (current) window with the roster on Open");
+  } finally {
+    C.setDefaultWindow_("done");
+  }
+  // Reset also returns the unit to Month, and histModel has no COMPLETE month
+  // (June is partial), so even the "done" default lands on the in-flight one
+  // there. The weekly fixture has two complete weeks — that is where the
+  // complete-window default can be seen to open the roster on Resolved.
+  fresh(model({}));
+  document.getElementById("btnReset").onclick();
+  assert_(C.analysisHead_().phase === "done" && C.STATE.typePop === "resolved",
+          "under the complete-window default, Reset opens the roster on Resolved — the toggle follows whatever the default is");
+  C.setState("typePop", "open");
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── C. The ▸ row on the RESOLVED view lists what the person CLOSED ────────
+(function () {
+  var mdl = model({});
+  mdl.meta.resolvedItemsWeeks = 13;
+  mdl.people[0].resolved = { weeks: { "2026.W31": {
+    count: 3, dated: 2, onTime: 1, epics: 1, listed: 3,
+    items: [
+      { key: "E-1", summary: "Rollout", type: "Epic", status: "Done", isEpic: true, epicKey: "", epicName: "",
+        due: "2026.W31", resolvedOn: "2026-07-29", onTime: true, spentHrs: 2, estHrs: 1, gaps: [] },
+      { key: "T-1", summary: "Late task", type: "Task", status: "Done", isEpic: false, epicKey: "E-1", epicName: "Rollout",
+        due: "2026.W30", resolvedOn: "2026-07-30", onTime: false, spentHrs: 0.5, estHrs: 1, gaps: ["late"] },
+      { key: "T-2", summary: "Undated task", type: "Task", status: "Closed", isEpic: false, epicKey: "", epicName: "",
+        due: "", resolvedOn: "2026-07-31", onTime: null, spentHrs: 10, estHrs: 0,
+        gaps: ["no due date", "no estimate", "not linked to an epic"] },
+    ] } } };
+  fresh(mdl);
+  resetFilters();
+  C.STATE.period = "week";
+  C.setState("view", "actions");
+  C.setState("typePop", "resolved");
+  var head = C.analysisHead_().head;              // 2026.W31 under the harness default
+  var ana = mdl.people[0], ben = mdl.people[1];
+  C.STATE.openDetail = {}; C.STATE.openDetail[ana.name] = true; C.STATE.openDetail[ben.name] = true;
+  var row = C.rosterDetailRow_(ana, head);
+  assert_(/<b>3<\/b> resolved in 2026\.W31/.test(row), "the row states how many were resolved in the window");
+  assert_(/2 carried a due date, <b>1<\/b> kept it/.test(row), "…how many were dated and how many kept the date");
+  assert_(/1 epic/.test(row), "…and that one of them was an epic (epics ARE listed here, unlike the backlog)");
+  // Anchored on the SUMMARY cells: "E-1"/"Rollout" also appear inside T-1's
+  // "belongs to" cell, so a bare key search would find the wrong row.
+  // NEEDS-ACTION FIRST (user 2026-09-09): T-2 has three reasons, T-1 one (late),
+  // E-1 none — everything is listed, the order says where to look.
+  assert_(row.indexOf("<td>Undated task</td>") < row.indexOf("<td>Late task</td>") &&
+          row.indexOf("<td>Late task</td>") < row.indexOf("<td>Rollout</td>"),
+          "items needing action sort first, most reasons first, then the rest — everything is listed");
+  assert_(/<b class="sigWarn">2<\/b> of 3 listed need action \(sorted first\)/.test(row),
+          "the row states how many of the listed items need action");
+  assert_(/● no due date/.test(row) && /● no estimate/.test(row) && /● not linked to an epic/.test(row) && /● late/.test(row),
+          "each item names its reasons — the same fields the cells grade, plus late");
+  assert_(/✓ complete/.test(row), "…and a complete item says so");
+  assert_(/<td>Closed<\/td>/.test(row) && /<td>Done<\/td>/.test(row), "the actual Jira status is shown per item");
+  assert_(/✗ late/.test(row) && /✓ on time/.test(row) && /no due date/.test(row),
+          "every item carries its verdict: late, on time, or never dated");
+  assert_(/— is an epic/.test(row), "an epic row says so instead of pretending to belong to one");
+  assert_(/Rollout/.test(row) && /E-1/.test(row), "a child names the epic it belongs to");
+  assert_(!/OPEN backlog/.test(row) && !/Open backlog/.test(row) && !/Rem\. h/.test(row),
+          "nothing on the resolved row is the open-backlog list or its remaining-hours column");
+  assert_(/Open these 3 in Jira/.test(row), "one click works the whole list in Jira");
+  // A person with none in the horizon, and a pre-v49 payload, each say so.
+  var rowB = C.rosterDetailRow_(ben, head);
+  assert_(/No resolved items attributed to this person in 2026\.W31/.test(rowB),
+          "resolved: null → 'no resolved items in this window', never an empty table");
+  var legacy = Object.assign({}, ben); delete legacy.resolved;
+  assert_(/Resolved items are not in this payload/.test(C.rosterDetailRow_(legacy, head)),
+          "a payload without the field asks for a refresh instead of claiming nothing was resolved");
+  // A window older than the horizon the payload carries.
+  var old = C.rosterDetailRow_(ana, { key: "2026.W10", label: "2026.W10", isos: ["2026.W10"], status: "done", partial: false });
+  assert_(/beyond the 13-week horizon this payload carries/.test(old),
+          "an old window says the list is beyond the horizon — the cells still count, the list cannot");
+  // The OPEN view is untouched: the same row lists the open backlog.
+  C.setState("typePop", "open");
+  var openRow = C.rosterDetailRow_(ana, head);
+  assert_(/No open backlog items attributed to this person/.test(openRow) && !/resolved in 2026/.test(openRow),
+          "on the Open view the row is still today's open backlog");
+  // The Resolved column's tooltip no longer points at the open backlog.
+  C.setState("typePop", "resolved");
+  C.renderRoster_();
+  assert_(!/drill-down below shows today's open backlog/.test(els.rosterPanel.innerHTML),
+          "the Resolved header no longer says the drill-down shows the open backlog");
+  C.STATE.openDetail = {};
+  C.setState("typePop", "open");
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── D. ITEMS, NOT PEOPLE — the two outcome cards' read ────────────────────
+(function () {
+  var mdl = model({});
+  var W = "2026.W31";
+  // An intern whose late milestone must not move the PEOPLE read, and does
+  // count as an item; and ten unattributed items nobody on the roster owns.
+  mdl.people.push(person("Ivy Intern", { isIntern: true, jobTitle: "09.I1.Intern" }));
+  mdl.onTimeBuckets = [
+    { iso: W, person: "Ana Perez", n: 40, onTime: 36, nAll: 40 },
+    { iso: W, person: "Ivy Intern", n: 10, onTime: 10, nAll: 10 },
+    { iso: W, person: "", n: 10, onTime: 0, nAll: 10 },
+  ];
+  mdl.forecastTaskBuckets = [
+    { iso: W, person: "Ana Perez", nSched: 10, nHit: 8, nMiss: 2, nLate: 1, nPending: 0, nRes: 10, nResDated: 10 },
+    { iso: W, person: "", nSched: 5, nHit: 0, nMiss: 5, nLate: 0, nPending: 0, nRes: 0, nResDated: 0 },
+  ];
+  fresh(mdl);
+  resetFilters();
+  C.STATE.pop = "fte"; C.STATE.role = "all"; C.STATE.period = "week";
+  C.setState("view", "exec");
+  var people = C.bucketsFor_(mdl.onTimeBuckets, [W]);
+  var items = C.bucketsFor_(mdl.onTimeBuckets, [W], { items: true });
+  assert_(people.n === 40 && people.onTime === 36,
+          "the PEOPLE read is unchanged: interns and unattributed items leave it (40 items, 90%)");
+  assert_(items.n === 50 && items.onTime === 36 && items.nUnattributed === 10 && items.nUnplaced === 0,
+          "the ITEMS read counts the unattributed items too (50 items, 72%) — and still not the intern's, " +
+          "per the 2026-08-04 rule that an intern's record never moves a published number");
+  var h = tiles(mdl);
+  var ot = tileSeg_(h, "On-Time Delivery");
+  assert_(/class="big[^"]*">72%/.test(ot), "the On-Time card publishes the ITEMS read (36 of 50 = 72%)");
+  assert_(/50 of 50 resolved/.test(ot), "…and the count line counts items");
+  assert_(/COUNTED: this card measures items, not people/.test(ot),
+          "the card discloses that unattributed items were counted");
+  var fc = tileSeg_(h, "Forecast Accuracy");
+  assert_(/class="big[^"]*">53%/.test(fc), "Forecast counts the unattributed misses too (8 of 15 = 53%)");
+  // Population and Role do NOT narrow the items read…
+  C.STATE.pop = "crew";
+  var crewItems = C.bucketsFor_(mdl.onTimeBuckets, [W], { items: true });
+  var crewPeople = C.bucketsFor_(mdl.onTimeBuckets, [W]);
+  assert_(crewItems.n === 50 && crewPeople.n === 0,
+          "Population = Crew leaves the ITEMS read whole while the people read empties — the lens describes people");
+  C.STATE.pop = "fte";
+  // …but a WHERE filter does, and what it cannot place is counted, not dropped.
+  C.STATE.region = "EMEA";
+  var emea = C.bucketsFor_(mdl.onTimeBuckets, [W], { items: true });
+  assert_(emea.n === 0 && emea.nUnplaced === 10 && emea.nUnattributed === 0,
+          "a Region filter narrows the items read through the assignee and COUNTS the unplaceable ones");
+  var hE = tiles(mdl);
+  var fcE = tileSeg_(hE, "Forecast Accuracy");
+  assert_(/could be placed under the active Region \/ Team \/ PM filter — 5 items with no roster assignee were left out/.test(fcE),
+          "the empty card under a WHERE filter names the unplaceable items instead of blaming nothing");
+  resetFilters();
+  assert_(C.whereNarrowed_() === false && C.passesWhereFilters_(mdl.people[0]) === true,
+          "with no WHERE filter nothing is narrowed");
+  fresh(model({}));
+})();
+
+// ── E. ⏩ PUSHED IN THE WINDOW — the PM tab's one windowed signal ───────────
+(function () {
+  function pmFixture(pushCoverage) {
+    var mdl = fresh(model({}));
+    resetFilters();
+    mdl.pmOwned = {
+      keyCap: 200, pushCoverage: pushCoverage,
+      rows: [{
+        pm: "Dana Reyes", epicN: 2, epicDated: 2, epicMissingKeys: [], epicCapped: false,
+        epicBacklogN: 0, epicBacklogKeys: [], readyDen: 4, readyN: 4, ignoredN: 0,
+        viaAssignee: 2, viaProject: 0,
+        oppNoDue: 0, oppEpicsAtRisk: 0, oppEpicsBreached: 0, oppNoChildren: 1, oppStale: 0,
+        epics: [
+          { key: "GTT-7", name: "Migration", status: "In Progress", started: true,
+            due: "2026.W40", overdue: false, within: 1, atRisk: 0, breached: 0, noDate: 0, ignoredN: 0,
+            assignee: "Dana Reyes", via: "assignee", childrenAll: 1, stale: false, staleDays: 2,
+            owners: ["Ana Perez"],
+            pushes: [{ wk: "2026.W31", at: "2026-07-29", from: "2026-08-07", to: "2026-08-21", days: 14 }],
+            children: [{ key: "GTT-71", summary: "Schema", status: "In Progress", due: "2026.W35",
+                         verdict: "within", overByWeeks: null }] },
+          { key: "GTT-8", name: "Empty epic", status: "In Progress", started: true,
+            due: "2026.W40", overdue: false, within: 0, atRisk: 0, breached: 0, noDate: 0, ignoredN: 0,
+            assignee: "Dana Reyes", via: "assignee", childrenAll: 0, stale: false, staleDays: 2,
+            owners: [], pushes: [], children: [] },
+        ] }],
+    };
+    C.getModel().viewerRole = "admin";
+    C.setState("view", "pm");
+    C.STATE.period = "week";
+    C.STATE.pmOpen = {}; C.STATE.pmEpicOpen = {};
+    return mdl;
+  }
+  var mdl = pmFixture({ epics: 2, measured: 2 });
+  C.setState("periodIdx", null);                 // harness default → 2026.W31
+  C.renderAll_();
+  var h = els.pmPanel.innerHTML;
+  assert_(/⏩ <b>1<\/b> pushed in 2026\.W31/.test(h),
+          "an epic whose due date moved later during the window gets a counted pill NAMING the window");
+  assert_(/🔗 <b>1<\/b> without tasks/.test(h), "…beside the renamed 'without tasks' pill");
+  assert_(!/Due-date pushes are not measured/.test(h), "full coverage prints no coverage caveat");
+  C.STATE.pmOpen["Dana Reyes"] = true;
+  C.renderAll_();
+  h = els.pmPanel.innerHTML;
+  assert_(/Pushed in 2026\.W31/.test(h) && /pmNeedRow/.test(h),
+          "the Needs-action queue carries a 'Pushed in 2026.W31' row");
+  assert_(/Without tasks/.test(h) && !/Not linked to a parent/.test(h),
+          "…and the 'Without tasks' row, with the old wording gone");
+  assert_(/⏩ pushed \+14d in 2026\.W31/.test(h),
+          "the epic row says by how much and in which week the commitment moved");
+  assert_(/2026-08-07 → 2026-08-21/.test(h), "…with the from → to dates in the tooltip");
+  // Move the window: the push is not in W30, so the pill and the row go.
+  C.setState("periodIdx", 0);                    // 2026.W30
+  C.renderAll_();
+  h = els.pmPanel.innerHTML;
+  assert_(!/pushed in 2026\.W30/.test(h) && !/⏩ <b>/.test(h),
+          "selecting a week with no push shows no pushed pill — the signal is WINDOWED");
+  assert_(!/Pushed in 2026\.W30/.test(h.split("pmNeedsTbl")[1] || ""),
+          "…and no Needs-action row for it either");
+  assert_(C.pmPushedInWindow_(mdl.pmOwned.rows[0].epics[0]) === 0, "pmPushedInWindow_ reads the current window");
+  C.setState("periodIdx", null);
+  // Coverage tristate: nothing measured → say so; partial → count it; pre-v49 → silent.
+  pmFixture({ epics: 2, measured: 0 });
+  C.renderAll_();
+  assert_(/Due-date pushes are not measured in this export/.test(els.pmPanel.innerHTML) &&
+          /3\.20\.0/.test(els.pmPanel.innerHTML),
+          "with nothing measured the tab says so and names the exporter version that measures it");
+  pmFixture({ epics: 2, measured: 1 });
+  C.renderAll_();
+  assert_(/measured on 1 of 2 listed epics/.test(els.pmPanel.innerHTML),
+          "partial coverage is stated as a count, never rounded up to a clean record");
+  var m0 = pmFixture(undefined);
+  delete m0.pmOwned.pushCoverage;
+  C.renderAll_();
+  assert_(!/pushes/i.test(els.pmPanel.innerHTML.split("<h3>")[1].split("pmMethod")[0].replace(/pushed in 2026\.W31/g, "")),
+          "a pre-v49 payload (no pushCoverage) prints no coverage line at all");
+  // A clean PM's ✔ pill names the window it is clean of pushes in.
+  var clean = pmFixture({ epics: 1, measured: 1 });
+  clean.pmOwned.rows[0].oppNoChildren = 0;
+  clean.pmOwned.rows[0].epics = [clean.pmOwned.rows[0].epics[1]];
+  clean.pmOwned.rows[0].epics[0].childrenAll = 3;
+  C.renderAll_();
+  assert_(/✔ No open gaps/.test(els.pmPanel.innerHTML) && /no due date pushed in 2026\.W31/.test(els.pmPanel.innerHTML),
+          "a clean PM's pill says it is clean of pushes in THIS window");
+  C.STATE.pmOpen = {};
+  C.setState("view", "exec");
+  fresh(model({}));
+})();
+
+// ── F. Reset sits WITH the filters it clears ──────────────────────────────
+(function () {
+  var src = fs.readFileSync(path.join(__dirname, "..", "..", "delivery-health-dashboard", "Dashboard.html"), "utf8");
+  var iReset = src.indexOf('id="btnReset"'), iMore = src.indexOf('id="btnAdvFilters"'),
+      iWarn = src.indexOf('id="filterWarn"'), iRefresh = src.indexOf('id="btnRefresh"');
+  assert_(iReset > 0 && iMore > 0 && iReset > iMore && iReset < iWarn,
+          "the Reset button is in the filter row, immediately after 'More filters' (user 2026-09-09)");
+  assert_(iReset > iRefresh, "…and no longer in the title row beside Refresh");
+  assert_((src.match(/id="btnReset"/g) || []).length === 1, "exactly one Reset button");
+  // Same handler, same reach.
+  fresh(model({}));
+  C.STATE.region = "AMER"; C.STATE.search = "ana";
+  document.getElementById("btnReset").onclick();
+  assert_(C.STATE.region === "" && C.STATE.search === "", "Reset still clears every filter");
+  C.setState("typePop", "open");
+})();
+
+// ── G. ✎ CHANGES — the admin-only change register ─────────────────────────
+(function () {
+  fresh(model({}));
+  resetFilters();
+  // Gate: a viewer cannot open it — the router falls back to Executive.
+  C.getModel().viewerRole = "viewer";
+  C.switchView_("changes");
+  assert_(C.STATE.view === "exec", "a viewer asking for the Changes tab lands on Executive — admin only, in the router not just the tab bar");
+  C.getModel().viewerRole = "";
+  C.switchView_("changes");
+  assert_(C.STATE.view === "exec", "…and so does an open-access guest");
+  // An admin sees it.
+  C.getModel().viewerRole = "admin";
+  C.switchView_("changes");
+  assert_(C.STATE.view === "changes", "an admin opens the Changes tab");
+  var h = els.viewChanges.innerHTML;
+  assert_(/Change #001 — Calculation change for On-Time Delivery/.test(h),
+          "rows read 'Change #001 — Title', zero-padded, as the request's own example");
+  assert_(/<b>Asked:<\/b> Items not people\./.test(h) && /<b>Solution:<\/b> Reads the actual items\./.test(h),
+          "each row states the request and the solution in plain English");
+  assert_(/○ To do/.test(h) && /◐ Under review/.test(h) && /✔ Solved/.test(h),
+          "the three statuses render with their own glyph and word");
+  assert_(h.indexOf("Change #003") < h.indexOf("Change #001") && h.indexOf("Change #001") < h.indexOf("Change #002"),
+          "grouped To do → Under review → Solved, so the open items lead");
+  assert_(/1 to do · 1 under review · 1 solved/.test(h), "the heading counts each status");
+  assert_(/Impactful changes only/.test(h), "the page states its own inclusion rule");
+  // Pre-v49 payload: say so.
+  var old = model({});
+  delete old.meta.changes;
+  fresh(old);
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "changes");
+  C.renderAll_();
+  assert_(/Not in this payload/.test(els.viewChanges.innerHTML), "a payload without the register asks for a refresh");
+  // The pane is gated in VIEWS like Access.
+  var v = C.VIEWS.filter(function (x) { return x.id === "changes"; })[0];
+  assert_(v && v.roles && v.roles.join(",") === "admin" && v.pane === "viewChanges", "VIEWS gates ✎ Changes to admins");
+  fresh(model({}));
+  C.getModel().viewerRole = "admin";
+  C.setState("view", "exec");
+  C.renderAll_();
+})();
 console.log("✅ render-smoke: " + checks + " checks passed");

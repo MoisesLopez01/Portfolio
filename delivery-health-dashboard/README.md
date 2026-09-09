@@ -82,6 +82,47 @@ The gap is still measured in `gapsRows_()` with Gon named against it, but since 
 (2026-08-17) and the data-trust strip (2026-08-28) were deleted, no surface renders it — read it
 off `gapsRows_()` directly if challenged.
 
+## Items, not people — and the roster follows the week (2026-09-09, schema v49, exporter v3.20.0)
+
+Spec: `docs/specs/2026-09-09-dh-items-not-people-and-week-follow-design.md`. Six user asks, one release:
+
+- **On-Time Delivery and Forecast Accuracy count ITEMS.** Every resolved (or scheduled) item in the
+  window counts, whoever it is assigned to — unassigned, a contractor outside the roster, a
+  non-tracking family. Region / Team / PM still narrow them through the assignee, and what cannot be
+  placed is **counted on the card**, never dropped. Population, Role, Job family and the person search
+  describe people and no longer touch these two cards. Both wear an **ITEMS** scope tag. The roster
+  and the drill charts keep the per-person read unchanged. Interns' items still leave both reads
+  (user rule 2026-08-04 — about the published number, not the attribution).
+- **Forecast Accuracy is redefined (registry 4.4):** the share of tasks and milestones *scheduled*
+  in the period that finished by the **end of their committed week**. Epics span quarters, so the
+  closed-epic estimate variance moved for nobody inside one; it still ships as `forecastBuckets` for
+  audit and renders nowhere. Pending items (week not over) are published, never graded; late-but-done
+  is split from still-open. The trend carries a definition-changed marker at this date.
+- **The default window is the in-flight period** ("◐ Current week — so far"; the "In progress" group
+  is gone because it was the same window twice). `DEFAULT_WINDOW_` in `Dashboard.html` is the knob.
+  The Actions roster **follows the window**: Open backlog on the current week, **Resolved · W36** on
+  a complete one — and each ▸ row then lists what that person closed that week (`person.resolved`,
+  trailing `RESOLVED_ITEMS_WEEKS` = 13, capped per week with the cap stated).
+- **Reset sits beside More filters**, in the row it clears.
+- **✎ Changes tab (admins only):** the change register (`DH_CHANGES_`, shipped as `meta.changes`) in
+  plain English — "Change #001 — Title", the request, the solution, what it still needs, and a status
+  (solved · under review · to do), open items first. Impactful changes only; the register starts with
+  the 2026.W37 batch.
+- **Resolved drill-down orders by need:** every item is listed with its Jira status and a Needs-action
+  column (the four graded fields plus late); the items with the most reasons sort first and the row
+  says "N of M listed need action".
+- **Planning windows are off** (`PLAN_WEEKS_AHEAD_` = 0): the picker offers the current period and the
+  complete ones only.
+- **PM signals:** `unlinked` → **Without tasks**. New **⏩ pushed in &lt;week&gt;** — the tab's one
+  windowed signal — from the exporter's new **"Due Push Log"** column (every Due Date edit as
+  `date:from>to`; `""` = not measured, `none` = never edited). The exporter gains a narrow changelog
+  fetch over **open epics** updated in the last 13 weeks (`OPEN_EPIC_CHANGELOG_WEEKS`). Coverage is
+  stated on the tab; an older export reads as "not measured", never as clean.
+
+**Deploy order:** exporter first or together — its header change makes the next light run do one full
+rewrite of Jira Raw, then merges resume. Then `Code.js` + `Dashboard.html` and a cache bump (v49
+strands v48 entries: a v48 payload has no `forecastTaskBuckets` and the card would ask for a refresh).
+
 ## Open-backlog population widened — hygiene numbers move by design (2026-08-06)
 
 `Jira Backlog.js` v3.11.0 drops `'assignee is not EMPTY'` from `fetchOpenIssues_()`
@@ -358,9 +399,9 @@ now*, and *is the next fortnight planned?* (user request). The picker now has th
 
 | Group | What it offers | Grammar |
 |---|---|---|
-| **Complete** | every closed period of the active unit. `Latest complete` is still the default | graded exactly as before |
-| **In progress** | the current week / month / quarter | published, but **never compared to the period before it** |
-| **Planning · next N weeks** | the next ≤2 ISO weeks (`PLAN_WEEKS_AHEAD_`), and only those the payload actually reaches | outcome metrics say so and stay blank; **plan** is what is measured |
+| **Complete** | every closed period of the active unit. Was the default until 2026-09-09 | graded exactly as before |
+| **Current … — so far** | the current week / month / quarter — **the default since 2026-09-09** (`DEFAULT_WINDOW_`), named by the picker's first entry rather than listed as a separate group | published, but **never compared to the period before it** |
+| **Planning · next N weeks** | **Retired 2026-09-09** (user: not actively used) — `PLAN_WEEKS_AHEAD_` is 0, so the group no longer renders; set it to 2 to bring back the next ≤2 ISO weeks the payload reaches | outcome metrics said so and stayed blank; **plan** was what was measured |
 
 **The invariant that makes this safe.** `donePeriods_()` is unchanged and is still the *only* input
 to any trend, sparkline or operating rate. `analysisPeriods_()` = `donePeriods_()` + the in-flight
@@ -1067,11 +1108,15 @@ capCov     = capacity, but only for NS-classified person-weeks
 billableUtil = billable / capCov        (Utilization tile headline — the Dictionary's gross rate)
 trackedUtil  = tracked / capacity       (Utilization tile fallback when NS classifies nothing)
 onTime       = resolved ≤ Due Date ÷ resolved-with-Due-Date, per week          (On-Time Delivery tile)
-               over NON-EPIC issues only
-forecastAcc  = nWithin / n                                                     (Forecast Accuracy tile)
-               n       = resolved epics with a non-zero estimate AND non-zero logged time
-               nWithin = those where |Time Spent − Original Estimate| / Original Estimate ≤ 0.10
-medianVar    = median of |Time Spent − Original Estimate| / Original Estimate  (secondary form)
+               over the CONFIG_DH.ONTIME_SCOPE population, read as ITEMS (2026-09-09):
+               unattributed items count; only Region/Team/PM narrow it
+forecastAcc  = nHit ÷ (nHit + nMiss), read as ITEMS                            (Forecast Accuracy tile, registry 4.4)
+               nSched  = non-epic items whose Due Date falls in the week
+               nHit    = …resolved on or before the Sunday of that week
+               nMiss   = …not done by then, once the week has ENDED (nLate = the subset that finished later)
+               nPending= …week not over, not done — published, never graded
+               coverage = nResDated ÷ nRes over items RESOLVED in the period (share that ever had a schedule)
+(epic variance) nWithin/n over closed epics still ships as forecastBuckets for audit — no card reads it
 rework       = placeholder — no formula yet (reopen/CSAT feeds don't exist)
 ```
 

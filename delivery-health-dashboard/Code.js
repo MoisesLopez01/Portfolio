@@ -111,6 +111,15 @@ var CONFIG_DH = {
   // when it clipped (totals always cover ALL of the person's open work).
   BACKLOG_MAX_ITEMS_ALL: 60,
 
+  // ── Resolved-work drill-down (user 2026-09-09, 2026.W37) ──
+  // When the Actions roster is on a COMPLETE week, its ▸ row lists the work each
+  // person RESOLVED in that week instead of today's open backlog. The payload
+  // carries those items for this many trailing weeks (one quarter, the same
+  // horizon the exporter's changelog slice uses); an older window says so
+  // rather than rendering an empty list as "nothing delivered". Per person-week
+  // the list is capped at BACKLOG_MAX_ITEMS_ALL with the count stated.
+  RESOLVED_ITEMS_WEEKS: 13,
+
   // ── New-hire handling (user decision 2026-07-31) ──
   // Weeks BEFORE a person's hire date are removed from every per-person metric
   // (no capacity, no denominators, no grid cell). People hired within this many
@@ -298,9 +307,94 @@ var CONFIG_DH = {
  *
  * Shipped to the client as meta.registry.
  */
+// ══════════════════════════════════════════════════════════════════════════
+// 📋 CHANGE REGISTER — the ✎ Changes tab (admins only), user request 2026-09-09
+//
+// What stakeholders asked for and what was done about it, in plain English,
+// with a status. IMPACTFUL changes only: a change earns a row when it moves a
+// published number, changes what a number MEANS, or changes what a reader does
+// on a tab. Wording fixes, refactors and test work do not.
+//
+// Written for the reader who will never open this file: `ask` is the request
+// as it was made, `done` is what the dashboard does now (or will do), no code
+// names unless the reader needs one to find something. No people are named —
+// "the user", "delivery leadership" — the same rule every other surface keeps.
+//
+// STATUS VOCABULARY (three words, the ones the request used):
+//   "solved" — live on the deployed dashboard
+//   "review" — built and tested, awaiting review / deploy (the tab says which)
+//   "todo"   — agreed, not built; `done` says what is pending and who decides
+//
+// Numbering is by request order and never reused; the register starts at
+// #001 with the 2026.W37 batch (earlier history lives in README.md).
+// Shipped impersonally in meta.changes; the tab is gated to admins in VIEWS.
+// ══════════════════════════════════════════════════════════════════════════
+var DH_CHANGES_ = [
+  { id: 1, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+    title: "Calculation change for On-Time Delivery",
+    ask: "Evaluate the rate on items, not people.",
+    done: "The report now reads the actual items resolved in the selected week or month — including work assigned to nobody on the roster, to contractors, or to people outside the tracking families. Region, Team and PM filters still narrow it; Population, Role and Job family do not, because they describe people. Interns' items stay out, per the rule agreed on 2026-08-04. The card is tagged ITEMS and says how many items a filter could not place.",
+    needs: "Deploy of Code.js and Dashboard.html (schema v49) plus a cache bump. The number moves on deploy." },
+  { id: 2, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+    title: "Forecast Accuracy measured on the week's schedule, not on closed epics",
+    ask: "Forecast accuracy at epic level is not doable — epics take two or three quarters — so measure it on the tasks or milestones scheduled for the week.",
+    done: "Forecast Accuracy is now the share of tasks and milestones due in the selected week (or month) that were finished by the end of their committed week. Items whose week has not ended are shown as pending, never counted as misses. Late-but-finished is reported separately from still-open. Epics are excluded. The trend line carries a 'definition changed' marker at 2026-09-09; the old and new series are not comparable.",
+    needs: "Same deploy as #001." },
+  { id: 3, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+    title: "The current week or month shows by default",
+    ask: "When week or month is selected we need to show the current month or week, so people get what is happening now.",
+    done: "With nothing picked, every tab reads the current week, month or quarter so far. The picker's first entry is named '◐ Current week — so far'; a complete period can still be chosen from the Complete list. Current-period numbers carry the ◐ chip and are never compared to the period before.",
+    needs: "Same deploy as #001." },
+  { id: 4, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Actions",
+    title: "The Actions roster follows the selected week",
+    ask: "On the current week show the Open backlog; on a past week show Resolved for that week, and each person's row should list the work closed that week.",
+    done: "People signals opens on Open backlog for the current week and on 'Resolved · 2026.W36' when a past week is selected (the chips still switch it by hand). Expanding a person on the Resolved view lists every item they closed in that week — items needing action first (no due date, no estimate, no time logged, not linked, or late), each with its status, its epic and a one-click open in Jira. The list is carried for the last 13 weeks; older windows say so. Every person in the filtered Region, Team or PM is listed.",
+    needs: "Same deploy as #001." },
+  { id: 5, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Filters",
+    title: "Reset button moved next to More filters",
+    ask: "The reset button should be next to 'More filters'.",
+    done: "Reset now sits in the filter row beside More filters and clears every filter, the search, the period selection and all expanded rows. Same button, same behaviour, new place.",
+    needs: "Same deploy as #001." },
+  { id: 6, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+    title: "PM signal 'unlinked' renamed 'Without tasks'",
+    ask: "Rename the signal called unlinked to 'Without tasks'.",
+    done: "The pill, the Needs-action row and the epic row all say 'Without tasks' — an epic with nothing broken down under it. The per-ticket 'Not linked to a parent' signal on the backlog-health panel is a different fact and keeps its name.",
+    needs: "Same deploy as #001." },
+  { id: 7, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+    title: "New PM signal: due date pushed during the evaluated week",
+    ask: "Add a signal for work pushed during the evaluated week, using the idea from the milestone-slip dashboard.",
+    done: "The hourly Jira export (Jira Backlog.js 3.20.0) now records every due-date edit on open epics. The Project Managers tab shows '⏩ N pushed in 2026.W36' per PM for the selected week, a matching Needs-action row, and on each epic by how many days and from which date to which. Coverage is stated: until the new export runs, the tab says pushes are not measured rather than showing anyone as clean.",
+    needs: "Deploy the export first (its first hourly run rewrites the Jira Raw sheet once), then the dashboard. Pushes are recorded for epics only — see #010." },
+  { id: 8, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Changes tab",
+    title: "Admin-only Changes tab",
+    ask: "A tab for admins that shows, in plain English, each change request and whether it is solved, under review or to do — impactful changes only.",
+    done: "This page. Rows are numbered in request order, written as the request and the solution, and grouped by status with To do first. Only changes that move a number, change what a number means, or change what a reader does on a tab are listed.",
+    needs: "Same deploy as #001." },
+  { id: 9, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+    title: "Open Forecast Accuracy to every role",
+    ask: "Raised while redefining Forecast Accuracy: the new definition carries no financial data, so the card could be shown to open-access viewers too.",
+    done: "Not changed. The card is still limited to admins and named viewers, as the Metrics Dictionary required for the old estimate-based definition. Decision pending with delivery leadership.",
+    needs: "A yes/no from delivery leadership; a one-line change once decided." },
+  { id: 10, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+    title: "Record due-date pushes on tasks, not only epics",
+    ask: "Follow-up to #007: the pushed signal covers epics; tasks pushed inside an epic are not yet visible.",
+    done: "Not built. It needs the export to fetch change history for every open task, which is a cost decision for the export's owner (the hourly run already pays for history on open epics and recent resolved work).",
+    needs: "Owner decision on export cost; then the same column read at task grain." },
+  { id: 11, status: "todo", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+    title: "Breakdown charts still attribute by people",
+    ask: "Follow-up to #001: the Region / Level / PM breakdown bars under the cards are computed through people, so a bar can differ from the ITEMS card by exactly the items nobody on the roster owns.",
+    done: "Not changed, and stated on the card. An item-side breakdown needs Region and Team filled on the Jira issues themselves, which the export still receives blank (Jira field discipline, PR-01).",
+    needs: "PR-01 (Region/Team on Jira issues) before this can be built honestly." },
+  { id: 12, status: "review", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+    title: "Planning windows (next 2 weeks) removed from the period picker",
+    ask: "Remove the next-2-weeks planning entries from the filter — we are not actively using them.",
+    done: "The picker offers the current period and the complete ones only; the 'Planning · next 2 weeks' group and its planned-coverage grammar no longer appear. The code stays behind one number so the windows can return if planning becomes a weekly practice.",
+    needs: "Same deploy as #001." },
+];
+
 var METRIC_REGISTRY_ = {
-  version: "4.3",
-  updated: "2026-08-17",  // 2026.W34
+  version: "4.4",
+  updated: "2026-09-09",  // 2026.W37
 
   metrics: {
     onTime: {
@@ -331,28 +425,33 @@ var METRIC_REGISTRY_ = {
     forecast: {
       id: "forecast",
       name: "Forecast Accuracy",
-      definition: "How closely actual hours on an engagement track the original estimate at kickoff.",
-      formula: "mean of max(0, 1 − |actual − estimate| ÷ estimate) across epics closed in period × 100",
-      formulaSecondary: "companions: share of epics inside the ±10% tolerance band, and the median absolute % variance. The mean answers \"how close on average\", the band answers \"how often did we actually hit it\" — 40% inside the band at a 12% median is a very different engagement from 40% at 90%.",
-      sources: ["Jira Raw — Original Estimate (sec), Time Spent (sec), Resolution Date, Assignee"],
-      grain: "Epic, rolled up by person → team → region",
+      // REDEFINED 2026-09-09 (2026.W37, user decision). Until registry 4.3 this
+      // was the Metrics Dictionary's estimate-vs-actual read over CLOSED EPICS.
+      // An epic takes two or three quarters to close, so that number described
+      // engagements kicked off long ago and moved for nobody inside a quarter —
+      // "not doable" as a weekly read. The schedule question at TASK grain is
+      // answerable every week: of what we said would finish this week, what did?
+      // The epic variance still ships server-side (forecastBuckets_) for anyone
+      // auditing the old series; no surface renders it.
+      definition: "Share of the tasks and milestones scheduled to finish in the period that actually finished by the end of their committed week.",
+      formula: "items resolved on or before the Sunday of their due week ÷ items whose due date falls in the period and whose week has ended × 100",
+      formulaSecondary: "companions: items still PENDING (due week not over yet — published on the current week, never graded) and items delivered LATE (resolved after their committed week) as a share of the misses. Week grain on purpose: the managers' rule (2026-08-10) is that a date is late only once the week it was committed to has ended.",
+      sources: ["Jira Raw — Due Date, Resolution Date, Issue Type, Assignee"],
+      grain: "Task / Story / Sub-task / Milestone — every non-epic item, counted as ITEMS: every scheduled item in the period whoever it is assigned to (interns' items excepted — an intern's record never moves a published number, 2026-08-04). Region / Team / PM slice it through the assignee where one resolves to the roster; Population, Role and Job family do not narrow it (they describe people, this counts work).",
       target: CONFIG_DH.TARGETS.forecast,
       coverageGate: 0.70,
-      coverageOf: "closed epics carrying an estimate AND logged time",
-      // SAMPLE FLOOR (Task 6, sampleFloorFor_), separate instrument from the
-      // coverage gate above: a mean over one or two closed epics is not a mean,
-      // no matter how much of the population is visible. Same bar as
-      // CLEAR_RATE_MIN_N / the other rate metrics' floors.
+      coverageOf: "non-epic items resolved in the period that carried a due date at all — the share of the period's work that flows through a schedule",
+      // SAMPLE FLOOR (sampleFloorFor_): a share over one or two scheduled items
+      // is not a rate. Same bar as the other rate metrics' floors.
       sampleFloor: 5,
       owner: "Delivery leadership",
-      paramOwner: "Services Director (±10% band width; Finance for any rate-based variant)",
-      ebitda: "Forecast variance → margin erosion on engagements closed in period: (actual cost − estimated cost) against contracted value. Not yet quantified — blocked on PR-06/PR-07.",
+      paramOwner: "Services Director (scope, gate)",
+      ebitda: "Schedule misses → the week's plan was wrong: capacity held for work that did not land, downstream milestones re-planned, client credits where the item was a commitment. Not yet quantified — blocked on PR-06 (cost/bill rate) and PR-07 (engagement key).",
       deviations: [
-        "Estimate is the MUTABLE Jira Original Estimate. The baselined estimate (PR-03) does not exist yet, so an estimate revised mid-flight toward the actual scores as accurate.",
-        "Accuracy is FLOORED AT ZERO. The raw Dictionary expression goes negative past a 2× over-run (1 − 2.0 = −100%), which is not a share of anything; the floor keeps the mean interpretable.",
-        "Epics carrying an estimate but zero logged time are a time-tracking failure, not a forecasting one: counted toward coverage only, never scored. The raw formula would score them 0% accuracy, reporting a worklog gap as a forecasting miss.",
-        "Time Spent comes from Jira, not Tempo. Where a team logs to Tempo but not to the Jira issue, the two diverge.",
-        "ATTRIBUTION IS PARTLY INFERRED (2026-08-17). An epic whose own assignee does not resolve to a roster person is attributed to the roster person carrying most of its children, ties broken alphabetically. Epics are containers and are routinely unassigned, so the previous assignee-only rule discarded most of the population before counting — the metric went blank at week grain and in a part-finished month on an EMPTY sample rather than on a measured one. The variance figures are unchanged; only WHO each epic is filed under is inferred, which matters when the number is sliced by region, level, team or PM. Each card states how many of its epics were attributed this way, and epics that still resolve to nobody remain counted in meta.jiraUnattributed.forecast.",
+        "Measured against the MUTABLE Jira Due Date as exported. An item whose date is pushed to a later week BEFORE its week ends leaves this week's denominator entirely rather than scoring as a miss. The push itself is recorded (Jira Raw 'Due Push Log', exporter ≥3.20.0) and surfaced on the Project Managers tab as a separate signal.",
+        "Open items drop out of the export after CONFIGJ.OPEN_BACKLOG_UPDATED_WEEKS without an update, so a scheduled item abandoned for that long stops counting as a miss.",
+        "Epics are excluded by definition (they span quarters). Milestone-type issues and Client-Commitment-labelled work are counted as items like any other non-epic.",
+        "Before 2026-09-09 (registry ≤4.3) this metric was the closed-epic estimate-versus-actual mean; the two series are not comparable and the trend carries a definition-changed marker at that date.",
       ],
     },
 
@@ -897,6 +996,10 @@ var METRIC_REGISTRY_ = {
     // changed` marker. This entry is the dated note instead — a reader who
     // comes looking for the 🧬 matrix in three months needs to find out here
     // that it was retired on purpose, not assume it broke.
+    { version: "4.4", date: "2026-09-09", author: "Alex López",
+      affects: ["onTime", "forecast"],
+      change: "ITEMS, NOT PEOPLE, on the two outcome cards (user 2026-09-09). (1) On-Time Delivery: `onTimeBuckets_` keeps issues whose assignee resolves to nobody on the roster under an empty person (opts.keepUnattributed) instead of dropping them, and the client's items read (`bucketsFor_(…, {items:true})`) counts every resolved item in the window — unassigned, crew, intern, non-tracking family alike — narrowing only by the WHERE filters (Region / Team / PM) and never by Population, Role, Job family or the person search. (2) Forecast Accuracy is REDEFINED from the closed-epic estimate-versus-actual mean to the share of tasks and milestones scheduled in the period that finished by the end of their committed week (`forecastTaskBuckets_`; per-week nSched/nHit/nMiss/nLate/nPending plus resolved-week nRes/nResDated for coverage). Epics span quarters and the old read moved for nobody inside one. The epic variance still ships as `forecastBuckets` for audit; no surface renders it.",
+      rationale: "A rate attributed through people answers 'how did the people in this slice do', which is the roster's job. The Overview's job is 'did the work land' — and the people join was silently dropping the very items that most often miss (unassigned, handed to a contractor, closed by someone outside the tracking families). Both cards now say ITEMS on the tile and state how many the WHERE filters could not place. The forecast change is the sharper one: a schedule kept or missed this week is a conversation a delivery manager can have on Monday; an epic's estimate variance from a kickoff two quarters ago is not." },
     { version: "4.3", date: "2026-08-18", author: "Alex López",
       affects: ["util", "poolHeadroom", "commitmentFidelity", "poolCover", "poolConstraint"],
       change: "People on LONG LEAVE leave the capacity pipeline. `buildCapacity_`, `dhHeadByCell_` and `buildCommitment_` now carve `p.onLeave` exactly as they already carved `p.onBench`. Before this, a person on sabbatical or parental leave contributed gross scheduled hours and almost no plan, so very nearly their entire schedule landed in SELLABLE HEADROOM — the dashboard was offering Sales the availability of people who are not at work. `utilRollup_` has excluded onLeave since the feature shipped, on the stated reasoning that 'Tempo schedules lag HR for leave'; this pipeline simply never consulted the flag, so the two surfaces disagreed about who is at work. Availability Rate and Sellable Headroom fall on deploy by whatever those people were carrying.",
@@ -1908,19 +2011,28 @@ function queueSnapshot_(issues, resolvePerson, flowOpen) {
     Epic-level forecasting lives in forecastBuckets_ instead.
 
     scope — CONFIG_DH.ONTIME_SCOPE; see onTimeInScope_ and the config note.
-    Passed in so the tests can pin each reading. */
-function onTimeBuckets_(issues, resolvePerson, scope) {
+    Passed in so the tests can pin each reading.
+
+    opts.keepUnattributed (2026-09-09, "items not people"): issues whose
+    assignee resolves to nobody on the roster are KEPT under person "" instead
+    of dropped, and still tallied in `unattributed`. The client's items read
+    (bucketsFor_ {items:true}) counts them whenever no WHERE filter is
+    narrowing; the people read skips them exactly as before. */
+function onTimeBuckets_(issues, resolvePerson, scope, opts) {
   var map = {}, unattributed = 0;
   var sc = scope || CONFIG_DH.ONTIME_SCOPE || "dictionary";
+  var keep = !!(opts && opts.keepUnattributed);
   issues.forEach(function (it) {
     if (!onTimeInScope_(it, sc)) return;
     if (!it.resolved || isNaN(it.resolved.getTime())) return;
     // Person attribution (user decision 2026-07-31: ALL filters drive ALL three
     // KPI cards): issues join to the roster via Assignee, so the tiles filter
     // through the same passesFilters_ predicate as the grid. Items without a
-    // roster assignee are excluded and tallied for the honesty note.
+    // roster assignee are tallied for the honesty note and — since 2026-09-09
+    // — kept under an empty person when the caller asks, so the ITEMS read on
+    // the Overview can count them.
     var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
-    if (!person) { unattributed++; return; }
+    if (!person) { unattributed++; if (!keep) return; person = ""; }
     var iso = weekKeyFromDate_(it.resolved);
     var k = iso + "" + person;
     if (!map[k]) map[k] = { iso: iso, person: person, n: 0, onTime: 0, nAll: 0 };
@@ -2073,6 +2185,85 @@ function forecastBuckets_(epics, resolvePerson, band, childOwners) {
     map[k].absVars.push(Math.round(Math.min(20, absDev) * 1000) / 1000);
     if (absDev <= bnd) { map[k].nWithin++; return; }
     if (dev > 0) map[k].nMissOver++; else map[k].nMissUnder++;
+  });
+  return { buckets: Object.keys(map).map(function (k) { return map[k]; }),
+           unattributed: unattributed };
+}
+
+/**
+ * Forecast Accuracy at TASK grain (registry 4.4, user decision 2026-09-09):
+ * of the non-epic items SCHEDULED (due) in a week, how many finished by the
+ * end of that week?
+ *
+ * Why not the epic read above: an epic closes two or three quarters after it
+ * is kicked off, so its estimate variance is a post-mortem nobody can act on
+ * inside the quarter. A week's schedule kept or missed is a Monday
+ * conversation. Epics are therefore EXCLUDED here; the epic buckets still
+ * ship for audit.
+ *
+ * Two families of counters, both additive so the client can sum any window:
+ *
+ *   keyed by the DUE week — the schedule
+ *     nSched   items whose due date falls in this week
+ *     nHit     …resolved on or before the Sunday of that week
+ *     nMiss    …not resolved by then (still open, or resolved later) — only
+ *              once the week has ENDED; a live week cannot have missed yet
+ *     nLate    the subset of nMiss that did resolve, just after the week
+ *     nPending …the week has not ended and the item is not done yet
+ *
+ *   keyed by the RESOLVED week — coverage
+ *     nRes      non-epic items resolved this week
+ *     nResDated …that carried a due date at all
+ *
+ * The rate is nHit ÷ (nHit + nMiss). Coverage is nResDated ÷ nRes: how much of
+ * the period's finished work ever flowed through a schedule — a low share means
+ * the rate describes a thin slice of what the team did.
+ *
+ * WEEK GRAIN, not day grain, on purpose. The managers' rule (2026-08-10) is that
+ * a commitment is late only once the WEEK it was made for has ended; a Tuesday
+ * date met on Thursday kept its week. On-Time Delivery keeps its calendar-day
+ * read and its Dictionary scope; the two are different questions.
+ *
+ * Person attribution mirrors onTimeBuckets_ with keepUnattributed: an item
+ * whose assignee resolves to nobody is kept under person "" and counted in
+ * `unattributed`, so the ITEMS read can count every scheduled item.
+ *
+ * @param {Array} issues readJiraRaw_ records (epics included; skipped here)
+ * @param {Function} resolvePerson raw assignee → roster display name, or null
+ * @param {Date=} now injection point for tests; defaults to real now
+ */
+function forecastTaskBuckets_(issues, resolvePerson, now) {
+  now = now || new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var map = {}, unattributed = 0;
+  function row(iso, person) {
+    var k = iso + "|" + person;
+    if (!map[k]) map[k] = { iso: iso, person: person, nSched: 0, nHit: 0, nMiss: 0, nLate: 0,
+                            nPending: 0, nRes: 0, nResDated: 0 };
+    return map[k];
+  }
+  function day(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  (issues || []).forEach(function (it) {
+    if (!it || it.isEpic) return;
+    var hasDue = !!(it.due && !isNaN(it.due.getTime()));
+    var resolved = !!(it.resolved && !isNaN(it.resolved.getTime()));
+    if (!hasDue && !resolved) return;                // neither scheduled nor finished — nothing to say
+    var person = resolvePerson ? resolvePerson(it.assignee || "") : null;
+    if (!person) { unattributed++; person = ""; }
+    if (resolved) {
+      var rr = row(weekKeyFromDate_(it.resolved), person);
+      rr.nRes++;
+      if (hasDue) rr.nResDated++;
+    }
+    if (!hasDue) return;
+    var r = row(weekKeyFromDate_(it.due), person);
+    r.nSched++;
+    var weekEnd = dhWeekStart_(it.due);
+    weekEnd.setDate(weekEnd.getDate() + 6);          // the Sunday of the committed week
+    var rDay = resolved ? day(it.resolved) : null;
+    if (rDay && rDay <= weekEnd) { r.nHit++; return; }
+    if (weekEnd < today) { r.nMiss++; if (rDay) r.nLate++; return; }
+    r.nPending++;
   });
   return { buckets: Object.keys(map).map(function (k) { return map[k]; }),
            unattributed: unattributed };
@@ -2893,6 +3084,13 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
               // delivered is linked, not empty. Only an epic nothing rolls up to
               // is the gap — its hours can never reach an engagement.
               childrenAll: childCountAll[ek] || 0,
+              // Due-date PUSHES (exporter ≥3.20.0, 2026-09-09): every move of
+              // this epic's due date to a LATER date, with the ISO week it
+              // happened in. The client windows on `wk` so the Project
+              // Managers tab can say "pushed in 2026.W36". null = the export
+              // carried no changelog for this row — nobody looked, which the
+              // tab must state rather than show a clean pill.
+              pushes: dhDuePushes_(it),
               // `owners` = the roster people assigned to this epic's children.
               // It is what lets the universal filters reach a tab whose unit is
               // an epic: an epic belongs to whichever slices its WORKERS belong
@@ -2973,7 +3171,15 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
     var am = a.epicN - a.epicDated, bm = b.epicN - b.epicDated;
     return (bm - am) || (b.epicN - a.epicN) || a.pm.localeCompare(b.pm);
   });
-  return { rows: rows, keyCap: EPIC_DUE_MAX_KEYS_ };
+  // Push coverage: how many of the listed epics the export actually measured
+  // for due-date edits. 0 of N means an exporter older than 3.20.0 (or the
+  // changelog fetch switched off) — the pill is absent and the tab says why.
+  var pushEpics = 0, pushMeasured = 0;
+  rows.forEach(function (r) {
+    r.epics.forEach(function (e) { pushEpics++; if (e.pushes !== null) pushMeasured++; });
+  });
+  return { rows: rows, keyCap: EPIC_DUE_MAX_KEYS_,
+           pushCoverage: { epics: pushEpics, measured: pushMeasured } };
 }
 
 /**
@@ -5734,6 +5940,67 @@ function dhSrsoComponent_(hasCol, cell) {
 }
 
 /**
+ * "Due Push Log" cell → the edits it records, or null when nobody looked.
+ *
+ * Cell grammar (Jira Backlog.js jbDuePushLog_): `YYYY-MM-DD:from>to` entries
+ * joined by ";", oldest first; an empty side means the date was cleared (to)
+ * or newly set (from). "none" = changelog fetched, never edited → []. "" = the
+ * changelog was not fetched for this row → null. Dates are read from their
+ * calendar parts, never through `new Date(string)` (see parseDhWeekStart_ for
+ * why a bare yyyy-mm-dd shifts a day in behind-UTC timezones).
+ *
+ * @returns {?Array<{at:Date, from:?Date, to:?Date}>}
+ */
+function parseDuePushLog_(cell) {
+  var s = String(cell == null ? "" : cell).trim();
+  if (!s) return null;
+  if (/^none$/i.test(s)) return [];
+  var out = [];
+  s.split(";").forEach(function (entry) {
+    var m = String(entry).trim().match(/^(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})?>(\d{4}-\d{2}-\d{2})?$/);
+    if (!m) return;                                  // a malformed entry is skipped, never invented
+    var at = dhCalendarDate_(m[1]);
+    if (!at) return;
+    out.push({ at: at, from: dhCalendarDate_(m[2]), to: dhCalendarDate_(m[3]) });
+  });
+  return out;
+}
+
+/** "yyyy-mm-dd" → local-midnight Date from its parts, or null. */
+function dhCalendarDate_(s) {
+  var m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  var d = new Date(+m[1], +m[2] - 1, +m[3]);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * The PUSHES among an issue's due-date edits — moves to a LATER date, the only
+ * kind that is a slipped commitment. A date set for the first time, cleared,
+ * or pulled earlier is an edit but not a push. Each push carries the ISO week
+ * it happened in (`wk`, what the PM tab windows on), the calendar day, both
+ * dates and how far the commitment moved.
+ *
+ * @param {Object} it readJiraRaw_ record (duePushes: null | [])
+ * @returns {?Array<{wk:string, at:string, from:string, to:string, days:number}>}
+ *   null when the row was never measured, so a consumer can tell "no pushes"
+ *   from "nobody looked".
+ */
+function dhDuePushes_(it) {
+  var edits = it && it.duePushes;
+  if (edits === null || edits === undefined) return null;
+  var out = [];
+  edits.forEach(function (e) {
+    if (!e || !e.at || !e.from || !e.to) return;
+    var days = Math.round((e.to - e.from) / 86400000);
+    if (days <= 0) return;
+    out.push({ wk: weekKeyFromDate_(e.at), at: dhDateStr_(e.at),
+               from: dhDateStr_(e.from), to: dhDateStr_(e.to), days: days });
+  });
+  return out;
+}
+
+/**
  * The Metrics Dictionary's "Client Commitment" label, matched loosely because
  * label conventions drift across projects (`client-commitment`,
  * `ClientCommitment`, `client_commitment` are all the same intent).
@@ -5865,6 +6132,12 @@ function readJiraRaw_() {
     // from a suspicion into a count.
     var iComp = colIdx_(h, ["Components"]);
     var iStart = colIdx_(h, ["Start Date"]);
+    // ── DUE PUSH LOG (Jira Backlog.js v3.20.0, read from 2026-09-09) ────────
+    // Every Due Date edit as `date:from>to` entries. Tristate like Reopened:
+    // column absent or cell "" = nobody looked (null), "none" = looked and the
+    // date was never edited ([]). parseDuePushLog_ keeps the FACTS; whether an
+    // edit is a "push" (a move to a LATER date) is decided where it is read.
+    var iPushLog = colIdx_(h, ["Due Push Log"]);
     if (iKey === -1) return { issues: [], epics: [], openIssues: [], keyRegion: {}, available: false };
     // ── EXPORT FRESHNESS STAMP ────────────────────────────────────────────────
     // Jira Backlog.js writes two italic footer rows in column A, two rows below
@@ -6030,6 +6303,13 @@ function readJiraRaw_() {
         srsoComponent: dhSrsoComponent_(iComp !== -1, raw[r][iComp]),
         start: iStart === -1 ? null : parseDhDate_(raw[r][iStart]),
         updated: iUpdated === -1 ? null : parseDhDate_(raw[r][iUpdated]),
+        // Summary rides on the record since 2026-09-09: the resolved-work
+        // drill-down lists what each person closed, and a key alone is not a
+        // list anyone can read. Server-side cost only (issues never ship whole).
+        summary: summaryTxt,
+        // null = column absent / not fetched for this row · [] = never edited ·
+        // [{at, from, to}] = every edit, oldest first. See parseDuePushLog_.
+        duePushes: iPushLog === -1 ? null : parseDuePushLog_(raw[r][iPushLog]),
       };
       issues.push(rec);
       if (isEpic) epics.push(rec);
@@ -6386,6 +6666,103 @@ function addOpenEpicCounts_(map, issues, nameIdx) {
   });
 }
 
+/**
+ * What each person RESOLVED, by ISO week — the Actions roster's ▸ row on a
+ * COMPLETE week (user 2026-09-09: "selected W36 … will show all the work
+ * closed that the evaluated people has in records").
+ *
+ * The open-backlog list beside it follows no period; this one is nothing but
+ * period. Carried for the trailing CONFIG_DH.RESOLVED_ITEMS_WEEKS only (the
+ * payload is gzipped, chunked and cached — a year of closed tickets per person
+ * is not a drill-down, it is an archive), and capped per person-week at
+ * BACKLOG_MAX_ITEMS_ALL with `listed` vs `count` stated so a clipped list is
+ * never read as complete. Misses sort first, then the biggest logged effort:
+ * the row exists to explain the cells above it, and the misses are what the
+ * cells are red about.
+ *
+ * Epics ARE listed here (unlike the open backlog): a closed epic in a week is a
+ * milestone somebody delivered, and it is counted in the roster's Resolved `n`
+ * — the list has to be able to account for that number.
+ *
+ * @param {Array} issues  readJiraRaw_ `issues` (every row)
+ * @param {Object} nameIdx population name index (same join as the backlog)
+ * @param {Date=} now
+ * @returns {Object} display name → { weeks: { iso: { count, dated, onTime, epics,
+ *   listed, items:[{key, summary, type, status, isEpic, epicKey, epicName,
+ *   due, resolvedOn, onTime, spentHrs, estHrs}] } } }
+ */
+function resolvedByPerson_(issues, nameIdx, now) {
+  now = now || new Date();
+  var keepWeeks = CONFIG_DH.RESOLVED_ITEMS_WEEKS || 13;
+  var cutoff = dhWeekStart_(now);
+  cutoff.setDate(cutoff.getDate() - keepWeeks * 7);
+  var epicNames = {};
+  (issues || []).forEach(function (it) {
+    if (it && it.isEpic && it.key) epicNames[String(it.key).toUpperCase()] = it.summary || "";
+  });
+  function day(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  var by = {};
+  (issues || []).forEach(function (it) {
+    if (!it || !it.resolved || isNaN(it.resolved.getTime())) return;
+    if (it.resolved < cutoff) return;
+    var dn = resolveName_(nameIdx, it.assignee);
+    if (!dn) return;                                 // not in population — same rule as the backlog
+    var iso = weekKeyFromDate_(it.resolved);
+    var p = by[dn] || (by[dn] = { weeks: {} });
+    var w = p.weeks[iso] || (p.weeks[iso] = { count: 0, dated: 0, onTime: 0, epics: 0, listed: 0, items: [] });
+    w.count++;
+    if (it.isEpic) w.epics++;
+    var hasDue = !!(it.due && !isNaN(it.due.getTime()));
+    var onTime = null;
+    if (hasDue) {
+      w.dated++;
+      onTime = day(it.resolved) <= day(it.due);
+      if (onTime) w.onTime++;
+    }
+    var ek = String(it.epicKey || it.parentKey || "").toUpperCase();
+    // GAPS = the same four fields the roster cells grade on the resolved half
+    // (due · estimate · logged · epic link), so "3 of 10 need action" on the
+    // row is the same 3 the cells are red about (user 2026-09-09). Late is a
+    // fifth reason — the On-Time card's — listed with them, graded nowhere else.
+    var est = Number(it.estSec) || 0, spent = Number(it.spentSec) || 0;
+    var linked = !!(it.isEpic || it.linked || ek);
+    var gaps = [];
+    if (!hasDue) gaps.push("no due date");
+    if (est <= 0) gaps.push("no estimate");
+    if (spent <= 0) gaps.push("no time logged");
+    if (!linked) gaps.push("not linked to an epic");
+    if (onTime === false) gaps.push("late");
+    if (gaps.length) w.needAction = (w.needAction || 0) + 1;
+    w.items.push({
+      key: it.key, summary: it.summary || "", type: it.typeLabel || it.type || "",
+      status: it.status || "", isEpic: !!it.isEpic,
+      epicKey: ek, epicName: epicNames[ek] || "",
+      due: hasDue ? weekKeyFromDate_(it.due) : "",
+      resolvedOn: dhDateStr_(it.resolved),
+      onTime: onTime,
+      gaps: gaps,
+      spentHrs: Math.round(spent / 360) / 10,
+      estHrs: Math.round(est / 360) / 10,
+    });
+  });
+  Object.keys(by).forEach(function (dn) {
+    Object.keys(by[dn].weeks).forEach(function (iso) {
+      var w = by[dn].weeks[iso];
+      if (w.needAction === undefined) w.needAction = 0;
+      // Needs-action first — most reasons first — then the biggest logged
+      // effort. Everything is listed; the order is what says where to look.
+      w.items.sort(function (a, b) {
+        if (b.gaps.length !== a.gaps.length) return b.gaps.length - a.gaps.length;
+        if (b.spentHrs !== a.spentHrs) return b.spentHrs - a.spentHrs;
+        return String(a.key).localeCompare(String(b.key));
+      });
+      w.items = w.items.slice(0, CONFIG_DH.BACKLOG_MAX_ITEMS_ALL);
+      w.listed = w.items.length;
+    });
+  });
+  return by;
+}
+
 // ── MODEL ASSEMBLY (pure — all reader outputs injected) ──────
 
 function assembleModel_(inputs, win) {
@@ -6671,8 +7048,12 @@ function assembleModel_(inputs, win) {
     jiraScoped.epics = keptEpics;
   }
 
+  // keepUnattributed (2026-09-09): unattributed issues ride under person "" so
+  // the Overview's ITEMS read can count every resolved item; the people read
+  // (bucketsFor_ default) skips them exactly as it always has.
   var onTime = inputs.jira.available
-    ? onTimeBuckets_(jiraScoped.issues, resolvePerson) : { buckets: [], unattributed: 0 };
+    ? onTimeBuckets_(jiraScoped.issues, resolvePerson, undefined, { keepUnattributed: true })
+    : { buckets: [], unattributed: 0 };
   // Epic → child-owner index, built from the SAME leaver-scoped feed the
   // buckets read, so an epic and its children can never be scoped
   // differently. Cheap: one pass over issues, reused for every epic.
@@ -6680,6 +7061,10 @@ function assembleModel_(inputs, win) {
     ? epicChildOwners_(jiraScoped, resolvePerson) : {};
   var forecast = inputs.jira.available
     ? forecastBuckets_(jiraScoped.epics, resolvePerson, undefined, epicKids)
+    : { buckets: [], unattributed: 0 };
+  // Forecast Accuracy at TASK grain (registry 4.4) — the card's live read.
+  var forecastTask = inputs.jira.available
+    ? forecastTaskBuckets_(jiraScoped.issues, resolvePerson, win.today || new Date())
     : { buckets: [], unattributed: 0 };
   var hygiene = inputs.jira.available
     ? hygieneBuckets_(jiraScoped, resolvePerson) : [];
@@ -6754,6 +7139,12 @@ function assembleModel_(inputs, win) {
   var personHyg = inputs.jira.available
     ? personHygieneBuckets_(jiraScoped, resolvePerson)
     : { resolved: [], open: [] };
+  // Resolved work per person × week, for the roster's ▸ row on a complete
+  // period. Attached to the person records built above (the backlog map was
+  // built before jiraScoped existed; this one needs the leaver-scoped feed).
+  var resolvedMap = inputs.jira.available
+    ? resolvedByPerson_(jiraScoped.issues, nameIdx, win.today || new Date()) : {};
+  people.forEach(function (p) { p.resolved = resolvedMap[p.name] || null; });
   var backlogHealth = inputs.jira.available
     ? backlogHealthBuckets_(jiraScoped, resolvePerson)
     : { buckets: [], unattributed: 0, keyCap: 0, asOf: null, thresholds: {} };
@@ -6893,6 +7284,7 @@ function assembleModel_(inputs, win) {
       // the same way jiraUnattributed qualifies the issue tiles.
       nsCoverage: nsCoverage_(people, nsUnmatched),
       jiraUnattributed: { onTime: onTime.unattributed, forecast: forecast.unattributed,
+                          forecastTask: forecastTask.unattributed,
                           rework: rework.unattributed,
                           leadTime: leadTime.unattributed, throughput: throughput.unattributed,
                           flowOpen: flowOpen.unattributed },
@@ -6906,6 +7298,12 @@ function assembleModel_(inputs, win) {
       arrivalsAvailable: !!(inputs.arrivals && inputs.arrivals.available),
       clearRateMedian: clearRate,
       clearRateWeeks: CONFIG_DH.CLEAR_RATE_WEEKS,
+      // How far back person.resolved reaches (schema 49) — the roster's ▸ row
+      // says so on an older window instead of listing nothing.
+      resolvedItemsWeeks: CONFIG_DH.RESOLVED_ITEMS_WEEKS,
+      // 📋 The change register for the admin-only ✎ Changes tab (2026-09-09).
+      // Impersonal by construction (no names), so it is safe in the shared entry.
+      changes: DH_CHANGES_,
       walkbackMaxWeeks: CONFIG_DH.WALKBACK_MAX_WEEKS,
       // Work by former employees, removed from every rate before bucketing.
       // Reported as a COUNT so the exclusion is stated rather than inferred —
@@ -6939,6 +7337,8 @@ function assembleModel_(inputs, win) {
       refreshEveryMin: CONFIG_DH.CACHE_WARM_EVERY_MIN,
     },
     people: people, onTimeBuckets: onTime.buckets, forecastBuckets: forecast.buckets,
+    // Task-grain schedule buckets (registry 4.4) — what the Forecast card reads.
+    forecastTaskBuckets: forecastTask.buckets,
     reworkBuckets: rework.buckets,
     leadTimeBuckets: leadTime.buckets,
     throughputBuckets: throughput.buckets,
@@ -7337,7 +7737,19 @@ function assembleModel_(inputs, win) {
 // shape is unchanged but the MEANING of "(No team)" is — it stops absorbing
 // non-tracking families and long-leave rocketeers — so cached v47 models must
 // not be served alongside it.
-var DH_SCHEMA_VER_ = 48;
+// 49 (2026-09-09, 2026.W37): items-not-people + week-follow.
+//      · onTimeBuckets carry person "" rows (unattributed kept); a v48 client
+//        would never see them (bucketsFor_ skips a missing person), so the old
+//        payload is merely the OLD number, not a broken one.
+//      · NEW forecastTaskBuckets (registry 4.4 redefines Forecast Accuracy at
+//        task grain). A v48 entry has none → the card renders "Not in this
+//        payload — refresh"; it must not be served beside a v49 entry or two
+//        tabs disagree about what Forecast Accuracy even is.
+//      · NEW person.resolved (resolved items per week, trailing
+//        RESOLVED_ITEMS_WEEKS) and meta.resolvedItemsWeeks; pmOwned epics carry
+//        `pushes` and the tab carries `pushCoverage` — both read tristate, so an
+//        older export degrades to "not measured", never to "clean".
+var DH_SCHEMA_VER_ = 49;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8134,7 +8546,197 @@ function _test_onTimeRate_() {
   assert_(e.n === 1 && e.onTime === 0 && e.nAll === 1, "late issue counted, not on time");
   assert_(r.buckets.length === 2, "person-keyed buckets; unresolved rows excluded");
   assert_(r.unattributed === 2, "non-roster + unassigned resolved issues tallied as unattributed");
+  // ── ITEMS, NOT PEOPLE (2026-09-09): keepUnattributed keeps the two dropped
+  // issues under person "" — still tallied, now countable by the items read.
+  var kept = onTimeBuckets_(issues, resolve, "delivery", { keepUnattributed: true });
+  var blank = kept.buckets.filter(function (b) { return b.person === ""; })[0];
+  assert_(kept.unattributed === 2, "keepUnattributed still tallies the honesty count");
+  assert_(blank && blank.iso === "2026.W31" && blank.nAll === 2 && blank.n === 2 && blank.onTime === 2,
+          "the two unattributed items ride under an empty person, graded like any other");
+  assert_(kept.buckets.length === 3, "…as a third bucket beside Ana and Ben, never merged into either");
+  var ka = kept.buckets.filter(function (b) { return b.person === "Ana"; })[0];
+  assert_(ka.n === 2 && ka.onTime === 2 && ka.nAll === 3, "named people's buckets are unchanged by the option");
   Logger.log("✅ _test_onTimeRate_ passed");
+}
+
+/** 📋 Change register (2026-09-09): every row is complete, numbered once, in
+    the three-word status vocabulary, and names nobody. */
+function _test_changesRegister_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_changesRegister_: " + m); }
+  assert_(DH_CHANGES_.length >= 8, "the register carries the 2026.W37 batch");
+  var seen = {};
+  DH_CHANGES_.forEach(function (c, i) {
+    assert_(typeof c.id === "number" && c.id > 0 && !seen[c.id], "change #" + c.id + " has a unique positive id");
+    seen[c.id] = 1;
+    assert_(i === 0 || DH_CHANGES_[i - 1].id < c.id, "ids are in ascending request order");
+    ["title", "ask", "done", "needs", "area"].forEach(function (f) {
+      assert_(c[f] && String(c[f]).trim().length >= 3, "change #" + c.id + " has a " + f);
+    });
+    assert_(["solved", "review", "todo"].indexOf(c.status) !== -1, "change #" + c.id + " uses solved / review / todo");
+    assert_(/^\d{4}\.W\d{1,2}$/.test(c.week) && /^\d{4}-\d{2}-\d{2}$/.test(c.requested),
+            "change #" + c.id + " carries an ISO week and a request date");
+    assert_(!/@/.test(c.ask + c.done + c.needs), "change #" + c.id + " names no email address");
+  });
+  assert_(DH_CHANGES_[0].id === 1 && /On-Time Delivery/.test(DH_CHANGES_[0].title),
+          "#001 is the On-Time calculation change, as the request's own example");
+  Logger.log("✅ _test_changesRegister_ passed");
+}
+
+/**
+ * Forecast Accuracy at TASK grain (registry 4.4, 2026-09-09): scheduled
+ * items graded against the END of their committed week, pending until the
+ * week closes, epics excluded, unattributed kept under person "".
+ */
+function _test_forecastTaskBuckets_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_forecastTaskBuckets_: " + m); }
+  var roster = { "ana": "Ana", "ben": "Ben" };
+  var resolve = function (raw) { return roster[String(raw).toLowerCase()] || null; };
+  var today = new Date(2026, 8, 9);                  // Wed 2026-09-09 → 2026.W37 in flight
+  var issues = [
+    // Due Wed 2026-09-02 (W36). Resolved Fri 2026-09-04 — AFTER the day, INSIDE the week → HIT.
+    { due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 4), assignee: "Ana" },
+    // Due Wed 2026-09-02 (W36). Resolved Mon 2026-09-07 (W37) → the week ended → MISS, and LATE.
+    { due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 7), assignee: "Ana" },
+    // Due Thu 2026-09-03 (W36). Still open → the week ended → MISS, not late.
+    { due: new Date(2026, 8, 3), resolved: null, assignee: "Ben" },
+    // Due Fri 2026-09-11 (W37, the live week). Still open → PENDING, never a miss yet.
+    { due: new Date(2026, 8, 11), resolved: null, assignee: "Ben" },
+    // Due Fri 2026-09-11 (W37). Already resolved 2026-09-08 → HIT even though the week is live.
+    { due: new Date(2026, 8, 11), resolved: new Date(2026, 8, 8), assignee: "Ana" },
+    // Resolved in W36 with NO due date → coverage only (nRes, not nResDated).
+    { due: null, resolved: new Date(2026, 8, 1), assignee: "Ana" },
+    // Undated AND open → nothing to say, never bucketed.
+    { due: null, resolved: null, assignee: "Ana" },
+    // An EPIC due and resolved in W36 → excluded entirely (spans quarters by nature).
+    { due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 2), assignee: "Ana", isEpic: true },
+    // Unassigned item due W36, resolved on the Sunday 2026-09-06 → HIT under person "".
+    { due: new Date(2026, 8, 2), resolved: new Date(2026, 8, 6), assignee: "" },
+  ];
+  var r = forecastTaskBuckets_(issues, resolve, today);
+  function b(iso, person) {
+    return r.buckets.filter(function (x) { return x.iso === iso && x.person === person; })[0] ||
+           { nSched: 0, nHit: 0, nMiss: 0, nLate: 0, nPending: 0, nRes: 0, nResDated: 0 };
+  }
+  var a36 = b("2026.W36", "Ana");
+  assert_(a36.nSched === 2 && a36.nHit === 1 && a36.nMiss === 1 && a36.nLate === 1 && a36.nPending === 0,
+          "Ana W36: one kept its week (resolved after the day, inside the week), one slipped into W37");
+  // Resolved-week coverage for Ana in W36: the hit (resolved 09-04, dated) and the undated one (09-01).
+  assert_(a36.nRes === 2 && a36.nResDated === 1, "Ana W36 coverage: 2 resolved that week, 1 carried a due date");
+  var a37 = b("2026.W37", "Ana");
+  assert_(a37.nSched === 1 && a37.nHit === 1 && a37.nPending === 0,
+          "an item due in the live week but already resolved is a HIT, not pending");
+  assert_(a37.nRes === 2 && a37.nResDated === 2, "Ana W37 resolved: the late W36 item + the early W37 one, both dated");
+  var b36 = b("2026.W36", "Ben");
+  assert_(b36.nSched === 1 && b36.nMiss === 1 && b36.nLate === 0, "still open after the week ended = a miss that is not 'late'");
+  var b37 = b("2026.W37", "Ben");
+  assert_(b37.nSched === 1 && b37.nPending === 1 && b37.nMiss === 0, "the live week's open item is PENDING — never a miss before Sunday");
+  var u36 = b("2026.W36", "");
+  assert_(u36.nSched === 1 && u36.nHit === 1, "the unassigned item is kept under person \"\" and graded (Sunday counts as inside the week)");
+  assert_(r.unattributed === 1, "…and tallied once as unattributed");
+  assert_(!r.buckets.some(function (x) { return x.nSched + x.nRes > 6 + 1 + 1 + 1; }), "sanity: no bucket over-counts");
+  var totalSched = r.buckets.reduce(function (s, x) { return s + x.nSched; }, 0);
+  assert_(totalSched === 6, "6 scheduled non-epic items in total — the epic never entered any bucket");
+  Logger.log("✅ _test_forecastTaskBuckets_ passed");
+}
+
+/** Resolved work per person × week (schema 49): horizon, join, on-time flag,
+    epic inclusion, miss-first ordering and the per-week cap. */
+function _test_resolvedByPerson_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_resolvedByPerson_: " + m); }
+  var idx = buildNameIndex_(["Maria Alvarez", "Ken Ito"]);
+  var today = new Date(2026, 8, 9);                  // 2026.W37
+  var old = new Date(2026, 3, 1);                    // April — beyond the 13-week horizon
+  var issues = [
+    { key: "E-1", isEpic: true, summary: "Rollout", resolved: new Date(2026, 8, 2), due: new Date(2026, 8, 4),
+      assignee: "Maria Alvarez", status: "Done", spentSec: 7200, estSec: 3600, typeLabel: "Epic" },
+    { key: "T-1", summary: "Late task", resolved: new Date(2026, 8, 3), due: new Date(2026, 8, 1),
+      assignee: "maria alvarez", status: "Done", spentSec: 1800, epicKey: "E-1", typeLabel: "Task" },
+    { key: "T-2", summary: "Undated task", resolved: new Date(2026, 8, 4), due: null,
+      assignee: "Maria Alvarez", status: "Done", spentSec: 36000, typeLabel: "Task" },
+    { key: "T-3", summary: "Too old", resolved: old, due: old, assignee: "Maria Alvarez", status: "Done" },
+    { key: "T-4", summary: "Outsider", resolved: new Date(2026, 8, 3), due: null, assignee: "Nobody Here", status: "Done" },
+    { key: "T-5", summary: "Still open", resolved: null, due: new Date(2026, 8, 3), assignee: "Ken Ito", status: "In Progress" },
+  ];
+  var by = resolvedByPerson_(issues, idx, today);
+  var m = by["Maria Alvarez"];
+  assert_(m && m.weeks["2026.W36"], "Maria has a W36 entry");
+  var w = m.weeks["2026.W36"];
+  assert_(w.count === 3 && w.epics === 1, "3 resolved in W36 including the epic — epics ARE listed here");
+  assert_(w.dated === 2 && w.onTime === 1, "2 carried a due date, 1 kept it");
+  assert_(!Object.keys(m.weeks).some(function (iso) { return iso.indexOf("2026.W1") === 0; }),
+          "April's item is outside the 13-week horizon and not carried");
+  // Needs-action ordering (user 2026-09-09): most reasons first. T-2 has no due
+  // date, no estimate and no epic (3); T-1 has no estimate and is late (2);
+  // E-1 has every field and kept its date (0).
+  assert_(w.items[0].key === "T-2" && w.items[0].gaps.join("|") === "no due date|no estimate|not linked to an epic",
+          "the item with the most reasons to act sorts first, and names them");
+  assert_(w.items[1].key === "T-1" && w.items[1].gaps.join("|") === "no estimate|late" && w.items[1].onTime === false,
+          "…then the late item with one missing field");
+  assert_(w.items[0].onTime === null && w.items[0].due === "", "an undated item is neither on time nor late");
+  assert_(w.items[2].key === "E-1" && w.items[2].isEpic === true && w.items[2].onTime === true && w.items[2].gaps.length === 0,
+          "the complete, on-time epic closes the list with no reasons");
+  assert_(w.needAction === 2, "the week states how many of its items need action (2 of 3)");
+  assert_(w.items[1].epicKey === "E-1" && w.items[1].epicName === "Rollout", "a child names the epic it belongs to");
+  assert_(w.items[0].spentHrs === 10 && w.items[1].spentHrs === 0.5, "logged seconds convert to tenths of an hour");
+  assert_(w.items[1].resolvedOn && /2026-09-03/.test(w.items[1].resolvedOn), "the resolution day travels as a date string");
+  assert_(!by["Ken Ito"], "an open item is not resolved work — Ken has no entry at all");
+  assert_(!by["Nobody Here"], "a name outside the population is not listed (same join as the backlog)");
+  // Cap: BACKLOG_MAX_ITEMS_ALL + 5 items in one week list only the cap, count stays whole.
+  var many = [];
+  for (var i = 0; i < CONFIG_DH.BACKLOG_MAX_ITEMS_ALL + 5; i++) {
+    many.push({ key: "M-" + i, summary: "m", resolved: new Date(2026, 8, 2), due: null,
+                assignee: "Ken Ito", status: "Done", spentSec: i });
+  }
+  var kw = resolvedByPerson_(many, idx, today)["Ken Ito"].weeks["2026.W36"];
+  assert_(kw.count === CONFIG_DH.BACKLOG_MAX_ITEMS_ALL + 5 && kw.listed === CONFIG_DH.BACKLOG_MAX_ITEMS_ALL &&
+          kw.items.length === CONFIG_DH.BACKLOG_MAX_ITEMS_ALL,
+          "the list is capped at the payload cap while count still describes the whole week");
+  Logger.log("✅ _test_resolvedByPerson_ passed");
+}
+
+/** Due Push Log (exporter ≥3.20.0): tristate parse, push = later date only,
+    week keying, and the PM epic entry / coverage that carry it. */
+function _test_duePushLog_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_duePushLog_: " + m); }
+  assert_(parseDuePushLog_("") === null && parseDuePushLog_(null) === null && parseDuePushLog_("   ") === null,
+          "blank cell = nobody looked → null");
+  var none = parseDuePushLog_("none");
+  assert_(none instanceof Array && none.length === 0, "\"none\" = looked, never edited → []");
+  var log = parseDuePushLog_("2026-08-12:2026-08-31>2026-09-15;2026-09-02:2026-09-15>2026-09-30;2026-09-03:2026-09-30>2026-09-20;2026-07-01:>2026-08-31;garbage");
+  assert_(log.length === 4, "4 well-formed entries parsed, the malformed one skipped");
+  assert_(log[0].at.getMonth() === 7 && log[0].at.getDate() === 12, "the edit day is read from its calendar parts");
+  assert_(log[3].from === null && log[3].to && log[3].to.getDate() === 31, "a newly-set date has no `from`");
+  var pushes = dhDuePushes_({ duePushes: log });
+  assert_(pushes.length === 2, "only moves to a LATER date are pushes — the pull-in and the first-set are not");
+  assert_(pushes[0].wk === "2026.W33" && pushes[0].days === 15 && pushes[0].from === "2026-08-31" && pushes[0].to === "2026-09-15",
+          "first push: W33, +15 days");
+  assert_(pushes[1].wk === "2026.W36" && pushes[1].days === 15, "second push: W36 (2026-09-02 is a Wednesday of W36)");
+  assert_(dhDuePushes_({ duePushes: null }) === null, "an unmeasured row stays null through the push read");
+  assert_(dhDuePushes_({ duePushes: [] }).length === 0, "a measured, never-edited row is an empty list");
+  // Through pmOwnedWork_: the epic entry carries `pushes`, the tab carries coverage.
+  var today = new Date(2026, 8, 9);
+  function iss(o) {
+    return { key: o.key, isEpic: !!o.isEpic, due: o.due || null, status: "In Progress",
+             statusCategory: "In Progress", estSec: 3600, linked: true, start: new Date(2026, 6, 1),
+             updated: new Date(2026, 8, 8), epicKey: o.epicKey || "", parentKey: "", assignee: "",
+             typeLabel: o.isEpic ? "Epic" : "Task", summary: o.key,
+             duePushes: o.duePushes === undefined ? null : o.duePushes };
+  }
+  var work = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 8, 30), duePushes: log }),
+    iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 8, 20), duePushes: [] }),
+    iss({ key: "GTT-3", isEpic: true, due: new Date(2026, 8, 20) }),           // never measured
+    iss({ key: "GTT-10", due: new Date(2026, 8, 10), epicKey: "GTT-1" }),
+  ] }, { GTT: "Dana Reyes" }, today);
+  var dana = work.rows.filter(function (r) { return r.pm === "Dana Reyes"; })[0];
+  var e1 = dana.epics.filter(function (e) { return e.key === "GTT-1"; })[0];
+  var e2 = dana.epics.filter(function (e) { return e.key === "GTT-2"; })[0];
+  var e3 = dana.epics.filter(function (e) { return e.key === "GTT-3"; })[0];
+  assert_(e1.pushes.length === 2 && e1.pushes[1].wk === "2026.W36", "the epic entry carries its pushes with week keys");
+  assert_(e2.pushes.length === 0, "a measured epic with no push carries an empty list");
+  assert_(e3.pushes === null, "an unmeasured epic carries null — the tab must say 'not measured', never 'clean'");
+  assert_(work.pushCoverage.epics === 3 && work.pushCoverage.measured === 2, "coverage: 2 of 3 listed epics were measured");
+  Logger.log("✅ _test_duePushLog_ passed");
 }
 
 function _test_forecastAccuracy_() {
@@ -10640,8 +11242,19 @@ function _test_modelAssembly_() {
           "non-tracking family dropped from population");
   assert_(m.meta.families.join("|") === "Service Delivery|Uncatalogued",
           "families list = included population only, blank → Uncatalogued");
-  assert_(m.onTimeBuckets.length === 1 && m.onTimeBuckets[0].onTime === 1 &&
-          m.onTimeBuckets[0].person === "Maria Alvarez", "onTime buckets person-attributed via alias join");
+  // Two buckets since schema 49: Maria's (alias-joined) and the ITEMS-read
+  // bucket under person "" that keeps "Random Dev"'s resolved issue countable.
+  var namedOt = m.onTimeBuckets.filter(function (b) { return b.person; });
+  var blankOt = m.onTimeBuckets.filter(function (b) { return b.person === ""; });
+  assert_(namedOt.length === 1 && namedOt[0].onTime === 1 &&
+          namedOt[0].person === "Maria Alvarez", "onTime buckets person-attributed via alias join");
+  assert_(blankOt.length === 1 && blankOt[0].n === 1 && blankOt[0].onTime === 1,
+          "the unattributed resolved issue is KEPT under person \"\" (items read), not dropped");
+  assert_(m.meta.jiraUnattributed.onTime === 1, "…and still tallied as unattributed for the honesty note");
+  assert_(m.forecastTaskBuckets && m.forecastTaskBuckets.length >= 1 &&
+          m.forecastTaskBuckets.every(function (b) { return typeof b.nSched === "number"; }),
+          "task-grain forecast buckets ship with the payload (schema 49)");
+  assert_(m.meta.resolvedItemsWeeks === CONFIG_DH.RESOLVED_ITEMS_WEEKS, "the resolved-items horizon is stated in meta");
   // Fixture epic ran 18000s against a 36000s estimate — 50% under, well outside
   // the ±10% band, so it is measurable (n=1) but not on target (nWithin=0).
   assert_(m.forecastBuckets.length === 1 && m.forecastBuckets[0].n === 1 &&
@@ -10895,8 +11508,8 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 48,
-          "payload schema is v48 (squad membership seeded from Capacity Tempo) — " +
+  assert_(m.schemaVer === 49,
+          "payload schema is v49 (items-not-people buckets, task-grain forecast, resolved items) — " +
           "literal check, independent of DH_SCHEMA_VER_");
   // The REMOVAL is asserted, not just the version. A deletion that silently
   // half-happened — the builder gone but the key still written, or the reverse —
@@ -10922,8 +11535,9 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 48,
-          "schema is 48 — v48 seeds squad membership from the Capacity Tempo Team column, so " +
+  assert_(m.schemaVer === 49,
+          "schema is 49 — v49 keeps unattributed on-time items, ships task-grain forecast buckets and " +
+          "per-person resolved items (2026.W37); v48 seeds squad membership from the Capacity Tempo Team column, so " +
           "\"(No team)\" stops absorbing everyone who logs no Tempo time; " +
           "v46 shipped the exporter handshake; v47 carves onLeave out of capacity," +
           "commitment and heads, so every capacity-derived rate moves. v45 split unrouted into its three states and carved delivered epics out " +

@@ -157,14 +157,15 @@ Local Node test runners. **Not** pasted into the GAS project.
 | Metric | Caveat |
 |---|---|
 | **Weeks to clear** | inventory ÷ **median** of the last 8 weeks' clearing. Robust to one holiday week, but it assumes the future looks like the recent past. **Not published on any surface since 2026-08-28** (user decision: a whole-queue runway figure reads as a delivery forecast) — the definition stays here because the clearing-rate median still gates the ruler |
-| **On-Time delivery** | measured against the Jira **Due Date, which anyone can move after the fact**. A re-baselined milestone reads as on time |
+| **On-Time delivery** | measured against the Jira **Due Date, which anyone can move after the fact**. A re-baselined milestone reads as on time. Read as **ITEMS** since 2026-09-09: unattributed items count, and only Region / Team / PM narrow the card |
+| **Forecast accuracy** (since 2026-09-09) | the share of tasks and milestones **scheduled** in the period that finished by the end of their committed week. Solid as a count; the caveat is the mutable due date — an item pushed out before its week ends leaves the denominator, which is why the PM tab's **⏩ pushed** signal exists beside it |
 | **Cleared per person** | normalises for team size — the honest comparison — but small groups still swing on one person, so any group under 10 people is shown ungraded |
 
 ### Do not quote yet
 
 | Metric | Why |
 |---|---|
-| **Forecast accuracy** | rests on roughly **one** measurable epic. A mean over one thing is not a mean. It shelves itself |
+| **Forecast accuracy — the old closed-epic estimate variance** | rested on roughly **one** measurable epic and moved for nobody inside a quarter. Retired from every surface 2026-09-09 (still shipped as `forecastBuckets` for audit) |
 | **Quality / rework** | there is **no capture path** for rework. Zero flagged items means nobody is recording it, not that nothing was reworked |
 | **Region / Team breakdowns** | the Jira fields are still largely unpopulated; the dashboard substitutes person-region from tracked hours. Real numbers, but *"by region"* does not yet mean what the Metrics Dictionary says |
 

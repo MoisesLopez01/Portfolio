@@ -42,6 +42,7 @@ _test_registry_(); _test_flowRegistry_(); _test_confidence_(); _test_regionVocab
 _test_parseExportStamp_(); _test_exporterVersion_(); _test_leaveCarve_(); _test_personHygieneBuckets_(); _test_leaverTest_(); _test_workforceChange_(); _test_srsoBinding_();
 _test_activeNameFilter_(); _test_gateOverrides_();
 _test_pmAttribution_();
+_test_forecastTaskBuckets_(); _test_resolvedByPerson_(); _test_duePushLog_(); _test_changesRegister_();
 _test_familyTracks_(); _test_backlogGrouping_(); _test_rosterActive_();
 _test_newHire_();
 _test_cacheRoundtrip_(new FakeCache());

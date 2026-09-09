@@ -6,8 +6,31 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.19.0
+  // VERSION:     3.20.0
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.20.0 (due-date PUSHES become data — user 2026-09-09, 2026.W37):
+  //   · NEW column 34 "Due Push Log": every Due Date change in an issue's
+  //     changelog as `YYYY-MM-DD:from>to` entries joined by ";" (a cleared or
+  //     newly-set date leaves its side empty). Tristate like Reopened: "" =
+  //     changelog not fetched for this row (nobody looked), "none" = fetched
+  //     and the due date was never edited. The dashboard decides what a "push"
+  //     is (a move to a LATER date) and in which week it happened — the export
+  //     records facts, not verdicts, so the rule can change without a re-run.
+  //   · NEW fetchOpenEpicChangelog_(): a second NARROW changelog fetch, over
+  //     OPEN epics updated in the last OPEN_EPIC_CHANGELOG_WEEKS, merged onto
+  //     the "Open" sentinel rows by key. The v3.12.0 narrow fetch covers only
+  //     RESOLVED work, so until now no open epic carried a changelog and the
+  //     Project Managers tab could not see a commitment being moved while it
+  //     is still live — which is the only moment the move is actionable.
+  //     Bounded to epics on purpose: children are the unit of delivery, epics
+  //     are the unit of commitment, and pushes on ~300 open epics cost a page
+  //     or two of expand=changelog, not the whole backlog's.
+  //   · ⚠️ HEADER CHANGE → the first light run after deploy does one FULL
+  //     REWRITE of Jira Raw (writeRawSheet_'s schema-drift guard), then merges
+  //     normally. Frozen rows from before this version carry "" in column 34.
+  //   · Consumer: delivery-health Code.js readJiraRaw_ reads the column by
+  //     header ("Due Push Log"); an older export simply reads as not measured.
+  //
   // CHANGES v3.19.0 (the deep window is counted in QUARTERS — user 2026-08-24):
   //   · RAW_HISTORY_QUARTERS = 2: two complete fiscal quarters plus the one in
   //     progress, replacing a flat 52 weeks. Span floats 25–39 weeks.
@@ -674,7 +697,7 @@
      // lives only in the header comment cannot travel with the data, so a
      // dashboard reading a three-week-old sheet has no way to know which rules
      // produced it. Bump this with the header comment — they are one fact.
-     VERSION: "3.19.0",
+     VERSION: "3.20.0",
 
     NON_DELIVERY_CATEGORIES: ["Internal"],
 
@@ -791,6 +814,12 @@
     // this is the number that makes "unlock changelog" different from
     // "flip FETCH_CHANGELOG and pay for it on 12,000 issues".
     CHANGELOG_WEEKS: 13,
+    // How far back (weeks) the OPEN-EPIC changelog fetch reaches (v3.20.0):
+    // open epics whose `updated` falls inside this window get their changelog
+    // expanded so the Due Push Log column can say when a live commitment was
+    // moved. Older untouched epics have, by definition, no recent push to
+    // report. 0 disables the fetch; the column then exports "" on open rows.
+    OPEN_EPIC_CHANGELOG_WEEKS: 13,
     // A reopen = a changelog transition where statusCategory left "Done" (or the
     // resolution was cleared) AFTER the issue had reached Done at least once.
     REOPEN_FROM_DONE_RE: /^(done|closed|resolved|complete)/i,
@@ -1720,6 +1749,40 @@
   }
 
   /**
+   * OPEN epics with their changelog — the second narrow fetch (v3.20.0).
+   *
+   * The resolved-work fetch above cannot see a commitment being moved while it
+   * is still live, and that is the only moment a due-date push is actionable:
+   * the Project Managers tab wants "which epics did we push THIS week", not a
+   * post-mortem after the epic closes. Epics only (the unit of commitment),
+   * bounded by `updated` — an epic nobody has touched inside the window has no
+   * push inside the window to report.
+   *
+   * Merged onto the "Open" sentinel rows by KEY by the caller; never inserts.
+   *
+   * @param {string} sinceStr ISO date — start of the OPEN_EPIC_CHANGELOG_WEEKS window.
+   * @returns {Object[]} open epics carrying `.changelog.histories`, scoped and de-noised.
+   */
+  function fetchOpenEpicChangelog_(sinceStr) {
+    var epicTypes = CONFIGJ.EXEC_ISSUE_TYPES.filter(function (t) { return /epic/i.test(t); });
+    if (!epicTypes.length) return [];
+    var jql = [
+      'issuetype in (' + epicTypes.join(", ") + ')',
+      'statusCategory != Done',
+      'project NOT IN (TEMPLATE)',
+      'updated >= "' + sinceStr + '"',
+      'summary !~ "to delete"'
+    ].join(" AND ") + ' ORDER BY updated DESC';
+    Logger.log("📋 Changelog (open epics, " + CONFIGJ.OPEN_EPIC_CHANGELOG_WEEKS + "w) JQL: " + jql);
+    var all = fetchAllIssuesByJql_(jql, JIRA_FIELDS_NO_COMMENTS, { expandChangelog: true });
+    var scoped = all.filter(function(i) {
+      return getSpaceForIssue_(i) !== null && !isNoiseIssue_(i);
+    });
+    Logger.log("   Changelog fetched for " + scoped.length + " open epics.");
+    return scoped;
+  }
+
+  /**
    * Fetches UNRESOLVED assigned issues — the open-backlog feed for the
    * delivery-health dashboard's per-person drill-down.
    *
@@ -2567,6 +2630,11 @@
     // so a re-baselined milestone currently reads as delivered on time with
     // no way to tell. See jbDueDateChangedFlag_.
     /* 33 */ "Due Date Changed",
+    // Every Due Date edit as `date:from>to` entries (v3.20.0) — the record the
+    // delivery-health PM tab reads to say WHICH epics were pushed in a given
+    // week. "" = changelog not fetched for this row, "none" = never edited.
+    // See jbDuePushLog_.
+    /* 34 */ "Due Push Log",
   ];
 
   function issueToRow_(issue, weekLabel, spaceKey) {
@@ -2644,6 +2712,8 @@
       workstream,
       // ── Column 33 (due-date integrity, v3.12.0) ──
       jbDueDateChangedFlag_(issue),
+      // ── Column 34 (due-date push log, v3.20.0) ──
+      jbDuePushLog_(issue),
     ];
   }
 
@@ -2779,6 +2849,48 @@
     // Same asymmetry as jbReopenedFlag_: a partial history can confirm a
     // due-date move, never rule one out.
     return jbChangelogTruncated_(issue) ? "" : "No";
+  }
+
+  /**
+   * Every Due Date edit in the changelog, oldest first, as
+   * `YYYY-MM-DD:from>to` entries joined by ";" — e.g.
+   * "2026-08-12:2026-08-31>2026-09-15;2026-09-02:2026-09-15>2026-09-30".
+   * A cleared date has an empty `to`, a newly-set one an empty `from`.
+   *
+   * Tristate like the flag beside it: "" when the changelog was not fetched
+   * for this row (nobody looked), "none" when it was and the date was never
+   * edited. A partial history still lists what it holds — the entries are
+   * facts; only a "none" needs the whole history to be trusted, so a truncated
+   * empty history exports "" rather than "none".
+   *
+   * FACTS, NOT VERDICTS: the export does not decide which edits are "pushes"
+   * (later dates) or which week they belong to. The dashboard does, so the
+   * rule can change without re-exporting a quarter of history.
+   */
+  function jbDuePushLog_(issue) {
+    var histories = dig_(issue, "changelog.histories");
+    if (!histories) return "";
+    var out = [];
+    for (var i = 0; i < histories.length; i++) {
+      var items = histories[i].items || [];
+      for (var j = 0; j < items.length; j++) {
+        if (String(items[j].field || "").toLowerCase() !== "duedate") continue;
+        out.push(String(histories[i].created || "").slice(0, 10) + ":" +
+                 jbDateOnly_(items[j].from) + ">" + jbDateOnly_(items[j].to));
+      }
+    }
+    // Jira returns histories newest-first; the log reads better oldest-first.
+    out.reverse();
+    if (out.length) return out.join(";");
+    return jbChangelogTruncated_(issue) ? "" : "none";
+  }
+
+  /** Changelog due-date values arrive as "2026-08-21" or "2026-08-21 00:00:00.0";
+      keep the calendar day only, "" for a blank/cleared side. */
+  function jbDateOnly_(v) {
+    var s = String(v == null ? "" : v).trim();
+    var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
   }
 
   /**
@@ -4001,6 +4113,27 @@
         seenKeys[i.key] = true;
         return true;
       });
+      // ── Open-epic changelog merge (v3.20.0) ─────────────────────────────
+      // The Due Push Log column needs changelog on OPEN epics, which neither
+      // the resolved-work narrow fetch nor the open-backlog fetch carries.
+      // Merged by key onto the open rows just built; open rows outside the
+      // window (or non-epics) keep exporting "" — nobody looked.
+      if (CONFIGJ.FETCH_CHANGELOG && CONFIGJ.OPEN_EPIC_CHANGELOG_WEEKS > 0 && openIssues.length > 0) {
+        var openSince = new Date();
+        openSince.setDate(openSince.getDate() - CONFIGJ.OPEN_EPIC_CHANGELOG_WEEKS * 7);
+        var openEpicLogs = fetchOpenEpicChangelog_(toIsoDate_(openSince));
+        var openLogByKey = {};
+        openEpicLogs.forEach(function(i) { openLogByKey[i.key] = i.changelog; });
+        var openMerged = 0, pushRows = 0;
+        openIssues.forEach(function(i) {
+          if (!openLogByKey[i.key]) return;
+          i.changelog = openLogByKey[i.key]; openMerged++;
+          var log = jbDuePushLog_(i);
+          if (log && log !== "none") pushRows++;
+        });
+        Logger.log("   Open-epic changelog merged onto " + openMerged + " of " + openIssues.length +
+          " open rows · " + pushRows + " carry at least one due-date edit.");
+      }
       if (openIssues.length > 0) {
         rawWeeklyData = rawWeeklyData.concat([{ label: "Open", issues: openIssues }]);
         Logger.log("📊 Jira Raw: + " + openIssues.length + " open-backlog rows.");
