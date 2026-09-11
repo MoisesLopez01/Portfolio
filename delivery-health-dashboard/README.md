@@ -138,6 +138,20 @@ repo, in `C:/Users/moise/gas-projects/delivery-health` (script
 @116 "GTT-514 delivery health W37 changes". Statements elsewhere in these docs that there is "no clasp
 binding" predate this.
 
+⚠️ **The clasp folder is a deploy target, not a scratch pad — and it forked once (2026-09-10, 2026.W37).**
+Brand work (the ServiceRocket lockup in the sidebar, the Roboto links, the logo on the access-denied
+page), the Kenya→EMEA fix and the "Other" region removal were edited straight into
+`gas-projects/delivery-health` and shipped as @121, while this repo held the unshipped v51 work
+(items drill-down, quarter/SRSO epic signals, leaver-work report). Reconciling the two needed a
+three-way merge against the `230c54b` blobs, not a copy in either direction. Edit HERE, copy THERE.
+Note also that the clasp copy is **CRLF** and `git show` emits **LF**, so any diff between them must
+normalise line endings first or it reports every line as changed.
+
+Shipped as **@122** "W37: brand lockup + items drill-down + Kenya→EMEA, Other region removed,
+register solved (schema v52)" — the merge of both sides. `DH_SCHEMA_VER_` 51→**52** because
+`meta.regions` loses "Other" and every `DH_CHANGES_` row gains a `solved` date; the cache read
+compares `cached.schemaVer` and recomputes on a mismatch, so no manual bust was required.
+
 ## Open-backlog population widened — hygiene numbers move by design (2026-08-06)
 
 `Jira Backlog.js` v3.11.0 drops `'assignee is not EMPTY'` from `fetchOpenIssues_()`
@@ -1933,6 +1947,21 @@ Three buckets, not two, and the distinction is the whole design:
   leavers' due dates. Silent when nothing was excluded.
 
 Utilization is untouched by this: leavers never had capacity in the first place.
+
+### 🚪 Work left by people who left (2026-09-10, schema v51)
+
+The exclusion keeps the rates honest and hides exactly one thing: the **open** epics and tasks still
+sitting on a leaver's name, which nobody is doing and nobody is being asked about. `leaverWork_`
+reads the **unscoped** feed (the rows the rule above removed), keeps `typeHygOpen_` items whose
+assignee resolves to a proven leaver (same one-sided rule, same alias machinery), and groups them by
+person: departure date and ISO week, epics / tasks, hours (**estimate or logged, whichever is
+larger** — the jira-1-signal rule), up to 25 listed items and a one-click Jira queue.
+
+It renders on **Actions, directly above the 👥 exclusion note** it explains (`leaverWorkHtml_`, in
+the same panel). Four states, none silent: not in this payload · not measured (with the reason) ·
+**measured and clean, which prints** · the list. It names people on purpose — reassigning work is
+impossible without knowing whose queue it sits in — and that is why it lives on the admin + viewer
+tab and never on the open-access Executive read. Nothing here rolls into any rate.
 
 ## Two clocks: model rebuild vs data freshness
 

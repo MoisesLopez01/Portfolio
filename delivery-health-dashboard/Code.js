@@ -178,12 +178,22 @@ var CONFIG_DH = {
     // Netherlands was falling through to "Other" — the only real roster
     // location the map missed (user report + roster audit 2026-08-04).
     "netherlands": "EMEA",
+    // Kenya → EMEA (user decision 2026-09-10, 2026.W37): three rocketeers were
+    // surfacing the "Other" chip on this location alone. Applies to FTE and
+    // crew alike — both roster sources pass through regionBucketFromLocation_.
+    "kenya": "EMEA",
   },
+  // ITEM-level bucket only (Jira "Resource region" values this dashboard cannot
+  // attribute to one geography — compound "AMER | SEA" tokens, unknown labels).
+  // NO PERSON ever lands here any more: "Other" was removed as a region on
+  // 2026-09-10 (user: "remove the option other from region since now it will
+  // always be at 0"). See regionBucketFromLocation_ for where people go instead.
   REGION_FALLBACK: "Other",
-  // A rocketeer with NO region signal at all — no Jira-tagged hours and a blank
-  // roster location — lands in EMEA (user decision 2026-08-04: "empty region
-  // rocketeers → EMEA"). Distinct from REGION_FALLBACK, which is for a REAL
-  // location the map doesn't know yet: that discomfort stays visible as "Other".
+  // A rocketeer whose roster location is blank OR not in LOCATION_REGION_MAP
+  // lands in EMEA (2026-08-04 "empty region rocketeers → EMEA", extended to
+  // unknown locations 2026-09-10 when "Other" stopped being a region). An
+  // unknown location is still a data gap — regionBucketFromLocation_ logs it
+  // once per build so LOCATION_REGION_MAP gets its one-line extension.
   PERSON_REGION_DEFAULT: "EMEA",
 
   // ── RAG tint thresholds (billable util %, spec §10.3) ──
@@ -335,66 +345,81 @@ var CONFIG_DH = {
 // Shipped impersonally in meta.changes; the tab is gated to admins in VIEWS.
 // ══════════════════════════════════════════════════════════════════════════
 var DH_CHANGES_ = [
-  { id: 1, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 1, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Calculation change for On-Time Delivery",
     ask: "Evaluate the rate on items, not people.",
     done: "The report now reads the actual items resolved in the selected week or month — including work assigned to nobody on the roster, to contractors, or to people outside the tracking families. Region, Team and PM filters still narrow it; Population, Role and Job family do not, because they describe people. Interns' items stay out, per the rule agreed on 2026-08-04. The card is tagged ITEMS and says how many items a filter could not place.",
     needs: "Deploy of Code.js and Dashboard.html (schema v49) plus a cache bump. The number moves on deploy." },
-  { id: 2, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 2, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Forecast Accuracy measured on the week's schedule, not on closed epics",
     ask: "Forecast accuracy at epic level is not doable — epics take two or three quarters — so measure it on the tasks or milestones scheduled for the week.",
     done: "Forecast Accuracy is now the share of tasks and milestones due in the selected week (or month) that were finished by the end of their committed week. Items whose week has not ended are shown as pending, never counted as misses. Late-but-finished is reported separately from still-open. Epics are excluded. The trend line carries a 'definition changed' marker at 2026-09-09; the old and new series are not comparable.",
     needs: "Same deploy as #001." },
-  { id: 3, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+  { id: 3, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
     title: "The current week or month shows by default",
     ask: "When week or month is selected we need to show the current month or week, so people get what is happening now.",
     done: "With nothing picked, every tab reads the current week, month or quarter so far. The picker's first entry is named '◐ Current week — so far'; a complete period can still be chosen from the Complete list. Current-period numbers carry the ◐ chip and are never compared to the period before.",
     needs: "Same deploy as #001." },
-  { id: 4, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Actions",
+  { id: 4, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Actions",
     title: "The Actions roster follows the selected week",
     ask: "On the current week show the Open backlog; on a past week show Resolved for that week, and each person's row should list the work closed that week.",
     done: "People signals opens on Open backlog for the current week and on 'Resolved · 2026.W36' when a past week is selected (the chips still switch it by hand). Expanding a person on the Resolved view lists every item they closed in that week — items needing action first (no due date, no estimate, no time logged, not linked, or late), each with its status, its epic and a one-click open in Jira. The list is carried for the last 13 weeks; older windows say so. Every person in the filtered Region, Team or PM is listed.",
     needs: "Same deploy as #001." },
-  { id: 5, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Filters",
+  { id: 5, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Filters",
     title: "Reset button moved next to More filters",
     ask: "The reset button should be next to 'More filters'.",
     done: "Reset now sits in the filter row beside More filters and clears every filter, the search, the period selection and all expanded rows. Same button, same behaviour, new place.",
     needs: "Same deploy as #001." },
-  { id: 6, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 6, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "PM signal 'unlinked' renamed 'Without tasks'",
     ask: "Rename the signal called unlinked to 'Without tasks'.",
     done: "The pill, the Needs-action row and the epic row all say 'Without tasks' — an epic with nothing broken down under it. The per-ticket 'Not linked to a parent' signal on the backlog-health panel is a different fact and keeps its name.",
     needs: "Same deploy as #001." },
-  { id: 7, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 7, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "New PM signal: due date pushed during the evaluated week",
     ask: "Add a signal for work pushed during the evaluated week, using the idea from the milestone-slip dashboard.",
     done: "The hourly Jira export (Jira Backlog.js 3.20.0) now records every due-date edit on open epics. The Project Managers tab shows '⏩ N pushed in 2026.W36' per PM for the selected week, a matching Needs-action row, and on each epic by how many days and from which date to which. Coverage is stated: until the new export runs, the tab says pushes are not measured rather than showing anyone as clean.",
     needs: "Deploy the export first (its first hourly run rewrites the Jira Raw sheet once), then the dashboard. Pushes are recorded for epics only — see #010." },
-  { id: 8, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Changes tab",
+  { id: 8, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Changes tab",
     title: "Admin-only Changes tab",
     ask: "A tab for admins that shows, in plain English, each change request and whether it is solved, under review or to do — impactful changes only.",
     done: "This page. Rows are numbered in request order, written as the request and the solution, and grouped by status with To do first. Only changes that move a number, change what a number means, or change what a reader does on a tab are listed.",
     needs: "Same deploy as #001." },
-  { id: 9, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 9, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Open Forecast Accuracy to every role",
     ask: "Raised while redefining Forecast Accuracy: the new definition carries no financial data, so the card could be shown to open-access viewers too.",
     done: "Not changed. The card is still limited to admins and named viewers, as the Metrics Dictionary required for the old estimate-based definition. Decision pending with delivery leadership.",
     needs: "A yes/no from delivery leadership; a one-line change once decided." },
-  { id: 10, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
+  { id: 10, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Project Managers",
     title: "Record due-date pushes on tasks, not only epics",
     ask: "Follow-up to #007: the pushed signal covers epics; tasks pushed inside an epic are not yet visible.",
     done: "Not built. It needs the export to fetch change history for every open task, which is a cost decision for the export's owner (the hourly run already pays for history on open epics and recent resolved work).",
     needs: "Owner decision on export cost; then the same column read at task grain." },
-  { id: 11, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Overview",
+  { id: 11, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Overview",
     title: "Breakdown charts still attribute by people",
     ask: "Follow-up to #001: the Region / Level / PM breakdown bars under the cards are computed through people, so a bar can differ from the ITEMS card by exactly the items nobody on the roster owns.",
     done: "Not changed, and stated on the card. An item-side breakdown needs Region and Team filled on the Jira issues themselves, which the export still receives blank (Jira field discipline, PR-01).",
     needs: "PR-01 (Region/Team on Jira issues) before this can be built honestly." },
-  { id: 12, status: "solved", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
+  { id: 12, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-09", area: "Period picker",
     title: "Planning windows (next 2 weeks) removed from the period picker",
     ask: "Remove the next-2-weeks planning entries from the filter — we are not actively using them.",
     done: "The picker offers the current period and the complete ones only; the 'Planning · next 2 weeks' group and its planned-coverage grammar no longer appear. The code stays behind one number so the windows can return if planning becomes a weekly practice.",
     needs: "Same deploy as #001." },
+  { id: 13, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-10", area: "Project Managers",
+    title: "Quarter and sales-order signals on each epic: carried over, pushed beyond the quarter, no SRSO",
+    ask: "Include a signal on work pushed over the fiscal quarter or carried over from the previous quarter, and on epics with no SRSO, as the milestone-slip dashboard's Projects & epics tab shows them.",
+    done: "Three signals per epic, read against the fiscal quarter of the selected window (FY starts Jul 1). '↩ carried into FY27 Q2' — still open with a due date from before the quarter began. '⏭ pushed beyond FY27 Q2' — the due date was moved past the quarter's end and is still there, so the work (and any revenue on it) lands next quarter. '🧾 no SRSO' — no sales-order binding in the Components field or the fix-version Billing Type. Each appears as a pill on the PM's row, a Needs-action row with a one-click Jira queue, and a marker on the epic row naming the date. Coverage is stated: an export without the SRSO columns says so, and an epic with no recorded date history cannot read as never pushed.",
+    needs: "Deploy of Code.js and Dashboard.html (schema v51) plus a cache bump. SRSO binding needs the Components or Billing Type column; quarter pushes need the Due Push Log (exporter ≥3.20.0) — both are in the current export." },
+  { id: 14, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-10", area: "Actions",
+    title: "Work left by people who left",
+    ask: "Add to Actions, above the former-employees notice, the report 'Work left by people who left' from the milestone-slip dashboard.",
+    done: "A table at the foot of Actions: each former employee (roster: inactive row, no active row anywhere) with open epics and tasks still assigned to them — when they left, how many items, the hours (estimate or logged, whichever is larger), the items themselves with status and due week, and one click to open their queue in Jira. Nothing here is counted in any rate: attrition stays out of scope, this is the list of what to reassign or descope. A clean state prints as a clean state rather than disappearing.",
+    needs: "Same deploy as #013. Names appear, so the panel stays on Actions (admins and named viewers), never on the Executive read." },
+  { id: 15, status: "solved", solved: "2026-09-10", week: "2026.W37", requested: "2026-09-10", area: "Filters",
+    title: "Kenya placed in EMEA; the 'Other' region removed",
+    ask: "Three people showed under the region 'Other' because their location is Kenya. Put them in EMEA — for rocketeers and crew alike — and drop the 'Other' chip, since nobody is left in it.",
+    done: "Kenya now belongs to EMEA, and the rule is read the same way for employees and crew because both pass through the same location map. 'Other' is gone as a person region: the filter bar shows the four geographic regions only. A location the map has never seen also lands in EMEA now rather than in 'Other', and is written once per build to the execution log so the map gets its one-line extension — the gap stays visible to the owner instead of on the director's filter bar. 'Other' survives only as an item-level bucket for Jira rows whose own Resource region field is compound or unrecognised; no person can reach it.",
+    needs: "Same deploy as #013." },
 ];
 
 var METRIC_REGISTRY_ = {
@@ -1517,10 +1542,22 @@ function aggregateNsWeeks_(rows) {
 function regionBucketFromLocation_(keyLocation) {
   var k = normDH_(keyLocation);
   // Blank location = an EMPTY region, not an unknown one — those rocketeers
-  // land in EMEA (user decision 2026-08-04), never in "Other".
+  // land in EMEA (user decision 2026-08-04).
   if (!k) return CONFIG_DH.PERSON_REGION_DEFAULT;
-  return CONFIG_DH.LOCATION_REGION_MAP[k] || CONFIG_DH.REGION_FALLBACK;
+  if (CONFIG_DH.LOCATION_REGION_MAP[k]) return CONFIG_DH.LOCATION_REGION_MAP[k];
+  // Unknown location: ALSO EMEA (user 2026-09-10 — "Other" is no longer a
+  // region). The person stays reachable through a real chip; the gap stays
+  // visible in the execution log instead of on the filter bar. Logged once per
+  // distinct value per build, not once per roster row.
+  if (!DH_UNMAPPED_LOC_SEEN_[k]) {
+    DH_UNMAPPED_LOC_SEEN_[k] = true;
+    Logger.log("⚠️ Roster Key Location \"" + keyLocation + "\" is not in " +
+               "CONFIG_DH.LOCATION_REGION_MAP — person bucketed as " +
+               CONFIG_DH.PERSON_REGION_DEFAULT + ". Add the country to the map.");
+  }
+  return CONFIG_DH.PERSON_REGION_DEFAULT;
 }
+var DH_UNMAPPED_LOC_SEEN_ = {};
 
 /**
  * Person region = GEOGRAPHIC region receiving the most Jira-tagged tracked
@@ -1556,10 +1593,12 @@ var DH_GEO_REGIONS_ = ["AMER", "EMEA", "SEA", "ANZ"];
 /**
  * The region chip list shipped as `meta.regions`.
  *
- * The four geographic regions always, plus REGION_FALLBACK ("Other") ONLY when
- * at least one person in the population actually carries it.
+ * The four geographic regions, always (2026-09-10). From 2026-08-17 to
+ * 2026-09-10 it was the four plus REGION_FALLBACK ("Other") whenever at least
+ * one person carried it; the history below explains why, and why the same
+ * guarantee is now provided one step earlier instead.
  *
- * WHY IT IS COMPUTED RATHER THAN LISTED. The user's instruction on 2026-08-17
+ * WHY IT WAS COMPUTED RATHER THAN LISTED. The user's instruction on 2026-08-17
  * was "delete Other, we have everyone in an assigned region already", and today
  * that is true. But the chip is what makes a person REACHABLE: every region
  * filter matches on `p.region`, so a person sitting in a bucket with no chip is
@@ -1581,9 +1620,15 @@ var DH_GEO_REGIONS_ = ["AMER", "EMEA", "SEA", "ANZ"];
  * @returns {string[]} chip list for meta.regions
  */
 function dhRegionChips_(people) {
-  var fallback = CONFIG_DH.REGION_FALLBACK;
-  var used = (people || []).some(function (p) { return p && p.region === fallback; });
-  return used ? DH_GEO_REGIONS_.concat([fallback]) : DH_GEO_REGIONS_.slice();
+  // 2026-09-10 (user: "remove the option other from region since now it will
+  // always be at 0"): the four geographic regions, always. The reachability
+  // argument above still holds — it is satisfied upstream now, because
+  // regionBucketFromLocation_ sends an unknown location to EMEA (and logs it)
+  // and assignPersonRegion_ never votes "Other", so no person can carry a
+  // region without a chip. The parameter is kept so the call site and the
+  // tests keep their shape.
+  void people;
+  return DH_GEO_REGIONS_.slice();
 }
 
 // ── NEW-HIRE HANDLING (user decision 2026-07-31) ─────────────
@@ -3096,6 +3141,19 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
               // carried no changelog for this row — nobody looked, which the
               // tab must state rather than show a clean pill.
               pushes: dhDuePushes_(it),
+              // Calendar due day (2026-09-10). The quarter signals compare a due
+              // date against a FISCAL-QUARTER boundary (Jul 1 / Oct 1 / Jan 1 /
+              // Apr 1), which is not week-aligned — `due` above is a week key
+              // and cannot say which side of Oct 1 a Thursday falls on. Same
+              // "YYYY-MM-DD" grammar as the pushes' from/to, so the client
+              // compares plain strings.
+              dueIso: dhHasDue_(it) ? dhIsoDay_(it.due) : "",
+              // SRSO binding, TRISTATE (2026-09-10, from the jira-1-signal
+              // dashboard): true = bound to a sales order via the Components
+              // field (runbook B2.6) OR the exporter's fix-version Billing Type;
+              // false = measured and unbound; null = neither column is in this
+              // export, so nobody looked — the tab states it, never "clean".
+              srso: dhSrsoBound_(it),
               // Space (Project) as the export names it — the PM tab groups a
               // PM's epics by it (user 2026-09-09: PMs work by Jira project).
               project: it.project || dhProjectOf_(it.key),
@@ -3182,12 +3240,20 @@ function pmOwnedWork_(jira, byProject, today, resolvePerson) {
   // Push coverage: how many of the listed epics the export actually measured
   // for due-date edits. 0 of N means an exporter older than 3.20.0 (or the
   // changelog fetch switched off) — the pill is absent and the tab says why.
-  var pushEpics = 0, pushMeasured = 0;
+  // SRSO coverage reads the same way: an export without the Components and
+  // Billing Type columns measured nothing, and "0 unbound" must not read as
+  // "everything bound".
+  var pushEpics = 0, pushMeasured = 0, srsoMeasured = 0;
   rows.forEach(function (r) {
-    r.epics.forEach(function (e) { pushEpics++; if (e.pushes !== null) pushMeasured++; });
+    r.epics.forEach(function (e) {
+      pushEpics++;
+      if (e.pushes !== null) pushMeasured++;
+      if (e.srso !== null) srsoMeasured++;
+    });
   });
   return { rows: rows, keyCap: EPIC_DUE_MAX_KEYS_,
-           pushCoverage: { epics: pushEpics, measured: pushMeasured } };
+           pushCoverage: { epics: pushEpics, measured: pushMeasured },
+           srsoCoverage: { epics: pushEpics, measured: srsoMeasured } };
 }
 
 /**
@@ -4189,6 +4255,101 @@ function leaverTest_(roster) {
     if (!raw) return false;            // unassigned is a gap, never "a leaver"
     return !!resolveName_(idx, raw);
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🚪 WORK LEFT BY PEOPLE WHO LEFT (user 2026-09-10, from the jira-1-signal
+// dashboard's LEAVER_WORK signal).
+//
+// Attrition is out of scope for every RATE (2026-08-04): a leaver's issues
+// leave numerator and denominator alike. But the work does not leave with the
+// person — an open epic or task still on a leaver's name is work nobody is
+// doing and nobody is being asked about, and the exclusion that keeps the rates
+// honest is exactly what hides it. This is the one surface that lists it, so a
+// PM can reassign or descope each item. It reads the UNSCOPED feed for that
+// reason; nothing here rolls into any figure.
+//
+// Naming. The Workforce Change block above publishes counts only, because it is
+// read by the whole company. This list names people, because reassigning work
+// is impossible without knowing whose queue it sits in — and it renders on the
+// Actions tab, which is gated to admins and named viewers, never on the
+// open-access Executive read.
+// ══════════════════════════════════════════════════════════════════════════
+
+var LEAVER_ITEMS_MAX_ = 25;    // items LISTED per person; the counts are always whole
+var LEAVER_KEYS_MAX_ = 200;    // keys carried for the one-click Jira queue
+
+/**
+ * Open work still assigned to former employees, grouped by person.
+ *
+ * "Open" is typeHygOpen_ — the same predicate every other backlog surface
+ * reads. "Leaver" is the leaverTest_ rule (inactive row, no active row anywhere,
+ * alias-matched), re-derived here because the person's ROSTER RECORD is needed
+ * for the departure date, not just a yes/no. Hours = the larger of estimate and
+ * logged time (the jira-1-signal rule): an unestimated epic with 30h logged is
+ * 30h of somebody's work, and an untouched 40h estimate is 40h of commitment.
+ *
+ * @param {Object} jira   readJiraRaw_ output — the UNSCOPED feed
+ * @param {Object} roster readRosterPeople_ output
+ * @param {Date}   now    injectable clock (overdue reads against its ISO week)
+ * @returns {{measured:boolean, reason?:string, people:Array, items:number,
+ *            epics:number, tasks:number, hours:number}}
+ */
+function leaverWork_(jira, roster, now) {
+  var out = { measured: false, people: [], items: 0, epics: 0, tasks: 0, hours: 0 };
+  if (!jira || !jira.available) { out.reason = "no Jira export"; return out; }
+  if (!roster || roster.error) { out.reason = (roster && roster.error) || "no roster"; return out; }
+  var act = roster.activeAll || {}, inact = roster.inactiveAll || {};
+  var byName = {};
+  (roster.attrib || []).forEach(function (p) {
+    var k = normDH_(p.name);
+    if (inact[k] && !act[k] && !byName[p.name]) byName[p.name] = p;
+  });
+  out.measured = true;
+  var gone = Object.keys(byName);
+  if (!gone.length) return out;
+  var idx = buildNameIndex_(gone);
+  var byPerson = {}, seen = {};
+  (jira.issues || []).forEach(function (it) {
+    if (!it || !it.key || seen[it.key] || !typeHygOpen_(it)) return;
+    var raw = dhAssigneeOf_(it.assignee);
+    if (!raw) return;                                // unassigned is a gap, not attrition
+    var who = resolveName_(idx, raw);
+    if (!who) return;
+    seen[it.key] = 1;
+    var p = byPerson[who];
+    if (!p) {
+      var rec = byName[who] || {};
+      var term = rec.termDate && !isNaN(rec.termDate.getTime()) ? rec.termDate : null;
+      p = byPerson[who] = { name: who, left: term ? dhIsoDay_(term) : "",
+                            leftWeek: term ? weekKeyFromDate_(term) : "",
+                            epics: 0, tasks: 0, hours: 0, itemsN: 0, items: [],
+                            keys: [], keysCapped: false };
+    }
+    var hours = Math.round(Math.max(Number(it.estSec) || 0, Number(it.spentSec) || 0) / 3600 * 10) / 10;
+    if (it.isEpic) { p.epics++; out.epics++; } else { p.tasks++; out.tasks++; }
+    p.hours = Math.round((p.hours + hours) * 10) / 10;
+    out.hours = Math.round((out.hours + hours) * 10) / 10;
+    p.itemsN++; out.items++;
+    if (p.items.length < LEAVER_ITEMS_MAX_) {
+      p.items.push({ key: it.key, project: it.project || dhProjectOf_(it.key),
+                     summary: it.summary || "", kind: it.isEpic ? "epic" : "task",
+                     status: it.status || "", due: dhHasDue_(it) ? weekKeyFromDate_(it.due) : "",
+                     overdue: dhOverdue_(it, now), hours: hours });
+    }
+    if (p.keys.length < LEAVER_KEYS_MAX_) p.keys.push(it.key); else p.keysCapped = true;
+  });
+  out.people = Object.keys(byPerson).map(function (k) { return byPerson[k]; });
+  out.people.forEach(function (p) {
+    // Epics first (they are the containers a PM re-owns), then by hours.
+    p.items.sort(function (a, b) {
+      return ((b.kind === "epic") - (a.kind === "epic")) || (b.hours - a.hours) || a.key.localeCompare(b.key);
+    });
+  });
+  out.people.sort(function (a, b) {
+    return (b.hours - a.hours) || (b.itemsN - a.itemsN) || a.name.localeCompare(b.name);
+  });
+  return out;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -5948,6 +6109,38 @@ function dhSrsoComponent_(hasCol, cell) {
 }
 
 /**
+ * Is this record bound to a sales order by EITHER route the export carries?
+ *
+ * Two joins exist in Jira (jira-1-signal, Progress.js srsoBinding_): the SRSO
+ * token in a FIX VERSION — which the exporter has already folded into Billing
+ * Type "Billable (SRSO)" — and the SRSO token in a COMPONENT (runbook B2.6),
+ * read raw as `srsoComponent`. Bound by either counts. The shadow-hours split
+ * reads the component alone by design (see its header); this one is the
+ * per-epic signal a PM acts on, and telling a PM "no SRSO" about an epic whose
+ * fix version carries one would send them to Finance for nothing.
+ *
+ * TRISTATE. null = neither column is in this export (nobody looked); false =
+ * at least one column was read and found no token; true = bound.
+ */
+function dhSrsoBound_(it) {
+  var comp = it ? it.srsoComponent : null;
+  var bill = it && it.billing != null ? String(it.billing).trim() : "";
+  var compMeasured = comp !== null && comp !== undefined;
+  if (!compMeasured && !bill) return null;
+  return comp === true || DH_SRSO_TOKEN_.test(bill);
+}
+
+/** Local calendar day of a Date as "YYYY-MM-DD" — the Due Push Log's own
+    grammar, so a due date and a push's from/to compare as plain strings. No
+    Utilities.formatDate: the node runner has no stub for it, and a calendar
+    day needs none. */
+function dhIsoDay_(d) {
+  if (!d || isNaN(d.getTime())) return "";
+  var m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+}
+
+/**
  * "Due Push Log" cell → the edits it records, or null when nobody looked.
  *
  * Cell grammar (Jira Backlog.js jbDuePushLog_): `YYYY-MM-DD:from>to` entries
@@ -7357,14 +7550,13 @@ function assembleModel_(inputs, win) {
       // rolls up under its assignee's geographic region everywhere else.
       //
       // "Other" left the list on 2026-08-17 (user: "we have everyone in an
-      // assigned region already"), but it is DATA-DRIVEN, not deleted — see
-      // dhRegionChips_. Hard-coding the four geographic regions would have been
-      // the same class of bug this dashboard keeps finding: the chip is what
-      // makes a person reachable, so dropping it while anyone still resolves to
-      // "Other" would make those people unselectable by any filter — present in
-      // every total, absent from every slice, and nothing on screen saying so.
-      // The chip therefore returns by itself the moment one person lands there,
-      // which is also the signal that LOCATION_REGION_MAP has met a new country.
+      // assigned region already") as a data-driven chip, and was REMOVED as a
+      // person region on 2026-09-10 (user: "remove the option other from
+      // region since now it will always be at 0"). The reachability guarantee
+      // the data-driven chip provided — every person's region has a chip — now
+      // holds by construction: regionBucketFromLocation_ sends an unknown
+      // roster location to EMEA (logging it as a map gap) and the Jira-hours
+      // vote never elects "Other", so nobody can resolve to a chipless bucket.
       regions: dhRegionChips_(people),
       teams: Object.keys(teamSet).sort(),
       pms: activePms.kept.sort(),
@@ -7477,9 +7669,20 @@ function assembleModel_(inputs, win) {
           // each epic, which is what lets the universal filters reach this tab.
           var w = pmOwnedWork_(jiraScoped, pmIdx.byProject, win.today || new Date(),
                                resolvePerson);
-          return { rows: w.rows, keyCap: w.keyCap, supersededPms: pmIdx.superseded };
+          // pushCoverage has been computed by pmOwnedWork_ since 2026-09-09 but
+          // never reached the payload — every live build read as a pre-v49
+          // entry and the tab printed no coverage line at all. Passed through
+          // from 2026-09-10, with its SRSO twin beside it.
+          return { rows: w.rows, keyCap: w.keyCap, supersededPms: pmIdx.superseded,
+                   pushCoverage: w.pushCoverage, srsoCoverage: w.srsoCoverage };
         })()
       : { rows: [], keyCap: EPIC_DUE_MAX_KEYS_, supersededPms: 0 },
+    // 🚪 Work left by people who left (user 2026-09-10). Reads the UNSCOPED
+    // feed on purpose: the attrition rule above removed exactly these rows from
+    // every rate, and this is the one surface that lists them so a PM can
+    // reassign or descope them. Person-named, so it renders on Actions (admin +
+    // viewer), never on the open-access Executive read.
+    leaverWork: leaverWork_(inputs.jira, inputs.roster, win.today || new Date()),
     // Joiners/leavers and the capacity they carried, per ISO week. The one
     // number here that describes people who are NOT in `people` — by the time
     // a leaver is in this bucket the roster has already dropped them, which is
@@ -7851,7 +8054,23 @@ function assembleModel_(inputs, win) {
 //      trailing RESOLVED_ITEMS_WEEKS) and `project` on each PM epic entry. A v49
 //      entry has neither: the cell drill says "not in this payload" and the PM tab
 //      groups every epic under one unnamed project — degraded, never wrong.
-var DH_SCHEMA_VER_ = 50;
+// 51 (2026-09-10, 2026.W37): quarter + SRSO signals and the leaver-work report.
+//      · pmOwned epics carry `dueIso` (calendar day) and `srso` (tristate); the
+//        tab carries `srsoCoverage` — and `pushCoverage` finally reaches the
+//        payload (it was computed and dropped since v49).
+//      · NEW `leaverWork`: open items still assigned to former employees,
+//        person-grained, read from the UNSCOPED feed. A v50 entry has none → the
+//        Actions panel says "not in this payload"; a v50 CLIENT on a v51 entry
+//        ignores the new fields. Degraded, never wrong, in both directions.
+// 52 (2026-09-10, 2026.W37): region cleanup + the change register closes.
+//      · meta.regions ships the four geographic regions ONLY — "Other" is no
+//        longer a person region (Kenya joined EMEA, and an unmapped location now
+//        falls to EMEA and is logged rather than parked in a chip). A cached v51
+//        entry would keep offering an "Other" chip that selects nobody.
+//      · every DH_CHANGES_ row carries a `solved` date and #015 is added. Only
+//        `solved` is new shape-wise, but a v51 entry would show the W37 batch
+//        without its live-since dates for up to a cache TTL after this deploy.
+var DH_SCHEMA_VER_ = 52;
 
 /** Full I/O compute — shared by getDeliveryData and warmDeliveryCache. */
 /**
@@ -8271,7 +8490,11 @@ function _test_regionMap_() {
   assert_(regionBucketFromLocation_("  MALAYSIA ") === "SEA", "case/space insensitive");
   assert_(regionBucketFromLocation_("Netherlands") === "EMEA",
     "Netherlands → EMEA (was falling through to Other, user report 2026-08-04)");
-  assert_(regionBucketFromLocation_("Atlantis") === "Other", "unknown → Other");
+  assert_(regionBucketFromLocation_("Kenya") === "EMEA",
+    "Kenya → EMEA (3 rocketeers were the only Other, user decision 2026-09-10)");
+  assert_(regionBucketFromLocation_("Atlantis") === "EMEA",
+    "unknown → EMEA (Other removed as a region, user decision 2026-09-10; logged as a map gap)");
+  assert_(DH_UNMAPPED_LOC_SEEN_["atlantis"] === true, "unknown location is recorded for the log");
   assert_(regionBucketFromLocation_("") === "EMEA",
     "blank → EMEA (empty-region rocketeers, user decision 2026-08-04)");
   Logger.log("✅ _test_regionMap_ passed");
@@ -8314,14 +8537,16 @@ function _test_regionChips_() {
           "everyone assigned → the geographic four, no Other chip");
   assert_(dhRegionChips_([]).indexOf(CONFIG_DH.REGION_FALLBACK) === -1,
           "an empty population does not invent an Other chip");
-  // …and it comes back BY ITSELF. No deploy, no code change — the same
-  // data-driven idiom the gaps queue's retire-at-100% rule uses.
+  // 2026-09-10: "Other" is no longer a region at all. Even a stray person
+  // carrying it (impossible from the roster or the Jira vote, kept as a guard)
+  // must not bring the chip back — the fix for such a person is upstream.
   var withOther = geo.concat([{ name: "E", region: CONFIG_DH.REGION_FALLBACK }]);
-  assert_(dhRegionChips_(withOther).indexOf(CONFIG_DH.REGION_FALLBACK) !== -1,
-          "one unmapped person brings the Other chip back, so nobody is unreachable");
-  assert_(dhRegionChips_(withOther).length === 5 &&
-          dhRegionChips_(withOther)[4] === CONFIG_DH.REGION_FALLBACK,
-          "…appended last, after the geographic four");
+  assert_(dhRegionChips_(withOther).join(",") === "AMER,EMEA,SEA,ANZ",
+          "Other never appears as a chip (user decision 2026-09-10)");
+  // …and the upstream guarantee: an unknown roster location resolves to a
+  // chipped region, so no person can be unreachable by the region filter.
+  assert_(DH_GEO_REGIONS_.indexOf(regionBucketFromLocation_("Nowhereland")) !== -1,
+          "unknown location resolves to one of the four chipped regions");
   // The four are the ORDER, not a set: a reader scanning the chip strip should
   // find them in the same place every time.
   assert_(dhRegionChips_(geo)[0] === "AMER" && dhRegionChips_(geo)[3] === "ANZ",
@@ -8722,10 +8947,18 @@ function _test_changesRegister_() {
     assert_(typeof c.id === "number" && c.id > 0 && !seen[c.id], "change #" + c.id + " has a unique positive id");
     seen[c.id] = 1;
     assert_(i === 0 || DH_CHANGES_[i - 1].id < c.id, "ids are in ascending request order");
-    ["title", "ask", "done", "needs", "area"].forEach(function (f) {
+    ["title", "ask", "done", "area"].forEach(function (f) {
       assert_(c[f] && String(c[f]).trim().length >= 3, "change #" + c.id + " has a " + f);
     });
     assert_(["solved", "review", "todo"].indexOf(c.status) !== -1, "change #" + c.id + " uses solved / review / todo");
+    // A row that is not live must say what has to happen; a solved row has
+    // nothing left to need (an optional `needs` renders as a note) but must
+    // say WHEN it went live (2026-09-10: the W37 batch flipped to solved).
+    if (c.status === "solved") {
+      assert_(/^\d{4}-\d{2}-\d{2}$/.test(c.solved), "solved change #" + c.id + " carries the date it went live");
+    } else {
+      assert_(c.needs && String(c.needs).trim().length >= 3, "open change #" + c.id + " says what it needs");
+    }
     assert_(/^\d{4}\.W\d{1,2}$/.test(c.week) && /^\d{4}-\d{2}-\d{2}$/.test(c.requested),
             "change #" + c.id + " carries an ISO week and a request date");
     assert_(!/@/.test(c.ask + c.done + c.needs), "change #" + c.id + " names no email address");
@@ -8890,6 +9123,104 @@ function _test_duePushLog_() {
   assert_(e3.pushes === null, "an unmeasured epic carries null — the tab must say 'not measured', never 'clean'");
   assert_(work.pushCoverage.epics === 3 && work.pushCoverage.measured === 2, "coverage: 2 of 3 listed epics were measured");
   Logger.log("✅ _test_duePushLog_ passed");
+}
+
+/** Quarter + SRSO signals (2026-09-10): the epic entry carries a calendar due
+    day and a TRISTATE sales-order binding; the tab carries SRSO coverage. */
+function _test_pmEpicSignals_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_pmEpicSignals_: " + m); }
+  // dhSrsoBound_: either route binds; measured-unbound is false; no column is null.
+  assert_(dhSrsoBound_({ srsoComponent: true, billing: "Internal" }) === true, "a component token binds whatever Billing Type says");
+  assert_(dhSrsoBound_({ srsoComponent: false, billing: "Billable (SRSO)" }) === true, "a fix-version binding (Billing Type) binds without a component");
+  assert_(dhSrsoBound_({ srsoComponent: false, billing: "Untagged" }) === false, "both columns read, no token → unbound");
+  assert_(dhSrsoBound_({ srsoComponent: false, billing: "" }) === false, "component column read alone, no token → unbound");
+  assert_(dhSrsoBound_({ srsoComponent: null, billing: "Internal" }) === false, "Billing Type read alone, Internal → unbound");
+  assert_(dhSrsoBound_({ srsoComponent: null, billing: "" }) === null, "neither column present → null, nobody looked");
+  assert_(dhSrsoBound_(null) === null, "a missing record is not measured");
+  // dhIsoDay_: local calendar day, zero-padded, no timezone drift.
+  assert_(dhIsoDay_(new Date(2026, 9, 1)) === "2026-10-01" && dhIsoDay_(new Date(2026, 0, 5)) === "2026-01-05", "zero-padded local day");
+  assert_(dhIsoDay_(null) === "" && dhIsoDay_(new Date("garbage")) === "", "no date → empty string, never 'NaN-NaN-NaN'");
+  // Through pmOwnedWork_.
+  var today = new Date(2026, 8, 10);
+  function iss(o) {
+    return { key: o.key, isEpic: !!o.isEpic, due: o.due || null, status: "In Progress",
+             statusCategory: "In Progress", estSec: 3600, linked: true, start: new Date(2026, 6, 1),
+             updated: new Date(2026, 8, 8), epicKey: o.epicKey || "", parentKey: "", assignee: "",
+             typeLabel: o.isEpic ? "Epic" : "Task", summary: o.key, duePushes: [],
+             srsoComponent: o.srsoComponent === undefined ? null : o.srsoComponent,
+             billing: o.billing === undefined ? "" : o.billing };
+  }
+  var work = pmOwnedWork_({ issues: [
+    iss({ key: "GTT-1", isEpic: true, due: new Date(2026, 5, 15), srsoComponent: false, billing: "Untagged" }),
+    iss({ key: "GTT-2", isEpic: true, due: new Date(2026, 9, 15), srsoComponent: true, billing: "Internal" }),
+    iss({ key: "GTT-3", isEpic: true, due: new Date(2026, 8, 20) }),                    // no SRSO columns
+    iss({ key: "GTT-4", isEpic: true }),                                                 // undated, started
+  ] }, { GTT: "Dana Reyes" }, today);
+  var dana = work.rows.filter(function (r) { return r.pm === "Dana Reyes"; })[0];
+  var by = {}; dana.epics.forEach(function (e) { by[e.key] = e; });
+  assert_(by["GTT-1"].dueIso === "2026-06-15" && by["GTT-1"].due === "2026.W25", "the entry carries the calendar day beside the week key");
+  assert_(by["GTT-4"].dueIso === "" && by["GTT-4"].due === "", "an undated epic carries an empty day, not 'Invalid Date'");
+  assert_(by["GTT-1"].srso === false && by["GTT-2"].srso === true && by["GTT-3"].srso === null, "SRSO tristate rides on each epic entry");
+  assert_(work.srsoCoverage.epics === 4 && work.srsoCoverage.measured === 2, "SRSO coverage counts the epics whose binding was actually read");
+  assert_(work.pushCoverage.epics === 4 && work.pushCoverage.measured === 4, "push coverage is unchanged by the new fields");
+  Logger.log("✅ _test_pmEpicSignals_ passed");
+}
+
+/** 🚪 Work left by people who left (2026-09-10). The failures that matter all
+    HIDE work: an alias-spelled leaver not matched, a boomerang's live work
+    listed as abandoned, resolved work counted as open, or a leaver with nothing
+    open inventing an empty row. */
+function _test_leaverWork_() {
+  function assert_(c, m) { if (!c) throw new Error("❌ _test_leaverWork_: " + m); }
+  var roster = {
+    attrib: [{ name: "Maria Alvarez", termDate: null },
+             { name: "Gone Person", termDate: new Date(2026, 7, 14) },
+             { name: "Boomer Ang", termDate: new Date(2025, 1, 1) },
+             { name: "Quiet Leaver", termDate: new Date(2026, 6, 1) },
+             { name: "Undated Leaver", termDate: null }],
+    activeAll: { "maria alvarez": 1, "boomer ang": 1 },
+    inactiveAll: { "gone person": 1, "boomer ang": 1, "quiet leaver": 1, "undated leaver": 1 },
+  };
+  var now = new Date(2026, 8, 10);
+  function it(o) {
+    return { key: o.key, isEpic: !!o.isEpic, assignee: o.assignee, status: o.status || "In Progress",
+             statusCategory: o.statusCategory || "In Progress", resolved: o.resolved || null,
+             due: o.due || null, estSec: (o.est || 0) * 3600, spentSec: (o.spent || 0) * 3600,
+             summary: o.summary || o.key, project: "GTT" };
+  }
+  var jira = { available: true, issues: [
+    it({ key: "GTT-1", isEpic: true, assignee: "Gone Person", est: 40, spent: 10, due: new Date(2026, 7, 31) }),
+    it({ key: "GTT-2", assignee: "Person, Gone", est: 2, spent: 5 }),                       // alias form, logged > estimate
+    it({ key: "GTT-3", assignee: "Gone Person", status: "Done", resolved: new Date(2026, 7, 1), est: 8 }), // resolved: not open
+    it({ key: "GTT-4", assignee: "Gone Person", status: "Cancelled", est: 8 }),              // closed-ish status: not open
+    it({ key: "GTT-5", assignee: "Boomer Ang", est: 8 }),                                    // rehire: live work
+    it({ key: "GTT-6", assignee: "Maria Alvarez", est: 8 }),                                 // active
+    it({ key: "GTT-7", assignee: "⚠️ UNASSIGNED", est: 8 }),                                 // unassigned: a gap, not attrition
+    it({ key: "GTT-8", assignee: "Never Heard Of", est: 8 }),                                // unknown: a gap, not attrition
+    it({ key: "GTT-9", assignee: "UNDATED LEAVER", est: 3 }),                                // case-insensitive, no term date
+    it({ key: "GTT-9", assignee: "Undated Leaver", est: 3 }),                                // duplicate key: counted once
+  ] };
+  var lw = leaverWork_(jira, roster, now);
+  assert_(lw.measured === true, "with a Jira feed and a roster the report is measured");
+  assert_(lw.people.length === 2, "two leavers hold open work: " + lw.people.map(function (p) { return p.name; }).join(", "));
+  var gone = lw.people[0], und = lw.people[1];
+  assert_(gone.name === "Gone Person" && und.name === "Undated Leaver", "sorted by hours, biggest queue first");
+  assert_(gone.epics === 1 && gone.tasks === 1 && gone.itemsN === 2, "resolved and closed-status items are NOT open work");
+  assert_(gone.hours === 45, "hours = max(estimate, logged) per item: 40 + 5 = 45");
+  assert_(gone.left === "2026-08-14" && gone.leftWeek === "2026.W33", "the departure date and its ISO week ride on the row");
+  assert_(und.left === "" && und.leftWeek === "" && und.itemsN === 1, "a leaver with no termination date still lists, with the date blank");
+  assert_(gone.items[0].key === "GTT-1" && gone.items[0].kind === "epic" && gone.items[0].overdue === true && gone.items[0].due === "2026.W36",
+          "epics list first, with due week and the overdue flag");
+  assert_(gone.keys.join(",") === "GTT-1,GTT-2", "the Jira queue keys are the open items only");
+  assert_(lw.items === 3 && lw.epics === 1 && lw.tasks === 2 && lw.hours === 48, "totals reconcile with the rows");
+  // Quiet Leaver: a former employee with nothing open never gets a row.
+  assert_(!lw.people.some(function (p) { return p.name === "Quiet Leaver"; }), "a leaver with no open work is not listed");
+  // Degradations say why, never an empty table that reads as clean.
+  assert_(leaverWork_({ available: false }, roster, now).measured === false, "no Jira feed → not measured");
+  assert_(leaverWork_(jira, { error: "Roster read failed" }, now).reason === "Roster read failed", "a roster failure carries its reason");
+  var none = leaverWork_(jira, { attrib: [], activeAll: {}, inactiveAll: {} }, now);
+  assert_(none.measured === true && none.items === 0 && none.people.length === 0, "an all-active roster measures and finds nothing");
+  Logger.log("✅ _test_leaverWork_ passed");
 }
 
 function _test_forecastAccuracy_() {
@@ -11515,6 +11846,12 @@ function _test_modelAssembly_() {
   assert_(m7.meta.leaverExcluded.issues === 1, "the leaver's issue is counted as excluded");
   assert_(!m7.onTimeBuckets.some(function (b) { return b.person === "Departed Dev"; }),
           "…and never reaches a metric bucket");
+  // 🚪 The leaver-work report is measured off the UNSCOPED feed: this leaver's
+  // only issue is RESOLVED, so the report is measured and empty — not "not
+  // measured", and not a row for finished work.
+  assert_(m7.leaverWork && m7.leaverWork.measured === true && m7.leaverWork.items === 0 &&
+          m7.leaverWork.people.length === 0,
+          "leaverWork ships measured-and-empty when the only leaver work is resolved");
   var hyg7 = m7.hygieneBuckets.filter(function (h) { return h.iso === "2026.W31"; })[0];
   assert_(hyg7.res === 2, "the leaver's issue leaves the hygiene DENOMINATOR too — " +
           "excluded work must not read as a coverage failure");
@@ -11661,8 +11998,10 @@ function _test_modelAssembly_() {
   // firing is the signal that a payload shape changed, and it is the moment to
   // ask whether stale cached entries can still be read safely. If you are here
   // because the suite went red, the answer is usually "bump DH_SCHEMA_VER_ too".
-  assert_(m.schemaVer === 50,
-          "payload schema is v50 (metricItems + project on PM epics; v49 = items-not-people buckets, " +
+  assert_(m.schemaVer === 52,
+          "payload schema is v52 (four regions only, change register with solved dates; " +
+          "v51 = dueIso + srso on PM epics, srsoCoverage/pushCoverage on the tab, leaverWork; " +
+          "v50 = metricItems + project on PM epics; v49 = items-not-people buckets, " +
           "task-grain forecast, resolved items) — literal check, independent of DH_SCHEMA_VER_");
   assert_(m.metricItems instanceof Array && m.meta.metricItemsWeeks === CONFIG_DH.RESOLVED_ITEMS_WEEKS,
           "the item feed ships with its horizon stated");
@@ -11690,8 +12029,17 @@ function _test_modelAssembly_() {
           "the model ships pmOwned.rows");
   assert_(typeof m.pmOwned.supersededPms === "number",
           "…and the count of superseded PM handovers, so an overwrite is never silent");
-  assert_(m.schemaVer === 50,
-          "schema is 50 — v50 ships metricItems and project on PM epics; v49 keeps unattributed on-time items, ships task-grain forecast buckets and " +
+  // Coverage twins reach the PAYLOAD (2026-09-10): pushCoverage was computed and
+  // dropped since v49, which left the tab silent about an unmeasured export.
+  assert_(m.pmOwned.pushCoverage && typeof m.pmOwned.pushCoverage.epics === "number" &&
+          m.pmOwned.srsoCoverage && typeof m.pmOwned.srsoCoverage.measured === "number",
+          "…and both coverage counters, so the tab can say what was not measured");
+  assert_(m.leaverWork && typeof m.leaverWork.measured === "boolean" && Array.isArray(m.leaverWork.people),
+          "the model ships leaverWork with its measured flag");
+  assert_(m.meta.regions.join(",") === "AMER,EMEA,SEA,ANZ",
+          "v52 ships the four geographic regions only — \"Other\" is no longer a person region");
+  assert_(m.schemaVer === 52,
+          "schema is 52 — v52 drops the Other region and dates every solved change; v51 ships dueIso/srso on PM epics, the coverage twins and leaverWork; v50 ships metricItems and project on PM epics; v49 keeps unattributed on-time items, ships task-grain forecast buckets and " +
           "per-person resolved items (2026.W37); v48 seeds squad membership from the Capacity Tempo Team column, so " +
           "\"(No team)\" stops absorbing everyone who logs no Tempo time; " +
           "v46 shipped the exporter handshake; v47 carves onLeave out of capacity," +

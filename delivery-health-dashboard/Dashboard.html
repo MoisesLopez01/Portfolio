@@ -2,6 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ServiceRocket brand type (servicerocket-brand kit, 2026-09-10). The
+     fallback stacks below stay in every font-family rule, so a blocked font
+     request degrades to Franklin Gothic / Arial rather than to a broken page. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Condensed:wght@700&display=swap">
 <style>
 :root{
   --void:#0F1941; --orbe:#058CDC; --ivory:#DCCDBE; --cream:#FFFAF5;
@@ -95,7 +102,8 @@ body.navCollapsed{--navw:56px}
    has nothing left to collapse until there is room for labels again. */
 @media(max-width:900px){
   body{--navw:56px}
-  .navName,.tabLbl,.navToggleLbl{display:none}
+  .navName,.tabLbl,.navToggleLbl,.navLogo{display:none}
+  .navMark{display:flex}
   .tab,.navToggle,.navBrand{justify-content:center;padding-left:0;padding-right:0}
 }
 /* Identity Lockdown typography: headings + hero numbers in the condensed face */
@@ -825,10 +833,17 @@ tr.detail td.dback{padding:8px 16px 12px}
   background:var(--nav-bg);color:var(--nav-text);display:flex;flex-direction:column;
   border-right:1px solid var(--nav-border);transition:width .16s cubic-bezier(.4,0,.2,1);
   overflow:hidden;box-shadow:1px 0 0 rgba(255,255,255,.04)}
-.navBrand{display:flex;align-items:center;gap:9px;padding:16px 14px 14px;
-  border-bottom:1px solid var(--nav-border);min-height:56px}
+/* BRAND BLOCK (servicerocket-brand kit, 2026-09-10). Expanded rail: the real
+   ServiceRocket lockup (white wordmark — the rail is dark in both themes) at
+   a legible 124px, app name underneath. Collapsed rail / phone: the lockup is a
+   horizontal wordmark and would be 14px tall at icon width, so the "DH"
+   monogram tile takes over — width-only sizing, never a stretched or cropped
+   rocket. */
+.navBrand{display:flex;flex-direction:column;align-items:flex-start;gap:8px;
+  padding:16px 14px 14px;border-bottom:1px solid var(--nav-border);min-height:56px}
+.navLogo{width:124px;height:auto;display:block}
 .navMark{width:26px;height:26px;flex:0 0 26px;border-radius:7px;background:var(--orbe);
-  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
+  display:none;align-items:center;justify-content:center;color:#fff;font-weight:800;
   font-size:13px;font-family:'Roboto Condensed',sans-serif;letter-spacing:.02em}
 .navName{font-family:'Roboto Condensed','Franklin Gothic Medium Cond',sans-serif;
   font-size:calc(14px*var(--scale));font-weight:700;letter-spacing:.01em;white-space:nowrap}
@@ -858,7 +873,9 @@ tr.detail td.dback{padding:8px 16px 12px}
    hidden with opacity, so the 56px rail has no horizontal scroll. */
 .navCollapsed .navName,.navCollapsed .tabLbl,.navCollapsed .navToggleLbl{display:none}
 .navCollapsed .tab,.navCollapsed .navToggle{justify-content:center;padding-left:0;padding-right:0}
-.navCollapsed .navBrand{justify-content:center;padding-left:0;padding-right:0}
+.navCollapsed .navBrand{justify-content:center;align-items:center;padding-left:0;padding-right:0}
+.navCollapsed .navLogo{display:none}
+.navCollapsed .navMark{display:flex}
 
 /* ── CHARTS ──
    Inline SVG, no library. A CDN chart lib is one blocked request away from an
@@ -941,6 +958,10 @@ tr.detail td.dback{padding:8px 16px 12px}
                   font-size:calc(11.5px*var(--scale))}
 .pmMethod>summary:hover{color:var(--fg)}
 .pmMethod .cellSub{margin:6px 0 0}
+/* 🚪 Work left by people who left (Actions, 2026-09-10) — its own block above
+   the 👥 exclusion note it explains. */
+.leaverWork{margin-bottom:14px}
+.leaverItem{margin:2px 0;line-height:1.4}
 /* Recoverable-hours alert — the pulse panel's lead (director feedback
    2026-08-17). Amber, not red: idle capacity is an opportunity, not a
    failure, and red is reserved for missed commitments. */
@@ -1157,6 +1178,7 @@ select option:disabled{color:var(--muted);font-style:italic}
      control, not a second copy of navigation that could drift from the first. -->
 <nav class="sidenav" id="sidenav" aria-label="Dashboard sections">
   <div class="navBrand">
+    <img class="navLogo" alt="ServiceRocket" src="data:image/png;base64,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">
     <span class="navMark" aria-hidden="true">DH</span>
     <span class="navName">Delivery Health</span>
   </div>
@@ -1533,7 +1555,7 @@ var VIEWS = [
   // queue are about fields and requirements, not people — a people-blame
   // banner over them framed the whole tab wrong.
   { id: "actions", label: "Actions", dot: "▲", pane: "viewActions", roles: ["admin", "viewer"],
-    hint: "Who and what needs action: the data-quality gates, the compliance signals roster and the gaps queue." },
+    hint: "Who and what needs action: the data-quality gates, the compliance signals roster, the backlog queues and the work left by people who left." },
   // Project Managers — the epics a PM OWNS, attributed by Jira assignee then
   // project lead (spec 2026-08-11). Sits NEXT TO ACTIONS (user 2026-08-11)
   // because it answers the same question at a different grain: Actions is "who
@@ -10030,6 +10052,9 @@ function renderPm_() {
   // any row is built so the pill, the Needs-action row and the epic rows agree.
   var pmHead = analysisHead_().head;
   PM_WINDOW_ = { isos: pmHead.isos || [], label: pmHead.label || "" };
+  // 📆 The quarter the ↩ carried / ⏭ pushed-beyond signals read against — the
+  // fiscal quarter of the SAME window, so the three windowed signals agree.
+  PM_QUARTER_ = pmQuarterFor_(PM_WINDOW_.isos);
   var totalIgnored = 0;
   // Epics carved out of the Owns bar as assigned backlog (To Do, no date).
   // Summed in the same pass as totalIgnored so the sentence below always
@@ -10050,6 +10075,10 @@ function renderPm_() {
     var c = {};
     for (var k in r) c[k] = r[k];
     c.oppPushed = (r.epics || []).filter(function (e) { return pmPushedInWindow_(e) > 0; }).length;
+    // ↩ ⏭ 🧾 (2026-09-10): the same per-render, full-list rule as ⏩ pushed.
+    c.oppCarried = (r.epics || []).filter(pmCarried_).length;
+    c.oppBeyondQ = (r.epics || []).filter(function (e) { return !!pmPushedBeyondQ_(e); }).length;
+    c.oppNoSrso = (r.epics || []).filter(function (e) { return e.srso === false; }).length;
     if (!filtering) return c;
     var keep = [];
     (r.epics || []).forEach(function (e) {
@@ -10119,6 +10148,8 @@ function renderPm_() {
     "<h3>Project Managers — owned work" + (filtering ? scopeTag_("snap") : scopeTag_("org")) + "</h3>" +
     filterNote +
     pmPushNote_(d) +
+    pmSrsoNote_(d) +
+    pmQuarterNote_() +
     // ── METHODOLOGY OFF THE PAGE (director feedback 2026-08-17) ─────────────
     // Eight lines of attribution and windowing prose sat between the heading
     // and the first PM, and trained the reader to skip the top of the page.
@@ -10222,6 +10253,30 @@ var PM_OPPS_ = [
         "Needs Jira Backlog.js ≥ 3.20.0 (Due Push Log).";
     },
     tip: "The epic's due date was moved to a later date during the selected window." },
+  // ↩ ⏭ 🧾 — the QUARTER and SALES-ORDER signals (user 2026-09-10, from the
+  // jira-1-signal dashboard's Projects & epics tab). Counted client-side like
+  // ⏩ pushed, because the quarter they read against is the picker's
+  // (PM_QUARTER_, set beside PM_WINDOW_ in renderPm_). The two quarter signals
+  // are mutually exclusive by construction: carried = due before the quarter
+  // began; pushed beyond = due now past its end.
+  { k: "oppCarried", icon: "↩", cls: "sigBad", short: "carried over",
+    shortOf: function () { return "carried into " + pmQuarterLabel_(); },
+    tipOf: function () {
+      return "Still open with a due date from BEFORE " + pmQuarterLabel_() + " began — work carried " +
+        "into this quarter from an earlier one. Per item: finish it, re-date it with a reason, or " +
+        "descope it. Rolling silently is the one option removed.";
+    },
+    tip: "Still open with a due date from before the quarter began." },
+  { k: "oppBeyondQ", icon: "⏭", cls: "sigWarn", short: "pushed beyond quarter",
+    shortOf: function () { return "pushed beyond " + pmQuarterLabel_(); },
+    tipOf: function () {
+      return "The due date was moved past the end of " + pmQuarterLabel_() + " and is still there — the " +
+        "work, and any revenue on it, now lands in " + (PM_QUARTER_ ? PM_QUARTER_.nextLabel : "the next quarter") +
+        ". Needs Jira Backlog.js ≥ 3.20.0 (Due Push Log).";
+    },
+    tip: "The due date was moved past the end of the quarter and is still there." },
+  { k: "oppNoSrso", icon: "🧾", cls: "sigWarn", short: "no SRSO",
+    tip: "No sales-order binding: neither the Components field (runbook B2.6) nor the fix-version Billing Type carries an SRSO token, so finishing this epic moves no revenue until Finance / RevOps binds it. Epics whose export carries neither column are not counted — the coverage line says how many." },
   { k: "oppStale", icon: "🕒", cls: "sigWarn", short: "untouched 30d+",
     tip: "Untouched for 30+ days. Blocked, or not real work — either way it inflates this PM's load." },
 ];
@@ -10233,7 +10288,8 @@ function pmOppHtml_(r) {
     // and the whole point of this line is that its absence means something.
     return '<div class="pmOpp"><span class="pmPill sigGood" title="' + esc_("Every epic dated, " +
       "with tasks under it, current, its work inside its date, and no due date pushed in " +
-      pmWindowLabel_() + ".") + '">✔ No open gaps</span></div>';
+      pmWindowLabel_() + "; neither carried into nor pushed beyond " + pmQuarterLabel_() +
+      ", and every measured epic bound to a sales order.") + '">✔ No open gaps</span></div>';
   }
   live.sort(function (a, b) {
     return (r[b.k] - r[a.k]) || (PM_OPPS_.indexOf(a) - PM_OPPS_.indexOf(b));
@@ -10372,6 +10428,19 @@ var PM_NEEDS_ = [
     labelOf: function () { return "● Pushed in " + pmWindowLabel_(); },
     tip: "The epic's due date was moved to a later date during the selected window while the epic was still open. Each one is a commitment that slipped — the epic row says from when to when.",
     match: function (e) { return pmPushedInWindow_(e) > 0; } },
+  // ↩ ⏭ 🧾 The quarter and sales-order rows (user 2026-09-10). The two quarter
+  // labels name the quarter because it moves with the picker — like the ⏩ row.
+  { k: "carried", label: "● Carried over", sev: "sigBad",
+    labelOf: function () { return "● Carried into " + pmQuarterLabel_(); },
+    tip: "Still open with a due date from before the quarter began — work carried in from an earlier quarter. Per item: finish, re-date with a reason, or descope. Rolling silently is the one option removed.",
+    match: pmCarried_ },
+  { k: "beyondQ", label: "● Pushed beyond the quarter", sev: "sigWarn",
+    labelOf: function () { return "● Pushed beyond " + pmQuarterLabel_(); },
+    tip: "The due date was moved past the quarter's end and is still there — the work and any revenue on it land next quarter. The epic row says when it moved and to which date.",
+    match: function (e) { return !!pmPushedBeyondQ_(e); } },
+  { k: "noSrso", label: "● No SRSO binding", sev: "sigWarn",
+    tip: "Neither the Components field nor the fix-version Billing Type carries an SRSO token, so finishing this epic moves no revenue. Unbound items go to Finance / RevOps for the sales order first.",
+    match: function (e) { return e.srso === false; } },
 ];
 
 // ── ⏩ PUSH WINDOW — what "pushed in …" means on the PM tab ─────────────────
@@ -10405,6 +10474,93 @@ function pmPushNote_(d) {
       c.measured + " of " + c.epics + " listed epics — an epic untouched for longer than the export's " +
       "changelog window carries no history, and no history is not a clean record.</p>"
     : "";
+}
+
+// ── 📆 FISCAL QUARTER — what ↩ carried and ⏭ pushed beyond read against ─────
+// Set once per renderPm_ beside PM_WINDOW_, from the MIDDLE week of the
+// analysis window: ISO weeks straddle quarter boundaries, the middle week of a
+// month or quarter never does, and a single week decides by its Thursday — the
+// ISO convention the server's periodInfoForIso_ also follows. FY starts Jul 1
+// and is named for its end year; the rule is mirrored from the server so the
+// two can never disagree about which quarter a week is in (render-smoke pins
+// both against the same weeks).
+var PM_QUARTER_ = null;
+
+/** "YYYY.WN" → { label:"FY27 Q1", start:"2026-07-01", end:"2026-09-30",
+    prevLabel, nextLabel }, or null on an unparseable key. */
+function fiscalQuarterOfIso_(iso) {
+  var mon = weekKeyMonday_(iso);
+  if (mon === null) return null;
+  var thu = new Date(mon + 3 * 864e5);
+  var y = thu.getUTCFullYear(), mo = thu.getUTCMonth() + 1;
+  var fy = mo >= 7 ? y + 1 : y;
+  var q = mo >= 7 ? Math.ceil((mo - 6) / 3) : Math.ceil(mo / 3) + 2;
+  var startMo = ((q - 1) * 3 + 6) % 12 + 1;              // Q1→Jul, Q2→Oct, Q3→Jan, Q4→Apr
+  var startY = q <= 2 ? fy - 1 : fy;
+  var day = function (d) { return d.toISOString().slice(0, 10); };
+  var lab = function (f, qq) { return "FY" + String(f).slice(-2) + " Q" + qq; };
+  return { label: lab(fy, q),
+           start: day(new Date(Date.UTC(startY, startMo - 1, 1))),
+           // Day 0 of the month AFTER the third month = the third month's last day.
+           end: day(new Date(Date.UTC(startY, startMo + 2, 0))),
+           prevLabel: q === 1 ? lab(fy - 1, 4) : lab(fy, q - 1),
+           nextLabel: q === 4 ? lab(fy + 1, 1) : lab(fy, q + 1) };
+}
+function pmQuarterFor_(isos) {
+  var list = isos && isos.length ? isos : [currentIso_()];
+  return fiscalQuarterOfIso_(list[Math.floor(list.length / 2)]);
+}
+function pmQuarterLabel_() { return PM_QUARTER_ ? PM_QUARTER_.label : "the quarter"; }
+
+/** ↩ Still open with a due date from BEFORE the quarter began — carried into
+    this quarter from an earlier one. Reads the calendar day (dueIso), never the
+    week key: Oct 1 can fall mid-week. A pre-v51 payload has no dueIso → false. */
+function pmCarried_(e) {
+  var Q = PM_QUARTER_;
+  return !!(Q && e && e.dueIso && e.dueIso < Q.start);
+}
+
+/** ⏭ The latest push that took this epic's due date PAST the quarter's end,
+    provided the date is still out there — an epic pulled back inside is not
+    counted, whatever its history. null = no such push, or an unmeasured row. */
+function pmPushedBeyondQ_(e) {
+  var Q = PM_QUARTER_;
+  if (!Q || !e || !e.pushes) return null;
+  if (e.dueIso && e.dueIso <= Q.end) return null;
+  var hit = null;
+  for (var i = 0; i < e.pushes.length; i++) {
+    var p = e.pushes[i];
+    if (p && p.from && p.to && p.from <= Q.end && p.to > Q.end) hit = p;
+  }
+  return hit;
+}
+
+/** The tab's SRSO-coverage line — pmPushNote_'s pattern, same tristate. */
+function pmSrsoNote_(d) {
+  var c = d && d.srsoCoverage;
+  if (!c || !c.epics) return "";
+  if (!c.measured) {
+    return '<p class="cellSub pmFilterNote">🧾 <b>SRSO binding is not measured in this export.</b> ' +
+      "The no-SRSO signal reads the Components field and the fix-version Billing Type; this export " +
+      "carries neither column, so no epic reads as bound or unbound — the pill is simply absent.</p>";
+  }
+  return c.measured < c.epics
+    ? '<p class="cellSub pmFilterNote">🧾 SRSO binding measured on ' + c.measured + " of " + c.epics +
+      " listed epics — the rest carry neither a Components nor a Billing Type cell, and no cell is not a binding.</p>"
+    : "";
+}
+
+/** One line naming the quarter the two quarter signals read against. Always
+    printed: the label moves with the picker, and a "carried" or "pushed beyond"
+    count quoted without its quarter is a number with no meaning. */
+function pmQuarterNote_() {
+  var Q = PM_QUARTER_;
+  if (!Q) return "";
+  return '<p class="cellSub pmFilterNote">📆 Quarter signals read against <b>' + esc_(Q.label) + "</b> (" +
+    esc_(Q.start) + " → " + esc_(Q.end) + "), the fiscal quarter of the selected window: " +
+    "<b>↩ carried</b> = still open with a due date from before it began · " +
+    "<b>⏭ pushed beyond</b> = the due date was moved past its end and is still there · " +
+    "<b>🧾 no SRSO</b> = no sales-order binding in Components or Billing Type.</p>";
 }
 
 /**
@@ -10684,6 +10840,26 @@ function pmEpicHtml_(e, nowIso) {
       " on " + lastP.at + (pushedN > 1 ? " (" + pushedN + " pushes in " + pmWindowLabel_() + ")" : "") +
       ". A commitment moved while live — the conversation is why, and whether the new date is real.") +
       '">⏩ pushed +' + lastP.days + "d in " + esc_(lastP.wk) + "</span>");
+  }
+  // ↩ ⏭ 🧾 Quarter and sales-order signals (2026-09-10). Each names the date it
+  // rests on, so the row is a sentence a PM can check against Jira.
+  if (pmCarried_(e)) {
+    gaps.push('<span class="sigBad" title="' + esc_("Due " + e.dueIso + ", before " + pmQuarterLabel_() +
+      " began (" + PM_QUARTER_.start + "), and still open — carried into this quarter. Finish it, " +
+      "re-date it with a reason, or descope it.") +
+      '">↩ carried into ' + esc_(pmQuarterLabel_()) + " (due " + esc_(e.dueIso) + ")</span>");
+  }
+  var beyond = pmPushedBeyondQ_(e);
+  if (beyond) {
+    gaps.push('<span class="sigWarn" title="' + esc_("Due date moved " + beyond.from + " → " + beyond.to +
+      " on " + beyond.at + ", past the end of " + pmQuarterLabel_() + " (" + PM_QUARTER_.end +
+      "). The work and any revenue on it now land in " + PM_QUARTER_.nextLabel + ".") +
+      '">⏭ pushed beyond ' + esc_(pmQuarterLabel_()) + " → " + esc_(beyond.to) + "</span>");
+  }
+  if (e.srso === false) {
+    gaps.push('<span class="sigWarn" title="No sales-order binding: neither the Components field nor ' +
+      'the fix-version Billing Type carries an SRSO token. Finishing this epic moves no revenue until ' +
+      'Finance / RevOps binds it.">🧾 no SRSO</span>');
   }
   if (e.stale) {
     gaps.push('<span class="sigWarn" title="Untouched beyond the backlog\'s staleness bar. ' +
@@ -11588,6 +11764,90 @@ function leaverIssues_() {
   return ((MODEL.meta || {}).leaverExcluded || {}).issues || 0;
 }
 
+/**
+ * 🚪 Work left by people who left (user 2026-09-10, from the jira-1-signal
+ * dashboard) — sits ABOVE the 👥 exclusion note it explains. The note says N
+ * issues by former employees left every figure; this says which of them are
+ * still OPEN and on whose name, so a PM can reassign or descope each one.
+ * Person-named on purpose (see leaverWork_ in Code.js): reassigning work is
+ * impossible without knowing whose queue it sits in, and this tab is gated to
+ * admins and named viewers. Four states, none of them silent — absent from
+ * the payload, not measured, measured-and-clean, and the list.
+ */
+function leaverWorkHtml_() {
+  var lw = MODEL.leaverWork;
+  var head = '<h3 style="margin:0 0 6px">Work left by people who left' + scopeTag_("org") + "</h3>";
+  if (lw === undefined) {
+    return '<div class="leaverWork">' + head +
+      '<div class="emptyState">Not in this payload — ↻ Refresh to rebuild on the current schema.</div></div>';
+  }
+  if (!lw || !lw.measured) {
+    return '<div class="leaverWork">' + head + '<div class="emptyState">Not measured' +
+      (lw && lw.reason ? " — " + esc_(lw.reason) : "") +
+      ". The report needs the Jira export and a readable roster.</div></div>";
+  }
+  if (!lw.items) {
+    // A clean state PRINTS. A check that vanishes when it passes is a check
+    // nobody trusts the next time it fires.
+    return '<div class="leaverWork">' + head +
+      '<p class="cellSub"><b class="sigGood">No open work is assigned to anyone who has left.</b> ' +
+      "Checked on every rebuild against the roster's former employees (an inactive row with no " +
+      "active row anywhere); a row appears the moment an open epic or task is still on a leaver's name.</p></div>";
+  }
+  var rows = (lw.people || []).map(function (p) {
+    var keys = p.keys || [], items = p.items || [];
+    var url = jiraKeysUrl_(keys);
+    var capped = keys.length > JIRA_LINK_MAX_KEYS_;
+    var itemsHtml = items.map(function (it) {
+      return '<div class="leaverItem">' + pmKeyLink_(it.key) +
+        ' <span class="cellSub">' + esc_(trunc_(it.summary, 60)) + "</span> " +
+        '<span class="cellSub">· ' + (it.kind === "epic" ? "epic" : "task") +
+        (it.status ? " · " + esc_(it.status) : "") +
+        (it.due ? " · due " + esc_(it.due) : " · no due date") +
+        (it.hours ? " · " + it.hours + "h" : "") + "</span>" +
+        (it.overdue ? ' <span class="sigBad">past due</span>' : "") + "</div>";
+    }).join("");
+    var more = p.itemsN > items.length
+      ? '<div class="cellSub">… and ' + (p.itemsN - items.length) + " more — the Jira link opens them all" +
+        (p.keysCapped ? " (first " + keys.length + ")" : "") + ".</div>"
+      : "";
+    var btn = url
+      ? '<a class="pmFixBtn" href="' + esc_(url) + '" target="_blank" rel="noopener" title="' +
+        esc_("Opens " + (capped ? "the first " + JIRA_LINK_MAX_KEYS_ + " of " : "") + p.itemsN +
+          " open item" + (p.itemsN === 1 ? "" : "s") + " still assigned to " + p.name +
+          " in the Jira issue navigator.") + '">Reassign in Jira ↗' +
+        (capped ? ' <span class="cellSub">(first ' + JIRA_LINK_MAX_KEYS_ + ")</span>" : "") + "</a>"
+      : '<span class="cellSub" title="No Jira site is configured (meta.jiraBase), so the queue cannot deep-link.">no Jira link</span>';
+    return "<tr>" +
+      '<td class="tname">' + piiHtml_(p.name) + "</td>" +
+      '<td class="tnum">' + (p.left
+        ? esc_(p.left) + (p.leftWeek ? ' <span class="cellSub">' + esc_(p.leftWeek) + "</span>" : "")
+        : '<span class="cellSub" title="The roster row is inactive but carries no termination date.">&mdash;</span>') + "</td>" +
+      '<td class="tnum">' + p.epics + " epic" + (p.epics === 1 ? "" : "s") + " · " +
+        p.tasks + " task" + (p.tasks === 1 ? "" : "s") + "</td>" +
+      '<td class="tnum">' + p.hours + "h</td>" +
+      "<td>" + itemsHtml + more + "</td>" +
+      '<td class="tnum">' + btn + "</td></tr>";
+  }).join("");
+  var n = (lw.people || []).length;
+  return '<div class="leaverWork">' + head +
+    '<p class="cellSub"><b class="sigBad">' + lw.items + " open item" + (lw.items === 1 ? "" : "s") +
+      " (" + lw.epics + " epic" + (lw.epics === 1 ? "" : "s") + ", " + lw.tasks + " task" +
+      (lw.tasks === 1 ? "" : "s") + ", " + lw.hours + "h) still assigned to " + n +
+      (n === 1 ? " person who has" : " people who have") + " left.</b> " +
+      "Reassign or descope each item this week; nothing stays on a leaver's name. " +
+      "Hours are the estimate or the logged time, whichever is larger.</p>" +
+    '<div class="gwrap"><table class="hyg tmx">' +
+      '<colgroup><col style="width:16%"><col style="width:11%"><col style="width:12%"><col style="width:7%"><col style="width:42%"><col style="width:12%"></colgroup>' +
+      '<thead><tr><th class="tname">Person</th><th class="tnum">Left</th><th class="tnum">Open work</th>' +
+      '<th class="tnum">Hours</th><th>Items</th><th class="tnum">Action</th></tr></thead>' +
+      "<tbody>" + rows + "</tbody></table></div>" +
+    '<div class="cellSub" style="margin-top:6px"><b>Open</b> = unresolved and not in a closed status, ' +
+      "epics included. Read from the whole export <i>before</i> the attrition exclusion below, so these " +
+      "items are in no other figure on this dashboard — attrition stays out of every rate; this is the " +
+      "list of what to re-own.</div></div>";
+}
+
 function leaverNoteHtml_() {
   var lx = (MODEL.meta || {}).leaverExcluded;
   if (!lx || !lx.issues) return "";
@@ -11889,7 +12149,7 @@ function renderHygPanel_() {
   // queue's field-fill figures; the gate editor is a settings surface and the
   // leaver note is a scoping fact, and neither follows the period picker. A
   // window label over content that does not follow a window is worse than none.
-  var body = leaverNoteHtml_() + gateEditorHtml_();
+  var body = leaverWorkHtml_() + leaverNoteHtml_() + gateEditorHtml_();
   if (!body) {
     // Nothing to show this role. Collapse the panel rather than leaving an empty
     // card, which reads as a surface that failed to load.
@@ -12190,7 +12450,13 @@ function renderChanges_() {
       '<div class="cellSub">' + esc_(c.area) + " · asked " + esc_(c.week) + " (" + esc_(c.requested) + ")</div></td>" +
       "<td><div><b>Asked:</b> " + esc_(c.ask) + "</div>" +
       '<div style="margin-top:4px"><b>Solution:</b> ' + esc_(c.done) + "</div>" +
-      (c.needs ? '<div class="cellSub" style="margin-top:4px"><b>Needs:</b> ' + esc_(c.needs) + "</div>" : "") + "</td>" +
+      // A solved row has nothing left to need: its note (if any) is context, and
+      // the date says when the change went live (user 2026-09-10: "everything
+      // should be marked as solved").
+      (c.needs ? '<div class="cellSub" style="margin-top:4px"><b>' +
+        (c.status === "solved" ? "Note" : "Needs") + ":</b> " + esc_(c.needs) + "</div>" : "") +
+      (c.status === "solved" && c.solved
+        ? '<div class="cellSub" style="margin-top:4px"><b>Live since:</b> ' + esc_(c.solved) + "</div>" : "") + "</td>" +
       '<td class="tnum"><span class="pmPill ' + st.cls + '" title="' + esc_(st.tip) + '">' +
       (c.status === "solved" ? "✔ " : c.status === "review" ? "◐ " : "○ ") + st.label + "</span></td></tr>";
   }).join("");
