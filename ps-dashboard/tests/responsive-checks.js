@@ -70,7 +70,23 @@ ck('primary filters stay outside the fold', (function () {
   });
 })());
 ck('folded filters still counted on the button',
-   html.includes('function toggleMoreFilters_()') && /cnt\.hidden = nMore === 0/.test(html));
+   html.includes('function toggleMoreFilters_(') && /cnt\.hidden = nMore === 0/.test(html));
+// ── top bar on top of the one-row layout (2026.W41 Performance Record merge) ──
+ck('scroll folds the identity row only', /body\.tb-scrolled \.header \{ display: none; \}/.test(html) &&
+   /y > 80\) \{ scrolled = true; document\.body\.classList\.add\('tb-scrolled'\)/.test(html) &&
+   /scrolled && y < 24\)/.test(html));
+ck('wide bar aligns with main column',
+   /body \.header, body \.filter-bar \{\s*\n\s*padding-left:  max\(calc\(24px \* var\(--scale\)\), calc\(\(100% - 1600px \* var\(--scale\)\) \/ 2/.test(html));
+ck('phone rail becomes a drawer', /body \{ --navw: 0px; \}/.test(html) && /body\.navOpen \.sidenav \{ transform: none;/.test(html) &&
+   /id="btnMenu"[^>]*aria-controls="sidenav"/.test(html));
+ck('phone bar keeps search + Filters only',
+   /\.filter-bar > \.fb-group, \.filter-bar > \.fb-reset, \.filter-bar > \.fb-more \{ display: none; \}/.test(html));
+ck('phone filters open as a bottom sheet',
+   /body\.fb-sheet-open \.filter-bar\.visible \{ position: fixed; left: 0; right: 0; bottom: 0;/.test(html) &&
+   html.includes('id="fbDoneBtn"'));
+ck('phone Filters count covers every off-bar filter', /var nAll = nMore \+ \(mt && mt\.value !== "fte" \? 1 : 0\) \+ \(sp && sp\.value \? 1 : 0\);/.test(html));
+ck('sheet labels come back visible', /body\.fb-sheet-open \.fb-group > label \{ position: static;/.test(html));
+ck('Esc closes sheet and drawer', /if \(document\.body\.classList\.contains\('fb-sheet-open'\)\) toggleMoreFilters_\(false\);/.test(html));
 ck('header title is one line', /\.header-title h1 \{[^}]*white-space: nowrap;/.test(html));
 // ── sidebar line icons (2026.W41) ── one stroke set, no emoji/Unicode glyphs in the rail
 // 5 main tabs + the collapse toggle (Leading Behaviours folded into Performance Record, 2026.W41).

@@ -1060,6 +1060,72 @@ body.dark-mode .prp-t-bad,  body.dark-mode .prp-s-r { background: rgba(194,65,12
 body.dark-mode .prp-t-none { background: #1E295A; color: #CBD5E1; }
 body.dark-mode .prp-short { background: #1E2A5E; }
 body.dark-mode .prp-av { background: #2B3A78; }
+.prp-ctl .pr-seg { scrollbar-width: none; }
+
+/* ── Top bar: scroll compaction, ultra-wide alignment, phone drawer + filter
+   sheet (2026.W41, on top of the one-row header/filter bar) ── */
+.hdr-menu { display: none; }
+.nav-scrim, .fb-scrim { display: none; position: fixed; inset: 0; background: rgba(11,18,48,.5); }
+.nav-scrim { z-index: 190; }
+.fb-scrim  { z-index: 250; }
+.fbm-phone, .fbm-phone-n, .fb-done { display: none; }
+/* Scrolled: the identity row folds away and the filter row stays pinned — one
+   row of chrome while reading; back at the top it returns. */
+body.tb-scrolled .header { display: none; }
+body.tb-scrolled .topbar { box-shadow: 0 8px 20px -14px rgba(15,25,65,.45); }
+/* Wide and ultra-wide: the bar's content lines up with main's centred column
+   instead of running the full viewport (filters far left, data centred). */
+@media (min-width: 1024px) {
+  body .header, body .filter-bar {
+    padding-left:  max(calc(24px * var(--scale)), calc((100% - 1600px * var(--scale)) / 2 + 24px * var(--scale)));
+    padding-right: max(calc(24px * var(--scale)), calc((100% - 1600px * var(--scale)) / 2 + 24px * var(--scale)));
+  }
+}
+@media (max-width: 720px) {
+  /* Rail → drawer. */
+  body { --navw: 0px; }
+  .hdr-menu { display: inline-flex; }
+  .sidenav { width: 264px; transform: translateX(-100%); transition: transform .2s ease; }
+  body.navOpen .sidenav { transform: none; box-shadow: 12px 0 32px rgba(0,0,0,.35); }
+  body.navOpen .nav-scrim { display: block; }
+  .sidenav .navName, .sidenav .navLogo, .sidenav .tabLbl, .sidenav .nav-sec-lbl { display: block; }
+  .sidenav .navMark, .sidenav .navFoot { display: none; }
+  .sidenav .tab-btn { justify-content: flex-start; padding: 0 12px; min-height: 44px; }
+  .sidenav .navBrand { align-items: flex-start; justify-content: flex-start; padding: 16px 14px 14px; }
+  .header-title p, .fresh-note { display: none !important; }
+  .header { flex-wrap: nowrap; }
+  .header-title { flex: 1 1 0; }
+  /* Filters: search + one "Filters (n)" button on the bar; the rest in a sheet. */
+  .filter-bar.visible { flex-direction: row; flex-wrap: nowrap; align-items: center; padding: 8px 12px; gap: 8px; }
+  .filter-bar > .fb-group, .filter-bar > .fb-reset, .filter-bar > .fb-more { display: none; }
+  .filter-bar .fb-search { flex: 1 1 auto; min-width: 0; }
+  .fbm-wide, #fbMoreCount { display: none !important; }
+  .fbm-phone { display: inline; }
+  .fbm-phone-n:not([hidden]) { display: inline; }
+  .fb-more-btn { min-height: 40px; flex: 0 0 auto; align-self: center; }
+  .fb-more-btn.active-all { border-color: var(--orbe); color: var(--orbe); }
+  body.fb-sheet-open { overflow: hidden; }
+  body.fb-sheet-open .fb-scrim { display: block; }
+  /* The sheet lives inside .topbar's stacking context (sticky, z-index 100), so
+     its own z-index cannot beat the scrim — lift the whole bar above it instead. */
+  body.fb-sheet-open .topbar { z-index: 270; }
+  body.fb-sheet-open .filter-bar.visible { position: fixed; left: 0; right: 0; bottom: 0; z-index: 260;
+    flex-direction: column; align-items: stretch; max-height: 85vh; overflow-y: auto; gap: 12px;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 32px rgba(15,25,65,.3); }
+  body.fb-sheet-open .filter-bar > .fb-group, body.fb-sheet-open .filter-bar > .fb-more { display: flex; }
+  body.fb-sheet-open .fb-more { flex-direction: column; align-items: stretch; }
+  body.fb-sheet-open .filter-bar > .fb-reset { display: inline-flex; align-self: flex-start; order: 10; }
+  body.fb-sheet-open .fb-more { order: 5; }
+  body.fb-sheet-open .fb-done { order: 11; }
+  body.fb-sheet-open .fb-group > label { position: static; width: auto; height: auto; margin: 0; clip: auto; overflow: visible; }
+  body.fb-sheet-open .fb-more-btn { display: none; }
+  body.fb-sheet-open .fb-done { display: block; min-height: 48px; border: 0; border-radius: 12px; background: var(--void);
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+  body.dark-mode.fb-sheet-open .fb-done { background: var(--orbe); }
+  .filter-bar .fb-multi-panel { min-width: 0; width: 100%; }
+  #tabPerfRecord .section-head { padding: 12px; }
+}
 body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
 .pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
@@ -1866,9 +1932,17 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
 </nav>
 
+<!-- Phone drawer + filter sheet backdrops (≤720px); tapping one closes its panel. -->
+<div class="nav-scrim" id="navScrim" onclick="toggleNavDrawer_(false)"></div>
+<div class="fb-scrim" id="fbScrim" onclick="toggleMoreFilters_(false)"></div>
+
 <!-- ── TOP BAR: identity row + 👁 banner + filter row, pinned together ── -->
 <div class="topbar" id="topbar">
 <header class="header">
+  <button class="header-btn header-icon-btn hdr-menu" id="btnMenu" type="button" onclick="toggleNavDrawer_()" title="Menu" aria-label="Open the menu" aria-controls="sidenav" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+    <span class="sr-only">Menu</span>
+  </button>
   <div class="header-title">
     <h1>Professional Services — Weekly Contribution Report</h1>
     <p id="headerQuarterLabel">Operational Excellence</p>
@@ -1915,7 +1989,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
   <button class="fb-more-btn" id="fbMoreBtn" type="button" aria-expanded="false" aria-controls="fbMore" onclick="toggleMoreFilters_()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
-    More filters<span class="fb-more-count" id="fbMoreCount" hidden></span>
+    <span class="fbm-wide">More filters</span><span class="fbm-phone">Filters</span><span class="fb-more-count" id="fbMoreCount" hidden></span><span class="fb-more-count fbm-phone-n" id="fbAllCount" hidden></span>
   </button>
   <button class="fb-reset" id="fbResetBtn" onclick="resetFilters()">Reset</button>
   <!-- Secondary filters: Location / Job Title / Family / Level narrow the slice
@@ -1963,6 +2037,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     </div>
   </div>
   </div><!-- /fb-more -->
+  <button class="fb-done" id="fbDoneBtn" type="button" onclick="toggleMoreFilters_(false)">Show results</button>
 </div>
 </div><!-- /topbar -->
 
@@ -3779,6 +3854,7 @@ function switchTab(tab) {
   // active (renderPerfPanel_ guards on activeTab internally).
   if (typeof renderPerfPanel_ === 'function') renderPerfPanel_();
   if (tab !== 'perfrecord') document.body.classList.remove('prp-card-open');
+  document.body.classList.remove('navOpen');   // phone drawer closes on navigation
 }
 
 // The sticky top bar lives in the same scroller at top:0, so offset 0 is a view's
@@ -8807,13 +8883,37 @@ function markSelectActive() {
   if (cnt) { cnt.textContent = nMore; cnt.hidden = nMore === 0; }
   var moreBtn = document.getElementById("fbMoreBtn");
   if (moreBtn) moreBtn.classList.toggle("active", nMore > 0);
+  // Phone (≤720px) shows ONE "Filters" button for everything off the bar, so its
+  // count also covers member type and supervisor.
+  var mt = document.getElementById("fbMemberType"), sp = document.getElementById("fbSupervisor");
+  var nAll = nMore + (mt && mt.value !== "fte" ? 1 : 0) + (sp && sp.value ? 1 : 0);
+  var allCnt = document.getElementById("fbAllCount");
+  if (allCnt) { allCnt.textContent = nAll; allCnt.hidden = nAll === 0; }
+  if (moreBtn) moreBtn.classList.toggle("active-all", nAll > 0);
+  var done = document.getElementById("fbDoneBtn");
+  if (done && DATA) {
+    var n = getFilteredEmployees().length;
+    done.textContent = "Show " + n + " Rocketeer" + (n === 1 ? "" : "s");
+  }
 }
 
-function toggleMoreFilters_() {
+// Wide screens: unfold / fold the secondary filter row. Phone (≤720px): every
+// control but search is off the bar, so the same button opens the whole filter
+// set as a bottom sheet. `open` forces a state (the sheet's Done button, Esc).
+function toggleMoreFilters_(open) {
   var panel = document.getElementById("fbMore");
   var btn   = document.getElementById("fbMoreBtn");
   if (!panel || !btn) return;
-  panel.hidden = !panel.hidden;
+  if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) {
+    var on = open === undefined ? !document.body.classList.contains("fb-sheet-open") : !!open;
+    document.body.classList.toggle("fb-sheet-open", on);
+    panel.hidden = !on;
+    btn.setAttribute("aria-expanded", String(on));
+    if (on) markSelectActive();
+    return;
+  }
+  document.body.classList.remove("fb-sheet-open");
+  panel.hidden = open === undefined ? !panel.hidden : !open;
   btn.setAttribute("aria-expanded", String(!panel.hidden));
 }
 
@@ -13753,6 +13853,15 @@ function toggleNav_() {
   var b = document.body;
   setNavCollapsed_(!(b && b.classList && b.classList.contains('navCollapsed')));
 }
+// Phone drawer (≤720px): the rail slides in over the page instead of costing a
+// permanent 56px column on a 390px screen.
+function toggleNavDrawer_(open) {
+  var b = document.body;
+  var on = open === undefined ? !b.classList.contains('navOpen') : !!open;
+  b.classList.toggle('navOpen', on);
+  var mb = document.getElementById('btnMenu');
+  if (mb) mb.setAttribute('aria-expanded', String(on));
+}
 (function initShell_() {
   var btn = document.getElementById('btnNav');
   if (btn) btn.onclick = toggleNav_;
@@ -13766,6 +13875,20 @@ function toggleNav_() {
   if (tb && typeof ResizeObserver === 'function') new ResizeObserver(measure_).observe(tb);
   window.addEventListener('resize', measure_);
   measure_();
+  // Compact on scroll (2026.W41): past ~80px the identity row folds away and the
+  // filter row alone stays pinned; back near the top it returns. Hysteresis
+  // (80 / 24) stops the fold flickering as the shorter bar shifts the page.
+  var scrolled = false;
+  window.addEventListener('scroll', function() {
+    var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+    if (!scrolled && y > 80) { scrolled = true; document.body.classList.add('tb-scrolled'); }
+    else if (scrolled && y < 24) { scrolled = false; document.body.classList.remove('tb-scrolled'); }
+  }, { passive: true });
+  document.addEventListener('keydown', function(ev) {
+    if (ev.key !== 'Escape') return;
+    if (document.body.classList.contains('fb-sheet-open')) toggleMoreFilters_(false);
+    if (document.body.classList.contains('navOpen')) toggleNavDrawer_(false);
+  });
 })();
 </script>
 </body>
