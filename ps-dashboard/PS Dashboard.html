@@ -855,6 +855,21 @@ body.dark-mode .tb-kudos-detail summary { color: #6EE7B7; }
 .pr-kpi.on { outline: 2px solid var(--orbe); outline-offset: 1px; }
 .pr-kpi.c-t { border-left-color: var(--void); }
 .pr-kpi.c-r { border-left-color: #DE350B; }
+.pr-kpi.c-g { border-left-color: var(--st-good); }
+/* Team grid v2 (2026.W41): compact rows + the Why column (lane + plain-words driver). */
+.pr-table td.pr-who { max-width: calc(260px * var(--scale)); }
+.pr-table td.pr-who .pr-sub { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pr-why { white-space: normal !important; min-width: calc(200px * var(--scale)); max-width: calc(300px * var(--scale)); }
+.pr-lane { display: inline-block; font-size: calc(11px * var(--scale)); font-weight: 800; padding: 1px 8px; border-radius: 99px;
+  margin: 0 6px 2px 0; white-space: nowrap; }
+.pr-lane.support   { background: #FDECEA; color: #9A2A12; }
+.pr-lane.celebrate { background: #E3F4EC; color: #00663F; }
+.pr-lane.watch     { background: #FFF4E5; color: #8A4B00; }
+.pr-lane.steady    { background: var(--surface); color: var(--slate); }
+.pr-whytxt { font-size: calc(12px * var(--scale)); color: var(--text); }
+body.dark-mode .pr-lane.support   { background: rgba(222,53,11,.22); color: #FDBA8C; }
+body.dark-mode .pr-lane.celebrate { background: rgba(0,135,90,.22); color: #7BE0B5; }
+body.dark-mode .pr-lane.watch     { background: rgba(255,153,31,.2); color: #FFD08A; }
 .pr-kpi.c-y { border-left-color: #FF991F; }
 .pr-kpi.c-b { border-left-color: #0D3B8C; }
 .pr-kpi.c-n { border-left-color: #94A3B8; }
@@ -1146,7 +1161,7 @@ body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
   position: sticky; top: 0; z-index: 5; background: var(--th-bg); }
 body.dark-mode .pr-table th { background: #16214A; }
 .pr-table th.on { color: var(--void); }
-.pr-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+.pr-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
 .pr-table tr.pr-row { cursor: pointer; }
 .pr-table tr.pr-row:hover td { background: rgba(0,0,0,.03); }
 .pr-name { font-weight: 700; color: var(--void); }
@@ -3987,8 +4002,12 @@ function perfRowModels_(emps) {
                   hasMetric_('pto') && hasMetric_('tracked') &&
                   perfBurnout_(perfColVal_(per[model.lastIdx], 'pto'),
                                perfColVal_(per[model.lastIdx], 'tracked'));
+    var drv = perfRowDriver_(cells.map(function(x) {
+      return { id: x.col.id, label: x.col.label, sig: x.sig, trend: x.trend, delta: x.delta, notEval: x.notEval };
+    }));
     return {
       emp: emp, cells: cells, coh: coh, reds: reds, yellows: yellows,
+      lane: drv.lane, why: drv.text,
       flagged: reds + yellows > 0,
       burnout: burnout,
       tenure: perfTenureLabel_(emp.hireDate || null, nowMs),
@@ -4010,6 +4029,14 @@ function perfSortRows_(rows) {
   cols.forEach(function(c, i) { if (c.id === s.key) colIdx = i; });
   rows.sort(function(a, b) {
     if (s.key === 'name') return dir * a.emp.name.localeCompare(b.emp.name);
+    // Score sorts by the number itself (2026.W41): "desc" = best first, so the
+    // grid reads top-down from the people to celebrate; missing scores sink.
+    if (s.key === 'score' && colIdx !== -1) {
+      var xa = typeof a.cells[colIdx].val === 'number' ? a.cells[colIdx].val : null;
+      var xb = typeof b.cells[colIdx].val === 'number' ? b.cells[colIdx].val : null;
+      if (xa === null || xb === null) return xa === xb ? a.emp.name.localeCompare(b.emp.name) : (xa === null ? 1 : -1);
+      return xa !== xb ? dir * (xa - xb) : a.emp.name.localeCompare(b.emp.name);
+    }
     if (s.key === 'flags' || colIdx === -1) {
       var fa = a.reds * 100 + a.yellows, fb = b.reds * 100 + b.yellows;
       return fa !== fb ? dir * (fa - fb) : a.emp.name.localeCompare(b.emp.name);
@@ -4046,7 +4073,7 @@ function perfTargetFrac_(colId, cohort) {
 function perfBarsSvg_(cell, cohort, dense) {
   // 6px bars regardless of density (spec v4 P8): weekly is 9 buckets now, so a
   // legible bar costs nothing — 3px bars were texture, not data.
-  var CH = 28, BASE = 29, bw = 6, gap = 1;
+  var CH = 16, BASE = 17, bw = 6, gap = 1;   // compact rows (2026.W41): the pattern, not a chart
   var n = cell.buckets.length;
   if (!n) return '';
   var W = n * (bw + gap) - gap + 1;
@@ -4065,7 +4092,7 @@ function perfBarsSvg_(cell, cohort, dense) {
   });
   var tf = perfTargetFrac_(cell.col.id, cohort);
   var ty = tf !== null ? (BASE - Math.round(tf * CH)) : 0;
-  return '<svg class="pr-svg" width="' + W + '" height="30" viewBox="0 0 ' + W + ' 30" aria-hidden="true">' +
+  return '<svg class="pr-svg" width="' + W + '" height="18" viewBox="0 0 ' + W + ' 18" aria-hidden="true">' +
     '<line x1="0" y1="' + BASE + '" x2="' + W + '" y2="' + BASE + '" stroke="#CBD5E1" stroke-width="1"/>' +
     parts.join('') +
     (tf !== null ? '<line x1="0" y1="' + ty + '" x2="' + W + '" y2="' + ty +
@@ -4119,6 +4146,8 @@ var PERF_COL_HELP = {
 // KPI focus cards (spec v3 §A): counts always come from the UNFOCUSED row set,
 // so a card never shrinks to its own filter. Clicking toggles STATE.prFocus.
 var PERF_FOCUS = {
+  celebrate:  { label: 'celebrate',           f: function(r) { return r.lane === 'celebrate'; } },
+  support:    { label: 'support',             f: function(r) { return r.lane === 'support'; } },
   critical:   { label: 'critical',            f: function(r) { return r.reds > 0; } },
   watch:      { label: 'watch',               f: function(r) { return r.reds === 0 && r.yellows > 0; } },
   burnout:    { label: 'burnout risk',        f: function(r) { return r.burnout; } },
@@ -4132,8 +4161,9 @@ function prFocusSet(k) {
 function perfKpisHtml_(rows) {
   var CARDS = [
     { k: '',           n: rows.length,                                  lbl: 'Total',               cls: 'c-t', tip: 'All rocketeers in the current filters — click to clear the focus' },
-    { k: 'critical',   n: rows.filter(PERF_FOCUS.critical.f).length,    lbl: 'Critical',            cls: 'c-r', tip: 'At least one red signal — click to focus the list' },
-    { k: 'watch',      n: rows.filter(PERF_FOCUS.watch.f).length,       lbl: 'Watch',               cls: 'c-y', tip: 'Yellow signals only, no reds — click to focus the list' },
+    { k: 'celebrate',  n: rows.filter(PERF_FOCUS.celebrate.f).length,   lbl: '🎉 Celebrate',        cls: 'c-g', tip: 'Score at the green bar, no red signal, not falling — people to recognise. Click to focus' },
+    { k: 'support',    n: rows.filter(PERF_FOCUS.support.f).length,     lbl: '🤝 Support',          cls: 'c-r', tip: 'A red signal, or a falling score below the green bar — the Why column names the driver. Click to focus' },
+    { k: 'watch',      n: rows.filter(PERF_FOCUS.watch.f).length,       lbl: '👀 Watch',            cls: 'c-y', tip: 'Yellow signals or a falling metric, no red — click to focus the list' },
     { k: 'burnout',    n: rows.filter(PERF_FOCUS.burnout.f).length,     lbl: 'Burnout risk',        cls: 'c-b', tip: 'PTO At-Risk while tracking at or above target in the last closed period — click to focus' },
     { k: 'exceptions', n: rows.filter(PERF_FOCUS.exceptions.f).length,  lbl: 'Not fully evaluated', cls: 'c-n', tip: 'Carrying an exception (no time mandate, ramp-up, crew, on leave) — some metrics shown but not evaluated — click to focus' },
   ];
@@ -4819,6 +4849,7 @@ function renderPerfGrid_(filteredOpt) {
   var html = perfKpisHtml_(rows) +
     '<table class="pr-table"><thead><tr>' +
     th('name', 'Rocketeer') +
+    th('flags', 'Why') +
     cols.map(function(c) { return th(c.id, c.label); }).join('') +
     '</tr></thead><tbody>';
 
@@ -4829,7 +4860,7 @@ function renderPerfGrid_(filteredOpt) {
   function scoreBand(r) {
     var sc = r.cells.length && r.cells[0].col.id === 'score' ? r.cells[0].val : null;
     if (sc === null || sc === undefined) return 'No score yet';
-    return sc >= 75 ? 'Green band · score ≥75' : sc >= 50 ? 'Watch band · score 50–74' : 'Support band · score <50';
+    return sc >= 75 ? 'Strong · score 75+' : sc >= 50 ? 'On track · score 50–74' : 'Needs support · score under 50';
   }
 
   shown.forEach(function(r) {
@@ -4837,7 +4868,7 @@ function renderPerfGrid_(filteredOpt) {
     if (banding) {
       var band = scoreBand(r);
       if (band !== prevBand) {
-        html += '<tr class="pr-band"><td colspan="' + (cols.length + 1) + '">' + band + '</td></tr>';
+        html += '<tr class="pr-band"><td colspan="' + (cols.length + 2) + '">' + band + '</td></tr>';
         prevBand = band;
       }
     }
@@ -4861,13 +4892,21 @@ function renderPerfGrid_(filteredOpt) {
     // KPI cards keep the aggregate counts. Rows carry data-norm for the single
     // delegated click listener (spec v4 P6/P9) — the name is a real <button> so
     // Enter/Space work and focus is native.
+    // Compact identity (2026.W41): name + title on view; code, location, supervisor,
+    // tenure and exception chips move to the tooltip — the row is for the pattern.
+    var whoTip = [e.jobTitle, codeTok, e.keyLocation, e.supervisor ? 'reports to ' + e.supervisor : '',
+                  r.tenure ? r.tenure + ' tenure' : ''].concat(r.chips.map(function(c) { return c.t; }))
+                 .filter(Boolean).join(' · ');
+    var lane = PERF_LANES[r.lane] || PERF_LANES.steady;
     html += '<tr class="pr-row' + (open ? ' sel' : '') + '" data-norm="' + esc(e.normName) + '" title="' + esc(perfFlagTip_(r.cells)) + '">' +
-      '<td>' + (open ? '▾ ' : '▸ ') +
+      '<td class="pr-who" title="' + esc(whoTip) + '">' + (open ? '▾ ' : '▸ ') +
         '<button class="pr-namebtn" aria-expanded="' + (open ? 'true' : 'false') + '">' +
           '<span class="pr-name">' + esc(e.name) + '</span></button>' +
         (r.burnout ? ' <span title="Burnout risk: PTO At-Risk while tracking at or above target">🔥</span>' : '') +
-        '<br><span class="pr-sub">' + subLine + '</span>' +
-        (chipsHtml ? '<br>' + chipsHtml : '') + '</td>' +
+        (r.chips.length ? ' <span class="pr-xchip" title="' + esc(r.chips.map(function(c) { return c.tip; }).join(' ')) + '">⚑ ' + r.chips.length + '</span>' : '') +
+        '<span class="pr-sub">' + esc(e.jobTitle || '') + '</span></td>' +
+      '<td class="pr-why"><span class="pr-lane ' + r.lane + '">' + lane.icon + ' ' + lane.label + '</span>' +
+        '<span class="pr-whytxt">' + esc(r.why || '') + '</span></td>' +
       (_prCellsCache.map[e.normName] || (_prCellsCache.map[e.normName] =
         r.cells.map(function(cell) { return '<td>' + perfCellHtml_(cell, r.coh, dense) + '</td>'; }).join(''))) +
       '</tr>';
@@ -5483,12 +5522,12 @@ function exportPerfCsv_() {
     if (cell.col.id === 'pto')   return v >= 1 ? 'Good' : 'At Risk';
     return Math.round(v * 100) + '%';
   }
-  var header = ['Rocketeer', 'Cohort', 'Job Title', 'Tenure', 'Location', 'Supervisor', 'Exceptions', 'Burnout Risk', 'Flags (R/Y)'];
+  var header = ['Rocketeer', 'Lane', 'Why', 'Cohort', 'Job Title', 'Tenure', 'Location', 'Supervisor', 'Exceptions', 'Burnout Risk', 'Flags (R/Y)'];
   cols.forEach(function(c) { header.push(c.label + ' signal', c.label + ' value', c.label + ' trend'); });
   header.push('Reading');
   var out = [header];
   shown.forEach(function(r) {
-    var line = [r.emp.name, r.coh === 'mgr' ? 'Manager' : 'IC',
+    var line = [r.emp.name, (PERF_LANES[r.lane] || PERF_LANES.steady).label, r.why || '', r.coh === 'mgr' ? 'Manager' : 'IC',
       r.emp.jobTitle || '', r.tenure || '', r.emp.keyLocation || '', r.emp.supervisor || '',
       r.chips.map(function(c) { return c.t; }).join('; '),
       r.burnout ? 'yes' : '',
@@ -5997,6 +6036,61 @@ function perfStory_(inp) {
     a4: a4, b4: b4, a8: a8, n: n,
     basis: n ? 'Based on ' + n + ' scored week' + (n === 1 ? '' : 's') + (inp.span ? ', ' + inp.span : '') + '.' : '',
   };
+}
+
+// ── Team grid lanes (2026.W41): what to DO with each row, and why. ──────────
+// cells: [{ id, label, sig: g|y|r|m|n, trend: ↗|→|↘|'', delta: '+6%'|'', notEval }]
+// Lanes, in order of precedence:
+//   support   — any red signal, or the score is falling while below the green bar
+//   celebrate — score green, no red anywhere, score not falling
+//   watch     — yellow signals only
+//   steady    — nothing to flag
+// The "why" names the drivers in plain words — red metrics first, then falling
+// ones — so the root cause reads off the row without opening the evidence.
+var PERF_LANES = {
+  support:   { icon: '🤝', label: 'Support' },
+  celebrate: { icon: '🎉', label: 'Celebrate' },
+  watch:     { icon: '👀', label: 'Watch' },
+  steady:    { icon: '·',  label: 'Steady' },
+};
+function perfRowDriver_(cells) {
+  var ev = (cells || []).filter(function(c) { return c && !c.notEval && c.sig !== 'm' && c.sig !== 'n'; });
+  var score = null;
+  ev.forEach(function(c) { if (c.id === 'score') score = c; });
+  var all = ev.filter(function(c) { return c.id !== 'score'; });
+  // PTO health is a wellbeing signal, not a performance miss: it never puts
+  // someone in Support on its own; it is named under Watch (or noted on Celebrate).
+  var ptoRisk = all.some(function(c) { return c.id === 'pto' && c.sig === 'r'; });
+  var metrics = all.filter(function(c) { return c.id !== 'pto'; });
+  if (!metrics.length) return { lane: 'steady', text: 'Not enough evaluated data yet' };
+  var reds = metrics.filter(function(c) { return c.sig === 'r'; });
+  var yels = metrics.filter(function(c) { return c.sig === 'y'; });
+  var falling = metrics.filter(function(c) { return c.trend === '↘'; });
+  var rising = metrics.filter(function(c) { return c.trend === '↗'; });
+  function name(c) { return c.label + (c.trend && c.trend !== '→' ? ' ' + c.trend : '') + (c.delta ? ' ' + c.delta : ''); }
+  function list(arr, n) {
+    var seen = {}, out = [];
+    arr.forEach(function(c) { if (!seen[c.id] && out.length < n) { seen[c.id] = 1; out.push(name(c)); } });
+    return out.join(' · ');
+  }
+  var scoreFalling = !!(score && score.trend === '↘');
+  if (reds.length || (score && score.sig === 'r') || (scoreFalling && score && score.sig !== 'g')) {
+    var drivers = reds.concat(falling.filter(function(c) { return c.sig !== 'g'; })).concat(falling);
+    var t = drivers.length ? list(drivers, 2) : (score ? 'Score ' + (score.trend || '') + (score.delta ? ' ' + score.delta : '') : '');
+    return { lane: 'support', text: t || 'Score below the bar' };
+  }
+  if (score && score.sig === 'g' && !scoreFalling) {
+    var good = rising.filter(function(c) { return c.sig === 'g'; }).concat(metrics.filter(function(c) { return c.sig === 'g'; }));
+    var gt = good.length ? 'Strong on ' + list(good, 3) : 'Score at the green bar';
+    if (falling.length) gt += ' — watch ' + list(falling, 1);
+    if (ptoRisk) gt += ' — PTO plan at risk';
+    return { lane: 'celebrate', text: gt };
+  }
+  if (yels.length || falling.length || ptoRisk) {
+    var wt = list(falling.concat(yels), 2);
+    return { lane: 'watch', text: (ptoRisk ? 'PTO plan at risk' + (wt ? ' · ' : '') : '') + wt };
+  }
+  return { lane: 'steady', text: rising.length ? 'Rising: ' + list(rising, 2) : 'No flags' };
 }
 
 // A week is "empty" (pre-hire / fully absent) when it carries no hours, no plan,

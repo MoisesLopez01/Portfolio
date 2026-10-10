@@ -331,6 +331,44 @@ ck('RCR under the bar is an ask',       rcr.ask.some(function(a) { return a === 
 const empty = perfStory_({ first: 'Zoe', weeks: [] });
 ck('no data → says so',                 /no scored weeks/.test(empty.lead) && empty.basis === '');
 
+// ── 2026.W41 Team grid lanes: perfRowDriver_ ─────────────────────────────────
+function cellsOf(spec) {
+  return Object.keys(spec).map(function(id) {
+    var s = spec[id];
+    return { id: id, label: s.label || id, sig: s.sig, trend: s.trend || '', delta: s.delta || '', notEval: !!s.ne };
+  });
+}
+const sup = perfRowDriver_(cellsOf({ score: { sig: 'y', trend: '↘', delta: '-9' }, goals: { sig: 'g' },
+  tracked: { label: 'Tracked', sig: 'r', trend: '↘', delta: '-12%' }, planned: { label: 'Planned', sig: 'y', trend: '↘', delta: '-8%' } }));
+ck('red metric → support lane', sup.lane === 'support');
+ck('support why names the red driver first, with trend and delta', sup.text.indexOf('Tracked ↘ -12%') === 0);
+ck('support why adds the next falling driver', /Tracked ↘ -12% · Planned ↘ -8%/.test(sup.text));
+const fall = perfRowDriver_(cellsOf({ score: { sig: 'y', trend: '↘', delta: '-7' }, goals: { label: 'Goals', sig: 'y', trend: '↘', delta: '-20%' } }));
+ck('falling score below green → support even without red', fall.lane === 'support' && /Goals ↘/.test(fall.text));
+const cel = perfRowDriver_(cellsOf({ score: { sig: 'g', trend: '↗', delta: '+6' }, goals: { label: 'Goals', sig: 'g', trend: '↗', delta: '+10%' },
+  tracked: { label: 'Tracked', sig: 'g' }, kudos: { label: 'Kudos', sig: 'y' } }));
+ck('green score, no red → celebrate', cel.lane === 'celebrate');
+ck('celebrate why leads with the rising strength', cel.text.indexOf('Strong on Goals ↗ +10%') === 0);
+const celWatch = perfRowDriver_(cellsOf({ score: { sig: 'g', trend: '→' }, goals: { label: 'Goals', sig: 'g' }, planned: { label: 'Planned', sig: 'y', trend: '↘', delta: '-15%' } }));
+ck('celebrate still flags a falling metric', celWatch.lane === 'celebrate' && /watch Planned ↘ -15%/.test(celWatch.text));
+const wat = perfRowDriver_(cellsOf({ score: { sig: 'y', trend: '→' }, kudos: { label: 'Kudos', sig: 'y' } }));
+ck('yellow only → watch', wat.lane === 'watch' && wat.text === 'Kudos');
+const ex = perfRowDriver_(cellsOf({ score: { sig: 'g' }, goals: { label: 'Goals', sig: 'g' }, tracked: { label: 'Tracked', sig: 'r', ne: true } }));
+ck('not-evaluated red never drives a lane', ex.lane === 'celebrate');
+const none = perfRowDriver_(cellsOf({ score: { sig: 'y' }, goals: { label: 'Goals', sig: 'g' } }));
+ck('nothing to flag → steady', none.lane === 'steady' && none.text === 'No flags');
+const nodata = perfRowDriver_(cellsOf({ score: { sig: 'r' }, tracked: { label: 'Tracked', sig: 'm' } }));
+ck('no evaluated metric → steady, never support', nodata.lane === 'steady' && nodata.text === 'Not enough evaluated data yet');
+const pto = perfRowDriver_(cellsOf({ score: { sig: 'y' }, goals: { label: 'Goals', sig: 'g' }, pto: { label: 'PTO', sig: 'r' } }));
+ck('PTO at risk alone → watch, named', pto.lane === 'watch' && pto.text === 'PTO plan at risk');
+const ptoCel = perfRowDriver_(cellsOf({ score: { sig: 'g' }, goals: { label: 'Goals', sig: 'g' }, pto: { label: 'PTO', sig: 'r' } }));
+ck('PTO at risk on a strong row is a note, not a lane change', ptoCel.lane === 'celebrate' && /PTO plan at risk$/.test(ptoCel.text));
+ck('score sorts by value, best first', /if \(s\.key === 'score' && colIdx !== -1\)/.test(html));
+ck('grid rows carry lane + why', /lane: drv\.lane, why: drv\.text,/.test(html));
+ck('grid has the Why column', html.indexOf("th('flags', 'Why')") >= 0);
+ck('celebrate + support focus cards', html.indexOf("k: 'celebrate'") >= 0 && html.indexOf("k: 'support'") >= 0);
+ck('CSV exports lane and why', html.indexOf("var header = ['Rocketeer', 'Lane', 'Why',") >= 0);
+
 // ── 2026.W41 static: merged nav + people view wiring ─────────────────────────
 ck('Leading Behaviours view removed',   !/id: "rocketeers"/.test(html) && !/id="tabRocketeers"/.test(html));
 ck('rocketeers id aliases to perfrecord', /if \(tab === "rocketeers"\) tab = "perfrecord";/.test(html));
