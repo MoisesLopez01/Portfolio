@@ -625,8 +625,11 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
   padding: 0 20px 20px;
   display: flex; flex-direction: column; gap: 20px;
 }
+/* 2026.W41: signals first. The radar shrinks to a supporting picture (≤420px ×
+   scale) and the axis detail becomes a grid of signal tiles beside it, ordered
+   below-target first — every metric readable in the first screen. */
 .radar-stage {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  display: grid; grid-template-columns: minmax(260px, calc(420px * var(--scale))) minmax(0, 1fr);
   gap: 8px 28px; align-items: center;
 }
 /* The wrapper owns the width and nothing owns the height: Chart.js
@@ -634,13 +637,19 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
    height came from the canvas fed the canvas's own height back as a cap and the
    chart shrank to a strip. A block with an explicit width breaks that loop. */
 .radar-canvas-wrap {
-  position: relative; width: min(100%, calc(600px * var(--scale)));
+  position: relative; width: min(100%, calc(420px * var(--scale)));
   margin: 0 auto; padding: 8px 0; min-width: 0;
 }
 .radar-canvas-wrap canvas { width: 100% !important; }
-.radar-side { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
-.rs-head { font-size: calc(11px * var(--scale)); font-weight: 800; text-transform: uppercase;
+.radar-side { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--scale)), 1fr));
+  gap: 10px; padding: 8px 0; align-content: start; }
+.rs-head { grid-column: 1 / -1; font-size: calc(11px * var(--scale)); font-weight: 800; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); }
+.rs-sum { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: -2px; }
+.rs-pill { font-size: calc(12px * var(--scale)); font-weight: 700; padding: 3px 10px; border-radius: 99px;
+  background: var(--surface); border: 1px solid var(--border); }
+.radar-axis-item.st-bad  { border-color: color-mix(in srgb, var(--st-bad) 45%, var(--border)); }
+.radar-axis-item.st-warn { border-color: color-mix(in srgb, var(--st-warn) 45%, var(--border)); }
 .radar-axis-item {
   display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
@@ -659,7 +668,7 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 .ra-bar > b { position: absolute; top: -3px; width: 2px; height: 11px; background: var(--slate); border-radius: 1px; }
 .radar-axis-text .ra-desc { color: var(--muted); margin-top: 1px; white-space: normal; }
 .ra-delta { font-weight: 700; }
-@media (max-width: 1100px) { .radar-stage { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .radar-stage { grid-template-columns: 1fr; } .radar-side { order: -1; } }
 
 /* Group table: one cell shape per column — headline value (status-coloured where
    the axis has a target), then the count behind it on a muted second line.
@@ -2157,7 +2166,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
               <option value="supervisor">Supervisor</option>
               <option value="jobTitle">Job Title</option>
             </select>
-            <span title="RCR and Manager Rating appear when evaluating supervisors or individuals, where they carry meaningful variation across groups. At whole-team level they produce a single average that adds no signal."
+            <span title="Every metric the team carries is shown, below-target signals first. With several groups, an axis with no variation between them is folded so the polygons stay readable."
               style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--border);color:var(--muted);font-size:10px;font-weight:800;cursor:help;flex-shrink:0">?</span>
           </div>
           <div id="radarMainCardActionBtns" style="display:flex;gap:8px;align-items:center;flex-shrink:0">
@@ -2689,10 +2698,13 @@ var RADAR_AXIS_DEFS = [
 ];
 // Axes shown per grouping level — more context = more axes
 var RADAR_AXIS_BY_GROUP = {
-  all:        ['goals', 'tracked', 'planned', 'kudos', 'pto'],
-  location:   ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr'],
+  // 2026.W41: every metric that matters at every level. A single whole-team value
+  // is still a signal against its target; with 2+ groups getActiveAxes folds axes
+  // that show no variation, so polygons stay readable.
+  all:        ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
+  location:   ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
   supervisor: ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
-  jobTitle:   ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr'],
+  jobTitle:   ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
   individual: ['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'],
 };
 // Crew members / contractors have no Goals, PTO, or SI data — evaluate them only on
@@ -10460,8 +10472,9 @@ function renderRadarSide_(groups, activeAxes, refDataset, periodLabel) {
   if (!groups.length || !activeAxes || !activeAxes.length) { el.innerHTML = ''; return; }
   var single = groups.length === 1 ? groups[0].metrics : null;
   var html = '<div class="rs-head">' +
-    (single ? 'Axis detail' : 'Axis spread across ' + groups.length + ' groups') +
+    (single ? 'Signals' : 'Signals across ' + groups.length + ' groups') +
     (periodLabel ? ' · ' + esc(String(periodLabel).replace(/^\d{4}\./, '')) : '') + '</div>';
+  var tiles = [];
 
   activeAxes.forEach(function(a, i) {
     var tgt = RADAR_AXIS_TARGETS[a.id] || 80;
@@ -10495,9 +10508,10 @@ function renderRadarSide_(groups, activeAxes, refDataset, periodLabel) {
       desc = 'Leads: ' + esc(best.n) + ' ' + Math.round(best.s) + '% · Trails: ' + esc(worst.n) + ' ' +
              Math.round(worst.s) + '% · target ' + tgt + '%';
     }
-    var color = RADAR_STATUS_COLOR_[radarStatus_(a.id, score)];
+    var status = radarStatus_(a.id, score);
+    var color = RADAR_STATUS_COLOR_[status];
     var fill  = Math.max(0, Math.min(100, Math.round(score)));
-    html += '<div class="radar-axis-item" title="' + esc(a.desc || '') + '">' +
+    tiles.push({ status: status, gap: score - tgt, html: '<div class="radar-axis-item st-' + status + '" title="' + esc(a.desc || '') + '">' +
       '<span class="radar-axis-dot" style="background:' + a.color + '"></span>' +
       '<div class="radar-axis-text">' +
         '<div class="ra-top"><span class="ra-label">' + esc(a.label) + '</span>' +
@@ -10505,9 +10519,20 @@ function renderRadarSide_(groups, activeAxes, refDataset, periodLabel) {
         '<div class="ra-bar"><i style="width:' + fill + '%;background:' + color + '"></i>' +
           '<b style="left:' + tgt + '%" title="target ' + tgt + '%"></b></div>' +
         '<div class="ra-desc">' + desc + '</div>' +
-      '</div></div>';
+      '</div></div>' });
   });
-  el.innerHTML = html;
+  // Below target first (furthest first), then close, then on target — the first
+  // tiles a manager reads are the ones that need attention.
+  var SEV = { bad: 0, warn: 1, none: 2, good: 3 };
+  tiles.sort(function(x, y) { return (SEV[x.status] - SEV[y.status]) || (x.gap - y.gap); });
+  var n = { bad: 0, warn: 0, good: 0 };
+  tiles.forEach(function(t) { if (n[t.status] !== undefined) n[t.status]++; });
+  html += '<div class="rs-sum">' +
+    (n.bad  ? '<span class="rs-pill" style="color:' + RADAR_STATUS_COLOR_.bad  + '">' + n.bad  + ' below target</span>' : '') +
+    (n.warn ? '<span class="rs-pill" style="color:' + RADAR_STATUS_COLOR_.warn + '">' + n.warn + ' close</span>' : '') +
+    (n.good ? '<span class="rs-pill" style="color:' + RADAR_STATUS_COLOR_.good + '">' + n.good + ' on target</span>' : '') +
+    '</div>';
+  el.innerHTML = html + tiles.map(function(t) { return t.html; }).join('');
 }
 
 function buildRadarTable(groups, activeAxes, groupBy) {

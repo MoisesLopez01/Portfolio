@@ -25,13 +25,20 @@ ck('renderKudosCallout gone', !html.includes('renderKudosCallout'));
 ck('kudos still an action-card entry', /kudos:\s+function\(\)\s+\{ return 'Recognition is near zero/.test(html));
 
 // ── radar stage: chart + side detail ─────────────────────────────────────────
-ck('.radar-stage is a two-column grid',
-   /\.radar-stage \{\s*\n?\s*display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(280px, 360px\);/.test(html));
-ck('stage collapses to one column below 1100px',
-   html.includes('@media (max-width: 1100px) { .radar-stage { grid-template-columns: 1fr; } }'));
+// 2026.W41: signals first — a ≤420px radar beside a grid of signal tiles.
+ck('.radar-stage is a two-column grid (compact radar + signals)',
+   /\.radar-stage \{\s*\n?\s*display: grid; grid-template-columns: minmax\(260px, calc\(420px \* var\(--scale\)\)\) minmax\(0, 1fr\);/.test(html));
+ck('stage collapses to one column below 1100px, signals on top',
+   html.includes('@media (max-width: 1100px) { .radar-stage { grid-template-columns: 1fr; } .radar-side { order: -1; } }'));
 ck('canvas wrapper owns a scaled width (no height cap → no Chart.js shrink loop)',
-   html.includes('position: relative; width: min(100%, calc(600px * var(--scale)));') &&
+   html.includes('position: relative; width: min(100%, calc(420px * var(--scale)));') &&
    !/\.radar-canvas-wrap canvas \{[^}]*max-height/.test(html));
+ck('signal tiles are a grid', html.includes('.radar-side { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(230px * var(--scale)), 1fr));'));
+ck('whole team shows every metric (RCR and SI included)',
+   /all:\s+\['goals', 'tracked', 'planned', 'kudos', 'pto', 'rcr', 'si'\]/.test(html));
+ck('signals sorted below-target first', fnSource('renderRadarSide_').includes('var SEV = { bad: 0, warn: 1, none: 2, good: 3 };') &&
+   fnSource('renderRadarSide_').includes("tiles.sort("));
+ck('signal summary pills', fnSource('renderRadarSide_').includes("' below target</span>'"));
 ck('#radarSide sits inside .radar-stage next to the canvas',
    /<div class="radar-stage">\s*<div class="radar-canvas-wrap">\s*<canvas id="radarMain"><\/canvas>\s*<\/div>\s*<aside class="radar-side" id="radarSide"/.test(html));
 ck('renderRadarSide_ defined once', (html.match(/function renderRadarSide_\(/g) || []).length === 1);
