@@ -30,6 +30,9 @@ const ALLOWED_UNGATED = new Set([
   'doGet',
   // Reports only on the caller's own session; leaks nothing about anyone else.
   'whoAmI',
+  // Simple trigger on the bound spreadsheet: only builds the Contributor Intelligence
+  // menu. Reads nothing, writes nothing; the items it opens are gated themselves.
+  'onOpen',
 ]);
 
 // A gate is any of these appearing inside the function body.
@@ -44,7 +47,14 @@ ck('project .js files found', files.length > 0, 'looked in ' + dir);
 function topLevelFunctions(src) {
   const lines = src.split(/\r?\n/);
   const starts = [];
+  // Client-side script embedded in a server-side HTML template string (the legacy
+  // Contribution Intelligence report builds its page this way) is NOT a GAS global:
+  // it runs in the viewer's browser. Skip whatever sits between <script> and </script>.
+  let inClientScript = false;
   lines.forEach((l, i) => {
+    if (/<script[\s>]/.test(l) && !/<\/script>/.test(l)) { inClientScript = true; return; }
+    if (/<\/script>/.test(l)) { inClientScript = false; return; }
+    if (inClientScript) return;
     // Must match PRIVATE (_-prefixed) declarations too, even though they are not
     // reportable: they are what terminates the previous function's body. Miss them
     // and a public function's slice runs on to the next PUBLIC one, swallowing

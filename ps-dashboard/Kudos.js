@@ -280,7 +280,7 @@ function writeOutput_(data) {
   }
 
   // Auto-size columns
-  sheet.autoResizeColumns(1, data.headers.length);
+  //sheet.autoResizeColumns(1, data.headers.length);
 
   // Wrap Description column only (col 3)
   sheet.getRange(1, 3, data.rows.length + 1, 1)

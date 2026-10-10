@@ -42,6 +42,7 @@ var CONFIG_PS = {
 
   PS_CLASS:          "Professional Services",
   PS_DEPT:           "Services",
+  SALES_DEPT:        "Sales",   // 2026.W36: a PS-class row HRIS moved to this Department belongs to Sales & Success (teamForProfile_)
   GOALS_MIN_COUNT:          8,     // minimum goals to be evaluated (quarter target is 10, 8 completed)
   GOALS_MIN_IN_PROGRESS_PCT: 0.50, // majority of goals must be "In Progress" (not Planned/Completed)
   GOALS_ACTIVE_COMMENT_COUNT: 6,   // goals that must have a self-comment within the evaluated week
@@ -339,8 +340,11 @@ const LEVEL_COLS_ = ["I1","I2","I3","I4","I5","I6","I7","I8","M4","M5","M6","M7"
 // resolved team decides which metrics can carry weight (hard mask) and which
 // fill-defaults blank cells inherit; the family × level matrix cell tunes within that.
 // Spec: ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-design.md
-const PS_TEAM_FAMILIES_ = ["JF007", "JF008", "JF009", "JF018"];
+// JF018 left this list in 2026.W36: Solution Architecture moved to Sales & Success
+// (HRIS Department "Sales"), so it is a Sales family now, not a Services native.
+const PS_TEAM_FAMILIES_ = ["JF007", "JF008", "JF009"];
 const COE_FAMILY_CODE_  = "JF004"; // Sales & Success family (also drives teamForProfile_)
+const SA_FAMILY_CODE_   = "JF018"; // Solution Architecture — Sales & Success since 2026.W36, in ANY Class (teamForProfile_)
 // Time-tracking mandate (ALLOWLIST, not blocklist — spec 2026-08-02 §3.1).
 // Only these families are held to a planning/tracking standard. Everyone else in
 // the Services roster (JF008 Training, JF015 Operations, JF017 IT, JF018 Solution
@@ -691,7 +695,9 @@ function migrateLegacyMatrix_(flat) {
       return;
     }
     if (PS_TEAM_FAMILIES_.indexOf(fam) !== -1) { put("services", fam, flat[fam]); return; }
-    if (fam === COE_FAMILY_CODE_) { put("sales", fam, flat[fam]); put("services", fam, flat[fam]); return; }
+    // JF004 and JF018 are Sales families that may still have PS-class members (JF004
+    // by design; JF018 until HRIS finishes moving them) — a legacy block serves both.
+    if (fam === COE_FAMILY_CODE_ || fam === SA_FAMILY_CODE_) { put("sales", fam, flat[fam]); put("services", fam, flat[fam]); return; }
     put("services", fam, flat[fam]); put("rnd", fam, flat[fam]);
   });
   return out;
@@ -4046,8 +4052,8 @@ function getPSReportData(bustCache, teamKey, viewAs) {
     const rosterBridges = new Map();
     const fullRoster = readPSRoster_(rosterBridges);
 
-    // Team tagging needs the Job Catalog (JF004 detection). Read once here and
-    // pass through to computePSReport_ (which previously read it itself).
+    // Team tagging needs the Job Catalog (JF004 / JF018 detection). Read once here
+    // and pass through to computePSReport_ (which previously read it itself).
     const jobCatalog = readJobCatalog_();
     // Resolved against the FULL roster, before any manager-scope filtering — a
     // scoped view must not lose someone's manager status just because their

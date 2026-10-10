@@ -371,8 +371,9 @@ function _readRosterForAccess_() {
     // there degrades to "no match", which is the safe direction.
     const iClass = pick("Class",                    /^class$/);
     const iDept  = pick("Department",               /^department$|^dept$/);
-    // Job Title feeds teamForProfile_ for the Sales & Success (JF004) signal when
-    // Class alone cannot decide — see resolveTeamScope_.
+    // Job Title (and Department) feed teamForProfile_ for the Sales & Success
+    // signal — JF004 outside the PS class, JF018 / Department "Sales" inside it.
+    // See resolveTeamScope_.
     const iTitle = pick("Job Title",                /^job title$|^title$/);
 
     if (iName === -1 || iEmail === -1) {
@@ -539,14 +540,16 @@ var _SEC_TEAMSCOPE_MEMO_ = null;
  * The org team a team-scoped caller is PINNED to — "services" | "rnd" | "sales".
  *
  * Team membership is derived from the caller's own roster row, never configured:
- * teamForProfile_ (PS Teams.js) maps Class → team, which is the same rule the
- * report itself tags every roster row with. Deriving rather than storing means
- * the pin follows a person when they move org, with nothing to keep in sync.
+ * teamForProfile_ (PS Teams.js) maps Class / Department / job family → team,
+ * which is the same rule the report itself tags every roster row with. Deriving
+ * rather than storing means the pin follows a person when they move org, with
+ * nothing to keep in sync.
  *
- * The job catalog is only consulted when Class alone cannot decide. Class
- * "Professional Services" is always Services; everything else needs the JF004
- * (Sales & Success) signal from the job title to tell Sales from R&D, and getting
- * that wrong would show someone the wrong team's data — so it is worth the read.
+ * The job catalog is always consulted (since 2026.W36): the PS class is no
+ * longer Services by definition — Solution Architecture (JF018) sits in it and
+ * belongs to Sales & Success — and every other class needs the JF004 / JF018
+ * signal from the job title to tell Sales from R&D. Getting that wrong would show
+ * someone the wrong team's data, so it is worth the read.
  *
  * @param {Object} access - A verdict from checkDashboardAccess().
  * @returns {string|null} Team key, or null when the caller is not on the roster
@@ -573,13 +576,10 @@ function resolveTeamScope_(access) {
     return remember(null);
   }
 
-  // Fast path: the PS class is unambiguous and covers most of this roster.
-  if (typeof CONFIG_PS !== "undefined" &&
-      String(me.cls || "").trim().toLowerCase() === String(CONFIG_PS.PS_CLASS).toLowerCase()) {
-    return remember("services");
-  }
-
-  // Anything else needs the job catalog to separate Sales & Success from R&D.
+  // No Class fast path any more (2026.W36): a PS-class row can be Solution
+  // Architecture (JF018) and belong to Sales & Success, so the job catalog is
+  // read for every pin. Getting this wrong would show a viewer the wrong team's
+  // data — one catalog read per execution is worth it.
   let catalog = null;
   try {
     catalog = (typeof readJobCatalog_ === "function") ? readJobCatalog_() : null;

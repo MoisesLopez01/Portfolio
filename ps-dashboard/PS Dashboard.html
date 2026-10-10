@@ -54,6 +54,20 @@
      block multiply this token, so laptops and ultrawide screens get visibly
      bigger text and controls instead of a fixed column floating in margin. */
   --scale: 1;
+
+  /* ── Left sidebar shell (2026.W37 redesign, after the Delivery Health rail) ──
+     The rail is DARK IN BOTH THEMES and owns its own token set instead of
+     borrowing --card-bg/--text: navigation is chrome, and if it inverted with the
+     page it would read as one more panel in light mode — the horizontal tab
+     strip's problem all over again. Only the accent (--orbe) is shared.
+     --navw drives the rail width AND the body's left padding in one token, so the
+     two can never drift; it rides the --scale ladder so wide screens get a wider
+     rail with the bigger type. --topbar-h is measured at runtime (initShell_) so
+     in-page sticky elements can sit under the fixed chrome. */
+  --navw: calc(212px * var(--scale));
+  --nav-bg:#0B1230; --nav-text:#FFFAF5; --nav-muted:#98A6C8;
+  --nav-border:#1B2551; --nav-hover:#151E45; --nav-active:#1E2A5E;
+  --topbar-h: 120px;
 }
 @media(max-width:420px){:root{--scale:.94}}
 @media(min-width:1024px){:root{--scale:1.08}}
@@ -62,24 +76,34 @@
 @media(min-width:2560px){:root{--scale:1.4}}
 @media(min-width:3440px){:root{--scale:1.5}}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-       background: var(--surface); color: var(--text); font-size: 14px; }
-.header-title h1, .section-head h2, .kpi-value, .tab-btn {
+body { font-family: 'Roboto', 'Franklin Gothic Book', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       background: var(--surface); color: var(--text); font-size: 14px;
+       padding-left: var(--navw); }
+/* Collapse toggle: the class sits on <body>, so the rail (a child) inherits the
+   narrowed --navw and the body's own left padding follows in the same rule. */
+body.navCollapsed { --navw: 56px; }
+.header-title h1, .section-head h2, .kpi-value {
   font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif; }
 a { color: var(--orbe); text-decoration: none; }
 
-/* ── HEADER ── */
-.header {
-  position: sticky; top: 0; z-index: 40;
+/* ── TOP BAR — identity row + filter row, pinned as one block ──
+   Everything that describes or narrows the slice (title, team toggle, week,
+   role, filters) stays on screen while the data scrolls under it. One sticky
+   wrapper replaces the old header + filter-bar pair, whose hard-coded
+   top:65px offset broke whenever the header wrapped. */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
   background: var(--card-bg); border-bottom: 1px solid var(--border);
-  padding: 14px 24px; display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 2px 8px rgba(15,25,65,.06);
 }
-.header-logo { background: transparent; border-radius: 8px; width: 40px; height: 40px;
-               display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
-.header-logo img { width: 100%; height: 100%; object-fit: contain; }
-.header-logo svg { width: 18px; height: 18px; fill: var(--void); }
-.header-title { flex: 1; }
-.header-title h1 { font-size: 17px; font-weight: 700; color: var(--void); line-height: 1.2; }
+.header {
+  background: var(--card-bg); border-bottom: 1px solid var(--border);
+  padding: 14px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+/* flex-basis 200px, not auto: with wrapping on, the title's max-content width
+   would otherwise push the buttons onto a second row before it shrinks. */
+.header-title { flex: 1 1 200px; min-width: 0; }
+.header-title h1 { font-size: 17px; font-weight: 700; color: var(--void); line-height: 1.2; text-wrap: balance; }
 .header-title p  { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 .week-badge { background: var(--orbe); color: #fff; border-radius: 99px;
               padding: 4px 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -93,34 +117,59 @@ a { color: var(--orbe); text-decoration: none; }
 .header-btn:hover { background: var(--surface); }
 .header-btn svg { width: 14px; height: 14px; }
 
-/* ── NAV MENU (☰) ── */
-.nav-menu-wrap { position: relative; flex-shrink: 0; }
-.nav-menu-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 38px; height: 38px; border-radius: 9px; font-size: 17px; cursor: pointer;
-  border: 1px solid var(--border); background: #fff; color: var(--slate);
-  transition: background .15s, color .15s, border-color .15s;
+/* ── LEFT SIDEBAR (2026.W37) ──
+   The tabs used to be a horizontal strip above the data on every view, and the
+   settings pages hid behind a ☰ dropdown. Both now live in one fixed dark rail:
+   the main views on top, the "More" group (Documentation, Scoring Weights,
+   Access Control, Usage Analytics, 👁 View as) under a divider. Still generated
+   from VIEWS — a relocation of the same control, not a second copy that could
+   drift. Dark in BOTH themes so it reads as chrome, not as another panel. */
+.sidenav {
+  position: fixed; left: 0; top: 0; bottom: 0; width: var(--navw); z-index: 200;
+  background: var(--nav-bg); color: var(--nav-text); display: flex; flex-direction: column;
+  border-right: 1px solid var(--nav-border); transition: width .16s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
 }
-.nav-menu-btn:hover { background: var(--surface); color: var(--void); }
-.nav-menu-btn.open  { border-color: var(--orbe); color: var(--orbe); }
-.nav-menu-panel {
-  display: none; position: absolute; top: calc(100% + 7px); left: 0; min-width: 220px;
-  background: #fff; border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15,25,65,.16); padding: 6px; z-index: 60;
+/* Brand block (servicerocket-brand kit). Expanded rail: the real ServiceRocket
+   lockup with the white wordmark at 124px, app name underneath. Collapsed rail /
+   phone: the lockup is a horizontal wordmark and would be 14px tall at icon
+   width, so the "CR" monogram tile takes over — width-only sizing, never a
+   stretched or cropped rocket. */
+.navBrand { display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 16px 14px 14px; border-bottom: 1px solid var(--nav-border); min-height: 56px; }
+.navLogo { width: 124px; height: auto; display: block; }
+.navMark { width: 26px; height: 26px; flex: 0 0 26px; border-radius: 7px; background: var(--orbe);
+  display: none; align-items: center; justify-content: center; color: #fff; font-weight: 800;
+  font-size: 13px; font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif; letter-spacing: .02em; }
+.navName { font-family: 'Roboto Condensed', 'Franklin Gothic Medium Cond', sans-serif;
+  font-size: calc(14px * var(--scale)); font-weight: 700; letter-spacing: .01em; white-space: nowrap; color: var(--nav-text); }
+.navScroll { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--nav-border) transparent; }
+.nav-sec-lbl { padding: 10px 11px 4px; font-size: calc(9px * var(--scale)); font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--nav-muted); opacity: .8; white-space: nowrap; }
+.nav-menu-divider { border-top: 1px solid var(--nav-border); margin: 6px 4px; }
+.navFoot { padding: 8px; border-top: 1px solid var(--nav-border); }
+.navToggle { width: 100%; background: transparent; border: 1px solid var(--nav-border);
+  border-radius: 8px; padding: 7px 10px; cursor: pointer; color: var(--nav-muted);
+  font-size: calc(11px * var(--scale)); font-weight: 600; font-family: inherit;
+  display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.navToggle:hover { color: var(--nav-text); background: var(--nav-hover); }
+/* Collapsed rail: icons only. Labels leave the flow (display:none) rather than
+   fading, so the 56px rail has no horizontal scroll. */
+.navCollapsed .navName, .navCollapsed .tabLbl, .navCollapsed .navToggleLbl, .navCollapsed .nav-sec-lbl { display: none; }
+.navCollapsed .tab-btn, .navCollapsed .navToggle { justify-content: center; padding-left: 0; padding-right: 0; }
+.navCollapsed .navBrand { justify-content: center; align-items: center; padding-left: 0; padding-right: 0; }
+.navCollapsed .navLogo { display: none; }
+.navCollapsed .navMark { display: flex; }
+/* Narrow screens force the icon rail regardless of the user's toggle — a 212px
+   rail on a phone is a third of the viewport. Declared AFTER the rail rules above
+   on purpose: same specificity, so source order is what lets it win. */
+@media (max-width: 900px) {
+  body { --navw: 56px; }
+  .navName, .tabLbl, .navToggleLbl, .navLogo, .nav-sec-lbl { display: none; }
+  .navMark { display: flex; }
+  .tab-btn, .navToggle, .navBrand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .navBrand { align-items: center; }
 }
-.nav-menu-panel.open { display: block; }
-.nav-menu-item {
-  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  padding: 9px 12px; border: none; background: transparent; border-radius: 7px;
-  cursor: pointer; font-size: 12px; font-weight: 700; color: var(--slate); font-family: inherit;
-}
-.nav-menu-item:hover  { background: var(--surface); color: var(--void); }
-.nav-menu-item.active { color: var(--orbe); }
-.nav-menu-divider { border-top: 1px solid var(--border); margin: 5px 4px; }
-
-/* Closable temp tabs opened from the ☰ menu */
-.tab-close { margin-left: 7px; font-weight: 800; opacity: .55; padding: 0 3px; border-radius: 4px; }
-.tab-btn:hover .tab-close, .tab-close:hover { opacity: 1; }
 
 /* ── MAIN ── */
 main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 0; }
@@ -132,28 +181,32 @@ main { max-width: 1600px; margin: 0 auto; padding: 20px 24px; display: flex; fle
            border-top-color: var(--orbe); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── TAB NAV ── */
-.tab-nav {
-  display: none;
-  background: var(--tab-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-  border-bottom: none;
-  padding: 0 4px;
-  margin-bottom: -1px;
-  position: relative;
-  z-index: 2;
-}
-.tab-nav.visible { display: flex; align-items: flex-end; gap: 2px; overflow-x: auto; }
+/* ── TAB NAV — vertical rows inside the rail ──
+   #tabNav (the main views) is hidden until the payload lands, exactly as the old
+   strip was; the "More" group that follows it is chained to the same .visible
+   flag so both appear together. */
+.tab-nav { display: none; flex-direction: column; gap: 2px; padding: 12px 8px 6px; }
+.tab-nav.visible { display: flex; }
+.tab-nav-more { padding-top: 0; }
+.tab-nav.visible + .tab-nav-more { display: flex; }
 .tab-btn {
-  padding: 11px 20px;
-  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); background: transparent; border: none; cursor: pointer;
-  border-bottom: 3px solid transparent;
-  transition: color .15s, border-bottom-color .15s; white-space: nowrap;
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  padding: 9px 11px; border: none; border-radius: 8px; background: transparent;
+  color: var(--nav-muted); font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  cursor: pointer; white-space: nowrap; position: relative; font-family: inherit;
+  transition: color .12s, background .12s;
 }
-.tab-btn:hover { color: var(--void); }
-.tab-btn.active { color: var(--orbe); border-bottom-color: var(--orbe); }
+.tab-btn:hover { color: var(--nav-text); background: var(--nav-hover); }
+/* Active state is quiet by design — a soft fill plus a left accent rule, never a
+   saturated block: the rail must not compete with the data. */
+.tab-btn.active { background: var(--nav-active); color: #fff; }
+.tab-btn.active::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--orbe); }
+/* Each row is a small glyph (decorative, aria-hidden) plus the label that carries
+   the accessible name — and survives the collapse, because .tabLbl is hidden with
+   display:none rather than removed. */
+.tabDot { flex: 0 0 18px; width: 18px; text-align: center; font-size: 13px; opacity: .9; }
+.tabLbl { overflow: hidden; text-overflow: ellipsis; }
 
 /* ── TAB PANE ── */
 .tab-pane {
@@ -470,10 +523,8 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 
 /* ── FILTER BAR ── */
 .filter-bar {
-  position: sticky; top: 65px; z-index: 35;
-  background: var(--tab-bg); border-bottom: 1px solid var(--border);
+  background: var(--tab-bg);
   padding: 10px 24px; display: none; align-items: flex-end; gap: 10px; flex-wrap: wrap;
-  box-shadow: 0 2px 6px rgba(0,0,0,.04);
 }
 .filter-bar.visible { display: flex; }
 .fb-group { display: flex; flex-direction: column; gap: 4px; }
@@ -533,45 +584,70 @@ body.dark-mode .gpill-pto  { background: #0c2a3d; color: #93C5FD; }
 .fb-multi-opt:hover { background: var(--surface); }
 .fb-multi-opt input[type=checkbox] { flex-shrink: 0; accent-color: var(--orbe); }
 
-/* ── RADAR TAB ── */
-.radar-legend-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 16px 20px;
-}
-.radar-axis-item {
-  display: flex; align-items: flex-start; gap: 10px;
-}
-.radar-axis-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  margin-top: 3px; flex-shrink: 0;
-}
-.radar-axis-text .ra-label { font-size: 11px; font-weight: 800; color: var(--void); }
-.radar-axis-text .ra-desc  { font-size: 10px; color: var(--muted); margin-top: 1px; }
+/* ── RADAR TAB (2026.W38) ──
+   The radar is the protagonist: it takes the wide column at up to 600px × scale
+   instead of floating at 560px in an otherwise empty card. The observer's detail
+   rides beside it in .radar-side — one row per active axis with the score against
+   its target, the raw count behind the score and the move since the prior period
+   — so enlarging the chart loses nothing. Below 1100px the panel drops under it. */
 .radar-body {
   padding: 0 20px 20px;
   display: flex; flex-direction: column; gap: 20px;
 }
+.radar-stage {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 8px 28px; align-items: center;
+}
+/* The wrapper owns the width and nothing owns the height: Chart.js
+   (maintainAspectRatio) reads its container's box, so a flex/grid wrapper whose
+   height came from the canvas fed the canvas's own height back as a cap and the
+   chart shrank to a strip. A block with an explicit width breaks that loop. */
 .radar-canvas-wrap {
-  display: flex; justify-content: center; align-items: center;
-  padding: 8px 0;
+  position: relative; width: min(100%, calc(600px * var(--scale)));
+  margin: 0 auto; padding: 8px 0; min-width: 0;
 }
-.radar-canvas-wrap canvas {
-  max-width: 560px;
-  max-height: 560px;
-  width: 100% !important;
+.radar-canvas-wrap canvas { width: 100% !important; }
+.radar-side { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
+.rs-head { font-size: calc(11px * var(--scale)); font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); }
+.radar-axis-item {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
 }
+.radar-axis-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  margin-top: 5px; flex-shrink: 0;
+}
+.radar-axis-text { flex: 1; min-width: 0; }
+.ra-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.radar-axis-text .ra-label { font-size: calc(12px * var(--scale)); font-weight: 800; color: var(--void); }
+.ra-score { font-size: calc(14px * var(--scale)); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Score bar with the target as a tick, so "below target" reads without the number. */
+.ra-bar { position: relative; height: 5px; border-radius: 3px; background: var(--border); margin: 6px 0 4px; }
+.ra-bar > i { display: block; height: 100%; border-radius: 3px; }
+.ra-bar > b { position: absolute; top: -3px; width: 2px; height: 11px; background: var(--slate); border-radius: 1px; }
+.radar-axis-text .ra-desc { color: var(--muted); margin-top: 1px; white-space: normal; }
+.ra-delta { font-weight: 700; }
+@media (max-width: 1100px) { .radar-stage { grid-template-columns: 1fr; } }
+
+/* Group table: one cell shape per column — headline value (status-coloured where
+   the axis has a target), then the count behind it on a muted second line.
+   Numeric columns right-align so figures line up; no more inline 10px spans that
+   escaped the type scale. */
 .radar-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
 .radar-tbl th {
-  padding: 7px 12px; background: #F8FAFC; font-size: 10px; font-weight: 800;
+  padding: 8px 12px; background: #F8FAFC; font-size: 10px; font-weight: 800;
   text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
   border-bottom: 2px solid var(--border); text-align: left; white-space: nowrap;
 }
 .radar-tbl td {
-  padding: 7px 12px; border-bottom: 1px solid var(--border);
-  color: var(--text); white-space: nowrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text); white-space: nowrap; vertical-align: top;
 }
+.radar-tbl th.num, .radar-tbl td.num { text-align: right; }
+.radar-tbl .rt-val { font-weight: 700; color: var(--void); font-variant-numeric: tabular-nums; }
+.radar-tbl .rt-sub { display: block; font-size: calc(11px * var(--scale)); color: var(--muted);
+  font-weight: 500; margin-top: 1px; }
 .radar-tbl tbody tr:last-child td { border-bottom: none; }
 .radar-tbl tbody tr:hover td { background: #F5F7FF; }
 
@@ -772,7 +848,7 @@ html { scrollbar-gutter: stable; }
 body.pr-locked { overflow: hidden; }
 .pr-panel { flex: 0 0 var(--pr-panel-w, clamp(600px, 40vw, 900px));
   width: var(--pr-panel-w, clamp(600px, 40vw, 900px));
-  position: sticky; top: 70px; max-height: calc(100vh - 240px);
+  position: sticky; top: calc(var(--topbar-h, 70px) + 8px); max-height: calc(100vh - 240px);
   background: var(--card-bg); border-left: 1px solid var(--border);
   overflow-y: auto; padding: 14px 16px 14px 20px; animation: prPanelIn .18s ease-out;
   container-type: inline-size; container-name: drawer; }
@@ -800,8 +876,9 @@ body.pr-locked { overflow: hidden; }
 /* Print (spec v4 P10): the open card becomes the page — promotion packets end
    up printed whether we design for it or not. */
 @media print {
-  .header, .filter-bar, .tab-nav, .pr-workspace > .pr-scroll,
+  .sidenav, .topbar, .header, .filter-bar, .tab-nav, .pr-workspace > .pr-scroll,
   .pr-drill-actions, .pr-drag { display: none !important; }
+  body { padding-left: 0 !important; }
   .pr-panel { position: static !important; width: 100% !important; max-width: none;
     max-height: none !important; border: none; box-shadow: none; animation: none; }
   .pr-feed { max-height: none !important; overflow: visible !important; }
@@ -1038,13 +1115,6 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 /* 768px — tablet portrait */
 @media (max-width: 768px) {
   main { padding: 12px; }
-  .filter-bar { top: 56px; }
-
-  /* Tab nav: horizontally scrollable, no wrapping */
-  .tab-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap;
-             scrollbar-width: none; }
-  .tab-nav::-webkit-scrollbar { display: none; }
-  .tab-btn { padding: 10px 14px; font-size: 10px; white-space: nowrap; }
 
   /* Header: hide role badge on small screens to reclaim space */
   #userRoleBadge { display: none !important; }
@@ -1061,9 +1131,6 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 /* 640px — large phone landscape / small tablet */
 @media (max-width: 640px) {
   .header { padding: 10px 14px; gap: 8px; }
-  .header-logo { width: 30px; height: 30px; border-radius: 8px; }
-  .header-logo svg { width: 14px; height: 14px; }
-  .nav-menu-btn { width: 32px; height: 32px; font-size: 15px; border-radius: 8px; }
 
   /* Filter bar: stack filters vertically */
   .filter-bar { flex-direction: column; align-items: stretch; padding: 10px 14px; gap: 8px; }
@@ -1162,7 +1229,7 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .va-btn-primary { background: #92400E; color: #fff; border-color: #92400E; }
 .va-btn-primary:hover { background: #7C2D12; }
 
-.va-modal { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center;
+.va-modal { position: fixed; inset: 0; z-index: 300; display: none; align-items: flex-start; justify-content: center;
   padding: 60px 16px; background: rgba(15,25,65,.45); }
 .va-modal.open { display: flex; }
 .va-dialog { width: 100%; max-width: 640px; max-height: calc(100vh - 100px); display: flex; flex-direction: column;
@@ -1317,7 +1384,7 @@ body { font-size: calc(15px * var(--scale)); }
 /* Header & chrome */
 .header-title h1 { font-size: calc(18px * var(--scale)); }
 .header-btn { font-size: calc(13px * var(--scale)); }
-.tab-btn { font-size: calc(13px * var(--scale)); padding: calc(10px * var(--scale)) calc(18px * var(--scale)); }
+.tab-btn { font-size: calc(12.5px * var(--scale)); padding: calc(9px * var(--scale)) calc(11px * var(--scale)); }
 .perf-header-bar h2 { font-size: calc(15px * var(--scale)); }
 .team-brief-head h3 { font-size: calc(14px * var(--scale)); }
 .perf-week-pill { font-size: calc(13px * var(--scale)); }
@@ -1372,7 +1439,6 @@ body { font-size: calc(15px * var(--scale)); }
 @media (min-width: 1024px) {
   main { max-width: calc(1600px * var(--scale)); padding: calc(20px * var(--scale)) calc(24px * var(--scale)); }
   .header { padding: calc(14px * var(--scale)) calc(24px * var(--scale)); }
-  .nav-menu-btn { width: calc(38px * var(--scale)); height: calc(38px * var(--scale)); }
   /* KPI min stays UNSCALED and auto-FIT (not fill): extra width must become
      more columns first, then the cards stretch to close the row — so a full
      KPI set holds ONE row on wide screens instead of orphaning the last card
@@ -1386,7 +1452,6 @@ body { font-size: calc(15px * var(--scale)); }
 /* Tablet — keep headings readable */
 @media (max-width: 768px) {
   .header-title h1 { font-size: 16px; }
-  .tab-btn { font-size: 12px; padding: 10px 14px; }
   .metrics-table th, .metrics-table td { font-size: 13px; }
   .emp-table th, .emp-table td { font-size: 13px; }
 }
@@ -1422,13 +1487,15 @@ body.dark-mode {
   color: var(--text);
 }
 
-/* Sticky chrome */
+/* Sticky chrome. The rail's BACKGROUND is deliberately not redefined — it is
+   chrome and stays dark in both themes. Its EDGE is: in dark mode the rail and
+   the page are both near-black and the light-mode border vanishes, so only the
+   border brightens to keep the separation the eye needs. */
+body.dark-mode { --nav-border: #2B3A78; }
+body.dark-mode .topbar     { border-color: var(--border); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 body.dark-mode .header     { border-color: var(--border); }
-body.dark-mode .filter-bar { border-color: var(--border); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
-body.dark-mode .tab-nav    { border-color: var(--border); }
-
-/* Logo */
-body.dark-mode .header-logo { background: rgba(255,255,255,.08); }
+/* --void flips to cream in dark mode, which turned the active team pill white-on-white. */
+body.dark-mode .team-toggle button.active { background: var(--orbe); color: #fff; }
 
 /* KPI & section cards */
 body.dark-mode .kpi-card     { border-color: var(--border); box-shadow: var(--shadow); }
@@ -1467,13 +1534,7 @@ body.dark-mode .header-btn                 { background: var(--card-bg); color: 
 body.dark-mode .header-btn:hover           { background: var(--hover-row); }
 body.dark-mode .copy-btn                   { background: var(--card-bg); border-color: var(--border); color: var(--muted); }
 body.dark-mode .copy-btn:hover             { background: var(--hover-row); }
-body.dark-mode .tab-btn:hover              { color: var(--text); }
-body.dark-mode .nav-menu-btn               { background: var(--card-bg); color: var(--muted); border-color: var(--border); }
-body.dark-mode .nav-menu-btn:hover         { background: var(--hover-row); color: var(--text); }
-body.dark-mode .nav-menu-btn.open          { border-color: var(--orbe); color: var(--orbe); }
-body.dark-mode .nav-menu-panel             { background: var(--card-bg); border-color: var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
-body.dark-mode .nav-menu-item:hover        { background: var(--hover-row); color: var(--text); }
-body.dark-mode .nav-menu-divider           { border-color: var(--border); }
+
 
 /* Detail / expanded rows */
 body.dark-mode .detail-inner                          { background: #090F26; }
@@ -1599,21 +1660,40 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 </head>
 <body>
 
-<!-- HEADER -->
-<header class="header">
-  <div class="nav-menu-wrap" id="navMenuWrap">
-    <button class="nav-menu-btn" id="navMenuBtn" onclick="toggleNavMenu()" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false">☰</button>
-    <div class="nav-menu-panel" id="navMenuPanel" role="menu"></div>
+<!-- ── LEFT SIDEBAR NAVIGATION (2026.W37) ─────────────────────────────────────
+     The tab strip that used to sit above the panes and the ☰ settings menu,
+     merged into one fixed dark rail. #tabNav keeps its id and its static buttons
+     (each keyed by a VIEWS btnId); the "More" group below it is rendered by
+     renderNavMenu_ from the VIEWS entries with location "menu". The logo is the
+     real ServiceRocket lockup, embedded as base64 because HtmlService pages
+     cannot rely on an external image (the old Drive link broke silently). -->
+<nav class="sidenav" id="sidenav" aria-label="Dashboard sections">
+  <div class="navBrand">
+    <img class="navLogo" alt="ServiceRocket" src="data:image/png;base64,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">
+    <span class="navMark" aria-hidden="true">CR</span>
+    <span class="navName">Contribution Report</span>
   </div>
-  <div class="header-logo">
-    <img id="srLogo"
-         src="https://drive.google.com/uc?id=1HIRAMuKZAfPWgOsbFw-r_6UmxgfSUHZC&export=view"
-         alt="ServiceRocket"
-         onerror="this.style.display='none';document.getElementById('srLogoFallback').style.display='flex'">
-    <div id="srLogoFallback" style="display:none;align-items:center;justify-content:center;width:100%;height:100%">
-      <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="var(--void)"/></svg>
+  <div class="navScroll">
+    <div class="tab-nav" id="tabNav" role="tablist">
+      <button class="tab-btn active" id="tabBtnOverview"    onclick="switchTab('overview')"><span class="tabDot" aria-hidden="true">◆</span><span class="tabLbl">Overview</span></button>
+      <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')"><span class="tabDot" aria-hidden="true">◎</span><span class="tabLbl">Team Radar</span></button>
+      <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')"><span class="tabDot" aria-hidden="true">★</span><span class="tabLbl">Leading Behaviours</span></button>
+      <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')"><span class="tabDot" aria-hidden="true">▲</span><span class="tabLbl">Trends</span></button>
+      <button class="tab-btn"        id="tabBtnExecBrief"   onclick="switchTab('execbrief')"><span class="tabDot" aria-hidden="true">📋</span><span class="tabLbl">Team Executive Brief</span></button>
+      <button class="tab-btn"        id="tabBtnPerfRecord"  onclick="switchTab('perfrecord')"><span class="tabDot" aria-hidden="true">📈</span><span class="tabLbl">Performance Record</span></button>
     </div>
+    <div class="tab-nav tab-nav-more" id="navMenuPanel" role="menu"></div>
   </div>
+  <div class="navFoot">
+    <button class="navToggle" id="btnNav" type="button" title="Collapse the sidebar to icons" aria-expanded="true">
+      <span class="tabDot" aria-hidden="true">‹‹</span><span class="navToggleLbl">Collapse</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ── TOP BAR: identity row + 👁 banner + filter row, pinned together ── -->
+<div class="topbar" id="topbar">
+<header class="header">
   <div class="header-title">
     <h1>Professional Services — Weekly Contribution Report</h1>
     <p id="headerQuarterLabel">Operational Excellence</p>
@@ -1636,21 +1716,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
 
 <!-- 👁 VIEW AS — banner (super admins previewing someone else's dashboard) -->
 <div class="viewas-banner" id="viewAsBanner" role="status" aria-live="polite"></div>
-
-<!-- 👁 VIEW AS — target picker -->
-<div class="va-modal" id="viewAsModal" onclick="if (event.target === this) closeViewAsPicker()">
-  <div class="va-dialog" role="dialog" aria-modal="true" aria-labelledby="viewAsTitle">
-    <div class="va-head">
-      <div>
-        <h2 id="viewAsTitle">👁 View dashboard as…</h2>
-        <p>Preview exactly what a manager or director is served — their scope, team pin and own-row exclusion. Read-only.</p>
-      </div>
-      <button class="va-close" onclick="closeViewAsPicker()" aria-label="Close">×</button>
-    </div>
-    <div class="va-search"><input type="text" id="viewAsSearch" placeholder="Search by name, email, title or role…" oninput="renderViewAsList_()" autocomplete="off"></div>
-    <div class="va-list" id="viewAsList"><div class="va-empty">Loading people…</div></div>
-  </div>
-</div>
 
 <!-- FILTER BAR -->
 <div class="filter-bar" id="filterBar">
@@ -1715,6 +1780,22 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   </div>
   <button class="fb-reset" onclick="resetFilters()">Reset</button>
 </div>
+</div><!-- /topbar -->
+
+<!-- 👁 VIEW AS — target picker -->
+<div class="va-modal" id="viewAsModal" onclick="if (event.target === this) closeViewAsPicker()">
+  <div class="va-dialog" role="dialog" aria-modal="true" aria-labelledby="viewAsTitle">
+    <div class="va-head">
+      <div>
+        <h2 id="viewAsTitle">👁 View dashboard as…</h2>
+        <p>Preview exactly what a manager or director is served — their scope, team pin and own-row exclusion. Read-only.</p>
+      </div>
+      <button class="va-close" onclick="closeViewAsPicker()" aria-label="Close">×</button>
+    </div>
+    <div class="va-search"><input type="text" id="viewAsSearch" placeholder="Search by name, email, title or role…" oninput="renderViewAsList_()" autocomplete="off"></div>
+    <div class="va-list" id="viewAsList"><div class="va-empty">Loading people…</div></div>
+  </div>
+</div>
 
 <!-- MAIN -->
 <main id="mainContent">
@@ -1724,15 +1805,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <p>Loading contribution data…</p>
   </div>
 
-  <!-- TAB NAV -->
-  <div class="tab-nav" id="tabNav">
-    <button class="tab-btn active" id="tabBtnOverview"    onclick="switchTab('overview')">Overview</button>
-    <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')">Team Radar</button>
-    <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')">LEADING BEHAVIOURS</button>
-    <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')">Trends</button>
-    <button class="tab-btn"        id="tabBtnExecBrief"   onclick="switchTab('execbrief')">📋 Team Executive Brief</button>
-    <button class="tab-btn"        id="tabBtnPerfRecord"  onclick="switchTab('perfrecord')">📈 Performance Record</button>
-  </div>
+  <!-- TAB NAV lives in the left sidebar (#tabNav inside <nav class="sidenav">) -->
 
   <!-- OVERVIEW TAB -->
   <div id="tabOverview" class="tab-pane">
@@ -1779,10 +1852,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
   <!-- RADAR TAB -->
   <div id="tabRadar" class="tab-pane">
 
-    <!-- Kudos recognition callout — shown only when kudos/person is low -->
-    <div class="section-card" id="kudosCalloutCard" style="display:none"></div>
-
-    <!-- Main Radar -->
+    <!-- Main Radar. The red low-kudos callout that used to sit above it is gone
+         (2026.W38): the Kudos axis, its side-panel row and the Recommended Actions
+         card already carry that signal without a banner. -->
     <div class="section-card" id="radarMainCard">
       <div class="section-head" style="flex-wrap:wrap;gap:12px">
         <div style="flex:1;min-width:200px">
@@ -1818,8 +1890,11 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
       </div>
       <div class="radar-body">
-        <div class="radar-canvas-wrap">
-          <canvas id="radarMain"></canvas>
+        <div class="radar-stage">
+          <div class="radar-canvas-wrap">
+            <canvas id="radarMain"></canvas>
+          </div>
+          <aside class="radar-side" id="radarSide" aria-label="Axis detail"></aside>
         </div>
         <div id="radarMainTable"></div>
       </div>
@@ -1867,8 +1942,8 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <div class="section-card">
       <div class="section-head">
         <div>
-          <h2>Data Reference</h2>
-          <p class="section-sub">Data sources, metric logic, and evaluation rules used in this dashboard</p>
+          <h2>Documentation</h2>
+          <p class="section-sub">What each metric means, where its data comes from, and how it is evaluated</p>
         </div>
       </div>
       <div class="dr-body">
@@ -1893,7 +1968,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </table>
           <div class="dr-note" style="margin-top:4px"><strong>Ramp-Up employees</strong> (hired within the last 3 months, or flagged as Ramp-Up in the roster) are shown in the employee table with an amber badge, but are excluded from performance metrics — RCR, SI, Goals Commented, and Kudos given. They remain included in time-based metrics: Tracked Time, Planned Time, and PTO.</div>
           <div class="dr-note" style="margin-top:4px"><strong>🏖 On Leave</strong> — anyone whose Employee Status names maternity, paternity, parental, sabbatical, or a leave of absence stays in the employee table with a badge, but leaves every team metric until they return. An absence is not a performance signal.</div>
-          <div class="dr-note" style="margin-top:4px"><strong>⏱ Time-tracking mandate</strong> — only <strong>JF007 Managed Services &amp; Support</strong> and <strong>JF009 Service Delivery</strong> are held to a planning and tracking standard, along with crew and anyone whose job title does not resolve to a job family (an unrecognised title never grants an exemption). Everyone else in the Services roster — <strong>JF008 Training &amp; Customer Education, JF015 Operations, JF017 Information Technology, JF018 Solution Architecture</strong> and the embedded operational families — carries an <strong>⏱ Exempt</strong> badge. They are full team members and compete on Goals, Kudos, SI and PTO, but they never move a Time tracked, Time planned or team RCR number, even when some of them do plan, track or bill in a given month. Their hours and RCR still appear on their own row, muted, for information. Scoring follows the same rule: an exempt rocketeer carries no tracked, planned or RCR weight.</div>
+          <div class="dr-note" style="margin-top:4px"><strong>⏱ Time-tracking mandate</strong> — only <strong>JF007 Managed Services &amp; Support</strong> and <strong>JF009 Service Delivery</strong> are held to a planning and tracking standard, along with crew and anyone whose job title does not resolve to a job family (an unrecognised title never grants an exemption). Everyone else in the Services roster — <strong>JF008 Training &amp; Customer Education, JF015 Operations, JF017 Information Technology</strong> and the embedded operational families — carries an <strong>⏱ Exempt</strong> badge. <strong>JF018 Solution Architecture</strong> left the Services roster in 2026.W36: it now belongs to the <strong>Sales &amp; Success</strong> team in every Class (HRIS Department "Sales"), so a manager whose org tree holds both consultants and Solution Architects sees two teams in the header toggle. They are full team members and compete on Goals, Kudos, SI and PTO, but they never move a Time tracked, Time planned or team RCR number, even when some of them do plan, track or bill in a given month. Their hours and RCR still appear on their own row, muted, for information. Scoring follows the same rule: an exempt rocketeer carries no tracked, planned or RCR weight.</div>
           <div class="dr-note" style="margin-top:4px"><strong>👥 Managers vs individual contributors</strong> — inside the tracking mandate, the two cohorts are reported and judged <strong>separately</strong>. A rocketeer counts as a <strong>manager</strong> when their Job Catalog track is <strong>M</strong> <em>or</em> at least one roster member reports to them — so a newly-titled manager with no reports yet and an I-track lead who does manage people are both on the manager bar, never the IC one. A manager's week is coaching, escalation, hiring and 1:1s, work that never reaches Tempo, so measuring them on the IC yardstick reads as blame for doing the job. Both cohorts are still held to planning and tracking, at different bars: <strong>ICs</strong> 85% coverage · 36h target · 28h floor. <strong>Managers</strong> 70% coverage · 20h target · 10h floor for tracking, and 70% coverage for planning. The Executive Brief states each cohort's number on its own line and names the bar it was measured against; the <strong>IC line is the one that carries a support action</strong>, because that is where a gap costs delivery capacity. Planning is the exception where a manager gap is itself a concern — team capacity is unforecastable without it. Crew members are never classified as managers.</div>
         </div>
 
@@ -2359,8 +2434,10 @@ function axisIdsForCrew(ids, isCrew) {
 // ── TIME MANDATE (mirrors the server carve-out, spec 2026-08-02 §5.1) ──
 // Only JF007 / JF009 (and anyone whose family can't be resolved) are held to a
 // planning and tracking standard. The rest of the Services roster — JF008, JF015,
-// JF017, JF018 and the embedded operational families — belong to the team but must
+// JF017 and the embedded operational families — belong to the team but must
 // never move a tracked/planned number, even when some of them do plan and track.
+// (JF018 Solution Architecture moved to the Sales & Success team in 2026.W36 and
+// no longer reaches the Services payload at all.)
 // RCR joined the carve on 2026-08-05: the same families bill sporadically, so
 // every RCR average/aggregate filters through tracksTime_ as well (individual
 // values stay visible, informational only).
@@ -2461,9 +2538,8 @@ var STATE = {
   jobTitleFilter:   new Set(),
   jfFilter:         new Set(),
   lvFilter:         new Set(),
-  openMenuTabs:     [],          // ids of ☰-menu views currently open as temp tabs
   usageData:        null,        // getUsageAnalytics() result, cached per session
-  lastRegularTab:   "overview",  // fallback target when the active temp tab closes
+  lastRegularTab:   "overview",  // fallback target when the active "More" view is closed or loses its role
   periodGranularity: "week",   // 'week' | 'month' | 'quarter' — shared across Brief/Radar/Trends
   selectedPeriod:    null,     // selected bucket key ('2026-06' / 'FY26Q4') or week label; null = default (last closed)
   activeTeam:        "services", // org team currently displayed (TEAMS registry key)
@@ -2480,7 +2556,7 @@ var STATE = {
 var VIEWS = [
   { id: "overview",   btnId: "tabBtnOverview",   paneId: "tabOverview",   label: "Overview",           location: "tabbar", roles: null },
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
-  { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "LEADING BEHAVIOURS", location: "tabbar", roles: null },
+  { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "Leading Behaviours", location: "tabbar", roles: null },
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
   { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
   // Performance Record (2026.W36): every role — super/admin see the company, org
@@ -2489,7 +2565,7 @@ var VIEWS = [
   // caller's scope and stripped of their own row (applySelfExclusion_), so the tab
   // adds no data control of its own: whoever may load the dashboard may read it.
   { id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: null },
-  { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📊 Data Reference",  location: "menu",   roles: null },
+  { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📖 Documentation",   location: "menu",   roles: null },
   // hideInPreview: these pages read settings as the REAL caller (getAccessSettings etc.
   // are never impersonated), so showing them under 👁 View as would misrepresent what
   // an org admin sees. canSeeView_ hides them while STATE.viewAs is set.
@@ -2539,7 +2615,21 @@ function applyRoleToNav_() {
   renderNavMenu_();
 }
 
-// ── ☰ NAV MENU + TEMP TABS ────────────────────────────────
+// ── SIDEBAR "MORE" GROUP (formerly the ☰ menu + temp tabs) ─────────────────
+// Sidebar row markup: a leading glyph (decorative, aria-hidden) plus the label
+// that carries the accessible name and that the collapsed rail hides. A label
+// that already starts with an emoji ("📖 Documentation") lends it as the glyph,
+// so VIEWS entries need no second field.
+function navRow_(label, dot) {
+  var m = /^(\S+)\s+([\s\S]+)$/.exec(label);
+  if (!dot && m && !/^[A-Za-z0-9]/.test(m[1])) { dot = m[1]; label = m[2]; }
+  return '<span class="tabDot" aria-hidden="true">' + (dot || '•') + '</span>' +
+         '<span class="tabLbl">' + label + '</span>';
+}
+
+// The menu views render as permanent rows in the rail, each carrying its VIEWS
+// btnId so switchTab()'s active-class toggle treats them exactly like the main
+// tabs. Rebuilt by applyRoleToNav_ whenever the role or the 👁 preview changes.
 function renderNavMenu_() {
   var panel = document.getElementById("navMenuPanel");
   if (!panel) return;
@@ -2548,58 +2638,30 @@ function renderNavMenu_() {
   items.forEach(function(v, i) {
     // Divider between the everyone-visible pages and the admin-only block
     if (i > 0 && v.roles && !items[i - 1].roles) html += '<div class="nav-menu-divider"></div>';
-    html += '<button class="nav-menu-item' + (STATE.activeTab === v.id ? ' active' : '') + '" role="menuitem"' +
-            ' onclick="openMenuView(\'' + v.id + '\')">' + v.label + '</button>';
+    html += '<button class="tab-btn nav-menu-item' + (STATE.activeTab === v.id ? ' active' : '') + '" role="menuitem"' +
+            ' id="' + v.btnId + '" onclick="openMenuView(\'' + v.id + '\')">' + navRow_(v.label) + '</button>';
   });
   // 👁 View as — not a VIEWS entry (it opens a picker, not a pane). Real super admins only.
   if (isRealSuperAdmin_()) {
     html += '<div class="nav-menu-divider"></div>' +
-            '<button class="nav-menu-item' + (STATE.viewAs ? ' active' : '') + '" role="menuitem" onclick="toggleNavMenu(true); openViewAsPicker()">' +
-              (STATE.viewAs ? '👁 Viewing as ' + esc(STATE.viewAs.name || STATE.viewAs.email) + ' — change…' : '👁 View dashboard as…') +
+            '<button class="tab-btn nav-menu-item' + (STATE.viewAs ? ' active' : '') + '" role="menuitem" onclick="openViewAsPicker()">' +
+              navRow_(STATE.viewAs ? '👁 Viewing as ' + esc(STATE.viewAs.name || STATE.viewAs.email) + ' — change…' : '👁 View dashboard as…') +
             '</button>';
     if (STATE.viewAs) {
-      html += '<button class="nav-menu-item" role="menuitem" onclick="toggleNavMenu(true); exitViewAs()">↩ Exit preview</button>';
+      html += '<button class="tab-btn nav-menu-item" role="menuitem" onclick="exitViewAs()">' + navRow_('↩ Exit preview') + '</button>';
     }
   }
+  if (html) html = '<div class="nav-sec-lbl">More</div>' + html;
   panel.innerHTML = html;
 }
 
-function toggleNavMenu(forceClose) {
-  var btn   = document.getElementById("navMenuBtn");
-  var panel = document.getElementById("navMenuPanel");
-  if (!btn || !panel) return;
-  var open = forceClose === true ? false : !panel.classList.contains("open");
-  if (open) renderNavMenu_();
-  panel.classList.toggle("open", open);
-  btn.classList.toggle("open", open);
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
-}
-
-// Create the temp tab button for a menu view if it isn't open yet.
-function ensureMenuTabOpen_(view) {
-  if (STATE.openMenuTabs.indexOf(view.id) !== -1) return;
-  STATE.openMenuTabs.push(view.id);
-  var btn = document.createElement("button");
-  btn.className = "tab-btn tab-btn-temp";
-  btn.id        = view.btnId;
-  btn.setAttribute("onclick", "switchTab('" + view.id + "')");
-  btn.innerHTML = view.label +
-    '<span class="tab-close" title="Close" onclick="event.stopPropagation();closeMenuTab(\'' + view.id + '\')">×</span>';
-  document.getElementById("tabNav").appendChild(btn);
-}
-
 function openMenuView(id) {
-  toggleNavMenu(true);
   switchTab(id);
 }
 
+// A "More" view the caller may no longer see (role change, 👁 preview) falls
+// back to the last regular tab; the row itself is dropped by renderNavMenu_.
 function closeMenuTab(id) {
-  var idx = STATE.openMenuTabs.indexOf(id);
-  if (idx === -1) return;
-  STATE.openMenuTabs.splice(idx, 1);
-  var view = viewById_(id);
-  var btn  = view && document.getElementById(view.btnId);
-  if (btn) btn.parentNode.removeChild(btn);
   if (STATE.activeTab === id) switchTab(STATE.lastRegularTab || "overview");
 }
 
@@ -3091,12 +3153,9 @@ var _LOADING_HTML = (document.getElementById("loadingState") || {}).innerHTML ||
       var panel = document.getElementById(pair[1]);
       if (wrap && panel && !wrap.contains(e.target)) panel.style.display = 'none';
     });
-    var menuWrap = document.getElementById('navMenuWrap');
-    if (menuWrap && !menuWrap.contains(e.target)) toggleNavMenu(true);
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      toggleNavMenu(true);
       document.querySelectorAll('.fb-multi-panel').forEach(function(p) { p.style.display = 'none'; });
     }
   });
@@ -3489,8 +3548,8 @@ function switchTab(tab) {
   var view = viewById_(tab);
   if (!view || !canSeeView_(view)) { tab = "overview"; view = viewById_(tab); }
 
-  if (view.location === "menu") ensureMenuTabOpen_(view); // programmatic calls behave like menu clicks
-  else STATE.lastRegularTab = tab;
+  var prevTab = STATE.activeTab;
+  if (view.location !== "menu") STATE.lastRegularTab = tab; // "More" views are never the fallback target
   STATE.activeTab = tab;
 
   VIEWS.forEach(function(v) {
@@ -3500,10 +3559,25 @@ function switchTab(tab) {
     if (btn)  btn.classList.toggle("active",  v.id === tab);
   });
 
+  // Every pane is a sibling inside the ONE document scroller and the swap above
+  // only flips display:none/flex, so the window's scroll offset would survive it:
+  // scroll Overview down to its table, open Trends, and Trends appears already
+  // scrolled to its bottom. A view change restarts at the top; a same-view call
+  // (loadData's re-render, a filter change) keeps the reader's place.
+  if (prevTab !== tab) resetViewScroll_();
+
   if (DATA) renderAll();
   // The Performance Record panel is position:fixed — hide it when its tab isn't
   // active (renderPerfPanel_ guards on activeTab internally).
   if (typeof renderPerfPanel_ === 'function') renderPerfPanel_();
+}
+
+// The sticky top bar lives in the same scroller at top:0, so offset 0 is a view's
+// natural starting point — header and filters are already on screen there.
+function resetViewScroll_() {
+  try { window.scrollTo(0, 0); } catch (e) {}
+  document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
 }
 
 // ── RENDER ORCHESTRATION ─────────────────────────────────
@@ -7159,7 +7233,7 @@ function renderKPIs(m, filtered, filtering) {
                if (auditCount > 0) parts.push(auditCount + " flagged for inactivity (STF risk)");
                return parts.length ? "<span style='color:var(--slate)'>" + parts.join(" · ") + " — see Goals Standing for details</span>" : "";
              })(),
-      tipText: (DATA.meta && DATA.meta.goalsQuarter || "Goals") + " compliance. Rules are in 📊 Data Reference (☰ menu).\nDenominator = active employees only (ramp-up excluded).",
+      tipText: (DATA.meta && DATA.meta.goalsQuarter || "Goals") + " compliance. Rules are in 📖 Documentation (sidebar › More).\nDenominator = active employees only (ramp-up excluded).",
       color: pct1 >= 80 ? "#00A86B" : pct1 >= 60 ? "#D97706" : "var(--slate)",
       alertBorder: false,
       icon: "check" },
@@ -9440,6 +9514,77 @@ function buildRadarChart(canvasId, groups, activeAxes, refDataset) {
   return hiddenCount;
 }
 
+// Score vs the axis target → 'good' | 'warn' | 'bad' | 'none'. Kudos never goes
+// red: absence of recognition is a nudge, not a performance miss (see METRIC_HELP).
+function radarStatus_(axisId, score) {
+  if (score == null || isNaN(score)) return 'none';
+  var t = RADAR_AXIS_TARGETS[axisId] || 80;
+  if (score >= t) return 'good';
+  if (axisId === 'kudos' || score >= t * 0.6) return 'warn';
+  return 'bad';
+}
+var RADAR_STATUS_COLOR_ = { good: 'var(--st-good)', warn: 'var(--st-warn)', bad: 'var(--st-bad)', none: 'var(--muted)' };
+
+// Observer detail beside the chart (#radarSide). Single group: score vs target,
+// the raw count behind it and the move since the prior period (refDataset shares
+// activeAxes' order). Multi-group: the spread — which group leads and which trails
+// on each axis — so ten overlapping polygons still read as facts.
+function renderRadarSide_(groups, activeAxes, refDataset, periodLabel) {
+  var el = document.getElementById('radarSide');
+  if (!el) return;
+  if (!groups.length || !activeAxes || !activeAxes.length) { el.innerHTML = ''; return; }
+  var single = groups.length === 1 ? groups[0].metrics : null;
+  var html = '<div class="rs-head">' +
+    (single ? 'Axis detail' : 'Axis spread across ' + groups.length + ' groups') +
+    (periodLabel ? ' · ' + esc(String(periodLabel).replace(/^\d{4}\./, '')) : '') + '</div>';
+
+  activeAxes.forEach(function(a, i) {
+    var tgt = RADAR_AXIS_TARGETS[a.id] || 80;
+    var score, headline, desc;
+    if (single) {
+      score = normalizeAxisValue(a.id, single);
+      headline = Math.round(score) + '%';
+      var parts = [];
+      var raw = buildAxisSublabel(a.id, single);
+      if (raw) parts.push(esc(raw));
+      parts.push('target ' + tgt + '%');
+      if (refDataset && refDataset.data && refDataset.data[i] != null) {
+        var d = Math.round(score - refDataset.data[i]);
+        var dColor = d > 0 ? RADAR_STATUS_COLOR_.good
+                   : d < 0 ? RADAR_STATUS_COLOR_[a.id === 'kudos' ? 'warn' : 'bad']
+                   : RADAR_STATUS_COLOR_.none;
+        parts.push('<span class="ra-delta" style="color:' + dColor + '">' +
+          (d > 0 ? '▲ +' + d : d < 0 ? '▼ ' + d : '● 0') + '</span> vs prior');
+      }
+      desc = parts.join(' · ');
+    } else {
+      var best = null, worst = null, sum = 0;
+      groups.forEach(function(g) {
+        var s = normalizeAxisValue(a.id, g.metrics);
+        sum += s;
+        if (!best  || s > best.s)  best  = { n: g.name, s: s };
+        if (!worst || s < worst.s) worst = { n: g.name, s: s };
+      });
+      score = sum / groups.length;
+      headline = Math.round(score) + '% <span style="font-weight:500;color:var(--muted)">avg</span>';
+      desc = 'Leads: ' + esc(best.n) + ' ' + Math.round(best.s) + '% · Trails: ' + esc(worst.n) + ' ' +
+             Math.round(worst.s) + '% · target ' + tgt + '%';
+    }
+    var color = RADAR_STATUS_COLOR_[radarStatus_(a.id, score)];
+    var fill  = Math.max(0, Math.min(100, Math.round(score)));
+    html += '<div class="radar-axis-item" title="' + esc(a.desc || '') + '">' +
+      '<span class="radar-axis-dot" style="background:' + a.color + '"></span>' +
+      '<div class="radar-axis-text">' +
+        '<div class="ra-top"><span class="ra-label">' + esc(a.label) + '</span>' +
+          '<span class="ra-score" style="color:' + color + '">' + headline + '</span></div>' +
+        '<div class="ra-bar"><i style="width:' + fill + '%;background:' + color + '"></i>' +
+          '<b style="left:' + tgt + '%" title="target ' + tgt + '%"></b></div>' +
+        '<div class="ra-desc">' + desc + '</div>' +
+      '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
 function buildRadarTable(groups, activeAxes, groupBy) {
   if (!groups.length) return '<p style="padding:16px;color:var(--muted);font-size:12px">No data available.</p>';
   var axes = activeAxes || RADAR_AXIS_DEFS;
@@ -9460,41 +9605,59 @@ function buildRadarTable(groups, activeAxes, groupBy) {
     ranked = ranked.map(function(g) { return { g: g, score: null }; });
   }
 
-  function cellVal(axisId, m) {
-    switch(axisId) {
-      case 'goals':   return Math.round(m.goalsPct) + '%' + (m.goalsTotal ? ' (' + m.goalsCompliant + '/' + m.goalsTotal + ')' : '');
-      case 'tracked': return m.trackedCompliant != null ? m.trackedCompliant + '/' + m.trackedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.trackedCompliancePct) + '% · ' + m.avgTracked.toFixed(1) + 'h avg)</span>' : '<span style="color:var(--muted);font-size:10px">' + Math.round(m.trackedCompliancePct) + '%</span>';
-      case 'planned': return m.plannedCompliant != null ? m.plannedCompliant + '/' + m.plannedEligible + ' <span style="color:var(--muted);font-size:10px">(' + Math.round(m.plannedCompliancePct) + '% · ' + m.avgPlanned.toFixed(1) + 'h avg)</span>' : '<span style="color:var(--muted);font-size:10px">' + Math.round(m.plannedCompliancePct) + '%</span>';
-      case 'kudos':   return (m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)) + ' <span style="color:var(--muted);font-size:10px">(' + m.kudosPerPerson.toFixed(2) + '/p)</span>';
-      case 'pto':     return m.ptoHealthScore + '% <span style="color:var(--muted);font-size:10px">(' + m.ptoHealthGood + '/' + m.ptoHealthTotal + ')</span>';
-      case 'rcr':     return m.rcrAvg !== null ? m.rcrAvg.toFixed(2) : '—';
-      case 'si':      return m.siAvg  !== null ? m.siAvg.toFixed(1)  : '—';
-      default:        return '—';
+  // One shape per cell: headline value (status-coloured where the axis has a
+  // target), then the count behind it on a muted second line. Right-aligned.
+  function cell(val, sub, status) {
+    var color = status && status !== 'none' ? RADAR_STATUS_COLOR_[status] : null;
+    return '<td class="num"><span class="rt-val"' + (color ? ' style="color:' + color + '"' : '') + '>' + val + '</span>' +
+           (sub ? '<span class="rt-sub">' + sub + '</span>' : '') + '</td>';
+  }
+  function axisCell(a, m) {
+    var st = radarStatus_(a.id, normalizeAxisValue(a.id, m));
+    switch (a.id) {
+      case 'goals':
+        return cell(Math.round(m.goalsPct) + '%', m.goalsTotal ? m.goalsCompliant + '/' + m.goalsTotal + ' comply' : '', st);
+      case 'tracked':
+        return cell(Math.round(m.trackedCompliancePct) + '%',
+          (m.trackedCompliant != null ? m.trackedCompliant + '/' + m.trackedEligible + ' people · ' : '') +
+          (m.avgTracked || 0).toFixed(1) + 'h avg', st);
+      case 'planned':
+        return cell(Math.round(m.plannedCompliancePct) + '%',
+          (m.plannedCompliant != null ? m.plannedCompliant + '/' + m.plannedEligible + ' people · ' : '') +
+          (m.avgPlanned || 0).toFixed(1) + 'h avg', st);
+      case 'kudos':
+        return cell(String(m.kudosCount != null ? m.kudosCount : Math.round(m.kudosPerPerson * m.headcount)),
+          m.kudosPerPerson.toFixed(2) + ' per person', st);
+      case 'pto':
+        return cell(m.ptoHealthScore + '%', m.ptoHealthTotal ? m.ptoHealthGood + '/' + m.ptoHealthTotal + ' ok' : '', st);
+      case 'rcr':
+        return m.rcrAvg !== null ? cell(m.rcrAvg.toFixed(2) + '×', 'avg RCR', st) : cell('—', '', null);
+      case 'si':
+        return m.siAvg !== null ? cell(m.siAvg.toFixed(1), 'of 5', st) : cell('—', '', null);
+      default:
+        return cell('—', '', null);
     }
   }
 
   var html = '<div class="tbl-wrap"><table class="radar-tbl"><thead><tr>' +
     '<th>Group</th>' +
-    '<th title="Group headcount. A second number appears when part of the group sits outside the time-tracking mandate — that smaller figure is the population behind the Tracked and Planned columns.">HC</th>';
-  axes.forEach(function(a) { html += '<th>' + esc(a.label) + '</th>'; });
-  if (showRank) html += '<th title="Average of all active axes · higher = stronger overall">Composite rank</th>';
+    '<th class="num" title="Group headcount. A second number appears when part of the group sits outside the time-tracking mandate — that smaller figure is the population behind the Tracked and Planned columns.">HC</th>';
+  axes.forEach(function(a) { html += '<th class="num" title="' + esc(a.desc || '') + '">' + esc(a.label) + '</th>'; });
+  if (showRank) html += '<th class="num" title="Average of all active axes · higher = stronger overall">Composite rank</th>';
   html += '</tr></thead><tbody>';
 
   ranked.forEach(function(item, ri) {
     var g = item.g, m = g.metrics;
-    // "12 · 9⏱" — group size, then the mandated subset when they differ, so the
-    // Tracked/Planned columns can be read against the population they measure.
-    var hcCell = m.timeHeadcount !== undefined && m.timeHeadcount !== m.headcount
-      ? m.headcount + ' <span style="color:var(--muted);font-size:10px" title="' +
-        m.timeHeadcount + ' held to the time-tracking mandate — Tracked and Planned are measured over these only">· ' +
-        m.timeHeadcount + '⏱</span>'
-      : String(m.headcount);
-    html += '<tr><td style="font-weight:700;color:var(--void)">' + esc(g.name) + '</td><td>' + hcCell + '</td>';
-    axes.forEach(function(a) { html += '<td>' + cellVal(a.id, m) + '</td>'; });
-    if (showRank) {
-      html += '<td style="font-weight:800;color:var(--void);text-align:center">#' + (ri + 1) +
-              ' <span style="color:var(--muted);font-size:10px;font-weight:500">(' + Math.round(item.score) + ')</span></td>';
-    }
+    // Group size, then the mandated subset when they differ, so the Tracked/Planned
+    // columns can be read against the population they measure.
+    var hcSub = m.timeHeadcount !== undefined && m.timeHeadcount !== m.headcount
+      ? '<span title="' + m.timeHeadcount + ' held to the time-tracking mandate — Tracked and Planned are measured over these only">' +
+        m.timeHeadcount + ' ⏱ time mandate</span>'
+      : '';
+    html += '<tr><td style="font-weight:700;color:var(--void)">' + esc(g.name) + '</td>' +
+            cell(String(m.headcount), hcSub, null);
+    axes.forEach(function(a) { html += axisCell(a, m); });
+    if (showRank) html += cell('#' + (ri + 1), Math.round(item.score) + ' pts', null);
     html += '</tr>';
   });
 
@@ -9522,42 +9685,6 @@ function buildRadarInsightTitle(groups, activeAxes, refWeekLabel) {
   var txt = worst.label + ' needs attention (' + worst.score + '% vs ' + worst.target + '% target)';
   if (best && best.label !== worst.label) txt = best.label + ' strong (' + best.score + '%) — ' + txt;
   return txt + suffix;
-}
-
-function renderKudosCallout(filtered, weeks, refWeekLabel) {
-  var card = document.getElementById("kudosCalloutCard");
-  if (!card) return;
-  var evalWeeks = weeks.filter(function(w) { return !w.isFuture; }).slice(-5);
-  var bars = evalWeeks.map(function(w) {
-    var total = 0;
-    filtered.forEach(function(e) {
-      var wd = e.weeks && e.weeks[w.label];
-      if (wd && wd.kudos) total += (wd.kudos.count || 0);
-    });
-    return { label: w.label, val: filtered.length ? total / filtered.length : 0 };
-  });
-  var refLabel = refWeekLabel || '';
-  var curBar = bars.find(function(b) { return b.label === refLabel; }) || bars[bars.length - 1];
-  var isAlert = curBar && curBar.val < 0.5;
-  card.style.display = isAlert ? '' : 'none';
-  if (!isAlert) return;
-  var maxVal = Math.max.apply(null, bars.map(function(b) { return b.val; })) || 1;
-  var sparkHtml = bars.map(function(b) {
-    var h    = Math.max(4, Math.round(b.val / maxVal * 40));
-    var isRef = b.label === (refWeekLabel || '');
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
-      '<div style="width:20px;height:' + h + 'px;background:' + (isRef ? '#FF9B87' : 'rgba(255,155,135,0.35)') + ';border-radius:3px 3px 0 0"></div>' +
-      '<span style="font-size:8px;color:var(--muted)">' + esc(b.label) + '</span>' +
-    '</div>';
-  }).join('');
-  card.innerHTML =
-    '<div class="section-head" style="padding-bottom:8px"><div>' +
-      '<h2 style="color:#B71C1C;font-size:14px">Recognition signal — low</h2>' +
-      '<p class="section-sub">Kudos/person this week: <strong>' + curBar.val.toFixed(2) + '</strong> · target ≥ 0.5 · ' +
-      'Recognition is a leading indicator of engagement and retention risk. ' +
-      'A team that does not recognise each other is a retention cost waiting to happen.</p>' +
-    '</div></div>' +
-    '<div style="padding:0 20px 16px;display:flex;align-items:flex-end;gap:6px">' + sparkHtml + '</div>';
 }
 
 // Each entry receives (score, metrics). Counts come from the axis's OWN
@@ -9633,9 +9760,7 @@ function renderRadarTab(filtered) {
     if (bIdx === -1) bIdx = buckets.length - 1;
     bucket     = buckets[bIdx] || null;
     prevBucket = bIdx > 0 ? buckets[bIdx - 1] : null;
-    refWeekLabel = bucket && bucket.weekLabels.length
-      ? (bucket.weekLabels.filter(function(l) { return l !== DATA.meta.currentWeekLabel; }).pop() || bucket.weekLabels[bucket.weekLabels.length - 1])
-      : null;   // period-end closed week — drives the kudos-callout highlight only
+    refWeekLabel = null;   // period modes read the bucket; the week label only drives week mode
   }
   var metricsFor = function(empGroup) {
     return g === 'week' ? computeGroupMetrics(empGroup, weeks, refWeekLabel)
@@ -9695,8 +9820,9 @@ function renderRadarTab(filtered) {
   var titleEl = document.getElementById("radarInsightTitle");
   if (titleEl) titleEl.textContent = buildRadarInsightTitle(groups, activeAxes, g === 'week' ? refWeekLabel : (bucket && bucket.label));
 
-  // Kudos recognition callout
-  renderKudosCallout(filtered, weeks, refWeekLabel);
+  // Observer detail beside the chart
+  renderRadarSide_(groups, activeAxes, refDataset,
+                   g === 'week' ? refWeekLabel : (bucket ? periodDisplayLabel_(bucket) : null));
 
   // Recommended action cards
   var acEl = document.getElementById("radarActionCards");
@@ -12806,6 +12932,41 @@ function _updateDarkToggle(isDark) {
   var isDark = localStorage.getItem('ps-dark-mode') === '1';
   if (isDark) document.body.classList.add('dark-mode');
   _updateDarkToggle(isDark);
+})();
+
+// ── SHELL: sidebar collapse + top-bar height ───────────────
+// Collapse is persisted per viewer so the rail does not silently re-expand on
+// every reload. Guarded: HtmlService sandboxes can throw on localStorage.
+var NAV_KEY_ = 'ps-nav-collapsed';
+function setNavCollapsed_(on) {
+  var b = document.body;
+  if (b && b.classList) b.classList.toggle('navCollapsed', !!on);
+  var btn = document.getElementById('btnNav');
+  if (btn) {
+    btn.title = on ? 'Expand the sidebar' : 'Collapse the sidebar to icons';
+    btn.setAttribute('aria-expanded', on ? 'false' : 'true');
+    btn.innerHTML = '<span class="tabDot" aria-hidden="true">' + (on ? '››' : '‹‹') + '</span>' +
+      '<span class="navToggleLbl">Collapse</span>';
+  }
+  try { localStorage.setItem(NAV_KEY_, on ? '1' : '0'); } catch (e) { /* sandboxed */ }
+}
+function toggleNav_() {
+  var b = document.body;
+  setNavCollapsed_(!(b && b.classList && b.classList.contains('navCollapsed')));
+}
+(function initShell_() {
+  var btn = document.getElementById('btnNav');
+  if (btn) btn.onclick = toggleNav_;
+  var saved = null;
+  try { saved = localStorage.getItem(NAV_KEY_); } catch (e) { /* sandboxed */ }
+  if (saved === '1') setNavCollapsed_(true);
+  // The top bar's height varies with wrapping, so anything sticky inside the
+  // page (the Performance Record drawer) reads it from --topbar-h.
+  var tb = document.getElementById('topbar');
+  function measure_() { if (tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px'); }
+  if (tb && typeof ResizeObserver === 'function') new ResizeObserver(measure_).observe(tb);
+  window.addEventListener('resize', measure_);
+  measure_();
 })();
 </script>
 </body>

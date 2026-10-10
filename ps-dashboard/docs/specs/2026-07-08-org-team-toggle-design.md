@@ -201,3 +201,36 @@ Enforcement notes:
   normalize identically.
 - SI sheet Employee Number coverage for non-Services rows (join silently yields
   blanks if missing — acceptable, but log coverage counts per team).
+
+---
+
+## Revision 2026.W36 (2026-09-02) — Solution Architecture (JF018) joins Sales & Success
+
+Sales & Success took over Solution Architecture. HRIS moved those rows to
+**Department "Sales"** while their **Class still reads "Professional Services"**, so
+the PS class is no longer Services by definition. `teamForProfile_` now resolves, in
+order:
+
+1. Job Catalog family **JF018** (catalog row or `18.x.y -` code prefix) → `sales`, in
+   **any** Class.
+2. Class "Professional Services": Department = `CONFIG_PS.SALES_DEPT` ("Sales") →
+   `sales`; otherwise → `services` (JF004 inside the PS class stays Services, as
+   before — spec 2026-08-02 §D2).
+3. Any other known Class: family JF004 → `sales`, else `rnd`.
+
+Consequences:
+
+- `resolveTeamScope_` (PS Security.js) lost its PS-class fast path — the job catalog is
+  read for every viewer pin, or a PS-class Solution Architect would be pinned to the
+  wrong team.
+- Managers need no change: `meta.availableTeams` is derived from the scoped roster, so a
+  Director whose tree holds consultants and SAs gets **two** teams in the toggle, the
+  team-warm loop and the prefetch chain. Viewers are still pinned to one team.
+- Scoring: JF018 left `PS_TEAM_FAMILIES_` and is `SA_FAMILY_CODE_`. Its members now
+  fill from `SALES_DEFAULT_W_` (Goals 40 / Kudos 20 / SI 20 / PTO 20), which is the
+  same weighting the 2026-08-02 non-tracking policy already gave them; a legacy
+  (Team-less) matrix row for JF018 migrates to **both** `(sales, JF018)` and
+  `(services, JF018)`, like JF004. A hand-tuned `(services, JF018)` block on the live
+  sheet stops applying — retune it under Sales & Success.
+- The Services payload no longer carries JF018 rows at all, so their (previously
+  muted, informational) tracked/planned/RCR values disappear from Services views.

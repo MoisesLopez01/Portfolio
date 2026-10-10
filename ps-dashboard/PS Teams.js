@@ -37,31 +37,50 @@ function classIsKnown_(cls) {
 // column, not Department, is the company-wide org axis — Department is
 // "Services"-only for PS, while Class splits the company into
 // Professional Services / Corporate / To be Allocated):
-//   1. Class = "Professional Services" (CONFIG_PS.PS_CLASS) → services
-//   2. any other known Class + Job Catalog family JF004     → sales
-//   3. any other known Class otherwise                      → rnd
+//   1. Job Catalog family JF018 (Solution Architecture)     → sales, in ANY Class
+//   2. Class = "Professional Services" (CONFIG_PS.PS_CLASS):
+//        Department = "Sales" (CONFIG_PS.SALES_DEPT)         → sales
+//        otherwise (JF004 titles included)                   → services
+//   3. any other known Class + Job Catalog family JF004     → sales
+//   4. any other known Class otherwise                      → rnd
+// 2026.W36: Sales & Success took over Solution Architecture (JF018). HRIS moved
+// those rows to Department "Sales" while their Class still reads "Professional
+// Services", so the PS class is no longer a one-way ticket to Services: the
+// family code is the primary exit signal, the Department the secondary one (it
+// also catches a PS-class row HRIS re-departments before its title is
+// catalogued). JF004 inside the PS class stays Services by design (spec
+// 2026-08-02 §D2). A manager whose org tree spans both now sees two teams in
+// the toggle — meta.availableTeams is derived from the scoped roster, so
+// nothing else needs to know.
 // FTE rows with an unknown/blank Class never reach tagging — readPSRoster_
 // drops them. Crew (Contractors Data tab) are the exception: their Class is
 // "Contractors" for everyone, so Department is their SOLE org axis —
 // Department = "Services" (CONFIG_PS.PS_DEPT) → services, anything else
-// (including blank) → rnd. Crew never land in sales (2026-07-15).
-// JF004 detection REQUIRES the Sales & Success job titles to exist in
-// the Job Catalog sheet with code JF004; uncatalogued sales titles land in rnd.
+// (including blank) → rnd. Crew never land in sales (2026-07-15), not even
+// with a JF018 title.
+// JF004 / JF018 detection REQUIRES the titles to exist in the Job Catalog
+// sheet with that family code, or to carry the code prefix ("18.I4.1 - …");
+// an uncatalogued, unprefixed sales title lands in rnd (or Services, in the PS
+// class).
 // `catalog` is the readJobCatalog_() Map (normPS_(title) → { family, … }).
 function teamForProfile_(profile, catalog) {
   if (profile.isCrewMember) {
     const dept = String(profile.dept || "").trim().toLowerCase();
     return dept === CONFIG_PS.PS_DEPT.toLowerCase() ? "services" : "rnd";
-  } else {
-    const cls = String(profile.cls || "").trim().toLowerCase();
-    if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) return "services";
   }
   // Catalog lookup is code-prefix-insensitive (normTitleKey_), and a title whose
   // embedded job code parses (e.g. "04.I2.5 - …" → JF004) self-describes its
   // family even without a catalog row (titleCodeInfo_ fallback).
   const hit = (catalog ? catalog.get(normTitleKey_(profile.jobTitle || "")) : null)
            || titleCodeInfo_(profile.jobTitle);
-  if (hit && hit.family === COE_FAMILY_CODE_) return "sales";
+  const family = hit ? hit.family : null;
+  if (family === SA_FAMILY_CODE_) return "sales";
+  const cls = String(profile.cls || "").trim().toLowerCase();
+  if (cls === CONFIG_PS.PS_CLASS.toLowerCase()) {
+    const dept = String(profile.dept || "").trim().toLowerCase();
+    return dept === CONFIG_PS.SALES_DEPT.toLowerCase() ? "sales" : "services";
+  }
+  if (family === COE_FAMILY_CODE_) return "sales";
   return "rnd";
 }
 
@@ -93,11 +112,19 @@ function _test_teamForProfile() {
     [normPS_("Account Executive"),      { family: "JF004", track: "I", level: 3, levelKey: "I3" }],
     [normPS_("Implementation Manager"), { family: "JF008", track: "M", level: 5, levelKey: "M5" }],
     [normPS_("Software Engineer"),      { family: "JF002", track: "I", level: 4, levelKey: "I4" }],
+    [normPS_("Senior Consultant I, Solution Architecture"), { family: "JF018", track: "I", level: 4, levelKey: "I4" }],
   ]);
   const cases = [
     // [cls, jobTitle, expected]
     ["Professional Services", "Implementation Manager", "services"],
     ["Professional Services", "Account Executive",      "services"], // JF004 title inside the PS class stays Services
+    // 2026.W36: Solution Architecture (JF018) is Sales & Success in every class —
+    // catalog row, code-prefixed title, or both.
+    ["Professional Services", "Senior Consultant I, Solution Architecture",           "sales"],
+    ["Professional Services", "18.I4.1 - Senior Consultant I, Solution Architecture", "sales"],
+    ["Professional Services", "18.M5.2 - Manager, Solution Architecture",             "sales"], // uncatalogued, code prefix alone decides
+    ["Corporate",             "18.I4.1 - Senior Consultant I, Solution Architecture", "sales"],
+    ["To be Allocated",       "Senior Consultant I, Solution Architecture",           "sales"],
     ["To be Allocated",       "Account Executive",      "sales"],
     ["To be Allocated",       "Totally Unknown Title",  "rnd"],      // non-JF004 To-be-Allocated → R&D
     ["Corporate",             "Software Engineer",      "rnd"],
@@ -115,14 +142,32 @@ function _test_teamForProfile() {
     const got = teamForProfile_({ cls: c[0], jobTitle: c[1] }, cat);
     if (got !== c[2]) { fail++; Logger.log(`❌ case ${i}: (${c[0]} | ${c[1]}) → ${got}, want ${c[2]}`); }
   });
+  // PS-class Department signal (2026.W36): HRIS re-departments the rows Sales &
+  // Success took over, so Department "Sales" moves a PS-class row out of Services
+  // even before its title is catalogued. Any other Department keeps the class rule.
+  const deptCases = [
+    // [cls, dept, jobTitle, expected]
+    ["Professional Services", "Sales",    "Mystery Title",           "sales"],    // dept alone decides
+    ["Professional Services", "SALES ",   "Mystery Title",           "sales"],    // dept compare is case/space-insensitive
+    ["Professional Services", "Services", "Implementation Manager",  "services"],
+    ["Professional Services", "",         "Implementation Manager",  "services"], // blank dept → class rule
+    ["Professional Services", "Sales",    "Account Executive",       "sales"],    // JF004 + dept Sales → sales (dept wins)
+    ["Corporate",             "Sales",    "Mystery Title",           "rnd"],      // dept signal is PS-class only; Corporate still needs a catalog hit
+  ];
+  deptCases.forEach((c, i) => {
+    const got = teamForProfile_({ cls: c[0], dept: c[1], jobTitle: c[2] }, cat);
+    if (got !== c[3]) { fail++; Logger.log(`❌ dept case ${i}: (${c[0]} | dept ${c[1]} | ${c[2]}) → ${got}, want ${c[3]}`); }
+  });
   // Crew (Contractors Data tab): Department is the SOLE org axis — Services or R&D,
   // never sales, regardless of job title / catalog family.
   const crewCases = [
     // [dept, jobTitle, expected]
     ["Services",    "Crew Member",          "services"],
     ["SERVICES",    "Mystery Role",         "services"], // dept compare is case-insensitive
+    ["Services",    "18.I4.1 - Senior Consultant I, Solution Architecture", "services"], // JF018 does NOT pull crew into sales
     ["Engineering", "Software Engineer",    "rnd"],
     ["Sales",       "Account Executive",    "rnd"],      // JF004 title does NOT pull crew into sales
+    ["Sales",       "Senior Consultant I, Solution Architecture", "rnd"], // nor does dept Sales + JF018
     ["",            "Totally Unknown Title","rnd"],      // blank dept → rnd (no signal)
   ];
   crewCases.forEach((c, i) => {

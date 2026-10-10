@@ -657,7 +657,7 @@ function fetchTempoPlannedTime() {
     }
 
     Logger.log(
-      `✅ [fetchTempoPlannedTime] Done. ${sortedRows.length} rows written.`,
+      `✅ [fetchTempoPlannedTime] Done. ${merged.rows.length} rows written.`,
     );
   } catch (e) {
     Logger.log(`❌ [fetchTempoPlannedTime] ${e.message}`);
@@ -805,11 +805,14 @@ function readExistingPlanGrid_(ss) {
     });
     // Later duplicate rows (shouldn't exist, but a hand-edited sheet can) merge
     // rather than clobber, so no stored hours are silently dropped.
+    // `continue`, NOT `return`: this is a for loop, and a `return` here handed
+    // the caller `undefined` — every run then died at `existing.rows` after the
+    // full fetch, so the sheet silently stopped updating.
     if (rows[key]) {
       Object.keys(weeks).forEach((iso) => {
         rows[key].weeks[iso] = (rows[key].weeks[iso] || 0) + weeks[iso];
       });
-      return;
+      continue;
     }
     rows[key] = {
       worker: worker,
@@ -2083,10 +2086,17 @@ function planWeekLabelForIso_(isoLabel) {
  * @returns {Object} groupKey → { worker, team, project, projectKey, pm, issue, weeks: {iso → hrs} }
  */
 function groupedToPlanRows_(grouped, weeks, teamInfoByName) {
+  // Stored rows carry the ROSTER name (Step 12 renames the sheet after every
+  // write), so fetched rows must be keyed the same way. Keyed by the raw Tempo
+  // name instead, a mapped person never matched their stored row: both were
+  // written, both renamed to the same name, and the next run read a duplicate.
+  const nameMap = typeof NAME_MAPST !== "undefined" ? NAME_MAPST.TEMPO || {} : {};
   const out = {};
-  Object.keys(grouped).forEach((key) => {
-    const g = grouped[key];
+  Object.keys(grouped).forEach((gKey) => {
+    const g = grouped[gKey];
     const ti = (teamInfoByName && teamInfoByName[g.worker]) || {};
+    const worker = nameMap[g.worker] || g.worker;
+    const key = `${worker}|||${g.project}|||${g.issue || ""}`;
     const wk = {};
     for (let i = 0; i < weeks.length; i++) {
       // Every fetched week is recorded, INCLUDING an explicit 0: inside the
@@ -2094,8 +2104,13 @@ function groupedToPlanRows_(grouped, weeks, teamInfoByName) {
       // not a gap that falls through to the frozen one.
       wk[weeks[i].isoLabel] = Number(g.weeklyHours[i]) || 0;
     }
+    // Two Tempo names can map to one roster name — sum, never clobber.
+    if (out[key]) {
+      Object.keys(wk).forEach((iso) => { out[key].weeks[iso] += wk[iso]; });
+      return;
+    }
     out[key] = {
-      worker: g.worker,
+      worker: worker,
       team: ti.team || "",
       project: g.project,
       projectKey: g.projectKey || "",
