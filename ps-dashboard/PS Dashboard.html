@@ -1342,6 +1342,13 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 .sw-tot { font-weight: 800; color: var(--success); }
 .sw-tot.sw-bad, .sw-status.sw-bad { color: var(--june); }
 .sw-status { font-size: 12px; font-weight: 700; color: var(--slate); align-self: center; }
+.sw-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.sw-head .sec-header { margin-bottom: 0; }
+.sw-head .sw-readonly { padding: 3px 10px; font-size: 11px; }
+.sw-lead { margin: 0; }
+.sw-lead a { color: var(--sky); font-weight: 700; text-decoration: none; }
+.sw-lvl { display: inline-block; font-size: 10px; font-weight: 800; color: var(--void); background: var(--th-bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; margin-left: 4px; }
 .sw-editor { border-top: 1px solid var(--border); padding-top: 12px; }
 .sw-editor > summary { cursor: pointer; font-size: 14px; font-weight: 800; color: var(--void); padding: 6px 0; }
 .sw-editor-hint { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 6px; }
@@ -11207,38 +11214,19 @@ function renderWeightsTab_() {
   loadScoringMatrix_();
 }
 
-// Plain-English guide to the score + the per-role table every role sees.
-// What each metric measures and how it earns points — kept in plain words on
-// purpose: this page is read by everyone, not just admins.
-var SCORE_METRIC_GUIDE = [
-  { key: 'goals',   text: 'Your goals for the quarter are set and up to date. Meeting the goals standard earns all of its points; missing it earns none.' },
-  { key: 'tracked', text: 'Hours you logged, compared with 90% of the hours you planned. Logging all of them earns all of its points.' },
-  { key: 'planned', text: 'Hours you planned for the week, up to 40 (time off lowers the target). A fully planned week earns all of its points.' },
-  { key: 'rcr',     text: 'Your billable contribution ratio for the month. A ratio of 2.5 or more earns all of its points.' },
-  { key: 'kudos',   text: 'Half its points for receiving kudos in the week, half for giving them.' },
-  { key: 'si',      text: 'Your manager\'s rating in Small Improvements. A 5 earns all of its points, a 1 earns a fifth of them.' },
-  { key: 'pto',     text: 'Your time-off balance is under control (planned rather than piling up). Healthy earns all of its points.' },
-];
-
+// ⚖️ Scoring Weights read view — ONE table, colour signals, no extra prose (metric
+// definitions live in 📖 Documentation). Company-wide callers see one row per role;
+// org-scoped callers (managers, delegates, org admins — the payload carries
+// managerScopeName) see their own team's roles BY LEVEL, built from the weights their
+// people are actually scored with, so they can see scoring is tuned per role and level.
 function renderScoringOverview_(canEdit) {
-  var guide = SCORE_METRIC_GUIDE.map(function(g) {
-    var d = WEIGHT_DEFS.filter(function(x) { return x.key === g.key; })[0] || { label: g.key, color: '#94A3B8' };
-    return '<li><span class="weight-dot" style="background:' + d.color + '"></span>' +
-      '<strong>' + esc(d.label) + '</strong> — ' + esc(g.text) + '</li>';
-  }).join('');
   return '<div class="sw-overview">' +
-    '<div class="sec-header">How your score works</div>' +
-    '<p class="settings-intro">Every week each person gets a score out of <strong>100 points</strong>, built from up to seven ' +
-    'metrics. How many of those points each metric is worth depends on your role — the table below shows it for every role. ' +
-    'A metric marked — does not apply to that role, so it can never lower the score.</p>' +
-    '<ul class="sw-guide">' + guide + '</ul>' +
-    '<p class="settings-note">People in their first three months are not scored on Goals, Kudos, RCR or SI. ' +
-    'Crew members and contractors are scored on Tracked, Planned, RCR and Kudos only.</p>' +
-    '<div class="sec-header" style="margin-top:6px">Points by role</div>' +
-    (canEdit ? '<p class="settings-note" style="margin-top:0">Type a new rate in any cell — each role\'s points must add up to 100. ' +
-        'Only the roles you change are saved.</p>'
-      : '<div class="sw-readonly">🔒 Read-only' + (STATE.viewAs ? ' while previewing' : '') +
-        ' — only Admins and Super Admins can change the weights.</div>') +
+    '<div class="sw-head"><div class="sec-header">Points by role</div>' +
+      (canEdit ? '' : '<span class="sw-readonly">🔒 Read-only' + (STATE.viewAs ? ' while previewing' : '') +
+        ' — only Admins and Super Admins can change the weights</span>') +
+    '</div>' +
+    '<p class="settings-note sw-lead">Every score is out of 100 points; the bar shows where they come from. ' +
+      'What each metric measures: <a href="#" onclick="switchTab(\'dataref\');return false">📖 Documentation</a>.</p>' +
     '<div id="scoringSummary">' +
       '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
       '<span style="font-size:12px;color:var(--muted)">Loading scoring weights…</span></div>' +
@@ -11290,6 +11278,42 @@ function buildRoleRows_(cfg) {
   return rows;
 }
 
+// Org-scoped view: the caller's own people grouped by role and level, each group
+// carrying the weights the server resolved for them (emp.scoreWeights, else the flat
+// base the client scores with). Crew are left out — the table describes roles.
+function buildLevelRows_(cfg) {
+  var famName = {}, famIdx = {}, i = 0;
+  (cfg.sections || []).forEach(function(sec) {
+    (sec.families || []).forEach(function(f) { if (!(f.code in famIdx)) { famName[f.code] = f.name; famIdx[f.code] = i++; } });
+  });
+  var groups = {}, rows = [];
+  ((DATA && DATA.employees) || []).forEach(function(e) {
+    if (isCrewEmp(e)) return;
+    var m = /^\s*(\d+)\.([IM])(\d+)\.\d+\s*[-–—]/.exec(e.jobTitle || '');
+    var fam = m ? 'JF' + ('00' + m[1]).slice(-3) : null;
+    var lvl = m ? m[2] + m[3] : '';
+    var name = fam && famName[fam] ? famName[fam]
+      : String(e.jobTitle || 'Other job titles').replace(/^\s*\d+\.[IMim]\d+\.\d+\s*[-–—]\s*/, '');
+    var w = e.scoreWeights || SCORE_W;
+    var key = name + '|' + lvl + '|' + JSON.stringify(w);
+    if (!groups[key]) {
+      var metrics = WEIGHT_DEFS.map(function(d) { return d.key; }).filter(function(k) { return (w[k] || 0) > 0; });
+      groups[key] = { name: name, level: lvl, n: 0, metrics: metrics, points: sharesOf100_(w, metrics),
+        ord: [fam in famIdx ? famIdx[fam] : 999, name, lvl.charAt(0) === 'M' ? 1 : 0, parseInt(lvl.slice(1), 10) || 0] };
+      rows.push(groups[key]);
+    }
+    groups[key].n++;
+  });
+  rows.sort(function(a, b) {
+    for (var j = 0; j < a.ord.length; j++) {
+      if (a.ord[j] < b.ord[j]) return -1;
+      if (a.ord[j] > b.ord[j]) return 1;
+    }
+    return 0;
+  });
+  return rows;
+}
+
 // The coloured "score mix" bar: how a role's 100 points split across metrics.
 function roleMixBar_(points) {
   return WEIGHT_DEFS.map(function(d) {
@@ -11299,9 +11323,8 @@ function roleMixBar_(points) {
   }).join('');
 }
 
-// One table, one row per role, the same seven metric columns for everyone. Read
-// view: points per metric. Editors (canEditScoring_ + an editor payload): each
-// cell is a plain rate input, with a live total and score-mix bar per row.
+// The one table. Company-wide: a row per role (editors type rates into the cells).
+// Org-scoped: the caller's team roles by level, read-only.
 function renderScoringSummary_() {
   var el = document.getElementById('scoringSummary');
   if (!el) return;
@@ -11311,18 +11334,24 @@ function renderScoringSummary_() {
       (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</div>';
     return;
   }
-  var editable = !!(cfg.canEdit && cfg.matrix && canEditScoring_());
-  SW_ROWS = buildRoleRows_(cfg);
-  var html = '<div class="sw-scroll"><table class="sw-table' + (editable ? ' sw-editable' : '') + '"><thead><tr>' +
+  var byLevel = !!(DATA && DATA.managerScopeName);
+  var editable = !byLevel && !!(cfg.canEdit && cfg.matrix && canEditScoring_());
+  SW_ROWS = byLevel ? [] : buildRoleRows_(cfg);
+  var rows = byLevel ? buildLevelRows_(cfg) : SW_ROWS;
+  var html = (byLevel ? '<p class="settings-note sw-lead">Your team\'s roles by level — scoring can be tuned per role ' +
+      'and level, so levels in the same role may differ.</p>' : '') +
+    '<div class="sw-scroll"><table class="sw-table' + (editable ? ' sw-editable' : '') + '"><thead><tr>' +
     '<th>Role</th><th class="sw-mix-h">Score mix</th>' +
     WEIGHT_DEFS.map(function(d) {
       return '<th><span class="weight-dot" style="background:' + d.color + '"></span>' + esc(d.label) + '</th>';
     }).join('') +
     (editable ? '<th>Total</th>' : '') +
     '</tr></thead><tbody>';
-  SW_ROWS.forEach(function(r, i) {
+  rows.forEach(function(r, i) {
     html += '<tr><td class="sw-fam">' + esc(r.name) +
-      (r.showTeam ? ' <span class="sw-code">' + esc(r.team) + '</span>' : '') + '</td>' +
+      (r.level ? ' <span class="sw-lvl">' + esc(r.level) + '</span>' : '') +
+      (r.showTeam ? ' <span class="sw-code">' + esc(r.team) + '</span>' : '') +
+      (byLevel ? ' <span class="sw-code">' + r.n + (r.n === 1 ? ' person' : ' people') + '</span>' : '') + '</td>' +
       '<td class="sw-mix-c"><div class="sw-mix" id="swMix-' + i + '">' + roleMixBar_(r.points) + '</div></td>';
     WEIGHT_DEFS.forEach(function(d) {
       if (r.metrics.indexOf(d.key) === -1) { html += '<td><span class="sw-off" title="Does not apply to this role">—</span></td>'; return; }
@@ -11336,16 +11365,15 @@ function renderScoringSummary_() {
     if (editable) html += '<td><span class="sw-tot" id="swTot-' + i + '">100</span></td>';
     html += '</tr>';
   });
+  if (!rows.length) html += '<tr><td colspan="' + (WEIGHT_DEFS.length + 2) + '" class="sw-off">No roles to show for the current team.</td></tr>';
   html += '</tbody></table></div>';
   if (editable) {
     html += '<div class="settings-actions" style="margin-top:12px">' +
       '<button class="settings-btn settings-btn-secondary" onclick="renderScoringSummary_()">Undo changes</button>' +
       '<button class="settings-btn settings-btn-primary" id="swSaveBtn" onclick="saveRoleWeights_()" disabled>Save</button>' +
-      '<span id="swStatus" class="sw-status"></span>' +
+      '<span id="swStatus" class="sw-status">Type a rate in any cell — each role must add up to 100</span>' +
     '</div>';
   }
-  html += '<p class="settings-note">Points are for a typical week; a few senior levels may be tuned slightly differently. ' +
-    'Job titles not linked to a role use their team\'s default points.</p>';
   el.innerHTML = html;
 }
 

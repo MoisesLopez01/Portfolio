@@ -76,7 +76,7 @@ main tab.
   to managers what each metric means and how it is evaluated. Internal ids (`dataref`,
   `tabDataRef`, the `dr-*` CSS classes) keep the old name.
 - ⚖️ **Scoring Weights** — every role (`roles: null`, since 2026.W41). Opens on a
-  plain-English metric guide and a **Points by role** table; for `canEditScoring_()`
+  single **Points by role** table (org-scoped callers: their team's roles by level); for `canEditScoring_()`
   (superadmin + admin, never while 👁 previewing) its cells become rate inputs, and the
   company default + per-level matrix sit under "Advanced settings". Visible in preview,
   read-only there.

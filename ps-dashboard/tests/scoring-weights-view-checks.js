@@ -158,7 +158,7 @@ const summary = fnBody(html, 'renderScoringSummary_');
 ck('summary renders a single table (no per-team loop of tables)',
    (summary.match(/<table class="sw-table/g) || []).length === 1);
 ck('rate inputs appear only when the payload AND the client say "editor"',
-   /var editable = !!\(cfg\.canEdit && cfg\.matrix && canEditScoring_\(\)\);/.test(summary) &&
+   /var editable = !byLevel && !!\(cfg\.canEdit && cfg\.matrix && canEditScoring_\(\)\);/.test(summary) &&
    /editable\s*\?\s*'<input type="number" class="sw-rate"/.test(summary));
 ck('no slider anywhere on the page', !/type="range"/.test(html));
 ck('every row shows its score mix', /roleMixBar_\(r\.points\)/.test(summary));
@@ -174,10 +174,40 @@ eq('points mirror the shares of renormalized weights', sharesOf100_({ goals: 45,
    { goals: 45, kudos: 20, si: 20, pto: 15 });
 ck('summary columns are all seven metrics (WEIGHT_DEFS), not the team subset',
    /WEIGHT_DEFS\.map\(function\(d\)/.test(summary) && !/teamWeightDefs_/.test(summary));
-const guideSrc = extract(html, 'var SCORE_METRIC_GUIDE = [', '\n];');
-eq('the plain-English guide explains every scored metric',
-   (guideSrc.match(/key: '(\w+)'/g) || []).map(s => s.slice(6, -1)).sort(),
-   ['goals', 'kudos', 'planned', 'pto', 'rcr', 'si', 'tracked']);
+// One table only: no metric-definition list (that lives in 📖 Documentation).
+ck('no duplicate definitions list on the page', html.indexOf('SCORE_METRIC_GUIDE') === -1);
+ck('the lead line points to Documentation for definitions',
+   /switchTab\(\\'dataref\\'\)/.test(fnBody(html, 'renderScoringOverview_')));
+// Org-scoped callers see their team's roles BY LEVEL in the SAME table, read-only.
+ck('the level view keys off the server scope stamp, not a role string',
+   /var byLevel = !!\(DATA && DATA\.managerScopeName\);/.test(summary));
+ck('the level view is never editable', /var editable = !byLevel && /.test(summary));
+ck('both views share the one table', /var rows = byLevel \? buildLevelRows_\(cfg\) : SW_ROWS;/.test(summary));
+// buildLevelRows_ groups the caller's people by role + level with the weights they are scored with.
+{
+  const SCORE_W = { goals: 25, tracked: 25, planned: 20, rcr: 15, kudos: 5, si: 5, pto: 5 };
+  const WEIGHT_DEFS = ['goals', 'tracked', 'planned', 'rcr', 'kudos', 'si', 'pto'].map(k => ({ key: k }));
+  const isCrewEmp = e => !!e.isCrewMember;
+  const opsW = { goals: 45, tracked: 0, planned: 0, rcr: 0, kudos: 20, si: 20, pto: 15 };
+  const DATA = { employees: [
+    { jobTitle: '09.I3.1 - Consultant, Service Delivery' },
+    { jobTitle: '09.I3.2 - Senior Consultant, Service Delivery' },
+    { jobTitle: '09.M6.1 - Engagement Manager, Service Delivery',
+      scoreWeights: { goals: 30, tracked: 30, planned: 20, rcr: 10, kudos: 5, si: 5, pto: 0 } },
+    { jobTitle: '15.I2.2 - Operations Analyst', scoreWeights: opsW },
+    { jobTitle: '09.I3.3 - Consultant', isCrewMember: true },
+  ] };
+  const cfg = { sections: [{ families: [{ code: 'JF009', name: 'Service Delivery' }, { code: 'JF015', name: 'Operations' }] }] };
+  // eslint-disable-next-line no-eval
+  const build = eval('(function(){' + fnBody(html, 'sharesOf100_') + '\n' + fnBody(html, 'buildLevelRows_') +
+    '\nreturn buildLevelRows_;})()');
+  const rows = build(cfg);
+  eq('level rows: one per role + level, in family then level order, crew left out',
+     rows.map(r => r.name + ' ' + r.level + ' ×' + r.n), ['Service Delivery I3 ×2', 'Service Delivery M6 ×1', 'Operations I2 ×1']);
+  eq('a level row carries the weights its people are scored with', rows[1].points,
+     { goals: 30, tracked: 30, planned: 20, rcr: 10, kudos: 5, si: 5 });
+  ck('a metric with no weight is not listed for that level (shown as —)', rows[2].metrics.indexOf('tracked') === -1);
+}
 const load = fnBody(html, 'loadScoringMatrix_');
 ck('the summary renders for every caller', /renderScoringSummary_\(\);/.test(load));
 ck('the matrix editor renders only on an editor payload', /if \(cfg && cfg\.canEdit\) renderMatrixSection_\(\);/.test(load));

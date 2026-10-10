@@ -342,11 +342,14 @@ Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 
 Configurable per deployment via ⚖️ Scoring Weights (sidebar › More) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
-**Read for everyone, edit for Super Admin / Admin (2026.W41).** Every role opens the page
-on a plain-English guide to the seven metrics (`SCORE_METRIC_GUIDE`) and **Points by role**:
-one table, one row per job family, all seven metric columns, each cell the metric's points
-out of 100 (largest-remainder rounding, `sharesOf100_`) plus a score-mix bar. Weights and
-each role's allowed metrics are resolved server-side by `familySummaryWeights_`. Editors
+**Read for everyone, edit for Super Admin / Admin (2026.W41).** The page is **one table**,
+**Points by role** — all seven metric columns, each cell the metric's points out of 100
+(largest-remainder rounding, `sharesOf100_`) plus a colour score-mix bar. No definitions on
+the page (one line links to 📖 Documentation); never add a second table. Company-wide
+callers get one row per job family (weights + allowed metrics resolved server-side by
+`familySummaryWeights_`). **Org-scoped callers** (payload carries `managerScopeName` —
+managers, delegates, org admins) get their own team's roles **by level** instead
+(`buildLevelRows_`, from `emp.scoreWeights || SCORE_W`, crew excluded), read-only. Editors
 type rates straight into the cells (no sliders anywhere); Save writes only changed rows as
 the family's `ALL` cell in every team the row covers (`saveRoleWeights_` →
 `saveScoringMatrix`). The company default and per-level matrix sit folded under

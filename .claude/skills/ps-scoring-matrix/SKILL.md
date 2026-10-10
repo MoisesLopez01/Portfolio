@@ -33,7 +33,10 @@ family tunes**. Spec: `ps-dashboard/docs/specs/2026-07-09-team-aligned-scoring-d
 - **Per-employee weights on the client**: unchanged — `emp.scoreWeights` attaches only
   when the resolved weights differ from the flat base (reference check); base-inherit
   Services natives follow live weight previews via `SCORE_W`.
-- **Points by role (2026.W41)**: every role sees one table, one row per job family, the
+- **Points by role (2026.W41)**: the page is ONE table (no definitions — they live in
+  📖 Documentation; no second table). Org-scoped callers (`DATA.managerScopeName`) get their
+  team's roles by level (`buildLevelRows_`, from `emp.scoreWeights || SCORE_W`), read-only.
+  Everyone else: one row per job family, the
   seven metric columns as points out of 100, plus a score-mix bar. Rows come from
   `familySummaryWeights_` (block `ALL` cell over `blockFillBase_`, team mask, non-tracking
   mask; `metrics` = the role's input cells). A family in two teams with equal weights is
