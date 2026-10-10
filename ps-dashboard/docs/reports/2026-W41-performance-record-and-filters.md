@@ -133,3 +133,49 @@ Taken with sample data (made-up names and numbers), in `img/2026-W41/`:
 | `a9f72d9` | Top bar: folds on scroll, aligns on wide screens, phone menu and filter sheet |
 | `ca87184` | This report, the design spec, the in-app Documentation section, the render harness |
 | `439571f` | Phone header: team selector on its own line (no sideways overflow) |
+| `1bff4bc` | Team Radar: signals first (see the addendum below) |
+| `03814c0` | Team grid: Celebrate / Support / Watch lanes and the Why column (see the addendum below) |
+
+## Addendum — later on 2026-10-10: Team Radar and Team grid
+
+Both changes came from reviewing the synthetic demo with real-looking data. Both are local commits, not pushed and not deployed, like everything else in this report.
+
+### Team Radar: signals first
+
+**Problem:** the radar chart was 600 px wide, and the detail for each metric sat beside it on the far right. On a laptop the first screen showed the chart, but not which metric needed attention. For the whole team, RCR and SI were hidden on purpose, so two of the seven measures never appeared.
+
+**Change:**
+- The chart is now at most 420 px, a supporting picture.
+- Beside it, every metric is a small tile showing:
+  - its score against target
+  - the count behind it (for example "8/75 comply")
+  - the change against the prior week, month or quarter
+- Tiles are ordered by need: below target first (furthest first), then close, then on target.
+- A one-line summary heads the tiles, for example "1 below target · 4 close · 2 on target".
+- The whole-team view now shows all seven metrics. With several groups (location, supervisor, title), a metric with no variation between groups is still folded so the shapes stay readable.
+- On a phone the tiles come before the chart.
+
+### Team grid: what to do, and why
+
+**Problem:** the signal grid had every metric for every person, but each row was tall: a full identity line, chips, and 30 px bars. It also left the reader to work out the next step.
+
+**Change:**
+- **Lane per person**, at the top of the grid as filters:
+  - 🎉 **Celebrate**: score at the green bar, no red signal, score not falling.
+  - 🤝 **Support**: a red performance signal, or a falling score below the green bar.
+  - 👀 **Watch**: yellow or falling signals only.
+  - **Steady**: nothing to flag.
+  - Burnout risk and Not fully evaluated stay as filters.
+- **Why column**, in plain words: the metrics that drive the lane, with their trend and change. Examples: "Goals ↘ −75%", "Strong on Planned ↗ +54% · Goals · RCR", "Planned ↘ −20%". It is the root cause read off the evidence, red metrics first.
+- **Two calibration rules:**
+  - "PTO plan at risk" is a wellbeing note. It shows under Watch, or as a note on a Celebrate row, and never puts someone in Support on its own.
+  - A person with no evaluated metric (for example a family outside the time mandate) stays Steady with "Not enough evaluated data yet".
+- **Compact rows:** name and title only. Code, location, supervisor, tenure and exceptions are in the tooltip, with a ⚑ count. Trend bars are 18 px.
+- **Sort:** Score sorts by the number, best first, so the grid reads top-down from the people to celebrate.
+- **CSV export** carries Lane and Why.
+
+**Checks:**
+- The Performance Record suite has 204 checks, including the lane rules above.
+- The radar suite has 30 checks.
+- The synthetic demo smoke test passes 95/95.
+- Both were rendered in a browser at 1440 px with the three-team synthetic data.
