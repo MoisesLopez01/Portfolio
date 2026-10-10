@@ -6,8 +6,53 @@
   //              (WoW Δ for last 2 completed weeks).
   // AUTHOR:      Alex Lopez
   // CREATED:     3/30/2026
-  // VERSION:     3.20.0
+  // VERSION:     3.21.1
   // ENVIRONMENT: Google Apps Script
+  // CHANGES v3.21.1 (due dates one day early — delivery-health validation
+  //   2026-10-02, 2026.W40, register #036):
+  //   · "Due Date" (col 12) and "Start Date" (col 13) are written as plain
+  //     yyyy-mm-dd STRINGS (jbDateOnly_), the form Jira holds them in. Through
+  //     fmtDateTime_ a bare "2026-09-30" became new Date() = UTC midnight and
+  //     printed in America/Guatemala as "9/29/2026 18:00" — every due date one
+  //     day early for a reader behind UTC: a Monday due date fell into the
+  //     previous ISO week and On-Time graded work finished in its own week as
+  //     late. Resolution / Created / Updated are true instants and keep the
+  //     datetime form. No reader of Jira Raw parses these two columns as
+  //     datetimes (checked across the local GAS projects on 2026-10-02).
+  // CHANGES v3.21.0 (the org's MILESTONES PROPER become data — user 2026-09-30,
+  //   2026.W40, delivery-health register #033):
+  //   · NEW tab "Jira Versions": every fix version (release) of every in-scope
+  //     project, one row per version — id, name, SRSO token (same rule as
+  //     Billing Type), released / archived / overdue flags, start and release
+  //     dates as yyyy-mm-dd STRINGS, and the version's issue counts by status
+  //     category (expand=issuesstatus). Full rewrite per run, Generated /
+  //     Total rows / Exporter footer like Jira Bugs.
+  //   · NEW tab "Jira Versions Log": the SRSO versions again, ONE SNAPSHOT PER
+  //     ISO WEEK (the current week's block is replaced on every run, older
+  //     weeks are frozen, weeks older than VERSIONS_LOG_WEEKS are pruned).
+  //     Jira keeps NO history for a version's release date — the only way to
+  //     know what a milestone's date was on the first day of a quarter is to
+  //     have written it down that week. History accumulates from the first run
+  //     forward; a dashboard reading a quarter that began before the first
+  //     snapshot can only see the current date and must say so.
+  //   · WHY: the Milestone Commitments card grades EPICS by due date because
+  //     the export carried no versions, while the PM handbook and NetSuite
+  //     both define the milestone as the SRSO-named FIX VERSION with its
+  //     release date ("the link between the Epic and the payment milestone").
+  //     Same source, same scope (jbProjectScopeCheck_, shared with
+  //     getSpaceForIssue_), one join key: Project Key + Version Name is what
+  //     Jira Raw's "Fix Versions" column already carries.
+  //   · CADENCE: the nightly FULL run (≈300 project/version calls through
+  //     UrlFetchApp.fetchAll in chunks of 20, ~20 s). The hourly LIGHT run
+  //     skips it unless CONFIGJ.VERSIONS_ON_LIGHT_RUN — a release date does
+  //     not change by the hour and the daily URL-fetch quota is shared.
+  //     runJiraVersionsSnapshot() is the editor entry point for a first run.
+  //   · A versions failure NEVER fails the export: it is caught, logged and
+  //     the two tabs are left as they were (an absent or stale tab reads
+  //     downstream as "not measured", never as zero).
+  //   · Consumer: delivery-health Code.js readJiraVersions_ /
+  //     readJiraVersionsLog_ (columns by header, tab optional).
+  //
   // CHANGES v3.20.0 (due-date PUSHES become data — user 2026-09-09, 2026.W37):
   //   · NEW column 34 "Due Push Log": every Due Date change in an issue's
   //     changelog as `YYYY-MM-DD:from>to` entries joined by ";" (a cleared or
@@ -621,6 +666,23 @@
     // Weekly created/resolved tally for the Executive queue metrics (v3.11.0).
     // Counts only — no per-issue rows, so no consumer's denominators move.
     ARRIVALS_SHEET:  "Jira Arrivals",
+    // ── FIX VERSIONS = the org's milestones proper (v3.21.0) ────────────────
+    // "Jira Versions" is the current snapshot of every in-scope project's
+    // versions (full rewrite); "Jira Versions Log" keeps the SRSO ones one
+    // snapshot per ISO week, because Jira exposes no history for a version's
+    // release date and a quarter's commitment can only be read from what the
+    // date WAS when the quarter began. Both are outputs, auto-created.
+    VERSIONS_SHEET:     "Jira Versions",
+    VERSIONS_LOG_SHEET: "Jira Versions Log",
+    // Weeks of weekly snapshots kept in the log. 65 = the dashboard's deep
+    // window (2 complete quarters + the live one, ≤39 weeks) plus a full
+    // quarter of margin, so the first day of every quarter it grades has a
+    // snapshot behind it once the log has run that long.
+    VERSIONS_LOG_WEEKS: 65,
+    // The hourly light run does NOT refresh versions by default: a release
+    // date changes weekly at most, and ~300 extra URL fetches an hour would
+    // be a third of the daily quota spent re-reading the same dates.
+    VERSIONS_ON_LIGHT_RUN: false,
     ROSTER_SHEET: "Roster",
 
     // ── Executive reporting ────────────────────────────────────
@@ -697,7 +759,7 @@
      // lives only in the header comment cannot travel with the data, so a
      // dashboard reading a three-week-old sheet has no way to know which rules
      // produced it. Bump this with the header comment — they are one fact.
-     VERSION: "3.20.0",
+     VERSION: "3.21.1",
 
     NON_DELIVERY_CATEGORIES: ["Internal"],
 
@@ -2152,47 +2214,22 @@
     // Two rules, in order of authority. A project named in CUSTOMER_PROJECT_MAP
     // is exempt from both — that is the documented rescue hatch for a real
     // client whose key happens to look like a sandbox.
-    if (!(CONFIGJ.CUSTOMER_PROJECT_MAP && CONFIGJ.CUSTOMER_PROJECT_MAP[projKey])) {
-      // 1 · Jira's own category. Authoritative and self-maintaining: the admin
-      //     who creates the next sandbox categorises it and this needs no edit.
-      var cat = projectCategoryOf_(projKey);
-      if (cat && (CONFIGJ.NON_DELIVERY_CATEGORIES || []).indexOf(cat) !== -1) {
-        JB_EXCLUDED_PROJECTS_[projKey] = (JB_EXCLUDED_PROJECTS_[projKey] || 0) + 1;
-        return null;
-      }
-      // 2 · The key pattern, for anything not yet categorised.
-      if (CONFIGJ.EXCLUDE_PROJECT_RE && CONFIGJ.EXCLUDE_PROJECT_RE.test(projKey)) {
-        JB_EXCLUDED_PROJECTS_[projKey] = (JB_EXCLUDED_PROJECTS_[projKey] || 0) + 1;
-        JB_PATTERN_ONLY_[projKey] = (JB_PATTERN_ONLY_[projKey] || 0) + 1;
-        return null;
-      }
-      // 3 · Neither fired, but the NAME reads like a sandbox. Not excluded —
-      //     "Advantest" and "ISUATTEST" are real client work — but reported, so
-      //     a genuine miscategorisation like TSBA ("Test Space - by Alfie",
-      //     sitting in COE) gets fixed in Jira instead of patched in code.
-      var pName = (JB_PROJECT_META_ && JB_PROJECT_META_[projKey] &&
-                   JB_PROJECT_META_[projKey].name) || "";
-      if (pName && CONFIGJ.SUSPECT_PROJECT_NAME_RE &&
-          CONFIGJ.SUSPECT_PROJECT_NAME_RE.test(pName)) {
-        JB_SUSPECT_PROJECTS_[projKey] = pName + " [" + (cat || "no category") + "]";
-      }
+    // The three rules live in jbProjectScopeCheck_ (v3.21.0) so the versions
+    // feed applies EXACTLY the same scope to a project as this does to an
+    // issue; the tallies stay here because they count ISSUE rows dropped.
+    var sc = jbProjectScopeCheck_(projKey);
+    if (sc.excluded) {
+      JB_EXCLUDED_PROJECTS_[projKey] = (JB_EXCLUDED_PROJECTS_[projKey] || 0) + 1;
+      if (sc.patternOnly) JB_PATTERN_ONLY_[projKey] = (JB_PATTERN_ONLY_[projKey] || 0) + 1;
+      return null;
     }
+    if (sc.suspectName) JB_SUSPECT_PROJECTS_[projKey] = sc.suspectName;
 
-    for (var i = 0; i < CONFIGJ.SPACES.length; i++) {
-      var space = CONFIGJ.SPACES[i];
-      var matches = space.match;
-      for (var j = 0; j < matches.length; j++) {
-        var m = matches[j];
-        var mNorm = normalizeName_(m);
-        var mKey  = m.toUpperCase();
-        
-        // Match against project key OR normalized project name
-        if (mKey === projKey || mNorm === projName) {
-          // If the space is explicitly disabled, return null to signal exclusion
-          if (space.enabled === false) return null;
-          return space.key;
-        }
-      }
+    var space = jbMatchSpace_(projKey, projName);
+    if (space) {
+      // If the space is explicitly disabled, return null to signal exclusion
+      if (space.enabled === false) return null;
+      return space.key;
     }
     // Known client projects surface the actual client name so the Exec Space
     // column differentiates customers instead of one "Customer" blob; unmapped
@@ -2204,6 +2241,67 @@
       JB_UNMAPPED_PROJECTS_[projKey] = (JB_UNMAPPED_PROJECTS_[projKey] || 0) + 1;
     }
     return clientName || projKey || "Other";
+  }
+
+  /**
+   * Is this PROJECT delivery work? The three rules getSpaceForIssue_ applies to
+   * an issue's project, factored out (v3.21.0) so the versions feed and the
+   * issue feed cannot disagree about which projects are in scope. Pure — no
+   * tallies; the caller decides what to count.
+   *
+   *   excluded     true when the project is non-delivery: Jira category in
+   *                NON_DELIVERY_CATEGORIES, or key matching EXCLUDE_PROJECT_RE.
+   *                A key named in CUSTOMER_PROJECT_MAP is exempt from both.
+   *   patternOnly  excluded by the key pattern with no category behind it
+   *   suspectName  "<name> [<category>]" when the NAME reads like a sandbox
+   *                but the rules admit it — reported, never excluded
+   *
+   * @param {string} projKey upper-cased Jira project key
+   * @returns {{excluded:boolean, patternOnly:boolean, suspectName:string, category:string}}
+   */
+  function jbProjectScopeCheck_(projKey) {
+    var res = { excluded: false, patternOnly: false, suspectName: "", category: "" };
+    if (CONFIGJ.CUSTOMER_PROJECT_MAP && CONFIGJ.CUSTOMER_PROJECT_MAP[projKey]) return res;
+    // 1 · Jira's own category. Authoritative and self-maintaining: the admin
+    //     who creates the next sandbox categorises it and this needs no edit.
+    var cat = projectCategoryOf_(projKey);
+    res.category = cat;
+    if (cat && (CONFIGJ.NON_DELIVERY_CATEGORIES || []).indexOf(cat) !== -1) {
+      res.excluded = true;
+      return res;
+    }
+    // 2 · The key pattern, for anything not yet categorised.
+    if (CONFIGJ.EXCLUDE_PROJECT_RE && CONFIGJ.EXCLUDE_PROJECT_RE.test(projKey)) {
+      res.excluded = true;
+      res.patternOnly = true;
+      return res;
+    }
+    // 3 · Neither fired, but the NAME reads like a sandbox. Not excluded —
+    //     "Advantest" and "ISUATTEST" are real client work — but reported, so
+    //     a genuine miscategorisation like TSBA ("Test Space - by Alfie",
+    //     sitting in COE) gets fixed in Jira instead of patched in code.
+    var pName = (JB_PROJECT_META_ && JB_PROJECT_META_[projKey] &&
+                 JB_PROJECT_META_[projKey].name) || "";
+    if (pName && CONFIGJ.SUSPECT_PROJECT_NAME_RE &&
+        CONFIGJ.SUSPECT_PROJECT_NAME_RE.test(pName)) {
+      res.suspectName = pName + " [" + (cat || "no category") + "]";
+    }
+    return res;
+  }
+
+  /** The configured CONFIGJ.SPACES entry a project matches (by key or by
+      normalised name), or null. Shared by getSpaceForIssue_ and the versions
+      feed so a disabled space (R&D) is disabled for both. */
+  function jbMatchSpace_(projKey, projNameNorm) {
+    for (var i = 0; i < CONFIGJ.SPACES.length; i++) {
+      var space = CONFIGJ.SPACES[i];
+      var matches = space.match || [];
+      for (var j = 0; j < matches.length; j++) {
+        var m = matches[j];
+        if (m.toUpperCase() === projKey || normalizeName_(m) === projNameNorm) return space;
+      }
+    }
+    return null;
   }
 
   /**
@@ -2561,6 +2659,14 @@
   // population). The "expect both to export BLANK" note that stood here for two
   // releases was wrong: the field was populated all along and the reader was
   // dropping it. See jbRegionValue_ and CONFIGJ.REGION_FIELD.
+
+  // THE SRSO TOKEN, once (v3.21.0). "SRSO-016559", "CLVT02 SRSO-016559" and a
+  // bare "SRSO" word all bind a fix version (or component) to a NetSuite sales
+  // order. Billing Type (Jira Raw), the Exec Q&A revenue-milestone count and
+  // the Jira Versions "SRSO" column read this one expression, so the three can
+  // never disagree about what is billable.
+  var JB_SRSO_RE_ = /\bSRSO\b|SRSO-/i;
+
   var RAW_HEADERS = [
     /* 0 */ "Week", /* 1 */ "Key", /* 2 */ "Work (Summary)",
     /* 3 */ "Workstream (Issue Type)", /* 4 */ "Space (Project)",
@@ -2653,7 +2759,7 @@
 
     // Billing classification from Fix Versions (same SRSO token rule as Exec Q&A)
     var fixNames = (f.fixVersions || []).map(function(v) { return v.name || ""; });
-    var hasSRSO = fixNames.some(function(n) { return /\bSRSO\b|SRSO-/i.test(n); });
+    var hasSRSO = fixNames.some(function(n) { return JB_SRSO_RE_.test(n); });
     var billingType = hasSRSO ? "Billable (SRSO)"
       : fixNames.length > 0 ? "Internal"
       : "Untagged";
@@ -2684,8 +2790,14 @@
       fmtDateTime_(f.created),
       fmtDateTime_(f.updated),
       fmtDateTime_(f.resolutiondate),
-      fmtDateTime_(f.duedate),
-      fmtDateTime_(f.customfield_10015),
+      // CALENDAR DATES AS PLAIN "yyyy-mm-dd" (v3.21.1, 2026-10-02): Jira's
+      // duedate and Start Date carry no time. Through fmtDateTime_ they became
+      // new Date("2026-09-30") = UTC midnight, printed in this script's
+      // timezone as "9/29/2026 18:00" — one day early for every reader behind
+      // UTC (the delivery-health On-Time weeks and due dates, register #036).
+      // Same rule Week Start and the versions feed already follow.
+      jbDateOnly_(f.duedate),
+      jbDateOnly_(f.customfield_10015),
       fixNames.join(", "),
       // ── Columns 15–25 ──
       spaceKey || "",
@@ -3521,7 +3633,7 @@
         var isRPE = !!(due && resolved);
         // SRSO token anywhere in the name — covers both "SRSO-016559" and
         // client-prefixed names like "CLVT02 SRSO-016559"
-        var isSRSO = (f.fixVersions || []).some(function(fv) { return /\bSRSO\b|SRSO-/i.test(fv.name || ''); });
+        var isSRSO = (f.fixVersions || []).some(function(fv) { return JB_SRSO_RE_.test(fv.name || ''); });
 
         function bump(agg) {
           agg.count++;
@@ -4167,6 +4279,16 @@
       writeFlowSnapshot_(epicChildren.concat(openIssues));
       SpreadsheetApp.flush();
 
+      // ── Fix versions = the milestones proper (v3.21.0) ───────────────────
+      // Nightly by default; the light run skips it unless the dial says
+      // otherwise. Never allowed to fail the export — see exportJiraVersions_.
+      if (!light || CONFIGJ.VERSIONS_ON_LIGHT_RUN) {
+        exportJiraVersions_(allIssues.concat(epicChildren, openIssues));
+      } else {
+        Logger.log("⏭️ Jira Versions skipped (LIGHT) — release dates change weekly at most; " +
+                   "the nightly FULL run snapshots them (CONFIGJ.VERSIONS_ON_LIGHT_RUN to change).");
+      }
+
       // Exec Q&A — uses all weeks for trend context, but WoW compares last 2.
       // FULL only: `weeks` is null in light mode, and this fetch exists solely
       // to feed writeExecQASheet_, which light mode does not write.
@@ -4269,6 +4391,341 @@
    */
   function runJiraEpicTrackerLight() {
     runJiraEpicTracker({ light: true });
+  }
+
+  // ============================================================
+  // 🏁  JIRA VERSIONS — the org's milestones proper (v3.21.0)
+  // ============================================================
+  // The PM handbook ("HOWTO - Creating Effective Epics") and NetSuite (saved
+  // search 28613) both define a delivery milestone as the SRSO-named FIX
+  // VERSION with its release date; the epic only points at it. Until this
+  // version the export carried the pointer (Jira Raw "Fix Versions") and not
+  // the thing, so the delivery-health Milestone Commitments card graded epics
+  // by their due date. These two tabs carry the thing.
+  //
+  //   "Jira Versions"      every version of every in-scope project, as it is
+  //                        NOW. Full rewrite per run (recomputable, like Bugs).
+  //   "Jira Versions Log"  the SRSO versions, ONE SNAPSHOT PER ISO WEEK. Jira
+  //                        exposes no history for a version's release date, so
+  //                        "what was this milestone's date on the first day of
+  //                        the quarter?" can only be answered by a row written
+  //                        that week. The current week's block is replaced on
+  //                        every run (24 hourly runs must not mean 24 copies —
+  //                        the Flow Snapshots rule), older weeks are frozen,
+  //                        and weeks past VERSIONS_LOG_WEEKS are pruned.
+  //
+  // APPEND-ONLY COLUMNS, BY-HEADER READERS — the RAW_HEADERS contract. Dates
+  // are yyyy-mm-dd STRINGS, never Date objects (the Arrivals lesson: a Date
+  // cell is serialised in the script's timezone and reads back a day early
+  // behind UTC). Flags are "Yes" / "No" strings like Reopened.
+  var VERSIONS_HEADERS = [
+    /* 0 */ "Snapshot Week", /* 1 */ "Snapshot Date",
+    /* 2 */ "Project Key", /* 3 */ "Project Name",
+    /* 4 */ "Version ID", /* 5 */ "Version Name",
+    /* 6 */ "SRSO",       // JB_SRSO_RE_ on the name — the Billing Type rule
+    /* 7 */ "Released", /* 8 */ "Archived", /* 9 */ "Overdue",
+    /* 10 */ "Start Date", /* 11 */ "Release Date",
+    // expand=issuesstatus: how much of the version's work is done, by status
+    // category. A released version with open work, or an unreleased one with
+    // everything done, is a hygiene fact the dashboard can print.
+    /* 12 */ "Issues To Do", /* 13 */ "Issues In Progress",
+    /* 14 */ "Issues Done", /* 15 */ "Issues Unmapped",
+    /* 16 */ "Description",
+  ];
+
+  /**
+   * The project keys whose versions are exported: every project the site
+   * lists, minus the ones getSpaceForIssue_ would drop an issue of — same
+   * three rules (jbProjectScopeCheck_) and the same disabled-space test
+   * (jbMatchSpace_). When the project listing failed this run, the keys seen
+   * on this run's issues stand in, so a transient /project/search error costs
+   * one night of unseen empty projects rather than the whole feed.
+   */
+  function jbVersionProjects_(fallbackIssues) {
+    var meta = loadProjectMeta_();
+    var keys = Object.keys(meta);
+    var source = "project listing";
+    if (!keys.length) {
+      var seen = {};
+      (fallbackIssues || []).forEach(function (i) {
+        var k = String(dig_(i.fields, "project.key") || "").toUpperCase();
+        if (k) seen[k] = 1;
+      });
+      keys = Object.keys(seen);
+      source = "this run's issues (project listing unavailable)";
+    }
+    var out = [], dropped = 0;
+    keys.sort().forEach(function (k) {
+      if (jbProjectScopeCheck_(k).excluded) { dropped++; return; }
+      var space = jbMatchSpace_(k, normalizeName_((meta[k] && meta[k].name) || ""));
+      if (space && space.enabled === false) { dropped++; return; }
+      out.push(k);
+    });
+    Logger.log("🏁 Versions scope: " + out.length + " project(s) from the " + source +
+               (dropped ? ", " + dropped + " non-delivery project(s) excluded" : "") + ".");
+    return out;
+  }
+
+  /** One Jira version object → the record the two writers share. */
+  function jbVersionRecord_(v, projectKey, projectName) {
+    var st = v.issuesStatusForFixVersion || {};
+    return {
+      id: String(v.id || ""),
+      project: projectKey,
+      projectName: projectName || "",
+      name: String(v.name || ""),
+      srso: JB_SRSO_RE_.test(String(v.name || "")),
+      released: !!v.released,
+      archived: !!v.archived,
+      overdue: !!v.overdue,
+      startDate: jbDateOnly_(v.startDate),
+      releaseDate: jbDateOnly_(v.releaseDate),
+      toDo: Number(st.toDo || 0), inProgress: Number(st.inProgress || 0),
+      done: Number(st.done || 0), unmapped: Number(st.unmapped || 0),
+      description: String(v.description || ""),
+    };
+  }
+
+  /** Record → sheet row, in VERSIONS_HEADERS order. */
+  function versionToRow_(rec, snapWeek, snapDate) {
+    function yn(b) { return b ? "Yes" : "No"; }
+    return [
+      snapWeek, snapDate,
+      rec.project, rec.projectName,
+      rec.id, rec.name,
+      yn(rec.srso),
+      yn(rec.released), yn(rec.archived), yn(rec.overdue),
+      rec.startDate, rec.releaseDate,
+      rec.toDo, rec.inProgress, rec.done, rec.unmapped,
+      rec.description,
+    ];
+  }
+
+  /**
+   * Every version of every project given, through GET
+   * /rest/api/3/project/{key}/version?expand=issuesstatus, paged at 50 and
+   * fetched in parallel with UrlFetchApp.fetchAll in chunks of 20 (the same
+   * shape jira-1-signal's weekly snapshot uses). A project's later pages, a
+   * 429 and a 5xx go back on the queue (two retries, one second apart); a
+   * 404 / 403 is a project with no versions or no browse permission and is
+   * skipped quietly; anything else is reported by key so a missing project
+   * is a logged fact, not a silent gap.
+   *
+   * @returns {{versions:Array, failed:string[], projects:number}}
+   */
+  function fetchProjectVersions_(projectKeys, projectNames) {
+    var headers = buildHeaders_();
+    var PAGE = 50, CHUNK = 20, RETRIES = 2;
+    var out = [], failed = [], skipped = 0;
+    function reqFor(job) {
+      return {
+        url: CONFIGJ.JIRA_BASE_URL + "/rest/api/3/project/" + encodeURIComponent(job.key) +
+             "/version?maxResults=" + PAGE + "&startAt=" + job.startAt + "&expand=issuesstatus",
+        method: "get", headers: headers, muteHttpExceptions: true,
+      };
+    }
+    var pending = projectKeys.map(function (k) { return { key: k, startAt: 0, tries: 0 }; });
+    var guard = 0;
+    while (pending.length && guard++ < 500) {
+      var batch = pending.splice(0, CHUNK);
+      var responses;
+      try {
+        responses = UrlFetchApp.fetchAll(batch.map(reqFor));
+      } catch (e) {
+        // A transport failure on the whole chunk: requeue what still has tries.
+        batch.forEach(function (job) {
+          if (job.tries++ < RETRIES) pending.push(job); else failed.push(job.key + " (fetch: " + e.message + ")");
+        });
+        Utilities.sleep(1000);
+        continue;
+      }
+      var retried = false;
+      responses.forEach(function (resp, i) {
+        var job = batch[i];
+        var code = resp.getResponseCode();
+        if (code === 404 || code === 403) { skipped++; return; }
+        if (code === 429 || code >= 500) {
+          if (job.tries++ < RETRIES) { pending.push(job); retried = true; }
+          else failed.push(job.key + " (HTTP " + code + ")");
+          return;
+        }
+        if (code !== 200) { failed.push(job.key + " (HTTP " + code + ")"); return; }
+        var parsed = jb_tryParseJson_(resp, "Jira project/" + job.key + "/version");
+        if (!parsed.ok) { failed.push(job.key + " (unparseable body)"); return; }
+        var data = parsed.data || {};
+        var vals = data.values || [];
+        vals.forEach(function (v) {
+          out.push(jbVersionRecord_(v, job.key, (projectNames && projectNames[job.key]) || ""));
+        });
+        if (data.isLast === false && vals.length) {
+          pending.push({ key: job.key, startAt: job.startAt + vals.length, tries: 0 });
+        }
+      });
+      if (retried) Utilities.sleep(1000);
+    }
+    if (pending.length) failed.push(pending.length + " project(s) left unfetched (guard)");
+    Logger.log("🏁 Versions fetched: " + out.length + " across " + projectKeys.length + " project(s)" +
+               (skipped ? " · " + skipped + " with no versions / no permission" : "") +
+               (failed.length ? " · ⚠️ " + failed.length + " FAILED: " + failed.join(", ") : "") + ".");
+    return { versions: out, failed: failed, projects: projectKeys.length };
+  }
+
+  /** "Jira Versions": full rewrite, Bugs-style footer. */
+  function writeVersionsSheet_(rows) {
+    var sheet = jb_getOrCreateSheet_(CONFIGJ.VERSIONS_SHEET);
+    sheet.clearContents();
+    sheet.clearFormats();
+    var all = [VERSIONS_HEADERS].concat(rows);
+    sheet.getRange(1, 1, all.length, VERSIONS_HEADERS.length).setValues(all);
+    styleHeader_(sheet.getRange(1, 1, 1, VERSIONS_HEADERS.length));
+    sheet.setFrozenRows(1);
+    // Same "Generated:" / "Total rows:" / "Exporter:" footer as Jira Raw and
+    // Jira Bugs, so the dashboard's freshness and version parse work here too.
+    var foot = all.length + 2;
+    sheet.getRange(foot, 1)
+      .setValue("Generated: " + fmtDateTime_(new Date()))
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    sheet.getRange(foot + 1, 1)
+      .setValue("Total rows: " + rows.length)
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    sheet.getRange(foot + 2, 1)
+      .setValue("Exporter: " + CONFIGJ.VERSION)
+      .setFontColor("#5f6368").setFontStyle("italic").setFontSize(9);
+    Logger.log("✅ Jira Versions: " + rows.length + " rows written.");
+  }
+
+  /**
+   * "Jira Versions Log": one snapshot per ISO week, the current week's block
+   * replaced in place, older weeks frozen, weeks past VERSIONS_LOG_WEEKS
+   * pruned. Rewritten from memory in ONE setValues so a failed write cannot
+   * leave a half-pruned tab.
+   *
+   * HEADER MIGRATION: a sheet whose row 1 is a clean PREFIX of
+   * VERSIONS_HEADERS (columns appended since it was written) is widened and
+   * its rows padded. Any other header means the columns cannot be trusted to
+   * line up; the tab is then RENAMED aside ("… (old yyyy-mm-dd)") and a fresh
+   * log started — history is never deleted by a schema change, and never
+   * stitched across one either.
+   *
+   * @param {Array<Array>} rows this week's rows (VERSIONS_HEADERS order)
+   * @param {string} nowIso this week's label, e.g. "2026.W40"
+   * @param {Date=} today injection point for tests
+   */
+  function writeVersionsLog_(rows, nowIso, today) {
+    today = today || new Date();
+    var sheet = jb_getOrCreateSheet_(CONFIGJ.VERSIONS_LOG_SHEET);
+    var existing = sheet.getLastRow() > 0 ? sheet.getDataRange().getValues() : [];
+    var kept = [];
+    if (existing.length > 1) {
+      var hdr = existing[0].map(function (h) { return String(h).trim(); });
+      var isPrefix = hdr.length <= VERSIONS_HEADERS.length &&
+                     hdr.every(function (h, i) { return h === VERSIONS_HEADERS[i]; });
+      if (!isPrefix) {
+        var aside = CONFIGJ.VERSIONS_LOG_SHEET + " (old " + toIsoDate_(today) + ")";
+        Logger.log("⚠️ Jira Versions Log: row 1 (" + hdr.join(", ") + ") is not a clean prefix of " +
+                   "VERSIONS_HEADERS — the tab is renamed to \"" + aside + "\" and a fresh log started. " +
+                   "Nothing is deleted; reconcile the old tab by hand if its history is wanted.");
+        sheet.setName(aside);
+        sheet = jb_getOrCreateSheet_(CONFIGJ.VERSIONS_LOG_SHEET);
+        existing = [];
+      } else {
+        var iWeek = hdr.indexOf("Snapshot Week"), iDate = hdr.indexOf("Snapshot Date");
+        var cutoff = new Date(today.getFullYear(), today.getMonth(), today.getDate() - CONFIGJ.VERSIONS_LOG_WEEKS * 7);
+        var cutoffStr = toIsoDate_(cutoff);
+        var pruned = 0, replaced = 0;
+        for (var r = 1; r < existing.length; r++) {
+          var row = existing[r];
+          var wk = String(row[iWeek] || "").trim();
+          if (!/^\d{4}\.W\d{1,2}$/.test(wk)) continue;                 // blank / junk
+          if (wk === nowIso) { replaced++; continue; }                // this week: rewritten
+          var dt = String(row[iDate] || "").slice(0, 10);
+          if (dt && dt < cutoffStr) { pruned++; continue; }           // past the window
+          // Pad rows written under a narrower header (append-only columns).
+          while (row.length < VERSIONS_HEADERS.length) row.push("");
+          kept.push(row.slice(0, VERSIONS_HEADERS.length));
+        }
+        Logger.log("🧊 Jira Versions Log: " + kept.length + " frozen rows kept" +
+                   (replaced ? ", " + replaced + " from " + nowIso + " replaced" : "") +
+                   (pruned ? ", " + pruned + " older than " + CONFIGJ.VERSIONS_LOG_WEEKS + " weeks pruned" : "") + ".");
+      }
+    }
+    var all = [VERSIONS_HEADERS].concat(kept, rows);
+    sheet.clearContents();
+    sheet.clearFormats();
+    sheet.getRange(1, 1, all.length, VERSIONS_HEADERS.length).setValues(all);
+    styleHeader_(sheet.getRange(1, 1, 1, VERSIONS_HEADERS.length));
+    sheet.setFrozenRows(1);
+    Logger.log("✅ Jira Versions Log: " + rows.length + " rows for " + nowIso + " (" + (all.length - 1) + " total).");
+  }
+
+  /**
+   * Fetch + write both version tabs. NEVER THROWS: a failure here is logged
+   * and the tabs are left as they were, because Jira Raw — which every rate
+   * reads — was already written by the time this runs, and a versions
+   * hiccup must not turn a good export into a failed trigger.
+   *
+   * @param {Object[]} fallbackIssues issues already in memory, for the
+   *   project list when /project/search failed this run
+   * @returns {{versions:number, srso:number, failed:number}|null}
+   */
+  function exportJiraVersions_(fallbackIssues) {
+    var t0 = Date.now();
+    try {
+      var meta = loadProjectMeta_();
+      var names = {};
+      Object.keys(meta).forEach(function (k) { names[k] = meta[k].name || ""; });
+      var keys = jbVersionProjects_(fallbackIssues);
+      if (!keys.length) {
+        Logger.log("⚠️ Jira Versions: no in-scope project to read — tabs left as they were.");
+        return null;
+      }
+      var got = fetchProjectVersions_(keys, names);
+      var now = new Date();
+      var nowIso = jb_isoWeekLabel_(now), nowDate = toIsoDate_(now);
+      var rows = got.versions.map(function (rec) { return versionToRow_(rec, nowIso, nowDate); });
+      var srsoRows = got.versions
+        .filter(function (rec) { return rec.srso; })
+        .map(function (rec) { return versionToRow_(rec, nowIso, nowDate); });
+      // The snapshot tab is written only when the fetch was whole: a partial
+      // read overwriting a complete one would read downstream as milestones
+      // vanishing. The LOG takes the same rule — a week's row set is either
+      // complete or absent, never "the projects that answered".
+      if (got.failed.length) {
+        Logger.log("⚠️ Jira Versions: " + got.failed.length + " project(s) failed — NOT writing either tab " +
+                   "this run (a partial snapshot would read as milestones disappearing). Last good snapshot stands.");
+        return { versions: got.versions.length, srso: srsoRows.length, failed: got.failed.length };
+      }
+      writeVersionsSheet_(rows);
+      writeVersionsLog_(srsoRows, nowIso, now);
+      SpreadsheetApp.flush();
+      Logger.log("🏁 Jira Versions done in " + Math.round((Date.now() - t0) / 1000) + "s: " +
+                 rows.length + " versions, " + srsoRows.length + " SRSO-bound → log week " + nowIso + ".");
+      return { versions: rows.length, srso: srsoRows.length, failed: 0 };
+    } catch (e) {
+      Logger.log("❌ Jira Versions failed (export itself is unaffected): " + e.message);
+      return null;
+    }
+  }
+
+  /**
+   * EDITOR ENTRY POINT: snapshot the fix versions now, without waiting for
+   * the 03:00 full run — the first thing to run after deploying v3.21.0, so
+   * the log's history starts today rather than tomorrow. Takes the export
+   * lock like the tracker so it cannot interleave with a run in flight.
+   */
+  function runJiraVersionsSnapshot() {
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(0)) {
+      Logger.log("⏭️ SKIPPED: a Jira export run is in flight — it snapshots versions itself (full run) " +
+                 "or run this again when it finishes.");
+      return null;
+    }
+    try {
+      Logger.log("🏁 Jira Versions snapshot (manual)…");
+      return exportJiraVersions_([]);
+    } finally {
+      lock.releaseLock();
+    }
   }
 
   // ── SECTION: TEMPORARY DEBUG HELPER ─────────────────────────
@@ -4721,6 +5178,10 @@
   //
   // 8. Run setJiraExportTrigger() once → installs the weekly schedule (below),
   //    so step 7 stops being something a human has to remember.
+  //
+  // 9. Run runJiraVersionsSnapshot() once after deploying v3.21.0 → writes
+  //    "Jira Versions" + the first week of "Jira Versions Log" today; the
+  //    nightly full run keeps both current from then on.
   // ============================================================
 
   // ============================================================
@@ -4895,7 +5356,8 @@
     Logger.log("   · hourly  runJiraEpicTrackerLight() — last "
       + CONFIGJ.LIGHT_REFRESH_WEEKS + " weeks + the in-flight week + the open queue, merged");
     Logger.log("   · ~03:00  runJiraEpicTracker() — full "
-      + CONFIGJ.RAW_HISTORY_WEEKS + "-week rewrite, repairs anything the light runs missed");
+      + CONFIGJ.RAW_HISTORY_WEEKS + "-week rewrite, repairs anything the light runs missed,"
+      + " and snapshots the fix versions (Jira Versions + Jira Versions Log, v3.21.0)");
     Logger.log("ℹ️ The FIRST light run after a column change rebuilds the sheet instead of"
       + " merging (header mismatch is detected, logged, and handled) — that is expected once.");
   }

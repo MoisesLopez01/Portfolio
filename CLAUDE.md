@@ -13,7 +13,9 @@ It reads from multiple Google Sheets, assembles a 5-week rolling view of PS team
 
 Navigation is driven by the `VIEWS` array — single source of truth for every view's
 button/pane ids, label, location, and role allow-list. Add a view by adding one `VIEWS`
-entry. Full tab/menu inventory, role allow-lists and the ACL card editor's filter-index
+entry. Since 2026.W37 every view lives in a fixed left sidebar (main group + a "More"
+group that replaced the ☰ menu) and the header + filter bar are one sticky top bar. Full
+inventory, role allow-lists, the shell's CSS tokens and the ACL card editor's filter-index
 trap live in the `ps-dashboard-navigation` skill.
 
 Two rules stay here, because they must hold whether or not that skill is loaded:
@@ -86,10 +88,15 @@ when set. A wrong address on the denied page is worse than none.
 
 ### Team pin (viewers) — `resolveTeamScope_`
 
-A Viewer sees **one** org team, derived from their roster **Class** via
+A Viewer sees **one** org team, derived from their roster row via
 `teamForProfile_` — the same rule the report tags every roster row with, so the pin
 follows a person when they move org and there is nothing to keep in sync. The job
-catalog is read only when Class alone can't separate Sales & Success from R&D.
+catalog is read for every pin: since 2026.W36 the PS class is no longer Services by
+definition, because **Solution Architecture (JF018) belongs to Sales & Success** in
+any Class (HRIS moves those rows to Department "Sales", `CONFIG_PS.SALES_DEPT`, which
+is the secondary signal inside the PS class). Do not reintroduce a Class fast path.
+Managers need nothing special: `meta.availableTeams` comes from their scoped roster,
+so a Director whose tree holds consultants and SAs simply gets two teams in the toggle.
 
 `getPSReportData` **overrides** the requested `teamKey`, never merely validates it,
 and does so **before the cache key is built**. Both halves matter: the client's
@@ -126,7 +133,7 @@ These survive a Script Properties reset. Edit this file to add permanent stakeho
 An email present on both the super and plain admin lists resolves as superadmin, and
 `_readAccessLists_` de-dupes it out of `admins` so the UI never shows it twice.
 
-### 3. Runtime access — stored in Script Properties, managed via 🔒 Access Control (☰ menu)
+### 3. Runtime access — stored in Script Properties, managed via 🔒 Access Control (sidebar › More)
 Any Admin can add/remove emails without touching code. Additive on top of defaults.
 Property keys: `PS_DASH_SUPER_ADMINS`, `PS_DASH_ADMINS`, `PS_DASH_VIEWERS`, `PS_DASH_DELEGATES`.
 `PS_DASH_SUPER_ADMINS` is writable by **super admins only** — `saveAccessSettings`
@@ -135,7 +142,7 @@ failed escalation is visible in the log.
 
 ### Open access flag
 `SEC_.OPEN_ACCESS_DEFAULT = false` (default). Set to `true` temporarily for demos/all-hands.
-Can also be toggled from the 🔒 Access Control page (☰ menu).
+Can also be toggled from the 🔒 Access Control page (sidebar › More).
 
 ### Who can let themselves in — `SEC_.MANAGER_AUTO_ACCESS`
 
@@ -240,11 +247,25 @@ own login. **Only the report payload is impersonated**: every settings endpoint 
 resolves the real caller, so the preview can never write as the target. The frontend
 hides Scoring Weights / Access Control while previewing (`hideInPreview` on the `VIEWS`
 entries) because they would read settings as the real caller. `meta.viewAs` is stamped by
-`applySelfExclusion_` (per-caller, never in the shared cache entry); the ☰ entry keys off
+`applySelfExclusion_` (per-caller, never in the shared cache entry); the 👁 sidebar entry keys off
 `STATE.realRole` / `isRealSuperAdmin_()`, not the previewed `userRole`. Candidates come
 from `listViewAsTargets()`. Spec: `ps-dashboard/docs/specs/2026-09-01-view-as-impersonation-design.md`.
 
 ---
+
+## Deploying — clasp, and the file-order trap
+
+`ps-dashboard/.clasp.json` pins the script ID and **`filePushOrder`**. The order is not
+cosmetic: Apps Script runs every file's top-level code in project order, and
+`Contributionintelligence.js` spreads `COLORS`, a top-level const of `Jira Backlog.js`,
+at load. Alphabetical order puts it first and every execution (each `doGet`) dies with
+`ReferenceError: COLORS is not defined`. Keep new files at the END of the list unless
+they are needed at load by another file.
+
+`clasp push` replaces the whole remote file set and skips when content hashes match
+(a pure order change needs a real edit to go up). Data maps such as `Change Names.js`
+are sometimes edited in the editor — `clasp pull` into a scratch dir and diff before
+pushing. Publish with `clasp deploy -i <deploymentId> -d "<note>"`; the URL is stable.
 
 ## Data join keys
 
@@ -268,7 +289,7 @@ All quarter/FY constants (goals quarter label, quarter start/end ISO weeks, SI c
 header, RCR month columns, grace-period flags) are derived from today's date by
 `computeFiscalContext_()` in `ps-dashboard/PS Contribution Report.js` (FY starts July 1) and shipped
 to the frontend as `meta.fiscalContext` / `meta.goalsQuarter` / `meta.siQuarter`.
-The frontend's header subtitle and every Data Reference quarter mention are filled at
+The frontend's header subtitle and every Documentation-tab quarter mention are filled at
 load by `updateQuarterLabels_()` via `.drGoalsQ` / `.drSiQ` / `.drQEnd` / `.drQ1Week`
 spans — nothing in the HTML needs a manual update at quarter rollover.
 Override hook: `CONFIG_PS.SI_COL_OVERRIDE` forces the SI column header if the
@@ -307,7 +328,7 @@ FTE vs crew toggle in the UI.
 ## Scoring weights (Top Rocketeers)
 
 Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 }`
-Configurable per deployment via ⚖️ Scoring Weights (☰ menu, admin only) → saved to `PS Settings` sheet.
+Configurable per deployment via ⚖️ Scoring Weights (sidebar › More, admin only) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
 
 ### Team-aligned scoring matrix (2026-07-09)
@@ -370,8 +391,8 @@ tab of the container spreadsheet via `logDashboardVisit_` (best-effort: try/catc
 the script lock guards only first-write sheet creation, so the hourly Jira export
 holding it never costs rows; a lost line is fine, a slow page load is not). Only `doGet` logs —
 the warmer calls `getPSReportData`, so trigger runs never pollute the data.
-`getUsageAnalytics()` (superadmin-only, throws) feeds the 📶 Usage Analytics ☰-menu
+`getUsageAnalytics()` (superadmin-only, throws) feeds the 📶 Usage Analytics sidebar (More)
 tab: 13-ISO-week rollup + the *eligible audience* (list members ∪ auto-managers the
 current `MANAGER_AUTO_ACCESS` policy admits) with who has NOT engaged. The math is
 pure (`computeUsageRollup_`) and covered by `tests/usage-analytics-checks.js`.
-The trace is disclosed in the page footer and Data Reference.
+The trace is disclosed in the page footer and the 📖 Documentation tab.

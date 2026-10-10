@@ -8,12 +8,44 @@ description: Structure of the PS Dashboard's navigation — the VIEWS array that
 Navigation is driven by the `VIEWS` array in `ps-dashboard/PS Dashboard.html` — the single
 source of truth for every view's button/pane ids, label, location, and role allow-list.
 `switchTab()`, `renderAll()`'s renderer dispatch, role hiding (`applyRoleToNav_()`), and the
-☰ menu all derive from it. Add a view by adding one `VIEWS` entry, not by editing those
-four places.
+sidebar's "More" group all derive from it. Add a view by adding one `VIEWS` entry, not by
+editing those four places.
+
+## The shell (2026.W37) — left sidebar + sticky top bar
+
+Redesigned after the Delivery Health dashboard; spec
+`ps-dashboard/docs/specs/2026-09-10-sidebar-shell-brand-design.md`.
+
+- `<nav class="sidenav">` is a fixed rail, **dark in both themes** (its own `--nav-*`
+  tokens; only `--nav-border` brightens in dark mode). Brand block on top: the real
+  ServiceRocket lockup (`.navLogo`, white wordmark, base64 from the `servicerocket-brand`
+  skill's `-on-navy` asset, 124 px wide) with a "CR" monogram tile (`.navMark`) that takes
+  over when the rail is collapsed or the viewport is ≤ 900 px.
+- `--navw` (`:root`, scaled by `--scale`) is the rail width **and** the body's left
+  padding; `body.navCollapsed` narrows both to 56 px. Collapse is persisted per viewer
+  (`localStorage['ps-nav-collapsed']`, `setNavCollapsed_` / `toggleNav_`).
+- `#tabNav` keeps its id and static buttons; rows are `.tab-btn` = `.tabDot` glyph
+  (aria-hidden) + `.tabLbl`. `navRow_(label)` builds that markup for rendered rows and lends
+  a leading emoji from the label as the glyph.
+- `#topbar` wraps the header, the 👁 banner and `#filterBar` as **one** `position: sticky`
+  block (z-index 100; rail 200; 👁 modal 300). Its measured height is published as
+  `--topbar-h` by `initShell_` (ResizeObserver) — anything sticky inside a pane (the
+  Performance Record drawer) offsets from it instead of a hard-coded pixel value.
+- The ☰ dropdown and its closable temp tabs are gone: `openMenuView(id)` is just
+  `switchTab(id)`, and `closeMenuTab(id)` only falls back to `STATE.lastRegularTab` when a
+  "More" view the caller can no longer see is the active one.
+- **Every pane shares the one document scroller.** `.tab-pane` siblings only flip
+  `display:none`/`flex`, so the window's scroll offset would survive the swap and Trends
+  would open scrolled to wherever Overview was left (2026.W38 bug). `switchTab()` captures
+  `prevTab` before it overwrites `STATE.activeTab` and calls `resetViewScroll_()` only when
+  the view actually changes — a same-view call (`loadData`'s re-render, a filter change)
+  keeps the reader's place. Guarded by `tests/responsive-checks.js`. Do not move panes
+  into their own scroll containers to "fix" this; the sticky top bar and the Performance
+  Record drawer both offset against the document scroller.
 
 Spec: `ps-dashboard/docs/specs/2026-06-10-dashboard-navigation-redesign-design.md`.
 
-## Tab bar (always visible)
+## Sidebar — main group (always visible)
 
 Overview, Team Radar, Leading Behaviours, Trends — plus:
 
@@ -24,9 +56,15 @@ Overview, Team Radar, Leading Behaviours, Trends — plus:
   already enforced server-side — the tab gate adds no data control of its own.
   Spec: `ps-dashboard/docs/specs/2026-08-18-performance-record-tab-design.md`.
 
-## ☰ menu (top-left in header)
+## Sidebar — "More" group (was the ☰ menu until 2026.W37)
 
-- 📊 **Data Reference** — everyone.
+Rendered by `renderNavMenu_()` into `#navMenuPanel`, under a divider and a small-caps
+"More" label; each row carries its VIEWS `btnId`, so `switchTab()` lights it exactly like a
+main tab.
+
+- 📖 **Documentation** — everyone. Renamed from "Data Reference" in 2026.W37: it explains
+  to managers what each metric means and how it is evaluated. Internal ids (`dataref`,
+  `tabDataRef`, the `dr-*` CSS classes) keep the old name.
 - ⚖️ **Scoring Weights** and 🔒 **Access Control** — superadmin + admin + orgadmin.
   Both carry `hideInPreview: true` — hidden while 👁 View as is active, because they
   read settings as the real caller.
@@ -36,12 +74,12 @@ Overview, Team Radar, Leading Behaviours, Trends — plus:
 - 👁 **View dashboard as…** — real super admins only (`isRealSuperAdmin_()`, keyed off
   `STATE.realRole`, not the previewed `userRole`). Not a `VIEWS` entry: it opens the
   target picker modal (`openViewAsPicker`), not a pane, so it is appended explicitly in
-  `renderNavMenu_()`. While previewing, an **↩ Exit preview** item follows it and a banner
-  (`#viewAsBanner`) sits under the header.
+  `renderNavMenu_()`. While previewing, an **↩ Exit preview** row follows it and a banner
+  (`#viewAsBanner`) sits under the header, inside the sticky top bar.
   Spec: `ps-dashboard/docs/specs/2026-09-01-view-as-impersonation-design.md`.
 
-Selecting one opens an IDE-style closable temp tab (`STATE.openMenuTabs`); closing it
-returns to `STATE.lastRegularTab`.
+Selecting one switches to its pane like any tab; a "More" view that loses its role gate
+(or is hidden by 👁 preview) falls back to `STATE.lastRegularTab`.
 
 ## 🔒 Access Control — the ACL cards
 

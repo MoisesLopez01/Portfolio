@@ -65,5 +65,18 @@ ck('pr-table type scaled', html.includes('.pr-table td { font-size: calc(13px * 
 ck('pr drill type scaled', html.includes('.pr-drill { font-size: calc(13px * var(--scale)); }'));
 ck('pr KPI value scaled',  html.includes('.pr-kpi b { font-size: calc(20px * var(--scale)); }'));
 
+// ── independent view scroll (2026.W38) ── every pane shares the one document
+// scroller, so a view change must restart at the top; a same-view re-render must not.
+ck('switchTab resets scroll only on a view change',
+   /if \(prevTab !== tab\) resetViewScroll_\(\);/.test(html));
+ck('resetViewScroll_ defined once',
+   (html.match(/function resetViewScroll_\(/g) || []).length === 1);
+ck('prevTab captured before activeTab is overwritten', (function () {
+  const i = html.indexOf('function switchTab(');
+  const s = html.slice(i, i + 1500);
+  const p = s.indexOf('var prevTab = STATE.activeTab;');
+  return p >= 0 && p < s.indexOf('STATE.activeTab = tab;');
+})());
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

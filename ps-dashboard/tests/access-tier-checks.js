@@ -90,8 +90,9 @@ const _SEC_ROSTER_MEMO_ = null;
 // Assigned from inside resolveTeamScope_, so it must be a binding, not a const null.
 let _SEC_TEAMSCOPE_MEMO_ = null;
 // The Class → team rule reads these two from the report's config.
-const CONFIG_PS = { PS_CLASS: 'Professional Services', PS_DEPT: 'Services' };
+const CONFIG_PS = { PS_CLASS: 'Professional Services', PS_DEPT: 'Services', SALES_DEPT: 'Sales' };
 const COE_FAMILY_CODE_ = 'JF004';
+const SA_FAMILY_CODE_  = 'JF018';
 // eslint-disable-next-line no-eval
 const api = eval('(function(){' + secSlice + '\n' + repSlice +
   '\nreturn { SEC_, isSuperAdmin_, hasAdminPower_, _readAccessLists_, _resolveAccessFor_,' +
@@ -326,12 +327,46 @@ ROSTER_ROWS = [
   { name: 'Sales Person', normName: 'sales person', email: 'sales@x.com', active: true,
     supervisor: '', normSupervisor: '', cls: 'Corporate', dept: 'Sales',
     jobTitle: '04.I5.3 - Senior Representative II, Account Management' },
+  // 2026.W36: Solution Architecture (JF018) moved to Sales & Success. HRIS keeps
+  // the Class at "Professional Services" and re-departments the row to "Sales".
+  { name: 'SA Person',    normName: 'sa person',    email: 'sa@x.com',    active: true,
+    supervisor: '', normSupervisor: '', cls: 'Professional Services', dept: 'Sales',
+    jobTitle: '18.I4.1 - Senior Consultant I, Solution Architecture' },
+  // Title coded JF018 but Department not yet moved — the family code alone decides.
+  { name: 'SA Early',     normName: 'sa early',     email: 'sa-early@x.com', active: true,
+    supervisor: '', normSupervisor: '', cls: 'Professional Services', dept: 'Services',
+    jobTitle: '18.M5.2 - Manager, Solution Architecture' },
+  // Department moved but title uncatalogued and unprefixed — Department alone decides.
+  { name: 'PS Re-dept',   normName: 'ps re-dept',   email: 'ps-redept@x.com', active: true,
+    supervisor: '', normSupervisor: '', cls: 'Professional Services', dept: 'Sales',
+    jobTitle: 'Mystery Title' },
 ];
 const V = e => ({ allowed: true, role: 'viewer', email: e });
 
 eq('viewer in the PS class pins to services',      api.resolveTeamScope_(V('ps@x.com')),    'services');
 eq('viewer in Corporate/Engineering pins to rnd',  api.resolveTeamScope_(V('eng@x.com')),   'rnd');
 eq('viewer with a JF004-coded title pins to sales', api.resolveTeamScope_(V('sales@x.com')), 'sales');
+eq('PS-class viewer with a JF018-coded title pins to sales (no Class fast path)',
+   api.resolveTeamScope_(V('sa@x.com')), 'sales');
+eq('PS-class JF018 viewer pins to sales even before HRIS moves the Department',
+   api.resolveTeamScope_(V('sa-early@x.com')), 'sales');
+eq('PS-class viewer re-departmented to Sales pins to sales without a catalog hit',
+   api.resolveTeamScope_(V('ps-redept@x.com')), 'sales');
+// The pin is memoised per email — a second viewer must not inherit the first's team.
+eq('team pin memo does not leak across viewers', api.resolveTeamScope_(V('ps@x.com')), 'services');
+
+// A manager's team list is derived from their scoped roster, so an org tree that
+// spans Services and Sales & Success (a Director with SAs and consultants) offers
+// both teams — the 2026.W36 split is a data change, not an access-model change.
+{
+  const mixed = new Map([
+    ['ps person',  { team: api.teamForProfile_({ cls: 'Professional Services', dept: 'Services', jobTitle: 'Consultant' }, null) }],
+    ['sa person',  { team: api.teamForProfile_({ cls: 'Professional Services', dept: 'Sales',
+                       jobTitle: '18.I4.1 - Senior Consultant I, Solution Architecture' }, null) }],
+  ]);
+  const keys = api.availableTeams_(mixed).map(t => t.key);
+  eq('a split org tree yields both teams for its manager', keys.join(','), 'services,sales');
+}
 eq('a viewer with no roster row is not pinned',    api.resolveTeamScope_(V('external@partner.com')), null);
 
 // Only viewers are pinned — everyone else keeps the role they had.

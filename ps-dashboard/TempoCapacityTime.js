@@ -3,12 +3,15 @@
 // Exports Tempo capacity (work-schedule required hours) for all
 // Rocketeers into the "Capacity Tempo" sheet: one row per person,
 // one column per ISO week. Past weeks are FROZEN; each Friday run
-// refreshes only the next CONFIGCap.FUTURE_WEEKS future weeks.
+// refreshes only the week it SERVES (next Monday) plus CONFIGCap.FUTURE_WEEKS
+// beyond it. The sheet's span is anchored on that served week so it equals
+// what the planned export writes: [served − EXPORT_HISTORY_WEEKS,
+// served + FUTURE_WEEKS] — see computeCapacityWindow_ / diagnoseCapacityExport.
 // Downstream: utilization = Tracked ÷ Capacity, joined on (User, Week).
 // Spec: project-demand-dashboard/docs/specs/2026-07-15-tempo-capacity-export-design.md
 //
 // SHARED GLOBALS (from TempoPlanExport.js — do not redeclare):
-//   MERGE_MAP, EXCLUDE_IDS, CONFIGPlan (API_BATCH_SIZE only),
+//   MERGE_MAP, EXCLUDE_IDS, CONFIGPlan (API_BATCH_SIZE, FUTURE_WEEKS),
 //   getCredentials_(), fetchAllTeamMembers_(), fetchUserNames_(),
 //   buildWeekRanges_(), isoWeekLabel_(), formatWeekLabel_(),
 //   parseDateLocal_(), fmtDate_(), minDate_(), round2_()
@@ -17,7 +20,18 @@
 const CONFIGCap = {
   SCRIPT_LABEL: "Tempo Capacity Reports",
   SHEET_NAME: "Capacity Tempo",   // output tab — dashboard joins on (User, Week)
-  FUTURE_WEEKS: 4,                // full future ISO weeks refreshed each run
+  // ── Runway beyond the served week — MIRRORS the planned export ──
+  // The planned export's tab spans [this Monday − EXPORT_HISTORY_WEEKS,
+  // this Sunday + FUTURE_WEEKS]. This export runs on Friday and SERVES the
+  // following week, so its floor and horizon are both anchored on that
+  // served Monday: a Monday-morning comparison of the two tabs shows the same
+  // first and last ISO column. Read from CONFIGPlan so the two dials cannot
+  // drift apart again (they had: 4 here vs 5 there).
+  get FUTURE_WEEKS() {
+    return typeof CONFIGPlan !== "undefined" && typeof CONFIGPlan.FUTURE_WEEKS === "number"
+      ? CONFIGPlan.FUTURE_WEEKS
+      : 5;
+  },
   // ── Rolling history floor (was fixed "2026-05-25" / "2026.W22") ──
   // This sheet is the one MERGE-based export: history lives in the sheet and
   // only the refresh window is fetched. The floor is therefore a TRIM rule —
@@ -70,6 +84,21 @@ function fetchTempoCapacity() {
       `ℹ️ Window: ${fromStr} → ${toStr}${win.backfill ? " (backfill — empty sheet)" : ""}; ` +
         `${existing.isoWeeks.length} stored week(s) frozen before ${fromStr}`,
     );
+    Logger.log(
+      `ℹ️ Serving ${isoWeekLabel_(win.served)}; sheet after this run: ` +
+        `${CONFIGCap.MIN_ISO_WEEK} → ${isoWeekLabel_(win.to)} ` +
+        `(${CONFIGCap.HISTORY_WEEKS} history + served week + ${CONFIGCap.FUTURE_WEEKS} future — ` +
+        `the same span as "${typeof CONFIGPlan !== "undefined" ? CONFIGPlan.SHEET_NAME : "Planned Time Tempo"}").`,
+    );
+    const lastStored = existing.isoWeeks.slice().sort().pop() || "";
+    if (lastStored && lastStored < isoWeekLabel_(win.served)) {
+      // Missed Friday(s): the gap rule already pulled `from` back, so this run
+      // heals it — but say so, because a silent heal hides a dead trigger.
+      Logger.log(
+        `⚠️ Stored data ended at ${lastStored}, before the served week — run(s) were missed. ` +
+          `Healing from ${fromStr}; check the trigger with diagnoseCapacityExport().`,
+      );
+    }
 
     // teamInfoById is filled in place: effectiveId → { teams[] }. Collecting it
     // here is what lets the Team column below exist for EVERY person in a Tempo
@@ -141,6 +170,92 @@ function createCapacityWeeklyTrigger() {
 // ── SECTION: DIAGNOSTICS (read-only, no sheet writes) ────────
 
 /**
+ * Health check for the "Capacity Tempo" tab — run from the GAS editor when
+ * the range looks stale. Logs the installed fetchTempoCapacity trigger(s),
+ * the range the sheet holds now, the window the next run would fetch and the
+ * span it would leave behind, next to the planned export's current span
+ * (the one this sheet is meant to match). Nothing is fetched or written.
+ *
+ * Why it exists: in 2026.W39 the tab sat at 2025.W32 → 2026.W36 — exactly one
+ * run's output from 2026.W32 — because nothing had run for seven weeks. The
+ * window math was right; the trigger was not firing. That is invisible from
+ * the code and from the sheet, so this prints it.
+ */
+function diagnoseCapacityExport() {
+  // Web-reachable via google.script.run by anyone the deployment admits, so it is
+  // gated. The typeof test is not defensive noise: if this file lives in its OWN
+  // Apps Script project rather than the dashboard's, requireMaintainer_ (PS Security.js)
+  // is not in scope — and there it needs no gate, because it is not on the
+  // dashboard's callable surface at all. Hard-calling it would break every export.
+  if (typeof requireMaintainer_ === 'function') requireMaintainer_('diagnoseCapacityExport');
+  else Logger.log('⚠️ [diagnoseCapacityExport] requireMaintainer_ not in this project — running ungated.');
+
+  const today = new Date();
+
+  // 1. Trigger. No trigger → the sheet only moves when someone runs it by hand.
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === "fetchTempoCapacity");
+  if (triggers.length === 0) {
+    Logger.log(
+      "❌ No trigger installed for fetchTempoCapacity in THIS project — the sheet only moves " +
+        "when someone runs it by hand. Run createCapacityWeeklyTrigger() once, as the script owner.",
+    );
+  } else {
+    triggers.forEach((t) =>
+      Logger.log(
+        `✅ Trigger: ${t.getHandlerFunction()} · ${t.getEventType()} · ` +
+          `source ${t.getTriggerSource()} · id ${t.getUniqueId()}`,
+      ),
+    );
+    Logger.log(
+      "   A trigger that exists but keeps failing shows under Executions → Failed; " +
+        "the owner also gets the daily 'Summary of failures' email.",
+    );
+  }
+
+  // 2. What the sheet holds vs what the next run would leave.
+  const existing = readCapacitySheet_();
+  const stored = existing.isoWeeks.slice().sort();
+  const win = computeCapacityWindow_(existing.isoWeeks, today);
+  const servedIso = isoWeekLabel_(win.served);
+  const horizonIso = isoWeekLabel_(win.to);
+  Logger.log(
+    stored.length
+      ? `ℹ️ Sheet holds ${stored.length} week(s): ${stored[0]} → ${stored[stored.length - 1]}, ` +
+          `${Object.keys(existing.rows).length} row(s).`
+      : `ℹ️ Sheet is empty or unrecognised — the next run backfills from ${CONFIGCap.MIN_ISO_WEEK}.`,
+  );
+  Logger.log(`ℹ️ Today ${fmtDate_(today)} (${isoWeekLabel_(today)}); the next run serves ${servedIso}.`);
+  Logger.log(
+    `ℹ️ Next run fetches ${fmtDate_(win.from)} → ${fmtDate_(win.to)}${win.backfill ? " (backfill)" : ""} ` +
+      `and leaves the sheet at ${CONFIGCap.MIN_ISO_WEEK} → ${horizonIso}.`,
+  );
+  if (typeof CONFIGPlan !== "undefined" && CONFIGPlan.MIN_ISO_WEEK) {
+    Logger.log(
+      `ℹ️ "${CONFIGPlan.SHEET_NAME}" spans ${CONFIGPlan.MIN_ISO_WEEK} → ` +
+        `${isoWeekLabel_(parseDateLocal_(CONFIGPlan.TO_DATE))} today ` +
+        `(evaluated on the served Monday, this sheet lands on the same two columns).`,
+    );
+  }
+
+  // 3. Verdict.
+  const last = stored[stored.length - 1] || "";
+  if (!last) {
+    Logger.log("ℹ️ Nothing stored yet — run fetchTempoCapacity() for the first backfill.");
+  } else if (last < servedIso) {
+    Logger.log(
+      `⚠️ STALE: stored data ends at ${last}, before the served week ${servedIso}. ` +
+        `Run fetchTempoCapacity() now — the gap self-heals from ${fmtDate_(win.from)} — ` +
+        `then make sure the trigger above exists.`,
+    );
+  } else if (last < horizonIso) {
+    Logger.log(`ℹ️ Horizon short: stored through ${last}; the next run extends to ${horizonIso}.`);
+  } else {
+    Logger.log(`✅ Sheet is current (through ${last}).`);
+  }
+}
+
+/**
  * ONE-OFF: logs both endpoint candidates' raw responses for the first
  * worker over the next 7 days. Run from the GAS editor to verify which
  * capacity source this workspace exposes before the first real run.
@@ -181,16 +296,31 @@ function probeCapacityEndpoint() {
 // ── SECTION: WINDOW MATH (pure — Node-tested) ────────────────
 
 /**
- * Rolling history floor: the Monday CONFIGCap.HISTORY_WEEKS full weeks before
- * the week containing `today`. Takes `today` rather than reading the clock so
- * the window math stays deterministic under test — the config getters pass
- * `new Date()`, the tests pass a fixed date.
+ * The Monday of the week a run SERVES: the first Monday strictly after
+ * `today`. A Friday run serves next week; a Monday run serves the week after
+ * (today's week is already under way and stays frozen). Both the history
+ * floor and the future horizon hang off this date, so the sheet's span equals
+ * what the planned export writes when it runs during that week.
+ * @param {Date} today - run date
+ * @returns {Date} local-midnight Monday
+ */
+function capacityServedMonday_(today) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+  return d;
+}
+
+/**
+ * Rolling history floor: CONFIGCap.HISTORY_WEEKS full weeks before the served
+ * week — the planned export's rollingWindowMonday_(HISTORY_WEEKS) as evaluated
+ * during that week. Takes `today` rather than reading the clock so the window
+ * math stays deterministic under test — the config getters pass `new Date()`,
+ * the tests pass a fixed date.
  * @param {Date} today - run date
  * @returns {Date} local-midnight Monday
  */
 function capacityFloorMonday_(today) {
-  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));           // Monday of today's week
+  const d = capacityServedMonday_(today);
   d.setDate(d.getDate() - CONFIGCap.HISTORY_WEEKS * 7);
   return d;
 }
@@ -225,17 +355,19 @@ function mondayOfIsoWeek_(isoLabel) {
  *   - First run:     empty sheet → historical backfill from the rolling floor.
  *   - Floor widened: stored history starts after the floor → one deep
  *                    re-fetch back to the floor, then forward-only again.
- *   - to is always the Sunday closing the FUTURE_WEEKSth future week.
+ *   - to is always the Sunday closing FUTURE_WEEKS full weeks AFTER the served
+ *                    week — the planned export's rollingWindowSunday_(FUTURE_WEEKS)
+ *                    as evaluated during the served week, so both tabs end on
+ *                    the same ISO column.
  *
  * Pure function (Node-tested): no Sheets/UrlFetch access.
  *
  * @param {string[]} existingIsoWeeks - ISO labels already stored in the sheet
  * @param {Date}     today            - run date (injected for testability)
- * @returns {{ from: Date, to: Date, backfill: boolean }}
+ * @returns {{ from: Date, to: Date, backfill: boolean, served: Date }}
  */
 function computeCapacityWindow_(existingIsoWeeks, today) {
-  const nextMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  nextMonday.setDate(nextMonday.getDate() + (((8 - today.getDay()) % 7) || 7));
+  const nextMonday = capacityServedMonday_(today);
 
   // Rolling floor for THIS run date (never real "now" — the caller injects
   // today so the window math stays unit-testable).
@@ -265,10 +397,11 @@ function computeCapacityWindow_(existingIsoWeeks, today) {
     }
   }
 
+  // Served week + FUTURE_WEEKS further full weeks, closing on a Sunday.
   const to = new Date(nextMonday.getTime());
-  to.setDate(to.getDate() + CONFIGCap.FUTURE_WEEKS * 7 - 1);
+  to.setDate(to.getDate() + (CONFIGCap.FUTURE_WEEKS + 1) * 7 - 1);
 
-  return { from, to, backfill };
+  return { from, to, backfill, served: nextMonday };
 }
 
 // ── SECTION: SCHEDULE BUCKETING (pure — Node-tested) ─────────
@@ -761,13 +894,28 @@ function _test_capacityWindow_() {
     return out;
   };
 
-  // Empty sheet → backfill from the rolling floor; to = Sunday of W33
-  // (next Mon + FUTURE_WEEKS − 1 day).
+  // Empty sheet → backfill from the rolling floor; to = Sunday of W35
+  // (served week W30 + FUTURE_WEEKS (5) further weeks).
   const w1 = computeCapacityWindow_([], friday);
   assertEq_(fmtDate_(w1.from), fmtDate_(capacityFloorMonday_(friday)),
             "empty sheet backfills from the rolling floor");
   assertEq_(w1.backfill, true, "backfill flag set");
-  assertEq_(fmtDate_(w1.to), "2026-08-16", "to = Sunday of 4th future week (W33)");
+  assertEq_(fmtDate_(w1.to), "2026-08-30", "to = Sunday of served week + FUTURE_WEEKS (W35)");
+
+  // PARITY with the planned export: the served week (W30) is the anchor, so
+  // the sheet spans exactly [W30 − HISTORY_WEEKS, W30 + FUTURE_WEEKS] — what
+  // rollingWindowMonday_ / rollingWindowSunday_ produce when evaluated in W30.
+  // This is the range the tab was drifting from (2026.W39: 4 vs 5 weeks of
+  // runway, and a floor one week deeper than the planned tab's).
+  assertEq_(CONFIGCap.FUTURE_WEEKS, CONFIGPlan.FUTURE_WEEKS, "FUTURE_WEEKS mirrors the planned export");
+  assertEq_(fmtDate_(w1.served), "2026-07-20", "a Friday-of-W29 run serves W30");
+  assertEq_(fmtDate_(capacityFloorMonday_(friday)), "2025-07-21",
+            "floor = served Monday − HISTORY_WEEKS (2025.W30), not today's Monday − HISTORY_WEEKS");
+  assertEq_(isoWeekLabel_(capacityFloorMonday_(friday)), "2025.W30", "floor ISO label");
+  assertEq_(isoWeekLabel_(w1.to), "2026.W35", "horizon ISO label = served week + FUTURE_WEEKS");
+  // A Monday run serves the week AFTER (this week is under way and frozen).
+  assertEq_(fmtDate_(computeCapacityWindow_([], new Date("2026-07-13T09:00:00")).served), "2026-07-20",
+            "a Monday-of-W29 run also serves W30");
 
   // Normal run: stored floor→W33 → from = next Monday (W30). W29 stays frozen.
   const w2 = computeCapacityWindow_(storedFromFloorTo_("2026.W33"), friday);
@@ -779,7 +927,7 @@ function _test_capacityWindow_() {
   const w3 = computeCapacityWindow_(storedFromFloorTo_("2026.W29"),
                                     new Date("2026-07-31T09:00:00"));
   assertEq_(fmtDate_(w3.from), "2026-07-20", "gap heal: from = Monday after last stored week");
-  assertEq_(fmtDate_(w3.to), "2026-08-30", "gap heal: to still = 4th future Sunday");
+  assertEq_(fmtDate_(w3.to), "2026-09-13", "gap heal: to still = served week W32 + FUTURE_WEEKS (W37)");
 
   // Monday run: "next Monday" is STRICTLY after today; gap rule may pull from back to today.
   const w4 = computeCapacityWindow_(storedFromFloorTo_("2026.W28"),
@@ -793,7 +941,7 @@ function _test_capacityWindow_() {
   assertEq_(fmtDate_(w5.from), fmtDate_(capacityFloorMonday_(friday)),
             "stored history shallower than the floor → deep re-fetch from the floor");
   assertEq_(w5.backfill, true, "deepened floor sets the backfill flag");
-  assertEq_(fmtDate_(w5.to), "2026-08-16", "deep re-fetch still ends at the future horizon");
+  assertEq_(fmtDate_(w5.to), "2026-08-30", "deep re-fetch still ends at the future horizon");
   // …and once the grid covers the floor, it converges back to forward-only.
   assertEq_(computeCapacityWindow_(storedFromFloorTo_("2026.W33"), friday).backfill, false,
             "converges to the cheap forward-only path once history is filled");

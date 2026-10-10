@@ -1,0 +1,7 @@
+# Only the Apps Script project files go up. Tests, docs and repo metadata stay local.
+**/**
+!appsscript.json
+!*.js
+!*.html
+tests/**
+docs/**
