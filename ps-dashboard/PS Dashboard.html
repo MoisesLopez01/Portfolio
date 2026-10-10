@@ -1677,10 +1677,9 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <div class="tab-nav" id="tabNav" role="tablist">
       <button class="tab-btn active" id="tabBtnOverview"    onclick="switchTab('overview')"><span class="tabDot" aria-hidden="true">◆</span><span class="tabLbl">Overview</span></button>
       <button class="tab-btn"        id="tabBtnRadar"       onclick="switchTab('radar')"><span class="tabDot" aria-hidden="true">◎</span><span class="tabLbl">Team Radar</span></button>
-      <button class="tab-btn"        id="tabBtnRocketeers"  onclick="switchTab('rocketeers')"><span class="tabDot" aria-hidden="true">★</span><span class="tabLbl">Leading Behaviours</span></button>
+      <button class="tab-btn"        id="tabBtnPerfRecord"  onclick="switchTab('perfrecord')"><span class="tabDot" aria-hidden="true">📈</span><span class="tabLbl">Performance Record</span></button>
       <button class="tab-btn"        id="tabBtnTrends"      onclick="switchTab('trends')"><span class="tabDot" aria-hidden="true">▲</span><span class="tabLbl">Trends</span></button>
       <button class="tab-btn"        id="tabBtnExecBrief"   onclick="switchTab('execbrief')"><span class="tabDot" aria-hidden="true">📋</span><span class="tabLbl">Team Executive Brief</span></button>
-      <button class="tab-btn"        id="tabBtnPerfRecord"  onclick="switchTab('perfrecord')"><span class="tabDot" aria-hidden="true">📈</span><span class="tabLbl">Performance Record</span></button>
     </div>
     <div class="tab-nav tab-nav-more" id="navMenuPanel" role="menu"></div>
   </div>
@@ -1903,36 +1902,6 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
     <!-- Recommended action cards — rendered dynamically, whole-team view only -->
     <div id="radarActionCards"></div>
 
-  </div>
-
-  <!-- LEADING BEHAVIOURS TAB -->
-  <div id="tabRocketeers" class="tab-pane">
-    <div class="section-card" id="rkSectionCard">
-      <div class="section-head" style="flex-wrap:wrap;gap:12px">
-        <div style="flex:1;min-width:200px">
-          <h2>LEADING BEHAVIOURS</h2>
-          <p class="section-sub" id="topRkSub">Loading weights…</p>
-        </div>
-        <!-- Controls + Save PNG: id ends in "ActionBtns" so captureCardPNG hides
-             the whole group during capture — the week filter never appears in the PNG. -->
-        <div id="rkCardActionBtns" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;flex-shrink:0">
-          <button class="copy-btn" id="rkToggleAllBtn" onclick="toggleAllRocketeers()" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <span id="rkToggleAllLabel">Expand All</span>
-          </button>
-          <div style="display:flex;align-items:center;gap:8px">
-            <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Evaluate Week</label>
-            <select id="rkWeekSelect" onchange="renderTopRocketeers(getFilteredEmployees())"
-              class="inline-select"></select>
-          </div>
-          <button class="copy-btn" onclick="saveCardPNG('rkSectionCard','leading-behaviours')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            Save PNG
-          </button>
-        </div>
-      </div>
-      <div id="topRocketeers" style="min-height:60px"></div>
-    </div>
   </div>
 
   <!-- DATA REFERENCE TAB -->
@@ -2556,15 +2525,16 @@ var STATE = {
 var VIEWS = [
   { id: "overview",   btnId: "tabBtnOverview",   paneId: "tabOverview",   label: "Overview",           location: "tabbar", roles: null },
   { id: "radar",      btnId: "tabBtnRadar",      paneId: "tabRadar",      label: "Team Radar",         location: "tabbar", roles: null },
-  { id: "rocketeers", btnId: "tabBtnRocketeers", paneId: "tabRocketeers", label: "Leading Behaviours", location: "tabbar", roles: null },
-  { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
-  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
   // Performance Record (2026.W36): every role — super/admin see the company, org
   // admins and managers their own org tree, viewers their pinned team. The grid
   // reads ONLY the report payload, which the server has already narrowed to the
   // caller's scope and stripped of their own row (applySelfExclusion_), so the tab
   // adds no data control of its own: whoever may load the dashboard may read it.
+  // Since 2026.W41 it also carries the Leading Behaviours ranking (the separate
+  // "rocketeers" view is gone; switchTab aliases the old id here).
   { id: "perfrecord", btnId: "tabBtnPerfRecord", paneId: "tabPerfRecord", label: "📈 Performance Record", location: "tabbar", roles: null },
+  { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
+  { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📖 Documentation",   location: "menu",   roles: null },
   // hideInPreview: these pages read settings as the REAL caller (getAccessSettings etc.
   // are never impersonated), so showing them under 👁 View as would misrepresent what
@@ -3413,7 +3383,6 @@ function onDataLoaded(payload, wasRefresh) {
   document.getElementById("tableDateRange").textContent = dateRange;
 
   buildFilterBar();
-  populateRkWeekSelect();
   populateRadarWeekSelect();
   populateEbWeekSelect();
   renderGranCtls_();
@@ -3545,6 +3514,9 @@ function switchTeam(key) {
 
 // ── TAB SWITCHING ─────────────────────────────────────────
 function switchTab(tab) {
+  // Leading Behaviours merged into Performance Record (2026.W41) — old links,
+  // saved state and the Scoring Weights preview still say "rocketeers".
+  if (tab === "rocketeers") tab = "perfrecord";
   var view = viewById_(tab);
   if (!view || !canSeeView_(view)) { tab = "overview"; view = viewById_(tab); }
 
@@ -3607,7 +3579,6 @@ function renderAll() {
       renderEmployeeTable();
     },
     radar:      function() { renderRadarTab(filtered); },
-    rocketeers: function() { renderTopRocketeers(filtered); },
     trends:     function() { renderTrendsTab(); },
     execbrief:  function() { renderExecBriefTab_(); },
     perfrecord: function() { renderPerfRecordTab_(filtered); },
@@ -4881,7 +4852,6 @@ function populateWeekSelect_(selId, forceWeek) {
   });
 }
 
-function populateRkWeekSelect()    { populateWeekSelect_("rkWeekSelect", true); }
 function populateRadarWeekSelect() { populateWeekSelect_("radarWeekSelect"); }
 function populateEbWeekSelect()    { populateWeekSelect_("ebWeekSelect"); }
 
@@ -5358,13 +5328,6 @@ function computeRkScore(emp, weekLabel) {
     siNorm:     si,      siVal:      siVal,
     ptoNorm:    pto,     ptoStatus:  wd.ptoHealth ? wd.ptoHealth.status : null,
   };
-}
-
-function togglePerfCard(btn) {
-  var metrics = btn.closest('.perf-card').querySelector('.perf-metrics');
-  var open = metrics.style.display !== 'none';
-  metrics.style.display = open ? 'none' : '';
-  btn.textContent = open ? 'Details ↓' : 'Details ↑';
 }
 
 // ── TEAM EXECUTIVE BRIEF ─────────────────────────────────────────────────────
@@ -6722,187 +6685,6 @@ var METRIC_COLORS = {
   goals: "#00A86B", tracked: "#058CDC", planned: "#7C3AED", rcr: "#D97706", kudos: "#FF9B87",
   si: "#9333EA", pto: "#0D9488"
 };
-
-function renderTopRocketeers(filtered) {
-  var el  = document.getElementById("topRocketeers");
-  var sub = document.getElementById("topRkSub");
-  if (!el || !DATA) return;
-
-  // Selected week from picker; default = last completed (W-1)
-  var sel      = document.getElementById("rkWeekSelect");
-  var selLabel = sel && sel.value ? sel.value : null;
-  var q4w      = DATA.q4Weeks || DATA.weeks;
-  if (!selLabel) {
-    var pastW = q4w.filter(function(w) { return w.isPast; });
-    selLabel  = pastW.length > 0 ? pastW[pastW.length - 1].label : DATA.meta.currentWeekLabel;
-  }
-  var selWeek  = q4w.find(function(w) { return w.label === selLabel; });
-  var selIdx   = q4w.indexOf(selWeek);
-  var prevWeek = (selIdx > 0 && !q4w[selIdx - 1].isFuture) ? q4w[selIdx - 1] : null;
-
-  // Long leave is excluded like ramp-up (server parity): an absent week is not a
-  // ranking signal. Exempt families stay in — their weights simply carry no
-  // tracked/planned component, so they compete on Goals / Kudos / SI / PTO.
-  var scored = filtered
-    .filter(function(e) { return !e.isRampUp && !onLeave_(e); })
-    .map(function(e) {
-      var sL = computeRkScore(e, selLabel);
-      var sP = prevWeek ? computeRkScore(e, prevWeek.label) : null;
-      if (!sL) return null;
-      return { emp: e, sL: sL, sP: sP, delta: sP ? sL.score - sP.score : null };
-    })
-    .filter(Boolean)
-    .sort(function(a, b) { return b.sL.score - a.sL.score; });
-
-  // Subtitle is written after `scored` so it can state the real ranked population —
-  // the tab silently drops ramp-ups and long leave, and a rank with no denominator
-  // ("#12") tells a reader nothing about how deep the field is.
-  if (sub && selWeek) {
-    var inProgress = !selWeek.isPast ? " (in progress)" : "";
-    var wParts = WEIGHT_DEFS
-      .filter(function(d) { return (SCORE_W[d.key] || 0) > 0; })
-      .map(function(d) { return d.label + " " + (SCORE_W[d.key] || 0) + "%"; })
-      .join(" · ");
-    var hasCustomW = filtered.some(function(e) { return e.scoreWeights; });
-    var exemptScored = scored.filter(function(x) { return !tracksTime_(x.emp); }).length;
-    sub.textContent = wParts + (hasCustomW ? " · custom family/level rates apply to some" : "")
-      + " · " + scored.length + " scored · Active only"
-      + (exemptScored > 0
-          ? " · " + exemptScored + " ⏱ Exempt scored without Tracked/Planned/RCR weight"
-          : "")
-      + " · " + selLabel + " (" + selWeek.dateRange + ")" + inProgress
-      + (prevWeek ? "  ·  vs " + prevWeek.label : "");
-  }
-
-  if (!scored.length) {
-    el.innerHTML = '<p style="padding:24px;color:var(--muted);text-align:center;font-size:12px">No individual scores for ' + esc(selLabel) + '</p>';
-    return;
-  }
-
-  var html = '<div class="perf-grid">';
-  scored.forEach(function(x, i) {
-    var e = x.emp, sL = x.sL;
-    var scoreColor = sL.score >= 75 ? "#00A86B" : sL.score >= 45 ? "#058CDC" : "#94A3B8";
-    var medalClass = i === 0 ? "perf-medal-1" : i === 1 ? "perf-medal-2" : i === 2 ? "perf-medal-3" : "perf-medal-n";
-
-    var deltaBadge = "";
-    if (x.delta !== null) {
-      if      (x.delta > 5)  deltaBadge = '<span style="font-size:10px;font-weight:800;color:#00A86B">+' + x.delta + ' ↑</span>';
-      else if (x.delta < -5) deltaBadge = '<span style="font-size:10px;font-weight:800;color:#B71C1C">' + x.delta + ' ↓</span>';
-      else                   deltaBadge = '<span style="font-size:10px;font-weight:700;color:#94A3B8">→</span>';
-    }
-
-    var prevLine = (x.sP && prevWeek)
-      ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + prevWeek.label + ': ' + x.sP.score + '</div>'
-      : '';
-
-    var crewE = isCrewEmp(e);
-    // Points must come from the SAME weights computeRkScore used, or the rows don't
-    // reconcile with the total. For an ⏱ Exempt rocketeer that matters twice over:
-    // their tracked/planned weight is 0, so those rows are dropped entirely rather
-    // than rendered as a 0-point failure on a metric they were never held to.
-    var EW = e.scoreWeights || SCORE_W;
-    var rows = [];
-    // Goals — FTE only (crew have no goals data)
-    if (!crewE) rows.push(
-      { label:"Goals",   norm: sL.goalsNorm,   val: sL.goalsOk ? "Compliant ✓" : "Not met",
-        pts: Math.round((sL.goalsNorm   || 0) * (EW.goals || 0)),   color: METRIC_COLORS.goals   });
-    if (hasMetric_('tracked') && (EW.tracked || 0) > 0) rows.push(
-      { label:"Tracked", norm: sL.trackedNorm, val: sL.trackedHrs !== null ? Math.round(sL.trackedHrs) + "h" : "—",
-        pts: Math.round((sL.trackedNorm || 0) * EW.tracked), color: METRIC_COLORS.tracked });
-    if (hasMetric_('planned') && (EW.planned || 0) > 0) rows.push(
-      { label:"Planned", norm: sL.plannedNorm, val: sL.plannedHrs !== null ? Math.round(sL.plannedHrs) + "h" : "—",
-        pts: Math.round((sL.plannedNorm || 0) * EW.planned), color: METRIC_COLORS.planned });
-    if (hasMetric_('rcr') && (EW.rcr || 0) > 0) rows.push(
-      { label:"RCR",     norm: sL.rcrNorm,     val: sL.rcrVal    !== null ? sL.rcrVal.toFixed(2) : "—",
-        pts: Math.round((sL.rcrNorm     || 0) * EW.rcr),     color: METRIC_COLORS.rcr     });
-    rows.push(
-      { label:"Kudos",   norm: sL.kudosNorm,
-        val: (function() {
-          var parts = [];
-          if (sL.kudosCount      > 0) parts.push(sL.kudosCount + " rcvd");
-          if (sL.kudosGivenCount > 0) parts.push(sL.kudosGivenCount + " given");
-          return parts.length ? parts.join(" · ") : "—";
-        })(),
-        pts: Math.round((sL.kudosNorm || 0) * (EW.kudos || 0)), color: METRIC_COLORS.kudos }
-    );
-    // SI and PTO — FTE only (crew have neither)
-    if (!crewE && (EW.si || 0) > 0) rows.push(
-      { label:"SI Rating",  norm: sL.siNorm,  val: sL.siVal  !== null ? (+sL.siVal).toFixed(1) : "—",
-        pts: Math.round((sL.siNorm  || 0) * EW.si),  color: METRIC_COLORS.si  });
-    if (!crewE && (EW.pto || 0) > 0) rows.push(
-      { label:"PTO Health", norm: sL.ptoNorm, val: sL.ptoStatus || "—",
-        pts: Math.round((sL.ptoNorm || 0) * EW.pto), color: METRIC_COLORS.pto });
-
-    var metricsHtml = rows.map(function(r) {
-      var isNA = r.norm === null;
-      var trackHtml = isNA
-        ? '<div class="perf-mtrack" style="background:transparent;border:1px dashed var(--border)"></div>'
-        : '<div class="perf-mtrack"><div class="perf-mfill" style="width:' + Math.round(r.norm * 100) + '%;background:' + r.color + '"></div></div>';
-      var ptsHtml = isNA
-        ? '<span class="perf-mpts" style="color:var(--muted)">0</span>'
-        : '<span class="perf-mpts">+' + r.pts + '</span>';
-      return '<div class="perf-mrow">' +
-        '<span class="perf-mlabel">' + r.label + '</span>' +
-        trackHtml +
-        '<span class="perf-mval"' + (isNA ? ' style="color:var(--muted)"' : '') + '>' + esc(r.val) + '</span>' +
-        ptsHtml +
-        '</div>';
-    }).join("");
-
-    html +=
-      '<div class="perf-card" onclick="viewRocketeerDetails(\'' + e.normName.replace(/'/g, "\\'") + '\')">' +
-        '<div class="perf-card-head">' +
-          '<div class="perf-medal ' + medalClass + '">' + (i + 1) + '</div>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div class="perf-name">' + esc(e.name) + '</div>' +
-            '<div class="perf-meta">' + esc(e.keyLocation) + ' · ' + esc(e.supervisor) + '</div>' +
-            '<div class="perf-meta" style="margin-top:2px;color:var(--slate)">' + esc(e.jobTitle) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="perf-score-area">' +
-          '<div style="display:flex;align-items:baseline;gap:6px">' +
-            '<div class="perf-score-num" style="color:' + scoreColor + '">' + sL.score + '</div>' +
-            deltaBadge +
-          '</div>' +
-          '<div class="perf-score-bar-wrap">' +
-            '<div class="perf-score-track"><div class="perf-score-fill" style="width:' + sL.score + '%;background:' + scoreColor + '"></div></div>' +
-            '<div class="perf-score-sub">Composite score / 100</div>' +
-            prevLine +
-          '</div>' +
-        '</div>' +
-        '<div class="perf-toggle">' +
-          '<button class="perf-toggle-btn" onclick="event.stopPropagation();togglePerfCard(this)">Details ↓</button>' +
-        '</div>' +
-        '<div class="perf-metrics" style="display:none">' + metricsHtml + '</div>' +
-      '</div>';
-  });
-  html += '</div>';
-  el.innerHTML = html;
-  
-  // Reset expand-all state and show/hide toggle button after a full re-render.
-  _rkAllExpanded = false;
-  var toggleBtn   = document.getElementById("rkToggleAllBtn");
-  var toggleLabel = document.getElementById("rkToggleAllLabel");
-  if (toggleBtn)   toggleBtn.style.display = scored.length > 0 ? "" : "none";
-  if (toggleLabel) toggleLabel.textContent = "Expand All";
-}
-
-// Toggle all rocketeer detail cards open or closed
-var _rkAllExpanded = false;
-function toggleAllRocketeers() {
-  _rkAllExpanded = !_rkAllExpanded;
-  var cards = document.querySelectorAll(".perf-card .perf-metrics");
-  var btns = document.querySelectorAll(".perf-card .perf-toggle-btn");
-  cards.forEach(function(card) {
-    card.style.display = _rkAllExpanded ? "" : "none";
-  });
-  btns.forEach(function(btn) {
-    btn.textContent = _rkAllExpanded ? "Hide Details ↑" : "Details ↓";
-  });
-  var label = document.getElementById("rkToggleAllLabel");
-  if (label) label.textContent = _rkAllExpanded ? "Collapse All" : "Expand All";
-}
 
 // ── CROSS-TEAM EXECUTIVE ROLLUP ──────────────────────────────────────────────
 // One names-free row per available team: trajectory / top concern / top highlight.
@@ -10071,7 +9853,7 @@ function renderWeightsTab_() {
 
   html += '<div class="settings-actions">' +
     '<button class="settings-btn settings-btn-secondary" onclick="resetWeightsToDefault()">Reset to Defaults</button>' +
-    '<button class="settings-btn settings-btn-preview" onclick="previewWeights()">Preview on Rocketeers ↗</button>' +
+    '<button class="settings-btn settings-btn-preview" onclick="previewWeights()">Preview on Performance Record ↗</button>' +
     '<button class="settings-btn settings-btn-primary" id="saveWeightsBtn" onclick="saveWeightsToSheet()" disabled>Save</button>' +
     '<span id="saveFlash" class="settings-save-flash" style="display:none">✓ Saved</span>' +
   '</div>' +
@@ -10954,7 +10736,7 @@ function previewWeights() {
     return;
   }
   SCORE_W = w;
-  switchTab("rocketeers");
+  switchTab("perfrecord");
 }
 
 function saveWeightsToSheet() {
