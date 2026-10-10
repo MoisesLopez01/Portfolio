@@ -2364,6 +2364,28 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
         </div>
 
         <div class="dr-section">
+          <div class="dr-section-title">Performance Record — how to read it</div>
+          <p class="dr-p">Performance Record is where you look at people one at a time. Since 2026.W41 it also holds the ranking that used to live on its own Leading Behaviours tab.</p>
+          <p class="dr-p"><strong>The list on the left</strong> ranks your Rocketeers by their weekly score (0–100, built from the scoring weights for each person's team and job family). Pick what the ranking is based on with the buttons at the top: <strong>Evaluated week</strong> (one week, chosen in the drop-down — the last closed week by default), <strong>Weekly</strong> (average of the last 8 closed weeks), <strong>Monthly</strong> (the last closed month) or <strong>Quarterly</strong> (the last closed quarter). The small arrow under each score is the change against the period before. People in their first 3 months (ramp-up) and people on extended leave are listed apart at the bottom and are never ranked.</p>
+          <p class="dr-p"><strong>Bands.</strong> 75 and up reads as <strong>Strong</strong>, 50–74 as <strong>On track</strong>, under 50 as <strong>Needs a look</strong>. The four counters above the list filter it to one band; click again to show everyone.</p>
+          <p class="dr-p"><strong>The card on the right</strong> explains the selected person in plain English:</p>
+          <table class="dr-tbl" style="margin-top:4px">
+            <thead><tr><th>Part of the card</th><th>What it tells you</th></tr></thead>
+            <tbody>
+              <tr><td>The short version</td><td>Whether the person is steady, improving or slipping over the last 13 closed weeks, what they do most consistently, their biggest recurring gap, and RCR against its bar.</td></tr>
+              <tr><td>Week · Month · Quarter</td><td>The score for the evaluated week, the last closed month and the last closed quarter, each with the change against the period before and one sentence of what happened. Click one to switch the whole view to that grain.</td></tr>
+              <tr><td>Worth asking about</td><td>Facts from the last 4 weeks that repeat (for example, logged time under target in 3 of 4 weeks). They are observations to bring to a 1:1; the manager draws the conclusions.</td></tr>
+              <tr><td>Context</td><td>Anything that changes how to read the numbers: PTO weeks (targets were reduced to match), ramp-up, crew, no time-tracking mandate, weeks with no data.</td></tr>
+              <tr><td>History</td><td>A score chart and a table of every measure for every week, month or quarter. Green = met, blue = close, orange = missed, grey = no data or not evaluated. The evaluated period is outlined; a period still in progress is faded.</td></tr>
+              <tr><td>Full evidence</td><td>The detailed record: exception report, week-by-week table, hours charts, PTO strip and kudos feed.</td></tr>
+            </tbody>
+          </table>
+          <p class="dr-p"><strong>Copy summary</strong> puts the whole card on the clipboard as plain text for a 1:1 note or Confluence. <strong>Team grid</strong> (top of the tab) switches to the signal grid: every person and every measure on one table. On a phone, tap a name to open the card full screen; "All people" goes back.</p>
+          <p class="dr-p"><strong>Finding your way.</strong> The filters sit in one row under the title; the less-used ones (location, job title, family, level) are behind <strong>More filters</strong>, whose number tells you how many of them are on. When you scroll down, the title row folds away and only the filters stay pinned. On a phone, the menu is behind the ☰ button and all filters open from <strong>Filters</strong> as a sheet.</p>
+          <div class="dr-note" style="margin-top:4px">Signals are reading aids, not verdicts: the colours surface the data and the manager judges. Nobody but a super admin ever sees their own record.</div>
+        </div>
+
+        <div class="dr-section">
           <div class="dr-section-title">Week Range</div>
           <p class="dr-p">All weekly data uses <strong>ISO 8601 week numbering</strong> — weeks run Monday to Sunday. Week labels follow the format <code>YYYY.WN</code>, for example <code>2026.W20</code> covers Mon 11 May – Sun 17 May 2026. The 5-week window is always centered on the current ISO week: two past weeks, the current week, and two future weeks. Months and fiscal quarters group weeks by the ISO 8601 majority rule — a week belongs to the month (or quarter) containing its Thursday, so no week is ever split. Fiscal quarters follow the FY calendar (FY starts July 1). Quarterly RCR is the mean of monthly values and is marked approximate.</p>
         </div>
@@ -11375,7 +11397,7 @@ var ACL_LISTS = [
   { key: 'orgAdmins',   badge: 'sec-badge-org',     badgeText: 'Org Admin',   title: 'Org Admins',
     sub: 'Admin powers, manager scope — their own org tree only, own row excluded. Must be a roster supervisor. Cannot edit the Super/Admin/Org lists.' },
   { key: 'admins',      badge: 'sec-badge-admin',   badgeText: 'Admin',       title: 'Admins',
-    sub: 'See everything and edit settings. No 📈 Performance Record, and their own record stays hidden.' },
+    sub: 'See everything and edit settings. Their own record stays hidden, including on 📈 Performance Record.' },
   { key: 'viewers',     badge: 'sec-badge-viewer',  badgeText: 'Viewer',      title: 'Viewers',
     sub: 'Read-only. Their own record stays hidden. Leave empty when Open Access is ON.' },
   { key: 'delegates',   badge: 'sec-badge-manager', badgeText: 'Manager',     title: 'Delegates',

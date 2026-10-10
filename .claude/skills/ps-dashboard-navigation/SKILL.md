@@ -47,14 +47,24 @@ Spec: `ps-dashboard/docs/specs/2026-06-10-dashboard-navigation-redesign-design.m
 
 ## Sidebar — main group (always visible)
 
-Overview, Team Radar, Leading Behaviours, Trends — plus:
+Overview, Team Radar, 📈 Performance Record, Trends, 📋 Team Executive Brief.
 
-- 📋 **Team Executive Brief** — superadmin / admin / viewer / manager.
-- 📈 **Performance Record** — every role (`roles: null`). Per-rocketeer R/Y/G signal
-  grid over the two closed quarters plus QTD. Reads only the report payload, so scope
+- 📈 **Performance Record** — every role (`roles: null`), third since 2026.W41, when it
+  absorbed **Leading Behaviours** (that view, its pane and `renderTopRocketeers` are gone;
+  `switchTab()` aliases `"rocketeers"` → `"perfrecord"`). Two layouts under
+  `STATE.prView`: **People** (default — ranked list + plain-English person card, lens
+  Evaluated week / Weekly / Monthly / Quarterly in `STATE.prLens`) and **Team grid** (the
+  R/Y/G signal grid with its slide-in panel). Reads only the report payload, so scope
   (own org tree for orgadmin/manager, pinned team for viewers) and self-exclusion are
   already enforced server-side — the tab gate adds no data control of its own.
-  Spec: `ps-dashboard/docs/specs/2026-08-18-performance-record-tab-design.md`.
+  Specs: `ps-dashboard/docs/specs/2026-08-18-performance-record-tab-design.md`,
+  `ps-dashboard/docs/specs/2026-10-10-performance-record-merge-and-top-bar-design.md`.
+- 📋 **Team Executive Brief** — superadmin / admin / viewer / manager.
+
+**Phone (≤ 720 px, 2026.W41):** the rail is a drawer (`body.navOpen`, `#btnMenu` in the
+header, `#navScrim`); `switchTab()` closes it. The filter bar shows search + one "Filters"
+button that opens a bottom sheet (`body.fb-sheet-open`). Scrolling past ~80 px folds the
+header row on every width (`body.tb-scrolled`).
 
 ## Sidebar — "More" group (was the ☰ menu until 2026.W37)
 

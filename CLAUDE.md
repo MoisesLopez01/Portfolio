@@ -18,6 +18,16 @@ group that replaced the ☰ menu) and the header + filter bar are one sticky top
 inventory, role allow-lists, the shell's CSS tokens and the ACL card editor's filter-index
 trap live in the `ps-dashboard-navigation` skill.
 
+Since 2026.W41 there is no Leading Behaviours tab: its ranking lives inside 📈 Performance
+Record, which sits third (after Team Radar). Its default "People" layout is a ranked list beside
+a plain-English person card (`perfStory_`, pure, inside the PERF-ENGINE sentinels), and the old
+signal grid is one click away as "Team grid". `switchTab()` aliases `"rocketeers"` to
+`"perfrecord"`. Score bands everywhere in that tab are `PERF_BARS.score` (75 / 50). On top of
+the one-row header and filter bar, the top bar folds to the filter row when scrolling, aligns
+with `main` on wide screens, and on phones (≤ 720 px) the rail becomes a drawer and the filters
+a bottom sheet. Spec: `ps-dashboard/docs/specs/2026-10-10-performance-record-merge-and-top-bar-design.md`;
+plain-English report: `ps-dashboard/docs/reports/2026-W41-performance-record-and-filters.md`.
+
 Two rules stay here, because they must hold whether or not that skill is loaded:
 
 - Role gating is enforced inside `switchTab()` (forbidden id → Overview), not just by
