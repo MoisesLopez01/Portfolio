@@ -886,6 +886,149 @@ body.pr-locked { overflow: hidden; }
 }
 .pr-table tr.pr-row.sel td { background: #EEF4FF; }
 body.dark-mode .pr-panel { background: #101c44; border-color: #2B3A78; }
+
+/* ── Performance Record · people view (2026.W41 — Leading Behaviours merge) ──
+   Ranked list (sticky under the top bar) + person card. The card is a size
+   container, so its two-column layout follows the card's own width — the same
+   rule works beside the list on a laptop and fills an ultra-wide screen. */
+.prp-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
+.prp-ctl .pr-seg { max-width: 100%; overflow-x: auto; }
+/* overflow:hidden on .section-card would make the card the sticky list's scroll
+   container (the list then sat ~one top-bar height too low); clip keeps the
+   rounded corners without creating a scroll container. */
+#tabPerfRecord > .section-card { overflow: clip; }
+.prp { padding: 14px 20px 20px; }
+@media (max-width: 720px) { .prp { padding: 12px; } }
+.prp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.prp-kpi { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 14px; background: var(--card-bg);
+  border: 1px solid var(--border); border-radius: 12px; cursor: pointer; color: var(--slate); text-align: left; font-family: inherit; }
+.prp-kpi:hover { border-color: var(--muted); }
+.prp-kpi.on { border-color: var(--void); box-shadow: inset 0 0 0 1px var(--void); }
+.prp-kpi b { font-family: 'Roboto Condensed', sans-serif; font-size: calc(22px * var(--scale)); color: var(--void); }
+.prp-kpi span:last-child { font-size: calc(12px * var(--scale)); }
+.prp-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; background: var(--void); }
+.prp-dot.good { background: #00875A; } .prp-dot.mid { background: #058CDC; } .prp-dot.bad { background: #C2410C; }
+.prp-body { display: grid; grid-template-columns: minmax(280px, calc(360px * var(--scale))) minmax(0, 1fr); gap: 18px; align-items: start; }
+.prp-list { position: sticky; top: calc(var(--topbar-h, 120px) + 12px); max-height: calc(100vh - var(--topbar-h, 120px) - 24px);
+  display: flex; flex-direction: column; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.prp-list-h { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: calc(12px * var(--scale)); color: var(--slate); line-height: 1.4; }
+.prp-list-h b { display: block; color: var(--void); font-size: calc(13px * var(--scale)); }
+.prp-list-b { overflow-y: auto; padding: 6px; }
+.prp-item { width: 100%; display: grid; grid-template-columns: 24px 34px minmax(0, 1fr) 84px auto; gap: 10px; align-items: center;
+  min-height: 56px; padding: 8px; border: 0; border-radius: 10px; background: transparent; color: inherit; text-align: left; cursor: pointer; font-family: inherit; }
+.prp-item:hover { background: var(--hover-row); }
+.prp-item.on { background: rgba(5,140,220,.10); box-shadow: inset 3px 0 0 var(--orbe); }
+.prp-rk { font-size: 12px; font-weight: 700; color: var(--slate); text-align: right; }
+.prp-av { width: 34px; height: 34px; border-radius: 50%; background: #0F1941; color: #FFFAF5; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: 0 0 auto; }
+.prp-who { min-width: 0; }
+.prp-nm, .prp-meta { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prp-nm { font-weight: 700; font-size: calc(13.5px * var(--scale)); color: var(--void); }
+.prp-meta { font-size: calc(11.5px * var(--scale)); color: var(--slate); }
+.prp-spark { display: block; }
+.prp-val { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 46px; }
+.prp-sc { min-width: 40px; text-align: center; border-radius: 8px; padding: 2px 6px; font: 700 calc(15px * var(--scale)) 'Roboto Condensed', sans-serif; }
+.prp-t-good { background: #E3F4EC; color: #00663F; } .prp-t-mid { background: #E3F0FB; color: #0A4F85; }
+.prp-t-bad { background: #FDEBE1; color: #9A3412; } .prp-t-none { background: #EEF1F5; color: #475569; }
+.prp-d { font-size: 11px; font-weight: 700; color: var(--slate); white-space: nowrap; }
+.prp-d.up { color: #00663F; } .prp-d.down { color: #B42318; }
+.prp-grp { padding: 12px 10px 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--slate); }
+.prp-empty { padding: 20px 12px; text-align: center; color: var(--slate); font-size: 13px; }
+.prp-card { min-width: 0; display: flex; flex-direction: column; gap: 14px; container-type: inline-size; container-name: prpcard; }
+.prp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; }
+.prp-back { display: none; align-items: center; gap: 6px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--orbe);
+  font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; flex: 1 1 100%; }
+.prp-av-l { width: 52px; height: 52px; font-size: 17px; }
+.prp-pinfo { flex: 1 1 240px; min-width: 0; }
+.prp-pinfo .pr-title { margin: 0; }
+.prp-pmeta { font-size: calc(12.5px * var(--scale)); color: var(--slate); margin-top: 2px; }
+.prp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.prp-verd { display: flex; gap: 8px; flex-wrap: wrap; }
+.prp-pill { padding: 5px 12px; border-radius: 99px; font-size: calc(12.5px * var(--scale)); font-weight: 700; }
+.prp-trend { background: var(--surface); border: 1px solid var(--border); color: var(--slate); }
+.prp-trend.up { color: #00663F; } .prp-trend.down { color: #B42318; }
+.prp-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.prp-pgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@container prpcard (min-width: 1100px) { .prp-pgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); } }
+.prp-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.prp-short { background: #0F1941; color: #FFFAF5; border-radius: 14px; padding: 18px 20px; }
+.prp-eyebrow { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #A9BCE0; }
+.prp-lead { margin: 0 0 10px; font-size: calc(16px * var(--scale)); line-height: 1.5; }
+.prp-short ul { margin: 0; padding-left: 18px; font-size: calc(13.5px * var(--scale)); line-height: 1.6; color: #E6E9F2; }
+.prp-basis { margin: 10px 0 0; font-size: 12px; color: #A9BCE0; }
+.prp-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.prp-tile { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 14px; text-align: left; color: inherit; cursor: pointer; font-family: inherit; }
+.prp-tile:hover { border-color: var(--muted); }
+.prp-tile.on { border-color: var(--orbe); box-shadow: inset 0 0 0 1px var(--orbe); }
+.prp-tile .prp-eyebrow { color: var(--slate); margin: 0; }
+.prp-tt { font-weight: 700; color: var(--void); font-size: calc(14px * var(--scale)); }
+.prp-ts { font-size: 12px; color: var(--slate); font-weight: 400; }
+.prp-tier { font-weight: 700; }
+.prp-tv { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.prp-big { font: 700 calc(30px * var(--scale)) 'Roboto Condensed', sans-serif; padding: 0 8px; border-radius: 8px; line-height: 1.2; }
+.prp-tile p { margin: 0; font-size: calc(13px * var(--scale)); line-height: 1.45; color: var(--text); }
+.prp-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+.prp-box h4 { margin: 0 0 8px; font-size: calc(14px * var(--scale)); color: var(--void); }
+.prp-box ul { margin: 0 0 14px; padding-left: 18px; line-height: 1.6; font-size: calc(13.5px * var(--scale)); }
+.prp-box p { margin: 0 0 6px; font-size: calc(13.5px * var(--scale)); line-height: 1.55; color: var(--text); }
+.prp-hist-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.prp-hist-h h4 { margin: 0; }
+.prp-hist-h small { display: block; color: var(--slate); font-size: 12px; margin-top: 2px; }
+.prp-chart { position: relative; display: flex; align-items: flex-end; gap: 6px; height: 150px; padding: 0 0 22px 24px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.prp-ref { position: absolute; left: 0; right: 0; border-top: 1px dashed #CBD5E1; font-size: 10px; color: var(--slate); text-align: left; line-height: 1; padding-top: 2px; }
+.prp-bc { position: relative; z-index: 1; flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; }
+.prp-bar { width: 70%; max-width: 40px; border-radius: 5px 5px 0 0; background: #CBD5E1; }
+.prp-bar.g { background: #00875A; } .prp-bar.y { background: #058CDC; } .prp-bar.r { background: #C2410C; }
+.prp-bar.prog { opacity: .4; }
+.prp-bar.hl { box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 4px var(--void); }
+.prp-bv { font-size: 11px; font-weight: 700; color: var(--text); }
+.prp-bl { position: absolute; bottom: -19px; font-size: 11px; color: var(--slate); white-space: nowrap; }
+.prp-tscroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.prp-trow { display: grid; min-width: max-content; }
+.prp-trow + .prp-trow { border-top: 1px solid var(--border); }
+.prp-c0 { position: sticky; left: 0; z-index: 1; display: flex; flex-direction: column; justify-content: center; padding: 8px 12px; background: var(--card-bg); border-right: 1px solid var(--border); }
+.prp-c0 b { font-size: 13px; color: var(--void); }
+.prp-c0 small { font-size: 11px; color: var(--slate); }
+.prp-thead > div { background: var(--th-bg); }
+.prp-hh { padding: 8px 6px; text-align: center; font-size: 12px; font-weight: 700; color: var(--void); }
+.prp-hh small { display: block; font-weight: 400; font-size: 10.5px; color: var(--slate); }
+.prp-hc { margin: 4px 3px; min-height: 32px; padding: 0 4px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.prp-s-g { background: #E3F4EC; color: #00663F; } .prp-s-y { background: #E3F0FB; color: #0A4F85; }
+.prp-s-r { background: #FDEBE1; color: #9A3412; } .prp-s-m, .prp-s-n { background: var(--surface); color: var(--slate); font-weight: 500; }
+.prp-hc.prog, .prp-hh.prog { opacity: .55; }
+.prp-thead > .prp-hh.hl { background: rgba(5,140,220,.14); }
+.prp-hc.hl { box-shadow: inset 0 0 0 2px var(--void); }
+.prp-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--slate); }
+.prp-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--border); }
+.prp-evidence { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 10px 18px; }
+.prp-evidence > summary { cursor: pointer; font-weight: 700; color: var(--void); min-height: 36px; display: flex; align-items: center; }
+.prp-evidence .pr-drill { border: 0; padding: 0; margin: 10px 0 4px; background: transparent; }
+.prp-how p { color: var(--slate); }
+@media (max-width: 1100px) {
+  .prp-body { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); }
+  .prp-item { grid-template-columns: 22px 34px minmax(0, 1fr) auto; }
+  .prp-item .prp-spark { display: none; }
+}
+@media (max-width: 720px) {
+  .prp-body { grid-template-columns: minmax(0, 1fr); }
+  .prp-list { position: static; max-height: none; }
+  .prp-item { grid-template-columns: 22px 34px minmax(0, 1fr) 64px auto; gap: 8px; }
+  .prp-item .prp-spark { display: block; width: 64px; }
+  .prp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .prp-card { display: none; }
+  body.prp-card-open { overflow: hidden; }
+  body.prp-card-open .prp-card { display: flex; position: fixed; inset: 0; z-index: 150; overflow-y: auto; padding: 8px 14px 32px; background: var(--surface); }
+  .prp-back { display: inline-flex; }
+  .prp-acts { display: none; }
+  .prp-ctl { width: 100%; }
+  .prp-ctl select { flex: 1 1 100%; }
+}
+body.dark-mode .prp-t-good, body.dark-mode .prp-s-g { background: rgba(0,135,90,.22); color: #7BE0B5; }
+body.dark-mode .prp-t-mid,  body.dark-mode .prp-s-y { background: rgba(5,140,220,.22); color: #9CD3F7; }
+body.dark-mode .prp-t-bad,  body.dark-mode .prp-s-r { background: rgba(194,65,12,.25); color: #FDBA8C; }
+body.dark-mode .prp-t-none { background: #1E295A; color: #CBD5E1; }
+body.dark-mode .prp-short { background: #1E2A5E; }
+body.dark-mode .prp-av { background: #2B3A78; }
 body.dark-mode .pr-table tr.pr-row.sel td { background: #16214A; }
 .pr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pr-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
@@ -2282,8 +2425,10 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           <h2>Performance Record <span class="pr-info" title="Signals are reading aids, not verdicts — colours surface the data; the manager judges. Dot = last closed period (↗ → ↘ vs the one before) · faded bars are in progress · dashed line = green target · gray = no data · slate = shown, not evaluated (exception). Hover any signal for its value and target.">ⓘ</span></h2>
           <p class="section-sub" id="prSub"></p>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
-          <div class="pr-seg" id="prGranCtl"></div>
+        <div class="prp-ctl">
+          <div class="pr-seg" id="prViewCtl" role="group" aria-label="Layout"></div>
+          <div class="pr-seg" id="prGranCtl" role="group" aria-label="Time lens"></div>
+          <select id="prEvalWeekSelect" class="inline-select" aria-label="Evaluated week" onchange="prSetEvalWeek_(this.value)"></select>
           <button class="copy-btn" id="prCsvBtn" onclick="exportPerfCsv_()" title="Download CSV — current filtered view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>
@@ -2292,7 +2437,8 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
           </button>
         </div>
       </div>
-      <div class="pr-workspace">
+      <div id="prPeople" class="prp"></div>
+      <div class="pr-workspace" id="prGridWrap" style="display:none">
         <div id="prBody" class="pr-scroll"></div>
         <aside id="prPanel" class="pr-panel" role="dialog" aria-modal="false"
                aria-labelledby="prPanelTitle" tabindex="-1" style="display:none"></aside>
@@ -2513,10 +2659,17 @@ var STATE = {
   selectedPeriod:    null,     // selected bucket key ('2026-06' / 'FY26Q4') or week label; null = default (last closed)
   activeTeam:        "services", // org team currently displayed (TEAMS registry key)
   teamData:          {},         // teamKey → payload — client-side cache per team
-  prGranularity: "quarter",   // Performance Record: 'week' | 'month' | 'quarter'
+  prGranularity: "week",      // Performance Record grid + evidence buckets: 'week' | 'month' | 'quarter' (follows prLens)
   prFocus:       null,        // Performance Record: KPI-card focus — 'critical'|'watch'|'burnout'|'exceptions'|null
   prSort:        { key: "score", dir: "desc" },  // top performers first; any header click re-sorts
-  prExpanded:    null,        // normName of the row whose evidence panel is open
+  prExpanded:    null,        // normName of the row whose evidence panel is open (grid view)
+  // People view (2026.W41 — Leading Behaviours merged in): ranked list + person card.
+  prView:        "people",    // 'people' (list + card) | 'grid' (the signal grid)
+  prLens:        "eval",      // 'eval' | 'week' | 'month' | 'quarter' — ranks the list, shapes the card history
+  prEvalWeek:    null,        // evaluated week label; null = last closed week
+  prTier:        null,        // people view band filter: 'good' | 'mid' | 'bad' | null
+  prSel:         null,        // normName on the card; null = top of the list
+  prCardOpen:    false,       // phone only: card shown full screen over the list
 };
 
 // ── VIEWS — single source of truth for navigation ─────────
@@ -3542,6 +3695,7 @@ function switchTab(tab) {
   // The Performance Record panel is position:fixed — hide it when its tab isn't
   // active (renderPerfPanel_ guards on activeTab internally).
   if (typeof renderPerfPanel_ === 'function') renderPerfPanel_();
+  if (tab !== 'perfrecord') document.body.classList.remove('prp-card-open');
 }
 
 // The sticky top bar lives in the same scroller at top:0, so offset 0 is a view's
@@ -3805,6 +3959,7 @@ function perfBtnBusy_(btn) {
   return function() { btn.disabled = false; btn.innerHTML = orig; };
 }
 function exportPerfGridPNG_() {
+  if (STATE.prView !== 'grid') { savePerfCardPng_(STATE.prSel, document.getElementById('prPngBtn')); return; }
   var el = document.getElementById('prBody');
   if (!el || typeof html2canvas === 'undefined') return;
   var done = perfBtnBusy_(document.getElementById('prPngBtn'));
@@ -3827,20 +3982,608 @@ function exportPerfGridPNG_() {
 // focus changes become lookups (~1,000 SVG builds saved per render at 180 rows).
 var _prCellsCache = { key: null, map: {} };
 
+// ── Performance Record: people view (2026.W41 — Leading Behaviours merge) ────
+// The ranked list stays on screen and the card beside it explains one person in
+// plain English at week / month / quarter grain. Everything is derived from the
+// fields the grid already reads — nothing new comes from the server, so scope and
+// self-exclusion stay exactly the server's (see VIEWS comment).
+var PERF_LENSES = [
+  { id: 'eval',    label: 'Evaluated week', short: 'Week' },
+  { id: 'week',    label: 'Weekly',         short: 'Weeks' },
+  { id: 'month',   label: 'Monthly',        short: 'Months' },
+  { id: 'quarter', label: 'Quarterly',      short: 'Quarters' },
+];
+var P_MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function perfMonthName_(label) {
+  var k = pMonthKey(label);
+  return k ? P_MONTH_FULL[+k.slice(5, 7) - 1] : '';
+}
+function perfShortWeek_(label) { return String(label || '').replace(/^\d{4}\./, ''); }
+function perfLensGran_(lens) { lens = lens || STATE.prLens; return lens === 'eval' ? 'week' : lens; }
+function perfHrs_(h) { return (h === null || h === undefined || isNaN(h) ? 0 : Math.round(h * 10) / 10) + ' h'; }
+function perfInitials_(name) {
+  return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(function(w) { return w.charAt(0).toUpperCase(); }).join('');
+}
+// Weeks the payload can answer for: everything up to the current week.
+function perfOpenWeeks_() { return ((DATA && DATA.q4Weeks) || []).filter(function(w) { return !w.isFuture; }); }
+function perfClosedWeeks_() { return perfOpenWeeks_().filter(function(w) { return w.isPast; }); }
+function perfEvalWeek_() {
+  var open = perfOpenWeeks_(), closed = perfClosedWeeks_();
+  if (STATE.prEvalWeek && open.some(function(w) { return w.label === STATE.prEvalWeek; })) return STATE.prEvalWeek;
+  return closed.length ? closed[closed.length - 1].label : (open.length ? open[open.length - 1].label : null);
+}
+function perfWeekScore_(emp, label) {
+  var rk = label ? computeRkScore(emp, label) : null;
+  return rk && !perfWeekIsEmpty_(rk) ? rk.score : null;
+}
+// Ranking population — Leading Behaviours parity: ramp-up and long leave are
+// listed apart and never ranked (an absent week is not a ranking signal).
+function perfRankable_(emp) { return !emp.isRampUp && !onLeave_(emp); }
+
+// What the list ranks by, for the active lens.
+function perfLensCtx_(lens) {
+  lens = lens || STATE.prLens;
+  var open = perfOpenWeeks_(), closed = perfClosedWeeks_(), ctx = { lens: lens };
+  if (lens === 'eval') {
+    var ev = perfEvalWeek_(), idx = -1;
+    open.forEach(function(w, i) { if (w.label === ev) idx = i; });
+    var w = open[idx] || null;
+    ctx.evalLabel = ev;
+    ctx.prevLabel = idx > 0 ? open[idx - 1].label : null;
+    ctx.title = 'Ranked by ' + (ev || '—');
+    ctx.sub = (w ? (w.dateRange || '') + (w.isPast ? '' : ' (in progress)') : '') +
+              (ctx.prevLabel ? ' · ▲▼ vs ' + perfShortWeek_(ctx.prevLabel) : '');
+  } else if (lens === 'week') {
+    var l8 = closed.slice(-8), p8 = closed.slice(-16, -8);
+    ctx.last8 = l8.map(function(x) { return x.label; });
+    ctx.prev8 = p8.map(function(x) { return x.label; });
+    ctx.title = 'Ranked by the last ' + l8.length + ' closed weeks';
+    ctx.sub = (l8.length ? 'Average of ' + perfShortWeek_(l8[0].label) + ' – ' + perfShortWeek_(l8[l8.length - 1].label) : '') +
+              (p8.length ? ' · ▲▼ vs the ' + p8.length + ' weeks before' : '');
+  } else {
+    var m = perfModelFor_(lens);
+    var b = m.buckets[m.lastIdx], pb = m.prevIdx === null ? null : m.buckets[m.prevIdx];
+    ctx.model = m;
+    ctx.title = 'Ranked by ' + (b ? b.label : '—');
+    ctx.sub = (b ? 'Average of ' + (b.weekRangeLabel || b.label) : '') + (pb ? ' · ▲▼ vs ' + pb.label : '');
+  }
+  return ctx;
+}
+function perfLensValue_(emp, ctx) {
+  var v = null, p = null;
+  if (ctx.lens === 'eval') {
+    v = perfWeekScore_(emp, ctx.evalLabel);
+    p = ctx.prevLabel ? perfWeekScore_(emp, ctx.prevLabel) : null;
+  } else if (ctx.lens === 'week') {
+    v = perfAvg_(ctx.last8.map(function(l) { return perfWeekScore_(emp, l); }));
+    p = ctx.prev8.length ? perfAvg_(ctx.prev8.map(function(l) { return perfWeekScore_(emp, l); })) : null;
+  } else {
+    var per = ctx.model.byEmp[emp.normName] || [];
+    var a = per[ctx.model.lastIdx], b = ctx.model.prevIdx === null ? null : per[ctx.model.prevIdx];
+    v = a && a.score !== undefined ? a.score : null;
+    p = b && b.score !== undefined ? b.score : null;
+  }
+  return { v: v, d: v !== null && p !== null ? v - p : null };
+}
+function perfPeopleRows_(emps, ctx) {
+  var rows = emps.map(function(e) {
+    var lv = perfLensValue_(e, ctx);
+    return { emp: e, v: lv.v, d: lv.d, tier: perfTier_(lv.v), rankable: perfRankable_(e) && lv.v !== null };
+  });
+  var ranked = rows.filter(function(r) { return r.rankable; })
+    .sort(function(a, b) { return (b.v - a.v) || a.emp.name.localeCompare(b.emp.name); });
+  ranked.forEach(function(r, i) { r.rank = i + 1; });
+  var apart = rows.filter(function(r) { return !r.rankable; })
+    .sort(function(a, b) { return a.emp.name.localeCompare(b.emp.name); });
+  apart.forEach(function(r) {
+    r.why = r.emp.isRampUp ? 'ramp-up' : onLeave_(r.emp) ? 'on leave' : 'no score in this period';
+  });
+  return { ranked: ranked, apart: apart };
+}
+function perfDeltaHtml_(d) {
+  if (d === null || d === undefined) return '<span class="prp-d">—</span>';
+  var cls = d > 2 ? ' up' : d < -2 ? ' down' : '';
+  return '<span class="prp-d' + cls + '">' + (d > 0 ? '▲ ' + d : d < 0 ? '▼ ' + (-d) : '= 0') + '</span>';
+}
+// 13-week score sparkline; the dashed line is the Strong mark.
+function perfSparkSvg_(emp) {
+  var labels = perfClosedWeeks_().slice(-13).map(function(w) { return w.label; });
+  var pts = [], last = null, n = labels.length;
+  labels.forEach(function(l, i) {
+    var s = perfWeekScore_(emp, l);
+    if (s === null) s = last;
+    if (s === null) return;
+    last = s;
+    pts.push((n > 1 ? Math.round(i * 84 / (n - 1)) : 0) + ',' + (27 - Math.round(s / 100 * 26)));
+  });
+  if (pts.length < 2) return '<span class="prp-spark" aria-hidden="true"></span>';
+  var gy = 27 - Math.round(PERF_BARS.score.ic.g / 100 * 26);
+  return '<svg class="prp-spark" width="84" height="28" viewBox="0 0 84 28" aria-hidden="true">' +
+    '<line x1="0" y1="' + gy + '" x2="84" y2="' + gy + '" stroke="#CBD5E1" stroke-dasharray="2,2"/>' +
+    '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#058CDC" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+}
+
+// Glue for perfStory_: one row per closed week (last 13), each metric judged
+// against the same cohort bars as the grid. null = nothing evaluable that week.
+function perfStoryInput_(emp, row, exc) {
+  var closed = perfClosedWeeks_().slice(-13);
+  var grace = perfGraceLabels_();
+  var ptoWeeks = [];
+  var weeks = closed.map(function(w) {
+    var rk = computeRkScore(emp, w.label);
+    var empty = !rk || perfWeekIsEmpty_(rk);
+    var wd = emp.weeks && emp.weeks[w.label];
+    if (wd && wd.ptoAdjustedTargetHrs != null && !isNaN(+wd.ptoAdjustedTargetHrs) && +wd.ptoAdjustedTargetHrs < 40) {
+      ptoWeeks.push(perfShortWeek_(w.label));
+    }
+    var met = { goals: null, tracked: null, planned: null, kudos: null };
+    if (!empty) {
+      if (!exc.notEval.goals && hasMetric_('goals') && rk.goalsHasData && !(grace[w.label] && !rk.goalsOk)) met.goals = rk.goalsOk;
+      if (!exc.notEval.tracked && hasMetric_('tracked') && (rk.trackedHrs !== null || rk.plannedHrs !== null)) {
+        met.tracked = perfSignalFor_('tracked', rk.trackedNorm, row.coh) === 'g';
+      }
+      if (!exc.notEval.planned && hasMetric_('planned') && rk.plannedHrs !== null) {
+        met.planned = perfSignalFor_('planned', rk.plannedNorm, row.coh) === 'g';
+      }
+      if (!exc.notEval.kudos && hasMetric_('kudos')) met.kudos = (rk.kudosCount || 0) + (rk.kudosGivenCount || 0) > 0;
+    }
+    return { label: w.label, short: perfShortWeek_(w.label), month: perfMonthName_(w.label),
+             score: empty ? null : rk.score, met: met };
+  });
+  var rcr = null;
+  if (!exc.notEval.rcr && hasMetric_('rcr')) {
+    var hist = (DATA.meta && DATA.meta.rcrByEmployee && DATA.meta.rcrByEmployee[emp.normName]) || null;
+    var months = [];
+    if (hist) Object.keys(hist).forEach(function(nm) {
+      var k = perfRcrMonthKey_(nm), raw = hist[nm];
+      if (!k || raw === null || raw === undefined || raw === '' || isNaN(+raw)) return;
+      months.push({ k: k, name: P_MONTH_FULL[+k.slice(5, 7) - 1], val: +raw });
+    });
+    months.sort(function(a, b) { return a.k < b.k ? -1 : a.k > b.k ? 1 : 0; });
+    months = months.slice(-3);
+    if (!months.length && emp.rcr && emp.rcr.value != null && !isNaN(+emp.rcr.value)) {
+      months = [{ name: 'the latest month', val: +emp.rcr.value }];
+    }
+    if (months.length) rcr = { months: months, bar: PERF_BARS.rcr[row.coh === 'mgr' ? 'mgr' : 'ic'].g, target: 2.5 };
+  }
+  return {
+    first: String(emp.name || '').split(/\s+/)[0],
+    weeks: weeks, rcr: rcr,
+    onLeave: onLeave_(emp), ramp: !!emp.isRampUp, crew: isCrewEmp(emp), noMandate: !tracksTime_(emp),
+    ptoWeeks: ptoWeeks,
+    span: closed.length ? closed[0].label + ' – ' + perfShortWeek_(closed[closed.length - 1].label) : '',
+  };
+}
+
+// Week / month / quarter tiles at the top of the card.
+function perfTiles_(emp, row, exc, emps, story) {
+  var tiles = [];
+  var open = perfOpenWeeks_(), ev = perfEvalWeek_(), idx = -1;
+  open.forEach(function(w, i) { if (w.label === ev) idx = i; });
+  var w = open[idx] || null, prevL = idx > 0 ? open[idx - 1].label : null;
+  var rk = ev ? computeRkScore(emp, ev) : null;
+  var empty = !rk || perfWeekIsEmpty_(rk);
+  var v = empty ? null : rk.score, pv = prevL ? perfWeekScore_(emp, prevL) : null;
+  var bits = [];
+  if (!empty) {
+    if (hasMetric_('tracked') && !exc.notEval.tracked && (rk.trackedHrs !== null || rk.plannedHrs !== null)) {
+      bits.push('logged ' + perfHrs_(rk.trackedHrs) + ' of ' + perfHrs_(rk.plannedHrs) + ' planned');
+    }
+    if (hasMetric_('goals') && !exc.notEval.goals && rk.goalsHasData) bits.push(rk.goalsOk ? 'goals up to date' : 'goals behind');
+    if (hasMetric_('kudos') && !exc.notEval.kudos) {
+      bits.push(rk.kudosCount ? 'was given kudos' + (rk.kudosCount > 1 ? ' ×' + rk.kudosCount : '') : rk.kudosGivenCount ? 'gave kudos' : 'no kudos');
+    }
+    if (hasMetric_('pto') && !exc.notEval.pto && rk.ptoStatus) bits.push('PTO plan ' + (rk.ptoStatus === 'Good' ? 'healthy' : 'at risk'));
+  }
+  tiles.push({ lens: 'eval', eyebrow: 'Evaluated week', title: ev || '—',
+    sub: w ? (w.dateRange || '') + (w.isPast ? '' : ' · in progress') : '',
+    v: v, d: v !== null && pv !== null ? v - pv : null, vs: prevL ? 'vs ' + perfShortWeek_(prevL) : '',
+    txt: empty ? (onLeave_(emp) ? 'On leave; the week is not scored.' : 'Nothing recorded for this week.')
+               : (bits.length ? perfCap_(bits.join('; ')) + '.' : 'Scored on the measures that apply.') });
+
+  function bucketTile(gran, eyebrow) {
+    var m = perfModelFor_(gran), per = m.byEmp[emp.normName] || [];
+    var b = m.buckets[m.lastIdx], pb = m.prevIdx === null ? null : m.buckets[m.prevIdx];
+    var a = per[m.lastIdx], pa = m.prevIdx === null ? null : per[m.prevIdx];
+    var val = a && a.weeks ? a.score : null, pval = pa && pa.weeks ? pa.score : null;
+    var t = [];
+    if (a && a.weeks) {
+      if (hasMetric_('goals') && !exc.notEval.goals && a.goalsWeeks) t.push('goals up to date ' + a.goalsCompliant + ' of ' + a.goalsWeeks + ' weeks');
+      if (hasMetric_('tracked') && !exc.notEval.tracked && a.plannedHrs) t.push('logged ' + Math.round(a.trackedHrs || 0) + ' h of ' + Math.round(a.plannedHrs) + ' h planned');
+      if (hasMetric_('rcr') && !exc.notEval.rcr && a.rcr !== null && a.rcr !== undefined) t.push('RCR ' + (Math.round(a.rcr * 10) / 10).toFixed(1));
+      if (hasMetric_('kudos') && !exc.notEval.kudos) t.push('kudos ' + a.kudos.recv + ' in · ' + a.kudos.gave + ' out');
+    }
+    return { m: m, b: b, tile: { lens: gran, eyebrow: eyebrow, title: b ? b.label : '—', sub: b ? (b.weekRangeLabel || '') : '',
+      v: val, d: val !== null && pval !== null ? val - pval : null, vs: pb ? 'vs ' + pb.label : '',
+      txt: t.length ? perfCap_(t.join('; ')) + '.' : 'No data recorded in this period.' } };
+  }
+  tiles.push(bucketTile('month', 'Last closed month').tile);
+  var q = bucketTile('quarter', 'Last closed quarter');
+  var ctxQ = { lens: 'quarter', model: q.m };
+  var mine = q.tile.v, vals = emps.filter(perfRankable_)
+    .map(function(e) { return perfLensValue_(e, ctxQ).v; })
+    .filter(function(x) { return x !== null; });
+  var rankTxt = !perfRankable_(emp) ? 'Not ranked (' + (emp.isRampUp ? 'ramp-up' : 'on leave') + '). '
+    : mine === null ? '' : 'Ranked ' + (1 + vals.filter(function(x) { return x > mine; }).length) + ' of ' + vals.length + ' in this view. ';
+  var bw = story.best ? 'Most consistent: ' + story.best + '.' + (story.worst && story.worst !== story.best ? ' Least: ' + story.worst + '.' : '') : '';
+  q.tile.txt = (rankTxt + bw) || q.tile.txt;
+  tiles.push(q.tile);
+  return tiles;
+}
+
+// History table for the card: measures × periods of the active lens.
+var PERF_HIST_ROWS = {
+  score:   { label: 'Score',        help: '0–100, weighted' },
+  goals:   { label: 'Goals',        help: 'weeks up to date' },
+  tracked: { label: 'Logged time',  help: 'vs 90% of plan' },
+  planned: { label: 'Planned time', help: 'vs PTO-adjusted 40 h' },
+  rcr:     { label: 'RCR',          help: 'bar 2.0 · target 2.5' },
+  kudos:   { label: 'Kudos',        help: 'received · given' },
+  pto:     { label: 'PTO plan',     help: 'state at period close' },
+  si:      { label: 'SI rating',    help: 'manager rating, 1–5' },
+};
+var PERF_HIST_TITLE = { eval: 'The 8 weeks up to the evaluated week', week: 'Week by week', month: 'Month by month', quarter: 'Quarter by quarter' };
+function perfHistory_(emp, row, exc) {
+  var lens = STATE.prLens, buckets, per;
+  if (lens === 'eval') {
+    var open = perfOpenWeeks_(), ev = perfEvalWeek_(), idx = open.length - 1;
+    open.forEach(function(w, i) { if (w.label === ev) idx = i; });
+    buckets = open.slice(Math.max(0, idx - 7), idx + 1).map(function(w) {
+      return { key: w.label, label: perfShortWeek_(w.label), sub: String(w.dateRange || '').split(/\s*[–-]\s*/)[0],
+               weekLabels: [w.label], containsCurrent: !w.isPast, hl: w.label === ev };
+    });
+    per = perfEmpAggs_(emp, buckets, perfGraceLabels_(), (DATA.meta && DATA.meta.rcrByEmployee) || {});
+  } else {
+    var m = perfModelFor_(lens);
+    buckets = m.buckets.map(function(b, i) {
+      return { key: b.key, label: lens === 'week' ? perfShortWeek_(b.label) : b.label,
+               sub: lens === 'week' ? '' : (b.weekRangeLabel || ''), containsCurrent: b.containsCurrent, hl: i === m.lastIdx };
+    });
+    per = m.byEmp[emp.normName] || [];
+  }
+  var single = lens === 'eval' || lens === 'week';
+  var siHist = (DATA.meta && DATA.meta.siByEmployee && DATA.meta.siByEmployee[emp.normName]) || {};
+  var cols = perfCols_().filter(function(c) { return c.id !== 'si' || lens === 'quarter'; });
+  function cellFor(c, a, b) {
+    var ne = !!exc.notEval[c.id];
+    if (!a || !a.weeks) return { t: '—', s: 'm' };
+    var v = c.id === 'si' ? (siHist[b.key] !== undefined && siHist[b.key] !== null ? +siHist[b.key] : null) : perfColVal_(a, c.id);
+    var t = '—';
+    if (c.id === 'score') t = v === null ? '—' : String(v);
+    else if (c.id === 'goals') t = !a.goalsWeeks ? '—' : single ? (a.goalsCompliant ? 'Up to date' : 'Behind') : a.goalsCompliant + ' / ' + a.goalsWeeks;
+    else if (c.id === 'tracked') t = v === null ? '—' : Math.round(v * 100) + '%';
+    else if (c.id === 'planned') t = a.plannedHrs === null ? '—' : single ? Math.round(a.plannedHrs) + ' h' : Math.round(a.plannedHrs / Math.max(1, a.weeks)) + ' h/wk';
+    else if (c.id === 'rcr') t = v === null ? '—' : (Math.round(v * 10) / 10).toFixed(1);
+    else if (c.id === 'kudos') t = (v ? v.recv : 0) + ' in · ' + (v ? v.gave : 0) + ' out';
+    else if (c.id === 'pto') t = v === null ? '—' : v >= 1 ? 'Good' : 'At risk';
+    else if (c.id === 'si') t = v === null ? '—' : String(Math.round(v));
+    return { t: t, s: ne ? 'n' : perfSignalFor_(c.id, c.id === 'goals' ? a.goals : v, row.coh) };
+  }
+  var colsCss = 'minmax(118px, 150px) repeat(' + buckets.length + ', minmax(' + (lens === 'quarter' ? 110 : lens === 'month' ? 84 : 66) + 'px, 1fr))';
+  var head = '<div class="prp-trow prp-thead" style="grid-template-columns:' + colsCss + '"><div class="prp-c0"><b>Measure</b><small>' +
+    (lens === 'month' ? 'per month' : lens === 'quarter' ? 'per quarter' : 'per week') + '</small></div>' +
+    buckets.map(function(b) {
+      return '<div class="prp-hh' + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(b.label) +
+        (b.sub ? '<small>' + esc(b.sub) + '</small>' : '') + '</div>';
+    }).join('') + '</div>';
+  var rows = cols.map(function(c) {
+    var meta = PERF_HIST_ROWS[c.id] || { label: c.label, help: '' };
+    return '<div class="prp-trow" style="grid-template-columns:' + colsCss + '"><div class="prp-c0"><b>' + esc(meta.label) + '</b><small>' +
+      esc(exc.notEval[c.id] ? 'shown, not evaluated' : meta.help) + '</small></div>' +
+      buckets.map(function(b, i) {
+        var x = cellFor(c, per[i], b);
+        return '<div class="prp-hc prp-s-' + x.s + (b.hl ? ' hl' : '') + (b.containsCurrent ? ' prog' : '') + '">' + esc(x.t) + '</div>';
+      }).join('') + '</div>';
+  }).join('');
+  var bars = buckets.map(function(b, i) {
+    var a = per[i], v = a && a.weeks ? a.score : null;
+    var s = v === null ? 'm' : perfSignalFor_('score', v, row.coh);
+    return '<div class="prp-bc"><span class="prp-bv">' + (v === null ? '' : v) + '</span>' +
+      '<div class="prp-bar ' + s + (b.containsCurrent ? ' prog' : '') + (b.hl ? ' hl' : '') + '" style="height:' +
+      (v === null ? 0 : Math.max(4, Math.round(v * 1.2))) + 'px"></div><span class="prp-bl">' + esc(b.label) + '</span></div>';
+  }).join('');
+  var gB = PERF_BARS.score.ic.g, yB = PERF_BARS.score.ic.y;
+  return {
+    title: PERF_HIST_TITLE[lens] || 'History',
+    sub: lens === 'eval' ? 'Outlined column = the week being evaluated' : 'Outlined = last closed period · faded = still in progress',
+    html: '<div class="prp-chart" aria-label="Score per period">' +
+        '<div class="prp-ref" style="bottom:' + (22 + Math.round(gB * 1.2)) + 'px">' + gB + '</div>' +
+        '<div class="prp-ref" style="bottom:' + (22 + Math.round(yB * 1.2)) + 'px">' + yB + '</div>' + bars + '</div>' +
+      '<div class="prp-tscroll">' + head + rows + '</div>' +
+      '<div class="prp-legend"><span><i class="prp-s-g"></i>Met</span><span><i class="prp-s-y"></i>Close</span>' +
+      '<span><i class="prp-s-r"></i>Missed</span><span><i class="prp-s-m"></i>No data / not evaluated</span>' +
+      '<span>Faded = in progress · outlined = the period being evaluated</span></div>',
+  };
+}
+
+function perfCardHtml_(emp, emps) {
+  var row = perfRowModels_([emp])[0];
+  var exc = perfExceptions_(emp);
+  var story = perfStory_(perfStoryInput_(emp, row, exc));
+  var tiles = perfTiles_(emp, row, exc, emps, story);
+  var hist = perfHistory_(emp, row, exc);
+  var meta = [emp.jobTitle, emp.keyLocation, emp.supervisor ? 'reports to ' + emp.supervisor : '',
+              row.tenure ? row.tenure + ' tenure' : ''].filter(Boolean).join(' · ');
+  function li(x) { return '<li>' + esc(x) + '</li>'; }
+  var tilesHtml = tiles.map(function(t) {
+    var on = t.lens === STATE.prLens;
+    return '<button type="button" class="prp-tile' + (on ? ' on' : '') + '" data-lens="' + t.lens + '" aria-pressed="' + on + '">' +
+      '<span class="prp-eyebrow">' + esc(t.eyebrow) + '</span>' +
+      '<span class="prp-tt">' + esc(t.title) + (t.sub ? ' <span class="prp-ts">· ' + esc(t.sub) + '</span>' : '') + '</span>' +
+      '<span class="prp-tv"><span class="prp-big prp-t-' + perfTier_(t.v) + '">' + (t.v === null ? '—' : t.v) + '</span>' +
+        (t.d !== null ? perfDeltaHtml_(t.d) + '<span class="prp-ts">' + esc(t.vs) + '</span>' : '') + '</span>' +
+      '<span class="prp-ts prp-tier">' + esc(PERF_TIER_NAME[perfTier_(t.v)]) + '</span>' +
+      '<p>' + esc(t.txt) + '</p></button>';
+  }).join('');
+  var lensBtns = PERF_LENSES.map(function(l) {
+    var on = l.id === STATE.prLens;
+    return '<button type="button" class="' + (on ? 'on' : '') + '" data-lens="' + l.id + '" aria-pressed="' + on + '">' + l.short + '</button>';
+  }).join('');
+  return '<div class="prp-head">' +
+      '<button type="button" class="prp-back" data-act="back">‹ All people</button>' +
+      '<span class="prp-av prp-av-l" aria-hidden="true">' + esc(perfInitials_(emp.name)) + '</span>' +
+      '<div class="prp-pinfo"><h3 class="pr-title" id="prCardTitle">' + esc(emp.name) + '</h3>' +
+        '<div class="prp-pmeta">' + esc(meta) + '</div>' +
+        (row.chips.length ? '<div class="prp-tags">' + row.chips.map(function(c) {
+          return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
+        }).join('') + '</div>' : '') +
+      '</div>' +
+      '<div class="prp-verd"><span class="prp-pill prp-t-' + (story.verdictTier || story.tier) + '">' + esc(story.verdict) + '</span>' +
+        '<span class="prp-pill prp-trend ' + story.trend + '">' + esc(story.trendName) + '</span></div>' +
+      '<div class="prp-acts">' +
+        '<button type="button" class="copy-btn" data-act="copy" title="Copy the card as plain text for a 1:1 note or Confluence" aria-label="Copy summary">Copy summary</button>' +
+        '<button type="button" class="copy-btn" data-act="png" title="Save the card as PNG" aria-label="Save card as image">📸</button>' +
+        '<a class="pr-link" href="#" data-act="overview">Open in Overview →</a>' +
+      '</div>' +
+    '</div>' +
+    '<div class="prp-pgrid"><div class="prp-col">' +
+      '<div class="prp-short"><p class="prp-eyebrow">The short version</p>' +
+        '<p class="prp-lead">' + esc(story.lead) + '</p>' +
+        '<ul>' + [story.strength, story.gap, story.rcrLine].filter(Boolean).map(li).join('') + '</ul>' +
+        (story.basis ? '<p class="prp-basis">' + esc(story.basis) + '</p>' : '') + '</div>' +
+      '<div class="prp-tiles">' + tilesHtml + '</div>' +
+      '<div class="prp-box"><h4>Worth asking about</h4><ul>' + story.ask.map(li).join('') + '</ul>' +
+        '<h4>Context</h4>' + story.context.map(function(x) { return '<p>' + esc(x) + '</p>'; }).join('') + '</div>' +
+    '</div><div class="prp-col">' +
+      '<div class="prp-box"><div class="prp-hist-h"><div><h4>' + esc(hist.title) + '</h4><small>' + esc(hist.sub) + '</small></div>' +
+        '<div class="pr-seg pr-seg-sm" role="group" aria-label="History grain">' + lensBtns + '</div></div>' + hist.html + '</div>' +
+      '<details class="prp-evidence"><summary>Full evidence — exception report, week by week, charts, kudos feed</summary>' +
+        perfDrillHtml_(emp, row, perfModel_(), { embedded: true }) + '</details>' +
+      '<div class="prp-box prp-how"><h4>How to read the score</h4><p>Each week scores 0–100 from the scoring weights for this ' +
+        'person\'s team and job family (⚖️ Scoring Weights). ' + PERF_BARS.score.ic.g + ' and up reads as Strong, ' +
+        PERF_BARS.score.ic.y + '–' + (PERF_BARS.score.ic.g - 1) + ' as On track, under ' + PERF_BARS.score.ic.y +
+        ' as Needs a look. Ramp-up and long leave are listed apart and never ranked; crew are scored without goals, SI and PTO. ' +
+        'Signals are reading aids, not verdicts — the manager judges.</p></div>' +
+    '</div></div>';
+}
+
+function perfFillEvalSelect_(sel) {
+  var ev = perfEvalWeek_(), open = perfOpenWeeks_().slice().reverse();
+  var key = open.map(function(w) { return w.label; }).join('|') + '#' + ev;
+  if (sel.getAttribute('data-key') === key) return;
+  sel.setAttribute('data-key', key);
+  sel.innerHTML = open.map(function(w) {
+    return '<option value="' + esc(w.label) + '"' + (w.label === ev ? ' selected' : '') + '>' +
+      esc(w.label + ' · ' + (w.dateRange || '') + (w.isPast ? '' : ' (in progress)')) + '</option>';
+  }).join('');
+}
+
+function renderPerfPeople_(emps) {
+  var host = document.getElementById('prPeople');
+  if (!host) return;
+  var ctx = perfLensCtx_();
+  var pr = perfPeopleRows_(emps, ctx);
+  var counts = { good: 0, mid: 0, bad: 0 };
+  pr.ranked.forEach(function(r) { if (counts[r.tier] !== undefined) counts[r.tier]++; });
+  var shown = STATE.prTier ? pr.ranked.filter(function(r) { return r.tier === STATE.prTier; }) : pr.ranked;
+  var listed = shown.concat(pr.apart);
+  if (!STATE.prSel || !listed.some(function(r) { return r.emp.normName === STATE.prSel; })) {
+    STATE.prSel = listed.length ? listed[0].emp.normName : null;
+  }
+  var selEmp = null;
+  listed.forEach(function(r) { if (r.emp.normName === STATE.prSel) selEmp = r.emp; });
+
+  var gB = PERF_BARS.score.ic.g, yB = PERF_BARS.score.ic.y;
+  var sub = document.getElementById('prSub');
+  if (sub) sub.textContent = ctx.title + ' · ' + pr.ranked.length + ' ranked' +
+    (pr.apart.length ? ' · ' + pr.apart.length + ' listed apart' : '') +
+    ' · Strong ' + gB + '+ · On track ' + yB + '–' + (gB - 1) + ' · Needs a look under ' + yB +
+    (DATA.meta && DATA.meta.selfExcluded ? ' · your own record is not shown here' : '');
+
+  var K = [
+    { k: '',     n: pr.ranked.length, lbl: 'ranked',                          dot: 'all' },
+    { k: 'good', n: counts.good,      lbl: 'Strong · ' + gB + '+',            dot: 'good' },
+    { k: 'mid',  n: counts.mid,       lbl: 'On track · ' + yB + '–' + (gB - 1), dot: 'mid' },
+    { k: 'bad',  n: counts.bad,       lbl: 'Needs a look · under ' + yB,      dot: 'bad' },
+  ];
+  var kpis = '<div class="prp-kpis">' + K.map(function(c) {
+    var on = (STATE.prTier || '') === c.k;
+    return '<button type="button" class="prp-kpi' + (on && c.k ? ' on' : '') + '" data-tier="' + c.k + '" aria-pressed="' + (on && !!c.k) + '">' +
+      '<span class="prp-dot ' + c.dot + '"></span><b>' + c.n + '</b><span>' + esc(c.lbl) + '</span></button>';
+  }).join('') + '</div>';
+
+  function item(r) {
+    var e = r.emp, on = e.normName === STATE.prSel;
+    return '<button type="button" class="prp-item' + (on ? ' on' : '') + '" data-norm="' + esc(e.normName) + '"' + (on ? ' aria-current="true"' : '') + '>' +
+      '<span class="prp-rk">' + (r.rank || '–') + '</span>' +
+      '<span class="prp-av" aria-hidden="true">' + esc(perfInitials_(e.name)) + '</span>' +
+      '<span class="prp-who"><span class="prp-nm">' + esc(e.name) + '</span><span class="prp-meta">' +
+        esc([e.jobTitle, e.keyLocation].filter(Boolean).join(' · ') + (r.why ? ' · ' + r.why : '')) + '</span></span>' +
+      perfSparkSvg_(e) +
+      '<span class="prp-val"><span class="prp-sc prp-t-' + r.tier + '">' + (r.v === null ? '—' : r.v) + '</span>' + perfDeltaHtml_(r.d) + '</span>' +
+    '</button>';
+  }
+  var old = host.querySelector('.prp-list-b');
+  var keepScroll = old ? old.scrollTop : 0;
+  host.innerHTML = kpis + '<div class="prp-body">' +
+    '<section class="prp-list" aria-label="Ranked rocketeers"><div class="prp-list-h"><b>' + esc(ctx.title) + '</b>' + esc(ctx.sub) + '</div>' +
+      '<div class="prp-list-b">' +
+        (shown.length ? shown.map(item).join('') : '<p class="prp-empty">Nobody ' + (STATE.prTier ? 'in this band' : 'matches the current filters') + '.</p>') +
+        (pr.apart.length ? '<div class="prp-grp">Listed apart · not ranked</div>' + pr.apart.map(item).join('') : '') +
+      '</div></section>' +
+    '<section class="prp-card" id="prCard" aria-label="Person card" aria-labelledby="prCardTitle">' +
+      (selEmp ? perfCardHtml_(selEmp, emps) : '<p class="prp-empty">Pick someone from the list.</p>') + '</section>' +
+  '</div>';
+  var nb = host.querySelector('.prp-list-b');
+  if (nb) nb.scrollTop = keepScroll;
+  // Wide histories scroll sideways — open on the newest periods (where the
+  // evaluated week lives), like every chart in the dashboard reads.
+  host.querySelectorAll('.prp-tscroll').forEach(function(el) { el.scrollLeft = el.scrollWidth; });
+  document.body.classList.toggle('prp-card-open', !!(STATE.prCardOpen && selEmp && STATE.activeTab === 'perfrecord'));
+  prWirePeople_();
+}
+
+// ONE delegated listener for the whole people view (list, KPIs, tiles, card actions).
+var _prPeopleWired = false;
+function prWirePeople_() {
+  if (_prPeopleWired) return;
+  var host = document.getElementById('prPeople');
+  if (!host) return;
+  _prPeopleWired = true;
+  host.addEventListener('click', function(ev) {
+    var t = ev.target;
+    var item = t.closest('.prp-item');
+    if (item) { prSelect_(item.getAttribute('data-norm')); return; }
+    var k = t.closest('.prp-kpi');
+    if (k) {
+      var tier = k.getAttribute('data-tier') || null;
+      STATE.prTier = tier && STATE.prTier !== tier ? tier : null;
+      renderPerfRecordTab_(); prSyncUrl_();
+      return;
+    }
+    var l = t.closest('[data-lens]');
+    if (l && host.contains(l)) { prSetLens_(l.getAttribute('data-lens')); return; }
+    var a = t.closest('[data-act]');
+    if (!a) return;
+    var act = a.getAttribute('data-act');
+    if (act === 'back') prCloseCard_();
+    else if (act === 'copy') copyPerfStory_(STATE.prSel, a);
+    else if (act === 'png') savePerfCardPng_(STATE.prSel, a);
+    else if (act === 'overview') { ev.preventDefault(); viewRocketeerDetails(STATE.prSel); }
+  });
+}
+function prSelect_(norm) {
+  STATE.prSel = norm;
+  STATE.prCardOpen = true;
+  renderPerfRecordTab_();
+  var card = document.getElementById('prCard');
+  if (card) {
+    if (document.body.classList.contains('prp-card-open')) card.scrollTop = 0;
+    else {
+      var top = card.getBoundingClientRect().top;
+      var bar = (document.getElementById('topbar') || {}).offsetHeight || 0;
+      if (top < bar) window.scrollBy(0, top - bar - 12);
+    }
+  }
+  prSyncUrl_();
+}
+function prCloseCard_() {
+  STATE.prCardOpen = false;
+  document.body.classList.remove('prp-card-open');
+  prSyncUrl_();
+}
+function prSetLens_(lens) {
+  if (!/^(eval|week|month|quarter)$/.test(lens)) return;
+  STATE.prLens = lens;
+  STATE.prGranularity = perfLensGran_(lens);
+  renderPerfRecordTab_();
+  renderPerfPanel_();
+  prSyncUrl_();
+}
+function prSetView_(v) {
+  STATE.prView = v === 'grid' ? 'grid' : 'people';
+  if (STATE.prView === 'grid' && STATE.prLens === 'eval') STATE.prGranularity = 'week';
+  renderPerfRecordTab_();
+  renderPerfPanel_();
+  prSyncUrl_();
+}
+function prSetEvalWeek_(label) {
+  STATE.prEvalWeek = label || null;
+  renderPerfRecordTab_();
+  prSyncUrl_();
+}
+
+// Plain-text copy of the card — searchable in Confluence, pasteable into a 1:1 note.
+function copyPerfStory_(norm, btn) {
+  if (!DATA || !norm) return;
+  var emp = (DATA.employees || []).find(function(e) { return e.normName === norm; });
+  if (!emp) return;
+  var row = perfRowModels_([emp])[0], exc = perfExceptions_(emp);
+  var st = perfStory_(perfStoryInput_(emp, row, exc));
+  var tiles = perfTiles_(emp, row, exc, getFilteredEmployees(), st);
+  var lines = [emp.name + ' — ' + (emp.jobTitle || '') + (row.tenure ? ' · ' + row.tenure + ' tenure' : ''),
+               st.verdict + ' · ' + st.trendName.replace(/^\S+\s/, ''), '', st.lead];
+  [st.strength, st.gap, st.rcrLine].filter(Boolean).forEach(function(x) { lines.push('• ' + x); });
+  lines.push('', 'Worth asking about:');
+  st.ask.forEach(function(x) { lines.push('• ' + x); });
+  lines.push('', 'Context:');
+  st.context.forEach(function(x) { lines.push('• ' + x); });
+  lines.push('');
+  tiles.forEach(function(t) {
+    lines.push(t.eyebrow + ' (' + t.title + '): ' + (t.v === null ? '—' : t.v) +
+      (t.d !== null ? ' (' + (t.d > 0 ? '+' : '') + t.d + ' ' + t.vs + ')' : '') + ' — ' + t.txt);
+  });
+  var txt = lines.join('\n');
+  function flash() { if (btn) { var o = btn.innerHTML; btn.innerHTML = '✓ Copied'; setTimeout(function() { btn.innerHTML = o; }, 1200); } }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(flash).catch(function() { prCopyFallback_(txt); flash(); });
+  } else { prCopyFallback_(txt); flash(); }
+}
+function savePerfCardPng_(norm, btn) {
+  var el = document.getElementById('prCard');
+  if (!el || typeof html2canvas === 'undefined') return;
+  var done = perfBtnBusy_(btn);
+  if (!done) return;
+  var hide = el.querySelectorAll('.prp-acts, .prp-back, .prp-evidence');
+  setTimeout(function() {
+    hide.forEach(function(x) { x.style.visibility = 'hidden'; });
+    html2canvas(el, { scale: 2, backgroundColor: document.body.classList.contains('dark-mode') ? '#0F1941' : '#ffffff', useCORS: true, logging: false })
+      .then(function(canvas) {
+        hide.forEach(function(x) { x.style.visibility = ''; });
+        done();
+        var a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'performance-card-' + String(norm || 'card').replace(/\s+/g, '-') + '-' + STATE.prLens + '.png';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      })
+      .catch(function() { hide.forEach(function(x) { x.style.visibility = ''; }); done(); });
+  }, 50);
+}
+
+// Tab entry point: header controls, then the people view or the signal grid.
 function renderPerfRecordTab_(filteredOpt) {
+  if (!DATA) return;
+  var people = STATE.prView !== 'grid';
+  var vctl = document.getElementById('prViewCtl');
+  if (vctl) vctl.innerHTML = [['people', 'People'], ['grid', 'Team grid']].map(function(o) {
+    var on = (o[0] === 'people') === people;
+    return '<button type="button" class="' + (on ? 'on' : '') + '" aria-pressed="' + on + '" onclick="prSetView_(\'' + o[0] + '\')">' + o[1] + '</button>';
+  }).join('');
+  var lctl = document.getElementById('prGranCtl');
+  if (lctl) lctl.innerHTML = PERF_LENSES.filter(function(l) { return people || l.id !== 'eval'; }).map(function(l) {
+    var on = people ? STATE.prLens === l.id : STATE.prGranularity === l.id;
+    return '<button type="button" class="' + (on ? 'on' : '') + '" aria-pressed="' + on + '" onclick="' +
+      (people ? 'prSetLens_' : 'prSetGran_') + '(\'' + l.id + '\')">' + l.label + '</button>';
+  }).join('');
+  var wsel = document.getElementById('prEvalWeekSelect');
+  if (wsel) {
+    var showSel = people && STATE.prLens === 'eval';
+    wsel.style.display = showSel ? '' : 'none';
+    if (showSel) perfFillEvalSelect_(wsel);
+  }
+  var pp = document.getElementById('prPeople'), gw = document.getElementById('prGridWrap');
+  if (pp) pp.style.display = people ? '' : 'none';
+  if (gw) gw.style.display = people ? 'none' : '';
+  var emps = filteredOpt || getFilteredEmployees();
+  if (people) renderPerfPeople_(emps);
+  else { document.body.classList.remove('prp-card-open'); renderPerfGrid_(emps); }
+}
+
+function renderPerfGrid_(filteredOpt) {
   if (!DATA) return;
   var body = document.getElementById('prBody');
   if (!body) return;
-
-  // Controls
-  var granCtl = document.getElementById('prGranCtl');
-  if (granCtl) {
-    granCtl.innerHTML = [['week', 'Weekly'], ['month', 'Monthly'], ['quarter', 'Quarterly']]
-      .map(function(o) {
-        return '<button class="' + (STATE.prGranularity === o[0] ? 'on' : '') + '" ' +
-          'onclick="prSetGran_(\'' + o[0] + '\')">' + o[1] + '</button>';
-      }).join('');
-  }
   var emps = (filteredOpt || getFilteredEmployees());
   var rows = perfSortRows_(perfRowModels_(emps));
   var focus = STATE.prFocus && PERF_FOCUS[STATE.prFocus] ? PERF_FOCUS[STATE.prFocus] : null;
@@ -3985,6 +4728,7 @@ function closePerfPanel_() {
 // both, whether it came from the page header or the panel's own W/M/Q control.
 function prSetGran_(g) {
   STATE.prGranularity = g;
+  STATE.prLens = g;
   renderPerfRecordTab_();
   renderPerfPanel_();
   prSyncUrl_();
@@ -3998,7 +4742,11 @@ function prSyncUrl_() {
     google.script.history.replace(null, {
       gran: STATE.prGranularity,
       emp: STATE.prExpanded || '',
-      focus: STATE.prFocus || ''
+      focus: STATE.prFocus || '',
+      view: STATE.prView,
+      lens: STATE.prLens,
+      wk: STATE.prEvalWeek || '',
+      sel: STATE.prSel || ''
     }, '');
   } catch (e) {}
 }
@@ -4008,6 +4756,10 @@ function prRestoreUrl_() {
     google.script.url.getLocation(function(loc) {
       var p = (loc && loc.parameter) || {};
       if (p.gran === 'week' || p.gran === 'month' || p.gran === 'quarter') STATE.prGranularity = p.gran;
+      if (/^(eval|week|month|quarter)$/.test(p.lens || '')) { STATE.prLens = p.lens; STATE.prGranularity = p.lens === 'eval' ? 'week' : p.lens; }
+      if (p.view === 'grid' || p.view === 'people') STATE.prView = p.view;
+      if (p.wk) STATE.prEvalWeek = p.wk;
+      if (p.sel) STATE.prSel = p.sel;
       if (p.emp) STATE.prExpanded = p.emp;
       if (p.focus && PERF_FOCUS[p.focus]) STATE.prFocus = p.focus;
     });
@@ -4058,7 +4810,7 @@ function renderPerfPanel_() {
   var p = document.getElementById('prPanel');
   if (!p) return;
   var norm = STATE.prExpanded;
-  if (!norm || STATE.activeTab !== 'perfrecord' || !DATA) {
+  if (!norm || STATE.activeTab !== 'perfrecord' || STATE.prView !== 'grid' || !DATA) {
     p.style.display = 'none'; p.innerHTML = '';
     document.body.classList.remove('pr-locked');
     return;
@@ -4081,6 +4833,7 @@ function renderPerfPanel_() {
 }
 // Esc closes the panel from anywhere on the tab.
 document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape' && STATE.activeTab === 'perfrecord' && document.body.classList.contains('prp-card-open')) { prCloseCard_(); return; }
   if (ev.key === 'Escape' && STATE.prExpanded && STATE.activeTab === 'perfrecord') closePerfPanel_();
 });
 // Tracked-vs-planned hours chart (spec v2 §5, v3 §E) — inline SVG, no chart
@@ -4208,7 +4961,9 @@ function savePerfSnapshot_(normName, btn) {
 // Evidence panel v2 (spec v2 §5): blocks ordered red → yellow → green →
 // informational (kudos neutral, never red iconography; exceptions shown but
 // marked); charts instead of text tables; per-card snapshot.
-function perfDrillHtml_(emp, row, model) {
+// opts.embedded (people view's "Full evidence"): the evidence blocks only — the
+// card around it already carries the name, actions and lens control.
+function perfDrillHtml_(emp, row, model, opts) {
   var buckets = model.buckets;
   var per     = model.byEmp[emp.normName] || [];
   var cellByCol = {};
@@ -4446,6 +5201,12 @@ function perfDrillHtml_(emp, row, model) {
   var chipsHtml = row.chips.map(function(c) {
     return '<span class="pr-xchip" title="' + esc(c.tip) + '">' + esc(c.t) + '</span>';
   }).join('');
+  if (opts && opts.embedded) {
+    return '<div class="pr-drill pr-drill-embed">' +
+      '<div class="pr-reading">' + esc(row.reading) + '</div>' +
+      '<div class="pr-drill-grid">' + blocks.map(function(b) { return b.html; }).join('') + '</div>' +
+      '</div>';
+  }
   return '<div class="pr-drill" id="prDrillCard">' +
     '<div class="pr-drill-actions">' +
       '<span class="pr-seg pr-seg-sm">' + [['week', 'W'], ['month', 'M'], ['quarter', 'Q']].map(function(o) {
@@ -4904,6 +5665,143 @@ function perfTrend_(metricId, prevVal, curVal) {
   return '→';
 }
 
+// ── Plain-English reading for the person card (2026.W41 Leading Behaviours
+// merge). Score tiers reuse the score bars above, so the list, the card and
+// the grid's score dots always agree. Observations only: the manager judges.
+var PERF_TIER_NAME = { good: 'Strong', mid: 'On track', bad: 'Needs a look', none: 'No score yet' };
+function perfTier_(score) {
+  if (typeof score !== 'number' || isNaN(score)) return 'none';
+  return score >= PERF_BARS.score.ic.g ? 'good' : score >= PERF_BARS.score.ic.y ? 'mid' : 'bad';
+}
+function perfAvg_(xs) {
+  var v = (xs || []).filter(function(x) { return typeof x === 'number' && !isNaN(x); });
+  return v.length ? Math.round(v.reduce(function(a, c) { return a + c; }, 0) / v.length) : null;
+}
+function perfCap_(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+// Direction of the last 4 scored weeks vs the 4 before: 'up' | 'down' | 'flat'.
+// ±6 points: one goals week alone moves a score by up to 30, so anything
+// smaller is weekly noise, not a direction.
+function perfTrendWord_(recent, before) {
+  if (typeof recent !== 'number' || typeof before !== 'number') return 'flat';
+  return recent - before > 6 ? 'up' : before - recent > 6 ? 'down' : 'flat';
+}
+var PERF_STORY_METRICS = [
+  { id: 'goals',   ok: 'kept goals up to date',      miss: 'goals were behind',            short: 'goals' },
+  { id: 'tracked', ok: 'logged time on target',      miss: 'logged time was under target', short: 'logged time' },
+  { id: 'planned', ok: 'had the week planned ahead', miss: 'the week was under-planned',   short: 'planned time' },
+  { id: 'kudos',   ok: 'gave or received kudos',     miss: 'no kudos either way',          short: 'kudos' },
+];
+// inp = { first, weeks: [{ label, short, month, score|null, met: { goals, tracked,
+//   planned, kudos } (true / false / null = not evaluable) }] oldest first,
+//   rcr: { months: [{ name, val }], bar, target } | null, onLeave, ramp, crew,
+//   noMandate, ptoWeeks: ['W33'], span }
+function perfStory_(inp) {
+  inp = inp || {};
+  var first = inp.first || 'This rocketeer';
+  var all = inp.weeks || [];
+  var ws = all.filter(function(w) { return typeof w.score === 'number' && !isNaN(w.score); });
+  var n = ws.length;
+  function sc(w) { return w.score; }
+  var last4 = ws.slice(-4), prev4 = ws.slice(-8, -4);
+  var a4 = perfAvg_(last4.map(sc)), b4 = prev4.length ? perfAvg_(prev4.map(sc)) : null;
+  var a8 = perfAvg_(ws.slice(-8).map(sc));
+  var tier = perfTier_(a8);
+  var trend = inp.onLeave ? 'flat' : perfTrendWord_(a4, b4);
+  var gBar = PERF_BARS.score.ic.g, yBar = PERF_BARS.score.ic.y;
+  var strongN = ws.filter(function(w) { return w.score >= gBar; }).length;
+  var lowN = ws.filter(function(w) { return w.score < yBar; }).length;
+  var move = b4 === null ? '' : ' The last 4 weeks averaged ' + a4 + ', ' +
+    (a4 > b4 ? 'up from ' : a4 < b4 ? 'down from ' : 'level with ') + b4 + ' the 4 weeks before.';
+
+  var lead;
+  if (inp.onLeave) lead = first + ' is on extended leave, so nothing in this period is evaluated.';
+  else if (!n) lead = 'There are no scored weeks for ' + first + ' in this period yet.';
+  else if (inp.ramp) lead = first + ' is in the 3-month ramp-up: the score is shown for context, but ' + first + ' is not ranked against the team yet.' + move;
+  else if (trend === 'up') lead = first + ' is on a clear upswing: the last 4 weeks averaged ' + a4 + ', up from ' + b4 + ' the 4 weeks before' +
+    (perfTier_(a4) === 'good' ? ', now in the Strong band.' : '.');
+  else if (trend === 'down') lead = first + '\'s score has dropped over the last month: the last 4 weeks averaged ' + a4 + ', down from ' + b4 +
+    ' the 4 weeks before.' + (a4 >= yBar ? ' Still on track overall; the direction is what stands out.' : '');
+  else if (tier === 'good') lead = first + ' is performing strongly and consistently: a score of ' + gBar + ' or higher in ' + strongN + ' of the last ' + n + ' scored weeks.';
+  else if (tier === 'bad') lead = first + ' has been below the bar for most of this period: ' + lowN + ' of the last ' + n + ' scored weeks were under ' + yBar + ', with no clear movement either way.';
+  else lead = first + ' is on track and steady: averaging ' + a8 + ' over the last ' + Math.min(8, n) + ' scored weeks, between the ' + yBar + ' and ' + gBar + ' marks.';
+
+  var rates = [];
+  PERF_STORY_METRICS.forEach(function(m) {
+    var ev = all.filter(function(w) { return w.met && w.met[m.id] !== null && w.met[m.id] !== undefined; });
+    if (ev.length < 3) return;
+    var hits = 0, missN = 0, byMonth = {};
+    ev.forEach(function(w) {
+      if (w.met[m.id]) { hits++; return; }
+      missN++;
+      if (w.month) byMonth[w.month] = (byMonth[w.month] || 0) + 1;
+    });
+    var worstMonth = null, wm = 0;
+    Object.keys(byMonth).forEach(function(k) { if (byMonth[k] > wm) { wm = byMonth[k]; worstMonth = k; } });
+    rates.push({ m: m, n: ev.length, hits: hits, miss: missN, rate: hits / ev.length,
+                 month: missN >= 3 && wm * 2 >= missN ? worstMonth : null });
+  });
+  rates.sort(function(a, b) { return b.rate - a.rate; });
+  var best = rates[0] || null, worst = rates.length ? rates[rates.length - 1] : null;
+  var strength = '', gap = '';
+  if (best) {
+    strength = best.rate >= 0.6
+      ? 'Most consistent: ' + first + ' ' + best.m.ok + ' in ' + best.hits + ' of ' + best.n + ' weeks.'
+      : 'No measure is met consistently yet; the best is that ' + first + ' ' + best.m.ok + ' in ' + best.hits + ' of ' + best.n + ' weeks.';
+  }
+  if (worst && (rates.length > 1 || worst.rate >= 0.6)) {
+    gap = worst.rate < 0.75
+      ? 'Biggest gap: ' + worst.m.miss + ' in ' + worst.miss + ' of ' + worst.n + ' weeks' + (worst.month ? ', mostly in ' + worst.month : '') + '.'
+      : 'No recurring gaps: every measure was met in at least 3 of every 4 weeks.';
+  }
+
+  var rcrLine = '', ask = [];
+  var r = inp.rcr;
+  if (r && r.months && r.months.length) {
+    var ms = r.months, latest = ms[ms.length - 1], earliest = ms[0];
+    var rHits = ms.filter(function(x) { return x.val >= r.bar; }).length;
+    rcrLine = 'RCR was at or above the ' + r.bar.toFixed(1) + ' bar in ' + rHits + ' of the last ' + ms.length + ' month' + (ms.length === 1 ? '' : 's') +
+      ' (latest: ' + latest.val.toFixed(1) + ' in ' + latest.name + '; target ' + r.target.toFixed(1) + ').';
+  }
+  var tail = all.slice(-4);
+  PERF_STORY_METRICS.forEach(function(m) {
+    var ev = tail.filter(function(w) { return w.met && w.met[m.id] !== null && w.met[m.id] !== undefined; });
+    var missed = ev.filter(function(w) { return !w.met[m.id]; });
+    if (m.id === 'kudos') {
+      if (ev.length >= 4 && missed.length === ev.length) ask.push('No kudos either way in the last ' + ev.length + ' weeks.');
+      return;
+    }
+    if (missed.length >= 2) ask.push(perfCap_(m.miss) + ' in ' + missed.length + ' of the last ' + ev.length + ' weeks (' +
+      missed.map(function(w) { return w.short; }).join(', ') + ').');
+  });
+  if (r && r.months && r.months.length) {
+    var lt = r.months[r.months.length - 1], er = r.months[0];
+    if (lt.val < r.bar) ask.push('RCR was ' + lt.val.toFixed(1) + ' in ' + lt.name + ', under the ' + r.bar.toFixed(1) + ' bar' +
+      (r.months.length > 1 && lt.val < er.val - 0.1 ? ' and down from ' + er.val.toFixed(1) + ' in ' + er.name : '') + '.');
+  }
+  if (!ask.length) ask.push(inp.onLeave ? 'Nothing to review while on leave.' : 'Nothing recurring in the last 4 weeks.');
+
+  var ctx = [];
+  if (inp.onLeave) ctx.push('On extended leave: outside every evaluated population until back.');
+  if (inp.ramp) ctx.push('In the first 3 months (ramp-up): goals, kudos, RCR and SI are shown but not evaluated, and ' + first + ' is not ranked yet.');
+  if (inp.crew) ctx.push('Crew member: goals, Small Improvements and PTO do not apply, so the score uses logged time, planned time, RCR and kudos.');
+  if (inp.noMandate) ctx.push('Job family outside the time-tracking mandate: logged and planned time are shown but not evaluated.');
+  if (inp.ptoWeeks && inp.ptoWeeks.length) ctx.push('PTO in ' + inp.ptoWeeks.join(', ') + '; the time targets for those weeks were reduced to match.');
+  var gaps = all.length - n;
+  if (gaps > 0 && !inp.onLeave) ctx.push(gaps + ' week' + (gaps === 1 ? '' : 's') + ' in this period carry no data at all (before joining, or nothing recorded) and are left out of every average.');
+  if (!ctx.length) ctx.push('No leave, ramp-up or other exceptions in this period.');
+
+  return {
+    tier: tier, tierName: PERF_TIER_NAME[tier],
+    verdict: inp.onLeave ? 'On leave' : inp.ramp ? 'Ramp-up · not ranked' : PERF_TIER_NAME[tier],
+    verdictTier: inp.onLeave || inp.ramp ? 'none' : tier,
+    trend: trend, trendName: trend === 'up' ? '▲ Improving' : trend === 'down' ? '▼ Slipping' : '= Steady',
+    lead: lead, strength: strength, gap: gap, rcrLine: rcrLine, ask: ask, context: ctx,
+    best: best ? best.m.short : null, worst: worst ? worst.m.short : null,
+    a4: a4, b4: b4, a8: a8, n: n,
+    basis: n ? 'Based on ' + n + ' scored week' + (n === 1 ? '' : 's') + (inp.span ? ', ' + inp.span : '') + '.' : '',
+  };
+}
+
 // A week is "empty" (pre-hire / fully absent) when it carries no hours, no plan,
 // no kudos, no goals data, and no PTO snapshot — excluded from every average so
 // mid-period hires aren't dragged down by weeks before they existed.
@@ -5157,57 +6055,76 @@ function perfBucketsFor_(gran) {
   return periodBucketsForEmp_(gran);
 }
 
-function perfModel_() {
-  var gran = STATE.prGranularity;
-  var memoKey = gran + '|' + STATE.activeTeam + '|' + ((DATA.meta && DATA.meta.generatedAt) || '');
-  if (_perfModelMemo.key === memoKey) return _perfModelMemo.model;
-  var buckets = perfBucketsFor_(gran);
-  // Grace weeks = first N weeks of every quarter bucket (spec v3 §B2) — mirrors
-  // the backend's CONFIG_PS.GOALS_GRACE_DAYS (21 days ≈ 3 ISO weeks).
+// One memoized model per granularity (2026.W41): the people card reads the week,
+// month and quarter models side by side, so a single-slot memo would thrash.
+// _perfModelMemo keeps pointing at the grid's model (STATE.prGranularity) for
+// the grid's per-row cell cache.
+var _perfModelByGran = {};
+function perfModel_() { return perfModelFor_(STATE.prGranularity); }
+
+// Grace weeks = first N weeks of every quarter bucket (spec v3 §B2) — mirrors
+// the backend's CONFIG_PS.GOALS_GRACE_DAYS (21 days ≈ 3 ISO weeks).
+function perfGraceLabels_() {
   var PERF_GOALS_GRACE_WEEKS = 3;
   var graceLabels = {};
   periodBucketsForEmp_('quarter').forEach(function(qb) {
     (qb.weekLabels || []).slice(0, PERF_GOALS_GRACE_WEEKS).forEach(function(l) { graceLabels[l] = true; });
   });
-  // Dot/trend read the last two CLOSED buckets (spec §5) — precompute indices.
-  var closedIdx = [];
-  buckets.forEach(function(b, i) { if (!b.containsCurrent) closedIdx.push(i); });
-  var model = {
-    buckets:  buckets,
-    lastIdx:  closedIdx.length ? closedIdx[closedIdx.length - 1] : (buckets.length ? buckets.length - 1 : 0),
-    prevIdx:  closedIdx.length > 1 ? closedIdx[closedIdx.length - 2] : null,
-    byEmp:    {},
-  };
-  // v3 §G: per-month RCR — meta.rcrByEmployee carries the monthly history, so a
-  // bucket shows ITS month's value (last month with data inside the bucket =
-  // state at bucket close). No monthly history → keep the current-value fallback.
-  var rcrHist = (DATA.meta && DATA.meta.rcrByEmployee) || {};
-  (DATA.employees || []).forEach(function(emp) {
-    var aggs = buckets.map(function(b) {
-      return perfBucketAgg_(b.weekLabels
-        .filter(function(l) { return emp.weeks && emp.weeks[l]; })
-        .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }), graceLabels);
-    });
-    var empRcr = rcrHist[emp.normName];
-    if (empRcr) {
-      var byKey = {};
-      Object.keys(empRcr).forEach(function(nm) {
-        var k = perfRcrMonthKey_(nm);
-        if (k) byKey[k] = empRcr[nm];
-      });
-      aggs.forEach(function(agg, i) {
-        var v = null;
-        buckets[i].weekLabels.forEach(function(l) {
-          var k = pMonthKey(l);
-          if (k && byKey[k] !== undefined) v = byKey[k];   // last month wins
-        });
-        if (v !== null) agg.rcr = v;
-      });
-    }
-    model.byEmp[emp.normName] = aggs;
+  return graceLabels;
+}
+
+// One employee's per-bucket aggregates. v3 §G: per-month RCR — meta.rcrByEmployee
+// carries the monthly history, so a bucket shows ITS month's value (last month
+// with data inside the bucket = state at bucket close). No monthly history →
+// keep the current-value fallback.
+function perfEmpAggs_(emp, buckets, graceLabels, rcrHist) {
+  var aggs = buckets.map(function(b) {
+    return perfBucketAgg_(b.weekLabels
+      .filter(function(l) { return emp.weeks && emp.weeks[l]; })
+      .map(function(l) { return { label: l, rk: computeRkScore(emp, l) }; }), graceLabels);
   });
-  _perfModelMemo = { key: memoKey, model: model };
-  return model;
+  var empRcr = rcrHist[emp.normName];
+  if (empRcr) {
+    var byKey = {};
+    Object.keys(empRcr).forEach(function(nm) {
+      var k = perfRcrMonthKey_(nm);
+      if (k) byKey[k] = empRcr[nm];
+    });
+    aggs.forEach(function(agg, i) {
+      var v = null;
+      buckets[i].weekLabels.forEach(function(l) {
+        var k = pMonthKey(l);
+        if (k && byKey[k] !== undefined) v = byKey[k];   // last month wins
+      });
+      if (v !== null) agg.rcr = v;
+    });
+  }
+  return aggs;
+}
+
+function perfModelFor_(gran) {
+  var memoKey = gran + '|' + STATE.activeTeam + '|' + ((DATA.meta && DATA.meta.generatedAt) || '');
+  var hit = _perfModelByGran[gran];
+  if (!hit || hit.key !== memoKey) {
+    var buckets = perfBucketsFor_(gran);
+    var graceLabels = perfGraceLabels_();
+    // Dot/trend read the last two CLOSED buckets (spec §5) — precompute indices.
+    var closedIdx = [];
+    buckets.forEach(function(b, i) { if (!b.containsCurrent) closedIdx.push(i); });
+    var model = {
+      buckets:  buckets,
+      lastIdx:  closedIdx.length ? closedIdx[closedIdx.length - 1] : (buckets.length ? buckets.length - 1 : 0),
+      prevIdx:  closedIdx.length > 1 ? closedIdx[closedIdx.length - 2] : null,
+      byEmp:    {},
+    };
+    var rcrHist = (DATA.meta && DATA.meta.rcrByEmployee) || {};
+    (DATA.employees || []).forEach(function(emp) {
+      model.byEmp[emp.normName] = perfEmpAggs_(emp, buckets, graceLabels, rcrHist);
+    });
+    hit = _perfModelByGran[gran] = { key: memoKey, model: model };
+  }
+  if (gran === STATE.prGranularity) _perfModelMemo = hit;
+  return hit.model;
 }
 
 // Manager cohort = existing rule (Job Catalog track M OR has reports) — the

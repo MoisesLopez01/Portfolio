@@ -264,5 +264,89 @@ ck('localStorage guarded',         /try \{ localStorage/.test(html));
 ck('reduced motion respected',     /prefers-reduced-motion: reduce\) \{ \.pr-panel/.test(html));
 ck('scroll gutter stable',         html.indexOf('scrollbar-gutter: stable') >= 0);
 
+// ── 2026.W41 people view: tiers, trend word, plain-English story ─────────────
+ck('tier 75 → good',          perfTier_(75) === 'good');
+ck('tier 74 → mid',           perfTier_(74) === 'mid');
+ck('tier 50 → mid',           perfTier_(50) === 'mid');
+ck('tier 49 → bad',           perfTier_(49) === 'bad');
+ck('tier null → none',        perfTier_(null) === 'none');
+ck('tiers follow score bars', perfTier_(PERF_BARS.score.ic.y) === 'mid' && perfTier_(PERF_BARS.score.ic.g - 1) === 'mid');
+ck('avg ignores nulls',       perfAvg_([80, null, 90, NaN]) === 85);
+ck('avg empty → null',        perfAvg_([]) === null);
+ck('trend +7 → up',           perfTrendWord_(87, 80) === 'up');
+ck('trend −7 → down',         perfTrendWord_(73, 80) === 'down');
+ck('trend ±6 → flat',         perfTrendWord_(86, 80) === 'flat' && perfTrendWord_(74, 80) === 'flat');
+ck('trend missing → flat',    perfTrendWord_(80, null) === 'flat');
+
+function wk(i, score, met, month) {
+  return { label: '2026.W' + (28 + i), short: 'W' + (28 + i), month: month || 'September', score: score,
+           met: Object.assign({ goals: true, tracked: true, planned: true, kudos: true }, met || {}) };
+}
+function weeks(scores, metFn) { return scores.map(function(s, i) { return wk(i, s, metFn ? metFn(i) : null); }); }
+
+const steady = perfStory_({ first: 'Ana', weeks: weeks([90, 92, 88, 91, 93, 90, 89, 92, 91, 90, 94, 92, 90]) });
+ck('steady strong → Strong',            steady.verdict === 'Strong' && steady.trend === 'flat');
+ck('steady strong lead counts weeks',   /75 or higher in 13 of the last 13 scored weeks/.test(steady.lead));
+ck('no misses → no recurring gaps',     /No recurring gaps/.test(steady.gap));
+ck('no misses → nothing recurring',     steady.ask.length === 1 && /Nothing recurring/.test(steady.ask[0]));
+ck('basis counts scored weeks',         /Based on 13 scored weeks/.test(steady.basis));
+
+const up = perfStory_({ first: 'Ben', weeks: weeks([55, 58, 60, 57, 62, 60, 61, 63, 78, 82, 85, 84, 86]) });
+ck('rising → Improving',                up.trend === 'up' && up.trendName === '▲ Improving');
+ck('rising lead names both averages',   /averaged 84, up from 66/.test(up.lead));
+
+const down = perfStory_({ first: 'Chloe', weeks: weeks([92, 90, 91, 93, 90, 88, 86, 85, 70, 66, 64, 62, 60],
+  function(i) { return i >= 9 ? { tracked: false, planned: i !== 10 } : null; }) });
+ck('falling → Slipping',                down.trend === 'down' && down.trendName === '▼ Slipping');
+ck('falling lead uses possessive',      /^Chloe's score has dropped/.test(down.lead));
+ck('ask names the missed weeks',        down.ask.some(function(a) { return /^Logged time was under target in 4 of the last 4 weeks \(W37, W38, W39, W40\)/.test(a); }));
+ck('one planned miss is not an ask',    !down.ask.some(function(a) { return /under-planned/.test(a); }));
+ck('gap names the worst measure',       /Biggest gap: logged time was under target in 4 of 13 weeks/.test(down.gap));
+
+const low = perfStory_({ first: 'Grace', weeks: weeks([40, 38, 42, 41, 39, 44, 40, 42, 41, 39, 43, 40, 41],
+  function() { return { goals: false, tracked: false, planned: false, kudos: false }; }) });
+ck('low and flat → Needs a look',       low.verdict === 'Needs a look' && /below the bar/.test(low.lead));
+ck('nothing consistent is said plainly', /No measure is met consistently yet/.test(low.strength));
+ck('kudos ask only after 4 empty weeks', low.ask.some(function(a) { return a === 'No kudos either way in the last 4 weeks.'; }));
+
+const ramp = perfStory_({ first: 'Farid', ramp: true, weeks: weeks([null, null, null, null, 60, 62, 64, 66, 70, 72, 74, 75, 76]) });
+ck('ramp-up verdict never ranks',       ramp.verdict === 'Ramp-up · not ranked' && ramp.verdictTier === 'none');
+ck('ramp-up context explains',          ramp.context.some(function(c) { return /ramp-up/.test(c); }));
+ck('pre-hire weeks named as no data',   ramp.context.some(function(c) { return /^4 weeks in this period carry no data/.test(c); }));
+
+const leave = perfStory_({ first: 'Dee', onLeave: true, weeks: weeks([null, null, null]) });
+ck('on leave → not evaluated lead',     /on extended leave/.test(leave.lead) && leave.verdict === 'On leave');
+
+const crew = perfStory_({ first: 'Hugo', crew: true, ptoWeeks: ['W33'],
+  weeks: weeks([88, 90, 89, 91, 90, 92], function() { return { goals: null }; }) });
+ck('crew context explains carve',       crew.context.some(function(c) { return /^Crew member/.test(c); }));
+ck('PTO weeks named in context',        crew.context.some(function(c) { return /^PTO in W33; the time targets/.test(c); }));
+ck('null goals never counted',          !/goals/.test(crew.strength + crew.gap));
+
+const rcr = perfStory_({ first: 'Ana', weeks: weeks([80, 82, 81]),
+  rcr: { months: [{ name: 'July', val: 2.6 }, { name: 'August', val: 2.2 }, { name: 'September', val: 1.8 }], bar: 2.0, target: 2.5 } });
+ck('RCR line counts months at the bar', /RCR was at or above the 2\.0 bar in 2 of the last 3 months \(latest: 1\.8 in September; target 2\.5\)/.test(rcr.rcrLine));
+ck('RCR under the bar is an ask',       rcr.ask.some(function(a) { return a === 'RCR was 1.8 in September, under the 2.0 bar and down from 2.6 in July.'; }));
+
+const empty = perfStory_({ first: 'Zoe', weeks: [] });
+ck('no data → says so',                 /no scored weeks/.test(empty.lead) && empty.basis === '');
+
+// ── 2026.W41 static: merged nav + people view wiring ─────────────────────────
+ck('Leading Behaviours view removed',   !/id: "rocketeers"/.test(html) && !/id="tabRocketeers"/.test(html));
+ck('rocketeers id aliases to perfrecord', /if \(tab === "rocketeers"\) tab = "perfrecord";/.test(html));
+ck('Performance Record is 3rd in VIEWS', (function() {
+  const ids = (html.match(/\{ id: "([a-z]+)",\s+btnId:/g) || []).map(function(s) { return s.match(/"([a-z]+)"/)[1]; });
+  return ids[0] === 'overview' && ids[1] === 'radar' && ids[2] === 'perfrecord';
+})());
+ck('sidebar button order matches',      html.indexOf('id="tabBtnRadar"') < html.indexOf('id="tabBtnPerfRecord"') &&
+                                        html.indexOf('id="tabBtnPerfRecord"') < html.indexOf('id="tabBtnTrends"'));
+ck('people view is the default',        /prView:\s+"people"/.test(html));
+ck('people view delegates clicks',      !/class="prp-item[^"]*"[^>]*onclick/.test(html));
+ck('card is a size container',          /container-type: inline-size; container-name: prpcard;/.test(html));
+ck('list sticks under the top bar',     /\.prp-list \{ position: sticky; top: calc\(var\(--topbar-h/.test(html));
+ck('phone card is a full-screen sheet', /body\.prp-card-open \.prp-card \{ display: flex; position: fixed; inset: 0;/.test(html));
+ck('evidence reuses the drill',         /perfDrillHtml_\(emp, row, perfModel_\(\), \{ embedded: true \}\)/.test(html));
+ck('model memo is per granularity',     /var _perfModelByGran = \{\};/.test(html));
+
 console.log((fail ? '❌ ' : '✅ ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
