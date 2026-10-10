@@ -1300,6 +1300,32 @@ body.dark-mode .mx-err { background:#3a1212; color:#FCA5A5; }
 /* ── SETTINGS TAB ── */
 .settings-body { padding: 24px; display: flex; flex-direction: column; gap: 28px; }
 .settings-intro { font-size: 13px; color: var(--slate); line-height: 1.65; }
+/* Scoring Weights summary (2026.W41) — the read-only view every role sees. */
+.sw-overview { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.sw-readonly { align-self: flex-start; font-size: 12px; font-weight: 700; color: var(--slate);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; }
+.sw-team { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 14px; }
+.sw-team-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 10px 14px;
+  background: var(--th-bg); font-size: 13px; font-weight: 800; color: var(--void); }
+.sw-team-sub { font-size: 11px; font-weight: 600; color: var(--muted); }
+.sw-scroll { overflow-x: auto; }
+.sw-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sw-table th { text-align: center; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sw-table th:first-child, .sw-table td.sw-fam { text-align: left; }
+.sw-table th .weight-dot { display: inline-block; width: 8px; height: 8px; margin-right: 5px; vertical-align: middle; }
+.sw-table td { text-align: center; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  font-weight: 700; color: var(--void); font-variant-numeric: tabular-nums; }
+.sw-table tr:last-child td { border-bottom: 0; }
+.sw-fam { font-weight: 700; min-width: 180px; }
+.sw-code { font-size: 10px; font-weight: 600; color: var(--muted); }
+.sw-lv { display: inline-block; font-size: 9.5px; font-weight: 700; color: var(--slate); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 99px; padding: 0 6px; margin-left: 4px; }
+.sw-off { color: var(--muted); font-weight: 500; }
+.sw-editor { border-top: 1px solid var(--border); padding-top: 12px; }
+.sw-editor > summary { cursor: pointer; font-size: 14px; font-weight: 800; color: var(--void); padding: 6px 0; }
+.sw-editor-hint { font-size: 11px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+.sw-editor[open] > summary { margin-bottom: 12px; }
 .weight-list { display: flex; flex-direction: column; gap: 14px; }
 .weight-row {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
@@ -2637,7 +2663,7 @@ button, a, select, input, textarea, [onclick] { touch-action: manipulation; }
       <div class="section-head">
         <div>
           <h2>Scoring Weights</h2>
-          <p class="section-sub">Adjust the composite score weights · Changes are shared with all users via the spreadsheet</p>
+          <p class="section-sub">How each team's score is built · Visible to everyone · Only Admins and Super Admins can change the weights</p>
         </div>
       </div>
       <div id="weightsBody">
@@ -2875,10 +2901,14 @@ var VIEWS = [
   { id: "trends",     btnId: "tabBtnTrends",     paneId: "tabTrends",     label: "Trends",             location: "tabbar", roles: null },
   { id: "execbrief",  btnId: "tabBtnExecBrief",  paneId: "tabExecBrief",  label: "📋 Team Executive Brief", location: "tabbar", roles: ["superadmin", "admin", "orgadmin", "viewer", "manager"] },
   { id: "dataref",    btnId: "tabBtnDataRef",    paneId: "tabDataRef",    label: "📖 Documentation",   location: "menu",   roles: null },
+  // Scoring Weights (2026.W41): every role may READ the weights — a transparency
+  // page. Editing is Super Admin / Admin only (canEditScoring_, enforced again by the
+  // save endpoints). Shown under 👁 View as too, always read-only there, because the
+  // weights are one company-wide policy and read the same for every caller.
+  { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: null },
   // hideInPreview: these pages read settings as the REAL caller (getAccessSettings etc.
   // are never impersonated), so showing them under 👁 View as would misrepresent what
   // an org admin sees. canSeeView_ hides them while STATE.viewAs is set.
-  { id: "weights",    btnId: "tabBtnWeights",    paneId: "tabWeights",    label: "⚖️ Scoring Weights", location: "menu",   roles: ["superadmin", "admin", "orgadmin"], hideInPreview: true },
   { id: "access",     btnId: "tabBtnAccess",     paneId: "tabAccess",     label: "🔒 Access Control",  location: "menu",   roles: ["superadmin", "admin", "orgadmin"], hideInPreview: true },
   // Usage analytics reads as the REAL caller (getUsageAnalytics is never
   // impersonated) → hideInPreview, like the other settings pages.
@@ -2897,6 +2927,9 @@ function isSuperAdmin_()   { return STATE.userRole === 'superadmin'; }
 function hasAdminPower_()  { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin' || STATE.userRole === 'orgadmin'; }
 // Org admins run their own org but may not hand out the company-wide tiers.
 function canManageAdmins_() { return STATE.userRole === 'superadmin' || STATE.userRole === 'admin'; }
+// Scoring Weights editor — Super Admin / Admin only, never while previewing someone.
+// Mirrors canEditScoring_ in PS Security.js (the save endpoints are the real gate).
+function canEditScoring_()  { return !STATE.viewAs && (STATE.userRole === 'superadmin' || STATE.userRole === 'admin'); }
 // The signed-in user's OWN tier, unaffected by 👁 View as. Only a super admin can be
 // handed a payload carrying meta.viewAs, so realRole is server truth, not a client guess.
 function isRealSuperAdmin_() { return STATE.realRole === 'superadmin'; }
@@ -11065,14 +11098,28 @@ function usageFilterRows_(q) {
   });
 }
 
-// ── SCORING WEIGHTS TAB (admin only, opened from the ☰ menu) ──
+// ── SCORING WEIGHTS TAB (every role reads; Admin / Super Admin edit) ──
+// Since 2026.W41 the page opens on a plain summary for everyone: one table per team,
+// job family × the metrics that team is scored on, each cell the metric's share of
+// the score. The full editor (flat base + Team → Family × Level matrix) is unchanged
+// and sits folded under "Edit weights" for canEditScoring_() only.
 function renderWeightsTab_() {
   var container = document.getElementById("weightsBody");
   if (!container) return;
 
-  var html = '<div class="settings-body">';
+  var canEdit = canEditScoring_();
+  var html = renderScoringOverview_(canEdit);
+  if (!canEdit) {
+    container.innerHTML = html;
+    loadScoringMatrix_();
+    return;
+  }
 
-  html += '<div class="sec-header" style="margin-bottom:8px">⚖️ Scoring Weights</div>';
+  html += '<details class="sw-editor" id="weightsEditor"' + (STATE.weightsEditorOpen ? ' open' : '') +
+    ' ontoggle="STATE.weightsEditorOpen = this.open">' +
+    '<summary>✏️ Edit weights <span class="sw-editor-hint">Admins &amp; Super Admins</span></summary>';
+  html += '<div class="settings-body">';
+
   html += '<p class="settings-intro">Each rocketeer receives a composite score (0–100) that blends the metrics below. ' +
     'Adjust the percentage each metric contributes to reflect your team\'s priorities. ' +
     '<strong>Set a metric\'s weight to 0 to exclude it from scoring entirely.</strong> ' +
@@ -11136,13 +11183,78 @@ function renderWeightsTab_() {
       '<span style="font-size:12px;color:var(--muted)">Loading scoring matrix…</span></div>' +
     '</div>';
 
-  html += '</div>';
+  html += '</details>';
   container.innerHTML = html;
   updateWeightTotal();
   loadScoringMatrix_();
 }
 
-// ── SCORING MATRIX EDITOR — Team → Family × Level weights (admin only) ─────────
+// Plain-language header + the summary placeholder every role sees.
+function renderScoringOverview_(canEdit) {
+  return '<div class="sw-overview">' +
+    '<p class="settings-intro">Everyone receives a weekly score from 0 to 100. Each metric below is worth a share of ' +
+    'that score; a person earns the share in proportion to how well they met the metric, and the score is what they ' +
+    'earned out of the metrics that apply to them. The <strong>team</strong> decides which metrics count at all; the ' +
+    '<strong>job family</strong> decides how much each one counts. A dash means the metric is not part of that group\'s score.</p>' +
+    (canEdit ? '' : '<div class="sw-readonly">🔒 Read-only' +
+      (STATE.viewAs ? ' while previewing' : '') + ' — only Admins and Super Admins can change the weights.</div>') +
+    '<div id="scoringSummary">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:16px 0"><div class="spinner" style="width:20px;height:20px;border-width:2px;margin:0"></div>' +
+      '<span style="font-size:12px;color:var(--muted)">Loading scoring weights…</span></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// One table per team: job family × the team's metrics. Cells show each metric's
+// SHARE of the score (weights are renormalized at scoring time, so a block whose
+// raw weights do not total 100 still reads correctly here). Weights come resolved
+// from the server (familySummaryWeights_), so the client never re-derives policy.
+function renderScoringSummary_() {
+  var el = document.getElementById('scoringSummary');
+  if (!el) return;
+  var cfg = MATRIX_CFG;
+  if (!cfg || !cfg.ok) {
+    el.innerHTML = '<div class="mx-err">Scoring weights unavailable' +
+      (cfg && cfg.error ? ': ' + esc(cfg.error) : '') + '</div>';
+    return;
+  }
+  var html = '';
+  (cfg.sections || []).forEach(function(sec) {
+    var defs = teamWeightDefs_(sec);
+    var rows = (sec.families || []).map(function(f) {
+      return { name: f.name, code: f.code, weights: f.weights || {}, lv: f.levelOverrides || 0 };
+    });
+    if (sec.catchAll && sec.catchAll.weights) {
+      rows.push({ name: 'Other job titles', code: '', weights: sec.catchAll.weights, lv: sec.catchAll.levelOverrides || 0 });
+    }
+    html += '<div class="sw-team">' +
+      '<div class="sw-team-h">' + esc(sec.team.label) +
+        '<span class="sw-team-sub">scored on ' + defs.map(function(d) { return esc(d.label); }).join(' · ') + '</span></div>' +
+      '<div class="sw-scroll"><table class="sw-table"><thead><tr><th>Job family</th>' +
+      defs.map(function(d) {
+        return '<th><span class="weight-dot" style="background:' + d.color + '"></span>' + esc(d.label) + '</th>';
+      }).join('') +
+      '</tr></thead><tbody>';
+    rows.forEach(function(r) {
+      var total = defs.reduce(function(s, d) { return s + (r.weights[d.key] || 0); }, 0);
+      html += '<tr><td class="sw-fam">' + esc(r.name) +
+        (r.code ? ' <span class="sw-code">' + esc(r.code) + '</span>' : '') +
+        (r.lv ? ' <span class="sw-lv" title="Some job levels in this family use their own weights">varies by level</span>' : '') +
+        '</td>';
+      defs.forEach(function(d) {
+        var v = r.weights[d.key] || 0;
+        html += '<td>' + (v > 0 && total > 0 ? Math.round(v / total * 100) + '%' : '<span class="sw-off">—</span>') + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  });
+  html += '<p class="settings-note">Crew members and contractors are scored on Tracked, Planned, RCR and Kudos only. ' +
+    'People in their first three months (ramp-up) are not evaluated on Goals, Kudos, RCR or SI.</p>';
+  el.innerHTML = html;
+}
+
+// ── SCORING MATRIX EDITOR — Team → Family × Level weights (Admin / Super Admin) ──
 // Backed by getScoringConfig() / saveScoringMatrix(). Families are grouped under
 // the org-team separators (same teams as the dashboard toggle); blank cells
 // inherit the per-(team, family) fill defaults shipped in cfg.sections.
@@ -11150,10 +11262,21 @@ var MATRIX_CFG = null;
 
 function loadScoringMatrix_() {
   google.script.run
-    .withSuccessHandler(function(cfg) { MATRIX_CFG = cfg; renderMatrixSection_(); })
+    .withSuccessHandler(function(cfg) {
+      MATRIX_CFG = cfg;
+      renderScoringSummary_();
+      // The editor needs the full config, which the server ships to editors only.
+      if (!document.getElementById("matrixSection")) return;
+      if (cfg && cfg.canEdit) renderMatrixSection_();
+      else document.getElementById("matrixSection").innerHTML =
+        '<div class="mx-err">The scoring matrix can only be edited by Admins and Super Admins.</div>';
+    })
     .withFailureHandler(function(e) {
+      var msg = esc(String(e.message || e));
+      var sum = document.getElementById("scoringSummary");
+      if (sum) sum.innerHTML = '<div class="mx-err">Failed to load scoring weights: ' + msg + '</div>';
       var el = document.getElementById("matrixSection");
-      if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load scoring matrix: ' + esc(String(e.message || e)) + '</p>';
+      if (el) el.innerHTML = '<p style="color:#B71C1C;font-size:12px;padding:8px 0">Failed to load scoring matrix: ' + msg + '</p>';
     })
     .getScoringConfig();
 }

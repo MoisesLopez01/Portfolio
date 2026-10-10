@@ -213,6 +213,19 @@ function canManageAdmins_(roleOrAccess) {
 }
 
 /**
+ * True for the roles that may EDIT the scoring weights (flat base + team matrix).
+ *
+ * Since 2026.W41 every role may READ them — ⚖️ Scoring Weights is a transparency
+ * page, so people can see how their score is built. Org admins read but do not
+ * edit: the weights are one company-wide policy, and an org-scoped admin
+ * re-weighting them would change every score outside their own tree.
+ */
+function canEditScoring_(roleOrAccess) {
+  const r = (roleOrAccess && roleOrAccess.role) || roleOrAccess;
+  return r === "superadmin" || r === "admin";
+}
+
+/**
  * True when this role is pinned to its OWN org team (Services / R&D / Sales &
  * Success) rather than the whole company — currently viewers only.
  *

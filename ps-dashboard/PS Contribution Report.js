@@ -291,8 +291,9 @@ function saveWeightSettings(weightsObj) {
   try {
     // Server-side authorization — hiding the UI button is not enough; this
     // function is callable directly via google.script.run by anyone with the link.
+    // Read is open to every role; edit is Super Admin / Admin only (canEditScoring_).
     const access = checkDashboardAccess();
-    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, error: "Admin access required" };
+    if (!access.allowed || !canEditScoring_(access)) return { ok: false, error: "Admin or Super Admin access required" };
 
     const valid = ["goals","tracked","planned","rcr","kudos","si","pto"];
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -847,18 +848,41 @@ function seedScoringMatrix_(famsByTeam) {
   return { rows: rows.length - 1, savedAt };
 }
 
-// Exported — full config for the Settings-tab matrix editor (Admin only).
+// The weights a (team, family) block scores with at a level that has no override
+// of its own — what the read-only ⚖️ Scoring Weights summary shows. Same rules as
+// weightsForEmployee_: the block's ALL cell over blockFillBase_, then the hard
+// team mask, and non-tracking families lose tracked/planned/RCR. `levelOverrides`
+// counts level columns that carry their own cell (the summary flags "varies by level").
+function familySummaryWeights_(teamKey, family, matrix, base) {
+  const block = ((matrix || {})[teamKey] || {})[family] || {};
+  const fill  = blockFillBase_(teamKey, family, base);
+  const cell  = block[ALL_KEY_];
+  let metrics = teamByKey_(teamKey).metrics;
+  if (family !== ALL_KEY_ && TRACKING_FAMILIES_.indexOf(family) === -1) {
+    metrics = metrics.filter(m => m !== "tracked" && m !== "planned" && m !== "rcr");
+  }
+  return {
+    weights: Object.assign({}, maskToTeamMetrics_(cell ? fillWeights_(cell, fill) : fill, metrics)),
+    levelOverrides: Object.keys(block).filter(k => k !== ALL_KEY_ && Object.keys(block[k] || {}).length).length,
+  };
+}
+
+// Exported — scoring config for ⚖️ Scoring Weights. Every allowed role may read it
+// (transparency, 2026.W41); `canEdit` (canEditScoring_ — Super Admin / Admin) unlocks
+// the editor. Non-editors receive only the per-family summary: no headcounts, title
+// lists or raw matrix, and they never trigger the first-open sheet seeding (a write).
 // Groups families under the org-team sections (spec §5): placement is driven by
 // where active roster members sit, so a family spanning two teams appears under
 // both. Seeds both sheets on first open so the feature bootstraps itself.
 function getScoringConfig() {
   try {
     const access = checkDashboardAccess();
-    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, denied: true };
+    if (!access.allowed) return { ok: false, denied: true };
+    const canEdit = canEditScoring_(access);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let seeded = false;
-    if (!ss.getSheetByName(JOB_CATALOG_SHEET_)) { seedJobCatalog_(); seeded = true; }
+    if (canEdit && !ss.getSheetByName(JOB_CATALOG_SHEET_)) { seedJobCatalog_(); seeded = true; }
 
     const catalog = readJobCatalog_();
 
@@ -881,7 +905,7 @@ function getScoringConfig() {
       famCounts[p.team][hit.family] = (famCounts[p.team][hit.family] || 0) + 1;
     });
 
-    if (!ss.getSheetByName(SCORING_MATRIX_SHEET_)) {
+    if (canEdit && !ss.getSheetByName(SCORING_MATRIX_SHEET_)) {
       const famsByTeam = {};
       TEAMS_.forEach(t => { famsByTeam[t.key] = Object.keys(famCounts[t.key] || {}); });
       seedScoringMatrix_(famsByTeam);
@@ -901,6 +925,21 @@ function getScoringConfig() {
                      fill: blockFillBase_(t.key, c, base) })),
       catchAll: { count: uncat[t.key] || 0, fill: blockFillBase_(t.key, ALL_KEY_, base) },
     }));
+    sections.forEach(s => {
+      s.families.forEach(f => Object.assign(f, familySummaryWeights_(s.team.key, f.code, matrix, base)));
+      Object.assign(s.catchAll, familySummaryWeights_(s.team.key, ALL_KEY_, matrix, base));
+    });
+
+    if (!canEdit) {
+      return {
+        ok: true, canEdit: false, metrics: WEIGHT_METRICS_, baseWeights: base,
+        sections: sections.map(s => ({
+          team: s.team,
+          families: s.families.map(f => ({ code: f.code, name: f.name, weights: f.weights, levelOverrides: f.levelOverrides })),
+          catchAll: { weights: s.catchAll.weights, levelOverrides: s.catchAll.levelOverrides },
+        })),
+      };
+    }
 
     // Pre-create every rendered (team, family) block so the editor's save payload
     // replaces exactly the rendered blocks (merge semantics in saveScoringMatrix).
@@ -920,7 +959,7 @@ function getScoringConfig() {
     });
 
     return {
-      ok: true, seeded, matrix, sections, rolesByFamily,
+      ok: true, canEdit: true, seeded, matrix, sections, rolesByFamily,
       levelCols:   LEVEL_COLS_,
       metrics:     WEIGHT_METRICS_,
       baseWeights: base,
@@ -940,7 +979,7 @@ function getScoringConfig() {
 function saveScoringMatrix(payload) {
   try {
     const access = checkDashboardAccess();
-    if (!access.allowed || !hasAdminPower_(access)) return { ok: false, error: "Admin access required" };
+    if (!access.allowed || !canEditScoring_(access)) return { ok: false, error: "Admin or Super Admin access required" };
     const incoming = payload && payload.matrix;
     if (!incoming || typeof incoming !== "object") return { ok: false, error: "Invalid payload" };
 

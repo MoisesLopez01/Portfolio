@@ -51,7 +51,7 @@ role string: a bare `role === "admin"` comparison is a bug, and
 |---|---|---|---|---|---|
 | **Super Admin** | everyone | all 3 | everything, incl. the super-admin list | ✅ | ✅ visible |
 | **Admin** | everyone | all 3 | all settings + every access list | ✅ | ❌ hidden |
-| **Org Admin** | **own org tree** | those their reports sit in | all settings + viewers/delegates — **not** the Super/Admin/Org lists | ✅ own tree | ❌ hidden |
+| **Org Admin** | **own org tree** | those their reports sit in | access settings + viewers/delegates — **not** the Super/Admin/Org lists, **not** scoring weights (read-only) | ✅ own tree | ❌ hidden |
 | **Viewer** | everyone in **their own team** | **1 (pinned)** | nothing | ✅ own team | ❌ hidden |
 | **Manager** | own org tree (reports & below) | those their reports sit in | nothing | ✅ own tree | ❌ hidden |
 
@@ -255,8 +255,9 @@ else**. The target is resolved through `_resolveAccessFor_`, so team pin, cache 
 org-tree scope, self-exclusion and denial reasons come out exactly as for that person's
 own login. **Only the report payload is impersonated**: every settings endpoint still
 resolves the real caller, so the preview can never write as the target. The frontend
-hides Scoring Weights / Access Control while previewing (`hideInPreview` on the `VIEWS`
-entries) because they would read settings as the real caller. `meta.viewAs` is stamped by
+hides Access Control while previewing (`hideInPreview` on the `VIEWS` entry) because it
+would read settings as the real caller; Scoring Weights stays visible but read-only
+(`canEditScoring_()` is false while `STATE.viewAs` is set). `meta.viewAs` is stamped by
 `applySelfExclusion_` (per-caller, never in the shared cache entry); the 👁 sidebar entry keys off
 `STATE.realRole` / `isRealSuperAdmin_()`, not the previewed `userRole`. Candidates come
 from `listViewAsTargets()`. Spec: `ps-dashboard/docs/specs/2026-09-01-view-as-impersonation-design.md`.
@@ -338,8 +339,16 @@ FTE vs crew toggle in the UI.
 ## Scoring weights (Top Rocketeers)
 
 Default: `{ goals: 30, tracked: 30, planned: 20, rcr: 15, kudos: 5, si: 0, pto: 0 }`
-Configurable per deployment via ⚖️ Scoring Weights (sidebar › More, admin only) → saved to `PS Settings` sheet.
+Configurable per deployment via ⚖️ Scoring Weights (sidebar › More) → saved to `PS Settings` sheet.
 `saveWeightSettings()` / `readWeightSettings_()` handle persistence.
+
+**Read for everyone, edit for Super Admin / Admin (2026.W41).** Every role opens the page
+and sees a plain per-team summary (job family × team metrics, each cell the metric's share
+of the score, resolved server-side by `familySummaryWeights_`). Editing is gated by
+`canEditScoring_` — superadmin + admin, **not** orgadmin (the weights are one company-wide
+policy). `getScoringConfig` hands non-editors the summary only (no headcounts, titles or raw
+matrix) and never seeds sheets for them; both save endpoints re-check `canEditScoring_`.
+Guarded by `tests/scoring-weights-view-checks.js`.
 
 ### Team-aligned scoring matrix (2026-07-09)
 

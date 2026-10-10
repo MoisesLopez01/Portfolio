@@ -776,7 +776,10 @@ ck('listViewAsTargets is super-admin gated',
 const html8 = fs.readFileSync(path.join(dir, 'PS Dashboard.html'), 'utf8');
 ck('foreground load passes viewAs', /\.getPSReportData\(forceRefresh, STATE\.activeTeam, viewAsEmail_\(\)\)/.test(html8));
 ck('background prefetch passes viewAs', /\.getPSReportData\(false, reqKey, viewAsEmail_\(\)\)/.test(html8));
-ck('Scoring Weights hidden in preview', /id:\s*"weights"[^\n]*hideInPreview:\s*true/.test(html8));
+// Scoring Weights became a read-for-everyone page in 2026.W41: shown in preview,
+// but the editor is never offered there (canEditScoring_ checks !STATE.viewAs).
+ck('Scoring Weights is NOT hidden in preview', !/id:\s*"weights"[^\n]*hideInPreview:\s*true/.test(html8));
+ck('…and is read-only while previewing', /function canEditScoring_\(\)\s*\{\s*return !STATE\.viewAs &&/.test(html8));
 ck('Access Control hidden in preview',  /id:\s*"access"[^\n]*hideInPreview:\s*true/.test(html8));
 ck('canSeeView_ honours hideInPreview', /if \(view\.hideInPreview && STATE\.viewAs\) return false;/.test(html8));
 ck('the ☰ entry keys off the REAL role, not the previewed one', /if \(isRealSuperAdmin_\(\)\) \{\s*html \+= '<div class="nav-menu-divider">/.test(html8));
