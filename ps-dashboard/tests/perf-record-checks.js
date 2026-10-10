@@ -367,6 +367,8 @@ ck('score sorts by value, best first', /if \(s\.key === 'score' && colIdx !== -1
 ck('grid rows carry lane + why', /lane: drv\.lane, why: drv\.text,/.test(html));
 ck('grid has the Why column', html.indexOf("th('flags', 'Why')") >= 0);
 ck('celebrate + support focus cards', html.indexOf("k: 'celebrate'") >= 0 && html.indexOf("k: 'support'") >= 0);
+ck('Watch card is the Watch lane (no overlap with Celebrate/Support)',
+   /watch:\s+\{ label: 'watch',\s+f: function\(r\) \{ return r\.lane === 'watch'; \} \}/.test(html));
 ck('CSV exports lane and why', html.indexOf("var header = ['Rocketeer', 'Lane', 'Why',") >= 0);
 
 // ── 2026.W41 static: merged nav + people view wiring ─────────────────────────

@@ -4149,7 +4149,9 @@ var PERF_FOCUS = {
   celebrate:  { label: 'celebrate',           f: function(r) { return r.lane === 'celebrate'; } },
   support:    { label: 'support',             f: function(r) { return r.lane === 'support'; } },
   critical:   { label: 'critical',            f: function(r) { return r.reds > 0; } },
-  watch:      { label: 'watch',               f: function(r) { return r.reds === 0 && r.yellows > 0; } },
+  // The Watch card is the Watch LANE (2026.W41) — yellow-only rows that are not
+  // already Celebrate or Support — so the lane cards never overlap.
+  watch:      { label: 'watch',               f: function(r) { return r.lane === 'watch'; } },
   burnout:    { label: 'burnout risk',        f: function(r) { return r.burnout; } },
   exceptions: { label: 'not fully evaluated', f: function(r) { return r.hasException; } },
 };
