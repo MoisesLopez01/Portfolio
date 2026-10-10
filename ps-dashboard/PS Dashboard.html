@@ -1093,8 +1093,12 @@ body.tb-scrolled .topbar { box-shadow: 0 8px 20px -14px rgba(15,25,65,.45); }
   .sidenav .tab-btn { justify-content: flex-start; padding: 0 12px; min-height: 44px; }
   .sidenav .navBrand { align-items: flex-start; justify-content: flex-start; padding: 16px 14px 14px; }
   .header-title p, .fresh-note { display: none !important; }
-  .header { flex-wrap: nowrap; }
+  /* Title shrinks (ellipsis) instead of wrapping; the team toggle, when a role
+     sees 2+ teams, takes its own full-width line so the header never overflows
+     sideways (the demo's three-team admin view caught it at 390px). */
+  .header { flex-wrap: wrap; row-gap: 6px; }
   .header-title { flex: 1 1 0; }
+  .header .team-toggle { order: 10; flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
   /* Filters: search + one "Filters (n)" button on the bar; the rest in a sheet. */
   .filter-bar.visible { flex-direction: row; flex-wrap: nowrap; align-items: center; padding: 8px 12px; gap: 8px; }
   .filter-bar > .fb-group, .filter-bar > .fb-reset, .filter-bar > .fb-more { display: none; }

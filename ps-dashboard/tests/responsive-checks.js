@@ -86,6 +86,8 @@ ck('phone filters open as a bottom sheet',
    html.includes('id="fbDoneBtn"'));
 ck('phone Filters count covers every off-bar filter', /var nAll = nMore \+ \(mt && mt\.value !== "fte" \? 1 : 0\) \+ \(sp && sp\.value \? 1 : 0\);/.test(html));
 ck('sheet labels come back visible', /body\.fb-sheet-open \.fb-group > label \{ position: static;/.test(html));
+ck('phone team toggle takes its own line (no sideways overflow)',
+   /\.header \.team-toggle \{ order: 10; flex: 1 1 100%;/.test(html) && /\.header \{ flex-wrap: wrap; row-gap: 6px; \}/.test(html));
 ck('Esc closes sheet and drawer', /if \(document\.body\.classList\.contains\('fb-sheet-open'\)\) toggleMoreFilters_\(false\);/.test(html));
 ck('header title is one line', /\.header-title h1 \{[^}]*white-space: nowrap;/.test(html));
 // ── sidebar line icons (2026.W41) ── one stroke set, no emoji/Unicode glyphs in the rail
