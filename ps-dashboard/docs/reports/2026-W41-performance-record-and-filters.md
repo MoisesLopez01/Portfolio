@@ -106,10 +106,11 @@ Taken with sample data (made-up names and numbers), in `img/2026-W41/`:
 ## How it was checked
 
 - **Automated checks:** 10 test suites, all passing. The Performance Record suite grew to 186 checks, including 48 new ones for the merged tab and its plain-English text. Examples: a slipping person reads as "Slipping"; a single missed week is not raised as a 1:1 topic; PTO weeks and ramp-up appear under Context; crew are never judged on goals. The layout suite has 52 checks, including new ones for the scroll fold, the phone sheet, the phone menu and the wide-screen alignment.
-- **Rendered in a browser** with sample data at 390, 1440 and 2560 px wide. This covered the list, the card, every view, the filter sheet, the phone menu and scrolling, and caught and fixed three layout bugs on the way:
+- **Rendered in a browser** with sample data at 390, 1440 and 2560 px wide. This covered the list, the card, every view, the filter sheet, the phone menu and scrolling, and caught and fixed four layout bugs on the way:
   - the list sat one top-bar-height too low
   - the phone filter sheet sat behind its own backdrop
   - the newest weeks of the history table were off screen
+  - on a phone, when the team selector (Services / R&D / Sales) is visible, the header overflowed sideways and hid the title; the selector now takes its own line. Found by rendering a synthetic demo with three teams
 - **Not yet checked:** the real payload with real names, the live Google Apps Script environment, and dark mode. These are part of next week's steps.
 
 ## Pending for 2026.W42
@@ -130,4 +131,5 @@ Taken with sample data (made-up names and numbers), in `img/2026-W41/`:
 | `278b0ab` | People layout: ranked list and plain-English card |
 | `34500d2` | Merge of the approved one-row header and filter bar (`ps-dash/compact-topbar`) |
 | `a9f72d9` | Top bar: folds on scroll, aligns on wide screens, phone menu and filter sheet |
-| docs commit | This report, the design spec, the in-app Documentation section, the render harness |
+| `ca87184` | This report, the design spec, the in-app Documentation section, the render harness |
+| `439571f` | Phone header: team selector on its own line (no sideways overflow) |
