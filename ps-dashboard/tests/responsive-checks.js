@@ -72,6 +72,15 @@ ck('primary filters stay outside the fold', (function () {
 ck('folded filters still counted on the button',
    html.includes('function toggleMoreFilters_()') && /cnt\.hidden = nMore === 0/.test(html));
 ck('header title is one line', /\.header-title h1 \{[^}]*white-space: nowrap;/.test(html));
+// ── sidebar line icons (2026.W41) ── one stroke set, no emoji/Unicode glyphs in the rail
+ck('main tabs carry line icons, not glyphs', (function () {
+  const nav = html.slice(html.indexOf('id="tabNav"'), html.indexOf('id="btnNav"') + 400);
+  return (nav.match(/<span class="tabDot" aria-hidden="true"><svg class="navIco"/g) || []).length === 7 &&
+         !/[◆◎★▲📋📈‹›]/.test(nav);
+})());
+ck('More-group emoji map to line icons',
+   /NAV_EMOJI_ICON_ = \{[^}]*'📖': 'book'[^}]*'🔒': 'lock'[^}]*'👁': 'eye'/.test(html) &&
+   html.includes("navIcon_(on ? 'expand' : 'collapse')"));
 ck('refresh keeps an accessible name', /id="refreshBtn"[^>]*aria-label="Refresh data"/.test(html));
 ck('multiselect in the 14px type tier', html.includes('.fb-multi-btn, .fb-multi-opt,'));
 ck('single-open multiselect panels', /querySelectorAll\('\.fb-multi-panel'\)\.forEach\(function\(p\) \{\s*\n?\s*if \(p !== panel\)/.test(html));
